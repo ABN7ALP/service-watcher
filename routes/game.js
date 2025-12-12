@@ -80,4 +80,43 @@ router.post('/spin', authMiddleware, async (req, res) => {
     }
 });
 
+// --- نقطة النهاية: POST /api/game/deposit ---
+// محمية أيضاً، يجب أن يكون المستخدم مسجلاً دخوله ليطلب إيداعاً
+router.post('/deposit', authMiddleware, async (req, res) => {
+    try {
+        const { amount, transactionId } = req.body;
+        const userId = req.user.id;
+
+        // 1. التحقق من المدخلات
+        if (!amount || !transactionId) {
+            return res.status(400).json({ message: "الرجاء إدخال المبلغ ومعرّف العملية." });
+        }
+        if (isNaN(amount) || amount <= 0) {
+            return res.status(400).json({ message: "الرجاء إدخال مبلغ صحيح." });
+        }
+
+        const db = await connectDB();
+        const depositsCollection = db.collection('deposits');
+
+        // 2. إنشاء طلب إيداع جديد في قاعدة البيانات بحالة "قيد المراجعة"
+        await depositsCollection.insertOne({
+            userId: new require('mongodb').ObjectId(userId),
+            username: req.user.username, // نحفظ اسم المستخدم لتسهيل المراجعة
+            amount: parseFloat(amount),
+            transactionId: transactionId,
+            status: 'pending', // الحالة الأولية دائماً قيد المراجعة
+            createdAt: new Date()
+        });
+
+        res.status(201).json({ message: "تم استلام طلب الإيداع الخاص بك. ستتم مراجعته قريباً." });
+
+    } catch (error) {
+        console.error("Deposit Request Error:", error);
+        res.status(500).json({ message: "حدث خطأ في السيرفر." });
+    }
+});
+
+
+
+
 module.exports = router;
