@@ -11,16 +11,16 @@ const app = {
     // --- التهيئة ---
     init() {
         this.token = localStorage.getItem('authToken');
+        
+        // ✨--- التصحيح هنا ---✨
         if (this.token) {
-
-            this.getAccountDetails(); 
+            // إذا وجدنا توكن، نجلب تفاصيل الحساب
+            this.getAccountDetails();
         } else {
-            // إذا وجدنا توكن، نحاول جلب بيانات المستخدم
-            // (سنحتاج لنقطة نهاية جديدة لهذا الغرض)
-            this.showGameSection();
-        } else {
+            // إذا لم نجد توكن، نعرض قسم تسجيل الدخول/التسجيل
             this.showAuthSection();
         }
+        
         this.createWheel();
     },
 
@@ -32,7 +32,6 @@ const app = {
     showGameSection() {
         document.getElementById('auth-section').classList.add('hidden');
         document.getElementById('game-section').classList.remove('hidden');
-        // هنا يجب أن نجلب بيانات المستخدم (الاسم والرصيد)
     },
     showAlert(message, isError = false) {
         const alertBox = document.getElementById('alert-message');
@@ -49,7 +48,7 @@ const app = {
         const response = await this.apiRequest('POST', '/auth/register', { username, password });
         if (response) {
             this.showAlert('تم التسجيل بنجاح! يمكنك الآن تسجيل الدخول.');
-            this.getAccountDetails();
+            // ✨ تم حذف استدعاء getAccountDetails() من هنا لأنه غير صحيح
         }
     },
     async login() {
@@ -60,33 +59,32 @@ const app = {
             this.token = response.token;
             localStorage.setItem('authToken', this.token);
             this.showAlert('تم تسجيل الدخول بنجاح.');
-            this.showGameSection();
-            // TODO: جلب بيانات المستخدم بعد الدخول
+            
+            // ✨--- التصحيح هنا ---✨
+            // بعد تسجيل الدخول الناجح، نجلب تفاصيل الحساب
+            this.getAccountDetails();
         }
     },
     logout() {
         this.token = null;
+        this.user = null;
         localStorage.removeItem('authToken');
         this.showAuthSection();
     },
-
-
     
-    // ✨ --- دالة جديدة بالكامل --- ✨
+    // --- دالة جلب بيانات الحساب ---
     async getAccountDetails() {
-        // سنحتاج لإنشاء نقطة النهاية هذه في الواجهة الخلفية
         const data = await this.apiRequest('GET', '/auth/me');
         if (data) {
             this.user = data;
             document.getElementById('username-display').textContent = this.user.username;
             document.getElementById('balance-display').textContent = this.user.balance.toFixed(2);
-            this.showGameSection(); // التأكد من إظهار قسم اللعبة
+            this.showGameSection(); // الآن نعرض قسم اللعبة بعد التأكد من جلب البيانات
         } else {
-            // إذا فشل جلب التفاصيل (توكن منتهي الصلاحية مثلاً)
+            // إذا فشل جلب التفاصيل (توكن منتهي الصلاحية مثلاً)، نسجل الخروج
             this.logout();
         }
     },
-
 
     // --- اللعبة والإجراءات ---
     createWheel() {
@@ -121,7 +119,6 @@ const app = {
         
         if (response && typeof response.prize !== 'undefined') {
             const prizeAmount = response.prize;
-            // حساب زاوية التوقف بناءً على الجائزة
             const prizeMap = { 0.50: [4], 0.25: [2, 7], 0.10: [1, 5], 0.00: [3, 6, 8] };
             const targetSegment = prizeMap[prizeAmount][Math.floor(Math.random() * prizeMap[prizeAmount].length)];
             const stopAt = this.theWheel.getRandomForSegment(targetSegment);
@@ -129,10 +126,8 @@ const app = {
             this.theWheel.animation.stopAngle = stopAt;
             this.theWheel.startAnimation();
             
-            // تحديث الرصيد فوراً
             document.getElementById('balance-display').textContent = response.newBalance.toFixed(2);
         } else {
-            // إذا فشل الطلب، أعد تفعيل الزر
             this.wheelSpinning = false;
             document.getElementById('spin-button').disabled = false;
         }
@@ -141,7 +136,7 @@ const app = {
         this.showAlert(`تهانينا! لقد ربحت ${indicatedSegment.text}`);
         this.wheelSpinning = false;
         document.getElementById('spin-button').disabled = false;
-        this.theWheel.rotationAngle = 0; // إعادة تعيين زاوية العجلة
+        this.theWheel.rotationAngle = 0;
         this.theWheel.draw();
     },
     async requestDeposit() {
@@ -153,11 +148,10 @@ const app = {
         }
     },
     async requestWithdraw() {
-        // TODO: بناء الواجهة الخلفية لطلبات السحب أولاً
         this.showAlert('ميزة السحب قيد التطوير.', true);
     },
 
-    // --- أداة مساعدة لإرسال الطلبات (نسخة محسّنة لتصيّد الأخطاء) ---
+    // --- أداة مساعدة لإرسال الطلبات ---
     async apiRequest(method, endpoint, body = null) {
         try {
             const headers = { 'Content-Type': 'application/json' };
@@ -171,38 +165,28 @@ const app = {
                 body: body ? JSON.stringify(body) : null
             };
 
-            // 1. إرسال الطلب
             const response = await fetch(this.apiBaseUrl + endpoint, options);
-            
-            // 2. قراءة الاستجابة كنص أولاً (مهم جداً لتصيّد الأخطاء)
             const responseText = await response.text();
             let data;
 
             try {
-                // 3. محاولة تحويل النص إلى JSON
                 data = JSON.parse(responseText);
             } catch (e) {
-                // إذا فشل التحويل، فهذا يعني أن السيرفر أرسل خطأ HTML (مثل خطأ 500)
                 this.showAlert(`خطأ فادح من السيرفر. الاستجابة ليست JSON. محتوى الاستجابة: ${responseText}`, true);
                 console.error("Server response was not JSON:", responseText);
                 return null;
             }
 
-            // 4. التحقق من حالة الاستجابة
             if (!response.ok) {
-                // إذا كانت الاستجابة خطأ (مثل 400, 401, 409)
-                // `data.message` هو الخطأ الذي أرسلناه من السيرفر
                 const errorMessage = `فشل الطلب (الحالة: ${response.status}). الرسالة: ${data.message || 'لا توجد رسالة.'}`;
                 this.showAlert(errorMessage, true);
                 console.error("API Error:", data);
                 return null;
             }
 
-            // 5. إذا نجح كل شيء
             return data;
 
         } catch (error) {
-            // هذا الخطأ يحدث إذا فشل الاتصال بالسيرفر من الأساس (مشكلة شبكة)
             this.showAlert('فشل الاتصال بالسيرفر. تحقق من اتصالك بالإنترنت أو حالة السيرفر.', true);
             console.error("Network or Fetch Error:", error);
             return null;
