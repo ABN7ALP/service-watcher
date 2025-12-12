@@ -3,6 +3,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const connectDB = require('../db');
 const authMiddleware = require('../middleware/auth');
+const { ObjectId } = require('mongodb');
 
 
 const router = express.Router();
@@ -110,11 +111,11 @@ router.post('/login', async (req, res) => {
 router.get('/me', authMiddleware, async (req, res) => {
     try {
         const db = await connectDB();
-        // req.user.id يأتي من وسيط الحماية بعد التحقق من التوكن
         const user = await db.collection('users').findOne(
-            { _id: new require('mongodb').ObjectId(req.user.id) },
-            { projection: { password: 0 } } // لا تقم بإرسال كلمة المرور أبداً!
+            { _id: new ObjectId(req.user.id) }, // ✨<-- الخطوة 2: عدّل هذا السطر
+            { projection: { password: 0 } }
         );
+
 
         if (!user) {
             return res.status(404).json({ message: 'المستخدم غير موجود' });
