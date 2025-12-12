@@ -8,6 +8,7 @@ if (process.env.NODE_ENV !== 'production') {
 const express = require('express');
 const path = require('path');
 const connectDB = require('./db');
+const adminRoutes = require('./routes/admin');
 
 // --- إعدادات Express ---
 const app = express();
@@ -25,6 +26,7 @@ connectDB().then(() => {
 
     app.use('/api/auth', authRoutes);
     app.use('/api/game', gameRoutes);
+    app.use('/api/admin', adminRoutes);
 
     // --- تشغيل السيرفر بعد التأكد من الاتصال بالـ DB ---
     app.listen(PORT, () => {
