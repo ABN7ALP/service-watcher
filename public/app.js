@@ -135,7 +135,7 @@ const app = {
         this.showAlert('ميزة السحب قيد التطوير.', true);
     },
 
-    // --- أداة مساعدة لإرسال الطلبات ---
+    // --- أداة مساعدة لإرسال الطلبات (نسخة محسّنة لتصيّد الأخطاء) ---
     async apiRequest(method, endpoint, body = null) {
         try {
             const headers = { 'Content-Type': 'application/json' };
@@ -149,16 +149,40 @@ const app = {
                 body: body ? JSON.stringify(body) : null
             };
 
+            // 1. إرسال الطلب
             const response = await fetch(this.apiBaseUrl + endpoint, options);
-            const data = await response.json();
+            
+            // 2. قراءة الاستجابة كنص أولاً (مهم جداً لتصيّد الأخطاء)
+            const responseText = await response.text();
+            let data;
 
-            if (!response.ok) {
-                this.showAlert(data.message || 'حدث خطأ ما.', true);
+            try {
+                // 3. محاولة تحويل النص إلى JSON
+                data = JSON.parse(responseText);
+            } catch (e) {
+                // إذا فشل التحويل، فهذا يعني أن السيرفر أرسل خطأ HTML (مثل خطأ 500)
+                this.showAlert(`خطأ فادح من السيرفر. الاستجابة ليست JSON. محتوى الاستجابة: ${responseText}`, true);
+                console.error("Server response was not JSON:", responseText);
                 return null;
             }
+
+            // 4. التحقق من حالة الاستجابة
+            if (!response.ok) {
+                // إذا كانت الاستجابة خطأ (مثل 400, 401, 409)
+                // `data.message` هو الخطأ الذي أرسلناه من السيرفر
+                const errorMessage = `فشل الطلب (الحالة: ${response.status}). الرسالة: ${data.message || 'لا توجد رسالة.'}`;
+                this.showAlert(errorMessage, true);
+                console.error("API Error:", data);
+                return null;
+            }
+
+            // 5. إذا نجح كل شيء
             return data;
+
         } catch (error) {
-            this.showAlert('فشل الاتصال بالسيرفر.', true);
+            // هذا الخطأ يحدث إذا فشل الاتصال بالسيرفر من الأساس (مشكلة شبكة)
+            this.showAlert('فشل الاتصال بالسيرفر. تحقق من اتصالك بالإنترنت أو حالة السيرفر.', true);
+            console.error("Network or Fetch Error:", error);
             return null;
         }
     }
