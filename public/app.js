@@ -12,6 +12,9 @@ const app = {
     init() {
         this.token = localStorage.getItem('authToken');
         if (this.token) {
+
+            this.getAccountDetails(); 
+        } else {
             // إذا وجدنا توكن، نحاول جلب بيانات المستخدم
             // (سنحتاج لنقطة نهاية جديدة لهذا الغرض)
             this.showGameSection();
@@ -46,6 +49,7 @@ const app = {
         const response = await this.apiRequest('POST', '/auth/register', { username, password });
         if (response) {
             this.showAlert('تم التسجيل بنجاح! يمكنك الآن تسجيل الدخول.');
+            this.getAccountDetails();
         }
     },
     async login() {
@@ -65,6 +69,24 @@ const app = {
         localStorage.removeItem('authToken');
         this.showAuthSection();
     },
+
+
+    
+    // ✨ --- دالة جديدة بالكامل --- ✨
+    async getAccountDetails() {
+        // سنحتاج لإنشاء نقطة النهاية هذه في الواجهة الخلفية
+        const data = await this.apiRequest('GET', '/auth/me');
+        if (data) {
+            this.user = data;
+            document.getElementById('username-display').textContent = this.user.username;
+            document.getElementById('balance-display').textContent = this.user.balance.toFixed(2);
+            this.showGameSection(); // التأكد من إظهار قسم اللعبة
+        } else {
+            // إذا فشل جلب التفاصيل (توكن منتهي الصلاحية مثلاً)
+            this.logout();
+        }
+    },
+
 
     // --- اللعبة والإجراءات ---
     createWheel() {
