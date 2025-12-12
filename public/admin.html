@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>لوحة تحكم المدير</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; }
+        .container { max-width: 800px; margin: 20px auto; padding: 20px; background: #fff; border-radius: 8px; }
+        .deposit { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+        .deposit p { margin: 5px 0; }
+        button { cursor: pointer; padding: 5px 10px; border-radius: 4px; border: none; }
+        .approve { background-color: #28a745; color: white; }
+        .reject { background-color: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>لوحة تحكم الإيداعات</h1>
+        <div>
+            <label for="adminKey">مفتاح المدير:</label>
+            <input type="password" id="adminKey" placeholder="أدخل مفتاح المدير السري">
+            <button onclick="fetchPendingDeposits()">جلب الطلبات المعلقة</button>
+        </div>
+        <hr>
+        <div id="deposits-list"></div>
+    </div>
+
+    <script>
+        const API_URL = '/api/admin';
+
+        async function fetchPendingDeposits() {
+            const adminKey = document.getElementById('adminKey').value;
+            if (!adminKey) {
+                alert('الرجاء إدخال مفتاح المدير.');
+                return;
+            }
+
+            const response = await fetch(`${API_URL}/deposits/pending`, {
+                headers: { 'x-admin-key': adminKey }
+            });
+
+            if (!response.ok) {
+                alert('خطأ: مفتاح المدير غير صالح أو حدث خطأ في السيرفر.');
+                return;
+            }
+
+            const deposits = await response.json();
+            const listDiv = document.getElementById('deposits-list');
+            listDiv.innerHTML = '<h2>الطلبات المعلقة:</h2>';
+
+            if (deposits.length === 0) {
+                listDiv.innerHTML += '<p>لا توجد طلبات معلقة حالياً.</p>';
+                return;
+            }
+
+            deposits.forEach(d => {
+                const depositDiv = document.createElement('div');
+                depositDiv.className = 'deposit';
+                depositDiv.innerHTML = `
+                    <p><strong>المستخدم:</strong> ${d.username}</p>
+                    <p><strong>المبلغ:</strong> ${d.amount}</p>
+                    <p><strong>معرف العملية:</strong> ${d.transactionId}</p>
+                    <p><strong>التاريخ:</strong> ${new Date(d.createdAt).toLocaleString()}</p>
+                    <button class="approve" onclick="processDeposit('${d._id}', 'approve')">موافقة</button>
+                    <button class="reject" onclick="processDeposit('${d._id}', 'reject')">رفض</button>
+                `;
+                listDiv.appendChild(depositDiv);
+            });
+        }
+
+        async function processDeposit(id, action) {
+            const adminKey = document.getElementById('adminKey').value;
+            const response = await fetch(`${API_URL}/deposits/${action}/${id}`, {
+                method: 'POST',
+                headers: { 'x-admin-key': adminKey }
+            });
+
+            const result = await response.json();
+            alert(result.message);
+            fetchPendingDeposits(); // إعادة تحميل القائمة
+        }
+    </script>
+</body>
+</html>
