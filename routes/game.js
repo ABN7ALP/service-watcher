@@ -82,10 +82,11 @@ router.post('/spin', authMiddleware, async (req, res) => {
 
 // --- نقطة النهاية: POST /api/game/deposit ---
 // محمية أيضاً، يجب أن يكون المستخدم مسجلاً دخوله ليطلب إيداعاً
+// routes/game.js
 router.post('/deposit', authMiddleware, async (req, res) => {
     try {
         const { amount, transactionId } = req.body;
-        const userId = req.user.id;
+        const userId = req.user.id; // نحصل على ID المستخدم من التوكن
 
         // 1. التحقق من المدخلات
         if (!amount || !transactionId) {
@@ -96,17 +97,26 @@ router.post('/deposit', authMiddleware, async (req, res) => {
         }
 
         const db = await connectDB();
+        const usersCollection = db.collection('users');
         const depositsCollection = db.collection('deposits');
 
-        // 2. إنشاء طلب إيداع جديد في قاعدة البيانات بحالة "قيد المراجعة"
+        // ✨--- بداية التعديل ---✨
+        // 2. جلب بيانات المستخدم من قاعدة البيانات للتأكد من وجوده والحصول على اسمه
+        const user = await usersCollection.findOne({ _id: new require('mongodb').ObjectId(userId) });
+        if (!user) {
+            return res.status(404).json({ message: "المستخدم غير موجود." });
+        }
+
+        // 3. إنشاء طلب إيداع جديد باستخدام اسم المستخدم من قاعدة البيانات
         await depositsCollection.insertOne({
-            userId: new require('mongodb').ObjectId(userId),
-            username: req.user.username, // نحفظ اسم المستخدم لتسهيل المراجعة
+            userId: user._id,
+            username: user.username, // <-- نستخدم الاسم من قاعدة البيانات مباشرة
             amount: parseFloat(amount),
             transactionId: transactionId,
-            status: 'pending', // الحالة الأولية دائماً قيد المراجعة
+            status: 'pending',
             createdAt: new Date()
         });
+        // ✨--- نهاية التعديل ---✨
 
         res.status(201).json({ message: "تم استلام طلب الإيداع الخاص بك. ستتم مراجعته قريباً." });
 
@@ -115,8 +125,6 @@ router.post('/deposit', authMiddleware, async (req, res) => {
         res.status(500).json({ message: "حدث خطأ في السيرفر." });
     }
 });
-
-
 
 
 module.exports = router;
