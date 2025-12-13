@@ -2,6 +2,8 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config(); // تحميل متغيرات .env
+const http = require('http');
+const socketIo = require('socket.io');
 
 // استدعاء اتصال قاعدة البيانات
 const connectDB = require('./config/database');
@@ -23,6 +25,14 @@ app.use(express.json()); // لتحويل JSON في الطلبات
 app.use(express.urlencoded({ extended: true })); // لتحليل البيانات من النماذج
 app.use('/uploads', express.static('public/uploads')); // لعرض الصور المخزنة
 
+const server = http.createServer(app);
+const io = socketIo(server, {
+    cors: {
+        origin: "*", // غير هذا لاحقاً للنطاق الخاص بك
+        methods: ["GET", "POST"]
+    }
+});
+
 // الاتصال بقاعدة البيانات
 connectDB();
 
@@ -33,12 +43,143 @@ app.use('/api/deposit', depositRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/withdrawal', withdrawalRoutes);
 
+
+// ========== منطق Socket.io ==========
+const jwt = require('jsonwebtoken');
+const User = require('./models/User');
+
+// تخزين المستخدمين المتصلين
+const onlineUsers = new Map();
+
+io.use(async (socket, next) => {
+    try {
+        const token = socket.handshake.auth.token;
+        if (!token) {
+            return next(new Error('التوكن مطلوب'));
+        }
+        
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded.userId);
+        
+        if (!user) {
+            return next(new Error('المستخدم غير موجود'));
+        }
+        
+        socket.userId = user._id;
+        socket.userRole = user.role;
+        next();
+    } catch (error) {
+        next(new Error('غير مصرح'));
+    }
+});
+
+io.on('connection', (socket) => {
+    console.log(`🔗 مستخدم متصل: ${socket.userId}`);
+    
+    // إضافة المستخدم للقائمة المتصلة
+    onlineUsers.set(socket.userId.toString(), {
+        socketId: socket.id,
+        userId: socket.userId,
+        role: socket.userRole,
+        connectedAt: new Date()
+    });
+    
+    // إرسال حدث اتصال ناجح
+    socket.emit('connected', {
+        message: '✅ متصل بنجاح بالخادم',
+        userId: socket.userId,
+        onlineCount: onlineUsers.size
+    });
+    
+    // غرفة الأدمن (إذا كان أدمن)
+    if (socket.userRole === 'admin') {
+        socket.join('admin-room');
+        console.log(`👑 أدمن انضم للغرفة: ${socket.userId}`);
+    }
+    
+    // غرفة المستخدم الشخصية
+    socket.join(`user-${socket.userId}`);
+    
+    // ========== الأحداث الرئيسية ==========
+    
+    // حدث تدوير العجلة
+    socket.on('wheel_spin_start', (data) => {
+        console.log(`🎡 تدوير عجلة من: ${socket.userId}`);
+        
+        // إرسال للجميع (للحماس)
+        socket.broadcast.emit('user_spinning', {
+            userId: socket.userId,
+            timestamp: new Date()
+        });
+    });
+    
+    // حدث فوز كبير
+    socket.on('big_win', (data) => {
+        const { amount, username } = data;
+        
+        // إرسال للجميع بفوز كبير (للتحفيز)
+        io.emit('big_win_announcement', {
+            username: username || 'لاعب',
+            amount: amount,
+            message: `🎉 ${username || 'لاعب'} فاز بـ ${amount}$!`,
+            timestamp: new Date()
+        });
+        
+        console.log(`💰 فوز كبير: ${amount}$ للمستخدم ${socket.userId}`);
+    });
+    
+    // حدث طلب سحب جديد (للأدمن فقط)
+    socket.on('new_withdrawal', (data) => {
+        if (socket.userRole === 'admin') {
+            io.to('admin-room').emit('withdrawal_request', {
+                ...data,
+                timestamp: new Date()
+            });
+        }
+    });
+    
+    // حدث قطع الاتصال
+    socket.on('disconnect', () => {
+        console.log(`🔌 مستخدم منقطع: ${socket.userId}`);
+        onlineUsers.delete(socket.userId.toString());
+        
+        // تحديث عدد المتصلين للجميع
+        io.emit('online_count', { count: onlineUsers.size });
+    });
+});
+
+// دالة مساعدة لإرسال إشعارات
+const sendNotification = (userId, type, data) => {
+    const user = onlineUsers.get(userId.toString());
+    if (user) {
+        io.to(user.socketId).emit('notification', {
+            type,
+            data,
+            timestamp: new Date()
+        });
+    }
+};
+
+// دالة مساعدة للإذاعة العامة
+const broadcastToAdmins = (event, data) => {
+    io.to('admin-room').emit(event, data);
+};
+
+// تصدير للاستخدام في الكونترولرات
+module.exports = {
+    io,
+    sendNotification,
+    broadcastToAdmins,
+    onlineUsers
+};
+
+
 // مسار تجريبي للتأكد من عمل الخادم
 app.get('/', (req, res) => {
     res.json({ message: '🚀 خادم عجلة الحظ يعمل بنجاح!' });
 });
 
 // تشغيل الخادم
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`✅ الخادم يعمل على الرابط: http://localhost:${PORT}`);
 });
