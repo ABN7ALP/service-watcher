@@ -1,4 +1,5 @@
-"name": "wheel-of-fortune",
+{
+  "name": "wheel-of-fortune",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
