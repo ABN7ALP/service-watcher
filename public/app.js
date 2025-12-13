@@ -1,54 +1,53 @@
-// public/app.js
-
 const app = {
-    // --- إعدادات ---
-    apiBaseUrl: '/api',
+    // --- الحالة (State) ---
     token: null,
     user: null,
     theWheel: null,
     wheelSpinning: false,
+    apiBaseUrl: '/api',
 
-    // --- التهيئة ---
+    // --- التهيئة عند بدء التشغيل ---
     init() {
         this.token = localStorage.getItem('authToken');
-        
-        // ✨--- التصحيح هنا ---✨
         if (this.token) {
-            // إذا وجدنا توكن، نجلب تفاصيل الحساب
             this.getAccountDetails();
         } else {
-            // إذا لم نجد توكن، نعرض قسم تسجيل الدخول/التسجيل
-            this.showAuthSection();
+            this.showScreen('auth-screen');
         }
-        
-        this.createWheel();
     },
 
-    // --- إدارة الواجهة ---
-    showAuthSection() {
-        document.getElementById('auth-section').classList.remove('hidden');
-        document.getElementById('game-section').classList.add('hidden');
-    },
-    showGameSection() {
-        document.getElementById('auth-section').classList.add('hidden');
-        document.getElementById('game-section').classList.remove('hidden');
+    // --- إدارة الشاشات والواجهة ---
+    showScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
     },
     showAlert(message, isError = false) {
-        const alertBox = document.getElementById('alert-message');
-        alertBox.textContent = message;
-        alertBox.className = isError ? 'error' : 'success';
-        alertBox.classList.add('show');
-        setTimeout(() => alertBox.classList.remove('show'), 3000);
+        const container = document.getElementById('alert-container');
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert ${isError ? 'error' : 'success'}`;
+        alertDiv.textContent = message;
+        container.appendChild(alertDiv);
+        setTimeout(() => alertDiv.remove(), 4000);
+    },
+    updateBalanceDisplay() {
+        if (!this.user) return;
+        document.getElementById('balance-display').textContent = this.user.balance.available.toFixed(2);
+        const pendingDisplay = document.getElementById('pending-balance-display');
+        if (this.user.balance.pending > 0) {
+            pendingDisplay.querySelector('strong').textContent = this.user.balance.pending.toFixed(2);
+            pendingDisplay.classList.remove('hidden');
+        } else {
+            pendingDisplay.classList.add('hidden');
+        }
     },
 
-    // --- المصادقة ---
+    // --- المصادقة (Authentication) ---
     async register() {
         const username = document.getElementById('register-username').value;
         const password = document.getElementById('register-password').value;
         const response = await this.apiRequest('POST', '/auth/register', { username, password });
         if (response) {
             this.showAlert('تم التسجيل بنجاح! يمكنك الآن تسجيل الدخول.');
-            // ✨ تم حذف استدعاء getAccountDetails() من هنا لأنه غير صحيح
         }
     },
     async login() {
@@ -59,53 +58,50 @@ const app = {
             this.token = response.token;
             localStorage.setItem('authToken', this.token);
             this.showAlert('تم تسجيل الدخول بنجاح.');
-            
-            // ✨--- التصحيح هنا ---✨
-            // بعد تسجيل الدخول الناجح، نجلب تفاصيل الحساب
-            this.getAccountDetails();
+            await this.getAccountDetails();
         }
     },
     logout() {
         this.token = null;
         this.user = null;
         localStorage.removeItem('authToken');
-        this.showAuthSection();
+        this.showScreen('auth-screen');
     },
-    
-    // --- دالة جلب بيانات الحساب ---
     async getAccountDetails() {
-        const data = await this.apiRequest('GET', '/auth/me');
+        const data = await this.apiRequest('GET', '/auth/me'); // هذه نقطة النهاية غير موجودة بعد
         if (data) {
             this.user = data;
             document.getElementById('username-display').textContent = this.user.username;
-            document.getElementById('balance-display').textContent = this.user.balance.toFixed(2);
-            this.showGameSection(); // الآن نعرض قسم اللعبة بعد التأكد من جلب البيانات
+            this.updateBalanceDisplay();
+            this.showScreen('game-screen');
+            if (!this.theWheel) this.createWheel();
         } else {
-            // إذا فشل جلب التفاصيل (توكن منتهي الصلاحية مثلاً)، نسجل الخروج
             this.logout();
         }
     },
 
-    // --- اللعبة والإجراءات ---
+    // --- اللعبة (Game Logic) ---
     createWheel() {
         this.theWheel = new Winwheel({
-            'numSegments': 8,
+            'canvasId': 'canvas',
+            'numSegments': 6,
             'outerRadius': 180,
+            'textFontSize': 16,
+            'responsive': true,
             'segments': [
-                { 'fillStyle': '#eae56f', 'text': '0.10$' },
-                { 'fillStyle': '#89f26e', 'text': '0.25$' },
                 { 'fillStyle': '#7de6ef', 'text': '0.00$' },
+                { 'fillStyle': '#89f26e', 'text': '0.10$' },
+                { 'fillStyle': '#eae56f', 'text': '0.25$' },
                 { 'fillStyle': '#e7706f', 'text': '0.50$' },
-                { 'fillStyle': '#eae56f', 'text': '0.10$' },
-                { 'fillStyle': '#89f26e', 'text': '0.00$' },
-                { 'fillStyle': '#7de6ef', 'text': '0.25$' },
-                { 'fillStyle': '#e7706f', 'text': '0.00$' },
+                { 'fillStyle': '#c770e7', 'text': '1.00$' },
+                { 'fillStyle': '#ffd700', 'text': '5.00$' }
             ],
             'animation': {
                 'type': 'spinToStop',
-                'duration': 7,
-                'spins': 8,
-                'callbackFinished': this.alertPrize.bind(this)
+                'duration': 8,
+                'spins': 10,
+                'easing': 'Power4.easeOut',
+                'callbackFinished': this.onSpinFinished.bind(this)
             }
         });
     },
@@ -114,85 +110,67 @@ const app = {
 
         this.wheelSpinning = true;
         document.getElementById('spin-button').disabled = true;
-        
+
         const response = await this.apiRequest('POST', '/game/spin');
-        
-        if (response && typeof response.prize !== 'undefined') {
-            const prizeAmount = response.prize;
-            const prizeMap = { 0.50: [4], 0.25: [2, 7], 0.10: [1, 5], 0.00: [3, 6, 8] };
-            const targetSegment = prizeMap[prizeAmount][Math.floor(Math.random() * prizeMap[prizeAmount].length)];
-            const stopAt = this.theWheel.getRandomForSegment(targetSegment);
+
+        if (response && response.prize) {
+            const prizeValue = response.prize.value;
+            const segments = this.theWheel.segments.filter(s => s);
+            const targetSegment = segments.find(s => s.text === `${prizeValue.toFixed(2)}$`);
             
-            this.theWheel.animation.stopAngle = stopAt;
-            this.theWheel.startAnimation();
+            if (targetSegment) {
+                const stopAt = this.theWheel.getRandomForSegment(targetSegment.segmentAngle);
+                this.theWheel.animation.stopAngle = stopAt;
+                this.theWheel.startAnimation();
+            }
             
-            document.getElementById('balance-display').textContent = response.newBalance.toFixed(2);
+            this.user.balance.available = response.newBalance;
+            this.updateBalanceDisplay();
         } else {
             this.wheelSpinning = false;
             document.getElementById('spin-button').disabled = false;
         }
     },
-    alertPrize(indicatedSegment) {
-        this.showAlert(`تهانينا! لقد ربحت ${indicatedSegment.text}`);
+    onSpinFinished(indicatedSegment) {
+        this.showAlert(`🎉 تهانينا! لقد ربحت ${indicatedSegment.text}`);
         this.wheelSpinning = false;
         document.getElementById('spin-button').disabled = false;
-        this.theWheel.rotationAngle = 0;
-        this.theWheel.draw();
+        this.theWheel.rotationAngle = this.theWheel.rotationAngle % 360;
     },
+
+    // --- المحفظة (Wallet) ---
     async requestDeposit() {
         const amount = document.getElementById('deposit-amount').value;
         const transactionId = document.getElementById('deposit-tid').value;
-        const response = await this.apiRequest('POST', '/game/deposit', { amount, transactionId });
+        const response = await this.apiRequest('POST', '/wallet/deposit', { amount, transactionId });
         if (response) {
-            this.showAlert('تم استلام طلب الإيداع.');
+            this.showAlert('تم استلام طلب الإيداع. سيتم تحديث رصيدك بعد المراجعة.');
+            await this.getAccountDetails(); // تحديث الواجهة لإظهار الرصيد المعلق
         }
     },
-    async requestWithdraw() {
-        this.showAlert('ميزة السحب قيد التطوير.', true);
-    },
 
-    // --- أداة مساعدة لإرسال الطلبات ---
+    // --- أداة التواصل مع الـ API ---
     async apiRequest(method, endpoint, body = null) {
         try {
             const headers = { 'Content-Type': 'application/json' };
             if (this.token) {
                 headers['x-auth-token'] = this.token;
             }
-
-            const options = {
-                method,
-                headers,
-                body: body ? JSON.stringify(body) : null
-            };
-
+            const options = { method, headers, body: body ? JSON.stringify(body) : null };
             const response = await fetch(this.apiBaseUrl + endpoint, options);
-            const responseText = await response.text();
-            let data;
-
-            try {
-                data = JSON.parse(responseText);
-            } catch (e) {
-                this.showAlert(`خطأ فادح من السيرفر. الاستجابة ليست JSON. محتوى الاستجابة: ${responseText}`, true);
-                console.error("Server response was not JSON:", responseText);
-                return null;
-            }
+            const data = await response.json();
 
             if (!response.ok) {
-                const errorMessage = `فشل الطلب (الحالة: ${response.status}). الرسالة: ${data.message || 'لا توجد رسالة.'}`;
-                this.showAlert(errorMessage, true);
-                console.error("API Error:", data);
+                this.showAlert(data.message || 'حدث خطأ ما.', true);
                 return null;
             }
-
             return data;
-
         } catch (error) {
-            this.showAlert('فشل الاتصال بالسيرفر. تحقق من اتصالك بالإنترنت أو حالة السيرفر.', true);
-            console.error("Network or Fetch Error:", error);
+            this.showAlert('فشل الاتصال بالسيرفر.', true);
             return null;
         }
     }
 };
 
-// بدء تشغيل التطبيق عند تحميل الصفحة
+// بدء تشغيل التطبيق
 window.onload = () => app.init();
