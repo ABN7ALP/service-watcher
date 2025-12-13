@@ -1,70 +1,0 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>عجلة الحظ</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-
-    <!-- حاوية التنبيهات العامة -->
-    <div id="alert-container"></div>
-
-    <!-- شاشة التحميل الأولية -->
-    <div id="loading-screen" class="screen active">
-        <h1>جاري التحميل...</h1>
-    </div>
-
-    <!-- شاشة المصادقة (تسجيل/دخول) -->
-    <div id="auth-screen" class="screen">
-        <div class="form-container">
-            <h2>تسجيل حساب جديد</h2>
-            <input type="text" id="register-username" placeholder="اسم المستخدم" autocomplete="username">
-            <input type="password" id="register-password" placeholder="كلمة المرور" autocomplete="new-password">
-            <button onclick="app.register()">تسجيل</button>
-        </div>
-        <div class="form-container">
-            <h2>تسجيل الدخول</h2>
-            <input type="text" id="login-username" placeholder="اسم المستخدم" autocomplete="username">
-            <input type="password" id="login-password" placeholder="كلمة المرور" autocomplete="current-password">
-            <button onclick="app.login()">دخول</button>
-        </div>
-    </div>
-
-    <!-- شاشة اللعبة الرئيسية -->
-    <div id="game-screen" class="screen">
-        <header class="user-info">
-            <span>مرحباً, <strong id="username-display"></strong>!</span>
-            <div class="balance-info">
-                <span>رصيدك: <strong id="balance-display">0.00</strong>$</span>
-                <span id="pending-balance-display" class="hidden"> (قيد المراجعة: <strong>0.00</strong>$)</span>
-            </div>
-            <button class="logout-button" onclick="app.logout()">خروج</button>
-        </header>
-
-        <main class="game-area">
-            <div class="wheel-container">
-                <canvas id="canvas" width="400" height="400"></canvas>
-                <div class="wheel-pointer"></div>
-                <button id="spin-button" onclick="app.spinWheel()">أدر العجلة (التكلفة 0.25$)</button>
-            </div>
-        </main>
-
-        <footer class="actions-container">
-            <div class="form-container">
-                <h3>💰 إيداع رصيد (شام كاش)</h3>
-                <p>يرجى تحويل المبلغ أولاً ثم إدخال البيانات.</p>
-                <input type="number" id="deposit-amount" placeholder="المبلغ المحول">
-                <input type="text" id="deposit-tid" placeholder="معرّف العملية">
-                <button onclick="app.requestDeposit()">إرسال طلب الإيداع</button>
-            </div>
-        </footer>
-    </div>
-
-    <!-- استيراد المكتبات والسكريبت الرئيسي -->
-    <script src="TweenMax.min.js"></script>
-    <script src="Winwheel.min.js"></script>
-    <script src="app.js"></script>
-</body>
-</html>
