@@ -6,7 +6,6 @@ const { addToQueue } = require('../services/queueService');
 const path = require('path');
 const NotificationService = require('../services/notificationService');
 
-
 // 📥 تقديم طلب إيداع جديد
 exports.createDepositRequest = async (req, res) => {
     const session = await User.startSession();
@@ -50,7 +49,6 @@ exports.createDepositRequest = async (req, res) => {
         await deposit.save({ session });
         
         // 4. إضافة للطابور للمعالجة
-        
         await addToQueue('deposit', 'notify_user', { depositId: deposit._id });
         await addToQueue('deposit', 'auto_check', { depositId: deposit._id }, { delay: 60000 });
         
@@ -84,19 +82,6 @@ exports.createDepositRequest = async (req, res) => {
         });
     }
 };
-
-// إرسال إشعار للمستخدم
-await NotificationService.sendUserNotification(
-    deposit.userId._id,
-    action === 'approve' 
-        ? NotificationService.types.DEPOSIT_APPROVED
-        : NotificationService.types.DEPOSIT_REJECTED,
-    {
-        amount: deposit.amount,
-        status: newStatus,
-        notes: notes || ''
-    }
-);
 
 // 📋 الحصول على طلبات الإيداع الخاصة بالمستخدم
 exports.getMyDeposits = async (req, res) => {
