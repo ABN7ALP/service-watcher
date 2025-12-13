@@ -4,6 +4,8 @@ const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const { addToQueue } = require('../services/queueService');
 const path = require('path');
+const NotificationService = require('../services/notificationService');
+
 
 // 📥 تقديم طلب إيداع جديد
 exports.createDepositRequest = async (req, res) => {
@@ -82,6 +84,19 @@ exports.createDepositRequest = async (req, res) => {
         });
     }
 };
+
+// إرسال إشعار للمستخدم
+await NotificationService.sendUserNotification(
+    deposit.userId._id,
+    action === 'approve' 
+        ? NotificationService.types.DEPOSIT_APPROVED
+        : NotificationService.types.DEPOSIT_REJECTED,
+    {
+        amount: deposit.amount,
+        status: newStatus,
+        notes: notes || ''
+    }
+);
 
 // 📋 الحصول على طلبات الإيداع الخاصة بالمستخدم
 exports.getMyDeposits = async (req, res) => {
