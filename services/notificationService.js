@@ -1,9 +1,12 @@
-// 📁 services/notificationService.js
-const { sendNotification, broadcastToAdmins } = require('../server');
-
+// 📁 services/notificationService.js - النسخة المعدلة
 class NotificationService {
+    constructor(io) {
+        this.io = io;
+        this.onlineUsers = new Map();
+    }
+    
     // إشعارات للمستخدمين
-    static async sendUserNotification(userId, type, data) {
+    async sendUserNotification(userId, type, data) {
         try {
             const notification = {
                 id: Date.now().toString(),
@@ -14,11 +17,18 @@ class NotificationService {
             };
             
             // إرسال فوري إذا كان متصلاً
-            sendNotification(userId, type, notification);
+            const user = this.onlineUsers.get(userId.toString());
+            if (user && this.io) {
+                this.io.to(user.socketId).emit('notification', {
+                    type,
+                    data: notification,
+                    timestamp: new Date()
+                });
+            }
             
-            // حفظ في قاعدة البيانات (يمكن إضافة جدول Notifications لاحقاً)
             console.log(`📨 إشعار ${type} للمستخدم ${userId}`);
             
+            // حفظ في قاعدة البيانات (يمكن إضافة جدول Notifications لاحقاً)
             return true;
         } catch (error) {
             console.error('❌ خطأ في إرسال الإشعار:', error);
@@ -27,14 +37,16 @@ class NotificationService {
     }
     
     // إشعارات للأدمن
-    static async sendAdminNotification(type, data) {
+    async sendAdminNotification(type, data) {
         try {
-            broadcastToAdmins('admin_notification', {
-                id: Date.now().toString(),
-                type,
-                data,
-                createdAt: new Date()
-            });
+            if (this.io) {
+                this.io.to('admin-room').emit('admin_notification', {
+                    id: Date.now().toString(),
+                    type,
+                    data,
+                    createdAt: new Date()
+                });
+            }
             
             console.log(`🔔 إشعار أدمن: ${type}`);
             return true;
@@ -42,6 +54,11 @@ class NotificationService {
             console.error('❌ خطأ في إشعار الأدمن:', error);
             return false;
         }
+    }
+    
+    // تحديث قائمة المستخدمين المتصلين
+    updateOnlineUsers(onlineUsers) {
+        this.onlineUsers = onlineUsers;
     }
     
     // أنواع الإشعارات
