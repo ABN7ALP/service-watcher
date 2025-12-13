@@ -246,3 +246,412 @@ exports.updateWheelSettings = [
         }
     }
 ];
+
+// أضف هذه الدوال في نهاية الملف:
+
+// 📋 الحصول على جميع طلبات السحب
+exports.getAllWithdrawals = [
+    adminOnly,
+    async (req, res) => {
+        try {
+            const { status, page = 1, limit = 50 } = req.query;
+            
+            const query = {};
+            if (status) query.status = status;
+            
+            const withdrawals = await WithdrawalRequest.find(query)
+                .populate('userId', 'username email')
+                .populate('reviewedBy', 'username')
+                .sort({ createdAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(parseInt(limit));
+            
+            const total = await WithdrawalRequest.countDocuments(query);
+            
+            res.json({
+                success: true,
+                withdrawals,
+                pagination: {
+                    page: parseInt(page),
+                    limit: parseInt(limit),
+                    total,
+                    pages: Math.ceil(total / limit)
+                }
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: '❌ خطأ في جلب طلبات السحب'
+            });
+        }
+    }
+];
+
+// ⚙️ إدارة طلبات السحب
+exports.manageWithdrawal = [
+    adminOnly,
+    async (req, res) => {
+        try {
+            const { action, requestId, transactionId, notes, adminNotes } = req.body;
+            
+            if (!['approve', 'reject', 'process', 'complete', 'cancel'].includes(action)) {
+                return res.status(400).json({
+                    success: false,
+                    message: '❌ إجراء غير صالح'
+                });
+            }
+            
+            const withdrawal = await WithdrawalRequest.findById(requestId)
+                .populate('userId');
+            
+            if (!withdrawal) {
+                return res.status(404).json({
+                    success: false,
+                    message: '❌ طلب السحب غير موجود'
+                });
+            }
+            
+            const session = await User.startSession();
+            session.startTransaction();
+            
+            try {
+                let newStatus, userMessage;
+                
+                switch (action) {
+                    case 'approve':
+                        newStatus = 'processing';
+                        userMessage = '✅ تمت الموافقة على سحبك، جاري المعالجة.';
+                        // هنا يمكنك تفعيل الدفع التلقائي إذا كان متاحاً
+                        break;
+                        
+                    case 'reject':
+                        newStatus = 'rejected';
+                        userMessage = '❌ تم رفض طلب السحب. ' + (notes || '');
+                        
+                        // إرجاع المبلغ للمستخدم
+                        withdrawal.userId.balance += withdrawal.amount;
+                        withdrawal.userId.totalWithdrawn -= withdrawal.amount;
+                        await withdrawal.userId.save({ session });
+                        
+                        // تسجيل معاملة الإرجاع
+                        const refundTransaction = new Transaction({
+                            userId: withdrawal.userId._id,
+                            type: 'withdrawal',
+                            amount: withdrawal.amount,
+                            description: `إرجاع مبلغ سحب مرفوض #${withdrawal._id}`,
+                            status: 'completed'
+                        });
+                        await refundTransaction.save({ session });
+                        break;
+                        
+                    case 'complete':
+                        if (withdrawal.status !== 'processing') {
+                            throw new Error('لا يمكن إكمال طلب غير قيد المعالجة');
+                        }
+                        
+                        newStatus = 'completed';
+                        userMessage = '✅ تم إكمال عملية السحب، تحقق من حسابك.';
+                        withdrawal.completedAt = new Date();
+                        withdrawal.transactionId = transactionId;
+                        
+                        // تسجيل المعاملة النهائية
+                        const completeTransaction = new Transaction({
+                            userId: withdrawal.userId._id,
+                            type: 'withdrawal',
+                            amount: -withdrawal.amount,
+                            description: `سحب ناجح #${withdrawal._id} - ${transactionId}`,
+                            status: 'completed',
+                            referenceId: transactionId
+                        });
+                        await completeTransaction.save({ session });
+                        break;
+                        
+                    case 'process':
+                        newStatus = 'processing';
+                        userMessage = '⏳ جاري معالجة طلب السحب.';
+                        break;
+                        
+                    case 'cancel':
+                        newStatus = 'cancelled';
+                        userMessage = '⚠️ تم إلغاء طلب السحب.';
+                        
+                        // إرجاع المبلغ إذا كان مجمداً
+                        if (withdrawal.status === 'pending') {
+                            withdrawal.userId.balance += withdrawal.amount;
+                            withdrawal.userId.totalWithdrawn -= withdrawal.amount;
+                            await withdrawal.userId.save({ session });
+                        }
+                        break;
+                }
+                
+                withdrawal.status = newStatus;
+                withdrawal.reviewedBy = req.userId;
+                withdrawal.reviewedAt = new Date();
+                withdrawal.reviewNotes = notes || '';
+                if (adminNotes) {
+                    withdrawal.adminNotes = adminNotes;
+                }
+                
+                await withdrawal.save({ session });
+                
+                // إرسال إشعار للمستخدم
+                await addToQueue('notification', 'withdrawal_status', {
+                    userId: withdrawal.userId._id,
+                    withdrawalId: withdrawal._id,
+                    status: newStatus,
+                    message: userMessage
+                });
+                
+                await session.commitTransaction();
+                session.endSession();
+                
+                res.json({
+                    success: true,
+                    message: `✅ تم ${action} طلب السحب بنجاح`,
+                    data: {
+                        requestId: withdrawal._id,
+                        newStatus: withdrawal.status,
+                        userMessage
+                    }
+                });
+                
+            } catch (error) {
+                await session.abortTransaction();
+                session.endSession();
+                throw error;
+            }
+            
+        } catch (error) {
+            console.error('❌ خطأ في إدارة السحب:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || '❌ حدث خطأ أثناء معالجة الطلب'
+            });
+        }
+    }
+];
+
+// 👤 إدارة المستخدمين
+exports.manageUsers = [
+    adminOnly,
+    async (req, res) => {
+        try {
+            const { userId, action, data } = req.body;
+            
+            const user = await User.findById(userId);
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: '❌ المستخدم غير موجود'
+                });
+            }
+            
+            switch (action) {
+                case 'update_balance':
+                    const { amount, type, reason } = data;
+                    if (!amount || !type || !reason) {
+                        return res.status(400).json({
+                            success: false,
+                            message: '❌ البيانات ناقصة'
+                        });
+                    }
+                    
+                    const session = await User.startSession();
+                    session.startTransaction();
+                    
+                    try {
+                        if (type === 'add') {
+                            user.balance += parseFloat(amount);
+                        } else if (type === 'subtract') {
+                            user.balance -= parseFloat(amount);
+                        } else {
+                            throw new Error('نوع العملية غير صالح');
+                        }
+                        
+                        if (user.balance < 0) {
+                            throw new Error('لا يمكن أن يصبح الرصيد سالباً');
+                        }
+                        
+                        await user.save({ session });
+                        
+                        // تسجيل المعاملة
+                        const transaction = new Transaction({
+                            userId: user._id,
+                            type: type === 'add' ? 'bonus' : 'penalty',
+                            amount: type === 'add' ? parseFloat(amount) : -parseFloat(amount),
+                            description: `تعديل يدوي من الأدمن: ${reason}`,
+                            status: 'completed',
+                            metadata: { adminId: req.userId }
+                        });
+                        await transaction.save({ session });
+                        
+                        await session.commitTransaction();
+                        session.endSession();
+                        
+                        res.json({
+                            success: true,
+                            message: `✅ تم ${type === 'add' ? 'إضافة' : 'خصم'} ${amount}$ للمستخدم`,
+                            newBalance: user.balance
+                        });
+                        
+                    } catch (error) {
+                        await session.abortTransaction();
+                        session.endSession();
+                        throw error;
+                    }
+                    break;
+                    
+                case 'toggle_active':
+                    user.isActive = !user.isActive;
+                    await user.save();
+                    
+                    res.json({
+                        success: true,
+                        message: `✅ تم ${user.isActive ? 'تفعيل' : 'تعطيل'} حساب المستخدم`,
+                        isActive: user.isActive
+                    });
+                    break;
+                    
+                case 'update_role':
+                    if (!['user', 'admin'].includes(data.role)) {
+                        return res.status(400).json({
+                            success: false,
+                            message: '❌ الدور غير صالح'
+                        });
+                    }
+                    
+                    user.role = data.role;
+                    await user.save();
+                    
+                    res.json({
+                        success: true,
+                        message: `✅ تم تحديث دور المستخدم إلى ${data.role}`,
+                        role: user.role
+                    });
+                    break;
+                    
+                default:
+                    return res.status(400).json({
+                        success: false,
+                        message: '❌ إجراء غير معروف'
+                    });
+            }
+            
+        } catch (error) {
+            console.error('❌ خطأ في إدارة المستخدم:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || '❌ حدث خطأ'
+            });
+        }
+    }
+];
+
+// 📈 تقارير متقدمة
+exports.getAdvancedReports = [
+    adminOnly,
+    async (req, res) => {
+        try {
+            const { startDate, endDate } = req.query;
+            
+            const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+            const end = endDate ? new Date(endDate) : new Date();
+            
+            // إحصائيات مالية
+            const financialReport = await Transaction.aggregate([
+                {
+                    $match: {
+                        createdAt: { $gte: start, $lte: end },
+                        status: 'completed'
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$type',
+                        totalAmount: { $sum: '$amount' },
+                        count: { $sum: 1 }
+                    }
+                }
+            ]);
+            
+            // إحصائيات العجلة
+            const wheelReport = await WheelSpin.aggregate([
+                {
+                    $match: {
+                        createdAt: { $gte: start, $lte: end }
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$resultIndex',
+                        count: { $sum: 1 },
+                        totalPrize: { $sum: '$prize' },
+                        totalCost: { $sum: '$cost' }
+                    }
+                },
+                {
+                    $sort: { '_id': 1 }
+                }
+            ]);
+            
+            // أفضل اللاعبين
+            const topPlayers = await WheelSpin.aggregate([
+                {
+                    $match: {
+                        createdAt: { $gte: start, $lte: end }
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$userId',
+                        totalSpins: { $sum: 1 },
+                        totalSpent: { $sum: '$cost' },
+                        totalWon: { $sum: '$prize' },
+                        netProfit: { $sum: { $subtract: ['$prize', '$cost'] } }
+                    }
+                },
+                {
+                    $sort: { totalSpins: -1 }
+                },
+                { $limit: 10 }
+            ]);
+            
+            // تحميل بيانات المستخدمين للأفضل
+            const topPlayerIds = topPlayers.map(p => p._id);
+            const users = await User.find({ _id: { $in: topPlayerIds } });
+            
+            const topPlayersWithNames = topPlayers.map(player => {
+                const user = users.find(u => u._id.equals(player._id));
+                return {
+                    ...player,
+                    username: user ? user.username : 'Unknown',
+                    email: user ? user.email : 'Unknown'
+                };
+            });
+            
+            res.json({
+                success: true,
+                report: {
+                    period: { start, end },
+                    financial: financialReport,
+                    wheel: wheelReport,
+                    topPlayers: topPlayersWithNames,
+                    summary: {
+                        totalUsers: await User.countDocuments({ createdAt: { $gte: start, $lte: end } }),
+                        activeUsers: await User.countDocuments({ lastLogin: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
+                        totalRevenue: financialReport.find(f => f._id === 'spin')?.totalAmount || 0,
+                        platformProfit: Math.abs(financialReport.find(f => f._id === 'spin')?.totalAmount || 0) - 
+                                      (financialReport.find(f => f._id === 'withdrawal')?.totalAmount || 0)
+                    }
+                }
+            });
+            
+        } catch (error) {
+            console.error('❌ خطأ في التقارير:', error);
+            res.status(500).json({
+                success: false,
+                message: '❌ خطأ في توليد التقارير'
+            });
+        }
+    }
+];
