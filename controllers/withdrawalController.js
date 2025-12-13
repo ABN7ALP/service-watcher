@@ -261,18 +261,6 @@ exports.cancelWithdrawal = async (req, res) => {
     }
 };
 
-// إرسال إشعار للمستخدم
-await NotificationService.sendUserNotification(
-    deposit.userId._id,
-    action === 'approve' 
-        ? NotificationService.types.DEPOSIT_APPROVED
-        : NotificationService.types.DEPOSIT_REJECTED,
-    {
-        amount: deposit.amount,
-        status: newStatus,
-        notes: notes || ''
-    }
-);
 // 📊 الحصول على إحصائيات السحب
 exports.getWithdrawalStats = async (req, res) => {
     try {
