@@ -1,41 +1,31 @@
-// server.js
-
-// تحميل متغيرات البيئة في وضع التطوير
-if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config();
-}
+// تحميل متغيرات البيئة أولاً
+require('dotenv').config();
 
 const express = require('express');
 const path = require('path');
-const connectDB = require('./db');
-const adminRoutes = require('./routes/admin');
+const connectDB = require('./config/db');
 
-// --- إعدادات Express ---
+// استدعاء نقاط النهاية
+const authRoutes = require('./routes/auth');
+const gameRoutes = require('./routes/game');
+const walletRoutes = require('./routes/wallet');
+
+// تهيئة التطبيق
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// Middleware (برامج وسيطة)
+// Middleware
 app.use(express.json()); // للسماح باستقبال بيانات JSON
-app.use(express.static(path.join(__dirname, 'public'))); // لتقديم ملفات الواجهة الأمامية
+app.use(express.static(path.join(__dirname, 'public'))); // لتقديم الملفات الثابتة
 
-// --- الاتصال بقاعدة البيانات ---
+// ربط نقاط النهاية
+app.use('/api/auth', authRoutes);
+app.use('/api/game', gameRoutes);
+app.use('/api/wallet', walletRoutes);
+
+// تشغيل السيرفر
+const PORT = process.env.PORT || 3000;
 connectDB().then(() => {
-    // --- استيراد وتشغيل نقاط النهاية (Routes) ---
-    const authRoutes = require('./routes/auth');
-    const gameRoutes = require('./routes/game');
-
-    app.use('/api/auth', authRoutes);
-    app.use('/api/game', gameRoutes);
-    app.use('/api/admin', adminRoutes);
-
-    // --- تشغيل السيرفر بعد التأكد من الاتصال بالـ DB ---
     app.listen(PORT, () => {
         console.log(`🚀 Server is running on port ${PORT}`);
-        console.log(`🔗 Live at: http://localhost:${PORT}`);
     });
-
-}).catch(err => {
-    console.error("🔴 Failed to connect to the database. Server not started.");
-    console.error(err);
-    process.exit(1); // إيقاف التطبيق إذا فشل الاتصال بقاعدة البيانات
 });
