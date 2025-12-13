@@ -20,6 +20,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // middleware أساسية
+app.use(express.static('public'));
 app.use(cors()); // للسماح بالطلبات من الواجهة
 app.use(express.json()); // لتحويل JSON في الطلبات
 app.use(express.urlencoded({ extended: true })); // لتحليل البيانات من النماذج
@@ -148,35 +149,29 @@ io.on('connection', (socket) => {
     });
 });
 
-// دالة مساعدة لإرسال إشعارات
-const sendNotification = (userId, type, data) => {
-    const user = onlineUsers.get(userId.toString());
-    if (user) {
-        io.to(user.socketId).emit('notification', {
-            type,
-            data,
-            timestamp: new Date()
-        });
-    }
-};
+// ========== إنشاء وإدارة خدمة الإشعارات ==========
+const NotificationService = require('./services/notificationService');
+const notificationService = new NotificationService(io);
 
-// دالة مساعدة للإذاعة العامة
-const broadcastToAdmins = (event, data) => {
-    io.to('admin-room').emit(event, data);
-};
+// تحديث خدمة الإشعارات بقائمة المستخدمين المتصلين
+setInterval(() => {
+    notificationService.updateOnlineUsers(onlineUsers);
+}, 5000);
 
-// تصدير للاستخدام في الكونترولرات
+// ========== تصدير ==========
 module.exports = {
     io,
-    sendNotification,
-    broadcastToAdmins,
-    onlineUsers
+    onlineUsers,
+    notificationService  // تصدير خدمة الإشعارات
 };
 
+// في server.js، أضف قبل المسارات:
 
-// مسار تجريبي للتأكد من عمل الخادم
-app.get('/', (req, res) => {
-    res.json({ message: '🚀 خادم عجلة الحظ يعمل بنجاح!' });
+
+// ثم أضف بعد المسارات:
+// إذا لم يكن هناك ملف، إعادة توجيه للصفحة الرئيسية
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // تشغيل الخادم
