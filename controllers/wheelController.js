@@ -16,6 +16,8 @@ exports.spinWheel = async (req, res) => {
         
         // 1. التحقق من رصيد المستخدم
         const user = await User.findById(userId).session(session);
+        const NotificationService = require('../services/notificationService');
+        
         
         if (user.balance < spinCost) {
             await session.abortTransaction();
@@ -60,6 +62,38 @@ exports.spinWheel = async (req, res) => {
             });
             await creditTransaction.save({ session });
         }
+
+// إرسال إشعار بالمكسب/الخسارة
+if (spinResult.prize > 0) {
+    await NotificationService.sendUserNotification(
+        userId,
+        NotificationService.types.WHEEL_SPIN_WIN,
+        {
+            amount: spinResult.prize,
+            netProfit: spinResult.prize - spinCost,
+            message: `فزت بـ ${spinResult.prize}$!`
+        }
+    );
+    
+    // إذا كان الفوز كبيراً (>5$)، أرسل إشعاراً للجميع
+    if (spinResult.prize >= 5) {
+        const { io } = require('../server');
+        io.emit('big_win_announcement', {
+            userId: userId,
+            amount: spinResult.prize,
+            timestamp: new Date()
+        });
+    }
+} else {
+    await NotificationService.sendUserNotification(
+        userId,
+        NotificationService.types.WHEEL_SPIN_LOSE,
+        {
+            amount: spinCost,
+            message: 'حظ أوكد في المرة القادمة!'
+        }
+    );
+}
         
         // 6. حفظ سجل الدوران
         const wheelSpin = new WheelSpin({
@@ -125,6 +159,7 @@ exports.spinWheel = async (req, res) => {
         });
     }
 };
+
 
 // 📊 الحصول على إحصائيات العجلة
 exports.getWheelStats = async (req, res) => {
