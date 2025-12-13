@@ -10,6 +10,7 @@ const connectDB = require('./config/database');
 const authRoutes = require('./routes/auth');
 const wheelRoutes = require('./routes/wheel');
 const depositRoutes = require('./routes/deposit');
+const adminRoutes = require('./routes/admin');
 
 // تهيئة التطبيق
 const app = express();
@@ -28,6 +29,7 @@ connectDB();
 app.use('/api/auth', authRoutes);
 app.use('/api/wheel', wheelRoutes);
 app.use('/api/deposit', depositRoutes);
+app.use('/api/admin', adminRoutes);
 
 // مسار تجريبي للتأكد من عمل الخادم
 app.get('/', (req, res) => {
