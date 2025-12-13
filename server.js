@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config(); // تحميل متغيرات .env
 const http = require('http');
+const path = require('path');
 const socketIo = require('socket.io');
 
 // استدعاء اتصال قاعدة البيانات
@@ -165,13 +166,13 @@ module.exports = {
     notificationService  // تصدير خدمة الإشعارات
 };
 
-// في server.js، أضف قبل المسارات:
-
-
-// ثم أضف بعد المسارات:
-// إذا لم يكن هناك ملف، إعادة توجيه للصفحة الرئيسية
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+app.get(/^(?!\/api|\/socket\.io).*/, (req, res) => {
+    if (!req.path.includes('.')) {
+        res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    } else {
+        // إذا كان الطلب على ملف غير موجود، أعد خطأ 404
+        res.status(404).send('File not found');
+    }
 });
 
 // تشغيل الخادم
