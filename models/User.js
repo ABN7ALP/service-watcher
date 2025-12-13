@@ -1,4 +1,4 @@
-// 📁 models/User.js
+// 📁 models/User.js - النسخة الصحيحة
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -43,6 +43,11 @@ const UserSchema = new mongoose.Schema({
         type: Number,
         default: 0.00
     },
+    withdrawalLimit: {
+        type: Number,
+        default: 1000.00
+    },
+    lastWithdrawalDate: Date,
     role: {
         type: String,
         enum: ['user', 'admin'],
@@ -55,18 +60,7 @@ const UserSchema = new mongoose.Schema({
     createdAt: {
         type: Date,
         default: Date.now
-    },
-
-    totalWithdrawn: {
-    type: Number,
-    default: 0.00
-    },
-    withdrawalLimit: {
-    type: Number,
-    default: 1000.00 // حد سحب يومي
-    },
-    lastWithdrawalDate: Date
-   } 
+    }
 });
 
 // 🔐 تشفير كلمة المرور قبل الحفظ
