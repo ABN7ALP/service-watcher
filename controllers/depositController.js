@@ -48,8 +48,9 @@ exports.createDepositRequest = async (req, res) => {
         await deposit.save({ session });
         
         // 4. إضافة للطابور للمعالجة
-        await addToQueue(deposit._id, 'notify_user');
-        await addToQueue(deposit._id, 'auto_check', 60000); // بعد دقيقة
+        
+        await addToQueue('deposit', 'notify_user', { depositId: deposit._id });
+        await addToQueue('deposit', 'auto_check', { depositId: deposit._id }, { delay: 60000 });
         
         // 5. تأكيد العملية
         await session.commitTransaction();
