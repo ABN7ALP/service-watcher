@@ -655,3 +655,189 @@ exports.getAdvancedReports = [
         }
     }
 ];
+
+// 📁 controllers/adminController.js - أضف هذه الدوال
+
+// 📋 الحصول على جميع طلبات الإيداع
+exports.getAllDeposits = [
+    adminOnly,
+    async (req, res) => {
+        try {
+            const { status, page = 1, limit = 50 } = req.query;
+            
+            const query = {};
+            if (status) query.status = status;
+            
+            const deposits = await DepositRequest.find(query)
+                .populate('userId', 'username email')
+                .populate('reviewedBy', 'username')
+                .sort({ createdAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(parseInt(limit));
+            
+            const total = await DepositRequest.countDocuments(query);
+            
+            res.json({
+                success: true,
+                deposits,
+                pagination: {
+                    page: parseInt(page),
+                    limit: parseInt(limit),
+                    total,
+                    pages: Math.ceil(total / limit)
+                }
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: '❌ خطأ في جلب طلبات الإيداع'
+            });
+        }
+    }
+];
+
+// 👥 الحصول على جميع المستخدمين
+exports.getAllUsers = [
+    adminOnly,
+    async (req, res) => {
+        try {
+            const { search, page = 1, limit = 50 } = req.query;
+            
+            const query = {};
+            if (search) {
+                query.$or = [
+                    { username: { $regex: search, $options: 'i' } },
+                    { email: { $regex: search, $options: 'i' } }
+                ];
+            }
+            
+            const users = await User.find(query)
+                .select('-password')
+                .sort({ createdAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(parseInt(limit));
+            
+            const total = await User.countDocuments(query);
+            
+            res.json({
+                success: true,
+                users,
+                pagination: {
+                    page: parseInt(page),
+                    limit: parseInt(limit),
+                    total,
+                    pages: Math.ceil(total / limit)
+                }
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: '❌ خطأ في جلب المستخدمين'
+            });
+        }
+    }
+];
+
+// ⚙️ الحصول على إعدادات العجلة
+exports.getWheelSettings = [
+    adminOnly,
+    async (req, res) => {
+        try {
+            res.json({
+                success: true,
+                config: {
+                    prizes: wheelService.prizes,
+                    weights: wheelService.weights,
+                    spinCost: wheelService.wheelConfig.spinCost,
+                    minWithdrawal: wheelService.wheelConfig.minWithdrawal,
+                    expectedValue: wheelService.calculateExpectedValue(),
+                    lastUpdated: wheelService.wheelConfig.lastUpdated
+                }
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: '❌ خطأ في جلب إعدادات العجلة'
+            });
+        }
+    }
+];
+
+// 📊 إحصائيات الطوابير
+exports.getQueueStats = [
+    adminOnly,
+    async (req, res) => {
+        try {
+            const queueService = require('../services/queueService');
+            const stats = await queueService.getQueueStats();
+            
+            res.json({
+                success: true,
+                stats
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: '❌ خطأ في جلب إحصائيات الطوابير'
+            });
+        }
+    }
+];
+
+// 🧹 تنظيف النظام
+exports.systemCleanup = [
+    adminOnly,
+    async (req, res) => {
+        try {
+            const { action } = req.body;
+            
+            if (action === 'clear_old_transactions') {
+                // حذف المعاملات الأقدم من 30 يوم
+                const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+                const deleted = await Transaction.deleteMany({
+                    createdAt: { $lt: thirtyDaysAgo },
+                    type: { $in: ['spin', 'bonus', 'penalty'] }
+                });
+                
+                res.json({
+                    success: true,
+                    message: `✅ تم حذف ${deleted.deletedCount} معاملة قديمة`
+                });
+            } else if (action === 'recalculate_balances') {
+                // إعادة حساب الأرصدة
+                const users = await User.find();
+                let updated = 0;
+                
+                for (const user of users) {
+                    const transactions = await Transaction.aggregate([
+                        { $match: { userId: user._id, status: 'completed' } },
+                        { $group: { _id: null, total: { $sum: '$amount' } } }
+                    ]);
+                    
+                    const newBalance = transactions[0]?.total || 0;
+                    if (user.balance !== newBalance) {
+                        user.balance = newBalance;
+                        await user.save();
+                        updated++;
+                    }
+                }
+                
+                res.json({
+                    success: true,
+                    message: `✅ تم تحديث ${updated} حساب`
+                });
+            } else {
+                res.status(400).json({
+                    success: false,
+                    message: '❌ إجراء غير معروف'
+                });
+            }
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: '❌ خطأ في التنظيف'
+            });
+        }
+    }
+];
+
