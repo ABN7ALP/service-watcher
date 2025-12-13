@@ -109,7 +109,7 @@ exports.createWithdrawalRequest = async (req, res) => {
         await withdrawal.save({ session });
         
         // 8. إضافة للطابور للمعالجة
-        await addToQueue(withdrawal._id, 'notify_withdrawal_request', 0);
+        await addToQueue('withdrawal', 'notify_withdrawal_request', { withdrawalId: withdrawal._id });
         
         // 9. تأكيد العملية
         await session.commitTransaction();
