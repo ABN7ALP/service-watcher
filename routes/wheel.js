@@ -4,13 +4,13 @@ const router = express.Router();
 const wheelController = require('../controllers/wheelController');
 const authMiddleware = require('../middleware/auth');
 
-// 🔒 جميع مسارات العجلة تتطلب تسجيل دخول
+// 📊 إحصائيات العجلة (مسار عام للجميع)
+router.get('/stats', wheelController.getWheelStats);
+
+// 🔒 المسارات التالية فقط تتطلب تسجيل دخول
 router.use(authMiddleware);
 
 // 🎡 تدوير العجلة
 router.post('/spin', wheelController.spinWheel);
-
-// 📊 إحصائيات العجلة (يمكن جعلها عامة لاحقاً)
-router.get('/stats', wheelController.getWheelStats);
 
 module.exports = router;
