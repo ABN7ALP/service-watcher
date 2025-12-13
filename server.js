@@ -9,6 +9,7 @@ const connectDB = require('./config/database');
 // استدعاء المسارات (سيتم إنشاؤها لاحقاً)
 const authRoutes = require('./routes/auth');
 const wheelRoutes = require('./routes/wheel');
+const depositRoutes = require('./routes/deposit');
 
 // تهيئة التطبيق
 const app = express();
@@ -26,6 +27,7 @@ connectDB();
 // تعريف المسارات
 app.use('/api/auth', authRoutes);
 app.use('/api/wheel', wheelRoutes);
+app.use('/api/deposit', depositRoutes);
 
 // مسار تجريبي للتأكد من عمل الخادم
 app.get('/', (req, res) => {
