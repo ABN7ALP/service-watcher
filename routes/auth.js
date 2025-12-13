@@ -2,6 +2,8 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const connectDB = require('../config/db');
+const authMiddleware = require('../middleware/auth');
+
 
 const router = express.Router();
 
@@ -97,4 +99,28 @@ router.post('/login', async (req, res) => {
     }
 });
 
+
+
+
+
+// لجلب بيانات المستخدم الحالي بناءً على التوكن
+router.get('/me', authMiddleware, async (req, res) => {
+    try {
+        const db = await connectDB();
+        const user = await db.collection('users').findOne(
+            { _id: new ObjectId(req.user.id) },
+            { projection: { password: 0 } } // الأهم: لا ترسل كلمة المرور أبداً!
+        );
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+        res.json(user);
+    } catch (error) {
+        console.error('Get Me Error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+});
+
 module.exports = router;
+
