@@ -1,7 +1,8 @@
 // routes/game.js
 const express = require('express');
 const connectDB = require('../db');
-const authMiddleware = require('../middleware/auth'); // <-- استيراد وسيط الحماية
+const authMiddleware = require('../middleware/auth');
+const { ObjectId } = require('mongodb');
 
 const router = express.Router();
 
@@ -41,7 +42,7 @@ router.post('/spin', authMiddleware, async (req, res) => {
         const costPerSpin = 0.10; // تكلفة اللفة الواحدة
 
         // 1. جلب بيانات المستخدم من قاعدة البيانات
-        const user = await usersCollection.findOne({ _id: new require('mongodb').ObjectId(userId) });
+        const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
 
         // 2. التحقق من الرصيد
         if (user.balance < costPerSpin) {
@@ -63,7 +64,7 @@ router.post('/spin', authMiddleware, async (req, res) => {
 
         // 5. تحديث بيانات المستخدم في قاعدة البيانات
         await usersCollection.updateOne(
-            { _id: new require('mongodb').ObjectId(userId) },
+            { _id: new ObjectId(userId) },
             { $set: { balance: newBalance, lastSpin: new Date() } }
         );
 
@@ -102,24 +103,21 @@ router.post('/deposit', authMiddleware, async (req, res) => {
 
         // ✨--- بداية التعديل ---✨
         // 2. جلب بيانات المستخدم من قاعدة البيانات للتأكد من وجوده والحصول على اسمه
-        const user = await usersCollection.findOne({ _id: new require('mongodb').ObjectId(userId) });
+        const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
         if (!user) {
             return res.status(404).json({ message: "المستخدم غير موجود." });
         }
 
-        // 3. إنشاء طلب إيداع جديد باستخدام اسم المستخدم من قاعدة البيانات
         await depositsCollection.insertOne({
-            userId: user._id,
-            username: user.username, // <-- نستخدم الاسم من قاعدة البيانات مباشرة
+            userId: user._id, // user._id هو بالفعل ObjectId، لا يحتاج لتحويل
+            username: user.username,
             amount: parseFloat(amount),
             transactionId: transactionId,
             status: 'pending',
             createdAt: new Date()
         });
-        // ✨--- نهاية التعديل ---✨
 
         res.status(201).json({ message: "تم استلام طلب الإيداع الخاص بك. ستتم مراجعته قريباً." });
-
     } catch (error) {
         console.error("Deposit Request Error:", error);
         res.status(500).json({ message: "حدث خطأ في السيرفر." });
