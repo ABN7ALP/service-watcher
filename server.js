@@ -11,6 +11,7 @@ const authRoutes = require('./routes/auth');
 const wheelRoutes = require('./routes/wheel');
 const depositRoutes = require('./routes/deposit');
 const adminRoutes = require('./routes/admin');
+const withdrawalRoutes = require('./routes/withdrawal');
 
 // تهيئة التطبيق
 const app = express();
@@ -30,6 +31,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/wheel', wheelRoutes);
 app.use('/api/deposit', depositRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/withdrawal', withdrawalRoutes);
 
 // مسار تجريبي للتأكد من عمل الخادم
 app.get('/', (req, res) => {
