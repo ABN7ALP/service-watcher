@@ -174,18 +174,7 @@ app.get(/^(?!\/api|\/socket\.io).*/, (req, res) => {
         res.status(404).send('File not found');
     }
 });
-// أضف هذه المسارات بعد المسارات الحالية
-app.get('/wheel', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'wheel.html'));
-});
 
-app.get('/deposit', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'deposit.html'));
-});
-
-app.get('/deposit/requests', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'deposit-requests.html'));
-});
 
 // تشغيل الخادم
 server.listen(PORT, () => {
