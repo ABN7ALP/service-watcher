@@ -3,174 +3,242 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>عجلة الثروة - Wheel of Fortune</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>عجلة الحظ - Lucky Wheel</title>
+    <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- الشريط العلوي -->
-    <nav class="navbar">
-        <div class="container">
-            <div class="logo">
-                <i class="fas fa-coins"></i>
-                <h1>عجلة الثروة</h1>
+    <div class="container">
+        <!-- شريط التنقل -->
+        <nav class="navbar">
+            <div class="nav-brand">
+                <i class="fas fa-dharmachakra"></i>
+                <span>عجلة الحظ</span>
             </div>
-            <div class="nav-links" id="navLinks">
-                <a href="#home" class="active"><i class="fas fa-home"></i> الرئيسية</a>
-                <a href="#how-to-play"><i class="fas fa-gamepad"></i> طريقة اللعب</a>
-                <a href="#rewards"><i class="fas fa-trophy"></i> الجوائز</a>
-                <a href="#testimonials"><i class="fas fa-comments"></i> آراء اللاعبين</a>
-            </div>
-            <div class="auth-buttons">
-                <button id="loginBtn" class="btn btn-outline">
-                    <i class="fas fa-sign-in-alt"></i> تسجيل الدخول
+            <div class="user-info">
+                <span id="username">مرحباً</span>
+                <span class="balance" id="balance">الرصيد: $0.00</span>
+                <button id="depositBtn" class="btn-primary">
+                    <i class="fas fa-plus-circle"></i> شحن رصيد
                 </button>
-                <button id="registerBtn" class="btn btn-primary">
-                    <i class="fas fa-user-plus"></i> إنشاء حساب
+                <button id="withdrawBtn" class="btn-success">
+                    <i class="fas fa-money-check-alt"></i> سحب أرباح
+                </button>
+                <button id="logoutBtn" class="btn-secondary">
+                    <i class="fas fa-sign-out-alt"></i> خروج
                 </button>
             </div>
-            <button class="menu-toggle" id="menuToggle">
-                <i class="fas fa-bars"></i>
-            </button>
-        </div>
-    </nav>
+        </nav>
 
-    <!-- قسم البطل (Hero) -->
-    <section class="hero" id="home">
-        <div class="container">
-            <div class="hero-content">
-                <h2 class="hero-title">اربح <span class="highlight">آلاف الدولارات</span> في ثوانٍ!</h2>
-                <p class="hero-subtitle">عجلة الحظ التي ستغير حياتك. كل دوارة بـ 1$ فقط وأرباح تصل إلى 10$!</p>
-                
-                <div class="hero-stats">
-                    <div class="stat">
-                        <i class="fas fa-users"></i>
-                        <div>
-                            <h3 id="totalPlayers">0</h3>
-                            <p>لاعب نشط</p>
-                        </div>
-                    </div>
-                    <div class="stat">
-                        <i class="fas fa-trophy"></i>
-                        <div>
-                            <h3 id="totalWins">0</h3>
-                            <p>فوز اليوم</p>
-                        </div>
-                    </div>
-                    <div class="stat">
-                        <i class="fas fa-money-bill-wave"></i>
-                        <div>
-                            <h3 id="totalPrizes">0$</h3>
-                            <p>إجمالي الجوائز</p>
-                        </div>
-                    </div>
+        <!-- المحتوى الرئيسي -->
+        <div class="main-content">
+            <!-- لوحة التحكم -->
+            <div class="dashboard">
+                <div class="stats-card">
+                    <h3><i class="fas fa-coins"></i> رصيدك الحالي</h3>
+                    <p class="amount" id="currentBalance">$0.00</p>
                 </div>
+                <div class="stats-card">
+                    <h3><i class="fas fa-trophy"></i> الجوائز اليوم</h3>
+                    <p class="amount" id="todayWins">$0.00</p>
+                </div>
+                <div class="stats-card">
+                    <h3><i class="fas fa-history"></i> محاولات اليوم</h3>
+                    <p class="amount" id="todaySpins">0</p>
+                </div>
+            </div>
+
+            <!-- عجلة الحظ -->
+            <div class="wheel-section">
+                <h2><i class="fas fa-dharmachakra"></i> عجلة الحظ</h2>
+                <p>كل دوران يكلف $1 مع فرصة للفوز بجوائز حتى $10</p>
                 
-                <div class="cta-buttons">
-                    <button id="playNowBtn" class="btn btn-primary btn-lg">
-                        <i class="fas fa-play"></i> العب الآن
-                    </button>
-                    <button id="howToPlayBtn" class="btn btn-outline btn-lg">
-                        <i class="fas fa-question-circle"></i> طريقة اللعب
+                <div class="wheel-container">
+                    <canvas id="wheelCanvas" width="500" height="500"></canvas>
+                    <div class="wheel-pointer"></div>
+                    <button id="spinBtn" class="spin-btn">
+                        <i class="fas fa-redo"></i> إدارة العجلة ($1)
                     </button>
                 </div>
+
+                <div class="wheel-results">
+                    <h3><i class="fas fa-gift"></i> آخر الجوائز</h3>
+                    <div id="recentWins"></div>
+                </div>
             </div>
-            
-            <div class="hero-wheel">
-                <!-- العجلة ستدخل هنا ديناميكياً -->
-                <div id="wheelPreview">
-                    <div class="wheel-placeholder">
-                        <i class="fas fa-spinner fa-spin"></i>
-                        <p>جاري تحميل العجلة...</p>
+
+            <!-- قسم المعاملات -->
+            <div class="transactions-section">
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="deposit">شحن الرصيد</button>
+                    <button class="tab-btn" data-tab="withdraw">سحب الأرباح</button>
+                    <button class="tab-btn" data-tab="history">سجل المعاملات</button>
+                </div>
+
+                <!-- شحن الرصيد -->
+                <div class="tab-content active" id="deposit-tab">
+                    <div class="payment-box">
+                        <h3><i class="fas fa-qrcode"></i> شحن الرصيد عبر شام كاش</h3>
+                        <div class="qrcode-container">
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=ShamCashPayment" 
+                                 alt="QR Code" id="shamCashQR">
+                            <div class="payment-info">
+                                <p><strong>رقم محفظة شام كاش:</strong> <span id="shamCashId">123456789</span></p>
+                                <p><strong>اسم المستلم:</strong> شركة عجلة الحظ</p>
+                                <p class="note"><i class="fas fa-info-circle"></i> بعد التحويل، قم برفع صورة الإيصال أدناه</p>
+                            </div>
+                        </div>
+                        
+                        <form id="depositForm">
+                            <div class="form-group">
+                                <label><i class="fas fa-user"></i> الاسم الكامل</label>
+                                <input type="text" id="fullName" required placeholder="أدخل اسمك الكامل">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label><i class="fas fa-dollar-sign"></i> المبلغ المحول</label>
+                                <input type="number" id="amount" required min="1" placeholder="أدخل المبلغ">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label><i class="fas fa-receipt"></i> صورة إيصال التحويل</label>
+                                <input type="file" id="receipt" accept="image/*" required>
+                                <div class="image-preview" id="receiptPreview"></div>
+                            </div>
+                            
+                            <button type="submit" class="btn-primary">
+                                <i class="fas fa-paper-plane"></i> إرسال طلب الشحن
+                            </button>
+                        </form>
                     </div>
                 </div>
-                <div class="wheel-info">
-                    <h4>الجوائز المتاحة:</h4>
-                    <div class="prizes-list">
-                        <span class="prize-badge">0.10$</span>
-                        <span class="prize-badge">0.30$</span>
-                        <span class="prize-badge">0.50$</span>
-                        <span class="prize-badge">1$</span>
-                        <span class="prize-badge">2.5$</span>
-                        <span class="prize-badge">3$</span>
-                        <span class="prize-badge">5$</span>
-                        <span class="prize-badge">7$</span>
-                        <span class="prize-badge">9$</span>
-                        <span class="prize-badge prize-special">10$</span>
+
+                <!-- سحب الأرباح -->
+                <div class="tab-content" id="withdraw-tab">
+                    <div class="withdraw-box">
+                        <h3><i class="fas fa-wallet"></i> سحب الأرباح إلى شام كاش</h3>
+                        <form id="withdrawForm">
+                            <div class="form-group">
+                                <label><i class="fas fa-user"></i> الاسم الكامل</label>
+                                <input type="text" id="withdrawName" required placeholder="كما في محفظة شام كاش">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label><i class="fas fa-id-card"></i> رقم محفظة شام كاش</label>
+                                <input type="text" id="shamCashNumber" required placeholder="أدخل رقم محفظتك">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label><i class="fas fa-dollar-sign"></i> مبلغ السحب</label>
+                                <input type="number" id="withdrawAmount" required min="5" max="1000" placeholder="الحد الأدنى $5">
+                                <small>الحد الأدنى للسحب: $5 | الحد الأقصى: $1000</small>
+                            </div>
+                            
+                            <div class="balance-check">
+                                <p>رصيدك المتاح: <span id="availableBalance">$0.00</span></p>
+                            </div>
+                            
+                            <button type="submit" class="btn-success">
+                                <i class="fas fa-hand-holding-usd"></i> طلب السحب
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- سجل المعاملات -->
+                <div class="tab-content" id="history-tab">
+                    <div class="history-box">
+                        <h3><i class="fas fa-history"></i> سجل المعاملات</h3>
+                        <div class="filters">
+                            <select id="filterType">
+                                <option value="all">جميع المعاملات</option>
+                                <option value="deposit">شحن</option>
+                                <option value="withdraw">سحب</option>
+                                <option value="spin">دوران</option>
+                            </select>
+                            <input type="date" id="filterDate">
+                        </div>
+                        <div class="transactions-list" id="transactionsList"></div>
                     </div>
                 </div>
             </div>
         </div>
-    </section>
 
-    <!-- قسم الإشعارات الحية -->
-    <section class="live-notifications">
-        <div class="container">
-            <h3><i class="fas fa-bell"></i> الإشعارات الحية</h3>
-            <div class="notifications-track" id="notificationsTrack">
-                <!-- الإشعارات تظهر هنا ديناميكياً -->
-                <div class="notification-item">
-                    <span class="notification-icon">🎉</span>
-                    <span class="notification-text">محمد فاز بـ 5$ في العجلة!</span>
-                    <span class="notification-time">الآن</span>
+        <!-- نافذة النتيجة -->
+        <div id="resultModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <div class="result-icon">
+                    <i class="fas fa-gift"></i>
                 </div>
+                <h2 id="resultTitle">مبروك!</h2>
+                <p id="resultMessage">لقد ربحت <span class="prize-amount">$5</span></p>
+                <button id="closeResult" class="btn-primary">حسناً</button>
             </div>
         </div>
-    </section>
 
-    <!-- قسم تسجيل الدخول (مخفى) -->
-    <div class="modal" id="loginModal">
-        <div class="modal-content">
-            <span class="close-modal">&times;</span>
-            <h2><i class="fas fa-sign-in-alt"></i> تسجيل الدخول</h2>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label for="loginEmail"><i class="fas fa-envelope"></i> البريد الإلكتروني</label>
-                    <input type="email" id="loginEmail" required>
+        <!-- نافذة تسجيل الدخول -->
+        <div id="loginModal" class="modal active">
+            <div class="modal-content">
+                <div class="login-header">
+                    <i class="fas fa-dharmachakra"></i>
+                    <h2>تسجيل الدخول</h2>
                 </div>
-                <div class="form-group">
-                    <label for="loginPassword"><i class="fas fa-lock"></i> كلمة المرور</label>
-                    <input type="password" id="loginPassword" required>
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label><i class="fas fa-user"></i> اسم المستخدم</label>
+                        <input type="text" id="loginUsername" required placeholder="أدخل اسم المستخدم">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-lock"></i> كلمة المرور</label>
+                        <input type="password" id="loginPassword" required placeholder="أدخل كلمة المرور">
+                    </div>
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-sign-in-alt"></i> تسجيل الدخول
+                    </button>
+                    <p class="register-link">
+                        ليس لديك حساب؟ <a href="#" id="showRegister">سجل الآن</a>
+                    </p>
+                </form>
+            </div>
+        </div>
+
+        <!-- نافذة التسجيل -->
+        <div id="registerModal" class="modal">
+            <div class="modal-content">
+                <div class="login-header">
+                    <i class="fas fa-user-plus"></i>
+                    <h2>إنشاء حساب جديد</h2>
                 </div>
-                <button type="submit" class="btn btn-primary btn-block">
-                    <i class="fas fa-sign-in-alt"></i> دخول
-                </button>
-            </form>
+                <form id="registerForm">
+                    <div class="form-group">
+                        <label><i class="fas fa-user"></i> اسم المستخدم</label>
+                        <input type="text" id="registerUsername" required placeholder="اختر اسم مستخدم">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-envelope"></i> البريد الإلكتروني</label>
+                        <input type="email" id="registerEmail" required placeholder="أدخل بريدك الإلكتروني">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-lock"></i> كلمة المرور</label>
+                        <input type="password" id="registerPassword" required placeholder="كلمة مرور قوية">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-phone"></i> رقم الهاتف</label>
+                        <input type="tel" id="registerPhone" placeholder="اختياري">
+                    </div>
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-user-plus"></i> إنشاء حساب
+                    </button>
+                    <p class="register-link">
+                        لديك حساب بالفعل؟ <a href="#" id="showLogin">تسجيل الدخول</a>
+                    </p>
+                </form>
+            </div>
         </div>
     </div>
 
-    <!-- الفوتر -->
-    <footer>
-        <div class="container">
-            <div class="footer-content">
-                <div class="footer-section">
-                    <h4>عجلة الثروة</h4>
-                    <p>منصة ترفيهية تقدم تجربة فريدة مع فرص ربح حقيقية.</p>
-                </div>
-                <div class="footer-section">
-                    <h4>روابط سريعة</h4>
-                    <a href="#">الشروط والأحكام</a>
-                    <a href="#">سياسة الخصوصية</a>
-                    <a href="#">الدعم الفني</a>
-                </div>
-                <div class="footer-section">
-                    <h4>التواصل</h4>
-                    <a href="#"><i class="fab fa-whatsapp"></i> واتساب</a>
-                    <a href="#"><i class="fas fa-envelope"></i> البريد</a>
-                </div>
-            </div>
-            <div class="footer-bottom">
-                <p>© 2024 عجلة الثروة. جميع الحقوق محفوظة.</p>
-            </div>
-        </div>
-    </footer>
-
-    <!-- الإشعارات العائمة -->
-    <div id="toastContainer"></div>
-
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="js/app.js"></script>
-    <script src="js/auth.js"></script>
+    <script src="script.js"></script>
 </body>
-  </html>
+</html>
