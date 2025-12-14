@@ -1,227 +1,0 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎡 تدوير العجلة - عجلة الثروة</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <link rel="stylesheet" href="/css/wheel.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-</head>
-<body>
-    <!-- شريط التنقل -->
-    <nav class="navbar">
-        <div class="container">
-            <div class="nav-brand">
-                <a href="/home" class="logo-link">
-                    <i class="fas fa-arrow-left"></i>
-                    <span>عودة</span>
-                </a>
-                <div class="user-info">
-                    <i class="fas fa-user-circle"></i>
-                    <span id="username">ضيف</span>
-                    <div class="balance">
-                        <i class="fas fa-wallet"></i>
-                        <span id="userBalance">0.00$</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </nav>
-
-    <div class="container">
-        <!-- قسم العجلة الرئيسي -->
-        <section class="wheel-section">
-            <div class="wheel-header">
-                <h1><i class="fas fa-dharmachakra"></i> عجلة الثروة</h1>
-                <p class="subtitle">ادع العجلة واربح حتى <span class="highlight">10 دولار</span> في كل مرة!</p>
-                <div class="spin-cost">
-                    <i class="fas fa-tag"></i>
-                    <span>سعر الدوران: <strong>1$</strong></span>
-                </div>
-            </div>
-
-            <!-- العجلة -->
-            <div class="wheel-container">
-                <div class="wheel-wrapper">
-                    <!-- المؤشر -->
-                    <div class="wheel-pointer">
-                        <i class="fas fa-caret-down"></i>
-                    </div>
-                    
-                    <!-- العجلة -->
-                    <canvas id="wheelCanvas" width="500" height="500"></canvas>
-                    
-                    <!-- زر التدوير -->
-                    <button id="spinButton" class="spin-btn" disabled>
-                        <i class="fas fa-play"></i>
-                        <span>تدوير العجلة (1$)</span>
-                    </button>
-                </div>
-
-                <!-- معلومات الجوائز -->
-                <div class="prizes-sidebar">
-                    <h3><i class="fas fa-gift"></i> الجوائز</h3>
-                    <div class="prizes-list" id="prizesList">
-                        <!-- سيتم ملؤها بالجافاسكريبت -->
-                    </div>
-                    
-                    <div class="probability-info">
-                        <h4><i class="fas fa-chart-pie"></i> احتمالات الفوز</h4>
-                        <div class="probabilities" id="probabilities">
-                            <!-- سيتم ملؤها بالجافاسكريبت -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- نتيجة الدوران -->
-            <div class="result-container" id="resultContainer" style="display: none;">
-                <div class="result-card">
-                    <div class="result-icon" id="resultIcon">🎉</div>
-                    <h2 id="resultTitle">مبروك!</h2>
-                    <p id="resultMessage">فزت بـ <span id="resultAmount" class="prize-amount">0.00$</span></p>
-                    <div class="result-details">
-                        <div class="detail">
-                            <span>رصيدك الجديد:</span>
-                            <strong id="newBalance">0.00$</strong>
-                        </div>
-                        <div class="detail">
-                            <span>صافي الربح:</span>
-                            <strong id="netProfit" class="profit-positive">+0.00$</strong>
-                        </div>
-                    </div>
-                    <button id="spinAgainBtn" class="btn btn-primary">
-                        <i class="fas fa-redo"></i> تدوير مرة أخرى
-                    </button>
-                </div>
-            </div>
-        </section>
-
-        <!-- الإشعارات الحية -->
-        <section class="live-section">
-            <h3><i class="fas fa-bolt"></i> الإشعارات الحية</h3>
-            <div class="live-notifications" id="liveNotifications">
-                <div class="notification">
-                    <span class="notification-icon">🎉</span>
-                    <span class="notification-text">مرحباً بك! ابدأ بتدوير العجلة</span>
-                    <span class="notification-time">الآن</span>
-                </div>
-            </div>
-        </section>
-
-        <!-- إحصائياتي -->
-        <section class="stats-section">
-            <h3><i class="fas fa-chart-bar"></i> إحصائياتي</h3>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-sync-alt"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h4 id="totalSpins">0</h4>
-                        <p>عدد الدورات</p>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-money-bill-wave"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h4 id="totalSpent">0.00$</h4>
-                        <p>المبلغ المنفق</p>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-trophy"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h4 id="totalWon">0.00$</h4>
-                        <p>المبلغ المربح</p>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h4 id="netTotal">0.00$</h4>
-                        <p>الصافي</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- قسم الإيداع السريع -->
-        <section class="deposit-section">
-            <div class="deposit-card">
-                <h3><i class="fas fa-coins"></i> رصيد منخفض؟</h3>
-                <p>أودع الآن واستمر في اللعب!</p>
-                <div class="deposit-options">
-                    <button class="deposit-option" data-amount="5">
-                        <span>5$</span>
-                        <small>+5 دورات</small>
-                    </button>
-                    <button class="deposit-option" data-amount="10">
-                        <span>10$</span>
-                        <small>+10 دورات</small>
-                    </button>
-                    <button class="deposit-option" data-amount="20">
-                        <span>20$</span>
-                        <small>+20 دورات</small>
-                    </button>
-                    <button class="deposit-option" data-amount="50">
-                        <span>50$</span>
-                        <small>+50 دورات</small>
-                    </button>
-                </div>
-                <button id="depositBtn" class="btn btn-primary">
-                    <i class="fas fa-plus-circle"></i> إيداع الآن
-                </button>
-            </div>
-        </section>
-    </div>
-
-    <!-- نموذج الإيداع -->
-    <div class="modal" id="depositModal">
-        <div class="modal-content">
-            <span class="close-modal">&times;</span>
-            <h2><i class="fas fa-coins"></i> إيداع رصيد</h2>
-            <div class="modal-body">
-                <p>سيتم توجيهك لنظام الإيداع عبر شام كاش</p>
-                <div class="deposit-instructions">
-                    <h4>خطوات الإيداع:</h4>
-                    <ol>
-                        <li>اختر المبلغ المطلوب</li>
-                        <li>سنرسل لك رقم حساب شام كاش</li>
-                        <li>أرسل المبلغ للرقم المحدد</li>
-                        <li>أرفع صورة الإيصال</li>
-                        <li>سيتم تفعيل الرصيد خلال 5-30 دقيقة</li>
-                    </ol>
-                </div>
-                <button id="startDepositBtn" class="btn btn-primary">
-                    <i class="fas fa-play-circle"></i> بدء عملية الإيداع
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- النافذة المنبثقة للإشعارات -->
-    <div id="toastContainer"></div>
-
-    <!-- الأصوات -->
-<audio id="spinSound" preload="auto">
-    <source src="https://assets.mixkit.co/sfx/preview/mixkit-casino-roulette-spin-1031.mp3" type="audio/mpeg">
-</audio>
-<audio id="winSound" preload="auto">
-    <source src="https://assets.mixkit.co/sfx/preview/mixkit-winning-chimes-2015.mp3" type="audio/mpeg">
-</audio>
-<audio id="loseSound" preload="auto">
-    <source src="https://assets.mixkit.co/sfx/preview/mixkit-cartoon-falling-whistle-392.mp3" type="audio/mpeg">
-</audio>
-
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="/js/wheel.js"></script>
-</body>
-                      </html>
