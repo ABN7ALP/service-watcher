@@ -174,11 +174,15 @@ function startSpinAnimation(winningAmount) {
     }
 
     // زاوية منتصف الشريحة الفائزة
-    const winningSegmentCenterAngle =
-        (winningSegmentIndex * segmentAngle) + (segmentAngle / 2);
+   const winningSegmentCenterAngle =
+    (winningSegmentIndex * segmentAngle) + (segmentAngle / 2);
 
-    // زاوية التوقف النهائية (عكس اتجاه المؤشر)
-    const targetAngle = 360 - winningSegmentCenterAngle;
+   // تعويض موضع المؤشر (أعلى العجلة)
+   const POINTER_OFFSET = 90;
+
+   // زاوية التوقف النهائية الصحيحة 100%
+   const targetAngle =
+     360 - winningSegmentCenterAngle - POINTER_OFFSET;
 
     // عدد لفات كاملة للتشويق
     const fullSpins = 7 + Math.floor(Math.random() * 4); // 7 → 10
