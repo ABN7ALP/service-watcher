@@ -152,33 +152,69 @@ io.on('connection', (socket) => {
     });
 });
 
-// ========== إنشاء وإدارة خدمة الإشعارات ==========
-const NotificationService = require('./services/notificationService');
-const notificationService = new NotificationService(io);
+// ========== مسارات الصفحات (HTML) ==========
+const path = require('path');
 
-// تحديث خدمة الإشعارات بقائمة المستخدمين المتصلين
-setInterval(() => {
-    notificationService.updateOnlineUsers(onlineUsers);
-}, 5000);
+// الصفحة الرئيسية (صفحة الهبوط)
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
-// ========== تصدير ==========
-module.exports = {
-    io,
-    onlineUsers,
-    notificationService  // تصدير خدمة الإشعارات
-};
+// صفحة العجلة
+app.get('/wheel', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'wheel.html'));
+});
 
+// صفحة لوحة التحكم
+app.get('/dashboard', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
+// صفحة الإيداع
+app.get('/deposit', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'deposit.html'));
+});
+
+// صفحة السحب
+app.get('/withdraw', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'withdraw.html'));
+});
+
+// صفحة تسجيل الدخول
+app.get('/login', (req, res) => {
+    res.redirect('/');
+});
+
+
+// ========== Catch-All لأي رابط غير API أو socket ==========
 app.get(/^(?!\/api|\/socket\.io).*/, (req, res) => {
     if (!req.path.includes('.')) {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     } else {
-        // إذا كان الطلب على ملف غير موجود، أعد خطأ 404
         res.status(404).send('File not found');
     }
 });
 
 
-// تشغيل الخادم
+// ========== إنشاء وإدارة خدمة الإشعارات ==========
+const NotificationService = require('./services/notificationService');
+const notificationService = new NotificationService(io);
+
+// تحديث المستخدمين المتصلين كل 5 ثواني
+setInterval(() => {
+    notificationService.updateOnlineUsers(onlineUsers);
+}, 5000);
+
+
+// ========== تصدير ==========
+module.exports = {
+    io,
+    onlineUsers,
+    notificationService
+};
+
+
+// ========== تشغيل الخادم ==========
 server.listen(PORT, () => {
     console.log(`✅ الخادم يعمل على الرابط: http://localhost:${PORT}`);
 });
