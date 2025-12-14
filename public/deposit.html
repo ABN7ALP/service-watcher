@@ -1,181 +1,0 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>💰 إيداع رصيد - عجلة الثروة</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-</head>
-<body>
-    <div class="container">
-        <!-- شريط التنقل -->
-        <nav class="navbar">
-            <div class="nav-brand">
-                <a href="/wheel" class="logo-link">
-                    <i class="fas fa-arrow-left"></i>
-                    <span>عودة للعجلة</span>
-                </a>
-                <div class="user-info">
-                    <i class="fas fa-user-circle"></i>
-                    <span id="username">ضيف</span>
-                    <div class="balance">
-                        <i class="fas fa-wallet"></i>
-                        <span id="userBalance">0.00$</span>
-                    </div>
-                </div>
-            </div>
-        </nav>
-
-        <!-- محتوى الإيداع -->
-        <div class="deposit-container">
-            <div class="deposit-header">
-                <h1><i class="fas fa-coins"></i> إيداع رصيد</h1>
-                <p class="subtitle">أودع عبر شام كاش واستمر في اللعب</p>
-            </div>
-
-            <!-- خطوات الإيداع -->
-            <div class="steps-container">
-                <div class="step active" id="step1">
-                    <div class="step-number">1</div>
-                    <div class="step-content">
-                        <h3>اختر طريقة الدفع</h3>
-                        <div class="payment-methods">
-                            <div class="payment-method active" data-method="sham_kash">
-                                <div class="method-icon">
-                                    <i class="fas fa-mobile-alt"></i>
-                                </div>
-                                <div class="method-info">
-                                    <h4>شام كاش</h4>
-                                    <p>أسرع طريقة للإيداع</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="step" id="step2">
-                    <div class="step-number">2</div>
-                    <div class="step-content">
-                        <h3>أرسل المبلغ</h3>
-                        <div class="payment-details">
-                            <div class="detail-card">
-                                <div class="detail-icon">
-                                    <i class="fas fa-phone"></i>
-                                </div>
-                                <div class="detail-info">
-                                    <h4>رقم شام كاش</h4>
-                                    <div class="detail-value" id="shamNumber">جاري التحميل...</div>
-                                    <button class="btn-copy" data-copy="shamNumber">
-                                        <i class="fas fa-copy"></i> نسخ
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div class="detail-card">
-                                <div class="detail-icon">
-                                    <i class="fas fa-money-bill-wave"></i>
-                                </div>
-                                <div class="detail-info">
-                                    <h4>المبلغ المطلوب</h4>
-                                    <div class="detail-value" id="depositAmount">0$</div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="instructions">
-                            <h4>📋 التعليمات:</h4>
-                            <ol>
-                                <li>افتح تطبيق شام كاش على هاتفك</li>
-                                <li>انسخ الرقم أعلاه وأرسل له المبلغ</li>
-                                <li>احفظ رقم المعاملة (Transaction ID)</li>
-                                <li>أرفع صورة الإيصال في الخطوة التالية</li>
-                            </ol>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="step" id="step3">
-                    <div class="step-number">3</div>
-                    <div class="step-content">
-                        <h3>أرفع الإيصال</h3>
-                        <form id="depositForm">
-                            <div class="form-group">
-                                <label for="transactionId">
-                                    <i class="fas fa-receipt"></i> رقم المعاملة (Transaction ID)
-                                </label>
-                                <input type="text" id="transactionId" required placeholder="أدخل الرقم من تطبيق شام كاش">
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="senderName">
-                                    <i class="fas fa-user"></i> اسم المرسل
-                                </label>
-                                <input type="text" id="senderName" required placeholder="الاسم كما في شام كاش">
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="screenshot">
-                                    <i class="fas fa-camera"></i> صورة الإيصال
-                                </label>
-                                <div class="file-upload">
-                                    <input type="file" id="screenshot" accept="image/*" required>
-                                    <label for="screenshot" class="upload-label">
-                                        <i class="fas fa-cloud-upload-alt"></i>
-                                        <span>اضغط لرفع الصورة</span>
-                                    </label>
-                                    <div class="file-preview" id="filePreview"></div>
-                                </div>
-                                <small>المسموح: JPG, PNG, GIF (5MB كحد أقصى)</small>
-                            </div>
-                            
-                            <div class="form-actions">
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-paper-plane"></i> إرسال طلب الإيداع
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-
-            <!-- شريط التقدم -->
-            <div class="progress-bar">
-                <div class="progress-fill" id="progressFill"></div>
-            </div>
-
-            <!-- التحذيرات -->
-            <div class="warnings">
-                <div class="warning">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <p>⏳ المعاملة يدوية، ستأخذ من 5 إلى 30 دقيقة للمراجعة والموافقة.</p>
-                </div>
-                <div class="warning">
-                    <i class="fas fa-shield-alt"></i>
-                    <p>🔒 جميع المدفوعات آمنة ومشفرة. لا تشارك بياناتك مع أحد.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- نتيجة الإيداع -->
-    <div class="modal" id="resultModal">
-        <div class="modal-content">
-            <div class="result-icon" id="resultIcon">⏳</div>
-            <h2 id="resultTitle">جاري المعالجة</h2>
-            <p id="resultMessage">طلب الإيداع قيد المراجعة</p>
-            <div class="result-details" id="resultDetails"></div>
-            <div class="result-actions">
-                <button id="goToWheelBtn" class="btn btn-primary">
-                    <i class="fas fa-dharmachakra"></i> العودة للعجلة
-                </button>
-                <button id="viewRequestBtn" class="btn btn-outline">
-                    <i class="fas fa-eye"></i> مشاهدة الطلب
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <script src="/js/deposit.js"></script>
-</body>
-</html>
