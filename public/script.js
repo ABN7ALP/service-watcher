@@ -157,29 +157,40 @@ document.addEventListener('DOMContentLoaded', () => {
         return 1 - Math.pow(1 - t, 5);
     }
 
-    /**
-     * بدء عملية الدوران بعد الحصول على النتيجة من الخادم
-     * @param {number} winningAmount - المبلغ الفائز الذي حدده الخادم
-     */
+    
+     @param {number} winningAmount - المبلغ الفائز الذي حدده الخادم
+     
     function startSpinAnimation(winningAmount) {
         const winningSegmentIndex = wheelSegments.indexOf(winningAmount);
         if (winningSegmentIndex === -1) {
-            console.error("Winning amount not found in segments!");
+            console.error("Winning amount not found in segments!", winningAmount);
+            // كإجراء احتياطي، أوقف الدوران فوراً
             isSpinning = false;
+            spinBtn.disabled = false;
+            spinBtn.innerHTML = '<i class="fas fa-redo"></i> إدارة العجلة ($1)';
             return;
         }
 
-        // 1. حساب زاوية التوقف النهائية
-        const baseStopAngle = 360 - (winningSegmentIndex * segmentAngle);
-        const randomOffset = (Math.random() * (segmentAngle - 10)) + 5; // توقف عشوائي داخل الشريحة
-        const targetAngle = baseStopAngle + randomOffset;
 
-        // 2. تحديد عدد الدورات الكاملة (بين 5 و 8)
-        const fullSpins = 5 + Math.floor(Math.random() * 3);
+        // 1. حساب زاوية التوقف النهائية
+        const winningSegmentCenterAngle = (winningSegmentIndex * segmentAngle) + (segmentAngle / 2);
+
+        // 2. تحديد زاوية التوقف النهائية.
+        // يجب أن تكون زاوية دوران العجلة عكس اتجاه زاوية الشريحة لتصطف مع المؤشر.
+        // مثال: إذا كانت الشريحة عند 90 درجة، يجب أن تدور العجلة -90 درجة.
+        const targetAngle = 360 - winningSegmentCenterAngle;
+
+        // 3. إضافة دورات كاملة عشوائية للتشويق.
+        const fullSpins = 7 + Math.floor(Math.random() * 4); // بين 7 و 10 دورات
         const totalRotation = (fullSpins * 360) + targetAngle;
 
+        // 4. إضافة "تردد" بسيط حول نقطة التوقف النهائية لجعلها تبدو طبيعية.
+        // هذا لا يؤثر على الشريحة الفائزة، فقط يجعل التوقف أقل "روبوتية".
+        const finalJitter = (Math.random() - 0.5) * (segmentAngle * 0.2); // انحراف بسيط جداً
+        const finalTargetRotation = totalRotation + finalJitter;
+
         // 3. إعداد متغيرات الأنيميشن
-        const duration = 6000; // مدة الدوران بالمللي ثانية (6 ثواني)
+        const duration = 7000; // مدة الدوران بالمللي ثانية (6 ثواني)
         const startTime = performance.now();
         let lastTickAngle = currentRotation;
 
@@ -192,7 +203,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const easedProgress = easeOutQuint(progress);
 
             // 4. حساب زاوية الدوران الحالية
-            const newRotation = (currentRotation + (totalRotation * easedProgress)) % 360;
+            const rotationDelta = finalTargetRotation - currentRotation;
+            const newRotation = (currentRotation + (rotationDelta * easedProgress));
+            
             drawWheel(newRotation);
 
             // 5. تشغيل صوت التكة
@@ -206,7 +219,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (progress < 1) {
                 animationFrameId = requestAnimationFrame(animate);
             } else {
-                currentRotation = newRotation;
+                // عند انتهاء الأنيميشن، اضبط زاوية الدوران النهائية بدقة
+                currentRotation = newRotation % 360;
                 isSpinning = false;
                 spinBtn.disabled = false;
                 spinBtn.innerHTML = '<i class="fas fa-redo"></i> إدارة العجلة ($1)';
@@ -217,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateUserInfo();
                     loadRecentWins();
                     loadTransactions();
-                }, 500); // تأخير بسيط قبل إظهار النتيجة
+                }, 500);
             }
         }
 
@@ -225,6 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
         cancelAnimationFrame(animationFrameId);
         animationFrameId = requestAnimationFrame(animate);
     }
+
 
     /**
      * التعامل مع طلب الدوران وإرساله للخادم
