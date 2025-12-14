@@ -15,7 +15,7 @@ const wheelRoutes = require('./routes/wheel');
 const depositRoutes = require('./routes/deposit');
 const adminRoutes = require('./routes/admin');
 const withdrawalRoutes = require('./routes/withdrawal');
-
+const userRoutes = require('./routes/user');
 // تهيئة التطبيق
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -44,6 +44,8 @@ app.use('/api/wheel', wheelRoutes);
 app.use('/api/deposit', depositRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/withdrawal', withdrawalRoutes);
+app.use('/api/user', userRoutes);
+
 
 
 // ========== منطق Socket.io ==========
