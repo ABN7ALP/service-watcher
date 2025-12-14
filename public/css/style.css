@@ -466,3 +466,236 @@ footer {
         grid-template-columns: 1fr;
     }
   }
+/* أضف هذه الأنماط في نهاية public/css/style.css */
+
+/* أنماط مشتركة للصفحات */
+.alert {
+    padding: 15px 20px;
+    border-radius: 10px;
+    margin: 20px 0;
+    text-align: center;
+    animation: slideIn 0.5s ease;
+}
+
+@keyframes slideIn {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.alert-info {
+    background: rgba(0, 123, 255, 0.2);
+    border: 1px solid #007bff;
+    color: #007bff;
+}
+
+.alert-success {
+    background: rgba(40, 167, 69, 0.2);
+    border: 1px solid #28a745;
+    color: #28a745;
+}
+
+.alert-error {
+    background: rgba(220, 53, 69, 0.2);
+    border: 1px solid #dc3545;
+    color: #dc3545;
+}
+
+.alert-warning {
+    background: rgba(255, 193, 7, 0.2);
+    border: 1px solid #ffc107;
+    color: #ffc107;
+}
+
+/* شريط التنقل المشترك */
+.navbar {
+    background: linear-gradient(90deg, #0c2461, #1e3799);
+    padding: 15px 0;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.nav-brand {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: white;
+    text-decoration: none;
+    font-size: 1.1rem;
+    padding: 10px 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    transition: 0.3s;
+}
+
+.logo-link:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: gold;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 10px 20px;
+    border-radius: 50px;
+    backdrop-filter: blur(10px);
+}
+
+.user-info i {
+    font-size: 1.5rem;
+    color: gold;
+}
+
+.balance {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 215, 0, 0.2);
+    padding: 8px 15px;
+    border-radius: 20px;
+    font-weight: bold;
+}
+
+/* الأزرار المشتركة */
+.btn {
+    padding: 12px 25px;
+    border: none;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+}
+
+.btn-primary {
+    background: linear-gradient(45deg, #6a11cb, #2575fc);
+    color: white;
+}
+
+.btn-primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(106, 17, 203, 0.4);
+}
+
+.btn-outline {
+    background: transparent;
+    border: 2px solid #6a11cb;
+    color: #6a11cb;
+}
+
+.btn-outline:hover {
+    background: #6a11cb;
+    color: white;
+}
+
+.btn-block {
+    width: 100%;
+}
+
+/* النوافذ المنبثقة */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(10px);
+}
+
+.modal-content {
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    padding: 40px;
+    border-radius: 20px;
+    max-width: 600px;
+    width: 90%;
+    border: 2px solid #6a11cb;
+    position: relative;
+    animation: popIn 0.5s ease;
+}
+
+.close-modal {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    font-size: 2rem;
+    cursor: pointer;
+    color: #ff4757;
+    transition: 0.3s;
+}
+
+.close-modal:hover {
+    transform: scale(1.2);
+}
+
+/* النماذج المشتركة */
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #ccc;
+    font-weight: 500;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    color: white;
+    font-size: 1rem;
+    font-family: inherit;
+    transition: 0.3s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    border-color: #6a11cb;
+    outline: none;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* تصميم متجاوب */
+@media (max-width: 768px) {
+    .container {
+        padding: 15px;
+    }
+    
+    .nav-brand {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .user-info {
+        flex-direction: column;
+        gap: 10px;
+        padding: 15px;
+        border-radius: 15px;
+    }
+    
+    .modal-content {
+        padding: 25px;
+    }
+}
