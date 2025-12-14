@@ -8,6 +8,7 @@ const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const path = require('path');
+const authenticate = require('./middleware/auth'); // <-- استيراد الـ middleware
 
 // تحميل المتغيرات البيئية
 dotenv.config();
@@ -91,6 +92,7 @@ const authenticate = async (req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/payment', authenticate, paymentRoutes(upload));
 app.use('/api/spin', authenticate, spinRoutes);
+
 
 // مسار إضافي للحصول على معلومات المستخدم
 app.get('/api/auth/me', authenticate, async (req, res) => {
