@@ -1,12 +1,14 @@
 {
   "name": "spin-wheel-site",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "موقع عجلة الحظ مع نظام دفع شام كاش",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
     "dev": "nodemon server/index.js",
-    "build": "echo 'Build completed'",
+    "clean": "rm -rf node_modules && npm cache clean --force",
+    "reinstall": "npm run clean && npm install",
+    "db:reset": "node -e \"require('./server/config/database').resetDatabase()\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
