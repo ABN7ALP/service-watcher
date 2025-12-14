@@ -699,3 +699,98 @@ footer {
         padding: 25px;
     }
 }
+/* أضف في نهاية public/css/style.css */
+
+/* النوافذ المنبثقة */
+#toastContainer {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 3000;
+}
+
+.toast {
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 15px 25px;
+    border-radius: 10px;
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+    animation: slideUp 0.5s ease;
+    border-right: 4px solid;
+    backdrop-filter: blur(10px);
+    max-width: 350px;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.toast.success {
+    border-color: #00b894;
+}
+
+.toast.error {
+    border-color: #ff6b6b;
+}
+
+.toast.warning {
+    border-color: #fdcb6e;
+}
+
+.toast.info {
+    border-color: #6a11cb;
+}
+
+.toast i {
+    font-size: 1.2rem;
+}
+
+/* نموذج تسجيل الخروج */
+#logoutModal .modal-content {
+    text-align: center;
+    max-width: 400px;
+}
+
+.modal-icon {
+    font-size: 3rem;
+    color: #ff6b6b;
+    margin-bottom: 15px;
+}
+
+#logoutModal h2 {
+    margin-bottom: 10px;
+    color: white;
+}
+
+#logoutModal p {
+    color: #aaa;
+    margin-bottom: 25px;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.btn-danger {
+    background: linear-gradient(45deg, #ff4757, #ff6b6b);
+    color: white;
+    border: none;
+}
+
+.btn-danger:hover {
+    background: linear-gradient(45deg, #ff3838, #ff5252);
+    transform: translateY(-2px);
+}
