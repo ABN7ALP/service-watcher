@@ -270,83 +270,26 @@ function updateOnlineCount() {
 }
 
 // تحديث الإحصائيات
-// 📁 public/js/app.js
-
 async function updateStats() {
     try {
         const response = await fetch('/api/wheel/stats');
         if (response.ok) {
             const data = await response.json();
-                
+            
             // تحديث الأرقام في الصفحة
             const winsElement = document.getElementById('totalWins');
             const prizesElement = document.getElementById('totalPrizes');
-                
+            
             if (winsElement && prizesElement) {
                 // هذه قيم افتراضية - يمكنك جلبها من API خاص
                 winsElement.textContent = '1,234';
                 prizesElement.textContent = '15,678$';
             }
-
-            // --- الجزء المضاف ---
-            // استدعاء دالة رسم العجلة بعد جلب البيانات
-            if (data.success && data.stats.config.prizes) {
-                renderWheelPreview(data.stats.config.prizes);
-            }
-            // --- نهاية الجزء المضاف ---
-
         }
     } catch (error) {
         console.error('❌ خطأ في تحديث الإحصائيات:', error);
     }
 }
-
-// --- الدالة الجديدة المضافة ---
-// قم بإضافة هذه الدالة الجديدة في أي مكان في ملف app.js
-function renderWheelPreview(prizes) {
-    const wheelPreview = document.getElementById('wheelPreview');
-    if (!wheelPreview) return;
-
-    // إنشاء عنصر canvas لرسم العجلة
-    const canvas = document.createElement('canvas');
-    canvas.width = 300;
-    canvas.height = 300;
-    const ctx = canvas.getContext('2d');
-    const numSegments = prizes.length;
-    const angleStep = (2 * Math.PI) / numSegments;
-    const colors = ['#6a11cb', '#2575fc', '#ff6b6b', '#fdcb6e', '#00b894', '#2d3436', '#6a11cb', '#2575fc', '#ff6b6b', '#fdcb6e'];
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.font = 'bold 16px Cairo';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    for (let i = 0; i < numSegments; i++) {
-        const angle = i * angleStep;
-        // رسم قطعة من العجلة
-        ctx.beginPath();
-        ctx.fillStyle = colors[i % colors.length];
-        ctx.moveTo(150, 150);
-        ctx.arc(150, 150, 150, angle, angle + angleStep);
-        ctx.lineTo(150, 150);
-        ctx.fill();
-
-        // كتابة قيمة الجائزة
-        ctx.save();
-        ctx.fillStyle = 'white';
-        const textAngle = angle + angleStep / 2;
-        ctx.translate(150 + Math.cos(textAngle) * 100, 150 + Math.sin(textAngle) * 100);
-        ctx.rotate(textAngle + Math.PI / 2);
-        ctx.fillText(`$${prizes[i]}`, 0, 0);
-        ctx.restore();
-    }
-
-    // استبدال رسالة "جاري التحميل" بالعجلة المرسومة
-    wheelPreview.innerHTML = '';
-    wheelPreview.appendChild(canvas);
-}
-// --- نهاية الدالة الجديدة ---
-
 
 // عرض رسالة عائمة
 function showToast(message, type = 'info') {
