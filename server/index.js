@@ -64,29 +64,6 @@ const authRoutes = require('./routes/auth');
 const paymentRoutes = require('./routes/payment');
 const spinRoutes = require('./routes/spin');
 
-// Middleware المصادقة
-const authenticate = async (req, res, next) => {
-    try {
-        const token = req.headers.authorization?.replace('Bearer ', '');
-        
-        if (!token) {
-            return res.status(401).json({ message: 'الوصول مرفوض. يرجى تسجيل الدخول.' });
-        }
-        
-        // في بيئة الإنتاج، استخدم JWT
-        // هنا نستخدم معرف المستخدم مباشرةً للتبسيط
-        const user = await User.findById(token);
-        
-        if (!user) {
-            return res.status(401).json({ message: 'الوصول مرفوض. يرجى تسجيل الدخول.' });
-        }
-        
-        req.user = user;
-        next();
-    } catch (error) {
-        res.status(401).json({ message: 'الوصول مرفوض. يرجى تسجيل الدخول.' });
-    }
-};
 
 // استخدام المسارات
 app.use('/api/auth', authRoutes);
