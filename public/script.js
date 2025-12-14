@@ -149,96 +149,101 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * دالة التباطؤ (Easing Function) - تمنح الحركة شعوراً طبيعياً
-     * @param {number} t - التقدم الزمني (قيمة بين 0 و 1)
-     * @returns {number} - التقدم المعدل
-     */
-    function easeOutQuint(t) {
-        return 1 - Math.pow(1 - t, 5);
+ * دالة التباطؤ (Easing Function)
+ * تمنح الحركة شعوراً طبيعياً
+ * @param {number} t - التقدم الزمني (0 → 1)
+ * @returns {number}
+ */
+function easeOutQuint(t) {
+    return 1 - Math.pow(1 - t, 5);
+}
+
+/**
+ * تشغيل أنيميشن دوران العجلة
+ * @param {number} winningAmount - المبلغ الفائز القادم من الخادم
+ */
+function startSpinAnimation(winningAmount) {
+    const winningSegmentIndex = wheelSegments.indexOf(winningAmount);
+
+    if (winningSegmentIndex === -1) {
+        console.error("Winning amount not found in segments!", winningAmount);
+        isSpinning = false;
+        spinBtn.disabled = false;
+        spinBtn.innerHTML = '<i class="fas fa-redo"></i> إدارة العجلة ($1)';
+        return;
     }
 
-    
-     @param {number} winningAmount - المبلغ الفائز الذي حدده الخادم
-     
-    function startSpinAnimation(winningAmount) {
-        const winningSegmentIndex = wheelSegments.indexOf(winningAmount);
-        if (winningSegmentIndex === -1) {
-            console.error("Winning amount not found in segments!", winningAmount);
-            // كإجراء احتياطي، أوقف الدوران فوراً
+    // زاوية منتصف الشريحة الفائزة
+    const winningSegmentCenterAngle =
+        (winningSegmentIndex * segmentAngle) + (segmentAngle / 2);
+
+    // زاوية التوقف النهائية (عكس اتجاه المؤشر)
+    const targetAngle = 360 - winningSegmentCenterAngle;
+
+    // عدد لفات كاملة للتشويق
+    const fullSpins = 7 + Math.floor(Math.random() * 4); // 7 → 10
+    const totalRotation = (fullSpins * 360) + targetAngle;
+
+    // انحراف بسيط جداً لإحساس طبيعي
+    const finalJitter = (Math.random() - 0.5) * (segmentAngle * 0.2);
+    const finalTargetRotation = totalRotation + finalJitter;
+
+    // إعدادات الأنيميشن
+    const duration = 7000; // 7 ثواني
+    const startTime = performance.now();
+    const startRotation = currentRotation;
+
+    let lastTickAngle = startRotation;
+
+    spinSound.currentTime = 0;
+    spinSound.play();
+
+    function animate(currentTime) {
+        const elapsedTime = currentTime - startTime;
+        const progress = Math.min(elapsedTime / duration, 1);
+        const easedProgress = easeOutQuint(progress);
+
+        // حساب زاوية الدوران الحالية (صح 100%)
+        const newRotation =
+            startRotation + (finalTargetRotation * easedProgress);
+
+        drawWheel(newRotation);
+
+        // صوت التكة بين الشرائح
+        const currentSegment =
+            Math.floor((newRotation % 360) / segmentAngle);
+        const lastSegment =
+            Math.floor((lastTickAngle % 360) / segmentAngle);
+
+        if (currentSegment !== lastSegment) {
+            tickSound.currentTime = 0;
+            tickSound.play();
+        }
+
+        lastTickAngle = newRotation;
+
+        if (progress < 1) {
+            animationFrameId = requestAnimationFrame(animate);
+        } else {
+            // تثبيت الزاوية النهائية
+            currentRotation = newRotation % 360;
             isSpinning = false;
             spinBtn.disabled = false;
             spinBtn.innerHTML = '<i class="fas fa-redo"></i> إدارة العجلة ($1)';
-            return;
+
+            setTimeout(() => {
+                winSound.play();
+                showResultModal(winningAmount);
+                updateUserInfo();
+                loadRecentWins();
+                loadTransactions();
+            }, 500);
         }
-
-
-        // 1. حساب زاوية التوقف النهائية
-        const winningSegmentCenterAngle = (winningSegmentIndex * segmentAngle) + (segmentAngle / 2);
-
-        // 2. تحديد زاوية التوقف النهائية.
-        // يجب أن تكون زاوية دوران العجلة عكس اتجاه زاوية الشريحة لتصطف مع المؤشر.
-        // مثال: إذا كانت الشريحة عند 90 درجة، يجب أن تدور العجلة -90 درجة.
-        const targetAngle = 360 - winningSegmentCenterAngle;
-
-        // 3. إضافة دورات كاملة عشوائية للتشويق.
-        const fullSpins = 7 + Math.floor(Math.random() * 4); // بين 7 و 10 دورات
-        const totalRotation = (fullSpins * 360) + targetAngle;
-
-        // 4. إضافة "تردد" بسيط حول نقطة التوقف النهائية لجعلها تبدو طبيعية.
-        // هذا لا يؤثر على الشريحة الفائزة، فقط يجعل التوقف أقل "روبوتية".
-        const finalJitter = (Math.random() - 0.5) * (segmentAngle * 0.2); // انحراف بسيط جداً
-        const finalTargetRotation = totalRotation + finalJitter;
-
-        // 3. إعداد متغيرات الأنيميشن
-        const duration = 7000; // مدة الدوران بالمللي ثانية (6 ثواني)
-        const startTime = performance.now();
-        let lastTickAngle = currentRotation;
-
-        spinSound.currentTime = 0;
-        spinSound.play();
-
-        function animate(currentTime) {
-            const elapsedTime = currentTime - startTime;
-            const progress = Math.min(elapsedTime / duration, 1);
-            const easedProgress = easeOutQuint(progress);
-
-            // 4. حساب زاوية الدوران الحالية
-            const rotationDelta = finalTargetRotation - currentRotation;
-            const newRotation = (currentRotation + (rotationDelta * easedProgress));
-            
-            drawWheel(newRotation);
-
-            // 5. تشغيل صوت التكة
-            if (Math.floor(newRotation / segmentAngle) !== Math.floor(lastTickAngle / segmentAngle)) {
-                tickSound.currentTime = 0;
-                tickSound.play();
-            }
-            lastTickAngle = newRotation;
-
-            // 6. الاستمرار في الأنيميشن أو التوقف
-            if (progress < 1) {
-                animationFrameId = requestAnimationFrame(animate);
-            } else {
-                // عند انتهاء الأنيميشن، اضبط زاوية الدوران النهائية بدقة
-                currentRotation = newRotation % 360;
-                isSpinning = false;
-                spinBtn.disabled = false;
-                spinBtn.innerHTML = '<i class="fas fa-redo"></i> إدارة العجلة ($1)';
-                
-                setTimeout(() => {
-                    winSound.play();
-                    showResultModal(winningAmount);
-                    updateUserInfo();
-                    loadRecentWins();
-                    loadTransactions();
-                }, 500);
-            }
-        }
-
-        // بدء حلقة الأنيميشن
-        cancelAnimationFrame(animationFrameId);
-        animationFrameId = requestAnimationFrame(animate);
     }
+
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = requestAnimationFrame(animate);
+}
 
 
     /**
