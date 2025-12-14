@@ -1,526 +1,0 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>💰 سحب الأرباح - عجلة الثروة</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <link rel="stylesheet" href="/css/withdraw.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-</head>
-<body>
-    <!-- شريط التنقّل -->
-    <nav class="dashboard-nav">
-        <div class="container">
-            <div class="nav-left">
-                <a href="/dashboard" class="nav-logo">
-                    <i class="fas fa-arrow-left"></i>
-                    <span>لوحة التحكم</span>
-                </a>
-            </div>
-            
-            <div class="nav-center">
-                <h1><i class="fas fa-money-bill-wave"></i> سحب الأرباح</h1>
-            </div>
-            
-            <div class="nav-right">
-                <div class="user-balance-nav">
-                    <i class="fas fa-wallet"></i>
-                    <span id="navBalance">0.00$</span>
-                </div>
-            </div>
-        </div>
-    </nav>
-
-    <div class="container withdraw-container">
-        <!-- شريط التقدم -->
-        <div class="withdraw-progress">
-            <div class="progress-step active" data-step="1">
-                <div class="step-circle">1</div>
-                <div class="step-label">اختيار المبلغ</div>
-            </div>
-            <div class="progress-step" data-step="2">
-                <div class="step-circle">2</div>
-                <div class="step-label">طريقة السحب</div>
-            </div>
-            <div class="progress-step" data-step="3">
-                <div class="step-circle">3</div>
-                <div class="step-label">تأكيد الطلب</div>
-            </div>
-            <div class="progress-step" data-step="4">
-                <div class="step-circle">4</div>
-                <div class="step-label">اكتمال الطلب</div>
-            </div>
-            <div class="progress-line"></div>
-        </div>
-
-        <!-- الخطوة 1: اختيار المبلغ -->
-        <div class="withdraw-step active" id="step1">
-            <div class="step-header">
-                <h2><i class="fas fa-coins"></i> كم تريد سحب؟</h2>
-                <p>اختر المبلغ الذي ترغب في سحبه من رصيدك</p>
-            </div>
-            
-            <div class="balance-summary">
-                <div class="balance-card">
-                    <div class="balance-icon">
-                        <i class="fas fa-wallet"></i>
-                    </div>
-                    <div class="balance-info">
-                        <h3>رصيدك المتاح</h3>
-                        <div class="balance-amount" id="availableBalance">0.00$</div>
-                    </div>
-                </div>
-                
-                <div class="balance-limits">
-                    <div class="limit-item">
-                        <i class="fas fa-arrow-down"></i>
-                        <div>
-                            <h4>الحد الأدنى للسحب</h4>
-                            <p id="minWithdrawalAmount">10.00$</p>
-                        </div>
-                    </div>
-                    <div class="limit-item">
-                        <i class="fas fa-calendar-day"></i>
-                        <div>
-                            <h4>السحوبات اليوم</h4>
-                            <p id="todayWithdrawals">0.00$ / <span id="dailyLimit">1,000.00$</span></p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- خيارات المبلغ السريع -->
-            <div class="amount-options">
-                <h3>اختيار سريع</h3>
-                <div class="quick-amounts">
-                    <button class="amount-option" data-amount="10">10$</button>
-                    <button class="amount-option" data-amount="20">20$</button>
-                    <button class="amount-option" data-amount="50">50$</button>
-                    <button class="amount-option" data-amount="100">100$</button>
-                    <button class="amount-option" data-amount="200">200$</button>
-                    <button class="amount-option" data-amount="500">500$</button>
-                </div>
-            </div>
-
-            <!-- إدخال مخصص -->
-            <div class="custom-amount">
-                <h3>أو أدخل مبلغاً مخصصاً</h3>
-                <div class="amount-input-group">
-                    <div class="input-prefix">$</div>
-                    <input type="number" 
-                           id="customAmount" 
-                           min="10" 
-                           step="0.01" 
-                           placeholder="أدخل المبلغ هنا">
-                    <div class="input-suffix">دولار</div>
-                </div>
-                <div class="amount-slider">
-                    <input type="range" 
-                           id="amountSlider" 
-                           min="10" 
-                           max="1000" 
-                           step="10" 
-                           value="50">
-                    <div class="slider-labels">
-                        <span>10$</span>
-                        <span>100$</span>
-                        <span>500$</span>
-                        <span>1000$</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ملخص المبلغ -->
-            <div class="amount-summary">
-                <div class="summary-item">
-                    <span>المبلغ المطلوب:</span>
-                    <strong id="selectedAmount">0.00$</strong>
-                </div>
-                <div class="summary-item">
-                    <span>رسوم السحب:</span>
-                    <strong id="withdrawalFee">0.00$</strong>
-                </div>
-                <div class="summary-divider"></div>
-                <div class="summary-item total">
-                    <span>المبلغ المستلم:</span>
-                    <strong id="netAmount">0.00$</strong>
-                </div>
-                <div class="summary-item">
-                    <span>الرصيد المتبقي:</span>
-                    <strong id="remainingBalance">0.00$</strong>
-                </div>
-            </div>
-
-            <div class="step-actions">
-                <button class="btn btn-outline" onclick="window.location.href='/dashboard'">
-                    <i class="fas fa-times"></i> إلغاء
-                </button>
-                <button class="btn btn-primary" id="nextToStep2" disabled>
-                    التالي <i class="fas fa-arrow-left"></i>
-                </button>
-            </div>
-        </div>
-
-        <!-- الخطوة 2: طريقة السحب -->
-        <div class="withdraw-step" id="step2">
-            <div class="step-header">
-                <h2><i class="fas fa-credit-card"></i> كيف تريد استلام أموالك؟</h2>
-                <p>اختر طريقة السحب المناسبة لك</p>
-            </div>
-
-            <div class="payment-methods">
-                <div class="payment-method active" data-method="sham_kash">
-                    <div class="method-header">
-                        <div class="method-icon">
-                            <i class="fas fa-mobile-alt"></i>
-                        </div>
-                        <div class="method-info">
-                            <h3>شام كاش</h3>
-                            <p>الأسرع - يصل خلال 24 ساعة</p>
-                        </div>
-                        <div class="method-check">
-                            <i class="fas fa-check-circle"></i>
-                        </div>
-                    </div>
-                    <div class="method-details">
-                        <div class="detail">
-                            <i class="fas fa-clock"></i>
-                            <span>وقت المعالجة:</span>
-                            <strong>24-48 ساعة</strong>
-                        </div>
-                        <div class="detail">
-                            <i class="fas fa-percentage"></i>
-                            <span>الرسوم:</span>
-                            <strong>0%</strong>
-                        </div>
-                        <div class="detail">
-                            <i class="fas fa-shield-alt"></i>
-                            <span>الأمان:</span>
-                            <strong>عالية</strong>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="payment-method" data-method="bank_transfer">
-                    <div class="method-header">
-                        <div class="method-icon">
-                            <i class="fas fa-university"></i>
-                        </div>
-                        <div class="method-info">
-                            <h3>حوالة بنكية</h3>
-                            <p>للحسابات البنكية</p>
-                        </div>
-                        <div class="method-check">
-                            <i class="far fa-circle"></i>
-                        </div>
-                    </div>
-                    <div class="method-details">
-                        <div class="detail">
-                            <i class="fas fa-clock"></i>
-                            <span>وقت المعالجة:</span>
-                            <strong>3-5 أيام عمل</strong>
-                        </div>
-                        <div class="detail">
-                            <i class="fas fa-percentage"></i>
-                            <span>الرسوم:</span>
-                            <strong>1%</strong>
-                        </div>
-                        <div class="detail">
-                            <i class="fas fa-shield-alt"></i>
-                            <span>الأمان:</span>
-                            <strong>عالية جداً</strong>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- تفاصيل طريقة السحب -->
-            <div class="payment-details-form" id="shamKashDetails">
-                <h3><i class="fas fa-info-circle"></i> معلومات شام كاش</h3>
-                <div class="form-group">
-                    <label for="shamPhone">
-                        <i class="fas fa-phone"></i> رقم شام كاش
-                    </label>
-                    <input type="tel" 
-                           id="shamPhone" 
-                           required 
-                           placeholder="أدخل رقم هاتفك المرتبط بشام كاش">
-                </div>
-                <div class="form-group">
-                    <label for="shamName">
-                        <i class="fas fa-user"></i> الاسم كما في شام كاش
-                    </label>
-                    <input type="text" 
-                           id="shamName" 
-                           required 
-                           placeholder="الاسم المرتبط بحساب شام كاش">
-                </div>
-            </div>
-
-            <div class="payment-details-form" id="bankDetails" style="display: none;">
-                <h3><i class="fas fa-university"></i> معلومات الحساب البنكي</h3>
-                <div class="form-group">
-                    <label for="bankName">
-                        <i class="fas fa-building"></i> اسم البنك
-                    </label>
-                    <input type="text" 
-                           id="bankName" 
-                           placeholder="مثال: البنك المركزي">
-                </div>
-                <div class="form-group">
-                    <label for="accountNumber">
-                        <i class="fas fa-credit-card"></i> رقم الحساب
-                    </label>
-                    <input type="text" 
-                           id="accountNumber" 
-                           placeholder="رقم الحساب البنكي">
-                </div>
-                <div class="form-group">
-                    <label for="accountName">
-                        <i class="fas fa-user-tie"></i> اسم صاحب الحساب
-                    </label>
-                    <input type="text" 
-                           id="accountName" 
-                           placeholder="الاسم كما في السجلات البنكية">
-                </div>
-            </div>
-
-            <div class="step-actions">
-                <button class="btn btn-outline" id="backToStep1">
-                    <i class="fas fa-arrow-right"></i> السابق
-                </button>
-                <button class="btn btn-primary" id="nextToStep3">
-                    التالي <i class="fas fa-arrow-left"></i>
-                </button>
-            </div>
-        </div>
-
-        <!-- الخطوة 3: تأكيد الطلب -->
-        <div class="withdraw-step" id="step3">
-            <div class="step-header">
-                <h2><i class="fas fa-clipboard-check"></i> تأكيد طلب السحب</h2>
-                <p>راجع تفاصيل طلبك قبل الإرسال</p>
-            </div>
-
-            <div class="confirmation-card">
-                <div class="confirmation-header">
-                    <i class="fas fa-file-invoice-dollar"></i>
-                    <h3>ملخص الطلب</h3>
-                </div>
-                
-                <div class="confirmation-details">
-                    <div class="detail-row">
-                        <span>رقم الطلب:</span>
-                        <strong id="orderId">سيتم إنشاؤه</strong>
-                    </div>
-                    <div class="detail-row">
-                        <span>التاريخ والوقت:</span>
-                        <strong id="orderDate">--</strong>
-                    </div>
-                    <div class="detail-row">
-                        <span>المبلغ المطلوب:</span>
-                        <strong id="confirmAmount">0.00$</strong>
-                    </div>
-                    <div class="detail-row">
-                        <span>رسوم السحب:</span>
-                        <strong id="confirmFee">0.00$</strong>
-                    </div>
-                    <div class="detail-row total">
-                        <span>المبلغ المستلم:</span>
-                        <strong id="confirmNet">0.00$</strong>
-                    </div>
-                    <div class="detail-row">
-                        <span>طريقة السحب:</span>
-                        <strong id="confirmMethod">--</strong>
-                    </div>
-                    <div class="detail-row">
-                        <span>الحساب المستلم:</span>
-                        <strong id="confirmAccount">--</strong>
-                    </div>
-                    <div class="detail-row">
-                        <span>الوقت المتوقع:</span>
-                        <strong id="confirmTime">24-48 ساعة</strong>
-                    </div>
-                </div>
-                
-                <div class="confirmation-notice">
-                    <i class="fas fa-info-circle"></i>
-                    <p>⚠️ سيتم تجميد المبلغ من رصيدك لحين معالجة الطلب. يمكن إلغاء الطلب إذا كان قيد الانتظار.</p>
-                </div>
-            </div>
-
-            <!-- الشروط والأحكام -->
-            <div class="terms-section">
-                <div class="terms-checkbox">
-                    <input type="checkbox" id="acceptTerms">
-                    <label for="acceptTerms">
-                        أوافق على <a href="/terms" target="_blank">الشروط والأحكام</a> 
-                        و <a href="/privacy" target="_blank">سياسة الخصوصية</a>
-                    </label>
-                </div>
-                
-                <div class="terms-info">
-                    <h4><i class="fas fa-exclamation-triangle"></i> ملاحظات هامة:</h4>
-                    <ul>
-                        <li>يجب أن يكون الاسم مطابقاً للاسم المسجل في طريقة السحب</li>
-                        <li>قد تطلب منك إدارة الموقع وثائق إضافية للتحقق</li>
-                        <li>يتم معالجة الطلبات خلال أوقات العمل الرسمية</li>
-                        <li>لن نتحمل مسؤولية الأخطاء في بيانات الاستلام</li>
-                    </ul>
-                </div>
-            </div>
-
-            <div class="step-actions">
-                <button class="btn btn-outline" id="backToStep2">
-                    <i class="fas fa-arrow-right"></i> السابق
-                </button>
-                <button class="btn btn-primary" id="submitWithdrawal" disabled>
-                    <i class="fas fa-paper-plane"></i> إرسال طلب السحب
-                </button>
-            </div>
-        </div>
-
-        <!-- الخطوة 4: اكتمال الطلب -->
-        <div class="withdraw-step" id="step4">
-            <div class="success-card">
-                <div class="success-icon">
-                    <i class="fas fa-check-circle"></i>
-                </div>
-                
-                <h2>تم إرسال طلب السحب بنجاح! 🎉</h2>
-                
-                <div class="success-details">
-                    <div class="detail-card">
-                        <i class="fas fa-hashtag"></i>
-                        <div>
-                            <h4>رقم الطلب</h4>
-                            <p id="successOrderId">--</p>
-                        </div>
-                    </div>
-                    
-                    <div class="detail-card">
-                        <i class="fas fa-money-bill-wave"></i>
-                        <div>
-                            <h4>المبلغ</h4>
-                            <p id="successAmount">0.00$</p>
-                        </div>
-                    </div>
-                    
-                    <div class="detail-card">
-                        <i class="fas fa-clock"></i>
-                        <div>
-                            <h4>الوقت المتوقع</h4>
-                            <p id="successTime">24-48 ساعة</p>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="success-message">
-                    <p>✅ تم تجميد المبلغ من رصيدك</p>
-                    <p>📧 سيصلك تأكيد عبر البريد الإلكتروني</p>
-                    <p>⏳ يمكنك تتبع حالة الطلب من لوحة التحكم</p>
-                </div>
-                
-                <div class="success-actions">
-                    <button class="btn btn-primary" onclick="window.location.href='/dashboard'">
-                        <i class="fas fa-tachometer-alt"></i> العودة للوحة التحكم
-                    </button>
-                    <button class="btn btn-outline" onclick="window.location.href='/withdraw/history'">
-                        <i class="fas fa-history"></i> عرض سجل السحوبات
-                    </button>
-                    <button class="btn btn-outline" id="newWithdrawalBtn">
-                        <i class="fas fa-plus"></i> طلب سحب جديد
-                    </button>
-                </div>
-                
-                <div class="success-notice">
-                    <i class="fas fa-headset"></i>
-                    <p>لأي استفسار، يمكنك التواصل مع <a href="/support">الدعم الفني</a></p>
-                </div>
-            </div>
-        </div>
-
-        <!-- قسم المعلومات الجانبية -->
-        <aside class="withdraw-sidebar">
-            <!-- إحصائيات السحب -->
-            <div class="sidebar-card">
-                <h3><i class="fas fa-chart-bar"></i> إحصائيات سحوباتك</h3>
-                <div class="sidebar-stats">
-                    <div class="stat-item">
-                        <span>طلبات هذا الشهر:</span>
-                        <strong id="monthRequests">0</strong>
-                    </div>
-                    <div class="stat-item">
-                        <span>المسحوب هذا الشهر:</span>
-                        <strong id="monthAmount">0.00$</strong>
-                    </div>
-                    <div class="stat-item">
-                        <span>متوسط وقت المعالجة:</span>
-                        <strong id="avgProcessing">24 ساعة</strong>
-                    </div>
-                    <div class="stat-item">
-                        <span>نسبة الطلبات المكتملة:</span>
-                        <strong id="completionRate">100%</strong>
-                    </div>
-                </div>
-            </div>
-
-            <!-- آخر السحوبات -->
-            <div class="sidebar-card">
-                <h3><i class="fas fa-history"></i> آخر السحوبات</h3>
-                <div class="recent-withdrawals" id="recentWithdrawals">
-                    <div class="empty-state">
-                        <i class="fas fa-money-bill-wave"></i>
-                        <p>لا توجد سحوبات سابقة</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- النصائح -->
-            <div class="sidebar-card tips-card">
-                <h3><i class="fas fa-lightbulb"></i> نصائح مهمة</h3>
-                <ul class="tips-list">
-                    <li>
-                        <i class="fas fa-check-circle"></i>
-                        <span>تأكد من صحة بيانات الاستلام</span>
-                    </li>
-                    <li>
-                        <i class="fas fa-check-circle"></i>
-                        <span>حافظ على الحد الأدنى للسحب لتوفير الرسوم</span>
-                    </li>
-                    <li>
-                        <i class="fas fa-check-circle"></i>
-                        <span>السحوبات تتم خلال أوقات العمل</span>
-                    </li>
-                    <li>
-                        <i class="fas fa-check-circle"></i>
-                        <span>يمكنك تتبع حالة الطلب في أي وقت</span>
-                    </li>
-                </ul>
-            </div>
-        </aside>
-    </div>
-
-    <!-- نموذج الإلغاء -->
-    <div class="modal" id="cancelModal">
-        <div class="modal-content">
-            <div class="modal-icon warning">
-                <i class="fas fa-exclamation-triangle"></i>
-            </div>
-            <h2>إلغاء عملية السحب</h2>
-            <p>هل أنت متأكد أنك تريد إلغاء عملية السحب الحالية؟</p>
-            <p class="modal-note">سيتم فقدان جميع البيانات المدخلة</p>
-            <div class="modal-actions">
-                <button class="btn btn-outline" id="cancelCancel">استمرار</button>
-                <button class="btn btn-danger" id="confirmCancel">نعم، ألغِ</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- رسائل النوافذ المنبثقة -->
-    <div id="toastContainer"></div>
-
-    <script src="/js/withdraw.js"></script>
-</body>
-  </html>
