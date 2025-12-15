@@ -8,13 +8,21 @@ const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const path = require('path');
-const authenticate = require('./middleware/auth'); // <-- استيراد الـ middleware
+const authenticate = require('./middleware/auth');
+const http = require('http');
+const { Server } = require("socket.io");
 
-// تحميل المتغيرات البيئية
 dotenv.config();
 
-// تهيئة التطبيق
 const app = express();
+const server = http.createServer(app); // <-- إنشاء خادم HTTP
+const io = new Server(server, { // <-- ربط socket.io بالخادم
+    cors: {
+        origin: "*", // في بيئة الإنتاج، يجب تحديد رابط الواجهة الأمامية فقط
+        methods: ["GET", "POST"]
+    }
+});
+
 
 // Middleware
 app.use(helmet());
@@ -23,6 +31,43 @@ app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
+
+
+
+
+ 
+// --- بداية منطق Socket.io ---
+// مصفوفة لتخزين المستخدمين المتصلين حالياً
+const onlineUsers = new Map();
+
+io.on('connection', (socket) => {
+    console.log('A user connected:', socket.id);
+
+    // عند تسجيل المستخدم دخوله من الواجهة الأمامية
+    socket.on('registerUser', (userId) => {
+        console.log(`Registering user ${userId} with socket ${socket.id}`);
+        onlineUsers.set(userId, socket.id);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('User disconnected:', socket.id);
+        // إزالة المستخدم من قائمة المتصلين عند قطع الاتصال
+        for (let [userId, socketId] of onlineUsers.entries()) {
+            if (socketId === socket.id) {
+                onlineUsers.delete(userId);
+                break;
+            }
+        }
+    });
+});
+
+// تمرير io و onlineUsers إلى المسارات عبر middleware
+app.use((req, res, next) => {
+    req.io = io;
+    req.onlineUsers = onlineUsers;
+    next();
+});
+
 
 // تكوين Cloudinary
 cloudinary.config({
@@ -186,6 +231,6 @@ app.use((err, req, res, next) => {
 
 // تشغيل السيرفر
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+server.listen(PORT, () => { // <-- نستخدم server.listen بدلاً من app.listen
     console.log(`Server running on port ${PORT}`);
 });
