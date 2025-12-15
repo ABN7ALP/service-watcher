@@ -4,6 +4,7 @@ const spinSchema = new mongoose.Schema({
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
+        index: true,
         required: true
     },
     amount: {
@@ -25,6 +26,7 @@ const spinSchema = new mongoose.Schema({
     },
     createdAt: {
         type: Date,
+        index: true,
         default: Date.now
     }
 });
