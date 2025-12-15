@@ -240,7 +240,7 @@ function startSpinAnimation(winningAmount) {
     currentRotation = newRotation % 360;
 
     // 2️⃣ التحقق البصري (DESYNC CHECK) ⬅️ هون
-    const finalAngle = (currentRotation + 90 + 360) % 360;
+    const finalAngle = (360 - currentRotation + 90) % 360;
     const finalIndex = Math.floor(finalAngle / segmentAngle);
     const visualValue = wheelSegments[finalIndex];
 
