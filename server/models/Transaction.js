@@ -4,11 +4,13 @@ const transactionSchema = new mongoose.Schema({
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
+        index: true,
         required: true
     },
     type: {
         type: String,
         enum: ['deposit', 'withdraw', 'spin'],
+        index: true,
         required: true
     },
     amount: {
@@ -49,6 +51,7 @@ const transactionSchema = new mongoose.Schema({
     },
     createdAt: {
         type: Date,
+        index: true,
         default: Date.now
     }
 });
