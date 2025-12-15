@@ -99,8 +99,9 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.translate(-centerX, -centerY);
 
         wheelSegments.forEach((segment, i) => {
-            const startAngle = (i * segmentAngle) * Math.PI / 180;
-            const endAngle = ((i + 1) * segmentAngle) * Math.PI / 180;
+         const ANGLE_OFFSET = -90 * Math.PI / 180;
+         const startAngle = (i * segmentAngle) * Math.PI / 180 + ANGLE_OFFSET;
+         const endAngle = ((i + 1) * segmentAngle) * Math.PI / 180 + ANGLE_OFFSET;
 
             ctx.beginPath();
             ctx.moveTo(centerX, centerY);
@@ -114,7 +115,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             ctx.save();
             ctx.translate(centerX, centerY);
-            ctx.rotate(startAngle + (segmentAngle / 2) * Math.PI / 180);
+            ctx.rotate(
+                startAngle + (segmentAngle / 2) * Math.PI / 180
+            );
             ctx.textAlign = 'right';
             ctx.fillStyle = '#fff';
             ctx.font = 'bold 24px Cairo';
@@ -189,7 +192,9 @@ function startSpinAnimation(winningAmount) {
     const totalRotation = (fullSpins * 360) + targetAngle;
 
     // انحراف بسيط جداً لإحساس طبيعي
-    const finalJitter = (Math.random() - 0.5) * (segmentAngle * 0.2);
+    const SAFE_MARGIN = segmentAngle * 0.15;
+     const finalJitter =
+    (Math.random() - 0.5) * SAFE_MARGIN;
     const finalTargetRotation = totalRotation + finalJitter;
 
     // إعدادات الأنيميشن
@@ -214,11 +219,13 @@ function startSpinAnimation(winningAmount) {
         drawWheel(newRotation);
 
         // صوت التكة بين الشرائح
-        const currentSegment =
-            Math.floor((newRotation % 360) / segmentAngle);
-        const lastSegment =
-            Math.floor((lastTickAngle % 360) / segmentAngle);
-
+        const adjustedAngle = (newRotation + 90 + 360) % 360;
+           const currentSegment =
+            Math.floor(adjustedAngle / segmentAngle);
+            const lastAdjustedAngle = (lastTickAngle + 90 + 360) % 360;
+            const lastSegment =
+            Math.floor(lastAdjustedAngle / segmentAngle);
+        
         if (currentSegment !== lastSegment) {
             tickSound.currentTime = 0;
             tickSound.play();
@@ -227,22 +234,38 @@ function startSpinAnimation(winningAmount) {
         lastTickAngle = newRotation;
 
         if (progress < 1) {
-            animationFrameId = requestAnimationFrame(animate);
-        } else {
-            // تثبيت الزاوية النهائية
-            currentRotation = newRotation % 360;
-            isSpinning = false;
-            spinBtn.disabled = false;
-            spinBtn.innerHTML = '<i class="fas fa-redo"></i> إدارة العجلة ($1)';
+    animationFrameId = requestAnimationFrame(animate);
+} else {
+    // 1️⃣ تثبيت زاوية التوقف النهائية
+    currentRotation = newRotation % 360;
 
-            setTimeout(() => {
-                winSound.play();
-                showResultModal(winningAmount);
-                updateUserInfo();
-                loadRecentWins();
-                loadTransactions();
-            }, 500);
-        }
+    // 2️⃣ التحقق البصري (DESYNC CHECK) ⬅️ هون
+    const finalAngle = (currentRotation + 90 + 360) % 360;
+    const finalIndex = Math.floor(finalAngle / segmentAngle);
+    const visualValue = wheelSegments[finalIndex];
+
+    if (visualValue !== winningAmount) {
+        console.error('❌ DESYNC DETECTED', {
+            visualValue,
+            winningAmount,
+            finalAngle
+        });
+    }
+
+    // 3️⃣ إنهاء الدوران
+    isSpinning = false;
+    spinBtn.disabled = false;
+    spinBtn.innerHTML = '<i class="fas fa-redo"></i> إدارة العجلة ($1)';
+
+    // 4️⃣ عرض النتيجة
+    setTimeout(() => {
+        winSound.play();
+        showResultModal(winningAmount);
+        updateUserInfo();
+        loadRecentWins();
+        loadTransactions();
+    }, 500);
+}
     }
 
     cancelAnimationFrame(animationFrameId);
