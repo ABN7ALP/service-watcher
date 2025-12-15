@@ -12,6 +12,7 @@ const authenticate = require('./middleware/auth');
 const http = require('http');
 const { Server } = require("socket.io");
 
+
 dotenv.config();
 
 const app = express();
@@ -108,12 +109,15 @@ const Spin = require('./models/Spin');
 const authRoutes = require('./routes/auth');
 const paymentRoutes = require('./routes/payment');
 const spinRoutes = require('./routes/spin');
+const adminRoutes = require('./routes/admin'); // <-- إضافة جديدة
+const adminAuth = require('./middleware/adminAuth'); // <-- إضافة جديدة
 
 
 // استخدام المسارات
 app.use('/api/auth', authRoutes);
 app.use('/api/payment', authenticate, paymentRoutes(upload));
 app.use('/api/spin', authenticate, spinRoutes);
+app.use('/api/admin', adminAuth, adminRoutes); // <-- إضافة جديدة: حماية كل مسارات الأدمن
 
 
 // مسار إضافي للحصول على معلومات المستخدم
