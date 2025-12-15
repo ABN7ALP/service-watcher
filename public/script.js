@@ -175,13 +175,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
         // 1. حساب زاوية التوقف النهائية
-        const winningSegmentCenterAngle = (winningSegmentIndex * segmentAngle) + (segmentAngle / 2);
+        // زاوية منتصف الشريحة الفائزة
+       const winningSegmentCenterAngle =
+          (winningSegmentIndex * segmentAngle) + (segmentAngle / 2);
 
-        // 2. تحديد زاوية التوقف النهائية.
-        // يجب أن تكون زاوية دوران العجلة عكس اتجاه زاوية الشريحة لتصطف مع المؤشر.
-        // مثال: إذا كانت الشريحة عند 90 درجة، يجب أن تدور العجلة -90 درجة.
-        const targetAngle = 360 - winningSegmentCenterAngle;
+       // تعويض موضع المؤشر (أعلى العجلة)
+      const POINTER_OFFSET = 90;
 
+     // زاوية التوقف النهائية الصحيحة 100%
+      const targetAngle =
+         360 - winningSegmentCenterAngle - POINTER_OFFSET;
+        
         // 3. إضافة دورات كاملة عشوائية للتشويق.
         const fullSpins = 7 + Math.floor(Math.random() * 4); // بين 7 و 10 دورات
         const totalRotation = (fullSpins * 360) + targetAngle;
