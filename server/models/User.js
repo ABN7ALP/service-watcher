@@ -48,6 +48,11 @@ const userSchema = new mongoose.Schema({
     shamCashId: {
         type: String
     },
+    role: { // <-- إضافة جديدة
+        type: String,
+        enum: ['user', 'admin'],
+        default: 'user'
+    },
     isActive: {
         type: Boolean,
         default: true
