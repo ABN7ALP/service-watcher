@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 if (response.ok) {
                     currentUser = await response.json();
+                    initializeSocket(currentUser._id); // <-- إضافة جديدة: ابدأ الاتصال
                     showMainContent();
                     updateUserInfo();
                     loadTransactions();
@@ -303,6 +304,39 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===================================================================
 
 
+
+
+    let socket;
+
+function initializeSocket(userId) {
+    socket = io(); // الاتصال بالخادم
+
+    // إرسال معرف المستخدم للخادم لربطه بالجلسة الحالية
+    socket.on('connect', () => {
+        console.log('Connected to server with socket ID:', socket.id);
+        socket.emit('registerUser', userId);
+    });
+
+    // الاستماع لأي إشعارات قادمة من الخادم
+    socket.on('notification', (payload) => {
+        const { type, message, newBalance } = payload;
+
+        // إظهار الإشعار
+        showNotification(message, type);
+
+        // تحديث الرصيد فوراً
+        if (newBalance !== undefined) {
+            currentUser.balance = newBalance;
+            updateUserInfo();
+        }
+
+        // تحديث قائمة المعاملات
+        loadTransactions();
+    });
+}
+// --- نهاية إضافات Socket.io ---
+    
+
     // --- دوال الواجهة والمساعدة (تم إعادة تنظيمها) ---
 
     function switchTab(tabName) {
@@ -337,6 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await response.json();
                 localStorage.setItem('token', data.token);
                 currentUser = data.user;
+                initializeSocket(currentUser._id); 
                 showMainContent();
                 updateUserInfo();
                 loadTransactions();
