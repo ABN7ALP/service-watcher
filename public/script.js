@@ -281,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const result = await response.json();
                // currentUser.balance = result.newBalance; // تحديث الرصيد فوراً
                 updateUserInfo(); // تحديث الواجهة بالرصيد المخصوم
-                startSpinAnimation(result.amount); // بدء الأنيميشن بالنتيجة من الخادم
+                startSpinAnimation(result);// بدء الأنيميشن بالنتيجة من الخادم
             } else {
                 const error = await response.json();
                 showNotification(error.message || 'حدث خطأ', 'error');
