@@ -103,48 +103,77 @@ module.exports = (upload) => {
     
     // تحديث حالة المعاملة (للإدارة)
     router.put('/admin/transactions/:id', async (req, res) => {
-        try {
-            const { status, adminNote } = req.body;
-            const transactionId = req.params.id;
-            
-            // إيجاد المعاملة
-            const transaction = await Transaction.findById(transactionId);
-            
-            if (!transaction) {
-                return res.status(404).json({ message: 'المعاملة غير موجودة' });
-            }
-            
-            // تحديث الحالة
-            transaction.status = status;
-            transaction.adminNote = adminNote;
-            transaction.processedBy = req.user._id;
-            transaction.processedAt = new Date();
-            
-            // إذا تمت الموافقة على الشحن، تحديث رصيد المستخدم
-            if (transaction.type === 'deposit' && status === 'approved') {
-                const user = await User.findById(transaction.user);
-                await user.updateBalance(transaction.amount, 'deposit');
-                transaction.note = `تم شحن $${transaction.amount} إلى رصيدك`;
-            }
-            
-            // إذا تمت الموافقة على السحب، خصم الرصيد
-            if (transaction.type === 'withdraw' && status === 'approved') {
-                const user = await User.findById(transaction.user);
-                await user.updateBalance(transaction.amount, 'withdraw');
-                transaction.note = `تم سحب $${transaction.amount} من رصيدك`;
-            }
-            
-            await transaction.save();
-            
-            res.json({
-                message: 'تم تحديث حالة المعاملة',
-                transaction
-            });
-        } catch (error) {
-            console.error('Update transaction error:', error);
-            res.status(500).json({ message: 'خطأ في الخادم' });
+    try {
+        const { status, adminNote } = req.body;
+        const transactionId = req.params.id;
+        const { io, onlineUsers } = req; // <-- الحصول على io من الطلب
+
+        const transaction = await Transaction.findById(transactionId).populate('user');
+        if (!transaction) {
+            return res.status(404).json({ message: 'المعاملة غير موجودة' });
         }
-    });
-    
-    return router;
+
+        // --- بداية منطق الإشعارات الفورية ---
+        const user = transaction.user;
+        let notificationPayload = null;
+
+        // إذا تمت الموافقة على الشحن
+        if (transaction.type === 'deposit' && status === 'approved' && transaction.status !== 'approved') {
+            await user.updateBalance(transaction.amount, 'deposit');
+            transaction.note = `تمت إضافة $${transaction.amount} إلى رصيدك.`;
+            notificationPayload = {
+                type: 'success',
+                message: `تمت الموافقة على طلب الشحن. أُضيف $${transaction.amount} إلى رصيدك.`,
+                newBalance: user.balance
+            };
+        }
+        
+        // إذا تمت الموافقة على السحب
+        if (transaction.type === 'withdraw' && status === 'approved' && transaction.status !== 'approved') {
+            // الرصيد يتم خصمه عند تقديم الطلب، لا حاجة لخصمه مرة أخرى
+            transaction.note = `تمت الموافقة على سحب $${transaction.amount}.`;
+            notificationPayload = {
+                type: 'success',
+                message: `تمت الموافقة على طلب السحب بقيمة $${transaction.amount}.`,
+                newBalance: user.balance
+            };
+        }
+
+        // إذا تم رفض الطلب
+        if (status === 'rejected' && transaction.status !== 'rejected') {
+            // إذا كان الطلب سحباً مرفوضاً، يجب إعادة المبلغ للرصيد
+            if (transaction.type === 'withdraw') {
+                await user.updateBalance(transaction.amount, 'deposit'); // "deposit" لإعادة المبلغ
+            }
+            transaction.note = `تم رفض طلبك. السبب: ${adminNote || 'غير محدد'}`;
+            notificationPayload = {
+                type: 'error',
+                message: transaction.note,
+                newBalance: user.balance
+            };
+        }
+
+        // إرسال الإشعار إذا كان المستخدم متصلاً
+        if (notificationPayload) {
+            const userSocketId = onlineUsers.get(user._id.toString());
+            if (userSocketId) {
+                io.to(userSocketId).emit('notification', notificationPayload);
+            }
+        }
+        // --- نهاية منطق الإشعارات الفورية ---
+
+        transaction.status = status;
+        transaction.adminNote = adminNote;
+        transaction.processedBy = req.user._id; // يفترض أن المدير مسجل دخوله
+        transaction.processedAt = new Date();
+        await transaction.save();
+        
+        res.json({ message: 'تم تحديث حالة المعاملة', transaction });
+    } catch (error) {
+        console.error('Update transaction error:', error);
+        res.status(500).json({ message: 'خطأ في الخادم' });
+    }
+});
+
+return router;
 };
