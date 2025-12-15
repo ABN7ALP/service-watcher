@@ -163,6 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
      * @param {number} winningAmount - المبلغ الفائز الذي حدده الخادم
      */
     function startSpinAnimation(winningAmount) {
+        const { amount: winningAmount, newBalance } = result;
         const winningSegmentIndex = wheelSegments.indexOf(winningAmount);
         if (winningSegmentIndex === -1) {
             console.error("Winning amount not found in segments!", winningAmount);
@@ -223,24 +224,30 @@ document.addEventListener('DOMContentLoaded', () => {
             lastTickAngle = newRotation;
 
             // 8. الاستمرار في الأنيميشن أو التوقف (لا تغيير هنا)
-            if (progress < 1) {
-                animationFrameId = requestAnimationFrame(animate);
-            } else {
-                // عند انتهاء الأنيميشن، اضبط زاوية الدوران النهائية بدقة
-                currentRotation = newRotation % 360;
-                isSpinning = false;
-                spinBtn.disabled = false;
-                spinBtn.innerHTML = '<i class="fas fa-redo"></i> إدارة العجلة ($1)';
-                
-                setTimeout(() => {
-                    winSound.play();
-                    showResultModal(winningAmount);
-                    updateUserInfo();
-                    loadRecentWins();
-                    loadTransactions();
-                }, 500);
-            }
+            
+        if (progress < 1) {
+            animationFrameId = requestAnimationFrame(animate);
+        } else {
+            // --- بداية التعديل: تحديث الرصيد في اللحظة الصحيحة ---
+            currentRotation = newRotation % 360;
+            isSpinning = false;
+            spinBtn.disabled = false;
+            spinBtn.innerHTML = '<i class="fas fa-redo"></i> إدارة العجلة ($1)';
+            
+            // تحديث الرصيد النهائي هنا، قبل إظهار النتيجة
+            currentUser.balance = newBalance; 
+            
+            setTimeout(() => {
+                winSound.play();
+                showResultModal(winningAmount);
+                updateUserInfo(); // تحديث الواجهة بالرصيد النهائي
+                loadRecentWins();
+                loadTransactions();
+            }, 500);
+            // --- نهاية التعديل ---
         }
+    }
+
 
         // بدء حلقة الأنيميشن
         cancelAnimationFrame(animationFrameId);
@@ -273,7 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (response.ok) {
                 const result = await response.json();
-                currentUser.balance = result.newBalance; // تحديث الرصيد فوراً
+               // currentUser.balance = result.newBalance; // تحديث الرصيد فوراً
                 updateUserInfo(); // تحديث الواجهة بالرصيد المخصوم
                 startSpinAnimation(result.amount); // بدء الأنيميشن بالنتيجة من الخادم
             } else {
