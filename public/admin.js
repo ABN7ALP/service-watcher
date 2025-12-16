@@ -140,46 +140,58 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.classList.add('active'); // <-- التصحيح: نستخدم .add('active')
       });
 
-    document.getElementById('modal-cancel-btn').addEventListener('click', () => {
-        modal.classList.remove('active'); // <-- التصحيح: نستخدم .remove('active')
+    // زر الإلغاء
+document.getElementById('modal-cancel-btn').addEventListener('click', () => {
+    modal.classList.remove('active');
+    currentAction = null;
+});
+
+// زر التأكيد
+document.getElementById('modal-confirm-btn').addEventListener('click', async () => {
+    if (!currentAction) return;
+
+    const { id, type } = currentAction;
+    let url, body, method = 'PUT';
+
+    if (type === 'approve-trans') {
+        url = `/api/admin/transactions/${id}/status`;
+        body = { status: 'approved' };
+    } 
+    else if (type === 'reject-trans') {
+        url = `/api/admin/transactions/${id}/status`;
+        body = { 
+            status: 'rejected',
+            adminNote: document.getElementById('admin-note')?.value 
+        };
+    } 
+    else if (type === 'toggle-user') {
+        url = `/api/admin/users/${id}/status`;
+        body = { isActive: !(currentAction.status === 'true') };
+    }
+
+    try {
+        const response = await fetch(url, {
+            method,
+            headers,
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) throw new Error('Action failed');
+
+        if (type.includes('trans')) {
+            loadTransactions();
+            loadDashboardStats();
+        } else {
+            loadUsers();
+        }
+    } catch (err) {
+        console.error(err);
+        alert('فشل تنفيذ الإجراء');
+    } finally {
+        modal.classList.remove('active');
         currentAction = null;
-    });
-
-    document.getElementById('modal-cancel-btn').addEventListener('click', () => {
-        if (!currentAction) return;
-        const { id, type } = currentAction;
-        let url, body, method = 'PUT';
-
-        if (type === 'approve-trans') {
-            url = `/api/admin/transactions/${id}/status`;
-            body = { status: 'approved' };
-        } else if (type === 'reject-trans') {
-            url = `/api/admin/transactions/${id}/status`;
-            body = { status: 'rejected', adminNote: document.getElementById('admin-note').value };
-        } else if (type === 'toggle-user') {
-            url = `/api/admin/users/${id}/status`;
-            body = { isActive: !(currentAction.status === 'true') };
-        }
-
-        try {
-            const response = await fetch(url, { method, headers, body: JSON.stringify(body) });
-            if (!response.ok) throw new Error('Action failed');
-            
-            // إعادة تحميل البيانات بعد النجاح
-            if (type.includes('trans')) {
-                loadTransactions();
-                loadDashboardStats();
-            } else if (type.includes('user')) {
-                loadUsers();
-            }
-        } catch (error) {
-            console.error('Action error:', error);
-            alert('فشل تنفيذ الإجراء.');
-        } finally {
-            modal.classList.remove('active'); // <-- التصحيح: نستخدم .remove('active')
-            currentAction = null;
-        }
-    });
+    }
+});
 
     // --- تحميل البيانات الأولي وربط الفلاتر ---
     loadDashboardStats();
