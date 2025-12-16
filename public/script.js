@@ -144,7 +144,6 @@ document.addEventListener('DOMContentLoaded', () => {
     async function handleDeposit(e) {
         e.preventDefault();
         const form = e.target;
-        const receiptInput = document.getElementById('receipt');
         if (receiptInput.files.length === 0) {
             showNotification('يرجى رفع صورة الإيصال أولاً', 'error');
             return;
