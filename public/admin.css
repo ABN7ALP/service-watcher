@@ -205,7 +205,7 @@ th {
 .action-btn:hover { transform: scale(1.2); }
 
 /* Modal styles */
-modal {
+.modal {
     display: none; /* مخفية بشكل افتراضي */
     position: fixed;
     top: 0;
