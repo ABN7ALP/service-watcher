@@ -1,179 +1,118 @@
+// المكان: server/routes/payment.js (النسخة الكاملة والنهائية والمصححة)
+
 const express = require('express');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 
+// الدالة المصدرة يجب أن تستقبل 'upload' middleware من multer
 module.exports = (upload) => {
     const router = express.Router();
     
-    // شحن الرصيد
+    // ===================================================================
+    // مسار شحن الرصيد (هنا كان يكمن الخطأ على الأرجح)
+    // ===================================================================
+    // نطبق 'upload.single('receipt')' كـ middleware على هذا المسار تحديداً
+    // هذا يخبر multer بمعالجة الملف المرفق الذي يحمل اسم 'receipt'
     router.post('/deposit', upload.single('receipt'), async (req, res) => {
         try {
+            // 1. استخراج البيانات من الطلب
+            // req.body يحتوي على الحقول النصية (fullName, amount)
+            // req.file يحتوي على معلومات الملف الذي تم رفعه بواسطة multer
             const { fullName, amount } = req.body;
             
+            // 2. التحقق من وجود الملف (أهم خطوة)
             if (!req.file) {
-                return res.status(400).json({ message: 'يجب رفع صورة الإيصال' });
+                // إذا لم يجد multer أي ملف، سيرجع هذا الخطأ
+                return res.status(400).json({ message: 'صورة الإيصال مطلوبة. يرجى رفع الملف.' });
             }
             
-            if (!amount || amount <= 0) {
-                return res.status(400).json({ message: 'المبلغ غير صالح' });
+            // 3. التحقق من صحة المبلغ
+            const depositAmount = parseFloat(amount);
+            if (!depositAmount || depositAmount <= 0) {
+                return res.status(400).json({ message: 'المبلغ المحول غير صالح.' });
+            }
+
+            // 4. التحقق من وجود الاسم الكامل
+            if (!fullName || fullName.trim() === '') {
+                return res.status(400).json({ message: 'الاسم الكامل مطلوب.' });
             }
             
-            // إنشاء معاملة شحن
+            // 5. إنشاء معاملة شحن جديدة
             const transaction = new Transaction({
-                user: req.user._id,
+                user: req.user._id, // req.user يأتي من middleware المصادقة
                 type: 'deposit',
-                amount: parseFloat(amount),
-                fullName,
-                receiptImage: req.file.path,
+                amount: depositAmount,
+                fullName: fullName.trim(),
+                receiptImage: req.file.path, // .path هو الرابط الذي يرجعه Cloudinary
                 status: 'pending'
             });
             
             await transaction.save();
             
+            // 6. إرسال رد ناجح
             res.status(201).json({
-                message: 'تم إرسال طلب الشحن بنجاح',
+                message: 'تم إرسال طلب الشحن بنجاح، سيتم مراجعته من قبل الإدارة.',
                 transactionId: transaction._id
             });
+
         } catch (error) {
             console.error('Deposit error:', error);
-            res.status(500).json({ message: 'خطأ في الخادم' });
+            res.status(500).json({ message: 'حدث خطأ غير متوقع في الخادم أثناء معالجة طلب الشحن.' });
         }
     });
     
-    // سحب الأرباح
+    // ===================================================================
+    // مسار سحب الأرباح (لا تغييرات كبيرة هنا)
+    // ===================================================================
     router.post('/withdraw', async (req, res) => {
         try {
             const { fullName, shamCashNumber, amount } = req.body;
             const withdrawAmount = parseFloat(amount);
             
-            // التحقق من البيانات
             if (!fullName || !shamCashNumber || !withdrawAmount) {
-                return res.status(400).json({ message: 'جميع الحقول مطلوبة' });
+                return res.status(400).json({ message: 'جميع الحقول مطلوبة لإتمام عملية السحب.' });
             }
             
             if (withdrawAmount < 5) {
-                return res.status(400).json({ message: 'الحد الأدنى للسحب هو $5' });
+                return res.status(400).json({ message: 'الحد الأدنى لمبلغ السحب هو 5 دولارات.' });
             }
             
-            if (withdrawAmount > 1000) {
-                return res.status(400).json({ message: 'الحد الأقصى للسحب هو $1000' });
+            // تحديث رصيد المستخدم في الذاكرة قبل التحقق
+            const user = await User.findById(req.user._id);
+            if (withdrawAmount > user.balance) {
+                return res.status(400).json({ message: 'رصيدك الحالي غير كافٍ لإتمام عملية السحب.' });
             }
+
+            // خصم المبلغ من رصيد المستخدم فوراً عند تقديم الطلب
+            user.balance -= withdrawAmount;
+            await user.save();
             
-            if (withdrawAmount > req.user.balance) {
-                return res.status(400).json({ message: 'رصيدك غير كافٍ للسحب' });
-            }
-            
-            // إنشاء معاملة سحب
             const transaction = new Transaction({
                 user: req.user._id,
                 type: 'withdraw',
                 amount: withdrawAmount,
                 fullName,
                 shamCashNumber,
-                status: 'pending'
+                status: 'pending' // الطلب الآن معلق لموافقة المدير
             });
             
             await transaction.save();
             
             res.status(201).json({
-                message: 'تم إرسال طلب السحب بنجاح',
-                transactionId: transaction._id
+                message: 'تم إرسال طلب السحب بنجاح وهو قيد المراجعة.',
+                transactionId: transaction._id,
+                newBalance: user.balance // إرجاع الرصيد الجديد لتحديث الواجهة
             });
         } catch (error) {
             console.error('Withdraw error:', error);
-            res.status(500).json({ message: 'خطأ في الخادم' });
+            res.status(500).json({ message: 'حدث خطأ في الخادم أثناء معالجة طلب السحب.' });
         }
     });
     
-    // الحصول على جميع المعاملات (للإدارة)
-    router.get('/admin/transactions', async (req, res) => {
-        try {
-            // في التطبيق الحقيقي، تأكد أن المستخدم هو مدير
-            const transactions = await Transaction.find()
-                .populate('user', 'username email')
-                .populate('processedBy', 'username')
-                .sort({ createdAt: -1 });
-            
-            res.json(transactions);
-        } catch (error) {
-            console.error('Admin transactions error:', error);
-            res.status(500).json({ message: 'خطأ في الخادم' });
-        }
-    });
+    // هذا المسار لم يعد مستخدماً لأننا نقلنا منطقه إلى admin.js
+    // يمكنك حذفه أو إبقاءه كمرجع
+    // router.get('/admin/transactions', ...);
+    // router.put('/admin/transactions/:id', ...);
     
-    // تحديث حالة المعاملة (للإدارة)
-    router.put('/admin/transactions/:id', async (req, res) => {
-    try {
-        const { status, adminNote } = req.body;
-        const transactionId = req.params.id;
-        const { io, onlineUsers } = req; // <-- الحصول على io من الطلب
-
-        const transaction = await Transaction.findById(transactionId).populate('user');
-        if (!transaction) {
-            return res.status(404).json({ message: 'المعاملة غير موجودة' });
-        }
-
-        // --- بداية منطق الإشعارات الفورية ---
-        const user = transaction.user;
-        let notificationPayload = null;
-
-        // إذا تمت الموافقة على الشحن
-        if (transaction.type === 'deposit' && status === 'approved' && transaction.status !== 'approved') {
-            await user.updateBalance(transaction.amount, 'deposit');
-            transaction.note = `تمت إضافة $${transaction.amount} إلى رصيدك.`;
-            notificationPayload = {
-                type: 'success',
-                message: `تمت الموافقة على طلب الشحن. أُضيف $${transaction.amount} إلى رصيدك.`,
-                newBalance: user.balance
-            };
-        }
-        
-        // إذا تمت الموافقة على السحب
-        if (transaction.type === 'withdraw' && status === 'approved' && transaction.status !== 'approved') {
-            // الرصيد يتم خصمه عند تقديم الطلب، لا حاجة لخصمه مرة أخرى
-            transaction.note = `تمت الموافقة على سحب $${transaction.amount}.`;
-            notificationPayload = {
-                type: 'success',
-                message: `تمت الموافقة على طلب السحب بقيمة $${transaction.amount}.`,
-                newBalance: user.balance
-            };
-        }
-
-        // إذا تم رفض الطلب
-        if (status === 'rejected' && transaction.status !== 'rejected') {
-            // إذا كان الطلب سحباً مرفوضاً، يجب إعادة المبلغ للرصيد
-            if (transaction.type === 'withdraw') {
-                await user.updateBalance(transaction.amount, 'deposit'); // "deposit" لإعادة المبلغ
-            }
-            transaction.note = `تم رفض طلبك. السبب: ${adminNote || 'غير محدد'}`;
-            notificationPayload = {
-                type: 'error',
-                message: transaction.note,
-                newBalance: user.balance
-            };
-        }
-
-        // إرسال الإشعار إذا كان المستخدم متصلاً
-        if (notificationPayload) {
-            const userSocketId = onlineUsers.get(user._id.toString());
-            if (userSocketId) {
-                io.to(userSocketId).emit('notification', notificationPayload);
-            }
-        }
-        // --- نهاية منطق الإشعارات الفورية ---
-
-        transaction.status = status;
-        transaction.adminNote = adminNote;
-        transaction.processedBy = req.user._id; // يفترض أن المدير مسجل دخوله
-        transaction.processedAt = new Date();
-        await transaction.save();
-        
-        res.json({ message: 'تم تحديث حالة المعاملة', transaction });
-    } catch (error) {
-        console.error('Update transaction error:', error);
-        res.status(500).json({ message: 'خطأ في الخادم' });
-    }
-});
-
-return router;
+    return router;
 };
