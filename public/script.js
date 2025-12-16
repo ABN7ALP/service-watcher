@@ -412,32 +412,69 @@ function initializeSocket(userId) {
         }
     }
 
-    async function handleDeposit(e) {
-        e.preventDefault();
-        const formData = new FormData(e.target);
-        if (!formData.get('receipt').name) {
-            showNotification('يرجى رفع صورة الإيصال', 'error');
-            return;
-        }
-        try {
-            const response = await fetch('/api/payment/deposit', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-                body: formData
-            });
-            if (response.ok) {
-                showNotification('تم إرسال طلب الشحن بنجاح', 'success');
-                e.target.reset();
-                document.getElementById('receiptPreview').innerHTML = '';
-                loadTransactions();
-            } else {
-                const error = await response.json();
-                showNotification(error.message || 'فشل إرسال الطلب', 'error');
-            }
-        } catch (error) {
-            showNotification('خطأ في الاتصال بالخادم', 'error');
-        }
+    // المكان: public/script.js
+// استبدل دالة handleDeposit القديمة بهذه النسخة المحسنة
+
+async function handleDeposit(e) {
+    e.preventDefault();
+    
+    const form = e.target;
+    const receiptInput = document.getElementById('receipt'); // <-- الحصول على عنصر الإدخال مباشرة
+
+    // --- بداية التصحيح: طريقة التحقق الجديدة والأكثر أماناً ---
+    
+    // 1. التحقق من أن المستخدم اختار ملفاً
+    if (receiptInput.files.length === 0) {
+        showNotification('يرجى رفع صورة الإيصال أولاً', 'error');
+        return;
     }
+
+    // 2. التحقق من أن الملف المختار هو صورة
+    const file = receiptInput.files[0];
+    if (!file.type.startsWith('image/')) {
+        showNotification('يرجى اختيار ملف صورة فقط (jpg, png, gif)', 'error');
+        return;
+    }
+
+    // --- نهاية التصحيح ---
+
+    // الآن بعد أن تأكدنا من وجود الملف، يمكننا إنشاء FormData بأمان
+    const formData = new FormData(form);
+    
+    // إضافة زر "جاري الإرسال..." لتعزيز تجربة المستخدم
+    const submitButton = form.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
+
+    try {
+        const response = await fetch('/api/payment/deposit', {
+            method: 'POST',
+            headers: { 
+                // لا نضع 'Content-Type' هنا، المتصفح سيقوم بذلك تلقائياً مع FormData
+                'Authorization': `Bearer ${localStorage.getItem('token')}` 
+            },
+            body: formData
+        });
+
+        if (response.ok) {
+            showNotification('تم إرسال طلب الشحن بنجاح، سيتم مراجعته قريباً.', 'success');
+            form.reset(); // تفريغ النموذج
+            document.getElementById('receiptPreview').innerHTML = ''; // إزالة معاينة الصورة
+            loadTransactions(); // تحديث قائمة المعاملات
+        } else {
+            const error = await response.json();
+            showNotification(error.message || 'فشل إرسال طلب الشحن', 'error');
+        }
+    } catch (error) {
+        console.error('Deposit error:', error);
+        showNotification('حدث خطأ في الاتصال بالخادم', 'error');
+    } finally {
+        // إعادة الزر إلى حالته الطبيعية سواء نجح الطلب أو فشل
+        submitButton.disabled = false;
+        submitButton.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال طلب الشحن';
+    }
+}
+
 
     async function handleWithdraw(e) {
         e.preventDefault();
