@@ -137,15 +137,15 @@ document.addEventListener('DOMContentLoaded', () => {
             modalTitle.textContent = `تأكيد ${newStatus}`;
             modalBody.textContent = `هل أنت متأكد من أنك تريد ${newStatus} هذا المستخدم؟`;
         }
-        modal.classList.remove('modal-hidden');
-    });
+        modal.classList.add('active'); // <-- التصحيح: نستخدم .add('active')
+      });
 
     document.getElementById('modal-cancel-btn').addEventListener('click', () => {
-        modal.classList.add('modal-hidden');
+        modal.classList.remove('active'); // <-- التصحيح: نستخدم .remove('active')
         currentAction = null;
     });
 
-    document.getElementById('modal-confirm-btn').addEventListener('click', async () => {
+    document.getElementById('modal-cancel-btn').addEventListener('click', () => {
         if (!currentAction) return;
         const { id, type } = currentAction;
         let url, body, method = 'PUT';
@@ -176,7 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Action error:', error);
             alert('فشل تنفيذ الإجراء.');
         } finally {
-            modal.classList.add('modal-hidden');
+            modal.classList.remove('active'); // <-- التصحيح: نستخدم .remove('active')
             currentAction = null;
         }
     });
