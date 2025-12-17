@@ -26,7 +26,16 @@ const io = new Server(server, { // <-- ربط socket.io بالخادم
 
 
 // Middleware
-app.use(helmet());
+app.use(
+    helmet({
+        contentSecurityPolicy: {
+            directives: {
+                ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+                "script-src": ["'self'", "d3js.org"], // <-- السماح بالسكريبتات من نطاقنا ومن d3js.org
+            },
+        },
+    })
+);
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
