@@ -555,3 +555,57 @@ body {
         width: 100%;
     }
   }
+
+
+/* --- أنماط خريطة العالم الجديدة (D3.js) --- */
+.map-container {
+    position: relative;
+    width: 100%;
+    max-width: 800px;
+    margin: 30px auto;
+    background-color: #aadaff; /* لون المحيط */
+    border-radius: 15px;
+    overflow: hidden;
+}
+
+#world-map svg {
+    width: 100%;
+    height: auto;
+}
+
+/* نمط الدول */
+.country {
+    fill: #f0e6d2; /* لون اليابسة */
+    stroke: #a99b85; /* لون الحدود */
+    stroke-width: 0.5px;
+}
+
+/* نمط المدن (النقاط) */
+.city-marker {
+    fill: var(--primary-color);
+    stroke: white;
+    stroke-width: 1.5px;
+    cursor: pointer;
+    transition: r 0.3s ease;
+}
+.city-marker:hover {
+    r: 8; /* تكبير النقطة عند مرور الفأرة */
+}
+
+/* نمط أسماء المدن */
+.city-label {
+    font-family: 'Cairo', sans-serif;
+    font-size: 12px;
+    fill: #333;
+    font-weight: 600;
+    pointer-events: none; /* لمنع النص من اعتراض النقرات */
+    text-shadow: 0 0 3px white, 0 0 3px white; /* هالة بيضاء حول النص للوضوح */
+}
+
+/* نمط الزون */
+.zone {
+    fill: rgba(255, 193, 7, 0.2);
+    stroke: #ffc107;
+    stroke-width: 3px;
+    pointer-events: none;
+}
