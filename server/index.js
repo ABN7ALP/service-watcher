@@ -105,84 +105,55 @@ async function processRound(roundId, io) {
     const round = rounds.get(roundId);
     if (!round || round.processed) return;
     round.processed = true;
-    rounds.delete(roundId); // احذف الجولة من الذاكرة
+    rounds.delete(roundId);
 
     const participants = round.participants;
     const numParticipants = participants.length;
 
-    // 1. حساب إجمالي المساهمات والعمولة
-    const totalContribution = numParticipants * 1; // SPIN_COST
+    const totalContribution = numParticipants * 1;
     const developerCut = totalContribution * 0.10;
     let amountToDistribute = totalContribution - developerCut;
 
-    let prizes = [];
-    
-
-    // ======================================================
-    // --- بداية المحرك الدرامي ---
-    // ======================================================
+    let initialPrizes = [];
 
     if (numParticipants > 1) {
-        // --- أ. منطق الجولة الجماعية (منافسة حقيقية) ---
-        console.log(`Processing GROUP round with ${numParticipants} players.`);
-
-        // استخدم خوارزمية "تقسيم العصا" لتوزيع المبلغ بالكامل
+        // منطق الجولة الجماعية
         let breaks = [0, amountToDistribute];
         for (let i = 0; i < numParticipants - 1; i++) {
             breaks.push(Math.random() * amountToDistribute);
         }
         breaks.sort((a, b) => a - b);
         for (let i = 0; i < breaks.length - 1; i++) {
-            prizes.push(breaks[i + 1] - breaks[i]);
+            initialPrizes.push(breaks[i + 1] - breaks[i]);
         }
-        prizes.sort(() => Math.random() - 0.5); // خلط عشوائي للجوائز
+        initialPrizes.sort(() => Math.random() - 0.5);
 
-        // --- تحديث ذاكرة السوق ---
         const average = amountToDistribute / numParticipants;
-        const variance = prizes.reduce((acc, p) => acc + Math.pow(p - average, 2), 0) / numParticipants;
+        const variance = initialPrizes.reduce((acc, p) => acc + Math.pow(p - average, 2), 0) / numParticipants;
         marketMemory.averagePrize = average;
-        marketMemory.volatility = Math.sqrt(variance); // الانحراف المعياري
-        console.log(`Market Memory Updated: Avg=${marketMemory.averagePrize}, Volatility=${marketMemory.volatility}`);
-
+        marketMemory.volatility = Math.sqrt(variance);
     } else {
-        // --- ب. منطق الجولة الفردية (محاكاة السوق) ---
-        console.log(`Processing SOLO round. Simulating market.`);
-        
-        // اللاعب يلعب ضد "شبح" آخر جولة جماعية
-        // يتم توليد جائزة بناءً على متوسط وتقلب السوق
+        // منطق الجولة الفردية
         const basePrize = marketMemory.averagePrize;
-        const volatilityEffect = (Math.random() - 0.5) * 2 * marketMemory.volatility; // تأثير التقلب
-        let prizeAmount = basePrize + volatilityEffect;
-
-        // تأكد من أن الجائزة لا تكون سالبة
-        prizeAmount = Math.max(0, prizeAmount);
-        
-        prizes.push(prizeAmount);
-        prizes = await applyBehavioralLayer(prizes, participants);
+        const volatilityEffect = (Math.random() - 0.5) * 2 * marketMemory.volatility;
+        let prizeAmount = Math.max(0, basePrize + volatilityEffect);
+        initialPrizes.push(prizeAmount);
     }
 
-    // ======================================================
-    // --- نهاية المحرك الدرامي ---
-    // ======================================================
+    const finalPrizes = await applyBehavioralLayer(initialPrizes, participants);
 
-    // 3. توزيع الجوائز وإرسال النتائج
     for (let i = 0; i < numParticipants; i++) {
         const participant = participants[i];
-        const prizeAmount = parseFloat(finalPrizes[i].toFixed(2)); 
-        
+        const prizeAmount = parseFloat(finalPrizes[i].toFixed(2));
         try {
             const user = await User.findById(participant.userId);
             if (user) {
                 user.balance += prizeAmount;
                 await user.save();
 
-                // تسجيل الدورة في قاعدة البيانات (مهم جداً للإحصائيات)
                 const spin = new Spin({
-                    user: user._id,
-                    amount: prizeAmount,
-                    cost: 1, // SPIN_COST
-                    status: prizeAmount >= 1 ? 'win' : 'lose',
-                    netResult: prizeAmount - 1
+                    user: user._id, amount: prizeAmount, cost: 1,
+                    status: prizeAmount >= 1 ? 'win' : 'lose', netResult: prizeAmount - 1
                 });
                 await spin.save();
 
@@ -198,6 +169,7 @@ async function processRound(roundId, io) {
         }
     }
 }
+
 
 
 async function applyBehavioralLayer(initialPrizes, participants) {
@@ -330,36 +302,32 @@ app.post('/api/spin', authenticate, async (req, res) => {
             return res.status(400).json({ message: 'فشل الاتصال بجولة اللعب.' });
         }
 
-          const now = Date.now();
-        let activeRoundId = await redis.get('active_round_id');
-        let round;
-
-        if (activeRoundId) {
-            const roundJSON = await redis.get(activeRoundId);
-            if (roundJSON) {
-                round = JSON.parse(roundJSON);
+        const now = Date.now();
+        let activeRound = null;
+        for (const round of rounds.values()) {
+            if (now < round.endsAt) {
+                activeRound = round;
+                break;
             }
         }
-
-        if (!round || now >= round.endsAt) {
-            // إنشاء جولة جديدة
-            const newRoundId = `round_${now}`;
-            round = {
-                id: newRoundId,
+        if (!activeRound) {
+            const roundId = `round_${now}`;
+            activeRound = {
+                id: roundId,
                 participants: [],
                 endsAt: now + ROUND_DURATION,
+                processed: false,
+                // **هذا هو السطر الذي كان ناقصاً ويسبب المشكلة**
+                timer: setTimeout(() => processRound(roundId, req.io), ROUND_DURATION + 500)
             };
-            // جدولة معالجة الجولة
-            setTimeout(() => processRound(newRoundId, req.io), ROUND_DURATION + 500);
-            await redis.set('active_round_id', newRoundId, 'PX', ROUND_DURATION + 1000); // PX: صلاحية بالمللي ثانية
+            rounds.set(roundId, activeRound);
         }
-        
-        round.participants.push({ userId: user._id.toString(), socketId: socketId });
-        await redis.set(round.id, JSON.stringify(round), 'PX', ROUND_DURATION + 2000); // تحديث بيانات الجولة
-        // --- نهاية منطق Redis ---
+        activeRound.participants.push({ userId: user._id.toString(), socketId: socketId });
 
-        res.json({ message: "تم الانضمام إلى جولة...", newBalance: user.balance });
-
+        res.json({
+            message: "تم الانضمام إلى جولة، انتظر النتيجة...",
+            newBalance: user.balance
+        });
     } catch (error) {
         console.error('Spin error:', error);
         res.status(500).json({ message: 'خطأ في الخادم' });
