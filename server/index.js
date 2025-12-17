@@ -14,6 +14,8 @@ const http = require('http');
 const { Server } = require("socket.io");
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
+const Redis = require('ioredis');
+const redis = new Redis(process.env.REDIS_URL);
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 // ===================================================================
@@ -94,9 +96,11 @@ const rounds = new Map();
 const ROUND_DURATION = 5000; // 5 ثوانٍ
 
 async function processRound(roundId, io) {
-    const round = rounds.get(roundId);
-    if (!round || round.processed) return;
-    round.processed = true;
+    const roundJSON = await redis.get(roundId);
+    if (!roundJSON) return;
+
+    await redis.del(roundId); // احذف الجولة فوراً لمنع معالجتها مرتين
+    const round = JSON.parse(roundJSON);
 
     const totalContribution = round.participants.length * 1;
     const developerCut = totalContribution * 0.10;
@@ -104,8 +108,14 @@ async function processRound(roundId, io) {
 
     let prizes = [];
     if (round.participants.length === 1) {
-        prizes.push(amountToDistribute);
+    // --- منطق جولة الحظ الفردية الجديد ---
+    const SOLO_WIN_CHANCE = 0.80; // 80% فرصة لاسترداد المبلغ
+    if (Math.random() < SOLO_WIN_CHANCE) {
+        prizes.push(1.00); // أعد له المبلغ كاملاً
     } else {
+        prizes.push(0); // لم يربح شيئاً
+      }
+      } else {
         let breaks = [0, amountToDistribute];
         for (let i = 0; i < round.participants.length - 1; i++) {
             breaks.push(Math.random() * amountToDistribute);
@@ -179,36 +189,42 @@ app.post('/api/spin', authenticate, async (req, res) => {
             return res.status(400).json({ message: 'فشل الاتصال بجولة اللعب.' });
         }
 
-        const now = Date.now();
-        let activeRound = null;
-        for (const round of rounds.values()) {
-            if (now < round.endsAt) {
-                activeRound = round;
-                break;
+          const now = Date.now();
+        let activeRoundId = await redis.get('active_round_id');
+        let round;
+
+        if (activeRoundId) {
+            const roundJSON = await redis.get(activeRoundId);
+            if (roundJSON) {
+                round = JSON.parse(roundJSON);
             }
         }
-        if (!activeRound) {
-            const roundId = `round_${now}`;
-            activeRound = {
-                id: roundId,
+
+        if (!round || now >= round.endsAt) {
+            // إنشاء جولة جديدة
+            const newRoundId = `round_${now}`;
+            round = {
+                id: newRoundId,
                 participants: [],
                 endsAt: now + ROUND_DURATION,
-                processed: false,
-                timer: setTimeout(() => processRound(roundId, req.io), ROUND_DURATION + 500)
             };
-            rounds.set(roundId, activeRound);
+            // جدولة معالجة الجولة
+            setTimeout(() => processRound(newRoundId, req.io), ROUND_DURATION + 500);
+            await redis.set('active_round_id', newRoundId, 'PX', ROUND_DURATION + 1000); // PX: صلاحية بالمللي ثانية
         }
-        activeRound.participants.push({ userId: user._id.toString(), socketId: socketId });
+        
+        round.participants.push({ userId: user._id.toString(), socketId: socketId });
+        await redis.set(round.id, JSON.stringify(round), 'PX', ROUND_DURATION + 2000); // تحديث بيانات الجولة
+        // --- نهاية منطق Redis ---
 
-        res.json({
-            message: "تم الانضمام إلى جولة، انتظر النتيجة...",
-            newBalance: user.balance
-        });
+        res.json({ message: "تم الانضمام إلى جولة...", newBalance: user.balance });
+
     } catch (error) {
         console.error('Spin error:', error);
         res.status(500).json({ message: 'خطأ في الخادم' });
     }
 });
+
 
 // هـ. بقية مسارات الـ API
 // استخدام المسارات
