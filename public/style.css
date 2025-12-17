@@ -177,11 +177,11 @@ body {
     z-index: 10;
 }
 
+/* استبدل النمط القديم لـ .spin-btn بهذا النمط الجديد */
 .spin-btn {
-    position: absolute;
-    bottom: -60px;
-    left: 50%;
-    transform: translateX(-50%);
+    display: block; /* اجعله يأخذ عرضاً كاملاً في حاويته */
+    width: fit-content; /* اجعل عرضه يناسب المحتوى */
+    margin: 20px auto 0; /* توسيط الزر مع هامش علوي */
     padding: 15px 40px;
     font-size: 18px;
     font-weight: 700;
@@ -194,17 +194,19 @@ body {
     align-items: center;
     gap: 10px;
     transition: all 0.3s ease;
+    box-shadow: 0 5px 20px rgba(245, 158, 11, 0.3);
 }
 
 .spin-btn:hover:not(:disabled) {
-    transform: translateX(-50%) scale(1.05);
+    transform: scale(1.05); /* تكبير بسيط عند المرور */
     box-shadow: 0 10px 25px rgba(245, 158, 11, 0.4);
 }
 
 .spin-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.6;
     cursor: not-allowed;
 }
+
 
 .wheel-results {
     margin-top: 40px;
