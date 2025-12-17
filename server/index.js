@@ -99,6 +99,7 @@ let marketMemory = {
     averagePrize: 0.90, // القيمة الافتراضية (لاعب واحد يستعيد 90%)
     volatility: 0.1 // مدى تقلب الجوائز
 };
+const playerStreaks = new Map();
 
 // استبدل processRound القديمة بهذه النسخة الكاملة والجديدة
 async function processRound(roundId, io) {
@@ -116,6 +117,7 @@ async function processRound(roundId, io) {
 
     let initialPrizes = [];
 
+    // --- الخطوة أ: حساب الجوائز الأولية (الاقتصاد) ---
     if (numParticipants > 1) {
         // منطق الجولة الجماعية
         let breaks = [0, amountToDistribute];
@@ -140,8 +142,10 @@ async function processRound(roundId, io) {
         initialPrizes.push(prizeAmount);
     }
 
-    const finalPrizes = await applyBehavioralLayer(initialPrizes, participants);
+    // --- الخطوة ب: تطبيق الفلتر السلوكي (الدراما) ---
+    const finalPrizes = await applyBehavioralFilter(initialPrizes, participants);
 
+    // --- الخطوة ج: توزيع الجوائز النهائية ---
     for (let i = 0; i < numParticipants; i++) {
         const participant = participants[i];
         const prizeAmount = parseFloat(finalPrizes[i].toFixed(2));
@@ -149,6 +153,8 @@ async function processRound(roundId, io) {
             const user = await User.findById(participant.userId);
             if (user) {
                 user.balance += prizeAmount;
+                // تحديث إجمالي الدورات هنا
+                user.totalSpins = (user.totalSpins || 0) + 1;
                 await user.save();
 
                 const spin = new Spin({
@@ -168,6 +174,84 @@ async function processRound(roundId, io) {
             console.error(`Error processing prize for user ${participant.userId}:`, error);
         }
     }
+}
+
+
+
+// المكان: server/index.js (أضف هذه الدالة الجديدة)
+
+async function applyBehavioralFilter(initialPrizes, participants) {
+    const MIN_WITHDRAWAL = 5.00;
+    const SPIN_COST = 1.00;
+    let finalPrizes = [...initialPrizes];
+
+    // --- الخطوة 1: جلب وتصنيف اللاعبين ديناميكياً ---
+    const players = [];
+    for (let i = 0; i < participants.length; i++) {
+        const user = await User.findById(participants[i].userId);
+        if (!user) continue;
+
+        let state = "active";
+        if (user.totalSpins < 10) state = "new";
+        else if (user.totalDeposits > 100) state = "whale";
+        else if (user.balance >= MIN_WITHDRAWAL * 0.8 && user.balance < MIN_WITHDRAWAL) state = "near_withdrawal";
+        
+        players.push({ user, state, originalPrize: finalPrizes[i], index: i });
+    }
+
+    // --- الخطوة 2: التعامل مع حالة اللاعب الفردي (Solo Player) ---
+    if (players.length === 1) {
+        const player = players[0];
+        const streak = playerStreaks.get(player.user.id.toString()) || [];
+        let currentPrize = player.originalPrize;
+
+        // تحديد النمط المتوقع بناءً على آخر نتيجتين
+        const lastTwoResults = streak.slice(-2);
+        if (lastTwoResults.length === 2 && lastTwoResults.every(p => p < SPIN_COST)) {
+            // إذا خسر مرتين متتاليتين، ادفع الجائزة نحو الأعلى
+            currentPrize = Math.max(currentPrize, SPIN_COST + Math.random() * 0.5); // ربح متوسط
+        } else if (player.state === 'near_withdrawal') {
+            // إذا كان قريباً من السحب، اجعلها خسارة صغيرة (Near Miss)
+            currentPrize = Math.min(currentPrize, SPIN_COST - 0.05 - (Math.random() * 0.1));
+        }
+
+        // تحديث السلسلة
+        streak.push(currentPrize);
+        if (streak.length > 5) streak.shift(); // احتفظ بآخر 5 نتائج فقط
+        playerStreaks.set(player.user.id.toString(), streak);
+
+        finalPrizes[0] = currentPrize;
+        return finalPrizes;
+    }
+
+    // --- الخطوة 3: التعامل مع حالة اللاعبين المتعددين (Group) ---
+    if (players.length > 1) {
+        // --- التأثير 1: حماية اللاعب الجديد ---
+        const newPlayer = players.find(p => p.state === 'new');
+        if (newPlayer && newPlayer.originalPrize < SPIN_COST * 0.5) { // إذا كانت خسارته كبيرة
+            const mediumPrizePlayer = players.find(p => p.state === 'active' && p.originalPrize > SPIN_COST);
+            if (mediumPrizePlayer) {
+                // تبديل الجوائز
+                [finalPrizes[newPlayer.index], finalPrizes[mediumPrizePlayer.index]] = 
+                [finalPrizes[mediumPrizePlayer.index], finalPrizes[newPlayer.index]];
+            }
+        }
+
+        // --- التأثير 2: تنعيم جوائز الحيتان ---
+        const whalePlayer = players.find(p => p.state === 'whale');
+        const jackpotPrize = Math.max(...finalPrizes);
+        if (whalePlayer && whalePlayer.originalPrize === jackpotPrize && jackpotPrize > SPIN_COST * 10) {
+            const secondHighestPrize = [...finalPrizes].sort((a, b) => b - a)[1];
+            const secondHighestPlayer = players.find(p => p.originalPrize === secondHighestPrize);
+            if (secondHighestPlayer && Math.random() < 0.3) { // 30% فرصة للتنعيم
+                const amountToShift = (jackpotPrize - secondHighestPrize) * 0.25;
+                finalPrizes[whalePlayer.index] -= amountToShift;
+                finalPrizes[secondHighestPlayer.index] += amountToShift;
+            }
+        }
+    }
+
+    return finalPrizes;
 }
 
 
