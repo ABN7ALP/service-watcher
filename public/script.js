@@ -1,4 +1,4 @@
-// المكان: public/script.js (النسخة الكاملة والنهائية لتجربة الخريطة العالمية)
+// المكان: public/script.js (النسخة الكاملة والنهائية لنظام الجولات الفوري)
 
 document.addEventListener('DOMContentLoaded', () => {
     // ===================================================================
@@ -7,9 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentUser = null;
     let isSpinning = false;
     let socket;
-    let audioContext; // سياق الصوت لتوليد النغمات
+    let audioContext;
+    let randomAnimationTimer; // متغير لحفظ مؤقت الأنيميشن العشوائي
 
-    // إعدادات الخريطة والمدن (الجوائز)
     const wheelSegments = [
         { city: 'القاهرة', amount: 0.5, lon: 31.23, lat: 30.04 },
         { city: 'روما', amount: 0.75, lon: 12.49, lat: 41.90 },
@@ -22,8 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
         { city: 'بكين', amount: 9, lon: 116.40, lat: 39.90 },
         { city: 'طوكيو', amount: 10, lon: 139.69, lat: 35.68 }
     ];
-    
-    // متغيرات خاصة بمكتبة D3.js لرسم الخريطة
     let projection, path;
 
     // ===================================================================
@@ -33,11 +31,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeApp();
     setupEventListeners();
 
-    /**
-     * تهيئة التطبيق عند تحميل الصفحة: التحقق من المستخدم، رسم الخريطة، إلخ.
-     */
     async function initializeApp() {
-        await drawMap(); // انتظر رسم الخريطة أولاً
+        await drawMap();
         const token = localStorage.getItem('token');
         if (token) {
             try {
@@ -49,21 +44,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateUserInfo();
                     loadTransactions();
                     loadRecentWins();
-                } else {
-                    logout();
-                }
-            } catch (error) {
-                console.error('Error verifying token:', error);
-                showLoginModal();
-            }
-        } else {
-            showLoginModal();
-        }
+                } else { logout(); }
+            } catch (error) { showLoginModal(); }
+        } else { showLoginModal(); }
     }
 
-    /**
-     * إعداد مستمعي الأحداث لجميع الأزرار والنماذج في الصفحة.
-     */
     function setupEventListeners() {
         document.getElementById('depositBtn').addEventListener('click', () => switchTab('deposit'));
         document.getElementById('withdrawBtn').addEventListener('click', () => {
@@ -92,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function handleLogin(e) {
         e.preventDefault();
-        initAudio(); // تهيئة الصوت عند أول تفاعل للمستخدم
+        initAudio();
         const username = document.getElementById('loginUsername').value;
         const password = document.getElementById('loginPassword').value;
         try {
@@ -123,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function handleRegister(e) {
         e.preventDefault();
-        initAudio(); // تهيئة الصوت عند أول تفاعل للمستخدم
+        initAudio();
         const username = document.getElementById('registerUsername').value;
         const email = document.getElementById('registerEmail').value;
         const password = document.getElementById('registerPassword').value;
@@ -168,13 +153,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 showNotification('تم إرسال طلب الشحن بنجاح، سيتم مراجعته قريباً.', 'success');
                 form.reset();
                 document.getElementById('receiptPreview').innerHTML = '';
-                loadTransactions();
             } else {
                 const error = await response.json();
                 showNotification(error.message || 'فشل إرسال طلب الشحن', 'error');
             }
         } catch (error) {
-            console.error('Deposit error:', error);
             showNotification('حدث خطأ في الاتصال بالخادم', 'error');
         } finally {
             submitButton.disabled = false;
@@ -203,7 +186,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (response.ok) {
                 showNotification('تم إرسال طلب السحب بنجاح', 'success');
                 e.target.reset();
-                loadTransactions();
             } else {
                 const error = await response.json();
                 showNotification(error.message || 'فشل إرسال الطلب', 'error');
@@ -214,134 +196,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ===================================================================
-    // القسم 4: دوال الخريطة العالمية (D3.js)
+    // القسم 4: دوال الخريطة العالمية ونظام الجولات
     // ===================================================================
 
-    /**
-     * رسم خريطة العالم التفاعلية باستخدام مكتبة D3.js.
-     */
     async function drawMap() {
         const container = document.getElementById('world-map');
         const width = 800;
         const height = 450;
-
         projection = d3.geoMercator().scale(130).translate([width / 2, height / 1.5]);
         path = d3.geoPath().projection(projection);
-
-        const svg = d3.select(container).append("svg")
-            .attr("viewBox", `0 0 ${width} ${height}`);
-
+        const svg = d3.select(container).append("svg").attr("viewBox", `0 0 ${width} ${height}`);
         try {
             const world = await d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json");
-            svg.append("g")
-                .selectAll("path")
-                .data(topojson.feature(world, world.objects.countries).features)
-                .enter().append("path")
-                .attr("d", path)
-                .attr("class", "country");
-
+            svg.append("g").selectAll("path").data(topojson.feature(world, world.objects.countries).features).enter().append("path").attr("d", path).attr("class", "country");
             const cityGroup = svg.append("g");
-            cityGroup.selectAll(".city-marker")
-                .data(wheelSegments)
-                .enter().append("circle")
-                .attr("class", "city-marker")
-                .attr("cx", d => projection([d.lon, d.lat])[0])
-                .attr("cy", d => projection([d.lon, d.lat])[1])
-                .attr("r", 5);
-
-            cityGroup.selectAll(".city-label")
-                .data(wheelSegments)
-                .enter().append("text")
-                .attr("class", "city-label")
-                .attr("x", d => projection([d.lon, d.lat])[0] + 8)
-                .attr("y", d => projection([d.lon, d.lat])[1] + 4)
-                .text(d => d.city);
-                
+            cityGroup.selectAll(".city-marker").data(wheelSegments).enter().append("circle").attr("class", "city-marker").attr("cx", d => projection([d.lon, d.lat])[0]).attr("cy", d => projection([d.lon, d.lat])[1]).attr("r", 5);
+            cityGroup.selectAll(".city-label").data(wheelSegments).enter().append("text").attr("class", "city-label").attr("x", d => projection([d.lon, d.lat])[0] + 8).attr("y", d => projection([d.lon, d.lat])[1] + 4).text(d => d.city);
             svg.append("circle").attr("id", "zone").attr("class", "zone").attr("r", 0);
         } catch (error) {
-            console.error("Failed to load map data:", error);
-            container.textContent = "فشل تحميل الخريطة. يرجى التحقق من اتصالك بالإنترنت.";
+            container.textContent = "فشل تحميل الخريطة.";
         }
     }
 
-    /**
-     * بدء أنيميشن "رحلة الحظ العالمية" بعد الحصول على النتيجة من الخادم.
-     * @param {object} result - كائن النتيجة من الخادم يحتوي على المبلغ والرصيد الجديد.
-     */
-    // استبدل startSpinAnimation القديمة بهذه النسخة الجديدة والمحسنة
-function startSpinAnimation(result) {
-    const { amount: winningAmount, newBalance } = result;
-    const winningSegment = wheelSegments.find(s => s.amount === winningAmount);
-    if (!winningSegment) {
-        console.error("Winning segment not found!");
-        isSpinning = false;
-        document.getElementById('spinBtn').disabled = false;
-        return;
-    }
-
-    const zone = d3.select("#zone");
-    const duration = 7000; // مدة الرحلة 7 ثواني
-    const travelTime = duration * 0.7; // 70% من الوقت للتنقل العشوائي
-    const settleTime = duration * 0.3; // 30% من الوقت للتباطؤ نحو الهدف
-
-    const [targetX, targetY] = projection([winningSegment.lon, winningSegment.lat]);
-
-    // 1. أنيميشن حجم الزون (يبدأ فوراً)
-    zone.attr("r", 0) // ابدأ من حجم 0
-        .transition()
-        .duration(500) // يكبر بسرعة في البداية
-        .attr("r", 80)
-        .transition()
-        .delay(500)
-        .duration(duration - 500) // يستمر في التصغير ببطء على مدار الرحلة
-        .ease(d3.easeQuadOut)
-        .attr("r", 25);
-
-    // 2. حركة الزون العشوائية
-    let randomJumpInterval = setInterval(() => {
-        const randomSegment = wheelSegments[Math.floor(Math.random() * wheelSegments.length)];
-        const [x, y] = projection([randomSegment.lon, randomSegment.lat]);
-        zone.transition()
-            .duration(100) // حركة سريعة لكل قفزة
-            .ease(d3.easeLinear)
-            .attr("cx", x)
-            .attr("cy", y);
-        playTickSound();
-    }, 150); // قفزة كل 150 مللي ثانية
-
-    // 3. إيقاف الحركة العشوائية وبدء التباطؤ نحو الهدف
-    setTimeout(() => {
-        clearInterval(randomJumpInterval); // أوقف القفز العشوائي
-
-        zone.transition()
-            .duration(settleTime) // مدة التباطؤ
-            .ease(d3.easeCubicOut) // تباطؤ ناعم في النهاية
-            .attr("cx", targetX)
-            .attr("cy", targetY)
-            .on("end", () => {
-                // 4. عند الوصول للهدف النهائي
-                isSpinning = false;
-                const spinBtn = document.getElementById('spinBtn');
-                spinBtn.disabled = false;
-                spinBtn.innerHTML = '<i class="fas fa-plane-departure"></i> ابدأ الرحلة ($1)';
-                currentUser.balance = newBalance;
-
-                setTimeout(() => {
-                    playWinSound();
-                    showResultModal(winningAmount, winningSegment.city);
-                    updateUserInfo();
-                    loadRecentWins();
-                    loadTransactions();
-                    zone.transition().duration(500).attr("r", 0); // إخفاء الزون بسلاسة
-                }, 500);
-            });
-    }, travelTime); // ابدأ مرحلة التباطؤ بعد انتهاء وقت التنقل
-}
-
-
-    /**
-     * التعامل مع طلب بدء الرحلة وإرساله للخادم.
-     */
     async function handleSpinRequest() {
         initAudio();
         if (isSpinning) return;
@@ -352,16 +228,18 @@ function startSpinAnimation(result) {
         isSpinning = true;
         const spinBtn = document.getElementById('spinBtn');
         spinBtn.disabled = true;
-        spinBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...جاري تحديد الوجهة';
+        spinBtn.innerHTML = '<i class="fas fa-hourglass-half"></i> الانضمام لجولة...';
         try {
             const response = await fetch('/api/spin', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
             if (response.ok) {
-                const result = await response.json();
+                const data = await response.json();
+                currentUser.balance = data.newBalance;
                 updateUserInfo();
-                startSpinAnimation(result);
+                spinBtn.innerHTML = '<i class="fas fa-hourglass-half"></i> في انتظار انتهاء الجولة...';
+                startRandomAnimation();
             } else {
                 const error = await response.json();
                 showNotification(error.message || 'حدث خطأ', 'error');
@@ -370,53 +248,78 @@ function startSpinAnimation(result) {
                 spinBtn.innerHTML = '<i class="fas fa-plane-departure"></i> ابدأ الرحلة ($1)';
             }
         } catch (error) {
-            console.error('Spin request error:', error);
-            showNotification('خطأ في الاتصال بالخادم', 'error');
             isSpinning = false;
             spinBtn.disabled = false;
             spinBtn.innerHTML = '<i class="fas fa-plane-departure"></i> ابدأ الرحلة ($1)';
+            showNotification('خطأ في الاتصال بالخادم', 'error');
         }
+    }
+
+    function startRandomAnimation() {
+        const zone = d3.select("#zone");
+        zone.attr("r", 0).transition().duration(500).attr("r", 80);
+        randomAnimationTimer = setInterval(() => {
+            const randomSegment = wheelSegments[Math.floor(Math.random() * wheelSegments.length)];
+            const [x, y] = projection([randomSegment.lon, randomSegment.lat]);
+            zone.transition().duration(400).ease(d3.easeLinear).attr("cx", x).attr("cy", y);
+            playTickSound();
+        }, 500);
+    }
+
+    function landOnDestination(result) {
+        clearInterval(randomAnimationTimer);
+        const { winAmount, newBalance } = result;
+        const winningSegment = wheelSegments.reduce((prev, curr) =>
+            (Math.abs(curr.amount - winAmount) < Math.abs(prev.amount - winAmount) ? curr : prev)
+        );
+        const zone = d3.select("#zone");
+        const [targetX, targetY] = projection([winningSegment.lon, winningSegment.lat]);
+        zone.transition().duration(1500).ease(d3.easeCubicOut).attr("cx", targetX).attr("cy", targetY).attr("r", 25)
+            .on("end", () => {
+                isSpinning = false;
+                const spinBtn = document.getElementById('spinBtn');
+                spinBtn.disabled = false;
+                spinBtn.innerHTML = '<i class="fas fa-plane-departure"></i> ابدأ الرحلة ($1)';
+                currentUser.balance = newBalance;
+                setTimeout(() => {
+                    playWinSound();
+                    showResultModal(winAmount, winningSegment.city);
+                    updateUserInfo();
+                    loadRecentWins();
+                    loadTransactions();
+                    zone.transition().duration(500).attr("r", 0);
+                }, 500);
+            });
     }
 
     // ===================================================================
     // القسم 5: دوال توليد الصوت (Web Audio API)
     // ===================================================================
 
-    /**
-     * تهيئة سياق الصوت. يجب استدعاؤها بعد أول تفاعل من المستخدم مع الصفحة.
-     */
     function initAudio() {
         if (audioContext) return;
         try {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        } catch (e) {
-            console.error("Web Audio API is not supported in this browser");
-        }
+        } catch (e) { console.error("Web Audio API is not supported"); }
     }
 
-    /**
-     * توليد وتشغيل صوت "تكة" قصير.
-     */
     function playTickSound() {
         if (!audioContext) return;
-        const oscillator = audioContext.createOscillator();
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
-        const gainNode = audioContext.createGain();
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1);
-        oscillator.connect(gainNode).connect(audioContext.destination);
-        oscillator.start();
-        oscillator.stop(audioContext.currentTime + 0.1);
+        const osc = audioContext.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioContext.currentTime);
+        const gain = audioContext.createGain();
+        gain.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1);
+        osc.connect(gain).connect(audioContext.destination);
+        osc.start();
+        osc.stop(audioContext.currentTime + 0.1);
     }
 
-    /**
-     * توليد وتشغيل نغمة الفوز.
-     */
     function playWinSound() {
         if (!audioContext) return;
-        const frequencies = [523.25, 659.25, 783.99, 1046.50];
-        frequencies.forEach((freq, i) => {
+        const freqs = [523.25, 659.25, 783.99, 1046.50];
+        freqs.forEach((freq, i) => {
             const osc = audioContext.createOscillator();
             osc.type = 'triangle';
             osc.frequency.setValueAtTime(freq, audioContext.currentTime + i * 0.1);
@@ -446,6 +349,10 @@ function startSpinAnimation(result) {
                 updateUserInfo();
             }
             loadTransactions();
+        });
+        socket.on('roundResult', (result) => {
+            console.log("Round result received:", result);
+            landOnDestination(result);
         });
     }
 
@@ -479,9 +386,7 @@ function startSpinAnimation(result) {
                 document.getElementById('todayWins').textContent = `$${stats.todayWins.toFixed(2)}`;
                 document.getElementById('todaySpins').textContent = stats.todaySpins;
             }
-        } catch (error) {
-            console.error("Could not fetch stats", error);
-        }
+        } catch (error) { console.error("Could not fetch stats", error); }
     }
 
     async function loadTransactions() {
@@ -507,15 +412,13 @@ function startSpinAnimation(result) {
                         </div>
                     `).join('');
             }
-        } catch (error) {
-            console.error('Error loading transactions:', error);
-        }
+        } catch (error) { console.error('Error loading transactions:', error); }
     }
 
     function getTransactionTypeText(t) {
         if (t.type === 'deposit') return 'شحن رصيد';
         if (t.type === 'withdraw') return 'سحب أرباح';
-        if (t.type === 'spin') return t.status === 'win' ? 'ربح من العجلة' : 'دوران العجلة';
+        if (t.type === 'spin') return t.status === 'win' ? 'ربح من الرحلة' : 'بدء رحلة';
         return t.type;
     }
 
@@ -526,14 +429,12 @@ function startSpinAnimation(result) {
                 const wins = await response.json();
                 document.getElementById('recentWins').innerHTML = wins.map(win => `<div class="win-item">$${win.amount.toFixed(2)}</div>`).join('');
             }
-        } catch (error) {
-            console.error('Error loading recent wins:', error);
-        }
+        } catch (error) { console.error('Error loading recent wins:', error); }
     }
 
-    function showResultModal(amount, city) { // تم التعديل ليقبل اسم المدينة
-        document.getElementById('resultTitle').textContent = amount > 0 ? `هبوط محظوظ في ${city}! 🎉` : 'رحلة غير موفقة!';
-        document.getElementById('resultMessage').innerHTML = amount > 0 ? `لقد ربحت <span class="prize-amount">$${amount.toFixed(2)}</span>` : 'لم تربح هذه المرة، حظاً أوفر في الرحلة القادمة!';
+    function showResultModal(amount, city) {
+        document.getElementById('resultTitle').textContent = `هبوط محظوظ في ${city}! 🎉`;
+        document.getElementById('resultMessage').innerHTML = `لقد ربحت <span class="prize-amount">$${amount.toFixed(2)}</span>`;
         document.getElementById('resultModal').style.display = 'flex';
     }
 
