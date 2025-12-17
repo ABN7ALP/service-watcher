@@ -268,59 +268,76 @@ document.addEventListener('DOMContentLoaded', () => {
      * بدء أنيميشن "رحلة الحظ العالمية" بعد الحصول على النتيجة من الخادم.
      * @param {object} result - كائن النتيجة من الخادم يحتوي على المبلغ والرصيد الجديد.
      */
-    function startSpinAnimation(result) {
-        const { amount: winningAmount, newBalance } = result;
-        const winningSegment = wheelSegments.find(s => s.amount === winningAmount);
-        if (!winningSegment) {
-            console.error("Winning segment not found!");
-            isSpinning = false;
-            document.getElementById('spinBtn').disabled = false;
-            return;
-        }
+    // استبدل startSpinAnimation القديمة بهذه النسخة الجديدة والمحسنة
+function startSpinAnimation(result) {
+    const { amount: winningAmount, newBalance } = result;
+    const winningSegment = wheelSegments.find(s => s.amount === winningAmount);
+    if (!winningSegment) {
+        console.error("Winning segment not found!");
+        isSpinning = false;
+        document.getElementById('spinBtn').disabled = false;
+        return;
+    }
 
-        const zone = d3.select("#zone");
-        const duration = 7000;
-        const [targetX, targetY] = projection([winningSegment.lon, winningSegment.lat]);
+    const zone = d3.select("#zone");
+    const duration = 7000; // مدة الرحلة 7 ثواني
+    const travelTime = duration * 0.7; // 70% من الوقت للتنقل العشوائي
+    const settleTime = duration * 0.3; // 30% من الوقت للتباطؤ نحو الهدف
 
-        // 1. حركة الزون العشوائية السريعة
-        const randomJumps = d3.timer(t => {
-            const randomSegment = wheelSegments[Math.floor(Math.random() * wheelSegments.length)];
-            const [x, y] = projection([randomSegment.lon, randomSegment.lat]);
-            zone.attr("cx", x).attr("cy", y);
-            playTickSound();
-            if (t > duration * 0.7) randomJumps.stop();
-        });
+    const [targetX, targetY] = projection([winningSegment.lon, winningSegment.lat]);
 
-        // 2. حركة التباطؤ نحو الهدف
+    // 1. أنيميشن حجم الزون (يبدأ فوراً)
+    zone.attr("r", 0) // ابدأ من حجم 0
+        .transition()
+        .duration(500) // يكبر بسرعة في البداية
+        .attr("r", 80)
+        .transition()
+        .delay(500)
+        .duration(duration - 500) // يستمر في التصغير ببطء على مدار الرحلة
+        .ease(d3.easeQuadOut)
+        .attr("r", 25);
+
+    // 2. حركة الزون العشوائية
+    let randomJumpInterval = setInterval(() => {
+        const randomSegment = wheelSegments[Math.floor(Math.random() * wheelSegments.length)];
+        const [x, y] = projection([randomSegment.lon, randomSegment.lat]);
         zone.transition()
-            .delay(duration * 0.7)
-            .duration(duration * 0.3)
+            .duration(100) // حركة سريعة لكل قفزة
+            .ease(d3.easeLinear)
+            .attr("cx", x)
+            .attr("cy", y);
+        playTickSound();
+    }, 150); // قفزة كل 150 مللي ثانية
+
+    // 3. إيقاف الحركة العشوائية وبدء التباطؤ نحو الهدف
+    setTimeout(() => {
+        clearInterval(randomJumpInterval); // أوقف القفز العشوائي
+
+        zone.transition()
+            .duration(settleTime) // مدة التباطؤ
+            .ease(d3.easeCubicOut) // تباطؤ ناعم في النهاية
             .attr("cx", targetX)
             .attr("cy", targetY)
-            .ease(d3.easeCubicOut)
             .on("end", () => {
-                // 4. عند انتهاء كل الحركات
+                // 4. عند الوصول للهدف النهائي
                 isSpinning = false;
-                document.getElementById('spinBtn').disabled = false;
-                document.getElementById('spinBtn').innerHTML = '<i class="fas fa-plane-departure"></i> ابدأ الرحلة ($1)';
+                const spinBtn = document.getElementById('spinBtn');
+                spinBtn.disabled = false;
+                spinBtn.innerHTML = '<i class="fas fa-plane-departure"></i> ابدأ الرحلة ($1)';
                 currentUser.balance = newBalance;
+
                 setTimeout(() => {
                     playWinSound();
                     showResultModal(winningAmount, winningSegment.city);
                     updateUserInfo();
                     loadRecentWins();
                     loadTransactions();
-                    zone.attr("r", 0);
+                    zone.transition().duration(500).attr("r", 0); // إخفاء الزون بسلاسة
                 }, 500);
             });
+    }, travelTime); // ابدأ مرحلة التباطؤ بعد انتهاء وقت التنقل
+}
 
-        // 3. أنيميشن حجم الزون
-        zone.attr("r", 80)
-            .transition()
-            .duration(duration)
-            .ease(d3.easeCubicOut)
-            .attr("r", 25);
-    }
 
     /**
      * التعامل مع طلب بدء الرحلة وإرساله للخادم.
