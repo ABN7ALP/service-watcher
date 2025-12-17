@@ -60,6 +60,11 @@ const userSchema = new mongoose.Schema({
     lastLogin: {
         type: Date
     },
+    playerBehavioralState: {
+    type: String,
+    enum: ['new', 'active', 'near_withdrawal', 'whale'],
+    default: 'new'
+    },
     createdAt: {
         type: Date,
         default: Date.now
