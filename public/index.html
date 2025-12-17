@@ -54,23 +54,26 @@
             </div>
 
             <!-- عجلة الحظ -->
-            <div class="wheel-section">
-                <h2><i class="fas fa-dharmachakra"></i> عجلة الحظ</h2>
-                <p>كل دوران يكلف $1 مع فرصة للفوز بجوائز حتى $10</p>
-                
-                <div class="wheel-container">
-                    <canvas id="wheelCanvas" width="500" height="500"></canvas>
-                    <div class="wheel-pointer"></div>
-                    <button id="spinBtn" class="spin-btn">
-                        <i class="fas fa-redo"></i> إدارة العجلة ($1)
-                    </button>
-                </div>
+            <!-- رحلة الحظ العالمية (القسم الجديد والمصحح) -->
+<div class="wheel-section">
+    <h2><i class="fas fa-globe-americas"></i> رحلة الحظ العالمية</h2>
+    <p>كل رحلة تكلف $1 مع فرصة للفوز بجوائز حتى $10</p>
+    
+    <div class="map-container">
+        <!-- مكتبة D3.js ستقوم برسم الخريطة التفاعلية هنا -->
+        <div id="world-map"></div>
+    </div>
 
-                <div class="wheel-results">
-                    <h3><i class="fas fa-gift"></i> آخر الجوائز</h3>
-                    <div id="recentWins"></div>
-                </div>
-            </div>
+    <button id="spinBtn" class="spin-btn">
+        <i class="fas fa-plane-departure"></i> ابدأ الرحلة ($1)
+    </button>
+
+    <div class="wheel-results">
+        <h3><i class="fas fa-gift"></i> آخر الجوائز</h3>
+        <div id="recentWins"></div>
+    </div>
+</div>
+
 
             <!-- قسم المعاملات -->
             <div class="transactions-section">
