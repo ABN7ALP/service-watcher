@@ -45,6 +45,10 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+   totalSpins: {
+       type: Number,
+       default: 0
+    },
     shamCashId: {
         type: String
     },
