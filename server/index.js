@@ -13,6 +13,166 @@ const http = require('http');
 const { Server } = require("socket.io");
 
 
+// المكان: server/index.js (أضف هذا الكود بعد استيراد المكتبات)
+
+// ===================================================================
+// مدير جولات التوزيع الفوري
+// ===================================================================
+const rounds = new Map();
+const ROUND_DURATION = 5000; // 5 ثوانٍ
+
+function getRound(io) {
+    const now = Date.now();
+    let activeRound = null;
+
+    // ابحث عن جولة نشطة لم تنتهِ بعد
+    for (const round of rounds.values()) {
+        if (now < round.endsAt) {
+            activeRound = round;
+            break;
+        }
+    }
+
+    // إذا لم تجد جولة نشطة، أنشئ واحدة جديدة
+    if (!activeRound) {
+        const roundId = `round_${now}`;
+        activeRound = {
+            id: roundId,
+            participants: [],
+            endsAt: now + ROUND_DURATION,
+            processed: false,
+            // إنشاء تايمر لإغلاق الجولة وتوزيع الجوائز
+            timer: setTimeout(() => processRound(roundId, io), ROUND_DURATION + 500) // +500ms كهامش أمان
+        };
+        rounds.set(roundId, activeRound);
+        console.log(`New round started: ${roundId}`);
+    }
+    return activeRound;
+}
+// ===================================================================
+
+// المكان: server/index.js
+
+async function processRound(roundId, io) {
+    const round = rounds.get(roundId);
+    if (!round || round.processed) return;
+
+    round.processed = true;
+    console.log(`Processing round: ${roundId} with ${round.participants.length} participants.`);
+
+    const totalContribution = round.participants.length * 1; // 1 هو SPIN_COST
+    const developerCut = totalContribution * 0.10;
+    let amountToDistribute = totalContribution - developerCut;
+
+    // --- خوارزمية التوزيع الذكي ---
+    let prizes = [];
+    if (round.participants.length === 1) {
+        // حالة اللاعب الوحيد
+        prizes.push(amountToDistribute);
+    } else {
+        // حالة اللاعبين المتعددين
+        // استخدم خوارزمية "تقسيم العصا" (Stick-breaking) لتوزيع عشوائي عادل
+        let breaks = [0, amountToDistribute];
+        for (let i = 0; i < round.participants.length - 1; i++) {
+            breaks.push(Math.random() * amountToDistribute);
+        }
+        breaks.sort((a, b) => a - b);
+
+        for (let i = 0; i < breaks.length - 1; i++) {
+            prizes.push(breaks[i+1] - breaks[i]);
+        }
+        // خلط الجوائز لضمان عدم وجود علاقة بين وقت الانضمام وحجم الجائزة
+        prizes.sort(() => Math.random() - 0.5);
+    }
+
+    // --- توزيع الجوائز على المشاركين ---
+    for (let i = 0; i < round.participants.length; i++) {
+        const participant = round.participants[i];
+        const prizeAmount = parseFloat(prizes[i].toFixed(2));
+        
+        try {
+            const user = await User.findById(participant.userId);
+            if (user) {
+                user.balance += prizeAmount;
+                await user.save();
+
+                // إرسال النتيجة إلى المستخدم المحدد عبر Socket.io
+                const socketId = participant.socketId;
+                if (socketId) {
+                    io.to(socketId).emit('roundResult', {
+                        winAmount: prizeAmount,
+                        newBalance: user.balance
+                    });
+                }
+            }
+        } catch (error) {
+            console.error(`Error processing prize for user ${participant.userId}:`, error);
+        }
+    }
+
+    // حذف الجولة بعد معالجتها
+    rounds.delete(roundId);
+    console.log(`Round ${roundId} finished.`);
+}
+
+app.post('/api/spin', authenticate, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+        const SPIN_COST = 1;
+
+        if (user.balance < SPIN_COST) return res.status(400).json({ message: 'رصيدك غير كافٍ' });
+
+        user.balance -= SPIN_COST;
+        await user.save();
+
+        const socketId = req.onlineUsers.get(user._id.toString());
+        if (!socketId) {
+            user.balance += (SPIN_COST * 0.9); // أعد له 90%
+            await user.save();
+            return res.status(400).json({ message: 'فشل الاتصال بجولة اللعب.' });
+        }
+
+        // --- منطق الانضمام إلى الجولة ---
+        const now = Date.now();
+        let activeRound = null;
+        for (const round of rounds.values()) {
+            if (now < round.endsAt) {
+                activeRound = round;
+                break;
+            }
+        }
+
+        if (!activeRound) {
+            const roundId = `round_${now}`;
+            activeRound = {
+                id: roundId,
+                participants: [],
+                endsAt: now + ROUND_DURATION,
+                processed: false,
+                timer: setTimeout(() => processRound(roundId, req.io), ROUND_DURATION + 500)
+            };
+            rounds.set(roundId, activeRound);
+        }
+        
+        activeRound.participants.push({ userId: user._id.toString(), socketId: socketId });
+        // --- نهاية منطق الانضمام ---
+
+        res.json({
+            message: "تم الانضمام إلى جولة، انتظر النتيجة...",
+            newBalance: user.balance
+        });
+
+    } catch (error) {
+        console.error('Spin error:', error);
+        res.status(500).json({ message: 'خطأ في الخادم' });
+    }
+});
+
+// احذف السطر: app.use('/api/spin', authenticate, spinRoutes);
+// ... (بقية الكود)
+
+
+
 dotenv.config();
 
 const app = express();
@@ -127,7 +287,7 @@ const adminAuth = require('./middleware/adminAuth'); // <-- إضافة جديد�
 // استخدام المسارات
 app.use('/api/auth', authRoutes);
 app.use('/api/payment', authenticate, paymentRoutes(upload));
-app.use('/api/spin', authenticate, spinRoutes);
+//app.use('/api/spin', authenticate, spinRoutes);
 app.use('/api/admin', adminAuth, adminRoutes); // <-- إضافة جديدة: حماية كل مسارات الأدمن
 
 
