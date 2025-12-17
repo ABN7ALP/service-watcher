@@ -31,11 +31,13 @@ app.use(
         contentSecurityPolicy: {
             directives: {
                 ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-                "script-src": ["'self'", "d3js.org"], // <-- السماح بالسكريبتات من نطاقنا ومن d3js.org
+                "script-src": ["'self'", "d3js.org"], // القاعدة القديمة
+                "connect-src": ["'self'", "cdn.jsdelivr.net"], // <-- القاعدة الجديدة: السماح بالاتصال بهذا النطاق
             },
         },
     })
 );
+
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
