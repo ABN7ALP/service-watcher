@@ -94,47 +94,96 @@ io.on('connection', (socket) => {
 // ===================================================================
 const rounds = new Map();
 const ROUND_DURATION = 5000; // 5 ثوانٍ
+// ذاكرة السوق: تحتفظ بنتيجة آخر جولة جماعية ناجحة
+let marketMemory = {
+    averagePrize: 0.90, // القيمة الافتراضية (لاعب واحد يستعيد 90%)
+    volatility: 0.1 // مدى تقلب الجوائز
+};
 
+// استبدل processRound القديمة بهذه النسخة الكاملة والجديدة
 async function processRound(roundId, io) {
-    const roundJSON = await redis.get(roundId);
-    if (!roundJSON) return;
+    const round = rounds.get(roundId);
+    if (!round || round.processed) return;
+    round.processed = true;
+    rounds.delete(roundId); // احذف الجولة من الذاكرة
 
-    await redis.del(roundId); // احذف الجولة فوراً لمنع معالجتها مرتين
-    const round = JSON.parse(roundJSON);
+    const participants = round.participants;
+    const numParticipants = participants.length;
 
-    const totalContribution = round.participants.length * 1;
+    // 1. حساب إجمالي المساهمات والعمولة
+    const totalContribution = numParticipants * 1; // SPIN_COST
     const developerCut = totalContribution * 0.10;
     let amountToDistribute = totalContribution - developerCut;
 
     let prizes = [];
-    if (round.participants.length === 1) {
-    // --- منطق جولة الحظ الفردية الجديد ---
-    const SOLO_WIN_CHANCE = 0.80; // 80% فرصة لاسترداد المبلغ
-    if (Math.random() < SOLO_WIN_CHANCE) {
-        prizes.push(1.00); // أعد له المبلغ كاملاً
-    } else {
-        prizes.push(0); // لم يربح شيئاً
-      }
-      } else {
+
+    // ======================================================
+    // --- بداية المحرك الدرامي ---
+    // ======================================================
+
+    if (numParticipants > 1) {
+        // --- أ. منطق الجولة الجماعية (منافسة حقيقية) ---
+        console.log(`Processing GROUP round with ${numParticipants} players.`);
+
+        // استخدم خوارزمية "تقسيم العصا" لتوزيع المبلغ بالكامل
         let breaks = [0, amountToDistribute];
-        for (let i = 0; i < round.participants.length - 1; i++) {
+        for (let i = 0; i < numParticipants - 1; i++) {
             breaks.push(Math.random() * amountToDistribute);
         }
         breaks.sort((a, b) => a - b);
         for (let i = 0; i < breaks.length - 1; i++) {
             prizes.push(breaks[i + 1] - breaks[i]);
         }
-        prizes.sort(() => Math.random() - 0.5);
+        prizes.sort(() => Math.random() - 0.5); // خلط عشوائي للجوائز
+
+        // --- تحديث ذاكرة السوق ---
+        const average = amountToDistribute / numParticipants;
+        const variance = prizes.reduce((acc, p) => acc + Math.pow(p - average, 2), 0) / numParticipants;
+        marketMemory.averagePrize = average;
+        marketMemory.volatility = Math.sqrt(variance); // الانحراف المعياري
+        console.log(`Market Memory Updated: Avg=${marketMemory.averagePrize}, Volatility=${marketMemory.volatility}`);
+
+    } else {
+        // --- ب. منطق الجولة الفردية (محاكاة السوق) ---
+        console.log(`Processing SOLO round. Simulating market.`);
+        
+        // اللاعب يلعب ضد "شبح" آخر جولة جماعية
+        // يتم توليد جائزة بناءً على متوسط وتقلب السوق
+        const basePrize = marketMemory.averagePrize;
+        const volatilityEffect = (Math.random() - 0.5) * 2 * marketMemory.volatility; // تأثير التقلب
+        let prizeAmount = basePrize + volatilityEffect;
+
+        // تأكد من أن الجائزة لا تكون سالبة
+        prizeAmount = Math.max(0, prizeAmount);
+        
+        prizes.push(prizeAmount);
     }
 
-    for (let i = 0; i < round.participants.length; i++) {
-        const participant = round.participants[i];
+    // ======================================================
+    // --- نهاية المحرك الدرامي ---
+    // ======================================================
+
+    // 3. توزيع الجوائز وإرسال النتائج
+    for (let i = 0; i < numParticipants; i++) {
+        const participant = participants[i];
         const prizeAmount = parseFloat(prizes[i].toFixed(2));
+        
         try {
             const user = await User.findById(participant.userId);
             if (user) {
                 user.balance += prizeAmount;
                 await user.save();
+
+                // تسجيل الدورة في قاعدة البيانات (مهم جداً للإحصائيات)
+                const spin = new Spin({
+                    user: user._id,
+                    amount: prizeAmount,
+                    cost: 1, // SPIN_COST
+                    status: prizeAmount >= 1 ? 'win' : 'lose',
+                    netResult: prizeAmount - 1
+                });
+                await spin.save();
+
                 if (participant.socketId) {
                     io.to(participant.socketId).emit('roundResult', {
                         winAmount: prizeAmount,
@@ -146,8 +195,11 @@ async function processRound(roundId, io) {
             console.error(`Error processing prize for user ${participant.userId}:`, error);
         }
     }
-    rounds.delete(roundId);
 }
+
+
+
+
 
 // ===================================================================
 // 8. استيراد وتطبيق المسارات (Routes)
