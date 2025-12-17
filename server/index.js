@@ -116,6 +116,7 @@ async function processRound(roundId, io) {
     let amountToDistribute = totalContribution - developerCut;
 
     let prizes = [];
+    
 
     // ======================================================
     // --- بداية المحرك الدرامي ---
@@ -157,6 +158,7 @@ async function processRound(roundId, io) {
         prizeAmount = Math.max(0, prizeAmount);
         
         prizes.push(prizeAmount);
+        prizes = await applyBehavioralLayer(prizes, participants);
     }
 
     // ======================================================
@@ -166,7 +168,7 @@ async function processRound(roundId, io) {
     // 3. توزيع الجوائز وإرسال النتائج
     for (let i = 0; i < numParticipants; i++) {
         const participant = participants[i];
-        const prizeAmount = parseFloat(prizes[i].toFixed(2));
+        const prizeAmount = parseFloat(finalPrizes[i].toFixed(2)); 
         
         try {
             const user = await User.findById(participant.userId);
@@ -198,6 +200,93 @@ async function processRound(roundId, io) {
 }
 
 
+async function applyBehavioralLayer(initialPrizes, participants) {
+    const MIN_WITHDRAWAL = 5.00;
+    const finalPrizes = [...initialPrizes]; // نسخة من الجوائز للتعديل عليها
+
+    // 1. جلب وتصنيف اللاعبين
+    const players = [];
+    for (let i = 0; i < participants.length; i++) {
+        const user = await User.findById(participants[i].userId);
+        if (!user) continue;
+
+        // --- منطق التصنيف ---
+        let state = user.playerBehavioralState;
+        if (user.totalDeposits === 0 && user.totalSpins < 10) {
+            state = 'new';
+        } else if (user.balance >= MIN_WITHDRAWAL * 0.8 && user.balance < MIN_WITHDRAWAL) {
+            state = 'near_withdrawal';
+        } else if (user.totalDeposits > 100) { // مثال على تعريف "الحوت"
+            state = 'whale';
+        } else {
+            state = 'active';
+        }
+        
+        user.playerBehavioralState = state; // تحديث حالة اللاعب
+        await user.save();
+
+        players.push({ user, originalPrize: finalPrizes[i], originalIndex: i });
+    }
+
+    // إذا كان لاعباً واحداً، طبق منطق التسلسل
+    if (players.length === 1) {
+        const player = players[0];
+        const state = player.user.playerBehavioralState;
+        let newPrize = player.originalPrize;
+
+        // هذا منطق تسلسلي بسيط، يمكن تعقيده أكثر
+        if (state === 'new') {
+            newPrize = Math.max(1.5, newPrize); // ضمان ربح جيد في البداية
+        } else if (state === 'near_withdrawal') {
+            // إذا كان الربح الأصلي سيدفعه فوق حد السحب، قلله قليلاً
+            if (player.user.balance - 1 + newPrize >= MIN_WITHDRAWAL) {
+                newPrize *= 0.7; // قلل الربح بنسبة 30%
+            }
+        }
+        finalPrizes[0] = newPrize;
+        return finalPrizes;
+    }
+
+    // إذا كان هناك عدة لاعبين، طبق منطق "الترجيح"
+    // ابحث عن أكبر جائزة وأصغر جائزة
+    let maxPrizeInfo = { prize: -1, playerIndex: -1 };
+    let minPrizeInfo = { prize: Infinity, playerIndex: -1 };
+
+    players.forEach((p, i) => {
+        if (p.originalPrize > maxPrizeInfo.prize) {
+            maxPrizeInfo = { prize: p.originalPrize, playerIndex: i };
+        }
+        if (p.originalPrize < minPrizeInfo.prize) {
+            minPrizeInfo = { prize: p.originalPrize, playerIndex: i };
+        }
+    });
+
+    // --- قاعدة سلوكية 1: لا تجعل اللاعب الجديد يخسر خسارة كبيرة ---
+    const newPlayerIndex = players.findIndex(p => p.user.playerBehavioralState === 'new');
+    if (newPlayerIndex !== -1 && players[newPlayerIndex].originalPrize < 0.25) {
+        // إذا كان اللاعب الجديد سيخسر كثيراً، أعطه أصغر جائزة بدلاً من ذلك
+        // وخذ جائزته السيئة وأعطها للاعب الذي كان سيفوز بأصغر جائزة
+        const temp = finalPrizes[newPlayerIndex];
+        finalPrizes[newPlayerIndex] = finalPrizes[minPrizeInfo.playerIndex];
+        finalPrizes[minPrizeInfo.playerIndex] = temp;
+        console.log(`Behavioral Layer: Swapped low prize for new player.`);
+    }
+
+    // --- قاعدة سلوكية 2: أعطِ الأولوية في الفوز الكبير للاعب النشط أو الحوت ---
+    const nearWithdrawalPlayerIndex = players.findIndex(p => p.user.playerBehavioralState === 'near_withdrawal');
+    if (nearWithdrawalPlayerIndex === maxPrizeInfo.playerIndex) {
+        // إذا كان اللاعب القريب من السحب سيفوز بالجائزة الكبرى، هناك فرصة لتبديلها
+        const activePlayerIndex = players.findIndex(p => p.user.playerBehavioralState === 'active');
+        if (activePlayerIndex !== -1 && Math.random() < 0.5) { // 50% فرصة للتبديل
+            const temp = finalPrizes[nearWithdrawalPlayerIndex];
+            finalPrizes[nearWithdrawalPlayerIndex] = finalPrizes[activePlayerIndex];
+            finalPrizes[activePlayerIndex] = temp;
+            console.log(`Behavioral Layer: Swapped jackpot from near_withdrawal player to active player.`);
+        }
+    }
+
+    return finalPrizes;
+}
 
 
 
