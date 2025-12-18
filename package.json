@@ -1,35 +1,38 @@
+
 {
-  "name": "spin-wheel-site",
+  "name": "gaming-battle-platform",
   "version": "1.0.0",
-  "description": "موقع عجلة الحظ مع نظام دفع شام كاش",
-  "main": "server/index.js",
+  "description": "1v1, 2v2, 4v4 Gaming Battle Platform",
+  "main": "server/server.js",
   "scripts": {
-    "start": "node server/index.js",
-    "dev": "nodemon server/index.js",
-    "build": "echo 'Build completed'",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server/server.js",
+    "dev": "nodemon server/server.js",
+    "build": "echo 'Build completed'"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "mongoose": "^7.4.3",
+    "mongoose": "^7.5.0",
     "bcryptjs": "^2.4.3",
-    "cors": "^2.8.5",
+    "jsonwebtoken": "^9.0.2",
     "dotenv": "^16.3.1",
+    "cors": "^2.8.5",
     "helmet": "^7.0.0",
-    "morgan": "^1.10.0",
+    "express-rate-limit": "^6.10.0",
+    "socket.io": "^4.7.0",
     "cloudinary": "^1.41.0",
     "multer": "^1.4.5-lts.1",
-    "multer-storage-cloudinary": "^4.0.0",
-    "socket.io": "^4.7.5",
-    "jsonwebtoken": "^9.0.2",
-    "uuid": "^9.0.1",
-    "ioredis": "^5.3.2"
+    "redis": "^4.6.7",
+    "resend": "^2.0.0",
+    "express-validator": "^7.0.1",
+    "express-mongo-sanitize": "^2.2.0",
+    "xss-clean": "^0.1.4",
+    "compression": "^1.7.4",
+    "moment": "^2.29.4",
+    "axios": "^1.5.0",
+    "winston": "^3.10.0",
+    "express-fileupload": "^1.4.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
-  },
-  "engines": {
-    "node": ">=16.0.0",
-    "npm": ">=8.0.0"
   }
 }
