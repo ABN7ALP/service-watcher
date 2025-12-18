@@ -1,62 +1,63 @@
 const mongoose = require('mongoose');
 
 const transactionSchema = new mongoose.Schema({
-    user: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        index: true,
-        required: true
-    },
-    type: {
-        type: String,
-        enum: ['deposit', 'withdraw', 'spin'],
-        index: true,
-        required: true
-    },
-    amount: {
-        type: Number,
-        required: true,
-        min: 0
-    },
-    status: {
-        type: String,
-        enum: ['pending', 'approved', 'rejected', 'completed', 'win', 'lose'],
-        default: 'pending'
-    },
-    fullName: {
-        type: String
-    },
-    shamCashNumber: {
-        type: String
-    },
-    receiptImage: {
-        type: String // رابط Cloudinary
-    },
-    note: {
-        type: String
-    },
-    adminNote: {
-        type: String
-    },
-    processedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-    },
-    processedAt: {
-        type: Date
-    },
-    expiresAt: {
-        type: Date,
-        default: () => new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) // 3 أيام
-    },
-    createdAt: {
-        type: Date,
-        index: true,
-        default: Date.now
-    }
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  type: {
+    type: String,
+    enum: ['deposit', 'withdrawal', 'bet', 'win', 'loss', 'gift_send', 'gift_receive', 'commission'],
+    required: true
+  },
+  amount: {
+    type: Number,
+    required: true
+  },
+  currency: {
+    type: String,
+    enum: ['USD', 'coins'],
+    default: 'USD'
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'completed', 'failed', 'cancelled'],
+    default: 'pending'
+  },
+  method: {
+    type: String,
+    enum: ['sham_kash', 'credit_card', 'paypal', 'crypto', null],
+    default: null
+  },
+  transactionId: {
+    type: String,
+    unique: true
+  },
+  receiptImage: String,
+  walletNumber: String,
+  description: String,
+  battle: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Battle'
+  },
+  recipient: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  adminNotes: String,
+  processedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  processedAt: Date,
+  fees: {
+    type: Number,
+    default: 0
+  }
+}, {
+  timestamps: true
 });
 
-// إزالة الإيصالات القديمة تلقائياً
-transactionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-
-module.exports = mongoose.model('Transaction', transactionSchema);
+const Transaction = mongoose.model('Transaction', transactionSchema);
+module.exports = Transaction;
