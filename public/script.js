@@ -336,11 +336,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // القسم 6: دوال الواجهة المساعدة والشبكة
     // ===================================================================
 
-    function initializeSocket(userId) {
-        socket = io();
-        socket.on('connect', () => {
-            socket.emit('registerUser', userId);
-        });
+    // المكان: public/script.js
+
+function initializeSocket(userId) {
+    // --- بداية التعديل: إرسال التوكن عند الاتصال ---
+    socket = io({
+        auth: {
+            token: localStorage.getItem('token')
+        }
+    });
+    // --- نهاية التعديل ---
+
+    socket.on('connect', () => {
+        console.log('Connected to server with socket ID:', socket.id);
+    });
+
+    socket.on('error', (error) => {
+        console.error('Socket Error:', error.message);
+        // يمكنك إظهار إشعار للمستخدم هنا
+    });
         socket.on('notification', (payload) => {
             const { type, message, newBalance } = payload;
             showNotification(message, type);
