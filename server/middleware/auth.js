@@ -1,30 +1,33 @@
-// المكان: server/middleware/auth.js
-
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-module.exports = async function(req, res, next) {
-    // الحصول على التوكن من الـ header
+const auth = async (req, res, next) => {
+  try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
-
-    // التحقق من عدم وجود توكن
+    
     if (!token) {
-        return res.status(401).json({ message: 'الوصول مرفوض. لا يوجد توكن مصادقة.' });
+      throw new Error();
     }
 
-    try {
-        // التحقق من صحة التوكن
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
-        // إيجاد المستخدم من قاعدة البيانات وإرفاقه بالطلب
-        req.user = await User.findById(decoded.user.id).select('-password');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findOne({ 
+      _id: decoded.userId,
+      isBanned: false 
+    }).select('-password');
 
-        if (!req.user) {
-            return res.status(401).json({ message: 'المستخدم غير موجود.' });
-        }
-        
-        next(); // الانتقال إلى المسار التالي
-    } catch (err) {
-        res.status(401).json({ message: 'التوكن غير صالح.' });
+    if (!user) {
+      throw new Error();
     }
+
+    req.user = user;
+    req.token = token;
+    next();
+  } catch (error) {
+    res.status(401).json({ 
+      success: false, 
+      message: 'Please authenticate' 
+    });
+  }
 };
+
+module.exports = auth;
