@@ -21,7 +21,24 @@ const io = new Server(server, {
 });
 
 // --- 3. إعداد Middleware ---
-app.use(helmet()); // يفضل ضبط CSP بشكل أكثر تحديداً للإنتاج
+// المكان: server/index.js
+
+// --- استبدل هذا السطر ---
+// app.use(helmet());
+
+// --- بهذا الكود ---
+app.use(
+    helmet({
+        contentSecurityPolicy: {
+            directives: {
+                ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+                "script-src": ["'self'", "d3js.org", "https://d3js.org"], // السماح بـ d3.js
+                "connect-src": ["'self'", "cdn.jsdelivr.net"], // للسماح بتحميل بيانات الخريطة
+            },
+        },
+    })
+);
+
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
