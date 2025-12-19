@@ -1,10 +1,18 @@
 const rateLimit = require('express-rate-limit');
 const RedisStore = require('rate-limit-redis');
-const redis = require('../config/redis');
+const { sendCommand } = require('../config/redis'); // استيراد sendCommand الصحيحة
 
-// Create Redis store for rate limiting
+// Redis store مع sendCommand صحيحة
 const redisStore = new RedisStore({
-  sendCommand: (...args) => redis.sendCommand(args),
+  sendCommand: async (...args) => {
+    try {
+      return await sendCommand(...args);
+    } catch (error) {
+      console.error('Rate limit Redis error:', error);
+      // Fallback to memory store
+      return null;
+    }
+  },
   prefix: 'rl:'
 });
 
@@ -22,7 +30,7 @@ const apiLimiter = rateLimit({
   skipSuccessfulRequests: false
 });
 
-// Strict limiter for sensitive routes
+// باقي الـ limiters كما هي
 const strictLimiter = rateLimit({
   store: redisStore,
   windowMs: 15 * 60 * 1000,
@@ -34,7 +42,6 @@ const strictLimiter = rateLimit({
   skipSuccessfulRequests: false
 });
 
-// Auth limiter for login/register
 const authLimiter = rateLimit({
   store: redisStore,
   windowMs: 60 * 60 * 1000, // 1 hour
@@ -46,7 +53,6 @@ const authLimiter = rateLimit({
   skipSuccessfulRequests: false
 });
 
-// Deposit/Withdrawal limiter
 const paymentLimiter = rateLimit({
   store: redisStore,
   windowMs: 60 * 60 * 1000, // 1 hour
@@ -58,7 +64,6 @@ const paymentLimiter = rateLimit({
   skipSuccessfulRequests: false
 });
 
-// Chat message limiter
 const chatLimiter = rateLimit({
   store: redisStore,
   windowMs: 60 * 1000, // 1 minute
@@ -70,7 +75,6 @@ const chatLimiter = rateLimit({
   skipSuccessfulRequests: false
 });
 
-// Admin endpoints limiter
 const adminLimiter = rateLimit({
   store: redisStore,
   windowMs: 60 * 60 * 1000, // 1 hour
@@ -124,7 +128,7 @@ const dynamicLimiter = (req, res, next) => {
 };
 
 // Function to block IP (called from admin)
-const blockIP = (ip, duration = 24 * 60 * 60 * 1000) => { // 24 hours default
+const blockIP = (ip, duration = 24 * 60 * 60 * 1000) => {
   blockedIPs.add(ip);
   
   // Auto remove after duration
