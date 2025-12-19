@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة التحكم - إدارة المنصة</title>
+    <link rel="stylesheet" href="admin.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Admin Sidebar -->
+        <nav class="admin-sidebar">
+            <div class="sidebar-header">
+                <h3><i class="fas fa-crown"></i> لوحة الإدارة</h3>
+                <div class="admin-info">
+                    <img src="https://via.placeholder.com/40" alt="المدير">
+                    <span id="adminName">المدير</span>
+                </div>
+            </div>
+
+            <ul class="sidebar-menu">
+                <li class="menu-item active" data-page="dashboard">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>لوحة التحكم</span>
+                </li>
+                <li class="menu-item" data-page="users">
+                    <i class="fas fa-users"></i>
+                    <span>إدارة المستخدمين</span>
+                </li>
+                <li class="menu-item" data-page="transactions">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>المعاملات المالية</span>
+                </li>
+                <li class="menu-item" data-page="withdrawals">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>طلبات السحب</span>
+                </li>
+                <li class="menu-item" data-page="deposits">
+                    <i class="fas fa-credit-card"></i>
+                    <span>طلبات الشحن</span>
+                </li>
+                <li class="menu-item" data-page="battles">
+                    <i class="fas fa-gamepad"></i>
+                    <span>التحديات النشطة</span>
+                </li>
+                <li class="menu-item" data-page="gifts">
+                    <i class="fas fa-gifts"></i>
+                    <span>إدارة الهدايا</span>
+                </li>
+                <li class="menu-item" data-page="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>الإعدادات</span>
+                </li>
+                <li class="menu-item" data-page="logs">
+                    <i class="fas fa-history"></i>
+                    <span>سجلات النظام</span>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <button class="btn-logout">
+                    <i class="fas fa-sign-out-alt"></i>
+                    تسجيل الخروج
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="admin-main">
+            <!-- Dashboard Page -->
+            <div id="dashboard-page" class="page active">
+                <div class="page-header">
+                    <h1><i class="fas fa-tachometer-alt"></i> لوحة التحكم</h1>
+                    <div class="last-update">
+                        <i class="fas fa-sync-alt"></i>
+                        <span>آخر تحديث: <span id="lastUpdate">الآن</span></span>
+                    </div>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card primary">
+                        <div class="stat-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="totalUsers">0</h3>
+                            <p>إجمالي المستخدمين</p>
+                        </div>
+                        <div class="stat-change">
+                            <i class="fas fa-arrow-up"></i>
+                            <span id="onlineUsers">0</span> متصلين
+                        </div>
+                    </div>
+
+                    <div class="stat-card success">
+                        <div class="stat-icon">
+                            <i class="fas fa-dollar-sign"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="totalDeposits">0$</h3>
+                            <p>إجمالي الشحنات</p>
+                        </div>
+                        <div class="stat-change">
+                            <i class="fas fa-arrow-up"></i>
+                            <span id="pendingDeposits">0</span> معلقة
+                        </div>
+                    </div>
+
+                    <div class="stat-card warning">
+                        <div class="stat-icon">
+                            <i class="fas fa-money-bill-wave"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="totalWithdrawals">0$</h3>
+                            <p>إجمالي السحوبات</p>
+                        </div>
+                        <div class="stat-change">
+                            <i class="fas fa-clock"></i>
+                            <span id="pendingWithdrawals">0</span> معلقة
+                        </div>
+                    </div>
+
+                    <div class="stat-card danger">
+                        <div class="stat-icon">
+                            <i class="fas fa-gamepad"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="activeBattles">0</h3>
+                            <p>تحديات نشطة</p>
+                        </div>
+                        <div class="stat-change">
+                            <i class="fas fa-chart-line"></i>
+                            <span id="todayTransactions">0</span> معاملة اليوم
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Users -->
+                <div class="row mt-4">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-trophy"></i> أكبر المودعين</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="topDepositors" class="top-users-list">
+                                    <!-- Top depositors will be loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-gift"></i> أكبر المهدين</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="topGifters" class="top-users-list">
+                                    <!-- Top gifters will be loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-crown"></i> أكبر الرابحين</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="topWinners" class="top-users-list">
+                                    <!-- Top winners will be loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activities -->
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-history"></i> آخر الأنشطة</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="recentActivities" class="activities-list">
+                            <!-- Recent activities will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users Management Page -->
+            <div id="users-page" class="page">
+                <div class="page-header">
+                    <h1><i class="fas fa-users"></i> إدارة المستخدمين</h1>
+                    <div class="header-actions">
+                        <div class="search-box">
+                            <input type="text" id="userSearch" placeholder="بحث بالاسم، البريد، الهاتف...">
+                            <i class="fas fa-search"></i>
+                        </div>
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                            <i class="fas fa-plus"></i> إضافة مستخدم
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>الصورة</th>
+                                <th>اسم المستخدم</th>
+                                <th>البريد الإلكتروني</th>
+                                <th>رقم الهاتف</th>
+                                <th>الرصيد</th>
+                                <th>الحالة</th>
+                                <th>آخر نشاط</th>
+                                <th>الإجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <!-- Users will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="pagination-container">
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination" id="usersPagination">
+                            <!-- Pagination will be generated here -->
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+
+            <!-- More pages will be added similarly -->
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal fade" id="userDetailsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">تفاصيل المستخدم</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="userDetailsContent">
+                    <!-- User details will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="banUserModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">حظر المستخدم</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="banForm">
+                        <div class="mb-3">
+                            <label for="banReason" class="form-label">سبب الحظر</label>
+                            <textarea class="form-control" id="banReason" rows="3" required></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="banDuration" class="form-label">مدة الحظر (أيام)</label>
+                            <input type="number" class="form-control" id="banDuration" min="1" placeholder="اترك فارغًا للحظر الدائم">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="button" class="btn btn-danger" id="confirmBan">حظر</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="admin.js"></script>
+</body>
+</html>
