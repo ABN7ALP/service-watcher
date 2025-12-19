@@ -1,498 +1,644 @@
-// المكان: public/script.js (النسخة الكاملة والنهائية لنظام الجولات الفوري)
+// Global Variables
+let socket = null;
+let currentUser = null;
+let currentSeat = null;
+let activeBattle = null;
+let authToken = null;
 
+// DOM Elements
+const elements = {
+    balance: document.getElementById('balance'),
+    coins: document.getElementById('coins'),
+    level: document.getElementById('level'),
+    username: document.getElementById('username'),
+    userId: document.getElementById('userId'),
+    messageInput: document.getElementById('messageInput'),
+    chatMessages: document.getElementById('chatMessages')
+};
+
+// Initialize App
 document.addEventListener('DOMContentLoaded', () => {
-    // ===================================================================
-    // القسم 1: المتغيرات العامة والإعدادات
-    // ===================================================================
-    let currentUser = null;
-    let isSpinning = false;
-    let socket;
-    let audioContext;
-    let randomAnimationTimer; // متغير لحفظ مؤقت الأنيميشن العشوائي
-
-    const wheelSegments = [
-        { city: 'القاهرة', amount: 0.5, lon: 31.23, lat: 30.04 },
-        { city: 'روما', amount: 0.75, lon: 12.49, lat: 41.90 },
-        { city: 'باريس', amount: 1, lon: 2.35, lat: 48.85 },
-        { city: 'لندن', amount: 2, lon: -0.12, lat: 51.50 },
-        { city: 'ريو', amount: 3, lon: -43.17, lat: -22.90 },
-        { city: 'نيويورك', amount: 4, lon: -74.00, lat: 40.71 },
-        { city: 'موسكو', amount: 5, lon: 37.61, lat: 55.75 },
-        { city: 'دبي', amount: 7, lon: 55.27, lat: 25.20 },
-        { city: 'بكين', amount: 9, lon: 116.40, lat: 39.90 },
-        { city: 'طوكيو', amount: 10, lon: 139.69, lat: 35.68 }
-    ];
-    let projection, path;
-
-    // ===================================================================
-    // القسم 2: دوال التهيئة الرئيسية
-    // ===================================================================
-
-    initializeApp();
+    checkAuth();
+    initSocket();
+    loadUserData();
     setupEventListeners();
-
-    async function initializeApp() {
-        await drawMap();
-        const token = localStorage.getItem('token');
-        if (token) {
-            try {
-                const response = await fetch('/api/auth/verify', { headers: { 'Authorization': `Bearer ${token}` } });
-                if (response.ok) {
-                    currentUser = await response.json();
-                    initializeSocket(currentUser._id);
-                    showMainContent();
-                    updateUserInfo();
-                    loadTransactions();
-                    loadRecentWins();
-                } else { logout(); }
-            } catch (error) { showLoginModal(); }
-        } else { showLoginModal(); }
-    }
-
-    function setupEventListeners() {
-        document.getElementById('depositBtn').addEventListener('click', () => switchTab('deposit'));
-        document.getElementById('withdrawBtn').addEventListener('click', () => {
-            switchTab('withdraw');
-            document.getElementById('availableBalance').textContent = `$${currentUser?.balance?.toFixed(2) || '0.00'}`;
-        });
-        document.getElementById('logoutBtn').addEventListener('click', logout);
-        document.getElementById('spinBtn').addEventListener('click', handleSpinRequest);
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', (e) => switchTab(e.target.dataset.tab)));
-        document.getElementById('depositForm').addEventListener('submit', handleDeposit);
-        document.getElementById('receipt').addEventListener('change', previewReceipt);
-        document.getElementById('withdrawForm').addEventListener('submit', handleWithdraw);
-        document.getElementById('loginForm').addEventListener('submit', handleLogin);
-        document.getElementById('showRegister').addEventListener('click', (e) => { e.preventDefault(); showRegisterModal(); });
-        document.getElementById('registerForm').addEventListener('submit', handleRegister);
-        document.getElementById('showLogin').addEventListener('click', (e) => { e.preventDefault(); showLoginModal(); });
-        document.getElementById('closeResult').addEventListener('click', closeResultModal);
-        document.querySelector('#resultModal .close').addEventListener('click', closeResultModal);
-        document.getElementById('filterType').addEventListener('change', loadTransactions);
-        document.getElementById('filterDate').addEventListener('change', loadTransactions);
-    }
-
-    // ===================================================================
-    // القسم 3: دوال المصادقة والتعامل مع النماذج
-    // ===================================================================
-
-    async function handleLogin(e) {
-        e.preventDefault();
-        initAudio();
-        const username = document.getElementById('loginUsername').value;
-        const password = document.getElementById('loginPassword').value;
-        try {
-            const response = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            if (response.ok) {
-                const data = await response.json();
-                localStorage.setItem('token', data.token);
-                currentUser = data.user;
-                initializeSocket(currentUser._id);
-                showMainContent();
-                updateUserInfo();
-                loadTransactions();
-                loadRecentWins();
-                document.getElementById('loginModal').classList.remove('active');
-                showNotification('تم تسجيل الدخول بنجاح', 'success');
-            } else {
-                const error = await response.json();
-                showNotification(error.message || 'فشل تسجيل الدخول', 'error');
-            }
-        } catch (error) {
-            showNotification('خطأ في الاتصال بالخادم', 'error');
-        }
-    }
-
-    async function handleRegister(e) {
-        e.preventDefault();
-        initAudio();
-        const username = document.getElementById('registerUsername').value;
-        const email = document.getElementById('registerEmail').value;
-        const password = document.getElementById('registerPassword').value;
-        const phone = document.getElementById('registerPhone').value;
-        try {
-            const response = await fetch('/api/auth/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, email, password, phone })
-            });
-            if (response.ok) {
-                showNotification('تم إنشاء الحساب بنجاح! يمكنك تسجيل الدخول الآن', 'success');
-                showLoginModal();
-                document.getElementById('registerForm').reset();
-            } else {
-                const error = await response.json();
-                showNotification(error.message || 'فشل إنشاء الحساب', 'error');
-            }
-        } catch (error) {
-            showNotification('خطأ في الاتصال بالخادم', 'error');
-        }
-    }
-
-    async function handleDeposit(e) {
-        e.preventDefault();
-        const form = e.target;
-        if (!form.receipt.files || form.receipt.files.length === 0) {
-            showNotification('يرجى رفع صورة الإيصال أولاً', 'error');
-            return;
-        }
-        const formData = new FormData(form);
-        const submitButton = form.querySelector('button[type="submit"]');
-        submitButton.disabled = true;
-        submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
-        try {
-            const response = await fetch('/api/payment/deposit', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-                body: formData
-            });
-            if (response.ok) {
-                showNotification('تم إرسال طلب الشحن بنجاح، سيتم مراجعته قريباً.', 'success');
-                form.reset();
-                document.getElementById('receiptPreview').innerHTML = '';
-            } else {
-                const error = await response.json();
-                showNotification(error.message || 'فشل إرسال طلب الشحن', 'error');
-            }
-        } catch (error) {
-            showNotification('حدث خطأ في الاتصال بالخادم', 'error');
-        } finally {
-            submitButton.disabled = false;
-            submitButton.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال طلب الشحن';
-        }
-    }
-
-    async function handleWithdraw(e) {
-        e.preventDefault();
-        const amount = parseFloat(document.getElementById('withdrawAmount').value);
-        if (amount > (currentUser?.balance || 0)) {
-            showNotification('رصيدك غير كافٍ للسحب', 'error');
-            return;
-        }
-        const body = {
-            fullName: document.getElementById('withdrawName').value,
-            shamCashNumber: document.getElementById('shamCashNumber').value,
-            amount
-        };
-        try {
-            const response = await fetch('/api/payment/withdraw', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-                body: JSON.stringify(body)
-            });
-            if (response.ok) {
-                showNotification('تم إرسال طلب السحب بنجاح', 'success');
-                e.target.reset();
-            } else {
-                const error = await response.json();
-                showNotification(error.message || 'فشل إرسال الطلب', 'error');
-            }
-        } catch (error) {
-            showNotification('خطأ في الاتصال بالخادم', 'error');
-        }
-    }
-
-    // ===================================================================
-    // القسم 4: دوال الخريطة العالمية ونظام الجولات
-    // ===================================================================
-
-    async function drawMap() {
-        const container = document.getElementById('world-map');
-        const width = 800;
-        const height = 450;
-        projection = d3.geoMercator().scale(130).translate([width / 2, height / 1.5]);
-        path = d3.geoPath().projection(projection);
-        const svg = d3.select(container).append("svg").attr("viewBox", `0 0 ${width} ${height}`);
-        try {
-            const world = await d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json");
-            svg.append("g").selectAll("path").data(topojson.feature(world, world.objects.countries).features).enter().append("path").attr("d", path).attr("class", "country");
-            const cityGroup = svg.append("g");
-            cityGroup.selectAll(".city-marker").data(wheelSegments).enter().append("circle").attr("class", "city-marker").attr("cx", d => projection([d.lon, d.lat])[0]).attr("cy", d => projection([d.lon, d.lat])[1]).attr("r", 5);
-            cityGroup.selectAll(".city-label").data(wheelSegments).enter().append("text").attr("class", "city-label").attr("x", d => projection([d.lon, d.lat])[0] + 8).attr("y", d => projection([d.lon, d.lat])[1] + 4).text(d => d.city);
-            svg.append("circle").attr("id", "zone").attr("class", "zone").attr("r", 0);
-        } catch (error) {
-            container.textContent = "فشل تحميل الخريطة.";
-        }
-    }
-
-    async function handleSpinRequest() {
-        initAudio();
-        if (isSpinning) return;
-        if (!currentUser || currentUser.balance < 1) {
-            showNotification('رصيدك غير كافٍ', 'error');
-            return;
-        }
-        isSpinning = true;
-        const spinBtn = document.getElementById('spinBtn');
-        spinBtn.disabled = true;
-        spinBtn.innerHTML = '<i class="fas fa-hourglass-half"></i> الانضمام لجولة...';
-        try {
-            const response = await fetch('/api/spin', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-            });
-            if (response.ok) {
-                const data = await response.json();
-                currentUser.balance = data.newBalance;
-                updateUserInfo();
-                spinBtn.innerHTML = '<i class="fas fa-hourglass-half"></i> في انتظار انتهاء الجولة...';
-                startRandomAnimation();
-            } else {
-                const error = await response.json();
-                showNotification(error.message || 'حدث خطأ', 'error');
-                isSpinning = false;
-                spinBtn.disabled = false;
-                spinBtn.innerHTML = '<i class="fas fa-plane-departure"></i> ابدأ الرحلة ($1)';
-            }
-        } catch (error) {
-            isSpinning = false;
-            spinBtn.disabled = false;
-            spinBtn.innerHTML = '<i class="fas fa-plane-departure"></i> ابدأ الرحلة ($1)';
-            showNotification('خطأ في الاتصال بالخادم', 'error');
-        }
-    }
-
-    function startRandomAnimation() {
-        const zone = d3.select("#zone");
-        zone.attr("r", 0).transition().duration(500).attr("r", 80);
-        randomAnimationTimer = setInterval(() => {
-            const randomSegment = wheelSegments[Math.floor(Math.random() * wheelSegments.length)];
-            const [x, y] = projection([randomSegment.lon, randomSegment.lat]);
-            zone.transition().duration(400).ease(d3.easeLinear).attr("cx", x).attr("cy", y);
-            playTickSound();
-        }, 500);
-    }
-
-    function landOnDestination(result) {
-        clearInterval(randomAnimationTimer);
-        const { winAmount, newBalance } = result;
-        const winningSegment = wheelSegments.reduce((prev, curr) =>
-            (Math.abs(curr.amount - winAmount) < Math.abs(prev.amount - winAmount) ? curr : prev)
-        );
-        const zone = d3.select("#zone");
-        const [targetX, targetY] = projection([winningSegment.lon, winningSegment.lat]);
-        zone.transition().duration(1500).ease(d3.easeCubicOut).attr("cx", targetX).attr("cy", targetY).attr("r", 25)
-            .on("end", () => {
-                isSpinning = false;
-                const spinBtn = document.getElementById('spinBtn');
-                spinBtn.disabled = false;
-                spinBtn.innerHTML = '<i class="fas fa-plane-departure"></i> ابدأ الرحلة ($1)';
-                currentUser.balance = newBalance;
-                setTimeout(() => {
-                    playWinSound();
-                    showResultModal(winAmount, winningSegment.city);
-                    updateUserInfo();
-                    loadRecentWins();
-                    loadTransactions();
-                    zone.transition().duration(500).attr("r", 0);
-                }, 500);
-            });
-    }
-
-    // ===================================================================
-    // القسم 5: دوال توليد الصوت (Web Audio API)
-    // ===================================================================
-
-    function initAudio() {
-        if (audioContext) return;
-        try {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        } catch (e) { console.error("Web Audio API is not supported"); }
-    }
-
-    function playTickSound() {
-        if (!audioContext) return;
-        const osc = audioContext.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, audioContext.currentTime);
-        const gain = audioContext.createGain();
-        gain.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1);
-        osc.connect(gain).connect(audioContext.destination);
-        osc.start();
-        osc.stop(audioContext.currentTime + 0.1);
-    }
-
-    function playWinSound() {
-        if (!audioContext) return;
-        const freqs = [523.25, 659.25, 783.99, 1046.50];
-        freqs.forEach((freq, i) => {
-            const osc = audioContext.createOscillator();
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(freq, audioContext.currentTime + i * 0.1);
-            const gain = audioContext.createGain();
-            gain.gain.setValueAtTime(0.3, audioContext.currentTime + i * 0.1);
-            gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + i * 0.1 + 0.2);
-            osc.connect(gain).connect(audioContext.destination);
-            osc.start(audioContext.currentTime + i * 0.1);
-            osc.stop(audioContext.currentTime + i * 0.1 + 0.2);
-        });
-    }
-
-    // ===================================================================
-    // القسم 6: دوال الواجهة المساعدة والشبكة
-    // ===================================================================
-
-    // المكان: public/script.js
-
-function initializeSocket(userId) {
-    // --- بداية التعديل: إرسال التوكن عند الاتصال ---
-    socket = io({
-        auth: {
-            token: localStorage.getItem('token')
-        }
-    });
-    // --- نهاية التعديل ---
-
-    socket.on('connect', () => {
-        console.log('Connected to server with socket ID:', socket.id);
-    });
-
-    socket.on('error', (error) => {
-        console.error('Socket Error:', error.message);
-        // يمكنك إظهار إشعار للمستخدم هنا
-    });
-        socket.on('notification', (payload) => {
-            const { type, message, newBalance } = payload;
-            showNotification(message, type);
-            if (newBalance !== undefined) {
-                currentUser.balance = newBalance;
-                updateUserInfo();
-            }
-            loadTransactions();
-        });
-        socket.on('roundResult', (result) => {
-            console.log("Round result received:", result);
-            landOnDestination(result);
-        });
-    }
-
-    function switchTab(tabName) {
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-        document.querySelector(`.tab-btn[data-tab="${tabName}"]`).classList.add('active');
-        document.getElementById(`${tabName}-tab`).classList.add('active');
-    }
-
-    function previewReceipt(e) {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                document.getElementById('receiptPreview').innerHTML = `<img src="${e.target.result}" alt="Receipt Preview">`;
-            };
-            reader.readAsDataURL(file);
-        }
-    }
-
-    async function updateUserInfo() {
-        if (!currentUser) return;
-        document.getElementById('username').textContent = currentUser.username;
-        document.getElementById('balance').textContent = `الرصيد: $${currentUser.balance.toFixed(2)}`;
-        document.getElementById('currentBalance').textContent = `$${currentUser.balance.toFixed(2)}`;
-        try {
-            const statsResponse = await fetch('/api/spin/stats', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
-            if (statsResponse.ok) {
-                const stats = await statsResponse.json();
-                document.getElementById('todayWins').textContent = `$${stats.todayWins.toFixed(2)}`;
-                document.getElementById('todaySpins').textContent = stats.todaySpins;
-            }
-        } catch (error) { console.error("Could not fetch stats", error); }
-    }
-
-    async function loadTransactions() {
-        const type = document.getElementById('filterType').value;
-        const date = document.getElementById('filterDate').value;
-        let url = `/api/transactions?type=${type}&date=${date}`;
-        try {
-            const response = await fetch(url, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
-            if (response.ok) {
-                const transactions = await response.json();
-                const listElement = document.getElementById('transactionsList');
-                listElement.innerHTML = transactions.length === 0 ? '<p class="no-transactions">لا توجد معاملات</p>' :
-                    transactions.map(t => `
-                        <div class="transaction-item ${t.type} ${t.status}">
-                            <div class="transaction-details">
-                                <div class="transaction-type">${getTransactionTypeText(t)}</div>
-                                <div class="transaction-date">${new Date(t.createdAt).toLocaleString('ar-EG')}</div>
-                                ${t.note ? `<div class="transaction-note">${t.note}</div>` : ''}
-                            </div>
-                            <div class="transaction-amount ${t.type === 'deposit' || t.status === 'win' ? 'positive' : 'negative'}">
-                                ${t.type === 'deposit' || t.status === 'win' ? '+' : '-'}$${Math.abs(t.amount).toFixed(2)}
-                            </div>
-                        </div>
-                    `).join('');
-            }
-        } catch (error) { console.error('Error loading transactions:', error); }
-    }
-
-    function getTransactionTypeText(t) {
-        if (t.type === 'deposit') return 'شحن رصيد';
-        if (t.type === 'withdraw') return 'سحب أرباح';
-        if (t.type === 'spin') return t.status === 'win' ? 'ربح من الرحلة' : 'بدء رحلة';
-        return t.type;
-    }
-
-    async function loadRecentWins() {
-        try {
-            const response = await fetch('/api/spin/recent-wins', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
-            if (response.ok) {
-                const wins = await response.json();
-                document.getElementById('recentWins').innerHTML = wins.map(win => `<div class="win-item">$${win.amount.toFixed(2)}</div>`).join('');
-            }
-        } catch (error) { console.error('Error loading recent wins:', error); }
-    }
-
-    function showResultModal(amount, city) {
-        document.getElementById('resultTitle').textContent = `هبوط محظوظ في ${city}! 🎉`;
-        document.getElementById('resultMessage').innerHTML = `لقد ربحت <span class="prize-amount">$${amount.toFixed(2)}</span>`;
-        document.getElementById('resultModal').style.display = 'flex';
-    }
-
-    function closeResultModal() {
-        document.getElementById('resultModal').style.display = 'none';
-    }
-
-    function logout() {
-        localStorage.removeItem('token');
-        currentUser = null;
-        if (socket) socket.disconnect();
-        showLoginModal();
-        showNotification('تم تسجيل الخروج بنجاح', 'success');
-    }
-
-    function showLoginModal() {
-        hideMainContent();
-        document.getElementById('loginModal').classList.add('active');
-        document.getElementById('registerModal').classList.remove('active');
-    }
-
-    function showRegisterModal() {
-        hideMainContent();
-        document.getElementById('loginModal').classList.remove('active');
-        document.getElementById('registerModal').classList.add('active');
-    }
-
-    function showMainContent() {
-        document.getElementById('loginModal').classList.remove('active');
-        document.getElementById('registerModal').classList.remove('active');
-        document.querySelector('.main-content').style.display = 'block';
-        document.querySelector('.navbar').style.display = 'flex';
-    }
-
-    function hideMainContent() {
-        document.querySelector('.main-content').style.display = 'none';
-        document.querySelector('.navbar').style.display = 'none';
-    }
-
-    function showNotification(message, type = 'info') {
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i><span>${message}</span>`;
-        document.body.appendChild(notification);
-        setTimeout(() => notification.remove(), 5000);
-    }
 });
+
+// Check Authentication
+function checkAuth() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/login.html';
+        return;
+    }
+    
+    authToken = token;
+    currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+    
+    // Update UI with user data
+    if (currentUser) {
+        elements.username.textContent = currentUser.username || 'اسم المستخدم';
+        elements.userId.textContent = currentUser.id?.slice(-6) || '123456';
+        elements.balance.textContent = `${currentUser.balance || 0}$`;
+        elements.coins.textContent = currentUser.coins || 0;
+        elements.level.textContent = currentUser.level || 1;
+    }
+}
+
+// Initialize Socket Connection
+function initSocket() {
+    const socketUrl = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000'
+        : window.location.origin;
+    
+    socket = io(socketUrl, {
+        auth: {
+            token: authToken
+        }
+    });
+
+    // Socket event handlers
+    socket.on('connect', () => {
+        console.log('✅ Connected to server');
+        socket.emit('join-user', currentUser.id);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('❌ Disconnected from server');
+    });
+
+    socket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+    });
+
+    // Join voice chat seat
+    socket.on('user-joined-seat', (data) => {
+        updateSeatUI(data.seatNumber, data.userId, true);
+    });
+
+    socket.on('user-left-seat', (data) => {
+        updateSeatUI(data.seatNumber, data.userId, false);
+    });
+
+    // Chat messages
+    socket.on('new-message', (message) => {
+        addMessageToChat(message);
+    });
+
+    socket.on('new-image', (data) => {
+        addImageToChat(data);
+    });
+
+    socket.on('new-voice', (data) => {
+        addVoiceToChat(data);
+    });
+
+    // Battle events
+    socket.on('new-battle-created', (battle) => {
+        addBattleToUI(battle);
+    });
+
+    socket.on('battle-updated', (update) => {
+        updateBattleUI(update);
+    });
+
+    socket.on('player-joined', (data) => {
+        updateBattlePlayers(data);
+    });
+
+    socket.on('battle-started', (data) => {
+        showBattleStarted(data);
+    });
+
+    socket.on('battle-ended', (data) => {
+        showBattleResults(data);
+    });
+
+    socket.on('victory-modal', (data) => {
+        showVictoryModal(data);
+    });
+
+    // Notifications
+    socket.on('notification', (notification) => {
+        showNotification(notification);
+    });
+
+    socket.on('receive-gift', (gift) => {
+        showGiftAnimation(gift);
+    });
+}
+
+// Load User Data
+async function loadUserData() {
+    try {
+        const response = await fetch('/api/auth/profile', {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                updateUserUI(data.user);
+            }
+        }
+    } catch (error) {
+        console.error('Error loading user data:', error);
+    }
+}
+
+// Setup Event Listeners
+function setupEventListeners() {
+    // Chat input
+    elements.messageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    // Seat click
+    document.querySelectorAll('.circle-seat').forEach(seat => {
+        seat.addEventListener('click', () => {
+            const seatNumber = parseInt(seat.dataset.seat);
+            joinVoiceSeat(seatNumber);
+        });
+    });
+
+    // Create battle button
+    document.querySelector('.btn-create-battle')?.addEventListener('click', () => {
+        showCreateBattleModal();
+    });
+
+    // Deposit button
+    document.querySelector('.btn-deposit')?.addEventListener('click', () => {
+        showDepositModal();
+    });
+
+    // Withdraw button
+    document.querySelector('.btn-withdraw')?.addEventListener('click', () => {
+        showWithdrawalModal();
+    });
+
+    // Battle type buttons
+    document.querySelectorAll('.battle-type-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.battle-type-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            loadBattles(btn.textContent.trim());
+        });
+    });
+}
+
+// Join Voice Seat
+function joinVoiceSeat(seatNumber) {
+    if (currentSeat === seatNumber) {
+        // Leave seat
+        socket.emit('leave-voice-seat', {
+            seatNumber,
+            userId: currentUser.id
+        });
+        currentSeat = null;
+        return;
+    }
+
+    if (currentSeat) {
+        // Leave current seat first
+        socket.emit('leave-voice-seat', {
+            seatNumber: currentSeat,
+            userId: currentUser.id
+        });
+    }
+
+    socket.emit('join-voice-seat', {
+        seatNumber,
+        userId: currentUser.id
+    });
+    
+    currentSeat = seatNumber;
+}
+
+// Update Seat UI
+function updateSeatUI(seatNumber, userId, isOccupied) {
+    const seat = document.querySelector(`.circle-seat[data-seat="${seatNumber}"]`);
+    if (!seat) return;
+
+    if (isOccupied) {
+        seat.classList.add('occupied');
+        seat.querySelector('.seat-user').style.backgroundColor = 
+            userId === currentUser.id ? '#6a11cb' : '#2575fc';
+    } else {
+        seat.classList.remove('occupied');
+        seat.querySelector('.seat-user').style.backgroundColor = 'transparent';
+    }
+}
+
+// Send Message
+function sendMessage() {
+    const message = elements.messageInput.value.trim();
+    if (!message || !socket) return;
+
+    const messageData = {
+        roomId: 'public',
+        message,
+        type: 'text',
+        senderId: currentUser.id,
+        senderName: currentUser.username,
+        allowSave: true,
+        allowScreenshot: true
+    };
+
+    socket.emit('send-message', messageData);
+    elements.messageInput.value = '';
+}
+
+// Add Message to Chat
+function addMessageToChat(message) {
+    const messageElement = document.createElement('div');
+    messageElement.className = `chat-message ${message.senderId === currentUser.id ? 'my-message' : 'other-message'}`;
+    
+    const time = new Date(message.timestamp).toLocaleTimeString('ar-EG', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+
+    messageElement.innerHTML = `
+        <div class="message-header">
+            <strong>${message.senderName || 'مستخدم'}</strong>
+            <span class="message-time">${time}</span>
+        </div>
+        <div class="message-content">${escapeHtml(message.message)}</div>
+    `;
+
+    elements.chatMessages.appendChild(messageElement);
+    elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+}
+
+// Add Image to Chat
+function addImageToChat(data) {
+    const imageElement = document.createElement('div');
+    imageElement.className = `chat-image ${data.senderId === currentUser.id ? 'my-image' : 'other-image'}`;
+    
+    imageElement.innerHTML = `
+        <div class="image-header">
+            <strong>${data.senderName || 'مستخدم'}</strong>
+        </div>
+        <img src="${data.imageUrl}" 
+             alt="صورة" 
+             class="chat-image-preview"
+             onclick="openImageModal('${data.imageUrl}')">
+        ${!data.allowScreenshot ? '<div class="screenshot-warning">ممنوع أخذ لقطة للشاشة</div>' : ''}
+    `;
+
+    elements.chatMessages.appendChild(imageElement);
+    elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+}
+
+// Show Create Battle Modal
+function showCreateBattleModal() {
+    const modalHTML = `
+        <div class="modal-overlay active" id="createBattleModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-plus-circle"></i> إنشاء تحدٍ جديد</h3>
+                    <button class="modal-close" onclick="closeModal('createBattleModal')">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>نوع التحدي</label>
+                        <div class="battle-type-select">
+                            <button class="battle-type-option active" data-type="1v1">1 ضد 1</button>
+                            <button class="battle-type-option" data-type="2v2">2 ضد 2</button>
+                            <button class="battle-type-option" data-type="4v4">4 ضد 4</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="betAmount">مبلغ الرهان ($)</label>
+                        <input type="number" 
+                               id="betAmount" 
+                               min="1" 
+                               max="${currentUser.balance || 0}" 
+                               value="1"
+                               class="form-control">
+                        <small class="form-text">الرصيد المتاح: ${currentUser.balance || 0}$</small>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="isPrivate"> تحدٍ خاص
+                        </label>
+                        <input type="password" 
+                               id="battlePassword" 
+                               placeholder="كلمة المرور" 
+                               class="form-control mt-2" 
+                               style="display: none;">
+                    </div>
+                    <div class="commission-notice">
+                        <i class="fas fa-info-circle"></i>
+                        عمولة المطور: 0.20$ من كل دولار (الفائز يحصل على 1.80$)
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeModal('createBattleModal')">إلغاء</button>
+                    <button class="btn btn-primary" onclick="createBattle()">إنشاء التحدي</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    
+    // Add event listeners
+    document.querySelectorAll('.battle-type-option').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.battle-type-option').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+        });
+    });
+
+    document.getElementById('isPrivate').addEventListener('change', function() {
+        document.getElementById('battlePassword').style.display = this.checked ? 'block' : 'none';
+    });
+}
+
+// Create Battle
+async function createBattle() {
+    const battleType = document.querySelector('.battle-type-option.active').dataset.type;
+    const betAmount = parseFloat(document.getElementById('betAmount').value);
+    const isPrivate = document.getElementById('isPrivate').checked;
+    const password = isPrivate ? document.getElementById('battlePassword').value : null;
+
+    if (betAmount < 1 || betAmount > (currentUser.balance || 0)) {
+        showNotification('المبلغ غير صحيح', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/battle/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({
+                type: battleType,
+                betAmount,
+                isPrivate,
+                password
+            })
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+            closeModal('createBattleModal');
+            showNotification('تم إنشاء التحدي بنجاح', 'success');
+            
+            // Socket will handle updating the UI
+        } else {
+            showNotification(data.message || 'فشل إنشاء التحدي', 'error');
+        }
+    } catch (error) {
+        console.error('Create battle error:', error);
+        showNotification('حدث خطأ أثناء إنشاء التحدي', 'error');
+    }
+}
+
+// Show Deposit Modal
+function showDepositModal() {
+    const modalHTML = `
+        <div class="modal-overlay active" id="depositModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-plus-circle"></i> شحن الرصيد</h3>
+                    <button class="modal-close" onclick="closeModal('depositModal')">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="wallet-info">
+                        <h4><i class="fas fa-wallet"></i> محفظة شام كاش</h4>
+                        <div class="wallet-number">
+                            <span id="walletNumber">جاري التحميل...</span>
+                            <button class="btn-copy" onclick="copyWalletNumber()">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                        <p class="wallet-instructions">قم بتحويل المبلغ إلى الرقم أعلاه</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="depositAmount">المبلغ المطلوب ($)</label>
+                        <input type="number" 
+                               id="depositAmount" 
+                               min="1" 
+                               max="1000" 
+                               value="10"
+                               class="form-control">
+                        <small class="form-text">الحد الأدنى: 1$ - الحد الأقصى: 1000$</small>
+                    </div>
+
+                    <div class="deposit-steps">
+                        <h5>خطوات الشحن:</h5>
+                        <ol>
+                            <li>أدخل المبلغ المطلوب</li>
+                            <li>قم بتحويل المبلغ إلى رقم المحفظة أعلاه</li>
+                            <li>التقط صورة للإيصاد</li>
+                            <li>ارفع صورة الإيصاد</li>
+                            <li>انتظر موافقة الإدارة</li>
+                        </ol>
+                    </div>
+
+                    <div class="upload-receipt" id="uploadReceiptSection" style="display: none;">
+                        <h5><i class="fas fa-receipt"></i> رفع صورة الإيصاد</h5>
+                        <input type="file" 
+                               id="receiptFile" 
+                               accept="image/*" 
+                               class="form-control">
+                        <button class="btn btn-primary mt-2" onclick="uploadReceipt()">
+                            <i class="fas fa-upload"></i> رفع الإيصاد
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeModal('depositModal')">إلغاء</button>
+                    <button class="btn btn-primary" id="startDepositBtn" onclick="startDepositProcess()">
+                        بدء عملية الشحن
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    loadWalletInfo();
+}
+
+// Load Wallet Info
+async function loadWalletInfo() {
+    try {
+        const response = await fetch('/api/payment/wallet-info', {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            document.getElementById('walletNumber').textContent = data.walletInfo.number;
+        }
+    } catch (error) {
+        console.error('Error loading wallet info:', error);
+    }
+}
+
+// Start Deposit Process
+async function startDepositProcess() {
+    const amount = parseFloat(document.getElementById('depositAmount').value);
+    
+    if (amount < 1 || amount > 1000) {
+        showNotification('المبلغ يجب أن يكون بين 1 و 1000 دولار', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/payment/deposit', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ amount })
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+            // Hide start button and show upload section
+            document.getElementById('startDepositBtn').style.display = 'none';
+            document.getElementById('uploadReceiptSection').style.display = 'block';
+            
+            // Store transaction ID
+            window.currentDepositId = data.transactionId;
+            
+            showNotification('تم إنشاء طلب الشحن. يرجى رفع صورة الإيصاد', 'success');
+        } else {
+            showNotification(data.message || 'فشل إنشاء طلب الشحن', 'error');
+        }
+    } catch (error) {
+        console.error('Deposit error:', error);
+        showNotification('حدث خطأ أثناء إنشاء طلب الشحن', 'error');
+    }
+}
+
+// Upload Receipt
+async function uploadReceipt() {
+    const fileInput = document.getElementById('receiptFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        showNotification('يرجى اختيار صورة الإيصاد', 'error');
+        return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+        showNotification('يرجى اختيار ملف صورة', 'error');
+        return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        showNotification('حجم الصورة يجب ألا يتجاوز 5 ميجابايت', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('receipt', file);
+    formData.append('transactionId', window.currentDepositId);
+
+    try {
+        const response = await fetch('/api/payment/upload-receipt', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: formData
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification('تم رفع الإيصاد بنجاح. سيتم المراجعة خلال 24 ساعة', 'success');
+            setTimeout(() => {
+                closeModal('depositModal');
+                loadUserData(); // Refresh balance
+            }, 2000);
+        } else {
+            showNotification(data.message || 'فشل رفع الإيصاد', 'error');
+        }
+    } catch (error) {
+        console.error('Upload receipt error:', error);
+        showNotification('حدث خطأ أثناء رفع الإيصاد', 'error');
+    }
+}
+
+// Show Notification
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `
+        <div class="notification-content">
+            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+            <span>${message}</span>
+        </div>
+        <button class="notification-close" onclick="this.parentElement.remove()">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+
+    document.body.appendChild(notification);
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+// Utility Functions
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.remove();
+    }
+}
+
+function copyWalletNumber() {
+    const walletNumber = document.getElementById('walletNumber').textContent;
+    navigator.clipboard.writeText(walletNumber)
+        .then(() => showNotification('تم نسخ رقم المحفظة', 'success'))
+        .catch(() => showNotification('فشل نسخ رقم المحفظة', 'error'));
+}
+
+// More functions would be added for:
+// - Withdrawal
+// - Gift sending
+// - Battle joining
+// - Profile management
+// - Admin features
+// - Real-time updates
+
+// Export for use in HTML
+window.copyWalletNumber = copyWalletNumber;
+window.closeModal = closeModal;
+window.openImageModal = function(imageUrl) {
+    // Open image in modal for viewing
+};
