@@ -1,118 +1,164 @@
-// المكان: server/routes/payment.js (النسخة الكاملة والنهائية والمصححة)
-
 const express = require('express');
-const Transaction = require('../models/Transaction');
-const User = require('../models/User');
+const router = express.Router();
+const paymentController = require('../controllers/paymentController');
+const auth = require('../middleware/auth');
+const { receiptUpload } = require('../middleware/upload');
+const { paymentLimiter } = require('../middleware/rateLimiter');
 
-// الدالة المصدرة يجب أن تستقبل 'upload' middleware من multer
-module.exports = (upload) => {
-    const router = express.Router();
-    
-    // ===================================================================
-    // مسار شحن الرصيد (هنا كان يكمن الخطأ على الأرجح)
-    // ===================================================================
-    // نطبق 'upload.single('receipt')' كـ middleware على هذا المسار تحديداً
-    // هذا يخبر multer بمعالجة الملف المرفق الذي يحمل اسم 'receipt'
-    router.post('/deposit', upload.single('receipt'), async (req, res) => {
-        try {
-            // 1. استخراج البيانات من الطلب
-            // req.body يحتوي على الحقول النصية (fullName, amount)
-            // req.file يحتوي على معلومات الملف الذي تم رفعه بواسطة multer
-            const { fullName, amount } = req.body;
-            
-            // 2. التحقق من وجود الملف (أهم خطوة)
-            if (!req.file) {
-                // إذا لم يجد multer أي ملف، سيرجع هذا الخطأ
-                return res.status(400).json({ message: 'صورة الإيصال مطلوبة. يرجى رفع الملف.' });
-            }
-            
-            // 3. التحقق من صحة المبلغ
-            const depositAmount = parseFloat(amount);
-            if (!depositAmount || depositAmount <= 0) {
-                return res.status(400).json({ message: 'المبلغ المحول غير صالح.' });
-            }
+// Apply rate limiting to payment routes
+router.use(paymentLimiter);
 
-            // 4. التحقق من وجود الاسم الكامل
-            if (!fullName || fullName.trim() === '') {
-                return res.status(400).json({ message: 'الاسم الكامل مطلوب.' });
-            }
-            
-            // 5. إنشاء معاملة شحن جديدة
-            const transaction = new Transaction({
-                user: req.user._id, // req.user يأتي من middleware المصادقة
-                type: 'deposit',
-                amount: depositAmount,
-                fullName: fullName.trim(),
-                receiptImage: req.file.path, // .path هو الرابط الذي يرجعه Cloudinary
-                status: 'pending'
-            });
-            
-            await transaction.save();
-            
-            // 6. إرسال رد ناجح
-            res.status(201).json({
-                message: 'تم إرسال طلب الشحن بنجاح، سيتم مراجعته من قبل الإدارة.',
-                transactionId: transaction._id
-            });
+// Get wallet information
+router.get('/wallet-info', auth, paymentController.getWalletInfo);
 
-        } catch (error) {
-            console.error('Deposit error:', error);
-            res.status(500).json({ message: 'حدث خطأ غير متوقع في الخادم أثناء معالجة طلب الشحن.' });
-        }
-    });
-    
-    // ===================================================================
-    // مسار سحب الأرباح (لا تغييرات كبيرة هنا)
-    // ===================================================================
-    router.post('/withdraw', async (req, res) => {
-        try {
-            const { fullName, shamCashNumber, amount } = req.body;
-            const withdrawAmount = parseFloat(amount);
-            
-            if (!fullName || !shamCashNumber || !withdrawAmount) {
-                return res.status(400).json({ message: 'جميع الحقول مطلوبة لإتمام عملية السحب.' });
-            }
-            
-            if (withdrawAmount < 5) {
-                return res.status(400).json({ message: 'الحد الأدنى لمبلغ السحب هو 5 دولارات.' });
-            }
-            
-            // تحديث رصيد المستخدم في الذاكرة قبل التحقق
-            const user = await User.findById(req.user._id);
-            if (withdrawAmount > user.balance) {
-                return res.status(400).json({ message: 'رصيدك الحالي غير كافٍ لإتمام عملية السحب.' });
-            }
+// Deposit routes
+router.post('/deposit', auth, paymentController.depositRequest);
+router.post('/upload-receipt', auth, receiptUpload, paymentController.uploadReceipt);
 
-            // خصم المبلغ من رصيد المستخدم فوراً عند تقديم الطلب
-            user.balance -= withdrawAmount;
-            await user.save();
+// Withdrawal routes
+router.post('/withdraw', auth, paymentController.withdrawalRequest);
+
+// Coin purchase
+router.post('/buy-coins', auth, paymentController.buyCoins);
+
+// Gift routes
+router.post('/send-gift', auth, paymentController.sendGift);
+
+// Get user transactions
+router.get('/transactions', auth, async (req, res) => {
+    try {
+        const { page = 1, limit = 20, type } = req.query;
+        const { userId } = req.user;
+        
+        const Transaction = require('../models/Transaction');
+        
+        const query = { user: userId };
+        if (type) query.type = type;
+        
+        const transactions = await Transaction.find(query)
+            .sort('-createdAt')
+            .limit(limit * 1)
+            .skip((page - 1) * limit)
+            .populate('recipient', 'username profileImage')
+            .populate('battle', 'type status');
             
-            const transaction = new Transaction({
-                user: req.user._id,
-                type: 'withdraw',
-                amount: withdrawAmount,
-                fullName,
-                shamCashNumber,
-                status: 'pending' // الطلب الآن معلق لموافقة المدير
-            });
+        const total = await Transaction.countDocuments(query);
+        
+        res.json({
+            success: true,
+            transactions,
+            totalPages: Math.ceil(total / limit),
+            currentPage: page
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// Get withdrawal history
+router.get('/withdrawals', auth, async (req, res) => {
+    try {
+        const { page = 1, limit = 20, status } = req.query;
+        const { userId } = req.user;
+        
+        const Withdrawal = require('../models/Withdrawal');
+        
+        const query = { user: userId };
+        if (status) query.status = status;
+        
+        const withdrawals = await Withdrawal.find(query)
+            .sort('-createdAt')
+            .limit(limit * 1)
+            .skip((page - 1) * limit);
             
-            await transaction.save();
+        const total = await Withdrawal.countDocuments(query);
+        
+        res.json({
+            success: true,
+            withdrawals,
+            totalPages: Math.ceil(total / limit),
+            currentPage: page
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// Get available gifts
+router.get('/gifts', auth, async (req, res) => {
+    try {
+        const Gift = require('../models/Gift');
+        
+        const gifts = await Gift.find({ isActive: true })
+            .sort('sortOrder price');
             
-            res.status(201).json({
-                message: 'تم إرسال طلب السحب بنجاح وهو قيد المراجعة.',
-                transactionId: transaction._id,
-                newBalance: user.balance // إرجاع الرصيد الجديد لتحديث الواجهة
-            });
-        } catch (error) {
-            console.error('Withdraw error:', error);
-            res.status(500).json({ message: 'حدث خطأ في الخادم أثناء معالجة طلب السحب.' });
-        }
-    });
-    
-    // هذا المسار لم يعد مستخدماً لأننا نقلنا منطقه إلى admin.js
-    // يمكنك حذفه أو إبقاءه كمرجع
-    // router.get('/admin/transactions', ...);
-    // router.put('/admin/transactions/:id', ...);
-    
-    return router;
-};
+        res.json({
+            success: true,
+            gifts
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// Get gift categories
+router.get('/gifts/categories', auth, async (req, res) => {
+    try {
+        const Gift = require('../models/Gift');
+        
+        const categories = await Gift.aggregate([
+            { $match: { isActive: true } },
+            { $group: {
+                _id: '$category',
+                count: { $sum: 1 },
+                minPrice: { $min: '$discountedPrice' },
+                maxPrice: { $max: '$discountedPrice' }
+            }},
+            { $sort: { _id: 1 } }
+        ]);
+        
+        res.json({
+            success: true,
+            categories: categories.map(cat => ({
+                name: cat._id,
+                displayName: getCategoryName(cat._id),
+                count: cat.count,
+                priceRange: {
+                    min: cat.minPrice,
+                    max: cat.maxPrice
+                }
+            }))
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// Helper function for category names
+function getCategoryName(category) {
+    const names = {
+        'common': 'عادي',
+        'rare': 'نادر',
+        'epic': 'ملحمي',
+        'legendary': 'أسطوري'
+    };
+    return names[category] || category;
+}
+
+module.exports = router;
