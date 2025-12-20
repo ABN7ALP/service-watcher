@@ -190,6 +190,51 @@ function setupEventListeners() {
         });
     });
 }
+    
+// استخدام تفويض الأحداث للتعامل مع العناصر التي تضاف لاحقاً
+document.body.addEventListener('click', function(event) {
+    // زر إغلاق النوافذ المنبثقة
+    const modalCloseButton = event.target.closest('.modal-close');
+    if (modalCloseButton) {
+        const modal = modalCloseButton.closest('.modal-overlay');
+        if (modal) {
+            closeModal(modal.id);
+        }
+        return; // توقف هنا لتجنب تداخل الأحداث
+    }
+
+    // أزرار أخرى داخل النوافذ المنبثقة
+    const targetId = event.target.id;
+    const targetClasses = event.target.classList;
+
+    switch (true) {
+        // زر نسخ رقم المحفظة
+        case targetClasses.contains('btn-copy'):
+            copyWalletNumber();
+            break;
+            
+        // زر بدء عملية الشحن
+        case targetId === 'startDepositBtn':
+            startDepositProcess();
+            break;
+
+        // زر رفع الإيصال
+        case targetId === 'uploadReceiptBtn': // سنعطي هذا ID للزر في دالة showDepositModal
+            uploadReceipt();
+            break;
+
+        // زر إنشاء التحدي
+        case targetId === 'createBattleBtn': // سنعطي هذا ID للزر في دالة showCreateBattleModal
+            createBattle();
+            break;
+
+        // عرض الصورة في نافذة منبثقة
+        case targetClasses.contains('chat-image-preview'):
+            openImageModal(event.target.src);
+            break;
+    }
+});
+
 
 // Join Voice Seat
 function joinVoiceSeat(seatNumber) {
