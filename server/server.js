@@ -27,7 +27,21 @@ const limiter = rateLimit({
 });
 
 // Middleware
-app.use(helmet());
+// استخدام helmet مع CSP مخصص
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://cdn.socket.io"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "https://via.placeholder.com", "data:"],
+      connectSrc: ["'self'", "ws:", "wss:"],
+      mediaSrc: ["'self'", "https://assets.mixkit.co"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+    },
+  },
+}));
 app.use(cors());
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
