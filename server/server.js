@@ -28,20 +28,29 @@ const limiter = rateLimit({
 
 // Middleware
 // استخدام helmet مع CSP مخصص
+// الكود الجديد والمعدل
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
+      // ✅ السماح بتحميل السكربتات من CDN الخاص بـ Socket.IO
       scriptSrc: ["'self'", "https://cdn.socket.io"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "https://via.placeholder.com", "data:"],
+      // ✅ السماح بتحميل الأنماط من Cloudflare و Google Fonts
+      styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
+      // ✅ السماح بتحميل الصور من Cloudinary وصور placeholder
+      imgSrc: ["'self'", "https://res.cloudinary.com", "https://via.placeholder.com", "data:"],
+      // ✅ السماح بالاتصال بالخادم نفسه و Socket.IO
       connectSrc: ["'self'", "ws:", "wss:"],
+      // ✅ السماح بتحميل الوسائط من Mixkit (لصوت الإشعار)
       mediaSrc: ["'self'", "https://assets.mixkit.co"],
-      fontSrc: ["'self'"],
+      // ✅ السماح بتحميل الخطوط من Cloudflare و Google Fonts
+      fontSrc: ["'self'", "https://cdnjs.cloudflare.com", "https://fonts.gstatic.com"],
       objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
     },
   },
 }));
+
 app.use(cors());
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
