@@ -387,7 +387,7 @@ function showCreateBattleModal() {
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-secondary" onclick="closeModal('createBattleModal')">إلغاء</button>
-                    <button class="btn btn-primary" onclick="createBattle()">إنشاء التحدي</button>
+                    <button class="btn btn-primary" id="createBattleBtn">إنشاء التحدي</button>
                 </div>
             </div>
         </div>
@@ -502,7 +502,7 @@ function showDepositModal() {
                                id="receiptFile" 
                                accept="image/*" 
                                class="form-control">
-                        <button class="btn btn-primary mt-2" onclick="uploadReceipt()">
+                        <button class="btn btn-primary mt-2" id="uploadReceiptBtn">
                             <i class="fas fa-upload"></i> رفع الإيصاد
                         </button>
                     </div>
@@ -525,10 +525,10 @@ function showDepositModal() {
 async function loadWalletInfo() {
     try {
         const response = await fetch('/api/payment/wallet-info', {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
+    headers: {
+        'Authorization': `Bearer ${authToken}`
+    }
+});
         
         const data = await response.json();
         if (data.success) {
@@ -550,13 +550,13 @@ async function startDepositProcess() {
 
     try {
         const response = await fetch('/api/payment/deposit', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ amount })
-        });
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+    },
+    body: JSON.stringify({ amount })
+});
 
         const data = await response.json();
         
@@ -604,12 +604,12 @@ async function uploadReceipt() {
 
     try {
         const response = await fetch('/api/payment/upload-receipt', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: formData
-        });
+    method: 'POST',
+    headers: {
+        'Authorization': `Bearer ${authToken}`
+    },
+    body: formData
+});
 
         const data = await response.json();
         
