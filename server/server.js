@@ -12,6 +12,8 @@ const socketIo = require('socket.io');
 require('dotenv').config();
 
 const app = express();
+app.set('trust proxy', 1); // ✅ أضف هذا السطر
+
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
