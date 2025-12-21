@@ -158,6 +158,41 @@ function setupEventListeners() {
         }
     });
 
+    // الكود الجديد لإضافته في setupEventListeners()
+
+// --- منطق التنقل بين الصفحات ---
+const navItems = document.querySelectorAll('.sidebar-nav .nav-item');
+const pageViews = document.querySelectorAll('.page-view');
+
+navItems.forEach(item => {
+    item.addEventListener('click', function(event) {
+        event.preventDefault(); // امنع تحديث الصفحة
+
+        const targetId = this.dataset.target;
+        const targetView = document.getElementById(targetId);
+
+        // 1. تحديث حالة الروابط (إزالة 'active' من الجميع وإضافته للرابط المضغوط)
+        navItems.forEach(nav => nav.classList.remove('active'));
+        this.classList.add('active');
+
+        // 2. إخفاء جميع الأقسام
+        pageViews.forEach(view => {
+            view.style.display = 'none';
+            view.classList.remove('active');
+        });
+
+        // 3. إظهار القسم المستهدف فقط
+        if (targetView) {
+            targetView.style.display = 'block';
+            targetView.classList.add('active');
+        }
+
+        // 4. تحديث عنوان URL (اختياري لكن جيد لتجربة المستخدم)
+        window.history.pushState(null, '', this.getAttribute('href'));
+    });
+});
+
+
     // Seat click
     document.querySelectorAll('.circle-seat').forEach(seat => {
         seat.addEventListener('click', () => {
