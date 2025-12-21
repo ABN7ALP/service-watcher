@@ -450,6 +450,29 @@ async function createBattle() {
         showNotification('حدث خطأ أثناء إنشاء التحدي', 'error');
     }
 }
+// الكود الجديد لإضافته في script.js
+
+function updateUserUI(user) {
+    if (!user) return;
+
+    // تحديث الهيدر
+    if (elements.balance) elements.balance.textContent = `${user.balance?.toFixed(2) || '0.00'}$`;
+    if (elements.coins) elements.coins.textContent = user.coins?.toLocaleString() || '0';
+    if (elements.level) elements.level.textContent = user.level || '1';
+
+    // تحديث الشريط الجانبي
+    const profileImg = document.querySelector('.user-profile .profile-img');
+    const usernameSidebar = document.querySelector('.user-profile #username');
+    const userIdSidebar = document.querySelector('.user-profile #userId');
+
+    if (profileImg) profileImg.src = user.profileImage || 'https://via.placeholder.com/80';
+    if (usernameSidebar) usernameSidebar.textContent = user.username || 'مستخدم';
+    if (userIdSidebar) userIdSidebar.textContent = user._id?.slice(-6) || 'N/A';
+
+    // تحديث المتغير العام
+    currentUser = user;
+}
+
 
 // Show Deposit Modal
 function showDepositModal() {
