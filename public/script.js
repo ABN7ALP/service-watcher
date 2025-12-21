@@ -158,7 +158,7 @@ function setupEventListeners() {
         }
     });
 
-    // الكود الجديد لإضافته في setupEventListeners()
+ // أضف هذا الكود داخل دالة setupEventListeners() في ملف script.js
 
 // --- منطق التنقل بين الصفحات ---
 const navItems = document.querySelectorAll('.sidebar-nav .nav-item');
@@ -169,9 +169,11 @@ navItems.forEach(item => {
         event.preventDefault(); // امنع تحديث الصفحة
 
         const targetId = this.dataset.target;
+        if (!targetId) return; // تجاهل الروابط التي لا تحتوي على data-target
+
         const targetView = document.getElementById(targetId);
 
-        // 1. تحديث حالة الروابط (إزالة 'active' من الجميع وإضافته للرابط المضغوط)
+        // 1. تحديث حالة الروابط
         navItems.forEach(nav => nav.classList.remove('active'));
         this.classList.add('active');
 
@@ -187,10 +189,22 @@ navItems.forEach(item => {
             targetView.classList.add('active');
         }
 
-        // 4. تحديث عنوان URL (اختياري لكن جيد لتجربة المستخدم)
+        // 4. تحديث عنوان URL
         window.history.pushState(null, '', this.getAttribute('href'));
     });
 });
+
+// --- إنشاء دوائر الدردشة الصوتية ديناميكياً ---
+const circlesGrid = document.querySelector('.voice-chat .circles-grid');
+if (circlesGrid) {
+    for (let i = 1; i <= 23; i++) {
+        const circleSeat = document.createElement('div');
+        circleSeat.className = 'circle-seat';
+        circleSeat.dataset.seat = i;
+        circleSeat.innerHTML = `<div class="seat-number">${i}</div><div class="seat-user"></div>`;
+        circlesGrid.appendChild(circleSeat);
+    }
+}
 
 
     // Seat click
