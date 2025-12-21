@@ -7,37 +7,26 @@
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- ✅ إضافة أنماط بسيطة للأقسام الجديدة -->
+    <style>
+        .page-view { padding: 20px; }
+    </style>
 </head>
 <body>
     <div class="container">
         <!-- Header -->
         <header class="header">
+            <!-- ... (محتوى الهيدر يبقى كما هو) ... -->
             <div class="logo">
                 <i class="fas fa-trophy"></i>
                 <span>منصة التحديات</span>
             </div>
-            
             <div class="user-info">
-                <div class="balance">
-                    <i class="fas fa-wallet"></i>
-                    <span id="balance">0$</span>
-                </div>
-                <div class="coins">
-                    <i class="fas fa-coins"></i>
-                    <span id="coins">0</span>
-                </div>
-                <div class="level">
-                    <i class="fas fa-level-up-alt"></i>
-                    <span id="level">1</span>
-                </div>
-                <button class="btn-deposit">
-                    <i class="fas fa-plus"></i>
-                    شحن
-                </button>
-                <button class="btn-withdraw">
-                    <i class="fas fa-minus"></i>
-                    سحب
-                </button>
+                <div class="balance"><i class="fas fa-wallet"></i><span id="balance">0$</span></div>
+                <div class="coins"><i class="fas fa-coins"></i><span id="coins">0</span></div>
+                <div class="level"><i class="fas fa-level-up-alt"></i><span id="level">1</span></div>
+                <button class="btn-deposit"><i class="fas fa-plus"></i> شحن</button>
+                <button class="btn-withdraw"><i class="fas fa-minus"></i> سحب</button>
             </div>
         </header>
 
@@ -51,138 +40,136 @@
                     <p class="user-id">#<span id="userId">123456</span></p>
                 </div>
 
+                <!-- ✅ تم تعديل الروابط هنا بالكامل -->
                 <nav class="sidebar-nav">
-                <a href="#arena" class="nav-item active" data-target="arena-view">
-                    <i class="fas fa-home"></i> الرئيسية
-                </a>
-
+                    <a href="#arena" class="nav-item active" data-target="arena-view">
+                        <i class="fas fa-home"></i> الرئيسية
+                    </a>
                     <a href="#challenges" class="nav-item" data-target="challenges-view">
-                        <i class="fas fa-gamepad"></i>
-                        التحديات
+                        <i class="fas fa-gamepad"></i> التحديات
                     </a>
-                     <a href="#chat" class="nav-item" data-target="chat-view">
-                        <i class="fas fa-comments"></i>
-                        الدردشة
+                    <a href="#chat" class="nav-item" data-target="chat-view">
+                        <i class="fas fa-comments"></i> الدردشة
                     </a>
-                    <a href="#" class="nav-item">
-                        <i class="fas fa-gifts"></i>
-                        الهدايا
+                    <a href="#gifts" class="nav-item" data-target="gifts-view">
+                        <i class="fas fa-gifts"></i> الهدايا
                     </a>
                     <a href="#leaderboard" class="nav-item" data-target="leaderboard-view">
-                        <i class="fas fa-trophy"></i>
-                        المتصدرين
+                        <i class="fas fa-trophy"></i> المتصدرين
                     </a>
-                    <a href="#" class="nav-item">
-                        <i class="fas fa-users"></i>
-                        الأصدقاء
+                    <a href="#friends" class="nav-item" data-target="friends-view">
+                        <i class="fas fa-users"></i> الأصدقاء
                     </a>
                     <a href="#settings" class="nav-item" data-target="settings-view">
-                        <i class="fas fa-cog"></i>
-                        الإعدادات
+                        <i class="fas fa-cog"></i> الإعدادات
                     </a>
                 </nav>
 
                 <div class="online-users">
                     <h4><i class="fas fa-user-friends"></i> الأعضاء المتصلين (23)</h4>
-                    <div class="users-list">
-                        <!-- Online users will be populated here -->
-                    </div>
+                    <div class="users-list"></div>
                 </div>
             </aside>
 
-            <!-- Battle Arena -->
-            <main class="arena">
-                <div class="arena-header">
-                    <h2><i class="fas fa-fighter-jet"></i> ساحة التحديات</h2>
-                    <div class="battle-types">
-                        <button class="battle-type-btn active">1 ضد 1</button>
-                        <button class="battle-type-btn">2 ضد 2</button>
-                        <button class="battle-type-btn">4 ضد 4</button>
+            <!-- ✅ تم إنشاء حاوية رئيسية للأقسام -->
+            <main class="main-view-container">
+
+                <!-- 1. قسم الساحة (الرئيسية) - مرئي افتراضياً -->
+                <div id="arena-view" class="page-view active">
+                    <div class="arena-header">
+                        <h2><i class="fas fa-fighter-jet"></i> ساحة التحديات</h2>
+                        <div class="battle-types">
+                            <button class="battle-type-btn active">1 ضد 1</button>
+                            <button class="battle-type-btn">2 ضد 2</button>
+                            <button class="battle-type-btn">4 ضد 4</button>
+                        </div>
+                    </div>
+                    <div class="battle-rooms">
+                        <div class="empty-state">
+                            <i class="fas fa-gamepad fa-3x"></i>
+                            <h3>لا توجد تحديات حالياً</h3>
+                            <p>كن أول من يبدأ تحدياً جديداً!</p>
+                            <button class="btn-create-battle"><i class="fas fa-plus-circle"></i> إنشاء تحدٍ جديد</button>
+                        </div>
+                    </div>
+                    <div class="voice-chat">
+                        <h3><i class="fas fa-microphone"></i> غرفة الصوت</h3>
+                        <div class="circles-grid">
+                            <!-- سيتم إنشاء الدوائر هنا بواسطة JavaScript لتقليل التكرار -->
+                        </div>
+                        <div class="admin-seats">
+                            <h4>مقاعد الإدارة</h4>
+                            <div class="circle-seat admin-seat" data-seat="24"><div class="seat-number">A1</div></div>
+                            <div class="circle-seat admin-seat" data-seat="25"><div class="seat-number">A2</div></div>
+                            <div class="circle-seat admin-seat" data-seat="26"><div class="seat-number">A3</div></div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="battle-rooms">
-                    <!-- Battle rooms will be populated here -->
-                    <div class="empty-state">
-                        <i class="fas fa-gamepad fa-3x"></i>
-                        <h3>لا توجد تحديات حالياً</h3>
-                        <p>كن أول من يبدأ تحدياً جديداً!</p>
-                        <button class="btn-create-battle">
-                            <i class="fas fa-plus-circle"></i>
-                            إنشاء تحدٍ جديد
-                        </button>
-                    </div>
+                <!-- 2. قسم التحديات - مخفي -->
+                <div id="challenges-view" class="page-view" style="display: none;">
+                    <h2><i class="fas fa-gamepad"></i> قائمة التحديات</h2>
+                    <p>هنا سيتم عرض قائمة بجميع التحديات المتاحة.</p>
                 </div>
 
-                <!-- Voice Chat Circles -->
-                <div class="voice-chat">
-                    <h3><i class="fas fa-microphone"></i> غرفة الصوت</h3>
-                    <div class="circles-grid">
-                        <!-- 23 circles for voice chat -->
-                        <div class="circle-seat" data-seat="1">
-                            <div class="seat-number">1</div>
-                            <div class="seat-user"></div>
-                        </div>
-                        <!-- Repeat for 22 more circles -->
-                    </div>
-                    
-                    <div class="admin-seats">
-                        <h4>مقاعد الإدارة</h4>
-                        <div class="circle-seat admin-seat" data-seat="24">
-                            <div class="seat-number">A1</div>
-                        </div>
-                        <div class="circle-seat admin-seat" data-seat="25">
-                            <div class="seat-number">A2</div>
-                        </div>
-                        <div class="circle-seat admin-seat" data-seat="26">
-                            <div class="seat-number">A3</div>
-                        </div>
-                    </div>
+                <!-- 3. قسم الدردشة - مخفي -->
+                <div id="chat-view" class="page-view" style="display: none;">
+                    <h2><i class="fas fa-comments"></i> الدردشة الكاملة</h2>
+                    <p>هنا سيتم عرض واجهة الدردشة بملء الشاشة.</p>
                 </div>
+
+                <!-- 4. قسم الهدايا - مخفي -->
+                <div id="gifts-view" class="page-view" style="display: none;">
+                    <h2><i class="fas fa-gifts"></i> متجر الهدايا</h2>
+                    <p>هنا سيتم عرض متجر الهدايا.</p>
+                </div>
+
+                <!-- 5. قسم المتصدرين - مخفي -->
+                <div id="leaderboard-view" class="page-view" style="display: none;">
+                    <h2><i class="fas fa-trophy"></i> لوحة المتصدرين</h2>
+                    <p>هنا سيتم عرض قوائم المتصدرين.</p>
+                </div>
+
+                <!-- 6. قسم الأصدقاء - مخفي -->
+                <div id="friends-view" class="page-view" style="display: none;">
+                    <h2><i class="fas fa-users"></i> قائمة الأصدقاء</h2>
+                    <p>هنا سيتم عرض قائمة الأصدقاء والحالة الخاصة بهم.</p>
+                </div>
+
+                <!-- 7. قسم الإعدادات - مخفي -->
+                <div id="settings-view" class="page-view" style="display: none;">
+                    <h2><i class="fas fa-cog"></i> الإعدادات</h2>
+                    <p>هنا سيتم عرض إعدادات الحساب.</p>
+                </div>
+
             </main>
 
             <!-- Chat Panel -->
             <aside class="chat-panel">
+                <!-- ... (محتوى لوحة الدردشة يبقى كما هو) ... -->
                 <div class="chat-header">
                     <h3><i class="fas fa-comment-dots"></i> الدردشة العامة</h3>
                     <span class="online-count">235 متصل</span>
                 </div>
-
                 <div class="chat-messages" id="chatMessages">
-                    <!-- Messages will appear here -->
                     <div class="welcome-message">
                         <i class="fas fa-door-open"></i>
                         <h4>مرحباً بك في منصة التحديات!</h4>
                         <p>ابدأ بالدردشة مع الأعضاء</p>
                     </div>
                 </div>
-
                 <div class="chat-input">
                     <div class="input-options">
-                        <button class="input-option" title="إرسال صورة">
-                            <i class="fas fa-image"></i>
-                        </button>
-                        <button class="input-option" title="تسجيل صوت">
-                            <i class="fas fa-microphone"></i>
-                        </button>
-                        <button class="input-option" title="إرسال هدية">
-                            <i class="fas fa-gift"></i>
-                        </button>
+                        <button class="input-option" title="إرسال صورة"><i class="fas fa-image"></i></button>
+                        <button class="input-option" title="تسجيل صوت"><i class="fas fa-microphone"></i></button>
+                        <button class="input-option" title="إرسال هدية"><i class="fas fa-gift"></i></button>
                     </div>
-                    <input type="text" 
-                           placeholder="اكتب رسالتك هنا..." 
-                           id="messageInput"
-                           maxlength="500">
-                    <button class="btn-send">
-                        <i class="fas fa-paper-plane"></i>
-                    </button>
+                    <input type="text" placeholder="اكتب رسالتك هنا..." id="messageInput" maxlength="500">
+                    <button class="btn-send"><i class="fas fa-paper-plane"></i></button>
                 </div>
-
                 <div class="gift-store">
                     <h4><i class="fas fa-store"></i> متجر الهدايا</h4>
-                    <div class="gifts-grid">
-                        <!-- Gifts will be populated here -->
-                    </div>
+                    <div class="gifts-grid"></div>
                 </div>
             </aside>
         </div>
@@ -191,7 +178,7 @@
     </div>
 
     <!-- Audio for notifications -->
-    <audio id="notificationSound" src="https://assets.mixkit.co/sfx/preview/mixkit-winning-chimes-2015.mp3"></audio>
+    <audio id="notificationSound" src="/assets/notification.mp3"></audio>
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="script.js"></script>
