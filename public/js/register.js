@@ -14,9 +14,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const spinner = document.getElementById('registerSpinner');
 
         // جمع البيانات من النموذج
-        const formData = new FormData(registerForm);
-        const data = Object.fromEntries(formData.entries());
-
+         const formData = new FormData(registerForm);
+         const data = Object.fromEntries(formData.entries());
+         
+        data.agreedToTerms = !!data.agreedToTerms; 
         // التحقق من كلمة المرور
         if (data.password !== data.confirmPassword) {
             showNotification('كلمتا المرور غير متطابقتين', 'error');
