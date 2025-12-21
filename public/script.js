@@ -129,24 +129,37 @@ function initSocket() {
 }
 
 // Load User Data
+// تأكد من أن دالة loadUserData تبدو هكذا
 async function loadUserData() {
     try {
         const response = await fetch('/api/auth/profile', {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
+            headers: { 'Authorization': `Bearer ${authToken}` }
         });
-        
+            
         if (response.ok) {
             const data = await response.json();
             if (data.success) {
-                updateUserUI(data.user);
+                // ✅ هذا السطر مهم جداً ويحل المشكلة
+                updateUserUI(data.user); 
+            }
+        } else {
+            // إذا فشل جلب البيانات (مثلاً، التوكن منتهي الصلاحية)، أعد المستخدم لصفحة الدخول
+            if (response.status === 401) {
+                logout(); // دالة تقوم بمسح localStorage وإعادة التوجيه
             }
         }
     } catch (error) {
         console.error('Error loading user data:', error);
     }
 }
+
+// وأضف دالة logout إذا لم تكن موجودة
+function logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login.html';
+}
+
 
 // Setup Event Listeners
 function setupEventListeners() {
@@ -216,19 +229,31 @@ if (circlesGrid) {
     });
 
     // Create battle button
-    document.querySelector('.btn-create-battle')?.addEventListener('click', () => {
-        showCreateBattleModal();
-    });
+    // الكود الجديد والمعدل
+document.querySelector('.btn-create-battle')?.addEventListener('click', () => {
+    if (!currentUser) {
+        showNotification('جاري تحميل بيانات المستخدم، يرجى الانتظار قليلاً.', 'info');
+        return;
+    }
+    showCreateBattleModal();
+});
 
-    // Deposit button
-    document.querySelector('.btn-deposit')?.addEventListener('click', () => {
-        showDepositModal();
-    });
+document.querySelector('.btn-deposit')?.addEventListener('click', () => {
+    if (!currentUser) {
+        showNotification('جاري تحميل بيانات المستخدم، يرجى الانتظار قليلاً.', 'info');
+        return;
+    }
+    showDepositModal();
+});
 
-    // Withdraw button
-    document.querySelector('.btn-withdraw')?.addEventListener('click', () => {
-        showWithdrawalModal();
-    });
+document.querySelector('.btn-withdraw')?.addEventListener('click', () => {
+    if (!currentUser) {
+        showNotification('جاري تحميل بيانات المستخدم، يرجى الانتظار قليلاً.', 'info');
+        return;
+    }
+    showWithdrawalModal();
+});
+
 
     // Battle type buttons
     document.querySelectorAll('.battle-type-btn').forEach(btn => {
