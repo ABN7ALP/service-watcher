@@ -267,44 +267,38 @@ document.querySelector('.btn-withdraw')?.addEventListener('click', () => {
     
 // استخدام تفويض الأحداث للتعامل مع العناصر التي تضاف لاحقاً
 document.body.addEventListener('click', function(event) {
-    // زر إغلاق النوافذ المنبثقة
-    const modalCloseButton = event.target.closest('.modal-close');
+    const target = event.target;
+
+    // --- معالجة إغلاق النوافذ المنبثقة ---
+    const modalCloseButton = target.closest('.modal-close');
+    const modalCancelButton = target.closest('[data-close-modal]');
     if (modalCloseButton) {
         const modal = modalCloseButton.closest('.modal-overlay');
-        if (modal) {
-            closeModal(modal.id);
-        }
-        return; // توقف هنا لتجنب تداخل الأحداث
+        if (modal) closeModal(modal.id);
+        return;
+    }
+    if (modalCancelButton) {
+        const modalId = modalCancelButton.dataset.closeModal;
+        closeModal(modalId);
+        return;
     }
 
-    // أزرار أخرى داخل النوافذ المنبثقة
-    const targetId = event.target.id;
-    const targetClasses = event.target.classList;
-
+    // --- معالجة الأزرار الأخرى ---
     switch (true) {
-        // زر نسخ رقم المحفظة
-        case targetClasses.contains('btn-copy'):
+        case target.closest('.btn-copy') !== null:
             copyWalletNumber();
             break;
-            
-        // زر بدء عملية الشحن
-        case targetId === 'startDepositBtn':
+        case target.id === 'startDepositBtn':
             startDepositProcess();
             break;
-
-        // زر رفع الإيصال
-        case targetId === 'uploadReceiptBtn': // سنعطي هذا ID للزر في دالة showDepositModal
+        case target.id === 'uploadReceiptBtn':
             uploadReceipt();
             break;
-
-        // زر إنشاء التحدي
-        case targetId === 'createBattleBtn': // سنعطي هذا ID للزر في دالة showCreateBattleModal
+        case target.id === 'createBattleBtn':
             createBattle();
             break;
-
-        // عرض الصورة في نافذة منبثقة
-        case targetClasses.contains('chat-image-preview'):
-            openImageModal(event.target.src);
+        case target.classList.contains('chat-image-preview'):
+            openImageModal(target.src);
             break;
     }
 });
@@ -460,7 +454,8 @@ function showCreateBattleModal() {
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="closeModal('createBattleModal')">إلغاء</button>
+                    <button class="modal-close">
+                    <button class="btn btn-secondary" data-close-modal="createBattleModal">إلغاء</button>
                     <button class="btn btn-primary" id="createBattleBtn">إنشاء التحدي</button>
                 </div>
             </div>
@@ -605,8 +600,10 @@ function showDepositModal() {
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="closeModal('depositModal')">إلغاء</button>
-                    <button class="btn btn-primary" id="startDepositBtn" onclick="startDepositProcess()">
+                    <button class="modal-close">
+                    <button class="btn-copy">
+                    <button class="btn btn-secondary" data-close-modal="depositModal">إلغاء</button>
+                    <button class="btn btn-primary" id="startDepositBtn">
                         بدء عملية الشحن
                     </button>
                 </div>
