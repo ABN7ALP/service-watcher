@@ -24,6 +24,9 @@ app.use('/dist', express.static(path.join(__dirname, '../public/dist')));
 
 // --- مسارات API (سيتم إضافتها هنا لاحقاً) ---
 // مثال: app.use('/api/auth', require('./routes/authRoutes'));
+// --- مسارات API ---
+app.use('/api/auth', require('./routes/authRoutes')); // ✅ أضف هذا السطر
+
 
 
 // --- مسار "التقاط الكل" لخدمة الواجهة الأمامية ---
