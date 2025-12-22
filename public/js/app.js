@@ -335,35 +335,50 @@ socket.on('connect_error', (err) => {
         modal.addEventListener('click', (e) => { if (e.target.id === 'create-battle-modal') modal.remove(); });
         
         document.getElementById('create-battle-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const data = Object.fromEntries(formData.entries());
-            data.betAmount = Number(data.betAmount);
-            data.isPrivate = data.isPrivate === 'on';
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData.entries());
+    
+    // ✅ --- التعديلات هنا ---
+    // 1. تحويل مبلغ الرهان إلى رقم عشري
+    data.betAmount = parseFloat(data.betAmount);
+    // 2. تحويل قيمة checkbox إلى boolean
+    data.isPrivate = data.isPrivate === 'on';
 
-            try {
-                const response = await fetch('/api/battles', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify(data)
-                });
-                const result = await response.json();
-
-                if (response.ok && result.status === 'success') {
-                    showNotification('تم إنشاء التحدي بنجاح!', 'success');
-                    modal.remove();
-                    loadAvailableBattles(); // إعادة تحميل قائمة التحديات
-                } else {
-                    showNotification(result.message || 'فشل إنشاء التحدي', 'error');
-                }
-            } catch (error) {
-                showNotification('خطأ في الاتصال بالخادم', 'error');
-            }
-        });
+    // 3. التحقق من صحة البيانات قبل الإرسال
+    if (!data.type || !data.betAmount || data.betAmount <= 0) {
+        showNotification('يرجى إدخال مبلغ رهان صالح.', 'error');
+        return;
     }
+    if (data.isPrivate && !data.password) {
+        showNotification('يرجى إدخال كلمة مرور للتحدي الخاص.', 'error');
+        return;
+    }
+    // --- نهاية التعديلات ---
+
+    try {
+        const response = await fetch('/api/battles', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+
+        if (response.ok && result.status === 'success') {
+            showNotification('تم إنشاء التحدي بنجاح!', 'success');
+            document.getElementById('create-battle-modal').remove();
+            // لا نحتاج لإعادة تحميل القائمة يدوياً، السوكيت سيتولى الأمر
+        } else {
+            showNotification(result.message || 'فشل إنشاء التحدي', 'error');
+        }
+    } catch (error) {
+        showNotification('خطأ في الاتصال بالخادم', 'error');
+    }
+});
+
 
     // --- استدعاء الدالة لجلب التحديات عند تحميل الصفحة ---
     loadAvailableBattles();
