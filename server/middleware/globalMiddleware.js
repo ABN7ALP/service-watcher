@@ -18,7 +18,16 @@ const limiter = rateLimit({
 const setupMiddleware = (app) => {
     // تطبيق Middleware الأمان الأساسية
     app.use(cors()); // السماح بالطلبات من مصادر مختلفة
-    app.use(helmet()); // إضافة Headers أمان متنوعة
+    // الكود الجديد والمعدل بالكامل لإعدادات helmet
+    app.use(helmet({
+       contentSecurityPolicy: {
+          directives: {
+            ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+            "script-src": ["'self'", "cdn.socket.io"],
+            "img-src": ["'self'", "data:", "https://via.placeholder.com"], // ✅ أضفنا نطاق الصور هنا
+          },
+      },
+  }));
     app.use(compression()); // ضغط الاستجابات لزيادة السرعة
 
     // Middleware لتحليل جسم الطلب (Body Parser)
