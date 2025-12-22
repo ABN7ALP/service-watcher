@@ -21,7 +21,11 @@ setupMiddleware(app);
 
 // --- تهيئة وتشغيل Socket.IO ---
 const io = initializeSocket(server);
-app.set('io', io);
+app.use((req, res, next) => {
+    req.io = io;
+    next();
+});
+
 
 // --- خدمة الملفات الثابتة للواجهة الأمامية ---
 // يخدم ملفات مثل style.css, app.js من مجلد dist و public
