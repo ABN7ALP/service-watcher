@@ -5,6 +5,7 @@ const path = require('path');
 const mongoose = require('mongoose');
 const setupMiddleware = require('./middleware/globalMiddleware');
 const setupErrorHandlers = require('./middleware/errorHandlers');
+const initializeSocket = require('./services/socketService');
 
 // --- تهيئة التطبيق والخادم ---
 const app = express();
@@ -15,6 +16,12 @@ app.set('trust proxy', 1);
 
 // --- تطبيق الـ Middleware العام ---
 setupMiddleware(app);
+
+
+
+// --- تهيئة وتشغيل Socket.IO ---
+const io = initializeSocket(server);
+app.set('io', io);
 
 // --- خدمة الملفات الثابتة للواجهة الأمامية ---
 // يخدم ملفات مثل style.css, app.js من مجلد dist و public
