@@ -309,7 +309,6 @@ socket.on('connect_error', (err) => {
     loadAvailableBattles();
 
    }); // نهاية document.addEventListener   
-});
 
 // دالة عامة لإظهار الإشعارات (يمكن وضعها في ملف منفصل لاحقاً)
 function showNotification(message, type = 'info') {
