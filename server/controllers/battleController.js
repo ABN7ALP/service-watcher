@@ -44,6 +44,8 @@ exports.createBattle = async (req, res, next) => {
         const battleForEmit = await Battle.findById(newBattle._id).populate('players', 'username profileImage');
         req.io.emit('newBattle', battleForEmit);
         
+        req.io.to(user.socketId).emit('balanceUpdate', { newBalance: user.balance });
+        
 
         res.status(201).json({
             status: 'success',
@@ -135,6 +137,8 @@ exports.joinBattle = async (req, res, next) => {
         // req.app.get('io').emit('battleUpdate', battle);
         const updatedBattle = await Battle.findById(battle._id).populate('players', 'username profileImage');
         req.io.emit('battleUpdate', updatedBattle);
+        
+        req.io.to(user.socketId).emit('balanceUpdate', { newBalance: user.balance });
         
 
         res.status(200).json({
