@@ -134,6 +134,19 @@ token: token // إرسال التوكن للمصادقة
 }
 });
 
+// ✅ الاستماع لحدث تحديث الرصيد
+socket.on('balanceUpdate', ({ newBalance }) => {
+    const balanceElement = document.getElementById('balance');
+    if (balanceElement) {
+        balanceElement.textContent = newBalance.toFixed(2);
+    }
+    // تحديث الرصيد في الكائن المحلي أيضاً
+    if (currentUser) {
+        currentUser.balance = newBalance;
+    }
+    showNotification('تم تحديث رصيدك', 'info');
+});
+    
 // --- 7. ربط أحداث الدردشة ---  
 const messageInput = document.getElementById('messageInput');  
 const sendBtn = document.getElementById('sendBtn');  
