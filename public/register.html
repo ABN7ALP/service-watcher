@@ -3,100 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>إنشاء حساب جديد - منصة التحديات</title>
-    <link rel="stylesheet" href="style.css">
+    <title>إنشاء حساب - منصة التحديات</title>
+    <link rel="stylesheet" href="/dist/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <!-- نفس الأنماط المستخدمة في login.html لتوحيد الشكل -->
-    <style>
-        .login-container { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; }
-        .login-box { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 20px; padding: 40px; width: 100%; max-width: 500px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); animation: fadeIn 0.5s ease; }
-        .login-header { text-align: center; margin-bottom: 30px; }
-        .login-header h1 { color: #6a11cb; margin-bottom: 10px; }
-        .login-header p { color: #666; }
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 8px; color: #444; font-weight: 600; }
-        .form-control { width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px; font-family: 'Cairo', sans-serif; font-size: 1rem; transition: all 0.3s ease; }
-        .form-control:focus { outline: none; border-color: #6a11cb; box-shadow: 0 0 0 3px rgba(106, 17, 203, 0.1); }
-        .btn-login { width: 100%; padding: 15px; background: linear-gradient(45deg, #6a11cb, #2575fc); color: white; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; gap: 10px; }
-        .btn-login:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(106, 17, 203, 0.3); }
-        .login-footer { text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e0e0e0; }
-        .login-footer a { color: #6a11cb; text-decoration: none; font-weight: 600; }
-        .login-footer a:hover { text-decoration: underline; }
-        .form-check-input { margin-left: 10px; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    </style>
 </head>
-<body>
-    <div class="login-container">
-        <div class="login-box">
-            <div class="login-header">
-                <h1><i class="fas fa-user-plus"></i> إنشاء حساب جديد</h1>
-                <p>انضم إلى مجتمع التحديات الآن!</p>
-            </div>
+<body class="bg-gray-900 text-white font-cairo">
+
+    <div class="min-h-screen flex items-center justify-center p-4 bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80');">
+        <div class="w-full max-w-md bg-gray-800 bg-opacity-80 backdrop-blur-sm rounded-2xl shadow-2xl p-8">
             
-            <form id="registerForm">
-                <div class="form-group">
-                    <label for="username">اسم المستخدم</label>
-                    <input type="text" id="username" name="username" class="form-control" placeholder="اختر اسم مستخدم فريد" required>
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <div class="flex justify-center items-center gap-3 mb-2">
+                    <i class="fas fa-user-plus text-yellow-400 text-4xl"></i>
+                    <h1 class="text-3xl font-bold text-white">إنشاء حساب جديد</h1>
+                </div>
+                <p class="text-gray-400">انضم إلى ساحة التحديات الآن!</p>
+            </div>
+
+            <!-- Register Form -->
+            <form id="registerForm" class="space-y-4">
+                <!-- Username -->
+                <div>
+                    <label for="username" class="block mb-2 text-sm font-medium text-gray-300">اسم المستخدم</label>
+                    <input type="text" id="username" name="username" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-3" placeholder="اختر اسماً فريداً" required>
+                </div>
+
+                <!-- Email -->
+                <div>
+                    <label for="email" class="block mb-2 text-sm font-medium text-gray-300">البريد الإلكتروني</label>
+                    <input type="email" id="email" name="email" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-3" placeholder="example@email.com" required>
+                </div>
+
+                <!-- Password -->
+                <div>
+                    <label for="password" class="block mb-2 text-sm font-medium text-gray-300">كلمة المرور</label>
+                    <input type="password" id="password" name="password" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-3" placeholder="••••••••" required>
                 </div>
                 
-                <div class="form-group">
-                    <label for="email">البريد الإلكتروني</label>
-                    <input type="email" id="email" name="email" class="form-control" placeholder="ادخل بريدك الإلكتروني" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="phone">رقم الهاتف</label>
-                    <input type="tel" id="phone" name="phone" class="form-control" placeholder="مثال: +963912345678" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="password">كلمة المرور</label>
-                    <input type="password" id="password" name="password" class="form-control" placeholder="6 أحرف على الأقل" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="confirmPassword">تأكيد كلمة المرور</label>
-                    <input type="password" id="confirmPassword" name="confirmPassword" class="form-control" placeholder="أعد كتابة كلمة المرور" required>
-                </div>
-
-                <div class="form-group">
-                    <label>الجنس</label>
-                    <select id="gender" name="gender" class="form-control" required>
-                        <option value="" disabled selected>اختر الجنس</option>
-                        <option value="male">ذكر</option>
-                        <option value="female">أنثى</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="agreedToTerms" name="agreedToTerms" required>
-                        <label class="form-check-label" for="agreedToTerms">
-                            أوافق على <a href="/terms.html" target="_blank">شروط الاستخدام وسياسة الخصوصية</a>
-                        </label>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <button type="submit" class="btn-login" id="registerBtn">
-                        <i class="fas fa-check-circle"></i>
-                        إنشاء الحساب
-                        <span id="registerSpinner" style="display: none;">
-                            <i class="fas fa-spinner fa-spin"></i>
-                        </span>
+                <!-- Submit Button -->
+                <div>
+                    <button type="submit" id="registerBtn" class="w-full mt-4 text-white bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:ring-purple-800 font-medium rounded-lg text-sm px-5 py-3 flex items-center justify-center gap-2">
+                        <i class="fas fa-check"></i>
+                        <span>إنشاء الحساب</span>
+                        <i id="registerSpinner" class="fas fa-spinner fa-spin hidden"></i>
                     </button>
                 </div>
             </form>
-            
-            <div class="login-footer">
-                <p>لديك حساب بالفعل؟ <a href="/login.html">سجل الدخول</a></p>
+
+            <!-- Footer Links -->
+            <div class="text-center mt-6 text-sm">
+                <p class="text-gray-400">
+                    لديك حساب بالفعل؟ 
+                    <a href="/login.html" class="font-medium text-purple-400 hover:underline">سجل الدخول</a>
+                </p>
             </div>
         </div>
     </div>
     
-    <!-- ربط ملف الجافاسكريبت الخارجي -->
+    <!-- Notification container -->
+    <div id="notification-container" class="fixed top-5 right-5 z-50 space-y-2"></div>
+
     <script src="/js/register.js"></script>
 </body>
 </html>
