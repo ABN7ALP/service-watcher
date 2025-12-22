@@ -1,69 +1,51 @@
 const mongoose = require('mongoose');
 
 const battleSchema = new mongoose.Schema({
-  type: {
-    type: String,
-    enum: ['1v1', '2v2', '4v4'],
-    required: true
-  },
-  teamA: [{
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+    type: {
+        type: String,
+        enum: ['1v1', '2v2', '4v4'],
+        required: [true, 'نوع التحدي مطلوب'],
     },
-    betAmount: Number,
-    ready: {
-      type: Boolean,
-      default: false
-    }
-  }],
-  teamB: [{
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+    betAmount: {
+        type: Number,
+        required: [true, 'مبلغ الرهان مطلوب'],
+        min: 1,
     },
-    betAmount: Number,
-    ready: {
-      type: Boolean,
-      default: false
+    status: {
+        type: String,
+        enum: ['waiting', 'in-progress', 'completed', 'cancelled'],
+        default: 'waiting',
+    },
+    players: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+    }],
+    teams: {
+        teamA: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+        teamB: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    },
+    winner: {
+        type: String,
+        enum: ['teamA', 'teamB', 'draw'],
+    },
+    isPrivate: {
+        type: Boolean,
+        default: false,
+    },
+    password: {
+        type: String,
+        // select: false, // لا نريد إظهار كلمة المرور
+    },
+}, { timestamps: true });
+
+// دالة مساعدة لتحديد الحد الأقصى للاعبين
+battleSchema.virtual('maxPlayers').get(function() {
+    switch (this.type) {
+        case '1v1': return 2;
+        case '2v2': return 4;
+        case '4v4': return 8;
+        default: return 0;
     }
-  }],
-  totalPrize: {
-    type: Number,
-    required: true
-  },
-  winner: {
-    type: String,
-    enum: ['teamA', 'teamB', 'draw', null],
-    default: null
-  },
-  status: {
-    type: String,
-    enum: ['waiting', 'ready', 'in_progress', 'completed', 'cancelled'],
-    default: 'waiting'
-  },
-  startTime: Date,
-  endTime: Date,
-  duration: Number, // in minutes
-  commission: {
-    type: Number,
-    default: 0.20 // 20 cents commission
-  },
-  chatRoom: {
-    type: String,
-    unique: true
-  },
-  spectators: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  isPublic: {
-    type: Boolean,
-    default: true
-  },
-  password: String // for private battles
-}, {
-  timestamps: true
 });
 
 const Battle = mongoose.model('Battle', battleSchema);
