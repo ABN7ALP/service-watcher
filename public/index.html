@@ -3,184 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>منصة التحديات - Battle Platform</title>
-    <link rel="stylesheet" href="style.css">
+    <title>منصة التحديات</title>
+    <link rel="stylesheet" href="/dist/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <!-- ✅ إضافة أنماط بسيطة للأقسام الجديدة -->
-    <style>
-        .page-view { padding: 20px; }
-    </style>
 </head>
-<body>
-    <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <!-- ... (محتوى الهيدر يبقى كما هو) ... -->
-            <div class="logo">
-                <i class="fas fa-trophy"></i>
-                <span>منصة التحديات</span>
-            </div>
-            <div class="user-info">
-                <div class="balance"><i class="fas fa-wallet"></i><span id="balance">0$</span></div>
-                <div class="coins"><i class="fas fa-coins"></i><span id="coins">0</span></div>
-                <div class="level"><i class="fas fa-level-up-alt"></i><span id="level">1</span></div>
-                <button class="btn-deposit"><i class="fas fa-plus"></i> شحن</button>
-                <button class="btn-withdraw"><i class="fas fa-minus"></i> سحب</button>
-            </div>
-        </header>
+<body class="bg-gray-900 text-white font-cairo">
 
-        <!-- Main Content -->
-        <div class="main-content">
-            <!-- Sidebar -->
-            <aside class="sidebar">
-                <div class="user-profile">
-                    <img src="https://via.placeholder.com/80" alt="الصورة الشخصية" class="profile-img">
-                    <h3 id="username">اسم المستخدم</h3>
-                    <p class="user-id">#<span id="userId">123456</span></p>
-                </div>
-
-                <!-- ✅ تم تعديل الروابط هنا بالكامل -->
-                <nav class="sidebar-nav">
-                    <a href="#arena" class="nav-item active" data-target="arena-view">
-                        <i class="fas fa-home"></i> الرئيسية
-                    </a>
-                    <a href="#challenges" class="nav-item" data-target="challenges-view">
-                        <i class="fas fa-gamepad"></i> التحديات
-                    </a>
-                    <a href="#chat" class="nav-item" data-target="chat-view">
-                        <i class="fas fa-comments"></i> الدردشة
-                    </a>
-                    <a href="#gifts" class="nav-item" data-target="gifts-view">
-                        <i class="fas fa-gifts"></i> الهدايا
-                    </a>
-                    <a href="#leaderboard" class="nav-item" data-target="leaderboard-view">
-                        <i class="fas fa-trophy"></i> المتصدرين
-                    </a>
-                    <a href="#friends" class="nav-item" data-target="friends-view">
-                        <i class="fas fa-users"></i> الأصدقاء
-                    </a>
-                    <a href="#settings" class="nav-item" data-target="settings-view">
-                        <i class="fas fa-cog"></i> الإعدادات
-                    </a>
-                </nav>
-
-                <div class="online-users">
-                    <h4><i class="fas fa-user-friends"></i> الأعضاء المتصلين (23)</h4>
-                    <div class="users-list"></div>
-                </div>
-            </aside>
-
-            <!-- ✅ تم إنشاء حاوية رئيسية للأقسام -->
-            <main class="main-view-container">
-
-                <!-- 1. قسم الساحة (الرئيسية) - مرئي افتراضياً -->
-                <div id="arena-view" class="page-view active">
-                    <div class="arena-header">
-                        <h2><i class="fas fa-fighter-jet"></i> ساحة التحديات</h2>
-                        <div class="battle-types">
-                            <button class="battle-type-btn active">1 ضد 1</button>
-                            <button class="battle-type-btn">2 ضد 2</button>
-                            <button class="battle-type-btn">4 ضد 4</button>
-                        </div>
-                    </div>
-                    <div class="battle-rooms">
-                        <div class="empty-state">
-                            <i class="fas fa-gamepad fa-3x"></i>
-                            <h3>لا توجد تحديات حالياً</h3>
-                            <p>كن أول من يبدأ تحدياً جديداً!</p>
-                            <button class="btn-create-battle"><i class="fas fa-plus-circle"></i> إنشاء تحدٍ جديد</button>
-                        </div>
-                    </div>
-                    <div class="voice-chat">
-                        <h3><i class="fas fa-microphone"></i> غرفة الصوت</h3>
-                        <div class="circles-grid">
-                            <!-- سيتم إنشاء الدوائر هنا بواسطة JavaScript لتقليل التكرار -->
-                        </div>
-                        <div class="admin-seats">
-                            <h4>مقاعد الإدارة</h4>
-                            <div class="circle-seat admin-seat" data-seat="24"><div class="seat-number">A1</div></div>
-                            <div class="circle-seat admin-seat" data-seat="25"><div class="seat-number">A2</div></div>
-                            <div class="circle-seat admin-seat" data-seat="26"><div class="seat-number">A3</div></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 2. قسم التحديات - مخفي -->
-                <div id="challenges-view" class="page-view" style="display: none;">
-                    <h2><i class="fas fa-gamepad"></i> قائمة التحديات</h2>
-                    <p>هنا سيتم عرض قائمة بجميع التحديات المتاحة.</p>
-                </div>
-
-                <!-- 3. قسم الدردشة - مخفي -->
-                <div id="chat-view" class="page-view" style="display: none;">
-                    <h2><i class="fas fa-comments"></i> الدردشة الكاملة</h2>
-                    <p>هنا سيتم عرض واجهة الدردشة بملء الشاشة.</p>
-                </div>
-
-                <!-- 4. قسم الهدايا - مخفي -->
-                <div id="gifts-view" class="page-view" style="display: none;">
-                    <h2><i class="fas fa-gifts"></i> متجر الهدايا</h2>
-                    <p>هنا سيتم عرض متجر الهدايا.</p>
-                </div>
-
-                <!-- 5. قسم المتصدرين - مخفي -->
-                <div id="leaderboard-view" class="page-view" style="display: none;">
-                    <h2><i class="fas fa-trophy"></i> لوحة المتصدرين</h2>
-                    <p>هنا سيتم عرض قوائم المتصدرين.</p>
-                </div>
-
-                <!-- 6. قسم الأصدقاء - مخفي -->
-                <div id="friends-view" class="page-view" style="display: none;">
-                    <h2><i class="fas fa-users"></i> قائمة الأصدقاء</h2>
-                    <p>هنا سيتم عرض قائمة الأصدقاء والحالة الخاصة بهم.</p>
-                </div>
-
-                <!-- 7. قسم الإعدادات - مخفي -->
-                <div id="settings-view" class="page-view" style="display: none;">
-                    <h2><i class="fas fa-cog"></i> الإعدادات</h2>
-                    <p>هنا سيتم عرض إعدادات الحساب.</p>
-                </div>
-
-            </main>
-
-            <!-- Chat Panel -->
-            <aside class="chat-panel">
-                <!-- ... (محتوى لوحة الدردشة يبقى كما هو) ... -->
-                <div class="chat-header">
-                    <h3><i class="fas fa-comment-dots"></i> الدردشة العامة</h3>
-                    <span class="online-count">235 متصل</span>
-                </div>
-                <div class="chat-messages" id="chatMessages">
-                    <div class="welcome-message">
-                        <i class="fas fa-door-open"></i>
-                        <h4>مرحباً بك في منصة التحديات!</h4>
-                        <p>ابدأ بالدردشة مع الأعضاء</p>
-                    </div>
-                </div>
-                <div class="chat-input">
-                    <div class="input-options">
-                        <button class="input-option" title="إرسال صورة"><i class="fas fa-image"></i></button>
-                        <button class="input-option" title="تسجيل صوت"><i class="fas fa-microphone"></i></button>
-                        <button class="input-option" title="إرسال هدية"><i class="fas fa-gift"></i></button>
-                    </div>
-                    <input type="text" placeholder="اكتب رسالتك هنا..." id="messageInput" maxlength="500">
-                    <button class="btn-send"><i class="fas fa-paper-plane"></i></button>
-                </div>
-                <div class="gift-store">
-                    <h4><i class="fas fa-store"></i> متجر الهدايا</h4>
-                    <div class="gifts-grid"></div>
-                </div>
-            </aside>
-        </div>
-
-        <!-- Modals will be added via JavaScript -->
+    <!-- ✅ شاشة تحميل أولية -->
+    <div id="loading-screen" class="fixed inset-0 bg-gray-900 flex flex-col items-center justify-center z-[100]">
+        <i class="fas fa-trophy text-yellow-400 text-6xl animate-bounce"></i>
+        <p class="mt-4 text-lg text-gray-300">جاري تحميل المنصة...</p>
     </div>
 
-    <!-- Audio for notifications -->
-    <audio id="notificationSound" src="/assets/notification.mp3"></audio>
+    <!-- ✅ المحتوى الرئيسي للتطبيق (مخفي افتراضياً) -->
+    <div id="app-container" class="hidden">
+        <div class="container mx-auto p-4">
+            <!-- Header -->
+            <header class="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-lg p-4 flex justify-between items-center mb-4">
+                <div class="logo flex items-center gap-3">
+                    <i class="fas fa-trophy text-yellow-400 text-2xl"></i>
+                    <span class="text-xl font-bold">منصة التحديات</span>
+                </div>
+                <div class="user-info flex items-center gap-4">
+                    <div class="balance bg-gray-700 px-3 py-1 rounded-full text-sm">💰 <span id="balance">0.00</span>$</div>
+                    <div class="coins bg-gray-700 px-3 py-1 rounded-full text-sm">🪙 <span id="coins">0</span></div>
+                    <button id="logoutBtn" class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded-full text-xs">خروج</button>
+                </div>
+            </header>
 
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    <script src="script.js"></script>
+            <!-- Main Content -->
+            <div class="grid grid-cols-12 gap-4">
+                <!-- Sidebar (Right) -->
+                <aside class="col-span-12 md:col-span-3 lg:col-span-2 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4">
+                    <div class="user-profile text-center mb-6">
+                        <img id="profileImage" src="https://via.placeholder.com/80" alt="الصورة الشخصية" class="w-20 h-20 rounded-full mx-auto border-2 border-purple-500">
+                        <h3 id="username" class="mt-2 font-bold">...</h3>
+                        <p id="userLevel" class="text-xs text-gray-400">المستوى: 1</p>
+                    </div>
+                    <nav class="sidebar-nav space-y-2">
+                        <a href="#arena" class="nav-item flex items-center gap-3 p-2 rounded-lg bg-purple-600 text-white"><i class="fas fa-home w-5 text-center"></i> الرئيسية</a>
+                        <a href="#challenges" class="nav-item flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700"><i class="fas fa-gamepad w-5 text-center"></i> التحديات</a>
+                        <a href="#leaderboard" class="nav-item flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700"><i class="fas fa-trophy w-5 text-center"></i> المتصدرين</a>
+                        <a href="#settings" class="nav-item flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700"><i class="fas fa-cog w-5 text-center"></i> الإعدادات</a>
+                    </nav>
+                </aside>
+
+                <!-- Main View (Center) -->
+                <main class="col-span-12 md:col-span-9 lg:col-span-7 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4">
+                    <!-- Voice Chat Seats -->
+                    <div class="mb-4">
+                        <h3 class="font-bold mb-3">🎤 غرفة الصوت</h3>
+                        <div id="voice-chat-grid" class="grid grid-cols-9 gap-3">
+                            <!-- Admin Seats -->
+                            <div class="voice-seat admin-seat" data-seat="1"><i class="fas fa-crown"></i></div>
+                            <div class="voice-seat admin-seat" data-seat="2"><i class="fas fa-crown"></i></div>
+                            <div class="voice-seat admin-seat" data-seat="3"><i class="fas fa-crown"></i></div>
+                            <!-- User Seats (Generated by JS) -->
+                        </div>
+                    </div>
+                </main>
+
+                <!-- Chat Panel (Left) -->
+                <aside class="col-span-12 lg:col-span-3 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 flex flex-col">
+                    <h3 class="font-bold mb-3">💬 الدردشة العامة</h3>
+                    <div id="chat-messages" class="flex-grow bg-gray-900/50 rounded-lg p-2 overflow-y-auto mb-3 min-h-[300px]">
+                        <!-- Messages will appear here -->
+                    </div>
+                    <div class="chat-input flex gap-2">
+                        <input type="text" id="messageInput" placeholder="اكتب رسالتك..." class="flex-grow bg-gray-700 border border-gray-600 rounded-lg p-2 focus:ring-purple-500 focus:border-purple-500">
+                        <button id="sendBtn" class="bg-purple-600 hover:bg-purple-700 px-4 rounded-lg"><i class="fas fa-paper-plane"></i></button>
+                    </div>
+                </aside>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Notification container -->
+    <div id="notification-container" class="fixed top-5 right-5 z-50 space-y-2"></div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="/js/app.js"></script>
 </body>
 </html>
