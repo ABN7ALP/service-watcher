@@ -75,3 +75,72 @@ exports.getAvailableBattles = async (req, res, next) => {
         next(error);
     }
 };
+
+
+// ✅ --- دالة جديدة للانضمام إلى تحدي ---
+exports.joinBattle = async (req, res, next) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const battleId = req.params.id;
+        const userId = req.user.id;
+
+        const battle = await Battle.findById(battleId).session(session);
+        const user = await User.findById(userId).session(session);
+
+        // --- سلسلة من التحققات لضمان سلامة العملية ---
+        if (!battle) {
+            return res.status(404).json({ status: 'fail', message: 'التحدي لم يعد موجوداً' });
+        }
+        if (battle.status !== 'waiting') {
+            return res.status(400).json({ status: 'fail', message: 'لا يمكن الانضمام لهذا التحدي، لقد بدأ بالفعل أو اكتمل' });
+        }
+        if (battle.players.includes(userId)) {
+            return res.status(400).json({ status: 'fail', message: 'أنت منضم بالفعل لهذا التحدي' });
+        }
+        if (user.balance < battle.betAmount) {
+            return res.status(400).json({ status: 'fail', message: 'رصيدك غير كافٍ للانضمام' });
+        }
+        if (battle.players.length >= battle.maxPlayers) {
+            return res.status(400).json({ status: 'fail', message: 'هذا التحدي مكتمل' });
+        }
+
+        // --- تنفيذ منطق الانضمام ---
+        // 1. خصم الرصيد من اللاعب المنضم
+        user.balance -= battle.betAmount;
+        await user.save({ session });
+
+        // 2. إضافة اللاعب إلى قائمة اللاعبين والفريق المناسب
+        battle.players.push(userId);
+        // توزيع اللاعبين بالتناوب على الفرق
+        if (battle.teams.teamA.length <= battle.teams.teamB.length) {
+            battle.teams.teamA.push(userId);
+        } else {
+            battle.teams.teamB.push(userId);
+        }
+
+        // 3. التحقق إذا اكتمل عدد اللاعبين لبدء التحدي
+        if (battle.players.length === battle.maxPlayers) {
+            battle.status = 'in-progress'; // تغيير الحالة إلى "قيد التنفيذ"
+            // (لاحقاً: سنقوم ببث حدث بدء التحدي هنا)
+        }
+
+        await battle.save({ session });
+        await session.commitTransaction();
+
+        // (لاحقاً: سنقوم ببث تحديث حالة التحدي عبر Socket.IO)
+        // req.app.get('io').emit('battleUpdate', battle);
+
+        res.status(200).json({
+            status: 'success',
+            message: 'تم الانضمام إلى التحدي بنجاح!',
+            data: { battle },
+        });
+
+    } catch (error) {
+        await session.abortTransaction();
+        next(error);
+    } finally {
+        session.endSession();
+    }
+};
