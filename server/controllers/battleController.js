@@ -41,6 +41,9 @@ exports.createBattle = async (req, res, next) => {
         
         // (لاحقاً: سنقوم ببث هذا التحدي عبر Socket.IO)
         // req.app.get('io').emit('newBattle', newBattle);
+        const battleForEmit = await Battle.findById(newBattle._id).populate('players', 'username profileImage');
+        req.io.emit('newBattle', battleForEmit);
+        
 
         res.status(201).json({
             status: 'success',
@@ -130,6 +133,9 @@ exports.joinBattle = async (req, res, next) => {
 
         // (لاحقاً: سنقوم ببث تحديث حالة التحدي عبر Socket.IO)
         // req.app.get('io').emit('battleUpdate', battle);
+        const updatedBattle = await Battle.findById(battle._id).populate('players', 'username profileImage');
+        req.io.emit('battleUpdate', updatedBattle);
+        
 
         res.status(200).json({
             status: 'success',
