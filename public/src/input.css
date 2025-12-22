@@ -1,0 +1,10 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* أنماط مخصصة يمكنك إضافتها هنا لاحقاً */
+body {
+  font-family: 'cairo', 'sans-serif';
+}
