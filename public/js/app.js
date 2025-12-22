@@ -156,6 +156,159 @@ socket.on('connect_error', (err) => {
     }  
 });
 
+    // --- 10. ربط زر إنشاء التحدي ---
+    const createBattleBtn = document.getElementById('create-battle-btn');
+    createBattleBtn.addEventListener('click', showCreateBattleModal);
+
+    // --- 11. دالة لجلب وعرض التحديات المتاحة ---
+    async function loadAvailableBattles() {
+        const container = document.getElementById('battle-rooms-container');
+        const loadingState = document.getElementById('battles-loading-state');
+        const emptyState = document.getElementById('battles-empty-state');
+
+        // إظهار حالة التحميل
+        loadingState.classList.remove('hidden');
+        emptyState.classList.add('hidden');
+        // حذف التحديات القديمة
+        container.querySelectorAll('.battle-card').forEach(card => card.remove());
+
+        try {
+            const response = await fetch('/api/battles', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const result = await response.json();
+
+            loadingState.classList.add('hidden');
+
+            if (response.ok && result.status === 'success') {
+                if (result.data.battles.length === 0) {
+                    emptyState.classList.remove('hidden');
+                } else {
+                    result.data.battles.forEach(battle => {
+                        displayBattleCard(battle);
+                    });
+                }
+            } else {
+                showNotification('فشل تحميل التحديات', 'error');
+                emptyState.classList.remove('hidden');
+            }
+        } catch (error) {
+            console.error('Failed to load battles:', error);
+            loadingState.classList.add('hidden');
+            emptyState.classList.remove('hidden');
+        }
+    }
+
+    // --- 12. دالة لعرض بطاقة تحدي واحدة ---
+    function displayBattleCard(battle) {
+        const container = document.getElementById('battle-rooms-container');
+        const card = document.createElement('div');
+        card.className = 'battle-card bg-gray-700/50 p-3 rounded-lg flex justify-between items-center';
+        card.dataset.battleId = battle._id;
+
+        const maxPlayers = battle.type === '1v1' ? 2 : battle.type === '2v2' ? 4 : 8;
+
+        card.innerHTML = `
+            <div class="flex items-center gap-3">
+                <span class="font-bold text-purple-300">${battle.type}</span>
+                <div class="flex items-center gap-1 text-yellow-400">
+                    <i class="fas fa-coins"></i>
+                    <span>${battle.betAmount}</span>
+                </div>
+                <div class="flex -space-x-2">
+                    ${battle.players.map(p => `<img src="${p.profileImage}" alt="${p.username}" class="w-8 h-8 rounded-full border-2 border-gray-600">`).join('')}
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="text-sm text-gray-400">${battle.players.length} / ${maxPlayers}</span>
+                <button class="join-battle-btn bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-1 px-3 rounded-full">
+                    انضم
+                </button>
+            </div>
+        `;
+        container.appendChild(card);
+    }
+
+    // --- 13. دالة لإظهار نافذة إنشاء تحدي ---
+    function showCreateBattleModal() {
+        const modal = document.createElement('div');
+        modal.id = 'create-battle-modal';
+        modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm">
+                <h3 class="text-lg font-bold mb-4">إنشاء تحدي جديد</h3>
+                <form id="create-battle-form" class="space-y-4">
+                    <div>
+                        <label class="text-sm">نوع التحدي</label>
+                        <select name="type" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
+                            <option value="1v1">1 ضد 1</option>
+                            <option value="2v2">2 ضد 2</option>
+                            <option value="4v4">4 ضد 4</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-sm">مبلغ الرهان ($)</label>
+                        <input type="number" name="betAmount" value="1" min="1" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="isPrivate" name="isPrivate" class="w-4 h-4 rounded">
+                        <label for="isPrivate" class="mr-2 text-sm">تحدي خاص</label>
+                    </div>
+                    <div id="password-field" class="hidden">
+                        <label class="text-sm">كلمة المرور</label>
+                        <input type="password" name="password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
+                    </div>
+                    <div class="flex justify-end gap-3 pt-4">
+                        <button type="button" id="cancel-create-battle" class="bg-gray-600 hover:bg-gray-700 py-2 px-4 rounded-lg">إلغاء</button>
+                        <button type="submit" class="bg-purple-600 hover:bg-purple-700 py-2 px-4 rounded-lg">تأكيد</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // ربط أحداث النافذة
+        document.getElementById('isPrivate').addEventListener('change', (e) => {
+            document.getElementById('password-field').classList.toggle('hidden', !e.target.checked);
+        });
+        document.getElementById('cancel-create-battle').addEventListener('click', () => modal.remove());
+        modal.addEventListener('click', (e) => { if (e.target.id === 'create-battle-modal') modal.remove(); });
+        
+        document.getElementById('create-battle-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            data.betAmount = Number(data.betAmount);
+            data.isPrivate = data.isPrivate === 'on';
+
+            try {
+                const response = await fetch('/api/battles', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+
+                if (response.ok && result.status === 'success') {
+                    showNotification('تم إنشاء التحدي بنجاح!', 'success');
+                    modal.remove();
+                    loadAvailableBattles(); // إعادة تحميل قائمة التحديات
+                } else {
+                    showNotification(result.message || 'فشل إنشاء التحدي', 'error');
+                }
+            } catch (error) {
+                showNotification('خطأ في الاتصال بالخادم', 'error');
+            }
+        });
+    }
+
+    // --- استدعاء الدالة لجلب التحديات عند تحميل الصفحة ---
+    loadAvailableBattles();
+
+   }); // نهاية document.addEventListener   
 });
 
 // دالة عامة لإظهار الإشعارات (يمكن وضعها في ملف منفصل لاحقاً)
