@@ -33,6 +33,7 @@ app.use('/dist', express.static(path.join(__dirname, '../public/dist')));
 // مثال: app.use('/api/auth', require('./routes/authRoutes'));
 // --- مسارات API ---
 app.use('/api/auth', require('./routes/authRoutes')); // ✅ أضف هذا السطر
+app.use('/api/messages', require('./routes/messageRoutes')); // ✅ أضف هذا السطر
 
 
 
