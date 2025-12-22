@@ -38,8 +38,59 @@ logoutBtn.addEventListener('click', () => {
     localStorage.removeItem('token');  
     localStorage.removeItem('user');  
     window.location.href = '/login.html';  
-});  
+}); 
+    
+async function loadChatHistory() {
+        try {
+            const response = await fetch('/api/messages/public-room', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            const result = await response.json();
 
+            if (response.ok && result.status === 'success') {
+                const chatMessages = document.getElementById('chat-messages');
+                chatMessages.innerHTML = ''; // تفريغ الرسائل القديمة
+                result.data.messages.forEach(message => {
+                    displayMessage(message); // استخدام دالة جديدة لعرض الرسالة
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load chat history:', error);
+        }
+    }
+
+    // --- دالة جديدة لعرض الرسالة (لتجنب تكرار الكود) ---
+    function displayMessage(message) {
+        const chatMessages = document.getElementById('chat-messages');
+        const messageElement = document.createElement('div');
+        messageElement.classList.add('p-2', 'rounded-lg', 'mb-2', 'flex', 'items-start', 'gap-2');
+
+        const isMyMessage = message.sender.id === user.id;
+
+        if (isMyMessage) {
+            messageElement.classList.add('bg-purple-800', 'self-end');
+        } else {
+            messageElement.classList.add('bg-gray-700');
+        }
+
+        messageElement.innerHTML = `
+            <img src="${message.sender.profileImage}" alt="${message.sender.username}" class="w-8 h-8 rounded-full">
+            <div>
+                <p class="font-bold text-sm ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${message.sender.username}</p>
+                <p class="text-white text-sm">${message.message || message.content}</p>
+            </div>
+        `;
+        chatMessages.appendChild(messageElement);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // --- استدعاء الدالة لجلب السجل ---
+    loadChatHistory();
+
+
+    
 // (سيتم إضافة منطق الدردشة والتحديات هنا لاحقاً)
     // --- 6. تهيئة Socket.IO في الواجهة الأمامية ---
 const socket = io({
@@ -72,9 +123,8 @@ function sendMessage() {
 }  
 
 // --- 8. استقبال الرسائل الجديدة ---  
-socket.on('newMessage', (message) => {  
-    const messageElement = document.createElement('div');  
-    messageElement.classList.add('p-2', 'rounded-lg', 'mb-2', 'flex', 'items-start', 'gap-2');  
+    socket.on('newMessage', (message) => {
+        displayMessage(message);  
 
     // تحديد إذا كانت الرسالة من المستخدم الحالي  
     const isMyMessage = message.sender.id === user.id;  
