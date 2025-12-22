@@ -55,8 +55,16 @@ const initializeSocket = (server) => {
     io.use(verifySocketToken);
 
     // --- معالج الاتصالات الجديدة ---
-    io.on('connection', (socket) => {
-        console.log(`🟢 User connected: ${socket.id} | UserID: ${socket.user.username}`);
+    
+io.on('connection', async (socket) => {
+    console.log(`🟢 User connected: ${socket.id} | UserID: ${socket.user.username}`);
+    
+    // ✅ حفظ socket.id في نموذج المستخدم
+    try {
+        await User.findByIdAndUpdate(socket.user.id, { socketId: socket.id });
+    } catch (error) {
+        console.error("Failed to update socketId:", error);
+    }
 
         // الانضمام إلى الغرفة العامة
         socket.join('public-room');
