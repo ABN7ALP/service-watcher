@@ -291,94 +291,113 @@ socket.on('connect_error', (err) => {
 
     // --- 13. دالة لإظهار نافذة إنشاء تحدي ---
     function showCreateBattleModal() {
-        const modal = document.createElement('div');
-        modal.id = 'create-battle-modal';
-        modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50';
-        modal.innerHTML = `
-            <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm">
-                <h3 class="text-lg font-bold mb-4">إنشاء تحدي جديد</h3>
-                <form id="create-battle-form" class="space-y-4">
-                    <div>
-                        <label class="text-sm">نوع التحدي</label>
-                        <select name="type" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
-                            <option value="1v1">1 ضد 1</option>
-                            <option value="2v2">2 ضد 2</option>
-                            <option value="4v4">4 ضد 4</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="text-sm">مبلغ الرهان ($)</label>
-                        <input type="number" name="betAmount" value="1" min="1" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
-                    </div>
-                    <div class="flex items-center">
-                        <input type="checkbox" id="isPrivate" name="isPrivate" class="w-4 h-4 rounded">
-                        <label for="isPrivate" class="mr-2 text-sm">تحدي خاص</label>
-                    </div>
-                    <div id="password-field" class="hidden">
-                        <label class="text-sm">كلمة المرور</label>
-                        <input type="password" name="password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
-                    </div>
-                    <div class="flex justify-end gap-3 pt-4">
-                        <button type="button" id="cancel-create-battle" class="bg-gray-600 hover:bg-gray-700 py-2 px-4 rounded-lg">إلغاء</button>
-                        <button type="submit" class="bg-purple-600 hover:bg-purple-700 py-2 px-4 rounded-lg">تأكيد</button>
-                    </div>
-                </form>
-            </div>
-        `;
-        document.body.appendChild(modal);
+    const modal = document.createElement('div');
+    modal.id = 'create-battle-modal';
+    modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50';
 
-        // ربط أحداث النافذة
-        document.getElementById('isPrivate').addEventListener('change', (e) => {
-            document.getElementById('password-field').classList.toggle('hidden', !e.target.checked);
+    modal.innerHTML = `
+        <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm">
+            <h3 class="text-lg font-bold mb-4">إنشاء تحدي جديد</h3>
+            <form id="create-battle-form" class="space-y-4">
+                <div>
+                    <label class="text-sm">نوع التحدي</label>
+                    <select name="type" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
+                        <option value="1v1">1 ضد 1</option>
+                        <option value="2v2">2 ضد 2</option>
+                        <option value="4v4">4 ضد 4</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="text-sm">مبلغ الرهان ($)</label>
+                    <input type="number" name="betAmount" value="1" min="1"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
+                </div>
+
+                <div class="flex items-center">
+                    <input type="checkbox" id="isPrivate" name="isPrivate">
+                    <label for="isPrivate" class="mr-2 text-sm">تحدي خاص</label>
+                </div>
+
+                <div id="password-field" class="hidden">
+                    <label class="text-sm">كلمة المرور</label>
+                    <input type="password" name="password"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
+                </div>
+
+                <div class="flex justify-end gap-3 pt-4">
+                    <button type="button" id="cancel-create-battle"
+                        class="bg-gray-600 hover:bg-gray-700 py-2 px-4 rounded-lg">
+                        إلغاء
+                    </button>
+                    <button type="submit"
+                        class="bg-purple-600 hover:bg-purple-700 py-2 px-4 rounded-lg">
+                        تأكيد
+                    </button>
+                </div>
+            </form>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // إظهار حقل كلمة المرور
+    document.getElementById('isPrivate').addEventListener('change', e => {
+        document
+            .getElementById('password-field')
+            .classList.toggle('hidden', !e.target.checked);
+    });
+
+    // إغلاق المودال
+    document.getElementById('cancel-create-battle')
+        .addEventListener('click', () => modal.remove());
+
+    modal.addEventListener('click', e => {
+        if (e.target === modal) modal.remove();
+    });
+
+    // إرسال النموذج
+    document.getElementById('create-battle-form')
+        .addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const data = Object.fromEntries(new FormData(e.target).entries());
+            data.betAmount = parseFloat(data.betAmount);
+            data.isPrivate = !!data.isPrivate;
+
+            if (!data.betAmount || data.betAmount <= 0) {
+                showNotification('مبلغ الرهان غير صالح', 'error');
+                return;
+            }
+
+            if (data.isPrivate && !data.password) {
+                showNotification('أدخل كلمة مرور للتحدي الخاص', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/battles', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await res.json();
+
+                if (res.ok) {
+                    showNotification('تم إنشاء التحدي', 'success');
+                    modal.remove();
+                } else {
+                    showNotification(result.message || 'فشل الإنشاء', 'error');
+                }
+            } catch {
+                showNotification('خطأ اتصال', 'error');
+            }
         });
-        document.getElementById('cancel-create-battle').addEventListener('click', () => modal.remove());
-        modal.addEventListener('click', (e) => { if (e.target.id === 'create-battle-modal') modal.remove(); });
-        
-        document.getElementById('create-battle-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const data = Object.fromEntries(formData.entries());
-    
-    // ✅ --- التعديلات هنا ---
-    // 1. تحويل مبلغ الرهان إلى رقم عشري
-    data.betAmount = parseFloat(data.betAmount);
-    // 2. تحويل قيمة checkbox إلى boolean
-    data.isPrivate = data.isPrivate === 'on';
-
-    // 3. التحقق من صحة البيانات قبل الإرسال
-    if (!data.type || !data.betAmount || data.betAmount <= 0) {
-        showNotification('يرجى إدخال مبلغ رهان صالح.', 'error');
-        return;
-    }
-    if (data.isPrivate && !data.password) {
-        showNotification('يرجى إدخال كلمة مرور للتحدي الخاص.', 'error');
-        return;
-    }
-    // --- نهاية التعديلات ---
-
-    try {
-        const response = await fetch('/api/battles', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(data)
-        });
-        const result = await response.json();
-
-        if (response.ok && result.status === 'success') {
-            showNotification('تم إنشاء التحدي بنجاح!', 'success');
-            document.getElementById('create-battle-modal').remove();
-            // لا نحتاج لإعادة تحميل القائمة يدوياً، السوكيت سيتولى الأمر
-        } else {
-            showNotification(result.message || 'فشل إنشاء التحدي', 'error');
-        }
-    } catch (error) {
-        showNotification('خطأ في الاتصال بالخادم', 'error');
-    }
-});
-
+}
 
     // --- استدعاء الدالة لجلب التحديات عند تحميل الصفحة ---
     loadAvailableBattles();
