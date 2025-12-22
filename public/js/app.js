@@ -39,6 +39,41 @@ logoutBtn.addEventListener('click', () => {
     localStorage.removeItem('user');  
     window.location.href = '/login.html';  
 }); 
+
+
+
+    // --- 14. استخدام تفويض الأحداث لزر "انضمام" ---
+    const battlesContainer = document.getElementById('battle-rooms-container');
+    battlesContainer.addEventListener('click', async (e) => {
+        if (e.target && e.target.classList.contains('join-battle-btn')) {
+            const battleCard = e.target.closest('.battle-card');
+            const battleId = battleCard.dataset.battleId;
+            
+            e.target.disabled = true; // تعطيل الزر لمنع النقرات المزدوجة
+            e.target.textContent = 'جاري...';
+
+            try {
+                const response = await fetch(`/api/battles/${battleId}/join`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    showNotification(result.message || 'فشل الانضمام', 'error');
+                    e.target.disabled = false;
+                    e.target.textContent = 'انضم';
+                }
+                // لا نحتاج لفعل شيء عند النجاح، لأن تحديث السوكيت سيتولى الأمر
+            } catch (error) {
+                showNotification('خطأ في الاتصال بالخادم', 'error');
+                e.target.disabled = false;
+                e.target.textContent = 'انضم';
+            }
+        }
+    });
+
+    
     
 async function loadChatHistory() {
         try {
@@ -155,6 +190,31 @@ socket.on('connect_error', (err) => {
         logout();  
     }  
 });
+
+    // عند إنشاء تحدي جديد
+    socket.on('newBattle', (battle) => {
+        // إزالة حالة "القائمة فارغة" إذا كانت موجودة
+        document.getElementById('battles-empty-state').classList.add('hidden');
+        displayBattleCard(battle);
+        showNotification(`تم إنشاء تحدي ${battle.type} جديد!`, 'info');
+    });
+
+    // عند تحديث تحدي (انضمام لاعب، تغيير حالة، إلخ)
+    socket.on('battleUpdate', (updatedBattle) => {
+        const cardToUpdate = document.querySelector(`.battle-card[data-battle-id="${updatedBattle._id}"]`);
+        if (cardToUpdate) {
+            // إذا اكتمل التحدي أو تم إلغاؤه، قم بإزالته من القائمة
+            if (updatedBattle.status !== 'waiting') {
+                cardToUpdate.remove();
+            } else {
+                // تحديث البطاقة الحالية (يمكن تحسين هذا لاحقاً)
+                cardToUpdate.remove();
+                displayBattleCard(updatedBattle);
+            }
+        }
+    });
+
+    
 
     // --- 10. ربط زر إنشاء التحدي ---
     const createBattleBtn = document.getElementById('create-battle-btn');
