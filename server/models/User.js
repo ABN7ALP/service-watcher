@@ -25,7 +25,7 @@ const userSchema = new mongoose.Schema({
     },
     profileImage: {
         type: String,
-        default: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2EwYTVhZSI+PHBhdGggZD0iTTEyIDJDNi40OCAyIDIgNi40OCAyIDEyczQuNDggMTAgMTAgMTAgMTAtNC40OCAxMC0xMFMxNy41MiAyIDEyIDJ6bTAgM2MxLjY2IDAgMyAxLjM0IDMgM3MtMS4zNCAzLTMgMy0zLTEuMzQtMy0zIDEuMzQtMyAzLTN6bTAgMTRjLTIuNjcgMC04IDEuMzQtOCA0djJoMTZ2LTJjMC0yLjY2LTUuMzMtNC04LTR6Ii8+PC9wYXRoPjwvc3ZnPg=='',
+        default: 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'',
     },
     balance: { type: Number, default: 0 },
     coins: { type: Number, default: 0 },
@@ -41,7 +41,7 @@ userSchema.pre('save', async function(next) {
     next();
 });
 
-// --- دالة لمقارنة كلمة المرور المدخلة بالكلمة المشفرة ---
+// --- دالة لمقارنة كلمة المرور المدخلة بالكلمة المشفرة --- 
 userSchema.methods.comparePassword = async function(candidatePassword) {
     return await bcrypt.compare(candidatePassword, this.password);
 };
