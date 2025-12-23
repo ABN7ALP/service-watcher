@@ -58,6 +58,7 @@ exports.createBattle = async (req, res, next) => {
     }
 };
 
+// استبدل دالة joinBattle بالكامل بهذا الكود
 exports.joinBattle = async (req, res, next) => {
     try {
         const battleId = req.params.id;
@@ -66,6 +67,7 @@ exports.joinBattle = async (req, res, next) => {
         const battle = await Battle.findById(battleId);
         const user = await User.findById(userId);
 
+        // ... (كل عمليات التحقق تبقى كما هي)
         if (!battle || battle.status !== 'waiting' || battle.players.length >= battle.maxPlayers || user.balance < battle.betAmount) {
             return res.status(400).json({ status: 'fail', message: 'لا يمكن الانضمام لهذا التحدي.' });
         }
@@ -84,13 +86,21 @@ exports.joinBattle = async (req, res, next) => {
             battle.teams.teamA = shuffledPlayers.slice(0, midIndex);
             battle.teams.teamB = shuffledPlayers.slice(midIndex);
             
-            await battle.save(); // حفظ الحالة قبل إرسالها
+            await battle.save();
             
-            // ✅ إطلاق حدث بدء العد التنازلي للعبة
-            io.emit('startBattleCountdown', battle._id.toString());
+            // --- ✅✅ التغيير الرئيسي هنا ✅✅ ---
+            // بدلاً من إرسال حدث، سنستدعي الدالة مباشرة
+            // تأكد من أن io متاح هنا
+            if (io.startBattleCountdown) {
+                io.startBattleCountdown(battle._id.toString());
+            } else {
+                console.error("❌ io.startBattleCountdown is not a function. Make sure it's attached to the io instance.");
+            }
+            // --- نهاية التغيير ---
         }
         
-        await battle.save();
+        // ملاحظة: لا تقم بالحفظ مرة أخرى هنا، فقد تم الحفظ بالفعل في الأعلى
+        // await battle.save(); 
         
         const updatedBattle = await Battle.findById(battle.id).populate('players', 'username profileImage');
 
@@ -103,6 +113,7 @@ exports.joinBattle = async (req, res, next) => {
         res.status(200).json({ status: 'success', data: { battle: updatedBattle } });
 
     } catch (error) {
+        console.error("Error in joinBattle:", error); // ✅ إضافة تسجيل خطأ أفضل
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم.' });
     }
 };
