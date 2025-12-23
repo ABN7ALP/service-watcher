@@ -134,18 +134,23 @@ token: token // إرسال التوكن للمصادقة
 }
 });
 
-// ✅ الاستماع لحدث تحديث الرصيد
+// ✅ الاستماع لحدث تحديث الرصيد (نسخة مصححة)
 socket.on('balanceUpdate', ({ newBalance }) => {
     const balanceElement = document.getElementById('balance');
     if (balanceElement) {
         balanceElement.textContent = newBalance.toFixed(2);
     }
-    // تحديث الرصيد في الكائن المحلي أيضاً
-    if (currentUser) {
-        currentUser.balance = newBalance;
+    
+    // تحديث الرصيد في الكائن المحلي (localStorage)
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (user) {
+        user.balance = newBalance;
+        localStorage.setItem('user', JSON.stringify(user));
     }
+    
     showNotification('تم تحديث رصيدك', 'info');
 });
+
     
 // --- 7. ربط أحداث الدردشة ---  
 const messageInput = document.getElementById('messageInput');  
