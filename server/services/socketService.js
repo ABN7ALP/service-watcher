@@ -90,7 +90,8 @@ const initializeSocket = (server) => {
             // بدء العد التنازلي
             let countdown = 3;
             const countdownInterval = setInterval(() => {
-                io.to(battleId).emit('battleCountdown', { countdown });
+                // ✅ عدّل هذا السطر
+                io.to(battleId).emit('battleCountdown', { countdown, battleId }); 
                 countdown--;
                 if (countdown < 0) {
                     clearInterval(countdownInterval);
