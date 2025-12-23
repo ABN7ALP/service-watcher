@@ -413,18 +413,18 @@ socket.on('connect_error', (err) => {
 // =======================================================================
 
 // --- 1. الاستماع لحدث بدء العد التنازلي ---
-socket.on('battleCountdown', ({ countdown }) => {
-    // ابحث عن نافذة اللعبة، إذا لم تكن موجودة، أنشئها
+socket.on('battleCountdown', ({ countdown, battleId }) => { // ✅ لاحظ إضافة battleId
     let gameModal = document.getElementById('game-modal');
     if (!gameModal) {
-        showGameWindow(); // استدعاء دالة إنشاء نافذة اللعبة
+        showGameWindow();
         gameModal = document.getElementById('game-modal');
+        gameModal.dataset.battleId = battleId; // ✅ حفظ battleId في النافذة
     }
     
-    // عرض العد التنازلي
     const statusDiv = gameModal.querySelector('#game-status');
     statusDiv.innerHTML = `<p class="text-6xl font-bold animate-ping">${countdown}</p>`;
 });
+
 
 // --- 2. الاستماع لحدث بدء اللعبة الفعلي ---
 socket.on('gameStarted', ({ gameState }) => {
