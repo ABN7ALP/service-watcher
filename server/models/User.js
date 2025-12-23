@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema({
         minlength: 3,
         maxlength: 20,
     },
+
     email: {
         type: String,
         required: [true, 'البريد الإلكتروني مطلوب'],
@@ -17,33 +18,40 @@ const userSchema = new mongoose.Schema({
         lowercase: true,
         trim: true,
     },
+
     password: {
         type: String,
         required: [true, 'كلمة المرور مطلوبة'],
         minlength: 6,
-        select: false, // لإخفاء كلمة المرور عند جلب بيانات المستخدم
+        select: false,
     },
+
     profileImage: {
         type: String,
         default: 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg',
     },
+
     balance: { type: Number, default: 0 },
     coins: { type: Number, default: 0 },
     level: { type: Number, default: 1 },
     experience: { type: Number, default: 0 },
+
     isAdmin: { type: Boolean, default: false },
+
+    socketId: { type: String, default: null } // ✅ مكانه الصح
 }, { timestamps: true });
 
-// --- Middleware لتشفير كلمة المرور قبل الحفظ ---
+
+// --- Middleware لتشفير كلمة المرور ---
 userSchema.pre('save', async function(next) {
     if (!this.isModified('password')) return next();
     this.password = await bcrypt.hash(this.password, 12);
     next();
 });
 
-// --- دالة لمقارنة كلمة المرور المدخلة بالكلمة المشفرة --- 
+// --- مقارنة كلمة المرور ---
 userSchema.methods.comparePassword = async function(candidatePassword) {
-    return await bcrypt.compare(candidatePassword, this.password);
+    return bcrypt.compare(candidatePassword, this.password);
 };
 
 const User = mongoose.model('User', userSchema);
