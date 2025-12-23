@@ -84,73 +84,85 @@ exports.getAvailableBattles = async (req, res, next) => {
 
 // ✅ --- دالة جديدة للانضمام إلى تحدي ---
 exports.joinBattle = async (req, res, next) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
     try {
         const battleId = req.params.id;
         const userId = req.user.id;
 
-        const battle = await Battle.findById(battleId).session(session);
-        const user = await User.findById(userId).session(session);
+        // 1. البحث عن التحدي والمستخدم في نفس الوقت لزيادة الكفاءة
+        const battle = await Battle.findById(battleId);
+        const user = await User.findById(userId);
 
-        // --- سلسلة من التحققات لضمان سلامة العملية ---
+        // 2. التحقق من وجود التحدي والمستخدم
         if (!battle) {
-            return res.status(404).json({ status: 'fail', message: 'التحدي لم يعد موجوداً' });
+            return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على هذا التحدي.' });
         }
+        if (!user) {
+            return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على المستخدم.' });
+        }
+
+        // 3. التحقق من حالة التحدي (يجب أن يكون في الانتظار)
         if (battle.status !== 'waiting') {
-            return res.status(400).json({ status: 'fail', message: 'لا يمكن الانضمام لهذا التحدي، لقد بدأ بالفعل أو اكتمل' });
+            return res.status(400).json({ status: 'fail', message: 'هذا التحدي لم يعد متاحاً للانضمام.' });
         }
+
+        // 4. التحقق من أن اللاعب ليس منضماً بالفعل
         if (battle.players.includes(userId)) {
-            return res.status(400).json({ status: 'fail', message: 'أنت منضم بالفعل لهذا التحدي' });
+            return res.status(400).json({ status: 'fail', message: 'أنت منضم بالفعل إلى هذا التحدي.' });
         }
-        if (user.balance < battle.betAmount) {
-            return res.status(400).json({ status: 'fail', message: 'رصيدك غير كافٍ للانضمام' });
-        }
+
+        // 5. التحقق من اكتمال عدد اللاعبين
         if (battle.players.length >= battle.maxPlayers) {
-            return res.status(400).json({ status: 'fail', message: 'هذا التحدي مكتمل' });
+            return res.status(400).json({ status: 'fail', message: 'هذا التحدي مكتمل العدد.' });
         }
 
-        // --- تنفيذ منطق الانضمام ---
-        // 1. خصم الرصيد من اللاعب المنضم
+        // 6. التحقق من أن المستخدم يملك رصيداً كافياً للرهان
+        if (user.balance < battle.betAmount) {
+            return res.status(400).json({ status: 'fail', message: 'رصيدك غير كافٍ للانضمام لهذا التحدي.' });
+        }
+
+        // --- بداية التغييرات الهامة ---
+
+        // 7. خصم مبلغ الرهان من رصيد اللاعب
         user.balance -= battle.betAmount;
-        await user.save({ session });
+        await user.save();
 
-        // 2. إضافة اللاعب إلى قائمة اللاعبين والفريق المناسب
+        // 8. إضافة اللاعب إلى قائمة اللاعبين في التحدي
         battle.players.push(userId);
-        // توزيع اللاعبين بالتناوب على الفرق
-        if (battle.teams.teamA.length <= battle.teams.teamB.length) {
-            battle.teams.teamA.push(userId);
-        } else {
-            battle.teams.teamB.push(userId);
-        }
 
-        // 3. التحقق إذا اكتمل عدد اللاعبين لبدء التحدي
+        // 9. التحقق إذا اكتمل عدد اللاعبين بعد انضمام اللاعب الحالي
         if (battle.players.length === battle.maxPlayers) {
-            battle.status = 'in-progress'; // تغيير الحالة إلى "قيد التنفيذ"
-            // (لاحقاً: سنقوم ببث حدث بدء التحدي هنا)
+            battle.status = 'in-progress'; // تغيير حالة التحدي إلى "قيد التنفيذ"
+            // (هنا يمكنك لاحقاً إضافة منطق توزيع الفرق عشوائياً)
         }
 
-        await battle.save({ session });
-        await session.commitTransaction();
+        // 10. حفظ التغييرات في التحدي
+        await battle.save();
+        
+        // 11. جلب بيانات التحدي المحدثة مع تفاصيل اللاعبين
+        const updatedBattle = await Battle.findById(battle.id).populate('players', 'username profileImage');
 
-        // (لاحقاً: سنقوم ببث تحديث حالة التحدي عبر Socket.IO)
-        // req.app.get('io').emit('battleUpdate', battle);
-        const updatedBattle = await Battle.findById(battle._id).populate('players', 'username profileImage');
-        req.io.emit('battleUpdate', updatedBattle);
-        
-        req.io.to(user.socketId).emit('balanceUpdate', { newBalance: user.balance });
-        
+        // 12. بث التحديث إلى جميع العملاء عبر Socket.IO
+        const io = req.app.get('socketio'); // الحصول على نسخة io
+        io.emit('battleUpdate', updatedBattle);
+
+        // 13. إرسال إشعار للاعب الذي انضم بتحديث رصيده
+        const userSocketId = user.socketId;
+        if (userSocketId) {
+            io.to(userSocketId).emit('balanceUpdate', { newBalance: user.balance });
+        }
+
+        // --- نهاية التغييرات الهامة ---
 
         res.status(200).json({
             status: 'success',
-            message: 'تم الانضمام إلى التحدي بنجاح!',
-            data: { battle },
+            message: 'تم الانضمام للتحدي بنجاح.',
+            data: {
+                battle: updatedBattle
+            }
         });
 
     } catch (error) {
-        await session.abortTransaction();
-        next(error);
-    } finally {
-        session.endSession();
+        console.error('Error in joinBattle:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم.' });
     }
 };
