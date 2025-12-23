@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 
+// استبدل السكيما الحالية بهذه
 const battleSchema = new mongoose.Schema({
     type: {
         type: String,
@@ -34,9 +35,21 @@ const battleSchema = new mongoose.Schema({
     },
     password: {
         type: String,
-        // select: false, // لا نريد إظهار كلمة المرور
     },
+    // --- ✅ الحقول الجديدة للعبة ---
+    gameType: {
+        type: String,
+        enum: ['fastest-clicker'], // حاليًا لدينا لعبة واحدة فقط
+        default: 'fastest-clicker',
+    },
+    gameState: {
+        type: Map,
+        of: mongoose.Schema.Types.Mixed,
+        default: {} // سيحتوي على بيانات مثل { player1_score: 0, player2_score: 0, timer: 10 }
+    }
+    // --- نهاية الحقول الجديدة ---
 }, { timestamps: true });
+
 
 // دالة مساعدة لتحديد الحد الأقصى للاعبين
 battleSchema.virtual('maxPlayers').get(function() {
