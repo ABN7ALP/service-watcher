@@ -214,18 +214,32 @@ socket.on('connect_error', (err) => {
 
     // عند تحديث تحدي (انضمام لاعب، تغيير حالة، إلخ)
     socket.on('battleUpdate', (updatedBattle) => {
-        const cardToUpdate = document.querySelector(`.battle-card[data-battle-id="${updatedBattle._id}"]`);
+    const cardToUpdate = document.querySelector(`.battle-card[data-battle-id="${updatedBattle._id}"]`);
+
+    // إذا كان التحدي لم يعد في حالة الانتظار (بدأ أو انتهى)، قم بإزالته من القائمة
+    if (updatedBattle.status !== 'waiting') {
         if (cardToUpdate) {
-            // إذا اكتمل التحدي أو تم إلغاؤه، قم بإزالته من القائمة
-            if (updatedBattle.status !== 'waiting') {
-                cardToUpdate.remove();
-            } else {
-                // تحديث البطاقة الحالية (يمكن تحسين هذا لاحقاً)
-                cardToUpdate.remove();
-                displayBattleCard(updatedBattle);
-            }
+            cardToUpdate.remove();
+            showNotification(`تحدي ${updatedBattle.type} قد بدأ!`, 'info');
         }
-    });
+    } 
+    // إذا كان التحدي لا يزال في الانتظار، قم بتحديث بياناته فقط
+    else {
+        // إذا كانت البطاقة موجودة، احذفها لإعادة رسمها بالبيانات الجديدة
+        if (cardToUpdate) {
+            cardToUpdate.remove();
+        }
+        // أعد رسم البطاقة بالبيانات المحدثة
+        displayBattleCard(updatedBattle);
+    }
+
+    // تحقق إذا كانت قائمة التحديات فارغة بعد التحديث
+    const container = document.getElementById('battle-rooms-container');
+    if (container.querySelectorAll('.battle-card').length === 0) {
+        document.getElementById('battles-empty-state').classList.remove('hidden');
+    }
+});
+
 
     
 
