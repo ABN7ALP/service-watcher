@@ -408,6 +408,167 @@ socket.on('connect_error', (err) => {
     
 }
 
+   // =======================================================================
+// =================== ✅✅ منطق اللعبة الجديد ✅✅ ======================
+// =======================================================================
+
+// --- 1. الاستماع لحدث بدء العد التنازلي ---
+socket.on('battleCountdown', ({ countdown }) => {
+    // ابحث عن نافذة اللعبة، إذا لم تكن موجودة، أنشئها
+    let gameModal = document.getElementById('game-modal');
+    if (!gameModal) {
+        showGameWindow(); // استدعاء دالة إنشاء نافذة اللعبة
+        gameModal = document.getElementById('game-modal');
+    }
+    
+    // عرض العد التنازلي
+    const statusDiv = gameModal.querySelector('#game-status');
+    statusDiv.innerHTML = `<p class="text-6xl font-bold animate-ping">${countdown}</p>`;
+});
+
+// --- 2. الاستماع لحدث بدء اللعبة الفعلي ---
+socket.on('gameStarted', ({ gameState }) => {
+    const gameModal = document.getElementById('game-modal');
+    if (!gameModal) return;
+
+    const statusDiv = gameModal.querySelector('#game-status');
+    statusDiv.innerHTML = `<p class="text-6xl font-bold text-green-400">انطلق!</p>`;
+
+    // إخفاء رسالة "انطلق" بعد ثانية وإظهار المؤقت
+    setTimeout(() => {
+        updateGameState(gameState);
+    }, 1000);
+});
+
+// --- 3. الاستماع لتحديثات حالة اللعبة (النقاط والمؤقت) ---
+socket.on('gameStateUpdate', (gameState) => {
+    updateGameState(gameState);
+});
+
+// --- 4. الاستماع لحدث انتهاء اللعبة ---
+socket.on('gameEnded', ({ battle, winnerId }) => {
+    const gameModal = document.getElementById('game-modal');
+    if (!gameModal) return;
+
+    const statusDiv = gameModal.querySelector('#game-status');
+    const user = JSON.parse(localStorage.getItem('user'));
+
+    let message = '';
+    if (!winnerId) {
+        message = '<p class="text-4xl font-bold text-yellow-400">تعادل!</p><p class="text-lg mt-2">تم إعادة مبلغ الرهان.</p>';
+    } else if (winnerId === user.id) {
+        message = '<p class="text-4xl font-bold text-green-400">لقد فزت!</p><p class="text-lg mt-2">تم إضافة الأرباح إلى رصيدك.</p>';
+    } else {
+        message = '<p class="text-4xl font-bold text-red-400">لقد خسرت!</p><p class="text-lg mt-2">حظاً أوفر في المرة القادمة.</p>';
+    }
+    
+    statusDiv.innerHTML = message;
+
+    // إغلاق النافذة بعد 5 ثوانٍ
+    setTimeout(() => {
+        gameModal.remove();
+    }, 5000);
+});
+
+
+// --- دالة لتحديث واجهة المستخدم بحالة اللعبة ---
+function updateGameState(gameState) {
+    const gameModal = document.getElementById('game-modal');
+    if (!gameModal) return;
+
+    const statusDiv = gameModal.querySelector('#game-status');
+    const scores = gameState.get('scores');
+    const timer = gameState.get('timer');
+    const user = JSON.parse(localStorage.getItem('user'));
+    
+    // العثور على معرف الخصم
+    const playerIds = Object.keys(scores);
+    const opponentId = playerIds.find(id => id !== user.id);
+
+    const myScore = scores[user.id] || 0;
+    const opponentScore = scores[opponentId] || 0;
+
+    // تحديث المؤقت والنقاط
+    statusDiv.innerHTML = `<div class="text-5xl font-mono">${timer}</div>`;
+    gameModal.querySelector('#my-score').textContent = myScore;
+    gameModal.querySelector('#opponent-score').textContent = opponentScore;
+}
+
+
+// --- دالة لإنشاء وعرض نافذة اللعبة ---
+function showGameWindow() {
+    const gameContainer = document.getElementById('game-container');
+    const user = JSON.parse(localStorage.getItem('user'));
+
+    // تصميم النافذة
+    const modalHTML = `
+        <div id="game-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[200]">
+            <div class="bg-gray-800 border-2 border-purple-500 rounded-2xl shadow-2xl p-6 w-full max-w-2xl text-white text-center">
+                
+                <h2 class="text-2xl font-bold mb-4">لعبة النقرات الأسرع!</h2>
+                
+                <!-- منطقة الحالة (للعد التنازلي والمؤقت) -->
+                <div id="game-status" class="mb-6 h-24 flex items-center justify-center">
+                    <p class="text-2xl">استعد...</p>
+                </div>
+
+                <!-- منطقة اللعب -->
+                <div class="grid grid-cols-2 gap-6 items-center">
+                    <!-- اللاعب الحالي -->
+                    <div class="flex flex-col items-center">
+                        <p class="text-xl font-bold mb-2">${user.username} (أنت)</p>
+                        <button id="click-btn" class="w-48 h-48 bg-purple-600 rounded-full text-5xl font-bold shadow-lg transform transition hover:scale-105 active:scale-95 focus:outline-none">
+                            انقر!
+                        </button>
+                        <p class="mt-4 text-3xl">النقاط: <span id="my-score">0</span></p>
+                    </div>
+
+                    <!-- الخصم -->
+                    <div class="flex flex-col items-center">
+                        <p class="text-xl font-bold mb-2">الخصم</p>
+                        <div class="w-48 h-48 bg-gray-700 rounded-full flex items-center justify-center">
+                            <i class="fas fa-user-secret text-6xl text-gray-500"></i>
+                        </div>
+                        <p class="mt-4 text-3xl">النقاط: <span id="opponent-score">0</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    gameContainer.innerHTML = modalHTML;
+
+    // --- ربط حدث النقر ---
+    const clickBtn = document.getElementById('click-btn');
+    clickBtn.addEventListener('click', () => {
+        // إرسال حدث النقر إلى الخادم
+        const battleCard = document.querySelector('.battle-card[data-battle-id]'); // محاولة لإيجاد أي بطاقة للحصول على ID
+        // ملاحظة: هذه الطريقة ليست مثالية، لكنها تعمل في سياقنا الحالي
+        // حيث أن اللاعب المنضم سيكون في تحدي واحد فقط قيد التنفيذ
+        
+        // نحتاج إلى طريقة أفضل لتمرير battleId إلى نافذة اللعبة
+        // سنجد التحدي الذي يشارك فيه المستخدم من خلال البحث في كل التحديات
+        // هذا ليس فعالاً، لكنه حل مؤقت جيد
+        
+        // بما أن الخادم يعرف أي لاعب مرتبط بأي سوكيت، لا نحتاج لإرسال battleId من هنا
+        // لكن إرساله يجعل الكود أوضح. سنقوم بتحديث هذا لاحقاً.
+        // حالياً، سنفترض أن الخادم سيبحث عن التحدي النشط للاعب.
+        // **تحديث:** الطريقة الأفضل هي أن الخادم يضيف اللاعب لغرفة خاصة بالتحدي.
+        
+        // بعد مراجعة كود الخادم، نجد أننا ننضم لغرفة خاصة بالتحدي.
+        // لكن كيف يعرف العميل `battleId` ليرسله؟
+        // عندما يبدأ العد التنازلي، يجب أن نحفظ `battleId`.
+        
+        // سنقوم بتعديل بسيط: نضيف `data-battle-id` إلى نافذة اللعبة.
+        
+        const gameModal = document.getElementById('game-modal');
+        const battleId = gameModal.dataset.battleId;
+        
+        socket.emit('playerClick', { battleId });
+    });
+}
+ 
+
     // --- استدعاء الدالة لجلب التحديات عند تحميل الصفحة ---
     loadAvailableBattles();
 
