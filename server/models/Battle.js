@@ -42,11 +42,15 @@ const battleSchema = new mongoose.Schema({
         enum: ['fastest-clicker'], // حاليًا لدينا لعبة واحدة فقط
         default: 'fastest-clicker',
     },
+    
     gameState: {
-    type: Map,
-    of: mongoose.Schema.Types.Mixed,
-    default: () => new Map() // ⚠️ هذا مهم!
-}
+        type: Object, // غيرنا النوع من Map إلى Object
+        default: {
+            scores: {},
+            timer: 0
+        }
+    }
+
     // --- نهاية الحقول الجديدة ---
 }, { timestamps: true });
 
