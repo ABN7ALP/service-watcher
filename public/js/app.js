@@ -81,6 +81,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+
+    // --- أضف هذا الكود في قسم أحداث السوكيت العام ---
+
+socket.on('chatCleanup', ({ idsToDelete }) => {
+    console.log(`[CHAT CLIENT] Received 'chatCleanup' event. Deleting ${idsToDelete.length} message elements.`);
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+
+    // حول كل الرسائل الموجودة إلى مصفوفة
+    const messageElements = Array.from(chatMessages.children);
+
+    // احذف كل عنصر رسالة يتطابق الـ ID الخاص به مع قائمة الحذف
+    messageElements.forEach(element => {
+        // نفترض أن كل عنصر رسالة له data-message-id
+        if (idsToDelete.includes(element.dataset.messageId)) {
+            element.remove();
+        }
+    });
+});
+
+
     // =================================================
     // =========== قسم الدردشة (Chat Section) ==========
     // =================================================
@@ -103,19 +124,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- استبدل دالة displayMessage بهذه النسخة ---
+// --- استبدل دالة displayMessage بهذه النسخة ---
 function displayMessage(message) {
-    // ✅ الإصلاح: التحقق من وجود sender والتأكد من أننا نقارن _id
-    if (!message || !message.sender) {
-        console.error("Received an invalid message object:", message);
+    if (!message || !message.sender || (!message.content && !message.message)) {
         return;
     }
 
     const isMyMessage = message.sender._id === user._id;
     const messageElement = document.createElement('div');
     
+    // ✅ الإصلاح: إضافة data-message-id
+    messageElement.dataset.messageId = message._id;
+    
     messageElement.classList.add('p-2', 'rounded-lg', 'mb-2', 'flex', 'items-start', 'gap-2', isMyMessage ? 'bg-purple-800' : 'bg-gray-700');
     
-    // ✅ الإصلاح: استخدام message.content للرسائل القديمة و message.message للرسائل الجديدة
     const messageContent = message.content || message.message;
 
     messageElement.innerHTML = `
@@ -129,6 +151,7 @@ function displayMessage(message) {
     chatMessages.appendChild(messageElement);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
+
 
     socket.on('newMessage', displayMessage);
 
@@ -347,26 +370,42 @@ function displayMessage(message) {
     function showGameWindow() {
         const gameContainer = document.getElementById('game-container');
         if (!gameContainer) return;
-        const modalHTML = `
-            <div id="game-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[200]">
-                <div class="bg-gray-800 border-2 border-purple-500 rounded-2xl shadow-2xl p-6 w-full max-w-2xl text-white text-center">
-                    <h2 class="text-2xl font-bold mb-4">لعبة النقرات الأسرع!</h2>
-                    <div id="game-status" class="mb-6 h-24 flex items-center justify-center"><p class="text-2xl">استعد...</p></div>
-                    <div class="grid grid-cols-2 gap-6 items-center">
-                        <div class="flex flex-col items-center">
-                            <p id="my-username" class="text-xl font-bold mb-2">${user.username} (أنت)</p>
-                            <button id="click-btn" class="w-48 h-48 bg-purple-600 rounded-full text-5xl font-bold shadow-lg transform transition hover:scale-105 active:scale-95 focus:outline-none">انقر!</button>
-                            <p class="mt-4 text-3xl">النقاط: <span id="my-score">0</span></p>
-                        </div>
-                        <div class="flex flex-col items-center">
-                            <p id="opponent-username" class="text-xl font-bold mb-2">الخصم</p>
-                            <div class="w-48 h-48 bg-gray-700 rounded-full flex items-center justify-center"><i class="fas fa-user-secret text-6xl text-gray-500"></i></div>
-                            <p class="mt-4 text-3xl">النقاط: <span id="opponent-score">0</span></p>
-                        </div>
+        // --- استبدل متغير modalHTML داخل دالة showGameWindow بهذا ---
+const modalHTML = `
+    <div id="game-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[200] p-4">
+        <div class="bg-gray-800 border-2 border-purple-500 rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-2xl text-white text-center">
+            <h2 class="text-xl sm:text-2xl font-bold mb-4">لعبة النقرات الأسرع!</h2>
+            <div id="game-status" class="mb-4 sm:mb-6 h-20 sm:h-24 flex items-center justify-center">
+                <p class="text-2xl">استعد...</p>
+            </div>
+            <div class="grid grid-cols-2 gap-2 sm:gap-6 items-center">
+                <!-- اللاعب الحالي -->
+                <div class="flex flex-col items-center">
+                    <p class="text-base sm:text-xl font-bold mb-2">${user.username} (أنت)</p>
+                    
+                    <!-- ✅ الإصلاح: أزرار متجاوبة -->
+                    <button id="click-btn" class="w-32 h-32 sm:w-48 sm:h-48 bg-purple-600 rounded-full text-4xl sm:text-5xl font-bold shadow-lg transform transition hover:scale-105 active:scale-95 focus:outline-none">
+                        انقر!
+                    </button>
+                    
+                    <p class="mt-2 sm:mt-4 text-2xl sm:text-3xl">النقاط: <span id="my-score">0</span></p>
+                </div>
+                <!-- الخصم -->
+                <div class="flex flex-col items-center">
+                    <p class="text-base sm:text-xl font-bold mb-2">الخصم</p>
+                    
+                    <!-- ✅ الإصلاح: أزرار متجاوبة -->
+                    <div class="w-32 h-32 sm:w-48 sm:h-48 bg-gray-700 rounded-full flex items-center justify-center">
+                        <i class="fas fa-user-secret text-5xl sm:text-6xl text-gray-500"></i>
                     </div>
+                    
+                    <p class="mt-2 sm:mt-4 text-2xl sm:text-3xl">النقاط: <span id="opponent-score">0</span></p>
                 </div>
             </div>
-        `;
+        </div>
+    </div>
+`;
+
         gameContainer.innerHTML = modalHTML;
         const clickBtn = document.getElementById('click-btn');
         if (clickBtn) {
