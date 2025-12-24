@@ -59,17 +59,39 @@ exports.createBattle = async (req, res, next) => {
 };
 
 // استبدل دالة joinBattle بالكامل بهذا الكود
+// --- استبدل دالة joinBattle بالكامل ---
 exports.joinBattle = async (req, res, next) => {
     try {
         const battleId = req.params.id;
         const userId = req.user.id;
+        const { password } = req.body; // ✅ الحصول على كلمة المرور من الطلب
 
         const battle = await Battle.findById(battleId);
         const user = await User.findById(userId);
 
-        // ... (كل عمليات التحقق تبقى كما هي)
-        if (!battle || battle.status !== 'waiting' || battle.players.length >= battle.maxPlayers || user.balance < battle.betAmount) {
-            return res.status(400).json({ status: 'fail', message: 'لا يمكن الانضمام لهذا التحدي.' });
+        if (!battle) {
+            return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على هذا التحدي.' });
+        }
+
+        // --- ✅ بداية منطق التحقق من كلمة المرور ---
+        if (battle.isPrivate) {
+            if (!password || password !== battle.password) {
+                return res.status(401).json({ status: 'fail', message: 'كلمة المرور غير صحيحة.' });
+            }
+        }
+        // --- 🔚 نهاية منطق التحقق ---
+
+        if (battle.status !== 'waiting') {
+            return res.status(400).json({ status: 'fail', message: 'هذا التحدي لم يعد متاحاً للانضمام.' });
+        }
+        if (battle.players.includes(userId)) {
+            return res.status(400).json({ status: 'fail', message: 'أنت منضم بالفعل.' });
+        }
+        if (battle.players.length >= battle.maxPlayers) {
+            return res.status(400).json({ status: 'fail', message: 'هذا التحدي مكتمل العدد.' });
+        }
+        if (user.balance < battle.betAmount) {
+            return res.status(400).json({ status: 'fail', message: 'رصيدك غير كافٍ.' });
         }
 
         user.balance -= battle.betAmount;
@@ -88,22 +110,14 @@ exports.joinBattle = async (req, res, next) => {
             
             await battle.save();
             
-            // --- ✅✅ التغيير الرئيسي هنا ✅✅ ---
-            // بدلاً من إرسال حدث، سنستدعي الدالة مباشرة
-            // تأكد من أن io متاح هنا
             if (io.startBattleCountdown) {
                 io.startBattleCountdown(battle._id.toString());
-            } else {
-                console.error("❌ io.startBattleCountdown is not a function. Make sure it's attached to the io instance.");
             }
-            // --- نهاية التغيير ---
+        } else {
+            await battle.save();
         }
         
-        // ملاحظة: لا تقم بالحفظ مرة أخرى هنا، فقد تم الحفظ بالفعل في الأعلى
-        // await battle.save(); 
-        
         const updatedBattle = await Battle.findById(battle.id).populate('players', 'username profileImage');
-
         io.emit('battleUpdate', updatedBattle);
 
         if (user.socketId) {
@@ -113,7 +127,7 @@ exports.joinBattle = async (req, res, next) => {
         res.status(200).json({ status: 'success', data: { battle: updatedBattle } });
 
     } catch (error) {
-        console.error("Error in joinBattle:", error); // ✅ إضافة تسجيل خطأ أفضل
+        console.error("Error in joinBattle:", error);
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم.' });
     }
 };
