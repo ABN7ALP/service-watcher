@@ -579,6 +579,21 @@ function showGameWindow() {
             </div>
         </div>
     `;
+// وفي نهاية showGameWindow()، أضف:
+document.getElementById('debug-btn').addEventListener('click', () => {
+    console.log('🔍 Debug Info:');
+    console.log('- Battle ID:', gameModal.dataset.battleId);
+    console.log('- User ID:', user.id);
+    console.log('- Socket ID:', socket.id);
+    console.log('- Current gameState: fetch manually');
+    
+    // جلب بيانات الباتل مباشرة للتشخيص
+    fetch(`/api/battles/${gameModal.dataset.battleId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => console.log('Battle data:', data));
+});
 
     gameContainer.innerHTML = modalHTML;
 
