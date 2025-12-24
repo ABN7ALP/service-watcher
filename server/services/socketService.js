@@ -152,7 +152,6 @@ const initializeSocket = (server) => {
         socket.join('public-room');
 
         // --- استبدل مستمع 'sendMessage' بهذا الكود التشخيصي ---
-// --- استبدل مستمع 'sendMessage' بالكامل بهذا الكود المحسّن ---
 socket.on('sendMessage', async (messageData) => {
     try {
         if (!messageData || !messageData.message || messageData.message.trim() === '') {
@@ -169,43 +168,45 @@ socket.on('sendMessage', async (messageData) => {
             sender: socket.user.id,
         });
 
-        const populatedMessage = await Message.findById(newMessage._id).populate('sender', 'username profileImage');
+        const populatedMessage = await Message
+            .findById(newMessage._id)
+            .populate('sender', 'username profileImage');
+
         if (!populatedMessage) return;
 
         io.to('public-room').emit('newMessage', populatedMessage.toObject());
 
-        // --- ✅✅ منطق الحذف الجديد والأكثر موثوقية ✅✅ ---
+        /* ===== تنظيف الرسائل القديمة ===== */
         try {
-            // 1. ابحث عن الرسالة رقم 50 عند الترتيب من الأحدث للأقدم
-            const fiftiethMessage = await Message.findOne().sort({ createdAt: -1 }).skip(50);
+            const fiftiethMessage = await Message
+                .findOne()
+                .sort({ createdAt: -1 })
+                .skip(50);
 
-            // 2. إذا وجدت هذه الرسالة (مما يعني أن هناك أكثر من 50 رسالة)
             if (fiftiethMessage) {
-    // 3. احصل على IDs الرسائل التي ستحذف
-    const messagesToDelete = await Message.find({ createdAt: { $lte: fiftiethMessage.createdAt } }).select('_id');
-    const idsToDelete = messagesToDelete.map(msg => msg._id.toString());
+                const messagesToDelete = await Message.find({
+                    createdAt: { $lte: fiftiethMessage.createdAt }
+                }).select('_id');
 
-    if (idsToDelete.length > 0) {
-        // 4. احذف الرسائل من قاعدة البيانات
-        const result = await Message.deleteMany({ _id: { $in: idsToDelete } });
-        console.log(`[CHAT CLEANUP] Deleted ${result.deletedCount} old messages.`);
+                const idsToDelete = messagesToDelete.map(m => m._id.toString());
 
-        // --- ✅✅ الإصلاح الرئيسي: إخبار العملاء بالحذف ✅✅ ---
-        io.to('public-room').emit('chatCleanup', { idsToDelete });
-        console.log(`[CHAT CLEANUP] Emitted 'chatCleanup' event to clients.`);
-    }
-}
+                if (idsToDelete.length > 0) {
+                    const result = await Message.deleteMany({
+                        _id: { $in: idsToDelete }
+                    });
 
-        // --- نهاية منطق الحذف الجديد ---
-        
+                    console.log(`[CHAT CLEANUP] Deleted ${result.deletedCount} messages`);
+                    io.to('public-room').emit('chatCleanup', { idsToDelete });
+                }
+            }
+        } catch (cleanupError) {
+            console.error('[CHAT CLEANUP ERROR]', cleanupError);
+        }
+
     } catch (error) {
-        console.error('[CHAT SERVER ERROR] Error in sendMessage event:', error);
+        console.error('[CHAT SERVER ERROR] sendMessage:', error);
     }
 });
-
-
-
-
         socket.on('playerClick', async ({ battleId }) => {
             try {
                 console.log(`[SERVER LOG] 4. Received 'playerClick' from user ${socket.user.username} for battle ${battleId}`);
