@@ -151,9 +151,42 @@ const initializeSocket = (server) => {
 
         socket.join('public-room');
 
-        socket.on('sendMessage', async (messageData) => {
-            // ... (منطق الرسائل يبقى كما هو)
+        // --- استبدل مستمع 'sendMessage' بهذا الكود التشخيصي ---
+socket.on('sendMessage', async (messageData) => {
+    try {
+        console.log(`[CHAT SERVER LOG] 1. Received 'sendMessage' from ${socket.user.username} with data:`, messageData);
+
+        if (!messageData || !messageData.message || messageData.message.trim() === '') {
+            console.error('[CHAT SERVER ERROR] 1.1. Message is empty or invalid. Aborting.');
+            return;
+        }
+
+        // 1. حفظ الرسالة في قاعدة البيانات
+        const newMessage = await Message.create({
+            content: messageData.message,
+            sender: socket.user.id,
         });
+        console.log(`[CHAT SERVER LOG] 2. Message saved to DB. ID: ${newMessage._id}`);
+
+        // 2. جلب الرسالة مع بيانات المرسل الكاملة
+        const populatedMessage = await Message.findById(newMessage._id).populate('sender', 'username profileImage');
+        if (!populatedMessage) {
+            console.error('[CHAT SERVER ERROR] 2.1. Could not re-fetch message from DB. Aborting.');
+            return;
+        }
+
+        // 3. تحويلها إلى كائن بسيط لإرساله
+        const finalMessage = populatedMessage.toObject();
+        console.log(`[CHAT SERVER LOG] 3. Broadcasting 'newMessage' to 'public-room' with payload:`, JSON.stringify(finalMessage, null, 2));
+
+        // 4. بث الرسالة إلى كل المستخدمين
+        io.to('public-room').emit('newMessage', finalMessage);
+        
+    } catch (error) {
+        console.error('[CHAT SERVER ERROR] Error in sendMessage event:', error);
+    }
+});
+
 
         socket.on('playerClick', async ({ battleId }) => {
             try {
