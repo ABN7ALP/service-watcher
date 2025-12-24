@@ -41,6 +41,8 @@ app.use('/dist', express.static(path.join(__dirname, '../public/dist')));
 app.use('/api/auth', require('./routes/authRoutes')); // ✅ أضف هذا السطر
 app.use('/api/messages', require('./routes/messageRoutes')); // ✅ أضف هذا السطر
 app.use('/api/battles', require('./routes/battleRoutes')); // ✅ أضف هذا السطر
+app.use('/api/users', require('./routes/userRoutes')); // ✅✅ أضف هذا السطر
+
 
 
 
