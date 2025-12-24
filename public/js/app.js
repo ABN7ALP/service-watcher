@@ -457,47 +457,48 @@ socket.on('gameStateUpdate', (gameState) => {
 });
 
 // --- 4. الاستماع لحدث انتهاء اللعبة ---
-socket.on('gameEnded', ({ battle, winnerId }) => {
-    console.log(`[CLIENT LOG] D. Received 'gameEnded'.`);
+// --- استبدل مستمع 'gameStarted' بهذا ---
+socket.on('gameStarted', ({ gameState }) => {
+    console.log(`[CLIENT LOG] B. Received 'gameStarted'. Initial gameState:`, JSON.stringify(gameState, null, 2));
     const gameModal = document.getElementById('game-modal');
     if (!gameModal) return;
 
     const statusDiv = gameModal.querySelector('#game-status');
-    const user = JSON.parse(localStorage.getItem('user'));
+    statusDiv.innerHTML = `<p class="text-6xl font-bold text-green-400">انطلق!</p>`;
 
-    let message = '';
-    if (!winnerId) {
-        message = '<p class="text-4xl font-bold text-yellow-400">تعادل!</p>';
-    } else if (winnerId === user.id) {
-        message = '<p class="text-4xl font-bold text-green-400">لقد فزت!</p>';
-    } else {
-        message = '<p class="text-4xl font-bold text-red-400">لقد خسرت!</p>';
-    }
-    
-    if (statusDiv) {
-        statusDiv.innerHTML = message;
-    }
+    // --- ✅✅ الإصلاح الرئيسي: العميل يبدأ العد التنازلي الخاص به ✅✅ ---
+    let timer = gameState.timer;
+    const timerInterval = setInterval(() => {
+        const statusDiv = gameModal.querySelector('#game-status');
+        if (statusDiv) {
+            statusDiv.innerHTML = `<div class="text-5xl font-mono">${timer}</div>`;
+        }
+        timer--;
+        if (timer < 0) {
+            clearInterval(timerInterval);
+            // يمكننا تعطيل زر النقر هنا
+            const clickBtn = document.getElementById('click-btn');
+            if (clickBtn) clickBtn.disabled = true;
+        }
+    }, 1000);
 
-    setTimeout(() => { 
-        const modal = document.getElementById('game-modal');
-        if (modal) modal.remove();
-    }, 5000);
+    // عرض النقاط الأولية
+    updateGameState(gameState);
 });
 
 
-// --- دالة لتحديث واجهة المستخدم بحالة اللعبة ---
+// --- استبدل دالة updateGameState بهذه ---
 function updateGameState(gameState) {
     console.log(`[CLIENT LOG] E. updateGameState function called.`);
     const gameModal = document.getElementById('game-modal');
     if (!gameModal) return;
 
-    if (!gameState || typeof gameState.scores === 'undefined' || typeof gameState.timer === 'undefined') {
+    if (!gameState || typeof gameState.scores === 'undefined') {
         console.error("[CLIENT ERROR] E.1. updateGameState received invalid data:", gameState);
         return;
     }
 
     const scores = gameState.scores;
-    const timer = gameState.timer;
     const user = JSON.parse(localStorage.getItem('user'));
 
     const myScore = scores[user.id] || 0;
@@ -505,18 +506,11 @@ function updateGameState(gameState) {
     const opponentId = playerIds.find(id => id !== user.id);
     const opponentScore = opponentId ? (scores[opponentId] || 0) : 0;
 
-    console.log(`[CLIENT LOG] E.2. Updating UI. My Score: ${myScore}, Opponent Score: ${opponentScore}, Timer: ${timer}`);
-
-    const statusDiv = gameModal.querySelector('#game-status');
-    if (statusDiv) {
-        statusDiv.innerHTML = `<div class="text-5xl font-mono">${timer}</div>`;
-    }
+    console.log(`[CLIENT LOG] E.2. Updating UI. My Score: ${myScore}, Opponent Score: ${opponentScore}`);
     
-    const myScoreEl = gameModal.querySelector('#my-score');
-    const opponentScoreEl = gameModal.querySelector('#opponent-score');
-
-    if (myScoreEl) myScoreEl.textContent = myScore;
-    if (opponentScoreEl) opponentScoreEl.textContent = opponentScore;
+    // لم نعد نحدث المؤقت من هنا، فقط النقاط
+    gameModal.querySelector('#my-score').textContent = myScore;
+    gameModal.querySelector('#opponent-score').textContent = opponentScore;
 }
 
 
