@@ -152,48 +152,51 @@ const initializeSocket = (server) => {
         socket.join('public-room');
 
         // --- استبدل مستمع 'sendMessage' بهذا الكود التشخيصي ---
+// --- استبدل مستمع 'sendMessage' بالكامل بهذا الكود المحسّن ---
 socket.on('sendMessage', async (messageData) => {
     try {
         if (!messageData || !messageData.message || messageData.message.trim() === '') {
             return;
         }
 
-        // ✅ 1. التحقق من طول الرسالة (لا يزيد عن 300 حرف)
         if (messageData.message.length > 300) {
-            // يمكنك إرسال إشعار خطأ للمستخدم إذا أردت
             socket.emit('error', { message: 'الرسالة طويلة جدًا، الحد الأقصى 300 حرف.' });
             return;
         }
 
-        // 2. حفظ الرسالة الجديدة
         const newMessage = await Message.create({
             content: messageData.message,
             sender: socket.user.id,
         });
 
-        // 3. جلب الرسالة مع بيانات المرسل
         const populatedMessage = await Message.findById(newMessage._id).populate('sender', 'username profileImage');
         if (!populatedMessage) return;
 
-        // 4. بث الرسالة الجديدة للجميع
         io.to('public-room').emit('newMessage', populatedMessage.toObject());
 
-        // --- ✅ 5. منطق حذف الرسائل القديمة ---
-        const messageCount = await Message.countDocuments();
-        if (messageCount > 50) {
-            // ابحث عن أقدم الرسائل التي تتجاوز الحد (50)
-            const oldestMessages = await Message.find().sort({ createdAt: 1 }).limit(messageCount - 50);
-            const idsToDelete = oldestMessages.map(msg => msg._id);
-            // احذفها
-            await Message.deleteMany({ _id: { $in: idsToDelete } });
-            console.log(`[CHAT CLEANUP] Deleted ${idsToDelete.length} old messages.`);
+        // --- ✅✅ منطق الحذف الجديد والأكثر موثوقية ✅✅ ---
+        try {
+            // 1. ابحث عن الرسالة رقم 50 عند الترتيب من الأحدث للأقدم
+            const fiftiethMessage = await Message.findOne().sort({ createdAt: -1 }).skip(50);
+
+            // 2. إذا وجدت هذه الرسالة (مما يعني أن هناك أكثر من 50 رسالة)
+            if (fiftiethMessage) {
+                // 3. احذف كل الرسائل التي تم إنشاؤها قبلها أو في نفس وقتها
+                const result = await Message.deleteMany({ createdAt: { $lte: fiftiethMessage.createdAt } });
+                if (result.deletedCount > 0) {
+                    console.log(`[CHAT CLEANUP] Deleted ${result.deletedCount} old messages.`);
+                }
+            }
+        } catch (cleanupError) {
+            console.error("[CHAT CLEANUP] Error during old messages cleanup:", cleanupError);
         }
-        // --- نهاية منطق الحذف ---
+        // --- نهاية منطق الحذف الجديد ---
         
     } catch (error) {
         console.error('[CHAT SERVER ERROR] Error in sendMessage event:', error);
     }
 });
+
 
 
 
