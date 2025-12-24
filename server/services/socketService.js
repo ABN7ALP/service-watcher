@@ -4,34 +4,26 @@ const User = require('../models/User');
 const Message = require('../models/Message');
 const Battle = require('../models/Battle');
 
-// --- Middleware للتحقق من توكن المستخدم (لا تغيير هنا) ---
+// --- Middleware للتحقق من توكن المستخدم ---
 const verifySocketToken = async (socket, next) => {
     const token = socket.handshake.auth.token;
-
     if (!token) {
-        console.error('Socket Auth Error: No token provided.');
         return next(new Error('Authentication error'));
     }
-
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const currentUser = await User.findById(decoded.id);
-
         if (!currentUser) {
-            console.error('Socket Auth Error: User not found.');
             return next(new Error('Authentication error'));
         }
         socket.user = currentUser;
         next();
-
     } catch (err) {
-        console.error('Socket Auth Error: Invalid token.', err.message);
         return next(new Error('Authentication error'));
     }
 };
 
-// --- الدوال المساعدة لمنطق اللعبة (تم إخراجها لتكون مستقلة) ---
-
+// --- الدوال المساعدة لمنطق اللعبة ---
 async function startGame(io, battleId) {
     try {
         const battle = await Battle.findById(battleId);
@@ -80,7 +72,7 @@ async function endBattle(io, battleId) {
         const playerIds = Object.keys(scores);
         
         let winnerId = null;
-        if (playerIds.length === 2) { // منطق الفوز حاليًا لـ 1v1 فقط
+        if (playerIds.length === 2) {
             if (scores[playerIds[0]] > scores[playerIds[1]]) {
                 winnerId = playerIds[0];
             } else if (scores[playerIds[1]] > scores[playerIds[0]]) {
@@ -121,17 +113,12 @@ async function endBattle(io, battleId) {
     }
 }
 
-
 // --- دالة التهيئة الرئيسية ---
 const initializeSocket = (server) => {
     const io = new Server(server, {
-        cors: {
-            origin: "*",
-            methods: ["GET", "POST"]
-        }
+        cors: { origin: "*", methods: ["GET", "POST"] }
     });
 
-    // دالة لبدء العد التنازلي للعبة (مرفقة بكائن io)
     io.startBattleCountdown = async (battleId) => {
         try {
             const battle = await Battle.findById(battleId).populate('players');
@@ -140,13 +127,11 @@ const initializeSocket = (server) => {
             battle.players.forEach(player => {
                 if (player.socketId && io.sockets.sockets.get(player.socketId)) {
                     io.sockets.sockets.get(player.socketId).join(battleId);
-                    console.log(`🟢 Player ${player.username} joined battle room ${battleId}`);
                 }
             });
 
             let countdown = 3;
             const countdownInterval = setInterval(() => {
-                console.log(`⏳ Countdown for battle ${battleId}: ${countdown}`);
                 io.to(battleId).emit('battleCountdown', { countdown, battleId });
                 countdown--;
                 if (countdown < 0) {
@@ -159,10 +144,8 @@ const initializeSocket = (server) => {
         }
     };
 
-    // تطبيق middleware المصادقة على كل الاتصالات الجديدة
     io.use(verifySocketToken);
     
-    // معالج الاتصالات الجديدة
     io.on('connection', async (socket) => {
         console.log(`🟢 User connected: ${socket.id} | UserID: ${socket.user.username}`);
         
@@ -174,7 +157,6 @@ const initializeSocket = (server) => {
 
         socket.join('public-room');
 
-        // معالجة إرسال الرسائل
         socket.on('sendMessage', async (messageData) => {
             try {
                 if (!messageData.message || messageData.message.trim() === '' || !socket.user) return;
@@ -191,26 +173,36 @@ const initializeSocket = (server) => {
             }
         });
 
-        // معالجة نقرات اللاعب
-socket.on('playerClick', async ({ battleId }) => {
-    try {
-        const battle = await Battle.findById(battleId);
-        if (!battle || battle.status !== 'in-progress' || (battle.gameState.get('timer') || 0) <= 0) return;
+        // ==========================================================
+        // ===== ✅✅ هذا هو الكود المصحح الذي يجب أن يعمل ✅✅ =====
+        // ==========================================================
+        socket.on('playerClick', async ({ battleId }) => {
+            try {
+                const battle = await Battle.findById(battleId);
+                if (!battle || battle.status !== 'in-progress' || (battle.gameState.get('timer') || 0) <= 0) return;
 
-        const playerField = `scores.${socket.user.id}`;
-        const currentScore = battle.gameState.get(playerField) || 0;
-        battle.gameState.set(playerField, currentScore + 1);
-        
-        await battle.save();
+                // 1. احصل على كائن النقاط الحالي
+                const scores = battle.gameState.get('scores') || {};
+                const userId = socket.user.id.toString();
 
-        io.to(battleId).emit('gameStateUpdate', battle.gameState);
-    } catch (error) {
-        console.error('Error in playerClick:', error);
-    }
-});
+                // 2. قم بزيادة نقاط اللاعب الحالي
+                scores[userId] = (scores[userId] || 0) + 1;
 
+                // 3. أعد تعيين كائن النقاط المحدث بالكامل
+                battle.gameState.set('scores', scores);
+                
+                await battle.save();
 
-        // معالجة انقطاع الاتصال
+                // أرسل الحالة المحدثة للاعبين في الغرفة
+                io.to(battleId).emit('gameStateUpdate', battle.gameState);
+            } catch (error) {
+                // هذا الخطأ يجب ألا يظهر الآن
+                console.error('Error in playerClick:', error);
+            }
+        });
+        // ==========================================================
+        // ==========================================================
+
         socket.on('disconnect', () => {
             console.log(`🔴 User disconnected: ${socket.id} | UserID: ${socket.user.username}`);
         });
