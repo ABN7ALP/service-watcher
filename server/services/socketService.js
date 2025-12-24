@@ -29,7 +29,6 @@ async function startGame(io, battleId) {
         const battle = await Battle.findById(battleId);
         if (!battle || battle.status !== 'in-progress') return;
 
-        // ✅ التعامل مع gameState ككائن عادي
         const initialScores = {};
         battle.players.forEach(playerId => {
             initialScores[playerId.toString()] = 0;
@@ -38,10 +37,10 @@ async function startGame(io, battleId) {
         battle.gameState.scores = initialScores;
         battle.gameState.timer = 10;
         
-        // وضع علامة على أنه تم تعديله
         battle.markModified('gameState'); 
         await battle.save();
 
+        // ✅ أرسل دائمًا كائنًا بسيطًا
         io.to(battleId).emit('gameStarted', { gameState: battle.gameState });
 
         const gameTimerInterval = setInterval(async () => {
@@ -56,6 +55,7 @@ async function startGame(io, battleId) {
             if (currentBattle.gameState.timer >= 0) {
                 currentBattle.markModified('gameState');
                 await currentBattle.save();
+                // ✅ أرسل دائمًا كائنًا بسيطًا
                 io.to(battleId).emit('gameStateUpdate', currentBattle.gameState);
             } else {
                 clearInterval(gameTimerInterval);
@@ -66,6 +66,7 @@ async function startGame(io, battleId) {
         console.error(`Error in startGame for battle ${battleId}:`, error);
     }
 }
+
 
 async function endBattle(io, battleId) {
     try {
@@ -188,23 +189,28 @@ socket.on('playerClick', async ({ battleId }) => {
         const battle = await Battle.findById(battleId);
         if (!battle || battle.status !== 'in-progress' || battle.gameState.timer <= 0) return;
 
-        // ✅ التعامل مع gameState ككائن عادي
         const userId = socket.user.id.toString();
+        // تأكد من أن scores موجود
+        if (!battle.gameState.scores) {
+            battle.gameState.scores = {};
+        }
+        
         if (battle.gameState.scores[userId] !== undefined) {
             battle.gameState.scores[userId]++;
         } else {
             battle.gameState.scores[userId] = 1;
         }
 
-        // ✅ إخبار Mongoose بأن الحقل قد تم تعديله
         battle.markModified('gameState');
         await battle.save();
 
+        // ✅ أرسل دائمًا كائنًا بسيطًا
         io.to(battleId).emit('gameStateUpdate', battle.gameState);
     } catch (error) {
         console.error('Error in playerClick:', error);
     }
 });
+
 
         // ==========================================================
         // ==========================================================
