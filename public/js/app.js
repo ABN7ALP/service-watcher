@@ -445,8 +445,16 @@ socket.on('gameStarted', ({ gameState }) => {
     }, 1000);
 });
 
+// اضف:
+socket.on('gameStarted', (data) => {
+    console.log('🚀 Game started with data:', data); // للتشخيص
+    const gameState = data.gameState;
+    // ... بقية الكود كما هو
+});
+
 // --- 3. الاستماع لتحديثات حالة اللعبة (النقاط والمؤقت) ---
 socket.on('gameStateUpdate', (gameState) => {
+    console.log('📊 gameStateUpdate received:', gameState); // للتشخيص
     updateGameState(gameState);
 });
 
@@ -482,33 +490,50 @@ function updateGameState(gameState) {
     const gameModal = document.getElementById('game-modal');
     if (!gameModal) return;
 
-    // --- ✅✅ بداية الإصلاح ---
+    console.log('🎮 Updating game state:', gameState); // للتشخيص
 
-    // 1. التحقق من أن gameState و gameState.scores موجودان
-    if (!gameState || !gameState.scores) {
-        console.error("Received invalid gameState:", gameState);
+    // التحقق من صحة gameState
+    if (!gameState || typeof gameState !== 'object') {
+        console.error("❌ Invalid gameState:", gameState);
         return;
     }
 
-    const scores = gameState.scores;
-    const timer = gameState.timer;
+    const scores = gameState.scores || {};
+    const timer = gameState.timer || 0;
     const user = JSON.parse(localStorage.getItem('user'));
 
-    // 2. التحقق من أن user.id موجود في كائن scores
+    if (!user) {
+        console.error("❌ User not found in localStorage");
+        return;
+    }
+
     const myScore = scores[user.id] || 0;
     
-    // 3. طريقة أكثر أمانًا للعثور على الخصم ونقاطه
+    // البحث عن الخصم
     const playerIds = Object.keys(scores);
-    const opponentId = playerIds.find(id => id !== user.id);
-    const opponentScore = opponentId ? (scores[opponentId] || 0) : 0;
-
-    // --- 🔚 نهاية الإصلاح ---
+    let opponentScore = 0;
+    if (playerIds.length > 0) {
+        const opponentId = playerIds.find(id => id !== user.id);
+        opponentScore = opponentId ? (scores[opponentId] || 0) : 0;
+    }
 
     // تحديث الواجهة
     const statusDiv = gameModal.querySelector('#game-status');
-    statusDiv.innerHTML = `<div class="text-5xl font-mono">${timer}</div>`;
-    gameModal.querySelector('#my-score').textContent = myScore;
-    gameModal.querySelector('#opponent-score').textContent = opponentScore;
+    if (statusDiv) {
+        statusDiv.innerHTML = `<div class="text-5xl font-mono">${timer}</div>`;
+    }
+    
+    const myScoreElement = gameModal.querySelector('#my-score');
+    if (myScoreElement) {
+        myScoreElement.textContent = myScore;
+    }
+    
+    const opponentScoreElement = gameModal.querySelector('#opponent-score');
+    if (opponentScoreElement) {
+        opponentScoreElement.textContent = opponentScore;
+    }
+
+    console.log(`📊 Scores - Me: ${myScore}, Opponent: ${opponentScore}, Timer: ${timer}`);
 }
 
 
