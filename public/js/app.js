@@ -445,16 +445,8 @@ socket.on('gameStarted', ({ gameState }) => {
     }, 1000);
 });
 
-// اضف:
-socket.on('gameStarted', (data) => {
-    console.log('🚀 Game started with data:', data); // للتشخيص
-    const gameState = data.gameState;
-    // ... بقية الكود كما هو
-});
-
 // --- 3. الاستماع لتحديثات حالة اللعبة (النقاط والمؤقت) ---
 socket.on('gameStateUpdate', (gameState) => {
-    console.log('📊 gameStateUpdate received:', gameState); // للتشخيص
     updateGameState(gameState);
 });
 
@@ -490,98 +482,44 @@ function updateGameState(gameState) {
     const gameModal = document.getElementById('game-modal');
     if (!gameModal) return;
 
-    console.log('🎮 Updating game state:', gameState); // للتشخيص
+    // --- ✅✅ بداية الإصلاح ---
 
-    // التحقق من صحة gameState
-    if (!gameState || typeof gameState !== 'object') {
-        console.error("❌ Invalid gameState:", gameState);
+    // 1. التحقق من أن gameState و gameState.scores موجودان
+    if (!gameState || !gameState.scores) {
+        console.error("Received invalid gameState:", gameState);
         return;
     }
 
-    const scores = gameState.scores || {};
-    const timer = gameState.timer || 0;
+    const scores = gameState.scores;
+    const timer = gameState.timer;
     const user = JSON.parse(localStorage.getItem('user'));
 
-    if (!user) {
-        console.error("❌ User not found in localStorage");
-        return;
-    }
-
+    // 2. التحقق من أن user.id موجود في كائن scores
     const myScore = scores[user.id] || 0;
     
-    // البحث عن الخصم
+    // 3. طريقة أكثر أمانًا للعثور على الخصم ونقاطه
     const playerIds = Object.keys(scores);
-    let opponentScore = 0;
-    if (playerIds.length > 0) {
-        const opponentId = playerIds.find(id => id !== user.id);
-        opponentScore = opponentId ? (scores[opponentId] || 0) : 0;
-    }
+    const opponentId = playerIds.find(id => id !== user.id);
+    const opponentScore = opponentId ? (scores[opponentId] || 0) : 0;
+
+    // --- 🔚 نهاية الإصلاح ---
 
     // تحديث الواجهة
     const statusDiv = gameModal.querySelector('#game-status');
-    if (statusDiv) {
-        statusDiv.innerHTML = `<div class="text-5xl font-mono">${timer}</div>`;
-    }
-    
-    const myScoreElement = gameModal.querySelector('#my-score');
-    if (myScoreElement) {
-        myScoreElement.textContent = myScore;
-    }
-    
-    const opponentScoreElement = gameModal.querySelector('#opponent-score');
-    if (opponentScoreElement) {
-        opponentScoreElement.textContent = opponentScore;
-    }
-
-    console.log(`📊 Scores - Me: ${myScore}, Opponent: ${opponentScore}, Timer: ${timer}`);
+    statusDiv.innerHTML = `<div class="text-5xl font-mono">${timer}</div>`;
+    gameModal.querySelector('#my-score').textContent = myScore;
+    gameModal.querySelector('#opponent-score').textContent = opponentScore;
 }
 
 
 
 
 // --- دالة لإنشاء وعرض نافذة اللعبة ---
-// --- 1. أصلح هذا الحدث: ---
-socket.on('battleCountdown', ({ countdown, battleId }) => {
-    console.log(`⏱️ Countdown received: ${countdown} for battle ${battleId}`);
-    
-    let gameModal = document.getElementById('game-modal');
-    
-    // إذا لم تكن نافذة اللعبة موجودة، أنشئها
-    if (!gameModal) {
-        showGameWindow();
-        gameModal = document.getElementById('game-modal');
-    }
-    
-    // تأكد من وجود العناصر قبل التعامل معها
-    if (!gameModal) {
-        console.error('❌ Failed to create game modal');
-        return;
-    }
-    
-    // حفظ battleId في النافذة
-    gameModal.dataset.battleId = battleId;
-    
-    const statusDiv = gameModal.querySelector('#game-status');
-    if (statusDiv) {
-        if (countdown > 0) {
-            statusDiv.innerHTML = `<p class="text-6xl font-bold animate-ping">${countdown}</p>`;
-        } else {
-            statusDiv.innerHTML = `<p class="text-4xl font-bold">استعد!</p>`;
-        }
-    }
-});
-
-// --- 2. أصلح دالة showGameWindow() لمنع الخطأ: ---
 function showGameWindow() {
     const gameContainer = document.getElementById('game-container');
     const user = JSON.parse(localStorage.getItem('user'));
 
-    if (!gameContainer) {
-        console.error('❌ game-container not found in DOM');
-        return;
-    }
-
-    // تصميم النافذة (بدون زر التشخيص للمشكلة)
+    // تصميم النافذة
     const modalHTML = `
         <div id="game-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[200]">
             <div class="bg-gray-800 border-2 border-purple-500 rounded-2xl shadow-2xl p-6 w-full max-w-2xl text-white text-center">
@@ -590,7 +528,7 @@ function showGameWindow() {
                 
                 <!-- منطقة الحالة (للعد التنازلي والمؤقت) -->
                 <div id="game-status" class="mb-6 h-24 flex items-center justify-center">
-                    <p class="text-2xl">جاري إعداد اللعبة...</p>
+                    <p class="text-2xl">استعد...</p>
                 </div>
 
                 <!-- منطقة اللعب -->
@@ -618,28 +556,6 @@ function showGameWindow() {
     `;
 
     gameContainer.innerHTML = modalHTML;
-    
-    // ⚠️ **هذا هو التصحيح المهم: التحقق من وجود العنصر قبل إضافة Event Listener**
-    const clickBtn = document.getElementById('click-btn');
-    if (clickBtn) {
-        clickBtn.addEventListener('click', () => {
-            const gameModal = document.getElementById('game-modal');
-            if (!gameModal || !gameModal.dataset.battleId) {
-                console.error('❌ No battle ID found');
-                return;
-            }
-            
-            const battleId = gameModal.dataset.battleId;
-            console.log(`🖱️ Click for battle: ${battleId}`);
-            socket.emit('playerClick', { battleId });
-        });
-    } else {
-        console.error('❌ Click button not found in DOM');
-    }
-    
-    console.log('✅ Game window created successfully');
-}
-    
 
     // --- ربط حدث النقر ---
     const clickBtn = document.getElementById('click-btn');
