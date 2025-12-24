@@ -24,30 +24,35 @@ const verifySocketToken = async (socket, next) => {
 };
 
 // --- الدوال المساعدة لمنطق اللعبة ---
-// استبدل دالة startGame بالكامل
 async function startGame(io, battleId) {
     try {
         let battle = await Battle.findById(battleId);
         if (!battle || battle.status !== 'in-progress') return;
 
+        // ⚠️ التصحيح: يجب أن ننشئ Map جديد لـ gameState
         const initialScores = {};
         battle.players.forEach(playerId => {
             initialScores[playerId.toString()] = 0;
         });
         
-        battle.gameState.set('scores', initialScores);
-        battle.gameState.set('timer', 10);
+        // ⚠️ التصحيح المهم: إعادة تعيين gameState كاملة
+        battle.gameState = new Map([
+            ['scores', initialScores],
+            ['timer', 10],
+            ['gameType', 'fastest-clicker']
+        ]);
+        
         await battle.save();
 
-        // --- ✅✅ الإصلاح الرئيسي: إعادة جلب البيانات قبل الإرسال ✅✅ ---
-        // --- ✅✅ الإصلاح: إرسال gameState بشكل صحيح ✅✅ ---
-const updatedBattle = await Battle.findById(battleId);
-if (!updatedBattle) return;
+        console.log(`🎮 Game started for battle ${battleId}`);
+        console.log('📊 Initial gameState:', battle.gameState.toObject());
 
-io.to(battleId).emit('gameStarted', { 
-    gameState: updatedBattle.gameState.toObject() 
-});
-        
+        // إرسال حدث بدء اللعبة
+        io.to(battleId).emit('gameStarted', { 
+            gameState: battle.gameState.toObject() 
+        });
+
+        // المؤقت
         const gameTimerInterval = setInterval(async () => {
             const currentBattle = await Battle.findById(battleId);
             if (!currentBattle) {
@@ -60,7 +65,9 @@ io.to(battleId).emit('gameStarted', {
             if (newTime >= 0) {
                 currentBattle.gameState.set('timer', newTime);
                 await currentBattle.save();
-                io.to(battleId).emit('gameStarted', { gameState: battle.gameState.toObject() });
+                
+                // ⚠️ التصحيح: إرسال gameState بأحدث البيانات
+                io.to(battleId).emit('gameStateUpdate', currentBattle.gameState.toObject());
             } else {
                 clearInterval(gameTimerInterval);
                 await endBattle(io, battleId);
@@ -184,30 +191,50 @@ const initializeSocket = (server) => {
         // ==========================================================
         // ===== ✅✅ هذا هو الكود المصحح الذي يجب أن يعمل ✅✅ =====
         // ==========================================================
-        // استبدل دالة playerClick بالكامل
 socket.on('playerClick', async ({ battleId }) => {
     try {
+        console.log(`🖱️ Click event from ${socket.user.id} for battle ${battleId}`);
+        
         let battle = await Battle.findById(battleId);
-        if (!battle || battle.status !== 'in-progress' || (battle.gameState.get('timer') || 0) <= 0) return;
+        if (!battle) {
+            console.log('❌ Battle not found');
+            return;
+        }
+        
+        if (battle.status !== 'in-progress') {
+            console.log('❌ Battle not in progress');
+            return;
+        }
+        
+        const timer = battle.gameState.get('timer') || 0;
+        if (timer <= 0) {
+            console.log('❌ Game timer finished');
+            return;
+        }
 
+        // ⚠️ التصحيح: التعامل مع gameState كـ Map
         const scores = battle.gameState.get('scores') || {};
         const userId = socket.user.id.toString();
-        scores[userId] = (scores[userId] || 0) + 1;
-        battle.gameState.set('scores', scores);
+        
+        // تحديث النقاط
+        const updatedScores = { ...scores };
+        updatedScores[userId] = (updatedScores[userId] || 0) + 1;
+        
+        // ⚠️ التصحيح: تعيين القيمة الجديدة في Map
+        battle.gameState.set('scores', updatedScores);
         
         await battle.save();
+        
+        console.log('📊 Updated scores:', updatedScores);
+        console.log('📊 Full gameState:', battle.gameState.toObject());
 
-        // --- ✅✅ الإصلاح الرئيسي: إعادة جلب البيانات قبل الإرسال ✅✅ --
-       const updatedBattle = await Battle.findById(battleId);
-       if (!updatedBattle) return;
-
-       io.to(battleId).emit('gameStateUpdate', updatedBattle.gameState.toObject());
+        // إرسال التحديث للجميع
+        io.to(battleId).emit('gameStateUpdate', battle.gameState.toObject());
 
     } catch (error) {
-        console.error('Error in playerClick:', error);
+        console.error('❌ Error in playerClick:', error);
     }
 });
-
         // ==========================================================
         // ==========================================================
 
