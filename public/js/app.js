@@ -4,6 +4,156 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadingScreen = document.getElementById('loading-screen');
     const appContainer = document.getElementById('app-container');
 
+
+    // --- أضف هذا الكود بعد تعريف appContainer ---
+
+// --- منطق التنقل في الشريط الجانبي ---
+const navItems = document.querySelectorAll('.nav-item');
+const mainContent = document.querySelector('main'); // استهداف المنطقة الرئيسية
+
+navItems.forEach(item => {
+    item.addEventListener('click', (e) => {
+        e.preventDefault();
+
+        // إزالة التحديد من كل الأزرار
+        navItems.forEach(i => i.classList.remove('bg-purple-600', 'text-white'));
+        // إضافة التحديد للزر المضغوط
+        item.classList.add('bg-purple-600', 'text-white');
+
+        const targetId = item.getAttribute('href').substring(1); // الحصول على ID (مثال: 'settings')
+        
+        // عرض المحتوى المناسب
+        if (targetId === 'settings') {
+            showSettingsView();
+        } else {
+            // يمكنك إضافة منطق للصفحات الأخرى هنا مستقبلاً
+            // حاليًا، سنعيد عرض ساحة التحديات
+            showArenaView(); 
+        }
+    });
+});
+
+// دالة لعرض محتوى الإعدادات
+function showSettingsView() {
+    mainContent.innerHTML = `
+        <div class="p-4">
+            <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
+            
+            <!-- قسم تغيير معلومات الحساب -->
+            <div class="bg-gray-800/50 p-6 rounded-xl mb-6">
+                <h3 class="text-lg font-bold mb-4">تعديل الملف الشخصي</h3>
+                <form id="profile-settings-form" class="space-y-4">
+                    <div>
+                        <label for="username-input" class="block text-sm font-medium text-gray-300 mb-1">اسم المستخدم</label>
+                        <input type="text" id="username-input" value="${user.username}" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label for="profile-image-input" class="block text-sm font-medium text-gray-300 mb-1">رابط الصورة الشخصية</label>
+                        <input type="url" id="profile-image-input" value="${user.profileImage}" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2">
+                    </div>
+                    <div class="pt-2">
+                        <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">
+                            حفظ التغييرات
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- يمكنك إضافة قسم تغيير كلمة المرور هنا لاحقًا -->
+        </div>
+    `;
+
+    // ربط حدث الحفظ
+    document.getElementById('profile-settings-form').addEventListener('submit', handleProfileUpdate);
+}
+
+// دالة لإعادة عرض ساحة التحديات
+function showArenaView() {
+    mainContent.innerHTML = `
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold"><i class="fas fa-gamepad"></i> ساحة التحديات</h2>
+            <button id="create-battle-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
+                <i class="fas fa-plus"></i>
+                <span>إنشاء تحدي</span>
+            </button>
+        </div>
+        <div id="battle-rooms-container" class="flex-grow overflow-y-auto space-y-3 pr-2">
+            <div id="battles-empty-state" class="text-center text-gray-400 py-10 hidden">
+                <i class="fas fa-ghost text-4xl mb-4"></i>
+                <p>لا توجد تحديات متاحة حالياً. كن أول من يبدأ!</p>
+            </div>
+            <div id="battles-loading-state" class="text-center text-gray-400 py-10">
+                <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
+                <p>جاري تحميل التحديات...</p>
+            </div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-gray-700">
+            <h3 class="font-bold mb-3">🎤 غرفة الصوت</h3>
+            <div id="voice-chat-grid" class="grid grid-cols-9 gap-3">
+                <!-- ... مقاعد الصوت ... -->
+            </div>
+        </div>
+    `;
+    // إعادة ربط الأحداث وتحميل البيانات
+    document.getElementById('create-battle-btn').addEventListener('click', showCreateBattleModal);
+    loadAvailableBattles();
+    // إعادة إنشاء مقاعد الصوت
+    const voiceGrid = document.getElementById('voice-chat-grid');
+    for (let i = 1; i <= 27; i++) {
+        const seat = document.createElement('div');
+        if (i <= 3) {
+            seat.className = 'voice-seat admin-seat';
+            seat.innerHTML = '<i class="fas fa-crown"></i>';
+        } else {
+            seat.className = 'voice-seat user-seat';
+            seat.textContent = i;
+        }
+        seat.dataset.seat = i;
+        voiceGrid.appendChild(seat);
+    }
+}
+
+// دالة لمعالجة تحديث الملف الشخصي
+async function handleProfileUpdate(e) {
+    e.preventDefault();
+    const newUsername = document.getElementById('username-input').value;
+    const newProfileImage = document.getElementById('profile-image-input').value;
+
+    const updatedData = {
+        username: newUsername,
+        profileImage: newProfileImage
+    };
+
+    try {
+        const response = await fetch('/api/users/updateMe', {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(updatedData)
+        });
+
+        const result = await response.json();
+        if (response.ok) {
+            showNotification('تم تحديث ملفك الشخصي بنجاح!', 'success');
+            // تحديث البيانات في localStorage
+            const localUser = JSON.parse(localStorage.getItem('user'));
+            localUser.username = result.data.user.username;
+            localUser.profileImage = result.data.user.profileImage;
+            localStorage.setItem('user', JSON.stringify(localUser));
+            // تحديث الواجهة فورًا
+            document.getElementById('username').textContent = localUser.username;
+            document.getElementById('profileImage').src = localUser.profileImage;
+        } else {
+            showNotification(result.message || 'فشل تحديث الملف الشخصي', 'error');
+        }
+    } catch (error) {
+        showNotification('خطأ في الاتصال بالخادم', 'error');
+    }
+}
+
+
     // --- أضف هذا المتغير في بداية الملف ---
     let replyingToMessage = null;
     
