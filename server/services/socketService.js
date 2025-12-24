@@ -192,22 +192,23 @@ const initializeSocket = (server) => {
         });
 
         // معالجة نقرات اللاعب
-        socket.on('playerClick', async ({ battleId }) => {
-            try {
-                const battle = await Battle.findById(battleId);
-                if (!battle || battle.status !== 'in-progress' || (battle.gameState.get('timer') || 0) <= 0) return;
+socket.on('playerClick', async ({ battleId }) => {
+    try {
+        const battle = await Battle.findById(battleId);
+        if (!battle || battle.status !== 'in-progress' || (battle.gameState.get('timer') || 0) <= 0) return;
 
-                const playerField = `scores.${socket.user.id}`;
-                const currentScore = battle.gameState.get(playerField) || 0;
-                battle.gameState.set(playerField, currentScore + 1);
-                
-                await battle.save();
+        const playerField = `scores.${socket.user.id}`;
+        const currentScore = battle.gameState.get(playerField) || 0;
+        battle.gameState.set(playerField, currentScore + 1);
+        
+        await battle.save();
 
-                io.to(battleId).emit('gameStateUpdate', battle.gameState);
-            } catch (error) {
-                console.error('Error in playerClick:', error);
-            }
-        });
+        io.to(battleId).emit('gameStateUpdate', battle.gameState);
+    } catch (error) {
+        console.error('Error in playerClick:', error);
+    }
+});
+
 
         // معالجة انقطاع الاتصال
         socket.on('disconnect', () => {
