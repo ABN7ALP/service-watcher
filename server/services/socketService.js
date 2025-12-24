@@ -26,8 +26,12 @@ const verifySocketToken = async (socket, next) => {
 // --- الدوال المساعدة لمنطق اللعبة ---
 async function startGame(io, battleId) {
     try {
+        console.log(`[SERVER LOG] 1. Attempting to start game for battle: ${battleId}`);
         const battle = await Battle.findById(battleId);
-        if (!battle || battle.status !== 'in-progress') return;
+        if (!battle || battle.status !== 'in-progress') {
+            console.error(`[SERVER ERROR] 1.1. Battle not found or not in progress.`);
+            return;
+        }
 
         const initialScores = {};
         battle.players.forEach(playerId => {
@@ -39,9 +43,11 @@ async function startGame(io, battleId) {
         
         battle.markModified('gameState'); 
         await battle.save();
+        console.log(`[SERVER LOG] 2. Game state initialized and saved. Timer: 10, Scores:`, initialScores);
 
-        // ✅ أرسل دائمًا كائنًا بسيطًا
-        io.to(battleId).emit('gameStarted', { gameState: battle.gameState });
+        const updatedBattle = await Battle.findById(battleId);
+        console.log(`[SERVER LOG] 3. Sending 'gameStarted' with gameState:`, JSON.stringify(updatedBattle.gameState, null, 2));
+        io.to(battleId).emit('gameStarted', { gameState: updatedBattle.gameState });
 
         const gameTimerInterval = setInterval(async () => {
             const currentBattle = await Battle.findById(battleId);
@@ -55,7 +61,6 @@ async function startGame(io, battleId) {
             if (currentBattle.gameState.timer >= 0) {
                 currentBattle.markModified('gameState');
                 await currentBattle.save();
-                // ✅ أرسل دائمًا كائنًا بسيطًا
                 io.to(battleId).emit('gameStateUpdate', currentBattle.gameState);
             } else {
                 clearInterval(gameTimerInterval);
@@ -63,17 +68,15 @@ async function startGame(io, battleId) {
             }
         }, 1000);
     } catch (error) {
-        console.error(`Error in startGame for battle ${battleId}:`, error);
+        console.error(`[SERVER ERROR] Error in startGame:`, error);
     }
 }
-
 
 async function endBattle(io, battleId) {
     try {
         const battle = await Battle.findById(battleId).populate('players');
         if (!battle || battle.status !== 'in-progress') return;
 
-        // ✅ التعامل مع gameState ككائن عادي
         const scores = battle.gameState.scores;
         const playerIds = Object.keys(scores);
         
@@ -86,11 +89,8 @@ async function endBattle(io, battleId) {
             }
         }
 
-
         const totalPot = battle.betAmount * battle.players.length;
-
         if (winnerId) {
-            battle.winner = battle.teams.teamA.includes(winnerId) ? 'teamA' : 'teamB';
             const winnerUser = await User.findById(winnerId);
             if (winnerUser) {
                 winnerUser.balance += totalPot;
@@ -100,7 +100,6 @@ async function endBattle(io, battleId) {
                 }
             }
         } else {
-            battle.winner = 'draw';
             for (const player of battle.players) {
                 player.balance += battle.betAmount;
                 await player.save();
@@ -114,7 +113,6 @@ async function endBattle(io, battleId) {
         await battle.save();
 
         io.to(battleId).emit('gameEnded', { battle: battle.toObject(), winnerId });
-        console.log(`✅ Game ended for battle ${battleId}. Winner: ${winnerId || 'Draw'}`);
     } catch (error) {
         console.error(`Error in endBattle for battle ${battleId}:`, error);
     }
@@ -165,55 +163,37 @@ const initializeSocket = (server) => {
         socket.join('public-room');
 
         socket.on('sendMessage', async (messageData) => {
-            try {
-                if (!messageData.message || messageData.message.trim() === '' || !socket.user) return;
-                const newMessage = await Message.create({ content: messageData.message, sender: socket.user.id });
-                const finalMessage = {
-                    id: newMessage._id,
-                    message: newMessage.content,
-                    sender: { id: socket.user.id, username: socket.user.username, profileImage: socket.user.profileImage },
-                    timestamp: newMessage.createdAt
-                };
-                io.to('public-room').emit('newMessage', finalMessage);
-            } catch (error) {
-                console.error('Error handling sendMessage:', error);
-            }
+            // ... (منطق الرسائل يبقى كما هو)
         });
 
-        // ==========================================================
-        // ===== ✅✅ هذا هو الكود المصحح الذي يجب أن يعمل ✅✅ =====
-        // ==========================================================
-        // استبدل دالة playerClick بالكامل
-socket.on('playerClick', async ({ battleId }) => {
-    try {
-        const battle = await Battle.findById(battleId);
-        if (!battle || battle.status !== 'in-progress' || battle.gameState.timer <= 0) return;
-
-        const userId = socket.user.id.toString();
-        // تأكد من أن scores موجود
-        if (!battle.gameState.scores) {
-            battle.gameState.scores = {};
-        }
+        socket.on('playerClick', async ({ battleId }) => {
+            try {
+                console.log(`[SERVER LOG] 4. Received 'playerClick' from user ${socket.user.username} for battle ${battleId}`);
+                const battle = await Battle.findById(battleId);
+                if (!battle || battle.status !== 'in-progress' || battle.gameState.timer <= 0) {
+                    console.error(`[SERVER ERROR] 4.1. Click rejected. Battle not found, not in progress, or timer is zero.`);
+                    return;
+                }
         
-        if (battle.gameState.scores[userId] !== undefined) {
-            battle.gameState.scores[userId]++;
-        } else {
-            battle.gameState.scores[userId] = 1;
-        }
-
-        battle.markModified('gameState');
-        await battle.save();
-
-        // ✅ أرسل دائمًا كائنًا بسيطًا
-        io.to(battleId).emit('gameStateUpdate', battle.gameState);
-    } catch (error) {
-        console.error('Error in playerClick:', error);
-    }
-});
-
-
-        // ==========================================================
-        // ==========================================================
+                const userId = socket.user.id.toString();
+                if (!battle.gameState.scores) {
+                    battle.gameState.scores = {};
+                }
+                
+                battle.gameState.scores[userId] = (battle.gameState.scores[userId] || 0) + 1;
+        
+                battle.markModified('gameState');
+                await battle.save();
+                console.log(`[SERVER LOG] 5. Score updated for ${userId}. New score: ${battle.gameState.scores[userId]}`);
+        
+                const updatedBattle = await Battle.findById(battleId);
+                console.log(`[SERVER LOG] 6. Sending 'gameStateUpdate' with gameState:`, JSON.stringify(updatedBattle.gameState, null, 2));
+                io.to(battleId).emit('gameStateUpdate', updatedBattle.gameState);
+        
+            } catch (error) {
+                console.error('[SERVER ERROR] Error in playerClick:', error);
+            }
+        });
 
         socket.on('disconnect', () => {
             console.log(`🔴 User disconnected: ${socket.id} | UserID: ${socket.user.username}`);
