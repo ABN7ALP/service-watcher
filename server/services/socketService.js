@@ -43,9 +43,11 @@ async function startGame(io, battleId) {
         const updatedBattle = await Battle.findById(battleId);
         if (!updatedBattle) return;
 
-        io.to(battleId).emit('gameStarted', { gameState: updatedBattle.gameState.toObject() });
-        // --- نهاية الإصلاح ---
-
+        const refreshedBattle = await Battle.findById(battleId);
+io.to(battleId).emit('gameStarted', {
+  gameState: refreshedBattle.gameState.toObject()
+});
+        
         const gameTimerInterval = setInterval(async () => {
             const currentBattle = await Battle.findById(battleId);
             if (!currentBattle) {
