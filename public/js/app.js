@@ -481,8 +481,9 @@ function updateGameState(gameState) {
     const gameModal = document.getElementById('game-modal');
     if (!gameModal) return;
 
-    if (!gameState || typeof gameState.scores === 'undefined') {
-        console.error("Received invalid gameState:", gameState);
+    // التحقق من صحة البيانات القادمة
+    if (!gameState || typeof gameState.scores === 'undefined' || typeof gameState.timer === 'undefined') {
+        console.error("Received invalid or incomplete gameState:", gameState);
         return;
     }
 
@@ -496,11 +497,17 @@ function updateGameState(gameState) {
     const opponentId = playerIds.find(id => id !== user.id);
     const opponentScore = opponentId ? (scores[opponentId] || 0) : 0;
 
+    // تحديث الواجهة
     const statusDiv = gameModal.querySelector('#game-status');
     statusDiv.innerHTML = `<div class="text-5xl font-mono">${timer}</div>`;
-    gameModal.querySelector('#my-score').textContent = myScore;
-    gameModal.querySelector('#opponent-score').textContent = opponentScore;
+    
+    const myScoreElement = gameModal.querySelector('#my-score');
+    const opponentScoreElement = gameModal.querySelector('#opponent-score');
+
+    if (myScoreElement) myScoreElement.textContent = myScore;
+    if (opponentScoreElement) opponentScoreElement.textContent = opponentScore;
 }
+
 
 
 // --- دالة لإنشاء وعرض نافذة اللعبة ---
@@ -508,19 +515,13 @@ function showGameWindow() {
     const gameContainer = document.getElementById('game-container');
     const user = JSON.parse(localStorage.getItem('user'));
 
-    // تصميم النافذة
     const modalHTML = `
         <div id="game-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[200]">
             <div class="bg-gray-800 border-2 border-purple-500 rounded-2xl shadow-2xl p-6 w-full max-w-2xl text-white text-center">
-                
                 <h2 class="text-2xl font-bold mb-4">لعبة النقرات الأسرع!</h2>
-                
-                <!-- منطقة الحالة (للعد التنازلي والمؤقت) -->
                 <div id="game-status" class="mb-6 h-24 flex items-center justify-center">
                     <p class="text-2xl">استعد...</p>
                 </div>
-
-                <!-- منطقة اللعب -->
                 <div class="grid grid-cols-2 gap-6 items-center">
                     <!-- اللاعب الحالي -->
                     <div class="flex flex-col items-center">
@@ -530,7 +531,6 @@ function showGameWindow() {
                         </button>
                         <p class="mt-4 text-3xl">النقاط: <span id="my-score">0</span></p>
                     </div>
-
                     <!-- الخصم -->
                     <div class="flex flex-col items-center">
                         <p class="text-xl font-bold mb-2">الخصم</p>
@@ -546,35 +546,20 @@ function showGameWindow() {
 
     gameContainer.innerHTML = modalHTML;
 
-    // --- ربط حدث النقر ---
+    // --- ✅✅ الإصلاح الأهم: ربط حدث النقر بشكل صحيح ---
     const clickBtn = document.getElementById('click-btn');
     clickBtn.addEventListener('click', () => {
-        // إرسال حدث النقر إلى الخادم
-        const battleCard = document.querySelector('.battle-card[data-battle-id]'); // محاولة لإيجاد أي بطاقة للحصول على ID
-        // ملاحظة: هذه الطريقة ليست مثالية، لكنها تعمل في سياقنا الحالي
-        // حيث أن اللاعب المنضم سيكون في تحدي واحد فقط قيد التنفيذ
-        
-        // نحتاج إلى طريقة أفضل لتمرير battleId إلى نافذة اللعبة
-        // سنجد التحدي الذي يشارك فيه المستخدم من خلال البحث في كل التحديات
-        // هذا ليس فعالاً، لكنه حل مؤقت جيد
-        
-        // بما أن الخادم يعرف أي لاعب مرتبط بأي سوكيت، لا نحتاج لإرسال battleId من هنا
-        // لكن إرساله يجعل الكود أوضح. سنقوم بتحديث هذا لاحقاً.
-        // حالياً، سنفترض أن الخادم سيبحث عن التحدي النشط للاعب.
-        // **تحديث:** الطريقة الأفضل هي أن الخادم يضيف اللاعب لغرفة خاصة بالتحدي.
-        
-        // بعد مراجعة كود الخادم، نجد أننا ننضم لغرفة خاصة بالتحدي.
-        // لكن كيف يعرف العميل `battleId` ليرسله؟
-        // عندما يبدأ العد التنازلي، يجب أن نحفظ `battleId`.
-        
-        // سنقوم بتعديل بسيط: نضيف `data-battle-id` إلى نافذة اللعبة.
-        
         const gameModal = document.getElementById('game-modal');
+        // نتأكد من أن battleId موجود على النافذة
         const battleId = gameModal.dataset.battleId;
-        
-        socket.emit('playerClick', { battleId });
+        if (battleId) {
+            socket.emit('playerClick', { battleId });
+        } else {
+            console.error("Could not find battleId on game modal!");
+        }
     });
 }
+
  
 
     // --- استدعاء الدالة لجلب التحديات عند تحميل الصفحة ---
