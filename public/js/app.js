@@ -107,6 +107,19 @@ socket.on('chatCleanup', ({ idsToDelete }) => {
     // =================================================
 
     const messageInput = document.getElementById('messageInput');
+    // --- أضف هذا الكود لتفعيل عداد الأحرف ---
+const charCounter = document.getElementById('char-counter');
+messageInput.addEventListener('input', () => {
+    const currentLength = messageInput.value.length;
+    charCounter.textContent = `${currentLength}/300`;
+    // تغيير لون العداد عند الاقتراب من الحد
+    if (currentLength > 280) {
+        charCounter.classList.add('text-red-400');
+    } else {
+        charCounter.classList.remove('text-red-400');
+    }
+});
+    
     const sendBtn = document.getElementById('sendBtn');
     const chatMessages = document.getElementById('chat-messages');
 
