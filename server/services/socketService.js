@@ -45,7 +45,8 @@ async function startGame(io, battleId) {
 
         const updatedBattle = await Battle.findById(battleId);
         console.log(`[SERVER LOG] 3. Sending 'gameStarted' with gameState:`, JSON.stringify(updatedBattle.gameState, null, 2));
-        io.to(battleId).emit('gameStarted', { gameState: updatedBattle.gameState });
+        io.to(battleId).emit('gameStarted', { gameState: updatedBattle.toObject().gameState });
+
 
         // --- ✅✅ الإصلاح الرئيسي: الخادم يحدد متى تنتهي اللعبة فقط ✅✅ ---
         // لن نقوم بتحديث قاعدة البيانات كل ثانية بعد الآن
@@ -176,7 +177,8 @@ const initializeSocket = (server) => {
         
                 const updatedBattle = await Battle.findById(battleId);
                 console.log(`[SERVER LOG] 6. Sending 'gameStateUpdate' with gameState:`, JSON.stringify(updatedBattle.gameState, null, 2));
-                io.to(battleId).emit('gameStateUpdate', updatedBattle.gameState);
+                io.to(battleId).emit('gameStateUpdate', updatedBattle.toObject().gameState);
+
         
             } catch (error) {
                 console.error('[SERVER ERROR] Error in playerClick:', error);
