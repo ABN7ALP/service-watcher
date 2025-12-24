@@ -102,20 +102,33 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') sendMessage();
     });
 
-    function displayMessage(message) {
-        const isMyMessage = message.sender.id === user._id || message.sender._id === user._id;
-        const messageElement = document.createElement('div');
-        messageElement.classList.add('p-2', 'rounded-lg', 'mb-2', 'flex', 'items-start', 'gap-2', isMyMessage ? 'bg-purple-800' : 'bg-gray-700');
-        messageElement.innerHTML = `
-            <img src="${message.sender.profileImage}" alt="${message.sender.username}" class="w-8 h-8 rounded-full">
-            <div>
-                <p class="font-bold text-sm ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${message.sender.username}</p>
-                <p class="text-white text-sm">${message.message || message.content}</p>
-            </div>
-        `;
-        chatMessages.appendChild(messageElement);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+    // --- استبدل دالة displayMessage بهذه النسخة ---
+function displayMessage(message) {
+    // ✅ الإصلاح: التحقق من وجود sender والتأكد من أننا نقارن _id
+    if (!message || !message.sender) {
+        console.error("Received an invalid message object:", message);
+        return;
     }
+
+    const isMyMessage = message.sender._id === user._id;
+    const messageElement = document.createElement('div');
+    
+    messageElement.classList.add('p-2', 'rounded-lg', 'mb-2', 'flex', 'items-start', 'gap-2', isMyMessage ? 'bg-purple-800' : 'bg-gray-700');
+    
+    // ✅ الإصلاح: استخدام message.content للرسائل القديمة و message.message للرسائل الجديدة
+    const messageContent = message.content || message.message;
+
+    messageElement.innerHTML = `
+        <img src="${message.sender.profileImage}" alt="${message.sender.username}" class="w-8 h-8 rounded-full">
+        <div>
+            <p class="font-bold text-sm ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${message.sender.username}</p>
+            <p class="text-white text-sm">${messageContent}</p>
+        </div>
+    `;
+    
+    chatMessages.appendChild(messageElement);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
 
     socket.on('newMessage', displayMessage);
 
