@@ -413,33 +413,38 @@ socket.on('connect_error', (err) => {
     
 }
 
-   // =======================================================================
-// =================== ✅✅ منطق اللعبة الجديد ✅✅ ======================
+// =======================================================================
+// =================== ✅✅ منطق اللعبة التشخيصي الكامل ✅✅ ==============
 // =======================================================================
 
 // --- 1. الاستماع لحدث بدء العد التنازلي ---
-socket.on('battleCountdown', ({ countdown, battleId }) => { // ✅ لاحظ إضافة battleId
+socket.on('battleCountdown', ({ countdown, battleId }) => {
+    console.log(`[CLIENT LOG] A. Received 'battleCountdown'. Countdown: ${countdown}, Battle ID: ${battleId}`);
     let gameModal = document.getElementById('game-modal');
     if (!gameModal) {
         showGameWindow();
         gameModal = document.getElementById('game-modal');
-        gameModal.dataset.battleId = battleId; // ✅ حفظ battleId في النافذة
+        gameModal.dataset.battleId = battleId; 
+        console.log(`[CLIENT LOG] A.1. Game window created and battleId set.`);
     }
     
     const statusDiv = gameModal.querySelector('#game-status');
-    statusDiv.innerHTML = `<p class="text-6xl font-bold animate-ping">${countdown}</p>`;
+    if (statusDiv) {
+        statusDiv.innerHTML = `<p class="text-6xl font-bold animate-ping">${countdown}</p>`;
+    }
 });
-
 
 // --- 2. الاستماع لحدث بدء اللعبة الفعلي ---
 socket.on('gameStarted', ({ gameState }) => {
+    console.log(`[CLIENT LOG] B. Received 'gameStarted'. Initial gameState:`, JSON.stringify(gameState, null, 2));
     const gameModal = document.getElementById('game-modal');
     if (!gameModal) return;
 
     const statusDiv = gameModal.querySelector('#game-status');
-    statusDiv.innerHTML = `<p class="text-6xl font-bold text-green-400">انطلق!</p>`;
+    if (statusDiv) {
+        statusDiv.innerHTML = `<p class="text-6xl font-bold text-green-400">انطلق!</p>`;
+    }
 
-    // إخفاء رسالة "انطلق" بعد ثانية وإظهار المؤقت
     setTimeout(() => {
         updateGameState(gameState);
     }, 1000);
@@ -447,11 +452,13 @@ socket.on('gameStarted', ({ gameState }) => {
 
 // --- 3. الاستماع لتحديثات حالة اللعبة (النقاط والمؤقت) ---
 socket.on('gameStateUpdate', (gameState) => {
+    console.log(`[CLIENT LOG] C. Received 'gameStateUpdate'. Updated gameState:`, JSON.stringify(gameState, null, 2));
     updateGameState(gameState);
 });
 
 // --- 4. الاستماع لحدث انتهاء اللعبة ---
 socket.on('gameEnded', ({ battle, winnerId }) => {
+    console.log(`[CLIENT LOG] D. Received 'gameEnded'.`);
     const gameModal = document.getElementById('game-modal');
     if (!gameModal) return;
 
@@ -460,30 +467,32 @@ socket.on('gameEnded', ({ battle, winnerId }) => {
 
     let message = '';
     if (!winnerId) {
-        message = '<p class="text-4xl font-bold text-yellow-400">تعادل!</p><p class="text-lg mt-2">تم إعادة مبلغ الرهان.</p>';
+        message = '<p class="text-4xl font-bold text-yellow-400">تعادل!</p>';
     } else if (winnerId === user.id) {
-        message = '<p class="text-4xl font-bold text-green-400">لقد فزت!</p><p class="text-lg mt-2">تم إضافة الأرباح إلى رصيدك.</p>';
+        message = '<p class="text-4xl font-bold text-green-400">لقد فزت!</p>';
     } else {
-        message = '<p class="text-4xl font-bold text-red-400">لقد خسرت!</p><p class="text-lg mt-2">حظاً أوفر في المرة القادمة.</p>';
+        message = '<p class="text-4xl font-bold text-red-400">لقد خسرت!</p>';
     }
     
-    statusDiv.innerHTML = message;
+    if (statusDiv) {
+        statusDiv.innerHTML = message;
+    }
 
-    // إغلاق النافذة بعد 5 ثوانٍ
-    setTimeout(() => {
-        gameModal.remove();
+    setTimeout(() => { 
+        const modal = document.getElementById('game-modal');
+        if (modal) modal.remove();
     }, 5000);
 });
 
 
-// --- دالة لتحديث واجهة المستخدم بحالة اللعبة (نسخة مصححة) ---
+// --- دالة لتحديث واجهة المستخدم بحالة اللعبة ---
 function updateGameState(gameState) {
+    console.log(`[CLIENT LOG] E. updateGameState function called.`);
     const gameModal = document.getElementById('game-modal');
     if (!gameModal) return;
 
-    // التحقق من صحة البيانات القادمة
     if (!gameState || typeof gameState.scores === 'undefined' || typeof gameState.timer === 'undefined') {
-        console.error("Received invalid or incomplete gameState:", gameState);
+        console.error("[CLIENT ERROR] E.1. updateGameState received invalid data:", gameState);
         return;
     }
 
@@ -492,28 +501,30 @@ function updateGameState(gameState) {
     const user = JSON.parse(localStorage.getItem('user'));
 
     const myScore = scores[user.id] || 0;
-    
     const playerIds = Object.keys(scores);
     const opponentId = playerIds.find(id => id !== user.id);
     const opponentScore = opponentId ? (scores[opponentId] || 0) : 0;
 
-    // تحديث الواجهة
+    console.log(`[CLIENT LOG] E.2. Updating UI. My Score: ${myScore}, Opponent Score: ${opponentScore}, Timer: ${timer}`);
+
     const statusDiv = gameModal.querySelector('#game-status');
-    statusDiv.innerHTML = `<div class="text-5xl font-mono">${timer}</div>`;
+    if (statusDiv) {
+        statusDiv.innerHTML = `<div class="text-5xl font-mono">${timer}</div>`;
+    }
     
-    const myScoreElement = gameModal.querySelector('#my-score');
-    const opponentScoreElement = gameModal.querySelector('#opponent-score');
+    const myScoreEl = gameModal.querySelector('#my-score');
+    const opponentScoreEl = gameModal.querySelector('#opponent-score');
 
-    if (myScoreElement) myScoreElement.textContent = myScore;
-    if (opponentScoreElement) opponentScoreElement.textContent = opponentScore;
+    if (myScoreEl) myScoreEl.textContent = myScore;
+    if (opponentScoreEl) opponentScoreEl.textContent = opponentScore;
 }
-
 
 
 // --- دالة لإنشاء وعرض نافذة اللعبة ---
 function showGameWindow() {
+    console.log(`[CLIENT LOG] F. showGameWindow function called.`);
     const gameContainer = document.getElementById('game-container');
-    const user = JSON.parse(localStorage.getItem('user'));
+    if (!gameContainer) return;
 
     const modalHTML = `
         <div id="game-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[200]">
@@ -523,17 +534,15 @@ function showGameWindow() {
                     <p class="text-2xl">استعد...</p>
                 </div>
                 <div class="grid grid-cols-2 gap-6 items-center">
-                    <!-- اللاعب الحالي -->
                     <div class="flex flex-col items-center">
-                        <p class="text-xl font-bold mb-2">${user.username} (أنت)</p>
+                        <p id="my-username" class="text-xl font-bold mb-2">(أنت)</p>
                         <button id="click-btn" class="w-48 h-48 bg-purple-600 rounded-full text-5xl font-bold shadow-lg transform transition hover:scale-105 active:scale-95 focus:outline-none">
                             انقر!
                         </button>
                         <p class="mt-4 text-3xl">النقاط: <span id="my-score">0</span></p>
                     </div>
-                    <!-- الخصم -->
                     <div class="flex flex-col items-center">
-                        <p class="text-xl font-bold mb-2">الخصم</p>
+                        <p id="opponent-username" class="text-xl font-bold mb-2">الخصم</p>
                         <div class="w-48 h-48 bg-gray-700 rounded-full flex items-center justify-center">
                             <i class="fas fa-user-secret text-6xl text-gray-500"></i>
                         </div>
@@ -546,19 +555,27 @@ function showGameWindow() {
 
     gameContainer.innerHTML = modalHTML;
 
-    // --- ✅✅ الإصلاح الأهم: ربط حدث النقر بشكل صحيح ---
+    const user = JSON.parse(localStorage.getItem('user'));
+    const myUsernameEl = document.getElementById('my-username');
+    if (user && myUsernameEl) {
+        myUsernameEl.textContent = `${user.username} (أنت)`;
+    }
+
     const clickBtn = document.getElementById('click-btn');
-    clickBtn.addEventListener('click', () => {
-        const gameModal = document.getElementById('game-modal');
-        // نتأكد من أن battleId موجود على النافذة
-        const battleId = gameModal.dataset.battleId;
-        if (battleId) {
-            socket.emit('playerClick', { battleId });
-        } else {
-            console.error("Could not find battleId on game modal!");
-        }
-    });
+    if (clickBtn) {
+        clickBtn.addEventListener('click', () => {
+            const gameModal = document.getElementById('game-modal');
+            const battleId = gameModal.dataset.battleId;
+            if (battleId) {
+                console.log(`[CLIENT LOG] G. Click detected! Emitting 'playerClick' for battle: ${battleId}`);
+                socket.emit('playerClick', { battleId });
+            } else {
+                console.error("[CLIENT ERROR] G.1. Click detected but battleId is missing!");
+            }
+        });
+    }
 }
+
 
  
 
