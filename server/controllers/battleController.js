@@ -80,23 +80,13 @@ exports.joinBattle = async (req, res, next) => {
         const io = req.app.get('socketio');
 
         if (battle.players.length === battle.maxPlayers) {
-            // عند بدء اللعبة (عند اكتمال اللاعبين):
-battle.status = 'in-progress';
-
-// ⚠️ التصحيح: تهيئة gameState بشكل صحيح
-const initialScores = {};
-battle.players.forEach(playerId => {
-    initialScores[playerId.toString()] = 0;
-});
-
-battle.gameState = new Map([
-    ['scores', initialScores],
-    ['timer', 10],
-    ['gameType', 'fastest-clicker']
-]);
-
-await battle.save();
-console.log(`🎮 Battle ${battle._id} started with gameState:`, battle.gameState.toObject());
+            battle.status = 'in-progress';
+            const shuffledPlayers = [...battle.players].sort(() => 0.5 - Math.random());
+            const midIndex = Math.ceil(shuffledPlayers.length / 2);
+            battle.teams.teamA = shuffledPlayers.slice(0, midIndex);
+            battle.teams.teamB = shuffledPlayers.slice(midIndex);
+            
+            await battle.save();
             
             // --- ✅✅ التغيير الرئيسي هنا ✅✅ ---
             // بدلاً من إرسال حدث، سنستدعي الدالة مباشرة
