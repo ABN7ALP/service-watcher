@@ -52,7 +52,7 @@ async function startGame(io, battleId) {
             if (newTime >= 0) {
                 currentBattle.gameState.set('timer', newTime);
                 await currentBattle.save();
-                io.to(battleId).emit('gameStateUpdate', currentBattle.gameState);
+                io.to(battleId).emit('gameStarted', { gameState: battle.gameState.toObject() });
             } else {
                 clearInterval(gameTimerInterval);
                 await endBattle(io, battleId);
@@ -106,7 +106,7 @@ async function endBattle(io, battleId) {
         battle.status = 'completed';
         await battle.save();
 
-        io.to(battleId).emit('gameEnded', { battle, winnerId });
+        io.to(battleId).emit('gameEnded', { battle: battle.toObject(), winnerId });
         console.log(`✅ Game ended for battle ${battleId}. Winner: ${winnerId || 'Draw'}`);
     } catch (error) {
         console.error(`Error in endBattle for battle ${battleId}:`, error);
@@ -194,7 +194,8 @@ const initializeSocket = (server) => {
                 await battle.save();
 
                 // أرسل الحالة المحدثة للاعبين في الغرفة
-                io.to(battleId).emit('gameStateUpdate', battle.gameState);
+               io.to(battleId).emit('gameStateUpdate', battle.gameState.toObject()); // ✅✅ تحويله إلى كائن عادي قبل الإرسال
+
             } catch (error) {
                 // هذا الخطأ يجب ألا يظهر الآن
                 console.error('Error in playerClick:', error);
