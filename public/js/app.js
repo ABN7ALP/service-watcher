@@ -4,6 +4,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadingScreen = document.getElementById('loading-screen');
     const appContainer = document.getElementById('app-container');
 
+    // --- أضف هذا المتغير في بداية الملف ---
+    let replyingToMessage = null;
+    
     // --- 1. التحقق من المصادقة ---
     if (!token || !user) {
         window.location.href = '/login.html';
@@ -123,13 +126,25 @@ messageInput.addEventListener('input', () => {
     const sendBtn = document.getElementById('sendBtn');
     const chatMessages = document.getElementById('chat-messages');
 
-    function sendMessage() {
-        const message = messageInput.value.trim();
-        if (message) {
-            socket.emit('sendMessage', { message: message });
-            messageInput.value = '';
+    // --- استبدل دالة sendMessage بهذه ---
+function sendMessage() {
+    const message = messageInput.value.trim();
+    if (message) {
+        const messageData = { message: message };
+        if (replyingToMessage) {
+            messageData.replyTo = replyingToMessage._id;
         }
+        socket.emit('sendMessage', messageData);
+        messageInput.value = '';
+        // إخفاء شريط الرد بعد الإرسال
+        const replyBar = document.getElementById('reply-bar');
+        if (replyBar) replyBar.remove();
+        replyingToMessage = null;
+        // إعادة تعيين عداد الأحرف
+        document.getElementById('char-counter').textContent = '0/300';
     }
+}
+
 
     sendBtn.addEventListener('click', sendMessage);
     messageInput.addEventListener('keypress', (e) => {
@@ -137,33 +152,61 @@ messageInput.addEventListener('input', () => {
     });
 
     // --- استبدل دالة displayMessage بهذه النسخة ---
-// --- استبدل دالة displayMessage بهذه النسخة ---
+// --- استبدل دالة displayMessage بهذه ---
 function displayMessage(message) {
-    if (!message || !message.sender || (!message.content && !message.message)) {
-        return;
-    }
+    if (!message || !message.sender) return;
 
     const isMyMessage = message.sender._id === user._id;
     const messageElement = document.createElement('div');
-    
-    // ✅ الإصلاح: إضافة data-message-id
     messageElement.dataset.messageId = message._id;
-    
-    messageElement.classList.add('p-2', 'rounded-lg', 'mb-2', 'flex', 'items-start', 'gap-2', isMyMessage ? 'bg-purple-800' : 'bg-gray-700');
+    messageElement.className = 'message-container p-2 rounded-lg mb-2 flex items-start gap-2 relative group ' + (isMyMessage ? 'bg-purple-800' : 'bg-gray-700');
     
     const messageContent = message.content || message.message;
 
+    // --- ✅ منطق عرض الرد ---
+    let replyHTML = '';
+    if (message.replyTo && message.replyTo.sender) {
+        replyHTML = `
+            <div class="reply-snippet bg-black/20 p-2 rounded-md mb-2 border-l-2 border-purple-400">
+                <p class="font-bold text-xs text-purple-300">${message.replyTo.sender.username}</p>
+                <p class="text-xs text-gray-300 truncate">${message.replyTo.content}</p>
+            </div>
+        `;
+    }
+
     messageElement.innerHTML = `
         <img src="${message.sender.profileImage}" alt="${message.sender.username}" class="w-8 h-8 rounded-full">
-        <div>
+        <div class="w-full">
+            ${replyHTML}
             <p class="font-bold text-sm ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${message.sender.username}</p>
             <p class="text-white text-sm">${messageContent}</p>
         </div>
+        <button class="reply-btn absolute top-1 right-1 bg-gray-900/50 p-1 rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+            <i class="fas fa-reply"></i>
+        </button>
     `;
     
     chatMessages.appendChild(messageElement);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    // ربط حدث النقر على زر الرد
+    messageElement.querySelector('.reply-btn').addEventListener('click', () => {
+        showReplyBar(message);
+    });
+
+    // --- ✅ منطق توميض الرسالة المردود عليها ---
+    if (message.replyTo) {
+        const originalMessageElement = document.querySelector(`[data-message-id="${message.replyTo._id}"]`);
+        if (originalMessageElement) {
+            originalMessageElement.classList.add('flash-animation');
+            // إزالة الكلاس بعد انتهاء الأنيميشن
+            setTimeout(() => {
+                originalMessageElement.classList.remove('flash-animation');
+            }, 1000); // مدة الأنيميشن
+        }
+    }
 }
+
 
 
     socket.on('newMessage', displayMessage);
@@ -494,5 +537,28 @@ const modalHTML = `
             if (modal) modal.remove();
         }, 5000);
     });
+
+    // --- أضف هذه الدالة الجديدة ---
+function showReplyBar(message) {
+    replyingToMessage = message;
+    let replyBar = document.getElementById('reply-bar');
+    if (!replyBar) {
+        replyBar = document.createElement('div');
+        replyBar.id = 'reply-bar';
+        replyBar.className = 'p-2 bg-gray-600 rounded-t-lg text-sm flex justify-between items-center';
+        // أضف الشريط قبل صندوق إدخال الدردشة
+        const chatInputContainer = document.querySelector('.chat-input-container');
+        chatInputContainer.parentNode.insertBefore(replyBar, chatInputContainer);
+    }
+    replyBar.innerHTML = `
+        <span>الرد على <strong>${message.sender.username}</strong></span>
+        <button id="cancel-reply" class="text-red-400 hover:text-red-600">&times;</button>
+    `;
+    document.getElementById('cancel-reply').addEventListener('click', () => {
+        replyingToMessage = null;
+        replyBar.remove();
+    });
+}
+
 
 }); // نهاية document.addEventListener
