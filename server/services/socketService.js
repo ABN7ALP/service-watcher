@@ -24,14 +24,12 @@ const verifySocketToken = async (socket, next) => {
 };
 
 // --- الدوال المساعدة لمنطق اللعبة ---
+// --- استبدل دالة startGame بالكامل ---
 async function startGame(io, battleId) {
     try {
         console.log(`[SERVER LOG] 1. Attempting to start game for battle: ${battleId}`);
         const battle = await Battle.findById(battleId);
-        if (!battle || battle.status !== 'in-progress') {
-            console.error(`[SERVER ERROR] 1.1. Battle not found or not in progress.`);
-            return;
-        }
+        if (!battle || battle.status !== 'in-progress') return;
 
         const initialScores = {};
         battle.players.forEach(playerId => {
@@ -39,38 +37,28 @@ async function startGame(io, battleId) {
         });
         
         battle.gameState.scores = initialScores;
-        battle.gameState.timer = 10;
+        battle.gameState.timer = 10; // فقط نحدد المدة
         
         battle.markModified('gameState'); 
         await battle.save();
-        console.log(`[SERVER LOG] 2. Game state initialized and saved. Timer: 10, Scores:`, initialScores);
+        console.log(`[SERVER LOG] 2. Game state initialized and saved.`);
 
         const updatedBattle = await Battle.findById(battleId);
         console.log(`[SERVER LOG] 3. Sending 'gameStarted' with gameState:`, JSON.stringify(updatedBattle.gameState, null, 2));
         io.to(battleId).emit('gameStarted', { gameState: updatedBattle.gameState });
 
-        const gameTimerInterval = setInterval(async () => {
-            const currentBattle = await Battle.findById(battleId);
-            if (!currentBattle || currentBattle.status !== 'in-progress') {
-                clearInterval(gameTimerInterval);
-                return;
-            }
-            
-            currentBattle.gameState.timer -= 1;
-            
-            if (currentBattle.gameState.timer >= 0) {
-                currentBattle.markModified('gameState');
-                await currentBattle.save();
-                io.to(battleId).emit('gameStateUpdate', currentBattle.gameState);
-            } else {
-                clearInterval(gameTimerInterval);
-                await endBattle(io, battleId);
-            }
-        }, 1000);
+        // --- ✅✅ الإصلاح الرئيسي: الخادم يحدد متى تنتهي اللعبة فقط ✅✅ ---
+        // لن نقوم بتحديث قاعدة البيانات كل ثانية بعد الآن
+        setTimeout(() => {
+            console.log(`[SERVER LOG] 7. Game time is up. Ending battle ${battleId}`);
+            endBattle(io, battleId);
+        }, 10000); // 10 ثوانٍ
+
     } catch (error) {
         console.error(`[SERVER ERROR] Error in startGame:`, error);
     }
 }
+
 
 async function endBattle(io, battleId) {
     try {
