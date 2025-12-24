@@ -181,15 +181,21 @@ socket.on('sendMessage', async (messageData) => {
 
             // 2. إذا وجدت هذه الرسالة (مما يعني أن هناك أكثر من 50 رسالة)
             if (fiftiethMessage) {
-                // 3. احذف كل الرسائل التي تم إنشاؤها قبلها أو في نفس وقتها
-                const result = await Message.deleteMany({ createdAt: { $lte: fiftiethMessage.createdAt } });
-                if (result.deletedCount > 0) {
-                    console.log(`[CHAT CLEANUP] Deleted ${result.deletedCount} old messages.`);
-                }
-            }
-        } catch (cleanupError) {
-            console.error("[CHAT CLEANUP] Error during old messages cleanup:", cleanupError);
-        }
+    // 3. احصل على IDs الرسائل التي ستحذف
+    const messagesToDelete = await Message.find({ createdAt: { $lte: fiftiethMessage.createdAt } }).select('_id');
+    const idsToDelete = messagesToDelete.map(msg => msg._id.toString());
+
+    if (idsToDelete.length > 0) {
+        // 4. احذف الرسائل من قاعدة البيانات
+        const result = await Message.deleteMany({ _id: { $in: idsToDelete } });
+        console.log(`[CHAT CLEANUP] Deleted ${result.deletedCount} old messages.`);
+
+        // --- ✅✅ الإصلاح الرئيسي: إخبار العملاء بالحذف ✅✅ ---
+        io.to('public-room').emit('chatCleanup', { idsToDelete });
+        console.log(`[CHAT CLEANUP] Emitted 'chatCleanup' event to clients.`);
+    }
+}
+
         // --- نهاية منطق الحذف الجديد ---
         
     } catch (error) {
