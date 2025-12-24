@@ -152,26 +152,35 @@ const initializeSocket = (server) => {
         socket.join('public-room');
 
         // --- استبدل مستمع 'sendMessage' بهذا الكود التشخيصي ---
+// --- استبدل مستمع 'sendMessage' بهذا ---
 socket.on('sendMessage', async (messageData) => {
     try {
-        if (!messageData || !messageData.message || messageData.message.trim() === '') {
-            return;
-        }
+        if (!messageData || !messageData.message || messageData.message.trim() === '') return;
+        if (messageData.message.length > 300) return;
 
-        if (messageData.message.length > 300) {
-            socket.emit('error', { message: 'الرسالة طويلة جدًا، الحد الأقصى 300 حرف.' });
-            return;
-        }
-
-        const newMessage = await Message.create({
+        // إنشاء كائن الرسالة الجديدة
+        const newMessageData = {
             content: messageData.message,
             sender: socket.user.id,
-        });
+        };
+        // إضافة الرد إذا كان موجودًا
+        if (messageData.replyTo) {
+            newMessageData.replyTo = messageData.replyTo;
+        }
 
-        const populatedMessage = await Message
-            .findById(newMessage._id)
-            .populate('sender', 'username profileImage');
+        const newMessage = await Message.create(newMessageData);
 
+        // جلب الرسالة مع كل البيانات اللازمة (المرسل والرسالة المردود عليها)
+        const populatedMessage = await Message.findById(newMessage._id)
+            .populate('sender', 'username profileImage')
+            .populate({
+                path: 'replyTo',
+                populate: {
+                    path: 'sender',
+                    select: 'username'
+                }
+            });
+            
         if (!populatedMessage) return;
 
         io.to('public-room').emit('newMessage', populatedMessage.toObject());
