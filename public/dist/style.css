@@ -7,3 +7,12 @@
     white-space: pre-wrap; /* يحافظ على المسافات والأسطر الجديدة التي يكتبها المستخدم */
     max-width: 100%; /* يضمن عدم تجاوز عرض الصندوق */
 }
+/* أضف هذا في نهاية ملف style.css */
+.flash-animation {
+    animation: flash 1s ease-out;
+}
+
+@keyframes flash {
+    0% { background-color: #a855f7; } /* بنفسجي فاتح */
+    100% { /* يعود إلى لونه الأصلي */ }
+}
