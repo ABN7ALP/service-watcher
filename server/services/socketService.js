@@ -24,9 +24,10 @@ const verifySocketToken = async (socket, next) => {
 };
 
 // --- الدوال المساعدة لمنطق اللعبة ---
+// استبدل دالة startGame بالكامل
 async function startGame(io, battleId) {
     try {
-        const battle = await Battle.findById(battleId);
+        let battle = await Battle.findById(battleId);
         if (!battle || battle.status !== 'in-progress') return;
 
         const initialScores = {};
@@ -38,7 +39,12 @@ async function startGame(io, battleId) {
         battle.gameState.set('timer', 10);
         await battle.save();
 
-        io.to(battleId).emit('gameStarted', { gameState: battle.gameState });
+        // --- ✅✅ الإصلاح الرئيسي: إعادة جلب البيانات قبل الإرسال ✅✅ ---
+        const updatedBattle = await Battle.findById(battleId);
+        if (!updatedBattle) return;
+
+        io.to(battleId).emit('gameStarted', { gameState: updatedBattle.gameState.toObject() });
+        // --- نهاية الإصلاح ---
 
         const gameTimerInterval = setInterval(async () => {
             const currentBattle = await Battle.findById(battleId);
@@ -176,31 +182,31 @@ const initializeSocket = (server) => {
         // ==========================================================
         // ===== ✅✅ هذا هو الكود المصحح الذي يجب أن يعمل ✅✅ =====
         // ==========================================================
-        socket.on('playerClick', async ({ battleId }) => {
-            try {
-                const battle = await Battle.findById(battleId);
-                if (!battle || battle.status !== 'in-progress' || (battle.gameState.get('timer') || 0) <= 0) return;
+        // استبدل دالة playerClick بالكامل
+socket.on('playerClick', async ({ battleId }) => {
+    try {
+        let battle = await Battle.findById(battleId);
+        if (!battle || battle.status !== 'in-progress' || (battle.gameState.get('timer') || 0) <= 0) return;
 
-                // 1. احصل على كائن النقاط الحالي
-                const scores = battle.gameState.get('scores') || {};
-                const userId = socket.user.id.toString();
+        const scores = battle.gameState.get('scores') || {};
+        const userId = socket.user.id.toString();
+        scores[userId] = (scores[userId] || 0) + 1;
+        battle.gameState.set('scores', scores);
+        
+        await battle.save();
 
-                // 2. قم بزيادة نقاط اللاعب الحالي
-                scores[userId] = (scores[userId] || 0) + 1;
+        // --- ✅✅ الإصلاح الرئيسي: إعادة جلب البيانات قبل الإرسال ✅✅ ---
+        const updatedBattle = await Battle.findById(battleId);
+        if (!updatedBattle) return;
 
-                // 3. أعد تعيين كائن النقاط المحدث بالكامل
-                battle.gameState.set('scores', scores);
-                
-                await battle.save();
+        io.to(battleId).emit('gameStateUpdate', updatedBattle.gameState.toObject());
+        // --- نهاية الإصلاح ---
 
-                // أرسل الحالة المحدثة للاعبين في الغرفة
-               io.to(battleId).emit('gameStateUpdate', battle.gameState.toObject()); // ✅✅ تحويله إلى كائن عادي قبل الإرسال
+    } catch (error) {
+        console.error('Error in playerClick:', error);
+    }
+});
 
-            } catch (error) {
-                // هذا الخطأ يجب ألا يظهر الآن
-                console.error('Error in playerClick:', error);
-            }
-        });
         // ==========================================================
         // ==========================================================
 
