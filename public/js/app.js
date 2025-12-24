@@ -476,14 +476,18 @@ socket.on('gameEnded', ({ battle, winnerId }) => {
 });
 
 
-// --- دالة لتحديث واجهة المستخدم بحالة اللعبة ---
+// --- دالة لتحديث واجهة المستخدم بحالة اللعبة (نسخة مصححة) ---
 function updateGameState(gameState) {
     const gameModal = document.getElementById('game-modal');
     if (!gameModal) return;
 
     const statusDiv = gameModal.querySelector('#game-status');
-    const scores = gameState.get('scores');
-    const timer = gameState.get('timer');
+    
+    // ✅✅ الإصلاح: استخدم طريقة الوصول العادية للكائنات ✅✅
+    const scores = gameState.scores;
+    const timer = gameState.timer;
+    // ✅✅ نهاية الإصلاح ✅✅
+
     const user = JSON.parse(localStorage.getItem('user'));
     
     // العثور على معرف الخصم
@@ -498,6 +502,7 @@ function updateGameState(gameState) {
     gameModal.querySelector('#my-score').textContent = myScore;
     gameModal.querySelector('#opponent-score').textContent = opponentScore;
 }
+
 
 
 // --- دالة لإنشاء وعرض نافذة اللعبة ---
