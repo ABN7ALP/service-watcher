@@ -1,34 +1,20 @@
-// ملف: server/controllers/userController.js
+server/routes/userRoutes.js
 
-const User = require('../models/User');
+const express = require('express');
+const userController = require('../controllers/userController');
+const authMiddleware = require('../middleware/authMiddleware');
+const { upload } = require('../utils/cloudinary'); // ✅ استيراد middleware الرفع
 
-// دالة لتصفية الحقول المسموح بتحديثها
-const filterObj = (obj, ...allowedFields) => {
-    const newObj = {};
-    Object.keys(obj).forEach(el => {
-        if (allowedFields.includes(el)) newObj[el] = obj[el];
-    });
-    return newObj;
-};
+const router = express.Router();
 
-exports.updateMe = async (req, res, next) => {
-    try {
-        // 1. تصفية الحقول غير المرغوب فيها مثل (balance, isAdmin, etc.)
-        const filteredBody = filterObj(req.body, 'username', 'profileImage');
+// حماية جميع المسارات التالية
+router.use(authMiddleware);
 
-        // 2. تحديث بيانات المستخدم
-        const updatedUser = await User.findByIdAndUpdate(req.user.id, filteredBody, {
-            new: true, // إرجاع المستند المحدث
-            runValidators: true // تشغيل المدققات (مثل minlength)
-        });
+// مسار لتحديث اسم المستخدم فقط
+router.patch('/updateUsername', userController.updateUsername);
 
-        res.status(200).json({
-            status: 'success',
-            data: {
-                user: updatedUser
-            }
-        });
-    } catch (error) {
-        res.status(500).json({ status: 'error', message: 'حدث خطأ أثناء تحديث البيانات.' });
-    }
-};
+// ✅ مسار جديد ومخصص لرفع الصورة الشخصية
+// سيتم تنفيذ middleware 'upload' أولاً، ثم 'updateProfilePicture'
+router.patch('/updateProfilePicture', upload, userController.updateProfilePicture);
+
+module.exports = router;
