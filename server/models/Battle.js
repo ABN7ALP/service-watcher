@@ -43,10 +43,10 @@ const battleSchema = new mongoose.Schema({
         default: 'fastest-clicker',
     },
     gameState: {
-        type: Map,
-        of: mongoose.Schema.Types.Mixed,
-        default: {} // سيحتوي على بيانات مثل { player1_score: 0, player2_score: 0, timer: 10 }
-    }
+    type: Map,
+    of: mongoose.Schema.Types.Mixed,
+    default: () => new Map() // ⚠️ هذا مهم!
+}
     // --- نهاية الحقول الجديدة ---
 }, { timestamps: true });
 
