@@ -154,38 +154,47 @@ const initializeSocket = (server) => {
         // --- استبدل مستمع 'sendMessage' بهذا الكود التشخيصي ---
 socket.on('sendMessage', async (messageData) => {
     try {
-        console.log(`[CHAT SERVER LOG] 1. Received 'sendMessage' from ${socket.user.username} with data:`, messageData);
-
         if (!messageData || !messageData.message || messageData.message.trim() === '') {
-            console.error('[CHAT SERVER ERROR] 1.1. Message is empty or invalid. Aborting.');
             return;
         }
 
-        // 1. حفظ الرسالة في قاعدة البيانات
+        // ✅ 1. التحقق من طول الرسالة (لا يزيد عن 300 حرف)
+        if (messageData.message.length > 300) {
+            // يمكنك إرسال إشعار خطأ للمستخدم إذا أردت
+            socket.emit('error', { message: 'الرسالة طويلة جدًا، الحد الأقصى 300 حرف.' });
+            return;
+        }
+
+        // 2. حفظ الرسالة الجديدة
         const newMessage = await Message.create({
             content: messageData.message,
             sender: socket.user.id,
         });
-        console.log(`[CHAT SERVER LOG] 2. Message saved to DB. ID: ${newMessage._id}`);
 
-        // 2. جلب الرسالة مع بيانات المرسل الكاملة
+        // 3. جلب الرسالة مع بيانات المرسل
         const populatedMessage = await Message.findById(newMessage._id).populate('sender', 'username profileImage');
-        if (!populatedMessage) {
-            console.error('[CHAT SERVER ERROR] 2.1. Could not re-fetch message from DB. Aborting.');
-            return;
+        if (!populatedMessage) return;
+
+        // 4. بث الرسالة الجديدة للجميع
+        io.to('public-room').emit('newMessage', populatedMessage.toObject());
+
+        // --- ✅ 5. منطق حذف الرسائل القديمة ---
+        const messageCount = await Message.countDocuments();
+        if (messageCount > 50) {
+            // ابحث عن أقدم الرسائل التي تتجاوز الحد (50)
+            const oldestMessages = await Message.find().sort({ createdAt: 1 }).limit(messageCount - 50);
+            const idsToDelete = oldestMessages.map(msg => msg._id);
+            // احذفها
+            await Message.deleteMany({ _id: { $in: idsToDelete } });
+            console.log(`[CHAT CLEANUP] Deleted ${idsToDelete.length} old messages.`);
         }
-
-        // 3. تحويلها إلى كائن بسيط لإرساله
-        const finalMessage = populatedMessage.toObject();
-        console.log(`[CHAT SERVER LOG] 3. Broadcasting 'newMessage' to 'public-room' with payload:`, JSON.stringify(finalMessage, null, 2));
-
-        // 4. بث الرسالة إلى كل المستخدمين
-        io.to('public-room').emit('newMessage', finalMessage);
+        // --- نهاية منطق الحذف ---
         
     } catch (error) {
         console.error('[CHAT SERVER ERROR] Error in sendMessage event:', error);
     }
 });
+
 
 
         socket.on('playerClick', async ({ battleId }) => {
