@@ -40,12 +40,12 @@ async function startGame(io, battleId) {
         await battle.save();
 
         // --- ✅✅ الإصلاح الرئيسي: إعادة جلب البيانات قبل الإرسال ✅✅ ---
-        const updatedBattle = await Battle.findById(battleId);
-        if (!updatedBattle) return;
+        // --- ✅✅ الإصلاح: إرسال gameState بشكل صحيح ✅✅ ---
+const updatedBattle = await Battle.findById(battleId);
+if (!updatedBattle) return;
 
-        const refreshedBattle = await Battle.findById(battleId);
-io.to(battleId).emit('gameStarted', {
-  gameState: refreshedBattle.gameState.toObject()
+io.to(battleId).emit('gameStarted', { 
+    gameState: updatedBattle.gameState.toObject() 
 });
         
         const gameTimerInterval = setInterval(async () => {
@@ -197,12 +197,11 @@ socket.on('playerClick', async ({ battleId }) => {
         
         await battle.save();
 
-        // --- ✅✅ الإصلاح الرئيسي: إعادة جلب البيانات قبل الإرسال ✅✅ ---
-        const updatedBattle = await Battle.findById(battleId);
-        if (!updatedBattle) return;
+        // --- ✅✅ الإصلاح الرئيسي: إعادة جلب البيانات قبل الإرسال ✅✅ --
+       const updatedBattle = await Battle.findById(battleId);
+       if (!updatedBattle) return;
 
-        io.to(battleId).emit('gameStateUpdate', updatedBattle.gameState.toObject());
-        // --- نهاية الإصلاح ---
+       io.to(battleId).emit('gameStateUpdate', updatedBattle.gameState.toObject());
 
     } catch (error) {
         console.error('Error in playerClick:', error);
