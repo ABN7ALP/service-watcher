@@ -488,6 +488,7 @@ socket.on('gameStarted', ({ gameState }) => {
 
 
 // --- استبدل دالة updateGameState بهذه ---
+// --- استبدل دالة updateGameState بالكامل ---
 function updateGameState(gameState) {
     console.log(`[CLIENT LOG] E. updateGameState function called.`);
     const gameModal = document.getElementById('game-modal');
@@ -501,17 +502,23 @@ function updateGameState(gameState) {
     const scores = gameState.scores;
     const user = JSON.parse(localStorage.getItem('user'));
 
-    const myScore = scores[user.id] || 0;
+    // --- ✅✅ الإصلاح النهائي هنا ✅✅ ---
+    const myScore = scores[user._id] || 0; // غيرنا user.id إلى user._id
     const playerIds = Object.keys(scores);
-    const opponentId = playerIds.find(id => id !== user.id);
+    const opponentId = playerIds.find(id => id !== user._id); // غيرنا user.id إلى user._id
+    // --- نهاية الإصلاح ---
+    
     const opponentScore = opponentId ? (scores[opponentId] || 0) : 0;
 
     console.log(`[CLIENT LOG] E.2. Updating UI. My Score: ${myScore}, Opponent Score: ${opponentScore}`);
     
-    // لم نعد نحدث المؤقت من هنا، فقط النقاط
-    gameModal.querySelector('#my-score').textContent = myScore;
-    gameModal.querySelector('#opponent-score').textContent = opponentScore;
+    const myScoreEl = gameModal.querySelector('#my-score');
+    const opponentScoreEl = gameModal.querySelector('#opponent-score');
+
+    if (myScoreEl) myScoreEl.textContent = myScore;
+    if (opponentScoreEl) opponentScoreEl.textContent = opponentScore;
 }
+
 
 
 // --- دالة لإنشاء وعرض نافذة اللعبة ---
