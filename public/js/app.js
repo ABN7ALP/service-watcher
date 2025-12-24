@@ -477,15 +477,11 @@ socket.on('gameEnded', ({ battle, winnerId }) => {
 
 
 // --- دالة لتحديث واجهة المستخدم بحالة اللعبة (نسخة مصححة) ---
-// --- دالة لتحديث واجهة المستخدم بحالة اللعبة (نسخة محسّنة) ---
 function updateGameState(gameState) {
     const gameModal = document.getElementById('game-modal');
     if (!gameModal) return;
 
-    // --- ✅✅ بداية الإصلاح ---
-
-    // 1. التحقق من أن gameState و gameState.scores موجودان
-    if (!gameState || !gameState.scores) {
+    if (!gameState || typeof gameState.scores === 'undefined') {
         console.error("Received invalid gameState:", gameState);
         return;
     }
@@ -494,24 +490,17 @@ function updateGameState(gameState) {
     const timer = gameState.timer;
     const user = JSON.parse(localStorage.getItem('user'));
 
-    // 2. التحقق من أن user.id موجود في كائن scores
     const myScore = scores[user.id] || 0;
     
-    // 3. طريقة أكثر أمانًا للعثور على الخصم ونقاطه
     const playerIds = Object.keys(scores);
     const opponentId = playerIds.find(id => id !== user.id);
     const opponentScore = opponentId ? (scores[opponentId] || 0) : 0;
 
-    // --- 🔚 نهاية الإصلاح ---
-
-    // تحديث الواجهة
     const statusDiv = gameModal.querySelector('#game-status');
     statusDiv.innerHTML = `<div class="text-5xl font-mono">${timer}</div>`;
     gameModal.querySelector('#my-score').textContent = myScore;
     gameModal.querySelector('#opponent-score').textContent = opponentScore;
 }
-
-
 
 
 // --- دالة لإنشاء وعرض نافذة اللعبة ---
