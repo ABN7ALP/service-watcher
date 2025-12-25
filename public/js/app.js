@@ -4,31 +4,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadingScreen = document.getElementById('loading-screen');
     const appContainer = document.getElementById('app-container');
 
-// --- منطق طي الشريط الجانبي ---
+// --- استبدل كل الكود من هنا حتى نهاية الملف ---
+
+// --- منطق طي الشريط الجانبي (النسخة الصحيحة) ---
 const sidebar = document.getElementById('sidebar');
+const mainContentEl = document.getElementById('main-content');
 const sidebarToggle = document.getElementById('sidebar-toggle');
 const toggleIcon = document.getElementById('toggle-icon');
 const sidebarTexts = document.querySelectorAll('.sidebar-text');
 
+let isSidebarCollapsed = false; // متغير لتتبع حالة الشريط
+
 sidebarToggle.addEventListener('click', () => {
-    sidebar.classList.toggle('w-64');
-    sidebar.classList.toggle('w-20');
+    isSidebarCollapsed = !isSidebarCollapsed; // عكس الحالة
+
+    // إخفاء/إظهار النصوص
+    sidebarTexts.forEach(text => text.classList.toggle('hidden'));
+    document.querySelector('.user-profile').classList.toggle('p-0'); // إزالة الحشو
+    document.querySelector('.user-profile').classList.toggle('p-4');
+
+    // تبديل أيقونة الزر
     toggleIcon.classList.toggle('fa-chevron-right');
     toggleIcon.classList.toggle('fa-chevron-left');
-    sidebarTexts.forEach(text => {
-        text.classList.toggle('hidden');
-    });
-});
 
-// اجعله مطويًا افتراضيًا عند تحميل الصفحة
-sidebar.classList.add('w-20');
-sidebar.classList.remove('w-64');
-toggleIcon.classList.add('fa-chevron-left');
-toggleIcon.classList.remove('fa-chevron-right');
-sidebarTexts.forEach(text => {
-    text.classList.add('hidden');
-});
+    // --- ✅✅ الإصلاح الرئيسي: تغيير عرض الأعمدة ديناميكيًا ---
+    if (isSidebarCollapsed) {
+        // عند الطي
+        sidebar.classList.remove('lg:col-span-2', 'md:col-span-3');
+        sidebar.classList.add('lg:col-span-1', 'md:col-span-1');
 
+        mainContentEl.classList.remove('lg:col-span-7', 'md:col-span-9');
+        mainContentEl.classList.add('lg:col-span-8', 'md:col-span-11');
+    } else {
+        // عند الفتح
+        sidebar.classList.remove('lg:col-span-1', 'md:col-span-1');
+        sidebar.classList.add('lg:col-span-2', 'md:col-span-3');
+
+        mainContentEl.classList.remove('lg:col-span-8', 'md:col-span-11');
+        mainContentEl.classList.add('lg:col-span-7', 'md:col-span-9');
+    }
+});
 
 // --- منطق التنقل في الشريط الجانبي ---
 const navItems = document.querySelectorAll('.nav-item');
@@ -37,9 +52,7 @@ const mainContent = document.querySelector('main');
 function activateHomeButton() {
     navItems.forEach(i => i.classList.remove('bg-purple-600', 'text-white'));
     const homeButton = document.querySelector('a[href="#arena"]');
-    if (homeButton) {
-        homeButton.classList.add('bg-purple-600', 'text-white');
-    }
+    if (homeButton) homeButton.classList.add('bg-purple-600', 'text-white');
 }
 
 navItems.forEach(item => {
@@ -56,8 +69,9 @@ navItems.forEach(item => {
     });
 });
 
+// دالة لعرض الإعدادات (مع إصلاحات التصميم)
 function showSettingsView() {
-    document.getElementById('chat-panel').classList.add('hidden');
+    document.getElementById('chat-panel').classList.add('hidden'); // إخفاء الدردشة
     mainContent.innerHTML = `
         <div class="p-4">
             <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
@@ -95,15 +109,16 @@ function showSettingsView() {
     document.getElementById('username-update-form').addEventListener('submit', handleUsernameUpdate);
 }
 
+// دالة لعرض ساحة التحديات
 function showArenaView() {
-    document.getElementById('chat-panel').classList.remove('hidden');
+    document.getElementById('chat-panel').classList.remove('hidden'); // إظهار الدردشة
     mainContent.innerHTML = `
         <div class="flex justify-between items-center mb-4">
             <h2 class="text-xl font-bold"><i class="fas fa-gamepad"></i> ساحة التحديات</h2>
             <button id="create-battle-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><i class="fas fa-plus"></i><span>إنشاء تحدي</span></button>
         </div>
         <div id="battle-rooms-container" class="flex-grow overflow-y-auto space-y-3 pr-2">
-            <div id="battles-empty-state" class="text-center text-gray-400 py-10 hidden"><i class="fas fa-ghost text-4xl mb-4"></i><p>لا توجد تحديات متاحة حالياً. كن أول من يبدأ!</p></div>
+            <div id="battles-empty-state" class="text-center text-gray-400 py-10 hidden"><i class="fas fa-ghost text-4xl mb-4"></i><p>لا توجد تحديات متاحة حالياً.</p></div>
             <div id="battles-loading-state" class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-4xl mb-4"></i><p>جاري تحميل التحديات...</p></div>
         </div>
         <div class="mt-4 pt-4 border-t border-gray-700">
@@ -128,7 +143,6 @@ function showArenaView() {
     }
     activateHomeButton();
 }
-// --- حتى نهاية الملف ---
 
 
 // دالة جديدة لمعالجة رفع الصورة
