@@ -29,11 +29,21 @@ exports.register = async (req, res, next) => {
     try {
         const { username, email, password } = req.body;
 
-        if (!username || !email || !password) {
-            return res.status(400).json({ status: 'fail', message: 'يرجى تقديم اسم المستخدم والبريد الإلكتروني وكلمة المرور' });
+        
+        // ✅ التحقق من وجود الحقول الجديدة
+        if (!username || !email || !password || !gender || !birthDate) {
+            return res.status(400).json({ status: 'fail', message: 'الرجاء ملء جميع الحقول المطلوبة.' });
         }
 
-        const newUser = await User.create({ username, email, password });
+        const newUser = await User.create({
+            username,
+            email,
+            password,
+            gender,
+            birthDate,
+            socialStatus // هذا الحقل له قيمة افتراضية
+        });
+
         
         createSendToken(newUser, 201, res);
 
