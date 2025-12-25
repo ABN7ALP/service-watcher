@@ -23,33 +23,49 @@
 
             <!-- Register Form -->
             <form id="registerForm" class="space-y-4">
-                <!-- Username -->
-                <div>
-                    <label for="username" class="block mb-2 text-sm font-medium text-gray-300">اسم المستخدم</label>
-                    <input type="text" id="username" name="username" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-3" placeholder="اختر اسماً فريداً" required>
-                </div>
+    <!-- Username & Email -->
+    <div>
+        <label for="username" class="block mb-2 text-sm font-medium text-gray-300">اسم المستخدم</label>
+        <input type="text" id="username" name="username" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-3" required>
+    </div>
+    <div>
+        <label for="email" class="block mb-2 text-sm font-medium text-gray-300">البريد الإلكتروني</label>
+        <input type="email" id="email" name="email" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-3" required>
+    </div>
+    <div>
+        <label for="password" class="block mb-2 text-sm font-medium text-gray-300">كلمة المرور</label>
+        <input type="password" id="password" name="password" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-3" required>
+    </div>
 
-                <!-- Email -->
-                <div>
-                    <label for="email" class="block mb-2 text-sm font-medium text-gray-300">البريد الإلكتروني</label>
-                    <input type="email" id="email" name="email" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-3" placeholder="example@email.com" required>
-                </div>
+    <!-- Gender -->
+    <div>
+        <label class="block mb-2 text-sm font-medium text-gray-300">الجنس</label>
+        <div class="flex gap-4">
+            <label class="flex items-center gap-2">
+                <input type="radio" name="gender" value="male" class="form-radio text-purple-500" required> ذكر
+            </label>
+            <label class="flex items-center gap-2">
+                <input type="radio" name="gender" value="female" class="form-radio text-pink-500"> أنثى
+            </label>
+        </div>
+    </div>
 
-                <!-- Password -->
-                <div>
-                    <label for="password" class="block mb-2 text-sm font-medium text-gray-300">كلمة المرور</label>
-                    <input type="password" id="password" name="password" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-3" placeholder="••••••••" required>
-                </div>
-                
-                <!-- Submit Button -->
-                <div>
-                    <button type="submit" id="registerBtn" class="w-full mt-4 text-white bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:ring-purple-800 font-medium rounded-lg text-sm px-5 py-3 flex items-center justify-center gap-2">
-                        <i class="fas fa-check"></i>
-                        <span>إنشاء الحساب</span>
-                        <i id="registerSpinner" class="fas fa-spinner fa-spin hidden"></i>
-                    </button>
-                </div>
-            </form>
+    <!-- Birth Date -->
+    <div>
+        <label for="birthDate" class="block mb-2 text-sm font-medium text-gray-300">تاريخ الميلاد</label>
+        <input type="date" id="birthDate" name="birthDate" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-3" required>
+    </div>
+    
+    <!-- Submit Button -->
+    <div>
+        <button type="submit" id="registerBtn" class="w-full mt-4 text-white bg-purple-600 hover:bg-purple-700 font-medium rounded-lg text-sm px-5 py-3 flex items-center justify-center gap-2">
+            <i class="fas fa-check"></i>
+            <span>إنشاء الحساب</span>
+            <i id="registerSpinner" class="fas fa-spinner fa-spin hidden"></i>
+        </button>
+    </div>
+</form>
+
 
             <!-- Footer Links -->
             <div class="text-center mt-6 text-sm">
