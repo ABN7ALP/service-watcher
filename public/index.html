@@ -32,55 +32,85 @@
             </header>
 
             <!-- Main Content -->
-            <!-- استبدل قسم Main Content بالكامل بهذا الهيكل الأصلي -->
-<div class="grid grid-cols-12 gap-4">
-    <!-- Sidebar (Right) -->
-    <aside id="sidebar" class="col-span-12 md:col-span-3 lg:col-span-2 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 relative transition-all duration-300">
-        <!-- زر الطي/الفتح -->
-        <button id="sidebar-toggle" class="absolute -left-3 top-1/2 transform -translate-y-1/2 bg-purple-600 w-6 h-10 rounded-r-lg focus:outline-none z-10">
-            <i id="toggle-icon" class="fas fa-chevron-right"></i>
+            <div class="grid grid-cols-12 gap-4">
+                <!-- Sidebar (Right) -->
+                <aside class="col-span-12 md:col-span-3 lg:col-span-2 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4">
+                    <div class="user-profile text-center mb-6">
+                        <img id="profileImage" src="https://via.placeholder.com/80" alt="الصورة الشخصية" class="w-20 h-20 rounded-full mx-auto border-2 border-purple-500">
+                        <h3 id="username" class="mt-2 font-bold">...</h3>
+                        <p id="userLevel" class="text-xs text-gray-400">المستوى: 1</p>
+                    </div>
+                    <nav class="sidebar-nav space-y-2">
+                        <a href="#arena" class="nav-item flex items-center gap-3 p-2 rounded-lg bg-purple-600 text-white"><i class="fas fa-home w-5 text-center"></i> الرئيسية</a>
+                        <a href="#challenges" class="nav-item flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700"><i class="fas fa-gamepad w-5 text-center"></i> التحديات</a>
+                        <a href="#leaderboard" class="nav-item flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700"><i class="fas fa-trophy w-5 text-center"></i> المتصدرين</a>
+                        <a href="#settings" class="nav-item flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700"><i class="fas fa-cog w-5 text-center"></i> الإعدادات</a>
+                    </nav>
+                </aside>
+
+                <!-- Main View (Center) -->
+                <!-- Main View (Center) -->
+<main class="col-span-12 md:col-span-9 lg:col-span-7 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 flex flex-col">
+    
+    <!-- Battle Arena Header -->
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold"><i class="fas fa-gamepad"></i> ساحة التحديات</h2>
+        <button id="create-battle-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
+            <i class="fas fa-plus"></i>
+            <span>إنشاء تحدي</span>
         </button>
+    </div>
 
-        <!-- محتوى الشريط الجانبي -->
-        <div class="user-profile text-center mb-6">
-            <img id="profileImage" src="https://via.placeholder.com/80" alt="الصورة الشخصية" class="w-20 h-20 rounded-full mx-auto border-2 border-purple-500 object-cover">
-            <h3 id="username" class="mt-2 font-bold sidebar-text">...</h3>
-            <p id="userLevel" class="text-xs text-gray-400 sidebar-text">المستوى: 1</p>
+    <!-- Battle Rooms List -->
+    <div id="battle-rooms-container" class="flex-grow overflow-y-auto space-y-3 pr-2">
+        <!-- Battles will be loaded here by JS -->
+        <div id="battles-empty-state" class="text-center text-gray-400 py-10 hidden">
+            <i class="fas fa-ghost text-4xl mb-4"></i>
+            <p>لا توجد تحديات متاحة حالياً. كن أول من يبدأ!</p>
         </div>
-        <nav class="sidebar-nav space-y-2">
-            <a href="#arena" class="nav-item flex items-center gap-3 p-2 rounded-lg bg-purple-600 text-white"><i class="fas fa-home w-5 text-center"></i> <span class="sidebar-text">الرئيسية</span></a>
-            <a href="#challenges" class="nav-item flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700"><i class="fas fa-gamepad w-5 text-center"></i> <span class="sidebar-text">التحديات</span></a>
-            <a href="#leaderboard" class="nav-item flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700"><i class="fas fa-trophy w-5 text-center"></i> <span class="sidebar-text">المتصدرين</span></a>
-            <a href="#settings" class="nav-item flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700"><i class="fas fa-cog w-5 text-center"></i> <span class="sidebar-text">الإعدادات</span></a>
-        </nav>
-    </aside>
-
-    <!-- Main View (Center) -->
-    <main id="main-content" class="col-span-12 md:col-span-9 lg:col-span-7 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 flex flex-col">
-        <!-- سيتم حقن المحتوى هنا بواسطة JS -->
-    </main>
-
-
-    <!-- Chat Panel (Left) -->
-       <aside id="chat-panel" class="col-span-12 lg:col-span-3 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 flex flex-col h-[85vh]">
-
-        <h3 class="font-bold mb-3">💬 الدردشة العامة</h3>
-        <div id="chat-messages" class="flex-grow bg-gray-900/50 rounded-lg p-2 overflow-y-auto mb-3 min-h-[300px]">
-            <!-- Messages will appear here -->
+        <div id="battles-loading-state" class="text-center text-gray-400 py-10">
+            <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
+            <p>جاري تحميل التحديات...</p>
         </div>
-        <div class="chat-input-container">
-            <div class="relative">
-                <input type="text" id="messageInput" placeholder="اكتب رسالتك..." maxlength="300" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 pr-20 focus:ring-purple-500 focus:border-purple-500">
-                <div id="char-counter" class="absolute top-1/2 left-2 transform -translate-y-1/2 text-xs text-gray-400">0/300</div>
+    </div>
+
+    <!-- Voice Chat Seats (Moved to the bottom) -->
+    <div class="mt-4 pt-4 border-t border-gray-700">
+        <h3 class="font-bold mb-3">🎤 غرفة الصوت</h3>
+        <div id="voice-chat-grid" class="grid grid-cols-9 gap-3">
+            <!-- Admin Seats -->
+            <div class="voice-seat admin-seat" data-seat="1"><i class="fas fa-crown"></i></div>
+            <div class="voice-seat admin-seat" data-seat="2"><i class="fas fa-crown"></i></div>
+            <div class="voice-seat admin-seat" data-seat="3"><i class="fas fa-crown"></i></div>
+            <!-- User Seats (Generated by JS) -->
+        </div>
+    </div>
+</main>
+
+
+                <!-- Chat Panel (Left) -->
+                <aside class="col-span-12 lg:col-span-3 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 flex flex-col h-[85vh]">
+                    <h3 class="font-bold mb-3">💬 الدردشة العامة</h3>
+                    <div id="chat-messages" class="flex-grow bg-gray-900/50 rounded-lg p-2 overflow-y-auto mb-3 min-h-[300px]">
+                        <!-- Messages will appear here -->
+                    </div>
+                    <!-- استبدل قسم chat-input بهذا -->
+                    <div class="chat-input-container">
+                       <div class="relative">
+                     <input type="text" id="messageInput" placeholder="اكتب رسالتك..." maxlength="300" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 pr-20 focus:ring-purple-500 focus:border-purple-500">
+                     <div id="char-counter" class="absolute top-1/2 left-2 transform -translate-y-1/2 text-xs text-gray-400">0/300</div>
+                   </div>
+                   <button id="sendBtn" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 mt-2 w-full rounded-lg flex items-center justify-center gap-2">
+                   <i class="fas fa-paper-plane"></i>
+                  <span>إرسال</span>
+                 </button>
+                 </div>
+
+                </aside>
             </div>
-            <button id="sendBtn" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 mt-2 w-full rounded-lg flex items-center justify-center gap-2">
-                <i class="fas fa-paper-plane"></i>
-                <span>إرسال</span>
-            </button>
         </div>
-    </aside>
-</div>
-
+    </div>
+    
     <!-- Notification container -->
     <div id="notification-container" class="fixed top-5 right-5 z-50 space-y-2"></div>
 
