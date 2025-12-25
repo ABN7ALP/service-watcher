@@ -70,3 +70,41 @@ exports.login = async (req, res, next) => {
         next(error);
     }
 };
+// --- أضف هذه الدالة الجديدة في authController.js ---
+
+exports.updatePassword = async (req, res) => {
+    try {
+        // 1. جلب المستخدم من قاعدة البيانات
+        const user = await User.findById(req.user.id).select('+password');
+
+        // 2. التحقق من أن كلمة المرور الحالية صحيحة
+        const { currentPassword, newPassword, newPasswordConfirm } = req.body;
+        if (!(await user.comparePassword(currentPassword))) {
+            return res.status(401).json({ status: 'fail', message: 'كلمة المرور الحالية غير صحيحة.' });
+        }
+
+        // 3. التحقق من أن كلمة المرور الجديدة وتأكيدها متطابقان
+        if (newPassword !== newPasswordConfirm) {
+            return res.status(400).json({ status: 'fail', message: 'كلمة المرور الجديدة وتأكيدها غير متطابقين.' });
+        }
+
+        // 4. تحديث كلمة المرور
+        user.password = newPassword;
+        await user.save();
+
+        // 5. (اختياري ولكن موصى به) إنشاء توكن جديد وإرساله
+        // هذا يضمن أن أي جلسات قديمة تصبح غير صالحة
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+            expiresIn: process.env.JWT_EXPIRES_IN || '90d'
+        });
+
+        res.status(200).json({
+            status: 'success',
+            token,
+            message: 'تم تغيير كلمة المرور بنجاح.'
+        });
+
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: 'حدث خطأ ما.' });
+    }
+};
