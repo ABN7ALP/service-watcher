@@ -24,7 +24,8 @@ const setupMiddleware = (app) => {
           directives: {
             ...helmet.contentSecurityPolicy.getDefaultDirectives(),
             "script-src": ["'self'", "cdn.socket.io"],
-            "img-src": ["'self'", "data:", "https://via.placeholder.com"], // ✅ أضفنا نطاق الصور هنا
+            // --- استبدل سطر "img-src" بهذا ---
+            "img-src": ["'self'", "data:", "https://res.cloudinary.com", "https://i.ibb.co"], // ✅ السطر الجديد
           },
       },
   }));
