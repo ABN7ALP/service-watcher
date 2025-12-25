@@ -4,63 +4,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadingScreen = document.getElementById('loading-screen');
     const appContainer = document.getElementById('app-container');
 
-// --- استبدل كل الكود من هنا حتى نهاية الملف ---
 
-// --- منطق طي الشريط الجانبي (النسخة الصحيحة) ---
-const sidebar = document.getElementById('sidebar');
-const mainContentEl = document.getElementById('main-content');
-const sidebarToggle = document.getElementById('sidebar-toggle');
-const toggleIcon = document.getElementById('toggle-icon');
-const sidebarTexts = document.querySelectorAll('.sidebar-text');
-
-let isSidebarCollapsed = false; // متغير لتتبع حالة الشريط
-
-sidebarToggle.addEventListener('click', () => {
-    isSidebarCollapsed = !isSidebarCollapsed; // عكس الحالة
-
-    // إخفاء/إظهار النصوص
-    sidebarTexts.forEach(text => text.classList.toggle('hidden'));
-    document.querySelector('.user-profile').classList.toggle('p-0'); // إزالة الحشو
-    document.querySelector('.user-profile').classList.toggle('p-4');
-
-    // تبديل أيقونة الزر
-    toggleIcon.classList.toggle('fa-chevron-right');
-    toggleIcon.classList.toggle('fa-chevron-left');
-
-    // --- ✅✅ الإصلاح الرئيسي: تغيير عرض الأعمدة ديناميكيًا ---
-    if (isSidebarCollapsed) {
-        // عند الطي
-        sidebar.classList.remove('lg:col-span-2', 'md:col-span-3');
-        sidebar.classList.add('lg:col-span-1', 'md:col-span-1');
-
-        mainContentEl.classList.remove('lg:col-span-7', 'md:col-span-9');
-        mainContentEl.classList.add('lg:col-span-8', 'md:col-span-11');
-    } else {
-        // عند الفتح
-        sidebar.classList.remove('lg:col-span-1', 'md:col-span-1');
-        sidebar.classList.add('lg:col-span-2', 'md:col-span-3');
-
-        mainContentEl.classList.remove('lg:col-span-8', 'md:col-span-11');
-        mainContentEl.classList.add('lg:col-span-7', 'md:col-span-9');
-    }
-});
-
+    // --- أضف هذا الكود بعد تعريف appContainer ---
 // --- منطق التنقل في الشريط الجانبي ---
 const navItems = document.querySelectorAll('.nav-item');
-const mainContent = document.querySelector('main');
+const mainContent = document.querySelector('main'); // استهداف المنطقة الرئيسية
 
+// دالة لتنشيط زر "الرئيسية" افتراضيًا
 function activateHomeButton() {
     navItems.forEach(i => i.classList.remove('bg-purple-600', 'text-white'));
     const homeButton = document.querySelector('a[href="#arena"]');
-    if (homeButton) homeButton.classList.add('bg-purple-600', 'text-white');
+    if (homeButton) {
+        homeButton.classList.add('bg-purple-600', 'text-white');
+    }
 }
 
 navItems.forEach(item => {
     item.addEventListener('click', (e) => {
         e.preventDefault();
+
         navItems.forEach(i => i.classList.remove('bg-purple-600', 'text-white'));
         item.classList.add('bg-purple-600', 'text-white');
+
         const targetId = item.getAttribute('href').substring(1);
+        
         if (targetId === 'settings') {
             showSettingsView();
         } else {
@@ -69,65 +36,89 @@ navItems.forEach(item => {
     });
 });
 
-// دالة لعرض الإعدادات (مع إصلاحات التصميم)
+// دالة لعرض محتوى الإعدادات (النسخة النهائية مع رفع الصور)
 function showSettingsView() {
-    document.getElementById('chat-panel').classList.add('hidden'); // إخفاء الدردشة
     mainContent.innerHTML = `
         <div class="p-4">
             <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
+            
+            <!-- قسم تغيير الصورة الشخصية -->
             <div class="bg-gray-800/50 p-6 rounded-xl mb-6 text-center">
                 <h3 class="text-lg font-bold mb-4">تغيير الصورة الشخصية</h3>
                 <img id="settings-profile-image" src="${user.profileImage}" class="w-32 h-32 rounded-full mx-auto border-4 border-purple-500 mb-4 object-cover">
                 <form id="image-upload-form">
                     <input type="file" id="image-file-input" name="profileImage" class="hidden" accept="image/*">
-                    <div class="flex justify-center items-center gap-4 mt-4">
-                        <button type="button" id="select-image-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">اختيار صورة...</button>
-                        <button type="submit" id="upload-image-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg hidden"><i class="fas fa-upload mr-2"></i>رفع وحفظ</button>
-                    </div>
+                    <button type="button" id="select-image-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
+                        اختيار صورة...
+                    </button>
+                    <button type="submit" id="upload-image-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg hidden">
+                        <i class="fas fa-upload mr-2"></i>رفع وحفظ
+                    </button>
                 </form>
             </div>
+
+            <!-- قسم تغيير اسم المستخدم -->
             <div class="bg-gray-800/50 p-6 rounded-xl">
                 <h3 class="text-lg font-bold mb-4">تغيير اسم المستخدم</h3>
-                <form id="username-update-form" class="flex flex-col sm:flex-row items-center gap-4">
-                    <input type="text" id="username-input" value="${user.username}" class="w-full sm:flex-grow bg-gray-700 border border-gray-600 rounded-lg p-2">
-                    <button type="submit" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">حفظ</button>
+                <form id="username-update-form" class="flex items-center gap-4">
+                    <input type="text" id="username-input" value="${user.username}" class="flex-grow bg-gray-700 border border-gray-600 rounded-lg p-2">
+                    <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">حفظ</button>
                 </form>
             </div>
         </div>
     `;
-    document.getElementById('select-image-btn').addEventListener('click', () => document.getElementById('image-file-input').click());
+
+    // --- ربط الأحداث الجديدة ---
+    document.getElementById('select-image-btn').addEventListener('click', () => {
+        document.getElementById('image-file-input').click();
+    });
+
     document.getElementById('image-file-input').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
             const reader = new FileReader();
-            reader.onload = (event) => { document.getElementById('settings-profile-image').src = event.target.result; };
+            reader.onload = (event) => {
+                document.getElementById('settings-profile-image').src = event.target.result;
+            };
             reader.readAsDataURL(file);
             document.getElementById('upload-image-btn').classList.remove('hidden');
         }
     });
+
     document.getElementById('image-upload-form').addEventListener('submit', handleImageUpload);
     document.getElementById('username-update-form').addEventListener('submit', handleUsernameUpdate);
 }
 
-// دالة لعرض ساحة التحديات
+// دالة لإعادة عرض ساحة التحديات
 function showArenaView() {
-    document.getElementById('chat-panel').classList.remove('hidden'); // إظهار الدردشة
     mainContent.innerHTML = `
         <div class="flex justify-between items-center mb-4">
             <h2 class="text-xl font-bold"><i class="fas fa-gamepad"></i> ساحة التحديات</h2>
-            <button id="create-battle-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><i class="fas fa-plus"></i><span>إنشاء تحدي</span></button>
+            <button id="create-battle-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
+                <i class="fas fa-plus"></i>
+                <span>إنشاء تحدي</span>
+            </button>
         </div>
         <div id="battle-rooms-container" class="flex-grow overflow-y-auto space-y-3 pr-2">
-            <div id="battles-empty-state" class="text-center text-gray-400 py-10 hidden"><i class="fas fa-ghost text-4xl mb-4"></i><p>لا توجد تحديات متاحة حالياً.</p></div>
-            <div id="battles-loading-state" class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-4xl mb-4"></i><p>جاري تحميل التحديات...</p></div>
+            <div id="battles-empty-state" class="text-center text-gray-400 py-10 hidden">
+                <i class="fas fa-ghost text-4xl mb-4"></i>
+                <p>لا توجد تحديات متاحة حالياً. كن أول من يبدأ!</p>
+            </div>
+            <div id="battles-loading-state" class="text-center text-gray-400 py-10">
+                <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
+                <p>جاري تحميل التحديات...</p>
+            </div>
         </div>
         <div class="mt-4 pt-4 border-t border-gray-700">
             <h3 class="font-bold mb-3">🎤 غرفة الصوت</h3>
-            <div id="voice-chat-grid" class="grid grid-cols-9 gap-3"></div>
+            <div id="voice-chat-grid" class="grid grid-cols-9 gap-3">
+            </div>
         </div>
     `;
+    // إعادة ربط الأحداث وتحميل البيانات
     document.getElementById('create-battle-btn').addEventListener('click', showCreateBattleModal);
     loadAvailableBattles();
+    // إعادة إنشاء مقاعد الصوت
     const voiceGrid = document.getElementById('voice-chat-grid');
     for (let i = 1; i <= 27; i++) {
         const seat = document.createElement('div');
@@ -141,9 +132,9 @@ function showArenaView() {
         seat.dataset.seat = i;
         voiceGrid.appendChild(seat);
     }
+    // إعادة تنشيط زر الرئيسية
     activateHomeButton();
 }
-
 
 // دالة جديدة لمعالجة رفع الصورة
 async function handleImageUpload(e) {
