@@ -72,50 +72,54 @@ navItems.forEach(item => {
 
 // دالة لعرض محتوى الإعدادات (النسخة النهائية مع رفع الصور)
 function showSettingsView() {
-    mainContent.innerHTML = `
-        <div class="p-4">
-            <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
-            
-            <!-- قسم تغيير الصورة الشخصية -->
-            <div class="bg-gray-800/50 p-6 rounded-xl mb-6 text-center">
-                <h3 class="text-lg font-bold mb-4">تغيير الصورة الشخصية</h3>
-                <img id="settings-profile-image" src="${user.profileImage}" class="w-32 h-32 rounded-full mx-auto border-4 border-purple-500 mb-4 object-cover">
-                <form id="image-upload-form">
-                    <input type="file" id="image-file-input" name="profileImage" class="hidden" accept="image/*">
+    // --- داخل دالة showSettingsView، استبدل mainContent.innerHTML بهذا ---
+mainContent.innerHTML = `
+    <div class="p-4">
+        <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
+        
+        <!-- قسم تغيير الصورة الشخصية -->
+        <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6 text-center">
+            <h3 class="text-lg font-bold mb-4">تغيير الصورة الشخصية</h3>
+            <img id="settings-profile-image" src="${user.profileImage}" class="w-32 h-32 rounded-full mx-auto border-4 border-purple-500 mb-4 object-cover">
+            <form id="image-upload-form">
+                <input type="file" id="image-file-input" name="profileImage" class="hidden" accept="image/*">
+                <!-- ✅ الإصلاح: وضع الأزرار في حاوية flex -->
+                <div class="flex justify-center items-center gap-4 mt-4">
                     <button type="button" id="select-image-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
                         اختيار صورة...
                     </button>
                     <button type="submit" id="upload-image-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg hidden">
                         <i class="fas fa-upload mr-2"></i>رفع وحفظ
                     </button>
-                </form>
-            </div>
-
-            <!-- قسم تغيير اسم المستخدم -->
-            <div class="bg-gray-800/50 p-6 rounded-xl">
-                <h3 class="text-lg font-bold mb-4">تغيير اسم المستخدم</h3>
-                <form id="username-update-form" class="flex items-center gap-4">
-                    <input type="text" id="username-input" value="${user.username}" class="flex-grow bg-gray-700 border border-gray-600 rounded-lg p-2">
-                    <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">حفظ</button>
-                </form>
-            </div>
+                </div>
+            </form>
         </div>
-       
-        <!-- ✅ قسم جديد: تغيير كلمة المرور -->
-        <div class="bg-gray-800/50 p-6 rounded-xl mt-6">
+
+        <!-- قسم تغيير اسم المستخدم -->
+        <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6">
+            <h3 class="text-lg font-bold mb-4">تغيير اسم المستخدم</h3>
+            <!-- ✅ الإصلاح: استخدام flex-col للشاشات الصغيرة و flex-row للكبيرة -->
+            <form id="username-update-form" class="flex flex-col sm:flex-row items-center gap-4">
+                <input type="text" id="username-input" value="${user.username}" class="w-full sm:flex-grow bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2">
+                <button type="submit" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">حفظ</button>
+            </form>
+        </div>
+
+        <!-- قسم تغيير كلمة المرور -->
+        <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl">
             <h3 class="text-lg font-bold mb-4">تغيير كلمة المرور</h3>
             <form id="password-update-form" class="space-y-4">
                 <div>
-                    <label for="current-password" class="block text-sm font-medium text-gray-300 mb-1">كلمة المرور الحالية</label>
-                    <input type="password" id="current-password" required class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2">
+                    <label for="current-password" class="block text-sm font-medium mb-1">كلمة المرور الحالية</label>
+                    <input type="password" id="current-password" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2">
                 </div>
                 <div>
-                    <label for="new-password" class="block text-sm font-medium text-gray-300 mb-1">كلمة المرور الجديدة</label>
-                    <input type="password" id="new-password" required class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2">
+                    <label for="new-password" class="block text-sm font-medium mb-1">كلمة المرور الجديدة</label>
+                    <input type="password" id="new-password" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2">
                 </div>
                 <div>
-                    <label for="new-password-confirm" class="block text-sm font-medium text-gray-300 mb-1">تأكيد كلمة المرور الجديدة</label>
-                    <input type="password" id="new-password-confirm" required class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2">
+                    <label for="new-password-confirm" class="block text-sm font-medium mb-1">تأكيد كلمة المرور الجديدة</label>
+                    <input type="password" id="new-password-confirm" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2">
                 </div>
                 <div class="pt-2">
                     <button type="submit" class="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">تحديث كلمة المرور</button>
@@ -123,8 +127,8 @@ function showSettingsView() {
             </form>
         </div>
     </div>
- 
-    `;
+`;
+
 
     // --- ربط الأحداث الجديدة ---
     document.getElementById('select-image-btn').addEventListener('click', () => {
