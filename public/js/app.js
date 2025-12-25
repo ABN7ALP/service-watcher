@@ -596,15 +596,15 @@ function displayMessage(message) {
         }
     });
 
-    function showCreateBattleModal() {
-        const modal = document.createElement('div');
-        modal.id = 'create-battle-modal';
-        modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50';
-        // --- داخل دالة showCreateBattleModal، استبدل modalHTML بهذا ---
-const modalHTML = `
-    <div id="create-battle-modal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-        <!-- ✅ الإصلاح: إضافة فئات الوضع الداكن/الفاتح -->
-        <div class="bg-gray-200 dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm text-gray-800 dark:text-white">
+    // --- استبدل دالة showCreateBattleModal بالكامل بهذه النسخة ---
+
+function showCreateBattleModal() {
+    const modal = document.createElement('div');
+    modal.id = 'create-battle-modal';
+    modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50';
+    
+    const modalHTML = `
+        <div class="bg-gray-200 dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm text-gray-800 dark:text-white transition-colors duration-300">
             <h3 class="text-lg font-bold mb-4">إنشاء تحدي جديد</h3>
             <form id="create-battle-form" class="space-y-4">
                 <div>
@@ -633,21 +633,40 @@ const modalHTML = `
                 </div>
             </form>
         </div>
-    </div>
-`;
+    `;
+    
+    modal.innerHTML = modalHTML;
+    document.body.appendChild(modal);
 
-        document.body.appendChild(modal);
+    // --- ✅✅ الإصلاح هنا: الكود المحدث لربط الأحداث ---
+    // ربط الأحداث بعد إضافة النافذة إلى DOM
+    const cancelButton = modal.querySelector('#cancel-create-battle');
+    const battleForm = modal.querySelector('#create-battle-form');
+    const privateCheckbox = modal.querySelector('#isPrivate');
 
-        document.getElementById('isPrivate').addEventListener('change', (e) => {
-            document.getElementById('password-field').classList.toggle('hidden', !e.target.checked);
+    if (cancelButton) {
+        cancelButton.addEventListener('click', () => modal.remove());
+    }
+    
+    // إغلاق النافذة عند النقر على الخلفية
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'create-battle-modal') {
+            modal.remove();
+        }
+    });
+
+    if (privateCheckbox) {
+        privateCheckbox.addEventListener('change', (e) => {
+            modal.querySelector('#password-field').classList.toggle('hidden', !e.target.checked);
         });
-        document.getElementById('cancel-create-battle').addEventListener('click', () => modal.remove());
-        modal.addEventListener('click', (e) => { if (e.target.id === 'create-battle-modal') modal.remove(); });
-        
-        document.getElementById('create-battle-form').addEventListener('submit', async (e) => {
+    }
+
+    if (battleForm) {
+        battleForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
             const data = Object.fromEntries(formData.entries());
+            
             data.betAmount = parseFloat(data.betAmount);
             data.isPrivate = data.isPrivate === 'on';
 
@@ -663,10 +682,14 @@ const modalHTML = `
             try {
                 const response = await fetch('/api/battles', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
                     body: JSON.stringify(data)
                 });
                 const result = await response.json();
+
                 if (response.ok && result.status === 'success') {
                     showNotification('تم إنشاء التحدي بنجاح!', 'success');
                     modal.remove();
@@ -678,6 +701,8 @@ const modalHTML = `
             }
         });
     }
+}
+
     document.getElementById('create-battle-btn').addEventListener('click', showCreateBattleModal);
 
     socket.on('newBattle', (battle) => {
