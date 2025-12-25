@@ -6,65 +6,87 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // --- أضف هذا الكود بعد تعريف appContainer ---
-
 // --- منطق التنقل في الشريط الجانبي ---
 const navItems = document.querySelectorAll('.nav-item');
 const mainContent = document.querySelector('main'); // استهداف المنطقة الرئيسية
+
+// دالة لتنشيط زر "الرئيسية" افتراضيًا
+function activateHomeButton() {
+    navItems.forEach(i => i.classList.remove('bg-purple-600', 'text-white'));
+    const homeButton = document.querySelector('a[href="#arena"]');
+    if (homeButton) {
+        homeButton.classList.add('bg-purple-600', 'text-white');
+    }
+}
 
 navItems.forEach(item => {
     item.addEventListener('click', (e) => {
         e.preventDefault();
 
-        // إزالة التحديد من كل الأزرار
         navItems.forEach(i => i.classList.remove('bg-purple-600', 'text-white'));
-        // إضافة التحديد للزر المضغوط
         item.classList.add('bg-purple-600', 'text-white');
 
-        const targetId = item.getAttribute('href').substring(1); // الحصول على ID (مثال: 'settings')
+        const targetId = item.getAttribute('href').substring(1);
         
-        // عرض المحتوى المناسب
         if (targetId === 'settings') {
             showSettingsView();
         } else {
-            // يمكنك إضافة منطق للصفحات الأخرى هنا مستقبلاً
-            // حاليًا، سنعيد عرض ساحة التحديات
-            showArenaView(); 
+            showArenaView();
         }
     });
 });
 
-// دالة لعرض محتوى الإعدادات
+// دالة لعرض محتوى الإعدادات (النسخة النهائية مع رفع الصور)
 function showSettingsView() {
     mainContent.innerHTML = `
         <div class="p-4">
             <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
             
-            <!-- قسم تغيير معلومات الحساب -->
-            <div class="bg-gray-800/50 p-6 rounded-xl mb-6">
-                <h3 class="text-lg font-bold mb-4">تعديل الملف الشخصي</h3>
-                <form id="profile-settings-form" class="space-y-4">
-                    <div>
-                        <label for="username-input" class="block text-sm font-medium text-gray-300 mb-1">اسم المستخدم</label>
-                        <input type="text" id="username-input" value="${user.username}" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2">
-                    </div>
-                    <div>
-                        <label for="profile-image-input" class="block text-sm font-medium text-gray-300 mb-1">رابط الصورة الشخصية</label>
-                        <input type="url" id="profile-image-input" value="${user.profileImage}" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2">
-                    </div>
-                    <div class="pt-2">
-                        <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">
-                            حفظ التغييرات
-                        </button>
-                    </div>
+            <!-- قسم تغيير الصورة الشخصية -->
+            <div class="bg-gray-800/50 p-6 rounded-xl mb-6 text-center">
+                <h3 class="text-lg font-bold mb-4">تغيير الصورة الشخصية</h3>
+                <img id="settings-profile-image" src="${user.profileImage}" class="w-32 h-32 rounded-full mx-auto border-4 border-purple-500 mb-4 object-cover">
+                <form id="image-upload-form">
+                    <input type="file" id="image-file-input" name="profileImage" class="hidden" accept="image/*">
+                    <button type="button" id="select-image-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
+                        اختيار صورة...
+                    </button>
+                    <button type="submit" id="upload-image-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg hidden">
+                        <i class="fas fa-upload mr-2"></i>رفع وحفظ
+                    </button>
                 </form>
             </div>
 
-            <!-- يمكنك إضافة قسم تغيير كلمة المرور هنا لاحقًا -->
+            <!-- قسم تغيير اسم المستخدم -->
+            <div class="bg-gray-800/50 p-6 rounded-xl">
+                <h3 class="text-lg font-bold mb-4">تغيير اسم المستخدم</h3>
+                <form id="username-update-form" class="flex items-center gap-4">
+                    <input type="text" id="username-input" value="${user.username}" class="flex-grow bg-gray-700 border border-gray-600 rounded-lg p-2">
+                    <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">حفظ</button>
+                </form>
+            </div>
         </div>
     `;
 
-    // ربط حدث الحفظ
-    document.getElementById('profile-settings-form').addEventListener('submit', handleProfileUpdate);
+    // --- ربط الأحداث الجديدة ---
+    document.getElementById('select-image-btn').addEventListener('click', () => {
+        document.getElementById('image-file-input').click();
+    });
+
+    document.getElementById('image-file-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                document.getElementById('settings-profile-image').src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+            document.getElementById('upload-image-btn').classList.remove('hidden');
+        }
+    });
+
+    document.getElementById('image-upload-form').addEventListener('submit', handleImageUpload);
+    document.getElementById('username-update-form').addEventListener('submit', handleUsernameUpdate);
 }
 
 // دالة لإعادة عرض ساحة التحديات
@@ -90,7 +112,6 @@ function showArenaView() {
         <div class="mt-4 pt-4 border-t border-gray-700">
             <h3 class="font-bold mb-3">🎤 غرفة الصوت</h3>
             <div id="voice-chat-grid" class="grid grid-cols-9 gap-3">
-                <!-- ... مقاعد الصوت ... -->
             </div>
         </div>
     `;
@@ -111,42 +132,71 @@ function showArenaView() {
         seat.dataset.seat = i;
         voiceGrid.appendChild(seat);
     }
+    // إعادة تنشيط زر الرئيسية
+    activateHomeButton();
 }
 
-// دالة لمعالجة تحديث الملف الشخصي
-async function handleProfileUpdate(e) {
+// دالة جديدة لمعالجة رفع الصورة
+async function handleImageUpload(e) {
     e.preventDefault();
-    const newUsername = document.getElementById('username-input').value;
-    const newProfileImage = document.getElementById('profile-image-input').value;
+    const fileInput = document.getElementById('image-file-input');
+    if (!fileInput.files || fileInput.files.length === 0) {
+        showNotification('الرجاء اختيار صورة أولاً.', 'error');
+        return;
+    }
 
-    const updatedData = {
-        username: newUsername,
-        profileImage: newProfileImage
-    };
+    const formData = new FormData();
+    formData.append('profileImage', fileInput.files[0]);
+
+    const uploadBtn = document.getElementById('upload-image-btn');
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>جاري الرفع...';
 
     try {
-        const response = await fetch('/api/users/updateMe', {
+        const response = await fetch('/api/users/updateProfilePicture', {
             method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(updatedData)
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData
         });
 
         const result = await response.json();
         if (response.ok) {
-            showNotification('تم تحديث ملفك الشخصي بنجاح!', 'success');
-            // تحديث البيانات في localStorage
+            showNotification('تم تحديث الصورة بنجاح!', 'success');
             const localUser = JSON.parse(localStorage.getItem('user'));
-            localUser.username = result.data.user.username;
             localUser.profileImage = result.data.user.profileImage;
             localStorage.setItem('user', JSON.stringify(localUser));
-            // تحديث الواجهة فورًا
-            document.getElementById('username').textContent = localUser.username;
-            document.getElementById('profileImage').src = localUser.profileImage;
+            document.getElementById('profileImage').src = localUser.profileImage; // تحديث الصورة في الشريط العلوي
+            uploadBtn.classList.add('hidden');
         } else {
-            showNotification(result.message || 'فشل تحديث الملف الشخصي', 'error');
+            showNotification(result.message || 'فشل رفع الصورة', 'error');
+        }
+    } catch (error) {
+        showNotification('خطأ في الاتصال بالخادم', 'error');
+    } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="fas fa-upload mr-2"></i>رفع وحفظ';
+    }
+}
+
+// دالة جديدة لمعالجة تحديث اسم المستخدم
+async function handleUsernameUpdate(e) {
+    e.preventDefault();
+    const newUsername = document.getElementById('username-input').value;
+    try {
+        const response = await fetch('/api/users/updateUsername', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ username: newUsername })
+        });
+        const result = await response.json();
+        if (response.ok) {
+            showNotification('تم تحديث اسم المستخدم بنجاح!', 'success');
+            const localUser = JSON.parse(localStorage.getItem('user'));
+            localUser.username = result.data.user.username;
+            localStorage.setItem('user', JSON.stringify(localUser));
+            document.getElementById('username').textContent = localUser.username; // تحديث الاسم في الشريط العلوي
+        } else {
+            showNotification(result.message || 'فشل تحديث اسم المستخدم', 'error');
         }
     } catch (error) {
         showNotification('خطأ في الاتصال بالخادم', 'error');
