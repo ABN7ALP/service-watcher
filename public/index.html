@@ -32,12 +32,12 @@
             </header>
 
             <!-- Main Content -->
-            <!-- استبدل قسم Main Content بالكامل بهذا -->
-<div id="main-grid" class="grid grid-cols-[auto,1fr,auto] gap-4 transition-all duration-300">
+            <!-- استبدل قسم Main Content بالكامل بهذا الهيكل الأصلي -->
+<div class="grid grid-cols-12 gap-4">
     <!-- Sidebar (Right) -->
-    <aside id="sidebar" class="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 flex flex-col transition-all duration-300 w-64">
+    <aside id="sidebar" class="col-span-12 md:col-span-3 lg:col-span-2 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 relative transition-all duration-300">
         <!-- زر الطي/الفتح -->
-        <button id="sidebar-toggle" class="absolute -left-3 top-1/2 transform -translate-y-1/2 bg-purple-600 w-6 h-10 rounded-r-lg focus:outline-none">
+        <button id="sidebar-toggle" class="absolute -left-3 top-1/2 transform -translate-y-1/2 bg-purple-600 w-6 h-10 rounded-r-lg focus:outline-none z-10">
             <i id="toggle-icon" class="fas fa-chevron-right"></i>
         </button>
 
@@ -56,9 +56,10 @@
     </aside>
 
     <!-- Main View (Center) -->
-    <main class="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 flex flex-col">
+    <main id="main-content" class="col-span-12 md:col-span-9 lg:col-span-7 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 flex flex-col">
         <!-- سيتم حقن المحتوى هنا بواسطة JS -->
     </main>
+
 
     <!-- Chat Panel (Left) -->
     <aside id="chat-panel" class="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 flex flex-col h-[85vh] w-80">
