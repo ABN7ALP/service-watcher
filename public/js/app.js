@@ -5,6 +5,40 @@ document.addEventListener('DOMContentLoaded', () => {
     const appContainer = document.getElementById('app-container');
 
 
+
+    const themeToggleBtn = document.createElement('button');
+themeToggleBtn.innerHTML = '<i class="fas fa-sun"></i>';
+themeToggleBtn.className = 'fixed bottom-4 left-4 bg-gray-700 w-12 h-12 rounded-full text-yellow-400 text-xl flex items-center justify-center shadow-lg z-20';
+document.body.appendChild(themeToggleBtn);
+
+const userTheme = localStorage.getItem('theme');
+const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+const themeCheck = () => {
+    if (userTheme === 'dark' || (!userTheme && systemTheme)) {
+        document.documentElement.classList.add('dark');
+        themeToggleBtn.innerHTML = '<i class="fas fa-moon"></i>';
+        return;
+    }
+    document.documentElement.classList.remove('dark');
+    themeToggleBtn.innerHTML = '<i class="fas fa-sun"></i>';
+};
+
+const themeSwitch = () => {
+    if (document.documentElement.classList.contains('dark')) {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+    } else {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+    }
+    themeCheck();
+};
+
+themeToggleBtn.addEventListener('click', themeSwitch);
+themeCheck(); // تطبيق الثيم عند تحميل الصفحة
+
+
     // --- أضف هذا الكود بعد تعريف appContainer ---
 // --- منطق التنقل في الشريط الجانبي ---
 const navItems = document.querySelectorAll('.nav-item');
