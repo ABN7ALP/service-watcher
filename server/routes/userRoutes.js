@@ -10,10 +10,12 @@ const router = express.Router();
 // حماية جميع المسارات التالية
 router.use(authMiddleware);
 
-// ✅✅ الإصلاح: استخدام اسم الدالة الصحيح 'updateUsername'
+// مسار لتحديث اسم المستخدم
+// Express سيبحث عن خاصية 'updateUsername' في الكائن الذي تم تصديره من userController
 router.patch('/updateUsername', userController.updateUsername);
 
-// ✅✅ الإصلاح: استخدام اسم الدالة الصحيح 'updateProfilePicture'
+// مسار لتحديث الصورة الشخصية
+// سيتم تنفيذ 'upload' أولاً، ثم 'updateProfilePicture'
 router.patch('/updateProfilePicture', upload, userController.updateProfilePicture);
 
 module.exports = router;
