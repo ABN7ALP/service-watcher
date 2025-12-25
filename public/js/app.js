@@ -66,11 +66,37 @@ function showSettingsView() {
                 </form>
             </div>
         </div>
+       
+        <!-- ✅ قسم جديد: تغيير كلمة المرور -->
+        <div class="bg-gray-800/50 p-6 rounded-xl mt-6">
+            <h3 class="text-lg font-bold mb-4">تغيير كلمة المرور</h3>
+            <form id="password-update-form" class="space-y-4">
+                <div>
+                    <label for="current-password" class="block text-sm font-medium text-gray-300 mb-1">كلمة المرور الحالية</label>
+                    <input type="password" id="current-password" required class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2">
+                </div>
+                <div>
+                    <label for="new-password" class="block text-sm font-medium text-gray-300 mb-1">كلمة المرور الجديدة</label>
+                    <input type="password" id="new-password" required class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2">
+                </div>
+                <div>
+                    <label for="new-password-confirm" class="block text-sm font-medium text-gray-300 mb-1">تأكيد كلمة المرور الجديدة</label>
+                    <input type="password" id="new-password-confirm" required class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2">
+                </div>
+                <div class="pt-2">
+                    <button type="submit" class="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">تحديث كلمة المرور</button>
+                </div>
+            </form>
+        </div>
+    </div>
+ 
     `;
 
     // --- ربط الأحداث الجديدة ---
     document.getElementById('select-image-btn').addEventListener('click', () => {
         document.getElementById('image-file-input').click();
+        
+        
     });
 
     document.getElementById('image-file-input').addEventListener('change', (e) => {
@@ -87,6 +113,7 @@ function showSettingsView() {
 
     document.getElementById('image-upload-form').addEventListener('submit', handleImageUpload);
     document.getElementById('username-update-form').addEventListener('submit', handleUsernameUpdate);
+    document.getElementById('password-update-form').addEventListener('submit', handlePasswordUpdate);
 }
 
 // دالة لإعادة عرض ساحة التحديات
@@ -760,5 +787,49 @@ function showReplyBar(message) {
     });
 }
 
+
+  // --- أضف هذه الدالة الجديدة في نهاية app.js ---
+async function handlePasswordUpdate(e) {
+    e.preventDefault();
+    const currentPassword = document.getElementById('current-password').value;
+    const newPassword = document.getElementById('new-password').value;
+    const newPasswordConfirm = document.getElementById('new-password-confirm').value;
+
+    if (newPassword.length < 6) {
+        showNotification('كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل.', 'error');
+        return;
+    }
+    if (newPassword !== newPasswordConfirm) {
+        showNotification('كلمتا المرور الجديدتان غير متطابقتين.', 'error');
+        return;
+    }
+
+    const updateBtn = e.target.querySelector('button[type="submit"]');
+    updateBtn.disabled = true;
+    updateBtn.textContent = 'جاري التحديث...';
+
+    try {
+        const response = await fetch('/api/auth/updateMyPassword', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ currentPassword, newPassword, newPasswordConfirm })
+        });
+        const result = await response.json();
+        if (response.ok) {
+            showNotification('تم تغيير كلمة المرور بنجاح!', 'success');
+            // تحديث التوكن المحلي بالتوكن الجديد
+            localStorage.setItem('token', result.token);
+            e.target.reset(); // تفريغ الحقول
+        } else {
+            showNotification(result.message || 'فشل تحديث كلمة المرور', 'error');
+        }
+    } catch (error) {
+        showNotification('خطأ في الاتصال بالخادم', 'error');
+    } finally {
+        updateBtn.disabled = false;
+        updateBtn.textContent = 'تحديث كلمة المرور';
+    }
+}
+  
 
 }); // نهاية document.addEventListener
