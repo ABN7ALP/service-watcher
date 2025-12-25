@@ -290,11 +290,27 @@ async function handleUsernameUpdate(e) {
     appContainer.classList.remove('hidden');
 
     // --- 3. تهيئة واجهة المستخدم ببيانات المستخدم ---
-    document.getElementById('username').textContent = user.username;
-    document.getElementById('balance').textContent = user.balance.toFixed(2);
-    document.getElementById('coins').textContent = user.coins;
-    document.getElementById('userLevel').textContent = `المستوى: ${user.level}`;
-    document.getElementById('profileImage').src = user.profileImage;
+    document.getElementById('username').textContent = user.username;  
+document.getElementById('balance').textContent = user.balance.toFixed(2);  
+document.getElementById('coins').textContent = user.coins;  
+document.getElementById('userLevel').textContent = `المستوى: ${user.level}`;  
+document.getElementById('profileImage').src = user.profileImage;
+// ✅ أضف هذا الكود
+document.getElementById('userAge').textContent = `العمر: ${user.age || '--'}`;
+document.getElementById('userCustomId').textContent = user.customId;
+
+// ✅ منطق نسخ الـ ID
+const copyIdBtn = document.getElementById('copy-id-btn');
+if (copyIdBtn) {
+    copyIdBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(user.customId).then(() => {
+            showNotification('تم نسخ الـ ID!', 'success');
+        }).catch(() => {
+            showNotification('فشل نسخ الـ ID', 'error');
+        });
+    });
+}
+
 
     // --- 4. إنشاء مقاعد الصوت ---
     const voiceGrid = document.getElementById('voice-chat-grid');
