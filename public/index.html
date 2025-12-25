@@ -7,34 +7,35 @@
     <link rel="stylesheet" href="/dist/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="bg-gray-900 text-white font-cairo">
+<body class="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-white font-cairo">
 
     <!-- ✅ شاشة تحميل أولية -->
-    <div id="loading-screen" class="fixed inset-0 bg-gray-900 flex flex-col items-center justify-center z-[100]">
+    <div id="loading-screen" class="fixed inset-0 bg-gray-100 dark:bg-gray-900 flex flex-col items-center justify-center z-[100]">
         <i class="fas fa-trophy text-yellow-400 text-6xl animate-bounce"></i>
-        <p class="mt-4 text-lg text-gray-300">جاري تحميل المنصة...</p>
+        <p class="mt-4 text-lg text-gray-600 dark:text-gray-300">جاري تحميل المنصة...</p>
     </div>
 
     <!-- ✅ المحتوى الرئيسي للتطبيق (مخفي افتراضياً) -->
     <div id="app-container" class="hidden">
         <div class="container mx-auto p-4">
             <!-- Header -->
-            <header class="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-lg p-4 flex justify-between items-center mb-4">
+            <header class="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-lg p-4 flex justify-between items-center mb-4">
                 <div class="logo flex items-center gap-3">
                     <i class="fas fa-trophy text-yellow-400 text-2xl"></i>
                     <span class="text-xl font-bold">منصة التحديات</span>
                 </div>
                 <div class="user-info flex items-center gap-4">
-                    <div class="balance bg-gray-700 px-3 py-1 rounded-full text-sm">💰 <span id="balance">0.00</span>$</div>
-                    <div class="coins bg-gray-700 px-3 py-1 rounded-full text-sm">🪙 <span id="coins">0</span></div>
-                    <button id="logoutBtn" class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded-full text-xs">خروج</button>
+                    <div class="balance bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-full text-sm">💰 <span id="balance">0.00</span>$</div>
+                    <div class="coins bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-full text-sm">🪙 <span id="coins">0</span></div>
+                    <button id="logoutBtn" class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded-full text-xs text-white">خروج</button>
                 </div>
             </header>
+
 
             <!-- Main Content -->
             <div class="grid grid-cols-12 gap-4">
                 <!-- Sidebar (Right) -->
-                <aside class="col-span-12 md:col-span-3 lg:col-span-2 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4">
+                <aside id="sidebar" class="col-span-12 md:col-span-3 lg:col-span-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 relative">
                     <div class="user-profile text-center mb-6">
                         <img id="profileImage" src="https://via.placeholder.com/80" alt="الصورة الشخصية" class="w-20 h-20 rounded-full mx-auto border-2 border-purple-500">
                         <h3 id="username" class="mt-2 font-bold">...</h3>
@@ -50,8 +51,7 @@
 
                 <!-- Main View (Center) -->
                 <!-- Main View (Center) -->
-<main class="col-span-12 md:col-span-9 lg:col-span-7 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 flex flex-col">
-    
+<main id="main-content" class="col-span-12 md:col-span-9 lg:col-span-7 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 flex flex-col"> 
     <!-- Battle Arena Header -->
     <div class="flex justify-between items-center mb-4">
         <h2 class="text-xl font-bold"><i class="fas fa-gamepad"></i> ساحة التحديات</h2>
@@ -89,27 +89,28 @@
 
 
                 <!-- Chat Panel (Left) -->
-                <aside class="col-span-12 lg:col-span-3 bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl p-4 flex flex-col h-[85vh]">
+                <aside id="chat-panel" class="col-span-12 lg:col-span-3 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 flex flex-col h-[85vh]">
                     <h3 class="font-bold mb-3">💬 الدردشة العامة</h3>
-                    <div id="chat-messages" class="flex-grow bg-gray-900/50 rounded-lg p-2 overflow-y-auto mb-3 min-h-[300px]">
+                    <div id="chat-messages" class="flex-grow bg-gray-200/50 dark:bg-gray-900/50 rounded-lg p-2 overflow-y-auto mb-3 min-h-[300px]">
                         <!-- Messages will appear here -->
                     </div>
                     <!-- استبدل قسم chat-input بهذا -->
                     <div class="chat-input-container">
-                       <div class="relative">
-                     <input type="text" id="messageInput" placeholder="اكتب رسالتك..." maxlength="300" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 pr-20 focus:ring-purple-500 focus:border-purple-500">
-                     <div id="char-counter" class="absolute top-1/2 left-2 transform -translate-y-1/2 text-xs text-gray-400">0/300</div>
-                   </div>
-                   <button id="sendBtn" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 mt-2 w-full rounded-lg flex items-center justify-center gap-2">
-                   <i class="fas fa-paper-plane"></i>
-                  <span>إرسال</span>
-                 </button>
-                 </div>
-
+                        <div  
+                        <div class="relative">
+                            <input type="text" id="messageInput" placeholder="اكتب رسالتك..." maxlength="300" class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2 pr-20 focus:ring-purple-500 focus:border-purple-500">
+                            <div id="char-counter" class="absolute top-1/2 left-2 transform -translate-y-1/2 text-xs text-gray-500 dark:text-gray-400">0/300</div>
+                        </div>
+                        <button id="sendBtn" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 mt-2 w-full rounded-lg flex items-center justify-center gap-2 text-white">
+                            <i class="fas fa-paper-plane"></i>
+                            <span>إرسال</span>
+                        </button>
+                    </div>
                 </aside>
             </div>
         </div>
     </div>
+
     
     <!-- Notification container -->
     <div id="notification-container" class="fixed top-5 right-5 z-50 space-y-2"></div>
