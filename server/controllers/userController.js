@@ -1,20 +1,65 @@
-//server/routes/userRoutes.js
+// ملف: server/controllers/userController.js
 
-const express = require('express');
-const userController = require('../controllers/userController');
-const authMiddleware = require('../middleware/authMiddleware');
-const { upload } = require('../utils/cloudinary'); // ✅ استيراد middleware الرفع
+const User = require('../models/User');
+const { cloudinary, deleteFromCloudinary, getPublicIdFromUrl } = require('../utils/cloudinary');
 
-const router = express.Router();
+// --- تعريف الدوال أولاً ---
 
-// حماية جميع المسارات التالية
-router.use(authMiddleware);
+const updateUsername = async (req, res) => {
+    try {
+        const { username } = req.body;
+        if (!username) {
+            return res.status(400).json({ status: 'fail', message: 'اسم المستخدم مطلوب.' });
+        }
+        const updatedUser = await User.findByIdAndUpdate(req.user.id, { username }, { new: true, runValidators: true });
+        res.status(200).json({ status: 'success', data: { user: updatedUser } });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: 'حدث خطأ أثناء تحديث اسم المستخدم.' });
+    }
+};
 
-// مسار لتحديث اسم المستخدم فقط
-router.patch('/updateUsername', userController.updateUsername);
+const updateProfilePicture = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ status: 'fail', message: 'الرجاء اختيار ملف صورة.' });
+        }
 
-// ✅ مسار جديد ومخصص لرفع الصورة الشخصية
-// سيتم تنفيذ middleware 'upload' أولاً، ثم 'updateProfilePicture'
-router.patch('/updateProfilePicture', upload, userController.updateProfilePicture);
+        const user = await User.findById(req.user.id);
+        if (user.profileImage && user.profileImage.includes('cloudinary')) {
+            const oldPublicId = getPublicIdFromUrl(user.profileImage);
+            if (oldPublicId) {
+                await deleteFromCloudinary(oldPublicId);
+            }
+        }
 
-module.exports = router;
+        const result = await new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+                {
+                    folder: 'battle_platform_users',
+                    public_id: req.user.id,
+                    overwrite: true,
+                    format: 'webp',
+                    transformation: [{ width: 200, height: 200, crop: 'fill', gravity: 'face' }]
+                },
+                (error, result) => {
+                    if (error) reject(error);
+                    else resolve(result);
+                }
+            );
+            uploadStream.end(req.file.buffer);
+        });
+
+        const updatedUser = await User.findByIdAndUpdate(req.user.id, { profileImage: result.secure_url }, { new: true });
+        res.status(200).json({ status: 'success', data: { user: updatedUser } });
+
+    } catch (error) {
+        console.error("Error in updateProfilePicture:", error);
+        res.status(500).json({ status: 'error', message: 'فشل رفع الصورة.' });
+    }
+};
+
+// --- ✅✅ التصدير في النهاية كمجموعة واحدة ---
+module.exports = {
+    updateUsername,
+    updateProfilePicture
+};
