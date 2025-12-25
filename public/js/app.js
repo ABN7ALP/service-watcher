@@ -6,37 +6,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-    const themeToggleBtn = document.createElement('button');
+    // --- استبدل قسم "منطق الوضع الداكن/الفاتح" بالكامل بهذا ---
+
+const themeToggleBtn = document.createElement('button');
 themeToggleBtn.innerHTML = '<i class="fas fa-sun"></i>';
-themeToggleBtn.className = 'fixed bottom-4 left-4 bg-gray-700 w-12 h-12 rounded-full text-yellow-400 text-xl flex items-center justify-center shadow-lg z-20';
+themeToggleBtn.className = 'fixed bottom-4 left-4 bg-gray-200 dark:bg-gray-700 w-12 h-12 rounded-full text-yellow-400 text-xl flex items-center justify-center shadow-lg z-20 transition-colors duration-300';
 document.body.appendChild(themeToggleBtn);
 
-const userTheme = localStorage.getItem('theme');
-const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-const themeCheck = () => {
-    if (userTheme === 'dark' || (!userTheme && systemTheme)) {
-        document.documentElement.classList.add('dark');
+// دالة لتطبيق الثيم بناءً على الحالة الحالية
+const applyTheme = () => {
+    const isDark = document.documentElement.classList.contains('dark');
+    if (isDark) {
         themeToggleBtn.innerHTML = '<i class="fas fa-moon"></i>';
-        return;
-    }
-    document.documentElement.classList.remove('dark');
-    themeToggleBtn.innerHTML = '<i class="fas fa-sun"></i>';
-};
-
-const themeSwitch = () => {
-    if (document.documentElement.classList.contains('dark')) {
-        document.documentElement.classList.remove('dark');
-        localStorage.setItem('theme', 'light');
     } else {
-        document.documentElement.classList.add('dark');
-        localStorage.setItem('theme', 'dark');
+        themeToggleBtn.innerHTML = '<i class="fas fa-sun"></i>';
     }
-    themeCheck();
 };
 
-themeToggleBtn.addEventListener('click', themeSwitch);
-themeCheck(); // تطبيق الثيم عند تحميل الصفحة
+// دالة لتبديل الثيم
+const toggleTheme = () => {
+    const isDark = document.documentElement.classList.toggle('dark');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    applyTheme();
+};
+
+// عند تحميل الصفحة، تحقق من الثيم المحفوظ أو ثيم النظام
+(() => {
+    const savedTheme = localStorage.getItem('theme');
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (savedTheme === 'dark' || (!savedTheme && systemPrefersDark)) {
+        document.documentElement.classList.add('dark');
+    } else {
+        document.documentElement.classList.remove('dark');
+    }
+    applyTheme();
+})();
+
+themeToggleBtn.addEventListener('click', toggleTheme);
+
 
 
     // --- أضف هذا الكود بعد تعريف appContainer ---
@@ -593,37 +600,42 @@ function displayMessage(message) {
         const modal = document.createElement('div');
         modal.id = 'create-battle-modal';
         modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50';
-        modal.innerHTML = `
-            <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm">
-                <h3 class="text-lg font-bold mb-4">إنشاء تحدي جديد</h3>
-                <form id="create-battle-form" class="space-y-4">
-                    <div>
-                        <label class="text-sm">نوع التحدي</label>
-                        <select name="type" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
-                            <option value="1v1">1 ضد 1</option>
-                            <option value="2v2">2 ضد 2</option>
-                            <option value="4v4">4 ضد 4</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="text-sm">مبلغ الرهان ($)</label>
-                        <input type="number" name="betAmount" value="1" min="1" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
-                    </div>
-                    <div class="flex items-center">
-                        <input type="checkbox" id="isPrivate" name="isPrivate" class="w-4 h-4 rounded">
-                        <label for="isPrivate" class="mr-2 text-sm">تحدي خاص</label>
-                    </div>
-                    <div id="password-field" class="hidden">
-                        <label class="text-sm">كلمة المرور</label>
-                        <input type="password" name="password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
-                    </div>
-                    <div class="flex justify-end gap-3 pt-4">
-                        <button type="button" id="cancel-create-battle" class="bg-gray-600 hover:bg-gray-700 py-2 px-4 rounded-lg">إلغاء</button>
-                        <button type="submit" class="bg-purple-600 hover:bg-purple-700 py-2 px-4 rounded-lg">تأكيد</button>
-                    </div>
-                </form>
-            </div>
-        `;
+        // --- داخل دالة showCreateBattleModal، استبدل modalHTML بهذا ---
+const modalHTML = `
+    <div id="create-battle-modal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <!-- ✅ الإصلاح: إضافة فئات الوضع الداكن/الفاتح -->
+        <div class="bg-gray-200 dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm text-gray-800 dark:text-white">
+            <h3 class="text-lg font-bold mb-4">إنشاء تحدي جديد</h3>
+            <form id="create-battle-form" class="space-y-4">
+                <div>
+                    <label class="text-sm">نوع التحدي</label>
+                    <select name="type" class="w-full bg-gray-300 dark:bg-gray-700 border border-gray-400 dark:border-gray-600 rounded-lg p-2 mt-1 transition-colors duration-300">
+                        <option value="1v1">1 ضد 1</option>
+                        <option value="2v2">2 ضد 2</option>
+                        <option value="4v4">4 ضد 4</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-sm">مبلغ الرهان ($)</label>
+                    <input type="number" name="betAmount" value="1" min="1" class="w-full bg-gray-300 dark:bg-gray-700 border border-gray-400 dark:border-gray-600 rounded-lg p-2 mt-1 transition-colors duration-300">
+                </div>
+                <div class="flex items-center">
+                    <input type="checkbox" id="isPrivate" name="isPrivate" class="w-4 h-4 rounded">
+                    <label for="isPrivate" class="mr-2 text-sm">تحدي خاص</label>
+                </div>
+                <div id="password-field" class="hidden">
+                    <label class="text-sm">كلمة المرور</label>
+                    <input type="password" name="password" class="w-full bg-gray-300 dark:bg-gray-700 border border-gray-400 dark:border-gray-600 rounded-lg p-2 mt-1 transition-colors duration-300">
+                </div>
+                <div class="flex justify-end gap-3 pt-4">
+                    <button type="button" id="cancel-create-battle" class="bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg">إلغاء</button>
+                    <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg">تأكيد</button>
+                </div>
+            </form>
+        </div>
+    </div>
+`;
+
         document.body.appendChild(modal);
 
         document.getElementById('isPrivate').addEventListener('change', (e) => {
