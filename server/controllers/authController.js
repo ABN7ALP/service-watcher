@@ -84,29 +84,44 @@ exports.register = async (req, res) => {
 
 
 // --- تسجيل الدخول ---
-exports.login = async (req, res, next) => {
+// --- استبدل دالة login بالكامل في authController.js ---
+exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
+        // 1. التحقق من وجود email و password
         if (!email || !password) {
-            return res.status(400).json({ status: 'fail', message: 'يرجى تقديم البريد الإلكتروني وكلمة المرور' });
+            return res.status(400).json({ status: 'fail', message: 'الرجاء إدخال البريد الإلكتروني وكلمة المرور.' });
         }
 
-        // 1) البحث عن المستخدم وإرجاع كلمة المرور للتحقق
+        // 2. التحقق من وجود المستخدم وكلمة المرور
+        // ✅ نستخدم .populate() هنا لضمان الحصول على كل البيانات الافتراضية (virtuals) مثل 'age'
         const user = await User.findOne({ email }).select('+password');
 
-        // 2) التحقق من وجود المستخدم وصحة كلمة المرور
         if (!user || !(await user.comparePassword(password))) {
-            return res.status(401).json({ status: 'fail', message: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' });
+            return res.status(401).json({ status: 'fail', message: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' });
         }
 
-        // 3) إذا كان كل شيء صحيحاً، أرسل التوكن
-        createSendToken(user, 200, res);
+        // 3. إذا كان كل شيء صحيحًا، أرسل التوكن إلى العميل
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+            expiresIn: process.env.JWT_EXPIRES_IN || '90d'
+        });
 
+        // إزالة كلمة المرور من المخرجات
+        user.password = undefined;
+
+        res.status(200).json({
+            status: 'success',
+            token,
+            data: {
+                user // ✅ إرجاع كائن المستخدم الكامل
+            }
+        });
     } catch (error) {
-        next(error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ ما.' });
     }
 };
+
 // --- أضف هذه الدالة الجديدة في authController.js ---
 
 exports.updatePassword = async (req, res) => {
