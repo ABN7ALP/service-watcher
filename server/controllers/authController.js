@@ -26,6 +26,9 @@ const createSendToken = (user, statusCode, res) => {
 
 // --- إنشاء حساب جديد ---
 exports.register = async (req, res, next) => {
+    console.log('--- Received Registration Request ---'); // ✅ سطر تشخيصي 1
+    console.log('Request Body:', req.body);             // ✅ سطر تشخيصي 2
+    
     try {
         const { username, email, password } = req.body;
 
@@ -48,6 +51,8 @@ exports.register = async (req, res, next) => {
         createSendToken(newUser, 201, res);
 
     } catch (error) {
+        console.error('--- Registration Error ---', error); // ✅ سطر تشخيصي 3
+        
         // معالجة خطأ تكرار اسم المستخدم أو البريد الإلكتروني
         if (error.code === 11000) {
             return res.status(400).json({ status: 'fail', message: 'البريد الإلكتروني أو اسم المستخدم مسجل بالفعل' });
