@@ -18,8 +18,7 @@ const updateUsername = async (req, res) => {
     }
 };
 
-// --- استبدل دالة updateProfilePicture بالكامل ---
-
+// --- تأكد من وجود .exports هنا ---
 exports.updateProfilePicture = async (req, res) => {
     try {
         // 1. التأكد من وجود ملف
@@ -33,32 +32,29 @@ exports.updateProfilePicture = async (req, res) => {
             return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود.' });
         }
 
-        // 3. حذف الصورة القديمة من Cloudinary (إذا كانت موجودة وليست الصورة الافتراضية)
+        // 3. حذف الصورة القديمة من Cloudinary
         if (user.profileImage && user.profileImage.includes('cloudinary')) {
-            // استخراج public_id من الرابط القديم
-            const oldPublicId = user.profileImage.split('/').pop().split('.')[0];
-            // لا ننتظر الحذف، دعه يعمل في الخلفية
-            cloudinary.uploader.destroy(oldPublicId).catch(err => console.error("Failed to delete old image:", err));
+            const oldPublicIdWithFolder = user.profileImage.split('/upload/')[1].split('.')[0];
+            const oldPublicId = oldPublicIdWithFolder.substring(oldPublicIdWithFolder.indexOf('/') + 1);
+            if (oldPublicId) {
+                cloudinary.uploader.destroy(`profiles/${oldPublicId}`).catch(err => console.error("Failed to delete old image:", err));
+            }
         }
 
-        // --- ✅✅ الإصلاح الرئيسي: إنشاء public_id فريد ---
-        // نستخدم ID المستخدم + الطابع الزمني الحالي لضمان التفرد
+        // 4. إنشاء public_id فريد ورفع الصورة الجديدة
         const newPublicId = `profiles/user_${user._id}_${Date.now()}`;
-
-        // 4. رفع الصورة الجديدة إلى Cloudinary بالـ public_id الجديد
         const result = await cloudinary.uploader.upload(req.file.path, {
             public_id: newPublicId,
-            overwrite: true, // على الرغم من أننا نستخدم ID جديد، هذا جيد كإجراء أمان
-            transformation: [ // تحويلات لضمان حجم وجودة مناسبين
+            overwrite: true,
+            transformation: [
                 { width: 250, height: 250, gravity: "face", crop: "thumb" },
                 { quality: "auto" }
             ]
         });
-        // --- نهاية الإصلاح ---
 
         // 5. تحديث رابط الصورة في قاعدة البيانات
         user.profileImage = result.secure_url;
-        await user.save({ validateBeforeSave: false }); // نتجاوز التحقق لأننا نحدّث حقلاً واحدًا فقط
+        await user.save({ validateBeforeSave: false });
 
         // 6. إرسال الاستجابة الناجحة
         res.status(200).json({
@@ -77,9 +73,9 @@ exports.updateProfilePicture = async (req, res) => {
     }
 };
 
-
-// --- ✅✅ التصدير في النهاية كمجموعة واحدة ---
+// --- تأكد من أن هذا الجزء صحيح أيضًا في نهاية الملف ---
 module.exports = {
-    updateUsername,
-    updateProfilePicture
+    updateMe: exports.updateMe,
+    updateMyPassword: exports.updateMyPassword,
+    updateProfilePicture: exports.updateProfilePicture
 };
