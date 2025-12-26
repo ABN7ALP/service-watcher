@@ -18,45 +18,65 @@ const updateUsername = async (req, res) => {
     }
 };
 
-const updateProfilePicture = async (req, res) => {
+// --- استبدل دالة updateProfilePicture بالكامل ---
+
+exports.updateProfilePicture = async (req, res) => {
     try {
+        // 1. التأكد من وجود ملف
         if (!req.file) {
-            return res.status(400).json({ status: 'fail', message: 'الرجاء اختيار ملف صورة.' });
+            return res.status(400).json({ status: 'fail', message: 'الرجاء إرفاق ملف صورة.' });
         }
 
+        // 2. الحصول على المستخدم الحالي
         const user = await User.findById(req.user.id);
-        if (user.profileImage && user.profileImage.includes('cloudinary')) {
-            const oldPublicId = getPublicIdFromUrl(user.profileImage);
-            if (oldPublicId) {
-                await deleteFromCloudinary(oldPublicId);
-            }
+        if (!user) {
+            return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود.' });
         }
 
-        const result = await new Promise((resolve, reject) => {
-            const uploadStream = cloudinary.uploader.upload_stream(
-                {
-                    folder: 'battle_platform_users',
-                    public_id: req.user.id,
-                    overwrite: true,
-                    format: 'webp',
-                    transformation: [{ width: 200, height: 200, crop: 'fill', gravity: 'face' }]
-                },
-                (error, result) => {
-                    if (error) reject(error);
-                    else resolve(result);
+        // 3. حذف الصورة القديمة من Cloudinary (إذا كانت موجودة وليست الصورة الافتراضية)
+        if (user.profileImage && user.profileImage.includes('cloudinary')) {
+            // استخراج public_id من الرابط القديم
+            const oldPublicId = user.profileImage.split('/').pop().split('.')[0];
+            // لا ننتظر الحذف، دعه يعمل في الخلفية
+            cloudinary.uploader.destroy(oldPublicId).catch(err => console.error("Failed to delete old image:", err));
+        }
+
+        // --- ✅✅ الإصلاح الرئيسي: إنشاء public_id فريد ---
+        // نستخدم ID المستخدم + الطابع الزمني الحالي لضمان التفرد
+        const newPublicId = `profiles/user_${user._id}_${Date.now()}`;
+
+        // 4. رفع الصورة الجديدة إلى Cloudinary بالـ public_id الجديد
+        const result = await cloudinary.uploader.upload(req.file.path, {
+            public_id: newPublicId,
+            overwrite: true, // على الرغم من أننا نستخدم ID جديد، هذا جيد كإجراء أمان
+            transformation: [ // تحويلات لضمان حجم وجودة مناسبين
+                { width: 250, height: 250, gravity: "face", crop: "thumb" },
+                { quality: "auto" }
+            ]
+        });
+        // --- نهاية الإصلاح ---
+
+        // 5. تحديث رابط الصورة في قاعدة البيانات
+        user.profileImage = result.secure_url;
+        await user.save({ validateBeforeSave: false }); // نتجاوز التحقق لأننا نحدّث حقلاً واحدًا فقط
+
+        // 6. إرسال الاستجابة الناجحة
+        res.status(200).json({
+            status: 'success',
+            message: 'تم تحديث صورة الملف الشخصي بنجاح.',
+            data: {
+                user: {
+                    profileImage: user.profileImage
                 }
-            );
-            uploadStream.end(req.file.buffer);
+            }
         });
 
-        const updatedUser = await User.findByIdAndUpdate(req.user.id, { profileImage: result.secure_url }, { new: true });
-        res.status(200).json({ status: 'success', data: { user: updatedUser } });
-
     } catch (error) {
-        console.error("Error in updateProfilePicture:", error);
-        res.status(500).json({ status: 'error', message: 'فشل رفع الصورة.' });
+        console.error('--- Update Picture Error ---', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ أثناء تحديث الصورة.' });
     }
 };
+
 
 // --- ✅✅ التصدير في النهاية كمجموعة واحدة ---
 module.exports = {
