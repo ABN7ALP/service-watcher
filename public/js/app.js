@@ -210,6 +210,7 @@ function showArenaView() {
 
 // دالة جديدة لمعالجة رفع الصورة
 // --- استبدل دالة handleImageUpload بالكامل بهذه النسخة ---
+// --- استبدل دالة handleImageUpload بالكامل بهذه النسخة ---
 
 async function handleImageUpload(e) {
     e.preventDefault();
@@ -238,24 +239,26 @@ async function handleImageUpload(e) {
         if (response.ok) {
             showNotification('تم تحديث صورتك بنجاح!', 'success');
 
-            // --- ✅✅ الإصلاح الرئيسي: Cache Busting ---
-            // 1. إنشاء رابط جديد مع طابع زمني فريد
-            const newImageUrl = `${result.data.user.profileImage}?t=${new Date().getTime()}`;
+            // --- ✅✅ الإصلاح الصحيح والنهائي ---
+            // 1. احصل على الرابط النظيف من الخادم
+            const newImageUrl = result.data.user.profileImage;
 
-            // 2. تحديث البيانات في localStorage بالرابط الجديد
+            // 2. تحديث البيانات في localStorage بالرابط النظيف
             const localUser = JSON.parse(localStorage.getItem('user'));
-            localUser.profileImage = newImageUrl; // حفظ الرابط مع الطابع الزمني
+            localUser.profileImage = newImageUrl;
             localStorage.setItem('user', JSON.stringify(localUser));
 
-            // 3. تحديث كلتا الصورتين في الواجهة باستخدام الرابط الجديد
+            // 3. تحديث كلتا الصورتين في الواجهة (مع خدعة إعادة التحميل)
             const settingsImage = document.getElementById('settings-profile-image');
             if (settingsImage) {
-                settingsImage.src = newImageUrl;
+                settingsImage.src = ''; // <-- الخطوة 1: إفراغ المصدر
+                settingsImage.src = newImageUrl; // <-- الخطوة 2: تعيين المصدر الجديد
             }
             
             const sidebarImage = document.getElementById('profileImage');
             if (sidebarImage) {
-                sidebarImage.src = newImageUrl;
+                sidebarImage.src = ''; // <-- الخطوة 1: إفراغ المصدر
+                sidebarImage.src = newImageUrl; // <-- الخطوة 2: تعيين المصدر الجديد
             }
             // --- نهاية الإصلاح ---
 
