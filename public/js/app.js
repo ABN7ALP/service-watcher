@@ -212,6 +212,8 @@ function showArenaView() {
 // --- استبدل دالة handleImageUpload بالكامل بهذه النسخة ---
 // --- استبدل دالة handleImageUpload بالكامل بهذه النسخة ---
 
+// --- تأكد من أن دالة handleImageUpload هي هذه النسخة ---
+
 async function handleImageUpload(e) {
     e.preventDefault();
     const fileInput = document.getElementById('image-file-input');
@@ -239,28 +241,23 @@ async function handleImageUpload(e) {
         if (response.ok) {
             showNotification('تم تحديث صورتك بنجاح!', 'success');
 
-            // --- ✅✅ الإصلاح الصحيح والنهائي ---
-            // 1. احصل على الرابط النظيف من الخادم
             const newImageUrl = result.data.user.profileImage;
 
-            // 2. تحديث البيانات في localStorage بالرابط النظيف
+            // تحديث localStorage
             const localUser = JSON.parse(localStorage.getItem('user'));
             localUser.profileImage = newImageUrl;
             localStorage.setItem('user', JSON.stringify(localUser));
 
-            // 3. تحديث كلتا الصورتين في الواجهة (مع خدعة إعادة التحميل)
+            // تحديث الواجهة مباشرة (سيعمل الآن لأن الـ URL جديد)
             const settingsImage = document.getElementById('settings-profile-image');
             if (settingsImage) {
-                settingsImage.src = ''; // <-- الخطوة 1: إفراغ المصدر
-                settingsImage.src = newImageUrl; // <-- الخطوة 2: تعيين المصدر الجديد
+                settingsImage.src = newImageUrl;
             }
             
             const sidebarImage = document.getElementById('profileImage');
             if (sidebarImage) {
-                sidebarImage.src = ''; // <-- الخطوة 1: إفراغ المصدر
-                sidebarImage.src = newImageUrl; // <-- الخطوة 2: تعيين المصدر الجديد
+                sidebarImage.src = newImageUrl;
             }
-            // --- نهاية الإصلاح ---
 
             document.getElementById('upload-image-btn').classList.add('hidden');
 
@@ -274,6 +271,7 @@ async function handleImageUpload(e) {
         uploadBtn.innerHTML = '<i class="fas fa-upload mr-2"></i>رفع وحفظ';
     }
 }
+
 
 
 // دالة جديدة لمعالجة تحديث اسم المستخدم
