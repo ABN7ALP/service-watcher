@@ -70,7 +70,7 @@ userSchema.pre('save', async function(next) {
         while (!isUnique) {
             // إنشاء رقم عشوائي من 9 أرقام
             customId = Math.floor(100000000 + Math.random() * 900000000).toString();
-            const existingUser = await mongoose.model('User').findOne({ customId });
+            const existingUser = await this.constructor.findOne({ customId });
             if (!existingUser) {
                 isUnique = true;
             }
