@@ -290,26 +290,38 @@ async function handleUsernameUpdate(e) {
     appContainer.classList.remove('hidden');
 
     // --- 3. تهيئة واجهة المستخدم ببيانات المستخدم ---
-    document.getElementById('username').textContent = user.username;  
-document.getElementById('balance').textContent = user.balance.toFixed(2);  
-document.getElementById('coins').textContent = user.coins;  
-document.getElementById('userLevel').textContent = `المستوى: ${user.level}`;  
-document.getElementById('profileImage').src = user.profileImage;
-// ✅ أضف هذا الكود
-document.getElementById('userAge').textContent = `العمر: ${user.age || '--'}`;
-document.getElementById('userCustomId').textContent = user.customId;
+if (user) {
+    document.getElementById('username').textContent = user.username || 'مستخدم';
+    
+    // ✅ الإصلاح: التحقق من وجود القيمة قبل استخدام .toFixed()
+    document.getElementById('balance').textContent = (user.balance || 0).toFixed(2);
+    document.getElementById('coins').textContent = user.coins || 0;
+    
+    document.getElementById('userLevel').textContent = `المستوى: ${user.level || 1}`;
+    document.getElementById('profileImage').src = user.profileImage || 'https://via.placeholder.com/80';
+    
+    // ✅ عرض البيانات الجديدة مع التحقق
+    document.getElementById('userAge').textContent = `العمر: ${user.age || '--'}`;
+    document.getElementById('userCustomId').textContent = user.customId || 'غير متوفر';
 
-// ✅ منطق نسخ الـ ID
-const copyIdBtn = document.getElementById('copy-id-btn');
-if (copyIdBtn) {
-    copyIdBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(user.customId).then(() => {
-            showNotification('تم نسخ الـ ID!', 'success');
-        }).catch(() => {
-            showNotification('فشل نسخ الـ ID', 'error');
+    // ✅ منطق نسخ الـ ID (مع التحقق)
+    const copyIdBtn = document.getElementById('copy-id-btn');
+    if (copyIdBtn && user.customId) {
+        copyIdBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(user.customId).then(() => {
+                showNotification('تم نسخ الـ ID!', 'success');
+            }).catch(() => {
+                showNotification('فشل نسخ الـ ID', 'error');
+            });
         });
-    });
+    } else if (copyIdBtn) {
+        copyIdBtn.style.display = 'none'; // إخفاء الزر إذا لم يكن هناك ID
+    }
+} else {
+    // إذا كان كائن المستخدم غير موجود لسبب ما، أعد التوجيه إلى صفحة الدخول
+    window.location.href = '/login.html';
 }
+
 
 
     // --- 4. إنشاء مقاعد الصوت ---
