@@ -1,26 +1,21 @@
-// --- ملف: server/routes/userRoutes.js (النسخة النهائية الصحيحة) ---
+// ملف: server/routes/userRoutes.js
 
 const express = require('express');
-const authMiddleware = require('../middleware/authMiddleware');
 const userController = require('../controllers/userController');
-const { upload } = require('../config/multer'); // ✅ المسار الصحيح
+const authMiddleware = require('../middleware/authMiddleware');
+const { upload } = require('../utils/cloudinary');
 
 const router = express.Router();
 
-// --- كل المسارات التالية محمية ---
+// حماية جميع المسارات التالية
 router.use(authMiddleware);
 
-// مسار لتحديث البيانات الأساسية (اسم المستخدم)
-router.patch('/updateMe', userController.updateMe);
+// مسار لتحديث اسم المستخدم
+// Express سيبحث عن خاصية 'updateUsername' في الكائن الذي تم تصديره من userController
+router.patch('/updateUsername', userController.updateUsername);
 
-// مسار لتحديث كلمة المرور
-router.patch('/updateMyPassword', userController.updateMyPassword);
-
-// مسار لتحديث صورة الملف الشخصي
-router.patch(
-    '/updateProfilePicture',
-    upload.single('profileImage'),
-    userController.updateProfilePicture
-);
+// مسار لتحديث الصورة الشخصية
+// سيتم تنفيذ 'upload' أولاً، ثم 'updateProfilePicture'
+router.patch('/updateProfilePicture', upload, userController.updateProfilePicture);
 
 module.exports = router;
