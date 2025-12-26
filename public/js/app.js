@@ -238,26 +238,27 @@ async function handleImageUpload(e) {
         if (response.ok) {
             showNotification('تم تحديث صورتك بنجاح!', 'success');
 
-            // تحديث البيانات في localStorage
+            // --- ✅✅ الإصلاح الرئيسي: Cache Busting ---
+            // 1. إنشاء رابط جديد مع طابع زمني فريد
+            const newImageUrl = `${result.data.user.profileImage}?t=${new Date().getTime()}`;
+
+            // 2. تحديث البيانات في localStorage بالرابط الجديد
             const localUser = JSON.parse(localStorage.getItem('user'));
-            localUser.profileImage = result.data.user.profileImage;
+            localUser.profileImage = newImageUrl; // حفظ الرابط مع الطابع الزمني
             localStorage.setItem('user', JSON.stringify(localUser));
 
-            // --- ✅✅ الإصلاح الرئيسي هنا ✅✅ ---
-            // تحديث الصورة في صفحة الإعدادات
+            // 3. تحديث كلتا الصورتين في الواجهة باستخدام الرابط الجديد
             const settingsImage = document.getElementById('settings-profile-image');
             if (settingsImage) {
-                settingsImage.src = localUser.profileImage;
+                settingsImage.src = newImageUrl;
             }
             
-            // تحديث الصورة في الشريط الجانبي (الصورة الرئيسية)
             const sidebarImage = document.getElementById('profileImage');
             if (sidebarImage) {
-                sidebarImage.src = localUser.profileImage;
+                sidebarImage.src = newImageUrl;
             }
             // --- نهاية الإصلاح ---
 
-            // إخفاء زر الرفع مرة أخرى
             document.getElementById('upload-image-btn').classList.add('hidden');
 
         } else {
