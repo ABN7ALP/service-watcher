@@ -209,18 +209,20 @@ function showArenaView() {
 }
 
 // دالة جديدة لمعالجة رفع الصورة
+// --- استبدل دالة handleImageUpload بالكامل بهذه النسخة ---
+
 async function handleImageUpload(e) {
     e.preventDefault();
     const fileInput = document.getElementById('image-file-input');
     if (!fileInput.files || fileInput.files.length === 0) {
-        showNotification('الرجاء اختيار صورة أولاً.', 'error');
+        showNotification('الرجاء اختيار ملف أولاً.', 'error');
         return;
     }
 
     const formData = new FormData();
     formData.append('profileImage', fileInput.files[0]);
 
-    const uploadBtn = document.getElementById('upload-image-btn');
+    const uploadBtn = e.target.querySelector('button[type="submit"]');
     uploadBtn.disabled = true;
     uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>جاري الرفع...';
 
@@ -232,13 +234,32 @@ async function handleImageUpload(e) {
         });
 
         const result = await response.json();
+
         if (response.ok) {
-            showNotification('تم تحديث الصورة بنجاح!', 'success');
+            showNotification('تم تحديث صورتك بنجاح!', 'success');
+
+            // تحديث البيانات في localStorage
             const localUser = JSON.parse(localStorage.getItem('user'));
             localUser.profileImage = result.data.user.profileImage;
             localStorage.setItem('user', JSON.stringify(localUser));
-            document.getElementById('profileImage').src = localUser.profileImage; // تحديث الصورة في الشريط العلوي
-            uploadBtn.classList.add('hidden');
+
+            // --- ✅✅ الإصلاح الرئيسي هنا ✅✅ ---
+            // تحديث الصورة في صفحة الإعدادات
+            const settingsImage = document.getElementById('settings-profile-image');
+            if (settingsImage) {
+                settingsImage.src = localUser.profileImage;
+            }
+            
+            // تحديث الصورة في الشريط الجانبي (الصورة الرئيسية)
+            const sidebarImage = document.getElementById('profileImage');
+            if (sidebarImage) {
+                sidebarImage.src = localUser.profileImage;
+            }
+            // --- نهاية الإصلاح ---
+
+            // إخفاء زر الرفع مرة أخرى
+            document.getElementById('upload-image-btn').classList.add('hidden');
+
         } else {
             showNotification(result.message || 'فشل رفع الصورة', 'error');
         }
@@ -249,6 +270,7 @@ async function handleImageUpload(e) {
         uploadBtn.innerHTML = '<i class="fas fa-upload mr-2"></i>رفع وحفظ';
     }
 }
+
 
 // دالة جديدة لمعالجة تحديث اسم المستخدم
 async function handleUsernameUpdate(e) {
