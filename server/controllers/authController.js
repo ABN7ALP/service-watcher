@@ -25,15 +25,19 @@ const createSendToken = (user, statusCode, res) => {
 };
 
 // --- إنشاء حساب جديد ---
-exports.register = async (req, res, next) => {
-    console.log('--- Received Registration Request ---'); // ✅ سطر تشخيصي 1
-    console.log('Request Body:', req.body);             // ✅ سطر تشخيصي 2
-    
-    try {
-        const { username, email, password } = req.body;
+// --- استبدل دالة register بالكامل في authController.js ---
 
-        
-        // ✅ التحقق من وجود الحقول الجديدة
+exports.register = async (req, res) => {
+    console.log('--- Received Registration Request ---');
+    console.log('Request Body:', req.body);
+
+    try {
+        // --- ✅✅ الإصلاح الحقيقي والنهائي هنا ---
+        // هذا السطر كان مفقودًا أو غير مكتمل
+        const { username, email, password, gender, birthDate, socialStatus } = req.body;
+        // --- نهاية الإصلاح ---
+
+        // التحقق من وجود الحقول المطلوبة
         if (!username || !email || !password || !gender || !birthDate) {
             return res.status(400).json({ status: 'fail', message: 'الرجاء ملء جميع الحقول المطلوبة.' });
         }
@@ -47,17 +51,32 @@ exports.register = async (req, res, next) => {
             socialStatus // هذا الحقل له قيمة افتراضية
         });
 
-        
-        createSendToken(newUser, 201, res);
+        // إنشاء توكن JWT
+        const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, {
+            expiresIn: process.env.JWT_EXPIRES_IN || '90d'
+        });
+
+        // إزالة كلمة المرور من المخرجات
+        newUser.password = undefined;
+
+        res.status(201).json({
+            status: 'success',
+            token,
+            data: {
+                user: newUser
+            }
+        });
 
     } catch (error) {
-        console.error('--- Registration Error ---', error); // ✅ سطر تشخيصي 3
-        
-        // معالجة خطأ تكرار اسم المستخدم أو البريد الإلكتروني
+        console.error('--- Registration Error ---', error);
+        let message = 'حدث خطأ أثناء إنشاء الحساب.';
         if (error.code === 11000) {
-            return res.status(400).json({ status: 'fail', message: 'البريد الإلكتروني أو اسم المستخدم مسجل بالفعل' });
+            message = 'اسم المستخدم أو البريد الإلكتروني مسجل بالفعل.';
+        } else if (error.errors) {
+            const firstError = Object.values(error.errors)[0].message;
+            message = firstError;
         }
-        next(error); // إرسال الأخطاء الأخرى إلى معالج الأخطاء العام
+        res.status(400).json({ status: 'fail', message });
     }
 };
 
