@@ -28,28 +28,30 @@ const createSendToken = (user, statusCode, res) => {
 // --- استبدل دالة register بالكامل في authController.js ---
 
 exports.register = async (req, res) => {
-    console.log('--- Received Registration Request ---');
-    console.log('Request Body:', req.body);
-
     try {
-        // --- ✅✅ الإصلاح الحقيقي والنهائي هنا ---
-        // هذا السطر كان مفقودًا أو غير مكتمل
         const { username, email, password, gender, birthDate, socialStatus } = req.body;
-        // --- نهاية الإصلاح ---
 
-        // التحقق من وجود الحقول المطلوبة
         if (!username || !email || !password || !gender || !birthDate) {
             return res.status(400).json({ status: 'fail', message: 'الرجاء ملء جميع الحقول المطلوبة.' });
         }
 
-        const newUser = await User.create({
+        // --- ✅✅ الإصلاح الجذري: خطوتان بدلاً من واحدة ---
+        // الخطوة 1: إنشاء كائن مستخدم جديد في الذاكرة (بدون حفظ)
+        // هذا يسمح لـ pre('save') بالاستعداد
+        const newUser = new User({
             username,
             email,
             password,
             gender,
             birthDate,
-            socialStatus // هذا الحقل له قيمة افتراضية
+            socialStatus
         });
+
+        // الخطوة 2: حفظ المستخدم في قاعدة البيانات
+        // الآن، سيتم تشغيل pre('save') middleware، وإنشاء customId، وتشفير كلمة المرور، ثم الحفظ.
+        await newUser.save();
+        // --- نهاية الإصلاح ---
+
 
         // إنشاء توكن JWT
         const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, {
@@ -68,17 +70,18 @@ exports.register = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('--- Registration Error ---', error);
+        console.error('--- Registration Error ---', error); // أبقِ على هذا للتشخيص
         let message = 'حدث خطأ أثناء إنشاء الحساب.';
         if (error.code === 11000) {
             message = 'اسم المستخدم أو البريد الإلكتروني مسجل بالفعل.';
         } else if (error.errors) {
-            const firstError = Object.values(error.errors)[0].message;
-            message = firstError;
+            const firstErrorKey = Object.keys(error.errors)[0];
+            message = error.errors[firstErrorKey].message;
         }
         res.status(400).json({ status: 'fail', message });
     }
 };
+
 
 // --- تسجيل الدخول ---
 exports.login = async (req, res, next) => {
