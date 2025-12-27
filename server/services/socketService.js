@@ -62,10 +62,13 @@ async function startGame(io, battleId) {
 
 
 // --- استبدل دالة endBattle بالكامل في socketService.js ---
+// --- استبدل دالة endBattle بالكامل في socketService.js ---
 async function endBattle(io, battleId) {
     try {
         const battle = await Battle.findById(battleId).populate('players');
         if (!battle || battle.status !== 'in-progress') return;
+
+        console.log(`[END BATTLE] Ending battle ${battleId}`);
 
         const scores = battle.gameState.scores;
         const playerIds = Object.keys(scores);
@@ -84,37 +87,41 @@ async function endBattle(io, battleId) {
         }
 
         const totalPot = battle.betAmount * battle.players.length;
-        
-        // --- ✅ تطبيق نظام العمولة ---
-        const commissionRate = battle.type === '1v1' ? 0.10 : 0.05; // 10% for 1v1, 5% for teams
+        const commissionRate = battle.type === '1v1' ? 0.10 : 0.05;
         const commission = totalPot * commissionRate;
         const finalPot = totalPot - commission;
 
         if (winnerId) {
+            console.log(`[END BATTLE] Winner is ${winnerId}, Loser is ${loserId}`);
             const winnerUser = await User.findById(winnerId);
             if (winnerUser) {
-                winnerUser.balance += finalPot; // الفائز يحصل على المبلغ بعد خصم العمولة
+                winnerUser.balance += finalPot;
                 await winnerUser.save();
+                // --- ✅ الإصلاح: إرسال تحديث الرصيد بشكل فوري ---
                 if (winnerUser.socketId) {
                     io.to(winnerUser.socketId).emit('balanceUpdate', { newBalance: winnerUser.balance });
+                    console.log(`[END BATTLE] Sent balance update to winner ${winnerUser.username}`);
                 }
-                // --- ✅ منح الخبرة للفائز ---
+                // --- ✅ منح 10 XP للفائز ---
                 await addExperience(io, winnerId, 0, 'win'); 
             }
             
-            // --- ✅ منح الخبرة للخاسر ---
             if (loserId) {
+                // --- ✅ منح XP للخاسر بناءً على قيمة الرهان ---
                 await addExperience(io, loserId, battle.betAmount, 'loss');
             }
 
         } else { // في حالة التعادل
+            console.log(`[END BATTLE] Battle is a draw.`);
             for (const player of battle.players) {
-                player.balance += battle.betAmount; // إعادة المبلغ لكل لاعب
+                player.balance += battle.betAmount;
                 await player.save();
+                // --- ✅ الإصلاح: إرسال تحديث الرصيد في حالة التعادل أيضًا ---
                 if (player.socketId) {
                     io.to(player.socketId).emit('balanceUpdate', { newBalance: player.balance });
+                    console.log(`[END BATTLE] Sent balance update to ${player.username} (draw)`);
                 }
-                // في حالة التعادل، لا يوجد فائز أو خاسر، يمكننا منح نقاط رمزية
+                // منح نقاط رمزية للتعادل
                 await addExperience(io, player._id, 0, 'win'); 
             }
         }
@@ -122,9 +129,13 @@ async function endBattle(io, battleId) {
         battle.status = 'completed';
         await battle.save();
 
+        // --- ✅ الإصلاح: إرسال حدث انتهاء اللعبة إلى الغرفة بأكملها ---
+        // هذا هو ما يجعل النافذة تختفي عند الجميع
         io.to(battleId).emit('gameEnded', { battle: battle.toObject(), winnerId });
+        console.log(`[END BATTLE] Sent 'gameEnded' event to room ${battleId}`);
+
     } catch (error) {
-        console.error(`Error in endBattle for battle ${battleId}:`, error);
+        console.error(`[SERVER ERROR] in endBattle for battle ${battleId}:`, error);
     }
 }
 
