@@ -25,88 +25,51 @@ const createSendToken = (user, statusCode, res) => {
 };
 
 // --- إنشاء حساب جديد ---
-// --- استبدل دالة register فقط في authController.js ---
-
 exports.register = async (req, res, next) => {
     try {
-        const { username, email, password, gender, birthDate, socialStatus } = req.body;
+        const { username, email, password } = req.body;
 
-        // التحقق من وجود البيانات الأساسية
-        if (!username || !email || !password || !gender || !birthDate) {
-            return res.status(400).json({ status: 'fail', message: 'يرجى ملء جميع الحقول المطلوبة.' });
+        if (!username || !email || !password) {
+            return res.status(400).json({ status: 'fail', message: 'يرجى تقديم اسم المستخدم والبريد الإلكتروني وكلمة المرور' });
         }
 
-        // --- ✅✅ العودة إلى User.create() ---
-        // هذه الدالة ستشغل كل الـ hooks (pre('validate') و pre('save'))
-        // وستعيد المستند الكامل مع كل القيم الافتراضية.
-        const newUser = await User.create({
-            username,
-            email,
-            password,
-            gender,
-            birthDate,
-            socialStatus // هذا الحقل له قيمة افتراضية، لذا لا بأس إذا لم يتم إرساله
-        });
-        // --- نهاية الإصلاح ---
-
-        // دالة مساعدة لإرسال التوكن (موجودة لديك بالفعل)
+        const newUser = await User.create({ username, email, password });
+        
         createSendToken(newUser, 201, res);
 
     } catch (error) {
         // معالجة خطأ تكرار اسم المستخدم أو البريد الإلكتروني
         if (error.code === 11000) {
-            return res.status(400).json({ status: 'fail', message: 'البريد الإلكتروني أو اسم المستخدم مسجل بالفعل.' });
+            return res.status(400).json({ status: 'fail', message: 'البريد الإلكتروني أو اسم المستخدم مسجل بالفعل' });
         }
-        // معالجة أخطاء التحقق من الصحة الأخرى
-        if (error.name === 'ValidationError') {
-            return res.status(400).json({ status: 'fail', message: Object.values(error.errors).map(e => e.message).join(', ') });
-        }
-        // إرسال أي أخطاء أخرى إلى معالج الأخطاء العام
-        next(error);
+        next(error); // إرسال الأخطاء الأخرى إلى معالج الأخطاء العام
     }
 };
 
-
-
 // --- تسجيل الدخول ---
-// --- استبدل دالة login بالكامل في authController.js ---
-exports.login = async (req, res) => {
+exports.login = async (req, res, next) => {
     try {
         const { email, password } = req.body;
 
-        // 1. التحقق من وجود email و password
         if (!email || !password) {
-            return res.status(400).json({ status: 'fail', message: 'الرجاء إدخال البريد الإلكتروني وكلمة المرور.' });
+            return res.status(400).json({ status: 'fail', message: 'يرجى تقديم البريد الإلكتروني وكلمة المرور' });
         }
 
-        // 2. التحقق من وجود المستخدم وكلمة المرور
-        // ✅ نستخدم .populate() هنا لضمان الحصول على كل البيانات الافتراضية (virtuals) مثل 'age'
+        // 1) البحث عن المستخدم وإرجاع كلمة المرور للتحقق
         const user = await User.findOne({ email }).select('+password');
 
+        // 2) التحقق من وجود المستخدم وصحة كلمة المرور
         if (!user || !(await user.comparePassword(password))) {
-            return res.status(401).json({ status: 'fail', message: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' });
+            return res.status(401).json({ status: 'fail', message: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' });
         }
 
-        // 3. إذا كان كل شيء صحيحًا، أرسل التوكن إلى العميل
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-            expiresIn: process.env.JWT_EXPIRES_IN || '90d'
-        });
+        // 3) إذا كان كل شيء صحيحاً، أرسل التوكن
+        createSendToken(user, 200, res);
 
-        // إزالة كلمة المرور من المخرجات
-        user.password = undefined;
-
-        res.status(200).json({
-            status: 'success',
-            token,
-            data: {
-                user // ✅ إرجاع كائن المستخدم الكامل
-            }
-        });
     } catch (error) {
-        res.status(500).json({ status: 'error', message: 'حدث خطأ ما.' });
+        next(error);
     }
 };
-
 // --- أضف هذه الدالة الجديدة في authController.js ---
 
 exports.updatePassword = async (req, res) => {
