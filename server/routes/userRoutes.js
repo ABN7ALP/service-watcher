@@ -9,6 +9,7 @@ const router = express.Router();
 
 // حماية جميع المسارات التالية
 router.use(authMiddleware);
+router.get('/:id', userController.getUserById);
 
 // مسار لتحديث اسم المستخدم
 // Express سيبحث عن خاصية 'updateUsername' في الكائن الذي تم تصديره من userController
