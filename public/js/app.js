@@ -547,7 +547,10 @@ async function showMiniProfileModal(userId) {
         // --- الخطوة 1: جلب أحدث بيانات المستخدم (الطريقة القوية) ---
         const response = await fetch(`/api/users/${userId}`, {
             headers: {
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${token}` // <-- هذا هو السطر الذي نسيته
+            }
+        });
+
         if (!response.ok) throw new Error('User not found');
         const result = await response.json();
         const profileUser = result.data.user;
