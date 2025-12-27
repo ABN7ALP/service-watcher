@@ -427,6 +427,62 @@ document.getElementById('perks-toggle-btn').addEventListener('click', (e) => {
         }
     });
 
+   // --- ✅ أضف هذا الكود لتفعيل أزرار الصداقة ---
+document.body.addEventListener('click', async (e) => {
+    const button = e.target.closest('.action-btn');
+    if (!button || !button.dataset.action) return;
+
+    const action = button.dataset.action;
+    const userId = button.dataset.userId;
+    let url = '';
+    let method = 'POST';
+
+    switch (action) {
+        case 'send-request':
+            url = `/api/friends/send-request/${userId}`;
+            break;
+        case 'accept-request':
+            url = `/api/friends/accept-request/${userId}`;
+            break;
+        case 'cancel-request':
+        case 'reject-request':
+            url = `/api/friends/reject-request/${userId}`;
+            break;
+        case 'remove-friend':
+            url = `/api/friends/remove-friend/${userId}`;
+            method = 'DELETE';
+            break;
+        default:
+            return;
+    }
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message);
+
+        showNotification(result.message, 'success');
+        
+        // تحديث بيانات المستخدم المحلي لإعادة رسم الأزرار بشكل صحيح
+        const selfUserResponse = await fetch(`/api/users/${user._id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const selfUserResult = await selfUserResponse.json();
+        localStorage.setItem('user', JSON.stringify(selfUserResult.data.user));
+
+        // إعادة فتح النافذة لعرض الحالة الجديدة للزر
+        const modal = document.getElementById('mini-profile-modal');
+        if (modal) {
+            modal.remove();
+            showMiniProfileModal(userId);
+        }
+
+    } catch (error) {
+        showNotification(error.message || 'حدث خطأ ما', 'error');
+    }
+});
+     
 
 // --- ✅ دالة جديدة لأنيميشن اكتساب الخبرة ---
 function showXpGainAnimation(amount) {
@@ -542,22 +598,15 @@ socket.on('chatCleanup', ({ idsToDelete }) => {
 
 
         // --- ✅ دالة جديدة لعرض الملف الشخصي المصغر ---
+// --- استبدل دالة showMiniProfileModal بالكامل ---
 async function showMiniProfileModal(userId) {
     try {
-        // --- الخطوة 1: جلب أحدث بيانات المستخدم (الطريقة القوية) ---
         const response = await fetch(`/api/users/${userId}`, {
-            headers: {
-                'Authorization': `Bearer ${token}` // <-- هذا هو السطر الذي نسيته
-            }
+            headers: { 'Authorization': `Bearer ${token}` }
         });
-
         if (!response.ok) throw new Error('User not found');
         const result = await response.json();
         const profileUser = result.data.user;
-
-        // --- الخطوة 2: إنشاء HTML للنافذة ---
-        const requiredXp = calculateRequiredXp(profileUser.level);
-        const progressPercentage = (profileUser.experience / requiredXp) * 100;
 
         const socialInfo = getSocialStatus(profileUser.socialStatus);
         const educationInfo = getEducationStatus(profileUser.educationStatus);
@@ -565,14 +614,23 @@ async function showMiniProfileModal(userId) {
             ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' }
             : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
 
+        // --- ✅ تحديد حالة زر الصداقة ---
+        const selfUser = JSON.parse(localStorage.getItem('user'));
+        let friendButtonHTML = '';
+        if (selfUser.friends.includes(profileUser._id)) {
+            friendButtonHTML = `<button class="action-btn" data-action="remove-friend" data-user-id="${profileUser._id}"><i class="fas fa-user-minus"></i><span>صديق</span></button>`;
+        } else if (selfUser.friendRequestsSent.includes(profileUser._id)) {
+            friendButtonHTML = `<button class="action-btn" data-action="cancel-request" data-user-id="${profileUser._id}"><i class="fas fa-user-clock"></i><span>مُرسَل</span></button>`;
+        } else if (selfUser.friendRequestsReceived.includes(profileUser._id)) {
+            friendButtonHTML = `<button class="action-btn" data-action="accept-request" data-user-id="${profileUser._id}"><i class="fas fa-user-check"></i><span>قبول</span></button>`;
+        } else {
+            friendButtonHTML = `<button class="action-btn" data-action="send-request" data-user-id="${profileUser._id}"><i class="fas fa-user-plus"></i><span>إضافة</span></button>`;
+        }
+
         const modalHTML = `
             <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
                 <div class="bg-gray-800 border-2 border-purple-500 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300">
-                    
-                    <!-- Header with background image -->
                     <div class="h-24 bg-cover bg-center rounded-t-xl" style="background-image: url('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=400&q=80')"></div>
-
-                    <!-- Profile Picture and Name -->
                     <div class="flex flex-col items-center -mt-16">
                         <img src="${profileUser.profileImage}" class="w-24 h-24 rounded-full border-4 border-gray-800 object-cover">
                         <h2 class="text-xl font-bold mt-2">${profileUser.username}</h2>
@@ -580,29 +638,28 @@ async function showMiniProfileModal(userId) {
                             ID: ${profileUser.customId}
                         </div>
                     </div>
-
-                    <!-- Level Progress -->
-                    <div class="px-6 pt-4">
-                        <div class="flex justify-between items-center text-xs mb-1">
-                            <span class="font-bold text-yellow-400">LVL ${profileUser.level}</span>
-                            <span class="text-gray-400">${Math.floor(profileUser.experience)} / ${requiredXp} XP</span>
+                    
+                    <!-- ✅ عرض المستوى وعدد الأصدقاء بدلاً من شريط XP -->
+                    <div class="flex justify-around items-center text-center p-4">
+                        <div>
+                            <p class="font-bold text-lg text-yellow-400">LVL ${profileUser.level}</p>
+                            <p class="text-xs text-gray-400">المستوى</p>
                         </div>
-                        <div class="w-full bg-gray-700 rounded-full h-2">
-                            <div class="bg-yellow-400 h-2 rounded-full" style="width: ${progressPercentage}%"></div>
+                        <div>
+                            <p class="font-bold text-lg">${profileUser.friends.length}</p>
+                            <p class="text-xs text-gray-400">الأصدقاء</p>
                         </div>
                     </div>
 
-                    <!-- User Details -->
-                    <div class="grid grid-cols-2 gap-4 p-6 text-sm">
+                    <div class="grid grid-cols-2 gap-4 px-6 pb-6 text-sm">
                         <div class="flex items-center gap-2"><i class="fas ${genderInfo.icon} w-4 text-center ${genderInfo.color}"></i> ${genderInfo.text}</div>
                         <div class="flex items-center gap-2"><i class="fas fa-birthday-cake w-4 text-center text-pink-400"></i> ${profileUser.age} سنة</div>
                         <div class="flex items-center gap-2"><i class="fas ${socialInfo.icon} w-4 text-center text-red-400"></i> ${socialInfo.text}</div>
                         <div class="flex items-center gap-2"><i class="fas ${educationInfo.icon} w-4 text-center text-blue-400"></i> ${educationInfo.text}</div>
                     </div>
 
-                    <!-- Action Buttons -->
-                    <div class="grid grid-cols-4 gap-2 border-t border-gray-700 p-2">
-                        <button class="action-btn"><i class="fas fa-plus"></i><span>صداقة</span></button>
+                    <div id="profile-action-buttons" class="grid grid-cols-4 gap-2 border-t border-gray-700 p-2">
+                        ${friendButtonHTML}
                         <button class="action-btn"><i class="fas fa-comment-dots"></i><span>رسالة</span></button>
                         <button class="action-btn"><i class="fas fa-microphone-slash"></i><span>كتم</span></button>
                         <button class="action-btn"><i class="fas fa-ban"></i><span>حظر</span></button>
@@ -611,22 +668,12 @@ async function showMiniProfileModal(userId) {
             </div>
         `;
 
-        // --- الخطوة 3: إضافة النافذة إلى الصفحة وتفعيل الأنيميشن ---
-        const container = document.getElementById('game-container'); // استخدام حاوية موجودة
+        const container = document.getElementById('game-container');
         container.innerHTML = modalHTML;
-
         const modal = container.querySelector('#mini-profile-modal');
-        
-        // أنيميشن ظهور النافذة
-        setTimeout(() => {
-            modal.querySelector('.transform').classList.remove('scale-95');
-        }, 50);
-
-        // إغلاق النافذة عند النقر على الخلفية
+        setTimeout(() => modal.querySelector('.transform').classList.remove('scale-95'), 50);
         modal.addEventListener('click', (e) => {
-            if (e.target.id === 'mini-profile-modal') {
-                modal.remove();
-            }
+            if (e.target.id === 'mini-profile-modal') modal.remove();
         });
 
     } catch (error) {
@@ -634,6 +681,7 @@ async function showMiniProfileModal(userId) {
         showNotification('لا يمكن عرض ملف المستخدم حاليًا.', 'error');
     }
 }
+
 
 
     // =================================================
