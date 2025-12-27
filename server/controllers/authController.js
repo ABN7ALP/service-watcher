@@ -25,62 +25,47 @@ const createSendToken = (user, statusCode, res) => {
 };
 
 // --- إنشاء حساب جديد ---
-// --- استبدل دالة register بالكامل في authController.js ---
+// --- استبدل دالة register فقط في authController.js ---
 
-exports.register = async (req, res) => {
+exports.register = async (req, res, next) => {
     try {
         const { username, email, password, gender, birthDate, socialStatus } = req.body;
 
+        // التحقق من وجود البيانات الأساسية
         if (!username || !email || !password || !gender || !birthDate) {
-            return res.status(400).json({ status: 'fail', message: 'الرجاء ملء جميع الحقول المطلوبة.' });
+            return res.status(400).json({ status: 'fail', message: 'يرجى ملء جميع الحقول المطلوبة.' });
         }
 
-        // --- ✅✅ الإصلاح الجذري: خطوتان بدلاً من واحدة ---
-        // الخطوة 1: إنشاء كائن مستخدم جديد في الذاكرة (بدون حفظ)
-        // هذا يسمح لـ pre('save') بالاستعداد
-        const newUser = new User({
+        // --- ✅✅ العودة إلى User.create() ---
+        // هذه الدالة ستشغل كل الـ hooks (pre('validate') و pre('save'))
+        // وستعيد المستند الكامل مع كل القيم الافتراضية.
+        const newUser = await User.create({
             username,
             email,
             password,
             gender,
             birthDate,
-            socialStatus
+            socialStatus // هذا الحقل له قيمة افتراضية، لذا لا بأس إذا لم يتم إرساله
         });
-
-        // الخطوة 2: حفظ المستخدم في قاعدة البيانات
-        // الآن، سيتم تشغيل pre('save') middleware، وإنشاء customId، وتشفير كلمة المرور، ثم الحفظ.
-        await newUser.save();
         // --- نهاية الإصلاح ---
 
-
-        // إنشاء توكن JWT
-        const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, {
-            expiresIn: process.env.JWT_EXPIRES_IN || '90d'
-        });
-
-        // إزالة كلمة المرور من المخرجات
-        newUser.password = undefined;
-
-        res.status(201).json({
-            status: 'success',
-            token,
-            data: {
-                user: newUser
-            }
-        });
+        // دالة مساعدة لإرسال التوكن (موجودة لديك بالفعل)
+        createSendToken(newUser, 201, res);
 
     } catch (error) {
-        console.error('--- Registration Error ---', error); // أبقِ على هذا للتشخيص
-        let message = 'حدث خطأ أثناء إنشاء الحساب.';
+        // معالجة خطأ تكرار اسم المستخدم أو البريد الإلكتروني
         if (error.code === 11000) {
-            message = 'اسم المستخدم أو البريد الإلكتروني مسجل بالفعل.';
-        } else if (error.errors) {
-            const firstErrorKey = Object.keys(error.errors)[0];
-            message = error.errors[firstErrorKey].message;
+            return res.status(400).json({ status: 'fail', message: 'البريد الإلكتروني أو اسم المستخدم مسجل بالفعل.' });
         }
-        res.status(400).json({ status: 'fail', message });
+        // معالجة أخطاء التحقق من الصحة الأخرى
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({ status: 'fail', message: Object.values(error.errors).map(e => e.message).join(', ') });
+        }
+        // إرسال أي أخطاء أخرى إلى معالج الأخطاء العام
+        next(error);
     }
 };
+
 
 
 // --- تسجيل الدخول ---
