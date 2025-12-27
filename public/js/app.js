@@ -541,6 +541,97 @@ socket.on('chatCleanup', ({ idsToDelete }) => {
 });
 
 
+        // --- ✅ دالة جديدة لعرض الملف الشخصي المصغر ---
+async function showMiniProfileModal(userId) {
+    try {
+        // --- الخطوة 1: جلب أحدث بيانات المستخدم (الطريقة القوية) ---
+        // هذا يضمن أن البيانات دائمًا محدثة
+        const response = await fetch(`/api/users/${userId}`); // سنحتاج لإنشاء هذا المسار
+        if (!response.ok) throw new Error('User not found');
+        const result = await response.json();
+        const profileUser = result.data.user;
+
+        // --- الخطوة 2: إنشاء HTML للنافذة ---
+        const requiredXp = calculateRequiredXp(profileUser.level);
+        const progressPercentage = (profileUser.experience / requiredXp) * 100;
+
+        const socialInfo = getSocialStatus(profileUser.socialStatus);
+        const educationInfo = getEducationStatus(profileUser.educationStatus);
+        const genderInfo = profileUser.gender === 'male' 
+            ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' }
+            : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
+
+        const modalHTML = `
+            <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
+                <div class="bg-gray-800 border-2 border-purple-500 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300">
+                    
+                    <!-- Header with background image -->
+                    <div class="h-24 bg-cover bg-center rounded-t-xl" style="background-image: url('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=400&q=80')"></div>
+
+                    <!-- Profile Picture and Name -->
+                    <div class="flex flex-col items-center -mt-16">
+                        <img src="${profileUser.profileImage}" class="w-24 h-24 rounded-full border-4 border-gray-800 object-cover">
+                        <h2 class="text-xl font-bold mt-2">${profileUser.username}</h2>
+                        <div class="text-xs text-gray-400 mt-1 cursor-pointer" title="نسخ الـ ID" onclick="navigator.clipboard.writeText('${profileUser.customId}')">
+                            ID: ${profileUser.customId}
+                        </div>
+                    </div>
+
+                    <!-- Level Progress -->
+                    <div class="px-6 pt-4">
+                        <div class="flex justify-between items-center text-xs mb-1">
+                            <span class="font-bold text-yellow-400">LVL ${profileUser.level}</span>
+                            <span class="text-gray-400">${Math.floor(profileUser.experience)} / ${requiredXp} XP</span>
+                        </div>
+                        <div class="w-full bg-gray-700 rounded-full h-2">
+                            <div class="bg-yellow-400 h-2 rounded-full" style="width: ${progressPercentage}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- User Details -->
+                    <div class="grid grid-cols-2 gap-4 p-6 text-sm">
+                        <div class="flex items-center gap-2"><i class="fas ${genderInfo.icon} w-4 text-center ${genderInfo.color}"></i> ${genderInfo.text}</div>
+                        <div class="flex items-center gap-2"><i class="fas fa-birthday-cake w-4 text-center text-pink-400"></i> ${profileUser.age} سنة</div>
+                        <div class="flex items-center gap-2"><i class="fas ${socialInfo.icon} w-4 text-center text-red-400"></i> ${socialInfo.text}</div>
+                        <div class="flex items-center gap-2"><i class="fas ${educationInfo.icon} w-4 text-center text-blue-400"></i> ${educationInfo.text}</div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="grid grid-cols-4 gap-2 border-t border-gray-700 p-2">
+                        <button class="action-btn"><i class="fas fa-plus"></i><span>صداقة</span></button>
+                        <button class="action-btn"><i class="fas fa-comment-dots"></i><span>رسالة</span></button>
+                        <button class="action-btn"><i class="fas fa-microphone-slash"></i><span>كتم</span></button>
+                        <button class="action-btn"><i class="fas fa-ban"></i><span>حظر</span></button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // --- الخطوة 3: إضافة النافذة إلى الصفحة وتفعيل الأنيميشن ---
+        const container = document.getElementById('game-container'); // استخدام حاوية موجودة
+        container.innerHTML = modalHTML;
+
+        const modal = container.querySelector('#mini-profile-modal');
+        
+        // أنيميشن ظهور النافذة
+        setTimeout(() => {
+            modal.querySelector('.transform').classList.remove('scale-95');
+        }, 50);
+
+        // إغلاق النافذة عند النقر على الخلفية
+        modal.addEventListener('click', (e) => {
+            if (e.target.id === 'mini-profile-modal') {
+                modal.remove();
+            }
+        });
+
+    } catch (error) {
+        console.error("Error showing mini profile:", error);
+        showNotification('لا يمكن عرض ملف المستخدم حاليًا.', 'error');
+    }
+}
+
+
     // =================================================
     // =========== قسم الدردشة (Chat Section) ==========
     // =================================================
@@ -610,17 +701,23 @@ function displayMessage(message) {
         `;
     }
 
+    
     messageElement.innerHTML = `
-        <img src="${message.sender.profileImage}" alt="${message.sender.username}" class="w-8 h-8 rounded-full">
+        <img src="${message.sender.profileImage}" 
+             alt="${message.sender.username}" 
+             class="w-8 h-8 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-400"
+             data-user-id="${message.sender._id}"> 
+        
         <div class="w-full">
             ${replyHTML}
             <p class="font-bold text-sm ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${message.sender.username}</p>
             <p class="text-white text-sm">${messageContent}</p>
         </div>
-        <button class="reply-btn absolute top-1 right-1 bg-gray-900/50 p-1 rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+        <button class="reply-btn ...">
             <i class="fas fa-reply"></i>
         </button>
     `;
+
     
     chatMessages.appendChild(messageElement);
     chatMessages.scrollTop = chatMessages.scrollHeight;
