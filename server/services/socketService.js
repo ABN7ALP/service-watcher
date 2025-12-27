@@ -3,6 +3,8 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Message = require('../models/Message');
 const Battle = require('../models/Battle');
+const { addExperience } = require('../utils/experienceManager'); // ✅✅✅ أضف هذا السطر هنا
+
 
 // --- Middleware للتحقق من توكن المستخدم ---
 const verifySocketToken = async (socket, next) => {
