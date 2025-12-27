@@ -298,14 +298,65 @@ document.getElementById('userLevel').textContent = `المستوى: ${user.level
 document.getElementById('profileImage').src = user.profileImage;
 
 // --- ✅ إضافة عرض البيانات الجديدة ---
+// --- ✅ إضافة عرض البيانات الجديدة (النسخة المحسّنة) ---
 const profileContainer = document.querySelector('.user-profile');
+
+// --- دوال مساعدة لترجمة البيانات إلى نصوص عربية وأيقونات ---
+const getSocialStatus = (status) => {
+    const map = {
+        single: { text: 'أعزب', icon: 'fa-user' },
+        in_relationship: { text: 'في علاقة', icon: 'fa-heart' },
+        engaged: { text: 'مخطوب', icon: 'fa-ring' },
+        married: { text: 'متزوج', icon: 'fa-users' },
+        divorced: { text: 'مطلق', icon: 'fa-user-slash' },
+        searching: { text: 'يبحث عن حب', icon: 'fa-search' }
+    };
+    return map[status] || { text: status, icon: 'fa-question-circle' };
+};
+
+const getEducationStatus = (status) => {
+    const map = {
+        studying: { text: 'طالب', icon: 'fa-book-open' },
+        graduated: { text: 'خريج', icon: 'fa-graduation-cap' },
+        primary: { text: 'ابتدائي', icon: 'fa-child' },
+        high_school: { text: 'ثانوي', icon: 'fa-school' },
+        university: { text: 'جامعي', icon: 'fa-university' }
+    };
+    return map[status] || { text: status, icon: 'fa-question-circle' };
+};
+
+const socialInfo = getSocialStatus(user.socialStatus);
+const educationInfo = getEducationStatus(user.educationStatus);
+
 const detailsHTML = `
-    <div class="text-xs text-gray-400 mt-2 flex justify-center items-center gap-2 cursor-pointer" id="user-id-container">
-        <span>ID: ${user.customId}</span>
-        <i class="far fa-copy"></i>
+    <div class="mt-3 space-y-2 text-sm text-gray-300 dark:text-gray-400">
+        
+        <!-- ID and Age -->
+        <div class="flex justify-center items-center gap-4">
+            <div class="text-xs flex items-center gap-2 cursor-pointer" id="user-id-container" title="نسخ الـ ID">
+                <i class="fas fa-id-card-alt text-purple-400"></i>
+                <span>${user.customId}</span>
+            </div>
+            <div class="text-xs flex items-center gap-2">
+                <i class="fas fa-birthday-cake text-pink-400"></i>
+                <span>${user.age} سنة</span>
+            </div>
+        </div>
+
+        <!-- Social and Education Status -->
+        <div class="flex justify-center items-center gap-4 pt-1">
+            <div class="text-xs flex items-center gap-2" title="${socialInfo.text}">
+                <i class="fas ${socialInfo.icon} text-red-400"></i>
+                <span>${socialInfo.text}</span>
+            </div>
+            <div class="text-xs flex items-center gap-2" title="${educationInfo.text}">
+                <i class="fas ${educationInfo.icon} text-blue-400"></i>
+                <span>${educationInfo.text}</span>
+            </div>
+        </div>
     </div>
-    <div class="text-sm text-gray-300 mt-1">${user.age} سنة</div>
 `;
+
 profileContainer.insertAdjacentHTML('beforeend', detailsHTML);
 
 // إضافة وظيفة النسخ للـ ID
@@ -314,6 +365,7 @@ document.getElementById('user-id-container').addEventListener('click', () => {
         showNotification('تم نسخ الـ ID بنجاح!', 'info');
     });
 });
+
 
     // --- 4. إنشاء مقاعد الصوت ---
     const voiceGrid = document.getElementById('voice-chat-grid');
