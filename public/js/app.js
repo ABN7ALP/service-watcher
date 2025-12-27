@@ -238,30 +238,32 @@ async function handleImageUpload(e) {
 
         const result = await response.json();
 
-        if (response.ok) {
-            showNotification('تم تحديث صورتك بنجاح!', 'success');
+        // ... داخل دالة handleImageUpload
+if (response.ok) {
+    showNotification('تم تحديث صورتك بنجاح!', 'success');
 
-            const newImageUrl = result.data.user.profileImage;
+    const newImageUrl = result.data.user.profileImage;
 
-            // تحديث localStorage
-            const localUser = JSON.parse(localStorage.getItem('user'));
-            localUser.profileImage = newImageUrl;
-            localStorage.setItem('user', JSON.stringify(localUser));
+    // تحديث localStorage
+    const localUser = JSON.parse(localStorage.getItem('user'));
+    localUser.profileImage = newImageUrl;
+    localStorage.setItem('user', JSON.stringify(localUser));
 
-            // تحديث الواجهة مباشرة (سيعمل الآن لأن الـ URL جديد)
-            const settingsImage = document.getElementById('settings-profile-image');
-            if (settingsImage) {
-                settingsImage.src = newImageUrl;
-            }
-            
-            const sidebarImage = document.getElementById('profileImage');
-            if (sidebarImage) {
-                sidebarImage.src = newImageUrl;
-            }
+    // تحديث الواجهة مباشرة (في كلا المكانين)
+    const settingsImage = document.getElementById('settings-profile-image');
+    if (settingsImage) {
+        settingsImage.src = newImageUrl;
+    }
+    
+    // ✅ السطر المضاف: تحديث الصورة في الشريط الجانبي أيضاً
+    const sidebarImage = document.getElementById('profileImage');
+    if (sidebarImage) {
+        sidebarImage.src = newImageUrl;
+    }
 
-            document.getElementById('upload-image-btn').classList.add('hidden');
+    document.getElementById('upload-image-btn').classList.add('hidden');
 
-        } else {
+} else {
             showNotification(result.message || 'فشل رفع الصورة', 'error');
         }
     } catch (error) {
