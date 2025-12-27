@@ -1,5 +1,3 @@
-// --- استبدل محتوى register.js بالكامل بهذا ---
-
 document.addEventListener('DOMContentLoaded', () => {
     const registerForm = document.getElementById('registerForm');
     const registerBtn = document.getElementById('registerBtn');
@@ -8,18 +6,12 @@ document.addEventListener('DOMContentLoaded', () => {
     registerForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        // --- ✅✅ الإصلاح: جمع البيانات يدويًا ---
-        const data = {
-            username: document.getElementById('username').value,
-            email: document.getElementById('email').value,
-            password: document.getElementById('password').value,
-            gender: document.querySelector('input[name="gender"]:checked')?.value, // الحصول على قيمة الراديو المحدد
-            birthDate: document.getElementById('birthDate').value
-        };
-        // --- نهاية الإصلاح ---
+        // تجميع البيانات من النموذج
+        const formData = new FormData(registerForm);
+        const data = Object.fromEntries(formData.entries());
 
         // التحقق من أن الحقول ليست فارغة
-        if (!data.username || !data.email || !data.password || !data.gender || !data.birthDate) {
+        if (!data.username || !data.email || !data.password) {
             showNotification('يرجى ملء جميع الحقول', 'error');
             return;
         }
@@ -60,7 +52,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
-
 
 // دالة عامة لإظهار الإشعارات
 function showNotification(message, type = 'info') {
