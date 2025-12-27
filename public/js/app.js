@@ -290,11 +290,30 @@ async function handleUsernameUpdate(e) {
     appContainer.classList.remove('hidden');
 
     // --- 3. تهيئة واجهة المستخدم ببيانات المستخدم ---
-    document.getElementById('username').textContent = user.username;
-    document.getElementById('balance').textContent = user.balance.toFixed(2);
-    document.getElementById('coins').textContent = user.coins;
-    document.getElementById('userLevel').textContent = `المستوى: ${user.level}`;
-    document.getElementById('profileImage').src = user.profileImage;
+    // --- 3. تهيئة واجهة المستخدم ببيانات المستخدم ---
+document.getElementById('username').textContent = user.username;
+document.getElementById('balance').textContent = user.balance.toFixed(2);
+document.getElementById('coins').textContent = user.coins;
+document.getElementById('userLevel').textContent = `المستوى: ${user.level}`;
+document.getElementById('profileImage').src = user.profileImage;
+
+// --- ✅ إضافة عرض البيانات الجديدة ---
+const profileContainer = document.querySelector('.user-profile');
+const detailsHTML = `
+    <div class="text-xs text-gray-400 mt-2 flex justify-center items-center gap-2 cursor-pointer" id="user-id-container">
+        <span>ID: ${user.customId}</span>
+        <i class="far fa-copy"></i>
+    </div>
+    <div class="text-sm text-gray-300 mt-1">${user.age} سنة</div>
+`;
+profileContainer.insertAdjacentHTML('beforeend', detailsHTML);
+
+// إضافة وظيفة النسخ للـ ID
+document.getElementById('user-id-container').addEventListener('click', () => {
+    navigator.clipboard.writeText(user.customId).then(() => {
+        showNotification('تم نسخ الـ ID بنجاح!', 'info');
+    });
+});
 
     // --- 4. إنشاء مقاعد الصوت ---
     const voiceGrid = document.getElementById('voice-chat-grid');
