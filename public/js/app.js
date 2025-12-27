@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem('token');
-    const user = JSON.parse(localStorage.getItem('user'));
+    let user = JSON.parse(localStorage.getItem('user'));
     const loadingScreen = document.getElementById('loading-screen');
     const appContainer = document.getElementById('app-container');
 
@@ -209,11 +209,6 @@ function showArenaView() {
 }
 
 // دالة جديدة لمعالجة رفع الصورة
-// --- استبدل دالة handleImageUpload بالكامل بهذه النسخة ---
-// --- استبدل دالة handleImageUpload بالكامل بهذه النسخة ---
-
-// --- تأكد من أن دالة handleImageUpload هي هذه النسخة ---
-
 async function handleImageUpload(e) {
     e.preventDefault();
     const fileInput = document.getElementById('image-file-input');
@@ -221,49 +216,52 @@ async function handleImageUpload(e) {
         showNotification('الرجاء اختيار ملف أولاً.', 'error');
         return;
     }
-
+    
     const formData = new FormData();
     formData.append('profileImage', fileInput.files[0]);
-
+    
     const uploadBtn = e.target.querySelector('button[type="submit"]');
     uploadBtn.disabled = true;
     uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>جاري الرفع...';
-
+    
     try {
         const response = await fetch('/api/users/updateProfilePicture', {
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${token}` },
             body: formData
         });
-
-        const result = await response.json();
-
-        // ... داخل دالة handleImageUpload
-if (response.ok) {
-    showNotification('تم تحديث صورتك بنجاح!', 'success');
-
-    const newImageUrl = result.data.user.profileImage;
-
-    // تحديث localStorage
-    const localUser = JSON.parse(localStorage.getItem('user'));
-    localUser.profileImage = newImageUrl;
-    localStorage.setItem('user', JSON.stringify(localUser));
-
-    // تحديث الواجهة مباشرة (في كلا المكانين)
-    const settingsImage = document.getElementById('settings-profile-image');
-    if (settingsImage) {
-        settingsImage.src = newImageUrl;
-    }
     
-    // ✅ السطر المضاف: تحديث الصورة في الشريط الجانبي أيضاً
-    const sidebarImage = document.getElementById('profileImage');
-    if (sidebarImage) {
-        sidebarImage.src = newImageUrl;
-    }
-
-    document.getElementById('upload-image-btn').classList.add('hidden');
-
-} else {
+        const result = await response.json();
+    
+        if (response.ok) {
+            showNotification('تم تحديث صورتك بنجاح!', 'success');
+    
+            // --- ✅ الإصلاح الجذري يبدأ هنا ---
+    
+            // 1. تحديث "مصدر الحقيقة" (المتغير العام)
+            user = result.data.user; 
+    
+            // 2. تحديث التخزين المحلي (localStorage) بالبيانات الجديدة الكاملة
+            localStorage.setItem('user', JSON.stringify(user));
+    
+            // 3. تحديث الواجهة مباشرة من مصدر الحقيقة المحدث
+            const newImageUrl = user.profileImage;
+            // نضيف معلمة الوقت لكسر التخزين المؤقت كضمانة
+            const cacheBustedUrl = `${newImageUrl}?t=${new Date().getTime()}`;
+    
+            const settingsImage = document.getElementById('settings-profile-image');
+            if (settingsImage) {
+                settingsImage.src = cacheBustedUrl;
+            }
+                
+            const sidebarImage = document.getElementById('profileImage');
+            if (sidebarImage) {
+                sidebarImage.src = cacheBustedUrl;
+            }
+    
+            document.getElementById('upload-image-btn').classList.add('hidden');
+    
+        } else {
             showNotification(result.message || 'فشل رفع الصورة', 'error');
         }
     } catch (error) {
@@ -273,6 +271,7 @@ if (response.ok) {
         uploadBtn.innerHTML = '<i class="fas fa-upload mr-2"></i>رفع وحفظ';
     }
 }
+
 
 
 
