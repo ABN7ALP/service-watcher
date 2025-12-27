@@ -545,8 +545,9 @@ socket.on('chatCleanup', ({ idsToDelete }) => {
 async function showMiniProfileModal(userId) {
     try {
         // --- الخطوة 1: جلب أحدث بيانات المستخدم (الطريقة القوية) ---
-        // هذا يضمن أن البيانات دائمًا محدثة
-        const response = await fetch(`/api/users/${userId}`); // سنحتاج لإنشاء هذا المسار
+        const response = await fetch(`/api/users/${userId}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
         if (!response.ok) throw new Error('User not found');
         const result = await response.json();
         const profileUser = result.data.user;
