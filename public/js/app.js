@@ -1,4 +1,39 @@
-document.addEventListener('DOMContentLoaded', () => {
+
+// --- دوال مساعدة لنظام اللفلات ---
+const calculateRequiredXp = (level) => {
+    return level * 1500;
+};
+
+// دالة لإنشاء HTML الخاص بشريط التقدم
+const createLevelProgressHTML = (user) => {
+    const requiredXp = calculateRequiredXp(user.level);
+    const progressPercentage = (user.experience / requiredXp) * 100;
+
+    return `
+        <div class="mt-4" id="level-container">
+            <div class="flex justify-between items-center text-xs mb-1">
+                <span class="font-bold text-yellow-400">LVL ${user.level}</span>
+                <span class="text-gray-400">${Math.floor(user.experience)} / ${requiredXp} XP</span>
+            </div>
+            <div class="w-full bg-gray-700 rounded-full h-2.5">
+                <div id="xp-bar" class="bg-yellow-400 h-2.5 rounded-full" style="width: ${progressPercentage}%"></div>
+            </div>
+            <div id="level-perks-container" class="mt-2 text-center">
+                <button id="perks-toggle-btn" class="text-xs text-purple-400 hover:underline">
+                    مميزات المستوى التالي <i class="fas fa-chevron-down text-xs ml-1"></i>
+                </button>
+                <div id="perks-list" class="hidden text-left bg-gray-800/50 p-2 rounded-md mt-1 text-xs space-y-1">
+                    <p><i class="fas fa-check-circle text-green-400 mr-1"></i> ميزة 1 (مثال)</p>
+                    <p><i class="fas fa-check-circle text-green-400 mr-1"></i> ميزة 2 (مثال)</p>
+                </div>
+            </div>
+        </div>
+    `;
+};
+
+
+
+    document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem('token');
     const user = JSON.parse(localStorage.getItem('user'));
     const loadingScreen = document.getElementById('loading-screen');
@@ -325,45 +360,45 @@ const getEducationStatus = (status) => {
     return map[status] || { text: status, icon: 'fa-question-circle' };
 };
 
+
 const socialInfo = getSocialStatus(user.socialStatus);
 const educationInfo = getEducationStatus(user.educationStatus);
 
 const detailsHTML = `
     <div class="mt-3 space-y-2 text-sm text-gray-300 dark:text-gray-400">
-        
-        <!-- ID and Age -->
         <div class="flex justify-center items-center gap-4">
             <div class="text-xs flex items-center gap-2 cursor-pointer" id="user-id-container" title="نسخ الـ ID">
-                <i class="fas fa-id-card-alt text-purple-400"></i>
-                <span>${user.customId}</span>
+                <i class="fas fa-id-card-alt text-purple-400"></i> <span>${user.customId}</span>
             </div>
             <div class="text-xs flex items-center gap-2">
-                <i class="fas fa-birthday-cake text-pink-400"></i>
-                <span>${user.age} سنة</span>
+                <i class="fas fa-birthday-cake text-pink-400"></i> <span>${user.age} سنة</span>
             </div>
         </div>
-
-        <!-- Social and Education Status -->
         <div class="flex justify-center items-center gap-4 pt-1">
             <div class="text-xs flex items-center gap-2" title="${socialInfo.text}">
-                <i class="fas ${socialInfo.icon} text-red-400"></i>
-                <span>${socialInfo.text}</span>
+                <i class="fas ${socialInfo.icon} text-red-400"></i> <span>${socialInfo.text}</span>
             </div>
             <div class="text-xs flex items-center gap-2" title="${educationInfo.text}">
-                <i class="fas ${educationInfo.icon} text-blue-400"></i>
-                <span>${educationInfo.text}</span>
+                <i class="fas ${educationInfo.icon} text-blue-400"></i> <span>${educationInfo.text}</span>
             </div>
         </div>
     </div>
+    ${createLevelProgressHTML(user)} 
 `;
 
 profileContainer.insertAdjacentHTML('beforeend', detailsHTML);
 
-// إضافة وظيفة النسخ للـ ID
+// ربط الأحداث
 document.getElementById('user-id-container').addEventListener('click', () => {
-    navigator.clipboard.writeText(user.customId).then(() => {
-        showNotification('تم نسخ الـ ID بنجاح!', 'info');
-    });
+    navigator.clipboard.writeText(user.customId).then(() => showNotification('تم نسخ الـ ID بنجاح!', 'info'));
+});
+
+document.getElementById('perks-toggle-btn').addEventListener('click', (e) => {
+    const perksList = document.getElementById('perks-list');
+    const icon = e.currentTarget.querySelector('i');
+    perksList.classList.toggle('hidden');
+    icon.classList.toggle('fa-chevron-down');
+    icon.classList.toggle('fa-chevron-up');
 });
 
 
@@ -427,6 +462,41 @@ document.getElementById('user-id-container').addEventListener('click', () => {
         }
     });
 
+
+
+       // --- أضف هذه المستمعات الجديدة ---
+
+socket.on('experienceUpdate', ({ level, experience, requiredXp }) => {
+    // تحديث واجهة المستخدم بالبيانات الجديدة
+    const levelText = document.querySelector('#level-container .font-bold');
+    const xpText = document.querySelector('#level-container .text-gray-400');
+    const xpBar = document.getElementById('xp-bar');
+
+    if (levelText) levelText.textContent = `LVL ${level}`;
+    if (xpText) xpText.textContent = `${Math.floor(experience)} / ${requiredXp} XP`;
+    if (xpBar) xpBar.style.width = `${(experience / requiredXp) * 100}%`;
+
+    // تحديث بيانات المستخدم في localStorage
+    const localUser = JSON.parse(localStorage.getItem('user'));
+    if (localUser) {
+        localUser.level = level;
+        localUser.experience = experience;
+        localStorage.setItem('user', JSON.stringify(localUser));
+    }
+});
+
+socket.on('levelUp', ({ newLevel }) => {
+    // عرض إشعار مميز عند رفع المستوى
+    showNotification(`🎉 تهانينا! لقد وصلت إلى المستوى ${newLevel}!`, 'success');
+    
+    // يمكنك إضافة أنيميشن أو تأثيرات خاصة هنا
+    const profileImage = document.getElementById('profileImage');
+    if (profileImage) {
+        profileImage.classList.add('animate-bounce');
+        setTimeout(() => profileImage.classList.remove('animate-bounce'), 2000);
+    }
+});
+ 
 
     // --- أضف هذا الكود في قسم أحداث السوكيت العام ---
 
