@@ -649,7 +649,19 @@ messageInput.addEventListener('input', () => {
         charCounter.classList.remove('text-red-400');
     }
 });
-    
+
+   // --- ✅ أضف هذا الكود لتفعيل النقر على الصور ---
+chatMessages.addEventListener('click', (e) => {
+    // تحقق مما إذا كانت النقرة على صورة ولها data-user-id
+    if (e.target.tagName === 'IMG' && e.target.dataset.userId) {
+        const userId = e.target.dataset.userId;
+        // لا تفتح نافذة للمستخدم نفسه
+        if (userId === user._id) return;
+        
+        showMiniProfileModal(userId);
+    }
+});
+     
     const sendBtn = document.getElementById('sendBtn');
     const chatMessages = document.getElementById('chat-messages');
 
