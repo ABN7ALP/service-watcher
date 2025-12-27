@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem('token');
-    let user = JSON.parse(localStorage.getItem('user'));
+    const user = JSON.parse(localStorage.getItem('user'));
     const loadingScreen = document.getElementById('loading-screen');
     const appContainer = document.getElementById('app-container');
 
@@ -209,20 +209,18 @@ function showArenaView() {
 }
 
 // دالة جديدة لمعالجة رفع الصورة
-// --- استبدل دالة handleImageUpload بالكامل ---
-
 async function handleImageUpload(e) {
     e.preventDefault();
     const fileInput = document.getElementById('image-file-input');
     if (!fileInput.files || fileInput.files.length === 0) {
-        showNotification('الرجاء اختيار ملف أولاً.', 'error');
+        showNotification('الرجاء اختيار صورة أولاً.', 'error');
         return;
     }
 
     const formData = new FormData();
     formData.append('profileImage', fileInput.files[0]);
 
-    const uploadBtn = e.target.querySelector('button[type="submit"]');
+    const uploadBtn = document.getElementById('upload-image-btn');
     uploadBtn.disabled = true;
     uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>جاري الرفع...';
 
@@ -234,36 +232,13 @@ async function handleImageUpload(e) {
         });
 
         const result = await response.json();
-
         if (response.ok) {
-            showNotification('تم تحديث صورتك بنجاح!', 'success');
-
-            const newImageUrl = result.data.user.profileImage;
-
-            // --- ✅✅ الإصلاح الحقيقي هنا ---
-            // 1. اقرأ الكائن الكامل من localStorage
+            showNotification('تم تحديث الصورة بنجاح!', 'success');
             const localUser = JSON.parse(localStorage.getItem('user'));
-
-            // 2. حدّث فقط خاصية profileImage في هذا الكائن
-            localUser.profileImage = newImageUrl;
-
-            // 3. احفظ الكائن المحدّث بالكامل مرة أخرى في localStorage
+            localUser.profileImage = result.data.user.profileImage;
             localStorage.setItem('user', JSON.stringify(localUser));
-            // --- نهاية الإصلاح ---
-
-            // الآن، قم بتحديث الواجهة من البيانات المحدثة
-            const settingsImage = document.getElementById('settings-profile-image');
-            if (settingsImage) {
-                settingsImage.src = newImageUrl;
-            }
-            
-            const sidebarImage = document.getElementById('profileImage');
-            if (sidebarImage) {
-                sidebarImage.src = newImageUrl;
-            }
-
-            document.getElementById('upload-image-btn').classList.add('hidden');
-
+            document.getElementById('profileImage').src = localUser.profileImage; // تحديث الصورة في الشريط العلوي
+            uploadBtn.classList.add('hidden');
         } else {
             showNotification(result.message || 'فشل رفع الصورة', 'error');
         }
@@ -274,10 +249,6 @@ async function handleImageUpload(e) {
         uploadBtn.innerHTML = '<i class="fas fa-upload mr-2"></i>رفع وحفظ';
     }
 }
-
-
-
-
 
 // دالة جديدة لمعالجة تحديث اسم المستخدم
 async function handleUsernameUpdate(e) {
@@ -319,39 +290,11 @@ async function handleUsernameUpdate(e) {
     appContainer.classList.remove('hidden');
 
     // --- 3. تهيئة واجهة المستخدم ببيانات المستخدم ---
-if (user) {
-    document.getElementById('username').textContent = user.username || 'مستخدم';
-    
-    // ✅ الإصلاح: التحقق من وجود القيمة قبل استخدام .toFixed()
-    document.getElementById('balance').textContent = (user.balance || 0).toFixed(2);
-    document.getElementById('coins').textContent = user.coins || 0;
-    
-    document.getElementById('userLevel').textContent = `المستوى: ${user.level || 1}`;
-    document.getElementById('profileImage').src = user.profileImage || 'https://via.placeholder.com/80';
-    
-    // ✅ عرض البيانات الجديدة مع التحقق
-    document.getElementById('userAge').textContent = `العمر: ${user.age || '--'}`;
-    document.getElementById('userCustomId').textContent = user.customId || 'غير متوفر';
-
-    // ✅ منطق نسخ الـ ID (مع التحقق)
-    const copyIdBtn = document.getElementById('copy-id-btn');
-    if (copyIdBtn && user.customId) {
-        copyIdBtn.addEventListener('click', () => {
-            navigator.clipboard.writeText(user.customId).then(() => {
-                showNotification('تم نسخ الـ ID!', 'success');
-            }).catch(() => {
-                showNotification('فشل نسخ الـ ID', 'error');
-            });
-        });
-    } else if (copyIdBtn) {
-        copyIdBtn.style.display = 'none'; // إخفاء الزر إذا لم يكن هناك ID
-    }
-} else {
-    // إذا كان كائن المستخدم غير موجود لسبب ما، أعد التوجيه إلى صفحة الدخول
-    window.location.href = '/login.html';
-}
-
-
+    document.getElementById('username').textContent = user.username;
+    document.getElementById('balance').textContent = user.balance.toFixed(2);
+    document.getElementById('coins').textContent = user.coins;
+    document.getElementById('userLevel').textContent = `المستوى: ${user.level}`;
+    document.getElementById('profileImage').src = user.profileImage;
 
     // --- 4. إنشاء مقاعد الصوت ---
     const voiceGrid = document.getElementById('voice-chat-grid');
