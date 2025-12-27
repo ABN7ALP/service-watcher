@@ -61,6 +61,7 @@ async function startGame(io, battleId) {
 }
 
 
+// --- استبدل دالة endBattle بالكامل في socketService.js ---
 async function endBattle(io, battleId) {
     try {
         const battle = await Battle.findById(battleId).populate('players');
@@ -70,31 +71,51 @@ async function endBattle(io, battleId) {
         const playerIds = Object.keys(scores);
         
         let winnerId = null;
+        let loserId = null;
+
         if (playerIds.length === 2) {
             if (scores[playerIds[0]] > scores[playerIds[1]]) {
                 winnerId = playerIds[0];
+                loserId = playerIds[1];
             } else if (scores[playerIds[1]] > scores[playerIds[0]]) {
                 winnerId = playerIds[1];
+                loserId = playerIds[0];
             }
         }
 
         const totalPot = battle.betAmount * battle.players.length;
+        
+        // --- ✅ تطبيق نظام العمولة ---
+        const commissionRate = battle.type === '1v1' ? 0.10 : 0.05; // 10% for 1v1, 5% for teams
+        const commission = totalPot * commissionRate;
+        const finalPot = totalPot - commission;
+
         if (winnerId) {
             const winnerUser = await User.findById(winnerId);
             if (winnerUser) {
-                winnerUser.balance += totalPot;
+                winnerUser.balance += finalPot; // الفائز يحصل على المبلغ بعد خصم العمولة
                 await winnerUser.save();
                 if (winnerUser.socketId) {
                     io.to(winnerUser.socketId).emit('balanceUpdate', { newBalance: winnerUser.balance });
                 }
+                // --- ✅ منح الخبرة للفائز ---
+                await addExperience(io, winnerId, 0, 'win'); 
             }
-        } else {
+            
+            // --- ✅ منح الخبرة للخاسر ---
+            if (loserId) {
+                await addExperience(io, loserId, battle.betAmount, 'loss');
+            }
+
+        } else { // في حالة التعادل
             for (const player of battle.players) {
-                player.balance += battle.betAmount;
+                player.balance += battle.betAmount; // إعادة المبلغ لكل لاعب
                 await player.save();
                 if (player.socketId) {
                     io.to(player.socketId).emit('balanceUpdate', { newBalance: player.balance });
                 }
+                // في حالة التعادل، لا يوجد فائز أو خاسر، يمكننا منح نقاط رمزية
+                await addExperience(io, player._id, 0, 'win'); 
             }
         }
 
@@ -106,6 +127,7 @@ async function endBattle(io, battleId) {
         console.error(`Error in endBattle for battle ${battleId}:`, error);
     }
 }
+
 
 // --- دالة التهيئة الرئيسية ---
 const initializeSocket = (server) => {
