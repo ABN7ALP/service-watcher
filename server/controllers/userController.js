@@ -58,8 +58,27 @@ const updateProfilePicture = async (req, res) => {
     }
 };
 
+// --- ✅ أضف هذه الدالة الجديدة ---
+const getUserById = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على المستخدم.' });
+        }
+        res.status(200).json({ status: 'success', data: { user } });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم.' });
+    }
+};
+
+
 // --- ✅✅ التصدير في النهاية كمجموعة واحدة ---
+
+
+// --- ✅ عدّل الكائن الذي يتم تصديره ---
 module.exports = {
     updateUsername,
-    updateProfilePicture
+    updateProfilePicture,
+    getUserById // <-- أضف الدالة الجديدة هنا
 };
+
