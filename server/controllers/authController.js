@@ -25,24 +25,35 @@ const createSendToken = (user, statusCode, res) => {
 };
 
 // --- إنشاء حساب جديد ---
+// --- استبدل دالة register فقط ---
 exports.register = async (req, res, next) => {
     try {
-        const { username, email, password } = req.body;
+        const { username, email, password, gender, birthDate, socialStatus, educationStatus } = req.body;
 
-        if (!username || !email || !password) {
-            return res.status(400).json({ status: 'fail', message: 'يرجى تقديم اسم المستخدم والبريد الإلكتروني وكلمة المرور' });
+        if (!username || !email || !password || !gender || !birthDate) {
+            return res.status(400).json({ status: 'fail', message: 'يرجى ملء جميع الحقول الإلزامية.' });
         }
 
-        const newUser = await User.create({ username, email, password });
+        const newUser = await User.create({
+            username,
+            email,
+            password,
+            gender,
+            birthDate,
+            socialStatus,
+            educationStatus
+        });
         
         createSendToken(newUser, 201, res);
 
     } catch (error) {
-        // معالجة خطأ تكرار اسم المستخدم أو البريد الإلكتروني
         if (error.code === 11000) {
-            return res.status(400).json({ status: 'fail', message: 'البريد الإلكتروني أو اسم المستخدم مسجل بالفعل' });
+            return res.status(400).json({ status: 'fail', message: 'البريد الإلكتروني أو اسم المستخدم مسجل بالفعل.' });
         }
-        next(error); // إرسال الأخطاء الأخرى إلى معالج الأخطاء العام
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({ status: 'fail', message: Object.values(error.errors).map(e => e.message).join(', ') });
+        }
+        next(error);
     }
 };
 
