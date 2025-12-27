@@ -27,3 +27,10 @@ body {
 .xp-gain-animation {
     animation: xp-float-up 2s ease-out forwards;
 }
+/* --- ✅ أنماط أزرار الإجراءات في الملف الشخصي المصغر --- */
+.action-btn {
+    @apply flex flex-col items-center justify-center text-xs text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-lg transition-colors;
+}
+.action-btn i {
+    @apply text-lg mb-1;
+}
