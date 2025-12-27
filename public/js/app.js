@@ -427,6 +427,24 @@ document.getElementById('perks-toggle-btn').addEventListener('click', (e) => {
         }
     });
 
+
+// --- ✅ دالة جديدة لأنيميشن اكتساب الخبرة ---
+function showXpGainAnimation(amount) {
+    if (amount <= 0) return;
+
+    const xpElement = document.createElement('div');
+    xpElement.textContent = `+${amount} XP`;
+    xpElement.className = 'xp-gain-animation fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-yellow-500/80 text-white font-bold px-4 py-2 rounded-full shadow-lg z-[300]';
+    
+    document.body.appendChild(xpElement);
+
+    // إزالة العنصر بعد انتهاء الأنيميشن
+    setTimeout(() => {
+        xpElement.remove();
+    }, 1900); // يجب أن تكون المدة أقل بقليل من مدة الأنيميشن في CSS
+}
+
+        
     // =================================================
     // =========== قسم عام وأحداث السوكيت =============
     // =================================================
@@ -466,7 +484,11 @@ document.getElementById('perks-toggle-btn').addEventListener('click', (e) => {
 
        // --- أضف هذه المستمعات الجديدة ---
 
-socket.on('experienceUpdate', ({ level, experience, requiredXp }) => {
+// --- استبدل مستمع experienceUpdate بهذا ---
+socket.on('experienceUpdate', ({ level, experience, requiredXp, xpGained }) => {
+    // عرض أنيميشن اكتساب الخبرة
+    showXpGainAnimation(xpGained);
+
     // تحديث واجهة المستخدم بالبيانات الجديدة
     const levelText = document.querySelector('#level-container .font-bold');
     const xpText = document.querySelector('#level-container .text-gray-400');
@@ -484,6 +506,7 @@ socket.on('experienceUpdate', ({ level, experience, requiredXp }) => {
         localStorage.setItem('user', JSON.stringify(localUser));
     }
 });
+
 
 socket.on('levelUp', ({ newLevel }) => {
     // عرض إشعار مميز عند رفع المستوى
