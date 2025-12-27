@@ -1,7 +1,7 @@
 // استبدل كل محتوى الملف بهذا الكود
 const Battle = require('../models/Battle');
 const User = require('../models/User');
-const { addExperience } = require('../utils/experienceManager'); // ✅ 1. استيراد الدالة
+//const { addExperience } = require('../utils/experienceManager'); // ✅ 1. استيراد الدالة
 
 exports.getAvailableBattles = async (req, res, next) => {
     try {
@@ -44,7 +44,7 @@ exports.createBattle = async (req, res, next) => {
 
         const io = req.app.get('socketio');
         io.emit('newBattle', populatedBattle); // إشعار بوجود تحدي جديد
-        await addExperience(io, creatorId, betAmount);
+        //await addExperience(io, creatorId, betAmount);
         
         
         // تحديث رصيد المنشئ
