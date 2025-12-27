@@ -10,60 +10,84 @@
 <body class="bg-gray-900 text-white font-cairo">
 
     <div class="min-h-screen flex items-center justify-center p-4 bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80');">
-        <div class="w-full max-w-md bg-gray-800 bg-opacity-80 backdrop-blur-sm rounded-2xl shadow-2xl p-8">
+        <div class="w-full max-w-lg bg-gray-800 bg-opacity-80 backdrop-blur-sm rounded-2xl shadow-2xl p-8">
             
-            <!-- Header -->
-            <div class="text-center mb-8">
-                <div class="flex justify-center items-center gap-3 mb-2">
-                    <i class="fas fa-user-plus text-yellow-400 text-4xl"></i>
-                    <h1 class="text-3xl font-bold text-white">إنشاء حساب جديد</h1>
-                </div>
+            <div class="text-center mb-6">
+                <h1 class="text-3xl font-bold text-white">إنشاء حساب جديد</h1>
                 <p class="text-gray-400">انضم إلى ساحة التحديات الآن!</p>
             </div>
 
-            <!-- Register Form -->
             <form id="registerForm" class="space-y-4">
-                <!-- Username -->
-                <div>
-                    <label for="username" class="block mb-2 text-sm font-medium text-gray-300">اسم المستخدم</label>
-                    <input type="text" id="username" name="username" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-3" placeholder="اختر اسماً فريداً" required>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="username" class="block mb-1 text-sm font-medium text-gray-300">اسم المستخدم</label>
+                        <input type="text" id="username" name="username" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5" required>
+                    </div>
+                    <div>
+                        <label for="email" class="block mb-1 text-sm font-medium text-gray-300">البريد الإلكتروني</label>
+                        <input type="email" id="email" name="email" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5" required>
+                    </div>
                 </div>
 
-                <!-- Email -->
                 <div>
-                    <label for="email" class="block mb-2 text-sm font-medium text-gray-300">البريد الإلكتروني</label>
-                    <input type="email" id="email" name="email" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-3" placeholder="example@email.com" required>
+                    <label for="password" class="block mb-1 text-sm font-medium text-gray-300">كلمة المرور</label>
+                    <input type="password" id="password" name="password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5" required>
                 </div>
 
-                <!-- Password -->
-                <div>
-                    <label for="password" class="block mb-2 text-sm font-medium text-gray-300">كلمة المرور</label>
-                    <input type="password" id="password" name="password" class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg p-3" placeholder="••••••••" required>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block mb-1 text-sm font-medium text-gray-300">الجنس</label>
+                        <div class="flex gap-4 mt-2">
+                            <label class="flex items-center"><input type="radio" name="gender" value="male" class="ml-2" required> ذكر</label>
+                            <label class="flex items-center"><input type="radio" name="gender" value="female" class="ml-2"> أنثى</label>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="birthDate" class="block mb-1 text-sm font-medium text-gray-300">تاريخ الميلاد</label>
+                        <input type="date" id="birthDate" name="birthDate" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5" required>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="socialStatus" class="block mb-1 text-sm font-medium text-gray-300">الحالة الاجتماعية</label>
+                        <select id="socialStatus" name="socialStatus" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5">
+                            <option value="single">أعزب/عزباء</option>
+                            <option value="in_relationship">في علاقة</option>
+                            <option value="engaged">مخطوب/ة</option>
+                            <option value="married">متزوج/ة</option>
+                            <option value="divorced">مطلق/ة</option>
+                            <option value="searching">أبحث عن حبيب/ة</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="educationStatus" class="block mb-1 text-sm font-medium text-gray-300">المستوى التعليمي</label>
+                        <select id="educationStatus" name="educationStatus" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5">
+                            <option value="studying">طالب/ة</option>
+                            <option value="graduated">خريج/ة</option>
+                            <option value="primary">ابتدائي</option>
+                            <option value="high_school">ثانوي</option>
+                            <option value="university">جامعي</option>
+                        </select>
+                    </div>
                 </div>
                 
-                <!-- Submit Button -->
                 <div>
-                    <button type="submit" id="registerBtn" class="w-full mt-4 text-white bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:ring-purple-800 font-medium rounded-lg text-sm px-5 py-3 flex items-center justify-center gap-2">
-                        <i class="fas fa-check"></i>
+                    <button type="submit" id="registerBtn" class="w-full mt-2 text-white bg-purple-600 hover:bg-purple-700 font-medium rounded-lg text-sm px-5 py-3 flex items-center justify-center gap-2">
                         <span>إنشاء الحساب</span>
                         <i id="registerSpinner" class="fas fa-spinner fa-spin hidden"></i>
                     </button>
                 </div>
             </form>
 
-            <!-- Footer Links -->
-            <div class="text-center mt-6 text-sm">
-                <p class="text-gray-400">
-                    لديك حساب بالفعل؟ 
-                    <a href="/login.html" class="font-medium text-purple-400 hover:underline">سجل الدخول</a>
-                </p>
+            <div class="text-center mt-4 text-sm">
+                <p class="text-gray-400">لديك حساب بالفعل؟ <a href="/login.html" class="font-medium text-purple-400 hover:underline">سجل الدخول</a></p>
             </div>
         </div>
     </div>
     
-    <!-- Notification container -->
     <div id="notification-container" class="fixed top-5 right-5 z-50 space-y-2"></div>
-
     <script src="/js/register.js"></script>
 </body>
 </html>
