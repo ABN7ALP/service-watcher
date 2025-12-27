@@ -209,6 +209,8 @@ function showArenaView() {
 }
 
 // دالة جديدة لمعالجة رفع الصورة
+// --- استبدل دالة handleImageUpload بالكامل ---
+
 async function handleImageUpload(e) {
     e.preventDefault();
     const fileInput = document.getElementById('image-file-input');
@@ -216,51 +218,52 @@ async function handleImageUpload(e) {
         showNotification('الرجاء اختيار ملف أولاً.', 'error');
         return;
     }
-    
+
     const formData = new FormData();
     formData.append('profileImage', fileInput.files[0]);
-    
+
     const uploadBtn = e.target.querySelector('button[type="submit"]');
     uploadBtn.disabled = true;
     uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>جاري الرفع...';
-    
+
     try {
         const response = await fetch('/api/users/updateProfilePicture', {
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${token}` },
             body: formData
         });
-    
+
         const result = await response.json();
-    
+
         if (response.ok) {
             showNotification('تم تحديث صورتك بنجاح!', 'success');
-    
-            // --- ✅ الإصلاح الجذري يبدأ هنا ---
-    
-            // 1. تحديث "مصدر الحقيقة" (المتغير العام)
-            user = result.data.user; 
-    
-            // 2. تحديث التخزين المحلي (localStorage) بالبيانات الجديدة الكاملة
-            localStorage.setItem('user', JSON.stringify(user));
-    
-            // 3. تحديث الواجهة مباشرة من مصدر الحقيقة المحدث
-            const newImageUrl = user.profileImage;
-            // نضيف معلمة الوقت لكسر التخزين المؤقت كضمانة
-            const cacheBustedUrl = `${newImageUrl}?t=${new Date().getTime()}`;
-    
+
+            const newImageUrl = result.data.user.profileImage;
+
+            // --- ✅✅ الإصلاح الحقيقي هنا ---
+            // 1. اقرأ الكائن الكامل من localStorage
+            const localUser = JSON.parse(localStorage.getItem('user'));
+
+            // 2. حدّث فقط خاصية profileImage في هذا الكائن
+            localUser.profileImage = newImageUrl;
+
+            // 3. احفظ الكائن المحدّث بالكامل مرة أخرى في localStorage
+            localStorage.setItem('user', JSON.stringify(localUser));
+            // --- نهاية الإصلاح ---
+
+            // الآن، قم بتحديث الواجهة من البيانات المحدثة
             const settingsImage = document.getElementById('settings-profile-image');
             if (settingsImage) {
-                settingsImage.src = cacheBustedUrl;
+                settingsImage.src = newImageUrl;
             }
-                
+            
             const sidebarImage = document.getElementById('profileImage');
             if (sidebarImage) {
-                sidebarImage.src = cacheBustedUrl;
+                sidebarImage.src = newImageUrl;
             }
-    
+
             document.getElementById('upload-image-btn').classList.add('hidden');
-    
+
         } else {
             showNotification(result.message || 'فشل رفع الصورة', 'error');
         }
@@ -271,6 +274,7 @@ async function handleImageUpload(e) {
         uploadBtn.innerHTML = '<i class="fas fa-upload mr-2"></i>رفع وحفظ';
     }
 }
+
 
 
 
