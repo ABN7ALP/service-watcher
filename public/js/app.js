@@ -650,6 +650,11 @@ messageInput.addEventListener('input', () => {
     }
 });
 
+     
+    const sendBtn = document.getElementById('sendBtn');
+    const chatMessages = document.getElementById('chat-messages');
+        
+
    // --- ✅ أضف هذا الكود لتفعيل النقر على الصور ---
 chatMessages.addEventListener('click', (e) => {
     // تحقق مما إذا كانت النقرة على صورة ولها data-user-id
@@ -661,10 +666,6 @@ chatMessages.addEventListener('click', (e) => {
         showMiniProfileModal(userId);
     }
 });
-     
-    const sendBtn = document.getElementById('sendBtn');
-    const chatMessages = document.getElementById('chat-messages');
-
     // --- استبدل دالة sendMessage بهذه ---
 function sendMessage() {
     const message = messageInput.value.trim();
