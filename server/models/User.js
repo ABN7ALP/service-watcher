@@ -27,7 +27,23 @@ const userSchema = new mongoose.Schema({
     level: { type: Number, default: 1 },
     experience: { type: Number, default: 0 },
     isAdmin: { type: Boolean, default: false },
-    socketId: { type: String, default: null }
+    socketId: { type: String, default: null },
+
+    // --- ✅ الحقول الجديدة لنظام الصداقة ---
+    friends: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    friendRequestsSent: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    friendRequestsReceived: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    // --- نهاية الحقول الجديدة --
+
 }, { timestamps: true });
 
 userSchema.pre('validate', async function(next) {
