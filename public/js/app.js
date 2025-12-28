@@ -113,81 +113,17 @@ navItems.forEach(item => {
 });
 
 // --- ✅ استبدل دالة showSettingsView بالكامل ---
+// --- ✅ استبدل دالة showSettingsView بالكامل بهذه النسخة النظيفة ---
 async function showSettingsView() {
-    // عرض هيكل أساسي مع حالة تحميل
+    const localUser = JSON.parse(localStorage.getItem('user'));
     mainContent.innerHTML = `
         <div class="p-4">
             <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
-            <div id="settings-content">
-                <div class="text-center p-10">
-                    <i class="fas fa-spinner fa-spin text-4xl text-purple-400"></i>
-                    <p class="mt-4">جاري تحميل الإعدادات...</p>
-                </div>
-            </div>
-        </div>
-    `;
-
-    try {
-        // جلب البيانات الكاملة للمستخدم
-        const response = await fetch('/api/users/me/details', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!response.ok) throw new Error('Failed to load user details');
-        const result = await response.json();
-        const detailedUser = result.data.user;
-
-        // --- بناء HTML لقسم طلبات الصداقة ---
-        let friendRequestsHTML = '<p class="text-gray-400 text-sm">لا توجد طلبات صداقة جديدة.</p>';
-        if (detailedUser.friendRequestsReceived && detailedUser.friendRequestsReceived.length > 0) {
-            friendRequestsHTML = detailedUser.friendRequestsReceived.map(sender => `
-                <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
-                    <div class="flex items-center gap-3">
-                        <img src="${sender.profileImage}" data-user-id="${sender._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
-                        <span>${sender.username}</span>
-                    </div>
-                    <div class="flex gap-2">
-                        <button class="friend-action-btn bg-blue-600 hover:bg-blue-700 text-white text-xs py-1 px-3 rounded-full" data-action="accept-request" data-user-id="${sender._id}">قبول</button>
-                        <button class="friend-action-btn bg-gray-600 hover:bg-gray-700 text-white text-xs py-1 px-3 rounded-full" data-action="reject-request" data-user-id="${sender._id}">رفض</button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        // --- بناء HTML لقسم قائمة الأصدقاء ---
-        let friendsListHTML = '<p class="text-gray-400 text-sm">ليس لديك أصدقاء بعد.</p>';
-        if (detailedUser.friends && detailedUser.friends.length > 0) {
-            friendsListHTML = detailedUser.friends.map(friend => `
-                <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
-                    <div class="flex items-center gap-3">
-                        <img src="${friend.profileImage}" data-user-id="${friend._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
-                        <span>${friend.username}</span>
-                    </div>
-                    <button class="friend-action-btn bg-red-600 hover:bg-red-700 text-white text-xs py-1 px-3 rounded-full" data-action="remove-friend" data-user-id="${friend._id}">حذف</button>
-                </div>
-            `).join('');
-        }
-
-        // --- بناء الواجهة الكاملة ---
-        const settingsHTML = `
-            <!-- قسم إدارة الأصدقاء -->
-            <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6">
-                <h3 class="text-lg font-bold mb-4">إدارة الأصدقاء</h3>
-                <div class="space-y-4">
-                    <div>
-                        <h4 class="font-semibold mb-2">طلبات الصداقة (${detailedUser.friendRequestsReceived.length})</h4>
-                        <div id="friend-requests-list" class="space-y-2">${friendRequestsHTML}</div>
-                    </div>
-                    <div class="border-t border-gray-700 pt-4">
-                        <h4 class="font-semibold mb-2">قائمة الأصدقاء (${detailedUser.friends.length})</h4>
-                        <div id="friends-list" class="space-y-2">${friendsListHTML}</div>
-                    </div>
-                </div>
-            </div>
             
             <!-- باقي أقسام الإعدادات (تبقى كما هي) -->
             <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6 text-center">
                 <h3 class="text-lg font-bold mb-4">تغيير الصورة الشخصية</h3>
-                <img id="settings-profile-image" src="${detailedUser.profileImage}" class="w-32 h-32 rounded-full mx-auto border-4 border-purple-500 mb-4 object-cover">
+                <img id="settings-profile-image" src="${localUser.profileImage}" class="w-32 h-32 rounded-full mx-auto border-4 border-purple-500 mb-4 object-cover">
                 <form id="image-upload-form">
                     <input type="file" id="image-file-input" name="profileImage" class="hidden" accept="image/*">
                     <div class="flex justify-center items-center gap-4 mt-4">
@@ -199,7 +135,7 @@ async function showSettingsView() {
             <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6">
                 <h3 class="text-lg font-bold mb-4">تغيير اسم المستخدم</h3>
                 <form id="username-update-form" class="flex flex-col sm:flex-row items-center gap-4">
-                    <input type="text" id="username-input" value="${detailedUser.username}" class="w-full sm:flex-grow bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2">
+                    <input type="text" id="username-input" value="${localUser.username}" class="w-full sm:flex-grow bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2">
                     <button type="submit" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">حفظ</button>
                 </form>
             </div>
@@ -212,31 +148,25 @@ async function showSettingsView() {
                     <div class="pt-2"><button type="submit" class="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">تحديث كلمة المرور</button></div>
                 </form>
             </div>
-        `;
+        </div>
+    `;
 
-        // استبدال حالة التحميل بالمحتوى الفعلي
-        document.getElementById('settings-content').innerHTML = settingsHTML;
-
-        // إعادة ربط كل الأحداث
-        document.getElementById('select-image-btn').addEventListener('click', () => document.getElementById('image-file-input').click());
-        document.getElementById('image-file-input').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (event) => { document.getElementById('settings-profile-image').src = event.target.result; };
-                reader.readAsDataURL(file);
-                document.getElementById('upload-image-btn').classList.remove('hidden');
-            }
-        });
-        document.getElementById('image-upload-form').addEventListener('submit', handleImageUpload);
-        document.getElementById('username-update-form').addEventListener('submit', handleUsernameUpdate);
-        document.getElementById('password-update-form').addEventListener('submit', handlePasswordUpdate);
-
-    } catch (error) {
-        document.getElementById('settings-content').innerHTML = '<p class="text-red-400 text-center">فشل تحميل الإعدادات. يرجى المحاولة مرة أخرى.</p>';
-        console.error('Failed to show settings view:', error);
-    }
+    // إعادة ربط الأحداث الخاصة بالإعدادات فقط
+    document.getElementById('select-image-btn').addEventListener('click', () => document.getElementById('image-file-input').click());
+    document.getElementById('image-file-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => { document.getElementById('settings-profile-image').src = event.target.result; };
+            reader.readAsDataURL(file);
+            document.getElementById('upload-image-btn').classList.remove('hidden');
+        }
+    });
+    document.getElementById('image-upload-form').addEventListener('submit', handleImageUpload);
+    document.getElementById('username-update-form').addEventListener('submit', handleUsernameUpdate);
+    document.getElementById('password-update-form').addEventListener('submit', handlePasswordUpdate);
 }
+
 
 
 // دالة لإعادة عرض ساحة التحديات
@@ -368,12 +298,33 @@ async function handleUsernameUpdate(e) {
     appContainer.classList.remove('hidden');
 
     // --- 3. تهيئة واجهة المستخدم ببيانات المستخدم ---
-    // --- 3. تهيئة واجهة المستخدم ببيانات المستخدم ---
-document.getElementById('username').textContent = user.username;
-document.getElementById('balance').textContent = user.balance.toFixed(2);
-document.getElementById('coins').textContent = user.coins;
-document.getElementById('userLevel').textContent = `المستوى: ${user.level}`;
-document.getElementById('profileImage').src = user.profileImage;
+// --- ✅ استبدل قسم تهيئة واجهة المستخدم بهذا ---
+// دالة لتحديث واجهة المستخدم ببيانات المستخدم
+function updateUIWithUserData(userData) {
+    document.getElementById('username').textContent = userData.username;
+    document.getElementById('balance').textContent = userData.balance.toFixed(2);
+    document.getElementById('coins').textContent = userData.coins;
+    document.getElementById('userLevel').textContent = userData.level;
+    document.getElementById('profileImage').src = userData.profileImage;
+
+    // تحديث عدد الأصدقاء
+    const friendsCount = userData.friends ? userData.friends.length : 0;
+    document.getElementById('friends-count').textContent = `(${friendsCount})`;
+
+    // تحديث شارة طلبات الصداقة
+    const requestsBadge = document.getElementById('friend-requests-badge');
+    const requestsCount = userData.friendRequestsReceived ? userData.friendRequestsReceived.length : 0;
+    if (requestsCount > 0) {
+        requestsBadge.textContent = requestsCount;
+        requestsBadge.classList.remove('hidden');
+    } else {
+        requestsBadge.classList.add('hidden');
+    }
+}
+
+// استدعاء الدالة عند تحميل الصفحة
+updateUIWithUserData(user);
+
 
 // --- ✅ إضافة عرض البيانات الجديدة ---
 // --- ✅ إضافة عرض البيانات الجديدة (النسخة المحسّنة) ---
@@ -527,13 +478,60 @@ mainContent.addEventListener('click', async (e) => {
 });
 
 // --- ✅ أضف هذا المستمع لفتح الملف الشخصي المصغر من قسم الإعدادات ---
-mainContent.addEventListener('click', (e) => {
-    const image = e.target.closest('.user-image');
-    if (image && image.dataset.userId) {
-        showMiniProfileModal(image.dataset.userId);
+
+
+// --- ✅ استبدل مستمع mainContent بالكامل بهذا ---
+document.body.addEventListener('click', async (e) => {
+    const button = e.target.closest('.friend-action-btn');
+    if (!button) return;
+
+    const action = button.dataset.action;
+    const userId = button.dataset.userId;
+    const card = button.closest('.flex.items-center.justify-between');
+
+    const performAction = async () => {
+        let url = '';
+        let method = 'POST';
+
+        switch (action) {
+            case 'accept-request': url = `/api/friends/accept-request/${userId}`; break;
+            case 'reject-request': url = `/api/friends/reject-request/${userId}`; break;
+            case 'remove-friend': url = `/api/friends/remove-friend/${userId}`; method = 'DELETE'; break;
+            default: return;
+        }
+
+        card.style.opacity = '0.5';
+
+        try {
+            const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
+            if (!response.ok) throw new Error('Action failed');
+
+            // --- ✅ الإصلاح الرئيسي: تحديث الواجهة الصحيحة ---
+            if (document.getElementById('friend-requests-modal')) {
+                showFriendRequestsModal(); // أعد رسم نافذة الطلبات
+            }
+            if (document.getElementById('friends-list-modal')) {
+                showFriendsListModal(); // أعد رسم نافذة الأصدقاء
+            }
+            // --- نهاية الإصلاح ---
+
+            showNotification('تم تنفيذ الإجراء بنجاح', 'success');
+
+        } catch (error) {
+            card.style.opacity = '1';
+            showNotification('فشل تنفيذ الإجراء', 'error');
+        }
+    };
+
+    if (action === 'remove-friend' || action === 'reject-request') {
+        const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من رفض هذا الطلب؟';
+        showConfirmationModal(message, performAction);
+    } else {
+        performAction();
     }
 });
-  
+
+        
    // --- ✅ أضف هذا الكود لتفعيل أزرار الصداقة ---
 // --- ✅ استبدل مستمع حدث النقر على body بالكامل ---
 document.body.addEventListener('click', async (e) => {
@@ -1038,17 +1036,17 @@ function displayMessage(message) {
 
 
 // --- ✅ أضف هذا المستمع الجديد ---
+// --- ✅ استبدل مستمع friendshipUpdate بهذا ---
 socket.on('friendshipUpdate', async () => {
     console.log('[SOCKET] Received friendship update. Refetching self user data.');
     try {
-        // إعادة جلب بيانات المستخدم المحدثة من الخادم
-        const selfUserResponse = await fetch(`/api/users/${user._id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const selfUserResponse = await fetch(`/api/users/me/details`, { headers: { 'Authorization': `Bearer ${token}` } });
         const selfUserResult = await selfUserResponse.json();
         if (selfUserResponse.ok) {
-            // تحديث البيانات في localStorage
-            localStorage.setItem('user', JSON.stringify(selfUserResult.data.user));
-            console.log('[SOCKET] Self user data updated in localStorage.');
-
+            const updatedUser = selfUserResult.data.user;
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+            updateUIWithUserData(updatedUser); // ✅ تحديث الواجهة بالكامل
+            
             // (اختياري) إذا كانت نافذة الملف الشخصي مفتوحة، أعد رسمها
             const modal = document.getElementById('mini-profile-modal');
             const userIdInModal = modal?.dataset.userId;
@@ -1061,7 +1059,113 @@ socket.on('friendshipUpdate', async () => {
     }
 });
 
+// --- ✅ أضف هذا الكود لربط الأيقونات الجديدة ---
+document.getElementById('friends-list-btn').addEventListener('click', showFriendsListModal);
+document.getElementById('friend-requests-nav-item').addEventListener('click', (e) => {
+    e.preventDefault(); // منع السلوك الافتراضي للرابط
+    showFriendRequestsModal();
+});
+
+    // --- ✅ أضف هاتين الدالتين الجديدتين ---
+
+// دالة لعرض نافذة طلبات الصداقة
+async function showFriendRequestsModal() {
+    const modalId = 'friend-requests-modal';
+    // عرض حالة التحميل
+    const loadingHTML = `
+        <div id="${modalId}" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4" onclick="if (event.target.id === '${modalId}') this.remove();">
+            <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md text-white p-6">
+                <h3 class="text-lg font-bold mb-4">طلبات الصداقة</h3>
+                <div class="text-center p-6"><i class="fas fa-spinner fa-spin text-3xl"></i></div>
+            </div>
+        </div>
+    `;
+    document.getElementById('game-container').innerHTML += loadingHTML;
+
+    try {
+        const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await response.json();
+        if (!response.ok) throw new Error('Failed to load requests');
         
+        const requests = result.data.user.friendRequestsReceived;
+        let contentHTML = '<p class="text-gray-400">لا توجد طلبات حاليًا.</p>';
+
+        if (requests && requests.length > 0) {
+            contentHTML = requests.map(sender => `
+                <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
+                    <div class="flex items-center gap-3">
+                        <img src="${sender.profileImage}" data-user-id="${sender._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
+                        <span>${sender.username}</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="friend-action-btn bg-blue-600 hover:bg-blue-700 text-white text-xs py-1 px-3 rounded-full" data-action="accept-request" data-user-id="${sender._id}">قبول</button>
+                        <button class="friend-action-btn bg-gray-600 hover:bg-gray-700 text-white text-xs py-1 px-3 rounded-full" data-action="reject-request" data-user-id="${sender._id}">رفض</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        const modalElement = document.getElementById(modalId);
+        if (modalElement) {
+            modalElement.querySelector('.bg-gray-800').innerHTML = `
+                <h3 class="text-lg font-bold mb-4">طلبات الصداقة</h3>
+                <div class="space-y-2 max-h-80 overflow-y-auto pr-2">${contentHTML}</div>
+            `;
+        }
+
+    } catch (error) {
+        const modalElement = document.getElementById(modalId);
+        if (modalElement) modalElement.querySelector('.bg-gray-800').innerHTML = '<p class="text-red-400">فشل تحميل الطلبات.</p>';
+    }
+}
+
+// دالة لعرض نافذة قائمة الأصدقاء
+async function showFriendsListModal() {
+    const modalId = 'friends-list-modal';
+    const loadingHTML = `
+        <div id="${modalId}" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4" onclick="if (event.target.id === '${modalId}') this.remove();">
+            <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md text-white p-6">
+                <h3 class="text-lg font-bold mb-4">قائمة الأصدقاء</h3>
+                <div class="text-center p-6"><i class="fas fa-spinner fa-spin text-3xl"></i></div>
+            </div>
+        </div>
+    `;
+    document.getElementById('game-container').innerHTML += loadingHTML;
+
+    try {
+        const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await response.json();
+        if (!response.ok) throw new Error('Failed to load friends');
+
+        const friends = result.data.user.friends;
+        let contentHTML = '<p class="text-gray-400">ليس لديك أصدقاء بعد.</p>';
+
+        if (friends && friends.length > 0) {
+            contentHTML = friends.map(friend => `
+                <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
+                    <div class="flex items-center gap-3">
+                        <img src="${friend.profileImage}" data-user-id="${friend._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
+                        <span>${friend.username}</span>
+                    </div>
+                    <button class="friend-action-btn bg-red-600 hover:bg-red-700 text-white text-xs py-1 px-3 rounded-full" data-action="remove-friend" data-user-id="${friend._id}">حذف</button>
+                </div>
+            `).join('');
+        }
+
+        const modalElement = document.getElementById(modalId);
+        if (modalElement) {
+            modalElement.querySelector('.bg-gray-800').innerHTML = `
+                <h3 class="text-lg font-bold mb-4">قائمة الأصدقاء</h3>
+                <div class="space-y-2 max-h-80 overflow-y-auto pr-2">${contentHTML}</div>
+            `;
+        }
+
+    } catch (error) {
+        const modalElement = document.getElementById(modalId);
+        if (modalElement) modalElement.querySelector('.bg-gray-800').innerHTML = '<p class="text-red-400">فشل تحميل الأصدقاء.</p>';
+    }
+}
+    
     // =================================================
     // ======== قسم التحديات (Battles Section) =========
     // =================================================
