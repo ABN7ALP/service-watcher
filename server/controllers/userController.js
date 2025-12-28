@@ -58,7 +58,6 @@ const updateProfilePicture = async (req, res) => {
     }
 };
 
-// --- ✅ أضف هذه الدالة الجديدة ---
 const getUserById = async (req, res) => {
     try {
         const user = await User.findById(req.params.id);
@@ -71,9 +70,8 @@ const getUserById = async (req, res) => {
     }
 };
 
-// ... (داخل module.exports في userController.js)
-// --- ✅ أضف هذه الدالة الجديدة ---
-getMeDetails: async (req, res) => {
+// --- ✅ هذه هي الدالة التي أضفناها مؤخرًا ---
+const getMeDetails = async (req, res) => {
     try {
         const user = await User.findById(req.user.id)
             .populate('friends', 'username profileImage customId')
@@ -86,19 +84,12 @@ getMeDetails: async (req, res) => {
     } catch (error) {
         res.status(500).json({ message: 'حدث خطأ في الخادم.' });
     }
-},
+};
 
-
-
-// --- ✅✅ التصدير في النهاية كمجموعة واحدة ---
-
-
-// --- ✅ عدّل الكائن الذي يتم تصديره ---
-// --- ✅✅ استبدل module.exports بالكامل بهذا ---
+// --- ✅✅ التصدير الصحيح في النهاية ---
 module.exports = {
     updateUsername,
     updateProfilePicture,
-    getMeDetails // ✅ السطر المفقود الذي سبب المشكلة
+    getUserById, // ✅ تصدير الدالة التي كانت موجودة
+    getMeDetails // ✅ تصدير الدالة الجديدة
 };
-
-
