@@ -482,10 +482,19 @@ mainContent.addEventListener('click', async (e) => {
 
 // --- ✅ استبدل مستمع mainContent بالكامل بهذا ---
 // --- ✅✅✅ استبدل كلا المستمعين القديمين بهذا الكود المدمج والنهائي ---
+// --- ✅✅✅ استبدل المستمع المدمج بالكامل بهذه النسخة النهائية ---
 document.body.addEventListener('click', async (e) => {
-    // --- الجزء الأول: التعامل مع أزرار الملف الشخصي المصغر ---
+    // --- الجزء الأول: إغلاق النوافذ المنبثقة عند النقر على الخلفية ---
+    const modalBackdrop = e.target.closest('.modal-backdrop');
+    if (modalBackdrop && e.target === modalBackdrop) {
+        modalBackdrop.remove();
+        return; // أوقف التنفيذ هنا
+    }
+
+    // --- الجزء الثاني: التعامل مع أزرار الملف الشخصي المصغر ---
     const miniProfileActionBtn = e.target.closest('.action-btn');
     if (miniProfileActionBtn && miniProfileActionBtn.dataset.action) {
+        // ... (هذا الجزء يبقى كما هو بالضبط من الكود السابق)
         const action = miniProfileActionBtn.dataset.action;
         const userId = miniProfileActionBtn.dataset.userId;
         
@@ -534,8 +543,6 @@ document.body.addEventListener('click', async (e) => {
                     throw new Error(result.message || 'Action failed');
                 }
                 showFloatingAlert(successMessage, icon, color);
-                
-                // إعادة رسم الملف الشخصي المصغر بالبيانات المحدثة
                 showMiniProfileModal(userId);
 
             } catch (error) {
@@ -551,12 +558,13 @@ document.body.addEventListener('click', async (e) => {
         } else {
             performMiniProfileAction();
         }
-        return; // أوقف التنفيذ هنا
+        return;
     }
 
-    // --- الجزء الثاني: التعامل مع أزرار نوافذ الأصدقاء ---
+    // --- الجزء الثالث: التعامل مع أزرار نوافذ الأصدقاء ---
     const friendListActionBtn = e.target.closest('.friend-action-btn');
     if (friendListActionBtn) {
+        // ... (هذا الجزء يبقى كما هو بالضبط من الكود السابق)
         const action = friendListActionBtn.dataset.action;
         const userId = friendListActionBtn.dataset.userId;
         const card = friendListActionBtn.closest('.flex.items-center.justify-between');
@@ -578,7 +586,6 @@ document.body.addEventListener('click', async (e) => {
                 const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
                 if (!response.ok) throw new Error('Action failed');
                 showNotification('تم تنفيذ الإجراء بنجاح', 'success');
-                // لا حاجة لإعادة الرسم، إشعار السوكيت سيتولى الأمر
             } catch (error) {
                 if (card) card.style.display = 'flex';
                 showNotification('فشل تنفيذ الإجراء', 'error');
@@ -591,7 +598,7 @@ document.body.addEventListener('click', async (e) => {
         } else {
             performListAction();
         }
-        return; // أوقف التنفيذ هنا
+        return;
     }
 });
 
@@ -1045,21 +1052,21 @@ document.getElementById('friend-requests-nav-item').addEventListener('click', (e
     // --- ✅ أضف هاتين الدالتين الجديدتين ---
 
 // دالة لعرض نافذة طلبات الصداقة
-// --- ✅ استبدل دالة showFriendRequestsModal بهذه ---
+// --- ✅ استبدل دالة showFriendRequestsModal بهذه النسخة النظيفة ---
 async function showFriendRequestsModal() {
     const modalId = 'friend-requests-modal';
-    // --- ✅ الإصلاح: إضافة onclick صحيح ---
+    // --- ❌ تم حذف onclick من هنا ---
     const loadingHTML = `
-        <div id="${modalId}" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4" onclick="if (event.target.id === '${modalId}') this.remove();">
-            <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md text-white p-6">
+        <div id="${modalId}" class="modal-backdrop fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4">
+            <div class="modal-content bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md text-white p-6">
                 <h3 class="text-lg font-bold mb-4">طلبات الصداقة</h3>
                 <div class="text-center p-6"><i class="fas fa-spinner fa-spin text-3xl"></i></div>
             </div>
         </div>
     `;
+    // ... (باقي الكود يبقى كما هو)
     document.getElementById('game-container').innerHTML += loadingHTML;
 
-    // ... (باقي كود الدالة يبقى كما هو بدون تغيير)
     try {
         const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
         const result = await response.json();
@@ -1085,7 +1092,7 @@ async function showFriendRequestsModal() {
 
         const modalElement = document.getElementById(modalId);
         if (modalElement) {
-            modalElement.querySelector('.bg-gray-800').innerHTML = `
+            modalElement.querySelector('.modal-content').innerHTML = `
                 <h3 class="text-lg font-bold mb-4">طلبات الصداقة</h3>
                 <div class="space-y-2 max-h-80 overflow-y-auto pr-2">${contentHTML}</div>
             `;
@@ -1093,25 +1100,26 @@ async function showFriendRequestsModal() {
 
     } catch (error) {
         const modalElement = document.getElementById(modalId);
-        if (modalElement) modalElement.querySelector('.bg-gray-800').innerHTML = '<p class="text-red-400">فشل تحميل الطلبات.</p>';
+        if (modalElement) modalElement.querySelector('.modal-content').innerHTML = '<p class="text-red-400">فشل تحميل الطلبات.</p>';
     }
 }
 
-// --- ✅ استبدل دالة showFriendsListModal بهذه ---
+
+// --- ✅ استبدل دالة showFriendsListModal بهذه النسخة النظيفة ---
 async function showFriendsListModal() {
     const modalId = 'friends-list-modal';
-    // --- ✅ الإصلاح: إضافة onclick صحيح ---
+    // --- ❌ تم حذف onclick من هنا ---
     const loadingHTML = `
-        <div id="${modalId}" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4" onclick="if (event.target.id === '${modalId}') this.remove();">
-            <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md text-white p-6">
+        <div id="${modalId}" class="modal-backdrop fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4">
+            <div class="modal-content bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md text-white p-6">
                 <h3 class="text-lg font-bold mb-4">قائمة الأصدقاء</h3>
                 <div class="text-center p-6"><i class="fas fa-spinner fa-spin text-3xl"></i></div>
             </div>
         </div>
     `;
+    // ... (باقي الكود يبقى كما هو)
     document.getElementById('game-container').innerHTML += loadingHTML;
 
-    // ... (باقي كود الدالة يبقى كما هو بدون تغيير)
     try {
         const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
         const result = await response.json();
@@ -1134,7 +1142,7 @@ async function showFriendsListModal() {
 
         const modalElement = document.getElementById(modalId);
         if (modalElement) {
-            modalElement.querySelector('.bg-gray-800').innerHTML = `
+            modalElement.querySelector('.modal-content').innerHTML = `
                 <h3 class="text-lg font-bold mb-4">قائمة الأصدقاء</h3>
                 <div class="space-y-2 max-h-80 overflow-y-auto pr-2">${contentHTML}</div>
             `;
@@ -1142,7 +1150,7 @@ async function showFriendsListModal() {
 
     } catch (error) {
         const modalElement = document.getElementById(modalId);
-        if (modalElement) modalElement.querySelector('.bg-gray-800').innerHTML = '<p class="text-red-400">فشل تحميل الأصدقاء.</p>';
+        if (modalElement) modalElement.querySelector('.modal-content').innerHTML = '<p class="text-red-400">فشل تحميل الأصدقاء.</p>';
     }
 }
 
