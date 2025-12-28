@@ -532,9 +532,23 @@ document.body.addEventListener('click', async (e) => {
                     icon = 'fa-trash';
                     color = 'bg-red-500';
                     break;
+                case 'block':
+                    url = `/api/users/${userId}/block`;
+                    successMessage = 'تم حظر المستخدم';
+                    icon = 'fa-user-lock';
+                    color = 'bg-red-700';
+                    break;
+                case 'unblock':
+                    url = `/api/users/${userId}/unblock`;
+                    successMessage = 'تم إلغاء الحظر';
+                    icon = 'fa-unlock';
+                    color = 'bg-yellow-500';
+                    break;
+
                 default:
                     return;
             }
+
 
             try {
                 const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
@@ -592,17 +606,22 @@ document.body.addEventListener('click', async (e) => {
             }
         };
 
-        if (action === 'remove-friend' || action === 'reject-request') {
-            const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من رفض هذا الطلب؟';
-            showConfirmationModal(message, performListAction);
+        
+        if (action === 'remove-friend' || action === 'cancel-request' || action === 'block') {
+            const messages = {
+                'remove-friend': 'هل أنت متأكد من حذف هذا الصديق؟',
+                'cancel-request': 'هل أنت متأكد من إلغاء طلب الصداقة؟',
+                'block': 'هل أنت متأكد من حظر هذا المستخدم؟ سيؤدي هذا إلى إزالته من الأصدقاء.'
+            };
+            showConfirmationModal(messages[action], performMiniProfileAction);
         } else {
-            performListAction();
+            performMiniProfileAction();
         }
         return;
     }
+
+
 });
-
-
      
 
 // --- ✅ دالة جديدة لأنيميشن اكتساب الخبرة ---
