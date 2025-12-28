@@ -428,7 +428,7 @@ document.getElementById('perks-toggle-btn').addEventListener('click', (e) => {
     });
 
    // --- ✅ أضف هذا الكود لتفعيل أزرار الصداقة ---
-// --- استبدل مستمع حدث النقر على body بالكامل ---
+// --- ✅ استبدل مستمع حدث النقر على body بالكامل ---
 document.body.addEventListener('click', async (e) => {
     const button = e.target.closest('.action-btn');
     if (!button || !button.dataset.action) return;
@@ -443,11 +443,17 @@ document.body.addEventListener('click', async (e) => {
         let icon = 'fa-check-circle';
         let color = 'bg-green-500';
 
+        // --- ✅ التحديث المتفائل: تغيير شكل الزر فورًا ---
+        const originalButtonHTML = button.innerHTML;
+        button.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+        button.disabled = true;
+
         switch (action) {
             case 'send-request':
                 url = `/api/friends/send-request/${userId}`;
                 successMessage = 'تم إرسال الطلب';
                 break;
+            // ... (باقي الحالات تبقى كما هي)
             case 'accept-request':
                 url = `/api/friends/accept-request/${userId}`;
                 successMessage = 'أصبحتما أصدقاء الآن';
@@ -480,37 +486,34 @@ document.body.addEventListener('click', async (e) => {
 
             showFloatingAlert(successMessage, icon, color);
             
+            // تحديث بيانات المستخدم المحلي في الخلفية
             const selfUserResponse = await fetch(`/api/users/${user._id}`, { headers: { 'Authorization': `Bearer ${token}` } });
             const selfUserResult = await selfUserResponse.json();
             localStorage.setItem('user', JSON.stringify(selfUserResult.data.user));
 
-            // --- ✅ تحديث الزر ديناميكيًا بدون إعادة فتح النافذة ---
+            // تحديث الزر إلى حالته النهائية الصحيحة
             const profileUserResponse = await fetch(`/api/users/${userId}`, { headers: { 'Authorization': `Bearer ${token}` } });
             const profileUserResult = await profileUserResponse.json();
-            const newButtonHTML = getFriendButtonHTML(profileUserResult.data.user);
-            
-            const actionButtonsContainer = document.getElementById('profile-action-buttons');
-            if (actionButtonsContainer) {
-                const oldButton = actionButtonsContainer.querySelector('[data-action]');
-                if (oldButton) {
-                    oldButton.outerHTML = newButtonHTML;
-                }
-            }
+            button.outerHTML = getFriendButtonHTML(profileUserResult.data.user);
 
         } catch (error) {
             showNotification(error.message || 'حدث خطأ ما', 'error');
+            // في حالة الفشل، أعد الزر إلى حالته الأصلية
+            button.innerHTML = originalButtonHTML;
+            button.disabled = false;
         }
     };
 
-    // --- ✅ استخدام نافذة التأكيد للإجراءات الهامة ---
-    if (action === 'remove-friend') {
-        showConfirmationModal('هل أنت متأكد من أنك تريد حذف هذا الصديق؟', performAction);
-    } else if (action === 'cancel-request') {
-        showConfirmationModal('هل أنت متأكد من أنك تريد إلغاء طلب الصداقة؟', performAction);
+    if (action === 'remove-friend' || action === 'cancel-request') {
+        const message = action === 'remove-friend' 
+            ? 'هل أنت متأكد من أنك تريد حذف هذا الصديق؟' 
+            : 'هل أنت متأكد من أنك تريد إلغاء طلب الصداقة؟';
+        showConfirmationModal(message, performAction);
     } else {
         performAction();
     }
 });
+
 
      
 
@@ -634,7 +637,12 @@ socket.on('chatCleanup', ({ idsToDelete }) => {
 });
 
    // --- ✅ دالة جديدة لنافذة التأكيد ---
+// --- ✅ استبدل دالة showConfirmationModal بالكامل ---
 function showConfirmationModal(message, onConfirm) {
+    // إذا كانت هناك نافذة تأكيد قديمة، احذفها أولاً
+    const oldModal = document.getElementById('confirmation-modal');
+    if (oldModal) oldModal.remove();
+
     const modalHTML = `
         <div id="confirmation-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[300] p-4">
             <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm text-white p-6 text-center">
@@ -660,10 +668,13 @@ function showConfirmationModal(message, onConfirm) {
         closeModal();
     });
     cancelBtn.addEventListener('click', closeModal);
+    
+    // --- ✅ الإصلاح: النقر على الخلفية يغلق نافذة التأكيد فقط ---
     modal.addEventListener('click', (e) => {
         if (e.target.id === 'confirmation-modal') closeModal();
     });
 }
+
 
 // --- ✅ دالة جديدة للإشعار العائم ---
 function showFloatingAlert(message, icon = 'fa-check-circle', color = 'bg-green-500') {
@@ -901,6 +912,33 @@ function displayMessage(message) {
     }
     loadChatHistory();
 
+
+
+// --- ✅ أضف هذا المستمع الجديد ---
+socket.on('friendshipUpdate', async () => {
+    console.log('[SOCKET] Received friendship update. Refetching self user data.');
+    try {
+        // إعادة جلب بيانات المستخدم المحدثة من الخادم
+        const selfUserResponse = await fetch(`/api/users/${user._id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const selfUserResult = await selfUserResponse.json();
+        if (selfUserResponse.ok) {
+            // تحديث البيانات في localStorage
+            localStorage.setItem('user', JSON.stringify(selfUserResult.data.user));
+            console.log('[SOCKET] Self user data updated in localStorage.');
+
+            // (اختياري) إذا كانت نافذة الملف الشخصي مفتوحة، أعد رسمها
+            const modal = document.getElementById('mini-profile-modal');
+            const userIdInModal = modal?.dataset.userId;
+            if (modal && userIdInModal) {
+                showMiniProfileModal(userIdInModal);
+            }
+        }
+    } catch (error) {
+        console.error('Failed to refetch user data after friendship update:', error);
+    }
+});
+
+        
     // =================================================
     // ======== قسم التحديات (Battles Section) =========
     // =================================================
