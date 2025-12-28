@@ -481,141 +481,117 @@ mainContent.addEventListener('click', async (e) => {
 
 
 // --- ✅ استبدل مستمع mainContent بالكامل بهذا ---
+// --- ✅✅✅ استبدل كلا المستمعين القديمين بهذا الكود المدمج والنهائي ---
 document.body.addEventListener('click', async (e) => {
-    const button = e.target.closest('.friend-action-btn');
-    if (!button) return;
-
-    const action = button.dataset.action;
-    const userId = button.dataset.userId;
-    const card = button.closest('.flex.items-center.justify-between');
-
-    const performAction = async () => {
-        let url = '';
-        let method = 'POST';
-
-        switch (action) {
-            case 'accept-request': url = `/api/friends/accept-request/${userId}`; break;
-            case 'reject-request': url = `/api/friends/reject-request/${userId}`; break;
-            case 'remove-friend': url = `/api/friends/remove-friend/${userId}`; method = 'DELETE'; break;
-            default: return;
-        }
-
-        card.style.opacity = '0.5';
-
-        try {
-            const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
-            if (!response.ok) throw new Error('Action failed');
-
-            // --- ✅ الإصلاح الرئيسي: تحديث الواجهة الصحيحة ---
-            if (document.getElementById('friend-requests-modal')) {
-                showFriendRequestsModal(); // أعد رسم نافذة الطلبات
-            }
-            if (document.getElementById('friends-list-modal')) {
-                showFriendsListModal(); // أعد رسم نافذة الأصدقاء
-            }
-            // --- نهاية الإصلاح ---
-
-            showNotification('تم تنفيذ الإجراء بنجاح', 'success');
-
-        } catch (error) {
-            card.style.opacity = '1';
-            showNotification('فشل تنفيذ الإجراء', 'error');
-        }
-    };
-
-    if (action === 'remove-friend' || action === 'reject-request') {
-        const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من رفض هذا الطلب؟';
-        showConfirmationModal(message, performAction);
-    } else {
-        performAction();
-    }
-});
-
+    // --- الجزء الأول: التعامل مع أزرار الملف الشخصي المصغر ---
+    const miniProfileActionBtn = e.target.closest('.action-btn');
+    if (miniProfileActionBtn && miniProfileActionBtn.dataset.action) {
+        const action = miniProfileActionBtn.dataset.action;
+        const userId = miniProfileActionBtn.dataset.userId;
         
-   // --- ✅ أضف هذا الكود لتفعيل أزرار الصداقة ---
-// --- ✅ استبدل مستمع حدث النقر على body بالكامل ---
-document.body.addEventListener('click', async (e) => {
-    const button = e.target.closest('.action-btn');
-    if (!button || !button.dataset.action) return;
+        const performMiniProfileAction = async () => {
+            let url = '';
+            let method = 'POST';
+            let successMessage = '';
+            let icon = 'fa-check-circle';
+            let color = 'bg-green-500';
 
-    const action = button.dataset.action;
-    const userId = button.dataset.userId;
-    
-    const performAction = async () => {
-        let url = '';
-        let method = 'POST';
-        let successMessage = '';
-        let icon = 'fa-check-circle';
-        let color = 'bg-green-500';
+            const originalButtonHTML = miniProfileActionBtn.innerHTML;
+            miniProfileActionBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+            miniProfileActionBtn.disabled = true;
 
-        // --- ✅ التحديث المتفائل: تغيير شكل الزر فورًا ---
-        const originalButtonHTML = button.innerHTML;
-        button.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
-        button.disabled = true;
+            switch (action) {
+                case 'send-request':
+                    url = `/api/friends/send-request/${userId}`;
+                    successMessage = 'تم إرسال الطلب';
+                    break;
+                case 'accept-request':
+                    url = `/api/friends/accept-request/${userId}`;
+                    successMessage = 'أصبحتما أصدقاء الآن';
+                    break;
+                case 'cancel-request':
+                case 'reject-request':
+                    url = `/api/friends/reject-request/${userId}`;
+                    successMessage = 'تم إلغاء الطلب';
+                    icon = 'fa-info-circle';
+                    color = 'bg-blue-500';
+                    break;
+                case 'remove-friend':
+                    url = `/api/friends/remove-friend/${userId}`;
+                    method = 'DELETE';
+                    successMessage = 'تم حذف الصديق';
+                    icon = 'fa-trash';
+                    color = 'bg-red-500';
+                    break;
+                default:
+                    return;
+            }
 
-        switch (action) {
-            case 'send-request':
-                url = `/api/friends/send-request/${userId}`;
-                successMessage = 'تم إرسال الطلب';
-                break;
-            // ... (باقي الحالات تبقى كما هي)
-            case 'accept-request':
-                url = `/api/friends/accept-request/${userId}`;
-                successMessage = 'أصبحتما أصدقاء الآن';
-                break;
-            case 'cancel-request':
-            case 'reject-request':
-                url = `/api/friends/reject-request/${userId}`;
-                successMessage = 'تم إلغاء الطلب';
-                icon = 'fa-info-circle';
-                color = 'bg-blue-500';
-                break;
-            case 'remove-friend':
-                url = `/api/friends/remove-friend/${userId}`;
-                method = 'DELETE';
-                successMessage = 'تم حذف الصديق';
-                icon = 'fa-trash';
-                color = 'bg-red-500';
-                break;
-            default:
-                return;
+            try {
+                const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
+                if (!response.ok) {
+                    const result = await response.json();
+                    throw new Error(result.message || 'Action failed');
+                }
+                showFloatingAlert(successMessage, icon, color);
+                
+                // إعادة رسم الملف الشخصي المصغر بالبيانات المحدثة
+                showMiniProfileModal(userId);
+
+            } catch (error) {
+                showNotification(error.message || 'حدث خطأ ما', 'error');
+                miniProfileActionBtn.innerHTML = originalButtonHTML;
+                miniProfileActionBtn.disabled = false;
+            }
+        };
+
+        if (action === 'remove-friend' || action === 'cancel-request') {
+            const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من إلغاء طلب الصداقة؟';
+            showConfirmationModal(message, performMiniProfileAction);
+        } else {
+            performMiniProfileAction();
         }
+        return; // أوقف التنفيذ هنا
+    }
 
-        try {
-            const response = await fetch(url, {
-                method: method,
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.message);
+    // --- الجزء الثاني: التعامل مع أزرار نوافذ الأصدقاء ---
+    const friendListActionBtn = e.target.closest('.friend-action-btn');
+    if (friendListActionBtn) {
+        const action = friendListActionBtn.dataset.action;
+        const userId = friendListActionBtn.dataset.userId;
+        const card = friendListActionBtn.closest('.flex.items-center.justify-between');
 
-            showFloatingAlert(successMessage, icon, color);
-            
-            // تحديث بيانات المستخدم المحلي في الخلفية
-            const selfUserResponse = await fetch(`/api/users/${user._id}`, { headers: { 'Authorization': `Bearer ${token}` } });
-            const selfUserResult = await selfUserResponse.json();
-            localStorage.setItem('user', JSON.stringify(selfUserResult.data.user));
+        const performListAction = async () => {
+            let url = '';
+            let method = 'POST';
 
-            // تحديث الزر إلى حالته النهائية الصحيحة
-            const profileUserResponse = await fetch(`/api/users/${userId}`, { headers: { 'Authorization': `Bearer ${token}` } });
-            const profileUserResult = await profileUserResponse.json();
-            button.outerHTML = getFriendButtonHTML(profileUserResult.data.user);
+            switch (action) {
+                case 'accept-request': url = `/api/friends/accept-request/${userId}`; break;
+                case 'reject-request': url = `/api/friends/reject-request/${userId}`; break;
+                case 'remove-friend': url = `/api/friends/remove-friend/${userId}`; method = 'DELETE'; break;
+                default: return;
+            }
 
-        } catch (error) {
-            showNotification(error.message || 'حدث خطأ ما', 'error');
-            // في حالة الفشل، أعد الزر إلى حالته الأصلية
-            button.innerHTML = originalButtonHTML;
-            button.disabled = false;
+            if (card) card.style.display = 'none';
+
+            try {
+                const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
+                if (!response.ok) throw new Error('Action failed');
+                showNotification('تم تنفيذ الإجراء بنجاح', 'success');
+                // لا حاجة لإعادة الرسم، إشعار السوكيت سيتولى الأمر
+            } catch (error) {
+                if (card) card.style.display = 'flex';
+                showNotification('فشل تنفيذ الإجراء', 'error');
+            }
+        };
+
+        if (action === 'remove-friend' || action === 'reject-request') {
+            const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من رفض هذا الطلب؟';
+            showConfirmationModal(message, performListAction);
+        } else {
+            performListAction();
         }
-    };
-
-    if (action === 'remove-friend' || action === 'cancel-request') {
-        const message = action === 'remove-friend' 
-            ? 'هل أنت متأكد من أنك تريد حذف هذا الصديق؟' 
-            : 'هل أنت متأكد من أنك تريد إلغاء طلب الصداقة؟';
-        showConfirmationModal(message, performAction);
-    } else {
-        performAction();
+        return; // أوقف التنفيذ هنا
     }
 });
 
@@ -1069,9 +1045,10 @@ document.getElementById('friend-requests-nav-item').addEventListener('click', (e
     // --- ✅ أضف هاتين الدالتين الجديدتين ---
 
 // دالة لعرض نافذة طلبات الصداقة
+// --- ✅ استبدل دالة showFriendRequestsModal بهذه ---
 async function showFriendRequestsModal() {
     const modalId = 'friend-requests-modal';
-    // عرض حالة التحميل
+    // --- ✅ الإصلاح: إضافة onclick صحيح ---
     const loadingHTML = `
         <div id="${modalId}" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4" onclick="if (event.target.id === '${modalId}') this.remove();">
             <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md text-white p-6">
@@ -1082,6 +1059,7 @@ async function showFriendRequestsModal() {
     `;
     document.getElementById('game-container').innerHTML += loadingHTML;
 
+    // ... (باقي كود الدالة يبقى كما هو بدون تغيير)
     try {
         const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
         const result = await response.json();
@@ -1119,9 +1097,10 @@ async function showFriendRequestsModal() {
     }
 }
 
-// دالة لعرض نافذة قائمة الأصدقاء
+// --- ✅ استبدل دالة showFriendsListModal بهذه ---
 async function showFriendsListModal() {
     const modalId = 'friends-list-modal';
+    // --- ✅ الإصلاح: إضافة onclick صحيح ---
     const loadingHTML = `
         <div id="${modalId}" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4" onclick="if (event.target.id === '${modalId}') this.remove();">
             <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md text-white p-6">
@@ -1132,6 +1111,7 @@ async function showFriendsListModal() {
     `;
     document.getElementById('game-container').innerHTML += loadingHTML;
 
+    // ... (باقي كود الدالة يبقى كما هو بدون تغيير)
     try {
         const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
         const result = await response.json();
@@ -1165,6 +1145,7 @@ async function showFriendsListModal() {
         if (modalElement) modalElement.querySelector('.bg-gray-800').innerHTML = '<p class="text-red-400">فشل تحميل الأصدقاء.</p>';
     }
 }
+
     
     // =================================================
     // ======== قسم التحديات (Battles Section) =========
