@@ -536,7 +536,14 @@ function showXpGainAnimation(amount) {
     // =================================================
 
     function showNotification(message, type = 'info') {
-        const container = document.getElementById('notification-container');
+    let container = document.getElementById('notification-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'notification-container';
+        // --- ✅ التعديل هنا: من top-5 إلى bottom-5 ---
+        container.className = 'fixed bottom-5 right-5 z-50 space-y-2';
+        document.body.appendChild(container);
+    }
         const colors = { success: 'bg-green-500', error: 'bg-red-500', info: 'bg-blue-500' };
         const icon = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle' };
         const notification = document.createElement('div');
