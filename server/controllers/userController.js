@@ -71,6 +71,24 @@ const getUserById = async (req, res) => {
     }
 };
 
+// ... (داخل module.exports في userController.js)
+// --- ✅ أضف هذه الدالة الجديدة ---
+getMeDetails: async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id)
+            .populate('friends', 'username profileImage customId')
+            .populate('friendRequestsReceived', 'username profileImage customId');
+        
+        if (!user) {
+            return res.status(404).json({ message: 'المستخدم غير موجود.' });
+        }
+        res.status(200).json({ status: 'success', data: { user } });
+    } catch (error) {
+        res.status(500).json({ message: 'حدث خطأ في الخادم.' });
+    }
+},
+
+
 
 // --- ✅✅ التصدير في النهاية كمجموعة واحدة ---
 
