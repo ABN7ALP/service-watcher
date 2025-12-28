@@ -27,6 +27,14 @@ exports.sendFriendRequest = async (req, res) => {
         await User.findByIdAndUpdate(senderId, { $addToSet: { friendRequestsSent: receiverId } });
         await User.findByIdAndUpdate(receiverId, { $addToSet: { friendRequestsReceived: senderId } });
 
+        // ... (في نهاية دالة sendFriendRequest)
+        // --- ✅ إرسال إشعار فوري للطرف الآخر ---
+        const io = req.app.get('socketio');
+        if (receiver.socketId) {
+            io.to(receiver.socketId).emit('friendshipUpdate', { action: 'received_request', from: senderId });
+        }
+        // --- نهاية الإشعار ---
+
         res.status(200).json({ message: 'تم إرسال طلب الصداقة بنجاح.' });
     } catch (error) {
         res.status(500).json({ message: 'حدث خطأ في الخادم.' });
@@ -51,6 +59,15 @@ exports.acceptFriendRequest = async (req, res) => {
             })
         ]);
 
+        // ... (في نهاية دالة acceptFriendRequest)
+        // --- ✅ إرسال إشعار فوري للطرف الآخر ---
+        const senderUser = await User.findById(senderId);
+        const io = req.app.get('socketio');
+        if (senderUser && senderUser.socketId) {
+            io.to(senderUser.socketId).emit('friendshipUpdate', { action: 'request_accepted', by: accepterId });
+        }
+        // --- نهاية الإشعار ---
+
         res.status(200).json({ message: 'تم قبول طلب الصداقة.' });
     } catch (error) {
         res.status(500).json({ message: 'حدث خطأ في الخادم.' });
@@ -73,6 +90,14 @@ exports.rejectOrCancelRequest = async (req, res) => {
             })
         ]);
 
+        // ... (في نهاية دالة rejectOrCancelRequest)
+        // --- ✅ إرسال إشعار فوري للطرف الآخر ---
+        const otherUser = await User.findById(otherId);
+        const io = req.app.get('socketio');
+        if (otherUser && otherUser.socketId) {
+            io.to(otherUser.socketId).emit('friendshipUpdate', { action: 'request_cancelled', by: selfId });
+        }
+
         res.status(200).json({ message: 'تم إلغاء طلب الصداقة.' });
     } catch (error) {
         res.status(500).json({ message: 'حدث خطأ في الخادم.' });
@@ -89,6 +114,15 @@ exports.removeFriend = async (req, res) => {
             User.findByIdAndUpdate(selfId, { $pull: { friends: friendId } }),
             User.findByIdAndUpdate(friendId, { $pull: { friends: selfId } })
         ]);
+
+        // ... (في نهاية دالة removeFriend)
+        // --- ✅ إرسال إشعار فوري للطرف الآخر ---
+        const friendUser = await User.findById(friendId);
+        const io = req.app.get('socketio');
+        if (friendUser && friendUser.socketId) {
+            io.to(friendUser.socketId).emit('friendshipUpdate', { action: 'friend_removed', by: selfId });
+        }
+        // --- نهاية الإشعار ---
 
         res.status(200).json({ message: 'تم حذف الصديق.' });
     } catch (error) {
