@@ -859,10 +859,15 @@ async function showMiniProfileModal(userId) {
 
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
 function getFriendButtonHTML(profileUser) {
-    const selfUser = JSON.parse(localStorage.getItem('user'));
-    let friendButtonHTML = '';
+    const currentUser = JSON.parse(localStorage.getItem('user'));
+    const profileUserId = profileUser._id;
 
-    if (selfUser.friends.includes(profileUser._id)) {
+    // --- منطق الحظر ---
+    const isBlockedByMe = currentUser.blockedUsers?.includes(profileUserId);
+    if (isBlockedByMe) {
+        return `<button class="action-btn bg-yellow-500 hover:bg-yellow-600" data-action="unblock" data-user-id="${profileUserId}"><i class="fas fa-unlock mr-2"></i>إلغاء الحظر</button>`;
+    }
+
         friendButtonHTML = `<button class="action-btn friend-btn" data-action="remove-friend" data-user-id="${profileUser._id}"><i class="fas fa-user-check"></i><span>صديق</span></button>`;
     } else if (selfUser.friendRequestsSent.includes(profileUser._id)) {
         friendButtonHTML = `<button class="action-btn sent-btn" data-action="cancel-request" data-user-id="${profileUser._id}"><i class="fas fa-user-clock"></i><span>مُرسَل</span></button>`;
