@@ -94,9 +94,11 @@ getMeDetails: async (req, res) => {
 
 
 // --- ✅ عدّل الكائن الذي يتم تصديره ---
+// --- ✅✅ استبدل module.exports بالكامل بهذا ---
 module.exports = {
     updateUsername,
     updateProfilePicture,
-    getUserById // <-- أضف الدالة الجديدة هنا
+    getMeDetails // ✅ السطر المفقود الذي سبب المشكلة
 };
+
 
