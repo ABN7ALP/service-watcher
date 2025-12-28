@@ -639,7 +639,6 @@ socket.on('chatCleanup', ({ idsToDelete }) => {
    // --- ✅ دالة جديدة لنافذة التأكيد ---
 // --- ✅ استبدل دالة showConfirmationModal بالكامل ---
 function showConfirmationModal(message, onConfirm) {
-    // إذا كانت هناك نافذة تأكيد قديمة، احذفها أولاً
     const oldModal = document.getElementById('confirmation-modal');
     if (oldModal) oldModal.remove();
 
@@ -661,7 +660,25 @@ function showConfirmationModal(message, onConfirm) {
     const confirmBtn = document.getElementById('confirm-btn');
     const cancelBtn = document.getElementById('cancel-btn');
 
-    const closeModal = () => modal.remove();
+    // --- ✅ الإصلاح يبدأ هنا ---
+    const closeModal = () => {
+        modal.remove();
+        // بعد إغلاق نافذة التأكيد، أعد ربط حدث الإغلاق لأي نافذة ملف شخصي قد تكون مفتوحة
+        const miniProfileModal = document.getElementById('mini-profile-modal');
+        if (miniProfileModal) {
+            // نزيل أي مستمعات قديمة لضمان عدم تكرارها
+            const newModal = miniProfileModal.cloneNode(true);
+            miniProfileModal.parentNode.replaceChild(newModal, miniProfileModal);
+            
+            // نضيف المستمع من جديد
+            newModal.addEventListener('click', (e) => {
+                if (e.target.id === 'mini-profile-modal') {
+                    newModal.remove();
+                }
+            });
+        }
+    };
+    // --- نهاية الإصلاح ---
 
     confirmBtn.addEventListener('click', () => {
         onConfirm();
@@ -669,7 +686,6 @@ function showConfirmationModal(message, onConfirm) {
     });
     cancelBtn.addEventListener('click', closeModal);
     
-    // --- ✅ الإصلاح: النقر على الخلفية يغلق نافذة التأكيد فقط ---
     modal.addEventListener('click', (e) => {
         if (e.target.id === 'confirmation-modal') closeModal();
     });
