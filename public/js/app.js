@@ -112,89 +112,132 @@ navItems.forEach(item => {
     });
 });
 
-// دالة لعرض محتوى الإعدادات (النسخة النهائية مع رفع الصور)
-function showSettingsView() {
-    // --- داخل دالة showSettingsView، استبدل mainContent.innerHTML بهذا ---
-mainContent.innerHTML = `
-    <div class="p-4">
-        <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
-        
-        <!-- قسم تغيير الصورة الشخصية -->
-        <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6 text-center">
-            <h3 class="text-lg font-bold mb-4">تغيير الصورة الشخصية</h3>
-            <img id="settings-profile-image" src="${user.profileImage}" class="w-32 h-32 rounded-full mx-auto border-4 border-purple-500 mb-4 object-cover">
-            <form id="image-upload-form">
-                <input type="file" id="image-file-input" name="profileImage" class="hidden" accept="image/*">
-                <!-- ✅ الإصلاح: وضع الأزرار في حاوية flex -->
-                <div class="flex justify-center items-center gap-4 mt-4">
-                    <button type="button" id="select-image-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
-                        اختيار صورة...
-                    </button>
-                    <button type="submit" id="upload-image-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg hidden">
-                        <i class="fas fa-upload mr-2"></i>رفع وحفظ
-                    </button>
+// --- ✅ استبدل دالة showSettingsView بالكامل ---
+async function showSettingsView() {
+    // عرض هيكل أساسي مع حالة تحميل
+    mainContent.innerHTML = `
+        <div class="p-4">
+            <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
+            <div id="settings-content">
+                <div class="text-center p-10">
+                    <i class="fas fa-spinner fa-spin text-4xl text-purple-400"></i>
+                    <p class="mt-4">جاري تحميل الإعدادات...</p>
                 </div>
-            </form>
+            </div>
         </div>
+    `;
 
-        <!-- قسم تغيير اسم المستخدم -->
-        <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6">
-            <h3 class="text-lg font-bold mb-4">تغيير اسم المستخدم</h3>
-            <!-- ✅ الإصلاح: استخدام flex-col للشاشات الصغيرة و flex-row للكبيرة -->
-            <form id="username-update-form" class="flex flex-col sm:flex-row items-center gap-4">
-                <input type="text" id="username-input" value="${user.username}" class="w-full sm:flex-grow bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2">
-                <button type="submit" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">حفظ</button>
-            </form>
-        </div>
+    try {
+        // جلب البيانات الكاملة للمستخدم
+        const response = await fetch('/api/users/me/details', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Failed to load user details');
+        const result = await response.json();
+        const detailedUser = result.data.user;
 
-        <!-- قسم تغيير كلمة المرور -->
-        <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl">
-            <h3 class="text-lg font-bold mb-4">تغيير كلمة المرور</h3>
-            <form id="password-update-form" class="space-y-4">
-                <div>
-                    <label for="current-password" class="block text-sm font-medium mb-1">كلمة المرور الحالية</label>
-                    <input type="password" id="current-password" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2">
+        // --- بناء HTML لقسم طلبات الصداقة ---
+        let friendRequestsHTML = '<p class="text-gray-400 text-sm">لا توجد طلبات صداقة جديدة.</p>';
+        if (detailedUser.friendRequestsReceived && detailedUser.friendRequestsReceived.length > 0) {
+            friendRequestsHTML = detailedUser.friendRequestsReceived.map(sender => `
+                <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
+                    <div class="flex items-center gap-3">
+                        <img src="${sender.profileImage}" data-user-id="${sender._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
+                        <span>${sender.username}</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="friend-action-btn bg-blue-600 hover:bg-blue-700 text-white text-xs py-1 px-3 rounded-full" data-action="accept-request" data-user-id="${sender._id}">قبول</button>
+                        <button class="friend-action-btn bg-gray-600 hover:bg-gray-700 text-white text-xs py-1 px-3 rounded-full" data-action="reject-request" data-user-id="${sender._id}">رفض</button>
+                    </div>
                 </div>
-                <div>
-                    <label for="new-password" class="block text-sm font-medium mb-1">كلمة المرور الجديدة</label>
-                    <input type="password" id="new-password" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2">
-                </div>
-                <div>
-                    <label for="new-password-confirm" class="block text-sm font-medium mb-1">تأكيد كلمة المرور الجديدة</label>
-                    <input type="password" id="new-password-confirm" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2">
-                </div>
-                <div class="pt-2">
-                    <button type="submit" class="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">تحديث كلمة المرور</button>
-                </div>
-            </form>
-        </div>
-    </div>
-`;
-
-
-    // --- ربط الأحداث الجديدة ---
-    document.getElementById('select-image-btn').addEventListener('click', () => {
-        document.getElementById('image-file-input').click();
-        
-        
-    });
-
-    document.getElementById('image-file-input').addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                document.getElementById('settings-profile-image').src = event.target.result;
-            };
-            reader.readAsDataURL(file);
-            document.getElementById('upload-image-btn').classList.remove('hidden');
+            `).join('');
         }
-    });
 
-    document.getElementById('image-upload-form').addEventListener('submit', handleImageUpload);
-    document.getElementById('username-update-form').addEventListener('submit', handleUsernameUpdate);
-    document.getElementById('password-update-form').addEventListener('submit', handlePasswordUpdate);
+        // --- بناء HTML لقسم قائمة الأصدقاء ---
+        let friendsListHTML = '<p class="text-gray-400 text-sm">ليس لديك أصدقاء بعد.</p>';
+        if (detailedUser.friends && detailedUser.friends.length > 0) {
+            friendsListHTML = detailedUser.friends.map(friend => `
+                <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
+                    <div class="flex items-center gap-3">
+                        <img src="${friend.profileImage}" data-user-id="${friend._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
+                        <span>${friend.username}</span>
+                    </div>
+                    <button class="friend-action-btn bg-red-600 hover:bg-red-700 text-white text-xs py-1 px-3 rounded-full" data-action="remove-friend" data-user-id="${friend._id}">حذف</button>
+                </div>
+            `).join('');
+        }
+
+        // --- بناء الواجهة الكاملة ---
+        const settingsHTML = `
+            <!-- قسم إدارة الأصدقاء -->
+            <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6">
+                <h3 class="text-lg font-bold mb-4">إدارة الأصدقاء</h3>
+                <div class="space-y-4">
+                    <div>
+                        <h4 class="font-semibold mb-2">طلبات الصداقة (${detailedUser.friendRequestsReceived.length})</h4>
+                        <div id="friend-requests-list" class="space-y-2">${friendRequestsHTML}</div>
+                    </div>
+                    <div class="border-t border-gray-700 pt-4">
+                        <h4 class="font-semibold mb-2">قائمة الأصدقاء (${detailedUser.friends.length})</h4>
+                        <div id="friends-list" class="space-y-2">${friendsListHTML}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- باقي أقسام الإعدادات (تبقى كما هي) -->
+            <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6 text-center">
+                <h3 class="text-lg font-bold mb-4">تغيير الصورة الشخصية</h3>
+                <img id="settings-profile-image" src="${detailedUser.profileImage}" class="w-32 h-32 rounded-full mx-auto border-4 border-purple-500 mb-4 object-cover">
+                <form id="image-upload-form">
+                    <input type="file" id="image-file-input" name="profileImage" class="hidden" accept="image/*">
+                    <div class="flex justify-center items-center gap-4 mt-4">
+                        <button type="button" id="select-image-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">اختيار صورة...</button>
+                        <button type="submit" id="upload-image-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg hidden"><i class="fas fa-upload mr-2"></i>رفع وحفظ</button>
+                    </div>
+                </form>
+            </div>
+            <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6">
+                <h3 class="text-lg font-bold mb-4">تغيير اسم المستخدم</h3>
+                <form id="username-update-form" class="flex flex-col sm:flex-row items-center gap-4">
+                    <input type="text" id="username-input" value="${detailedUser.username}" class="w-full sm:flex-grow bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2">
+                    <button type="submit" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">حفظ</button>
+                </form>
+            </div>
+            <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl">
+                <h3 class="text-lg font-bold mb-4">تغيير كلمة المرور</h3>
+                <form id="password-update-form" class="space-y-4">
+                    <div><label for="current-password" class="block text-sm font-medium mb-1">كلمة المرور الحالية</label><input type="password" id="current-password" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2"></div>
+                    <div><label for="new-password" class="block text-sm font-medium mb-1">كلمة المرور الجديدة</label><input type="password" id="new-password" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2"></div>
+                    <div><label for="new-password-confirm" class="block text-sm font-medium mb-1">تأكيد كلمة المرور الجديدة</label><input type="password" id="new-password-confirm" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2"></div>
+                    <div class="pt-2"><button type="submit" class="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">تحديث كلمة المرور</button></div>
+                </form>
+            </div>
+        `;
+
+        // استبدال حالة التحميل بالمحتوى الفعلي
+        document.getElementById('settings-content').innerHTML = settingsHTML;
+
+        // إعادة ربط كل الأحداث
+        document.getElementById('select-image-btn').addEventListener('click', () => document.getElementById('image-file-input').click());
+        document.getElementById('image-file-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => { document.getElementById('settings-profile-image').src = event.target.result; };
+                reader.readAsDataURL(file);
+                document.getElementById('upload-image-btn').classList.remove('hidden');
+            }
+        });
+        document.getElementById('image-upload-form').addEventListener('submit', handleImageUpload);
+        document.getElementById('username-update-form').addEventListener('submit', handleUsernameUpdate);
+        document.getElementById('password-update-form').addEventListener('submit', handlePasswordUpdate);
+
+    } catch (error) {
+        document.getElementById('settings-content').innerHTML = '<p class="text-red-400 text-center">فشل تحميل الإعدادات. يرجى المحاولة مرة أخرى.</p>';
+        console.error('Failed to show settings view:', error);
+    }
 }
+
 
 // دالة لإعادة عرض ساحة التحديات
 function showArenaView() {
@@ -427,6 +470,70 @@ document.getElementById('perks-toggle-btn').addEventListener('click', (e) => {
         }
     });
 
+      // --- ✅ أضف هذا المستمع الجديد لأزرار إدارة الأصدقاء ---
+mainContent.addEventListener('click', async (e) => {
+    const button = e.target.closest('.friend-action-btn');
+    if (!button) return;
+
+    const action = button.dataset.action;
+    const userId = button.dataset.userId;
+    const card = button.closest('.flex.items-center.justify-between');
+
+    const performAction = async () => {
+        let url = '';
+        let method = 'POST';
+
+        switch (action) {
+            case 'accept-request':
+                url = `/api/friends/accept-request/${userId}`;
+                break;
+            case 'reject-request':
+                url = `/api/friends/reject-request/${userId}`;
+                break;
+            case 'remove-friend':
+                url = `/api/friends/remove-friend/${userId}`;
+                method = 'DELETE';
+                break;
+            default:
+                return;
+        }
+
+        // التحديث المتفائل
+        card.style.opacity = '0.5';
+
+        try {
+            const response = await fetch(url, {
+                method: method,
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('Action failed');
+
+            // إعادة تحميل قسم الإعدادات بالكامل لعرض البيانات المحدثة
+            showSettingsView();
+            showNotification('تم تنفيذ الإجراء بنجاح', 'success');
+
+        } catch (error) {
+            card.style.opacity = '1';
+            showNotification('فشل تنفيذ الإجراء', 'error');
+        }
+    };
+
+    if (action === 'remove-friend' || action === 'reject-request') {
+        const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من رفض هذا الطلب؟';
+        showConfirmationModal(message, performAction);
+    } else {
+        performAction();
+    }
+});
+
+// --- ✅ أضف هذا المستمع لفتح الملف الشخصي المصغر من قسم الإعدادات ---
+mainContent.addEventListener('click', (e) => {
+    const image = e.target.closest('.user-image');
+    if (image && image.dataset.userId) {
+        showMiniProfileModal(image.dataset.userId);
+    }
+});
+  
    // --- ✅ أضف هذا الكود لتفعيل أزرار الصداقة ---
 // --- ✅ استبدل مستمع حدث النقر على body بالكامل ---
 document.body.addEventListener('click', async (e) => {
