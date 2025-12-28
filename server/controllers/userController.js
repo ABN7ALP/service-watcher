@@ -70,7 +70,6 @@ const getUserById = async (req, res) => {
     }
 };
 
-// --- ✅ هذه هي الدالة التي أضفناها مؤخرًا ---
 const getMeDetails = async (req, res) => {
     try {
         const user = await User.findById(req.user.id)
@@ -86,11 +85,7 @@ const getMeDetails = async (req, res) => {
     }
 };
 
-// server/controllers/userController.js
-// ... (الدوال الموجودة مثل getMeDetails)
-
-// --- ✅✅ أضف هاتين الدالتين الجديدتين ---
-
+// --- ✅✅ الدوال الجديدة التي سببت المشكلة ---
 const blockUser = async (req, res) => {
     try {
         const userToBlockId = req.params.id;
@@ -100,10 +95,8 @@ const blockUser = async (req, res) => {
             return res.status(400).json({ message: 'لا يمكنك حظر نفسك.' });
         }
 
-        // أضف المستخدم إلى قائمة الحظر إذا لم يكن موجودًا بالفعل
         await User.findByIdAndUpdate(currentUserId, { $addToSet: { blockedUsers: userToBlockId } });
         
-        // قم بإزالة أي علاقة صداقة أو طلب صداقة موجود
         await User.findByIdAndUpdate(currentUserId, { 
             $pull: { friends: userToBlockId, friendRequestsSent: userToBlockId, friendRequestsReceived: userToBlockId } 
         });
@@ -122,7 +115,6 @@ const unblockUser = async (req, res) => {
         const userToUnblockId = req.params.id;
         const currentUserId = req.user.id;
 
-        // أزل المستخدم من قائمة الحظر
         await User.findByIdAndUpdate(currentUserId, { $pull: { blockedUsers: userToUnblockId } });
 
         res.status(200).json({ status: 'success', message: 'تم إلغاء حظر المستخدم بنجاح.' });
@@ -132,10 +124,7 @@ const unblockUser = async (req, res) => {
 };
 
 
-// --- ✅✅ التصدير الصحيح في النهاية ---
-// server/controllers/userController.js
-
-// --- ✅✅ قم بتحديث module.exports ---
+// --- ✅✅✅ التصدير الصحيح والكامل في نهاية الملف ---
 module.exports = {
     updateUsername,
     updateProfilePicture,
@@ -144,4 +133,3 @@ module.exports = {
     blockUser,      // ✅ تصدير الدالة الجديدة
     unblockUser     // ✅ تصدير الدالة الجديدة
 };
-
