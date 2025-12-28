@@ -34,3 +34,18 @@ body {
 .action-btn i {
     @apply text-lg mb-1;
 }
+/* --- ✅ أنماط أزرار الصداقة الملونة --- */
+.action-btn.add-btn { @apply text-purple-400 hover:bg-purple-900; }
+.action-btn.sent-btn { @apply text-gray-500 cursor-not-allowed; }
+.action-btn.received-btn { @apply text-blue-400 hover:bg-blue-900; }
+.action-btn.friend-btn { @apply text-green-400 hover:bg-green-900; }
+
+/* --- ✅ أنماط الإشعار العائم --- */
+@keyframes float-up-and-fade {
+    0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+    25% { transform: translate(-50%, -100%) scale(1); opacity: 1; }
+    100% { transform: translate(-50%, -250%) scale(1.2); opacity: 0; }
+}
+.floating-alert {
+    animation: float-up-and-fade 2s ease-out forwards;
+}
