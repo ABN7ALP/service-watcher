@@ -15,7 +15,8 @@ router.get('/:id', userController.getUserById);
 // --- ✅ أضف هذا المسار الجديد ---
 router.get('/me/details', userController.getMeDetails);
 
-
+router.post('/:id/block', authMiddleware.protect, userController.blockUser);
+router.post('/:id/unblock', authMiddleware.protect, userController.unblockUser);
 
 // مسار لتحديث اسم المستخدم
 // Express سيبحث عن خاصية 'updateUsername' في الكائن الذي تم تصديره من userController
