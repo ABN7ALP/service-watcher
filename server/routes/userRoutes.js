@@ -18,7 +18,4 @@ router.get('/me/details', userController.getMeDetails);
 router.get('/:id', userController.getUserById);
 
 // مسارات الحظر
-router.post('/:id/block', userController.blockUser);
-router.post('/:id/unblock', userController.unblockUser);
-
 module.exports = router;
