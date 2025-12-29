@@ -30,13 +30,21 @@ const userSchema = new mongoose.Schema({
     socketId: { type: String, default: null },
 
     // --- ✅ الحقول الجديدة لنظام الصداقة ---
-    friends: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    friendRequestsSent: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    friendRequestsReceived: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+    friends: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    friendRequestsSent: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    friendRequestsReceived: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    // --- نهاية الحقول الجديدة --
 
 }, { timestamps: true });
-
 
 userSchema.pre('validate', async function(next) {
     if (this.isNew && !this.customId) {
