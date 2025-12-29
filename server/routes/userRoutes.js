@@ -1,29 +1,24 @@
-// ملف: server/routes/userRoutes.js
-
+// server/routes/userRoutes.js
 const express = require('express');
 const userController = require('../controllers/userController');
 const authMiddleware = require('../middleware/authMiddleware');
 const { upload } = require('../utils/cloudinary');
 
-
 const router = express.Router();
 
 // حماية جميع المسارات التالية
 router.use(authMiddleware);
-router.get('/:id', userController.getUserById);
-// ... (في userRoutes.js)
-// --- ✅ أضف هذا المسار الجديد ---
-router.get('/me/details', userController.getMeDetails);
 
-router.post('/:id/block', authMiddleware.protect, userController.blockUser);
-router.post('/:id/unblock', authMiddleware.protect, userController.unblockUser);
-
-// مسار لتحديث اسم المستخدم
-// Express سيبحث عن خاصية 'updateUsername' في الكائن الذي تم تصديره من userController
+// مسارات تحديث بيانات المستخدم
 router.patch('/updateUsername', userController.updateUsername);
-
-// مسار لتحديث الصورة الشخصية
-// سيتم تنفيذ 'upload' أولاً، ثم 'updateProfilePicture'
 router.patch('/updateProfilePicture', upload, userController.updateProfilePicture);
+
+// مسارات جلب بيانات المستخدمين
+router.get('/me/details', userController.getMeDetails);
+router.get('/:id', userController.getUserById);
+
+// مسارات الحظر
+router.post('/:id/block', userController.blockUser);
+router.post('/:id/unblock', userController.unblockUser);
 
 module.exports = router;
