@@ -471,15 +471,31 @@ document.body.addEventListener('click', async (e) => {
 
 
         
-        if (['remove-friend', 'cancel-request', 'block'].includes(action)) {
-            const message = action === 'block' 
-                ? 'هل أنت متأكد من حظر هذا المستخدم؟ سيتم إزالته من الأصدقاء بشكل دائم.' 
-                : 'هل أنت متأكد من هذا الإجراء؟';
-            showConfirmationModal(message, performAction);
-        } else {
-            performAction();
-        }
-
+        
+if (['remove-friend', 'cancel-request', 'block'].includes(action)) {
+    const message = action === 'block' 
+        ? 'هل أنت متأكد من حظر هذا المستخدم؟ سيتم إزالته من الأصدقاء بشكل دائم.' 
+        : 'هل أنت متأكد من هذا الإجراء؟';
+    showConfirmationModal(message, performAction);
+    // === ملاحظة: تم إزالة performAction() من هنا ===
+} else {
+    // === أضف هذا الجزء: لا إشعار قبل التأكيد ===
+    miniProfileActionBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+    miniProfileActionBtn.disabled = true;
+    
+    try {
+        const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
+        if (!response.ok) throw new Error((await response.json()).message || 'فشل الإجراء');
+        
+        // === الإشعار يظهر هنا فقط بعد نجاح العملية ===
+        showFloatingAlert(successMessage, 'fa-check-circle', 'bg-green-500');
+        
+        // تحديث واجهة المستخدم تلقائيًا عبر سوكيت
+    } catch (error) {
+        showNotification(error.message, 'error');
+        showMiniProfileModal(userId); // إعادة الرسم في حالة الفشل
+    }
+}
 
         if (['remove-friend', 'cancel-request'].includes(action)) {
             showConfirmationModal('هل أنت متأكد من هذا الإجراء؟', performAction);
