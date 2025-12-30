@@ -433,12 +433,13 @@ document.body.addEventListener('click', async (e) => {
         return;
     }
 
-    // الجزء 2: أزرار الملف الشخصي المصغر (التي تظهر عند النقر على صورة)
+    // الجزء 2: أزرار الملف الشخصي المصغر (التي تظهر عند النقر على صورة))
     const miniProfileActionBtn = e.target.closest('.action-btn');
     if (miniProfileActionBtn && miniProfileActionBtn.closest('#mini-profile-modal')) {
         const action = miniProfileActionBtn.dataset.action;
         const userId = miniProfileActionBtn.dataset.userId;
-        
+
+        // دالة التنفيذ الفعلية بعد التأكيد
         const performAction = async () => {
             let url = '';
             let method = 'POST';
@@ -455,35 +456,33 @@ document.body.addEventListener('click', async (e) => {
                 default: return;
             }
 
-            miniProfileActionBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
-            miniProfileActionBtn.disabled = true;
-
             try {
                 const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
                 if (!response.ok) throw new Error((await response.json()).message || 'فشل الإجراء');
-                showFloatingAlert(successMessage, 'fa-check-circle', 'bg-green-500');
-                // إشعار السوكيت سيقوم بتحديث الواجهة تلقائيًا
+                
+                // لا نظهر إشعارًا هنا، السوكيت سيتكفل بالتحديث
+                // showFloatingAlert(successMessage, 'fa-check-circle', 'bg-green-500');
+                
+                // نرسل إشعار سوكيت يدويًا للطرف الآخر (ولنفسنا) لتحديث الواجهات
+                socket.emit('friendshipUpdate'); // هذا سيجعل كل الواجهات تتحدث تلقائيًا
+
             } catch (error) {
                 showNotification(error.message, 'error');
-                showMiniProfileModal(userId); // أعد رسم النافذة لإظهار الزر الأصلي في حالة الفشل
             }
         };
 
-
-        
+        // التحقق إذا كان الإجراء يتطلب تأكيدًا
         if (['remove-friend', 'cancel-request', 'block'].includes(action)) {
-            const message = action === 'block' 
-                ? 'هل أنت متأكد من حظر هذا المستخدم؟ سيتم إزالته من الأصدقاء بشكل دائم.' 
-                : 'هل أنت متأكد من هذا الإجراء؟';
-            showConfirmationModal(message, performAction);
+            const messages = {
+                'remove-friend': 'هل أنت متأكد من حذف هذا الصديق؟',
+                'cancel-request': 'هل أنت متأكد من إلغاء طلب الصداقة؟',
+                'block': 'هل أنت متأكد من حظر هذا المستخدم؟ سيتم إزالته من الأصدقاء بشكل دائم.'
+            };
+            // ✨ الإصلاح الرئيسي: لا ننفذ أي شيء، فقط نعرض نافذة التأكيد
+            // ودالة performAction يتم تمريرها لتُستدعى فقط عند النقر على "تأكيد"
+            showConfirmationModal(messages[action], performAction);
         } else {
-            performAction();
-        }
-
-
-        if (['remove-friend', 'cancel-request'].includes(action)) {
-            showConfirmationModal('هل أنت متأكد من هذا الإجراء؟', performAction);
-        } else {
+            // الإجراءات التي لا تتطلب تأكيدًا (مثل قبول طلب) يتم تنفيذها مباشرة
             performAction();
         }
         return;
