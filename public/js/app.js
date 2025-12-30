@@ -786,45 +786,39 @@ async function showMiniProfileModal(userId) {
     }
 }
 
-// --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
 // public/js/app.js
 
-// --- ✅✅ استبدل هذه الدالة بالكامل ✅✅ ---
 function getFriendButtonHTML(profileUser) {
     const currentUser = JSON.parse(localStorage.getItem('user'));
     const profileUserId = profileUser._id;
 
-    // 1. الأولوية القصوى: التحقق مما إذا كان المستخدم محظورًا
-    if (currentUser.blockedUsers && currentUser.blockedUsers.includes(profileUserId)) {
+    if (currentUser.blockedUsers?.includes(profileUserId)) {
         return `<button class="action-btn" data-action="unblock" data-user-id="${profileUserId}"><i class="fas fa-unlock"></i><span>إلغاء الحظر</span></button>`;
     }
-
-    // 2. منطق الصداقة (إذا لم يكن محظورًا)
-    if (currentUser.friends && currentUser.friends.includes(profileUserId)) {
+    if (currentUser.friends?.includes(profileUserId)) {
         return `
-            <button class="action-btn" data-action="remove-friend" data-user-id="${profileUserId}"><i class="fas fa-user-minus"></i><span>حذف</span></button>
+            <button class="action-btn friend-btn" data-action="remove-friend" data-user-id="${profileUserId}"><i class="fas fa-user-minus"></i><span>صديق</span></button>
             <button class="action-btn" data-action="block" data-user-id="${profileUserId}"><i class="fas fa-ban"></i><span>حظر</span></button>
         `;
     } 
-    if (currentUser.friendRequestsSent && currentUser.friendRequestsSent.includes(profileUserId)) {
+    if (currentUser.friendRequestsSent?.includes(profileUserId)) {
         return `
-            <button class="action-btn" data-action="cancel-request" data-user-id="${profileUserId}"><i class="fas fa-user-clock"></i><span>إلغاء الطلب</span></button>
+            <button class="action-btn sent-btn" data-action="cancel-request" data-user-id="${profileUserId}"><i class="fas fa-user-clock"></i><span>مُرسَل</span></button>
             <button class="action-btn" data-action="block" data-user-id="${profileUserId}"><i class="fas fa-ban"></i><span>حظر</span></button>
         `;
     }
-    if (currentUser.friendRequestsReceived && currentUser.friendRequestsReceived.includes(profileUserId)) {
+    if (currentUser.friendRequestsReceived?.includes(profileUserId)) {
         return `
-            <button class="action-btn" data-action="accept-request" data-user-id="${profileUserId}"><i class="fas fa-user-check"></i><span>قبول</span></button>
+            <button class="action-btn received-btn" data-action="accept-request" data-user-id="${profileUserId}"><i class="fas fa-user-check"></i><span>قبول</span></button>
             <button class="action-btn" data-action="block" data-user-id="${profileUserId}"><i class="fas fa-ban"></i><span>حظر</span></button>
         `;
     }
-    
-    // 3. إذا لم تكن هناك أي علاقة
     return `
-        <button class="action-btn" data-action="send-request" data-user-id="${profileUserId}"><i class="fas fa-user-plus"></i><span>إضافة</span></button>
+        <button class="action-btn add-btn" data-action="send-request" data-user-id="${profileUserId}"><i class="fas fa-user-plus"></i><span>إضافة</span></button>
         <button class="action-btn" data-action="block" data-user-id="${profileUserId}"><i class="fas fa-ban"></i><span>حظر</span></button>
     `;
 }
+
 
 
 
@@ -969,31 +963,43 @@ function displayMessage(message) {
     }
     loadChatHistory();
 
+// public/js/app.js
 
-
-// --- ✅ أضف هذا المستمع الجديد ---
-// --- ✅ استبدل مستمع friendshipUpdate بهذا ---
+// --- ✅✅ استبدل مستمع السوكيت القديم بهذا ✅✅ ---
 socket.on('friendshipUpdate', async () => {
     console.log('[SOCKET] Received friendship update. Refetching self user data.');
     try {
-        const selfUserResponse = await fetch(`/api/users/me/details`, { headers: { 'Authorization': `Bearer ${token}` } });
-        const selfUserResult = await selfUserResponse.json();
-        if (selfUserResponse.ok) {
-            const updatedUser = selfUserResult.data.user;
-            localStorage.setItem('user', JSON.stringify(updatedUser));
-            updateUIWithUserData(updatedUser); // ✅ تحديث الواجهة بالكامل
-            
-            // (اختياري) إذا كانت نافذة الملف الشخصي مفتوحة، أعد رسمها
-            const modal = document.getElementById('mini-profile-modal');
-            const userIdInModal = modal?.dataset.userId;
-            if (modal && userIdInModal) {
-                showMiniProfileModal(userIdInModal);
-            }
+        const response = await fetch('/api/users/me/details', { 
+            headers: { 'Authorization': `Bearer ${token}` } 
+        });
+        if (!response.ok) return;
+
+        const result = await response.json();
+        const updatedUser = result.data.user;
+        
+        // 1. تحديث بيانات المستخدم في localStorage
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        
+        // 2. تحديث الواجهة الرئيسية (الشريط الجانبي)
+        updateUIWithUserData(updatedUser);
+        
+        // 3. (الأهم) إعادة رسم أي نافذة مفتوحة لتعكس التغييرات فورًا
+        const miniProfile = document.getElementById('mini-profile-modal');
+        if (miniProfile) {
+            const userId = miniProfile.querySelector('.action-btn[data-user-id]').dataset.userId;
+            await showMiniProfileModal(userId);
         }
+        const friendsList = document.getElementById('friends-list-modal');
+        if (friendsList) await showFriendsListModal();
+        
+        const requestsList = document.getElementById('friend-requests-modal');
+        if (requestsList) await showFriendRequestsModal();
+
     } catch (error) {
         console.error('Failed to refetch user data after friendship update:', error);
     }
 });
+
 
 // --- ✅ أضف هذا الكود لربط الأيقونات الجديدة ---
 document.getElementById('friends-list-btn').addEventListener('click', showFriendsListModal);
