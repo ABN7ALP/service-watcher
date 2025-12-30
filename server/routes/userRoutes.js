@@ -9,6 +9,7 @@ const router = express.Router();
 // حماية جميع المسارات التالية
 router.use(authMiddleware);
 
+// --- ✅ تم تصحيح طريقة استدعاء الدوال هنا ---
 // مسارات تحديث بيانات المستخدم
 router.patch('/updateUsername', userController.updateUsername);
 router.patch('/updateProfilePicture', upload, userController.updateProfilePicture);
@@ -17,5 +18,6 @@ router.patch('/updateProfilePicture', upload, userController.updateProfilePictur
 router.get('/me/details', userController.getMeDetails);
 router.get('/:id', userController.getUserById);
 
-// مسارات الحظر
+// (مسارات الحظر سيتم إضافتها لاحقًا هنا)
+
 module.exports = router;
