@@ -421,132 +421,186 @@ document.getElementById('perks-toggle-btn').addEventListener('click', (e) => {
         }
     });
 
- 
-// public/js/app.js
+      // --- ✅ أضف هذا المستمع الجديد لأزرار إدارة الأصدقاء ---
+mainContent.addEventListener('click', async (e) => {
+    const button = e.target.closest('.friend-action-btn');
+    if (!button) return;
 
-// --- ✅✅ المستمع الموحد والنهائي لكل نقرات الأزرار ✅✅ ---
+    const action = button.dataset.action;
+    const userId = button.dataset.userId;
+    const card = button.closest('.flex.items-center.justify-between');
+
+    const performAction = async () => {
+        let url = '';
+        let method = 'POST';
+
+        switch (action) {
+            case 'accept-request':
+                url = `/api/friends/accept-request/${userId}`;
+                break;
+            case 'reject-request':
+                url = `/api/friends/reject-request/${userId}`;
+                break;
+            case 'remove-friend':
+                url = `/api/friends/remove-friend/${userId}`;
+                method = 'DELETE';
+                break;
+            default:
+                return;
+        }
+
+        // التحديث المتفائل
+        card.style.opacity = '0.5';
+
+        try {
+            const response = await fetch(url, {
+                method: method,
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('Action failed');
+
+            // إعادة تحميل قسم الإعدادات بالكامل لعرض البيانات المحدثة
+            showSettingsView();
+            showNotification('تم تنفيذ الإجراء بنجاح', 'success');
+
+        } catch (error) {
+            card.style.opacity = '1';
+            showNotification('فشل تنفيذ الإجراء', 'error');
+        }
+    };
+
+    if (action === 'remove-friend' || action === 'reject-request') {
+        const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من رفض هذا الطلب؟';
+        showConfirmationModal(message, performAction);
+    } else {
+        performAction();
+    }
+});
+
+// --- ✅ أضف هذا المستمع لفتح الملف الشخصي المصغر من قسم الإعدادات ---
+
+
+// --- ✅ استبدل مستمع mainContent بالكامل بهذا ---
+// --- ✅✅✅ استبدل كلا المستمعين القديمين بهذا الكود المدمج والنهائي ---
+// --- ✅✅✅ استبدل المستمع المدمج بالكامل بهذه النسخة النهائية ---
 document.body.addEventListener('click', async (e) => {
-    // الجزء 1: إغلاق النوافذ المنبثقة عند النقر على الخلفية
+    // --- الجزء الأول: إغلاق النوافذ المنبثقة عند النقر على الخلفية ---
     const modalBackdrop = e.target.closest('.modal-backdrop');
     if (modalBackdrop && e.target === modalBackdrop) {
         modalBackdrop.remove();
-        return;
+        return; // أوقف التنفيذ هنا
     }
 
-    // الجزء 2: أزرار الملف الشخصي المصغر (التي تظهر عند النقر على صورة)
+    // --- الجزء الثاني: التعامل مع أزرار الملف الشخصي المصغر ---
     const miniProfileActionBtn = e.target.closest('.action-btn');
-    if (miniProfileActionBtn && miniProfileActionBtn.closest('#mini-profile-modal')) {
+    if (miniProfileActionBtn && miniProfileActionBtn.dataset.action) {
+        // ... (هذا الجزء يبقى كما هو بالضبط من الكود السابق)
         const action = miniProfileActionBtn.dataset.action;
         const userId = miniProfileActionBtn.dataset.userId;
         
-        const performAction = async () => {
+        const performMiniProfileAction = async () => {
             let url = '';
             let method = 'POST';
             let successMessage = '';
+            let icon = 'fa-check-circle';
+            let color = 'bg-green-500';
 
-            switch (action) {
-                case 'send-request': url = `/api/friends/send-request/${userId}`; successMessage = 'تم إرسال الطلب'; break;
-                case 'accept-request': url = `/api/friends/accept-request/${userId}`; successMessage = 'أصبحتما أصدقاء'; break;
-                case 'cancel-request':
-                case 'reject-request': url = `/api/friends/reject-request/${userId}`; successMessage = 'تم إلغاء الطلب'; break;
-                case 'remove-friend': url = `/api/friends/remove-friend/${userId}`; method = 'DELETE'; successMessage = 'تم حذف الصديق'; break;
-                case 'block': url = `/api/users/${userId}/block`; successMessage = 'تم حظر المستخدم'; break;
-                case 'unblock': url = `/api/users/${userId}/unblock`; successMessage = 'تم إلغاء الحظر'; break;
-                default: return;
-            }
-
+            const originalButtonHTML = miniProfileActionBtn.innerHTML;
             miniProfileActionBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
             miniProfileActionBtn.disabled = true;
 
+            switch (action) {
+                case 'send-request':
+                    url = `/api/friends/send-request/${userId}`;
+                    successMessage = 'تم إرسال الطلب';
+                    break;
+                case 'accept-request':
+                    url = `/api/friends/accept-request/${userId}`;
+                    successMessage = 'أصبحتما أصدقاء الآن';
+                    break;
+                case 'cancel-request':
+                case 'reject-request':
+                    url = `/api/friends/reject-request/${userId}`;
+                    successMessage = 'تم إلغاء الطلب';
+                    icon = 'fa-info-circle';
+                    color = 'bg-blue-500';
+                    break;
+                case 'remove-friend':
+                    url = `/api/friends/remove-friend/${userId}`;
+                    method = 'DELETE';
+                    successMessage = 'تم حذف الصديق';
+                    icon = 'fa-trash';
+                    color = 'bg-red-500';
+                    break;
+                default:
+                    return;
+            }
+
             try {
                 const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
-                if (!response.ok) throw new Error((await response.json()).message || 'فشل الإجراء');
-                showFloatingAlert(successMessage, 'fa-check-circle', 'bg-green-500');
-                // إشعار السوكيت سيقوم بتحديث الواجهة تلقائيًا
+                if (!response.ok) {
+                    const result = await response.json();
+                    throw new Error(result.message || 'Action failed');
+                }
+                showFloatingAlert(successMessage, icon, color);
+                showMiniProfileModal(userId);
+
             } catch (error) {
-                showNotification(error.message, 'error');
-                showMiniProfileModal(userId); // أعد رسم النافذة لإظهار الزر الأصلي في حالة الفشل
+                showNotification(error.message || 'حدث خطأ ما', 'error');
+                miniProfileActionBtn.innerHTML = originalButtonHTML;
+                miniProfileActionBtn.disabled = false;
             }
         };
 
-
-        
-        
-if (['remove-friend', 'cancel-request', 'block'].includes(action)) {
-    const message = action === 'block' 
-        ? 'هل أنت متأكد من حظر هذا المستخدم؟ سيتم إزالته من الأصدقاء بشكل دائم.' 
-        : 'هل أنت متأكد من هذا الإجراء؟';
-    showConfirmationModal(message, performAction);
-    // === ملاحظة: تم إزالة performAction() من هنا ===
-} else {
-    // === أضف هذا الجزء: لا إشعار قبل التأكيد ===
-    miniProfileActionBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
-    miniProfileActionBtn.disabled = true;
-    
-    try {
-        const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
-        if (!response.ok) throw new Error((await response.json()).message || 'فشل الإجراء');
-        
-        // === الإشعار يظهر هنا فقط بعد نجاح العملية ===
-        showFloatingAlert(successMessage, 'fa-check-circle', 'bg-green-500');
-        
-        // تحديث واجهة المستخدم تلقائيًا عبر سوكيت
-    } catch (error) {
-        showNotification(error.message, 'error');
-        showMiniProfileModal(userId); // إعادة الرسم في حالة الفشل
-    }
-}
-
-        if (['remove-friend', 'cancel-request'].includes(action)) {
-            showConfirmationModal('هل أنت متأكد من هذا الإجراء؟', performAction);
+        if (action === 'remove-friend' || action === 'cancel-request') {
+            const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من إلغاء طلب الصداقة؟';
+            showConfirmationModal(message, performMiniProfileAction);
         } else {
-            performAction();
+            performMiniProfileAction();
         }
         return;
     }
 
-    // الجزء 3: أزرار نوافذ الأصدقاء والطلبات (القوائم المنبثقة)
+    // --- الجزء الثالث: التعامل مع أزرار نوافذ الأصدقاء ---
     const friendListActionBtn = e.target.closest('.friend-action-btn');
     if (friendListActionBtn) {
+        // ... (هذا الجزء يبقى كما هو بالضبط من الكود السابق)
         const action = friendListActionBtn.dataset.action;
         const userId = friendListActionBtn.dataset.userId;
         const card = friendListActionBtn.closest('.flex.items-center.justify-between');
 
-        const performAction = async () => {
+        const performListAction = async () => {
             let url = '';
             let method = 'POST';
+
             switch (action) {
                 case 'accept-request': url = `/api/friends/accept-request/${userId}`; break;
                 case 'reject-request': url = `/api/friends/reject-request/${userId}`; break;
                 case 'remove-friend': url = `/api/friends/remove-friend/${userId}`; method = 'DELETE'; break;
                 default: return;
             }
-            if (card) card.style.display = 'none'; // تحديث متفائل
+
+            if (card) card.style.display = 'none';
+
             try {
                 const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
-                if (!response.ok) throw new Error('فشل الإجراء');
-                showNotification('تم بنجاح', 'success');
+                if (!response.ok) throw new Error('Action failed');
+                showNotification('تم تنفيذ الإجراء بنجاح', 'success');
             } catch (error) {
-                if (card) card.style.display = 'flex'; // أعد إظهار البطاقة عند الفشل
-                showNotification(error.message, 'error');
+                if (card) card.style.display = 'flex';
+                showNotification('فشل تنفيذ الإجراء', 'error');
             }
         };
 
-        if (['remove-friend', 'reject-request'].includes(action)) {
-            showConfirmationModal('هل أنت متأكد؟', performAction);
+        if (action === 'remove-friend' || action === 'reject-request') {
+            const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من رفض هذا الطلب؟';
+            showConfirmationModal(message, performListAction);
         } else {
-            performAction();
+            performListAction();
         }
         return;
     }
-    
-    // الجزء 4: فتح الملف الشخصي المصغر من أي صورة مستخدم
-    const userImage = e.target.closest('.user-image');
-    if (userImage && userImage.dataset.userId && userImage.dataset.userId !== user._id) {
-        showMiniProfileModal(userImage.dataset.userId);
-    }
 });
-
 
 
      
@@ -779,10 +833,11 @@ async function showMiniProfileModal(userId) {
                         <div class="flex items-center gap-2"><i class="fas ${socialInfo.icon} w-4 text-center text-red-400"></i> ${socialInfo.text}</div>
                         <div class="flex items-center gap-2"><i class="fas ${educationInfo.icon} w-4 text-center text-blue-400"></i> ${educationInfo.text}</div>
                     </div>
-                        <div id="profile-action-buttons" class="flex justify-around items-center border-t border-gray-700 p-2">
-                            ${friendButtonHTML}
-                             <button class="action-btn"><i class="fas fa-comment-dots"></i><span>رسالة</span></button>
-                             <button class="action-btn"><i class="fas fa-microphone-slash"></i><span>كتم</span></button>
+                    <div id="profile-action-buttons" class="grid grid-cols-4 gap-2 border-t border-gray-700 p-2">
+                        ${friendButtonHTML}
+                        <button class="action-btn"><i class="fas fa-comment-dots"></i><span>رسالة</span></button>
+                        <button class="action-btn"><i class="fas fa-microphone-slash"></i><span>كتم</span></button>
+                        <button class="action-btn"><i class="fas fa-ban"></i><span>حظر</span></button>
                     </div>
                 </div>
             </div>
@@ -802,40 +857,22 @@ async function showMiniProfileModal(userId) {
     }
 }
 
-// public/js/app.js
-
+// --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
 function getFriendButtonHTML(profileUser) {
-    const currentUser = JSON.parse(localStorage.getItem('user'));
-    const profileUserId = profileUser._id;
+    const selfUser = JSON.parse(localStorage.getItem('user'));
+    let friendButtonHTML = '';
 
-    if (currentUser.blockedUsers?.includes(profileUserId)) {
-        return `<button class="action-btn" data-action="unblock" data-user-id="${profileUserId}"><i class="fas fa-unlock"></i><span>إلغاء الحظر</span></button>`;
+    if (selfUser.friends.includes(profileUser._id)) {
+        friendButtonHTML = `<button class="action-btn friend-btn" data-action="remove-friend" data-user-id="${profileUser._id}"><i class="fas fa-user-check"></i><span>صديق</span></button>`;
+    } else if (selfUser.friendRequestsSent.includes(profileUser._id)) {
+        friendButtonHTML = `<button class="action-btn sent-btn" data-action="cancel-request" data-user-id="${profileUser._id}"><i class="fas fa-user-clock"></i><span>مُرسَل</span></button>`;
+    } else if (selfUser.friendRequestsReceived.includes(profileUser._id)) {
+        friendButtonHTML = `<button class="action-btn received-btn" data-action="accept-request" data-user-id="${profileUser._id}"><i class="fas fa-user-check"></i><span>قبول</span></button>`;
+    } else {
+        friendButtonHTML = `<button class="action-btn add-btn" data-action="send-request" data-user-id="${profileUser._id}"><i class="fas fa-user-plus"></i><span>إضافة</span></button>`;
     }
-    if (currentUser.friends?.includes(profileUserId)) {
-        return `
-            <button class="action-btn friend-btn" data-action="remove-friend" data-user-id="${profileUserId}"><i class="fas fa-user-minus"></i><span>صديق</span></button>
-            <button class="action-btn" data-action="block" data-user-id="${profileUserId}"><i class="fas fa-ban"></i><span>حظر</span></button>
-        `;
-    } 
-    if (currentUser.friendRequestsSent?.includes(profileUserId)) {
-        return `
-            <button class="action-btn sent-btn" data-action="cancel-request" data-user-id="${profileUserId}"><i class="fas fa-user-clock"></i><span>مُرسَل</span></button>
-            <button class="action-btn" data-action="block" data-user-id="${profileUserId}"><i class="fas fa-ban"></i><span>حظر</span></button>
-        `;
-    }
-    if (currentUser.friendRequestsReceived?.includes(profileUserId)) {
-        return `
-            <button class="action-btn received-btn" data-action="accept-request" data-user-id="${profileUserId}"><i class="fas fa-user-check"></i><span>قبول</span></button>
-            <button class="action-btn" data-action="block" data-user-id="${profileUserId}"><i class="fas fa-ban"></i><span>حظر</span></button>
-        `;
-    }
-    return `
-        <button class="action-btn add-btn" data-action="send-request" data-user-id="${profileUserId}"><i class="fas fa-user-plus"></i><span>إضافة</span></button>
-        <button class="action-btn" data-action="block" data-user-id="${profileUserId}"><i class="fas fa-ban"></i><span>حظر</span></button>
-    `;
+    return friendButtonHTML;
 }
-
-
 
 
 
@@ -979,43 +1016,31 @@ function displayMessage(message) {
     }
     loadChatHistory();
 
-// public/js/app.js
 
-// --- ✅✅ استبدل مستمع السوكيت القديم بهذا ✅✅ ---
+
+// --- ✅ أضف هذا المستمع الجديد ---
+// --- ✅ استبدل مستمع friendshipUpdate بهذا ---
 socket.on('friendshipUpdate', async () => {
     console.log('[SOCKET] Received friendship update. Refetching self user data.');
     try {
-        const response = await fetch('/api/users/me/details', { 
-            headers: { 'Authorization': `Bearer ${token}` } 
-        });
-        if (!response.ok) return;
-
-        const result = await response.json();
-        const updatedUser = result.data.user;
-        
-        // 1. تحديث بيانات المستخدم في localStorage
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-        
-        // 2. تحديث الواجهة الرئيسية (الشريط الجانبي)
-        updateUIWithUserData(updatedUser);
-        
-        // 3. (الأهم) إعادة رسم أي نافذة مفتوحة لتعكس التغييرات فورًا
-        const miniProfile = document.getElementById('mini-profile-modal');
-        if (miniProfile) {
-            const userId = miniProfile.querySelector('.action-btn[data-user-id]').dataset.userId;
-            await showMiniProfileModal(userId);
+        const selfUserResponse = await fetch(`/api/users/me/details`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const selfUserResult = await selfUserResponse.json();
+        if (selfUserResponse.ok) {
+            const updatedUser = selfUserResult.data.user;
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+            updateUIWithUserData(updatedUser); // ✅ تحديث الواجهة بالكامل
+            
+            // (اختياري) إذا كانت نافذة الملف الشخصي مفتوحة، أعد رسمها
+            const modal = document.getElementById('mini-profile-modal');
+            const userIdInModal = modal?.dataset.userId;
+            if (modal && userIdInModal) {
+                showMiniProfileModal(userIdInModal);
+            }
         }
-        const friendsList = document.getElementById('friends-list-modal');
-        if (friendsList) await showFriendsListModal();
-        
-        const requestsList = document.getElementById('friend-requests-modal');
-        if (requestsList) await showFriendRequestsModal();
-
     } catch (error) {
         console.error('Failed to refetch user data after friendship update:', error);
     }
 });
-
 
 // --- ✅ أضف هذا الكود لربط الأيقونات الجديدة ---
 document.getElementById('friends-list-btn').addEventListener('click', showFriendsListModal);
