@@ -93,7 +93,7 @@ const getMeDetails = async (req, res) => {
 // --- ✅✅ أضف هاتين الدالتين الجديدتين هنا ✅✅ ---
 
 // دالة لحظر مستخدم
-exports.blockUser = async (req, res) => {
+const blockUser = async (req, res) => {
     try {
         const userToBlockId = req.params.id;
         const currentUserId = req.user.id;
@@ -124,7 +124,7 @@ exports.blockUser = async (req, res) => {
 };
 
 // دالة لإلغاء حظر مستخدم
-exports.unblockUser = async (req, res) => {
+const unblockUser = async (req, res) => {
     try {
         const userToUnblockId = req.params.id;
         const currentUserId = req.user.id;
@@ -144,11 +144,11 @@ exports.unblockUser = async (req, res) => {
 
 // --- ✅✅ استبدل module.exports بهذا ✅✅ ---
 module.exports = {
-    updateUsername: exports.updateUsername,
-    updateProfilePicture: exports.updateProfilePicture,
-    getUserById: exports.getUserById,
-    getMeDetails: exports.getMeDetails,
-    blockUser: exports.blockUser,          // ✅ تصدير الدالة الجديدة
-    unblockUser: exports.unblockUser       // ✅ تصدير الدالة الجديدة
+    updateUsername,
+    updateProfilePicture,
+    getUserById,
+    getMeDetails,
+    blockUser,
+    unblockUser
 };
 
