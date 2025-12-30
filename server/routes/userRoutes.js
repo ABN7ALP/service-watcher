@@ -17,9 +17,5 @@ router.patch('/updateProfilePicture', upload, userController.updateProfilePictur
 router.get('/me/details', userController.getMeDetails);
 router.get('/:id', userController.getUserById);
 
-// --- ✅✅ أضف هذين المسارين الجديدين هنا ✅✅ ---
-router.post('/:id/block', userController.blockUser);
-router.post('/:id/unblock', userController.unblockUser);
-
-
+// مسارات الحظر
 module.exports = router;
