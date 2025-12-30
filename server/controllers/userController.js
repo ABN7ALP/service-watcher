@@ -86,10 +86,69 @@ const getMeDetails = async (req, res) => {
     }
 };
 
-// --- ✅✅ التصدير الصحيح في النهاية ---
-module.exports = {
-    updateUsername,
-    updateProfilePicture,
-    getUserById, // ✅ تصدير الدالة التي كانت موجودة
-    getMeDetails // ✅ تصدير الدالة الجديدة
+// server/controllers/userController.js
+
+// ... (الدوال الموجودة مثل updateUsername, getUserById, etc.)
+
+// --- ✅✅ أضف هاتين الدالتين الجديدتين هنا ✅✅ ---
+
+// دالة لحظر مستخدم
+exports.blockUser = async (req, res) => {
+    try {
+        const userToBlockId = req.params.id;
+        const currentUserId = req.user.id;
+
+        // لا يمكن للمستخدم حظر نفسه
+        if (userToBlockId === currentUserId) {
+            return res.status(400).json({ message: 'لا يمكنك حظر نفسك.' });
+        }
+
+        // 1. أضف المستخدم إلى قائمة الحظر للمستخدم الحالي
+        await User.findByIdAndUpdate(currentUserId, { 
+            $addToSet: { blockedUsers: userToBlockId } 
+        });
+        
+        // 2. قم بإزالة أي علاقة صداقة أو طلب صداقة موجود بينهما (في كلا الاتجاهين)
+        await User.findByIdAndUpdate(currentUserId, { 
+            $pull: { friends: userToBlockId, friendRequestsSent: userToBlockId, friendRequestsReceived: userToBlockId } 
+        });
+        await User.findByIdAndUpdate(userToBlockId, { 
+            $pull: { friends: currentUserId, friendRequestsSent: currentUserId, friendRequestsReceived: currentUserId } 
+        });
+
+        res.status(200).json({ status: 'success', message: 'تم حظر المستخدم بنجاح.' });
+
+    } catch (error) {
+        res.status(500).json({ message: 'حدث خطأ في الخادم.' });
+    }
 };
+
+// دالة لإلغاء حظر مستخدم
+exports.unblockUser = async (req, res) => {
+    try {
+        const userToUnblockId = req.params.id;
+        const currentUserId = req.user.id;
+
+        // أزل المستخدم من قائمة الحظر
+        await User.findByIdAndUpdate(currentUserId, { 
+            $pull: { blockedUsers: userToUnblockId } 
+        });
+
+        res.status(200).json({ status: 'success', message: 'تم إلغاء حظر المستخدم بنجاح.' });
+
+    } catch (error) {
+        res.status(500).json({ message: 'حدث خطأ في الخادم.' });
+    }
+};
+
+
+// --- ✅✅ استبدل module.exports بهذا ✅✅ ---
+module.exports = {
+    updateUsername: exports.updateUsername,
+    updateProfilePicture: exports.updateProfilePicture,
+    getUserById: exports.getUserById,
+    getMeDetails: exports.getMeDetails,
+    blockUser: exports.blockUser,          // ✅ تصدير الدالة الجديدة
+    unblockUser: exports.unblockUser       // ✅ تصدير الدالة الجديدة
+};
+
