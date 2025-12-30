@@ -450,6 +450,8 @@ document.body.addEventListener('click', async (e) => {
                 case 'cancel-request':
                 case 'reject-request': url = `/api/friends/reject-request/${userId}`; successMessage = 'تم إلغاء الطلب'; break;
                 case 'remove-friend': url = `/api/friends/remove-friend/${userId}`; method = 'DELETE'; successMessage = 'تم حذف الصديق'; break;
+                case 'block': url = `/api/users/${userId}/block`; successMessage = 'تم حظر المستخدم'; break;
+                case 'unblock': url = `/api/users/${userId}/unblock`; successMessage = 'تم إلغاء الحظر'; break;
                 default: return;
             }
 
@@ -466,6 +468,18 @@ document.body.addEventListener('click', async (e) => {
                 showMiniProfileModal(userId); // أعد رسم النافذة لإظهار الزر الأصلي في حالة الفشل
             }
         };
+
+
+        
+        if (['remove-friend', 'cancel-request', 'block'].includes(action)) {
+            const message = action === 'block' 
+                ? 'هل أنت متأكد من حظر هذا المستخدم؟ سيتم إزالته من الأصدقاء بشكل دائم.' 
+                : 'هل أنت متأكد من هذا الإجراء؟';
+            showConfirmationModal(message, performAction);
+        } else {
+            performAction();
+        }
+
 
         if (['remove-friend', 'cancel-request'].includes(action)) {
             showConfirmationModal('هل أنت متأكد من هذا الإجراء؟', performAction);
@@ -749,11 +763,10 @@ async function showMiniProfileModal(userId) {
                         <div class="flex items-center gap-2"><i class="fas ${socialInfo.icon} w-4 text-center text-red-400"></i> ${socialInfo.text}</div>
                         <div class="flex items-center gap-2"><i class="fas ${educationInfo.icon} w-4 text-center text-blue-400"></i> ${educationInfo.text}</div>
                     </div>
-                    <div id="profile-action-buttons" class="grid grid-cols-4 gap-2 border-t border-gray-700 p-2">
-                        ${friendButtonHTML}
-                        <button class="action-btn"><i class="fas fa-comment-dots"></i><span>رسالة</span></button>
-                        <button class="action-btn"><i class="fas fa-microphone-slash"></i><span>كتم</span></button>
-                        <button class="action-btn"><i class="fas fa-ban"></i><span>حظر</span></button>
+                        <div id="profile-action-buttons" class="flex justify-around items-center border-t border-gray-700 p-2">
+                            ${friendButtonHTML}
+                             <button class="action-btn"><i class="fas fa-comment-dots"></i><span>رسالة</span></button>
+                             <button class="action-btn"><i class="fas fa-microphone-slash"></i><span>كتم</span></button>
                     </div>
                 </div>
             </div>
@@ -774,21 +787,45 @@ async function showMiniProfileModal(userId) {
 }
 
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
-function getFriendButtonHTML(profileUser) {
-    const selfUser = JSON.parse(localStorage.getItem('user'));
-    let friendButtonHTML = '';
+// public/js/app.js
 
-    if (selfUser.friends.includes(profileUser._id)) {
-        friendButtonHTML = `<button class="action-btn friend-btn" data-action="remove-friend" data-user-id="${profileUser._id}"><i class="fas fa-user-check"></i><span>صديق</span></button>`;
-    } else if (selfUser.friendRequestsSent.includes(profileUser._id)) {
-        friendButtonHTML = `<button class="action-btn sent-btn" data-action="cancel-request" data-user-id="${profileUser._id}"><i class="fas fa-user-clock"></i><span>مُرسَل</span></button>`;
-    } else if (selfUser.friendRequestsReceived.includes(profileUser._id)) {
-        friendButtonHTML = `<button class="action-btn received-btn" data-action="accept-request" data-user-id="${profileUser._id}"><i class="fas fa-user-check"></i><span>قبول</span></button>`;
-    } else {
-        friendButtonHTML = `<button class="action-btn add-btn" data-action="send-request" data-user-id="${profileUser._id}"><i class="fas fa-user-plus"></i><span>إضافة</span></button>`;
+// --- ✅✅ استبدل هذه الدالة بالكامل ✅✅ ---
+function getFriendButtonHTML(profileUser) {
+    const currentUser = JSON.parse(localStorage.getItem('user'));
+    const profileUserId = profileUser._id;
+
+    // 1. الأولوية القصوى: التحقق مما إذا كان المستخدم محظورًا
+    if (currentUser.blockedUsers && currentUser.blockedUsers.includes(profileUserId)) {
+        return `<button class="action-btn" data-action="unblock" data-user-id="${profileUserId}"><i class="fas fa-unlock"></i><span>إلغاء الحظر</span></button>`;
     }
-    return friendButtonHTML;
+
+    // 2. منطق الصداقة (إذا لم يكن محظورًا)
+    if (currentUser.friends && currentUser.friends.includes(profileUserId)) {
+        return `
+            <button class="action-btn" data-action="remove-friend" data-user-id="${profileUserId}"><i class="fas fa-user-minus"></i><span>حذف</span></button>
+            <button class="action-btn" data-action="block" data-user-id="${profileUserId}"><i class="fas fa-ban"></i><span>حظر</span></button>
+        `;
+    } 
+    if (currentUser.friendRequestsSent && currentUser.friendRequestsSent.includes(profileUserId)) {
+        return `
+            <button class="action-btn" data-action="cancel-request" data-user-id="${profileUserId}"><i class="fas fa-user-clock"></i><span>إلغاء الطلب</span></button>
+            <button class="action-btn" data-action="block" data-user-id="${profileUserId}"><i class="fas fa-ban"></i><span>حظر</span></button>
+        `;
+    }
+    if (currentUser.friendRequestsReceived && currentUser.friendRequestsReceived.includes(profileUserId)) {
+        return `
+            <button class="action-btn" data-action="accept-request" data-user-id="${profileUserId}"><i class="fas fa-user-check"></i><span>قبول</span></button>
+            <button class="action-btn" data-action="block" data-user-id="${profileUserId}"><i class="fas fa-ban"></i><span>حظر</span></button>
+        `;
+    }
+    
+    // 3. إذا لم تكن هناك أي علاقة
+    return `
+        <button class="action-btn" data-action="send-request" data-user-id="${profileUserId}"><i class="fas fa-user-plus"></i><span>إضافة</span></button>
+        <button class="action-btn" data-action="block" data-user-id="${profileUserId}"><i class="fas fa-ban"></i><span>حظر</span></button>
+    `;
 }
+
 
 
 
