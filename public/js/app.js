@@ -628,94 +628,107 @@ document.body.addEventListener('click', async (e) => {
             return;
         }
         
-        const performMiniProfileAction = async () => {
-            let url = '';
-            let method = 'POST';
-            let successMessage = '';
-            let icon = 'fa-check-circle';
-            let color = 'bg-green-500';
+        // --- 🔧 تحديث الجزء الخاص بـ miniProfileActionBtn في المستمع الكبير ---
+const performMiniProfileAction = async () => {
+    let url = '';
+    let method = 'POST';
+    let successMessage = '';
+    let icon = 'fa-check-circle';
+    let color = 'bg-green-500';
 
-            // حفظ HTML الأصلي للزر
-            const originalButtonHTML = miniProfileActionBtn.innerHTML;
-            miniProfileActionBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
-            miniProfileActionBtn.disabled = true;
+    // حفظ HTML الأصلي للزر
+    const originalButtonHTML = miniProfileActionBtn.innerHTML;
+    const originalButtonText = miniProfileActionBtn.textContent;
+    
+    miniProfileActionBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> <span>جاري...</span>`;
+    miniProfileActionBtn.disabled = true;
+    miniProfileActionBtn.classList.add('opacity-50');
 
-            // تحديد URL والطريقة بناءً على الإجراء
-            switch (action) {
-                case 'send-request':
-                    url = `/api/friends/send-request/${userId}`;
-                    successMessage = 'تم إرسال طلب الصداقة بنجاح';
-                    break;
-                case 'accept-request':
-                    url = `/api/friends/accept-request/${userId}`;
-                    successMessage = 'تم قبول طلب الصداقة! أصبحتما أصدقاء الآن';
-                    break;
-                case 'cancel-request':
-                case 'reject-request':
-                    url = `/api/friends/reject-request/${userId}`;
-                    successMessage = action === 'cancel-request' ? 'تم إلغاء طلب الصداقة' : 'تم رفض طلب الصداقة';
-                    icon = 'fa-info-circle';
-                    color = 'bg-blue-500';
-                    break;
-                case 'remove-friend':
-                    url = `/api/friends/remove-friend/${userId}`;
-                    method = 'DELETE';
-                    successMessage = 'تم حذف الصديق بنجاح';
-                    icon = 'fa-trash';
-                    color = 'bg-red-500';
-                    break;
-                default:
-                    console.error(`[DEBUG] Unknown action: ${action}`);
-                    miniProfileActionBtn.innerHTML = originalButtonHTML;
-                    miniProfileActionBtn.disabled = false;
-                    return;
+    // تحديد URL والطريقة بناءً على الإجراء
+    switch (action) {
+        case 'send-request':
+            url = `/api/friends/send-request/${userId}`;
+            successMessage = 'تم إرسال طلب الصداقة بنجاح';
+            break;
+        case 'accept-request':
+            url = `/api/friends/accept-request/${userId}`;
+            successMessage = 'تم قبول طلب الصداقة! أصبحتما أصدقاء الآن';
+            break;
+        case 'cancel-request':
+        case 'reject-request':
+            url = `/api/friends/reject-request/${userId}`;
+            successMessage = action === 'cancel-request' ? 'تم إلغاء طلب الصداقة' : 'تم رفض طلب الصداقة';
+            icon = 'fa-info-circle';
+            color = 'bg-blue-500';
+            break;
+        case 'remove-friend':
+            url = `/api/friends/remove-friend/${userId}`;
+            method = 'DELETE';
+            successMessage = 'تم حذف الصديق بنجاح';
+            icon = 'fa-trash';
+            color = 'bg-red-500';
+            break;
+        default:
+            console.error(`[DEBUG] Unknown action: ${action}`);
+            miniProfileActionBtn.innerHTML = originalButtonHTML;
+            miniProfileActionBtn.disabled = false;
+            miniProfileActionBtn.classList.remove('opacity-50');
+            return;
+    }
+
+    console.log(`[DEBUG] Performing action: ${action} for user: ${userId}`);
+
+    try {
+        // إرسال الطلب إلى الخادم
+        const response = await fetch(url, { 
+            method, 
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            } 
+        });
+        
+        if (!response.ok) {
+            const result = await response.json();
+            throw new Error(result.message || `فشل تنفيذ الإجراء (${response.status})`);
+        }
+        
+        console.log(`[DEBUG] Action ${action} completed successfully`);
+        
+        // ⭐⭐⭐ تحديث بيانات المستخدم من الخادم ⭐⭐⭐
+        const refreshedUser = await refreshUserData();
+        
+        if (refreshedUser) {
+            console.log(`[DEBUG] User data refreshed after ${action}`);
+            
+            // إظهار إشعار النجاح
+            showFloatingAlert(successMessage, icon, color);
+            
+            // ⭐⭐⭐ الإصلاح: إغلاق وإعادة فتح النافذة بعد التأخير ⭐⭐⭐
+            const currentModal = document.getElementById('mini-profile-modal');
+            if (currentModal) {
+                currentModal.remove();
             }
+            
+            // الانتظار قليلاً ثم فتح النافذة الجديدة
+            setTimeout(async () => {
+                await showMiniProfileModal(userId);
+            }, 800);
+            
+        } else {
+            throw new Error('فشل تحديث البيانات بعد الإجراء');
+        }
 
-            console.log(`[DEBUG] Performing action: ${action} for user: ${userId}`);
-
-            try {
-                // إرسال الطلب إلى الخادم
-                const response = await fetch(url, { 
-                    method, 
-                    headers: { 
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    } 
-                });
-                
-                if (!response.ok) {
-                    const result = await response.json();
-                    throw new Error(result.message || `فشل تنفيذ الإجراء (${response.status})`);
-                }
-                
-                console.log(`[DEBUG] Action ${action} completed successfully`);
-                
-                // ⭐⭐⭐ الإصلاح الأساسي: تحديث بيانات المستخدم من الخادم ⭐⭐⭐
-                const refreshedUser = await refreshUserData();
-                
-                if (refreshedUser) {
-                    console.log(`[DEBUG] User data refreshed after ${action}`);
-                    
-                    // إظهار إشعار النجاح
-                    showFloatingAlert(successMessage, icon, color);
-                    
-                    // إعادة فتح نافذة الملف الشخصي المصغر مع البيانات المحدثة
-                    setTimeout(() => {
-                        showMiniProfileModal(userId);
-                    }, 500);
-                } else {
-                    throw new Error('فشل تحديث البيانات بعد الإجراء');
-                }
-
-            } catch (error) {
-                console.error(`[DEBUG] Error in ${action}:`, error);
-                showNotification(error.message || 'حدث خطأ ما أثناء تنفيذ الإجراء', 'error');
-                
-                // استعادة الزر إلى حالته الأصلية
-                miniProfileActionBtn.innerHTML = originalButtonHTML;
-                miniProfileActionBtn.disabled = false;
-            }
-        };
+    } catch (error) {
+        console.error(`[DEBUG] Error in ${action}:`, error);
+        showNotification(error.message || 'حدث خطأ ما أثناء تنفيذ الإجراء', 'error');
+        
+        // استعادة الزر إلى حالته الأصلية
+        miniProfileActionBtn.innerHTML = originalButtonHTML;
+        miniProfileActionBtn.disabled = false;
+        miniProfileActionBtn.classList.remove('opacity-50');
+    }
+};
 
         // إذا كان الإجراء يتطلب تأكيداً، عرض نافذة تأكيد
         if (action === 'remove-friend' || action === 'cancel-request') {
@@ -1183,8 +1196,9 @@ function getFriendButtonHTML(profileUser, selfUserParam = null) {
     const sentRequestsArray = selfUser.friendRequestsSent || [];
     const receivedRequestsArray = selfUser.friendRequestsReceived || [];
     
-    // التحقق من حالة الصداقة
-    if (friendsArray.includes(profileUserId)) {
+    
+    // التحقق من حالة الصداقة بدقة
+    if (friendsArray.some(friend => friend._id === profileUserId || friend === profileUserId)) {
         console.log(`[DEBUG] Status: Already friends`);
         friendButtonHTML = `
             <button class="action-btn friend-btn" 
@@ -1196,7 +1210,7 @@ function getFriendButtonHTML(profileUser, selfUserParam = null) {
             </button>
         `;
     } 
-    else if (sentRequestsArray.includes(profileUserId)) {
+    else if (sentRequestsArray.some(req => req._id === profileUserId || req === profileUserId)) {
         console.log(`[DEBUG] Status: Request sent`);
         friendButtonHTML = `
             <button class="action-btn sent-btn" 
@@ -1208,7 +1222,7 @@ function getFriendButtonHTML(profileUser, selfUserParam = null) {
             </button>
         `;
     } 
-    else if (receivedRequestsArray.includes(profileUserId)) {
+    else if (receivedRequestsArray.some(req => req._id === profileUserId || req === profileUserId)) {
         console.log(`[DEBUG] Status: Request received`);
         friendButtonHTML = `
             <button class="action-btn received-btn" 
@@ -1233,10 +1247,8 @@ function getFriendButtonHTML(profileUser, selfUserParam = null) {
         `;
     }
     
-    console.log(`[DEBUG] Friend button generated successfully`);
     return friendButtonHTML;
 }
-
 
 
 
@@ -1414,108 +1426,289 @@ document.getElementById('friend-requests-nav-item').addEventListener('click', (e
     showFriendRequestsModal();
 });
 
-    // --- ✅ أضف هاتين الدالتين الجديدتين ---
-
-// دالة لعرض نافذة طلبات الصداقة
-// --- ✅ استبدل دالة showFriendRequestsModal بهذه النسخة النظيفة ---
+// --- ✅ استبدل دالة showFriendRequestsModal بالنسخة المصححة ---
 async function showFriendRequestsModal() {
+    console.log('[DEBUG] Opening friend requests modal');
+    
+    // 1. حذف أي نافذة موجودة أولاً
+    const existingModal = document.getElementById('friend-requests-modal');
+    if (existingModal) {
+        existingModal.remove();
+        console.log('[DEBUG] Removed existing requests modal');
+    }
+    
+    // 2. إنشاء نافذة جديدة
     const modalId = 'friend-requests-modal';
-    // --- ❌ تم حذف onclick من هنا ---
     const loadingHTML = `
         <div id="${modalId}" class="modal-backdrop fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4">
             <div class="modal-content bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md text-white p-6">
-                <h3 class="text-lg font-bold mb-4">طلبات الصداقة</h3>
-                <div class="text-center p-6"><i class="fas fa-spinner fa-spin text-3xl"></i></div>
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold">طلبات الصداقة</h3>
+                    <button class="close-modal-btn text-gray-400 hover:text-white text-xl" onclick="document.getElementById('${modalId}').remove()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="text-center p-6">
+                    <i class="fas fa-spinner fa-spin text-3xl text-purple-400"></i>
+                    <p class="mt-2 text-gray-400">جاري تحميل الطلبات...</p>
+                </div>
             </div>
         </div>
     `;
-    // ... (باقي الكود يبقى كما هو)
-    document.getElementById('game-container').innerHTML += loadingHTML;
-
+    
+    // 3. إضافة النافذة (بدون +=)
+    const gameContainer = document.getElementById('game-container');
+    if (gameContainer) {
+        gameContainer.innerHTML = loadingHTML;
+    } else {
+        document.body.insertAdjacentHTML('beforeend', loadingHTML);
+    }
+    
     try {
-        const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
-        const result = await response.json();
+        // 4. جلب البيانات
+        const response = await fetch('/api/users/me/details', { 
+            headers: { 'Authorization': `Bearer ${token}` } 
+        });
+        
         if (!response.ok) throw new Error('Failed to load requests');
         
-        const requests = result.data.user.friendRequestsReceived;
-        let contentHTML = '<p class="text-gray-400">لا توجد طلبات حاليًا.</p>';
-
-        if (requests && requests.length > 0) {
+        const result = await response.json();
+        const requests = result.data.user.friendRequestsReceived || [];
+        console.log(`[DEBUG] Loaded ${requests.length} friend requests`);
+        
+        // 5. بناء المحتوى
+        let contentHTML = '';
+        
+        if (requests.length === 0) {
+            contentHTML = `
+                <div class="text-center p-6">
+                    <i class="fas fa-inbox text-4xl text-gray-500 mb-3"></i>
+                    <p class="text-gray-400">لا توجد طلبات صداقة حالياً.</p>
+                    <p class="text-sm text-gray-500 mt-2">ستظهر هنا الطلبات التي يتلقاها حسابك</p>
+                </div>
+            `;
+        } else {
             contentHTML = requests.map(sender => `
-                <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
-                    <div class="flex items-center gap-3">
-                        <img src="${sender.profileImage}" data-user-id="${sender._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
-                        <span>${sender.username}</span>
+                <div class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <div class="flex items-center gap-3 flex-1">
+                        <img src="${sender.profileImage}" 
+                             data-user-id="${sender._id}" 
+                             class="w-10 h-10 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-400 transition-all user-image">
+                        <div class="flex-1 min-w-0">
+                            <p class="font-medium truncate">${sender.username}</p>
+                            <p class="text-xs text-gray-400 truncate">يريد إضافتك كصديق</p>
+                        </div>
                     </div>
                     <div class="flex gap-2">
-                        <button class="friend-action-btn bg-blue-600 hover:bg-blue-700 text-white text-xs py-1 px-3 rounded-full" data-action="accept-request" data-user-id="${sender._id}">قبول</button>
-                        <button class="friend-action-btn bg-gray-600 hover:bg-gray-700 text-white text-xs py-1 px-3 rounded-full" data-action="reject-request" data-user-id="${sender._id}">رفض</button>
+                        <button class="friend-action-btn bg-green-600 hover:bg-green-700 text-white text-xs py-1.5 px-3 rounded-full transition-colors"
+                                data-action="accept-request" 
+                                data-user-id="${sender._id}"
+                                title="قبول الطلب">
+                            <i class="fas fa-check"></i>
+                        </button>
+                        <button class="friend-action-btn bg-red-600 hover:bg-red-700 text-white text-xs py-1.5 px-3 rounded-full transition-colors"
+                                data-action="reject-request" 
+                                data-user-id="${sender._id}"
+                                title="رفض الطلب">
+                            <i class="fas fa-times"></i>
+                        </button>
                     </div>
                 </div>
             `).join('');
         }
-
+        
+        // 6. تحديث النافذة
         const modalElement = document.getElementById(modalId);
         if (modalElement) {
             modalElement.querySelector('.modal-content').innerHTML = `
-                <h3 class="text-lg font-bold mb-4">طلبات الصداقة</h3>
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold">طلبات الصداقة (${requests.length})</h3>
+                    <button class="close-modal-btn text-gray-400 hover:text-white text-xl" onclick="document.getElementById('${modalId}').remove()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
                 <div class="space-y-2 max-h-80 overflow-y-auto pr-2">${contentHTML}</div>
+                <div class="mt-4 pt-4 border-t border-gray-700 text-center">
+                    <p class="text-xs text-gray-500">يمكنك النقر على صورة المستخدم لعرض ملفه الشخصي</p>
+                </div>
+            `;
+            
+            // 7. ربط أحداث الصور
+            setTimeout(() => {
+                const userImages = modalElement.querySelectorAll('.user-image');
+                userImages.forEach(img => {
+                    img.addEventListener('click', (e) => {
+                        const userId = e.target.dataset.userId;
+                        if (userId) {
+                            modalElement.remove();
+                            showMiniProfileModal(userId);
+                        }
+                    });
+                });
+            }, 100);
+        }
+        
+    } catch (error) {
+        console.error('[DEBUG] Error loading friend requests:', error);
+        
+        const modalElement = document.getElementById(modalId);
+        if (modalElement) {
+            modalElement.querySelector('.modal-content').innerHTML = `
+                <div class="text-center p-6">
+                    <i class="fas fa-exclamation-triangle text-3xl text-red-400 mb-3"></i>
+                    <p class="text-red-400">فشل تحميل طلبات الصداقة.</p>
+                    <button class="mt-3 bg-gray-700 hover:bg-gray-600 text-white text-sm py-2 px-4 rounded-lg transition-colors"
+                            onclick="showFriendRequestsModal()">
+                        إعادة المحاولة
+                    </button>
+                </div>
             `;
         }
-
-    } catch (error) {
-        const modalElement = document.getElementById(modalId);
-        if (modalElement) modalElement.querySelector('.modal-content').innerHTML = '<p class="text-red-400">فشل تحميل الطلبات.</p>';
     }
 }
 
 
 // --- ✅ استبدل دالة showFriendsListModal بهذه النسخة النظيفة ---
+// --- ✅ استبدل دالة showFriendsListModal بالنسخة المصححة ---
 async function showFriendsListModal() {
+    console.log('[DEBUG] Opening friends list modal');
+    
+    // 1. حذف أي نافذة موجودة أولاً
+    const existingModal = document.getElementById('friends-list-modal');
+    if (existingModal) {
+        existingModal.remove();
+        console.log('[DEBUG] Removed existing friends modal');
+    }
+    
+    // 2. إنشاء نافذة جديدة مع spinner
     const modalId = 'friends-list-modal';
-    // --- ❌ تم حذف onclick من هنا ---
     const loadingHTML = `
         <div id="${modalId}" class="modal-backdrop fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4">
             <div class="modal-content bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md text-white p-6">
-                <h3 class="text-lg font-bold mb-4">قائمة الأصدقاء</h3>
-                <div class="text-center p-6"><i class="fas fa-spinner fa-spin text-3xl"></i></div>
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold">قائمة الأصدقاء</h3>
+                    <button class="close-modal-btn text-gray-400 hover:text-white text-xl" onclick="document.getElementById('${modalId}').remove()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="text-center p-6">
+                    <i class="fas fa-spinner fa-spin text-3xl text-purple-400"></i>
+                    <p class="mt-2 text-gray-400">جاري تحميل قائمة الأصدقاء...</p>
+                </div>
             </div>
         </div>
     `;
-    // ... (باقي الكود يبقى كما هو)
-    document.getElementById('game-container').innerHTML += loadingHTML;
-
+    
+    // 3. إضافة النافذة إلى game-container (بدون +=)
+    const gameContainer = document.getElementById('game-container');
+    if (gameContainer) {
+        gameContainer.innerHTML = loadingHTML;
+    } else {
+        document.body.insertAdjacentHTML('beforeend', loadingHTML);
+    }
+    
     try {
-        const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
+        // 4. جلب بيانات الأصدقاء
+        const response = await fetch('/api/users/me/details', { 
+            headers: { 'Authorization': `Bearer ${token}` } 
+        });
+        
+        if (!response.ok) {
+            throw new Error(`فشل تحميل الأصدقاء: ${response.status}`);
+        }
+        
         const result = await response.json();
-        if (!response.ok) throw new Error('Failed to load friends');
-
-        const friends = result.data.user.friends;
-        let contentHTML = '<p class="text-gray-400">ليس لديك أصدقاء بعد.</p>';
-
-        if (friends && friends.length > 0) {
+        const friends = result.data.user.friends || [];
+        console.log(`[DEBUG] Loaded ${friends.length} friends`);
+        
+        // 5. بناء محتوى النافذة
+        let contentHTML = '';
+        
+        if (friends.length === 0) {
+            contentHTML = `
+                <div class="text-center p-6">
+                    <i class="fas fa-user-friends text-4xl text-gray-500 mb-3"></i>
+                    <p class="text-gray-400">ليس لديك أصدقاء بعد.</p>
+                    <p class="text-sm text-gray-500 mt-2">ابدأ بإرسال طلبات صداقة!</p>
+                </div>
+            `;
+        } else {
             contentHTML = friends.map(friend => `
-                <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
-                    <div class="flex items-center gap-3">
-                        <img src="${friend.profileImage}" data-user-id="${friend._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
-                        <span>${friend.username}</span>
+                <div class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <div class="flex items-center gap-3 flex-1">
+                        <img src="${friend.profileImage}" 
+                             data-user-id="${friend._id}" 
+                             class="w-10 h-10 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-400 transition-all user-image">
+                        <div class="flex-1 min-w-0">
+                            <p class="font-medium truncate">${friend.username}</p>
+                            <p class="text-xs text-gray-400 truncate">ID: ${friend.customId || 'N/A'}</p>
+                        </div>
                     </div>
-                    <button class="friend-action-btn bg-red-600 hover:bg-red-700 text-white text-xs py-1 px-3 rounded-full" data-action="remove-friend" data-user-id="${friend._id}">حذف</button>
+                    <div class="flex gap-2">
+                        <button class="friend-action-btn bg-purple-600 hover:bg-purple-700 text-white text-xs py-1.5 px-3 rounded-full transition-colors"
+                                data-action="message-friend" 
+                                data-user-id="${friend._id}"
+                                title="إرسال رسالة">
+                            <i class="fas fa-comment"></i>
+                        </button>
+                        <button class="friend-action-btn bg-red-600 hover:bg-red-700 text-white text-xs py-1.5 px-3 rounded-full transition-colors"
+                                data-action="remove-friend" 
+                                data-user-id="${friend._id}"
+                                title="حذف الصديق">
+                            <i class="fas fa-user-minus"></i>
+                        </button>
+                    </div>
                 </div>
             `).join('');
         }
-
+        
+        // 6. تحديث النافذة بالمحتوى
         const modalElement = document.getElementById(modalId);
         if (modalElement) {
             modalElement.querySelector('.modal-content').innerHTML = `
-                <h3 class="text-lg font-bold mb-4">قائمة الأصدقاء</h3>
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold">قائمة الأصدقاء (${friends.length})</h3>
+                    <button class="close-modal-btn text-gray-400 hover:text-white text-xl" onclick="document.getElementById('${modalId}').remove()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
                 <div class="space-y-2 max-h-80 overflow-y-auto pr-2">${contentHTML}</div>
+                <div class="mt-4 pt-4 border-t border-gray-700 text-center">
+                    <p class="text-xs text-gray-500">يمكنك النقر على صورة الصديق لعرض ملفه الشخصي</p>
+                </div>
+            `;
+            
+            // 7. ربط أحداث الصور
+            setTimeout(() => {
+                const userImages = modalElement.querySelectorAll('.user-image');
+                userImages.forEach(img => {
+                    img.addEventListener('click', (e) => {
+                        const userId = e.target.dataset.userId;
+                        if (userId) {
+                            modalElement.remove();
+                            showMiniProfileModal(userId);
+                        }
+                    });
+                });
+            }, 100);
+        }
+        
+    } catch (error) {
+        console.error('[DEBUG] Error loading friends list:', error);
+        
+        const modalElement = document.getElementById(modalId);
+        if (modalElement) {
+            modalElement.querySelector('.modal-content').innerHTML = `
+                <div class="text-center p-6">
+                    <i class="fas fa-exclamation-triangle text-3xl text-red-400 mb-3"></i>
+                    <p class="text-red-400">فشل تحميل قائمة الأصدقاء.</p>
+                    <button class="mt-3 bg-gray-700 hover:bg-gray-600 text-white text-sm py-2 px-4 rounded-lg transition-colors"
+                            onclick="showFriendsListModal()">
+                        إعادة المحاولة
+                    </button>
+                </div>
             `;
         }
-
-    } catch (error) {
-        const modalElement = document.getElementById(modalId);
-        if (modalElement) modalElement.querySelector('.modal-content').innerHTML = '<p class="text-red-400">فشل تحميل الأصدقاء.</p>';
     }
 }
 
