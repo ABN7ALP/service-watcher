@@ -86,10 +86,46 @@ const getMeDetails = async (req, res) => {
     }
 };
 
+// ✅ دالة جديدة لجلب بيانات الملف الشخصي المصغر
+const getUserMiniProfile = async (req, res) => {
+    try {
+        const currentUserId = req.user?. id;
+        const targetUserId = req.params.id;
+
+        const user = await User.findById(targetUserId)
+            .select('username profileImage customId level friends')
+            .populate('friends', '_id');
+
+        if (!user) {
+            return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على المستخدم.' });
+        }
+
+        // التحقق من حالة الصداقة
+        const areFriends = currentUserId && user.friends.some(f => f._id.toString() === currentUserId);
+
+        res.status(200).json({
+            status: 'success',
+            data: {
+                id:  user._id,
+                username: user.username,
+                profileImage: user.profileImage,
+                customId: user.customId,
+                level: user.level,
+                friendsCount: user.friends.length,
+                areFriends: areFriends || false
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم.' });
+    }
+};
+
+
 // --- ✅✅ التصدير الصحيح في النهاية ---
 module.exports = {
     updateUsername,
     updateProfilePicture,
     getUserById, // ✅ تصدير الدالة التي كانت موجودة
-    getMeDetails // ✅ تصدير الدالة الجديدة
+    getMeDetails,
+    getUserMiniProfile
 };
