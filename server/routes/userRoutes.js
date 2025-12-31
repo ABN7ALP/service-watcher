@@ -17,6 +17,6 @@ router.patch('/updateProfilePicture', upload, userController.updateProfilePictur
 router.get('/me/details', userController.getMeDetails);
 router.get('/:id', userController.getUserById);
 // ✅ مسار جديد لجلب بيانات المستخدم بسرعة (للملف الشخصي المصغر)
-router.get('/: id/mini-profile', userController.getUserMiniProfile);
+router.get('/:id/mini-profile', userController.getUserMiniProfile);
 // مسارات الحظر
 module.exports = router;
