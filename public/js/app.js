@@ -825,46 +825,7 @@ document.body.addEventListener('click', async (e) => {
     }
 });
 
-    // --- الجزء الثالث: التعامل مع أزرار نوافذ الأصدقاء ---
-    const friendListActionBtn = e.target.closest('.friend-action-btn');
-    if (friendListActionBtn) {
-        // ... (هذا الجزء يبقى كما هو بالضبط من الكود السابق)
-        const action = friendListActionBtn.dataset.action;
-        const userId = friendListActionBtn.dataset.userId;
-        const card = friendListActionBtn.closest('.flex.items-center.justify-between');
-
-        const performListAction = async () => {
-            let url = '';
-            let method = 'POST';
-
-            switch (action) {
-                case 'accept-request': url = `/api/friends/accept-request/${userId}`; break;
-                case 'reject-request': url = `/api/friends/reject-request/${userId}`; break;
-                case 'remove-friend': url = `/api/friends/remove-friend/${userId}`; method = 'DELETE'; break;
-                default: return;
-            }
-
-            if (card) card.style.display = 'none';
-
-            try {
-                const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
-                if (!response.ok) throw new Error('Action failed');
-                showNotification('تم تنفيذ الإجراء بنجاح', 'success');
-            } catch (error) {
-                if (card) card.style.display = 'flex';
-                showNotification('فشل تنفيذ الإجراء', 'error');
-            }
-        };
-
-        if (action === 'remove-friend' || action === 'reject-request') {
-            const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من رفض هذا الطلب؟';
-            showConfirmationModal(message, performListAction);
-        } else {
-            performListAction();
-        }
-        return;
-    }
-});
+    
 
 
      
