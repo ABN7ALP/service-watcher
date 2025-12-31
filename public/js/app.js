@@ -1420,30 +1420,32 @@ function displayMessage(message) {
 
 
 
-// --- ✅ أضف هذا المستمع الجديد ---
 // --- ✅ استبدل مستمع friendshipUpdate بهذا ---
-socket.on('friendshipUpdate', async () => {
-    console.log('[SOCKET] Received friendship update. Refetching self user data.');
+socket.on('friendshipUpdate', async (data) => {
+    console.log('[SOCKET] Received friendship update:', data.action);
+    
     try {
-        const selfUserResponse = await fetch(`/api/users/me/details`, { headers: { 'Authorization': `Bearer ${token}` } });
-        const selfUserResult = await selfUserResponse.json();
-        if (selfUserResponse.ok) {
-            const updatedUser = selfUserResult.data.user;
-            localStorage.setItem('user', JSON.stringify(updatedUser));
-            updateUIWithUserData(updatedUser); // ✅ تحديث الواجهة بالكامل
+        // تحديث البيانات من الخادم مباشرة
+        const refreshedUser = await refreshUserData();
+        
+        if (refreshedUser) {
+            console.log('[SOCKET] User data refreshed via socket');
             
-            // (اختياري) إذا كانت نافذة الملف الشخصي مفتوحة، أعد رسمها
-            const modal = document.getElementById('mini-profile-modal');
-            const userIdInModal = modal?.dataset.userId;
-            if (modal && userIdInModal) {
-                showMiniProfileModal(userIdInModal);
+            // إذا كان هناك نافذة ملف شخصي مفتوحة، أعد تحميلها
+            const miniProfileModal = document.getElementById('mini-profile-modal');
+            if (miniProfileModal) {
+                const actionBtn = miniProfileModal.querySelector('.action-btn[data-user-id]');
+                if (actionBtn && data.friendId) {
+                    setTimeout(() => {
+                        showMiniProfileModal(data.friendId);
+                    }, 300);
+                }
             }
         }
     } catch (error) {
-        console.error('Failed to refetch user data after friendship update:', error);
+        console.error('[SOCKET] Error handling friendship update:', error);
     }
 });
-
 // --- ✅ أضف هذا الكود لربط الأيقونات الجديدة ---
 document.getElementById('friends-list-btn').addEventListener('click', showFriendsListModal);
 document.getElementById('friend-requests-nav-item').addEventListener('click', (e) => {
