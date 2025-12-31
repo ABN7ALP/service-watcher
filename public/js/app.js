@@ -1042,6 +1042,43 @@ socket.on('friendshipUpdate', async () => {
     }
 });
 
+
+
+
+        // استقبال تحديثات حالة الصداقة
+socket.on('friendStatusUpdate', (data) => {
+    console.log('تحديث حالة صداقة:', data);
+    
+    // تحديث البروفايل المصغر
+    const profileCard = document.querySelector(`[data-user-id="${data.friendId || data.userId}"]`);
+    
+    if (profileCard) {
+        // ✅ تحديث الزر بناءً على الحالة
+        const actionButton = profileCard.querySelector('.friend-action-btn');
+        
+        if (data.isFriend) {
+            actionButton.textContent = 'صديق ✓';
+            actionButton.classList. add('is-friend');
+            actionButton.classList.remove('request-sent');
+        } else if (data.action === 'request_sent') {
+            actionButton.textContent = 'إضافة قيد الانتظار... ';
+            actionButton.classList. add('request-sent');
+            actionButton.classList.remove('is-friend');
+        } else {
+            actionButton.textContent = 'إضافة صديق';
+            actionButton.classList.remove('is-friend', 'request-sent');
+        }
+        
+        // تحديث عدد الأصدقاء
+        const friendsCountEl = profileCard.querySelector('.friends-count');
+        if (friendsCountEl && data.friendsCount !== undefined) {
+            friendsCountEl. textContent = data.friendsCount;
+        }
+    }
+});
+
+        
+
 // --- ✅ أضف هذا الكود لربط الأيقونات الجديدة ---
 document.getElementById('friends-list-btn').addEventListener('click', showFriendsListModal);
 document.getElementById('friend-requests-nav-item').addEventListener('click', (e) => {
