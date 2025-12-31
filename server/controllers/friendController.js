@@ -20,7 +20,7 @@ exports.sendFriendRequest = async (req, res) => {
         }
 
         if (sender.friends.includes(receiverId) || receiver.friends.includes(senderId)) {
-            return res.status(400).json({ message: 'أنتم أصدقاء بالفعل.' });
+            return res. status(400).json({ message: 'أنتم أصدقاء بالفعل.' });
         }
 
         if (
@@ -44,7 +44,13 @@ exports.sendFriendRequest = async (req, res) => {
         if (receiver.socketId) {
             io.to(receiver.socketId).emit('friendshipUpdate', {
                 action: 'received_request',
-                from: senderId
+                from: senderId,
+                senderData: {
+                    id: sender._id,
+                    username: sender.username,
+                    profileImage: sender.profileImage,
+                    customId: sender.customId
+                }
             });
         }
 
@@ -57,13 +63,14 @@ exports.sendFriendRequest = async (req, res) => {
 
 
 // ===================================
-// قبول طلب صداقة
+// قبول طلب صداقة (تم تحسينه)
 // ===================================
 exports.acceptFriendRequest = async (req, res) => {
     try {
         const accepterId = req.user.id;
         const senderId = req.params.userId;
 
+        // ✅ تحديث كلا الطرفين
         await Promise.all([
             User.findByIdAndUpdate(accepterId, {
                 $addToSet: { friends: senderId },
@@ -75,41 +82,56 @@ exports.acceptFriendRequest = async (req, res) => {
             })
         ]);
 
+        // ✅ جلب بيانات محدثة لكلا الطرفين
         const updatedAccepter = await User.findById(accepterId)
-            .populate('friends', 'username profileImage')
-            .populate('friendRequestsReceived', 'username profileImage');
+            .populate('friends', 'username profileImage customId')
+            .populate('friendRequestsReceived', 'username profileImage customId');
 
-        const updatedSender = await User.findById(senderId)
-            .populate('friends', 'username profileImage')
-            .populate('friendRequestsSent', 'username profileImage');
+        const updatedSender = await User. findById(senderId)
+            .populate('friends', 'username profileImage customId')
+            .populate('friendRequestsReceived', 'username profileImage customId');
 
         const io = req.app.get('socketio');
 
+        // ✅ إرسال التحديثات لكلا الطرفين
         if (updatedAccepter.socketId) {
             io.to(updatedAccepter.socketId).emit('friendshipUpdate', {
                 action: 'friend_added',
                 friendId: senderId,
-                userData: updatedAccepter
+                friendsCount: updatedAccepter.friends.length,
+                friendData: {
+                    id: updatedSender._id,
+                    username: updatedSender.username,
+                    profileImage: updatedSender.profileImage,
+                    customId: updatedSender.customId
+                }
             });
         }
 
         if (updatedSender.socketId) {
             io.to(updatedSender.socketId).emit('friendshipUpdate', {
-                action: 'friend_added',
+                action: 'friend_accepted',
                 friendId: accepterId,
-                userData: updatedSender
+                friendsCount: updatedSender.friends.length,
+                friendData: {
+                    id: updatedAccepter._id,
+                    username: updatedAccepter.username,
+                    profileImage: updatedAccepter.profileImage,
+                    customId: updatedAccepter.customId
+                }
             });
         }
 
-        const senderUser = await User.findById(senderId);
-        if (senderUser && senderUser.socketId) {
-            io.to(senderUser.socketId).emit('friendshipUpdate', {
-                action: 'request_accepted',
-                by: accepterId
-            });
-        }
-
-        res.status(200).json({ message: 'تم قبول طلب الصداقة.' });
+        res.status(200).json({
+            message: 'تم قبول طلب الصداقة بنجاح.',
+            friendsCount: updatedAccepter.friends.length,
+            friend: {
+                id: updatedSender._id,
+                username: updatedSender.username,
+                profileImage: updatedSender.profileImage,
+                customId: updatedSender.customId
+            }
+        });
 
     } catch (error) {
         res.status(500).json({ message: 'حدث خطأ في الخادم.' });
@@ -122,35 +144,42 @@ exports.acceptFriendRequest = async (req, res) => {
 // ===================================
 exports.rejectOrCancelRequest = async (req, res) => {
     try {
-        const selfId = req.user.id;
-        const otherId = req.params.userId;
+        const userId = req.user.id;
+        const otherUserId = req.params. userId;
 
-        await Promise.all([
-            User.findByIdAndUpdate(selfId, {
-                $pull: {
-                    friendRequestsReceived: otherId,
-                    friendRequestsSent: otherId
-                }
-            }),
-            User.findByIdAndUpdate(otherId, {
-                $pull: {
-                    friendRequestsReceived: selfId,
-                    friendRequestsSent: selfId
-                }
-            })
-        ]);
+        // تحديد إذا كان رفض أم إلغاء
+        const user = await User.findById(userId);
+        const isRejecting = user.friendRequestsReceived.includes(otherUserId);
 
-        const otherUser = await User.findById(otherId);
-        const io = req.app.get('socketio');
-
-        if (otherUser && otherUser.socketId) {
-            io.to(otherUser.socketId).emit('friendshipUpdate', {
-                action: 'request_cancelled',
-                by: selfId
+        if (isRejecting) {
+            // رفض طلب مستقبل
+            await User.findByIdAndUpdate(userId, {
+                $pull: { friendRequestsReceived: otherUserId }
+            });
+            await User.findByIdAndUpdate(otherUserId, {
+                $pull: { friendRequestsSent: userId }
+            });
+        } else {
+            // إلغاء طلب مرسل
+            await User.findByIdAndUpdate(userId, {
+                $pull: { friendRequestsSent: otherUserId }
+            });
+            await User. findByIdAndUpdate(otherUserId, {
+                $pull: { friendRequestsReceived:  userId }
             });
         }
 
-        res.status(200).json({ message: 'تم إلغاء طلب الصداقة.' });
+        const io = req.app.get('socketio');
+        const otherUser = await User.findById(otherUserId);
+
+        if (otherUser.socketId) {
+            io.to(otherUser.socketId).emit('friendshipUpdate', {
+                action: isRejecting ? 'request_rejected' : 'request_cancelled',
+                userId: userId
+            });
+        }
+
+        res.status(200).json({ message: 'تم بنجاح.' });
 
     } catch (error) {
         res.status(500).json({ message: 'حدث خطأ في الخادم.' });
@@ -159,29 +188,49 @@ exports.rejectOrCancelRequest = async (req, res) => {
 
 
 // ===================================
-// حذف صديق
+// إزالة صديق
 // ===================================
 exports.removeFriend = async (req, res) => {
     try {
-        const selfId = req.user.id;
+        const userId = req.user. id;
         const friendId = req.params.userId;
 
+        // ✅ إزالة من كلا الطرفين
         await Promise.all([
-            User.findByIdAndUpdate(selfId, { $pull: { friends: friendId } }),
-            User.findByIdAndUpdate(friendId, { $pull: { friends: selfId } })
+            User.findByIdAndUpdate(userId, {
+                $pull:  { friends: friendId }
+            }),
+            User.findByIdAndUpdate(friendId, {
+                $pull: { friends: userId }
+            })
         ]);
 
-        const friendUser = await User.findById(friendId);
-        const io = req.app.get('socketio');
+        const updatedUser = await User.findById(userId);
+        const updatedFriend = await User.findById(friendId);
 
-        if (friendUser && friendUser.socketId) {
-            io.to(friendUser.socketId).emit('friendshipUpdate', {
+        const io = req. app.get('socketio');
+
+        // ✅ إشعار كلا الطرفين
+        if (updatedUser.socketId) {
+            io.to(updatedUser. socketId).emit('friendshipUpdate', {
                 action: 'friend_removed',
-                by: selfId
+                friendId: friendId,
+                friendsCount: updatedUser.friends. length
             });
         }
 
-        res.status(200).json({ message: 'تم حذف الصديق.' });
+        if (updatedFriend.socketId) {
+            io.to(updatedFriend.socketId).emit('friendshipUpdate', {
+                action: 'friend_removed',
+                friendId: userId,
+                friendsCount: updatedFriend.friends.length
+            });
+        }
+
+        res. status(200).json({
+            message: 'تم إزالة الصديق بنجاح.',
+            friendsCount: updatedUser.friends.length
+        });
 
     } catch (error) {
         res.status(500).json({ message: 'حدث خطأ في الخادم.' });
