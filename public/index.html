@@ -37,11 +37,22 @@
                 <!-- Sidebar (Right) -->
                 <aside id="sidebar" class="col-span-12 md:col-span-3 lg:col-span-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 relative transition-colors duration-300">
                     <!-- ✅ استبدل قسم user-profile بالكامل بهذا -->
-<!-- ✅ استبدل div.user-profile بالكامل في index.html -->
 <div class="user-profile text-center mb-6">
     <img id="profileImage" src="https://via.placeholder.com/80" alt="الصورة الشخصية" class="w-20 h-20 rounded-full mx-auto border-2 border-purple-500 object-cover">
     <h3 id="username" class="mt-2 font-bold">...</h3>
-    <!-- لا تضف أي شيء هنا - سيتم إضافته عبر JavaScript -->
+    
+    <!-- ✅✅ الحاوية الجديدة للإحصائيات والأصدقاء ✅✅ -->
+    <div id="user-stats" class="flex justify-center items-center gap-4 mt-2 text-xs text-gray-400">
+        <div>
+            <span>المستوى: </span>
+            <span id="userLevel">1</span>
+        </div>
+        <!-- أيقونة قائمة الأصدقاء -->
+        <div id="friends-list-btn" class="cursor-pointer hover:text-white">
+            <i class="fas fa-users"></i>
+            <span id="friends-count">(0)</span>
+        </div>
+    </div>
 </div>
 
                     <nav class="sidebar-nav space-y-2">
