@@ -73,16 +73,35 @@ const getUserById = async (req, res) => {
 // --- ✅ هذه هي الدالة التي أضفناها مؤخرًا ---
 const getMeDetails = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id)
-            .populate('friends', 'username profileImage customId')
-            .populate('friendRequestsReceived', 'username profileImage customId');
-        
-        if (!user) {
-            return res.status(404).json({ message: 'المستخدم غير موجود.' });
-        }
-        res.status(200).json({ status: 'success', data: { user } });
+        const user = await User.findById(req.user. id)
+            .populate('friends', 'username profileImage customId level')
+            .populate('friendRequestsReceived', 'username profileImage customId')
+            .populate('friendRequestsSent', 'username profileImage customId');
+
+        res.status(200).json({
+            status: 'success',
+            data:  {
+                user: {
+                    ... user. toObject(),
+                    // ✅ إضافة عدد الأصدقاء بصيغة محسنة
+                    friendsStats: {
+                        totalFriends:  user.friends.length,
+                        // ✅ صيغ مختلفة لعرض العدد
+                        displayText: user.friends.length === 0 
+                            ? 'لا توجد أصدقاء' 
+                            : user.friends.length === 1 
+                            ? '1 صديق'
+                            : user.friends.length <= 10
+                            ? `${user.friends.length} أصدقاء`
+                            : user.friends.length
+                    },
+                    pendingRequests: user.friendRequestsReceived.length,
+                    sentRequests: user.friendRequestsSent.length
+                }
+            }
+        });
     } catch (error) {
-        res.status(500).json({ message: 'حدث خطأ في الخادم.' });
+        res.status(500).json({ status: 'error', message:  'خطأ في الخادم.' });
     }
 };
 
