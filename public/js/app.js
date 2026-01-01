@@ -429,7 +429,6 @@ const detailsHTML = `
             </div>
         </div>
     </div>
-    ${createLevelProgressHTML(user)} 
 `;
 
 profileContainer.insertAdjacentHTML('beforeend', detailsHTML);
