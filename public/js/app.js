@@ -845,7 +845,8 @@ async function showMiniProfileModal(userId) {
             : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
 
         // --- ✅ الزر الديناميكي يتم إنشاؤه هنا ---
-        const friendButtonHTML = getFriendButtonHTML(profileUser);
+        const selfUser = JSON.parse(localStorage.getItem('user'));
+        const friendButtonHTML = getFriendButtonHTML(profileUser, selfUser);
 
         const modalHTML = `
             <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
@@ -892,7 +893,6 @@ async function showMiniProfileModal(userId) {
 
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
 function getFriendButtonHTML(profileUser) {
-    const selfUser = JSON.parse(localStorage.getItem('user'));
     let friendButtonHTML = '';
 
     if (selfUser.friends.includes(profileUser._id)) {
