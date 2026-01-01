@@ -321,7 +321,38 @@ function updateUIWithUserData(userData) {
         requestsBadge.classList.add('hidden');
     }
 }
+        
 
+// --- ✅ الدالة الجديدة: تحديث بيانات المستخدم من الخادم ---
+async function refreshUserData() {
+    try {
+        console.log('[DEBUG] Refreshing user data from server...');
+        
+        const response = await fetch('/api/users/me/details', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!response.ok) throw new Error('Failed to refresh user data');
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            // تحديث localStorage
+            localStorage.setItem('user', JSON.stringify(result.data.user));
+            
+            // تحديث واجهة المستخدم
+            updateUIWithUserData(result.data.user);
+            
+            console.log('[DEBUG] User data refreshed successfully');
+            return true;
+        }
+        
+    } catch (error) {
+        console.error('[ERROR] Failed to refresh user data:', error);
+        return false;
+    }
+}
+        
 // استدعاء الدالة عند تحميل الصفحة
 updateUIWithUserData(user);
 
@@ -544,6 +575,7 @@ document.body.addEventListener('click', async (e) => {
                 }
                 showFloatingAlert(successMessage, icon, color);
                 showMiniProfileModal(userId);
+                await refreshUserData();  // تحديث البيانات
 
             } catch (error) {
                 showNotification(error.message || 'حدث خطأ ما', 'error');
@@ -586,6 +618,7 @@ document.body.addEventListener('click', async (e) => {
                 const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
                 if (!response.ok) throw new Error('Action failed');
                 showNotification('تم تنفيذ الإجراء بنجاح', 'success');
+                await refreshUserData();  // تحديث البيانات بعد الحذف
             } catch (error) {
                 if (card) card.style.display = 'flex';
                 showNotification('فشل تنفيذ الإجراء', 'error');
