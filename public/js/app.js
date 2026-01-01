@@ -845,8 +845,13 @@ async function showMiniProfileModal(userId) {
             : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
 
         // --- ✅ الزر الديناميكي يتم إنشاؤه هنا ---
-        const selfUser = JSON.parse(localStorage.getItem('user'));
-        const friendButtonHTML = getFriendButtonHTML(profileUser, selfUser);
+        // --- ✅ الزر الديناميكي يتم إنشاؤه هنا ---
+const selfUserData = JSON.parse(localStorage.getItem('user'));
+if (!selfUserData) {
+    showNotification('يجب تسجيل الدخول أولاً', 'error');
+    return;
+}
+const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
 
         const modalHTML = `
             <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
