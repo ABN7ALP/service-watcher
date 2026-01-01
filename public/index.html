@@ -38,23 +38,49 @@
                 <aside id="sidebar" class="col-span-12 md:col-span-3 lg:col-span-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 relative transition-colors duration-300">
                     <!-- ✅ استبدل قسم user-profile بالكامل بهذا -->
 <div class="user-profile text-center mb-6">
-    <img id="profileImage" src="https://via.placeholder.com/80" alt="الصورة الشخصية" class="w-20 h-20 rounded-full mx-auto border-2 border-purple-500 object-cover">
-    <h3 id="username" class="mt-2 font-bold">...</h3>
+    <!-- الصورة الشخصية مع أيقونة التعديل -->
+    <div class="relative inline-block">
+        <img id="profileImage" src="https://via.placeholder.com/80" alt="الصورة الشخصية" 
+             class="w-24 h-24 rounded-full mx-auto border-4 border-purple-500 object-cover shadow-lg">
+        <button id="edit-status-btn" class="absolute bottom-0 left-0 bg-gray-800/80 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-purple-600 transition">
+            <i class="fas fa-pen text-xs"></i>
+        </button>
+    </div>
     
-    <!-- ✅✅ الحاوية الجديدة للإحصائيات والأصدقاء ✅✅ -->
-    <div id="user-stats" class="flex justify-center items-center gap-4 mt-2 text-xs text-gray-400">
-        <div>
-            <span>المستوى: </span>
-            <span id="userLevel">1</span>
+    <!-- اسم المستخدم -->
+    <h3 id="username" class="mt-3 font-bold text-lg">...</h3>
+    
+    <!-- الحالة النصية -->
+    <div id="user-status-container" class="mt-1">
+        <p id="user-status-text" class="text-sm text-gray-300 italic">🚀 جاهز للتحديات!</p>
+    </div>
+    
+    <!-- شريط المستوى -->
+    <div class="mt-4">
+        <div class="flex justify-between items-center text-xs mb-1">
+            <span class="font-bold text-yellow-400">المستوى <span id="userLevel">1</span></span>
+            <span class="text-gray-400"><span id="currentXP">0</span>/<span id="requiredXP">1500</span> XP</span>
         </div>
-        <!-- أيقونة قائمة الأصدقاء -->
-        <div id="friends-list-btn" class="cursor-pointer hover:text-white">
-            <i class="fas fa-users"></i>
-            <span id="friends-count">(0)</span>
+        <div class="w-full bg-gray-700 rounded-full h-2.5">
+            <div id="xp-bar" class="bg-gradient-to-r from-yellow-400 to-orange-500 h-2.5 rounded-full" style="width: 0%"></div>
+        </div>
+    </div>
+    
+    <!-- بطاقة الأصدقاء -->
+    <div id="friends-card" class="mt-4 p-3 bg-gray-800/50 rounded-xl">
+        <div class="flex justify-between items-center mb-2">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-users text-purple-400"></i>
+                <span class="text-sm">الأصدقاء</span>
+            </div>
+            <span id="friends-count" class="font-bold">0</span>
+        </div>
+        <!-- صور الأصدقاء المصغرة -->
+        <div id="friends-avatars" class="flex justify-center -space-x-2">
+            <!-- ستضاف بالجافاسكريبت -->
         </div>
     </div>
 </div>
-
                     <nav class="sidebar-nav space-y-2">
                         <a href="#arena" class="nav-item flex items-center gap-3 p-2 rounded-lg bg-purple-600 text-white"><i class="fas fa-home w-5 text-center"></i> الرئيسية</a>
                         <a href="#challenges" class="nav-item flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700"><i class="fas fa-gamepad w-5 text-center"></i> التحديات</a>
