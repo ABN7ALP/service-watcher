@@ -897,7 +897,7 @@ const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
 }
 
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
-function getFriendButtonHTML(profileUser) {
+function getFriendButtonHTML(profileUser, selfUser) {
     let friendButtonHTML = '';
 
     if (selfUser.friends.includes(profileUser._id)) {
