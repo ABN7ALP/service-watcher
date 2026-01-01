@@ -298,19 +298,32 @@ async function handleUsernameUpdate(e) {
     appContainer.classList.remove('hidden');
 
     // --- 3. تهيئة واجهة المستخدم ببيانات المستخدم ---
-// --- ✅ استبدل قسم تهيئة واجهة المستخدم بهذا ---
-// دالة لتحديث واجهة المستخدم ببيانات المستخدم
 function updateUIWithUserData(userData) {
     document.getElementById('username').textContent = userData.username;
     document.getElementById('balance').textContent = userData.balance.toFixed(2);
     document.getElementById('coins').textContent = userData.coins;
     document.getElementById('userLevel').textContent = userData.level;
     document.getElementById('profileImage').src = userData.profileImage;
-
+    
+    // ✅ تحديث الحالة النصية (جديد)
+    document.getElementById('user-status-text').textContent = userData.status || '🚀 جاهز للتحديات!';
+    
+    // ✅ تحديث شريط XP (جديد)
+    const requiredXP = calculateRequiredXp(userData.level);
+    document.getElementById('currentXP').textContent = Math.floor(userData.experience);
+    document.getElementById('requiredXP').textContent = requiredXP;
+    
+    // حساب نسبة التقدم
+    const progressPercentage = (userData.experience / requiredXP) * 100;
+    document.getElementById('xp-bar').style.width = `${progressPercentage}%`;
+    
     // تحديث عدد الأصدقاء
     const friendsCount = userData.friends ? userData.friends.length : 0;
-    document.getElementById('friends-count').textContent = `(${friendsCount})`;
-
+    document.getElementById('friends-count').textContent = friendsCount;
+    
+    // ✅ تحديث صور الأصدقاء المصغرة (جديد - سنضيفها لاحقاً)
+    // updateFriendsAvatars(userData.friends);
+    
     // تحديث شارة طلبات الصداقة
     const requestsBadge = document.getElementById('friend-requests-badge');
     const requestsCount = userData.friendRequestsReceived ? userData.friendRequestsReceived.length : 0;
