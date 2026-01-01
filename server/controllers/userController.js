@@ -139,6 +139,36 @@ const getUserMiniProfile = async (req, res) => {
     }
 };
 
+// --- ✅ دالة جديدة: تحديث الحالة النصية ---
+const updateStatus = async (req, res) => {
+    try {
+        const { status } = req.body;
+        
+        if (!status || status.length > 100) {
+            return res.status(400).json({ 
+                status: 'fail', 
+                message: 'الحالة يجب أن تكون بين 1 و100 حرف' 
+            });
+        }
+        
+        const updatedUser = await User.findByIdAndUpdate(
+            req.user.id,
+            { status },
+            { new: true, runValidators: true }
+        );
+        
+        res.status(200).json({ 
+            status: 'success', 
+            data: { user: updatedUser } 
+        });
+        
+    } catch (error) {
+        res.status(500).json({ 
+            status: 'error', 
+            message: 'حدث خطأ أثناء تحديث الحالة' 
+        });
+    }
+};
 
 // --- ✅✅ التصدير الصحيح في النهاية ---
 module.exports = {
@@ -146,5 +176,6 @@ module.exports = {
     updateProfilePicture,
     getUserById, // ✅ تصدير الدالة التي كانت موجودة
     getMeDetails,
-    getUserMiniProfile
+    getUserMiniProfile,
+    updateStatus
 };
