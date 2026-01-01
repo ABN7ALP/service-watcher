@@ -910,18 +910,25 @@ const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
 function getFriendButtonHTML(profileUser, selfUser) {
     let friendButtonHTML = '';
 
-    if (selfUser.friends.includes(profileUser._id)) {
+    // ✅ تحويل كل الـ IDs إلى String للمقارنة الصحيحة
+    const profileUserIdStr = profileUser._id.toString();
+    
+    // ✅ تحويل مصفوفة الأصدقاء إلى Strings
+    const friendsIds = (selfUser.friends || []).map(id => id.toString());
+    const sentRequestsIds = (selfUser.friendRequestsSent || []).map(id => id.toString());
+    const receivedRequestsIds = (selfUser.friendRequestsReceived || []).map(id => id.toString());
+
+    if (friendsIds.includes(profileUserIdStr)) {
         friendButtonHTML = `<button class="action-btn friend-btn" data-action="remove-friend" data-user-id="${profileUser._id}"><i class="fas fa-user-check"></i><span>صديق</span></button>`;
-    } else if (selfUser.friendRequestsSent.includes(profileUser._id)) {
+    } else if (sentRequestsIds.includes(profileUserIdStr)) {
         friendButtonHTML = `<button class="action-btn sent-btn" data-action="cancel-request" data-user-id="${profileUser._id}"><i class="fas fa-user-clock"></i><span>مُرسَل</span></button>`;
-    } else if (selfUser.friendRequestsReceived.includes(profileUser._id)) {
+    } else if (receivedRequestsIds.includes(profileUserIdStr)) {
         friendButtonHTML = `<button class="action-btn received-btn" data-action="accept-request" data-user-id="${profileUser._id}"><i class="fas fa-user-check"></i><span>قبول</span></button>`;
     } else {
         friendButtonHTML = `<button class="action-btn add-btn" data-action="send-request" data-user-id="${profileUser._id}"><i class="fas fa-user-plus"></i><span>إضافة</span></button>`;
     }
     return friendButtonHTML;
 }
-
 
 
 
