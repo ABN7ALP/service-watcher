@@ -1720,8 +1720,7 @@ async function updateUserStatus(newStatus) {
             
             // تحديث الواجهة
             document.getElementById('user-status-text').textContent = newStatus;
-            document.getElementById('user-status-container').classList.remove('hidden');
-            document.getElementById('status-edit-container').classList.add('hidden');
+            
             
             return true;
         } else {
