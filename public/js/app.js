@@ -113,254 +113,56 @@ navItems.forEach(item => {
 });
 
 // --- ✅ استبدل دالة showSettingsView بالكامل ---
+// --- ✅ استبدل دالة showSettingsView بالكامل بهذه النسخة النظيفة ---
 async function showSettingsView() {
     const localUser = JSON.parse(localStorage.getItem('user'));
-    
-    // دالة مساعدة للحصول على الأيقونة المناسبة للحالة الاجتماعية
-    const getSocialIcon = (status) => {
-        const icons = {
-            'single': 'fas fa-user',
-            'in_relationship': 'fas fa-heart',
-            'engaged': 'fas fa-ring',
-            'married': 'fas fa-users',
-            'divorced': 'fas fa-user-slash',
-            'searching': 'fas fa-search'
-        };
-        return icons[status] || 'fas fa-question-circle';
-    };
-    
-    // حساب النسبة المئوية للتقدم في المستوى
-    const requiredXp = calculateRequiredXp(localUser.level);
-    const xpPercentage = Math.min((localUser.experience / requiredXp) * 100, 100);
-
     mainContent.innerHTML = `
-        <div class="p-4 max-w-4xl mx-auto">
-            <h2 class="text-2xl font-bold mb-6"><i class="fas fa-user-circle mr-2"></i>الملف الشخصي</h2>
+        <div class="p-4">
+            <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
             
-            <!-- === بطاقة المستخدم الرئيسية === -->
-            <div class="bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl p-6 mb-6 text-white shadow-xl">
-                <div class="flex flex-col md:flex-row items-center gap-6">
-                    <!-- الصورة الشخصية -->
-                    <div class="relative">
-                        <img id="settings-profile-image" src="${localUser.profileImage}" 
-                             class="w-32 h-32 rounded-full border-4 border-white shadow-lg object-cover">
-                        <div class="absolute -bottom-2 -right-2 bg-purple-800 text-white p-2 rounded-full cursor-pointer hover:bg-purple-900"
-                             onclick="document.getElementById('image-file-input').click()">
-                            <i class="fas fa-camera text-sm"></i>
-                        </div>
+            <!-- باقي أقسام الإعدادات (تبقى كما هي) -->
+            <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6 text-center">
+                <h3 class="text-lg font-bold mb-4">تغيير الصورة الشخصية</h3>
+                <img id="settings-profile-image" src="${localUser.profileImage}" class="w-32 h-32 rounded-full mx-auto border-4 border-purple-500 mb-4 object-cover">
+                <form id="image-upload-form">
+                    <input type="file" id="image-file-input" name="profileImage" class="hidden" accept="image/*">
+                    <div class="flex justify-center items-center gap-4 mt-4">
+                        <button type="button" id="select-image-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">اختيار صورة...</button>
+                        <button type="submit" id="upload-image-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg hidden"><i class="fas fa-upload mr-2"></i>رفع وحفظ</button>
                     </div>
-                    
-                    <!-- المعلومات الأساسية -->
-                    <div class="flex-grow text-center md:text-right">
-                        <div class="flex items-center justify-center md:justify-start gap-3 mb-2">
-                            <h1 class="text-2xl font-bold">${localUser.username}</h1>
-                            <div class="text-xs bg-white/20 px-3 py-1 rounded-full">ID: ${localUser.customId}</div>
-                        </div>
-                        
-                        <!-- الحالة النصية (الجديدة) -->
-                        <div class="mb-4">
-                            <div id="user-status-container" class="flex items-center justify-center md:justify-start gap-2">
-                                <p id="user-status-text" class="text-gray-200 italic">
-                                    ${localUser.status || '🚀 جاهز للتحديات!'}
-                                </p>
-                                <button id="edit-status-btn" class="text-white hover:text-yellow-300">
-                                    <i class="fas fa-edit text-sm"></i>
-                                </button>
-                            </div>
-                            <div id="status-edit-container" class="hidden mt-2">
-                                <div class="flex gap-2">
-                                    <input type="text" id="status-input" value="${localUser.status || ''}" 
-                                           class="flex-grow bg-white/20 border border-white/30 rounded-lg p-2 text-white" 
-                                           placeholder="اكتب حالتك هنا..." maxlength="100">
-                                    <button id="save-status-btn" class="bg-white text-purple-600 px-4 py-2 rounded-lg font-bold">
-                                        حفظ
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- المستوى والتقدم -->
-                        <div class="mb-4">
-                            <div class="flex justify-between items-center mb-1">
-                                <span class="font-bold text-yellow-300">المستوى ${localUser.level}</span>
-                                <span class="text-sm">${localUser.experience} / ${requiredXp} XP</span>
-                            </div>
-                            <div class="w-full bg-white/30 h-3 rounded-full overflow-hidden">
-                                <div class="bg-gradient-to-r from-yellow-400 to-orange-500 h-full rounded-full" 
-                                     style="width: ${xpPercentage}%"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                </form>
             </div>
-            
-            <!-- === شبكة المعلومات === -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <!-- معلومات الحساب -->
-                <div class="bg-white/30 dark:bg-gray-800/50 rounded-xl p-6">
-                    <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
-                        <i class="fas fa-id-card text-purple-500"></i>
-                        معلومات الحساب
-                    </h3>
-                    <div class="space-y-3">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-                                <i class="fas fa-venus-mars text-purple-600 dark:text-purple-300"></i>
-                            </div>
-                            <div>
-                                <p class="text-sm text-gray-500 dark:text-gray-400">الجنس</p>
-                                <p class="font-medium">${localUser.gender === 'male' ? 'ذكر' : 'أنثى'}</p>
-                            </div>
-                        </div>
-                        
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                                <i class="fas fa-birthday-cake text-blue-600 dark:text-blue-300"></i>
-                            </div>
-                            <div>
-                                <p class="text-sm text-gray-500 dark:text-gray-400">العمر</p>
-                                <p class="font-medium">${localUser.age} سنة</p>
-                            </div>
-                        </div>
-                        
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
-                                <i class="${getSocialIcon(localUser.socialStatus)} text-red-600 dark:text-red-300"></i>
-                            </div>
-                            <div>
-                                <p class="text-sm text-gray-500 dark:text-gray-400">الحالة الاجتماعية</p>
-                                <p class="font-medium">
-                                    ${localUser.socialStatus === 'single' ? 'أعزب/عزباء' : 
-                                      localUser.socialStatus === 'in_relationship' ? 'في علاقة' :
-                                      localUser.socialStatus === 'engaged' ? 'مخطوب/ة' :
-                                      localUser.socialStatus === 'married' ? 'متزوج/ة' :
-                                      localUser.socialStatus === 'divorced' ? 'مطلق/ة' :
-                                      localUser.socialStatus === 'searching' ? 'يبحث عن حب' : localUser.socialStatus}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- الإحصائيات -->
-                <div class="bg-white/30 dark:bg-gray-800/50 rounded-xl p-6">
-                    <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
-                        <i class="fas fa-chart-line text-green-500"></i>
-                        الإحصائيات
-                    </h3>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="text-center p-4 bg-white/20 dark:bg-gray-700/50 rounded-lg">
-                            <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">${localUser.balance.toFixed(2)}</div>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">رصيد ($)</p>
-                        </div>
-                        <div class="text-center p-4 bg-white/20 dark:bg-gray-700/50 rounded-lg">
-                            <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">${localUser.coins}</div>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">النقاط</p>
-                        </div>
-                        <div class="text-center p-4 bg-white/20 dark:bg-gray-700/50 rounded-lg">
-                            <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">${localUser.friends ? localUser.friends.length : 0}</div>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">الأصدقاء</p>
-                        </div>
-                        <div class="text-center p-4 bg-white/20 dark:bg-gray-700/50 rounded-lg">
-                            <div class="text-2xl font-bold text-green-600 dark:text-green-400">${localUser.level}</div>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">المستوى</p>
-                        </div>
-                    </div>
-                </div>
+            <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6">
+                <h3 class="text-lg font-bold mb-4">تغيير اسم المستخدم</h3>
+                <form id="username-update-form" class="flex flex-col sm:flex-row items-center gap-4">
+                    <input type="text" id="username-input" value="${localUser.username}" class="w-full sm:flex-grow bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2">
+                    <button type="submit" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">حفظ</button>
+                </form>
             </div>
-            
-            <!-- === قسم الإعدادات === -->
-            <div class="bg-white/30 dark:bg-gray-800/50 rounded-xl p-6">
-                <h3 class="text-lg font-bold mb-4"><i class="fas fa-cog mr-2"></i>الإعدادات</h3>
-                
-                <!-- تغيير اسم المستخدم -->
-                <div class="mb-6">
-                    <h4 class="font-bold mb-2 text-gray-700 dark:text-gray-300">تغيير اسم المستخدم</h4>
-                    <form id="username-update-form" class="flex flex-col sm:flex-row items-center gap-4">
-                        <input type="text" id="username-input" value="${localUser.username}" 
-                               class="w-full sm:flex-grow bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-3">
-                        <button type="submit" class="w-full sm:w-auto bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600 text-white font-bold py-3 px-6 rounded-lg">
-                            حفظ التغيير
-                        </button>
-                    </form>
-                </div>
-                
-                <!-- تغيير كلمة المرور -->
-                <div>
-                    <h4 class="font-bold mb-2 text-gray-700 dark:text-gray-300">تغيير كلمة المرور</h4>
-                    <form id="password-update-form" class="space-y-4">
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium mb-1">كلمة المرور الحالية</label>
-                                <input type="password" id="current-password" required 
-                                       class="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-3">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium mb-1">كلمة المرور الجديدة</label>
-                                <input type="password" id="new-password" required 
-                                       class="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-3">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium mb-1">تأكيد كلمة المرور</label>
-                                <input type="password" id="new-password-confirm" required 
-                                       class="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-3">
-                            </div>
-                        </div>
-                        <div class="pt-2">
-                            <button type="submit" class="w-full md:w-auto bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-bold py-3 px-6 rounded-lg">
-                                تحديث كلمة المرور
-                            </button>
-                        </div>
-                    </form>
-                </div>
+            <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl">
+                <h3 class="text-lg font-bold mb-4">تغيير كلمة المرور</h3>
+                <form id="password-update-form" class="space-y-4">
+                    <div><label for="current-password" class="block text-sm font-medium mb-1">كلمة المرور الحالية</label><input type="password" id="current-password" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2"></div>
+                    <div><label for="new-password" class="block text-sm font-medium mb-1">كلمة المرور الجديدة</label><input type="password" id="new-password" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2"></div>
+                    <div><label for="new-password-confirm" class="block text-sm font-medium mb-1">تأكيد كلمة المرور الجديدة</label><input type="password" id="new-password-confirm" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2"></div>
+                    <div class="pt-2"><button type="submit" class="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">تحديث كلمة المرور</button></div>
+                </form>
             </div>
-            
-            <!-- عنصر خفي لرفع الصور -->
-            <form id="image-upload-form" class="hidden">
-                <input type="file" id="image-file-input" name="profileImage" accept="image/*">
-            </form>
         </div>
     `;
 
-    // === ربط الأحداث الجديدة ===
-    
-    // 1. رفع الصورة
+    // إعادة ربط الأحداث الخاصة بالإعدادات فقط
+    document.getElementById('select-image-btn').addEventListener('click', () => document.getElementById('image-file-input').click());
     document.getElementById('image-file-input').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
             const reader = new FileReader();
-            reader.onload = (event) => { 
-                document.getElementById('settings-profile-image').src = event.target.result; 
-                // إظهار زر الحفظ
-                showNotification('اخترت صورة جديدة، اضغط على أيقونة الكاميرا لحفظها', 'info');
-            };
+            reader.onload = (event) => { document.getElementById('settings-profile-image').src = event.target.result; };
             reader.readAsDataURL(file);
+            document.getElementById('upload-image-btn').classList.remove('hidden');
         }
     });
-    
-    // 2. حفظ الصورة عند النقر على أيقونة الكاميرا
-    document.querySelector('.fa-camera').closest('div').addEventListener('click', async (e) => {
-        const fileInput = document.getElementById('image-file-input');
-        if (fileInput.files.length > 0) {
-            await handleImageUpload(new Event('submit'));
-        }
-    });
-    
-    // 3. تعديل الحالة النصية
-    document.getElementById('edit-status-btn').addEventListener('click', () => {
-        document.getElementById('user-status-container').classList.add('hidden');
-        document.getElementById('status-edit-container').classList.remove('hidden');
-        document.getElementById('status-input').focus();
-    });
-    
-    document.getElementById('save-status-btn').addEventListener('click', async () => {
-        const newStatus = document.getElementById('status-input').value.trim();
-        if (newStatus) {
-            await updateUserStatus(newStatus);
-        }
-    });
-    
-    // 4. الأحداث القديمة (بقية الإعدادات)
+    document.getElementById('image-upload-form').addEventListener('submit', handleImageUpload);
     document.getElementById('username-update-form').addEventListener('submit', handleUsernameUpdate);
     document.getElementById('password-update-form').addEventListener('submit', handlePasswordUpdate);
 }
@@ -1872,6 +1674,7 @@ async function updateUserStatus(newStatus) {
         return false;
     }
 }
+
         
 
 }); // نهاية document.addEventListener
