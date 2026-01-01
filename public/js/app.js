@@ -908,6 +908,13 @@ const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
 
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
 function getFriendButtonHTML(profileUser, selfUser) {
+    console.log('[DEBUG] getFriendButtonHTML called:', {
+        profileUserId: profileUser._id,
+        profileUserIdStr: profileUser._id.toString(),
+        selfUserSentRequests: selfUser.friendRequestsSent,
+        selfUserSentRequestsStrs: (selfUser.friendRequestsSent || []).map(id => id.toString())
+    });
+    
     let friendButtonHTML = '';
 
     // ✅ تحويل كل الـ IDs إلى String للمقارنة الصحيحة
@@ -918,6 +925,12 @@ function getFriendButtonHTML(profileUser, selfUser) {
     const sentRequestsIds = (selfUser.friendRequestsSent || []).map(id => id.toString());
     const receivedRequestsIds = (selfUser.friendRequestsReceived || []).map(id => id.toString());
 
+    console.log('[DEBUG] IDs comparison:', {
+        profileUserIdStr,
+        sentRequestsIds,
+        isInSentRequests: sentRequestsIds.includes(profileUserIdStr)
+    });
+
     if (friendsIds.includes(profileUserIdStr)) {
         friendButtonHTML = `<button class="action-btn friend-btn" data-action="remove-friend" data-user-id="${profileUser._id}"><i class="fas fa-user-check"></i><span>صديق</span></button>`;
     } else if (sentRequestsIds.includes(profileUserIdStr)) {
@@ -927,6 +940,8 @@ function getFriendButtonHTML(profileUser, selfUser) {
     } else {
         friendButtonHTML = `<button class="action-btn add-btn" data-action="send-request" data-user-id="${profileUser._id}"><i class="fas fa-user-plus"></i><span>إضافة</span></button>`;
     }
+    
+    console.log('[DEBUG] Generated button:', friendButtonHTML);
     return friendButtonHTML;
 }
 
