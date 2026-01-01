@@ -574,9 +574,9 @@ document.body.addEventListener('click', async (e) => {
                     throw new Error(result.message || 'Action failed');
                 }
                 showFloatingAlert(successMessage, icon, color);
-                showMiniProfileModal(userId);
-                await refreshUserData();  // تحديث البيانات
-
+                await refreshUserData();  // تحديث البيانات أولاً
+                showMiniProfileModal(userId);  // ثم إعادة فتح النافذة بالبيانات المحدثة
+                
             } catch (error) {
                 showNotification(error.message || 'حدث خطأ ما', 'error');
                 miniProfileActionBtn.innerHTML = originalButtonHTML;
