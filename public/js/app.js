@@ -582,8 +582,10 @@ document.body.addEventListener('click', async (e) => {
                     throw new Error(result.message || 'Action failed');
                 }
                 showFloatingAlert(successMessage, icon, color);
-                await refreshUserData();  // تحديث البيانات أولاً
-                showMiniProfileModal(userId);  // ثم إعادة فتح النافذة بالبيانات المحدثة
+                const refreshSuccess = await refreshUserData();  // تحديث البيانات أولاً
+                if (refreshSuccess) {
+                showMiniProfileModal(userId);  // ثم إعادة فتح النافذة
+                }
                 
             } catch (error) {
                 showNotification(error.message || 'حدث خطأ ما', 'error');
