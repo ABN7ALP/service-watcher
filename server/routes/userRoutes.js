@@ -13,6 +13,8 @@ router.use(authMiddleware);
 router.patch('/updateUsername', userController.updateUsername);
 router.patch('/updateProfilePicture', upload, userController.updateProfilePicture);
 
+// بعد السطر router.patch('/updateProfilePicture', upload, userController.updateProfilePicture);
+router.patch('/updateStatus', userController.updateStatus);  // ✅ أضف هذا السطر
 // مسارات جلب بيانات المستخدمين
 router.get('/me/details', userController.getMeDetails);
 router.get('/:id', userController.getUserById);
