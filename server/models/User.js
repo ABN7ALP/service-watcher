@@ -28,6 +28,7 @@ const userSchema = new mongoose.Schema({
     experience: { type: Number, default: 0 },
     isAdmin: { type: Boolean, default: false },
     socketId: { type: String, default: null },
+    status: { type: String, default: '🚀 جاهز للتحديات!', maxlength: 100 }, 
 
     // --- ✅ الحقول الجديدة لنظام الصداقة ---
     friends: [{
