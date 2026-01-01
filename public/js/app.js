@@ -908,27 +908,30 @@ const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
 
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
 function getFriendButtonHTML(profileUser, selfUser) {
-    console.log('[DEBUG] getFriendButtonHTML called:', {
-        profileUserId: profileUser._id,
-        profileUserIdStr: profileUser._id.toString(),
-        selfUserSentRequests: selfUser.friendRequestsSent,
-        selfUserSentRequestsStrs: (selfUser.friendRequestsSent || []).map(id => id.toString())
-    });
-    
     let friendButtonHTML = '';
 
     // ✅ تحويل كل الـ IDs إلى String للمقارنة الصحيحة
     const profileUserIdStr = profileUser._id.toString();
     
-    // ✅ تحويل مصفوفة الأصدقاء إلى Strings
-    const friendsIds = (selfUser.friends || []).map(id => id.toString());
-    const sentRequestsIds = (selfUser.friendRequestsSent || []).map(id => id.toString());
-    const receivedRequestsIds = (selfUser.friendRequestsReceived || []).map(id => id.toString());
+    // ✅ استخراج IDs من مصفوفة الأصدقاء (قد تكون IDs أو كائنات)
+    const friendsIds = (selfUser.friends || []).map(item => 
+        item._id ? item._id.toString() : item.toString()
+    );
+    
+    // ✅ استخراج IDs من طلبات الصداقة المرسلة (كائنات كاملة)
+    const sentRequestsIds = (selfUser.friendRequestsSent || []).map(user => 
+        user._id ? user._id.toString() : user.toString()
+    );
+    
+    // ✅ استخراج IDs من طلبات الصداقة المستلمة (كائنات كاملة)
+    const receivedRequestsIds = (selfUser.friendRequestsReceived || []).map(user => 
+        user._id ? user._id.toString() : user.toString()
+    );
 
-    console.log('[DEBUG] IDs comparison:', {
+    console.log('[FIXED] IDs after extraction:', {
         profileUserIdStr,
         sentRequestsIds,
-        isInSentRequests: sentRequestsIds.includes(profileUserIdStr)
+        isMatch: sentRequestsIds.includes(profileUserIdStr)
     });
 
     if (friendsIds.includes(profileUserIdStr)) {
@@ -941,10 +944,9 @@ function getFriendButtonHTML(profileUser, selfUser) {
         friendButtonHTML = `<button class="action-btn add-btn" data-action="send-request" data-user-id="${profileUser._id}"><i class="fas fa-user-plus"></i><span>إضافة</span></button>`;
     }
     
-    console.log('[DEBUG] Generated button:', friendButtonHTML);
+    console.log('[FIXED] Generated button:', friendButtonHTML);
     return friendButtonHTML;
 }
-
 
 
     // =================================================
