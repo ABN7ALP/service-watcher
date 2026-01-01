@@ -34,7 +34,7 @@ const createLevelProgressHTML = (user) => {
 
 
     document.addEventListener('DOMContentLoaded', () => {
-    const token = localStorage.getItem('token');
+    let token = localStorage.getItem('token');  // تغيير const إلى let
     const user = JSON.parse(localStorage.getItem('user'));
     const loadingScreen = document.getElementById('loading-screen');
     const appContainer = document.getElementById('app-container');
@@ -346,6 +346,11 @@ async function refreshUserData() {
             console.log('[DEBUG] User data refreshed successfully');
             return true;
         }
+        console.log('[DEBUG] Updated user data:', {
+    friends: result.data.user.friends ? result.data.user.friends.length : 0,
+    sentRequests: result.data.user.friendRequestsSent ? result.data.user.friendRequestsSent.length : 0,
+    receivedRequests: result.data.user.friendRequestsReceived ? result.data.user.friendRequestsReceived.length : 0
+});
         
     } catch (error) {
         console.error('[ERROR] Failed to refresh user data:', error);
