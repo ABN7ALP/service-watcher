@@ -322,7 +322,7 @@ function updateUIWithUserData(userData) {
     document.getElementById('friends-count').textContent = friendsCount;
     
     // ✅ تحديث صور الأصدقاء المصغرة (جديد - سنضيفها لاحقاً)
-    // updateFriendsAvatars(userData.friends);
+    updateFriendsAvatars(userData.friends);
     
     // تحديث شارة طلبات الصداقة
     const requestsBadge = document.getElementById('friend-requests-badge');
@@ -1128,7 +1128,13 @@ socket.on('friendshipUpdate', async () => {
 });
 
 // --- ✅ أضف هذا الكود لربط الأيقونات الجديدة ---
-document.getElementById('friends-list-btn').addEventListener('click', showFriendsListModal);
+// --- ✅ ربط بطاقة الأصدقاء ---
+document.getElementById('friends-card').addEventListener('click', (e) => {
+    // منع الفتح عند النقر على العناصر الداخلية
+    if (!e.target.closest('#friends-avatars')) {
+        showFriendsListModal();
+    }
+});
 document.getElementById('friend-requests-nav-item').addEventListener('click', (e) => {
     e.preventDefault(); // منع السلوك الافتراضي للرابط
     showFriendRequestsModal();
@@ -1239,7 +1245,48 @@ async function showFriendsListModal() {
     }
 }
 
+// --- ✅ دالة تحديث صور الأصدقاء المصغرة ---
+async function updateFriendsAvatars(friendsList) {
+    const friendsAvatars = document.getElementById('friends-avatars');
+    if (!friendsAvatars) return;
     
+    friendsAvatars.innerHTML = '';
+    
+    if (!friendsList || friendsList.length === 0) {
+        friendsAvatars.innerHTML = '<p class="text-xs text-gray-500">لا توجد أصدقاء بعد</p>';
+        return;
+    }
+    
+    // عرض أول 5 أصدقاء فقط
+    const displayFriends = friendsList.slice(0, 5);
+    
+    displayFriends.forEach(friend => {
+        const avatar = document.createElement('div');
+        avatar.className = 'relative';
+        avatar.title = friend.username;
+        
+        avatar.innerHTML = `
+            <img src="${friend.profileImage}" 
+                 alt="${friend.username}"
+                 class="w-10 h-10 rounded-full border-2 border-gray-600 hover:border-purple-500 cursor-pointer transition-all"
+                 data-user-id="${friend._id}">
+        `;
+        
+        friendsAvatars.appendChild(avatar);
+    });
+    
+    // إذا كان هناك أكثر من 5 أصدقاء
+    if (friendsList.length > 5) {
+        const moreCount = document.createElement('div');
+        moreCount.className = 'w-10 h-10 rounded-full bg-gray-700 border-2 border-gray-600 flex items-center justify-center text-xs font-bold';
+        moreCount.textContent = `+${friendsList.length - 5}`;
+        moreCount.title = `${friendsList.length - 5} صديق إضافي`;
+        
+        friendsAvatars.appendChild(moreCount);
+    }
+}
+
+        
     // =================================================
     // ======== قسم التحديات (Battles Section) =========
     // =================================================
@@ -1687,7 +1734,164 @@ async function updateUserStatus(newStatus) {
         return false;
     }
 }
+        
+// --- ✅ ربط أيقونة تعديل الحالة ---
+document.getElementById('edit-status-btn').addEventListener('click', () => {
+    showStatusEditModal();
+});
 
+// --- ✅ دالة عرض نافذة تعديل الحالة ---
+function showStatusEditModal() {
+    const currentStatus = document.getElementById('user-status-text').textContent;
+    
+    const modalHTML = `
+        <div id="status-edit-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4">
+            <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm text-white p-6">
+                <h3 class="text-lg font-bold mb-4">✏️ تعديل حالتك</h3>
+                <textarea id="status-input" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm" 
+                          rows="3" maxlength="100" placeholder="اكتب حالتك هنا...">${currentStatus}</textarea>
+                <div class="flex justify-between items-center mt-2 text-xs text-gray-400">
+                    <span id="status-char-count">${currentStatus.length}/100</span>
+                    <span>يمكنك استخدام إيموجي 🚀</span>
+                </div>
+                <div class="flex justify-end gap-3 mt-6">
+                    <button id="cancel-status-edit" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg">إلغاء</button>
+                    <button id="save-status" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg">حفظ</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('game-container').innerHTML += modalHTML;
+    
+    const modal = document.getElementById('status-edit-modal');
+    const statusInput = document.getElementById('status-input');
+    const charCount = document.getElementById('status-char-count');
+    
+    // تحديث عداد الأحرف
+    statusInput.addEventListener('input', () => {
+        charCount.textContent = `${statusInput.value.length}/100`;
+    });
+    
+    // حفظ الحالة
+    document.getElementById('save-status').addEventListener('click', async () => {
+        const newStatus = statusInput.value.trim();
+        if (newStatus && newStatus.length <= 100) {
+            const success = await updateUserStatus(newStatus);
+            if (success) {
+                modal.remove();
+            }
+        } else {
+            showNotification('الحالة يجب أن تكون بين 1 و100 حرف', 'error');
+        }
+    });
+    
+    // إلغاء
+    document.getElementById('cancel-status-edit').addEventListener('click', () => {
+        modal.remove();
+    });
+    
+    // إغلاق بالنقر على الخلفية
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'status-edit-modal') {
+            modal.remove();
+        }
+    });
+}
+
+
+
+// --- ✅ دالة عرض مميزات المستوى التالي ---
+function showLevelPerksModal() {
+    const currentLevel = parseInt(document.getElementById('userLevel').textContent);
+    const nextLevel = currentLevel + 1;
+    
+    const perksByLevel = {
+        2: ["🎨 لون اسم مميز في الدردشة", "💬 5 رسائل يومية إضافية"],
+        3: ["🖼️ إطارات خاصة للصورة الشخصية", "🎁 هدية 50 عملة"],
+        5: ["👑 لقب 'محارب'", "⭐ دخول غرف خاصة"],
+        10: ["🏆 لقب 'بطل'", "🚀 سرعة تحميل أسرع", "🎯 مكافأة 500 XP"],
+    };
+    
+    const currentPerks = perksByLevel[currentLevel] || ["🚀 بداية رحلة التحديات!"];
+    const nextPerks = perksByLevel[nextLevel] || ["🔜 مزايا قادمة..."];
+    
+    const modalHTML = `
+        <div id="level-perks-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white p-6 border-2 border-yellow-500/30">
+                <div class="text-center mb-6">
+                    <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full mb-4">
+                        <i class="fas fa-trophy text-2xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold">مميزات المستوى</h3>
+                    <p class="text-gray-400 text-sm">المستوى الحالي: <span class="text-yellow-400 font-bold">${currentLevel}</span></p>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- المستوى الحالي -->
+                    <div class="bg-gray-800/50 p-4 rounded-xl">
+                        <h4 class="font-bold text-green-400 mb-3 flex items-center gap-2">
+                            <i class="fas fa-check-circle"></i> مميزاتك الحالية
+                        </h4>
+                        <ul class="space-y-2 text-sm">
+                            ${currentPerks.map(perk => `<li class="flex items-start gap-2"><i class="fas fa-star text-yellow-400 mt-1"></i> ${perk}</li>`).join('')}
+                        </ul>
+                    </div>
+                    
+                    <!-- المستوى التالي -->
+                    <div class="bg-gray-800/50 p-4 rounded-xl border border-yellow-500/30">
+                        <h4 class="font-bold text-yellow-400 mb-3 flex items-center gap-2">
+                            <i class="fas fa-arrow-up"></i> المستوى ${nextLevel} القادم
+                        </h4>
+                        <ul class="space-y-2 text-sm">
+                            ${nextPerks.map(perk => `<li class="flex items-start gap-2"><i class="fas fa-gift text-purple-400 mt-1"></i> ${perk}</li>`).join('')}
+                        </ul>
+                        <div class="mt-4 pt-3 border-t border-gray-700">
+                            <p class="text-xs text-gray-400">
+                                تحتاج <span class="text-yellow-400 font-bold">${calculateRequiredXp(currentLevel) - parseInt(document.getElementById('currentXP').textContent)}</span> XP إضافية
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-6 pt-4 border-t border-gray-700">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-400">تقدمك الحالي:</span>
+                        <span class="font-bold">${document.getElementById('currentXP').textContent} / ${document.getElementById('requiredXP').textContent} XP</span>
+                    </div>
+                    <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
+                        <div class="bg-gradient-to-r from-yellow-400 to-orange-500 h-2 rounded-full" 
+                             style="width: ${(parseInt(document.getElementById('currentXP').textContent) / parseInt(document.getElementById('requiredXP').textContent) * 100)}%"></div>
+                    </div>
+                </div>
+                
+                <div class="flex justify-center mt-6">
+                    <button id="close-perks-modal" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded-lg transition">
+                        إغلاق
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('game-container').innerHTML += modalHTML;
+    
+    const modal = document.getElementById('level-perks-modal');
+    
+    // إغلاق النافذة
+    document.getElementById('close-perks-modal').addEventListener('click', () => {
+        modal.remove();
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'level-perks-modal') {
+            modal.remove();
+        }
+    });
+}
+
+// --- ✅ ربط شريط XP لعرض المميزات ---
+document.querySelector('.mt-4').addEventListener('click', showLevelPerksModal);
         
 
 }); // نهاية document.addEventListener
