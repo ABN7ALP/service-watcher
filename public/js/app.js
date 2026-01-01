@@ -337,20 +337,23 @@ async function refreshUserData() {
         const result = await response.json();
         
         if (result.status === 'success') {
-            // تحديث localStorage
-            localStorage.setItem('user', JSON.stringify(result.data.user));
-            
-            // تحديث واجهة المستخدم
-            updateUIWithUserData(result.data.user);
-            
-            console.log('[DEBUG] User data refreshed successfully');
-            return true;
-        }
-        console.log('[DEBUG] Updated user data:', {
-    friends: result.data.user.friends ? result.data.user.friends.length : 0,
-    sentRequests: result.data.user.friendRequestsSent ? result.data.user.friendRequestsSent.length : 0,
-    receivedRequests: result.data.user.friendRequestsReceived ? result.data.user.friendRequestsReceived.length : 0
-});
+    // تحديث localStorage
+    localStorage.setItem('user', JSON.stringify(result.data.user));
+    
+    // تحديث واجهة المستخدم
+    updateUIWithUserData(result.data.user);
+    
+    console.log('[DEBUG] User data refreshed successfully');
+    
+    // ✅ هذا السطر يجب أن يكون هنا
+    console.log('[DEBUG] Updated user data:', {
+        friends: result.data.user.friends ? result.data.user.friends.length : 0,
+        sentRequests: result.data.user.friendRequestsSent ? result.data.user.friendRequestsSent.length : 0,
+        receivedRequests: result.data.user.friendRequestsReceived ? result.data.user.friendRequestsReceived.length : 0
+    });
+    
+    return true;
+}
         
     } catch (error) {
         console.error('[ERROR] Failed to refresh user data:', error);
