@@ -20,6 +20,8 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 دقائق صلاحية الـ Cache
  * @returns {Promise<boolean>} - true إذا كان هناك حظر
  */
 async function checkIfBlocked(senderId, receiverId) {
+    // ✅ أضف هذا السطر للتتبع
+    console.log(`[BLOCK CHECK] ${senderId} -> ${receiverId}`);
     
     // إذا كان نفس المستخدم
     if (senderId === receiverId) return false;
@@ -61,7 +63,10 @@ async function checkIfBlocked(senderId, receiverId) {
             timestamp: Date.now()
         });
         
-        return isBlocked;
+        // ✅ أضف هذا السطر لمعرفة النتيجة
+console.log(`[BLOCK RESULT] ${senderId} -> ${receiverId}: ${isBlocked ? 'BLOCKED ✓' : 'NOT BLOCKED ✗'}`);
+
+return isBlocked;
         
     } catch (error) {
         console.error(`[BLOCK CACHE ERROR] checkIfBlocked(${senderId}, ${receiverId}):`, error.message);
@@ -291,6 +296,8 @@ const initializeSocket = (server) => {
         // --- استبدل مستمع 'sendMessage' بهذا الكود التشخيصي ---
 /// --- استبدل مستمع 'sendMessage' بهذا ---
 socket.on('sendMessage', async (messageData) => {
+    // ✅ أضف هذا السطر
+    console.log(`[MESSAGE] User ${socket.user.id} sending: "${messageData.message?.substring(0, 30)}..."`);
     
     try {
         if (!messageData || !messageData.message || messageData.message.trim() === '') return;
@@ -342,11 +349,14 @@ socket.on('sendMessage', async (messageData) => {
                 const isBlocked = await checkIfBlocked(senderId, receiverId);
                 
                 // إذا لم يكن محظوراً، أرسل الرسالة
-                if (!isBlocked) {
-                    receiverSocket.emit('newMessage', populatedMessage.toObject());
-                } else {
-                    // (اختياري) تسجيل للتصحيح
-                    console.log(`[CHAT FILTER] Blocked message from ${senderId} to ${receiverId}`);
+                // إذا لم يكن محظوراً، أرسل الرسالة
+if (!isBlocked) {
+    receiverSocket.emit('newMessage', populatedMessage.toObject());
+    console.log(`[SENT] Message sent to ${receiverId}`); // ✅ أضف هذا
+} else {
+    // (اختياري) تسجيل للتصحيح
+    console.log(`[BLOCKED] Message blocked to ${receiverId}`); // ✅ أضف هذا
+
                 }
             } catch (error) {
                 console.error(`[CHAT EMIT ERROR] for socket ${socketId}:`, error.message);
