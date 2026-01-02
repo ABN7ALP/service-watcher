@@ -1737,7 +1737,9 @@ async function updateUserStatus(newStatus) {
 document.getElementById('edit-status-btn').addEventListener('click', () => {
     showStatusEditModal();
 });
-
+// --- ✅ ربط زر عرض مميزات المستوى ---
+document.getElementById('show-level-perks').addEventListener('click', showLevelPerksModal);
+        
 // --- ✅ دالة عرض نافذة تعديل الحالة ---
 function showStatusEditModal() {
     const currentStatus = document.getElementById('user-status-text').textContent;
