@@ -1018,39 +1018,41 @@ modal.addEventListener('click', (e) => {
         
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
 function getFriendButtonHTML(profileUser, selfUser) {
-    let friendButtonHTML = '';
-
     // ✅ تحويل كل الـ IDs إلى String للمقارنة الصحيحة
     const profileUserIdStr = profileUser._id.toString();
     
-    // ✅ استخراج IDs من مصفوفة الأصدقاء (قد تكون IDs أو كائنات)
+    // ✅ استخراج IDs من مصفوفات المستخدم الحالي
     const friendsIds = (selfUser.friends || []).map(item => 
         item._id ? item._id.toString() : item.toString()
     );
     
-    // ✅ استخراج IDs من طلبات الصداقة المرسلة (كائنات كاملة)
     const sentRequestsIds = (selfUser.friendRequestsSent || []).map(user => 
         user._id ? user._id.toString() : user.toString()
     );
     
-    // ✅ استخراج IDs من طلبات الصداقة المستلمة (كائنات كاملة)
     const receivedRequestsIds = (selfUser.friendRequestsReceived || []).map(user => 
         user._id ? user._id.toString() : user.toString()
     );
+    
+    // ✅ استخراج IDs من المحظورين
+    const blockedUsersIds = (selfUser.blockedUsers || []).map(item => 
+        item._id ? item._id.toString() : item.toString()
+    );
 
-    console.log('[FIXED] IDs after extraction:', {
-        profileUserIdStr,
-        sentRequestsIds,
-        isMatch: sentRequestsIds.includes(profileUserIdStr)
-    });
+    let friendButtonHTML = '';
 
+    // ✅ منطق أزرار الصداقة + الحظر
     if (friendsIds.includes(profileUserIdStr)) {
         friendButtonHTML = `<button class="action-btn friend-btn" data-action="remove-friend" data-user-id="${profileUser._id}"><i class="fas fa-user-check"></i><span>صديق</span></button>`;
     } else if (sentRequestsIds.includes(profileUserIdStr)) {
         friendButtonHTML = `<button class="action-btn sent-btn" data-action="cancel-request" data-user-id="${profileUser._id}"><i class="fas fa-user-clock"></i><span>مُرسَل</span></button>`;
     } else if (receivedRequestsIds.includes(profileUserIdStr)) {
         friendButtonHTML = `<button class="action-btn received-btn" data-action="accept-request" data-user-id="${profileUser._id}"><i class="fas fa-user-check"></i><span>قبول</span></button>`;
+    } else if (blockedUsersIds.includes(profileUserIdStr)) {
+        // ✅ إذا كان محظوراً - زر فك الحظر
+        friendButtonHTML = `<button class="action-btn unblock-btn" data-action="unblock" data-user-id="${profileUser._id}"><i class="fas fa-user-lock"></i><span>محظور</span></button>`;
     } else {
+        // ✅ إذا لم يكن شيئاً - زر إضافة
         friendButtonHTML = `<button class="action-btn add-btn" data-action="send-request" data-user-id="${profileUser._id}"><i class="fas fa-user-plus"></i><span>إضافة</span></button>`;
     }
     
