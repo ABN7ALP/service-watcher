@@ -986,7 +986,7 @@ modal.addEventListener('click', (e) => {
                                 bg-green-500/90 text-white px-6 py-3 rounded-full shadow-2xl 
                                 flex items-center gap-3 z-[300] animate-pulse">
                         <i class="fas fa-check-circle text-xl"></i>
-                        <span class="font-bold">تم نسخ الـ ID بنجاح!</span>
+                        <span class="font-bold">تم نسخ الـ ID!</span>
                     </div>
                 `;
                 document.body.appendChild(copyNotification);
