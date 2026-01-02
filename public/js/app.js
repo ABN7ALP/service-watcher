@@ -843,7 +843,6 @@ function showFloatingAlert(message, icon = 'fa-check-circle', color = 'bg-green-
      
 
         // --- ✅ دالة جديدة لعرض الملف الشخصي المصغر ---
-// --- استبدل دالة showMiniProfileModal بالكامل ---
 async function showMiniProfileModal(userId) {
     try {
         const response = await fetch(`/api/users/${userId}`, {
@@ -859,39 +858,107 @@ async function showMiniProfileModal(userId) {
             ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' }
             : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
 
-        // --- ✅ الزر الديناميكي يتم إنشاؤه هنا ---
-        // --- ✅ الزر الديناميكي يتم إنشاؤه هنا ---
-const selfUserData = JSON.parse(localStorage.getItem('user'));
-if (!selfUserData) {
-    showNotification('يجب تسجيل الدخول أولاً', 'error');
-    return;
-}
-const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
+        // ✅ جلب بيانات المستخدم الحالي المحدثة
+        const selfUserData = JSON.parse(localStorage.getItem('user'));
+        if (!selfUserData) {
+            showNotification('يجب تسجيل الدخول أولاً', 'error');
+            return;
+        }
+        const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
 
+        // ✅ تصميم البروفايل المصغر المحسّن
         const modalHTML = `
             <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
-                <div class="bg-gray-800 border-2 border-purple-500 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300">
-                    <div class="h-24 bg-cover bg-center rounded-t-xl" style="background-image: url('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=400&q=80')"></div>
-                    <div class="flex flex-col items-center -mt-16">
-                        <img src="${profileUser.profileImage}" class="w-24 h-24 rounded-full border-4 border-gray-800 object-cover">
-                        <h2 class="text-xl font-bold mt-2">${profileUser.username}</h2>
-                        <div class="text-xs text-gray-400 mt-1 cursor-pointer" title="نسخ الـ ID" onclick="navigator.clipboard.writeText('${profileUser.customId}')">ID: ${profileUser.customId}</div>
+                <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-purple-500/30">
+                    
+                    <!-- الخلفية العلوية -->
+                    <div class="h-20 bg-gradient-to-r from-purple-600/50 to-blue-600/50 rounded-t-xl relative">
+                        <!-- أيقونة حالة الاتصال (لاحقاً) -->
+                        <div class="absolute bottom-2 right-4 w-3 h-3 bg-green-500 rounded-full"></div>
                     </div>
-                    <div class="flex justify-around items-center text-center p-4">
-                        <div><p class="font-bold text-lg text-yellow-400">LVL ${profileUser.level}</p><p class="text-xs text-gray-400">المستوى</p></div>
-                        <div><p class="font-bold text-lg">${profileUser.friends.length}</p><p class="text-xs text-gray-400">الأصدقاء</p></div>
+                    
+                    <!-- الصورة والمعلومات الأساسية -->
+                    <div class="flex flex-col items-center -mt-12 px-4">
+                        <!-- الصورة الشخصية -->
+                        <img src="${profileUser.profileImage}" 
+                             class="w-24 h-24 rounded-full border-4 border-gray-800 object-cover shadow-lg">
+                        
+                        <!-- الاسم والـ ID -->
+                        <h2 class="text-xl font-bold mt-3">${profileUser.username}</h2>
+                        <div class="text-xs text-gray-400 mt-1 cursor-pointer flex items-center gap-2" 
+                             onclick="navigator.clipboard.writeText('${profileUser.customId}')">
+                            <i class="fas fa-id-card"></i>
+                            <span>ID: ${profileUser.customId}</span>
+                            <i class="fas fa-copy text-xs"></i>
+                        </div>
+                        
+                        <!-- ✅ الحالة النصية (جديد) -->
+                        <div class="mt-2 w-full">
+                            <p id="profile-user-status" class="text-sm text-gray-300 italic text-center px-4 py-2 bg-gray-800/50 rounded-lg">
+                                ${profileUser.status || '🚀 جاهز للتحديات!'}
+                            </p>
+                        </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-4 px-6 pb-6 text-sm">
-                        <div class="flex items-center gap-2"><i class="fas ${genderInfo.icon} w-4 text-center ${genderInfo.color}"></i> ${genderInfo.text}</div>
-                        <div class="flex items-center gap-2"><i class="fas fa-birthday-cake w-4 text-center text-pink-400"></i> ${profileUser.age} سنة</div>
-                        <div class="flex items-center gap-2"><i class="fas ${socialInfo.icon} w-4 text-center text-red-400"></i> ${socialInfo.text}</div>
-                        <div class="flex items-center gap-2"><i class="fas ${educationInfo.icon} w-4 text-center text-blue-400"></i> ${educationInfo.text}</div>
+                    
+                    <!-- الإحصائيات (مستوى وأصدقاء) -->
+                    <div class="grid grid-cols-2 gap-4 p-6">
+                        <!-- المستوى -->
+                        <div class="bg-gray-800/50 p-4 rounded-xl text-center hover:bg-gray-700/50 transition">
+                            <div class="text-2xl font-bold text-yellow-400">${profileUser.level}</div>
+                            <div class="text-xs text-gray-400 mt-1">المستوى</div>
+                            <div class="w-full bg-gray-700 rounded-full h-1.5 mt-2">
+                                <div class="bg-yellow-400 h-1.5 rounded-full" 
+                                     style="width: ${(profileUser.experience / (profileUser.level * 1500)) * 100}%"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- الأصدقاء -->
+                        <div class="bg-gray-800/50 p-4 rounded-xl text-center hover:bg-gray-700/50 transition">
+                            <div class="text-2xl font-bold text-purple-400">${profileUser.friends ? profileUser.friends.length : 0}</div>
+                            <div class="text-xs text-gray-400 mt-1">الأصدقاء</div>
+                            <div class="text-xs text-gray-500 mt-2">
+                                ${profileUser.friends && profileUser.friends.length > 0 ? 
+                                    `أحدث: ${profileUser.friends.slice(0, 2).map(f => f.username).join(', ')}` : 
+                                    'لا توجد أصدقاء'}
+                            </div>
+                        </div>
                     </div>
-                    <div id="profile-action-buttons" class="grid grid-cols-4 gap-2 border-t border-gray-700 p-2">
+                    
+                    <!-- المعلومات الشخصية -->
+                    <div class="grid grid-cols-2 gap-3 px-6 pb-6 text-sm">
+                        <div class="flex items-center gap-3 p-2 bg-gray-800/30 rounded-lg">
+                            <i class="fas ${genderInfo.icon} w-4 text-center ${genderInfo.color}"></i>
+                            <span>${genderInfo.text}</span>
+                        </div>
+                        <div class="flex items-center gap-3 p-2 bg-gray-800/30 rounded-lg">
+                            <i class="fas fa-birthday-cake w-4 text-center text-pink-400"></i>
+                            <span>${profileUser.age} سنة</span>
+                        </div>
+                        <div class="flex items-center gap-3 p-2 bg-gray-800/30 rounded-lg">
+                            <i class="fas ${socialInfo.icon} w-4 text-center text-red-400"></i>
+                            <span>${socialInfo.text}</span>
+                        </div>
+                        <div class="flex items-center gap-3 p-2 bg-gray-800/30 rounded-lg">
+                            <i class="fas ${educationInfo.icon} w-4 text-center text-blue-400"></i>
+                            <span>${educationInfo.text}</span>
+                        </div>
+                    </div>
+                    
+                    <!-- أزرار الإجراءات -->
+                    <div id="profile-action-buttons" class="grid grid-cols-4 gap-2 border-t border-gray-700/50 p-4">
                         ${friendButtonHTML}
-                        <button class="action-btn"><i class="fas fa-comment-dots"></i><span>رسالة</span></button>
-                        <button class="action-btn"><i class="fas fa-microphone-slash"></i><span>كتم</span></button>
-                        <button class="action-btn"><i class="fas fa-ban"></i><span>حظر</span></button>
+                        <button class="action-btn">
+                            <i class="fas fa-comment-dots"></i>
+                            <span class="text-xs mt-1">رسالة</span>
+                        </button>
+                        <button class="action-btn">
+                            <i class="fas fa-user-slash"></i>
+                            <span class="text-xs mt-1">حظر</span>
+                        </button>
+                        <button class="action-btn" onclick="document.getElementById('mini-profile-modal').remove()">
+                            <i class="fas fa-times"></i>
+                            <span class="text-xs mt-1">إغلاق</span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -900,9 +967,17 @@ const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
         const container = document.getElementById('game-container');
         container.innerHTML = modalHTML;
         const modal = container.querySelector('#mini-profile-modal');
-        setTimeout(() => modal.querySelector('.transform').classList.remove('scale-95'), 50);
+        
+        // تأثير الظهور
+        setTimeout(() => {
+            modal.querySelector('.transform').classList.remove('scale-95');
+        }, 50);
+        
+        // إغلاق بالنقر على الخلفية
         modal.addEventListener('click', (e) => {
-            if (e.target.id === 'mini-profile-modal') modal.remove();
+            if (e.target.id === 'mini-profile-modal') {
+                modal.remove();
+            }
         });
 
     } catch (error) {
@@ -910,7 +985,6 @@ const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
         showNotification('لا يمكن عرض ملف المستخدم حاليًا.', 'error');
     }
 }
-
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
 function getFriendButtonHTML(profileUser, selfUser) {
     let friendButtonHTML = '';
