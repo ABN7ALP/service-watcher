@@ -866,25 +866,19 @@ async function showMiniProfileModal(userId) {
         }
         const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
 
-        // ✅ تصميم البروفايل المصغر المحسّن
+        // ✅ تصميم البروفايل المصغر المحسّن (بدون خلفية علوية)
         const modalHTML = `
             <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
                 <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-purple-500/30">
                     
-                    <!-- الخلفية العلوية -->
-                    <div class="h-20 bg-gradient-to-r from-purple-600/50 to-blue-600/50 rounded-t-xl relative">
-                        <!-- أيقونة حالة الاتصال (لاحقاً) -->
-                        <div class="absolute bottom-2 right-4 w-3 h-3 bg-green-500 rounded-full"></div>
-                    </div>
-                    
                     <!-- الصورة والمعلومات الأساسية -->
-                    <div class="flex flex-col items-center -mt-12 px-4">
+                    <div class="flex flex-col items-center px-4 pt-6">
                         <!-- الصورة الشخصية -->
                         <img src="${profileUser.profileImage}" 
-                             class="w-24 h-24 rounded-full border-4 border-gray-800 object-cover shadow-lg">
+                             class="w-28 h-28 rounded-full border-4 border-purple-500 object-cover shadow-lg">
                         
                         <!-- الاسم والـ ID -->
-                        <h2 class="text-xl font-bold mt-3">${profileUser.username}</h2>
+                        <h2 class="text-xl font-bold mt-4">${profileUser.username}</h2>
                         <div class="text-xs text-gray-400 mt-1 cursor-pointer flex items-center gap-2" 
                              onclick="navigator.clipboard.writeText('${profileUser.customId}')">
                             <i class="fas fa-id-card"></i>
@@ -892,9 +886,9 @@ async function showMiniProfileModal(userId) {
                             <i class="fas fa-copy text-xs"></i>
                         </div>
                         
-                        <!-- ✅ الحالة النصية (جديد) -->
-                        <div class="mt-2 w-full">
-                            <p id="profile-user-status" class="text-sm text-gray-300 italic text-center px-4 py-2 bg-gray-800/50 rounded-lg">
+                        <!-- ✅ الحالة النصية -->
+                        <div class="mt-3 w-full">
+                            <p id="profile-user-status" class="text-sm text-gray-300 italic text-center px-4 py-2 bg-gray-800/50 rounded-lg border border-gray-700">
                                 ${profileUser.status || '🚀 جاهز للتحديات!'}
                             </p>
                         </div>
@@ -903,22 +897,21 @@ async function showMiniProfileModal(userId) {
                     <!-- الإحصائيات (مستوى وأصدقاء) -->
                     <div class="grid grid-cols-2 gap-4 p-6">
                         <!-- المستوى -->
-                        <div class="bg-gray-800/50 p-4 rounded-xl text-center hover:bg-gray-700/50 transition">
-                            <div class="text-2xl font-bold text-yellow-400">${profileUser.level}</div>
-                            <div class="text-xs text-gray-400 mt-1">المستوى</div>
-                            <div class="w-full bg-gray-700 rounded-full h-1.5 mt-2">
-                                <div class="bg-yellow-400 h-1.5 rounded-full" 
-                                     style="width: ${(profileUser.experience / (profileUser.level * 1500)) * 100}%"></div>
+                        <div class="bg-gray-800/50 p-4 rounded-xl text-center hover:bg-gray-700/50 transition group">
+                            <div class="text-3xl font-bold text-yellow-400 mb-1">${profileUser.level}</div>
+                            <div class="text-xs text-gray-400">المستوى</div>
+                            <div class="text-xs text-gray-500 mt-2 opacity-0 group-hover:opacity-100 transition">
+                                ${profileUser.experience} XP
                             </div>
                         </div>
                         
                         <!-- الأصدقاء -->
-                        <div class="bg-gray-800/50 p-4 rounded-xl text-center hover:bg-gray-700/50 transition">
-                            <div class="text-2xl font-bold text-purple-400">${profileUser.friends ? profileUser.friends.length : 0}</div>
-                            <div class="text-xs text-gray-400 mt-1">الأصدقاء</div>
-                            <div class="text-xs text-gray-500 mt-2">
+                        <div class="bg-gray-800/50 p-4 rounded-xl text-center hover:bg-gray-700/50 transition group">
+                            <div class="text-3xl font-bold text-purple-400 mb-1">${profileUser.friends ? profileUser.friends.length : 0}</div>
+                            <div class="text-xs text-gray-400">الأصدقاء</div>
+                            <div class="text-xs text-gray-500 mt-2 opacity-0 group-hover:opacity-100 transition">
                                 ${profileUser.friends && profileUser.friends.length > 0 ? 
-                                    `أحدث: ${profileUser.friends.slice(0, 2).map(f => f.username).join(', ')}` : 
+                                    `${profileUser.friends.length} صديق` : 
                                     'لا توجد أصدقاء'}
                             </div>
                         </div>
