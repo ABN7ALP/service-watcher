@@ -69,11 +69,21 @@ exports.blockUser = async (req, res) => {
             })
         ]);
 
-        res.status(200).json({ 
-            status: 'success', 
-            message: 'تم حظر المستخدم بنجاح.',
-            data: { blockedUserId }
-        });
+        // ... الكود الحالي ...
+
+// ✅ إرسال event لتنظيف cache في Socket
+if (req.app.get('io')) {
+    req.app.get('io').emit('clearBlockCache', {
+        userId: blockerId,
+        targetUserId: blockedUserId
+    });
+}
+
+res.status(200).json({ 
+    status: 'success', 
+    message: 'تم حظر المستخدم بنجاح.',
+    data: { blockedUserId }
+});
 
     } catch (error) {
         console.error('[ERROR] in blockUser:', error);
@@ -111,11 +121,21 @@ exports.unblockUser = async (req, res) => {
             $pull: { blockedBy: unblockerId }
         });
 
-        res.status(200).json({ 
-            status: 'success', 
-            message: 'تم فك حظر المستخدم بنجاح.',
-            data: { unblockedUserId: blockedUserId }
-        });
+        // ... الكود الحالي ...
+
+// ✅ إرسال event لتنظيف cache في Socket
+if (req.app.get('io')) {
+    req.app.get('io').emit('clearBlockCache', {
+        userId: unblockerId,
+        targetUserId: blockedUserId
+    });
+}
+
+res.status(200).json({ 
+    status: 'success', 
+    message: 'تم فك حظر المستخدم بنجاح.',
+    data: { unblockedUserId: blockedUserId }
+});
 
     } catch (error) {
         console.error('[ERROR] in unblockUser:', error);
