@@ -376,6 +376,8 @@ async function refreshUserData() {
 
    // --- ✅ دالة حظر مستخدم ---
 async function blockUser(userId, modalElement) {
+    // ✅ أضف هذا السطر
+    console.log(`[CLIENT] blockUser called for userId: ${userId}`);
     try {
         const response = await fetch(`/api/blocks/block/${userId}`, {
             method: 'POST',
