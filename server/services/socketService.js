@@ -457,6 +457,39 @@ socket.on('clearBlockCache', ({ userId, targetUserId }) => {
             }
         });
 
+
+// --- ✅ مستمع جديد: تحديث حالة الحظر بين المستخدمين ---
+socket.on('blockStatusChanged', ({ blockerId, blockedId, isBlocked }) => {
+    console.log(`[SOCKET BLOCK] Status changed: ${blockerId} -> ${blockedId} = ${isBlocked}`);
+    
+    // 1. تنظيف Cache في الخادم
+    clearBlockCache(blockerId, blockedId);
+    
+    // 2. البحث عن Socket المستخدم الآخر وإرسال إشعار له
+    let targetSocketId = null;
+    
+    // البحث في جميع Sockets المتصلة
+    io.sockets.sockets.forEach((sock) => {
+        if (sock.user && sock.user.id) {
+            const userId = sock.user.id.toString();
+            if (userId === blockedId || userId === blockerId) {
+                targetSocketId = sock.id;
+            }
+        }
+    });
+    
+    // 3. إرسال إشعار لتنظيف Cache على العميل
+    if (targetSocketId) {
+        io.to(targetSocketId).emit('refreshBlockCache', {
+            otherUserId: blockerId === socket.user.id.toString() ? blockedId : blockerId,
+            action: isBlocked ? 'blocked' : 'unblocked',
+            timestamp: Date.now()
+        });
+        console.log(`[SOCKET BLOCK] Sent refresh to socket ${targetSocketId}`);
+    }
+});
+     
+
         socket.on('disconnect', () => {
             console.log(`🔴 User disconnected: ${socket.id} | UserID: ${socket.user.username}`);
         });
