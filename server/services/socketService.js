@@ -232,53 +232,6 @@ async function endBattle(io, battleId) {
 }
 
 
-// ✅ 1. عند حظر مستخدم
-socket.on('userBlocked', ({ blockedUserId }) => {
-    console.log(`[BLOCK EVENT] User ${socket.user.id} blocked ${blockedUserId}`);
-    
-    // تنظيف cache فوراً
-    clearBlockCache(socket.user.id, blockedUserId);
-    
-    // إعلام المستخدم المحظور
-    const blockedSocket = io.sockets.sockets.get(findSocketIdByUserId(blockedUserId));
-    if (blockedSocket) {
-        blockedSocket.emit('youWereBlocked', { 
-            blockerId: socket.user.id,
-            timestamp: new Date().toISOString()
-        });
-    }
-});
-
-// ✅ 2. عند فك الحظر
-socket.on('userUnblocked', ({ unblockedUserId }) => {
-    console.log(`[UNBLOCK EVENT] User ${socket.user.id} unblocked ${unblockedUserId}`);
-    clearBlockCache(socket.user.id, unblockedUserId);
-});
-
-// ✅ 3. تحديث cache يدوياً
-socket.on('refreshBlockCache', () => {
-    const userId = socket.user.id.toString();
-    console.log(`[CACHE REFRESH] User ${userId} refreshing cache`);
-    
-    // تنظيف كل cache لهذا المستخدم
-    const keys = Array.from(blockCache.keys());
-    keys.forEach(key => {
-        if (key.includes(userId)) {
-            blockCache.delete(key);
-        }
-    });
-});
-
-// ✅ دالة مساعدة للعثور على socket بالـ ID
-function findSocketIdByUserId(userId) {
-    for (const [socketId, socket] of io.sockets.sockets.entries()) {
-        if (socket.user?.id?.toString() === userId.toString()) {
-            return socketId;
-        }
-    }
-    return null;
-}
-
 
 // --- دالة التهيئة الرئيسية ---
 const initializeSocket = (server) => {
