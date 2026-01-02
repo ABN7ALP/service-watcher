@@ -12,7 +12,7 @@ const { addExperience } = require('../utils/experienceManager'); // ✅✅✅ أ
 
 const blockCache = new Map(); // تخزين مؤقت: { 'senderId-receiverId': { isBlocked: boolean, timestamp: number } }
 const CACHE_TTL = 5 * 60 * 1000; // 5 دقائق صلاحية الـ Cache
-
+ 
 /**
  * ✅ التحقق من الحظر بين مستخدمين باستخدام Cache
  * @param {string} senderId - ID المرسل
