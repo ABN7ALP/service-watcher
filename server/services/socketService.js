@@ -11,7 +11,7 @@ const { addExperience } = require('../utils/experienceManager'); // ✅✅✅ أ
 // =================================================
 
 const blockCache = new Map(); // تخزين مؤقت: { 'senderId-receiverId': { isBlocked: boolean, timestamp: number } }
-const CACHE_TTL = 1 * 60 * 1000; // ⬅️ غيّر من 5 دقائق إلى 1 دقيقة فقط
+const CACHE_TTL = 5 * 60 * 1000; // 5 دقائق صلاحية الـ Cache
  
 /**
  * ✅ التحقق من الحظر بين مستخدمين باستخدام Cache
@@ -80,25 +80,19 @@ return isBlocked;
  * @param {string} userId2 - ID المستخدم الثاني
  */
 function clearBlockCache(userId1, userId2) {
-    const keysToDelete = [];
+    const keysToDelete = [
+        `${userId1}-${userId2}`,
+        `${userId2}-${userId1}`
+    ];
     
-    // إيجاد كل المفاتيح المتعلقة بهذين المستخدمين
-    for (const key of blockCache.keys()) {
-        const [id1, id2] = key.split('-');
-        if ((id1 === userId1 && id2 === userId2) || 
-            (id1 === userId2 && id2 === userId1) ||
-            (id1 === userId1 || id2 === userId1 || 
-             id1 === userId2 || id2 === userId2)) {
-            keysToDelete.push(key);
-        }
-    }
-    
-    // حذفها
     keysToDelete.forEach(key => {
-        blockCache.delete(key);
+        if (blockCache.has(key)) {
+            blockCache.delete(key);
+        }
     });
     
-    console.log(`[BLOCK CACHE] Cleared ${keysToDelete.length} cache entries for ${userId1} and ${userId2}`);
+    console.log(`[BLOCK CACHE] Cleared cache for ${userId1} and ${userId2}`);
+    
 }
 
 // 4. تنظيف الـ Cache القديم تلقائياً كل 10 دقائق
@@ -117,7 +111,6 @@ setInterval(() => {
         console.log(`[BLOCK CACHE] Auto-cleaned ${cleanedCount} expired entries`);
     }
 }, 10 * 60 * 1000); // كل 10 دقائق
-
 
 
 // --- Middleware للتحقق من توكن المستخدم ---
@@ -433,29 +426,6 @@ socket.on('clearBlockCache', ({ userId, targetUserId }) => {
         console.error('[SOCKET] Error clearing block cache:', error);
     }
 });
-    // ✅ مستمع: قوة تنظيف cache (يُرسل للمستخدم المحظور)
-socket.on('forceClearBlockCache', ({ blockedBy }) => {
-    try {
-        console.log(`[FORCE CLEAR] User ${socket.user.id} received force clear for block with ${blockedBy}`);
-        
-        // تنظيف كل cache متعلق بهذا الحظر
-        clearBlockCache(socket.user.id, blockedBy);
-        
-        // تنظيف أي cache آخر قديم
-        const userPrefix = `${socket.user.id}-`;
-        const blockedByPrefix = `${blockedBy}-`;
-        
-        for (const key of blockCache.keys()) {
-            if (key.startsWith(userPrefix) || key.includes(`-${socket.user.id}`) || 
-                key.startsWith(blockedByPrefix) || key.includes(`-${blockedBy}`)) {
-                blockCache.delete(key);
-            }
-        }
-        
-    } catch (error) {
-        console.error('[FORCE CLEAR ERROR]:', error);
-    }
-}); 
         
         socket.on('playerClick', async ({ battleId }) => {
             try {
