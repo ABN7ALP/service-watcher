@@ -1246,38 +1246,60 @@ if (friendActionBtn) {
     }
 }
         
-    // --- ✅ دالة لعرض بروفايل مستخدم حظرك ---
+    // --- ✅ دالة لعرض بروفايل مستخدم حظرك (مصممة بشكل أفضل) ---
 function showBlockedProfileModal(userId, blockData) {
+    // جلب مستوى المستخدم الحالي
+    const user = JSON.parse(localStorage.getItem('user'));
+    const userLevel = user ? user.level : 1;
+    
+    // زر الرسالة (يعمل من المستوى 4)
+    const messageButtonHTML = userLevel >= 4 ? 
+        `<button id="send-one-message-btn" data-user-id="${userId}" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition mb-4">
+            <i class="fas fa-paper-plane mr-2"></i>
+            إرسال رسالة واحدة (25 حرف)
+        </button>` :
+        `<button class="w-full bg-gray-700 text-gray-500 font-bold py-3 rounded-lg mb-4 cursor-not-allowed" disabled>
+            <i class="fas fa-lock mr-2"></i>
+            إرسال رسالة (تصل عند المستوى ${4})
+        </button>`;
+
     const modalHTML = `
         <div id="blocked-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
-            <div class="bg-gradient-to-br from-gray-800 to-red-900/30 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-red-500/30">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-red-500/30">
                 
-                <!-- أيقونة التحذير -->
-                <div class="flex flex-col items-center px-4 pt-8">
-                    <div class="w-24 h-24 rounded-full bg-red-500/20 flex items-center justify-center border-4 border-red-500/50">
-                        <i class="fas fa-exclamation-triangle text-4xl text-red-400"></i>
-                    </div>
-                    
-                    <!-- العنوان -->
-                    <h2 class="text-xl font-bold mt-6 text-red-300">المستخدم غير متوفر</h2>
-                    
-                    <!-- الرسالة -->
-                    <div class="mt-4 text-center px-6">
-                        <p class="text-gray-300 mb-4">
-                            لا يمكنك عرض ملف <span class="font-bold">${blockData.targetUser.username}</span>.
-                        </p>
-                        <div class="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
-                            <p class="text-sm text-gray-400">
-                                <i class="fas fa-info-circle text-blue-400 mr-2"></i>
-                                قد يكون هذا المستخدم قد حظرك أو قام بإخفاء ملفه الشخصي.
-                            </p>
+                <!-- المحتوى البسيط -->
+                <div class="flex flex-col items-center p-8">
+                    <!-- علامة التعجب مع تأثير hover -->
+                    <div class="relative group mb-8">
+                        <div class="w-24 h-24 rounded-full bg-red-500/20 flex items-center justify-center border-4 border-red-500/50 transition-transform group-hover:scale-110 duration-300">
+                            <i class="fas fa-exclamation-triangle text-4xl text-red-400"></i>
+                        </div>
+                        
+                        <!-- النص المنبثق (يظهر عند التمرير) -->
+                        <div class="absolute -top-16 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none z-10">
+                            <div class="bg-gray-900 text-sm text-gray-300 px-4 py-3 rounded-lg border border-gray-700 shadow-2xl whitespace-nowrap">
+                                <div class="flex items-center gap-2">
+                                    <i class="fas fa-info-circle text-blue-400"></i>
+                                    <span>هذا المستخدم قد يكون قد حظرك</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-                
-                <!-- زر الإغلاق -->
-                <div class="p-6 border-t border-gray-700/50">
-                    <button class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition close-blocked-modal-btn">
+                    
+                    <!-- الاسم -->
+                    <h2 class="text-xl font-bold text-gray-300 mb-3">${blockData.targetUser.username}</h2>
+                    
+                    <!-- الرسالة البسيطة -->
+                    <p class="text-gray-400 text-center mb-8 leading-relaxed">
+                        <span class="block mb-2">لا يمكن عرض الملف الشخصي</span>
+                        <span class="text-sm text-gray-500">قد يكون المستخدم قد حظرك أو قام بإخفاء ملفه الشخصي</span>
+                    </p>
+                    
+                    <!-- زر إرسال رسالة (يعمل من المستوى 4) -->
+                    ${messageButtonHTML}
+                    
+                    <!-- زر الإغلاق -->
+                    <button class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-lg transition close-blocked-modal-btn">
                         <i class="fas fa-times mr-2"></i>
                         إغلاق
                     </button>
@@ -1295,13 +1317,116 @@ function showBlockedProfileModal(userId, blockData) {
         modal.querySelector('.transform').classList.remove('scale-95');
     }, 50);
     
-    // إغلاق النافذة
+    // --- ✅ event delegation للنافذة الجديدة ---
     modal.addEventListener('click', (e) => {
-        if (e.target.id === 'blocked-profile-modal' || e.target.closest('.close-blocked-modal-btn')) {
+        // 1. إغلاق بالنقر على الخلفية
+        if (e.target.id === 'blocked-profile-modal') {
+            modal.remove();
+            return;
+        }
+        
+        // 2. زر الإغلاق
+        if (e.target.closest('.close-blocked-modal-btn')) {
+            modal.remove();
+            return;
+        }
+        
+        // 3. زر إرسال رسالة (إذا كان المستوى 4 أو أعلى)
+        if (e.target.closest('#send-one-message-btn') && userLevel >= 4) {
+            const targetUserId = e.target.closest('#send-one-message-btn').dataset.userId;
+            showOneMessageModal(targetUserId, blockData.targetUser.username);
+            return;
+        }
+    });
+}
+
+// --- ✅ دالة نافذة إرسال رسالة واحدة ---
+function showOneMessageModal(targetUserId, targetUsername) {
+    const modalHTML = `
+        <div id="one-message-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-blue-900/30 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-blue-500/30">
+                
+                <div class="p-6">
+                    <h3 class="text-lg font-bold mb-4 flex items-center gap-3">
+                        <i class="fas fa-paper-plane text-blue-400"></i>
+                        إرسال رسالة لـ ${targetUsername}
+                    </h3>
+                    
+                    <div class="mb-4">
+                        <textarea id="one-message-input" 
+                                  class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm h-32"
+                                  placeholder="اكتب رسالتك هنا... (حد أقصى 25 حرف)"
+                                  maxlength="25"></textarea>
+                        <div class="flex justify-between items-center mt-2 text-xs text-gray-400">
+                            <span id="message-char-count">0/25</span>
+                            <span class="text-blue-400">رسالة واحدة فقط</span>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-3">
+                        <button id="cancel-one-message" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition">
+                            إلغاء
+                        </button>
+                        <button id="send-one-message" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition">
+                            إرسال
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('game-container').innerHTML += modalHTML;
+    
+    const modal = document.getElementById('one-message-modal');
+    const messageInput = document.getElementById('one-message-input');
+    const charCount = document.getElementById('message-char-count');
+    
+    // تأثير الظهور
+    setTimeout(() => {
+        modal.querySelector('.transform').classList.remove('scale-95');
+    }, 50);
+    
+    // تحديث عداد الأحرف
+    messageInput.addEventListener('input', () => {
+        charCount.textContent = `${messageInput.value.length}/25`;
+    });
+    
+    // إرسال الرسالة
+    document.getElementById('send-one-message').addEventListener('click', async () => {
+        const message = messageInput.value.trim();
+        
+        if (!message) {
+            showNotification('اكتب رسالة أولاً', 'error');
+            return;
+        }
+        
+        if (message.length > 25) {
+            showNotification('الرسالة طويلة جداً (25 حرف كحد أقصى)', 'error');
+            return;
+        }
+        
+        // هنا سيكون منطق إرسال الرسالة (سنضيفه لاحقاً)
+        showNotification(`سيتم إرسال الرسالة لـ ${targetUsername} قريباً`, 'info');
+        modal.remove();
+        
+        // إغلاق نافذة "المستخدم غير متوفر" أيضاً
+        const blockedModal = document.getElementById('blocked-profile-modal');
+        if (blockedModal) blockedModal.remove();
+    });
+    
+    // إلغاء
+    document.getElementById('cancel-one-message').addEventListener('click', () => {
+        modal.remove();
+    });
+    
+    // إغلاق بالنقر على الخلفية
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'one-message-modal') {
             modal.remove();
         }
     });
-}    
+}
         
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
 function getFriendButtonHTML(profileUser, selfUser) {
