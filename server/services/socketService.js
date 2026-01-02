@@ -118,29 +118,7 @@ setInterval(() => {
     }
 }, 10 * 60 * 1000); // كل 10 دقائق
 
-// ✅ مستمع: قوة تنظيف cache (يُرسل للمستخدم المحظور)
-socket.on('forceClearBlockCache', ({ blockedBy }) => {
-    try {
-        console.log(`[FORCE CLEAR] User ${socket.user.id} received force clear for block with ${blockedBy}`);
-        
-        // تنظيف كل cache متعلق بهذا الحظر
-        clearBlockCache(socket.user.id, blockedBy);
-        
-        // تنظيف أي cache آخر قديم
-        const userPrefix = `${socket.user.id}-`;
-        const blockedByPrefix = `${blockedBy}-`;
-        
-        for (const key of blockCache.keys()) {
-            if (key.startsWith(userPrefix) || key.includes(`-${socket.user.id}`) || 
-                key.startsWith(blockedByPrefix) || key.includes(`-${blockedBy}`)) {
-                blockCache.delete(key);
-            }
-        }
-        
-    } catch (error) {
-        console.error('[FORCE CLEAR ERROR]:', error);
-    }
-});
+
 
 // --- Middleware للتحقق من توكن المستخدم ---
 const verifySocketToken = async (socket, next) => {
@@ -455,6 +433,29 @@ socket.on('clearBlockCache', ({ userId, targetUserId }) => {
         console.error('[SOCKET] Error clearing block cache:', error);
     }
 });
+    // ✅ مستمع: قوة تنظيف cache (يُرسل للمستخدم المحظور)
+socket.on('forceClearBlockCache', ({ blockedBy }) => {
+    try {
+        console.log(`[FORCE CLEAR] User ${socket.user.id} received force clear for block with ${blockedBy}`);
+        
+        // تنظيف كل cache متعلق بهذا الحظر
+        clearBlockCache(socket.user.id, blockedBy);
+        
+        // تنظيف أي cache آخر قديم
+        const userPrefix = `${socket.user.id}-`;
+        const blockedByPrefix = `${blockedBy}-`;
+        
+        for (const key of blockCache.keys()) {
+            if (key.startsWith(userPrefix) || key.includes(`-${socket.user.id}`) || 
+                key.startsWith(blockedByPrefix) || key.includes(`-${blockedBy}`)) {
+                blockCache.delete(key);
+            }
+        }
+        
+    } catch (error) {
+        console.error('[FORCE CLEAR ERROR]:', error);
+    }
+}); 
         
         socket.on('playerClick', async ({ battleId }) => {
             try {
