@@ -957,6 +957,23 @@ async function showMiniProfileModal(userId) {
             </div>
         `;
 
+        
+       // ربط حدث نسخ الـ ID
+const copyIdBtn = document.getElementById('copy-id-btn');
+if (copyIdBtn) {
+    copyIdBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(profileUser.customId)
+            .then(() => showNotification('تم نسخ الـ ID بنجاح!', 'info'))
+            .catch(err => console.error('Failed to copy ID:', err));
+    });
+}
+// ربط زر الإغلاق
+const closeBtn = document.getElementById('close-mini-profile-btn');
+if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+        modal.remove();
+    });
+}
         const container = document.getElementById('game-container');
         container.innerHTML = modalHTML;
         const modal = container.querySelector('#mini-profile-modal');
@@ -979,22 +996,7 @@ async function showMiniProfileModal(userId) {
     }
 }
 
-       // ربط حدث نسخ الـ ID
-const copyIdBtn = document.getElementById('copy-id-btn');
-if (copyIdBtn) {
-    copyIdBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(profileUser.customId)
-            .then(() => showNotification('تم نسخ الـ ID بنجاح!', 'info'))
-            .catch(err => console.error('Failed to copy ID:', err));
-    });
-}
-// ربط زر الإغلاق
-const closeBtn = document.getElementById('close-mini-profile-btn');
-if (closeBtn) {
-    closeBtn.addEventListener('click', () => {
-        modal.remove();
-    });
-}
+
         
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
 function getFriendButtonHTML(profileUser, selfUser) {
