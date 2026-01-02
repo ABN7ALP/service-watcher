@@ -69,13 +69,44 @@ exports.blockUser = async (req, res) => {
             })
         ]);
 
-        res.status(200).json({ 
-            status: 'success', 
-            message: 'تم حظر المستخدم بنجاح.',
-            data: { blockedUserId }
-        });
+            res.status(200).json({ 
+        status: 'success', 
+        message: 'تم حظر المستخدم بنجاح.',
+        data: { blockedUserId }
+    });
 
-    } catch (error) {
+    // --- ✅ إرسال حدث Socket لتحديث Cache الحظر ---
+    try {
+        const io = req.app.get('socketio');
+        if (io) {
+            // إرسال للمستخدم الذي قام بالحظر
+            const blockerSocket = io.sockets.sockets.get(req.user.socketId);
+            if (blockerSocket) {
+                blockerSocket.emit('blockStatusChanged', {
+                    blockerId: blockerId,
+                    blockedId: blockedUserId,
+                    isBlocked: true
+                });
+            }
+            
+            // إرسال للمستخدم المحظور (إذا كان متصلاً)
+            io.sockets.sockets.forEach((sock) => {
+                if (sock.user && sock.user.id.toString() === blockedUserId) {
+                    sock.emit('blockStatusChanged', {
+                        blockerId: blockerId,
+                        blockedId: blockedUserId,
+                        isBlocked: true
+                    });
+                }
+            });
+            
+            console.log(`[BLOCK CONTROLLER] Sent block event to both users`);
+        }
+    } catch (socketError) {
+        console.error('[BLOCK CONTROLLER] Socket emit error:', socketError);
+    }
+
+} catch (error) {
         console.error('[ERROR] in blockUser:', error);
         res.status(500).json({ 
             status: 'error', 
