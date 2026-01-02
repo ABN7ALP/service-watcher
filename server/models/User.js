@@ -43,6 +43,15 @@ const userSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
     }],
+    // --- ✅ الحقول الجديدة لنظام الحظر ---
+    blockedUsers: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    blockedBy: [{
+       type: mongoose.Schema.Types.ObjectId,
+       ref: 'User'
+    }],
     // --- نهاية الحقول الجديدة --
 
 }, { timestamps: true });
