@@ -404,14 +404,24 @@ async function blockUser(userId, modalElement) {
                 notification.remove();
             }, 2000);
             
-            // تحديث بيانات المستخدم
+            // ✅ تحديث بيانات المستخدم
             await refreshUserData();
             
-            // إعادة فتح النافذة لتحديث الزر
-            setTimeout(() => {
-                if (modalElement) modalElement.remove();
-                showMiniProfileModal(userId);
-            }, 500);
+            // ✅ تحديث رقم الأصدقاء مباشرة في الشريط الجانبي
+            const user = JSON.parse(localStorage.getItem('user'));
+            if (user && user.friends) {
+                document.getElementById('friends-count').textContent = user.friends.length;
+                
+                // ✅ تحديث قائمة صور الأصدقاء المصغرة (إذا كانت الدالة موجودة)
+                if (typeof updateFriendsAvatars === 'function') {
+                    updateFriendsAvatars(user.friends);
+                }
+            }
+            
+            // ✅ إغلاق النافذة بدون إعادة فتح (حسب الملاحظة 6)
+            if (modalElement) {
+                modalElement.remove();
+            }
             
             return true;
         } else {
@@ -433,7 +443,7 @@ async function unblockUser(userId, modalElement) {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
+                Authorization: `Bearer ${token}`
             }
         });
         
@@ -456,14 +466,23 @@ async function unblockUser(userId, modalElement) {
                 notification.remove();
             }, 2000);
             
-            // تحديث بيانات المستخدم
+            // ✅ تحديث بيانات المستخدم
             await refreshUserData();
             
-            // إعادة فتح النافذة لتحديث الزر
-            setTimeout(() => {
-                if (modalElement) modalElement.remove();
-                showMiniProfileModal(userId);
-            }, 500);
+            // ✅ تحديث رقم الأصدقاء في الشريط الجانبي
+            const user = JSON.parse(localStorage.getItem('user'));
+            if (user && user.friends) {
+                document.getElementById('friends-count').textContent = user.friends.length;
+                
+                if (typeof updateFriendsAvatars === 'function') {
+                    updateFriendsAvatars(user.friends);
+                }
+            }
+            
+            // ✅ إغلاق النافذة بدون إعادة فتح
+            if (modalElement) {
+                modalElement.remove();
+            }
             
             return true;
         } else {
@@ -476,7 +495,7 @@ async function unblockUser(userId, modalElement) {
         showNotification('خطأ في الاتصال بالخادم', 'error');
         return false;
     }
-}   
+}
 
 
    // --- ✅ دالة معالجة إجراءات الصداقة ---
