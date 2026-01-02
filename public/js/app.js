@@ -438,13 +438,6 @@ document.getElementById('user-id-container').addEventListener('click', () => {
     navigator.clipboard.writeText(user.customId).then(() => showNotification('تم نسخ الـ ID بنجاح!', 'info'));
 });
 
-document.getElementById('perks-toggle-btn').addEventListener('click', (e) => {
-    const perksList = document.getElementById('perks-list');
-    const icon = e.currentTarget.querySelector('i');
-    perksList.classList.toggle('hidden');
-    icon.classList.toggle('fa-chevron-down');
-    icon.classList.toggle('fa-chevron-up');
-});
 
 
     // --- 4. إنشاء مقاعد الصوت ---
