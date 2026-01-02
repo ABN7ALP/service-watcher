@@ -879,7 +879,7 @@ async function showMiniProfileModal(userId) {
                         
                         <!-- الاسم والـ ID -->
                         <h2 class="text-xl font-bold mt-4">${profileUser.username}</h2>
-                        <div class="text-xs text-gray-400 mt-1 cursor-pointer flex items-center gap-2" 
+                        <div class="text-xs text-gray-400 mt-1 cursor-pointer flex items-center gap-2 copy-id-btn" data-user-id="${profileUser.customId}"> 
                            id="copy-id-btn" data-user-id="${profileUser.customId}">
                            <i class="fas fa-id-card"></i>
                            <span>ID: ${profileUser.customId}</span>
@@ -948,7 +948,7 @@ async function showMiniProfileModal(userId) {
                             <i class="fas fa-user-slash"></i>
                             <span class="text-xs mt-1">حظر</span>
                         </button>
-                        <button class="action-btn" id="close-mini-profile-btn">
+                        <button class="action-btn close-mini-profile-btn">
                           <i class="fas fa-times"></i>
                           <span class="text-xs mt-1">إغلاق</span>
                         </button>
@@ -957,36 +957,35 @@ async function showMiniProfileModal(userId) {
             </div>
         `;
 
-        
-       // ربط حدث نسخ الـ ID
-const copyIdBtn = document.getElementById('copy-id-btn');
-if (copyIdBtn) {
-    copyIdBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(profileUser.customId)
-            .then(() => showNotification('تم نسخ الـ ID بنجاح!', 'info'))
-            .catch(err => console.error('Failed to copy ID:', err));
-    });
-}
-// ربط زر الإغلاق
-const closeBtn = document.getElementById('close-mini-profile-btn');
-if (closeBtn) {
-    closeBtn.addEventListener('click', () => {
-        modal.remove();
-    });
-}
         const container = document.getElementById('game-container');
         container.innerHTML = modalHTML;
         const modal = container.querySelector('#mini-profile-modal');
         
-        // تأثير الظهور
+                // تأثير الظهور
         setTimeout(() => {
             modal.querySelector('.transform').classList.remove('scale-95');
         }, 50);
         
-        // إغلاق بالنقر على الخلفية
+        // --- ✅ event delegation للأزرار داخل النافذة ---
         modal.addEventListener('click', (e) => {
+            // 1. إغلاق بالنقر على الخلفية
             if (e.target.id === 'mini-profile-modal') {
                 modal.remove();
+                return;
+            }
+            
+            // 2. زر نسخ الـ ID
+            if (e.target.closest('.copy-id-btn')) {
+                navigator.clipboard.writeText(profileUser.customId)
+                    .then(() => showNotification('تم نسخ الـ ID بنجاح!', 'info'))
+                    .catch(err => console.error('Failed to copy ID:', err));
+                return;
+            }
+            
+            // 3. زر الإغلاق
+            if (e.target.closest('.close-mini-profile-btn')) {
+                modal.remove();
+                return;
             }
         });
 
@@ -995,7 +994,6 @@ if (closeBtn) {
         showNotification('لا يمكن عرض ملف المستخدم حاليًا.', 'error');
     }
 }
-
 
         
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
