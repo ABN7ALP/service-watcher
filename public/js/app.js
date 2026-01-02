@@ -373,6 +373,165 @@ async function refreshUserData() {
         return false;
     }
 }
+
+   // --- ✅ دالة حظر مستخدم ---
+async function blockUser(userId, modalElement) {
+    try {
+        const response = await fetch(`/api/blocks/block/${userId}`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            // إشعار جميل
+            const notification = document.createElement('div');
+            notification.innerHTML = `
+                <div class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
+                            bg-red-500/90 text-white px-6 py-3 rounded-full shadow-2xl 
+                            flex items-center gap-3 z-[300] animate-pulse">
+                    <i class="fas fa-ban text-xl"></i>
+                    <span class="font-bold">تم حظر المستخدم!</span>
+                </div>
+            `;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 2000);
+            
+            // تحديث بيانات المستخدم
+            await refreshUserData();
+            
+            // إعادة فتح النافذة لتحديث الزر
+            setTimeout(() => {
+                if (modalElement) modalElement.remove();
+                showMiniProfileModal(userId);
+            }, 500);
+            
+            return true;
+        } else {
+            showNotification(result.message || 'فشل حظر المستخدم', 'error');
+            return false;
+        }
+        
+    } catch (error) {
+        console.error('Error blocking user:', error);
+        showNotification('خطأ في الاتصال بالخادم', 'error');
+        return false;
+    }
+}
+
+// --- ✅ دالة فك حظر مستخدم ---
+async function unblockUser(userId, modalElement) {
+    try {
+        const response = await fetch(`/api/blocks/unblock/${userId}`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            // إشعار جميل
+            const notification = document.createElement('div');
+            notification.innerHTML = `
+                <div class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
+                            bg-green-500/90 text-white px-6 py-3 rounded-full shadow-2xl 
+                            flex items-center gap-3 z-[300] animate-pulse">
+                    <i class="fas fa-unlock text-xl"></i>
+                    <span class="font-bold">تم رفع الحظر!</span>
+                </div>
+            `;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 2000);
+            
+            // تحديث بيانات المستخدم
+            await refreshUserData();
+            
+            // إعادة فتح النافذة لتحديث الزر
+            setTimeout(() => {
+                if (modalElement) modalElement.remove();
+                showMiniProfileModal(userId);
+            }, 500);
+            
+            return true;
+        } else {
+            showNotification(result.message || 'فشل رفع الحظر', 'error');
+            return false;
+        }
+        
+    } catch (error) {
+        console.error('Error unblocking user:', error);
+        showNotification('خطأ في الاتصال بالخادم', 'error');
+        return false;
+    }
+}   
+
+
+   // --- ✅ دالة معالجة إجراءات الصداقة ---
+async function handleFriendAction(action, userId, modalElement) {
+    let url = '';
+    let method = 'POST';
+    let successMessage = '';
+    
+    switch (action) {
+        case 'send-request':
+            url = `/api/friends/send-request/${userId}`;
+            successMessage = 'تم إرسال طلب الصداقة';
+            break;
+        case 'cancel-request':
+        case 'reject-request':
+            url = `/api/friends/reject-request/${userId}`;
+            successMessage = 'تم إلغاء الطلب';
+            break;
+        case 'accept-request':
+            url = `/api/friends/accept-request/${userId}`;
+            successMessage = 'أصبحتما أصدقاء';
+            break;
+        case 'remove-friend':
+            url = `/api/friends/remove-friend/${userId}`;
+            method = 'DELETE';
+            successMessage = 'تم حذف الصديق';
+            break;
+        case 'unblock-friend':
+            // هذا سيتعامل معه unblockUser مباشرة
+            await unblockUser(userId, modalElement);
+            return;
+        default:
+            return;
+    }
+    
+    try {
+        const response = await fetch(url, { 
+            method, 
+            headers: { 'Authorization': `Bearer ${token}` } 
+        });
+        
+        if (response.ok) {
+            // تحديث البيانات
+            await refreshUserData();
+            
+            // إعادة فتح النافذة
+            setTimeout(() => {
+                if (modalElement) modalElement.remove();
+                showMiniProfileModal(userId);
+            }, 300);
+        }
+    } catch (error) {
+        console.error('Error handling friend action:', error);
+    }
+}     
         
 // استدعاء الدالة عند تحميل الصفحة
 updateUIWithUserData(user);
@@ -845,28 +1004,70 @@ function showFloatingAlert(message, icon = 'fa-check-circle', color = 'bg-green-
         // --- ✅ دالة جديدة لعرض الملف الشخصي المصغر ---
 async function showMiniProfileModal(userId) {
     try {
-        const response = await fetch(`/api/users/${userId}`, {
+        // ✅ أولاً: التحقق من حالة الحظر المتبادل
+        const blockCheckResponse = await fetch(`/api/blocks/mutual-status/${userId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!response.ok) throw new Error('User not found');
-        const result = await response.json();
-        const profileUser = result.data.user;
-
-        const socialInfo = getSocialStatus(profileUser.socialStatus);
-        const educationInfo = getEducationStatus(profileUser.educationStatus);
-        const genderInfo = profileUser.gender === 'male' 
-            ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' }
-            : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
-
+        
+        if (!blockCheckResponse.ok) {
+            throw new Error('Failed to check block status');
+        }
+        
+        const blockResult = await blockCheckResponse.json();
+        const blockData = blockResult.data;
+        
+        // ✅ السيناريو 1: إذا كان المستخدم قد حظرني
+        if (blockData.blockStatus.heBlockedMe) {
+            showBlockedProfileModal(userId, blockData);
+            return;
+        }
+        
+        // ✅ السيناريو 2: إذا لم يحظرني، جلب بياناته
+        const userResponse = await fetch(`/api/users/${userId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!userResponse.ok) throw new Error('User not found');
+        
+        const userResult = await userResponse.json();
+        const profileUser = userResult.data.user;
+        
         // ✅ جلب بيانات المستخدم الحالي المحدثة
         const selfUserData = JSON.parse(localStorage.getItem('user'));
         if (!selfUserData) {
             showNotification('يجب تسجيل الدخول أولاً', 'error');
             return;
         }
+        
+        // ✅ تحضير البيانات
+        const socialInfo = getSocialStatus(profileUser.socialStatus);
+        const educationInfo = getEducationStatus(profileUser.educationStatus);
+        const genderInfo = profileUser.gender === 'male' 
+            ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' }
+            : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
+        
+        // ✅ زر الصداقة الديناميكي
         const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
-
-        // ✅ تصميم البروفايل المصغر المحسّن (بدون خلفية علوية)
+        
+        // ✅ زر الحظر/فك الحظر الديناميكي
+        const blockedUsersIds = (selfUserData.blockedUsers || []).map(item => 
+            item._id ? item._id.toString() : item.toString()
+        );
+        const profileUserIdStr = profileUser._id.toString();
+        
+        const isBlockedByMe = blockedUsersIds.includes(profileUserIdStr);
+        
+        const blockButtonHTML = isBlockedByMe ? 
+            `<button class="action-btn unblock-action-btn" data-user-id="${profileUser._id}">
+                <i class="fas fa-unlock"></i>
+                <span class="text-xs mt-1">رفع الحظر</span>
+            </button>` : 
+            `<button class="action-btn block-action-btn" data-user-id="${profileUser._id}">
+                <i class="fas fa-ban"></i>
+                <span class="text-xs mt-1">حظر</span>
+            </button>`;
+        
+        // ✅ HTML النافذة
         const modalHTML = `
             <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
                 <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-purple-500/30">
@@ -891,6 +1092,15 @@ async function showMiniProfileModal(userId) {
                                 ${profileUser.status || '🚀 جاهز للتحديات!'}
                             </p>
                         </div>
+                        
+                        <!-- ✅ شارة "محظور من قبلك" -->
+                        ${isBlockedByMe ? `
+                            <div class="mt-2 bg-red-900/30 border border-red-700 rounded-full px-3 py-1">
+                                <span class="text-xs text-red-300">
+                                    <i class="fas fa-ban mr-1"></i> محظور من قبلك
+                                </span>
+                            </div>
+                        ` : ''}
                     </div>
                     
                     <!-- الإحصائيات (مستوى وأصدقاء) -->
@@ -939,17 +1149,14 @@ async function showMiniProfileModal(userId) {
                     <!-- أزرار الإجراءات -->
                     <div id="profile-action-buttons" class="grid grid-cols-4 gap-2 border-t border-gray-700/50 p-4">
                         ${friendButtonHTML}
-                        <button class="action-btn">
+                        <button class="action-btn message-btn" data-user-id="${profileUser._id}">
                             <i class="fas fa-comment-dots"></i>
                             <span class="text-xs mt-1">رسالة</span>
                         </button>
-                        <button class="action-btn">
-                            <i class="fas fa-user-slash"></i>
-                            <span class="text-xs mt-1">حظر</span>
-                        </button>
+                        ${blockButtonHTML}
                         <button class="action-btn close-mini-profile-btn">
-                          <i class="fas fa-times"></i>
-                          <span class="text-xs mt-1">إغلاق</span>
+                            <i class="fas fa-times"></i>
+                            <span class="text-xs mt-1">إغلاق</span>
                         </button>
                     </div>
                 </div>
@@ -960,61 +1167,141 @@ async function showMiniProfileModal(userId) {
         container.innerHTML = modalHTML;
         const modal = container.querySelector('#mini-profile-modal');
         
-                // تأثير الظهور
+        // تأثير الظهور
         setTimeout(() => {
             modal.querySelector('.transform').classList.remove('scale-95');
         }, 50);
         
         // --- ✅ event delegation للأزرار داخل النافذة ---
-modal.addEventListener('click', (e) => {
-    // 1. إغلاق بالنقر على الخلفية
-    if (e.target.id === 'mini-profile-modal') {
-        modal.remove();
-        return;
-    }
+        modal.addEventListener('click', (e) => {
+            // 1. إغلاق بالنقر على الخلفية
+            if (e.target.id === 'mini-profile-modal') {
+                modal.remove();
+                return;
+            }
+            // 6. أزرار الصداقة (مثل إضافة، حذف، إلخ)
+const friendActionBtn = e.target.closest('.action-btn[data-action]');
+if (friendActionBtn) {
+    const action = friendActionBtn.dataset.action;
+    const userId = friendActionBtn.dataset.userId;
     
-    // 2. زر نسخ الـ ID
-    if (e.target.closest('.copy-id-btn')) {
-        const idToCopy = profileUser.customId;
-        
-        navigator.clipboard.writeText(idToCopy)
-            .then(() => {
-                // إشعار عائم جميل
-                const copyNotification = document.createElement('div');
-                copyNotification.innerHTML = `
-                    <div class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
-                                bg-green-500/90 text-white px-6 py-3 rounded-full shadow-2xl 
-                                flex items-center gap-3 z-[300] animate-pulse">
-                        <i class="fas fa-check-circle text-xl"></i>
-                        <span class="font-bold">تم نسخ الـ ID!</span>
-                    </div>
-                `;
-                document.body.appendChild(copyNotification);
+    // معالجة إجراءات الصداقة المختلفة
+    handleFriendAction(action, userId, modal);
+    return;
+}
+            
+            // 2. زر نسخ الـ ID
+            if (e.target.closest('.copy-id-btn')) {
+                const idToCopy = profileUser.customId;
                 
-                setTimeout(() => {
-                    copyNotification.remove();
-                }, 2000);
-            })
-            .catch(err => {
-                console.error('Failed to copy ID:', err);
-                showNotification('فشل نسخ الـ ID', 'error');
-            });
-        return;
-    }
-    
-    // 3. زر الإغلاق
-    if (e.target.closest('.close-mini-profile-btn')) {
-        modal.remove();
-        return;
-    }
-});
+                navigator.clipboard.writeText(idToCopy)
+                    .then(() => {
+                        // إشعار عائم جميل
+                        const copyNotification = document.createElement('div');
+                        copyNotification.innerHTML = `
+                            <div class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
+                                        bg-green-500/90 text-white px-6 py-3 rounded-full shadow-2xl 
+                                        flex items-center gap-3 z-[300] animate-pulse">
+                                <i class="fas fa-check-circle text-xl"></i>
+                                <span class="font-bold">تم نسخ الـ ID!</span>
+                            </div>
+                        `;
+                        document.body.appendChild(copyNotification);
+                        
+                        setTimeout(() => {
+                            copyNotification.remove();
+                        }, 2000);
+                    })
+                    .catch(err => {
+                        console.error('Failed to copy ID:', err);
+                        showNotification('فشل نسخ الـ ID', 'error');
+                    });
+                return;
+            }
+            
+            // 3. زر الحظر
+            if (e.target.closest('.block-action-btn')) {
+                const userIdToBlock = e.target.closest('.block-action-btn').dataset.userId;
+                blockUser(userIdToBlock, modal);
+                return;
+            }
+            
+            // 4. زر فك الحظر
+            if (e.target.closest('.unblock-action-btn')) {
+                const userIdToUnblock = e.target.closest('.unblock-action-btn').dataset.userId;
+                unblockUser(userIdToUnblock, modal);
+                return;
+            }
+            
+            // 5. زر الإغلاق
+            if (e.target.closest('.close-mini-profile-btn')) {
+                modal.remove();
+                return;
+            }
+        });
 
     } catch (error) {
         console.error("Error showing mini profile:", error);
         showNotification('لا يمكن عرض ملف المستخدم حاليًا.', 'error');
     }
 }
-
+        
+    // --- ✅ دالة لعرض بروفايل مستخدم حظرك ---
+function showBlockedProfileModal(userId, blockData) {
+    const modalHTML = `
+        <div id="blocked-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-red-900/30 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-red-500/30">
+                
+                <!-- أيقونة التحذير -->
+                <div class="flex flex-col items-center px-4 pt-8">
+                    <div class="w-24 h-24 rounded-full bg-red-500/20 flex items-center justify-center border-4 border-red-500/50">
+                        <i class="fas fa-exclamation-triangle text-4xl text-red-400"></i>
+                    </div>
+                    
+                    <!-- العنوان -->
+                    <h2 class="text-xl font-bold mt-6 text-red-300">المستخدم غير متوفر</h2>
+                    
+                    <!-- الرسالة -->
+                    <div class="mt-4 text-center px-6">
+                        <p class="text-gray-300 mb-4">
+                            لا يمكنك عرض ملف <span class="font-bold">${blockData.targetUser.username}</span>.
+                        </p>
+                        <div class="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                            <p class="text-sm text-gray-400">
+                                <i class="fas fa-info-circle text-blue-400 mr-2"></i>
+                                قد يكون هذا المستخدم قد حظرك أو قام بإخفاء ملفه الشخصي.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- زر الإغلاق -->
+                <div class="p-6 border-t border-gray-700/50">
+                    <button class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition close-blocked-modal-btn">
+                        <i class="fas fa-times mr-2"></i>
+                        إغلاق
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('game-container').innerHTML += modalHTML;
+    
+    const modal = document.getElementById('blocked-profile-modal');
+    
+    // تأثير الظهور
+    setTimeout(() => {
+        modal.querySelector('.transform').classList.remove('scale-95');
+    }, 50);
+    
+    // إغلاق النافذة
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'blocked-profile-modal' || e.target.closest('.close-blocked-modal-btn')) {
+            modal.remove();
+        }
+    });
+}    
         
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
 function getFriendButtonHTML(profileUser, selfUser) {
