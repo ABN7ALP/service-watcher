@@ -20,7 +20,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 دقائق صلاحية الـ Cache
  * @returns {Promise<boolean>} - true إذا كان هناك حظر
  */
 async function checkIfBlocked(senderId, receiverId) {
-    console.log(`[DEBUG] checkIfBlocked: ${senderId} -> ${receiverId}`);
+    
     // إذا كان نفس المستخدم
     if (senderId === receiverId) return false;
     
@@ -87,8 +87,7 @@ function clearBlockCache(userId1, userId2) {
     });
     
     console.log(`[BLOCK CACHE] Cleared cache for ${userId1} and ${userId2}`);
-    console.log(`[DEBUG] Result: ${isBlocked ? 'BLOCKED' : 'NOT BLOCKED'}`);
-    return isBlocked;
+    
 }
 
 // 4. تنظيف الـ Cache القديم تلقائياً كل 10 دقائق
