@@ -1,6 +1,26 @@
 const User = require('../models/User');
 
 // =================================================
+// ✅ دالة مساعدة للعثور على socket المستخدم
+// =================================================
+async function findSocketByUserId(io, userId) {
+    try {
+        if (!io) return null;
+        
+        const sockets = await io.fetchSockets();
+        const userSocket = sockets.find(socket => 
+            socket.user && socket.user.id && 
+            socket.user.id.toString() === userId.toString()
+        );
+        
+        return userSocket || null;
+    } catch (error) {
+        console.error('[FIND SOCKET ERROR]:', error);
+        return null;
+    }
+}
+
+// =================================================
 // حظر مستخدم
 // =================================================
 exports.blockUser = async (req, res) => {
@@ -69,14 +89,31 @@ exports.blockUser = async (req, res) => {
             })
         ]);
 
-        // ... الكود الحالي ...
-
-// ✅ إرسال event لتنظيف cache في Socket
+        // ✅ إرسال events لتنظيف cache في Socket
 if (req.app.get('io')) {
-    req.app.get('io').emit('clearBlockCache', {
+    const io = req.app.get('io');
+    
+    // 1. تنظيف cache في الخادم للجميع
+    io.emit('clearBlockCache', {
         userId: blockerId,
-        targetUserId: blockedUserId
+        targetUserId: blockedUserId,
+        action: 'block'
     });
+    
+    // 2. ✅ إرسال تنبيه خاص للمستخدم المحظور ليُنظف cache الخاص به
+    try {
+        const blockedUserSocket = await findSocketByUserId(io, blockedUserId);
+        if (blockedUserSocket) {
+            blockedUserSocket.emit('forceClearBlockCache', {
+                blockedBy: blockerId,
+                action: 'you_were_blocked',
+                timestamp: new Date().toISOString()
+            });
+            console.log(`[BLOCK NOTIFY] Sent forceClearBlockCache to ${blockedUserId}`);
+        }
+    } catch (socketError) {
+        console.error('[BLOCK SOCKET ERROR]:', socketError);
+    }
 }
 
 res.status(200).json({ 
@@ -121,14 +158,31 @@ exports.unblockUser = async (req, res) => {
             $pull: { blockedBy: unblockerId }
         });
 
-        // ... الكود الحالي ...
-
-// ✅ إرسال event لتنظيف cache في Socket
+        // ✅ إرسال events لتنظيف cache في Socket
 if (req.app.get('io')) {
-    req.app.get('io').emit('clearBlockCache', {
+    const io = req.app.get('io');
+    
+    // 1. تنظيف cache في الخادم للجميع
+    io.emit('clearBlockCache', {
         userId: unblockerId,
-        targetUserId: blockedUserId
+        targetUserId: blockedUserId,
+        action: 'unblock'
     });
+    
+    // 2. ✅ إرسال تنبيه خاص للمستخدم المحظور سابقاً
+    try {
+        const unblockedUserSocket = await findSocketByUserId(io, blockedUserId);
+        if (unblockedUserSocket) {
+            unblockedUserSocket.emit('forceClearBlockCache', {
+                unblockedBy: unblockerId,
+                action: 'you_were_unblocked',
+                timestamp: new Date().toISOString()
+            });
+            console.log(`[UNBLOCK NOTIFY] Sent forceClearBlockCache to ${blockedUserId}`);
+        }
+    } catch (socketError) {
+        console.error('[UNBLOCK SOCKET ERROR]:', socketError);
+    }
 }
 
 res.status(200).json({ 
