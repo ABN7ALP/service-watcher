@@ -69,17 +69,7 @@ exports.blockUser = async (req, res) => {
             })
         ]);
 
-            // === ✅ DEBUG: تتبع عملية الحظر ===
-console.log('=== [DEBUG BLOCK CONTROLLER] ===');
-console.log('1. Blocker ID:', blockerId);
-console.log('2. Blocked User ID:', blockedUserId);
-console.log('3. Request User ID:', req.user.id);
-console.log('4. SocketIO available?', !!req.app.get('socketio'));
-console.log('5. Request User Socket ID:', req.user.socketId);
-console.log('=== [END DEBUG] ===');
-// === نهاية DEBUG ===
-
-res.status(200).json({ 
+            res.status(200).json({ 
         status: 'success', 
         message: 'تم حظر المستخدم بنجاح.',
         data: { blockedUserId }
