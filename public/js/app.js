@@ -879,8 +879,7 @@ async function showMiniProfileModal(userId) {
                         
                         <!-- الاسم والـ ID -->
                         <h2 class="text-xl font-bold mt-4">${profileUser.username}</h2>
-                        <div class="text-xs text-gray-400 mt-1 cursor-pointer flex items-center gap-2 copy-id-btn" data-user-id="${profileUser.customId}"> 
-                           id="copy-id-btn" data-user-id="${profileUser.customId}">
+                        <div class="text-xs text-gray-400 mt-1 cursor-pointer flex items-center gap-2 copy-id-btn">
                            <i class="fas fa-id-card"></i>
                            <span>ID: ${profileUser.customId}</span>
                            <i class="fas fa-copy text-xs"></i>
@@ -967,27 +966,48 @@ async function showMiniProfileModal(userId) {
         }, 50);
         
         // --- ✅ event delegation للأزرار داخل النافذة ---
-        modal.addEventListener('click', (e) => {
-            // 1. إغلاق بالنقر على الخلفية
-            if (e.target.id === 'mini-profile-modal') {
-                modal.remove();
-                return;
-            }
-            
-            // 2. زر نسخ الـ ID
-            if (e.target.closest('.copy-id-btn')) {
-                navigator.clipboard.writeText(profileUser.customId)
-                    .then(() => showNotification('تم نسخ الـ ID بنجاح!', 'info'))
-                    .catch(err => console.error('Failed to copy ID:', err));
-                return;
-            }
-            
-            // 3. زر الإغلاق
-            if (e.target.closest('.close-mini-profile-btn')) {
-                modal.remove();
-                return;
-            }
-        });
+modal.addEventListener('click', (e) => {
+    // 1. إغلاق بالنقر على الخلفية
+    if (e.target.id === 'mini-profile-modal') {
+        modal.remove();
+        return;
+    }
+    
+    // 2. زر نسخ الـ ID
+    if (e.target.closest('.copy-id-btn')) {
+        const idToCopy = profileUser.customId;
+        
+        navigator.clipboard.writeText(idToCopy)
+            .then(() => {
+                // إشعار عائم جميل
+                const copyNotification = document.createElement('div');
+                copyNotification.innerHTML = `
+                    <div class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
+                                bg-green-500/90 text-white px-6 py-3 rounded-full shadow-2xl 
+                                flex items-center gap-3 z-[300] animate-pulse">
+                        <i class="fas fa-check-circle text-xl"></i>
+                        <span class="font-bold">تم نسخ الـ ID بنجاح!</span>
+                    </div>
+                `;
+                document.body.appendChild(copyNotification);
+                
+                setTimeout(() => {
+                    copyNotification.remove();
+                }, 2000);
+            })
+            .catch(err => {
+                console.error('Failed to copy ID:', err);
+                showNotification('فشل نسخ الـ ID', 'error');
+            });
+        return;
+    }
+    
+    // 3. زر الإغلاق
+    if (e.target.closest('.close-mini-profile-btn')) {
+        modal.remove();
+        return;
+    }
+});
 
     } catch (error) {
         console.error("Error showing mini profile:", error);
