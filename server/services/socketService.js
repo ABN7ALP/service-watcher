@@ -399,6 +399,75 @@ socket.on('sendMessage', async (messageData) => {
     }
 });
 
+
+// =================================================
+// ✅ مستمعات إضافية لنظام الحظر
+// =================================================
+
+// 1. مستمع لتنظيف Cache عند الحظر
+socket.on('clearBlockCache', ({ userId, targetUserId }) => {
+    try {
+        clearBlockCache(userId, targetUserId);
+        console.log(`[CACHE CLEAR] Socket event for ${userId}<->${targetUserId}`);
+    } catch (error) {
+        console.error('[CACHE CLEAR ERROR]:', error);
+    }
+});
+
+// 2. مستمع لفرض تنظيف Cache (للمستخدم المحظور)
+socket.on('forceClearBlockCache', ({ blockedBy, forceAll = false }) => {
+    try {
+        console.log(`[FORCE CLEAR] User ${socket.user.id} clearing cache for block with ${blockedBy}`);
+        
+        // تنظيف مباشر
+        clearBlockCache(socket.user.id, blockedBy);
+        
+        // إذا طُلب تنظيف الكل
+        if (forceAll) {
+            const userPrefix = `${socket.user.id}-`;
+            for (const key of blockCache.keys()) {
+                if (key.startsWith(userPrefix) || key.includes(`-${socket.user.id}`)) {
+                    blockCache.delete(key);
+                }
+            }
+            console.log(`[FORCE CLEAR ALL] Cleared all cache for user ${socket.user.id}`);
+        }
+        
+    } catch (error) {
+        console.error('[FORCE CLEAR ERROR]:', error);
+    }
+});
+
+// 3. مستمع لتحديث بيانات الحظر
+socket.on('refreshBlockData', async () => {
+    try {
+        const userId = socket.user.id;
+        console.log(`[REFRESH BLOCK] User ${userId} refreshing block data`);
+        
+        // جلب أحدث بيانات الحظر
+        const user = await User.findById(userId).select('blockedUsers blockedBy').lean();
+        
+        if (user) {
+            // تنظيف cache القديم
+            const blockedIds = [...(user.blockedUsers || []), ...(user.blockedBy || [])];
+            
+            for (const blockedId of blockedIds) {
+                clearBlockCache(userId, blockedId.toString());
+            }
+            
+            socket.emit('blockDataRefreshed', {
+                blockedUsers: user.blockedUsers || [],
+                blockedBy: user.blockedBy || []
+            });
+        }
+        
+    } catch (error) {
+        console.error('[REFRESH BLOCK ERROR]:', error);
+    }
+});
+
+
+
 // ✅ مستمع جديد: تنظيف Cache عند الحظر/فك الحظر
 socket.on('clearBlockCache', ({ userId, targetUserId }) => {
     try {
