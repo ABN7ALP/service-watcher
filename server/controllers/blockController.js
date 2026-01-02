@@ -185,3 +185,51 @@ exports.checkBlockStatus = async (req, res) => {
         });
     }
 };
+
+// =================================================
+// جلب حالة الحظر المتبادل بين مستخدمين
+// =================================================
+exports.getMutualBlockStatus = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const targetUserId = req.params.userId;
+
+        const user = await User.findById(userId);
+        const targetUser = await User.findById(targetUserId);
+
+        if (!targetUser) {
+            return res.status(404).json({ 
+                status: 'fail', 
+                message: 'المستخدم غير موجود.' 
+            });
+        }
+
+        const isBlockedByMe = user.blockedUsers.includes(targetUserId);
+        const isBlockedByThem = targetUser.blockedUsers.includes(userId);
+
+        res.status(200).json({ 
+            status: 'success', 
+            data: { 
+                targetUser: {
+                    id: targetUser._id,
+                    username: targetUser.username,
+                    profileImage: targetUser.profileImage,
+                    customId: targetUser.customId
+                },
+                blockStatus: {
+                    iBlockedHim: isBlockedByMe,
+                    heBlockedMe: isBlockedByThem,
+                    canViewProfile: !isBlockedByThem, // يمكنه رؤية البروفايل إذا لم يحظره
+                    canInteract: !isBlockedByMe && !isBlockedByThem
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('[ERROR] in getMutualBlockStatus:', error);
+        res.status(500).json({ 
+            status: 'error', 
+            message: 'حدث خطأ في الخادم أثناء التحقق من حالة الحظر.' 
+        });
+    }
+};
