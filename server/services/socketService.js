@@ -292,6 +292,7 @@ const initializeSocket = (server) => {
         // --- استبدل مستمع 'sendMessage' بهذا الكود التشخيصي ---
 /// --- استبدل مستمع 'sendMessage' بهذا ---
 socket.on('sendMessage', async (messageData) => {
+    console.log(`[DEBUG] sendMessage from: ${socket.user.id}, content: ${messageData.message?.substring(0, 20)}...`);
     try {
         if (!messageData || !messageData.message || messageData.message.trim() === '') return;
         if (messageData.message.length > 300) return;
@@ -340,7 +341,7 @@ socket.on('sendMessage', async (messageData) => {
                 
                 // ✅ التحقق من الحظر باستخدام Cache
                 const isBlocked = await checkIfBlocked(senderId, receiverId);
-                
+                console.log(`[DEBUG] Checking block for ${senderId} to ${receiverId}: ${isBlocked}`);
                 // إذا لم يكن محظوراً، أرسل الرسالة
                 if (!isBlocked) {
                     receiverSocket.emit('newMessage', populatedMessage.toObject());
