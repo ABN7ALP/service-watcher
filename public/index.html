@@ -56,15 +56,23 @@
     </div>
     
     <!-- شريط المستوى -->
-    <div class="mt-4">
-        <div class="flex justify-between items-center text-xs mb-1">
-            <span class="font-bold text-yellow-400">المستوى <span id="userLevel">1</span></span>
-            <span class="text-gray-400"><span id="currentXP">0</span>/<span id="requiredXP">1500</span> XP</span>
-        </div>
-        <div class="w-full bg-gray-700 rounded-full h-2.5">
-            <div id="xp-bar" class="bg-gradient-to-r from-yellow-400 to-orange-500 h-2.5 rounded-full" style="width: 0%"></div>
-        </div>
+    <!-- شريط المستوى -->
+<div class="mt-4">
+    <div class="flex justify-between items-center text-xs mb-1">
+        <span class="font-bold text-yellow-400">المستوى <span id="userLevel">1</span></span>
+        <span class="text-gray-400"><span id="currentXP">0</span>/<span id="requiredXP">1500</span> XP</span>
     </div>
+    <div class="w-full bg-gray-700 rounded-full h-2.5">
+        <div id="xp-bar" class="bg-gradient-to-r from-yellow-400 to-orange-500 h-2.5 rounded-full" style="width: 0%"></div>
+    </div>
+    <!-- زر عرض المميزات -->
+    <div class="text-center mt-2">
+        <button id="show-level-perks" class="text-xs text-purple-400 hover:text-purple-300 transition flex items-center justify-center gap-1 mx-auto">
+            <i class="fas fa-gift"></i>
+            <span>عرض مميزات المستوى</span>
+        </button>
+    </div>
+</div>
     
     <!-- بطاقة الأصدقاء -->
     <div id="friends-card" class="mt-4 p-3 bg-gray-800/50 rounded-xl">
