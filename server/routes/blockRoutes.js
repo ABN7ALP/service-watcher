@@ -16,5 +16,6 @@ router.post('/block/:userId', blockController.blockUser);
 router.post('/unblock/:userId', blockController.unblockUser);
 router.get('/blocked-list', blockController.getBlockedUsers);
 router.get('/check/:userId', blockController.checkBlockStatus);
+router.get('/mutual-status/:userId', blockController.getMutualBlockStatus);
 
 module.exports = router;
