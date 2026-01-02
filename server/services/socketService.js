@@ -5,112 +5,95 @@ const Message = require('../models/Message');
 const Battle = require('../models/Battle');
 const { addExperience } = require('../utils/experienceManager'); // ✅✅✅ أضف هذا السطر هنا
 
-
 // =================================================
-// ✅ نظام CACHE للتحقق السريع من الحظر
+// ✅ نظام CACHE محسّن مع TTL أقصر وتنظيف تلقائي
 // =================================================
 
-const blockCache = new Map(); // تخزين مؤقت: { 'senderId-receiverId': { isBlocked: boolean, timestamp: number } }
-const CACHE_TTL = 5 * 60 * 1000; // 5 دقائق صلاحية الـ Cache
- 
+const blockCache = new Map();
+const CACHE_TTL = 30 * 1000; // ⬅️ 30 ثانية فقط (بدل 5 دقائق)
+
 /**
- * ✅ التحقق من الحظر بين مستخدمين باستخدام Cache
- * @param {string} senderId - ID المرسل
- * @param {string} receiverId - ID المستقبل
- * @returns {Promise<boolean>} - true إذا كان هناك حظر
+ * ✅ التحقق من الحظر مع تنقية البيانات أولاً
  */
 async function checkIfBlocked(senderId, receiverId) {
-    // ✅ أضف هذا السطر للتتبع
-    console.log(`[BLOCK CHECK] ${senderId} -> ${receiverId}`);
-    
-    // إذا كان نفس المستخدم
+    // 1. نفس المستخدم
     if (senderId === receiverId) return false;
     
     const cacheKey = `${senderId}-${receiverId}`;
+    const reverseKey = `${receiverId}-${senderId}`;
     
-    // 1. التحقق من الـ Cache أولاً
+    // 2. التحقق من Cache أولاً
     if (blockCache.has(cacheKey)) {
-        const cachedData = blockCache.get(cacheKey);
-        
-        // إذا لم تنته صلاحية Cache
-        if (Date.now() - cachedData.timestamp < CACHE_TTL) {
-            return cachedData.isBlocked;
-        } else {
-            // تنظيف Cache المنتهي
-            blockCache.delete(cacheKey);
+        const cached = blockCache.get(cacheKey);
+        if (Date.now() - cached.timestamp < CACHE_TTL) {
+            return cached.isBlocked;
         }
+        blockCache.delete(cacheKey);
     }
     
-    // 2. إذا لم يكن في Cache، جلب من قاعدة البيانات
+    // 3. جلب من قاعدة البيانات
     try {
         const [sender, receiver] = await Promise.all([
-            User.findById(senderId).select('blockedUsers').lean(),
-            User.findById(receiverId).select('blockedUsers').lean()
+            User.findById(senderId).select('blockedUsers blockedBy').lean(),
+            User.findById(receiverId).select('blockedUsers blockedBy').lean()
         ]);
         
-        if (!sender || !receiver) {
-            return false; // إذا لم نجد أحد المستخدمين
-        }
+        if (!sender || !receiver) return false;
         
-        // التحقق من الحظر المتبادل
+        // 4. التحقق من الحظر المتبادل
+        const senderBlockedUsers = sender.blockedUsers?.map(id => id.toString()) || [];
+        const receiverBlockedUsers = receiver.blockedUsers?.map(id => id.toString()) || [];
+        
         const isBlocked = 
-            (sender.blockedUsers && sender.blockedUsers.map(id => id.toString()).includes(receiverId)) ||
-            (receiver.blockedUsers && receiver.blockedUsers.map(id => id.toString()).includes(senderId));
+            senderBlockedUsers.includes(receiverId) || 
+            receiverBlockedUsers.includes(senderId);
         
-        // 3. حفظ في Cache
-        blockCache.set(cacheKey, {
-            isBlocked,
-            timestamp: Date.now()
-        });
+        // 5. حفظ في Cache
+        blockCache.set(cacheKey, { isBlocked, timestamp: Date.now() });
+        blockCache.set(reverseKey, { isBlocked, timestamp: Date.now() });
         
-        // ✅ أضف هذا السطر لمعرفة النتيجة
-console.log(`[BLOCK RESULT] ${senderId} -> ${receiverId}: ${isBlocked ? 'BLOCKED ✓' : 'NOT BLOCKED ✗'}`);
-
-return isBlocked;
+        return isBlocked;
         
     } catch (error) {
-        console.error(`[BLOCK CACHE ERROR] checkIfBlocked(${senderId}, ${receiverId}):`, error.message);
-        return false; // في حالة الخطأ، نفترض عدم الحظر
+        console.error('[BLOCK CHECK ERROR]:', error.message);
+        return false;
     }
 }
 
 /**
- * ✅ تنظيف Cache عند الحظر أو فك الحظر
- * @param {string} userId1 - ID المستخدم الأول
- * @param {string} userId2 - ID المستخدم الثاني
+ * ✅ تنظيف Cache شامل
  */
 function clearBlockCache(userId1, userId2) {
-    const keysToDelete = [
-        `${userId1}-${userId2}`,
-        `${userId2}-${userId1}`
-    ];
+    const keys = Array.from(blockCache.keys());
+    let deletedCount = 0;
     
-    keysToDelete.forEach(key => {
-        if (blockCache.has(key)) {
+    keys.forEach(key => {
+        const [id1, id2] = key.split('-');
+        if (id1 === userId1 || id2 === userId1 || id1 === userId2 || id2 === userId2) {
             blockCache.delete(key);
+            deletedCount++;
         }
     });
     
-    console.log(`[BLOCK CACHE] Cleared cache for ${userId1} and ${userId2}`);
-    
+    console.log(`[BLOCK CACHE] Cleared ${deletedCount} entries for ${userId1}/${userId2}`);
 }
 
-// 4. تنظيف الـ Cache القديم تلقائياً كل 10 دقائق
+// تنظيف كل 30 ثانية
 setInterval(() => {
     const now = Date.now();
-    let cleanedCount = 0;
+    let cleaned = 0;
     
     for (const [key, value] of blockCache.entries()) {
         if (now - value.timestamp > CACHE_TTL) {
             blockCache.delete(key);
-            cleanedCount++;
+            cleaned++;
         }
     }
     
-    if (cleanedCount > 0) {
-        console.log(`[BLOCK CACHE] Auto-cleaned ${cleanedCount} expired entries`);
+    if (cleaned > 0) {
+        console.log(`[AUTO CLEAN] Removed ${cleaned} expired cache entries`);
     }
-}, 10 * 60 * 1000); // كل 10 دقائق
+}, 30 * 1000);
 
 
 // --- Middleware للتحقق من توكن المستخدم ---
@@ -328,35 +311,33 @@ socket.on('sendMessage', async (messageData) => {
             });
             
         if (!populatedMessage) return;
-
-        // 3. ✅ الحصول على جميع المستخدمين في الغرفة العامة (بطريقة محسنة)
+     
+        // ✅ التحقق من الـ Room أولاً
         const room = io.sockets.adapter.rooms.get('public-room');
-        if (!room || room.size === 0) return;
+        if (!room) return;
         
         const socketsInRoom = Array.from(room);
         const senderId = socket.user.id.toString();
         
-        // 4. ✅ إرسال الرسالة لكل مستخدم مع التحقق من الحظر
-        const emitPromises = socketsInRoom.map(async (socketId) => {
-            try {
-                const receiverSocket = io.sockets.sockets.get(socketId);
-                
-                if (!receiverSocket || !receiverSocket.user) return;
-                
-                const receiverId = receiverSocket.user.id.toString();
-                
-                // ✅ التحقق من الحظر باستخدام Cache
-                const isBlocked = await checkIfBlocked(senderId, receiverId);
-                
-                // إذا لم يكن محظوراً، أرسل الرسالة
-                // إذا لم يكن محظوراً، أرسل الرسالة
-if (!isBlocked) {
-    receiverSocket.emit('newMessage', populatedMessage.toObject());
-    console.log(`[SENT] Message sent to ${receiverId}`); // ✅ أضف هذا
-} else {
-    // (اختياري) تسجيل للتصحيح
-    console.log(`[BLOCKED] Message blocked to ${receiverId}`); // ✅ أضف هذا
-
+        console.log(`[MESSAGE] ${senderId} to ${socketsInRoom.length} users`);
+        
+        // ✅ إرسال الرسالة مع cache محسّن
+        for (const socketId of socketsInRoom) {
+            const receiverSocket = io.sockets.sockets.get(socketId);
+            
+            if (!receiverSocket?.user) continue;
+            
+            const receiverId = receiverSocket.user.id.toString();
+            
+            // ✅ تحقق فوري (دون await إذا أمكن)
+            const isBlocked = await checkIfBlocked(senderId, receiverId);
+            
+            if (!isBlocked) {
+                receiverSocket.emit('newMessage', populatedMessage.toObject());
+            } else {
+                console.log(`[BLOCKED] ${senderId} -> ${receiverId}`);
+            }
+        }
                 }
             } catch (error) {
                 console.error(`[CHAT EMIT ERROR] for socket ${socketId}:`, error.message);
@@ -464,5 +445,53 @@ socket.on('clearBlockCache', ({ userId, targetUserId }) => {
 
     return io;
 };
+
+// ✅ 1. عند حظر مستخدم
+socket.on('userBlocked', ({ blockedUserId }) => {
+    console.log(`[BLOCK EVENT] User ${socket.user.id} blocked ${blockedUserId}`);
+    
+    // تنظيف cache فوراً
+    clearBlockCache(socket.user.id, blockedUserId);
+    
+    // إعلام المستخدم المحظور
+    const blockedSocket = io.sockets.sockets.get(findSocketIdByUserId(blockedUserId));
+    if (blockedSocket) {
+        blockedSocket.emit('youWereBlocked', { 
+            blockerId: socket.user.id,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+// ✅ 2. عند فك الحظر
+socket.on('userUnblocked', ({ unblockedUserId }) => {
+    console.log(`[UNBLOCK EVENT] User ${socket.user.id} unblocked ${unblockedUserId}`);
+    clearBlockCache(socket.user.id, unblockedUserId);
+});
+
+// ✅ 3. تحديث cache يدوياً
+socket.on('refreshBlockCache', () => {
+    const userId = socket.user.id.toString();
+    console.log(`[CACHE REFRESH] User ${userId} refreshing cache`);
+    
+    // تنظيف كل cache لهذا المستخدم
+    const keys = Array.from(blockCache.keys());
+    keys.forEach(key => {
+        if (key.includes(userId)) {
+            blockCache.delete(key);
+        }
+    });
+});
+
+// ✅ دالة مساعدة للعثور على socket بالـ ID
+function findSocketIdByUserId(userId) {
+    for (const [socketId, socket] of io.sockets.sockets.entries()) {
+        if (socket.user?.id?.toString() === userId.toString()) {
+            return socketId;
+        }
+    }
+    return null;
+}
+
 
 module.exports = initializeSocket;
