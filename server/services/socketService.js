@@ -339,7 +339,7 @@ socket.on('sendMessage', async (messageData) => {
                 console.log(`[BLOCKED] ${senderId} -> ${receiverId}`);
             }
         }
-                }
+                
             } catch (error) {
                 console.error(`[CHAT EMIT ERROR] for socket ${socketId}:`, error.message);
             }
