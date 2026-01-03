@@ -376,9 +376,9 @@ async function refreshUserData() {
 
    // --- ✅ دالة حظر مستخدم ---
 async function blockUser(userId, modalElement) {
-    // ✅ أضف هذا السطر
-    console.log(`[CLIENT] blockUser called for userId: ${userId}`);
     try {
+        console.log(`[CLIENT BLOCK] Blocking user ${userId}`);
+        
         const response = await fetch(`/api/blocks/block/${userId}`, {
             method: 'POST',
             headers: { 
@@ -388,39 +388,37 @@ async function blockUser(userId, modalElement) {
         });
         
         const result = await response.json();
-        
+ 
         if (response.ok) {
-            // إشعار جميل
-            const notification = document.createElement('div');
-            notification.innerHTML = `
-                <div class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
-                            bg-red-500/90 text-white px-6 py-3 rounded-full shadow-2xl 
-                            flex items-center gap-3 z-[300] animate-pulse">
-                    <i class="fas fa-ban text-xl"></i>
-                    <span class="font-bold">تم حظر المستخدم!</span>
-                </div>
-            `;
-            document.body.appendChild(notification);
+            // 1. إشعار جميل
+            showFloatingAlert('تم حظر المستخدم!', 'fa-ban', 'bg-red-500');
             
-            setTimeout(() => {
-                notification.remove();
-            }, 2000);
-            
-            // ✅ تحديث بيانات المستخدم
+            // 2. تحديث البيانات فوراً
             await refreshUserData();
             
-            // ✅ تحديث رقم الأصدقاء مباشرة في الشريط الجانبي
+            // 3. ✅ إرسال socket event لتحديث cache
+            if (socket && socket.connected) {
+                socket.emit('forceClearBlockCache', {
+                    blockedBy: userId,
+                    forceAll: true
+                });
+                
+                socket.emit('refreshBlockData');
+                
+                console.log('[CLIENT] Sent socket events for cache refresh');
+            }
+            
+            // 4. تحديث الأرقام مباشرة
             const user = JSON.parse(localStorage.getItem('user'));
-            if (user && user.friends) {
+            if (user && user.friends !== undefined) {
                 document.getElementById('friends-count').textContent = user.friends.length;
                 
-                // ✅ تحديث قائمة صور الأصدقاء المصغرة (إذا كانت الدالة موجودة)
                 if (typeof updateFriendsAvatars === 'function') {
                     updateFriendsAvatars(user.friends);
                 }
             }
             
-            // ✅ إغلاق النافذة بدون إعادة فتح (حسب الملاحظة 6)
+            // 5. إغلاق النافذة فقط
             if (modalElement) {
                 modalElement.remove();
             }
@@ -438,9 +436,13 @@ async function blockUser(userId, modalElement) {
     }
 }
 
+
+
 // --- ✅ دالة فك حظر مستخدم ---
 async function unblockUser(userId, modalElement) {
     try {
+        console.log(`[CLIENT BLOCK] Blocking user ${userId}`);
+        
         const response = await fetch(`/api/blocks/unblock/${userId}`, {
             method: 'POST',
             headers: { 
@@ -450,30 +452,29 @@ async function unblockUser(userId, modalElement) {
         });
         
         const result = await response.json();
-        
+ 
         if (response.ok) {
-            // إشعار جميل
-            const notification = document.createElement('div');
-            notification.innerHTML = `
-                <div class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
-                            bg-green-500/90 text-white px-6 py-3 rounded-full shadow-2xl 
-                            flex items-center gap-3 z-[300] animate-pulse">
-                    <i class="fas fa-unlock text-xl"></i>
-                    <span class="font-bold">تم رفع الحظر!</span>
-                </div>
-            `;
-            document.body.appendChild(notification);
+            // 1. إشعار جميل
+            showFloatingAlert('تم حظر المستخدم!', 'fa-ban', 'bg-red-500');
             
-            setTimeout(() => {
-                notification.remove();
-            }, 2000);
-            
-            // ✅ تحديث بيانات المستخدم
+            // 2. تحديث البيانات فوراً
             await refreshUserData();
+
+            // 3. ✅ إرسال socket event لتحديث cache
+            if (socket && socket.connected) {
+                socket.emit('forceClearBlockCache', {
+                    blockedBy: userId,
+                    forceAll: true
+                });
+                
+                socket.emit('refreshBlockData');
+                
+                console.log('[CLIENT] Sent socket events for cache refresh');
+            }
             
-            // ✅ تحديث رقم الأصدقاء في الشريط الجانبي
+            // 4. تحديث الأرقام مباشرة
             const user = JSON.parse(localStorage.getItem('user'));
-            if (user && user.friends) {
+            if (user && user.friends !== undefined) {
                 document.getElementById('friends-count').textContent = user.friends.length;
                 
                 if (typeof updateFriendsAvatars === 'function') {
@@ -481,7 +482,7 @@ async function unblockUser(userId, modalElement) {
                 }
             }
             
-            // ✅ إغلاق النافذة بدون إعادة فتح
+            // 5. إغلاق النافذة فقط
             if (modalElement) {
                 modalElement.remove();
             }
@@ -931,7 +932,44 @@ socket.on('levelUp', ({ newLevel }) => {
         setTimeout(() => profileImage.classList.remove('animate-bounce'), 2000);
     }
 });
- 
+
+
+        
+ // =================================================
+// ✅ مستمعات Socket لنظام الحظر
+// =================================================
+
+// 1. عند تلقي تحديث لحالة الحظر
+socket.on('refreshBlockStatus', (data) => {
+    console.log('[SOCKET] Block status update:', data);
+    
+    if (data.action === 'blocked_by_user') {
+        showNotification(`لقد حظرك ${data.blockerUsername}`, 'error');
+        
+        // إعادة تحميل قائمة الأصدقاء والطلبات
+        refreshUserData();
+    }
+});
+
+// 2. عند طلب تحديث بيانات الحظر
+socket.on('blockDataRefreshed', (data) => {
+    console.log('[SOCKET] Block data refreshed:', data);
+    
+    // تحديث localStorage
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (user) {
+        user.blockedUsers = data.blockedUsers;
+        user.blockedBy = data.blockedBy;
+        localStorage.setItem('user', JSON.stringify(user));
+    }
+});
+
+// 3. مستمع عام لتنظيف cache
+socket.on('clearBlockCache', (data) => {
+    console.log('[SOCKET] Clearing block cache for:', data);
+    // لا تحتاج لعمل شيء هنا، الخادم يعتني بالcache
+});
+        
 
     // --- أضف هذا الكود في قسم أحداث السوكيت العام ---
 
