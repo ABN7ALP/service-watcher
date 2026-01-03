@@ -374,6 +374,37 @@ async function refreshUserData() {
     }
 }
 
+// 📍 أضف هذه الدالة بعد async function refreshUserData() {
+
+function optimisticallyRemoveFriend(friendId) {
+    console.log(`[OPTIMISTIC] Removing friend ${friendId} from UI immediately`);
+    
+    // 1. تحديث localStorage
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (user && user.friends) {
+        // تحويل كل الأصدقاء إلى string للمقارنة
+        user.friends = user.friends.filter(friend => {
+            const friendIdStr = typeof friend === 'object' ? friend._id.toString() : friend.toString();
+            return friendIdStr !== friendId.toString();
+        });
+        localStorage.setItem('user', JSON.stringify(user));
+    }
+    
+    // 2. تحديث العدد في الشريط الجانبي
+    const friendsCountElement = document.getElementById('friends-count');
+    if (friendsCountElement && user && user.friends !== undefined) {
+        friendsCountElement.textContent = user.friends.length;
+    }
+    
+    // 3. تحديث صور الأصدقاء المصغرة
+    if (typeof updateFriendsAvatars === 'function' && user && user.friends) {
+        updateFriendsAvatars(user.friends);
+    }
+    
+    return user;
+}
+
+        
    // --- ✅ دالة حظر مستخدم ---
 async function blockUser(userId, modalElement) {
     try {
@@ -751,12 +782,26 @@ document.body.addEventListener('click', async (e) => {
                     color = 'bg-blue-500';
                     break;
                 case 'remove-friend':
-                    url = `/api/friends/remove-friend/${userId}`;
-                    method = 'DELETE';
-                    successMessage = 'تم حذف الصديق';
-                    icon = 'fa-trash';
-                    color = 'bg-red-500';
-                    break;
+                    optimisticallyRemoveFriend(userId);
+    
+                     if (socket && socket.connected) {
+                     socket.emit('removeFriendRequest', {
+                     friendId: userId,
+                     timestamp: new Date().toISOString()
+                   });
+                 }
+    
+                    showFloatingAlert('تم حذف الصديق', 'fa-trash', 'bg-red-500');
+    
+                    setTimeout(() => {
+                    if (modalElement) modalElement.remove();
+                   }, 500);
+    
+                   setTimeout(async () => {
+                   await refreshUserData();
+                   }, 1000);
+    
+                    return;
                 default:
                     return;
             }
