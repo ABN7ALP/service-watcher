@@ -865,47 +865,65 @@ if (action === 'remove-friend' || action === 'cancel-request') {
 }
 return; // خروج من event handler
 
-    // --- الجزء الثالث: التعامل مع أزرار نوافذ الأصدقاء ---
-    const friendListActionBtn = e.target.closest('.friend-action-btn');
-    if (friendListActionBtn) {
-        // ... (هذا الجزء يبقى كما هو بالضبط من الكود السابق)
-        const action = friendListActionBtn.dataset.action;
-        const userId = friendListActionBtn.dataset.userId;
-        const card = friendListActionBtn.closest('.flex.items-center.justify-between');
+    // --- الجزء الثالث: التعامل مع أزرار نوافذ الأصدقاء ---  
+const friendListActionBtn = e.target.closest('.friend-action-btn');  
+if (friendListActionBtn) {  
+    const action = friendListActionBtn.dataset.action;  
+    const userId = friendListActionBtn.dataset.userId;  
+    const card = friendListActionBtn.closest('.flex.items-center.justify-between');  
 
-        const performListAction = async () => {
-            let url = '';
-            let method = 'POST';
+    const performListAction = async () => {  
+        let url = '';  
+        let method = 'POST';  
 
-            switch (action) {
-                case 'accept-request': url = `/api/friends/accept-request/${userId}`; break;
-                case 'reject-request': url = `/api/friends/reject-request/${userId}`; break;
-                case 'remove-friend': url = `/api/friends/remove-friend/${userId}`; method = 'DELETE'; break;
-                default: return;
-            }
+        switch (action) {  
+            case 'accept-request': 
+                url = `/api/friends/accept-request/${userId}`; 
+                break;  
+            case 'reject-request': 
+                url = `/api/friends/reject-request/${userId}`; 
+                break;  
+            case 'remove-friend': 
+                url = `/api/friends/remove-friend/${userId}`; 
+                method = 'DELETE'; 
+                break;  
+            default: 
+                return;  
+        }  
 
-            if (card) card.style.display = 'none';
+        if (card) card.style.display = 'none';  
 
-            try {
-                const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
-                if (!response.ok) throw new Error('Action failed');
-                showNotification('تم تنفيذ الإجراء بنجاح', 'success');
-                await refreshUserData();  // تحديث البيانات بعد الحذف
-            } catch (error) {
-                if (card) card.style.display = 'flex';
-                showNotification('فشل تنفيذ الإجراء', 'error');
-            }
-        };
+        try {  
+            const response = await fetch(url, { 
+                method, 
+                headers: { 'Authorization': `Bearer ${token}` } 
+            });  
+            
+            if (!response.ok) throw new Error('Action failed');  
+            
+            showNotification('تم تنفيذ الإجراء بنجاح', 'success');  
+            await refreshUserData();  // تحديث البيانات بعد الحذف  
+            
+        } catch (error) {  
+            if (card) card.style.display = 'flex';  
+            showNotification('فشل تنفيذ الإجراء', 'error');  
+        }  
+    };  
 
-        if (action === 'remove-friend' || action === 'cancel-request') {
-    const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من إلغاء طلب الصداقة؟';
-    showConfirmationModal(message, () => performMiniProfileAction(modalElement)); // ⭐ أضف modalElement
-} else {
-    performMiniProfileAction(modalElement); // ⭐ أضف modalElement
-}
-        return;
+    // ⭐⭐ التصحيح هنا ⭐⭐
+    if (action === 'remove-friend' || action === 'reject-request') {
+        const message = action === 'remove-friend' 
+            ? 'هل أنت متأكد من حذف هذا الصديق؟' 
+            : 'هل أنت متأكد من رفض هذا الطلب؟';
+        
+        showConfirmationModal(message, performListAction); // ✅ استدعاء الدالة الصحيحة
+        
+    } else {
+        performListAction(); // ✅ استدعاء الدالة الصحيحة
     }
-});
+    
+    return; // خروج من event handler
+}
 
 
      
