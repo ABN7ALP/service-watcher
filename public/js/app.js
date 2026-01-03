@@ -1657,18 +1657,52 @@ function displayMessage(message) {
 
     socket.on('newMessage', displayMessage);
 
-    async function loadChatHistory() {
-        try {
-            const response = await fetch('/api/messages/public-room', { headers: { 'Authorization': `Bearer ${token}` } });
-            const result = await response.json();
-            if (response.ok && result.status === 'success') {
-                chatMessages.innerHTML = '';
-                result.data.messages.forEach(displayMessage);
-            }
-        } catch (error) {
-            console.error('Failed to load chat history:', error);
+    // 📍 استبدل دالة loadChatHistory بالكامل بهذا الكود
+async function loadChatHistory() {
+    try {
+        // 1️⃣ جلب بيانات المستخدم الحالي من localStorage
+        const user = JSON.parse(localStorage.getItem('user'));
+        if (!user || !user.blockedUsers) {
+            console.log('[CHAT] No user data or blocked list found');
+            return;
         }
+        
+        // 2️⃣ جلب الرسائل من الخادم
+        const response = await fetch('/api/messages/public-room', { 
+            headers: { 'Authorization': `Bearer ${token}` } 
+        });
+        const result = await response.json();
+        
+        if (response.ok && result.status === 'success') {
+            // 3️⃣ تنظيف الشات أولاً
+            chatMessages.innerHTML = '';
+            
+            // 4️⃣ فلترة إضافية على العميل (للأمان الزائد)
+            const blockedUsersIds = user.blockedUsers.map(id => 
+                typeof id === 'object' ? id._id.toString() : id.toString()
+            );
+            
+            console.log(`[CHAT FILTER] Blocked IDs:`, blockedUsersIds);
+            
+            // 5️⃣ عرض الرسائل المفلترة فقط
+            result.data.messages.forEach(message => {
+                // التحقق إذا كان المرسل محظوراً
+                const senderId = message.sender._id.toString();
+                const isBlocked = blockedUsersIds.includes(senderId);
+                
+                if (!isBlocked) {
+                    displayMessage(message);
+                } else {
+                    console.log(`[CHAT FILTER] Client filtered message from: ${message.sender.username}`);
+                }
+            });
+            
+            console.log(`[CHAT] Loaded ${result.data.messages.length} messages, displayed after client filter`);
+        }
+    } catch (error) {
+        console.error('Failed to load chat history:', error);
     }
+}
     loadChatHistory();
 
 
