@@ -69,11 +69,65 @@ exports.blockUser = async (req, res) => {
             })
         ]);
 
-            res.status(200).json({ 
-        status: 'success', 
-        message: 'تم حظر المستخدم بنجاح.',
-        data: { blockedUserId }
+            // =================================================
+// ✅ إرسال إشعارات Socket للحظر
+// =================================================
+if (req.app.get('io')) {
+    const io = req.app.get('io');
+    
+    // 1. تنظيف cache للجميع
+    io.emit('clearBlockCache', {
+        userId: blockerId,
+        targetUserId: blockedUserId
     });
+    
+    // 2. إرسال إشعار قوي للمستخدم المحظور
+    try {
+        // البحث عن socket المستخدم المحظور
+        const sockets = await io.fetchSockets();
+        const blockedUserSocket = sockets.find(s => 
+            s.user && s.user.id && s.user.id.toString() === blockedUserId.toString()
+        );
+        
+        if (blockedUserSocket) {
+            blockedUserSocket.emit('forceClearBlockCache', {
+                blockedBy: blockerId,
+                forceAll: true, // ⬅️ تنظيف كل cache الخاص به
+                timestamp: new Date().toISOString()
+            });
+            
+            // أيضاً إرسال تحديث لبيانات الحظر
+            blockedUserSocket.emit('refreshBlockStatus', {
+                action: 'blocked_by_user',
+                blockerId: blockerId,
+                blockerUsername: blocker.username
+            });
+            
+            console.log(`[BLOCK NOTIFICATION] Sent to ${blockedUserId} (socket: ${blockedUserSocket.id})`);
+        }
+    } catch (socketError) {
+        console.error('[BLOCK SOCKET ERROR]:', socketError);
+    }
+    
+    // 3. إرسال للمستخدم الحالي أيضاً
+    const blockerSocket = sockets.find(s => 
+        s.user && s.user.id && s.user.id.toString() === blockerId.toString()
+    );
+    
+    if (blockerSocket) {
+        blockerSocket.emit('refreshBlockStatus', {
+            action: 'you_blocked_user',
+            blockedUserId: blockedUserId,
+            blockedUsername: blockedUser.username
+        });
+    }
+}
+
+res.status(200).json({ 
+    status: 'success', 
+    message: 'تم حظر المستخدم بنجاح.',
+    data: { blockedUserId }
+});
 
     // --- ✅ إرسال حدث Socket لتحديث Cache الحظر ---
     try {
@@ -141,6 +195,60 @@ exports.unblockUser = async (req, res) => {
         await User.findByIdAndUpdate(blockedUserId, {
             $pull: { blockedBy: unblockerId }
         });
+
+        // =================================================
+// ✅ إرسال إشعارات Socket للحظر
+// =================================================
+if (req.app.get('io')) {
+    const io = req.app.get('io');
+    
+    // 1. تنظيف cache للجميع
+    io.emit('clearBlockCache', {
+        userId: blockerId,
+        targetUserId: blockedUserId
+    });
+    
+    // 2. إرسال إشعار قوي للمستخدم المحظور
+    try {
+        // البحث عن socket المستخدم المحظور
+        const sockets = await io.fetchSockets();
+        const blockedUserSocket = sockets.find(s => 
+            s.user && s.user.id && s.user.id.toString() === blockedUserId.toString()
+        );
+        
+        if (blockedUserSocket) {
+            blockedUserSocket.emit('forceClearBlockCache', {
+                blockedBy: blockerId,
+                forceAll: true, // ⬅️ تنظيف كل cache الخاص به
+                timestamp: new Date().toISOString()
+            });
+            
+            // أيضاً إرسال تحديث لبيانات الحظر
+            blockedUserSocket.emit('refreshBlockStatus', {
+                action: 'blocked_by_user',
+                blockerId: blockerId,
+                blockerUsername: blocker.username
+            });
+            
+            console.log(`[BLOCK NOTIFICATION] Sent to ${blockedUserId} (socket: ${blockedUserSocket.id})`);
+        }
+    } catch (socketError) {
+        console.error('[BLOCK SOCKET ERROR]:', socketError);
+    }
+    
+    // 3. إرسال للمستخدم الحالي أيضاً
+    const blockerSocket = sockets.find(s => 
+        s.user && s.user.id && s.user.id.toString() === blockerId.toString()
+    );
+    
+    if (blockerSocket) {
+        blockerSocket.emit('refreshBlockStatus', {
+            action: 'you_blocked_user',
+            blockedUserId: blockedUserId,
+            blockedUsername: blockedUser.username
+        });
+    }
+}
 
         res.status(200).json({ 
             status: 'success', 
