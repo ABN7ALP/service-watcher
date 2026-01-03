@@ -391,7 +391,7 @@ async function blockUser(userId, modalElement) {
  
         if (response.ok) {
             // 1. إشعار جميل
-            showFloatingAlert('تم حظر المستخدم!', 'fa-ban', 'bg-red-500');
+            showFloatingAlert('تم الحظر', 'fa-ban', 'bg-red-500');
             
             // 2. تحديث البيانات فوراً
             await refreshUserData();
@@ -455,7 +455,7 @@ async function unblockUser(userId, modalElement) {
  
         if (response.ok) {
             // 1. إشعار جميل
-            showFloatingAlert('تم حظر المستخدم!', 'fa-ban', 'bg-red-500');
+            showFloatingAlert('تم رفع حظر', 'fa-ban', 'bg-red-500');
             
             // 2. تحديث البيانات فوراً
             await refreshUserData();
@@ -961,22 +961,41 @@ socket.on('forceRefreshUserData', async (data) => {
     
     // تأخير بسيط لضمان تحديث الخادم أولاً
     setTimeout(async () => {
-        const success = await refreshUserData();
-        if (success) {
-            console.log('[SOCKET] User data refreshed after block');
+        try {
+            // 1️⃣ تحديث البيانات من الخادم
+            const success = await refreshUserData();
             
-            // تحديث واجهة المستخدم
-            const user = JSON.parse(localStorage.getItem('user'));
-            if (user && user.friends) {
-                document.getElementById('friends-count').textContent = user.friends.length;
+            if (success) {
+                console.log('[SOCKET] User data refreshed after block');
                 
-                // تحديث صور الأصدقاء المصغرة
-                if (typeof updateFriendsAvatars === 'function') {
-                    updateFriendsAvatars(user.friends);
+                // 2️⃣ جلب البيانات المحدثة مباشرة
+                const user = JSON.parse(localStorage.getItem('user'));
+                if (user && user.friends !== undefined) {
+                    
+                    // ⭐ تحديث مباشر 1: عدد الأصدقاء في الشريط الجانبي
+                    const friendsCountElement = document.getElementById('friends-count');
+                    if (friendsCountElement) {
+                        friendsCountElement.textContent = user.friends.length;
+                        console.log(`[SOCKET] Updated friends count to: ${user.friends.length}`);
+                    }
+                    
+                    // ⭐ تحديث مباشر 2: صور الأصدقاء المصغرة
+                    if (typeof updateFriendsAvatars === 'function') {
+                        updateFriendsAvatars(user.friends);
+                    }
+                    
+                    // ⭐ تحديث مباشر 3: إذا كان هناك نافذة أصدقاء مفتوحة
+                    const friendsModal = document.getElementById('friends-list-modal');
+                    if (friendsModal) {
+                        // أعد تحميل نافذة الأصدقاء
+                        showFriendsListModal();
+                    }
                 }
             }
+        } catch (error) {
+            console.error('[SOCKET] Error in forceRefreshUserData:', error);
         }
-    }, 1000); // انتظر 1 ثانية
+    }, 800); // انتظر 0.8 ثانية (أقل)
 });
 
 // 3️⃣ الاحتفاظ بالمستمع القديم للتوافق
