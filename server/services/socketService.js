@@ -278,122 +278,108 @@ const initializeSocket = (server) => {
         socket.join('public-room');
 
         // --- استبدل مستمع 'sendMessage' بهذا الكود التشخيصي ---
-/// --- استبدل مستمع 'sendMessage' بهذا ---
+/// ✅ مستمع sendMessage (نظيف + شغال)
 socket.on('sendMessage', async (messageData) => {
-    // ✅ أضف هذا السطر
-    console.log(`[MESSAGE] User ${socket.user.id} sending: "${messageData.message?.substring(0, 30)}..."`);
-    
+    console.log(
+        `[MESSAGE] User ${socket.user.id} sending: "${messageData?.message?.substring(0, 30) || ''}"`
+    );
+
     try {
-        if (!messageData || !messageData.message || messageData.message.trim() === '') return;
+        if (!messageData || !messageData.message) return;
+        if (messageData.message.trim() === '') return;
         if (messageData.message.length > 300) return;
 
-        // 1. إنشاء كائن الرسالة الجديدة
+        // 1️⃣ إنشاء الرسالة
         const newMessageData = {
             content: messageData.message,
             sender: socket.user.id,
         };
-        
-        // إضافة الرد إذا كان موجودًا
+
         if (messageData.replyTo) {
             newMessageData.replyTo = messageData.replyTo;
         }
 
         const newMessage = await Message.create(newMessageData);
 
-        // 2. جلب الرسالة مع كل البيانات اللازمة
+        // 2️⃣ جلب الرسالة مع populate
         const populatedMessage = await Message.findById(newMessage._id)
             .populate('sender', 'username profileImage')
             .populate({
                 path: 'replyTo',
                 populate: {
                     path: 'sender',
-                    select: 'username'
-                }
+                    select: 'username',
+                },
             });
-            
+
         if (!populatedMessage) return;
-     
-        // ✅ التحقق من الـ Room أولاً
+
+        // 3️⃣ جلب الغرفة
         const room = io.sockets.adapter.rooms.get('public-room');
         if (!room) return;
-        
+
         const socketsInRoom = Array.from(room);
         const senderId = socket.user.id.toString();
-        
-        console.log(`[MESSAGE] ${senderId} to ${socketsInRoom.length} users`);
-        
-        // ✅ إرسال الرسالة مع cache محسّن
+
+        console.log(`[MESSAGE] ${senderId} -> ${socketsInRoom.length} users`);
+
+        // 4️⃣ إرسال الرسالة مع التحقق من الحظر
         for (const socketId of socketsInRoom) {
             const receiverSocket = io.sockets.sockets.get(socketId);
-            
-            if (!receiverSocket?.user) continue;
-            
+            if (!receiverSocket || !receiverSocket.user) continue;
+
             const receiverId = receiverSocket.user.id.toString();
-            
-            // ✅ تحقق فوري (دون await إذا أمكن)
             const isBlocked = await checkIfBlocked(senderId, receiverId);
-            
+
             if (!isBlocked) {
-                receiverSocket.emit('newMessage', populatedMessage.toObject());
-            } else {
-                console.log(`[BLOCKED] ${senderId} -> ${receiverId}`);
+                receiverSocket.emit(
+                    'newMessage',
+                    populatedMessage.toObject()
+                );
             }
         }
-                
-            } catch (error) {
-                console.error(`[CHAT EMIT ERROR] for socket ${socketId}:`, error.message);
-            }
-        });
-        
-        // انتظار إكتمام إرسال الرسائل
-        await Promise.all(emitPromises);
 
-        /* ===== 5. تنظيف الرسائل القديمة (مع التحقق من الحظر) ===== */
-        try {
-            const fiftiethMessage = await Message
-                .findOne()
-                .sort({ createdAt: -1 })
-                .skip(50);
+        // 5️⃣ تنظيف الرسائل القديمة
+        const fiftiethMessage = await Message.findOne()
+            .sort({ createdAt: -1 })
+            .skip(50);
 
-            if (fiftiethMessage) {
-                const messagesToDelete = await Message.find({
-                    createdAt: { $lte: fiftiethMessage.createdAt }
-                }).select('_id');
+        if (fiftiethMessage) {
+            const messagesToDelete = await Message.find({
+                createdAt: { $lte: fiftiethMessage.createdAt },
+            }).select('_id');
 
-                const idsToDelete = messagesToDelete.map(m => m._id.toString());
+            const idsToDelete = messagesToDelete.map(m => m._id.toString());
 
-                if (idsToDelete.length > 0) {
-                    const result = await Message.deleteMany({
-                        _id: { $in: idsToDelete }
-                    });
+            if (idsToDelete.length > 0) {
+                const result = await Message.deleteMany({
+                    _id: { $in: idsToDelete },
+                });
 
-                    console.log(`[CHAT CLEANUP] Deleted ${result.deletedCount} messages`);
-                    
-                    // ✅ إعلام المستخدمين غير المحظورين فقط
-                    const cleanupPromises = socketsInRoom.map(async (socketId) => {
-                        try {
-                            const receiverSocket = io.sockets.sockets.get(socketId);
-                            
-                            if (!receiverSocket || !receiverSocket.user) return;
-                            
-                            const receiverId = receiverSocket.user.id.toString();
-                            const isBlocked = await checkIfBlocked(senderId, receiverId);
-                            
-                            if (!isBlocked) {
-                                receiverSocket.emit('chatCleanup', { idsToDelete });
-                            }
-                        } catch (error) {
-                            console.error(`[CLEANUP EMIT ERROR] for socket ${socketId}:`, error.message);
-                        }
-                    });
-                    
-                    await Promise.all(cleanupPromises);
+                console.log(
+                    `[CHAT CLEANUP] Deleted ${result.deletedCount} messages`
+                );
+
+                // إعلام المستخدمين
+                for (const socketId of socketsInRoom) {
+                    const receiverSocket =
+                        io.sockets.sockets.get(socketId);
+
+                    if (!receiverSocket || !receiverSocket.user) continue;
+
+                    const receiverId =
+                        receiverSocket.user.id.toString();
+                    const isBlocked = await checkIfBlocked(
+                        senderId,
+                        receiverId
+                    );
+
+                    if (!isBlocked) {
+                        receiverSocket.emit('chatCleanup', { idsToDelete });
+                    }
                 }
             }
-        } catch (cleanupError) {
-            console.error('[CHAT CLEANUP ERROR]', cleanupError);
         }
-
     } catch (error) {
         console.error('[CHAT SERVER ERROR] sendMessage:', error);
     }
