@@ -402,14 +402,27 @@ exports.removeFriend = async (req, res) => {
 
         console.log(`[FRIEND] Removing friend: ${userId} removing ${friendId}`);
 
-        // 1. التحقق من أنهم أصدقاء بالفعل
-        const user = await User.findById(userId);
-        if (!user.friends.includes(friendId)) {
-            return res.status(400).json({ 
-                status: 'fail', 
-                message: 'هذا المستخدم ليس في قائمة أصدقائك.' 
-            });
-        }
+        // 1. التحقق من أنهم أصدقاء بالفعل (مع تجنب الخطأ المتكرر)
+const user = await User.findById(userId);
+
+// تحقق أولي فقط - إذا كانوا أصدقاء سابقاً
+const wereFriends = user.friends.includes(friendId);
+
+if (!wereFriends) {
+    // تحقق مرة أخرى من الجانب الآخر (للتأكد)
+    const friendUser = await User.findById(friendId);
+    const wereFriendsFromOtherSide = friendUser.friends.includes(userId);
+    
+    if (!wereFriendsFromOtherSide) {
+        return res.status(400).json({ 
+            status: 'fail', 
+            message: 'هذا المستخدم ليس في قائمة أصدقائك.' 
+        });
+    } else {
+        // حالة خاصة: كانوا أصدقاء من طرف واحد فقط
+        console.log(`[FRIEND REMOVE] One-sided friendship detected: ${userId} -> ${friendId}`);
+    }
+}
 
         // 2. إزالة الصداقة من كلا الطرفين
         await Promise.all([
