@@ -754,20 +754,23 @@ document.body.addEventListener('click', async (e) => {
         const action = miniProfileActionBtn.dataset.action;
         const userId = miniProfileActionBtn.dataset.userId;
         
-        const performMiniProfileAction = async (modalElement) => { // ⭐ أضف modalElement هنا
+        // 📍 تعديل تعريف الدالة
+const performMiniProfileAction = async (modalElement, action, userId, miniProfileActionBtn) => {
     let url = '';
     let method = 'POST';
     let successMessage = '';
     let icon = 'fa-check-circle';
     let color = 'bg-green-500';
 
+    // ✅ الآن miniProfileActionBtn معرف كمعامل
     const originalButtonHTML = miniProfileActionBtn.innerHTML;
     miniProfileActionBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
     miniProfileActionBtn.disabled = true;
 
+    // ✅ الآن action معرف كمعامل
     switch (action) {
         case 'send-request':
-            url = `/api/friends/send-request/${userId}`;
+            url = `/api/friends/send-request/${userId}`; // ✅ userId معرف
             successMessage = 'تم إرسال الطلب';
             break;
         case 'accept-request':
@@ -795,7 +798,7 @@ document.body.addEventListener('click', async (e) => {
             showFloatingAlert('تم حذف الصديق', 'fa-trash', 'bg-red-500');
             
             setTimeout(() => {
-                if (modalElement) { // ✅ الآن modalElement معرف
+                if (modalElement) {
                     modalElement.remove();
                 }
             }, 500);
@@ -804,28 +807,34 @@ document.body.addEventListener('click', async (e) => {
                 await refreshUserData();
             }, 1000);
             
-            // ⭐ إعادة تعيين الزر
+            // إعادة تعيين الزر
             miniProfileActionBtn.innerHTML = originalButtonHTML;
             miniProfileActionBtn.disabled = false;
             
             return; // خروج مبكر
             
         default:
-            // ⭐ إعادة تعيين الزر في حالة أخرى
+            // إعادة تعيين الزر في حالة أخرى
             miniProfileActionBtn.innerHTML = originalButtonHTML;
             miniProfileActionBtn.disabled = false;
             return;
     }
 
-    // ⭐ هذا الجزء للـ actions الأخرى (send-request, accept-request, etc.)
+    // ⭐ هذا الجزء للـ actions الأخرى
     try {
-        const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
+        const response = await fetch(url, { 
+            method, 
+            headers: { 'Authorization': `Bearer ${token}` } 
+        });
+        
         if (!response.ok) {
             const result = await response.json();
             throw new Error(result.message || 'Action failed');
         }
+        
         showFloatingAlert(successMessage, icon, color);
         const refreshSuccess = await refreshUserData();
+        
         if (refreshSuccess) {
             showMiniProfileModal(userId);
         }
@@ -837,14 +846,24 @@ document.body.addEventListener('click', async (e) => {
     }
 };
 
-        if (action === 'remove-friend' || action === 'cancel-request') {
-            const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من إلغاء طلب الصداقة؟';
-            showConfirmationModal(message, performMiniProfileAction);
-        } else {
-            performMiniProfileAction();
-        }
-        return;
-    }
+        // 📍 قبل استدعاء الدالة، نعرّف modalElement
+const modalElement = document.getElementById('mini-profile-modal');
+
+if (action === 'remove-friend' || action === 'cancel-request') {
+    const message = action === 'remove-friend' 
+        ? 'هل أنت متأكد من حذف هذا الصديق؟' 
+        : 'هل أنت متأكد من إلغاء طلب الصداقة؟';
+    
+    showConfirmationModal(message, () => {
+        // ✅ تمرير جميع المعاملات المطلوبة
+        performMiniProfileAction(modalElement, action, userId, miniProfileActionBtn);
+    });
+    
+} else {
+    // ✅ تمرير جميع المعاملات المطلوبة
+    performMiniProfileAction(modalElement, action, userId, miniProfileActionBtn);
+}
+return; // خروج من event handler
 
     // --- الجزء الثالث: التعامل مع أزرار نوافذ الأصدقاء ---
     const friendListActionBtn = e.target.closest('.friend-action-btn');
