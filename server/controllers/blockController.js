@@ -129,36 +129,70 @@ res.status(200).json({
     data: { blockedUserId }
 });
 
-    // --- ✅ إرسال حدث Socket لتحديث Cache الحظر ---
-    try {
-        const io = req.app.get('socketio');
-        if (io) {
-            // إرسال للمستخدم الذي قام بالحظر
-            const blockerSocket = io.sockets.sockets.get(req.user.socketId);
-            if (blockerSocket) {
-                blockerSocket.emit('blockStatusChanged', {
-                    blockerId: blockerId,
-                    blockedId: blockedUserId,
-                    isBlocked: true
-                });
-            }
-            
-            // إرسال للمستخدم المحظور (إذا كان متصلاً)
-            io.sockets.sockets.forEach((sock) => {
-                if (sock.user && sock.user.id.toString() === blockedUserId) {
-                    sock.emit('blockStatusChanged', {
-                        blockerId: blockerId,
-                        blockedId: blockedUserId,
-                        isBlocked: true
-                    });
-                }
+    // --- ✅ إرسال حدث Socket لتحديث كلا الطرفين ---
+try {
+    const io = req.app.get('socketio');
+    if (io) {
+        // 1️⃣ إعداد بيانات الحدث
+        const blockEventData = {
+            action: 'user_blocked',
+            blockerId: blockerId,
+            blockedId: blockedUserId,
+            blockerUsername: blocker.username,
+            blockedUsername: blockedUser.username,
+            timestamp: new Date().toISOString()
+        };
+        
+        // 2️⃣ إرسال للمستخدم الحالي (الحاسر)
+        const blockerSocket = io.sockets.sockets.get(req.user.socketId);
+        if (blockerSocket) {
+            blockerSocket.emit('friendshipUpdate', {
+                ...blockEventData,
+                forUser: 'blocker',
+                message: `لقد حظرت ${blockedUser.username}`
             });
             
-            console.log(`[BLOCK CONTROLLER] Sent block event to both users`);
+            // ✅ إرسال حدث خاص لتحديث البيانات
+            blockerSocket.emit('forceRefreshUserData', {
+                reason: 'you_blocked_user',
+                userId: blockedUserId
+            });
         }
-    } catch (socketError) {
-        console.error('[BLOCK CONTROLLER] Socket emit error:', socketError);
+        
+        // 3️⃣ إرسال للمستخدم المحظور (إذا كان متصلاً)
+        const sockets = await io.fetchSockets();
+        const blockedUserSocket = sockets.find(sock => 
+            sock.user && sock.user.id && sock.user.id.toString() === blockedUserId
+        );
+        
+        if (blockedUserSocket) {
+            blockedUserSocket.emit('friendshipUpdate', {
+                ...blockEventData,
+                forUser: 'blocked',
+                message: `${blocker.username} حظرك`
+            });
+            
+            // ✅ إرسال حدث خاص لتحديث البيانات
+            blockedUserSocket.emit('forceRefreshUserData', {
+                reason: 'you_were_blocked',
+                userId: blockerId
+            });
+            
+            console.log(`[BLOCK SOCKET] Sent update to blocked user: ${blockedUserId}`);
+        }
+        
+        // 4️⃣ تنظيف Cache للجميع
+        io.emit('clearBlockCache', {
+            userId: blockerId,
+            targetUserId: blockedUserId
+        });
+        
+        console.log(`[BLOCK CONTROLLER] Sent updates to both users successfully`);
+        
     }
+} catch (socketError) {
+    console.error('[BLOCK CONTROLLER] Socket emit error:', socketError);
+}
 
 } catch (error) {
         console.error('[ERROR] in blockUser:', error);
