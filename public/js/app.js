@@ -754,76 +754,88 @@ document.body.addEventListener('click', async (e) => {
         const action = miniProfileActionBtn.dataset.action;
         const userId = miniProfileActionBtn.dataset.userId;
         
-        const performMiniProfileAction = async () => {
-            let url = '';
-            let method = 'POST';
-            let successMessage = '';
-            let icon = 'fa-check-circle';
-            let color = 'bg-green-500';
+        const performMiniProfileAction = async (modalElement) => { // ⭐ أضف modalElement هنا
+    let url = '';
+    let method = 'POST';
+    let successMessage = '';
+    let icon = 'fa-check-circle';
+    let color = 'bg-green-500';
 
-            const originalButtonHTML = miniProfileActionBtn.innerHTML;
-            miniProfileActionBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
-            miniProfileActionBtn.disabled = true;
+    const originalButtonHTML = miniProfileActionBtn.innerHTML;
+    miniProfileActionBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+    miniProfileActionBtn.disabled = true;
 
-            switch (action) {
-                case 'send-request':
-                    url = `/api/friends/send-request/${userId}`;
-                    successMessage = 'تم إرسال الطلب';
-                    break;
-                case 'accept-request':
-                    url = `/api/friends/accept-request/${userId}`;
-                    successMessage = 'أصبحتما أصدقاء الآن';
-                    break;
-                case 'cancel-request':
-                case 'reject-request':
-                    url = `/api/friends/reject-request/${userId}`;
-                    successMessage = 'تم إلغاء الطلب';
-                    icon = 'fa-info-circle';
-                    color = 'bg-blue-500';
-                    break;
-                case 'remove-friend':
-                    optimisticallyRemoveFriend(userId);
-    
-                     if (socket && socket.connected) {
-                     socket.emit('removeFriendRequest', {
-                     friendId: userId,
-                     timestamp: new Date().toISOString()
-                   });
-                 }
-    
-                    showFloatingAlert('تم حذف الصديق', 'fa-trash', 'bg-red-500');
-    
-                    setTimeout(() => {
-                    if (modalElement) modalElement.remove();
-                   }, 500);
-    
-                   setTimeout(async () => {
-                   await refreshUserData();
-                   }, 1000);
-    
-                    return;
-                default:
-                    return;
+    switch (action) {
+        case 'send-request':
+            url = `/api/friends/send-request/${userId}`;
+            successMessage = 'تم إرسال الطلب';
+            break;
+        case 'accept-request':
+            url = `/api/friends/accept-request/${userId}`;
+            successMessage = 'أصبحتما أصدقاء الآن';
+            break;
+        case 'cancel-request':
+        case 'reject-request':
+            url = `/api/friends/reject-request/${userId}`;
+            successMessage = 'تم إلغاء الطلب';
+            icon = 'fa-info-circle';
+            color = 'bg-blue-500';
+            break;
+        case 'remove-friend':
+            // ⭐⭐ الحل الجديد ⭐⭐
+            optimisticallyRemoveFriend(userId);
+            
+            if (socket && socket.connected) {
+                socket.emit('removeFriendRequest', {
+                    friendId: userId,
+                    timestamp: new Date().toISOString()
+                });
             }
+            
+            showFloatingAlert('تم حذف الصديق', 'fa-trash', 'bg-red-500');
+            
+            setTimeout(() => {
+                if (modalElement) { // ✅ الآن modalElement معرف
+                    modalElement.remove();
+                }
+            }, 500);
+            
+            setTimeout(async () => {
+                await refreshUserData();
+            }, 1000);
+            
+            // ⭐ إعادة تعيين الزر
+            miniProfileActionBtn.innerHTML = originalButtonHTML;
+            miniProfileActionBtn.disabled = false;
+            
+            return; // خروج مبكر
+            
+        default:
+            // ⭐ إعادة تعيين الزر في حالة أخرى
+            miniProfileActionBtn.innerHTML = originalButtonHTML;
+            miniProfileActionBtn.disabled = false;
+            return;
+    }
 
-            try {
-                const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
-                if (!response.ok) {
-                    const result = await response.json();
-                    throw new Error(result.message || 'Action failed');
-                }
-                showFloatingAlert(successMessage, icon, color);
-                const refreshSuccess = await refreshUserData();  // تحديث البيانات أولاً
-                if (refreshSuccess) {
-                showMiniProfileModal(userId);  // ثم إعادة فتح النافذة
-                }
-                
-            } catch (error) {
-                showNotification(error.message || 'حدث خطأ ما', 'error');
-                miniProfileActionBtn.innerHTML = originalButtonHTML;
-                miniProfileActionBtn.disabled = false;
-            }
-        };
+    // ⭐ هذا الجزء للـ actions الأخرى (send-request, accept-request, etc.)
+    try {
+        const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
+        if (!response.ok) {
+            const result = await response.json();
+            throw new Error(result.message || 'Action failed');
+        }
+        showFloatingAlert(successMessage, icon, color);
+        const refreshSuccess = await refreshUserData();
+        if (refreshSuccess) {
+            showMiniProfileModal(userId);
+        }
+        
+    } catch (error) {
+        showNotification(error.message || 'حدث خطأ ما', 'error');
+        miniProfileActionBtn.innerHTML = originalButtonHTML;
+        miniProfileActionBtn.disabled = false;
+    }
+};
 
         if (action === 'remove-friend' || action === 'cancel-request') {
             const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من إلغاء طلب الصداقة؟';
@@ -866,12 +878,12 @@ document.body.addEventListener('click', async (e) => {
             }
         };
 
-        if (action === 'remove-friend' || action === 'reject-request') {
-            const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من رفض هذا الطلب؟';
-            showConfirmationModal(message, performListAction);
-        } else {
-            performListAction();
-        }
+        if (action === 'remove-friend' || action === 'cancel-request') {
+    const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من إلغاء طلب الصداقة؟';
+    showConfirmationModal(message, () => performMiniProfileAction(modalElement)); // ⭐ أضف modalElement
+} else {
+    performMiniProfileAction(modalElement); // ⭐ أضف modalElement
+}
         return;
     }
 });
