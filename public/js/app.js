@@ -933,38 +933,59 @@ socket.on('levelUp', ({ newLevel }) => {
     }
 });
 
-
-        
- // =================================================
-// ✅ مستمعات Socket لنظام الحظر
+// =================================================
+// ✅ مستمعات لتحديث البيانات تلقائياً عند الحظر
 // =================================================
 
-// 1. عند تلقي تحديث لحالة الحظر
-socket.on('refreshBlockStatus', (data) => {
-    console.log('[SOCKET] Block status update:', data);
+// 1️⃣ تحديث عند استلام إشعار حظر
+socket.on('friendshipUpdate', async (data) => {
+    console.log('[SOCKET] Friendship update received:', data);
     
-    if (data.action === 'blocked_by_user') {
-        showNotification(`لقد حظرك ${data.blockerUsername}`, 'error');
+    // إذا كان الحدث متعلقاً بالحظر
+    if (data.action && data.action.includes('block')) {
+        // تحديث البيانات فوراً
+        await refreshUserData();
         
-        // إعادة تحميل قائمة الأصدقاء والطلبات
-        refreshUserData();
+        // إشعار للمستخدم
+        if (data.forUser === 'blocker') {
+            showNotification(`تم حظر ${data.blockedUsername}`, 'info');
+        } else if (data.forUser === 'blocked') {
+            showNotification(`قام ${data.blockerUsername} بحظرك`, 'error');
+        }
     }
 });
 
-// 2. عند طلب تحديث بيانات الحظر
-socket.on('blockDataRefreshed', (data) => {
-    console.log('[SOCKET] Block data refreshed:', data);
+// 2️⃣ حدث خاص لتحديث البيانات القسري
+socket.on('forceRefreshUserData', async (data) => {
+    console.log('[SOCKET] Force refreshing user data:', data);
     
-    // تحديث localStorage
-    const user = JSON.parse(localStorage.getItem('user'));
-    if (user) {
-        user.blockedUsers = data.blockedUsers;
-        user.blockedBy = data.blockedBy;
-        localStorage.setItem('user', JSON.stringify(user));
-    }
+    // تأخير بسيط لضمان تحديث الخادم أولاً
+    setTimeout(async () => {
+        const success = await refreshUserData();
+        if (success) {
+            console.log('[SOCKET] User data refreshed after block');
+            
+            // تحديث واجهة المستخدم
+            const user = JSON.parse(localStorage.getItem('user'));
+            if (user && user.friends) {
+                document.getElementById('friends-count').textContent = user.friends.length;
+                
+                // تحديث صور الأصدقاء المصغرة
+                if (typeof updateFriendsAvatars === 'function') {
+                    updateFriendsAvatars(user.friends);
+                }
+            }
+        }
+    }, 1000); // انتظر 1 ثانية
 });
 
-// 3. مستمع عام لتنظيف cache
+// 3️⃣ الاحتفاظ بالمستمع القديم للتوافق
+socket.on('blockStatusChanged', async (data) => {
+    console.log('[SOCKET] Block status changed (legacy):', data);
+    await refreshUserData();
+});
+
+// 4️⃣ مستمع عام لتنظيف cache (إبقائه)
 socket.on('clearBlockCache', (data) => {
     console.log('[SOCKET] Clearing block cache for:', data);
     // لا تحتاج لعمل شيء هنا، الخادم يعتني بالcache
