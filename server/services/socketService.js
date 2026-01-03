@@ -386,6 +386,68 @@ socket.on('sendMessage', async (messageData) => {
 });
 
 
+  // 📍 أضف هذا المستمع في socketService.js
+socket.on('removeFriendRequest', async (data) => {
+    try {
+        const userId = socket.user.id;
+        const friendId = data.friendId;
+        
+        console.log(`[SOCKET REMOVE FRIEND] ${userId} removing ${friendId}`);
+        
+        // 1. إزالة الصداقة من كلا الطرفين
+        await Promise.all([
+            User.findByIdAndUpdate(userId, {
+                $pull: { 
+                    friends: friendId,
+                    friendRequestsSent: friendId,
+                    friendRequestsReceived: friendId 
+                }
+            }),
+            User.findByIdAndUpdate(friendId, {
+                $pull: { 
+                    friends: userId,
+                    friendRequestsSent: userId,
+                    friendRequestsReceived: userId 
+                }
+            })
+        ]);
+        
+        // 2. جلب البيانات المحدثة
+        const [updatedUser, updatedFriend] = await Promise.all([
+            User.findById(userId).select('friends').lean(),
+            User.findById(friendId).select('friends socketId').lean()
+        ]);
+        
+        // 3. إرسال إشعار للمستخدم الحالي
+        socket.emit('friendshipUpdate', {
+            action: 'friend_removed_via_socket',
+            friendId: friendId,
+            timestamp: new Date().toISOString(),
+            newFriendsCount: updatedUser.friends ? updatedUser.friends.length : 0
+        });
+        
+        // 4. إرسال إشعار للصديق المزال (إذا كان متصلاً)
+        const io = socket.server;
+        if (updatedFriend.socketId) {
+            io.to(updatedFriend.socketId).emit('friendshipUpdate', {
+                action: 'friend_removed_by_other_via_socket',
+                userId: userId,
+                timestamp: new Date().toISOString(),
+                newFriendsCount: updatedFriend.friends ? updatedFriend.friends.length : 0
+            });
+        }
+        
+        console.log(`[SOCKET REMOVE FRIEND] Successfully removed friendship between ${userId} and ${friendId}`);
+        
+    } catch (error) {
+        console.error('[SOCKET ERROR] in removeFriendRequest:', error);
+        socket.emit('friendshipError', {
+            action: 'remove_friend',
+            error: error.message
+        });
+    }
+});      
+
 // =================================================
 // ✅ مستمعات إضافية لنظام الحظر
 // =================================================
