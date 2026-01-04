@@ -935,9 +935,8 @@ if (friendListActionBtn) {
     }
     
     return;
-}
-
-     
+   }
+});     
 
 // --- ✅ دالة جديدة لأنيميشن اكتساب الخبرة ---
 function showXpGainAnimation(amount) {
