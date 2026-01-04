@@ -248,84 +248,103 @@ exports.unblockUser = async (req, res) => {
         ]);
 
         // 4. ⭐⭐ تحديث Socket و Cache ⭐⭐
-        if (req.app.get('io')) {
-            const io = req.app.get('io');
-            
-            // أ. تنظيف cache للطرفين
-            io.emit('clearBlockCache', {
-                userId: unblockerId,
-                targetUserId: blockedUserId
-            });
-            
-            // ب. جلب جميع الـ Sockets المتصلة
-            const sockets = await io.fetchSockets();
-            
-            // ج. إرسال إشعار للمستخدم الذي قام برفع الحظر
-            const unblockerSocket = sockets.find(s => 
-                s.user && s.user.id && s.user.id.toString() === unblockerId.toString()
-            );
-            
-            if (unblockerSocket) {
-                // تنظيف cache المحلي
-                unblockerSocket.emit('forceClearBlockCache', {
-                    blockedBy: blockedUserId,
-                    forceAll: true,
-                    timestamp: new Date().toISOString()
-                });
-                
-                // تحديث حالة الحظر
-                unblockerSocket.emit('refreshBlockStatus', {
-                    action: 'you_unblocked_user',
-                    unblockedUserId: blockedUserId,
-                    unblockedUsername: blockedUser.username,
-                    message: `تم رفع الحظر عن ${blockedUser.username}`
-                });
-                
-                // ⭐⭐ مهم: إرسال حدث لتحديث البيانات
-                unblockerSocket.emit('friendshipUpdate', {
-                    action: 'user_unblocked',
-                    unblockerId: unblockerId,
-                    unblockedId: blockedUserId,
-                    unblockedUsername: blockedUser.username,
-                    timestamp: new Date().toISOString()
-                });
-                
-                console.log(`[UNBLOCK] Sent notification to unblocker: ${unblockerId}`);
-            }
-            
-            // د. إرسال إشعار للمستخدم الذي تم رفع الحظر عنه
-            const blockedUserSocket = sockets.find(s => 
-                s.user && s.user.id && s.user.id.toString() === blockedUserId.toString()
-            );
-            
-            if (blockedUserSocket) {
-                // تنظيف cache المحلي
-                blockedUserSocket.emit('forceClearBlockCache', {
-                    blockedBy: unblockerId,
-                    forceAll: true,
-                    timestamp: new Date().toISOString()
-                });
-                
-                // تحديث حالة الحظر
-                blockedUserSocket.emit('refreshBlockStatus', {
-                    action: 'unblocked_by_user',
-                    unblockerId: unblockerId,
-                    unblockerUsername: unblocker.username,
-                    message: `${unblocker.username} رفع الحظر عنك`
-                });
-                
-                console.log(`[UNBLOCK] Sent notification to unblocked user: ${blockedUserId}`);
-            }
-            
-            // ﻫ. إرسال حدث عام لتحديث cache للجميع
-            io.emit('blockCacheRefreshed', {
-                userId1: unblockerId,
-                userId2: blockedUserId,
-                action: 'unblock',
-                timestamp: new Date().toISOString()
-            });
-        }
-
+        // 4. ⭐⭐ تحديث Socket و Cache والبروفايل المصغر ⭐⭐
+if (req.app.get('io')) {
+    const io = req.app.get('io');
+    
+    // أ. تنظيف cache للطرفين
+    io.emit('clearBlockCache', {
+        userId: unblockerId,
+        targetUserId: blockedUserId
+    });
+    
+    // ب. جلب جميع الـ Sockets المتصلة
+    const sockets = await io.fetchSockets();
+    
+    // ج. إرسال إشعار للمستخدم الذي قام برفع الحظر
+    const unblockerSocket = sockets.find(s => 
+        s.user && s.user.id && s.user.id.toString() === unblockerId.toString()
+    );
+    
+    if (unblockerSocket) {
+        // 1. تنظيف cache المحلي
+        unblockerSocket.emit('forceClearBlockCache', {
+            blockedBy: blockedUserId,
+            forceAll: true,
+            timestamp: new Date().toISOString()
+        });
+        
+        // 2. تحديث حالة الحظر
+        unblockerSocket.emit('refreshBlockStatus', {
+            action: 'you_unblocked_user',
+            unblockedUserId: blockedUserId,
+            unblockedUsername: blockedUser.username,
+            message: `تم رفع الحظر عن ${blockedUser.username}`
+        });
+        
+        // 3. ⭐⭐ إرسال حدث لتحديث البروفايل المصغر ⭐⭐
+        unblockerSocket.emit('friendshipUpdate', {
+            action: 'user_unblocked',
+            unblockerId: unblockerId,
+            unblockedId: blockedUserId,
+            unblockedUsername: blockedUser.username,
+            timestamp: new Date().toISOString(),
+            source: 'unblock_action'
+        });
+        
+        // 4. ⭐⭐ إرسال حدث خاص لتحديث البروفايل ⭐⭐
+        unblockerSocket.emit('profileNeedsRefresh', {
+            userId: blockedUserId,
+            action: 'unblocked',
+            newStatus: 'not_blocked',
+            unblockerId: unblockerId,
+            unblockerUsername: unblocker.username,
+            timestamp: new Date().toISOString()
+        });
+        
+        // 5. ⭐⭐ إرسال حدث خاص من الإعدادات ⭐⭐
+        unblockerSocket.emit('unblockedFromSettings', {
+            unblockerId: unblockerId,
+            unblockedId: blockedUserId,
+            unblockedUsername: blockedUser.username,
+            timestamp: new Date().toISOString()
+        });
+        
+        console.log(`[UNBLOCK] Sent profile refresh events to unblocker: ${unblockerId}`);
+    }
+    
+    // د. إرسال إشعار للمستخدم الذي تم رفع الحظر عنه
+    const blockedUserSocket = sockets.find(s => 
+        s.user && s.user.id && s.user.id.toString() === blockedUserId.toString()
+    );
+    
+    if (blockedUserSocket) {
+        // تنظيف cache المحلي
+        blockedUserSocket.emit('forceClearBlockCache', {
+            blockedBy: unblockerId,
+            forceAll: true,
+            timestamp: new Date().toISOString()
+        });
+        
+        // تحديث حالة الحظر
+        blockedUserSocket.emit('refreshBlockStatus', {
+            action: 'unblocked_by_user',
+            unblockerId: unblockerId,
+            unblockerUsername: unblocker.username,
+            message: `${unblocker.username} رفع الحظر عنك`
+        });
+        
+        console.log(`[UNBLOCK] Sent notification to unblocked user: ${blockedUserId}`);
+    }
+    
+    // ﻫ. إرسال حدث عام لتحديث cache للجميع
+    io.emit('blockCacheRefreshed', {
+        userId1: unblockerId,
+        userId2: blockedUserId,
+        action: 'unblock',
+        timestamp: new Date().toISOString()
+    });
+}
         // 5. الرد الناجح
         res.status(200).json({ 
             status: 'success', 
