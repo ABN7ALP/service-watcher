@@ -925,7 +925,7 @@ if (friendListActionBtn) {
     return; // خروج من event handler
 }
 
-
+});
      
 
 // --- ✅ دالة جديدة لأنيميشن اكتساب الخبرة ---
