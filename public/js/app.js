@@ -754,23 +754,20 @@ document.body.addEventListener('click', async (e) => {
         const action = miniProfileActionBtn.dataset.action;
         const userId = miniProfileActionBtn.dataset.userId;
         
-        // 📍 تعديل تعريف الدالة
-const performMiniProfileAction = async (modalElement, action, userId, miniProfileActionBtn) => {
+        const performMiniProfileAction = async (modalElement) => { // ⭐ أضف modalElement هنا
     let url = '';
     let method = 'POST';
     let successMessage = '';
     let icon = 'fa-check-circle';
     let color = 'bg-green-500';
 
-    // ✅ الآن miniProfileActionBtn معرف كمعامل
     const originalButtonHTML = miniProfileActionBtn.innerHTML;
     miniProfileActionBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
     miniProfileActionBtn.disabled = true;
 
-    // ✅ الآن action معرف كمعامل
     switch (action) {
         case 'send-request':
-            url = `/api/friends/send-request/${userId}`; // ✅ userId معرف
+            url = `/api/friends/send-request/${userId}`;
             successMessage = 'تم إرسال الطلب';
             break;
         case 'accept-request':
@@ -798,7 +795,7 @@ const performMiniProfileAction = async (modalElement, action, userId, miniProfil
             showFloatingAlert('تم حذف الصديق', 'fa-trash', 'bg-red-500');
             
             setTimeout(() => {
-                if (modalElement) {
+                if (modalElement) { // ✅ الآن modalElement معرف
                     modalElement.remove();
                 }
             }, 500);
@@ -807,34 +804,28 @@ const performMiniProfileAction = async (modalElement, action, userId, miniProfil
                 await refreshUserData();
             }, 1000);
             
-            // إعادة تعيين الزر
+            // ⭐ إعادة تعيين الزر
             miniProfileActionBtn.innerHTML = originalButtonHTML;
             miniProfileActionBtn.disabled = false;
             
             return; // خروج مبكر
             
         default:
-            // إعادة تعيين الزر في حالة أخرى
+            // ⭐ إعادة تعيين الزر في حالة أخرى
             miniProfileActionBtn.innerHTML = originalButtonHTML;
             miniProfileActionBtn.disabled = false;
             return;
     }
 
-    // ⭐ هذا الجزء للـ actions الأخرى
+    // ⭐ هذا الجزء للـ actions الأخرى (send-request, accept-request, etc.)
     try {
-        const response = await fetch(url, { 
-            method, 
-            headers: { 'Authorization': `Bearer ${token}` } 
-        });
-        
+        const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
         if (!response.ok) {
             const result = await response.json();
             throw new Error(result.message || 'Action failed');
         }
-        
         showFloatingAlert(successMessage, icon, color);
         const refreshSuccess = await refreshUserData();
-        
         if (refreshSuccess) {
             showMiniProfileModal(userId);
         }
@@ -846,86 +837,58 @@ const performMiniProfileAction = async (modalElement, action, userId, miniProfil
     }
 };
 
-        // 📍 قبل استدعاء الدالة، نعرّف modalElement
-const modalElement = document.getElementById('mini-profile-modal');
-
-if (action === 'remove-friend' || action === 'cancel-request') {
-    const message = action === 'remove-friend' 
-        ? 'هل أنت متأكد من حذف هذا الصديق؟' 
-        : 'هل أنت متأكد من إلغاء طلب الصداقة؟';
-    
-    showConfirmationModal(message, () => {
-        // ✅ تمرير جميع المعاملات المطلوبة
-        performMiniProfileAction(modalElement, action, userId, miniProfileActionBtn);
-    });
-    
-} else {
-    // ✅ تمرير جميع المعاملات المطلوبة
-    performMiniProfileAction(modalElement, action, userId, miniProfileActionBtn);
-}
-return; // خروج من event handler
-
-    // --- الجزء الثالث: التعامل مع أزرار نوافذ الأصدقاء ---  
-const friendListActionBtn = e.target.closest('.friend-action-btn');  
-if (friendListActionBtn) {  
-    const action = friendListActionBtn.dataset.action;  
-    const userId = friendListActionBtn.dataset.userId;  
-    const card = friendListActionBtn.closest('.flex.items-center.justify-between');  
-
-    const performListAction = async () => {  
-        let url = '';  
-        let method = 'POST';  
-
-        switch (action) {  
-            case 'accept-request': 
-                url = `/api/friends/accept-request/${userId}`; 
-                break;  
-            case 'reject-request': 
-                url = `/api/friends/reject-request/${userId}`; 
-                break;  
-            case 'remove-friend': 
-                url = `/api/friends/remove-friend/${userId}`; 
-                method = 'DELETE'; 
-                break;  
-            default: 
-                return;  
-        }  
-
-        if (card) card.style.display = 'none';  
-
-        try {  
-            const response = await fetch(url, { 
-                method, 
-                headers: { 'Authorization': `Bearer ${token}` } 
-            });  
-            
-            if (!response.ok) throw new Error('Action failed');  
-            
-            showNotification('تم تنفيذ الإجراء بنجاح', 'success');  
-            await refreshUserData();  // تحديث البيانات بعد الحذف  
-            
-        } catch (error) {  
-            if (card) card.style.display = 'flex';  
-            showNotification('فشل تنفيذ الإجراء', 'error');  
-        }  
-    };  
-
-    // ⭐⭐ التصحيح هنا ⭐⭐
-    if (action === 'remove-friend' || action === 'reject-request') {
-        const message = action === 'remove-friend' 
-            ? 'هل أنت متأكد من حذف هذا الصديق؟' 
-            : 'هل أنت متأكد من رفض هذا الطلب؟';
-        
-        showConfirmationModal(message, performListAction); // ✅ استدعاء الدالة الصحيحة
-        
-    } else {
-        performListAction(); // ✅ استدعاء الدالة الصحيحة
+        if (action === 'remove-friend' || action === 'cancel-request') {
+            const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من إلغاء طلب الصداقة؟';
+            showConfirmationModal(message, performMiniProfileAction);
+        } else {
+            performMiniProfileAction();
+        }
+        return;
     }
-    
-    return; // خروج من event handler
-}
 
+    // --- الجزء الثالث: التعامل مع أزرار نوافذ الأصدقاء ---
+    const friendListActionBtn = e.target.closest('.friend-action-btn');
+    if (friendListActionBtn) {
+        // ... (هذا الجزء يبقى كما هو بالضبط من الكود السابق)
+        const action = friendListActionBtn.dataset.action;
+        const userId = friendListActionBtn.dataset.userId;
+        const card = friendListActionBtn.closest('.flex.items-center.justify-between');
+
+        const performListAction = async () => {
+            let url = '';
+            let method = 'POST';
+
+            switch (action) {
+                case 'accept-request': url = `/api/friends/accept-request/${userId}`; break;
+                case 'reject-request': url = `/api/friends/reject-request/${userId}`; break;
+                case 'remove-friend': url = `/api/friends/remove-friend/${userId}`; method = 'DELETE'; break;
+                default: return;
+            }
+
+            if (card) card.style.display = 'none';
+
+            try {
+                const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
+                if (!response.ok) throw new Error('Action failed');
+                showNotification('تم تنفيذ الإجراء بنجاح', 'success');
+                await refreshUserData();  // تحديث البيانات بعد الحذف
+            } catch (error) {
+                if (card) card.style.display = 'flex';
+                showNotification('فشل تنفيذ الإجراء', 'error');
+            }
+        };
+
+        if (action === 'remove-friend' || action === 'cancel-request') {
+    const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من إلغاء طلب الصداقة؟';
+    showConfirmationModal(message, () => performMiniProfileAction(modalElement)); // ⭐ أضف modalElement
+} else {
+    performMiniProfileAction(modalElement); // ⭐ أضف modalElement
+}
+        return;
+    }
 });
+
+
      
 
 // --- ✅ دالة جديدة لأنيميشن اكتساب الخبرة ---
