@@ -878,46 +878,64 @@ if (miniProfileActionBtn && miniProfileActionBtn.dataset.action) {
 
     // --- الجزء الثالث: التعامل مع أزرار نوافذ الأصدقاء ---
     const friendListActionBtn = e.target.closest('.friend-action-btn');
-    if (friendListActionBtn) {
-        // ... (هذا الجزء يبقى كما هو بالضبط من الكود السابق)
-        const action = friendListActionBtn.dataset.action;
-        const userId = friendListActionBtn.dataset.userId;
-        const card = friendListActionBtn.closest('.flex.items-center.justify-between');
-
-        const performListAction = async () => {
-            let url = '';
-            let method = 'POST';
-
-            switch (action) {
-                case 'accept-request': url = `/api/friends/accept-request/${userId}`; break;
-                case 'reject-request': url = `/api/friends/reject-request/${userId}`; break;
-                case 'remove-friend': url = `/api/friends/remove-friend/${userId}`; method = 'DELETE'; break;
-                default: return;
-            }
-
-            if (card) card.style.display = 'none';
-
-            try {
-                const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` } });
-                if (!response.ok) throw new Error('Action failed');
-                showNotification('تم تنفيذ الإجراء بنجاح', 'success');
-                await refreshUserData();  // تحديث البيانات بعد الحذف
-            } catch (error) {
-                if (card) card.style.display = 'flex';
-                showNotification('فشل تنفيذ الإجراء', 'error');
-            }
-        };
-
-        if (action === 'remove-friend' || action === 'cancel-request') {
-    const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من إلغاء طلب الصداقة؟';
-    showConfirmationModal(message, () => performMiniProfileAction(modalElement)); // ⭐ أضف modalElement
-} else {
-    performMiniProfileAction(modalElement); // ⭐ أضف modalElement
-}
-        return;
+if (friendListActionBtn) {
+    const action = friendListActionBtn.dataset.action;
+    const userId = friendListActionBtn.dataset.userId;
+    const card = friendListActionBtn.closest('.flex.items-center.justify-between');
+    
+    const performListAction = async () => {
+        let url = '';
+        let method = 'POST';
+        
+        switch (action) {
+            case 'accept-request': 
+                url = `/api/friends/accept-request/${userId}`; 
+                break;
+            case 'reject-request': 
+                url = `/api/friends/reject-request/${userId}`; 
+                break;
+            case 'remove-friend': 
+                url = `/api/friends/remove-friend/${userId}`; 
+                method = 'DELETE';
+                break;
+            default: 
+                return;
+        }
+        
+        // ⭐ التحديث المتفائل: إخفاء العنصر فوراً
+        if (card) card.style.display = 'none';
+        
+        try {
+            const response = await fetch(url, { 
+                method, 
+                headers: { 'Authorization': `Bearer ${token}` } 
+            });
+            
+            if (!response.ok) throw new Error('Action failed');
+            
+            showNotification('تم تنفيذ الإجراء بنجاح', 'success');
+            await refreshUserData();  // تحديث البيانات
+            
+        } catch (error) {
+            // ⭐ إذا فشل، أعد عرض العنصر
+            if (card) card.style.display = 'flex';
+            showNotification('فشل تنفيذ الإجراء', 'error');
+        }
+    };
+    
+    // ⭐ إضافة تأكيد للحذف أو الرفض
+    if (action === 'remove-friend' || action === 'reject-request') {
+        const message = action === 'remove-friend' 
+            ? 'هل أنت متأكد من حذف هذا الصديق؟' 
+            : 'هل أنت متأكد من رفض هذا الطلب؟';
+        
+        showConfirmationModal(message, performListAction);
+    } else {
+        performListAction();
     }
-});
-
+    
+    return;
+}
 
      
 
