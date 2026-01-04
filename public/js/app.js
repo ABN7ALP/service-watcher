@@ -1361,10 +1361,53 @@ socket.on('clearBlockCache', (data) => {
     console.log('[SOCKET] Clearing block cache for:', data);
     // لا تحتاج لعمل شيء هنا، الخادم يعتني بالcache
 });
+
+// ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐
+// 📍 5️⃣ مستمع جديد لحدث رفع الحظر (أضف هذا)
+// ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐
+socket.on('userUnblocked', async (data) => {
+    console.log('[SOCKET] User unblocked event:', data);
+    
+    // 1. إشعار فوري
+    if (data.forUser === 'unblocker') {
+        showNotification(`تم رفع الحظر عن ${data.unblockedUsername}`, 'success');
+    } else if (data.forUser === 'unblocked') {
+        showNotification(`${data.unblockerUsername} رفع الحظر عنك`, 'info');
+    }
+    
+    // 2. تحديث البيانات من الخادم بعد تأخير بسيط
+    setTimeout(async () => {
+        await refreshUserData();
         
+        // 3. إذا كانت نافذة البروفايل مفتوحة للمستخدم، أعد تحميلها
+        const modal = document.getElementById('mini-profile-modal');
+        if (modal) {
+            const userIdInModal = modal.dataset.userId;
+            if (userIdInModal && (userIdInModal === data.unblockedId || userIdInModal === data.unblockerId)) {
+                setTimeout(() => {
+                    showMiniProfileModal(userIdInModal);
+                }, 300);
+            }
+        }
+        
+        // 4. إذا كانت نافذة الإعدادات مفتوحة، تحديث قائمة المحظورين
+        const settingsView = document.querySelector('[class*="settings"]');
+        if (settingsView) {
+            const currentView = mainContent.innerHTML;
+            if (currentView.includes('المستخدمين المحظورين')) {
+                setTimeout(() => {
+                    showSettingsView();
+                }, 400);
+            }
+        }
+        
+    }, 500);
+});
+// ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐
+// 📍 نهاية المستمع الجديد
+// ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐
 
-    // --- أضف هذا الكود في قسم أحداث السوكيت العام ---
-
+// --- أضف هذا الكود في قسم أحداث السوكيت العام ---
 socket.on('chatCleanup', ({ idsToDelete }) => {
     console.log(`[CHAT CLIENT] Received 'chatCleanup' event. Deleting ${idsToDelete.length} message elements.`);
     const chatMessages = document.getElementById('chat-messages');
@@ -1381,6 +1424,7 @@ socket.on('chatCleanup', ({ idsToDelete }) => {
         }
     });
 });
+
 
    // --- ✅ دالة جديدة لنافذة التأكيد ---
 // --- ✅ استبدل دالة showConfirmationModal بالكامل ---
