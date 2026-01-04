@@ -219,43 +219,188 @@ navItems.forEach(item => {
 });
 
 // --- ✅ استبدل دالة showSettingsView بالكامل ---
-// --- ✅ استبدل دالة showSettingsView بالكامل بهذه النسخة النظيفة ---
 async function showSettingsView() {
     const localUser = JSON.parse(localStorage.getItem('user'));
+    
+    // جلب قائمة المحظورين
+    let blockedUsers = [];
+    let blockedCount = 0;
+    
+    try {
+        const response = await fetch('/api/blocks/blocked-list', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            blockedUsers = result.data.blockedUsers || [];
+            blockedCount = blockedUsers.length;
+        }
+    } catch (error) {
+        console.error('Failed to load blocked users:', error);
+    }
+    
     mainContent.innerHTML = `
         <div class="p-4">
             <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
             
-            <!-- باقي أقسام الإعدادات (تبقى كما هي) -->
-            <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6 text-center">
-                <h3 class="text-lg font-bold mb-4">تغيير الصورة الشخصية</h3>
-                <img id="settings-profile-image" src="${localUser.profileImage}" class="w-32 h-32 rounded-full mx-auto border-4 border-purple-500 mb-4 object-cover">
-                <form id="image-upload-form">
-                    <input type="file" id="image-file-input" name="profileImage" class="hidden" accept="image/*">
-                    <div class="flex justify-center items-center gap-4 mt-4">
-                        <button type="button" id="select-image-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">اختيار صورة...</button>
-                        <button type="submit" id="upload-image-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg hidden"><i class="fas fa-upload mr-2"></i>رفع وحفظ</button>
+            <!-- =========================================== -->
+            <!-- 1. قسم الصورة الشخصية (قابل للطي) -->
+            <!-- =========================================== -->
+            <div class="mb-4">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="profile-image-section">
+                    <h3 class="text-lg font-bold">
+                        <i class="fas fa-user-circle mr-2"></i>الصورة الشخصية
+                    </h3>
+                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+                </div>
+                
+                <div id="profile-image-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
+                    <div class="text-center">
+                        <img id="settings-profile-image" src="${localUser.profileImage}" 
+                             class="w-32 h-32 rounded-full mx-auto border-4 border-purple-500 mb-4 object-cover shadow-lg">
+                        
+                        <form id="image-upload-form">
+                            <input type="file" id="image-file-input" name="profileImage" class="hidden" accept="image/*">
+                            <div class="flex flex-col sm:flex-row justify-center items-center gap-4 mt-4">
+                                <button type="button" id="select-image-btn" 
+                                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-full sm:w-auto">
+                                    <i class="fas fa-image mr-2"></i>اختيار صورة جديدة
+                                </button>
+                                
+                                <button type="submit" id="upload-image-btn" 
+                                        class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg w-full sm:w-auto hidden">
+                                    <i class="fas fa-upload mr-2"></i>حفظ التغيير
+                                </button>
+                            </div>
+                        </form>
                     </div>
-                </form>
+                </div>
             </div>
-            <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl mb-6">
-                <h3 class="text-lg font-bold mb-4">تغيير اسم المستخدم</h3>
-                <form id="username-update-form" class="flex flex-col sm:flex-row items-center gap-4">
-                    <input type="text" id="username-input" value="${localUser.username}" class="w-full sm:flex-grow bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2">
-                    <button type="submit" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">حفظ</button>
-                </form>
+            
+            <!-- =========================================== -->
+            <!-- 2. قسم اسم المستخدم (قابل للطي) -->
+            <!-- =========================================== -->
+            <div class="mb-4">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="username-section">
+                    <h3 class="text-lg font-bold">
+                        <i class="fas fa-user-edit mr-2"></i>اسم المستخدم
+                    </h3>
+                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+                </div>
+                
+                <div id="username-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
+                    <form id="username-update-form" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-2">الاسم الحالي</label>
+                            <input type="text" value="${localUser.username}" 
+                                   class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 cursor-not-allowed" 
+                                   disabled>
+                        </div>
+                        
+                        <div>
+                            <label for="username-input" class="block text-sm font-medium mb-2">الاسم الجديد</label>
+                            <input type="text" id="username-input" 
+                                   class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-3"
+                                   placeholder="أدخل اسم المستخدم الجديد">
+                        </div>
+                        
+                        <button type="submit" 
+                                class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg">
+                            <i class="fas fa-save mr-2"></i>حفظ التغيير
+                        </button>
+                    </form>
+                </div>
             </div>
-            <div class="bg-white/30 dark:bg-gray-800/50 p-6 rounded-xl">
-                <h3 class="text-lg font-bold mb-4">تغيير كلمة المرور</h3>
-                <form id="password-update-form" class="space-y-4">
-                    <div><label for="current-password" class="block text-sm font-medium mb-1">كلمة المرور الحالية</label><input type="password" id="current-password" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2"></div>
-                    <div><label for="new-password" class="block text-sm font-medium mb-1">كلمة المرور الجديدة</label><input type="password" id="new-password" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2"></div>
-                    <div><label for="new-password-confirm" class="block text-sm font-medium mb-1">تأكيد كلمة المرور الجديدة</label><input type="password" id="new-password-confirm" required class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2"></div>
-                    <div class="pt-2"><button type="submit" class="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">تحديث كلمة المرور</button></div>
-                </form>
+            
+            <!-- =========================================== -->
+            <!-- 3. قسم كلمة المرور (قابل للطي) -->
+            <!-- =========================================== -->
+            <div class="mb-4">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="password-section">
+                    <h3 class="text-lg font-bold">
+                        <i class="fas fa-lock mr-2"></i>كلمة المرور
+                    </h3>
+                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+                </div>
+                
+                <div id="password-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
+                    <form id="password-update-form" class="space-y-4">
+                        <div>
+                            <label for="current-password" class="block text-sm font-medium mb-2">كلمة المرور الحالية</label>
+                            <input type="password" id="current-password" required 
+                                   class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-3"
+                                   placeholder="••••••••">
+                        </div>
+                        
+                        <div>
+                            <label for="new-password" class="block text-sm font-medium mb-2">كلمة المرور الجديدة</label>
+                            <input type="password" id="new-password" required 
+                                   class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-3"
+                                   placeholder="•••••••• (6 أحرف على الأقل)">
+                        </div>
+                        
+                        <div>
+                            <label for="new-password-confirm" class="block text-sm font-medium mb-2">تأكيد كلمة المرور الجديدة</label>
+                            <input type="password" id="new-password-confirm" required 
+                                   class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-3"
+                                   placeholder="••••••••">
+                        </div>
+                        
+                        <button type="submit" 
+                                class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg">
+                            <i class="fas fa-key mr-2"></i>تغيير كلمة المرور
+                        </button>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- =========================================== -->
+            <!-- 4. قسم المحظورين (الجديد) -->
+            <!-- =========================================== -->
+            <div class="mb-4">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="blocked-users-section">
+                    <h3 class="text-lg font-bold">
+                        <i class="fas fa-ban mr-2"></i>المستخدمين المحظورين
+                        <span class="bg-red-500 text-white text-xs font-bold rounded-full px-2 py-1 ml-2">${blockedCount}</span>
+                    </h3>
+                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+                </div>
+                
+                <div id="blocked-users-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
+                    ${blockedCount === 0 ? 
+                        `<div class="text-center py-8">
+                            <i class="fas fa-user-check text-4xl text-gray-500 mb-4"></i>
+                            <p class="text-gray-400">لا يوجد مستخدمين محظورين</p>
+                        </div>` 
+                        : 
+                        `<div class="space-y-3 max-h-80 overflow-y-auto pr-2">
+                            ${blockedUsers.map(user => `
+                                <div class="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg" data-user-id="${user._id}">
+                                    <div class="flex items-center gap-3">
+                                        <img src="${user.profileImage}" 
+                                             class="w-10 h-10 rounded-full border-2 border-red-500">
+                                        <div>
+                                            <p class="font-medium">${user.username}</p>
+                                            <p class="text-xs text-gray-400">ID: ${user.customId}</p>
+                                        </div>
+                                    </div>
+                                    <button class="unblock-user-btn bg-gray-600 hover:bg-gray-700 text-white text-xs py-1 px-3 rounded-full" 
+                                            data-user-id="${user._id}">
+                                        <i class="fas fa-unlock mr-1"></i>رفع الحظر
+                                    </button>
+                                </div>
+                            `).join('')}
+                        </div>`
+                    }
+                </div>
             </div>
         </div>
     `;
+    
+    // ⭐ إعادة ربط الأحداث
+    setupSettingsEvents();
+}
 
     // إعادة ربط الأحداث الخاصة بالإعدادات فقط
     document.getElementById('select-image-btn').addEventListener('click', () => document.getElementById('image-file-input').click());
@@ -271,6 +416,109 @@ async function showSettingsView() {
     document.getElementById('image-upload-form').addEventListener('submit', handleImageUpload);
     document.getElementById('username-update-form').addEventListener('submit', handleUsernameUpdate);
     document.getElementById('password-update-form').addEventListener('submit', handlePasswordUpdate);
+}
+
+
+// 📍 أضف هذه الدالة بعد showSettingsView
+function setupSettingsEvents() {
+    // 1. الأقسام القابلة للطي
+    document.querySelectorAll('.collapsible-header').forEach(header => {
+        header.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-target');
+            const content = document.getElementById(targetId);
+            const icon = this.querySelector('i.fa-chevron-down');
+            
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                icon.style.transform = 'rotate(180deg)';
+            } else {
+                content.classList.add('hidden');
+                icon.style.transform = 'rotate(0deg)';
+            }
+        });
+    });
+    
+    // 2. تحديث الصورة الشخصية
+    document.getElementById('select-image-btn').addEventListener('click', () => {
+        document.getElementById('image-file-input').click();
+    });
+    
+    document.getElementById('image-file-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                document.getElementById('settings-profile-image').src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+            document.getElementById('upload-image-btn').classList.remove('hidden');
+        }
+    });
+    
+    document.getElementById('image-upload-form').addEventListener('submit', handleImageUpload);
+    document.getElementById('username-update-form').addEventListener('submit', handleUsernameUpdate);
+    document.getElementById('password-update-form').addEventListener('submit', handlePasswordUpdate);
+    
+    // 3. رفع الحظر
+    document.querySelectorAll('.unblock-user-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const userId = this.dataset.userId;
+            const userCard = this.closest('[data-user-id]');
+            
+            if (userCard) userCard.style.opacity = '0.5';
+            
+            try {
+                const response = await fetch(`/api/blocks/unblock/${userId}`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.ok) {
+                    showNotification('تم رفع الحظر بنجاح', 'success');
+                    
+                    // إزالة المستخدم من القائمة
+                    if (userCard) {
+                        userCard.style.display = 'none';
+                    }
+                    
+                    // تحديث العدد
+                    const blockedCountElement = document.querySelector('.collapsible-header h3 span');
+                    if (blockedCountElement) {
+                        const currentCount = parseInt(blockedCountElement.textContent) || 0;
+                        blockedCountElement.textContent = Math.max(0, currentCount - 1);
+                    }
+                    
+                    // إذا لم يبق أحد، عرض رسالة "لا يوجد محظورين"
+                    setTimeout(() => {
+                        const blockedSection = document.getElementById('blocked-users-section');
+                        const blockedItems = blockedSection.querySelectorAll('[data-user-id]');
+                        const visibleItems = Array.from(blockedItems).filter(item => item.style.display !== 'none');
+                        
+                        if (visibleItems.length === 0) {
+                            blockedSection.innerHTML = `
+                                <div class="text-center py-8">
+                                    <i class="fas fa-user-check text-4xl text-gray-500 mb-4"></i>
+                                    <p class="text-gray-400">لا يوجد مستخدمين محظورين</p>
+                                </div>
+                            `;
+                        }
+                    }, 300);
+                    
+                } else {
+                    showNotification('فشل رفع الحظر', 'error');
+                    if (userCard) userCard.style.opacity = '1';
+                }
+                
+            } catch (error) {
+                console.error('Error unblocking user:', error);
+                showNotification('خطأ في الاتصال', 'error');
+                if (userCard) userCard.style.opacity = '1';
+            }
+        });
+    });
 }
 
 
