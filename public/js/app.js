@@ -402,23 +402,6 @@ async function showSettingsView() {
     setupSettingsEvents();
 }
 
-    // إعادة ربط الأحداث الخاصة بالإعدادات فقط
-    document.getElementById('select-image-btn').addEventListener('click', () => document.getElementById('image-file-input').click());
-    document.getElementById('image-file-input').addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => { document.getElementById('settings-profile-image').src = event.target.result; };
-            reader.readAsDataURL(file);
-            document.getElementById('upload-image-btn').classList.remove('hidden');
-        }
-    });
-    document.getElementById('image-upload-form').addEventListener('submit', handleImageUpload);
-    document.getElementById('username-update-form').addEventListener('submit', handleUsernameUpdate);
-    document.getElementById('password-update-form').addEventListener('submit', handlePasswordUpdate);
-}
-
-
 // 📍 أضف هذه الدالة بعد showSettingsView
 function setupSettingsEvents() {
     // 1. الأقسام القابلة للطي
@@ -520,6 +503,24 @@ function setupSettingsEvents() {
         });
     });
 }
+    
+
+    // إعادة ربط الأحداث الخاصة بالإعدادات فقط
+    document.getElementById('select-image-btn').addEventListener('click', () => document.getElementById('image-file-input').click());
+    document.getElementById('image-file-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => { document.getElementById('settings-profile-image').src = event.target.result; };
+            reader.readAsDataURL(file);
+            document.getElementById('upload-image-btn').classList.remove('hidden');
+        }
+    });
+    document.getElementById('image-upload-form').addEventListener('submit', handleImageUpload);
+    document.getElementById('username-update-form').addEventListener('submit', handleUsernameUpdate);
+    document.getElementById('password-update-form').addEventListener('submit', handlePasswordUpdate);
+}
+
 
 
 
