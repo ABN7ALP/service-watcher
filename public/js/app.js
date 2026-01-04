@@ -1273,16 +1273,15 @@ socket.on('levelUp', ({ newLevel }) => {
 // =================================================
 
 // 1️⃣ تحديث عند استلام إشعار حظر
-// في app.js - مع مستمعات Socket
 socket.on('friendshipUpdate', async (data) => {
     console.log('[SOCKET] Friendship update received:', data);
     
-    // إذا كان الحدث متعلقاً برفع الحظر
+    // ⭐ الحالة 1: إذا كان الحدث متعلقاً برفع الحظر
     if (data.action === 'user_unblocked' || data.action === 'unblocked_by_user') {
-        // ⭐ تحديث البيانات فوراً
+        // تحديث البيانات فوراً
         await refreshUserData();
         
-        // ⭐ إذا كانت نافذة البروفايل مفتوحة، أعد تحميلها
+        // إذا كانت نافذة البروفايل مفتوحة، أعد تحميلها
         const modal = document.getElementById('mini-profile-modal');
         const userIdInModal = modal?.dataset.userId;
         
@@ -1294,15 +1293,31 @@ socket.on('friendshipUpdate', async (data) => {
             }
         }
         
-        // ⭐ إشعار للمستخدم
+        // إشعار للمستخدم
         showNotification(data.message || 'تم رفع الحظر', 'success');
     }
+    
+    // ⭐ الحالة 2: إذا كان الحدث متعلقاً بالحظر
+    else if (data.action && data.action.includes('block')) {
+        // تحديث البيانات فوراً
+        await refreshUserData();
         
         // إشعار للمستخدم
         if (data.forUser === 'blocker') {
             showNotification(`تم حظر ${data.blockedUsername}`, 'info');
         } else if (data.forUser === 'blocked') {
             showNotification(`قام ${data.blockerUsername} بحظرك`, 'error');
+        }
+    }
+    
+    // ⭐ الحالة 3: إذا كان الحدث متعلقاً بالصداقة
+    else if (data.action && (data.action.includes('friend') || data.action.includes('request'))) {
+        // تحديث البيانات للصداقة
+        await refreshUserData();
+        
+        // إشعار عام
+        if (data.message) {
+            showNotification(data.message, 'info');
         }
     }
 });
@@ -1314,40 +1329,33 @@ socket.on('forceRefreshUserData', async (data) => {
     // تأخير بسيط لضمان تحديث الخادم أولاً
     setTimeout(async () => {
         try {
-            // 1️⃣ تحديث البيانات من الخادم
+            // تحديث البيانات من الخادم
             const success = await refreshUserData();
             
             if (success) {
                 console.log('[SOCKET] User data refreshed after block');
                 
-                // 2️⃣ جلب البيانات المحدثة مباشرة
+                // جلب البيانات المحدثة مباشرة
                 const user = JSON.parse(localStorage.getItem('user'));
                 if (user && user.friends !== undefined) {
                     
-                    // ⭐ تحديث مباشر 1: عدد الأصدقاء في الشريط الجانبي
+                    // تحديث عدد الأصدقاء في الشريط الجانبي
                     const friendsCountElement = document.getElementById('friends-count');
                     if (friendsCountElement) {
                         friendsCountElement.textContent = user.friends.length;
                         console.log(`[SOCKET] Updated friends count to: ${user.friends.length}`);
                     }
                     
-                    // ⭐ تحديث مباشر 2: صور الأصدقاء المصغرة
+                    // تحديث صور الأصدقاء المصغرة
                     if (typeof updateFriendsAvatars === 'function') {
                         updateFriendsAvatars(user.friends);
-                    }
-                    
-                    // ⭐ تحديث مباشر 3: إذا كان هناك نافذة أصدقاء مفتوحة
-                    const friendsModal = document.getElementById('friends-list-modal');
-                    if (friendsModal) {
-                        // أعد تحميل نافذة الأصدقاء
-                        showFriendsListModal();
                     }
                 }
             }
         } catch (error) {
             console.error('[SOCKET] Error in forceRefreshUserData:', error);
         }
-    }, 800); // انتظر 0.8 ثانية (أقل)
+    }, 800); // انتظر 0.8 ثانية
 });
 
 // 3️⃣ الاحتفاظ بالمستمع القديم للتوافق
