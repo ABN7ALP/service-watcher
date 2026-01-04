@@ -443,42 +443,54 @@ function setupSettingsEvents() {
     document.getElementById('password-update-form').addEventListener('submit', handlePasswordUpdate);
     
     // 3. رفع الحظر
-    document.querySelectorAll('.unblock-user-btn').forEach(btn => {
-        btn.addEventListener('click', async function() {
-            const userId = this.dataset.userId;
-            const userCard = this.closest('[data-user-id]');
+    // في دالة setupSettingsEvents() - قسم رفع الحظر
+document.querySelectorAll('.unblock-user-btn').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const userId = this.dataset.userId;
+        const userCard = this.closest('[data-user-id]');
+        const username = userCard?.querySelector('p.font-medium')?.textContent || 'المستخدم';
+        
+        if (userCard) userCard.style.opacity = '0.5';
+        
+        try {
+            const response = await fetch(`/api/blocks/unblock/${userId}`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
             
-            if (userCard) userCard.style.opacity = '0.5';
-            
-            try {
-                const response = await fetch(`/api/blocks/unblock/${userId}`, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
+            if (response.ok) {
+                // ⭐ إشعار فوري
+                showNotification(`تم رفع الحظر عن ${username}`, 'success');
                 
-                if (response.ok) {
-                    showNotification('تم رفع الحظر بنجاح', 'success');
+                // ⭐ تحديث العدد
+                const blockedCountElement = document.querySelector('.collapsible-header h3 span');
+                if (blockedCountElement) {
+                    const currentCount = parseInt(blockedCountElement.textContent) || 0;
+                    blockedCountElement.textContent = Math.max(0, currentCount - 1);
+                }
+                
+                // ⭐ إخفاء العنصر بتأنق
+                if (userCard) {
+                    userCard.style.transition = 'all 0.3s ease';
+                    userCard.style.opacity = '0';
+                    userCard.style.height = '0';
+                    userCard.style.padding = '0';
+                    userCard.style.margin = '0';
+                    userCard.style.overflow = 'hidden';
                     
-                    // إزالة المستخدم من القائمة
-                    if (userCard) {
-                        userCard.style.display = 'none';
-                    }
-                    
-                    // تحديث العدد
-                    const blockedCountElement = document.querySelector('.collapsible-header h3 span');
-                    if (blockedCountElement) {
-                        const currentCount = parseInt(blockedCountElement.textContent) || 0;
-                        blockedCountElement.textContent = Math.max(0, currentCount - 1);
-                    }
-                    
-                    // إذا لم يبق أحد، عرض رسالة "لا يوجد محظورين"
                     setTimeout(() => {
+                        userCard.style.display = 'none';
+                        
+                        // ⭐ إذا لم يبق أحد، عرض رسالة "لا يوجد محظورين"
                         const blockedSection = document.getElementById('blocked-users-section');
                         const blockedItems = blockedSection.querySelectorAll('[data-user-id]');
-                        const visibleItems = Array.from(blockedItems).filter(item => item.style.display !== 'none');
+                        const visibleItems = Array.from(blockedItems).filter(item => 
+                            item.style.display !== 'none' && 
+                            item.style.opacity !== '0'
+                        );
                         
                         if (visibleItems.length === 0) {
                             blockedSection.innerHTML = `
@@ -489,20 +501,29 @@ function setupSettingsEvents() {
                             `;
                         }
                     }, 300);
-                    
-                } else {
-                    showNotification('فشل رفع الحظر', 'error');
-                    if (userCard) userCard.style.opacity = '1';
                 }
                 
-            } catch (error) {
-                console.error('Error unblocking user:', error);
-                showNotification('خطأ في الاتصال', 'error');
+                // ⭐ إرسال إشعار Socket لتحديث البروفايل المصغر
+                if (socket && socket.connected) {
+                    socket.emit('unblockAction', {
+                        unblockedUserId: userId,
+                        unblockedUsername: username,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+                
+            } else {
+                showNotification('فشل رفع الحظر', 'error');
                 if (userCard) userCard.style.opacity = '1';
             }
-        });
+            
+        } catch (error) {
+            console.error('Error unblocking user:', error);
+            showNotification('خطأ في الاتصال', 'error');
+            if (userCard) userCard.style.opacity = '1';
+        }
     });
-}
+});
 
 
 
@@ -1230,7 +1251,59 @@ function showXpGainAnimation(amount) {
 
 
 
-       // --- أضف هذه المستمعات الجديدة ---
+  
+        
+    // 📍 أضف هذا المستمع بعد socket.on('forceRefreshUserData', ...)
+
+// 5️⃣ تحديث البروفايل المصغر عند رفع الحظر
+socket.on('profileNeedsRefresh', async (data) => {
+    console.log('[SOCKET] Profile needs refresh:', data);
+    
+    // 1. تحديث بيانات المستخدم
+    await refreshUserData();
+    
+    // 2. إذا كانت نافذة البروفايل المصغر مفتوحة لهذا المستخدم
+    const modal = document.getElementById('mini-profile-modal');
+    if (modal) {
+        const currentUserId = modal.dataset.userId;
+        
+        // إذا كانت النافذة مفتوحة لنفس المستخدم الذي تم رفع الحظر عنه
+        if (currentUserId && currentUserId === data.userId) {
+            console.log(`[PROFILE REFRESH] Refreshing profile for user ${data.userId}`);
+            
+            // إغلاق النافذة الحالية
+            modal.remove();
+            
+            // فتح نافذة جديدة بالمعلومات المحدثة (بعد تأخير)
+            setTimeout(() => {
+                showMiniProfileModal(data.userId);
+            }, 300);
+        }
+    }
+});
+
+// 6️⃣ حدث خاص لرفع الحظر من الإعدادات
+socket.on('unblockedFromSettings', (data) => {
+    console.log('[SOCKET] Unblocked from settings:', data);
+    
+    // إشعار فوري
+    showNotification(`تم رفع الحظر عن ${data.unblockedUsername}`, 'success');
+    
+    // تحديث البيانات
+    setTimeout(() => {
+        refreshUserData();
+        
+        // إذا كان البروفايل مفتوحاً، أعد تحميله
+        const profileModal = document.getElementById('mini-profile-modal');
+        if (profileModal && profileModal.dataset.userId === data.unblockedId) {
+            const userId = profileModal.dataset.userId;
+            profileModal.remove();
+            setTimeout(() => showMiniProfileModal(userId), 400);
+        }
+    }, 500);
+});    
+        
+        // --- أضف هذه المستمعات الجديدة ---
 
 // --- استبدل مستمع experienceUpdate بهذا ---
 socket.on('experienceUpdate', ({ level, experience, requiredXp, xpGained }) => {
