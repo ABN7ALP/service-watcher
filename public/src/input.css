@@ -49,3 +49,15 @@ body {
 .floating-alert {
     animation: float-up-and-fade 2s ease-out forwards;
 }
+/* أنماط الأقسام القابلة للطي */
+.collapsible-content {
+    transition: max-height 0.3s ease-out, opacity 0.3s ease;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+}
+
+.collapsible-content:not(.hidden) {
+    max-height: 1000px;
+    opacity: 1;
+}
