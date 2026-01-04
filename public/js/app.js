@@ -1273,13 +1273,30 @@ socket.on('levelUp', ({ newLevel }) => {
 // =================================================
 
 // 1️⃣ تحديث عند استلام إشعار حظر
+// في app.js - مع مستمعات Socket
 socket.on('friendshipUpdate', async (data) => {
     console.log('[SOCKET] Friendship update received:', data);
     
-    // إذا كان الحدث متعلقاً بالحظر
-    if (data.action && data.action.includes('block')) {
-        // تحديث البيانات فوراً
+    // إذا كان الحدث متعلقاً برفع الحظر
+    if (data.action === 'user_unblocked' || data.action === 'unblocked_by_user') {
+        // ⭐ تحديث البيانات فوراً
         await refreshUserData();
+        
+        // ⭐ إذا كانت نافذة البروفايل مفتوحة، أعد تحميلها
+        const modal = document.getElementById('mini-profile-modal');
+        const userIdInModal = modal?.dataset.userId;
+        
+        if (modal && userIdInModal) {
+            if (userIdInModal === data.unblockedId || userIdInModal === data.unblockerId) {
+                setTimeout(() => {
+                    showMiniProfileModal(userIdInModal);
+                }, 500);
+            }
+        }
+        
+        // ⭐ إشعار للمستخدم
+        showNotification(data.message || 'تم رفع الحظر', 'success');
+    }
         
         // إشعار للمستخدم
         if (data.forUser === 'blocker') {
