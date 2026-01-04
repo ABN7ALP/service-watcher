@@ -753,8 +753,9 @@ document.body.addEventListener('click', async (e) => {
         // ... (هذا الجزء يبقى كما هو بالضبط من الكود السابق)
         const action = miniProfileActionBtn.dataset.action;
         const userId = miniProfileActionBtn.dataset.userId;
+        const modalElement = document.getElementById('mini-profile-modal');
         
-        const performMiniProfileAction = async (modalElement) => { // ⭐ أضف modalElement هنا
+        const performMiniProfileAction = async (modalElement, action, userId, miniProfileActionBtn) => {
     let url = '';
     let method = 'POST';
     let successMessage = '';
@@ -839,9 +840,11 @@ document.body.addEventListener('click', async (e) => {
 
         if (action === 'remove-friend' || action === 'cancel-request') {
             const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من إلغاء طلب الصداقة؟';
-            showConfirmationModal(message, performMiniProfileAction);
+            showConfirmationModal(message, () => {
+    performMiniProfileAction(modalElement, action, userId, miniProfileActionBtn);
+});
         } else {
-            performMiniProfileAction();
+            performMiniProfileAction(modalElement, action, userId, miniProfileActionBtn);
         }
         return;
     }
