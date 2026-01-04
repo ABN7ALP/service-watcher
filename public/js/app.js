@@ -521,11 +521,10 @@ document.querySelectorAll('.unblock-user-btn').forEach(btn => {
             console.error('Error unblocking user:', error);
             showNotification('خطأ في الاتصال', 'error');
             if (userCard) userCard.style.opacity = '1';
-        }
+          }
+       });
     });
-});
-
-
+ }
 
 // دالة لإعادة عرض ساحة التحديات
 function showArenaView() {
