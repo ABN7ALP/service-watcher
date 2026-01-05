@@ -2301,44 +2301,38 @@ function setupPrivateChatEvents(targetUserId) {
         });
     }
     
-    
     // 7. أزرار الوسائط
     document.querySelectorAll('.chat-media-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const type = this.dataset.type;
-            
-            // ✅ استخدام targetUserId من المعامل
-            switch(type) {
-                case 'image':
-                    showImageUploadModal(targetUserId);
-                    break;
-                case 'video':
-                    // showVideoUploadModal(targetUserId); // مؤقتاً
-                    showNotification('رفع الفيديو قريباً...', 'info');
-                    break;
-                case 'voice':
-                    // startVoiceRecording(targetUserId); // مؤقتاً
-                    showNotification('تسجيل الصوت قريباً...', 'info');
-                    break;
-                case 'file':
-                    // showFileUploadModal(targetUserId); // مؤقتاً
-                    showNotification('رفع الملفات قريباً...', 'info');
-                    break;
-            }
-            
-            // إغلاق شريط الخيارات بعد الاختيار
-            const optionsBar = document.getElementById('chat-options-bar');
-            if (optionsBar) optionsBar.classList.add('hidden');
-            
-            const toggleBtn = document.getElementById('toggle-chat-options');
-            if (toggleBtn) {
-                toggleBtn.querySelector('i').classList.remove('fa-times');
-                toggleBtn.querySelector('i').classList.add('fa-plus');
-            }
+            handleMediaButtonClick(type, targetUserId);
         });
     });
+}
+// --- 🎮 دالة معالجة أزرار الوسائط ---
+function handleMediaButtonClick(type, targetUserId) {
+    console.log(`[CHAT] Media button clicked: ${type} for user ${targetUserId}`);
+    
+    switch(type) {
+        case 'image':
+            showImageUploadModal(targetUserId);
+            break;
+        case 'video':
+            showNotification('إرسال الفيديو قريباً...', 'info');
+            // showVideoUploadModal(targetUserId); // لاحقاً
+            break;
+        case 'voice':
+            showNotification('التسجيل الصوتي قريباً...', 'info');
+            // startVoiceRecording(targetUserId); // لاحقاً
+            break;
+        case 'file':
+            showNotification('إرسال الملفات قريباً...', 'info');
+            // showFileUploadModal(targetUserId); // لاحقاً
+            break;
+    }
+}
 
-// --- 🖼️ دالة عرض نافذة رفع الصور ---
+   // --- 🖼️ دالة عرض نافذة رفع الصور ---
 function showImageUploadModal(targetUserId) {
     console.log(`[IMAGE UPLOAD] Opening for user: ${targetUserId}`);
     
@@ -2469,7 +2463,6 @@ function showImageUploadModal(targetUserId) {
     // ربط الأحداث
     setupImageUploadEvents(targetUserId);
 }
-        
 
 // --- 🎮 دالة إعداد أحداث رفع الصور ---
 function setupImageUploadEvents(targetUserId) {
@@ -2593,8 +2586,6 @@ function setupImageUploadEvents(targetUserId) {
     }
 }
 
-
-        
 // --- 📤 دالة رفع وإرسال الصورة ---
 async function uploadAndSendImage(file, targetUserId, modal) {
     const sendButton = modal.querySelector('#send-image-button');
@@ -2725,22 +2716,22 @@ function formatFileSize(bytes) {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
+} 
+
+
         
 
 // --- 📤 دالة إرسال رسالة نصية ---
 async function sendPrivateMessage(receiverId, message, replyTo = null, type = 'text', metadata = {}) {
-    // إذا كانت رسالة وسائط، لا نتحقق من طول النص
-    if (type === 'text' && !message) {
+    if (!message && type === 'text') {
         showNotification('اكتب رسالة أولاً', 'error');
         return;
     }
     
-    if (type === 'text' && message && message.length > 200) {
+    if (message && message.length > 200) {
         showNotification('الرسالة طويلة جداً (200 حرف كحد أقصى)', 'error');
         return;
-    } 
-    
+    }
     
     console.log(`[CHAT] Sending ${type} message to ${receiverId}`);
     
