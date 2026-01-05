@@ -1282,40 +1282,19 @@ socket.on('profileNeedsRefresh', async (data) => {
 });
 
 // 6️⃣ حدث خاص لرفع الحظر من الإعدادات
-socket.on('unblockedFromSettings', (data) => {
-    console.log('🔵 [DEBUG] Received unblockedFromSettings:', data);
-    console.log('🔵 [DEBUG] Full data object:', JSON.stringify(data, null, 2));
+socket.on('unblockedFromSettings', async (data) => {
+    console.log('📢 حدث رفع حظر وصل');
     
-    // جلب البروفايل الحالي
-    const profileModal = document.getElementById('mini-profile-modal');
-    console.log('🔵 [DEBUG] Profile modal exists:', !!profileModal);
-    console.log('🔵 [DEBUG] Profile modal userId:', profileModal?.dataset?.userId);
+    // 1. أعد جلب بيانات المستخدم من الخادم
+    await refreshUserData();
     
-    // تحديث البيانات
-    setTimeout(() => {
-        refreshUserData();
-        
-        // إذا كان البروفايل مفتوحاً، أعد تحميله
-        const profileModal = document.getElementById('mini-profile-modal');
-        
-        // ⭐ التحقق من صحة البيانات
-        if (!data || !data.unblockedId) {
-            console.error('[SOCKET ERROR] unblockedFromSettings data is invalid:', data);
-            return;
-        }
-        
-        if (profileModal && profileModal.dataset.userId === data.unblockedId.toString()) {
-            console.log('[SOCKET] Refreshing mini profile for user:', data.unblockedId);
-            const userId = profileModal.dataset.userId;
-            profileModal.remove();
-            setTimeout(() => showMiniProfileModal(userId), 400);
-        } else {
-            console.log('[SOCKET] Mini profile not open for this user or data mismatch');
-            console.log('- Modal exists:', !!profileModal);
-            console.log('- Modal userId:', profileModal?.dataset?.userId);
-            console.log('- Data unblockedId:', data.unblockedId);
-        }
-    }, 500);
+    // 2. إذا البروفايل مفتوح، أغلقه وأعده
+    const modal = document.getElementById('mini-profile-modal');
+    if (modal && modal.dataset.userId) {
+        const userId = modal.dataset.userId;
+        modal.remove();
+        setTimeout(() => showMiniProfileModal(userId), 500);
+    }
 });
         
         // --- أضف هذه المستمعات الجديدة ---
