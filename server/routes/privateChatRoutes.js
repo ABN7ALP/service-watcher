@@ -22,5 +22,4 @@ router.delete('/message', privateChatController.deleteMessage);
 router.post('/report', privateChatController.reportMessage);
 router.post('/message/media', privateChatController.sendMediaMessage);
 
-
 module.exports = router;
