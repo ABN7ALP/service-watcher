@@ -2322,8 +2322,7 @@ function handleMediaButtonClick(type, targetUserId) {
             // showVideoUploadModal(targetUserId); // لاحقاً
             break;
         case 'voice':
-            showNotification('التسجيل الصوتي قريباً...', 'info');
-            // startVoiceRecording(targetUserId); // لاحقاً
+            startVoiceRecording(targetUserId); // لاحقاً
             break;
         case 'file':
             showNotification('إرسال الملفات قريباً...', 'info');
