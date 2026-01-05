@@ -55,6 +55,7 @@ const getPublicIdFromUrl = (url) => {
     }
 };
 
+
 // 7. دالة لرفع صور الدردشة مع خيارات حماية
 exports.uploadChatImage = (fileBuffer, options = {}) => {
     return new Promise((resolve, reject) => {
@@ -196,44 +197,9 @@ exports.deleteChatMedia = async (publicId, resourceType = 'image') => {
 };
 
 
-
-// 11. Multer للدردشات مع تحسينات
-const chatUpload = multer({
-    storage: storage,
-    limits: {
-        fileSize: 10 * 1024 * 1024, // 10MB كحد أقصى
-        files: 1
-    },
-    fileFilter: (req, file, cb) => {
-        const allowedTypes = {
-            'image/jpeg': true,
-            'image/png': true,
-            'image/gif': true,
-            'image/webp': true,
-            'audio/mpeg': true,
-            'audio/wav': true,
-            'audio/ogg': true,
-            'video/mp4': true,
-            'video/webm': true
-        };
-
-        if (allowedTypes[file.mimetype]) {
-            cb(null, true);
-        } else {
-            cb(new Error('نوع الملف غير مدعوم. المسموح: صور، صوت، فيديو'), false);
-        }
-    }
-});
-
-// 12. Export جميع الـ uploads
 module.exports = {
     cloudinary,
-    upload, // للملفات الشخصية
-    uploadChatImage,
-    uploadChatVoice,
-    uploadChatVideo,
-    deleteChatMedia,
+    upload,
     deleteFromCloudinary,
-    getPublicIdFromUrl,
-    chatUpload // للدردشات
+    getPublicIdFromUrl
 };
