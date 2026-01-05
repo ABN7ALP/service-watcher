@@ -2301,28 +2301,42 @@ function setupPrivateChatEvents(targetUserId) {
         });
     }
     
+    
     // 7. أزرار الوسائط
     document.querySelectorAll('.chat-media-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const type = this.dataset.type;
-            function handleMediaButtonClick(type, targetUserId) {
-    console.log(`[CHAT] Media button clicked: ${type} for user ${targetUserId}`);
-    
-    switch(type) {
-        case 'image':
-            showImageUploadModal(targetUserId);
-            break;
-        case 'video':
-            showVideoUploadModal(targetUserId);
-            break;
-        case 'voice':
-            startVoiceRecording(targetUserId);
-            break;
-        case 'file':
-            showFileUploadModal(targetUserId);
-            break;
-    }
-}
+            
+            // ✅ استخدام targetUserId من المعامل
+            switch(type) {
+                case 'image':
+                    showImageUploadModal(targetUserId);
+                    break;
+                case 'video':
+                    // showVideoUploadModal(targetUserId); // مؤقتاً
+                    showNotification('رفع الفيديو قريباً...', 'info');
+                    break;
+                case 'voice':
+                    // startVoiceRecording(targetUserId); // مؤقتاً
+                    showNotification('تسجيل الصوت قريباً...', 'info');
+                    break;
+                case 'file':
+                    // showFileUploadModal(targetUserId); // مؤقتاً
+                    showNotification('رفع الملفات قريباً...', 'info');
+                    break;
+            }
+            
+            // إغلاق شريط الخيارات بعد الاختيار
+            const optionsBar = document.getElementById('chat-options-bar');
+            if (optionsBar) optionsBar.classList.add('hidden');
+            
+            const toggleBtn = document.getElementById('toggle-chat-options');
+            if (toggleBtn) {
+                toggleBtn.querySelector('i').classList.remove('fa-times');
+                toggleBtn.querySelector('i').classList.add('fa-plus');
+            }
+        });
+    });
 
 // --- 🖼️ دالة عرض نافذة رفع الصور ---
 function showImageUploadModal(targetUserId) {
