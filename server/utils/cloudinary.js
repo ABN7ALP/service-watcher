@@ -15,8 +15,8 @@ cloudinary.config({
 // 2. إعداد Multer لتخزين الملفات مؤقتًا في الذاكرة
 const storage = multer.memoryStorage();
 
-// 3. دالة للتحقق من أن الملف هو صورة
-const fileFilter = (req, file, cb) => {
+// 3. دالة للتحقق من أن الملف هو صورة (للملفات الشخصية)
+const profileImageFilter = (req, file, cb) => {
     const filetypes = /jpeg|jpg|png|gif/;
     const mimetype = filetypes.test(file.mimetype);
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
@@ -27,14 +27,45 @@ const fileFilter = (req, file, cb) => {
     cb(new Error(`خطأ: الرفع مسموح للصور فقط (jpeg, jpg, png, gif).`));
 };
 
-// 4. تصدير middleware الرفع
+// 4. دالة للتحقق من ملفات الدردشة
+const chatMediaFilter = (req, file, cb) => {
+    const allowedTypes = {
+        'image/jpeg': true,
+        'image/png': true,
+        'image/gif': true,
+        'image/webp': true,
+        'audio/mpeg': true,
+        'audio/wav': true,
+        'audio/ogg': true,
+        'video/mp4': true,
+        'video/webm': true
+    };
+
+    if (allowedTypes[file.mimetype]) {
+        cb(null, true);
+    } else {
+        cb(new Error('نوع الملف غير مدعوم. المسموح: صور، صوت، فيديو'), false);
+    }
+};
+
+// 5. Multer للملفات الشخصية
 const upload = multer({
     storage: storage,
-    fileFilter: fileFilter,
-    limits: { fileSize: 5 * 1024 * 1024 } // حد أقصى 2 ميغابايت
-}).single('profileImage'); // 'profileImage' هو اسم الحقل في النموذج
+    fileFilter: profileImageFilter,
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+}).single('profileImage');
 
-// 5. دالة مساعدة لحذف الصورة القديمة من Cloudinary
+// 6. Multer للدردشات
+const chatUpload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB كحد أقصى
+        files: 1
+    },
+    fileFilter: chatMediaFilter
+});
+
+// 7. دالة مساعدة لحذف الصورة القديمة من Cloudinary
 const deleteFromCloudinary = async (publicId) => {
     try {
         await cloudinary.uploader.destroy(publicId);
@@ -43,7 +74,7 @@ const deleteFromCloudinary = async (publicId) => {
     }
 };
 
-// 6. دالة مساعدة لاستخراج Public ID من رابط Cloudinary
+// 8. دالة مساعدة لاستخراج Public ID من رابط Cloudinary
 const getPublicIdFromUrl = (url) => {
     try {
         const parts = url.split('/');
@@ -55,9 +86,8 @@ const getPublicIdFromUrl = (url) => {
     }
 };
 
-
-// 7. دالة لرفع صور الدردشة مع خيارات حماية
-exports.uploadChatImage = (fileBuffer, options = {}) => {
+// 9. دالة لرفع صور الدردشة مع خيارات حماية
+const uploadChatImage = (fileBuffer, options = {}) => {
     return new Promise((resolve, reject) => {
         const uploadOptions = {
             folder: 'chat_images',
@@ -109,8 +139,8 @@ exports.uploadChatImage = (fileBuffer, options = {}) => {
     });
 };
 
-// 8. دالة لرفع صوت الدردشة
-exports.uploadChatVoice = (fileBuffer, duration) => {
+// 10. دالة لرفع صوت الدردشة
+const uploadChatVoice = (fileBuffer, duration) => {
     return new Promise((resolve, reject) => {
         // التحقق من المدة (15 ثانية كحد أقصى)
         if (duration && duration > 15) {
@@ -136,8 +166,8 @@ exports.uploadChatVoice = (fileBuffer, duration) => {
     });
 };
 
-// 9. دالة لرفع فيديو الدردشة
-exports.uploadChatVideo = (fileBuffer, duration, options = {}) => {
+// 11. دالة لرفع فيديو الدردشة
+const uploadChatVideo = (fileBuffer, duration, options = {}) => {
     return new Promise((resolve, reject) => {
         // التحقق من المدة (30 ثانية كحد أقصى)
         if (duration && duration > 30) {
@@ -182,8 +212,8 @@ exports.uploadChatVideo = (fileBuffer, duration, options = {}) => {
     });
 };
 
-// 10. دالة حذف وسائط الدردشة
-exports.deleteChatMedia = async (publicId, resourceType = 'image') => {
+// 12. دالة حذف وسائط الدردشة
+const deleteChatMedia = async (publicId, resourceType = 'image') => {
     try {
         await cloudinary.uploader.destroy(publicId, {
             resource_type: resourceType,
@@ -196,10 +226,15 @@ exports.deleteChatMedia = async (publicId, resourceType = 'image') => {
     }
 };
 
-
+// 13. التصدير
 module.exports = {
     cloudinary,
-    upload,
-    deleteFromCloudinary,
-    getPublicIdFromUrl
+    upload,                    // للملفات الشخصية (middleware)
+    chatUpload,               // للدردشات (middleware)
+    uploadChatImage,          // دالة رفع صور الدردشة
+    uploadChatVoice,          // دالة رفع صوت الدردشة
+    uploadChatVideo,          // دالة رفع فيديو الدردشة
+    deleteChatMedia,          // دالة حذف وسائط الدردشة
+    deleteFromCloudinary,     // دالة حذف عامة
+    getPublicIdFromUrl        // دالة استخراج publicId
 };
