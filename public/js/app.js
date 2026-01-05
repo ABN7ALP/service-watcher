@@ -39,6 +39,87 @@ const createLevelProgressHTML = (user) => {
     const loadingScreen = document.getElementById('loading-screen');
     const appContainer = document.getElementById('app-container');
 
+
+// ============================================
+// CSS ديناميكي للدردشة الخاصة
+// ============================================
+const chatStyles = `
+    /* أنيميشن للرسائل الجديدة */
+    @keyframes messageSlideIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .new-message {
+        animation: messageSlideIn 0.3s ease-out;
+    }
+    
+    /* تخصيص scrollbar للدردشة */
+    #private-chat-messages::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    #private-chat-messages::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+    }
+    
+    #private-chat-messages::-webkit-scrollbar-thumb {
+        background: rgba(139, 92, 246, 0.5);
+        border-radius: 10px;
+    }
+    
+    /* تأثيرات الأزرار */
+    .chat-action-btn {
+        padding: 0.5rem;
+        border-radius: 9999px;
+        transition: background-color 0.2s;
+    }
+    
+    .chat-action-btn:hover {
+        background-color: #374151;
+    }
+    
+    .chat-media-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 0.75rem;
+        border-radius: 0.75rem;
+        transition: all 0.2s;
+        transform: scale(1);
+    }
+    
+    .chat-media-btn:hover {
+        background-color: rgba(55, 65, 81, 0.5);
+        transform: scale(1.05);
+    }
+    
+    /* مؤشر التسجيل الصوتي */
+    @keyframes pulseRecording {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    
+    .recording-active {
+        animation: pulseRecording 1s infinite;
+        background-color: #dc2626 !important;
+    }
+`;
+
+// إضافة الـ styles إلى الـ head مرة واحدة
+document.addEventListener('DOMContentLoaded', () => {
+    if (!document.querySelector('#chat-styles')) {
+        const styleEl = document.createElement('style');
+        styleEl.id = 'chat-styles';
+        styleEl.textContent = chatStyles;
+        document.head.appendChild(styleEl);
+    }
+});
+
+
+
+        
 // ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐
 // 📍 أضف هذه الدالة هنا (دالة عامة)
 // ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐
