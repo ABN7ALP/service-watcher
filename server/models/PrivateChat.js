@@ -9,12 +9,20 @@ const privateChatSchema = new mongoose.Schema({
     },
     
     // المشاركون في الدردشة (دائماً 2)
-    participants: [{
+    participants: {
+    type: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true,
-        validate: [arrayLimit, 'الدردشة الخاصة بين شخصين فقط']
+        required: true
     }],
+    validate: {
+        validator: function(array) {
+            return array.length === 2;
+        },
+        message: 'الدردشة الخاصة بين شخصين فقط'
+    },
+    required: true
+},
     
     // بيانات المشاركين (للأداء)
     participantData: [{
