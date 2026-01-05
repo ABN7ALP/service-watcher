@@ -2305,22 +2305,428 @@ function setupPrivateChatEvents(targetUserId) {
     document.querySelectorAll('.chat-media-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const type = this.dataset.type;
-            handleMediaButtonClick(type, targetUserId);
-        });
-    });
+            function handleMediaButtonClick(type, targetUserId) {
+    console.log(`[CHAT] Media button clicked: ${type} for user ${targetUserId}`);
+    
+    switch(type) {
+        case 'image':
+            showImageUploadModal(targetUserId);
+            break;
+        case 'video':
+            showVideoUploadModal(targetUserId);
+            break;
+        case 'voice':
+            startVoiceRecording(targetUserId);
+            break;
+        case 'file':
+            showFileUploadModal(targetUserId);
+            break;
+    }
 }
+
+// --- 🖼️ دالة عرض نافذة رفع الصور ---
+function showImageUploadModal(targetUserId) {
+    console.log(`[IMAGE UPLOAD] Opening for user: ${targetUserId}`);
+    
+    // إغلاق شريط الخيارات
+    const optionsBar = document.getElementById('chat-options-bar');
+    if (optionsBar) optionsBar.classList.add('hidden');
+    
+    const modalHTML = `
+        <div id="image-upload-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[350] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white overflow-hidden border-2 border-purple-500/30">
+                
+                <!-- رأس النافذة -->
+                <div class="flex items-center justify-between p-4 bg-gray-900/80 border-b border-gray-700">
+                    <h3 class="text-lg font-bold">
+                        <i class="fas fa-image mr-2 text-green-400"></i>
+                        إرسال صورة
+                    </h3>
+                    <button class="close-image-modal text-gray-400 hover:text-white p-2">
+                        <i class="fas fa-times text-lg"></i>
+                    </button>
+                </div>
+                
+                <!-- منطقة الرفع -->
+                <div class="p-6">
+                    <!-- منطقة سحب وإسقاط -->
+                    <div id="drop-zone" 
+                         class="border-2 border-dashed border-gray-600 rounded-xl p-8 text-center cursor-pointer hover:border-green-500 transition-colors duration-300 bg-gray-900/50 mb-6">
+                        
+                        <div id="upload-area-content">
+                            <i class="fas fa-cloud-upload-alt text-4xl text-gray-500 mb-4"></i>
+                            <p class="font-medium mb-2">اسحب وأفلت الصورة هنا</p>
+                            <p class="text-sm text-gray-400 mb-4">أو انقر للاختيار</p>
+                            <p class="text-xs text-gray-500">(حد أقصى 5MB - JPG, PNG, GIF, WebP)</p>
+                        </div>
+                        
+                        <!-- معاينة الصورة -->
+                        <div id="image-preview" class="hidden mt-4">
+                            <img id="preview-image" class="max-w-full max-h-48 rounded-lg mx-auto">
+                            <div class="mt-2 flex items-center justify-between text-sm">
+                                <span id="file-name" class="truncate"></span>
+                                <span id="file-size" class="text-gray-400"></span>
+                            </div>
+                        </div>
+                        
+                        <!-- شريط التقدم -->
+                        <div id="upload-progress" class="hidden mt-4">
+                            <div class="flex justify-between text-xs mb-1">
+                                <span>جاري الرفع...</span>
+                                <span id="progress-percent">0%</span>
+                            </div>
+                            <div class="w-full bg-gray-700 h-2 rounded-full overflow-hidden">
+                                <div id="progress-bar" class="bg-green-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- زر الاختيار المخفي -->
+                        <input type="file" id="image-file-input" class="hidden" accept="image/*">
+                    </div>
+                    
+                    <!-- خيارات الحماية -->
+                    <div class="bg-gray-900/30 p-4 rounded-xl mb-6">
+                        <h4 class="font-bold mb-3 flex items-center gap-2">
+                            <i class="fas fa-shield-alt text-blue-400"></i>
+                            خيارات الحماية
+                        </h4>
+                        
+                        <div class="space-y-3">
+                            <!-- مشاهدة مرة واحدة -->
+                            <label class="flex items-center gap-3 cursor-pointer hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
+                                <input type="checkbox" id="view-once" class="w-4 h-4 rounded text-green-500">
+                                <div class="flex-1">
+                                    <span class="font-medium">مشاهدة مرة واحدة</span>
+                                    <p class="text-xs text-gray-400">تختفي الصورة بعد مشاهدتها</p>
+                                </div>
+                                <i class="fas fa-eye text-yellow-400"></i>
+                            </label>
+                            
+                            <!-- منع الحفظ -->
+                            <label class="flex items-center gap-3 cursor-pointer hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
+                                <input type="checkbox" id="disable-save" class="w-4 h-4 rounded text-green-500">
+                                <div class="flex-1">
+                                    <span class="font-medium">منع الحفظ</span>
+                                    <p class="text-xs text-gray-400">لا يمكن حفظ الصورة</p>
+                                </div>
+                                <i class="fas fa-download-slash text-red-400"></i>
+                            </label>
+                            
+                            <!-- علامة مائية -->
+                            <label class="flex items-center gap-3 cursor-pointer hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
+                                <input type="checkbox" id="add-watermark" class="w-4 h-4 rounded text-green-500">
+                                <div class="flex-1">
+                                    <span class="font-medium">علامة مائية</span>
+                                    <p class="text-xs text-gray-400">إضافة شعار المنصة</p>
+                                </div>
+                                <i class="fas fa-copyright text-blue-400"></i>
+                            </label>
+                            
+                            <!-- منع الرد -->
+                            <label class="flex items-center gap-3 cursor-pointer hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
+                                <input type="checkbox" id="disable-reply" class="w-4 h-4 rounded text-green-500">
+                                <div class="flex-1">
+                                    <span class="font-medium">منع الرد</span>
+                                    <p class="text-xs text-gray-400">لا يمكن الرد على هذه الصورة</p>
+                                </div>
+                                <i class="fas fa-reply text-purple-400"></i>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- أزرار الإجراء -->
+                    <div class="flex gap-3">
+                        <button id="cancel-image-upload" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition">
+                            إلغاء
+                        </button>
+                        <button id="send-image-button" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <i class="fas fa-paper-plane mr-2"></i>
+                            إرسال
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // إضافة النافذة إلى الـ DOM
+    document.getElementById('game-container').innerHTML += modalHTML;
+    
+    // ربط الأحداث
+    setupImageUploadEvents(targetUserId);
+}
+        
+
+// --- 🎮 دالة إعداد أحداث رفع الصور ---
+function setupImageUploadEvents(targetUserId) {
+    const modal = document.getElementById('image-upload-modal');
+    if (!modal) return;
+    
+    let selectedFile = null;
+    let uploadInProgress = false;
+    
+    // 1. زر الإغلاق
+    const closeBtn = modal.querySelector('.close-image-modal');
+    const cancelBtn = modal.querySelector('#cancel-image-upload');
+    
+    const closeModal = () => {
+        if (!uploadInProgress) {
+            modal.remove();
+        } else {
+            showNotification('انتظر اكتمال الرفع', 'warning');
+        }
+    };
+    
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+    
+    // 2. إغلاق بالنقر على الخلفية
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'image-upload-modal') {
+            closeModal();
+        }
+    });
+    
+    // 3. اختيار ملف
+    const fileInput = modal.querySelector('#image-file-input');
+    const dropZone = modal.querySelector('#drop-zone');
+    const sendButton = modal.querySelector('#send-image-button');
+    
+    dropZone.addEventListener('click', () => {
+        if (!uploadInProgress) {
+            fileInput.click();
+        }
+    });
+    
+    // سحب وإسقاط
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (!uploadInProgress) {
+            dropZone.classList.add('border-green-500', 'bg-gray-800/50');
+        }
+    });
+    
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('border-green-500', 'bg-gray-800/50');
+    });
+    
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-green-500', 'bg-gray-800/50');
+        
+        if (!uploadInProgress && e.dataTransfer.files.length > 0) {
+            handleFileSelection(e.dataTransfer.files[0]);
+        }
+    });
+    
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFileSelection(e.target.files[0]);
+        }
+    });
+    
+    // 4. معالجة اختيار الملف
+    function handleFileSelection(file) {
+        // التحقق من نوع الملف
+        const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!validTypes.includes(file.type)) {
+            showNotification('نوع الملف غير مدعوم. المسموح: JPG, PNG, GIF, WebP', 'error');
+            return;
+        }
+        
+        // التحقق من الحجم (5MB كحد أقصى)
+        if (file.size > 5 * 1024 * 1024) {
+            showNotification('حجم الصورة يتجاوز 5MB', 'error');
+            return;
+        }
+        
+        selectedFile = file;
+        
+        // عرض المعاينة
+        const previewImage = modal.querySelector('#preview-image');
+        const fileName = modal.querySelector('#file-name');
+        const fileSize = modal.querySelector('#file-size');
+        const uploadArea = modal.querySelector('#upload-area-content');
+        const imagePreview = modal.querySelector('#image-preview');
+        
+        if (uploadArea) uploadArea.classList.add('hidden');
+        if (imagePreview) imagePreview.classList.remove('hidden');
+        
+        // قراءة الصورة للمعاينة
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            if (previewImage) previewImage.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+        
+        if (fileName) fileName.textContent = file.name;
+        if (fileSize) fileSize.textContent = formatFileSize(file.size);
+        
+        // تفعيل زر الإرسال
+        if (sendButton) {
+            sendButton.disabled = false;
+            sendButton.classList.remove('disabled:opacity-50', 'disabled:cursor-not-allowed');
+        }
+    }
+    
+    // 5. زر الإرسال
+    if (sendButton) {
+        sendButton.addEventListener('click', async () => {
+            if (!selectedFile || uploadInProgress) return;
+            
+            await uploadAndSendImage(selectedFile, targetUserId, modal);
+        });
+    }
+}
+
+
+        
+// --- 📤 دالة رفع وإرسال الصورة ---
+async function uploadAndSendImage(file, targetUserId, modal) {
+    const sendButton = modal.querySelector('#send-image-button');
+    const progressBar = modal.querySelector('#progress-bar');
+    const progressPercent = modal.querySelector('#progress-percent');
+    const uploadProgress = modal.querySelector('#upload-progress');
+    const dropZone = modal.querySelector('#drop-zone');
+    
+    // جلب خيارات الحماية
+    const viewOnce = modal.querySelector('#view-once').checked;
+    const disableSave = modal.querySelector('#disable-save').checked;
+    const addWatermark = modal.querySelector('#add-watermark').checked;
+    const disableReply = modal.querySelector('#disable-reply').checked;
+    
+    try {
+        // بدء الرفع
+        uploadInProgress = true;
+        if (sendButton) sendButton.disabled = true;
+        if (dropZone) dropZone.style.pointerEvents = 'none';
+        if (uploadProgress) uploadProgress.classList.remove('hidden');
+        
+        // 1. رفع الصورة إلى Cloudinary
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('receiverId', targetUserId);
+        formData.append('metadata', JSON.stringify({
+            viewOnce: viewOnce,
+            disableSave: disableSave,
+            hasWatermark: addWatermark,
+            disableReply: disableReply
+        }));
+        
+        // محاكاة شريط التقدم (ستستبدل بـ upload حقيقي مع progress events)
+        simulateUploadProgress(progressBar, progressPercent, 2000);
+        
+        // إرسال الطلب
+        const response = await fetch('/api/chat-media/image', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+                // لا نضيف Content-Type، سيتم تعيينه تلقائياً
+            },
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            // 2. إرسال الرسالة مع رابط الصورة
+            const metadata = {
+                thumbnail: result.data.thumbnail,
+                publicId: result.data.publicId,
+                fileSize: result.data.bytes,
+                format: result.data.format,
+                dimensions: {
+                    width: result.data.width,
+                    height: result.data.height
+                },
+                viewOnce: viewOnce,
+                disableSave: disableSave,
+                hasWatermark: addWatermark,
+                disableReply: disableReply
+            };
+            
+            // إرسال كرسالة وسائط
+            await sendPrivateMessage(
+                targetUserId,
+                result.data.url, // رابط الصورة
+                null, // replyTo
+                'image',
+                metadata
+            );
+            
+            // إغلاق النافذة
+            modal.remove();
+            showNotification('تم إرسال الصورة بنجاح', 'success');
+            
+        } else {
+            throw new Error(result.message || 'فشل رفع الصورة');
+        }
+        
+    } catch (error) {
+        console.error('[IMAGE UPLOAD] Error:', error);
+        showNotification(error.message || 'فشل رفع الصورة', 'error');
+        
+        // إعادة تعيين
+        const sendButton = modal.querySelector('#send-image-button');
+        const uploadProgress = modal.querySelector('#upload-progress');
+        
+        if (sendButton) sendButton.disabled = false;
+        if (uploadProgress) uploadProgress.classList.add('hidden');
+        
+    } finally {
+        uploadInProgress = false;
+        const dropZone = modal.querySelector('#drop-zone');
+        if (dropZone) dropZone.style.pointerEvents = 'auto';
+    }
+}
+
+// --- ⏳ دالة محاكاة تقدم الرفع ---
+function simulateUploadProgress(progressBar, progressPercent, duration) {
+    if (!progressBar || !progressPercent) return;
+    
+    let progress = 0;
+    const interval = 50;
+    const totalSteps = duration / interval;
+    const increment = 100 / totalSteps;
+    
+    const timer = setInterval(() => {
+        progress += increment;
+        if (progress > 95) progress = 95; // توقف عند 95% للانتظار الرفع الحقيقي
+        
+        progressBar.style.width = `${progress}%`;
+        progressPercent.textContent = `${Math.round(progress)}%`;
+        
+        if (progress >= 95) {
+            clearInterval(timer);
+        }
+    }, interval);
+}
+
+// --- 📏 دالة تنسيق حجم الملف ---
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+        
 
 // --- 📤 دالة إرسال رسالة نصية ---
 async function sendPrivateMessage(receiverId, message, replyTo = null, type = 'text', metadata = {}) {
-    if (!message && type === 'text') {
+    // إذا كانت رسالة وسائط، لا نتحقق من طول النص
+    if (type === 'text' && !message) {
         showNotification('اكتب رسالة أولاً', 'error');
         return;
     }
     
-    if (message && message.length > 200) {
+    if (type === 'text' && message && message.length > 200) {
         showNotification('الرسالة طويلة جداً (200 حرف كحد أقصى)', 'error');
         return;
-    }
+    } 
+    
     
     console.log(`[CHAT] Sending ${type} message to ${receiverId}`);
     
