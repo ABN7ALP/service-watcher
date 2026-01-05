@@ -276,6 +276,9 @@ const initializeSocket = (server) => {
         }
 
         socket.join('public-room');
+        // إضافة المستخدم إلى room خاصة به
+socket.join(`user-${socket.user.id}`);
+console.log(`[SOCKET] User ${socket.user.id} joined room: user-${socket.user.id}`);
 
         // --- استبدل مستمع 'sendMessage' بهذا الكود التشخيصي ---
 /// ✅ مستمع sendMessage (نظيف + شغال)
