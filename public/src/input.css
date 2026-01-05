@@ -96,3 +96,33 @@ body {
 #time-progress-bar {
     transition: width 0.9s linear;
 }
+/* تأثيرات رفع الصور */
+#drop-zone.dragover {
+    border-color: #10b981 !important;
+    background-color: rgba(16, 185, 129, 0.1) !important;
+    transform: scale(1.02);
+    transition: all 0.3s ease;
+}
+
+/* أنيميشن النبض */
+@keyframes pulse-upload {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.uploading {
+    animation: pulse-upload 1.5s infinite;
+}
+
+/* معاينة الصورة */
+#preview-image {
+    max-height: 200px;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* تخصيص checkbox */
+input[type="checkbox"] {
+    accent-color: #8b5cf6;
+}
