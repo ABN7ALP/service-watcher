@@ -1282,20 +1282,25 @@ socket.on('profileNeedsRefresh', async (data) => {
 });
 
 // 6️⃣ حدث خاص لرفع الحظر من الإعدادات
-socket.on('unblockedFromSettings', async (data) => {
-    console.log('📢 حدث رفع حظر وصل');
+socket.on('unblockedFromSettings', (data) => {
+    console.log('[SOCKET] Unblocked from settings:', data);
     
-    // 1. أعد جلب بيانات المستخدم من الخادم
-    await refreshUserData();
+    // إشعار فوري
+    showNotification(`تم رفع الحظر عن ${data.unblockedUsername}`, 'success');
     
-    // 2. إذا البروفايل مفتوح، أغلقه وأعده
-    const modal = document.getElementById('mini-profile-modal');
-    if (modal && modal.dataset.userId) {
-        const userId = modal.dataset.userId;
-        modal.remove();
-        setTimeout(() => showMiniProfileModal(userId), 500);
-    }
-});
+    // تحديث البيانات
+    setTimeout(() => {
+        refreshUserData();
+        
+        // إذا كان البروفايل مفتوحاً، أعد تحميله
+        const profileModal = document.getElementById('mini-profile-modal');
+        if (profileModal && profileModal.dataset.userId === data.unblockedId) {
+            const userId = profileModal.dataset.userId;
+            profileModal.remove();
+            setTimeout(() => showMiniProfileModal(userId), 400);
+        }
+    }, 500);
+});    
         
         // --- أضف هذه المستمعات الجديدة ---
 
@@ -1639,7 +1644,7 @@ async function showMiniProfileModal(userId) {
         
         // ✅ HTML النافذة
         const modalHTML = `
-               <div id="mini-profile-modal" data-user-id="${userId}" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
+            <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
                 <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-purple-500/30">
                     
                     <!-- الصورة والمعلومات الأساسية -->
