@@ -443,7 +443,6 @@ function setupSettingsEvents() {
     document.getElementById('password-update-form').addEventListener('submit', handlePasswordUpdate);
     
     // 3. رفع الحظر
-    // في دالة setupSettingsEvents() - قسم رفع الحظر
 document.querySelectorAll('.unblock-user-btn').forEach(btn => {
     btn.addEventListener('click', async function() {
         const userId = this.dataset.userId;
@@ -461,7 +460,38 @@ document.querySelectorAll('.unblock-user-btn').forEach(btn => {
                 }
             });
             
+            // ⭐ جلب الـ response كـ JSON
+            const result = await response.json();
+            
             if (response.ok) {
+                // ⭐⭐ تحديث localStorage فوراً ⭐⭐
+                if (result.data?.updatedUser) {
+                    // 1. جلب المستخدم الحالي
+                    const currentUser = JSON.parse(localStorage.getItem('user'));
+                    
+                    // 2. دمج البيانات القديمة مع الجديدة
+                    const mergedUser = {
+                        ...currentUser,
+                        ...result.data.updatedUser,
+                        _id: currentUser._id,
+                        customId: currentUser.customId,
+                        email: currentUser.email,
+                        password: currentUser.password,
+                        gender: currentUser.gender,
+                        birthDate: currentUser.birthDate,
+                        socialStatus: currentUser.socialStatus,
+                        educationStatus: currentUser.educationStatus
+                    };
+                    
+                    // 3. حفظ في localStorage
+                    localStorage.setItem('user', JSON.stringify(mergedUser));
+                    
+                    // 4. تحديث الواجهة مباشرة
+                    updateUIWithUserData(mergedUser);
+                    
+                    console.log('✅ [SETTINGS] localStorage updated from unblock API');
+                }
+                
                 // ⭐ إشعار فوري
                 showNotification(`تم رفع الحظر عن ${username}`, 'success');
                 
@@ -513,7 +543,7 @@ document.querySelectorAll('.unblock-user-btn').forEach(btn => {
                 }
                 
             } else {
-                showNotification('فشل رفع الحظر', 'error');
+                showNotification(result.message || 'فشل رفع الحظر', 'error');
                 if (userCard) userCard.style.opacity = '1';
             }
             
@@ -521,9 +551,9 @@ document.querySelectorAll('.unblock-user-btn').forEach(btn => {
             console.error('Error unblocking user:', error);
             showNotification('خطأ في الاتصال', 'error');
             if (userCard) userCard.style.opacity = '1';
-          }
-       });
+        }
     });
+});
  }
 
 // دالة لإعادة عرض ساحة التحديات
