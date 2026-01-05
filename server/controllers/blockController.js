@@ -336,33 +336,39 @@ if (req.app.get('io')) {
         
         console.log(`[UNBLOCK] Sent notification to unblocked user: ${blockedUserId}`);
     }
-    
-    // ﻫ. إرسال حدث عام لتحديث cache للجميع
-    io.emit('blockCacheRefreshed', {
-        userId1: unblockerId,
-        userId2: blockedUserId,
-        action: 'unblock',
-        timestamp: new Date().toISOString()
-    });
-}
-        // 5. الرد الناجح
-        res.status(200).json({ 
-            status: 'success', 
-            message: 'تم فك حظر المستخدم بنجاح.',
-            data: { 
-                unblockedUserId: blockedUserId,
-                unblockedUsername: blockedUser.username,
-                timestamp: new Date().toISOString()
-            }
-        });
-
-    } catch (error) {
-        console.error('[ERROR] in unblockUser:', error);
-        res.status(500).json({ 
-            status: 'error', 
-            message: 'حدث خطأ في الخادم أثناء فك حظر المستخدم.' 
+            // ﻫ. إرسال حدث عام لتحديث cache للجميع
+        io.emit('blockCacheRefreshed', {
+            userId1: unblockerId,
+            userId2: blockedUserId,
+            action: 'unblock',
+            timestamp: new Date().toISOString()
         });
     }
+    
+    // ⭐⭐ جلب البيانات المحدثة للمستخدم ⭐⭐
+    const updatedUser = await User.findById(unblockerId)
+        .select('username profileImage balance level experience friends blockedUsers friendRequestsSent friendRequestsReceived')
+        .lean();
+
+    // 5. الرد الناجح مع البيانات المحدثة
+    res.status(200).json({ 
+        status: 'success', 
+        message: 'تم فك حظر المستخدم بنجاح.',
+        data: { 
+            unblockedUserId: blockedUserId,
+            unblockedUsername: blockedUser.username,
+            timestamp: new Date().toISOString(),
+            updatedUser: updatedUser  // ⭐ الإضافة المهمة
+        }
+    });
+
+} catch (error) {
+    console.error('[ERROR] in unblockUser:', error);
+    res.status(500).json({ 
+        status: 'error', 
+        message: 'حدث خطأ في الخادم أثناء فك حظر المستخدم.' 
+    });
+  }
 };
 // =================================================
 // جلب قائمة المحظورين
