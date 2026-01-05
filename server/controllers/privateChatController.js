@@ -62,25 +62,30 @@ exports.getOrCreateChat = async (req, res) => {
             .populate('participants', 'username profileImage customId level');
 
         // 5. إذا لم تكن موجودة، إنشاء واحدة جديدة
-        if (!chat) {
-            console.log(`[CHAT] Creating new chat: ${chatId}`);
+        // 5. إذا لم تكن موجودة، إنشاء واحدة جديدة
+if (!chat) {
+    console.log(`[CHAT] Creating new chat: ${chatId}`);
+    
+    // تأكد من أن participants هي ObjectId
+    const mongoose = require('mongoose');
+    const participantIds = participants.map(id => new mongoose.Types.ObjectId(id));
 
-            chat = await PrivateChat.create({
-                chatId,
-                participants: participants,
-                participantData: [
-                    {
-                        userId: userId,
-                        username: req.user.username,
-                        profileImage: req.user.profileImage
-                    },
-                    {
-                        userId: otherUserId,
-                        username: otherUser.username,
-                        profileImage: otherUser.profileImage
-                    }
-                ]
-            });
+    chat = await PrivateChat.create({
+        chatId,
+        participants: participantIds, // ✅ الآن ObjectId
+        participantData: [
+            {
+                userId: new mongoose.Types.ObjectId(userId),
+                username: req.user.username,
+                profileImage: req.user.profileImage
+            },
+            {
+                userId: new mongoose.Types.ObjectId(otherUserId),
+                username: otherUser.username,
+                profileImage: otherUser.profileImage
+            }
+        ]
+    });
 
             // جلب البيانات مع populate
             chat = await PrivateChat.findById(chat._id)
