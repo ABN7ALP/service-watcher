@@ -1283,7 +1283,13 @@ socket.on('profileNeedsRefresh', async (data) => {
 
 // 6️⃣ حدث خاص لرفع الحظر من الإعدادات
 socket.on('unblockedFromSettings', (data) => {
-    console.log('[SOCKET] Unblocked from settings:', data);
+    console.log('🔵 [DEBUG] Received unblockedFromSettings:', data);
+    console.log('🔵 [DEBUG] Full data object:', JSON.stringify(data, null, 2));
+    
+    // جلب البروفايل الحالي
+    const profileModal = document.getElementById('mini-profile-modal');
+    console.log('🔵 [DEBUG] Profile modal exists:', !!profileModal);
+    console.log('🔵 [DEBUG] Profile modal userId:', profileModal?.dataset?.userId);
     
     // تحديث البيانات
     setTimeout(() => {
