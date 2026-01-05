@@ -277,6 +277,54 @@ const initializeSocket = (server) => {
 
         socket.join('public-room');
 
+
+// 📨 مستمع لإرسال رسالة خاصة
+socket.on('sendPrivateMessage', async (messageData) => {
+    console.log(`[PRIVATE CHAT] Message from ${socket.user.id}:`, messageData?.content?.substring(0, 30) || 'non-text');
+    
+    try {
+        // التحقق من الحظر أولاً
+        const isBlocked = await checkIfBlocked(socket.user.id, messageData.receiverId);
+        
+        if (isBlocked) {
+            socket.emit('privateMessageError', {
+                error: 'لا يمكنك مراسلة مستخدم حظرك أو حظرته'
+            });
+            return;
+        }
+
+        // هنا سيتم التعامل مع الرسالة عبر API
+        // سيتم إرسالها عبر HTTP API وليس مباشرة عبر Socket
+        // للحفاظ على التسجيل في قاعدة البيانات
+        
+    } catch (error) {
+        console.error('[PRIVATE CHAT ERROR]:', error);
+        socket.emit('privateMessageError', {
+            error: 'حدث خطأ أثناء إرسال الرسالة'
+        });
+    }
+});
+
+// 📩 مستمع لتسليم رسالة خاصة
+socket.on('privateMessageDelivered', async ({ messageId }) => {
+    try {
+        // تحديث حالة الرسالة في قاعدة البيانات
+        // سيتم التعامل معها عبر API
+    } catch (error) {
+        console.error('[DELIVERY ERROR]:', error);
+    }
+});
+
+// 👁️ مستمع لقراءة رسالة خاصة
+socket.on('privateMessageSeen', async ({ messageId }) => {
+    try {
+        // تحديث حالة الرسالة في قاعدة البيانات
+        // سيتم التعامل معها عبر API
+    } catch (error) {
+        console.error('[SEEN ERROR]:', error);
+    }
+});
+        
         // --- استبدل مستمع 'sendMessage' بهذا الكود التشخيصي ---
 /// ✅ مستمع sendMessage (نظيف + شغال)
 socket.on('sendMessage', async (messageData) => {
