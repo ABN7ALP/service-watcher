@@ -1285,22 +1285,32 @@ socket.on('profileNeedsRefresh', async (data) => {
 socket.on('unblockedFromSettings', (data) => {
     console.log('[SOCKET] Unblocked from settings:', data);
     
-    // إشعار فوري
-    showNotification(`تم رفع الحظر عن ${data.unblockedUsername}`, 'success');
-    
     // تحديث البيانات
     setTimeout(() => {
         refreshUserData();
         
         // إذا كان البروفايل مفتوحاً، أعد تحميله
         const profileModal = document.getElementById('mini-profile-modal');
-        if (profileModal && profileModal.dataset.userId === data.unblockedId) {
+        
+        // ⭐ التحقق من صحة البيانات
+        if (!data || !data.unblockedId) {
+            console.error('[SOCKET ERROR] unblockedFromSettings data is invalid:', data);
+            return;
+        }
+        
+        if (profileModal && profileModal.dataset.userId === data.unblockedId.toString()) {
+            console.log('[SOCKET] Refreshing mini profile for user:', data.unblockedId);
             const userId = profileModal.dataset.userId;
             profileModal.remove();
             setTimeout(() => showMiniProfileModal(userId), 400);
+        } else {
+            console.log('[SOCKET] Mini profile not open for this user or data mismatch');
+            console.log('- Modal exists:', !!profileModal);
+            console.log('- Modal userId:', profileModal?.dataset?.userId);
+            console.log('- Data unblockedId:', data.unblockedId);
         }
     }, 500);
-});    
+});
         
         // --- أضف هذه المستمعات الجديدة ---
 
@@ -1644,7 +1654,7 @@ async function showMiniProfileModal(userId) {
         
         // ✅ HTML النافذة
         const modalHTML = `
-            <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
+               <div id="mini-profile-modal" data-user-id="${userId}" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
                 <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-purple-500/30">
                     
                     <!-- الصورة والمعلومات الأساسية -->
