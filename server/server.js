@@ -42,7 +42,7 @@ app.use('/api/battles', require('./routes/battleRoutes')); // ✅ أضف هذا 
 app.use('/api/users', require('./routes/userRoutes')); // ✅✅ أضف هذا السطر
 app.use('/api/friends', require('./routes/friendRoutes')); // ✅✅ أضف هذا السطر
 app.use('/api/blocks', require('./routes/blockRoutes')); // ✅ أضف هذا السطر
-
+app.use('/api/private-chat', require('./routes/privateChatRoutes')); // ⭐ الجديد
 
 
 
