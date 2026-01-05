@@ -303,14 +303,12 @@ if (req.app.get('io')) {
         });
         
         // 5. ⭐⭐ إرسال حدث خاص من الإعدادات ⭐⭐
-        // 5. ⭐⭐ إرسال حدث خاص من الإعدادات ⭐⭐
-// إرسال الحدث لغرفة المستخدم المحدد
-io.to(`user-${unblockerId}`).emit('unblockedFromSettings', {
-    unblockerId: unblockerId,
-    unblockedId: blockedUserId,
-    unblockedUsername: blockedUser.username,
-    timestamp: new Date().toISOString()
-});
+        unblockerSocket.emit('unblockedFromSettings', {
+            unblockerId: unblockerId,
+            unblockedId: blockedUserId,
+            unblockedUsername: blockedUser.username,
+            timestamp: new Date().toISOString()
+        });
         
         console.log(`[UNBLOCK] Sent profile refresh events to unblocker: ${unblockerId}`);
     }
