@@ -2088,11 +2088,112 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
     setupPrivateChatEvents(targetUserId);
     
     // 7. جلب تاريخ المحادثة (إن وجد)
-    loadChatHistory(targetUserId);
+   await loadChatHistoryFromServer(targetUserId);
 }
 
 
+// --- 📡 دالة تحميل تاريخ المحادثة من الخادم ---
+async function loadChatHistoryFromServer(targetUserId) {
+    const messagesContainer = document.getElementById('private-chat-messages');
+    if (!messagesContainer) return;
+    
+    try {
+        console.log(`[CHAT] Loading chat history with ${targetUserId}`);
+        
+        const response = await fetch(`/api/private-chat/chat/${targetUserId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.status === 'success') {
+            // إزالة رسالة "ابدأ محادثة جديدة"
+            const emptyState = messagesContainer.querySelector('.text-center');
+            if (emptyState) emptyState.remove();
+            
+            // عرض الرسائل
+            result.data.messages.forEach(message => {
+                const isMyMessage = message.sender._id === JSON.parse(localStorage.getItem('user'))._id;
+                displayPrivateMessage(message, isMyMessage);
+            });
+            
+            // تحديث بيانات المستخدم في رأس الدردشة
+            updateChatHeader(result.data.chat);
+            
+            console.log(`✅ [CHAT] Loaded ${result.data.messages.length} messages`);
+            
+            // تحديث حالة الرسائل غير المقروءة
+            if (result.data.unreadCount > 0) {
+                markMessagesAsDelivered(result.data.messages);
+            }
+            
+        } else {
+            console.warn('[CHAT] No chat history or error:', result.message);
+        }
+        
+    } catch (error) {
+        console.error('[CHAT] Error loading chat history:', error);
+    }
+}
 
+// --- 🔄 دالة تحديث رأس الدردشة ---
+function updateChatHeader(chatData) {
+    if (!chatData || !chatData.participants) return;
+    
+    const currentUserId = JSON.parse(localStorage.getItem('user'))._id;
+    const otherParticipant = chatData.participants.find(p => p._id.toString() !== currentUserId.toString());
+    
+    if (otherParticipant) {
+        const avatar = document.getElementById('chat-user-avatar');
+        const name = document.getElementById('chat-user-name');
+        
+        if (avatar) avatar.src = otherParticipant.profileImage;
+        if (name) name.textContent = otherParticipant.username;
+    }
+}
+
+// --- 📨 دالة تعليم الرسائل كـ "تم التسليم" ---
+async function markMessagesAsDelivered(messages) {
+    const currentUserId = JSON.parse(localStorage.getItem('user'))._id;
+    
+    // تصفية الرسائل المرسلة لي
+    const messagesToMark = messages.filter(msg => 
+        msg.receiver.toString() === currentUserId && 
+        !msg.status.delivered
+    );
+    
+    if (messagesToMark.length === 0) return;
+    
+    try {
+        // تحديث حالة كل رسالة
+        for (const message of messagesToMark) {
+            const response = await fetch('/api/private-chat/message/status', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    messageId: message._id,
+                    status: 'delivered'
+                })
+            });
+            
+            if (response.ok) {
+                // تحديث الواجهة
+                const messageElement = document.querySelector(`[data-message-id="${message._id}"]`);
+                if (messageElement) {
+                    messageElement.querySelector('.message-status').innerHTML = `
+                        <i class="fas fa-check-double text-gray-400 text-xs" title="تم التسليم"></i>
+                    `;
+                }
+            }
+        }
+        
+    } catch (error) {
+        console.error('[CHAT] Error marking messages as delivered:', error);
+    }
+}
         
 
 // --- 📥 دالة تحميل بيانات المستخدم للدردشة ---
@@ -2210,97 +2311,234 @@ function setupPrivateChatEvents(targetUserId) {
 }
 
 // --- 📤 دالة إرسال رسالة نصية ---
-async function sendPrivateMessage(receiverId, message) {
-    if (!message || message.trim() === '') {
+async function sendPrivateMessage(receiverId, message, replyTo = null, type = 'text', metadata = {}) {
+    if (!message && type === 'text') {
         showNotification('اكتب رسالة أولاً', 'error');
         return;
     }
     
-    if (message.length > 200) {
+    if (message && message.length > 200) {
         showNotification('الرسالة طويلة جداً (200 حرف كحد أقصى)', 'error');
         return;
     }
     
-    console.log(`[CHAT] Sending message to ${receiverId}: ${message.substring(0, 30)}...`);
+    console.log(`[CHAT] Sending ${type} message to ${receiverId}`);
     
-    // TODO: إرسال عبر Socket مع API
-    // مؤقتاً: عرض الرسالة في الواجهة
+    // 1. عرض الرسالة فوراً في الواجهة (تحديث تفاؤلي)
+    const tempMessageId = Date.now().toString();
     displayPrivateMessage({
-        _id: Date.now().toString(),
+        _id: tempMessageId,
         sender: JSON.parse(localStorage.getItem('user'))._id,
         receiver: receiverId,
-        type: 'text',
+        type: type,
         content: message,
+        metadata: metadata,
         createdAt: new Date().toISOString(),
         status: { sent: true, delivered: false, seen: false }
-    }, true); // true = رسالتي أنا
+    }, true);
+    
+    // 2. إرسال إلى الخادم
+    try {
+        const response = await fetch('/api/private-chat/message', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                receiverId: receiverId,
+                content: message,
+                replyTo: replyTo,
+                type: type,
+                metadata: metadata
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            console.log('✅ [CHAT] Message sent successfully:', result.data.message._id);
+            
+            // تحديث الرسالة المؤقتة بالـ ID الحقيقي
+            const tempMessageElement = document.querySelector(`[data-message-id="${tempMessageId}"]`);
+            if (tempMessageElement) {
+                tempMessageElement.dataset.messageId = result.data.message._id;
+                tempMessageElement.querySelector('.message-status').innerHTML = `
+                    <i class="fas fa-check text-gray-400 text-xs" title="تم الإرسال"></i>
+                `;
+            }
+            
+            // تحديث العداد غير المقروء في الدردشة
+            updateUnreadCount(receiverId, result.data.unreadCount || 0);
+            
+        } else {
+            // إخفاء الرسالة المؤقتة إذا فشل الإرسال
+            const tempMessageElement = document.querySelector(`[data-message-id="${tempMessageId}"]`);
+            if (tempMessageElement) {
+                tempMessageElement.style.opacity = '0.5';
+                tempMessageElement.innerHTML += `
+                    <div class="text-xs text-red-400 mt-1">
+                        <i class="fas fa-exclamation-circle mr-1"></i>
+                        فشل الإرسال
+                    </div>
+                `;
+            }
+            
+            showNotification(result.message || 'فشل إرسال الرسالة', 'error');
+        }
+        
+    } catch (error) {
+        console.error('[CHAT] Error sending message:', error);
+        showNotification('خطأ في الاتصال بالخادم', 'error');
+    }
 }
 
+
+
+        
 // --- 💬 دالة عرض رسالة في الدردشة ---
 function displayPrivateMessage(message, isMyMessage = false) {
     const messagesContainer = document.getElementById('private-chat-messages');
     if (!messagesContainer) return;
     
+    // التحقق إذا كانت الرسالة موجودة مسبقاً
+    const existingMessage = document.querySelector(`[data-message-id="${message._id}"]`);
+    if (existingMessage) {
+        // تحديث حالة الرسالة الموجودة
+        updateMessageStatus(existingMessage, message.status);
+        return;
+    }
+    
     // إزالة رسالة "ابدأ محادثة جديدة" إذا كانت موجودة
     const emptyState = messagesContainer.querySelector('.text-center');
     if (emptyState) emptyState.remove();
     
+    // إنشاء عنصر الرسالة
     const messageElement = document.createElement('div');
-    messageElement.className = `flex ${isMyMessage ? 'justify-end' : 'justify-start'} mb-3`;
+    messageElement.className = `flex ${isMyMessage ? 'justify-end' : 'justify-start'} mb-3 new-message`;
     messageElement.dataset.messageId = message._id;
     
-    const currentUser = JSON.parse(localStorage.getItem('user'));
-    const senderName = isMyMessage ? currentUser.username : 'المستخدم الآخر';
+    // تحضير المحتوى بناءً على نوع الرسالة
+    let messageContent = '';
+    let messageMeta = '';
     
+    switch(message.type) {
+        case 'text':
+            messageContent = `<p class="text-white text-sm">${message.content}</p>`;
+            break;
+            
+        case 'image':
+            messageContent = `
+                <div class="relative">
+                    <img src="${message.metadata?.thumbnail || 'https://via.placeholder.com/200x150'}" 
+                         class="rounded-lg max-w-full h-auto cursor-pointer view-image-btn"
+                         data-image-url="${message.content}"
+                         alt="صورة">
+                    <div class="absolute bottom-2 right-2 bg-black/50 px-2 py-1 rounded text-xs">
+                        <i class="fas fa-image mr-1"></i> صورة
+                    </div>
+                </div>
+            `;
+            break;
+            
+        case 'voice':
+            messageContent = `
+                <div class="flex items-center gap-3 bg-black/30 p-3 rounded-lg">
+                    <button class="play-voice-btn w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center hover:bg-purple-600"
+                            data-voice-url="${message.content}">
+                        <i class="fas fa-play text-white"></i>
+                    </button>
+                    <div class="flex-1">
+                        <div class="flex justify-between text-sm">
+                            <span>رسالة صوتية</span>
+                            <span>${message.metadata?.duration || 0} ثانية</span>
+                        </div>
+                        <div class="w-full bg-gray-600 h-2 rounded-full mt-2">
+                            <div class="voice-progress bg-purple-400 h-2 rounded-full" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            break;
+            
+        case 'video':
+            messageContent = `
+                <div class="relative">
+                    <div class="relative rounded-lg overflow-hidden">
+                        <img src="${message.metadata?.thumbnail || 'https://via.placeholder.com/200x150'}" 
+                             class="w-full h-auto">
+                        <button class="absolute inset-0 flex items-center justify-center play-video-btn"
+                                data-video-url="${message.content}">
+                            <div class="w-16 h-16 bg-black/50 rounded-full flex items-center justify-center">
+                                <i class="fas fa-play text-white text-2xl"></i>
+                            </div>
+                        </button>
+                    </div>
+                    <div class="absolute bottom-2 right-2 bg-black/50 px-2 py-1 rounded text-xs">
+                        <i class="fas fa-video mr-1"></i> فيديو
+                    </div>
+                </div>
+            `;
+            break;
+            
+        default:
+            messageContent = `<p class="text-white text-sm">${message.content}</p>`;
+    }
+    
+    // إضافة الرد إذا كان موجوداً
+    let replySection = '';
+    if (message.replyTo) {
+        const replyContent = message.replyTo.content || 'رسالة';
+        const replySender = message.replyTo.sender?.username || 'مستخدم';
+        replySection = `
+            <div class="mb-2 p-2 bg-black/20 rounded-lg border-r-2 border-purple-500">
+                <p class="text-xs font-bold text-purple-300">${replySender}</p>
+                <p class="text-xs text-gray-300 truncate">${replyContent.substring(0, 50)}${replyContent.length > 50 ? '...' : ''}</p>
+            </div>
+        `;
+    }
+    
+    // حالة الرسالة
+    let statusIcon = '';
+    if (isMyMessage) {
+        if (message.status?.seen) {
+            statusIcon = '<i class="fas fa-check-double text-blue-400 text-xs" title="مقروءة"></i>';
+        } else if (message.status?.delivered) {
+            statusIcon = '<i class="fas fa-check-double text-gray-400 text-xs" title="تم التسليم"></i>';
+        } else {
+            statusIcon = '<i class="fas fa-check text-gray-400 text-xs" title="تم الإرسال"></i>';
+        }
+    }
+    
+    // وقت الرسالة
+    const messageTime = new Date(message.createdAt).toLocaleTimeString('ar-SA', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    
+    // بناء HTML النهائي
     messageElement.innerHTML = `
         <div class="max-w-xs md:max-w-md ${isMyMessage ? 'bg-purple-600' : 'bg-gray-700'} rounded-2xl p-3 ${isMyMessage ? 'rounded-tr-none' : 'rounded-tl-none'}">
             ${!isMyMessage ? `
                 <div class="flex items-center gap-2 mb-1">
-                    <img src="https://via.placeholder.com/20" class="w-5 h-5 rounded-full">
-                    <span class="text-xs font-bold">${senderName}</span>
+                    <img src="${message.sender?.profileImage || 'https://via.placeholder.com/20'}" 
+                         class="w-5 h-5 rounded-full">
+                    <span class="text-xs font-bold">${message.sender?.username || 'مستخدم'}</span>
                 </div>
             ` : ''}
             
+            ${replySection}
+            
             <div class="message-content">
-                ${message.type === 'text' ? `
-                    <p class="text-white text-sm">${message.content}</p>
-                ` : message.type === 'image' ? `
-                    <div class="relative">
-                        <img src="https://via.placeholder.com/200x150" class="rounded-lg max-w-full h-auto">
-                        <div class="absolute bottom-2 right-2 bg-black/50 px-2 py-1 rounded text-xs">
-                            <i class="fas fa-image mr-1"></i> صورة
-                        </div>
-                    </div>
-                ` : message.type === 'voice' ? `
-                    <div class="flex items-center gap-3 bg-black/30 p-2 rounded-lg">
-                        <button class="play-voice-btn w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
-                            <i class="fas fa-play text-white text-xs"></i>
-                        </button>
-                        <div class="flex-1">
-                            <div class="flex justify-between text-xs">
-                                <span>رسالة صوتية</span>
-                                <span>15 ثانية</span>
-                            </div>
-                            <div class="w-full bg-gray-600 h-1 rounded-full mt-1">
-                                <div class="bg-purple-400 h-1 rounded-full" style="width: 0%"></div>
-                            </div>
-                        </div>
-                    </div>
-                ` : 'نوع غير معروف'}
+                ${messageContent}
             </div>
             
             <div class="flex justify-between items-center mt-2">
-                <span class="text-xs opacity-70">${new Date(message.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
+                <span class="text-xs opacity-70">${messageTime}</span>
                 <div class="message-status flex items-center gap-1">
-                    ${isMyMessage ? `
-                        ${message.status?.seen ? `
-                            <i class="fas fa-check-double text-blue-400 text-xs" title="مقروءة"></i>
-                        ` : message.status?.delivered ? `
-                            <i class="fas fa-check-double text-gray-400 text-xs" title="تم التسليم"></i>
-                        ` : `
-                            <i class="fas fa-check text-gray-400 text-xs" title="تم الإرسال"></i>
-                        `}
-                    ` : ''}
+                    ${statusIcon}
+                    ${message.metadata?.viewOnce ? '<i class="fas fa-eye text-yellow-400 text-xs ml-1" title="مشاهدة مرة واحدة"></i>' : ''}
+                    ${message.metadata?.hasWatermark ? '<i class="fas fa-copyright text-blue-400 text-xs ml-1" title="علامة مائية"></i>' : ''}
                 </div>
             </div>
         </div>
@@ -2308,25 +2546,47 @@ function displayPrivateMessage(message, isMyMessage = false) {
     
     messagesContainer.appendChild(messageElement);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    // ربط أحداث الوسائط
+    bindMediaEvents(messageElement, message);
 }
 
-// --- 🎵 دالة التعامل مع أزرار الوسائط ---
-function handleMediaButtonClick(type, targetUserId) {
-    console.log(`[CHAT] Media button clicked: ${type} for user ${targetUserId}`);
+// --- 🎵 دالة ربط أحداث الوسائط ---
+function bindMediaEvents(messageElement, message) {
+    // صور
+    const imageBtn = messageElement.querySelector('.view-image-btn');
+    if (imageBtn) {
+        imageBtn.addEventListener('click', () => {
+            showImageViewer(imageBtn.dataset.imageUrl, message);
+        });
+    }
     
-    switch(type) {
-        case 'image':
-            showImageUploadModal(targetUserId);
-            break;
-        case 'video':
-            showVideoUploadModal(targetUserId);
-            break;
-        case 'voice':
-            startVoiceRecording(targetUserId);
-            break;
-        case 'file':
-            showFileUploadModal(targetUserId);
-            break;
+    // صوت
+    const voiceBtn = messageElement.querySelector('.play-voice-btn');
+    if (voiceBtn) {
+        voiceBtn.addEventListener('click', () => {
+            playVoiceMessage(voiceBtn.dataset.voiceUrl, messageElement);
+        });
+    }
+    
+    // فيديو
+    const videoBtn = messageElement.querySelector('.play-video-btn');
+    if (videoBtn) {
+        videoBtn.addEventListener('click', () => {
+            showVideoPlayer(videoBtn.dataset.videoUrl, message);
+        });
+    }
+}
+
+// --- 🔄 دالة تحديث حالة الرسالة ---
+function updateMessageStatus(messageElement, status) {
+    const statusContainer = messageElement.querySelector('.message-status');
+    if (!statusContainer) return;
+    
+    if (status.seen) {
+        statusContainer.innerHTML = '<i class="fas fa-check-double text-blue-400 text-xs" title="مقروءة"></i>';
+    } else if (status.delivered) {
+        statusContainer.innerHTML = '<i class="fas fa-check-double text-gray-400 text-xs" title="تم التسليم"></i>';
     }
 }
 
@@ -2734,7 +2994,132 @@ async function loadChatHistory() {
 }
     loadChatHistory();
 
+// --- 🔢 دالة تحديث العداد غير المقروء ---
+function updateUnreadCount(userId, count) {
+    // TODO: تحديث في قائمة الدردشات لاحقاً
+    console.log(`[CHAT] Unread count for ${userId}: ${count}`);
+}
 
+// --- 📋 دالة تحديث بادج قائمة الدردشات ---
+function updateChatListBadge() {
+    // TODO: تحديث عندما نضيف قائمة الدردشات
+}
+
+// --- 🖼️ دالة عرض الصور ---
+function showImageViewer(imageUrl, message) {
+    console.log('[CHAT] Showing image:', imageUrl);
+    
+    if (message.metadata?.viewOnce) {
+        showNotification('⚠️ هذه الصورة للعرض مرة واحدة فقط', 'warning');
+    }
+    
+    // TODO: إنشاء نافذة عرض الصور
+    showNotification('عرض الصورة قريباً...', 'info');
+}
+
+// --- 🎵 دالة تشغيل الصوت ---
+function playVoiceMessage(voiceUrl, messageElement) {
+    console.log('[CHAT] Playing voice:', voiceUrl);
+    
+    const playBtn = messageElement.querySelector('.play-voice-btn');
+    const progressBar = messageElement.querySelector('.voice-progress');
+    
+    if (playBtn && progressBar) {
+        playBtn.innerHTML = '<i class="fas fa-pause text-white"></i>';
+        playBtn.classList.add('playing');
+        
+        // محاكاة التشغيل
+        let progress = 0;
+        const interval = setInterval(() => {
+            progress += 2;
+            progressBar.style.width = `${progress}%`;
+            
+            if (progress >= 100) {
+                clearInterval(interval);
+                playBtn.innerHTML = '<i class="fas fa-play text-white"></i>';
+                playBtn.classList.remove('playing');
+                progressBar.style.width = '0%';
+            }
+        }, 100);
+    }
+}
+
+// --- 🎬 دالة تشغيل الفيديو ---
+function showVideoPlayer(videoUrl, message) {
+    console.log('[CHAT] Playing video:', videoUrl);
+    
+    if (message.metadata?.disableSave) {
+        showNotification('⚠️ حفظ الفيديو معطل', 'warning');
+    }
+    
+    // TODO: إنشاء مشغل فيديو
+    showNotification('تشغيل الفيديو قريباً...', 'info');
+}
+
+        
+
+   // 📩 مستمع لاستقبال رسائل خاصة
+socket.on('privateMessageReceived', async (data) => {
+    console.log('[CHAT] Private message received:', data.message?._id);
+    
+    // التحقق إذا كانت نافذة الدردشة مفتوحة مع هذا المستخدم
+    const chatModal = document.getElementById('private-chat-modal');
+    const targetUserId = chatModal?.dataset?.targetUserId;
+    
+    if (chatModal && targetUserId === data.senderId) {
+        // عرض الرسالة في الدردشة المفتوحة
+        displayPrivateMessage(data.message, false);
+        
+        // تحديث حالة الرسالة كـ "تم التسليم"
+        setTimeout(async () => {
+            try {
+                const response = await fetch('/api/private-chat/message/status', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        messageId: data.message._id,
+                        status: 'delivered'
+                    })
+                });
+            } catch (error) {
+                console.error('[CHAT] Error marking as delivered:', error);
+            }
+        }, 1000);
+        
+        // إشعار بسيط
+        showNotification(`رسالة جديدة من ${data.senderName}`, 'info');
+        
+    } else {
+        // إشعار إذا كانت الدردشة غير مفتوحة
+        showNotification(`📩 رسالة جديدة من ${data.senderName}`, 'info');
+        
+        // تحديث أي عداد للدردشات
+        updateChatListBadge();
+    }
+});
+
+// 🔄 مستمع لتحديث حالة الرسالة
+socket.on('messageStatusUpdated', (data) => {
+    console.log('[CHAT] Message status updated:', data.messageId, data.status);
+    
+    const messageElement = document.querySelector(`[data-message-id="${data.messageId}"]`);
+    if (messageElement) {
+        const statusContainer = messageElement.querySelector('.message-status');
+        if (statusContainer) {
+            if (data.status === 'seen') {
+                statusContainer.innerHTML = '<i class="fas fa-check-double text-blue-400 text-xs" title="مقروءة"></i>';
+            } else if (data.status === 'delivered') {
+                statusContainer.innerHTML = '<i class="fas fa-check-double text-gray-400 text-xs" title="تم التسليم"></i>';
+            }
+        }
+    }
+});     
+
+
+        
 
 // --- ✅ أضف هذا المستمع الجديد ---
 // --- ✅ استبدل مستمع friendshipUpdate بهذا ---
