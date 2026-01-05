@@ -1755,9 +1755,9 @@ async function showMiniProfileModal(userId) {
                     <div id="profile-action-buttons" class="grid grid-cols-4 gap-2 border-t border-gray-700/50 p-4">
                         ${friendButtonHTML}
                         <button class="action-btn message-btn" data-user-id="${profileUser._id}">
-                            <i class="fas fa-comment-dots"></i>
-                            <span class="text-xs mt-1">رسالة</span>
-                        </button>
+                              <i class="fas fa-comment-dots"></i>
+                           <span class="text-xs mt-1">رسالة</span>
+                         </button>
                         ${blockButtonHTML}
                         <button class="action-btn close-mini-profile-btn">
                             <i class="fas fa-times"></i>
@@ -1823,6 +1823,16 @@ if (friendActionBtn) {
                     });
                 return;
             }
+
+
+            // 3. زر الرسالة
+if (e.target.closest('.message-btn')) {
+    const userId = e.target.closest('.message-btn').dataset.userId;
+    const username = e.target.closest('.message-btn').closest('#mini-profile-modal')?.querySelector('h2')?.textContent || 'المستخدم';
+    
+    openPrivateChat(userId, username);
+    return;
+}
             
             // 3. زر الحظر
             if (e.target.closest('.block-action-btn')) {
@@ -1850,6 +1860,398 @@ if (friendActionBtn) {
         showNotification('لا يمكن عرض ملف المستخدم حاليًا.', 'error');
     }
 }
+
+
+        
+// --- 📨 دالة فتح الدردشة الخاصة ---
+async function openPrivateChat(targetUserId, targetUsername = 'المستخدم') {
+    console.log(`[CHAT] Opening private chat with: ${targetUserId} (${targetUsername})`);
+    
+    // 1. إغلاق نافذة البروفايل المصغر إذا كانت مفتوحة
+    const profileModal = document.getElementById('mini-profile-modal');
+    if (profileModal) profileModal.remove();
+    
+    // 2. التحقق من الحظر المتبادل
+    try {
+        const blockResponse = await fetch(`/api/blocks/mutual-status/${targetUserId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (blockResponse.ok) {
+            const blockResult = await blockResponse.json();
+            if (blockResult.data.blockStatus.heBlockedMe) {
+                showNotification('لا يمكنك مراسلة مستخدم حظرك', 'error');
+                return;
+            }
+        }
+    } catch (error) {
+        console.error('[CHAT] Error checking block status:', error);
+    }
+    
+    // 3. إنشاء HTML نافذة الدردشة
+    const chatHTML = `
+        <div id="private-chat-modal" data-target-user-id="${targetUserId}" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[300] p-2 md:p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl h-[85vh] md:h-[80vh] flex flex-col overflow-hidden border-2 border-purple-500/30">
+                
+                <!-- 🔹 رأس الدردشة -->
+                <div class="flex items-center justify-between p-4 bg-gray-900/80 border-b border-gray-700">
+                    <div class="flex items-center gap-3">
+                        <button id="close-private-chat" class="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700">
+                            <i class="fas fa-arrow-right text-lg"></i>
+                        </button>
+                        <img id="chat-user-avatar" src="" alt="${targetUsername}" 
+                             class="w-10 h-10 rounded-full border-2 border-purple-500 object-cover">
+                        <div>
+                            <h3 id="chat-user-name" class="font-bold text-white">${targetUsername}</h3>
+                            <p id="chat-user-status" class="text-xs text-gray-400">
+                                <i class="fas fa-circle text-green-500 mr-1"></i> متصل الآن
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <!-- أزرار الإجراءات -->
+                        <button class="chat-action-btn" title="إجراءات">
+                            <i class="fas fa-ellipsis-v text-gray-400 hover:text-white"></i>
+                        </button>
+                        <button class="chat-action-btn" title="مكالمة صوتية">
+                            <i class="fas fa-phone-alt text-gray-400 hover:text-blue-400"></i>
+                        </button>
+                        <button class="chat-action-btn" title="معلومات">
+                            <i class="fas fa-info-circle text-gray-400 hover:text-purple-400"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 🔹 منطقة الرسائل -->
+                <div id="private-chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3 bg-gradient-to-b from-gray-900 to-gray-800">
+                    <!-- الرسائل ستضاف هنا بالجافاسكريبت -->
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fas fa-comments text-3xl mb-3"></i>
+                        <p>ابدأ محادثة جديدة مع ${targetUsername}</p>
+                        <p class="text-sm text-gray-600 mt-1">لا توجد رسائل سابقة</p>
+                    </div>
+                </div>
+                
+                <!-- 🔹 شريط الإرسال -->
+                <div class="p-3 border-t border-gray-700 bg-gray-900/50">
+                    
+                    <!-- شريط الخيارات (مخفي افتراضيًا) -->
+                    <div id="chat-options-bar" class="hidden mb-3 p-3 bg-gray-800/50 rounded-xl">
+                        <div class="grid grid-cols-4 gap-3 text-center">
+                            <button class="chat-media-btn" data-type="image">
+                                <i class="fas fa-image text-2xl text-green-400 mb-1"></i>
+                                <span class="text-xs">صورة</span>
+                            </button>
+                            <button class="chat-media-btn" data-type="video">
+                                <i class="fas fa-video text-2xl text-blue-400 mb-1"></i>
+                                <span class="text-xs">فيديو</span>
+                            </button>
+                            <button class="chat-media-btn" data-type="voice">
+                                <i class="fas fa-microphone text-2xl text-red-400 mb-1"></i>
+                                <span class="text-xs">صوت</span>
+                            </button>
+                            <button class="chat-media-btn" data-type="file">
+                                <i class="fas fa-file text-2xl text-yellow-400 mb-1"></i>
+                                <span class="text-xs">ملف</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- شريط الإدخال الأساسي -->
+                    <div class="flex items-center gap-2">
+                        <!-- زر فتح الخيارات -->
+                        <button id="toggle-chat-options" class="bg-gray-700 hover:bg-gray-600 w-10 h-10 rounded-full flex items-center justify-center">
+                            <i class="fas fa-plus text-gray-300"></i>
+                        </button>
+                        
+                        <!-- حقل إدخال النص -->
+                        <div class="flex-1 relative">
+                            <input type="text" id="private-message-input" 
+                                   placeholder="اكتب رسالتك هنا..." 
+                                   maxlength="200"
+                                   class="w-full bg-gray-700 border border-gray-600 rounded-full py-3 px-5 pr-12 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                            <div id="private-char-count" class="absolute top-1/2 right-4 transform -translate-y-1/2 text-xs text-gray-500">0/200</div>
+                        </div>
+                        
+                        <!-- زر الإرسال -->
+                        <button id="send-private-message" class="bg-purple-600 hover:bg-purple-700 w-12 h-12 rounded-full flex items-center justify-center">
+                            <i class="fas fa-paper-plane text-white"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- شريط معلومات (للملفات) -->
+                    <div id="file-upload-info" class="hidden mt-3 p-2 bg-gray-800 rounded-lg">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-300">جاري رفع صورة...</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-400">75%</span>
+                                <button class="text-red-400 hover:text-red-300">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 4. إضافة النافذة إلى الـ DOM
+    document.getElementById('game-container').innerHTML += chatHTML;
+    
+    // 5. تحميل صورة المستخدم وبياناته
+    loadChatUserData(targetUserId);
+    
+    // 6. ربط الأحداث
+    setupPrivateChatEvents(targetUserId);
+    
+    // 7. جلب تاريخ المحادثة (إن وجد)
+    loadChatHistory(targetUserId);
+}
+
+
+
+        
+
+// --- 📥 دالة تحميل بيانات المستخدم للدردشة ---
+async function loadChatUserData(userId) {
+    try {
+        const response = await fetch(`/api/users/${userId}/mini-profile`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.status === 'success') {
+                const user = result.data;
+                
+                // تحديث الصورة والاسم
+                const avatar = document.getElementById('chat-user-avatar');
+                const name = document.getElementById('chat-user-name');
+                
+                if (avatar) avatar.src = user.profileImage;
+                if (name) name.textContent = user.username;
+            }
+        }
+    } catch (error) {
+        console.error('[CHAT] Error loading user data:', error);
+    }
+}
+
+// --- 📜 دالة تحميل تاريخ المحادثة ---
+async function loadChatHistory(targetUserId) {
+    const messagesContainer = document.getElementById('private-chat-messages');
+    if (!messagesContainer) return;
+    
+    // TODO: جلب الرسائل من API
+    // سيتم تنفيذها لاحقاً عند بناء الخادم
+}
+
+// --- 🎮 دالة إعداد أحداث الدردشة ---
+function setupPrivateChatEvents(targetUserId) {
+    const chatModal = document.getElementById('private-chat-modal');
+    if (!chatModal) return;
+    
+    // 1. زر الإغلاق
+    const closeBtn = document.getElementById('close-private-chat');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            chatModal.remove();
+        });
+    }
+    
+    // 2. إغلاق بالنقر على الخلفية
+    chatModal.addEventListener('click', (e) => {
+        if (e.target.id === 'private-chat-modal') {
+            chatModal.remove();
+        }
+    });
+    
+    // 3. عداد الأحرف
+    const messageInput = document.getElementById('private-message-input');
+    const charCounter = document.getElementById('private-char-count');
+    
+    if (messageInput && charCounter) {
+        messageInput.addEventListener('input', () => {
+            const length = messageInput.value.length;
+            charCounter.textContent = `${length}/200`;
+            
+            if (length > 180) {
+                charCounter.classList.add('text-red-400');
+            } else {
+                charCounter.classList.remove('text-red-400');
+            }
+        });
+    }
+    
+    // 4. زر الإرسال
+    const sendBtn = document.getElementById('send-private-message');
+    if (sendBtn && messageInput) {
+        sendBtn.addEventListener('click', () => {
+            sendPrivateMessage(targetUserId, messageInput.value.trim());
+            messageInput.value = '';
+            if (charCounter) charCounter.textContent = '0/200';
+        });
+    }
+    
+    // 5. إرسال بـ Enter
+    if (messageInput) {
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendPrivateMessage(targetUserId, messageInput.value.trim());
+                messageInput.value = '';
+                if (charCounter) charCounter.textContent = '0/200';
+            }
+        });
+    }
+    
+    // 6. زر فتح الخيارات
+    const toggleBtn = document.getElementById('toggle-chat-options');
+    const optionsBar = document.getElementById('chat-options-bar');
+    
+    if (toggleBtn && optionsBar) {
+        toggleBtn.addEventListener('click', () => {
+            optionsBar.classList.toggle('hidden');
+            toggleBtn.querySelector('i').classList.toggle('fa-plus');
+            toggleBtn.querySelector('i').classList.toggle('fa-times');
+        });
+    }
+    
+    // 7. أزرار الوسائط
+    document.querySelectorAll('.chat-media-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const type = this.dataset.type;
+            handleMediaButtonClick(type, targetUserId);
+        });
+    });
+}
+
+// --- 📤 دالة إرسال رسالة نصية ---
+async function sendPrivateMessage(receiverId, message) {
+    if (!message || message.trim() === '') {
+        showNotification('اكتب رسالة أولاً', 'error');
+        return;
+    }
+    
+    if (message.length > 200) {
+        showNotification('الرسالة طويلة جداً (200 حرف كحد أقصى)', 'error');
+        return;
+    }
+    
+    console.log(`[CHAT] Sending message to ${receiverId}: ${message.substring(0, 30)}...`);
+    
+    // TODO: إرسال عبر Socket مع API
+    // مؤقتاً: عرض الرسالة في الواجهة
+    displayPrivateMessage({
+        _id: Date.now().toString(),
+        sender: JSON.parse(localStorage.getItem('user'))._id,
+        receiver: receiverId,
+        type: 'text',
+        content: message,
+        createdAt: new Date().toISOString(),
+        status: { sent: true, delivered: false, seen: false }
+    }, true); // true = رسالتي أنا
+}
+
+// --- 💬 دالة عرض رسالة في الدردشة ---
+function displayPrivateMessage(message, isMyMessage = false) {
+    const messagesContainer = document.getElementById('private-chat-messages');
+    if (!messagesContainer) return;
+    
+    // إزالة رسالة "ابدأ محادثة جديدة" إذا كانت موجودة
+    const emptyState = messagesContainer.querySelector('.text-center');
+    if (emptyState) emptyState.remove();
+    
+    const messageElement = document.createElement('div');
+    messageElement.className = `flex ${isMyMessage ? 'justify-end' : 'justify-start'} mb-3`;
+    messageElement.dataset.messageId = message._id;
+    
+    const currentUser = JSON.parse(localStorage.getItem('user'));
+    const senderName = isMyMessage ? currentUser.username : 'المستخدم الآخر';
+    
+    messageElement.innerHTML = `
+        <div class="max-w-xs md:max-w-md ${isMyMessage ? 'bg-purple-600' : 'bg-gray-700'} rounded-2xl p-3 ${isMyMessage ? 'rounded-tr-none' : 'rounded-tl-none'}">
+            ${!isMyMessage ? `
+                <div class="flex items-center gap-2 mb-1">
+                    <img src="https://via.placeholder.com/20" class="w-5 h-5 rounded-full">
+                    <span class="text-xs font-bold">${senderName}</span>
+                </div>
+            ` : ''}
+            
+            <div class="message-content">
+                ${message.type === 'text' ? `
+                    <p class="text-white text-sm">${message.content}</p>
+                ` : message.type === 'image' ? `
+                    <div class="relative">
+                        <img src="https://via.placeholder.com/200x150" class="rounded-lg max-w-full h-auto">
+                        <div class="absolute bottom-2 right-2 bg-black/50 px-2 py-1 rounded text-xs">
+                            <i class="fas fa-image mr-1"></i> صورة
+                        </div>
+                    </div>
+                ` : message.type === 'voice' ? `
+                    <div class="flex items-center gap-3 bg-black/30 p-2 rounded-lg">
+                        <button class="play-voice-btn w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
+                            <i class="fas fa-play text-white text-xs"></i>
+                        </button>
+                        <div class="flex-1">
+                            <div class="flex justify-between text-xs">
+                                <span>رسالة صوتية</span>
+                                <span>15 ثانية</span>
+                            </div>
+                            <div class="w-full bg-gray-600 h-1 rounded-full mt-1">
+                                <div class="bg-purple-400 h-1 rounded-full" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                ` : 'نوع غير معروف'}
+            </div>
+            
+            <div class="flex justify-between items-center mt-2">
+                <span class="text-xs opacity-70">${new Date(message.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
+                <div class="message-status flex items-center gap-1">
+                    ${isMyMessage ? `
+                        ${message.status?.seen ? `
+                            <i class="fas fa-check-double text-blue-400 text-xs" title="مقروءة"></i>
+                        ` : message.status?.delivered ? `
+                            <i class="fas fa-check-double text-gray-400 text-xs" title="تم التسليم"></i>
+                        ` : `
+                            <i class="fas fa-check text-gray-400 text-xs" title="تم الإرسال"></i>
+                        `}
+                    ` : ''}
+                </div>
+            </div>
+        </div>
+    `;
+    
+    messagesContainer.appendChild(messageElement);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// --- 🎵 دالة التعامل مع أزرار الوسائط ---
+function handleMediaButtonClick(type, targetUserId) {
+    console.log(`[CHAT] Media button clicked: ${type} for user ${targetUserId}`);
+    
+    switch(type) {
+        case 'image':
+            showImageUploadModal(targetUserId);
+            break;
+        case 'video':
+            showVideoUploadModal(targetUserId);
+            break;
+        case 'voice':
+            startVoiceRecording(targetUserId);
+            break;
+        case 'file':
+            showFileUploadModal(targetUserId);
+            break;
+    }
+}
+
+
+        
+        
         
     // --- ✅ دالة لعرض بروفايل مستخدم حظرك (مصممة بشكل أفضل) ---
 function showBlockedProfileModal(userId, blockData) {
