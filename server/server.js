@@ -43,7 +43,7 @@ app.use('/api/users', require('./routes/userRoutes')); // ✅✅ أضف هذا �
 app.use('/api/friends', require('./routes/friendRoutes')); // ✅✅ أضف هذا السطر
 app.use('/api/blocks', require('./routes/blockRoutes')); // ✅ أضف هذا السطر
 app.use('/api/private-chat', require('./routes/privateChatRoutes')); // ⭐ الجديد
-
+app.use('/api/chat-media', require('./routes/chatMediaRoutes')); // ⭐ الجديد
 
 
 // --- مسار "التقاط الكل" لخدمة الواجهة الأمامية --
