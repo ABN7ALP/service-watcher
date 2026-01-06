@@ -2385,7 +2385,7 @@ function setupPrivateChatEvents(targetUserId) {
     });
     
     // 3. عداد الأحرف
-    const messageInput = document.getElementById('private-message-input');
+   // const messageInput = document.getElementById('private-message-input');
     const charCounter = document.getElementById('private-char-count');
     
     if (messageInput && charCounter) {
