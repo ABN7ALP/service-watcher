@@ -105,6 +105,113 @@ const chatStyles = `
         animation: pulseRecording 1s infinite;
         background-color: #dc2626 !important;
     }
+/* ============================================ */
+    /* 🎤 تصميم نظام التسجيل السريع (واتساب-ستايل) */
+    /* ============================================ */
+    
+    /* أنيميشن النبض للنقطة الحمراء */
+    @keyframes recordingPulse {
+        0%, 100% { 
+            transform: scale(1);
+            opacity: 1;
+        }
+        50% { 
+            transform: scale(1.3);
+            opacity: 0.6;
+        }
+    }
+    
+    .recording-pulse {
+        animation: recordingPulse 1.5s ease-in-out infinite;
+        box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+    }
+    
+    /* تأثير hover لزر الميكروفون */
+    #quick-voice-record-btn {
+        transition: all 0.3s ease;
+    }
+    
+    #quick-voice-record-btn:hover {
+        background-color: #4b5563 !important;
+        transform: scale(1.05);
+    }
+    
+    #quick-voice-record-btn:active {
+        transform: scale(0.95);
+    }
+    
+    /* حالة التسجيل النشطة */
+    #quick-voice-record-btn.recording {
+        background-color: #dc2626 !important;
+        animation: microphonePulse 1s ease-in-out infinite;
+    }
+    
+    @keyframes microphonePulse {
+        0%, 100% { 
+            box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+        }
+        50% { 
+            box-shadow: 0 0 0 10px rgba(220, 38, 38, 0);
+        }
+    }
+    
+    /* أنيميشن ظهور شريط التسجيل */
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    #recording-status-bar:not(.hidden) {
+        animation: slideDown 0.3s ease-out;
+    }
+    
+    /* تأثير السحب للإلغاء */
+    #recording-status-bar.dragging {
+        transform: translateX(-10px);
+        transition: transform 0.2s ease;
+    }
+    
+    /* شريط التقدم */
+    #recording-progress {
+        transition: width 0.3s linear;
+    }
+    
+    /* تحسين عداد الوقت */
+    #recording-timer {
+        text-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        font-weight: 600;
+    }
+    
+    /* أنيميشن إظهار/إخفاء الأزرار */
+    #send-private-message,
+    #quick-voice-record-btn {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    #send-private-message.hidden,
+    #quick-voice-record-btn.hidden {
+        opacity: 0;
+        transform: scale(0);
+        pointer-events: none;
+    }
+    
+    #send-private-message:not(.hidden),
+    #quick-voice-record-btn:not(.hidden) {
+        opacity: 1;
+        transform: scale(1);
+    }
+    
+    /* تأثير عند الضغط المطول */
+    #quick-voice-record-btn.long-press {
+        transform: scale(1.1);
+        box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
+    }
 `;
 
 // إضافة الـ styles إلى الـ head مرة واحدة
