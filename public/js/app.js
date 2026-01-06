@@ -2441,7 +2441,317 @@ function setupPrivateChatEvents(targetUserId) {
             const type = this.dataset.type;
             handleMediaButtonClick(type, targetUserId);
         });
+     });
+
+
+
+     // ============================================
+    // 🎤 إعداد نظام التسجيل السريع (واتساب-ستايل)
+    // ============================================
+    
+    const quickVoiceBtn = document.getElementById('quick-voice-record-btn');
+    const sendButton = document.getElementById('send-private-message');
+    const messageInput = document.getElementById('private-message-input');
+    const recordingBar = document.getElementById('recording-status-bar');
+    
+    if (!quickVoiceBtn || !sendButton || !messageInput || !recordingBar) {
+        console.error('[QUICK VOICE] Required elements not found');
+        return;
+    }
+    
+    // متغيرات التسجيل
+    let isRecording = false;
+    let recordingStartTime = null;
+    let recordingTimer = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isCancelled = false;
+    
+    // 🔄 إظهار/إخفاء الأزرار حسب محتوى الإدخال
+    messageInput.addEventListener('input', () => {
+        const hasText = messageInput.value.trim().length > 0;
+        
+        if (hasText) {
+            // عند الكتابة: إخفاء الميكروفون وإظهار الإرسال
+            quickVoiceBtn.classList.add('hidden');
+            sendButton.classList.remove('hidden');
+        } else {
+            // عند الفراغ: إظهار الميكروفون وإخفاء الإرسال
+            quickVoiceBtn.classList.remove('hidden');
+            sendButton.classList.add('hidden');
+        }
     });
+    
+    // 🎙️ بدء التسجيل
+    async function startQuickRecording() {
+        if (isRecording) return;
+        
+        console.log('[QUICK VOICE] 🎤 Starting recording...');
+        
+        try {
+            // طلب إذن الميكروفون
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            });
+            
+            // إعداد MediaRecorder
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            isCancelled = false;
+            
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunks.push(event.data);
+                }
+            };
+            
+            // بدء التسجيل
+            mediaRecorder.start();
+            isRecording = true;
+            recordingStartTime = Date.now();
+            
+            // تحديث الواجهة
+            quickVoiceBtn.classList.add('recording', 'long-press');
+            recordingBar.classList.remove('hidden');
+            messageInput.disabled = true;
+            
+            // بدء عداد الوقت
+            startRecordingTimer();
+            
+            console.log('[QUICK VOICE] ✅ Recording started');
+            
+        } catch (error) {
+            console.error('[QUICK VOICE] ❌ Error starting recording:', error);
+            showNotification('فشل الوصول إلى الميكروفون', 'error');
+            resetRecordingUI();
+        }
+    }
+    
+    // ⏹️ إيقاف التسجيل وإرسال
+    async function stopQuickRecording() {
+        if (!isRecording || isCancelled) {
+            resetRecordingUI();
+            return;
+        }
+        
+        console.log('[QUICK VOICE] ⏹️ Stopping recording...');
+        
+        isRecording = false;
+        
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+            
+            // الانتظار لحين جمع البيانات
+            mediaRecorder.onstop = async () => {
+                const duration = Math.floor((Date.now() - recordingStartTime) / 1000);
+                
+                console.log('[QUICK VOICE] 📊 Duration:', duration, 'seconds');
+                
+                // التحقق من المدة
+                if (duration < 1) {
+                    showNotification('التسجيل قصير جداً', 'warning');
+                    resetRecordingUI();
+                    return;
+                }
+                
+                if (duration > 15) {
+                    showNotification('تم تجاوز الحد الأقصى (15 ثانية)', 'warning');
+                }
+                
+                // إنشاء ملف الصوت
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                const audioFile = new File([audioBlob], `voice_${Date.now()}.webm`, {
+                    type: 'audio/webm'
+                });
+                
+                console.log('[QUICK VOICE] 📤 Uploading voice...', audioFile.size, 'bytes');
+                
+                // رفع وإرسال
+                await uploadAndSendQuickVoice(audioFile, duration, targetUserId);
+                
+                // تنظيف
+                if (mediaRecorder.stream) {
+                    mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                }
+                
+                resetRecordingUI();
+            };
+        } else {
+            resetRecordingUI();
+        }
+    }
+    
+    // ❌ إلغاء التسجيل
+    function cancelQuickRecording() {
+        console.log('[QUICK VOICE] ❌ Recording cancelled');
+        
+        isCancelled = true;
+        isRecording = false;
+        
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+            
+            if (mediaRecorder.stream) {
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            }
+        }
+        
+        showNotification('تم إلغاء التسجيل', 'info');
+        resetRecordingUI();
+    }
+    
+    // 🔄 إعادة تعيين الواجهة
+    function resetRecordingUI() {
+        quickVoiceBtn.classList.remove('recording', 'long-press');
+        recordingBar.classList.add('hidden');
+        messageInput.disabled = false;
+        
+        if (recordingTimer) {
+            clearInterval(recordingTimer);
+            recordingTimer = null;
+        }
+        
+        // إعادة تعيين الشريط
+        document.getElementById('recording-timer').textContent = '0:00';
+        document.getElementById('recording-progress').style.width = '0%';
+    }
+    
+    // ⏱️ عداد الوقت
+    function startRecordingTimer() {
+        const timerElement = document.getElementById('recording-timer');
+        const progressBar = document.getElementById('recording-progress');
+        
+        recordingTimer = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            
+            // تحديث العرض
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            timerElement.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            
+            // تحديث شريط التقدم (15 ثانية = 100%)
+            const progress = Math.min((elapsed / 15) * 100, 100);
+            progressBar.style.width = `${progress}%`;
+            
+            // إيقاف تلقائي عند 15 ثانية
+            if (elapsed >= 15) {
+                stopQuickRecording();
+            }
+        }, 100);
+    }
+    
+    // 📤 رفع وإرسال الصوت
+    async function uploadAndSendQuickVoice(audioFile, duration, receiverId) {
+        try {
+            // إنشاء FormData
+            const formData = new FormData();
+            formData.append('file', audioFile);
+            formData.append('receiverId', receiverId);
+            formData.append('duration', duration.toString());
+            
+            // رفع إلى الخادم
+            const response = await fetch('/api/chat-media/voice', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                console.log('[QUICK VOICE] ✅ Voice uploaded:', result.data.url);
+                
+                // إرسال كرسالة
+                const metadata = {
+                    duration: duration,
+                    publicId: result.data.publicId,
+                    fileSize: result.data.bytes,
+                    format: result.data.format
+                };
+                
+                await sendPrivateMessage(
+                    receiverId,
+                    result.data.url,
+                    null,
+                    'voice',
+                    metadata
+                );
+                
+                showNotification('تم إرسال الرسالة الصوتية', 'success');
+                
+            } else {
+                throw new Error(result.message || 'فشل رفع الرسالة الصوتية');
+            }
+            
+        } catch (error) {
+            console.error('[QUICK VOICE] ❌ Upload error:', error);
+            showNotification('فشل إرسال الرسالة الصوتية', 'error');
+        }
+    }
+    
+    // 🖱️ أحداث الماوس (للكمبيوتر)
+    quickVoiceBtn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        touchStartX = e.clientX;
+        touchStartY = e.clientY;
+        startQuickRecording();
+    });
+    
+    quickVoiceBtn.addEventListener('mouseup', (e) => {
+        e.preventDefault();
+        stopQuickRecording();
+    });
+    
+    quickVoiceBtn.addEventListener('mouseleave', (e) => {
+        if (isRecording) {
+            const deltaX = Math.abs(e.clientX - touchStartX);
+            
+            // إذا سحب لليسار أكثر من 50 بكسل = إلغاء
+            if (deltaX > 50 && e.clientX < touchStartX) {
+                recordingBar.classList.add('dragging');
+                cancelQuickRecording();
+            } else {
+                stopQuickRecording();
+            }
+        }
+    });
+    
+    // 📱 أحداث اللمس (للموبايل)
+    quickVoiceBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        startQuickRecording();
+    });
+    
+    quickVoiceBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        stopQuickRecording();
+    });
+    
+    quickVoiceBtn.addEventListener('touchmove', (e) => {
+        if (isRecording) {
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - touchStartX;
+            
+            // إذا سحب لليسار أكثر من 50 بكسل = إلغاء
+            if (deltaX < -50) {
+                recordingBar.classList.add('dragging');
+                cancelQuickRecording();
+            }
+        }
+    });
+    
+    console.log('[QUICK VOICE] ✅ Quick voice recording initialized');   
 }
 // --- 🎮 دالة معالجة أزرار الوسائط ---
 function handleMediaButtonClick(type, targetUserId) {
