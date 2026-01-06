@@ -2878,26 +2878,7 @@ function setupVoiceRecordingEvents(targetUserId) {
 }
 
 
-// ===== 🔓 Audio Context Unlock (Mobile Fix) =====
-let audioContextUnlocked = false;
-let audioContext = null;
 
-function unlockAudioContext() {
-    if (audioContextUnlocked) return;
-
-    try {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-        if (audioContext.state === 'suspended') {
-            audioContext.resume();
-        }
-
-        audioContextUnlocked = true;
-        console.log('[AUDIO] AudioContext unlocked');
-    } catch (err) {
-        console.error('[AUDIO] Failed to unlock AudioContext', err);
-    }
-}
         
 
 // --- 📤 دالة إرسال الرسالة الصوتية ---
@@ -2995,102 +2976,92 @@ async function sendVoiceMessage(audioChunks, duration, targetUserId, modal) {
 
   // --- 🔊 دالة تشغيل الرسائل الصوتية ---
 async function playVoiceMessage(audioUrl, messageElement) {
-    console.log('================ VOICE DEBUG START ================');
-    console.log('[URL]', audioUrl);
-
+    console.log('[CHAT] Playing voice message:', audioUrl);
+    
     const playBtn = messageElement.querySelector('.play-voice-btn');
     const progressBar = messageElement.querySelector('.voice-progress');
-
-    if (!playBtn || !progressBar) {
-        console.warn('[VOICE] Missing UI elements');
-        return;
-    }
-
-    // إيقاف أي صوت سابق
-    if (window.currentAudio) {
-        console.log('[VOICE] Stopping previous audio');
-        try {
-            window.currentAudio.pause();
-            window.currentAudio.currentTime = 0;
-        } catch (e) {}
-        window.currentAudio = null;
-    }
-
-    playBtn.innerHTML = '⏳';
-    playBtn.classList.add('playing');
-
-    const audio = new Audio();
-    window.currentAudio = audio;
-
-    // ===== إعدادات صريحة =====
-    audio.src = audioUrl;
-    audio.preload = 'auto';
-    audio.volume = 1;
-    audio.muted = false;
-    audio.autoplay = false;
-    audio.setAttribute('playsinline', '');
-    audio.crossOrigin = 'anonymous';
-
-    console.log('[AUDIO INIT]', {
-        volume: audio.volume,
-        muted: audio.muted,
-        preload: audio.preload,
-        autoplay: audio.autoplay
-    });
-
-    // ===== Events للتشخيص =====
-    audio.addEventListener('loadstart', () => console.log('[EVENT] loadstart'));
-    audio.addEventListener('loadedmetadata', () => {
-        console.log('[EVENT] loadedmetadata', {
-            duration: audio.duration,
-            readyState: audio.readyState
-        });
-    });
-    audio.addEventListener('canplay', () => console.log('[EVENT] canplay'));
-    audio.addEventListener('canplaythrough', () => console.log('[EVENT] canplaythrough'));
-    audio.addEventListener('play', () => console.log('[EVENT] play'));
-    audio.addEventListener('playing', () => console.log('[EVENT] playing'));
-    audio.addEventListener('pause', () => console.log('[EVENT] pause'));
-    audio.addEventListener('ended', () => {
-        console.log('[EVENT] ended');
-        playBtn.innerHTML = '▶️';
-        playBtn.classList.remove('playing');
-        progressBar.style.width = '0%';
-    });
-    audio.addEventListener('error', (e) => {
-        console.error('[EVENT] error', audio.error);
-        playBtn.innerHTML = '❌';
-    });
-
-    // ===== شريط التقدم =====
-    audio.addEventListener('timeupdate', () => {
-        if (!audio.duration) return;
-        progressBar.style.width = `${(audio.currentTime / audio.duration) * 100}%`;
-    });
-
-    // ===== التشغيل (بدون AudioContext) =====
+    
+    if (!playBtn || !progressBar) return;
+    
     try {
-        console.log('[VOICE] Calling play()');
-        const playPromise = audio.play();
-
-        if (playPromise !== undefined) {
-            playPromise
-                .then(() => {
-                    console.log('✅ PLAY PROMISE RESOLVED');
-                    playBtn.innerHTML = '⏸️';
-                })
-                .catch(err => {
-                    console.error('❌ PLAY PROMISE FAILED', err);
-                    playBtn.innerHTML = '❌';
-                });
+        // إذا كان الصوت مشغلاً بالفعل، أوقفه
+        if (playBtn.classList.contains('playing')) {
+            playBtn.innerHTML = '<i class="fas fa-play text-white"></i>';
+            playBtn.classList.remove('playing');
+            progressBar.style.width = '0%';
+            
+            if (window.currentAudio) {
+                window.currentAudio.pause();
+                window.currentAudio.currentTime = 0;
+                window.currentAudio = null;
+            }
+            return;
         }
-    } catch (err) {
-        console.error('[VOICE] play() exception', err);
-        playBtn.innerHTML = '❌';
+        
+        // بدء التشغيل
+        playBtn.innerHTML = '<i class="fas fa-pause text-white"></i>';
+        playBtn.classList.add('playing');
+        
+        // إنشاء عنصر الصوت
+        const audio = new Audio(audioUrl);
+        window.currentAudio = audio;
+        
+        // تحديث شريط التقدم
+        audio.addEventListener('timeupdate', () => {
+            const progress = (audio.currentTime / audio.duration) * 100;
+            progressBar.style.width = `${progress}%`;
+        });
+        
+        // عند الانتهاء
+        audio.addEventListener('ended', () => {
+            playBtn.innerHTML = '<i class="fas fa-play text-white"></i>';
+            playBtn.classList.remove('playing');
+            progressBar.style.width = '0%';
+            window.currentAudio = null;
+        });
+        
+        // عند الخطأ
+        audio.addEventListener('error', () => {
+            playBtn.innerHTML = '<i class="fas fa-exclamation-triangle text-white"></i>';
+            playBtn.classList.remove('playing');
+            showNotification('تعذر تشغيل الرسالة الصوتية', 'error');
+        });
+        
+        // بدء التشغيل
+        await audio.play();
+        
+        // تحديث حالة "تمت المشاهدة" للرسالة
+        const messageId = messageElement.dataset.messageId;
+        if (messageId) {
+            updateMessageViewStatus(messageId);
+        }
+        
+    } catch (error) {
+        console.error('[VOICE PLAYBACK] Error:', error);
+        playBtn.innerHTML = '<i class="fas fa-play text-white"></i>';
+        playBtn.classList.remove('playing');
+        showNotification('تعذر تشغيل الرسالة الصوتية', 'error');
     }
-
-    console.log('================ VOICE DEBUG END ==================');
 }
+
+// --- 👁️ دالة تحديث حالة المشاهدة ---
+async function updateMessageViewStatus(messageId) {
+    try {
+        await fetch('/api/private-chat/message/status', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                messageId: messageId,
+                status: 'seen'
+            })
+        });
+    } catch (error) {
+        console.error('[CHAT] Error updating view status:', error);
+    }
+}  
 
 
         
