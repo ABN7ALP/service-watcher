@@ -2878,7 +2878,26 @@ function setupVoiceRecordingEvents(targetUserId) {
 }
 
 
+// ===== 🔓 Audio Context Unlock (Mobile Fix) =====
+let audioContextUnlocked = false;
+let audioContext = null;
 
+function unlockAudioContext() {
+    if (audioContextUnlocked) return;
+
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        if (audioContext.state === 'suspended') {
+            audioContext.resume();
+        }
+
+        audioContextUnlocked = true;
+        console.log('[AUDIO] AudioContext unlocked');
+    } catch (err) {
+        console.error('[AUDIO] Failed to unlock AudioContext', err);
+    }
+}
         
 
 // --- 📤 دالة إرسال الرسالة الصوتية ---
@@ -2976,6 +2995,7 @@ async function sendVoiceMessage(audioChunks, duration, targetUserId, modal) {
 
   // --- 🔊 دالة تشغيل الرسائل الصوتية ---
 async function playVoiceMessage(audioUrl, messageElement) {
+    unlockAudioContext();
     console.log('[CHAT] Playing voice message:', audioUrl);
     
     const playBtn = messageElement.querySelector('.play-voice-btn');
@@ -3009,6 +3029,11 @@ async function playVoiceMessage(audioUrl, messageElement) {
         audio.volume = 1;
         audio.muted = false;
         audio.load();
+        // ربط الصوت بـ AudioContext (مهم للموبايل)
+        if (audioContext) {
+            const source = audioContext.createMediaElementSource(audio);
+            source.connect(audioContext.destination);
+            }
         
         // تحديث شريط التقدم
         audio.addEventListener('timeupdate', () => {
