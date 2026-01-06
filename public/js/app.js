@@ -3004,6 +3004,11 @@ async function playVoiceMessage(audioUrl, messageElement) {
         
         // إنشاء عنصر الصوت
         const audio = new Audio(audioUrl);
+
+        audio.volume = 1;          // تأكيد أن الصوت غير مكتوم
+        audio.muted = false;       // منع أي كتم تلقائي
+        audio.preload = 'auto';    // تحميل الصوت مسبقاً
+        audio.load();              // إجبار تحميل الميتاداتا
         window.currentAudio = audio;
         
         // تحديث شريط التقدم
