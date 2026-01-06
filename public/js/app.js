@@ -2040,26 +2040,53 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                     </div>
                     
                     <!-- شريط الإدخال الأساسي -->
-                    <div class="flex items-center gap-2">
-                        <!-- زر فتح الخيارات -->
-                        <button id="toggle-chat-options" class="bg-gray-700 hover:bg-gray-600 w-10 h-10 rounded-full flex items-center justify-center">
-                            <i class="fas fa-plus text-gray-300"></i>
-                        </button>
-                        
-                        <!-- حقل إدخال النص -->
-                        <div class="flex-1 relative">
-                            <input type="text" id="private-message-input" 
-                                   placeholder="اكتب رسالتك هنا..." 
-                                   maxlength="200"
-                                   class="w-full bg-gray-700 border border-gray-600 rounded-full py-3 px-5 pr-12 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                            <div id="private-char-count" class="absolute top-1/2 right-4 transform -translate-y-1/2 text-xs text-gray-500">0/200</div>
-                        </div>
-                        
-                        <!-- زر الإرسال -->
-                        <button id="send-private-message" class="bg-purple-600 hover:bg-purple-700 w-12 h-12 rounded-full flex items-center justify-center">
-                            <i class="fas fa-paper-plane text-white"></i>
-                        </button>
-                    </div>
+<div class="flex items-center gap-2">
+    <!-- زر فتح الخيارات -->
+    <button id="toggle-chat-options" class="bg-gray-700 hover:bg-gray-600 w-10 h-10 rounded-full flex items-center justify-center transition-colors">
+        <i class="fas fa-plus text-gray-300"></i>
+    </button>
+    
+    <!-- حقل إدخال النص -->
+    <div class="flex-1 relative">
+        <input type="text" id="private-message-input" 
+               placeholder="اكتب رسالتك هنا..." 
+               maxlength="200"
+               class="w-full bg-gray-700 border border-gray-600 rounded-full py-3 px-5 pr-12 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+        <div id="private-char-count" class="absolute top-1/2 right-4 transform -translate-y-1/2 text-xs text-gray-500">0/200</div>
+    </div>
+    
+    <!-- ⭐ زر الميكروفون الجديد (مخفي عند الكتابة) -->
+    <button id="quick-voice-record-btn" 
+            class="bg-gray-700 hover:bg-gray-600 w-12 h-12 rounded-full flex items-center justify-center transition-all">
+        <i class="fas fa-microphone text-gray-300 text-lg"></i>
+    </button>
+    
+    <!-- زر الإرسال (مخفي افتراضياً) -->
+    <button id="send-private-message" 
+            class="bg-purple-600 hover:bg-purple-700 w-12 h-12 rounded-full flex items-center justify-center transition-all hidden">
+        <i class="fas fa-paper-plane text-white"></i>
+    </button>
+</div>
+
+<!-- ⭐ شريط حالة التسجيل (مخفي افتراضياً) -->
+<div id="recording-status-bar" class="hidden mt-3 p-3 bg-red-600/20 rounded-lg border border-red-500/30">
+    <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <!-- نقطة حمراء نابضة -->
+            <div class="recording-pulse w-3 h-3 bg-red-500 rounded-full"></div>
+            <!-- عداد الوقت -->
+            <span id="recording-timer" class="font-mono text-lg text-white">0:00</span>
+            <!-- أيقونة الميكروفون -->
+            <i class="fas fa-microphone text-red-400"></i>
+        </div>
+        <!-- نص الإلغاء -->
+        <span class="text-sm text-gray-300">← اسحب للإلغاء</span>
+    </div>
+    <!-- شريط التقدم -->
+    <div class="mt-2 w-full bg-gray-700 h-1 rounded-full overflow-hidden">
+        <div id="recording-progress" class="bg-red-500 h-1 transition-all duration-300" style="width: 0%"></div>
+    </div>
+</div>
                     
                     <!-- شريط معلومات (للملفات) -->
                     <div id="file-upload-info" class="hidden mt-3 p-2 bg-gray-800 rounded-lg">
