@@ -3034,6 +3034,12 @@ async function playVoiceMessage(audioUrl, messageElement) {
             const source = audioContext.createMediaElementSource(audio);
             source.connect(audioContext.destination);
             }
+        console.log('[AUDIO META]', {
+    duration: audio.duration,
+    readyState: audio.readyState,
+    muted: audio.muted,
+    volume: audio.volume
+});
         
         // تحديث شريط التقدم
         audio.addEventListener('timeupdate', () => {
@@ -3057,14 +3063,13 @@ async function playVoiceMessage(audioUrl, messageElement) {
         });
         
         // بدء التشغيل
-        audio.addEventListener('canplaythrough', async () => {
-    try {
-        await audio.play();
-    } catch (err) {
-        console.error('[VOICE PLAYBACK] Play blocked:', err);
-        showNotification('اضغط مرة أخرى لتشغيل الصوت', 'warning');
-    }
-}, { once: true });
+        audio.play()
+    .then(() => {
+        console.log('[AUDIO TEST] play() resolved ✅');
+    })
+    .catch(err => {
+        console.error('[AUDIO TEST] play() failed ❌', err);
+    });
         
         // تحديث حالة "تمت المشاهدة" للرسالة
         const messageId = messageElement.dataset.messageId;
