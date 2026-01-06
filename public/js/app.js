@@ -2385,7 +2385,7 @@ function setupPrivateChatEvents(targetUserId) {
     });
     
     // 3. عداد الأحرف
-   // const messageInput = document.getElementById('private-message-input');
+    const messageInput = document.getElementById('private-message-input');
     const charCounter = document.getElementById('private-char-count');
     
     if (messageInput && charCounter) {
@@ -2402,7 +2402,7 @@ function setupPrivateChatEvents(targetUserId) {
     }
     
     // 4. زر الإرسال
-    //const sendBtn = document.getElementById('send-private-message');
+    const sendBtn = document.getElementById('send-private-message');
     if (sendBtn && messageInput) {
         sendBtn.addEventListener('click', () => {
             sendPrivateMessage(targetUserId, messageInput.value.trim());
@@ -2450,8 +2450,8 @@ function setupPrivateChatEvents(targetUserId) {
     // ============================================
     
     const quickVoiceBtn = document.getElementById('quick-voice-record-btn');
-    const sendButton = document.getElementById('send-private-message');
-    const messageInput = document.getElementById('private-message-input');
+    //const sendButton = document.getElementById('send-private-message');
+    //const messageInput = document.getElementById('private-message-input');
     const recordingBar = document.getElementById('recording-status-bar');
     
     if (!quickVoiceBtn || !sendButton || !messageInput || !recordingBar) {
