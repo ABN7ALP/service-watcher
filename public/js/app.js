@@ -3980,30 +3980,139 @@ function showImageViewer(imageUrl, message) {
     showNotification('عرض الصورة قريباً...', 'info');
 }
 
-// --- 🎵 دالة تشغيل الصوت ---
-function playVoiceMessage(voiceUrl, messageElement) {
-    console.log('[CHAT] Playing voice:', voiceUrl);
+// --- 🎵 دالة تشغيل الصوت (حقيقية - ليست محاكاة) ---
+async function playVoiceMessage(voiceUrl, messageElement) {
+    console.log('[CHAT] 🎵 Playing voice message:', voiceUrl);
     
     const playBtn = messageElement.querySelector('.play-voice-btn');
     const progressBar = messageElement.querySelector('.voice-progress');
     
-    if (playBtn && progressBar) {
+    if (!playBtn || !progressBar) {
+        console.error('[CHAT] ❌ Play button or progress bar not found');
+        return;
+    }
+    
+    try {
+        // إذا كان الصوت مشغلاً بالفعل، أوقفه
+        if (playBtn.classList.contains('playing')) {
+            console.log('[CHAT] ⏸️ Stopping current audio');
+            playBtn.innerHTML = '<i class="fas fa-play text-white"></i>';
+            playBtn.classList.remove('playing');
+            progressBar.style.width = '0%';
+            
+            if (window.currentAudio) {
+                window.currentAudio.pause();
+                window.currentAudio.currentTime = 0;
+                window.currentAudio = null;
+            }
+            return;
+        }
+        
+        // إيقاف أي صوت آخر قيد التشغيل
+        if (window.currentAudio) {
+            console.log('[CHAT] 🛑 Stopping previous audio');
+            window.currentAudio.pause();
+            window.currentAudio = null;
+            
+            // إعادة تعيين الأزرار الأخرى
+            document.querySelectorAll('.play-voice-btn.playing').forEach(btn => {
+                btn.innerHTML = '<i class="fas fa-play text-white"></i>';
+                btn.classList.remove('playing');
+            });
+            document.querySelectorAll('.voice-progress').forEach(bar => {
+                bar.style.width = '0%';
+            });
+        }
+        
+        // بدء التشغيل
+        console.log('[CHAT] ▶️ Starting playback');
         playBtn.innerHTML = '<i class="fas fa-pause text-white"></i>';
         playBtn.classList.add('playing');
         
-        // محاكاة التشغيل
-        let progress = 0;
-        const interval = setInterval(() => {
-            progress += 2;
-            progressBar.style.width = `${progress}%`;
-            
-            if (progress >= 100) {
-                clearInterval(interval);
-                playBtn.innerHTML = '<i class="fas fa-play text-white"></i>';
-                playBtn.classList.remove('playing');
-                progressBar.style.width = '0%';
+        // إنشاء عنصر الصوت
+        const audio = new Audio();
+        audio.src = voiceUrl;
+        audio.preload = 'auto';
+        audio.volume = 1.0;
+        
+        window.currentAudio = audio;
+        
+        // عند تحميل البيانات
+        audio.addEventListener('loadedmetadata', () => {
+            console.log('[CHAT] 📊 Audio loaded, duration:', audio.duration, 'seconds');
+        });
+        
+        // تحديث شريط التقدم
+        audio.addEventListener('timeupdate', () => {
+            if (audio.duration) {
+                const progress = (audio.currentTime / audio.duration) * 100;
+                progressBar.style.width = `${progress}%`;
             }
-        }, 100);
+        });
+        
+        // عند الانتهاء
+        audio.addEventListener('ended', () => {
+            console.log('[CHAT] ✅ Audio playback ended');
+            playBtn.innerHTML = '<i class="fas fa-play text-white"></i>';
+            playBtn.classList.remove('playing');
+            progressBar.style.width = '0%';
+            window.currentAudio = null;
+        });
+        
+        // عند الخطأ
+        audio.addEventListener('error', (e) => {
+            console.error('[CHAT] ❌ Audio error:', {
+                error: e,
+                code: audio.error?.code,
+                message: audio.error?.message,
+                url: voiceUrl
+            });
+            
+            playBtn.innerHTML = '<i class="fas fa-exclamation-triangle text-white"></i>';
+            playBtn.classList.remove('playing');
+            progressBar.style.width = '0%';
+            
+            let errorMsg = 'تعذر تشغيل الرسالة الصوتية';
+            if (audio.error) {
+                switch(audio.error.code) {
+                    case 1: errorMsg = 'تم إلغاء تحميل الصوت'; break;
+                    case 2: errorMsg = 'خطأ في الشبكة'; break;
+                    case 3: errorMsg = 'تعذر فك تشفير الصوت'; break;
+                    case 4: errorMsg = 'تنسيق الصوت غير مدعوم'; break;
+                }
+            }
+            
+            showNotification(errorMsg, 'error');
+            window.currentAudio = null;
+        });
+        
+        // بدء التشغيل
+        console.log('[CHAT] 🚀 Calling audio.play()');
+        const playPromise = audio.play();
+        
+        if (playPromise !== undefined) {
+            playPromise
+                .then(() => {
+                    console.log('[CHAT] ✅ Playback started successfully');
+                })
+                .catch(error => {
+                    console.error('[CHAT] ❌ Play failed:', error);
+                    playBtn.innerHTML = '<i class="fas fa-play text-white"></i>';
+                    playBtn.classList.remove('playing');
+                    
+                    if (error.name === 'NotAllowedError') {
+                        showNotification('اضغط في أي مكان بالصفحة أولاً', 'warning');
+                    } else {
+                        showNotification('فشل تشغيل الصوت', 'error');
+                    }
+                });
+        }
+        
+    } catch (error) {
+        console.error('[VOICE PLAYBACK] Catch error:', error);
+        playBtn.innerHTML = '<i class="fas fa-play text-white"></i>';
+        playBtn.classList.remove('playing');
+        showNotification('خطأ في تشغيل الصوت', 'error');
     }
 }
 
