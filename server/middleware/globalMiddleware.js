@@ -20,15 +20,15 @@ const setupMiddleware = (app) => {
     app.use(cors()); // السماح بالطلبات من مصادر مختلفة
     // الكود الجديد والمعدل بالكامل لإعدادات helmet
     app.use(helmet({
-       contentSecurityPolicy: {
-          directives: {
-            ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-            "script-src": ["'self'", "cdn.socket.io"],
-            // --- استبدل سطر "img-src" بهذا ---
-            "img-src": ["'self'", "data:", "https://res.cloudinary.com", "https://i.ibb.co"], // ✅ السطر الجديد
-          },
+   contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "script-src": ["'self'", "cdn.socket.io"],
+        "img-src": ["'self'", "data:", "https://res.cloudinary.com", "https://i.ibb.co"],
+        "media-src": ["'self'", "https://res.cloudinary.com"],
       },
-  }));
+  },
+}));
     app.use(compression()); // ضغط الاستجابات لزيادة السرعة
 
     // Middleware لتحليل جسم الطلب (Body Parser)
