@@ -3063,13 +3063,18 @@ async function playVoiceMessage(audioUrl, messageElement) {
         });
         
         // بدء التشغيل
-        audio.play()
-    .then(() => {
-        console.log('[AUDIO TEST] play() resolved ✅');
-    })
-    .catch(err => {
-        console.error('[AUDIO TEST] play() failed ❌', err);
+        audio.setAttribute('playsinline', '');
+audio.crossOrigin = 'anonymous';
+
+// انتظار جاهزية الصوت (مهم جداً للهاتف)
+audio.addEventListener('canplaythrough', () => {
+    audio.play().catch(err => {
+        console.error('[VOICE PLAYBACK] play() failed:', err);
     });
+}, { once: true });
+
+// إجبار تحميل الصوت
+audio.load();
         
         // تحديث حالة "تمت المشاهدة" للرسالة
         const messageId = messageElement.dataset.messageId;
