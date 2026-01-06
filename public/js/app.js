@@ -2402,7 +2402,7 @@ function setupPrivateChatEvents(targetUserId) {
     }
     
     // 4. زر الإرسال
-    const sendBtn = document.getElementById('send-private-message');
+    //const sendBtn = document.getElementById('send-private-message');
     if (sendBtn && messageInput) {
         sendBtn.addEventListener('click', () => {
             sendPrivateMessage(targetUserId, messageInput.value.trim());
