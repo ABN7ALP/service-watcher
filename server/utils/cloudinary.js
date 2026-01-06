@@ -30,16 +30,22 @@ const profileImageFilter = (req, file, cb) => {
 // 4. دالة للتحقق من ملفات الدردشة
 const chatMediaFilter = (req, file, cb) => {
     const allowedTypes = {
-        'image/jpeg': true,
-        'image/png': true,
-        'image/gif': true,
-        'image/webp': true,
-        'audio/mpeg': true,
-        'audio/wav': true,
-        'audio/ogg': true,
-        'video/mp4': true,
-        'video/webm': true
-    };
+    // صور
+    'image/jpeg': true,
+    'image/png': true,
+    'image/gif': true,
+    'image/webp': true,
+
+    // صوت
+    'audio/mpeg': true,
+    'audio/wav': true,
+    'audio/ogg': true,
+    'audio/webm': true,
+
+    // فيديو
+    'video/mp4': true,
+    'video/webm': true
+};
 
     if (allowedTypes[file.mimetype]) {
         cb(null, true);
