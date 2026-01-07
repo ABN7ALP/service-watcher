@@ -2988,45 +2988,35 @@ function setupImageUploadEvents(targetUserId) {
 
         
 
-// --- 📤 دالة إرسال الرسالة الصوتية ---
-async function sendVoiceMessage(audioChunks, duration, targetUserId, modal) {
-    const sendButton = modal.querySelector('#send-voice-button');
-    const recordingStatus = modal.querySelector('#recording-status');
+// --- 📤 دالة إرسال الرسالة الصوتية (محدثة) ---
+async function sendVoiceMessage(audioBlob, duration, targetUserId) {
+    console.log(`[VOICE] Sending voice message: ${duration}s, ${audioBlob.size} bytes`);
+    
+    // التحقق من المدة
+    if (duration > 15) {
+        showNotification('مدة التسجيل تتجاوز 15 ثانية', 'error');
+        return;
+    }
+    
+    if (duration < 1) {
+        showNotification('التسجيل قصير جداً', 'error');
+        return;
+    }
     
     try {
-        // التحقق من المدة
-        if (duration > 15) {
-            showNotification('مدة التسجيل تتجاوز 15 ثانية', 'error');
-            return;
-        }
-        
-        if (duration < 1) {
-            showNotification('التسجيل قصير جداً', 'error');
-            return;
-        }
-        
-        // تحديث الواجهة
-        if (sendButton) {
-            sendButton.disabled = true;
-            sendButton.innerHTML = '<i class="fas fa-spinner fa-spin text-xl"></i>';
-        }
-        
-        if (recordingStatus) {
-            recordingStatus.textContent = 'جاري إرسال الصوت...';
-            recordingStatus.classList.add('text-yellow-400');
-        }
-        
-        // 1. تحويل إلى ملف
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        // 1. تحويل Blob إلى File
         const audioFile = new File([audioBlob], `voice_${Date.now()}.webm`, {
             type: 'audio/webm'
         });
         
-        // 2. رفع إلى Cloudinary
+        // 2. رفع إلى الخادم
         const formData = new FormData();
         formData.append('file', audioFile);
         formData.append('receiverId', targetUserId);
         formData.append('duration', duration.toString());
+        
+        // إشعار التحميل
+        showNotification('جاري إرسال الرسالة الصوتية...', 'info');
         
         const response = await fetch('/api/chat-media/voice', {
             method: 'POST',
@@ -3055,8 +3045,6 @@ async function sendVoiceMessage(audioChunks, duration, targetUserId, modal) {
                 metadata
             );
             
-            // إغلاق النافذة
-            modal.remove();
             showNotification('تم إرسال الرسالة الصوتية بنجاح', 'success');
             
         } else {
@@ -3066,18 +3054,6 @@ async function sendVoiceMessage(audioChunks, duration, targetUserId, modal) {
     } catch (error) {
         console.error('[VOICE UPLOAD] Error:', error);
         showNotification(error.message || 'فشل إرسال الرسالة الصوتية', 'error');
-        
-        // إعادة تعيين
-        if (sendButton) {
-            sendButton.disabled = false;
-            sendButton.innerHTML = '<i class="fas fa-paper-plane text-xl"></i>';
-        }
-        
-        if (recordingStatus) {
-            recordingStatus.textContent = 'فشل الإرسال - حاول مرة أخرى';
-            recordingStatus.classList.remove('text-yellow-400');
-            recordingStatus.classList.add('text-red-400');
-        }
     }
 }
 
