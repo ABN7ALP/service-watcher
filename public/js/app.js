@@ -175,7 +175,6 @@ const chatStyles = `
     background-color: #7c3aed; /* purple-700 */
 }
 
-
 /* زر الإرسال المعطل */
 #send-private-message:disabled {
     opacity: 0.6;
@@ -2478,28 +2477,13 @@ function handleMediaButtonClick(type, targetUserId) {
 // 🎤 دالة تسجيل الصوت بنظام مبسط (بدون سحب)
 // =================================================
 function startWhatsAppStyleRecording(targetUserId) {
-    console.log(`[VOICE] Starting recording for: ${targetUserId}`);
+    console.log(`[VOICE] Starting simplified recording for: ${targetUserId}`);
     
-    // تحقق مزدوج من عدم وجود تسجيل نشط
+    // منع تسجيل جديد إذا كان هناك تسجيل قيد التشغيل
     if (window.isRecordingActive) {
-        console.warn('[VOICE] Recording already active, preventing duplicate');
-        showNotification('هناك تسجيل قيد التشغيل بالفعل', 'warning');
+        console.log('[VOICE] Recording already in progress');
         return;
     }
-    
-    // تحقق من عناصر الواجهة
-    const sendBtn = document.getElementById('send-private-message');
-    if (!sendBtn) {
-        console.error('[VOICE] Send button not found');
-        return;
-    }
-    
-    // تعطيل الزر مؤقتاً لمنع النقرات المتعددة
-    sendBtn.disabled = true;
-    setTimeout(() => {
-        sendBtn.disabled = false;
-    }, 500);
-    
     
     const chatModal = document.getElementById('private-chat-modal');
     if (!chatModal) {
@@ -2698,44 +2682,23 @@ function startWhatsAppStyleRecording(targetUserId) {
     }
     
     // دالة إرسال التسجيل
-    // دالة إرسال التسجيل (محدثة - إرسال فوري)
-async function sendRecording() {
-    if (audioChunks.length === 0) {
-        showNotification('لا يوجد تسجيل لإرساله', 'error');
-        return;
+    async function sendRecording() {
+        if (audioChunks.length === 0) {
+            showNotification('لا يوجد تسجيل لإرساله', 'error');
+            return;
+        }
+        
+        // تحويل إلى Blob
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        
+        // إرسال الصوت
+        await sendVoiceMessage(audioBlob, recordingDuration, targetUserId);
+        
+        // تنظيف
+        cleanupRecordingUI();
     }
     
-    // 1. تحويل إلى Blob
-    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-    
-    // 2. إنشاء رابط مؤقت للعرض الفوري
-    const audioUrl = URL.createObjectURL(audioBlob);
-    
-    // 3. عرض الرسالة فوراً في الدردشة (تحديث تفاؤلي)
-    const tempMessageId = 'temp_' + Date.now().toString();
-    const user = JSON.parse(localStorage.getItem('user'));
-    
-    // إنشاء كائن الرسالة المؤقتة
-    const tempMessage = {
-        _id: tempMessageId,
-        sender: user._id,
-        receiver: targetUserId,
-        type: 'voice',
-        content: audioUrl, // رابط مؤقت
-        metadata: {
-            duration: recordingDuration,
-            fileSize: audioBlob.size,
-            format: 'webm',
-            isUploading: true // علامة أن الملف قيد الرفع
-        },
-        createdAt: new Date().toISOString(),
-        status: { sent: true, delivered: false, seen: false }
-    };
-    
-    // عرض الرسالة في الدردشة
-    displayPrivateMessage(tempMessage, true);
-    
-    // 4. تنظيف واجهة التسجيل فوراً (لا ننتظر)
+    // دالة تنظيف واجهة التسجيل
     // دالة تنظيف واجهة التسجيل
 function cleanupRecordingUI() {
     console.log('[VOICE] Cleaning up recording UI');
@@ -2780,163 +2743,26 @@ function cleanupRecordingUI() {
     }
 }
     
-    // 5. رفع الملف في الخلفية (بدون انتظار)
-    setTimeout(() => {
-        uploadVoiceInBackground(audioBlob, recordingDuration, targetUserId, tempMessageId);
-    }, 100); // تأخير بسيط لضمان عرض الرسالة أولاً
-     }
-  });
-}
-
-
-// =================================================
-// 📤 دالة رفع الصوت في الخلفية
-// =================================================
-async function uploadVoiceInBackground(audioBlob, duration, targetUserId, tempMessageId) {
-    console.log(`[VOICE] Background upload started for temp: ${tempMessageId}`);
+    // أحداث الأزرار
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', cancelRecording);
+    }
     
-    try {
-        // 1. إضافة مؤشر تحميل للرسالة
-        addUploadingIndicator(tempMessageId);
-        
-        // 2. تحويل Blob إلى File
-        const audioFile = new File([audioBlob], `voice_${Date.now()}.webm`, {
-            type: 'audio/webm'
-        });
-        
-        // 3. رفع إلى الخادم
-        const formData = new FormData();
-        formData.append('file', audioFile);
-        formData.append('receiverId', targetUserId);
-        formData.append('duration', duration.toString());
-        
-        const response = await fetch('/api/chat-media/voice', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            },
-            body: formData
-        });
-        
-        const result = await response.json();
-        
-        if (response.ok) {
-            console.log(`[VOICE] Upload successful for temp: ${tempMessageId}`);
-            
-            // 4. تحديث الرسالة المؤقتة بالرابط الدائم
-            updateVoiceMessageWithRealUrl(tempMessageId, result.data.url, result.data);
-            
-            // 5. إرسال كرسالة صوتية للخادم
-            await sendPrivateMessage(
-                targetUserId,
-                result.data.url,
-                null, // replyTo
-                'voice',
-                {
-                    duration: duration,
-                    publicId: result.data.publicId,
-                    fileSize: result.data.bytes,
-                    format: result.data.format
-                }
-            );
-            
-        } else {
-            console.error(`[VOICE] Upload failed for temp: ${tempMessageId}`, result.message);
-            markVoiceMessageAsFailed(tempMessageId, result.message || 'فشل رفع الرسالة الصوتية');
+    if (sendBtn) {
+        sendBtn.addEventListener('click', sendRecording);
+    }
+    
+    if (stopBtn) {
+        stopBtn.addEventListener('click', stopRecording);
+    }
+    
+    // إغلاق عند النقر خارج الواجهة (اختياري)
+    document.addEventListener('click', function outsideClickHandler(e) {
+        if (!recordingUI.contains(e.target) && e.target !== originalSendBtn) {
+            // لا نغلق تلقائياً، نترك المستخدم يقرر
         }
-        
-    } catch (error) {
-        console.error('[VOICE] Background upload error:', error);
-        markVoiceMessageAsFailed(tempMessageId, 'خطأ في الاتصال بالخادم');
-    }
+    });
 }
-
-// =================================================
-// 📊 دالة إضافة مؤشر تحميل للرسالة
-// =================================================
-function addUploadingIndicator(messageId) {
-    const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
-    if (!messageElement) return;
-    
-    const statusContainer = messageElement.querySelector('.message-status');
-    if (statusContainer) {
-        statusContainer.innerHTML = `
-            <div class="uploading-indicator flex items-center gap-1">
-                <div class="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                <span class="text-xs text-blue-400">جاري الرفع...</span>
-            </div>
-        `;
-    }
-}
-
-// =================================================
-// 🔄 دالة تحديث الرسالة بالرابط الدائم
-// =================================================
-function updateVoiceMessageWithRealUrl(tempMessageId, realUrl, metadata) {
-    const messageElement = document.querySelector(`[data-message-id="${tempMessageId}"]`);
-    if (!messageElement) return;
-    
-    // 1. تحديث رابط الصوت
-    const voiceBtn = messageElement.querySelector('.play-voice-btn');
-    if (voiceBtn) {
-        voiceBtn.dataset.voiceUrl = realUrl;
-    }
-    
-    // 2. إزالة مؤشر التحميل
-    const uploadingIndicator = messageElement.querySelector('.uploading-indicator');
-    if (uploadingIndicator) {
-        uploadingIndicator.remove();
-    }
-    
-    // 3. تحديث حالة الرسالة
-    const statusContainer = messageElement.querySelector('.message-status');
-    if (statusContainer) {
-        statusContainer.innerHTML = `
-            <i class="fas fa-check text-gray-400 text-xs" title="تم الإرسال"></i>
-        `;
-    }
-    
-    // 4. تحديث الـ ID إذا أرسل الخادم واحداً
-    if (metadata && metadata.messageId) {
-        messageElement.dataset.messageId = metadata.messageId;
-    }
-    
-    console.log(`[VOICE] Message ${tempMessageId} updated with real URL`);
-}
-
-// =================================================
-// ❌ دالة وضع علامة فشل على الرسالة
-// =================================================
-function markVoiceMessageAsFailed(messageId, errorMessage) {
-    const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
-    if (!messageElement) return;
-    
-    const statusContainer = messageElement.querySelector('.message-status');
-    if (statusContainer) {
-        statusContainer.innerHTML = `
-            <div class="flex items-center gap-1">
-                <i class="fas fa-exclamation-triangle text-red-400 text-xs"></i>
-                <span class="text-xs text-red-400">فشل الرفع</span>
-            </div>
-        `;
-    }
-    
-    // إضافة زر إعادة المحاولة
-    const retryBtn = document.createElement('button');
-    retryBtn.className = 'text-xs text-blue-400 hover:text-blue-300 mt-1';
-    retryBtn.innerHTML = '<i class="fas fa-redo mr-1"></i> إعادة المحاولة';
-    retryBtn.onclick = () => {
-        // TODO: إعادة المحاولة
-        showNotification('ميزة إعادة المحاولة قريباً', 'info');
-    };
-    
-    const messageContent = messageElement.querySelector('.message-content');
-    if (messageContent) {
-        messageContent.appendChild(retryBtn);
-    }
-}
-
-                              
         
 
    // --- 🖼️ دالة عرض نافذة رفع الصور ---
