@@ -2450,8 +2450,6 @@ function setupPrivateChatEvents(targetUserId) {
     // ============================================
     
     const quickVoiceBtn = document.getElementById('quick-voice-record-btn');
-    //const sendButton = document.getElementById('send-private-message');
-    //const messageInput = document.getElementById('private-message-input');
     const recordingBar = document.getElementById('recording-status-bar');
     
     if (!quickVoiceBtn || !sendButton || !messageInput || !recordingBar) {
