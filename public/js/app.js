@@ -2019,7 +2019,7 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                     
                     <!-- شريط الخيارات (مخفي افتراضيًا) -->
                     <div id="chat-options-bar" class="hidden mb-3 p-3 bg-gray-800/50 rounded-xl">
-                        <div class="grid grid-cols-4 gap-3 text-center">
+                        <div class="grid grid-cols-3 gap-3 text-center">
                             <button class="chat-media-btn" data-type="image">
                                 <i class="fas fa-image text-2xl text-green-400 mb-1"></i>
                                 <span class="text-xs">صورة</span>
@@ -2027,10 +2027,6 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                             <button class="chat-media-btn" data-type="video">
                                 <i class="fas fa-video text-2xl text-blue-400 mb-1"></i>
                                 <span class="text-xs">فيديو</span>
-                            </button>
-                            <button class="chat-media-btn" data-type="voice">
-                                <i class="fas fa-microphone text-2xl text-red-400 mb-1"></i>
-                                <span class="text-xs">صوت</span>
                             </button>
                             <button class="chat-media-btn" data-type="file">
                                 <i class="fas fa-file text-2xl text-yellow-400 mb-1"></i>
@@ -2056,9 +2052,11 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                         </div>
                         
                         <!-- زر الإرسال -->
-                        <button id="send-private-message" class="bg-purple-600 hover:bg-purple-700 w-12 h-12 rounded-full flex items-center justify-center">
-                            <i class="fas fa-paper-plane text-white"></i>
-                        </button>
+                        <button id="send-private-message" 
+        class="dynamic-send-btn bg-purple-600 hover:bg-purple-700 w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300"
+        data-mode="voice">
+    <i class="fas fa-microphone text-white"></i>
+</button>
                     </div>
                     
                     <!-- شريط معلومات (للملفات) -->
@@ -2266,28 +2264,70 @@ function setupPrivateChatEvents(targetUserId) {
             }
         });
     }
+
+
+    // تحديث زر الإرسال بناءً على حالة حقل النص
+function updateSendButton() {
+    const sendBtn = document.getElementById('send-private-message');
+    if (messageInput.value.trim() === '') {
+        // حالة فارغة: زر تسجيل صوتي
+        sendBtn.innerHTML = '<i class="fas fa-microphone text-white"></i>';
+        sendBtn.dataset.mode = 'voice';
+        sendBtn.title = 'تسجيل صوتي (اضغط مع الاستمرار)';
+    } else {
+        // حالة بها نص: زر إرسال
+        sendBtn.innerHTML = '<i class="fas fa-paper-plane text-white"></i>';
+        sendBtn.dataset.mode = 'text';
+        sendBtn.title = 'إرسال الرسالة';
+    }
+}
+
+// استدعاء الدالة عند التحميل أولاً
+updateSendButton();
+
+// تحديث الزر عند كتابة/مسح النص
+messageInput.addEventListener('input', updateSendButton);
     
     // 4. زر الإرسال
-    const sendBtn = document.getElementById('send-private-message');
-    if (sendBtn && messageInput) {
-        sendBtn.addEventListener('click', () => {
+    // 4. زر الإرسال (ديناميكي)
+const sendBtn = document.getElementById('send-private-message');
+if (sendBtn && messageInput) {
+    // إزالة المستمع القديم أولاً إذا كان موجوداً
+    sendBtn.removeEventListener('click', sendBtn.clickHandler);
+    
+    // تعريف دالة جديدة
+    sendBtn.clickHandler = () => {
+        if (sendBtn.dataset.mode === 'voice') {
+            // بدء تسجيل صوتي
+            startWhatsAppStyleRecording(targetUserId);
+        } else {
+            // إرسال نص
             sendPrivateMessage(targetUserId, messageInput.value.trim());
             messageInput.value = '';
             if (charCounter) charCounter.textContent = '0/200';
-        });
-    }
+            updateSendButton(); // تحديث الزر بعد الإرسال
+        }
+    };
+    
+    // إضافة المستمع الجديد
+    sendBtn.addEventListener('click', sendBtn.clickHandler);
+}
     
     // 5. إرسال بـ Enter
-    if (messageInput) {
-        messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
+if (messageInput) {
+    messageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (sendBtn.dataset.mode === 'text') {
                 sendPrivateMessage(targetUserId, messageInput.value.trim());
                 messageInput.value = '';
                 if (charCounter) charCounter.textContent = '0/200';
+                updateSendButton(); // تحديث الزر بعد الإرسال
             }
-        });
-    }
+            // إذا كان mode = voice، لا نفعل شيئاً عند Enter
+        }
+    });
+}
     
     // 6. زر فتح الخيارات
     const toggleBtn = document.getElementById('toggle-chat-options');
@@ -2322,7 +2362,7 @@ function handleMediaButtonClick(type, targetUserId) {
             // showVideoUploadModal(targetUserId); // لاحقاً
             break;
         case 'voice':
-            startVoiceRecording(targetUserId); // لاحقاً
+           startWhatsAppStyleRecording(targetUserId);
             break;
         case 'file':
             showNotification('إرسال الملفات قريباً...', 'info');
@@ -2587,297 +2627,10 @@ function setupImageUploadEvents(targetUserId) {
 
 
         
-// --- 🎤 دالة بدء تسجيل الصوت ---
-function startVoiceRecording(targetUserId) {
-    console.log(`[VOICE RECORDING] Starting for user: ${targetUserId}`);
-    
-    // إغلاق شريط الخيارات
-    const optionsBar = document.getElementById('chat-options-bar');
-    if (optionsBar) optionsBar.classList.add('hidden');
-    
-    // التحقق من دعم API التسجيل
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showNotification('المتصفح لا يدعم تسجيل الصوت', 'error');
-        return;
-    }
-    
-    const modalHTML = `
-        <div id="voice-recording-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[350] p-4">
-            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white overflow-hidden border-2 border-red-500/30">
-                
-                <!-- رأس النافذة -->
-                <div class="flex items-center justify-between p-4 bg-gray-900/80 border-b border-gray-700">
-                    <h3 class="text-lg font-bold">
-                        <i class="fas fa-microphone mr-2 text-red-400"></i>
-                        تسجيل صوتي
-                    </h3>
-                    <button class="close-voice-modal text-gray-400 hover:text-white p-2">
-                        <i class="fas fa-times text-lg"></i>
-                    </button>
-                </div>
-                
-                <!-- محتوى التسجيل -->
-                <div class="p-6 text-center">
-                    <!-- مؤشر التسجيل -->
-                    <div id="recording-indicator" class="mb-6">
-                        <div class="w-24 h-24 mx-auto bg-red-500/20 rounded-full flex items-center justify-center border-4 border-red-500/50">
-                            <i class="fas fa-microphone text-3xl text-red-400"></i>
-                        </div>
-                        <p id="recording-status" class="mt-4 font-medium">جاهز للتسجيل</p>
-                    </div>
-                    
-                    <!-- عداد الوقت -->
-                    <div id="timer-display" class="text-4xl font-mono mb-6 hidden">
-                        <span id="minutes">00</span>:<span id="seconds">00</span>
-                    </div>
-                    
-                    <!-- شريط التقدم الزمني -->
-                    <div class="mb-6">
-                        <div class="flex justify-between text-sm text-gray-400 mb-1">
-                            <span>0 ثانية</span>
-                            <span>15 ثانية (حد أقصى)</span>
-                        </div>
-                        <div class="w-full bg-gray-700 h-2 rounded-full overflow-hidden">
-                            <div id="time-progress-bar" class="bg-red-500 h-2 rounded-full transition-all duration-1000" style="width: 0%"></div>
-                        </div>
-                    </div>
-                    
-                    <!-- أزرار التحكم -->
-                    <div class="flex justify-center gap-4 mb-6">
-                        <!-- زر التسجيل -->
-                        <button id="record-button" class="w-16 h-16 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center text-white shadow-lg transition-all hover:scale-105 active:scale-95">
-                            <i class="fas fa-circle text-2xl"></i>
-                        </button>
-                        
-                        <!-- زر الإرسال (مخفي في البداية) -->
-                        <button id="send-voice-button" class="w-16 h-16 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center text-white shadow-lg transition-all hover:scale-105 active:scale-95 hidden">
-                            <i class="fas fa-paper-plane text-xl"></i>
-                        </button>
-                    </div>
-                    
-                    <!-- معلومات -->
-                    <div class="text-xs text-gray-400">
-                        <p><i class="fas fa-info-circle mr-1"></i> الحد الأقصى: 15 ثانية</p>
-                        <p><i class="fas fa-headphones mr-1"></i> استخدم سماعات لنتيجة أفضل</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // إضافة النافذة إلى الـ DOM
-    document.getElementById('game-container').innerHTML += modalHTML;
-    
-    // ربط الأحداث
-    setupVoiceRecordingEvents(targetUserId);
-}
-
-// --- 🎮 دالة إعداد أحداث تسجيل الصوت ---
-function setupVoiceRecordingEvents(targetUserId) {
-    const modal = document.getElementById('voice-recording-modal');
-    if (!modal) return;
-    
-    let mediaRecorder = null;
-    let audioChunks = [];
-    let isRecording = false;
-    let recordingTimer = null;
-    let recordingStartTime = null;
-    let recordedDuration = 0;
-    
-    // 1. زر الإغلاق
-    const closeBtn = modal.querySelector('.close-voice-modal');
-    if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-            stopRecording();
-            modal.remove();
-        });
-    }
-    
-    // 2. إغلاق بالنقر على الخلفية
-    modal.addEventListener('click', (e) => {
-        if (e.target.id === 'voice-recording-modal') {
-            stopRecording();
-            modal.remove();
-        }
-    });
-    
-    // 3. زر التسجيل
-    const recordButton = modal.querySelector('#record-button');
-    const sendButton = modal.querySelector('#send-voice-button');
-    const recordingIndicator = modal.querySelector('#recording-indicator');
-    const timerDisplay = modal.querySelector('#timer-display');
-    const recordingStatus = modal.querySelector('#recording-status');
-    const timeProgressBar = modal.querySelector('#time-progress-bar');
-    
-    if (recordButton) {
-        recordButton.addEventListener('click', toggleRecording);
-    }
-    
-    if (sendButton) {
-        sendButton.addEventListener('click', () => {
-            sendVoiceMessage(audioChunks, recordedDuration, targetUserId, modal);
-        });
-    }
-    
-    // 4. دالة تبديل التسجيل
-    async function toggleRecording() {
-        if (isRecording) {
-            stopRecording();
-        } else {
-            await startRecording();
-        }
-    }
-    
-    // 5. بدء التسجيل
-    async function startRecording() {
-        try {
-            // طلب إذن الميكروفون
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                }
-            });
-            
-            // إعداد MediaRecorder
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
-            
-            // جمع البيانات
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    audioChunks.push(event.data);
-                }
-            };
-            
-            // عند التوقف
-            mediaRecorder.onstop = () => {
-                // تحويل إلى Blob
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                
-                // عرض معاينة الصوت
-                showAudioPreview(audioBlob);
-                
-                // إيقاف الميكروفون
-                stream.getTracks().forEach(track => track.stop());
-            };
-            
-            // بدء التسجيل
-            mediaRecorder.start();
-            isRecording = true;
-            recordingStartTime = Date.now();
-            
-            // تحديث الواجهة
-            if (recordButton) {
-                recordButton.innerHTML = '<i class="fas fa-stop text-2xl"></i>';
-                recordButton.classList.remove('bg-red-500', 'hover:bg-red-600');
-                recordButton.classList.add('bg-gray-600', 'hover:bg-gray-700');
-            }
-            
-            if (recordingIndicator) {
-                recordingIndicator.classList.add('recording-active');
-            }
-            
-            if (timerDisplay) {
-                timerDisplay.classList.remove('hidden');
-            }
-            
-            if (recordingStatus) {
-                recordingStatus.textContent = 'جاري التسجيل...';
-                recordingStatus.classList.add('text-red-400');
-            }
-            
-            // بدء العد التنازلي
-            startTimer();
-            
-        } catch (error) {
-            console.error('[VOICE] Error starting recording:', error);
-            showNotification('فشل الوصول إلى الميكروفون', 'error');
-            modal.remove();
-        }
-    }
-    
-    // 6. إيقاف التسجيل
-    function stopRecording() {
-        if (mediaRecorder && isRecording) {
-            mediaRecorder.stop();
-            isRecording = false;
-            recordedDuration = Math.floor((Date.now() - recordingStartTime) / 1000);
-            
-            // إيقاف المؤقت
-            if (recordingTimer) {
-                clearInterval(recordingTimer);
-                recordingTimer = null;
-            }
-            
-            // تحديث الواجهة
-            if (recordButton) {
-                recordButton.innerHTML = '<i class="fas fa-redo text-xl"></i>';
-                recordButton.classList.remove('bg-gray-600', 'hover:bg-gray-700');
-                recordButton.classList.add('bg-blue-500', 'hover:bg-blue-600');
-                recordButton.title = 'إعادة التسجيل';
-            }
-            
-            if (recordingIndicator) {
-                recordingIndicator.classList.remove('recording-active');
-            }
-            
-            if (recordingStatus) {
-                recordingStatus.textContent = 'تم التسجيل بنجاح';
-                recordingStatus.classList.remove('text-red-400');
-                recordingStatus.classList.add('text-green-400');
-            }
-            
-            if (sendButton) {
-                sendButton.classList.remove('hidden');
-            }
-        }
-    }
-    
-    // 7. بدء المؤقت
-    function startTimer() {
-        recordingTimer = setInterval(() => {
-            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-            
-            // تحديث العرض
-            if (timerDisplay) {
-                const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
-                const seconds = (elapsed % 60).toString().padStart(2, '0');
-                
-                modal.querySelector('#minutes').textContent = minutes;
-                modal.querySelector('#seconds').textContent = seconds;
-            }
-            
-            // تحديث شريط التقدم
-            if (timeProgressBar) {
-                const progress = Math.min((elapsed / 15) * 100, 100);
-                timeProgressBar.style.width = `${progress}%`;
-                
-                // تغيير اللون عند الاقتراب من النهاية
-                if (elapsed >= 13) {
-                    timeProgressBar.classList.remove('bg-red-500');
-                    timeProgressBar.classList.add('bg-red-700');
-                }
-            }
-            
-            // إيقاف تلقائي عند 15 ثانية
-            if (elapsed >= 15) {
-                stopRecording();
-                showNotification('تم الوصول للحد الأقصى (15 ثانية)', 'info');
-            }
-            
-        }, 100);
-    }
-    
-    // 8. عرض معاينة الصوت
-    function showAudioPreview(audioBlob) {
-        // يمكن إضافة معاينة صوتية هنا
-        console.log(`[VOICE] Recorded audio: ${audioBlob.size} bytes, ${recordedDuration} seconds`);
-    }
-}
 
 
+    
+    
 
         
 
