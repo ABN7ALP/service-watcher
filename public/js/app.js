@@ -105,6 +105,76 @@ const chatStyles = `
         animation: pulseRecording 1s infinite;
         background-color: #dc2626 !important;
     }
+/* =========================================== */
+/* أنيميشن وستايلات للتسجيل الصوتي الجديد */
+/* =========================================== */
+
+/* مؤشر التسجيل النابض */
+@keyframes recordingPulse {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.1); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.animate-pulse {
+    animation: recordingPulse 1s infinite;
+}
+
+/* واجهة التسجيل */
+#voice-recording-ui {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 2px solid #4f46e5; /* purple-600 */
+    transition: all 0.3s ease;
+}
+
+#voice-recording-ui:hover {
+    border-color: #7c3aed; /* purple-700 */
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* زر الإلغاء */
+#cancel-recording {
+    transition: all 0.2s ease;
+    padding: 8px;
+    border-radius: 50%;
+}
+
+#cancel-recording:hover {
+    background-color: rgba(220, 38, 38, 0.2); /* red-600 with opacity */
+    transform: scale(1.1);
+}
+
+/* رسائل السحب */
+#slide-hint {
+    animation: fadeInOut 2s infinite alternate;
+}
+
+@keyframes fadeInOut {
+    0% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* زر الإرسال الديناميكي */
+.dynamic-send-btn {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dynamic-send-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+}
+
+/* حالة الزر عند التسجيل */
+.dynamic-send-btn[data-mode="voice"]:active {
+    transform: scale(0.95);
+    background-color: #dc2626; /* red-600 */
+}
+
+.dynamic-send-btn[data-mode="text"]:active {
+    transform: scale(0.95);
+    background-color: #7c3aed; /* purple-700 */
+}
+    
 `;
 
 // إضافة الـ styles إلى الـ head مرة واحدة
@@ -2370,6 +2440,290 @@ function handleMediaButtonClick(type, targetUserId) {
             break;
     }
 }
+
+
+// =================================================
+// 🎤 دالة تسجيل الصوت بنظام WhatsApp
+// =================================================
+function startWhatsAppStyleRecording(targetUserId) {
+    console.log(`[VOICE] Starting WhatsApp-style recording for: ${targetUserId}`);
+    
+    const chatModal = document.getElementById('private-chat-modal');
+    if (!chatModal) {
+        console.error('[VOICE] Chat modal not found');
+        return;
+    }
+    
+    // حفظ حالة الدردشة قبل التعديل
+    const originalInput = document.getElementById('private-message-input');
+    const originalSendBtn = document.getElementById('send-private-message');
+    const originalCharCounter = document.getElementById('private-char-count');
+    
+    if (!originalInput || !originalSendBtn) {
+        console.error('[VOICE] Required elements not found');
+        return;
+    }
+    
+    // إخفاء العناصر الأصلية
+    originalInput.style.display = 'none';
+    if (originalCharCounter) originalCharCounter.style.display = 'none';
+    
+    // إنشاء واجهة التسجيل
+    const recordingUI = document.createElement('div');
+    recordingUI.id = 'voice-recording-ui';
+    recordingUI.className = 'flex items-center justify-between w-full bg-gray-800 rounded-full px-4 py-3';
+    recordingUI.innerHTML = `
+        <div class="flex items-center gap-3">
+            <div id="recording-indicator" class="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
+                <i class="fas fa-microphone text-white text-sm"></i>
+            </div>
+            <div>
+                <p id="recording-status" class="text-sm font-medium">تسجيل صوتي</p>
+                <p id="recording-timer" class="text-xs text-gray-400">00:00</p>
+            </div>
+        </div>
+        <div id="recording-actions" class="flex items-center gap-3">
+            <button id="cancel-recording" class="text-red-400 hover:text-red-300">
+                <i class="fas fa-times text-lg"></i>
+            </button>
+            <div id="slide-hint" class="text-xs text-gray-400 hidden">
+                اسحب للإلغاء
+            </div>
+        </div>
+    `;
+    
+    // وضع واجهة التسجيل مكان حقل النص
+    originalInput.parentNode.insertBefore(recordingUI, originalInput.nextSibling);
+    
+    // متغيرات التسجيل
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+    let recordingStartTime = null;
+    let recordingTimer = null;
+    let recordingDuration = 0;
+    
+    // عناصر الواجهة
+    const recordingIndicator = document.getElementById('recording-indicator');
+    const recordingTimerElement = document.getElementById('recording-timer');
+    const recordingStatus = document.getElementById('recording-status');
+    const cancelBtn = document.getElementById('cancel-recording');
+    const slideHint = document.getElementById('slide-hint');
+    
+    // بدء التسجيل
+    startRecording();
+    
+    // دالة بدء التسجيل
+    async function startRecording() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            });
+            
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunks.push(event.data);
+                }
+            };
+            
+            mediaRecorder.onstop = async () => {
+                // تحويل إلى Blob
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                
+                // إرسال الصوت
+                await sendVoiceMessage(audioBlob, recordingDuration, targetUserId);
+                
+                // تنظيف
+                stream.getTracks().forEach(track => track.stop());
+                cleanupRecordingUI();
+            };
+            
+            // بدء التسجيل
+            mediaRecorder.start();
+            isRecording = true;
+            recordingStartTime = Date.now();
+            
+            // تحديث الواجهة
+            recordingIndicator.classList.add('animate-pulse');
+            recordingStatus.textContent = 'جاري التسجيل...';
+            slideHint.classList.remove('hidden');
+            
+            // بدء المؤقت
+            startTimer();
+            
+            // إضافة أحداث السحب
+            setupSwipeEvents();
+            
+        } catch (error) {
+            console.error('[VOICE] Error starting recording:', error);
+            showNotification('فشل الوصول إلى الميكروفون', 'error');
+            cleanupRecordingUI();
+        }
+    }
+    
+    // دالة بدء المؤقت
+    function startTimer() {
+        recordingTimer = setInterval(() => {
+            recordingDuration = Math.floor((Date.now() - recordingStartTime) / 1000);
+            
+            // تحديث العرض
+            const minutes = Math.floor(recordingDuration / 60).toString().padStart(2, '0');
+            const seconds = (recordingDuration % 60).toString().padStart(2, '0');
+            recordingTimerElement.textContent = `${minutes}:${seconds}`;
+            
+            // إيقاف تلقائي عند 15 ثانية
+            if (recordingDuration >= 15) {
+                stopRecording();
+                showNotification('تم الوصول للحد الأقصى (15 ثانية)', 'info');
+            }
+            
+        }, 1000);
+    }
+    
+    // دالة إيقاف التسجيل
+    function stopRecording() {
+        if (mediaRecorder && isRecording) {
+            mediaRecorder.stop();
+            isRecording = false;
+            
+            // إيقاف المؤقت
+            if (recordingTimer) {
+                clearInterval(recordingTimer);
+                recordingTimer = null;
+            }
+            
+            // تحديث الواجهة
+            recordingIndicator.classList.remove('animate-pulse');
+            recordingStatus.textContent = 'جاري الإرسال...';
+        }
+    }
+    
+    // دالة إعداد أحداث السحب
+    function setupSwipeEvents() {
+        let startX = 0;
+        let startY = 0;
+        let isSwiping = false;
+        
+        recordingUI.addEventListener('touchstart', (e) => {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            isSwiping = true;
+        });
+        
+        recordingUI.addEventListener('touchmove', (e) => {
+            if (!isSwiping || !isRecording) return;
+            
+            const currentX = e.touches[0].clientX;
+            const currentY = e.touches[0].clientY;
+            const diffX = currentX - startX;
+            const diffY = currentY - startY;
+            
+            // سحب لأعلى للإلغاء
+            if (diffY < -50) {
+                recordingStatus.textContent = 'حرر للإلغاء';
+                recordingIndicator.style.backgroundColor = '#dc2626'; // red-600
+            }
+            // سحب لليسار للإلغاء
+            else if (diffX < -50) {
+                recordingStatus.textContent = 'حرر للإلغاء';
+                recordingIndicator.style.backgroundColor = '#dc2626';
+            }
+            // سحب لليمين للإرسال
+            else if (diffX > 50) {
+                recordingStatus.textContent = 'حرر للإرسال';
+                recordingIndicator.style.backgroundColor = '#16a34a'; // green-600
+            }
+            // العودة للموقع الأصلي
+            else {
+                recordingStatus.textContent = 'جاري التسجيل...';
+                recordingIndicator.style.backgroundColor = '#ef4444'; // red-500
+            }
+        });
+        
+        recordingUI.addEventListener('touchend', (e) => {
+            if (!isSwiping || !isRecording) return;
+            
+            const endX = e.changedTouches[0].clientX;
+            const endY = e.changedTouches[0].clientY;
+            const diffX = endX - startX;
+            const diffY = endY - startY;
+            
+            // إلغاء التسجيل (سحب لأعلى أو لليسار)
+            if (diffY < -50 || diffX < -50) {
+                cancelRecording();
+            }
+            // إرسال (سحب لليمين)
+            else if (diffX > 50) {
+                stopRecording();
+            }
+            // إذا لم يكن سحب، يتصرف كزر عادي
+            else {
+                // لا شيء - يستمر التسجيل
+            }
+            
+            isSwiping = false;
+            // إعادة تعليمات السحب
+            setTimeout(() => {
+                if (isRecording) {
+                    recordingStatus.textContent = 'جاري التسجيل...';
+                    recordingIndicator.style.backgroundColor = '#ef4444';
+                }
+            }, 1000);
+        });
+    }
+    
+    // دالة إلغاء التسجيل
+    function cancelRecording() {
+        if (mediaRecorder && isRecording) {
+            mediaRecorder.stop();
+            isRecording = false;
+            
+            // إيقاف المؤقت
+            if (recordingTimer) {
+                clearInterval(recordingTimer);
+                recordingTimer = null;
+            }
+            
+            showNotification('تم إلغاء التسجيل', 'info');
+            cleanupRecordingUI();
+        }
+    }
+    
+    // دالة تنظيف واجهة التسجيل
+    function cleanupRecordingUI() {
+        // إزالة واجهة التسجيل
+        if (recordingUI.parentNode) {
+            recordingUI.remove();
+        }
+        
+        // إعادة إظهار العناصر الأصلية
+        if (originalInput) {
+            originalInput.style.display = '';
+            originalInput.focus();
+        }
+        if (originalCharCounter) {
+            originalCharCounter.style.display = '';
+        }
+        
+        // تحديث زر الإرسال
+        if (originalSendBtn) {
+            updateSendButton();
+        }
+    }
+    
+    // حدث زر الإلغاء
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', cancelRecording);
+    }
+}
+        
 
    // --- 🖼️ دالة عرض نافذة رفع الصور ---
 function showImageUploadModal(targetUserId) {
