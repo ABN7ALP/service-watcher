@@ -2452,7 +2452,7 @@ function setupPrivateChatEvents(targetUserId) {
     const quickVoiceBtn = document.getElementById('quick-voice-record-btn');
     const recordingBar = document.getElementById('recording-status-bar');
     
-    if (!quickVoiceBtn || !sendButton || !messageInput || !recordingBar) {
+    if (!quickVoiceBtn || !sendBtn || !messageInput || !recordingBar)
         console.error('[QUICK VOICE] Required elements not found');
         return;
     }
@@ -2675,13 +2675,13 @@ function setupPrivateChatEvents(targetUserId) {
                     format: result.data.format
                 };
                 
-                await sendPrivateMessage(
-                    receiverId,
-                    result.data.url,
-                    null,
-                    'voice',
-                    metadata
-                );
+                await window.sendPrivateMessage(
+    receiverId,
+    result.data.url,
+    null,
+    'voice',
+    metadata
+);
                 
                 showNotification('تم إرسال الرسالة الصوتية', 'success');
                 
