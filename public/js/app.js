@@ -1,4 +1,3 @@
-
 // --- دوال مساعدة لنظام اللفلات ---
 const calculateRequiredXp = (level) => {
     return level * 1500;
