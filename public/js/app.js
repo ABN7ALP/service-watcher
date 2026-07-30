@@ -2768,132 +2768,78 @@ function cleanupRecordingUI() {
    // --- 🖼️ دالة عرض نافذة رفع الصور ---
 function showImageUploadModal(targetUserId) {
     console.log(`[IMAGE UPLOAD] Opening for user: ${targetUserId}`);
-    
-    // إغلاق شريط الخيارات
+
     const optionsBar = document.getElementById('chat-options-bar');
     if (optionsBar) optionsBar.classList.add('hidden');
-    
+
     const modalHTML = `
         <div id="image-upload-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[350] p-4">
-            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white overflow-hidden border-2 border-purple-500/30">
-                
-                <!-- رأس النافذة -->
-                <div class="flex items-center justify-between p-4 bg-gray-900/80 border-b border-gray-700">
-                    <h3 class="text-lg font-bold">
-                        <i class="fas fa-image mr-2 text-green-400"></i>
-                        إرسال صورة
-                    </h3>
-                    <button class="close-image-modal text-gray-400 hover:text-white p-2">
-                        <i class="fas fa-times text-lg"></i>
-                    </button>
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700">
+
+                <!-- Header -->
+                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <h3 class="text-lg font-bold"><i class="fas fa-image mr-2 text-green-400"></i>إرسال صورة</h3>
+                    <button class="close-image-modal text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
                 </div>
-                
-                <!-- منطقة الرفع -->
-                <div class="p-6">
-                    <!-- منطقة سحب وإسقاط -->
-                    <div id="drop-zone" 
-                         class="border-2 border-dashed border-gray-600 rounded-xl p-8 text-center cursor-pointer hover:border-green-500 transition-colors duration-300 bg-gray-900/50 mb-6">
-                        
+
+                <!-- Body (مصغر) -->
+                <div class="p-4">
+                    <!-- Drop Zone (مصغر) -->
+                    <div id="drop-zone" class="border-2 border-dashed border-gray-600 rounded-xl p-4 text-center cursor-pointer hover:border-green-500 transition-colors bg-gray-900/50 mb-4">
                         <div id="upload-area-content">
-                            <i class="fas fa-cloud-upload-alt text-4xl text-gray-500 mb-4"></i>
-                            <p class="font-medium mb-2">اسحب وأفلت الصورة هنا</p>
-                            <p class="text-sm text-gray-400 mb-4">أو انقر للاختيار</p>
-                            <p class="text-xs text-gray-500">(حد أقصى 5MB - JPG, PNG, GIF, WebP)</p>
+                            <i class="fas fa-cloud-upload-alt text-3xl text-gray-500 mb-2"></i>
+                            <p class="font-medium text-sm mb-1">اسحب وأفلت الصورة هنا</p>
+                            <p class="text-xs text-gray-400">(حد أقصى 5MB)</p>
                         </div>
-                        
-                        <!-- معاينة الصورة -->
-                        <div id="image-preview" class="hidden mt-4">
-                            <img id="preview-image" class="max-w-full max-h-48 rounded-lg mx-auto">
-                            <div class="mt-2 flex items-center justify-between text-sm">
+                        <div id="image-preview" class="hidden">
+                            <img id="preview-image" class="max-w-full max-h-32 rounded-lg mx-auto">
+                            <div class="text-xs text-gray-400 mt-2 flex justify-between">
                                 <span id="file-name" class="truncate"></span>
-                                <span id="file-size" class="text-gray-400"></span>
+                                <span id="file-size"></span>
                             </div>
                         </div>
-                        
-                        <!-- شريط التقدم -->
-                        <div id="upload-progress" class="hidden mt-4">
+                        <div id="upload-progress" class="hidden mt-3">
                             <div class="flex justify-between text-xs mb-1">
                                 <span>جاري الرفع...</span>
                                 <span id="progress-percent">0%</span>
                             </div>
-                            <div class="w-full bg-gray-700 h-2 rounded-full overflow-hidden">
-                                <div id="progress-bar" class="bg-green-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            <div class="w-full bg-gray-700 h-1.5 rounded-full overflow-hidden">
+                                <div id="progress-bar" class="bg-green-500 h-1.5 rounded-full transition-all" style="width:0%"></div>
                             </div>
                         </div>
-                        
-                        <!-- زر الاختيار المخفي -->
                         <input type="file" id="image-file-input" class="hidden" accept="image/*">
                     </div>
-                    
-                    <!-- خيارات الحماية -->
-                    <div class="bg-gray-900/30 p-4 rounded-xl mb-6">
-                        <h4 class="font-bold mb-3 flex items-center gap-2">
-                            <i class="fas fa-shield-alt text-blue-400"></i>
-                            خيارات الحماية
-                        </h4>
-                        
-                        <div class="space-y-3">
-                            <!-- مشاهدة مرة واحدة -->
-                            <label class="flex items-center gap-3 cursor-pointer hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
-                                <input type="checkbox" id="view-once" class="w-4 h-4 rounded text-green-500">
-                                <div class="flex-1">
-                                    <span class="font-medium">مشاهدة مرة واحدة</span>
-                                    <p class="text-xs text-gray-400">تختفي الصورة بعد مشاهدتها</p>
-                                </div>
-                                <i class="fas fa-eye text-yellow-400"></i>
+
+                    <!-- خيارات الحماية (مصغرة) -->
+                    <div class="bg-gray-900/30 p-3 rounded-xl mb-4">
+                        <h4 class="font-bold text-sm mb-2 flex items-center gap-2"><i class="fas fa-shield-alt text-blue-400"></i>خيارات الحماية</h4>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-800/50 p-1 rounded">
+                                <input type="checkbox" id="view-once" class="w-4 h-4"> مشاهدة مرة واحدة
                             </label>
-                            
-                            <!-- منع الحفظ -->
-                            <label class="flex items-center gap-3 cursor-pointer hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
-                                <input type="checkbox" id="disable-save" class="w-4 h-4 rounded text-green-500">
-                                <div class="flex-1">
-                                    <span class="font-medium">منع الحفظ</span>
-                                    <p class="text-xs text-gray-400">لا يمكن حفظ الصورة</p>
-                                </div>
-                                <i class="fas fa-download-slash text-red-400"></i>
+                            <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-800/50 p-1 rounded">
+                                <input type="checkbox" id="disable-save" class="w-4 h-4"> منع الحفظ
                             </label>
-                            
-                            <!-- علامة مائية -->
-                            <label class="flex items-center gap-3 cursor-pointer hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
-                                <input type="checkbox" id="add-watermark" class="w-4 h-4 rounded text-green-500">
-                                <div class="flex-1">
-                                    <span class="font-medium">علامة مائية</span>
-                                    <p class="text-xs text-gray-400">إضافة شعار المنصة</p>
-                                </div>
-                                <i class="fas fa-copyright text-blue-400"></i>
+                            <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-800/50 p-1 rounded">
+                                <input type="checkbox" id="add-watermark" class="w-4 h-4"> علامة مائية
                             </label>
-                            
-                            <!-- منع الرد -->
-                            <label class="flex items-center gap-3 cursor-pointer hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
-                                <input type="checkbox" id="disable-reply" class="w-4 h-4 rounded text-green-500">
-                                <div class="flex-1">
-                                    <span class="font-medium">منع الرد</span>
-                                    <p class="text-xs text-gray-400">لا يمكن الرد على هذه الصورة</p>
-                                </div>
-                                <i class="fas fa-reply text-purple-400"></i>
+                            <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-800/50 p-1 rounded">
+                                <input type="checkbox" id="disable-reply" class="w-4 h-4"> منع الرد
                             </label>
                         </div>
                     </div>
-                    
-                    <!-- أزرار الإجراء -->
-                    <div class="flex gap-3">
-                        <button id="cancel-image-upload" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition">
-                            إلغاء
-                        </button>
-                        <button id="send-image-button" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                            <i class="fas fa-paper-plane mr-2"></i>
-                            إرسال
-                        </button>
+
+                    <!-- أزرار -->
+                    <div class="flex gap-2">
+                        <button id="cancel-image-upload" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm transition">إلغاء</button>
+                        <button id="send-image-button" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm transition disabled:opacity-50" disabled>إرسال</button>
                     </div>
                 </div>
             </div>
         </div>
     `;
-    
-    // إضافة النافذة إلى الـ DOM
+
     document.getElementById('game-container').innerHTML += modalHTML;
-    
-    // ربط الأحداث
     setupImageUploadEvents(targetUserId);
 }
 
