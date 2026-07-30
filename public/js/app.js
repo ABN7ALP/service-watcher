@@ -3018,7 +3018,32 @@ function setupImageUploadEvents(targetUserId) {
         
 
 
-    
+    let replyingToPrivateMessage = null;
+
+function showReplyPrivateBar(messageId, message) {
+    replyingToPrivateMessage = message;
+
+    let replyBar = document.getElementById('reply-private-bar');
+    if (!replyBar) {
+        replyBar = document.createElement('div');
+        replyBar.id = 'reply-private-bar';
+        replyBar.className = 'p-2 bg-gray-600 rounded-t-lg text-sm flex justify-between items-center';
+        const chatInput = document.querySelector('.chat-input-container');
+        if (chatInput) {
+            chatInput.parentNode.insertBefore(replyBar, chatInput);
+        }
+    }
+
+    replyBar.innerHTML = `
+        <span>الرد على <strong>${message.sender?.username || 'مستخدم'}</strong></span>
+        <button id="cancel-private-reply" class="text-red-400 hover:text-red-600">&times;</button>
+    `;
+
+    document.getElementById('cancel-private-reply').addEventListener('click', () => {
+        replyingToPrivateMessage = null;
+        replyBar.remove();
+    });
+}
     
 
         
