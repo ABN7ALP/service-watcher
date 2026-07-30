@@ -3432,155 +3432,148 @@ async function sendPrivateMessage(receiverId, message, replyTo = null, type = 't
 function displayPrivateMessage(message, isMyMessage = false) {
     const messagesContainer = document.getElementById('private-chat-messages');
     if (!messagesContainer) return;
-    
-    // التحقق إذا كانت الرسالة موجودة مسبقاً
-    const existingMessage = document.querySelector(`[data-message-id="${message._id}"]`);
-    if (existingMessage) {
-        // تحديث حالة الرسالة الموجودة
-        updateMessageStatus(existingMessage, message.status);
-        return;
-    }
-    
-    // إزالة رسالة "ابدأ محادثة جديدة" إذا كانت موجودة
+
+    if (document.querySelector(`[data-message-id="${message._id}"]`)) return;
+
     const emptyState = messagesContainer.querySelector('.text-center');
     if (emptyState) emptyState.remove();
-    
-    // إنشاء عنصر الرسالة
+
     const messageElement = document.createElement('div');
     messageElement.className = `flex ${isMyMessage ? 'justify-end' : 'justify-start'} mb-3 new-message`;
     messageElement.dataset.messageId = message._id;
-    
-    // تحضير المحتوى بناءً على نوع الرسالة
+
     let messageContent = '';
-    let messageMeta = '';
-    
-    switch(message.type) {
+    const meta = message.metadata || {};
+
+    switch (message.type) {
         case 'text':
             messageContent = `<p class="text-white text-sm">${message.content}</p>`;
             break;
-            
+
         case 'image':
+            if (meta.viewOnce) {
+                messageContent = `
+                    <div class="relative">
+                        <button class="view-once-image-btn w-full bg-gray-700 rounded-lg p-4 text-center hover:bg-gray-600 transition" data-image-url="${message.content}" data-message-id="${message._id}">
+                            <i class="fas fa-eye text-4xl text-yellow-400 block mb-2"></i>
+                            <span class="text-sm">اضغط للمشاهدة (مرة واحدة)</span>
+                        </button>
+                    </div>
+                `;
+            } else {
+                const watermarkBadge = meta.hasWatermark ? `<span class="absolute top-2 left-2 bg-black/50 text-xs px-2 py-0.5 rounded-full"><i class="fas fa-copyright"></i> منصة التحديات</span>` : '';
+                messageContent = `
+                    <div class="relative">
+                        <img src="${message.content}" class="rounded-lg max-w-full h-auto cursor-pointer view-image-btn" data-image-url="${message.content}" alt="صورة">
+                        ${watermarkBadge}
+                        ${meta.disableSave ? `<span class="absolute bottom-2 left-2 bg-red-500/80 text-xs px-2 py-0.5 rounded-full"><i class="fas fa-download-slash"></i> حفظ معطل</span>` : ''}
+                    </div>
+                `;
+            }
+            break;
+
+        case 'voice':
             messageContent = `
-                <div class="relative">
-                    <img src="${message.metadata?.thumbnail || 'https://via.placeholder.com/200x150'}" 
-                         class="rounded-lg max-w-full h-auto cursor-pointer view-image-btn"
-                         data-image-url="${message.content}"
-                         alt="صورة">
-                    <div class="absolute bottom-2 right-2 bg-black/50 px-2 py-1 rounded text-xs">
-                        <i class="fas fa-image mr-1"></i> صورة
+                <div class="flex items-center gap-3 bg-black/30 p-3 rounded-lg">
+                    <button class="play-voice-btn w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center hover:bg-purple-600" data-voice-url="${message.content}">
+                        <i class="fas fa-play text-white"></i>
+                    </button>
+                    <div class="flex-1">
+                        <div class="flex justify-between text-sm">
+                            <span>رسالة صوتية</span>
+                            <span>${meta.duration || 0} ثانية</span>
+                        </div>
+                        <div class="w-full bg-gray-600 h-2 rounded-full mt-2">
+                            <div class="voice-progress bg-purple-400 h-2 rounded-full" style="width:0%"></div>
+                        </div>
                     </div>
                 </div>
             `;
             break;
-            
-        case 'voice':
-    messageContent = `
-        <div class="flex items-center gap-3 bg-black/30 p-3 rounded-lg">
-            <button class="play-voice-btn w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center hover:bg-purple-600"
-                    data-voice-url="${message.content}">
-                <i class="fas fa-play text-white"></i>
-            </button>
-            <div class="flex-1">
-                <div class="flex justify-between text-sm">
-                    <span>رسالة صوتية</span>
-                    <span>${message.metadata?.duration || 0} ثانية</span>
-                </div>
-                <div class="w-full bg-gray-600 h-2 rounded-full mt-2">
-                    <div class="voice-progress bg-purple-400 h-2 rounded-full" style="width: 0%"></div>
-                </div>
-            </div>
-        </div>
-    `;
-    break;
-            
+
         case 'video':
+            const videoWatermark = meta.hasWatermark ? '<i class="fas fa-copyright text-xs mr-1"></i>' : '';
             messageContent = `
                 <div class="relative">
                     <div class="relative rounded-lg overflow-hidden">
-                        <img src="${message.metadata?.thumbnail || 'https://via.placeholder.com/200x150'}" 
-                             class="w-full h-auto">
-                        <button class="absolute inset-0 flex items-center justify-center play-video-btn"
-                                data-video-url="${message.content}">
-                            <div class="w-16 h-16 bg-black/50 rounded-full flex items-center justify-center">
-                                <i class="fas fa-play text-white text-2xl"></i>
+                        <img src="${meta.thumbnail || 'https://via.placeholder.com/200x150'}" class="w-full h-auto">
+                        <button class="absolute inset-0 flex items-center justify-center play-video-btn" data-video-url="${message.content}">
+                            <div class="w-12 h-12 bg-black/50 rounded-full flex items-center justify-center">
+                                <i class="fas fa-play text-white text-xl"></i>
                             </div>
                         </button>
-                    </div>
-                    <div class="absolute bottom-2 right-2 bg-black/50 px-2 py-1 rounded text-xs">
-                        <i class="fas fa-video mr-1"></i> فيديو
+                        <div class="absolute bottom-2 right-2 bg-black/50 px-2 py-0.5 rounded text-xs">
+                            <i class="fas fa-video mr-1"></i> فيديو ${videoWatermark}
+                        </div>
                     </div>
                 </div>
             `;
             break;
-            
+
         default:
-            messageContent = `<p class="text-white text-sm">${message.content}</p>`;
+            messageContent = `<p class="text-white text-sm">${message.content || 'رسالة'}</p>`;
     }
-    
-    // إضافة الرد إذا كان موجوداً
+
+    // ===== الرد (Reply) =====
     let replySection = '';
-    if (message.replyTo) {
+    if (message.replyTo && !meta.disableReply) {
         const replyContent = message.replyTo.content || 'رسالة';
         const replySender = message.replyTo.sender?.username || 'مستخدم';
         replySection = `
             <div class="mb-2 p-2 bg-black/20 rounded-lg border-r-2 border-purple-500">
                 <p class="text-xs font-bold text-purple-300">${replySender}</p>
-                <p class="text-xs text-gray-300 truncate">${replyContent.substring(0, 50)}${replyContent.length > 50 ? '...' : ''}</p>
+                <p class="text-xs text-gray-300 truncate">${replyContent.substring(0, 50)}</p>
             </div>
         `;
     }
-    
-    // حالة الرسالة
+
+    // ===== حالة الرسالة =====
     let statusIcon = '';
     if (isMyMessage) {
-        if (message.status?.seen) {
-            statusIcon = '<i class="fas fa-check-double text-blue-400 text-xs" title="مقروءة"></i>';
-        } else if (message.status?.delivered) {
-            statusIcon = '<i class="fas fa-check-double text-gray-400 text-xs" title="تم التسليم"></i>';
-        } else {
-            statusIcon = '<i class="fas fa-check text-gray-400 text-xs" title="تم الإرسال"></i>';
-        }
+        if (message.status?.seen) statusIcon = '<i class="fas fa-check-double text-blue-400 text-xs" title="مقروءة"></i>';
+        else if (message.status?.delivered) statusIcon = '<i class="fas fa-check-double text-gray-400 text-xs" title="تم التسليم"></i>';
+        else statusIcon = '<i class="fas fa-check text-gray-400 text-xs" title="تم الإرسال"></i>';
     }
-    
-    // وقت الرسالة
-    const messageTime = new Date(message.createdAt).toLocaleTimeString('ar-SA', {
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-    
-    // بناء HTML النهائي
+
+    // ===== زر الرد (إلا إذا ممنوع) =====
+    let replyButton = '';
+    if (!meta.disableReply) {
+        replyButton = `
+            <button class="reply-private-btn text-gray-400 hover:text-purple-400 text-xs ml-2" data-message-id="${message._id}">
+                <i class="fas fa-reply"></i> رد
+            </button>
+        `;
+    }
+
     messageElement.innerHTML = `
         <div class="max-w-xs md:max-w-md ${isMyMessage ? 'bg-purple-600' : 'bg-gray-700'} rounded-2xl p-3 ${isMyMessage ? 'rounded-tr-none' : 'rounded-tl-none'}">
             ${!isMyMessage ? `
                 <div class="flex items-center gap-2 mb-1">
-                    <img src="${message.sender?.profileImage || 'https://via.placeholder.com/20'}" 
-                         class="w-5 h-5 rounded-full">
+                    <img src="${message.sender?.profileImage || 'https://via.placeholder.com/20'}" class="w-5 h-5 rounded-full">
                     <span class="text-xs font-bold">${message.sender?.username || 'مستخدم'}</span>
                 </div>
             ` : ''}
-            
+
             ${replySection}
-            
+
             <div class="message-content">
                 ${messageContent}
             </div>
-            
+
             <div class="flex justify-between items-center mt-2">
-                <span class="text-xs opacity-70">${messageTime}</span>
-                <div class="message-status flex items-center gap-1">
+                <span class="text-xs opacity-70">${new Date(message.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
+                <div class="flex items-center gap-1">
                     ${statusIcon}
-                    ${message.metadata?.viewOnce ? '<i class="fas fa-eye text-yellow-400 text-xs ml-1" title="مشاهدة مرة واحدة"></i>' : ''}
-                    ${message.metadata?.hasWatermark ? '<i class="fas fa-copyright text-blue-400 text-xs ml-1" title="علامة مائية"></i>' : ''}
+                    ${replyButton}
                 </div>
             </div>
         </div>
     `;
-    
+
     messagesContainer.appendChild(messageElement);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    
-    // ربط أحداث الوسائط
-    bindMediaEvents(messageElement, message);
+
+    bindPrivateMessageEvents(messageElement, message);
 }
 
 // --- 🎵 دالة ربط أحداث الوسائط ---
