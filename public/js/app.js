@@ -2843,6 +2843,55 @@ function showImageUploadModal(targetUserId) {
     setupImageUploadEvents(targetUserId);
 }
 
+        function bindPrivateMessageEvents(messageElement, message) {
+    // صور (عرض عادي)
+    const viewBtn = messageElement.querySelector('.view-image-btn');
+    if (viewBtn) {
+        viewBtn.addEventListener('click', () => {
+            showFullImage(viewBtn.dataset.imageUrl, message);
+        });
+    }
+
+    // صور (مشاهدة مرة واحدة)
+    const viewOnceBtn = messageElement.querySelector('.view-once-image-btn');
+    if (viewOnceBtn) {
+        viewOnceBtn.addEventListener('click', async function() {
+            const imgUrl = this.dataset.imageUrl;
+            const msgId = this.dataset.messageId;
+            showFullImage(imgUrl, message);
+            await markMessageAsViewed(msgId);
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-check-circle text-green-400"></i> تم المشاهدة';
+            this.classList.remove('hover:bg-gray-600');
+        });
+    }
+
+    // صوت
+    const voiceBtn = messageElement.querySelector('.play-voice-btn');
+    if (voiceBtn) {
+        voiceBtn.addEventListener('click', () => {
+            playVoiceMessage(voiceBtn.dataset.voiceUrl, messageElement);
+        });
+    }
+
+    // فيديو
+    const videoBtn = messageElement.querySelector('.play-video-btn');
+    if (videoBtn) {
+        videoBtn.addEventListener('click', () => {
+            showVideoPlayer(videoBtn.dataset.videoUrl, message);
+        });
+    }
+
+    // رد
+    const replyBtn = messageElement.querySelector('.reply-private-btn');
+    if (replyBtn) {
+        replyBtn.addEventListener('click', () => {
+            const msgId = replyBtn.dataset.messageId;
+            showReplyPrivateBar(msgId, message);
+        });
+    }
+}
+
 // --- 🎮 دالة إعداد أحداث رفع الصور ---
 function setupImageUploadEvents(targetUserId) {
     const modal = document.getElementById('image-upload-modal');
