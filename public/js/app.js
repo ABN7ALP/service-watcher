@@ -3980,7 +3980,6 @@ function sendMessage() {
     });
 
     // --- استبدل دالة displayMessage بهذه النسخة ---
-// --- استبدل دالة displayMessage بهذه ---
 function displayMessage(message) {
     if (!message || !message.sender) return;
 
@@ -3988,42 +3987,33 @@ function displayMessage(message) {
     const messageElement = document.createElement('div');
     messageElement.dataset.messageId = message._id;
     messageElement.className = 'message-container p-2 rounded-lg mb-2 flex items-start gap-2 relative group ' + (isMyMessage ? 'bg-purple-800' : 'bg-gray-700');
-    
-    const messageContent = message.content || message.message;
 
-    // --- ✅ منطق عرض الرد ---
     let replyHTML = '';
     if (message.replyTo && message.replyTo.sender) {
         replyHTML = `
             <div class="reply-snippet bg-black/20 p-2 rounded-md mb-2 border-l-2 border-purple-400">
                 <p class="font-bold text-xs text-purple-300">${message.replyTo.sender.username}</p>
-                <p class="text-xs text-gray-300 truncate">${message.replyTo.content}</p>
+                <p class="text-xs text-gray-300 truncate">${message.replyTo.content || 'رسالة'}</p>
             </div>
         `;
     }
 
-    
     messageElement.innerHTML = `
-        <img src="${message.sender.profileImage}" 
-             alt="${message.sender.username}" 
-             class="w-8 h-8 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-400"
-             data-user-id="${message.sender._id}"> 
-        
+        <img src="${message.sender.profileImage}" alt="${message.sender.username}" 
+             class="w-8 h-8 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-400" data-user-id="${message.sender._id}">
         <div class="w-full">
             ${replyHTML}
             <p class="font-bold text-sm ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${message.sender.username}</p>
-            <p class="text-white text-sm">${messageContent}</p>
+            <p class="text-white text-sm">${message.content}</p>
         </div>
-        <button class="reply-btn ...">
+        <button class="reply-btn text-gray-400 hover:text-purple-400 text-xs">
             <i class="fas fa-reply"></i>
         </button>
     `;
 
-    
     chatMessages.appendChild(messageElement);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
-    // ربط حدث النقر على زر الرد
     messageElement.querySelector('.reply-btn').addEventListener('click', () => {
         showReplyBar(message);
     });
