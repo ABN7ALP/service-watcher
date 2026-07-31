@@ -2896,122 +2896,129 @@ function showImageUploadModal(targetUserId) {
 function setupImageUploadEvents(targetUserId) {
     const modal = document.getElementById('image-upload-modal');
     if (!modal) return;
-    
+
     let selectedFile = null;
     let uploadInProgress = false;
-    
-    // 1. زر الإغلاق
+
+    // === دالة إغلاق وتنظيف ===
+    function cleanupAndClose() {
+        if (uploadInProgress) {
+            showNotification('انتظر اكتمال الرفع', 'warning');
+            return;
+        }
+        // إزالة النافذة من DOM
+        if (modal && modal.parentNode) {
+            modal.remove();
+        }
+        // إعادة تمكين العناصر في الدردشة
+        const chatInput = document.getElementById('private-message-input');
+        if (chatInput) chatInput.disabled = false;
+        const sendBtn = document.getElementById('send-private-message');
+        if (sendBtn) sendBtn.disabled = false;
+    }
+
+    // 1. أزرار الإغلاق
     const closeBtn = modal.querySelector('.close-image-modal');
     const cancelBtn = modal.querySelector('#cancel-image-upload');
-    
-    const closeModal = () => {
-        if (!uploadInProgress) {
-            modal.remove();
-        } else {
-            showNotification('انتظر اكتمال الرفع', 'warning');
-        }
-    };
-    
-    if (closeBtn) closeBtn.addEventListener('click', closeModal);
-    if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
-    
+
+    if (closeBtn) closeBtn.addEventListener('click', cleanupAndClose);
+    if (cancelBtn) cancelBtn.addEventListener('click', cleanupAndClose);
+
     // 2. إغلاق بالنقر على الخلفية
     modal.addEventListener('click', (e) => {
         if (e.target.id === 'image-upload-modal') {
-            closeModal();
+            cleanupAndClose();
         }
     });
-    
+
     // 3. اختيار ملف
     const fileInput = modal.querySelector('#image-file-input');
     const dropZone = modal.querySelector('#drop-zone');
     const sendButton = modal.querySelector('#send-image-button');
-    
-    dropZone.addEventListener('click', () => {
-        if (!uploadInProgress) {
-            fileInput.click();
-        }
-    });
-    
-    // سحب وإسقاط
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        if (!uploadInProgress) {
-            dropZone.classList.add('border-green-500', 'bg-gray-800/50');
-        }
-    });
-    
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('border-green-500', 'bg-gray-800/50');
-    });
-    
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('border-green-500', 'bg-gray-800/50');
-        
-        if (!uploadInProgress && e.dataTransfer.files.length > 0) {
-            handleFileSelection(e.dataTransfer.files[0]);
-        }
-    });
-    
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-            handleFileSelection(e.target.files[0]);
-        }
-    });
-    
+
+    if (dropZone) {
+        dropZone.addEventListener('click', () => {
+            if (!uploadInProgress && fileInput) fileInput.click();
+        });
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            if (!uploadInProgress) dropZone.classList.add('border-green-500', 'bg-gray-800/50');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-green-500', 'bg-gray-800/50');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-green-500', 'bg-gray-800/50');
+            if (!uploadInProgress && e.dataTransfer.files.length > 0) {
+                handleFileSelection(e.dataTransfer.files[0]);
+            }
+        });
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelection(e.target.files[0]);
+            }
+            fileInput.value = ''; // إعادة تعيين لاختيار نفس الملف مرة أخرى
+        });
+    }
+
     // 4. معالجة اختيار الملف
     function handleFileSelection(file) {
-        // التحقق من نوع الملف
         const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
         if (!validTypes.includes(file.type)) {
-            showNotification('نوع الملف غير مدعوم. المسموح: JPG, PNG, GIF, WebP', 'error');
+            showNotification('نوع الملف غير مدعوم', 'error');
             return;
         }
-        
-        // التحقق من الحجم (5MB كحد أقصى)
+
         if (file.size > 5 * 1024 * 1024) {
             showNotification('حجم الصورة يتجاوز 5MB', 'error');
             return;
         }
-        
+
         selectedFile = file;
-        
-        // عرض المعاينة
+
         const previewImage = modal.querySelector('#preview-image');
         const fileName = modal.querySelector('#file-name');
         const fileSize = modal.querySelector('#file-size');
         const uploadArea = modal.querySelector('#upload-area-content');
         const imagePreview = modal.querySelector('#image-preview');
-        
+
         if (uploadArea) uploadArea.classList.add('hidden');
         if (imagePreview) imagePreview.classList.remove('hidden');
-        
-        // قراءة الصورة للمعاينة
+
         const reader = new FileReader();
         reader.onload = (e) => {
             if (previewImage) previewImage.src = e.target.result;
         };
         reader.readAsDataURL(file);
-        
+
         if (fileName) fileName.textContent = file.name;
         if (fileSize) fileSize.textContent = formatFileSize(file.size);
-        
-        // تفعيل زر الإرسال
+
         if (sendButton) {
             sendButton.disabled = false;
-            sendButton.classList.remove('disabled:opacity-50', 'disabled:cursor-not-allowed');
         }
     }
-    
+
     // 5. زر الإرسال
     if (sendButton) {
         sendButton.addEventListener('click', async () => {
             if (!selectedFile || uploadInProgress) return;
-            
             await uploadAndSendImage(selectedFile, targetUserId, modal);
         });
     }
+
+    // 6. تعطيل الإدخال أثناء وجود النافذة (اختياري)
+    const chatInput = document.getElementById('private-message-input');
+    if (chatInput) chatInput.disabled = true;
+    const sendChatBtn = document.getElementById('send-private-message');
+    if (sendChatBtn) sendChatBtn.disabled = true;
 }
 
 
@@ -3418,81 +3425,78 @@ function formatFileSize(bytes) {
 
 // --- 📤 دالة إرسال رسالة نصية ---
 async function sendPrivateMessage(receiverId, message, replyTo = null, type = 'text', metadata = {}) {
-    if (!message && type === 'text') {
+    if (type === 'text' && !message) {
         showNotification('اكتب رسالة أولاً', 'error');
         return;
     }
-    
-    if (message && message.length > 200) {
+
+    if (type === 'text' && message && message.length > 200) {
         showNotification('الرسالة طويلة جداً (200 حرف كحد أقصى)', 'error');
         return;
     }
-    
-    console.log(`[CHAT] Sending ${type} message to ${receiverId}`);
-    
-    // 1. عرض الرسالة فوراً في الواجهة (تحديث تفاؤلي)
-    const tempMessageId = Date.now().toString();
+
+    console.log(`[CHAT] Sending ${type} message to ${receiverId}`, replyTo ? `(reply to ${replyTo})` : '');
+
+    const tempId = Date.now().toString();
     displayPrivateMessage({
-        _id: tempMessageId,
+        _id: tempId,
         sender: JSON.parse(localStorage.getItem('user'))._id,
         receiver: receiverId,
         type: type,
         content: message,
+        replyTo: replyTo ? { _id: replyTo, content: '...', sender: { username: 'مستخدم' } } : null,
         metadata: metadata,
         createdAt: new Date().toISOString(),
         status: { sent: true, delivered: false, seen: false }
     }, true);
-    
-    // 2. إرسال إلى الخادم
+
     try {
+        const payload = {
+            receiverId: receiverId,
+            content: message,
+            type: type,
+            metadata: metadata
+        };
+
+        // ✅ تأكد من تمرير replyTo
+        if (replyTo) {
+            payload.replyTo = replyTo;
+        }
+
         const response = await fetch('/api/private-chat/message', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({
-                receiverId: receiverId,
-                content: message,
-                replyTo: replyTo,
-                type: type,
-                metadata: metadata
-            })
+            body: JSON.stringify(payload)
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok) {
             console.log('✅ [CHAT] Message sent successfully:', result.data.message._id);
-            
-            // تحديث الرسالة المؤقتة بالـ ID الحقيقي
-            const tempMessageElement = document.querySelector(`[data-message-id="${tempMessageId}"]`);
-            if (tempMessageElement) {
-                tempMessageElement.dataset.messageId = result.data.message._id;
-                tempMessageElement.querySelector('.message-status').innerHTML = `
-                    <i class="fas fa-check text-gray-400 text-xs" title="تم الإرسال"></i>
-                `;
+
+            const tempElement = document.querySelector(`[data-message-id="${tempId}"]`);
+            if (tempElement) {
+                tempElement.dataset.messageId = result.data.message._id;
+                const statusContainer = tempElement.querySelector('.message-status');
+                if (statusContainer) {
+                    statusContainer.innerHTML = '<i class="fas fa-check text-gray-400 text-xs" title="تم الإرسال"></i>';
+                }
             }
-            
-            // تحديث العداد غير المقروء في الدردشة
+
             updateUnreadCount(receiverId, result.data.unreadCount || 0);
-            
+
+            // ✅ إخفاء شريط الرد بعد الإرسال
+            const replyBar = document.getElementById('reply-private-bar');
+            if (replyBar) replyBar.remove();
+            replyingToPrivateMessage = null;
+
         } else {
-            // إخفاء الرسالة المؤقتة إذا فشل الإرسال
-            const tempMessageElement = document.querySelector(`[data-message-id="${tempMessageId}"]`);
-            if (tempMessageElement) {
-                tempMessageElement.style.opacity = '0.5';
-                tempMessageElement.innerHTML += `
-                    <div class="text-xs text-red-400 mt-1">
-                        <i class="fas fa-exclamation-circle mr-1"></i>
-                        فشل الإرسال
-                    </div>
-                `;
-            }
-            
             showNotification(result.message || 'فشل إرسال الرسالة', 'error');
         }
-        
+
     } catch (error) {
         console.error('[CHAT] Error sending message:', error);
         showNotification('خطأ في الاتصال بالخادم', 'error');
@@ -3538,7 +3542,7 @@ function displayPrivateMessage(message, isMyMessage = false) {
                 const watermarkBadge = meta.hasWatermark ? `<span class="absolute top-2 left-2 bg-black/50 text-xs px-2 py-0.5 rounded-full"><i class="fas fa-copyright"></i> منصة التحديات</span>` : '';
                 messageContent = `
                     <div class="relative">
-                        <img src="${message.content}" class="rounded-lg max-w-full h-auto cursor-pointer view-image-btn" data-image-url="${message.content}" alt="صورة">
+                       <img src="${message.content}" class="rounded-lg max-w-[250px] max-h-[250px] object-contain cursor-pointer view-image-btn" data-image-url="${message.content}" alt="صورة">
                         ${watermarkBadge}
                         ${meta.disableSave ? `<span class="absolute bottom-2 left-2 bg-red-500/80 text-xs px-2 py-0.5 rounded-full"><i class="fas fa-download-slash"></i> حفظ معطل</span>` : ''}
                     </div>
