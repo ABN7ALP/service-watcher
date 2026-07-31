@@ -533,74 +533,45 @@ exports.reportMessage = async (req, res) => {
 exports.sendMediaMessage = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { 
-            receiverId, 
-            mediaUrl, 
-            mediaType, 
-            thumbnail, 
-            duration, 
-            dimensions, 
-            metadata = {} 
-        } = req.body;
+        const { receiverId, mediaUrl, mediaType, thumbnail, duration, dimensions, metadata = {} } = req.body;
 
         console.log(`[CHAT MEDIA] Sending ${mediaType} message from ${userId} to ${receiverId}`);
 
         if (!mediaUrl || !mediaType || !receiverId) {
-            return res.status(400).json({
-                status: 'fail',
-                message: 'بيانات الوسائط ناقصة'
-            });
+            return res.status(400).json({ status: 'fail', message: 'بيانات الوسائط ناقصة' });
         }
 
-        // التحقق من الحظر
         const [sender, receiver] = await Promise.all([
             User.findById(userId).select('blockedUsers'),
             User.findById(receiverId).select('blockedUsers socketId')
         ]);
 
         if (!sender || !receiver) {
-            return res.status(404).json({
-                status: 'fail',
-                message: 'المستخدم غير موجود'
-            });
+            return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
         }
 
         const senderBlocked = sender.blockedUsers.map(id => id.toString());
         const receiverBlocked = receiver.blockedUsers.map(id => id.toString());
 
         if (senderBlocked.includes(receiverId) || receiverBlocked.includes(userId)) {
-            return res.status(403).json({
-                status: 'fail',
-                message: 'لا يمكنك إرسال وسائط لمستخدم حظرك أو حظرته'
-            });
+            return res.status(403).json({ status: 'fail', message: 'لا يمكنك إرسال وسائط لمستخدم حظرك أو حظرته' });
         }
 
-        // 1. الحصول على الدردشة أو إنشاؤها
         const participants = [userId, receiverId].sort();
         const chatId = participants.join('_');
 
         let chat = await PrivateChat.findOne({ chatId });
-
         if (!chat) {
             chat = await PrivateChat.create({
                 chatId,
                 participants: participants.map(id => new mongoose.Types.ObjectId(id)),
                 participantData: [
-                    {
-                        userId: new mongoose.Types.ObjectId(userId),
-                        username: req.user.username,
-                        profileImage: req.user.profileImage
-                    },
-                    {
-                        userId: new mongoose.Types.ObjectId(receiverId),
-                        username: receiver.username,
-                        profileImage: receiver.profileImage
-                    }
+                    { userId: new mongoose.Types.ObjectId(userId), username: req.user.username, profileImage: req.user.profileImage },
+                    { userId: new mongoose.Types.ObjectId(receiverId), username: receiver.username, profileImage: receiver.profileImage }
                 ]
             });
         }
 
-        // 2. إنشاء رسالة الوسائط
         const messageData = {
             chatId,
             sender: userId,
@@ -618,30 +589,27 @@ exports.sendMediaMessage = async (req, res) => {
                 autoDelete: metadata.autoDelete || false,
                 publicId: metadata.publicId,
                 fileSize: metadata.fileSize,
-                format: metadata.format
+                format: metadata.format,
+                _viewOnce: metadata.viewOnce ? true : false
             }
         };
 
         const newMessage = await PrivateMessage.create(messageData);
 
-        // 3. تحديث الدردشة
         chat.lastMessage = `رسالة ${mediaType}`;
         chat.lastMessageAt = new Date();
         chat.lastMessageBy = userId;
         chat.messageCount += 1;
 
-        // زيادة عداد غير المقروء
         const currentUnread = chat.unreadCount.get(receiverId.toString()) || 0;
         chat.unreadCount.set(receiverId.toString(), currentUnread + 1);
 
         await chat.save();
 
-        // 4. جلب الرسالة مع بيانات المرسل
         const populatedMessage = await PrivateMessage.findById(newMessage._id)
             .populate('sender', 'username profileImage')
             .lean();
 
-        // 5. إرسال عبر Socket
         const io = req.app.get('socketio');
         if (io && receiver.socketId) {
             io.to(receiver.socketId).emit('privateMessageReceived', {
@@ -652,29 +620,22 @@ exports.sendMediaMessage = async (req, res) => {
             });
         }
 
-        // 6. إذا كانت View Once، جدولة الحذف
-        if (metadata.viewOnce) {
+        // جدولة حذف View Once بعد 5 دقائق
+        if (metadata.viewOnce && metadata.publicId) {
             setTimeout(async () => {
                 try {
-                    const freshMessage = await PrivateMessage.findById(newMessage._id);
-                    if (freshMessage && freshMessage.status.viewed) {
-                        // حذف الوسائط بعد المشاهدة
-                        if (metadata.publicId) {
-                            const { deleteChatMedia } = require('../utils/cloudinary');
-                            await deleteChatMedia(metadata.publicId, mediaType === 'video' ? 'video' : 'image');
-                        }
-                        
-                        freshMessage.content = 'تم حذف الوسائط (مشاهدة مرة واحدة)';
-                        freshMessage.metadata.deleted = true;
-                        await freshMessage.save();
-                    }
-                } catch (error) {
-                    console.error('[CHAT MEDIA] Error cleaning viewOnce media:', error);
+                    const { deleteChatMedia } = require('../utils/cloudinary');
+                    await deleteChatMedia(metadata.publicId, 'image');
+                    await PrivateMessage.findByIdAndUpdate(newMessage._id, {
+                        content: 'تم حذف الصورة (مشاهدة مرة واحدة)',
+                        'metadata.deleted': true
+                    });
+                } catch (e) {
+                    console.error('[VIEW ONCE] Error deleting image:', e);
                 }
-            }, 5 * 60 * 1000); // 5 دقائق
+            }, 5 * 60 * 1000);
         }
 
-        // 7. الرد الناجح
         res.status(201).json({
             status: 'success',
             message: `تم إرسال ${mediaType === 'image' ? 'الصورة' : mediaType === 'voice' ? 'الرسالة الصوتية' : 'الفيديو'} بنجاح`,
@@ -687,10 +648,7 @@ exports.sendMediaMessage = async (req, res) => {
 
     } catch (error) {
         console.error('[ERROR] in sendMediaMessage:', error);
-        res.status(500).json({
-            status: 'error',
-            message: 'حدث خطأ في الخادم أثناء إرسال الوسائط'
-        });
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم أثناء إرسال الوسائط' });
     }
 };
 
