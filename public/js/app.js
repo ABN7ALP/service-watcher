@@ -2900,21 +2900,27 @@ function setupImageUploadEvents(targetUserId) {
     let selectedFile = null;
     let uploadInProgress = false;
 
-    // === دالة إغلاق وتنظيف ===
+    // ✅ دالة الإغلاق مع التنظيف الكامل
     function cleanupAndClose() {
         if (uploadInProgress) {
             showNotification('انتظر اكتمال الرفع', 'warning');
             return;
         }
-        // إزالة النافذة من DOM
+        
+        // إزالة النافذة
         if (modal && modal.parentNode) {
             modal.remove();
         }
-        // إعادة تمكين العناصر في الدردشة
+        
+        // إعادة تمكين الدردشة
         const chatInput = document.getElementById('private-message-input');
         if (chatInput) chatInput.disabled = false;
+        
         const sendBtn = document.getElementById('send-private-message');
         if (sendBtn) sendBtn.disabled = false;
+        
+        // إزالة أي ظل أو حظر
+        document.body.style.overflow = '';
     }
 
     // 1. أزرار الإغلاق
@@ -2964,11 +2970,10 @@ function setupImageUploadEvents(targetUserId) {
             if (e.target.files.length > 0) {
                 handleFileSelection(e.target.files[0]);
             }
-            fileInput.value = ''; // إعادة تعيين لاختيار نفس الملف مرة أخرى
+            fileInput.value = '';
         });
     }
 
-    // 4. معالجة اختيار الملف
     function handleFileSelection(file) {
         const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
         if (!validTypes.includes(file.type)) {
@@ -3006,7 +3011,7 @@ function setupImageUploadEvents(targetUserId) {
         }
     }
 
-    // 5. زر الإرسال
+    // 4. زر الإرسال
     if (sendButton) {
         sendButton.addEventListener('click', async () => {
             if (!selectedFile || uploadInProgress) return;
@@ -3014,9 +3019,10 @@ function setupImageUploadEvents(targetUserId) {
         });
     }
 
-    // 6. تعطيل الإدخال أثناء وجود النافذة (اختياري)
+    // 5. تعطيل الدردشة مؤقتاً أثناء رفع الصورة
     const chatInput = document.getElementById('private-message-input');
     if (chatInput) chatInput.disabled = true;
+    
     const sendChatBtn = document.getElementById('send-private-message');
     if (sendChatBtn) sendChatBtn.disabled = true;
 }
