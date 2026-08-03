@@ -2703,15 +2703,13 @@ function startWhatsAppStyleRecording(targetUserId) {
 function cleanupRecordingUI() {
     console.log('[VOICE] Cleaning up recording UI');
     
-    // 1. إزالة واجهة التسجيل
     if (recordingUI && recordingUI.parentNode) {
         recordingUI.remove();
     }
     
-    // 2. إعادة إظهار العناصر الأصلية
     if (originalInput) {
         originalInput.style.display = '';
-        originalInput.value = ''; // تفريغ الحقل
+        originalInput.value = '';
         originalInput.focus();
     }
     
@@ -2720,27 +2718,36 @@ function cleanupRecordingUI() {
         originalCharCounter.textContent = '0/200';
     }
     
-    // 3. تحديث زر الإرسال
+    // ✅ إعادة تعيين زر الإرسال مع مستمع جديد
     if (originalSendBtn) {
-        // إعادة تعيين الزر لحالة الميكروفون
+        // إزالة المستمع القديم
+        originalSendBtn.removeEventListener('click', originalSendBtn.clickHandler);
+        // إعادة تعيين الزر
         originalSendBtn.innerHTML = '<i class="fas fa-microphone text-white"></i>';
         originalSendBtn.dataset.mode = 'voice';
-        originalSendBtn.title = 'تسجيل صوتي (اضغط مع الاستمرار)';
-        
-        // إزالة أي classes إضافية
+        originalSendBtn.title = 'تسجيل صوتي';
         originalSendBtn.classList.remove('bg-red-600', 'bg-green-600');
         originalSendBtn.classList.add('bg-purple-600');
+        // إضافة مستمع جديد
+        originalSendBtn.clickHandler = function() {
+            if (this.dataset.mode === 'voice') {
+                startWhatsAppStyleRecording(targetUserId);
+            } else {
+                const input = document.getElementById('private-message-input');
+                if (input) {
+                    sendPrivateMessage(targetUserId, input.value.trim());
+                    input.value = '';
+                    const counter = document.getElementById('private-char-count');
+                    if (counter) counter.textContent = '0/200';
+                    updateSendButton();
+                }
+            }
+        };
+        originalSendBtn.addEventListener('click', originalSendBtn.clickHandler);
     }
     
-    // 4. إزالة علامة التسجيل النشط (مهم جداً!)
     window.isRecordingActive = false;
     console.log('[VOICE] isRecordingActive set to false');
-    
-    // 5. إزالة أي أحداث موصولة بالزر
-    if (originalSendBtn && originalSendBtn.clickHandler) {
-        originalSendBtn.removeEventListener('click', originalSendBtn.clickHandler);
-        delete originalSendBtn.clickHandler;
-    }
 }
     
     // أحداث الأزرار
@@ -3535,26 +3542,28 @@ function displayPrivateMessage(message, isMyMessage = false) {
             break;
 
         case 'image':
-            if (meta.viewOnce) {
-                messageContent = `
-                    <div class="relative">
-                        <button class="view-once-image-btn w-full bg-gray-700 rounded-lg p-4 text-center hover:bg-gray-600 transition" data-image-url="${message.content}" data-message-id="${message._id}">
-                            <i class="fas fa-eye text-4xl text-yellow-400 block mb-2"></i>
-                            <span class="text-sm">اضغط للمشاهدة (مرة واحدة)</span>
-                        </button>
-                    </div>
-                `;
-            } else {
-                const watermarkBadge = meta.hasWatermark ? `<span class="absolute top-2 left-2 bg-black/50 text-xs px-2 py-0.5 rounded-full"><i class="fas fa-copyright"></i> منصة التحديات</span>` : '';
-                messageContent = `
-                    <div class="relative">
-                       <img src="${message.content}" class="rounded-lg max-w-[250px] max-h-[250px] object-contain cursor-pointer view-image-btn" data-image-url="${message.content}" alt="صورة">
-                        ${watermarkBadge}
-                        ${meta.disableSave ? `<span class="absolute bottom-2 left-2 bg-red-500/80 text-xs px-2 py-0.5 rounded-full"><i class="fas fa-download-slash"></i> حفظ معطل</span>` : ''}
-                    </div>
-                `;
-            }
-            break;
+    if (meta.viewOnce) {
+        messageContent = `
+            <div class="relative inline-block">
+                <button class="view-once-image-btn bg-gray-700 hover:bg-gray-600 rounded-lg px-3 py-1.5 text-sm transition flex items-center gap-2" 
+                        data-image-url="${message.content}" 
+                        data-message-id="${message._id}">
+                    <i class="fas fa-eye text-yellow-400"></i>
+                    <span>مشاهدة مرة واحدة</span>
+                </button>
+            </div>
+        `;
+    } else {
+        const watermarkBadge = meta.hasWatermark ? `<span class="absolute top-2 left-2 bg-black/50 text-xs px-2 py-0.5 rounded-full"><i class="fas fa-copyright"></i> منصة التحديات</span>` : '';
+        messageContent = `
+            <div class="relative">
+                <img src="${message.content}" class="rounded-lg max-w-[250px] max-h-[250px] object-contain cursor-pointer view-image-btn" data-image-url="${message.content}" alt="صورة">
+                ${watermarkBadge}
+                ${meta.disableSave ? `<span class="absolute bottom-2 left-2 bg-red-500/80 text-xs px-2 py-0.5 rounded-full"><i class="fas fa-download-slash"></i> حفظ معطل</span>` : ''}
+            </div>
+        `;
+    }
+    break;
 
         case 'voice':
             messageContent = `
