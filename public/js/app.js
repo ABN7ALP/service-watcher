@@ -3310,21 +3310,25 @@ async function uploadAndSendImage(file, targetUserId, modal) {
     const progressPercent = modal.querySelector('#progress-percent');
     const uploadProgress = modal.querySelector('#upload-progress');
     const dropZone = modal.querySelector('#drop-zone');
-    
-    // جلب خيارات الحماية
+
     const viewOnce = modal.querySelector('#view-once').checked;
     const disableSave = modal.querySelector('#disable-save').checked;
     const addWatermark = modal.querySelector('#add-watermark').checked;
     const disableReply = modal.querySelector('#disable-reply').checked;
-    
+
+    // ✅ دالة مساعدة جديدة: تعيد تفعيل نافذة الدردشة الخاصة دائماً
+    function reEnablePrivateChat() {
+        const chatInput = document.getElementById('private-message-input');
+        if (chatInput) chatInput.disabled = false;
+        const sendChatBtn = document.getElementById('send-private-message');
+        if (sendChatBtn) sendChatBtn.disabled = false;
+    }
+
     try {
-        // بدء الرفع
-        uploadInProgress = true;
         if (sendButton) sendButton.disabled = true;
         if (dropZone) dropZone.style.pointerEvents = 'none';
         if (uploadProgress) uploadProgress.classList.remove('hidden');
-        
-        // 1. رفع الصورة إلى Cloudinary
+
         const formData = new FormData();
         formData.append('file', file);
         formData.append('receiverId', targetUserId);
@@ -3334,71 +3338,57 @@ async function uploadAndSendImage(file, targetUserId, modal) {
             hasWatermark: addWatermark,
             disableReply: disableReply
         }));
-        
-        // محاكاة شريط التقدم (ستستبدل بـ upload حقيقي مع progress events)
+
         simulateUploadProgress(progressBar, progressPercent, 2000);
-        
-        // إرسال الطلب
+
         const response = await fetch('/api/chat-media/image', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`
-                // لا نضيف Content-Type، سيتم تعيينه تلقائياً
-            },
+            headers: { 'Authorization': `Bearer ${token}` },
             body: formData
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok) {
-            // 2. إرسال الرسالة مع رابط الصورة
             const metadata = {
                 thumbnail: result.data.thumbnail,
                 publicId: result.data.publicId,
                 fileSize: result.data.bytes,
                 format: result.data.format,
-                dimensions: {
-                    width: result.data.width,
-                    height: result.data.height
-                },
+                dimensions: { width: result.data.width, height: result.data.height },
                 viewOnce: viewOnce,
                 disableSave: disableSave,
                 hasWatermark: addWatermark,
                 disableReply: disableReply
             };
-            
-            // إرسال كرسالة وسائط
-            await sendPrivateMessage(
-                targetUserId,
-                result.data.url, // رابط الصورة
-                null, // replyTo
-                'image',
-                metadata
-            );
-            
-            // إغلاق النافذة
+
+            await sendPrivateMessage(targetUserId, result.data.url, null, 'image', metadata);
+
+            // ✅ الإصلاح الأساسي: إعادة تفعيل الدردشة الخاصة قبل إغلاق نافذة الرفع
+            reEnablePrivateChat();
+
             modal.remove();
             showNotification('تم إرسال الصورة بنجاح', 'success');
-            
+
         } else {
             throw new Error(result.message || 'فشل رفع الصورة');
         }
-        
+
     } catch (error) {
         console.error('[IMAGE UPLOAD] Error:', error);
         showNotification(error.message || 'فشل رفع الصورة', 'error');
-        
-        // إعادة تعيين
-        const sendButton = modal.querySelector('#send-image-button');
-        const uploadProgress = modal.querySelector('#upload-progress');
-        
-        if (sendButton) sendButton.disabled = false;
-        if (uploadProgress) uploadProgress.classList.add('hidden');
-        
+
+        const sendButtonRetry = modal.querySelector('#send-image-button');
+        const uploadProgressRetry = modal.querySelector('#upload-progress');
+        if (sendButtonRetry) sendButtonRetry.disabled = false;
+        if (uploadProgressRetry) uploadProgressRetry.classList.add('hidden');
+
+        // ✅ إعادة التفعيل حتى في حالة الفشل
+        reEnablePrivateChat();
+
     } finally {
-        uploadInProgress = false;
-        const dropZone = modal.querySelector('#drop-zone');
-        if (dropZone) dropZone.style.pointerEvents = 'auto';
+        const dropZoneRetry = modal.querySelector('#drop-zone');
+        if (dropZoneRetry) dropZoneRetry.style.pointerEvents = 'auto';
     }
 }
 
