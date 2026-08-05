@@ -3526,16 +3526,34 @@ function displayPrivateMessage(message, isMyMessage = false) {
 
         case 'image':
     if (meta.viewOnce) {
-        messageContent = `
-            <div class="relative inline-block">
+        const alreadyViewed = meta.deleted || (message.status && message.status.seen);
+        if (isMyMessage) {
+            messageContent = `
+                <div class="flex items-center gap-2 bg-black/20 rounded-lg px-3 py-2 text-xs">
+                    <i class="fas fa-eye${alreadyViewed ? '' : '-slash'} ${alreadyViewed ? 'text-green-400' : 'text-yellow-400'}"></i>
+                    <span>صورة (مشاهدة مرة واحدة)</span>
+                    <span class="ml-auto ${alreadyViewed ? 'text-green-400' : 'text-gray-400'}" data-view-once-status="${message._id}">
+                        ${alreadyViewed ? 'تم فتحها ✓' : 'لم تُفتح بعد'}
+                    </span>
+                </div>
+            `;
+        } else if (alreadyViewed) {
+            messageContent = `
+                <div class="flex items-center gap-2 bg-gray-700/60 rounded-lg px-3 py-2 text-xs text-gray-400">
+                    <i class="fas fa-eye-slash"></i>
+                    <span>تمت مشاهدة هذه الصورة</span>
+                </div>
+            `;
+        } else {
+            messageContent = `
                 <button class="view-once-image-btn bg-gray-700 hover:bg-gray-600 rounded-lg px-3 py-1.5 text-sm transition flex items-center gap-2" 
                         data-image-url="${message.content}" 
                         data-message-id="${message._id}">
                     <i class="fas fa-eye text-yellow-400"></i>
                     <span>مشاهدة مرة واحدة</span>
                 </button>
-            </div>
-        `;
+            `;
+        }
     } else {
         const watermarkBadge = meta.hasWatermark ? `<span class="absolute top-2 left-2 bg-black/50 text-xs px-2 py-0.5 rounded-full"><i class="fas fa-copyright"></i> منصة التحديات</span>` : '';
         messageContent = `
