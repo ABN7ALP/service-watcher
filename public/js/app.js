@@ -1155,6 +1155,39 @@ async function handleFriendAction(action, userId, modalElement) {
 // استدعاء الدالة عند تحميل الصفحة
 updateUIWithUserData(user);
 
+        // ✅ جلب أحدث بيانات المستخدم من الخادم فور فتح الموقع
+// هذا يضمن ظهور طلبات الصداقة/الإشعارات التي وصلت أثناء إغلاق الموقع
+(async () => {
+    const refreshed = await refreshUserData();
+    if (refreshed) {
+        const freshUser = JSON.parse(localStorage.getItem('user'));
+        const pendingRequests = freshUser.friendRequestsReceived ? freshUser.friendRequestsReceived.length : 0;
+        if (pendingRequests > 0) {
+            showNotification(`لديك ${pendingRequests} طلب صداقة بانتظارك`, 'info');
+        }
+    }
+
+    // ✅ التحقق من الرسائل الخاصة غير المقروءة
+    try {
+        const chatsResponse = await fetch('/api/private-chat/chats', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (chatsResponse.ok) {
+            const chatsResult = await chatsResponse.json();
+            if (chatsResult.status === 'success') {
+                const totalUnread = chatsResult.data.chats.reduce(
+                    (sum, chat) => sum + (chat.unreadCount || 0), 0
+                );
+                if (totalUnread > 0) {
+                    showNotification(`لديك ${totalUnread} رسالة خاصة غير مقروءة`, 'info');
+                }
+            }
+        }
+    } catch (error) {
+        console.error('[STARTUP] فشل التحقق من الرسائل غير المقروءة:', error);
+    }
+})();
+
 
 // --- ✅ إضافة عرض البيانات الجديدة ---
 // --- ✅ إضافة عرض البيانات الجديدة (النسخة المحسّنة) ---
