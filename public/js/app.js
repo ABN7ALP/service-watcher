@@ -2848,8 +2848,7 @@ function showImageUploadModal(targetUserId) {
     setupImageUploadEvents(targetUserId);
 }
 
-        function bindPrivateMessageEvents(messageElement, message) {
-    // صور (عرض عادي)
+       function bindPrivateMessageEvents(messageElement, message) {
     const viewBtn = messageElement.querySelector('.view-image-btn');
     if (viewBtn) {
         viewBtn.addEventListener('click', () => {
@@ -2857,21 +2856,15 @@ function showImageUploadModal(targetUserId) {
         });
     }
 
-    // صور (مشاهدة مرة واحدة)
     const viewOnceBtn = messageElement.querySelector('.view-once-image-btn');
     if (viewOnceBtn) {
-        viewOnceBtn.addEventListener('click', async function() {
+        viewOnceBtn.addEventListener('click', function() {
             const imgUrl = this.dataset.imageUrl;
             const msgId = this.dataset.messageId;
-            showFullImage(imgUrl, message);
-            await markMessageAsViewed(msgId);
-            this.disabled = true;
-            this.innerHTML = '<i class="fas fa-check-circle text-green-400"></i> تم المشاهدة';
-            this.classList.remove('hover:bg-gray-600');
+            openViewOnceImage(msgId, imgUrl, messageElement);
         });
     }
 
-    // صوت
     const voiceBtn = messageElement.querySelector('.play-voice-btn');
     if (voiceBtn) {
         voiceBtn.addEventListener('click', () => {
@@ -2879,7 +2872,6 @@ function showImageUploadModal(targetUserId) {
         });
     }
 
-    // فيديو
     const videoBtn = messageElement.querySelector('.play-video-btn');
     if (videoBtn) {
         videoBtn.addEventListener('click', () => {
@@ -2887,7 +2879,6 @@ function showImageUploadModal(targetUserId) {
         });
     }
 
-    // رد
     const replyBtn = messageElement.querySelector('.reply-private-btn');
     if (replyBtn) {
         replyBtn.addEventListener('click', () => {
@@ -3660,6 +3651,119 @@ function displayPrivateMessage(message, isMyMessage = false) {
 
     bindPrivateMessageEvents(messageElement, message);
 }
+
+
+
+// --- 🖼️ نافذة عرض صورة عادية ---
+function showFullImage(imageUrl, message) {
+    const existing = document.getElementById('full-image-viewer');
+    if (existing) existing.remove();
+
+    const viewerHTML = `
+        <div id="full-image-viewer" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[400] p-4">
+            <button id="close-full-image" class="absolute top-4 right-4 text-white text-2xl w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center">
+                <i class="fas fa-times"></i>
+            </button>
+            <img src="${imageUrl}" class="max-w-full max-h-full rounded-lg object-contain">
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', viewerHTML);
+
+    const viewer = document.getElementById('full-image-viewer');
+    const close = () => viewer.remove();
+
+    document.getElementById('close-full-image').addEventListener('click', close);
+    viewer.addEventListener('click', (e) => {
+        if (e.target.id === 'full-image-viewer') close();
+    });
+}
+
+// --- 👁️ نافذة مشاهدة الصورة لمرة واحدة (تصميم مرتب + إغلاق تلقائي) ---
+function openViewOnceImage(messageId, imageUrl, messageElement) {
+    const existing = document.getElementById('view-once-viewer');
+    if (existing) existing.remove();
+
+    const VIEW_SECONDS = 8; // مدة العرض بالثواني قبل الإغلاق التلقائي
+    let remaining = VIEW_SECONDS;
+
+    const viewerHTML = `
+        <div id="view-once-viewer" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[400] p-6">
+            <div class="relative w-full max-w-xs">
+                <div class="flex items-center justify-between mb-2 text-white text-xs">
+                    <span class="flex items-center gap-1 text-yellow-400">
+                        <i class="fas fa-eye"></i> مشاهدة مرة واحدة
+                    </span>
+                    <span id="view-once-timer" class="font-mono">00:${VIEW_SECONDS.toString().padStart(2, '0')}</span>
+                </div>
+                <div class="rounded-xl overflow-hidden border border-yellow-500/30 shadow-2xl">
+                    <img src="${imageUrl}" class="w-full max-h-[60vh] object-contain bg-black">
+                </div>
+                <div class="w-full bg-gray-700 h-1 rounded-full mt-2 overflow-hidden">
+                    <div id="view-once-progress" class="bg-yellow-400 h-1" style="width:100%"></div>
+                </div>
+                <button id="close-view-once" class="mt-4 w-full bg-gray-800 hover:bg-gray-700 text-white text-sm py-2 rounded-lg">
+                    <i class="fas fa-times mr-1"></i> إغلاق
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', viewerHTML);
+
+    const viewer = document.getElementById('view-once-viewer');
+    const timerEl = document.getElementById('view-once-timer');
+    const progressEl = document.getElementById('view-once-progress');
+    let countdownInterval = null;
+
+    const closeViewer = () => {
+        if (countdownInterval) clearInterval(countdownInterval);
+        if (viewer && viewer.parentNode) viewer.remove();
+    };
+
+    document.getElementById('close-view-once').addEventListener('click', closeViewer);
+    viewer.addEventListener('click', (e) => {
+        if (e.target.id === 'view-once-viewer') closeViewer();
+    });
+
+    countdownInterval = setInterval(() => {
+        remaining--;
+        if (timerEl) timerEl.textContent = `00:${Math.max(remaining, 0).toString().padStart(2, '0')}`;
+        if (progressEl) progressEl.style.width = `${(remaining / VIEW_SECONDS) * 100}%`;
+        if (remaining <= 0) closeViewer();
+    }, 1000);
+
+    // تحديث شكل الرسالة فوراً لدى المُشاهِد
+    if (messageElement) {
+        const btn = messageElement.querySelector('.view-once-image-btn');
+        if (btn) {
+            btn.outerHTML = `
+                <div class="flex items-center gap-2 bg-gray-700/60 rounded-lg px-3 py-2 text-xs text-gray-400">
+                    <i class="fas fa-eye-slash"></i>
+                    <span>تمت مشاهدة هذه الصورة</span>
+                </div>
+            `;
+        }
+    }
+
+    markMessageAsViewed(messageId);
+}
+
+// --- 👁️ تعليم رسالة كـ "تمت مشاهدتها" (يُشعر المرسل عبر Socket تلقائياً) ---
+async function markMessageAsViewed(messageId) {
+    try {
+        const response = await fetch('/api/private-chat/message/status', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ messageId: messageId, status: 'seen' })
+        });
+        if (!response.ok) console.warn('[VIEW ONCE] فشل تحديث حالة المشاهدة');
+    } catch (error) {
+        console.error('[VIEW ONCE] خطأ:', error);
+    }
+}
+        
 
 // --- 🎵 دالة ربط أحداث الوسائط ---
 function bindMediaEvents(messageElement, message) {
