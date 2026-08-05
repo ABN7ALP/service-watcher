@@ -4435,7 +4435,7 @@ socket.on('privateMessageReceived', async (data) => {
 // 🔄 مستمع لتحديث حالة الرسالة
 socket.on('messageStatusUpdated', (data) => {
     console.log('[CHAT] Message status updated:', data.messageId, data.status);
-    
+
     const messageElement = document.querySelector(`[data-message-id="${data.messageId}"]`);
     if (messageElement) {
         const statusContainer = messageElement.querySelector('.message-status');
@@ -4444,6 +4444,21 @@ socket.on('messageStatusUpdated', (data) => {
                 statusContainer.innerHTML = '<i class="fas fa-check-double text-blue-400 text-xs" title="مقروءة"></i>';
             } else if (data.status === 'delivered') {
                 statusContainer.innerHTML = '<i class="fas fa-check-double text-gray-400 text-xs" title="تم التسليم"></i>';
+            }
+        }
+
+        // ✅ تحديث شارة "مشاهدة مرة واحدة" لدى المرسل فور فتح المستقبل لها
+        if (data.status === 'seen') {
+            const viewOnceStatus = messageElement.querySelector(`[data-view-once-status="${data.messageId}"]`);
+            if (viewOnceStatus) {
+                viewOnceStatus.textContent = 'تم فتحها ✓';
+                viewOnceStatus.classList.remove('text-gray-400');
+                viewOnceStatus.classList.add('text-green-400');
+                const icon = viewOnceStatus.parentElement.querySelector('i.fas');
+                if (icon) {
+                    icon.classList.remove('fa-eye-slash', 'text-yellow-400');
+                    icon.classList.add('fa-eye', 'text-green-400');
+                }
             }
         }
     }
