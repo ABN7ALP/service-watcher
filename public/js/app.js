@@ -2386,43 +2386,41 @@ updateSendButton();
 // تحديث الزر عند كتابة/مسح النص
 messageInput.addEventListener('input', updateSendButton);
     
-    // 4. زر الإرسال
-    // 4. زر الإرسال (ديناميكي)
+
+// 4. زر الإرسال (ديناميكي)
 const sendBtn = document.getElementById('send-private-message');
 if (sendBtn && messageInput) {
-    // إزالة المستمع القديم أولاً إذا كان موجوداً
     sendBtn.removeEventListener('click', sendBtn.clickHandler);
-    
-    // تعريف دالة جديدة
+
     sendBtn.clickHandler = () => {
         if (sendBtn.dataset.mode === 'voice') {
-            // بدء تسجيل صوتي
             startWhatsAppStyleRecording(targetUserId);
         } else {
-            // إرسال نص
-            sendPrivateMessage(targetUserId, messageInput.value.trim());
+            // ✅ الإصلاح: تمرير معرف الرسالة المردود عليها
+            const replyId = replyingToPrivateMessage ? replyingToPrivateMessage._id : null;
+            sendPrivateMessage(targetUserId, messageInput.value.trim(), replyId);
             messageInput.value = '';
             if (charCounter) charCounter.textContent = '0/200';
-            updateSendButton(); // تحديث الزر بعد الإرسال
+            updateSendButton();
         }
     };
-    
-    // إضافة المستمع الجديد
+
     sendBtn.addEventListener('click', sendBtn.clickHandler);
 }
-    
+
     // 5. إرسال بـ Enter
 if (messageInput) {
     messageInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             if (sendBtn.dataset.mode === 'text') {
-                sendPrivateMessage(targetUserId, messageInput.value.trim());
+                // ✅ الإصلاح: تمرير معرف الرسالة المردود عليها هنا أيضاً
+                const replyId = replyingToPrivateMessage ? replyingToPrivateMessage._id : null;
+                sendPrivateMessage(targetUserId, messageInput.value.trim(), replyId);
                 messageInput.value = '';
                 if (charCounter) charCounter.textContent = '0/200';
-                updateSendButton(); // تحديث الزر بعد الإرسال
+                updateSendButton();
             }
-            // إذا كان mode = voice، لا نفعل شيئاً عند Enter
         }
     });
 }
@@ -3043,14 +3041,18 @@ function setupImageUploadEvents(targetUserId) {
 function showReplyPrivateBar(messageId, message) {
     replyingToPrivateMessage = message;
 
+    const chatModal = document.getElementById('private-chat-modal');
+    if (!chatModal) return;
+
     let replyBar = document.getElementById('reply-private-bar');
     if (!replyBar) {
         replyBar = document.createElement('div');
         replyBar.id = 'reply-private-bar';
-        replyBar.className = 'p-2 bg-gray-600 rounded-t-lg text-sm flex justify-between items-center';
-        const chatInput = document.querySelector('.chat-input-container');
-        if (chatInput) {
-            chatInput.parentNode.insertBefore(replyBar, chatInput);
+        replyBar.className = 'p-2 bg-gray-600 rounded-t-lg text-sm flex justify-between items-center mx-3';
+        // ✅ الإصلاح: نبحث عن شريط الإدخال داخل نافذة الدردشة الخاصة نفسها فقط
+        const inputArea = chatModal.querySelector('.p-3.border-t');
+        if (inputArea && inputArea.parentNode) {
+            inputArea.parentNode.insertBefore(replyBar, inputArea);
         }
     }
 
