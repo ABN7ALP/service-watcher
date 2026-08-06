@@ -2814,15 +2814,12 @@ function showImageUploadModal(targetUserId) {
         <div id="image-upload-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[350] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700">
 
-                <!-- Header -->
                 <div class="flex items-center justify-between p-4 border-b border-gray-700">
                     <h3 class="text-lg font-bold"><i class="fas fa-image mr-2 text-green-400"></i>إرسال صورة</h3>
                     <button class="close-image-modal text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
                 </div>
 
-                <!-- Body (مصغر) -->
                 <div class="p-4">
-                    <!-- Drop Zone (مصغر) -->
                     <div id="drop-zone" class="border-2 border-dashed border-gray-600 rounded-xl p-4 text-center cursor-pointer hover:border-green-500 transition-colors bg-gray-900/50 mb-4">
                         <div id="upload-area-content">
                             <i class="fas fa-cloud-upload-alt text-3xl text-gray-500 mb-2"></i>
@@ -2848,7 +2845,6 @@ function showImageUploadModal(targetUserId) {
                         <input type="file" id="image-file-input" class="hidden" accept="image/*">
                     </div>
 
-                    <!-- خيارات الحماية (مصغرة) -->
                     <div class="bg-gray-900/30 p-3 rounded-xl mb-4">
                         <h4 class="font-bold text-sm mb-2 flex items-center gap-2"><i class="fas fa-shield-alt text-blue-400"></i>خيارات الحماية</h4>
                         <div class="grid grid-cols-2 gap-2 text-sm">
@@ -2867,7 +2863,6 @@ function showImageUploadModal(targetUserId) {
                         </div>
                     </div>
 
-                    <!-- أزرار -->
                     <div class="flex gap-2">
                         <button id="cancel-image-upload" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm transition">إلغاء</button>
                         <button id="send-image-button" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm transition disabled:opacity-50" disabled>إرسال</button>
@@ -2877,7 +2872,8 @@ function showImageUploadModal(targetUserId) {
         </div>
     `;
 
-    document.getElementById('game-container').innerHTML += modalHTML;
+    // ✅ الإصلاح الجوهري: insertAdjacentHTML لا يهدم عناصر الدردشة الخاصة الموجودة أصلاً
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
     setupImageUploadEvents(targetUserId);
 }
 
