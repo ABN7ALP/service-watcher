@@ -3462,6 +3462,12 @@ async function sendPrivateMessage(receiverId, message, replyTo = null, type = 't
 
     console.log(`[CHAT] Sending ${type} message to ${receiverId}`, replyTo ? `(reply to ${replyTo})` : '');
 
+    // ✅ الإصلاح: نأخذ بيانات الرسالة الأصلية الكاملة (النوع + المحتوى) من المتغير
+    // الذي عبأناه في showReplyPrivateBar، بدل استخدام نص وهمي "..."
+    const repliedMessageData = (replyTo && replyingToPrivateMessage && replyingToPrivateMessage._id === replyTo)
+        ? replyingToPrivateMessage
+        : null;
+
     const tempId = Date.now().toString();
     displayPrivateMessage({
         _id: tempId,
@@ -3469,7 +3475,12 @@ async function sendPrivateMessage(receiverId, message, replyTo = null, type = 't
         receiver: receiverId,
         type: type,
         content: message,
-        replyTo: replyTo ? { _id: replyTo, content: '...', sender: { username: 'مستخدم' } } : null,
+        replyTo: repliedMessageData ? {
+            _id: repliedMessageData._id,
+            type: repliedMessageData.type,
+            content: repliedMessageData.content,
+            sender: repliedMessageData.sender
+        } : null,
         metadata: metadata,
         createdAt: new Date().toISOString(),
         status: { sent: true, delivered: false, seen: false }
@@ -3483,7 +3494,6 @@ async function sendPrivateMessage(receiverId, message, replyTo = null, type = 't
             metadata: metadata
         };
 
-        // ✅ تأكد من تمرير replyTo
         if (replyTo) {
             payload.replyTo = replyTo;
         }
@@ -3513,7 +3523,6 @@ async function sendPrivateMessage(receiverId, message, replyTo = null, type = 't
 
             updateUnreadCount(receiverId, result.data.unreadCount || 0);
 
-            // ✅ إخفاء شريط الرد بعد الإرسال
             const replyBar = document.getElementById('reply-private-bar');
             if (replyBar) replyBar.remove();
             replyingToPrivateMessage = null;
@@ -3640,12 +3649,34 @@ function displayPrivateMessage(message, isMyMessage = false) {
     // ===== الرد (Reply) =====
     let replySection = '';
     if (message.replyTo && !meta.disableReply) {
-        const replyContent = message.replyTo.content || 'رسالة';
         const replySender = message.replyTo.sender?.username || 'مستخدم';
+        const replyType = message.replyTo.type || 'text';
+        let replyIcon = '';
+        let replyPreviewText = '';
+
+        // ✅ الإصلاح: نعرض تسمية مناسبة حسب نوع الرسالة المردود عليها
+        // بدل عرض الرابط الخام للصورة/الصوت أو نقاط "..." وهمية
+        switch (replyType) {
+            case 'image':
+                replyIcon = '<i class="fas fa-image text-green-400 mr-1"></i>';
+                replyPreviewText = 'صورة';
+                break;
+            case 'voice':
+                replyIcon = '<i class="fas fa-microphone text-purple-400 mr-1"></i>';
+                replyPreviewText = 'رسالة صوتية';
+                break;
+            case 'video':
+                replyIcon = '<i class="fas fa-video text-blue-400 mr-1"></i>';
+                replyPreviewText = 'فيديو';
+                break;
+            default:
+                replyPreviewText = (message.replyTo.content || 'رسالة').substring(0, 50);
+        }
+
         replySection = `
             <div class="mb-2 p-2 bg-black/20 rounded-lg border-r-2 border-purple-500">
                 <p class="text-xs font-bold text-purple-300">${replySender}</p>
-                <p class="text-xs text-gray-300 truncate">${replyContent.substring(0, 50)}</p>
+                <p class="text-xs text-gray-300 truncate flex items-center">${replyIcon}${replyPreviewText}</p>
             </div>
         `;
     }
