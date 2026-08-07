@@ -97,7 +97,7 @@ if (!chat) {
             .sort('-createdAt')
             .limit(50)
             .populate('sender', 'username profileImage')
-            .populate('replyTo', 'content sender')
+            .populate('replyTo', 'content sender type')
             .lean();
 
         // ترتيب الرسائل من الأقدم للأحدث
@@ -228,7 +228,7 @@ exports.sendMessage = async (req, res) => {
         // 5. جلب الرسالة مع بيانات المرسل
         const populatedMessage = await PrivateMessage.findById(newMessage._id)
             .populate('sender', 'username profileImage')
-            .populate('replyTo', 'content sender')
+            .populate('replyTo', 'content sender type')
             .lean();
 
         // 6. إرسال عبر Socket
@@ -347,7 +347,6 @@ exports.updateMessageStatus = async (req, res) => {
             });
         }
 
-        // التحقق من أن المستخدم هو المستقبل
         if (message.receiver.toString() !== userId.toString()) {
             return res.status(403).json({
                 status: 'fail',
@@ -355,7 +354,6 @@ exports.updateMessageStatus = async (req, res) => {
             });
         }
 
-        // تحديث الحالة
         if (status === 'delivered' && !message.status.delivered) {
             message.status.delivered = true;
             message.status.deliveredAt = new Date();
@@ -366,14 +364,19 @@ exports.updateMessageStatus = async (req, res) => {
 
         await message.save();
 
-        // إرسال إشعار للمرسل عبر Socket
+        // ✅ الإصلاح: نجيب socketId الخاص بالمرسل مباشرة ونرسل له عليه
+        // بدل الاعتماد على غرفة user-ID التي لا يوجد أي socket منضم لها فعلياً
         const io = req.app.get('socketio');
         if (io) {
-            io.to(`user-${message.sender.toString()}`).emit('messageStatusUpdated', {
-                messageId: message._id,
-                status: status,
-                updatedAt: new Date()
-            });
+            const senderUser = await User.findById(message.sender).select('socketId');
+            if (senderUser && senderUser.socketId) {
+                io.to(senderUser.socketId).emit('messageStatusUpdated', {
+                    messageId: message._id,
+                    status: status,
+                    updatedAt: new Date()
+                });
+                console.log(`[STATUS UPDATE] Sent '${status}' notification to sender socket: ${senderUser.socketId}`);
+            }
         }
 
         res.status(200).json({
