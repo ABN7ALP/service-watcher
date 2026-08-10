@@ -391,11 +391,249 @@ navItems.forEach(item => {
         
         if (targetId === 'settings') {
             showSettingsView();
+        } else if (targetId === 'messages') {
+            // ✅ جديد: عرض قسم الرسائل
+            showMessagesView();
         } else {
             showArenaView();
         }
     });
 });
+
+
+
+        // =================================================
+// ============ قسم الرسائل (Messages) =============
+// =================================================
+
+let allChatsCache = [];
+
+// دالة تنسيق الوقت النسبي بشكل أنيق
+function formatChatTime(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'الآن';
+    if (diffMins < 60) return `منذ ${diffMins} د`;
+    if (diffHours < 24) return `منذ ${diffHours} س`;
+    if (diffDays === 1) return 'أمس';
+    if (diffDays < 7) return `منذ ${diffDays} أيام`;
+    return date.toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' });
+}
+
+// دالة توليد معاينة ذكية لآخر رسالة حسب نوعها
+function getLastMessagePreview(chat, currentUserId) {
+    if (!chat.lastMessage) return { icon: '', text: 'ابدأ محادثة جديدة' };
+
+    const isMine = chat.lastMessageBy && chat.lastMessageBy.toString() === currentUserId.toString();
+    const prefix = isMine ? 'أنت: ' : '';
+
+    if (chat.lastMessage.startsWith('رسالة image')) {
+        return { icon: '<i class="fas fa-image text-green-400"></i>', text: `${prefix}صورة` };
+    }
+    if (chat.lastMessage.startsWith('رسالة voice')) {
+        return { icon: '<i class="fas fa-microphone text-purple-400"></i>', text: `${prefix}رسالة صوتية` };
+    }
+    if (chat.lastMessage.startsWith('رسالة video')) {
+        return { icon: '<i class="fas fa-video text-blue-400"></i>', text: `${prefix}فيديو` };
+    }
+
+    return { icon: '', text: `${prefix}${chat.lastMessage}` };
+}
+
+// دالة رئيسية: عرض قسم الرسائل بالكامل
+async function showMessagesView() {
+    mainContent.innerHTML = `
+        <div class="flex flex-col h-full">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold flex items-center gap-2">
+                    <i class="fas fa-envelope text-purple-400"></i>
+                    <span>الرسائل</span>
+                </h2>
+                <button id="refresh-messages-btn" class="text-gray-400 hover:text-purple-400 transition p-2 rounded-full hover:bg-gray-700/50" title="تحديث">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+
+            <div class="relative mb-4">
+                <input type="text" id="messages-search-input" placeholder="ابحث عن محادثة..." 
+                       class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-full py-2 pr-4 pl-10 text-sm focus:ring-purple-500 focus:border-purple-500 transition-colors duration-300">
+                <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+            </div>
+
+            <div id="messages-list-container" class="flex-grow overflow-y-auto space-y-2 pr-1">
+                <div class="text-center text-gray-400 py-16">
+                    <i class="fas fa-spinner fa-spin text-3xl mb-3"></i>
+                    <p class="text-sm">جاري تحميل المحادثات...</p>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const refreshBtn = document.getElementById('refresh-messages-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            refreshBtn.querySelector('i').classList.add('fa-spin');
+            loadMessagesList().finally(() => {
+                setTimeout(() => refreshBtn.querySelector('i').classList.remove('fa-spin'), 300);
+            });
+        });
+    }
+
+    const searchInput = document.getElementById('messages-search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            filterMessagesList(e.target.value.trim());
+        });
+    }
+
+    await loadMessagesList();
+}
+
+// جلب قائمة المحادثات من الخادم
+async function loadMessagesList() {
+    const container = document.getElementById('messages-list-container');
+    if (!container) return;
+
+    try {
+        const response = await fetch('/api/private-chat/chats', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const result = await response.json();
+
+        if (response.ok && result.status === 'success') {
+            allChatsCache = result.data.chats || [];
+            renderMessagesList(allChatsCache);
+            refreshMessagesNavBadge(allChatsCache);
+        } else {
+            container.innerHTML = `
+                <div class="text-center text-red-400 py-16">
+                    <i class="fas fa-exclamation-circle text-3xl mb-3"></i>
+                    <p class="text-sm">فشل تحميل المحادثات</p>
+                </div>`;
+        }
+    } catch (error) {
+        console.error('[MESSAGES] Error loading chat list:', error);
+        container.innerHTML = `
+            <div class="text-center text-red-400 py-16">
+                <i class="fas fa-exclamation-circle text-3xl mb-3"></i>
+                <p class="text-sm">خطأ في الاتصال بالخادم</p>
+            </div>`;
+    }
+}
+
+// رسم قائمة المحادثات بشكل أنيق
+function renderMessagesList(chats) {
+    const container = document.getElementById('messages-list-container');
+    if (!container) return;
+
+    const currentUserId = JSON.parse(localStorage.getItem('user'))._id;
+
+    if (!chats || chats.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-gray-400 py-16">
+                <i class="fas fa-comment-slash text-4xl mb-4"></i>
+                <p>لا توجد محادثات بعد</p>
+                <p class="text-xs text-gray-500 mt-1">ابدأ محادثة من الملف الشخصي لأي مستخدم</p>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = chats.map(chat => {
+        const other = chat.otherParticipant;
+        if (!other) return '';
+
+        const preview = getLastMessagePreview(chat, currentUserId);
+        const hasUnread = chat.unreadCount > 0;
+        const timeText = chat.lastMessageAt ? formatChatTime(chat.lastMessageAt) : '';
+
+        return `
+            <div class="message-item flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all hover:bg-gray-700/40 ${hasUnread ? 'bg-purple-900/20 border border-purple-500/20' : 'bg-gray-800/20'}" 
+                 data-user-id="${other._id}" data-username="${other.username}">
+                <div class="relative flex-shrink-0">
+                    <img src="${other.profileImage}" class="w-12 h-12 rounded-full object-cover border-2 ${hasUnread ? 'border-purple-500' : 'border-gray-600'}">
+                    ${hasUnread ? `<span class="absolute -top-1 -right-1 bg-purple-600 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">${chat.unreadCount > 9 ? '9+' : chat.unreadCount}</span>` : ''}
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-sm truncate ${hasUnread ? 'text-white' : 'text-gray-300'}">${other.username}</span>
+                        <span class="text-xs flex-shrink-0 ${hasUnread ? 'text-purple-400 font-bold' : 'text-gray-500'}">${timeText}</span>
+                    </div>
+                    <div class="flex items-center gap-1 text-xs truncate mt-0.5 ${hasUnread ? 'text-gray-200' : 'text-gray-400'}">
+                        ${preview.icon}
+                        <span class="truncate">${preview.text}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.querySelectorAll('.message-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const userId = item.dataset.userId;
+            const username = item.dataset.username;
+            openPrivateChat(userId, username);
+        });
+    });
+}
+
+// فلترة القائمة أثناء الكتابة في البحث
+function filterMessagesList(query) {
+    if (!query) {
+        renderMessagesList(allChatsCache);
+        return;
+    }
+
+    const filtered = allChatsCache.filter(chat =>
+        chat.otherParticipant && chat.otherParticipant.username.toLowerCase().includes(query.toLowerCase())
+    );
+
+    if (filtered.length === 0) {
+        const container = document.getElementById('messages-list-container');
+        if (container) {
+            container.innerHTML = `
+                <div class="text-center text-gray-400 py-16">
+                    <i class="fas fa-search text-3xl mb-3"></i>
+                    <p class="text-sm">لا توجد نتائج مطابقة لـ "${query}"</p>
+                </div>`;
+        }
+        return;
+    }
+
+    renderMessagesList(filtered);
+}
+
+// تحديث شارة عدد الرسائل غير المقروءة في الشريط الجانبي
+async function refreshMessagesNavBadge(cachedChats = null) {
+    try {
+        let chats = cachedChats;
+        if (!chats) {
+            const response = await fetch('/api/private-chat/chats', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const result = await response.json();
+            if (!response.ok || result.status !== 'success') return;
+            chats = result.data.chats || [];
+        }
+
+        const totalUnread = chats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
+        const badge = document.getElementById('messages-nav-badge');
+        if (badge) {
+            if (totalUnread > 0) {
+                badge.textContent = totalUnread > 9 ? '9+' : totalUnread;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+    } catch (error) {
+        console.error('[MESSAGES BADGE] Error:', error);
+    }
+}
 
 // --- ✅ استبدل دالة showSettingsView بالكامل ---
 async function showSettingsView() {
@@ -1181,6 +1419,7 @@ updateUIWithUserData(user);
                 if (totalUnread > 0) {
                     showNotification(`لديك ${totalUnread} رسالة خاصة غير مقروءة`, 'info');
                 }
+                refreshMessagesNavBadge(chatsResult.data.chats);
             }
         }
     } catch (error) {
@@ -2222,6 +2461,7 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
 
 
 // --- 📡 دالة تحميل تاريخ المحادثة من الخادم ---
+// --- 📡 دالة تحميل تاريخ المحادثة من الخادم ---
 async function loadChatHistoryFromServer(targetUserId) {
     const messagesContainer = document.getElementById('private-chat-messages');
     if (!messagesContainer) return;
@@ -2236,24 +2476,34 @@ async function loadChatHistoryFromServer(targetUserId) {
         const result = await response.json();
         
         if (response.ok && result.status === 'success') {
-            // إزالة رسالة "ابدأ محادثة جديدة"
             const emptyState = messagesContainer.querySelector('.text-center');
             if (emptyState) emptyState.remove();
             
-            // عرض الرسائل
             result.data.messages.forEach(message => {
                 const isMyMessage = message.sender._id === JSON.parse(localStorage.getItem('user'))._id;
                 displayPrivateMessage(message, isMyMessage);
             });
             
-            // تحديث بيانات المستخدم في رأس الدردشة
             updateChatHeader(result.data.chat);
             
             console.log(`✅ [CHAT] Loaded ${result.data.messages.length} messages`);
             
-            // تحديث حالة الرسائل غير المقروءة
             if (result.data.unreadCount > 0) {
                 markMessagesAsDelivered(result.data.messages);
+            }
+
+            // ✅ جديد: تصفير عداد غير المقروء + تحديث شارة الرسائل والقائمة إن كانت مفتوحة
+            try {
+                await fetch(`/api/private-chat/chat/${targetUserId}/read`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                refreshMessagesNavBadge();
+                if (document.getElementById('messages-list-container')) {
+                    loadMessagesList();
+                }
+            } catch (readError) {
+                console.error('[CHAT] Error marking chat as read:', readError);
             }
             
         } else {
@@ -4487,8 +4737,11 @@ socket.on('privateMessageReceived', async (data) => {
         // إشعار إذا كانت الدردشة غير مفتوحة
         showNotification(`📩 رسالة جديدة من ${data.senderName}`, 'info');
         
-        // تحديث أي عداد للدردشات
-        updateChatListBadge();
+        // ✅ تحديث شارة الرسائل + إعادة تحميل القائمة إن كانت مفتوحة
+        refreshMessagesNavBadge();
+        if (document.getElementById('messages-list-container')) {
+            loadMessagesList();
+        }
     }
 });
 
