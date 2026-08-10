@@ -531,6 +531,32 @@ exports.reportMessage = async (req, res) => {
 };
 
 // =================================================
+// تصفير عداد الرسائل غير المقروءة عند فتح المحادثة
+// =================================================
+exports.markChatAsRead = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const otherUserId = req.params.userId;
+
+        const participants = [userId, otherUserId].sort();
+        const chatId = participants.join('_');
+
+        const chat = await PrivateChat.findOne({ chatId });
+        if (!chat) {
+            return res.status(200).json({ status: 'success', message: 'لا توجد محادثة بعد' });
+        }
+
+        chat.unreadCount.set(userId.toString(), 0);
+        await chat.save();
+
+        res.status(200).json({ status: 'success', message: 'تم تصفير عداد الرسائل' });
+    } catch (error) {
+        console.error('[ERROR] in markChatAsRead:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
+// =================================================
 // إرسال رسالة وسائط
 // =================================================
 exports.sendMediaMessage = async (req, res) => {
