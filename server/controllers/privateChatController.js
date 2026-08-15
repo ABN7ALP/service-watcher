@@ -265,6 +265,9 @@ exports.sendMessage = async (req, res) => {
 // =================================================
 // جلب قائمة الدردشات
 // =================================================
+// =================================================
+// جلب قائمة الدردشات
+// =================================================
 exports.getChatList = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -278,37 +281,35 @@ exports.getChatList = async (req, res) => {
         .limit(50)
         .lean();
 
-        // إضافة معلومات إضافية لكل دردشة
         const enrichedChats = await Promise.all(
             chats.map(async (chat) => {
-                // جلب آخر رسالة
-                const lastMessage = await PrivateMessage.findOne(
+                // جلب آخر رسالة كاملة (نص/نوع/محتوى)
+                const lastMessageDoc = await PrivateMessage.findOne(
                     { chatId: chat.chatId }
                 )
                 .sort('-createdAt')
                 .populate('sender', 'username profileImage')
                 .lean();
 
-                // ✅ الإصلاح: بعد .lean() يصبح unreadCount كائن عادي وليس Map،
-                // لذلك نقرأ القيمة منه مباشرة بدل استخدام .get() التي تسبب انهيار الطلب بالكامل
                 let unreadCount = 0;
                 if (chat.unreadCount) {
                     if (typeof chat.unreadCount.get === 'function') {
-                        // احتياطي: في حال لم يكن lean فعّالاً لسبب ما
                         unreadCount = chat.unreadCount.get(userId.toString()) || 0;
                     } else {
                         unreadCount = chat.unreadCount[userId.toString()] || 0;
                     }
                 }
 
-                // بيانات المشارك الآخر
                 const otherParticipant = chat.participants
                     ? chat.participants.find(p => p._id.toString() !== userId.toString())
                     : null;
 
                 return {
                     ...chat,
-                    lastMessage: lastMessage,
+                    // ✅ الإصلاح: نُبقي على النص الأصلي المخزّن في chat.lastMessage كما هو (string)
+                    // ونضيف كائن الرسالة الكاملة باسم منفصل حتى لا يحدث تعارض بالأنواع
+                    lastMessage: chat.lastMessage, // يبقى نص كما هو من الـ schema الأصلي
+                    lastMessageDetails: lastMessageDoc, // كائن الرسالة الكامل (النوع، المحتوى، المرسل...)
                     unreadCount: unreadCount,
                     otherParticipant: otherParticipant
                 };
