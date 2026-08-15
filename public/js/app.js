@@ -427,22 +427,34 @@ function formatChatTime(dateString) {
 
 // دالة توليد معاينة ذكية لآخر رسالة حسب نوعها
 function getLastMessagePreview(chat, currentUserId) {
-    if (!chat.lastMessage) return { icon: '', text: 'ابدأ محادثة جديدة' };
+    const details = chat.lastMessageDetails;
 
-    const isMine = chat.lastMessageBy && chat.lastMessageBy.toString() === currentUserId.toString();
+    // إذا ما في أي رسالة بعد
+    if (!details && !chat.lastMessage) {
+        return { icon: '', text: 'ابدأ محادثة جديدة' };
+    }
+
+    // ✅ الإصلاح: نعتمد على النوع الحقيقي (type) من كائن الرسالة الكامل
+    // بدل تخمين النوع من نص، هذا أدق وأذكى ولا ينهار مهما كان شكل النص
+    const isMine = details && details.sender && details.sender._id
+        ? details.sender._id.toString() === currentUserId.toString()
+        : false;
     const prefix = isMine ? 'أنت: ' : '';
 
-    if (chat.lastMessage.startsWith('رسالة image')) {
-        return { icon: '<i class="fas fa-image text-green-400"></i>', text: `${prefix}صورة` };
-    }
-    if (chat.lastMessage.startsWith('رسالة voice')) {
-        return { icon: '<i class="fas fa-microphone text-purple-400"></i>', text: `${prefix}رسالة صوتية` };
-    }
-    if (chat.lastMessage.startsWith('رسالة video')) {
-        return { icon: '<i class="fas fa-video text-blue-400"></i>', text: `${prefix}فيديو` };
-    }
+    const type = details ? details.type : 'text';
 
-    return { icon: '', text: `${prefix}${chat.lastMessage}` };
+    switch (type) {
+        case 'image':
+            return { icon: '<i class="fas fa-image text-green-400"></i>', text: `${prefix}صورة` };
+        case 'voice':
+            return { icon: '<i class="fas fa-microphone text-purple-400"></i>', text: `${prefix}رسالة صوتية` };
+        case 'video':
+            return { icon: '<i class="fas fa-video text-blue-400"></i>', text: `${prefix}فيديو` };
+        default: {
+            const textContent = (details && details.content) ? details.content : (chat.lastMessage || 'رسالة');
+            return { icon: '', text: `${prefix}${textContent}` };
+        }
+    }
 }
 
 // دالة رئيسية: عرض قسم الرسائل بالكامل
