@@ -289,13 +289,22 @@ exports.getChatList = async (req, res) => {
                 .populate('sender', 'username profileImage')
                 .lean();
 
-                // عدد الرسائل غير المقروءة
-                const unreadCount = chat.unreadCount.get(userId.toString()) || 0;
+                // ✅ الإصلاح: بعد .lean() يصبح unreadCount كائن عادي وليس Map،
+                // لذلك نقرأ القيمة منه مباشرة بدل استخدام .get() التي تسبب انهيار الطلب بالكامل
+                let unreadCount = 0;
+                if (chat.unreadCount) {
+                    if (typeof chat.unreadCount.get === 'function') {
+                        // احتياطي: في حال لم يكن lean فعّالاً لسبب ما
+                        unreadCount = chat.unreadCount.get(userId.toString()) || 0;
+                    } else {
+                        unreadCount = chat.unreadCount[userId.toString()] || 0;
+                    }
+                }
 
                 // بيانات المشارك الآخر
-                const otherParticipant = chat.participants.find(
-                    p => p._id.toString() !== userId.toString()
-                );
+                const otherParticipant = chat.participants
+                    ? chat.participants.find(p => p._id.toString() !== userId.toString())
+                    : null;
 
                 return {
                     ...chat,
@@ -541,6 +550,8 @@ exports.markChatAsRead = async (req, res) => {
         const participants = [userId, otherUserId].sort();
         const chatId = participants.join('_');
 
+        // ✅ ملاحظة: بدون .lean() هنا عمداً، لأننا نحتاج نستخدم .set() و .save()
+        // وهذا يتطلب مستند Mongoose حقيقي (Map)، وليس كائن عادي
         const chat = await PrivateChat.findOne({ chatId });
         if (!chat) {
             return res.status(200).json({ status: 'success', message: 'لا توجد محادثة بعد' });
