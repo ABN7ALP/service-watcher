@@ -2327,6 +2327,7 @@ if (e.target.closest('.message-btn')) {
 
         
 // --- 📨 دالة فتح الدردشة الخاصة ---
+// --- 📨 دالة فتح الدردشة الخاصة ---
 async function openPrivateChat(targetUserId, targetUsername = 'المستخدم') {
     console.log(`[CHAT] Opening private chat with: ${targetUserId} (${targetUsername})`);
     
@@ -2334,35 +2335,18 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
     const profileModal = document.getElementById('mini-profile-modal');
     if (profileModal) profileModal.remove();
     
-    // 2. التحقق من الحظر المتبادل
-    try {
-        const blockResponse = await fetch(`/api/blocks/mutual-status/${targetUserId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (blockResponse.ok) {
-            const blockResult = await blockResponse.json();
-            if (blockResult.data.blockStatus.heBlockedMe) {
-                showNotification('لا يمكنك مراسلة مستخدم حظرك', 'error');
-                return;
-            }
-        }
-    } catch (error) {
-        console.error('[CHAT] Error checking block status:', error);
-    }
-    
-    // 3. إنشاء HTML نافذة الدردشة
+    // ✅ الإصلاح: نبني ونعرض نافذة الدردشة فوراً (بحالة تحميل) بدل انتظار فحص الحظر أولاً
+    // هذا يعطي إحساس استجابة فورية للمستخدم
     const chatHTML = `
         <div id="private-chat-modal" data-target-user-id="${targetUserId}" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[300] p-2 md:p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl h-[85vh] md:h-[80vh] flex flex-col overflow-hidden border-2 border-purple-500/30">
                 
-                <!-- 🔹 رأس الدردشة -->
                 <div class="flex items-center justify-between p-4 bg-gray-900/80 border-b border-gray-700">
                     <div class="flex items-center gap-3">
                         <button id="close-private-chat" class="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700">
                             <i class="fas fa-arrow-right text-lg"></i>
                         </button>
-                        <img id="chat-user-avatar" src="" alt="${targetUsername}" 
+                        <img id="chat-user-avatar" src="https://via.placeholder.com/40" alt="${targetUsername}" 
                              class="w-10 h-10 rounded-full border-2 border-purple-500 object-cover">
                         <div>
                             <h3 id="chat-user-name" class="font-bold text-white">${targetUsername}</h3>
@@ -2373,7 +2357,6 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                     </div>
                     
                     <div class="flex items-center gap-2">
-                        <!-- أزرار الإجراءات -->
                         <button class="chat-action-btn" title="إجراءات">
                             <i class="fas fa-ellipsis-v text-gray-400 hover:text-white"></i>
                         </button>
@@ -2386,20 +2369,14 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                     </div>
                 </div>
                 
-                <!-- 🔹 منطقة الرسائل -->
                 <div id="private-chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3 bg-gradient-to-b from-gray-900 to-gray-800">
-                    <!-- الرسائل ستضاف هنا بالجافاسكريبت -->
                     <div class="text-center text-gray-500 py-8">
-                        <i class="fas fa-comments text-3xl mb-3"></i>
-                        <p>ابدأ محادثة جديدة مع ${targetUsername}</p>
-                        <p class="text-sm text-gray-600 mt-1">لا توجد رسائل سابقة</p>
+                        <i class="fas fa-spinner fa-spin text-2xl mb-3"></i>
+                        <p class="text-sm">جاري تحميل المحادثة...</p>
                     </div>
                 </div>
                 
-                <!-- 🔹 شريط الإرسال -->
                 <div class="p-3 border-t border-gray-700 bg-gray-900/50">
-                    
-                    <!-- شريط الخيارات (مخفي افتراضيًا) -->
                     <div id="chat-options-bar" class="hidden mb-3 p-3 bg-gray-800/50 rounded-xl">
                         <div class="grid grid-cols-3 gap-3 text-center">
                             <button class="chat-media-btn" data-type="image">
@@ -2417,14 +2394,11 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                         </div>
                     </div>
                     
-                    <!-- شريط الإدخال الأساسي -->
                     <div class="flex items-center gap-2">
-                        <!-- زر فتح الخيارات -->
                         <button id="toggle-chat-options" class="bg-gray-700 hover:bg-gray-600 w-10 h-10 rounded-full flex items-center justify-center">
                             <i class="fas fa-plus text-gray-300"></i>
                         </button>
                         
-                        <!-- حقل إدخال النص -->
                         <div class="flex-1 relative">
                             <input type="text" id="private-message-input" 
                                    placeholder="اكتب رسالتك هنا..." 
@@ -2433,7 +2407,6 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                             <div id="private-char-count" class="absolute top-1/2 right-4 transform -translate-y-1/2 text-xs text-gray-500">0/200</div>
                         </div>
                         
-                        <!-- زر الإرسال -->
                         <button id="send-private-message" 
         class="dynamic-send-btn bg-purple-600 hover:bg-purple-700 w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300"
         data-mode="voice">
@@ -2441,7 +2414,6 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
 </button>
                     </div>
                     
-                    <!-- شريط معلومات (للملفات) -->
                     <div id="file-upload-info" class="hidden mt-3 p-2 bg-gray-800 rounded-lg">
                         <div class="flex items-center justify-between">
                             <span class="text-sm text-gray-300">جاري رفع صورة...</span>
@@ -2458,17 +2430,31 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
         </div>
     `;
     
-    // 4. إضافة النافذة إلى الـ DOM
-    document.getElementById('game-container').innerHTML += chatHTML;
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', chatHTML);
     
-    // 5. تحميل صورة المستخدم وبياناته
-    loadChatUserData(targetUserId);
-    
-    // 6. ربط الأحداث
+    // ربط الأحداث فوراً حتى تكون النافذة قابلة للتفاعل من أول لحظة
     setupPrivateChatEvents(targetUserId);
-    
-    // 7. جلب تاريخ المحادثة (إن وجد)
-   await loadChatHistoryFromServer(targetUserId);
+
+    // ✅ الإصلاح: تشغيل فحص الحظر وجلب بيانات المستخدم وسجل المحادثة كلها بالتوازي
+    // بدل انتظار كل واحدة على حدة بالتسلسل (كان هذا سبب البطء الأساسي)
+    const [blockCheckResult] = await Promise.allSettled([
+        fetch(`/api/blocks/mutual-status/${targetUserId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        }).then(r => r.json()),
+        loadChatUserData(targetUserId),
+        loadChatHistoryFromServer(targetUserId)
+    ]);
+
+    // التحقق من نتيجة فحص الحظر بعد ما صارت متوازية مع الباقي
+    if (blockCheckResult.status === 'fulfilled') {
+        const blockResult = blockCheckResult.value;
+        if (blockResult?.data?.blockStatus?.heBlockedMe) {
+            const modal = document.getElementById('private-chat-modal');
+            if (modal) modal.remove();
+            showNotification('لا يمكنك مراسلة مستخدم حظرك', 'error');
+            return;
+        }
+    }
 }
 
 
@@ -2749,15 +2735,14 @@ function handleMediaButtonClick(type, targetUserId) {
             showImageUploadModal(targetUserId);
             break;
         case 'video':
-            showNotification('إرسال الفيديو قريباً...', 'info');
-            // showVideoUploadModal(targetUserId); // لاحقاً
+            // ✅ الإصلاح: تفعيل نافذة رفع الفيديو الفعلية بدل رسالة "قريباً"
+            showVideoUploadModal(targetUserId);
             break;
         case 'voice':
            startWhatsAppStyleRecording(targetUserId);
             break;
         case 'file':
             showNotification('إرسال الملفات قريباً...', 'info');
-            // showFileUploadModal(targetUserId); // لاحقاً
             break;
     }
 }
@@ -3347,6 +3332,275 @@ function showReplyPrivateBar(messageId, message) {
         replyingToPrivateMessage = null;
         replyBar.remove();
     });
+}
+
+
+        // --- 🎬 دالة عرض نافذة رفع الفيديو ---
+function showVideoUploadModal(targetUserId) {
+    console.log(`[VIDEO UPLOAD] Opening for user: ${targetUserId}`);
+
+    const optionsBar = document.getElementById('chat-options-bar');
+    if (optionsBar) optionsBar.classList.add('hidden');
+
+    const modalHTML = `
+        <div id="video-upload-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[350] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700">
+
+                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <h3 class="text-lg font-bold"><i class="fas fa-video mr-2 text-blue-400"></i>إرسال فيديو</h3>
+                    <button class="close-video-modal text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                </div>
+
+                <div class="p-4">
+                    <div id="video-drop-zone" class="border-2 border-dashed border-gray-600 rounded-xl p-4 text-center cursor-pointer hover:border-blue-500 transition-colors bg-gray-900/50 mb-4">
+                        <div id="video-upload-area-content">
+                            <i class="fas fa-file-video text-3xl text-gray-500 mb-2"></i>
+                            <p class="font-medium text-sm mb-1">اسحب وأفلت الفيديو هنا</p>
+                            <p class="text-xs text-gray-400">(حد أقصى 30 ثانية - 10MB)</p>
+                        </div>
+                        <div id="video-preview" class="hidden">
+                            <video id="preview-video" class="max-w-full max-h-32 rounded-lg mx-auto" controls></video>
+                            <div class="text-xs text-gray-400 mt-2 flex justify-between">
+                                <span id="video-file-name" class="truncate"></span>
+                                <span id="video-file-size"></span>
+                            </div>
+                        </div>
+                        <div id="video-upload-progress" class="hidden mt-3">
+                            <div class="flex justify-between text-xs mb-1">
+                                <span>جاري الرفع...</span>
+                                <span id="video-progress-percent">0%</span>
+                            </div>
+                            <div class="w-full bg-gray-700 h-1.5 rounded-full overflow-hidden">
+                                <div id="video-progress-bar" class="bg-blue-500 h-1.5 rounded-full transition-all" style="width:0%"></div>
+                            </div>
+                        </div>
+                        <input type="file" id="video-file-input" class="hidden" accept="video/mp4,video/webm">
+                    </div>
+
+                    <div class="bg-gray-900/30 p-3 rounded-xl mb-4">
+                        <h4 class="font-bold text-sm mb-2 flex items-center gap-2"><i class="fas fa-shield-alt text-blue-400"></i>خيارات الخصوصية</h4>
+                        <p class="text-xs text-gray-500 mb-2">هذه الخيارات متاحة لأي نوع محتوى تريد إرساله بخصوصية أعلى</p>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-800/50 p-1 rounded">
+                                <input type="checkbox" id="video-disable-save" class="w-4 h-4"> منع الحفظ
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-800/50 p-1 rounded">
+                                <input type="checkbox" id="video-add-watermark" class="w-4 h-4"> علامة مائية
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button id="cancel-video-upload" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm transition">إلغاء</button>
+                        <button id="send-video-button" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm transition disabled:opacity-50" disabled>إرسال</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
+    setupVideoUploadEvents(targetUserId);
+}
+
+// --- 🎮 دالة إعداد أحداث رفع الفيديو ---
+function setupVideoUploadEvents(targetUserId) {
+    const modal = document.getElementById('video-upload-modal');
+    if (!modal) return;
+
+    let selectedFile = null;
+    let uploadInProgress = false;
+
+    function cleanupAndClose() {
+        if (uploadInProgress) {
+            showNotification('انتظر اكتمال الرفع', 'warning');
+            return;
+        }
+        if (modal && modal.parentNode) modal.remove();
+
+        const chatInput = document.getElementById('private-message-input');
+        if (chatInput) chatInput.disabled = false;
+        const sendBtn = document.getElementById('send-private-message');
+        if (sendBtn) sendBtn.disabled = false;
+    }
+
+    const closeBtn = modal.querySelector('.close-video-modal');
+    const cancelBtn = modal.querySelector('#cancel-video-upload');
+    if (closeBtn) closeBtn.addEventListener('click', cleanupAndClose);
+    if (cancelBtn) cancelBtn.addEventListener('click', cleanupAndClose);
+
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'video-upload-modal') cleanupAndClose();
+    });
+
+    const fileInput = modal.querySelector('#video-file-input');
+    const dropZone = modal.querySelector('#video-drop-zone');
+    const sendButton = modal.querySelector('#send-video-button');
+
+    if (dropZone) {
+        dropZone.addEventListener('click', () => {
+            if (!uploadInProgress && fileInput) fileInput.click();
+        });
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            if (!uploadInProgress) dropZone.classList.add('border-blue-500', 'bg-gray-800/50');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-blue-500', 'bg-gray-800/50');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-500', 'bg-gray-800/50');
+            if (!uploadInProgress && e.dataTransfer.files.length > 0) {
+                handleVideoSelection(e.dataTransfer.files[0]);
+            }
+        });
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleVideoSelection(e.target.files[0]);
+            fileInput.value = '';
+        });
+    }
+
+    function handleVideoSelection(file) {
+        const validTypes = ['video/mp4', 'video/webm'];
+        if (!validTypes.includes(file.type)) {
+            showNotification('نوع الفيديو غير مدعوم (mp4 أو webm فقط)', 'error');
+            return;
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+            showNotification('حجم الفيديو يتجاوز 10MB', 'error');
+            return;
+        }
+
+        // التحقق من المدة قبل الرفع
+        const tempVideo = document.createElement('video');
+        tempVideo.preload = 'metadata';
+        tempVideo.onloadedmetadata = () => {
+            window.URL.revokeObjectURL(tempVideo.src);
+            if (tempVideo.duration > 30) {
+                showNotification('مدة الفيديو تتجاوز 30 ثانية', 'error');
+                return;
+            }
+
+            selectedFile = file;
+            selectedFile._duration = Math.round(tempVideo.duration);
+
+            const previewVideo = modal.querySelector('#preview-video');
+            const fileName = modal.querySelector('#video-file-name');
+            const fileSize = modal.querySelector('#video-file-size');
+            const uploadArea = modal.querySelector('#video-upload-area-content');
+            const videoPreview = modal.querySelector('#video-preview');
+
+            if (uploadArea) uploadArea.classList.add('hidden');
+            if (videoPreview) videoPreview.classList.remove('hidden');
+            if (previewVideo) previewVideo.src = URL.createObjectURL(file);
+            if (fileName) fileName.textContent = file.name;
+            if (fileSize) fileSize.textContent = formatFileSize(file.size);
+            if (sendButton) sendButton.disabled = false;
+        };
+        tempVideo.src = URL.createObjectURL(file);
+    }
+
+    if (sendButton) {
+        sendButton.addEventListener('click', async () => {
+            if (!selectedFile || uploadInProgress) return;
+            await uploadAndSendVideo(selectedFile, targetUserId, modal);
+        });
+    }
+
+    const chatInput = document.getElementById('private-message-input');
+    if (chatInput) chatInput.disabled = true;
+    const sendChatBtn = document.getElementById('send-private-message');
+    if (sendChatBtn) sendChatBtn.disabled = true;
+
+    // نستخدم متغير uploadInProgress من نطاق الدالة الخارجية عبر uploadAndSendVideo
+    modal._setUploadInProgress = (val) => { uploadInProgress = val; };
+}
+
+// --- 📤 دالة رفع وإرسال الفيديو ---
+async function uploadAndSendVideo(file, targetUserId, modal) {
+    const sendButton = modal.querySelector('#send-video-button');
+    const progressBar = modal.querySelector('#video-progress-bar');
+    const progressPercent = modal.querySelector('#video-progress-percent');
+    const uploadProgress = modal.querySelector('#video-upload-progress');
+    const dropZone = modal.querySelector('#video-drop-zone');
+
+    const disableSave = modal.querySelector('#video-disable-save').checked;
+    const addWatermark = modal.querySelector('#video-add-watermark').checked;
+
+    function reEnablePrivateChat() {
+        const chatInput = document.getElementById('private-message-input');
+        if (chatInput) chatInput.disabled = false;
+        const sendChatBtn = document.getElementById('send-private-message');
+        if (sendChatBtn) sendChatBtn.disabled = false;
+    }
+
+    try {
+        if (modal._setUploadInProgress) modal._setUploadInProgress(true);
+        if (sendButton) sendButton.disabled = true;
+        if (dropZone) dropZone.style.pointerEvents = 'none';
+        if (uploadProgress) uploadProgress.classList.remove('hidden');
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('receiverId', targetUserId);
+        formData.append('duration', (file._duration || 0).toString());
+        formData.append('metadata', JSON.stringify({
+            disableSave: disableSave,
+            hasWatermark: addWatermark
+        }));
+
+        simulateUploadProgress(progressBar, progressPercent, 3000);
+
+        const response = await fetch('/api/chat-media/video', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            const metadata = {
+                thumbnail: result.data.thumbnail,
+                publicId: result.data.publicId,
+                fileSize: result.data.bytes,
+                format: result.data.format,
+                duration: result.data.duration,
+                disableSave: disableSave,
+                hasWatermark: addWatermark
+            };
+
+            await sendPrivateMessage(targetUserId, result.data.url, null, 'video', metadata);
+
+            reEnablePrivateChat();
+            modal.remove();
+            showNotification('تم إرسال الفيديو بنجاح', 'success');
+
+        } else {
+            throw new Error(result.message || 'فشل رفع الفيديو');
+        }
+
+    } catch (error) {
+        console.error('[VIDEO UPLOAD] Error:', error);
+        showNotification(error.message || 'فشل رفع الفيديو', 'error');
+
+        const sendButtonRetry = modal.querySelector('#send-video-button');
+        const uploadProgressRetry = modal.querySelector('#video-upload-progress');
+        if (sendButtonRetry) sendButtonRetry.disabled = false;
+        if (uploadProgressRetry) uploadProgressRetry.classList.add('hidden');
+
+        reEnablePrivateChat();
+
+    } finally {
+        if (modal._setUploadInProgress) modal._setUploadInProgress(false);
+        const dropZoneRetry = modal.querySelector('#video-drop-zone');
+        if (dropZoneRetry) dropZoneRetry.style.pointerEvents = 'auto';
+    }
 }
     
 
@@ -4697,16 +4951,45 @@ async function playVoiceMessage(voiceUrl, messageElement) {
     }
 }
 
-// --- 🎬 دالة تشغيل الفيديو ---
+// --- 🎬 دالة تشغيل الفيديو الفعلية ---
 function showVideoPlayer(videoUrl, message) {
     console.log('[CHAT] Playing video:', videoUrl);
-    
-    if (message.metadata?.disableSave) {
-        showNotification('⚠️ حفظ الفيديو معطل', 'warning');
-    }
-    
-    // TODO: إنشاء مشغل فيديو
-    showNotification('تشغيل الفيديو قريباً...', 'info');
+
+    const existing = document.getElementById('video-player-modal');
+    if (existing) existing.remove();
+
+    const meta = message.metadata || {};
+    const disableSaveBadge = meta.disableSave
+        ? `<span class="absolute top-3 left-3 bg-red-500/80 text-white text-xs px-2 py-1 rounded-full"><i class="fas fa-download-slash mr-1"></i>حفظ معطل</span>`
+        : '';
+
+    const viewerHTML = `
+        <div id="video-player-modal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[400] p-4">
+            <div class="relative w-full max-w-lg">
+                <button id="close-video-player" class="absolute -top-10 right-0 text-white text-2xl w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center">
+                    <i class="fas fa-times"></i>
+                </button>
+                <div class="relative rounded-xl overflow-hidden border border-gray-700">
+                    <video src="${videoUrl}" class="w-full max-h-[70vh] bg-black" controls autoplay ${meta.disableSave ? 'controlsList="nodownload"' : ''}></video>
+                    ${disableSaveBadge}
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', viewerHTML);
+
+    const viewer = document.getElementById('video-player-modal');
+    const close = () => {
+        const video = viewer.querySelector('video');
+        if (video) video.pause();
+        viewer.remove();
+    };
+
+    document.getElementById('close-video-player').addEventListener('click', close);
+    viewer.addEventListener('click', (e) => {
+        if (e.target.id === 'video-player-modal') close();
+    });
 }
 
         
