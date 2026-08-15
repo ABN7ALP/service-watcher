@@ -66,18 +66,10 @@ server.listen(PORT, () => {
 });
 
 // --- معالجة الأخطاء غير المتوقعة ---
-// ✅ الإصلاح: لا نوقف السيرفر بالكامل بسبب خطأ واحد غير متوقع (كان هذا يقطع الاتصال عن كل المستخدمين)
-// بدلاً من ذلك، نسجل الخطأ بالتفصيل الكامل لتشخيصه لاحقاً، ونُبقي السيرفر يعمل
 process.on('unhandledRejection', (err) => {
-    console.error('⚠️ UNHANDLED REJECTION (تم تجاهله والاستمرار):');
-    console.error('Name:', err.name);
-    console.error('Message:', err.message);
-    console.error('Stack:', err.stack);
-});
-
-process.on('uncaughtException', (err) => {
-    console.error('⚠️ UNCAUGHT EXCEPTION (تم تجاهله والاستمرار):');
-    console.error('Name:', err.name);
-    console.error('Message:', err.message);
-    console.error('Stack:', err.stack);
+    console.error('UNHANDLED REJECTION! 💥 Shutting down...');
+    console.error(err.name, err.message);
+    server.close(() => {
+        process.exit(1);
+    });
 });
