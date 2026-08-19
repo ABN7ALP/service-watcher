@@ -2346,7 +2346,7 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                         <button id="close-private-chat" class="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700">
                             <i class="fas fa-arrow-right text-lg"></i>
                         </button>
-                        <img id="chat-user-avatar" src="https://via.placeholder.com/40" alt="${targetUsername}" 
+                        <img id="chat-user-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%234b5563'/%3E%3C/svg%3E" alt="${targetUsername}" 
                              class="w-10 h-10 rounded-full border-2 border-purple-500 object-cover">
                         <div>
                             <h3 id="chat-user-name" class="font-bold text-white">${targetUsername}</h3>
@@ -4144,7 +4144,7 @@ function displayPrivateMessage(message, isMyMessage = false) {
             messageContent = `
                 <div class="relative">
                     <div class="relative rounded-lg overflow-hidden">
-                        <img src="${meta.thumbnail || 'https://via.placeholder.com/200x150'}" class="w-full h-auto">
+                        <img src="${meta.thumbnail || 'data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 200 150%27%3E%3Crect width=%27200%27 height=%27150%27 fill=%27%23374151%27/%3E%3C/svg%3E'}" class="w-full h-auto">
                         <button class="absolute inset-0 flex items-center justify-center play-video-btn" data-video-url="${message.content}">
                             <div class="w-12 h-12 bg-black/50 rounded-full flex items-center justify-center">
                                 <i class="fas fa-play text-white text-xl"></i>
