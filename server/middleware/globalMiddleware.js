@@ -24,8 +24,9 @@ const setupMiddleware = (app) => {
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
         "script-src": ["'self'", "cdn.socket.io"],
-        "img-src": ["'self'", "data:", "https://res.cloudinary.com", "https://i.ibb.co"],
-        "media-src": ["'self'", "https://res.cloudinary.com"],
+        // ✅ الإصلاح: إضافة blob: لمعاينة الصور/الفيديو محلياً قبل رفعها (createObjectURL)
+        "img-src": ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://i.ibb.co"],
+        "media-src": ["'self'", "blob:", "https://res.cloudinary.com"],
       },
   },
 }));
