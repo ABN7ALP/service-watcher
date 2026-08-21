@@ -2071,60 +2071,65 @@ function showFloatingAlert(message, icon = 'fa-check-circle', color = 'bg-green-
 
         // --- ✅ دالة جديدة لعرض الملف الشخصي المصغر ---
 async function showMiniProfileModal(userId) {
+    // إزالة أي نافذة ملف شخصي مصغر سابقة أولاً
+    const existingModal = document.getElementById('mini-profile-modal');
+    if (existingModal) existingModal.remove();
+
+    // ✅ الإصلاح 1 (السرعة): نعرض هيكل تحميل فوري بدل انتظار الطلبات
+    const loadingShellHTML = `
+        <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white p-10 text-center border-2 border-purple-500/30">
+                <i class="fas fa-spinner fa-spin text-3xl text-purple-400 mb-3"></i>
+                <p class="text-sm text-gray-400">جاري تحميل الملف الشخصي...</p>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', loadingShellHTML);
+
     try {
-        // ✅ أولاً: التحقق من حالة الحظر المتبادل
-        const blockCheckResponse = await fetch(`/api/blocks/mutual-status/${userId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (!blockCheckResponse.ok) {
-            throw new Error('Failed to check block status');
-        }
-        
-        const blockResult = await blockCheckResponse.json();
-        const blockData = blockResult.data;
-        
-        // ✅ السيناريو 1: إذا كان المستخدم قد حظرني
+        // ✅ الإصلاح 2 (السرعة): فحص الحظر + جلب بيانات المستخدم بالتوازي بدل التسلسل
+        const [blockCheckResult, userResult] = await Promise.all([
+            fetch(`/api/blocks/mutual-status/${userId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(r => r.json()),
+            fetch(`/api/users/${userId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(r => r.json())
+        ]);
+
+        const blockData = blockCheckResult.data;
+
+        const loadingShell = document.getElementById('mini-profile-modal');
+        if (loadingShell) loadingShell.remove();
+
         if (blockData.blockStatus.heBlockedMe) {
             showBlockedProfileModal(userId, blockData);
             return;
         }
-        
-        // ✅ السيناريو 2: إذا لم يحظرني، جلب بياناته
-        const userResponse = await fetch(`/api/users/${userId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (!userResponse.ok) throw new Error('User not found');
-        
-        const userResult = await userResponse.json();
+
         const profileUser = userResult.data.user;
-        
-        // ✅ جلب بيانات المستخدم الحالي المحدثة
+
         const selfUserData = JSON.parse(localStorage.getItem('user'));
         if (!selfUserData) {
             showNotification('يجب تسجيل الدخول أولاً', 'error');
             return;
         }
-        
-        // ✅ تحضير البيانات
+
         const socialInfo = getSocialStatus(profileUser.socialStatus);
         const educationInfo = getEducationStatus(profileUser.educationStatus);
         const genderInfo = profileUser.gender === 'male' 
             ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' }
             : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
-        
-        // ✅ زر الصداقة الديناميكي
+
         const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
-        
-        // ✅ زر الحظر/فك الحظر الديناميكي
+
         const blockedUsersIds = (selfUserData.blockedUsers || []).map(item => 
             item._id ? item._id.toString() : item.toString()
         );
         const profileUserIdStr = profileUser._id.toString();
-        
         const isBlockedByMe = blockedUsersIds.includes(profileUserIdStr);
-        
+
         const blockButtonHTML = isBlockedByMe ? 
             `<button class="action-btn unblock-action-btn" data-user-id="${profileUser._id}">
                 <i class="fas fa-unlock"></i>
@@ -2134,19 +2139,15 @@ async function showMiniProfileModal(userId) {
                 <i class="fas fa-ban"></i>
                 <span class="text-xs mt-1">حظر</span>
             </button>`;
-        
-        // ✅ HTML النافذة
+
         const modalHTML = `
             <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
                 <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-purple-500/30">
                     
-                    <!-- الصورة والمعلومات الأساسية -->
                     <div class="flex flex-col items-center px-4 pt-6">
-                        <!-- الصورة الشخصية -->
                         <img src="${profileUser.profileImage}" 
                              class="w-28 h-28 rounded-full border-4 border-purple-500 object-cover shadow-lg">
                         
-                        <!-- الاسم والـ ID -->
                         <h2 class="text-xl font-bold mt-4">${profileUser.username}</h2>
                         <div class="text-xs text-gray-400 mt-1 cursor-pointer flex items-center gap-2 copy-id-btn">
                            <i class="fas fa-id-card"></i>
@@ -2154,14 +2155,12 @@ async function showMiniProfileModal(userId) {
                            <i class="fas fa-copy text-xs"></i>
                         </div>
                         
-                        <!-- ✅ الحالة النصية -->
                         <div class="mt-3 w-full">
                             <p id="profile-user-status" class="text-sm text-gray-300 italic text-center px-4 py-2 bg-gray-800/50 rounded-lg border border-gray-700">
                                 ${profileUser.status || '🚀 جاهز للتحديات!'}
                             </p>
                         </div>
                         
-                        <!-- ✅ شارة "محظور من قبلك" -->
                         ${isBlockedByMe ? `
                             <div class="mt-2 bg-red-900/30 border border-red-700 rounded-full px-3 py-1">
                                 <span class="text-xs text-red-300">
@@ -2171,9 +2170,7 @@ async function showMiniProfileModal(userId) {
                         ` : ''}
                     </div>
                     
-                    <!-- الإحصائيات (مستوى وأصدقاء) -->
                     <div class="grid grid-cols-2 gap-4 p-6">
-                        <!-- المستوى -->
                         <div class="bg-gray-800/50 p-4 rounded-xl text-center hover:bg-gray-700/50 transition group">
                             <div class="text-3xl font-bold text-yellow-400 mb-1">${profileUser.level}</div>
                             <div class="text-xs text-gray-400">المستوى</div>
@@ -2182,7 +2179,6 @@ async function showMiniProfileModal(userId) {
                             </div>
                         </div>
                         
-                        <!-- الأصدقاء -->
                         <div class="bg-gray-800/50 p-4 rounded-xl text-center hover:bg-gray-700/50 transition group">
                             <div class="text-3xl font-bold text-purple-400 mb-1">${profileUser.friends ? profileUser.friends.length : 0}</div>
                             <div class="text-xs text-gray-400">الأصدقاء</div>
@@ -2194,7 +2190,6 @@ async function showMiniProfileModal(userId) {
                         </div>
                     </div>
                     
-                    <!-- المعلومات الشخصية -->
                     <div class="grid grid-cols-2 gap-3 px-6 pb-6 text-sm">
                         <div class="flex items-center gap-3 p-2 bg-gray-800/30 rounded-lg">
                             <i class="fas ${genderInfo.icon} w-4 text-center ${genderInfo.color}"></i>
@@ -2214,7 +2209,6 @@ async function showMiniProfileModal(userId) {
                         </div>
                     </div>
                     
-                    <!-- أزرار الإجراءات -->
                     <div id="profile-action-buttons" class="grid grid-cols-4 gap-2 border-t border-gray-700/50 p-4">
                         ${friendButtonHTML}
                         <button class="action-btn message-btn" data-user-id="${profileUser._id}">
@@ -2231,40 +2225,26 @@ async function showMiniProfileModal(userId) {
             </div>
         `;
 
-        const container = document.getElementById('game-container');
-        container.innerHTML = modalHTML;
-        const modal = container.querySelector('#mini-profile-modal');
+        document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
+        const modal = document.getElementById('mini-profile-modal');
         
-        // تأثير الظهور
         setTimeout(() => {
             modal.querySelector('.transform').classList.remove('scale-95');
         }, 50);
         
-        // --- ✅ event delegation للأزرار داخل النافذة ---
+        // ✅ الإصلاح 3 (الوميض): تم حذف معالج زر الصداقة المكرر من هنا نهائياً.
+        // المعالج العام في document.body يتكفل به وحده الآن، فلا يوجد استدعاء مزدوج بعد اليوم
         modal.addEventListener('click', (e) => {
-            // 1. إغلاق بالنقر على الخلفية
             if (e.target.id === 'mini-profile-modal') {
                 modal.remove();
                 return;
             }
-            // 6. أزرار الصداقة (مثل إضافة، حذف، إلخ)
-const friendActionBtn = e.target.closest('.action-btn[data-action]');
-if (friendActionBtn) {
-    const action = friendActionBtn.dataset.action;
-    const userId = friendActionBtn.dataset.userId;
-    
-    // معالجة إجراءات الصداقة المختلفة
-    handleFriendAction(action, userId, modal);
-    return;
-}
             
-            // 2. زر نسخ الـ ID
             if (e.target.closest('.copy-id-btn')) {
                 const idToCopy = profileUser.customId;
                 
                 navigator.clipboard.writeText(idToCopy)
                     .then(() => {
-                        // إشعار عائم جميل
                         const copyNotification = document.createElement('div');
                         copyNotification.innerHTML = `
                             <div class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
@@ -2287,31 +2267,26 @@ if (friendActionBtn) {
                 return;
             }
 
-
-            // 3. زر الرسالة
-if (e.target.closest('.message-btn')) {
-    const userId = e.target.closest('.message-btn').dataset.userId;
-    const username = e.target.closest('.message-btn').closest('#mini-profile-modal')?.querySelector('h2')?.textContent || 'المستخدم';
-    
-    openPrivateChat(userId, username);
-    return;
-}
+            if (e.target.closest('.message-btn')) {
+                const userId = e.target.closest('.message-btn').dataset.userId;
+                const username = e.target.closest('.message-btn').closest('#mini-profile-modal')?.querySelector('h2')?.textContent || 'المستخدم';
+                
+                openPrivateChat(userId, username);
+                return;
+            }
             
-            // 3. زر الحظر
             if (e.target.closest('.block-action-btn')) {
                 const userIdToBlock = e.target.closest('.block-action-btn').dataset.userId;
                 blockUser(userIdToBlock, modal);
                 return;
             }
             
-            // 4. زر فك الحظر
             if (e.target.closest('.unblock-action-btn')) {
                 const userIdToUnblock = e.target.closest('.unblock-action-btn').dataset.userId;
                 unblockUser(userIdToUnblock, modal);
                 return;
             }
             
-            // 5. زر الإغلاق
             if (e.target.closest('.close-mini-profile-btn')) {
                 modal.remove();
                 return;
@@ -2320,6 +2295,8 @@ if (e.target.closest('.message-btn')) {
 
     } catch (error) {
         console.error("Error showing mini profile:", error);
+        const loadingShell = document.getElementById('mini-profile-modal');
+        if (loadingShell) loadingShell.remove();
         showNotification('لا يمكن عرض ملف المستخدم حاليًا.', 'error');
     }
 }
@@ -2357,13 +2334,13 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                     </div>
                     
                     <div class="flex items-center gap-2">
-                        <button class="chat-action-btn" title="إجراءات">
+                        <button id="chat-actions-btn" class="chat-action-btn" title="إجراءات">
                             <i class="fas fa-ellipsis-v text-gray-400 hover:text-white"></i>
                         </button>
-                        <button class="chat-action-btn" title="مكالمة صوتية">
+                        <button id="chat-call-btn" class="chat-action-btn" title="مكالمة صوتية">
                             <i class="fas fa-phone-alt text-gray-400 hover:text-blue-400"></i>
                         </button>
-                        <button class="chat-action-btn" title="معلومات">
+                        <button id="chat-info-btn" class="chat-action-btn" title="معلومات">
                             <i class="fas fa-info-circle text-gray-400 hover:text-purple-400"></i>
                         </button>
                     </div>
@@ -2717,6 +2694,31 @@ if (messageInput) {
             toggleBtn.querySelector('i').classList.toggle('fa-times');
         });
     }
+
+    // 8. زر معلومات المستخدم (فتح الملف الشخصي)
+    const infoBtn = document.getElementById('chat-info-btn');
+    if (infoBtn) {
+        infoBtn.addEventListener('click', () => {
+            showMiniProfileModal(targetUserId);
+        });
+    }
+
+    // 9. زر مكالمة صوتية (الميزة غير متوفرة حالياً - نعرض ذلك بصراحة بدل زر بلا وظيفة)
+    const callBtn = document.getElementById('chat-call-btn');
+    if (callBtn) {
+        callBtn.addEventListener('click', () => {
+            showNotification('ميزة المكالمات الصوتية غير متوفرة حالياً', 'info');
+        });
+    }
+
+    // 10. زر الإجراءات (قائمة منسدلة: عرض الملف / حظر / فك حظر)
+    const actionsBtn = document.getElementById('chat-actions-btn');
+    if (actionsBtn) {
+        actionsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleChatActionsMenu(actionsBtn, targetUserId);
+        });
+    }
     
     // 7. أزرار الوسائط
     document.querySelectorAll('.chat-media-btn').forEach(btn => {
@@ -2726,6 +2728,65 @@ if (messageInput) {
         });
     });
 }
+
+
+// --- 📋 قائمة إجراءات الدردشة الخاصة (منسدلة) ---
+function toggleChatActionsMenu(anchorBtn, targetUserId) {
+    const existing = document.getElementById('chat-actions-dropdown');
+    if (existing) {
+        existing.remove();
+        return;
+    }
+
+    const selfUserData = JSON.parse(localStorage.getItem('user'));
+    const blockedUsersIds = (selfUserData?.blockedUsers || []).map(item => 
+        item._id ? item._id.toString() : item.toString()
+    );
+    const isBlockedByMe = blockedUsersIds.includes(targetUserId.toString());
+
+    const rect = anchorBtn.getBoundingClientRect();
+
+    const menuHTML = `
+        <div id="chat-actions-dropdown" class="fixed bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-48 z-[310] overflow-hidden"
+             style="top: ${rect.bottom + 8}px; left: ${Math.max(rect.left - 140, 8)}px;">
+            <button id="chat-menu-view-profile" class="w-full text-right px-4 py-3 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2">
+                <i class="fas fa-user text-purple-400"></i> عرض الملف الشخصي
+            </button>
+            <button id="chat-menu-block-toggle" class="w-full text-right px-4 py-3 text-sm ${isBlockedByMe ? 'text-green-400' : 'text-red-400'} hover:bg-gray-700 flex items-center gap-2 border-t border-gray-700">
+                <i class="fas ${isBlockedByMe ? 'fa-unlock' : 'fa-ban'}"></i> ${isBlockedByMe ? 'فك الحظر' : 'حظر المستخدم'}
+            </button>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', menuHTML);
+    const menu = document.getElementById('chat-actions-dropdown');
+
+    document.getElementById('chat-menu-view-profile').addEventListener('click', () => {
+        menu.remove();
+        showMiniProfileModal(targetUserId);
+    });
+
+    document.getElementById('chat-menu-block-toggle').addEventListener('click', () => {
+        menu.remove();
+        if (isBlockedByMe) {
+            unblockUser(targetUserId, null);
+        } else {
+            blockUser(targetUserId, null);
+        }
+    });
+
+    // إغلاق القائمة عند النقر خارجها
+    setTimeout(() => {
+        document.addEventListener('click', function closeMenuOnce(e) {
+            if (!menu.contains(e.target) && e.target !== anchorBtn) {
+                menu.remove();
+                document.removeEventListener('click', closeMenuOnce);
+            }
+        });
+    }, 0);
+}
+
+        
 // --- 🎮 دالة معالجة أزرار الوسائط ---
 function handleMediaButtonClick(type, targetUserId) {
     console.log(`[CHAT] Media button clicked: ${type} for user ${targetUserId}`);
@@ -3124,7 +3185,7 @@ function showImageUploadModal(targetUserId) {
     setupImageUploadEvents(targetUserId);
 }
 
-       function bindPrivateMessageEvents(messageElement, message) {
+      function bindPrivateMessageEvents(messageElement, message) {
     const viewBtn = messageElement.querySelector('.view-image-btn');
     if (viewBtn) {
         viewBtn.addEventListener('click', () => {
@@ -3138,6 +3199,16 @@ function showImageUploadModal(targetUserId) {
             const imgUrl = this.dataset.imageUrl;
             const msgId = this.dataset.messageId;
             openViewOnceImage(msgId, imgUrl, messageElement);
+        });
+    }
+
+    // ✅ جديد: زر مشاهدة الفيديو مرة واحدة
+    const viewOnceVideoBtn = messageElement.querySelector('.view-once-video-btn');
+    if (viewOnceVideoBtn) {
+        viewOnceVideoBtn.addEventListener('click', function() {
+            const videoUrl = this.dataset.videoUrl;
+            const msgId = this.dataset.messageId;
+            openViewOnceVideo(msgId, videoUrl, messageElement);
         });
     }
 
@@ -3379,8 +3450,10 @@ function showVideoUploadModal(targetUserId) {
 
                     <div class="bg-gray-900/30 p-3 rounded-xl mb-4">
                         <h4 class="font-bold text-sm mb-2 flex items-center gap-2"><i class="fas fa-shield-alt text-blue-400"></i>خيارات الخصوصية</h4>
-                        <p class="text-xs text-gray-500 mb-2">هذه الخيارات متاحة لأي نوع محتوى تريد إرساله بخصوصية أعلى</p>
                         <div class="grid grid-cols-2 gap-2 text-sm">
+                            <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-800/50 p-1 rounded">
+                                <input type="checkbox" id="video-view-once" class="w-4 h-4"> مشاهدة مرة واحدة
+                            </label>
                             <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-800/50 p-1 rounded">
                                 <input type="checkbox" id="video-disable-save" class="w-4 h-4"> منع الحفظ
                             </label>
@@ -3529,6 +3602,7 @@ async function uploadAndSendVideo(file, targetUserId, modal) {
     const uploadProgress = modal.querySelector('#video-upload-progress');
     const dropZone = modal.querySelector('#video-drop-zone');
 
+    const viewOnce = modal.querySelector('#video-view-once').checked;
     const disableSave = modal.querySelector('#video-disable-save').checked;
     const addWatermark = modal.querySelector('#video-add-watermark').checked;
 
@@ -3571,6 +3645,7 @@ async function uploadAndSendVideo(file, targetUserId, modal) {
                 fileSize: result.data.bytes,
                 format: result.data.format,
                 duration: result.data.duration,
+                viewOnce: viewOnce,
                 disableSave: disableSave,
                 hasWatermark: addWatermark
             };
@@ -4140,23 +4215,54 @@ function displayPrivateMessage(message, isMyMessage = false) {
             break;
 
         case 'video':
-            const videoWatermark = meta.hasWatermark ? '<i class="fas fa-copyright text-xs mr-1"></i>' : '';
+    if (meta.viewOnce) {
+        const alreadyViewed = meta.deleted || (message.status && message.status.seen);
+        if (isMyMessage) {
             messageContent = `
-                <div class="relative">
-                    <div class="relative rounded-lg overflow-hidden">
-                        <img src="${meta.thumbnail || 'data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 200 150%27%3E%3Crect width=%27200%27 height=%27150%27 fill=%27%23374151%27/%3E%3C/svg%3E'}" class="w-full h-auto">
-                        <button class="absolute inset-0 flex items-center justify-center play-video-btn" data-video-url="${message.content}">
-                            <div class="w-12 h-12 bg-black/50 rounded-full flex items-center justify-center">
-                                <i class="fas fa-play text-white text-xl"></i>
-                            </div>
-                        </button>
-                        <div class="absolute bottom-2 right-2 bg-black/50 px-2 py-0.5 rounded text-xs">
-                            <i class="fas fa-video mr-1"></i> فيديو ${videoWatermark}
-                        </div>
-                    </div>
+                <div class="flex items-center gap-2 bg-black/20 rounded-lg px-3 py-2 text-xs">
+                    <i class="fas fa-eye${alreadyViewed ? '' : '-slash'} ${alreadyViewed ? 'text-green-400' : 'text-yellow-400'}"></i>
+                    <span>فيديو (مشاهدة مرة واحدة)</span>
+                    <span class="ml-auto ${alreadyViewed ? 'text-green-400' : 'text-gray-400'}" data-view-once-status="${message._id}">
+                        ${alreadyViewed ? 'تم فتحها ✓' : 'لم تُفتح بعد'}
+                    </span>
                 </div>
             `;
-            break;
+        } else if (alreadyViewed) {
+            messageContent = `
+                <div class="flex items-center gap-2 bg-gray-700/60 rounded-lg px-3 py-2 text-xs text-gray-400">
+                    <i class="fas fa-eye-slash"></i>
+                    <span>تمت مشاهدة هذا الفيديو</span>
+                </div>
+            `;
+        } else {
+            messageContent = `
+                <button class="view-once-video-btn bg-gray-700 hover:bg-gray-600 rounded-lg px-3 py-1.5 text-sm transition flex items-center gap-2"
+                        data-video-url="${message.content}"
+                        data-message-id="${message._id}">
+                    <i class="fas fa-eye text-yellow-400"></i>
+                    <span>مشاهدة فيديو مرة واحدة</span>
+                </button>
+            `;
+        }
+    } else {
+        // ✅ الإصلاح: أبعاد صريحة أكبر (250×180) + زر تشغيل أوضح وأكبر بدل الحجم الصغير جداً السابق
+        const videoWatermark = meta.hasWatermark ? '<span class="absolute top-2 left-2 bg-black/50 text-xs px-2 py-0.5 rounded-full"><i class="fas fa-copyright"></i> منصة التحديات</span>' : '';
+        messageContent = `
+            <div class="relative rounded-lg overflow-hidden w-[250px] h-[180px] bg-black">
+                <img src="${meta.thumbnail || 'data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 250 180%27%3E%3Crect width=%27250%27 height=%27180%27 fill=%27%23374151%27/%3E%3C/svg%3E'}" class="w-full h-full object-cover">
+                <button class="absolute inset-0 flex items-center justify-center play-video-btn bg-black/20 hover:bg-black/40 transition-colors" data-video-url="${message.content}">
+                    <div class="w-14 h-14 bg-purple-600/90 rounded-full flex items-center justify-center shadow-lg">
+                        <i class="fas fa-play text-white text-2xl ml-1"></i>
+                    </div>
+                </button>
+                ${videoWatermark}
+                <div class="absolute bottom-2 right-2 bg-black/60 px-2 py-0.5 rounded text-xs text-white">
+                    <i class="fas fa-video mr-1"></i>${meta.duration ? meta.duration + 'ث' : 'فيديو'}
+                </div>
+            </div>
+        `;
+    }
+    break;
 
         default:
             messageContent = `<p class="text-white text-sm">${message.content || 'رسالة'}</p>`;
@@ -4333,6 +4439,76 @@ function openViewOnceImage(messageId, imageUrl, messageElement) {
                 <div class="flex items-center gap-2 bg-gray-700/60 rounded-lg px-3 py-2 text-xs text-gray-400">
                     <i class="fas fa-eye-slash"></i>
                     <span>تمت مشاهدة هذه الصورة</span>
+                </div>
+            `;
+        }
+    }
+
+    markMessageAsViewed(messageId);
+}
+
+        // --- 👁️ نافذة مشاهدة الفيديو لمرة واحدة (نفس فلسفة الصورة + مشغل فيديو) ---
+function openViewOnceVideo(messageId, videoUrl, messageElement) {
+    const existing = document.getElementById('view-once-viewer');
+    if (existing) existing.remove();
+
+    const VIEW_SECONDS = 20; // مدة أطول قليلاً من الصورة لأن الفيديو يحتاج وقت مشاهدة
+    let remaining = VIEW_SECONDS;
+
+    const viewerHTML = `
+        <div id="view-once-viewer" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[400] p-6">
+            <div class="relative w-full max-w-sm">
+                <div class="flex items-center justify-between mb-2 text-white text-xs">
+                    <span class="flex items-center gap-1 text-yellow-400">
+                        <i class="fas fa-eye"></i> مشاهدة مرة واحدة
+                    </span>
+                    <span id="view-once-timer" class="font-mono">00:${VIEW_SECONDS.toString().padStart(2, '0')}</span>
+                </div>
+                <div class="rounded-xl overflow-hidden border border-yellow-500/30 shadow-2xl bg-black">
+                    <video id="view-once-video-el" src="${videoUrl}" class="w-full max-h-[55vh] object-contain" controls autoplay></video>
+                </div>
+                <div class="w-full bg-gray-700 h-1 rounded-full mt-2 overflow-hidden">
+                    <div id="view-once-progress" class="bg-yellow-400 h-1" style="width:100%"></div>
+                </div>
+                <button id="close-view-once" class="mt-4 w-full bg-gray-800 hover:bg-gray-700 text-white text-sm py-2 rounded-lg">
+                    <i class="fas fa-times mr-1"></i> إغلاق
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', viewerHTML);
+
+    const viewer = document.getElementById('view-once-viewer');
+    const timerEl = document.getElementById('view-once-timer');
+    const progressEl = document.getElementById('view-once-progress');
+    const videoEl = document.getElementById('view-once-video-el');
+    let countdownInterval = null;
+
+    const closeViewer = () => {
+        if (countdownInterval) clearInterval(countdownInterval);
+        if (videoEl) videoEl.pause();
+        if (viewer && viewer.parentNode) viewer.remove();
+    };
+
+    document.getElementById('close-view-once').addEventListener('click', closeViewer);
+    viewer.addEventListener('click', (e) => {
+        if (e.target.id === 'view-once-viewer') closeViewer();
+    });
+
+    countdownInterval = setInterval(() => {
+        remaining--;
+        if (timerEl) timerEl.textContent = `00:${Math.max(remaining, 0).toString().padStart(2, '0')}`;
+        if (progressEl) progressEl.style.width = `${(remaining / VIEW_SECONDS) * 100}%`;
+        if (remaining <= 0) closeViewer();
+    }, 1000);
+
+    if (messageElement) {
+        const btn = messageElement.querySelector('.view-once-video-btn');
+        if (btn) {
+            btn.outerHTML = `
+                <div class="flex items-center gap-2 bg-gray-700/60 rounded-lg px-3 py-2 text-xs text-gray-400">
+                    <i class="fas fa-eye-slash"></i>
+                    <span>تمت مشاهدة هذا الفيديو</span>
                 </div>
             `;
         }
