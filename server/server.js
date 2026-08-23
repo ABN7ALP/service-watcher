@@ -44,6 +44,7 @@ app.use('/api/friends', require('./routes/friendRoutes')); // ✅✅ أضف هذ
 app.use('/api/blocks', require('./routes/blockRoutes')); // ✅ أضف هذا السطر
 app.use('/api/private-chat', require('./routes/privateChatRoutes')); // ⭐ الجديد
 app.use('/api/chat-media', require('./routes/chatMediaRoutes')); // ⭐ الجديد
+app.use('/api/gifts', require('./routes/giftRoutes')); // ✅ نظام الهدايا والمتصدرين
 
 
 // --- مسار "التقاط الكل" لخدمة الواجهة الأمامية --
