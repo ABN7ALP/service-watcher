@@ -559,23 +559,27 @@ function renderMessagesList(chats) {
         const other = chat.otherParticipant;
         if (!other) return '';
 
-        const preview = getLastMessagePreview(chat, currentUserId);
-        const hasUnread = chat.unreadCount > 0;
+        const isBlocked = chat.isBlockedByMe;
+        const preview = isBlocked
+            ? { icon: '<i class="fas fa-ban text-red-400"></i>', text: 'لقد قمت بحظر هذا المستخدم' }
+            : getLastMessagePreview(chat, currentUserId);
+
+        const hasUnread = chat.unreadCount > 0 && !isBlocked;
         const timeText = chat.lastMessageAt ? formatChatTime(chat.lastMessageAt) : '';
 
         return `
-            <div class="message-item flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all hover:bg-gray-700/40 ${hasUnread ? 'bg-purple-900/20 border border-purple-500/20' : 'bg-gray-800/20'}" 
+            <div class="message-item flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all hover:bg-gray-700/40 ${hasUnread ? 'bg-purple-900/20 border border-purple-500/20' : 'bg-gray-800/20'} ${isBlocked ? 'opacity-70' : ''}" 
                  data-user-id="${other._id}" data-username="${other.username}">
                 <div class="relative flex-shrink-0">
-                    <img src="${other.profileImage}" class="w-12 h-12 rounded-full object-cover border-2 ${hasUnread ? 'border-purple-500' : 'border-gray-600'}">
+                    <img src="${other.profileImage}" class="w-12 h-12 rounded-full object-cover border-2 ${isBlocked ? 'border-red-500 grayscale' : hasUnread ? 'border-purple-500' : 'border-gray-600'}">
                     ${hasUnread ? `<span class="absolute -top-1 -right-1 bg-purple-600 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">${chat.unreadCount > 9 ? '9+' : chat.unreadCount}</span>` : ''}
                 </div>
                 <div class="flex-1 min-w-0">
-                    <div class="flex justify-between items-center">
+                    <div class="flex justify-between items-center gap-2">
                         <span class="font-bold text-sm truncate ${hasUnread ? 'text-white' : 'text-gray-300'}">${other.username}</span>
-                        <span class="text-xs flex-shrink-0 ${hasUnread ? 'text-purple-400 font-bold' : 'text-gray-500'}">${timeText}</span>
+                        ${isBlocked ? '<span class="text-[10px] bg-red-900/40 text-red-300 px-2 py-0.5 rounded-full flex-shrink-0">محظور</span>' : `<span class="text-xs flex-shrink-0 ${hasUnread ? 'text-purple-400 font-bold' : 'text-gray-500'}">${timeText}</span>`}
                     </div>
-                    <div class="flex items-center gap-1 text-xs truncate mt-0.5 ${hasUnread ? 'text-gray-200' : 'text-gray-400'}">
+                    <div class="flex items-center gap-1 text-xs truncate mt-0.5 ${isBlocked ? 'text-red-400' : hasUnread ? 'text-gray-200' : 'text-gray-400'}">
                         ${preview.icon}
                         <span class="truncate">${preview.text}</span>
                     </div>
@@ -2267,11 +2271,19 @@ async function showMiniProfileModal(userId) {
                 return;
             }
 
-            if (e.target.closest('.message-btn')) {
-                const userId = e.target.closest('.message-btn').dataset.userId;
+                       if (e.target.closest('.message-btn')) {
+                const clickedUserId = e.target.closest('.message-btn').dataset.userId;
                 const username = e.target.closest('.message-btn').closest('#mini-profile-modal')?.querySelector('h2')?.textContent || 'المستخدم';
                 
-                openPrivateChat(userId, username);
+                // ✅ الإصلاح: إذا كانت نفس المحادثة مفتوحة أصلاً خلف البروفايل، نغلق البروفايل فقط
+                // بدل فتح نافذة دردشة مكررة فوقها
+                const existingChatModal = document.getElementById('private-chat-modal');
+                if (existingChatModal && existingChatModal.dataset.targetUserId === clickedUserId) {
+                    modal.remove();
+                } else {
+                    modal.remove();
+                    openPrivateChat(clickedUserId, username);
+                }
                 return;
             }
             
@@ -2304,16 +2316,16 @@ async function showMiniProfileModal(userId) {
 
         
 // --- 📨 دالة فتح الدردشة الخاصة ---
-// --- 📨 دالة فتح الدردشة الخاصة ---
 async function openPrivateChat(targetUserId, targetUsername = 'المستخدم') {
     console.log(`[CHAT] Opening private chat with: ${targetUserId} (${targetUsername})`);
     
-    // 1. إغلاق نافذة البروفايل المصغر إذا كانت مفتوحة
     const profileModal = document.getElementById('mini-profile-modal');
     if (profileModal) profileModal.remove();
+
+    // ✅ منع تكرار نوافذ الدردشة: إذا فيه نافذة مفتوحة لشخص آخر، نغلقها أولاً
+    const existingChatModal = document.getElementById('private-chat-modal');
+    if (existingChatModal) existingChatModal.remove();
     
-    // ✅ الإصلاح: نبني ونعرض نافذة الدردشة فوراً (بحالة تحميل) بدل انتظار فحص الحظر أولاً
-    // هذا يعطي إحساس استجابة فورية للمستخدم
     const chatHTML = `
         <div id="private-chat-modal" data-target-user-id="${targetUserId}" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[300] p-2 md:p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl h-[85vh] md:h-[80vh] flex flex-col overflow-hidden border-2 border-purple-500/30">
@@ -2353,7 +2365,7 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                     </div>
                 </div>
                 
-                <div class="p-3 border-t border-gray-700 bg-gray-900/50">
+                <div id="private-chat-input-area" class="p-3 border-t border-gray-700 bg-gray-900/50">
                     <div id="chat-options-bar" class="hidden mb-3 p-3 bg-gray-800/50 rounded-xl">
                         <div class="grid grid-cols-3 gap-3 text-center">
                             <button class="chat-media-btn" data-type="image">
@@ -2390,18 +2402,6 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
     <i class="fas fa-microphone text-white"></i>
 </button>
                     </div>
-                    
-                    <div id="file-upload-info" class="hidden mt-3 p-2 bg-gray-800 rounded-lg">
-                        <div class="flex items-center justify-between">
-                            <span class="text-sm text-gray-300">جاري رفع صورة...</span>
-                            <div class="flex items-center gap-2">
-                                <span class="text-xs text-gray-400">75%</span>
-                                <button class="text-red-400 hover:text-red-300">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -2409,11 +2409,8 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
     
     document.getElementById('game-container').insertAdjacentHTML('beforeend', chatHTML);
     
-    // ربط الأحداث فوراً حتى تكون النافذة قابلة للتفاعل من أول لحظة
     setupPrivateChatEvents(targetUserId);
 
-    // ✅ الإصلاح: تشغيل فحص الحظر وجلب بيانات المستخدم وسجل المحادثة كلها بالتوازي
-    // بدل انتظار كل واحدة على حدة بالتسلسل (كان هذا سبب البطء الأساسي)
     const [blockCheckResult] = await Promise.allSettled([
         fetch(`/api/blocks/mutual-status/${targetUserId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -2422,16 +2419,75 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
         loadChatHistoryFromServer(targetUserId)
     ]);
 
-    // التحقق من نتيجة فحص الحظر بعد ما صارت متوازية مع الباقي
     if (blockCheckResult.status === 'fulfilled') {
         const blockResult = blockCheckResult.value;
-        if (blockResult?.data?.blockStatus?.heBlockedMe) {
+        const status = blockResult?.data?.blockStatus;
+
+        if (status?.heBlockedMe) {
             const modal = document.getElementById('private-chat-modal');
             if (modal) modal.remove();
             showNotification('لا يمكنك مراسلة مستخدم حظرك', 'error');
             return;
         }
+
+        // ✅ جديد: إذا أنا من حظرته، نقفل شريط الإدخال بدل السماح بمحاولة إرسال فاشلة
+        if (status?.iBlockedHim) {
+            lockChatForBlockedUser(targetUserId, targetUsername);
+        }
     }
+}
+
+// --- 🔒 قفل شريط الإدخال عند وجود حظر من طرفي أنا للمستخدم الآخر ---
+function lockChatForBlockedUser(targetUserId, targetUsername) {
+    const inputArea = document.getElementById('private-chat-input-area');
+    if (!inputArea) return;
+
+    inputArea.innerHTML = `
+        <div class="text-center">
+            <p class="text-sm text-red-400 mb-3">
+                <i class="fas fa-ban mr-1"></i> لقد قمت بحظر ${targetUsername}، لا يمكنك مراسلته
+            </p>
+            <div class="flex gap-2">
+                <button id="locked-chat-unblock-btn" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg text-sm font-bold">
+                    <i class="fas fa-unlock mr-1"></i> رفع الحظر
+                </button>
+                <button id="locked-chat-delete-btn" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg text-sm font-bold">
+                    <i class="fas fa-trash mr-1"></i> حذف المحادثة
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('locked-chat-unblock-btn').addEventListener('click', async () => {
+        const success = await unblockUser(targetUserId, null);
+        if (success) {
+            const modal = document.getElementById('private-chat-modal');
+            if (modal) modal.remove();
+            openPrivateChat(targetUserId, targetUsername);
+        }
+    });
+
+    document.getElementById('locked-chat-delete-btn').addEventListener('click', () => {
+        showConfirmationModal('هل أنت متأكد من حذف هذه المحادثة من قائمتك؟', async () => {
+            try {
+                const response = await fetch(`/api/private-chat/chat/${targetUserId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    showNotification('تم حذف المحادثة', 'success');
+                    const modal = document.getElementById('private-chat-modal');
+                    if (modal) modal.remove();
+                    if (document.getElementById('messages-list-container')) loadMessagesList();
+                } else {
+                    showNotification('فشل حذف المحادثة', 'error');
+                }
+            } catch (error) {
+                console.error('[DELETE CHAT] Error:', error);
+                showNotification('خطأ في الاتصال بالخادم', 'error');
+            }
+        });
+    });
 }
 
 
