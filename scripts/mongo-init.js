@@ -63,13 +63,13 @@ db.users.insertOne({
 // Insert sample gifts
 const gifts = [
     {
-        name: 'قلب صغير',
+        name: 'وردة',
         description: 'هدية بسيطة تعبر عن الإعجاب',
-        imageUrl: 'https://res.cloudinary.com/your-cloud/image/upload/v1/gifts/small_heart.png',
-        price: 10,
+        imageUrl: 'https://res.cloudinary.com/your-cloud/image/upload/v1/gifts/rose.png',
+        price: 3,
         category: 'common',
         animation: 'heartbeat',
-        sound: 'heart_sound.mp3',
+        sound: 'rose_sound.mp3',
         isActive: true,
         discount: 0,
         sortOrder: 1,
@@ -77,13 +77,13 @@ const gifts = [
         updatedAt: new Date()
     },
     {
-        name: 'نجمة ذهبية',
-        description: 'هدية مميزة للمتميزين',
-        imageUrl: 'https://res.cloudinary.com/your-cloud/image/upload/v1/gifts/gold_star.png',
-        price: 50,
+        name: 'ثعلب',
+        description: 'هدية مميزة وأنيقة',
+        imageUrl: 'https://res.cloudinary.com/your-cloud/image/upload/v1/gifts/fox.png',
+        price: 15,
         category: 'rare',
         animation: 'sparkle',
-        sound: 'star_sound.mp3',
+        sound: 'fox_sound.mp3',
         isActive: true,
         discount: 0,
         sortOrder: 2,
@@ -91,15 +91,15 @@ const gifts = [
         updatedAt: new Date()
     },
     {
-        name: 'تاج الملك',
-        description: 'للأفضل والأقوى',
-        imageUrl: 'https://res.cloudinary.com/your-cloud/image/upload/v1/gifts/king_crown.png',
-        price: 100,
+        name: 'حديقة',
+        description: 'هدية فاخرة للمناسبات الخاصة',
+        imageUrl: 'https://res.cloudinary.com/your-cloud/image/upload/v1/gifts/garden.png',
+        price: 80,
         category: 'epic',
         animation: 'glow',
-        sound: 'crown_sound.mp3',
+        sound: 'garden_sound.mp3',
         isActive: true,
-        discount: 10,
+        discount: 0,
         sortOrder: 3,
         createdAt: new Date(),
         updatedAt: new Date()
