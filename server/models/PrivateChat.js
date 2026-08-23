@@ -64,6 +64,12 @@ const privateChatSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+
+        // ✅ جديد: قائمة المستخدمين الذين اختاروا حذف/إخفاء هذه المحادثة من قائمتهم فقط
+    hiddenBy: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
     
     // تفضيلات المستخدمين
     userPreferences: {
