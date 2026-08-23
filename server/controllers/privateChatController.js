@@ -265,25 +265,25 @@ exports.sendMessage = async (req, res) => {
 // =================================================
 // جلب قائمة الدردشات
 // =================================================
-// =================================================
-// جلب قائمة الدردشات
-// =================================================
 exports.getChatList = async (req, res) => {
     try {
         const userId = req.user.id;
 
         const chats = await PrivateChat.find({
             participants: userId,
-            isActive: true
+            isActive: true,
+            hiddenBy: { $ne: userId } // ✅ استثناء المحادثات التي حذفها هذا المستخدم فقط
         })
         .populate('participants', 'username profileImage customId')
         .sort('-lastMessageAt')
         .limit(50)
         .lean();
 
+        // ✅ جلب قائمة من حظرهم المستخدم الحالي (متاحة أصلاً في req.user)
+        const myBlockedIds = (req.user.blockedUsers || []).map(id => id.toString());
+
         const enrichedChats = await Promise.all(
             chats.map(async (chat) => {
-                // جلب آخر رسالة كاملة (نص/نوع/محتوى)
                 const lastMessageDoc = await PrivateMessage.findOne(
                     { chatId: chat.chatId }
                 )
@@ -304,14 +304,18 @@ exports.getChatList = async (req, res) => {
                     ? chat.participants.find(p => p._id.toString() !== userId.toString())
                     : null;
 
+                // ✅ جديد: هل قمت بحظر هذا الشخص؟
+                const isBlockedByMe = otherParticipant
+                    ? myBlockedIds.includes(otherParticipant._id.toString())
+                    : false;
+
                 return {
                     ...chat,
-                    // ✅ الإصلاح: نُبقي على النص الأصلي المخزّن في chat.lastMessage كما هو (string)
-                    // ونضيف كائن الرسالة الكاملة باسم منفصل حتى لا يحدث تعارض بالأنواع
-                    lastMessage: chat.lastMessage, // يبقى نص كما هو من الـ schema الأصلي
-                    lastMessageDetails: lastMessageDoc, // كائن الرسالة الكامل (النوع، المحتوى، المرسل...)
+                    lastMessage: chat.lastMessage,
+                    lastMessageDetails: lastMessageDoc,
                     unreadCount: unreadCount,
-                    otherParticipant: otherParticipant
+                    otherParticipant: otherParticipant,
+                    isBlockedByMe: isBlockedByMe
                 };
             })
         );
@@ -693,6 +697,33 @@ exports.sendMediaMessage = async (req, res) => {
     }
 };
 
+// =================================================
+// حذف/إخفاء محادثة من قائمة مستخدم واحد فقط (لا تُحذف للطرف الآخر)
+// =================================================
+exports.hideChatForUser = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const otherUserId = req.params.userId;
 
+        const participants = [userId, otherUserId].sort();
+        const chatId = participants.join('_');
+
+        const chat = await PrivateChat.findOne({ chatId });
+        if (!chat) {
+            return res.status(200).json({ status: 'success', message: 'لا توجد محادثة لحذفها' });
+        }
+
+        const alreadyHidden = chat.hiddenBy.map(id => id.toString()).includes(userId.toString());
+        if (!alreadyHidden) {
+            chat.hiddenBy.push(userId);
+            await chat.save();
+        }
+
+        res.status(200).json({ status: 'success', message: 'تم حذف المحادثة من قائمتك' });
+    } catch (error) {
+        console.error('[ERROR] in hideChatForUser:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
 
 module.exports = exports;
