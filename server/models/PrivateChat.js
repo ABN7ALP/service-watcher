@@ -76,11 +76,6 @@ const privateChatSchema = new mongoose.Schema({
         default: {}
     },
     
-    // حذف بعد 12 ساعة
-    autoDeleteAt: {
-        type: Date,
-        default: () => new Date(Date.now() + 12 * 60 * 60 * 1000) // 12 ساعة
-    },
     
     // علامات
     isReported: {
@@ -141,7 +136,6 @@ privateChatSchema.virtual('participantNames').get(function() {
 privateChatSchema.index({ chatId: 1 }, { unique: true });
 privateChatSchema.index({ participants: 1 });
 privateChatSchema.index({ lastMessageAt: -1 });
-privateChatSchema.index({ autoDeleteAt: 1 }, { expireAfterSeconds: 0 });
 
 const PrivateChat = mongoose.model('PrivateChat', privateChatSchema);
 module.exports = PrivateChat;
