@@ -392,8 +392,9 @@ navItems.forEach(item => {
         if (targetId === 'settings') {
             showSettingsView();
         } else if (targetId === 'messages') {
-            // ✅ جديد: عرض قسم الرسائل
             showMessagesView();
+        } else if (targetId === 'leaderboard') {
+            showLeaderboardView();
         } else {
             showArenaView();
         }
@@ -1837,6 +1838,11 @@ socket.on('levelUp', ({ newLevel }) => {
     }
 });
 
+        socket.on('giftReceived', (data) => {
+    showFloatingAlert(`🎁 ${data.fromUsername} أرسل لك ${data.giftName} × ${data.quantity}`, 'fa-gift', 'bg-pink-500');
+    refreshUserData();
+});
+
 // =================================================
 // ✅ مستمعات لتحديث البيانات تلقائياً عند الحظر
 // =================================================
@@ -2213,12 +2219,16 @@ async function showMiniProfileModal(userId) {
                         </div>
                     </div>
                     
-                    <div id="profile-action-buttons" class="grid grid-cols-4 gap-2 border-t border-gray-700/50 p-4">
+                         <div id="profile-action-buttons" class="grid grid-cols-5 gap-2 border-t border-gray-700/50 p-4">
                         ${friendButtonHTML}
                         <button class="action-btn message-btn" data-user-id="${profileUser._id}">
                               <i class="fas fa-comment-dots"></i>
                            <span class="text-xs mt-1">رسالة</span>
                          </button>
+                        <button class="action-btn gift-action-btn text-pink-400 hover:bg-pink-900" data-user-id="${profileUser._id}">
+                            <i class="fas fa-gift"></i>
+                            <span class="text-xs mt-1">هدية</span>
+                        </button>
                         ${blockButtonHTML}
                         <button class="action-btn close-mini-profile-btn">
                             <i class="fas fa-times"></i>
@@ -2284,6 +2294,14 @@ async function showMiniProfileModal(userId) {
                     modal.remove();
                     openPrivateChat(clickedUserId, username);
                 }
+                return;
+            }
+
+            // زر إرسال هدية
+            if (e.target.closest('.gift-action-btn')) {
+                const giftTargetId = e.target.closest('.gift-action-btn').dataset.userId;
+                const giftUsername = modal.querySelector('h2')?.textContent || 'المستخدم';
+                showGiftStoreModal(giftTargetId, giftUsername);
                 return;
             }
             
@@ -2489,6 +2507,276 @@ function lockChatForBlockedUser(targetUserId, targetUsername) {
         });
     });
 }
+
+
+
+// =================================================
+// ============ نظام الهدايا (Gifts) ================
+// =================================================
+
+async function showGiftStoreModal(targetUserId, targetUsername) {
+    const existing = document.getElementById('gift-store-modal');
+    if (existing) existing.remove();
+
+    const shellHTML = `
+        <div id="gift-store-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-lg text-white border border-gray-700 max-h-[85vh] flex flex-col">
+                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <h3 class="text-lg font-bold flex items-center gap-2">
+                        <i class="fas fa-gift text-pink-400"></i>
+                        إرسال هدية لـ ${targetUsername}
+                    </h3>
+                    <button id="close-gift-store" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="gift-store-body" class="p-4 overflow-y-auto flex-1">
+                    <div class="text-center text-gray-400 py-10">
+                        <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                        <p class="text-sm">جاري تحميل متجر الهدايا...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+    const modal = document.getElementById('gift-store-modal');
+
+    document.getElementById('close-gift-store').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'gift-store-modal') modal.remove();
+    });
+
+    try {
+        const response = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await response.json();
+        if (!response.ok || result.status !== 'success') throw new Error('فشل تحميل المتجر');
+
+        const gifts = result.data.gifts;
+        const currentUser = JSON.parse(localStorage.getItem('user'));
+        const body = document.getElementById('gift-store-body');
+        if (!body) return;
+
+        body.innerHTML = `
+            <div class="flex items-center justify-between mb-4 bg-gray-900/50 rounded-xl p-3">
+                <span class="text-sm text-gray-400">رصيدك الحالي</span>
+                <span class="font-bold text-yellow-400 flex items-center gap-1">
+                    <i class="fas fa-coins"></i> <span id="gift-store-balance">${currentUser.coins || 0}</span>
+                </span>
+            </div>
+            <div id="gift-cards-grid" class="grid grid-cols-3 gap-3 mb-4">
+                ${gifts.map(g => `
+                    <button class="gift-card-btn flex flex-col items-center bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-xl p-3 transition"
+                            data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}">
+                        <img src="${g.imageUrl}" class="w-14 h-14 object-contain mb-2" onerror="this.style.opacity='0.3'">
+                        <span class="text-xs font-bold text-center truncate w-full">${g.name}</span>
+                        <span class="text-xs text-yellow-400 flex items-center gap-1 mt-1">
+                            <i class="fas fa-coins"></i> ${g.discountedPrice || g.price}
+                        </span>
+                    </button>
+                `).join('')}
+            </div>
+            <div id="gift-selected-panel" class="hidden bg-gray-900/50 rounded-xl p-3">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-sm">الكمية</span>
+                    <div class="flex items-center gap-3">
+                        <button id="gift-qty-minus" class="w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded-full">-</button>
+                        <span id="gift-qty-value" class="font-bold w-6 text-center">1</span>
+                        <button id="gift-qty-plus" class="w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded-full">+</button>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between mb-3 text-sm">
+                    <span class="text-gray-400">الإجمالي</span>
+                    <span id="gift-total-price" class="font-bold text-yellow-400">0 <i class="fas fa-coins"></i></span>
+                </div>
+                <button id="send-gift-btn" class="w-full bg-pink-600 hover:bg-pink-700 text-white py-2.5 rounded-lg font-bold flex items-center justify-center gap-2">
+                    <i class="fas fa-paper-plane"></i> إرسال الهدية
+                </button>
+            </div>
+        `;
+
+        let selectedGift = null;
+        let quantity = 1;
+
+        function updateSelectedPanel() {
+            const panel = document.getElementById('gift-selected-panel');
+            if (!selectedGift) { panel.classList.add('hidden'); return; }
+            panel.classList.remove('hidden');
+            document.getElementById('gift-qty-value').textContent = quantity;
+            document.getElementById('gift-total-price').innerHTML = `${selectedGift.price * quantity} <i class="fas fa-coins"></i>`;
+        }
+
+        body.querySelectorAll('.gift-card-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                body.querySelectorAll('.gift-card-btn').forEach(b => b.classList.remove('ring-2', 'ring-pink-500'));
+                btn.classList.add('ring-2', 'ring-pink-500');
+                selectedGift = {
+                    id: btn.dataset.giftId,
+                    name: btn.dataset.giftName,
+                    price: parseFloat(btn.dataset.giftPrice)
+                };
+                quantity = 1;
+                updateSelectedPanel();
+            });
+        });
+
+        body.addEventListener('click', (e) => {
+            if (e.target.id === 'gift-qty-minus') { quantity = Math.max(1, quantity - 1); updateSelectedPanel(); }
+            if (e.target.id === 'gift-qty-plus') { quantity = Math.min(50, quantity + 1); updateSelectedPanel(); }
+            if (e.target.closest('#send-gift-btn')) {
+                if (!selectedGift) return;
+                sendGiftToUser(targetUserId, selectedGift, quantity, modal);
+            }
+        });
+
+    } catch (error) {
+        console.error('[GIFT STORE] Error:', error);
+        const body = document.getElementById('gift-store-body');
+        if (body) body.innerHTML = `<div class="text-center text-red-400 py-10"><i class="fas fa-exclamation-circle text-2xl mb-2"></i><p class="text-sm">فشل تحميل المتجر</p></div>`;
+    }
+}
+
+async function sendGiftToUser(targetUserId, gift, quantity, modal) {
+    const sendBtn = document.getElementById('send-gift-btn');
+    if (sendBtn) {
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
+    }
+
+    try {
+        const response = await fetch('/api/gifts/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ receiverId: targetUserId, giftId: gift.id, quantity: quantity, context: 'private_chat' })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            const localUser = JSON.parse(localStorage.getItem('user'));
+            localUser.coins = result.data.newSenderCoins;
+            localStorage.setItem('user', JSON.stringify(localUser));
+            const coinsEl = document.getElementById('coins');
+            if (coinsEl) coinsEl.textContent = localUser.coins;
+
+            showNotification(`تم إرسال ${gift.name} بنجاح 🎁`, 'success');
+            if (modal) modal.remove();
+        } else {
+            showNotification(result.message || 'فشل إرسال الهدية', 'error');
+        }
+    } catch (error) {
+        console.error('[SEND GIFT] Error:', error);
+        showNotification('خطأ في الاتصال بالخادم', 'error');
+    } finally {
+        if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الهدية';
+        }
+    }
+}
+
+// =================================================
+// ============ قسم المتصدرين (Leaderboard) =========
+// =================================================
+
+async function showLeaderboardView() {
+    mainContent.innerHTML = `
+        <div class="flex flex-col h-full">
+            <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                <i class="fas fa-trophy text-yellow-400"></i> المتصدرين (هذا الشهر)
+            </h2>
+            <div class="flex gap-2 mb-4">
+                <button id="lb-tab-senders" class="flex-1 py-2 rounded-lg text-sm font-bold bg-purple-600 text-white transition">
+                    <i class="fas fa-hand-holding-heart mr-1"></i> الأكثر إهداءً
+                </button>
+                <button id="lb-tab-receivers" class="flex-1 py-2 rounded-lg text-sm font-bold bg-gray-700 text-gray-300 transition">
+                    <i class="fas fa-crown mr-1"></i> الأكثر تلقياً
+                </button>
+            </div>
+            <div id="leaderboard-list-container" class="flex-grow overflow-y-auto space-y-2 pr-1">
+                <div class="text-center text-gray-400 py-16">
+                    <i class="fas fa-spinner fa-spin text-3xl mb-3"></i>
+                    <p class="text-sm">جاري التحميل...</p>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('lb-tab-senders').addEventListener('click', () => {
+        setLeaderboardTab('senders');
+        loadLeaderboard('senders');
+    });
+    document.getElementById('lb-tab-receivers').addEventListener('click', () => {
+        setLeaderboardTab('receivers');
+        loadLeaderboard('receivers');
+    });
+
+    await loadLeaderboard('senders');
+}
+
+function setLeaderboardTab(active) {
+    const sendersBtn = document.getElementById('lb-tab-senders');
+    const receiversBtn = document.getElementById('lb-tab-receivers');
+    if (active === 'senders') {
+        sendersBtn.classList.add('bg-purple-600', 'text-white');
+        sendersBtn.classList.remove('bg-gray-700', 'text-gray-300');
+        receiversBtn.classList.add('bg-gray-700', 'text-gray-300');
+        receiversBtn.classList.remove('bg-purple-600', 'text-white');
+    } else {
+        receiversBtn.classList.add('bg-purple-600', 'text-white');
+        receiversBtn.classList.remove('bg-gray-700', 'text-gray-300');
+        sendersBtn.classList.add('bg-gray-700', 'text-gray-300');
+        sendersBtn.classList.remove('bg-purple-600', 'text-white');
+    }
+}
+
+async function loadLeaderboard(type) {
+    const container = document.getElementById('leaderboard-list-container');
+    if (!container) return;
+
+    container.innerHTML = `<div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-3xl mb-3"></i><p class="text-sm">جاري التحميل...</p></div>`;
+
+    const endpoint = type === 'senders' ? '/api/gifts/leaderboard/top-senders' : '/api/gifts/leaderboard/top-receivers';
+
+    try {
+        const response = await fetch(endpoint, { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await response.json();
+        if (!response.ok || result.status !== 'success') throw new Error('فشل التحميل');
+
+        const leaders = result.data.leaders;
+        if (!leaders || leaders.length === 0) {
+            container.innerHTML = `<div class="text-center text-gray-400 py-16"><i class="fas fa-gift text-4xl mb-4"></i><p>لا توجد بيانات بعد لهذا الشهر</p></div>`;
+            return;
+        }
+
+        const valueKey = type === 'senders' ? 'totalSpent' : 'totalReceived';
+        const rankColors = ['from-yellow-400 to-orange-500', 'from-gray-300 to-gray-500', 'from-orange-600 to-orange-800'];
+
+        container.innerHTML = leaders.map((leader, index) => `
+            <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-800/40 hover:bg-gray-700/40 transition">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${index < 3 ? `bg-gradient-to-br ${rankColors[index]} text-white` : 'bg-gray-700 text-gray-300'}">
+                    ${index + 1}
+                </div>
+                <img src="${leader.profileImage}" class="w-11 h-11 rounded-full object-cover border-2 border-gray-600">
+                <div class="flex-1 min-w-0">
+                    <p class="font-bold text-sm truncate">${leader.username}</p>
+                    <p class="text-xs text-gray-400">${leader.giftsCount} هدية</p>
+                </div>
+                <div class="text-left flex-shrink-0">
+                    <span class="font-bold text-yellow-400 flex items-center gap-1 text-sm">
+                        <i class="fas fa-coins"></i> ${leader[valueKey].toLocaleString()}
+                    </span>
+                </div>
+            </div>
+        `).join('');
+
+    } catch (error) {
+        console.error('[LEADERBOARD] Error:', error);
+        container.innerHTML = `<div class="text-center text-red-400 py-16"><i class="fas fa-exclamation-circle text-3xl mb-3"></i><p class="text-sm">فشل تحميل المتصدرين</p></div>`;
+    }
+}
+
+
+        
 
 
 // --- 📡 دالة تحميل تاريخ المحادثة من الخادم ---
