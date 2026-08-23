@@ -2141,7 +2141,7 @@ async function showMiniProfileModal(userId) {
             </button>`;
 
         const modalHTML = `
-            <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
+         <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[310] p-4">
                 <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-purple-500/30">
                     
                     <div class="flex flex-col items-center px-4 pt-6">
@@ -2812,13 +2812,12 @@ function handleMediaButtonClick(type, targetUserId) {
 
     
     
-        // =================================================
+ // =================================================
 // 🎤 دالة تسجيل الصوت بنظام مبسط (بدون سحب)
 // =================================================
 function startWhatsAppStyleRecording(targetUserId) {
     console.log(`[VOICE] Starting simplified recording for: ${targetUserId}`);
     
-    // منع تسجيل جديد إذا كان هناك تسجيل قيد التشغيل
     if (window.isRecordingActive) {
         console.log('[VOICE] Recording already in progress');
         return;
@@ -2830,7 +2829,6 @@ function startWhatsAppStyleRecording(targetUserId) {
         return;
     }
     
-    // حفظ العناصر الأصلية
     const originalInput = document.getElementById('private-message-input');
     const originalSendBtn = document.getElementById('send-private-message');
     const originalCharCounter = document.getElementById('private-char-count');
@@ -2840,29 +2838,23 @@ function startWhatsAppStyleRecording(targetUserId) {
         return;
     }
     
-    // وضع علامة أن هناك تسجيل قيد التشغيل
     window.isRecordingActive = true;
     
-    // إخفاء العناصر الأصلية
     originalInput.style.display = 'none';
     if (originalCharCounter) originalCharCounter.style.display = 'none';
     
-    // إنشاء واجهة التسجيل المبسطة
     const recordingUI = document.createElement('div');
     recordingUI.id = 'voice-recording-ui';
     recordingUI.className = 'flex items-center justify-between w-full bg-gray-800 rounded-full px-6 py-4 shadow-lg border-2 border-purple-600';
     recordingUI.innerHTML = `
         <div class="flex items-center gap-4">
-            <!-- مؤشر التسجيل -->
             <div id="recording-indicator" class="relative">
                 <div class="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center animate-pulse">
                     <i class="fas fa-microphone text-white"></i>
                 </div>
-                <!-- نقطة حمراء -->
                 <div class="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-gray-800"></div>
             </div>
             
-            <!-- معلومات التسجيل -->
             <div class="flex flex-col">
                 <p id="recording-status" class="text-sm font-bold text-white">جاري التسجيل...</p>
                 <p id="recording-timer" class="text-xs text-gray-300">00:00</p>
@@ -2870,23 +2862,19 @@ function startWhatsAppStyleRecording(targetUserId) {
             </div>
         </div>
         
-        <!-- أزرار التحكم -->
         <div class="flex items-center gap-4">
-            <!-- زر الإلغاء -->
             <button id="cancel-recording" 
                     class="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-red-600 text-white rounded-full transition-all duration-300">
                 <i class="fas fa-times"></i>
                 <span class="text-sm">إلغاء</span>
             </button>
             
-            <!-- زر الإرسال -->
             <button id="send-recording" 
                     class="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-full transition-all duration-300 hidden">
                 <i class="fas fa-paper-plane"></i>
                 <span class="text-sm">إرسال</span>
             </button>
             
-            <!-- زر التوقف/الاستئناف (يظهر أثناء التسجيل) -->
             <button id="stop-recording" 
                     class="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-full transition-all duration-300">
                 <i class="fas fa-stop"></i>
@@ -2895,18 +2883,16 @@ function startWhatsAppStyleRecording(targetUserId) {
         </div>
     `;
     
-    // وضع واجهة التسجيل مكان حقل النص
     originalInput.parentNode.insertBefore(recordingUI, originalInput.nextSibling);
     
-    // متغيرات التسجيل
     let mediaRecorder = null;
+    let mediaStream = null; // ✅ جديد: نحتفظ بالـ stream نفسه للتحكم بإطفاء المايك يدوياً
     let audioChunks = [];
     let isRecording = true;
     let recordingStartTime = null;
     let recordingTimer = null;
     let recordingDuration = 0;
     
-    // عناصر الواجهة
     const recordingIndicator = document.getElementById('recording-indicator');
     const recordingTimerElement = document.getElementById('recording-timer');
     const recordingStatus = document.getElementById('recording-status');
@@ -2914,10 +2900,8 @@ function startWhatsAppStyleRecording(targetUserId) {
     const sendBtn = document.getElementById('send-recording');
     const stopBtn = document.getElementById('stop-recording');
     
-    // بدء التسجيل
     startRecording();
     
-    // دالة بدء التسجيل
     async function startRecording() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -2928,6 +2912,7 @@ function startWhatsAppStyleRecording(targetUserId) {
                 }
             });
             
+            mediaStream = stream; // ✅ نحفظ المرجع
             mediaRecorder = new MediaRecorder(stream);
             audioChunks = [];
             
@@ -2937,16 +2922,8 @@ function startWhatsAppStyleRecording(targetUserId) {
                 }
             };
             
-            mediaRecorder.onstop = async () => {
-                // لا نفعل شيئاً هنا، ننتظر زر الإرسال
-                console.log('[VOICE] Recording stopped, waiting for send/cancel');
-            };
-            
-            // بدء التسجيل
             mediaRecorder.start();
             recordingStartTime = Date.now();
-            
-            // بدء المؤقت
             startTimer();
             
         } catch (error) {
@@ -2956,22 +2933,18 @@ function startWhatsAppStyleRecording(targetUserId) {
         }
     }
     
-    // دالة بدء المؤقت
     function startTimer() {
         recordingTimer = setInterval(() => {
             recordingDuration = Math.floor((Date.now() - recordingStartTime) / 1000);
             
-            // تحديث العرض
             const minutes = Math.floor(recordingDuration / 60).toString().padStart(2, '0');
             const seconds = (recordingDuration % 60).toString().padStart(2, '0');
             recordingTimerElement.textContent = `${minutes}:${seconds}`;
             
-            // تغيير اللون عند الاقتراب من النهاية
             if (recordingDuration >= 13) {
                 recordingTimerElement.classList.add('text-red-400', 'font-bold');
             }
             
-            // إيقاف تلقائي عند 15 ثانية
             if (recordingDuration >= 15) {
                 stopRecording();
                 showNotification('تم الوصول للحد الأقصى (15 ثانية)', 'info');
@@ -2980,39 +2953,46 @@ function startWhatsAppStyleRecording(targetUserId) {
         }, 1000);
     }
     
-    // دالة إيقاف التسجيل
+    // ✅ الإصلاح الأساسي: إطفاء المايك فوراً عند الضغط على "توقف" — مو بعد الإرسال
     function stopRecording() {
         if (mediaRecorder && isRecording) {
             mediaRecorder.stop();
             isRecording = false;
             
-            // إيقاف المؤقت
             if (recordingTimer) {
                 clearInterval(recordingTimer);
                 recordingTimer = null;
             }
+
+            // ✅ إطفاء المايك مباشرة هنا — هذا هو سبب بقاء أيقونة "استخدام المايك" شغالة سابقاً
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
             
-            // تحديث الواجهة
             recordingIndicator.classList.remove('animate-pulse');
             recordingStatus.textContent = 'تم التسجيل ✓';
             recordingStatus.classList.add('text-green-400');
             
-            // تبديل الأزرار
             stopBtn.classList.add('hidden');
             sendBtn.classList.remove('hidden');
         }
     }
     
-    // دالة إلغاء التسجيل
     function cancelRecording() {
         if (mediaRecorder) {
-            mediaRecorder.stop();
+            if (isRecording) mediaRecorder.stop();
             isRecording = false;
             
-            // إيقاف المؤقت
             if (recordingTimer) {
                 clearInterval(recordingTimer);
                 recordingTimer = null;
+            }
+
+            // ✅ إطفاء المايك عند الإلغاء أيضاً
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
             }
             
             showNotification('تم إلغاء التسجيل', 'info');
@@ -3020,94 +3000,73 @@ function startWhatsAppStyleRecording(targetUserId) {
         }
     }
     
-    // دالة إرسال التسجيل
-    async function sendRecording() {
+    // ✅ الإصلاح الثاني: نغلق واجهة التسجيل فوراً عند الضغط على إرسال (إحساس سريع)
+    // ثم يرفع الصوت بالخلفية ويظهر كفقاعة "جاري الإرسال" داخل الدردشة مباشرة
+    function sendRecording() {
         if (audioChunks.length === 0) {
             showNotification('لا يوجد تسجيل لإرساله', 'error');
             return;
         }
         
-        // تحويل إلى Blob
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        
-        // إرسال الصوت
-        await sendVoiceMessage(audioBlob, recordingDuration, targetUserId);
-        
-        // تنظيف
+        const finalDuration = recordingDuration;
+
+        // إغلاق فوري لواجهة التسجيل — لا ننتظر اكتمال الرفع
         cleanupRecordingUI();
+
+        // الرفع والإرسال يحدثان بالخلفية مع فقاعة متفائلة فورية بالدردشة
+        sendVoiceMessage(audioBlob, finalDuration, targetUserId);
     }
     
-    // دالة تنظيف واجهة التسجيل
-    // دالة تنظيف واجهة التسجيل
-function cleanupRecordingUI() {
-    console.log('[VOICE] Cleaning up recording UI');
-    
-    if (recordingUI && recordingUI.parentNode) {
-        recordingUI.remove();
-    }
-    
-    if (originalInput) {
-        originalInput.style.display = '';
-        originalInput.value = '';
-        originalInput.focus();
-    }
-    
-    if (originalCharCounter) {
-        originalCharCounter.style.display = '';
-        originalCharCounter.textContent = '0/200';
-    }
-    
-    // ✅ إعادة تعيين زر الإرسال مع مستمع جديد
-    if (originalSendBtn) {
-        // إزالة المستمع القديم
-        originalSendBtn.removeEventListener('click', originalSendBtn.clickHandler);
-        // إعادة تعيين الزر
-        originalSendBtn.innerHTML = '<i class="fas fa-microphone text-white"></i>';
-        originalSendBtn.dataset.mode = 'voice';
-        originalSendBtn.title = 'تسجيل صوتي';
-        originalSendBtn.classList.remove('bg-red-600', 'bg-green-600');
-        originalSendBtn.classList.add('bg-purple-600');
-        // إضافة مستمع جديد
-        originalSendBtn.clickHandler = function() {
-            if (this.dataset.mode === 'voice') {
-                startWhatsAppStyleRecording(targetUserId);
-            } else {
-                const input = document.getElementById('private-message-input');
-                if (input) {
-                    sendPrivateMessage(targetUserId, input.value.trim());
-                    input.value = '';
-                    const counter = document.getElementById('private-char-count');
-                    if (counter) counter.textContent = '0/200';
-                    updateSendButton();
-                }
-            }
-        };
-        originalSendBtn.addEventListener('click', originalSendBtn.clickHandler);
-    }
-    
-    window.isRecordingActive = false;
-    console.log('[VOICE] isRecordingActive set to false');
-}
-    
-    // أحداث الأزرار
-    if (cancelBtn) {
-        cancelBtn.addEventListener('click', cancelRecording);
-    }
-    
-    if (sendBtn) {
-        sendBtn.addEventListener('click', sendRecording);
-    }
-    
-    if (stopBtn) {
-        stopBtn.addEventListener('click', stopRecording);
-    }
-    
-    // إغلاق عند النقر خارج الواجهة (اختياري)
-    document.addEventListener('click', function outsideClickHandler(e) {
-        if (!recordingUI.contains(e.target) && e.target !== originalSendBtn) {
-            // لا نغلق تلقائياً، نترك المستخدم يقرر
+    function cleanupRecordingUI() {
+        console.log('[VOICE] Cleaning up recording UI');
+        
+        if (recordingUI && recordingUI.parentNode) {
+            recordingUI.remove();
         }
-    });
+        
+        if (originalInput) {
+            originalInput.style.display = '';
+            originalInput.value = '';
+            originalInput.focus();
+        }
+        
+        if (originalCharCounter) {
+            originalCharCounter.style.display = '';
+            originalCharCounter.textContent = '0/200';
+        }
+        
+        if (originalSendBtn) {
+            originalSendBtn.removeEventListener('click', originalSendBtn.clickHandler);
+            originalSendBtn.innerHTML = '<i class="fas fa-microphone text-white"></i>';
+            originalSendBtn.dataset.mode = 'voice';
+            originalSendBtn.title = 'تسجيل صوتي';
+            originalSendBtn.classList.remove('bg-red-600', 'bg-green-600');
+            originalSendBtn.classList.add('bg-purple-600');
+            originalSendBtn.clickHandler = function() {
+                if (this.dataset.mode === 'voice') {
+                    startWhatsAppStyleRecording(targetUserId);
+                } else {
+                    const input = document.getElementById('private-message-input');
+                    if (input) {
+                        sendPrivateMessage(targetUserId, input.value.trim());
+                        input.value = '';
+                        const counter = document.getElementById('private-char-count');
+                        if (counter) counter.textContent = '0/200';
+                        updateSendButton();
+                    }
+                }
+            };
+            originalSendBtn.addEventListener('click', originalSendBtn.clickHandler);
+        }
+        
+        window.isRecordingActive = false;
+        console.log('[VOICE] isRecordingActive set to false');
+    }
+    
+    if (cancelBtn) cancelBtn.addEventListener('click', cancelRecording);
+    if (sendBtn) sendBtn.addEventListener('click', sendRecording);
+    if (stopBtn) stopBtn.addEventListener('click', stopRecording);
 }
         
 
@@ -3681,11 +3640,10 @@ async function uploadAndSendVideo(file, targetUserId, modal) {
 
         
 
-// --- 📤 دالة إرسال الرسالة الصوتية (محدثة) ---
+// --- 📤 دالة إرسال الرسالة الصوتية (متفائلة وسريعة) ---
 async function sendVoiceMessage(audioBlob, duration, targetUserId) {
     console.log(`[VOICE] Sending voice message: ${duration}s, ${audioBlob.size} bytes`);
     
-    // التحقق من المدة
     if (duration > 15) {
         showNotification('مدة التسجيل تتجاوز 15 ثانية', 'error');
         return;
@@ -3695,57 +3653,83 @@ async function sendVoiceMessage(audioBlob, duration, targetUserId) {
         showNotification('التسجيل قصير جداً', 'error');
         return;
     }
+
+    const tempId = 'voice-temp-' + Date.now();
+    const currentUserId = JSON.parse(localStorage.getItem('user'))._id;
+
+    // ✅ الإصلاح: نعرض فقاعة "جاري الإرسال" فوراً بمجرد الضغط على إرسال
+    // بدل انتظار اكتمال الرفع بالكامل قبل ظهور أي شيء بالمحادثة
+    displayPrivateMessage({
+        _id: tempId,
+        sender: currentUserId,
+        receiver: targetUserId,
+        type: 'voice',
+        content: '',
+        metadata: { duration: duration, uploading: true },
+        createdAt: new Date().toISOString(),
+        status: { sent: false, delivered: false, seen: false }
+    }, true);
     
     try {
-        // 1. تحويل Blob إلى File
         const audioFile = new File([audioBlob], `voice_${Date.now()}.webm`, {
             type: 'audio/webm'
         });
         
-        // 2. رفع إلى الخادم
         const formData = new FormData();
         formData.append('file', audioFile);
         formData.append('receiverId', targetUserId);
         formData.append('duration', duration.toString());
         
-        // إشعار التحميل
-        showNotification('جاري إرسال الرسالة الصوتية...', 'info');
-        
-        const response = await fetch('/api/chat-media/voice', {
+        const uploadResponse = await fetch('/api/chat-media/voice', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            },
+            headers: { 'Authorization': `Bearer ${token}` },
             body: formData
         });
         
-        const result = await response.json();
-        
-        if (response.ok) {
-            // 3. إرسال كرسالة صوتية
-            const metadata = {
-                duration: duration,
-                publicId: result.data.publicId,
-                fileSize: result.data.bytes,
-                format: result.data.format
-            };
-            
-            await sendPrivateMessage(
-                targetUserId,
-                result.data.url, // رابط الصوت
-                null, // replyTo
-                'voice',
-                metadata
-            );
-            
-            showNotification('تم إرسال الرسالة الصوتية بنجاح', 'success');
-            
+        const uploadResult = await uploadResponse.json();
+
+        if (!uploadResponse.ok) {
+            throw new Error(uploadResult.message || 'فشل رفع الرسالة الصوتية');
+        }
+
+        const metadata = {
+            duration: duration,
+            publicId: uploadResult.data.publicId,
+            fileSize: uploadResult.data.bytes,
+            format: uploadResult.data.format
+        };
+
+        const sendResponse = await fetch('/api/private-chat/message', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                receiverId: targetUserId,
+                content: uploadResult.data.url,
+                type: 'voice',
+                metadata: metadata
+            })
+        });
+
+        const sendResult = await sendResponse.json();
+        const tempElement = document.querySelector(`[data-message-id="${tempId}"]`);
+
+        if (sendResponse.ok) {
+            // ✅ نستبدل الفقاعة المؤقتة بالفقاعة الحقيقية القابلة للتشغيل
+            if (tempElement) tempElement.remove();
+            displayPrivateMessage(sendResult.data.message, true);
+            updateUnreadCount(targetUserId, sendResult.data.unreadCount || 0);
         } else {
-            throw new Error(result.message || 'فشل رفع الرسالة الصوتية');
+            if (tempElement) tempElement.remove();
+            showNotification(sendResult.message || 'فشل إرسال الرسالة الصوتية', 'error');
         }
         
     } catch (error) {
         console.error('[VOICE UPLOAD] Error:', error);
+        const tempElement = document.querySelector(`[data-message-id="${tempId}"]`);
+        if (tempElement) tempElement.remove();
         showNotification(error.message || 'فشل إرسال الرسالة الصوتية', 'error');
     }
 }
@@ -4195,23 +4179,40 @@ function displayPrivateMessage(message, isMyMessage = false) {
     }
     break;
 
-        case 'voice':
-            messageContent = `
-                <div class="flex items-center gap-3 bg-black/30 p-3 rounded-lg">
-                    <button class="play-voice-btn w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center hover:bg-purple-600" data-voice-url="${message.content}">
-                        <i class="fas fa-play text-white"></i>
-                    </button>
-                    <div class="flex-1">
-                        <div class="flex justify-between text-sm">
-                            <span>رسالة صوتية</span>
-                            <span>${meta.duration || 0} ثانية</span>
+                case 'voice':
+            if (meta.uploading) {
+                // ✅ جديد: شكل مبسط أثناء الرفع (بدون رابط تشغيل بعد لأنه ما وصل بعد)
+                messageContent = `
+                    <div class="flex items-center gap-3 bg-black/30 p-3 rounded-lg opacity-80">
+                        <div class="w-10 h-10 bg-purple-500/60 rounded-full flex items-center justify-center">
+                            <i class="fas fa-spinner fa-spin text-white text-sm"></i>
                         </div>
-                        <div class="w-full bg-gray-600 h-2 rounded-full mt-2">
-                            <div class="voice-progress bg-purple-400 h-2 rounded-full" style="width:0%"></div>
+                        <div class="flex-1">
+                            <div class="flex justify-between text-sm">
+                                <span>جاري الإرسال...</span>
+                                <span>${meta.duration || 0} ثانية</span>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `;
+                `;
+            } else {
+                messageContent = `
+                    <div class="flex items-center gap-3 bg-black/30 p-3 rounded-lg">
+                        <button class="play-voice-btn w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center hover:bg-purple-600" data-voice-url="${message.content}">
+                            <i class="fas fa-play text-white"></i>
+                        </button>
+                        <div class="flex-1">
+                            <div class="flex justify-between text-sm">
+                                <span>رسالة صوتية</span>
+                                <span>${meta.duration || 0} ثانية</span>
+                            </div>
+                            <div class="w-full bg-gray-600 h-2 rounded-full mt-2">
+                                <div class="voice-progress bg-purple-400 h-2 rounded-full" style="width:0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
             break;
 
         case 'video':
@@ -4596,7 +4597,7 @@ function showBlockedProfileModal(userId, blockData) {
         </button>`;
 
     const modalHTML = `
-        <div id="blocked-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
+        <div id="blocked-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[310] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-red-500/30">
                 
                 <!-- المحتوى البسيط -->
