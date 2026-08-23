@@ -21,6 +21,7 @@ router.put('/message/status', privateChatController.updateMessageStatus);
 router.delete('/message', privateChatController.deleteMessage);
 router.post('/report', privateChatController.reportMessage);
 router.post('/message/media', privateChatController.sendMediaMessage);
-router.put('/chat/:userId/read', privateChatController.markChatAsRead); // ✅ جديد: تصفير غير المقروء
+router.put('/chat/:userId/read', privateChatController.markChatAsRead);// ✅ جديد: تصفير غير المقروء
+router.delete('/chat/:userId', privateChatController.hideChatForUser);
 
 module.exports = router;
