@@ -232,6 +232,20 @@ const deleteChatMedia = async (publicId, resourceType = 'image') => {
     }
 };
 
+// 12.5 دالة رفع صورة إشعار تحويل الكوينزات
+const uploadReceiptImage = (fileBuffer) => {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            { folder: 'coin_purchase_receipts', resource_type: 'image' },
+            (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+            }
+        );
+        uploadStream.end(fileBuffer);
+    });
+};
+
 // 13. التصدير
 module.exports = {
     cloudinary,
@@ -241,6 +255,7 @@ module.exports = {
     uploadChatVoice,          // دالة رفع صوت الدردشة
     uploadChatVideo,          // دالة رفع فيديو الدردشة
     deleteChatMedia,          // دالة حذف وسائط الدردشة
+    uploadReceiptImage,        // دالة رفع صورة إشعار التحويل
     deleteFromCloudinary,     // دالة حذف عامة
     getPublicIdFromUrl        // دالة استخراج publicId
 };
