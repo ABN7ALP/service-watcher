@@ -262,7 +262,7 @@ exports.getChatList = async (req, res) => {
             isActive: true,
             hiddenBy: { $ne: userId } // ✅ استثناء المحادثات التي حذفها هذا المستخدم فقط
         })
-        .populate('participants', 'username profileImage customId')
+        .populate('participants', 'username profileImage customId isAgent activeFrameClass')
         .sort('-lastMessageAt')
         .limit(50)
         .lean();
