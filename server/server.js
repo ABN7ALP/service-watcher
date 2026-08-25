@@ -44,6 +44,8 @@ app.use('/api/friends', require('./routes/friendRoutes')); // ✅✅ أضف هذ
 app.use('/api/blocks', require('./routes/blockRoutes')); // ✅ أضف هذا السطر
 app.use('/api/private-chat', require('./routes/privateChatRoutes')); // ⭐ الجديد
 app.use('/api/chat-media', require('./routes/chatMediaRoutes')); // ⭐ الجديد
+app.use('/api/admin', require('./routes/admin')); // ✅ لوحة التحكم
+app.use('/api/frames', require('./routes/frameRoutes')); // ✅ سنضيفها بالفقرة 6
 app.use('/api/gifts', require('./routes/giftRoutes')); // ✅ نظام الهدايا والمتصدرين
 app.use('/api/coin-purchase', require('./routes/coinPurchaseRoutes')); // ✅ نظام شراء الكوينزات
 
