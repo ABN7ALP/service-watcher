@@ -26,7 +26,10 @@ const userSchema = new mongoose.Schema({
     coins: { type: Number, default: 0 },
     level: { type: Number, default: 1 },
     experience: { type: Number, default: 0 },
-    isAdmin: { type: Boolean, default: false },
+     isAdmin: { type: Boolean, default: false },
+    // ✅ جديد: حقول نظام الوكلاء لشحن الكوينزات
+    isAgent: { type: Boolean, default: false },
+    agentWhatsapp: { type: String, default: null },
     socketId: { type: String, default: null },
     status: { type: String, default: '🚀 جاهز للتحديات!', maxlength: 100 }, 
 
