@@ -47,10 +47,12 @@ exports.uploadImage = async (req, res) => {
         const senderBlocked = sender.blockedUsers.map(id => id.toString());
         const receiverBlocked = receiver.blockedUsers.map(id => id.toString());
 
-        if (senderBlocked.includes(receiverId) || receiverBlocked.includes(userId)) {
+               // ✅ نمنع فقط إذا أنا من حظرت المستقبل — أما إذا هو من حظرني، نسمح بالرفع بصمت
+        // (الإخفاء الفعلي يحدث لاحقاً عند إرسال الرسالة نفسها عبر sendMessage)
+        if (senderBlocked.includes(receiverId)) {
             return res.status(403).json({
                 status: 'fail',
-                message: 'لا يمكنك إرسال وسائط لمستخدم حظرك أو حظرته'
+                message: 'لا يمكنك إرسال وسائط لمستخدم قمت بحظره'
             });
         }
 
@@ -153,10 +155,12 @@ exports.uploadVoice = async (req, res) => {
         const senderBlocked = sender.blockedUsers.map(id => id.toString());
         const receiverBlocked = receiver.blockedUsers.map(id => id.toString());
 
-        if (senderBlocked.includes(receiverId) || receiverBlocked.includes(userId)) {
+                // ✅ نمنع فقط إذا أنا من حظرت المستقبل — أما إذا هو من حظرني، نسمح بالرفع بصمت
+        // (الإخفاء الفعلي يحدث لاحقاً عند إرسال الرسالة نفسها عبر sendMessage)
+        if (senderBlocked.includes(receiverId)) {
             return res.status(403).json({
                 status: 'fail',
-                message: 'لا يمكنك إرسال وسائط لمستخدم حظرك أو حظرته'
+                message: 'لا يمكنك إرسال وسائط لمستخدم قمت بحظره'
             });
         }
 
@@ -239,10 +243,12 @@ exports.uploadVideo = async (req, res) => {
         const senderBlocked = sender.blockedUsers.map(id => id.toString());
         const receiverBlocked = receiver.blockedUsers.map(id => id.toString());
 
-        if (senderBlocked.includes(receiverId) || receiverBlocked.includes(userId)) {
+                // ✅ نمنع فقط إذا أنا من حظرت المستقبل — أما إذا هو من حظرني، نسمح بالرفع بصمت
+        // (الإخفاء الفعلي يحدث لاحقاً عند إرسال الرسالة نفسها عبر sendMessage)
+        if (senderBlocked.includes(receiverId)) {
             return res.status(403).json({
                 status: 'fail',
-                message: 'لا يمكنك إرسال وسائط لمستخدم حظرك أو حظرته'
+                message: 'لا يمكنك إرسال وسائط لمستخدم قمت بحظره'
             });
         }
 
