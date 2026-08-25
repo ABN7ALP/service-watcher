@@ -1,8 +1,9 @@
 // Admin Dashboard JavaScript
 class AdminDashboard {
-    constructor() {
-        this.token = localStorage.getItem('adminToken');
-        this.adminData = JSON.parse(localStorage.getItem('adminData') || '{}');
+        constructor() {
+        // ✅ الإصلاح: نستخدم نفس تسجيل الدخول العادي بدل نظام منفصل غير موجود
+        this.token = localStorage.getItem('token');
+        this.adminData = JSON.parse(localStorage.getItem('user') || '{}');
         this.currentPage = 'dashboard';
         this.socket = null;
         
@@ -11,7 +12,7 @@ class AdminDashboard {
 
     async init() {
         if (!this.checkAuth()) {
-            window.location.href = '/admin-login.html';
+            window.location.href = '/login.html';
             return;
         }
 
