@@ -6,7 +6,7 @@ const gifts = [
     {
         name: 'وردة',
         description: 'هدية بسيطة تعبر عن الإعجاب',
-        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/rose.png',
+        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787661134/69e8b8936203a.png',
         price: 3,
         category: 'common',
         animation: 'heartbeat',
@@ -16,7 +16,7 @@ const gifts = [
     {
         name: 'ثعلب',
         description: 'هدية مميزة وأنيقة',
-        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/fox.png',
+        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787661134/69e8b8936203a.png',
         price: 15,
         category: 'rare',
         animation: 'sparkle',
@@ -26,7 +26,7 @@ const gifts = [
     {
         name: 'حديقة',
         description: 'هدية فاخرة للمناسبات الخاصة',
-        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/garden.png',
+        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787661134/69e8b8936203a.png',
         price: 80,
         category: 'epic',
         animation: 'glow',
