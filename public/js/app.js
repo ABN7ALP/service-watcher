@@ -571,13 +571,13 @@ function renderMessagesList(chats) {
         return `
             <div class="message-item flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all hover:bg-gray-700/40 ${hasUnread ? 'bg-purple-900/20 border border-purple-500/20' : 'bg-gray-800/20'} ${isBlocked ? 'opacity-70' : ''}" 
                  data-user-id="${other._id}" data-username="${other.username}">
-                <div class="relative flex-shrink-0">
-                    <img src="${other.profileImage}" class="w-12 h-12 rounded-full object-cover border-2 ${isBlocked ? 'border-red-500 grayscale' : hasUnread ? 'border-purple-500' : 'border-gray-600'}">
+                                <div class="relative flex-shrink-0">
+                    <img src="${other.profileImage}" class="w-12 h-12 rounded-full object-cover border-2 ${isBlocked ? 'border-red-500 grayscale' : hasUnread ? 'border-purple-500' : 'border-gray-600'} ${other.activeFrameClass || ''}">
                     ${hasUnread ? `<span class="absolute -top-1 -right-1 bg-purple-600 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">${chat.unreadCount > 9 ? '9+' : chat.unreadCount}</span>` : ''}
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="flex justify-between items-center gap-2">
-                        <span class="font-bold text-sm truncate ${hasUnread ? 'text-white' : 'text-gray-300'}">${other.username}</span>
+                        <span class="font-bold text-sm truncate flex items-center gap-1 ${hasUnread ? 'text-white' : 'text-gray-300'}">${other.username} ${getAgentBadgeIconHTML(other.isAgent)}</span>
                         ${isBlocked ? '<span class="text-[10px] bg-red-900/40 text-red-300 px-2 py-0.5 rounded-full flex-shrink-0">محظور</span>' : `<span class="text-xs flex-shrink-0 ${hasUnread ? 'text-purple-400 font-bold' : 'text-gray-500'}">${timeText}</span>`}
                     </div>
                     <div class="flex items-center gap-1 text-xs truncate mt-0.5 ${isBlocked ? 'text-red-400' : hasUnread ? 'text-gray-200' : 'text-gray-400'}">
@@ -1120,32 +1120,33 @@ async function handleUsernameUpdate(e) {
 
     // --- 3. تهيئة واجهة المستخدم ببيانات المستخدم ---
 function updateUIWithUserData(userData) {
-    document.getElementById('username').textContent = userData.username;
+    const usernameEl = document.getElementById('username');
+    if (usernameEl) usernameEl.innerHTML = `${userData.username} ${getAgentBadgeHTML(userData.isAgent)}`;
+
     document.getElementById('balance').textContent = userData.balance.toFixed(2);
     document.getElementById('coins').textContent = userData.coins;
     document.getElementById('userLevel').textContent = userData.level;
-    document.getElementById('profileImage').src = userData.profileImage;
+
+    const profileImgEl = document.getElementById('profileImage');
+    if (profileImgEl) {
+        profileImgEl.src = userData.profileImage;
+        applyFrameToAvatar(profileImgEl, userData.activeFrameClass);
+    }
     
-    // ✅ تحديث الحالة النصية (جديد)
     document.getElementById('user-status-text').textContent = userData.status || '🚀 جاهز للتحديات!';
     
-    // ✅ تحديث شريط XP (جديد)
     const requiredXP = calculateRequiredXp(userData.level);
     document.getElementById('currentXP').textContent = Math.floor(userData.experience);
     document.getElementById('requiredXP').textContent = requiredXP;
     
-    // حساب نسبة التقدم
     const progressPercentage = (userData.experience / requiredXP) * 100;
     document.getElementById('xp-bar').style.width = `${progressPercentage}%`;
     
-    // تحديث عدد الأصدقاء
     const friendsCount = userData.friends ? userData.friends.length : 0;
     document.getElementById('friends-count').textContent = friendsCount;
     
-    // ✅ تحديث صور الأصدقاء المصغرة (جديد - سنضيفها لاحقاً)
     updateFriendsAvatars(userData.friends);
     
-    // تحديث شارة طلبات الصداقة
     const requestsBadge = document.getElementById('friend-requests-badge');
     const requestsCount = userData.friendRequestsReceived ? userData.friendRequestsReceived.length : 0;
     if (requestsCount > 0) {
@@ -2174,10 +2175,10 @@ async function showMiniProfileModal(userId) {
                 <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-purple-500/30">
                     
                     <div class="flex flex-col items-center px-4 pt-6">
-                        <img src="${profileUser.profileImage}" 
-                             class="w-28 h-28 rounded-full border-4 border-purple-500 object-cover shadow-lg">
+                              <img src="${profileUser.profileImage}" 
+                             class="w-28 h-28 rounded-full border-4 border-purple-500 object-cover shadow-lg ${profileUser.activeFrameClass || ''}">
                         
-                        <h2 class="text-xl font-bold mt-4">${profileUser.username}</h2>
+                        <h2 class="text-xl font-bold mt-4">${profileUser.username} ${getAgentBadgeHTML(profileUser.isAgent)}</h2>
                         <div class="text-xs text-gray-400 mt-1 cursor-pointer flex items-center gap-2 copy-id-btn">
                            <i class="fas fa-id-card"></i>
                            <span>ID: ${profileUser.customId}</span>
@@ -2531,7 +2532,29 @@ function lockChatForBlockedUser(targetUserId, targetUsername) {
     });
 }
 
+// شارة كاملة (للأماكن الواسعة: البروفايل المصغر، الشريط الجانبي)
+function getAgentBadgeHTML(isAgent) {
+    if (!isAgent) return '';
+    return `<span class="inline-flex items-center gap-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full align-middle" title="وكيل شحن معتمد"><i class="fas fa-shield-halved"></i> وكيل موثّق</span>`;
+}
 
+// أيقونة مصغرة (للأماكن الضيقة: قائمة الرسائل، رأس الدردشة)
+function getAgentBadgeIconHTML(isAgent) {
+    if (!isAgent) return '';
+    return `<i class="fas fa-shield-halved text-green-400 text-xs" title="وكيل شحن معتمد"></i>`;
+}
+
+// تطبيق إطار الصورة الشخصية (كلاس CSS ثابت، وليس Tailwind ديناميكي)
+function applyFrameToAvatar(imgEl, activeFrameClass) {
+    if (!imgEl) return;
+    imgEl.classList.forEach(cls => {
+        if (cls.startsWith('profile-frame-')) imgEl.classList.remove(cls);
+    });
+    if (activeFrameClass) {
+        imgEl.classList.add(activeFrameClass);
+    }
+}
+        
 
 // =================================================
 // ============ نظام الهدايا (Gifts) ================
@@ -3340,12 +3363,14 @@ async function loadChatUserData(userId) {
             if (result.status === 'success') {
                 const user = result.data;
                 
-                // تحديث الصورة والاسم
                 const avatar = document.getElementById('chat-user-avatar');
                 const name = document.getElementById('chat-user-name');
                 
-                if (avatar) avatar.src = user.profileImage;
-                if (name) name.textContent = user.username;
+                if (avatar) {
+                    avatar.src = user.profileImage;
+                    applyFrameToAvatar(avatar, user.activeFrameClass);
+                }
+                if (name) name.innerHTML = `${user.username} ${getAgentBadgeIconHTML(user.isAgent)}`;
             }
         }
     } catch (error) {
