@@ -620,6 +620,41 @@ exports.getLogs = async (req, res) => {
   }
 };
 
+
+// تعيين/إلغاء صلاحية الوكيل لمستخدم
+exports.setAgentStatus = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { isAgent, agentWhatsapp } = req.body;
+    const { admin } = req;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+    }
+
+    user.isAgent = !!isAgent;
+    user.agentWhatsapp = isAgent ? (agentWhatsapp || null) : null;
+    await user.save();
+
+    await AdminLog.logAction({
+      admin: admin._id,
+      action: 'update_user',
+      targetUser: userId,
+      details: { action: 'set_agent_status', isAgent: user.isAgent },
+      ipAddress: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: isAgent ? 'تم تعيين المستخدم كوكيل شحن' : 'تم إلغاء صلاحية الوكيل',
+      user: { id: user._id, isAgent: user.isAgent, agentWhatsapp: user.agentWhatsapp }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Update System Settings
 exports.updateSettings = async (req, res) => {
   try {
