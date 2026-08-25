@@ -3,7 +3,7 @@ const ProfileFrame = require('../models/ProfileFrame');
 
 async function seedGiftsIfMissing() {
     const gifts = [
-        { name: 'وردة', description: 'هدية بسيطة تعبر عن الإعجاب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1765562034/eko4jseig8lpiednkiim.jpg', price: 3, category: 'common', animation: 'heartbeat', isActive: true, sortOrder: 1 },
+        { name: 'وردة', description: 'هدية بسيطة تعبر عن الإعجاب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1765562034/eko4jseig8lpiednkiim.jpg', price: 10, category: 'common', animation: 'heartbeat', isActive: true, sortOrder: 1 },
         { name: 'ثعلب', description: 'هدية مميزة وأنيقة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1765562034/eko4jseig8lpiednkiim.jpg', price: 15, category: 'rare', animation: 'sparkle', isActive: true, sortOrder: 2 },
         { name: 'حديقة', description: 'هدية فاخرة للمناسبات الخاصة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1765562034/eko4jseig8lpiednkiim.jpg', price: 80, category: 'epic', animation: 'glow', isActive: true, sortOrder: 3 }
     ];
