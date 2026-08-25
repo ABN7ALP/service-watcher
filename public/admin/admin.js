@@ -23,10 +23,12 @@ class AdminDashboard {
         this.startAutoRefresh();
     }
 
-    checkAuth() {
+        checkAuth() {
         if (!this.token) return false;
-        
-        // Check token expiration
+
+        // ✅ التحقق الفعلي من صلاحية الأدمن عبر بيانات المستخدم المحفوظة
+        if (!this.adminData || !this.adminData.isAdmin) return false;
+
         try {
             const payload = JSON.parse(atob(this.token.split('.')[1]));
             const isExpired = payload.exp * 1000 < Date.now();
@@ -859,15 +861,11 @@ class AdminDashboard {
         }, 30000);
     }
 
-    logout() {
-        localStorage.removeItem('adminToken');
-        localStorage.removeItem('adminData');
-        
+        logout() {
         if (this.socket) {
             this.socket.disconnect();
         }
-        
-        window.location.href = '/admin-login.html';
+        window.location.href = '/index.html';
     }
 
     closeModal(modalId) {
