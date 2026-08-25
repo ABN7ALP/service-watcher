@@ -10,8 +10,9 @@ const adminAuth = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // ✅ الإصلاح: التوكن عندنا يحمل الحقل "id" وليس "userId"
     const user = await User.findOne({ 
-      _id: decoded.userId,
+      _id: decoded.id,
       isAdmin: true,
       isBanned: false 
     }).select('-password');
