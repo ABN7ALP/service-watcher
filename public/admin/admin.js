@@ -9,7 +9,7 @@ class AdminDashboard {
         
         this.init();
     }
- 
+  
     async init() {
         if (!this.checkAuth()) {
             window.location.href = '/login.html';
