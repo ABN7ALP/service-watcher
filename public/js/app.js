@@ -1242,37 +1242,41 @@ async function blockUser(userId, modalElement) {
         const result = await response.json();
  
         if (response.ok) {
-            // 1. إشعار جميل
             showFloatingAlert('تم الحظر', 'fa-ban', 'bg-red-500');
             
-            // 2. تحديث البيانات فوراً
             await refreshUserData();
             
-            // 3. ✅ إرسال socket event لتحديث cache
             if (socket && socket.connected) {
                 socket.emit('forceClearBlockCache', {
                     blockedBy: userId,
                     forceAll: true
                 });
-                
                 socket.emit('refreshBlockData');
-                
-                console.log('[CLIENT] Sent socket events for cache refresh');
             }
             
-            // 4. تحديث الأرقام مباشرة
             const user = JSON.parse(localStorage.getItem('user'));
             if (user && user.friends !== undefined) {
                 document.getElementById('friends-count').textContent = user.friends.length;
-                
                 if (typeof updateFriendsAvatars === 'function') {
                     updateFriendsAvatars(user.friends);
                 }
             }
             
-            // 5. إغلاق النافذة فقط
             if (modalElement) {
                 modalElement.remove();
+            }
+
+            // ✅ الإصلاح: قفل نافذة الدردشة فوراً في مكانها إذا كانت مفتوحة مع نفس الشخص
+            // بدل الحاجة لإغلاقها وإعادة فتحها لرؤية التغيير
+            const openChatModal = document.getElementById('private-chat-modal');
+            if (openChatModal && openChatModal.dataset.targetUserId === userId.toString()) {
+                const chatUserName = document.getElementById('chat-user-name')?.textContent || 'المستخدم';
+                lockChatForBlockedUser(userId, chatUserName);
+            }
+
+            // ✅ تحديث قسم الرسائل فوراً إذا كان مفتوحاً (لإظهار شارة "محظور")
+            if (document.getElementById('messages-list-container')) {
+                loadMessagesList();
             }
             
             return true;
@@ -1289,11 +1293,10 @@ async function blockUser(userId, modalElement) {
 }
 
 
-
 // --- ✅ دالة فك حظر مستخدم ---
 async function unblockUser(userId, modalElement) {
     try {
-        console.log(`[CLIENT BLOCK] Blocking user ${userId}`);
+        console.log(`[CLIENT BLOCK] Unblocking user ${userId}`);
         
         const response = await fetch(`/api/blocks/unblock/${userId}`, {
             method: 'POST',
@@ -1306,37 +1309,38 @@ async function unblockUser(userId, modalElement) {
         const result = await response.json();
  
         if (response.ok) {
-            // 1. إشعار جميل
             showFloatingAlert('تم رفع حظر', 'fa-ban', 'bg-red-500');
             
-            // 2. تحديث البيانات فوراً
             await refreshUserData();
 
-            // 3. ✅ إرسال socket event لتحديث cache
             if (socket && socket.connected) {
                 socket.emit('forceClearBlockCache', {
                     blockedBy: userId,
                     forceAll: true
                 });
-                
                 socket.emit('refreshBlockData');
-                
-                console.log('[CLIENT] Sent socket events for cache refresh');
             }
             
-            // 4. تحديث الأرقام مباشرة
             const user = JSON.parse(localStorage.getItem('user'));
             if (user && user.friends !== undefined) {
                 document.getElementById('friends-count').textContent = user.friends.length;
-                
                 if (typeof updateFriendsAvatars === 'function') {
                     updateFriendsAvatars(user.friends);
                 }
             }
             
-            // 5. إغلاق النافذة فقط
             if (modalElement) {
                 modalElement.remove();
+            }
+
+            // ✅ الإصلاح: إعادة شريط الإدخال الطبيعي فوراً بمكانه، دون إغلاق النافذة وإعادة فتحها
+            const openChatModal = document.getElementById('private-chat-modal');
+            if (openChatModal && openChatModal.dataset.targetUserId === userId.toString()) {
+                restoreChatInputArea(userId);
+            }
+
+            if (document.getElementById('messages-list-container')) {
+                loadMessagesList();
             }
             
             return true;
@@ -2332,6 +2336,57 @@ async function showMiniProfileModal(userId) {
 }
 
 
+        // --- 🧩 دالة مساعدة: تُرجع HTML شريط إدخال الدردشة الخاصة (نص مرة واحدة، تُستخدم بأكثر من مكان) ---
+function getChatInputAreaHTML() {
+    return `
+        <div id="chat-options-bar" class="hidden mb-3 p-3 bg-gray-800/50 rounded-xl">
+            <div class="grid grid-cols-3 gap-3 text-center">
+                <button class="chat-media-btn" data-type="image">
+                    <i class="fas fa-image text-2xl text-green-400 mb-1"></i>
+                    <span class="text-xs">صورة</span>
+                </button>
+                <button class="chat-media-btn" data-type="video">
+                    <i class="fas fa-video text-2xl text-blue-400 mb-1"></i>
+                    <span class="text-xs">فيديو</span>
+                </button>
+                <button class="chat-media-btn" data-type="file">
+                    <i class="fas fa-file text-2xl text-yellow-400 mb-1"></i>
+                    <span class="text-xs">ملف</span>
+                </button>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-2">
+            <button id="toggle-chat-options" class="bg-gray-700 hover:bg-gray-600 w-10 h-10 rounded-full flex items-center justify-center">
+                <i class="fas fa-plus text-gray-300"></i>
+            </button>
+            
+            <div class="flex-1 relative">
+                <input type="text" id="private-message-input" 
+                       placeholder="اكتب رسالتك هنا..." 
+                       maxlength="200"
+                       class="w-full bg-gray-700 border border-gray-600 rounded-full py-3 px-5 pr-12 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                <div id="private-char-count" class="absolute top-1/2 right-4 transform -translate-y-1/2 text-xs text-gray-500">0/200</div>
+            </div>
+            
+            <button id="send-private-message" 
+    class="dynamic-send-btn bg-purple-600 hover:bg-purple-700 w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300"
+    data-mode="voice">
+<i class="fas fa-microphone text-white"></i>
+</button>
+        </div>
+    `;
+}
+
+// --- 🔓 إعادة شريط الإدخال الطبيعي فوراً بعد رفع الحظر، دون إغلاق وإعادة فتح النافذة بالكامل ---
+function restoreChatInputArea(targetUserId) {
+    const inputArea = document.getElementById('private-chat-input-area');
+    if (!inputArea) return;
+
+    inputArea.innerHTML = getChatInputAreaHTML();
+    setupPrivateChatEvents(targetUserId);
+}
+
         
 // --- 📨 دالة فتح الدردشة الخاصة ---
 async function openPrivateChat(targetUserId, targetUsername = 'المستخدم') {
@@ -2383,46 +2438,9 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                     </div>
                 </div>
                 
-                <div id="private-chat-input-area" class="p-3 border-t border-gray-700 bg-gray-900/50">
-                    <div id="chat-options-bar" class="hidden mb-3 p-3 bg-gray-800/50 rounded-xl">
-                        <div class="grid grid-cols-3 gap-3 text-center">
-                            <button class="chat-media-btn" data-type="image">
-                                <i class="fas fa-image text-2xl text-green-400 mb-1"></i>
-                                <span class="text-xs">صورة</span>
-                            </button>
-                            <button class="chat-media-btn" data-type="video">
-                                <i class="fas fa-video text-2xl text-blue-400 mb-1"></i>
-                                <span class="text-xs">فيديو</span>
-                            </button>
-                            <button class="chat-media-btn" data-type="file">
-                                <i class="fas fa-file text-2xl text-yellow-400 mb-1"></i>
-                                <span class="text-xs">ملف</span>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="flex items-center gap-2">
-                        <button id="toggle-chat-options" class="bg-gray-700 hover:bg-gray-600 w-10 h-10 rounded-full flex items-center justify-center">
-                            <i class="fas fa-plus text-gray-300"></i>
-                        </button>
-                        
-                        <div class="flex-1 relative">
-                            <input type="text" id="private-message-input" 
-                                   placeholder="اكتب رسالتك هنا..." 
-                                   maxlength="200"
-                                   class="w-full bg-gray-700 border border-gray-600 rounded-full py-3 px-5 pr-12 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                            <div id="private-char-count" class="absolute top-1/2 right-4 transform -translate-y-1/2 text-xs text-gray-500">0/200</div>
-                        </div>
-                        
-                        <button id="send-private-message" 
-        class="dynamic-send-btn bg-purple-600 hover:bg-purple-700 w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300"
-        data-mode="voice">
-    <i class="fas fa-microphone text-white"></i>
-</button>
-                    </div>
+                                <div id="private-chat-input-area" class="p-3 border-t border-gray-700 bg-gray-900/50">
+                    ${getChatInputAreaHTML()}
                 </div>
-            </div>
-        </div>
     `;
     
     document.getElementById('game-container').insertAdjacentHTML('beforeend', chatHTML);
@@ -2476,13 +2494,8 @@ function lockChatForBlockedUser(targetUserId, targetUsername) {
         </div>
     `;
 
-    document.getElementById('locked-chat-unblock-btn').addEventListener('click', async () => {
-        const success = await unblockUser(targetUserId, null);
-        if (success) {
-            const modal = document.getElementById('private-chat-modal');
-            if (modal) modal.remove();
-            openPrivateChat(targetUserId, targetUsername);
-        }
+        document.getElementById('locked-chat-unblock-btn').addEventListener('click', () => {
+        unblockUser(targetUserId, null);
     });
 
     document.getElementById('locked-chat-delete-btn').addEventListener('click', () => {
