@@ -27,6 +27,9 @@ const userSchema = new mongoose.Schema({
     level: { type: Number, default: 1 },
     experience: { type: Number, default: 0 },
          isAdmin: { type: Boolean, default: false },
+     ownedFrames: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ProfileFrame' }],
+    activeFrame: { type: mongoose.Schema.Types.ObjectId, ref: 'ProfileFrame', default: null },
+    activeFrameClass: { type: String, default: null }, // مُخزّن مباشرة للأداء (بدون populate بكل استعلام)
     // ✅ حقول جديدة للوحة التحكم
     isBanned: { type: Boolean, default: false },
     banReason: { type: String, default: null },
