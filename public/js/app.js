@@ -685,7 +685,7 @@ async function showSettingsView() {
         console.error('Failed to load frame shop:', error);
     }
     
-    mainContent.innerHTML = `
+   mainContent.innerHTML = `
         <div class="p-4">
             <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
             
@@ -800,8 +800,7 @@ async function showSettingsView() {
                 </div>
             </div>
 
-
-                        <!-- =========================================== -->
+            <!-- =========================================== -->
             <!-- 5. قسم متجر الإطارات (الجديد) -->
             <!-- =========================================== -->
             <div class="mb-4">
@@ -819,24 +818,56 @@ async function showSettingsView() {
                             <i class="fas fa-coins"></i> ${frameShopData.coins}
                         </span>
                     </div>
+
                     <div class="grid grid-cols-2 gap-3">
                         ${frameShopData.frames.map(f => `
-                            <div class="bg-gray-900/40 rounded-xl p-3 text-center border ${frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString() ? 'border-yellow-400' : 'border-gray-700'}">
+                            <div class="bg-gray-900/40 rounded-xl p-3 text-center border ${
+                                frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString()
+                                    ? 'border-yellow-400'
+                                    : 'border-gray-700'
+                            }">
                                 <div class="w-16 h-16 mx-auto rounded-full ${f.cssClass} bg-gray-700 mb-2"></div>
+
                                 <p class="text-sm font-bold mb-1">${f.name}</p>
-                                <p class="text-xs text-yellow-400 mb-2"><i class="fas fa-coins"></i> ${f.price}</p>
+
+                                <p class="text-xs text-yellow-400 mb-2">
+                                    <i class="fas fa-coins"></i> ${f.price}
+                                </p>
+
                                 ${f.owned ? `
-                                    <button class="equip-frame-btn w-full text-xs py-1.5 rounded-full ${frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString() ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}" 
-                                            data-frame-id="${f._id}" ${frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString() ? 'disabled' : ''}>
-                                        ${frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString() ? 'مُفعّل حالياً' : 'تفعيل'}
+                                    <button
+                                        class="equip-frame-btn w-full text-xs py-1.5 rounded-full ${
+                                            frameShopData.activeFrame &&
+                                            frameShopData.activeFrame.toString() === f._id.toString()
+                                                ? 'bg-gray-600 text-gray-300'
+                                                : 'bg-purple-600 hover:bg-purple-700 text-white'
+                                        }"
+                                        data-frame-id="${f._id}"
+                                        ${
+                                            frameShopData.activeFrame &&
+                                            frameShopData.activeFrame.toString() === f._id.toString()
+                                                ? 'disabled'
+                                                : ''
+                                        }>
+                                        ${
+                                            frameShopData.activeFrame &&
+                                            frameShopData.activeFrame.toString() === f._id.toString()
+                                                ? 'مُفعّل حالياً'
+                                                : 'تفعيل'
+                                        }
                                     </button>
                                 ` : `
-                                    <button class="purchase-frame-btn w-full text-xs py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-frame-id="${f._id}">
+                                    <button
+                                        class="purchase-frame-btn w-full text-xs py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white"
+                                        data-frame-id="${f._id}">
                                         شراء
                                     </button>
-                                </form>
-                           </div>
-                      </div>
+                                `}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
             
             <!-- =========================================== -->
             <!-- 4. قسم المحظورين (الجديد) -->
@@ -868,6 +899,7 @@ async function showSettingsView() {
                                             <p class="text-xs text-gray-400">ID: ${user.customId}</p>
                                         </div>
                                     </div>
+
                                     <button class="unblock-user-btn bg-gray-600 hover:bg-gray-700 text-white text-xs py-1 px-3 rounded-full" 
                                             data-user-id="${user._id}">
                                         <i class="fas fa-unlock mr-1"></i>رفع الحظر
@@ -881,9 +913,8 @@ async function showSettingsView() {
         </div>
     `;
     
-        // ⭐ إعادة ربط الأحداث (دالة واحدة فقط)
+    // ⭐ إعادة ربط الأحداث (دالة واحدة فقط)
     setupSettingsEvents();
-}
 
 // 📍 أضف هذه الدالة بعد showSettingsView
 function setupSettingsEvents() {
