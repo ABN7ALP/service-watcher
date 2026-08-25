@@ -1520,6 +1520,10 @@ document.getElementById('user-id-container').addEventListener('click', () => {
         seat.textContent = i;
         voiceGrid.appendChild(seat);
     }
+            const buyCoinsBtn = document.getElementById('buy-coins-btn');
+    if (buyCoinsBtn) {
+        buyCoinsBtn.addEventListener('click', showBuyCoinsModal);
+    }
 
     // --- 5. ربط زر تسجيل الخروج ---
     const logoutBtn = document.getElementById('logoutBtn');
@@ -1840,6 +1844,17 @@ socket.on('levelUp', ({ newLevel }) => {
         profileImage.classList.add('animate-bounce');
         setTimeout(() => profileImage.classList.remove('animate-bounce'), 2000);
     }
+});
+
+        socket.on('coinsUpdated', ({ newCoins }) => {
+    const coinsEl = document.getElementById('coins');
+    if (coinsEl) coinsEl.textContent = newCoins;
+    const localUser = JSON.parse(localStorage.getItem('user'));
+    if (localUser) {
+        localUser.coins = newCoins;
+        localStorage.setItem('user', JSON.stringify(localUser));
+    }
+    showNotification('تم إيداع رصيدك بنجاح 🎉', 'success');
 });
 
         socket.on('giftReceived', (data) => {
@@ -2685,6 +2700,417 @@ async function sendGiftToUser(targetUserId, gift, quantity, modal) {
             sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الهدية';
         }
     }
+}
+
+
+        // =================================================
+// ============ نظام شراء الكوينزات =================
+// =================================================
+
+let buyCoinsInfoCache = null;
+
+async function showBuyCoinsModal() {
+    const existing = document.getElementById('buy-coins-modal');
+    if (existing) existing.remove();
+
+    const shellHTML = `
+        <div id="buy-coins-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[88vh] flex flex-col">
+                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <h3 class="text-lg font-bold flex items-center gap-2">
+                        <i class="fas fa-coins text-yellow-400"></i> شحن الكوينزات
+                    </h3>
+                    <button id="close-buy-coins" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="buy-coins-body" class="p-4 overflow-y-auto flex-1">
+                    <div class="text-center text-gray-400 py-10">
+                        <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                        <p class="text-sm">جاري التحميل...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+    const modal = document.getElementById('buy-coins-modal');
+    document.getElementById('close-buy-coins').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target.id === 'buy-coins-modal') modal.remove(); });
+
+    try {
+        const [infoRes, pendingRes] = await Promise.all([
+            fetch('/api/coin-purchase/info', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            fetch('/api/coin-purchase/my-pending', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+        ]);
+
+        if (infoRes.status !== 'success') throw new Error('فشل تحميل بيانات الدفع');
+
+        buyCoinsInfoCache = infoRes.data;
+        const pendingPurchases = pendingRes.status === 'success' ? pendingRes.data.purchases : [];
+
+        renderBuyCoinsHome(pendingPurchases);
+
+    } catch (error) {
+        console.error('[BUY COINS] Error:', error);
+        const body = document.getElementById('buy-coins-body');
+        if (body) body.innerHTML = `<div class="text-center text-red-400 py-10"><i class="fas fa-exclamation-circle text-2xl mb-2"></i><p class="text-sm">فشل تحميل بيانات الدفع</p></div>`;
+    }
+}
+
+function renderBuyCoinsHome(pendingPurchases) {
+    const body = document.getElementById('buy-coins-body');
+    if (!body) return;
+
+    const pendingHTML = (pendingPurchases && pendingPurchases.length > 0) ? `
+        <div class="bg-yellow-900/20 border border-yellow-600/30 rounded-xl p-3 mb-4">
+            <p class="text-xs text-yellow-300 mb-2"><i class="fas fa-info-circle mr-1"></i> لديك طلبات شحن سابقة لم تكتمل:</p>
+            <div class="space-y-2">
+                ${pendingPurchases.map(p => `
+                    <div class="flex items-center justify-between bg-black/20 rounded-lg p-2">
+                        <span class="text-xs">${p.amountUSD}$ (${p.coinsAmount} كوينز) - ${p.method === 'sham_cash' ? 'شام كاش' : 'فيزا'}</span>
+                        <button class="resume-purchase-btn text-xs bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded-full" data-purchase-id="${p._id}" data-method="${p.method}">استكمال</button>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    ` : '';
+
+    body.innerHTML = `
+        ${pendingHTML}
+        <p class="text-sm text-gray-400 mb-3">اختر طريقة الدفع المناسبة لك:</p>
+        <div class="space-y-3">
+            <button class="payment-method-btn w-full flex items-center gap-3 bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-xl p-4 transition" data-method="sham_cash">
+                <div class="w-12 h-12 bg-blue-600/20 rounded-full flex items-center justify-center"><i class="fas fa-wallet text-blue-400 text-xl"></i></div>
+                <div class="text-right flex-1">
+                    <p class="font-bold text-sm">شام كاش</p>
+                    <p class="text-xs text-gray-400">تحويل فوري عبر QR</p>
+                </div>
+                <i class="fas fa-chevron-left text-gray-500"></i>
+            </button>
+            <button class="payment-method-btn w-full flex items-center gap-3 bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-xl p-4 transition" data-method="visa">
+                <div class="w-12 h-12 bg-purple-600/20 rounded-full flex items-center justify-center"><i class="fas fa-credit-card text-purple-400 text-xl"></i></div>
+                <div class="text-right flex-1">
+                    <p class="font-bold text-sm">فيزا / بطاقة بنكية</p>
+                    <p class="text-xs text-gray-400">تحويل عبر تطبيق البنك</p>
+                </div>
+                <i class="fas fa-chevron-left text-gray-500"></i>
+            </button>
+            <button class="payment-method-btn w-full flex items-center gap-3 bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-xl p-4 transition" data-method="agent">
+                <div class="w-12 h-12 bg-green-600/20 rounded-full flex items-center justify-center"><i class="fas fa-user-tie text-green-400 text-xl"></i></div>
+                <div class="text-right flex-1">
+                    <p class="font-bold text-sm">عبر وكيل</p>
+                    <p class="text-xs text-gray-400">تواصل مباشر مع وكيل شحن</p>
+                </div>
+                <i class="fas fa-chevron-left text-gray-500"></i>
+            </button>
+        </div>
+    `;
+
+    body.querySelectorAll('.payment-method-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const method = btn.dataset.method;
+            if (method === 'agent') {
+                renderAgentList();
+            } else {
+                renderAmountEntry(method);
+            }
+        });
+    });
+
+    body.querySelectorAll('.resume-purchase-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            renderReceiptUpload(btn.dataset.purchaseId);
+        });
+    });
+}
+
+function renderAmountEntry(method) {
+    const body = document.getElementById('buy-coins-body');
+    if (!body) return;
+
+    const info = buyCoinsInfoCache;
+    const methodLabel = method === 'sham_cash' ? 'شام كاش' : 'فيزا / بطاقة بنكية';
+
+    body.innerHTML = `
+        <button id="back-to-methods" class="text-sm text-gray-400 hover:text-white mb-4 flex items-center gap-1">
+            <i class="fas fa-arrow-right"></i> رجوع
+        </button>
+        <h4 class="font-bold mb-3">${methodLabel} - حدد المبلغ</h4>
+        <div class="mb-4">
+            <label class="text-xs text-gray-400 mb-1 block">المبلغ بالدولار ($)</label>
+            <input type="number" id="purchase-amount-input" min="${info.minUSD}" max="${info.maxUSD}" value="${info.minUSD}"
+                   class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white">
+            <p class="text-xs text-gray-500 mt-1">الحد الأدنى ${info.minUSD}$ - الحد الأقصى ${info.maxUSD}$</p>
+        </div>
+        <div class="bg-gray-900/50 rounded-xl p-3 mb-4 flex justify-between items-center">
+            <span class="text-sm text-gray-400">ستحصل على</span>
+            <span id="calculated-coins" class="font-bold text-yellow-400">${info.minUSD * info.coinRate} <i class="fas fa-coins"></i></span>
+        </div>
+        <button id="continue-purchase-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2.5 rounded-lg font-bold">
+            متابعة
+        </button>
+    `;
+
+    document.getElementById('back-to-methods').addEventListener('click', () => renderBuyCoinsHome([]));
+
+    const amountInput = document.getElementById('purchase-amount-input');
+    amountInput.addEventListener('input', () => {
+        const val = parseFloat(amountInput.value) || 0;
+        document.getElementById('calculated-coins').innerHTML = `${Math.round(val * info.coinRate)} <i class="fas fa-coins"></i>`;
+    });
+
+    document.getElementById('continue-purchase-btn').addEventListener('click', async () => {
+        const amount = parseFloat(amountInput.value);
+        if (!amount || amount < info.minUSD || amount > info.maxUSD) {
+            showNotification(`المبلغ يجب أن يكون بين ${info.minUSD}$ و ${info.maxUSD}$`, 'error');
+            return;
+        }
+
+        const continueBtn = document.getElementById('continue-purchase-btn');
+        continueBtn.disabled = true;
+        continueBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+        try {
+            const response = await fetch('/api/coin-purchase/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ method, amountUSD: amount })
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                renderPaymentDetails(result.data.purchase, method);
+            } else {
+                showNotification(result.message || 'فشل إنشاء طلب الشراء', 'error');
+                continueBtn.disabled = false;
+                continueBtn.textContent = 'متابعة';
+            }
+        } catch (error) {
+            console.error('[PURCHASE CREATE] Error:', error);
+            showNotification('خطأ في الاتصال بالخادم', 'error');
+            continueBtn.disabled = false;
+            continueBtn.textContent = 'متابعة';
+        }
+    });
+}
+
+function renderPaymentDetails(purchase, method) {
+    const body = document.getElementById('buy-coins-body');
+    if (!body) return;
+
+    const info = buyCoinsInfoCache;
+
+    let detailsHTML = '';
+    if (method === 'sham_cash') {
+        detailsHTML = `
+            <div class="text-center mb-4">
+                <img src="${info.shamCash.qrImageUrl}" class="w-40 h-40 mx-auto rounded-xl border border-gray-700 object-contain bg-white p-2" onerror="this.style.display='none'">
+            </div>
+            <div class="bg-gray-900/50 rounded-xl p-3 mb-3">
+                <p class="text-xs text-gray-400 mb-1">رقم المحفظة</p>
+                <div class="flex items-center justify-between">
+                    <span id="wallet-number-text" class="font-bold text-sm">${info.shamCash.walletNumber}</span>
+                    <button id="copy-wallet-btn" class="text-purple-400 hover:text-purple-300"><i class="fas fa-copy"></i></button>
+                </div>
+            </div>
+            <div class="bg-gray-900/50 rounded-xl p-3 mb-4">
+                <p class="text-xs text-gray-400 mb-1">اسم صاحب الحساب</p>
+                <span class="font-bold text-sm">${info.shamCash.accountHolderName}</span>
+            </div>
+        `;
+    } else {
+        detailsHTML = `
+            <div class="bg-gray-900/50 rounded-xl p-3 mb-3">
+                <p class="text-xs text-gray-400 mb-1">رقم البطاقة</p>
+                <div class="flex items-center justify-between">
+                    <span id="wallet-number-text" class="font-bold text-sm">${info.visa.cardNumber}</span>
+                    <button id="copy-wallet-btn" class="text-purple-400 hover:text-purple-300"><i class="fas fa-copy"></i></button>
+                </div>
+            </div>
+            <div class="bg-gray-900/50 rounded-xl p-3 mb-3">
+                <p class="text-xs text-gray-400 mb-1">اسم صاحب البطاقة</p>
+                <span class="font-bold text-sm">${info.visa.accountHolderName}</span>
+            </div>
+            <p class="text-xs text-gray-500 mb-4">${info.visa.instructions}</p>
+        `;
+    }
+
+    body.innerHTML = `
+        <div class="text-center mb-4">
+            <p class="text-sm text-gray-400">المبلغ المطلوب تحويله</p>
+            <p class="text-2xl font-bold text-yellow-400">${purchase.amountUSD}$</p>
+            <p class="text-xs text-gray-500">= ${purchase.coinsAmount} كوينز</p>
+        </div>
+        ${detailsHTML}
+        <button id="i-transferred-btn" class="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg font-bold">
+            <i class="fas fa-check mr-1"></i> لقد قمت بالتحويل
+        </button>
+    `;
+
+    const copyBtn = document.getElementById('copy-wallet-btn');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', () => {
+            const text = document.getElementById('wallet-number-text').textContent;
+            navigator.clipboard.writeText(text).then(() => showNotification('تم النسخ', 'success'));
+        });
+    }
+
+    document.getElementById('i-transferred-btn').addEventListener('click', () => {
+        renderReceiptUpload(purchase._id);
+    });
+}
+
+// ✅ هذه الشاشة تُستخدم أيضاً عند الضغط على "استكمال" لطلب سابق بعد إعادة تحميل الصفحة
+function renderReceiptUpload(purchaseId) {
+    const body = document.getElementById('buy-coins-body');
+    if (!body) return;
+
+    body.innerHTML = `
+        <div class="text-center mb-4">
+            <i class="fas fa-receipt text-3xl text-purple-400 mb-2"></i>
+            <p class="text-sm font-bold">أرفق صورة إشعار التحويل</p>
+            <p class="text-xs text-gray-500 mt-1">سيتم مراجعة طلبك وإيداع الرصيد خلال 5 إلى 10 دقائق كحد أقصى</p>
+        </div>
+        <div id="receipt-drop-zone" class="border-2 border-dashed border-gray-600 rounded-xl p-4 text-center cursor-pointer hover:border-purple-500 transition-colors bg-gray-900/50 mb-4">
+            <div id="receipt-upload-content">
+                <i class="fas fa-cloud-upload-alt text-3xl text-gray-500 mb-2"></i>
+                <p class="text-sm">اضغط لاختيار صورة الإشعار</p>
+            </div>
+            <img id="receipt-preview-img" class="hidden max-h-40 mx-auto rounded-lg mt-2">
+            <input type="file" id="receipt-file-input" class="hidden" accept="image/*">
+        </div>
+        <button id="submit-receipt-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2.5 rounded-lg font-bold disabled:opacity-50" disabled>
+            إرسال الطلب
+        </button>
+    `;
+
+    let selectedFile = null;
+    const dropZone = document.getElementById('receipt-drop-zone');
+    const fileInput = document.getElementById('receipt-file-input');
+    const submitBtn = document.getElementById('submit-receipt-btn');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            selectedFile = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                document.getElementById('receipt-upload-content').classList.add('hidden');
+                const previewImg = document.getElementById('receipt-preview-img');
+                previewImg.src = ev.target.result;
+                previewImg.classList.remove('hidden');
+            };
+            reader.readAsDataURL(selectedFile);
+            submitBtn.disabled = false;
+        }
+    });
+
+    submitBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
+
+        try {
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            const response = await fetch(`/api/coin-purchase/${purchaseId}/receipt`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                renderPurchaseSuccess();
+            } else {
+                showNotification(result.message || 'فشل إرسال الإشعار', 'error');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'إرسال الطلب';
+            }
+        } catch (error) {
+            console.error('[RECEIPT UPLOAD] Error:', error);
+            showNotification('خطأ في الاتصال بالخادم', 'error');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'إرسال الطلب';
+        }
+    });
+}
+
+function renderPurchaseSuccess() {
+    const body = document.getElementById('buy-coins-body');
+    if (!body) return;
+
+    body.innerHTML = `
+        <div class="text-center py-8">
+            <i class="fas fa-check-circle text-5xl text-green-400 mb-4"></i>
+            <p class="font-bold mb-2">تم استلام طلبك بنجاح</p>
+            <p class="text-sm text-gray-400 mb-6">سيتم إيداع الرصيد في حسابك خلال 5 إلى 10 دقائق كحد أقصى</p>
+            <button id="close-success-btn" class="bg-purple-600 hover:bg-purple-700 text-white py-2.5 px-6 rounded-lg font-bold">حسناً</button>
+        </div>
+    `;
+
+    document.getElementById('close-success-btn').addEventListener('click', () => {
+        const modal = document.getElementById('buy-coins-modal');
+        if (modal) modal.remove();
+    });
+}
+
+function renderAgentList() {
+    const body = document.getElementById('buy-coins-body');
+    if (!body) return;
+
+    const info = buyCoinsInfoCache;
+    const agents = info.agents || [];
+
+    body.innerHTML = `
+        <button id="back-to-methods" class="text-sm text-gray-400 hover:text-white mb-4 flex items-center gap-1">
+            <i class="fas fa-arrow-right"></i> رجوع
+        </button>
+        <h4 class="font-bold mb-3">تواصل مع وكيل شحن</h4>
+        ${agents.length === 0 ? `
+            <div class="text-center text-gray-400 py-10">
+                <i class="fas fa-user-slash text-3xl mb-3"></i>
+                <p class="text-sm">لا يوجد وكلاء متاحين حالياً</p>
+            </div>
+        ` : agents.map(agent => `
+            <div class="flex items-center gap-3 bg-gray-800/50 rounded-xl p-3 mb-3">
+                <img src="${agent.profileImage}" class="w-12 h-12 rounded-full object-cover border-2 ${agent.isOnline ? 'border-green-500' : 'border-gray-600'}">
+                <div class="flex-1 min-w-0">
+                    <p class="font-bold text-sm truncate">${agent.username}</p>
+                    <p class="text-xs ${agent.isOnline ? 'text-green-400' : 'text-gray-500'}">${agent.isOnline ? 'متصل الآن' : 'غير متصل'}</p>
+                </div>
+                <div class="flex gap-2">
+                    ${agent.whatsapp ? `
+                        <a href="https://wa.me/${agent.whatsapp}" target="_blank" class="w-9 h-9 bg-green-600 hover:bg-green-700 rounded-full flex items-center justify-center">
+                            <i class="fab fa-whatsapp text-white"></i>
+                        </a>
+                    ` : ''}
+                    <button class="agent-chat-btn w-9 h-9 bg-purple-600 hover:bg-purple-700 rounded-full flex items-center justify-center" data-agent-id="${agent.id}" data-agent-name="${agent.username}">
+                        <i class="fas fa-comment-dots text-white"></i>
+                    </button>
+                </div>
+            </div>
+        `).join('')}
+    `;
+
+    document.getElementById('back-to-methods').addEventListener('click', () => renderBuyCoinsHome([]));
+
+    body.querySelectorAll('.agent-chat-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const agentId = btn.dataset.agentId;
+            const agentName = btn.dataset.agentName;
+
+            const modal = document.getElementById('buy-coins-modal');
+            if (modal) modal.remove();
+
+            await openPrivateChat(agentId, agentName);
+            // ✅ رسالة تلقائية تنبه الوكيل بطلب الشحن — تستفيد من نظام الإشعارات الموجود أصلاً بالمحادثة الخاصة
+            setTimeout(() => {
+                sendPrivateMessage(agentId, 'مرحباً 👋 أرغب بشحن رصيد كوينز، الرجاء المساعدة 💰');
+            }, 600);
+        });
+    });
 }
 
 // =================================================
