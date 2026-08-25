@@ -621,6 +621,9 @@ class AdminDashboard {
                         <button class="btn btn-secondary" onclick="admin.closeModal('userDetailsModal')">
                             إغلاق
                         </button>
+                        <button class="btn ${user.isAgent ? 'btn-secondary' : 'btn-success'}" onclick="admin.toggleAgentStatus('${user._id}', ${user.isAgent ? 'false' : 'true'})">
+                            <i class="fas fa-user-tie"></i> ${user.isAgent ? 'إلغاء صلاحية الوكيل' : 'تعيين كوكيل شحن'}
+                        </button>
                         ${!user.isBanned ? `
                             <button class="btn btn-danger" onclick="admin.showBanModal('${user._id}', '${user.username}')">
                                 <i class="fas fa-ban"></i> حظر
@@ -753,6 +756,38 @@ class AdminDashboard {
         } catch (error) {
             console.error('Error unbanning user:', error);
             this.showToast('فشل إلغاء حظر المستخدم', 'error');
+        }
+    }
+
+
+
+            async toggleAgentStatus(userId, makeAgent) {
+        let whatsapp = null;
+        if (makeAgent) {
+            whatsapp = prompt('أدخل رقم واتساب الوكيل (مع رمز الدولة، مثال: 963999999999):');
+            if (!whatsapp) return;
+        }
+
+        try {
+            const response = await fetch(`/api/admin/users/${userId}/set-agent`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.token}`
+                },
+                body: JSON.stringify({ isAgent: makeAgent, agentWhatsapp: whatsapp })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                this.showToast(data.message, 'success');
+                this.closeModal('userDetailsModal');
+                this.showUserDetails(userId);
+            } else {
+                this.showToast(data.message || 'فشل تنفيذ العملية', 'error');
+            }
+        } catch (error) {
+            this.showToast('فشل الاتصال بالخادم', 'error');
         }
     }
 
