@@ -20,6 +20,12 @@ const privateMessageSchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
+
+        // ✅ جديد: رسالة "مخفية" — وصلت لقاعدة البيانات لكن لن يراها المستقبل أبداً (حظر صامت)
+    isShadowed: {
+        type: Boolean,
+        default: false
+    },
     
     // نوع الرسالة
     type: {
