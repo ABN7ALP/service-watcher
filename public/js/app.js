@@ -673,6 +673,17 @@ async function showSettingsView() {
     } catch (error) {
         console.error('Failed to load blocked users:', error);
     }
+
+        let frameShopData = { frames: [], activeFrame: null, coins: 0 };
+    try {
+        const frameResponse = await fetch('/api/frames/shop', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (frameResponse.ok) {
+            const frameResult = await frameResponse.json();
+            frameShopData = frameResult.data;
+        }
+    } catch (error) {
+        console.error('Failed to load frame shop:', error);
+    }
     
     mainContent.innerHTML = `
         <div class="p-4">
@@ -788,6 +799,44 @@ async function showSettingsView() {
                     </form>
                 </div>
             </div>
+
+
+                        <!-- =========================================== -->
+            <!-- 5. قسم متجر الإطارات (الجديد) -->
+            <!-- =========================================== -->
+            <div class="mb-4">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="frames-shop-section">
+                    <h3 class="text-lg font-bold">
+                        <i class="fas fa-crown mr-2"></i>متجر الإطارات
+                    </h3>
+                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+                </div>
+                
+                <div id="frames-shop-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
+                    <div class="flex items-center justify-between mb-4 bg-gray-900/50 rounded-xl p-3">
+                        <span class="text-sm text-gray-400">رصيدك الحالي</span>
+                        <span class="font-bold text-yellow-400 flex items-center gap-1">
+                            <i class="fas fa-coins"></i> ${frameShopData.coins}
+                        </span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        ${frameShopData.frames.map(f => `
+                            <div class="bg-gray-900/40 rounded-xl p-3 text-center border ${frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString() ? 'border-yellow-400' : 'border-gray-700'}">
+                                <div class="w-16 h-16 mx-auto rounded-full ${f.cssClass} bg-gray-700 mb-2"></div>
+                                <p class="text-sm font-bold mb-1">${f.name}</p>
+                                <p class="text-xs text-yellow-400 mb-2"><i class="fas fa-coins"></i> ${f.price}</p>
+                                ${f.owned ? `
+                                    <button class="equip-frame-btn w-full text-xs py-1.5 rounded-full ${frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString() ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}" 
+                                            data-frame-id="${f._id}" ${frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString() ? 'disabled' : ''}>
+                                        ${frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString() ? 'مُفعّل حالياً' : 'تفعيل'}
+                                    </button>
+                                ` : `
+                                    <button class="purchase-frame-btn w-full text-xs py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-frame-id="${f._id}">
+                                        شراء
+                                    </button>
+                                </form>
+                           </div>
+                      </div>
             
             <!-- =========================================== -->
             <!-- 4. قسم المحظورين (الجديد) -->
@@ -854,6 +903,64 @@ function setupSettingsEvents() {
             }
         });
     });
+
+        document.querySelectorAll('.purchase-frame-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const frameId = this.dataset.frameId;
+            this.disabled = true;
+            this.textContent = '...';
+            try {
+                const response = await fetch('/api/frames/purchase', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ frameId })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showNotification(result.message, 'success');
+                    const localUser = JSON.parse(localStorage.getItem('user'));
+                    localUser.coins = result.data.newCoins;
+                    localStorage.setItem('user', JSON.stringify(localUser));
+                    document.getElementById('coins').textContent = localUser.coins;
+                    showSettingsView();
+                } else {
+                    showNotification(result.message || 'فشل الشراء', 'error');
+                    this.disabled = false;
+                    this.textContent = 'شراء';
+                }
+            } catch (error) {
+                showNotification('خطأ في الاتصال بالخادم', 'error');
+                this.disabled = false;
+                this.textContent = 'شراء';
+            }
+        });
+    });
+
+    document.querySelectorAll('.equip-frame-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const frameId = this.dataset.frameId;
+            try {
+                const response = await fetch('/api/frames/equip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ frameId })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showNotification(result.message, 'success');
+                    const localUser = JSON.parse(localStorage.getItem('user'));
+                    localUser.activeFrameClass = result.data.activeFrameClass;
+                    localStorage.setItem('user', JSON.stringify(localUser));
+                    applyFrameToAvatar(document.getElementById('profileImage'), result.data.activeFrameClass);
+                    showSettingsView();
+                } else {
+                    showNotification(result.message || 'فشل التفعيل', 'error');
+                }
+            } catch (error) {
+                showNotification('خطأ في الاتصال بالخادم', 'error');
+            }
+        });
+    });                              
     
     // 2. تحديث الصورة الشخصية
     document.getElementById('select-image-btn').addEventListener('click', () => {
