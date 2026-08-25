@@ -126,3 +126,9 @@ body {
 input[type="checkbox"] {
     accent-color: #8b5cf6;
 }
+
+/* إطار الصورة الشخصية - الإطار الذهبي */
+.profile-frame-classic-gold {
+    border: 3px solid #fbbf24 !important;
+    box-shadow: 0 0 10px rgba(251, 191, 36, 0.7), 0 0 0 2px rgba(251, 191, 36, 0.25);
+}
