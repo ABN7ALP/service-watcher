@@ -2470,18 +2470,13 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
         loadChatHistoryFromServer(targetUserId)
     ]);
 
-    if (blockCheckResult.status === 'fulfilled') {
+        if (blockCheckResult.status === 'fulfilled') {
         const blockResult = blockCheckResult.value;
         const status = blockResult?.data?.blockStatus;
 
-        if (status?.heBlockedMe) {
-            const modal = document.getElementById('private-chat-modal');
-            if (modal) modal.remove();
-            showNotification('لا يمكنك مراسلة مستخدم حظرك', 'error');
-            return;
-        }
+        // ✅ الإصلاح: لا نمنع الشخص المحظور من فتح الدردشة أو الكتابة إطلاقاً
+        // رسائله تُرسل من ناحيته بشكل طبيعي تماماً، دون أي إشارة تكشف له أنه محظور
 
-        // ✅ جديد: إذا أنا من حظرته، نقفل شريط الإدخال بدل السماح بمحاولة إرسال فاشلة
         if (status?.iBlockedHim) {
             lockChatForBlockedUser(targetUserId, targetUsername);
         }
