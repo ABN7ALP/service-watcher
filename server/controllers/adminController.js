@@ -40,7 +40,7 @@ exports.getDashboardStats = async (req, res) => {
       ]),
       Transaction.countDocuments({ type: 'deposit', status: 'pending' }),
       Withdrawal.countDocuments({ status: 'pending' }),
-      Battle.countDocuments({ status: { $in: ['waiting', 'ready', 'in_progress'] } }),
+      Battle.countDocuments({ status: { $in: ['waiting', 'in-progress'] } }),
       Transaction.countDocuments({
         createdAt: {
           $gte: new Date(new Date().setHours(0, 0, 0, 0))
