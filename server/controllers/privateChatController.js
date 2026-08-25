@@ -145,7 +145,6 @@ exports.sendMessage = async (req, res) => {
             });
         }
 
-        // 1. التحقق من الحظر
         const [sender, receiver] = await Promise.all([
             User.findById(userId).select('blockedUsers'),
             User.findById(receiverId).select('blockedUsers socketId')
@@ -158,7 +157,6 @@ exports.sendMessage = async (req, res) => {
             });
         }
 
-        // التحقق من الحظر
         const senderBlocked = sender.blockedUsers.map(id => id.toString());
         const receiverBlocked = receiver.blockedUsers.map(id => id.toString());
 
@@ -169,7 +167,6 @@ exports.sendMessage = async (req, res) => {
             });
         }
 
-        // 2. الحصول على الدردشة أو إنشاؤها
         const participants = [userId, receiverId].sort();
         const chatId = participants.join('_');
 
@@ -180,31 +177,19 @@ exports.sendMessage = async (req, res) => {
                 chatId,
                 participants: participants,
                 participantData: [
-                    {
-                        userId: userId,
-                        username: req.user.username,
-                        profileImage: req.user.profileImage
-                    },
-                    {
-                        userId: receiverId,
-                        username: receiver.username,
-                        profileImage: receiver.profileImage
-                    }
+                    { userId: userId, username: req.user.username, profileImage: req.user.profileImage },
+                    { userId: receiverId, username: receiver.username, profileImage: receiver.profileImage }
                 ]
             });
         }
 
-        // 3. إنشاء الرسالة
         const messageData = {
             chatId,
             sender: userId,
             receiver: receiverId,
             type,
             content: content || '',
-            metadata: {
-                ...metadata,
-                sentAt: new Date()
-            }
+            metadata: { ...metadata, sentAt: new Date() }
         };
 
         if (replyTo) {
@@ -213,25 +198,27 @@ exports.sendMessage = async (req, res) => {
 
         const newMessage = await PrivateMessage.create(messageData);
 
-        // 4. تحديث الدردشة
         chat.lastMessage = type === 'text' ? content : `رسالة ${type}`;
         chat.lastMessageAt = new Date();
         chat.lastMessageBy = userId;
         chat.messageCount += 1;
 
-        // زيادة عداد غير المقروء للمستقبل
         const currentUnread = chat.unreadCount.get(receiverId.toString()) || 0;
         chat.unreadCount.set(receiverId.toString(), currentUnread + 1);
 
+        // ✅ الإصلاح: أي رسالة جديدة "تُحيي" المحادثة من جديد لكلا الطرفين
+        // حتى لو كان أحدهما قد حذفها سابقاً من قائمته الشخصية
+        chat.hiddenBy = chat.hiddenBy.filter(id =>
+            id.toString() !== userId.toString() && id.toString() !== receiverId.toString()
+        );
+
         await chat.save();
 
-        // 5. جلب الرسالة مع بيانات المرسل
         const populatedMessage = await PrivateMessage.findById(newMessage._id)
             .populate('sender', 'username profileImage')
             .populate('replyTo', 'content sender type')
             .lean();
 
-        // 6. إرسال عبر Socket
         const io = req.app.get('socketio');
         if (io && receiver.socketId) {
             io.to(receiver.socketId).emit('privateMessageReceived', {
@@ -242,7 +229,6 @@ exports.sendMessage = async (req, res) => {
             });
         }
 
-        // 7. الرد الناجح
         res.status(201).json({
             status: 'success',
             message: 'تم إرسال الرسالة بنجاح',
@@ -646,8 +632,13 @@ exports.sendMediaMessage = async (req, res) => {
         chat.lastMessageBy = userId;
         chat.messageCount += 1;
 
-        const currentUnread = chat.unreadCount.get(receiverId.toString()) || 0;
+                const currentUnread = chat.unreadCount.get(receiverId.toString()) || 0;
         chat.unreadCount.set(receiverId.toString(), currentUnread + 1);
+
+        // ✅ نفس الإصلاح: إحياء المحادثة لكلا الطرفين عند وصول وسائط جديدة
+        chat.hiddenBy = chat.hiddenBy.filter(id =>
+            id.toString() !== userId.toString() && id.toString() !== receiverId.toString()
+        );
 
         await chat.save();
 
