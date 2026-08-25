@@ -93,12 +93,24 @@ if (!chat) {
         }
 
         // 6. جلب آخر 50 رسالة
-        const messages = await PrivateMessage.find({ chatId: chat.chatId })
+                const rawMessages = await PrivateMessage.find({ chatId: chat.chatId })
             .sort('-createdAt')
             .limit(50)
             .populate('sender', 'username profileImage')
-            .populate('replyTo', 'content sender type')
+            .populate({
+                path: 'replyTo',
+                populate: {
+                    path: 'sender',
+                    select: 'username'
+                }
+            })
             .lean();
+
+        // ✅ إخفاء أي رسالة أُرسلت إليّ بينما كنت قد حظرت مرسلها (حظر صامت)
+        const messages = rawMessages.filter(m =>
+            !(m.isShadowed && m.receiver.toString() === userId.toString())
+        );
+        
 
         // ترتيب الرسائل من الأقدم للأحدث
         const sortedMessages = messages.reverse();
@@ -129,20 +141,12 @@ exports.sendMessage = async (req, res) => {
         const userId = req.user.id;
         const { receiverId, content, replyTo, type = 'text', metadata = {} } = req.body;
 
-        console.log(`[CHAT] Sending message from ${userId} to ${receiverId}`);
-
         if (!content && type === 'text') {
-            return res.status(400).json({
-                status: 'fail',
-                message: 'محتوى الرسالة مطلوب'
-            });
+            return res.status(400).json({ status: 'fail', message: 'محتوى الرسالة مطلوب' });
         }
 
         if (content && content.length > 200) {
-            return res.status(400).json({
-                status: 'fail',
-                message: 'الرسالة طويلة جداً (200 حرف كحد أقصى)'
-            });
+            return res.status(400).json({ status: 'fail', message: 'الرسالة طويلة جداً (200 حرف كحد أقصى)' });
         }
 
         const [sender, receiver] = await Promise.all([
@@ -151,21 +155,20 @@ exports.sendMessage = async (req, res) => {
         ]);
 
         if (!sender || !receiver) {
-            return res.status(404).json({
-                status: 'fail',
-                message: 'المستخدم غير موجود'
-            });
+            return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
         }
 
         const senderBlocked = sender.blockedUsers.map(id => id.toString());
         const receiverBlocked = receiver.blockedUsers.map(id => id.toString());
 
-        if (senderBlocked.includes(receiverId) || receiverBlocked.includes(userId)) {
-            return res.status(403).json({
-                status: 'fail',
-                message: 'لا يمكنك مراسلة هذا المستخدم بسبب الحظر'
-            });
+        // ✅ نمنع فقط إذا أنا من حظرت المستقبل — لا يمكنني مراسلة شخص حظرته
+        if (senderBlocked.includes(receiverId)) {
+            return res.status(403).json({ status: 'fail', message: 'لا يمكنك مراسلة هذا المستخدم بسبب الحظر' });
         }
+
+        // ✅ إذا هو من حظرني: أقبل الرسالة لكن بصمت تام — تصل لقاعدة البيانات من ناحيتي فقط،
+        // دون أي إشعار أو ظهور له، وتبقى عندي بعلامة واحدة للأبد (لا تتحول لعلامتين)
+        const isShadowed = receiverBlocked.includes(userId);
 
         const participants = [userId, receiverId].sort();
         const chatId = participants.join('_');
@@ -189,30 +192,32 @@ exports.sendMessage = async (req, res) => {
             receiver: receiverId,
             type,
             content: content || '',
+            isShadowed: isShadowed,
             metadata: { ...metadata, sentAt: new Date() }
         };
 
-        if (replyTo) {
-            messageData.replyTo = replyTo;
-        }
+        if (replyTo) messageData.replyTo = replyTo;
 
         const newMessage = await PrivateMessage.create(messageData);
 
-        chat.lastMessage = type === 'text' ? content : `رسالة ${type}`;
-        chat.lastMessageAt = new Date();
-        chat.lastMessageBy = userId;
-        chat.messageCount += 1;
+        // ✅ لا نحدّث أي بيانات ظاهرة (آخر رسالة، عداد غير مقروء) إذا كانت الرسالة مخفية
+        // حتى لا يبقى أي أثر لها عند من قام بالحظر
+        if (!isShadowed) {
+            chat.lastMessage = type === 'text' ? content : `رسالة ${type}`;
+            chat.lastMessageAt = new Date();
+            chat.lastMessageBy = userId;
+            chat.messageCount += 1;
 
-        const currentUnread = chat.unreadCount.get(receiverId.toString()) || 0;
-        chat.unreadCount.set(receiverId.toString(), currentUnread + 1);
+            const currentUnread = chat.unreadCount.get(receiverId.toString()) || 0;
+            chat.unreadCount.set(receiverId.toString(), currentUnread + 1);
 
-        // ✅ الإصلاح: أي رسالة جديدة "تُحيي" المحادثة من جديد لكلا الطرفين
-        // حتى لو كان أحدهما قد حذفها سابقاً من قائمته الشخصية
-        chat.hiddenBy = chat.hiddenBy.filter(id =>
-            id.toString() !== userId.toString() && id.toString() !== receiverId.toString()
-        );
+            // إحياء المحادثة تلقائياً لكلا الطرفين حتى لو كانت محذوفة سابقاً من أحدهما
+            chat.hiddenBy = chat.hiddenBy.filter(id =>
+                id.toString() !== userId.toString() && id.toString() !== receiverId.toString()
+            );
 
-        await chat.save();
+            await chat.save();
+        }
 
         const populatedMessage = await PrivateMessage.findById(newMessage._id)
             .populate('sender', 'username profileImage')
@@ -220,7 +225,7 @@ exports.sendMessage = async (req, res) => {
             .lean();
 
         const io = req.app.get('socketio');
-        if (io && receiver.socketId) {
+        if (io && receiver.socketId && !isShadowed) {
             io.to(receiver.socketId).emit('privateMessageReceived', {
                 message: populatedMessage,
                 chatId: chat.chatId,
@@ -235,16 +240,13 @@ exports.sendMessage = async (req, res) => {
             data: {
                 message: populatedMessage,
                 chatId: chat.chatId,
-                unreadCount: chat.unreadCount.get(receiverId.toString()) || 0
+                unreadCount: isShadowed ? 0 : (chat.unreadCount.get(receiverId.toString()) || 0)
             }
         });
 
     } catch (error) {
         console.error('[ERROR] in sendMessage:', error);
-        res.status(500).json({
-            status: 'error',
-            message: 'حدث خطأ في الخادم أثناء إرسال الرسالة'
-        });
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم أثناء إرسال الرسالة' });
     }
 };
 
@@ -270,12 +272,16 @@ exports.getChatList = async (req, res) => {
 
         const enrichedChats = await Promise.all(
             chats.map(async (chat) => {
-                const lastMessageDoc = await PrivateMessage.findOne(
-                    { chatId: chat.chatId }
-                )
-                .sort('-createdAt')
-                .populate('sender', 'username profileImage')
-                .lean();
+                                const recentMessages = await PrivateMessage.find({ chatId: chat.chatId })
+                    .sort('-createdAt')
+                    .limit(5)
+                    .populate('sender', 'username profileImage')
+                    .lean();
+
+                // ✅ نتجاوز أي رسالة مخفية عني بسبب حظري لمرسلها عند اختيار "آخر رسالة" المعروضة
+                const lastMessageDoc = recentMessages.find(m =>
+                    !(m.isShadowed && m.receiver.toString() === userId.toString())
+                ) || null;
 
                 let unreadCount = 0;
                 if (chat.unreadCount) {
