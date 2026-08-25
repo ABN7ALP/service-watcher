@@ -915,6 +915,7 @@ async function showSettingsView() {
     
     // ⭐ إعادة ربط الأحداث (دالة واحدة فقط)
     setupSettingsEvents();
+}
 
 // 📍 أضف هذه الدالة بعد showSettingsView
 function setupSettingsEvents() {
