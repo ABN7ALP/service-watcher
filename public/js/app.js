@@ -2822,7 +2822,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
             if (e.target.id === 'gift-qty-plus') { quantity = Math.min(50, quantity + 1); updateSelectedPanel(); }
             if (e.target.closest('#send-gift-btn')) {
                 if (!selectedGift) return;
-                sendGiftToUser(targetUserId, selectedGift, quantity, modal);
+                sendGiftToUser(targetUserId, targetUsername, selectedGift, quantity, modal);
             }
         });
 
@@ -2833,7 +2833,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
     }
 }
 
-async function sendGiftToUser(targetUserId, gift, quantity, modal) {
+async function sendGiftToUser(targetUserId, targetUsername, gift, quantity, modal) {
     const sendBtn = document.getElementById('send-gift-btn');
     if (sendBtn) {
         sendBtn.disabled = true;
