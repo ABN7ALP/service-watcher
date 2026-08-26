@@ -349,74 +349,91 @@ exports.updateMessageStatus = async (req, res) => {
 exports.deleteMessage = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { messageId, deleteForEveryone } = req.body;
+        const { messageId } = req.body;
 
         const message = await PrivateMessage.findById(messageId);
+        if (!message) return res.status(404).json({ status: 'fail', message: 'الرسالة غير موجودة' });
 
-        if (!message) {
-            return res.status(404).json({
-                status: 'fail',
-                message: 'الرسالة غير موجودة'
-            });
-        }
-
-        // التحقق من أن المستخدم هو المرسل أو المستقبل
         const isSender = message.sender.toString() === userId.toString();
         const isReceiver = message.receiver.toString() === userId.toString();
-
         if (!isSender && !isReceiver) {
-            return res.status(403).json({
-                status: 'fail',
-                message: 'ليس لديك صلاحية لحذف هذه الرسالة'
-            });
+            return res.status(403).json({ status: 'fail', message: 'ليس لديك صلاحية لحذف هذه الرسالة' });
         }
 
-        if (deleteForEveryone) {
-            // حذف للجميع (فقط المرسل يمكنه فعل هذا خلال وقت محدد)
-            if (!isSender) {
-                return res.status(403).json({
-                    status: 'fail',
-                    message: 'فقط المرسل يمكنه حذف الرسالة للجميع'
-                });
-            }
-
-            // التحقق من الوقت (مثلاً خلال 5 دقائق فقط)
-            const messageAge = Date.now() - new Date(message.createdAt).getTime();
-            const fiveMinutes = 5 * 60 * 1000;
-
-            if (messageAge > fiveMinutes) {
-                return res.status(400).json({
-                    status: 'fail',
-                    message: 'انتهى الوقت المسموح لحذف الرسالة للجميع'
-                });
-            }
-
-            // حذف فعلي من قاعدة البيانات
-            await PrivateMessage.findByIdAndDelete(messageId);
-
-        } else {
-            // حذف من جهة واحدة فقط
-            if (isSender) {
-                message.status.deletedForSender = true;
-            } else if (isReceiver) {
-                message.status.deletedForReceiver = true;
-            }
-            
-            message.status.deletedAt = new Date();
-            await message.save();
+        // ✅ 5 دقائق كحد أقصى، يمكن لأي من الطرفين الحذف (يُحذف للجميع)
+        const ageMs = Date.now() - new Date(message.createdAt).getTime();
+        if (ageMs > 5 * 60 * 1000) {
+            return res.status(400).json({ status: 'fail', message: 'انتهت مهلة حذف هذه الرسالة (5 دقائق)' });
         }
 
-        res.status(200).json({
-            status: 'success',
-            message: deleteForEveryone ? 'تم حذف الرسالة للجميع' : 'تم حذف الرسالة'
-        });
+        const publicId = message.metadata?.publicId;
+        if (publicId) {
+            const resourceType = message.type === 'image' ? 'image' : 'video';
+            await deleteChatMedia(publicId, resourceType);
+        }
+
+        await PrivateMessage.findByIdAndDelete(messageId);
+
+        const io = req.app.get('socketio');
+        const otherUserId = isSender ? message.receiver : message.sender;
+        const otherUser = await User.findById(otherUserId).select('socketId');
+        if (io && otherUser?.socketId) {
+            io.to(otherUser.socketId).emit('privateMessageDeleted', { messageId });
+        }
+
+        res.status(200).json({ status: 'success', message: 'تم حذف الرسالة' });
 
     } catch (error) {
         console.error('[ERROR] in deleteMessage:', error);
-        res.status(500).json({
-            status: 'error',
-            message: 'حدث خطأ في الخادم أثناء حذف الرسالة'
-        });
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم أثناء حذف الرسالة' });
+    }
+};
+
+// =================================================
+// تعديل رسالة نصية (خلال دقيقتين، للمرسل فقط)
+// =================================================
+exports.editMessage = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { messageId, newContent } = req.body;
+
+        if (!newContent || newContent.trim().length === 0) {
+            return res.status(400).json({ status: 'fail', message: 'المحتوى الجديد مطلوب' });
+        }
+        if (newContent.length > 200) {
+            return res.status(400).json({ status: 'fail', message: 'الرسالة طويلة جداً' });
+        }
+
+        const message = await PrivateMessage.findById(messageId);
+        if (!message) return res.status(404).json({ status: 'fail', message: 'الرسالة غير موجودة' });
+
+        if (message.sender.toString() !== userId.toString()) {
+            return res.status(403).json({ status: 'fail', message: 'يمكنك تعديل رسائلك فقط' });
+        }
+        if (message.type !== 'text') {
+            return res.status(400).json({ status: 'fail', message: 'لا يمكن تعديل هذا النوع من الرسائل' });
+        }
+
+        const ageMs = Date.now() - new Date(message.createdAt).getTime();
+        if (ageMs > 2 * 60 * 1000) {
+            return res.status(400).json({ status: 'fail', message: 'انتهت مهلة تعديل هذه الرسالة (دقيقتان)' });
+        }
+
+        message.content = newContent.trim();
+        message.metadata = { ...message.metadata, edited: true };
+        await message.save();
+
+        const io = req.app.get('socketio');
+        const receiverUser = await User.findById(message.receiver).select('socketId');
+        if (io && receiverUser?.socketId) {
+            io.to(receiverUser.socketId).emit('privateMessageEdited', { messageId, newContent: message.content });
+        }
+
+        res.status(200).json({ status: 'success', message: 'تم تعديل الرسالة' });
+
+    } catch (error) {
+        console.error('[ERROR] in editMessage:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم أثناء تعديل الرسالة' });
     }
 };
 
