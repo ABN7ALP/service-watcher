@@ -6210,7 +6210,8 @@ function displayMessage(message) {
     const isMyMessage = message.sender._id === user._id;
     const messageElement = document.createElement('div');
     messageElement.dataset.messageId = message._id;
-    messageElement.className = 'message-container p-2 rounded-lg mb-2 flex items-start gap-2 relative group ' + (isMyMessage ? 'bg-purple-800' : 'bg-gray-700');
+        const senderBubbleClass = message.sender.activeBubbleSkinClass || '';
+    messageElement.className = 'message-container p-2 rounded-lg mb-2 flex items-start gap-2 relative group ' + (senderBubbleClass || (isMyMessage ? 'bg-purple-800' : 'bg-gray-700'));
 
     let replyHTML = '';
     if (message.replyTo && message.replyTo.sender) {
