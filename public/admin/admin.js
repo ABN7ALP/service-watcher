@@ -807,9 +807,72 @@ class AdminDashboard {
         this.showToast('صفحة المعاملات قيد التطوير', 'info');
     }
 
-    async loadWithdrawals() {
-        // Implementation for withdrawals page
-        this.showToast('صفحة طلبات السحب قيد التطوير', 'info');
+        async loadWithdrawals() {
+        const status = document.getElementById('withdrawalStatusFilter')?.value || 'pending';
+        try {
+            const response = await fetch(`/api/admin/withdrawals?status=${status}`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            const data = await response.json();
+            if (!data.status || data.status !== 'success') throw new Error();
+            this.renderWithdrawalsList(data.data.withdrawals);
+        } catch (error) {
+            this.showToast('فشل تحميل طلبات السحب', 'error');
+        }
+    }
+
+    renderWithdrawalsList(withdrawals) {
+        const container = document.getElementById('withdrawalsListContainer');
+        if (!container) return;
+
+        if (!withdrawals || withdrawals.length === 0) {
+            container.innerHTML = `<div class="empty-state"><i class="fas fa-inbox fa-2x"></i><p>لا توجد طلبات</p></div>`;
+            return;
+        }
+
+        container.innerHTML = withdrawals.map(w => `
+            <div class="top-user-item" style="align-items:flex-start;">
+                <img src="${w.user?.profileImage}" class="top-user-avatar">
+                <div class="top-user-info" style="flex:2">
+                    <div class="username">${w.user?.username || 'مستخدم محذوف'}</div>
+                    <div style="font-size:0.85rem;color:#7f8c8d;">
+                        ${w.method === 'sham_cash' ? `شام كاش - المحفظة: ${w.walletNumber}` : `مكتب - ${w.officeInfo?.country}/${w.officeInfo?.governorate}/${w.officeInfo?.area} - ${w.officeInfo?.phone}`}
+                        <br>الاسم: ${w.fullName} | المبلغ: <strong>${w.amount}$</strong>
+                    </div>
+                </div>
+                ${w.status === 'pending' ? `
+                    <div style="display:flex; gap:6px;">
+                        <button class="btn-action btn-view" onclick="admin.reviewWithdrawal('${w._id}', 'approve')" title="قبول"><i class="fas fa-check"></i></button>
+                        <button class="btn-action btn-delete" onclick="admin.reviewWithdrawal('${w._id}', 'reject')" title="رفض"><i class="fas fa-times"></i></button>
+                    </div>
+                ` : `<span class="status-badge ${w.status === 'completed' ? 'status-completed' : 'status-banned'}">${w.status === 'completed' ? 'مقبول' : 'مرفوض'}</span>`}
+            </div>
+        `).join('');
+    }
+
+    async reviewWithdrawal(withdrawalId, action) {
+        let reason = null;
+        if (action === 'reject') {
+            reason = prompt('أدخل سبب الرفض:');
+            if (reason === null) return;
+        }
+
+        try {
+            const response = await fetch(`/api/admin/withdrawals/${withdrawalId}/review`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
+                body: JSON.stringify({ action, reason })
+            });
+            const data = await response.json();
+            if (data.status === 'success') {
+                this.showToast('تم تحديث الطلب بنجاح', 'success');
+                this.loadWithdrawals();
+            } else {
+                this.showToast(data.message || 'فشل تنفيذ العملية', 'error');
+            }
+        } catch (error) {
+            this.showToast('فشل الاتصال بالخادم', 'error');
+        }
     }
 
     async loadDeposits() {
