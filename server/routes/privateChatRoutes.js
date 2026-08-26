@@ -24,6 +24,6 @@ router.post('/report', privateChatController.reportMessage);
 router.post('/message/media', privateChatController.sendMediaMessage);
 router.put('/chat/:userId/read', privateChatController.markChatAsRead);// ✅ جديد: تصفير غير المقروء
 router.post('/one-time-message', privateChatController.sendOneTimeMessage);
-router.delete('/chat/:userId', privateChatController.hideChatForUser);
+router.delete('/chat/:userId', privateChatController.deleteEntireChat); // ✅ حذف كامل من الطرفين (لا إخفاء جزئي)
 
 module.exports = router;
