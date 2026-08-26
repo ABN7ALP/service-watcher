@@ -2,6 +2,7 @@ const express = require('express');
 const privateChatController = require('../controllers/privateChatController');
 const authMiddleware = require('../middleware/authMiddleware');
 
+
 const router = express.Router();
 
 // حماية جميع المسارات بالمصادقة
@@ -22,6 +23,7 @@ router.delete('/message', privateChatController.deleteMessage);
 router.post('/report', privateChatController.reportMessage);
 router.post('/message/media', privateChatController.sendMediaMessage);
 router.put('/chat/:userId/read', privateChatController.markChatAsRead);// ✅ جديد: تصفير غير المقروء
+router.post('/one-time-message', privateChatController.sendOneTimeMessage);
 router.delete('/chat/:userId', privateChatController.hideChatForUser);
 
 module.exports = router;
