@@ -49,6 +49,7 @@ app.use('/api/gifts', require('./routes/giftRoutes')); // ✅ نظام الهد�
 app.use('/api/withdrawals', require('./routes/withdrawalRoutes'));
 app.use('/api/coin-purchase', require('./routes/coinPurchaseRoutes')); // ✅ نظام شراء الكوينزات
 app.use('/api/bubble-skins', require('./routes/bubbleSkinRoutes'));
+app.use('/api/gift-redemption', require('./routes/giftRedemptionRoutes'));
 
 // --- مسار "التقاط الكل" لخدمة الواجهة الأمامية --
 app.get('*', (req, res) => {
