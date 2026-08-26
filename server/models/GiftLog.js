@@ -9,6 +9,7 @@ const giftLogSchema = new mongoose.Schema({
     quantity: { type: Number, default: 1, min: 1 },
     unitPrice: { type: Number, required: true },
     totalPrice: { type: Number, required: true },
+    redeemed: { type: Boolean, default: false }, // ✅ يمنع استبدال نفس الهدية مرتين
     context: {
         type: String,
         enum: ['private_chat', 'public_chat', 'profile'],
