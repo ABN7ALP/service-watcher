@@ -70,10 +70,12 @@ class AdminDashboard {
         }
 
         // Modal close buttons
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-close') || 
-                e.target.classList.contains('modal-overlay')) {
-                this.closeModal(e.target.closest('.modal-overlay').id);
+                document.addEventListener('click', (e) => {
+            // ✅ الإصلاح: closest() يلتقط النقر حتى لو كان على الأيقونة الداخلية، لا على الزر نفسه فقط
+            const closeTrigger = e.target.closest('.modal-close') || (e.target.classList.contains('modal-overlay') ? e.target : null);
+            if (closeTrigger) {
+                const overlay = closeTrigger.closest('.modal-overlay');
+                if (overlay) this.closeModal(overlay.id);
             }
         });
 
