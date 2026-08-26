@@ -5403,6 +5403,18 @@ function displayPrivateMessage(message, isMyMessage = false) {
     }
     break;
 
+                    case 'gift':
+            messageContent = `
+                <div class="flex items-center gap-3 bg-gradient-to-r from-pink-600/30 to-purple-600/30 border border-pink-500/30 p-3 rounded-lg">
+                    <img src="${meta.giftImage || ''}" class="w-10 h-10 object-contain" onerror="this.style.display='none'">
+                    <div>
+                        <p class="text-sm font-bold">🎁 هدية ${message.content}</p>
+                        <p class="text-xs text-gray-300">${meta.giftPrice || 0} كوينز</p>
+                    </div>
+                </div>
+            `;
+            break;
+
                 case 'voice':
             if (meta.uploading) {
                 // ✅ جديد: شكل مبسط أثناء الرفع (بدون رابط تشغيل بعد لأنه ما وصل بعد)
