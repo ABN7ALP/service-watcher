@@ -3,15 +3,24 @@ const ProfileFrame = require('../models/ProfileFrame');
 
 async function seedGiftsIfMissing() {
     const gifts = [
-        { name: 'وردة', description: 'هدية بسيطة تعبر عن الإعجاب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1765562034/eko4jseig8lpiednkiim.jpg', price: 10, category: 'common', animation: 'heartbeat', isActive: true, sortOrder: 1 },
-        { name: 'ثعلب', description: 'هدية مميزة وأنيقة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1765562034/eko4jseig8lpiednkiim.jpg', price: 15, category: 'rare', animation: 'sparkle', isActive: true, sortOrder: 2 },
-        { name: 'حديقة', description: 'هدية فاخرة للمناسبات الخاصة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1765562034/eko4jseig8lpiednkiim.jpg', price: 80, category: 'epic', animation: 'glow', isActive: true, sortOrder: 3 }
+        { name: 'وردة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752572/red-rose-3d-rendering-icon-illustration-png.png', price: 3, category: 'common', animation: 'float', sortOrder: 1 },
+        { name: 'قلب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752780/3d-rendering-red-heart-shape-icon-3d-render-a-sign-of-love-or-life-icon-png.webp', price: 5, category: 'common', animation: 'float', sortOrder: 2 },
+        { name: 'نجمة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753112/magnificent-modern-yellow-star-isolated-with-five-points-high-quality-png.webp', price: 8, category: 'common', animation: 'float', sortOrder: 3 },
+        { name: 'بالون', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/balloon.png', price: 10, category: 'rare', animation: 'float', sortOrder: 4 },
+        { name: 'ثعلب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/fox.png', price: 15, category: 'rare', animation: 'float', sortOrder: 5 },
+        { name: 'قوس قزح', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/rainbow.png', price: 20, category: 'rare', animation: 'float', sortOrder: 6 },
+        { name: 'تاج', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/crown.png', price: 35, category: 'epic', animation: 'float', sortOrder: 7 },
+        { name: 'حديقة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/garden.png', price: 80, category: 'epic', animation: 'float', sortOrder: 8 },
+        { name: 'ألماسة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/diamond.png', price: 120, category: 'epic', animation: 'float', sortOrder: 9 },
+        { name: 'يخت', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/yacht.png', price: 250, category: 'legendary', animation: 'float', sortOrder: 10 },
+        { name: 'قلعة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/castle.png', price: 400, category: 'legendary', animation: 'float', sortOrder: 11 },
+        { name: 'تنين', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753218/elegant-rustic-dragon-mythical-serpent-breathing-fire-high-resolution-png.webp', price: 700, category: 'legendary', animation: 'float', sortOrder: 12 }
     ];
 
     for (const g of gifts) {
         const exists = await Gift.findOne({ name: g.name });
         if (!exists) {
-            await Gift.create(g);
+            await Gift.create({ ...g, description: `هدية ${g.name}`, isActive: true });
             console.log(`🎁 [AUTO-SEED] تمت إضافة الهدية: ${g.name}`);
         }
     }
