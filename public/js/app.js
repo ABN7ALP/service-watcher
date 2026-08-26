@@ -1660,10 +1660,12 @@ document.getElementById('user-id-container').addEventListener('click', () => {
         seat.textContent = i;
         voiceGrid.appendChild(seat);
     }
-            const buyCoinsBtn = document.getElementById('buy-coins-btn');
+    const buyCoinsBtn = document.getElementById('buy-coins-btn');
     if (buyCoinsBtn) {
         buyCoinsBtn.addEventListener('click', showBuyCoinsModal);
     }
+     const withdrawBtn = document.getElementById('withdraw-balance-btn');
+    if (withdrawBtn) withdrawBtn.addEventListener('click', showWithdrawModal);
 
     // --- 5. ربط زر تسجيل الخروج ---
     const logoutBtn = document.getElementById('logoutBtn');
