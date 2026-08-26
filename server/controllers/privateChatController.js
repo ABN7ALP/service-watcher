@@ -724,4 +724,86 @@ exports.hideChatForUser = async (req, res) => {
     }
 };
 
+// =================================================
+// إرسال رسالة واحدة لمستخدم حظرك (متاحة من مستوى 4)
+// =================================================
+exports.sendOneTimeMessage = async (req, res) => {
+    try {
+        const senderId = req.user.id;
+        const { receiverId, content } = req.body;
+
+        if (req.user.level < 4) {
+            return res.status(403).json({ status: 'fail', message: 'هذه الميزة تُفتح عند المستوى 4' });
+        }
+
+        if (!content || content.trim().length === 0) {
+            return res.status(400).json({ status: 'fail', message: 'اكتب رسالة أولاً' });
+        }
+        if (content.length > 25) {
+            return res.status(400).json({ status: 'fail', message: 'الرسالة يجب ألا تتجاوز 25 حرفاً' });
+        }
+
+        const receiver = await User.findById(receiverId).select('blockedUsers socketId username profileImage');
+        if (!receiver) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
+
+        const heBlockedMe = receiver.blockedUsers.map(id => id.toString()).includes(senderId.toString());
+        if (!heBlockedMe) {
+            return res.status(400).json({ status: 'fail', message: 'هذه الميزة متاحة فقط لمن حظرك' });
+        }
+
+        // ✅ الحماية الأساسية: محاولة إنشاء سجل - إذا موجود مسبقاً (unique index) سيفشل تلقائياً
+        try {
+            await OneTimeMessageLog.create({ sender: senderId, receiver: receiverId });
+        } catch (dupError) {
+            return res.status(400).json({ status: 'fail', message: 'لقد استخدمت هذه الميزة مسبقاً مع هذا المستخدم' });
+        }
+
+        const participants = [senderId, receiverId].sort();
+        const chatId = participants.join('_');
+
+        let chat = await PrivateChat.findOne({ chatId });
+        if (!chat) {
+            chat = await PrivateChat.create({
+                chatId,
+                participants,
+                participantData: [
+                    { userId: senderId, username: req.user.username, profileImage: req.user.profileImage },
+                    { userId: receiverId, username: receiver.username, profileImage: receiver.profileImage }
+                ]
+            });
+        }
+
+        // رسالة حقيقية تظهر للطرفين بشكل طبيعي — هذا هو الفرق الجوهري عن الحظر الصامت
+        const message = await PrivateMessage.create({
+            chatId,
+            sender: senderId,
+            receiver: receiverId,
+            type: 'text',
+            content: `${content.trim()} (رسالة تجاوز حظر)`,
+            isShadowed: false
+        });
+
+        chat.lastMessage = content.trim();
+        chat.lastMessageAt = new Date();
+        chat.lastMessageBy = senderId;
+        chat.hiddenBy = chat.hiddenBy.filter(id => id.toString() !== senderId.toString() && id.toString() !== receiverId.toString());
+        await chat.save();
+
+        const populatedMessage = await PrivateMessage.findById(message._id).populate('sender', 'username profileImage').lean();
+
+        const io = req.app.get('socketio');
+        if (io && receiver.socketId) {
+            io.to(receiver.socketId).emit('privateMessageReceived', {
+                message: populatedMessage, chatId, senderId, senderName: req.user.username
+            });
+        }
+
+        res.status(201).json({ status: 'success', message: 'تم إرسال رسالتك بنجاح' });
+
+    } catch (error) {
+        console.error('[ERROR] in sendOneTimeMessage:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
 module.exports = exports;
