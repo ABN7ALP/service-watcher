@@ -243,6 +243,20 @@
         </main>
     </div>
 
+                <!-- Withdrawals Page -->
+            <div id="withdrawals-page" class="page">
+                <div class="page-header">
+                    <h1><i class="fas fa-money-bill-wave"></i> طلبات السحب</h1>
+                    <select id="withdrawalStatusFilter" class="form-control" style="width:auto">
+                        <option value="pending">قيد المراجعة</option>
+                        <option value="completed">مقبولة</option>
+                        <option value="rejected">مرفوضة</option>
+                        <option value="all">الكل</option>
+                    </select>
+                </div>
+                <div id="withdrawalsListContainer" class="table-responsive p-3"></div>
+            </div>
+
     <!-- Modals -->
     <div class="modal fade" id="userDetailsModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
