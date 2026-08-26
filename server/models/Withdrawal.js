@@ -20,9 +20,26 @@ const withdrawalSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+    // ✅ طريقة السحب
+  method: {
+    type: String,
+    enum: ['sham_cash', 'office'],
+    required: true
+  },
+  fullName: { type: String, required: true },
+
+  // بيانات شام كاش (رابط المحفظة)
   walletNumber: {
     type: String,
-    required: true
+    required: function() { return this.method === 'sham_cash'; }
+  },
+
+  // بيانات السحب عبر مكتب
+  officeInfo: {
+    country: String,
+    governorate: String,
+    area: String,
+    phone: String
   },
   status: {
     type: String,
