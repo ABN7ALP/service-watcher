@@ -5910,6 +5910,7 @@ function showOneMessageModal(targetUserId, targetUsername) {
             sendBtn.disabled = false;
             sendBtn.textContent = 'إرسال';
         }
+    });
     
     // إلغاء
     document.getElementById('cancel-one-message').addEventListener('click', () => {
@@ -5922,7 +5923,7 @@ function showOneMessageModal(targetUserId, targetUsername) {
             modal.remove();
         }
     });
-
+}
         
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
 function getFriendButtonHTML(profileUser, selfUser) {
