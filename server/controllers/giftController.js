@@ -72,18 +72,27 @@ exports.sendGift = async (req, res) => {
             io.to(sender.socketId).emit('balanceUpdate', { newBalance: sender.balance, newCoins: sender.coins });
         }
 
+               const safeGiftImage = gift.imageUrl || '';
+
+        const giftEventPayload = {
+            giftId: gift._id,
+            giftName: gift.name,
+            giftImage: safeGiftImage,
+            quantity: qty,
+            fromUserId: senderId,
+            fromUsername: sender.username,
+            fromProfileImage: sender.profileImage,
+            animation: gift.animation,
+            timestamp: new Date().toISOString()
+        };
+
         if (receiver.socketId && io) {
-            io.to(receiver.socketId).emit('giftReceived', {
-                giftId: gift._id,
-                giftName: gift.name,
-                giftImage: gift.imageUrl,
-                quantity: qty,
-                fromUserId: senderId,
-                fromUsername: sender.username,
-                fromProfileImage: sender.profileImage,
-                animation: gift.animation,
-                timestamp: new Date().toISOString()
-            });
+            io.to(receiver.socketId).emit('giftReceived', giftEventPayload);
+        }
+
+        // ✅ نرسل نفس البيانات (giftImage الحقيقي) للمرسل أيضاً حتى تظهر الصورة الصحيحة بتأثيره العائم
+        if (sender.socketId && io) {
+            io.to(sender.socketId).emit('giftSentConfirmation', giftEventPayload);
         }
 
         res.status(201).json({
