@@ -127,8 +127,56 @@ input[type="checkbox"] {
     accent-color: #8b5cf6;
 }
 
-/* إطار الصورة الشخصية - الإطار الذهبي */
+/* ===== إطارات الصور الشخصية المتحركة ===== */
+
 .profile-frame-classic-gold {
     border: 3px solid #fbbf24 !important;
     box-shadow: 0 0 10px rgba(251, 191, 36, 0.7), 0 0 0 2px rgba(251, 191, 36, 0.25);
+}
+
+@keyframes neon-pulse {
+    0%, 100% { box-shadow: 0 0 8px #a855f7, 0 0 16px #a855f7; }
+    50% { box-shadow: 0 0 18px #d946ef, 0 0 30px #d946ef; }
+}
+.profile-frame-neon-purple {
+    border: 3px solid #d946ef !important;
+    animation: neon-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes rainbow-spin {
+    0% { filter: hue-rotate(0deg); }
+    100% { filter: hue-rotate(360deg); }
+}
+.profile-frame-rainbow {
+    border: 3px solid transparent !important;
+    background: linear-gradient(white, white) padding-box,
+                conic-gradient(red, orange, yellow, green, blue, violet, red) border-box;
+    animation: rainbow-spin 4s linear infinite;
+}
+
+@keyframes fire-flicker {
+    0%, 100% { box-shadow: 0 0 10px #f97316, 0 0 4px #ef4444 inset; }
+    50% { box-shadow: 0 0 20px #fb923c, 0 0 8px #dc2626 inset; }
+}
+.profile-frame-fire {
+    border: 3px solid #ea580c !important;
+    animation: fire-flicker 1.2s ease-in-out infinite;
+}
+
+@keyframes ice-shimmer {
+    0%, 100% { box-shadow: 0 0 8px #38bdf8; }
+    50% { box-shadow: 0 0 18px #7dd3fc, 0 0 6px #ffffff inset; }
+}
+.profile-frame-ice {
+    border: 3px solid #38bdf8 !important;
+    animation: ice-shimmer 2.2s ease-in-out infinite;
+}
+
+@keyframes royal-glow {
+    0%, 100% { box-shadow: 0 0 10px #eab308, 0 0 0 2px #7c2d12; }
+    50% { box-shadow: 0 0 22px #facc15, 0 0 0 2px #92400e; }
+}
+.profile-frame-royal {
+    border: 4px double #b91c1c !important;
+    animation: royal-glow 2.5s ease-in-out infinite;
 }
