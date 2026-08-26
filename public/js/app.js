@@ -2169,6 +2169,16 @@ socket.on('chatCleanup', ({ idsToDelete }) => {
 });
 
 
+        socket.on('withdrawalStatusUpdated', (data) => {
+    if (data.status === 'completed') {
+        showNotification('تمت الموافقة على طلب سحبك بنجاح ✅', 'success');
+    } else if (data.status === 'rejected') {
+        showNotification(`تم رفض طلب السحب. السبب: ${data.reason}`, 'error');
+        refreshUserData();
+    }
+});
+
+
    // --- ✅ دالة جديدة لنافذة التأكيد ---
 // --- ✅ استبدل دالة showConfirmationModal بالكامل ---
 function showConfirmationModal(message, onConfirm) {
@@ -3294,6 +3304,172 @@ function renderAgentList() {
     });
 }
 
+// =================================================
+// ============ نظام سحب الرصيد ======================
+// =================================================
+
+async function showWithdrawModal() {
+    const existing = document.getElementById('withdraw-modal');
+    if (existing) existing.remove();
+
+    const shellHTML = `
+        <div id="withdraw-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[88vh] flex flex-col">
+                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-money-bill-wave text-green-400"></i> سحب الرصيد</h3>
+                    <button id="close-withdraw" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="withdraw-body" class="p-4 overflow-y-auto flex-1"></div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+    const modal = document.getElementById('withdraw-modal');
+    document.getElementById('close-withdraw').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target.id === 'withdraw-modal') modal.remove(); });
+
+    renderWithdrawHome();
+}
+
+async function renderWithdrawHome() {
+    const body = document.getElementById('withdraw-body');
+    const user = JSON.parse(localStorage.getItem('user'));
+
+    let myWithdrawals = [];
+    try {
+        const res = await fetch('/api/withdrawals/my-withdrawals', { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await res.json();
+        if (res.ok) myWithdrawals = result.data.withdrawals;
+    } catch (e) { console.error(e); }
+
+    const statusLabel = { pending: ['قيد المراجعة', 'text-yellow-400'], completed: ['تم القبول ✓', 'text-green-400'], rejected: ['مرفوض', 'text-red-400'] };
+
+    body.innerHTML = `
+        <div class="bg-gray-900/50 rounded-xl p-3 mb-4 flex justify-between items-center">
+            <span class="text-sm text-gray-400">رصيدك المتاح</span>
+            <span class="font-bold text-green-400">${user.balance.toFixed(2)}$</span>
+        </div>
+        <div class="space-y-3 mb-4">
+            <button class="withdraw-method-btn w-full flex items-center gap-3 bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-xl p-4" data-method="sham_cash">
+                <i class="fas fa-wallet text-blue-400 text-xl"></i>
+                <div class="text-right flex-1"><p class="font-bold text-sm">سحب عبر شام كاش</p><p class="text-xs text-gray-400">خلال ساعة إلى 3 ساعات</p></div>
+                <i class="fas fa-chevron-left text-gray-500"></i>
+            </button>
+            <button class="withdraw-method-btn w-full flex items-center gap-3 bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-xl p-4" data-method="office">
+                <i class="fas fa-building text-orange-400 text-xl"></i>
+                <div class="text-right flex-1"><p class="font-bold text-sm">سحب عبر مكتب</p><p class="text-xs text-gray-400">خلال يوم إلى 3 أيام</p></div>
+                <i class="fas fa-chevron-left text-gray-500"></i>
+            </button>
+        </div>
+        ${myWithdrawals.length > 0 ? `
+            <p class="text-xs text-gray-400 mb-2">طلباتك السابقة</p>
+            <div class="space-y-2">
+                ${myWithdrawals.slice(0, 5).map(w => `
+                    <div class="bg-gray-900/40 rounded-lg p-2.5 flex justify-between items-center text-xs">
+                        <span>${w.amount}$ - ${w.method === 'sham_cash' ? 'شام كاش' : 'مكتب'}</span>
+                        <span class="${statusLabel[w.status][1]} font-bold">${statusLabel[w.status][0]}</span>
+                    </div>
+                    ${w.status === 'rejected' && w.rejectionReason ? `<p class="text-[11px] text-red-400 px-2">السبب: ${w.rejectionReason}</p>` : ''}
+                `).join('')}
+            </div>
+        ` : ''}
+    `;
+
+    body.querySelectorAll('.withdraw-method-btn').forEach(btn => {
+        btn.addEventListener('click', () => renderWithdrawForm(btn.dataset.method));
+    });
+}
+
+function renderWithdrawForm(method) {
+    const body = document.getElementById('withdraw-body');
+    const user = JSON.parse(localStorage.getItem('user'));
+
+    const fieldsHTML = method === 'sham_cash' ? `
+        <div class="mb-3">
+            <label class="text-xs text-gray-400 mb-1 block">رابط محفظة شام كاش</label>
+            <input type="text" id="w-wallet" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-sm" placeholder="رابط المحفظة">
+        </div>
+    ` : `
+        <div class="grid grid-cols-2 gap-2 mb-3">
+            <div><label class="text-xs text-gray-400 mb-1 block">البلد</label><input type="text" id="w-country" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">المحافظة</label><input type="text" id="w-governorate" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-sm"></div>
+        </div>
+        <div class="mb-3"><label class="text-xs text-gray-400 mb-1 block">المنطقة</label><input type="text" id="w-area" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-sm"></div>
+        <div class="mb-3"><label class="text-xs text-gray-400 mb-1 block">رقم الهاتف</label><input type="text" id="w-phone" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-sm"></div>
+    `;
+
+    body.innerHTML = `
+        <button id="back-to-withdraw-home" class="text-sm text-gray-400 hover:text-white mb-4 flex items-center gap-1"><i class="fas fa-arrow-right"></i> رجوع</button>
+        <div class="mb-3"><label class="text-xs text-gray-400 mb-1 block">الاسم الكامل</label><input type="text" id="w-fullname" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-sm"></div>
+        ${fieldsHTML}
+        <div class="mb-4">
+            <label class="text-xs text-gray-400 mb-1 block">المبلغ المراد سحبه ($)</label>
+            <input type="number" id="w-amount" min="5" max="${user.balance}" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-sm">
+            <p class="text-xs text-gray-500 mt-1">رصيدك المتاح: ${user.balance.toFixed(2)}$ — الحد الأدنى 5$</p>
+        </div>
+        <button id="submit-withdraw-btn" class="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg font-bold">إرسال طلب السحب</button>
+    `;
+
+    document.getElementById('back-to-withdraw-home').addEventListener('click', renderWithdrawHome);
+
+    document.getElementById('submit-withdraw-btn').addEventListener('click', async () => {
+        const fullName = document.getElementById('w-fullname').value.trim();
+        const amount = parseFloat(document.getElementById('w-amount').value);
+
+        if (!fullName) { showNotification('يرجى إدخال الاسم الكامل', 'error'); return; }
+        if (!amount || amount < 5) { showNotification('الحد الأدنى للسحب 5$', 'error'); return; }
+        if (amount > user.balance) { showNotification('المبلغ يتجاوز رصيدك المتاح', 'error'); return; }
+
+        const payload = { method, amount, fullName };
+        if (method === 'sham_cash') {
+            const wallet = document.getElementById('w-wallet').value.trim();
+            if (!wallet) { showNotification('يرجى إدخال رابط المحفظة', 'error'); return; }
+            payload.walletNumber = wallet;
+        } else {
+            const country = document.getElementById('w-country').value.trim();
+            const governorate = document.getElementById('w-governorate').value.trim();
+            const area = document.getElementById('w-area').value.trim();
+            const phone = document.getElementById('w-phone').value.trim();
+            if (!country || !governorate || !area || !phone) { showNotification('يرجى إكمال كل بيانات المكتب', 'error'); return; }
+            payload.officeInfo = { country, governorate, area, phone };
+        }
+
+        const btn = document.getElementById('submit-withdraw-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+        try {
+            const response = await fetch('/api/withdrawals/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                const localUser = JSON.parse(localStorage.getItem('user'));
+                localUser.balance -= amount;
+                localStorage.setItem('user', JSON.stringify(localUser));
+                document.getElementById('balance').textContent = localUser.balance.toFixed(2);
+
+                showNotification(result.message, 'success');
+                const modal = document.getElementById('withdraw-modal');
+                if (modal) modal.remove();
+            } else {
+                showNotification(result.message || 'فشل إرسال الطلب', 'error');
+                btn.disabled = false;
+                btn.textContent = 'إرسال طلب السحب';
+            }
+        } catch (error) {
+            showNotification('خطأ في الاتصال بالخادم', 'error');
+            btn.disabled = false;
+            btn.textContent = 'إرسال طلب السحب';
+        }
+    });
+}
+
+        
 // =================================================
 // ============ قسم المتصدرين (Leaderboard) =========
 // =================================================
