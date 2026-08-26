@@ -34,7 +34,7 @@ exports.register = async (req, res, next) => {
             return res.status(400).json({ status: 'fail', message: 'يرجى ملء جميع الحقول الإلزامية.' });
         }
 
-        const newUser = await User.create({
+                const newUser = await User.create({
             username,
             email,
             password,
@@ -43,6 +43,29 @@ exports.register = async (req, res, next) => {
             socialStatus,
             educationStatus
         });
+
+        // ✅ إهداء إطار الترحيب تلقائياً، صالح 3 أيام من لحظة التسجيل مباشرة (مُفعّل فوراً)
+        try {
+            const ProfileFrame = require('../models/ProfileFrame');
+            const welcomeFrame = await ProfileFrame.findOne({ name: 'إطار الترحيب' });
+            if (welcomeFrame) {
+                const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+                newUser.ownedFrames.push({
+                    frame: welcomeFrame._id,
+                    purchasedAt: new Date(),
+                    durationDays: 3,
+                    activatedAt: new Date(),
+                    expiresAt: expiresAt
+                });
+                newUser.activeFrame = welcomeFrame._id;
+                newUser.activeFrameClass = welcomeFrame.cssClass;
+                newUser.activeFrameExpiresAt = expiresAt;
+                newUser.hasReceivedWelcomeFrame = true;
+                await newUser.save();
+            }
+        } catch (frameError) {
+            console.error('[WELCOME FRAME ERROR]', frameError);
+        }
         
         createSendToken(newUser, 201, res);
 
