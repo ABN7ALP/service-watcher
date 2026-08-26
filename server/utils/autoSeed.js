@@ -3,7 +3,7 @@ const ProfileFrame = require('../models/ProfileFrame');
 
 async function seedGiftsIfMissing() {
     const gifts = [
-        { name: 'وردة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752572/red-rose-3d-rendering-icon-illustration-png.png', price: 3, category: 'common', animation: 'float', sortOrder: 1 },
+        { name: 'وردة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752572/red-rose-3d-rendering-icon-illustration-png.png', price: 10, category: 'common', animation: 'float', sortOrder: 1 },
         { name: 'قلب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752780/3d-rendering-red-heart-shape-icon-3d-render-a-sign-of-love-or-life-icon-png.webp', price: 5, category: 'common', animation: 'float', sortOrder: 2 },
         { name: 'نجمة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753112/magnificent-modern-yellow-star-isolated-with-five-points-high-quality-png.webp', price: 8, category: 'common', animation: 'float', sortOrder: 3 },
         { name: 'بالون', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/balloon.png', price: 10, category: 'rare', animation: 'float', sortOrder: 4 },
