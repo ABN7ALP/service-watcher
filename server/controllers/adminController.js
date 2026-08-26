@@ -8,19 +8,10 @@ const AdminLog = require('../models/AdminLog');
 // Admin Dashboard Stats
 exports.getDashboardStats = async (req, res) => {
   try {
-    const { admin } = req;
+    const GiftLog = require('../models/GiftLog');
 
-    if (!admin.isAdmin) {
-      return res.status(403).json({
-        success: false,
-        message: 'صلاحيات غير كافية'
-      });
-    }
-
-    // Get statistics
     const [
       totalUsers,
-      onlineUsers,
       totalDeposits,
       totalWithdrawals,
       pendingDeposits,
@@ -29,46 +20,58 @@ exports.getDashboardStats = async (req, res) => {
       todayTransactions
     ] = await Promise.all([
       User.countDocuments(),
-      User.countDocuments({ isOnline: true }),
       Transaction.aggregate([
         { $match: { type: 'deposit', status: 'completed' } },
         { $group: { _id: null, total: { $sum: '$amount' } } }
       ]),
-      Transaction.aggregate([
-        { $match: { type: 'withdrawal', status: 'completed' } },
-        { $group: { _id: null, total: { $sum: { $abs: '$amount' } } } }
+      Withdrawal.aggregate([
+        { $match: { status: 'completed' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
       ]),
       Transaction.countDocuments({ type: 'deposit', status: 'pending' }),
       Withdrawal.countDocuments({ status: 'pending' }),
       Battle.countDocuments({ status: { $in: ['waiting', 'in-progress'] } }),
       Transaction.countDocuments({
-        createdAt: {
-          $gte: new Date(new Date().setHours(0, 0, 0, 0))
-        }
+        createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
       })
     ]);
 
-    // Top users
-    const topDepositors = await User.find()
-      .sort('-totalDeposited')
-      .limit(10)
-      .select('username totalDeposited profileImage');
+    // ✅ الإصلاح: نستخدم مصادر بيانات حقيقية بدل حقول غير موجودة بموديل المستخدم
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const topGifters = await User.find()
-      .sort('-totalGifted')
-      .limit(10)
-      .select('username totalGifted profileImage');
-
-    const topWinners = await User.find()
-      .sort('-totalWon')
-      .limit(10)
-      .select('username totalWon profileImage');
+    const [topDepositors, topGifters, topWinners] = await Promise.all([
+      Transaction.aggregate([
+        { $match: { type: 'deposit', status: 'completed' } },
+        { $group: { _id: '$user', total: { $sum: '$amount' } } },
+        { $sort: { total: -1 } }, { $limit: 10 },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'u' } },
+        { $unwind: '$u' },
+        { $project: { _id: '$u._id', username: '$u.username', profileImage: '$u.profileImage', totalDeposited: '$total' } }
+      ]),
+      GiftLog.aggregate([
+        { $match: { createdAt: { $gte: startOfMonth } } },
+        { $group: { _id: '$sender', total: { $sum: '$totalPrice' } } },
+        { $sort: { total: -1 } }, { $limit: 10 },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'u' } },
+        { $unwind: '$u' },
+        { $project: { _id: '$u._id', username: '$u.username', profileImage: '$u.profileImage', totalGifted: '$total' } }
+      ]),
+      Transaction.aggregate([
+        { $match: { type: 'win', status: 'completed' } },
+        { $group: { _id: '$user', total: { $sum: '$amount' } } },
+        { $sort: { total: -1 } }, { $limit: 10 },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'u' } },
+        { $unwind: '$u' },
+        { $project: { _id: '$u._id', username: '$u.username', profileImage: '$u.profileImage', totalWon: '$total' } }
+      ])
+    ]);
 
     res.json({
       success: true,
       stats: {
         totalUsers,
-        onlineUsers,
+        onlineUsers: 0, // لا يوجد حقل isOnline بموديل المستخدم حالياً
         totalDeposits: totalDeposits[0]?.total || 0,
         totalWithdrawals: totalWithdrawals[0]?.total || 0,
         pendingDeposits,
@@ -76,18 +79,12 @@ exports.getDashboardStats = async (req, res) => {
         activeBattles,
         todayTransactions
       },
-      topUsers: {
-        depositors: topDepositors,
-        gifters: topGifters,
-        winners: topWinners
-      }
+      topUsers: { depositors: topDepositors, gifters: topGifters, winners: topWinners }
     });
 
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    console.error('[ADMIN DASHBOARD ERROR]', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
