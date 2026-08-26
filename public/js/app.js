@@ -5883,14 +5883,33 @@ function showOneMessageModal(targetUserId, targetUsername) {
             return;
         }
         
-        // هنا سيكون منطق إرسال الرسالة (سنضيفه لاحقاً)
-        showNotification(`سيتم إرسال الرسالة لـ ${targetUsername} قريباً`, 'info');
-        modal.remove();
-        
-        // إغلاق نافذة "المستخدم غير متوفر" أيضاً
-        const blockedModal = document.getElementById('blocked-profile-modal');
-        if (blockedModal) blockedModal.remove();
-    });
+                const sendBtn = document.getElementById('send-one-message');
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'جاري الإرسال...';
+
+        try {
+            const response = await fetch('/api/private-chat/one-time-message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ receiverId: targetUserId, content: message })
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                showNotification('تم إرسال رسالتك بنجاح', 'success');
+                modal.remove();
+                const blockedModal = document.getElementById('blocked-profile-modal');
+                if (blockedModal) blockedModal.remove();
+            } else {
+                showNotification(result.message || 'فشل إرسال الرسالة', 'error');
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'إرسال';
+            }
+        } catch (error) {
+            showNotification('خطأ في الاتصال بالخادم', 'error');
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'إرسال';
+        }
     
     // إلغاء
     document.getElementById('cancel-one-message').addEventListener('click', () => {
