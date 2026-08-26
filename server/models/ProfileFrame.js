@@ -9,4 +9,11 @@ const profileFrameSchema = new mongoose.Schema({
     sortOrder: { type: Number, default: 0 }
 }, { timestamps: true });
 
+    // ✅ أسعار مختلفة حسب المدة (يمكن تعديلها بحرية لكل إطار)
+    prices: {
+        days7: { type: Number, required: true },
+        days30: { type: Number, required: true },
+        days365: { type: Number, required: true }
+    },
+
 module.exports = mongoose.model('ProfileFrame', profileFrameSchema);
