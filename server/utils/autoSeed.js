@@ -19,7 +19,12 @@ async function seedGiftsIfMissing() {
 
 async function seedFramesIfMissing() {
     const frames = [
-        { name: 'إطار ذهبي', price: 50, cssClass: 'profile-frame-classic-gold', isActive: true }
+        { name: 'إطار ذهبي كلاسيكي', price: 50, cssClass: 'profile-frame-classic-gold', isActive: true, sortOrder: 1 },
+        { name: 'إطار نيون بنفسجي', price: 90, cssClass: 'profile-frame-neon-purple', isActive: true, sortOrder: 2 },
+        { name: 'إطار قوس قزح', price: 150, cssClass: 'profile-frame-rainbow', isActive: true, sortOrder: 3 },
+        { name: 'إطار ناري', price: 200, cssClass: 'profile-frame-fire', isActive: true, sortOrder: 4 },
+        { name: 'إطار جليدي', price: 200, cssClass: 'profile-frame-ice', isActive: true, sortOrder: 5 },
+        { name: 'إطار ملكي', price: 350, cssClass: 'profile-frame-royal', isActive: true, sortOrder: 6 }
     ];
 
     for (const f of frames) {
