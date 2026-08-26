@@ -46,10 +46,27 @@ async function seedFramesIfMissing() {
     }
 }
 
+
+
+async function seedBubbleSkinsIfMissing() {
+    const ChatBubbleSkin = require('../models/ChatBubbleSkin');
+    const skins = [
+        { name: 'فقاعة ليلية', price: 40, cssClass: 'bubble-skin-midnight', sortOrder: 1 },
+        { name: 'فقاعة غروب', price: 60, cssClass: 'bubble-skin-sunset', sortOrder: 2 },
+        { name: 'فقاعة زمردية', price: 80, cssClass: 'bubble-skin-emerald', sortOrder: 3 },
+        { name: 'فقاعة ملكية', price: 120, cssClass: 'bubble-skin-royal', sortOrder: 4 }
+    ];
+    for (const s of skins) {
+        const exists = await ChatBubbleSkin.findOne({ name: s.name });
+        if (!exists) await ChatBubbleSkin.create(s);
+    }
+}
+
 module.exports = async function autoSeed() {
     try {
         await seedGiftsIfMissing();
         await seedFramesIfMissing();
+        await seedBubbleSkinsIfMissing();
     } catch (error) {
         console.error('[AUTO-SEED] خطأ أثناء التهيئة التلقائية:', error);
     }
