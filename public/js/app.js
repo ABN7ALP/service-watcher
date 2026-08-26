@@ -851,6 +851,24 @@ async function showSettingsView() {
                     </div>
                 </div>
             </div>
+
+
+            <!-- =========================================== -->
+            <!-- 6. قسم الهدايا المستلمة (الجديد) -->
+            <!-- =========================================== -->
+            <div class="mb-4">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="gifts-received-section">
+                    <h3 class="text-lg font-bold">
+                        <i class="fas fa-gift mr-2"></i>هداياي المستلمة
+                    </h3>
+                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+                </div>
+                <div id="gifts-received-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
+                    <div id="gifts-received-body" class="text-center text-gray-400 py-6">
+                        <i class="fas fa-spinner fa-spin"></i>
+                    </div>
+                </div>
+            </div>
             
             <!-- =========================================== -->
             <!-- 4. قسم المحظورين (الجديد) -->
@@ -898,6 +916,7 @@ async function showSettingsView() {
     
     // ⭐ إعادة ربط الأحداث (دالة واحدة فقط)
     setupSettingsEvents();
+    loadGiftsReceivedSummary();
 }
 
 // 📍 أضف هذه الدالة بعد showSettingsView
@@ -3522,6 +3541,70 @@ function renderWithdrawForm(method) {
         }
     });
 }
+
+
+async function loadGiftsReceivedSummary() {
+    const body = document.getElementById('gifts-received-body');
+    if (!body) return;
+
+    try {
+        const response = await fetch('/api/gift-redemption/summary', { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await response.json();
+        if (!response.ok) throw new Error();
+
+        const d = result.data;
+
+        body.innerHTML = `
+            <div class="bg-gray-900/50 rounded-xl p-4 mb-4 text-center">
+                <p class="text-3xl font-bold text-pink-400">${d.totalGiftsCount}</p>
+                <p class="text-xs text-gray-400">هدية قابلة للاستبدال (${d.totalCoinsValue} كوينز)</p>
+            </div>
+            ${d.totalGiftsCount > 0 ? `
+                <p class="text-xs text-gray-500 mb-3 text-center">نسبة الاستبدال ${d.redemptionRatePercent}% (خصم منصة بسيط لضمان عدالة النظام)</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <button id="redeem-to-balance-btn" class="bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg text-sm font-bold">
+                        <i class="fas fa-dollar-sign"></i><br>${d.usdIfRedeemed}$
+                        <p class="text-[10px] font-normal opacity-80">تحويل لرصيد</p>
+                    </button>
+                    <button id="redeem-to-coins-btn" class="bg-yellow-600 hover:bg-yellow-700 text-white py-3 rounded-lg text-sm font-bold">
+                        <i class="fas fa-coins"></i><br>${d.coinsIfRedeemed}
+                        <p class="text-[10px] font-normal opacity-80">تحويل لكوينز</p>
+                    </button>
+                </div>
+            ` : '<p class="text-center text-gray-500 text-sm">لا توجد هدايا جديدة قابلة للاستبدال</p>'}
+        `;
+
+        document.getElementById('redeem-to-balance-btn')?.addEventListener('click', () => confirmRedeem('balance'));
+        document.getElementById('redeem-to-coins-btn')?.addEventListener('click', () => confirmRedeem('coins'));
+
+    } catch (error) {
+        body.innerHTML = '<p class="text-center text-red-400 text-sm">فشل تحميل بيانات الهدايا</p>';
+    }
+}
+
+function confirmRedeem(redeemTo) {
+    const label = redeemTo === 'balance' ? 'رصيد الدولار' : 'الكوينز';
+    showConfirmationModal(`هل أنت متأكد من استبدال جميع هداياك القابلة للاستبدال إلى ${label}؟ هذا الإجراء لا يمكن التراجع عنه.`, async () => {
+        try {
+            const response = await fetch('/api/gift-redemption/redeem', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ redeemTo })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                showNotification(result.message, 'success');
+                await refreshUserData();
+                showSettingsView();
+            } else {
+                showNotification(result.message || 'فشل الاستبدال', 'error');
+            }
+        } catch (error) {
+            showNotification('خطأ في الاتصال بالخادم', 'error');
+        }
+    });
+}
+        
 
         
 // =================================================
