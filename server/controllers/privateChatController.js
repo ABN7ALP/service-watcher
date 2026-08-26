@@ -3,6 +3,7 @@ const PrivateMessage = require('../models/PrivateMessage');
 const User = require('../models/User');
 const OneTimeMessageLog = require('../models/OneTimeMessageLog');
 const ChatReport = require('../models/ChatReport');
+const { deleteChatMedia } = require('../utils/cloudinary');
 
 // =================================================
 // إنشاء/جلب دردشة خاصة
@@ -12,108 +13,53 @@ exports.getOrCreateChat = async (req, res) => {
         const userId = req.user.id;
         const otherUserId = req.params.userId;
 
-        console.log(`[CHAT] Getting/Creating chat between ${userId} and ${otherUserId}`);
-
-        // 1. التحقق من عدم إنشاء دردشة مع نفسك
         if (userId === otherUserId) {
-            return res.status(400).json({
-                status: 'fail',
-                message: 'لا يمكنك إنشاء دردشة مع نفسك'
-            });
+            return res.status(400).json({ status: 'fail', message: 'لا يمكنك إنشاء دردشة مع نفسك' });
         }
 
-        // 2. التحقق من وجود المستخدم الآخر
         const otherUser = await User.findById(otherUserId);
         if (!otherUser) {
-            return res.status(404).json({
-                status: 'fail',
-                message: 'المستخدم غير موجود'
-            });
+            return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
         }
 
-        // 3. التحقق من الحظر
-        const [currentUser, targetUser] = await Promise.all([
-            User.findById(userId).select('blockedUsers blockedBy'),
-            User.findById(otherUserId).select('blockedUsers blockedBy')
-        ]);
+        // ✅ الإصلاح الجوهري: لم نعد نمنع الوصول لسجل المحادثة بسبب الحظر (بأي اتجاه)
+        // فقط نمنع إرسال رسائل جديدة إذا كنت أنا من حظرت الطرف الآخر (يُتحقق منه بمكان الإرسال)
 
-        if (!currentUser || !targetUser) {
-            return res.status(404).json({
-                status: 'fail',
-                message: 'المستخدم غير موجود'
-            });
-        }
-
-        // التحقق من الحظر المتبادل
-        const currentUserBlocked = currentUser.blockedUsers.map(id => id.toString());
-        const targetUserBlocked = targetUser.blockedUsers.map(id => id.toString());
-
-        if (currentUserBlocked.includes(otherUserId) || targetUserBlocked.includes(userId)) {
-            return res.status(403).json({
-                status: 'fail',
-                message: 'لا يمكنك مراسلة هذا المستخدم بسبب الحظر'
-            });
-        }
-
-        // 4. البحث عن دردشة موجودة
         const participants = [userId, otherUserId].sort();
         const chatId = participants.join('_');
 
         let chat = await PrivateChat.findOne({ chatId })
             .populate('participants', 'username profileImage customId level');
 
-        // 5. إذا لم تكن موجودة، إنشاء واحدة جديدة
-        // 5. إذا لم تكن موجودة، إنشاء واحدة جديدة
-if (!chat) {
-    console.log(`[CHAT] Creating new chat: ${chatId}`);
-    
-    // تأكد من أن participants هي ObjectId
-    const mongoose = require('mongoose');
-    const participantIds = participants.map(id => new mongoose.Types.ObjectId(id));
+        if (!chat) {
+            const mongoose = require('mongoose');
+            const participantIds = participants.map(id => new mongoose.Types.ObjectId(id));
 
-    chat = await PrivateChat.create({
-        chatId,
-        participants: participantIds, // ✅ الآن ObjectId
-        participantData: [
-            {
-                userId: new mongoose.Types.ObjectId(userId),
-                username: req.user.username,
-                profileImage: req.user.profileImage
-            },
-            {
-                userId: new mongoose.Types.ObjectId(otherUserId),
-                username: otherUser.username,
-                profileImage: otherUser.profileImage
-            }
-        ]
-    });
+            chat = await PrivateChat.create({
+                chatId,
+                participants: participantIds,
+                participantData: [
+                    { userId: new mongoose.Types.ObjectId(userId), username: req.user.username, profileImage: req.user.profileImage },
+                    { userId: new mongoose.Types.ObjectId(otherUserId), username: otherUser.username, profileImage: otherUser.profileImage }
+                ]
+            });
 
-            // جلب البيانات مع populate
             chat = await PrivateChat.findById(chat._id)
                 .populate('participants', 'username profileImage customId level');
         }
 
-        // 6. جلب آخر 50 رسالة
-                const rawMessages = await PrivateMessage.find({ chatId: chat.chatId })
+        const rawMessages = await PrivateMessage.find({ chatId: chat.chatId })
             .sort('-createdAt')
             .limit(50)
             .populate('sender', 'username profileImage')
-            .populate({
-                path: 'replyTo',
-                populate: {
-                    path: 'sender',
-                    select: 'username'
-                }
-            })
+            .populate({ path: 'replyTo', populate: { path: 'sender', select: 'username' } })
             .lean();
 
-        // ✅ إخفاء أي رسالة أُرسلت إليّ بينما كنت قد حظرت مرسلها (حظر صامت)
+        // ✅ نُخفي فقط الرسائل التي أُرسلت إليّ بينما كنت قد حظرت مرسلها (حظر صامت)
         const messages = rawMessages.filter(m =>
             !(m.isShadowed && m.receiver.toString() === userId.toString())
         );
-        
 
-        // ترتيب الرسائل من الأقدم للأحدث
         const sortedMessages = messages.reverse();
 
         res.status(200).json({
@@ -127,10 +73,7 @@ if (!chat) {
 
     } catch (error) {
         console.error('[ERROR] in getOrCreateChat:', error);
-        res.status(500).json({
-            status: 'error',
-            message: 'حدث خطأ في الخادم أثناء إنشاء/جلب الدردشة'
-        });
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم أثناء إنشاء/جلب الدردشة' });
     }
 };
 
@@ -803,6 +746,45 @@ exports.sendOneTimeMessage = async (req, res) => {
     } catch (error) {
         console.error('[ERROR] in sendOneTimeMessage:', error);
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
+// =================================================
+// حذف محادثة بالكامل من الطرفين (رسائل + وسائط Cloudinary)
+// =================================================
+exports.deleteEntireChat = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const otherUserId = req.params.userId;
+
+        const participants = [userId, otherUserId].sort();
+        const chatId = participants.join('_');
+
+        const messages = await PrivateMessage.find({ chatId });
+
+        // ✅ حذف كل ملفات الوسائط من Cloudinary أولاً
+        for (const msg of messages) {
+            const publicId = msg.metadata?.publicId;
+            if (publicId) {
+                const resourceType = msg.type === 'image' ? 'image' : 'video'; // الصوت والفيديو يُخزنان كـ video
+                await deleteChatMedia(publicId, resourceType);
+            }
+        }
+
+        await PrivateMessage.deleteMany({ chatId });
+        await PrivateChat.deleteOne({ chatId });
+
+        const io = req.app.get('socketio');
+        const otherUser = await User.findById(otherUserId).select('socketId');
+        if (io && otherUser?.socketId) {
+            io.to(otherUser.socketId).emit('chatFullyDeleted', { chatId, byUserId: userId });
+        }
+
+        res.status(200).json({ status: 'success', message: 'تم حذف المحادثة بالكامل من الطرفين' });
+
+    } catch (error) {
+        console.error('[ERROR] in deleteEntireChat:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم أثناء حذف المحادثة' });
     }
 };
 
