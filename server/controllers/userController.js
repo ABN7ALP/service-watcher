@@ -73,6 +73,11 @@ const getUserById = async (req, res) => {
 // --- ✅ هذه هي الدالة التي أضفناها مؤخرًا ---
 const getMeDetails = async (req, res) => {
     try {
+        // ✅ فحص وإزالة الإطار تلقائياً إذا انتهت صلاحيته، في كل استدعاء لبيانات المستخدم
+        const { checkAndExpireActiveFrame } = require('./frameController');
+        const rawUser = await User.findById(req.user.id);
+        await checkAndExpireActiveFrame(rawUser);
+
         const user = await User.findById(req.user. id)
             .populate('friends', 'username profileImage customId level')
             .populate('friendRequestsReceived', 'username profileImage customId')
