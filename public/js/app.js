@@ -6216,6 +6216,12 @@ function sendMessage() {
     messageInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
     });
+    const publicGiftBtn = document.getElementById('public-gift-btn');
+    if (publicGiftBtn) {
+        publicGiftBtn.addEventListener('click', () => {
+            showNotification('اختر شخصاً من قائمة الدردشة لإرسال هدية خاصة به من ملفه الشخصي', 'info');
+        });
+    }
 
     // --- استبدل دالة displayMessage بهذه النسخة ---
 function displayMessage(message) {
