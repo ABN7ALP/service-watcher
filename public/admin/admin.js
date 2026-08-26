@@ -43,6 +43,7 @@ class AdminDashboard {
     }
 
     setupEventListeners() {
+        document.getElementById('withdrawalStatusFilter')?.addEventListener('change', () => this.loadWithdrawals());
         // Menu navigation
         document.querySelectorAll('.menu-item').forEach(item => {
             item.addEventListener('click', (e) => {
@@ -83,6 +84,7 @@ class AdminDashboard {
         document.getElementById('confirmBan')?.addEventListener('click', () => {
             this.confirmBanUser();
         });
+            
 
         // Mobile menu toggle
         const mobileToggle = document.createElement('button');
