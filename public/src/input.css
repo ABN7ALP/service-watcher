@@ -242,3 +242,13 @@ input[type="checkbox"] {
     0% { opacity: 1; transform: translate(0,0) scale(0.5); }
     100% { opacity: 0; transform: translate(calc((var(--i) - 2) * 40px), -50px) scale(1); }
 }
+
+
+@keyframes welcome-shimmer {
+    0%, 100% { box-shadow: 0 0 10px #60a5fa; }
+    50% { box-shadow: 0 0 20px #93c5fd; }
+}
+.profile-frame-welcome {
+    border: 3px solid #60a5fa !important;
+    animation: welcome-shimmer 2s ease-in-out infinite;
+}
