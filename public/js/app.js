@@ -5922,7 +5922,7 @@ function showOneMessageModal(targetUserId, targetUsername) {
             modal.remove();
         }
     });
-}
+
         
 // --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
 function getFriendButtonHTML(profileUser, selfUser) {
