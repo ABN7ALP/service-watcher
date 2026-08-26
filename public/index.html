@@ -175,11 +175,15 @@
                             <input type="text" id="messageInput" placeholder="اكتب رسالتك..." maxlength="300" class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2 pr-20 focus:ring-purple-500 focus:border-purple-500 transition-colors duration-300">
                             <div id="char-counter" class="absolute top-1/2 left-2 transform -translate-y-1/2 text-xs text-gray-500 dark:text-gray-400">0/300</div>
                         </div>
-                        <button id="sendBtn" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 mt-2 w-full rounded-lg flex items-center justify-center gap-2 text-white">
-                            <i class="fas fa-paper-plane"></i>
-                            <span>إرسال</span>
-                        </button>
-                    </div>
+                          <div class="flex gap-2 mt-2">
+                            <button id="public-gift-btn" class="bg-pink-600 hover:bg-pink-700 px-3 py-2 rounded-lg text-white flex-shrink-0" title="إرسال هدية للجميع">
+                                <i class="fas fa-gift"></i>
+                            </button>
+                            <button id="sendBtn" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 w-full rounded-lg flex items-center justify-center gap-2 text-white">
+                                <i class="fas fa-paper-plane"></i>
+                                <span>إرسال</span>
+                            </button>
+                        </div>
                 </aside>
             </div>
         </div>
