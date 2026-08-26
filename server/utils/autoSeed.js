@@ -28,12 +28,13 @@ async function seedGiftsIfMissing() {
 
 async function seedFramesIfMissing() {
     const frames = [
-        { name: 'إطار ذهبي كلاسيكي', price: 50, cssClass: 'profile-frame-classic-gold', isActive: true, sortOrder: 1 },
-        { name: 'إطار نيون بنفسجي', price: 90, cssClass: 'profile-frame-neon-purple', isActive: true, sortOrder: 2 },
-        { name: 'إطار قوس قزح', price: 150, cssClass: 'profile-frame-rainbow', isActive: true, sortOrder: 3 },
-        { name: 'إطار ناري', price: 200, cssClass: 'profile-frame-fire', isActive: true, sortOrder: 4 },
-        { name: 'إطار جليدي', price: 200, cssClass: 'profile-frame-ice', isActive: true, sortOrder: 5 },
-        { name: 'إطار ملكي', price: 350, cssClass: 'profile-frame-royal', isActive: true, sortOrder: 6 }
+        { name: 'إطار الترحيب', cssClass: 'profile-frame-welcome', isActive: false, sortOrder: 0, prices: { days7: 0, days30: 0, days365: 0 } },
+        { name: 'إطار ذهبي كلاسيكي', cssClass: 'profile-frame-classic-gold', isActive: true, sortOrder: 1, prices: { days7: 50, days30: 150, days365: 1200 } },
+        { name: 'إطار نيون بنفسجي', cssClass: 'profile-frame-neon-purple', isActive: true, sortOrder: 2, prices: { days7: 90, days30: 280, days365: 2200 } },
+        { name: 'إطار قوس قزح', cssClass: 'profile-frame-rainbow', isActive: true, sortOrder: 3, prices: { days7: 150, days30: 450, days365: 3500 } },
+        { name: 'إطار ناري', cssClass: 'profile-frame-fire', isActive: true, sortOrder: 4, prices: { days7: 200, days30: 600, days365: 4800 } },
+        { name: 'إطار جليدي', cssClass: 'profile-frame-ice', isActive: true, sortOrder: 5, prices: { days7: 200, days30: 600, days365: 4800 } },
+        { name: 'إطار ملكي', cssClass: 'profile-frame-royal', isActive: true, sortOrder: 6, prices: { days7: 350, days30: 1000, days365: 8000 } }
     ];
 
     for (const f of frames) {
