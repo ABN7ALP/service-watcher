@@ -46,6 +46,7 @@ app.use('/api/chat-media', require('./routes/chatMediaRoutes')); // ⭐ الجد
 app.use('/api/admin', require('./routes/admin')); // ✅ لوحة التحكم
 app.use('/api/frames', require('./routes/frameRoutes')); // ✅ سنضيفها بالفقرة 6
 app.use('/api/gifts', require('./routes/giftRoutes')); // ✅ نظام الهدايا والمتصدرين
+app.use('/api/withdrawals', require('./routes/withdrawalRoutes'));
 app.use('/api/coin-purchase', require('./routes/coinPurchaseRoutes')); // ✅ نظام شراء الكوينزات
 
 // --- مسار "التقاط الكل" لخدمة الواجهة الأمامية --
