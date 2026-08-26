@@ -3469,13 +3469,10 @@ function renderWithdrawForm(method) {
             });
             const result = await response.json();
 
-            if (response.ok) {
-                const localUser = JSON.parse(localStorage.getItem('user'));
-                localUser.balance -= amount;
-                localStorage.setItem('user', JSON.stringify(localUser));
-                document.getElementById('balance').textContent = localUser.balance.toFixed(2);
+                 if (response.ok) {
+                // ✅ الإصلاح: تحديث فوري وحقيقي من الخادم بدل تعديل يدوي محلي فقط
+                await refreshUserData();
 
-                showNotification(result.message, 'success');
                 const modal = document.getElementById('withdraw-modal');
                 if (modal) modal.remove();
             } else {
@@ -5971,37 +5968,33 @@ function showOneMessageModal(targetUserId, targetUsername) {
         </div>
     `;
     
-    document.getElementById('game-container').innerHTML += modalHTML;
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
     
     const modal = document.getElementById('one-message-modal');
-    const messageInput = document.getElementById('one-message-input');
+    const oneMsgInput = document.getElementById('one-message-input'); // ✅ اسم مختلف تماماً يمنع أي تعارض
     const charCount = document.getElementById('message-char-count');
     
-    // تأثير الظهور
     setTimeout(() => {
         modal.querySelector('.transform').classList.remove('scale-95');
     }, 50);
     
-    // تحديث عداد الأحرف
-    messageInput.addEventListener('input', () => {
-        charCount.textContent = `${messageInput.value.length}/25`;
+    oneMsgInput.addEventListener('input', () => {
+        charCount.textContent = `${oneMsgInput.value.length}/25`;
     });
     
-    // إرسال الرسالة
     document.getElementById('send-one-message').addEventListener('click', async () => {
-        const message = messageInput.value.trim();
+        const messageText = oneMsgInput.value.trim(); // ✅ اسم متغير محلي مستقل بالكامل
         
-        if (!message) {
+        if (!messageText) {
             showNotification('اكتب رسالة أولاً', 'error');
             return;
         }
-        
-        if (message.length > 25) {
+        if (messageText.length > 25) {
             showNotification('الرسالة طويلة جداً (25 حرف كحد أقصى)', 'error');
             return;
         }
         
-                const sendBtn = document.getElementById('send-one-message');
+        const sendBtn = document.getElementById('send-one-message');
         sendBtn.disabled = true;
         sendBtn.textContent = 'جاري الإرسال...';
 
@@ -6009,7 +6002,7 @@ function showOneMessageModal(targetUserId, targetUsername) {
             const response = await fetch('/api/private-chat/one-time-message', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ receiverId: targetUserId, content: message })
+                body: JSON.stringify({ receiverId: targetUserId, content: messageText })
             });
             const result = await response.json();
 
@@ -6024,18 +6017,17 @@ function showOneMessageModal(targetUserId, targetUsername) {
                 sendBtn.textContent = 'إرسال';
             }
         } catch (error) {
+            console.error('[ONE TIME MESSAGE] Error:', error);
             showNotification('خطأ في الاتصال بالخادم', 'error');
             sendBtn.disabled = false;
             sendBtn.textContent = 'إرسال';
         }
     });
     
-    // إلغاء
     document.getElementById('cancel-one-message').addEventListener('click', () => {
         modal.remove();
     });
     
-    // إغلاق بالنقر على الخلفية
     modal.addEventListener('click', (e) => {
         if (e.target.id === 'one-message-modal') {
             modal.remove();
