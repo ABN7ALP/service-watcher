@@ -1998,7 +1998,8 @@ socket.on('levelUp', ({ newLevel }) => {
 });
 
         socket.on('giftReceived', (data) => {
-    showFloatingAlert(`🎁 ${data.fromUsername} أرسل لك ${data.giftName} × ${data.quantity}`, 'fa-gift', 'bg-pink-500');
+    // ✅ تأثير عائم كامل بدل التنبيه البسيط السابق
+    showGiftFloatingAnimation(data.giftImage, data.giftName, data.fromUsername, data.quantity);
     refreshUserData();
 });
 
@@ -2843,7 +2844,8 @@ async function sendGiftToUser(targetUserId, gift, quantity, modal) {
             const coinsEl = document.getElementById('coins');
             if (coinsEl) coinsEl.textContent = localUser.coins;
 
-            showNotification(`تم إرسال ${gift.name} بنجاح 🎁`, 'success');
+            const currentUsername = JSON.parse(localStorage.getItem('user')).username;
+            showGiftFloatingAnimation('', gift.name, `أنت أرسلت لـ ${targetUsername || 'المستخدم'}`, quantity);
             if (modal) modal.remove();
         } else {
             showNotification(result.message || 'فشل إرسال الهدية', 'error');
@@ -2860,7 +2862,29 @@ async function sendGiftToUser(targetUserId, gift, quantity, modal) {
 }
 
 
-        // =================================================
+// --- 🎊 تأثير عائم احترافي عند استقبال/إرسال هدية ---
+function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity = 1) {
+    const container = document.createElement('div');
+    container.className = 'gift-float-container';
+    container.innerHTML = `
+        <div class="gift-float-card">
+            <img src="${giftImage}" class="gift-float-image" onerror="this.style.display='none'">
+            <div class="gift-float-text">
+                <span class="gift-float-sender">${fromUsername}</span>
+                <span class="gift-float-name">أرسل ${giftName}${quantity > 1 ? ' × ' + quantity : ''} 🎁</span>
+            </div>
+        </div>
+        <div class="gift-float-sparkles">
+            ${'✨'.repeat(5).split('').map((s, i) => `<span style="--i:${i}">${s}</span>`).join('')}
+        </div>
+    `;
+    document.body.appendChild(container);
+    setTimeout(() => container.remove(), 3500);
+}
+
+        
+
+ // =================================================
 // ============ نظام شراء الكوينزات =================
 // =================================================
 
