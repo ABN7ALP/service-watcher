@@ -2548,6 +2548,10 @@ function getChatInputAreaHTML() {
             <button id="toggle-chat-options" class="bg-gray-700 hover:bg-gray-600 w-10 h-10 rounded-full flex items-center justify-center">
                 <i class="fas fa-plus text-gray-300"></i>
             </button>
+
+            <button id="open-inline-gift-btn" class="bg-pink-600/80 hover:bg-pink-600 w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" title="إرسال هدية">
+                <i class="fas fa-gift text-white"></i>
+            </button>
             
             <div class="flex-1 relative">
                 <input type="text" id="private-message-input" 
@@ -2784,7 +2788,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
             <div id="gift-cards-grid" class="grid grid-cols-3 gap-3 mb-4">
                 ${gifts.map(g => `
                     <button class="gift-card-btn flex flex-col items-center bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-xl p-3 transition"
-                            data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}">
+                            data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}" data-gift-image="${g.imageUrl}">
                         <img src="${g.imageUrl}" class="w-14 h-14 object-contain mb-2" onerror="this.style.opacity='0.3'">
                         <span class="text-xs font-bold text-center truncate w-full">${g.name}</span>
                         <span class="text-xs text-yellow-400 flex items-center gap-1 mt-1">
@@ -2793,35 +2797,21 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                     </button>
                 `).join('')}
             </div>
-            <div id="gift-selected-panel" class="hidden bg-gray-900/50 rounded-xl p-3">
-                <div class="flex items-center justify-between mb-3">
-                    <span class="text-sm">الكمية</span>
-                    <div class="flex items-center gap-3">
-                        <button id="gift-qty-minus" class="w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded-full">-</button>
-                        <span id="gift-qty-value" class="font-bold w-6 text-center">1</span>
-                        <button id="gift-qty-plus" class="w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded-full">+</button>
-                    </div>
+            <div id="gift-selected-panel" class="hidden bg-gray-900/50 rounded-xl p-4 text-center">
+                <div class="flex items-center justify-center gap-2 mb-3">
+                    <img id="gift-selected-preview" class="w-10 h-10 object-contain">
+                    <span id="gift-selected-name" class="font-bold"></span>
                 </div>
-                <div class="flex items-center justify-between mb-3 text-sm">
-                    <span class="text-gray-400">الإجمالي</span>
-                    <span id="gift-total-price" class="font-bold text-yellow-400">0 <i class="fas fa-coins"></i></span>
-                </div>
-                <button id="send-gift-btn" class="w-full bg-pink-600 hover:bg-pink-700 text-white py-2.5 rounded-lg font-bold flex items-center justify-center gap-2">
-                    <i class="fas fa-paper-plane"></i> إرسال الهدية
+                <p class="text-xs text-gray-400 mb-3">اضغط مطولاً على الزر لإرسال أكثر من هدية بسرعة متزايدة</p>
+                <button id="rapid-send-gift-btn" class="w-24 h-24 mx-auto bg-gradient-to-br from-pink-500 to-purple-600 rounded-full flex flex-col items-center justify-center shadow-lg select-none active:scale-95 transition-transform">
+                    <i class="fas fa-paper-plane text-2xl text-white mb-1"></i>
+                    <span id="gift-multiplier-label" class="text-white text-xs font-bold">إرسال</span>
                 </button>
+                <p id="gift-sent-counter" class="text-xs text-gray-400 mt-3 hidden"></p>
             </div>
         `;
 
         let selectedGift = null;
-        let quantity = 1;
-
-        function updateSelectedPanel() {
-            const panel = document.getElementById('gift-selected-panel');
-            if (!selectedGift) { panel.classList.add('hidden'); return; }
-            panel.classList.remove('hidden');
-            document.getElementById('gift-qty-value').textContent = quantity;
-            document.getElementById('gift-total-price').innerHTML = `${selectedGift.price * quantity} <i class="fas fa-coins"></i>`;
-        }
 
         body.querySelectorAll('.gift-card-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -2830,20 +2820,16 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                 selectedGift = {
                     id: btn.dataset.giftId,
                     name: btn.dataset.giftName,
-                    price: parseFloat(btn.dataset.giftPrice)
+                    price: parseFloat(btn.dataset.giftPrice),
+                    imageUrl: btn.dataset.giftImage
                 };
-                quantity = 1;
-                updateSelectedPanel();
-            });
-        });
 
-        body.addEventListener('click', (e) => {
-            if (e.target.id === 'gift-qty-minus') { quantity = Math.max(1, quantity - 1); updateSelectedPanel(); }
-            if (e.target.id === 'gift-qty-plus') { quantity = Math.min(50, quantity + 1); updateSelectedPanel(); }
-            if (e.target.closest('#send-gift-btn')) {
-                if (!selectedGift) return;
-                sendGiftToUser(targetUserId, targetUsername, selectedGift, quantity, modal);
-            }
+                document.getElementById('gift-selected-panel').classList.remove('hidden');
+                document.getElementById('gift-selected-preview').src = selectedGift.imageUrl;
+                document.getElementById('gift-selected-name').textContent = selectedGift.name;
+                document.getElementById('gift-sent-counter').classList.add('hidden');
+                setupRapidGiftButton(targetUserId, () => selectedGift);
+            });
         });
 
     } catch (error) {
@@ -2853,44 +2839,113 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
     }
 }
 
-async function sendGiftToUser(targetUserId, targetUsername, gift, quantity, modal) {
-    const sendBtn = document.getElementById('send-gift-btn');
-    if (sendBtn) {
-        sendBtn.disabled = true;
-        sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
+// --- ⚡ محرك الإرسال المتسارع: ضغطة = هدية واحدة، استمرار الضغط = تسارع تلقائي x2 x3 x4 ---
+function setupRapidGiftButton(targetUserId, getSelectedGift) {
+    const btn = document.getElementById('rapid-send-gift-btn');
+    if (!btn) return;
+
+    let pressTimer = null;
+    let rapidInterval = null;
+    let sentCount = 0;
+    let currentSpeedMs = 600; // سرعة الإرسال بالميلي ثانية، تتناقص تدريجياً (تسارع)
+    let isSending = false;
+
+    const counterLabel = document.getElementById('gift-sent-counter');
+    const multiplierLabel = document.getElementById('gift-multiplier-label');
+
+    async function fireOneGift() {
+        const gift = getSelectedGift();
+        if (!gift || isSending) return;
+
+        // ✅ حماية: تحقق من الرصيد محلياً قبل كل إرسال لتفادي محاولات فاشلة متكررة أثناء التسارع
+        const localUser = JSON.parse(localStorage.getItem('user'));
+        if (localUser.coins < gift.price) {
+            stopRapidSending();
+            showNotification('رصيد الكوينز غير كافٍ لإرسال المزيد', 'error');
+            return;
+        }
+
+        isSending = true;
+        try {
+            const response = await fetch('/api/gifts/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ receiverId: targetUserId, giftId: gift.id, quantity: 1, context: 'private_chat' })
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                sentCount++;
+                localUser.coins = result.data.newSenderCoins;
+                localStorage.setItem('user', JSON.stringify(localUser));
+                document.getElementById('coins').textContent = localUser.coins;
+                const balanceEl = document.getElementById('gift-store-balance');
+                if (balanceEl) balanceEl.textContent = localUser.coins;
+
+                counterLabel.textContent = `تم إرسال ${sentCount} هدية (${(sentCount * gift.price).toFixed(0)} كوينز)`;
+                counterLabel.classList.remove('hidden');
+
+                showGiftFloatingAnimation(gift.imageUrl, gift.name, `أرسلت ×${sentCount}`, 1);
+
+                // ✅ رسالة داخل الدردشة نفسها لكل هدية، تماماً كأي رسالة عادية
+                displayPrivateMessage({
+                    _id: 'gift-msg-' + Date.now() + Math.random(),
+                    sender: localUser._id,
+                    receiver: targetUserId,
+                    type: 'gift',
+                    content: gift.name,
+                    metadata: { giftImage: gift.imageUrl, giftPrice: gift.price },
+                    createdAt: new Date().toISOString(),
+                    status: { sent: true, delivered: false, seen: false }
+                }, true);
+            } else {
+                stopRapidSending();
+                showNotification(result.message || 'فشل إرسال الهدية', 'error');
+            }
+        } catch (error) {
+            console.error('[RAPID GIFT] Error:', error);
+            stopRapidSending();
+        } finally {
+            isSending = false;
+        }
     }
 
-    try {
-        const response = await fetch('/api/gifts/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ receiverId: targetUserId, giftId: gift.id, quantity: quantity, context: 'private_chat' })
-        });
+    function startRapidSending() {
+        fireOneGift(); // أول ضغطة فورية
+        let speedLevel = 1;
 
-        const result = await response.json();
+        pressTimer = setTimeout(() => {
+            // بعد نصف ثانية من الاستمرار، يبدأ التسارع التلقائي
+            rapidInterval = setInterval(() => {
+                fireOneGift();
+                speedLevel = Math.min(speedLevel + 1, 5);
+                multiplierLabel.textContent = `x${speedLevel}`;
 
-        if (response.ok) {
-            const localUser = JSON.parse(localStorage.getItem('user'));
-            localUser.coins = result.data.newSenderCoins;
-            localStorage.setItem('user', JSON.stringify(localUser));
-            const coinsEl = document.getElementById('coins');
-            if (coinsEl) coinsEl.textContent = localUser.coins;
-
-            const currentUsername = JSON.parse(localStorage.getItem('user')).username;
-            showGiftFloatingAnimation('', gift.name, `أنت أرسلت لـ ${targetUsername || 'المستخدم'}`, quantity);
-            if (modal) modal.remove();
-        } else {
-            showNotification(result.message || 'فشل إرسال الهدية', 'error');
-        }
-    } catch (error) {
-        console.error('[SEND GIFT] Error:', error);
-        showNotification('خطأ في الاتصال بالخادم', 'error');
-    } finally {
-        if (sendBtn) {
-            sendBtn.disabled = false;
-            sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الهدية';
-        }
+                // تسريع الإيقاع كل مرة (حتى حد أدنى آمن 150ms لمنع إغراق الخادم بالطلبات)
+                clearInterval(rapidInterval);
+                currentSpeedMs = Math.max(600 - (speedLevel * 90), 150);
+                rapidInterval = setInterval(fireOneGift, currentSpeedMs);
+            }, 500);
+        }, 500);
     }
+
+    function stopRapidSending() {
+        clearTimeout(pressTimer);
+        clearInterval(rapidInterval);
+        pressTimer = null;
+        rapidInterval = null;
+        multiplierLabel.textContent = 'إرسال';
+    }
+
+    // إعادة الربط في كل مرة يتم اختيار هدية جديدة (لتفادي تراكم المستمعات)
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+
+    newBtn.addEventListener('mousedown', startRapidSending);
+    newBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRapidSending(); }, { passive: false });
+    newBtn.addEventListener('mouseup', stopRapidSending);
+    newBtn.addEventListener('mouseleave', stopRapidSending);
+    newBtn.addEventListener('touchend', stopRapidSending);
 }
 
 
@@ -3878,6 +3933,14 @@ if (messageInput) {
         actionsBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             toggleChatActionsMenu(actionsBtn, targetUserId);
+        });
+    }
+        // 11. زر الهدايا المدمج بشريط الكتابة
+    const inlineGiftBtn = document.getElementById('open-inline-gift-btn');
+    if (inlineGiftBtn) {
+        inlineGiftBtn.addEventListener('click', () => {
+            const chatUserName = document.getElementById('chat-user-name')?.textContent?.trim() || 'المستخدم';
+            showGiftStoreModal(targetUserId, chatUserName);
         });
     }
     
@@ -5425,6 +5488,9 @@ function displayPrivateMessage(message, isMyMessage = false) {
         `;
     }
     break;
+
+
+            
 
         default:
             messageContent = `<p class="text-white text-sm">${message.content || 'رسالة'}</p>`;
