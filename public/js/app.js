@@ -819,52 +819,35 @@ async function showSettingsView() {
                         </span>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-3">
-                        ${frameShopData.frames.map(f => `
-                            <div class="bg-gray-900/40 rounded-xl p-3 text-center border ${
-                                frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString()
-                                    ? 'border-yellow-400'
-                                    : 'border-gray-700'
-                            }">
+                       <div class="grid grid-cols-2 gap-3">
+                        ${frameShopData.frames.filter(f => f.name !== 'إطار الترحيب').map(f => {
+                            const owned = f.ownedInstance;
+                            const isActive = frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString();
+                            const isExpired = owned && owned.expiresAt && new Date(owned.expiresAt) < new Date();
+
+                            return `
+                            <div class="bg-gray-900/40 rounded-xl p-3 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'}">
                                 <div class="w-16 h-16 mx-auto rounded-full ${f.cssClass} bg-gray-700 mb-2"></div>
-
                                 <p class="text-sm font-bold mb-1">${f.name}</p>
-
-                                <p class="text-xs text-yellow-400 mb-2">
-                                    <i class="fas fa-coins"></i> ${f.price}
-                                </p>
-
-                                ${f.owned ? `
-                                    <button
-                                        class="equip-frame-btn w-full text-xs py-1.5 rounded-full ${
-                                            frameShopData.activeFrame &&
-                                            frameShopData.activeFrame.toString() === f._id.toString()
-                                                ? 'bg-gray-600 text-gray-300'
-                                                : 'bg-purple-600 hover:bg-purple-700 text-white'
-                                        }"
-                                        data-frame-id="${f._id}"
-                                        ${
-                                            frameShopData.activeFrame &&
-                                            frameShopData.activeFrame.toString() === f._id.toString()
-                                                ? 'disabled'
-                                                : ''
-                                        }>
-                                        ${
-                                            frameShopData.activeFrame &&
-                                            frameShopData.activeFrame.toString() === f._id.toString()
-                                                ? 'مُفعّل حالياً'
-                                                : 'تفعيل'
-                                        }
+                                
+                                ${owned && !isExpired ? `
+                                    ${owned.activatedAt ? `<p class="text-[10px] text-gray-400 mb-2">ينتهي: ${new Date(owned.expiresAt).toLocaleDateString('ar-SA')}</p>` : `<p class="text-[10px] text-green-400 mb-2">بحوزتك (لم يُفعّل بعد)</p>`}
+                                    <button class="equip-frame-btn w-full text-xs py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}" 
+                                            data-frame-id="${f._id}" ${isActive ? 'disabled' : ''}>
+                                        ${isActive ? 'مُفعّل حالياً' : 'تفعيل'}
                                     </button>
                                 ` : `
-                                    <button
-                                        class="purchase-frame-btn w-full text-xs py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white"
-                                        data-frame-id="${f._id}">
+                                    <select class="frame-duration-select w-full text-xs bg-gray-700 rounded p-1.5 mb-2" data-frame-id="${f._id}">
+                                        <option value="7">7 أيام - ${f.prices.days7} كوينز</option>
+                                        <option value="30">30 يوم - ${f.prices.days30} كوينز</option>
+                                        <option value="365">سنة كاملة - ${f.prices.days365} كوينز</option>
+                                    </select>
+                                    <button class="purchase-frame-btn w-full text-xs py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-frame-id="${f._id}">
                                         شراء
                                     </button>
                                 `}
                             </div>
-                        `).join('')}
+                        `}).join('')}
                     </div>
                 </div>
             </div>
@@ -936,24 +919,24 @@ function setupSettingsEvents() {
         });
     });
 
-        document.querySelectorAll('.purchase-frame-btn').forEach(btn => {
+            document.querySelectorAll('.purchase-frame-btn').forEach(btn => {
         btn.addEventListener('click', async function() {
             const frameId = this.dataset.frameId;
+            const durationSelect = document.querySelector(`.frame-duration-select[data-frame-id="${frameId}"]`);
+            const duration = durationSelect ? durationSelect.value : '7';
+
             this.disabled = true;
             this.textContent = '...';
             try {
                 const response = await fetch('/api/frames/purchase', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ frameId })
+                    body: JSON.stringify({ frameId, duration })
                 });
                 const result = await response.json();
                 if (response.ok) {
                     showNotification(result.message, 'success');
-                    const localUser = JSON.parse(localStorage.getItem('user'));
-                    localUser.coins = result.data.newCoins;
-                    localStorage.setItem('user', JSON.stringify(localUser));
-                    document.getElementById('coins').textContent = localUser.coins;
+                    await refreshUserData();
                     showSettingsView();
                 } else {
                     showNotification(result.message || 'فشل الشراء', 'error');
@@ -980,10 +963,7 @@ function setupSettingsEvents() {
                 const result = await response.json();
                 if (response.ok) {
                     showNotification(result.message, 'success');
-                    const localUser = JSON.parse(localStorage.getItem('user'));
-                    localUser.activeFrameClass = result.data.activeFrameClass;
-                    localStorage.setItem('user', JSON.stringify(localUser));
-                    applyFrameToAvatar(document.getElementById('profileImage'), result.data.activeFrameClass);
+                    await refreshUserData();
                     showSettingsView();
                 } else {
                     showNotification(result.message || 'فشل التفعيل', 'error');
@@ -992,7 +972,7 @@ function setupSettingsEvents() {
                 showNotification('خطأ في الاتصال بالخادم', 'error');
             }
         });
-    });                              
+    });                        
     
     // 2. تحديث الصورة الشخصية
     document.getElementById('select-image-btn').addEventListener('click', () => {
