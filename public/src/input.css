@@ -180,3 +180,65 @@ input[type="checkbox"] {
     border: 4px double #b91c1c !important;
     animation: royal-glow 2.5s ease-in-out infinite;
 }
+
+
+
+
+
+/* ===== تأثير الهدية العائم ===== */
+.gift-float-container {
+    position: fixed;
+    top: 20%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 500;
+    pointer-events: none;
+    animation: gift-float-rise 3.5s ease-out forwards;
+}
+
+@keyframes gift-float-rise {
+    0% { opacity: 0; transform: translateX(-50%) translateY(40px) scale(0.7); }
+    15% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.05); }
+    25% { transform: translateX(-50%) translateY(0) scale(1); }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-60px) scale(0.9); }
+}
+
+.gift-float-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: linear-gradient(135deg, rgba(124,58,237,0.95), rgba(219,39,119,0.95));
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 20px;
+    padding: 12px 20px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+}
+
+.gift-float-image {
+    width: 50px;
+    height: 50px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 8px rgba(255,255,255,0.6));
+    animation: gift-icon-bounce 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes gift-icon-bounce {
+    from { transform: scale(1) rotate(-5deg); }
+    to { transform: scale(1.1) rotate(5deg); }
+}
+
+.gift-float-text { display: flex; flex-direction: column; color: white; }
+.gift-float-sender { font-weight: bold; font-size: 0.9rem; }
+.gift-float-name { font-size: 0.8rem; opacity: 0.9; }
+
+.gift-float-sparkles span {
+    position: absolute;
+    top: 50%; left: 50%;
+    font-size: 1.2rem;
+    animation: sparkle-fly 1.5s ease-out calc(var(--i) * 0.1s) infinite;
+}
+@keyframes sparkle-fly {
+    0% { opacity: 1; transform: translate(0,0) scale(0.5); }
+    100% { opacity: 0; transform: translate(calc((var(--i) - 2) * 40px), -50px) scale(1); }
+}
