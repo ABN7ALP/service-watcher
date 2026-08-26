@@ -15,25 +15,47 @@
         <p class="mt-4 text-lg text-gray-600 dark:text-gray-300">جاري تحميل المنصة...</p>
     </div>
 
-    <!-- ✅ المحتوى الرئيسي للتطبيق (مخفي افتراضياً) -->
-    <div id="app-container" class="hidden">
-        <div class="container mx-auto p-4">
-            <!-- Header -->
-            <header class="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-lg p-4 flex justify-between items-center mb-4 transition-colors duration-300">
-                <div class="logo flex items-center gap-3">
-                    <i class="fas fa-trophy text-yellow-400 text-2xl"></i>
-                    <span class="text-xl font-bold">منصة التحديات</span>
-                </div>
-                <div class="user-info flex items-center gap-4">
-                    <div class="balance bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-full text-sm">💰 <span id="balance">0.00</span>$</div>
-                                        <div class="coins bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
-                        🪙 <span id="coins">0</span>
-                        <button id="buy-coins-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center" title="شحن كوينزات">+</button>
-                    </div>
-                    <button id="logoutBtn" class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded-full text-xs text-white">خروج</button>
-                </div>
-            </header>
+    <!-- Header -->
+<header class="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-lg p-4 flex justify-between items-center mb-4 transition-colors duration-300">
+    <div class="logo flex items-center gap-3">
+        <i class="fas fa-trophy text-yellow-400 text-2xl"></i>
+        <span class="text-xl font-bold">منصة التحديات</span>
+    </div>
 
+    <div class="user-info flex items-center gap-4">
+
+        <!-- 💰 الرصيد + زر سحب الرصيد -->
+        <div class="balance bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+            💰 <span id="balance">0.00</span>$
+            <button
+                id="withdraw-balance-btn"
+                class="bg-green-500 hover:bg-green-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center"
+                title="سحب الرصيد">
+                ↓
+            </button>
+        </div>
+
+        <!-- 🪙 الكوينز + زر الشحن -->
+        <div class="coins bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+            🪙 <span id="coins">0</span>
+
+            <button
+                id="buy-coins-btn"
+                class="bg-yellow-500 hover:bg-yellow-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center"
+                title="شحن كوينزات">
+                +
+            </button>
+        </div>
+
+        <!-- 🚪 تسجيل الخروج -->
+        <button
+            id="logoutBtn"
+            class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded-full text-xs text-white">
+            خروج
+        </button>
+
+    </div>
+</header>
 
             <!-- Main Content -->
             <div class="grid grid-cols-12 gap-4">
