@@ -1898,6 +1898,16 @@ function showXpGainAnimation(amount) {
 
 
 
+        socket.on('chatFullyDeleted', (data) => {
+    const openChat = document.getElementById('private-chat-modal');
+    if (openChat && openChat.dataset.targetUserId === data.byUserId) {
+        openChat.remove();
+        showNotification('تم حذف هذه المحادثة من الطرف الآخر', 'info');
+    }
+    if (document.getElementById('messages-list-container')) {
+        loadMessagesList();
+    }
+});
   
         
     // 📍 أضف هذا المستمع بعد socket.on('forceRefreshUserData', ...)
