@@ -27,9 +27,18 @@ const userSchema = new mongoose.Schema({
     level: { type: Number, default: 1 },
     experience: { type: Number, default: 0 },
          isAdmin: { type: Boolean, default: false },
-     ownedFrames: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ProfileFrame' }],
+         // ✅ كل إطار مملوك له تاريخ شراء + تاريخ تفعيل (يبدأ العد فقط عند التفعيل) + تاريخ انتهاء
+    ownedFrames: [{
+        frame: { type: mongoose.Schema.Types.ObjectId, ref: 'ProfileFrame' },
+        purchasedAt: { type: Date, default: Date.now },
+        durationDays: { type: Number, required: true }, // مدة الصلاحية المشتراة (7/30/365)
+        activatedAt: { type: Date, default: null }, // null = لم يُفعّل بعد، يبقى صالحاً للأبد بالمخزن
+        expiresAt: { type: Date, default: null } // يُحسب فقط عند التفعيل
+    }],
     activeFrame: { type: mongoose.Schema.Types.ObjectId, ref: 'ProfileFrame', default: null },
-    activeFrameClass: { type: String, default: null }, // مُخزّن مباشرة للأداء (بدون populate بكل استعلام)
+    activeFrameClass: { type: String, default: null },
+    activeFrameExpiresAt: { type: Date, default: null },
+    hasReceivedWelcomeFrame: { type: Boolean, default: false }, // منع تكرار هدية الترحيب
     // ✅ حقول جديدة للوحة التحكم
     isBanned: { type: Boolean, default: false },
     banReason: { type: String, default: null },
