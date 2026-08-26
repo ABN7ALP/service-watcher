@@ -1908,6 +1908,16 @@ function showXpGainAnimation(amount) {
         loadMessagesList();
     }
 });
+
+        socket.on('privateMessageDeleted', ({ messageId }) => {
+    const el = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (el) el.remove();
+});
+
+socket.on('privateMessageEdited', ({ messageId, newContent }) => {
+    const el = document.querySelector(`[data-message-id="${messageId}"] .message-content p`);
+    if (el) el.innerHTML = `${newContent} <span class="text-[10px] text-gray-400">(معدّلة)</span>`;
+});
   
         
     // 📍 أضف هذا المستمع بعد socket.on('forceRefreshUserData', ...)
@@ -5501,10 +5511,108 @@ function displayPrivateMessage(message, isMyMessage = false) {
         </div>
     `;
 
-    messagesContainer.appendChild(messageElement);
+       messagesContainer.appendChild(messageElement);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
+    // ✅ إضافة أزرار حذف/تعديل تظهر عند التمرير، ضمن المهلة الزمنية المسموحة
+    attachMessageActionButtons(messageElement, message, isMyMessage);
+
     bindPrivateMessageEvents(messageElement, message);
+}
+
+// --- ⏱️ أزرار حذف (5 دقائق لأي طرف) وتعديل (دقيقتان للمرسل فقط) ---
+function attachMessageActionButtons(messageElement, message, isMyMessage) {
+    if (message._id.toString().startsWith('voice-temp-') || message._id.toString().startsWith(Date.now().toString().slice(0, 5))) {
+        // تجاهل الرسائل المؤقتة (لم تُرسل بعد فعلياً بقاعدة البيانات)
+    }
+
+    const createdAt = new Date(message.createdAt).getTime();
+    const ageMs = Date.now() - createdAt;
+    const canDelete = ageMs < 5 * 60 * 1000;
+    const canEdit = isMyMessage && message.type === 'text' && ageMs < 2 * 60 * 1000;
+
+    if (!canDelete && !canEdit) return;
+
+    const bubble = messageElement.querySelector('.max-w-xs, .max-w-md');
+    if (!bubble) return;
+
+    const actionsBar = document.createElement('div');
+    actionsBar.className = `message-hover-actions absolute ${isMyMessage ? '-left-16' : '-right-16'} top-1/2 -translate-y-1/2 hidden group-hover:flex gap-1`;
+    actionsBar.innerHTML = `
+        ${canEdit ? `<button class="edit-msg-btn w-7 h-7 bg-gray-700 hover:bg-blue-600 rounded-full flex items-center justify-center" title="تعديل"><i class="fas fa-pen text-xs text-white"></i></button>` : ''}
+        ${canDelete ? `<button class="delete-msg-btn w-7 h-7 bg-gray-700 hover:bg-red-600 rounded-full flex items-center justify-center" title="حذف"><i class="fas fa-trash text-xs text-white"></i></button>` : ''}
+    `;
+
+    messageElement.classList.add('group', 'relative');
+    messageElement.appendChild(actionsBar);
+    messageElement.addEventListener('mouseenter', () => actionsBar.classList.remove('hidden'));
+    messageElement.addEventListener('mouseleave', () => actionsBar.classList.add('hidden'));
+
+    const deleteBtn = actionsBar.querySelector('.delete-msg-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+            showConfirmationModal('هل أنت متأكد من حذف هذه الرسالة؟', async () => {
+                try {
+                    const response = await fetch('/api/private-chat/message', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ messageId: message._id })
+                    });
+                    const result = await response.json();
+                    if (response.ok) {
+                        messageElement.remove();
+                    } else {
+                        showNotification(result.message || 'فشل حذف الرسالة', 'error');
+                    }
+                } catch (error) {
+                    showNotification('خطأ في الاتصال بالخادم', 'error');
+                }
+            });
+        });
+    }
+
+    const editBtn = actionsBar.querySelector('.edit-msg-btn');
+    if (editBtn) {
+        editBtn.addEventListener('click', () => {
+            const contentEl = messageElement.querySelector('.message-content p');
+            if (!contentEl) return;
+
+            const currentText = message.content;
+            contentEl.innerHTML = `
+                <input type="text" class="edit-msg-input w-full bg-black/30 text-white rounded p-1 text-sm" value="${currentText}" maxlength="200">
+            `;
+            const input = contentEl.querySelector('.edit-msg-input');
+            input.focus();
+
+            input.addEventListener('keypress', async (e) => {
+                if (e.key === 'Enter') {
+                    const newText = input.value.trim();
+                    if (!newText || newText === currentText) {
+                        contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
+                        return;
+                    }
+                    try {
+                        const response = await fetch('/api/private-chat/message/edit', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ messageId: message._id, newContent: newText })
+                        });
+                        const result = await response.json();
+                        if (response.ok) {
+                            contentEl.innerHTML = `<p class="text-white text-sm">${newText} <span class="text-[10px] text-gray-400">(معدّلة)</span></p>`;
+                            message.content = newText;
+                        } else {
+                            showNotification(result.message || 'فشل التعديل', 'error');
+                            contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
+                        }
+                    } catch (error) {
+                        showNotification('خطأ بالاتصال', 'error');
+                        contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
+                    }
+                }
+            });
+        });
+    }
 }
 
 
