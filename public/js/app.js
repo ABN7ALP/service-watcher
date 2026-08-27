@@ -696,16 +696,6 @@ async function showSettingsView() {
         console.error('Failed to load bubble skin shop:', error);
     }
 
-        let bubbleShopData = { skins: [], activeClass: null, coins: 0 };
-    try {
-        const bubbleResponse = await fetch('/api/bubble-skins/shop', { headers: { 'Authorization': `Bearer ${token}` } });
-        if (bubbleResponse.ok) {
-            const bubbleResult = await bubbleResponse.json();
-            bubbleShopData = bubbleResult.data;
-        }
-    } catch (error) {
-        console.error('Failed to load bubble skin shop:', error);
-    }
     
    mainContent.innerHTML = `
         <div class="p-4">
