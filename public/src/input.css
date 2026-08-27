@@ -259,3 +259,13 @@ input[type="checkbox"] {
 .bubble-skin-sunset { background: linear-gradient(135deg, #f97316, #db2777) !important; }
 .bubble-skin-emerald { background: linear-gradient(135deg, #059669, #047857) !important; }
 .bubble-skin-royal { background: linear-gradient(135deg, #7c3aed, #4c1d95) !important; border: 1px solid #a78bfa; }
+
+
+
+@keyframes avatar-spin-border {
+    0% { box-shadow: 0 0 0 2px rgba(236,72,153,0.3); }
+    50% { box-shadow: 0 0 0 3px rgba(236,72,153,0.8); }
+    100% { box-shadow: 0 0 0 2px rgba(236,72,153,0.3); }
+}
+.public-gift-avatar-btn .public-avatar-img { transition: all 0.2s; }
+.public-gift-avatar-btn:hover .public-avatar-img { animation: avatar-spin-border 1.2s ease-in-out infinite; transform: scale(1.05); }
