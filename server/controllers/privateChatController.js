@@ -56,9 +56,17 @@ exports.getOrCreateChat = async (req, res) => {
             .lean();
 
         // ✅ نُخفي فقط الرسائل التي أُرسلت إليّ بينما كنت قد حظرت مرسلها (حظر صامت)
-        const messages = rawMessages.filter(m =>
-            !(m.isShadowed && m.receiver.toString() === userId.toString())
-        );
+                const messages = rawMessages.filter(m => {
+            if (m.isShadowed && m.receiver.toString() === userId.toString()) return false;
+
+            const senderIdStr = m.sender?._id ? m.sender._id.toString() : m.sender.toString();
+            const isSenderView = senderIdStr === userId.toString();
+            const isReceiverView = m.receiver.toString() === userId.toString();
+
+            if (isSenderView && m.status?.deletedForSender) return false;
+            if (isReceiverView && m.status?.deletedForReceiver) return false;
+            return true;
+        });
 
         const sortedMessages = messages.reverse();
 
@@ -349,7 +357,7 @@ exports.updateMessageStatus = async (req, res) => {
 exports.deleteMessage = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { messageId } = req.body;
+        const { messageId, scope } = req.body; // scope: 'everyone' | 'me'
 
         const message = await PrivateMessage.findById(messageId);
         if (!message) return res.status(404).json({ status: 'fail', message: 'الرسالة غير موجودة' });
@@ -360,10 +368,18 @@ exports.deleteMessage = async (req, res) => {
             return res.status(403).json({ status: 'fail', message: 'ليس لديك صلاحية لحذف هذه الرسالة' });
         }
 
-        // ✅ 5 دقائق كحد أقصى، يمكن لأي من الطرفين الحذف (يُحذف للجميع)
+        // ✅ حذف لدي فقط: بدون أي قيد زمني، يخفيها فقط عند الطرف الطالب
+        if (scope === 'me') {
+            if (isSender) message.status.deletedForSender = true;
+            if (isReceiver) message.status.deletedForReceiver = true;
+            await message.save();
+            return res.status(200).json({ status: 'success', message: 'تم حذف الرسالة من عندك فقط' });
+        }
+
+        // حذف للجميع: يشترط أن تكون خلال 5 دقائق
         const ageMs = Date.now() - new Date(message.createdAt).getTime();
         if (ageMs > 5 * 60 * 1000) {
-            return res.status(400).json({ status: 'fail', message: 'انتهت مهلة حذف هذه الرسالة (5 دقائق)' });
+            return res.status(400).json({ status: 'fail', message: 'انتهت مهلة حذف هذه الرسالة للجميع (5 دقائق)، يمكنك حذفها من عندك فقط' });
         }
 
         const publicId = message.metadata?.publicId;
@@ -381,7 +397,7 @@ exports.deleteMessage = async (req, res) => {
             io.to(otherUser.socketId).emit('privateMessageDeleted', { messageId });
         }
 
-        res.status(200).json({ status: 'success', message: 'تم حذف الرسالة' });
+        res.status(200).json({ status: 'success', message: 'تم حذف الرسالة للجميع' });
 
     } catch (error) {
         console.error('[ERROR] in deleteMessage:', error);
