@@ -269,3 +269,6 @@ input[type="checkbox"] {
 }
 .public-gift-avatar-btn .public-avatar-img { transition: all 0.2s; }
 .public-gift-avatar-btn:hover .public-avatar-img { animation: avatar-spin-border 1.2s ease-in-out infinite; transform: scale(1.05); }
+
+.gift-expanded .gift-card-inline-send { display: block !important; }
+.gift-expanded { border-color: #ec4899 !important; transform: scale(1.03); }
