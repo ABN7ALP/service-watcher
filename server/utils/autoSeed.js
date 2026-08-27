@@ -59,6 +59,43 @@ async function seedBubbleSkinsIfMissing() {
     }
 }
 
+// ✅ الإصلاح الجذري: إصلاح بيانات المستخدمين القدامى الذين ownedFrames عندهم بصيغة قديمة
+// غير متوافقة مع الصيغة الجديدة (كائنات بمدة صلاحية). هذا التعارض كان يمنع نجاح
+// أي عملية .save() لهؤلاء المستخدمين — بما فيها خصم الكوينز عند إرسال الهدايا.
+async function migrateLegacyOwnedFrames() {
+    const users = await User.find({}).select('ownedFrames');
+    let fixedCount = 0;
+
+    for (const user of users) {
+        let needsFix = false;
+        const cleanedFrames = [];
+
+        for (const entry of user.ownedFrames) {
+            if (entry && typeof entry === 'object' && entry.frame) {
+                cleanedFrames.push(entry);
+            } else if (entry) {
+                cleanedFrames.push({
+                    frame: entry,
+                    purchasedAt: new Date(),
+                    durationDays: 9999,
+                    activatedAt: null,
+                    expiresAt: null
+                });
+                needsFix = true;
+            }
+        }
+
+        if (needsFix) {
+            await User.updateOne({ _id: user._id }, { $set: { ownedFrames: cleanedFrames } });
+            fixedCount++;
+        }
+    }
+
+    if (fixedCount > 0) {
+        console.log(`🔧 [MIGRATION] تم إصلاح بيانات الإطارات القديمة لـ ${fixedCount} مستخدم`);
+    }
+}
+
 // ✅ إصلاح جذري: يضيف حقل "prices" لأي إطار قديم بقاعدة البيانات لا يملكه بعد
 // (كانت الإطارات موجودة من قبل إضافة نظام الأسعار المتعدد المدد، فتبقى بلا أسعار)
 async function migrateLegacyFramePrices() {
