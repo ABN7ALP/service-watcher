@@ -136,3 +136,88 @@ exports.getTopReceiversThisMonth = async (req, res) => {
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
     }
 };
+
+// إرسال هدية جماعية بالشات العام (لأشخاص محددين أو للجميع)
+exports.sendPublicGift = async (req, res) => {
+    try {
+        const senderId = req.user.id;
+        const { giftId, recipientIds, audience } = req.body; // audience: 'all' | 'selected'
+
+        const sender = await User.findById(senderId);
+        const gift = await Gift.findById(giftId);
+        if (!gift || !gift.isActive) return res.status(404).json({ status: 'fail', message: 'الهدية غير متوفرة' });
+
+        const io = req.app.get('socketio');
+        let finalRecipientIds = [];
+
+        if (audience === 'all') {
+            const room = io.sockets.adapter.rooms.get('public-room');
+            if (room) {
+                for (const socketId of room) {
+                    const s = io.sockets.sockets.get(socketId);
+                    if (s?.user?.id && s.user.id.toString() !== senderId.toString()) {
+                        finalRecipientIds.push(s.user.id.toString());
+                    }
+                }
+            }
+            finalRecipientIds = [...new Set(finalRecipientIds)];
+        } else {
+            finalRecipientIds = (recipientIds || [])
+                .filter(id => id !== senderId)
+                .slice(0, 20); // ✅ حد أقصى 20 مستلم بضغطة واحدة لحماية الرصيد من خطأ ضغط جماعي
+        }
+
+        if (finalRecipientIds.length === 0) {
+            return res.status(400).json({ status: 'fail', message: 'لا يوجد مستلمون متاحون حالياً' });
+        }
+
+        const unitPrice = gift.discountedPrice || gift.price;
+        const totalCost = unitPrice * finalRecipientIds.length;
+
+        if (sender.coins < totalCost) {
+            return res.status(400).json({ status: 'fail', message: `رصيدك غير كافٍ (تحتاج ${totalCost} كوينز لهذا العدد)` });
+        }
+
+        sender.coins -= totalCost;
+        await sender.save();
+
+        const receivers = await User.find({ _id: { $in: finalRecipientIds } }).select('username socketId');
+
+        const logs = finalRecipientIds.map(rid => ({
+            sender: senderId, receiver: rid, gift: gift._id,
+            giftName: gift.name, giftImage: gift.imageUrl,
+            quantity: 1, unitPrice, totalPrice: unitPrice, context: 'public_chat'
+        }));
+        await GiftLog.insertMany(logs);
+
+        receivers.forEach(r => {
+            if (r.socketId) {
+                io.to(r.socketId).emit('giftReceived', {
+                    giftId: gift._id, giftName: gift.name, giftImage: gift.imageUrl,
+                    quantity: 1, fromUserId: senderId, fromUsername: sender.username,
+                    fromProfileImage: sender.profileImage, animation: gift.animation,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        });
+
+        const audienceText = audience === 'all'
+            ? `للجميع (${finalRecipientIds.length} شخص)`
+            : (finalRecipientIds.length === 1 ? `لـ ${receivers[0]?.username || 'شخص'}` : `لـ ${finalRecipientIds.length} أشخاص`);
+
+        io.to('public-room').emit('publicGiftAnnouncement', {
+            senderUsername: sender.username,
+            senderProfileImage: sender.profileImage,
+            giftName: gift.name,
+            giftImage: gift.imageUrl,
+            audienceText,
+            timestamp: new Date()
+        });
+
+        res.status(200).json({ status: 'success', message: 'تم إرسال الهدية بنجاح', data: { newCoins: sender.coins } });
+
+    } catch (error) {
+        console.error('[ERROR] in sendPublicGift:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم أثناء إرسال الهدية' });
+    }
+};
