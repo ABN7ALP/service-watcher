@@ -1,22 +1,23 @@
 const Gift = require('../models/Gift');
 const ProfileFrame = require('../models/ProfileFrame');
+const ChatBubbleSkin = require('../models/ChatBubbleSkin');
+const User = require('../models/User');
 
 async function seedGiftsIfMissing() {
     const gifts = [
         { name: 'وردة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752572/red-rose-3d-rendering-icon-illustration-png.png', price: 10, category: 'common', animation: 'float', sortOrder: 1 },
         { name: 'قلب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752780/3d-rendering-red-heart-shape-icon-3d-render-a-sign-of-love-or-life-icon-png.webp', price: 15, category: 'common', animation: 'float', sortOrder: 2 },
         { name: 'نجمة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753112/magnificent-modern-yellow-star-isolated-with-five-points-high-quality-png.webp', price: 12, category: 'common', animation: 'float', sortOrder: 3 },
-        { name: 'بالون', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/balloon.png', price: 10, category: 'rare', animation: 'float', sortOrder: 4 },
-        { name: 'ثعلب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/fox.png', price: 15, category: 'rare', animation: 'float', sortOrder: 5 },
-        { name: 'قوس قزح', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/rainbow.png', price: 20, category: 'rare', animation: 'float', sortOrder: 6 },
-        { name: 'تاج', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/crown.png', price: 35, category: 'epic', animation: 'float', sortOrder: 7 },
-        { name: 'حديقة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/garden.png', price: 80, category: 'epic', animation: 'float', sortOrder: 8 },
-        { name: 'ألماسة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/diamond.png', price: 120, category: 'epic', animation: 'float', sortOrder: 9 },
-        { name: 'يخت', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/yacht.png', price: 250, category: 'legendary', animation: 'float', sortOrder: 10 },
-        { name: 'قلعة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1/gifts/castle.png', price: 400, category: 'legendary', animation: 'float', sortOrder: 11 },
+        { name: 'بالون', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832611/cute-pink-cartoon-balloon-with-smiling-face-and-shiny-eyes-png.png', price: 10, category: 'rare', animation: 'float', sortOrder: 4 },
+        { name: 'ثعلب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832545/cute-cartoon-little-red-fox-isolated-on-the-transparent-background-png.png', price: 15, category: 'rare', animation: 'float', sortOrder: 5 },
+        { name: 'قوس قزح', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832474/colorful-rainbow-with-playful-houses-and-trees-in-a-whimsical-landscape-png.png', price: 20, category: 'rare', animation: 'float', sortOrder: 6 },
+        { name: 'تاج', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832422/luxurious-gold-crown-with-intricate-detailing-free-png.webp', price: 35, category: 'epic', animation: 'float', sortOrder: 7 },
+        { name: 'حديقة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832349/vibrant-garden-path-surrounded-by-blooming-flowers-greenery-and-a-white-fence-creating-a-peaceful-and-inviting-outdoor-space-free-png.png', price: 80, category: 'epic', animation: 'float', sortOrder: 8 },
+        { name: 'ألماسة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832281/sparkling-cut-diamond-illustration-with-transparent-background-png.png', price: 120, category: 'epic', animation: 'float', sortOrder: 9 },
+        { name: 'يخت', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832194/luxury-yacht-anchored-in-calm-waters-during-sunset-showcasing-elegant-design-and-spacious-deck-perfect-for-relaxing-getaways-png.png', price: 250, category: 'legendary', animation: 'float', sortOrder: 10 },
+        { name: 'قلعة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832073/fantasy-castle-3d-model-illuminated-architecture-with-towers-and-pillars-free-png.webp', price: 400, category: 'legendary', animation: 'float', sortOrder: 11 },
         { name: 'تنين', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753218/elegant-rustic-dragon-mythical-serpent-breathing-fire-high-resolution-png.webp', price: 700, category: 'legendary', animation: 'float', sortOrder: 12 }
     ];
-
     for (const g of gifts) {
         const exists = await Gift.findOne({ name: g.name });
         if (!exists) {
@@ -36,7 +37,6 @@ async function seedFramesIfMissing() {
         { name: 'إطار جليدي', cssClass: 'profile-frame-ice', isActive: true, sortOrder: 5, prices: { days7: 200, days30: 600, days365: 4800 } },
         { name: 'إطار ملكي', cssClass: 'profile-frame-royal', isActive: true, sortOrder: 6, prices: { days7: 350, days30: 1000, days365: 8000 } }
     ];
-
     for (const f of frames) {
         const exists = await ProfileFrame.findOne({ name: f.name });
         if (!exists) {
@@ -46,10 +46,7 @@ async function seedFramesIfMissing() {
     }
 }
 
-
-
 async function seedBubbleSkinsIfMissing() {
-    const ChatBubbleSkin = require('../models/ChatBubbleSkin');
     const skins = [
         { name: 'فقاعة ليلية', price: 40, cssClass: 'bubble-skin-midnight', sortOrder: 1 },
         { name: 'فقاعة غروب', price: 60, cssClass: 'bubble-skin-sunset', sortOrder: 2 },
@@ -62,8 +59,46 @@ async function seedBubbleSkinsIfMissing() {
     }
 }
 
+// ✅ الإصلاح الجذري: إصلاح بيانات المستخدمين القدامى الذين ownedFrames عندهم بصيغة قديمة
+// غير متوافقة مع الصيغة الجديدة (كائنات بمدة صلاحية). هذا التعارض كان يمنع نجاح
+// أي عملية .save() لهؤلاء المستخدمين — بما فيها خصم الكوينز عند إرسال الهدايا.
+async function migrateLegacyOwnedFrames() {
+    const users = await User.find({}).select('ownedFrames');
+    let fixedCount = 0;
+
+    for (const user of users) {
+        let needsFix = false;
+        const cleanedFrames = [];
+
+        for (const entry of user.ownedFrames) {
+            if (entry && typeof entry === 'object' && entry.frame) {
+                cleanedFrames.push(entry);
+            } else if (entry) {
+                cleanedFrames.push({
+                    frame: entry,
+                    purchasedAt: new Date(),
+                    durationDays: 9999,
+                    activatedAt: null,
+                    expiresAt: null
+                });
+                needsFix = true;
+            }
+        }
+
+        if (needsFix) {
+            await User.updateOne({ _id: user._id }, { $set: { ownedFrames: cleanedFrames } });
+            fixedCount++;
+        }
+    }
+
+    if (fixedCount > 0) {
+        console.log(`🔧 [MIGRATION] تم إصلاح بيانات الإطارات القديمة لـ ${fixedCount} مستخدم`);
+    }
+}
+
 module.exports = async function autoSeed() {
     try {
+        await migrateLegacyOwnedFrames(); // ✅ يجب أن تُنفَّذ أولاً قبل أي شيء آخر
         await seedGiftsIfMissing();
         await seedFramesIfMissing();
         await seedBubbleSkinsIfMissing();
