@@ -2840,17 +2840,11 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
         <div id="gift-store-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-lg text-white border border-gray-700 max-h-[85vh] flex flex-col">
                 <div class="flex items-center justify-between p-4 border-b border-gray-700">
-                    <h3 class="text-lg font-bold flex items-center gap-2">
-                        <i class="fas fa-gift text-pink-400"></i>
-                        إرسال هدية لـ ${targetUsername}
-                    </h3>
+                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift text-pink-400"></i> إرسال هدية لـ ${targetUsername}</h3>
                     <button id="close-gift-store" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
                 </div>
                 <div id="gift-store-body" class="p-4 overflow-y-auto flex-1">
-                    <div class="text-center text-gray-400 py-10">
-                        <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-                        <p class="text-sm">جاري تحميل متجر الهدايا...</p>
-                    </div>
+                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i></div>
                 </div>
             </div>
         </div>
@@ -2858,11 +2852,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
 
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('gift-store-modal');
-
-    document.getElementById('close-gift-store').addEventListener('click', () => modal.remove());
-    modal.addEventListener('click', (e) => {
-        if (e.target.id === 'gift-store-modal') modal.remove();
-    });
+    attachCloseConfirmation(modal, '#close-gift-store');
 
     try {
         const response = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -2877,62 +2867,65 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
         body.innerHTML = `
             <div class="flex items-center justify-between mb-4 bg-gray-900/50 rounded-xl p-3">
                 <span class="text-sm text-gray-400">رصيدك الحالي</span>
-                <span class="font-bold text-yellow-400 flex items-center gap-1">
-                    <i class="fas fa-coins"></i> <span id="gift-store-balance">${currentUser.coins || 0}</span>
-                </span>
+                <span class="font-bold text-yellow-400 flex items-center gap-1"><i class="fas fa-coins"></i> <span id="gift-store-balance">${currentUser.coins || 0}</span></span>
             </div>
-            <div id="gift-cards-grid" class="grid grid-cols-3 gap-3 mb-4">
-                ${gifts.map(g => `
-                    <button class="gift-card-btn flex flex-col items-center bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-xl p-3 transition"
-                            data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}" data-gift-image="${g.imageUrl}">
-                        <img src="${g.imageUrl}" class="w-14 h-14 object-contain mb-2" onerror="this.style.opacity='0.3'">
-                        <span class="text-xs font-bold text-center truncate w-full">${g.name}</span>
-                        <span class="text-xs text-yellow-400 flex items-center gap-1 mt-1">
-                            <i class="fas fa-coins"></i> ${g.discountedPrice || g.price}
-                        </span>
-                    </button>
-                `).join('')}
-            </div>
-            <div id="gift-selected-panel" class="hidden bg-gray-900/50 rounded-xl p-4 text-center">
-                <div class="flex items-center justify-center gap-2 mb-3">
-                    <img id="gift-selected-preview" class="w-10 h-10 object-contain">
-                    <span id="gift-selected-name" class="font-bold"></span>
-                </div>
-                <p class="text-xs text-gray-400 mb-3">اضغط مطولاً على الزر لإرسال أكثر من هدية بسرعة متزايدة</p>
-                <button id="rapid-send-gift-btn" class="w-24 h-24 mx-auto bg-gradient-to-br from-pink-500 to-purple-600 rounded-full flex flex-col items-center justify-center shadow-lg select-none active:scale-95 transition-transform">
-                    <i class="fas fa-paper-plane text-2xl text-white mb-1"></i>
-                    <span id="gift-multiplier-label" class="text-white text-xs font-bold">إرسال</span>
-                </button>
-                <p id="gift-sent-counter" class="text-xs text-gray-400 mt-3 hidden"></p>
+            <div id="gift-cards-grid" class="grid grid-cols-3 gap-2">
+                ${gifts.map(g => renderGiftCardHTML(g)).join('')}
             </div>
         `;
 
-        let selectedGift = null;
+        // ✅ كل كارد يُدار بشكل مستقل: النقر يوسّعه ويكشف زر الإرسال داخله مباشرة
+        body.querySelectorAll('.gift-card-wrapper').forEach(card => {
+            const giftId = card.dataset.giftId;
+            const toggleBtn = card.querySelector('.gift-card-toggle');
 
-        body.querySelectorAll('.gift-card-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                body.querySelectorAll('.gift-card-btn').forEach(b => b.classList.remove('ring-2', 'ring-pink-500'));
-                btn.classList.add('ring-2', 'ring-pink-500');
-                selectedGift = {
-                    id: btn.dataset.giftId,
-                    name: btn.dataset.giftName,
-                    price: parseFloat(btn.dataset.giftPrice),
-                    imageUrl: btn.dataset.giftImage
-                };
+            toggleBtn.addEventListener('click', () => {
+                const isExpanded = card.classList.contains('gift-expanded');
+                body.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-expanded'));
 
-                document.getElementById('gift-selected-panel').classList.remove('hidden');
-                document.getElementById('gift-selected-preview').src = selectedGift.imageUrl;
-                document.getElementById('gift-selected-name').textContent = selectedGift.name;
-                document.getElementById('gift-sent-counter').classList.add('hidden');
-                setupRapidGiftButton(targetUserId, () => selectedGift);
+                if (!isExpanded) {
+                    card.classList.add('gift-expanded');
+                    const gift = {
+                        id: giftId,
+                        name: card.dataset.giftName,
+                        price: parseFloat(card.dataset.giftPrice),
+                        icon: card.dataset.giftIcon,
+                        imageUrl: card.dataset.giftImage
+                    };
+                    setupRapidGiftButton(targetUserId, () => gift, card.querySelector('.inline-send-btn'), card.querySelector('.inline-send-counter'));
+                }
             });
         });
 
     } catch (error) {
         console.error('[GIFT STORE] Error:', error);
         const body = document.getElementById('gift-store-body');
-        if (body) body.innerHTML = `<div class="text-center text-red-400 py-10"><i class="fas fa-exclamation-circle text-2xl mb-2"></i><p class="text-sm">فشل تحميل المتجر</p></div>`;
+        if (body) body.innerHTML = `<div class="text-center text-red-400 py-10">فشل تحميل المتجر</div>`;
     }
+}
+
+// ✅ دالة موحّدة لبناء كارد الهدية (تُستخدم بالخاصة والعامة)
+function renderGiftCardHTML(g) {
+    const visual = g.imageUrl
+        ? `<img src="${g.imageUrl}" class="w-10 h-10 object-contain mx-auto" onerror="this.replaceWith(Object.assign(document.createElement('span'), {textContent: '${g.icon || '🎁'}', className:'text-3xl block'}))">`
+        : `<span class="text-3xl block">${g.icon || '🎁'}</span>`;
+
+    return `
+        <div class="gift-card-wrapper bg-gray-800/50 border border-gray-700 rounded-xl p-2 transition-all"
+             data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}" data-gift-icon="${g.icon || '🎁'}" data-gift-image="${g.imageUrl || ''}">
+            <button class="gift-card-toggle w-full flex flex-col items-center">
+                ${visual}
+                <span class="text-[11px] font-bold text-center truncate w-full mt-1">${g.name}</span>
+                <span class="text-[10px] text-yellow-400"><i class="fas fa-coins"></i> ${g.discountedPrice || g.price}</span>
+            </button>
+            <div class="gift-card-inline-send hidden mt-2">
+                <button class="inline-send-btn w-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white text-xs py-2 rounded-lg font-bold flex items-center justify-center gap-1 select-none active:scale-95 transition-transform">
+                    <i class="fas fa-paper-plane"></i> إرسال
+                </button>
+                <p class="inline-send-counter text-[10px] text-gray-400 text-center mt-1 hidden"></p>
+            </div>
+        </div>
+    `;
 }
 
 // --- ⚡ محرك الإرسال المتسارع: ضغطة = هدية واحدة، استمرار الضغط = تسارع تلقائي x2 x3 x4 ---
