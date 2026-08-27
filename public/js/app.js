@@ -1895,7 +1895,21 @@ function showXpGainAnimation(amount) {
         }
     });
 
+socket.on('publicGiftAnnouncement', (data) => {
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
 
+    const el = document.createElement('div');
+    el.className = 'text-center my-2';
+    el.innerHTML = `
+        <div class="inline-flex items-center gap-2 bg-gradient-to-r from-pink-600/20 to-purple-600/20 border border-pink-500/30 rounded-full px-4 py-1.5 text-xs">
+            <img src="${data.senderProfileImage}" class="w-5 h-5 rounded-full">
+            <span><b>${data.senderUsername}</b> أرسل ${data.giftName} 🎁 ${data.audienceText}</span>
+        </div>
+    `;
+    chatMessages.appendChild(el);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+});
 
         socket.on('chatFullyDeleted', (data) => {
     const openChat = document.getElementById('private-chat-modal');
