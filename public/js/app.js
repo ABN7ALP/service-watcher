@@ -6648,7 +6648,6 @@ function displayMessage(message) {
     const messageElement = document.createElement('div');
     messageElement.dataset.messageId = message._id;
         const senderBubbleClass = message.sender.activeBubbleSkinClass || '';
-        const senderBubbleClass = message.sender.activeBubbleSkinClass || '';
     messageElement.className = 'message-container p-2 rounded-lg mb-2 flex items-start gap-2 relative group ' + (senderBubbleClass || (isMyMessage ? 'bg-purple-800' : 'bg-gray-700'));
 
     let replyHTML = '';
