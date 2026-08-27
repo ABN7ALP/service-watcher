@@ -272,3 +272,9 @@ input[type="checkbox"] {
 
 .gift-expanded .gift-card-inline-send { display: block !important; }
 .gift-expanded { border-color: #ec4899 !important; transform: scale(1.03); }
+
+.public-gift-toast { animation: gift-toast-in 0.4s ease-out; }
+@keyframes gift-toast-in {
+    from { opacity: 0; transform: translate(-50%, -15px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+}
