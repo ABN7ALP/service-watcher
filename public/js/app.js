@@ -684,6 +684,17 @@ async function showSettingsView() {
     } catch (error) {
         console.error('Failed to load frame shop:', error);
     }
+
+        let bubbleShopData = { skins: [], activeClass: null, coins: 0 };
+    try {
+        const bubbleResponse = await fetch('/api/bubble-skins/shop', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (bubbleResponse.ok) {
+            const bubbleResult = await bubbleResponse.json();
+            bubbleShopData = bubbleResult.data;
+        }
+    } catch (error) {
+        console.error('Failed to load bubble skin shop:', error);
+    }
     
    mainContent.innerHTML = `
         <div class="p-4">
@@ -722,6 +733,9 @@ async function showSettingsView() {
                     </div>
                 </div>
             </div>
+
+
+            
             
             <!-- =========================================== -->
             <!-- 2. قسم اسم المستخدم (قابل للطي) -->
@@ -852,6 +866,42 @@ async function showSettingsView() {
                 </div>
             </div>
 
+            <!-- =========================================== -->
+            <!-- 7. قسم إطارات دردشة الشات العام (الجديد) -->
+            <!-- =========================================== -->
+            <div class="mb-4">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="bubble-shop-section">
+                    <h3 class="text-lg font-bold"><i class="fas fa-comment-dots mr-2"></i>إطارات رسائل الشات العام</h3>
+                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+                </div>
+                <div id="bubble-shop-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
+                    <div class="flex items-center justify-between mb-4 bg-gray-900/50 rounded-xl p-3">
+                        <span class="text-sm text-gray-400">رصيدك الحالي</span>
+                        <span class="font-bold text-yellow-400"><i class="fas fa-coins"></i> ${bubbleShopData.coins}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        ${bubbleShopData.skins.map(s => {
+                            const isActive = bubbleShopData.activeClass === s.cssClass;
+                            return `
+                            <div class="rounded-xl p-3 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'} ${s.cssClass}">
+                                <p class="text-sm font-bold mb-1">${s.name}</p>
+                                <p class="text-xs text-yellow-300 mb-2"><i class="fas fa-coins"></i> ${s.price}</p>
+                                ${s.owned ? `
+                                    <button class="equip-bubble-btn w-full text-xs py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}" 
+                                            data-skin-id="${s._id}" ${isActive ? 'disabled' : ''}>
+                                        ${isActive ? 'مُفعّل حالياً' : 'تفعيل'}
+                                    </button>
+                                ` : `
+                                    <button class="purchase-bubble-btn w-full text-xs py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-skin-id="${s._id}">
+                                        شراء
+                                    </button>
+                                `}
+                            </div>
+                        `}).join('')}
+                    </div>
+                </div>
+            </div>
+
 
             <!-- =========================================== -->
             <!-- 6. قسم الهدايا المستلمة (الجديد) -->
@@ -918,6 +968,56 @@ async function showSettingsView() {
     setupSettingsEvents();
     loadGiftsReceivedSummary();
 }
+
+
+        document.querySelectorAll('.purchase-bubble-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const skinId = this.dataset.skinId;
+            this.disabled = true;
+            try {
+                const response = await fetch('/api/bubble-skins/purchase', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ skinId })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showNotification(result.message, 'success');
+                    await refreshUserData();
+                    showSettingsView();
+                } else {
+                    showNotification(result.message || 'فشل الشراء', 'error');
+                    this.disabled = false;
+                }
+            } catch (error) {
+                showNotification('خطأ في الاتصال بالخادم', 'error');
+                this.disabled = false;
+            }
+        });
+    });
+
+    document.querySelectorAll('.equip-bubble-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const skinId = this.dataset.skinId;
+            try {
+                const response = await fetch('/api/bubble-skins/equip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ skinId })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showNotification(result.message, 'success');
+                    await refreshUserData();
+                    showSettingsView();
+                } else {
+                    showNotification(result.message || 'فشل التفعيل', 'error');
+                }
+            } catch (error) {
+                showNotification('خطأ في الاتصال بالخادم', 'error');
+            }
+        });
+    });
 
 // 📍 أضف هذه الدالة بعد showSettingsView
 function setupSettingsEvents() {
@@ -6547,6 +6647,7 @@ function displayMessage(message) {
     const isMyMessage = message.sender._id === user._id;
     const messageElement = document.createElement('div');
     messageElement.dataset.messageId = message._id;
+        const senderBubbleClass = message.sender.activeBubbleSkinClass || '';
         const senderBubbleClass = message.sender.activeBubbleSkinClass || '';
     messageElement.className = 'message-container p-2 rounded-lg mb-2 flex items-start gap-2 relative group ' + (senderBubbleClass || (isMyMessage ? 'bg-purple-800' : 'bg-gray-700'));
 
