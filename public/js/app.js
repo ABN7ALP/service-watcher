@@ -6139,24 +6139,48 @@ function showOneMessageModal(targetUserId, targetUsername) {
         sendBtn.disabled = true;
         sendBtn.textContent = 'جاري الإرسال...';
 
-        try {
-            const response = await fetch('/api/private-chat/one-time-message', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ receiverId: targetUserId, content: messageText })
-            });
-            const result = await response.json();
+           try {
+            const response = await sendOneTimeMessageRequest(targetUserId, messageText, false);
 
             if (response.ok) {
-                showNotification('تم إرسال رسالتك بنجاح', 'success');
+                showNotification(response.data.message, 'success');
                 modal.remove();
                 const blockedModal = document.getElementById('blocked-profile-modal');
                 if (blockedModal) blockedModal.remove();
-            } else {
-                showNotification(result.message || 'فشل إرسال الرسالة', 'error');
+                return;
+            }
+
+            if (response.data.code === 'PAYMENT_REQUIRED') {
+                showConfirmationModal(response.data.message + ' هل تريد المتابعة؟', async () => {
+                    const paidResponse = await sendOneTimeMessageRequest(targetUserId, messageText, true);
+                    if (paidResponse.ok) {
+                        showNotification(paidResponse.data.message, 'success');
+                        modal.remove();
+                        const blockedModal = document.getElementById('blocked-profile-modal');
+                        if (blockedModal) blockedModal.remove();
+                        await refreshUserData();
+                    } else if (paidResponse.data.code === 'INSUFFICIENT_COINS') {
+                        showInsufficientCoinsModal(paidResponse.data.message);
+                    } else {
+                        showNotification(paidResponse.data.message || 'فشل إرسال الرسالة', 'error');
+                    }
+                });
                 sendBtn.disabled = false;
                 sendBtn.textContent = 'إرسال';
+                return;
             }
+
+            if (response.data.code === 'INSUFFICIENT_COINS') {
+                showInsufficientCoinsModal(response.data.message);
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'إرسال';
+                return;
+            }
+
+            showNotification(response.data.message || 'فشل إرسال الرسالة', 'error');
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'إرسال';
+
         } catch (error) {
             console.error('[ONE TIME MESSAGE] Error:', error);
             showNotification('خطأ في الاتصال بالخادم', 'error');
