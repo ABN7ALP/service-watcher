@@ -690,12 +690,12 @@ exports.hideChatForUser = async (req, res) => {
 exports.sendOneTimeMessage = async (req, res) => {
     try {
         const senderId = req.user.id;
-        const { receiverId, content } = req.body;
+        const { receiverId, content, payExtra } = req.body;
+        const EXTRA_MESSAGE_COST = 50;
 
         if (req.user.level < 4) {
             return res.status(403).json({ status: 'fail', message: 'هذه الميزة تُفتح عند المستوى 4' });
         }
-
         if (!content || content.trim().length === 0) {
             return res.status(400).json({ status: 'fail', message: 'اكتب رسالة أولاً' });
         }
@@ -711,12 +711,35 @@ exports.sendOneTimeMessage = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'هذه الميزة متاحة فقط لمن حظرك' });
         }
 
-        // ✅ الحماية الأساسية: محاولة إنشاء سجل - إذا موجود مسبقاً (unique index) سيفشل تلقائياً
-        try {
-            await OneTimeMessageLog.create({ sender: senderId, receiver: receiverId });
-        } catch (dupError) {
-            return res.status(400).json({ status: 'fail', message: 'لقد استخدمت هذه الميزة مسبقاً مع هذا المستخدم' });
+        const priorCount = await OneTimeMessageLog.countDocuments({ sender: senderId, receiver: receiverId });
+        let wasPaid = false;
+
+        if (priorCount > 0) {
+            // ✅ استُخدمت الرسالة المجانية بالفعل — تحتاج تأكيد الدفع
+            if (!payExtra) {
+                return res.status(402).json({
+                    status: 'fail',
+                    code: 'PAYMENT_REQUIRED',
+                    message: `لقد أرسلت رسالتك المجانية مسبقاً. إرسال رسالة إضافية يكلّف ${EXTRA_MESSAGE_COST} كوينز.`,
+                    cost: EXTRA_MESSAGE_COST
+                });
+            }
+
+            const sender = await User.findById(senderId);
+            if (sender.coins < EXTRA_MESSAGE_COST) {
+                return res.status(400).json({
+                    status: 'fail',
+                    code: 'INSUFFICIENT_COINS',
+                    message: `رصيدك من الكوينز غير كافٍ (تحتاج ${EXTRA_MESSAGE_COST} كوينز)`
+                });
+            }
+
+            sender.coins -= EXTRA_MESSAGE_COST;
+            await sender.save();
+            wasPaid = true;
         }
+
+        await OneTimeMessageLog.create({ sender: senderId, receiver: receiverId, wasPaid });
 
         const participants = [senderId, receiverId].sort();
         const chatId = participants.join('_');
@@ -733,7 +756,6 @@ exports.sendOneTimeMessage = async (req, res) => {
             });
         }
 
-        // رسالة حقيقية تظهر للطرفين بشكل طبيعي — هذا هو الفرق الجوهري عن الحظر الصامت
         const message = await PrivateMessage.create({
             chatId,
             sender: senderId,
@@ -758,7 +780,11 @@ exports.sendOneTimeMessage = async (req, res) => {
             });
         }
 
-        res.status(201).json({ status: 'success', message: 'تم إرسال رسالتك بنجاح' });
+        res.status(201).json({
+            status: 'success',
+            message: wasPaid ? `تم إرسال رسالتك (خُصمت ${EXTRA_MESSAGE_COST} كوينز)` : 'تم إرسال رسالتك المجانية بنجاح',
+            data: { wasPaid }
+        });
 
     } catch (error) {
         console.error('[ERROR] in sendOneTimeMessage:', error);
