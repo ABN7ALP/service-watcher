@@ -177,6 +177,30 @@ const updateStatus = async (req, res) => {
     }
 };
 
+
+const getOnlinePublicRoomUsers = async (req, res) => {
+    try {
+        const io = req.app.get('socketio');
+        const room = io.sockets.adapter.rooms.get('public-room');
+        const userIds = new Set();
+
+        if (room) {
+            for (const socketId of room) {
+                const s = io.sockets.sockets.get(socketId);
+                if (s?.user?.id) userIds.add(s.user.id.toString());
+            }
+        }
+        userIds.delete(req.user.id.toString());
+
+        const users = await User.find({ _id: { $in: Array.from(userIds) } })
+            .select('username profileImage activeFrameClass');
+
+        res.status(200).json({ status: 'success', data: { users } });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
 // --- ✅✅ التصدير الصحيح في النهاية ---
 module.exports = {
     updateUsername,
@@ -184,5 +208,6 @@ module.exports = {
     getUserById, // ✅ تصدير الدالة التي كانت موجودة
     getMeDetails,
     getUserMiniProfile,
+    getOnlinePublicRoomUsers,
     updateStatus
 };
