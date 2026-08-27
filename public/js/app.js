@@ -3623,7 +3623,167 @@ function confirmRedeem(redeemTo) {
         }
     });
 }
+
+
         
+   async function showPublicGiftModal() {
+    const existing = document.getElementById('public-gift-modal');
+    if (existing) existing.remove();
+
+    const shellHTML = `
+        <div id="public-gift-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[88vh] flex flex-col">
+                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift text-pink-400"></i> إرسال هدية بالشات العام</h3>
+                    <button id="close-public-gift" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="public-gift-body" class="p-4 overflow-y-auto flex-1">
+                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+    const modal = document.getElementById('public-gift-modal');
+    attachCloseConfirmation(modal, '#close-public-gift');
+
+    try {
+        const [onlineRes, shopRes] = await Promise.all([
+            fetch('/api/users/online/public-room', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+        ]);
+
+        const onlineUsers = onlineRes.data.users;
+        const gifts = shopRes.data.gifts;
+        let selectedUserIds = new Set();
+        let audienceMode = 'selected'; // 'selected' | 'all'
+        let selectedGift = null;
+
+        const body = document.getElementById('public-gift-body');
+        body.innerHTML = `
+            <p class="text-xs text-gray-400 mb-2">اختر المستلمين (يمكنك اختيار أكثر من شخص)</p>
+            <div class="flex gap-2 mb-3">
+                <button id="select-all-online-btn" class="flex-1 bg-purple-600 hover:bg-purple-700 text-xs py-2 rounded-lg font-bold">
+                    <i class="fas fa-users"></i> إرسال للجميع (${onlineUsers.length})
+                </button>
+            </div>
+            <div id="public-gift-avatars" class="flex gap-3 overflow-x-auto pb-2 mb-4">
+                ${onlineUsers.length === 0 ? '<p class="text-xs text-gray-500">لا يوجد أشخاص متصلون حالياً بالشات العام</p>' : onlineUsers.map(u => `
+                    <button class="public-gift-avatar-btn flex-shrink-0 flex flex-col items-center gap-1" data-user-id="${u._id}" data-username="${u.username}">
+                        <img src="${u.profileImage}" class="w-14 h-14 rounded-full object-cover border-2 border-gray-600 transition-all public-avatar-img ${u.activeFrameClass || ''}">
+                        <span class="text-[10px] truncate w-14 text-center">${u.username}</span>
+                    </button>
+                `).join('')}
+            </div>
+            <p class="text-xs text-gray-400 mb-2">اختر الهدية</p>
+            <div class="grid grid-cols-4 gap-2 mb-4">
+                ${gifts.map(g => `
+                    <button class="pg-gift-btn flex flex-col items-center bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-lg p-2"
+                            data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}" data-gift-image="${g.imageUrl}">
+                        <img src="${g.imageUrl}" class="w-8 h-8 object-contain mb-1" onerror="this.style.opacity='0.3'">
+                        <span class="text-[9px] text-yellow-400">${g.discountedPrice || g.price}</span>
+                    </button>
+                `).join('')}
+            </div>
+            <div id="pg-summary" class="hidden bg-gray-900/50 rounded-xl p-3 mb-3 text-center text-sm"></div>
+            <button id="pg-send-btn" class="w-full bg-pink-600 hover:bg-pink-700 text-white py-2.5 rounded-lg font-bold disabled:opacity-40" disabled>
+                <i class="fas fa-paper-plane"></i> إرسال الهدية
+            </button>
+        `;
+
+        function updateSummary() {
+            const summaryEl = document.getElementById('pg-summary');
+            const sendBtn = document.getElementById('pg-send-btn');
+            const count = audienceMode === 'all' ? onlineUsers.length : selectedUserIds.size;
+
+            if (!selectedGift || count === 0) {
+                summaryEl.classList.add('hidden');
+                sendBtn.disabled = true;
+                return;
+            }
+            const totalCost = selectedGift.price * count;
+            summaryEl.classList.remove('hidden');
+            summaryEl.innerHTML = `سترسل <b>${selectedGift.name}</b> إلى <b>${count}</b> ${count === 1 ? 'شخص' : 'أشخاص'} مقابل <span class="text-yellow-400 font-bold">${totalCost} كوينز</span>`;
+            sendBtn.disabled = false;
+        }
+
+        document.getElementById('select-all-online-btn').addEventListener('click', function() {
+            audienceMode = 'all';
+            selectedUserIds.clear();
+            body.querySelectorAll('.public-avatar-img').forEach(img => img.classList.remove('ring-2', 'ring-pink-500'));
+            this.classList.add('ring-2', 'ring-pink-400');
+            updateSummary();
+        });
+
+        body.querySelectorAll('.public-gift-avatar-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                audienceMode = 'selected';
+                document.getElementById('select-all-online-btn').classList.remove('ring-2', 'ring-pink-400');
+                const uid = btn.dataset.userId;
+                const img = btn.querySelector('.public-avatar-img');
+                if (selectedUserIds.has(uid)) {
+                    selectedUserIds.delete(uid);
+                    img.classList.remove('ring-2', 'ring-pink-500');
+                } else {
+                    selectedUserIds.add(uid);
+                    img.classList.add('ring-2', 'ring-pink-500');
+                }
+                updateSummary();
+            });
+        });
+
+        body.querySelectorAll('.pg-gift-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                body.querySelectorAll('.pg-gift-btn').forEach(b => b.classList.remove('ring-2', 'ring-pink-500'));
+                btn.classList.add('ring-2', 'ring-pink-500');
+                selectedGift = {
+                    id: btn.dataset.giftId,
+                    name: btn.dataset.giftName,
+                    price: parseFloat(btn.dataset.giftPrice)
+                };
+                updateSummary();
+            });
+        });
+
+        document.getElementById('pg-send-btn').addEventListener('click', async () => {
+            const sendBtn = document.getElementById('pg-send-btn');
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            try {
+                const payload = {
+                    giftId: selectedGift.id,
+                    audience: audienceMode,
+                    recipientIds: audienceMode === 'selected' ? Array.from(selectedUserIds) : []
+                };
+                const response = await fetch('/api/gifts/send-public', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    await refreshUserData();
+                    modal.remove();
+                } else {
+                    showNotification(result.message || 'فشل إرسال الهدية', 'error');
+                    sendBtn.disabled = false;
+                    sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الهدية';
+                }
+            } catch (error) {
+                showNotification('خطأ في الاتصال بالخادم', 'error');
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الهدية';
+            }
+        });
+
+    } catch (error) {
+        console.error('[PUBLIC GIFT] Error:', error);
+        document.getElementById('public-gift-body').innerHTML = `<div class="text-center text-red-400 py-10">فشل تحميل البيانات</div>`;
+    }
+}     
 
         
 // =================================================
@@ -6361,11 +6521,9 @@ function sendMessage() {
     messageInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
     });
-    const publicGiftBtn = document.getElementById('public-gift-btn');
+        const publicGiftBtn = document.getElementById('public-gift-btn');
     if (publicGiftBtn) {
-        publicGiftBtn.addEventListener('click', () => {
-            showNotification('اختر شخصاً من قائمة الدردشة لإرسال هدية خاصة به من ملفه الشخصي', 'info');
-        });
+        publicGiftBtn.addEventListener('click', showPublicGiftModal);
     }
 
     // --- استبدل دالة displayMessage بهذه النسخة ---
