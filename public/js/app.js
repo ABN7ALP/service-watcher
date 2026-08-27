@@ -1997,19 +1997,33 @@ function showXpGainAnimation(amount) {
     });
 
 socket.on('publicGiftAnnouncement', (data) => {
-    const chatMessages = document.getElementById('chat-messages');
-    if (!chatMessages) return;
+    const existing = document.querySelectorAll('.public-gift-toast');
+    // ✅ حد أقصى 2 إشعارات متراكبة بنفس اللحظة لتفادي الفوضى البصرية عند إرسال سريع متتالي
+    if (existing.length >= 2) existing[0].remove();
 
-    const el = document.createElement('div');
-    el.className = 'text-center my-2';
-    el.innerHTML = `
-        <div class="inline-flex items-center gap-2 bg-gradient-to-r from-pink-600/20 to-purple-600/20 border border-pink-500/30 rounded-full px-4 py-1.5 text-xs">
+    const giftVisual = data.giftImage
+        ? `<img src="${data.giftImage}" class="w-6 h-6 object-contain" onerror="this.style.display='none'">`
+        : `<span class="text-lg">${data.giftIcon || '🎁'}</span>`;
+
+    const toast = document.createElement('div');
+    toast.className = 'public-gift-toast fixed left-1/2 -translate-x-1/2 z-[350] pointer-events-none';
+    toast.style.top = `${80 + existing.length * 50}px`;
+    toast.innerHTML = `
+        <div class="flex items-center gap-2 bg-gradient-to-r from-pink-600/90 to-purple-600/90 border border-pink-400/40 rounded-full px-4 py-2 text-xs shadow-lg backdrop-blur-sm">
             <img src="${data.senderProfileImage}" class="w-5 h-5 rounded-full">
-            <span><b>${data.senderUsername}</b> أرسل ${data.giftName} 🎁 ${data.audienceText}</span>
+            ${giftVisual}
+            <span><b>${data.senderUsername}</b> أرسل ${data.giftName} 🎉 ${data.audienceText}</span>
         </div>
     `;
-    chatMessages.appendChild(el);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    document.body.appendChild(toast);
+
+    // ✅ يختفي تلقائياً بعد 4 ثوانٍ بتأثير انسيابي
+    setTimeout(() => {
+        toast.style.transition = 'opacity 0.6s, transform 0.6s';
+        toast.style.opacity = '0';
+        toast.style.transform = 'translate(-50%, -15px)';
+        setTimeout(() => toast.remove(), 600);
+    }, 4000);
 });
 
         socket.on('chatFullyDeleted', (data) => {
