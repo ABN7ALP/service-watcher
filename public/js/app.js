@@ -3755,6 +3755,8 @@ function confirmRedeem(redeemTo) {
             </div>
             <p class="text-xs text-gray-400 mb-2">اختر الهدية</p>
             <div class="grid grid-cols-4 gap-2 mb-4">
+                            <p class="text-xs text-gray-400 mb-2">اختر الهدية</p>
+            <div class="grid grid-cols-4 gap-2 mb-4">
                 ${gifts.map(g => `
                     <button class="pg-gift-btn flex flex-col items-center bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-lg p-2"
                             data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}" data-gift-image="${g.imageUrl}">
