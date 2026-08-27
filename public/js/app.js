@@ -2251,18 +2251,6 @@ function showConfirmationModal(message, onConfirm) {
         if (e.target.id === 'confirmation-modal') closeModal();
     });
 }
-    // --- نهاية الإصلاح ---
-
-    confirmBtn.addEventListener('click', () => {
-        onConfirm();
-        closeModal();
-    });
-    cancelBtn.addEventListener('click', closeModal);
-    
-    modal.addEventListener('click', (e) => {
-        if (e.target.id === 'confirmation-modal') closeModal();
-    });
-}
 
 
 // --- ✅ دالة جديدة للإشعار العائم ---
