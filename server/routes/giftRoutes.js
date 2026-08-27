@@ -10,5 +10,6 @@ router.get('/shop', giftController.getGiftShop);
 router.post('/send', giftController.sendGift);
 router.get('/leaderboard/top-senders', giftController.getTopSendersThisMonth);
 router.get('/leaderboard/top-receivers', giftController.getTopReceiversThisMonth);
+router.post('/send-public', giftController.sendPublicGift);
 
 module.exports = router;
