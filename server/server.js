@@ -61,11 +61,10 @@ setupErrorHandlers(app);
 
 // --- الاتصال بقاعدة البيانات ---
 mongoose.connect(process.env.MONGODB_URI)
-    .then(async () => {
+        .then(async () => {
         console.log('✅ MongoDB connected successfully.');
-        // ✅ تهيئة تلقائية للبيانات الأساسية (هدايا، إطارات) عند كل إقلاع للسيرفر
-        // آمن للتكرار: يتحقق من عدم وجود العنصر قبل إضافته
         await require('./utils/autoSeed')();
+        require('./utils/mediaCleanupJob').startMediaCleanupJob(); // ✅ حذف تلقائي كل 24 ساعة (رسائل + وسائط Cloudinary)
     })
     .catch(err => console.error('❌ MongoDB connection error:', err));
 
