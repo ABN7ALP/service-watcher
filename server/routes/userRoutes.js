@@ -12,6 +12,7 @@ router.use(authMiddleware);
 // مسارات تحديث بيانات المستخدم
 router.patch('/updateUsername', userController.updateUsername);
 router.patch('/updateProfilePicture', upload, userController.updateProfilePicture);
+router.get('/online/public-room', userController.getOnlinePublicRoomUsers);
 
 // بعد السطر router.patch('/updateProfilePicture', upload, userController.updateProfilePicture);
 router.patch('/updateStatus', userController.updateStatus);  // ✅ أضف هذا السطر
