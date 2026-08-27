@@ -3805,57 +3805,60 @@ function confirmRedeem(redeemTo) {
             });
         });
 
-        body.querySelectorAll('.pg-gift-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                body.querySelectorAll('.pg-gift-btn').forEach(b => b.classList.remove('ring-2', 'ring-pink-500'));
-                btn.classList.add('ring-2', 'ring-pink-500');
+                body.querySelectorAll('.gift-card-wrapper').forEach(card => {
+            const toggleBtn = card.querySelector('.gift-card-toggle');
+            toggleBtn.addEventListener('click', () => {
+                const isExpanded = card.classList.contains('gift-expanded');
+                body.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-expanded'));
+                if (isExpanded) return;
+
+                card.classList.add('gift-expanded');
                 selectedGift = {
-                    id: btn.dataset.giftId,
-                    name: btn.dataset.giftName,
-                    price: parseFloat(btn.dataset.giftPrice)
+                    id: card.dataset.giftId,
+                    name: card.dataset.giftName,
+                    price: parseFloat(card.dataset.giftPrice),
+                    icon: card.dataset.giftIcon,
+                    imageUrl: card.dataset.giftImage
                 };
-                updateSummary();
-            });
-        });
 
-        document.getElementById('pg-send-btn').addEventListener('click', async () => {
-            const sendBtn = document.getElementById('pg-send-btn');
-            sendBtn.disabled = true;
-            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                const sendBtn = card.querySelector('.inline-send-btn');
+                const counterEl = card.querySelector('.inline-send-counter');
 
-            try {
-                const payload = {
-                    giftId: selectedGift.id,
-                    audience: audienceMode,
-                    recipientIds: audienceMode === 'selected' ? Array.from(selectedUserIds) : []
-                };
-                const response = await fetch('/api/gifts/send-public', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify(payload)
+                sendBtn.addEventListener('click', async () => {
+                    const count = audienceMode === 'all' ? onlineUsers.length : selectedUserIds.size;
+                    if (count === 0) {
+                        document.getElementById('pg-audience-warning').classList.remove('hidden');
+                        return;
+                    }
+
+                    sendBtn.disabled = true;
+                    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+                    try {
+                        const payload = { giftId: selectedGift.id, audience: audienceMode, recipientIds: audienceMode === 'selected' ? Array.from(selectedUserIds) : [] };
+                        const response = await fetch('/api/gifts/send-public', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify(payload)
+                        });
+                        const result = await response.json();
+
+                        if (response.ok) {
+                            await refreshUserData();
+                            modal.remove();
+                        } else {
+                            showNotification(result.message || 'فشل إرسال الهدية', 'error');
+                            sendBtn.disabled = false;
+                            sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال';
+                        }
+                    } catch (error) {
+                        showNotification('خطأ في الاتصال بالخادم', 'error');
+                        sendBtn.disabled = false;
+                        sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال';
+                    }
                 });
-                const result = await response.json();
-
-                if (response.ok) {
-                    await refreshUserData();
-                    modal.remove();
-                } else {
-                    showNotification(result.message || 'فشل إرسال الهدية', 'error');
-                    sendBtn.disabled = false;
-                    sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الهدية';
-                }
-            } catch (error) {
-                showNotification('خطأ في الاتصال بالخادم', 'error');
-                sendBtn.disabled = false;
-                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الهدية';
-            }
-        });
-
-    } catch (error) {
-        console.error('[PUBLIC GIFT] Error:', error);
-        document.getElementById('public-gift-body').innerHTML = `<div class="text-center text-red-400 py-10">فشل تحميل البيانات</div>`;
-    }
-}     
+            });
+        });    
 
         
 // =================================================
