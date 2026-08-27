@@ -2930,24 +2930,19 @@ function renderGiftCardHTML(g) {
 }
 
 // --- ⚡ محرك الإرسال المتسارع: ضغطة = هدية واحدة، استمرار الضغط = تسارع تلقائي x2 x3 x4 ---
-function setupRapidGiftButton(targetUserId, getSelectedGift) {
-    const btn = document.getElementById('rapid-send-gift-btn');
+function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) {
     if (!btn) return;
 
     let pressTimer = null;
     let rapidInterval = null;
     let sentCount = 0;
-    let currentSpeedMs = 600; // سرعة الإرسال بالميلي ثانية، تتناقص تدريجياً (تسارع)
+    let currentSpeedMs = 600;
     let isSending = false;
-
-    const counterLabel = document.getElementById('gift-sent-counter');
-    const multiplierLabel = document.getElementById('gift-multiplier-label');
 
     async function fireOneGift() {
         const gift = getSelectedGift();
         if (!gift || isSending) return;
 
-        // ✅ حماية: تحقق من الرصيد محلياً قبل كل إرسال لتفادي محاولات فاشلة متكررة أثناء التسارع
         const localUser = JSON.parse(localStorage.getItem('user'));
         if (localUser.coins < gift.price) {
             stopRapidSending();
@@ -2972,19 +2967,20 @@ function setupRapidGiftButton(targetUserId, getSelectedGift) {
                 const balanceEl = document.getElementById('gift-store-balance');
                 if (balanceEl) balanceEl.textContent = localUser.coins;
 
-                counterLabel.textContent = `تم إرسال ${sentCount} هدية (${(sentCount * gift.price).toFixed(0)} كوينز)`;
-                counterLabel.classList.remove('hidden');
+                if (counterLabel) {
+                    counterLabel.textContent = `أُرسل ×${sentCount}`;
+                    counterLabel.classList.remove('hidden');
+                }
 
-                showGiftFloatingAnimation(gift.imageUrl, gift.name, `أرسلت ×${sentCount}`, 1);
+                showGiftFloatingAnimation(gift.imageUrl, gift.icon, gift.name, `أرسلت ×${sentCount}`);
 
-                // ✅ رسالة داخل الدردشة نفسها لكل هدية، تماماً كأي رسالة عادية
                 displayPrivateMessage({
                     _id: 'gift-msg-' + Date.now() + Math.random(),
                     sender: localUser._id,
                     receiver: targetUserId,
                     type: 'gift',
                     content: gift.name,
-                    metadata: { giftImage: gift.imageUrl, giftPrice: gift.price },
+                    metadata: { giftImage: gift.imageUrl, giftIcon: gift.icon, giftPrice: gift.price },
                     createdAt: new Date().toISOString(),
                     status: { sent: true, delivered: false, seen: false }
                 }, true);
@@ -3001,19 +2997,15 @@ function setupRapidGiftButton(targetUserId, getSelectedGift) {
     }
 
     function startRapidSending() {
-        fireOneGift(); // أول ضغطة فورية
+        fireOneGift();
         let speedLevel = 1;
 
         pressTimer = setTimeout(() => {
-            // بعد نصف ثانية من الاستمرار، يبدأ التسارع التلقائي
             rapidInterval = setInterval(() => {
                 fireOneGift();
                 speedLevel = Math.min(speedLevel + 1, 5);
-                multiplierLabel.textContent = `x${speedLevel}`;
-
-                // تسريع الإيقاع كل مرة (حتى حد أدنى آمن 150ms لمنع إغراق الخادم بالطلبات)
-                clearInterval(rapidInterval);
                 currentSpeedMs = Math.max(600 - (speedLevel * 90), 150);
+                clearInterval(rapidInterval);
                 rapidInterval = setInterval(fireOneGift, currentSpeedMs);
             }, 500);
         }, 500);
@@ -3024,20 +3016,14 @@ function setupRapidGiftButton(targetUserId, getSelectedGift) {
         clearInterval(rapidInterval);
         pressTimer = null;
         rapidInterval = null;
-        multiplierLabel.textContent = 'إرسال';
     }
 
-    // إعادة الربط في كل مرة يتم اختيار هدية جديدة (لتفادي تراكم المستمعات)
-    const newBtn = btn.cloneNode(true);
-    btn.parentNode.replaceChild(newBtn, btn);
-
-    newBtn.addEventListener('mousedown', startRapidSending);
-    newBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRapidSending(); }, { passive: false });
-    newBtn.addEventListener('mouseup', stopRapidSending);
-    newBtn.addEventListener('mouseleave', stopRapidSending);
-    newBtn.addEventListener('touchend', stopRapidSending);
+    btn.addEventListener('mousedown', startRapidSending);
+    btn.addEventListener('touchstart', (e) => { e.preventDefault(); startRapidSending(); }, { passive: false });
+    btn.addEventListener('mouseup', stopRapidSending);
+    btn.addEventListener('mouseleave', stopRapidSending);
+    btn.addEventListener('touchend', stopRapidSending);
 }
-
 
 // --- 🎊 تأثير عائم احترافي عند استقبال/إرسال هدية ---
 function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity = 1) {
