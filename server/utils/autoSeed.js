@@ -59,46 +59,35 @@ async function seedBubbleSkinsIfMissing() {
     }
 }
 
-// ✅ الإصلاح الجذري: إصلاح بيانات المستخدمين القدامى الذين ownedFrames عندهم بصيغة قديمة
-// غير متوافقة مع الصيغة الجديدة (كائنات بمدة صلاحية). هذا التعارض كان يمنع نجاح
-// أي عملية .save() لهؤلاء المستخدمين — بما فيها خصم الكوينز عند إرسال الهدايا.
-async function migrateLegacyOwnedFrames() {
-    const users = await User.find({}).select('ownedFrames');
-    let fixedCount = 0;
+// ✅ إصلاح جذري: يضيف حقل "prices" لأي إطار قديم بقاعدة البيانات لا يملكه بعد
+// (كانت الإطارات موجودة من قبل إضافة نظام الأسعار المتعدد المدد، فتبقى بلا أسعار)
+async function migrateLegacyFramePrices() {
+    const defaultPrices = {
+        'إطار الترحيب': { days7: 0, days30: 0, days365: 0 },
+        'إطار ذهبي كلاسيكي': { days7: 50, days30: 150, days365: 1200 },
+        'إطار نيون بنفسجي': { days7: 90, days30: 280, days365: 2200 },
+        'إطار قوس قزح': { days7: 150, days30: 450, days365: 3500 },
+        'إطار ناري': { days7: 200, days30: 600, days365: 4800 },
+        'إطار جليدي': { days7: 200, days30: 600, days365: 4800 },
+        'إطار ملكي': { days7: 350, days30: 1000, days365: 8000 }
+    };
 
-    for (const user of users) {
-        let needsFix = false;
-        const cleanedFrames = [];
+    const framesMissingPrices = await ProfileFrame.find({
+        $or: [{ prices: { $exists: false } }, { 'prices.days7': { $exists: false } }]
+    });
 
-        for (const entry of user.ownedFrames) {
-            if (entry && typeof entry === 'object' && entry.frame) {
-                cleanedFrames.push(entry);
-            } else if (entry) {
-                cleanedFrames.push({
-                    frame: entry,
-                    purchasedAt: new Date(),
-                    durationDays: 9999,
-                    activatedAt: null,
-                    expiresAt: null
-                });
-                needsFix = true;
-            }
-        }
-
-        if (needsFix) {
-            await User.updateOne({ _id: user._id }, { $set: { ownedFrames: cleanedFrames } });
-            fixedCount++;
-        }
-    }
-
-    if (fixedCount > 0) {
-        console.log(`🔧 [MIGRATION] تم إصلاح بيانات الإطارات القديمة لـ ${fixedCount} مستخدم`);
+    for (const frame of framesMissingPrices) {
+        const defaults = defaultPrices[frame.name] || { days7: 50, days30: 150, days365: 1200 };
+        frame.prices = defaults;
+        await frame.save();
+        console.log(`🔧 [MIGRATION] تم إصلاح أسعار الإطار: ${frame.name}`);
     }
 }
 
 module.exports = async function autoSeed() {
     try {
-        await migrateLegacyOwnedFrames(); // ✅ يجب أن تُنفَّذ أولاً قبل أي شيء آخر
+        await migrateLegacyOwnedFrames();
+        await migrateLegacyFramePrices(); // ✅ يجب أن تُنفَّذ قبل seedFramesIfMissing
         await seedGiftsIfMissing();
         await seedFramesIfMissing();
         await seedBubbleSkinsIfMissing();
