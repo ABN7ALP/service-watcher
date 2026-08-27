@@ -2207,7 +2207,7 @@ function showConfirmationModal(message, onConfirm) {
     if (oldModal) oldModal.remove();
 
     const modalHTML = `
-        <div id="confirmation-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[300] p-4">
+                <div id="confirmation-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[500] p-4">
             <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm text-white p-6 text-center">
                 <p class="mb-6">${message}</p>
                 <div class="flex justify-center gap-4">
@@ -3000,9 +3000,8 @@ async function showBuyCoinsModal() {
     `;
 
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
-    const modal = document.getElementById('buy-coins-modal');
-    document.getElementById('close-buy-coins').addEventListener('click', () => modal.remove());
-    modal.addEventListener('click', (e) => { if (e.target.id === 'buy-coins-modal') modal.remove(); });
+        const modal = document.getElementById('buy-coins-modal');
+    attachCloseConfirmation(modal, '#close-buy-coins');
 
     try {
         const [infoRes, pendingRes] = await Promise.all([
@@ -3368,8 +3367,8 @@ function renderAgentList() {
             const agentId = btn.dataset.agentId;
             const agentName = btn.dataset.agentName;
 
-            const modal = document.getElementById('buy-coins-modal');
-            if (modal) modal.remove();
+               const modal = document.getElementById('withdraw-modal');
+               attachCloseConfirmation(modal, '#close-withdraw');
 
             await openPrivateChat(agentId, agentName);
             // ✅ رسالة تلقائية تنبه الوكيل بطلب الشحن — تستفيد من نظام الإشعارات الموجود أصلاً بالمحادثة الخاصة
@@ -3379,6 +3378,26 @@ function renderAgentList() {
         });
     });
 }
+
+// ✅ يُستخدم لأي نافذة "عملية جارية" حتى لا يُفقد تقدم المستخدم بضغطة إغلاق عرضية
+function attachCloseConfirmation(modalEl, closeButtonSelector) {
+    function requestClose() {
+        showConfirmationModal('هل أنت متأكد أنك تريد الخروج؟ سيتم إلغاء العملية الحالية.', () => {
+            modalEl.remove();
+        });
+    }
+    const closeBtn = modalEl.querySelector(closeButtonSelector);
+    if (closeBtn) {
+        const newBtn = closeBtn.cloneNode(true);
+        closeBtn.parentNode.replaceChild(newBtn, closeBtn);
+        newBtn.addEventListener('click', requestClose);
+    }
+    modalEl.addEventListener('click', (e) => {
+        if (e.target === modalEl) requestClose();
+    });
+}
+
+        
 
 // =================================================
 // ============ نظام سحب الرصيد ======================
@@ -6072,6 +6091,45 @@ function showBlockedProfileModal(userId, blockData) {
         }
     });
 }
+
+async function sendOneTimeMessageRequest(receiverId, content, payExtra) {
+    const response = await fetch('/api/private-chat/one-time-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ receiverId, content, payExtra })
+    });
+    const data = await response.json();
+    return { ok: response.ok, data };
+}
+
+// ✅ نافذة أنيقة تخبر المستخدم بعدم كفاية الرصيد وتعرض له زر شحن مباشر
+function showInsufficientCoinsModal(message) {
+    const existing = document.getElementById('insufficient-coins-modal');
+    if (existing) existing.remove();
+
+    const html = `
+        <div id="insufficient-coins-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[400] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-xs text-white p-6 text-center border border-yellow-600/30">
+                <i class="fas fa-coins text-4xl text-yellow-400 mb-3"></i>
+                <p class="text-sm mb-5">${message}</p>
+                <div class="flex gap-2">
+                    <button id="ic-cancel-btn" class="flex-1 bg-gray-700 hover:bg-gray-600 py-2 rounded-lg text-sm">إلغاء</button>
+                    <button id="ic-topup-btn" class="flex-1 bg-yellow-600 hover:bg-yellow-700 py-2 rounded-lg text-sm font-bold">شحن كوينزات</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', html);
+    const modal = document.getElementById('insufficient-coins-modal');
+
+    document.getElementById('ic-cancel-btn').addEventListener('click', () => modal.remove());
+    document.getElementById('ic-topup-btn').addEventListener('click', () => {
+        modal.remove();
+        showBuyCoinsModal();
+    });
+}
+
+        
 
 // --- ✅ دالة نافذة إرسال رسالة واحدة ---
 function showOneMessageModal(targetUserId, targetUsername) {
