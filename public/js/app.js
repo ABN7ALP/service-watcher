@@ -2215,13 +2215,12 @@ socket.on('chatCleanup', ({ idsToDelete }) => {
 
 
    // --- ✅ دالة جديدة لنافذة التأكيد ---
-// --- ✅ استبدل دالة showConfirmationModal بالكامل ---
 function showConfirmationModal(message, onConfirm) {
     const oldModal = document.getElementById('confirmation-modal');
     if (oldModal) oldModal.remove();
 
     const modalHTML = `
-                <div id="confirmation-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[500] p-4">
+        <div id="confirmation-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[500] p-4">
             <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm text-white p-6 text-center">
                 <p class="mb-6">${message}</p>
                 <div class="flex justify-center gap-4">
@@ -2231,31 +2230,27 @@ function showConfirmationModal(message, onConfirm) {
             </div>
         </div>
     `;
-    const container = document.getElementById('game-container');
-    container.innerHTML += modalHTML;
+    
+    // ✅ الإصلاح الجذري: insertAdjacentHTML لا يهدم أي نافذة أخرى مفتوحة (دردشة، شحن، سحب...)
+    // بعكس innerHTML += التي كانت تعيد بناء كل عناصر game-container وتفقدها كل مستمعات الأحداث
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
 
     const modal = document.getElementById('confirmation-modal');
     const confirmBtn = document.getElementById('confirm-btn');
     const cancelBtn = document.getElementById('cancel-btn');
 
-    // --- ✅ الإصلاح يبدأ هنا ---
-    const closeModal = () => {
-        modal.remove();
-        // بعد إغلاق نافذة التأكيد، أعد ربط حدث الإغلاق لأي نافذة ملف شخصي قد تكون مفتوحة
-        const miniProfileModal = document.getElementById('mini-profile-modal');
-        if (miniProfileModal) {
-            // نزيل أي مستمعات قديمة لضمان عدم تكرارها
-            const newModal = miniProfileModal.cloneNode(true);
-            miniProfileModal.parentNode.replaceChild(newModal, miniProfileModal);
-            
-            // نضيف المستمع من جديد
-            newModal.addEventListener('click', (e) => {
-                if (e.target.id === 'mini-profile-modal') {
-                    newModal.remove();
-                }
-            });
-        }
-    };
+    const closeModal = () => modal.remove();
+
+    confirmBtn.addEventListener('click', () => {
+        onConfirm();
+        closeModal();
+    });
+    cancelBtn.addEventListener('click', closeModal);
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'confirmation-modal') closeModal();
+    });
+}
     // --- نهاية الإصلاح ---
 
     confirmBtn.addEventListener('click', () => {
