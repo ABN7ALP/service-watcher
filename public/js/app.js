@@ -5808,7 +5808,7 @@ function displayPrivateMessage(message, isMyMessage = false) {
     }
 
     // ===== زر الرد (إلا إذا ممنوع) =====
-    let replyButton = '';
+       let replyButton = '';
     if (!meta.disableReply) {
         replyButton = `
             <button class="reply-private-btn text-gray-400 hover:text-purple-400 text-xs ml-2" data-message-id="${message._id}">
@@ -5816,6 +5816,13 @@ function displayPrivateMessage(message, isMyMessage = false) {
             </button>
         `;
     }
+
+    // ✅ زر ثابت دائماً ظاهر (بدون حاجة لسحب أو تمرير) لفتح قائمة تعديل/حذف
+    const optionsButton = `
+        <button class="msg-options-btn text-gray-400 hover:text-white text-xs ml-1" data-message-id="${message._id}">
+            <i class="fas fa-ellipsis-v"></i>
+        </button>
+    `;
 
     messageElement.innerHTML = `
         <div class="max-w-xs md:max-w-md ${isMyMessage ? 'bg-purple-600' : 'bg-gray-700'} rounded-2xl p-3 ${isMyMessage ? 'rounded-tr-none' : 'rounded-tl-none'}">
@@ -5834,119 +5841,129 @@ function displayPrivateMessage(message, isMyMessage = false) {
 
             <div class="flex justify-between items-center mt-2">
                 <span class="text-xs opacity-70">${new Date(message.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
-                <div class="flex items-center gap-1">
+                    <div class="flex items-center gap-1">
                     ${statusIcon}
                     ${replyButton}
+                    ${optionsButton}
                 </div>
             </div>
         </div>
     `;
 
-       messagesContainer.appendChild(messageElement);
+           messagesContainer.appendChild(messageElement);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
-    // ✅ إضافة أزرار حذف/تعديل تظهر عند التمرير، ضمن المهلة الزمنية المسموحة
-    attachMessageActionButtons(messageElement, message, isMyMessage);
-
+    attachMessageOptionsMenu(messageElement, message, isMyMessage);
     bindPrivateMessageEvents(messageElement, message);
 }
 
-// --- ⏱️ أزرار حذف (5 دقائق لأي طرف) وتعديل (دقيقتان للمرسل فقط) ---
-function attachMessageActionButtons(messageElement, message, isMyMessage) {
-    if (message._id.toString().startsWith('voice-temp-') || message._id.toString().startsWith(Date.now().toString().slice(0, 5))) {
-        // تجاهل الرسائل المؤقتة (لم تُرسل بعد فعلياً بقاعدة البيانات)
-    }
+// --- ⋮ قائمة منسدلة صغيرة: تعديل / حذف للجميع / حذف لدي فقط ---
+function attachMessageOptionsMenu(messageElement, message, isMyMessage) {
+    const btn = messageElement.querySelector('.msg-options-btn');
+    if (!btn) return;
 
-    const createdAt = new Date(message.createdAt).getTime();
-    const ageMs = Date.now() - createdAt;
-    const canDelete = ageMs < 5 * 60 * 1000;
-    const canEdit = isMyMessage && message.type === 'text' && ageMs < 2 * 60 * 1000;
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
 
-    if (!canDelete && !canEdit) return;
+        const existing = document.getElementById('msg-options-dropdown');
+        if (existing) { existing.remove(); return; }
 
-    const bubble = messageElement.querySelector('.max-w-xs, .max-w-md');
-    if (!bubble) return;
+        const createdAt = new Date(message.createdAt).getTime();
+        const ageMs = Date.now() - createdAt;
+        const canDelete5Min = ageMs < 5 * 60 * 1000;
+        const canEdit = isMyMessage && message.type === 'text' && ageMs < 2 * 60 * 1000;
 
-    const actionsBar = document.createElement('div');
-    actionsBar.className = `message-hover-actions absolute ${isMyMessage ? '-left-16' : '-right-16'} top-1/2 -translate-y-1/2 hidden group-hover:flex gap-1`;
-    actionsBar.innerHTML = `
-        ${canEdit ? `<button class="edit-msg-btn w-7 h-7 bg-gray-700 hover:bg-blue-600 rounded-full flex items-center justify-center" title="تعديل"><i class="fas fa-pen text-xs text-white"></i></button>` : ''}
-        ${canDelete ? `<button class="delete-msg-btn w-7 h-7 bg-gray-700 hover:bg-red-600 rounded-full flex items-center justify-center" title="حذف"><i class="fas fa-trash text-xs text-white"></i></button>` : ''}
-    `;
+        const rect = btn.getBoundingClientRect();
+        const menuHTML = `
+            <div id="msg-options-dropdown" class="fixed bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-44 z-[310] overflow-hidden text-sm"
+                 style="top: ${rect.bottom + 6}px; left: ${Math.max(rect.left - 130, 8)}px;">
+                ${canEdit ? `<button class="w-full text-right px-4 py-2.5 text-gray-200 hover:bg-gray-700 flex items-center gap-2 msg-menu-edit"><i class="fas fa-pen text-blue-400"></i> تعديل</button>` : ''}
+                ${canDelete5Min ? `<button class="w-full text-right px-4 py-2.5 text-red-400 hover:bg-gray-700 flex items-center gap-2 msg-menu-delete-everyone border-t border-gray-700"><i class="fas fa-trash"></i> حذف لدى الجميع</button>` : ''}
+                <button class="w-full text-right px-4 py-2.5 text-gray-300 hover:bg-gray-700 flex items-center gap-2 msg-menu-delete-me border-t border-gray-700"><i class="fas fa-eye-slash"></i> حذف لدي فقط</button>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', menuHTML);
+        const menu = document.getElementById('msg-options-dropdown');
 
-    messageElement.classList.add('group', 'relative');
-    messageElement.appendChild(actionsBar);
-    messageElement.addEventListener('mouseenter', () => actionsBar.classList.remove('hidden'));
-    messageElement.addEventListener('mouseleave', () => actionsBar.classList.add('hidden'));
+        menu.querySelector('.msg-menu-edit')?.addEventListener('click', () => {
+            menu.remove();
+            startInlineEdit(messageElement, message);
+        });
 
-    const deleteBtn = actionsBar.querySelector('.delete-msg-btn');
-    if (deleteBtn) {
-        deleteBtn.addEventListener('click', () => {
-            showConfirmationModal('هل أنت متأكد من حذف هذه الرسالة؟', async () => {
-                try {
-                    const response = await fetch('/api/private-chat/message', {
-                        method: 'DELETE',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                        body: JSON.stringify({ messageId: message._id })
-                    });
-                    const result = await response.json();
-                    if (response.ok) {
-                        messageElement.remove();
-                    } else {
-                        showNotification(result.message || 'فشل حذف الرسالة', 'error');
-                    }
-                } catch (error) {
-                    showNotification('خطأ في الاتصال بالخادم', 'error');
+        menu.querySelector('.msg-menu-delete-everyone')?.addEventListener('click', () => {
+            menu.remove();
+            showConfirmationModal('هل تريد حذف هذه الرسالة لدى الطرفين؟', () => deleteMessageRequest(message._id, 'everyone', messageElement));
+        });
+
+        menu.querySelector('.msg-menu-delete-me')?.addEventListener('click', () => {
+            menu.remove();
+            showConfirmationModal('هل تريد حذف هذه الرسالة من عندك فقط؟', () => deleteMessageRequest(message._id, 'me', messageElement));
+        });
+
+        setTimeout(() => {
+            document.addEventListener('click', function closeOnce(ev) {
+                if (!menu.contains(ev.target) && ev.target !== btn) {
+                    menu.remove();
+                    document.removeEventListener('click', closeOnce);
                 }
             });
+        }, 0);
+    });
+}
+
+async function deleteMessageRequest(messageId, scope, messageElement) {
+    try {
+        const response = await fetch('/api/private-chat/message', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ messageId, scope })
         });
-    }
-
-    const editBtn = actionsBar.querySelector('.edit-msg-btn');
-    if (editBtn) {
-        editBtn.addEventListener('click', () => {
-            const contentEl = messageElement.querySelector('.message-content p');
-            if (!contentEl) return;
-
-            const currentText = message.content;
-            contentEl.innerHTML = `
-                <input type="text" class="edit-msg-input w-full bg-black/30 text-white rounded p-1 text-sm" value="${currentText}" maxlength="200">
-            `;
-            const input = contentEl.querySelector('.edit-msg-input');
-            input.focus();
-
-            input.addEventListener('keypress', async (e) => {
-                if (e.key === 'Enter') {
-                    const newText = input.value.trim();
-                    if (!newText || newText === currentText) {
-                        contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
-                        return;
-                    }
-                    try {
-                        const response = await fetch('/api/private-chat/message/edit', {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                            body: JSON.stringify({ messageId: message._id, newContent: newText })
-                        });
-                        const result = await response.json();
-                        if (response.ok) {
-                            contentEl.innerHTML = `<p class="text-white text-sm">${newText} <span class="text-[10px] text-gray-400">(معدّلة)</span></p>`;
-                            message.content = newText;
-                        } else {
-                            showNotification(result.message || 'فشل التعديل', 'error');
-                            contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
-                        }
-                    } catch (error) {
-                        showNotification('خطأ بالاتصال', 'error');
-                        contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
-                    }
-                }
-            });
-        });
+        const result = await response.json();
+        if (response.ok) {
+            messageElement.remove();
+        } else {
+            showNotification(result.message || 'فشل حذف الرسالة', 'error');
+        }
+    } catch (error) {
+        showNotification('خطأ في الاتصال بالخادم', 'error');
     }
 }
 
+function startInlineEdit(messageElement, message) {
+    const contentEl = messageElement.querySelector('.message-content p');
+    if (!contentEl) return;
 
+    const currentText = message.content;
+    contentEl.innerHTML = `<input type="text" class="edit-msg-input w-full bg-black/30 text-white rounded p-1 text-sm" value="${currentText}" maxlength="200">`;
+    const input = contentEl.querySelector('.edit-msg-input');
+    input.focus();
+
+    input.addEventListener('keypress', async (e) => {
+        if (e.key !== 'Enter') return;
+        const newText = input.value.trim();
+        if (!newText || newText === currentText) {
+            contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
+            return;
+        }
+        try {
+            const response = await fetch('/api/private-chat/message/edit', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ messageId: message._id, newContent: newText })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                contentEl.innerHTML = `<p class="text-white text-sm">${newText} <span class="text-[10px] text-gray-400">(معدّلة)</span></p>`;
+                message.content = newText;
+            } else {
+                showNotification(result.message || 'فشل التعديل', 'error');
+                contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
+            }
+        } catch (error) {
+            contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
+        }
+    });
+}
 
 // --- 🖼️ نافذة عرض صورة عادية ---
 function showFullImage(imageUrl, message) {
