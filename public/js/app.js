@@ -684,17 +684,6 @@ async function showSettingsView() {
     } catch (error) {
         console.error('Failed to load frame shop:', error);
     }
-
-        let bubbleShopData = { skins: [], activeClass: null, coins: 0 };
-    try {
-        const bubbleResponse = await fetch('/api/bubble-skins/shop', { headers: { 'Authorization': `Bearer ${token}` } });
-        if (bubbleResponse.ok) {
-            const bubbleResult = await bubbleResponse.json();
-            bubbleShopData = bubbleResult.data;
-        }
-    } catch (error) {
-        console.error('Failed to load bubble skin shop:', error);
-    }
     
    mainContent.innerHTML = `
         <div class="p-4">
@@ -733,9 +722,6 @@ async function showSettingsView() {
                     </div>
                 </div>
             </div>
-
-
-            
             
             <!-- =========================================== -->
             <!-- 2. قسم اسم المستخدم (قابل للطي) -->
@@ -866,42 +852,6 @@ async function showSettingsView() {
                 </div>
             </div>
 
-            <!-- =========================================== -->
-            <!-- 7. قسم إطارات دردشة الشات العام (الجديد) -->
-            <!-- =========================================== -->
-            <div class="mb-4">
-                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="bubble-shop-section">
-                    <h3 class="text-lg font-bold"><i class="fas fa-comment-dots mr-2"></i>إطارات رسائل الشات العام</h3>
-                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
-                </div>
-                <div id="bubble-shop-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
-                    <div class="flex items-center justify-between mb-4 bg-gray-900/50 rounded-xl p-3">
-                        <span class="text-sm text-gray-400">رصيدك الحالي</span>
-                        <span class="font-bold text-yellow-400"><i class="fas fa-coins"></i> ${bubbleShopData.coins}</span>
-                    </div>
-                    <div class="grid grid-cols-2 gap-3">
-                        ${bubbleShopData.skins.map(s => {
-                            const isActive = bubbleShopData.activeClass === s.cssClass;
-                            return `
-                            <div class="rounded-xl p-3 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'} ${s.cssClass}">
-                                <p class="text-sm font-bold mb-1">${s.name}</p>
-                                <p class="text-xs text-yellow-300 mb-2"><i class="fas fa-coins"></i> ${s.price}</p>
-                                ${s.owned ? `
-                                    <button class="equip-bubble-btn w-full text-xs py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}" 
-                                            data-skin-id="${s._id}" ${isActive ? 'disabled' : ''}>
-                                        ${isActive ? 'مُفعّل حالياً' : 'تفعيل'}
-                                    </button>
-                                ` : `
-                                    <button class="purchase-bubble-btn w-full text-xs py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-skin-id="${s._id}">
-                                        شراء
-                                    </button>
-                                `}
-                            </div>
-                        `}).join('')}
-                    </div>
-                </div>
-            </div>
-
 
             <!-- =========================================== -->
             <!-- 6. قسم الهدايا المستلمة (الجديد) -->
@@ -968,56 +918,6 @@ async function showSettingsView() {
     setupSettingsEvents();
     loadGiftsReceivedSummary();
 }
-
-
-        document.querySelectorAll('.purchase-bubble-btn').forEach(btn => {
-        btn.addEventListener('click', async function() {
-            const skinId = this.dataset.skinId;
-            this.disabled = true;
-            try {
-                const response = await fetch('/api/bubble-skins/purchase', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ skinId })
-                });
-                const result = await response.json();
-                if (response.ok) {
-                    showNotification(result.message, 'success');
-                    await refreshUserData();
-                    showSettingsView();
-                } else {
-                    showNotification(result.message || 'فشل الشراء', 'error');
-                    this.disabled = false;
-                }
-            } catch (error) {
-                showNotification('خطأ في الاتصال بالخادم', 'error');
-                this.disabled = false;
-            }
-        });
-    });
-
-    document.querySelectorAll('.equip-bubble-btn').forEach(btn => {
-        btn.addEventListener('click', async function() {
-            const skinId = this.dataset.skinId;
-            try {
-                const response = await fetch('/api/bubble-skins/equip', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ skinId })
-                });
-                const result = await response.json();
-                if (response.ok) {
-                    showNotification(result.message, 'success');
-                    await refreshUserData();
-                    showSettingsView();
-                } else {
-                    showNotification(result.message || 'فشل التفعيل', 'error');
-                }
-            } catch (error) {
-                showNotification('خطأ في الاتصال بالخادم', 'error');
-            }
-        });
-    });
 
 // 📍 أضف هذه الدالة بعد showSettingsView
 function setupSettingsEvents() {
@@ -1995,21 +1895,7 @@ function showXpGainAnimation(amount) {
         }
     });
 
-socket.on('publicGiftAnnouncement', (data) => {
-    const chatMessages = document.getElementById('chat-messages');
-    if (!chatMessages) return;
 
-    const el = document.createElement('div');
-    el.className = 'text-center my-2';
-    el.innerHTML = `
-        <div class="inline-flex items-center gap-2 bg-gradient-to-r from-pink-600/20 to-purple-600/20 border border-pink-500/30 rounded-full px-4 py-1.5 text-xs">
-            <img src="${data.senderProfileImage}" class="w-5 h-5 rounded-full">
-            <span><b>${data.senderUsername}</b> أرسل ${data.giftName} 🎁 ${data.audienceText}</span>
-        </div>
-    `;
-    chatMessages.appendChild(el);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-});
 
         socket.on('chatFullyDeleted', (data) => {
     const openChat = document.getElementById('private-chat-modal');
@@ -2315,12 +2201,13 @@ socket.on('chatCleanup', ({ idsToDelete }) => {
 
 
    // --- ✅ دالة جديدة لنافذة التأكيد ---
+// --- ✅ استبدل دالة showConfirmationModal بالكامل ---
 function showConfirmationModal(message, onConfirm) {
     const oldModal = document.getElementById('confirmation-modal');
     if (oldModal) oldModal.remove();
 
     const modalHTML = `
-        <div id="confirmation-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[500] p-4">
+        <div id="confirmation-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[300] p-4">
             <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm text-white p-6 text-center">
                 <p class="mb-6">${message}</p>
                 <div class="flex justify-center gap-4">
@@ -2330,16 +2217,32 @@ function showConfirmationModal(message, onConfirm) {
             </div>
         </div>
     `;
-    
-    // ✅ الإصلاح الجذري: insertAdjacentHTML لا يهدم أي نافذة أخرى مفتوحة (دردشة، شحن، سحب...)
-    // بعكس innerHTML += التي كانت تعيد بناء كل عناصر game-container وتفقدها كل مستمعات الأحداث
-    document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
+    const container = document.getElementById('game-container');
+    container.innerHTML += modalHTML;
 
     const modal = document.getElementById('confirmation-modal');
     const confirmBtn = document.getElementById('confirm-btn');
     const cancelBtn = document.getElementById('cancel-btn');
 
-    const closeModal = () => modal.remove();
+    // --- ✅ الإصلاح يبدأ هنا ---
+    const closeModal = () => {
+        modal.remove();
+        // بعد إغلاق نافذة التأكيد، أعد ربط حدث الإغلاق لأي نافذة ملف شخصي قد تكون مفتوحة
+        const miniProfileModal = document.getElementById('mini-profile-modal');
+        if (miniProfileModal) {
+            // نزيل أي مستمعات قديمة لضمان عدم تكرارها
+            const newModal = miniProfileModal.cloneNode(true);
+            miniProfileModal.parentNode.replaceChild(newModal, miniProfileModal);
+            
+            // نضيف المستمع من جديد
+            newModal.addEventListener('click', (e) => {
+                if (e.target.id === 'mini-profile-modal') {
+                    newModal.remove();
+                }
+            });
+        }
+    };
+    // --- نهاية الإصلاح ---
 
     confirmBtn.addEventListener('click', () => {
         onConfirm();
@@ -2840,11 +2743,17 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
         <div id="gift-store-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-lg text-white border border-gray-700 max-h-[85vh] flex flex-col">
                 <div class="flex items-center justify-between p-4 border-b border-gray-700">
-                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift text-pink-400"></i> إرسال هدية لـ ${targetUsername}</h3>
+                    <h3 class="text-lg font-bold flex items-center gap-2">
+                        <i class="fas fa-gift text-pink-400"></i>
+                        إرسال هدية لـ ${targetUsername}
+                    </h3>
                     <button id="close-gift-store" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
                 </div>
                 <div id="gift-store-body" class="p-4 overflow-y-auto flex-1">
-                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i></div>
+                    <div class="text-center text-gray-400 py-10">
+                        <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                        <p class="text-sm">جاري تحميل متجر الهدايا...</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2852,7 +2761,11 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
 
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('gift-store-modal');
-    attachCloseConfirmation(modal, '#close-gift-store');
+
+    document.getElementById('close-gift-store').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'gift-store-modal') modal.remove();
+    });
 
     try {
         const response = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -2867,81 +2780,83 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
         body.innerHTML = `
             <div class="flex items-center justify-between mb-4 bg-gray-900/50 rounded-xl p-3">
                 <span class="text-sm text-gray-400">رصيدك الحالي</span>
-                <span class="font-bold text-yellow-400 flex items-center gap-1"><i class="fas fa-coins"></i> <span id="gift-store-balance">${currentUser.coins || 0}</span></span>
+                <span class="font-bold text-yellow-400 flex items-center gap-1">
+                    <i class="fas fa-coins"></i> <span id="gift-store-balance">${currentUser.coins || 0}</span>
+                </span>
             </div>
-            <div id="gift-cards-grid" class="grid grid-cols-3 gap-2">
-                ${gifts.map(g => renderGiftCardHTML(g)).join('')}
+            <div id="gift-cards-grid" class="grid grid-cols-3 gap-3 mb-4">
+                ${gifts.map(g => `
+                    <button class="gift-card-btn flex flex-col items-center bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-xl p-3 transition"
+                            data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}" data-gift-image="${g.imageUrl}">
+                        <img src="${g.imageUrl}" class="w-14 h-14 object-contain mb-2" onerror="this.style.opacity='0.3'">
+                        <span class="text-xs font-bold text-center truncate w-full">${g.name}</span>
+                        <span class="text-xs text-yellow-400 flex items-center gap-1 mt-1">
+                            <i class="fas fa-coins"></i> ${g.discountedPrice || g.price}
+                        </span>
+                    </button>
+                `).join('')}
+            </div>
+            <div id="gift-selected-panel" class="hidden bg-gray-900/50 rounded-xl p-4 text-center">
+                <div class="flex items-center justify-center gap-2 mb-3">
+                    <img id="gift-selected-preview" class="w-10 h-10 object-contain">
+                    <span id="gift-selected-name" class="font-bold"></span>
+                </div>
+                <p class="text-xs text-gray-400 mb-3">اضغط مطولاً على الزر لإرسال أكثر من هدية بسرعة متزايدة</p>
+                <button id="rapid-send-gift-btn" class="w-24 h-24 mx-auto bg-gradient-to-br from-pink-500 to-purple-600 rounded-full flex flex-col items-center justify-center shadow-lg select-none active:scale-95 transition-transform">
+                    <i class="fas fa-paper-plane text-2xl text-white mb-1"></i>
+                    <span id="gift-multiplier-label" class="text-white text-xs font-bold">إرسال</span>
+                </button>
+                <p id="gift-sent-counter" class="text-xs text-gray-400 mt-3 hidden"></p>
             </div>
         `;
 
-        // ✅ كل كارد يُدار بشكل مستقل: النقر يوسّعه ويكشف زر الإرسال داخله مباشرة
-        body.querySelectorAll('.gift-card-wrapper').forEach(card => {
-            const giftId = card.dataset.giftId;
-            const toggleBtn = card.querySelector('.gift-card-toggle');
+        let selectedGift = null;
 
-            toggleBtn.addEventListener('click', () => {
-                const isExpanded = card.classList.contains('gift-expanded');
-                body.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-expanded'));
+        body.querySelectorAll('.gift-card-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                body.querySelectorAll('.gift-card-btn').forEach(b => b.classList.remove('ring-2', 'ring-pink-500'));
+                btn.classList.add('ring-2', 'ring-pink-500');
+                selectedGift = {
+                    id: btn.dataset.giftId,
+                    name: btn.dataset.giftName,
+                    price: parseFloat(btn.dataset.giftPrice),
+                    imageUrl: btn.dataset.giftImage
+                };
 
-                if (!isExpanded) {
-                    card.classList.add('gift-expanded');
-                    const gift = {
-                        id: giftId,
-                        name: card.dataset.giftName,
-                        price: parseFloat(card.dataset.giftPrice),
-                        icon: card.dataset.giftIcon,
-                        imageUrl: card.dataset.giftImage
-                    };
-                    setupRapidGiftButton(targetUserId, () => gift, card.querySelector('.inline-send-btn'), card.querySelector('.inline-send-counter'));
-                }
+                document.getElementById('gift-selected-panel').classList.remove('hidden');
+                document.getElementById('gift-selected-preview').src = selectedGift.imageUrl;
+                document.getElementById('gift-selected-name').textContent = selectedGift.name;
+                document.getElementById('gift-sent-counter').classList.add('hidden');
+                setupRapidGiftButton(targetUserId, () => selectedGift);
             });
         });
 
     } catch (error) {
         console.error('[GIFT STORE] Error:', error);
         const body = document.getElementById('gift-store-body');
-        if (body) body.innerHTML = `<div class="text-center text-red-400 py-10">فشل تحميل المتجر</div>`;
+        if (body) body.innerHTML = `<div class="text-center text-red-400 py-10"><i class="fas fa-exclamation-circle text-2xl mb-2"></i><p class="text-sm">فشل تحميل المتجر</p></div>`;
     }
 }
 
-// ✅ دالة موحّدة لبناء كارد الهدية (تُستخدم بالخاصة والعامة)
-function renderGiftCardHTML(g) {
-    const visual = g.imageUrl
-        ? `<img src="${g.imageUrl}" class="w-10 h-10 object-contain mx-auto" onerror="this.replaceWith(Object.assign(document.createElement('span'), {textContent: '${g.icon || '🎁'}', className:'text-3xl block'}))">`
-        : `<span class="text-3xl block">${g.icon || '🎁'}</span>`;
-
-    return `
-        <div class="gift-card-wrapper bg-gray-800/50 border border-gray-700 rounded-xl p-2 transition-all"
-             data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}" data-gift-icon="${g.icon || '🎁'}" data-gift-image="${g.imageUrl || ''}">
-            <button class="gift-card-toggle w-full flex flex-col items-center">
-                ${visual}
-                <span class="text-[11px] font-bold text-center truncate w-full mt-1">${g.name}</span>
-                <span class="text-[10px] text-yellow-400"><i class="fas fa-coins"></i> ${g.discountedPrice || g.price}</span>
-            </button>
-            <div class="gift-card-inline-send hidden mt-2">
-                <button class="inline-send-btn w-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white text-xs py-2 rounded-lg font-bold flex items-center justify-center gap-1 select-none active:scale-95 transition-transform">
-                    <i class="fas fa-paper-plane"></i> إرسال
-                </button>
-                <p class="inline-send-counter text-[10px] text-gray-400 text-center mt-1 hidden"></p>
-            </div>
-        </div>
-    `;
-}
-
 // --- ⚡ محرك الإرسال المتسارع: ضغطة = هدية واحدة، استمرار الضغط = تسارع تلقائي x2 x3 x4 ---
-function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) {
+function setupRapidGiftButton(targetUserId, getSelectedGift) {
+    const btn = document.getElementById('rapid-send-gift-btn');
     if (!btn) return;
 
     let pressTimer = null;
     let rapidInterval = null;
     let sentCount = 0;
-    let currentSpeedMs = 600;
+    let currentSpeedMs = 600; // سرعة الإرسال بالميلي ثانية، تتناقص تدريجياً (تسارع)
     let isSending = false;
+
+    const counterLabel = document.getElementById('gift-sent-counter');
+    const multiplierLabel = document.getElementById('gift-multiplier-label');
 
     async function fireOneGift() {
         const gift = getSelectedGift();
         if (!gift || isSending) return;
 
+        // ✅ حماية: تحقق من الرصيد محلياً قبل كل إرسال لتفادي محاولات فاشلة متكررة أثناء التسارع
         const localUser = JSON.parse(localStorage.getItem('user'));
         if (localUser.coins < gift.price) {
             stopRapidSending();
@@ -2966,20 +2881,19 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
                 const balanceEl = document.getElementById('gift-store-balance');
                 if (balanceEl) balanceEl.textContent = localUser.coins;
 
-                if (counterLabel) {
-                    counterLabel.textContent = `أُرسل ×${sentCount}`;
-                    counterLabel.classList.remove('hidden');
-                }
+                counterLabel.textContent = `تم إرسال ${sentCount} هدية (${(sentCount * gift.price).toFixed(0)} كوينز)`;
+                counterLabel.classList.remove('hidden');
 
-                showGiftFloatingAnimation(gift.imageUrl, gift.icon, gift.name, `أرسلت ×${sentCount}`);
+                showGiftFloatingAnimation(gift.imageUrl, gift.name, `أرسلت ×${sentCount}`, 1);
 
+                // ✅ رسالة داخل الدردشة نفسها لكل هدية، تماماً كأي رسالة عادية
                 displayPrivateMessage({
                     _id: 'gift-msg-' + Date.now() + Math.random(),
                     sender: localUser._id,
                     receiver: targetUserId,
                     type: 'gift',
                     content: gift.name,
-                    metadata: { giftImage: gift.imageUrl, giftIcon: gift.icon, giftPrice: gift.price },
+                    metadata: { giftImage: gift.imageUrl, giftPrice: gift.price },
                     createdAt: new Date().toISOString(),
                     status: { sent: true, delivered: false, seen: false }
                 }, true);
@@ -2996,15 +2910,19 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
     }
 
     function startRapidSending() {
-        fireOneGift();
+        fireOneGift(); // أول ضغطة فورية
         let speedLevel = 1;
 
         pressTimer = setTimeout(() => {
+            // بعد نصف ثانية من الاستمرار، يبدأ التسارع التلقائي
             rapidInterval = setInterval(() => {
                 fireOneGift();
                 speedLevel = Math.min(speedLevel + 1, 5);
-                currentSpeedMs = Math.max(600 - (speedLevel * 90), 150);
+                multiplierLabel.textContent = `x${speedLevel}`;
+
+                // تسريع الإيقاع كل مرة (حتى حد أدنى آمن 150ms لمنع إغراق الخادم بالطلبات)
                 clearInterval(rapidInterval);
+                currentSpeedMs = Math.max(600 - (speedLevel * 90), 150);
                 rapidInterval = setInterval(fireOneGift, currentSpeedMs);
             }, 500);
         }, 500);
@@ -3015,13 +2933,18 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
         clearInterval(rapidInterval);
         pressTimer = null;
         rapidInterval = null;
+        multiplierLabel.textContent = 'إرسال';
     }
 
-    btn.addEventListener('mousedown', startRapidSending);
-    btn.addEventListener('touchstart', (e) => { e.preventDefault(); startRapidSending(); }, { passive: false });
-    btn.addEventListener('mouseup', stopRapidSending);
-    btn.addEventListener('mouseleave', stopRapidSending);
-    btn.addEventListener('touchend', stopRapidSending);
+    // إعادة الربط في كل مرة يتم اختيار هدية جديدة (لتفادي تراكم المستمعات)
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+
+    newBtn.addEventListener('mousedown', startRapidSending);
+    newBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRapidSending(); }, { passive: false });
+    newBtn.addEventListener('mouseup', stopRapidSending);
+    newBtn.addEventListener('mouseleave', stopRapidSending);
+    newBtn.addEventListener('touchend', stopRapidSending);
 }
 
 
@@ -3077,8 +3000,9 @@ async function showBuyCoinsModal() {
     `;
 
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
-        const modal = document.getElementById('buy-coins-modal');
-    attachCloseConfirmation(modal, '#close-buy-coins');
+    const modal = document.getElementById('buy-coins-modal');
+    document.getElementById('close-buy-coins').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target.id === 'buy-coins-modal') modal.remove(); });
 
     try {
         const [infoRes, pendingRes] = await Promise.all([
@@ -3444,8 +3368,8 @@ function renderAgentList() {
             const agentId = btn.dataset.agentId;
             const agentName = btn.dataset.agentName;
 
-               const modal = document.getElementById('withdraw-modal');
-               attachCloseConfirmation(modal, '#close-withdraw');
+            const modal = document.getElementById('buy-coins-modal');
+            if (modal) modal.remove();
 
             await openPrivateChat(agentId, agentName);
             // ✅ رسالة تلقائية تنبه الوكيل بطلب الشحن — تستفيد من نظام الإشعارات الموجود أصلاً بالمحادثة الخاصة
@@ -3455,26 +3379,6 @@ function renderAgentList() {
         });
     });
 }
-
-// ✅ يُستخدم لأي نافذة "عملية جارية" حتى لا يُفقد تقدم المستخدم بضغطة إغلاق عرضية
-function attachCloseConfirmation(modalEl, closeButtonSelector) {
-    function requestClose() {
-        showConfirmationModal('هل أنت متأكد أنك تريد الخروج؟ سيتم إلغاء العملية الحالية.', () => {
-            modalEl.remove();
-        });
-    }
-    const closeBtn = modalEl.querySelector(closeButtonSelector);
-    if (closeBtn) {
-        const newBtn = closeBtn.cloneNode(true);
-        closeBtn.parentNode.replaceChild(newBtn, closeBtn);
-        newBtn.addEventListener('click', requestClose);
-    }
-    modalEl.addEventListener('click', (e) => {
-        if (e.target === modalEl) requestClose();
-    });
-}
-
-        
 
 // =================================================
 // ============ نظام سحب الرصيد ======================
@@ -3700,161 +3604,7 @@ function confirmRedeem(redeemTo) {
         }
     });
 }
-
-
         
-   async function showPublicGiftModal() {
-    const existing = document.getElementById('public-gift-modal');
-    if (existing) existing.remove();
-
-    const shellHTML = `
-        <div id="public-gift-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
-            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[88vh] flex flex-col">
-                <div class="flex items-center justify-between p-4 border-b border-gray-700">
-                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift text-pink-400"></i> إرسال هدية بالشات العام</h3>
-                    <button id="close-public-gift" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
-                </div>
-                <div id="public-gift-body" class="p-4 overflow-y-auto flex-1">
-                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
-    const modal = document.getElementById('public-gift-modal');
-    attachCloseConfirmation(modal, '#close-public-gift');
-
-    try {
-        const [onlineRes, shopRes] = await Promise.all([
-            fetch('/api/users/online/public-room', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
-        ]);
-
-        const onlineUsers = onlineRes.data.users;
-        const gifts = shopRes.data.gifts;
-        let selectedUserIds = new Set();
-        let audienceMode = 'selected'; // 'selected' | 'all'
-        let selectedGift = null;
-
-        const body = document.getElementById('public-gift-body');
-        body.innerHTML = `
-            <p class="text-xs text-gray-400 mb-2">اختر المستلمين (يمكنك اختيار أكثر من شخص)</p>
-            <div class="flex gap-2 mb-3">
-                <button id="select-all-online-btn" class="flex-1 bg-purple-600 hover:bg-purple-700 text-xs py-2 rounded-lg font-bold">
-                    <i class="fas fa-users"></i> إرسال للجميع (${onlineUsers.length})
-                </button>
-            </div>
-            <div id="public-gift-avatars" class="flex gap-3 overflow-x-auto pb-2 mb-4">
-                ${onlineUsers.length === 0 ? '<p class="text-xs text-gray-500">لا يوجد أشخاص متصلون حالياً بالشات العام</p>' : onlineUsers.map(u => `
-                    <button class="public-gift-avatar-btn flex-shrink-0 flex flex-col items-center gap-1" data-user-id="${u._id}" data-username="${u.username}">
-                        <img src="${u.profileImage}" class="w-14 h-14 rounded-full object-cover border-2 border-gray-600 transition-all public-avatar-img ${u.activeFrameClass || ''}">
-                        <span class="text-[10px] truncate w-14 text-center">${u.username}</span>
-                    </button>
-                `).join('')}
-            </div>
-                        <p class="text-xs text-gray-400 mb-2">اختر الهدية (زر الإرسال يظهر داخل الهدية بعد اختيارها)</p>
-            <div class="grid grid-cols-3 gap-2">
-                ${gifts.map(g => renderGiftCardHTML(g)).join('')}
-            </div>
-            <p id="pg-audience-warning" class="hidden text-xs text-yellow-400 text-center mt-3">اختر المستلمين أولاً بالأعلى</p>
-        `;
-
-        function updateSummary() {
-            const summaryEl = document.getElementById('pg-summary');
-            const sendBtn = document.getElementById('pg-send-btn');
-            const count = audienceMode === 'all' ? onlineUsers.length : selectedUserIds.size;
-
-            if (!selectedGift || count === 0) {
-                summaryEl.classList.add('hidden');
-                sendBtn.disabled = true;
-                return;
-            }
-            const totalCost = selectedGift.price * count;
-            summaryEl.classList.remove('hidden');
-            summaryEl.innerHTML = `سترسل <b>${selectedGift.name}</b> إلى <b>${count}</b> ${count === 1 ? 'شخص' : 'أشخاص'} مقابل <span class="text-yellow-400 font-bold">${totalCost} كوينز</span>`;
-            sendBtn.disabled = false;
-        }
-
-        document.getElementById('select-all-online-btn').addEventListener('click', function() {
-            audienceMode = 'all';
-            selectedUserIds.clear();
-            body.querySelectorAll('.public-avatar-img').forEach(img => img.classList.remove('ring-2', 'ring-pink-500'));
-            this.classList.add('ring-2', 'ring-pink-400');
-            updateSummary();
-        });
-
-        body.querySelectorAll('.public-gift-avatar-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                audienceMode = 'selected';
-                document.getElementById('select-all-online-btn').classList.remove('ring-2', 'ring-pink-400');
-                const uid = btn.dataset.userId;
-                const img = btn.querySelector('.public-avatar-img');
-                if (selectedUserIds.has(uid)) {
-                    selectedUserIds.delete(uid);
-                    img.classList.remove('ring-2', 'ring-pink-500');
-                } else {
-                    selectedUserIds.add(uid);
-                    img.classList.add('ring-2', 'ring-pink-500');
-                }
-                updateSummary();
-            });
-        });
-
-                body.querySelectorAll('.gift-card-wrapper').forEach(card => {
-            const toggleBtn = card.querySelector('.gift-card-toggle');
-            toggleBtn.addEventListener('click', () => {
-                const isExpanded = card.classList.contains('gift-expanded');
-                body.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-expanded'));
-                if (isExpanded) return;
-
-                card.classList.add('gift-expanded');
-                selectedGift = {
-                    id: card.dataset.giftId,
-                    name: card.dataset.giftName,
-                    price: parseFloat(card.dataset.giftPrice),
-                    icon: card.dataset.giftIcon,
-                    imageUrl: card.dataset.giftImage
-                };
-
-                const sendBtn = card.querySelector('.inline-send-btn');
-                const counterEl = card.querySelector('.inline-send-counter');
-
-                sendBtn.addEventListener('click', async () => {
-                    const count = audienceMode === 'all' ? onlineUsers.length : selectedUserIds.size;
-                    if (count === 0) {
-                        document.getElementById('pg-audience-warning').classList.remove('hidden');
-                        return;
-                    }
-
-                    sendBtn.disabled = true;
-                    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-
-                    try {
-                        const payload = { giftId: selectedGift.id, audience: audienceMode, recipientIds: audienceMode === 'selected' ? Array.from(selectedUserIds) : [] };
-                        const response = await fetch('/api/gifts/send-public', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                            body: JSON.stringify(payload)
-                        });
-                        const result = await response.json();
-
-                        if (response.ok) {
-                            await refreshUserData();
-                            modal.remove();
-                        } else {
-                            showNotification(result.message || 'فشل إرسال الهدية', 'error');
-                            sendBtn.disabled = false;
-                            sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال';
-                        }
-                    } catch (error) {
-                        showNotification('خطأ في الاتصال بالخادم', 'error');
-                        sendBtn.disabled = false;
-                        sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال';
-                    }
-                });
-            });
-        });
 
         
 // =================================================
@@ -4102,15 +3852,6 @@ async function loadChatUserData(userId) {
     } catch (error) {
         console.error('[CHAT] Error loading user data:', error);
     }
-}
-
-// --- 📜 دالة تحميل تاريخ المحادثة ---
-async function loadChatHistory(targetUserId) {
-    const messagesContainer = document.getElementById('private-chat-messages');
-    if (!messagesContainer) return;
-    
-    // TODO: جلب الرسائل من API
-    // سيتم تنفيذها لاحقاً عند بناء الخادم
 }
 
 // --- 🎮 دالة إعداد أحداث الدردشة ---
@@ -5865,7 +5606,7 @@ function displayPrivateMessage(message, isMyMessage = false) {
     }
 
     // ===== زر الرد (إلا إذا ممنوع) =====
-       let replyButton = '';
+    let replyButton = '';
     if (!meta.disableReply) {
         replyButton = `
             <button class="reply-private-btn text-gray-400 hover:text-purple-400 text-xs ml-2" data-message-id="${message._id}">
@@ -5873,13 +5614,6 @@ function displayPrivateMessage(message, isMyMessage = false) {
             </button>
         `;
     }
-
-    // ✅ زر ثابت دائماً ظاهر (بدون حاجة لسحب أو تمرير) لفتح قائمة تعديل/حذف
-    const optionsButton = `
-        <button class="msg-options-btn text-gray-400 hover:text-white text-xs ml-1" data-message-id="${message._id}">
-            <i class="fas fa-ellipsis-v"></i>
-        </button>
-    `;
 
     messageElement.innerHTML = `
         <div class="max-w-xs md:max-w-md ${isMyMessage ? 'bg-purple-600' : 'bg-gray-700'} rounded-2xl p-3 ${isMyMessage ? 'rounded-tr-none' : 'rounded-tl-none'}">
@@ -5898,129 +5632,119 @@ function displayPrivateMessage(message, isMyMessage = false) {
 
             <div class="flex justify-between items-center mt-2">
                 <span class="text-xs opacity-70">${new Date(message.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
-                    <div class="flex items-center gap-1">
+                <div class="flex items-center gap-1">
                     ${statusIcon}
                     ${replyButton}
-                    ${optionsButton}
                 </div>
             </div>
         </div>
     `;
 
-           messagesContainer.appendChild(messageElement);
+       messagesContainer.appendChild(messageElement);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
-    attachMessageOptionsMenu(messageElement, message, isMyMessage);
+    // ✅ إضافة أزرار حذف/تعديل تظهر عند التمرير، ضمن المهلة الزمنية المسموحة
+    attachMessageActionButtons(messageElement, message, isMyMessage);
+
     bindPrivateMessageEvents(messageElement, message);
 }
 
-// --- ⋮ قائمة منسدلة صغيرة: تعديل / حذف للجميع / حذف لدي فقط ---
-function attachMessageOptionsMenu(messageElement, message, isMyMessage) {
-    const btn = messageElement.querySelector('.msg-options-btn');
-    if (!btn) return;
+// --- ⏱️ أزرار حذف (5 دقائق لأي طرف) وتعديل (دقيقتان للمرسل فقط) ---
+function attachMessageActionButtons(messageElement, message, isMyMessage) {
+    if (message._id.toString().startsWith('voice-temp-') || message._id.toString().startsWith(Date.now().toString().slice(0, 5))) {
+        // تجاهل الرسائل المؤقتة (لم تُرسل بعد فعلياً بقاعدة البيانات)
+    }
 
-    btn.addEventListener('click', (e) => {
-        e.stopPropagation();
+    const createdAt = new Date(message.createdAt).getTime();
+    const ageMs = Date.now() - createdAt;
+    const canDelete = ageMs < 5 * 60 * 1000;
+    const canEdit = isMyMessage && message.type === 'text' && ageMs < 2 * 60 * 1000;
 
-        const existing = document.getElementById('msg-options-dropdown');
-        if (existing) { existing.remove(); return; }
+    if (!canDelete && !canEdit) return;
 
-        const createdAt = new Date(message.createdAt).getTime();
-        const ageMs = Date.now() - createdAt;
-        const canDelete5Min = ageMs < 5 * 60 * 1000;
-        const canEdit = isMyMessage && message.type === 'text' && ageMs < 2 * 60 * 1000;
+    const bubble = messageElement.querySelector('.max-w-xs, .max-w-md');
+    if (!bubble) return;
 
-        const rect = btn.getBoundingClientRect();
-        const menuHTML = `
-            <div id="msg-options-dropdown" class="fixed bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-44 z-[310] overflow-hidden text-sm"
-                 style="top: ${rect.bottom + 6}px; left: ${Math.max(rect.left - 130, 8)}px;">
-                ${canEdit ? `<button class="w-full text-right px-4 py-2.5 text-gray-200 hover:bg-gray-700 flex items-center gap-2 msg-menu-edit"><i class="fas fa-pen text-blue-400"></i> تعديل</button>` : ''}
-                ${canDelete5Min ? `<button class="w-full text-right px-4 py-2.5 text-red-400 hover:bg-gray-700 flex items-center gap-2 msg-menu-delete-everyone border-t border-gray-700"><i class="fas fa-trash"></i> حذف لدى الجميع</button>` : ''}
-                <button class="w-full text-right px-4 py-2.5 text-gray-300 hover:bg-gray-700 flex items-center gap-2 msg-menu-delete-me border-t border-gray-700"><i class="fas fa-eye-slash"></i> حذف لدي فقط</button>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', menuHTML);
-        const menu = document.getElementById('msg-options-dropdown');
+    const actionsBar = document.createElement('div');
+    actionsBar.className = `message-hover-actions absolute ${isMyMessage ? '-left-16' : '-right-16'} top-1/2 -translate-y-1/2 hidden group-hover:flex gap-1`;
+    actionsBar.innerHTML = `
+        ${canEdit ? `<button class="edit-msg-btn w-7 h-7 bg-gray-700 hover:bg-blue-600 rounded-full flex items-center justify-center" title="تعديل"><i class="fas fa-pen text-xs text-white"></i></button>` : ''}
+        ${canDelete ? `<button class="delete-msg-btn w-7 h-7 bg-gray-700 hover:bg-red-600 rounded-full flex items-center justify-center" title="حذف"><i class="fas fa-trash text-xs text-white"></i></button>` : ''}
+    `;
 
-        menu.querySelector('.msg-menu-edit')?.addEventListener('click', () => {
-            menu.remove();
-            startInlineEdit(messageElement, message);
-        });
+    messageElement.classList.add('group', 'relative');
+    messageElement.appendChild(actionsBar);
+    messageElement.addEventListener('mouseenter', () => actionsBar.classList.remove('hidden'));
+    messageElement.addEventListener('mouseleave', () => actionsBar.classList.add('hidden'));
 
-        menu.querySelector('.msg-menu-delete-everyone')?.addEventListener('click', () => {
-            menu.remove();
-            showConfirmationModal('هل تريد حذف هذه الرسالة لدى الطرفين؟', () => deleteMessageRequest(message._id, 'everyone', messageElement));
-        });
-
-        menu.querySelector('.msg-menu-delete-me')?.addEventListener('click', () => {
-            menu.remove();
-            showConfirmationModal('هل تريد حذف هذه الرسالة من عندك فقط؟', () => deleteMessageRequest(message._id, 'me', messageElement));
-        });
-
-        setTimeout(() => {
-            document.addEventListener('click', function closeOnce(ev) {
-                if (!menu.contains(ev.target) && ev.target !== btn) {
-                    menu.remove();
-                    document.removeEventListener('click', closeOnce);
+    const deleteBtn = actionsBar.querySelector('.delete-msg-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+            showConfirmationModal('هل أنت متأكد من حذف هذه الرسالة؟', async () => {
+                try {
+                    const response = await fetch('/api/private-chat/message', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ messageId: message._id })
+                    });
+                    const result = await response.json();
+                    if (response.ok) {
+                        messageElement.remove();
+                    } else {
+                        showNotification(result.message || 'فشل حذف الرسالة', 'error');
+                    }
+                } catch (error) {
+                    showNotification('خطأ في الاتصال بالخادم', 'error');
                 }
             });
-        }, 0);
-    });
-}
-
-async function deleteMessageRequest(messageId, scope, messageElement) {
-    try {
-        const response = await fetch('/api/private-chat/message', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ messageId, scope })
         });
-        const result = await response.json();
-        if (response.ok) {
-            messageElement.remove();
-        } else {
-            showNotification(result.message || 'فشل حذف الرسالة', 'error');
-        }
-    } catch (error) {
-        showNotification('خطأ في الاتصال بالخادم', 'error');
+    }
+
+    const editBtn = actionsBar.querySelector('.edit-msg-btn');
+    if (editBtn) {
+        editBtn.addEventListener('click', () => {
+            const contentEl = messageElement.querySelector('.message-content p');
+            if (!contentEl) return;
+
+            const currentText = message.content;
+            contentEl.innerHTML = `
+                <input type="text" class="edit-msg-input w-full bg-black/30 text-white rounded p-1 text-sm" value="${currentText}" maxlength="200">
+            `;
+            const input = contentEl.querySelector('.edit-msg-input');
+            input.focus();
+
+            input.addEventListener('keypress', async (e) => {
+                if (e.key === 'Enter') {
+                    const newText = input.value.trim();
+                    if (!newText || newText === currentText) {
+                        contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
+                        return;
+                    }
+                    try {
+                        const response = await fetch('/api/private-chat/message/edit', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ messageId: message._id, newContent: newText })
+                        });
+                        const result = await response.json();
+                        if (response.ok) {
+                            contentEl.innerHTML = `<p class="text-white text-sm">${newText} <span class="text-[10px] text-gray-400">(معدّلة)</span></p>`;
+                            message.content = newText;
+                        } else {
+                            showNotification(result.message || 'فشل التعديل', 'error');
+                            contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
+                        }
+                    } catch (error) {
+                        showNotification('خطأ بالاتصال', 'error');
+                        contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
+                    }
+                }
+            });
+        });
     }
 }
 
-function startInlineEdit(messageElement, message) {
-    const contentEl = messageElement.querySelector('.message-content p');
-    if (!contentEl) return;
 
-    const currentText = message.content;
-    contentEl.innerHTML = `<input type="text" class="edit-msg-input w-full bg-black/30 text-white rounded p-1 text-sm" value="${currentText}" maxlength="200">`;
-    const input = contentEl.querySelector('.edit-msg-input');
-    input.focus();
-
-    input.addEventListener('keypress', async (e) => {
-        if (e.key !== 'Enter') return;
-        const newText = input.value.trim();
-        if (!newText || newText === currentText) {
-            contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
-            return;
-        }
-        try {
-            const response = await fetch('/api/private-chat/message/edit', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ messageId: message._id, newContent: newText })
-            });
-            const result = await response.json();
-            if (response.ok) {
-                contentEl.innerHTML = `<p class="text-white text-sm">${newText} <span class="text-[10px] text-gray-400">(معدّلة)</span></p>`;
-                message.content = newText;
-            } else {
-                showNotification(result.message || 'فشل التعديل', 'error');
-                contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
-            }
-        } catch (error) {
-            contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
-        }
-    });
-}
 
 // --- 🖼️ نافذة عرض صورة عادية ---
 function showFullImage(imageUrl, message) {
@@ -6340,45 +6064,6 @@ function showBlockedProfileModal(userId, blockData) {
     });
 }
 
-async function sendOneTimeMessageRequest(receiverId, content, payExtra) {
-    const response = await fetch('/api/private-chat/one-time-message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ receiverId, content, payExtra })
-    });
-    const data = await response.json();
-    return { ok: response.ok, data };
-}
-
-// ✅ نافذة أنيقة تخبر المستخدم بعدم كفاية الرصيد وتعرض له زر شحن مباشر
-function showInsufficientCoinsModal(message) {
-    const existing = document.getElementById('insufficient-coins-modal');
-    if (existing) existing.remove();
-
-    const html = `
-        <div id="insufficient-coins-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[400] p-4">
-            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-xs text-white p-6 text-center border border-yellow-600/30">
-                <i class="fas fa-coins text-4xl text-yellow-400 mb-3"></i>
-                <p class="text-sm mb-5">${message}</p>
-                <div class="flex gap-2">
-                    <button id="ic-cancel-btn" class="flex-1 bg-gray-700 hover:bg-gray-600 py-2 rounded-lg text-sm">إلغاء</button>
-                    <button id="ic-topup-btn" class="flex-1 bg-yellow-600 hover:bg-yellow-700 py-2 rounded-lg text-sm font-bold">شحن كوينزات</button>
-                </div>
-            </div>
-        </div>
-    `;
-    document.getElementById('game-container').insertAdjacentHTML('beforeend', html);
-    const modal = document.getElementById('insufficient-coins-modal');
-
-    document.getElementById('ic-cancel-btn').addEventListener('click', () => modal.remove());
-    document.getElementById('ic-topup-btn').addEventListener('click', () => {
-        modal.remove();
-        showBuyCoinsModal();
-    });
-}
-
-        
-
 // --- ✅ دالة نافذة إرسال رسالة واحدة ---
 function showOneMessageModal(targetUserId, targetUsername) {
     const modalHTML = `
@@ -6445,48 +6130,24 @@ function showOneMessageModal(targetUserId, targetUsername) {
         sendBtn.disabled = true;
         sendBtn.textContent = 'جاري الإرسال...';
 
-           try {
-            const response = await sendOneTimeMessageRequest(targetUserId, messageText, false);
+        try {
+            const response = await fetch('/api/private-chat/one-time-message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ receiverId: targetUserId, content: messageText })
+            });
+            const result = await response.json();
 
             if (response.ok) {
-                showNotification(response.data.message, 'success');
+                showNotification('تم إرسال رسالتك بنجاح', 'success');
                 modal.remove();
                 const blockedModal = document.getElementById('blocked-profile-modal');
                 if (blockedModal) blockedModal.remove();
-                return;
-            }
-
-            if (response.data.code === 'PAYMENT_REQUIRED') {
-                showConfirmationModal(response.data.message + ' هل تريد المتابعة؟', async () => {
-                    const paidResponse = await sendOneTimeMessageRequest(targetUserId, messageText, true);
-                    if (paidResponse.ok) {
-                        showNotification(paidResponse.data.message, 'success');
-                        modal.remove();
-                        const blockedModal = document.getElementById('blocked-profile-modal');
-                        if (blockedModal) blockedModal.remove();
-                        await refreshUserData();
-                    } else if (paidResponse.data.code === 'INSUFFICIENT_COINS') {
-                        showInsufficientCoinsModal(paidResponse.data.message);
-                    } else {
-                        showNotification(paidResponse.data.message || 'فشل إرسال الرسالة', 'error');
-                    }
-                });
+            } else {
+                showNotification(result.message || 'فشل إرسال الرسالة', 'error');
                 sendBtn.disabled = false;
                 sendBtn.textContent = 'إرسال';
-                return;
             }
-
-            if (response.data.code === 'INSUFFICIENT_COINS') {
-                showInsufficientCoinsModal(response.data.message);
-                sendBtn.disabled = false;
-                sendBtn.textContent = 'إرسال';
-                return;
-            }
-
-            showNotification(response.data.message || 'فشل إرسال الرسالة', 'error');
-            sendBtn.disabled = false;
-            sendBtn.textContent = 'إرسال';
-
         } catch (error) {
             console.error('[ONE TIME MESSAGE] Error:', error);
             showNotification('خطأ في الاتصال بالخادم', 'error');
@@ -6609,9 +6270,11 @@ function sendMessage() {
     messageInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
     });
-        const publicGiftBtn = document.getElementById('public-gift-btn');
+    const publicGiftBtn = document.getElementById('public-gift-btn');
     if (publicGiftBtn) {
-        publicGiftBtn.addEventListener('click', showPublicGiftModal);
+        publicGiftBtn.addEventListener('click', () => {
+            showNotification('اختر شخصاً من قائمة الدردشة لإرسال هدية خاصة به من ملفه الشخصي', 'info');
+        });
     }
 
     // --- استبدل دالة displayMessage بهذه النسخة ---
