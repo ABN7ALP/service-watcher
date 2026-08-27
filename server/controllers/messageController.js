@@ -28,10 +28,10 @@ exports.getPublicMessages = async (req, res, next) => {
         });
         
         // ✅ جلب الرسائل مع الردود (replyTo)
-        const messages = await Message.find({ room: 'public-room' })
+             const messages = await Message.find({ room: 'public-room' })
             .sort('-createdAt')
             .limit(50)
-            .populate('sender', 'username profileImage')
+            .populate('sender', 'username profileImage activeBubbleSkinClass')
             .populate({
                 path: 'replyTo',
                 populate: {
