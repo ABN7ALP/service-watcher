@@ -3757,18 +3757,11 @@ function confirmRedeem(redeemTo) {
             <div class="grid grid-cols-4 gap-2 mb-4">
                             <p class="text-xs text-gray-400 mb-2">اختر الهدية</p>
             <div class="grid grid-cols-4 gap-2 mb-4">
-                ${gifts.map(g => `
-                    <button class="pg-gift-btn flex flex-col items-center bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-lg p-2"
-                            data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}" data-gift-image="${g.imageUrl}">
-                        <img src="${g.imageUrl}" class="w-8 h-8 object-contain mb-1" onerror="this.style.opacity='0.3'">
-                        <span class="text-[9px] text-yellow-400">${g.discountedPrice || g.price}</span>
-                    </button>
-                `).join('')}
+                            <p class="text-xs text-gray-400 mb-2">اختر الهدية (زر الإرسال يظهر داخل الهدية بعد اختيارها)</p>
+            <div class="grid grid-cols-3 gap-2">
+                ${gifts.map(g => renderGiftCardHTML(g)).join('')}
             </div>
-            <div id="pg-summary" class="hidden bg-gray-900/50 rounded-xl p-3 mb-3 text-center text-sm"></div>
-            <button id="pg-send-btn" class="w-full bg-pink-600 hover:bg-pink-700 text-white py-2.5 rounded-lg font-bold disabled:opacity-40" disabled>
-                <i class="fas fa-paper-plane"></i> إرسال الهدية
-            </button>
+            <p id="pg-audience-warning" class="hidden text-xs text-yellow-400 text-center mt-3">اختر المستلمين أولاً بالأعلى</p>
         `;
 
         function updateSummary() {
