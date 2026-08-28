@@ -31,7 +31,7 @@ exports.blockUser = async (req, res) => {
             User.findByIdAndUpdate(blockedUserId, { $pull: { friends: blockerId } })
         ]);
 
-        await Promise.all([
+                await Promise.all([
             User.findByIdAndUpdate(blockerId, {
                 $pull: { friendRequestsSent: blockedUserId, friendRequestsReceived: blockedUserId }
             }),
@@ -39,6 +39,16 @@ exports.blockUser = async (req, res) => {
                 $pull: { friendRequestsSent: blockerId, friendRequestsReceived: blockerId }
             })
         ]);
+
+        // ✅ إعادة تعيين سجل "الرسالة المجانية لمرة واحدة" بين الطرفين مع كل عملية حظر جديدة
+        // بهذا يحصل المحظور على فرصة رسالة مجانية جديدة في كل دورة حظر منفصلة
+        const OneTimeMessageLog = require('../models/OneTimeMessageLog');
+        await OneTimeMessageLog.deleteMany({
+            $or: [
+                { sender: blockedUserId, receiver: blockerId },
+                { sender: blockerId, receiver: blockedUserId }
+            ]
+        });
 
         // ✅ مصدر واحد فقط للإشعارات (تم حذف التكرار السابق الذي كان يرسل مرتين)
         const io = req.app.get('socketio');
