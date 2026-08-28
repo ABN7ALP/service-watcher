@@ -4019,6 +4019,25 @@ async function showLeaderboardView() {
     await loadLeaderboard(currentType, currentRange);
 }
 
+
+function setLeaderboardTab(type) {
+    const sendersBtn = document.getElementById('lb-tab-senders');
+    const receiversBtn = document.getElementById('lb-tab-receivers');
+    if (!sendersBtn || !receiversBtn) return;
+
+    if (type === 'senders') {
+        sendersBtn.classList.add('bg-pink-600', 'text-white');
+        sendersBtn.classList.remove('bg-gray-700', 'text-gray-300');
+        receiversBtn.classList.add('bg-gray-700', 'text-gray-300');
+        receiversBtn.classList.remove('bg-pink-600', 'text-white');
+    } else {
+        receiversBtn.classList.add('bg-pink-600', 'text-white');
+        receiversBtn.classList.remove('bg-gray-700', 'text-gray-300');
+        sendersBtn.classList.add('bg-gray-700', 'text-gray-300');
+        sendersBtn.classList.remove('bg-pink-600', 'text-white');
+    }
+}
+
 async function loadLeaderboard(type, range = 'week') {
     const container = document.getElementById('leaderboard-list-container');
     if (!container) return;
