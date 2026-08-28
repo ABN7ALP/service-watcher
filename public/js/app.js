@@ -6500,7 +6500,7 @@ function showInsufficientCoinsModal(message) {
 // --- ✅ دالة نافذة إرسال رسالة واحدة ---
 function showOneMessageModal(targetUserId, targetUsername) {
     const modalHTML = `
-        <div id="one-message-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4">
+                <div id="one-message-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[330] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-blue-900/30 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-blue-500/30">
                 
                 <div class="p-6">
