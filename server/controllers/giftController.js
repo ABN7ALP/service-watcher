@@ -1,6 +1,7 @@
 const Gift = require('../models/Gift');
 const GiftLog = require('../models/GiftLog');
 const User = require('../models/User');
+const { addGiftExperience } = require('../utils/experienceManager');
 
 // جلب متجر الهدايا
 exports.getGiftShop = async (req, res) => {
@@ -89,6 +90,10 @@ exports.sendGift = async (req, res) => {
         if (receiver.socketId && io) {
             io.to(receiver.socketId).emit('giftReceived', giftEventPayload);
         }
+
+                // ✅ منح خبرة للطرفين بناءً على قيمة الهدية
+        await addGiftExperience(io, senderId, totalPrice, 'sender');
+        await addGiftExperience(io, receiverId, totalPrice, 'receiver');
 
         // ✅ نرسل نفس البيانات (giftImage الحقيقي) للمرسل أيضاً حتى تظهر الصورة الصحيحة بتأثيره العائم
         if (sender.socketId && io) {
