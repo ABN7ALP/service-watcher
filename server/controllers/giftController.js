@@ -2,8 +2,6 @@ const Gift = require('../models/Gift');
 const GiftLog = require('../models/GiftLog');
 const User = require('../models/User');
 const { addGiftExperience } = require('../utils/experienceManager');
-const PrivateChat = require('../models/PrivateChat');
-const PrivateMessage = require('../models/PrivateMessage');
 
 // جلب متجر الهدايا
 exports.getGiftShop = async (req, res) => {
@@ -34,11 +32,16 @@ exports.sendGift = async (req, res) => {
             Gift.findById(giftId)
         ]);
 
-        if (!receiver) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
-        if (!gift || !gift.isActive) return res.status(404).json({ status: 'fail', message: 'الهدية غير متوفرة حالياً' });
+        if (!receiver) {
+            return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
+        }
+        if (!gift || !gift.isActive) {
+            return res.status(404).json({ status: 'fail', message: 'الهدية غير متوفرة حالياً' });
+        }
 
         const senderBlocked = sender.blockedUsers.map(id => id.toString());
-        if (senderBlocked.includes(receiverId)) {
+        const receiverBlocked = (receiver.blockedUsers || []).map(id => id.toString());
+        if (senderBlocked.includes(receiverId) || receiverBlocked.includes(senderId)) {
             return res.status(403).json({ status: 'fail', message: 'لا يمكنك إرسال هدية لهذا المستخدم' });
         }
 
@@ -53,70 +56,54 @@ exports.sendGift = async (req, res) => {
         await sender.save();
 
         const giftLog = await GiftLog.create({
-            sender: senderId, receiver: receiverId, gift: gift._id,
-            giftName: gift.name, giftImage: gift.imageUrl, giftIcon: gift.icon,
-            quantity: qty, unitPrice, totalPrice, context
+            sender: senderId,
+            receiver: receiverId,
+            gift: gift._id,
+            giftName: gift.name,
+            giftImage: gift.imageUrl,
+            quantity: qty,
+            unitPrice: unitPrice,
+            totalPrice: totalPrice,
+            context: context
         });
 
         const io = req.app.get('socketio');
-        let populatedMessage = null;
 
-        // ✅ الإصلاح الجوهري: عند سياق الدردشة الخاصة، ننشئ رسالة حقيقية محفوظة بقاعدة البيانات
-        // بنفس آلية أي رسالة عادية (نص/صورة/صوت)، بدل الاكتفاء بسجل GiftLog وحده
-        if (context === 'private_chat') {
-            const participants = [senderId, receiverId].sort();
-            const chatId = participants.join('_');
-
-            let chat = await PrivateChat.findOne({ chatId });
-            if (!chat) {
-                chat = await PrivateChat.create({
-                    chatId, participants,
-                    participantData: [
-                        { userId: senderId, username: sender.username, profileImage: sender.profileImage },
-                        { userId: receiverId, username: receiver.username, profileImage: receiver.profileImage }
-                    ]
-                });
-            }
-
-            const newMessage = await PrivateMessage.create({
-                chatId, sender: senderId, receiver: receiverId,
-                type: 'gift', content: gift.name,
-                metadata: { giftImage: gift.imageUrl, giftIcon: gift.icon, giftPrice: totalPrice, giftQuantity: qty }
-            });
-
-            chat.lastMessage = `أرسل هدية ${gift.name}`;
-            chat.lastMessageAt = new Date();
-            chat.lastMessageBy = senderId;
-            const currentUnread = chat.unreadCount.get(receiverId.toString()) || 0;
-            chat.unreadCount.set(receiverId.toString(), currentUnread + 1);
-            chat.hiddenBy = chat.hiddenBy.filter(id => id.toString() !== senderId.toString() && id.toString() !== receiverId.toString());
-            await chat.save();
-
-            populatedMessage = await PrivateMessage.findById(newMessage._id).populate('sender', 'username profileImage').lean();
-
-            if (io && receiver.socketId) {
-                io.to(receiver.socketId).emit('privateMessageReceived', {
-                    message: populatedMessage, chatId, senderId, senderName: sender.username
-                });
-            }
+        if (sender.socketId && io) {
+            io.to(sender.socketId).emit('balanceUpdate', { newBalance: sender.balance, newCoins: sender.coins });
         }
 
-        // خبرة الطرفين (مفصّلة بالفقرة 8 أدناه)
-        const { addGiftExperience } = require('../utils/experienceManager');
+               const safeGiftImage = gift.imageUrl || '';
+
+        const giftEventPayload = {
+            giftId: gift._id,
+            giftName: gift.name,
+            giftImage: safeGiftImage,
+            quantity: qty,
+            fromUserId: senderId,
+            fromUsername: sender.username,
+            fromProfileImage: sender.profileImage,
+            animation: gift.animation,
+            timestamp: new Date().toISOString()
+        };
+
+        if (receiver.socketId && io) {
+            io.to(receiver.socketId).emit('giftReceived', giftEventPayload);
+        }
+
+                // ✅ منح خبرة للطرفين بناءً على قيمة الهدية
         await addGiftExperience(io, senderId, totalPrice, 'sender');
         await addGiftExperience(io, receiverId, totalPrice, 'receiver');
 
-        const giftEventPayload = {
-            giftId: gift._id, giftName: gift.name, giftImage: gift.imageUrl, giftIcon: gift.icon,
-            quantity: qty, fromUserId: senderId, fromUsername: sender.username,
-            fromProfileImage: sender.profileImage, animation: gift.animation, timestamp: new Date().toISOString()
-        };
-        if (receiver.socketId && io) io.to(receiver.socketId).emit('giftReceived', giftEventPayload);
+        // ✅ نرسل نفس البيانات (giftImage الحقيقي) للمرسل أيضاً حتى تظهر الصورة الصحيحة بتأثيره العائم
+        if (sender.socketId && io) {
+            io.to(sender.socketId).emit('giftSentConfirmation', giftEventPayload);
+        }
 
         res.status(201).json({
             status: 'success',
             message: `تم إرسال هدية ${gift.name} بنجاح`,
-            data: { giftLog, newSenderCoins: sender.coins, message: populatedMessage }
+            data: { giftLog, newSenderCoins: sender.coins }
         });
 
     } catch (error) {
