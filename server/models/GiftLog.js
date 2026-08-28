@@ -32,12 +32,11 @@ giftLogSchema.statics.getTopSenders = async function(startDate, endDate, limit =
         { $unwind: '$user' },
         { $project: {
             userId: '$_id', username: '$user.username', profileImage: '$user.profileImage',
-            level: '$user.level', totalSpent: 1, giftsCount: 1
+            level: '$user.level', activeFrameClass: '$user.activeFrameClass', totalSpent: 1, giftsCount: 1
         }}
     ]);
 };
 
-// أعلى المستقبلين خلال فترة زمنية معينة
 giftLogSchema.statics.getTopReceivers = async function(startDate, endDate, limit = 20) {
     return this.aggregate([
         { $match: { createdAt: { $gte: startDate, $lte: endDate } } },
@@ -48,10 +47,9 @@ giftLogSchema.statics.getTopReceivers = async function(startDate, endDate, limit
         { $unwind: '$user' },
         { $project: {
             userId: '$_id', username: '$user.username', profileImage: '$user.profileImage',
-            level: '$user.level', totalReceived: 1, giftsCount: 1
+            level: '$user.level', activeFrameClass: '$user.activeFrameClass', totalReceived: 1, giftsCount: 1
         }}
     ]);
 };
-
 const GiftLog = mongoose.model('GiftLog', giftLogSchema);
 module.exports = GiftLog;
