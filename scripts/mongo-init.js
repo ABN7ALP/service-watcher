@@ -65,7 +65,7 @@ const gifts = [
     {
         name: 'وردة',
         description: 'هدية بسيطة تعبر عن الإعجاب',
-        imageUrl: 'https://res.cloudinary.com/your-cloud/image/upload/v1/gifts/rose.png',
+        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752572/red-rose-3d-rendering-icon-illustration-png.png',
         price: 3,
         category: 'common',
         animation: 'heartbeat',
@@ -79,7 +79,7 @@ const gifts = [
     {
         name: 'ثعلب',
         description: 'هدية مميزة وأنيقة',
-        imageUrl: 'https://res.cloudinary.com/your-cloud/image/upload/v1/gifts/fox.png',
+        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832545/cute-cartoon-little-red-fox-isolated-on-the-transparent-background-png.png',
         price: 15,
         category: 'rare',
         animation: 'sparkle',
@@ -93,7 +93,7 @@ const gifts = [
     {
         name: 'حديقة',
         description: 'هدية فاخرة للمناسبات الخاصة',
-        imageUrl: 'https://res.cloudinary.com/your-cloud/image/upload/v1/gifts/garden.png',
+        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832349/vibrant-garden-path-surrounded-by-blooming-flowers-greenery-and-a-white-fence-creating-a-peaceful-and-inviting-outdoor-space-free-png.png',
         price: 80,
         category: 'epic',
         animation: 'glow',
@@ -107,7 +107,7 @@ const gifts = [
     {
         name: 'سيف الأسطورة',
         description: 'أقوى هدية في المنصة',
-        imageUrl: 'https://res.cloudinary.com/your-cloud/image/upload/v1/gifts/legend_sword.png',
+        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787661134/69e8b8936203a.png',
         price: 500,
         category: 'legendary',
         animation: 'fire',
