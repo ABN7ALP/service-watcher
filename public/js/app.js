@@ -3558,13 +3558,10 @@ function renderAgentList() {
 
     document.getElementById('back-to-methods').addEventListener('click', () => renderBuyCoinsHome([]));
 
-    body.querySelectorAll('.agent-chat-btn').forEach(btn => {
+        body.querySelectorAll('.agent-chat-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
             const agentId = btn.dataset.agentId;
             const agentName = btn.dataset.agentName;
-
-               const modal = document.getElementById('withdraw-modal');
-               attachCloseConfirmation(modal, '#close-withdraw');
 
             await openPrivateChat(agentId, agentName);
             // ✅ رسالة تلقائية تنبه الوكيل بطلب الشحن — تستفيد من نظام الإشعارات الموجود أصلاً بالمحادثة الخاصة
@@ -3864,11 +3861,11 @@ function confirmRedeem(redeemTo) {
             <button id="select-all-online-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-xs py-2 rounded-lg font-bold mb-3">
                 <i class="fas fa-users"></i> إرسال للجميع (${onlineUsers.length})
             </button>
-            <div id="public-gift-avatars" class="flex flex-wrap gap-2 mb-4 max-h-32 overflow-y-auto">
-                ${onlineUsers.length === 0 ? '<p class="text-xs text-gray-500">لا يوجد أشخاص متصلون حالياً</p>' : onlineUsers.map(u => `
-                    <button class="public-gift-avatar-btn flex flex-col items-center gap-1 w-14" data-user-id="${u._id}" data-username="${u.username}">
-                        <img src="${u.profileImage}" class="w-9 h-9 rounded-full object-cover border-2 border-gray-600 transition-all public-avatar-img ${u.activeFrameClass || ''}">
-                        <span class="text-[9px] truncate w-full text-center">${u.username}</span>
+                        <div id="public-gift-avatars" class="grid grid-cols-6 sm:grid-cols-8 gap-2 mb-4 max-h-40 overflow-y-auto p-2 bg-gray-900/30 rounded-xl">
+                ${onlineUsers.length === 0 ? '<p class="col-span-full text-xs text-gray-500 text-center py-6">لا يوجد أشخاص متصلون حالياً</p>' : onlineUsers.map(u => `
+                    <button class="public-gift-avatar-btn flex flex-col items-center gap-1" data-user-id="${u._id}" data-username="${u.username}" title="${u.username}">
+                        <img src="${u.profileImage}" class="w-7 h-7 rounded-full object-cover border-2 border-gray-600 transition-all public-avatar-img ${u.activeFrameClass || ''}">
+                        <span class="text-[8px] leading-tight truncate w-full text-center">${u.username}</span>
                     </button>
                 `).join('')}
             </div>
