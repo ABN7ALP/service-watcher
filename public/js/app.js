@@ -971,7 +971,161 @@ async function showSettingsView() {
 }
 
 
-        document.querySelectorAll('.purchase-bubble-btn').forEach(btn => {
+async function reloadFrameShopSection() {
+    try {
+        const frameResponse = await fetch('/api/frames/shop', { headers: { 'Authorization': `Bearer ${token}` } });
+        const frameResult = await frameResponse.json();
+        if (!frameResponse.ok) throw new Error();
+        const frameShopData = frameResult.data;
+
+        const section = document.getElementById('frames-shop-section');
+        if (!section) return;
+
+        section.innerHTML = `
+            <div class="flex items-center justify-between mb-4 bg-gray-900/50 rounded-xl p-3">
+                <span class="text-sm text-gray-400">رصيدك الحالي</span>
+                <span class="font-bold text-yellow-400 flex items-center gap-1">
+                    <i class="fas fa-coins"></i> ${frameShopData.coins}
+                </span>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                ${frameShopData.frames.filter(f => f.name !== 'إطار الترحيب').map(f => {
+                    const owned = f.ownedInstance;
+                    const isActive = frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString();
+                    const isExpired = owned && owned.expiresAt && new Date(owned.expiresAt) < new Date();
+                    return `
+                    <div class="bg-gray-900/40 rounded-xl p-3 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'}">
+                        <div class="w-16 h-16 mx-auto rounded-full ${f.cssClass} bg-gray-700 mb-2"></div>
+                        <p class="text-sm font-bold mb-1">${f.name}</p>
+                        ${owned && !isExpired ? `
+                            ${owned.activatedAt ? `<p class="text-[10px] text-gray-400 mb-2">ينتهي: ${new Date(owned.expiresAt).toLocaleDateString('ar-SA')}</p>` : `<p class="text-[10px] text-green-400 mb-2">بحوزتك (لم يُفعّل بعد)</p>`}
+                            <button class="equip-frame-btn w-full text-xs py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}"
+                                    data-frame-id="${f._id}" ${isActive ? 'disabled' : ''}>
+                                ${isActive ? 'مُفعّل حالياً' : 'تفعيل'}
+                            </button>
+                        ` : `
+                            <select class="frame-duration-select w-full text-xs bg-gray-700 rounded p-1.5 mb-2" data-frame-id="${f._id}">
+                                <option value="7">7 أيام - ${f.prices.days7} كوينز</option>
+                                <option value="30">30 يوم - ${f.prices.days30} كوينز</option>
+                                <option value="365">سنة كاملة - ${f.prices.days365} كوينز</option>
+                            </select>
+                            <button class="purchase-frame-btn w-full text-xs py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-frame-id="${f._id}">
+                                شراء
+                            </button>
+                        `}
+                    </div>
+                `}).join('')}
+            </div>
+        `;
+        bindFrameShopButtons();
+    } catch (error) {
+        console.error('Failed to reload frame shop:', error);
+    }
+}
+
+function bindFrameShopButtons() {
+    document.querySelectorAll('.purchase-frame-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const frameId = this.dataset.frameId;
+            const durationSelect = document.querySelector(`.frame-duration-select[data-frame-id="${frameId}"]`);
+            const duration = durationSelect ? durationSelect.value : '7';
+            this.disabled = true;
+            this.textContent = '...';
+            try {
+                const response = await fetch('/api/frames/purchase', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ frameId, duration })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showNotification(result.message, 'success');
+                    await refreshUserData();
+                    await reloadFrameShopSection();
+                } else {
+                    showNotification(result.message || 'فشل الشراء', 'error');
+                    this.disabled = false;
+                    this.textContent = 'شراء';
+                }
+            } catch (error) {
+                showNotification('خطأ في الاتصال بالخادم', 'error');
+                this.disabled = false;
+                this.textContent = 'شراء';
+            }
+        });
+    });
+
+    document.querySelectorAll('.equip-frame-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const frameId = this.dataset.frameId;
+            this.disabled = true;
+            try {
+                const response = await fetch('/api/frames/equip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ frameId })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showNotification(result.message, 'success');
+                    await refreshUserData();
+                    await reloadFrameShopSection();
+                } else {
+                    showNotification(result.message || 'فشل التفعيل', 'error');
+                    this.disabled = false;
+                }
+            } catch (error) {
+                showNotification('خطأ في الاتصال بالخادم', 'error');
+                this.disabled = false;
+            }
+        });
+    });
+}
+
+async function reloadBubbleShopSection() {
+    try {
+        const bubbleResponse = await fetch('/api/bubble-skins/shop', { headers: { 'Authorization': `Bearer ${token}` } });
+        const bubbleResult = await bubbleResponse.json();
+        if (!bubbleResponse.ok) throw new Error();
+        const bubbleShopData = bubbleResult.data;
+
+        const section = document.getElementById('bubble-shop-section');
+        if (!section) return;
+
+        section.innerHTML = `
+            <div class="flex items-center justify-between mb-4 bg-gray-900/50 rounded-xl p-3">
+                <span class="text-sm text-gray-400">رصيدك الحالي</span>
+                <span class="font-bold text-yellow-400"><i class="fas fa-coins"></i> ${bubbleShopData.coins}</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                ${bubbleShopData.skins.map(s => {
+                    const isActive = bubbleShopData.activeClass === s.cssClass;
+                    return `
+                    <div class="rounded-xl p-3 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'} ${s.cssClass}">
+                        <p class="text-sm font-bold mb-1">${s.name}</p>
+                        <p class="text-xs text-yellow-300 mb-2"><i class="fas fa-coins"></i> ${s.price}</p>
+                        ${s.owned ? `
+                            <button class="equip-bubble-btn w-full text-xs py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}"
+                                    data-skin-id="${s._id}" ${isActive ? 'disabled' : ''}>
+                                ${isActive ? 'مُفعّل حالياً' : 'تفعيل'}
+                            </button>
+                        ` : `
+                            <button class="purchase-bubble-btn w-full text-xs py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-skin-id="${s._id}">
+                                شراء
+                            </button>
+                        `}
+                    </div>
+                `}).join('')}
+            </div>
+        `;
+        bindBubbleShopButtons();
+    } catch (error) {
+        console.error('Failed to reload bubble shop:', error);
+    }
+}
+
+function bindBubbleShopButtons() {
+    document.querySelectorAll('.purchase-bubble-btn').forEach(btn => {
         btn.addEventListener('click', async function() {
             const skinId = this.dataset.skinId;
             this.disabled = true;
@@ -985,7 +1139,7 @@ async function showSettingsView() {
                 if (response.ok) {
                     showNotification(result.message, 'success');
                     await refreshUserData();
-                    showSettingsView();
+                    await reloadBubbleShopSection();
                 } else {
                     showNotification(result.message || 'فشل الشراء', 'error');
                     this.disabled = false;
@@ -1000,6 +1154,7 @@ async function showSettingsView() {
     document.querySelectorAll('.equip-bubble-btn').forEach(btn => {
         btn.addEventListener('click', async function() {
             const skinId = this.dataset.skinId;
+            this.disabled = true;
             try {
                 const response = await fetch('/api/bubble-skins/equip', {
                     method: 'POST',
@@ -1010,15 +1165,21 @@ async function showSettingsView() {
                 if (response.ok) {
                     showNotification(result.message, 'success');
                     await refreshUserData();
-                    showSettingsView();
+                    await reloadBubbleShopSection();
                 } else {
                     showNotification(result.message || 'فشل التفعيل', 'error');
+                    this.disabled = false;
                 }
             } catch (error) {
                 showNotification('خطأ في الاتصال بالخادم', 'error');
+                this.disabled = false;
             }
         });
     });
+}
+
+
+        
 
 // 📍 أضف هذه الدالة بعد showSettingsView
 function setupSettingsEvents() {
@@ -1039,60 +1200,10 @@ function setupSettingsEvents() {
         });
     });
 
-            document.querySelectorAll('.purchase-frame-btn').forEach(btn => {
-        btn.addEventListener('click', async function() {
-            const frameId = this.dataset.frameId;
-            const durationSelect = document.querySelector(`.frame-duration-select[data-frame-id="${frameId}"]`);
-            const duration = durationSelect ? durationSelect.value : '7';
 
-            this.disabled = true;
-            this.textContent = '...';
-            try {
-                const response = await fetch('/api/frames/purchase', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ frameId, duration })
-                });
-                const result = await response.json();
-                if (response.ok) {
-                    showNotification(result.message, 'success');
-                    await refreshUserData();
-                    showSettingsView();
-                } else {
-                    showNotification(result.message || 'فشل الشراء', 'error');
-                    this.disabled = false;
-                    this.textContent = 'شراء';
-                }
-            } catch (error) {
-                showNotification('خطأ في الاتصال بالخادم', 'error');
-                this.disabled = false;
-                this.textContent = 'شراء';
-            }
-        });
-    });
 
-    document.querySelectorAll('.equip-frame-btn').forEach(btn => {
-        btn.addEventListener('click', async function() {
-            const frameId = this.dataset.frameId;
-            try {
-                const response = await fetch('/api/frames/equip', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ frameId })
-                });
-                const result = await response.json();
-                if (response.ok) {
-                    showNotification(result.message, 'success');
-                    await refreshUserData();
-                    showSettingsView();
-                } else {
-                    showNotification(result.message || 'فشل التفعيل', 'error');
-                }
-            } catch (error) {
-                showNotification('خطأ في الاتصال بالخادم', 'error');
-            }
-        });
-    });                        
+     bindFrameShopButtons();
+    bindBubbleShopButtons();
     
     // 2. تحديث الصورة الشخصية
     document.getElementById('select-image-btn').addEventListener('click', () => {
