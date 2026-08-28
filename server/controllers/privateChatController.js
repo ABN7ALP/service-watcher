@@ -709,10 +709,13 @@ exports.sendOneTimeMessage = async (req, res) => {
         const { receiverId, content, payExtra } = req.body;
         const EXTRA_MESSAGE_COST = 50;
 
+        if (!receiverId || !content) {
+            return res.status(400).json({ status: 'fail', message: 'بيانات ناقصة' });
+        }
         if (req.user.level < 4) {
             return res.status(403).json({ status: 'fail', message: 'هذه الميزة تُفتح عند المستوى 4' });
         }
-        if (!content || content.trim().length === 0) {
+        if (content.trim().length === 0) {
             return res.status(400).json({ status: 'fail', message: 'اكتب رسالة أولاً' });
         }
         if (content.length > 25) {
@@ -729,9 +732,9 @@ exports.sendOneTimeMessage = async (req, res) => {
 
         const priorCount = await OneTimeMessageLog.countDocuments({ sender: senderId, receiver: receiverId });
         let wasPaid = false;
+        let senderDoc = null;
 
         if (priorCount > 0) {
-            // ✅ استُخدمت الرسالة المجانية بالفعل — تحتاج تأكيد الدفع
             if (!payExtra) {
                 return res.status(402).json({
                     status: 'fail',
@@ -741,8 +744,11 @@ exports.sendOneTimeMessage = async (req, res) => {
                 });
             }
 
-            const sender = await User.findById(senderId);
-            if (sender.coins < EXTRA_MESSAGE_COST) {
+            senderDoc = await User.findById(senderId);
+            if (!senderDoc) {
+                return res.status(404).json({ status: 'fail', message: 'حسابك غير موجود' });
+            }
+            if (senderDoc.coins < EXTRA_MESSAGE_COST) {
                 return res.status(400).json({
                     status: 'fail',
                     code: 'INSUFFICIENT_COINS',
@@ -750,14 +756,12 @@ exports.sendOneTimeMessage = async (req, res) => {
                 });
             }
 
-            sender.coins -= EXTRA_MESSAGE_COST;
-            await sender.save();
+            senderDoc.coins -= EXTRA_MESSAGE_COST;
+            await senderDoc.save();
             wasPaid = true;
         }
 
-        await OneTimeMessageLog.create({ sender: senderId, receiver: receiverId, wasPaid });
-
-        const participants = [senderId, receiverId].sort();
+        const participants = [senderId.toString(), receiverId.toString()].sort();
         const chatId = participants.join('_');
 
         let chat = await PrivateChat.findOne({ chatId });
@@ -781,6 +785,9 @@ exports.sendOneTimeMessage = async (req, res) => {
             isShadowed: false
         });
 
+        // ✅ نسجل استخدام الرسالة فقط بعد نجاح كل الخطوات الحرجة (لتفادي حجب رسائل مجانية بسبب خطأ لاحق)
+        await OneTimeMessageLog.create({ sender: senderId, receiver: receiverId, wasPaid });
+
         chat.lastMessage = content.trim();
         chat.lastMessageAt = new Date();
         chat.lastMessageBy = senderId;
@@ -795,16 +802,20 @@ exports.sendOneTimeMessage = async (req, res) => {
                 message: populatedMessage, chatId, senderId, senderName: req.user.username
             });
         }
+        if (io && wasPaid && req.user.socketId) {
+            io.to(req.user.socketId).emit('coinsUpdated', { newCoins: senderDoc.coins });
+        }
 
         res.status(201).json({
             status: 'success',
             message: wasPaid ? `تم إرسال رسالتك (خُصمت ${EXTRA_MESSAGE_COST} كوينز)` : 'تم إرسال رسالتك المجانية بنجاح',
-            data: { wasPaid }
+            data: { wasPaid, newCoins: senderDoc ? senderDoc.coins : undefined }
         });
 
     } catch (error) {
-        console.error('[ERROR] in sendOneTimeMessage:', error);
-        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+        console.error('[ERROR] in sendOneTimeMessage:', error.message);
+        console.error(error.stack);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم أثناء إرسال الرسالة' });
     }
 };
 
