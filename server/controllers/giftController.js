@@ -113,31 +113,39 @@ exports.sendGift = async (req, res) => {
 };
 
 // المتصدرين: أكثر شخص أرسل هدايا هذا الشهر
+function getDateRange(range) {
+    const now = new Date();
+    if (range === 'week') {
+        const start = new Date(now);
+        start.setDate(now.getDate() - now.getDay());
+        start.setHours(0, 0, 0, 0);
+        return { start, end: now };
+    }
+    if (range === 'year') {
+        return { start: new Date(now.getFullYear(), 0, 1), end: now };
+    }
+    if (range === 'all') {
+        return { start: new Date(2000, 0, 1), end: now };
+    }
+    return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: now }; // month (افتراضي)
+}
+
 exports.getTopSendersThisMonth = async (req, res) => {
     try {
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-
-        const topSenders = await GiftLog.getTopSenders(startOfMonth, endOfMonth, 20);
+        const { start, end } = getDateRange(req.query.range);
+        const topSenders = await GiftLog.getTopSenders(start, end, 20);
         res.status(200).json({ status: 'success', data: { leaders: topSenders } });
     } catch (error) {
-        console.error('[ERROR] in getTopSendersThisMonth:', error);
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
     }
 };
 
-// المتصدرين: أكثر شخص استقبل هدايا هذا الشهر
 exports.getTopReceiversThisMonth = async (req, res) => {
     try {
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-
-        const topReceivers = await GiftLog.getTopReceivers(startOfMonth, endOfMonth, 20);
+        const { start, end } = getDateRange(req.query.range);
+        const topReceivers = await GiftLog.getTopReceivers(start, end, 20);
         res.status(200).json({ status: 'success', data: { leaders: topReceivers } });
     } catch (error) {
-        console.error('[ERROR] in getTopReceiversThisMonth:', error);
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
     }
 };
