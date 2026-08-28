@@ -350,8 +350,8 @@ socket.on('sendMessage', async (messageData) => {
         const newMessage = await Message.create(newMessageData);
 
         // 2️⃣ جلب الرسالة مع populate
-                const populatedMessage = await Message.findById(newMessage._id)
-            .populate('sender', 'username profileImage activeBubbleSkinClass')
+             const populatedMessage = await Message.findById(newMessage._id)
+            .populate('sender', 'username profileImage activeBubbleSkinClass activeFrameClass')
             .populate({
                 path: 'replyTo',
                 populate: {
