@@ -54,4 +54,16 @@ const addExperience = async (io, userId, amountInUSD, reason = 'loss') => {
     }
 };
 
-module.exports = { addExperience, calculateRequiredXp };
+// ✅ خبرة الهدايا: مرتبطة بقيمة الهدية بالكوينز، محسوبة بمعدل معتدل يمنع تضخم المستويات
+// المرسل يحصل على 1 XP لكل 10 كوينز يُنفقها (تشجيع الدعم)
+// المستقبل يحصل على نصف ذلك (مكافأة الشعبية دون فتح باب واسع للتلاعب عبر حسابات وهمية)
+const addGiftExperience = async (io, userId, coinsSpent, role = 'sender') => {
+    const xpGained = role === 'sender'
+        ? Math.max(1, Math.floor(coinsSpent / 10))
+        : Math.max(1, Math.floor(coinsSpent / 20));
+
+    await addExperience(io, userId, xpGained / 100, role === 'sender' ? 'loss' : 'win');
+    // ملاحظة: addExperience الأصلية تحسب loss كـ amountInUSD*100، فنمرر xpGained/100 لضمان تطابق القيمة المطلوبة تماماً
+};
+
+module.exports = { addExperience, calculateRequiredXp, addGiftExperience };
