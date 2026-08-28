@@ -96,6 +96,31 @@ async function migrateLegacyOwnedFrames() {
     }
 }
 
+
+// ✅ يُحدّث رابط صورة أي هدية موجودة أصلاً بقاعدة البيانات إذا تغيّر بالكود
+// (seedGiftsIfMissing تتجاهل الهدايا الموجودة، فهذه الدالة تكمل النقص)
+async function migrateGiftImageUrls() {
+    const giftImageMap = {
+        'وردة': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752572/red-rose-3d-rendering-icon-illustration-png.png',
+        'قلب': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752780/3d-rendering-red-heart-shape-icon-3d-render-a-sign-of-love-or-life-icon-png.webp',
+        'نجمة': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753112/magnificent-modern-yellow-star-isolated-with-five-points-high-quality-png.webp',
+        'بالون': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832611/cute-pink-cartoon-balloon-with-smiling-face-and-shiny-eyes-png.png',
+        'ثعلب': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832545/cute-cartoon-little-red-fox-isolated-on-the-transparent-background-png.png',
+        'قوس قزح': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832474/colorful-rainbow-with-playful-houses-and-trees-in-a-whimsical-landscape-png.png',
+        'تاج': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832422/luxurious-gold-crown-with-intricate-detailing-free-png.webp',
+        'حديقة': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832349/vibrant-garden-path-surrounded-by-blooming-flowers-greenery-and-a-white-fence-creating-a-peaceful-and-inviting-outdoor-space-free-png.png',
+        'ألماسة': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832281/sparkling-cut-diamond-illustration-with-transparent-background-png.png',
+        'يخت': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832194/luxury-yacht-anchored-in-calm-waters-during-sunset-showcasing-elegant-design-and-spacious-deck-perfect-for-relaxing-getaways-png.png',
+        'قلعة': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832073/fantasy-castle-3d-model-illuminated-architecture-with-towers-and-pillars-free-png.webp',
+        'تنين': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753218/elegant-rustic-dragon-mythical-serpent-breathing-fire-high-resolution-png.webp'
+    };
+
+    for (const [name, url] of Object.entries(giftImageMap)) {
+        await Gift.updateOne({ name }, { $set: { imageUrl: url } });
+    }
+    console.log('🔧 [MIGRATION] تم تحديث روابط صور الهدايا للتطابق مع الكود الحالي');
+}
+
 // ✅ إصلاح جذري: يضيف حقل "prices" لأي إطار قديم بقاعدة البيانات لا يملكه بعد
 // (كانت الإطارات موجودة من قبل إضافة نظام الأسعار المتعدد المدد، فتبقى بلا أسعار)
 async function migrateLegacyFramePrices() {
@@ -124,10 +149,12 @@ async function migrateLegacyFramePrices() {
 module.exports = async function autoSeed() {
     try {
         await migrateLegacyOwnedFrames();
-        await migrateLegacyFramePrices(); // ✅ يجب أن تُنفَّذ قبل seedFramesIfMissing
+        await migrateLegacyFramePrices();
+        await migrateGiftImageUrls(); // ✅ جديد
         await seedGiftsIfMissing();
         await seedFramesIfMissing();
         await seedBubbleSkinsIfMissing();
+        await require('../models/OneTimeMessageLog').syncIndexes(); // ✅ سبب مشكلة رقم 6 أدناه
     } catch (error) {
         console.error('[AUTO-SEED] خطأ أثناء التهيئة التلقائية:', error);
     }
