@@ -1,6 +1,8 @@
 const Gift = require('../models/Gift');
 const GiftLog = require('../models/GiftLog');
 const User = require('../models/User');
+const PrivateChat = require('../models/PrivateChat');
+const PrivateMessage = require('../models/PrivateMessage');
 const { addGiftExperience } = require('../utils/experienceManager');
 
 // جلب متجر الهدايا
@@ -68,12 +70,7 @@ exports.sendGift = async (req, res) => {
         });
 
         const io = req.app.get('socketio');
-
-        if (sender.socketId && io) {
-            io.to(sender.socketId).emit('balanceUpdate', { newBalance: sender.balance, newCoins: sender.coins });
-        }
-
-               const safeGiftImage = gift.imageUrl || '';
+        const safeGiftImage = gift.imageUrl || '';
 
         const giftEventPayload = {
             giftId: gift._id,
@@ -87,23 +84,90 @@ exports.sendGift = async (req, res) => {
             timestamp: new Date().toISOString()
         };
 
+        // ✅ الإصلاح الجوهري: ننشئ رسالة حقيقية بالمحادثة الخاصة (تُحفظ بقاعدة البيانات وتصل فوراً للطرف الآخر)
+        let savedMessage = null;
+        let unreadCountForReceiver = 0;
+
+        if (context === 'private_chat') {
+            const participants = [senderId.toString(), receiverId.toString()].sort();
+            const chatId = participants.join('_');
+
+            let chat = await PrivateChat.findOne({ chatId });
+            if (!chat) {
+                chat = await PrivateChat.create({
+                    chatId,
+                    participants,
+                    participantData: [
+                        { userId: senderId, username: sender.username, profileImage: sender.profileImage },
+                        { userId: receiverId, username: receiver.username, profileImage: receiver.profileImage }
+                    ]
+                });
+            }
+
+            const newMessage = await PrivateMessage.create({
+                chatId,
+                sender: senderId,
+                receiver: receiverId,
+                type: 'gift',
+                content: `${gift.name}${qty > 1 ? ' × ' + qty : ''}`,
+                metadata: {
+                    giftId: gift._id,
+                    giftImage: safeGiftImage,
+                    giftPrice: totalPrice,
+                    giftQuantity: qty
+                }
+            });
+
+            chat.lastMessage = `🎁 هدية ${gift.name}`;
+            chat.lastMessageAt = new Date();
+            chat.lastMessageBy = senderId;
+            chat.messageCount += 1;
+            const currentUnread = chat.unreadCount.get(receiverId.toString()) || 0;
+            chat.unreadCount.set(receiverId.toString(), currentUnread + 1);
+            chat.hiddenBy = chat.hiddenBy.filter(id =>
+                id.toString() !== senderId.toString() && id.toString() !== receiverId.toString()
+            );
+            await chat.save();
+
+            savedMessage = await PrivateMessage.findById(newMessage._id)
+                .populate('sender', 'username profileImage')
+                .lean();
+
+            unreadCountForReceiver = chat.unreadCount.get(receiverId.toString()) || 0;
+
+            if (receiver.socketId && io) {
+                io.to(receiver.socketId).emit('privateMessageReceived', {
+                    message: savedMessage,
+                    chatId: chat.chatId,
+                    senderId: senderId,
+                    senderName: sender.username
+                });
+            }
+        }
+
+        if (sender.socketId && io) {
+            io.to(sender.socketId).emit('balanceUpdate', { newBalance: sender.balance, newCoins: sender.coins });
+        }
+
         if (receiver.socketId && io) {
             io.to(receiver.socketId).emit('giftReceived', giftEventPayload);
         }
-
-                // ✅ منح خبرة للطرفين بناءً على قيمة الهدية
-        await addGiftExperience(io, senderId, totalPrice, 'sender');
-        await addGiftExperience(io, receiverId, totalPrice, 'receiver');
-
-        // ✅ نرسل نفس البيانات (giftImage الحقيقي) للمرسل أيضاً حتى تظهر الصورة الصحيحة بتأثيره العائم
         if (sender.socketId && io) {
             io.to(sender.socketId).emit('giftSentConfirmation', giftEventPayload);
         }
 
+        await addGiftExperience(io, senderId, totalPrice, 'sender');
+        await addGiftExperience(io, receiverId, totalPrice, 'receiver');
+
         res.status(201).json({
             status: 'success',
             message: `تم إرسال هدية ${gift.name} بنجاح`,
-            data: { giftLog, newSenderCoins: sender.coins }
+            data: {
+                giftLog,
+                newSenderCoins: sender.coins,
+                message: savedMessage,
+                unreadCount: unreadCountForReceiver
+            }
         });
 
     } catch (error) {
@@ -111,7 +175,6 @@ exports.sendGift = async (req, res) => {
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم أثناء إرسال الهدية' });
     }
 };
-
 // المتصدرين: أكثر شخص أرسل هدايا هذا الشهر
 function getDateRange(range) {
     const now = new Date();
