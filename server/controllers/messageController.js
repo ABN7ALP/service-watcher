@@ -31,7 +31,7 @@ exports.getPublicMessages = async (req, res, next) => {
              const messages = await Message.find({ room: 'public-room' })
             .sort('-createdAt')
             .limit(50)
-            .populate('sender', 'username profileImage activeBubbleSkinClass')
+            .populate('sender', 'username profileImage activeFrameClass activeBubbleSkinClass')
             .populate({
                 path: 'replyTo',
                 populate: {
