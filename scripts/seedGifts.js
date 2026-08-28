@@ -16,7 +16,7 @@ const gifts = [
     {
         name: 'ثعلب',
         description: 'هدية مميزة وأنيقة',
-        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787661134/69e8b8936203a.png',
+        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832545/cute-cartoon-little-red-fox-isolated-on-the-transparent-background-png.png',
         price: 15,
         category: 'rare',
         animation: 'sparkle',
@@ -26,7 +26,7 @@ const gifts = [
     {
         name: 'حديقة',
         description: 'هدية فاخرة للمناسبات الخاصة',
-        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787661134/69e8b8936203a.png',
+        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832349/vibrant-garden-path-surrounded-by-blooming-flowers-greenery-and-a-white-fence-creating-a-peaceful-and-inviting-outdoor-space-free-png.png',
         price: 80,
         category: 'epic',
         animation: 'glow',
