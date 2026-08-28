@@ -655,45 +655,27 @@ async function refreshMessagesNavBadge(cachedChats = null) {
 // --- ✅ استبدل دالة showSettingsView بالكامل ---
 async function showSettingsView() {
     const localUser = JSON.parse(localStorage.getItem('user'));
-    
-    // جلب قائمة المحظورين
+
     let blockedUsers = [];
     let blockedCount = 0;
-    
-    try {
-        const response = await fetch('/api/blocks/blocked-list', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (response.ok) {
-            const result = await response.json();
-            blockedUsers = result.data.blockedUsers || [];
-            blockedCount = blockedUsers.length;
-        }
-    } catch (error) {
-        console.error('Failed to load blocked users:', error);
-    }
+    let frameShopData = { frames: [], activeFrame: null, coins: 0 };
+    let bubbleShopData = { skins: [], activeClass: null, coins: 0 };
 
-        let frameShopData = { frames: [], activeFrame: null, coins: 0 };
-    try {
-        const frameResponse = await fetch('/api/frames/shop', { headers: { 'Authorization': `Bearer ${token}` } });
-        if (frameResponse.ok) {
-            const frameResult = await frameResponse.json();
-            frameShopData = frameResult.data;
-        }
-    } catch (error) {
-        console.error('Failed to load frame shop:', error);
-    }
+    const [blockedResult, frameResult, bubbleResult] = await Promise.allSettled([
+        fetch('/api/blocks/blocked-list', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
+        fetch('/api/frames/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
+        fetch('/api/bubble-skins/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : null)
+    ]);
 
-        let bubbleShopData = { skins: [], activeClass: null, coins: 0 };
-    try {
-        const bubbleResponse = await fetch('/api/bubble-skins/shop', { headers: { 'Authorization': `Bearer ${token}` } });
-        if (bubbleResponse.ok) {
-            const bubbleResult = await bubbleResponse.json();
-            bubbleShopData = bubbleResult.data;
-        }
-    } catch (error) {
-        console.error('Failed to load bubble skin shop:', error);
+    if (blockedResult.status === 'fulfilled' && blockedResult.value) {
+        blockedUsers = blockedResult.value.data.blockedUsers || [];
+        blockedCount = blockedUsers.length;
+    }
+    if (frameResult.status === 'fulfilled' && frameResult.value) {
+        frameShopData = frameResult.value.data;
+    }
+    if (bubbleResult.status === 'fulfilled' && bubbleResult.value) {
+        bubbleShopData = bubbleResult.value.data;
     }
 
     
