@@ -6640,9 +6640,9 @@ function displayMessage(message) {
         `;
     }
 
-    messageElement.innerHTML = `
+        messageElement.innerHTML = `
         <img src="${message.sender.profileImage}" alt="${message.sender.username}" 
-             class="w-8 h-8 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-400" data-user-id="${message.sender._id}">
+             class="w-8 h-8 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-400 ${message.sender.activeFrameClass || ''}" data-user-id="${message.sender._id}">
         <div class="w-full">
             ${replyHTML}
             <p class="font-bold text-sm ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${message.sender.username}</p>
