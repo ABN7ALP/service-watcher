@@ -2859,7 +2859,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                     <button id="close-gift-store" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
                 </div>
                 <div id="gift-store-body" class="p-4 overflow-y-auto flex-1">
-                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i></div>
+                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
                 </div>
             </div>
         </div>
@@ -2867,7 +2867,10 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
 
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('gift-store-modal');
-    attachCloseConfirmation(modal, '#close-gift-store');
+
+    // ✅ إغلاق مباشر بدون تأكيد — إرسال هدية ليس عملية بيانات طويلة يخشى فقدانها
+    document.getElementById('close-gift-store').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target.id === 'gift-store-modal') modal.remove(); });
 
     try {
         const response = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -2889,26 +2892,30 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
             </div>
         `;
 
-        // ✅ كل كارد يُدار بشكل مستقل: النقر يوسّعه ويكشف زر الإرسال داخله مباشرة
+        wireGiftImageFallbacks(body);
+
         body.querySelectorAll('.gift-card-wrapper').forEach(card => {
-            const giftId = card.dataset.giftId;
             const toggleBtn = card.querySelector('.gift-card-toggle');
 
             toggleBtn.addEventListener('click', () => {
                 const isExpanded = card.classList.contains('gift-expanded');
                 body.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-expanded'));
+                if (isExpanded) return;
 
-                if (!isExpanded) {
-                    card.classList.add('gift-expanded');
-                    const gift = {
-                        id: giftId,
-                        name: card.dataset.giftName,
-                        price: parseFloat(card.dataset.giftPrice),
-                        icon: card.dataset.giftIcon,
-                        imageUrl: card.dataset.giftImage
-                    };
-                    setupRapidGiftButton(targetUserId, () => gift, card.querySelector('.inline-send-btn'), card.querySelector('.inline-send-counter'));
-                }
+                card.classList.add('gift-expanded');
+
+                const giftData = {
+                    id: card.dataset.giftId,
+                    name: card.dataset.giftName,
+                    price: parseFloat(card.dataset.giftPrice),
+                    icon: card.dataset.giftIcon,
+                    imageUrl: card.dataset.giftImage
+                };
+
+                const sendBtn = card.querySelector('.inline-send-btn');
+                const counterEl = card.querySelector('.inline-send-counter');
+
+                setupRapidGiftButton(targetUserId, () => giftData, sendBtn, counterEl);
             });
         });
 
@@ -2920,16 +2927,16 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
 }
 
 // ✅ دالة موحّدة لبناء كارد الهدية (تُستخدم بالخاصة والعامة)
+// ✅ دالة موحّدة لبناء كارد الهدية — الصورة الحقيقية أولاً، واحتياطي أنيق فقط عند الفشل الفعلي
+// onerror يُربط عبر JavaScript بعد الإدراج (لا inline) حتى لا يخالف سياسة الأمان CSP
 function renderGiftCardHTML(g) {
-    const visual = g.imageUrl
-        ? `<img src="${g.imageUrl}" class="w-10 h-10 object-contain mx-auto" onerror="this.replaceWith(Object.assign(document.createElement('span'), {textContent: '${g.icon || '🎁'}', className:'text-3xl block'}))">`
-        : `<span class="text-3xl block">${g.icon || '🎁'}</span>`;
-
     return `
         <div class="gift-card-wrapper bg-gray-800/50 border border-gray-700 rounded-xl p-2 transition-all"
              data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}" data-gift-icon="${g.icon || '🎁'}" data-gift-image="${g.imageUrl || ''}">
             <button class="gift-card-toggle w-full flex flex-col items-center">
-                ${visual}
+                <div class="gift-visual-slot w-10 h-10 flex items-center justify-center mx-auto">
+                    ${g.imageUrl ? `<img src="${g.imageUrl}" class="gift-visual-img w-10 h-10 object-contain">` : `<span class="text-3xl">${g.icon || '🎁'}</span>`}
+                </div>
                 <span class="text-[11px] font-bold text-center truncate w-full mt-1">${g.name}</span>
                 <span class="text-[10px] text-yellow-400"><i class="fas fa-coins"></i> ${g.discountedPrice || g.price}</span>
             </button>
@@ -2943,6 +2950,16 @@ function renderGiftCardHTML(g) {
     `;
 }
 
+// ✅ يُستدعى بعد إدراج أي مجموعة كروت هدايا بالصفحة، يربط احتياطي الصورة عبر JS (متوافق مع CSP)
+function wireGiftImageFallbacks(containerEl) {
+    containerEl.querySelectorAll('.gift-visual-img').forEach(img => {
+        img.addEventListener('error', function() {
+            const icon = this.closest('.gift-card-wrapper')?.dataset.giftIcon || '🎁';
+            const slot = this.closest('.gift-visual-slot');
+            if (slot) slot.innerHTML = `<span class="text-3xl">${icon}</span>`;
+        }, { once: true });
+    });
+}
 // --- ⚡ محرك الإرسال المتسارع: ضغطة = هدية واحدة، استمرار الضغط = تسارع تلقائي x2 x3 x4 ---
 function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) {
     if (!btn) return;
@@ -2988,16 +3005,11 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
 
                 showGiftFloatingAnimation(gift.imageUrl, gift.icon, gift.name, `أرسلت ×${sentCount}`);
 
-                displayPrivateMessage({
-                    _id: 'gift-msg-' + Date.now() + Math.random(),
-                    sender: localUser._id,
-                    receiver: targetUserId,
-                    type: 'gift',
-                    content: gift.name,
-                    metadata: { giftImage: gift.imageUrl, giftIcon: gift.icon, giftPrice: gift.price },
-                    createdAt: new Date().toISOString(),
-                    status: { sent: true, delivered: false, seen: false }
-                }, true);
+                // ✅ الإصلاح الجوهري: الرسالة تأتي من السيرفر (حقيقية ومحفوظة بقاعدة البيانات)
+                // بدل بناء فقاعة وهمية بالمتصفح فقط تختفي عند إعادة التحميل
+                if (result.data.message) {
+                    displayPrivateMessage(result.data.message, true);
+                }
             } else {
                 stopRapidSending();
                 showNotification(result.message || 'فشل إرسال الهدية', 'error');
@@ -3737,7 +3749,9 @@ function confirmRedeem(redeemTo) {
 
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('public-gift-modal');
-    attachCloseConfirmation(modal, '#close-public-gift');
+
+    document.getElementById('close-public-gift').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target.id === 'public-gift-modal') modal.remove(); });
 
     try {
         const [onlineRes, shopRes] = await Promise.all([
@@ -3747,72 +3761,47 @@ function confirmRedeem(redeemTo) {
 
         const onlineUsers = onlineRes.data.users;
         const gifts = shopRes.data.gifts;
+
         let selectedUserIds = new Set();
-        let audienceMode = 'selected'; // 'selected' | 'all'
-        let selectedGift = null;
+        let audienceMode = 'selected';
 
         const body = document.getElementById('public-gift-body');
         body.innerHTML = `
-            <p class="text-xs text-gray-400 mb-2">اختر المستلمين (يمكنك اختيار أكثر من شخص)</p>
-            <div class="flex gap-2 mb-3">
-                <button id="select-all-online-btn" class="flex-1 bg-purple-600 hover:bg-purple-700 text-xs py-2 rounded-lg font-bold">
-                    <i class="fas fa-users"></i> إرسال للجميع (${onlineUsers.length})
-                </button>
-            </div>
-            <div id="public-gift-avatars" class="flex gap-3 overflow-x-auto pb-2 mb-4">
-                ${onlineUsers.length === 0 ? '<p class="text-xs text-gray-500">لا يوجد أشخاص متصلون حالياً بالشات العام</p>' : onlineUsers.map(u => `
-                    <button class="public-gift-avatar-btn flex-shrink-0 flex flex-col items-center gap-1" data-user-id="${u._id}" data-username="${u.username}">
-                        <img src="${u.profileImage}" class="w-14 h-14 rounded-full object-cover border-2 border-gray-600 transition-all public-avatar-img ${u.activeFrameClass || ''}">
-                        <span class="text-[10px] truncate w-14 text-center">${u.username}</span>
-                    </button>
-                `).join('')}
-            </div>
-            <p class="text-xs text-gray-400 mb-2">اختر الهدية</p>
-            <div class="grid grid-cols-4 gap-2 mb-4">
-                ${gifts.map(g => `
-                    <button class="pg-gift-btn flex flex-col items-center bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-lg p-2"
-                            data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}" data-gift-image="${g.imageUrl}">
-                        <img src="${g.imageUrl}" class="w-8 h-8 object-contain mb-1" onerror="this.style.opacity='0.3'">
-                        <span class="text-[9px] text-yellow-400">${g.discountedPrice || g.price}</span>
-                    </button>
-                `).join('')}
-            </div>
-            <div id="pg-summary" class="hidden bg-gray-900/50 rounded-xl p-3 mb-3 text-center text-sm"></div>
-            <button id="pg-send-btn" class="w-full bg-pink-600 hover:bg-pink-700 text-white py-2.5 rounded-lg font-bold disabled:opacity-40" disabled>
-                <i class="fas fa-paper-plane"></i> إرسال الهدية
+            <p class="text-xs text-gray-400 mb-2">اختر المستلمين</p>
+            <button id="select-all-online-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-xs py-2 rounded-lg font-bold mb-3">
+                <i class="fas fa-users"></i> إرسال للجميع (${onlineUsers.length})
             </button>
+            <div id="public-gift-avatars" class="flex flex-wrap gap-2 mb-4 max-h-32 overflow-y-auto">
+                ${onlineUsers.length === 0 ? '<p class="text-xs text-gray-500">لا يوجد أشخاص متصلون حالياً</p>' : onlineUsers.map(u => `
+                    <button class="public-gift-avatar-btn flex flex-col items-center gap-1 w-14" data-user-id="${u._id}" data-username="${u.username}">
+                        <img src="${u.profileImage}" class="w-9 h-9 rounded-full object-cover border-2 border-gray-600 transition-all public-avatar-img ${u.activeFrameClass || ''}">
+                        <span class="text-[9px] truncate w-full text-center">${u.username}</span>
+                    </button>
+                `).join('')}
+            </div>
+            <p class="text-xs text-gray-400 mb-2">اختر الهدية (اضغط عليها لإظهار زر الإرسال)</p>
+            <div class="grid grid-cols-3 gap-2">
+                ${gifts.map(g => renderGiftCardHTML(g)).join('')}
+            </div>
+            <p id="pg-audience-warning" class="hidden text-xs text-yellow-400 text-center mt-3"><i class="fas fa-exclamation-triangle"></i> اختر المستلمين أولاً بالأعلى</p>
         `;
 
-        function updateSummary() {
-            const summaryEl = document.getElementById('pg-summary');
-            const sendBtn = document.getElementById('pg-send-btn');
-            const count = audienceMode === 'all' ? onlineUsers.length : selectedUserIds.size;
-
-            if (!selectedGift || count === 0) {
-                summaryEl.classList.add('hidden');
-                sendBtn.disabled = true;
-                return;
-            }
-            const totalCost = selectedGift.price * count;
-            summaryEl.classList.remove('hidden');
-            summaryEl.innerHTML = `سترسل <b>${selectedGift.name}</b> إلى <b>${count}</b> ${count === 1 ? 'شخص' : 'أشخاص'} مقابل <span class="text-yellow-400 font-bold">${totalCost} كوينز</span>`;
-            sendBtn.disabled = false;
-        }
+        wireGiftImageFallbacks(body);
 
         document.getElementById('select-all-online-btn').addEventListener('click', function() {
             audienceMode = 'all';
             selectedUserIds.clear();
             body.querySelectorAll('.public-avatar-img').forEach(img => img.classList.remove('ring-2', 'ring-pink-500'));
             this.classList.add('ring-2', 'ring-pink-400');
-            updateSummary();
+            document.getElementById('pg-audience-warning')?.classList.add('hidden');
         });
 
-        body.querySelectorAll('.public-gift-avatar-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
+        body.querySelectorAll('.public-gift-avatar-btn').forEach(avatarBtn => {
+            avatarBtn.addEventListener('click', () => {
                 audienceMode = 'selected';
                 document.getElementById('select-all-online-btn').classList.remove('ring-2', 'ring-pink-400');
-                const uid = btn.dataset.userId;
-                const img = btn.querySelector('.public-avatar-img');
+                const uid = avatarBtn.dataset.userId;
+                const img = avatarBtn.querySelector('.public-avatar-img');
                 if (selectedUserIds.has(uid)) {
                     selectedUserIds.delete(uid);
                     img.classList.remove('ring-2', 'ring-pink-500');
@@ -3820,28 +3809,26 @@ function confirmRedeem(redeemTo) {
                     selectedUserIds.add(uid);
                     img.classList.add('ring-2', 'ring-pink-500');
                 }
-                updateSummary();
+                document.getElementById('pg-audience-warning')?.classList.add('hidden');
             });
         });
 
-                body.querySelectorAll('.gift-card-wrapper').forEach(card => {
+        body.querySelectorAll('.gift-card-wrapper').forEach(card => {
             const toggleBtn = card.querySelector('.gift-card-toggle');
+
             toggleBtn.addEventListener('click', () => {
                 const isExpanded = card.classList.contains('gift-expanded');
                 body.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-expanded'));
                 if (isExpanded) return;
 
                 card.classList.add('gift-expanded');
-                selectedGift = {
+
+                const giftData = {
                     id: card.dataset.giftId,
-                    name: card.dataset.giftName,
-                    price: parseFloat(card.dataset.giftPrice),
-                    icon: card.dataset.giftIcon,
-                    imageUrl: card.dataset.giftImage
+                    name: card.dataset.giftName
                 };
 
                 const sendBtn = card.querySelector('.inline-send-btn');
-                const counterEl = card.querySelector('.inline-send-counter');
 
                 sendBtn.addEventListener('click', async () => {
                     const count = audienceMode === 'all' ? onlineUsers.length : selectedUserIds.size;
@@ -3854,7 +3841,11 @@ function confirmRedeem(redeemTo) {
                     sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
                     try {
-                        const payload = { giftId: selectedGift.id, audience: audienceMode, recipientIds: audienceMode === 'selected' ? Array.from(selectedUserIds) : [] };
+                        const payload = {
+                            giftId: giftData.id,
+                            audience: audienceMode,
+                            recipientIds: audienceMode === 'selected' ? Array.from(selectedUserIds) : []
+                        };
                         const response = await fetch('/api/gifts/send-public', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -3875,14 +3866,15 @@ function confirmRedeem(redeemTo) {
                         sendBtn.disabled = false;
                         sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال';
                     }
-                });
+                }, { once: true }); // ✅ يمنع تراكم مستمعات متعددة إذا فُتح نفس الكارد أكثر من مرة
             });
         });
+
     } catch (error) {
         console.error('[PUBLIC GIFT] Error:', error);
         document.getElementById('public-gift-body').innerHTML = `<div class="text-center text-red-400 py-10">فشل تحميل البيانات</div>`;
     }
-}     
+}
 
         
 // =================================================
