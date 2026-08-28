@@ -278,3 +278,6 @@ input[type="checkbox"] {
     from { opacity: 0; transform: translate(-50%, -15px); }
     to { opacity: 1; transform: translate(-50%, 0); }
 }
+
+.gift-expanded .gift-card-inline-send { display: block !important; }
+.gift-expanded { border-color: #ec4899 !important; }
