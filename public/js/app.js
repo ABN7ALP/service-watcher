@@ -3892,70 +3892,63 @@ function confirmRedeem(redeemTo) {
 async function showLeaderboardView() {
     mainContent.innerHTML = `
         <div class="flex flex-col h-full">
-            <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
-                <i class="fas fa-trophy text-yellow-400"></i> المتصدرين (هذا الشهر)
-            </h2>
+            <h2 class="text-xl font-bold mb-3 flex items-center gap-2"><i class="fas fa-trophy text-yellow-400"></i> المتصدرين</h2>
+            <div class="flex gap-2 mb-2">
+                <button class="lb-range-btn flex-1 py-1.5 rounded-lg text-xs font-bold bg-purple-600 text-white" data-range="week">هذا الأسبوع</button>
+                <button class="lb-range-btn flex-1 py-1.5 rounded-lg text-xs font-bold bg-gray-700 text-gray-300" data-range="month">هذا الشهر</button>
+                <button class="lb-range-btn flex-1 py-1.5 rounded-lg text-xs font-bold bg-gray-700 text-gray-300" data-range="year">هذا العام</button>
+            </div>
             <div class="flex gap-2 mb-4">
-                <button id="lb-tab-senders" class="flex-1 py-2 rounded-lg text-sm font-bold bg-purple-600 text-white transition">
-                    <i class="fas fa-hand-holding-heart mr-1"></i> الأكثر إهداءً
-                </button>
-                <button id="lb-tab-receivers" class="flex-1 py-2 rounded-lg text-sm font-bold bg-gray-700 text-gray-300 transition">
-                    <i class="fas fa-crown mr-1"></i> الأكثر تلقياً
-                </button>
+                <button id="lb-tab-senders" class="flex-1 py-2 rounded-lg text-sm font-bold bg-pink-600 text-white"><i class="fas fa-hand-holding-heart mr-1"></i> الأكثر إهداءً</button>
+                <button id="lb-tab-receivers" class="flex-1 py-2 rounded-lg text-sm font-bold bg-gray-700 text-gray-300"><i class="fas fa-crown mr-1"></i> الأكثر تلقياً</button>
             </div>
             <div id="leaderboard-list-container" class="flex-grow overflow-y-auto space-y-2 pr-1">
-                <div class="text-center text-gray-400 py-16">
-                    <i class="fas fa-spinner fa-spin text-3xl mb-3"></i>
-                    <p class="text-sm">جاري التحميل...</p>
-                </div>
+                <div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-3xl"></i></div>
             </div>
         </div>
     `;
 
-    document.getElementById('lb-tab-senders').addEventListener('click', () => {
+    let currentType = 'senders';
+    let currentRange = 'week';
+
+    document.querySelectorAll('.lb-range-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentRange = btn.dataset.range;
+            document.querySelectorAll('.lb-range-btn').forEach(b => { b.classList.remove('bg-purple-600', 'text-white'); b.classList.add('bg-gray-700', 'text-gray-300'); });
+            btn.classList.remove('bg-gray-700', 'text-gray-300'); btn.classList.add('bg-purple-600', 'text-white');
+            loadLeaderboard(currentType, currentRange);
+        });
+    });
+
+    document.getElementById('lb-tab-senders').addEventListener('click', function() {
+        currentType = 'senders';
         setLeaderboardTab('senders');
-        loadLeaderboard('senders');
+        loadLeaderboard(currentType, currentRange);
     });
-    document.getElementById('lb-tab-receivers').addEventListener('click', () => {
+    document.getElementById('lb-tab-receivers').addEventListener('click', function() {
+        currentType = 'receivers';
         setLeaderboardTab('receivers');
-        loadLeaderboard('receivers');
+        loadLeaderboard(currentType, currentRange);
     });
 
-    await loadLeaderboard('senders');
+    await loadLeaderboard(currentType, currentRange);
 }
 
-function setLeaderboardTab(active) {
-    const sendersBtn = document.getElementById('lb-tab-senders');
-    const receiversBtn = document.getElementById('lb-tab-receivers');
-    if (active === 'senders') {
-        sendersBtn.classList.add('bg-purple-600', 'text-white');
-        sendersBtn.classList.remove('bg-gray-700', 'text-gray-300');
-        receiversBtn.classList.add('bg-gray-700', 'text-gray-300');
-        receiversBtn.classList.remove('bg-purple-600', 'text-white');
-    } else {
-        receiversBtn.classList.add('bg-purple-600', 'text-white');
-        receiversBtn.classList.remove('bg-gray-700', 'text-gray-300');
-        sendersBtn.classList.add('bg-gray-700', 'text-gray-300');
-        sendersBtn.classList.remove('bg-purple-600', 'text-white');
-    }
-}
-
-async function loadLeaderboard(type) {
+async function loadLeaderboard(type, range = 'week') {
     const container = document.getElementById('leaderboard-list-container');
     if (!container) return;
 
-    container.innerHTML = `<div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-3xl mb-3"></i><p class="text-sm">جاري التحميل...</p></div>`;
-
+    container.innerHTML = `<div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-3xl"></i></div>`;
     const endpoint = type === 'senders' ? '/api/gifts/leaderboard/top-senders' : '/api/gifts/leaderboard/top-receivers';
 
     try {
-        const response = await fetch(endpoint, { headers: { 'Authorization': `Bearer ${token}` } });
+        const response = await fetch(`${endpoint}?range=${range}`, { headers: { 'Authorization': `Bearer ${token}` } });
         const result = await response.json();
-        if (!response.ok || result.status !== 'success') throw new Error('فشل التحميل');
+        if (!response.ok) throw new Error();
 
         const leaders = result.data.leaders;
         if (!leaders || leaders.length === 0) {
-            container.innerHTML = `<div class="text-center text-gray-400 py-16"><i class="fas fa-gift text-4xl mb-4"></i><p>لا توجد بيانات بعد لهذا الشهر</p></div>`;
+            container.innerHTML = `<div class="text-center text-gray-400 py-16"><i class="fas fa-gift text-4xl mb-4"></i><p>لا توجد بيانات لهذه الفترة</p></div>`;
             return;
         }
 
@@ -3964,25 +3957,18 @@ async function loadLeaderboard(type) {
 
         container.innerHTML = leaders.map((leader, index) => `
             <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-800/40 hover:bg-gray-700/40 transition">
-                <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${index < 3 ? `bg-gradient-to-br ${rankColors[index]} text-white` : 'bg-gray-700 text-gray-300'}">
-                    ${index + 1}
-                </div>
-                <img src="${leader.profileImage}" class="w-11 h-11 rounded-full object-cover border-2 border-gray-600">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${index < 3 ? `bg-gradient-to-br ${rankColors[index]} text-white` : 'bg-gray-700 text-gray-300'}">${index + 1}</div>
+                <img src="${leader.profileImage}" class="w-11 h-11 rounded-full object-cover border-2 border-gray-600 ${leader.activeFrameClass || ''}">
                 <div class="flex-1 min-w-0">
                     <p class="font-bold text-sm truncate">${leader.username}</p>
                     <p class="text-xs text-gray-400">${leader.giftsCount} هدية</p>
                 </div>
-                <div class="text-left flex-shrink-0">
-                    <span class="font-bold text-yellow-400 flex items-center gap-1 text-sm">
-                        <i class="fas fa-coins"></i> ${leader[valueKey].toLocaleString()}
-                    </span>
-                </div>
+                <span class="font-bold text-yellow-400 flex items-center gap-1 text-sm"><i class="fas fa-coins"></i> ${leader[valueKey].toLocaleString()}</span>
             </div>
         `).join('');
 
     } catch (error) {
-        console.error('[LEADERBOARD] Error:', error);
-        container.innerHTML = `<div class="text-center text-red-400 py-16"><i class="fas fa-exclamation-circle text-3xl mb-3"></i><p class="text-sm">فشل تحميل المتصدرين</p></div>`;
+        container.innerHTML = `<div class="text-center text-red-400 py-16">فشل تحميل المتصدرين</div>`;
     }
 }
 
