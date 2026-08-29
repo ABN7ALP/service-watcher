@@ -30,7 +30,7 @@ const privateMessageSchema = new mongoose.Schema({
     // نوع الرسالة
     type: {
         type: String,
-        enum: ['text', 'image', 'video', 'voice', 'file', 'system'],
+        enum: ['text', 'image', 'video', 'voice', 'file', 'system', 'gift'],
         default: 'text',
         required: true
     },
