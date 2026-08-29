@@ -3612,10 +3612,9 @@ async function showWithdrawModal() {
         </div>
     `;
 
-    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+        document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('withdraw-modal');
-    document.getElementById('close-withdraw').addEventListener('click', () => modal.remove());
-    modal.addEventListener('click', (e) => { if (e.target.id === 'withdraw-modal') modal.remove(); });
+    attachCloseConfirmation(modal, '#close-withdraw');
 
     renderWithdrawHome();
 }
