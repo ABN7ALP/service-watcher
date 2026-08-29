@@ -3067,10 +3067,10 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
         const gift = getSelectedGift();
         if (!gift || isSending) return;
 
-        const localUser = JSON.parse(localStorage.getItem('user'));
+                const localUser = JSON.parse(localStorage.getItem('user'));
         if (localUser.coins < gift.price) {
             stopRapidSending();
-            showNotification('رصيد الكوينز غير كافٍ لإرسال المزيد', 'error');
+            showFloatingAlert('رصيد الكوينز غير كافٍ للإرسال', 'fa-coins', 'bg-red-500');
             return;
         }
 
@@ -3103,9 +3103,9 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
                 if (result.data.message) {
                     displayPrivateMessage(result.data.message, true);
                 }
-            } else {
+                } else {
                 stopRapidSending();
-                showNotification(result.message || 'فشل إرسال الهدية', 'error');
+                showFloatingAlert(result.message || 'فشل إرسال الهدية', 'fa-exclamation-circle', 'bg-red-500');
             }
         } catch (error) {
             console.error('[RAPID GIFT] Error:', error);
@@ -3851,55 +3851,83 @@ function confirmRedeem(redeemTo) {
 
         const onlineUsers = onlineRes.data.users;
         const gifts = shopRes.data.gifts;
+        const localUserSnapshot = JSON.parse(localStorage.getItem('user')) || {};
 
         let selectedUserIds = new Set();
         let audienceMode = 'selected';
 
         const body = document.getElementById('public-gift-body');
         body.innerHTML = `
+            <div class="flex items-center justify-between mb-3 bg-gray-900/50 rounded-xl p-3">
+                <span class="text-sm text-gray-400">رصيدك الحالي</span>
+                <span class="font-bold text-yellow-400 flex items-center gap-1"><i class="fas fa-coins"></i> <span id="pg-balance">${localUserSnapshot.coins || 0}</span></span>
+            </div>
             <p class="text-xs text-gray-400 mb-2">اختر المستلمين</p>
-            <button id="select-all-online-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-xs py-2 rounded-lg font-bold mb-3">
+            <button id="select-all-online-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-xs py-2 rounded-lg font-bold mb-3 transition-all">
                 <i class="fas fa-users"></i> إرسال للجميع (${onlineUsers.length})
             </button>
-                        <div id="public-gift-avatars" class="grid grid-cols-6 sm:grid-cols-8 gap-2 mb-4 max-h-40 overflow-y-auto p-2 bg-gray-900/30 rounded-xl">
+            <div id="public-gift-avatars" class="grid grid-cols-6 sm:grid-cols-8 gap-2 mb-4 max-h-40 overflow-y-auto p-2 bg-gray-900/30 rounded-xl">
                 ${onlineUsers.length === 0 ? '<p class="col-span-full text-xs text-gray-500 text-center py-6">لا يوجد أشخاص متصلون حالياً</p>' : onlineUsers.map(u => `
-                    <button class="public-gift-avatar-btn flex flex-col items-center gap-1" data-user-id="${u._id}" data-username="${u.username}" title="${u.username}">
-                        <img src="${u.profileImage}" class="w-7 h-7 rounded-full object-cover border-2 border-gray-600 transition-all public-avatar-img ${u.activeFrameClass || ''}">
+                    <button class="public-gift-avatar-btn relative flex flex-col items-center gap-1 p-1 rounded-lg transition-all" data-user-id="${u._id}" data-username="${u.username}" title="${u.username}">
+                        <span class="relative inline-block">
+                            <img src="${u.profileImage}" class="w-7 h-7 rounded-full object-cover border-2 border-gray-600 transition-all public-avatar-img ${u.activeFrameClass || ''}">
+                            <span class="pg-selected-badge hidden absolute -top-1 -right-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
+                                <i class="fas fa-check text-white" style="font-size:6px"></i>
+                            </span>
+                        </span>
                         <span class="text-[8px] leading-tight truncate w-full text-center">${u.username}</span>
                     </button>
                 `).join('')}
             </div>
-            <p class="text-xs text-gray-400 mb-2">اختر الهدية (اضغط عليها لإظهار زر الإرسال)</p>
+            <p class="text-xs text-gray-400 mb-2">اختر الهدية (اضغط عليها، واستمر بالضغط على زر الإرسال للإرسال السريع المتتالي)</p>
             <div class="grid grid-cols-3 gap-2">
                 ${gifts.map(g => renderGiftCardHTML(g)).join('')}
             </div>
-            <p id="pg-audience-warning" class="hidden text-xs text-yellow-400 text-center mt-3"><i class="fas fa-exclamation-triangle"></i> اختر المستلمين أولاً بالأعلى</p>
         `;
 
         wireGiftImageFallbacks(body);
 
+        function markAllSelectedVisual(isAll) {
+            const allBtn = document.getElementById('select-all-online-btn');
+            if (!allBtn) return;
+            if (isAll) allBtn.classList.add('ring-2', 'ring-pink-400', 'bg-purple-700');
+            else allBtn.classList.remove('ring-2', 'ring-pink-400', 'bg-purple-700');
+        }
+
+        function clearIndividualSelectionVisuals() {
+            body.querySelectorAll('.public-gift-avatar-btn').forEach(b => {
+                b.querySelector('.public-avatar-img')?.classList.remove('ring-2', 'ring-pink-500');
+                b.querySelector('.pg-selected-badge')?.classList.add('hidden');
+                b.classList.remove('bg-pink-900/40');
+            });
+        }
+
         document.getElementById('select-all-online-btn').addEventListener('click', function() {
             audienceMode = 'all';
             selectedUserIds.clear();
-            body.querySelectorAll('.public-avatar-img').forEach(img => img.classList.remove('ring-2', 'ring-pink-500'));
-            this.classList.add('ring-2', 'ring-pink-400');
-            document.getElementById('pg-audience-warning')?.classList.add('hidden');
+            clearIndividualSelectionVisuals();
+            markAllSelectedVisual(true);
         });
 
         body.querySelectorAll('.public-gift-avatar-btn').forEach(avatarBtn => {
             avatarBtn.addEventListener('click', () => {
                 audienceMode = 'selected';
-                document.getElementById('select-all-online-btn').classList.remove('ring-2', 'ring-pink-400');
+                markAllSelectedVisual(false);
                 const uid = avatarBtn.dataset.userId;
                 const img = avatarBtn.querySelector('.public-avatar-img');
+                const badge = avatarBtn.querySelector('.pg-selected-badge');
                 if (selectedUserIds.has(uid)) {
                     selectedUserIds.delete(uid);
                     img.classList.remove('ring-2', 'ring-pink-500');
+                    badge.classList.add('hidden');
+                    avatarBtn.classList.remove('bg-pink-900/40');
                 } else {
                     selectedUserIds.add(uid);
                     img.classList.add('ring-2', 'ring-pink-500');
+                    badge.classList.remove('hidden');
+                    badge.classList.add('flex');
+                    avatarBtn.classList.add('bg-pink-900/40');
                 }
-                document.getElementById('pg-audience-warning')?.classList.add('hidden');
             });
         });
 
@@ -3915,48 +3943,21 @@ function confirmRedeem(redeemTo) {
 
                 const giftData = {
                     id: card.dataset.giftId,
-                    name: card.dataset.giftName
+                    name: card.dataset.giftName,
+                    price: parseFloat(card.dataset.giftPrice),
+                    icon: card.dataset.giftIcon,
+                    imageUrl: card.dataset.giftImage
                 };
 
                 const sendBtn = card.querySelector('.inline-send-btn');
+                const counterEl = card.querySelector('.inline-send-counter');
 
-                sendBtn.addEventListener('click', async () => {
-                    const count = audienceMode === 'all' ? onlineUsers.length : selectedUserIds.size;
-                    if (count === 0) {
-                        document.getElementById('pg-audience-warning').classList.remove('hidden');
-                        return;
-                    }
-
-                    sendBtn.disabled = true;
-                    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-
-                    try {
-                        const payload = {
-                            giftId: giftData.id,
-                            audience: audienceMode,
-                            recipientIds: audienceMode === 'selected' ? Array.from(selectedUserIds) : []
-                        };
-                        const response = await fetch('/api/gifts/send-public', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                            body: JSON.stringify(payload)
-                        });
-                        const result = await response.json();
-
-                        if (response.ok) {
-                            await refreshUserData();
-                            modal.remove();
-                        } else {
-                            showNotification(result.message || 'فشل إرسال الهدية', 'error');
-                            sendBtn.disabled = false;
-                            sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال';
-                        }
-                    } catch (error) {
-                        showNotification('خطأ في الاتصال بالخادم', 'error');
-                        sendBtn.disabled = false;
-                        sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال';
-                    }
-                }, { once: true }); // ✅ يمنع تراكم مستمعات متعددة إذا فُتح نفس الكارد أكثر من مرة
+                setupRapidPublicGiftButton(
+                    () => giftData,
+                    () => ({ audienceMode, selectedUserIds, onlineCount: onlineUsers.length }),
+                    sendBtn,
+                    counterEl
+                );
             });
         });
 
@@ -3964,6 +3965,104 @@ function confirmRedeem(redeemTo) {
         console.error('[PUBLIC GIFT] Error:', error);
         document.getElementById('public-gift-body').innerHTML = `<div class="text-center text-red-400 py-10">فشل تحميل البيانات</div>`;
     }
+}
+
+// --- ⚡ محرك الإرسال المتسارع لهدايا الشات العام: ضغطة = هدية، استمرار الضغط = تسارع تلقائي، بدون إغلاق النافذة ---
+function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLabel) {
+    if (!btn) return;
+
+    let pressTimer = null;
+    let rapidInterval = null;
+    let sentCount = 0;
+    let currentSpeedMs = 600;
+    let isSending = false;
+
+    async function fireOnePublicGift() {
+        const gift = getSelectedGift();
+        const { audienceMode, selectedUserIds, onlineCount } = getAudience();
+        if (!gift || isSending) return;
+
+        const recipientCount = audienceMode === 'all' ? onlineCount : selectedUserIds.size;
+        if (recipientCount === 0) {
+            stopRapidSending();
+            showFloatingAlert('يجب اختيار شخص أولاً', 'fa-user-plus', 'bg-yellow-500');
+            return;
+        }
+
+        const localUser = JSON.parse(localStorage.getItem('user'));
+        if (localUser.coins < gift.price * recipientCount) {
+            stopRapidSending();
+            showFloatingAlert('رصيد الكوينز غير كافٍ', 'fa-coins', 'bg-red-500');
+            return;
+        }
+
+        isSending = true;
+        try {
+            const payload = {
+                giftId: gift.id,
+                audience: audienceMode,
+                recipientIds: audienceMode === 'selected' ? Array.from(selectedUserIds) : []
+            };
+            const response = await fetch('/api/gifts/send-public', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                sentCount++;
+                localUser.coins = result.data.newCoins;
+                localStorage.setItem('user', JSON.stringify(localUser));
+                const coinsEl = document.getElementById('coins');
+                if (coinsEl) coinsEl.textContent = localUser.coins;
+                const balanceEl = document.getElementById('pg-balance');
+                if (balanceEl) balanceEl.textContent = localUser.coins;
+
+                if (counterLabel) {
+                    counterLabel.textContent = `أُرسل ×${sentCount}`;
+                    counterLabel.classList.remove('hidden');
+                }
+
+                showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', sentCount);
+            } else {
+                stopRapidSending();
+                showFloatingAlert(result.message || 'فشل إرسال الهدية', 'fa-exclamation-circle', 'bg-red-500');
+            }
+        } catch (error) {
+            console.error('[RAPID PUBLIC GIFT] Error:', error);
+            stopRapidSending();
+        } finally {
+            isSending = false;
+        }
+    }
+
+    function startRapidSending() {
+        fireOnePublicGift();
+        let speedLevel = 1;
+        pressTimer = setTimeout(() => {
+            rapidInterval = setInterval(() => {
+                fireOnePublicGift();
+                speedLevel = Math.min(speedLevel + 1, 5);
+                currentSpeedMs = Math.max(600 - (speedLevel * 90), 150);
+                clearInterval(rapidInterval);
+                rapidInterval = setInterval(fireOnePublicGift, currentSpeedMs);
+            }, 500);
+        }, 500);
+    }
+
+    function stopRapidSending() {
+        clearTimeout(pressTimer);
+        clearInterval(rapidInterval);
+        pressTimer = null;
+        rapidInterval = null;
+    }
+
+    btn.addEventListener('mousedown', startRapidSending);
+    btn.addEventListener('touchstart', (e) => { e.preventDefault(); startRapidSending(); }, { passive: false });
+    btn.addEventListener('mouseup', stopRapidSending);
+    btn.addEventListener('mouseleave', stopRapidSending);
+    btn.addEventListener('touchend', stopRapidSending);
 }
 
         
