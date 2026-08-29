@@ -6522,7 +6522,7 @@ function showBlockedProfileModal(userId, blockData) {
         </div>
     `;
     
-    document.getElementById('game-container').innerHTML += modalHTML;
+        document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
     
     const modal = document.getElementById('blocked-profile-modal');
     
@@ -7269,7 +7269,7 @@ async function showFriendRequestsModal() {
         </div>
     `;
     // ... (باقي الكود يبقى كما هو)
-    document.getElementById('game-container').innerHTML += loadingHTML;
+        document.getElementById('game-container').insertAdjacentHTML('beforeend', loadingHTML);
 
     try {
         const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -7322,7 +7322,7 @@ async function showFriendsListModal() {
         </div>
     `;
     // ... (باقي الكود يبقى كما هو)
-    document.getElementById('game-container').innerHTML += loadingHTML;
+        document.getElementById('game-container').insertAdjacentHTML('beforeend', loadingHTML);
 
     try {
         const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -7876,7 +7876,7 @@ function showStatusEditModal() {
         </div>
     `;
     
-    document.getElementById('game-container').innerHTML += modalHTML;
+        document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
     
     const modal = document.getElementById('status-edit-modal');
     const statusInput = document.getElementById('status-input');
@@ -7988,7 +7988,7 @@ function showLevelPerksModal() {
         </div>
     `;
     
-    document.getElementById('game-container').innerHTML += modalHTML;
+        document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
     
     const modal = document.getElementById('level-perks-modal');
     
