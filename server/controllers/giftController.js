@@ -5,6 +5,30 @@ const PrivateChat = require('../models/PrivateChat');
 const PrivateMessage = require('../models/PrivateMessage');
 const { addGiftExperience } = require('../utils/experienceManager');
 
+// ✅ حماية بسيطة من إرسال الهدايا بمعدل غير طبيعي (استدعاء الـ API مباشرة بمعزل عن الواجهة)
+// ملاحظة: هذا حل مناسب لخادم واحد (single instance). عند التوسع لعدة خوادم لاحقاً يفضل نقل هذا لـ Redis
+const giftRateMap = new Map(); // userId -> [timestamps]
+const GIFT_RATE_WINDOW_MS = 2000;
+const GIFT_RATE_MAX_REQUESTS = 12; // يسمح بالإرسال السريع المتسارع الطبيعي، ويمنع الاستدعاء الآلي المفرط
+
+function isGiftRateLimited(userId) {
+    const now = Date.now();
+    const key = userId.toString();
+    const timestamps = (giftRateMap.get(key) || []).filter(t => now - t < GIFT_RATE_WINDOW_MS);
+    timestamps.push(now);
+    giftRateMap.set(key, timestamps);
+    return timestamps.length > GIFT_RATE_MAX_REQUESTS;
+}
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, timestamps] of giftRateMap.entries()) {
+        const filtered = timestamps.filter(t => now - t < GIFT_RATE_WINDOW_MS);
+        if (filtered.length === 0) giftRateMap.delete(key);
+        else giftRateMap.set(key, filtered);
+    }
+}, 30 * 1000);
+
 // جلب متجر الهدايا
 exports.getGiftShop = async (req, res) => {
     try {
@@ -21,6 +45,10 @@ exports.sendGift = async (req, res) => {
     try {
         const senderId = req.user.id;
         const { receiverId, giftId, quantity = 1, context = 'private_chat' } = req.body;
+
+        if (isGiftRateLimited(senderId)) {
+            return res.status(429).json({ status: 'fail', message: 'أنت ترسل الهدايا بسرعة كبيرة جداً، انتظر لحظة' });
+        }
 
         if (senderId === receiverId) {
             return res.status(400).json({ status: 'fail', message: 'لا يمكنك إرسال هدية لنفسك' });
