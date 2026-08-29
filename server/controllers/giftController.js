@@ -247,6 +247,10 @@ exports.sendPublicGift = async (req, res) => {
         const senderId = req.user.id;
         const { giftId, recipientIds, audience } = req.body; // audience: 'all' | 'selected'
 
+        if (isGiftRateLimited(senderId)) {
+            return res.status(429).json({ status: 'fail', message: 'أنت ترسل الهدايا بسرعة كبيرة جداً، انتظر لحظة' });
+        }
+
         const sender = await User.findById(senderId);
         const gift = await Gift.findById(giftId);
         if (!gift || !gift.isActive) return res.status(404).json({ status: 'fail', message: 'الهدية غير متوفرة' });
@@ -268,8 +272,15 @@ exports.sendPublicGift = async (req, res) => {
         } else {
             finalRecipientIds = (recipientIds || [])
                 .filter(id => id !== senderId)
-                .slice(0, 20); // ✅ حد أقصى 20 مستلم بضغطة واحدة لحماية الرصيد من خطأ ضغط جماعي
+                .slice(0, 20);
         }
+
+        // ✅ حماية جديدة: استبعاد أي علاقة حظر (بأي اتجاه) من قائمة المستلمين
+        const blockedSet = new Set([
+            ...(sender.blockedUsers || []).map(id => id.toString()),
+            ...(sender.blockedBy || []).map(id => id.toString())
+        ]);
+        finalRecipientIds = finalRecipientIds.filter(id => !blockedSet.has(id.toString()));
 
         if (finalRecipientIds.length === 0) {
             return res.status(400).json({ status: 'fail', message: 'لا يوجد مستلمون متاحون حالياً' });
@@ -304,6 +315,12 @@ exports.sendPublicGift = async (req, res) => {
                 });
             }
         });
+
+        // ✅ منح الخبرة: المرسل حسب إجمالي ما أنفقه، وكل مستلم حسب قيمة الهدية التي استلمها فعلياً
+        await addGiftExperience(io, senderId, totalCost, 'sender');
+        for (const rid of finalRecipientIds) {
+            await addGiftExperience(io, rid, unitPrice, 'receiver');
+        }
 
         const audienceText = audience === 'all'
             ? `للجميع (${finalRecipientIds.length} شخص)`
