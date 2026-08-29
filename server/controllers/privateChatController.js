@@ -377,6 +377,12 @@ exports.deleteMessage = async (req, res) => {
         }
 
         // حذف للجميع: يشترط أن تكون خلال 5 دقائق
+                // ✅ حذف للجميع: مسموح فقط لمرسل الرسالة الأصلي — المستقبل يقدر يحذفها من عنده فقط
+        if (!isSender) {
+            return res.status(403).json({ status: 'fail', message: 'يمكنك حذف رسائل الطرف الآخر من عندك فقط، وليس لدى الجميع' });
+        }
+
+        // حذف للجميع: يشترط أن تكون خلال 5 دقائق
         const ageMs = Date.now() - new Date(message.createdAt).getTime();
         if (ageMs > 5 * 60 * 1000) {
             return res.status(400).json({ status: 'fail', message: 'انتهت مهلة حذف هذه الرسالة للجميع (5 دقائق)، يمكنك حذفها من عندك فقط' });
