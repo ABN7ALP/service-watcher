@@ -9,16 +9,13 @@ const AdminLog = require('../models/AdminLog');
 exports.getDashboardStats = async (req, res) => {
   try {
     const GiftLog = require('../models/GiftLog');
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [
-      totalUsers,
-      totalDeposits,
-      totalWithdrawals,
-      pendingDeposits,
-      pendingWithdrawals,
-      activeBattles,
-      todayTransactions
-    ] = await Promise.all([
+    // ✅ الإصلاح الجذري: Promise.allSettled بدل Promise.all — إذا فشل استعلام واحد
+    // (مثلاً بسبب بيانات فارغة أو تعارض بسيط)، لا تنهار لوحة التحكم بالكامل،
+    // بل تُعرض بقية البيانات ويُسجَّل الخطأ الفعلي في سجل الخادم للتشخيص.
+    const results = await Promise.allSettled([
       User.countDocuments(),
       Transaction.aggregate([
         { $match: { type: 'deposit', status: 'completed' } },
@@ -33,14 +30,7 @@ exports.getDashboardStats = async (req, res) => {
       Battle.countDocuments({ status: { $in: ['waiting', 'in-progress'] } }),
       Transaction.countDocuments({
         createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
-      })
-    ]);
-
-    // ✅ الإصلاح: نستخدم مصادر بيانات حقيقية بدل حقول غير موجودة بموديل المستخدم
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    const [topDepositors, topGifters, topWinners] = await Promise.all([
+      }),
       Transaction.aggregate([
         { $match: { type: 'deposit', status: 'completed' } },
         { $group: { _id: '$user', total: { $sum: '$amount' } } },
@@ -67,13 +57,32 @@ exports.getDashboardStats = async (req, res) => {
       ])
     ]);
 
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        console.error(`[ADMIN DASHBOARD] فشل الاستعلام رقم ${i}:`, r.reason?.message || r.reason);
+      }
+    });
+
+    const val = (i, fallback) => (results[i].status === 'fulfilled' ? results[i].value : fallback);
+
+    const totalUsers = val(0, 0);
+    const totalDepositsAgg = val(1, []);
+    const totalWithdrawalsAgg = val(2, []);
+    const pendingDeposits = val(3, 0);
+    const pendingWithdrawals = val(4, 0);
+    const activeBattles = val(5, 0);
+    const todayTransactions = val(6, 0);
+    const topDepositors = val(7, []);
+    const topGifters = val(8, []);
+    const topWinners = val(9, []);
+
     res.json({
       success: true,
       stats: {
         totalUsers,
-        onlineUsers: 0, // لا يوجد حقل isOnline بموديل المستخدم حالياً
-        totalDeposits: totalDeposits[0]?.total || 0,
-        totalWithdrawals: totalWithdrawals[0]?.total || 0,
+        onlineUsers: 0,
+        totalDeposits: totalDepositsAgg[0]?.total || 0,
+        totalWithdrawals: totalWithdrawalsAgg[0]?.total || 0,
         pendingDeposits,
         pendingWithdrawals,
         activeBattles,
