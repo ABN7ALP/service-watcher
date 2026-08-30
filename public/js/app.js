@@ -2198,14 +2198,17 @@ socket.on('experienceUpdate', ({ level, experience, requiredXp, xpGained }) => {
     // عرض أنيميشن اكتساب الخبرة
     showXpGainAnimation(xpGained);
 
-    // تحديث واجهة المستخدم بالبيانات الجديدة
-    const levelText = document.querySelector('#level-container .font-bold');
-    const xpText = document.querySelector('#level-container .text-gray-400');
+    // ✅ الإصلاح: هذه هي العناصر الحقيقية الموجودة في index.html
+    // (لم يكن هناك عنصر بمعرف #level-container أصلاً، لذا لم تتحدث الأرقام إلا بعد تحديث الصفحة)
+    const levelSpan = document.getElementById('userLevel');
+    const currentXpSpan = document.getElementById('currentXP');
+    const requiredXpSpan = document.getElementById('requiredXP');
     const xpBar = document.getElementById('xp-bar');
 
-    if (levelText) levelText.textContent = `LVL ${level}`;
-    if (xpText) xpText.textContent = `${Math.floor(experience)} / ${requiredXp} XP`;
-    if (xpBar) xpBar.style.width = `${(experience / requiredXp) * 100}%`;
+    if (levelSpan) levelSpan.textContent = level;
+    if (currentXpSpan) currentXpSpan.textContent = Math.floor(experience);
+    if (requiredXpSpan) requiredXpSpan.textContent = requiredXp;
+    if (xpBar) xpBar.style.width = `${Math.min((experience / requiredXp) * 100, 100)}%`;
 
     // تحديث بيانات المستخدم في localStorage
     const localUser = JSON.parse(localStorage.getItem('user'));
@@ -2215,7 +2218,6 @@ socket.on('experienceUpdate', ({ level, experience, requiredXp, xpGained }) => {
         localStorage.setItem('user', JSON.stringify(localUser));
     }
 });
-
 
 socket.on('levelUp', ({ newLevel }) => {
     // عرض إشعار مميز عند رفع المستوى
@@ -3053,28 +3055,46 @@ function wireGiftImageFallbacks(containerEl) {
         }, { once: true });
     });
 }
-// --- ⚡ محرك الإرسال المتسارع: ضغطة = هدية واحدة، استمرار الضغط = تسارع تلقائي x2 x3 x4 ---
+// --- ⚡ محرك الإرسال المتسارع (نسخة سريعة وآمنة): إرسال متراكب بدون انتظار كل رد، مع تحديث متفائل فوري ---
 function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) {
     if (!btn) return;
 
     let pressTimer = null;
     let rapidInterval = null;
     let sentCount = 0;
-    let currentSpeedMs = 600;
-    let isSending = false;
+    let currentSpeedMs = 450;
+    let inFlight = 0;
+    const MAX_CONCURRENT = 3; // يسمح بتراكب عدة طلبات بدل انتظار كل واحد بمفرده — هذا ما كان يسبب البطء
+    let stopped = true;
 
     async function fireOneGift() {
         const gift = getSelectedGift();
-        if (!gift || isSending) return;
+        if (!gift || stopped) return;
 
-                const localUser = JSON.parse(localStorage.getItem('user'));
-        if (localUser.coins < gift.price) {
+        const localUser = JSON.parse(localStorage.getItem('user'));
+        if (!localUser || localUser.coins < gift.price) {
             stopRapidSending();
             showFloatingAlert('رصيد الكوينز غير كافٍ للإرسال', 'fa-coins', 'bg-red-500');
             return;
         }
 
-        isSending = true;
+        // ✅ تحديث متفائل فوري (لا ننتظر رد الخادم لنشعر بالسرعة)
+        localUser.coins -= gift.price;
+        localStorage.setItem('user', JSON.stringify(localUser));
+        const coinsEl = document.getElementById('coins');
+        if (coinsEl) coinsEl.textContent = localUser.coins;
+        const balanceEl = document.getElementById('gift-store-balance');
+        if (balanceEl) balanceEl.textContent = localUser.coins;
+
+        sentCount++;
+        if (counterLabel) {
+            counterLabel.textContent = `أُرسل ×${sentCount}`;
+            counterLabel.classList.remove('hidden');
+        }
+        // ✅ الإصلاح: ترتيب المعاملات الصحيح (كان معكوساً سابقاً وهذا سبب عدم ظهور الصورة بشكل صحيح)
+        showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', sentCount);
+
+        inFlight++;
         try {
             const response = await fetch('/api/gifts/send', {
                 method: 'POST',
@@ -3084,26 +3104,27 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
             const result = await response.json();
 
             if (response.ok) {
-                sentCount++;
-                localUser.coins = result.data.newSenderCoins;
-                localStorage.setItem('user', JSON.stringify(localUser));
-                document.getElementById('coins').textContent = localUser.coins;
-                const balanceEl = document.getElementById('gift-store-balance');
-                if (balanceEl) balanceEl.textContent = localUser.coins;
-
-                if (counterLabel) {
-                    counterLabel.textContent = `أُرسل ×${sentCount}`;
-                    counterLabel.classList.remove('hidden');
+                // ✅ مزامنة الرصيد الحقيقي القادم من الخادم (يصحح أي فرق عن التقدير المتفائل)
+                const syncedUser = JSON.parse(localStorage.getItem('user'));
+                if (syncedUser) {
+                    syncedUser.coins = result.data.newSenderCoins;
+                    localStorage.setItem('user', JSON.stringify(syncedUser));
                 }
+                if (coinsEl) coinsEl.textContent = result.data.newSenderCoins;
+                if (balanceEl) balanceEl.textContent = result.data.newSenderCoins;
 
-                showGiftFloatingAnimation(gift.imageUrl, gift.icon, gift.name, `أرسلت ×${sentCount}`);
-
-                // ✅ الإصلاح الجوهري: الرسالة تأتي من السيرفر (حقيقية ومحفوظة بقاعدة البيانات)
-                // بدل بناء فقاعة وهمية بالمتصفح فقط تختفي عند إعادة التحميل
                 if (result.data.message) {
                     displayPrivateMessage(result.data.message, true);
                 }
-                } else {
+            } else {
+                // ✅ فشل الطلب: نعيد الكوينز المخصومة تفاؤلياً ونوقف الإرسال السريع
+                const revertUser = JSON.parse(localStorage.getItem('user'));
+                if (revertUser) {
+                    revertUser.coins += gift.price;
+                    localStorage.setItem('user', JSON.stringify(revertUser));
+                    if (coinsEl) coinsEl.textContent = revertUser.coins;
+                    if (balanceEl) balanceEl.textContent = revertUser.coins;
+                }
                 stopRapidSending();
                 showFloatingAlert(result.message || 'فشل إرسال الهدية', 'fa-exclamation-circle', 'bg-red-500');
             }
@@ -3111,26 +3132,33 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
             console.error('[RAPID GIFT] Error:', error);
             stopRapidSending();
         } finally {
-            isSending = false;
+            inFlight--;
         }
     }
 
+    function tick() {
+        if (stopped) return;
+        if (inFlight < MAX_CONCURRENT) fireOneGift();
+    }
+
     function startRapidSending() {
-        fireOneGift();
+        stopped = false;
+        tick();
         let speedLevel = 1;
 
         pressTimer = setTimeout(() => {
             rapidInterval = setInterval(() => {
-                fireOneGift();
-                speedLevel = Math.min(speedLevel + 1, 5);
-                currentSpeedMs = Math.max(600 - (speedLevel * 90), 150);
+                tick();
+                speedLevel = Math.min(speedLevel + 1, 8);
+                currentSpeedMs = Math.max(450 - (speedLevel * 45), 80); // يتسارع تدريجياً حتى 80ms بين كل هدية
                 clearInterval(rapidInterval);
-                rapidInterval = setInterval(fireOneGift, currentSpeedMs);
-            }, 500);
-        }, 500);
+                rapidInterval = setInterval(tick, currentSpeedMs);
+            }, 350);
+        }, 350);
     }
 
     function stopRapidSending() {
+        stopped = true;
         clearTimeout(pressTimer);
         clearInterval(rapidInterval);
         pressTimer = null;
@@ -5834,17 +5862,16 @@ async function sendPrivateMessage(receiverId, message, replyTo = null, type = 't
 
         const result = await response.json();
 
-        if (response.ok) {
+                if (response.ok) {
             console.log('✅ [CHAT] Message sent successfully:', result.data.message._id);
 
+            // ✅ الإصلاح الجذري: نستبدل الفقاعة المؤقتة (ذات المعرف الوهمي) بفقاعة حقيقية
+            // تحمل الـ _id الفعلي القادم من قاعدة البيانات، بدل الاكتفاء بتعديل الـ dataset فقط.
+            // هذا يضمن أن أزرار "تعديل" و"حذف" تُرسل دائماً بالمعرف الصحيح للرسالة،
+            // وإلا فإن أي محاولة تعديل/حذف لرسالة أُرسلت للتو كانت تفشل بصمت (السبب الجذري للمشكلة).
             const tempElement = document.querySelector(`[data-message-id="${tempId}"]`);
-            if (tempElement) {
-                tempElement.dataset.messageId = result.data.message._id;
-                const statusContainer = tempElement.querySelector('.message-status');
-                if (statusContainer) {
-                    statusContainer.innerHTML = '<i class="fas fa-check text-gray-400 text-xs" title="تم الإرسال"></i>';
-                }
-            }
+            if (tempElement) tempElement.remove();
+            displayPrivateMessage(result.data.message, true);
 
             updateUnreadCount(receiverId, result.data.unreadCount || 0);
 
