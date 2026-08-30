@@ -106,7 +106,7 @@ exports.sendGift = async (req, res) => {
         const io = req.app.get('socketio');
         const safeGiftImage = gift.imageUrl || '';
 
-                const giftEventPayload = {
+        const giftEventPayload = {
             giftId: gift._id,
             giftName: gift.name,
             giftImage: safeGiftImage,
@@ -115,7 +115,6 @@ exports.sendGift = async (req, res) => {
             fromUsername: sender.username,
             fromProfileImage: sender.profileImage,
             animation: gift.animation,
-            context: context, // ✅ جديد: يميّز الواجهة بين هدية خاصة وهدية عامة
             timestamp: new Date().toISOString()
         };
 
@@ -303,13 +302,6 @@ exports.sendPublicGift = async (req, res) => {
             { new: true }
         );
 
-                // ✅ نفس الخصم الذري المستخدم بالهدايا الخاصة
-        const updatedSenderPublic = await User.findOneAndUpdate(
-            { _id: senderId, coins: { $gte: totalCost } },
-            { $inc: { coins: -totalCost } },
-            { new: true }
-        );
-
         if (!updatedSenderPublic) {
             return res.status(400).json({ status: 'fail', message: `رصيدك غير كافٍ (تحتاج ${totalCost} كوينز لهذا العدد)` });
         }
@@ -324,13 +316,12 @@ exports.sendPublicGift = async (req, res) => {
         }));
         await GiftLog.insertMany(logs);
 
-             receivers.forEach(r => {
+        receivers.forEach(r => {
             if (r.socketId) {
                 io.to(r.socketId).emit('giftReceived', {
                     giftId: gift._id, giftName: gift.name, giftImage: gift.imageUrl,
                     quantity: 1, fromUserId: senderId, fromUsername: sender.username,
                     fromProfileImage: sender.profileImage, animation: gift.animation,
-                    context: 'public_chat', // ✅ جديد
                     timestamp: new Date().toISOString()
                 });
             }
