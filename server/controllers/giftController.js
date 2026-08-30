@@ -78,8 +78,8 @@ exports.sendGift = async (req, res) => {
         const unitPrice = gift.discountedPrice || gift.price;
         const totalPrice = unitPrice * qty;
 
-                // ✅ خصم ذري (atomic) على مستوى قاعدة البيانات: الشرط والتحديث ينفذان كعملية واحدة غير قابلة للتجزئة،
-        // فيستحيل خصم أكثر من الرصيد الفعلي حتى لو وصلت عدة طلبات بنفس اللحظة تماماً (race condition).
+        // ✅ خصم ذري (atomic): الشرط والتحديث ينفذان كعملية واحدة غير قابلة للتجزئة على مستوى القاعدة،
+        // فيستحيل خصم أكثر من الرصيد الفعلي حتى لو وصلت طلبات متزامنة بنفس اللحظة تماماً (race condition).
         const updatedSender = await User.findOneAndUpdate(
             { _id: senderId, coins: { $gte: totalPrice } },
             { $inc: { coins: -totalPrice } },
@@ -115,6 +115,7 @@ exports.sendGift = async (req, res) => {
             fromUsername: sender.username,
             fromProfileImage: sender.profileImage,
             animation: gift.animation,
+            context: context, // ✅ جديد: يميّز الواجهة بين هدية خاصة وهدية عامة
             timestamp: new Date().toISOString()
         };
 
@@ -295,7 +296,7 @@ exports.sendPublicGift = async (req, res) => {
         const unitPrice = gift.discountedPrice || gift.price;
         const totalCost = unitPrice * finalRecipientIds.length;
 
-                // ✅ نفس الخصم الذري المستخدم بالهدايا الخاصة — يمنع تجاوز الرصيد عند إرسال هدية جماعية سريعة
+         // ✅ نفس الخصم الذري المستخدم بالهدايا الخاصة
         const updatedSenderPublic = await User.findOneAndUpdate(
             { _id: senderId, coins: { $gte: totalCost } },
             { $inc: { coins: -totalCost } },
@@ -316,12 +317,13 @@ exports.sendPublicGift = async (req, res) => {
         }));
         await GiftLog.insertMany(logs);
 
-        receivers.forEach(r => {
+                receivers.forEach(r => {
             if (r.socketId) {
                 io.to(r.socketId).emit('giftReceived', {
                     giftId: gift._id, giftName: gift.name, giftImage: gift.imageUrl,
                     quantity: 1, fromUserId: senderId, fromUsername: sender.username,
                     fromProfileImage: sender.profileImage, animation: gift.animation,
+                    context: 'public_chat', // ✅ جديد
                     timestamp: new Date().toISOString()
                 });
             }
