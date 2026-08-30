@@ -3,7 +3,7 @@
 const calculateRequiredXp = (level) => {
     return level * 1500;
 };
-
+ 
 // دالة لإنشاء HTML الخاص بشريط التقدم
 const createLevelProgressHTML = (user) => {
     const requiredXp = calculateRequiredXp(user.level);
