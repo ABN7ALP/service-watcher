@@ -86,14 +86,6 @@ exports.sendGift = async (req, res) => {
             { new: true }
         );
 
-         // ✅ خصم ذري (atomic): الشرط والتحديث ينفذان كعملية واحدة غير قابلة للتجزئة على مستوى القاعدة،
-        // فيستحيل خصم أكثر من الرصيد الفعلي حتى لو وصلت طلبات متزامنة بنفس اللحظة تماماً (race condition).
-        const updatedSender = await User.findOneAndUpdate(
-            { _id: senderId, coins: { $gte: totalPrice } },
-            { $inc: { coins: -totalPrice } },
-            { new: true }
-        );
-
         if (!updatedSender) {
             return res.status(400).json({ status: 'fail', message: 'رصيد الكوينز غير كافٍ لإرسال هذه الهدية' });
         }
