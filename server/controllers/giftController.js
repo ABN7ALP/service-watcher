@@ -78,12 +78,18 @@ exports.sendGift = async (req, res) => {
         const unitPrice = gift.discountedPrice || gift.price;
         const totalPrice = unitPrice * qty;
 
-        if (sender.coins < totalPrice) {
+                // ✅ خصم ذري (atomic) على مستوى قاعدة البيانات: الشرط والتحديث ينفذان كعملية واحدة غير قابلة للتجزئة،
+        // فيستحيل خصم أكثر من الرصيد الفعلي حتى لو وصلت عدة طلبات بنفس اللحظة تماماً (race condition).
+        const updatedSender = await User.findOneAndUpdate(
+            { _id: senderId, coins: { $gte: totalPrice } },
+            { $inc: { coins: -totalPrice } },
+            { new: true }
+        );
+
+        if (!updatedSender) {
             return res.status(400).json({ status: 'fail', message: 'رصيد الكوينز غير كافٍ لإرسال هذه الهدية' });
         }
-
-        sender.coins -= totalPrice;
-        await sender.save();
+        sender.coins = updatedSender.coins;
 
         const giftLog = await GiftLog.create({
             sender: senderId,
@@ -289,12 +295,17 @@ exports.sendPublicGift = async (req, res) => {
         const unitPrice = gift.discountedPrice || gift.price;
         const totalCost = unitPrice * finalRecipientIds.length;
 
-        if (sender.coins < totalCost) {
+                // ✅ نفس الخصم الذري المستخدم بالهدايا الخاصة — يمنع تجاوز الرصيد عند إرسال هدية جماعية سريعة
+        const updatedSenderPublic = await User.findOneAndUpdate(
+            { _id: senderId, coins: { $gte: totalCost } },
+            { $inc: { coins: -totalCost } },
+            { new: true }
+        );
+
+        if (!updatedSenderPublic) {
             return res.status(400).json({ status: 'fail', message: `رصيدك غير كافٍ (تحتاج ${totalCost} كوينز لهذا العدد)` });
         }
-
-        sender.coins -= totalCost;
-        await sender.save();
+        sender.coins = updatedSenderPublic.coins;
 
         const receivers = await User.find({ _id: { $in: finalRecipientIds } }).select('username socketId');
 
