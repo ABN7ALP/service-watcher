@@ -2242,9 +2242,19 @@ socket.on('levelUp', ({ newLevel }) => {
     showNotification('تم إيداع رصيدك بنجاح 🎉', 'success');
 });
 
-        socket.on('giftReceived', (data) => {
-    // ✅ تأثير عائم كامل بدل التنبيه البسيط السابق
-    showGiftFloatingAnimation(data.giftImage, data.giftName, data.fromUsername, data.quantity);
+     socket.on('giftReceived', (data) => {
+    // ✅ الإصلاح: الأنيميشن العائمة الضخمة تظهر فقط إذا كانت الهدية أُرسلت من الدردشة الخاصة
+    // وأنت فعلياً فاتح نفس محادثة المُرسِل في تلك اللحظة. للهدايا العامة إشعارها الخاص أصلاً
+    // (publicGiftAnnouncement) فلا داعي لتكرارها بأنيميشن كبيرة تقاطع كل شاشة.
+    const chatModal = document.getElementById('private-chat-modal');
+    const isViewingThatChat = chatModal && chatModal.dataset.targetUserId === data.fromUserId;
+
+    if (data.context === 'private_chat' && isViewingThatChat) {
+        showGiftFloatingAnimation(data.giftImage, data.giftName, data.fromUsername, data.quantity);
+    } else if (data.context === 'private_chat') {
+        showNotification(`🎁 ${data.fromUsername} أرسل لك ${data.giftName}`, 'info');
+    }
+
     refreshUserData();
 });
 
@@ -2467,7 +2477,7 @@ function showConfirmationModal(message, onConfirm) {
 function showFloatingAlert(message, icon = 'fa-check-circle', color = 'bg-green-500') {
     const alertElement = document.createElement('div');
     alertElement.innerHTML = `<i class="fas ${icon} mr-2"></i> ${message}`;
-    alertElement.className = `floating-alert fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ${color}/80 text-white font-bold px-4 py-2 rounded-full shadow-lg z-[300]`;
+    alertElement.className = `floating-alert fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ${color}/80 text-white font-bold px-4 py-2 rounded-full shadow-lg z-[600]`;
     
     document.body.appendChild(alertElement);
 
