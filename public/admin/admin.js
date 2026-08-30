@@ -97,25 +97,42 @@ class AdminDashboard {
         });
     }
 
-    switchPage(page) {
-        // Update active menu item
+        switchPage(page) {
         document.querySelectorAll('.menu-item').forEach(item => {
             item.classList.remove('active');
         });
         document.querySelector(`.menu-item[data-page="${page}"]`)?.classList.add('active');
 
-        // Hide all pages
         document.querySelectorAll('.page').forEach(pageEl => {
             pageEl.classList.remove('active');
         });
 
-        // Show selected page
-        const pageElement = document.getElementById(`${page}-page`);
-        if (pageElement) {
-            pageElement.classList.add('active');
-            this.currentPage = page;
-            this.loadPageData(page);
+        let pageElement = document.getElementById(`${page}-page`);
+
+        // ✅ الإصلاح: الأقسام غير المُفعّلة بعد كانت تُظهر شاشة فارغة صامتة عند الضغط عليها.
+        // الآن نعرض رسالة صريحة توضح أن القسم قيد الإنشاء بدل الصمت المُربك.
+        if (!pageElement) {
+            pageElement = document.getElementById('placeholder-page');
+            if (!pageElement) {
+                pageElement = document.createElement('div');
+                pageElement.id = 'placeholder-page';
+                pageElement.className = 'page';
+                document.querySelector('.admin-main').appendChild(pageElement);
+            }
+            pageElement.innerHTML = `
+                <div class="page-header">
+                    <h1><i class="fas fa-tools"></i> هذا القسم قيد الإنشاء</h1>
+                </div>
+                <div class="table-responsive" style="padding:60px 20px; text-align:center; color:#7f8c8d;">
+                    <i class="fas fa-hourglass-half fa-2x mb-3"></i>
+                    <p>سيتم تفعيل هذا القسم في التحديث القادم.</p>
+                </div>
+            `;
         }
+
+        pageElement.classList.add('active');
+        this.currentPage = page;
+        this.loadPageData(page);
     }
 
     async loadPageData(page) {
@@ -150,31 +167,31 @@ class AdminDashboard {
         }
     }
 
-    async loadDashboard() {
+            async loadDashboard() {
         try {
             const response = await fetch('/api/admin/dashboard', {
-                headers: {
-                    'Authorization': `Bearer ${this.token}`
-                }
+                headers: { 'Authorization': `Bearer ${this.token}` }
             });
 
+            const data = await response.json().catch(() => null);
+
             if (!response.ok) {
-                if (response.status === 401) {
-                    this.logout();
+                if (response.status === 401 || response.status === 403) {
+                    this.showToast('انتهت صلاحية جلستك، يرجى تسجيل الدخول من جديد', 'error');
+                    setTimeout(() => this.logout(), 1500);
                     return;
                 }
-                throw new Error('Failed to load dashboard');
+                // ✅ الإصلاح: نعرض رسالة الخطأ الحقيقية القادمة من الخادم بدل نص عام غير مفيد
+                throw new Error(data?.message || `فشل تحميل البيانات (${response.status})`);
             }
 
-            const data = await response.json();
-            
-            if (data.success) {
+            if (data && data.success) {
                 this.updateDashboardStats(data.stats);
                 this.updateTopUsers(data.topUsers);
             }
         } catch (error) {
             console.error('Error loading dashboard:', error);
-            this.showToast('فشل تحميل البيانات', 'error');
+            this.showToast(error.message || 'فشل تحميل البيانات', 'error');
         }
     }
 
