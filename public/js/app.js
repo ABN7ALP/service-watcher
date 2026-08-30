@@ -3056,20 +3056,22 @@ function wireGiftImageFallbacks(containerEl) {
     });
 }
 // --- ⚡ محرك الإرسال المتسارع (نسخة سريعة وآمنة): إرسال متراكب بدون انتظار كل رد، مع تحديث متفائل فوري ---
+// --- ⚡ محرك الإرسال المتسارع (نسخة ذكية بتسارع مستمر وسلس) ---
 function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) {
     if (!btn) return;
 
-    let pressTimer = null;
-    let rapidInterval = null;
     let sentCount = 0;
-    let currentSpeedMs = 450;
     let inFlight = 0;
-    const MAX_CONCURRENT = 3; // يسمح بتراكب عدة طلبات بدل انتظار كل واحد بمفرده — هذا ما كان يسبب البطء
-    let stopped = true;
+    const MAX_CONCURRENT = 4; // آمن الآن لأن الخصم في السيرفر أصبح ذرياً (atomic)
+    let active = false;
+    let rampTimeout = null;
+    let intervalMs = 260;      // نقطة الانطلاق
+    const MIN_INTERVAL = 60;   // أقصى سرعة ممكنة (يمنع إغراق الخادم)
+    const ACCEL_FACTOR = 0.88; // كل نبضة أسرع من سابقتها بنسبة 12%
 
     async function fireOneGift() {
         const gift = getSelectedGift();
-        if (!gift || stopped) return;
+        if (!gift || !active) return;
 
         const localUser = JSON.parse(localStorage.getItem('user'));
         if (!localUser || localUser.coins < gift.price) {
@@ -3078,7 +3080,7 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
             return;
         }
 
-        // ✅ تحديث متفائل فوري (لا ننتظر رد الخادم لنشعر بالسرعة)
+        // ✅ تحديث متفائل فوري: نخصم محلياً قبل رد الخادم لإحساس فوري بالسرعة
         localUser.coins -= gift.price;
         localStorage.setItem('user', JSON.stringify(localUser));
         const coinsEl = document.getElementById('coins');
@@ -3091,7 +3093,6 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
             counterLabel.textContent = `أُرسل ×${sentCount}`;
             counterLabel.classList.remove('hidden');
         }
-        // ✅ الإصلاح: ترتيب المعاملات الصحيح (كان معكوساً سابقاً وهذا سبب عدم ظهور الصورة بشكل صحيح)
         showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', sentCount);
 
         inFlight++;
@@ -3104,7 +3105,6 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
             const result = await response.json();
 
             if (response.ok) {
-                // ✅ مزامنة الرصيد الحقيقي القادم من الخادم (يصحح أي فرق عن التقدير المتفائل)
                 const syncedUser = JSON.parse(localStorage.getItem('user'));
                 if (syncedUser) {
                     syncedUser.coins = result.data.newSenderCoins;
@@ -3112,12 +3112,9 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
                 }
                 if (coinsEl) coinsEl.textContent = result.data.newSenderCoins;
                 if (balanceEl) balanceEl.textContent = result.data.newSenderCoins;
-
-                if (result.data.message) {
-                    displayPrivateMessage(result.data.message, true);
-                }
+                if (result.data.message) displayPrivateMessage(result.data.message, true);
             } else {
-                // ✅ فشل الطلب: نعيد الكوينز المخصومة تفاؤلياً ونوقف الإرسال السريع
+                // ✅ فشل: نعيد الرصيد المخصوم تفاؤلياً ونوقف السلسلة
                 const revertUser = JSON.parse(localStorage.getItem('user'));
                 if (revertUser) {
                     revertUser.coins += gift.price;
@@ -3130,39 +3127,33 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
             }
         } catch (error) {
             console.error('[RAPID GIFT] Error:', error);
-            stopRapidSending();
         } finally {
             inFlight--;
         }
     }
 
-    function tick() {
-        if (stopped) return;
-        if (inFlight < MAX_CONCURRENT) fireOneGift();
+    function scheduleNext() {
+        if (!active) return;
+        rampTimeout = setTimeout(() => {
+            if (!active) return;
+            if (inFlight < MAX_CONCURRENT) fireOneGift();
+            intervalMs = Math.max(MIN_INTERVAL, Math.round(intervalMs * ACCEL_FACTOR));
+            scheduleNext();
+        }, intervalMs);
     }
 
     function startRapidSending() {
-        stopped = false;
-        tick();
-        let speedLevel = 1;
-
-        pressTimer = setTimeout(() => {
-            rapidInterval = setInterval(() => {
-                tick();
-                speedLevel = Math.min(speedLevel + 1, 8);
-                currentSpeedMs = Math.max(450 - (speedLevel * 45), 80); // يتسارع تدريجياً حتى 80ms بين كل هدية
-                clearInterval(rapidInterval);
-                rapidInterval = setInterval(tick, currentSpeedMs);
-            }, 350);
-        }, 350);
+        if (active) return;
+        active = true;
+        intervalMs = 260;
+        fireOneGift(); // إرسال فوري عند أول لمسة
+        scheduleNext();
     }
 
     function stopRapidSending() {
-        stopped = true;
-        clearTimeout(pressTimer);
-        clearInterval(rapidInterval);
-        pressTimer = null;
-        rapidInterval = null;
+        active = false;
+        clearTimeout(rampTimeout);
+        rampTimeout = null;
     }
 
     btn.addEventListener('mousedown', startRapidSending);
@@ -3178,7 +3169,7 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
     container.className = 'gift-float-container';
     container.innerHTML = `
         <div class="gift-float-card">
-            <img src="${giftImage}" class="gift-float-image" onerror="this.style.display='none'">
+            <img src="${giftImage || ''}" class="gift-float-image">
             <div class="gift-float-text">
                 <span class="gift-float-sender">${fromUsername}</span>
                 <span class="gift-float-name">أرسل ${giftName}${quantity > 1 ? ' × ' + quantity : ''} 🎁</span>
@@ -3189,6 +3180,18 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
         </div>
     `;
     document.body.appendChild(container);
+
+    // ✅ ربط احتياطي عبر JS بدل onerror الممنوع بسياسة CSP
+    const imgEl = container.querySelector('.gift-float-image');
+    if (imgEl) {
+        imgEl.addEventListener('error', function () {
+            const fallback = document.createElement('span');
+            fallback.textContent = '🎁';
+            fallback.style.fontSize = '2rem';
+            this.replaceWith(fallback);
+        }, { once: true });
+    }
+
     setTimeout(() => container.remove(), 3500);
 }
 
@@ -3995,19 +3998,23 @@ function confirmRedeem(redeemTo) {
 }
 
 // --- ⚡ محرك الإرسال المتسارع لهدايا الشات العام: ضغطة = هدية، استمرار الضغط = تسارع تلقائي، بدون إغلاق النافذة ---
+// --- ⚡ محرك الإرسال المتسارع لهدايا الشات العام (نفس منطق الدردشة الخاصة تماماً) ---
 function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLabel) {
     if (!btn) return;
 
-    let pressTimer = null;
-    let rapidInterval = null;
     let sentCount = 0;
-    let currentSpeedMs = 600;
-    let isSending = false;
+    let inFlight = 0;
+    const MAX_CONCURRENT = 3;
+    let active = false;
+    let rampTimeout = null;
+    let intervalMs = 300;
+    const MIN_INTERVAL = 90;
+    const ACCEL_FACTOR = 0.87;
 
     async function fireOnePublicGift() {
         const gift = getSelectedGift();
         const { audienceMode, selectedUserIds, onlineCount } = getAudience();
-        if (!gift || isSending) return;
+        if (!gift || !active) return;
 
         const recipientCount = audienceMode === 'all' ? onlineCount : selectedUserIds.size;
         if (recipientCount === 0) {
@@ -4017,13 +4024,29 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
         }
 
         const localUser = JSON.parse(localStorage.getItem('user'));
-        if (localUser.coins < gift.price * recipientCount) {
+        const cost = gift.price * recipientCount;
+        if (!localUser || localUser.coins < cost) {
             stopRapidSending();
             showFloatingAlert('رصيد الكوينز غير كافٍ', 'fa-coins', 'bg-red-500');
             return;
         }
 
-        isSending = true;
+        // ✅ تحديث متفائل فوري
+        localUser.coins -= cost;
+        localStorage.setItem('user', JSON.stringify(localUser));
+        const coinsEl = document.getElementById('coins');
+        if (coinsEl) coinsEl.textContent = localUser.coins;
+        const balanceEl = document.getElementById('pg-balance');
+        if (balanceEl) balanceEl.textContent = localUser.coins;
+
+        sentCount++;
+        if (counterLabel) {
+            counterLabel.textContent = `أُرسل ×${sentCount}`;
+            counterLabel.classList.remove('hidden');
+        }
+        showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', sentCount);
+
+        inFlight++;
         try {
             const payload = {
                 giftId: gift.id,
@@ -4038,51 +4061,53 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
             const result = await response.json();
 
             if (response.ok) {
-                sentCount++;
-                localUser.coins = result.data.newCoins;
-                localStorage.setItem('user', JSON.stringify(localUser));
-                const coinsEl = document.getElementById('coins');
-                if (coinsEl) coinsEl.textContent = localUser.coins;
-                const balanceEl = document.getElementById('pg-balance');
-                if (balanceEl) balanceEl.textContent = localUser.coins;
-
-                if (counterLabel) {
-                    counterLabel.textContent = `أُرسل ×${sentCount}`;
-                    counterLabel.classList.remove('hidden');
+                const syncedUser = JSON.parse(localStorage.getItem('user'));
+                if (syncedUser) {
+                    syncedUser.coins = result.data.newCoins;
+                    localStorage.setItem('user', JSON.stringify(syncedUser));
                 }
-
-                showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', sentCount);
+                if (coinsEl) coinsEl.textContent = result.data.newCoins;
+                if (balanceEl) balanceEl.textContent = result.data.newCoins;
             } else {
+                const revertUser = JSON.parse(localStorage.getItem('user'));
+                if (revertUser) {
+                    revertUser.coins += cost;
+                    localStorage.setItem('user', JSON.stringify(revertUser));
+                    if (coinsEl) coinsEl.textContent = revertUser.coins;
+                    if (balanceEl) balanceEl.textContent = revertUser.coins;
+                }
                 stopRapidSending();
                 showFloatingAlert(result.message || 'فشل إرسال الهدية', 'fa-exclamation-circle', 'bg-red-500');
             }
         } catch (error) {
             console.error('[RAPID PUBLIC GIFT] Error:', error);
-            stopRapidSending();
         } finally {
-            isSending = false;
+            inFlight--;
         }
     }
 
+    function scheduleNext() {
+        if (!active) return;
+        rampTimeout = setTimeout(() => {
+            if (!active) return;
+            if (inFlight < MAX_CONCURRENT) fireOnePublicGift();
+            intervalMs = Math.max(MIN_INTERVAL, Math.round(intervalMs * ACCEL_FACTOR));
+            scheduleNext();
+        }, intervalMs);
+    }
+
     function startRapidSending() {
+        if (active) return;
+        active = true;
+        intervalMs = 300;
         fireOnePublicGift();
-        let speedLevel = 1;
-        pressTimer = setTimeout(() => {
-            rapidInterval = setInterval(() => {
-                fireOnePublicGift();
-                speedLevel = Math.min(speedLevel + 1, 5);
-                currentSpeedMs = Math.max(600 - (speedLevel * 90), 150);
-                clearInterval(rapidInterval);
-                rapidInterval = setInterval(fireOnePublicGift, currentSpeedMs);
-            }, 500);
-        }, 500);
+        scheduleNext();
     }
 
     function stopRapidSending() {
-        clearTimeout(pressTimer);
-        clearInterval(rapidInterval);
-        pressTimer = null;
-        rapidInterval = null;
+        active = false;
+        clearTimeout(rampTimeout);
+        rampTimeout = null;
     }
 
     btn.addEventListener('mousedown', startRapidSending);
@@ -5956,10 +5981,12 @@ function displayPrivateMessage(message, isMyMessage = false) {
     }
     break;
 
-                    case 'gift':
+                                        case 'gift':
             messageContent = `
                 <div class="flex items-center gap-3 bg-gradient-to-r from-pink-600/30 to-purple-600/30 border border-pink-500/30 p-3 rounded-lg">
-                    <img src="${meta.giftImage || ''}" class="w-10 h-10 object-contain" onerror="this.style.display='none'">
+                    <div class="gift-msg-img-slot w-10 h-10 flex items-center justify-center flex-shrink-0">
+                        ${meta.giftImage ? `<img src="${meta.giftImage}" class="gift-msg-img w-10 h-10 object-contain">` : `<span class="text-2xl">🎁</span>`}
+                    </div>
                     <div>
                         <p class="text-sm font-bold">🎁 هدية ${message.content}</p>
                         <p class="text-xs text-gray-300">${meta.giftPrice || 0} كوينز</p>
@@ -6147,8 +6174,17 @@ function displayPrivateMessage(message, isMyMessage = false) {
         </div>
     `;
 
-           messagesContainer.appendChild(messageElement);
+                     messagesContainer.appendChild(messageElement);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+    // ✅ ربط احتياطي (fallback) عبر JavaScript بدل onerror المباشر الممنوع بسياسة CSP
+    const giftImgEl = messageElement.querySelector('.gift-msg-img');
+    if (giftImgEl) {
+        giftImgEl.addEventListener('error', function () {
+            const slot = this.closest('.gift-msg-img-slot');
+            if (slot) slot.innerHTML = '<span class="text-2xl">🎁</span>';
+        }, { once: true });
+    }
 
     attachMessageOptionsMenu(messageElement, message, isMyMessage);
     bindPrivateMessageEvents(messageElement, message);
