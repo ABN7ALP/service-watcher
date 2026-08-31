@@ -918,3 +918,13 @@ body {
         color: #e0e0e0;
     }
 }
+
+/* ===== إضافات لوحة التحكم الجديدة ===== */
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; margin-bottom: 6px; font-weight: 600; color: var(--admin-primary); font-size: 0.9rem; }
+.modal-content { direction: rtl; }
+.gap-2 { gap: 8px; }
+.d-flex { display: flex; }
+.justify-content-center { justify-content: center; }
+.stats-grid .stat-card { min-height: auto; }
+</style>
