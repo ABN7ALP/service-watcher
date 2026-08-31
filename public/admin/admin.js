@@ -1,21 +1,28 @@
-// Admin Dashboard JavaScript
+// ==================================================================
+// Admin Dashboard — نسخة معاد بناؤها بالكامل: كل قسم يعمل فعلياً
+// ==================================================================
+
+const escapeHtml = (str) => {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+};
+
+const formatDate = (d) => new Date(d).toLocaleString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
 class AdminDashboard {
-        constructor() {
-        // ✅ الإصلاح: نستخدم نفس تسجيل الدخول العادي بدل نظام منفصل غير موجود
+    constructor() {
         this.token = localStorage.getItem('token');
         this.adminData = JSON.parse(localStorage.getItem('user') || '{}');
         this.currentPage = 'dashboard';
         this.socket = null;
-        
+        this.state = { users: {}, deposits: {}, coinPurchases: {}, transactions: {}, logs: {} };
         this.init();
     }
-  
-    async init() {
-        if (!this.checkAuth()) {
-            window.location.href = '/login.html';
-            return;
-        }
 
+    async init() {
+        if (!this.checkAuth()) { window.location.href = '/login.html'; return; }
         this.setupEventListeners();
         this.loadCurrentPage();
         this.initSocket();
@@ -23,1201 +30,847 @@ class AdminDashboard {
         this.startAutoRefresh();
     }
 
-        checkAuth() {
-        if (!this.token) return false;
-
-        // ✅ التحقق الفعلي من صلاحية الأدمن عبر بيانات المستخدم المحفوظة
-        if (!this.adminData || !this.adminData.isAdmin) return false;
-
+    checkAuth() {
+        if (!this.token || !this.adminData || !this.adminData.isAdmin) return false;
         try {
             const payload = JSON.parse(atob(this.token.split('.')[1]));
-            const isExpired = payload.exp * 1000 < Date.now();
-            if (isExpired) {
-                this.logout();
-                return false;
-            }
+            if (payload.exp * 1000 < Date.now()) { this.logout(); return false; }
             return true;
-        } catch (error) {
-            return false;
-        }
+        } catch { return false; }
     }
 
+    // ---------- طبقة الاتصال بالـ API (موحّدة) ----------
+    async api(method, path, body) {
+        const options = {
+            method,
+            headers: { 'Authorization': `Bearer ${this.token}` }
+        };
+        if (body !== undefined) {
+            options.headers['Content-Type'] = 'application/json';
+            options.body = JSON.stringify(body);
+        }
+        const response = await fetch(`/api/admin${path}`, options);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            if (response.status === 401 || response.status === 403) {
+                this.showToast('انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد', 'error');
+                setTimeout(() => this.logout(), 1500);
+            }
+            throw new Error(data.message || `خطأ (${response.status})`);
+        }
+        return data;
+    }
+
+    // ---------- نظام النوافذ المنبثقة الموحّد (يمنع أي تصادم بالمعرّفات) ----------
+    openModal(html) {
+        const root = document.getElementById('admin-modal-root');
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = html.trim();
+        const modalEl = wrapper.firstElementChild;
+        root.appendChild(modalEl);
+
+        modalEl.addEventListener('click', (e) => {
+            if (e.target === modalEl || e.target.closest('.modal-close') || e.target.closest('[data-dismiss]')) {
+                modalEl.remove();
+            }
+        });
+        return modalEl;
+    }
+
+    closeModal(modalEl) { if (modalEl && modalEl.parentNode) modalEl.remove(); }
+
+    confirmAction(message, onConfirm, danger = true) {
+        const modal = this.openModal(`
+            <div class="modal-overlay active">
+                <div class="modal-content" style="max-width:420px;">
+                    <div class="modal-body text-center py-4">
+                        <i class="fas fa-exclamation-triangle fa-2x mb-3" style="color:${danger ? '#e74c3c' : '#3498db'}"></i>
+                        <p>${escapeHtml(message)}</p>
+                        <div class="d-flex gap-2 justify-content-center mt-4">
+                            <button class="btn btn-secondary" data-dismiss>إلغاء</button>
+                            <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="confirmActionBtn">تأكيد</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `);
+        modal.querySelector('#confirmActionBtn').addEventListener('click', async () => {
+            modal.remove();
+            await onConfirm();
+        });
+    }
+
+    // ---------- عناصر مشتركة ----------
     setupEventListeners() {
-        document.getElementById('withdrawalStatusFilter')?.addEventListener('change', () => this.loadWithdrawals());
-        // Menu navigation
         document.querySelectorAll('.menu-item').forEach(item => {
-            item.addEventListener('click', (e) => {
-                e.preventDefault();
-                const page = item.dataset.page;
-                this.switchPage(page);
-            });
+            item.addEventListener('click', (e) => { e.preventDefault(); this.switchPage(item.dataset.page); });
         });
+        document.querySelector('.btn-logout')?.addEventListener('click', () => this.logout());
 
-        // Logout button
-        document.querySelector('.btn-logout')?.addEventListener('click', () => {
-            this.logout();
-        });
-
-        // Search functionality
         const userSearch = document.getElementById('userSearch');
         if (userSearch) {
-            let searchTimeout;
+            let t;
             userSearch.addEventListener('input', (e) => {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => {
-                    this.searchUsers(e.target.value);
-                }, 500);
+                clearTimeout(t);
+                t = setTimeout(() => this.loadUsers(1, e.target.value), 450);
             });
         }
 
-        // Modal close buttons
-                document.addEventListener('click', (e) => {
-            // ✅ الإصلاح: closest() يلتقط النقر حتى لو كان على الأيقونة الداخلية، لا على الزر نفسه فقط
-            const closeTrigger = e.target.closest('.modal-close') || (e.target.classList.contains('modal-overlay') ? e.target : null);
-            if (closeTrigger) {
-                const overlay = closeTrigger.closest('.modal-overlay');
-                if (overlay) this.closeModal(overlay.id);
-            }
+        document.getElementById('depositsStatusFilter')?.addEventListener('change', () => this.loadDeposits(1));
+        document.getElementById('coinPurchasesStatusFilter')?.addEventListener('change', () => this.loadCoinPurchases(1));
+        document.getElementById('withdrawalStatusFilter')?.addEventListener('change', () => this.loadWithdrawals());
+        document.getElementById('battlesStatusFilter')?.addEventListener('change', () => this.loadBattles());
+        document.getElementById('reportsStatusFilter')?.addEventListener('change', () => this.loadReports());
+        document.getElementById('transactionsTypeFilter')?.addEventListener('change', () => this.loadTransactions(1));
+        document.getElementById('addGiftBtn')?.addEventListener('click', () => this.showGiftFormModal());
+
+        let txSearchTimer;
+        document.getElementById('transactionsSearch')?.addEventListener('input', (e) => {
+            clearTimeout(txSearchTimer);
+            txSearchTimer = setTimeout(() => this.loadTransactions(1, e.target.value), 450);
         });
 
-        // Ban user confirmation
-        document.getElementById('confirmBan')?.addEventListener('click', () => {
-            this.confirmBanUser();
-        });
-            
-
-        // Mobile menu toggle
         const mobileToggle = document.createElement('button');
         mobileToggle.className = 'mobile-menu-toggle';
         mobileToggle.innerHTML = '<i class="fas fa-bars"></i>';
         document.body.appendChild(mobileToggle);
-        
-        mobileToggle.addEventListener('click', () => {
-            document.querySelector('.admin-sidebar').classList.toggle('active');
-        });
+        mobileToggle.addEventListener('click', () => document.querySelector('.admin-sidebar').classList.toggle('active'));
     }
 
-        switchPage(page) {
-        document.querySelectorAll('.menu-item').forEach(item => {
-            item.classList.remove('active');
-        });
+    switchPage(page) {
+        document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
         document.querySelector(`.menu-item[data-page="${page}"]`)?.classList.add('active');
-
-        document.querySelectorAll('.page').forEach(pageEl => {
-            pageEl.classList.remove('active');
-        });
-
-        let pageElement = document.getElementById(`${page}-page`);
-
-        // ✅ الإصلاح: الأقسام غير المُفعّلة بعد كانت تُظهر شاشة فارغة صامتة عند الضغط عليها.
-        // الآن نعرض رسالة صريحة توضح أن القسم قيد الإنشاء بدل الصمت المُربك.
-        if (!pageElement) {
-            pageElement = document.getElementById('placeholder-page');
-            if (!pageElement) {
-                pageElement = document.createElement('div');
-                pageElement.id = 'placeholder-page';
-                pageElement.className = 'page';
-                document.querySelector('.admin-main').appendChild(pageElement);
-            }
-            pageElement.innerHTML = `
-                <div class="page-header">
-                    <h1><i class="fas fa-tools"></i> هذا القسم قيد الإنشاء</h1>
-                </div>
-                <div class="table-responsive" style="padding:60px 20px; text-align:center; color:#7f8c8d;">
-                    <i class="fas fa-hourglass-half fa-2x mb-3"></i>
-                    <p>سيتم تفعيل هذا القسم في التحديث القادم.</p>
-                </div>
-            `;
-        }
-
-        pageElement.classList.add('active');
-        this.currentPage = page;
-        this.loadPageData(page);
-    }
-
-    async loadPageData(page) {
-        switch (page) {
-            case 'dashboard':
-                await this.loadDashboard();
-                break;
-            case 'users':
-                await this.loadUsers();
-                break;
-            case 'transactions':
-                await this.loadTransactions();
-                break;
-            case 'withdrawals':
-                await this.loadWithdrawals();
-                break;
-            case 'deposits':
-                await this.loadDeposits();
-                break;
-            case 'battles':
-                await this.loadBattles();
-                break;
-            case 'gifts':
-                await this.loadGifts();
-                break;
-            case 'logs':
-                await this.loadLogs();
-                break;
-            case 'settings':
-                await this.loadSettings();
-                break;
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        const pageEl = document.getElementById(`${page}-page`);
+        if (pageEl) {
+            pageEl.classList.add('active');
+            this.currentPage = page;
+            this.loadPageData(page);
         }
     }
 
-            async loadDashboard() {
-        try {
-            const response = await fetch('/api/admin/dashboard', {
-                headers: { 'Authorization': `Bearer ${this.token}` }
-            });
-
-            const data = await response.json().catch(() => null);
-
-            if (!response.ok) {
-                if (response.status === 401 || response.status === 403) {
-                    this.showToast('انتهت صلاحية جلستك، يرجى تسجيل الدخول من جديد', 'error');
-                    setTimeout(() => this.logout(), 1500);
-                    return;
-                }
-                // ✅ الإصلاح: نعرض رسالة الخطأ الحقيقية القادمة من الخادم بدل نص عام غير مفيد
-                throw new Error(data?.message || `فشل تحميل البيانات (${response.status})`);
-            }
-
-            if (data && data.success) {
-                this.updateDashboardStats(data.stats);
-                this.updateTopUsers(data.topUsers);
-            }
-        } catch (error) {
-            console.error('Error loading dashboard:', error);
-            this.showToast(error.message || 'فشل تحميل البيانات', 'error');
-        }
+    loadPageData(page) {
+        const map = {
+            dashboard: () => this.loadDashboard(),
+            users: () => this.loadUsers(),
+            deposits: () => this.loadDeposits(1),
+            coinpurchases: () => this.loadCoinPurchases(1),
+            withdrawals: () => this.loadWithdrawals(),
+            transactions: () => this.loadTransactions(1),
+            battles: () => this.loadBattles(),
+            gifts: () => this.loadGifts(),
+            reports: () => this.loadReports(),
+            logs: () => this.loadLogs(1),
+            settings: () => this.loadSettings()
+        };
+        map[page]?.();
     }
 
-    updateDashboardStats(stats) {
-        // Update stat cards
-        document.getElementById('totalUsers').textContent = stats.totalUsers.toLocaleString();
-        document.getElementById('onlineUsers').textContent = stats.onlineUsers.toLocaleString();
-        document.getElementById('totalDeposits').textContent = `$${stats.totalDeposits.toLocaleString()}`;
-        document.getElementById('pendingDeposits').textContent = stats.pendingDeposits;
-        document.getElementById('totalWithdrawals').textContent = `$${stats.totalWithdrawals.toLocaleString()}`;
-        document.getElementById('pendingWithdrawals').textContent = stats.pendingWithdrawals;
-        document.getElementById('activeBattles').textContent = stats.activeBattles;
-        document.getElementById('todayTransactions').textContent = stats.todayTransactions;
-        
-        // Update last update time
-        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ar-SA');
-    }
-
-    updateTopUsers(topUsers) {
-        this.updateTopUsersList('topDepositors', topUsers.depositors, 'totalDeposited', '$');
-        this.updateTopUsersList('topGifters', topUsers.gifters, 'totalGifted', 'عملة');
-        this.updateTopUsersList('topWinners', topUsers.winners, 'totalWon', '$');
-    }
-
-    updateTopUsersList(elementId, users, field, suffix = '') {
-        const container = document.getElementById(elementId);
-        if (!container) return;
-
-        container.innerHTML = '';
-        
-        if (!users || users.length === 0) {
-            container.innerHTML = '<div class="empty-state">لا توجد بيانات</div>';
-            return;
-        }
-
-        users.forEach((user, index) => {
-            const userElement = document.createElement('div');
-            userElement.className = 'top-user-item';
-            userElement.innerHTML = `
-                <div class="rank rank-${index + 1}">${index + 1}</div>
-                <img src="${user.profileImage || 'https://via.placeholder.com/45'}" 
-                     alt="${user.username}" 
-                     class="top-user-avatar"
-                     onerror="this.src='https://via.placeholder.com/45'">
-                <div class="top-user-info">
-                    <div class="username">${user.username}</div>
-                    <div class="value">${user[field].toLocaleString()}${suffix}</div>
-                </div>
-            `;
-            
-            userElement.addEventListener('click', () => {
-                this.showUserDetails(user._id);
-            });
-            
-            container.appendChild(userElement);
-        });
-    }
-
-    async loadUsers(page = 1, search = '') {
-        try {
-            const response = await fetch(`/api/admin/users?page=${page}&limit=50&search=${encodeURIComponent(search)}`, {
-                headers: {
-                    'Authorization': `Bearer ${this.token}`
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to load users');
-            }
-
-            const data = await response.json();
-            
-            if (data.success) {
-                this.renderUsersTable(data.users);
-                this.renderUsersPagination(data.totalPages, data.currentPage);
-            }
-        } catch (error) {
-            console.error('Error loading users:', error);
-            this.showToast('فشل تحميل المستخدمين', 'error');
-        }
-    }
-
-    renderUsersTable(users) {
-        const tbody = document.getElementById('usersTableBody');
-        if (!tbody) return;
-
-        tbody.innerHTML = '';
-        
-        if (!users || users.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="9" class="text-center py-5">
-                        <div class="empty-state">
-                            <i class="fas fa-users fa-2x"></i>
-                            <p>لا يوجد مستخدمين</p>
-                        </div>
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-
-        users.forEach(user => {
-            const row = document.createElement('tr');
-            
-            // Calculate time since last activity
-            const lastActive = new Date(user.lastActive);
-            const now = new Date();
-            const diffHours = Math.floor((now - lastActive) / (1000 * 60 * 60));
-            let lastActiveText;
-            
-            if (diffHours < 1) {
-                lastActiveText = 'الآن';
-            } else if (diffHours < 24) {
-                lastActiveText = `قبل ${diffHours} ساعة`;
-            } else {
-                lastActiveText = lastActive.toLocaleDateString('ar-SA');
-            }
-
-            // Determine status
-            let statusClass, statusText;
-            if (user.isBanned) {
-                statusClass = 'status-banned';
-                statusText = 'محظور';
-            } else if (user.isOnline) {
-                statusClass = 'status-online';
-                statusText = 'متصل';
-            } else {
-                statusClass = 'status-offline';
-                statusText = 'غير متصل';
-            }
-
-            row.innerHTML = `
-                <td>${user._id.toString().slice(-6)}</td>
-                <td>
-                    <img src="${user.profileImage || 'https://via.placeholder.com/40'}" 
-                         alt="${user.username}" 
-                         class="user-avatar"
-                         onerror="this.src='https://via.placeholder.com/40'">
-                </td>
-                <td><strong>${user.username}</strong></td>
-                <td>${user.email}</td>
-                <td>${user.phone || 'غير محدد'}</td>
-                <td><strong>$${user.balance?.toFixed(2) || '0.00'}</strong></td>
-                <td>
-                    <span class="status-badge ${statusClass}">${statusText}</span>
-                </td>
-                <td>${lastActiveText}</td>
-                <td>
-                    <button class="btn-action btn-view" title="عرض" onclick="admin.showUserDetails('${user._id}')">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    <button class="btn-action btn-edit" title="تعديل" onclick="admin.editUser('${user._id}')">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn-action btn-ban" title="حظر" onclick="admin.showBanModal('${user._id}', '${user.username}')">
-                        <i class="fas fa-ban"></i>
-                    </button>
-                </td>
-            `;
-            
-            tbody.appendChild(row);
-        });
-    }
-
-    renderUsersPagination(totalPages, currentPage) {
-        const pagination = document.getElementById('usersPagination');
-        if (!pagination) return;
-
-        pagination.innerHTML = '';
-        
-        // Previous button
-        const prevLi = document.createElement('li');
-        prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
-        prevLi.innerHTML = `
-            <a class="page-link" href="#" onclick="admin.loadUsers(${currentPage - 1})">
-                <i class="fas fa-chevron-right"></i>
-            </a>
-        `;
-        pagination.appendChild(prevLi);
-
-        // Page numbers
+    renderPagination(containerId, totalPages, currentPage, onClick) {
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        el.innerHTML = '';
+        if (!totalPages || totalPages <= 1) return;
         const startPage = Math.max(1, currentPage - 2);
         const endPage = Math.min(totalPages, currentPage + 2);
-        
-        for (let i = startPage; i <= endPage; i++) {
-            const pageLi = document.createElement('li');
-            pageLi.className = `page-item ${i === currentPage ? 'active' : ''}`;
-            pageLi.innerHTML = `
-                <a class="page-link" href="#" onclick="admin.loadUsers(${i})">${i}</a>
-            `;
-            pagination.appendChild(pageLi);
-        }
 
-        // Next button
-        const nextLi = document.createElement('li');
-        nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
-        nextLi.innerHTML = `
-            <a class="page-link" href="#" onclick="admin.loadUsers(${currentPage + 1})">
-                <i class="fas fa-chevron-left"></i>
-            </a>
-        `;
-        pagination.appendChild(nextLi);
+        const mk = (label, page, disabled, active) => {
+            const li = document.createElement('li');
+            li.className = `page-item ${disabled ? 'disabled' : ''} ${active ? 'active' : ''}`;
+            const a = document.createElement('a');
+            a.className = 'page-link'; a.href = '#'; a.innerHTML = label;
+            if (!disabled) a.addEventListener('click', (e) => { e.preventDefault(); onClick(page); });
+            li.appendChild(a);
+            return li;
+        };
+        el.appendChild(mk('<i class="fas fa-chevron-right"></i>', currentPage - 1, currentPage === 1, false));
+        for (let i = startPage; i <= endPage; i++) el.appendChild(mk(i, i, false, i === currentPage));
+        el.appendChild(mk('<i class="fas fa-chevron-left"></i>', currentPage + 1, currentPage === totalPages, false));
+    }
+
+    // ================= Dashboard =================
+    async loadDashboard() {
+        try {
+            const data = await this.api('GET', '/dashboard');
+            const s = data.stats;
+            document.getElementById('totalUsers').textContent = s.totalUsers.toLocaleString();
+            document.getElementById('totalDeposits').textContent = `$${s.totalDeposits.toLocaleString()}`;
+            document.getElementById('pendingDeposits').textContent = s.pendingDeposits;
+            document.getElementById('totalWithdrawals').textContent = `$${s.totalWithdrawals.toLocaleString()}`;
+            document.getElementById('pendingWithdrawals').textContent = s.pendingWithdrawals;
+            document.getElementById('activeBattles').textContent = s.activeBattles;
+            document.getElementById('todayTransactions').textContent = s.todayTransactions;
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ar-SA');
+
+            this.renderTopList('topDepositors', data.topUsers.depositors, 'totalDeposited', '$');
+            this.renderTopList('topGifters', data.topUsers.gifters, 'totalGifted', ' كوينز');
+            this.renderTopList('topWinners', data.topUsers.winners, 'totalWon', '$');
+        } catch (error) {
+            this.showToast(error.message, 'error');
+        }
+    }
+
+    renderTopList(elId, users, field, suffix) {
+        const c = document.getElementById(elId);
+        if (!c) return;
+        if (!users || users.length === 0) { c.innerHTML = '<div class="empty-state">لا توجد بيانات</div>'; return; }
+        c.innerHTML = users.map((u, i) => `
+            <div class="top-user-item" data-user-id="${u._id}">
+                <div class="rank rank-${i + 1}">${i + 1}</div>
+                <img src="${u.profileImage || 'https://via.placeholder.com/45'}" class="top-user-avatar">
+                <div class="top-user-info"><div class="username">${escapeHtml(u.username)}</div>
+                <div class="value">${(u[field] || 0).toLocaleString()}${suffix}</div></div>
+            </div>
+        `).join('');
+        c.querySelectorAll('.top-user-item').forEach(item => {
+            item.addEventListener('click', () => this.showUserDetails(item.dataset.userId));
+        });
+    }
+
+    // ================= Users =================
+    async loadUsers(page = 1, search = '') {
+        try {
+            const data = await this.api('GET', `/users?page=${page}&limit=50&search=${encodeURIComponent(search)}`);
+            this.state.users = { page, search };
+            const tbody = document.getElementById('usersTableBody');
+            if (!data.users || data.users.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="9" class="text-center py-5"><div class="empty-state"><i class="fas fa-users fa-2x"></i><p>لا يوجد مستخدمون</p></div></td></tr>`;
+                this.renderPagination('usersPagination', 0, 1, () => {});
+                return;
+            }
+            tbody.innerHTML = data.users.map(u => `
+                <tr>
+                    <td>${u.customId || u._id.slice(-6)}</td>
+                    <td><img src="${u.profileImage || 'https://via.placeholder.com/40'}" class="user-avatar"></td>
+                    <td><strong>${escapeHtml(u.username)}</strong> ${u.isAdmin ? '<span class="status-badge status-pending">مدير</span>' : ''} ${u.isAgent ? '<span class="status-badge status-online">وكيل</span>' : ''}</td>
+                    <td>${escapeHtml(u.email)}</td>
+                    <td><strong>$${(u.balance || 0).toFixed(2)}</strong></td>
+                    <td>${(u.coins || 0).toLocaleString()}</td>
+                    <td>${u.level || 1}</td>
+                    <td><span class="status-badge ${u.isBanned ? 'status-banned' : 'status-online'}">${u.isBanned ? 'محظور' : 'نشط'}</span></td>
+                    <td>
+                        <button class="btn-action btn-view" title="عرض" data-action="view" data-id="${u._id}"><i class="fas fa-eye"></i></button>
+                        <button class="btn-action btn-edit" title="تعديل الرصيد" data-action="funds" data-id="${u._id}"><i class="fas fa-coins"></i></button>
+                        <button class="btn-action btn-ban" title="${u.isBanned ? 'إلغاء الحظر' : 'حظر'}" data-action="${u.isBanned ? 'unban' : 'ban'}" data-id="${u._id}" data-username="${escapeHtml(u.username)}"><i class="fas ${u.isBanned ? 'fa-unlock' : 'fa-ban'}"></i></button>
+                    </td>
+                </tr>
+            `).join('');
+
+            tbody.querySelectorAll('button[data-action]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const { action, id, username } = btn.dataset;
+                    if (action === 'view') this.showUserDetails(id);
+                    if (action === 'funds') this.showAdjustFundsModal(id);
+                    if (action === 'ban') this.showBanModal(id, username);
+                    if (action === 'unban') this.confirmAction(`هل تريد إلغاء حظر ${username}؟`, () => this.unbanUser(id), false);
+                });
+            });
+
+            this.renderPagination('usersPagination', data.totalPages, data.currentPage, (p) => this.loadUsers(p, search));
+        } catch (error) {
+            this.showToast(error.message, 'error');
+        }
     }
 
     async showUserDetails(userId) {
         try {
-            const response = await fetch(`/api/admin/users/${userId}`, {
-                headers: {
-                    'Authorization': `Bearer ${this.token}`
-                }
-            });
+            const data = await this.api('GET', `/users/${userId}`);
+            const { user, transactions, battles, stats } = data;
 
-            if (!response.ok) {
-                throw new Error('Failed to load user details');
-            }
-
-            const data = await response.json();
-            
-            if (data.success) {
-                this.renderUserDetailsModal(data);
-            }
-        } catch (error) {
-            console.error('Error loading user details:', error);
-            this.showToast('فشل تحميل تفاصيل المستخدم', 'error');
-        }
-    }
-
-    renderUserDetailsModal(data) {
-        const { user, transactions, battles, stats } = data;
-        
-        const modalHTML = `
-            <div class="modal-overlay active" id="userDetailsModal">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3><i class="fas fa-user"></i> تفاصيل المستخدم: ${user.username}</h3>
-                        <button class="modal-close">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="user-profile-section text-center">
-                                    <img src="${user.profileImage || 'https://via.placeholder.com/150'}" 
-                                         alt="${user.username}" 
-                                         class="img-fluid rounded-circle mb-3"
-                                         style="width: 150px; height: 150px; object-fit: cover;"
-                                         onerror="this.src='https://via.placeholder.com/150'">
-                                    <h4>${user.username}</h4>
-                                    <p class="text-muted">ID: ${user._id}</p>
-                                    
-                                    <div class="user-status mb-3">
-                                        ${user.isBanned ? 
-                                            '<span class="badge bg-danger">محظور</span>' : 
-                                            user.isOnline ? 
-                                            '<span class="badge bg-success">متصل</span>' : 
-                                            '<span class="badge bg-secondary">غير متصل</span>'
-                                        }
-                                        ${user.isAdmin ? '<span class="badge bg-warning ms-1">مدير</span>' : ''}
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="col-md-8">
-                                <div class="user-info-section">
-                                    <h5><i class="fas fa-info-circle"></i> المعلومات الأساسية</h5>
-                                    <div class="table-responsive">
-                                        <table class="table table-sm">
-                                            <tbody>
-                                                <tr>
-                                                    <th>البريد الإلكتروني:</th>
-                                                    <td>${user.email}</td>
-                                                </tr>
-                                                <tr>
-                                                    <th>رقم الهاتف:</th>
-                                                    <td>${user.phone || 'غير محدد'}</td>
-                                                </tr>
-                                                <tr>
-                                                    <th>الجنس:</th>
-                                                    <td>${user.gender === 'male' ? 'ذكر' : 'أنثى'}</td>
-                                                </tr>
-                                                <tr>
-                                                    <th>العمر:</th>
-                                                    <td>${user.age || 'غير محدد'}</td>
-                                                </tr>
-                                                <tr>
-                                                    <th>الحالة الاجتماعية:</th>
-                                                    <td>${this.getRelationshipText(user.relationship)}</td>
-                                                </tr>
-                                                <tr>
-                                                    <th>المستوى التعليمي:</th>
-                                                    <td>${this.getEducationText(user.education)}</td>
-                                                </tr>
-                                                <tr>
-                                                    <th>تاريخ التسجيل:</th>
-                                                    <td>${new Date(user.createdAt).toLocaleString('ar-SA')}</td>
-                                                </tr>
-                                                <tr>
-                                                    <th>آخر نشاط:</th>
-                                                    <td>${new Date(user.lastActive).toLocaleString('ar-SA')}</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    
-                                    <h5 class="mt-4"><i class="fas fa-chart-line"></i> الإحصائيات</h5>
-                                    <div class="row">
-                                        <div class="col-6">
-                                            <div class="stat-item">
-                                                <small>الرصيد</small>
-                                                <h4>$${user.balance?.toFixed(2) || '0.00'}</h4>
-                                            </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="stat-item">
-                                                <small>العملات</small>
-                                                <h4>${user.coins?.toLocaleString() || '0'}</h4>
-                                            </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="stat-item">
-                                                <small>المستوى</small>
-                                                <h4>${user.level || '1'}</h4>
-                                            </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="stat-item">
-                                                <small>نسبة الفوز</small>
-                                                <h4>${stats.winRate?.toFixed(1) || '0'}%</h4>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="row mt-3">
-                                        <div class="col-6">
-                                            <div class="stat-item">
-                                                <small>إجمالي الشحن</small>
-                                                <h4>$${user.totalDeposited?.toFixed(2) || '0.00'}</h4>
-                                            </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="stat-item">
-                                                <small>إجمالي السحب</small>
-                                                <h4>$${user.totalWithdrawn?.toFixed(2) || '0.00'}</h4>
-                                            </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="stat-item">
-                                                <small>إجمالي الربح</small>
-                                                <h4>$${user.totalWon?.toFixed(2) || '0.00'}</h4>
-                                            </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="stat-item">
-                                                <small>إجمالي الخسارة</small>
-                                                <h4>$${user.totalLost?.toFixed(2) || '0.00'}</h4>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+            const modal = this.openModal(`
+                <div class="modal-overlay active">
+                    <div class="modal-content" style="max-width:800px;">
+                        <div class="modal-header">
+                            <h3><i class="fas fa-user"></i> ${escapeHtml(user.username)}</h3>
+                            <button class="modal-close"><i class="fas fa-times"></i></button>
                         </div>
-                        
-                        <div class="row mt-4">
-                            <div class="col-12">
-                                <h5><i class="fas fa-history"></i> آخر المعاملات</h5>
-                                <div class="table-responsive">
+                        <div class="modal-body">
+                            <div class="row">
+                                <div class="col-md-4 text-center">
+                                    <img src="${user.profileImage}" class="rounded-circle mb-3" style="width:120px;height:120px;object-fit:cover;">
+                                    <h5>${escapeHtml(user.username)}</h5>
+                                    <p class="text-muted">ID: ${user.customId}</p>
+                                    <div>
+                                        ${user.isBanned ? '<span class="status-badge status-banned">محظور</span>' : '<span class="status-badge status-online">نشط</span>'}
+                                        ${user.isAdmin ? '<span class="status-badge status-pending">مدير</span>' : ''}
+                                        ${user.isAgent ? '<span class="status-badge status-completed">وكيل شحن</span>' : ''}
+                                    </div>
+                                    ${user.isBanned ? `<p class="text-danger small mt-2">السبب: ${escapeHtml(user.banReason || 'غير محدد')}</p>` : ''}
+                                </div>
+                                <div class="col-md-8">
                                     <table class="table table-sm">
-                                        <thead>
-                                            <tr>
-                                                <th>التاريخ</th>
-                                                <th>النوع</th>
-                                                <th>المبلغ</th>
-                                                <th>الحالة</th>
-                                                <th>الوصف</th>
-                                            </tr>
-                                        </thead>
                                         <tbody>
-                                            ${transactions.slice(0, 5).map(tx => `
-                                                <tr>
-                                                    <td>${new Date(tx.createdAt).toLocaleDateString('ar-SA')}</td>
-                                                    <td>
-                                                        <span class="badge ${this.getTransactionBadgeClass(tx.type)}">
-                                                            ${this.getTransactionTypeText(tx.type)}
-                                                        </span>
-                                                    </td>
-                                                    <td class="${tx.amount < 0 ? 'text-danger' : 'text-success'}">
-                                                        ${tx.amount > 0 ? '+' : ''}${tx.amount.toFixed(2)} ${tx.currency}
-                                                    </td>
-                                                    <td>
-                                                        <span class="badge ${this.getStatusBadgeClass(tx.status)}">
-                                                            ${this.getStatusText(tx.status)}
-                                                        </span>
-                                                    </td>
-                                                    <td>${tx.description || '-'}</td>
-                                                </tr>
-                                            `).join('')}
+                                            <tr><th>البريد</th><td>${escapeHtml(user.email)}</td></tr>
+                                            <tr><th>الرصيد</th><td><strong>$${(user.balance || 0).toFixed(2)}</strong></td></tr>
+                                            <tr><th>الكوينز</th><td><strong>${(user.coins || 0).toLocaleString()}</strong></td></tr>
+                                            <tr><th>المستوى / الخبرة</th><td>${user.level} (${Math.floor(user.experience || 0)} XP)</td></tr>
+                                            <tr><th>الجنس / العمر</th><td>${user.gender === 'male' ? 'ذكر' : 'أنثى'} / ${user.age ?? '-'}</td></tr>
+                                            <tr><th>الأصدقاء</th><td>${user.friends?.length || 0}</td></tr>
+                                            <tr><th>تاريخ التسجيل</th><td>${formatDate(user.createdAt)}</td></tr>
+                                            <tr><th>إحصائيات التحديات</th><td>${stats.totalBattles} تحدي — ${stats.totalWins} فوز (${stats.winRate.toFixed(1)}%)</td></tr>
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
-                        </div>
-                        
-                        <div class="row mt-4">
-                            <div class="col-12">
-                                <h5><i class="fas fa-gamepad"></i> آخر التحديات</h5>
-                                <div class="table-responsive">
-                                    <table class="table table-sm">
-                                        <thead>
+                            <h6 class="mt-3"><i class="fas fa-history"></i> آخر المعاملات</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>الحالة</th></tr></thead>
+                                    <tbody>
+                                        ${(transactions.slice(0, 8)).map(tx => `
                                             <tr>
-                                                <th>التاريخ</th>
-                                                <th>النوع</th>
-                                                <th>الرهان</th>
-                                                <th>الحالة</th>
-                                                <th>النتيجة</th>
+                                                <td>${formatDate(tx.createdAt)}</td>
+                                                <td>${this.txTypeText(tx.type)}</td>
+                                                <td class="${tx.amount < 0 ? 'text-danger' : 'text-success'}">${tx.amount > 0 ? '+' : ''}${tx.amount} ${tx.currency}</td>
+                                                <td>${this.statusText(tx.status)}</td>
                                             </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${battles.slice(0, 5).map(battle => `
-                                                <tr>
-                                                    <td>${new Date(battle.createdAt).toLocaleDateString('ar-SA')}</td>
-                                                    <td>${battle.type}</td>
-                                                    <td>$${battle.teamA[0]?.betAmount || '0'}</td>
-                                                    <td>
-                                                        <span class="badge ${this.getBattleStatusBadgeClass(battle.status)}">
-                                                            ${this.getBattleStatusText(battle.status)}
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        ${battle.winner ? 
-                                                            (battle.winner === 'teamA' && battle.teamA.some(p => p.user?.toString() === user._id.toString()) ||
-                                                             battle.winner === 'teamB' && battle.teamB.some(p => p.user?.toString() === user._id.toString()) ?
-                                                             '<span class="text-success">فوز</span>' : 
-                                                             '<span class="text-danger">خسارة</span>') :
-                                                            '<span class="text-muted">-</span>'
-                                                        }
-                                                    </td>
-                                                </tr>
-                                            `).join('')}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                        `).join('') || '<tr><td colspan="4" class="text-center text-muted">لا توجد معاملات</td></tr>'}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="admin.closeModal('userDetailsModal')">
-                            إغلاق
-                        </button>
-                        <button class="btn ${user.isAgent ? 'btn-secondary' : 'btn-success'}" onclick="admin.toggleAgentStatus('${user._id}', ${user.isAgent ? 'false' : 'true'})">
-                            <i class="fas fa-user-tie"></i> ${user.isAgent ? 'إلغاء صلاحية الوكيل' : 'تعيين كوكيل شحن'}
-                        </button>
-                        ${!user.isBanned ? `
-                            <button class="btn btn-danger" onclick="admin.showBanModal('${user._id}', '${user.username}')">
-                                <i class="fas fa-ban"></i> حظر
-                            </button>
-                        ` : `
-                            <button class="btn btn-success" onclick="admin.unbanUser('${user._id}')">
-                                <i class="fas fa-check"></i> إلغاء الحظر
-                            </button>
-                        `}
-                        <button class="btn btn-warning" onclick="admin.editUser('${user._id}')">
-                            <i class="fas fa-edit"></i> تعديل
-                        </button>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" data-dismiss>إغلاق</button>
+                            <button class="btn btn-success" id="fundsBtn"><i class="fas fa-coins"></i> تعديل الرصيد</button>
+                            <button class="btn ${user.isAgent ? 'btn-secondary' : 'btn-info text-white'}" id="agentBtn">${user.isAgent ? 'إلغاء صلاحية الوكيل' : 'تعيين كوكيل شحن'}</button>
+                            ${!user.isBanned
+                                ? `<button class="btn btn-danger" id="banBtn"><i class="fas fa-ban"></i> حظر</button>`
+                                : `<button class="btn btn-success" id="unbanBtn"><i class="fas fa-check"></i> إلغاء الحظر</button>`}
+                        </div>
                     </div>
                 </div>
-            </div>
-        `;
-        
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
+            `);
+
+            modal.querySelector('#fundsBtn').addEventListener('click', () => { modal.remove(); this.showAdjustFundsModal(userId); });
+            modal.querySelector('#agentBtn').addEventListener('click', () => this.toggleAgentStatus(userId, !user.isAgent, modal));
+            modal.querySelector('#banBtn')?.addEventListener('click', () => { modal.remove(); this.showBanModal(userId, user.username); });
+            modal.querySelector('#unbanBtn')?.addEventListener('click', () => this.confirmAction(`إلغاء حظر ${user.username}؟`, async () => { await this.unbanUser(userId); modal.remove(); }, false));
+        } catch (error) {
+            this.showToast(error.message, 'error');
+        }
     }
 
     showBanModal(userId, username) {
-        const modalHTML = `
-            <div class="modal-overlay active" id="banUserModal">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3><i class="fas fa-ban"></i> حظر المستخدم: ${username}</h3>
-                        <button class="modal-close">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
+        const modal = this.openModal(`
+            <div class="modal-overlay active">
+                <div class="modal-content" style="max-width:450px;">
+                    <div class="modal-header"><h3><i class="fas fa-ban"></i> حظر ${escapeHtml(username)}</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
                     <div class="modal-body">
-                        <form id="banForm">
-                            <div class="mb-3">
-                                <label for="banReason" class="form-label">سبب الحظر</label>
-                                <textarea class="form-control" id="banReason" rows="3" required 
-                                          placeholder="أدخل سبب الحظر..."></textarea>
-                            </div>
-                            <div class="mb-3">
-                                <label for="banDuration" class="form-label">مدة الحظر (أيام)</label>
-                                <input type="number" class="form-control" id="banDuration" 
-                                       min="1" placeholder="اترك فارغًا للحظر الدائم">
-                                <div class="form-text">اترك الحقل فارغًا للحظر الدائم</div>
-                            </div>
-                            <div class="mb-3">
-                                <label for="banNotes" class="form-label">ملاحظات إضافية</label>
-                                <textarea class="form-control" id="banNotes" rows="2"
-                                          placeholder="ملاحظات إضافية (اختياري)..."></textarea>
-                            </div>
-                        </form>
+                        <div class="form-group"><label>سبب الحظر *</label><textarea class="form-control" id="banReasonInput" rows="3" required></textarea></div>
+                        <div class="form-group"><label>مدة الحظر (أيام)</label><input type="number" class="form-control" id="banDurationInput" min="1" placeholder="اترك فارغاً للحظر الدائم"></div>
                     </div>
                     <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="admin.closeModal('banUserModal')">
-                            إلغاء
-                        </button>
-                        <button class="btn btn-danger" onclick="admin.confirmBanUser('${userId}')">
-                            <i class="fas fa-ban"></i> تأكيد الحظر
-                        </button>
+                        <button class="btn btn-secondary" data-dismiss>إلغاء</button>
+                        <button class="btn btn-danger" id="confirmBanBtn"><i class="fas fa-ban"></i> تأكيد الحظر</button>
                     </div>
                 </div>
             </div>
-        `;
-        
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    }
-
-    async confirmBanUser(userId) {
-        const reason = document.getElementById('banReason').value;
-        const duration = document.getElementById('banDuration').value;
-        
-        if (!reason.trim()) {
-            this.showToast('يرجى إدخال سبب الحظر', 'error');
-            return;
-        }
-
-        try {
-            const response = await fetch(`/api/admin/users/${userId}/ban`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.token}`
-                },
-                body: JSON.stringify({
-                    reason,
-                    duration: duration ? parseInt(duration) : null
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to ban user');
-            }
-
-            const data = await response.json();
-            
-            if (data.success) {
+        `);
+        modal.querySelector('#confirmBanBtn').addEventListener('click', async () => {
+            const reason = modal.querySelector('#banReasonInput').value.trim();
+            const duration = modal.querySelector('#banDurationInput').value;
+            if (!reason) { this.showToast('يرجى إدخال سبب الحظر', 'error'); return; }
+            try {
+                await this.api('POST', `/users/${userId}/ban`, { reason, duration: duration ? parseInt(duration) : null });
                 this.showToast('تم حظر المستخدم بنجاح', 'success');
-                this.closeModal('banUserModal');
-                this.closeModal('userDetailsModal');
-                this.loadUsers(); // Refresh users list
-            }
-        } catch (error) {
-            console.error('Error banning user:', error);
-            this.showToast('فشل حظر المستخدم', 'error');
-        }
+                modal.remove();
+                document.getElementById('admin-modal-root').querySelectorAll('.modal-overlay').forEach(m => m.remove());
+                this.loadUsers(this.state.users.page || 1, this.state.users.search || '');
+            } catch (error) { this.showToast(error.message, 'error'); }
+        });
     }
 
     async unbanUser(userId) {
-        if (!confirm('هل أنت متأكد من إلغاء حظر هذا المستخدم؟')) {
-            return;
-        }
-
         try {
-            const response = await fetch(`/api/admin/users/${userId}/unban`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${this.token}`
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to unban user');
-            }
-
-            const data = await response.json();
-            
-            if (data.success) {
-                this.showToast('تم إلغاء حظر المستخدم بنجاح', 'success');
-                this.closeModal('userDetailsModal');
-                this.loadUsers(); // Refresh users list
-            }
-        } catch (error) {
-            console.error('Error unbanning user:', error);
-            this.showToast('فشل إلغاء حظر المستخدم', 'error');
-        }
+            await this.api('POST', `/users/${userId}/unban`);
+            this.showToast('تم إلغاء الحظر بنجاح', 'success');
+            this.loadUsers(this.state.users.page || 1, this.state.users.search || '');
+        } catch (error) { this.showToast(error.message, 'error'); }
     }
 
-
-
-            async toggleAgentStatus(userId, makeAgent) {
+    async toggleAgentStatus(userId, makeAgent, parentModal) {
         let whatsapp = null;
         if (makeAgent) {
-            whatsapp = prompt('أدخل رقم واتساب الوكيل (مع رمز الدولة، مثال: 963999999999):');
+            whatsapp = prompt('رقم واتساب الوكيل (مع رمز الدولة):');
             if (!whatsapp) return;
         }
-
         try {
-            const response = await fetch(`/api/admin/users/${userId}/set-agent`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.token}`
-                },
-                body: JSON.stringify({ isAgent: makeAgent, agentWhatsapp: whatsapp })
-            });
-
-            const data = await response.json();
-            if (data.success) {
-                this.showToast(data.message, 'success');
-                this.closeModal('userDetailsModal');
-                this.showUserDetails(userId);
-            } else {
-                this.showToast(data.message || 'فشل تنفيذ العملية', 'error');
-            }
-        } catch (error) {
-            this.showToast('فشل الاتصال بالخادم', 'error');
-        }
+            await this.api('POST', `/users/${userId}/set-agent`, { isAgent: makeAgent, agentWhatsapp: whatsapp });
+            this.showToast('تم تحديث صلاحية الوكيل', 'success');
+            if (parentModal) parentModal.remove();
+            this.showUserDetails(userId);
+        } catch (error) { this.showToast(error.message, 'error'); }
     }
 
-    async editUser(userId) {
-        // Implementation for edit user modal
-        this.showToast('ميزة التعديل قيد التطوير', 'info');
-    }
-
-    async searchUsers(searchTerm) {
-        await this.loadUsers(1, searchTerm);
-    }
-
-    async loadTransactions() {
-        // Implementation for transactions page
-        this.showToast('صفحة المعاملات قيد التطوير', 'info');
-    }
-
-        async loadWithdrawals() {
-        const status = document.getElementById('withdrawalStatusFilter')?.value || 'pending';
-        try {
-            const response = await fetch(`/api/admin/withdrawals?status=${status}`, {
-                headers: { 'Authorization': `Bearer ${this.token}` }
-            });
-            const data = await response.json();
-            if (!data.status || data.status !== 'success') throw new Error();
-            this.renderWithdrawalsList(data.data.withdrawals);
-        } catch (error) {
-            this.showToast('فشل تحميل طلبات السحب', 'error');
-        }
-    }
-
-    renderWithdrawalsList(withdrawals) {
-        const container = document.getElementById('withdrawalsListContainer');
-        if (!container) return;
-
-        if (!withdrawals || withdrawals.length === 0) {
-            container.innerHTML = `<div class="empty-state"><i class="fas fa-inbox fa-2x"></i><p>لا توجد طلبات</p></div>`;
-            return;
-        }
-
-        container.innerHTML = withdrawals.map(w => `
-            <div class="top-user-item" style="align-items:flex-start;">
-                <img src="${w.user?.profileImage}" class="top-user-avatar">
-                <div class="top-user-info" style="flex:2">
-                    <div class="username">${w.user?.username || 'مستخدم محذوف'}</div>
-                    <div style="font-size:0.85rem;color:#7f8c8d;">
-                        ${w.method === 'sham_cash' ? `شام كاش - المحفظة: ${w.walletNumber}` : `مكتب - ${w.officeInfo?.country}/${w.officeInfo?.governorate}/${w.officeInfo?.area} - ${w.officeInfo?.phone}`}
-                        <br>الاسم: ${w.fullName} | المبلغ: <strong>${w.amount}$</strong>
+    showAdjustFundsModal(userId) {
+        const modal = this.openModal(`
+            <div class="modal-overlay active">
+                <div class="modal-content" style="max-width:450px;">
+                    <div class="modal-header"><h3><i class="fas fa-coins"></i> تعديل الرصيد</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                    <div class="modal-body">
+                        <p class="text-muted small">استخدم قيمة سالبة للخصم، وموجبة للإضافة. اترك أي حقل فارغاً (0) لعدم تعديله.</p>
+                        <div class="form-group"><label>تغيير الرصيد ($)</label><input type="number" step="0.01" class="form-control" id="balanceChangeInput" value="0"></div>
+                        <div class="form-group"><label>تغيير الكوينز</label><input type="number" class="form-control" id="coinsChangeInput" value="0"></div>
+                        <div class="form-group"><label>السبب * (سيُسجَّل في سجل التدقيق)</label><textarea class="form-control" id="fundsReasonInput" rows="2" required></textarea></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" data-dismiss>إلغاء</button>
+                        <button class="btn btn-success" id="confirmFundsBtn"><i class="fas fa-check"></i> تأكيد التعديل</button>
                     </div>
                 </div>
-                ${w.status === 'pending' ? `
-                    <div style="display:flex; gap:6px;">
-                        <button class="btn-action btn-view" onclick="admin.reviewWithdrawal('${w._id}', 'approve')" title="قبول"><i class="fas fa-check"></i></button>
-                        <button class="btn-action btn-delete" onclick="admin.reviewWithdrawal('${w._id}', 'reject')" title="رفض"><i class="fas fa-times"></i></button>
-                    </div>
-                ` : `<span class="status-badge ${w.status === 'completed' ? 'status-completed' : 'status-banned'}">${w.status === 'completed' ? 'مقبول' : 'مرفوض'}</span>`}
             </div>
-        `).join('');
+        `);
+        modal.querySelector('#confirmFundsBtn').addEventListener('click', async () => {
+            const balanceChange = parseFloat(modal.querySelector('#balanceChangeInput').value) || 0;
+            const coinsChange = parseInt(modal.querySelector('#coinsChangeInput').value) || 0;
+            const reason = modal.querySelector('#fundsReasonInput').value.trim();
+            try {
+                const result = await this.api('POST', `/users/${userId}/adjust-funds`, { balanceChange, coinsChange, reason });
+                this.showToast(result.message, 'success');
+                modal.remove();
+                this.loadUsers(this.state.users.page || 1, this.state.users.search || '');
+            } catch (error) { this.showToast(error.message, 'error'); }
+        });
     }
 
-    async reviewWithdrawal(withdrawalId, action) {
-        let reason = null;
-        if (action === 'reject') {
-            reason = prompt('أدخل سبب الرفض:');
-            if (reason === null) return;
-        }
-
+    // ================= Deposits =================
+    async loadDeposits(page = 1) {
+        const status = document.getElementById('depositsStatusFilter')?.value || 'pending';
         try {
-            const response = await fetch(`/api/admin/withdrawals/${withdrawalId}/review`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
-                body: JSON.stringify({ action, reason })
-            });
-            const data = await response.json();
-            if (data.status === 'success') {
-                this.showToast('تم تحديث الطلب بنجاح', 'success');
-                this.loadWithdrawals();
-            } else {
-                this.showToast(data.message || 'فشل تنفيذ العملية', 'error');
-            }
-        } catch (error) {
-            this.showToast('فشل الاتصال بالخادم', 'error');
-        }
+            const data = await this.api('GET', `/deposits?status=${status}&page=${page}`);
+            const c = document.getElementById('depositsListContainer');
+            if (!data.deposits.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-inbox fa-2x"></i><p>لا توجد طلبات</p></div>'; this.renderPagination('depositsPagination', 0, 1, () => {}); return; }
+
+            c.innerHTML = data.deposits.map(d => `
+                <div class="top-user-item" style="align-items:flex-start;">
+                    <img src="${d.user?.profileImage || 'https://via.placeholder.com/45'}" class="top-user-avatar">
+                    <div class="top-user-info" style="flex:2">
+                        <div class="username">${escapeHtml(d.user?.username || 'مستخدم محذوف')}</div>
+                        <div style="font-size:0.85rem;color:#7f8c8d;">المبلغ: <strong>$${d.amount}</strong> | ${formatDate(d.createdAt)}
+                        ${d.receiptImage ? `<br><a href="${d.receiptImage}" target="_blank">عرض الإيصال <i class="fas fa-external-link-alt"></i></a>` : ''}
+                        </div>
+                    </div>
+                    ${d.status === 'pending' ? `
+                        <div style="display:flex; gap:6px;">
+                            <button class="btn-action btn-view" data-approve="${d._id}" title="قبول"><i class="fas fa-check"></i></button>
+                            <button class="btn-action btn-delete" data-reject="${d._id}" title="رفض"><i class="fas fa-times"></i></button>
+                        </div>
+                    ` : `<span class="status-badge ${d.status === 'completed' ? 'status-completed' : 'status-banned'}">${this.statusText(d.status)}</span>`}
+                </div>
+            `).join('');
+
+            c.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', () =>
+                this.confirmAction('تأكيد الموافقة على طلب الشحن؟', async () => {
+                    await this.api('POST', `/deposits/${btn.dataset.approve}/approve`);
+                    this.showToast('تمت الموافقة', 'success'); this.loadDeposits(page);
+                }, false)
+            ));
+            c.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', () => {
+                const reason = prompt('سبب الرفض:');
+                if (reason === null) return;
+                this.api('POST', `/deposits/${btn.dataset.reject}/reject`, { reason })
+                    .then(() => { this.showToast('تم الرفض', 'success'); this.loadDeposits(page); })
+                    .catch(e => this.showToast(e.message, 'error'));
+            }));
+
+            this.renderPagination('depositsPagination', data.totalPages, data.currentPage, (p) => this.loadDeposits(p));
+        } catch (error) { this.showToast(error.message, 'error'); }
     }
 
-    async loadDeposits() {
-        // Implementation for deposits page
-        this.showToast('صفحة طلبات الشحن قيد التطوير', 'info');
+    // ================= Coin Purchases =================
+    async loadCoinPurchases(page = 1) {
+        const status = document.getElementById('coinPurchasesStatusFilter')?.value || 'pending_review';
+        try {
+            const data = await this.api('GET', `/coin-purchases?status=${status}&page=${page}`);
+            const c = document.getElementById('coinPurchasesListContainer');
+            if (!data.purchases.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-inbox fa-2x"></i><p>لا توجد طلبات</p></div>'; this.renderPagination('coinPurchasesPagination', 0, 1, () => {}); return; }
+
+            c.innerHTML = data.purchases.map(p => `
+                <div class="top-user-item" style="align-items:flex-start;">
+                    <img src="${p.user?.profileImage || 'https://via.placeholder.com/45'}" class="top-user-avatar">
+                    <div class="top-user-info" style="flex:2">
+                        <div class="username">${escapeHtml(p.user?.username || 'مستخدم محذوف')}</div>
+                        <div style="font-size:0.85rem;color:#7f8c8d;">${p.amountUSD}$ → ${p.coinsAmount} كوينز | ${p.method === 'sham_cash' ? 'شام كاش' : 'فيزا'} | ${formatDate(p.createdAt)}
+                        ${p.receiptImage ? `<br><a href="${p.receiptImage}" target="_blank">عرض الإيصال <i class="fas fa-external-link-alt"></i></a>` : ''}
+                        </div>
+                    </div>
+                    ${p.status === 'pending_review' ? `
+                        <div style="display:flex; gap:6px;">
+                            <button class="btn-action btn-view" data-approve="${p._id}" title="قبول"><i class="fas fa-check"></i></button>
+                            <button class="btn-action btn-delete" data-reject="${p._id}" title="رفض"><i class="fas fa-times"></i></button>
+                        </div>
+                    ` : `<span class="status-badge ${p.status === 'approved' ? 'status-completed' : 'status-banned'}">${p.status === 'approved' ? 'مقبول' : p.status === 'rejected' ? 'مرفوض' : 'بانتظار الدفع'}</span>`}
+                </div>
+            `).join('');
+
+            c.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', () =>
+                this.confirmAction('تأكيد الموافقة وإيداع الكوينز؟', async () => {
+                    await this.api('POST', `/coin-purchases/${btn.dataset.approve}/approve`);
+                    this.showToast('تمت الموافقة', 'success'); this.loadCoinPurchases(page);
+                }, false)
+            ));
+            c.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', () => {
+                const reason = prompt('سبب الرفض:');
+                if (reason === null) return;
+                this.api('POST', `/coin-purchases/${btn.dataset.reject}/reject`, { reason })
+                    .then(() => { this.showToast('تم الرفض', 'success'); this.loadCoinPurchases(page); })
+                    .catch(e => this.showToast(e.message, 'error'));
+            }));
+
+            this.renderPagination('coinPurchasesPagination', data.totalPages, data.currentPage, (p) => this.loadCoinPurchases(p));
+        } catch (error) { this.showToast(error.message, 'error'); }
     }
 
+    // ================= Withdrawals =================
+    async loadWithdrawals() {
+        const status = document.getElementById('withdrawalStatusFilter')?.value || 'pending';
+        try {
+            const data = await this.api('GET', `/withdrawals?status=${status}`);
+            const c = document.getElementById('withdrawalsListContainer');
+            if (!data.data.withdrawals.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-inbox fa-2x"></i><p>لا توجد طلبات</p></div>'; return; }
+
+            c.innerHTML = data.data.withdrawals.map(w => `
+                <div class="top-user-item" style="align-items:flex-start;">
+                    <img src="${w.user?.profileImage || 'https://via.placeholder.com/45'}" class="top-user-avatar">
+                    <div class="top-user-info" style="flex:2">
+                        <div class="username">${escapeHtml(w.user?.username || 'مستخدم محذوف')}</div>
+                        <div style="font-size:0.85rem;color:#7f8c8d;">
+                            ${w.method === 'sham_cash' ? `شام كاش - المحفظة: ${escapeHtml(w.walletNumber || '')}` : `مكتب - ${escapeHtml(w.officeInfo?.country || '')}/${escapeHtml(w.officeInfo?.governorate || '')} - ${escapeHtml(w.officeInfo?.phone || '')}`}
+                            <br>الاسم: ${escapeHtml(w.fullName)} | المبلغ: <strong>${w.amount}$</strong>
+                        </div>
+                    </div>
+                    ${w.status === 'pending' ? `
+                        <div style="display:flex; gap:6px;">
+                            <button class="btn-action btn-view" data-approve="${w._id}" title="قبول"><i class="fas fa-check"></i></button>
+                            <button class="btn-action btn-delete" data-reject="${w._id}" title="رفض"><i class="fas fa-times"></i></button>
+                        </div>
+                    ` : `<span class="status-badge ${w.status === 'completed' ? 'status-completed' : 'status-banned'}">${w.status === 'completed' ? 'مقبول' : 'مرفوض'}</span>`}
+                </div>
+            `).join('');
+
+            c.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', () =>
+                this.confirmAction('تأكيد الموافقة على السحب؟', async () => {
+                    await this.api('POST', `/withdrawals/${btn.dataset.approve}/review`, { action: 'approve' });
+                    this.showToast('تمت الموافقة', 'success'); this.loadWithdrawals();
+                }, false)
+            ));
+            c.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', () => {
+                const reason = prompt('سبب الرفض:');
+                if (reason === null) return;
+                this.api('POST', `/withdrawals/${btn.dataset.reject}/review`, { action: 'reject', reason })
+                    .then(() => { this.showToast('تم الرفض واسترداد الرصيد', 'success'); this.loadWithdrawals(); })
+                    .catch(e => this.showToast(e.message, 'error'));
+            }));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    // ================= Transactions =================
+    async loadTransactions(page = 1, search = '') {
+        const type = document.getElementById('transactionsTypeFilter')?.value || 'all';
+        try {
+            const data = await this.api('GET', `/transactions?type=${type}&page=${page}&search=${encodeURIComponent(search)}`);
+            const c = document.getElementById('transactionsListContainer');
+            if (!data.transactions.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-inbox fa-2x"></i><p>لا توجد معاملات</p></div>'; this.renderPagination('transactionsPagination', 0, 1, () => {}); return; }
+
+            c.innerHTML = `<table class="table table-hover"><thead><tr><th>المستخدم</th><th>النوع</th><th>المبلغ</th><th>الحالة</th><th>الوصف</th><th>التاريخ</th></tr></thead><tbody>
+                ${data.transactions.map(tx => `
+                    <tr>
+                        <td>${escapeHtml(tx.user?.username || '-')}</td>
+                        <td>${this.txTypeText(tx.type)}</td>
+                        <td class="${tx.amount < 0 ? 'text-danger' : 'text-success'}">${tx.amount > 0 ? '+' : ''}${tx.amount} ${tx.currency}</td>
+                        <td>${this.statusText(tx.status)}</td>
+                        <td>${escapeHtml(tx.description || '-')}</td>
+                        <td>${formatDate(tx.createdAt)}</td>
+                    </tr>
+                `).join('')}
+            </tbody></table>`;
+
+            this.renderPagination('transactionsPagination', data.totalPages, data.currentPage, (p) => this.loadTransactions(p, search));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    // ================= Battles =================
     async loadBattles() {
-        // Implementation for battles page
-        this.showToast('صفحة التحديات قيد التطوير', 'info');
+        const status = document.getElementById('battlesStatusFilter')?.value || 'active';
+        try {
+            const data = await this.api('GET', `/battles?status=${status}`);
+            const c = document.getElementById('battlesListContainer');
+            if (!data.battles.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-gamepad fa-2x"></i><p>لا توجد تحديات</p></div>'; return; }
+
+            c.innerHTML = `<table class="table table-hover"><thead><tr><th>النوع</th><th>الرهان</th><th>اللاعبون</th><th>الحالة</th><th>الفائز</th><th>إجراء</th></tr></thead><tbody>
+                ${data.battles.map(b => {
+                    const players = (b.players || []).map(p => escapeHtml(p.username)).join('، ') || '-';
+                    const canForceEnd = ['waiting', 'in-progress'].includes(b.status);
+                    return `
+                    <tr>
+                        <td>${b.type}</td>
+                        <td>$${b.betAmount}</td>
+                        <td>${players}</td>
+                        <td>${this.battleStatusText(b.status)}</td>
+                        <td>${b.winner || '-'}</td>
+                        <td>${canForceEnd ? `<button class="btn-action btn-delete" data-force-end="${b._id}" title="إنهاء قسري + استرداد"><i class="fas fa-stop-circle"></i></button>` : '-'}</td>
+                    </tr>`;
+                }).join('')}
+            </tbody></table>`;
+
+            c.querySelectorAll('[data-force-end]').forEach(btn => btn.addEventListener('click', () =>
+                this.confirmAction('إنهاء التحدي قسرياً واسترداد الرهانات لكل اللاعبين؟', async () => {
+                    const r = await this.api('POST', `/battles/${btn.dataset.forceEnd}/force-end`, { refund: true });
+                    this.showToast(r.message, 'success'); this.loadBattles();
+                })
+            ));
+        } catch (error) { this.showToast(error.message, 'error'); }
     }
 
+    // ================= Gifts =================
     async loadGifts() {
-        // Implementation for gifts page
-        this.showToast('صفحة الهدايا قيد التطوير', 'info');
+        try {
+            const response = await fetch('/api/admin/gifts', { headers: { 'Authorization': `Bearer ${this.token}` } });
+            const data = await response.json();
+            const c = document.getElementById('giftsGridContainer');
+            if (!data.gifts || !data.gifts.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-gift fa-2x"></i><p>لا توجد هدايا بعد</p></div>'; return; }
+
+            c.innerHTML = data.gifts.map(g => `
+                <div class="stat-card ${g.isActive ? 'success' : 'danger'}" style="flex-direction:column;align-items:flex-start;">
+                    <div style="display:flex;align-items:center;gap:12px;width:100%;">
+                        <img src="${g.imageUrl}" style="width:50px;height:50px;object-fit:contain;">
+                        <div style="flex:1;">
+                            <strong>${escapeHtml(g.name)}</strong><br>
+                            <span class="text-muted small">${g.category} — ${g.discountedPrice || g.price} كوينز</span>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:6px;margin-top:12px;">
+                        <button class="btn-action btn-edit" data-edit="${g._id}"><i class="fas fa-edit"></i></button>
+                        <button class="btn-action btn-delete" data-delete="${g._id}" data-name="${escapeHtml(g.name)}"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            `).join('');
+
+            c.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => {
+                const gift = data.gifts.find(g => g._id === btn.dataset.edit);
+                this.showGiftFormModal(gift);
+            }));
+            c.querySelectorAll('[data-delete]').forEach(btn => btn.addEventListener('click', () =>
+                this.confirmAction(`حذف هدية "${btn.dataset.name}" نهائياً؟`, async () => {
+                    await this.api('DELETE', `/gifts/${btn.dataset.delete}`);
+                    this.showToast('تم حذف الهدية', 'success'); this.loadGifts();
+                })
+            ));
+        } catch (error) { this.showToast(error.message, 'error'); }
     }
 
-    async loadLogs() {
-        // Implementation for logs page
-        this.showToast('صفحة السجلات قيد التطوير', 'info');
-    }
-
-    async loadSettings() {
-        // Implementation for settings page
-        this.showToast('صفحة الإعدادات قيد التطوير', 'info');
-    }
-
-    initSocket() {
-        const socketUrl = window.location.hostname === 'localhost' 
-            ? 'http://localhost:5000'
-            : window.location.origin;
-        
-        this.socket = io(`${socketUrl}/admin`, {
-            auth: {
-                token: this.token
+    showGiftFormModal(gift = null) {
+        const isEdit = !!gift;
+        const modal = this.openModal(`
+            <div class="modal-overlay active">
+                <div class="modal-content" style="max-width:500px;">
+                    <div class="modal-header"><h3>${isEdit ? 'تعديل هدية' : 'إضافة هدية جديدة'}</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                    <div class="modal-body">
+                        <div class="form-group"><label>الاسم *</label><input type="text" class="form-control" id="giftName" value="${escapeHtml(gift?.name || '')}"></div>
+                        <div class="form-group"><label>الوصف</label><input type="text" class="form-control" id="giftDesc" value="${escapeHtml(gift?.description || '')}"></div>
+                        <div class="form-group"><label>رابط الصورة *</label><input type="text" class="form-control" id="giftImage" value="${escapeHtml(gift?.imageUrl || '')}"></div>
+                        <div class="form-group"><label>السعر (كوينز) *</label><input type="number" class="form-control" id="giftPrice" value="${gift?.price || 10}" min="10"></div>
+                        <div class="form-group"><label>الفئة</label>
+                            <select class="form-control" id="giftCategory">
+                                ${['common', 'rare', 'epic', 'legendary'].map(c => `<option value="${c}" ${gift?.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group"><label>نسبة الخصم %</label><input type="number" class="form-control" id="giftDiscount" value="${gift?.discount || 0}" min="0" max="100"></div>
+                        <div class="form-group"><label>ترتيب العرض</label><input type="number" class="form-control" id="giftSortOrder" value="${gift?.sortOrder || 0}"></div>
+                        <div class="form-group"><label><input type="checkbox" id="giftIsActive" ${gift?.isActive !== false ? 'checked' : ''}> نشطة (تظهر بالمتجر)</label></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" data-dismiss>إلغاء</button>
+                        <button class="btn btn-primary" id="saveGiftBtn">${isEdit ? 'حفظ التعديلات' : 'إضافة الهدية'}</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        modal.querySelector('#saveGiftBtn').addEventListener('click', async () => {
+            const payload = {
+                name: modal.querySelector('#giftName').value.trim(),
+                description: modal.querySelector('#giftDesc').value.trim(),
+                imageUrl: modal.querySelector('#giftImage').value.trim(),
+                price: parseFloat(modal.querySelector('#giftPrice').value),
+                category: modal.querySelector('#giftCategory').value,
+                discount: parseFloat(modal.querySelector('#giftDiscount').value) || 0,
+                sortOrder: parseInt(modal.querySelector('#giftSortOrder').value) || 0,
+                isActive: modal.querySelector('#giftIsActive').checked
+            };
+            if (!payload.name || !payload.imageUrl || !payload.price) {
+                this.showToast('يرجى تعبئة الحقول الإلزامية (الاسم، الصورة، السعر)', 'error'); return;
             }
+            try {
+                if (isEdit) await this.api('PUT', `/gifts/${gift._id}`, payload);
+                else await this.api('POST', '/gifts', payload);
+                this.showToast('تم الحفظ بنجاح', 'success');
+                modal.remove();
+                this.loadGifts();
+            } catch (error) { this.showToast(error.message, 'error'); }
         });
+    }
 
-        this.socket.on('connect', () => {
-            console.log('✅ Admin socket connected');
-        });
+    // ================= Reports =================
+    async loadReports() {
+        const status = document.getElementById('reportsStatusFilter')?.value || 'pending';
+        try {
+            const data = await this.api('GET', `/reports?status=${status}`);
+            const c = document.getElementById('reportsListContainer');
+            if (!data.reports.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-flag fa-2x"></i><p>لا توجد بلاغات</p></div>'; return; }
 
-        this.socket.on('disconnect', () => {
-            console.log('❌ Admin socket disconnected');
-        });
+            const priorityClass = { low: 'status-online', medium: 'status-pending', high: 'status-banned', critical: 'status-banned' };
 
-        this.socket.on('connect_error', (error) => {
-            console.error('Admin socket connection error:', error);
-        });
+            c.innerHTML = data.reports.map(r => `
+                <div class="activity-item ${r.priority === 'critical' || r.priority === 'high' ? 'danger' : 'warning'}">
+                    <div class="activity-icon"><i class="fas fa-flag"></i></div>
+                    <div class="activity-content">
+                        <div class="title">${escapeHtml(r.reporter?.username || '-')} أبلغ عن ${escapeHtml(r.reportedUser?.username || '-')}
+                            <span class="status-badge ${priorityClass[r.priority] || 'status-pending'}">${r.priority}</span>
+                        </div>
+                        <div class="description">السبب: ${escapeHtml(r.reason)} — ${escapeHtml(r.details || '')}</div>
+                        <div class="activity-time">${formatDate(r.createdAt)}</div>
+                    </div>
+                    ${r.status === 'pending' || r.status === 'under_review' ? `
+                        <div style="display:flex;gap:6px;">
+                            <button class="btn-action btn-view" data-resolve="${r._id}" title="حل"><i class="fas fa-check"></i></button>
+                            <button class="btn-action btn-ban" data-ban="${r._id}" data-userid="${r.reportedUser?._id}" title="حظر المُبلَّغ عنه"><i class="fas fa-user-slash"></i></button>
+                            <button class="btn-action btn-delete" data-dismiss-report="${r._id}" title="رفض البلاغ"><i class="fas fa-times"></i></button>
+                        </div>
+                    ` : `<span class="status-badge status-completed">${r.status}</span>`}
+                </div>
+            `).join('');
 
-        // Handle real-time updates
-        this.socket.on('initial-admin-data', (data) => {
-            console.log('Received initial admin data:', data);
-        });
+            c.querySelectorAll('[data-resolve]').forEach(btn => btn.addEventListener('click', () =>
+                this.confirmAction('تعليم هذا البلاغ كمحلول؟', async () => {
+                    await this.api('POST', `/reports/${btn.dataset.resolve}/resolve`, { status: 'resolved' });
+                    this.showToast('تم', 'success'); this.loadReports();
+                }, false)
+            ));
+            c.querySelectorAll('[data-ban]').forEach(btn => btn.addEventListener('click', () => {
+                const notes = prompt('سبب الحظر (سيُحفظ كسبب الحظر الرسمي):', 'مخالفة إثر بلاغ مستخدم');
+                if (notes === null) return;
+                this.api('POST', `/reports/${btn.dataset.ban}/resolve`, { status: 'resolved', action: 'ban', notes })
+                    .then(() => { this.showToast('تم حظر المستخدم وحل البلاغ', 'success'); this.loadReports(); })
+                    .catch(e => this.showToast(e.message, 'error'));
+            }));
+            c.querySelectorAll('[data-dismiss-report]').forEach(btn => btn.addEventListener('click', () =>
+                this.confirmAction('رفض هذا البلاغ (اعتباره غير صحيح)؟', async () => {
+                    await this.api('POST', `/reports/${btn.dataset.dismissReport}/resolve`, { status: 'dismissed' });
+                    this.showToast('تم رفض البلاغ', 'success'); this.loadReports();
+                })
+            ));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
 
-        this.socket.on('user-activities', (activities) => {
-            // Update real-time activities
-        });
+    // ================= Logs =================
+    async loadLogs(page = 1) {
+        try {
+            const response = await fetch(`/api/admin/logs?page=${page}&limit=50`, { headers: { 'Authorization': `Bearer ${this.token}` } });
+            const data = await response.json();
+            const c = document.getElementById('logsListContainer');
+            if (!data.logs || !data.logs.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-history fa-2x"></i><p>لا توجد سجلات</p></div>'; this.renderPagination('logsPagination', 0, 1, () => {}); return; }
 
-        this.socket.on('user-message', (message) => {
-            // Monitor user messages
-        });
+            c.innerHTML = `<table class="table table-hover"><thead><tr><th>المدير</th><th>الإجراء</th><th>الهدف</th><th>الخطورة</th><th>التاريخ</th></tr></thead><tbody>
+                ${data.logs.map(log => `
+                    <tr>
+                        <td>${escapeHtml(log.admin?.username || '-')}</td>
+                        <td>${escapeHtml(log.action)}</td>
+                        <td>${escapeHtml(log.targetUser?.username || '-')}</td>
+                        <td><span class="status-badge ${log.severity === 'critical' || log.severity === 'error' ? 'status-banned' : log.severity === 'warning' ? 'status-pending' : 'status-online'}">${log.severity}</span></td>
+                        <td>${formatDate(log.createdAt)}</td>
+                    </tr>
+                `).join('')}
+            </tbody></table>`;
 
-        this.socket.on('battle-created', (battle) => {
-            // New battle created
-        });
+            this.renderPagination('logsPagination', data.totalPages, data.currentPage, (p) => this.loadLogs(p));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
 
-        this.socket.on('admin-notification', (notification) => {
-            this.showToast(notification.message, notification.type);
-        });
+    // ================= Settings (قراءة فقط، آمن) =================
+    loadSettings() {
+        const c = document.getElementById('settingsInfoContainer');
+        c.innerHTML = `
+            <table class="table table-sm">
+                <tbody>
+                    <tr><th>سعر صرف الكوينز</th><td>يُحدَّد عبر COIN_EXCHANGE_RATE في .env</td></tr>
+                    <tr><th>حد الشحن الأدنى/الأقصى</th><td>MIN_PURCHASE_USD / MAX_PURCHASE_USD</td></tr>
+                    <tr><th>محفظة شام كاش</th><td>SHAM_CASH_WALLET</td></tr>
+                    <tr><th>بطاقة فيزا</th><td>VISA_CARD_NUMBER</td></tr>
+                    <tr><th>البريد الإداري للتنبيهات</th><td>ADMIN_EMAIL</td></tr>
+                </tbody>
+            </table>
+        `;
+    }
+
+    // ================= Helpers نصية =================
+    txTypeText(type) {
+        const m = { deposit: 'شحن', withdrawal: 'سحب', bet: 'رهان', win: 'فوز', loss: 'خسارة', gift_send: 'إرسال هدية', gift_receive: 'استلام هدية', commission: 'عمولة' };
+        return m[type] || type;
+    }
+    statusText(status) {
+        const m = { pending: 'قيد الانتظار', completed: 'مكتمل', failed: 'فشل', cancelled: 'ملغي' };
+        return m[status] || status;
+    }
+    battleStatusText(status) {
+        const m = { waiting: 'انتظار', 'in-progress': 'جارٍ', completed: 'مكتمل', cancelled: 'ملغى' };
+        return m[status] || status;
     }
 
     updateAdminInfo() {
-        const adminNameElement = document.getElementById('adminName');
-        if (adminNameElement && this.adminData.username) {
-            adminNameElement.textContent = this.adminData.username;
-        }
+        const el = document.getElementById('adminName');
+        if (el && this.adminData.username) el.textContent = this.adminData.username;
+    }
+
+    initSocket() {
+        const socketUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin;
+        this.socket = io(`${socketUrl}/admin`, { auth: { token: this.token } });
+        this.socket.on('connect', () => console.log('✅ Admin socket connected'));
+        this.socket.on('admin-notification', (n) => this.showToast(n.message, n.type));
     }
 
     startAutoRefresh() {
-        // Auto refresh dashboard every 30 seconds
-        setInterval(() => {
-            if (this.currentPage === 'dashboard') {
-                this.loadDashboard();
-            }
-        }, 30000);
+        setInterval(() => { if (this.currentPage === 'dashboard') this.loadDashboard(); }, 30000);
     }
 
-        logout() {
-        if (this.socket) {
-            this.socket.disconnect();
-        }
-        window.location.href = '/index.html';
-    }
-
-    closeModal(modalId) {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.remove();
-        }
+    logout() {
+        if (this.socket) this.socket.disconnect();
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login.html';
     }
 
     showToast(message, type = 'info') {
-        // Remove existing toasts
-        document.querySelectorAll('.admin-toast').forEach(toast => toast.remove());
-        
+        document.querySelectorAll('.admin-toast').forEach(t => t.remove());
         const toast = document.createElement('div');
         toast.className = `admin-toast toast-${type}`;
-        toast.innerHTML = `
-            <div class="toast-content">
-                <i class="fas fa-${type === 'success' ? 'check-circle' : 
-                                  type === 'error' ? 'exclamation-circle' : 
-                                  type === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
-                <span>${message}</span>
-            </div>
-            <button class="toast-close" onclick="this.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        `;
-        
+        toast.innerHTML = `<div class="toast-content"><i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i><span>${escapeHtml(message)}</span></div><button class="toast-close" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>`;
         document.body.appendChild(toast);
-        
-        // Auto remove after 5 seconds
-        setTimeout(() => {
-            if (toast.parentElement) {
-                toast.remove();
-            }
-        }, 5000);
-    }
-
-    // Helper methods for text conversion
-    getRelationshipText(relationship) {
-        const relationships = {
-            'single': 'أعزب',
-            'married': 'متزوج',
-            'divorced': 'مطلق',
-            'relationship': 'في علاقة',
-            'other': 'أخرى'
-        };
-        return relationships[relationship] || 'غير محدد';
-    }
-
-    getEducationText(education) {
-        const educations = {
-            'student': 'طالب',
-            'graduate': 'متخرج',
-            'uneducated': 'غير متعلم',
-            'other': 'أخرى'
-        };
-        return educations[education] || 'غير محدد';
-    }
-
-    getTransactionTypeText(type) {
-        const types = {
-            'deposit': 'شحن',
-            'withdrawal': 'سحب',
-            'bet': 'رهان',
-            'win': 'ربح',
-            'loss': 'خسارة',
-            'gift_send': 'إرسال هدية',
-            'gift_receive': 'استلام هدية',
-            'commission': 'عمولة'
-        };
-        return types[type] || type;
-    }
-
-    getTransactionBadgeClass(type) {
-        const classes = {
-            'deposit': 'bg-success',
-            'withdrawal': 'bg-warning',
-            'bet': 'bg-info',
-            'win': 'bg-success',
-            'loss': 'bg-danger',
-            'gift_send': 'bg-primary',
-            'gift_receive': 'bg-info',
-            'commission': 'bg-secondary'
-        };
-        return classes[type] || 'bg-secondary';
-    }
-
-    getStatusText(status) {
-        const statuses = {
-            'pending': 'قيد الانتظار',
-            'completed': 'مكتمل',
-            'failed': 'فشل',
-            'cancelled': 'ملغي'
-        };
-        return statuses[status] || status;
-    }
-
-    getStatusBadgeClass(status) {
-        const classes = {
-            'pending': 'bg-warning',
-            'completed': 'bg-success',
-            'failed': 'bg-danger',
-            'cancelled': 'bg-secondary'
-        };
-        return classes[status] || 'bg-secondary';
-    }
-
-    getBattleStatusText(status) {
-        const statuses = {
-            'waiting': 'في الانتظار',
-            'ready': 'جاهز',
-            'in_progress': 'جاري',
-            'completed': 'منتهي',
-            'cancelled': 'ملغي'
-        };
-        return statuses[status] || status;
-    }
-
-    getBattleStatusBadgeClass(status) {
-        const classes = {
-            'waiting': 'bg-info',
-            'ready': 'bg-primary',
-            'in_progress': 'bg-warning',
-            'completed': 'bg-success',
-            'cancelled': 'bg-danger'
-        };
-        return classes[status] || 'bg-secondary';
+        setTimeout(() => toast.remove(), 5000);
     }
 
     loadCurrentPage() {
         const hash = window.location.hash.substring(1) || 'dashboard';
         this.switchPage(hash);
-        
-        // Update URL hash when switching pages
         window.addEventListener('hashchange', () => {
-            const newHash = window.location.hash.substring(1) || 'dashboard';
-            if (newHash !== this.currentPage) {
-                this.switchPage(newHash);
-            }
+            const h = window.location.hash.substring(1) || 'dashboard';
+            if (h !== this.currentPage) this.switchPage(h);
         });
     }
 }
 
-// Add CSS for toasts
 const toastCSS = `
-    .admin-toast {
-        position: fixed;
-        top: 20px;
-        left: 20px;
-        right: 20px;
-        max-width: 400px;
-        margin: 0 auto;
-        background: white;
-        border-radius: 10px;
-        padding: 15px 20px;
-        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        z-index: 9999;
-        animation: slideDown 0.3s ease;
-    }
-    
-    .toast-success {
-        border-right: 4px solid #27ae60;
-    }
-    
-    .toast-error {
-        border-right: 4px solid #e74c3c;
-    }
-    
-    .toast-warning {
-        border-right: 4px solid #f39c12;
-    }
-    
-    .toast-info {
-        border-right: 4px solid #3498db;
-    }
-    
-    .toast-content {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex: 1;
-    }
-    
-    .toast-content i {
-        font-size: 1.2rem;
-    }
-    
-    .toast-success .toast-content i {
-        color: #27ae60;
-    }
-    
-    .toast-error .toast-content i {
-        color: #e74c3c;
-    }
-    
-    .toast-warning .toast-content i {
-        color: #f39c12;
-    }
-    
-    .toast-info .toast-content i {
-        color: #3498db;
-    }
-    
-    .toast-close {
-        background: none;
-        border: none;
-        color: #95a5a6;
-        cursor: pointer;
-        padding: 5px;
-        font-size: 1rem;
-    }
-    
-    @keyframes slideDown {
-        from {
-            opacity: 0;
-            transform: translateY(-20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
+    .admin-toast { position: fixed; top: 20px; left: 20px; right: 20px; max-width: 400px; margin: 0 auto; background: white; border-radius: 10px; padding: 15px 20px; box-shadow: 0 5px 20px rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: space-between; z-index: 9999; animation: slideDown 0.3s ease; }
+    .toast-success { border-right: 4px solid #27ae60; } .toast-error { border-right: 4px solid #e74c3c; }
+    .toast-warning { border-right: 4px solid #f39c12; } .toast-info { border-right: 4px solid #3498db; }
+    .toast-content { display: flex; align-items: center; gap: 10px; flex: 1; }
+    .toast-success .toast-content i { color: #27ae60; } .toast-error .toast-content i { color: #e74c3c; }
+    .toast-warning .toast-content i { color: #f39c12; } .toast-info .toast-content i { color: #3498db; }
+    .toast-close { background: none; border: none; color: #95a5a6; cursor: pointer; padding: 5px; }
+    @keyframes slideDown { from { opacity:0; transform: translateY(-20px);} to { opacity:1; transform: translateY(0);} }
 `;
-
 const style = document.createElement('style');
 style.textContent = toastCSS;
 document.head.appendChild(style);
 
-// Initialize admin dashboard
 const admin = new AdminDashboard();
-
-// Export for use in HTML
 window.admin = admin;
