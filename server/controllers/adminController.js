@@ -139,26 +139,33 @@ exports.getUserDetails = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const user = await User.findById(userId).select('-password');
+    const user = await User.findById(userId).select('-password')
+      .populate('friends', 'username profileImage');
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'المستخدم غير موجود'
-      });
+      return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
     }
 
-    // Get user transactions
     const transactions = await Transaction.find({ user: userId })
       .sort('-createdAt')
       .limit(100);
 
-    // Get user battles
+    // ✅ الإصلاح الجذري: المسار الصحيح لأعضاء الفرق هو teams.teamA / teams.teamB
+    // (المسار القديم 'teamA.user' لم يكن يطابق أي مستند إطلاقاً، فكانت هذه الدالة
+    // ترجع دائماً قائمة تحديات فارغة ونسبة فوز = 0 مهما كانت بيانات المستخدم الحقيقية)
     const battles = await Battle.find({
       $or: [
-        { 'teamA.user': userId },
-        { 'teamB.user': userId }
+        { 'teams.teamA': userId },
+        { 'teams.teamB': userId },
+        { players: userId }
       ]
     }).sort('-createdAt').limit(50);
+
+    const completedBattles = battles.filter(b => b.status === 'completed');
+    const wins = completedBattles.filter(b => {
+      const inTeamA = (b.teams?.teamA || []).some(p => p.toString() === userId);
+      const inTeamB = (b.teams?.teamB || []).some(p => p.toString() === userId);
+      return (b.winner === 'teamA' && inTeamA) || (b.winner === 'teamB' && inTeamB);
+    }).length;
 
     res.json({
       success: true,
@@ -166,19 +173,14 @@ exports.getUserDetails = async (req, res) => {
       transactions,
       battles,
       stats: {
-        totalBattles: battles.length,
-        winRate: battles.filter(b => 
-          (b.winner === 'teamA' && b.teamA.some(p => p.user.toString() === userId)) ||
-          (b.winner === 'teamB' && b.teamB.some(p => p.user.toString() === userId))
-        ).length / battles.length * 100 || 0
+        totalBattles: completedBattles.length,
+        totalWins: wins,
+        winRate: completedBattles.length > 0 ? (wins / completedBattles.length * 100) : 0
       }
     });
 
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -688,5 +690,392 @@ exports.updateSettings = async (req, res) => {
       success: false,
       message: error.message
     });
+  }
+};
+
+
+// =====================================================
+// ✅ تعديل رصيد/كوينز مستخدم يدوياً — عملية مالية آمنة وموثّقة بالكامل
+// - يمنع الرصيد السالب رياضياً
+// - يفرض سبباً مكتوباً لكل عملية (سجل تدقيق كامل)
+// - يُنشئ سجل Transaction حقيقي (وليس تعديلاً صامتاً على الحقل مباشرة)
+// - يُسجَّل في AdminLog بخطورة "warning" لسهولة المراجعة لاحقاً
+// =====================================================
+exports.adjustUserFunds = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { balanceChange = 0, coinsChange = 0, reason } = req.body;
+    const { admin } = req;
+
+    const balChange = parseFloat(balanceChange) || 0;
+    const coinChange = parseInt(coinsChange) || 0;
+
+    if (balChange === 0 && coinChange === 0) {
+      return res.status(400).json({ success: false, message: 'يجب تحديد قيمة تغيير واحدة على الأقل' });
+    }
+    if (!reason || reason.trim().length < 3) {
+      return res.status(400).json({ success: false, message: 'يجب كتابة سبب التعديل (3 أحرف على الأقل) لأغراض التوثيق' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+    if (balChange < 0 && user.balance + balChange < 0) {
+      return res.status(400).json({ success: false, message: 'العملية سترجع رصيد المستخدم سالباً — غير مسموح' });
+    }
+    if (coinChange < 0 && user.coins + coinChange < 0) {
+      return res.status(400).json({ success: false, message: 'العملية سترجع كوينز المستخدم سالبة — غير مسموح' });
+    }
+
+    user.balance += balChange;
+    user.coins += coinChange;
+    await user.save();
+
+    if (balChange !== 0) {
+      await Transaction.create({
+        user: user._id,
+        type: balChange > 0 ? 'deposit' : 'withdrawal',
+        amount: Math.abs(balChange),
+        currency: 'USD',
+        status: 'completed',
+        description: `تعديل يدوي من الإدارة: ${reason.trim()}`,
+        processedBy: admin._id,
+        processedAt: new Date()
+      });
+    }
+
+    await AdminLog.logAction({
+      admin: admin._id,
+      action: 'manual_transaction',
+      targetUser: user._id,
+      details: { balanceChange: balChange, coinsChange: coinChange, reason: reason.trim() },
+      severity: 'warning',
+      ipAddress: req.ip
+    });
+
+    const io = req.app.get('socketio');
+    if (io && user.socketId) {
+      io.to(user.socketId).emit('balanceUpdate', { newBalance: user.balance });
+      io.to(user.socketId).emit('coinsUpdated', { newCoins: user.coins });
+    }
+
+    res.json({
+      success: true,
+      message: 'تم تعديل رصيد المستخدم بنجاح',
+      user: { balance: user.balance, coins: user.coins }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// ✅ طلبات الشحن (الإيداعات عبر Transaction)
+// =====================================================
+exports.getDeposits = async (req, res) => {
+  try {
+    const { status = 'pending', page = 1, limit = 50 } = req.query;
+    const query = { type: 'deposit' };
+    if (status !== 'all') query.status = status;
+
+    const deposits = await Transaction.find(query)
+      .populate('user', 'username profileImage customId')
+      .sort('-createdAt')
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await Transaction.countDocuments(query);
+    res.json({ success: true, deposits, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// ✅ طلبات شراء الكوينزات (CoinPurchase)
+// =====================================================
+exports.getCoinPurchases = async (req, res) => {
+  try {
+    const CoinPurchase = require('../models/CoinPurchase');
+    const { status = 'pending_review', page = 1, limit = 50 } = req.query;
+    const query = {};
+    if (status !== 'all') query.status = status;
+
+    const purchases = await CoinPurchase.find(query)
+      .populate('user', 'username profileImage customId')
+      .sort('-createdAt')
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await CoinPurchase.countDocuments(query);
+    res.json({ success: true, purchases, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.approveCoinPurchase = async (req, res) => {
+  try {
+    const CoinPurchase = require('../models/CoinPurchase');
+    const { purchaseId } = req.params;
+    const { admin } = req;
+
+    const purchase = await CoinPurchase.findById(purchaseId);
+    if (!purchase) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
+    if (purchase.status !== 'pending_review') {
+      return res.status(400).json({ success: false, message: 'هذا الطلب ليس قيد المراجعة حالياً' });
+    }
+
+    purchase.status = 'approved';
+    purchase.processedBy = admin._id;
+    purchase.processedAt = new Date();
+    await purchase.save();
+
+    const user = await User.findById(purchase.user);
+    if (user) {
+      user.coins += purchase.coinsAmount;
+      await user.save();
+      const io = req.app.get('socketio');
+      if (io && user.socketId) {
+        io.to(user.socketId).emit('coinsUpdated', { newCoins: user.coins, purchaseId: purchase._id });
+      }
+    }
+
+    await AdminLog.logAction({
+      admin: admin._id, action: 'approve_deposit', targetUser: purchase.user,
+      targetEntity: 'transaction', entityId: purchase._id,
+      details: { type: 'coin_purchase', coinsAmount: purchase.coinsAmount }, ipAddress: req.ip
+    });
+
+    res.json({ success: true, message: 'تمت الموافقة وإيداع الكوينز بنجاح', purchase });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.rejectCoinPurchase = async (req, res) => {
+  try {
+    const CoinPurchase = require('../models/CoinPurchase');
+    const { purchaseId } = req.params;
+    const { reason } = req.body;
+    const { admin } = req;
+
+    const purchase = await CoinPurchase.findById(purchaseId);
+    if (!purchase) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
+    if (!['pending_payment', 'pending_review'].includes(purchase.status)) {
+      return res.status(400).json({ success: false, message: 'لا يمكن رفض طلب تمت معالجته مسبقاً' });
+    }
+
+    purchase.status = 'rejected';
+    purchase.adminNotes = (reason || '').trim();
+    purchase.processedBy = admin._id;
+    purchase.processedAt = new Date();
+    await purchase.save();
+
+    await AdminLog.logAction({
+      admin: admin._id, action: 'reject_deposit', targetUser: purchase.user,
+      targetEntity: 'transaction', entityId: purchase._id,
+      details: { type: 'coin_purchase', reason }, ipAddress: req.ip
+    });
+
+    res.json({ success: true, message: 'تم رفض الطلب', purchase });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// ✅ المعاملات المالية العامة (سجل شامل قابل للبحث والفلترة)
+// =====================================================
+exports.getAllTransactions = async (req, res) => {
+  try {
+    const { type = 'all', status = 'all', page = 1, limit = 50, search = '' } = req.query;
+    const query = {};
+    if (type !== 'all') query.type = type;
+    if (status !== 'all') query.status = status;
+
+    if (search) {
+      const matchedUsers = await User.find({
+        $or: [
+          { username: { $regex: search, $options: 'i' } },
+          { customId: { $regex: search, $options: 'i' } }
+        ]
+      }).select('_id');
+      query.user = { $in: matchedUsers.map(u => u._id) };
+    }
+
+    const transactions = await Transaction.find(query)
+      .populate('user', 'username profileImage customId')
+      .populate('recipient', 'username')
+      .sort('-createdAt')
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await Transaction.countDocuments(query);
+    res.json({ success: true, transactions, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// ✅ إدارة التحديات (مراقبة حية + إنهاء قسري مع استرداد الرهانات)
+// =====================================================
+exports.getBattles = async (req, res) => {
+  try {
+    const { status = 'active', page = 1, limit = 50 } = req.query;
+    const query = {};
+    if (status === 'active') query.status = { $in: ['waiting', 'in-progress'] };
+    else if (status !== 'all') query.status = status;
+
+    const battles = await Battle.find(query)
+      .populate('players', 'username profileImage')
+      .populate('teams.teamA', 'username profileImage')
+      .populate('teams.teamB', 'username profileImage')
+      .sort('-createdAt')
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await Battle.countDocuments(query);
+    res.json({ success: true, battles, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.forceEndBattle = async (req, res) => {
+  try {
+    const { battleId } = req.params;
+    const { refund = true } = req.body;
+    const { admin } = req;
+
+    const battle = await Battle.findById(battleId);
+    if (!battle) return res.status(404).json({ success: false, message: 'التحدي غير موجود' });
+    if (['completed', 'cancelled'].includes(battle.status)) {
+      return res.status(400).json({ success: false, message: 'هذا التحدي منتهٍ بالفعل' });
+    }
+
+    if (refund) {
+      const allPlayers = [
+        ...(battle.teams?.teamA || []),
+        ...(battle.teams?.teamB || []),
+        ...(battle.players || [])
+      ];
+      const uniqueIds = [...new Set(allPlayers.map(p => p.toString()))];
+      const io = req.app.get('socketio');
+
+      for (const uid of uniqueIds) {
+        const u = await User.findById(uid);
+        if (u) {
+          u.balance += battle.betAmount || 0;
+          await u.save();
+          if (io && u.socketId) io.to(u.socketId).emit('balanceUpdate', { newBalance: u.balance });
+        }
+      }
+    }
+
+    battle.status = 'cancelled';
+    await battle.save();
+
+    const io = req.app.get('socketio');
+    if (io) io.emit('battleUpdate', battle);
+
+    await AdminLog.logAction({
+      admin: admin._id, action: 'system_maintenance', targetEntity: 'battle',
+      entityId: battle._id, details: { action: 'force_end', refunded: refund },
+      severity: 'warning', ipAddress: req.ip
+    });
+
+    res.json({ success: true, message: 'تم إنهاء التحدي' + (refund ? ' واسترداد الرهانات بنجاح' : ' بدون استرداد') });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// ✅ حذف هدية من المتجر
+// =====================================================
+exports.deleteGift = async (req, res) => {
+  try {
+    const { giftId } = req.params;
+    const { admin } = req;
+
+    const gift = await Gift.findByIdAndDelete(giftId);
+    if (!gift) return res.status(404).json({ success: false, message: 'الهدية غير موجودة' });
+
+    await AdminLog.logAction({
+      admin: admin._id, action: 'delete_gift', details: { giftName: gift.name }, ipAddress: req.ip
+    });
+
+    res.json({ success: true, message: 'تم حذف الهدية بنجاح' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// ✅ إدارة البلاغات (Reports)
+// =====================================================
+exports.getReports = async (req, res) => {
+  try {
+    const Report = require('../models/Report');
+    const { status = 'pending', page = 1, limit = 50 } = req.query;
+    const query = {};
+    if (status !== 'all') query.status = status;
+
+    const reports = await Report.find(query)
+      .populate('reporter', 'username profileImage customId')
+      .populate('reportedUser', 'username profileImage customId isBanned')
+      .sort('-priority -createdAt')
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await Report.countDocuments(query);
+    res.json({ success: true, reports, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.resolveReport = async (req, res) => {
+  try {
+    const Report = require('../models/Report');
+    const { reportId } = req.params;
+    const { status, action, notes } = req.body; // status: resolved | dismissed | escalated
+    const { admin } = req;
+
+    const report = await Report.findById(reportId);
+    if (!report) return res.status(404).json({ success: false, message: 'البلاغ غير موجود' });
+
+    report.status = status || 'resolved';
+    if (action) {
+      report.resolution = {
+        action, notes: (notes || '').trim(), resolvedBy: admin._id, resolvedAt: new Date()
+      };
+    }
+    await report.save();
+
+    // تنفيذ فعلي للإجراء إذا كان حظراً
+    if (action === 'ban' && report.reportedUser) {
+      const user = await User.findById(report.reportedUser);
+      if (user && !user.isBanned) {
+        user.isBanned = true;
+        user.banReason = notes || 'مخالفة إثر بلاغ مستخدم';
+        await user.save();
+        await AdminLog.logAction({
+          admin: admin._id, action: 'ban_user', targetUser: user._id,
+          details: { reason: user.banReason, source: 'report_resolution' }, severity: 'warning', ipAddress: req.ip
+        });
+      }
+    }
+
+    await AdminLog.logAction({
+      admin: admin._id, action: 'update_settings', targetEntity: 'user',
+      details: { type: 'report_resolution', reportId, status: report.status, action }, ipAddress: req.ip
+    });
+
+    res.json({ success: true, message: 'تم تحديث حالة البلاغ', report });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };
