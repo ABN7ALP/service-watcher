@@ -9,29 +9,27 @@ const AdminLog = require('../models/AdminLog');
 exports.getDashboardStats = async (req, res) => {
   try {
     const GiftLog = require('../models/GiftLog');
+    const CoinPurchase = require('../models/CoinPurchase');
+    const ChatReport = require('../models/ChatReport');
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // ✅ الإصلاح الجذري: Promise.allSettled بدل Promise.all — إذا فشل استعلام واحد
-    // (مثلاً بسبب بيانات فارغة أو تعارض بسيط)، لا تنهار لوحة التحكم بالكامل،
-    // بل تُعرض بقية البيانات ويُسجَّل الخطأ الفعلي في سجل الخادم للتشخيص.
+    // ✅ Promise.allSettled بدل Promise.all: فشل استعلام واحد لا يُسقط لوحة التحكم بالكامل
     const results = await Promise.allSettled([
-      User.countDocuments(),
-      Transaction.aggregate([
+      User.countDocuments(),                                                     // 0
+      Transaction.aggregate([                                                    // 1
         { $match: { type: 'deposit', status: 'completed' } },
         { $group: { _id: null, total: { $sum: '$amount' } } }
       ]),
-      Withdrawal.aggregate([
+      Withdrawal.aggregate([                                                     // 2
         { $match: { status: 'completed' } },
         { $group: { _id: null, total: { $sum: '$amount' } } }
       ]),
-      Transaction.countDocuments({ type: 'deposit', status: 'pending' }),
-      Withdrawal.countDocuments({ status: 'pending' }),
-      Battle.countDocuments({ status: { $in: ['waiting', 'in-progress'] } }),
-      Transaction.countDocuments({
-        createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
-      }),
-      Transaction.aggregate([
+      Transaction.countDocuments({ type: 'deposit', status: 'pending' }),         // 3
+      Withdrawal.countDocuments({ status: 'pending' }),                          // 4
+      Battle.countDocuments({ status: { $in: ['waiting', 'in-progress'] } }),     // 5
+      Transaction.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } }), // 6
+      Transaction.aggregate([                                                    // 7
         { $match: { type: 'deposit', status: 'completed' } },
         { $group: { _id: '$user', total: { $sum: '$amount' } } },
         { $sort: { total: -1 } }, { $limit: 10 },
@@ -39,7 +37,7 @@ exports.getDashboardStats = async (req, res) => {
         { $unwind: '$u' },
         { $project: { _id: '$u._id', username: '$u.username', profileImage: '$u.profileImage', totalDeposited: '$total' } }
       ]),
-      GiftLog.aggregate([
+      GiftLog.aggregate([                                                        // 8
         { $match: { createdAt: { $gte: startOfMonth } } },
         { $group: { _id: '$sender', total: { $sum: '$totalPrice' } } },
         { $sort: { total: -1 } }, { $limit: 10 },
@@ -47,50 +45,41 @@ exports.getDashboardStats = async (req, res) => {
         { $unwind: '$u' },
         { $project: { _id: '$u._id', username: '$u.username', profileImage: '$u.profileImage', totalGifted: '$total' } }
       ]),
-      Transaction.aggregate([
+      Transaction.aggregate([                                                    // 9
         { $match: { type: 'win', status: 'completed' } },
         { $group: { _id: '$user', total: { $sum: '$amount' } } },
         { $sort: { total: -1 } }, { $limit: 10 },
         { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'u' } },
         { $unwind: '$u' },
         { $project: { _id: '$u._id', username: '$u.username', profileImage: '$u.profileImage', totalWon: '$total' } }
-      ])
+      ]),
+      CoinPurchase.countDocuments({ status: 'pending_review' }),                  // 10
+      ChatReport.countDocuments({ status: 'pending' }),                           // 11
+      User.countDocuments({ isBanned: true })                                     // 12
     ]);
 
     results.forEach((r, i) => {
-      if (r.status === 'rejected') {
-        console.error(`[ADMIN DASHBOARD] فشل الاستعلام رقم ${i}:`, r.reason?.message || r.reason);
-      }
+      if (r.status === 'rejected') console.error(`[ADMIN DASHBOARD] فشل الاستعلام رقم ${i}:`, r.reason?.message || r.reason);
     });
-
     const val = (i, fallback) => (results[i].status === 'fulfilled' ? results[i].value : fallback);
-
-    const totalUsers = val(0, 0);
-    const totalDepositsAgg = val(1, []);
-    const totalWithdrawalsAgg = val(2, []);
-    const pendingDeposits = val(3, 0);
-    const pendingWithdrawals = val(4, 0);
-    const activeBattles = val(5, 0);
-    const todayTransactions = val(6, 0);
-    const topDepositors = val(7, []);
-    const topGifters = val(8, []);
-    const topWinners = val(9, []);
 
     res.json({
       success: true,
       stats: {
-        totalUsers,
+        totalUsers: val(0, 0),
         onlineUsers: 0,
-        totalDeposits: totalDepositsAgg[0]?.total || 0,
-        totalWithdrawals: totalWithdrawalsAgg[0]?.total || 0,
-        pendingDeposits,
-        pendingWithdrawals,
-        activeBattles,
-        todayTransactions
+        totalDeposits: val(1, [])[0]?.total || 0,
+        totalWithdrawals: val(2, [])[0]?.total || 0,
+        pendingDeposits: val(3, 0),
+        pendingWithdrawals: val(4, 0),
+        activeBattles: val(5, 0),
+        todayTransactions: val(6, 0),
+        pendingCoinPurchases: val(10, 0),
+        pendingReports: val(11, 0),
+        bannedUsers: val(12, 0)
       },
-      topUsers: { depositors: topDepositors, gifters: topGifters, winners: topWinners }
+      topUsers: { depositors: val(7, []), gifters: val(8, []), winners: val(9, []) }
     });
-
   } catch (error) {
     console.error('[ADMIN DASHBOARD ERROR]', error);
     res.status(500).json({ success: false, message: error.message });
@@ -104,10 +93,11 @@ exports.getUsers = async (req, res) => {
     
     const query = {};
     if (search) {
+      const trimmed = search.trim();
       query.$or = [
-        { username: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } }
+        { username: { $regex: trimmed, $options: 'i' } },
+        { email: { $regex: trimmed, $options: 'i' } },
+        { customId: { $regex: trimmed, $options: 'i' } }
       ];
     }
 
@@ -227,53 +217,41 @@ exports.banUser = async (req, res) => {
     const { reason, duration = null } = req.body;
     const { admin } = req;
 
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'المستخدم غير موجود'
-      });
+    if (!reason || reason.trim().length < 3) {
+      return res.status(400).json({ success: false, message: 'يجب كتابة سبب الحظر' });
     }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+    if (user.isAdmin) return res.status(403).json({ success: false, message: 'لا يمكن حظر حساب إداري' });
 
     user.isBanned = true;
-    user.banReason = reason;
-    
-    if (duration) {
-      const durationMs = duration * 24 * 60 * 60 * 1000; // Convert days to ms
-      user.banExpires = new Date(Date.now() + durationMs);
-    }
-
+    user.banReason = reason.trim();
+    // ✅ نضبط banExpires صراحةً دائماً (null = دائم) لمنع بقاء تاريخ انتهاء قديم
+    // من حظر مؤقت سابق يتسبب بفك حظر تلقائي خاطئ لاحقاً عند تطبيق حظر دائم جديد
+    user.banExpires = duration ? new Date(Date.now() + duration * 24 * 60 * 60 * 1000) : null;
     await user.save();
 
-    // Log action
     await AdminLog.create({
-      admin: admin._id,
-      action: 'ban_user',
-      targetUser: userId,
-      details: { reason, duration },
-      ipAddress: req.ip
+      admin: admin._id, action: 'ban_user', targetUser: userId,
+      details: { reason: user.banReason, duration }, severity: 'warning', ipAddress: req.ip
     });
 
-    // Broadcast ban via sockets
-    // This would be handled in socket handlers
+    // ✅ إنفاذ فوري: لو كان متصلاً الآن، يصله إشعار الحظر لحظياً بدل انتظار طلبه القادم
+    const io = req.app.get('socketio');
+    if (io && user.socketId) {
+      io.to(user.socketId).emit('account-banned', {
+        reason: user.banReason, banExpires: user.banExpires, isPermanent: !user.banExpires
+      });
+    }
 
     res.json({
       success: true,
       message: `تم حظر المستخدم ${duration ? `لمدة ${duration} يوم` : 'بشكل دائم'}`,
-      user: {
-        id: user._id,
-        username: user.username,
-        isBanned: user.isBanned,
-        banReason: user.banReason,
-        banExpires: user.banExpires
-      }
+      user: { id: user._id, username: user.username, isBanned: true, banReason: user.banReason, banExpires: user.banExpires }
     });
-
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -1018,19 +996,19 @@ exports.deleteGift = async (req, res) => {
 // =====================================================
 exports.getReports = async (req, res) => {
   try {
-    const Report = require('../models/Report');
+    const ChatReport = require('../models/ChatReport');
     const { status = 'pending', page = 1, limit = 50 } = req.query;
     const query = {};
     if (status !== 'all') query.status = status;
 
-    const reports = await Report.find(query)
+    const reports = await ChatReport.find(query)
       .populate('reporter', 'username profileImage customId')
       .populate('reportedUser', 'username profileImage customId isBanned')
       .sort('-priority -createdAt')
       .limit(limit * 1)
       .skip((page - 1) * limit);
 
-    const total = await Report.countDocuments(query);
+    const total = await ChatReport.countDocuments(query);
     res.json({ success: true, reports, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -1039,39 +1017,43 @@ exports.getReports = async (req, res) => {
 
 exports.resolveReport = async (req, res) => {
   try {
-    const Report = require('../models/Report');
+    const ChatReport = require('../models/ChatReport');
     const { reportId } = req.params;
-    const { status, action, notes } = req.body; // status: resolved | dismissed | escalated
+    const { status, actionTaken, adminNotes } = req.body;
     const { admin } = req;
 
-    const report = await Report.findById(reportId);
+    const report = await ChatReport.findById(reportId);
     if (!report) return res.status(404).json({ success: false, message: 'البلاغ غير موجود' });
 
     report.status = status || 'resolved';
-    if (action) {
-      report.resolution = {
-        action, notes: (notes || '').trim(), resolvedBy: admin._id, resolvedAt: new Date()
-      };
-    }
+    report.actionTaken = actionTaken || report.actionTaken;
+    report.adminNotes = (adminNotes || '').trim();
+    report.reviewedBy = admin._id;
+    report.reviewedAt = new Date();
     await report.save();
 
-    // تنفيذ فعلي للإجراء إذا كان حظراً
-    if (action === 'ban' && report.reportedUser) {
+    if ((actionTaken === 'temp_ban' || actionTaken === 'permanent_ban') && report.reportedUser) {
       const user = await User.findById(report.reportedUser);
-      if (user && !user.isBanned) {
+      if (user && !user.isBanned && !user.isAdmin) {
         user.isBanned = true;
-        user.banReason = notes || 'مخالفة إثر بلاغ مستخدم';
+        user.banReason = adminNotes || 'مخالفة إثر بلاغ مستخدم';
+        user.banExpires = actionTaken === 'temp_ban' ? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) : null;
         await user.save();
+
+        const io = req.app.get('socketio');
+        if (io && user.socketId) {
+          io.to(user.socketId).emit('account-banned', { reason: user.banReason, banExpires: user.banExpires, isPermanent: !user.banExpires });
+        }
         await AdminLog.logAction({
           admin: admin._id, action: 'ban_user', targetUser: user._id,
-          details: { reason: user.banReason, source: 'report_resolution' }, severity: 'warning', ipAddress: req.ip
+          details: { reason: user.banReason, source: 'chat_report_resolution' }, severity: 'warning', ipAddress: req.ip
         });
       }
     }
 
     await AdminLog.logAction({
       admin: admin._id, action: 'update_settings', targetEntity: 'user',
-      details: { type: 'report_resolution', reportId, status: report.status, action }, ipAddress: req.ip
+      details: { type: 'chat_report_resolution', reportId, status: report.status, actionTaken }, ipAddress: req.ip
     });
 
     res.json({ success: true, message: 'تم تحديث حالة البلاغ', report });
