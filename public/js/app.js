@@ -1864,8 +1864,11 @@ document.getElementById('user-id-container').addEventListener('click', () => {
     if (buyCoinsBtn) {
         buyCoinsBtn.addEventListener('click', showBuyCoinsModal);
     }
-     const withdrawBtn = document.getElementById('withdraw-balance-btn');
+          const withdrawBtn = document.getElementById('withdraw-balance-btn');
     if (withdrawBtn) withdrawBtn.addEventListener('click', showWithdrawModal);
+
+    const depositBalanceBtn = document.getElementById('deposit-balance-btn');
+    if (depositBalanceBtn) depositBalanceBtn.addEventListener('click', showDepositModal);
 
     // --- 5. ربط زر تسجيل الخروج ---
     const logoutBtn = document.getElementById('logoutBtn');
@@ -3843,6 +3846,208 @@ function renderWithdrawForm(method) {
     });
 }
 
+
+        // =================================================
+// ============ نظام شحن الرصيد (USD) ================
+// =================================================
+
+async function showDepositModal() {
+    const existing = document.getElementById('deposit-modal');
+    if (existing) existing.remove();
+
+    const shellHTML = `
+        <div id="deposit-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[88vh] flex flex-col">
+                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-wallet text-blue-400"></i> شحن الرصيد</h3>
+                    <button id="close-deposit" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="deposit-body" class="p-4 overflow-y-auto flex-1">
+                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
+                </div>
+            </div>
+        </div>
+    `;
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+    const modal = document.getElementById('deposit-modal');
+    attachCloseConfirmation(modal, '#close-deposit');
+
+    try {
+        const [infoRes, pendingRes] = await Promise.all([
+            fetch('/api/deposits/wallet-info', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            fetch('/api/deposits/my-deposits', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+        ]);
+
+        if (infoRes.status !== 'success') throw new Error();
+        window._depositInfoCache = infoRes.data;
+
+        const pendingWithoutReceipt = (pendingRes.data?.deposits || []).find(d => d.status === 'pending' && !d.receiptImage);
+        if (pendingWithoutReceipt) {
+            renderDepositReceiptUpload(pendingWithoutReceipt._id, pendingWithoutReceipt.amount);
+        } else {
+            renderDepositAmountEntry();
+        }
+    } catch (error) {
+        document.getElementById('deposit-body').innerHTML = `<div class="text-center text-red-400 py-10">فشل تحميل بيانات الشحن</div>`;
+    }
+}
+
+function renderDepositAmountEntry() {
+    const body = document.getElementById('deposit-body');
+    const info = window._depositInfoCache;
+
+    body.innerHTML = `
+        <div class="mb-4">
+            <label class="text-xs text-gray-400 mb-1 block">المبلغ بالدولار ($)</label>
+            <input type="number" id="deposit-amount-input" min="${info.minUSD}" max="${info.maxUSD}" value="${info.minUSD}"
+                   class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white">
+            <p class="text-xs text-gray-500 mt-1">الحد الأدنى ${info.minUSD}$ - الحد الأقصى ${info.maxUSD}$</p>
+        </div>
+        <button id="continue-deposit-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-bold">متابعة</button>
+    `;
+
+    document.getElementById('continue-deposit-btn').addEventListener('click', async () => {
+        const amount = parseFloat(document.getElementById('deposit-amount-input').value);
+        if (!amount || amount < info.minUSD || amount > info.maxUSD) {
+            showNotification(`المبلغ يجب أن يكون بين ${info.minUSD}$ و ${info.maxUSD}$`, 'error');
+            return;
+        }
+        const btn = document.getElementById('continue-deposit-btn');
+        btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+        try {
+            const response = await fetch('/api/deposits/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ amount })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                renderDepositPaymentDetails(result.data.deposit);
+            } else {
+                showNotification(result.message || 'فشل إنشاء الطلب', 'error');
+                btn.disabled = false; btn.textContent = 'متابعة';
+            }
+        } catch (error) {
+            showNotification('خطأ في الاتصال بالخادم', 'error');
+            btn.disabled = false; btn.textContent = 'متابعة';
+        }
+    });
+}
+
+function renderDepositPaymentDetails(deposit) {
+    const body = document.getElementById('deposit-body');
+    const info = window._depositInfoCache;
+
+    body.innerHTML = `
+        <div class="text-center mb-4">
+            <p class="text-sm text-gray-400">المبلغ المطلوب تحويله</p>
+            <p class="text-2xl font-bold text-blue-400">${deposit.amount}$</p>
+        </div>
+        <div class="bg-gray-900/50 rounded-xl p-3 mb-3">
+            <p class="text-xs text-gray-400 mb-1">رقم محفظة شام كاش</p>
+            <div class="flex items-center justify-between">
+                <span id="deposit-wallet-text" class="font-bold text-sm">${info.shamCash.walletNumber}</span>
+                <button id="copy-deposit-wallet" class="text-blue-400 hover:text-blue-300"><i class="fas fa-copy"></i></button>
+            </div>
+        </div>
+        <div class="bg-gray-900/50 rounded-xl p-3 mb-4">
+            <p class="text-xs text-gray-400 mb-1">اسم صاحب الحساب</p>
+            <span class="font-bold text-sm">${info.shamCash.accountHolderName}</span>
+        </div>
+        <button id="i-transferred-deposit-btn" class="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg font-bold">
+            <i class="fas fa-check mr-1"></i> لقد قمت بالتحويل
+        </button>
+    `;
+
+    document.getElementById('copy-deposit-wallet').addEventListener('click', () => {
+        navigator.clipboard.writeText(document.getElementById('deposit-wallet-text').textContent)
+            .then(() => showNotification('تم النسخ', 'success'));
+    });
+    document.getElementById('i-transferred-deposit-btn').addEventListener('click', () => {
+        renderDepositReceiptUpload(deposit._id, deposit.amount);
+    });
+}
+
+function renderDepositReceiptUpload(depositId, amount) {
+    const body = document.getElementById('deposit-body');
+    body.innerHTML = `
+        <div class="text-center mb-4">
+            <i class="fas fa-receipt text-3xl text-blue-400 mb-2"></i>
+            <p class="text-sm font-bold">أرفق صورة إشعار التحويل (${amount}$)</p>
+            <p class="text-xs text-gray-500 mt-1">سيتم مراجعة طلبك وإيداع الرصيد من قبل الإدارة</p>
+        </div>
+        <div id="deposit-drop-zone" class="border-2 border-dashed border-gray-600 rounded-xl p-4 text-center cursor-pointer hover:border-blue-500 transition-colors bg-gray-900/50 mb-4">
+            <div id="deposit-upload-content">
+                <i class="fas fa-cloud-upload-alt text-3xl text-gray-500 mb-2"></i>
+                <p class="text-sm">اضغط لاختيار صورة الإشعار</p>
+            </div>
+            <img id="deposit-preview-img" class="hidden max-h-40 mx-auto rounded-lg mt-2">
+            <input type="file" id="deposit-file-input" class="hidden" accept="image/*">
+        </div>
+        <button id="submit-deposit-receipt-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-bold disabled:opacity-50" disabled>إرسال الطلب</button>
+    `;
+
+    let selectedFile = null;
+    const dropZone = document.getElementById('deposit-drop-zone');
+    const fileInput = document.getElementById('deposit-file-input');
+    const submitBtn = document.getElementById('submit-deposit-receipt-btn');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            selectedFile = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                document.getElementById('deposit-upload-content').classList.add('hidden');
+                const previewImg = document.getElementById('deposit-preview-img');
+                previewImg.src = ev.target.result;
+                previewImg.classList.remove('hidden');
+            };
+            reader.readAsDataURL(selectedFile);
+            submitBtn.disabled = false;
+        }
+    });
+
+    submitBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
+
+        try {
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            const response = await fetch(`/api/deposits/${depositId}/receipt`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            const result = await response.json();
+            if (response.ok) {
+                const body = document.getElementById('deposit-body');
+                body.innerHTML = `
+                    <div class="text-center py-8">
+                        <i class="fas fa-check-circle text-5xl text-green-400 mb-4"></i>
+                        <p class="font-bold mb-2">تم استلام طلبك بنجاح</p>
+                        <p class="text-sm text-gray-400 mb-6">سيتم إيداع الرصيد بعد مراجعة الإدارة</p>
+                        <button id="close-deposit-success-btn" class="bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-6 rounded-lg font-bold">حسناً</button>
+                    </div>
+                `;
+                document.getElementById('close-deposit-success-btn').addEventListener('click', () => {
+                    document.getElementById('deposit-modal')?.remove();
+                });
+            } else {
+                showNotification(result.message || 'فشل إرسال الإشعار', 'error');
+                submitBtn.disabled = false; submitBtn.textContent = 'إرسال الطلب';
+            }
+        } catch (error) {
+            showNotification('خطأ في الاتصال بالخادم', 'error');
+            submitBtn.disabled = false; submitBtn.textContent = 'إرسال الطلب';
+        }
+    });
+}
+
+        
 
 async function loadGiftsReceivedSummary() {
     const body = document.getElementById('gifts-received-body');
