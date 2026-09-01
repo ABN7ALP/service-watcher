@@ -1499,7 +1499,14 @@ async function refreshUserData() {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
-        if (!response.ok) throw new Error('Failed to refresh user data');
+        if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            if (response.status === 403 && errBody.code === 'ACCOUNT_BANNED') {
+                showBannedModal(errBody.banReason, errBody.banExpires, errBody.isPermanent);
+                return false;
+            }
+            throw new Error('Failed to refresh user data');
+        }
         
         const result = await response.json();
         
@@ -2068,6 +2075,43 @@ function showXpGainAnimation(amount) {
         container.appendChild(notification);
         setTimeout(() => notification.remove(), 5000);
     }
+        
+    // ✅ نافذة الحظر داخل التطبيق (لمستخدم كان متصلاً ثم حُظر لحظياً، أو رفض الخادم طلباً بسبب الحظر)
+    function showBannedModal(reason, banExpires, isPermanent) {
+        if (document.getElementById('app-banned-modal')) return;
+        const expiryText = isPermanent
+            ? 'حظر دائم'
+            : `ينتهي في: ${new Date(banExpires).toLocaleString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+
+        const modalHTML = `
+            <div id="app-banned-modal" class="fixed inset-0 bg-black/85 flex items-center justify-center z-[999] p-4">
+                <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm text-white border-2 border-red-500/40 overflow-hidden">
+                    <div class="bg-gradient-to-r from-red-700 to-red-900 p-6 text-center">
+                        <i class="fas fa-user-lock text-4xl mb-2"></i>
+                        <h2 class="text-xl font-bold">تم حظر حسابك</h2>
+                    </div>
+                    <div class="p-6 text-center">
+                        <p class="text-gray-300 text-sm mb-1">السبب:</p>
+                        <p class="font-bold mb-4">${reason || 'مخالفة لشروط الاستخدام'}</p>
+                        <p class="text-xs px-3 py-1.5 rounded-full inline-block ${isPermanent ? 'bg-red-900/40 text-red-300' : 'bg-yellow-900/40 text-yellow-300'}">
+                            <i class="fas fa-clock mr-1"></i> ${expiryText}
+                        </p>
+                        <p class="text-gray-400 text-xs mt-4">إذا كنت تعتقد أن هذا خطأ، تواصل مع فريق الدعم.</p>
+                        <a href="mailto:support@example.com" class="mt-4 w-full inline-block bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg text-sm">
+                            <i class="fas fa-headset mr-1"></i> تواصل مع الدعم
+                        </a>
+                        <button id="forceLogoutBannedBtn" class="mt-2 w-full bg-gray-700 hover:bg-gray-600 text-white py-2.5 rounded-lg text-sm">تسجيل الخروج</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        document.getElementById('forceLogoutBannedBtn').addEventListener('click', () => {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/login.html';
+        });
+    }
 
     socket.on('balanceUpdate', ({ newBalance }) => {
         const balanceElement = document.getElementById('balance');
@@ -2082,11 +2126,16 @@ function showXpGainAnimation(amount) {
         showNotification('تم تحديث رصيدك', 'info');
     });
 
-    socket.on('connect_error', (err) => {
+        socket.on('connect_error', (err) => {
         console.error('Socket Connection Error:', err.message);
         if (err.message === 'Authentication error') {
             logoutBtn.click();
         }
+    });
+
+    // ✅ حظر لحظي: إذا حظرك الأدمن الآن وأنت متصل، تظهر النافذة فوراً بدل انتظار أي طلب لاحق
+    socket.on('account-banned', ({ reason, banExpires, isPermanent }) => {
+        showBannedModal(reason, banExpires, isPermanent);
     });
 
 socket.on('publicGiftAnnouncement', (data) => {
