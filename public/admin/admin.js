@@ -1,5 +1,5 @@
 // ==================================================================
-// Admin Dashboard — نسخة معاد بناؤها بالكامل: كل قسم يعمل فعلياً
+// Admin Dashboard — نسخة كاملة منظمة
 // ==================================================================
 
 const escapeHtml = (str) => {
@@ -8,7 +8,6 @@ const escapeHtml = (str) => {
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 };
-
 const formatDate = (d) => new Date(d).toLocaleString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 class AdminDashboard {
@@ -17,7 +16,7 @@ class AdminDashboard {
         this.adminData = JSON.parse(localStorage.getItem('user') || '{}');
         this.currentPage = 'dashboard';
         this.socket = null;
-        this.state = { users: {}, deposits: {}, coinPurchases: {}, transactions: {}, logs: {} };
+        this.state = { users: {} };
         this.init();
     }
 
@@ -39,12 +38,8 @@ class AdminDashboard {
         } catch { return false; }
     }
 
-    // ---------- طبقة الاتصال بالـ API (موحّدة) ----------
     async api(method, path, body) {
-        const options = {
-            method,
-            headers: { 'Authorization': `Bearer ${this.token}` }
-        };
+        const options = { method, headers: { 'Authorization': `Bearer ${this.token}` } };
         if (body !== undefined) {
             options.headers['Content-Type'] = 'application/json';
             options.body = JSON.stringify(body);
@@ -61,23 +56,18 @@ class AdminDashboard {
         return data;
     }
 
-    // ---------- نظام النوافذ المنبثقة الموحّد (يمنع أي تصادم بالمعرّفات) ----------
+    // ---------- نظام نوافذ موحّد ----------
     openModal(html) {
         const root = document.getElementById('admin-modal-root');
         const wrapper = document.createElement('div');
         wrapper.innerHTML = html.trim();
         const modalEl = wrapper.firstElementChild;
         root.appendChild(modalEl);
-
         modalEl.addEventListener('click', (e) => {
-            if (e.target === modalEl || e.target.closest('.modal-close') || e.target.closest('[data-dismiss]')) {
-                modalEl.remove();
-            }
+            if (e.target === modalEl || e.target.closest('.modal-close') || e.target.closest('[data-dismiss]')) modalEl.remove();
         });
         return modalEl;
     }
-
-    closeModal(modalEl) { if (modalEl && modalEl.parentNode) modalEl.remove(); }
 
     confirmAction(message, onConfirm, danger = true) {
         const modal = this.openModal(`
@@ -94,13 +84,34 @@ class AdminDashboard {
                 </div>
             </div>
         `);
-        modal.querySelector('#confirmActionBtn').addEventListener('click', async () => {
+        modal.querySelector('#confirmActionBtn').addEventListener('click', async () => { modal.remove(); await onConfirm(); });
+    }
+
+    // ✅ نافذة إدخال نصي أنيقة بدل prompt() الأصلي (غير قابل للتنسيق أصلاً)
+    promptModal(title, placeholder, onSubmit, { defaultValue = '', confirmText = 'تأكيد', danger = false } = {}) {
+        const modal = this.openModal(`
+            <div class="modal-overlay active">
+                <div class="modal-content" style="max-width:420px;">
+                    <div class="modal-header"><h3>${escapeHtml(title)}</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                    <div class="modal-body">
+                        <textarea class="form-control" id="promptModalInput" rows="3" placeholder="${escapeHtml(placeholder)}">${escapeHtml(defaultValue)}</textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" data-dismiss>إلغاء</button>
+                        <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="promptModalConfirm">${escapeHtml(confirmText)}</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        const input = modal.querySelector('#promptModalInput');
+        input.focus();
+        modal.querySelector('#promptModalConfirm').addEventListener('click', () => {
+            const value = input.value.trim();
             modal.remove();
-            await onConfirm();
+            onSubmit(value);
         });
     }
 
-    // ---------- عناصر مشتركة ----------
     setupEventListeners() {
         document.querySelectorAll('.menu-item').forEach(item => {
             item.addEventListener('click', (e) => { e.preventDefault(); this.switchPage(item.dataset.page); });
@@ -141,12 +152,21 @@ class AdminDashboard {
         document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
         document.querySelector(`.menu-item[data-page="${page}"]`)?.classList.add('active');
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-        const pageEl = document.getElementById(`${page}-page`);
-        if (pageEl) {
-            pageEl.classList.add('active');
-            this.currentPage = page;
-            this.loadPageData(page);
+        let pageEl = document.getElementById(`${page}-page`);
+        if (!pageEl) {
+            pageEl = document.getElementById('placeholder-page');
+            if (!pageEl) {
+                pageEl = document.createElement('div');
+                pageEl.id = 'placeholder-page';
+                pageEl.className = 'page';
+                document.querySelector('.admin-main').appendChild(pageEl);
+            }
+            pageEl.innerHTML = `<div class="page-header"><h1><i class="fas fa-tools"></i> قيد الإنشاء</h1></div>`;
         }
+        pageEl.classList.add('active');
+        this.currentPage = page;
+        this.loadPageData(page);
+        document.querySelector('.admin-sidebar').classList.remove('active');
     }
 
     loadPageData(page) {
@@ -173,7 +193,6 @@ class AdminDashboard {
         if (!totalPages || totalPages <= 1) return;
         const startPage = Math.max(1, currentPage - 2);
         const endPage = Math.min(totalPages, currentPage + 2);
-
         const mk = (label, page, disabled, active) => {
             const li = document.createElement('li');
             li.className = `page-item ${disabled ? 'disabled' : ''} ${active ? 'active' : ''}`;
@@ -202,6 +221,7 @@ class AdminDashboard {
             document.getElementById('todayTransactions').textContent = s.todayTransactions;
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ar-SA');
 
+            this.renderAttentionPanel(s);
             this.renderTopList('topDepositors', data.topUsers.depositors, 'totalDeposited', '$');
             this.renderTopList('topGifters', data.topUsers.gifters, 'totalGifted', ' كوينز');
             this.renderTopList('topWinners', data.topUsers.winners, 'totalWon', '$');
@@ -210,21 +230,43 @@ class AdminDashboard {
         }
     }
 
+    renderAttentionPanel(stats) {
+        const el = document.getElementById('attention-panel');
+        if (!el) return;
+        const items = [
+            { count: stats.pendingDeposits, label: 'طلب شحن رصيد بانتظار المراجعة', icon: 'fa-file-invoice-dollar', page: 'deposits' },
+            { count: stats.pendingCoinPurchases, label: 'طلب شراء كوينز بانتظار المراجعة', icon: 'fa-coins', page: 'coinpurchases' },
+            { count: stats.pendingWithdrawals, label: 'طلب سحب بانتظار المراجعة', icon: 'fa-money-bill-wave', page: 'withdrawals' },
+            { count: stats.pendingReports, label: 'بلاغ بانتظار المراجعة', icon: 'fa-flag', page: 'reports' }
+        ].filter(i => i.count > 0);
+
+        if (items.length === 0) {
+            el.innerHTML = `<div class="activity-item success"><div class="activity-icon"><i class="fas fa-check-circle"></i></div><div class="activity-content"><div class="title">لا توجد مهام عاجلة الآن</div><div class="description">كل الطلبات تمت مراجعتها 👏</div></div></div>`;
+            return;
+        }
+        el.innerHTML = `<h5 class="mb-3"><i class="fas fa-bell text-warning"></i> يحتاج انتباهك الآن</h5>` + items.map(i => `
+            <div class="activity-item warning" data-goto="${i.page}" style="cursor:pointer;">
+                <div class="activity-icon"><i class="fas ${i.icon}"></i></div>
+                <div class="activity-content"><div class="title">${i.count} ${i.label}</div></div>
+                <i class="fas fa-chevron-left" style="align-self:center;color:#bbb;"></i>
+            </div>
+        `).join('');
+        el.querySelectorAll('[data-goto]').forEach(item => item.addEventListener('click', () => this.switchPage(item.dataset.goto)));
+    }
+
     renderTopList(elId, users, field, suffix) {
         const c = document.getElementById(elId);
         if (!c) return;
         if (!users || users.length === 0) { c.innerHTML = '<div class="empty-state">لا توجد بيانات</div>'; return; }
         c.innerHTML = users.map((u, i) => `
-            <div class="top-user-item" data-user-id="${u._id}">
+            <div class="top-user-item" data-user-id="${u._id}" style="cursor:pointer;">
                 <div class="rank rank-${i + 1}">${i + 1}</div>
-                <img src="${u.profileImage || 'https://via.placeholder.com/45'}" class="top-user-avatar">
+                <img src="${u.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="top-user-avatar">
                 <div class="top-user-info"><div class="username">${escapeHtml(u.username)}</div>
                 <div class="value">${(u[field] || 0).toLocaleString()}${suffix}</div></div>
             </div>
         `).join('');
-        c.querySelectorAll('.top-user-item').forEach(item => {
-            item.addEventListener('click', () => this.showUserDetails(item.dataset.userId));
-        });
+        c.querySelectorAll('.top-user-item').forEach(item => item.addEventListener('click', () => this.showUserDetails(item.dataset.userId)));
     }
 
     // ================= Users =================
@@ -240,8 +282,8 @@ class AdminDashboard {
             }
             tbody.innerHTML = data.users.map(u => `
                 <tr>
-                    <td>${u.customId || u._id.slice(-6)}</td>
-                    <td><img src="${u.profileImage || 'https://via.placeholder.com/40'}" class="user-avatar"></td>
+                    <td title="اضغط للنسخ" class="copy-id-cell" data-id="${u.customId}">${u.customId || u._id.slice(-6)}</td>
+                    <td><img src="${u.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="user-avatar"></td>
                     <td><strong>${escapeHtml(u.username)}</strong> ${u.isAdmin ? '<span class="status-badge status-pending">مدير</span>' : ''} ${u.isAgent ? '<span class="status-badge status-online">وكيل</span>' : ''}</td>
                     <td>${escapeHtml(u.email)}</td>
                     <td><strong>$${(u.balance || 0).toFixed(2)}</strong></td>
@@ -265,66 +307,60 @@ class AdminDashboard {
                     if (action === 'unban') this.confirmAction(`هل تريد إلغاء حظر ${username}؟`, () => this.unbanUser(id), false);
                 });
             });
+            tbody.querySelectorAll('.copy-id-cell').forEach(td => td.addEventListener('click', () => {
+                navigator.clipboard.writeText(td.dataset.id).then(() => this.showToast('تم نسخ المعرّف', 'success'));
+            }));
 
             this.renderPagination('usersPagination', data.totalPages, data.currentPage, (p) => this.loadUsers(p, search));
-        } catch (error) {
-            this.showToast(error.message, 'error');
-        }
+        } catch (error) { this.showToast(error.message, 'error'); }
     }
 
     async showUserDetails(userId) {
         try {
             const data = await this.api('GET', `/users/${userId}`);
-            const { user, transactions, battles, stats } = data;
+            const { user, transactions, stats } = data;
 
             const modal = this.openModal(`
                 <div class="modal-overlay active">
-                    <div class="modal-content" style="max-width:800px;">
+                    <div class="modal-content" style="max-width:820px;">
                         <div class="modal-header">
-                            <h3><i class="fas fa-user"></i> ${escapeHtml(user.username)}</h3>
+                            <h3><i class="fas fa-user"></i> ملف المستخدم</h3>
                             <button class="modal-close"><i class="fas fa-times"></i></button>
                         </div>
                         <div class="modal-body">
-                            <div class="row">
-                                <div class="col-md-4 text-center">
-                                    <img src="${user.profileImage}" class="rounded-circle mb-3" style="width:120px;height:120px;object-fit:cover;">
-                                    <h5>${escapeHtml(user.username)}</h5>
-                                    <p class="text-muted">ID: ${user.customId}</p>
-                                    <div>
-                                        ${user.isBanned ? '<span class="status-badge status-banned">محظور</span>' : '<span class="status-badge status-online">نشط</span>'}
+                            <div class="d-flex align-items-center gap-3 mb-4" style="border-bottom:1px solid #eee;padding-bottom:16px;">
+                                <img src="${user.profileImage}" style="width:85px;height:85px;border-radius:50%;object-fit:cover;border:3px solid var(--admin-primary);">
+                                <div style="flex:1;">
+                                    <h4 style="margin:0;">${escapeHtml(user.username)}</h4>
+                                    <p class="text-muted" style="margin:0;font-size:0.85rem;">${escapeHtml(user.email)} · ID: ${user.customId}</p>
+                                    <div class="mt-2">
+                                        ${user.isBanned ? `<span class="status-badge status-banned">محظور — ${escapeHtml(user.banReason || '')}</span>` : '<span class="status-badge status-online">نشط</span>'}
                                         ${user.isAdmin ? '<span class="status-badge status-pending">مدير</span>' : ''}
                                         ${user.isAgent ? '<span class="status-badge status-completed">وكيل شحن</span>' : ''}
                                     </div>
-                                    ${user.isBanned ? `<p class="text-danger small mt-2">السبب: ${escapeHtml(user.banReason || 'غير محدد')}</p>` : ''}
-                                </div>
-                                <div class="col-md-8">
-                                    <table class="table table-sm">
-                                        <tbody>
-                                            <tr><th>البريد</th><td>${escapeHtml(user.email)}</td></tr>
-                                            <tr><th>الرصيد</th><td><strong>$${(user.balance || 0).toFixed(2)}</strong></td></tr>
-                                            <tr><th>الكوينز</th><td><strong>${(user.coins || 0).toLocaleString()}</strong></td></tr>
-                                            <tr><th>المستوى / الخبرة</th><td>${user.level} (${Math.floor(user.experience || 0)} XP)</td></tr>
-                                            <tr><th>الجنس / العمر</th><td>${user.gender === 'male' ? 'ذكر' : 'أنثى'} / ${user.age ?? '-'}</td></tr>
-                                            <tr><th>الأصدقاء</th><td>${user.friends?.length || 0}</td></tr>
-                                            <tr><th>تاريخ التسجيل</th><td>${formatDate(user.createdAt)}</td></tr>
-                                            <tr><th>إحصائيات التحديات</th><td>${stats.totalBattles} تحدي — ${stats.totalWins} فوز (${stats.winRate.toFixed(1)}%)</td></tr>
-                                        </tbody>
-                                    </table>
                                 </div>
                             </div>
-                            <h6 class="mt-3"><i class="fas fa-history"></i> آخر المعاملات</h6>
-                            <div class="table-responsive">
+
+                            <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
+                                <div class="stat-card success" style="padding:15px;"><div class="stat-info"><h3 style="font-size:1.3rem;">$${(user.balance || 0).toFixed(2)}</h3><p>الرصيد</p></div></div>
+                                <div class="stat-card warning" style="padding:15px;"><div class="stat-info"><h3 style="font-size:1.3rem;">${(user.coins || 0).toLocaleString()}</h3><p>الكوينز</p></div></div>
+                                <div class="stat-card primary" style="padding:15px;"><div class="stat-info"><h3 style="font-size:1.3rem;">${user.level}</h3><p>المستوى</p></div></div>
+                                <div class="stat-card info" style="padding:15px;"><div class="stat-info"><h3 style="font-size:1.3rem;">${stats.winRate.toFixed(0)}%</h3><p>نسبة الفوز (${stats.totalBattles} تحدي)</p></div></div>
+                            </div>
+
+                            <h6><i class="fas fa-history"></i> آخر المعاملات</h6>
+                            <div class="table-responsive" style="max-height:220px;overflow-y:auto;">
                                 <table class="table table-sm">
                                     <thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>الحالة</th></tr></thead>
                                     <tbody>
-                                        ${(transactions.slice(0, 8)).map(tx => `
+                                        ${(transactions.slice(0, 10)).map(tx => `
                                             <tr>
                                                 <td>${formatDate(tx.createdAt)}</td>
                                                 <td>${this.txTypeText(tx.type)}</td>
                                                 <td class="${tx.amount < 0 ? 'text-danger' : 'text-success'}">${tx.amount > 0 ? '+' : ''}${tx.amount} ${tx.currency}</td>
                                                 <td>${this.statusText(tx.status)}</td>
                                             </tr>
-                                        `).join('') || '<tr><td colspan="4" class="text-center text-muted">لا توجد معاملات</td></tr>'}
+                                        `).join('') || '<tr><td colspan="4" class="text-center text-muted">لا توجد معاملات بعد</td></tr>'}
                                     </tbody>
                                 </table>
                             </div>
@@ -345,9 +381,7 @@ class AdminDashboard {
             modal.querySelector('#agentBtn').addEventListener('click', () => this.toggleAgentStatus(userId, !user.isAgent, modal));
             modal.querySelector('#banBtn')?.addEventListener('click', () => { modal.remove(); this.showBanModal(userId, user.username); });
             modal.querySelector('#unbanBtn')?.addEventListener('click', () => this.confirmAction(`إلغاء حظر ${user.username}؟`, async () => { await this.unbanUser(userId); modal.remove(); }, false));
-        } catch (error) {
-            this.showToast(error.message, 'error');
-        }
+        } catch (error) { this.showToast(error.message, 'error'); }
     }
 
     showBanModal(userId, username) {
@@ -389,17 +423,24 @@ class AdminDashboard {
     }
 
     async toggleAgentStatus(userId, makeAgent, parentModal) {
-        let whatsapp = null;
         if (makeAgent) {
-            whatsapp = prompt('رقم واتساب الوكيل (مع رمز الدولة):');
-            if (!whatsapp) return;
+            this.promptModal('تعيين كوكيل شحن', 'رقم واتساب الوكيل (مع رمز الدولة)...', async (whatsapp) => {
+                if (!whatsapp) return;
+                try {
+                    await this.api('POST', `/users/${userId}/set-agent`, { isAgent: true, agentWhatsapp: whatsapp });
+                    this.showToast('تم تعيين الوكيل', 'success');
+                    if (parentModal) parentModal.remove();
+                    this.showUserDetails(userId);
+                } catch (error) { this.showToast(error.message, 'error'); }
+            }, { confirmText: 'تعيين' });
+        } else {
+            try {
+                await this.api('POST', `/users/${userId}/set-agent`, { isAgent: false, agentWhatsapp: null });
+                this.showToast('تم إلغاء صلاحية الوكيل', 'success');
+                if (parentModal) parentModal.remove();
+                this.showUserDetails(userId);
+            } catch (error) { this.showToast(error.message, 'error'); }
         }
-        try {
-            await this.api('POST', `/users/${userId}/set-agent`, { isAgent: makeAgent, agentWhatsapp: whatsapp });
-            this.showToast('تم تحديث صلاحية الوكيل', 'success');
-            if (parentModal) parentModal.remove();
-            this.showUserDetails(userId);
-        } catch (error) { this.showToast(error.message, 'error'); }
     }
 
     showAdjustFundsModal(userId) {
@@ -408,7 +449,7 @@ class AdminDashboard {
                 <div class="modal-content" style="max-width:450px;">
                     <div class="modal-header"><h3><i class="fas fa-coins"></i> تعديل الرصيد</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
                     <div class="modal-body">
-                        <p class="text-muted small">استخدم قيمة سالبة للخصم، وموجبة للإضافة. اترك أي حقل فارغاً (0) لعدم تعديله.</p>
+                        <p class="text-muted small">استخدم قيمة سالبة للخصم، وموجبة للإضافة.</p>
                         <div class="form-group"><label>تغيير الرصيد ($)</label><input type="number" step="0.01" class="form-control" id="balanceChangeInput" value="0"></div>
                         <div class="form-group"><label>تغيير الكوينز</label><input type="number" class="form-control" id="coinsChangeInput" value="0"></div>
                         <div class="form-group"><label>السبب * (سيُسجَّل في سجل التدقيق)</label><textarea class="form-control" id="fundsReasonInput" rows="2" required></textarea></div>
@@ -443,11 +484,11 @@ class AdminDashboard {
 
             c.innerHTML = data.deposits.map(d => `
                 <div class="top-user-item" style="align-items:flex-start;">
-                    <img src="${d.user?.profileImage || 'https://via.placeholder.com/45'}" class="top-user-avatar">
+                    <img src="${d.user?.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="top-user-avatar">
                     <div class="top-user-info" style="flex:2">
                         <div class="username">${escapeHtml(d.user?.username || 'مستخدم محذوف')}</div>
                         <div style="font-size:0.85rem;color:#7f8c8d;">المبلغ: <strong>$${d.amount}</strong> | ${formatDate(d.createdAt)}
-                        ${d.receiptImage ? `<br><a href="${d.receiptImage}" target="_blank">عرض الإيصال <i class="fas fa-external-link-alt"></i></a>` : ''}
+                        ${d.receiptImage ? `<br><a href="${d.receiptImage}" target="_blank">عرض الإيصال <i class="fas fa-external-link-alt"></i></a>` : '<br><span class="text-warning">لم يُرفَع إيصال بعد</span>'}
                         </div>
                     </div>
                     ${d.status === 'pending' ? `
@@ -466,11 +507,11 @@ class AdminDashboard {
                 }, false)
             ));
             c.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', () => {
-                const reason = prompt('سبب الرفض:');
-                if (reason === null) return;
-                this.api('POST', `/deposits/${btn.dataset.reject}/reject`, { reason })
-                    .then(() => { this.showToast('تم الرفض', 'success'); this.loadDeposits(page); })
-                    .catch(e => this.showToast(e.message, 'error'));
+                this.promptModal('رفض طلب الشحن', 'سبب الرفض...', (reason) => {
+                    this.api('POST', `/deposits/${btn.dataset.reject}/reject`, { reason })
+                        .then(() => { this.showToast('تم الرفض', 'success'); this.loadDeposits(page); })
+                        .catch(e => this.showToast(e.message, 'error'));
+                }, { confirmText: 'رفض', danger: true });
             }));
 
             this.renderPagination('depositsPagination', data.totalPages, data.currentPage, (p) => this.loadDeposits(p));
@@ -487,7 +528,7 @@ class AdminDashboard {
 
             c.innerHTML = data.purchases.map(p => `
                 <div class="top-user-item" style="align-items:flex-start;">
-                    <img src="${p.user?.profileImage || 'https://via.placeholder.com/45'}" class="top-user-avatar">
+                    <img src="${p.user?.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="top-user-avatar">
                     <div class="top-user-info" style="flex:2">
                         <div class="username">${escapeHtml(p.user?.username || 'مستخدم محذوف')}</div>
                         <div style="font-size:0.85rem;color:#7f8c8d;">${p.amountUSD}$ → ${p.coinsAmount} كوينز | ${p.method === 'sham_cash' ? 'شام كاش' : 'فيزا'} | ${formatDate(p.createdAt)}
@@ -510,11 +551,11 @@ class AdminDashboard {
                 }, false)
             ));
             c.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', () => {
-                const reason = prompt('سبب الرفض:');
-                if (reason === null) return;
-                this.api('POST', `/coin-purchases/${btn.dataset.reject}/reject`, { reason })
-                    .then(() => { this.showToast('تم الرفض', 'success'); this.loadCoinPurchases(page); })
-                    .catch(e => this.showToast(e.message, 'error'));
+                this.promptModal('رفض طلب الشراء', 'سبب الرفض...', (reason) => {
+                    this.api('POST', `/coin-purchases/${btn.dataset.reject}/reject`, { reason })
+                        .then(() => { this.showToast('تم الرفض', 'success'); this.loadCoinPurchases(page); })
+                        .catch(e => this.showToast(e.message, 'error'));
+                }, { confirmText: 'رفض', danger: true });
             }));
 
             this.renderPagination('coinPurchasesPagination', data.totalPages, data.currentPage, (p) => this.loadCoinPurchases(p));
@@ -531,7 +572,7 @@ class AdminDashboard {
 
             c.innerHTML = data.data.withdrawals.map(w => `
                 <div class="top-user-item" style="align-items:flex-start;">
-                    <img src="${w.user?.profileImage || 'https://via.placeholder.com/45'}" class="top-user-avatar">
+                    <img src="${w.user?.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="top-user-avatar">
                     <div class="top-user-info" style="flex:2">
                         <div class="username">${escapeHtml(w.user?.username || 'مستخدم محذوف')}</div>
                         <div style="font-size:0.85rem;color:#7f8c8d;">
@@ -555,11 +596,11 @@ class AdminDashboard {
                 }, false)
             ));
             c.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', () => {
-                const reason = prompt('سبب الرفض:');
-                if (reason === null) return;
-                this.api('POST', `/withdrawals/${btn.dataset.reject}/review`, { action: 'reject', reason })
-                    .then(() => { this.showToast('تم الرفض واسترداد الرصيد', 'success'); this.loadWithdrawals(); })
-                    .catch(e => this.showToast(e.message, 'error'));
+                this.promptModal('رفض طلب السحب', 'سبب الرفض...', (reason) => {
+                    this.api('POST', `/withdrawals/${btn.dataset.reject}/review`, { action: 'reject', reason })
+                        .then(() => { this.showToast('تم الرفض واسترداد الرصيد', 'success'); this.loadWithdrawals(); })
+                        .catch(e => this.showToast(e.message, 'error'));
+                }, { confirmText: 'رفض', danger: true });
             }));
         } catch (error) { this.showToast(error.message, 'error'); }
     }
@@ -570,7 +611,7 @@ class AdminDashboard {
         try {
             const data = await this.api('GET', `/transactions?type=${type}&page=${page}&search=${encodeURIComponent(search)}`);
             const c = document.getElementById('transactionsListContainer');
-            if (!data.transactions.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-inbox fa-2x"></i><p>لا توجد معاملات</p></div>'; this.renderPagination('transactionsPagination', 0, 1, () => {}); return; }
+            if (!data.transactions.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-inbox fa-2x"></i><p>لا توجد معاملات بعد — ستظهر هنا نتائج المعارك والتعديلات اليدوية للرصيد</p></div>'; this.renderPagination('transactionsPagination', 0, 1, () => {}); return; }
 
             c.innerHTML = `<table class="table table-hover"><thead><tr><th>المستخدم</th><th>النوع</th><th>المبلغ</th><th>الحالة</th><th>الوصف</th><th>التاريخ</th></tr></thead><tbody>
                 ${data.transactions.map(tx => `
@@ -625,8 +666,7 @@ class AdminDashboard {
     // ================= Gifts =================
     async loadGifts() {
         try {
-            const response = await fetch('/api/admin/gifts', { headers: { 'Authorization': `Bearer ${this.token}` } });
-            const data = await response.json();
+            const data = await this.api('GET', '/gifts');
             const c = document.getElementById('giftsGridContainer');
             if (!data.gifts || !data.gifts.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-gift fa-2x"></i><p>لا توجد هدايا بعد</p></div>'; return; }
 
@@ -697,9 +737,7 @@ class AdminDashboard {
                 sortOrder: parseInt(modal.querySelector('#giftSortOrder').value) || 0,
                 isActive: modal.querySelector('#giftIsActive').checked
             };
-            if (!payload.name || !payload.imageUrl || !payload.price) {
-                this.showToast('يرجى تعبئة الحقول الإلزامية (الاسم، الصورة، السعر)', 'error'); return;
-            }
+            if (!payload.name || !payload.imageUrl || !payload.price) { this.showToast('يرجى تعبئة الحقول الإلزامية', 'error'); return; }
             try {
                 if (isEdit) await this.api('PUT', `/gifts/${gift._id}`, payload);
                 else await this.api('POST', '/gifts', payload);
@@ -716,24 +754,25 @@ class AdminDashboard {
         try {
             const data = await this.api('GET', `/reports?status=${status}`);
             const c = document.getElementById('reportsListContainer');
-            if (!data.reports.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-flag fa-2x"></i><p>لا توجد بلاغات</p></div>'; return; }
+            if (!data.reports.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-flag fa-2x"></i><p>لا توجد بلاغات — تصل من زر "الإبلاغ عن رسالة" داخل الدردشة الخاصة</p></div>'; return; }
 
-            const priorityClass = { low: 'status-online', medium: 'status-pending', high: 'status-banned', critical: 'status-banned' };
+            const reasonText = { spam: 'رسائل مزعجة', harassment: 'تحرش', inappropriate_content: 'محتوى غير لائق', threats: 'تهديد', impersonation: 'انتحال شخصية', scam: 'احتيال', hate_speech: 'خطاب كراهية', other: 'أخرى' };
 
             c.innerHTML = data.reports.map(r => `
-                <div class="activity-item ${r.priority === 'critical' || r.priority === 'high' ? 'danger' : 'warning'}">
+                <div class="activity-item ${r.priority >= 4 ? 'danger' : r.priority === 3 ? 'warning' : 'info'}">
                     <div class="activity-icon"><i class="fas fa-flag"></i></div>
                     <div class="activity-content">
-                        <div class="title">${escapeHtml(r.reporter?.username || '-')} أبلغ عن ${escapeHtml(r.reportedUser?.username || '-')}
-                            <span class="status-badge ${priorityClass[r.priority] || 'status-pending'}">${r.priority}</span>
+                        <div class="title">${escapeHtml(r.reporter?.username || 'مستخدم محذوف')} أبلغ عن ${escapeHtml(r.reportedUser?.username || 'مستخدم محذوف')}
+                            <span class="status-badge ${r.priority >= 4 ? 'status-banned' : 'status-pending'}">أولوية ${r.priority}</span>
+                            ${r.reportedUser?.isBanned ? '<span class="status-badge status-banned">محظور بالفعل</span>' : ''}
                         </div>
-                        <div class="description">السبب: ${escapeHtml(r.reason)} — ${escapeHtml(r.details || '')}</div>
+                        <div class="description">السبب: ${reasonText[r.reason] || r.reason} ${r.description ? '— ' + escapeHtml(r.description) : ''}</div>
                         <div class="activity-time">${formatDate(r.createdAt)}</div>
                     </div>
-                    ${r.status === 'pending' || r.status === 'under_review' ? `
+                    ${['pending', 'under_review'].includes(r.status) ? `
                         <div style="display:flex;gap:6px;">
-                            <button class="btn-action btn-view" data-resolve="${r._id}" title="حل"><i class="fas fa-check"></i></button>
-                            <button class="btn-action btn-ban" data-ban="${r._id}" data-userid="${r.reportedUser?._id}" title="حظر المُبلَّغ عنه"><i class="fas fa-user-slash"></i></button>
+                            <button class="btn-action btn-view" data-resolve="${r._id}" title="حل بدون إجراء"><i class="fas fa-check"></i></button>
+                            <button class="btn-action btn-ban" data-ban="${r._id}" title="حظر المُبلَّغ عنه"><i class="fas fa-user-slash"></i></button>
                             <button class="btn-action btn-delete" data-dismiss-report="${r._id}" title="رفض البلاغ"><i class="fas fa-times"></i></button>
                         </div>
                     ` : `<span class="status-badge status-completed">${r.status}</span>`}
@@ -741,21 +780,22 @@ class AdminDashboard {
             `).join('');
 
             c.querySelectorAll('[data-resolve]').forEach(btn => btn.addEventListener('click', () =>
-                this.confirmAction('تعليم هذا البلاغ كمحلول؟', async () => {
-                    await this.api('POST', `/reports/${btn.dataset.resolve}/resolve`, { status: 'resolved' });
+                this.confirmAction('تعليم هذا البلاغ كمحلول بدون اتخاذ إجراء؟', async () => {
+                    await this.api('POST', `/reports/${btn.dataset.resolve}/resolve`, { status: 'resolved', actionTaken: 'no_action' });
                     this.showToast('تم', 'success'); this.loadReports();
                 }, false)
             ));
             c.querySelectorAll('[data-ban]').forEach(btn => btn.addEventListener('click', () => {
-                const notes = prompt('سبب الحظر (سيُحفظ كسبب الحظر الرسمي):', 'مخالفة إثر بلاغ مستخدم');
-                if (notes === null) return;
-                this.api('POST', `/reports/${btn.dataset.ban}/resolve`, { status: 'resolved', action: 'ban', notes })
-                    .then(() => { this.showToast('تم حظر المستخدم وحل البلاغ', 'success'); this.loadReports(); })
-                    .catch(e => this.showToast(e.message, 'error'));
+                this.promptModal('حظر المستخدم المُبلَّغ عنه', 'سبب الحظر (سيُحفظ رسمياً)...', (notes) => {
+                    if (!notes) return;
+                    this.api('POST', `/reports/${btn.dataset.ban}/resolve`, { status: 'resolved', actionTaken: 'permanent_ban', adminNotes: notes })
+                        .then(() => { this.showToast('تم حظر المستخدم وحل البلاغ', 'success'); this.loadReports(); })
+                        .catch(e => this.showToast(e.message, 'error'));
+                }, { confirmText: 'حظر', danger: true });
             }));
             c.querySelectorAll('[data-dismiss-report]').forEach(btn => btn.addEventListener('click', () =>
                 this.confirmAction('رفض هذا البلاغ (اعتباره غير صحيح)؟', async () => {
-                    await this.api('POST', `/reports/${btn.dataset.dismissReport}/resolve`, { status: 'dismissed' });
+                    await this.api('POST', `/reports/${btn.dataset.dismissReport}/resolve`, { status: 'dismissed', actionTaken: 'no_action' });
                     this.showToast('تم رفض البلاغ', 'success'); this.loadReports();
                 })
             ));
@@ -765,8 +805,7 @@ class AdminDashboard {
     // ================= Logs =================
     async loadLogs(page = 1) {
         try {
-            const response = await fetch(`/api/admin/logs?page=${page}&limit=50`, { headers: { 'Authorization': `Bearer ${this.token}` } });
-            const data = await response.json();
+            const data = await this.api('GET', `/logs?page=${page}&limit=50`);
             const c = document.getElementById('logsListContainer');
             if (!data.logs || !data.logs.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-history fa-2x"></i><p>لا توجد سجلات</p></div>'; this.renderPagination('logsPagination', 0, 1, () => {}); return; }
 
@@ -786,7 +825,6 @@ class AdminDashboard {
         } catch (error) { this.showToast(error.message, 'error'); }
     }
 
-    // ================= Settings (قراءة فقط، آمن) =================
     loadSettings() {
         const c = document.getElementById('settingsInfoContainer');
         c.innerHTML = `
@@ -802,7 +840,6 @@ class AdminDashboard {
         `;
     }
 
-    // ================= Helpers نصية =================
     txTypeText(type) {
         const m = { deposit: 'شحن', withdrawal: 'سحب', bet: 'رهان', win: 'فوز', loss: 'خسارة', gift_send: 'إرسال هدية', gift_receive: 'استلام هدية', commission: 'عمولة' };
         return m[type] || type;
@@ -819,6 +856,8 @@ class AdminDashboard {
     updateAdminInfo() {
         const el = document.getElementById('adminName');
         if (el && this.adminData.username) el.textContent = this.adminData.username;
+        const imgEl = document.getElementById('adminAvatarImg');
+        if (imgEl) imgEl.src = this.adminData.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
     }
 
     initSocket() {
