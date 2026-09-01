@@ -50,6 +50,7 @@ app.use('/api/withdrawals', require('./routes/withdrawalRoutes'));
 app.use('/api/coin-purchase', require('./routes/coinPurchaseRoutes')); // ✅ نظام شراء الكوينزات
 app.use('/api/bubble-skins', require('./routes/bubbleSkinRoutes'));
 app.use('/api/gift-redemption', require('./routes/giftRedemptionRoutes'));
+app.use('/api/deposits', require('./routes/depositRoutes')); // ✅ نظام شحن الرصيد الدولاري (منفصل عن الكوينز)
 
 // --- مسار "التقاط الكل" لخدمة الواجهة الأمامية --
 app.get('*', (req, res) => {
