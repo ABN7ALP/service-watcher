@@ -92,12 +92,32 @@ exports.login = async (req, res, next) => {
         // 1) البحث عن المستخدم وإرجاع كلمة المرور للتحقق
         const user = await User.findOne({ email }).select('+password');
 
-        // 2) التحقق من وجود المستخدم وصحة كلمة المرور
+               // 2) التحقق من وجود المستخدم وصحة كلمة المرور
         if (!user || !(await user.comparePassword(password))) {
             return res.status(401).json({ status: 'fail', message: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' });
         }
 
-        // 3) إذا كان كل شيء صحيحاً، أرسل التوكن
+        // 3) ✅ التحقق من حالة الحظر — بعد التأكد من صحة كلمة المرور فقط
+        // (لعدم كشف حالة حظر الحساب لأي شخص لا يملك كلمة المرور الصحيحة)
+        if (user.isBanned) {
+            if (user.banExpires && new Date(user.banExpires) < new Date()) {
+                user.isBanned = false;
+                user.banReason = null;
+                user.banExpires = null;
+                await user.save();
+            } else {
+                return res.status(403).json({
+                    status: 'fail',
+                    code: 'ACCOUNT_BANNED',
+                    message: 'تم حظر حسابك.',
+                    banReason: user.banReason || 'مخالفة لشروط الاستخدام',
+                    banExpires: user.banExpires,
+                    isPermanent: !user.banExpires
+                });
+            }
+        }
+
+        // 4) إذا كان كل شيء صحيحاً، أرسل التوكن
         createSendToken(user, 200, res);
 
     } catch (error) {
