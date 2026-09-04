@@ -1,7 +1,8 @@
 const Withdrawal = require('../models/Withdrawal');
 const User = require('../models/User');
 
-const MIN_WITHDRAW_USD = 5;
+// ✅ القيمة الافتراضية fallback فقط — القيمة الفعلية تُقرأ من SystemSettings عند كل طلب
+const DEFAULT_MIN_WITHDRAW_USD = 5;
 
 // جلب طلبات السحب الخاصة بالمستخدم
 exports.getMyWithdrawals = async (req, res) => {
@@ -19,9 +20,13 @@ exports.createWithdrawal = async (req, res) => {
         const userId = req.user.id;
         const { method, amount, fullName, walletNumber, officeInfo } = req.body;
 
+                const SystemSettings = require('../models/SystemSettings');
+        const settings = await SystemSettings.getSettings();
+        const minWithdraw = settings.minWithdrawUSD || DEFAULT_MIN_WITHDRAW_USD;
+
         const numAmount = parseFloat(amount);
-        if (!numAmount || numAmount < MIN_WITHDRAW_USD) {
-            return res.status(400).json({ status: 'fail', message: `الحد الأدنى للسحب هو ${MIN_WITHDRAW_USD}$` });
+        if (!numAmount || numAmount < minWithdraw) {
+            return res.status(400).json({ status: 'fail', message: `الحد الأدنى للسحب هو ${minWithdraw}$` });
         }
 
         if (!fullName || fullName.trim().length < 3) {
@@ -134,9 +139,21 @@ exports.reviewWithdrawal = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'إجراء غير صالح' });
         }
 
-        withdrawal.processedBy = req.admin._id;
+                withdrawal.processedBy = req.admin._id;
         withdrawal.processedAt = new Date();
         await withdrawal.save();
+
+        const AdminLog = require('../models/AdminLog');
+        await AdminLog.logAction({
+            admin: req.admin._id,
+            action: action === 'approve' ? 'approve_withdrawal' : 'reject_withdrawal',
+            targetUser: withdrawal.user,
+            targetEntity: 'withdrawal',
+            entityId: withdrawal._id,
+            details: { amount: withdrawal.amount, reason: withdrawal.rejectionReason || null },
+            severity: 'warning',
+            ipAddress: req.ip
+        });
 
         if (io && user?.socketId) {
             io.to(user.socketId).emit('withdrawalStatusUpdated', {
