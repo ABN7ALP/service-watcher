@@ -117,6 +117,19 @@ exports.login = async (req, res, next) => {
             }
         }
 
+                // 3) ✅ وضع الصيانة: يمنع دخول أي مستخدم عادي (المدراء مستثنون دائماً)
+        if (!user.isAdmin) {
+            const SystemSettings = require('../models/SystemSettings');
+            const settings = await SystemSettings.getSettings();
+            if (settings.maintenanceMode) {
+                return res.status(503).json({
+                    status: 'fail',
+                    code: 'MAINTENANCE_MODE',
+                    message: settings.maintenanceMessage || 'الموقع تحت الصيانة حالياً، عد لاحقاً'
+                });
+            }
+        }
+
         // 4) إذا كان كل شيء صحيحاً، أرسل التوكن
         createSendToken(user, 200, res);
 
