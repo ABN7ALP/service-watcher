@@ -802,8 +802,9 @@ async function showSettingsView() {
             <!-- =========================================== -->
             <div class="mb-4">
                 <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="frames-shop-section">
-                    <h3 class="text-lg font-bold">
+                                        <h3 class="text-lg font-bold">
                         <i class="fas fa-crown mr-2"></i>متجر الإطارات
+                        <button id="frames-support-btn" class="text-xs text-gray-400 hover:text-purple-400 ml-2" title="مشكلة بالإطارات؟" onclick="event.stopPropagation();"><i class="fas fa-life-ring"></i></button>
                     </h3>
                     <i class="fas fa-chevron-down transition-transform duration-300"></i>
                 </div>
@@ -1186,6 +1187,7 @@ function setupSettingsEvents() {
 
      bindFrameShopButtons();
     bindBubbleShopButtons();
+    document.getElementById('frames-support-btn')?.addEventListener('click', () => showQuickSupportModal('frame_issue', 'مشكلة في الإطارات'));
     
     // 2. تحديث الصورة الشخصية
     document.getElementById('select-image-btn').addEventListener('click', () => {
@@ -2308,6 +2310,11 @@ socket.on('levelUp', ({ newLevel }) => {
     });
 
         
+    // ✅ إشعارات بوت الموقع (تأكيدات بلاغ، شحن، رد دعم فني)
+    socket.on('bot-notification', (data) => {
+        showNotification(data.message, 'info');
+    });
+        
     socket.on('coinsUpdated', ({ newCoins }) => {
     const coinsEl = document.getElementById('coins');
     if (coinsEl) coinsEl.textContent = newCoins;
@@ -3306,11 +3313,14 @@ async function showBuyCoinsModal() {
     const shellHTML = `
         <div id="buy-coins-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[88vh] flex flex-col">
-                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <div class="flex items-center justify-between p-4 border-b border-gray-700">
                     <h3 class="text-lg font-bold flex items-center gap-2">
                         <i class="fas fa-coins text-yellow-400"></i> شحن الكوينزات
                     </h3>
-                    <button id="close-buy-coins" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                    <div class="flex items-center gap-1">
+                        <button id="coins-support-btn" class="text-gray-400 hover:text-purple-400 p-2" title="مشكلة بالشحن؟"><i class="fas fa-life-ring"></i></button>
+                        <button id="close-buy-coins" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                    </div>
                 </div>
                 <div id="buy-coins-body" class="p-4 overflow-y-auto flex-1">
                     <div class="text-center text-gray-400 py-10">
@@ -3325,6 +3335,7 @@ async function showBuyCoinsModal() {
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
         const modal = document.getElementById('buy-coins-modal');
     attachCloseConfirmation(modal, '#close-buy-coins');
+        document.getElementById('coins-support-btn').addEventListener('click', () => showQuickSupportModal('payment_issue', 'مشكلة في شراء الكوينز'));
 
     try {
         const [infoRes, pendingRes] = await Promise.all([
@@ -3974,9 +3985,12 @@ async function showDepositModal() {
     const shellHTML = `
         <div id="deposit-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[88vh] flex flex-col">
-                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                                <div class="flex items-center justify-between p-4 border-b border-gray-700">
                     <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-wallet text-blue-400"></i> شحن الرصيد</h3>
-                    <button id="close-deposit" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                    <div class="flex items-center gap-1">
+                        <button id="deposit-support-btn" class="text-gray-400 hover:text-purple-400 p-2" title="مشكلة بالشحن؟"><i class="fas fa-life-ring"></i></button>
+                        <button id="close-deposit" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                    </div>
                 </div>
                 <div id="deposit-body" class="p-4 overflow-y-auto flex-1">
                     <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
@@ -3987,6 +4001,7 @@ async function showDepositModal() {
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('deposit-modal');
     attachCloseConfirmation(modal, '#close-deposit');
+        document.getElementById('deposit-support-btn').addEventListener('click', () => showQuickSupportModal('payment_issue', 'مشكلة في شحن الرصيد'));
 
     try {
         const [infoRes, pendingRes] = await Promise.all([
@@ -4333,6 +4348,82 @@ async function showReportModal(context) {
     });
 }
         
+
+
+// ✅ نافذة دعم فني سريعة قابلة لإعادة الاستخدام بأي قسم (دفع/هدايا/استبدال/إطارات)
+function showQuickSupportModal(type, contextLabel) {
+    const quickOptions = {
+        payment_issue: ['لم يصلني الرصيد بعد التحويل', 'المبلغ المُستلَم غير مطابق', 'رقم المحفظة غير صحيح', 'مشكلة أخرى بالدفع'],
+        gift_issue: ['لم تصلني الهدية المُرسَلة', 'خصم كوينز بدون إرسال هدية', 'مشكلة أخرى بالهدايا'],
+        redemption_issue: ['لم يصلني مقابل الاستبدال', 'قيمة الاستبدال غير صحيحة', 'مشكلة أخرى بالاستبدال'],
+        frame_issue: ['الإطار المُشترى لم يُفعَّل', 'مدة صلاحية الإطار خاطئة', 'مشكلة أخرى بالإطارات'],
+        general: ['استفسار عام', 'مشكلة تقنية']
+    };
+    const options = quickOptions[type] || quickOptions.general;
+
+    const existing = document.getElementById('quick-support-modal');
+    if (existing) existing.remove();
+
+    const modalHTML = `
+        <div id="quick-support-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[600] p-4">
+            <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm text-white border border-purple-500/30">
+                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-life-ring text-purple-400"></i> ${escapeHtmlClient(contextLabel)}</h3>
+                    <button id="close-quick-support" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="p-4">
+                    <p class="text-xs text-gray-400 mb-2">اختر المشكلة:</p>
+                    <div id="quick-support-chips" class="flex flex-col gap-2 mb-3">
+                        ${options.map(o => `<button type="button" class="quick-support-chip text-right text-sm py-2 px-3 rounded-lg border border-gray-600 hover:border-purple-400">${o}</button>`).join('')}
+                    </div>
+                    <textarea id="quick-support-details" rows="3" maxlength="500" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-sm" placeholder="تفاصيل إضافية (اختياري)..."></textarea>
+                    <button id="submit-quick-support" class="w-full mt-3 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg disabled:opacity-50" disabled>
+                        <i class="fas fa-paper-plane mr-1"></i> إرسال للدعم الفني
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    const modal = document.getElementById('quick-support-modal');
+    let selectedOption = null;
+
+    document.getElementById('close-quick-support').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target.id === 'quick-support-modal') modal.remove(); });
+
+    const submitBtn = document.getElementById('submit-quick-support');
+    modal.querySelectorAll('.quick-support-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            modal.querySelectorAll('.quick-support-chip').forEach(c => c.classList.remove('bg-purple-600', 'border-purple-500'));
+            chip.classList.add('bg-purple-600', 'border-purple-500');
+            selectedOption = chip.textContent;
+            submitBtn.disabled = false;
+        });
+    });
+
+    submitBtn.addEventListener('click', async () => {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        try {
+            const response = await fetch('/api/support/tickets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    type, subject: selectedOption || contextLabel,
+                    message: `${selectedOption || ''}\n${document.getElementById('quick-support-details').value.trim()}`.trim()
+                })
+            });
+            const result = await response.json();
+            if (response.ok) { showNotification('تم إرسال طلبك للدعم الفني بنجاح', 'success'); modal.remove(); }
+            else { showNotification(result.message || 'فشل الإرسال', 'error'); submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i> إرسال للدعم الفني'; }
+        } catch (error) {
+            showNotification('خطأ بالاتصال', 'error');
+            submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i> إرسال للدعم الفني';
+        }
+    });
+}
+
+
         
 
 async function loadGiftsReceivedSummary() {
@@ -4346,7 +4437,10 @@ async function loadGiftsReceivedSummary() {
 
         const d = result.data;
 
-        body.innerHTML = `
+                body.innerHTML = `
+            <div class="flex justify-end mb-1">
+                <button id="redemption-support-btn" class="text-xs text-gray-400 hover:text-purple-400 flex items-center gap-1"><i class="fas fa-life-ring"></i> مشكلة بالاستبدال؟</button>
+            </div>
             <div class="bg-gray-900/50 rounded-xl p-4 mb-4 text-center">
                 <p class="text-3xl font-bold text-pink-400">${d.totalGiftsCount}</p>
                 <p class="text-xs text-gray-400">هدية قابلة للاستبدال (${d.totalCoinsValue} كوينز)</p>
@@ -4368,6 +4462,7 @@ async function loadGiftsReceivedSummary() {
 
         document.getElementById('redeem-to-balance-btn')?.addEventListener('click', () => confirmRedeem('balance'));
         document.getElementById('redeem-to-coins-btn')?.addEventListener('click', () => confirmRedeem('coins'));
+                document.getElementById('redemption-support-btn')?.addEventListener('click', () => showQuickSupportModal('redemption_issue', 'مشكلة في استبدال الهدايا'));
 
     } catch (error) {
         body.innerHTML = '<p class="text-center text-red-400 text-sm">فشل تحميل بيانات الهدايا</p>';
