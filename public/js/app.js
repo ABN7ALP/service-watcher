@@ -2080,8 +2080,10 @@ function showXpGainAnimation(amount) {
     }
         
     // ✅ نافذة الحظر داخل التطبيق (لمستخدم كان متصلاً ثم حُظر لحظياً، أو رفض الخادم طلباً بسبب الحظر)
-    function showBannedModal(reason, banExpires, isPermanent) {
+        function showBannedModal(reason, banExpires, isPermanent) {
         if (document.getElementById('app-banned-modal')) return;
+        const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const userId = cachedUser._id;
         const expiryText = isPermanent
             ? 'حظر دائم'
             : `ينتهي في: ${new Date(banExpires).toLocaleString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
@@ -2090,19 +2092,17 @@ function showXpGainAnimation(amount) {
             <div id="app-banned-modal" class="fixed inset-0 bg-black/85 flex items-center justify-center z-[999] p-4">
                 <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm text-white border-2 border-red-500/40 overflow-hidden">
                     <div class="bg-gradient-to-r from-red-700 to-red-900 p-6 text-center">
-                        <i class="fas fa-user-lock text-4xl mb-2"></i>
-                        <h2 class="text-xl font-bold">تم حظر حسابك</h2>
+                        <i class="fas fa-user-lock text-4xl mb-2"></i><h2 class="text-xl font-bold">تم حظر حسابك</h2>
                     </div>
-                    <div class="p-6 text-center">
+                    <div id="app-banned-modal-body" class="p-6 text-center">
                         <p class="text-gray-300 text-sm mb-1">السبب:</p>
                         <p class="font-bold mb-4">${reason || 'مخالفة لشروط الاستخدام'}</p>
                         <p class="text-xs px-3 py-1.5 rounded-full inline-block ${isPermanent ? 'bg-red-900/40 text-red-300' : 'bg-yellow-900/40 text-yellow-300'}">
                             <i class="fas fa-clock mr-1"></i> ${expiryText}
                         </p>
-                        <p class="text-gray-400 text-xs mt-4">إذا كنت تعتقد أن هذا خطأ، تواصل مع فريق الدعم.</p>
-                        <a href="mailto:support@example.com" class="mt-4 w-full inline-block bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg text-sm">
-                            <i class="fas fa-headset mr-1"></i> تواصل مع الدعم
-                        </a>
+                        <button id="openAppAppealBtn" class="mt-4 w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg text-sm">
+                            <i class="fas fa-comment-dots mr-1"></i> تقديم استئناف
+                        </button>
                         <button id="forceLogoutBannedBtn" class="mt-2 w-full bg-gray-700 hover:bg-gray-600 text-white py-2.5 rounded-lg text-sm">تسجيل الخروج</button>
                     </div>
                 </div>
@@ -2110,9 +2110,28 @@ function showXpGainAnimation(amount) {
         `;
         document.body.insertAdjacentHTML('beforeend', modalHTML);
         document.getElementById('forceLogoutBannedBtn').addEventListener('click', () => {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
+            localStorage.removeItem('token'); localStorage.removeItem('user');
             window.location.href = '/login.html';
+        });
+        document.getElementById('openAppAppealBtn').addEventListener('click', () => {
+            const body = document.getElementById('app-banned-modal-body');
+            body.innerHTML = `
+                <textarea id="appAppealInput" rows="4" maxlength="500" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm text-right" placeholder="اشرح اعتراضك..."></textarea>
+                <button id="submitAppAppealBtn" class="mt-3 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg text-sm">إرسال الاستئناف</button>
+            `;
+            document.getElementById('submitAppAppealBtn').addEventListener('click', async () => {
+                const message = document.getElementById('appAppealInput').value.trim();
+                if (message.length < 5) { showNotification('اكتب تفاصيل كافية', 'error'); return; }
+                try {
+                    const response = await fetch('/api/support/ban-appeal', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId, message })
+                    });
+                    const result = await response.json();
+                    if (response.ok) body.innerHTML = `<div class="py-4"><i class="fas fa-check-circle text-4xl text-green-400 mb-3"></i><p class="text-sm">${result.message}</p></div>`;
+                    else showNotification(result.message || 'فشل الإرسال', 'error');
+                } catch (e) { showNotification('خطأ بالاتصال', 'error'); }
+            });
         });
     }
 
