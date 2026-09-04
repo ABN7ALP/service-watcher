@@ -3349,6 +3349,15 @@ function renderBuyCoinsHome(pendingPurchases) {
         ${pendingHTML}
         <p class="text-sm text-gray-400 mb-3">اختر طريقة الدفع المناسبة لك:</p>
         <div class="space-y-3">
+                    <div class="space-y-3">
+            <button class="payment-method-btn w-full flex items-center gap-3 bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-xl p-4 transition" data-method="balance">
+                <div class="w-12 h-12 bg-green-600/20 rounded-full flex items-center justify-center"><i class="fas fa-wallet text-green-400 text-xl"></i></div>
+                <div class="text-right flex-1">
+                    <p class="font-bold text-sm">من رصيدك الحالي</p>
+                    <p class="text-xs text-gray-400">تحويل فوري بدون انتظار الإدارة</p>
+                </div>
+                <i class="fas fa-chevron-left text-gray-500"></i>
+            </button>
             <button class="payment-method-btn w-full flex items-center gap-3 bg-gray-800/50 hover:bg-gray-700/60 border border-gray-700 rounded-xl p-4 transition" data-method="sham_cash">
                 <div class="w-12 h-12 bg-blue-600/20 rounded-full flex items-center justify-center"><i class="fas fa-wallet text-blue-400 text-xl"></i></div>
                 <div class="text-right flex-1">
@@ -3376,11 +3385,13 @@ function renderBuyCoinsHome(pendingPurchases) {
         </div>
     `;
 
-    body.querySelectorAll('.payment-method-btn').forEach(btn => {
+        body.querySelectorAll('.payment-method-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const method = btn.dataset.method;
             if (method === 'agent') {
                 renderAgentList();
+            } else if (method === 'balance') {
+                renderBalancePurchaseEntry();
             } else {
                 renderAmountEntry(method);
             }
@@ -3463,6 +3474,75 @@ function renderAmountEntry(method) {
         }
     });
 }
+
+
+
+function renderBalancePurchaseEntry() {
+    const body = document.getElementById('buy-coins-body');
+    const info = buyCoinsInfoCache;
+    const localUser = JSON.parse(localStorage.getItem('user')) || {};
+
+    body.innerHTML = `
+        <button id="back-to-methods" class="text-sm text-gray-400 hover:text-white mb-4 flex items-center gap-1"><i class="fas fa-arrow-right"></i> رجوع</button>
+        <div class="bg-gray-900/50 rounded-xl p-3 mb-4 flex justify-between items-center">
+            <span class="text-sm text-gray-400">رصيدك المتاح</span>
+            <span class="font-bold text-green-400">${(localUser.balance || 0).toFixed(2)}$</span>
+        </div>
+        <div class="mb-4">
+            <label class="text-xs text-gray-400 mb-1 block">المبلغ بالدولار ($)</label>
+            <input type="number" id="balance-purchase-amount" min="${info.minUSD}" value="${info.minUSD}" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white">
+        </div>
+        <div class="bg-gray-900/50 rounded-xl p-3 mb-4 flex justify-between items-center">
+            <span class="text-sm text-gray-400">ستحصل على</span>
+            <span id="balance-purchase-coins" class="font-bold text-yellow-400">${info.minUSD * info.coinRate} <i class="fas fa-coins"></i></span>
+        </div>
+        <button id="confirm-balance-purchase-btn" class="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg font-bold">تأكيد الشراء الفوري</button>
+    `;
+
+    document.getElementById('back-to-methods').addEventListener('click', () => renderBuyCoinsHome([]));
+
+    const amountInput = document.getElementById('balance-purchase-amount');
+    amountInput.addEventListener('input', () => {
+        const val = parseFloat(amountInput.value) || 0;
+        document.getElementById('balance-purchase-coins').innerHTML = `${Math.round(val * info.coinRate)} <i class="fas fa-coins"></i>`;
+    });
+
+    document.getElementById('confirm-balance-purchase-btn').addEventListener('click', async () => {
+        const amount = parseFloat(amountInput.value);
+        if (!amount || amount < info.minUSD) { showNotification('مبلغ غير صالح', 'error'); return; }
+        if (amount > (localUser.balance || 0)) { showNotification('رصيدك غير كافٍ لهذا المبلغ', 'error'); return; }
+
+        const btn = document.getElementById('confirm-balance-purchase-btn');
+        btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+        try {
+            const response = await fetch('/api/coin-purchase/buy-with-balance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ amountUSD: amount })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                await refreshUserData();
+                document.getElementById('buy-coins-body').innerHTML = `
+                    <div class="text-center py-8">
+                        <i class="fas fa-check-circle text-5xl text-green-400 mb-4"></i>
+                        <p class="font-bold mb-2">${result.message}</p>
+                        <button id="close-balance-success-btn" class="bg-green-600 hover:bg-green-700 text-white py-2.5 px-6 rounded-lg font-bold mt-2">حسناً</button>
+                    </div>`;
+                document.getElementById('close-balance-success-btn').addEventListener('click', () => document.getElementById('buy-coins-modal')?.remove());
+            } else {
+                showNotification(result.message || 'فشل الشراء', 'error');
+                btn.disabled = false; btn.textContent = 'تأكيد الشراء الفوري';
+            }
+        } catch (error) {
+            showNotification('خطأ في الاتصال بالخادم', 'error');
+            btn.disabled = false; btn.textContent = 'تأكيد الشراء الفوري';
+        }
+    });
+}
+
+        
 
 function renderPaymentDetails(purchase, method) {
     const body = document.getElementById('buy-coins-body');
