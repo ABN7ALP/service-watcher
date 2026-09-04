@@ -132,6 +132,7 @@ class AdminDashboard {
         document.getElementById('withdrawalStatusFilter')?.addEventListener('change', () => this.loadWithdrawals());
         document.getElementById('battlesStatusFilter')?.addEventListener('change', () => this.loadBattles());
         document.getElementById('reportsStatusFilter')?.addEventListener('change', () => this.loadReports());
+                document.getElementById('logsSeverityFilter')?.addEventListener('change', () => this.loadLogs(1));
         document.getElementById('transactionsTypeFilter')?.addEventListener('change', () => this.loadTransactions(1));
         document.getElementById('addGiftBtn')?.addEventListener('click', () => this.showGiftFormModal());
 
@@ -749,97 +750,276 @@ class AdminDashboard {
     }
 
     // ================= Reports =================
-    async loadReports() {
+        async loadReports() {
         const status = document.getElementById('reportsStatusFilter')?.value || 'pending';
         try {
             const data = await this.api('GET', `/reports?status=${status}`);
             const c = document.getElementById('reportsListContainer');
-            if (!data.reports.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-flag fa-2x"></i><p>لا توجد بلاغات — تصل من زر "الإبلاغ عن رسالة" داخل الدردشة الخاصة</p></div>'; return; }
+            if (!data.reports.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-flag fa-2x"></i><p>لا توجد بلاغات حالياً — تصل تلقائياً عند ضغط المستخدمين على زر الإبلاغ (⚠️) في الدردشة أو الملف الشخصي</p></div>'; return; }
 
-            const reasonText = { spam: 'رسائل مزعجة', harassment: 'تحرش', inappropriate_content: 'محتوى غير لائق', threats: 'تهديد', impersonation: 'انتحال شخصية', scam: 'احتيال', hate_speech: 'خطاب كراهية', other: 'أخرى' };
+            const priorityBadge = { low: 'status-online', medium: 'status-pending', high: 'status-banned', critical: 'status-banned' };
 
             c.innerHTML = data.reports.map(r => `
-                <div class="activity-item ${r.priority >= 4 ? 'danger' : r.priority === 3 ? 'warning' : 'info'}">
+                <div class="activity-item ${r.priority === 'high' || r.priority === 'critical' ? 'danger' : 'warning'}">
                     <div class="activity-icon"><i class="fas fa-flag"></i></div>
                     <div class="activity-content">
-                        <div class="title">${escapeHtml(r.reporter?.username || 'مستخدم محذوف')} أبلغ عن ${escapeHtml(r.reportedUser?.username || 'مستخدم محذوف')}
-                            <span class="status-badge ${r.priority >= 4 ? 'status-banned' : 'status-pending'}">أولوية ${r.priority}</span>
+                        <div class="title">${escapeHtml(r.reporter?.username || 'محذوف')} أبلغ عن ${escapeHtml(r.reportedUser?.username || 'محذوف')}
+                            <span class="status-badge ${priorityBadge[r.priority] || 'status-pending'}">${r.priority}</span>
                             ${r.reportedUser?.isBanned ? '<span class="status-badge status-banned">محظور بالفعل</span>' : ''}
                         </div>
-                        <div class="description">السبب: ${reasonText[r.reason] || r.reason} ${r.description ? '— ' + escapeHtml(r.description) : ''}</div>
+                        <div class="description">${this.reasonText(r.reason)} ${r.details ? '— ' + escapeHtml(r.details) : ''}</div>
                         <div class="activity-time">${formatDate(r.createdAt)}</div>
                     </div>
-                    ${['pending', 'under_review'].includes(r.status) ? `
-                        <div style="display:flex;gap:6px;">
-                            <button class="btn-action btn-view" data-resolve="${r._id}" title="حل بدون إجراء"><i class="fas fa-check"></i></button>
-                            <button class="btn-action btn-ban" data-ban="${r._id}" title="حظر المُبلَّغ عنه"><i class="fas fa-user-slash"></i></button>
-                            <button class="btn-action btn-delete" data-dismiss-report="${r._id}" title="رفض البلاغ"><i class="fas fa-times"></i></button>
-                        </div>
-                    ` : `<span class="status-badge status-completed">${r.status}</span>`}
+                    <div style="display:flex;gap:6px;">
+                        <button class="btn-action btn-view" data-investigate="${r._id}" title="تحقيق ومراجعة كاملة"><i class="fas fa-search"></i></button>
+                    </div>
                 </div>
             `).join('');
 
-            c.querySelectorAll('[data-resolve]').forEach(btn => btn.addEventListener('click', () =>
-                this.confirmAction('تعليم هذا البلاغ كمحلول بدون اتخاذ إجراء؟', async () => {
-                    await this.api('POST', `/reports/${btn.dataset.resolve}/resolve`, { status: 'resolved', actionTaken: 'no_action' });
-                    this.showToast('تم', 'success'); this.loadReports();
-                }, false)
-            ));
-            c.querySelectorAll('[data-ban]').forEach(btn => btn.addEventListener('click', () => {
-                this.promptModal('حظر المستخدم المُبلَّغ عنه', 'سبب الحظر (سيُحفظ رسمياً)...', (notes) => {
-                    if (!notes) return;
-                    this.api('POST', `/reports/${btn.dataset.ban}/resolve`, { status: 'resolved', actionTaken: 'permanent_ban', adminNotes: notes })
-                        .then(() => { this.showToast('تم حظر المستخدم وحل البلاغ', 'success'); this.loadReports(); })
-                        .catch(e => this.showToast(e.message, 'error'));
-                }, { confirmText: 'حظر', danger: true });
+            c.querySelectorAll('[data-investigate]').forEach(btn => btn.addEventListener('click', () => {
+                const report = data.reports.find(r => r._id === btn.dataset.investigate);
+                this.showInvestigationModal(report);
             }));
-            c.querySelectorAll('[data-dismiss-report]').forEach(btn => btn.addEventListener('click', () =>
-                this.confirmAction('رفض هذا البلاغ (اعتباره غير صحيح)؟', async () => {
-                    await this.api('POST', `/reports/${btn.dataset.dismissReport}/resolve`, { status: 'dismissed', actionTaken: 'no_action' });
-                    this.showToast('تم رفض البلاغ', 'success'); this.loadReports();
-                })
-            ));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    reasonText(reason) {
+        const m = { harassment: 'مضايقة/تحرش', spam: 'رسائل مزعجة', inappropriate_content: 'محتوى غير لائق', fraud: 'احتيال', fake_account: 'حساب مزيف', cheating: 'غش/تلاعب', payment_issue: 'مشكلة دفع', other: 'أخرى' };
+        return m[reason] || reason;
+    }
+
+    async showInvestigationModal(report) {
+        try {
+            const data = await this.api('GET', `/investigate/${report.reportedUser._id}`);
+            const { targetUser, chats, relatedReports } = data;
+
+            const modal = this.openModal(`
+                <div class="modal-overlay active">
+                    <div class="modal-content" style="max-width:1100px;">
+                        <div class="modal-header">
+                            <h3><i class="fas fa-user-secret"></i> تحقيق ومراجعة: ${escapeHtml(targetUser.username)}</h3>
+                            <button class="modal-close"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div class="modal-body" style="padding:0;">
+                            <div style="display:grid; grid-template-columns: 280px 1fr;">
+                                <div style="border-left:1px solid #eee; padding:16px; overflow-y:auto; max-height:600px;">
+                                    <div class="mb-3" style="padding:10px;background:#fff3cd;border-radius:8px;">
+                                        <strong>البلاغ الحالي</strong>
+                                        <p class="small mb-1">السبب: ${this.reasonText(report.reason)}</p>
+                                        <p class="small mb-1">${escapeHtml(report.details || '')}</p>
+                                        ${report.evidence && report.evidence.length ? `<a href="${report.evidence[0]}" target="_blank"><img src="${report.evidence[0]}" style="max-width:100%;border-radius:6px;margin-top:6px;"></a>` : ''}
+                                    </div>
+                                    ${relatedReports.length > 1 ? `<p class="small text-muted mb-2"><i class="fas fa-history"></i> بلاغات سابقة عن هذا المستخدم: ${relatedReports.length}</p>` : ''}
+                                    <hr>
+                                    <p class="small text-muted mb-2">محادثاته الخاصة (${chats.length})</p>
+                                    <div id="investigation-chat-tabs"></div>
+                                </div>
+                                <div id="investigation-chat-viewer" style="padding:16px; overflow-y:auto; max-height:600px; background:#f9fafb;">
+                                    <p class="text-center text-muted py-5">اختر محادثة من القائمة لعرضها</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" data-dismiss>إغلاق</button>
+                            <button class="btn btn-outline-warning" id="inv-warn-btn">تحذير</button>
+                            <button class="btn btn-outline-danger" id="inv-tempban-btn">حظر 3 أيام</button>
+                            <button class="btn btn-danger" id="inv-permban-btn">حظر دائم</button>
+                            <button class="btn btn-outline-secondary" id="inv-dismiss-btn">رفض البلاغ</button>
+                        </div>
+                    </div>
+                </div>
+            `);
+
+            const tabsContainer = modal.querySelector('#investigation-chat-tabs');
+            const viewer = modal.querySelector('#investigation-chat-viewer');
+
+            if (chats.length === 0) {
+                tabsContainer.innerHTML = '<p class="small text-muted">لا توجد محادثات خاصة</p>';
+            } else {
+                tabsContainer.innerHTML = chats.map((c, i) => `
+                    <button class="btn btn-sm w-100 mb-1 text-start inv-chat-tab" data-index="${i}" style="background:#f1f5f9;border:1px solid #e2e8f0;">
+                        <i class="fas fa-comment-dots"></i> ${escapeHtml(c.otherParticipant?.username || 'مستخدم محذوف')}
+                    </button>
+                `).join('');
+
+                tabsContainer.querySelectorAll('.inv-chat-tab').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const chat = chats[btn.dataset.index];
+                        viewer.innerHTML = chat.messages.map(m => {
+                            const isTarget = m.sender?._id === targetUser._id;
+                            let contentHtml = '';
+                            if (m.type === 'image') contentHtml = `<a href="${m.content}" target="_blank"><img src="${m.content}" style="max-width:200px;border-radius:8px;"></a>`;
+                            else if (m.type === 'text') contentHtml = escapeHtml(m.content);
+                            else contentHtml = `<em>[${m.type}]</em>`;
+                            return `
+                                <div class="mb-2" style="display:flex; ${isTarget ? 'justify-content:flex-end' : ''};">
+                                    <div style="max-width:70%; background:${isTarget ? '#fee2e2' : '#e0f2fe'}; padding:8px 12px; border-radius:10px;">
+                                        <div class="small fw-bold">${escapeHtml(m.sender?.username || '-')}</div>
+                                        <div class="small">${contentHtml}</div>
+                                        <div class="small text-muted">${formatDate(m.createdAt)}</div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('') || '<p class="text-center text-muted">لا توجد رسائل</p>';
+                    });
+                });
+                tabsContainer.querySelector('.inv-chat-tab')?.click();
+            }
+
+            const resolveAndClose = async (action, notes, duration) => {
+                try {
+                    await this.api('POST', `/reports/${report._id}/resolve`, { status: 'resolved', action, notes, duration });
+                    this.showToast('تم اتخاذ الإجراء بنجاح', 'success');
+                    modal.remove();
+                    this.loadReports();
+                } catch (error) { this.showToast(error.message, 'error'); }
+            };
+
+            modal.querySelector('#inv-warn-btn').addEventListener('click', () => {
+                this.promptModal('تحذير المستخدم', 'نص التحذير...', (notes) => resolveAndClose('warning', notes), { confirmText: 'إرسال تحذير' });
+            });
+            modal.querySelector('#inv-tempban-btn').addEventListener('click', () => {
+                this.promptModal('حظر مؤقت 3 أيام', 'سبب الحظر...', (notes) => { if (notes) resolveAndClose('ban', notes, 3); }, { confirmText: 'حظر 3 أيام', danger: true });
+            });
+            modal.querySelector('#inv-permban-btn').addEventListener('click', () => {
+                this.promptModal('حظر دائم', 'سبب الحظر...', (notes) => { if (notes) resolveAndClose('ban', notes, null); }, { confirmText: 'حظر دائم', danger: true });
+            });
+            modal.querySelector('#inv-dismiss-btn').addEventListener('click', () => {
+                this.confirmAction('رفض هذا البلاغ (اعتباره غير صحيح)؟', () => resolveAndClose('no_action', 'تم رفض البلاغ بعد المراجعة'), false);
+            });
         } catch (error) { this.showToast(error.message, 'error'); }
     }
 
     // ================= Logs =================
-    async loadLogs(page = 1) {
+        async loadLogs(page = 1) {
+        const severity = document.getElementById('logsSeverityFilter')?.value || '';
         try {
-            const data = await this.api('GET', `/logs?page=${page}&limit=50`);
+            const data = await this.api('GET', `/logs?page=${page}&limit=50${severity ? '&severity=' + severity : ''}`);
             const c = document.getElementById('logsListContainer');
             if (!data.logs || !data.logs.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-history fa-2x"></i><p>لا توجد سجلات</p></div>'; this.renderPagination('logsPagination', 0, 1, () => {}); return; }
 
-            c.innerHTML = `<table class="table table-hover"><thead><tr><th>المدير</th><th>الإجراء</th><th>الهدف</th><th>الخطورة</th><th>التاريخ</th></tr></thead><tbody>
-                ${data.logs.map(log => `
+            c.innerHTML = `<table class="table table-hover"><thead><tr><th>المدير</th><th>الإجراء</th><th>الهدف</th><th>الخطورة</th><th>التاريخ</th><th>تفاصيل</th></tr></thead><tbody>
+                ${data.logs.map((log, i) => `
                     <tr>
                         <td>${escapeHtml(log.admin?.username || '-')}</td>
-                        <td>${escapeHtml(log.action)}</td>
+                        <td>${this.actionText(log.action)}</td>
                         <td>${escapeHtml(log.targetUser?.username || '-')}</td>
                         <td><span class="status-badge ${log.severity === 'critical' || log.severity === 'error' ? 'status-banned' : log.severity === 'warning' ? 'status-pending' : 'status-online'}">${log.severity}</span></td>
                         <td>${formatDate(log.createdAt)}</td>
+                        <td><button class="btn-action btn-view" data-log-details="${i}"><i class="fas fa-eye"></i></button></td>
                     </tr>
                 `).join('')}
             </tbody></table>`;
+
+            c.querySelectorAll('[data-log-details]').forEach(btn => btn.addEventListener('click', () => {
+                this.showLogDetailsModal(data.logs[btn.dataset.logDetails]);
+            }));
 
             this.renderPagination('logsPagination', data.totalPages, data.currentPage, (p) => this.loadLogs(p));
         } catch (error) { this.showToast(error.message, 'error'); }
     }
 
-    loadSettings() {
-        const c = document.getElementById('settingsInfoContainer');
-        c.innerHTML = `
-            <table class="table table-sm">
-                <tbody>
-                    <tr><th>سعر صرف الكوينز</th><td>يُحدَّد عبر COIN_EXCHANGE_RATE في .env</td></tr>
-                    <tr><th>حد الشحن الأدنى/الأقصى</th><td>MIN_PURCHASE_USD / MAX_PURCHASE_USD</td></tr>
-                    <tr><th>محفظة شام كاش</th><td>SHAM_CASH_WALLET</td></tr>
-                    <tr><th>بطاقة فيزا</th><td>VISA_CARD_NUMBER</td></tr>
-                    <tr><th>البريد الإداري للتنبيهات</th><td>ADMIN_EMAIL</td></tr>
-                </tbody>
-            </table>
-        `;
+    showLogDetailsModal(log) {
+        this.openModal(`
+            <div class="modal-overlay active">
+                <div class="modal-content" style="max-width:600px;">
+                    <div class="modal-header"><h3><i class="fas fa-file-alt"></i> تفاصيل الحدث</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                    <div class="modal-body">
+                        <table class="table table-sm">
+                            <tr><th>المدير</th><td>${escapeHtml(log.admin?.username || '-')}</td></tr>
+                            <tr><th>الإجراء</th><td>${this.actionText(log.action)}</td></tr>
+                            <tr><th>الهدف</th><td>${escapeHtml(log.targetUser?.username || '-')}</td></tr>
+                            <tr><th>الخطورة</th><td>${log.severity}</td></tr>
+                            <tr><th>عنوان IP</th><td>${escapeHtml(log.ipAddress || '-')}</td></tr>
+                            <tr><th>التاريخ</th><td>${formatDate(log.createdAt)}</td></tr>
+                        </table>
+                        <p class="small text-muted mb-1">البيانات الكاملة:</p>
+                        <pre style="background:#f5f5f5;padding:12px;border-radius:8px;font-size:0.8rem;max-height:250px;overflow:auto;direction:ltr;text-align:left;">${escapeHtml(JSON.stringify(log.details || {}, null, 2))}</pre>
+                    </div>
+                </div>
+            </div>
+        `);
     }
 
+    actionText(action) {
+        const m = {
+            login: 'تسجيل دخول', logout: 'تسجيل خروج', ban_user: 'حظر مستخدم', unban_user: 'فك حظر',
+            manual_transaction: 'تعديل رصيد يدوي', approve_deposit: 'قبول شحن', reject_deposit: 'رفض شحن',
+            approve_withdrawal: 'قبول سحب', reject_withdrawal: 'رفض سحب', update_permissions: 'تحديث صلاحيات',
+            create_gift: 'إضافة هدية', update_gift: 'تعديل هدية', delete_gift: 'حذف هدية',
+            update_settings: 'تحديث إعدادات', system_maintenance: 'إجراء نظامي', mass_notification: 'إشعار جماعي'
+        };
+        return m[action] || action;
+    }
+
+       async loadSettings() {
+        try {
+            const data = await this.api('GET', '/settings');
+            const s = data.settings;
+            const c = document.getElementById('settingsFormContainer');
+            c.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="mb-3"><i class="fas fa-coins text-warning"></i> إعدادات الكوينز والشحن</h6>
+                        <div class="form-group"><label>سعر صرف الكوينز (كوينز لكل 1$)</label><input type="number" class="form-control" id="s-coinRate" value="${s.coinExchangeRate}"></div>
+                        <div class="form-group"><label>الحد الأدنى للشحن ($)</label><input type="number" class="form-control" id="s-minPurchase" value="${s.minPurchaseUSD}"></div>
+                        <div class="form-group"><label>الحد الأقصى للشحن ($)</label><input type="number" class="form-control" id="s-maxPurchase" value="${s.maxPurchaseUSD}"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="mb-3"><i class="fas fa-money-bill-wave text-success"></i> إعدادات السحب</h6>
+                        <div class="form-group"><label>الحد الأدنى للسحب ($)</label><input type="number" class="form-control" id="s-minWithdraw" value="${s.minWithdrawUSD}"></div>
+                        <div class="form-group"><label>رسوم السحب (لكل 10$)</label><input type="number" step="0.01" class="form-control" id="s-withdrawFee" value="${s.withdrawalFeePer10USD}"></div>
+                        <div class="form-group"><label>نسبة عمولة التحديات %</label><input type="number" step="0.01" class="form-control" id="s-commission" value="${(s.battleCommissionRate * 100).toFixed(2)}">
+                            <small class="text-muted">⚠️ هذا الحقل تجريبي: بعض أجزاء نظام التحديات لا تزال تستخدم قيمة ثابتة بالكود، سيتم توحيدها بتحديث قادم.</small>
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="mb-3"><i class="fas fa-wallet text-info"></i> محفظة شام كاش</h6>
+                        <div class="form-group"><label>رقم المحفظة</label><input type="text" class="form-control" id="s-shamWallet" value="${escapeHtml(s.shamCashWallet)}"></div>
+                        <div class="form-group"><label>اسم صاحب الحساب</label><input type="text" class="form-control" id="s-shamHolder" value="${escapeHtml(s.shamCashHolderName)}"></div>
+                        <div class="form-group"><label>رابط صورة QR</label><input type="text" class="form-control" id="s-shamQr" value="${escapeHtml(s.shamCashQrUrl)}"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="mb-3"><i class="fas fa-credit-card text-primary"></i> بطاقة فيزا</h6>
+                        <div class="form-group"><label>رقم البطاقة</label><input type="text" class="form-control" id="s-visaNumber" value="${escapeHtml(s.visaCardNumber)}"></div>
+                        <div class="form-group"><label>اسم صاحب البطاقة</label><input type="text" class="form-control" id="s-visaHolder" value="${escapeHtml(s.visaHolderName)}"></div>
+                    </div>
+                </div>
+                <hr>
+                <h6 class="mb-3"><i class="fas fa-tools text-danger"></i> وضع الصيانة</h6>
+                <div class="form-group">
+                    <label><input type="checkbox" id="s-maintenance" ${s.maintenanceMode ? 'checked' : ''}> تفعيل وضع الصيانة (يمنع تسجيل الدخول لغير المدراء)</label>
+                </div>
+                <div class="form-group"><label>رسالة الصيانة</label><textarea class="form-control" id="s-maintenanceMsg" rows="2">${escapeHtml(s.maintenanceMessage)}</textarea></div>
+                <button class="btn btn-primary mt-2" id="saveSettingsBtn"><i class="fas fa-save"></i> حفظ كل التغييرات</button>
+            `;
+
+            document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
+                const payload = {
+                    coinExchangeRate: parseFloat(document.getElementById('s-coinRate').value),
+                    minPurchaseUSD: parseFloat(document.getElementById('s-minPurchase').value),
+                    maxPurchaseUSD: parseFloat(document.getElementById('s-maxPurchase').value),
+                    minWithdrawUSD: parseFloat(document.getElementById('s-minWithdraw').value),
+                    withdrawalFeePer10USD: parseFloat(document.getElementById('s-withdrawFee').value),
+                    battleCommissionRate: parseFloat(document.getElementById('s-commission').value) / 100,
+                    shamCashWallet: document.getElementById('s-shamWallet').value.trim(),
+                    shamCashHolderName: document.getElementById('s-shamHolder').value.trim(),
+                    shamCashQrUrl: document.getElementById('s-shamQr').value.trim(),
+                    visaCardNumber: document.getElementById('s-visaNumber').value.trim(),
+                    visaHolderName: document.getElementById('s-visaHolder').value.trim(),
+                    maintenanceMode: document.getElementById('s-maintenance').checked,
+                    maintenanceMessage: document.getElementById('s-maintenanceMsg').value.trim()
+                };
+                try {
+                    await this.api('POST', '/settings', payload);
+                    this.showToast('تم حفظ الإعدادات بنجاح', 'success');
+                } catch (error) { this.showToast(error.message, 'error'); }
+            });
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
     txTypeText(type) {
         const m = { deposit: 'شحن', withdrawal: 'سحب', bet: 'رهان', win: 'فوز', loss: 'خسارة', gift_send: 'إرسال هدية', gift_receive: 'استلام هدية', commission: 'عمولة' };
         return m[type] || type;
