@@ -1076,6 +1076,7 @@ exports.getUserInvestigation = async (req, res) => {
     const Report = require('../models/Report');
     const PrivateChat = require('../models/PrivateChat');
     const PrivateMessage = require('../models/PrivateMessage');
+    const Message = require('../models/Message');
 
     const targetUser = await User.findById(userId).select('username profileImage customId isBanned banReason createdAt');
     if (!targetUser) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
@@ -1087,10 +1088,8 @@ exports.getUserInvestigation = async (req, res) => {
 
     const chatsWithMessages = await Promise.all(chats.map(async (chat) => {
       const messages = await PrivateMessage.find({ chatId: chat.chatId })
-        .sort('-createdAt')
-        .limit(100)
-        .populate('sender', 'username profileImage')
-        .lean();
+        .sort('-createdAt').limit(100)
+        .populate('sender', 'username profileImage').lean();
       return {
         chatId: chat.chatId,
         otherParticipant: chat.participants.find(p => p._id.toString() !== userId.toString()),
@@ -1098,10 +1097,18 @@ exports.getUserInvestigation = async (req, res) => {
       };
     }));
 
+    // ✅ جديد: آخر 10 رسائل من الشات العام لهذا المستخدم — تُعرض في تبويب منفصل بالتحقيق
+    const publicMessages = await Message.find({ sender: userId })
+      .sort('-createdAt').limit(10)
+      .populate('sender', 'username profileImage').lean();
+
     const relatedReports = await Report.find({ reportedUser: userId })
       .sort('-createdAt').limit(20).populate('reporter', 'username profileImage');
 
-    res.json({ success: true, targetUser, chats: chatsWithMessages, relatedReports });
+    res.json({
+      success: true, targetUser, chats: chatsWithMessages,
+      publicMessages: publicMessages.reverse(), relatedReports
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
