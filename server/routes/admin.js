@@ -38,7 +38,11 @@ router.delete('/gifts/:giftId', adminController.deleteGift);
 
 router.get('/reports', adminController.getReports);
 router.post('/reports/:reportId/resolve', adminController.resolveReport);
+router.get('/investigate/:userId', adminController.getUserInvestigation);
 
 router.get('/logs', adminController.getLogs);
+
+router.get('/settings', adminController.getSystemSettings);
+router.post('/settings', adminController.updateSystemSettings);
 
 module.exports = router;
