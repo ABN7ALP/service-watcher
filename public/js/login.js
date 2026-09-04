@@ -39,8 +39,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(() => {
                     window.location.href = '/index.html';
                 }, 1500);
-            } else if (result.code === 'ACCOUNT_BANNED') {
-                showBannedModal(result.banReason, result.banExpires, result.isPermanent);
+                } else if (result.code === 'ACCOUNT_BANNED') {
+                showBannedModal(result.banReason, result.banExpires, result.isPermanent, result.userId);
             } else {
                 showNotification(result.message || 'فشل تسجيل الدخول', 'error');
             }
@@ -93,7 +93,7 @@ function showNotification(message, type = 'info') {
 
 
 // ✅ نافذة أنيقة تُعلم المستخدم المحظور بالسبب والمدة، مع طريقة للتواصل مع الدعم
-function showBannedModal(reason, banExpires, isPermanent) {
+function showBannedModal(reason, banExpires, isPermanent, userId) {
     const existing = document.getElementById('banned-modal');
     if (existing) existing.remove();
 
@@ -108,23 +108,54 @@ function showBannedModal(reason, banExpires, isPermanent) {
                     <i class="fas fa-user-lock text-4xl mb-2"></i>
                     <h2 class="text-xl font-bold">تم حظر حسابك</h2>
                 </div>
-                <div class="p-6 text-center">
+                <div id="banned-modal-body" class="p-6 text-center">
                     <p class="text-gray-300 text-sm mb-1">السبب:</p>
                     <p class="font-bold mb-4">${reason || 'مخالفة لشروط الاستخدام'}</p>
                     <p class="text-xs px-3 py-1.5 rounded-full inline-block ${isPermanent ? 'bg-red-900/40 text-red-300' : 'bg-yellow-900/40 text-yellow-300'}">
                         <i class="fas fa-clock mr-1"></i> ${expiryText}
                     </p>
-                    <p class="text-gray-400 text-xs mt-4">إذا كنت تعتقد أن هذا خطأ، يمكنك التواصل مع فريق الدعم لمراجعة حالتك.</p>
-                    <a href="mailto:support@example.com" class="mt-4 w-full inline-block bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg text-sm">
-                        <i class="fas fa-headset mr-1"></i> تواصل مع الدعم
-                    </a>
+                    <p class="text-gray-400 text-xs mt-4">إذا كنت تعتقد أن هذا خطأ، يمكنك تقديم استئناف لمراجعة حالتك.</p>
+                    <button id="openAppealFormBtn" class="mt-4 w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-lg text-sm">
+                        <i class="fas fa-comment-dots mr-1"></i> تقديم استئناف
+                    </button>
                     <button id="closeBannedModal" class="mt-2 w-full bg-gray-700 hover:bg-gray-600 text-white py-2.5 rounded-lg text-sm">حسناً</button>
                 </div>
             </div>
         </div>
     `;
     document.body.insertAdjacentHTML('beforeend', modalHTML);
-    document.getElementById('closeBannedModal').addEventListener('click', () => {
-        document.getElementById('banned-modal').remove();
+    document.getElementById('closeBannedModal').addEventListener('click', () => document.getElementById('banned-modal').remove());
+
+    document.getElementById('openAppealFormBtn').addEventListener('click', () => {
+        const body = document.getElementById('banned-modal-body');
+        body.innerHTML = `
+            <p class="text-sm text-gray-300 mb-3 text-right">اشرح سبب اعتراضك بالتفصيل:</p>
+            <textarea id="appealMessageInput" rows="4" maxlength="500" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm text-right" placeholder="اكتب هنا..."></textarea>
+            <button id="submitAppealBtn" class="mt-3 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg text-sm">
+                <i class="fas fa-paper-plane mr-1"></i> إرسال الاستئناف
+            </button>
+        `;
+        document.getElementById('submitAppealBtn').addEventListener('click', async () => {
+            const message = document.getElementById('appealMessageInput').value.trim();
+            if (message.length < 5) { showNotification('يرجى كتابة تفاصيل كافية', 'error'); return; }
+            const btn = document.getElementById('submitAppealBtn');
+            btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            try {
+                const response = await fetch('/api/support/ban-appeal', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId, message })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    body.innerHTML = `<div class="py-4"><i class="fas fa-check-circle text-4xl text-green-400 mb-3"></i><p class="text-sm">${result.message}</p></div>`;
+                } else {
+                    showNotification(result.message || 'فشل إرسال الطلب', 'error');
+                    btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i> إرسال الاستئناف';
+                }
+            } catch (error) {
+                showNotification('خطأ في الاتصال بالخادم', 'error');
+                btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i> إرسال الاستئناف';
+            }
+        });
     });
 }
