@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const coinPurchaseSchema = new mongoose.Schema({
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    method: { type: String, enum: ['sham_cash', 'visa', 'agent'], required: true },
+        method: { type: String, enum: ['sham_cash', 'visa', 'agent', 'balance'], required: true },
     amountUSD: { type: Number, required: true, min: 1 },
     coinsAmount: { type: Number, required: true },
     status: {
