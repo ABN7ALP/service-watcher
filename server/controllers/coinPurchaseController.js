@@ -6,24 +6,21 @@ const { uploadReceiptImage } = require('../utils/cloudinary');
 // جلب بيانات طرق الدفع (تُعرض بالواجهة)
 exports.getPaymentInfo = async (req, res) => {
     try {
+        const SystemSettings = require('../models/SystemSettings');
+        const settings = await SystemSettings.getSettings();
+
         const agents = await User.find({ isAgent: true })
             .select('username profileImage agentWhatsapp socketId');
 
         res.status(200).json({
             status: 'success',
             data: {
-                coinRate: paymentConfig.COIN_EXCHANGE_RATE,
-                minUSD: paymentConfig.MIN_PURCHASE_USD,
-                maxUSD: paymentConfig.MAX_PURCHASE_USD,
-                shamCash: paymentConfig.SHAM_CASH,
-                visa: paymentConfig.VISA,
-                agents: agents.map(a => ({
-                    id: a._id,
-                    username: a.username,
-                    profileImage: a.profileImage,
-                    whatsapp: a.agentWhatsapp,
-                    isOnline: !!a.socketId
-                }))
+                coinRate: settings.coinExchangeRate,
+                minUSD: settings.minPurchaseUSD,
+                maxUSD: settings.maxPurchaseUSD,
+                shamCash: { walletNumber: settings.shamCashWallet, accountHolderName: settings.shamCashHolderName, qrImageUrl: settings.shamCashQrUrl },
+                visa: { cardNumber: settings.visaCardNumber, accountHolderName: settings.visaHolderName, instructions: paymentConfig.VISA.instructions },
+                agents: agents.map(a => ({ id: a._id, username: a.username, profileImage: a.profileImage, whatsapp: a.agentWhatsapp, isOnline: !!a.socketId }))
             }
         });
     } catch (error) {
