@@ -1,5 +1,6 @@
 const CoinPurchase = require('../models/CoinPurchase');
 const User = require('../models/User');
+const Transaction = require('../models/Transaction');
 const paymentConfig = require('../config/paymentConfig');
 const { uploadReceiptImage } = require('../utils/cloudinary');
 
@@ -181,6 +182,59 @@ exports.rejectPurchase = async (req, res) => {
         res.status(200).json({ status: 'success', message: 'تم رفض الطلب', data: { purchase } });
     } catch (error) {
         console.error('[ERROR] in rejectPurchase:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
+
+// ✅ شراء فوري بدون انتظار مراجعة إدارية — التحويل داخلي بين رصيدين مملوكين لنفس المستخدم
+exports.buyWithBalance = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { amountUSD } = req.body;
+        const SystemSettings = require('../models/SystemSettings');
+        const settings = await SystemSettings.getSettings();
+
+        const amount = parseFloat(amountUSD);
+        if (!amount || amount < settings.minPurchaseUSD || amount > settings.maxPurchaseUSD) {
+            return res.status(400).json({ status: 'fail', message: `المبلغ يجب أن يكون بين ${settings.minPurchaseUSD}$ و ${settings.maxPurchaseUSD}$` });
+        }
+
+        const coinsAmount = Math.round(amount * settings.coinExchangeRate);
+
+        // ✅ خصم وإيداع ذريّان بعملية واحدة — يمنع أي فرصة رصيد سالب حتى مع طلبات متزامنة
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: userId, balance: { $gte: amount } },
+            { $inc: { balance: -amount, coins: coinsAmount } },
+            { new: true }
+        );
+
+        if (!updatedUser) {
+            return res.status(400).json({ status: 'fail', message: 'رصيدك الدولاري غير كافٍ لإتمام العملية' });
+        }
+
+        const purchase = await CoinPurchase.create({
+            user: userId, method: 'balance', amountUSD: amount, coinsAmount,
+            status: 'approved', processedAt: new Date()
+        });
+
+        await Transaction.create({
+            user: userId, type: 'withdrawal', amount, currency: 'USD', status: 'completed',
+            description: `شراء ${coinsAmount} كوينز من الرصيد`
+        });
+
+        const io = req.app.get('socketio');
+        if (io && updatedUser.socketId) {
+            io.to(updatedUser.socketId).emit('balanceUpdate', { newBalance: updatedUser.balance });
+            io.to(updatedUser.socketId).emit('coinsUpdated', { newCoins: updatedUser.coins });
+        }
+
+        res.status(200).json({
+            status: 'success', message: `تم شراء ${coinsAmount} كوينز من رصيدك بنجاح`,
+            data: { newBalance: updatedUser.balance, newCoins: updatedUser.coins, purchase }
+        });
+    } catch (error) {
+        console.error('[ERROR] in buyWithBalance:', error);
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
     }
 };
