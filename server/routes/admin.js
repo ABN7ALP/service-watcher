@@ -39,6 +39,8 @@ router.delete('/gifts/:giftId', adminController.deleteGift);
 router.get('/reports', adminController.getReports);
 router.post('/reports/:reportId/resolve', adminController.resolveReport);
 router.get('/investigate/:userId', adminController.getUserInvestigation);
+router.get('/support-tickets', adminController.getSupportTickets);
+router.post('/support-tickets/:ticketId/resolve', adminController.resolveSupportTicket);
 
 router.get('/logs', adminController.getLogs);
 
