@@ -3765,13 +3765,15 @@ function renderAgentList() {
 
     document.getElementById('back-to-methods').addEventListener('click', () => renderBuyCoinsHome([]));
 
-        body.querySelectorAll('.agent-chat-btn').forEach(btn => {
+                body.querySelectorAll('.agent-chat-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
             const agentId = btn.dataset.agentId;
             const agentName = btn.dataset.agentName;
 
+            // ✅ الإصلاح: إغلاق نافذة الشحن أولاً — كانت أعلى ترتيباً (z-index أكبر) من نافذة الدردشة فتغطيها
+            document.getElementById('buy-coins-modal')?.remove();
+
             await openPrivateChat(agentId, agentName);
-            // ✅ رسالة تلقائية تنبه الوكيل بطلب الشحن — تستفيد من نظام الإشعارات الموجود أصلاً بالمحادثة الخاصة
             setTimeout(() => {
                 sendPrivateMessage(agentId, 'مرحباً 👋 أرغب بشحن رصيد كوينز، الرجاء المساعدة 💰');
             }, 600);
