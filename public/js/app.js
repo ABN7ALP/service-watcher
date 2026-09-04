@@ -2679,7 +2679,7 @@ async function showMiniProfileModal(userId) {
                         </div>
                     </div>
                     
-                         <div id="profile-action-buttons" class="grid grid-cols-5 gap-2 border-t border-gray-700/50 p-4">
+                                                  <div id="profile-action-buttons" class="grid grid-cols-6 gap-2 border-t border-gray-700/50 p-4">
                         ${friendButtonHTML}
                         <button class="action-btn message-btn" data-user-id="${profileUser._id}">
                               <i class="fas fa-comment-dots"></i>
@@ -2690,6 +2690,10 @@ async function showMiniProfileModal(userId) {
                             <span class="text-xs mt-1">هدية</span>
                         </button>
                         ${blockButtonHTML}
+                        <button class="action-btn report-user-btn text-orange-400 hover:bg-orange-900" data-user-id="${profileUser._id}" data-username="${profileUser.username}">
+                            <i class="fas fa-flag"></i>
+                            <span class="text-xs mt-1">إبلاغ</span>
+                        </button>
                         <button class="action-btn close-mini-profile-btn">
                             <i class="fas fa-times"></i>
                             <span class="text-xs mt-1">إغلاق</span>
@@ -2774,6 +2778,11 @@ async function showMiniProfileModal(userId) {
             if (e.target.closest('.unblock-action-btn')) {
                 const userIdToUnblock = e.target.closest('.unblock-action-btn').dataset.userId;
                 unblockUser(userIdToUnblock, modal);
+                return;
+            }
+                        if (e.target.closest('.report-user-btn')) {
+                const btn = e.target.closest('.report-user-btn');
+                showReportModal({ type: 'user', reportedUserId: btn.dataset.userId, reportedUsername: btn.dataset.username });
                 return;
             }
             
@@ -4047,6 +4056,176 @@ function renderDepositReceiptUpload(depositId, amount) {
     });
 }
 
+
+
+// =================================================
+// ============ نظام البلاغات (Reports) ==============
+// =================================================
+
+function escapeHtmlClient(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+async function showReportModal(context) {
+    // context: { type: 'message'|'user', reportedUserId, reportedUsername, messageId, messageContent, messageType, roomId }
+    const existing = document.getElementById('report-modal');
+    if (existing) existing.remove();
+
+    const reasons = [
+        { value: 'harassment', label: 'مضايقة / تحرش' },
+        { value: 'spam', label: 'رسائل مزعجة' },
+        { value: 'inappropriate_content', label: 'محتوى غير لائق' },
+        { value: 'fraud', label: 'احتيال' },
+        { value: 'fake_account', label: 'حساب مزيف' },
+        { value: 'cheating', label: 'غش / تلاعب' },
+        { value: 'payment_issue', label: 'مشكلة بالدفع' },
+        { value: 'other', label: 'أخرى' }
+    ];
+
+    const modalHTML = `
+        <div id="report-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[500] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-red-500/30 max-h-[88vh] flex flex-col">
+                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-flag text-red-400"></i> الإبلاغ عن ${context.type === 'user' ? 'مستخدم' : 'رسالة'}</h3>
+                    <button id="close-report-modal" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="p-4 overflow-y-auto flex-1">
+                    <p class="text-sm text-gray-400 mb-3">أنت تُبلغ عن: <strong class="text-white">${escapeHtmlClient(context.reportedUsername || 'مستخدم')}</strong></p>
+
+                    ${context.messageContent || (context.messageType && context.messageType !== 'text') ? `
+                        <div class="bg-black/30 rounded-lg p-3 mb-4 text-xs text-gray-300 border-r-2 border-red-500">
+                            ${context.messageType && context.messageType !== 'text' ? `<i class="fas fa-paperclip mr-1"></i> رسالة ${context.messageType}` : escapeHtmlClient((context.messageContent || '').substring(0, 150))}
+                        </div>
+                    ` : ''}
+
+                    <p class="text-xs text-gray-400 mb-2">اختر السبب:</p>
+                    <div id="report-reason-chips" class="grid grid-cols-2 gap-2 mb-4">
+                        ${reasons.map(r => `<button type="button" class="report-reason-chip text-xs py-2 px-2 rounded-lg border border-gray-600 hover:border-red-400 transition" data-value="${r.value}">${r.label}</button>`).join('')}
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label class="text-xs text-gray-400 mb-1 block">تفاصيل إضافية <span id="details-required-star" class="hidden text-red-400">*</span></label>
+                        <textarea id="report-details-input" rows="3" maxlength="500" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-sm" placeholder="اشرح المشكلة بمزيد من التفصيل..."></textarea>
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="text-xs text-gray-400 mb-1 block">إرفاق صورة (اختياري)</label>
+                        <div id="report-evidence-dropzone" class="border-2 border-dashed border-gray-600 rounded-lg p-3 text-center cursor-pointer hover:border-red-400 text-xs text-gray-400">
+                            <div id="report-evidence-placeholder"><i class="fas fa-camera mb-1"></i><p>اضغط لإرفاق لقطة شاشة</p></div>
+                            <img id="report-evidence-preview" class="hidden max-h-24 mx-auto rounded">
+                        </div>
+                        <input type="file" id="report-evidence-input" class="hidden" accept="image/*">
+                    </div>
+                </div>
+                <div class="p-4 border-t border-gray-700">
+                    <button id="submit-report-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-lg disabled:opacity-50" disabled>
+                        <i class="fas fa-paper-plane mr-1"></i> إرسال البلاغ
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    const modal = document.getElementById('report-modal');
+    let selectedReason = null;
+    let evidenceUrl = null;
+
+    document.getElementById('close-report-modal').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target.id === 'report-modal') modal.remove(); });
+
+    const submitBtn = document.getElementById('submit-report-btn');
+    const detailsInput = document.getElementById('report-details-input');
+    const starEl = document.getElementById('details-required-star');
+
+    function checkFormValid() {
+        const detailsOk = selectedReason !== 'other' || detailsInput.value.trim().length >= 5;
+        submitBtn.disabled = !selectedReason || !detailsOk;
+    }
+
+    modal.querySelectorAll('.report-reason-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            modal.querySelectorAll('.report-reason-chip').forEach(c => c.classList.remove('bg-red-600', 'border-red-500'));
+            chip.classList.add('bg-red-600', 'border-red-500');
+            selectedReason = chip.dataset.value;
+            starEl.classList.toggle('hidden', selectedReason !== 'other');
+            checkFormValid();
+        });
+    });
+    detailsInput.addEventListener('input', checkFormValid);
+
+    const dropzone = document.getElementById('report-evidence-dropzone');
+    const fileInput = document.getElementById('report-evidence-input');
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) { showNotification('الصورة كبيرة جداً (حد أقصى 5MB)', 'error'); return; }
+
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            document.getElementById('report-evidence-placeholder').classList.add('hidden');
+            const img = document.getElementById('report-evidence-preview');
+            img.src = ev.target.result;
+            img.classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const response = await fetch('/api/reports/upload-evidence', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            const result = await response.json();
+            if (response.ok) evidenceUrl = result.data.url;
+            else showNotification(result.message || 'فشل رفع الصورة', 'error');
+        } catch (err) {
+            showNotification('خطأ في رفع الصورة', 'error');
+        }
+    });
+
+    submitBtn.addEventListener('click', async () => {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        try {
+            const payload = {
+                type: context.type,
+                reportedUserId: context.reportedUserId,
+                reason: selectedReason,
+                details: detailsInput.value.trim(),
+                messageId: context.messageId || undefined,
+                roomId: context.roomId || undefined,
+                messageContent: context.messageContent || undefined,
+                messageType: context.messageType || undefined,
+                evidenceUrl: evidenceUrl || undefined
+            };
+            const response = await fetch('/api/reports', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (response.ok) {
+                showNotification('تم إرسال بلاغك بنجاح، سنراجعه قريباً', 'success');
+                modal.remove();
+            } else {
+                showNotification(result.message || 'فشل إرسال البلاغ', 'error');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i> إرسال البلاغ';
+            }
+        } catch (error) {
+            showNotification('خطأ في الاتصال بالخادم', 'error');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i> إرسال البلاغ';
+        }
+    });
+}
+        
         
 
 async function loadGiftsReceivedSummary() {
@@ -6470,13 +6649,14 @@ function attachMessageOptionsMenu(messageElement, message, isMyMessage) {
         const canDelete5Min = ageMs < 5 * 60 * 1000;
         const canEdit = isMyMessage && message.type === 'text' && ageMs < 2 * 60 * 1000;
 
-        const rect = btn.getBoundingClientRect();
+                const rect = btn.getBoundingClientRect();
         const menuHTML = `
             <div id="msg-options-dropdown" class="fixed bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-44 z-[310] overflow-hidden text-sm"
                  style="top: ${rect.bottom + 6}px; left: ${Math.max(rect.left - 130, 8)}px;">
                 ${canEdit ? `<button class="w-full text-right px-4 py-2.5 text-gray-200 hover:bg-gray-700 flex items-center gap-2 msg-menu-edit"><i class="fas fa-pen text-blue-400"></i> تعديل</button>` : ''}
                 ${canDelete5Min ? `<button class="w-full text-right px-4 py-2.5 text-red-400 hover:bg-gray-700 flex items-center gap-2 msg-menu-delete-everyone border-t border-gray-700"><i class="fas fa-trash"></i> حذف لدى الجميع</button>` : ''}
                 <button class="w-full text-right px-4 py-2.5 text-gray-300 hover:bg-gray-700 flex items-center gap-2 msg-menu-delete-me border-t border-gray-700"><i class="fas fa-eye-slash"></i> حذف لدي فقط</button>
+                ${!isMyMessage ? `<button class="w-full text-right px-4 py-2.5 text-orange-400 hover:bg-gray-700 flex items-center gap-2 msg-menu-report border-t border-gray-700"><i class="fas fa-flag"></i> الإبلاغ عن الرسالة</button>` : ''}
             </div>
         `;
         document.body.insertAdjacentHTML('beforeend', menuHTML);
@@ -6495,6 +6675,18 @@ function attachMessageOptionsMenu(messageElement, message, isMyMessage) {
         menu.querySelector('.msg-menu-delete-me')?.addEventListener('click', () => {
             menu.remove();
             showConfirmationModal('هل تريد حذف هذه الرسالة من عندك فقط؟', () => deleteMessageRequest(message._id, 'me', messageElement));
+        });
+                menu.querySelector('.msg-menu-report')?.addEventListener('click', () => {
+            menu.remove();
+            showReportModal({
+                type: 'message',
+                reportedUserId: message.sender?._id || message.sender,
+                reportedUsername: message.sender?.username || 'مستخدم',
+                messageId: message._id,
+                messageContent: message.type === 'text' ? message.content : undefined,
+                messageType: message.type,
+                roomId: message.chatId || undefined
+            });
         });
 
         setTimeout(() => {
@@ -7174,7 +7366,7 @@ function displayMessage(message) {
         `;
     }
 
-        messageElement.innerHTML = `
+                messageElement.innerHTML = `
         <img src="${message.sender.profileImage}" alt="${message.sender.username}" 
              class="w-8 h-8 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-400 ${message.sender.activeFrameClass || ''}" data-user-id="${message.sender._id}">
         <div class="w-full">
@@ -7182,9 +7374,12 @@ function displayMessage(message) {
             <p class="font-bold text-sm ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${message.sender.username}</p>
             <p class="text-white text-sm">${message.content}</p>
         </div>
-        <button class="reply-btn text-gray-400 hover:text-purple-400 text-xs">
-            <i class="fas fa-reply"></i>
-        </button>
+        <div class="flex flex-col gap-1">
+            <button class="reply-btn text-gray-400 hover:text-purple-400 text-xs" title="رد">
+                <i class="fas fa-reply"></i>
+            </button>
+            ${!isMyMessage ? `<button class="report-public-msg-btn text-gray-400 hover:text-red-400 text-xs" title="إبلاغ"><i class="fas fa-exclamation-triangle"></i></button>` : ''}
+        </div>
     `;
 
     chatMessages.appendChild(messageElement);
@@ -7193,6 +7388,21 @@ function displayMessage(message) {
     messageElement.querySelector('.reply-btn').addEventListener('click', () => {
         showReplyBar(message);
     });
+
+    const reportPublicBtn = messageElement.querySelector('.report-public-msg-btn');
+    if (reportPublicBtn) {
+        reportPublicBtn.addEventListener('click', () => {
+            showReportModal({
+                type: 'message',
+                reportedUserId: message.sender._id,
+                reportedUsername: message.sender.username,
+                messageId: message._id,
+                messageContent: message.content,
+                messageType: 'text',
+                roomId: 'public'
+            });
+        });
+    }
 
     // --- ✅ منطق توميض الرسالة المردود عليها ---
     if (message.replyTo) {
