@@ -830,37 +830,53 @@ class AdminDashboard {
                 </div>
             `);
 
-            const tabsContainer = modal.querySelector('#investigation-chat-tabs');
+                        const tabsContainer = modal.querySelector('#investigation-chat-tabs');
             const viewer = modal.querySelector('#investigation-chat-viewer');
 
-            if (chats.length === 0) {
-                tabsContainer.innerHTML = '<p class="small text-muted">لا توجد محادثات خاصة</p>';
+            const renderMsgBubble = (m, isTarget) => {
+                let contentHtml = '';
+                if (m.type === 'image') contentHtml = `<a href="${m.content}" target="_blank"><img src="${m.content}" style="max-width:200px;border-radius:8px;"></a>`;
+                else if (!m.type || m.type === 'text') contentHtml = escapeHtml(m.content);
+                else contentHtml = `<em>[${m.type}]</em>`;
+                return `
+                    <div class="mb-2" style="display:flex; ${isTarget ? 'justify-content:flex-end' : ''};">
+                        <div style="max-width:70%; background:${isTarget ? '#fee2e2' : '#e0f2fe'}; padding:8px 12px; border-radius:10px;">
+                            <div class="small fw-bold">${escapeHtml(m.sender?.username || '-')}</div>
+                            <div class="small">${contentHtml}</div>
+                            <div class="small text-muted">${formatDate(m.createdAt)}</div>
+                        </div>
+                    </div>
+                `;
+            };
+
+            let tabsHTML = '';
+            // ✅ تبويب الشات العام (يظهر أولاً إن وُجدت رسائل عامة)
+            if (data.publicMessages && data.publicMessages.length) {
+                tabsHTML += `<button class="btn btn-sm w-100 mb-1 text-start inv-chat-tab" data-public="1" style="background:#fef3c7;border:1px solid #fbbf24;">
+                    <i class="fas fa-globe"></i> آخر ${data.publicMessages.length} رسائل بالشات العام
+                </button>`;
+            }
+            if (chats.length === 0 && (!data.publicMessages || !data.publicMessages.length)) {
+                tabsContainer.innerHTML = '<p class="small text-muted">لا توجد أي محادثات لهذا المستخدم</p>';
             } else {
-                tabsContainer.innerHTML = chats.map((c, i) => `
+                tabsHTML += chats.map((c, i) => `
                     <button class="btn btn-sm w-100 mb-1 text-start inv-chat-tab" data-index="${i}" style="background:#f1f5f9;border:1px solid #e2e8f0;">
                         <i class="fas fa-comment-dots"></i> ${escapeHtml(c.otherParticipant?.username || 'مستخدم محذوف')}
                     </button>
                 `).join('');
+                tabsContainer.innerHTML = tabsHTML;
 
-                tabsContainer.querySelectorAll('.inv-chat-tab').forEach(btn => {
+                tabsContainer.querySelectorAll('.inv-chat-tab[data-public]').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        viewer.innerHTML = data.publicMessages.map(m => renderMsgBubble(m, m.sender?._id === targetUser._id)).join('')
+                            || '<p class="text-center text-muted">لا توجد رسائل</p>';
+                    });
+                });
+                tabsContainer.querySelectorAll('.inv-chat-tab[data-index]').forEach(btn => {
                     btn.addEventListener('click', () => {
                         const chat = chats[btn.dataset.index];
-                        viewer.innerHTML = chat.messages.map(m => {
-                            const isTarget = m.sender?._id === targetUser._id;
-                            let contentHtml = '';
-                            if (m.type === 'image') contentHtml = `<a href="${m.content}" target="_blank"><img src="${m.content}" style="max-width:200px;border-radius:8px;"></a>`;
-                            else if (m.type === 'text') contentHtml = escapeHtml(m.content);
-                            else contentHtml = `<em>[${m.type}]</em>`;
-                            return `
-                                <div class="mb-2" style="display:flex; ${isTarget ? 'justify-content:flex-end' : ''};">
-                                    <div style="max-width:70%; background:${isTarget ? '#fee2e2' : '#e0f2fe'}; padding:8px 12px; border-radius:10px;">
-                                        <div class="small fw-bold">${escapeHtml(m.sender?.username || '-')}</div>
-                                        <div class="small">${contentHtml}</div>
-                                        <div class="small text-muted">${formatDate(m.createdAt)}</div>
-                                    </div>
-                                </div>
-                            `;
-                        }).join('') || '<p class="text-center text-muted">لا توجد رسائل</p>';
+                        viewer.innerHTML = chat.messages.map(m => renderMsgBubble(m, m.sender?._id === targetUser._id)).join('')
+                            || '<p class="text-center text-muted">لا توجد رسائل</p>';
                     });
                 });
                 tabsContainer.querySelector('.inv-chat-tab')?.click();
