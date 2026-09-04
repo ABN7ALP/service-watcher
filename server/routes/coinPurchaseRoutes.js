@@ -9,6 +9,7 @@ router.use(authMiddleware);
 router.get('/info', coinPurchaseController.getPaymentInfo);
 router.get('/my-pending', coinPurchaseController.getMyPendingPurchases);
 router.post('/create', coinPurchaseController.createPurchaseRequest);
+router.post('/buy-with-balance', coinPurchaseController.buyWithBalance);
 router.post('/:purchaseId/receipt', chatUpload.single('file'), coinPurchaseController.uploadReceipt);
 
 router.post('/:purchaseId/approve', coinPurchaseController.approvePurchase);
