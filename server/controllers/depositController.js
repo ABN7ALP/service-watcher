@@ -5,12 +5,14 @@ const { generateTransactionId } = require('../utils/helpers');
 
 exports.getWalletInfo = async (req, res) => {
     try {
+        const SystemSettings = require('../models/SystemSettings');
+        const settings = await SystemSettings.getSettings();
         res.status(200).json({
             status: 'success',
             data: {
-                minUSD: paymentConfig.MIN_PURCHASE_USD,
-                maxUSD: paymentConfig.MAX_PURCHASE_USD,
-                shamCash: paymentConfig.SHAM_CASH
+                minUSD: settings.minPurchaseUSD,
+                maxUSD: settings.maxPurchaseUSD,
+                shamCash: { walletNumber: settings.shamCashWallet, accountHolderName: settings.shamCashHolderName }
             }
         });
     } catch (error) {
