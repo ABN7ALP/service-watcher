@@ -30,6 +30,7 @@
                 <li class="menu-item" data-page="battles"><i class="fas fa-gamepad"></i><span>التحديات النشطة</span></li>
                 <li class="menu-item" data-page="gifts"><i class="fas fa-gifts"></i><span>إدارة الهدايا</span></li>
                 <li class="menu-item" data-page="reports"><i class="fas fa-flag"></i><span>البلاغات</span></li>
+                                <li class="menu-item" data-page="support"><i class="fas fa-life-ring"></i><span>تذاكر الدعم</span></li>
                 <li class="menu-item" data-page="logs"><i class="fas fa-history"></i><span>سجلات النظام</span></li>
                 <li class="menu-item" data-page="settings"><i class="fas fa-cog"></i><span>الإعدادات</span></li>
             </ul>
@@ -205,6 +206,33 @@
                 <div id="reportsListContainer" class="table-responsive p-3"></div>
             </div>
 
+
+            <!-- Support Tickets -->
+            <div id="support-page" class="page">
+                <div class="page-header">
+                    <h1><i class="fas fa-life-ring"></i> تذاكر الدعم الفني</h1>
+                    <div class="header-actions">
+                        <select id="supportTypeFilter" class="form-control" style="width:auto">
+                            <option value="all">كل الأنواع</option>
+                            <option value="ban_appeal">استئناف حظر</option>
+                            <option value="payment_issue">مشكلة دفع</option>
+                            <option value="gift_issue">مشكلة هدايا</option>
+                            <option value="redemption_issue">مشكلة استبدال</option>
+                            <option value="frame_issue">مشكلة إطارات</option>
+                            <option value="general">عام</option>
+                        </select>
+                        <select id="supportStatusFilter" class="form-control" style="width:auto">
+                            <option value="pending">قيد الانتظار</option>
+                            <option value="in_progress">قيد المعالجة</option>
+                            <option value="resolved">تم الحل</option>
+                            <option value="all">الكل</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="supportTicketsContainer" class="table-responsive p-3"></div>
+            </div>
+
+            
             <!-- Logs -->
             <div id="logs-page" class="page">
                 <div class="page-header">
