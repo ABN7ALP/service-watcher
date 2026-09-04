@@ -2282,8 +2282,14 @@ socket.on('levelUp', ({ newLevel }) => {
         setTimeout(() => profileImage.classList.remove('animate-bounce'), 2000);
     }
 });
+        
+    // ✅ استقبال تحذيرات الإدارة (تصل عبر قرار حل بلاغ بنوع "تحذير")
+    socket.on('admin-notification', (data) => {
+        showNotification(data.message, data.type === 'warning' ? 'error' : 'info');
+    });
 
-        socket.on('coinsUpdated', ({ newCoins }) => {
+        
+    socket.on('coinsUpdated', ({ newCoins }) => {
     const coinsEl = document.getElementById('coins');
     if (coinsEl) coinsEl.textContent = newCoins;
     const localUser = JSON.parse(localStorage.getItem('user'));
