@@ -575,34 +575,14 @@ exports.saveGift = async (req, res) => {
 // Get System Logs
 exports.getLogs = async (req, res) => {
   try {
-    const { page = 1, limit = 100, action = '' } = req.query;
-    
-    const query = {};
-    if (action) {
-      query.action = action;
-    }
-
-    const logs = await AdminLog.find(query)
-      .populate('admin', 'username')
-      .populate('targetUser', 'username')
-      .sort('-createdAt')
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
-
-    const total = await AdminLog.countDocuments(query);
-
-    res.json({
-      success: true,
-      logs,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page
-    });
-
+    const { page = 1, limit = 50, action = '', severity = '' } = req.query;
+    const result = await AdminLog.getFilteredLogs(
+      { action: action || undefined, severity: severity || undefined },
+      parseInt(page), parseInt(limit)
+    );
+    res.json({ success: true, logs: result.logs, totalPages: result.pages, currentPage: result.currentPage });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -642,32 +622,44 @@ exports.setAgentStatus = async (req, res) => {
 };
 
 // Update System Settings
-exports.updateSettings = async (req, res) => {
+exports.getSystemSettings = async (req, res) => {
   try {
-    const settings = req.body;
-    const { admin } = req;
-
-    // Save to database or environment
-    // This would typically be stored in a SystemSettings collection
-
-    await AdminLog.create({
-      admin: admin._id,
-      action: 'update_settings',
-      details: settings,
-      ipAddress: req.ip
-    });
-
-    res.json({
-      success: true,
-      message: 'تم تحديث الإعدادات',
-      settings
-    });
-
+    const SystemSettings = require('../models/SystemSettings');
+    const settings = await SystemSettings.getSettings();
+    res.json({ success: true, settings });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateSystemSettings = async (req, res) => {
+  try {
+    const SystemSettings = require('../models/SystemSettings');
+    const { admin } = req;
+    const allowedFields = [
+      'coinExchangeRate', 'minPurchaseUSD', 'maxPurchaseUSD',
+      'shamCashWallet', 'shamCashHolderName', 'shamCashQrUrl',
+      'visaCardNumber', 'visaHolderName',
+      'minWithdrawUSD', 'withdrawalFeePer10USD',
+      'battleCommissionRate', 'maintenanceMode', 'maintenanceMessage'
+    ];
+    const updates = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    updates.updatedBy = admin._id;
+
+    const settings = await SystemSettings.findOneAndUpdate(
+      { singletonKey: 'main' }, updates, { new: true, upsert: true, runValidators: true }
+    );
+
+    await AdminLog.logAction({
+      admin: admin._id, action: 'update_settings', details: updates, severity: 'warning', ipAddress: req.ip
     });
+
+    res.json({ success: true, message: 'تم تحديث الإعدادات بنجاح', settings });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -996,19 +988,19 @@ exports.deleteGift = async (req, res) => {
 // =====================================================
 exports.getReports = async (req, res) => {
   try {
-    const ChatReport = require('../models/ChatReport');
+    const Report = require('../models/Report');
     const { status = 'pending', page = 1, limit = 50 } = req.query;
     const query = {};
     if (status !== 'all') query.status = status;
 
-    const reports = await ChatReport.find(query)
+    const reports = await Report.find(query)
       .populate('reporter', 'username profileImage customId')
       .populate('reportedUser', 'username profileImage customId isBanned')
       .sort('-priority -createdAt')
       .limit(limit * 1)
       .skip((page - 1) * limit);
 
-    const total = await ChatReport.countDocuments(query);
+    const total = await Report.countDocuments(query);
     res.json({ success: true, reports, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -1017,27 +1009,29 @@ exports.getReports = async (req, res) => {
 
 exports.resolveReport = async (req, res) => {
   try {
-    const ChatReport = require('../models/ChatReport');
+    const Report = require('../models/Report');
     const { reportId } = req.params;
-    const { status, actionTaken, adminNotes } = req.body;
+    const { status, action, notes, duration } = req.body; // duration بالأيام؛ null = حظر دائم
     const { admin } = req;
 
-    const report = await ChatReport.findById(reportId);
+    const report = await Report.findById(reportId);
     if (!report) return res.status(404).json({ success: false, message: 'البلاغ غير موجود' });
 
     report.status = status || 'resolved';
-    report.actionTaken = actionTaken || report.actionTaken;
-    report.adminNotes = (adminNotes || '').trim();
-    report.reviewedBy = admin._id;
-    report.reviewedAt = new Date();
+    if (action) {
+      report.resolution = {
+        action, duration: duration || undefined, notes: (notes || '').trim(),
+        resolvedBy: admin._id, resolvedAt: new Date()
+      };
+    }
     await report.save();
 
-    if ((actionTaken === 'temp_ban' || actionTaken === 'permanent_ban') && report.reportedUser) {
+    if (action === 'ban' && report.reportedUser) {
       const user = await User.findById(report.reportedUser);
       if (user && !user.isBanned && !user.isAdmin) {
         user.isBanned = true;
-        user.banReason = adminNotes || 'مخالفة إثر بلاغ مستخدم';
-        user.banExpires = actionTaken === 'temp_ban' ? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) : null;
+        user.banReason = (notes || '').trim() || 'مخالفة إثر بلاغ مستخدم';
+        user.banExpires = duration ? new Date(Date.now() + parseInt(duration) * 24 * 60 * 60 * 1000) : null;
         await user.save();
 
         const io = req.app.get('socketio');
@@ -1046,17 +1040,68 @@ exports.resolveReport = async (req, res) => {
         }
         await AdminLog.logAction({
           admin: admin._id, action: 'ban_user', targetUser: user._id,
-          details: { reason: user.banReason, source: 'chat_report_resolution' }, severity: 'warning', ipAddress: req.ip
+          details: { reason: user.banReason, duration, source: 'report_resolution' }, severity: 'warning', ipAddress: req.ip
+        });
+      }
+    } else if (action === 'warning' && report.reportedUser) {
+      const user = await User.findById(report.reportedUser).select('socketId');
+      const io = req.app.get('socketio');
+      if (io && user?.socketId) {
+        io.to(user.socketId).emit('admin-notification', {
+          message: `تحذير من الإدارة: ${(notes || '').trim() || 'يرجى الالتزام بقواعد المنصة'}`,
+          type: 'warning'
         });
       }
     }
 
     await AdminLog.logAction({
-      admin: admin._id, action: 'update_settings', targetEntity: 'user',
-      details: { type: 'chat_report_resolution', reportId, status: report.status, actionTaken }, ipAddress: req.ip
+      admin: admin._id, action: 'update_settings', targetEntity: 'user', targetUser: report.reportedUser,
+      details: { type: 'report_resolution', reportId, status: report.status, action }, ipAddress: req.ip
     });
 
-    res.json({ success: true, message: 'تم تحديث حالة البلاغ', report });
+    res.json({ success: true, message: 'تم تحديث البلاغ بنجاح', report });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// ✅ قسم "التحقيق والمراجعة": يجلب كل محادثات المُبلَّغ عنه
+// للمراجعة اليدوية قبل اتخاذ القرار — يتجاوز عمداً حالات
+// الحذف/الإخفاء الظاهرة للمستخدم العادي (صلاحية إشرافية)
+// =====================================================
+exports.getUserInvestigation = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const Report = require('../models/Report');
+    const PrivateChat = require('../models/PrivateChat');
+    const PrivateMessage = require('../models/PrivateMessage');
+
+    const targetUser = await User.findById(userId).select('username profileImage customId isBanned banReason createdAt');
+    if (!targetUser) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+    const chats = await PrivateChat.find({ participants: userId })
+      .populate('participants', 'username profileImage customId')
+      .sort('-lastMessageAt')
+      .limit(30);
+
+    const chatsWithMessages = await Promise.all(chats.map(async (chat) => {
+      const messages = await PrivateMessage.find({ chatId: chat.chatId })
+        .sort('-createdAt')
+        .limit(100)
+        .populate('sender', 'username profileImage')
+        .lean();
+      return {
+        chatId: chat.chatId,
+        otherParticipant: chat.participants.find(p => p._id.toString() !== userId.toString()),
+        messages: messages.reverse()
+      };
+    }));
+
+    const relatedReports = await Report.find({ reportedUser: userId })
+      .sort('-createdAt').limit(20).populate('reporter', 'username profileImage');
+
+    res.json({ success: true, targetUser, chats: chatsWithMessages, relatedReports });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
