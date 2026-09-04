@@ -1113,3 +1113,56 @@ exports.getUserInvestigation = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+
+exports.getSupportTickets = async (req, res) => {
+  try {
+    const SupportTicket = require('../models/SupportTicket');
+    const { status = 'pending', type = 'all', page = 1, limit = 50 } = req.query;
+    const query = {};
+    if (status !== 'all') query.status = status;
+    if (type !== 'all') query.type = type;
+
+    const tickets = await SupportTicket.find(query)
+      .populate('user', 'username profileImage customId isBanned')
+      .sort('-createdAt').limit(limit * 1).skip((page - 1) * limit);
+    const total = await SupportTicket.countDocuments(query);
+    res.json({ success: true, tickets, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+};
+
+exports.resolveSupportTicket = async (req, res) => {
+  try {
+    const SupportTicket = require('../models/SupportTicket');
+    const { ticketId } = req.params;
+    const { adminReply, status, unbanUser: shouldUnban } = req.body;
+    const { admin } = req;
+
+    const ticket = await SupportTicket.findById(ticketId);
+    if (!ticket) return res.status(404).json({ success: false, message: 'التذكرة غير موجودة' });
+
+    ticket.status = status || 'resolved';
+    ticket.adminReply = (adminReply || '').trim();
+    ticket.resolvedBy = admin._id;
+    ticket.resolvedAt = new Date();
+    await ticket.save();
+
+    if (shouldUnban && ticket.type === 'ban_appeal') {
+      const user = await User.findById(ticket.user);
+      if (user && user.isBanned) {
+        user.isBanned = false; user.banReason = null; user.banExpires = null;
+        await user.save();
+        await AdminLog.logAction({ admin: admin._id, action: 'unban_user', targetUser: user._id, details: { source: 'ban_appeal_ticket' }, ipAddress: req.ip });
+      }
+    }
+
+    const io = req.app.get('socketio');
+    const userSocket = await User.findById(ticket.user).select('socketId');
+    if (io && userSocket?.socketId) {
+      io.to(userSocket.socketId).emit('bot-notification', { message: `🤖 رد فريق الدعم: ${ticket.adminReply || 'تمت مراجعة طلبك'}` });
+    }
+
+    res.json({ success: true, message: 'تم تحديث التذكرة', ticket });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+};
