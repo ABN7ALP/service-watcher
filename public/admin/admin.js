@@ -132,6 +132,8 @@ class AdminDashboard {
         document.getElementById('withdrawalStatusFilter')?.addEventListener('change', () => this.loadWithdrawals());
         document.getElementById('battlesStatusFilter')?.addEventListener('change', () => this.loadBattles());
         document.getElementById('reportsStatusFilter')?.addEventListener('change', () => this.loadReports());
+                document.getElementById('supportStatusFilter')?.addEventListener('change', () => this.loadSupportTickets());
+        document.getElementById('supportTypeFilter')?.addEventListener('change', () => this.loadSupportTickets());
                 document.getElementById('logsSeverityFilter')?.addEventListener('change', () => this.loadLogs(1));
         document.getElementById('transactionsTypeFilter')?.addEventListener('change', () => this.loadTransactions(1));
         document.getElementById('addGiftBtn')?.addEventListener('click', () => this.showGiftFormModal());
@@ -181,6 +183,7 @@ class AdminDashboard {
             battles: () => this.loadBattles(),
             gifts: () => this.loadGifts(),
             reports: () => this.loadReports(),
+            support: () => this.loadSupportTickets(),
             logs: () => this.loadLogs(1),
             settings: () => this.loadSettings()
         };
@@ -904,6 +907,68 @@ class AdminDashboard {
                 this.confirmAction('رفض هذا البلاغ (اعتباره غير صحيح)؟', () => resolveAndClose('no_action', 'تم رفض البلاغ بعد المراجعة'), false);
             });
         } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+        async loadSupportTickets() {
+        const status = document.getElementById('supportStatusFilter')?.value || 'pending';
+        const type = document.getElementById('supportTypeFilter')?.value || 'all';
+        try {
+            const data = await this.api('GET', `/support-tickets?status=${status}&type=${type}`);
+            const c = document.getElementById('supportTicketsContainer');
+            if (!data.tickets.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-inbox fa-2x"></i><p>لا توجد تذاكر</p></div>'; return; }
+
+            const typeText = { ban_appeal: 'استئناف حظر', payment_issue: 'مشكلة دفع', gift_issue: 'مشكلة هدايا', redemption_issue: 'مشكلة استبدال', frame_issue: 'مشكلة إطارات', general: 'عام' };
+
+            c.innerHTML = data.tickets.map(t => `
+                <div class="activity-item ${t.type === 'ban_appeal' ? 'danger' : 'info'}">
+                    <div class="activity-icon"><i class="fas ${t.type === 'ban_appeal' ? 'fa-user-lock' : 'fa-life-ring'}"></i></div>
+                    <div class="activity-content">
+                        <div class="title">${escapeHtml(t.user?.username || 'محذوف')} — <span class="status-badge status-pending">${typeText[t.type] || t.type}</span></div>
+                        <div class="description"><strong>${escapeHtml(t.subject)}</strong>: ${escapeHtml(t.message)}</div>
+                        <div class="activity-time">${formatDate(t.createdAt)}</div>
+                    </div>
+                    ${t.status !== 'resolved' ? `<button class="btn-action btn-view" data-reply="${t._id}" title="رد وحل"><i class="fas fa-reply"></i></button>` : '<span class="status-badge status-completed">تم الحل</span>'}
+                </div>
+            `).join('');
+
+            c.querySelectorAll('[data-reply]').forEach(btn => btn.addEventListener('click', () => {
+                const ticket = data.tickets.find(t => t._id === btn.dataset.reply);
+                this.showTicketReplyModal(ticket);
+            }));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    showTicketReplyModal(ticket) {
+        const isBanAppeal = ticket.type === 'ban_appeal';
+        const modal = this.openModal(`
+            <div class="modal-overlay active">
+                <div class="modal-content" style="max-width:500px;">
+                    <div class="modal-header"><h3>الرد على: ${escapeHtml(ticket.subject)}</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                    <div class="modal-body">
+                        <p class="small text-muted mb-2">${escapeHtml(ticket.message)}</p>
+                        ${ticket.contextData?.banReason ? `<p class="small">سبب الحظر الأصلي: ${escapeHtml(ticket.contextData.banReason)}</p>` : ''}
+                        <div class="form-group"><label>ردك</label><textarea class="form-control" id="ticketReplyInput" rows="3"></textarea></div>
+                        ${isBanAppeal ? `<div class="form-group"><label><input type="checkbox" id="ticketUnbanCheck"> فك الحظر عن هذا المستخدم فوراً</label></div>` : ''}
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" data-dismiss>إلغاء</button>
+                        <button class="btn btn-primary" id="sendTicketReplyBtn">إرسال وحل التذكرة</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        modal.querySelector('#sendTicketReplyBtn').addEventListener('click', async () => {
+            try {
+                await this.api('POST', `/support-tickets/${ticket._id}/resolve`, {
+                    status: 'resolved',
+                    adminReply: modal.querySelector('#ticketReplyInput').value.trim(),
+                    unbanUser: isBanAppeal ? modal.querySelector('#ticketUnbanCheck')?.checked : false
+                });
+                this.showToast('تم الرد وحل التذكرة', 'success');
+                modal.remove();
+                this.loadSupportTickets();
+            } catch (error) { this.showToast(error.message, 'error'); }
+        });
     }
 
     // ================= Logs =================
