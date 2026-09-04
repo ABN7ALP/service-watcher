@@ -24,7 +24,7 @@ exports.createReport = async (req, res) => {
             return res.status(409).json({ status: 'fail', message: 'لقد أرسلت بلاغاً مشابهاً مؤخراً، سيتم مراجعته قريباً' });
         }
 
-        const report = await Report.create({
+            const report = await Report.create({
             reporter: reporterId,
             reportedUser: reportedUserId,
             type: type || 'user',
@@ -36,6 +36,14 @@ exports.createReport = async (req, res) => {
             messageType: messageType || undefined,
             evidence: evidenceUrl ? [evidenceUrl] : []
         });
+
+        // ✅ بوت الموقع: تأكيد فوري لاستلام البلاغ
+        const io = req.app.get('socketio');
+        if (io && req.user.socketId) {
+            io.to(req.user.socketId).emit('bot-notification', {
+                message: `🤖 تم استلام بلاغك بنجاح (#${report._id.toString().slice(-6)})، سيراجعه فريقنا قريباً. شكراً لمساهمتك في أمان المجتمع.`
+            });
+        }
 
         res.status(201).json({ status: 'success', message: 'تم إرسال بلاغك بنجاح، سيتم مراجعته من قبل الإدارة', data: { reportId: report._id } });
     } catch (error) {
