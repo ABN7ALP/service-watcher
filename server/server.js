@@ -51,6 +51,7 @@ app.use('/api/coin-purchase', require('./routes/coinPurchaseRoutes')); // ✅ ن
 app.use('/api/bubble-skins', require('./routes/bubbleSkinRoutes'));
 app.use('/api/gift-redemption', require('./routes/giftRedemptionRoutes'));
 app.use('/api/deposits', require('./routes/depositRoutes')); // ✅ نظام شحن الرصيد الدولاري (منفصل عن الكوينز)
+app.use('/api/reports', require('./routes/reportRoutes')); // ✅ نظام البلاغات
 
 // --- مسار "التقاط الكل" لخدمة الواجهة الأمامية --
 app.get('*', (req, res) => {
