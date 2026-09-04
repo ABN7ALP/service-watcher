@@ -106,13 +106,14 @@ exports.login = async (req, res, next) => {
                 user.banExpires = null;
                 await user.save();
             } else {
-                return res.status(403).json({
+                    return res.status(403).json({
                     status: 'fail',
                     code: 'ACCOUNT_BANNED',
                     message: 'تم حظر حسابك.',
                     banReason: user.banReason || 'مخالفة لشروط الاستخدام',
                     banExpires: user.banExpires,
-                    isPermanent: !user.banExpires
+                    isPermanent: !user.banExpires,
+                    userId: user._id
                 });
             }
         }
