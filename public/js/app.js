@@ -7,6 +7,44 @@ window.addEventListener('unhandledrejection', (event) => {
     console.error('🔴 [UNHANDLED PROMISE REJECTION]', event.reason);
 });
 
+// =================================================
+// ✅ زر الرجوع بالهاتف يُغلق آخر نافذة مفتوحة بدل مغادرة الصفحة
+// =================================================
+(function setupBackButtonModalStack() {
+    let modalDepth = 0;
+
+    function isModalNode(node) {
+        if (!(node instanceof HTMLElement)) return false;
+        return /-modal$/.test(node.id) || node.classList.contains('modal-backdrop') || node.classList.contains('modal-overlay');
+    }
+
+    function pushHistoryState() {
+        modalDepth++;
+        history.pushState({ modalDepth }, '');
+    }
+
+    const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            m.addedNodes.forEach(node => { if (isModalNode(node)) pushHistoryState(); });
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+        observer.observe(document.body, { childList: true });
+        const gc = document.getElementById('game-container');
+        if (gc) observer.observe(gc, { childList: true });
+    });
+
+    window.addEventListener('popstate', () => {
+        if (modalDepth > 0) {
+            modalDepth--;
+            const openModals = document.querySelectorAll('[id$="-modal"], .modal-overlay.active');
+            const last = openModals[openModals.length - 1];
+            if (last) last.remove();
+        }
+    });
+})();
+
 
 // --- دوال مساعدة لنظام اللفلات ---
 const calculateRequiredXp = (level) => {
@@ -1568,13 +1606,21 @@ function updateUIWithUserData(userData) {
     
     updateFriendsAvatars(userData.friends);
     
-    const requestsBadge = document.getElementById('friend-requests-badge');
     const requestsCount = userData.friendRequestsReceived ? userData.friendRequestsReceived.length : 0;
-    if (requestsCount > 0) {
-        requestsBadge.textContent = requestsCount;
-        requestsBadge.classList.remove('hidden');
-    } else {
-        requestsBadge.classList.add('hidden');
+    updateFriendRequestsBadge(requestsCount);
+}
+
+// ✅ شارة طلبات الصداقة (سطح المكتب + الهاتف + قسم "المزيد") — بدون أي إشعار جانبي
+function updateFriendRequestsBadge(count) {
+    const sidebarBadge = document.getElementById('friend-requests-badge');
+    if (sidebarBadge) {
+        if (count > 0) { sidebarBadge.textContent = count > 9 ? '9+' : count; sidebarBadge.classList.remove('hidden'); }
+        else sidebarBadge.classList.add('hidden');
+    }
+    const mobileBadge = document.getElementById('mobile-friend-req-badge');
+    if (mobileBadge) {
+        if (count > 0) { mobileBadge.textContent = count > 9 ? '9+' : count; mobileBadge.classList.remove('hidden'); }
+        else mobileBadge.classList.add('hidden');
     }
 }
         
@@ -1850,13 +1896,10 @@ switchToView('arena');
     const refreshed = await refreshUserData();
     if (refreshed) {
         const freshUser = JSON.parse(localStorage.getItem('user'));
-        const pendingRequests = freshUser.friendRequestsReceived ? freshUser.friendRequestsReceived.length : 0;
-        if (pendingRequests > 0) {
-            showNotification(`لديك ${pendingRequests} طلب صداقة بانتظارك`, 'info');
-        }
+        updateFriendRequestsBadge(freshUser.friendRequestsReceived ? freshUser.friendRequestsReceived.length : 0);
     }
 
-    // ✅ التحقق من الرسائل الخاصة غير المقروءة
+    // ✅ تحديث شارة الرسائل فقط — بدون أي إشعار مزعج
     try {
         const chatsResponse = await fetch('/api/private-chat/chats', {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -1864,12 +1907,6 @@ switchToView('arena');
         if (chatsResponse.ok) {
             const chatsResult = await chatsResponse.json();
             if (chatsResult.status === 'success') {
-                const totalUnread = chatsResult.data.chats.reduce(
-                    (sum, chat) => sum + (chat.unreadCount || 0), 0
-                );
-                if (totalUnread > 0) {
-                    showNotification(`لديك ${totalUnread} رسالة خاصة غير مقروءة`, 'info');
-                }
                 refreshMessagesNavBadge(chatsResult.data.chats);
             }
         }
@@ -1877,7 +1914,6 @@ switchToView('arena');
         console.error('[STARTUP] فشل التحقق من الرسائل غير المقروءة:', error);
     }
 })();
-
 
 // --- ✅ إضافة عرض البيانات الجديدة ---
 // --- ✅ إضافة عرض البيانات الجديدة (النسخة المحسّنة) ---
@@ -8135,11 +8171,8 @@ socket.on('privateMessageReceived', async (data) => {
             });
         } catch (error) { console.error('[CHAT] Error marking as seen instantly:', error); }
         
-    } else {
-        // إشعار إذا كانت الدردشة غير مفتوحة
-        showNotification(`📩 رسالة جديدة من ${data.senderName}`, 'info');
-        
-        // ✅ تحديث شارة الرسائل + إعادة تحميل القائمة إن كانت مفتوحة
+        } else {
+        // ✅ لا إشعار جانبي مطلقاً — فقط تحديث شارة العداد (رقم على الأيقونة)
         refreshMessagesNavBadge();
         if (document.getElementById('messages-list-container')) {
             loadMessagesList();
@@ -8219,59 +8252,51 @@ document.getElementById('friend-requests-nav-item').addEventListener('click', (e
     showFriendRequestsModal();
 });
 
-    // --- ✅ أضف هاتين الدالتين الجديدتين ---
 
 // دالة لعرض نافذة طلبات الصداقة
-// --- ✅ استبدل دالة showFriendRequestsModal بهذه النسخة النظيفة ---
 async function showFriendRequestsModal() {
     const modalId = 'friend-requests-modal';
-    // --- ❌ تم حذف onclick من هنا ---
-    const loadingHTML = `
+    const localUser = JSON.parse(localStorage.getItem('user')) || {};
+
+    const renderList = (list) => {
+        if (!list || list.length === 0) return '<p class="text-gray-400">لا توجد طلبات حاليًا.</p>';
+        return list.map(sender => `
+            <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
+                <div class="flex items-center gap-3">
+                    <img src="${sender.profileImage}" data-user-id="${sender._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
+                    <span>${sender.username}</span>
+                </div>
+                <div class="flex gap-2">
+                    <button class="friend-action-btn bg-blue-600 hover:bg-blue-700 text-white text-xs py-1 px-3 rounded-full" data-action="accept-request" data-user-id="${sender._id}">قبول</button>
+                    <button class="friend-action-btn bg-gray-600 hover:bg-gray-700 text-white text-xs py-1 px-3 rounded-full" data-action="reject-request" data-user-id="${sender._id}">رفض</button>
+                </div>
+            </div>
+        `).join('');
+    };
+
+    // ✅ عرض فوري من البيانات المحفوظة محلياً — استجابة لحظية بدون أي انتظار
+    const html = `
         <div id="${modalId}" class="modal-backdrop fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4">
             <div class="modal-content bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md text-white p-6">
-                <h3 class="text-lg font-bold mb-4">طلبات الصداقة</h3>
-                <div class="text-center p-6"><i class="fas fa-spinner fa-spin text-3xl"></i></div>
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold">طلبات الصداقة</h3>
+                    <button class="text-gray-400 hover:text-white p-1" onclick="document.getElementById('${modalId}')?.remove()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="space-y-2 max-h-80 overflow-y-auto pr-2">${renderList(localUser.friendRequestsReceived)}</div>
             </div>
         </div>
     `;
-    // ... (باقي الكود يبقى كما هو)
-        document.getElementById('game-container').insertAdjacentHTML('beforeend', loadingHTML);
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', html);
 
+    // ✅ تحديث صامت بالخلفية (لا يُظهر أي مؤشر تحميل، فقط يستبدل القائمة إن تغيّرت)
     try {
         const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
         const result = await response.json();
-        if (!response.ok) throw new Error('Failed to load requests');
-        
-        const requests = result.data.user.friendRequestsReceived;
-        let contentHTML = '<p class="text-gray-400">لا توجد طلبات حاليًا.</p>';
-
-        if (requests && requests.length > 0) {
-            contentHTML = requests.map(sender => `
-                <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
-                    <div class="flex items-center gap-3">
-                        <img src="${sender.profileImage}" data-user-id="${sender._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
-                        <span>${sender.username}</span>
-                    </div>
-                    <div class="flex gap-2">
-                        <button class="friend-action-btn bg-blue-600 hover:bg-blue-700 text-white text-xs py-1 px-3 rounded-full" data-action="accept-request" data-user-id="${sender._id}">قبول</button>
-                        <button class="friend-action-btn bg-gray-600 hover:bg-gray-700 text-white text-xs py-1 px-3 rounded-full" data-action="reject-request" data-user-id="${sender._id}">رفض</button>
-                    </div>
-                </div>
-            `).join('');
+        if (response.ok) {
+            const modalElement = document.getElementById(modalId);
+            if (modalElement) modalElement.querySelector('.space-y-2').innerHTML = renderList(result.data.user.friendRequestsReceived);
         }
-
-        const modalElement = document.getElementById(modalId);
-        if (modalElement) {
-            modalElement.querySelector('.modal-content').innerHTML = `
-                <h3 class="text-lg font-bold mb-4">طلبات الصداقة</h3>
-                <div class="space-y-2 max-h-80 overflow-y-auto pr-2">${contentHTML}</div>
-            `;
-        }
-
-    } catch (error) {
-        const modalElement = document.getElementById(modalId);
-        if (modalElement) modalElement.querySelector('.modal-content').innerHTML = '<p class="text-red-400">فشل تحميل الطلبات.</p>';
-    }
+    } catch (error) { /* العرض المحلي كافٍ عند فشل الشبكة */ }
 }
 
 
