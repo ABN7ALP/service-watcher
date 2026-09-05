@@ -8,11 +8,23 @@ const xss = require('xss-clean');
 
 // إعدادات محدد المعدل (Rate Limiter)
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 دقيقة
-    max: 200, // السماح بـ 200 طلب لكل IP خلال 15 دقيقة
+    windowMs: 5 * 60 * 1000, // ✅ نافذة أقصر تقلل مدة الانتظار الفعلية
+    max: 500, // ✅ رفع الحد لأن عدة مستخدمين شرعيين قد يشتركون بنفس IP (شبكة منزل/جامعة)
     standardHeaders: true,
     legacyHeaders: false,
-    message: 'طلبات كثيرة جداً من هذا الـ IP، يرجى المحاولة مرة أخرى بعد 15 دقيقة',
+    keyGenerator: (req) => {
+        // ✅ إن وُجد مستخدم مسجّل، عاقب حسابه لا كل من يشارك شبكته
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            try {
+                const jwt = require('jsonwebtoken');
+                const decoded = jwt.decode(authHeader.split(' ')[1]);
+                if (decoded?.id) return `user:${decoded.id}`;
+            } catch (e) { /* رجوع لـ IP */ }
+        }
+        return req.ip;
+    },
+    message: 'طلبات كثيرة جداً، يرجى المحاولة مرة أخرى خلال دقائق قليلة',
 });
 
 const setupMiddleware = (app) => {
