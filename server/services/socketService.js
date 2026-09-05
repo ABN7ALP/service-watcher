@@ -269,10 +269,27 @@ const initializeSocket = (server) => {
         io.on('connection', async (socket) => {
         console.log(`🟢 User connected: ${socket.id} | UserID: ${socket.user.username}`);
         
-        try {
+                try {
             await User.findByIdAndUpdate(socket.user.id, { socketId: socket.id, isOnline: true });
-            // ✅ إعلام الأطراف الذين يحادثونه بأنه أصبح متصلاً (يُحدّث الحالة في نوافذ الدردشة المفتوحة)
             io.emit('userOnlineStatus', { userId: socket.user.id.toString(), isOnline: true });
+
+            // ✅ تحويل كل الرسائل التي وصلته وهو غير متصل إلى "تم التسليم" فوراً + إعلام كل مُرسِل بذلك
+            const PrivateMessage = require('../models/PrivateMessage');
+            const undelivered = await PrivateMessage.find({ receiver: socket.user.id, 'status.delivered': false });
+            if (undelivered.length > 0) {
+                const ids = undelivered.map(m => m._id);
+                await PrivateMessage.updateMany({ _id: { $in: ids } }, { $set: { 'status.delivered': true, 'status.deliveredAt': new Date() } });
+
+                const senderIds = [...new Set(undelivered.map(m => m.sender.toString()))];
+                const senders = await User.find({ _id: { $in: senderIds } }).select('socketId');
+                const senderSocketMap = {};
+                senders.forEach(s => { senderSocketMap[s._id.toString()] = s.socketId; });
+
+                undelivered.forEach(m => {
+                    const sSocketId = senderSocketMap[m.sender.toString()];
+                    if (sSocketId) io.to(sSocketId).emit('messageStatusUpdated', { messageId: m._id, status: 'delivered', updatedAt: new Date() });
+                });
+            }
         } catch (error) {
             console.error("Failed to update socketId:", error);
         }
