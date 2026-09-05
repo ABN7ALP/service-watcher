@@ -426,3 +426,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
         animation: slideUp 0.25s ease-out;
     }
 }
+
+@media (max-width: 640px) {
+    #chat-messages .message-container { padding: 6px 8px !important; margin-bottom: 6px !important; }
+    #chat-messages .message-container img { width: 26px !important; height: 26px !important; }
+    #chat-messages .message-container p { font-size: 0.82rem !important; line-height: 1.35; }
+}
