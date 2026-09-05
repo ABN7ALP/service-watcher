@@ -315,3 +315,39 @@ input[type="checkbox"] {
     transition: all 0.2s ease;
 }
 .report-issue-icon-btn:hover { background: rgba(239, 68, 68, 0.3); transform: scale(1.08); }
+
+/* ✅ توحيد وتحسين جميع النوافذ المنبثقة بالموقع (احترافي، متسق، بدون تغيير JS) */
+[id$="-modal"] {
+    animation: userModalFadeIn 0.2s ease-out;
+}
+[id$="-modal"] > div:first-child {
+    animation: userModalPopIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 25px 70px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05);
+}
+@keyframes userModalFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes userModalPopIn {
+    from { opacity: 0; transform: scale(0.93) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ✅ Skeleton Loading احترافي بدل الدوّارة البسيطة */
+@keyframes skeletonShimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+}
+.skeleton-line {
+    height: 14px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #374151 25%, #4b5563 37%, #374151 63%);
+    background-size: 400px 100%;
+    animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+.skeleton-circle {
+    border-radius: 50%;
+    background: linear-gradient(90deg, #374151 25%, #4b5563 37%, #374151 63%);
+    background-size: 400px 100%;
+    animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+.skeleton-card {
+    display: flex; align-items: center; gap: 12px; padding: 10px;
+}
