@@ -1833,6 +1833,7 @@ async function handleFriendAction(action, userId, modalElement) {
         
 // استدعاء الدالة عند تحميل الصفحة
 updateUIWithUserData(user);
+switchToView('arena');
 
         // ✅ جلب أحدث بيانات المستخدم من الخادم فور فتح الموقع
 // هذا يضمن ظهور طلبات الصداقة/الإشعارات التي وصلت أثناء إغلاق الموقع
