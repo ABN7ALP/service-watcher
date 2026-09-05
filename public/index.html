@@ -27,26 +27,19 @@
                     <span class="text-xl font-bold">منصة التحديات</span>
                 </div>
                 <div class="user-info flex items-center gap-4">
-    <div class="balance bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
-    💰 <span id="balance">0.00</span>$
-    <button
-        id="deposit-balance-btn"
-        class="bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center"
-        title="شحن الرصيد">
-        +
+                    <div class="balance bg-gray-200 dark:bg-gray-700 px-3 py-1.5 rounded-full text-sm flex items-center gap-2">
+    <i class="fas fa-dollar-sign text-green-500"></i> <span id="balance" class="font-bold">0.00</span>
+    <button id="deposit-balance-btn" class="bg-blue-600 hover:bg-blue-700 text-white w-6 h-6 rounded-full flex items-center justify-center transition-transform hover:scale-110" title="شحن الرصيد">
+        <i class="fas fa-plus text-xs"></i>
     </button>
-    <button
-        id="withdraw-balance-btn"
-        class="bg-green-500 hover:bg-green-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center"
-        title="سحب الرصيد">
-        ↓
+    <button id="withdraw-balance-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white w-6 h-6 rounded-full flex items-center justify-center transition-transform hover:scale-110" title="سحب الرصيد">
+        <i class="fas fa-arrow-down text-xs"></i>
     </button>
 </div>
                                         <div class="coins bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
                         🪙 <span id="coins">0</span>
                         <button id="buy-coins-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center" title="شحن كوينزات">+</button>
                     </div>
-                    <button id="logoutBtn" class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded-full text-xs text-white">خروج</button>
                 </div>
             </header>
 
