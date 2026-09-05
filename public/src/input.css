@@ -398,9 +398,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 /* ✅ 80 مقعد غرفة صوت — تصميم مضغوط وواضح على كل الأحجام */
 .voice-seat {
     aspect-ratio: 1/1;
-    border-radius: 14px;
+    border-radius: 50%; /* ✅ دائري بالكامل */
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.7rem; font-weight: bold;
+    font-size: 0.65rem; font-weight: bold;
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.1);
     cursor: pointer;
@@ -412,5 +412,5 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .voice-seat.occupied { background: rgba(139,92,246,0.35); border-color: #a855f7; }
 
 @media (max-width: 480px) {
-    .voice-seat { font-size: 0.6rem; border-radius: 10px; }
+    .voice-seat { font-size: 0.55rem; border-radius: 50%; }
 }
