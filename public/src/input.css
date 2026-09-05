@@ -281,3 +281,37 @@ input[type="checkbox"] {
 
 .gift-expanded .gift-card-inline-send { display: block !important; }
 .gift-expanded { border-color: #ec4899 !important; }
+
+
+/* ✅ زر إبلاغ موحّد لكل الموقع — بارز وواضح المعنى */
+.report-issue-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    border-radius: 9999px;
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+.report-issue-btn:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.6);
+    transform: translateY(-1px);
+}
+.report-issue-btn i { font-size: 0.9rem; }
+/* نسخة أيقونة فقط (للمساحات الضيقة كرأس نافذة) */
+.report-issue-icon-btn {
+    width: 34px; height: 34px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+.report-issue-icon-btn:hover { background: rgba(239, 68, 68, 0.3); transform: scale(1.08); }
