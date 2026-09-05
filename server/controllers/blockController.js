@@ -8,12 +8,16 @@ exports.blockUser = async (req, res) => {
         const blockerId = req.user.id;
         const blockedUserId = req.params.userId;
 
-        if (blockerId === blockedUserId) {
+           if (blockerId === blockedUserId) {
             return res.status(400).json({ status: 'fail', message: 'لا يمكنك حظر نفسك.' });
         }
 
         const blocker = await User.findById(blockerId);
         const blockedUser = await User.findById(blockedUserId);
+
+        if (blockedUser?.isBot) {
+            return res.status(403).json({ status: 'fail', message: 'لا يمكنك حظر الحساب الرسمي للمنصة.' });
+        }
 
         if (!blockedUser) {
             return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود.' });
