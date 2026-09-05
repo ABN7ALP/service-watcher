@@ -8565,7 +8565,7 @@ function showCreateBattleModal() {
         });
     }
 
-    if (battleForm) {
+        if (battleForm) {
         battleForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
@@ -8583,6 +8583,12 @@ function showCreateBattleModal() {
                 return;
             }
 
+            // ✅ نمط التحميل الموحّد: تعطيل الزر + دوّارة بدل النص أثناء الطلب
+            const submitBtn = battleForm.querySelector('button[type="submit"]');
+            const originalBtnHTML = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
             try {
                 const response = await fetch('/api/battles', {
                     method: 'POST',
@@ -8599,9 +8605,13 @@ function showCreateBattleModal() {
                     modal.remove();
                 } else {
                     showNotification(result.message || 'فشل إنشاء التحدي', 'error');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalBtnHTML;
                 }
             } catch (error) {
                 showNotification('خطأ في الاتصال بالخادم', 'error');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnHTML;
             }
         });
     }
