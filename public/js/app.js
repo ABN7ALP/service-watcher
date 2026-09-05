@@ -461,13 +461,7 @@ themeToggleBtn.addEventListener('click', toggleTheme);
         document.getElementById('mobile-more-sheet')?.classList.add('flex');
     });
 
-     // ✅ إغلاق قائمة "المزيد" بالنقر خارجها — تم إصلاحه لأن onclick المضمّن بـ HTML كانت تمنعه سياسة CSP
-    document.getElementById('mobile-more-sheet')?.addEventListener('click', (e) => {
-        if (e.target.id === 'mobile-more-sheet') {
-            e.currentTarget.classList.add('hidden');
-            e.currentTarget.classList.remove('flex');
-        }
-    });
+    
     document.querySelectorAll('.mobile-sheet-item').forEach(item => {
         item.addEventListener('click', () => switchToView(item.dataset.target));
     });
