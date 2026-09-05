@@ -7849,12 +7849,13 @@ function displayMessage(message) {
         const originalMessageElement = document.querySelector(`[data-message-id="${message.replyTo._id}"]`);
         if (originalMessageElement) {
             originalMessageElement.classList.add('flash-animation');
-            // إزالة الكلاس بعد انتهاء الأنيميشن
-            setTimeout(() => {
-                originalMessageElement.classList.remove('flash-animation');
-            }, 1000); // مدة الأنيميشن
+            setTimeout(() => originalMessageElement.classList.remove('flash-animation'), 1000);
         }
     }
+
+    // ✅ مزامنة النافذة السفلية بالهاتف إن كانت مفتوحة
+    const mobileMirror = document.getElementById('mobile-chat-messages-mirror');
+    if (mobileMirror) { mobileMirror.appendChild(messageElement.cloneNode(true)); mobileMirror.scrollTop = mobileMirror.scrollHeight; }
 }
 
 
