@@ -2308,7 +2308,40 @@ socket.on('levelUp', ({ newLevel }) => {
     socket.on('admin-notification', (data) => {
         showNotification(data.message, data.type === 'warning' ? 'error' : 'info');
     });
-        
+
+
+    // ✅ مؤشرات الكتابة/التسجيل/الاتصال — نمط واتساب
+    let typingIndicatorTimeout = null;
+    socket.on('userTyping', ({ userId, isTyping }) => {
+        const chatModal = document.getElementById('private-chat-modal');
+        if (!chatModal || chatModal.dataset.targetUserId !== userId) return;
+        const statusEl = document.getElementById('chat-user-status');
+        if (!statusEl) return;
+        clearTimeout(typingIndicatorTimeout);
+        if (isTyping) {
+            statusEl.innerHTML = '<span class="text-purple-400"><i class="fas fa-pen"></i> يكتب الآن...</span>';
+            typingIndicatorTimeout = setTimeout(() => statusEl.textContent = '', 4000);
+        } else {
+            statusEl.textContent = '';
+        }
+    });
+
+    socket.on('userRecordingVoice', ({ userId, isRecording }) => {
+        const chatModal = document.getElementById('private-chat-modal');
+        if (!chatModal || chatModal.dataset.targetUserId !== userId) return;
+        const statusEl = document.getElementById('chat-user-status');
+        if (!statusEl) return;
+        statusEl.innerHTML = isRecording ? '<span class="text-red-400"><i class="fas fa-microphone"></i> يسجل رسالة صوتية...</span>' : '';
+    });
+
+    socket.on('userOnlineStatus', ({ userId, isOnline, lastActive }) => {
+        const chatModal = document.getElementById('private-chat-modal');
+        if (chatModal && chatModal.dataset.targetUserId === userId) {
+            const statusEl = document.getElementById('chat-user-status');
+            if (statusEl) statusEl.innerHTML = isOnline ? '<i class="fas fa-circle text-green-500 mr-1" style="font-size:8px;"></i> متصل الآن' : formatLastSeen(lastActive);
+        }
+    });
+
     socket.on('coinsUpdated', ({ newCoins }) => {
     const coinsEl = document.getElementById('coins');
     if (coinsEl) coinsEl.textContent = newCoins;
@@ -5100,6 +5133,8 @@ function setupPrivateChatEvents(targetUserId) {
     const messageInput = document.getElementById('private-message-input');
     const charCounter = document.getElementById('private-char-count');
     
+        let typingEmitTimeout = null;
+    let isCurrentlyTyping = false;
     if (messageInput && charCounter) {
         messageInput.addEventListener('input', () => {
             const length = messageInput.value.length;
@@ -5110,6 +5145,17 @@ function setupPrivateChatEvents(targetUserId) {
             } else {
                 charCounter.classList.remove('text-red-400');
             }
+
+            // ✅ إرسال حدث "يكتب الآن" مع تهدئة (throttle) لتفادي إغراق الخادم بأحداث لكل حرف
+            if (!isCurrentlyTyping) {
+                isCurrentlyTyping = true;
+                socket.emit('typing-start', { targetUserId });
+            }
+            clearTimeout(typingEmitTimeout);
+            typingEmitTimeout = setTimeout(() => {
+                isCurrentlyTyping = false;
+                socket.emit('typing-stop', { targetUserId });
+            }, 2000);
         });
     }
 
