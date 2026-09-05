@@ -8189,13 +8189,15 @@ socket.on('privateMessageReceived', async (data) => {
 });
 
 // 🔄 مستمع لتحديث حالة الرسالة
+// ✅ لا نُحدّث الشكل الظاهر للعلامة (✓ مقابل ✓✓) بشكل حي أثناء بقاء المحادثة مفتوحة عند المرسل —
+// العلامة الزرقاء المزدوجة تظهر فقط عند إعادة فتح/تحميل المحادثة من جديد (loadChatHistoryFromServer)
 socket.on('messageStatusUpdated', (data) => {
     console.log('[CHAT] Message status updated:', data.messageId, data.status);
 
     const messageElement = document.querySelector(`[data-message-id="${data.messageId}"]`);
     if (messageElement) {
         const statusContainer = messageElement.querySelector('.message-status');
-        if (statusContainer) {
+        if (statusContainer && false) { // ✅ معطّل عمداً — التحديث الحي للعلامة الزرقاء متوقف بطلب المستخدم
             if (data.status === 'seen') {
                 statusContainer.innerHTML = '<i class="fas fa-check-double text-blue-400 text-xs" title="مقروءة"></i>';
             } else if (data.status === 'delivered') {
