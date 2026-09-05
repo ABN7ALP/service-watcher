@@ -194,8 +194,12 @@ exports.sendGift = async (req, res) => {
             io.to(sender.socketId).emit('giftSentConfirmation', giftEventPayload);
         }
 
-        await addGiftExperience(io, senderId, totalPrice, 'sender');
+                await addGiftExperience(io, senderId, totalPrice, 'sender');
         await addGiftExperience(io, receiverId, totalPrice, 'receiver');
+
+        // ✅ تفاصيل الاستلام تصل عبر البوت بدل توست جانبي عابر
+        const { sendBotMessage } = require('../utils/botMessenger');
+        await sendBotMessage(io, receiverId, `🎁 استلمت هدية "${gift.name}"${qty > 1 ? ' × ' + qty : ''} من ${sender.username}`);
 
         res.status(201).json({
             status: 'success',
