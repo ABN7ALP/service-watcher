@@ -728,11 +728,16 @@ exports.adjustUserFunds = async (req, res) => {
       ipAddress: req.ip
     });
 
-    const io = req.app.get('socketio');
+     const io = req.app.get('socketio');
     if (io && user.socketId) {
       io.to(user.socketId).emit('balanceUpdate', { newBalance: user.balance });
       io.to(user.socketId).emit('coinsUpdated', { newCoins: user.coins });
     }
+    const { sendBotMessage } = require('../utils/botMessenger');
+    const parts = [];
+    if (balChange !== 0) parts.push(`${balChange > 0 ? '+' : ''}${balChange}$ على رصيدك`);
+    if (coinChange !== 0) parts.push(`${coinChange > 0 ? '+' : ''}${coinChange} كوينز`);
+    await sendBotMessage(io, user._id, `تم تعديل حسابك من قِبل الإدارة: ${parts.join(' و ')}\nالسبب: ${reason.trim()}`);
 
     res.json({
       success: true,
