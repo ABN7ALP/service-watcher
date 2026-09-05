@@ -78,11 +78,13 @@ exports.redeemGifts = async (req, res) => {
             redeemedTo: redeemTo, redemptionRate: rate, finalAmount
         });
 
-        const io = req.app.get('socketio');
+                const io = req.app.get('socketio');
         if (io && user.socketId) {
             io.to(user.socketId).emit('balanceUpdate', { newBalance: user.balance });
             io.to(user.socketId).emit('coinsUpdated', { newCoins: user.coins });
         }
+        const { sendBotMessage } = require('../utils/botMessenger');
+        await sendBotMessage(io, userId, `تم استبدال هداياك بنجاح مقابل ${redeemTo === 'balance' ? finalAmount + '$' : finalAmount + ' كوينز'} ✅`);
 
         res.status(200).json({
             status: 'success',
