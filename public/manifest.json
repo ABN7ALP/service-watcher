@@ -1,0 +1,15 @@
+{
+    "name": "منصة التحديات",
+    "short_name": "التحديات",
+    "description": "منصة ألعاب اجتماعية بتحديات ودردشة صوتية مباشرة",
+    "start_url": "/index.html",
+    "display": "standalone",
+    "background_color": "#111827",
+    "theme_color": "#7c3aed",
+    "dir": "rtl",
+    "lang": "ar",
+    "icons": [
+        { "src": "https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg", "sizes": "192x192", "type": "image/jpeg" },
+        { "src": "https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg", "sizes": "512x512", "type": "image/jpeg" }
+    ]
+}
