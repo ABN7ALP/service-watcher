@@ -58,12 +58,15 @@ exports.sendGift = async (req, res) => {
 
         const [sender, receiver, gift] = await Promise.all([
             User.findById(senderId),
-            User.findById(receiverId).select('username profileImage socketId coins level blockedUsers'),
+            User.findById(receiverId).select('username profileImage socketId coins level blockedUsers isBot'),
             Gift.findById(giftId)
         ]);
 
         if (!receiver) {
             return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
+        }
+        if (receiver.isBot) {
+            return res.status(403).json({ status: 'fail', message: 'لا يمكنك إرسال هدية لهذا الحساب' });
         }
         if (!gift || !gift.isActive) {
             return res.status(404).json({ status: 'fail', message: 'الهدية غير متوفرة حالياً' });
