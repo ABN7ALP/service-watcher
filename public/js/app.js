@@ -523,11 +523,7 @@ async function loadMessagesList() {
             renderMessagesList(allChatsCache);
             refreshMessagesNavBadge(allChatsCache);
         } else {
-            container.innerHTML = `
-                <div class="text-center text-red-400 py-16">
-                    <i class="fas fa-exclamation-circle text-3xl mb-3"></i>
-                    <p class="text-sm">فشل تحميل المحادثات</p>
-                </div>`;
+         container.innerHTML = skeletonList(6);
         }
     } catch (error) {
         console.error('[MESSAGES] Error loading chat list:', error);
@@ -4382,6 +4378,19 @@ async function showReportModal(context) {
         }
     });
 }
+
+
+        function skeletonList(count = 5) {
+    return Array.from({ length: count }).map(() => `
+        <div class="skeleton-card">
+            <div class="skeleton-circle" style="width:40px;height:40px;"></div>
+            <div style="flex:1;">
+                <div class="skeleton-line" style="width:60%;margin-bottom:6px;"></div>
+                <div class="skeleton-line" style="width:35%;"></div>
+            </div>
+        </div>
+    `).join('');
+}
         
 
 
@@ -6566,6 +6575,23 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 } 
 
+        
+// ✅ غلاف موحّد لـ fetch بمهلة زمنية — يمنع بقاء الزر معلقاً للأبد عند تعطّل الشبكة
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(id);
+        return response;
+    } catch (error) {
+        clearTimeout(id);
+        if (error.name === 'AbortError') {
+            throw new Error('انتهت مهلة الاتصال بالخادم، تحقق من اتصالك بالإنترنت وحاول مجدداً');
+        }
+        throw error;
+    }
+}
 
         
 
