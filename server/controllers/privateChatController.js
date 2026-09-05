@@ -539,15 +539,27 @@ exports.markChatAsRead = async (req, res) => {
         const participants = [userId, otherUserId].sort();
         const chatId = participants.join('_');
 
-        // ✅ ملاحظة: بدون .lean() هنا عمداً، لأننا نحتاج نستخدم .set() و .save()
-        // وهذا يتطلب مستند Mongoose حقيقي (Map)، وليس كائن عادي
         const chat = await PrivateChat.findOne({ chatId });
-        if (!chat) {
-            return res.status(200).json({ status: 'success', message: 'لا توجد محادثة بعد' });
+        if (chat) {
+            chat.unreadCount.set(userId.toString(), 0);
+            await chat.save();
         }
 
-        chat.unreadCount.set(userId.toString(), 0);
-        await chat.save();
+        // ✅ تحويل كل الرسائل الواردة إليّ في هذه المحادثة إلى "مُشاهَدة" فوراً — نمط واتساب
+        const unseenMessages = await PrivateMessage.find({ chatId, receiver: userId, 'status.seen': false });
+        if (unseenMessages.length > 0) {
+            const ids = unseenMessages.map(m => m._id);
+            await PrivateMessage.updateMany({ _id: { $in: ids } }, { $set: { 'status.seen': true, 'status.seenAt': new Date(), 'status.delivered': true } });
+
+            const io = req.app.get('socketio');
+            const senderId = otherUserId; // في محادثة ثنائية الطرف الآخر هو دائماً المرسل لتلك الرسائل
+            const senderUser = await User.findById(senderId).select('socketId isBot');
+            if (io && senderUser?.socketId && !senderUser.isBot) {
+                unseenMessages.forEach(m => {
+                    io.to(senderUser.socketId).emit('messageStatusUpdated', { messageId: m._id, status: 'seen', updatedAt: new Date() });
+                });
+            }
+        }
 
         res.status(200).json({ status: 'success', message: 'تم تصفير عداد الرسائل' });
     } catch (error) {
