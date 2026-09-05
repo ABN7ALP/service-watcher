@@ -6,6 +6,8 @@
     <title>منصة التحديات</title>
     <link rel="stylesheet" href="/dist/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#7c3aed">
 </head>
 <body class="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-white font-cairo transition-colors duration-300">
  
@@ -200,9 +202,13 @@
     <!-- Notification container -->
     <div id="notification-container" class="fixed top-5 right-5 z-50 space-y-2"></div>
 
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+        <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="/js/app.js"></script>
     <div id="game-container"></div>
-    
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js').catch(err => console.warn('SW registration failed:', err)));
+        }
+    </script>
 </body>
 </html>
