@@ -5752,7 +5752,7 @@ function showImageUploadModal(targetUserId) {
     }
 
     const replyBtn = messageElement.querySelector('.reply-private-btn');
-    if (replyBtn) {
+    if (replyBtn && !message.sender?.isBot) {
         replyBtn.addEventListener('click', () => {
             const msgId = replyBtn.dataset.messageId;
             showReplyPrivateBar(msgId, message);
@@ -6912,8 +6912,8 @@ function displayPrivateMessage(message, isMyMessage = false) {
     }
 
     // ===== زر الرد (إلا إذا ممنوع) =====
-       let replyButton = '';
-    if (!meta.disableReply) {
+    let replyButton = '';
+    if (!meta.disableReply && !message.sender?.isBot) {
         replyButton = `
             <button class="reply-private-btn text-gray-400 hover:text-purple-400 text-xs ml-2" data-message-id="${message._id}">
                 <i class="fas fa-reply"></i> رد
@@ -6974,64 +6974,54 @@ function displayPrivateMessage(message, isMyMessage = false) {
 function attachMessageOptionsMenu(messageElement, message, isMyMessage) {
     const btn = messageElement.querySelector('.msg-options-btn');
     if (!btn) return;
+    const isBotMessage = message.sender?.isBot === true;
 
     btn.addEventListener('click', (e) => {
         e.stopPropagation();
-
         const existing = document.getElementById('msg-options-dropdown');
         if (existing) { existing.remove(); return; }
 
         const createdAt = new Date(message.createdAt).getTime();
         const ageMs = Date.now() - createdAt;
-        const canDelete5Min = ageMs < 5 * 60 * 1000;
-        const canEdit = isMyMessage && message.type === 'text' && ageMs < 2 * 60 * 1000;
+        // ✅ إصلاح: "حذف لدى الجميع" مسموح فقط لمرسل الرسالة الفعلي (كان الشرط يتجاهل isMyMessage سابقاً)
+        const canDelete5Min = isMyMessage && !isBotMessage && ageMs < 5 * 60 * 1000;
+        const canEdit = isMyMessage && !isBotMessage && message.type === 'text' && ageMs < 2 * 60 * 1000;
 
-                const rect = btn.getBoundingClientRect();
+        const rect = btn.getBoundingClientRect();
         const menuHTML = `
             <div id="msg-options-dropdown" class="fixed bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-44 z-[310] overflow-hidden text-sm"
                  style="top: ${rect.bottom + 6}px; left: ${Math.max(rect.left - 130, 8)}px;">
                 ${canEdit ? `<button class="w-full text-right px-4 py-2.5 text-gray-200 hover:bg-gray-700 flex items-center gap-2 msg-menu-edit"><i class="fas fa-pen text-blue-400"></i> تعديل</button>` : ''}
                 ${canDelete5Min ? `<button class="w-full text-right px-4 py-2.5 text-red-400 hover:bg-gray-700 flex items-center gap-2 msg-menu-delete-everyone border-t border-gray-700"><i class="fas fa-trash"></i> حذف لدى الجميع</button>` : ''}
                 <button class="w-full text-right px-4 py-2.5 text-gray-300 hover:bg-gray-700 flex items-center gap-2 msg-menu-delete-me border-t border-gray-700"><i class="fas fa-eye-slash"></i> حذف لدي فقط</button>
-                ${!isMyMessage ? `<button class="w-full text-right px-4 py-2.5 text-orange-400 hover:bg-gray-700 flex items-center gap-2 msg-menu-report border-t border-gray-700"><i class="fas fa-flag"></i> الإبلاغ عن الرسالة</button>` : ''}
+                ${!isMyMessage && !isBotMessage ? `<button class="w-full text-right px-4 py-2.5 text-orange-400 hover:bg-gray-700 flex items-center gap-2 msg-menu-report border-t border-gray-700"><i class="fas fa-flag"></i> الإبلاغ عن الرسالة</button>` : ''}
             </div>
         `;
         document.body.insertAdjacentHTML('beforeend', menuHTML);
         const menu = document.getElementById('msg-options-dropdown');
 
-        menu.querySelector('.msg-menu-edit')?.addEventListener('click', () => {
-            menu.remove();
-            startInlineEdit(messageElement, message);
-        });
-
+        menu.querySelector('.msg-menu-edit')?.addEventListener('click', () => { menu.remove(); startInlineEdit(messageElement, message); });
         menu.querySelector('.msg-menu-delete-everyone')?.addEventListener('click', () => {
             menu.remove();
             showConfirmationModal('هل تريد حذف هذه الرسالة لدى الطرفين؟', () => deleteMessageRequest(message._id, 'everyone', messageElement));
         });
-
         menu.querySelector('.msg-menu-delete-me')?.addEventListener('click', () => {
             menu.remove();
             showConfirmationModal('هل تريد حذف هذه الرسالة من عندك فقط؟', () => deleteMessageRequest(message._id, 'me', messageElement));
         });
-                menu.querySelector('.msg-menu-report')?.addEventListener('click', () => {
+        menu.querySelector('.msg-menu-report')?.addEventListener('click', () => {
             menu.remove();
             showReportModal({
-                type: 'message',
-                reportedUserId: message.sender?._id || message.sender,
-                reportedUsername: message.sender?.username || 'مستخدم',
-                messageId: message._id,
+                type: 'message', reportedUserId: message.sender?._id || message.sender,
+                reportedUsername: message.sender?.username || 'مستخدم', messageId: message._id,
                 messageContent: message.type === 'text' ? message.content : undefined,
-                messageType: message.type,
-                roomId: message.chatId || undefined
+                messageType: message.type, roomId: message.chatId || undefined
             });
         });
 
         setTimeout(() => {
             document.addEventListener('click', function closeOnce(ev) {
-                if (!menu.contains(ev.target) && ev.target !== btn) {
-                    menu.remove();
-                    document.removeEventListener('click', closeOnce);
-                }
+                if (!menu.contains(ev.target) && ev.target !== btn) { menu.remove(); document.removeEventListener('click', closeOnce); }
             });
         }, 0);
     });
