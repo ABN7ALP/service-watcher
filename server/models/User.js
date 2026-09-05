@@ -48,6 +48,8 @@ const userSchema = new mongoose.Schema({
     isAgent: { type: Boolean, default: false },
     agentWhatsapp: { type: String, default: null },
     isBot: { type: Boolean, default: false }, // ✅ حساب البوت الرسمي للمنصة
+    isOnline: { type: Boolean, default: false },
+    lastActive: { type: Date, default: Date.now },
     socketId: { type: String, default: null },
     status: { type: String, default: '🚀 جاهز للتحديات!', maxlength: 100 }, 
     ownedBubbleSkins: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ChatBubbleSkin' }],
