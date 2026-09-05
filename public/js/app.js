@@ -1950,25 +1950,7 @@ document.getElementById('user-id-container').addEventListener('click', () => {
 
 
 
-    // --- 4. إنشاء مقاعد الصوت ---
-    const voiceGrid = document.getElementById('voice-chat-grid');
-    for (let i = 4; i <= 27; i++) {
-        const seat = document.createElement('div');
-        seat.className = 'voice-seat user-seat';
-        seat.dataset.seat = i;
-        seat.textContent = i;
-        voiceGrid.appendChild(seat);
-    }
-    const buyCoinsBtn = document.getElementById('buy-coins-btn');
-    if (buyCoinsBtn) {
-        buyCoinsBtn.addEventListener('click', showBuyCoinsModal);
-    }
-          const withdrawBtn = document.getElementById('withdraw-balance-btn');
-    if (withdrawBtn) withdrawBtn.addEventListener('click', showWithdrawModal);
-
-    const depositBalanceBtn = document.getElementById('deposit-balance-btn');
-    if (depositBalanceBtn) depositBalanceBtn.addEventListener('click', showDepositModal);
-
+    
     // --- 5. ربط زر تسجيل الخروج ---
     const logoutBtn = document.getElementById('logoutBtn');
     logoutBtn.addEventListener('click', () => {
