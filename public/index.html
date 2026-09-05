@@ -11,191 +11,140 @@
 </head>
 <body class="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-white font-cairo transition-colors duration-300">
  
-    <!-- ✅ شاشة تحميل أولية -->
     <div id="loading-screen" class="fixed inset-0 bg-gray-100 dark:bg-gray-900 flex flex-col items-center justify-center z-[100]">
         <i class="fas fa-trophy text-yellow-400 text-6xl animate-bounce"></i>
         <p class="mt-4 text-lg text-gray-600 dark:text-gray-300">جاري تحميل المنصة...</p>
     </div>
 
-   <!-- ✅ المحتوى الرئيسي للتطبيق (مخفي افتراضياً) -->
     <div id="app-container" class="hidden">
-        <div class="container mx-auto p-4">
+        <div class="container mx-auto p-2 md:p-4 pb-20 md:pb-4">
             <!-- Header -->
-            <header class="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-lg p-4 flex justify-between items-center mb-4 transition-colors duration-300">
-                <div class="logo flex items-center gap-3">
-                    <i class="fas fa-trophy text-yellow-400 text-2xl"></i>
-                    <span class="text-xl font-bold">منصة التحديات</span>
+            <header class="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-lg p-3 md:p-4 flex justify-between items-center mb-4 transition-colors duration-300">
+                <div class="logo flex items-center gap-2">
+                    <i class="fas fa-trophy text-yellow-400 text-xl md:text-2xl"></i>
+                    <span class="text-base md:text-xl font-bold hidden sm:inline">منصة التحديات</span>
                 </div>
-                <div class="user-info flex items-center gap-4">
-                    <div class="balance bg-gray-200 dark:bg-gray-700 px-3 py-1.5 rounded-full text-sm flex items-center gap-2">
-    <i class="fas fa-dollar-sign text-green-500"></i> <span id="balance" class="font-bold">0.00</span>
-    <button id="deposit-balance-btn" class="bg-blue-600 hover:bg-blue-700 text-white w-6 h-6 rounded-full flex items-center justify-center transition-transform hover:scale-110" title="شحن الرصيد">
-        <i class="fas fa-plus text-xs"></i>
-    </button>
-    <button id="withdraw-balance-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white w-6 h-6 rounded-full flex items-center justify-center transition-transform hover:scale-110" title="سحب الرصيد">
-        <i class="fas fa-arrow-down text-xs"></i>
-    </button>
-</div>
-                                        <div class="coins bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-full text-sm flex items-center gap-2">
-                        🪙 <span id="coins">0</span>
-                        <button id="buy-coins-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center" title="شحن كوينزات">+</button>
+                <div class="user-info flex items-center gap-2 md:gap-4">
+                    <div class="balance bg-gray-200 dark:bg-gray-700 px-2.5 py-1.5 rounded-full text-xs md:text-sm flex items-center gap-1.5">
+                        <i class="fas fa-dollar-sign text-green-500"></i> <span id="balance" class="font-bold">0.00</span>
+                        <button id="deposit-balance-btn" class="bg-blue-600 hover:bg-blue-700 text-white w-6 h-6 rounded-full flex items-center justify-center transition-transform hover:scale-110" title="شحن الرصيد"><i class="fas fa-plus text-xs"></i></button>
+                        <button id="withdraw-balance-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white w-6 h-6 rounded-full flex items-center justify-center transition-transform hover:scale-110" title="سحب الرصيد"><i class="fas fa-arrow-down text-xs"></i></button>
+                    </div>
+                    <div class="coins bg-gray-200 dark:bg-gray-700 px-2.5 py-1.5 rounded-full text-xs md:text-sm flex items-center gap-1.5">
+                        <i class="fas fa-coins text-yellow-500"></i> <span id="coins" class="font-bold">0</span>
+                        <button id="buy-coins-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white w-6 h-6 rounded-full flex items-center justify-center transition-transform hover:scale-110" title="شحن كوينزات"><i class="fas fa-plus text-xs"></i></button>
                     </div>
                 </div>
             </header>
 
-            <!-- Main Content -->
             <div class="grid grid-cols-12 gap-4">
-                <!-- Sidebar (Right) -->
-                <aside id="sidebar" class="col-span-12 md:col-span-3 lg:col-span-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 relative transition-colors duration-300">
-                    <!-- ✅ استبدل قسم user-profile بالكامل بهذا -->
-<div class="user-profile text-center mb-6">
-    <!-- الصورة الشخصية مع أيقونة التعديل -->
-    <div class="relative inline-block">
-        <img id="profileImage" src="https://via.placeholder.com/80" alt="الصورة الشخصية" 
-             class="w-24 h-24 rounded-full mx-auto border-4 border-purple-500 object-cover shadow-lg">
-        <button id="edit-status-btn" class="absolute bottom-0 left-0 bg-gray-800/80 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-purple-600 transition">
-            <i class="fas fa-pen text-xs"></i>
-        </button>
-    </div>
-    
-    <!-- اسم المستخدم -->
-    <h3 id="username" class="mt-3 font-bold text-lg">...</h3>
-    
-    <!-- الحالة النصية -->
-    <div id="user-status-container" class="mt-1">
-        <p id="user-status-text" class="text-sm text-gray-300 italic">🚀 جاهز للتحديات!</p>
-    </div>
-    
-    <!-- شريط المستوى -->
-    <!-- شريط المستوى -->
-<div class="mt-4">
-    <div class="flex justify-between items-center text-xs mb-1">
-        <span class="font-bold text-yellow-400">المستوى <span id="userLevel">1</span></span>
-        <span class="text-gray-400"><span id="currentXP">0</span>/<span id="requiredXP">1500</span> XP</span>
-    </div>
-    <div class="w-full bg-gray-700 rounded-full h-2.5">
-        <div id="xp-bar" class="bg-gradient-to-r from-yellow-400 to-orange-500 h-2.5 rounded-full" style="width: 0%"></div>
-    </div>
-    <!-- زر عرض المميزات -->
-    <div class="text-center mt-2">
-        <button id="show-level-perks" class="text-xs text-purple-400 hover:text-purple-300 transition flex items-center justify-center gap-1 mx-auto">
-            <i class="fas fa-gift"></i>
-            <span>عرض مميزات المستوى</span>
-        </button>
-    </div>
-</div>
-    
-    <!-- بطاقة الأصدقاء -->
-    <div id="friends-card" class="mt-4 p-3 bg-gray-800/50 rounded-xl">
-        <div class="flex justify-between items-center mb-2">
-            <div class="flex items-center gap-2">
-                <i class="fas fa-users text-purple-400"></i>
-                <span class="text-sm">الأصدقاء</span>
-            </div>
-            <span id="friends-count" class="font-bold">0</span>
-        </div>
-        <!-- صور الأصدقاء المصغرة -->
-        <div id="friends-avatars" class="flex justify-center -space-x-2">
-            <!-- ستضاف بالجافاسكريبت -->
-        </div>
-    </div>
-</div>
+                <!-- Sidebar (Desktop only) -->
+                <aside id="sidebar" class="hidden md:block col-span-12 md:col-span-3 lg:col-span-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 relative transition-colors duration-300">
+                    <div class="user-profile text-center mb-6">
+                        <div class="relative inline-block">
+                            <img id="profileImage" src="https://via.placeholder.com/80" alt="الصورة الشخصية" class="w-24 h-24 rounded-full mx-auto border-4 border-purple-500 object-cover shadow-lg">
+                            <button id="edit-status-btn" class="absolute bottom-0 left-0 bg-gray-800/80 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-purple-600 transition"><i class="fas fa-pen text-xs"></i></button>
+                        </div>
+                        <h3 id="username" class="mt-3 font-bold text-lg">...</h3>
+                        <div id="user-status-container" class="mt-1"><p id="user-status-text" class="text-sm text-gray-300 italic">🚀 جاهز للتحديات!</p></div>
+                        <div class="mt-4">
+                            <div class="flex justify-between items-center text-xs mb-1">
+                                <span class="font-bold text-yellow-400">المستوى <span id="userLevel">1</span></span>
+                                <span class="text-gray-400"><span id="currentXP">0</span>/<span id="requiredXP">1500</span> XP</span>
+                            </div>
+                            <div class="w-full bg-gray-700 rounded-full h-2.5"><div id="xp-bar" class="bg-gradient-to-r from-yellow-400 to-orange-500 h-2.5 rounded-full" style="width: 0%"></div></div>
+                            <div class="text-center mt-2"><button id="show-level-perks" class="text-xs text-purple-400 hover:text-purple-300 transition flex items-center justify-center gap-1 mx-auto"><i class="fas fa-gift"></i><span>عرض مميزات المستوى</span></button></div>
+                        </div>
+                        <div id="friends-card" class="mt-4 p-3 bg-gray-800/50 rounded-xl cursor-pointer">
+                            <div class="flex justify-between items-center mb-2"><div class="flex items-center gap-2"><i class="fas fa-users text-purple-400"></i><span class="text-sm">الأصدقاء</span></div><span id="friends-count" class="font-bold">0</span></div>
+                            <div id="friends-avatars" class="flex justify-center -space-x-2"></div>
+                        </div>
+                    </div>
                     <nav class="sidebar-nav space-y-2">
                         <a href="#arena" class="nav-item flex items-center gap-3 p-2 rounded-lg bg-purple-600 text-white"><i class="fas fa-home w-5 text-center"></i> الرئيسية</a>
                         <a href="#challenges" class="nav-item flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700"><i class="fas fa-gamepad w-5 text-center"></i> التحديات</a>
                         <a href="#leaderboard" class="nav-item flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700"><i class="fas fa-trophy w-5 text-center"></i> المتصدرين</a>
                         <a href="#settings" class="nav-item flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700"><i class="fas fa-cog w-5 text-center"></i> الإعدادات</a>
-                        <!-- ✅ أضف هذا الرابط الجديد داخل <nav> -->
                         <a href="#friend-requests" id="friend-requests-nav-item" class="nav-item flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-gray-700">
-                  <div class="flex items-center gap-3">
-                    <i class="fas fa-user-friends w-5 text-center"></i>
-                     <span>طلبات الصداقة</span>
-                 </div>
-     <!-- شارة الإشعارات -->
-                  <span id="friend-requests-badge" class="bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center hidden">0</span></a>
-
+                            <div class="flex items-center gap-3"><i class="fas fa-user-friends w-5 text-center"></i><span>طلبات الصداقة</span></div>
+                            <span id="friend-requests-badge" class="bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center hidden">0</span>
+                        </a>
                         <a href="#messages" id="messages-nav-item" class="nav-item flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-gray-700">
-                            <div class="flex items-center gap-3">
-                                <i class="fas fa-envelope w-5 text-center"></i>
-                                <span>الرسائل</span>
-                            </div>
+                            <div class="flex items-center gap-3"><i class="fas fa-envelope w-5 text-center"></i><span>الرسائل</span></div>
                             <span id="messages-nav-badge" class="bg-purple-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center hidden">0</span>
                         </a>
                     </nav>
                 </aside>
 
-                <!-- Main View (Center) -->
-                <!-- Main View (Center) -->
-<main id="main-content" class="col-span-12 md:col-span-9 lg:col-span-7 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 flex flex-col transition-colors duration-300"> 
-    <!-- Battle Arena Header -->
-    <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-bold"><i class="fas fa-gamepad"></i> ساحة التحديات</h2>
-        <button id="create-battle-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
-            <i class="fas fa-plus"></i>
-            <span>إنشاء تحدي</span>
-        </button>
-    </div>
-
-    <!-- Battle Rooms List -->
-    <div id="battle-rooms-container" class="flex-grow overflow-y-auto space-y-3 pr-2">
-        <!-- Battles will be loaded here by JS -->
-        <div id="battles-empty-state" class="text-center text-gray-400 py-10 hidden">
-            <i class="fas fa-ghost text-4xl mb-4"></i>
-            <p>لا توجد تحديات متاحة حالياً. كن أول من يبدأ!</p>
-        </div>
-        <div id="battles-loading-state" class="text-center text-gray-400 py-10">
-            <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
-            <p>جاري تحميل التحديات...</p>
-        </div>
-    </div>
-
-    <!-- Voice Chat Seats (Moved to the bottom) -->
-    <div class="mt-4 pt-4 border-t border-gray-700">
-        <h3 class="font-bold mb-3">🎤 غرفة الصوت</h3>
-        <div id="voice-chat-grid" class="grid grid-cols-9 gap-3">
-            <!-- Admin Seats -->
-            <div class="voice-seat admin-seat" data-seat="1"><i class="fas fa-crown"></i></div>
-            <div class="voice-seat admin-seat" data-seat="2"><i class="fas fa-crown"></i></div>
-            <div class="voice-seat admin-seat" data-seat="3"><i class="fas fa-crown"></i></div>
-            <!-- User Seats (Generated by JS) -->
-        </div>
-    </div>
-</main>
-
-
-                <!-- Chat Panel (Left) -->
-                <aside id="chat-panel" class="col-span-12 lg:col-span-3 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 flex flex-col h-[85vh] transition-colors duration-300">
-                    <h3 class="font-bold mb-3">💬 الدردشة العامة</h3>
-                    <div id="chat-messages" class="flex-grow bg-gray-200/50 dark:bg-gray-900/50 rounded-lg p-2 overflow-y-auto mb-3 min-h-[300px]">
-                        <!-- Messages will appear here -->
+                <!-- Main View -->
+                <main id="main-content" class="col-span-12 md:col-span-9 lg:col-span-7 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-3 md:p-4 flex flex-col transition-colors duration-300 min-h-[70vh]">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
                     </div>
+                    <div id="voice-chat-grid" class="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2 md:gap-3"></div>
+                </main>
+
+                <!-- Chat Panel (Desktop only — mobile uses floating button) -->
+                <aside id="chat-panel" class="hidden md:flex col-span-12 lg:col-span-3 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 flex-col h-[85vh] transition-colors duration-300">
+                    <h3 class="font-bold mb-3">💬 الدردشة العامة</h3>
+                    <div id="chat-messages" class="flex-grow bg-gray-200/50 dark:bg-gray-900/50 rounded-lg p-2 overflow-y-auto mb-3 min-h-[300px]"></div>
                     <div id="public-typing-indicator" class="text-xs text-purple-400 h-4 mb-1 px-1"></div>
-                    <!-- استبدل قسم chat-input بهذا -->
                     <div class="chat-input-container">
-                        <div  
                         <div class="relative">
                             <input type="text" id="messageInput" placeholder="اكتب رسالتك..." maxlength="300" class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2 pr-20 focus:ring-purple-500 focus:border-purple-500 transition-colors duration-300">
                             <div id="char-counter" class="absolute top-1/2 left-2 transform -translate-y-1/2 text-xs text-gray-500 dark:text-gray-400">0/300</div>
                         </div>
-                          <div class="flex gap-2 mt-2">
-                            <button id="public-gift-btn" class="bg-pink-600 hover:bg-pink-700 px-3 py-2 rounded-lg text-white flex-shrink-0" title="إرسال هدية للجميع">
-                                <i class="fas fa-gift"></i>
-                            </button>
-                            <button id="sendBtn" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 w-full rounded-lg flex items-center justify-center gap-2 text-white">
-                                <i class="fas fa-paper-plane"></i>
-                                <span>إرسال</span>
-                            </button>
+                        <div class="flex gap-2 mt-2">
+                            <button id="public-gift-btn" class="bg-pink-600 hover:bg-pink-700 px-3 py-2 rounded-lg text-white flex-shrink-0" title="إرسال هدية للجميع"><i class="fas fa-gift"></i></button>
+                            <button id="sendBtn" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 w-full rounded-lg flex items-center justify-center gap-2 text-white"><i class="fas fa-paper-plane"></i><span>إرسال</span></button>
                         </div>
+                    </div>
                 </aside>
             </div>
         </div>
     </div>
 
+    <!-- ✅ زر عائم لفتح الدردشة العامة على الهاتف فقط -->
+    <button id="mobile-public-chat-fab" class="md:hidden fixed bottom-20 left-4 z-40 w-14 h-14 bg-purple-600 rounded-full shadow-2xl flex items-center justify-center text-white text-xl active:scale-90 transition-transform">
+        <i class="fas fa-comments"></i>
+        <span id="mobile-chat-unread-dot" class="hidden absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-gray-900"></span>
+    </button>
+
+    <!-- ✅ شريط تنقّل سفلي — الهاتف فقط -->
+    <nav id="mobile-bottom-nav" class="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md border-t border-gray-700 z-30 flex justify-around items-center py-1.5 px-1">
+        <a href="#arena" class="mobile-nav-item active flex flex-col items-center gap-0.5 text-gray-400 py-1.5 px-2 rounded-lg transition-colors" data-target="arena">
+            <i class="fas fa-home text-lg"></i><span class="text-[10px] font-bold">الرئيسية</span>
+        </a>
+        <a href="#challenges" class="mobile-nav-item flex flex-col items-center gap-0.5 text-gray-400 py-1.5 px-2 rounded-lg transition-colors" data-target="challenges">
+            <i class="fas fa-gamepad text-lg"></i><span class="text-[10px] font-bold">التحديات</span>
+        </a>
+        <a href="#messages" class="mobile-nav-item flex flex-col items-center gap-0.5 text-gray-400 py-1.5 px-2 rounded-lg transition-colors relative" data-target="messages">
+            <i class="fas fa-envelope text-lg"></i><span class="text-[10px] font-bold">الرسائل</span>
+            <span id="mobile-messages-badge" class="hidden absolute top-0 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+        </a>
+        <a href="#leaderboard" class="mobile-nav-item flex flex-col items-center gap-0.5 text-gray-400 py-1.5 px-2 rounded-lg transition-colors" data-target="leaderboard">
+            <i class="fas fa-trophy text-lg"></i><span class="text-[10px] font-bold">المتصدرين</span>
+        </a>
+        <button id="mobile-more-btn" class="mobile-nav-item flex flex-col items-center gap-0.5 text-gray-400 py-1.5 px-2 rounded-lg transition-colors">
+            <i class="fas fa-bars text-lg"></i><span class="text-[10px] font-bold">المزيد</span>
+        </button>
+    </nav>
+
+    <!-- ✅ قائمة "المزيد" المنسدلة (الإعدادات/طلبات الصداقة) — الهاتف فقط -->
+    <div id="mobile-more-sheet" class="hidden md:hidden fixed inset-0 bg-black/60 z-[60] items-end" onclick="if(event.target===this) this.classList.add('hidden')">
+        <div class="bg-gray-800 w-full rounded-t-2xl p-4 pb-6 animate-[slideUp_0.25s_ease-out]">
+            <div class="w-10 h-1.5 bg-gray-600 rounded-full mx-auto mb-4"></div>
+            <button class="mobile-sheet-item w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-700 text-right" data-target="settings"><i class="fas fa-cog w-6 text-purple-400"></i> الإعدادات</button>
+            <button class="mobile-sheet-item w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-700 text-right relative" data-target="friend-requests">
+                <i class="fas fa-user-friends w-6 text-purple-400"></i> طلبات الصداقة
+                <span id="mobile-friend-req-badge" class="hidden absolute left-3 bg-red-500 text-white text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center">0</span>
+            </button>
+        </div>
+    </div>
     
-    <!-- Notification container -->
     <div id="notification-container" class="fixed top-5 right-5 z-50 space-y-2"></div>
 
-        <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="/js/app.js"></script>
     <div id="game-container"></div>
     <script>
