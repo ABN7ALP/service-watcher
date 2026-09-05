@@ -1050,15 +1050,9 @@ exports.resolveReport = async (req, res) => {
           details: { reason: user.banReason, duration, source: 'report_resolution' }, severity: 'warning', ipAddress: req.ip
         });
       }
-    } else if (action === 'warning' && report.reportedUser) {
-      const user = await User.findById(report.reportedUser).select('socketId');
-      const io = req.app.get('socketio');
-      if (io && user?.socketId) {
-        io.to(user.socketId).emit('admin-notification', {
-          message: `تحذير من الإدارة: ${(notes || '').trim() || 'يرجى الالتزام بقواعد المنصة'}`,
-          type: 'warning'
-        });
-      }
+        } else if (action === 'warning' && report.reportedUser) {
+      const { sendBotMessage } = require('../utils/botMessenger');
+      await sendBotMessage(req.app.get('socketio'), report.reportedUser, `⚠️ تحذير من الإدارة: ${(notes || '').trim() || 'يرجى الالتزام بقواعد المنصة'}`);
     }
 
     await AdminLog.logAction({
