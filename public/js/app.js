@@ -804,7 +804,7 @@ async function showSettingsView() {
                 <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="frames-shop-section">
                                         <h3 class="text-lg font-bold">
                         <i class="fas fa-crown mr-2"></i>متجر الإطارات
-                        <button id="frames-support-btn" class="text-xs text-gray-400 hover:text-purple-400 ml-2" title="مشكلة بالإطارات؟" onclick="event.stopPropagation();"><i class="fas fa-life-ring"></i></button>
+                        <button id="frames-support-btn" class="report-issue-icon-btn" style="width:26px;height:26px;" title="الإبلاغ عن مشكلة" onclick="event.stopPropagation();"><i class="fas fa-exclamation-triangle" style="font-size:0.7rem;"></i></button>
                     </h3>
                     <i class="fas fa-chevron-down transition-transform duration-300"></i>
                 </div>
@@ -3052,9 +3052,12 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
     const shellHTML = `
         <div id="gift-store-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-lg text-white border border-gray-700 max-h-[85vh] flex flex-col">
-                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <div class="flex items-center justify-between p-4 border-b border-gray-700">
                     <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift text-pink-400"></i> إرسال هدية لـ ${targetUsername}</h3>
-                    <button id="close-gift-store" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                    <div class="flex items-center gap-1">
+                        <button id="gift-store-support-btn" class="report-issue-icon-btn" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle"></i></button>
+                        <button id="close-gift-store" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                    </div>
                 </div>
                 <div id="gift-store-body" class="p-4 overflow-y-auto flex-1">
                     <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
@@ -3067,7 +3070,8 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
     const modal = document.getElementById('gift-store-modal');
 
     // ✅ إغلاق مباشر بدون تأكيد — إرسال هدية ليس عملية بيانات طويلة يخشى فقدانها
-    document.getElementById('close-gift-store').addEventListener('click', () => modal.remove());
+     document.getElementById('close-gift-store').addEventListener('click', () => modal.remove());
+    document.getElementById('gift-store-support-btn').addEventListener('click', () => showQuickSupportModal('gift_issue', 'مشكلة في إرسال الهدايا'));
     modal.addEventListener('click', (e) => { if (e.target.id === 'gift-store-modal') modal.remove(); });
 
     try {
@@ -3318,7 +3322,7 @@ async function showBuyCoinsModal() {
                         <i class="fas fa-coins text-yellow-400"></i> شحن الكوينزات
                     </h3>
                     <div class="flex items-center gap-1">
-                        <button id="coins-support-btn" class="text-gray-400 hover:text-purple-400 p-2" title="مشكلة بالشحن؟"><i class="fas fa-life-ring"></i></button>
+                        <button id="coins-support-btn" class="report-issue-icon-btn" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle"></i></button>
                         <button id="close-buy-coins" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
                     </div>
                 </div>
@@ -3823,18 +3827,22 @@ async function showWithdrawModal() {
     const shellHTML = `
         <div id="withdraw-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[88vh] flex flex-col">
-                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                                <div class="flex items-center justify-between p-4 border-b border-gray-700">
                     <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-money-bill-wave text-green-400"></i> سحب الرصيد</h3>
-                    <button id="close-withdraw" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                    <div class="flex items-center gap-1">
+                        <button id="withdraw-support-btn" class="report-issue-icon-btn" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle"></i></button>
+                        <button id="close-withdraw" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                    </div>
                 </div>
                 <div id="withdraw-body" class="p-4 overflow-y-auto flex-1"></div>
             </div>
         </div>
     `;
 
-        document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('withdraw-modal');
     attachCloseConfirmation(modal, '#close-withdraw');
+    document.getElementById('withdraw-support-btn').addEventListener('click', () => showQuickSupportModal('payment_issue', 'مشكلة في طلب السحب'));
 
     renderWithdrawHome();
 }
@@ -3988,7 +3996,7 @@ async function showDepositModal() {
                                 <div class="flex items-center justify-between p-4 border-b border-gray-700">
                     <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-wallet text-blue-400"></i> شحن الرصيد</h3>
                     <div class="flex items-center gap-1">
-                        <button id="deposit-support-btn" class="text-gray-400 hover:text-purple-400 p-2" title="مشكلة بالشحن؟"><i class="fas fa-life-ring"></i></button>
+                        <button id="deposit-support-btn" class="report-issue-icon-btn" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle"></i></button>
                         <button id="close-deposit" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
                     </div>
                 </div>
@@ -4438,8 +4446,8 @@ async function loadGiftsReceivedSummary() {
         const d = result.data;
 
                 body.innerHTML = `
-            <div class="flex justify-end mb-1">
-                <button id="redemption-support-btn" class="text-xs text-gray-400 hover:text-purple-400 flex items-center gap-1"><i class="fas fa-life-ring"></i> مشكلة بالاستبدال؟</button>
+               <div class="flex justify-end mb-1">
+                <button id="redemption-support-btn" class="report-issue-btn"><i class="fas fa-exclamation-triangle"></i> الإبلاغ عن مشكلة</button>
             </div>
             <div class="bg-gray-900/50 rounded-xl p-4 mb-4 text-center">
                 <p class="text-3xl font-bold text-pink-400">${d.totalGiftsCount}</p>
@@ -4501,9 +4509,12 @@ function confirmRedeem(redeemTo) {
     const shellHTML = `
         <div id="public-gift-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[88vh] flex flex-col">
-                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <div class="flex items-center justify-between p-4 border-b border-gray-700">
                     <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift text-pink-400"></i> إرسال هدية بالشات العام</h3>
-                    <button id="close-public-gift" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                    <div class="flex items-center gap-1">
+                        <button id="public-gift-support-btn" class="report-issue-icon-btn" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle"></i></button>
+                        <button id="close-public-gift" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                    </div>
                 </div>
                 <div id="public-gift-body" class="p-4 overflow-y-auto flex-1">
                     <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
@@ -4515,7 +4526,8 @@ function confirmRedeem(redeemTo) {
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('public-gift-modal');
 
-    document.getElementById('close-public-gift').addEventListener('click', () => modal.remove());
+     document.getElementById('close-public-gift').addEventListener('click', () => modal.remove());
+    document.getElementById('public-gift-support-btn').addEventListener('click', () => showQuickSupportModal('gift_issue', 'مشكلة في هدايا الشات العام'));
     modal.addEventListener('click', (e) => { if (e.target.id === 'public-gift-modal') modal.remove(); });
 
     try {
