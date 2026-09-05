@@ -19,7 +19,7 @@ const setupMiddleware = (app) => {
     // تطبيق Middleware الأمان الأساسية
     app.use(cors()); // السماح بالطلبات من مصادر مختلفة
     // الكود الجديد والمعدل بالكامل لإعدادات helmet
-    app.use(helmet({
+        app.use(helmet({
    contentSecurityPolicy: {
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
@@ -27,6 +27,8 @@ const setupMiddleware = (app) => {
         // ✅ الإصلاح: إضافة blob: لمعاينة الصور/الفيديو محلياً قبل رفعها (createObjectURL)
         "img-src": ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://i.ibb.co"],
         "media-src": ["'self'", "blob:", "https://res.cloudinary.com"],
+        // ✅ يسمح فقط بجلب خرائط المصادر (source maps) الخاصة بمكتبة socket.io لأدوات المطوّر، دون أي تأثير أمني حقيقي
+        "connect-src": ["'self'", "https://cdn.socket.io"],
       },
   },
 }));
