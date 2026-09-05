@@ -38,12 +38,9 @@ exports.createReport = async (req, res) => {
         });
 
         // ✅ بوت الموقع: تأكيد فوري لاستلام البلاغ
-        const io = req.app.get('socketio');
-        if (io && req.user.socketId) {
-            io.to(req.user.socketId).emit('bot-notification', {
-                message: `🤖 تم استلام بلاغك بنجاح (#${report._id.toString().slice(-6)})، سيراجعه فريقنا قريباً. شكراً لمساهمتك في أمان المجتمع.`
-            });
-        }
+                const io = req.app.get('socketio');
+        const { sendBotMessage } = require('../utils/botMessenger');
+        await sendBotMessage(io, reporterId, `تم استلام بلاغك بنجاح (رقم #${report._id.toString().slice(-6)})، سيراجعه فريقنا قريباً. شكراً لمساهمتك في أمان المجتمع 🙏`);
 
         res.status(201).json({ status: 'success', message: 'تم إرسال بلاغك بنجاح، سيتم مراجعته من قبل الإدارة', data: { reportId: report._id } });
     } catch (error) {
