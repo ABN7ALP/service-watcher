@@ -2,8 +2,8 @@ module.exports = (socket, io) => {
   // Join voice chat seat
   socket.on('join-voice-seat', async ({ seatNumber, userId }) => {
     try {
-      // Check if seat is available or admin seat
-      const isAdminSeat = seatNumber >= 24 && seatNumber <= 26;
+      // ✅ توحيد نطاق المقاعد الإدارية مع الواجهة: 5 مقاعد أولى محجوزة حصرياً للإدارة
+      const isAdminSeat = seatNumber >= 1 && seatNumber <= 5;
       
       if (isAdminSeat) {
         // Check if user has admin permissions
