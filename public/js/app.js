@@ -899,6 +899,18 @@ async function showSettingsView() {
                     </div>
                 </div>
             </div>
+
+
+
+            <!-- =========================================== -->
+            <!-- زر تسجيل الخروج -->
+            <!-- =========================================== -->
+            <div class="mb-4">
+                <button id="settings-logout-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg">
+                    <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
+                </button>
+            </div>
+
             
             <!-- =========================================== -->
             <!-- 4. قسم المحظورين (الجديد) -->
@@ -945,8 +957,17 @@ async function showSettingsView() {
     `;
     
     // ⭐ إعادة ربط الأحداث (دالة واحدة فقط)
+        // ⭐ إعادة ربط الأحداث (دالة واحدة فقط)
     setupSettingsEvents();
     loadGiftsReceivedSummary();
+
+    document.getElementById('settings-logout-btn')?.addEventListener('click', () => {
+        showConfirmationModal('هل أنت متأكد من تسجيل الخروج؟', () => {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/login.html';
+        }, );
+    });
 }
 
 
