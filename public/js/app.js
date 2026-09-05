@@ -2300,10 +2300,6 @@ socket.on('levelUp', ({ newLevel }) => {
     }
 });
         
-    // ✅ استقبال تحذيرات الإدارة (تصل عبر قرار حل بلاغ بنوع "تحذير")
-    socket.on('admin-notification', (data) => {
-        showNotification(data.message, data.type === 'warning' ? 'error' : 'info');
-    });
 
 
     // ✅ مؤشرات الكتابة/التسجيل/الاتصال — نمط واتساب
@@ -2362,19 +2358,13 @@ socket.on('levelUp', ({ newLevel }) => {
     showNotification('تم إيداع رصيدك بنجاح 🎉', 'success');
 });
 
-     socket.on('giftReceived', (data) => {
-    // ✅ الإصلاح: الأنيميشن العائمة الضخمة تظهر فقط إذا كانت الهدية أُرسلت من الدردشة الخاصة
-    // وأنت فعلياً فاتح نفس محادثة المُرسِل في تلك اللحظة. للهدايا العامة إشعارها الخاص أصلاً
-    // (publicGiftAnnouncement) فلا داعي لتكرارها بأنيميشن كبيرة تقاطع كل شاشة.
+    socket.on('giftReceived', (data) => {
+    // ✅ التفاصيل النصية تصل الآن عبر البوت (رسالة دائمة)، والأنيميشن العائمة فقط للحظة اللحظية أثناء المشاهدة
     const chatModal = document.getElementById('private-chat-modal');
     const isViewingThatChat = chatModal && chatModal.dataset.targetUserId === data.fromUserId;
-
-    if (data.context === 'private_chat' && isViewingThatChat) {
+    if (isViewingThatChat) {
         showGiftFloatingAnimation(data.giftImage, data.giftName, data.fromUsername, data.quantity);
-    } else if (data.context === 'private_chat') {
-        showNotification(`🎁 ${data.fromUsername} أرسل لك ${data.giftName}`, 'info');
     }
-
     refreshUserData();
 });
 
