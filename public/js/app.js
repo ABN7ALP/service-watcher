@@ -7587,19 +7587,33 @@ function getFriendButtonHTML(profileUser, selfUser) {
     // =========== قسم الدردشة (Chat Section) ==========
     // =================================================
 
-    const messageInput = document.getElementById('messageInput');
-    // --- أضف هذا الكود لتفعيل عداد الأحرف ---
-const charCounter = document.getElementById('char-counter');
-messageInput.addEventListener('input', () => {
-    const currentLength = messageInput.value.length;
-    charCounter.textContent = `${currentLength}/300`;
-    // تغيير لون العداد عند الاقتراب من الحد
-    if (currentLength > 280) {
-        charCounter.classList.add('text-red-400');
-    } else {
-        charCounter.classList.remove('text-red-400');
-    }
-});
+        const messageInput = document.getElementById('messageInput');
+    const charCounter = document.getElementById('char-counter');
+    let publicTypingTimeout = null;
+    let isPublicTyping = false;
+    messageInput.addEventListener('input', () => {
+        const currentLength = messageInput.value.length;
+        charCounter.textContent = `${currentLength}/300`;
+        if (currentLength > 280) charCounter.classList.add('text-red-400');
+        else charCounter.classList.remove('text-red-400');
+
+        if (!isPublicTyping) { isPublicTyping = true; socket.emit('typing-start', { roomId: 'public' }); }
+        clearTimeout(publicTypingTimeout);
+        publicTypingTimeout = setTimeout(() => { isPublicTyping = false; socket.emit('typing-stop', { roomId: 'public' }); }, 2000);
+    });
+
+    const publicTypers = new Map();
+    socket.on('publicUserTyping', ({ userId, username, isTyping }) => {
+        const indicator = document.getElementById('public-typing-indicator');
+        if (!indicator) return;
+        if (isTyping) publicTypers.set(userId, username);
+        else publicTypers.delete(userId);
+
+        const names = Array.from(publicTypers.values());
+        if (names.length === 0) indicator.textContent = '';
+        else if (names.length === 1) indicator.innerHTML = `<i class="fas fa-pen mr-1"></i> ${names[0]} يكتب الآن...`;
+        else indicator.innerHTML = `<i class="fas fa-pen mr-1"></i> ${names.length} أشخاص يكتبون الآن...`;
+    });
 
      
     const sendBtn = document.getElementById('sendBtn');
