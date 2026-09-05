@@ -1,4 +1,13 @@
 
+// ✅ مسجّل أخطاء عام: يطبع بدقة أي خطأ JS غير متوقع مع رقم السطر بدل توقف الصفحة بصمت
+window.addEventListener('error', (event) => {
+    console.error(`🔴 [GLOBAL JS ERROR] ${event.message} — الملف: ${event.filename}:${event.lineno}:${event.colno}`);
+});
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('🔴 [UNHANDLED PROMISE REJECTION]', event.reason);
+});
+
+
 // --- دوال مساعدة لنظام اللفلات ---
 const calculateRequiredXp = (level) => {
     return level * 1500;
