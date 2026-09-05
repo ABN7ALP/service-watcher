@@ -116,8 +116,8 @@ const getUserMiniProfile = async (req, res) => {
         const currentUserId = req.user?. id;
         const targetUserId = req.params.id;
 
-               const user = await User.findById(targetUserId)
-            .select('username profileImage customId level friends isAgent activeFrameClass')
+            const user = await User.findById(targetUserId)
+            .select('username profileImage customId level friends isAgent activeFrameClass isBot')
             .populate('friends', '_id');
 
         if (!user) {
@@ -138,7 +138,8 @@ const getUserMiniProfile = async (req, res) => {
                 friendsCount: user.friends.length,
                 areFriends: areFriends || false,
                 isAgent: user.isAgent,
-                activeFrameClass: user.activeFrameClass
+                activeFrameClass: user.activeFrameClass,
+                isBot: user.isBot || false
             }
         });
     } catch (error) {
