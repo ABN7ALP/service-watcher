@@ -146,8 +146,25 @@ async function migrateLegacyFramePrices() {
     }
 }
 
+async function seedBotAccountIfMissing() {
+    const existing = await User.findOne({ isBot: true });
+    if (existing) return;
+    await User.create({
+        username: 'بوت_المنصة',
+        email: 'bot@internal.system',
+        password: require('crypto').randomBytes(32).toString('hex'), // كلمة مرور عشوائية، لا يُستخدم تسجيل الدخول بها أبداً
+        gender: 'male',
+        birthDate: new Date('2024-01-01'),
+        profileImage: 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg',
+        isBot: true,
+        agreedToTerms: true
+    });
+    console.log('🤖 [AUTO-SEED] تم إنشاء حساب بوت المنصة');
+}
+
 module.exports = async function autoSeed() {
     try {
+        await seedBotAccountIfMissing();
         await migrateLegacyOwnedFrames();
         await migrateLegacyFramePrices();
         await migrateGiftImageUrls(); // ✅ جديد
