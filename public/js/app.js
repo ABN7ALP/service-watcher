@@ -4935,6 +4935,17 @@ async function loadChatHistoryFromServer(targetUserId) {
 }
 
 // --- 🔄 دالة تحديث رأس الدردشة ---
+function formatLastSeen(dateString) {
+    if (!dateString) return '';
+    const diffMs = Date.now() - new Date(dateString).getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return 'آخر ظهور: الآن';
+    if (mins < 60) return `آخر ظهور: منذ ${mins} د`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `آخر ظهور: منذ ${hours} س`;
+    return `آخر ظهور: ${new Date(dateString).toLocaleDateString('ar-SA')}`;
+}
+
 function updateChatHeader(chatData) {
     if (!chatData || !chatData.participants) return;
     
@@ -4944,9 +4955,21 @@ function updateChatHeader(chatData) {
     if (otherParticipant) {
         const avatar = document.getElementById('chat-user-avatar');
         const name = document.getElementById('chat-user-name');
+        const statusEl = document.getElementById('chat-user-status');
         
         if (avatar) avatar.src = otherParticipant.profileImage;
         if (name) name.textContent = otherParticipant.username;
+
+        const chatModal = document.getElementById('private-chat-modal');
+        if (chatModal) chatModal.dataset.otherUserId = otherParticipant._id;
+
+        if (statusEl && !otherParticipant.isBot) {
+            if (otherParticipant.isOnline) {
+                statusEl.innerHTML = '<i class="fas fa-circle text-green-500 mr-1" style="font-size:8px;"></i> متصل الآن';
+            } else {
+                statusEl.textContent = formatLastSeen(otherParticipant.lastActive);
+            }
+        }
     }
 }
 
@@ -6797,10 +6820,10 @@ function displayPrivateMessage(message, isMyMessage = false) {
         `;
     }
 
-    // ===== حالة الرسالة =====
+    // ===== حالة الرسالة (نمط واتساب) =====
     let statusIcon = '';
     if (isMyMessage) {
-        if (message.status?.seen) statusIcon = '<i class="fas fa-check-double text-blue-400 text-xs" title="مقروءة"></i>';
+        if (message.status?.seen) statusIcon = '<i class="fas fa-check-double text-blue-400 text-xs" title="تمت المشاهدة"></i>';
         else if (message.status?.delivered) statusIcon = '<i class="fas fa-check-double text-gray-400 text-xs" title="تم التسليم"></i>';
         else statusIcon = '<i class="fas fa-check text-gray-400 text-xs" title="تم الإرسال"></i>';
     }
