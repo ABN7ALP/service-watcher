@@ -2307,6 +2307,18 @@ socket.on('levelUp', ({ newLevel }) => {
 
 
     // ✅ مؤشرات الكتابة/التسجيل/الاتصال — نمط واتساب
+        // ✅ دالة موحّدة لاستعادة نص "متصل الآن / آخر ظهور" بدل تركه فارغاً
+    function restoreOnlineStatusDisplay() {
+        const chatModal = document.getElementById('private-chat-modal');
+        const statusEl = document.getElementById('chat-user-status');
+        if (!chatModal || !statusEl) return;
+        const isOnline = chatModal.dataset.otherUserOnline === 'true';
+        const lastActive = chatModal.dataset.otherUserLastActive;
+        statusEl.innerHTML = isOnline
+            ? '<i class="fas fa-circle text-green-500 mr-1" style="font-size:8px;"></i> متصل الآن'
+            : formatLastSeen(lastActive);
+    }
+
     let typingIndicatorTimeout = null;
     socket.on('userTyping', ({ userId, isTyping }) => {
         const chatModal = document.getElementById('private-chat-modal');
@@ -2316,9 +2328,9 @@ socket.on('levelUp', ({ newLevel }) => {
         clearTimeout(typingIndicatorTimeout);
         if (isTyping) {
             statusEl.innerHTML = '<span class="text-purple-400"><i class="fas fa-pen"></i> يكتب الآن...</span>';
-            typingIndicatorTimeout = setTimeout(() => statusEl.textContent = '', 4000);
+            typingIndicatorTimeout = setTimeout(restoreOnlineStatusDisplay, 4000);
         } else {
-            statusEl.textContent = '';
+            restoreOnlineStatusDisplay();
         }
     });
 
@@ -2327,7 +2339,8 @@ socket.on('levelUp', ({ newLevel }) => {
         if (!chatModal || chatModal.dataset.targetUserId !== userId) return;
         const statusEl = document.getElementById('chat-user-status');
         if (!statusEl) return;
-        statusEl.innerHTML = isRecording ? '<span class="text-red-400"><i class="fas fa-microphone"></i> يسجل رسالة صوتية...</span>' : '';
+        if (isRecording) statusEl.innerHTML = '<span class="text-red-400"><i class="fas fa-microphone"></i> يسجل رسالة صوتية...</span>';
+        else restoreOnlineStatusDisplay();
     });
 
     socket.on('userOnlineStatus', ({ userId, isOnline, lastActive }) => {
@@ -4996,22 +5009,17 @@ function updateChatHeader(chatData) {
     
     if (otherParticipant) {
         const avatar = document.getElementById('chat-user-avatar');
-        const name = document.getElementById('chat-user-name');
-        const statusEl = document.getElementById('chat-user-status');
+        const chatModal = document.getElementById('private-chat-modal');
         
         if (avatar) avatar.src = otherParticipant.profileImage;
-        if (name) name.textContent = otherParticipant.username;
-
-        const chatModal = document.getElementById('private-chat-modal');
-        if (chatModal) chatModal.dataset.otherUserId = otherParticipant._id;
-
-        if (statusEl && !otherParticipant.isBot) {
-            if (otherParticipant.isOnline) {
-                statusEl.innerHTML = '<i class="fas fa-circle text-green-500 mr-1" style="font-size:8px;"></i> متصل الآن';
-            } else {
-                statusEl.textContent = formatLastSeen(otherParticipant.lastActive);
-            }
+        if (chatModal) {
+            chatModal.dataset.otherUserId = otherParticipant._id;
+            chatModal.dataset.otherUserOnline = String(!!otherParticipant.isOnline);
+            chatModal.dataset.otherUserLastActive = otherParticipant.lastActive || '';
         }
+        // ✅ لا نلمس اسم/شارات المستخدم هنا إطلاقاً — loadChatUserData هي المسؤول الوحيد عنها
+        // لمنع تضارب التزامن الذي كان يمحو شارة الوكيل/أيقونة البوت
+        if (!otherParticipant.isBot) restoreOnlineStatusDisplay();
     }
 }
 
@@ -5075,15 +5083,16 @@ async function loadChatUserData(userId) {
                 const name = document.getElementById('chat-user-name');
                 const chatModal = document.getElementById('private-chat-modal');
                 
-                if (avatar) {
-                    avatar.src = user.profileImage;
-                    applyFrameToAvatar(avatar, user.activeFrameClass);
-                }
+                if (avatar) { avatar.src = user.profileImage; applyFrameToAvatar(avatar, user.activeFrameClass); }
+                if (chatModal) chatModal.dataset.isBot = user.isBot ? 'true' : 'false';
+
                 if (user.isBot) {
                     if (name) name.innerHTML = `${user.username} <span class="text-purple-400"><i class="fas fa-robot"></i></span>`;
-                    if (chatModal) chatModal.dataset.isBot = 'true';
-                    setupPrivateChatEvents(userId); // إعادة تطبيق تعطيل الإدخال بعد معرفة أنه بوت
+                    const statusEl = document.getElementById('chat-user-status');
+                    if (statusEl) statusEl.innerHTML = '<span class="text-purple-300"><i class="fas fa-shield-halved"></i> حساب رسمي</span>';
+                    setupPrivateChatEvents(userId);
                 } else {
+                    // ✅ المصدر الوحيد لكتابة الاسم + الشارة — لا يُكتب فوقه من أي مكان آخر
                     if (name) name.innerHTML = `${user.username} ${getAgentBadgeIconHTML(user.isAgent)}`;
                 }
             }
@@ -5455,11 +5464,12 @@ function startWhatsAppStyleRecording(targetUserId) {
     const sendBtn = document.getElementById('send-recording');
     const stopBtn = document.getElementById('stop-recording');
     
+    socket.emit('recording-voice', { targetUserId, isRecording: true });
     startRecording();
     
     async function startRecording() {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
+            const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
@@ -5573,7 +5583,8 @@ function startWhatsAppStyleRecording(targetUserId) {
         sendVoiceMessage(audioBlob, finalDuration, targetUserId);
     }
     
-    function cleanupRecordingUI() {
+        function cleanupRecordingUI() {
+        socket.emit('recording-voice', { targetUserId, isRecording: false });
         console.log('[VOICE] Cleaning up recording UI');
         
         if (recordingUI && recordingUI.parentNode) {
