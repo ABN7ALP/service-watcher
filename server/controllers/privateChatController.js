@@ -176,7 +176,7 @@ exports.sendMessage = async (req, res) => {
             .populate('replyTo', 'content sender type')
             .lean();
 
-        const io = req.app.get('socketio');
+                const io = req.app.get('socketio');
         if (io && receiver.socketId && !isShadowed) {
             io.to(receiver.socketId).emit('privateMessageReceived', {
                 message: populatedMessage,
@@ -184,6 +184,15 @@ exports.sendMessage = async (req, res) => {
                 senderId: userId,
                 senderName: req.user.username
             });
+
+            // ✅ تحديث فوري لحالة "تم التسليم" لأن المستقبل متصل الآن فعلياً (بدل انتظاره يفتح المحادثة)
+            newMessage.status.delivered = true;
+            newMessage.status.deliveredAt = new Date();
+            await newMessage.save();
+            const senderSocket = await User.findById(userId).select('socketId');
+            if (senderSocket?.socketId) {
+                io.to(senderSocket.socketId).emit('messageStatusUpdated', { messageId: newMessage._id, status: 'delivered', updatedAt: new Date() });
+            }
         }
 
         res.status(201).json({
