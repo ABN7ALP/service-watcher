@@ -474,7 +474,7 @@ themeToggleBtn.addEventListener('click', toggleTheme);
                 <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
                 <span class="text-xs text-gray-400">80 مقعد</span>
             </div>
-            <div id="voice-chat-grid" class="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2 md:gap-3"></div>
+                        <div id="voice-chat-grid" class="grid grid-cols-6 sm:grid-cols-7 md:grid-cols-8 gap-1.5 md:gap-3"></div>
         `;
         const voiceGrid = document.getElementById('voice-chat-grid');
         for (let i = 1; i <= 80; i++) {
