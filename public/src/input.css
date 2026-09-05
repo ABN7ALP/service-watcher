@@ -351,3 +351,35 @@ input[type="checkbox"] {
 .skeleton-card {
     display: flex; align-items: center; gap: 12px; padding: 10px;
 }
+
+
+/* ================================================= */
+/* ✅ استجابة كاملة للجوال — الموقع العام */
+/* ================================================= */
+@media (max-width: 640px) {
+    /* شبكات الدردشة الصوتية: تتقلص لأعمدة أقل بدل الانكسار */
+    #voice-chat-grid, .circles-grid { grid-template-columns: repeat(5, 1fr) !important; gap: 8px !important; }
+
+    /* أي نافذة كبرى (max-w-lg/xl/2xl) تصبح شبه ملء الشاشة على الجوال مع هامش تنفّس */
+    [class*="max-w-lg"], [class*="max-w-xl"], [class*="max-w-2xl"], [class*="max-w-md"] {
+        max-width: 94vw !important;
+    }
+    /* منع خروج أي عنصر ثابت العرض عن حدود الشاشة */
+    [id$="-modal"] > div:first-child { width: 94vw; max-height: 90vh; }
+
+    /* الشريط الجانبي الرئيسي: أعمدة تتكدس عمودياً (Tailwind md: يقوم بمعظم العمل أصلاً؛ هذا استكمال للحالات الفائتة) */
+    #chat-panel { height: 70vh !important; }
+
+    /* نصوص أصغر قليلاً وهوامش أضيق تلقائياً لعناصر النوافذ لتفادي التكدس */
+    .modal-body, [id$="-modal"] .p-6 { padding: 14px !important; }
+    .modal-body h3, [id$="-modal"] h3 { font-size: 1rem !important; }
+
+    /* منع تمدد الأزرار المتجاورة خارج الشاشة */
+    .grid-cols-5, .grid-cols-6 { gap: 6px !important; }
+}
+
+/* ✅ تحسين اللمس: أهداف نقر أكبر بما يكفي (لا تقل عن 40px) بدل الاعتماد على أحجام سطح المكتب */
+@media (pointer: coarse) {
+    button, .action-btn, .btn-action { min-height: 38px; }
+    input, select, textarea { font-size: 16px !important; } /* يمنع تكبير Safari التلقائي عند التركيز */
+}
