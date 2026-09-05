@@ -994,3 +994,33 @@ body {
     from { opacity: 0; transform: scale(0.92) translateY(10px); }
     to { opacity: 1; transform: scale(1) translateY(0); }
 }
+
+/* ================================================= */
+/* ✅ استجابة كاملة للجوال — لوحة التحكم */
+/* ================================================= */
+@media (max-width: 768px) {
+    .admin-sidebar {
+        width: 260px;
+        transform: translateX(100%); /* مخفي افتراضياً (RTL: يخرج لليمين) */
+        transition: transform 0.3s ease;
+    }
+    .admin-sidebar.active { transform: translateX(0); }
+    .admin-main { margin-right: 0; padding: 70px 12px 20px; }
+    .page-header { flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; }
+    .page-header h1 { font-size: 1.3rem; }
+    .stats-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-card { padding: 15px; flex-direction: column; text-align: center; gap: 8px; }
+    .stat-icon { width: 45px; height: 45px; font-size: 1.2rem; }
+    .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .table { min-width: 650px; } /* يجبر الجدول على التمرير الأفقي بدل التكسر */
+    .modal-content { max-width: 94vw !important; margin: 0 3vw; max-height: 92vh; }
+    .modal-header, .modal-body, .modal-footer { padding: 14px !important; }
+    .modal-footer { flex-wrap: wrap; gap: 6px; }
+    .modal-footer .btn { flex: 1 1 auto; min-width: 100px; font-size: 0.8rem; }
+    .header-actions { flex-direction: column; width: 100%; align-items: stretch; }
+    .search-box input { width: 100%; }
+    .mobile-menu-toggle { display: flex !important; }
+}
+@media (min-width: 769px) {
+    .mobile-menu-toggle { display: none !important; }
+}
