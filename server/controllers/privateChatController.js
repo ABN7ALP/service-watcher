@@ -28,8 +28,8 @@ exports.getOrCreateChat = async (req, res) => {
         const participants = [userId, otherUserId].sort();
         const chatId = participants.join('_');
 
-        let chat = await PrivateChat.findOne({ chatId })
-            .populate('participants', 'username profileImage customId level');
+            let chat = await PrivateChat.findOne({ chatId })
+            .populate('participants', 'username profileImage customId level isOnline lastActive isBot');
 
         if (!chat) {
             const mongoose = require('mongoose');
@@ -44,8 +44,8 @@ exports.getOrCreateChat = async (req, res) => {
                 ]
             });
 
-            chat = await PrivateChat.findById(chat._id)
-                .populate('participants', 'username profileImage customId level');
+               chat = await PrivateChat.findById(chat._id)
+                .populate('participants', 'username profileImage customId level isOnline lastActive isBot');
         }
 
         const rawMessages = await PrivateMessage.find({ chatId: chat.chatId })
