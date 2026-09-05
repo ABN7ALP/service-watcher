@@ -18,7 +18,7 @@ exports.sendFriendRequest = async (req, res) => {
             });
         }
 
-        // 2. البحث عن المستخدمين
+        // 2. البحث عن المستخدمين  
         const sender = await User.findById(senderId);
         const receiver = await User.findById(receiverId);
 
@@ -27,6 +27,9 @@ exports.sendFriendRequest = async (req, res) => {
                 status: 'fail', 
                 message: 'المستخدم غير موجود.' 
             });
+        }
+        if (receiver.isBot) {
+            return res.status(403).json({ status: 'fail', message: 'لا يمكن إرسال طلب صداقة للحساب الرسمي للمنصة.' });
         }
 
         // 3. التحقق من أنهم ليسوا أصدقاء بالفعل
