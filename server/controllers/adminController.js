@@ -380,12 +380,9 @@ exports.approveDeposit = async (req, res) => {
       await user.save();
 
       // ✅ بوت الموقع: إشعار تفصيلي بنجاح الشحن
-      const io = req.app.get('socketio');
-      if (io && user.socketId) {
-        io.to(user.socketId).emit('bot-notification', {
-          message: `🤖 تم شحن رصيدك بمبلغ ${transaction.amount}$ بنجاح. رصيدك الحالي: ${user.balance.toFixed(2)}$`
-        });
-      }
+            const io = req.app.get('socketio');
+      const { sendBotMessage } = require('../utils/botMessenger');
+      await sendBotMessage(io, user._id, `تم شحن رصيدك بمبلغ ${transaction.amount}$ بنجاح ✅\nرصيدك الحالي: ${user.balance.toFixed(2)}$`);
     }
 
     // Log action
@@ -809,17 +806,16 @@ exports.approveCoinPurchase = async (req, res) => {
     purchase.processedAt = new Date();
     await purchase.save();
 
-        const user = await User.findById(purchase.user);
+    const user = await User.findById(purchase.user);
     if (user) {
       user.coins += purchase.coinsAmount;
       await user.save();
       const io = req.app.get('socketio');
       if (io && user.socketId) {
         io.to(user.socketId).emit('coinsUpdated', { newCoins: user.coins, purchaseId: purchase._id });
-        io.to(user.socketId).emit('bot-notification', {
-          message: `🤖 تم إيداع ${purchase.coinsAmount} كوينز في حسابك بنجاح. رصيدك الحالي: ${user.coins} كوينز`
-        });
       }
+      const { sendBotMessage } = require('../utils/botMessenger');
+      await sendBotMessage(io, user._id, `تم إيداع ${purchase.coinsAmount} كوينز في حسابك بنجاح 🪙\nرصيدك الحالي: ${user.coins} كوينز`);
     }
 
     await AdminLog.logAction({
@@ -1168,11 +1164,9 @@ exports.resolveSupportTicket = async (req, res) => {
       }
     }
 
-    const io = req.app.get('socketio');
-    const userSocket = await User.findById(ticket.user).select('socketId');
-    if (io && userSocket?.socketId) {
-      io.to(userSocket.socketId).emit('bot-notification', { message: `🤖 رد فريق الدعم: ${ticket.adminReply || 'تمت مراجعة طلبك'}` });
-    }
+        const io = req.app.get('socketio');
+    const { sendBotMessage } = require('../utils/botMessenger');
+    await sendBotMessage(io, ticket.user, `رد فريق الدعم على طلبك "${ticket.subject}":\n${ticket.adminReply || 'تمت مراجعة طلبك'}`);
 
     res.json({ success: true, message: 'تم تحديث التذكرة', ticket });
   } catch (error) { res.status(500).json({ success: false, message: error.message }); }
