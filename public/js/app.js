@@ -460,6 +460,14 @@ themeToggleBtn.addEventListener('click', toggleTheme);
         document.getElementById('mobile-more-sheet')?.classList.remove('hidden');
         document.getElementById('mobile-more-sheet')?.classList.add('flex');
     });
+
+     // ✅ إغلاق قائمة "المزيد" بالنقر خارجها — تم إصلاحه لأن onclick المضمّن بـ HTML كانت تمنعه سياسة CSP
+    document.getElementById('mobile-more-sheet')?.addEventListener('click', (e) => {
+        if (e.target.id === 'mobile-more-sheet') {
+            e.currentTarget.classList.add('hidden');
+            e.currentTarget.classList.remove('flex');
+        }
+    });
     document.querySelectorAll('.mobile-sheet-item').forEach(item => {
         item.addEventListener('click', () => switchToView(item.dataset.target));
     });
@@ -8181,13 +8189,15 @@ socket.on('privateMessageReceived', async (data) => {
 });
 
 // 🔄 مستمع لتحديث حالة الرسالة
+// ✅ لا نُحدّث الشكل الظاهر للعلامة (✓ مقابل ✓✓) بشكل حي أثناء بقاء المحادثة مفتوحة عند المرسل —
+// العلامة الزرقاء المزدوجة تظهر فقط عند إعادة فتح/تحميل المحادثة من جديد (loadChatHistoryFromServer)
 socket.on('messageStatusUpdated', (data) => {
     console.log('[CHAT] Message status updated:', data.messageId, data.status);
 
     const messageElement = document.querySelector(`[data-message-id="${data.messageId}"]`);
     if (messageElement) {
         const statusContainer = messageElement.querySelector('.message-status');
-        if (statusContainer) {
+        if (statusContainer && false) { // ✅ معطّل عمداً — التحديث الحي للعلامة الزرقاء متوقف بطلب المستخدم
             if (data.status === 'seen') {
                 statusContainer.innerHTML = '<i class="fas fa-check-double text-blue-400 text-xs" title="مقروءة"></i>';
             } else if (data.status === 'delivered') {
@@ -8555,7 +8565,7 @@ function showCreateBattleModal() {
         });
     }
 
-    if (battleForm) {
+        if (battleForm) {
         battleForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
@@ -8573,6 +8583,12 @@ function showCreateBattleModal() {
                 return;
             }
 
+            // ✅ نمط التحميل الموحّد: تعطيل الزر + دوّارة بدل النص أثناء الطلب
+            const submitBtn = battleForm.querySelector('button[type="submit"]');
+            const originalBtnHTML = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
             try {
                 const response = await fetch('/api/battles', {
                     method: 'POST',
@@ -8589,14 +8605,16 @@ function showCreateBattleModal() {
                     modal.remove();
                 } else {
                     showNotification(result.message || 'فشل إنشاء التحدي', 'error');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalBtnHTML;
                 }
             } catch (error) {
                 showNotification('خطأ في الاتصال بالخادم', 'error');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnHTML;
             }
         });
     }
-}
-
     document.getElementById('create-battle-btn').addEventListener('click', showCreateBattleModal);
 
     socket.on('newBattle', (battle) => {
