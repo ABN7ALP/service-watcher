@@ -31,8 +31,9 @@ exports.createWithdrawal = async (req, res) => {
 
         // ✅ حد السحب اليومي: نجمع كل طلبات اليوم (المعلّقة والمكتملة، دون المرفوضة) لهذا المستخدم
         const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+        const mongoose = require('mongoose');
         const todayWithdrawalsAgg = await Withdrawal.aggregate([
-            { $match: { user: require('mongoose').Types.ObjectId(userId), status: { $in: ['pending', 'processing', 'completed'] }, createdAt: { $gte: startOfToday } } },
+            { $match: { user: new mongoose.Types.ObjectId(userId), status: { $in: ['pending', 'processing', 'completed'] }, createdAt: { $gte: startOfToday } } },
             { $group: { _id: null, total: { $sum: '$amount' } } }
         ]);
         const todayTotal = todayWithdrawalsAgg[0]?.total || 0;
