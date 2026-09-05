@@ -414,3 +414,15 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 @media (max-width: 480px) {
     .voice-seat { font-size: 0.55rem; border-radius: 50%; }
 }
+
+/* ✅ هدايا الشات العام على الهاتف: قائمة منزلقة من الأسفل بدل نافذة كاملة الشاشة */
+@media (max-width: 767px) {
+    #public-gift-modal { align-items: flex-end !important; padding: 0 !important; }
+    #public-gift-modal > div {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 20px 20px 0 0 !important;
+        max-height: 70vh !important;
+        animation: slideUp 0.25s ease-out;
+    }
+}
