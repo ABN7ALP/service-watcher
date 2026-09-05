@@ -24,9 +24,28 @@ exports.createWithdrawal = async (req, res) => {
         const settings = await SystemSettings.getSettings();
         const minWithdraw = settings.minWithdrawUSD || DEFAULT_MIN_WITHDRAW_USD;
 
+                const SystemSettings = require('../models/SystemSettings');
+        const settings = await SystemSettings.getSettings();
+        const minWithdraw = settings.minWithdrawUSD || DEFAULT_MIN_WITHDRAW_USD;
+
         const numAmount = parseFloat(amount);
         if (!numAmount || numAmount < minWithdraw) {
             return res.status(400).json({ status: 'fail', message: `الحد الأدنى للسحب هو ${minWithdraw}$` });
+        }
+
+        // ✅ حد السحب اليومي: نجمع كل طلبات اليوم (المعلّقة والمكتملة، دون المرفوضة) لهذا المستخدم
+        const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+        const todayWithdrawalsAgg = await Withdrawal.aggregate([
+            { $match: { user: require('mongoose').Types.ObjectId(userId), status: { $in: ['pending', 'processing', 'completed'] }, createdAt: { $gte: startOfToday } } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const todayTotal = todayWithdrawalsAgg[0]?.total || 0;
+        const dailyLimit = settings.maxDailyWithdrawalUSD || 500;
+        if (todayTotal + numAmount > dailyLimit) {
+            return res.status(400).json({
+                status: 'fail',
+                message: `تجاوزت الحد الأقصى للسحب اليومي (${dailyLimit}$). المتبقي المتاح اليوم: ${Math.max(dailyLimit - todayTotal, 0).toFixed(2)}$`
+            });
         }
 
         if (!fullName || fullName.trim().length < 3) {
