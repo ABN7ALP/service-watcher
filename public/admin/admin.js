@@ -1053,6 +1053,21 @@ class AdminDashboard {
                         <div class="form-group"><label>نسبة عمولة التحديات %</label><input type="number" step="0.01" class="form-control" id="s-commission" value="${(s.battleCommissionRate * 100).toFixed(2)}">
                             <small class="text-muted">⚠️ هذا الحقل تجريبي: بعض أجزاء نظام التحديات لا تزال تستخدم قيمة ثابتة بالكود، سيتم توحيدها بتحديث قادم.</small>
                         </div>
+                        <div class="form-group"><label>الحد الأقصى للسحب اليومي ($)</label><input type="number" class="form-control" id="s-maxDailyWithdraw" value="${s.maxDailyWithdrawalUSD}"></div>
+                    </div>
+                </div>
+                <hr>
+                <h6 class="mb-3"><i class="fas fa-exchange-alt text-pink-400"></i> استبدال هدايا المستقبِل</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group"><label>سعر الاستبدال (كوينز لكل 1$)</label><input type="number" class="form-control" id="s-redeemCoinRate" value="${s.coinsToUsdRedemptionRate}">
+                            <small class="text-muted">اجعلها مساوية لسعر الشراء (${s.coinExchangeRate}) لتكافؤ عادل.</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group"><label>نسبة الاسترداد الفعلية %</label><input type="number" class="form-control" id="s-redeemHaircut" value="${s.giftRedemptionHaircutPercent}">
+                            <small class="text-muted">الباقي يُعتبر رسم حماية من التلاعب.</small>
+                        </div>
                     </div>
                 </div>
                 <hr>
@@ -1086,6 +1101,9 @@ class AdminDashboard {
                     minWithdrawUSD: parseFloat(document.getElementById('s-minWithdraw').value),
                     withdrawalFeePer10USD: parseFloat(document.getElementById('s-withdrawFee').value),
                     battleCommissionRate: parseFloat(document.getElementById('s-commission').value) / 100,
+                    maxDailyWithdrawalUSD: parseFloat(document.getElementById('s-maxDailyWithdraw').value),
+                    coinsToUsdRedemptionRate: parseFloat(document.getElementById('s-redeemCoinRate').value),
+                    giftRedemptionHaircutPercent: parseFloat(document.getElementById('s-redeemHaircut').value),
                     shamCashWallet: document.getElementById('s-shamWallet').value.trim(),
                     shamCashHolderName: document.getElementById('s-shamHolder').value.trim(),
                     shamCashQrUrl: document.getElementById('s-shamQr').value.trim(),
