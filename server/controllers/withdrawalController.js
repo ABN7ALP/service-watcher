@@ -24,10 +24,6 @@ exports.createWithdrawal = async (req, res) => {
         const settings = await SystemSettings.getSettings();
         const minWithdraw = settings.minWithdrawUSD || DEFAULT_MIN_WITHDRAW_USD;
 
-                const SystemSettings = require('../models/SystemSettings');
-        const settings = await SystemSettings.getSettings();
-        const minWithdraw = settings.minWithdrawUSD || DEFAULT_MIN_WITHDRAW_USD;
-
         const numAmount = parseFloat(amount);
         if (!numAmount || numAmount < minWithdraw) {
             return res.status(400).json({ status: 'fail', message: `الحد الأدنى للسحب هو ${minWithdraw}$` });
@@ -47,7 +43,6 @@ exports.createWithdrawal = async (req, res) => {
                 message: `تجاوزت الحد الأقصى للسحب اليومي (${dailyLimit}$). المتبقي المتاح اليوم: ${Math.max(dailyLimit - todayTotal, 0).toFixed(2)}$`
             });
         }
-
         if (!fullName || fullName.trim().length < 3) {
             return res.status(400).json({ status: 'fail', message: 'يرجى إدخال الاسم الكامل' });
         }
