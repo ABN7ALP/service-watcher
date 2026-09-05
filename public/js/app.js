@@ -1932,15 +1932,8 @@ document.getElementById('user-id-container').addEventListener('click', () => {
 
 
 
-    // --- 4. إنشاء مقاعد الصوت ---
-    const voiceGrid = document.getElementById('voice-chat-grid');
-    for (let i = 4; i <= 27; i++) {
-        const seat = document.createElement('div');
-        seat.className = 'voice-seat user-seat';
-        seat.dataset.seat = i;
-        seat.textContent = i;
-        voiceGrid.appendChild(seat);
-    }
+    // --- 4. (تم حذف الكود القديم المكرر) — الآن يتم إنشاء الـ 80 مقعداً بالكامل
+    // داخل showVoiceRoomsView() فقط، والتي تُستدعى تلقائياً عبر switchToView('arena') أعلاه.
     const buyCoinsBtn = document.getElementById('buy-coins-btn');
     if (buyCoinsBtn) {
         buyCoinsBtn.addEventListener('click', showBuyCoinsModal);
@@ -1951,14 +1944,16 @@ document.getElementById('user-id-container').addEventListener('click', () => {
     const depositBalanceBtn = document.getElementById('deposit-balance-btn');
     if (depositBalanceBtn) depositBalanceBtn.addEventListener('click', showDepositModal);
 
-    // --- 5. ربط زر تسجيل الخروج ---
+        // --- 5. ربط زر تسجيل الخروج (مع حماية كاملة من انعدام العنصر لمنع توقف كل الكود بعده) ---
     const logoutBtn = document.getElementById('logoutBtn');
-    logoutBtn.addEventListener('click', () => {
+    function performLogout() {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         window.location.href = '/login.html';
-    });
-
+    }
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', performLogout);
+    }
     // --- 6. تهيئة Socket.IO ---
     const socket = io({
         auth: {
@@ -2229,10 +2224,10 @@ function showXpGainAnimation(amount) {
         showNotification('تم تحديث رصيدك', 'info');
     });
 
-           socket.on('connect_error', (err) => {
+                      socket.on('connect_error', (err) => {
         console.error('Socket Connection Error:', err.message);
         if (err.message === 'Authentication error') {
-            logoutBtn.click();
+            performLogout();
         }
     });
 
