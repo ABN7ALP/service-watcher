@@ -383,3 +383,9 @@ input[type="checkbox"] {
     button, .action-btn, .btn-action { min-height: 38px; }
     input, select, textarea { font-size: 16px !important; } /* يمنع تكبير Safari التلقائي عند التركيز */
 }
+
+
+/* ✅ تحسين عام للخط: تباين أوضح ووزن أفضل للقراءة */
+body { font-weight: 400; letter-spacing: 0.1px; }
+h1, h2, h3, .font-bold, strong { font-weight: 700 !important; }
+button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
