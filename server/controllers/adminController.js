@@ -648,7 +648,8 @@ exports.updateSystemSettings = async (req, res) => {
       'shamCashWallet', 'shamCashHolderName', 'shamCashQrUrl',
       'visaCardNumber', 'visaHolderName',
       'minWithdrawUSD', 'withdrawalFeePer10USD',
-      'battleCommissionRate', 'maintenanceMode', 'maintenanceMessage'
+      'battleCommissionRate', 'maintenanceMode', 'maintenanceMessage',
+      'coinsToUsdRedemptionRate', 'giftRedemptionHaircutPercent', 'maxDailyWithdrawalUSD'
     ];
     const updates = {};
     for (const field of allowedFields) {
