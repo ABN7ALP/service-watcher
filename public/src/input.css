@@ -389,3 +389,28 @@ input[type="checkbox"] {
 body { font-weight: 400; letter-spacing: 0.1px; }
 h1, h2, h3, .font-bold, strong { font-weight: 700 !important; }
 button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
+
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.mobile-nav-item.active { color: #a855f7 !important; }
+.mobile-nav-item.active i { transform: translateY(-2px); }
+
+/* ✅ 80 مقعد غرفة صوت — تصميم مضغوط وواضح على كل الأحجام */
+.voice-seat {
+    aspect-ratio: 1/1;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; font-weight: bold;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+.voice-seat.user-seat:hover { background: rgba(139,92,246,0.25); border-color: #a855f7; transform: scale(1.05); }
+.voice-seat.admin-seat { background: linear-gradient(135deg,#7c2d12,#450a0a); border-color: #f59e0b; color: #fbbf24; cursor: not-allowed; }
+.voice-seat.occupied { background: rgba(139,92,246,0.35); border-color: #a855f7; }
+
+@media (max-width: 480px) {
+    .voice-seat { font-size: 0.6rem; border-radius: 10px; }
+}
