@@ -2146,12 +2146,39 @@ function showXpGainAnimation(amount) {
         showNotification('تم تحديث رصيدك', 'info');
     });
 
-        socket.on('connect_error', (err) => {
+           socket.on('connect_error', (err) => {
         console.error('Socket Connection Error:', err.message);
         if (err.message === 'Authentication error') {
             logoutBtn.click();
         }
     });
+
+    // ✅ نافذة انقطاع الشبكة — تظهر عند فقدان الاتصال، وتختفي تلقائياً عند العودة
+    let offlineModalTimer = null;
+    function showOfflineModal() {
+        if (document.getElementById('offline-modal')) return;
+        offlineModalTimer = setTimeout(() => {
+            const html = `
+                <div id="offline-modal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[1000] p-4">
+                    <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-xs text-white text-center p-6 border border-red-500/30">
+                        <i class="fas fa-wifi-slash fa-2x text-red-400 mb-3" style="opacity:.9"></i>
+                        <p class="font-bold mb-1">لا يوجد اتصال بالإنترنت</p>
+                        <p class="text-xs text-gray-400 mb-4">جاري محاولة إعادة الاتصال تلقائياً...</p>
+                        <div class="w-6 h-6 border-2 border-purple-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', html);
+        }, 2500); // تأخير بسيط لتفادي وميض عند انقطاع خفيف جداً (أقل من ثانيتين)
+    }
+    function hideOfflineModal() {
+        clearTimeout(offlineModalTimer);
+        document.getElementById('offline-modal')?.remove();
+    }
+    socket.on('disconnect', showOfflineModal);
+    socket.io.on('reconnect', () => { hideOfflineModal(); refreshUserData(); });
+    window.addEventListener('offline', showOfflineModal);
+    window.addEventListener('online', hideOfflineModal);
 
     // ✅ حظر لحظي: إذا حظرك الأدمن الآن وأنت متصل، تظهر النافذة فوراً بدل انتظار أي طلب لاحق
     socket.on('account-banned', ({ reason, banExpires, isPermanent }) => {
@@ -8006,7 +8033,6 @@ function showVideoPlayer(videoUrl, message) {
 socket.on('privateMessageReceived', async (data) => {
     console.log('[CHAT] Private message received:', data.message?._id);
     
-    // التحقق إذا كانت نافذة الدردشة مفتوحة مع هذا المستخدم
     const chatModal = document.getElementById('private-chat-modal');
     const targetUserId = chatModal?.dataset?.targetUserId;
     
@@ -8014,27 +8040,12 @@ socket.on('privateMessageReceived', async (data) => {
         // عرض الرسالة في الدردشة المفتوحة
         displayPrivateMessage(data.message, false);
         
-        // تحديث حالة الرسالة كـ "تم التسليم"
-        setTimeout(async () => {
-            try {
-                const response = await fetch('/api/private-chat/message/status', {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        messageId: data.message._id,
-                        status: 'delivered'
-                    })
-                });
-            } catch (error) {
-                console.error('[CHAT] Error marking as delivered:', error);
-            }
-        }, 1000);
-        
-        // إشعار بسيط
-        showNotification(`رسالة جديدة من ${data.senderName}`, 'info');
+        // ✅ المحادثة مفتوحة فعلياً الآن → تُصبح "مُشاهَدة" فوراً بلا انتظار (بدل الاكتفاء بـ"تم التسليم")
+        try {
+            await fetch(`/api/private-chat/chat/${data.senderId}/read`, {
+                method: 'PUT', headers: { 'Authorization': `Bearer ${token}` }
+            });
+        } catch (error) { console.error('[CHAT] Error marking as seen instantly:', error); }
         
     } else {
         // إشعار إذا كانت الدردشة غير مفتوحة
