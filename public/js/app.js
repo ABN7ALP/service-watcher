@@ -1341,53 +1341,6 @@ document.querySelectorAll('.unblock-user-btn').forEach(btn => {
 });
  }
 
-// دالة لإعادة عرض ساحة التحديات
-function showArenaView() {
-    mainContent.innerHTML = `
-        <div class="flex justify-between items-center mb-4">
-            <h2 class="text-xl font-bold"><i class="fas fa-gamepad"></i> ساحة التحديات</h2>
-            <button id="create-battle-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
-                <i class="fas fa-plus"></i>
-                <span>إنشاء تحدي</span>
-            </button>
-        </div>
-        <div id="battle-rooms-container" class="flex-grow overflow-y-auto space-y-3 pr-2">
-            <div id="battles-empty-state" class="text-center text-gray-400 py-10 hidden">
-                <i class="fas fa-ghost text-4xl mb-4"></i>
-                <p>لا توجد تحديات متاحة حالياً. كن أول من يبدأ!</p>
-            </div>
-            <div id="battles-loading-state" class="text-center text-gray-400 py-10">
-                <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
-                <p>جاري تحميل التحديات...</p>
-            </div>
-        </div>
-        <div class="mt-4 pt-4 border-t border-gray-700">
-            <h3 class="font-bold mb-3">🎤 غرفة الصوت</h3>
-            <div id="voice-chat-grid" class="grid grid-cols-9 gap-3">
-            </div>
-        </div>
-    `;
-    // إعادة ربط الأحداث وتحميل البيانات
-    document.getElementById('create-battle-btn').addEventListener('click', showCreateBattleModal);
-    loadAvailableBattles();
-    // إعادة إنشاء مقاعد الصوت
-    const voiceGrid = document.getElementById('voice-chat-grid');
-    for (let i = 1; i <= 27; i++) {
-        const seat = document.createElement('div');
-        if (i <= 3) {
-            seat.className = 'voice-seat admin-seat';
-            seat.innerHTML = '<i class="fas fa-crown"></i>';
-        } else {
-            seat.className = 'voice-seat user-seat';
-            seat.textContent = i;
-        }
-        seat.dataset.seat = i;
-        voiceGrid.appendChild(seat);
-    }
-    // إعادة تنشيط زر الرئيسية
-    activateHomeButton();
-}
-
 // دالة جديدة لمعالجة رفع الصورة
 async function handleImageUpload(e) {
     e.preventDefault();
