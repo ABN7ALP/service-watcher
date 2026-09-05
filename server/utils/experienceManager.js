@@ -35,18 +35,14 @@ const addExperience = async (io, userId, amountInUSD, reason = 'loss') => {
 
         await user.save();
 
-        if (user.socketId) {
-            // --- ✅ إرسال مقدار الخبرة المكتسبة مع التحديث ---
+            if (user.socketId) {
             io.to(user.socketId).emit('experienceUpdate', {
-                level: user.level,
-                experience: user.experience,
-                requiredXp: requiredXp,
-                xpGained: xpGained // <-- الإضافة الجديدة
+                level: user.level, experience: user.experience, requiredXp, xpGained
             });
-
-            if (levelUp) {
-                io.to(user.socketId).emit('levelUp', { newLevel: user.level });
-            }
+        }
+        if (levelUp) {
+            const { sendBotMessage } = require('./botMessenger');
+            await sendBotMessage(io, user._id, `🎉 مبروك! لقد وصلت إلى المستوى ${user.level}`);
         }
 
     } catch (error) {
@@ -82,16 +78,12 @@ const grantGiftXp = async (io, userId, xpGained) => {
 
         await user.save();
 
-        if (user.socketId) {
-            io.to(user.socketId).emit('experienceUpdate', {
-                level: user.level,
-                experience: user.experience,
-                requiredXp,
-                xpGained
-            });
-            if (levelUp) {
-                io.to(user.socketId).emit('levelUp', { newLevel: user.level });
-            }
+                if (user.socketId) {
+            io.to(user.socketId).emit('experienceUpdate', { level: user.level, experience: user.experience, requiredXp, xpGained });
+        }
+        if (levelUp) {
+            const { sendBotMessage } = require('./botMessenger');
+            await sendBotMessage(io, user._id, `🎉 مبروك! لقد وصلت إلى المستوى ${user.level}`);
         }
     } catch (error) {
         console.error(`Error granting gift XP for user ${userId}:`, error);
