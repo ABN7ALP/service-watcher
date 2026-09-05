@@ -1,4 +1,5 @@
 const Report = require('../models/Report');
+const User = require('../models/User');
 const { uploadChatImage } = require('../utils/cloudinary');
 
 exports.createReport = async (req, res) => {
@@ -9,8 +10,12 @@ exports.createReport = async (req, res) => {
         if (!reportedUserId || !reason) {
             return res.status(400).json({ status: 'fail', message: 'بيانات البلاغ ناقصة' });
         }
-        if (reportedUserId === reporterId) {
+            if (reportedUserId === reporterId) {
             return res.status(400).json({ status: 'fail', message: 'لا يمكنك الإبلاغ عن نفسك' });
+        }
+        const targetForReport = await User.findById(reportedUserId).select('isBot');
+        if (targetForReport?.isBot) {
+            return res.status(403).json({ status: 'fail', message: 'لا يمكن الإبلاغ عن الحساب الرسمي للمنصة' });
         }
         if (reason === 'other' && (!details || details.trim().length < 5)) {
             return res.status(400).json({ status: 'fail', message: 'يرجى كتابة تفاصيل كافية عند اختيار "أخرى"' });
