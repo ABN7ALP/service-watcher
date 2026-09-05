@@ -366,150 +366,41 @@ themeToggleBtn.addEventListener('click', toggleTheme);
 
 
 
-       // --- ✅ نظام تنقّل موحّد (سطح المكتب: شريط جانبي / الهاتف: شريط سفلي + قائمة "المزيد") ---
-    const navItems = document.querySelectorAll('.nav-item');
-    const mainContent = document.querySelector('main');
+    // --- أضف هذا الكود بعد تعريف appContainer ---
+// --- منطق التنقل في الشريط الجانبي ---
+const navItems = document.querySelectorAll('.nav-item');
+const mainContent = document.querySelector('main'); // استهداف المنطقة الرئيسية
 
-    function activateHomeButton() { switchToView('arena'); }
+// دالة لتنشيط زر "الرئيسية" افتراضيًا
+function activateHomeButton() {
+    navItems.forEach(i => i.classList.remove('bg-purple-600', 'text-white'));
+    const homeButton = document.querySelector('a[href="#arena"]');
+    if (homeButton) {
+        homeButton.classList.add('bg-purple-600', 'text-white');
+    }
+}
 
-    function switchToView(viewId) {
-        // تفعيل الشريط الجانبي (سطح المكتب)
+navItems.forEach(item => {
+    item.addEventListener('click', (e) => {
+        e.preventDefault();
+
         navItems.forEach(i => i.classList.remove('bg-purple-600', 'text-white'));
-        document.querySelector(`.nav-item[href="#${viewId}"]`)?.classList.add('bg-purple-600', 'text-white');
+        item.classList.add('bg-purple-600', 'text-white');
 
-        // تفعيل الشريط السفلي (الهاتف)
-        document.querySelectorAll('.mobile-nav-item').forEach(i => i.classList.remove('active'));
-        document.querySelector(`.mobile-nav-item[data-target="${viewId}"]`)?.classList.add('active');
-
-        document.getElementById('mobile-more-sheet')?.classList.add('hidden');
-
-        const viewRenderers = {
-            arena: showVoiceRoomsView,
-            challenges: showChallengesView,
-            settings: showSettingsView,
-            messages: showMessagesView,
-            leaderboard: showLeaderboardView,
-            'friend-requests': showFriendRequestsModal
-        };
-        (viewRenderers[viewId] || showVoiceRoomsView)();
-    }
-
-    navItems.forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            switchToView(item.getAttribute('href').substring(1));
-        });
-    });
-
-    document.querySelectorAll('.mobile-nav-item[data-target]').forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            switchToView(item.dataset.target);
-        });
-    });
-
-    // زر "المزيد" بالهاتف
-    document.getElementById('mobile-more-btn')?.addEventListener('click', () => {
-        document.getElementById('mobile-more-sheet')?.classList.remove('hidden');
-        document.getElementById('mobile-more-sheet')?.classList.add('flex');
-    });
-    document.querySelectorAll('.mobile-sheet-item').forEach(item => {
-        item.addEventListener('click', () => switchToView(item.dataset.target));
-    });
-
-    // زر الدردشة العامة العائم بالهاتف
-    document.getElementById('mobile-public-chat-fab')?.addEventListener('click', showMobilePublicChatSheet);
-
-    // ✅ الرئيسية الجديدة: غرف صوت فقط (80 مقعداً، 5 منها إدارية 1-5)
-    function showVoiceRoomsView() {
-        mainContent.innerHTML = `
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
-                <span class="text-xs text-gray-400">80 مقعد</span>
-            </div>
-            <div id="voice-chat-grid" class="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2 md:gap-3"></div>
-        `;
-        const voiceGrid = document.getElementById('voice-chat-grid');
-        for (let i = 1; i <= 80; i++) {
-            const seat = document.createElement('div');
-            const isAdminSeat = i <= 5;
-            seat.className = `voice-seat ${isAdminSeat ? 'admin-seat' : 'user-seat'}`;
-            seat.dataset.seat = i;
-            seat.innerHTML = isAdminSeat ? '<i class="fas fa-crown"></i>' : i;
-            if (isAdminSeat) seat.title = 'مقعد محجوز للإدارة';
-            voiceGrid.appendChild(seat);
-        }
-        voiceGrid.querySelectorAll('.user-seat').forEach(seat => {
-            seat.addEventListener('click', () => joinVoiceSeat(parseInt(seat.dataset.seat)));
-        });
-    }
-
-    // ✅ قسم التحديات الجديد: يحوي إنشاء التحدي + قائمة التحديات (منقول بالكامل من الرئيسية القديمة)
-    function showChallengesView() {
-        mainContent.innerHTML = `
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-gamepad text-purple-400"></i> ساحة التحديات</h2>
-                <button id="create-battle-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 text-sm">
-                    <i class="fas fa-plus"></i><span>إنشاء تحدي</span>
-                </button>
-            </div>
-            <div id="battle-rooms-container" class="flex-grow overflow-y-auto space-y-3 pr-1">
-                <div id="battles-empty-state" class="text-center text-gray-400 py-10 hidden">
-                    <i class="fas fa-ghost text-4xl mb-4"></i><p>لا توجد تحديات متاحة حالياً. كن أول من يبدأ!</p>
-                </div>
-                <div id="battles-loading-state" class="text-center text-gray-400 py-10"></div>
-            </div>
-        `;
-        document.getElementById('battles-loading-state').innerHTML = skeletonList(4);
-        document.getElementById('create-battle-btn').addEventListener('click', showCreateBattleModal);
-        loadAvailableBattles();
-    }
-
-    // ✅ نافذة سفلية للدردشة العامة على الهاتف (بدل قسم ثابت يزاحم الرئيسية)
-    function showMobilePublicChatSheet() {
-        const existing = document.getElementById('mobile-public-chat-modal');
-        if (existing) { existing.remove(); return; }
-        const html = `
-            <div id="mobile-public-chat-modal" class="md:hidden fixed inset-0 bg-black/70 z-[70] flex items-end">
-                <div class="bg-gray-900 w-full rounded-t-2xl flex flex-col" style="height:85vh;">
-                    <div class="flex items-center justify-between p-3 border-b border-gray-700">
-                        <h3 class="font-bold flex items-center gap-2"><i class="fas fa-comments text-purple-400"></i> الدردشة العامة</h3>
-                        <button id="close-mobile-public-chat" class="text-gray-400 p-2"><i class="fas fa-times"></i></button>
-                    </div>
-                    <div id="mobile-chat-messages-mirror" class="flex-1 overflow-y-auto p-2"></div>
-                    <div id="mobile-public-typing-indicator" class="text-xs text-purple-400 h-4 px-3"></div>
-                    <div class="p-3 border-t border-gray-700">
-                        <div class="relative">
-                            <input type="text" id="mobileMessageInput" placeholder="اكتب رسالتك..." maxlength="300" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 pr-4 text-white">
-                        </div>
-                        <div class="flex gap-2 mt-2">
-                            <button id="mobile-public-gift-btn" class="bg-pink-600 px-3 py-2 rounded-lg text-white"><i class="fas fa-gift"></i></button>
-                            <button id="mobileSendBtn" class="bg-purple-600 px-4 py-2 w-full rounded-lg text-white flex items-center justify-center gap-2"><i class="fas fa-paper-plane"></i> إرسال</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', html);
-        // ✅ مرآة حقيقية: نعرض نفس عنصر #chat-messages داخل النافذة السفلية بدل تكرار منطق منفصل عرضة للأخطاء
-        const realMessages = document.getElementById('chat-messages');
-        const mirror = document.getElementById('mobile-chat-messages-mirror');
-        if (realMessages && mirror) { mirror.innerHTML = realMessages.innerHTML; mirror.scrollTop = mirror.scrollHeight; }
-
-        document.getElementById('close-mobile-public-chat').addEventListener('click', () => document.getElementById('mobile-public-chat-modal').remove());
-        document.getElementById('mobile-public-gift-btn').addEventListener('click', showPublicGiftModal);
-        const mSend = () => {
-            const val = document.getElementById('mobileMessageInput').value.trim();
-            if (!val) return;
-            document.getElementById('messageInput').value = val;
-            sendMessage();
-            document.getElementById('mobileMessageInput').value = '';
-        };
-        document.getElementById('mobileSendBtn').addEventListener('click', mSend);
-        document.getElementById('mobileMessageInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') mSend(); });
-    }
-
+        const targetId = item.getAttribute('href').substring(1);
         
+        if (targetId === 'settings') {
+            showSettingsView();
+        } else if (targetId === 'messages') {
+            showMessagesView();
+        } else if (targetId === 'leaderboard') {
+            showLeaderboardView();
+        } else {
+            showArenaView();
+        }
+    });
+});
+
 
 
         // =================================================
@@ -1449,6 +1340,33 @@ document.querySelectorAll('.unblock-user-btn').forEach(btn => {
     });
 });
  }
+
+// دالة لإعادة عرض ساحة التحديات
+function showArenaView() {
+    mainContent.innerHTML = `
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold"><i class="fas fa-gamepad"></i> ساحة التحديات</h2>
+            <button id="create-battle-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
+                <i class="fas fa-plus"></i>
+                <span>إنشاء تحدي</span>
+            </button>
+        </div>
+        <div id="battle-rooms-container" class="flex-grow overflow-y-auto space-y-3 pr-2">
+            <div id="battles-empty-state" class="text-center text-gray-400 py-10 hidden">
+                <i class="fas fa-ghost text-4xl mb-4"></i>
+                <p>لا توجد تحديات متاحة حالياً. كن أول من يبدأ!</p>
+            </div>
+            <div id="battles-loading-state" class="text-center text-gray-400 py-10">
+                <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
+                <p>جاري تحميل التحديات...</p>
+            </div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-gray-700">
+            <h3 class="font-bold mb-3">🎤 غرفة الصوت</h3>
+            <div id="voice-chat-grid" class="grid grid-cols-9 gap-3">
+            </div>
+        </div>
+    `;
     // إعادة ربط الأحداث وتحميل البيانات
     document.getElementById('create-battle-btn').addEventListener('click', showCreateBattleModal);
     loadAvailableBattles();
@@ -1466,6 +1384,9 @@ document.querySelectorAll('.unblock-user-btn').forEach(btn => {
         seat.dataset.seat = i;
         voiceGrid.appendChild(seat);
     }
+    // إعادة تنشيط زر الرئيسية
+    activateHomeButton();
+}
 
 // دالة جديدة لمعالجة رفع الصورة
 async function handleImageUpload(e) {
@@ -1851,7 +1772,6 @@ async function handleFriendAction(action, userId, modalElement) {
         
 // استدعاء الدالة عند تحميل الصفحة
 updateUIWithUserData(user);
-switchToView('arena');
 
         // ✅ جلب أحدث بيانات المستخدم من الخادم فور فتح الموقع
 // هذا يضمن ظهور طلبات الصداقة/الإشعارات التي وصلت أثناء إغلاق الموقع
@@ -1950,7 +1870,25 @@ document.getElementById('user-id-container').addEventListener('click', () => {
 
 
 
-    
+    // --- 4. إنشاء مقاعد الصوت ---
+    const voiceGrid = document.getElementById('voice-chat-grid');
+    for (let i = 4; i <= 27; i++) {
+        const seat = document.createElement('div');
+        seat.className = 'voice-seat user-seat';
+        seat.dataset.seat = i;
+        seat.textContent = i;
+        voiceGrid.appendChild(seat);
+    }
+    const buyCoinsBtn = document.getElementById('buy-coins-btn');
+    if (buyCoinsBtn) {
+        buyCoinsBtn.addEventListener('click', showBuyCoinsModal);
+    }
+          const withdrawBtn = document.getElementById('withdraw-balance-btn');
+    if (withdrawBtn) withdrawBtn.addEventListener('click', showWithdrawModal);
+
+    const depositBalanceBtn = document.getElementById('deposit-balance-btn');
+    if (depositBalanceBtn) depositBalanceBtn.addEventListener('click', showDepositModal);
+
     // --- 5. ربط زر تسجيل الخروج ---
     const logoutBtn = document.getElementById('logoutBtn');
     logoutBtn.addEventListener('click', () => {
@@ -7845,18 +7783,17 @@ function displayMessage(message) {
         });
     }
 
-        // --- ✅ منطق توميض الرسالة المردود عليها ---
+    // --- ✅ منطق توميض الرسالة المردود عليها ---
     if (message.replyTo) {
         const originalMessageElement = document.querySelector(`[data-message-id="${message.replyTo._id}"]`);
         if (originalMessageElement) {
             originalMessageElement.classList.add('flash-animation');
-            setTimeout(() => originalMessageElement.classList.remove('flash-animation'), 1000);
+            // إزالة الكلاس بعد انتهاء الأنيميشن
+            setTimeout(() => {
+                originalMessageElement.classList.remove('flash-animation');
+            }, 1000); // مدة الأنيميشن
         }
     }
-
-    // ✅ مزامنة النافذة السفلية بالهاتف إن كانت مفتوحة
-    const mobileMirror = document.getElementById('mobile-chat-messages-mirror');
-    if (mobileMirror) { mobileMirror.appendChild(messageElement.cloneNode(true)); mobileMirror.scrollTop = mobileMirror.scrollHeight; }
 }
 
 
