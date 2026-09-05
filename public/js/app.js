@@ -2308,12 +2308,6 @@ socket.on('levelUp', ({ newLevel }) => {
     socket.on('admin-notification', (data) => {
         showNotification(data.message, data.type === 'warning' ? 'error' : 'info');
     });
-
-        
-    // ✅ إشعارات بوت الموقع (تأكيدات بلاغ، شحن، رد دعم فني)
-    socket.on('bot-notification', (data) => {
-        showNotification(data.message, 'info');
-    });
         
     socket.on('coinsUpdated', ({ newCoins }) => {
     const coinsEl = document.getElementById('coins');
@@ -5014,12 +5008,19 @@ async function loadChatUserData(userId) {
                 
                 const avatar = document.getElementById('chat-user-avatar');
                 const name = document.getElementById('chat-user-name');
+                const chatModal = document.getElementById('private-chat-modal');
                 
                 if (avatar) {
                     avatar.src = user.profileImage;
                     applyFrameToAvatar(avatar, user.activeFrameClass);
                 }
-                if (name) name.innerHTML = `${user.username} ${getAgentBadgeIconHTML(user.isAgent)}`;
+                if (user.isBot) {
+                    if (name) name.innerHTML = `${user.username} <span class="text-purple-400"><i class="fas fa-robot"></i></span>`;
+                    if (chatModal) chatModal.dataset.isBot = 'true';
+                    setupPrivateChatEvents(userId); // إعادة تطبيق تعطيل الإدخال بعد معرفة أنه بوت
+                } else {
+                    if (name) name.innerHTML = `${user.username} ${getAgentBadgeIconHTML(user.isAgent)}`;
+                }
             }
         }
     } catch (error) {
@@ -5040,6 +5041,22 @@ async function loadChatHistory(targetUserId) {
 function setupPrivateChatEvents(targetUserId) {
     const chatModal = document.getElementById('private-chat-modal');
     if (!chatModal) return;
+
+    // ✅ إذا كانت المحادثة مع البوت، نعطّل شريط الإدخال بالكامل (قراءة فقط)
+    if (chatModal.dataset.isBot === 'true') {
+        const inputArea = document.getElementById('private-chat-input-area');
+        if (inputArea) {
+            inputArea.innerHTML = `
+                <div class="text-center py-2">
+                    <p class="text-xs text-gray-400"><i class="fas fa-robot mr-1 text-purple-400"></i> هذا حساب بوت رسمي، لا يمكن الرد عليه</p>
+                </div>
+            `;
+        }
+        const closeBtn = document.getElementById('close-private-chat');
+        if (closeBtn) closeBtn.addEventListener('click', () => chatModal.remove());
+        chatModal.addEventListener('click', (e) => { if (e.target.id === 'private-chat-modal') chatModal.remove(); });
+        return; // لا نُكمل لباقي منطق الإدخال والرد
+    }
     
     // 1. زر الإغلاق
     const closeBtn = document.getElementById('close-private-chat');
