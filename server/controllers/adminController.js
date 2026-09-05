@@ -860,6 +860,11 @@ exports.rejectCoinPurchase = async (req, res) => {
       details: { type: 'coin_purchase', reason }, ipAddress: req.ip
     });
 
+    // ✅ إشعار المستخدم عبر بوت المنصة برفض طلب شراء الكوينز
+    const io = req.app.get('socketio');
+    const { sendBotMessage } = require('../utils/botMessenger');
+    await sendBotMessage(io, purchase.user, `❌ تم رفض طلب شراء الكوينز الخاص بك (${purchase.amountUSD}$).${purchase.adminNotes ? '\nالسبب: ' + purchase.adminNotes : ''}`);
+
     res.json({ success: true, message: 'تم رفض الطلب', purchase });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
