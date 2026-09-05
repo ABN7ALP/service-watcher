@@ -30,9 +30,10 @@ const transactionSchema = new mongoose.Schema({
     enum: ['sham_kash', 'credit_card', 'paypal', 'crypto', null],
     default: null
   },
-  transactionId: {
+    transactionId: {
     type: String,
-    unique: true
+    unique: true,
+    sparse: true // ✅ يسمح بعدة مستندات بلا قيمة دون تعارض فهرسة
   },
   receiptImage: String,
   walletNumber: String,
@@ -57,6 +58,14 @@ const transactionSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true
+});
+
+// ✅ توليد معرّف تلقائي دائماً — يمنع فشل أي إنشاء مستقبلي لم يحدد transactionId يدوياً
+transactionSchema.pre('save', function(next) {
+    if (!this.transactionId) {
+        this.transactionId = `TXN${Date.now()}${Math.floor(Math.random() * 100000)}`;
+    }
+    next();
 });
 
 const Transaction = mongoose.model('Transaction', transactionSchema);
