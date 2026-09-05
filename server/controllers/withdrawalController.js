@@ -170,12 +170,20 @@ exports.reviewWithdrawal = async (req, res) => {
             ipAddress: req.ip
         });
 
-        if (io && user?.socketId) {
+            if (io && user?.socketId) {
             io.to(user.socketId).emit('withdrawalStatusUpdated', {
                 withdrawalId: withdrawal._id,
                 status: withdrawal.status,
                 reason: withdrawal.rejectionReason || null
             });
+        }
+        const { sendBotMessage } = require('../utils/botMessenger');
+        if (user) {
+            await sendBotMessage(io, user._id,
+                action === 'approve'
+                    ? `✅ تمت الموافقة على طلب سحبك بمبلغ ${withdrawal.amount}$`
+                    : `❌ تم رفض طلب سحبك (${withdrawal.amount}$). السبب: ${withdrawal.rejectionReason}\nتم إرجاع المبلغ لرصيدك.`
+            );
         }
 
         res.status(200).json({ status: 'success', message: 'تم تحديث حالة الطلب', data: { withdrawal } });
