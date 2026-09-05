@@ -266,16 +266,43 @@ const initializeSocket = (server) => {
 
     io.use(verifySocketToken);
     
-    io.on('connection', async (socket) => {
+        io.on('connection', async (socket) => {
         console.log(`🟢 User connected: ${socket.id} | UserID: ${socket.user.username}`);
         
         try {
-            await User.findByIdAndUpdate(socket.user.id, { socketId: socket.id });
+            await User.findByIdAndUpdate(socket.user.id, { socketId: socket.id, isOnline: true });
+            // ✅ إعلام الأطراف الذين يحادثونه بأنه أصبح متصلاً (يُحدّث الحالة في نوافذ الدردشة المفتوحة)
+            io.emit('userOnlineStatus', { userId: socket.user.id.toString(), isOnline: true });
         } catch (error) {
             console.error("Failed to update socketId:", error);
         }
 
         socket.join('public-room');
+
+        // ✅ مؤشر الكتابة (خاص وعام)
+        socket.on('typing-start', ({ targetUserId, roomId }) => {
+            if (targetUserId) {
+                User.findById(targetUserId).select('socketId').then(u => {
+                    if (u?.socketId) io.to(u.socketId).emit('userTyping', { userId: socket.user.id.toString(), username: socket.user.username, isTyping: true });
+                });
+            } else if (roomId === 'public') {
+                socket.to('public-room').emit('publicUserTyping', { userId: socket.user.id.toString(), username: socket.user.username, isTyping: true });
+            }
+        });
+        socket.on('typing-stop', ({ targetUserId, roomId }) => {
+            if (targetUserId) {
+                User.findById(targetUserId).select('socketId').then(u => {
+                    if (u?.socketId) io.to(u.socketId).emit('userTyping', { userId: socket.user.id.toString(), isTyping: false });
+                });
+            } else if (roomId === 'public') {
+                socket.to('public-room').emit('publicUserTyping', { userId: socket.user.id.toString(), isTyping: false });
+            }
+        });
+        socket.on('recording-voice', ({ targetUserId, isRecording }) => {
+            User.findById(targetUserId).select('socketId').then(u => {
+                if (u?.socketId) io.to(u.socketId).emit('userRecordingVoice', { userId: socket.user.id.toString(), isRecording });
+            });
+        });
 
 
 // 📨 مستمع لإرسال رسالة خاصة
@@ -604,8 +631,12 @@ socket.on('clearBlockCache', ({ userId, targetUserId }) => {
             }
         });
 
-        socket.on('disconnect', () => {
+                socket.on('disconnect', async () => {
             console.log(`🔴 User disconnected: ${socket.id} | UserID: ${socket.user.username}`);
+            try {
+                await User.findByIdAndUpdate(socket.user.id, { isOnline: false, lastActive: new Date() });
+                io.emit('userOnlineStatus', { userId: socket.user.id.toString(), isOnline: false, lastActive: new Date() });
+            } catch (error) { console.error('Failed to update offline status:', error); }
         });
     });
 
