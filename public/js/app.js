@@ -521,9 +521,10 @@ themeToggleBtn.addEventListener('click', toggleTheme);
     }
 
     // ✅ نافذة سفلية للدردشة العامة على الهاتف (بدل قسم ثابت يزاحم الرئيسية)
+        // ✅ نافذة سفلية للدردشة العامة على الهاتف (بدل قسم ثابت يزاحم الرئيسية)
     function showMobilePublicChatSheet() {
         const existing = document.getElementById('mobile-public-chat-modal');
-        if (existing) { existing.remove(); return; }
+        if (existing) { closeMobilePublicChatSheet(); return; }
         const html = `
             <div id="mobile-public-chat-modal" class="md:hidden fixed inset-0 bg-black/70 z-[70] flex items-end">
                 <div class="bg-gray-900 w-full rounded-t-2xl flex flex-col" style="height:85vh;">
@@ -531,7 +532,7 @@ themeToggleBtn.addEventListener('click', toggleTheme);
                         <h3 class="font-bold flex items-center gap-2"><i class="fas fa-comments text-purple-400"></i> الدردشة العامة</h3>
                         <button id="close-mobile-public-chat" class="text-gray-400 p-2"><i class="fas fa-times"></i></button>
                     </div>
-                    <div id="mobile-chat-messages-mirror" class="flex-1 overflow-y-auto p-2"></div>
+                    <div id="mobile-chat-messages-slot" class="flex-1 overflow-y-auto p-2"></div>
                     <div id="mobile-public-typing-indicator" class="text-xs text-purple-400 h-4 px-3"></div>
                     <div class="p-3 border-t border-gray-700">
                         <div class="relative">
@@ -546,12 +547,18 @@ themeToggleBtn.addEventListener('click', toggleTheme);
             </div>
         `;
         document.body.insertAdjacentHTML('beforeend', html);
-        // ✅ مرآة حقيقية: نعرض نفس عنصر #chat-messages داخل النافذة السفلية بدل تكرار منطق منفصل عرضة للأخطاء
-        const realMessages = document.getElementById('chat-messages');
-        const mirror = document.getElementById('mobile-chat-messages-mirror');
-        if (realMessages && mirror) { mirror.innerHTML = realMessages.innerHTML; mirror.scrollTop = mirror.scrollHeight; }
 
-        document.getElementById('close-mobile-public-chat').addEventListener('click', () => document.getElementById('mobile-public-chat-modal').remove());
+        // ✅ الإصلاح الجذري: بدل نسخ innerHTML (يفقد كل مستمعات الأحداث)، ننقل العنصر الحقيقي #chat-messages
+        // نفسه إلى داخل النافذة السفلية، فتبقى كل أحداثه (الرد/الإبلاغ/فتح البروفايل) تعمل تماماً كسطح المكتب
+        const realMessages = document.getElementById('chat-messages');
+        const slot = document.getElementById('mobile-chat-messages-slot');
+        if (realMessages && slot) {
+            slot.appendChild(realMessages);
+            realMessages.classList.remove('min-h-[300px]');
+            realMessages.scrollTop = realMessages.scrollHeight;
+        }
+
+        document.getElementById('close-mobile-public-chat').addEventListener('click', closeMobilePublicChatSheet);
         document.getElementById('mobile-public-gift-btn').addEventListener('click', showPublicGiftModal);
         const mSend = () => {
             const val = document.getElementById('mobileMessageInput').value.trim();
@@ -562,6 +569,16 @@ themeToggleBtn.addEventListener('click', toggleTheme);
         };
         document.getElementById('mobileSendBtn').addEventListener('click', mSend);
         document.getElementById('mobileMessageInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') mSend(); });
+    }
+
+    // ✅ إعادة عنصر الدردشة الحقيقي لمكانه الأصلي بلوحة سطح المكتب قبل إغلاق النافذة السفلية
+    function closeMobilePublicChatSheet() {
+        const realMessages = document.getElementById('chat-messages');
+        const desktopTypingIndicator = document.getElementById('public-typing-indicator');
+        if (realMessages && desktopTypingIndicator && desktopTypingIndicator.parentNode) {
+            desktopTypingIndicator.parentNode.insertBefore(realMessages, desktopTypingIndicator);
+        }
+        document.getElementById('mobile-public-chat-modal')?.remove();
     }
 
 
@@ -2826,93 +2843,80 @@ async function showMiniProfileModal(userId) {
                 <span class="text-xs mt-1">حظر</span>
             </button>`;
 
-        const modalHTML = `
-         <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[310] p-4">
-                <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white transform scale-95 transition-transform duration-300 border-2 border-purple-500/30">
-                    
-                    <div class="flex flex-col items-center px-4 pt-6">
-                              <img src="${profileUser.profileImage}" 
-                             class="w-28 h-28 rounded-full border-4 border-purple-500 object-cover shadow-lg ${profileUser.activeFrameClass || ''}">
-                        
-                        <h2 class="text-xl font-bold mt-4">${profileUser.username} ${getAgentBadgeHTML(profileUser.isAgent)}</h2>
-                        <div class="text-xs text-gray-400 mt-1 cursor-pointer flex items-center gap-2 copy-id-btn">
+                const modalHTML = `
+         <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[310] p-3">
+                <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-[300px] sm:max-w-xs text-white transform scale-95 transition-transform duration-300 border border-purple-500/25 overflow-hidden">
+
+                    <div class="relative bg-gradient-to-r from-purple-700/30 to-pink-700/25 pt-5 pb-3 px-4 text-center">
+                        <img src="${profileUser.profileImage}" 
+                             class="w-16 h-16 rounded-full mx-auto border-4 border-gray-900 object-cover shadow-lg ${profileUser.activeFrameClass || ''}">
+                        <h2 class="text-sm font-bold mt-2 flex items-center justify-center gap-1">${profileUser.username} ${getAgentBadgeHTML(profileUser.isAgent)}</h2>
+                        <div class="text-[10px] text-gray-300 mt-1 cursor-pointer inline-flex items-center gap-1.5 copy-id-btn bg-black/25 px-2 py-0.5 rounded-full">
                            <i class="fas fa-id-card"></i>
-                           <span>ID: ${profileUser.customId}</span>
-                           <i class="fas fa-copy text-xs"></i>
+                           <span>${profileUser.customId}</span>
+                           <i class="fas fa-copy"></i>
                         </div>
-                        
-                        <div class="mt-3 w-full">
-                            <p id="profile-user-status" class="text-sm text-gray-300 italic text-center px-4 py-2 bg-gray-800/50 rounded-lg border border-gray-700">
-                                ${profileUser.status || '🚀 جاهز للتحديات!'}
-                            </p>
-                        </div>
-                        
                         ${isBlockedByMe ? `
-                            <div class="mt-2 bg-red-900/30 border border-red-700 rounded-full px-3 py-1">
-                                <span class="text-xs text-red-300">
+                            <div class="mt-2">
+                                <span class="text-[10px] bg-red-900/50 text-red-300 px-2 py-0.5 rounded-full">
                                     <i class="fas fa-ban mr-1"></i> محظور من قبلك
                                 </span>
                             </div>
                         ` : ''}
                     </div>
-                    
-                    <div class="grid grid-cols-2 gap-4 p-6">
-                        <div class="bg-gray-800/50 p-4 rounded-xl text-center hover:bg-gray-700/50 transition group">
-                            <div class="text-3xl font-bold text-yellow-400 mb-1">${profileUser.level}</div>
-                            <div class="text-xs text-gray-400">المستوى</div>
-                            <div class="text-xs text-gray-500 mt-2 opacity-0 group-hover:opacity-100 transition">
-                                ${profileUser.experience} XP
-                            </div>
+
+                    <p id="profile-user-status" class="text-[11px] text-gray-300 italic text-center px-4 py-2 border-b border-gray-700/50 truncate">
+                        ${profileUser.status || '🚀 جاهز للتحديات!'}
+                    </p>
+
+                    <div class="grid grid-cols-2 divide-x divide-x-reverse divide-gray-700/50 border-b border-gray-700/50">
+                        <div class="text-center py-2">
+                            <div class="text-lg font-bold text-yellow-400">${profileUser.level}</div>
+                            <div class="text-[10px] text-gray-400">المستوى</div>
                         </div>
-                        
-                        <div class="bg-gray-800/50 p-4 rounded-xl text-center hover:bg-gray-700/50 transition group">
-                            <div class="text-3xl font-bold text-purple-400 mb-1">${profileUser.friends ? profileUser.friends.length : 0}</div>
-                            <div class="text-xs text-gray-400">الأصدقاء</div>
-                            <div class="text-xs text-gray-500 mt-2 opacity-0 group-hover:opacity-100 transition">
-                                ${profileUser.friends && profileUser.friends.length > 0 ? 
-                                    `${profileUser.friends.length} صديق` : 
-                                    'لا توجد أصدقاء'}
-                            </div>
+                        <div class="text-center py-2">
+                            <div class="text-lg font-bold text-purple-400">${profileUser.friends ? profileUser.friends.length : 0}</div>
+                            <div class="text-[10px] text-gray-400">الأصدقاء</div>
                         </div>
                     </div>
-                    
-                    <div class="grid grid-cols-2 gap-3 px-6 pb-6 text-sm">
-                        <div class="flex items-center gap-3 p-2 bg-gray-800/30 rounded-lg">
-                            <i class="fas ${genderInfo.icon} w-4 text-center ${genderInfo.color}"></i>
+
+                    <div class="grid grid-cols-2 gap-1.5 px-3 py-2.5 text-[11px]">
+                        <div class="flex items-center gap-1.5 bg-gray-800/40 rounded-lg px-2 py-1.5">
+                            <i class="fas ${genderInfo.icon} ${genderInfo.color} w-3 text-center"></i>
                             <span>${genderInfo.text}</span>
                         </div>
-                        <div class="flex items-center gap-3 p-2 bg-gray-800/30 rounded-lg">
-                            <i class="fas fa-birthday-cake w-4 text-center text-pink-400"></i>
+                        <div class="flex items-center gap-1.5 bg-gray-800/40 rounded-lg px-2 py-1.5">
+                            <i class="fas fa-birthday-cake text-pink-400 w-3 text-center"></i>
                             <span>${profileUser.age} سنة</span>
                         </div>
-                        <div class="flex items-center gap-3 p-2 bg-gray-800/30 rounded-lg">
-                            <i class="fas ${socialInfo.icon} w-4 text-center text-red-400"></i>
+                        <div class="flex items-center gap-1.5 bg-gray-800/40 rounded-lg px-2 py-1.5">
+                            <i class="fas ${socialInfo.icon} text-red-400 w-3 text-center"></i>
                             <span>${socialInfo.text}</span>
                         </div>
-                        <div class="flex items-center gap-3 p-2 bg-gray-800/30 rounded-lg">
-                            <i class="fas ${educationInfo.icon} w-4 text-center text-blue-400"></i>
+                        <div class="flex items-center gap-1.5 bg-gray-800/40 rounded-lg px-2 py-1.5">
+                            <i class="fas ${educationInfo.icon} text-blue-400 w-3 text-center"></i>
                             <span>${educationInfo.text}</span>
                         </div>
                     </div>
-                    
-                                                  <div id="profile-action-buttons" class="grid grid-cols-6 gap-2 border-t border-gray-700/50 p-4">
+
+                    <div id="profile-action-buttons" class="grid grid-cols-6 gap-1 border-t border-gray-700/50 p-2 bg-black/10">
                         ${friendButtonHTML}
                         <button class="action-btn message-btn" data-user-id="${profileUser._id}">
                               <i class="fas fa-comment-dots"></i>
-                           <span class="text-xs mt-1">رسالة</span>
+                           <span class="text-[9px] mt-0.5">رسالة</span>
                          </button>
                         <button class="action-btn gift-action-btn text-pink-400 hover:bg-pink-900" data-user-id="${profileUser._id}">
                             <i class="fas fa-gift"></i>
-                            <span class="text-xs mt-1">هدية</span>
+                            <span class="text-[9px] mt-0.5">هدية</span>
                         </button>
                         ${blockButtonHTML}
                         <button class="action-btn report-user-btn text-orange-400 hover:bg-orange-900" data-user-id="${profileUser._id}" data-username="${profileUser.username}">
                             <i class="fas fa-flag"></i>
-                            <span class="text-xs mt-1">إبلاغ</span>
+                            <span class="text-[9px] mt-0.5">إبلاغ</span>
                         </button>
                         <button class="action-btn close-mini-profile-btn">
                             <i class="fas fa-times"></i>
-                            <span class="text-xs mt-1">إغلاق</span>
+                            <span class="text-[9px] mt-0.5">إغلاق</span>
                         </button>
                     </div>
                 </div>
@@ -8779,9 +8783,14 @@ function showReplyBar(message) {
         replyBar = document.createElement('div');
         replyBar.id = 'reply-bar';
         replyBar.className = 'p-2 bg-gray-600 rounded-t-lg text-sm flex justify-between items-center';
-        // أضف الشريط قبل صندوق إدخال الدردشة
-        const chatInputContainer = document.querySelector('.chat-input-container');
-        chatInputContainer.parentNode.insertBefore(replyBar, chatInputContainer);
+    }
+    // ✅ يدعم كلا الوضعين: نافذة الهاتف السفلية أو شريط الدردشة بسطح المكتب
+    const mobileModal = document.getElementById('mobile-public-chat-modal');
+    const targetContainer = mobileModal
+        ? mobileModal.querySelector('.p-3.border-t')
+        : document.querySelector('.chat-input-container');
+    if (targetContainer && targetContainer.parentNode) {
+        targetContainer.parentNode.insertBefore(replyBar, targetContainer);
     }
     replyBar.innerHTML = `
         <span>الرد على <strong>${message.sender.username}</strong></span>
