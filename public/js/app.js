@@ -2234,22 +2234,24 @@ function showXpGainAnimation(amount) {
     // =========== قسم عام وأحداث السوكيت =============
     // =================================================
 
-    function showNotification(message, type = 'info') {
-    let container = document.getElementById('notification-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'notification-container';
-        // --- ✅ التعديل هنا: من top-5 إلى bottom-5 ---
-        container.className = 'fixed bottom-5 right-5 z-50 space-y-2';
-        document.body.appendChild(container);
-    }
-        const colors = { success: 'bg-green-500', error: 'bg-red-500', info: 'bg-blue-500' };
-        const icon = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle' };
+        function showNotification(message, type = 'info') {
+        // ✅ استُبدل الصندوق الجانبي المزعج بإشعار عائم أنيق يظهر أعلى المنتصف ثم يختفي تلقائياً
+        const colors = { success: 'bg-green-500/90', error: 'bg-red-500/90', info: 'bg-purple-600/90', warning: 'bg-yellow-500/90' };
+        const icon = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle', warning: 'fa-exclamation-triangle' };
+
+        const stacked = document.querySelectorAll('.floating-toast').length;
         const notification = document.createElement('div');
-        notification.className = `flex items-center p-4 mb-4 text-sm text-white rounded-lg shadow-lg ${colors[type]} animate-pulse`;
-        notification.innerHTML = `<i class="fas ${icon[type]} mr-3"></i><span>${message}</span>`;
-        container.appendChild(notification);
-        setTimeout(() => notification.remove(), 5000);
+        notification.className = `floating-toast fixed left-1/2 -translate-x-1/2 z-[600] flex items-center gap-2 px-4 py-2.5 rounded-full text-white text-sm shadow-2xl backdrop-blur-sm ${colors[type] || colors.info}`;
+        notification.style.top = `${16 + stacked * 52}px`;
+        notification.innerHTML = `<i class="fas ${icon[type] || icon.info}"></i><span>${message}</span>`;
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+            notification.style.transition = 'opacity 0.4s, transform 0.4s';
+            notification.style.opacity = '0';
+            notification.style.transform = 'translate(-50%, -12px)';
+            setTimeout(() => notification.remove(), 400);
+        }, 2800);
     }
         
     // ✅ نافذة الحظر داخل التطبيق (لمستخدم كان متصلاً ثم حُظر لحظياً، أو رفض الخادم طلباً بسبب الحظر)
@@ -2318,7 +2320,7 @@ function showXpGainAnimation(amount) {
             localUser.balance = newBalance;
             localStorage.setItem('user', JSON.stringify(localUser));
         }
-        showNotification('تم تحديث رصيدك', 'info');
+        // ✅ تمت إزالة إشعار "تم تحديث رصيدك" — تحديث الرقم بالهيدر كافٍ
     });
 
                       socket.on('connect_error', (err) => {
@@ -2549,7 +2551,7 @@ socket.on('levelUp', ({ newLevel }) => {
         }
     });
 
-    socket.on('coinsUpdated', ({ newCoins }) => {
+        socket.on('coinsUpdated', ({ newCoins }) => {
     const coinsEl = document.getElementById('coins');
     if (coinsEl) coinsEl.textContent = newCoins;
     const localUser = JSON.parse(localStorage.getItem('user'));
@@ -2557,7 +2559,7 @@ socket.on('levelUp', ({ newLevel }) => {
         localUser.coins = newCoins;
         localStorage.setItem('user', JSON.stringify(localUser));
     }
-    showNotification('تم إيداع رصيدك بنجاح 🎉', 'success');
+    // ✅ تمت إزالة إشعار "تم إيداع رصيدك بنجاح" — تحديث الرقم بالهيدر كافٍ
 });
 
     socket.on('giftReceived', (data) => {
