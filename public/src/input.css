@@ -432,17 +432,3 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     #chat-messages .message-container img { width: 26px !important; height: 26px !important; }
     #chat-messages .message-container p { font-size: 0.82rem !important; line-height: 1.35; }
 }
-/* ✅ أزرار الشحن/السحب/شراء الكوينز بجانب الرصيد — أصغر وأدق على الهاتف */
-@media (max-width: 640px) {
-    #deposit-balance-btn, #withdraw-balance-btn, #buy-coins-btn {
-        width: 20px !important;
-        height: 20px !important;
-    }
-    #deposit-balance-btn i, #withdraw-balance-btn i, #buy-coins-btn i {
-        font-size: 0.6rem !important;
-    }
-    .balance, .coins {
-        padding: 5px 8px !important;
-        gap: 5px !important;
-    }
-}
