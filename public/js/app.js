@@ -472,8 +472,18 @@ themeToggleBtn.addEventListener('click', toggleTheme);
         item.addEventListener('click', () => switchToView(item.dataset.target));
     });
 
-    // زر الدردشة العامة العائم بالهاتف
+        // زر الدردشة العامة العائم بالهاتف
     document.getElementById('mobile-public-chat-fab')?.addEventListener('click', showMobilePublicChatSheet);
+
+    // ✅ زر إرسال الهدايا بالشريط السفلي
+    document.getElementById('mobile-voice-gift-btn')?.addEventListener('click', showPublicGiftModal);
+
+    // ✅ زر "ملفي الشخصي" داخل قائمة المزيد
+    document.getElementById('mobile-sheet-my-profile-btn')?.addEventListener('click', () => {
+        document.getElementById('mobile-more-sheet')?.classList.add('hidden');
+        document.getElementById('mobile-more-sheet')?.classList.remove('flex');
+        showMyProfileModal();
+    });
 
     // ✅ الرئيسية الجديدة: غرف صوت فقط (80 مقعداً، 5 منها إدارية 1-5)
     function showVoiceRoomsView() {
@@ -2770,7 +2780,57 @@ function showFloatingAlert(message, icon = 'fa-check-circle', color = 'bg-green-
         alertElement.remove();
     }, 1900);
 }
-     
+
+        // --- ✅ دالة جديدة: عرض ملفي الشخصي (مختصر) من قائمة "المزيد" ---
+function showMyProfileModal() {
+    const existing = document.getElementById('my-profile-modal');
+    if (existing) existing.remove();
+
+    const localUser = JSON.parse(localStorage.getItem('user')) || {};
+    const requiredXp = calculateRequiredXp(localUser.level || 1);
+    const progress = Math.min(((localUser.experience || 0) / requiredXp) * 100, 100);
+
+    const html = `
+        <div id="my-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[310] p-3">
+            <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-[280px] text-white border border-purple-500/25 overflow-hidden">
+                <div class="relative bg-gradient-to-r from-purple-700/30 to-pink-700/25 pt-5 pb-3 px-4 text-center">
+                    <img src="${localUser.profileImage}" class="w-16 h-16 rounded-full mx-auto border-4 border-gray-900 object-cover shadow-lg ${localUser.activeFrameClass || ''}">
+                    <h2 class="text-sm font-bold mt-2 flex items-center justify-center gap-1">${localUser.username || ''} ${getAgentBadgeHTML(localUser.isAgent)}</h2>
+                    <div class="text-[10px] text-gray-300 mt-1 inline-flex items-center gap-1.5 bg-black/25 px-2 py-0.5 rounded-full">
+                        <i class="fas fa-id-card"></i><span>${localUser.customId || ''}</span>
+                    </div>
+                </div>
+                <div class="px-4 py-3 border-b border-gray-700/50">
+                    <div class="flex justify-between items-center text-[11px] mb-1">
+                        <span class="font-bold text-yellow-400">المستوى ${localUser.level || 1}</span>
+                        <span class="text-gray-400">${Math.floor(localUser.experience || 0)}/${requiredXp} XP</span>
+                    </div>
+                    <div class="w-full bg-gray-700 rounded-full h-1.5">
+                        <div class="bg-gradient-to-r from-yellow-400 to-orange-500 h-1.5 rounded-full" style="width:${progress}%"></div>
+                    </div>
+                </div>
+                <div class="px-4 py-3 border-b border-gray-700/50">
+                    <p class="text-[10px] text-gray-400 mb-1">حالتك الحالية</p>
+                    <p class="text-xs text-gray-200 italic truncate">${localUser.status || '🚀 جاهز للتحديات!'}</p>
+                </div>
+                <div class="grid grid-cols-2 gap-2 p-3">
+                    <button id="my-profile-edit-status" class="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1"><i class="fas fa-pen"></i> تعديل الحالة</button>
+                    <button id="my-profile-open-settings" class="bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1"><i class="fas fa-cog"></i> الإعدادات</button>
+                </div>
+                <button id="close-my-profile-modal" class="w-full text-gray-400 hover:text-white text-xs py-2.5 border-t border-gray-700/50">إغلاق</button>
+            </div>
+        </div>
+    `;
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', html);
+    const modal = document.getElementById('my-profile-modal');
+
+    document.getElementById('my-profile-edit-status').addEventListener('click', () => { showStatusEditModal(); });
+    document.getElementById('my-profile-open-settings').addEventListener('click', () => { modal.remove(); switchToView('settings'); });
+    document.getElementById('close-my-profile-modal').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target.id === 'my-profile-modal') modal.remove(); });
+}
+
+        
 
         // --- ✅ دالة جديدة لعرض الملف الشخصي المصغر ---
 async function showMiniProfileModal(userId) {
