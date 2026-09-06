@@ -111,7 +111,7 @@
     </button>
 
     <!-- ✅ شريط تنقّل سفلي — الهاتف فقط -->
-    <nav id="mobile-bottom-nav" class="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md border-t border-gray-700 z-30 flex justify-around items-center py-1.5 px-1">
+        <nav id="mobile-bottom-nav" class="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md border-t border-gray-700 z-30 flex justify-around items-center py-1.5 px-1">
         <a href="#arena" class="mobile-nav-item active flex flex-col items-center gap-0.5 text-gray-400 py-1.5 px-2 rounded-lg transition-colors" data-target="arena">
             <i class="fas fa-home text-lg"></i><span class="text-[10px] font-bold">الرئيسية</span>
         </a>
@@ -120,13 +120,17 @@
         </a>
         <a href="#messages" class="mobile-nav-item flex flex-col items-center gap-0.5 text-gray-400 py-1.5 px-2 rounded-lg transition-colors relative" data-target="messages">
             <i class="fas fa-envelope text-lg"></i><span class="text-[10px] font-bold">الرسائل</span>
-            <span id="mobile-messages-badge" class="hidden absolute top-0 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+            <span id="mobile-messages-badge" class="hidden absolute -top-1 -right-1 bg-purple-600 text-white text-[9px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-1">0</span>
         </a>
+        <button id="mobile-voice-gift-btn" class="mobile-nav-item flex flex-col items-center gap-0.5 text-gray-400 py-1.5 px-2 rounded-lg transition-colors">
+            <i class="fas fa-gift text-lg"></i><span class="text-[10px] font-bold">هدايا</span>
+        </button>
         <a href="#leaderboard" class="mobile-nav-item flex flex-col items-center gap-0.5 text-gray-400 py-1.5 px-2 rounded-lg transition-colors" data-target="leaderboard">
             <i class="fas fa-trophy text-lg"></i><span class="text-[10px] font-bold">المتصدرين</span>
         </a>
-        <button id="mobile-more-btn" class="mobile-nav-item flex flex-col items-center gap-0.5 text-gray-400 py-1.5 px-2 rounded-lg transition-colors">
+        <button id="mobile-more-btn" class="mobile-nav-item flex flex-col items-center gap-0.5 text-gray-400 py-1.5 px-2 rounded-lg transition-colors relative">
             <i class="fas fa-bars text-lg"></i><span class="text-[10px] font-bold">المزيد</span>
+            <span id="mobile-more-badge" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-gray-900"></span>
         </button>
     </nav>
 
