@@ -852,35 +852,35 @@ async function showSettingsView() {
     
    mainContent.innerHTML = `
         <div class="p-4">
-            <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
+                        <h2 class="text-xl font-bold mb-4"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
             
             <!-- =========================================== -->
             <!-- 1. قسم الصورة الشخصية (قابل للطي) -->
             <!-- =========================================== -->
-            <div class="mb-4">
-                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="profile-image-section">
-                    <h3 class="text-lg font-bold">
-                        <i class="fas fa-user-circle mr-2"></i>الصورة الشخصية
+                        <div class="mb-3">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-3 rounded-lg cursor-pointer flex justify-between items-center" data-target="profile-image-section">
+                    <h3 class="text-sm font-bold flex items-center gap-2">
+                        <i class="fas fa-user-circle text-purple-400"></i>الصورة الشخصية
                     </h3>
-                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+                    <i class="fas fa-chevron-down text-xs transition-transform duration-300"></i>
                 </div>
                 
-                <div id="profile-image-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
+                <div id="profile-image-section" class="collapsible-content hidden bg-gray-800/30 p-4 rounded-b-lg">
                     <div class="text-center">
                         <img id="settings-profile-image" src="${localUser.profileImage}" 
-                             class="w-32 h-32 rounded-full mx-auto border-4 border-purple-500 mb-4 object-cover shadow-lg">
+                             class="w-20 h-20 rounded-full mx-auto border-4 border-purple-500 mb-3 object-cover shadow-lg">
                         
                         <form id="image-upload-form">
                             <input type="file" id="image-file-input" name="profileImage" class="hidden" accept="image/*">
-                            <div class="flex flex-col sm:flex-row justify-center items-center gap-4 mt-4">
+                            <div class="flex flex-col sm:flex-row justify-center items-center gap-2 mt-3">
                                 <button type="button" id="select-image-btn" 
-                                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-full sm:w-auto">
-                                    <i class="fas fa-image mr-2"></i>اختيار صورة جديدة
+                                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 px-3 rounded-lg w-full sm:w-auto">
+                                    <i class="fas fa-image mr-1"></i>اختيار صورة جديدة
                                 </button>
                                 
                                 <button type="submit" id="upload-image-btn" 
-                                        class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg w-full sm:w-auto hidden">
-                                    <i class="fas fa-upload mr-2"></i>حفظ التغيير
+                                        class="bg-green-600 hover:bg-green-700 text-white font-bold text-xs py-2 px-3 rounded-lg w-full sm:w-auto hidden">
+                                    <i class="fas fa-upload mr-1"></i>حفظ التغيير
                                 </button>
                             </div>
                         </form>
@@ -888,39 +888,38 @@ async function showSettingsView() {
                 </div>
             </div>
 
-
             
             
             <!-- =========================================== -->
             <!-- 2. قسم اسم المستخدم (قابل للطي) -->
             <!-- =========================================== -->
-            <div class="mb-4">
-                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="username-section">
-                    <h3 class="text-lg font-bold">
-                        <i class="fas fa-user-edit mr-2"></i>اسم المستخدم
+                        <div class="mb-3">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-3 rounded-lg cursor-pointer flex justify-between items-center" data-target="username-section">
+                    <h3 class="text-sm font-bold flex items-center gap-2">
+                        <i class="fas fa-user-edit text-purple-400"></i>اسم المستخدم
                     </h3>
-                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+                    <i class="fas fa-chevron-down text-xs transition-transform duration-300"></i>
                 </div>
                 
-                <div id="username-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
-                    <form id="username-update-form" class="space-y-4">
+                <div id="username-section" class="collapsible-content hidden bg-gray-800/30 p-4 rounded-b-lg">
+                    <form id="username-update-form" class="space-y-3">
                         <div>
-                            <label class="block text-sm font-medium mb-2">الاسم الحالي</label>
+                            <label class="block text-xs font-medium mb-1.5">الاسم الحالي</label>
                             <input type="text" value="${localUser.username}" 
-                                   class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 cursor-not-allowed" 
+                                   class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-sm cursor-not-allowed" 
                                    disabled>
                         </div>
                         
                         <div>
-                            <label for="username-input" class="block text-sm font-medium mb-2">الاسم الجديد</label>
+                            <label for="username-input" class="block text-xs font-medium mb-1.5">الاسم الجديد</label>
                             <input type="text" id="username-input" 
-                                   class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-3"
+                                   class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2.5 text-sm"
                                    placeholder="أدخل اسم المستخدم الجديد">
                         </div>
                         
                         <button type="submit" 
-                                class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg">
-                            <i class="fas fa-save mr-2"></i>حفظ التغيير
+                                class="w-full bg-green-600 hover:bg-green-700 text-white font-bold text-sm py-2.5 px-4 rounded-lg">
+                            <i class="fas fa-save mr-1"></i>حفظ التغيير
                         </button>
                     </form>
                 </div>
@@ -929,45 +928,44 @@ async function showSettingsView() {
             <!-- =========================================== -->
             <!-- 3. قسم كلمة المرور (قابل للطي) -->
             <!-- =========================================== -->
-            <div class="mb-4">
-                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="password-section">
-                    <h3 class="text-lg font-bold">
-                        <i class="fas fa-lock mr-2"></i>كلمة المرور
+                        <div class="mb-3">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-3 rounded-lg cursor-pointer flex justify-between items-center" data-target="password-section">
+                    <h3 class="text-sm font-bold flex items-center gap-2">
+                        <i class="fas fa-lock text-purple-400"></i>كلمة المرور
                     </h3>
-                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+                    <i class="fas fa-chevron-down text-xs transition-transform duration-300"></i>
                 </div>
                 
-                <div id="password-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
-                    <form id="password-update-form" class="space-y-4">
+                <div id="password-section" class="collapsible-content hidden bg-gray-800/30 p-4 rounded-b-lg">
+                    <form id="password-update-form" class="space-y-3">
                         <div>
-                            <label for="current-password" class="block text-sm font-medium mb-2">كلمة المرور الحالية</label>
+                            <label for="current-password" class="block text-xs font-medium mb-1.5">كلمة المرور الحالية</label>
                             <input type="password" id="current-password" required 
-                                   class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-3"
+                                   class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2.5 text-sm"
                                    placeholder="••••••••">
                         </div>
                         
                         <div>
-                            <label for="new-password" class="block text-sm font-medium mb-2">كلمة المرور الجديدة</label>
+                            <label for="new-password" class="block text-xs font-medium mb-1.5">كلمة المرور الجديدة</label>
                             <input type="password" id="new-password" required 
-                                   class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-3"
+                                   class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2.5 text-sm"
                                    placeholder="•••••••• (6 أحرف على الأقل)">
                         </div>
                         
                         <div>
-                            <label for="new-password-confirm" class="block text-sm font-medium mb-2">تأكيد كلمة المرور الجديدة</label>
+                            <label for="new-password-confirm" class="block text-xs font-medium mb-1.5">تأكيد كلمة المرور الجديدة</label>
                             <input type="password" id="new-password-confirm" required 
-                                   class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-3"
+                                   class="w-full bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2.5 text-sm"
                                    placeholder="••••••••">
                         </div>
                         
                         <button type="submit" 
-                                class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg">
-                            <i class="fas fa-key mr-2"></i>تغيير كلمة المرور
+                                class="w-full bg-red-600 hover:bg-red-700 text-white font-bold text-sm py-2.5 px-4 rounded-lg">
+                            <i class="fas fa-key mr-1"></i>تغيير كلمة المرور
                         </button>
                     </form>
                 </div>
             </div>
-
             <!-- =========================================== -->
             <!-- 5. قسم متجر الإطارات (الجديد) -->
             <!-- =========================================== -->
@@ -1081,7 +1079,7 @@ async function showSettingsView() {
             <!-- زر تسجيل الخروج -->
             <!-- =========================================== -->
             <div class="mb-4">
-                <button id="settings-logout-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg">
+                    <button id="settings-logout-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold text-sm py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg">
                     <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
                 </button>
             </div>
