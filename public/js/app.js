@@ -375,29 +375,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     // --- استبدل قسم "منطق الوضع الداكن/الفاتح" بالكامل بهذا ---
 
-const themeToggleBtn = document.createElement('button');
-themeToggleBtn.innerHTML = '<i class="fas fa-sun"></i>';
-themeToggleBtn.className = 'fixed bottom-4 left-4 bg-gray-200 dark:bg-gray-700 w-12 h-12 rounded-full text-yellow-400 text-xl flex items-center justify-center shadow-lg z-20 transition-colors duration-300';
-document.body.appendChild(themeToggleBtn);
-
-// دالة لتطبيق الثيم بناءً على الحالة الحالية
-const applyTheme = () => {
-    const isDark = document.documentElement.classList.contains('dark');
-    if (isDark) {
-        themeToggleBtn.innerHTML = '<i class="fas fa-moon"></i>';
-    } else {
-        themeToggleBtn.innerHTML = '<i class="fas fa-sun"></i>';
-    }
-};
-
-// دالة لتبديل الثيم
-const toggleTheme = () => {
-    const isDark = document.documentElement.classList.toggle('dark');
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-    applyTheme();
-};
-
-// عند تحميل الصفحة، تحقق من الثيم المحفوظ أو ثيم النظام
+// ✅ تم تعطيل زر تبديل الوضع الداكن/الفاتح مؤقتاً (سيُفعَّل لاحقاً)، مع إبقاء التطبيق التلقائي للثيم
 (() => {
     const savedTheme = localStorage.getItem('theme');
     const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -406,10 +384,7 @@ const toggleTheme = () => {
     } else {
         document.documentElement.classList.remove('dark');
     }
-    applyTheme();
 })();
-
-themeToggleBtn.addEventListener('click', toggleTheme);
 
 
 
@@ -486,13 +461,13 @@ themeToggleBtn.addEventListener('click', toggleTheme);
     });
 
     // ✅ الرئيسية الجديدة: غرف صوت فقط (80 مقعداً، 5 منها إدارية 1-5)
-    function showVoiceRoomsView() {
+        function showVoiceRoomsView() {
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
                 <span class="text-xs text-gray-400">80 مقعد</span>
             </div>
-                        <div id="voice-chat-grid" class="grid grid-cols-6 sm:grid-cols-7 md:grid-cols-8 gap-1.5 md:gap-3"></div>
+                        <div id="voice-chat-grid" class="grid grid-cols-6 sm:grid-cols-7 md:grid-cols-8 gap-1.5 md:gap-3 pb-24 md:pb-2"></div>
         `;
         const voiceGrid = document.getElementById('voice-chat-grid');
         for (let i = 1; i <= 80; i++) {
