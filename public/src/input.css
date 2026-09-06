@@ -29,10 +29,10 @@ body {
 }
 /* --- ✅ أنماط أزرار الإجراءات في الملف الشخصي المصغر --- */
 .action-btn {
-    @apply flex flex-col items-center justify-center text-xs text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-lg transition-colors;
+    @apply flex flex-col items-center justify-center text-xs text-gray-400 hover:text-white hover:bg-gray-700 p-1.5 rounded-lg transition-colors;
 }
 .action-btn i {
-    @apply text-lg mb-1;
+    @apply text-sm mb-0.5;
 }
 /* --- ✅ أنماط أزرار الصداقة الملونة --- */
 .action-btn.add-btn { @apply text-purple-400 hover:bg-purple-900; }
