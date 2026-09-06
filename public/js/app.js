@@ -8401,14 +8401,21 @@ async function updateFriendsAvatars(friendsList) {
 }
 
         
-    // =================================================
+       // =================================================
     // ======== قسم التحديات (Battles Section) =========
     // =================================================
 
-    const battlesContainer = document.getElementById('battle-rooms-container');
+    // ✅ الإصلاح الجذري: تم حذف "const battlesContainer = ..." من هنا لأنه كان يُنفَّذ
+    // عند تحميل الصفحة، وفي تلك اللحظة #battle-rooms-container غير موجود بالـ DOM إطلاقاً
+    // (يُنشأ فقط لاحقاً داخل showChallengesView() عند فتح تبويب التحديات). هذا كان يجعل
+    // المتغير null للأبد، وأي استخدام له كان يرمي خطأ متزامن يوقف كل الكود بعده في نفس
+    // الدالة (نافذة اللعبة، تحديث كلمة المرور، تعديل الحالة، مميزات المستوى...).
+    // الحل: نجلب العنصر بشكل حي (fresh) في كل استدعاء، ونستخدم تفويض الأحداث عبر
+    // mainContent المستقر (لا يُعاد إنشاؤه أبداً) بدل عنصر يتغير محتواه باستمرار.
 
     function displayBattleCard(battle) {
         const container = document.getElementById('battle-rooms-container');
+        if (!container) return; // المستخدم غادر قسم التحديات قبل وصول الرد
         const card = document.createElement('div');
         card.className = 'battle-card bg-gray-700/50 p-3 rounded-lg flex justify-between items-center';
         card.dataset.battleId = battle._id;
@@ -8435,9 +8442,12 @@ async function updateFriendsAvatars(friendsList) {
     async function loadAvailableBattles() {
         const loadingState = document.getElementById('battles-loading-state');
         const emptyState = document.getElementById('battles-empty-state');
+        const container = document.getElementById('battle-rooms-container');
+        if (!loadingState || !emptyState || !container) return; // القسم غير مفتوح حالياً
+
         loadingState.classList.remove('hidden');
         emptyState.classList.add('hidden');
-        battlesContainer.querySelectorAll('.battle-card').forEach(card => card.remove());
+        container.querySelectorAll('.battle-card').forEach(card => card.remove());
 
         try {
             const response = await fetch('/api/battles', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -8459,24 +8469,26 @@ async function updateFriendsAvatars(friendsList) {
             emptyState.classList.remove('hidden');
         }
     }
-    loadAvailableBattles();
 
-    battlesContainer.addEventListener('click', async (e) => {
-        if (!e.target.classList.contains('join-battle-btn')) return;
+    // ✅ تفويض أحداث "انضم" عبر mainContent المستقر بدل battlesContainer الذي كان null دائماً
+    mainContent.addEventListener('click', async (e) => {
+        const joinBtn = e.target.closest('.join-battle-btn');
+        if (!joinBtn) return;
 
-        const battleCard = e.target.closest('.battle-card');
+        const battleCard = joinBtn.closest('.battle-card');
+        if (!battleCard) return;
         const battleId = battleCard.dataset.battleId;
         const isPrivate = battleCard.dataset.isPrivate === 'true';
 
-        e.target.disabled = true;
-        e.target.textContent = 'جاري...';
+        joinBtn.disabled = true;
+        joinBtn.textContent = 'جاري...';
 
         let password = null;
         if (isPrivate) {
             password = prompt("هذا التحدي خاص، يرجى إدخال كلمة المرور:");
             if (password === null) {
-                e.target.disabled = false;
-                e.target.textContent = 'انضم';
+                joinBtn.disabled = false;
+                joinBtn.textContent = 'انضم';
                 return;
             }
         }
@@ -8490,13 +8502,13 @@ async function updateFriendsAvatars(friendsList) {
             const result = await response.json();
             if (!response.ok) {
                 alert(result.message || 'فشل الانضمام');
-                e.target.disabled = false;
-                e.target.textContent = 'انضم';
+                joinBtn.disabled = false;
+                joinBtn.textContent = 'انضم';
             }
         } catch (error) {
             alert('خطأ في الاتصال بالخادم');
-            e.target.disabled = false;
-            e.target.textContent = 'انضم';
+            joinBtn.disabled = false;
+            joinBtn.textContent = 'انضم';
         }
     });
 
@@ -8617,10 +8629,13 @@ function showCreateBattleModal() {
     }
 }
 
-    document.getElementById('create-battle-btn').addEventListener('click', showCreateBattleModal);
+        // ✅ تم حذف السطر المكرر لربط زر "create-battle-btn" من هنا — كان يُنفَّذ عند تحميل
+    // الصفحة والزر غير موجود بعد بالـ DOM (يُنشأ فقط داخل showChallengesView)، فكان يرمي
+    // خطأ متزامن يوقف كل الكود التالي. الربط الصحيح موجود أصلاً داخل showChallengesView().
 
     socket.on('newBattle', (battle) => {
-        document.getElementById('battles-empty-state').classList.add('hidden');
+        const emptyState = document.getElementById('battles-empty-state');
+        if (emptyState) emptyState.classList.add('hidden');
         displayBattleCard(battle);
     });
 
@@ -8630,8 +8645,10 @@ function showCreateBattleModal() {
         if (updatedBattle.status === 'waiting') {
             displayBattleCard(updatedBattle);
         }
-        if (battlesContainer.querySelectorAll('.battle-card').length === 0) {
-            document.getElementById('battles-empty-state').classList.remove('hidden');
+        const container = document.getElementById('battle-rooms-container');
+        const emptyState = document.getElementById('battles-empty-state');
+        if (container && emptyState && container.querySelectorAll('.battle-card').length === 0) {
+            emptyState.classList.remove('hidden');
         }
     });
 
