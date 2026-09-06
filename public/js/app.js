@@ -1780,8 +1780,8 @@ async function blockUser(userId, modalElement) {
             }
             
             return true;
-        } else {
-            showNotification(result.message || 'فشل حظر المستخدم', 'error');
+          } else {
+            showFloatingAlert(result.message || 'فشل حظر المستخدم', 'fa-exclamation-circle', 'bg-red-500');
             return false;
         }
         
@@ -2981,8 +2981,12 @@ async function showMiniProfileModal(userId) {
                 return;
             }
 
-            // زر إرسال هدية
+                        // زر إرسال هدية
             if (e.target.closest('.gift-action-btn')) {
+                if (profileUser.isBot) {
+                    showFloatingAlert('لا يمكن إرسال هدايا لهذا الحساب', 'fa-robot', 'bg-purple-600');
+                    return;
+                }
                 const giftTargetId = e.target.closest('.gift-action-btn').dataset.userId;
                 const giftUsername = modal.querySelector('h2')?.textContent || 'المستخدم';
                 showGiftStoreModal(giftTargetId, giftUsername);
@@ -2990,6 +2994,10 @@ async function showMiniProfileModal(userId) {
             }
             
             if (e.target.closest('.block-action-btn')) {
+                if (profileUser.isBot) {
+                    showFloatingAlert('لا يمكنك حظر الحساب الرسمي للمنصة', 'fa-robot', 'bg-purple-600');
+                    return;
+                }
                 const userIdToBlock = e.target.closest('.block-action-btn').dataset.userId;
                 blockUser(userIdToBlock, modal);
                 return;
@@ -3001,6 +3009,10 @@ async function showMiniProfileModal(userId) {
                 return;
             }
                         if (e.target.closest('.report-user-btn')) {
+                if (profileUser.isBot) {
+                    showFloatingAlert('لا يمكن الإبلاغ عن الحساب الرسمي للمنصة', 'fa-robot', 'bg-purple-600');
+                    return;
+                }
                 const btn = e.target.closest('.report-user-btn');
                 showReportModal({ type: 'user', reportedUserId: btn.dataset.userId, reportedUsername: btn.dataset.username });
                 return;
