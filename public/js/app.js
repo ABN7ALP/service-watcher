@@ -456,11 +456,11 @@ themeToggleBtn.addEventListener('click', toggleTheme);
     });
 
     // زر "المزيد" بالهاتف
-    document.getElementById('mobile-more-btn')?.addEventListener('click', () => {
+        document.getElementById('mobile-more-btn')?.addEventListener('click', () => {
         document.getElementById('mobile-more-sheet')?.classList.remove('hidden');
         document.getElementById('mobile-more-sheet')?.classList.add('flex');
+        document.getElementById('mobile-more-badge')?.classList.add('hidden');
     });
-
             // ✅ إغلاق قائمة "المزيد" بالنقر خارجها — تم إصلاحه لأن onclick المضمّن بـ HTML كانت تمنعه سياسة CSP
     document.getElementById('mobile-more-sheet')?.addEventListener('click', (e) => {
         if (e.target.id === 'mobile-more-sheet') {
@@ -831,6 +831,16 @@ async function refreshMessagesNavBadge(cachedChats = null) {
                 badge.classList.remove('hidden');
             } else {
                 badge.classList.add('hidden');
+            }
+        }
+        // ✅ نفس التحديث لشارة الرسائل بالشريط السفلي بالهاتف (كانت لا تتحدث إطلاقاً)
+        const mobileBadge = document.getElementById('mobile-messages-badge');
+        if (mobileBadge) {
+            if (totalUnread > 0) {
+                mobileBadge.textContent = totalUnread > 9 ? '9+' : totalUnread;
+                mobileBadge.classList.remove('hidden');
+            } else {
+                mobileBadge.classList.add('hidden');
             }
         }
     } catch (error) {
@@ -1656,6 +1666,13 @@ function updateFriendRequestsBadge(count) {
     if (mobileBadge) {
         if (count > 0) { mobileBadge.textContent = count > 9 ? '9+' : count; mobileBadge.classList.remove('hidden'); }
         else mobileBadge.classList.add('hidden');
+    }
+    // ✅ نقطة تنبيه على أيقونة "المزيد" بالشريط السفلي — تظهر فقط والقائمة مغلقة
+    const moreBadge = document.getElementById('mobile-more-badge');
+    if (moreBadge) {
+        const sheetOpen = !document.getElementById('mobile-more-sheet')?.classList.contains('hidden');
+        if (count > 0 && !sheetOpen) moreBadge.classList.remove('hidden');
+        else moreBadge.classList.add('hidden');
     }
 }
         
@@ -3429,6 +3446,8 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
 
     let sentCount = 0;
     let inFlight = 0;
+    let requestSeq = 0;        // ✅ رقم تسلسلي لكل طلب إرسال
+    let latestAppliedSeq = 0;  // ✅ آخر رقم تسلسلي طُبِّق رصيده فعلياً
     const MAX_CONCURRENT = 4; // آمن الآن لأن الخصم في السيرفر أصبح ذرياً (atomic)
     let active = false;
     let rampTimeout = null;
@@ -3455,7 +3474,8 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
         const balanceEl = document.getElementById('gift-store-balance');
         if (balanceEl) balanceEl.textContent = localUser.coins;
 
-        sentCount++;
+                sentCount++;
+        const mySeq = ++requestSeq; // ✅ كل طلب يأخذ رقماً تسلسلياً فريداً
         if (counterLabel) {
             counterLabel.textContent = `أُرسل ×${sentCount}`;
             counterLabel.classList.remove('hidden');
@@ -3472,13 +3492,18 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
             const result = await response.json();
 
             if (response.ok) {
-                const syncedUser = JSON.parse(localStorage.getItem('user'));
-                if (syncedUser) {
-                    syncedUser.coins = result.data.newSenderCoins;
-                    localStorage.setItem('user', JSON.stringify(syncedUser));
+                // ✅ نطبّق فقط رصيد الرد الأحدث زمنياً — يمنع ارتداد الرقم لقيمة قديمة خاطئة
+                // في حال وصل رد متأخر بعد رد أحدث منه بسبب تسابق الطلبات المتزامنة
+                if (mySeq > latestAppliedSeq) {
+                    latestAppliedSeq = mySeq;
+                    const syncedUser = JSON.parse(localStorage.getItem('user'));
+                    if (syncedUser) {
+                        syncedUser.coins = result.data.newSenderCoins;
+                        localStorage.setItem('user', JSON.stringify(syncedUser));
+                    }
+                    if (coinsEl) coinsEl.textContent = result.data.newSenderCoins;
+                    if (balanceEl) balanceEl.textContent = result.data.newSenderCoins;
                 }
-                if (coinsEl) coinsEl.textContent = result.data.newSenderCoins;
-                if (balanceEl) balanceEl.textContent = result.data.newSenderCoins;
                 if (result.data.message) displayPrivateMessage(result.data.message, true);
             } else {
                 // ✅ فشل: نعيد الرصيد المخصوم تفاؤلياً ونوقف السلسلة
@@ -4934,6 +4959,8 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
 
     let sentCount = 0;
     let inFlight = 0;
+    let requestSeq = 0;
+    let latestAppliedSeq = 0;
     const MAX_CONCURRENT = 3;
     let active = false;
     let rampTimeout = null;
@@ -4969,7 +4996,8 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
         const balanceEl = document.getElementById('pg-balance');
         if (balanceEl) balanceEl.textContent = localUser.coins;
 
-        sentCount++;
+                sentCount++;
+        const mySeq = ++requestSeq;
         if (counterLabel) {
             counterLabel.textContent = `أُرسل ×${sentCount}`;
             counterLabel.classList.remove('hidden');
@@ -4991,13 +5019,16 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
             const result = await response.json();
 
             if (response.ok) {
-                const syncedUser = JSON.parse(localStorage.getItem('user'));
-                if (syncedUser) {
-                    syncedUser.coins = result.data.newCoins;
-                    localStorage.setItem('user', JSON.stringify(syncedUser));
+                if (mySeq > latestAppliedSeq) {
+                    latestAppliedSeq = mySeq;
+                    const syncedUser = JSON.parse(localStorage.getItem('user'));
+                    if (syncedUser) {
+                        syncedUser.coins = result.data.newCoins;
+                        localStorage.setItem('user', JSON.stringify(syncedUser));
+                    }
+                    if (coinsEl) coinsEl.textContent = result.data.newCoins;
+                    if (balanceEl) balanceEl.textContent = result.data.newCoins;
                 }
-                if (coinsEl) coinsEl.textContent = result.data.newCoins;
-                if (balanceEl) balanceEl.textContent = result.data.newCoins;
             } else {
                 const revertUser = JSON.parse(localStorage.getItem('user'));
                 if (revertUser) {
