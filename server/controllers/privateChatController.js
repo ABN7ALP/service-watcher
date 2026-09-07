@@ -33,7 +33,6 @@ exports.getOrCreateChat = async (req, res) => {
             .populate('participants', 'username profileImage customId level isOnline lastActive isBot');
 
         if (!chat) {
-            const mongoose = require('mongoose');
             const participantIds = participants.map(id => new mongoose.Types.ObjectId(id));
 
             chat = await PrivateChat.create({
