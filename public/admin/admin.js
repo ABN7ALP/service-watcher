@@ -1157,11 +1157,13 @@ class AdminDashboard {
         window.location.href = '/login.html';
     }
 
-    showToast(message, type = 'info') {
+        showToast(message, type = 'info') {
         document.querySelectorAll('.admin-toast').forEach(t => t.remove());
         const toast = document.createElement('div');
         toast.className = `admin-toast toast-${type}`;
-        toast.innerHTML = `<div class="toast-content"><i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i><span>${escapeHtml(message)}</span></div><button class="toast-close" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>`;
+        toast.innerHTML = `<div class="toast-content"><i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i><span>${escapeHtml(message)}</span></div><button class="toast-close"><i class="fas fa-times"></i></button>`;
+        // ✅ ربط الإغلاق عبر addEventListener بدل onclick المضمّن (متوافق مع CSP الصارم)
+        toast.querySelector('.toast-close').addEventListener('click', () => toast.remove());
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 5000);
     }
