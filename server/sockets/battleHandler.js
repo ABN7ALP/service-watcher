@@ -166,7 +166,7 @@ module.exports = (socket, io) => {
         const player = allPlayers.find(p => p.user.toString() === userId);
         
         if (player && user) {
-          user.balance += player.bAmount;
+          user.balance += player.betAmount;
           await user.save();
         }
 
