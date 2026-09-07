@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Gift = require('../models/Gift');
 const GiftLog = require('../models/GiftLog');
 const User = require('../models/User');
@@ -247,6 +248,25 @@ exports.getTopReceiversThisMonth = async (req, res) => {
         const topReceivers = await GiftLog.getTopReceivers(start, end, 20);
         res.status(200).json({ status: 'success', data: { leaders: topReceivers } });
     } catch (error) {
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
+// ✅ ملخص الهدايا المستلمة لمستخدم محدد (لعرضها بصفحة الملف الشخصي الكامل)
+exports.getUserGiftsSummary = async (req, res) => {
+    try {
+        const targetUserId = req.params.userId;
+        const summary = await GiftLog.aggregate([
+            { $match: { receiver: new mongoose.Types.ObjectId(targetUserId) } },
+            { $group: { _id: null, totalGiftsCount: { $sum: '$quantity' }, totalCoinsValue: { $sum: '$totalPrice' } } }
+        ]);
+        const data = summary[0] || { totalGiftsCount: 0, totalCoinsValue: 0 };
+        res.status(200).json({
+            status: 'success',
+            data: { totalGiftsCount: data.totalGiftsCount, totalCoinsValue: data.totalCoinsValue }
+        });
+    } catch (error) {
+        console.error('[ERROR] in getUserGiftsSummary:', error);
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
     }
 };
