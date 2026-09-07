@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const PrivateChat = require('../models/PrivateChat');
 const PrivateMessage = require('../models/PrivateMessage');
 const User = require('../models/User');
