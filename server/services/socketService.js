@@ -178,8 +178,17 @@ async function endBattle(io, battleId) {
             }
         }
 
-        const totalPot = battle.betAmount * battle.players.length;
-        const commissionRate = battle.type === '1v1' ? 0.10 : 0.05;
+                const totalPot = battle.betAmount * battle.players.length;
+
+        // ✅ العمولة تُقرأ الآن من الإعداد المركزي (SystemSettings) القابل للتعديل من لوحة التحكم
+        const SystemSettings = require('../models/SystemSettings');
+        const settings = await SystemSettings.getSettings();
+        let commissionRate = settings.battleCommissionRate;
+        // 🛡️ حماية صارمة: أي قيمة غير رقمية أو خارج النطاق [0, 0.5] تُرجَع للافتراضي الآمن
+        // (يمنع تحوّل finalPot إلى NaN وإفساد رصيد الفائز نهائياً)
+        if (typeof commissionRate !== 'number' || isNaN(commissionRate) || commissionRate < 0 || commissionRate > 0.5) {
+            commissionRate = 0.10;
+        }
         const commission = totalPot * commissionRate;
         const finalPot = totalPot - commission;
 
@@ -220,6 +229,25 @@ async function endBattle(io, battleId) {
 
         battle.status = 'completed';
         await battle.save();
+
+                // ✅ تسجيل العمولة كمعاملة قابلة للتدقيق (فقط عند وجود فائز فعلي، لا في التعادل)
+        if (winnerId && commission > 0) {
+            try {
+                const Transaction = require('../models/Transaction');
+                await Transaction.create({
+                    user: winnerId,
+                    type: 'commission',
+                    amount: commission,
+                    currency: 'USD',
+                    status: 'completed',
+                    battle: battle._id,
+                    description: `عمولة النظام ${(commissionRate * 100).toFixed(1)}% من تحدي ${battle.type}`
+                });
+            } catch (e) {
+                // فشل التسجيل لا يجب أن يؤثر على توزيع الجوائز (تمّ قبله)
+                console.error('[END BATTLE] Failed to record commission transaction:', e);
+            }
+        }
 
         // --- ✅ الإصلاح: إرسال حدث انتهاء اللعبة إلى الغرفة بأكملها ---
         // هذا هو ما يجعل النافذة تختفي عند الجميع
