@@ -7,6 +7,18 @@ window.addEventListener('unhandledrejection', (event) => {
     console.error('🔴 [UNHANDLED PROMISE REJECTION]', event.reason);
 });
 
+// 🛡️ ترميز صارم لكل نص يتحكم به المستخدم قبل حقنه في innerHTML.
+// يُرمّز أيضاً " و ' لحمايته داخل قيم خصائص HTML (مثل value="...").
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return '';
+    return String(unsafe)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 // =================================================
 // ✅ زر الرجوع بالهاتف يُغلق آخر نافذة مفتوحة بدل مغادرة الصفحة
 // =================================================
@@ -7047,7 +7059,7 @@ function displayPrivateMessage(message, isMyMessage = false) {
 
     switch (message.type) {
         case 'text':
-            messageContent = `<p class="text-white text-sm">${message.content}</p>`;
+            messageContent = `<p class="text-white text-sm">${escapeHtml(message.content)}</p>`;
             break;
 
         case 'image':
@@ -7099,7 +7111,7 @@ function displayPrivateMessage(message, isMyMessage = false) {
                         ${meta.giftImage ? `<img src="${meta.giftImage}" class="gift-msg-img w-10 h-10 object-contain">` : `<span class="text-2xl">🎁</span>`}
                     </div>
                     <div>
-                        <p class="text-sm font-bold">🎁 هدية ${message.content}</p>
+                        <p class="text-sm font-bold">🎁 هدية ${escapeHtml(message.content)}</p>
                         <p class="text-xs text-gray-300">${meta.giftPrice || 0} كوينز</p>
                     </div>
                 </div>
@@ -7195,14 +7207,14 @@ function displayPrivateMessage(message, isMyMessage = false) {
 
             
 
-        default:
-            messageContent = `<p class="text-white text-sm">${message.content || 'رسالة'}</p>`;
+            default:
+            messageContent = `<p class="text-white text-sm">${escapeHtml(message.content || 'رسالة')}</p>`;
     }
 
     // ===== الرد (Reply) =====
     let replySection = '';
     if (message.replyTo && !meta.disableReply) {
-        const replySender = message.replyTo.sender?.username || 'مستخدم';
+                const replySender = escapeHtml(message.replyTo.sender?.username || 'مستخدم');
         const replyType = message.replyTo.type || 'text';
         let replyIcon = '';
         let replyPreviewText = '';
@@ -7223,7 +7235,7 @@ function displayPrivateMessage(message, isMyMessage = false) {
                 replyPreviewText = 'فيديو';
                 break;
             default:
-                replyPreviewText = (message.replyTo.content || 'رسالة').substring(0, 50);
+                replyPreviewText = escapeHtml((message.replyTo.content || 'رسالة').substring(0, 50));
         }
 
         replySection = `
@@ -7381,7 +7393,7 @@ function startInlineEdit(messageElement, message) {
     if (!contentEl) return;
 
     const currentText = message.content;
-    contentEl.innerHTML = `<input type="text" class="edit-msg-input w-full bg-black/30 text-white rounded p-1 text-sm" value="${currentText}" maxlength="200">`;
+    contentEl.innerHTML = `<input type="text" class="edit-msg-input w-full bg-black/30 text-white rounded p-1 text-sm" value="${escapeHtml(currentText)}" maxlength="200">`;
     const input = contentEl.querySelector('.edit-msg-input');
     input.focus();
 
@@ -7389,7 +7401,7 @@ function startInlineEdit(messageElement, message) {
         if (e.key !== 'Enter') return;
         const newText = input.value.trim();
         if (!newText || newText === currentText) {
-            contentEl.innerHTML = `<p class="text-white text-sm">${currentText}</p>`;
+            contentEl.innerHTML = `<p class="text-white text-sm">${escapeHtml(currentText)}</p>`;
             return;
         }
         try {
@@ -8033,8 +8045,8 @@ function displayMessage(message) {
     if (message.replyTo && message.replyTo.sender) {
         replyHTML = `
             <div class="reply-snippet bg-black/20 px-2 py-1 rounded-md mb-1 border-l-2 border-purple-400">
-                <p class="font-bold text-[10px] text-purple-300">${message.replyTo.sender.username}</p>
-                <p class="text-[10px] text-gray-300 truncate">${message.replyTo.content || 'رسالة'}</p>
+                 <p class="font-bold text-[10px] text-purple-300">${escapeHtml(message.replyTo.sender.username)}</p>
+                <p class="text-[10px] text-gray-300 truncate">${escapeHtml(message.replyTo.content || 'رسالة')}</p>
             </div>
         `;
     }
@@ -8044,8 +8056,8 @@ function displayMessage(message) {
              class="w-7 h-7 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-400 flex-shrink-0 ${message.sender.activeFrameClass || ''}" data-user-id="${message.sender._id}">
         <div class="min-w-0 flex-1">
             ${replyHTML}
-            <p class="font-bold text-[11px] leading-tight ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${message.sender.username}</p>
-            <p class="text-white text-[13px] leading-snug break-words">${message.content}</p>
+            <p class="font-bold text-[11px] leading-tight ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${escapeHtml(message.sender.username)}</p>
+             <p class="text-white text-[13px] leading-snug break-words">${escapeHtml(message.content)}</p>
         </div>
         <div class="flex flex-col gap-1 flex-shrink-0">
             <button class="reply-btn text-gray-400 hover:text-purple-400 text-[10px]" title="رد">
