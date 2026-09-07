@@ -48,13 +48,7 @@ exports.createWithdrawal = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'يرجى إدخال الاسم الكامل' });
         }
 
-        const user = await User.findById(userId);
-
-        // ✅ التحقق الدقيق من كفاية الرصيد
-        if (user.balance < numAmount) {
-            return res.status(400).json({ status: 'fail', message: 'رصيدك غير كافٍ لإتمام عملية السحب' });
-        }
-
+                // نتحقق من صحة بيانات طريقة السحب قبل أي خصم للرصيد
         if (method === 'sham_cash') {
             if (!walletNumber || walletNumber.trim().length < 3) {
                 return res.status(400).json({ status: 'fail', message: 'يرجى إدخال رابط محفظة شام كاش' });
@@ -67,27 +61,43 @@ exports.createWithdrawal = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'طريقة سحب غير صالحة' });
         }
 
-        // ✅ حماية من التلاعب: نحجز المبلغ فوراً من رصيد المستخدم عند إنشاء الطلب
-        // بحيث لا يقدر يفتح عدة طلبات سحب متتالية تتجاوز رصيده الفعلي
-        user.balance -= numAmount;
-        await user.save();
+        // ✅ خصم ذرّي (atomic) محمي من الطلبات المتزامنة:
+        // الشرط (balance >= numAmount) والخصم ($inc) ينفَّذان كعملية واحدة داخل قاعدة البيانات،
+        // فيستحيل مرور طلبين متزامنين بنفس الرصيد، ويستحيل الوصول لرصيد سالب.
+        const user = await User.findOneAndUpdate(
+            { _id: userId, balance: { $gte: numAmount } },
+            { $inc: { balance: -numAmount } },
+            { new: true }
+        );
 
-        const withdrawal = await Withdrawal.create({
-            user: userId,
-            method,
-            amount: numAmount,
-            netAmount: numAmount, // يمكن خصم عمولة لاحقاً إذا رغبت
-            fullName: fullName.trim(),
-            walletNumber: method === 'sham_cash' ? walletNumber.trim() : undefined,
-            officeInfo: method === 'office' ? officeInfo : undefined,
-            status: 'pending'
-        });
+        if (!user) {
+            return res.status(400).json({ status: 'fail', message: 'رصيدك غير كافٍ لإتمام عملية السحب' });
+        }
+
+        // ✅ إنشاء الطلب بعد الحجز — وإن فشل لأي سبب، نُعيد المبلغ فوراً (تعويض) حتى لا يُخصم بلا طلب
+        let withdrawal;
+        try {
+            withdrawal = await Withdrawal.create({
+                user: userId,
+                method,
+                amount: numAmount,
+                netAmount: numAmount, // يمكن خصم عمولة لاحقاً إذا رغبت
+                fullName: fullName.trim(),
+                walletNumber: method === 'sham_cash' ? walletNumber.trim() : undefined,
+                officeInfo: method === 'office' ? officeInfo : undefined,
+                status: 'pending'
+            });
+        } catch (createErr) {
+            // إعادة المبلغ المحجوز لأن الطلب لم يُنشأ فعلياً
+            await User.findByIdAndUpdate(userId, { $inc: { balance: numAmount } });
+            console.error('[ERROR] withdrawal create failed, refunded user:', createErr);
+            return res.status(500).json({ status: 'fail', message: 'تعذّر إنشاء طلب السحب، وأُعيد المبلغ إلى رصيدك' });
+        }
 
         const io = req.app.get('socketio');
         if (io && user.socketId) {
             io.to(user.socketId).emit('balanceUpdate', { newBalance: user.balance });
         }
-
         const etaMessage = method === 'sham_cash'
             ? 'ستتم معالجة طلبك خلال ساعة إلى 3 ساعات'
             : 'ستتم معالجة طلبك خلال يوم إلى 3 أيام';
