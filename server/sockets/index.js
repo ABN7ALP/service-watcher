@@ -1,5 +1,4 @@
 const chatHandler = require('./chatHandler');
-const battleHandler = require('./battleHandler');
 const adminHandler = require('./adminHandler');
 
 module.exports = (io) => {
@@ -14,7 +13,6 @@ module.exports = (io) => {
 
     // Initialize handlers
     chatHandler(socket, io);
-    battleHandler(socket, io);
     adminHandler(socket, io);
 
     // Disconnect
