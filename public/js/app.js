@@ -2829,16 +2829,15 @@ async function showMiniProfileModal(userId) {
     const existingModal = document.getElementById('mini-profile-modal');
     if (existingModal) existingModal.remove();
 
-    // ✅ الإصلاح 1 (السرعة): نعرض هيكل تحميل فوري بدل انتظار الطلبات
+    // ✅ الإصلاح 1 (السرعة): نعرض هيكل تحميل فوري بدل انتظار الطلبات — نافذة سفلية أنيقة
     const loadingShellHTML = `
-        <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
-            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white p-10 text-center border-2 border-purple-500/30">
-                <i class="fas fa-spinner fa-spin text-3xl text-purple-400 mb-3"></i>
-                <p class="text-sm text-gray-400">جاري تحميل الملف الشخصي...</p>
+        <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 z-[310] flex items-end justify-center">
+            <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-t-2xl shadow-2xl w-full max-w-md text-white p-8 text-center border-t border-purple-500/25 animate-[slideUp_0.25s_ease-out]">
+                <i class="fas fa-spinner fa-spin text-2xl text-purple-400 mb-3"></i>
+                <p class="text-xs text-gray-400">جاري تحميل الملف الشخصي...</p>
             </div>
         </div>
     `;
-
     document.getElementById('game-container').insertAdjacentHTML('beforeend', loadingShellHTML);
 
     try {
@@ -2894,19 +2893,20 @@ async function showMiniProfileModal(userId) {
                 <span class="text-xs mt-1">حظر</span>
             </button>`;
 
-                const modalHTML = `
-         <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[310] p-3">
-                <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-[300px] sm:max-w-xs text-white transform scale-95 transition-transform duration-300 border border-purple-500/25 overflow-hidden">
+                        const modalHTML = `
+         <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 z-[310] flex items-end justify-center">
+                <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-t-2xl shadow-2xl w-full max-w-md text-white border-t border-x border-purple-500/25 overflow-hidden animate-[slideUp_0.25s_ease-out]" style="max-height:80vh; overflow-y:auto;">
 
                     <div class="relative bg-gradient-to-r from-purple-700/30 to-pink-700/25 pt-5 pb-3 px-4 text-center">
-                        <img src="${profileUser.profileImage}" 
-                             class="w-16 h-16 rounded-full mx-auto border-4 border-gray-900 object-cover shadow-lg ${profileUser.activeFrameClass || ''}">
+                        <img id="mini-profile-avatar-img" src="${profileUser.profileImage}" 
+                             class="w-16 h-16 rounded-full mx-auto border-4 border-gray-900 object-cover shadow-lg cursor-pointer hover:opacity-90 transition ${profileUser.activeFrameClass || ''}" title="عرض الملف الكامل">
                         <h2 class="text-sm font-bold mt-2 flex items-center justify-center gap-1">${profileUser.username} ${getAgentBadgeHTML(profileUser.isAgent)}</h2>
                         <div class="text-[10px] text-gray-300 mt-1 cursor-pointer inline-flex items-center gap-1.5 copy-id-btn bg-black/25 px-2 py-0.5 rounded-full">
                            <i class="fas fa-id-card"></i>
                            <span>${profileUser.customId}</span>
                            <i class="fas fa-copy"></i>
                         </div>
+                        <p class="text-[9px] text-purple-300/70 mt-1.5"><i class="fas fa-hand-pointer"></i> اضغط على الصورة لعرض التفاصيل الكاملة</p>
                         ${isBlockedByMe ? `
                             <div class="mt-2">
                                 <span class="text-[10px] bg-red-900/50 text-red-300 px-2 py-0.5 rounded-full">
@@ -2974,18 +2974,22 @@ async function showMiniProfileModal(userId) {
             </div>
         `;
 
-        document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
+         document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
         const modal = document.getElementById('mini-profile-modal');
-        
-        setTimeout(() => {
-            modal.querySelector('.transform').classList.remove('scale-95');
-        }, 50);
+        modal.dataset.userId = profileUser._id;
         
         // ✅ الإصلاح 3 (الوميض): تم حذف معالج زر الصداقة المكرر من هنا نهائياً.
         // المعالج العام في document.body يتكفل به وحده الآن، فلا يوجد استدعاء مزدوج بعد اليوم
         modal.addEventListener('click', (e) => {
             if (e.target.id === 'mini-profile-modal') {
                 modal.remove();
+                return;
+            }
+
+            if (e.target.closest('#mini-profile-avatar-img')) {
+                const targetUid = profileUser._id;
+                modal.remove();
+                showFullProfilePage(targetUid);
                 return;
             }
             
@@ -3079,10 +3083,108 @@ async function showMiniProfileModal(userId) {
         console.error("Error showing mini profile:", error);
         const loadingShell = document.getElementById('mini-profile-modal');
         if (loadingShell) loadingShell.remove();
-        showNotification('لا يمكن عرض ملف المستخدم حاليًا.', 'error');
+                showNotification('لا يمكن عرض ملف المستخدم حاليًا.', 'error');
     }
 }
 
+// --- ✅ صفحة الملف الشخصي الكامل — نافذة سفلية كبيرة بكل التفاصيل (المستوى، الهدايا، الإحصائيات) ---
+async function showFullProfilePage(userId) {
+    const existing = document.getElementById('full-profile-page');
+    if (existing) existing.remove();
+
+    const shellHTML = `
+        <div id="full-profile-page" class="fixed inset-0 bg-black/80 z-[330] flex items-end">
+            <div class="bg-gray-900 w-full rounded-t-2xl flex flex-col animate-[slideUp_0.25s_ease-out]" style="max-height:92vh;">
+                <div class="flex items-center justify-between p-3 border-b border-gray-700 flex-shrink-0">
+                    <h3 class="font-bold text-sm flex items-center gap-2"><i class="fas fa-user text-purple-400"></i> الملف الشخصي</h3>
+                    <button id="close-full-profile" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="full-profile-body" class="flex-1 overflow-y-auto">
+                    <div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
+                </div>
+            </div>
+        </div>
+    `;
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+    const page = document.getElementById('full-profile-page');
+    document.getElementById('close-full-profile').addEventListener('click', () => page.remove());
+    page.addEventListener('click', (e) => { if (e.target.id === 'full-profile-page') page.remove(); });
+
+    try {
+        const [userRes, giftRes] = await Promise.all([
+            fetch(`/api/users/${userId}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            fetch(`/api/gifts/user/${userId}/summary`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+        ]);
+
+        if (userRes.status !== 'success') throw new Error();
+        const u = userRes.data.user;
+        const giftSummary = giftRes.status === 'success' ? giftRes.data : { totalGiftsCount: 0, totalCoinsValue: 0 };
+
+        const requiredXp = calculateRequiredXp(u.level || 1);
+        const progress = Math.min(((u.experience || 0) / requiredXp) * 100, 100);
+        const socialInfo = getSocialStatus(u.socialStatus);
+        const educationInfo = getEducationStatus(u.educationStatus);
+        const genderInfo = u.gender === 'male' ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' } : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
+
+        const body = document.getElementById('full-profile-body');
+        body.innerHTML = `
+            <div class="relative bg-gradient-to-b from-purple-800/30 to-transparent pt-6 pb-4 px-4 text-center">
+                <img src="${u.profileImage}" class="w-20 h-20 rounded-full mx-auto border-4 border-gray-900 shadow-lg object-cover ${u.activeFrameClass || ''}">
+                <h2 class="text-base font-bold mt-2 flex items-center justify-center gap-1">${u.username} ${getAgentBadgeHTML(u.isAgent)}</h2>
+                <p class="text-[11px] text-gray-400 mt-0.5">ID: ${u.customId}</p>
+            </div>
+
+            <div class="px-4 mb-4">
+                <div class="flex justify-between items-center text-xs mb-1">
+                    <span class="font-bold text-yellow-400">المستوى ${u.level}</span>
+                    <span class="text-gray-400">${Math.floor(u.experience || 0)} / ${requiredXp} XP</span>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-2">
+                    <div class="bg-gradient-to-r from-yellow-400 to-orange-500 h-2 rounded-full" style="width:${progress}%"></div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 px-4 mb-4">
+                <div class="bg-gray-800/50 rounded-xl p-3 text-center">
+                    <div class="text-lg font-bold text-purple-400">${u.friends ? u.friends.length : 0}</div>
+                    <div class="text-[10px] text-gray-400 mt-0.5">أصدقاء</div>
+                </div>
+                <div class="bg-gray-800/50 rounded-xl p-3 text-center">
+                    <div class="text-lg font-bold text-pink-400">${giftSummary.totalGiftsCount}</div>
+                    <div class="text-[10px] text-gray-400 mt-0.5">هدية مُستلَمة</div>
+                </div>
+                <div class="bg-gray-800/50 rounded-xl p-3 text-center">
+                    <div class="text-lg font-bold text-yellow-400">${giftSummary.totalCoinsValue.toLocaleString()}</div>
+                    <div class="text-[10px] text-gray-400 mt-0.5">قيمة الهدايا (كوينز)</div>
+                </div>
+            </div>
+
+            <p class="text-xs text-gray-400 px-4 mb-2">المعلومات الشخصية</p>
+            <div class="grid grid-cols-2 gap-2 px-4 mb-4 text-xs">
+                <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
+                    <i class="fas ${genderInfo.icon} ${genderInfo.color} w-4 text-center"></i><span>${genderInfo.text}</span>
+                </div>
+                <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
+                    <i class="fas fa-birthday-cake text-pink-400 w-4 text-center"></i><span>${u.age} سنة</span>
+                </div>
+                <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
+                    <i class="fas ${socialInfo.icon} text-red-400 w-4 text-center"></i><span>${socialInfo.text}</span>
+                </div>
+                <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
+                    <i class="fas ${educationInfo.icon} text-blue-400 w-4 text-center"></i><span>${educationInfo.text}</span>
+                </div>
+            </div>
+
+            <div class="px-4 pb-6">
+                <p class="text-xs text-gray-400 mb-1">الحالة</p>
+                <p class="text-xs text-gray-200 italic bg-gray-800/40 rounded-lg px-3 py-2">${u.status || '🚀 جاهز للتحديات!'}</p>
+            </div>
+        `;
+    } catch (error) {
+        console.error('[FULL PROFILE] Error:', error);
+        document.getElementById('full-profile-body').innerHTML = `<div class="text-center text-red-400 py-16">فشل تحميل الملف الشخصي</div>`;
+    }
+}
 
         // --- 🧩 دالة مساعدة: تُرجع HTML شريط إدخال الدردشة الخاصة (نص مرة واحدة، تُستخدم بأكثر من مكان) ---
 function getChatInputAreaHTML() {
