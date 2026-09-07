@@ -4,7 +4,8 @@ const User = require('../models/User');
 // دالة مساعدة لإنشاء توكن JWT
 const signToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, {
-        expiresIn: process.env.JWT_EXPIRE,
+        // 🛡️ قيمة احتياطية آمنة: حتى لو غاب المتغيّر يوماً، لن يكون التوكن أبدياً أبداً
+        expiresIn: process.env.JWT_EXPIRE || '7d',
     });
 };
 
@@ -162,9 +163,8 @@ exports.updatePassword = async (req, res) => {
 
         // 5. (اختياري ولكن موصى به) إنشاء توكن جديد وإرساله
         // هذا يضمن أن أي جلسات قديمة تصبح غير صالحة
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-            expiresIn: process.env.JWT_EXPIRES_IN || '90d'
-        });
+        // ✅ نستخدم نفس signToken لضمان توحيد الاسم والمدة في كل مكان
+        const token = signToken(user._id);
 
         res.status(200).json({
             status: 'success',
