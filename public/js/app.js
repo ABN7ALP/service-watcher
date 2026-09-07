@@ -966,50 +966,50 @@ async function showSettingsView() {
                     </form>
                 </div>
             </div>
-            <!-- =========================================== -->
+             <!-- =========================================== -->
             <!-- 5. قسم متجر الإطارات (الجديد) -->
             <!-- =========================================== -->
-            <div class="mb-4">
-                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="frames-shop-section">
-                                        <h3 class="text-lg font-bold">
-                        <i class="fas fa-crown mr-2"></i>متجر الإطارات
-                        <button id="frames-support-btn" class="report-issue-icon-btn" style="width:26px;height:26px;" title="الإبلاغ عن مشكلة" onclick="event.stopPropagation();"><i class="fas fa-exclamation-triangle" style="font-size:0.7rem;"></i></button>
+            <div class="mb-3">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-3 rounded-lg cursor-pointer flex justify-between items-center" data-target="frames-shop-section">
+                                        <h3 class="text-sm font-bold flex items-center gap-2">
+                        <i class="fas fa-crown text-purple-400"></i>متجر الإطارات
+                        <button id="frames-support-btn" class="report-issue-icon-btn" style="width:22px;height:22px;" title="الإبلاغ عن مشكلة" onclick="event.stopPropagation();"><i class="fas fa-exclamation-triangle" style="font-size:0.6rem;"></i></button>
                     </h3>
-                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+                    <i class="fas fa-chevron-down text-xs transition-transform duration-300"></i>
                 </div>
                 
-                <div id="frames-shop-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
-                    <div class="flex items-center justify-between mb-4 bg-gray-900/50 rounded-xl p-3">
-                        <span class="text-sm text-gray-400">رصيدك الحالي</span>
-                        <span class="font-bold text-yellow-400 flex items-center gap-1">
+                <div id="frames-shop-section" class="collapsible-content hidden bg-gray-800/30 p-4 rounded-b-lg">
+                    <div class="flex items-center justify-between mb-3 bg-gray-900/50 rounded-xl p-2.5">
+                        <span class="text-xs text-gray-400">رصيدك الحالي</span>
+                        <span class="font-bold text-yellow-400 flex items-center gap-1 text-sm">
                             <i class="fas fa-coins"></i> ${frameShopData.coins}
                         </span>
                     </div>
 
-                       <div class="grid grid-cols-2 gap-3">
+                       <div class="grid grid-cols-3 gap-2">
                         ${frameShopData.frames.filter(f => f.name !== 'إطار الترحيب').map(f => {
                             const owned = f.ownedInstance;
                             const isActive = frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString();
                             const isExpired = owned && owned.expiresAt && new Date(owned.expiresAt) < new Date();
 
                             return `
-                            <div class="bg-gray-900/40 rounded-xl p-3 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'}">
-                                <div class="w-16 h-16 mx-auto rounded-full ${f.cssClass} bg-gray-700 mb-2"></div>
-                                <p class="text-sm font-bold mb-1">${f.name}</p>
+                            <div class="bg-gray-900/40 rounded-xl p-2 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'}">
+                                <div class="w-12 h-12 mx-auto rounded-full ${f.cssClass} bg-gray-700 mb-1.5"></div>
+                                <p class="text-[11px] font-bold mb-1 truncate">${f.name}</p>
                                 
                                 ${owned && !isExpired ? `
-                                    ${owned.activatedAt ? `<p class="text-[10px] text-gray-400 mb-2">ينتهي: ${new Date(owned.expiresAt).toLocaleDateString('ar-SA')}</p>` : `<p class="text-[10px] text-green-400 mb-2">بحوزتك (لم يُفعّل بعد)</p>`}
-                                    <button class="equip-frame-btn w-full text-xs py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}" 
+                                    ${owned.activatedAt ? `<p class="text-[9px] text-gray-400 mb-1.5">ينتهي: ${new Date(owned.expiresAt).toLocaleDateString('ar-SA')}</p>` : `<p class="text-[9px] text-green-400 mb-1.5">بحوزتك</p>`}
+                                    <button class="equip-frame-btn w-full text-[10px] py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}" 
                                             data-frame-id="${f._id}" ${isActive ? 'disabled' : ''}>
-                                        ${isActive ? 'مُفعّل حالياً' : 'تفعيل'}
+                                        ${isActive ? 'مُفعّل' : 'تفعيل'}
                                     </button>
                                 ` : `
-                                    <select class="frame-duration-select w-full text-xs bg-gray-700 rounded p-1.5 mb-2" data-frame-id="${f._id}">
-                                        <option value="7">7 أيام - ${f.prices.days7} كوينز</option>
-                                        <option value="30">30 يوم - ${f.prices.days30} كوينز</option>
-                                        <option value="365">سنة كاملة - ${f.prices.days365} كوينز</option>
+                                    <select class="frame-duration-select w-full text-[10px] bg-gray-700 rounded p-1 mb-1.5" data-frame-id="${f._id}">
+                                        <option value="7">7 أيام - ${f.prices.days7}</option>
+                                        <option value="30">30 يوم - ${f.prices.days30}</option>
+                                        <option value="365">سنة - ${f.prices.days365}</option>
                                     </select>
-                                    <button class="purchase-frame-btn w-full text-xs py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-frame-id="${f._id}">
+                                    <button class="purchase-frame-btn w-full text-[10px] py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-frame-id="${f._id}">
                                         شراء
                                     </button>
                                 `}
@@ -1022,30 +1022,30 @@ async function showSettingsView() {
             <!-- =========================================== -->
             <!-- 7. قسم إطارات دردشة الشات العام (الجديد) -->
             <!-- =========================================== -->
-            <div class="mb-4">
-                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="bubble-shop-section">
-                    <h3 class="text-lg font-bold"><i class="fas fa-comment-dots mr-2"></i>إطارات رسائل الشات العام</h3>
-                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+            <div class="mb-3">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-3 rounded-lg cursor-pointer flex justify-between items-center" data-target="bubble-shop-section">
+                    <h3 class="text-sm font-bold flex items-center gap-2"><i class="fas fa-comment-dots text-purple-400"></i>إطارات رسائل الشات العام</h3>
+                    <i class="fas fa-chevron-down text-xs transition-transform duration-300"></i>
                 </div>
-                <div id="bubble-shop-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
-                    <div class="flex items-center justify-between mb-4 bg-gray-900/50 rounded-xl p-3">
-                        <span class="text-sm text-gray-400">رصيدك الحالي</span>
-                        <span class="font-bold text-yellow-400"><i class="fas fa-coins"></i> ${bubbleShopData.coins}</span>
+                <div id="bubble-shop-section" class="collapsible-content hidden bg-gray-800/30 p-4 rounded-b-lg">
+                    <div class="flex items-center justify-between mb-3 bg-gray-900/50 rounded-xl p-2.5">
+                        <span class="text-xs text-gray-400">رصيدك الحالي</span>
+                        <span class="font-bold text-yellow-400 text-sm"><i class="fas fa-coins"></i> ${bubbleShopData.coins}</span>
                     </div>
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid grid-cols-3 gap-2">
                         ${bubbleShopData.skins.map(s => {
                             const isActive = bubbleShopData.activeClass === s.cssClass;
                             return `
-                            <div class="rounded-xl p-3 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'} ${s.cssClass}">
-                                <p class="text-sm font-bold mb-1">${s.name}</p>
-                                <p class="text-xs text-yellow-300 mb-2"><i class="fas fa-coins"></i> ${s.price}</p>
+                            <div class="rounded-xl p-2 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'} ${s.cssClass}">
+                                <p class="text-[11px] font-bold mb-1 truncate">${s.name}</p>
+                                <p class="text-[10px] text-yellow-300 mb-1.5"><i class="fas fa-coins"></i> ${s.price}</p>
                                 ${s.owned ? `
-                                    <button class="equip-bubble-btn w-full text-xs py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}" 
+                                    <button class="equip-bubble-btn w-full text-[10px] py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}" 
                                             data-skin-id="${s._id}" ${isActive ? 'disabled' : ''}>
-                                        ${isActive ? 'مُفعّل حالياً' : 'تفعيل'}
+                                        ${isActive ? 'مُفعّل' : 'تفعيل'}
                                     </button>
                                 ` : `
-                                    <button class="purchase-bubble-btn w-full text-xs py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-skin-id="${s._id}">
+                                    <button class="purchase-bubble-btn w-full text-[10px] py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-skin-id="${s._id}">
                                         شراء
                                     </button>
                                 `}
@@ -1059,15 +1059,15 @@ async function showSettingsView() {
             <!-- =========================================== -->
             <!-- 6. قسم الهدايا المستلمة (الجديد) -->
             <!-- =========================================== -->
-            <div class="mb-4">
-                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="gifts-received-section">
-                    <h3 class="text-lg font-bold">
-                        <i class="fas fa-gift mr-2"></i>هداياي المستلمة
+            <div class="mb-3">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-3 rounded-lg cursor-pointer flex justify-between items-center" data-target="gifts-received-section">
+                    <h3 class="text-sm font-bold flex items-center gap-2">
+                        <i class="fas fa-gift text-purple-400"></i>هداياي المستلمة
                     </h3>
-                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+                    <i class="fas fa-chevron-down text-xs transition-transform duration-300"></i>
                 </div>
-                <div id="gifts-received-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
-                    <div id="gifts-received-body" class="text-center text-gray-400 py-6">
+                <div id="gifts-received-section" class="collapsible-content hidden bg-gray-800/30 p-4 rounded-b-lg">
+                    <div id="gifts-received-body" class="text-center text-gray-400 py-5">
                         <i class="fas fa-spinner fa-spin"></i>
                     </div>
                 </div>
@@ -1085,38 +1085,38 @@ async function showSettingsView() {
             </div>
 
             
-            <!-- =========================================== -->
+                       <!-- =========================================== -->
             <!-- 4. قسم المحظورين (الجديد) -->
             <!-- =========================================== -->
-            <div class="mb-4">
-                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-4 rounded-xl cursor-pointer flex justify-between items-center" data-target="blocked-users-section">
-                    <h3 class="text-lg font-bold">
-                        <i class="fas fa-ban mr-2"></i>المستخدمين المحظورين
-                        <span class="bg-red-500 text-white text-xs font-bold rounded-full px-2 py-1 ml-2">${blockedCount}</span>
+            <div class="mb-3">
+                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-3 rounded-lg cursor-pointer flex justify-between items-center" data-target="blocked-users-section">
+                    <h3 class="text-sm font-bold flex items-center gap-2">
+                        <i class="fas fa-ban text-purple-400"></i>المستخدمين المحظورين
+                        <span class="bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5">${blockedCount}</span>
                     </h3>
-                    <i class="fas fa-chevron-down transition-transform duration-300"></i>
+                    <i class="fas fa-chevron-down text-xs transition-transform duration-300"></i>
                 </div>
                 
-                <div id="blocked-users-section" class="collapsible-content hidden bg-gray-800/30 p-6 rounded-b-xl">
+                <div id="blocked-users-section" class="collapsible-content hidden bg-gray-800/30 p-4 rounded-b-lg">
                     ${blockedCount === 0 ? 
-                        `<div class="text-center py-8">
-                            <i class="fas fa-user-check text-4xl text-gray-500 mb-4"></i>
-                            <p class="text-gray-400">لا يوجد مستخدمين محظورين</p>
+                        `<div class="text-center py-5">
+                            <i class="fas fa-user-check text-2xl text-gray-500 mb-2"></i>
+                            <p class="text-gray-400 text-xs">لا يوجد مستخدمين محظورين</p>
                         </div>` 
                         : 
-                        `<div class="space-y-3 max-h-80 overflow-y-auto pr-2">
+                        `<div class="space-y-2 max-h-72 overflow-y-auto pr-1">
                             ${blockedUsers.map(user => `
-                                <div class="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg" data-user-id="${user._id}">
-                                    <div class="flex items-center gap-3">
+                                <div class="flex items-center justify-between p-2 bg-gray-700/50 rounded-lg" data-user-id="${user._id}">
+                                    <div class="flex items-center gap-2">
                                         <img src="${user.profileImage}" 
-                                             class="w-10 h-10 rounded-full border-2 border-red-500">
+                                             class="w-8 h-8 rounded-full border-2 border-red-500">
                                         <div>
-                                            <p class="font-medium">${user.username}</p>
-                                            <p class="text-xs text-gray-400">ID: ${user.customId}</p>
+                                            <p class="font-medium text-xs">${user.username}</p>
+                                            <p class="text-[10px] text-gray-400">ID: ${user.customId}</p>
                                         </div>
                                     </div>
 
-                                    <button class="unblock-user-btn bg-gray-600 hover:bg-gray-700 text-white text-xs py-1 px-3 rounded-full" 
+                                    <button class="unblock-user-btn bg-gray-600 hover:bg-gray-700 text-white text-[10px] py-1 px-2.5 rounded-full" 
                                             data-user-id="${user._id}">
                                         <i class="fas fa-unlock mr-1"></i>رفع الحظر
                                     </button>
@@ -1126,7 +1126,6 @@ async function showSettingsView() {
                     }
                 </div>
             </div>
-        </div>
     `;
     
     // ⭐ إعادة ربط الأحداث (دالة واحدة فقط)
@@ -1154,35 +1153,35 @@ async function reloadFrameShopSection() {
         const section = document.getElementById('frames-shop-section');
         if (!section) return;
 
-        section.innerHTML = `
-            <div class="flex items-center justify-between mb-4 bg-gray-900/50 rounded-xl p-3">
-                <span class="text-sm text-gray-400">رصيدك الحالي</span>
-                <span class="font-bold text-yellow-400 flex items-center gap-1">
+                section.innerHTML = `
+            <div class="flex items-center justify-between mb-3 bg-gray-900/50 rounded-xl p-2.5">
+                <span class="text-xs text-gray-400">رصيدك الحالي</span>
+                <span class="font-bold text-yellow-400 flex items-center gap-1 text-sm">
                     <i class="fas fa-coins"></i> ${frameShopData.coins}
                 </span>
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-3 gap-2">
                 ${frameShopData.frames.filter(f => f.name !== 'إطار الترحيب').map(f => {
                     const owned = f.ownedInstance;
                     const isActive = frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString();
                     const isExpired = owned && owned.expiresAt && new Date(owned.expiresAt) < new Date();
                     return `
-                    <div class="bg-gray-900/40 rounded-xl p-3 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'}">
-                        <div class="w-16 h-16 mx-auto rounded-full ${f.cssClass} bg-gray-700 mb-2"></div>
-                        <p class="text-sm font-bold mb-1">${f.name}</p>
+                    <div class="bg-gray-900/40 rounded-xl p-2 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'}">
+                        <div class="w-12 h-12 mx-auto rounded-full ${f.cssClass} bg-gray-700 mb-1.5"></div>
+                        <p class="text-[11px] font-bold mb-1 truncate">${f.name}</p>
                         ${owned && !isExpired ? `
-                            ${owned.activatedAt ? `<p class="text-[10px] text-gray-400 mb-2">ينتهي: ${new Date(owned.expiresAt).toLocaleDateString('ar-SA')}</p>` : `<p class="text-[10px] text-green-400 mb-2">بحوزتك (لم يُفعّل بعد)</p>`}
-                            <button class="equip-frame-btn w-full text-xs py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}"
+                            ${owned.activatedAt ? `<p class="text-[9px] text-gray-400 mb-1.5">ينتهي: ${new Date(owned.expiresAt).toLocaleDateString('ar-SA')}</p>` : `<p class="text-[9px] text-green-400 mb-1.5">بحوزتك</p>`}
+                            <button class="equip-frame-btn w-full text-[10px] py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}"
                                     data-frame-id="${f._id}" ${isActive ? 'disabled' : ''}>
-                                ${isActive ? 'مُفعّل حالياً' : 'تفعيل'}
+                                ${isActive ? 'مُفعّل' : 'تفعيل'}
                             </button>
                         ` : `
-                            <select class="frame-duration-select w-full text-xs bg-gray-700 rounded p-1.5 mb-2" data-frame-id="${f._id}">
-                                <option value="7">7 أيام - ${f.prices.days7} كوينز</option>
-                                <option value="30">30 يوم - ${f.prices.days30} كوينز</option>
-                                <option value="365">سنة كاملة - ${f.prices.days365} كوينز</option>
+                            <select class="frame-duration-select w-full text-[10px] bg-gray-700 rounded p-1 mb-1.5" data-frame-id="${f._id}">
+                                <option value="7">7 أيام - ${f.prices.days7}</option>
+                                <option value="30">30 يوم - ${f.prices.days30}</option>
+                                <option value="365">سنة - ${f.prices.days365}</option>
                             </select>
-                            <button class="purchase-frame-btn w-full text-xs py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-frame-id="${f._id}">
+                            <button class="purchase-frame-btn w-full text-[10px] py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-frame-id="${f._id}">
                                 شراء
                             </button>
                         `}
@@ -1265,25 +1264,25 @@ async function reloadBubbleShopSection() {
         const section = document.getElementById('bubble-shop-section');
         if (!section) return;
 
-        section.innerHTML = `
-            <div class="flex items-center justify-between mb-4 bg-gray-900/50 rounded-xl p-3">
-                <span class="text-sm text-gray-400">رصيدك الحالي</span>
-                <span class="font-bold text-yellow-400"><i class="fas fa-coins"></i> ${bubbleShopData.coins}</span>
+                section.innerHTML = `
+            <div class="flex items-center justify-between mb-3 bg-gray-900/50 rounded-xl p-2.5">
+                <span class="text-xs text-gray-400">رصيدك الحالي</span>
+                <span class="font-bold text-yellow-400 text-sm"><i class="fas fa-coins"></i> ${bubbleShopData.coins}</span>
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-3 gap-2">
                 ${bubbleShopData.skins.map(s => {
                     const isActive = bubbleShopData.activeClass === s.cssClass;
                     return `
-                    <div class="rounded-xl p-3 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'} ${s.cssClass}">
-                        <p class="text-sm font-bold mb-1">${s.name}</p>
-                        <p class="text-xs text-yellow-300 mb-2"><i class="fas fa-coins"></i> ${s.price}</p>
+                    <div class="rounded-xl p-2 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'} ${s.cssClass}">
+                        <p class="text-[11px] font-bold mb-1 truncate">${s.name}</p>
+                        <p class="text-[10px] text-yellow-300 mb-1.5"><i class="fas fa-coins"></i> ${s.price}</p>
                         ${s.owned ? `
-                            <button class="equip-bubble-btn w-full text-xs py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}"
+                            <button class="equip-bubble-btn w-full text-[10px] py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}"
                                     data-skin-id="${s._id}" ${isActive ? 'disabled' : ''}>
-                                ${isActive ? 'مُفعّل حالياً' : 'تفعيل'}
+                                ${isActive ? 'مُفعّل' : 'تفعيل'}
                             </button>
                         ` : `
-                            <button class="purchase-bubble-btn w-full text-xs py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-skin-id="${s._id}">
+                            <button class="purchase-bubble-btn w-full text-[10px] py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-skin-id="${s._id}">
                                 شراء
                             </button>
                         `}
@@ -7924,32 +7923,33 @@ function displayMessage(message) {
     const isMyMessage = message.sender._id === user._id;
     const messageElement = document.createElement('div');
     messageElement.dataset.messageId = message._id;
-        const senderBubbleClass = message.sender.activeBubbleSkinClass || '';
-    messageElement.className = 'message-container p-2 rounded-lg mb-2 flex items-start gap-2 relative group ' + (senderBubbleClass || (isMyMessage ? 'bg-purple-800' : 'bg-gray-700'));
+    const senderBubbleClass = message.sender.activeBubbleSkinClass || '';
+    // ✅ حجم موحّد أنيق ومضغوط على كل الشاشات (كمبيوتر وهاتف) — لا فرق بينهما بعد الآن
+    messageElement.className = 'message-container px-2.5 py-2 rounded-xl mb-2 flex items-start gap-2 relative group max-w-full ' + (senderBubbleClass || (isMyMessage ? 'bg-purple-800/80' : 'bg-gray-700/70'));
 
     let replyHTML = '';
     if (message.replyTo && message.replyTo.sender) {
         replyHTML = `
-            <div class="reply-snippet bg-black/20 p-2 rounded-md mb-2 border-l-2 border-purple-400">
-                <p class="font-bold text-xs text-purple-300">${message.replyTo.sender.username}</p>
-                <p class="text-xs text-gray-300 truncate">${message.replyTo.content || 'رسالة'}</p>
+            <div class="reply-snippet bg-black/20 px-2 py-1 rounded-md mb-1 border-l-2 border-purple-400">
+                <p class="font-bold text-[10px] text-purple-300">${message.replyTo.sender.username}</p>
+                <p class="text-[10px] text-gray-300 truncate">${message.replyTo.content || 'رسالة'}</p>
             </div>
         `;
     }
 
                 messageElement.innerHTML = `
         <img src="${message.sender.profileImage}" alt="${message.sender.username}" 
-             class="w-8 h-8 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-400 ${message.sender.activeFrameClass || ''}" data-user-id="${message.sender._id}">
-        <div class="w-full">
+             class="w-7 h-7 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-400 flex-shrink-0 ${message.sender.activeFrameClass || ''}" data-user-id="${message.sender._id}">
+        <div class="min-w-0 flex-1">
             ${replyHTML}
-            <p class="font-bold text-sm ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${message.sender.username}</p>
-            <p class="text-white text-sm">${message.content}</p>
+            <p class="font-bold text-[11px] leading-tight ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${message.sender.username}</p>
+            <p class="text-white text-[13px] leading-snug break-words">${message.content}</p>
         </div>
-        <div class="flex flex-col gap-1">
-            <button class="reply-btn text-gray-400 hover:text-purple-400 text-xs" title="رد">
+        <div class="flex flex-col gap-1 flex-shrink-0">
+            <button class="reply-btn text-gray-400 hover:text-purple-400 text-[10px]" title="رد">
                 <i class="fas fa-reply"></i>
             </button>
-            ${!isMyMessage ? `<button class="report-public-msg-btn text-gray-400 hover:text-red-400 text-xs" title="إبلاغ"><i class="fas fa-exclamation-triangle"></i></button>` : ''}
+            ${!isMyMessage ? `<button class="report-public-msg-btn text-gray-400 hover:text-red-400 text-[10px]" title="إبلاغ"><i class="fas fa-exclamation-triangle"></i></button>` : ''}
         </div>
     `;
 
@@ -7983,10 +7983,7 @@ function displayMessage(message) {
             setTimeout(() => originalMessageElement.classList.remove('flash-animation'), 1000);
         }
     }
-
-    // ✅ مزامنة النافذة السفلية بالهاتف إن كانت مفتوحة
-    const mobileMirror = document.getElementById('mobile-chat-messages-mirror');
-    if (mobileMirror) { mobileMirror.appendChild(messageElement.cloneNode(true)); mobileMirror.scrollTop = mobileMirror.scrollHeight; }
+    // ✅ تمت إزالة كود "المرآة" القديم — النافذة السفلية بالهاتف تنقل عنصر #chat-messages الحقيقي بدل نسخه (انظر تعديل showMobilePublicChatSheet)
 }
 
 
