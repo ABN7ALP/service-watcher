@@ -373,16 +373,22 @@ exports.approveDeposit = async (req, res) => {
     transaction.processedAt = new Date();
     await transaction.save();
 
-    // Add balance to user
+      // Add balance to user
     const user = await User.findById(transaction.user);
     if (user) {
       user.balance += transaction.amount;
       await user.save();
 
+      const io = req.app.get('socketio');
+
+      // ✅ تحديث الرصيد لحظياً في واجهة المستخدم إن كان متصلاً الآن
+      if (io && user.socketId) {
+        io.to(user.socketId).emit('balanceUpdate', { newBalance: user.balance });
+      }
+
       // ✅ بوت الموقع: إشعار تفصيلي بنجاح الشحن
-            const io = req.app.get('socketio');
       const { sendBotMessage } = require('../utils/botMessenger');
-      await sendBotMessage(io, user._id, `تم شحن رصيدك بمبلغ ${transaction.amount}$ بنجاح ✅\nرصيدك الحالي: ${user.balance.toFixed(2)}$`);
+      await sendBotMessage(io, user._id, `تم شحن رصيدك بمبلغ ${transaction.amount}$ بنجاح \nرصيدك الحالي: ${user.balance.toFixed(2)}$`);
     }
 
     // Log action
