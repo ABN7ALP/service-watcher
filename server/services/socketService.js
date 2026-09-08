@@ -189,8 +189,10 @@ async function endBattle(io, battleId) {
         if (typeof commissionRate !== 'number' || isNaN(commissionRate) || commissionRate < 0 || commissionRate > 0.5) {
             commissionRate = 0.10;
         }
-        const commission = totalPot * commissionRate;
-        const finalPot = totalPot - commission;
+        // ✅ حساب مالي دقيق يمنع تراكم أخطاء Float
+        const { mulMoney, subMoney } = require('../utils/money');
+        const commission = mulMoney(totalPot, commissionRate);
+        const finalPot = subMoney(totalPot, commission);
 
         if (winnerId) {
             console.log(`[END BATTLE] Winner is ${winnerId}, Loser is ${loserId}`);
