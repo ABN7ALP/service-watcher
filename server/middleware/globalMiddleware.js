@@ -4,7 +4,8 @@ const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
-const xss = require('xss-clean');
+// ✅ أُزيلت xss-clean (متوقفة عن الصيانة ولها تجاوزات معروفة).
+// الدفاع الحقيقي = ترميز المخرجات في الواجهة (escapeHtml) + الحارس أدناه.;
 
 // إعدادات محدد المعدل (Rate Limiter)
 // ✅ مفتاح آمن: نتحقق من توقيع التوكن (verify لا decode) قبل الوثوق بهويته.
@@ -69,6 +70,53 @@ const passwordLimiter = rateLimit({
     message: { status: 'fail', message: 'محاولات كثيرة لتغيير كلمة المرور. حاول بعد قليل.' },
 });
 
+
+// 🛡️ حارس إدخال بديل: يزيل فقط الأنماط الخطرة فعلياً دون تشويه نص المستخدم العادي.
+// نهجنا: لا نحاول "تنظيف" HTML (نهج هشّ)، بل نمنع الحمولات التنفيذية الواضحة
+// ونترك الترميز الآمن للمخرجات في الواجهة.
+const DANGEROUS_PATTERNS = [
+    /<\s*script\b/gi,
+    /<\s*\/\s*script\s*>/gi,
+    /<\s*iframe\b/gi,
+    /<\s*object\b/gi,
+    /<\s*embed\b/gi,
+    /javascript\s*:/gi,
+    /vbscript\s*:/gi,
+    /data\s*:\s*text\/html/gi,
+    /\son\w+\s*=/gi,   // onerror= / onclick= ... داخل خصائص HTML
+];
+
+const sanitizeValue = (val) => {
+    if (typeof val !== 'string') return val;
+    let clean = val;
+    for (const pattern of DANGEROUS_PATTERNS) {
+        clean = clean.replace(pattern, '');
+    }
+    return clean;
+};
+
+// تنقية عميقة مع حماية من الكائنات المتداخلة بعمق مفرط (هجوم استنزاف)
+const deepSanitize = (obj, depth = 0) => {
+    if (depth > 8 || obj === null || typeof obj !== 'object') return;
+    for (const key of Object.keys(obj)) {
+        const value = obj[key];
+        if (typeof value === 'string') {
+            obj[key] = sanitizeValue(value);
+        } else if (typeof value === 'object' && value !== null) {
+            deepSanitize(value, depth + 1);
+        }
+    }
+};
+
+const xssGuard = (req, res, next) => {
+    // ⚠️ نعالج body فقط. query وparams في Express 5 للقراءة فقط،
+    // ومحاولة الكتابة عليهما تسبب انهياراً — وهي سبب شائع لأعطال xss-clean نفسها.
+    if (req.body && typeof req.body === 'object') {
+        deepSanitize(req.body);
+    }
+    next();
+};
+
 const setupMiddleware = (app) => {
     // تطبيق Middleware الأمان الأساسية
         // ✅ قائمة بيضاء للمصادر المسموحة بدل الانفتاح الكامل (*)
@@ -124,9 +172,9 @@ const setupMiddleware = (app) => {
     // Middleware للحماية من NoSQL Injection
     app.use(mongoSanitize());
 
-    // Middleware للحماية من XSS
-    app.use(xss());
-
+    / Middleware للحماية من XSS (بديل آمن لـ xss-clean المتوقفة)
+    app.use(xssGuard);
+    
     // تطبيق محدد المعدل على جميع الطلبات
     app.use(limiter);
 };
