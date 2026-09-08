@@ -17,7 +17,7 @@ const expireFrames = async (io) => {
         // ✅ تحديث جماعي واحد بدل حلقة حفظ (أسرع بكثير وأقل ضغطاً على القاعدة)
         const result = await User.updateMany(
             { activeFrameExpiresAt: { $ne: null, $lt: now } },
-            { $set: { activeFrameClass: null, activeFrameExpiresAt: null } }
+             { $set: { activeFrame: null, activeFrameClass: null, activeFrameExpiresAt: null } }
         );
 
         console.log(`[FRAME EXPIRY] Expired frames for ${result.modifiedCount} user(s)`);
