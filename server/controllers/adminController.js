@@ -502,14 +502,15 @@ exports.rejectTransaction = async (req, res) => {
       }
     }
 
-    await AdminLog.create({
+     await AdminLog.logAction({
       admin: admin._id,
       action: 'reject_transaction',
       targetUser: transaction.user,
+      targetEntity: 'transaction',
+      entityId: transaction._id,
       details: { reason, transactionType: transaction.type },
       ipAddress: req.ip
     });
-
     res.json({
       success: true,
       message: 'تم رفض المعاملة',
