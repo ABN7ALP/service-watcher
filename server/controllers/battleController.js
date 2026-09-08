@@ -23,10 +23,11 @@ exports.createBattle = async (req, res, next) => {
         const { type, betAmount, isPrivate, password } = req.body;
         const creatorId = req.user.id;
 
-                // 🛡️ تحقق صارم من المبلغ قبل أي شيء (يمنع القيم السالبة أو غير الرقمية من العميل)
-        const numBet = parseFloat(betAmount);
-        if (!numBet || isNaN(numBet) || numBet < 1) {
-            return res.status(400).json({ status: 'fail', message: 'مبلغ الرهان غير صالح.' });
+         // 🛡️ تحقق صارم من المبلغ قبل أي شيء (يمنع القيم السالبة أو غير الرقمية من العميل)
+        const { parseMoneyInput } = require('../utils/money');
+        const numAmount = parseMoneyInput(amount, { min: 1, max: 1000 });
+        if (numAmount === null) {
+            return res.status(400).json({ status: 'fail', message: 'مبلغ غير صالح.' });
         }
 
         // ✅ خصم ذرّي أولاً: الشرط والخصم عملية واحدة داخل قاعدة البيانات
