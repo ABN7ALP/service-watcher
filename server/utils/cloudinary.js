@@ -17,9 +17,10 @@ const storage = multer.memoryStorage();
 
 // 3. دالة للتحقق من أن الملف هو صورة (للملفات الشخصية)
 const profileImageFilter = (req, file, cb) => {
-    const filetypes = /jpeg|jpg|png|gif/;
-    const mimetype = filetypes.test(file.mimetype);
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+     // ✅ فحص مبدئي سريع (الفحص الحاسم يتم على البايتات بعد الرفع للذاكرة)
+    const filetypes = /^(jpeg|jpg|png|gif|webp)$/;;
+     const mimetype = /^image\/(jpeg|png|gif|webp)$/.test(file.mimetype);
+    const extname = filetypes.test(path.extname(file.originalname).toLowerCase().replace('.', ''));
 
     if (mimetype && extname) {
         return cb(null, true);
@@ -143,6 +144,8 @@ const getPublicIdFromUrl = (url) => {
         return null;
     }
 };
+
+
 
 // 9. دالة لرفع صور الدردشة مع خيارات حماية
 const uploadChatImage = (fileBuffer, options = {}) => {
@@ -293,6 +296,7 @@ const uploadReceiptImage = (fileBuffer) => {
                 if (error) reject(error);
                 else resolve(result);
             }
+            
         );
         uploadStream.end(fileBuffer);
     });
