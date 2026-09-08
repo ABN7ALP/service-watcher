@@ -263,8 +263,19 @@ async function endBattle(io, battleId) {
 
 // --- دالة التهيئة الرئيسية ---
 const initializeSocket = (server) => {
-    const io = new Server(server, {
-        cors: { origin: "*", methods: ["GET", "POST"] }
+        const io = new Server(server, {
+        cors: {
+            // ✅ نفس القائمة البيضاء المستخدمة في الـ API
+            origin: (origin, callback) => {
+                const allowed = (process.env.ALLOWED_ORIGINS || '')
+                    .split(',').map(o => o.trim()).filter(Boolean);
+                if (!origin || allowed.length === 0) return callback(null, true);
+                if (allowed.includes(origin)) return callback(null, true);
+                return callback(new Error('Not allowed by CORS'));
+            },
+            methods: ["GET", "POST"],
+            credentials: true
+        }
     });
 
     io.startBattleCountdown = async (battleId) => {
