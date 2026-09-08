@@ -196,9 +196,16 @@ async function endBattle(io, battleId) {
 
         if (winnerId) {
             console.log(`[END BATTLE] Winner is ${winnerId}, Loser is ${loserId}`);
-            const winnerUser = await User.findById(winnerId);
+                        // ✅ إضافة ذرّية ودقيقة للجائزة (تمنع فقدان الجائزة عند تزامن عمليات أخرى على الرصيد)
+            const { addMoney } = require('../utils/money');
+            const winnerUser = await User.findByIdAndUpdate(
+                winnerId,
+                { $inc: { balance: finalPot } },
+                { new: true }
+            );
             if (winnerUser) {
-                winnerUser.balance += finalPot;
+                // تطبيع الرصيد بعد الإضافة الذرّية لمنع تراكم كسور Float
+                winnerUser.balance = addMoney(winnerUser.balance, 0);
                 await winnerUser.save();
                 // --- ✅ الإصلاح: إرسال تحديث الرصيد بشكل فوري ---
                 if (winnerUser.socketId) {
@@ -216,15 +223,23 @@ async function endBattle(io, battleId) {
 
         } else { // في حالة التعادل
             console.log(`[END BATTLE] Battle is a draw.`);
+             const { addMoney } = require('../utils/money');
             for (const player of battle.players) {
-                player.balance += battle.betAmount;
-                await player.save();
-                // --- ✅ الإصلاح: إرسال تحديث الرصيد في حالة التعادل أيضًا ---
-                if (player.socketId) {
-                    io.to(player.socketId).emit('balanceUpdate', { newBalance: player.balance });
-                    console.log(`[END BATTLE] Sent balance update to ${player.username} (draw)`);
+                // ✅ استرداد ذرّي: لا نكتب فوق مستند قديم قد يكون تغيّر أثناء المباراة
+                const refreshed = await User.findByIdAndUpdate(
+                    player._id,
+                    { $inc: { balance: battle.betAmount } },
+                    { new: true }
+                );
+                if (!refreshed) continue;
+
+                refreshed.balance = addMoney(refreshed.balance, 0);
+                await refreshed.save();
+
+                if (refreshed.socketId) {
+                    io.to(refreshed.socketId).emit('balanceUpdate', { newBalance: refreshed.balance });
+                    console.log(`[END BATTLE] Sent balance update to ${refreshed.username} (draw)`);
                 }
-                // منح نقاط رمزية للتعادل
                 await addExperience(io, player._id, 0, 'win'); 
             }
         }
@@ -243,7 +258,7 @@ async function endBattle(io, battleId) {
                     currency: 'USD',
                     status: 'completed',
                     battle: battle._id,
-                    description: `عمولة النظام ${(commissionRate * 100).toFixed(1)}% من تحدي ${battle.type}`
+                    description: `عمولة النظام ${(commissionRate * 100).toFixed(1)}% (${commission}$) من إجمالي ${totalPot}$ — تحدي ${battle.type}`
                 });
             } catch (e) {
                 // فشل التسجيل لا يجب أن يؤثر على توزيع الجوائز (تمّ قبله)
