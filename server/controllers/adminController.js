@@ -492,17 +492,33 @@ exports.rejectTransaction = async (req, res) => {
     transaction.processedAt = new Date();
     await transaction.save();
 
-    // If deposit was rejected, no need to adjust balance
+        // If deposit was rejected, no need to adjust balance
     // If withdrawal was rejected, return reserved balance
+    const io = req.app.get('socketio');
+    const { sendBotMessage } = require('../utils/botMessenger');
+    let refundedUser = null;
+
     if (transaction.type === 'withdrawal') {
-      const user = await User.findById(transaction.user);
-      if (user) {
-        user.balance += Math.abs(transaction.amount); // Return the reserved amount
-        await user.save();
+      refundedUser = await User.findById(transaction.user);
+      if (refundedUser) {
+        refundedUser.balance += Math.abs(transaction.amount); // Return the reserved amount
+        await refundedUser.save();
+
+        // ✅ تحديث الرصيد لحظياً في واجهة المستخدم إن كان متصلاً الآن
+        if (io && refundedUser.socketId) {
+          io.to(refundedUser.socketId).emit('balanceUpdate', { newBalance: refundedUser.balance });
+        }
       }
     }
 
-     await AdminLog.logAction({
+    // ✅ بوت الموقع: إشعار المستخدم برفض طلبه والسبب (كان مفقوداً تماماً)
+    const reasonText = reason && reason.trim() ? reason.trim() : 'لم يُحدد سبب';
+    const botMessage = transaction.type === 'withdrawal'
+      ? `❌ تم رفض طلب سحبك بمبلغ ${Math.abs(transaction.amount).toFixed(2)}$.\nالسبب: ${reasonText}\nتم إرجاع المبلغ إلى رصيدك.`
+      : `❌ تم رفض طلب شحن رصيدك بمبلغ ${Math.abs(transaction.amount).toFixed(2)}$.\nالسبب: ${reasonText}`;
+    await sendBotMessage(io, transaction.user, botMessage);
+
+    await AdminLog.logAction({
       admin: admin._id,
       action: 'reject_transaction',
       targetUser: transaction.user,
