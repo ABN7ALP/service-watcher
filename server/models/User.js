@@ -21,6 +21,7 @@ const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true, minlength: 6, select: false },
+    passwordChangedAt: { type: Date, select: false },
     profileImage: { type: String, default: 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg' },
     balance: { type: Number, default: 0 },
     coins: { type: Number, default: 0 },
@@ -94,6 +95,13 @@ userSchema.pre('save', async function(next) {
     }
     next();
 });
+// ✅ تسجيل لحظة تغيير كلمة المرور (نطرح ثانية لضمان أن التوكن الجديد يُصدر بعدها دائماً،
+// تفادياً لفارق التوقيت البسيط بين الحفظ في القاعدة وإصدار التوكن)
+userSchema.pre('save', function(next) {
+    if (!this.isModified('password') || this.isNew) return next();
+    this.passwordChangedAt = Date.now() - 1000;
+    next();
+});
 
 userSchema.methods.comparePassword = async function(candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);
@@ -111,8 +119,17 @@ userSchema.virtual('age').get(function() {
     return age;
 });
 
+// ✅ هل تغيّرت كلمة المرور بعد إصدار هذا التوكن؟
+userSchema.methods.changedPasswordAfter = function(jwtIat) {
+    if (!this.passwordChangedAt) return false;
+    const changedTimestamp = parseInt(this.passwordChangedAt.getTime() / 1000, 10);
+    return jwtIat < changedTimestamp;
+};
+
 userSchema.set('toJSON', { virtuals: true });
 userSchema.set('toObject', { virtuals: true });
 
 const User = mongoose.model('User', userSchema);
 module.exports = User;
+
+
