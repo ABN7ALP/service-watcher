@@ -7,24 +7,66 @@ const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
 
 // إعدادات محدد المعدل (Rate Limiter)
+// ✅ مفتاح آمن: نتحقق من توقيع التوكن (verify لا decode) قبل الوثوق بهويته.
+// jwt.decode يقبل أي توكن مزوّر، ما كان يسمح لمهاجم بتوليد مفتاح جديد لكل طلب
+// وبالتالي تجاوز المحدد بالكامل. أي توكن غير موثّق يُعامل بمفتاح الـ IP.
+const safeKeyGenerator = (req) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+            const jwt = require('jsonwebtoken');
+            const decoded = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
+            if (decoded?.id) return `user:${decoded.id}`;
+        } catch (e) { /* توكن غير صالح → نرجع لـ IP */ }
+    }
+    return req.ip;
+};
+
+// المحدد العام لبقية المسارات
 const limiter = rateLimit({
-    windowMs: 5 * 60 * 1000, // ✅ نافذة أقصر تقلل مدة الانتظار الفعلية
-    max: 500, // ✅ رفع الحد لأن عدة مستخدمين شرعيين قد يشتركون بنفس IP (شبكة منزل/جامعة)
+    windowMs: 5 * 60 * 1000,
+    max: 500,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => {
-        // ✅ إن وُجد مستخدم مسجّل، عاقب حسابه لا كل من يشارك شبكته
-        const authHeader = req.headers.authorization;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            try {
-                const jwt = require('jsonwebtoken');
-                const decoded = jwt.decode(authHeader.split(' ')[1]);
-                if (decoded?.id) return `user:${decoded.id}`;
-            } catch (e) { /* رجوع لـ IP */ }
-        }
-        return req.ip;
-    },
+    keyGenerator: safeKeyGenerator,
     message: 'طلبات كثيرة جداً، يرجى المحاولة مرة أخرى خلال دقائق قليلة',
+});
+
+// 🛡️ محدد صارم لتسجيل الدخول: يوقف الـ Brute-force فعلياً.
+// نعتمد على IP + البريد المُستهدف معاً، فلا يستطيع مهاجم قصف حساب معيّن
+// بتغيير عنوانه، ولا حجب مستخدمين شرعيين يشاركون نفس الشبكة.
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 دقيقة
+    max: 8,                   // 8 محاولات فاشلة فقط
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true, // ✅ المحاولات الناجحة لا تُحتسب إطلاقاً
+    keyGenerator: (req) => {
+        const email = (req.body?.email || '').toString().toLowerCase().trim();
+        return `login:${req.ip}:${email}`;
+    },
+    message: { status: 'fail', message: 'محاولات دخول كثيرة جداً. يرجى المحاولة بعد 15 دقيقة.' },
+});
+
+// 🛡️ محدد إنشاء الحسابات: يمنع إنشاء حسابات جماعية آلية (مزارع حسابات/احتيال العروض)
+const registerLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // ساعة
+    max: 5,                   // 5 حسابات لكل IP في الساعة
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => `register:${req.ip}`,
+    message: { status: 'fail', message: 'تم إنشاء عدد كبير من الحسابات من هذا العنوان. حاول لاحقاً.' },
+});
+
+// 🛡️ محدد تغيير كلمة المرور: يمنع تخمين كلمة المرور الحالية من جلسة مسروقة
+const passwordLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    keyGenerator: safeKeyGenerator,
+    message: { status: 'fail', message: 'محاولات كثيرة لتغيير كلمة المرور. حاول بعد قليل.' },
 });
 
 const setupMiddleware = (app) => {
@@ -68,3 +110,6 @@ const setupMiddleware = (app) => {
 };
 
 module.exports = setupMiddleware;
+module.exports.loginLimiter = loginLimiter;
+module.exports.registerLimiter = registerLimiter;
+module.exports.passwordLimiter = passwordLimiter;
