@@ -35,6 +35,8 @@ const battleSchema = new mongoose.Schema({
     },
     password: {
         type: String,
+        select: false, // 🛡️ لا يُرجَع أبداً في أي استعلام إلا بطلب صريح select('+password')
+                        // يمنع تسرب كلمة مرور التحدي الخاص عبر بث newBattle/battleUpdate لكل المتصلين
     },
     // --- ✅ الحقول الجديدة للعبة ---
     gameType: {
