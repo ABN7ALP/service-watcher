@@ -11,13 +11,18 @@ const adminAuth = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     // ✅ الإصلاح: التوكن عندنا يحمل الحقل "id" وليس "userId"
-    const user = await User.findOne({ 
+        const user = await User.findOne({ 
       _id: decoded.id,
       isAdmin: true,
       isBanned: false 
-    }).select('-password');
+    }).select('-password +passwordChangedAt');
 
     if (!user) {
+      throw new Error();
+    }
+
+    // ✅ إبطال توكنات الأدمن القديمة بعد تغيير كلمة المرور (أهم من حساب المستخدم العادي)
+    if (user.changedPasswordAfter(decoded.iat)) {
       throw new Error();
     }
 
