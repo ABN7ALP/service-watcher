@@ -23,22 +23,38 @@ exports.createBattle = async (req, res, next) => {
         const { type, betAmount, isPrivate, password } = req.body;
         const creatorId = req.user.id;
 
-        const creator = await User.findById(creatorId);
-        if (creator.balance < betAmount) {
+                // 🛡️ تحقق صارم من المبلغ قبل أي شيء (يمنع القيم السالبة أو غير الرقمية من العميل)
+        const numBet = parseFloat(betAmount);
+        if (!numBet || isNaN(numBet) || numBet < 1) {
+            return res.status(400).json({ status: 'fail', message: 'مبلغ الرهان غير صالح.' });
+        }
+
+        // ✅ خصم ذرّي أولاً: الشرط والخصم عملية واحدة داخل قاعدة البيانات
+        const creator = await User.findOneAndUpdate(
+            { _id: creatorId, balance: { $gte: numBet } },
+            { $inc: { balance: -numBet } },
+            { new: true }
+        );
+
+        if (!creator) {
             return res.status(400).json({ status: 'fail', message: 'رصيدك غير كافٍ لإنشاء هذا التحدي.' });
         }
 
-        const newBattle = await Battle.create({
-            type,
-            betAmount,
-            isPrivate,
-            password,
-            players: [creatorId], // المنشئ ينضم تلقائيًا
-        });
-        
-        // خصم الرصيد من المنشئ
-        creator.balance -= betAmount;
-        await creator.save();
+        // ✅ ننشئ التحدي بعد الخصم — وإن فشل الإنشاء نُعيد المبلغ فوراً
+        let newBattle;
+        try {
+            newBattle = await Battle.create({
+                type,
+                betAmount: numBet,
+                isPrivate,
+                password,
+                players: [creatorId], // المنشئ ينضم تلقائيًا
+            });
+        } catch (createErr) {
+            await User.findByIdAndUpdate(creatorId, { $inc: { balance: numBet } });
+            console.error('[ERROR] createBattle failed, refunded creator:', createErr);
+            return res.status(500).json({ status: 'fail', message: 'تعذّر إنشاء التحدي، وأُعيد المبلغ إلى رصيدك.' });
+        }
 
         const populatedBattle = await Battle.findById(newBattle._id).populate('players', 'username profileImage');
 
