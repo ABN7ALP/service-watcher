@@ -20,6 +20,9 @@ setupMiddleware(app);
 
 // --- تهيئة وتشغيل Socket.IO ---
 const io = initializeSocket(server);
+// ✅ مهمة دورية لإنهاء الإطارات المنتهية تلقائياً
+const { startFrameExpiryJob } = require('./utils/frameExpiryJob');
+startFrameExpiryJob(io);
 app.set('socketio', io);
 app.use((req, res, next) => {
     req.io = io;
