@@ -1,6 +1,6 @@
 // ✅ Service Worker: نسخة v3 — استراتيجية "الشبكة أولاً" للملفات الثابتة
 // حتى لا يبقى المستخدمون عالقين على نسخة قديمة من app.js/style.css بعد كل تحديث
-const CACHE_NAME = 'battle-platform-v5';
+const CACHE_NAME = 'battle-platform-v6';
 const STATIC_ASSETS = ['/index.html', '/dist/style.css', '/js/app.js'];
 
 self.addEventListener('install', (event) => {
