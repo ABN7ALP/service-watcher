@@ -23,6 +23,8 @@ const adminLogSchema = new mongoose.Schema({
       'reject_deposit',
       'approve_withdrawal',
       'reject_withdrawal',
+      'approve_transaction',
+      'reject_transaction',
       'update_permissions',
       'create_gift',
       'update_gift',
