@@ -134,49 +134,6 @@ router.post('/profile/picture', auth, profileUpload, async (req, res) => {
     }
 });
 
-// Change password
-router.post('/change-password', auth, async (req, res) => {
-    try {
-        const { userId } = req.user;
-        const { currentPassword, newPassword } = req.body;
-        
-        const User = require('../models/User');
-        const user = await User.findById(userId).select('+password');
-        
-        // Verify current password
-        const isMatch = await user.comparePassword(currentPassword);
-        if (!isMatch) {
-            return res.status(400).json({
-                success: false,
-                message: 'كلمة المرور الحالية غير صحيحة'
-            });
-        }
-        
-        // Check password strength
-        if (newPassword.length < 6) {
-            return res.status(400).json({
-                success: false,
-                message: 'كلمة المرور الجديدة يجب أن تكون على الأقل 6 أحرف'
-            });
-        }
-        
-        // Update password
-        user.password = newPassword;
-        await user.save();
-        
-        res.json({
-            success: true,
-            message: 'تم تغيير كلمة المرور بنجاح'
-        });
-        
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
-    }
-});
-
 // Get user notifications
 router.get('/notifications', auth, async (req, res) => {
     try {
