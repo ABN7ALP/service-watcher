@@ -1,7 +1,7 @@
 // ملف: server/controllers/userController.js
 
 const User = require('../models/User');
-const { cloudinary, deleteFromCloudinary, getPublicIdFromUrl } = require('../utils/cloudinary');
+const { cloudinary, deleteFromCloudinary, getPublicIdFromUrl, assertRealType } = require('../utils/cloudinary');
 
 // --- تعريف الدوال أولاً ---
 
@@ -20,8 +20,15 @@ const updateUsername = async (req, res) => {
 
 const updateProfilePicture = async (req, res) => {
     try {
-        if (!req.file) {
+        f (!req.file) {
             return res.status(400).json({ status: 'fail', message: 'الرجاء اختيار ملف صورة.' });
+        }
+
+        // 🛡️ التحقق من المحتوى الفعلي للملف قبل رفعه (لا من الترويسة القابلة للتزوير)
+        try {
+            assertRealType(req.file.buffer, ['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+        } catch (typeErr) {
+            return res.status(400).json({ status: 'fail', message: typeErr.message });
         }
 
         const user = await User.findById(req.user.id);
