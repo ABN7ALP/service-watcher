@@ -71,6 +71,58 @@ const chatUpload = multer({
     fileFilter: chatMediaFilter
 });
 
+// =================================================
+// 🛡️ 6.5 التحقق من النوع الحقيقي للملف عبر توقيع البايتات (Magic Numbers)
+// السبب: mimetype واسم الملف يرسلهما العميل ويمكن تزويرهما بسهولة.
+// هنا نقرأ البايتات الأولى من المحتوى الفعلي — وهي لا تُزوَّر لأنها الملف نفسه.
+// =================================================
+
+// يتحقق من تطابق تسلسل بايتات معيّن عند إزاحة محددة
+const bytesMatch = (buf, offset, signature) =>
+    signature.every((byte, i) => buf[offset + i] === byte);
+
+const detectRealFileType = (buffer) => {
+    if (!buffer || buffer.length < 12) return null;
+
+    // --- صور ---
+    if (bytesMatch(buffer, 0, [0xFF, 0xD8, 0xFF])) return 'image/jpeg';
+    if (bytesMatch(buffer, 0, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])) return 'image/png';
+    if (bytesMatch(buffer, 0, [0x47, 0x49, 0x46, 0x38])) return 'image/gif';
+    // WEBP: "RIFF" ثم "WEBP" عند الإزاحة 8
+    if (bytesMatch(buffer, 0, [0x52, 0x49, 0x46, 0x46]) &&
+        bytesMatch(buffer, 8, [0x57, 0x45, 0x42, 0x50])) return 'image/webp';
+
+    // --- فيديو/حاويات ---
+    // MP4/MOV: "ftyp" عند الإزاحة 4
+    if (bytesMatch(buffer, 4, [0x66, 0x74, 0x79, 0x70])) return 'video/mp4';
+    // WEBM/MKV (EBML) — تُستخدم للفيديو والصوت المسجّل من المتصفح
+    if (bytesMatch(buffer, 0, [0x1A, 0x45, 0xDF, 0xA3])) return 'video/webm';
+
+    // --- صوت ---
+    // MP3: إما ترويسة ID3 أو إطار MPEG
+    if (bytesMatch(buffer, 0, [0x49, 0x44, 0x33])) return 'audio/mpeg';
+    if (buffer[0] === 0xFF && (buffer[1] & 0xE0) === 0xE0) return 'audio/mpeg';
+    // WAV: "RIFF" ثم "WAVE"
+    if (bytesMatch(buffer, 0, [0x52, 0x49, 0x46, 0x46]) &&
+        bytesMatch(buffer, 8, [0x57, 0x41, 0x56, 0x45])) return 'audio/wav';
+    // OGG
+    if (bytesMatch(buffer, 0, [0x4F, 0x67, 0x67, 0x53])) return 'audio/ogg';
+
+    return null; // نوع غير معروف = مرفوض
+};
+
+// حارس يُستدعى بعد اكتمال الرفع للذاكرة، قبل أي إرسال لـ Cloudinary
+const assertRealType = (buffer, allowedTypes) => {
+    const realType = detectRealFileType(buffer);
+    if (!realType) {
+        throw new Error('تعذّر التعرف على نوع الملف. الملف تالف أو غير مدعوم.');
+    }
+    if (!allowedTypes.includes(realType)) {
+        throw new Error('محتوى الملف لا يطابق نوعاً مسموحاً به.');
+    }
+    return realType;
+};
+
 // 7. دالة مساعدة لحذف الصورة القديمة من Cloudinary
 const deleteFromCloudinary = async (publicId) => {
     try {
@@ -257,5 +309,7 @@ module.exports = {
     deleteChatMedia,          // دالة حذف وسائط الدردشة
     uploadReceiptImage,        // دالة رفع صورة إشعار التحويل
     deleteFromCloudinary,     // دالة حذف عامة
-    getPublicIdFromUrl        // دالة استخراج publicId
+        getPublicIdFromUrl,   // دالة استخراج publicId
+    detectRealFileType,       //  كشف النوع الحقيقي من البايتات
+    assertRealType            //  حارس التحقق قبل الرفع
 };
