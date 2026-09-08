@@ -25,9 +25,9 @@ exports.createWithdrawal = async (req, res) => {
         const minWithdraw = settings.minWithdrawUSD || DEFAULT_MIN_WITHDRAW_USD;
 
         const { parseMoneyInput } = require('../utils/money');
-         const numBet = parseMoneyInput(betAmount, { min: 1, max: 1000 });
+        const numAmount = parseMoneyInput(amount, { min: minWithdraw, max: 1000000 });
         if (numAmount === null) {
-            return res.status(400).json({ status: 'fail', message: 'مبلغ غير صالح.' });
+            return res.status(400).json({ status: 'fail', message: `مبلغ غير صالح. الحد الأدنى للسحب هو ${minWithdraw}$` });
         }
         
 
