@@ -25,7 +25,7 @@ exports.createBattle = async (req, res, next) => {
 
          // 🛡️ تحقق صارم من المبلغ قبل أي شيء (يمنع القيم السالبة أو غير الرقمية من العميل)
         const { parseMoneyInput } = require('../utils/money');
-        const numAmount = parseMoneyInput(amount, { min: 1, max: 1000 });
+        const numBet = parseMoneyInput(betAmount, { min: 1, max: 1000 });
         if (numAmount === null) {
             return res.status(400).json({ status: 'fail', message: 'مبلغ غير صالح.' });
         }
