@@ -59,6 +59,18 @@ const registerLimiter = rateLimit({
     message: { status: 'fail', message: 'تم إنشاء عدد كبير من الحسابات من هذا العنوان. حاول لاحقاً.' },
 });
 
+// 🛡️ محدد العمليات المالية: إنشاء تحدي / طلب سحب / طلب إيداع
+// يمنع مهاجماً (أو خطأ في الواجهة) من قصف هذه المسارات بسرعة لاستنزاف الرصيد
+// أو إنشاء مئات الطلبات المعلّقة خلال ثوانٍ. أشد بكثير من المحدد العام (500/5 دقائق).
+const financialLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000, // 10 دقائق
+    max: 12,                  // 12 عملية مالية كحد أقصى لكل مستخدم/IP خلال 10 دقائق
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: safeKeyGenerator, // يعتمد على هوية المستخدم الموثّقة (JWT) وليس IP فقط
+    message: { status: 'fail', message: 'عمليات مالية كثيرة جداً خلال وقت قصير. يرجى الانتظار قليلاً قبل المحاولة مجدداً.' },
+});
+
 // 🛡️ محدد تغيير كلمة المرور: يمنع تخمين كلمة المرور الحالية من جلسة مسروقة
 const passwordLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -183,3 +195,4 @@ module.exports = setupMiddleware;
 module.exports.loginLimiter = loginLimiter;
 module.exports.registerLimiter = registerLimiter;
 module.exports.passwordLimiter = passwordLimiter;
+module.exports.financialLimiter = financialLimiter;
