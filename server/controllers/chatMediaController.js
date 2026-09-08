@@ -2,7 +2,8 @@ const {
     uploadChatImage, 
     uploadChatVoice, 
     uploadChatVideo, 
-    deleteChatMedia 
+    deleteChatMedia,
+    assertRealType   // ✅ تحقق من النوع الحقيقي للملف
 } = require('../utils/cloudinary');
 const PrivateMessage = require('../models/PrivateMessage');
 const User = require('../models/User');
@@ -62,6 +63,12 @@ exports.uploadImage = async (req, res) => {
                 status: 'fail',
                 message: 'حجم الصورة يتجاوز 5MB'
             });
+        }
+         // 🛡️ التحقق من المحتوى الفعلي للملف (لا من الترويسة القابلة للتزوير)
+        try {
+            assertRealType(req.file.buffer, ['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+        } catch (typeErr) {
+            return res.status(400).json({ status: 'fail', message: typeErr.message });
         }
 
         // رفع الصورة إلى Cloudinary
@@ -137,6 +144,12 @@ exports.uploadVoice = async (req, res) => {
                 status: 'fail',
                 message: 'مدة الرسالة الصوتية تتجاوز 15 ثانية'
             });
+        }
+
+                try {
+            assertRealType(req.file.buffer, ['audio/mpeg', 'audio/wav', 'audio/ogg', 'video/webm']);
+        } catch (typeErr) {
+            return res.status(400).json({ status: 'fail', message: typeErr.message });
         }
 
         // التحقق من الحظر
@@ -225,6 +238,11 @@ exports.uploadVideo = async (req, res) => {
                 status: 'fail',
                 message: 'مدة الفيديو تتجاوز 30 ثانية'
             });
+        }
+                try {
+            assertRealType(req.file.buffer, ['video/mp4', 'video/webm']);
+        } catch (typeErr) {
+            return res.status(400).json({ status: 'fail', message: typeErr.message });
         }
 
         // التحقق من الحظر
