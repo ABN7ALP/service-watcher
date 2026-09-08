@@ -143,10 +143,10 @@ exports.unblockUser = async (req, res) => {
             })
         ]);
 
-        // 4. ⭐⭐ تحديث Socket و Cache ⭐⭐
-        // 4. ⭐⭐ تحديث Socket و Cache والبروفايل المصغر ⭐⭐
-if (req.app.get('io')) {
-    const io = req.app.get('io');
+// ✅ الإصلاح: المفتاح المسجَّل في server.js هو 'socketio' وليس 'io'
+// (كانت هذه الكتلة كاملة لا تُنفَّذ إطلاقاً، فلا يُنظَّف الـ cache عند فك الحظر)
+if (req.app.get('socketio')) {
+    const io = req.app.get('socketio');
     
     // أ. تنظيف cache للطرفين
     io.emit('clearBlockCache', {
