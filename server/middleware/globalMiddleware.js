@@ -172,7 +172,7 @@ const setupMiddleware = (app) => {
     // Middleware للحماية من NoSQL Injection
     app.use(mongoSanitize());
 
-    / Middleware للحماية من XSS (بديل آمن لـ xss-clean المتوقفة)
+    // Middleware للحماية من XSS (بديل آمن لـ xss-clean المتوقفة)
     app.use(xssGuard);
     
     // تطبيق محدد المعدل على جميع الطلبات
