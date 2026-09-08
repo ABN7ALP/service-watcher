@@ -85,8 +85,8 @@ exports.joinBattle = async (req, res, next) => {
         const userId = req.user.id;
         const { password } = req.body; // ✅ الحصول على كلمة المرور من الطلب
 
-        const battle = await Battle.findById(battleId);
-        const user = await User.findById(userId);
+         const battle = await Battle.findById(battleId);
+        let user = await User.findById(userId);
 
         if (!battle) {
             return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على هذا التحدي.' });
@@ -109,14 +109,37 @@ exports.joinBattle = async (req, res, next) => {
         if (battle.players.length >= battle.maxPlayers) {
             return res.status(400).json({ status: 'fail', message: 'هذا التحدي مكتمل العدد.' });
         }
-        if (user.balance < battle.betAmount) {
+               // ✅ حجز المقعد ذرّياً أولاً: نضيف اللاعب فقط إذا كان التحدي ما زال في الانتظار،
+        // ولم يكن منضماً مسبقاً، ولم يكتمل العدد ($size يضمن العدد لحظة الكتابة نفسها).
+        // هذا يمنع تجاوز الحد الأقصى عند تزامن طلبين على آخر مقعد.
+        const seatTaken = await Battle.findOneAndUpdate(
+            {
+                _id: battleId,
+                status: 'waiting',
+                players: { $ne: userId, $not: { $size: battle.maxPlayers } }
+            },
+            { $push: { players: userId } },
+            { new: true }
+        );
+
+        if (!seatTaken) {
+            return res.status(400).json({ status: 'fail', message: 'تعذّر الانضمام: التحدي مكتمل أو لم يعد متاحاً.' });
+        }
+
+        // ✅ خصم الرصيد ذرّياً — وإن لم يكفِ الرصيد نتراجع عن حجز المقعد فوراً
+        user = await User.findOneAndUpdate(
+            { _id: userId, balance: { $gte: battle.betAmount } },
+            { $inc: { balance: -battle.betAmount } },
+            { new: true }
+        );
+
+        if (!user) {
+            await Battle.findByIdAndUpdate(battleId, { $pull: { players: userId } });
             return res.status(400).json({ status: 'fail', message: 'رصيدك غير كافٍ.' });
         }
 
-        user.balance -= battle.betAmount;
-        await user.save();
-
-        battle.players.push(userId);
+        // نعمل على النسخة المحدّثة التي تحوي اللاعب الجديد فعلياً
+        battle.players = seatTaken.players;
 
         const io = req.app.get('socketio');
 
