@@ -24,10 +24,12 @@ exports.createWithdrawal = async (req, res) => {
         const settings = await SystemSettings.getSettings();
         const minWithdraw = settings.minWithdrawUSD || DEFAULT_MIN_WITHDRAW_USD;
 
-        const numAmount = parseFloat(amount);
-        if (!numAmount || numAmount < minWithdraw) {
-            return res.status(400).json({ status: 'fail', message: `الحد الأدنى للسحب هو ${minWithdraw}$` });
+        const { parseMoneyInput } = require('../utils/money');
+        const numAmount = parseMoneyInput(amount, { min: 1, max: 1000 });
+        if (numAmount === null) {
+            return res.status(400).json({ status: 'fail', message: 'مبلغ غير صالح.' });
         }
+        
 
         // ✅ حد السحب اليومي: نجمع كل طلبات اليوم (المعلّقة والمكتملة، دون المرفوضة) لهذا المستخدم
         const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
@@ -189,6 +191,7 @@ exports.reviewWithdrawal = async (req, res) => {
         }
         const { sendBotMessage } = require('../utils/botMessenger');
         if (user) {
+            
             await sendBotMessage(io, user._id,
                 action === 'approve'
                     ? `✅ تمت الموافقة على طلب سحبك بمبلغ ${withdrawal.amount}$`
