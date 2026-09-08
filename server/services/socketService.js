@@ -644,18 +644,6 @@ socket.on('refreshBlockData', async () => {
         console.error('[REFRESH BLOCK ERROR]:', error);
     }
 });
-
-
-
-// ✅ مستمع جديد: تنظيف Cache عند الحظر/فك الحظر
-socket.on('clearBlockCache', ({ userId, targetUserId }) => {
-    try {
-        clearBlockCache(userId, targetUserId);
-        console.log(`[SOCKET] Block cache cleared for ${userId} and ${targetUserId}`);
-    } catch (error) {
-        console.error('[SOCKET] Error clearing block cache:', error);
-    }
-});
         
         socket.on('playerClick', async ({ battleId }) => {
             try {
