@@ -12,10 +12,21 @@ const authMiddleware = async (req, res, next) => {
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const currentUser = await User.findById(decoded.id);
+                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        // نطلب passwordChangedAt صراحةً لأنه select:false في المخطط
+        const currentUser = await User.findById(decoded.id).select('+passwordChangedAt');
         if (!currentUser) {
             return res.status(401).json({ status: 'fail', message: 'المستخدم المرتبط بهذا التوكن لم يعد موجوداً.' });
+        }
+
+        // ✅ إبطال فوري لكل التوكنات الصادرة قبل آخر تغيير لكلمة المرور
+        // (يقطع جلسة أي مهاجم يحمل توكناً مسروقاً بمجرد تغيير الضحية لكلمة مرورها)
+        if (currentUser.changedPasswordAfter(decoded.iat)) {
+            return res.status(401).json({
+                status: 'fail',
+                code: 'PASSWORD_CHANGED',
+                message: 'تم تغيير كلمة المرور مؤخراً. يرجى تسجيل الدخول من جديد.'
+            });
         }
 
         // ✅ إنفاذ الحظر فعلياً على كل طلب محمي — بدل السماح باستخدام توكن صالح
