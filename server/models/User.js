@@ -126,6 +126,20 @@ userSchema.methods.changedPasswordAfter = function(jwtIat) {
     return jwtIat < changedTimestamp;
 };
 
+// ✅ شبكة أمان مالية: تطبيع كل الحقول المالية قبل أي حفظ
+// يمنع تسرّب قيم مثل 57.999999999998 إلى قاعدة البيانات أو واجهة المستخدم
+userSchema.pre('save', function(next) {
+    const { toMoney } = require('../utils/money');
+    if (this.isModified('balance')) {
+        this.balance = toMoney(this.balance);
+    }
+    if (this.isModified('coins')) {
+        // الكوينز أعداد صحيحة — نمنع أي كسور نهائياً
+        this.coins = Math.max(0, Math.floor(Number(this.coins) || 0));
+    }
+    next();
+});
+
 userSchema.set('toJSON', { virtuals: true });
 userSchema.set('toObject', { virtuals: true });
 
