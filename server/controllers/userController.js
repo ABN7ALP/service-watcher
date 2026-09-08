@@ -20,7 +20,7 @@ const updateUsername = async (req, res) => {
 
 const updateProfilePicture = async (req, res) => {
     try {
-        f (!req.file) {
+        if (!req.file) {
             return res.status(400).json({ status: 'fail', message: 'الرجاء اختيار ملف صورة.' });
         }
 
