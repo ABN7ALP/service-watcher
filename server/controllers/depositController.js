@@ -36,11 +36,15 @@ exports.createDepositRequest = async (req, res) => {
         const userId = req.user.id;
         const { amount, walletNumber } = req.body;
 
-        const numAmount = parseFloat(amount);
-        if (!numAmount || numAmount < paymentConfig.MIN_PURCHASE_USD || numAmount > paymentConfig.MAX_PURCHASE_USD) {
+        const { parseMoneyInput } = require('../utils/money');
+        const numAmount = parseMoneyInput(amount, {
+            min: paymentConfig.MIN_PURCHASE_USD,
+            max: paymentConfig.MAX_PURCHASE_USD
+        });
+        if (numAmount === null) {
             return res.status(400).json({
                 status: 'fail',
-                message: `المبلغ يجب أن يكون بين ${paymentConfig.MIN_PURCHASE_USD}$ و ${paymentConfig.MAX_PURCHASE_USD}$`
+                message: `المبلغ يجب أن يكون بين ${paymentConfig.MIN_PURCHASE_USD}$ و ${paymentConfig.MAX_PURCHASE_USD}$، وبدقة منزلتين عشريتين كحد أقصى`
             });
         }
 
