@@ -71,7 +71,29 @@ const passwordLimiter = rateLimit({
 
 const setupMiddleware = (app) => {
     // تطبيق Middleware الأمان الأساسية
-    app.use(cors()); // السماح بالطلبات من مصادر مختلفة
+        // ✅ قائمة بيضاء للمصادر المسموحة بدل الانفتاح الكامل (*)
+    // يُضبط ALLOWED_ORIGINS في Railway، ويُفصل بفواصل عند تعدد النطاقات
+    const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+        .split(',')
+        .map(o => o.trim())
+        .filter(Boolean);
+
+    app.use(cors({
+        origin: (origin, callback) => {
+            // نسمح بالطلبات بلا Origin (تطبيقات الجوال، Postman، طلبات نفس الأصل)
+            if (!origin) return callback(null, true);
+            // 🛡️ احتياط أمان تشغيلي: لو نُسي ضبط المتغيّر، لا نكسر الموقع بل نسمح مؤقتاً مع تحذير
+            if (allowedOrigins.length === 0) {
+                console.warn('[CORS] ⚠️ ALLOWED_ORIGINS غير مضبوط — يعمل مؤقتاً بوضع مفتوح. اضبطه في Railway.');
+                return callback(null, true);
+            }
+            if (allowedOrigins.includes(origin)) return callback(null, true);
+            return callback(new Error('Not allowed by CORS'));
+        },
+        credentials: true,
+        methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
+    }));
     // الكود الجديد والمعدل بالكامل لإعدادات helmet
         app.use(helmet({
         contentSecurityPolicy: {
