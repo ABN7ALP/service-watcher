@@ -438,17 +438,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     max-width: 3.2rem;
     pointer-events: none;
 }
-.voice-seat-mute-badge {
-    position: absolute;
-    bottom: -2px; right: -2px;
-    background: linear-gradient(135deg, #fb7185, #dc2626);
-    color: #fff;
-    border-radius: 50%;
-    width: 1.3rem; height: 1.3rem;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.6rem;
-    line-height: 1;
-    box-shadow: 0 0 0 2px #111827, 0 2px 5px rgba(0,0,0,0.45);
+/* ✅ حلقة حمراء واضحة حول الصورة بدل أيقونة صغيرة منفصلة — أنظف وأوضح خصوصاً بالأحجام
+   الصغيرة (الأيقونة كانت تصغر لدرجة تصير مشوشة وغير مقروءة، فتبدو "غير مرتبة").
+   لا تُطبَّق على مقعدي أنا (my-seat) لتفادي تعارض لونين مختلفين بنفس الحلقة — حالة كتمي
+   الخاصة أصلاً واضحة من زر الميكروفون بالشريط العائم. */
+.voice-seat.occupied-seat.is-muted-seat:not(.my-seat) {
+    border-color: #dc2626;
+    box-shadow: 0 0 0 2px rgba(220,38,38,0.45);
 }
 /* ✅ تمييز واضح لمقعدي أنا بالذات وسط 80 مقعد */
 .voice-seat.my-seat {
@@ -471,6 +467,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 @media (max-width: 480px) {
     .voice-seat { font-size: 0.55rem; border-radius: 50%; }
 }
+
 
 /* ✅ هدايا الشات العام على الهاتف: قائمة منزلقة من الأسفل بدل نافذة كاملة الشاشة */
 @media (max-width: 767px) {
