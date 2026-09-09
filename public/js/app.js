@@ -2421,9 +2421,19 @@ function showXpGainAnimation(amount) {
         // ✅ تمت إزالة إشعار "تم تحديث رصيدك" — تحديث الرقم بالهيدر كافٍ
     });
 
+    function syncMuteButtonUI(isMuted) {
+        const btn = document.getElementById('voice-toggle-mute-btn');
+        if (!btn) return;
+        btn.classList.toggle('is-muted', isMuted);
+        btn.innerHTML = isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
+    }
+
     // ✅ تحديث حي لمقاعد الغرفة الصوتية (تتحقق من وجود الشبكة بالصفحة أولاً لأن المستخدم قد يكون بقسم آخر)
-    socket.on('user-joined-seat', ({ seatNumber, userId, username, profileImage, activeFrameClass }) => {
-        if (userId === myUserId) myVoiceSeatNumber = seatNumber;
+    socket.on('user-joined-seat', ({ seatNumber, userId, username, profileImage, activeFrameClass, isMuted }) => {
+        if (userId === myUserId) {
+            myVoiceSeatNumber = seatNumber;
+            syncMuteButtonUI(!!isMuted); // ✅ يعكس حالة الكتم الحقيقية المرحّلة من المقعد السابق، لا يصفّرها
+        }
         updateVoiceControlBar();
         const voiceGrid = document.getElementById('voice-chat-grid');
         if (!voiceGrid) return;
@@ -2431,7 +2441,7 @@ function showXpGainAnimation(amount) {
         if (!seatEl) return;
         renderVoiceSeatContent(seatEl, {
             isLocked: false,
-            isMuted: false,
+            isMuted: !!isMuted,
             user: { id: userId, username, profileImage, activeFrameClass }
         });
     });
@@ -2447,13 +2457,7 @@ function showXpGainAnimation(amount) {
     });
 
     socket.on('user-toggled-mute', ({ userId, isMuted }) => {
-        if (userId === myUserId) {
-            const btn = document.getElementById('voice-toggle-mute-btn');
-            if (btn) {
-                btn.classList.toggle('is-muted', isMuted);
-                btn.innerHTML = isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
-            }
-        }
+        if (userId === myUserId) syncMuteButtonUI(isMuted);
         const voiceGrid = document.getElementById('voice-chat-grid');
         if (!voiceGrid) return;
         const seatEl = voiceGrid.querySelector(`[data-user-id="${userId}"]`);
@@ -2466,6 +2470,14 @@ function showXpGainAnimation(amount) {
         } else if (!isMuted && badge) {
             badge.remove();
         }
+    });
+
+
+    // ✅ إعادة مزامنة كاملة مع حقيقة السيرفر عند كل اتصال أو إعادة اتصال (وليس فقط عند أول فتح للقسم)
+    // — بدونها، أي بث حصل أثناء انقطاع مؤقت (تبديل شبكة، نوم الجهاز، إلخ) يضيع على المستخدم فعلياً
+    // فتبقى صورته "عالقة" بمكان قديم عند نفسه، أو لا يرى تحرّك بقية المستخدمين، لحين عمل Refresh يدوي
+    socket.on('connect', () => {
+        fetchVoiceRoomSnapshot(); // آمنة تماماً حتى لو القسم غير مفتوح حالياً (تتحقق من وجود الشبكة أولاً)
     });
 
     socket.on('seat-error', (message) => {
