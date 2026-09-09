@@ -51,7 +51,8 @@ voiceRoomSchema.statics.getMainRoom = async function () {
 };
 
 // ✅ يحرر أي مقعد يشغله هذا المستخدم فعلياً (بحسب قاعدة البيانات وحدها، لا ذاكرة الاتصال)
-// يُرجع رقم المقعد المُحرَّر ليُبَث للجميع، أو null لو لم يكن قاعداً أصلاً على أي مقعد.
+// يُرجع { seatNumber, wasMuted } ليُبَث للجميع ولترحيل حالة الكتم عند التبديل بين مقعدين،
+// أو null لو لم يكن قاعداً أصلاً على أي مقعد.
 // هذا هو المرجع الوحيد المستخدم بكل عمليات التحرير (انضمام لمقعد جديد / مغادرة / انقطاع اتصال)
 // لضمان عدم بقاء "أشباح" مقاعد بعد إعادة اتصال أو تحديث الصفحة.
 voiceRoomSchema.statics.releaseUserSeat = async function (userId) {
@@ -62,6 +63,7 @@ voiceRoomSchema.statics.releaseUserSeat = async function (userId) {
     if (!room || !room.seats.length) return null; // لم يكن قاعداً على أي مقعد أصلاً
 
     const seatNumber = room.seats[0].seatNumber;
+    const wasMuted = !!room.seats[0].isMuted;
 
     await this.updateOne(
         { slug: 'main' },
@@ -69,7 +71,7 @@ voiceRoomSchema.statics.releaseUserSeat = async function (userId) {
         { arrayFilters: [{ 'old.user': userId }] }
     );
 
-    return seatNumber;
+    return { seatNumber, wasMuted };
 };
 
 module.exports = mongoose.model('VoiceRoom', voiceRoomSchema);
