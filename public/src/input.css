@@ -396,11 +396,22 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .mobile-nav-item.active i { transform: translateY(-2px); }
 
 /* ✅ 80 مقعد غرفة صوت — تصميم مضغوط وواضح على كل الأحجام */
+/* ✅ حاوية المقاعد المرنة: حجم مقعد ثابت (لا يتمدد حسب عرض الشاشة) + توسيط تلقائي
+   لكل صف (يشمل آخر صف ناقص) — هذا يحل مشكلة "مقاعد كبيرة بالكمبيوتر وصغيرة بالهاتف"
+   ويملأ فراغات أي عدد مقاعد (8/15/24/80) بأناقة دون الحاجة لتخطيط مخصص لكل حجم */
+.voice-seats-flex {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-content: flex-start;
+    gap: 14px 16px;
+}
 .voice-seat {
-    aspect-ratio: 1/1;
+    width: 54px; height: 54px;
+    flex: 0 0 auto;
     border-radius: 50%; /* ✅ دائري بالكامل */
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.65rem; font-weight: bold;
+    font-size: 0.7rem; font-weight: bold;
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.1);
     cursor: pointer;
@@ -409,6 +420,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .voice-seat.user-seat:hover { background: rgba(139,92,246,0.25); border-color: #a855f7; transform: scale(1.05); }
 .voice-seat.admin-seat { background: linear-gradient(135deg,#7c2d12,#450a0a); border-color: #f59e0b; color: #fbbf24; }
+
 .voice-seat.seat-forbidden { cursor: not-allowed; }
 .voice-seat.occupied { background: rgba(139,92,246,0.35); border-color: #a855f7; }
 
@@ -481,8 +493,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     animation: voiceBarEnter 0.26s ease-out;
 }
 
-@media (max-width: 480px) {
-    .voice-seat { font-size: 0.55rem; border-radius: 50%; }
+@media (min-width: 768px) {
+    .voice-seats-flex { gap: 18px 20px; }
+    .voice-seat { width: 62px; height: 62px; font-size: 0.78rem; }
+}
+@media (max-width: 380px) {
+    .voice-seats-flex { gap: 10px 12px; }
+    .voice-seat { width: 46px; height: 46px; font-size: 0.6rem; }
 }
 
 
