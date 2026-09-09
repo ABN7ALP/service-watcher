@@ -692,11 +692,117 @@ socket.on('refreshBlockData', async () => {
             }
         });
 
-                socket.on('disconnect', async () => {
+        // =====================================================
+        // ✅ نظام المقاعد الصوتية — حالة حقيقية بقاعدة البيانات
+        // -----------------------------------------------------
+        // كل عملية حجز/تحرير مقعد ذرّية (findOneAndUpdate بشرط واحد)
+        // لمنع تصادم مستخدمَين يضغطان نفس المقعد بنفس اللحظة.
+        // الهوية دائماً من socket.user الموثّق بالتوكن — أبداً من بيانات
+        // يرسلها العميل — فلا يمكن لأي مستخدم انتحال جلوس شخص آخر.
+        // =====================================================
+        socket.on('join-voice-seat', async ({ seatNumber }) => {
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const seatNum = parseInt(seatNumber);
+
+                const room = await VoiceRoom.getMainRoom();
+                if (!Number.isInteger(seatNum) || seatNum < 1 || seatNum > room.seatCount) {
+                    return socket.emit('seat-error', 'رقم مقعد غير صالح');
+                }
+
+                const isAdminSeat = seatNum <= room.adminSeatCount;
+                if (isAdminSeat && !socket.user.isAdmin) {
+                    return socket.emit('seat-error', 'لا تملك صلاحية الجلوس على مقاعد الإدارة');
+                }
+
+                // 1) حرّر أي مقعد يشغله هذا المستخدم حالياً (ذرّياً)
+                await VoiceRoom.updateOne(
+                    { slug: 'main' },
+                    { $set: { 'seats.$[old].user': null, 'seats.$[old].joinedAt': null, 'seats.$[old].isMuted': false } },
+                    { arrayFilters: [{ 'old.user': socket.user._id }] }
+                );
+                const prevSeatNumber = socket.seatNumber;
+                socket.seatNumber = null;
+                if (prevSeatNumber) {
+                    io.emit('user-left-seat', { seatNumber: prevSeatNumber, userId: socket.user.id.toString() });
+                }
+
+                // 2) حاول حجز المقعد الجديد — يفشل تلقائياً لو صار محجوزاً أو مقفلاً بين اللحظتين
+                const updatedRoom = await VoiceRoom.findOneAndUpdate(
+                    { slug: 'main', seats: { $elemMatch: { seatNumber: seatNum, user: null, isLocked: false } } },
+                    { $set: { 'seats.$.user': socket.user._id, 'seats.$.joinedAt': new Date(), 'seats.$.isMuted': false } },
+                    { new: true }
+                );
+
+                if (!updatedRoom) {
+                    socket.emit('seat-error', 'هذا المقعد محجوز بالفعل أو مقفل');
+                    return;
+                }
+
+                socket.seatNumber = seatNum;
+
+                io.emit('user-joined-seat', {
+                    seatNumber: seatNum,
+                    userId: socket.user.id.toString(),
+                    username: socket.user.username,
+                    profileImage: socket.user.profileImage,
+                    activeFrameClass: socket.user.activeFrameClass
+                });
+            } catch (error) {
+                console.error('[VOICE SEAT] Join seat error:', error);
+                socket.emit('seat-error', 'حدث خطأ أثناء محاولة الجلوس');
+            }
+        });
+
+        socket.on('leave-voice-seat', async () => {
+            try {
+                const seatNum = socket.seatNumber;
+                if (!seatNum) return;
+
+                const VoiceRoom = require('../models/VoiceRoom');
+                await VoiceRoom.updateOne(
+                    { slug: 'main' },
+                    { $set: { 'seats.$[old].user': null, 'seats.$[old].joinedAt': null, 'seats.$[old].isMuted': false } },
+                    { arrayFilters: [{ 'old.user': socket.user._id }] }
+                );
+
+                socket.seatNumber = null;
+                io.emit('user-left-seat', { seatNumber: seatNum, userId: socket.user.id.toString() });
+            } catch (error) {
+                console.error('[VOICE SEAT] Leave seat error:', error);
+            }
+        });
+
+        socket.on('toggle-mute', async ({ isMuted }) => {
+            try {
+                if (!socket.seatNumber) return; // لازم يكون فعلاً قاعداً على مقعد
+                const VoiceRoom = require('../models/VoiceRoom');
+                await VoiceRoom.updateOne(
+                    { slug: 'main', 'seats.seatNumber': socket.seatNumber, 'seats.user': socket.user._id },
+                    { $set: { 'seats.$.isMuted': !!isMuted } }
+                );
+                io.emit('user-toggled-mute', { userId: socket.user.id.toString(), isMuted: !!isMuted });
+            } catch (error) {
+                console.error('[VOICE SEAT] Toggle mute error:', error);
+            }
+        });
+
+        socket.on('disconnect', async () => {
             console.log(`🔴 User disconnected: ${socket.id} | UserID: ${socket.user.username}`);
             try {
                 await User.findByIdAndUpdate(socket.user.id, { isOnline: false, lastActive: new Date() });
                 io.emit('userOnlineStatus', { userId: socket.user.id.toString(), isOnline: false, lastActive: new Date() });
+
+                // ✅ تحرير المقعد الصوتي تلقائياً عند فقدان الاتصال (كان يبقى محجوزاً "وهمياً" للأبد سابقاً)
+                if (socket.seatNumber) {
+                    const VoiceRoom = require('../models/VoiceRoom');
+                    await VoiceRoom.updateOne(
+                        { slug: 'main' },
+                        { $set: { 'seats.$[old].user': null, 'seats.$[old].joinedAt': null, 'seats.$[old].isMuted': false } },
+                        { arrayFilters: [{ 'old.user': socket.user._id }] }
+                    );
+                    io.emit('user-left-seat', { seatNumber: socket.seatNumber, userId: socket.user.id.toString() });
+                }
             } catch (error) { console.error('Failed to update offline status:', error); }
         });
     });
