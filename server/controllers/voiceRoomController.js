@@ -90,11 +90,24 @@ exports.getRoomById = async (req, res) => {
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
             return res.status(400).json({ status: 'fail', message: 'معرّف غرفة غير صالح' });
         }
+        // نحتاج +password لو الغرفة خاصة للتحقق يدوياً، ثم نزيله قبل الإرسال للعميل أبداً
         const room = await VoiceRoom.findOne({ _id: req.params.id, status: 'active' })
+            .select('+password')
             .populate('seats.user', 'username profileImage activeFrameClass isAdmin')
             .populate('host', 'username profileImage');
         if (!room) {
             return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة أو أُغلقت' });
+        }
+
+        const isHost = room.host && room.host._id.toString() === req.user.id;
+        const isModerator = room.moderators.some(m => m.toString() === req.user.id);
+
+        // 🛡️ حماية دخول الغرفة نفسها بكلمة مرور (وليس فقط الجلوس على مقعد) — لا يشمل المضيف/المسؤولين
+        if (room.isPrivate && !isHost && !isModerator) {
+            const suppliedPassword = req.query.password || '';
+            if (!suppliedPassword || suppliedPassword !== room.password) {
+                return res.status(403).json({ status: 'fail', message: 'كلمة مرور الغرفة غير صحيحة', requiresPassword: true });
+            }
         }
 
         const seats = room.seats.map(s => ({
@@ -117,10 +130,61 @@ exports.getRoomById = async (req, res) => {
             category: room.category,
             host: room.host,
             isOfficial: room.isOfficial,
+            isPrivate: room.isPrivate,
             seatCount: room.seatCount,
             adminSeatCount: room.adminSeatCount,
-            seats
+            seats,
+            myRole: isHost ? 'host' : (isModerator ? 'moderator' : 'guest')
         });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// =====================================================
+// ✅ PATCH /api/voice-room/rooms/:id — تعديل إعدادات الغرفة (المضيف فقط)
+// =====================================================
+exports.updateRoom = async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غرفة غير صالح' });
+        }
+        const room = await VoiceRoom.findOne({ _id: req.params.id, status: 'active' });
+        if (!room) {
+            return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة' });
+        }
+        // 🛡️ المضيف فقط يعدّل إعدادات الغرفة (وليس المسؤولون المساعدون — صلاحياتهم محصورة بإدارة المقاعد)
+        if (!room.host || room.host.toString() !== req.user.id) {
+            return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية تعديل هذه الغرفة' });
+        }
+
+        const { name, isPrivate, password } = req.body;
+
+        if (name !== undefined) {
+            const cleanName = String(name).trim();
+            if (!cleanName || cleanName.length < 2 || cleanName.length > 40) {
+                return res.status(400).json({ status: 'fail', message: 'اسم الغرفة يجب أن يكون بين 2 و40 حرفاً' });
+            }
+            room.name = cleanName;
+        }
+
+        if (isPrivate !== undefined) {
+            const finalIsPrivate = isPrivate === true || isPrivate === 'true';
+            if (finalIsPrivate) {
+                // لازم كلمة مرور جديدة، أو تبقى الحالية لو الغرفة كانت خاصة أصلاً وما تغيّرت
+                if (password && String(password).trim().length > 0) {
+                    room.password = String(password).trim();
+                } else if (!room.isPrivate) {
+                    return res.status(400).json({ status: 'fail', message: 'يرجى إدخال كلمة مرور لتفعيل الخصوصية' });
+                }
+            } else {
+                room.password = undefined;
+            }
+            room.isPrivate = finalIsPrivate;
+        }
+
+        await room.save();
+        res.json({ status: 'success', room: { id: room._id, name: room.name, isPrivate: room.isPrivate } });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
     }
