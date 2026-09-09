@@ -650,7 +650,20 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             });
         });
 
-        document.getElementById('create-room-fab').addEventListener('click', showCreateRoomModal);
+        // ✅ أيقونة الإنشاء: عنده غرفة بالفعل → تدخله لها مباشرة (غرفة واحدة فقط لكل مستخدم)
+        document.getElementById('create-room-fab').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/voice-room/my-room', { headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await response.json();
+                if (result.status === 'success' && result.room) {
+                    enterVoiceRoom(result.room);
+                } else {
+                    showCreateRoomModal();
+                }
+            } catch (error) {
+                showCreateRoomModal();
+            }
+        });
 
         loadRooms();
     }
@@ -695,7 +708,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ غرفة أنشأها مستخدم — قابلة للجلوس فعلياً الآن (نفس منطق الغرفة الرسمية، خاص بهذي الغرفة فقط)
     async function showCustomRoomView(room) {
         currentVoiceRoomId = room.id;
-        const cols = room.seatCount <= 8 ? 'grid-cols-4' : room.seatCount <= 15 ? 'grid-cols-5' : 'grid-cols-6';
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-3">
                 <div class="flex items-center gap-2 min-w-0">
@@ -706,7 +718,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </div>
                 <span class="text-xs text-gray-400 flex-shrink-0">${room.seatCount} مقعد</span>
             </div>
-            <div id="voice-chat-grid" class="grid ${cols} gap-2.5 pb-24 md:pb-2"></div>
+            <div id="voice-chat-grid" class="voice-seats-flex pb-24 md:pb-2"></div>
         `;
         document.getElementById('back-to-rooms-btn-custom').addEventListener('click', showRoomBrowserView);
 
@@ -778,49 +790,41 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     // ✅ نافذة إنشاء غرفة جديدة — بنفس أسلوب نافذة إنشاء التحدي تماماً للتناسق البصري
     function showCreateRoomModal() {
+        const presetCovers = [
+            'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&q=60',
+            'https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?w=400&q=60',
+            'https://images.unsplash.com/photo-1470813740244-df37b8c1edcb?w=400&q=60',
+            'https://images.unsplash.com/photo-1533158307587-828f0a76ef46?w=400&q=60',
+            'https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?w=400&q=60',
+            'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?w=400&q=60'
+        ];
         const modal = document.createElement('div');
         modal.id = 'create-room-modal';
         modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4';
         modal.innerHTML = `
             <div class="bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-sm text-white max-h-[90vh] overflow-y-auto">
-                <h3 class="text-lg font-bold mb-4"><i class="fas fa-plus-circle text-purple-400"></i> إنشاء غرفة صوتية</h3>
+                <h3 class="text-lg font-bold mb-1"><i class="fas fa-plus-circle text-purple-400"></i> إنشئ غرفتك الخاصة</h3>
+                <p class="text-xs text-gray-400 mb-4">غرفة واحدة فقط لكل حساب — تقدر تعدّل باقي الإعدادات لاحقاً من داخلها</p>
                 <form id="create-room-form" class="space-y-4">
                     <div>
                         <label class="text-sm">اسم الغرفة</label>
-                        <input type="text" name="name" maxlength="40" required class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
+                        <input type="text" name="name" maxlength="40" required autofocus class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
                     </div>
                     <div>
-                        <label class="text-sm">وصف قصير (اختياري)</label>
-                        <input type="text" name="description" maxlength="120" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
-                    </div>
-                    <div>
-                        <label class="text-sm">التصنيف</label>
-                        <select name="category" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
-                            <option value="chat">دردشة عامة</option>
-                            <option value="games">ألعاب</option>
-                            <option value="music">موسيقى</option>
-                            <option value="dating">تعارف</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="text-sm">عدد المقاعد</label>
-                        <div class="flex gap-2 mt-1">
-                            <label class="flex-1"><input type="radio" name="seatCount" value="8" checked class="peer sr-only"><div class="text-center py-2 rounded-lg bg-gray-700 peer-checked:bg-purple-600 cursor-pointer text-sm font-bold transition-colors">8</div></label>
-                            <label class="flex-1"><input type="radio" name="seatCount" value="15" class="peer sr-only"><div class="text-center py-2 rounded-lg bg-gray-700 peer-checked:bg-purple-600 cursor-pointer text-sm font-bold transition-colors">15</div></label>
-                            <label class="flex-1"><input type="radio" name="seatCount" value="24" class="peer sr-only"><div class="text-center py-2 rounded-lg bg-gray-700 peer-checked:bg-purple-600 cursor-pointer text-sm font-bold transition-colors">24</div></label>
+                        <label class="text-sm mb-1 block">اختر غلافاً</label>
+                        <div id="cover-picker" class="grid grid-cols-3 gap-2">
+                            ${presetCovers.map((url, i) => `
+                                <label class="relative cursor-pointer">
+                                    <input type="radio" name="coverImage" value="${url}" ${i === 0 ? 'checked' : ''} class="peer sr-only">
+                                    <img src="${url}" class="w-full aspect-square object-cover rounded-lg ring-2 ring-transparent peer-checked:ring-purple-500 opacity-70 peer-checked:opacity-100 transition-all">
+                                    <i class="fas fa-check-circle text-purple-400 absolute top-1 right-1 hidden peer-checked:block bg-gray-900 rounded-full text-xs"></i>
+                                </label>
+                            `).join('')}
                         </div>
-                    </div>
-                    <div class="flex items-center">
-                        <input type="checkbox" id="room-isPrivate" name="isPrivate" class="w-4 h-4 rounded">
-                        <label for="room-isPrivate" class="mr-2 text-sm">غرفة خاصة (بكلمة مرور)</label>
-                    </div>
-                    <div id="room-password-field" class="hidden">
-                        <label class="text-sm">كلمة المرور</label>
-                        <input type="password" name="password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
                     </div>
                     <div class="flex justify-end gap-3 pt-2">
                         <button type="button" id="cancel-create-room" class="bg-gray-600 hover:bg-gray-500 text-white py-2 px-4 rounded-lg">إلغاء</button>
-                        <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg">إنشاء</button>
+                        <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg">إنشاء ودخول</button>
                     </div>
                 </form>
             </div>
@@ -830,24 +834,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         modal.querySelector('#cancel-create-room').addEventListener('click', () => modal.remove());
         modal.addEventListener('click', (e) => { if (e.target.id === 'create-room-modal') modal.remove(); });
 
-        modal.querySelector('#room-isPrivate').addEventListener('change', (e) => {
-            modal.querySelector('#room-password-field').classList.toggle('hidden', !e.target.checked);
-        });
-
         const form = modal.querySelector('#create-room-form');
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
-            data.isPrivate = data.isPrivate === 'on';
-            data.seatCount = parseInt(data.seatCount);
 
             if (!data.name || data.name.trim().length < 2) {
                 showNotification('يرجى إدخال اسم غرفة صالح', 'error');
-                return;
-            }
-            if (data.isPrivate && !data.password) {
-                showNotification('يرجى إدخال كلمة مرور للغرفة الخاصة', 'error');
                 return;
             }
 
@@ -870,8 +864,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     return;
                 }
                 modal.remove();
-                showNotification('تم إنشاء الغرفة بنجاح ✅', 'success');
-                showRoomBrowserView();
+                showNotification('تم إنشاء غرفتك بنجاح ✅', 'success');
+                // ✅ دخول مباشر للغرفة الجديدة (بدل الرجوع لقائمة التصفح)
+                enterVoiceRoom({ id: result.room.id, name: result.room.name, seatCount: result.room.seatCount, isPrivate: result.room.isPrivate, isOfficial: false });
             } catch (error) {
                 showNotification('حدث خطأ، حاول مجدداً', 'error');
                 submitBtn.disabled = false;
@@ -892,7 +887,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </div>
                 <span class="text-xs text-gray-400">80 مقعد</span>
             </div>
-            <div id="voice-chat-grid" class="grid grid-cols-6 sm:grid-cols-7 md:grid-cols-8 gap-1.5 md:gap-3 pb-24 md:pb-2"></div>
+            <div id="voice-chat-grid" class="voice-seats-flex pb-24 md:pb-2"></div>
         `;
         document.getElementById('back-to-rooms-btn').addEventListener('click', showRoomBrowserView);
 
