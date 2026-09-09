@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const VoiceRoom = require('../models/VoiceRoom');
 
 // =====================================================
@@ -64,6 +65,50 @@ exports.createRoom = async (req, res) => {
         res.status(201).json({
             status: 'success',
             room: { id: room._id, name: room.name, seatCount: room.seatCount, category: room.category }
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// =====================================================
+// ✅ GET /api/voice-room/rooms/:id — حالة غرفة محددة بمعرّفها
+// =====================================================
+exports.getRoomById = async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غرفة غير صالح' });
+        }
+        const room = await VoiceRoom.findOne({ _id: req.params.id, status: 'active' })
+            .populate('seats.user', 'username profileImage activeFrameClass isAdmin')
+            .populate('host', 'username profileImage');
+        if (!room) {
+            return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة أو أُغلقت' });
+        }
+
+        const seats = room.seats.map(s => ({
+            seatNumber: s.seatNumber,
+            isLocked: s.isLocked,
+            isMuted: s.isMuted,
+            user: s.user ? {
+                id: s.user._id,
+                username: s.user.username,
+                profileImage: s.user.profileImage,
+                activeFrameClass: s.user.activeFrameClass
+            } : null
+        }));
+
+        res.json({
+            status: 'success',
+            id: room._id,
+            name: room.name,
+            description: room.description,
+            category: room.category,
+            host: room.host,
+            isOfficial: room.isOfficial,
+            seatCount: room.seatCount,
+            adminSeatCount: room.adminSeatCount,
+            seats
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
