@@ -510,7 +510,17 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function updateVoiceControlBar() {
         const bar = document.getElementById('voice-control-bar');
         if (!bar) return;
-        bar.classList.toggle('hidden', !myVoiceSeatNumber);
+        const isVisible = !!myVoiceSeatNumber;
+        // ✅ حركة ظهور/اختفاء أنيقة بدل التبديل الفجائي بين مخفي وظاهر
+        if (isVisible && bar.classList.contains('hidden')) {
+            bar.classList.remove('hidden');
+            bar.classList.add('voice-bar-enter');
+            setTimeout(() => bar.classList.remove('voice-bar-enter'), 260);
+        } else if (!isVisible) {
+            bar.classList.add('hidden');
+        }
+        const label = document.getElementById('voice-control-bar-seat-label');
+        if (label) label.textContent = myVoiceSeatNumber ? `مقعد ${myVoiceSeatNumber}` : '';
     }
 
     // ✅ يُنشأ مرة واحدة فقط، مباشرة بجسم الصفحة (وليس داخل mainContent الذي يحمل backdrop-blur
@@ -521,12 +531,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (document.getElementById('voice-control-bar')) return;
         const bar = document.createElement('div');
         bar.id = 'voice-control-bar';
-        bar.className = 'hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 border-2 border-purple-400/60 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.6)] flex items-center gap-3 px-4 py-2.5';
+        bar.className = 'hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 border-2 border-purple-400/60 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.6)] flex items-center gap-3 pl-4 pr-2.5 py-2.5';
         bar.innerHTML = `
-            <button id="voice-toggle-mute-btn" class="w-10 h-10 rounded-full bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center">
+            <span id="voice-control-bar-seat-label" class="text-xs font-bold text-purple-200 whitespace-nowrap"></span>
+            <button id="voice-toggle-mute-btn" class="w-10 h-10 rounded-full bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center transition-colors">
                 <i class="fas fa-microphone"></i>
             </button>
-            <button id="voice-leave-seat-btn" class="w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center">
+            <button id="voice-leave-seat-btn" class="w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition-colors">
                 <i class="fas fa-door-open"></i>
             </button>
         `;
@@ -549,10 +560,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         for (let i = 1; i <= 80; i++) {
             const seat = document.createElement('div');
             const isAdminSeat = i <= 5;
-            seat.className = `voice-seat ${isAdminSeat ? 'admin-seat' : 'user-seat'}`;
+            const canSitHere = !isAdminSeat || (user && user.isAdmin); // ✅ الأدمن الحقيقي يقدر يجلس بمقاعد الإدارة
+            seat.className = `voice-seat ${isAdminSeat ? 'admin-seat' : 'user-seat'} ${canSitHere ? '' : 'seat-forbidden'}`;
             seat.dataset.seat = i;
             seat.innerHTML = isAdminSeat ? '<i class="fas fa-crown"></i>' : i;
-            if (isAdminSeat) seat.title = 'مقعد محجوز للإدارة';
+            if (isAdminSeat) seat.title = canSitHere ? 'مقعد إدارة' : 'مقعد محجوز للإدارة';
             seat.addEventListener('click', () => {
                 if (myVoiceSeatNumber === i) {
                     leaveVoiceSeat();
