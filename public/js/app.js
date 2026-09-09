@@ -531,7 +531,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (document.getElementById('voice-control-bar')) return;
         const bar = document.createElement('div');
         bar.id = 'voice-control-bar';
-        bar.className = 'hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 border-2 border-purple-400/60 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.6)] flex items-center gap-3 pl-4 pr-2.5 py-2.5';
+        bar.className = 'hidden fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 border-2 border-purple-400/60 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.6)] flex items-center gap-3 pl-4 pr-2.5 py-2.5';
         bar.innerHTML = `
             <span id="voice-control-bar-seat-label" class="text-xs font-bold text-purple-200 whitespace-nowrap"></span>
             <button id="voice-toggle-mute-btn" class="w-10 h-10 rounded-full bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center transition-colors">
