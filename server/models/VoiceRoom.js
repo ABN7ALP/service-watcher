@@ -50,4 +50,26 @@ voiceRoomSchema.statics.getMainRoom = async function () {
     return room;
 };
 
+// ✅ يحرر أي مقعد يشغله هذا المستخدم فعلياً (بحسب قاعدة البيانات وحدها، لا ذاكرة الاتصال)
+// يُرجع رقم المقعد المُحرَّر ليُبَث للجميع، أو null لو لم يكن قاعداً أصلاً على أي مقعد.
+// هذا هو المرجع الوحيد المستخدم بكل عمليات التحرير (انضمام لمقعد جديد / مغادرة / انقطاع اتصال)
+// لضمان عدم بقاء "أشباح" مقاعد بعد إعادة اتصال أو تحديث الصفحة.
+voiceRoomSchema.statics.releaseUserSeat = async function (userId) {
+    const room = await this.findOne(
+        { slug: 'main', 'seats.user': userId },
+        { 'seats.$': 1 }
+    );
+    if (!room || !room.seats.length) return null; // لم يكن قاعداً على أي مقعد أصلاً
+
+    const seatNumber = room.seats[0].seatNumber;
+
+    await this.updateOne(
+        { slug: 'main' },
+        { $set: { 'seats.$[old].user': null, 'seats.$[old].joinedAt': null, 'seats.$[old].isMuted': false } },
+        { arrayFilters: [{ 'old.user': userId }] }
+    );
+
+    return seatNumber;
+};
+
 module.exports = mongoose.model('VoiceRoom', voiceRoomSchema);
