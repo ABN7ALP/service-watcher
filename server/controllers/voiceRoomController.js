@@ -20,51 +20,62 @@ exports.listRooms = async (req, res) => {
 };
 
 // =====================================================
-// ✅ POST /api/voice-room/rooms — إنشاء غرفة صوتية جديدة
+// ✅ GET /api/voice-room/my-room — غرفتي الخاصة إن وُجدت (لتوجيه أيقونة الإنشاء مباشرة إليها)
+// =====================================================
+exports.getMyRoom = async (req, res) => {
+    try {
+        const room = await VoiceRoom.findOne({ host: req.user.id, status: 'active' }).select('-password -seats');
+        res.json({ status: 'success', room: room ? { id: room._id, name: room.name, coverImage: room.coverImage, seatCount: room.seatCount, isPrivate: room.isPrivate, isOfficial: false } : null });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// =====================================================
+// ✅ POST /api/voice-room/rooms — إنشاء غرفة صوتية جديدة (اسم + غلاف فقط أول مرة —
+// بقية الإعدادات (خصوصية/عدد مقاعد/تصنيف) تُعدَّل لاحقاً من إعدادات المضيف داخل غرفته)
 // =====================================================
 exports.createRoom = async (req, res) => {
     try {
-        const { name, description, coverImage, category, seatCount, isPrivate, password } = req.body;
+        const { name, coverImage } = req.body;
 
         // 🛡️ تحقق صارم من كل مدخل — لا نثق بأي شيء قادم من العميل مهما بدا الشكل بالواجهة سليماً
         const cleanName = String(name || '').trim();
         if (!cleanName || cleanName.length < 2 || cleanName.length > 40) {
             return res.status(400).json({ status: 'fail', message: 'اسم الغرفة يجب أن يكون بين 2 و40 حرفاً' });
         }
-        const cleanDescription = String(description || '').trim().slice(0, 120);
 
-        const allowedCategories = ['chat', 'games', 'music', 'dating'];
-        const cleanCategory = allowedCategories.includes(category) ? category : 'chat';
-
-        const allowedSeatCounts = [8, 15, 24];
-        const cleanSeatCount = allowedSeatCounts.includes(parseInt(seatCount)) ? parseInt(seatCount) : 8;
-
-        // 🛡️ تحقق سيرفر حقيقي من كلمة مرور الغرفة الخاصة (لا يكفي تحقق الواجهة وحده)
-        const finalIsPrivate = isPrivate === true || isPrivate === 'true';
-        if (finalIsPrivate && (!password || String(password).trim().length < 1)) {
-            return res.status(400).json({ status: 'fail', message: 'يرجى إدخال كلمة مرور للغرفة الخاصة' });
+        // 🛡️ غرفة واحدة فقط لكل مستخدم — أيقونة الإنشاء تأخذه مباشرة لغرفته لو عنده وحدة أصلاً
+        const existingRoom = await VoiceRoom.findOne({ host: req.user.id, status: 'active' });
+        if (existingRoom) {
+            return res.status(400).json({ status: 'fail', message: 'لديك غرفة بالفعل — لا يمكن إنشاء أكثر من غرفة واحدة' });
         }
 
-        // 🛡️ حد أقصى لعدد الغرف المفتوحة لنفس المستخدم بنفس الوقت — يمنع إغراق قائمة التصفح
-        const myActiveRoomsCount = await VoiceRoom.countDocuments({ host: req.user.id, status: 'active' });
-        if (myActiveRoomsCount >= 3) {
-            return res.status(400).json({ status: 'fail', message: 'وصلت للحد الأقصى (3 غرف) المفتوحة بنفس الوقت. أغلق إحداها أولاً.' });
-        }
+        // 🛡️ الغلاف: من قائمة جاهزة فقط حالياً (لا يوجد رفع ملفات بعد) — يمنع إدخال روابط عشوائية
+        const presetCovers = [
+            'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&q=60',
+            'https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?w=400&q=60',
+            'https://images.unsplash.com/photo-1470813740244-df37b8c1edcb?w=400&q=60',
+            'https://images.unsplash.com/photo-1533158307587-828f0a76ef46?w=400&q=60',
+            'https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?w=400&q=60',
+            'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?w=400&q=60'
+        ];
+        const cleanCover = presetCovers.includes(coverImage) ? coverImage : presetCovers[0];
 
         const room = await VoiceRoom.createRoom({
             hostId: req.user.id,
             name: cleanName,
-            description: cleanDescription,
-            coverImage: coverImage || null,
-            category: cleanCategory,
-            seatCount: cleanSeatCount,
-            isPrivate: finalIsPrivate,
-            password: finalIsPrivate ? String(password) : undefined
+            description: '',
+            coverImage: cleanCover,
+            category: 'chat',
+            seatCount: 8,
+            isPrivate: false,
+            password: undefined
         });
 
         res.status(201).json({
             status: 'success',
-            room: { id: room._id, name: room.name, seatCount: room.seatCount, category: room.category }
+            room: { id: room._id, name: room.name, coverImage: room.coverImage, seatCount: room.seatCount, isPrivate: room.isPrivate }
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
