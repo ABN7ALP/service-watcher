@@ -95,6 +95,7 @@ const createLevelProgressHTML = (user) => {
     document.addEventListener('DOMContentLoaded', () => {
     let token = localStorage.getItem('token');  // تغيير const إلى let
     const user = JSON.parse(localStorage.getItem('user'));
+    const myUserId = user ? user._id : null; // ✅ يُستخدم لتمييز "مقعدي أنا" بغرفة الصوت
     const loadingScreen = document.getElementById('loading-screen');
     const appContainer = document.getElementById('app-container');
 
@@ -473,14 +474,62 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     });
 
     // ✅ الرئيسية الجديدة: غرف صوت فقط (80 مقعداً، 5 منها إدارية 1-5)
-        function showVoiceRoomsView() {
+    // ✅ حالة المقاعد الآن حقيقية 100% من قاعدة البيانات (لقطة عند الفتح + تحديث حي عبر Socket)
+    let myVoiceSeatNumber = null;
+
+    function renderVoiceSeatContent(seatEl, seatData) {
+        const isAdminSeat = parseInt(seatEl.dataset.seat) <= 5;
+        seatEl.classList.remove('occupied-seat', 'my-seat', 'locked-seat');
+        seatEl.title = '';
+
+        if (seatData && seatData.isLocked) {
+            seatEl.classList.add('locked-seat');
+            seatEl.innerHTML = '<i class="fas fa-lock"></i>';
+            seatEl.title = 'مقعد مقفل';
+            return;
+        }
+
+        if (seatData && seatData.user) {
+            const isMe = seatData.user.id === myUserId;
+            seatEl.classList.add('occupied-seat');
+            if (isMe) seatEl.classList.add('my-seat');
+            seatEl.dataset.userId = seatData.user.id; // ✅ فهرس مباشر لتحديث الكتم لاحقاً دون إعادة تحميل الشبكة كاملة
+            const safeName = escapeHtml(seatData.user.username || '');
+            seatEl.title = seatData.user.username || '';
+            seatEl.innerHTML = `
+                <img src="${seatData.user.profileImage}" class="voice-seat-avatar" alt="${safeName}">
+                ${seatData.isMuted ? '<i class="fas fa-microphone-slash voice-seat-mute-badge"></i>' : ''}
+            `;
+        } else {
+            delete seatEl.dataset.userId;
+            seatEl.innerHTML = isAdminSeat ? '<i class="fas fa-crown"></i>' : seatEl.dataset.seat;
+            if (isAdminSeat) seatEl.title = 'مقعد محجوز للإدارة';
+        }
+    }
+
+    function updateVoiceControlBar() {
+        const bar = document.getElementById('voice-control-bar');
+        if (!bar) return;
+        bar.classList.toggle('hidden', !myVoiceSeatNumber);
+    }
+
+    function showVoiceRoomsView() {
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
                 <span class="text-xs text-gray-400">80 مقعد</span>
             </div>
-                        <div id="voice-chat-grid" class="grid grid-cols-6 sm:grid-cols-7 md:grid-cols-8 gap-1.5 md:gap-3 pb-24 md:pb-2"></div>
+            <div id="voice-chat-grid" class="grid grid-cols-6 sm:grid-cols-7 md:grid-cols-8 gap-1.5 md:gap-3 pb-24 md:pb-2"></div>
+            <div id="voice-control-bar" class="hidden fixed bottom-16 md:bottom-4 left-1/2 -translate-x-1/2 z-50 bg-gray-800/95 backdrop-blur border border-purple-500/30 rounded-full shadow-2xl flex items-center gap-2 px-3 py-2">
+                <button id="voice-toggle-mute-btn" class="w-10 h-10 rounded-full bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <button id="voice-leave-seat-btn" class="w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center">
+                    <i class="fas fa-door-open"></i>
+                </button>
+            </div>
         `;
+
         const voiceGrid = document.getElementById('voice-chat-grid');
         for (let i = 1; i <= 80; i++) {
             const seat = document.createElement('div');
@@ -489,11 +538,62 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             seat.dataset.seat = i;
             seat.innerHTML = isAdminSeat ? '<i class="fas fa-crown"></i>' : i;
             if (isAdminSeat) seat.title = 'مقعد محجوز للإدارة';
+            seat.addEventListener('click', () => {
+                if (myVoiceSeatNumber === i) {
+                    leaveVoiceSeat();
+                } else {
+                    joinVoiceSeat(i);
+                }
+            });
             voiceGrid.appendChild(seat);
         }
-        voiceGrid.querySelectorAll('.user-seat').forEach(seat => {
-            seat.addEventListener('click', () => joinVoiceSeat(parseInt(seat.dataset.seat)));
-        });
+
+        // ✅ لقطة الحالة الحقيقية عند فتح الغرفة (كانت مفقودة بالكامل سابقاً)
+        fetchVoiceRoomSnapshot();
+
+        document.getElementById('voice-toggle-mute-btn').addEventListener('click', toggleVoiceMute);
+        document.getElementById('voice-leave-seat-btn').addEventListener('click', leaveVoiceSeat);
+        updateVoiceControlBar();
+    }
+
+    async function fetchVoiceRoomSnapshot() {
+        const voiceGrid = document.getElementById('voice-chat-grid');
+        if (!voiceGrid) return;
+        try {
+            const response = await fetch('/api/voice-room', { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            if (!response.ok || result.status !== 'success') return;
+
+            let foundSeat = null;
+            result.seats.forEach(seatData => {
+                const seatEl = voiceGrid.querySelector(`.voice-seat[data-seat="${seatData.seatNumber}"]`);
+                if (!seatEl) return;
+                renderVoiceSeatContent(seatEl, seatData);
+                if (seatData.user && seatData.user.id === myUserId) {
+                    foundSeat = seatData.seatNumber;
+                }
+            });
+            myVoiceSeatNumber = foundSeat; // ✅ اللقطة هي المرجع الوحيد الموثوق — تُصفَّر صراحة لو لم يكن للمستخدم مقعد فعلي
+            updateVoiceControlBar();
+        } catch (error) {
+            console.error('Failed to load voice room snapshot:', error);
+        }
+    }
+
+    function joinVoiceSeat(seatNumber) {
+        socket.emit('join-voice-seat', { seatNumber });
+    }
+
+    function leaveVoiceSeat() {
+        if (!myVoiceSeatNumber) return;
+        socket.emit('leave-voice-seat');
+    }
+
+    function toggleVoiceMute() {
+        if (!myVoiceSeatNumber) return;
+        const btn = document.getElementById('voice-toggle-mute-btn');
+        const isCurrentlyMuted = btn.classList.contains('is-muted');
+        socket.emit('toggle-mute', { isMuted: !isCurrentlyMuted });
     }
 
     // ✅ قسم التحديات الجديد: يحوي إنشاء التحدي + قائمة التحديات (منقول بالكامل من الرئيسية القديمة)
@@ -2307,7 +2407,58 @@ function showXpGainAnimation(amount) {
         // ✅ تمت إزالة إشعار "تم تحديث رصيدك" — تحديث الرقم بالهيدر كافٍ
     });
 
-                      socket.on('connect_error', (err) => {
+    // ✅ تحديث حي لمقاعد الغرفة الصوتية (تتحقق من وجود الشبكة بالصفحة أولاً لأن المستخدم قد يكون بقسم آخر)
+    socket.on('user-joined-seat', ({ seatNumber, userId, username, profileImage, activeFrameClass }) => {
+        if (userId === myUserId) myVoiceSeatNumber = seatNumber;
+        updateVoiceControlBar();
+        const voiceGrid = document.getElementById('voice-chat-grid');
+        if (!voiceGrid) return;
+        const seatEl = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"]`);
+        if (!seatEl) return;
+        renderVoiceSeatContent(seatEl, {
+            isLocked: false,
+            isMuted: false,
+            user: { id: userId, username, profileImage, activeFrameClass }
+        });
+    });
+
+    socket.on('user-left-seat', ({ seatNumber, userId }) => {
+        if (userId === myUserId) myVoiceSeatNumber = null;
+        updateVoiceControlBar();
+        const voiceGrid = document.getElementById('voice-chat-grid');
+        if (!voiceGrid) return;
+        const seatEl = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"]`);
+        if (!seatEl) return;
+        renderVoiceSeatContent(seatEl, null);
+    });
+
+    socket.on('user-toggled-mute', ({ userId, isMuted }) => {
+        if (userId === myUserId) {
+            const btn = document.getElementById('voice-toggle-mute-btn');
+            if (btn) {
+                btn.classList.toggle('is-muted', isMuted);
+                btn.innerHTML = isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
+            }
+        }
+        const voiceGrid = document.getElementById('voice-chat-grid');
+        if (!voiceGrid) return;
+        const seatEl = voiceGrid.querySelector(`[data-user-id="${userId}"]`);
+        if (!seatEl) return;
+        let badge = seatEl.querySelector('.voice-seat-mute-badge');
+        if (isMuted && !badge) {
+            badge = document.createElement('i');
+            badge.className = 'fas fa-microphone-slash voice-seat-mute-badge';
+            seatEl.appendChild(badge);
+        } else if (!isMuted && badge) {
+            badge.remove();
+        }
+    });
+
+    socket.on('seat-error', (message) => {
+        showNotification(message, 'error');
+    });
+
+    socket.on('connect_error', (err) => {
         console.error('Socket Connection Error:', err.message);
         if (err.message === 'Authentication error') {
             performLogout();
