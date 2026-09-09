@@ -717,12 +717,17 @@ socket.on('refreshBlockData', async () => {
         // الهوية دائماً من socket.user الموثّق بالتوكن — أبداً من بيانات
         // يرسلها العميل — فلا يمكن لأي مستخدم انتحال جلوس شخص آخر.
         // =====================================================
-        socket.on('join-voice-seat', ({ seatNumber }) => withUserSeatLock(socket.user._id, async () => {
+        socket.on('join-voice-seat', ({ roomId, seatNumber, password }) => withUserSeatLock(socket.user._id, async () => {
             try {
                 const VoiceRoom = require('../models/VoiceRoom');
                 const seatNum = parseInt(seatNumber);
+                const targetRoomId = roomId || 'main';
 
-                const room = await VoiceRoom.getMainRoom();
+                const room = await VoiceRoom.resolveRoom(targetRoomId);
+                if (!room) {
+                    return socket.emit('seat-error', 'الغرفة غير موجودة أو أُغلقت');
+                }
+
                 if (!Number.isInteger(seatNum) || seatNum < 1 || seatNum > room.seatCount) {
                     return socket.emit('seat-error', 'رقم مقعد غير صالح');
                 }
@@ -732,19 +737,30 @@ socket.on('refreshBlockData', async () => {
                     return socket.emit('seat-error', 'لا تملك صلاحية الجلوس على مقاعد الإدارة');
                 }
 
-                // 1) حرّر كل مقعد يشغله هذا المستخدم فعلياً بقاعدة البيانات (وليس بذاكرة هذا الاتصال تحديداً —
-                //    فلو كان قد جلس من اتصال سابق ثم انقطع وأعاد الاتصال، الذاكرة هنا فاضية لكن قاعدة البيانات تعرف الحقيقة)
-                const released = await VoiceRoom.releaseUserSeat(socket.user._id);
+                // 🛡️ تحقق سيرفر حقيقي من كلمة مرور الغرفة الخاصة (لا يكفي إخفاء الزر بالواجهة وحده)
+                if (room.isPrivate) {
+                    const roomWithPassword = await VoiceRoom.findById(room._id).select('+password');
+                    if (!password || password !== roomWithPassword.password) {
+                        return socket.emit('seat-error', 'كلمة مرور الغرفة غير صحيحة');
+                    }
+                }
+
+                // 1) حرّر كل مقعد يشغله هذا المستخدم فعلياً عبر كل الغرف (لا يمكن الجلوس بغرفتين
+                //    بنفس الوقت) بقاعدة البيانات وحدها — وليس بذاكرة هذا الاتصال تحديداً
+                const released = await VoiceRoom.releaseUserSeatEverywhere(socket.user._id) || [];
                 released.forEach(r => {
-                    io.emit('user-left-seat', { seatNumber: r.seatNumber, userId: socket.user.id.toString() });
+                    io.emit('user-left-seat', { roomId: r.roomId, seatNumber: r.seatNumber, userId: socket.user.id.toString() });
                 });
-                // ✅ ترحيل حالة الكتم: لو كان مكتوماً بمقعده القديم، يبقى مكتوماً بالمقعد الجديد
+                // ✅ ترحيل حالة الكتم: لو كان مكتوماً بمقعده القديم (أي غرفة كانت)، يبقى مكتوماً بالجديد
                 const carryMuted = released.some(r => r.wasMuted);
 
-                // 2) حاول حجز المقعد الجديد — يفشل تلقائياً لو صار محجوزاً أو مقفلاً بين اللحظتين
+                // 2) حاول حجز المقعد الجديد بنفس الغرفة الهدف — يفشل تلقائياً لو صار محجوزاً أو مقفلاً
                 const updatedRoom = await VoiceRoom.findOneAndUpdate(
-                    { slug: 'main', seats: { $elemMatch: { seatNumber: seatNum, user: null, isLocked: false } } },
-                    { $set: { 'seats.$.user': socket.user._id, 'seats.$.joinedAt': new Date(), 'seats.$.isMuted': carryMuted } },
+                    { _id: room._id, seats: { $elemMatch: { seatNumber: seatNum, user: null, isLocked: false } } },
+                    {
+                        $set: { 'seats.$.user': socket.user._id, 'seats.$.joinedAt': new Date(), 'seats.$.isMuted': carryMuted },
+                        $currentDate: { lastActivityAt: true } // ✅ يغذّي ترتيب "الأكثر نشاطاً" بقائمة الغرف
+                    },
                     { new: true }
                 );
 
@@ -754,6 +770,7 @@ socket.on('refreshBlockData', async () => {
                 }
 
                 io.emit('user-joined-seat', {
+                    roomId: targetRoomId,
                     seatNumber: seatNum,
                     userId: socket.user.id.toString(),
                     username: socket.user.username,
@@ -770,9 +787,9 @@ socket.on('refreshBlockData', async () => {
         socket.on('leave-voice-seat', () => withUserSeatLock(socket.user._id, async () => {
             try {
                 const VoiceRoom = require('../models/VoiceRoom');
-                const released = await VoiceRoom.releaseUserSeat(socket.user._id);
+                const released = await VoiceRoom.releaseUserSeatEverywhere(socket.user._id) || [];
                 released.forEach(r => {
-                    io.emit('user-left-seat', { seatNumber: r.seatNumber, userId: socket.user.id.toString() });
+                    io.emit('user-left-seat', { roomId: r.roomId, seatNumber: r.seatNumber, userId: socket.user.id.toString() });
                 });
             } catch (error) {
                 console.error('[VOICE SEAT] Leave seat error:', error);
@@ -782,14 +799,15 @@ socket.on('refreshBlockData', async () => {
         socket.on('toggle-mute', async ({ isMuted }) => {
             try {
                 const VoiceRoom = require('../models/VoiceRoom');
-                // ✅ يبحث عن مقعد المستخدم فعلياً بقاعدة البيانات بدل الاعتماد على ذاكرة الاتصال
+                // ✅ يبحث عن مقعد المستخدم فعلياً بقاعدة البيانات بأي غرفة (بدل الرسمية فقط سابقاً)
                 const updatedRoom = await VoiceRoom.findOneAndUpdate(
-                    { slug: 'main', 'seats.user': socket.user._id },
+                    { 'seats.user': socket.user._id },
                     { $set: { 'seats.$.isMuted': !!isMuted } },
                     { new: true }
                 );
                 if (!updatedRoom) return; // المستخدم غير قاعد على أي مقعد حالياً — لا شيء لتحديثه
-                io.emit('user-toggled-mute', { userId: socket.user.id.toString(), isMuted: !!isMuted });
+                const roomId = updatedRoom.slug === 'main' ? 'main' : updatedRoom._id.toString();
+                io.emit('user-toggled-mute', { roomId, userId: socket.user.id.toString(), isMuted: !!isMuted });
             } catch (error) {
                 console.error('[VOICE SEAT] Toggle mute error:', error);
             }
@@ -805,9 +823,9 @@ socket.on('refreshBlockData', async () => {
                 // التسلسلي حتى لا يتصادم مع طلب انضمام/مغادرة وصل بنفس اللحظة تقريباً
                 await withUserSeatLock(socket.user._id, async () => {
                     const VoiceRoom = require('../models/VoiceRoom');
-                    const released = await VoiceRoom.releaseUserSeat(socket.user._id);
+                    const released = await VoiceRoom.releaseUserSeatEverywhere(socket.user._id) || [];
                     released.forEach(r => {
-                        io.emit('user-left-seat', { seatNumber: r.seatNumber, userId: socket.user.id.toString() });
+                        io.emit('user-left-seat', { roomId: r.roomId, seatNumber: r.seatNumber, userId: socket.user.id.toString() });
                     });
                 });
             } catch (error) { console.error('Failed to update offline status:', error); }
