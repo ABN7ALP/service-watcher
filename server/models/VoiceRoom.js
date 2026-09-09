@@ -50,20 +50,16 @@ voiceRoomSchema.statics.getMainRoom = async function () {
     return room;
 };
 
-// ✅ يحرر أي مقعد يشغله هذا المستخدم فعلياً (بحسب قاعدة البيانات وحدها، لا ذاكرة الاتصال)
-// يُرجع { seatNumber, wasMuted } ليُبَث للجميع ولترحيل حالة الكتم عند التبديل بين مقعدين،
-// أو null لو لم يكن قاعداً أصلاً على أي مقعد.
-// هذا هو المرجع الوحيد المستخدم بكل عمليات التحرير (انضمام لمقعد جديد / مغادرة / انقطاع اتصال)
-// لضمان عدم بقاء "أشباح" مقاعد بعد إعادة اتصال أو تحديث الصفحة.
+// ✅ يحرر كل المقاعد التي يشغلها هذا المستخدم فعلياً (بحسب قاعدة البيانات وحدها، لا ذاكرة الاتصال)
+// — عادة مقعد واحد فقط، لكن لو حصل ازدواج (تصادم طلبات متزامنة) يحررهم كلهم ويبلغ عنهم كلهم،
+// فيصحح نفسه تلقائياً بمجرد أي حركة جديدة للمستخدم المتضرر.
+// يُرجع مصفوفة [{ seatNumber, wasMuted }, ...] (فاضية لو لم يكن قاعداً على أي مقعد أصلاً).
 voiceRoomSchema.statics.releaseUserSeat = async function (userId) {
-    const room = await this.findOne(
-        { slug: 'main', 'seats.user': userId },
-        { 'seats.$': 1 }
-    );
-    if (!room || !room.seats.length) return null; // لم يكن قاعداً على أي مقعد أصلاً
+    const room = await this.findOne({ slug: 'main', 'seats.user': userId });
+    if (!room) return [];
 
-    const seatNumber = room.seats[0].seatNumber;
-    const wasMuted = !!room.seats[0].isMuted;
+    const occupied = room.seats.filter(s => s.user && s.user.toString() === userId.toString());
+    if (!occupied.length) return [];
 
     await this.updateOne(
         { slug: 'main' },
@@ -71,7 +67,41 @@ voiceRoomSchema.statics.releaseUserSeat = async function (userId) {
         { arrayFilters: [{ 'old.user': userId }] }
     );
 
-    return { seatNumber, wasMuted };
+    return occupied.map(s => ({ seatNumber: s.seatNumber, wasMuted: !!s.isMuted }));
+};
+
+// ✅ تنظيف شامل لمرة واحدة عند إقلاع السيرفر: يزيل أي ازدواج قديم متراكم بقاعدة البيانات
+// (مستخدم واحد ظاهر على أكثر من مقعد بنفس اللحظة) من فترة ما قبل إصلاح القفل أدناه —
+// يُبقي فقط أحدث مقعد انضم له كل مستخدم (بحسب joinedAt) ويُفرغ الباقي.
+voiceRoomSchema.statics.deduplicateSeats = async function () {
+    const room = await this.getMainRoom();
+    const seatsByUser = new Map();
+    room.seats.forEach(s => {
+        if (!s.user) return;
+        const key = s.user.toString();
+        if (!seatsByUser.has(key)) seatsByUser.set(key, []);
+        seatsByUser.get(key).push(s);
+    });
+
+    let clearedCount = 0;
+    for (const [, userSeats] of seatsByUser) {
+        if (userSeats.length <= 1) continue;
+        // أبقِ الأحدث انضماماً فقط، حرر البقية
+        userSeats.sort((a, b) => new Date(b.joinedAt || 0) - new Date(a.joinedAt || 0));
+        const toClear = userSeats.slice(1);
+        for (const seat of toClear) {
+            seat.user = null;
+            seat.joinedAt = null;
+            seat.isMuted = false;
+            clearedCount++;
+        }
+    }
+
+    if (clearedCount > 0) {
+        await room.save();
+        console.log(`[VOICE ROOM] تم تنظيف ${clearedCount} مقعد مكرر عند الإقلاع`);
+    }
+    return clearedCount;
 };
 
 module.exports = mongoose.model('VoiceRoom', voiceRoomSchema);
