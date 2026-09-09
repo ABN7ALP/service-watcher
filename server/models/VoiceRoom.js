@@ -149,55 +149,80 @@ voiceRoomSchema.statics.listRooms = async function ({ search, sort = 'newest', p
     };
 };
 
-// ✅ يحرر كل المقاعد التي يشغلها هذا المستخدم فعلياً (بحسب قاعدة البيانات وحدها، لا ذاكرة الاتصال)
-// — عادة مقعد واحد فقط، لكن لو حصل ازدواج (تصادم طلبات متزامنة) يحررهم كلهم ويبلغ عنهم كلهم،
-// فيصحح نفسه تلقائياً بمجرد أي حركة جديدة للمستخدم المتضرر.
-// يُرجع مصفوفة [{ seatNumber, wasMuted }, ...] (فاضية لو لم يكن قاعداً على أي مقعد أصلاً).
-voiceRoomSchema.statics.releaseUserSeat = async function (userId) {
-    const room = await this.findOne({ slug: 'main', 'seats.user': userId });
-    if (!room) return [];
-
-    const occupied = room.seats.filter(s => s.user && s.user.toString() === userId.toString());
-    if (!occupied.length) return [];
-
-    await this.updateOne(
-        { slug: 'main' },
-        { $set: { 'seats.$[old].user': null, 'seats.$[old].joinedAt': null, 'seats.$[old].isMuted': false } },
-        { arrayFilters: [{ 'old.user': userId }] }
-    );
-
-    return occupied.map(s => ({ seatNumber: s.seatNumber, wasMuted: !!s.isMuted }));
+// ✅ يحل معرّف الغرفة القادم من العميل: 'main' يعني الغرفة الرسمية، وإلا يُعامل كمعرّف MongoDB حقيقي
+voiceRoomSchema.statics.resolveRoom = async function (roomId) {
+    if (roomId === 'main') return this.getMainRoom();
+    if (!mongoose.Types.ObjectId.isValid(roomId)) return null;
+    return this.findOne({ _id: roomId, status: 'active' });
 };
 
-// ✅ تنظيف شامل لمرة واحدة عند إقلاع السيرفر: يزيل أي ازدواج قديم متراكم بقاعدة البيانات
-// (مستخدم واحد ظاهر على أكثر من مقعد بنفس اللحظة) من فترة ما قبل إصلاح القفل أدناه —
+// ✅ يحرر كل مقاعد هذا المستخدم عبر كل الغرف (لا يمكن الجلوس بأكثر من غرفة بنفس الوقت) —
+// بحسب قاعدة البيانات وحدها، لا ذاكرة الاتصال. عادة مقعد واحد فقط، لكن لو حصل ازدواج
+// (تصادم طلبات متزامنة) يحررهم كلهم ويبلغ عنهم كلهم، فيصحح نفسه تلقائياً.
+// يُرجع مصفوفة [{ roomId, seatNumber, wasMuted }, ...] (فاضية لو لم يكن قاعداً بأي مكان).
+voiceRoomSchema.statics.releaseUserSeatEverywhere = async function (userId) {
+    const rooms = await this.find({ 'seats.user': userId });
+    if (!rooms.length) return [];
+
+    const released = [];
+    for (const room of rooms) {
+        const occupied = room.seats.filter(s => s.user && s.user.toString() === userId.toString());
+        occupied.forEach(s => {
+            released.push({
+                roomId: room.slug === 'main' ? 'main' : room._id.toString(),
+                seatNumber: s.seatNumber,
+                wasMuted: !!s.isMuted
+            });
+        });
+
+        await this.updateOne(
+            { _id: room._id },
+            { $set: { 'seats.$[old].user': null, 'seats.$[old].joinedAt': null, 'seats.$[old].isMuted': false } },
+            { arrayFilters: [{ 'old.user': userId }] }
+        );
+    }
+
+    return released;
+};
+
+// ✅ تنظيف شامل لمرة واحدة عند إقلاع السيرفر: يزيل أي ازدواج قديم متراكم عبر كل الغرف
+// (مستخدم واحد ظاهر على أكثر من مقعد — حتى بغرف مختلفة — بنفس اللحظة) —
 // يُبقي فقط أحدث مقعد انضم له كل مستخدم (بحسب joinedAt) ويُفرغ الباقي.
 voiceRoomSchema.statics.deduplicateSeats = async function () {
-    const room = await this.getMainRoom();
-    const seatsByUser = new Map();
-    room.seats.forEach(s => {
-        if (!s.user) return;
-        const key = s.user.toString();
-        if (!seatsByUser.has(key)) seatsByUser.set(key, []);
-        seatsByUser.get(key).push(s);
+    await this.getMainRoom(); // يضمن وجود الغرفة الرسمية قبل الفحص
+    const rooms = await this.find({ 'seats.user': { $ne: null } });
+
+    const seatsByUser = new Map(); // userId -> [{ room, seat }]
+    rooms.forEach(room => {
+        room.seats.forEach(s => {
+            if (!s.user) return;
+            const key = s.user.toString();
+            if (!seatsByUser.has(key)) seatsByUser.set(key, []);
+            seatsByUser.get(key).push({ room, seat: s });
+        });
     });
 
     let clearedCount = 0;
-    for (const [, userSeats] of seatsByUser) {
-        if (userSeats.length <= 1) continue;
-        // أبقِ الأحدث انضماماً فقط، حرر البقية
-        userSeats.sort((a, b) => new Date(b.joinedAt || 0) - new Date(a.joinedAt || 0));
-        const toClear = userSeats.slice(1);
-        for (const seat of toClear) {
+    const roomsToSave = new Map();
+    for (const [, entries] of seatsByUser) {
+        if (entries.length <= 1) continue;
+        // أبقِ الأحدث انضماماً فقط (حتى لو بغرفة مختلفة)، حرر الباقي أينما كان
+        entries.sort((a, b) => new Date(b.seat.joinedAt || 0) - new Date(a.seat.joinedAt || 0));
+        const toClear = entries.slice(1);
+        for (const { room, seat } of toClear) {
             seat.user = null;
             seat.joinedAt = null;
             seat.isMuted = false;
             clearedCount++;
+            roomsToSave.set(room._id.toString(), room);
         }
     }
 
-    if (clearedCount > 0) {
+    for (const room of roomsToSave.values()) {
         await room.save();
+    }
+
+    if (clearedCount > 0) {
         console.log(`[VOICE ROOM] تم تنظيف ${clearedCount} مقعد مكرر عند الإقلاع`);
     }
     return clearedCount;
