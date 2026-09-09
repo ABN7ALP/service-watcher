@@ -479,7 +479,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     function renderVoiceSeatContent(seatEl, seatData) {
         const isAdminSeat = parseInt(seatEl.dataset.seat) <= 5;
-        seatEl.classList.remove('occupied-seat', 'my-seat', 'locked-seat');
+        seatEl.classList.remove('occupied-seat', 'my-seat', 'locked-seat', 'is-muted-seat');
         seatEl.title = '';
 
         if (seatData && seatData.isLocked) {
@@ -493,13 +493,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const isMe = seatData.user.id === myUserId;
             seatEl.classList.add('occupied-seat');
             if (isMe) seatEl.classList.add('my-seat');
+            if (seatData.isMuted) seatEl.classList.add('is-muted-seat');
             seatEl.dataset.userId = seatData.user.id; // ✅ فهرس مباشر لتحديث الكتم لاحقاً دون إعادة تحميل الشبكة كاملة
             const safeName = escapeHtml(seatData.user.username || '');
             seatEl.title = seatData.user.username || '';
-            seatEl.innerHTML = `
-                <img src="${seatData.user.profileImage}" class="voice-seat-avatar" alt="${safeName}">
-                ${seatData.isMuted ? '<i class="fas fa-microphone-slash voice-seat-mute-badge"></i>' : ''}
-            `;
+            seatEl.innerHTML = `<img src="${seatData.user.profileImage}" class="voice-seat-avatar" alt="${safeName}">`;
         } else {
             delete seatEl.dataset.userId;
             seatEl.innerHTML = isAdminSeat ? '<i class="fas fa-crown"></i>' : seatEl.dataset.seat;
@@ -521,7 +519,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (document.getElementById('voice-control-bar')) return;
         const bar = document.createElement('div');
         bar.id = 'voice-control-bar';
-        bar.className = 'hidden fixed bottom-16 md:bottom-4 left-1/2 -translate-x-1/2 z-50 bg-gray-800/95 backdrop-blur border border-purple-500/30 rounded-full shadow-2xl flex items-center gap-2 px-3 py-2';
+        bar.className = 'hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 border-2 border-purple-400/60 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.6)] flex items-center gap-3 px-4 py-2.5';
         bar.innerHTML = `
             <button id="voice-toggle-mute-btn" class="w-10 h-10 rounded-full bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center">
                 <i class="fas fa-microphone"></i>
@@ -592,11 +590,22 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
     }
 
+    // ✅ يمنع إرسال طلب مقعد جديد قبل ما يرجع رد الطلب السابق (نجاح أو فشل) —
+    // طبقة حماية إضافية بالواجهة فوق القفل الأساسي بالسيرفر، ويحسّن الإحساس بالاستجابة
+    let voiceSeatActionPending = false;
+    function clearVoiceSeatPending() { voiceSeatActionPending = false; }
+
     function joinVoiceSeat(seatNumber) {
+        if (voiceSeatActionPending) return;
+        voiceSeatActionPending = true;
+        setTimeout(clearVoiceSeatPending, 4000); // أمان إضافي لو ضاع الرد لأي سبب
         socket.emit('join-voice-seat', { seatNumber });
     }
 
     function leaveVoiceSeat() {
+        if (voiceSeatActionPending) return;
+        voiceSeatActionPending = true;
+        setTimeout(clearVoiceSeatPending, 4000);
         // ✅ نرسل الطلب دائماً بغض النظر عن حالة المتصفح المحلية — السيرفر هو المرجع الوحيد
         // ويتجاهل الطلب بأمان لو لم يكن المستخدم قاعداً أصلاً (كان الشرط هنا سابقاً قد يمنع
         // الزر من العمل لو تزامنت الحالة المحلية بالخطأ بعد انقطاع/إعادة اتصال)
@@ -2433,6 +2442,7 @@ function showXpGainAnimation(amount) {
         if (userId === myUserId) {
             myVoiceSeatNumber = seatNumber;
             syncMuteButtonUI(!!isMuted); // ✅ يعكس حالة الكتم الحقيقية المرحّلة من المقعد السابق، لا يصفّرها
+            clearVoiceSeatPending();
         }
         updateVoiceControlBar();
         const voiceGrid = document.getElementById('voice-chat-grid');
@@ -2447,7 +2457,10 @@ function showXpGainAnimation(amount) {
     });
 
     socket.on('user-left-seat', ({ seatNumber, userId }) => {
-        if (userId === myUserId) myVoiceSeatNumber = null;
+        if (userId === myUserId) {
+            myVoiceSeatNumber = null;
+            clearVoiceSeatPending();
+        }
         updateVoiceControlBar();
         const voiceGrid = document.getElementById('voice-chat-grid');
         if (!voiceGrid) return;
@@ -2462,14 +2475,7 @@ function showXpGainAnimation(amount) {
         if (!voiceGrid) return;
         const seatEl = voiceGrid.querySelector(`[data-user-id="${userId}"]`);
         if (!seatEl) return;
-        let badge = seatEl.querySelector('.voice-seat-mute-badge');
-        if (isMuted && !badge) {
-            badge = document.createElement('i');
-            badge.className = 'fas fa-microphone-slash voice-seat-mute-badge';
-            seatEl.appendChild(badge);
-        } else if (!isMuted && badge) {
-            badge.remove();
-        }
+        seatEl.classList.toggle('is-muted-seat', !!isMuted);
     });
 
 
@@ -2481,6 +2487,7 @@ function showXpGainAnimation(amount) {
     });
 
     socket.on('seat-error', (message) => {
+        clearVoiceSeatPending();
         showNotification(message, 'error');
     });
 
