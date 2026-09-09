@@ -228,4 +228,21 @@ voiceRoomSchema.statics.deduplicateSeats = async function () {
     return clearedCount;
 };
 
+// ✅ إصلاح ذاتي لفهرس slug القديم (كان unique بدون sparse قبل نظام الغرف المتعددة) —
+// يُستدعى مرة واحدة عند إقلاع السيرفر. بدونه: أي غرفة جديدة بدون slug تتصادم مع الفهرس
+// القديم وترمي E11000 dup key: { slug: null }.
+voiceRoomSchema.statics.fixSlugIndex = async function () {
+    try {
+        const collection = this.collection;
+        const indexes = await collection.indexes();
+        const slugIndex = indexes.find(idx => idx.name === 'slug_1');
+        if (slugIndex && !slugIndex.sparse) {
+            await collection.dropIndex('slug_1');
+            console.log('[VOICE ROOM] ✅ تم حذف فهرس slug القديم غير الصحيح — سيُعاد بناؤه صحيحاً (sparse) تلقائياً');
+        }
+    } catch (err) {
+        console.error('[VOICE ROOM] فشل إصلاح فهرس slug:', err.message);
+    }
+};
+
 module.exports = mongoose.model('VoiceRoom', voiceRoomSchema);
