@@ -813,6 +813,90 @@ socket.on('refreshBlockData', async () => {
             }
         });
 
+        // =====================================================
+        // ✅ صلاحيات المضيف/المسؤول المساعد داخل غرفته — كل عملية تتحقق من
+        // canModerate() بالسيرفر أولاً (لا تكفي إخفاء الأزرار بالواجهة وحدها)
+        // =====================================================
+        socket.on('host-kick-seat', ({ roomId, seatNumber }) => withUserSeatLock(`host-${socket.user._id}`, async () => {
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room || !room.canModerate(socket.user._id)) {
+                    return socket.emit('seat-error', 'لا تملك صلاحية الإدارة بهذي الغرفة');
+                }
+                const seat = room.seats.find(s => s.seatNumber === parseInt(seatNumber));
+                if (!seat || !seat.user) return;
+                const kickedUserId = seat.user.toString();
+
+                await VoiceRoom.updateOne(
+                    { _id: room._id, 'seats.seatNumber': parseInt(seatNumber) },
+                    { $set: { 'seats.$.user': null, 'seats.$.joinedAt': null, 'seats.$.isMuted': false } }
+                );
+
+                io.emit('user-left-seat', { roomId, seatNumber: parseInt(seatNumber), userId: kickedUserId });
+                io.emit('you-were-kicked', { roomId, userId: kickedUserId }); // ✅ إشعار خاص للمطرود نفسه
+            } catch (error) {
+                console.error('[HOST ACTION] Kick error:', error);
+            }
+        }));
+
+        socket.on('host-mute-seat', async ({ roomId, seatNumber, isMuted }) => {
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room || !room.canModerate(socket.user._id)) {
+                    return socket.emit('seat-error', 'لا تملك صلاحية الإدارة بهذي الغرفة');
+                }
+                const seat = room.seats.find(s => s.seatNumber === parseInt(seatNumber));
+                if (!seat || !seat.user) return;
+
+                await VoiceRoom.updateOne(
+                    { _id: room._id, 'seats.seatNumber': parseInt(seatNumber) },
+                    { $set: { 'seats.$.isMuted': !!isMuted } }
+                );
+
+                io.emit('user-toggled-mute', { roomId, userId: seat.user.toString(), isMuted: !!isMuted });
+            } catch (error) {
+                console.error('[HOST ACTION] Mute error:', error);
+            }
+        });
+
+        socket.on('host-toggle-lock-seat', async ({ roomId, seatNumber }) => {
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room || !room.canModerate(socket.user._id)) {
+                    return socket.emit('seat-error', 'لا تملك صلاحية الإدارة بهذي الغرفة');
+                }
+                const seat = room.seats.find(s => s.seatNumber === parseInt(seatNumber));
+                if (!seat) return;
+                const newLockState = !seat.isLocked;
+
+                // ✅ لو المقعد مشغول وقفلناه، نطرد الجالس عليه أولاً (مقعد مقفل يجب أن يكون فاضياً)
+                let kickedUserId = null;
+                if (newLockState && seat.user) {
+                    kickedUserId = seat.user.toString();
+                    await VoiceRoom.updateOne(
+                        { _id: room._id, 'seats.seatNumber': parseInt(seatNumber) },
+                        { $set: { 'seats.$.user': null, 'seats.$.joinedAt': null, 'seats.$.isMuted': false, 'seats.$.isLocked': true } }
+                    );
+                } else {
+                    await VoiceRoom.updateOne(
+                        { _id: room._id, 'seats.seatNumber': parseInt(seatNumber) },
+                        { $set: { 'seats.$.isLocked': newLockState } }
+                    );
+                }
+
+                if (kickedUserId) {
+                    io.emit('user-left-seat', { roomId, seatNumber: parseInt(seatNumber), userId: kickedUserId });
+                    io.emit('you-were-kicked', { roomId, userId: kickedUserId });
+                }
+                io.emit('seat-lock-changed', { roomId, seatNumber: parseInt(seatNumber), isLocked: newLockState });
+            } catch (error) {
+                console.error('[HOST ACTION] Lock toggle error:', error);
+            }
+        });
+
         socket.on('disconnect', async () => {
             console.log(`🔴 User disconnected: ${socket.id} | UserID: ${socket.user.username}`);
             try {
