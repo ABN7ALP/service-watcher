@@ -479,7 +479,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     function renderVoiceSeatContent(seatEl, seatData) {
         const isAdminSeat = parseInt(seatEl.dataset.seat) <= 5;
-        seatEl.classList.remove('occupied-seat', 'my-seat', 'locked-seat', 'is-muted-seat');
+        seatEl.classList.remove('occupied-seat', 'my-seat', 'locked-seat');
         seatEl.title = '';
 
         if (seatData && seatData.isLocked) {
@@ -493,11 +493,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const isMe = seatData.user.id === myUserId;
             seatEl.classList.add('occupied-seat');
             if (isMe) seatEl.classList.add('my-seat');
-            if (seatData.isMuted) seatEl.classList.add('is-muted-seat');
             seatEl.dataset.userId = seatData.user.id; // ✅ فهرس مباشر لتحديث الكتم لاحقاً دون إعادة تحميل الشبكة كاملة
             const safeName = escapeHtml(seatData.user.username || '');
             seatEl.title = seatData.user.username || '';
-            seatEl.innerHTML = `<img src="${seatData.user.profileImage}" class="voice-seat-avatar" alt="${safeName}">`;
+            seatEl.innerHTML = `
+                <img src="${seatData.user.profileImage}" class="voice-seat-avatar" alt="${safeName}">
+                ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
+            `;
         } else {
             delete seatEl.dataset.userId;
             seatEl.innerHTML = isAdminSeat ? '<i class="fas fa-crown"></i>' : seatEl.dataset.seat;
@@ -2475,7 +2477,15 @@ function showXpGainAnimation(amount) {
         if (!voiceGrid) return;
         const seatEl = voiceGrid.querySelector(`[data-user-id="${userId}"]`);
         if (!seatEl) return;
-        seatEl.classList.toggle('is-muted-seat', !!isMuted);
+        let overlay = seatEl.querySelector('.voice-seat-mute-overlay');
+        if (isMuted && !overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'voice-seat-mute-overlay';
+            overlay.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+            seatEl.appendChild(overlay);
+        } else if (!isMuted && overlay) {
+            overlay.remove();
+        }
     });
 
 
