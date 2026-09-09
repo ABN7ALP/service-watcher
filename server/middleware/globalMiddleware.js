@@ -196,3 +196,4 @@ module.exports.loginLimiter = loginLimiter;
 module.exports.registerLimiter = registerLimiter;
 module.exports.passwordLimiter = passwordLimiter;
 module.exports.financialLimiter = financialLimiter;
+module.exports.safeKeyGenerator = safeKeyGenerator;
