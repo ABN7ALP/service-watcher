@@ -419,14 +419,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         document.getElementById('mobile-more-sheet')?.classList.add('hidden');
 
         const viewRenderers = {
-            arena: showVoiceRoomsView,
+            arena: showRoomBrowserView,
             challenges: showChallengesView,
             settings: showSettingsView,
             messages: showMessagesView,
             leaderboard: showLeaderboardView,
             'friend-requests': showFriendRequestsModal
         };
-        (viewRenderers[viewId] || showVoiceRoomsView)();
+        (viewRenderers[viewId] || showRoomBrowserView)();
     }
 
     navItems.forEach(item => {
@@ -547,14 +547,287 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
     initVoiceControlBar();
 
+    // =====================================================
+    // ✅ متصفح الغرف الصوتية (المرحلة 2 — نظام الغرف المتعددة)
+    // =====================================================
+    function renderRoomCard(room) {
+        const hostName = room.host ? room.host.username : 'الإدارة';
+        const hostImg = room.host ? room.host.profileImage : 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+        const badge = room.isOfficial
+            ? '<span class="absolute top-2 right-2 bg-amber-500 text-gray-900 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><i class="fas fa-crown"></i>رسمية</span>'
+            : (room.isPrivate ? '<span class="absolute top-2 right-2 bg-gray-900/80 text-gray-200 text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center"><i class="fas fa-lock"></i></span>' : '');
+        const cover = room.coverImage
+            ? `<img src="${room.coverImage}" class="w-full h-full object-cover">`
+            : `<div class="w-full h-full flex items-center justify-center text-3xl text-purple-300/40"><i class="fas fa-microphone-lines"></i></div>`;
+        const isHot = room.occupied >= Math.max(4, room.seatCount * 0.5);
+
+        const card = document.createElement('div');
+        card.className = 'room-card bg-gray-700/50 rounded-xl overflow-hidden cursor-pointer hover:ring-2 hover:ring-purple-500 hover:-translate-y-0.5 transition-all';
+        card.innerHTML = `
+            <div class="relative w-full aspect-video bg-gradient-to-br from-purple-900/40 to-gray-800">
+                ${cover}
+                ${badge}
+            </div>
+            <div class="p-2.5">
+                <p class="font-bold text-sm truncate">${escapeHtml(room.name)}</p>
+                <div class="flex items-center gap-1.5 mt-1 min-w-0">
+                    <img src="${hostImg}" class="w-4 h-4 rounded-full flex-shrink-0">
+                    <span class="text-[11px] text-gray-400 truncate">${escapeHtml(hostName)}</span>
+                </div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-[11px] text-purple-300"><i class="fas fa-headphones"></i> ${room.occupied}/${room.seatCount}</span>
+                    ${isHot ? '<span class="text-[10px] text-orange-400">🔥 نشطة</span>' : ''}
+                </div>
+            </div>
+        `;
+        card.addEventListener('click', () => enterVoiceRoom(room));
+        return card;
+    }
+
+    async function showRoomBrowserView() {
+        mainContent.innerHTML = `
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
+            </div>
+            <div class="relative mb-3">
+                <input id="room-search-input" type="text" placeholder="ابحث عن غرفة..." class="w-full bg-gray-700/50 border border-gray-600 rounded-lg p-2 pr-9 text-sm focus:ring-purple-500 focus:border-purple-500">
+                <i class="fas fa-search absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+            </div>
+            <div class="flex gap-2 mb-4">
+                <button class="room-sort-tab bg-purple-600 text-white text-xs font-bold px-3 py-1.5 rounded-full transition-colors" data-sort="newest">الأحدث</button>
+                <button class="room-sort-tab bg-gray-700/50 text-gray-300 text-xs font-bold px-3 py-1.5 rounded-full transition-colors" data-sort="active">الأكثر نشاطاً</button>
+            </div>
+            <div id="room-list-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3 pb-24 md:pb-2"></div>
+            <div id="room-list-empty" class="hidden text-center text-gray-400 text-sm py-10">لا توجد غرف مطابقة حالياً</div>
+            <button id="create-room-fab" class="fixed bottom-20 md:bottom-6 right-4 md:right-8 z-40 w-14 h-14 rounded-full bg-purple-600 hover:bg-purple-700 shadow-2xl flex items-center justify-center text-white text-xl active:scale-90 transition-transform" title="إنشاء غرفة جديدة">
+                <i class="fas fa-plus"></i>
+            </button>
+        `;
+
+        let currentSort = 'newest';
+        let searchDebounce = null;
+
+        async function loadRooms() {
+            const grid = document.getElementById('room-list-grid');
+            const empty = document.getElementById('room-list-empty');
+            if (!grid) return;
+            const search = document.getElementById('room-search-input')?.value || '';
+            try {
+                const params = new URLSearchParams({ sort: currentSort, search, limit: 30 });
+                const response = await fetch(`/api/voice-room/rooms?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await response.json();
+                if (!response.ok || result.status !== 'success') return;
+                grid.innerHTML = '';
+                result.rooms.forEach(room => grid.appendChild(renderRoomCard(room)));
+                empty.classList.toggle('hidden', result.rooms.length > 0);
+            } catch (error) {
+                console.error('Failed to load rooms:', error);
+            }
+        }
+
+        document.getElementById('room-search-input').addEventListener('input', () => {
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(loadRooms, 350);
+        });
+
+        mainContent.querySelectorAll('.room-sort-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                currentSort = tab.dataset.sort;
+                mainContent.querySelectorAll('.room-sort-tab').forEach(t => {
+                    t.classList.remove('bg-purple-600', 'text-white');
+                    t.classList.add('bg-gray-700/50', 'text-gray-300');
+                });
+                tab.classList.remove('bg-gray-700/50', 'text-gray-300');
+                tab.classList.add('bg-purple-600', 'text-white');
+                loadRooms();
+            });
+        });
+
+        document.getElementById('create-room-fab').addEventListener('click', showCreateRoomModal);
+
+        loadRooms();
+    }
+
+    function enterVoiceRoom(room) {
+        if (room.isOfficial) {
+            showVoiceRoomsView();
+        } else {
+            showRoomPreviewView(room.id);
+        }
+    }
+
+    // ✅ معاينة غرفة أنشأها مستخدم — الجلوس الحقيقي لسا قيد التفعيل بالمرحلة القادمة (2.3)،
+    // فهذي معاينة تصميم فقط حتى نربط منطق المقاعد ليصير خاصاً بكل غرفة بأمان بدون المخاطرة
+    // بتعطيل الغرفة الرسمية الشغّالة حالياً.
+    async function showRoomPreviewView(roomId) {
+        mainContent.innerHTML = `
+            <div class="flex justify-between items-center mb-3">
+                <div class="flex items-center gap-2">
+                    <button id="back-to-rooms-btn-preview" class="w-8 h-8 rounded-full bg-gray-700/60 hover:bg-gray-600 flex items-center justify-center text-gray-300" title="رجوع لقائمة الغرف">
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                    <h2 id="room-preview-title" class="text-lg md:text-xl font-bold">...</h2>
+                </div>
+            </div>
+            <div class="bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs rounded-lg p-2.5 mb-4 flex items-center gap-2">
+                <i class="fas fa-tools"></i>
+                <span>الجلوس والتحدث بهذه الغرفة قيد التفعيل قريباً — هذي معاينة لتصميم الغرفة فقط حالياً.</span>
+            </div>
+            <div id="room-preview-grid" class="grid grid-cols-4 sm:grid-cols-5 gap-3 pb-24 md:pb-2"></div>
+        `;
+        document.getElementById('back-to-rooms-btn-preview').addEventListener('click', showRoomBrowserView);
+
+        try {
+            const response = await fetch(`/api/voice-room/rooms/${roomId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            if (!response.ok || result.status !== 'success') {
+                showNotification(result.message || 'تعذر تحميل الغرفة', 'error');
+                showRoomBrowserView();
+                return;
+            }
+            const titleEl = document.getElementById('room-preview-title');
+            if (titleEl) titleEl.textContent = result.name;
+            const grid = document.getElementById('room-preview-grid');
+            if (!grid) return;
+            result.seats.forEach(seatData => {
+                const seat = document.createElement('div');
+                seat.className = 'voice-seat user-seat seat-forbidden';
+                if (seatData.user) {
+                    seat.classList.add('occupied-seat');
+                    seat.title = seatData.user.username || '';
+                    const safeName = escapeHtml(seatData.user.username || '');
+                    seat.innerHTML = `
+                        <img src="${seatData.user.profileImage}" class="voice-seat-avatar" alt="${safeName}">
+                        ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
+                    `;
+                } else {
+                    seat.textContent = seatData.seatNumber;
+                }
+                grid.appendChild(seat);
+            });
+        } catch (error) {
+            console.error('Failed to load room preview:', error);
+        }
+    }
+
+    // ✅ نافذة إنشاء غرفة جديدة — بنفس أسلوب نافذة إنشاء التحدي تماماً للتناسق البصري
+    function showCreateRoomModal() {
+        const modal = document.createElement('div');
+        modal.id = 'create-room-modal';
+        modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-sm text-white max-h-[90vh] overflow-y-auto">
+                <h3 class="text-lg font-bold mb-4"><i class="fas fa-plus-circle text-purple-400"></i> إنشاء غرفة صوتية</h3>
+                <form id="create-room-form" class="space-y-4">
+                    <div>
+                        <label class="text-sm">اسم الغرفة</label>
+                        <input type="text" name="name" maxlength="40" required class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
+                    </div>
+                    <div>
+                        <label class="text-sm">وصف قصير (اختياري)</label>
+                        <input type="text" name="description" maxlength="120" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
+                    </div>
+                    <div>
+                        <label class="text-sm">التصنيف</label>
+                        <select name="category" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
+                            <option value="chat">دردشة عامة</option>
+                            <option value="games">ألعاب</option>
+                            <option value="music">موسيقى</option>
+                            <option value="dating">تعارف</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-sm">عدد المقاعد</label>
+                        <div class="flex gap-2 mt-1">
+                            <label class="flex-1"><input type="radio" name="seatCount" value="8" checked class="peer sr-only"><div class="text-center py-2 rounded-lg bg-gray-700 peer-checked:bg-purple-600 cursor-pointer text-sm font-bold transition-colors">8</div></label>
+                            <label class="flex-1"><input type="radio" name="seatCount" value="15" class="peer sr-only"><div class="text-center py-2 rounded-lg bg-gray-700 peer-checked:bg-purple-600 cursor-pointer text-sm font-bold transition-colors">15</div></label>
+                            <label class="flex-1"><input type="radio" name="seatCount" value="24" class="peer sr-only"><div class="text-center py-2 rounded-lg bg-gray-700 peer-checked:bg-purple-600 cursor-pointer text-sm font-bold transition-colors">24</div></label>
+                        </div>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="room-isPrivate" name="isPrivate" class="w-4 h-4 rounded">
+                        <label for="room-isPrivate" class="mr-2 text-sm">غرفة خاصة (بكلمة مرور)</label>
+                    </div>
+                    <div id="room-password-field" class="hidden">
+                        <label class="text-sm">كلمة المرور</label>
+                        <input type="password" name="password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
+                    </div>
+                    <div class="flex justify-end gap-3 pt-2">
+                        <button type="button" id="cancel-create-room" class="bg-gray-600 hover:bg-gray-500 text-white py-2 px-4 rounded-lg">إلغاء</button>
+                        <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg">إنشاء</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        modal.querySelector('#cancel-create-room').addEventListener('click', () => modal.remove());
+        modal.addEventListener('click', (e) => { if (e.target.id === 'create-room-modal') modal.remove(); });
+
+        modal.querySelector('#room-isPrivate').addEventListener('change', (e) => {
+            modal.querySelector('#room-password-field').classList.toggle('hidden', !e.target.checked);
+        });
+
+        const form = modal.querySelector('#create-room-form');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+            data.isPrivate = data.isPrivate === 'on';
+            data.seatCount = parseInt(data.seatCount);
+
+            if (!data.name || data.name.trim().length < 2) {
+                showNotification('يرجى إدخال اسم غرفة صالح', 'error');
+                return;
+            }
+            if (data.isPrivate && !data.password) {
+                showNotification('يرجى إدخال كلمة مرور للغرفة الخاصة', 'error');
+                return;
+            }
+
+            const submitBtn = form.querySelector('button[type="submit"]');
+            const originalHTML = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            try {
+                const response = await fetch('/api/voice-room/rooms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    showNotification(result.message || 'تعذر إنشاء الغرفة', 'error');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalHTML;
+                    return;
+                }
+                modal.remove();
+                showNotification('تم إنشاء الغرفة بنجاح ✅', 'success');
+                showRoomBrowserView();
+            } catch (error) {
+                showNotification('حدث خطأ، حاول مجدداً', 'error');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalHTML;
+            }
+        });
+    }
+
     function showVoiceRoomsView() {
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
+                <div class="flex items-center gap-2">
+                    <button id="back-to-rooms-btn" class="w-8 h-8 rounded-full bg-gray-700/60 hover:bg-gray-600 flex items-center justify-center text-gray-300" title="رجوع لقائمة الغرف">
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                    <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-crown text-amber-400"></i> الغرفة الرسمية</h2>
+                </div>
                 <span class="text-xs text-gray-400">80 مقعد</span>
             </div>
             <div id="voice-chat-grid" class="grid grid-cols-6 sm:grid-cols-7 md:grid-cols-8 gap-1.5 md:gap-3 pb-24 md:pb-2"></div>
         `;
+        document.getElementById('back-to-rooms-btn').addEventListener('click', showRoomBrowserView);
 
         const voiceGrid = document.getElementById('voice-chat-grid');
         for (let i = 1; i <= 80; i++) {
