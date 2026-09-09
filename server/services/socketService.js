@@ -12,6 +12,23 @@ const { addExperience } = require('../utils/experienceManager'); // ✅✅✅ أ
 const blockCache = new Map();
 const CACHE_TTL = 30 * 1000; // ⬅️ 30 ثانية فقط (بدل 5 دقائق)
 
+// =================================================
+// ✅ قفل تسلسلي لكل مستخدم لعمليات المقعد الصوتي
+// -------------------------------------------------
+// بدون هذا القفل: لو ضغط المستخدم عدة مقاعد بسرعة (أو تأخرت الشبكة)، تنطلق عدة طلبات
+// "join-voice-seat" بالتوازي لنفس المستخدم، وكل واحد يقرأ حالة قاعدة البيانات قبل أن
+// يكتب الآخر تغييره — فتنجح كلها بحجز مقاعد مختلفة، ويظهر نفس المستخدم على عدة مقاعد
+// بنفس اللحظة (عند كل من يشاهد الغرفة، وليس فقط عنده). القفل يضمن تنفيذ عمليات نفس
+// المستخدم واحدة تلو الأخرى دائماً، بغض النظر عن عدد الطلبات المتزامنة الواردة.
+const voiceSeatLocks = new Map(); // userId(string) → Promise لآخر عملية قيد التنفيذ
+function withUserSeatLock(userId, fn) {
+    const key = userId.toString();
+    const previous = voiceSeatLocks.get(key) || Promise.resolve();
+    const run = previous.catch(() => {}).then(fn);
+    voiceSeatLocks.set(key, run.catch(() => {})); // نسخة "صامتة" فقط لتسلسل الطلب القادم بأمان
+    return run;
+}
+
 /**
  * ✅ التحقق من الحظر مع تنقية البيانات أولاً
  */
@@ -700,7 +717,7 @@ socket.on('refreshBlockData', async () => {
         // الهوية دائماً من socket.user الموثّق بالتوكن — أبداً من بيانات
         // يرسلها العميل — فلا يمكن لأي مستخدم انتحال جلوس شخص آخر.
         // =====================================================
-        socket.on('join-voice-seat', async ({ seatNumber }) => {
+        socket.on('join-voice-seat', ({ seatNumber }) => withUserSeatLock(socket.user._id, async () => {
             try {
                 const VoiceRoom = require('../models/VoiceRoom');
                 const seatNum = parseInt(seatNumber);
@@ -715,17 +732,19 @@ socket.on('refreshBlockData', async () => {
                     return socket.emit('seat-error', 'لا تملك صلاحية الجلوس على مقاعد الإدارة');
                 }
 
-                // 1) حرّر أي مقعد يشغله هذا المستخدم فعلياً بقاعدة البيانات (وليس بذاكرة هذا الاتصال تحديداً —
+                // 1) حرّر كل مقعد يشغله هذا المستخدم فعلياً بقاعدة البيانات (وليس بذاكرة هذا الاتصال تحديداً —
                 //    فلو كان قد جلس من اتصال سابق ثم انقطع وأعاد الاتصال، الذاكرة هنا فاضية لكن قاعدة البيانات تعرف الحقيقة)
-                const releasedSeat = await VoiceRoom.releaseUserSeat(socket.user._id);
-                if (releasedSeat) {
-                    io.emit('user-left-seat', { seatNumber: releasedSeat, userId: socket.user.id.toString() });
-                }
+                const released = await VoiceRoom.releaseUserSeat(socket.user._id);
+                released.forEach(r => {
+                    io.emit('user-left-seat', { seatNumber: r.seatNumber, userId: socket.user.id.toString() });
+                });
+                // ✅ ترحيل حالة الكتم: لو كان مكتوماً بمقعده القديم، يبقى مكتوماً بالمقعد الجديد
+                const carryMuted = released.some(r => r.wasMuted);
 
                 // 2) حاول حجز المقعد الجديد — يفشل تلقائياً لو صار محجوزاً أو مقفلاً بين اللحظتين
                 const updatedRoom = await VoiceRoom.findOneAndUpdate(
                     { slug: 'main', seats: { $elemMatch: { seatNumber: seatNum, user: null, isLocked: false } } },
-                    { $set: { 'seats.$.user': socket.user._id, 'seats.$.joinedAt': new Date(), 'seats.$.isMuted': false } },
+                    { $set: { 'seats.$.user': socket.user._id, 'seats.$.joinedAt': new Date(), 'seats.$.isMuted': carryMuted } },
                     { new: true }
                 );
 
@@ -739,25 +758,26 @@ socket.on('refreshBlockData', async () => {
                     userId: socket.user.id.toString(),
                     username: socket.user.username,
                     profileImage: socket.user.profileImage,
-                    activeFrameClass: socket.user.activeFrameClass
+                    activeFrameClass: socket.user.activeFrameClass,
+                    isMuted: carryMuted
                 });
             } catch (error) {
                 console.error('[VOICE SEAT] Join seat error:', error);
                 socket.emit('seat-error', 'حدث خطأ أثناء محاولة الجلوس');
             }
-        });
+        }));
 
-        socket.on('leave-voice-seat', async () => {
+        socket.on('leave-voice-seat', () => withUserSeatLock(socket.user._id, async () => {
             try {
                 const VoiceRoom = require('../models/VoiceRoom');
-                const releasedSeat = await VoiceRoom.releaseUserSeat(socket.user._id);
-                if (releasedSeat) {
-                    io.emit('user-left-seat', { seatNumber: releasedSeat, userId: socket.user.id.toString() });
-                }
+                const released = await VoiceRoom.releaseUserSeat(socket.user._id);
+                released.forEach(r => {
+                    io.emit('user-left-seat', { seatNumber: r.seatNumber, userId: socket.user.id.toString() });
+                });
             } catch (error) {
                 console.error('[VOICE SEAT] Leave seat error:', error);
             }
-        });
+        }));
 
         socket.on('toggle-mute', async ({ isMuted }) => {
             try {
@@ -781,13 +801,15 @@ socket.on('refreshBlockData', async () => {
                 await User.findByIdAndUpdate(socket.user.id, { isOnline: false, lastActive: new Date() });
                 io.emit('userOnlineStatus', { userId: socket.user.id.toString(), isOnline: false, lastActive: new Date() });
 
-                // ✅ تحرير المقعد الصوتي دائماً بالاعتماد على قاعدة البيانات وحدها (وليس شرط ذاكرة اتصال قد تكون فاضية
-                // بعد إعادة اتصال) — هذا كان سبب بقاء صورة المستخدم "عالقة" على مقعد قديم أحياناً
-                const VoiceRoom = require('../models/VoiceRoom');
-                const releasedSeat = await VoiceRoom.releaseUserSeat(socket.user._id);
-                if (releasedSeat) {
-                    io.emit('user-left-seat', { seatNumber: releasedSeat, userId: socket.user.id.toString() });
-                }
+                // ✅ تحرير المقعد الصوتي دائماً بالاعتماد على قاعدة البيانات وحدها، وضمن نفس القفل
+                // التسلسلي حتى لا يتصادم مع طلب انضمام/مغادرة وصل بنفس اللحظة تقريباً
+                await withUserSeatLock(socket.user._id, async () => {
+                    const VoiceRoom = require('../models/VoiceRoom');
+                    const released = await VoiceRoom.releaseUserSeat(socket.user._id);
+                    released.forEach(r => {
+                        io.emit('user-left-seat', { seatNumber: r.seatNumber, userId: socket.user.id.toString() });
+                    });
+                });
             } catch (error) { console.error('Failed to update offline status:', error); }
         });
     });
