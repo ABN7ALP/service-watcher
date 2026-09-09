@@ -19,6 +19,7 @@ const roomCreationLimiter = rateLimit({
 
 router.get('/rooms', voiceRoomController.listRooms);
 router.post('/rooms', roomCreationLimiter, voiceRoomController.createRoom);
+router.get('/rooms/:id', voiceRoomController.getRoomById);
 
 router.get('/', voiceRoomController.getVoiceRoomState);
 
