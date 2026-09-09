@@ -513,6 +513,29 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         bar.classList.toggle('hidden', !myVoiceSeatNumber);
     }
 
+    // ✅ يُنشأ مرة واحدة فقط، مباشرة بجسم الصفحة (وليس داخل mainContent الذي يحمل backdrop-blur
+    // ويكسر خاصية position:fixed لأي عنصر بداخله — هذا كان سبب "نزول" الشريط مع آخر المقاعد
+    // ويحتاج تمريراً للوصول له). الآن يبقى ثابتاً بمكانه دائماً، وحتى لو تنقّل المستخدم لقسم آخر
+    // وهو قاعد على مقعد، يبقى الشريط ظاهراً لإدارة مقعده دون الحاجة للرجوع لقسم الغرفة الصوتية.
+    function initVoiceControlBar() {
+        if (document.getElementById('voice-control-bar')) return;
+        const bar = document.createElement('div');
+        bar.id = 'voice-control-bar';
+        bar.className = 'hidden fixed bottom-16 md:bottom-4 left-1/2 -translate-x-1/2 z-50 bg-gray-800/95 backdrop-blur border border-purple-500/30 rounded-full shadow-2xl flex items-center gap-2 px-3 py-2';
+        bar.innerHTML = `
+            <button id="voice-toggle-mute-btn" class="w-10 h-10 rounded-full bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center">
+                <i class="fas fa-microphone"></i>
+            </button>
+            <button id="voice-leave-seat-btn" class="w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center">
+                <i class="fas fa-door-open"></i>
+            </button>
+        `;
+        document.body.appendChild(bar);
+        document.getElementById('voice-toggle-mute-btn').addEventListener('click', toggleVoiceMute);
+        document.getElementById('voice-leave-seat-btn').addEventListener('click', leaveVoiceSeat);
+    }
+    initVoiceControlBar();
+
     function showVoiceRoomsView() {
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-4">
@@ -520,14 +543,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <span class="text-xs text-gray-400">80 مقعد</span>
             </div>
             <div id="voice-chat-grid" class="grid grid-cols-6 sm:grid-cols-7 md:grid-cols-8 gap-1.5 md:gap-3 pb-24 md:pb-2"></div>
-            <div id="voice-control-bar" class="hidden fixed bottom-16 md:bottom-4 left-1/2 -translate-x-1/2 z-50 bg-gray-800/95 backdrop-blur border border-purple-500/30 rounded-full shadow-2xl flex items-center gap-2 px-3 py-2">
-                <button id="voice-toggle-mute-btn" class="w-10 h-10 rounded-full bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center">
-                    <i class="fas fa-microphone"></i>
-                </button>
-                <button id="voice-leave-seat-btn" class="w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center">
-                    <i class="fas fa-door-open"></i>
-                </button>
-            </div>
         `;
 
         const voiceGrid = document.getElementById('voice-chat-grid');
@@ -550,9 +565,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
         // ✅ لقطة الحالة الحقيقية عند فتح الغرفة (كانت مفقودة بالكامل سابقاً)
         fetchVoiceRoomSnapshot();
-
-        document.getElementById('voice-toggle-mute-btn').addEventListener('click', toggleVoiceMute);
-        document.getElementById('voice-leave-seat-btn').addEventListener('click', leaveVoiceSeat);
         updateVoiceControlBar();
     }
 
@@ -585,7 +597,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     function leaveVoiceSeat() {
-        if (!myVoiceSeatNumber) return;
+        // ✅ نرسل الطلب دائماً بغض النظر عن حالة المتصفح المحلية — السيرفر هو المرجع الوحيد
+        // ويتجاهل الطلب بأمان لو لم يكن المستخدم قاعداً أصلاً (كان الشرط هنا سابقاً قد يمنع
+        // الزر من العمل لو تزامنت الحالة المحلية بالخطأ بعد انقطاع/إعادة اتصال)
         socket.emit('leave-voice-seat');
     }
 
