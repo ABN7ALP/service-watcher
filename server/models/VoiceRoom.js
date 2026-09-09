@@ -34,6 +34,7 @@ const voiceRoomSchema = new mongoose.Schema({
     password: { type: String, select: false }, // 🛡️ لا يُرجَع أبداً إلا بطلب صريح select('+password')
     seatCount: { type: Number, enum: [8, 15, 24, 80], default: 80 },
     adminSeatCount: { type: Number, default: 5 }, // أول N مقعد محجوز حصرياً للإدارة (0 بالغرف العادية)
+    moderators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // ✅ مسؤولون مساعدون عيّنهم المضيف
     seats: [seatSchema],
     status: { type: String, enum: ['active', 'closed'], default: 'active', index: true },
     lastActivityAt: { type: Date, default: Date.now, index: true },
@@ -243,6 +244,13 @@ voiceRoomSchema.statics.fixSlugIndex = async function () {
     } catch (err) {
         console.error('[VOICE ROOM] فشل إصلاح فهرس slug:', err.message);
     }
+};
+
+// ✅ يتحقق هل هذا المستخدم مخوّل بإدارة الغرفة (مضيف أو مسؤول مساعد عيّنه المضيف)
+voiceRoomSchema.methods.canModerate = function (userId) {
+    const uid = userId.toString();
+    if (this.host && this.host.toString() === uid) return true;
+    return this.moderators.some(m => m.toString() === uid);
 };
 
 module.exports = mongoose.model('VoiceRoom', voiceRoomSchema);
