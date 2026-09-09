@@ -668,12 +668,20 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         loadRooms();
     }
 
-    function enterVoiceRoom(room) {
+    let currentRoomPassword = null; // ✅ كلمة المرور المُتحقق منها للغرفة المعروضة حالياً (لإعادة المزامنة عند إعادة الاتصال)
+    let currentRoomMyRole = 'guest'; // ✅ دوري بالغرفة المعروضة حالياً: host / moderator / guest
+
+    function enterVoiceRoom(room, password) {
         if (room.isOfficial) {
             showVoiceRoomsView();
-        } else {
-            showCustomRoomView(room);
+            return;
         }
+        const isOwner = room.host && (room.host._id === myUserId || room.host === myUserId);
+        if (room.isPrivate && !isOwner && !password) {
+            promptRoomPassword((pwd) => enterVoiceRoom(room, pwd));
+            return;
+        }
+        showCustomRoomView(room, password || null);
     }
 
     // ✅ نافذة كلمة مرور أنيقة للغرف الخاصة — بنفس أسلوب نوافذ التطبيق الأخرى (بدل prompt المتصفح الافتراضي)
@@ -706,8 +714,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     // ✅ غرفة أنشأها مستخدم — قابلة للجلوس فعلياً الآن (نفس منطق الغرفة الرسمية، خاص بهذي الغرفة فقط)
-    async function showCustomRoomView(room) {
+    async function showCustomRoomView(room, password) {
         currentVoiceRoomId = room.id;
+        currentRoomPassword = password || null;
+        currentRoomMyRole = 'guest';
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-3">
                 <div class="flex items-center gap-2 min-w-0">
@@ -716,14 +726,20 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     </button>
                     <h2 class="text-lg md:text-xl font-bold truncate">${room.isPrivate ? '<i class="fas fa-lock text-amber-400 text-sm"></i> ' : ''}${escapeHtml(room.name)}</h2>
                 </div>
-                <span class="text-xs text-gray-400 flex-shrink-0">${room.seatCount} مقعد</span>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <span class="text-xs text-gray-400">${room.seatCount} مقعد</span>
+                    <button id="room-settings-btn" class="hidden w-8 h-8 rounded-full bg-gray-700/60 hover:bg-gray-600 flex items-center justify-center text-gray-300" title="إعدادات الغرفة">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
             </div>
             <div id="voice-chat-grid" class="voice-seats-flex pb-24 md:pb-2"></div>
         `;
         document.getElementById('back-to-rooms-btn-custom').addEventListener('click', showRoomBrowserView);
+        document.getElementById('room-settings-btn').addEventListener('click', () => showRoomSettingsModal(room));
 
         renderVoiceRoomSeats(room.id, room.seatCount, 0, room.isPrivate);
-        fetchAndRenderVoiceSnapshot(room.id);
+        await fetchAndRenderVoiceSnapshot(room.id, currentRoomPassword);
         updateVoiceControlBar();
     }
 
@@ -742,27 +758,74 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             seat.innerHTML = isAdminSeat ? '<i class="fas fa-crown"></i>' : i;
             if (isAdminSeat) seat.title = canSitHere ? 'مقعد إدارة' : 'مقعد محجوز للإدارة';
             seat.addEventListener('click', () => {
+                const occupantId = seat.dataset.userId;
+                const canManage = roomId !== 'main' && (currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator');
                 if (isMySeat(roomId, i)) {
                     leaveVoiceSeat();
-                } else if (isPrivate) {
+                } else if (occupantId && occupantId !== myUserId && canManage) {
+                    // ✅ ضغط المضيف/المسؤول على مقعد شخص آخر يفتح قائمة إدارة بدل محاولة الجلوس
+                    showSeatModerationMenu(roomId, i, seat.title || 'المستخدم');
+                } else if (!occupantId && isPrivate && !canManage) {
                     promptRoomPassword((pwd) => joinVoiceSeat(i, pwd));
-                } else {
-                    joinVoiceSeat(i);
+                } else if (!occupantId) {
+                    joinVoiceSeat(i, currentRoomPassword);
                 }
             });
             voiceGrid.appendChild(seat);
         }
     }
 
+    // ✅ قائمة إدارة مقعد — تظهر فقط للمضيف/المسؤول عند الضغط على مقعد شخص آخر
+    function showSeatModerationMenu(roomId, seatNumber, username) {
+        const modal = document.createElement('div');
+        modal.id = 'seat-mod-modal';
+        modal.className = 'fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 w-full md:max-w-xs text-white">
+                <p class="text-center text-sm text-gray-400 mb-3 truncate">${escapeHtml(username)}</p>
+                <button data-action="mute" class="w-full text-right py-3 px-4 rounded-lg hover:bg-gray-700 flex items-center gap-3"><i class="fas fa-microphone-slash text-amber-400 w-5"></i> كتم</button>
+                <button data-action="kick" class="w-full text-right py-3 px-4 rounded-lg hover:bg-gray-700 flex items-center gap-3"><i class="fas fa-user-slash text-red-400 w-5"></i> إنزال من المقعد</button>
+                <button data-action="lock" class="w-full text-right py-3 px-4 rounded-lg hover:bg-gray-700 flex items-center gap-3"><i class="fas fa-lock text-gray-400 w-5"></i> إنزال وقفل المقعد</button>
+                <button id="seat-mod-cancel" class="w-full text-center py-2.5 mt-2 rounded-lg bg-gray-700 text-gray-300">إلغاء</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'seat-mod-modal') modal.remove(); });
+        modal.querySelector('#seat-mod-cancel').addEventListener('click', () => modal.remove());
+        modal.querySelectorAll('[data-action]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.dataset.action;
+                if (action === 'mute') socket.emit('host-mute-seat', { roomId, seatNumber, isMuted: true });
+                else if (action === 'kick') socket.emit('host-kick-seat', { roomId, seatNumber });
+                else if (action === 'lock') socket.emit('host-toggle-lock-seat', { roomId, seatNumber });
+                modal.remove();
+            });
+        });
+    }
+
     // ✅ يجلب لقطة الحالة الحقيقية لأي غرفة (الرسمية أو غرفة مستخدم) ويرسمها على الشبكة الحالية
-    async function fetchAndRenderVoiceSnapshot(roomId) {
+    async function fetchAndRenderVoiceSnapshot(roomId, password) {
         const voiceGrid = document.getElementById('voice-chat-grid');
         if (!voiceGrid) return;
         try {
-            const url = roomId === 'main' ? '/api/voice-room' : `/api/voice-room/rooms/${roomId}`;
+            const url = roomId === 'main'
+                ? '/api/voice-room'
+                : `/api/voice-room/rooms/${roomId}${password ? `?password=${encodeURIComponent(password)}` : ''}`;
             const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
             const result = await response.json();
+
+            if (response.status === 403 && result.requiresPassword) {
+                showNotification('كلمة مرور الغرفة غير صحيحة', 'error');
+                showRoomBrowserView();
+                return;
+            }
             if (!response.ok || result.status !== 'success') return;
+
+            if (result.myRole) {
+                currentRoomMyRole = result.myRole;
+                const settingsBtn = document.getElementById('room-settings-btn');
+                if (settingsBtn) settingsBtn.classList.toggle('hidden', currentRoomMyRole !== 'host');
+            }
 
             let foundSeat = null;
             result.seats.forEach(seatData => {
@@ -789,6 +852,80 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     // ✅ نافذة إنشاء غرفة جديدة — بنفس أسلوب نافذة إنشاء التحدي تماماً للتناسق البصري
+    // ✅ نافذة إعدادات الغرفة — تظهر فقط للمضيف (يتحقق منها السيرفر أيضاً عند الحفظ)
+    function showRoomSettingsModal(room) {
+        const modal = document.createElement('div');
+        modal.id = 'room-settings-modal';
+        modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-sm text-white">
+                <h3 class="text-lg font-bold mb-4"><i class="fas fa-cog text-purple-400"></i> إعدادات الغرفة</h3>
+                <form id="room-settings-form" class="space-y-4">
+                    <div>
+                        <label class="text-sm">اسم الغرفة</label>
+                        <input type="text" name="name" value="${escapeHtml(room.name)}" maxlength="40" required class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="settings-isPrivate" name="isPrivate" ${room.isPrivate ? 'checked' : ''} class="w-4 h-4 rounded">
+                        <label for="settings-isPrivate" class="mr-2 text-sm">غرفة خاصة (بكلمة مرور)</label>
+                    </div>
+                    <div id="settings-password-field" class="${room.isPrivate ? '' : 'hidden'}">
+                        <label class="text-sm">${room.isPrivate ? 'كلمة مرور جديدة (اتركه فاضياً للإبقاء الحالية)' : 'كلمة المرور'}</label>
+                        <input type="password" name="password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
+                    </div>
+                    <div class="flex justify-end gap-3 pt-2">
+                        <button type="button" id="cancel-room-settings" class="bg-gray-600 hover:bg-gray-500 text-white py-2 px-4 rounded-lg">إلغاء</button>
+                        <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg">حفظ</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        modal.querySelector('#cancel-room-settings').addEventListener('click', () => modal.remove());
+        modal.addEventListener('click', (e) => { if (e.target.id === 'room-settings-modal') modal.remove(); });
+        modal.querySelector('#settings-isPrivate').addEventListener('change', (e) => {
+            modal.querySelector('#settings-password-field').classList.toggle('hidden', !e.target.checked);
+        });
+
+        const form = modal.querySelector('#room-settings-form');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+            data.isPrivate = data.isPrivate === 'on';
+
+            const submitBtn = form.querySelector('button[type="submit"]');
+            const originalHTML = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            try {
+                const response = await fetch(`/api/voice-room/rooms/${room.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    showNotification(result.message || 'تعذر حفظ الإعدادات', 'error');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalHTML;
+                    return;
+                }
+                if (data.isPrivate && data.password) currentRoomPassword = data.password; // ✅ حتى لا يُطلب مني كلمة مروري الخاصة
+                modal.remove();
+                showNotification('تم حفظ الإعدادات ✅', 'success');
+                const h2 = mainContent.querySelector('h2');
+                if (h2) h2.textContent = data.name;
+            } catch (error) {
+                showNotification('حدث خطأ، حاول مجدداً', 'error');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalHTML;
+            }
+        });
+    }
+
     function showCreateRoomModal() {
         const presetCovers = [
             'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&q=60',
@@ -877,6 +1014,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     function showVoiceRoomsView() {
         currentVoiceRoomId = 'main';
+        currentRoomPassword = null;
+        currentRoomMyRole = 'guest';
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-4">
                 <div class="flex items-center gap-2">
@@ -2803,7 +2942,26 @@ function showXpGainAnimation(amount) {
     // — بدونها، أي بث حصل أثناء انقطاع مؤقت (تبديل شبكة، نوم الجهاز، إلخ) يضيع على المستخدم فعلياً
     // فتبقى صورته "عالقة" بمكان قديم عند نفسه، أو لا يرى تحرّك بقية المستخدمين، لحين عمل Refresh يدوي
     socket.on('connect', () => {
-        if (currentVoiceRoomId) fetchAndRenderVoiceSnapshot(currentVoiceRoomId); // آمنة تماماً حتى لو القسم غير مفتوح حالياً
+        if (currentVoiceRoomId) fetchAndRenderVoiceSnapshot(currentVoiceRoomId, currentRoomPassword); // آمنة تماماً حتى لو القسم غير مفتوح حالياً
+    });
+
+    // ✅ إشعار خاص للمطرود نفسه (منفصل عن user-left-seat العام لتوضيح السبب له تحديداً)
+    socket.on('you-were-kicked', ({ userId }) => {
+        if (userId !== myUserId) return;
+        showNotification('تم إنزالك من المقعد من قِبل إدارة الغرفة', 'warning');
+    });
+
+    socket.on('seat-lock-changed', ({ roomId, seatNumber, isLocked }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        const voiceGrid = document.getElementById('voice-chat-grid');
+        if (!voiceGrid) return;
+        const seatEl = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"]`);
+        if (!seatEl) return;
+        if (isLocked) {
+            renderVoiceSeatContent(seatEl, { isLocked: true });
+        } else {
+            renderVoiceSeatContent(seatEl, null);
+        }
     });
 
     socket.on('seat-error', (message) => {
