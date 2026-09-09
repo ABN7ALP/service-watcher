@@ -408,7 +408,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     position: relative;
 }
 .voice-seat.user-seat:hover { background: rgba(139,92,246,0.25); border-color: #a855f7; transform: scale(1.05); }
-.voice-seat.admin-seat { background: linear-gradient(135deg,#7c2d12,#450a0a); border-color: #f59e0b; color: #fbbf24; cursor: not-allowed; }
+.voice-seat.admin-seat { background: linear-gradient(135deg,#7c2d12,#450a0a); border-color: #f59e0b; color: #fbbf24; }
+.voice-seat.seat-forbidden { cursor: not-allowed; }
 .voice-seat.occupied { background: rgba(139,92,246,0.35); border-color: #a855f7; }
 
 /* ✅ مقعد فيه مستخدم فعلي حالياً (صورة حقيقية بدل رقم) */
@@ -417,6 +418,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     border: 2px solid rgba(139,92,246,0.55);
     padding: 0;
     overflow: visible;
+    box-shadow: 0 2px 8px rgba(139,92,246,0.25); /* ✅ إحساس أكثر حيوية للمقاعد المشغولة مقارنة بالفاضية */
 }
 .voice-seat-avatar {
     width: 100%; height: 100%;
@@ -438,13 +440,21 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     max-width: 3.2rem;
     pointer-events: none;
 }
-/* ✅ حلقة حمراء واضحة حول الصورة بدل أيقونة صغيرة منفصلة — أنظف وأوضح خصوصاً بالأحجام
-   الصغيرة (الأيقونة كانت تصغر لدرجة تصير مشوشة وغير مقروءة، فتبدو "غير مرتبة").
-   لا تُطبَّق على مقعدي أنا (my-seat) لتفادي تعارض لونين مختلفين بنفس الحلقة — حالة كتمي
-   الخاصة أصلاً واضحة من زر الميكروفون بالشريط العائم. */
-.voice-seat.occupied-seat.is-muted-seat:not(.my-seat) {
-    border-color: #dc2626;
-    box-shadow: 0 0 0 2px rgba(220,38,38,0.45);
+/* ✅ تعتيم كامل للصورة + أيقونة ميكروفون مسكّر بالمنتصف — أوضح بكثير من أيقونة صغيرة
+   بزاوية، ويظهر بنفس الوضوح عند صاحب المقعد نفسه وعند بقية المستخدمين على حد سواء.
+   الحجم بوحدة em نسبية لخط المقعد، فيتحجّم تلقائياً مع media query الموجودة أصلاً بالأسفل
+   بدل ما يحتاج قاعدة منفصلة لكل حجم شاشة. */
+.voice-seat-mute-overlay {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(17, 24, 39, 0.68);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fca5a5;
+    font-size: 1.7em;
+    pointer-events: none; /* لا يمنع الضغط على المقعد نفسه (مغادرة/تبديل) */
 }
 /* ✅ تمييز واضح لمقعدي أنا بالذات وسط 80 مقعد */
 .voice-seat.my-seat {
@@ -462,6 +472,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 /* ✅ شريط التحكم العائم (كتم/مغادرة) — يظهر فقط لمن لديه مقعد فعلي حالياً */
 #voice-control-bar button.is-muted {
     background: #ef4444 !important;
+}
+@keyframes voiceBarEnter {
+    from { opacity: 0; transform: translate(-50%, 8px) scale(0.92); }
+    to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+#voice-control-bar.voice-bar-enter {
+    animation: voiceBarEnter 0.26s ease-out;
 }
 
 @media (max-width: 480px) {
