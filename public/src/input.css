@@ -441,13 +441,14 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .voice-seat-mute-badge {
     position: absolute;
     bottom: -2px; right: -2px;
-    background: #ef4444;
+    background: linear-gradient(135deg, #fb7185, #dc2626);
     color: #fff;
     border-radius: 50%;
-    width: 1.1rem; height: 1.1rem;
+    width: 1.3rem; height: 1.3rem;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.5rem;
-    border: 2px solid #111827;
+    font-size: 0.6rem;
+    line-height: 1;
+    box-shadow: 0 0 0 2px #111827, 0 2px 5px rgba(0,0,0,0.45);
 }
 /* ✅ تمييز واضح لمقعدي أنا بالذات وسط 80 مقعد */
 .voice-seat.my-seat {
