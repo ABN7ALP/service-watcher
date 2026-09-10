@@ -21,6 +21,7 @@ router.get('/rooms', voiceRoomController.listRooms);
 router.get('/my-room', voiceRoomController.getMyRoom);
 router.post('/rooms', roomCreationLimiter, voiceRoomController.createRoom);
 router.get('/rooms/:id', voiceRoomController.getRoomById);
+router.get('/rooms/:id/messages', voiceRoomController.getRoomMessages);
 router.patch('/rooms/:id', voiceRoomController.updateRoom);
 
 router.get('/', voiceRoomController.getVoiceRoomState);
