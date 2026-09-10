@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const VoiceRoom = require('../models/VoiceRoom');
+const Message = require('../models/Message');
 
 // =====================================================
 // ✅ GET /api/voice-room/rooms — قائمة التصفح (الرسمية + غرف المستخدمين)
@@ -185,6 +186,26 @@ exports.updateRoom = async (req, res) => {
 
         await room.save();
         res.json({ status: 'success', room: { id: room._id, name: room.name, isPrivate: room.isPrivate } });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// =====================================================
+// ✅ GET /api/voice-room/rooms/:id/messages — آخر رسائل دردشة الغرفة (حتى 50)
+// =====================================================
+exports.getRoomMessages = async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id) && req.params.id !== 'main') {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غرفة غير صالح' });
+        }
+        const channel = `room-chat-${req.params.id}`;
+        const messages = await Message.find({ room: channel })
+            .sort({ createdAt: -1 })
+            .limit(50)
+            .populate('sender', 'username profileImage activeFrameClass')
+            .lean();
+        res.json({ status: 'success', messages: messages.reverse() });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
     }
