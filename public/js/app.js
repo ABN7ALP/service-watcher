@@ -759,15 +759,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             if (isAdminSeat) seat.title = canSitHere ? 'مقعد إدارة' : 'مقعد محجوز للإدارة';
             seat.addEventListener('click', () => {
                 const occupantId = seat.dataset.userId;
-                const canManage = roomId !== 'main' && (currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator');
-                if (isMySeat(roomId, i)) {
-                    leaveVoiceSeat();
-                } else if (occupantId && occupantId !== myUserId && canManage) {
-                    // ✅ ضغط المضيف/المسؤول على مقعد شخص آخر يفتح قائمة إدارة بدل محاولة الجلوس
-                    showSeatModerationMenu(roomId, i, seat.title || 'المستخدم');
-                } else if (!occupantId && isPrivate && !canManage) {
+                if (occupantId) {
+                    // ✅ الضغط على أي صورة (حتى صورتي أنا) يفتح الملف الشخصي — المغادرة فقط من زر الشريط العائم
+                    showUserProfileSheet(roomId, i, occupantId, seat.title || '');
+                } else if (isPrivate && !(roomId !== 'main' && (currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator'))) {
                     promptRoomPassword((pwd) => joinVoiceSeat(i, pwd));
-                } else if (!occupantId) {
+                } else {
                     joinVoiceSeat(i, currentRoomPassword);
                 }
             });
@@ -775,8 +772,71 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
     }
 
-    // ✅ قائمة إدارة مقعد — تظهر فقط للمضيف/المسؤول عند الضغط على مقعد شخص آخر
-    function showSeatModerationMenu(roomId, seatNumber, username) {
+    // ✅ نافذة الملف الشخصي المسندلة من الأسفل — بنفس أسلوب التطبيقات المشهورة (لا تأخذ كامل الشاشة)
+    async function showUserProfileSheet(roomId, seatNumber, userId, fallbackName) {
+        const modal = document.createElement('div');
+        modal.id = 'user-profile-sheet';
+        modal.className = 'fixed inset-0 bg-black/60 flex items-end z-50';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-t-2xl shadow-xl w-full max-h-[75vh] overflow-y-auto text-white animate-[slideUp_0.25s_ease-out]">
+                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2.5 mb-1"></div>
+                <div id="user-profile-sheet-body" class="p-5">
+                    <div class="flex items-center justify-center py-10 text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'user-profile-sheet') modal.remove(); });
+
+        try {
+            const response = await fetch(`/api/users/${userId}/mini-profile`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            const body = modal.querySelector('#user-profile-sheet-body');
+            if (!response.ok || result.status !== 'success') {
+                body.innerHTML = `<p class="text-center text-gray-400 py-6">تعذر تحميل الملف الشخصي</p>`;
+                return;
+            }
+            const p = result.data;
+            const isMe = userId === myUserId;
+            const canManage = !isMe && roomId !== 'main' && (currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator');
+            const isTargetHost = false; // (نتحقق من صلاحية المنع من السيرفر أصلاً؛ المضيف لن يظهر له خيار إدارة نفسه لأن isMe يمنعه)
+
+            body.innerHTML = `
+                <div class="flex items-start gap-3">
+                    <img src="${p.profileImage}" class="w-16 h-16 rounded-full object-cover border-2 border-purple-500/50 flex-shrink-0">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold text-base truncate">${escapeHtml(p.username)}</p>
+                        <p class="text-xs text-gray-400 mt-0.5">ID: ${escapeHtml(String(p.customId || ''))}</p>
+                        <div class="flex items-center gap-2 mt-1.5">
+                            <span class="text-[11px] bg-purple-600/30 text-purple-300 px-2 py-0.5 rounded-full"><i class="fas fa-star"></i> Lv.${p.level}</span>
+                            <span class="text-[11px] text-gray-400"><i class="fas fa-user-friends"></i> ${p.friendsCount}</span>
+                        </div>
+                    </div>
+                    ${canManage ? `
+                        <button id="profile-manage-icon-btn" class="flex flex-col items-center gap-0.5 flex-shrink-0 text-gray-300 hover:text-white">
+                            <span class="relative w-9 h-9 flex items-center justify-center bg-gray-700/70 rounded-full">
+                                <svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><path d="M12 12c2.7 0 8 1.34 8 4v2H4v-2c0-2.66 5.3-4 8-4zm0-2a4 4 0 100-8 4 4 0 000 8z"/></svg>
+                                <i class="fas fa-cog absolute -bottom-0.5 -left-0.5 text-[9px] bg-gray-800 rounded-full p-0.5"></i>
+                            </span>
+                            <span class="text-[9px]">إدارة الغرفة</span>
+                        </button>
+                    ` : ''}
+                </div>
+            `;
+
+            if (canManage) {
+                modal.querySelector('#profile-manage-icon-btn').addEventListener('click', () => {
+                    modal.remove();
+                    showSeatModerationMenu(roomId, seatNumber, userId, p.username);
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load profile:', error);
+        }
+    }
+
+    // ✅ قائمة إدارة مقعد — تظهر فقط للمضيف/المسؤول عبر أيقونة "إدارة الغرفة" بالملف الشخصي
+    function showSeatModerationMenu(roomId, seatNumber, targetUserId, username) {
         const modal = document.createElement('div');
         modal.id = 'seat-mod-modal';
         modal.className = 'fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50';
@@ -784,8 +844,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 w-full md:max-w-xs text-white">
                 <p class="text-center text-sm text-gray-400 mb-3 truncate">${escapeHtml(username)}</p>
                 <button data-action="mute" class="w-full text-right py-3 px-4 rounded-lg hover:bg-gray-700 flex items-center gap-3"><i class="fas fa-microphone-slash text-amber-400 w-5"></i> كتم</button>
-                <button data-action="kick" class="w-full text-right py-3 px-4 rounded-lg hover:bg-gray-700 flex items-center gap-3"><i class="fas fa-user-slash text-red-400 w-5"></i> إنزال من المقعد</button>
+                <button data-action="kick" class="w-full text-right py-3 px-4 rounded-lg hover:bg-gray-700 flex items-center gap-3"><i class="fas fa-user-slash text-red-400 w-5"></i> إنزال من البث</button>
                 <button data-action="lock" class="w-full text-right py-3 px-4 rounded-lg hover:bg-gray-700 flex items-center gap-3"><i class="fas fa-lock text-gray-400 w-5"></i> إنزال وقفل المقعد</button>
+                ${currentRoomMyRole === 'host' ? `<button data-action="mod" class="w-full text-right py-3 px-4 rounded-lg hover:bg-gray-700 flex items-center gap-3"><i class="fas fa-user-shield text-emerald-400 w-5"></i> تعيين كمسؤول</button>` : ''}
                 <button id="seat-mod-cancel" class="w-full text-center py-2.5 mt-2 rounded-lg bg-gray-700 text-gray-300">إلغاء</button>
             </div>
         `;
@@ -798,6 +859,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 if (action === 'mute') socket.emit('host-mute-seat', { roomId, seatNumber, isMuted: true });
                 else if (action === 'kick') socket.emit('host-kick-seat', { roomId, seatNumber });
                 else if (action === 'lock') socket.emit('host-toggle-lock-seat', { roomId, seatNumber });
+                else if (action === 'mod') {
+                    socket.emit('host-set-moderator', { roomId, targetUserId, makeMod: true });
+                    showNotification('تم تعيينه كمسؤول ✅', 'success');
+                }
                 modal.remove();
             });
         });
@@ -2961,6 +3026,13 @@ function showXpGainAnimation(amount) {
             renderVoiceSeatContent(seatEl, { isLocked: true });
         } else {
             renderVoiceSeatContent(seatEl, null);
+        }
+    });
+
+    socket.on('moderator-status-changed', ({ roomId, userId, isModerator }) => {
+        if (userId === myUserId && roomId === currentVoiceRoomId) {
+            currentRoomMyRole = isModerator ? 'moderator' : 'guest';
+            showNotification(isModerator ? 'تم تعيينك كمسؤول بهذي الغرفة ✅' : 'تم إلغاء صلاحيتك كمسؤول', isModerator ? 'success' : 'info');
         }
     });
 
