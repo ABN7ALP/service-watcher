@@ -408,6 +408,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function activateHomeButton() { switchToView('arena'); }
 
     function switchToView(viewId) {
+        if (viewId !== 'arena') leaveRoomChatUI(); // ✅ دردشة الغرفة خاصة بمشاهدتها فقط، تختفي بمغادرة القسم
+
         // تفعيل الشريط الجانبي (سطح المكتب)
         navItems.forEach(i => i.classList.remove('bg-purple-600', 'text-white'));
         document.querySelector(`.nav-item[href="#${viewId}"]`)?.classList.add('bg-purple-600', 'text-white');
@@ -554,6 +556,178 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     initVoiceControlBar();
 
     // =====================================================
+    // ✅ دردشة خاصة بكل غرفة — بديل الدردشة العامة القديمة
+    // -----------------------------------------------------
+    // أيقونة صغيرة ثابتة (بأسلوب التطبيقات المشهورة: Bigo/Yalla/لاما/تاكا) —
+    // الضغط عليها يفتح لوحة رسائل منزلقة من الأسفل + صندوق كتابة، بدل نافذة كاملة الشاشة.
+    // =====================================================
+    let roomChatCurrentRoomId = null;
+    const CHAT_BG_STORAGE_KEY = 'voiceRoomChatBg';
+    const chatBgPresets = [
+        'linear-gradient(135deg, rgba(88,28,135,0.55), rgba(17,24,39,0.75))',
+        'linear-gradient(135deg, rgba(15,76,129,0.55), rgba(17,24,39,0.75))',
+        'linear-gradient(135deg, rgba(136,19,55,0.55), rgba(17,24,39,0.75))',
+        'linear-gradient(135deg, rgba(6,95,70,0.55), rgba(17,24,39,0.75))',
+        'rgba(17,24,39,0.75)' // بسيط بدون تدرج
+    ];
+
+    function applyChatBackground() {
+        const messagesBox = document.getElementById('room-chat-messages');
+        if (!messagesBox) return;
+        const saved = localStorage.getItem(CHAT_BG_STORAGE_KEY);
+        if (saved && saved.startsWith('data:image')) {
+            messagesBox.style.backgroundImage = `url(${saved})`;
+            messagesBox.style.backgroundSize = 'cover';
+            messagesBox.style.backgroundPosition = 'center';
+        } else {
+            messagesBox.style.backgroundImage = 'none';
+            messagesBox.style.background = saved || chatBgPresets[0];
+        }
+    }
+
+    function initRoomChatUI() {
+        if (document.getElementById('room-chat-fab')) return;
+
+        const fab = document.createElement('button');
+        fab.id = 'room-chat-fab';
+        fab.className = 'hidden fixed bottom-20 md:bottom-6 left-4 md:left-8 z-40 w-12 h-12 rounded-full bg-gray-800/95 border border-gray-600 shadow-xl flex items-center justify-center text-white text-lg active:scale-90 transition-transform';
+        fab.innerHTML = '<i class="fas fa-comment-dots"></i>';
+        document.body.appendChild(fab);
+
+        const panel = document.createElement('div');
+        panel.id = 'room-chat-panel';
+        panel.className = 'hidden fixed inset-x-0 bottom-24 md:bottom-20 z-40 flex flex-col items-stretch pointer-events-none';
+        panel.innerHTML = `
+            <div id="room-chat-messages" class="pointer-events-auto mx-3 mb-2 rounded-xl p-2.5 max-h-[32vh] overflow-y-auto text-[13px] space-y-1.5"></div>
+            <div class="pointer-events-auto flex items-center gap-2 mx-3">
+                <button id="room-chat-bg-btn" class="w-9 h-9 rounded-full bg-gray-700/95 flex items-center justify-center text-gray-300 flex-shrink-0" title="خلفية الدردشة"><i class="fas fa-palette"></i></button>
+                <input id="room-chat-input" maxlength="300" placeholder="اكتب رسالة..." class="flex-1 bg-gray-800/95 border border-gray-600 rounded-full px-4 py-2 text-sm text-white focus:ring-purple-500 focus:border-purple-500">
+                <button id="room-chat-send-btn" class="w-9 h-9 rounded-full bg-purple-600 hover:bg-purple-700 flex items-center justify-center text-white flex-shrink-0"><i class="fas fa-paper-plane text-xs"></i></button>
+            </div>
+        `;
+        document.body.appendChild(panel);
+
+        fab.addEventListener('click', () => {
+            const isHidden = panel.classList.contains('hidden');
+            panel.classList.toggle('hidden', !isHidden);
+            fab.classList.toggle('bg-purple-600', isHidden);
+            if (isHidden) document.getElementById('room-chat-input').focus();
+        });
+
+        document.getElementById('room-chat-send-btn').addEventListener('click', sendRoomChatMessage);
+        document.getElementById('room-chat-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendRoomChatMessage();
+        });
+        document.getElementById('room-chat-bg-btn').addEventListener('click', showChatBackgroundPicker);
+
+        applyChatBackground();
+    }
+    initRoomChatUI();
+
+    function sendRoomChatMessage() {
+        const input = document.getElementById('room-chat-input');
+        if (!input || !roomChatCurrentRoomId) return;
+        const text = input.value.trim();
+        if (!text) return;
+        socket.emit('send-room-message', { roomId: roomChatCurrentRoomId, message: text });
+        input.value = '';
+    }
+
+    function appendRoomChatMessage(msg) {
+        const box = document.getElementById('room-chat-messages');
+        if (!box) return;
+        const el = document.createElement('div');
+        el.dataset.msgId = msg._id;
+        el.className = 'leading-snug';
+        const safeName = escapeHtml(msg.sender?.username || '');
+        const safeContent = escapeHtml(msg.content || '');
+        el.innerHTML = `<span class="font-bold text-purple-300">${safeName}:</span> <span class="text-gray-100">${safeContent}</span>`;
+        box.appendChild(el);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    // ✅ يُستدعى عند فتح أي غرفة — ينضم لقناة دردشتها ويحمّل آخر رسائلها
+    async function enterRoomChat(roomId) {
+        if (roomChatCurrentRoomId) socket.emit('leave-room-chat', { roomId: roomChatCurrentRoomId });
+        roomChatCurrentRoomId = roomId;
+
+        const fab = document.getElementById('room-chat-fab');
+        const panel = document.getElementById('room-chat-panel');
+        const box = document.getElementById('room-chat-messages');
+        if (fab) fab.classList.remove('hidden');
+        if (panel) panel.classList.add('hidden');
+        if (fab) fab.classList.remove('bg-purple-600');
+        if (box) box.innerHTML = '';
+
+        socket.emit('join-room-chat', { roomId });
+
+        try {
+            const response = await fetch(`/api/voice-room/rooms/${roomId}/messages`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            if (response.ok && result.status === 'success') {
+                result.messages.forEach(appendRoomChatMessage);
+            }
+        } catch (error) {
+            console.error('Failed to load room messages:', error);
+        }
+    }
+
+    // ✅ يُستدعى عند مغادرة الغرفة (رجوع لقائمة التصفح) — يخفي أدوات الدردشة ويغادر القناة
+    function leaveRoomChatUI() {
+        if (roomChatCurrentRoomId) socket.emit('leave-room-chat', { roomId: roomChatCurrentRoomId });
+        roomChatCurrentRoomId = null;
+        document.getElementById('room-chat-fab')?.classList.add('hidden');
+        document.getElementById('room-chat-panel')?.classList.add('hidden');
+    }
+
+    // ✅ اختيار خلفية الدردشة — خلفيات جاهزة أو صورة من جهازك (تُحفظ محلياً على متصفحك فقط)
+    function showChatBackgroundPicker() {
+        const modal = document.createElement('div');
+        modal.id = 'chat-bg-modal';
+        modal.className = 'fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[60]';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 w-full md:max-w-xs text-white">
+                <h3 class="text-sm font-bold mb-3"><i class="fas fa-palette text-purple-400"></i> خلفية الدردشة</h3>
+                <div class="grid grid-cols-5 gap-2 mb-3">
+                    ${chatBgPresets.map((bg, i) => `<button data-bg="${i}" class="chat-bg-preset-btn aspect-square rounded-lg border-2 border-transparent hover:border-purple-400" style="background:${bg}"></button>`).join('')}
+                </div>
+                <label class="w-full block text-center py-2.5 rounded-lg bg-gray-700 hover:bg-gray-600 cursor-pointer text-sm">
+                    <i class="fas fa-image"></i> رفع صورة من جهازك
+                    <input type="file" id="chat-bg-file-input" accept="image/*" class="hidden">
+                </label>
+                <button id="chat-bg-cancel" class="w-full text-center py-2.5 mt-2 rounded-lg bg-gray-700 text-gray-300">إغلاق</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'chat-bg-modal') modal.remove(); });
+        modal.querySelector('#chat-bg-cancel').addEventListener('click', () => modal.remove());
+
+        modal.querySelectorAll('.chat-bg-preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                localStorage.setItem(CHAT_BG_STORAGE_KEY, chatBgPresets[parseInt(btn.dataset.bg)]);
+                applyChatBackground();
+                modal.remove();
+            });
+        });
+
+        modal.querySelector('#chat-bg-file-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (file.size > 3 * 1024 * 1024) {
+                showNotification('حجم الصورة كبير جداً (الحد 3 ميجا)', 'error');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+                localStorage.setItem(CHAT_BG_STORAGE_KEY, reader.result);
+                applyChatBackground();
+                modal.remove();
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // =====================================================
     // ✅ متصفح الغرف الصوتية (المرحلة 2 — نظام الغرف المتعددة)
     // =====================================================
     function renderRoomCard(room) {
@@ -592,6 +766,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     async function showRoomBrowserView() {
         currentVoiceRoomId = null;
+        leaveRoomChatUI();
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-3">
                 <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
@@ -741,6 +916,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         renderVoiceRoomSeats(room.id, room.seatCount, 0, room.isPrivate);
         await fetchAndRenderVoiceSnapshot(room.id, currentRoomPassword);
         updateVoiceControlBar();
+        enterRoomChat(room.id);
     }
 
     // ✅ يبني شبكة المقاعد الفارغة ويربط أحداث الضغط — مستخدمة من الغرفة الرسمية وغرف المستخدمين معاً
@@ -1099,6 +1275,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // ✅ لقطة الحالة الحقيقية عند فتح الغرفة (كانت مفقودة بالكامل سابقاً)
         fetchAndRenderVoiceSnapshot('main');
         updateVoiceControlBar();
+        enterRoomChat('main');
     }
 
     // ✅ يمنع إرسال طلب مقعد جديد قبل ما يرجع رد الطلب السابق (نجاح أو فشل) —
@@ -3034,6 +3211,17 @@ function showXpGainAnimation(amount) {
             currentRoomMyRole = isModerator ? 'moderator' : 'guest';
             showNotification(isModerator ? 'تم تعيينك كمسؤول بهذي الغرفة ✅' : 'تم إلغاء صلاحيتك كمسؤول', isModerator ? 'success' : 'info');
         }
+    });
+
+    socket.on('new-room-message', ({ roomId, message }) => {
+        if (roomId !== roomChatCurrentRoomId) return;
+        appendRoomChatMessage(message);
+    });
+
+    socket.on('room-chat-cleanup', ({ roomId }) => {
+        if (roomId !== roomChatCurrentRoomId) return;
+        // ✅ إعادة تحميل بسيطة لآخر 50 رسالة بعد أي تنظيف (أبسط وأضمن من تتبع كل معرّف محذوف)
+        enterRoomChat(roomId);
     });
 
     socket.on('seat-error', (message) => {
