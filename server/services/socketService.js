@@ -922,6 +922,63 @@ socket.on('refreshBlockData', async () => {
             }
         });
 
+        // =====================================================
+        // ✅ دردشة خاصة بكل غرفة (بديل الدردشة العامة القديمة)
+        // -----------------------------------------------------
+        // كل غرفة قناة Socket.IO منفصلة فعلياً (join/leave حقيقيين) — الرسائل توصل فقط
+        // لمن هو داخل نفس الغرفة حالياً، وسقف 50 رسالة لكل غرفة على حدة (وليس عالمياً).
+        // =====================================================
+        socket.on('join-room-chat', ({ roomId }) => {
+            if (!roomId) return;
+            socket.join(`room-chat-${roomId}`);
+        });
+
+        socket.on('leave-room-chat', ({ roomId }) => {
+            if (!roomId) return;
+            socket.leave(`room-chat-${roomId}`);
+        });
+
+        socket.on('send-room-message', async ({ roomId, message }) => {
+            try {
+                if (!roomId || !message || !message.trim() || message.length > 300) return;
+                const channel = `room-chat-${roomId}`;
+
+                const newMessage = await Message.create({
+                    content: message.trim(),
+                    sender: socket.user.id,
+                    room: channel
+                });
+                const populatedMessage = await Message.findById(newMessage._id)
+                    .populate('sender', 'username profileImage activeFrameClass');
+                if (!populatedMessage) return;
+
+                const roomSockets = io.sockets.adapter.rooms.get(channel);
+                if (!roomSockets) return;
+                const senderId = socket.user.id.toString();
+
+                for (const socketId of roomSockets) {
+                    const receiverSocket = io.sockets.sockets.get(socketId);
+                    if (!receiverSocket || !receiverSocket.user) continue;
+                    const receiverId = receiverSocket.user.id.toString();
+                    const isBlocked = await checkIfBlocked(senderId, receiverId);
+                    if (!isBlocked) {
+                        receiverSocket.emit('new-room-message', { roomId, message: populatedMessage.toObject() });
+                    }
+                }
+
+                // ✅ سقف 50 رسالة لهذي الغرفة تحديداً — يحذف الأقدم تلقائياً (نفس مبدأ الدردشة العامة القديمة)
+                const fiftiethMessage = await Message.findOne({ room: channel }).sort({ createdAt: -1 }).skip(49);
+                if (fiftiethMessage) {
+                    const result = await Message.deleteMany({ room: channel, createdAt: { $lt: fiftiethMessage.createdAt } });
+                    if (result.deletedCount > 0) {
+                        io.to(channel).emit('room-chat-cleanup', { roomId });
+                    }
+                }
+            } catch (error) {
+                console.error('[ROOM CHAT] Send error:', error);
+            }
+        });
+
         socket.on('disconnect', async () => {
             console.log(`🔴 User disconnected: ${socket.id} | UserID: ${socket.user.username}`);
             try {
