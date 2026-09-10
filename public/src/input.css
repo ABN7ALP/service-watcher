@@ -514,3 +514,14 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
         animation: slideUp 0.25s ease-out;
     }
 }
+
+/* ✅ دردشة الغرفة الصوتية — وضوح النص فوق أي خلفية (تدرّج أو صورة مرفوعة) + سكرول أنيق */
+#room-chat-messages {
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+    backdrop-filter: blur(2px);
+    scrollbar-width: thin;
+}
+#room-chat-messages::-webkit-scrollbar { width: 4px; }
+#room-chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 4px; }
+#room-chat-messages:empty { display: none; }
+
