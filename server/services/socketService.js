@@ -897,6 +897,31 @@ socket.on('refreshBlockData', async () => {
             }
         });
 
+        // ✅ تعيين/إلغاء مسؤول مساعد — المضيف فقط يملك هذي الصلاحية (وليس المسؤولون أنفسهم)
+        socket.on('host-set-moderator', async ({ roomId, targetUserId, makeMod }) => {
+            try {
+                const mongoose = require('mongoose');
+                const VoiceRoom = require('../models/VoiceRoom');
+                if (!mongoose.Types.ObjectId.isValid(targetUserId)) return;
+
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room || !room.host || room.host.toString() !== socket.user._id.toString()) {
+                    return socket.emit('seat-error', 'المضيف فقط يقدر يعيّن مسؤولين مساعدين');
+                }
+
+                if (makeMod) {
+                    await VoiceRoom.updateOne({ _id: room._id }, { $addToSet: { moderators: targetUserId } });
+                } else {
+                    await VoiceRoom.updateOne({ _id: room._id }, { $pull: { moderators: targetUserId } });
+                }
+
+                const finalRoomId = room.slug === 'main' ? 'main' : room._id.toString();
+                io.emit('moderator-status-changed', { roomId: finalRoomId, userId: targetUserId, isModerator: !!makeMod });
+            } catch (error) {
+                console.error('[HOST ACTION] Set moderator error:', error);
+            }
+        });
+
         socket.on('disconnect', async () => {
             console.log(`🔴 User disconnected: ${socket.id} | UserID: ${socket.user.username}`);
             try {
