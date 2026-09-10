@@ -77,15 +77,15 @@
                 </aside>
 
                 <!-- Main View -->
-                <main id="main-content" class="col-span-12 md:col-span-9 lg:col-span-7 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-3 md:p-4 flex flex-col transition-colors duration-300 min-h-[70vh]">
+                <main id="main-content" class="col-span-12 md:col-span-9 lg:col-span-10 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-3 md:p-4 flex flex-col transition-colors duration-300 min-h-[70vh]">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
                     </div>
                     <div id="voice-chat-grid" class="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2 md:gap-3"></div>
                 </main>
 
-                <!-- Chat Panel (Desktop only — mobile uses floating button) -->
-                <aside id="chat-panel" class="hidden md:flex col-span-12 lg:col-span-3 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 flex-col h-[85vh] transition-colors duration-300">
+                <!-- ⛔ الدردشة العامة القديمة أُلغيت — كل غرفة صوتية لها الآن دردشتها الخاصة -->
+                <aside id="chat-panel" class="hidden col-span-12 lg:col-span-3 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 flex-col h-[85vh] transition-colors duration-300">
                     <h3 class="font-bold mb-3">💬 الدردشة العامة</h3>
                     <div id="chat-messages" class="flex-grow bg-gray-200/50 dark:bg-gray-900/50 rounded-lg p-2 overflow-y-auto mb-3 min-h-[300px]"></div>
                     <div id="public-typing-indicator" class="text-xs text-purple-400 h-4 mb-1 px-1"></div>
@@ -104,8 +104,8 @@
         </div>
     </div>
 
-    <!-- ✅ زر عائم لفتح الدردشة العامة على الهاتف فقط -->
-    <button id="mobile-public-chat-fab" class="md:hidden fixed bottom-20 left-4 z-40 w-14 h-14 bg-purple-600 rounded-full shadow-2xl flex items-center justify-center text-white text-xl active:scale-90 transition-transform">
+    <!-- ⛔ زر الدردشة العامة العائم القديم أُلغي — استُبدل بأيقونة دردشة كل غرفة (room-chat-fab) -->
+    <button id="mobile-public-chat-fab" class="hidden fixed bottom-20 left-4 z-40 w-14 h-14 bg-purple-600 rounded-full shadow-2xl flex items-center justify-center text-white text-xl active:scale-90 transition-transform">
         <i class="fas fa-comments"></i>
         <span id="mobile-chat-unread-dot" class="hidden absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-gray-900"></span>
     </button>
