@@ -21,6 +21,9 @@ const CACHE_TTL = 30 * 1000; // ⬅️ 30 ثانية فقط (بدل 5 دقائق
 // بنفس اللحظة (عند كل من يشاهد الغرفة، وليس فقط عنده). القفل يضمن تنفيذ عمليات نفس
 // المستخدم واحدة تلو الأخرى دائماً، بغض النظر عن عدد الطلبات المتزامنة الواردة.
 const voiceSeatLocks = new Map(); // userId(string) → Promise لآخر عملية قيد التنفيذ
+
+// ✅ محدد معدل بسيط لدردشة الغرف وتفاعلات الإيموجي (userId → آخر وقت إرسال بالميلي ثانية)
+const roomChatRateLimit = new Map();
 function withUserSeatLock(userId, fn) {
     const key = userId.toString();
     const previous = voiceSeatLocks.get(key) || Promise.resolve();
@@ -936,6 +939,14 @@ socket.on('refreshBlockData', async () => {
         socket.on('send-room-message', async ({ roomId, message }) => {
             try {
                 if (!roomId || !message || !message.trim() || message.length > 300) return;
+
+                // 🛡️ محدد معدل بسيط: رسالة واحدة كل ثانيتين لكل مستخدم — يمنع إغراق دردشة الغرفة
+                const rlKey = socket.user._id.toString();
+                const now = Date.now();
+                const lastSent = roomChatRateLimit.get(rlKey) || 0;
+                if (now - lastSent < 2000) return;
+                roomChatRateLimit.set(rlKey, now);
+
                 const channel = `room-chat-${roomId}`;
 
                 const newMessage = await Message.create({
@@ -972,6 +983,21 @@ socket.on('refreshBlockData', async () => {
             } catch (error) {
                 console.error('[ROOM CHAT] Send error:', error);
             }
+        });
+
+        // ✅ إيموجي تفاعل متحرك فوق صورة مقعد — بث لحظي بدون تخزين بقاعدة البيانات (مجرد تأثير بصري عابر)
+        socket.on('send-seat-reaction', ({ roomId, seatNumber, emoji }) => {
+            const allowedEmojis = ['❤️', '😂', '👏', '🔥', '😍', '👍', '🎉', '😮'];
+            if (!roomId || !allowedEmojis.includes(emoji)) return;
+
+            // 🛡️ محدد معدل بسيط: تفاعل واحد كل ثانية لكل مستخدم
+            const rlKey = `reaction-${socket.user._id}`;
+            const now = Date.now();
+            const lastSent = roomChatRateLimit.get(rlKey) || 0;
+            if (now - lastSent < 1000) return;
+            roomChatRateLimit.set(rlKey, now);
+
+            io.emit('seat-reaction-played', { roomId, seatNumber: parseInt(seatNumber), emoji });
         });
 
         socket.on('disconnect', async () => {
