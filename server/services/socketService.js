@@ -986,9 +986,17 @@ socket.on('refreshBlockData', async () => {
         });
 
         // ✅ إيموجي تفاعل متحرك فوق صورة مقعد — بث لحظي بدون تخزين بقاعدة البيانات (مجرد تأثير بصري عابر)
-        socket.on('send-seat-reaction', ({ roomId, seatNumber, emoji }) => {
+        socket.on('send-seat-reaction', async ({ roomId, seatNumber, emoji }) => {
             const allowedEmojis = ['❤️', '😂', '👏', '🔥', '😍', '👍', '🎉', '😮'];
             if (!roomId || !allowedEmojis.includes(emoji)) return;
+
+            // 🛡️ تحقق فعلي إن هذا المستخدم جالس بالضبط على هذا المقعد بهذي الغرفة —
+            // التفاعل مسموح فقط على النفس، ولا يكفي الاعتماد على إخفاء الزر بالواجهة
+            const VoiceRoom = require('../models/VoiceRoom');
+            const room = await VoiceRoom.resolveRoom(roomId);
+            if (!room) return;
+            const seat = room.seats.find(s => s.seatNumber === parseInt(seatNumber));
+            if (!seat || !seat.user || seat.user.toString() !== socket.user._id.toString()) return;
 
             // 🛡️ محدد معدل بسيط: تفاعل واحد كل ثانية لكل مستخدم
             const rlKey = `reaction-${socket.user._id}`;
