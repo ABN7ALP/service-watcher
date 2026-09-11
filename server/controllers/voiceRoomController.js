@@ -95,7 +95,8 @@ exports.getRoomById = async (req, res) => {
         const room = await VoiceRoom.findOne({ _id: req.params.id, status: 'active' })
             .select('+password')
             .populate('seats.user', 'username profileImage activeFrameClass isAdmin')
-            .populate('host', 'username profileImage');
+            .populate('host', 'username profileImage')
+            .populate('moderators', 'username profileImage');
         if (!room) {
             return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة أو أُغلقت' });
         }
@@ -135,6 +136,7 @@ exports.getRoomById = async (req, res) => {
             seatCount: room.seatCount,
             adminSeatCount: room.adminSeatCount,
             seats,
+            moderators: room.moderators.map(m => ({ id: m._id, username: m.username, profileImage: m.profileImage })),
             myRole: isHost ? 'host' : (isModerator ? 'moderator' : 'guest')
         });
     } catch (error) {
@@ -159,7 +161,7 @@ exports.updateRoom = async (req, res) => {
             return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية تعديل هذه الغرفة' });
         }
 
-        const { name, isPrivate, password } = req.body;
+        const { name, description, isPrivate, password } = req.body;
 
         if (name !== undefined) {
             const cleanName = String(name).trim();
@@ -167,6 +169,10 @@ exports.updateRoom = async (req, res) => {
                 return res.status(400).json({ status: 'fail', message: 'اسم الغرفة يجب أن يكون بين 2 و40 حرفاً' });
             }
             room.name = cleanName;
+        }
+
+        if (description !== undefined) {
+            room.description = String(description).trim().slice(0, 120);
         }
 
         if (isPrivate !== undefined) {
@@ -185,7 +191,7 @@ exports.updateRoom = async (req, res) => {
         }
 
         await room.save();
-        res.json({ status: 'success', room: { id: room._id, name: room.name, isPrivate: room.isPrivate } });
+        res.json({ status: 'success', room: { id: room._id, name: room.name, description: room.description, isPrivate: room.isPrivate } });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
     }
