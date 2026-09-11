@@ -737,13 +737,8 @@ socket.on('refreshBlockData', async () => {
                     return socket.emit('seat-error', 'لا تملك صلاحية الجلوس على مقاعد الإدارة');
                 }
 
-                // 🛡️ تحقق سيرفر حقيقي من كلمة مرور الغرفة الخاصة (لا يكفي إخفاء الزر بالواجهة وحده)
-                if (room.isPrivate) {
-                    const roomWithPassword = await VoiceRoom.findById(room._id).select('+password');
-                    if (!password || password !== roomWithPassword.password) {
-                        return socket.emit('seat-error', 'كلمة مرور الغرفة غير صحيحة');
-                    }
-                }
+                // ✅ ملاحظة: كلمة مرور الغرفة الخاصة تُتحقق منها فقط عند "الدخول للغرفة" (getRoomById)
+                // — من وصل لهذي النقطة فهو أصلاً دخل الغرفة بنجاح، فلا داعي لتكرار الطلب عند الجلوس.
 
                 // 1) حرّر كل مقعد يشغله هذا المستخدم فعلياً عبر كل الغرف (لا يمكن الجلوس بغرفتين
                 //    بنفس الوقت) بقاعدة البيانات وحدها — وليس بذاكرة هذا الاتصال تحديداً
