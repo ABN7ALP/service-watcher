@@ -634,14 +634,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ يُستدعى من قالب أي غرفة (الرسمية أو غرفة مستخدم) لإدراج منطقة الدردشة داخل إطارها
     function renderRoomChatMarkup() {
         return `
-            <div id="room-chat-messages" class="text-[12px] leading-snug space-y-1 max-h-[16vh] overflow-y-auto px-1 mt-2 mb-1.5"></div>
-            <div class="flex items-center gap-2 px-1 pb-1">
-                <button id="room-chat-toggle-btn" class="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-purple-400 flex-shrink-0" title="دردشة الغرفة">
-                    <i class="fas fa-comment-dots text-sm"></i>
-                </button>
-                <div id="room-chat-input-row" class="hidden flex-1 items-center gap-2">
-                    <input id="room-chat-input" maxlength="300" placeholder="اكتب رسالة..." class="flex-1 bg-gray-700/60 border border-gray-600 rounded-full px-3 py-1.5 text-xs text-white focus:ring-purple-500 focus:border-purple-500">
-                    <button id="room-chat-send-btn" class="w-7 h-7 rounded-full bg-purple-600 hover:bg-purple-700 flex items-center justify-center text-white flex-shrink-0"><i class="fas fa-paper-plane text-[10px]"></i></button>
+            <div class="room-chat-dock">
+                <div id="room-chat-messages" class="text-[12px] leading-snug space-y-1 max-h-[16vh] overflow-y-auto px-1"></div>
+                <div class="flex items-center gap-2 px-1 pt-1">
+                    <button id="room-chat-toggle-btn" class="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-purple-400 flex-shrink-0" title="دردشة الغرفة">
+                        <i class="fas fa-comment-dots text-sm"></i>
+                    </button>
+                    <div id="room-chat-input-row" class="hidden flex-1 items-center gap-2">
+                        <input id="room-chat-input" maxlength="300" placeholder="اكتب رسالة..." class="flex-1 bg-gray-700/60 border border-gray-600 rounded-full px-3 py-1.5 text-xs text-white focus:ring-purple-500 focus:border-purple-500">
+                        <button id="room-chat-send-btn" class="w-7 h-7 rounded-full bg-purple-600 hover:bg-purple-700 flex items-center justify-center text-white flex-shrink-0"><i class="fas fa-paper-plane text-[10px]"></i></button>
+                    </div>
                 </div>
             </div>
         `;
@@ -992,6 +994,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         </button>
                     ` : ''}
                 </div>
+                ${!isMe ? `
+                    <div class="flex items-center gap-2 mt-4">
+                        <button id="profile-send-gift-btn" class="flex-1 bg-pink-600 hover:bg-pink-700 rounded-lg py-2 text-sm font-bold flex items-center justify-center gap-2"><i class="fas fa-gift"></i> إرسال هدية</button>
+                        <button id="profile-send-reaction-btn" class="w-10 h-10 rounded-lg bg-gray-700 hover:bg-gray-600 flex items-center justify-center text-lg" title="تفاعل"><i class="fas fa-face-laugh-beam"></i></button>
+                    </div>
+                ` : ''}
             `;
 
             if (canManage) {
@@ -1000,9 +1008,55 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     showSeatModerationMenu(roomId, seatNumber, userId, p.username);
                 });
             }
+            if (!isMe) {
+                modal.querySelector('#profile-send-gift-btn').addEventListener('click', () => {
+                    modal.remove();
+                    showGiftStoreModal(userId, p.username); // ✅ إعادة استخدام نظام الهدايا الموجود أصلاً بالمشروع
+                });
+                modal.querySelector('#profile-send-reaction-btn').addEventListener('click', () => {
+                    modal.remove();
+                    showReactionPicker(roomId, seatNumber);
+                });
+            }
         } catch (error) {
             console.error('Failed to load profile:', error);
         }
+    }
+
+    // ✅ منتقي الإيموجي المتحرك — يظهر التفاعل فوق صورة المستخدم عند الجميع بالغرفة لحظياً
+    function showReactionPicker(roomId, seatNumber) {
+        const emojis = ['❤️', '😂', '👏', '🔥', '😍', '👍', '🎉', '😮'];
+        const modal = document.createElement('div');
+        modal.id = 'reaction-picker-modal';
+        modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 w-full md:w-auto">
+                <div class="grid grid-cols-4 gap-3">
+                    ${emojis.map(e => `<button data-emoji="${e}" class="reaction-emoji-btn text-3xl p-2 rounded-lg hover:bg-gray-700">${e}</button>`).join('')}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'reaction-picker-modal') modal.remove(); });
+        modal.querySelectorAll('.reaction-emoji-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                socket.emit('send-seat-reaction', { roomId, seatNumber, emoji: btn.dataset.emoji });
+                modal.remove();
+            });
+        });
+    }
+
+    // ✅ يعرض الإيموجي المتحرك فوق صورة المقعد لثوانٍ قليلة ثم يختفي تلقائياً
+    function playSeatReaction(seatNumber, emoji) {
+        const voiceGrid = document.getElementById('voice-chat-grid');
+        if (!voiceGrid) return;
+        const seatEl = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"]`);
+        if (!seatEl) return;
+        const el = document.createElement('div');
+        el.className = 'voice-seat-reaction';
+        el.textContent = emoji;
+        seatEl.appendChild(el);
+        setTimeout(() => el.remove(), 1500);
     }
 
     // ✅ قائمة إدارة مقعد — تظهر فقط للمضيف/المسؤول عبر أيقونة "إدارة الغرفة" بالملف الشخصي
@@ -3269,6 +3323,11 @@ function showXpGainAnimation(amount) {
         if (roomId !== roomChatCurrentRoomId) return;
         // ✅ إعادة تحميل بسيطة لآخر 50 رسالة بعد أي تنظيف (أبسط وأضمن من تتبع كل معرّف محذوف)
         enterRoomChat(roomId);
+    });
+
+    socket.on('seat-reaction-played', ({ roomId, seatNumber, emoji }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        playSeatReaction(seatNumber, emoji);
     });
 
     socket.on('seat-error', (message) => {
