@@ -408,7 +408,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function activateHomeButton() { switchToView('arena'); }
 
     function switchToView(viewId) {
-        if (viewId !== 'arena') leaveRoomChatUI(); // ✅ دردشة الغرفة خاصة بمشاهدتها فقط، تختفي بمغادرة القسم
+        if (viewId !== 'arena') {
+            leaveRoomChatUI(); // ✅ دردشة الغرفة خاصة بمشاهدتها فقط، تختفي بمغادرة القسم
+            exitFullscreenRoomMode();
+        }
 
         // تفعيل الشريط الجانبي (سطح المكتب)
         navItems.forEach(i => i.classList.remove('bg-purple-600', 'text-white'));
@@ -640,6 +643,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <button id="room-chat-toggle-btn" class="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-purple-400 flex-shrink-0" title="دردشة الغرفة">
                         <i class="fas fa-comment-dots text-sm"></i>
                     </button>
+                    <button id="room-my-reaction-btn" class="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-amber-400 flex-shrink-0" title="تفاعل">
+                        <i class="fas fa-face-laugh-beam text-sm"></i>
+                    </button>
+                    <button id="room-gift-icon-btn" class="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-pink-400 flex-shrink-0" title="الهدايا">
+                        <i class="fas fa-gift text-sm"></i>
+                    </button>
                     <div id="room-chat-input-row" class="hidden flex-1 items-center gap-2">
                         <input id="room-chat-input" maxlength="300" placeholder="اكتب رسالة..." class="flex-1 bg-gray-700/60 border border-gray-600 rounded-full px-3 py-1.5 text-xs text-white focus:ring-purple-500 focus:border-purple-500">
                         <button id="room-chat-send-btn" class="w-7 h-7 rounded-full bg-purple-600 hover:bg-purple-700 flex items-center justify-center text-white flex-shrink-0"><i class="fas fa-paper-plane text-[10px]"></i></button>
@@ -663,6 +672,20 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         document.getElementById('room-chat-send-btn')?.addEventListener('click', sendRoomChatMessage);
         document.getElementById('room-chat-input')?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') sendRoomChatMessage();
+        });
+
+        // ✅ التفاعل يعمل فقط على مقعدي أنا (مو على شخص ثاني)
+        document.getElementById('room-my-reaction-btn')?.addEventListener('click', () => {
+            if (!myVoiceSeatNumber || myVoiceRoomId !== currentVoiceRoomId) {
+                showNotification('اجلس على مقعد أولاً حتى تقدر تتفاعل', 'info');
+                return;
+            }
+            showReactionPicker(currentVoiceRoomId, myVoiceSeatNumber);
+        });
+
+        // ✅ زر هدايا مبسّط بشريط الغرفة (اختيار المستلم التفصيلي قادم بمرحلة لاحقة)
+        document.getElementById('room-gift-icon-btn')?.addEventListener('click', () => {
+            showNotification('اضغط صورة أي شخص بالمقاعد لإرسال هدية له', 'info');
         });
     }
 
@@ -711,6 +734,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         roomChatCurrentRoomId = null;
     }
 
+    // ✅ وضع "الغرفة ملء الشاشة" — يخفي هيدر المنصة والتنقّل بالكامل، بالضبط زي التطبيقات المشهورة
+    function enterFullscreenRoomMode() {
+        document.body.classList.add('in-voice-room');
+    }
+    function exitFullscreenRoomMode() {
+        document.body.classList.remove('in-voice-room');
+    }
+
     // =====================================================
     // ✅ متصفح الغرف الصوتية (المرحلة 2 — نظام الغرف المتعددة)
     // =====================================================
@@ -751,6 +782,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     async function showRoomBrowserView() {
         currentVoiceRoomId = null;
         leaveRoomChatUI();
+        exitFullscreenRoomMode();
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-3">
                 <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
@@ -882,6 +914,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         currentVoiceRoomId = room.id;
         currentRoomPassword = password || null;
         currentRoomMyRole = 'guest';
+        enterFullscreenRoomMode();
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-3">
                 <div class="flex items-center gap-2 min-w-0">
@@ -997,7 +1030,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 ${!isMe ? `
                     <div class="flex items-center gap-2 mt-4">
                         <button id="profile-send-gift-btn" class="flex-1 bg-pink-600 hover:bg-pink-700 rounded-lg py-2 text-sm font-bold flex items-center justify-center gap-2"><i class="fas fa-gift"></i> إرسال هدية</button>
-                        <button id="profile-send-reaction-btn" class="w-10 h-10 rounded-lg bg-gray-700 hover:bg-gray-600 flex items-center justify-center text-lg" title="تفاعل"><i class="fas fa-face-laugh-beam"></i></button>
                     </div>
                 ` : ''}
             `;
@@ -1012,10 +1044,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 modal.querySelector('#profile-send-gift-btn').addEventListener('click', () => {
                     modal.remove();
                     showGiftStoreModal(userId, p.username); // ✅ إعادة استخدام نظام الهدايا الموجود أصلاً بالمشروع
-                });
-                modal.querySelector('#profile-send-reaction-btn').addEventListener('click', () => {
-                    modal.remove();
-                    showReactionPicker(roomId, seatNumber);
                 });
             }
         } catch (error) {
@@ -1350,6 +1378,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         currentVoiceRoomId = 'main';
         currentRoomPassword = null;
         currentRoomMyRole = 'guest';
+        enterFullscreenRoomMode();
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-4">
                 <div class="flex items-center gap-2">
