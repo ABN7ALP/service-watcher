@@ -556,3 +556,20 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     z-index: 6;
 }
 
+/* ✅ وضع "الغرفة ملء الشاشة" — يخفي هيدر المنصة/الرصيد والتنقّل بالكامل بمجرد فتح أي غرفة،
+   بالضبط زي التطبيقات المشهورة (لا شيء يشتت النظر عن الغرفة نفسها) */
+body.in-voice-room #app-header,
+body.in-voice-room #mobile-bottom-nav,
+body.in-voice-room #sidebar {
+    display: none !important;
+}
+body.in-voice-room .container {
+    padding: 0 !important;
+    max-width: 100% !important;
+}
+body.in-voice-room #main-content {
+    grid-column: span 12 / span 12 !important;
+    border-radius: 0 !important;
+    min-height: 100vh !important;
+}
+
