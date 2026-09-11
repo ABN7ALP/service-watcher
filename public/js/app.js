@@ -488,10 +488,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function renderVoiceSeatContent(seatEl, seatData) {
         const isAdminSeat = seatEl.dataset.isAdminSeat === '1';
         seatEl.classList.remove('occupied-seat', 'my-seat', 'locked-seat');
+        seatEl.dataset.isLocked = '0';
+        delete seatEl.dataset.userId;
         seatEl.title = '';
 
         if (seatData && seatData.isLocked) {
             seatEl.classList.add('locked-seat');
+            seatEl.dataset.isLocked = '1';
             seatEl.innerHTML = '<i class="fas fa-lock"></i>';
             seatEl.title = 'مقعد مقفل';
             return;
@@ -517,18 +520,52 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     function updateVoiceControlBar() {
         const bar = document.getElementById('voice-control-bar');
-        if (!bar) return;
-        const isVisible = !!myVoiceSeatNumber;
-        // ✅ حركة ظهور/اختفاء أنيقة بدل التبديل الفجائي بين مخفي وظاهر
-        if (isVisible && bar.classList.contains('hidden')) {
-            bar.classList.remove('hidden');
-            bar.classList.add('voice-bar-enter');
-            setTimeout(() => bar.classList.remove('voice-bar-enter'), 260);
-        } else if (!isVisible) {
-            bar.classList.add('hidden');
+        const bubble = document.getElementById('room-floating-bubble');
+        const amSeated = !!myVoiceSeatNumber;
+        const viewingMyRoom = amSeated && currentVoiceRoomId === myVoiceRoomId;
+
+        // ✅ الشريط الداخلي: فقط وأنت فعلياً تشاهد الغرفة اللي أنت قاعد فيها
+        if (bar) {
+            if (viewingMyRoom && bar.classList.contains('hidden')) {
+                bar.classList.remove('hidden');
+                bar.classList.add('voice-bar-enter');
+                setTimeout(() => bar.classList.remove('voice-bar-enter'), 260);
+            } else if (!viewingMyRoom) {
+                bar.classList.add('hidden');
+            }
+            const label = document.getElementById('voice-control-bar-seat-label');
+            if (label) label.textContent = myVoiceSeatNumber ? `مقعد ${myVoiceSeatNumber}` : '';
         }
-        const label = document.getElementById('voice-control-bar-seat-label');
-        if (label) label.textContent = myVoiceSeatNumber ? `مقعد ${myVoiceSeatNumber}` : '';
+
+        // ✅ الفقاعة العائمة: تظهر فقط وأنت قاعد لكن مو شايف شاشة غرفتك حالياً (بتصفح قسم/غرفة ثانية)
+        if (bubble) {
+            bubble.classList.toggle('hidden', !(amSeated && !viewingMyRoom));
+            if (!(amSeated && !viewingMyRoom)) {
+                document.getElementById('room-bubble-menu')?.classList.add('hidden');
+            }
+        }
+    }
+
+    // ✅ الرجوع لغرفتي التي أنا قاعد فيها من أي مكان بالتطبيق (عبر الفقاعة العائمة)
+    async function returnToMyRoom() {
+        if (!myVoiceRoomId) return;
+        navItems.forEach(i => i.classList.remove('bg-purple-600', 'text-white'));
+        document.querySelector(`.nav-item[href="#arena"]`)?.classList.add('bg-purple-600', 'text-white');
+        document.querySelectorAll('.mobile-nav-item').forEach(i => i.classList.remove('active'));
+        document.querySelector(`.mobile-nav-item[data-target="arena"]`)?.classList.add('active');
+
+        if (myVoiceRoomId === 'main') { showVoiceRoomsView(); return; }
+        try {
+            const response = await fetch(`/api/voice-room/rooms/${myVoiceRoomId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            if (response.ok && result.status === 'success') {
+                showCustomRoomView({ id: result.id, name: result.name, seatCount: result.seatCount, isPrivate: result.isPrivate, isOfficial: false }, currentRoomPassword);
+            } else {
+                showNotification('تعذر الرجوع للغرفة', 'error');
+            }
+        } catch (error) {
+            console.error('Failed to return to room:', error);
+        }
     }
 
     // ✅ يُنشأ مرة واحدة فقط، مباشرة بجسم الصفحة (وليس داخل mainContent الذي يحمل backdrop-blur
@@ -555,74 +592,77 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
     initVoiceControlBar();
 
+    // ✅ الفقاعة العائمة — بأسلوب التطبيقات المشهورة: دائرة صغيرة تخبرك أنك لسا داخل الغرفة
+    // وأنت تتصفح مكان ثاني. الضغط عليها يفتح 3 دوائر صغيرة (رجوع للغرفة / كتم / خروج).
+    function initRoomFloatingBubble() {
+        if (document.getElementById('room-floating-bubble')) return;
+        const wrap = document.createElement('div');
+        wrap.id = 'room-floating-bubble';
+        wrap.className = 'hidden fixed bottom-20 md:bottom-6 left-4 md:left-8 z-40 flex flex-col items-center gap-2';
+        wrap.innerHTML = `
+            <div id="room-bubble-menu" class="hidden flex-col items-center gap-2">
+                <button id="bubble-return-btn" class="w-9 h-9 rounded-full bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center shadow-lg" title="رجوع للغرفة"><i class="fas fa-door-open text-xs"></i></button>
+                <button id="bubble-mute-btn" class="w-9 h-9 rounded-full bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center shadow-lg" title="كتم"><i class="fas fa-microphone text-xs"></i></button>
+                <button id="bubble-leave-btn" class="w-9 h-9 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center shadow-lg" title="مغادرة المقعد"><i class="fas fa-times text-xs"></i></button>
+            </div>
+            <button id="room-bubble-main-btn" class="w-11 h-11 rounded-full bg-gray-900 border-2 border-purple-400 shadow-2xl flex items-center justify-center text-white">
+                <i class="fas fa-microphone-lines text-sm"></i>
+            </button>
+        `;
+        document.body.appendChild(wrap);
+
+        document.getElementById('room-bubble-main-btn').addEventListener('click', () => {
+            document.getElementById('room-bubble-menu').classList.toggle('hidden');
+        });
+        document.getElementById('bubble-return-btn').addEventListener('click', () => {
+            document.getElementById('room-bubble-menu').classList.add('hidden');
+            returnToMyRoom();
+        });
+        document.getElementById('bubble-mute-btn').addEventListener('click', toggleVoiceMute);
+        document.getElementById('bubble-leave-btn').addEventListener('click', leaveVoiceSeat);
+    }
+    initRoomFloatingBubble();
+
     // =====================================================
     // ✅ دردشة خاصة بكل غرفة — بديل الدردشة العامة القديمة
     // -----------------------------------------------------
-    // أيقونة صغيرة ثابتة (بأسلوب التطبيقات المشهورة: Bigo/Yalla/لاما/تاكا) —
-    // الضغط عليها يفتح لوحة رسائل منزلقة من الأسفل + صندوق كتابة، بدل نافذة كاملة الشاشة.
+    // مدمجة داخل إطار الغرفة نفسه (وليست عنصراً عائماً منفصلاً) — الرسائل تبقى ظاهرة دائماً
+    // أسفل المقاعد بغض النظر عن إظهار/إخفاء صندوق الكتابة، وبدون خلفية قابلة للتغيير.
     // =====================================================
     let roomChatCurrentRoomId = null;
-    const CHAT_BG_STORAGE_KEY = 'voiceRoomChatBg';
-    const chatBgPresets = [
-        'linear-gradient(135deg, rgba(88,28,135,0.55), rgba(17,24,39,0.75))',
-        'linear-gradient(135deg, rgba(15,76,129,0.55), rgba(17,24,39,0.75))',
-        'linear-gradient(135deg, rgba(136,19,55,0.55), rgba(17,24,39,0.75))',
-        'linear-gradient(135deg, rgba(6,95,70,0.55), rgba(17,24,39,0.75))',
-        'rgba(17,24,39,0.75)' // بسيط بدون تدرج
-    ];
 
-    function applyChatBackground() {
-        const messagesBox = document.getElementById('room-chat-messages');
-        if (!messagesBox) return;
-        const saved = localStorage.getItem(CHAT_BG_STORAGE_KEY);
-        if (saved && saved.startsWith('data:image')) {
-            messagesBox.style.backgroundImage = `url(${saved})`;
-            messagesBox.style.backgroundSize = 'cover';
-            messagesBox.style.backgroundPosition = 'center';
-        } else {
-            messagesBox.style.backgroundImage = 'none';
-            messagesBox.style.background = saved || chatBgPresets[0];
-        }
-    }
-
-    function initRoomChatUI() {
-        if (document.getElementById('room-chat-fab')) return;
-
-        const fab = document.createElement('button');
-        fab.id = 'room-chat-fab';
-        fab.className = 'hidden fixed bottom-20 md:bottom-6 left-4 md:left-8 z-40 w-12 h-12 rounded-full bg-gray-800/95 border border-gray-600 shadow-xl flex items-center justify-center text-white text-lg active:scale-90 transition-transform';
-        fab.innerHTML = '<i class="fas fa-comment-dots"></i>';
-        document.body.appendChild(fab);
-
-        const panel = document.createElement('div');
-        panel.id = 'room-chat-panel';
-        panel.className = 'hidden fixed inset-x-0 bottom-24 md:bottom-20 z-40 flex flex-col items-stretch pointer-events-none';
-        panel.innerHTML = `
-            <div id="room-chat-messages" class="pointer-events-auto mx-3 mb-2 rounded-xl p-2.5 max-h-[32vh] overflow-y-auto text-[13px] space-y-1.5"></div>
-            <div class="pointer-events-auto flex items-center gap-2 mx-3">
-                <button id="room-chat-bg-btn" class="w-9 h-9 rounded-full bg-gray-700/95 flex items-center justify-center text-gray-300 flex-shrink-0" title="خلفية الدردشة"><i class="fas fa-palette"></i></button>
-                <input id="room-chat-input" maxlength="300" placeholder="اكتب رسالة..." class="flex-1 bg-gray-800/95 border border-gray-600 rounded-full px-4 py-2 text-sm text-white focus:ring-purple-500 focus:border-purple-500">
-                <button id="room-chat-send-btn" class="w-9 h-9 rounded-full bg-purple-600 hover:bg-purple-700 flex items-center justify-center text-white flex-shrink-0"><i class="fas fa-paper-plane text-xs"></i></button>
+    // ✅ يُستدعى من قالب أي غرفة (الرسمية أو غرفة مستخدم) لإدراج منطقة الدردشة داخل إطارها
+    function renderRoomChatMarkup() {
+        return `
+            <div id="room-chat-messages" class="text-[12px] leading-snug space-y-1 max-h-[16vh] overflow-y-auto px-1 mt-2 mb-1.5"></div>
+            <div class="flex items-center gap-2 px-1 pb-1">
+                <button id="room-chat-toggle-btn" class="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-purple-400 flex-shrink-0" title="دردشة الغرفة">
+                    <i class="fas fa-comment-dots text-sm"></i>
+                </button>
+                <div id="room-chat-input-row" class="hidden flex-1 items-center gap-2">
+                    <input id="room-chat-input" maxlength="300" placeholder="اكتب رسالة..." class="flex-1 bg-gray-700/60 border border-gray-600 rounded-full px-3 py-1.5 text-xs text-white focus:ring-purple-500 focus:border-purple-500">
+                    <button id="room-chat-send-btn" class="w-7 h-7 rounded-full bg-purple-600 hover:bg-purple-700 flex items-center justify-center text-white flex-shrink-0"><i class="fas fa-paper-plane text-[10px]"></i></button>
+                </div>
             </div>
         `;
-        document.body.appendChild(panel);
+    }
 
-        fab.addEventListener('click', () => {
-            const isHidden = panel.classList.contains('hidden');
-            panel.classList.toggle('hidden', !isHidden);
-            fab.classList.toggle('bg-purple-600', isHidden);
-            if (isHidden) document.getElementById('room-chat-input').focus();
+    // ✅ يربط أحداث صندوق الدردشة — يُستدعى بعد إدراج القالب أعلاه بالصفحة
+    function wireRoomChatUI() {
+        const toggleBtn = document.getElementById('room-chat-toggle-btn');
+        const inputRow = document.getElementById('room-chat-input-row');
+        if (!toggleBtn || !inputRow) return;
+        toggleBtn.addEventListener('click', () => {
+            const willShow = inputRow.classList.contains('hidden');
+            inputRow.classList.toggle('hidden', !willShow);
+            inputRow.classList.toggle('flex', willShow);
+            if (willShow) document.getElementById('room-chat-input')?.focus();
         });
-
-        document.getElementById('room-chat-send-btn').addEventListener('click', sendRoomChatMessage);
-        document.getElementById('room-chat-input').addEventListener('keydown', (e) => {
+        document.getElementById('room-chat-send-btn')?.addEventListener('click', sendRoomChatMessage);
+        document.getElementById('room-chat-input')?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') sendRoomChatMessage();
         });
-        document.getElementById('room-chat-bg-btn').addEventListener('click', showChatBackgroundPicker);
-
-        applyChatBackground();
     }
-    initRoomChatUI();
 
     function sendRoomChatMessage() {
         const input = document.getElementById('room-chat-input');
@@ -638,10 +678,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (!box) return;
         const el = document.createElement('div');
         el.dataset.msgId = msg._id;
-        el.className = 'leading-snug';
         const safeName = escapeHtml(msg.sender?.username || '');
         const safeContent = escapeHtml(msg.content || '');
-        el.innerHTML = `<span class="font-bold text-purple-300">${safeName}:</span> <span class="text-gray-100">${safeContent}</span>`;
+        el.innerHTML = `<span class="font-bold text-purple-300">${safeName}:</span> <span class="text-gray-200">${safeContent}</span>`;
         box.appendChild(el);
         box.scrollTop = box.scrollHeight;
     }
@@ -650,15 +689,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     async function enterRoomChat(roomId) {
         if (roomChatCurrentRoomId) socket.emit('leave-room-chat', { roomId: roomChatCurrentRoomId });
         roomChatCurrentRoomId = roomId;
-
-        const fab = document.getElementById('room-chat-fab');
-        const panel = document.getElementById('room-chat-panel');
-        const box = document.getElementById('room-chat-messages');
-        if (fab) fab.classList.remove('hidden');
-        if (panel) panel.classList.add('hidden');
-        if (fab) fab.classList.remove('bg-purple-600');
-        if (box) box.innerHTML = '';
-
         socket.emit('join-room-chat', { roomId });
 
         try {
@@ -672,59 +702,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
     }
 
-    // ✅ يُستدعى عند مغادرة الغرفة (رجوع لقائمة التصفح) — يخفي أدوات الدردشة ويغادر القناة
+    // ✅ يُستدعى عند مغادرة شاشة الغرفة (رجوع لقائمة التصفح أو قسم آخر) — يغادر قناة الدردشة فقط
+    // (الواجهة نفسها تختفي تلقائياً مع استبدال محتوى الغرفة، بما إنها أصبحت جزءاً من قالبها)
     function leaveRoomChatUI() {
         if (roomChatCurrentRoomId) socket.emit('leave-room-chat', { roomId: roomChatCurrentRoomId });
         roomChatCurrentRoomId = null;
-        document.getElementById('room-chat-fab')?.classList.add('hidden');
-        document.getElementById('room-chat-panel')?.classList.add('hidden');
-    }
-
-    // ✅ اختيار خلفية الدردشة — خلفيات جاهزة أو صورة من جهازك (تُحفظ محلياً على متصفحك فقط)
-    function showChatBackgroundPicker() {
-        const modal = document.createElement('div');
-        modal.id = 'chat-bg-modal';
-        modal.className = 'fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[60]';
-        modal.innerHTML = `
-            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 w-full md:max-w-xs text-white">
-                <h3 class="text-sm font-bold mb-3"><i class="fas fa-palette text-purple-400"></i> خلفية الدردشة</h3>
-                <div class="grid grid-cols-5 gap-2 mb-3">
-                    ${chatBgPresets.map((bg, i) => `<button data-bg="${i}" class="chat-bg-preset-btn aspect-square rounded-lg border-2 border-transparent hover:border-purple-400" style="background:${bg}"></button>`).join('')}
-                </div>
-                <label class="w-full block text-center py-2.5 rounded-lg bg-gray-700 hover:bg-gray-600 cursor-pointer text-sm">
-                    <i class="fas fa-image"></i> رفع صورة من جهازك
-                    <input type="file" id="chat-bg-file-input" accept="image/*" class="hidden">
-                </label>
-                <button id="chat-bg-cancel" class="w-full text-center py-2.5 mt-2 rounded-lg bg-gray-700 text-gray-300">إغلاق</button>
-            </div>
-        `;
-        document.body.appendChild(modal);
-        modal.addEventListener('click', (e) => { if (e.target.id === 'chat-bg-modal') modal.remove(); });
-        modal.querySelector('#chat-bg-cancel').addEventListener('click', () => modal.remove());
-
-        modal.querySelectorAll('.chat-bg-preset-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                localStorage.setItem(CHAT_BG_STORAGE_KEY, chatBgPresets[parseInt(btn.dataset.bg)]);
-                applyChatBackground();
-                modal.remove();
-            });
-        });
-
-        modal.querySelector('#chat-bg-file-input').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            if (file.size > 3 * 1024 * 1024) {
-                showNotification('حجم الصورة كبير جداً (الحد 3 ميجا)', 'error');
-                return;
-            }
-            const reader = new FileReader();
-            reader.onload = () => {
-                localStorage.setItem(CHAT_BG_STORAGE_KEY, reader.result);
-                applyChatBackground();
-                modal.remove();
-            };
-            reader.readAsDataURL(file);
-        });
     }
 
     // =====================================================
@@ -845,6 +827,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     let currentRoomPassword = null; // ✅ كلمة المرور المُتحقق منها للغرفة المعروضة حالياً (لإعادة المزامنة عند إعادة الاتصال)
     let currentRoomMyRole = 'guest'; // ✅ دوري بالغرفة المعروضة حالياً: host / moderator / guest
+    let currentRoomModerators = []; // ✅ قائمة مسؤولي الغرفة المعروضة حالياً (لعرضهم بنافذة الإعدادات)
 
     function enterVoiceRoom(room, password) {
         if (room.isOfficial) {
@@ -890,6 +873,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     // ✅ غرفة أنشأها مستخدم — قابلة للجلوس فعلياً الآن (نفس منطق الغرفة الرسمية، خاص بهذي الغرفة فقط)
     async function showCustomRoomView(room, password) {
+        // ✅ الدخول لغرفة أخرى يُنزلني تلقائياً من مقعدي بالغرفة السابقة (لا يمكن التواجد بغرفتين)
+        if (myVoiceSeatNumber && myVoiceRoomId && myVoiceRoomId !== room.id) {
+            leaveVoiceSeat();
+        }
         currentVoiceRoomId = room.id;
         currentRoomPassword = password || null;
         currentRoomMyRole = 'guest';
@@ -908,10 +895,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     </button>
                 </div>
             </div>
-            <div id="voice-chat-grid" class="voice-seats-flex pb-24 md:pb-2"></div>
+            <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
+            ${renderRoomChatMarkup()}
         `;
         document.getElementById('back-to-rooms-btn-custom').addEventListener('click', showRoomBrowserView);
         document.getElementById('room-settings-btn').addEventListener('click', () => showRoomSettingsModal(room));
+        wireRoomChatUI();
 
         renderVoiceRoomSeats(room.id, room.seatCount, 0, room.isPrivate);
         await fetchAndRenderVoiceSnapshot(room.id, currentRoomPassword);
@@ -935,13 +924,18 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             if (isAdminSeat) seat.title = canSitHere ? 'مقعد إدارة' : 'مقعد محجوز للإدارة';
             seat.addEventListener('click', () => {
                 const occupantId = seat.dataset.userId;
+                const isLocked = seat.dataset.isLocked === '1';
+                const canManage = roomId !== 'main' && (currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator');
+
                 if (occupantId) {
                     // ✅ الضغط على أي صورة (حتى صورتي أنا) يفتح الملف الشخصي — المغادرة فقط من زر الشريط العائم
                     showUserProfileSheet(roomId, i, occupantId, seat.title || '');
-                } else if (isPrivate && !(roomId !== 'main' && (currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator'))) {
-                    promptRoomPassword((pwd) => joinVoiceSeat(i, pwd));
-                } else {
-                    joinVoiceSeat(i, currentRoomPassword);
+                } else if (isLocked && canManage) {
+                    // ✅ فتح قفل المقعد مباشرة (كان المضيف لا يقدر يعيد فتحه بعد قفله)
+                    socket.emit('host-toggle-lock-seat', { roomId, seatNumber: i });
+                } else if (!isLocked) {
+                    // ✅ كلمة مرور الغرفة تُتحقق منها فقط عند الدخول للغرفة نفسها، لا تُطلب مجدداً عند الجلوس
+                    joinVoiceSeat(i);
                 }
             });
             voiceGrid.appendChild(seat);
@@ -1015,20 +1009,29 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function showSeatModerationMenu(roomId, seatNumber, targetUserId, username) {
         const modal = document.createElement('div');
         modal.id = 'seat-mod-modal';
-        modal.className = 'fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50';
+        modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50';
         modal.innerHTML = `
-            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 w-full md:max-w-xs text-white">
-                <p class="text-center text-sm text-gray-400 mb-3 truncate">${escapeHtml(username)}</p>
-                <button data-action="mute" class="w-full text-right py-3 px-4 rounded-lg hover:bg-gray-700 flex items-center gap-3"><i class="fas fa-microphone-slash text-amber-400 w-5"></i> كتم</button>
-                <button data-action="kick" class="w-full text-right py-3 px-4 rounded-lg hover:bg-gray-700 flex items-center gap-3"><i class="fas fa-user-slash text-red-400 w-5"></i> إنزال من البث</button>
-                <button data-action="lock" class="w-full text-right py-3 px-4 rounded-lg hover:bg-gray-700 flex items-center gap-3"><i class="fas fa-lock text-gray-400 w-5"></i> إنزال وقفل المقعد</button>
-                ${currentRoomMyRole === 'host' ? `<button data-action="mod" class="w-full text-right py-3 px-4 rounded-lg hover:bg-gray-700 flex items-center gap-3"><i class="fas fa-user-shield text-emerald-400 w-5"></i> تعيين كمسؤول</button>` : ''}
-                <button id="seat-mod-cancel" class="w-full text-center py-2.5 mt-2 rounded-lg bg-gray-700 text-gray-300">إلغاء</button>
+            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-3.5 w-full md:w-auto text-white">
+                <p class="text-center text-[11px] text-gray-400 mb-2.5 truncate">${escapeHtml(username)}</p>
+                <div class="flex items-center justify-center gap-3">
+                    <button data-action="mute" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
+                        <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-microphone-slash text-amber-400"></i></span>كتم
+                    </button>
+                    <button data-action="kick" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
+                        <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-user-slash text-red-400"></i></span>إنزال
+                    </button>
+                    <button data-action="lock" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
+                        <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-lock text-gray-300"></i></span>قفل المقعد
+                    </button>
+                    ${currentRoomMyRole === 'host' ? `
+                    <button data-action="mod" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
+                        <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-user-shield text-emerald-400"></i></span>مسؤول
+                    </button>` : ''}
+                </div>
             </div>
         `;
         document.body.appendChild(modal);
         modal.addEventListener('click', (e) => { if (e.target.id === 'seat-mod-modal') modal.remove(); });
-        modal.querySelector('#seat-mod-cancel').addEventListener('click', () => modal.remove());
         modal.querySelectorAll('[data-action]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const action = btn.dataset.action;
@@ -1067,6 +1070,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 const settingsBtn = document.getElementById('room-settings-btn');
                 if (settingsBtn) settingsBtn.classList.toggle('hidden', currentRoomMyRole !== 'host');
             }
+            if (result.moderators) currentRoomModerators = result.moderators;
 
             let foundSeat = null;
             result.seats.forEach(seatData => {
@@ -1099,12 +1103,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         modal.id = 'room-settings-modal';
         modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4';
         modal.innerHTML = `
-            <div class="bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-sm text-white">
+            <div class="bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-sm text-white max-h-[85vh] overflow-y-auto">
                 <h3 class="text-lg font-bold mb-4"><i class="fas fa-cog text-purple-400"></i> إعدادات الغرفة</h3>
                 <form id="room-settings-form" class="space-y-4">
                     <div>
                         <label class="text-sm">اسم الغرفة</label>
                         <input type="text" name="name" value="${escapeHtml(room.name)}" maxlength="40" required class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
+                    </div>
+                    <div>
+                        <label class="text-sm">إعلان الغرفة (اختياري)</label>
+                        <input type="text" name="description" value="${escapeHtml(room.description || '')}" maxlength="120" placeholder="اكتب وصفاً قصيراً للغرفة..." class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
                     </div>
                     <div class="flex items-center">
                         <input type="checkbox" id="settings-isPrivate" name="isPrivate" ${room.isPrivate ? 'checked' : ''} class="w-4 h-4 rounded">
@@ -1114,6 +1122,24 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         <label class="text-sm">${room.isPrivate ? 'كلمة مرور جديدة (اتركه فاضياً للإبقاء الحالية)' : 'كلمة المرور'}</label>
                         <input type="password" name="password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
                     </div>
+
+                    <div>
+                        <label class="text-sm block mb-1.5">المسؤولون المساعدون</label>
+                        <div id="settings-moderators-list" class="space-y-1.5">
+                            ${currentRoomModerators.length === 0
+                                ? '<p class="text-xs text-gray-500">لا يوجد مسؤولون بعد — عيّن أحداً من ملفه الشخصي داخل الغرفة</p>'
+                                : currentRoomModerators.map(m => `
+                                    <div class="flex items-center justify-between bg-gray-700/50 rounded-lg p-1.5" data-mod-id="${m.id}">
+                                        <div class="flex items-center gap-2 min-w-0">
+                                            <img src="${m.profileImage}" class="w-6 h-6 rounded-full flex-shrink-0">
+                                            <span class="text-xs truncate">${escapeHtml(m.username)}</span>
+                                        </div>
+                                        <button type="button" class="remove-mod-btn text-red-400 hover:text-red-300 text-xs px-2" data-mod-id="${m.id}">إزالة</button>
+                                    </div>
+                                `).join('')}
+                        </div>
+                    </div>
+
                     <div class="flex justify-end gap-3 pt-2">
                         <button type="button" id="cancel-room-settings" class="bg-gray-600 hover:bg-gray-500 text-white py-2 px-4 rounded-lg">إلغاء</button>
                         <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg">حفظ</button>
@@ -1127,6 +1153,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         modal.addEventListener('click', (e) => { if (e.target.id === 'room-settings-modal') modal.remove(); });
         modal.querySelector('#settings-isPrivate').addEventListener('change', (e) => {
             modal.querySelector('#settings-password-field').classList.toggle('hidden', !e.target.checked);
+        });
+
+        modal.querySelectorAll('.remove-mod-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const targetUserId = btn.dataset.modId;
+                socket.emit('host-set-moderator', { roomId: room.id, targetUserId, makeMod: false });
+                btn.closest('[data-mod-id]')?.remove();
+                currentRoomModerators = currentRoomModerators.filter(m => m.id !== targetUserId);
+                showNotification('تم إزالة صلاحية المسؤول', 'info');
+            });
         });
 
         const form = modal.querySelector('#room-settings-form');
@@ -1254,6 +1290,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     function showVoiceRoomsView() {
+        if (myVoiceSeatNumber && myVoiceRoomId && myVoiceRoomId !== 'main') {
+            leaveVoiceSeat();
+        }
         currentVoiceRoomId = 'main';
         currentRoomPassword = null;
         currentRoomMyRole = 'guest';
@@ -1267,9 +1306,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </div>
                 <span class="text-xs text-gray-400">80 مقعد</span>
             </div>
-            <div id="voice-chat-grid" class="voice-seats-flex pb-24 md:pb-2"></div>
+            <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
+            ${renderRoomChatMarkup()}
         `;
         document.getElementById('back-to-rooms-btn').addEventListener('click', showRoomBrowserView);
+        wireRoomChatUI();
 
         renderVoiceRoomSeats('main', 80, 5, false);
         // ✅ لقطة الحالة الحقيقية عند فتح الغرفة (كانت مفقودة بالكامل سابقاً)
@@ -3120,9 +3161,15 @@ function showXpGainAnimation(amount) {
 
     function syncMuteButtonUI(isMuted) {
         const btn = document.getElementById('voice-toggle-mute-btn');
-        if (!btn) return;
-        btn.classList.toggle('is-muted', isMuted);
-        btn.innerHTML = isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
+        if (btn) {
+            btn.classList.toggle('is-muted', isMuted);
+            btn.innerHTML = isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
+        }
+        const bubbleBtn = document.getElementById('bubble-mute-btn');
+        if (bubbleBtn) {
+            bubbleBtn.classList.toggle('is-muted', isMuted);
+            bubbleBtn.innerHTML = isMuted ? '<i class="fas fa-microphone-slash text-xs"></i>' : '<i class="fas fa-microphone text-xs"></i>';
+        }
     }
 
     // ✅ تحديث حي لمقاعد الغرفة الصوتية (تتحقق من وجود الشبكة بالصفحة أولاً لأن المستخدم قد يكون بقسم آخر)
