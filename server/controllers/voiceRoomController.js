@@ -1,6 +1,21 @@
 const mongoose = require('mongoose');
 const VoiceRoom = require('../models/VoiceRoom');
 const Message = require('../models/Message');
+const User = require('../models/User');
+
+// =====================================================
+// ✅ كتالوج خلفيات الغرفة — خلفية مجانية دائمة + خلفيات مدفوعة (10 كوينز / 5 أيام)
+// =====================================================
+const FREE_DEFAULT_BACKGROUND = 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=800&q=60';
+const PREMIUM_BACKGROUNDS = [
+    { id: 'bg_galaxy', url: 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=800&q=60', price: 10 },
+    { id: 'bg_neon', url: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?w=800&q=60', price: 10 },
+    { id: 'bg_gold', url: 'https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=800&q=60', price: 10 },
+    { id: 'bg_ocean', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=60', price: 10 },
+    { id: 'bg_desert', url: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?w=800&q=60', price: 10 },
+    { id: 'bg_forest', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=60', price: 10 }
+];
+const BACKGROUND_DAYS = 5;
 
 // =====================================================
 // ✅ GET /api/voice-room/rooms — قائمة التصفح (الرسمية + غرف المستخدمين)
@@ -101,6 +116,9 @@ exports.getRoomById = async (req, res) => {
             return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة أو أُغلقت' });
         }
 
+        // ✅ يسقط الخلفية المدفوعة تلقائياً لو انتهت مدتها قبل إرسال الرد
+        await room.checkBackgroundExpiry();
+
         const isHost = room.host && room.host._id.toString() === req.user.id;
         const isModerator = room.moderators.some(m => m.toString() === req.user.id);
 
@@ -140,6 +158,7 @@ exports.getRoomById = async (req, res) => {
             isPrivate: room.isPrivate,
             isLocked: room.isLocked,
             backgroundImage: room.backgroundImage,
+            backgroundExpiresAt: room.backgroundExpiresAt,
             seatCount: room.seatCount,
             adminSeatCount: room.adminSeatCount,
             seats,
@@ -168,7 +187,7 @@ exports.updateRoom = async (req, res) => {
             return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية تعديل هذه الغرفة' });
         }
 
-        const { name, description, isPrivate, password, isLocked, kickAll, backgroundImage, seatCount } = req.body;
+        const { name, description, isPrivate, password, isLocked, kickAll, seatCount } = req.body;
 
         if (name !== undefined) {
             const cleanName = String(name).trim();
@@ -197,17 +216,7 @@ exports.updateRoom = async (req, res) => {
             room.isPrivate = finalIsPrivate;
         }
 
-        // 🛡️ قائمة خلفيات مجانية جاهزة فقط حالياً (المتجر المدفوع مرحلة قادمة منفصلة)
-        if (backgroundImage !== undefined) {
-            const freeBackgrounds = [
-                null,
-                'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=800&q=60',
-                'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=800&q=60',
-                'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&q=60',
-                'https://images.unsplash.com/photo-1531265726475-91b64616e854?w=800&q=60'
-            ];
-            room.backgroundImage = freeBackgrounds.includes(backgroundImage) ? backgroundImage : null;
-        }
+        // ✅ الخلفية الآن تُدار عبر نقطتي /background/shop و/background/purchase المخصصتين (تدعم الشراء والانتهاء)
 
         // ✅ زيادة عدد المقاعد فقط (اتجاه واحد 8←15←24)
         if (seatCount !== undefined) {
@@ -311,6 +320,75 @@ exports.getVoiceRoomState = async (req, res) => {
             seatCount: room.seatCount,
             adminSeatCount: room.adminSeatCount,
             seats
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// =====================================================
+// ✅ GET /api/voice-room/background-shop — كتالوج الخلفيات (مجانية + مدفوعة)
+// =====================================================
+exports.getBackgroundShop = async (req, res) => {
+    res.json({
+        status: 'success',
+        freeDefault: FREE_DEFAULT_BACKGROUND,
+        premium: PREMIUM_BACKGROUNDS,
+        days: BACKGROUND_DAYS
+    });
+};
+
+// =====================================================
+// ✅ POST /api/voice-room/rooms/:id/background — تفعيل خلفية (مجانية فورية أو شراء مدفوعة)
+// =====================================================
+exports.purchaseBackground = async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غرفة غير صالح' });
+        }
+        const room = await VoiceRoom.findOne({ _id: req.params.id, status: 'active' });
+        if (!room) {
+            return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة' });
+        }
+        // 🛡️ المضيف فقط يغيّر خلفية غرفته
+        if (!room.host || room.host.toString() !== req.user.id) {
+            return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية تعديل هذه الغرفة' });
+        }
+
+        const { backgroundId } = req.body;
+
+        // ✅ الرجوع للخلفية المجانية الافتراضية — فوري ومجاني دائماً
+        if (backgroundId === 'free') {
+            room.backgroundImage = null;
+            room.backgroundExpiresAt = null;
+            await room.save();
+            return res.json({ status: 'success', backgroundImage: null, backgroundExpiresAt: null, newBalance: null });
+        }
+
+        // 🛡️ التحقق من وجود الخلفية بالكتالوج الفعلي بالسيرفر (لا نثق بسعر يرسله العميل)
+        const chosen = PREMIUM_BACKGROUNDS.find(bg => bg.id === backgroundId);
+        if (!chosen) {
+            return res.status(400).json({ status: 'fail', message: 'خلفية غير موجودة بالمتجر' });
+        }
+
+        const user = await User.findById(req.user.id);
+        if (!user || user.coins < chosen.price) {
+            return res.status(400).json({ status: 'fail', message: 'رصيد الكوينز غير كافٍ' });
+        }
+
+        user.coins -= chosen.price;
+        await user.save();
+
+        const expiresAt = new Date(Date.now() + BACKGROUND_DAYS * 24 * 60 * 60 * 1000);
+        room.backgroundImage = chosen.url;
+        room.backgroundExpiresAt = expiresAt;
+        await room.save();
+
+        res.json({
+            status: 'success',
+            backgroundImage: room.backgroundImage,
+            backgroundExpiresAt: room.backgroundExpiresAt,
+            newBalance: user.coins
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
