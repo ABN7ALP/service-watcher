@@ -844,6 +844,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function exitFullscreenRoomMode() {
         document.body.classList.remove('in-voice-room');
         document.getElementById('dm-floating-bubble')?.remove();
+        applyRoomBackground(null);
     }
 
     // =====================================================
@@ -966,6 +967,21 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentRoomPassword = null; // ✅ كلمة المرور المُتحقق منها للغرفة المعروضة حالياً (لإعادة المزامنة عند إعادة الاتصال)
     let currentRoomMyRole = 'guest'; // ✅ دوري بالغرفة المعروضة حالياً: host / moderator / guest
     let currentRoomModerators = []; // ✅ قائمة مسؤولي الغرفة المعروضة حالياً (لعرضهم بنافذة الإعدادات)
+    let currentRoomIsLocked = false;
+    let currentRoomBackgroundImage = null;
+    let currentRoomDescription = '';
+
+    // ✅ يطبّق خلفية الغرفة خلف كل شيء (المقاعد/الدردشة/الأيقونات) لكن داخل إطارها فقط
+    function applyRoomBackground(url) {
+        if (!mainContent) return;
+        if (url) {
+            mainContent.style.backgroundImage = `linear-gradient(rgba(17,24,39,0.55), rgba(17,24,39,0.55)), url(${url})`;
+            mainContent.style.backgroundSize = 'cover';
+            mainContent.style.backgroundPosition = 'center';
+        } else {
+            mainContent.style.backgroundImage = 'none';
+        }
+    }
 
     function enterVoiceRoom(room, password) {
         if (room.isOfficial) {
@@ -1018,6 +1034,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         currentVoiceRoomId = room.id;
         currentRoomPassword = password || null;
         currentRoomMyRole = 'guest';
+        currentRoomIsLocked = false;
+        currentRoomBackgroundImage = null;
+        currentRoomDescription = '';
         enterFullscreenRoomMode();
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-3">
@@ -1257,6 +1276,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 if (settingsBtn) settingsBtn.classList.toggle('hidden', currentRoomMyRole !== 'host');
             }
             if (result.moderators) currentRoomModerators = result.moderators;
+            if (typeof result.isLocked === 'boolean') currentRoomIsLocked = result.isLocked;
+            if (result.backgroundImage !== undefined) currentRoomBackgroundImage = result.backgroundImage;
+            if (result.description !== undefined) currentRoomDescription = result.description;
+            applyRoomBackground(currentRoomBackgroundImage);
 
             let foundSeat = null;
             result.seats.forEach(seatData => {
@@ -1285,6 +1308,17 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ نافذة إنشاء غرفة جديدة — بنفس أسلوب نافذة إنشاء التحدي تماماً للتناسق البصري
     // ✅ نافذة إعدادات الغرفة — تظهر فقط للمضيف (يتحقق منها السيرفر أيضاً عند الحفظ)
     function showRoomSettingsModal(room) {
+        const freeBackgrounds = [
+            { url: null, label: 'بدون' },
+            { url: 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=200&q=50', label: '1' },
+            { url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=200&q=50', label: '2' },
+            { url: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=200&q=50', label: '3' },
+            { url: 'https://images.unsplash.com/photo-1531265726475-91b64616e854?w=200&q=50', label: '4' }
+        ];
+        const seatSteps = [8, 15, 24];
+        const nextSeatStep = seatSteps.find(s => s > room.seatCount);
+        const occupiedNow = document.querySelectorAll('#voice-chat-grid .occupied-seat').length;
+
         const modal = document.createElement('div');
         modal.id = 'room-settings-modal';
         modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4';
@@ -1298,7 +1332,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     </div>
                     <div>
                         <label class="text-sm">إعلان الغرفة (اختياري)</label>
-                        <input type="text" name="description" value="${escapeHtml(room.description || '')}" maxlength="120" placeholder="اكتب وصفاً قصيراً للغرفة..." class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
+                        <input type="text" name="description" value="${escapeHtml(currentRoomDescription || '')}" maxlength="120" placeholder="اكتب وصفاً قصيراً للغرفة..." class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
                     </div>
                     <div class="flex items-center">
                         <input type="checkbox" id="settings-isPrivate" name="isPrivate" ${room.isPrivate ? 'checked' : ''} class="w-4 h-4 rounded">
@@ -1308,6 +1342,33 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         <label class="text-sm">${room.isPrivate ? 'كلمة مرور جديدة (اتركه فاضياً للإبقاء الحالية)' : 'كلمة المرور'}</label>
                         <input type="password" name="password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
                     </div>
+
+                    <div class="flex items-center justify-between bg-gray-700/40 rounded-lg p-2.5">
+                        <span class="text-sm flex items-center gap-2"><i class="fas fa-lock text-amber-400"></i> قفل الغرفة</span>
+                        <input type="checkbox" id="settings-isLocked" ${currentRoomIsLocked ? 'checked' : ''} class="w-4 h-4 rounded">
+                    </div>
+                    <p class="text-[11px] text-gray-500 -mt-2">لن يستطيع أحد جديد الدخول للغرفة وهي مقفلة (عدا المسؤولين)</p>
+
+                    <div>
+                        <label class="text-sm block mb-1.5">خلفية الغرفة</label>
+                        <div class="grid grid-cols-5 gap-2">
+                            ${freeBackgrounds.map(bg => `
+                                <button type="button" data-bg="${bg.url || ''}" class="settings-bg-option aspect-square rounded-lg border-2 ${(currentRoomBackgroundImage || '') === (bg.url || '') ? 'border-purple-500' : 'border-transparent'} bg-gray-700 flex items-center justify-center overflow-hidden">
+                                    ${bg.url ? `<img src="${bg.url}" class="w-full h-full object-cover">` : '<i class="fas fa-ban text-gray-400 text-xs"></i>'}
+                                </button>
+                            `).join('')}
+                        </div>
+                        <p class="text-[11px] text-gray-500 mt-1">خلفيات مجانية حالياً — قريباً: خلفيات مميزة قابلة للشراء</p>
+                    </div>
+
+                    ${!room.isOfficial && nextSeatStep ? `
+                    <div>
+                        <label class="text-sm block mb-1.5">عدد المقاعد الحالي: ${room.seatCount}</label>
+                        <button type="button" id="settings-increase-seats-btn" data-next="${nextSeatStep}" class="w-full bg-gray-700 hover:bg-gray-600 text-sm py-2 rounded-lg font-bold">
+                            <i class="fas fa-plus"></i> زيادة إلى ${nextSeatStep} مقعد
+                        </button>
+                        <p class="text-[11px] text-gray-500 mt-1">لا يمكن التراجع بعد الزيادة</p>
+                    </div>` : ''}
 
                     <div>
                         <label class="text-sm block mb-1.5">المسؤولون المساعدون</label>
@@ -1341,6 +1402,44 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             modal.querySelector('#settings-password-field').classList.toggle('hidden', !e.target.checked);
         });
 
+        let selectedBackground = currentRoomBackgroundImage || null;
+        modal.querySelectorAll('.settings-bg-option').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedBackground = btn.dataset.bg || null;
+                modal.querySelectorAll('.settings-bg-option').forEach(b => b.classList.remove('border-purple-500'));
+                modal.querySelectorAll('.settings-bg-option').forEach(b => b.classList.add('border-transparent'));
+                btn.classList.remove('border-transparent');
+                btn.classList.add('border-purple-500');
+            });
+        });
+
+        // ✅ زيادة المقاعد فورية (منفصلة عن باقي الحفظ — تغيير بنيوي لا رجعة فيه)
+        modal.querySelector('#settings-increase-seats-btn')?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const newCount = parseInt(btn.dataset.next);
+            if (!confirm(`زيادة عدد المقاعد إلى ${newCount}؟ لا يمكن التراجع بعدها.`)) return;
+            btn.disabled = true;
+            try {
+                const response = await fetch(`/api/voice-room/rooms/${room.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ seatCount: newCount })
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    showNotification(result.message || 'تعذر زيادة المقاعد', 'error');
+                    btn.disabled = false;
+                    return;
+                }
+                showNotification('تمت زيادة المقاعد ✅ — أعد فتح الغرفة لرؤية التغيير', 'success');
+                modal.remove();
+                showCustomRoomView({ ...room, seatCount: newCount }, currentRoomPassword);
+            } catch (error) {
+                showNotification('حدث خطأ، حاول مجدداً', 'error');
+                btn.disabled = false;
+            }
+        });
+
         modal.querySelectorAll('.remove-mod-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const targetUserId = btn.dataset.modId;
@@ -1357,6 +1456,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
             data.isPrivate = data.isPrivate === 'on';
+
+            const wantsLocked = modal.querySelector('#settings-isLocked').checked;
+            data.isLocked = wantsLocked;
+            data.backgroundImage = selectedBackground || '';
+
+            // ✅ لو يقفل الآن والغرفة فيها ناس، نسأله صراحة: طرد الجميع أم يبقوا؟
+            if (wantsLocked && !currentRoomIsLocked && occupiedNow > 0) {
+                data.kickAll = confirm(`الغرفة فيها ${occupiedNow} شخص جالس حالياً. هل تريد طرد الجميع عند القفل؟\n\nموافق = طرد الجميع\nإلغاء = إبقاؤهم داخل الغرفة`);
+            }
 
             const submitBtn = form.querySelector('button[type="submit"]');
             const originalHTML = submitBtn.innerHTML;
@@ -1377,6 +1485,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     return;
                 }
                 if (data.isPrivate && data.password) currentRoomPassword = data.password; // ✅ حتى لا يُطلب مني كلمة مروري الخاصة
+                currentRoomIsLocked = result.room.isLocked;
+                currentRoomBackgroundImage = result.room.backgroundImage;
+                currentRoomDescription = result.room.description;
+                applyRoomBackground(currentRoomBackgroundImage);
                 modal.remove();
                 showNotification('تم حفظ الإعدادات ✅', 'success');
                 const h2 = mainContent.querySelector('h2');
@@ -1482,6 +1594,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         currentVoiceRoomId = 'main';
         currentRoomPassword = null;
         currentRoomMyRole = 'guest';
+        currentRoomIsLocked = false;
+        currentRoomBackgroundImage = null;
+        currentRoomDescription = '';
         enterFullscreenRoomMode();
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-4">
@@ -3456,6 +3571,12 @@ function showXpGainAnimation(amount) {
         if (roomId !== roomChatCurrentRoomId) return;
         // ✅ إعادة تحميل بسيطة لآخر 50 رسالة بعد أي تنظيف (أبسط وأضمن من تتبع كل معرّف محذوف)
         enterRoomChat(roomId);
+    });
+
+    socket.on('room-force-closed', ({ roomId }) => {
+        if (roomId !== currentVoiceRoomId || currentRoomMyRole === 'host') return;
+        showNotification('تم قفل الغرفة من المضيف وطرد الجميع', 'warning');
+        showRoomBrowserView();
     });
 
     socket.on('seat-reaction-played', ({ roomId, seatNumber, emoji }) => {
