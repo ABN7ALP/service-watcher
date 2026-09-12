@@ -573,3 +573,23 @@ body.in-voice-room #main-content {
     min-height: 100vh !important;
 }
 
+/* ✅ الفقاعة العائمة لرسالة خاصة واردة وأنت داخل غرفة — بأسلوب ماسنجر (قابلة للسحب) */
+.dm-floating-bubble {
+    position: fixed;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    z-index: 70;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+    border: 2px solid #a855f7;
+    cursor: grab;
+    touch-action: none;
+    animation: dmBubbleEnter 0.3s ease-out;
+}
+.dm-floating-bubble:active { cursor: grabbing; }
+.dm-floating-bubble.dm-bubble-snapping { transition: left 0.2s ease, right 0.2s ease; }
+@keyframes dmBubbleEnter {
+    from { transform: scale(0.4); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+}
+
