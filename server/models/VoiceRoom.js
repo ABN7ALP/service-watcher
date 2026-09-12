@@ -32,6 +32,8 @@ const voiceRoomSchema = new mongoose.Schema({
     isOfficial: { type: Boolean, default: false },
     isPrivate: { type: Boolean, default: false },
     password: { type: String, select: false }, // 🛡️ لا يُرجَع أبداً إلا بطلب صريح select('+password')
+    isLocked: { type: Boolean, default: false }, // ✅ قفل الغرفة بالكامل — لا يدخلها أحد غير المضيف/المسؤولين
+    backgroundImage: { type: String, default: null }, // ✅ خلفية الغرفة (حالياً من قائمة جاهزة مجانية)
     seatCount: { type: Number, enum: [8, 15, 24, 80], default: 80 },
     adminSeatCount: { type: Number, default: 5 }, // أول N مقعد محجوز حصرياً للإدارة (0 بالغرف العادية)
     moderators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // ✅ مسؤولون مساعدون عيّنهم المضيف
@@ -251,6 +253,31 @@ voiceRoomSchema.methods.canModerate = function (userId) {
     const uid = userId.toString();
     if (this.host && this.host.toString() === uid) return true;
     return this.moderators.some(m => m.toString() === uid);
+};
+
+// ✅ زيادة عدد المقاعد فقط (اتجاه واحد: 8←15←24) — يضيف مقاعد فاضية جديدة بدون المساس بالموجود
+voiceRoomSchema.methods.increaseSeatCount = function (newCount) {
+    const allowedSteps = [8, 15, 24];
+    if (!allowedSteps.includes(newCount) || newCount <= this.seatCount) return false;
+    for (let i = this.seatCount + 1; i <= newCount; i++) {
+        this.seats.push({ seatNumber: i });
+    }
+    this.seatCount = newCount;
+    return true;
+};
+
+// ✅ يحرر كل مقاعد هذي الغرفة دفعة واحدة (يُستخدم عند اختيار المضيف "طرد الجميع" عند قفل الغرفة)
+// يُرجع مصفوفة أرقام المقاعد التي كانت مشغولة، لبثّها للجميع
+voiceRoomSchema.statics.releaseAllSeatsInRoom = async function (roomId) {
+    const room = await this.findById(roomId);
+    if (!room) return [];
+    const occupied = room.seats.filter(s => s.user).map(s => s.seatNumber);
+    if (!occupied.length) return [];
+    await this.updateOne(
+        { _id: roomId },
+        { $set: { 'seats.$[].user': null, 'seats.$[].joinedAt': null, 'seats.$[].isMuted': false } }
+    );
+    return occupied;
 };
 
 module.exports = mongoose.model('VoiceRoom', voiceRoomSchema);
