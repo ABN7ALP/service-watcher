@@ -697,9 +697,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             showReactionPicker(currentVoiceRoomId, myVoiceSeatNumber);
         });
 
-        // ✅ زر هدايا مبسّط بشريط الغرفة (اختيار المستلم التفصيلي قادم بمرحلة لاحقة)
+        // ✅ زر هدايا الغرفة — يفتح نافذة تحديد مستلمين متعددين من المقاعد الفعلية
         document.getElementById('room-gift-icon-btn')?.addEventListener('click', () => {
-            showNotification('اضغط صورة أي شخص بالمقاعد لإرسال هدية له', 'info');
+            if (currentVoiceRoomId) showRoomGiftModal(currentVoiceRoomId);
         });
 
         // ✅ أيقونة الرسائل الخاصة — بديل شريط التنقل السفلي المخفي أثناء وضع ملء الشاشة
@@ -4708,6 +4708,196 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
         console.error('[GIFT STORE] Error:', error);
         const body = document.getElementById('gift-store-body');
         if (body) body.innerHTML = `<div class="text-center text-red-400 py-10">فشل تحميل المتجر</div>`;
+    }
+}
+
+// ✅ نافذة هدايا الغرفة — تحديد مستلم واحد أو عدة مستلمين من المقاعد الفعلية الجالسين حالياً، أو "الجميع"
+async function showRoomGiftModal(roomId) {
+    const existing = document.getElementById('room-gift-modal');
+    if (existing) existing.remove();
+
+    const shellHTML = `
+        <div id="room-gift-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-lg text-white border border-gray-700 max-h-[85vh] flex flex-col">
+                <div class="flex items-center justify-between p-4 border-b border-gray-700 flex-shrink-0">
+                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift text-pink-400"></i> إرسال هدية بالغرفة</h3>
+                    <button id="close-room-gift" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="room-gift-body" class="p-4 overflow-y-auto flex-1">
+                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
+                </div>
+                <div id="room-gift-footer"></div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+    const modal = document.getElementById('room-gift-modal');
+    document.getElementById('close-room-gift').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target.id === 'room-gift-modal') modal.remove(); });
+
+    try {
+        const url = roomId === 'main' ? '/api/voice-room' : `/api/voice-room/rooms/${roomId}`;
+        const [roomRes, shopRes] = await Promise.all([
+            fetch(url, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+        ]);
+
+        const seatedUsers = (roomRes.seats || []).filter(s => s.user).map(s => s.user);
+        const gifts = shopRes.data.gifts;
+        const currentUser = JSON.parse(localStorage.getItem('user')) || {};
+
+        let selectedUserIds = new Set();
+        let audienceMode = 'selected';
+
+        const body = document.getElementById('room-gift-body');
+        const footer = document.getElementById('room-gift-footer');
+        if (!body || !footer) return;
+
+        body.innerHTML = `
+            <p class="text-xs text-gray-400 mb-2">اختر المستلمين (الجالسين حالياً على المقاعد)</p>
+            <button id="select-all-seated-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-xs py-2 rounded-lg font-bold mb-3 transition-all">
+                <i class="fas fa-users"></i> إرسال للجميع (${seatedUsers.length})
+            </button>
+            <div id="room-gift-avatars" class="grid grid-cols-6 sm:grid-cols-8 gap-2 mb-4 max-h-40 overflow-y-auto p-2 bg-gray-900/30 rounded-xl">
+                ${seatedUsers.length === 0 ? '<p class="col-span-full text-xs text-gray-500 text-center py-6">لا يوجد أحد قاعد على مقعد حالياً</p>' : seatedUsers.map(u => `
+                    <button class="room-gift-avatar-btn relative flex flex-col items-center gap-1 p-1 rounded-lg transition-all" data-user-id="${u.id}" data-username="${escapeHtml(u.username)}" title="${escapeHtml(u.username)}">
+                        <span class="relative inline-block">
+                            <img src="${u.profileImage}" class="w-7 h-7 rounded-full object-cover border-2 border-gray-600 transition-all rg-avatar-img">
+                            <span class="rg-selected-badge hidden absolute -top-1 -right-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
+                                <i class="fas fa-check text-white" style="font-size:6px"></i>
+                            </span>
+                        </span>
+                        <span class="text-[8px] leading-tight truncate w-full text-center">${escapeHtml(u.username)}</span>
+                    </button>
+                `).join('')}
+            </div>
+            <div id="room-gift-cards-grid" class="grid grid-cols-3 gap-2">
+                ${gifts.map(g => renderGiftCardHTML(g)).join('')}
+            </div>
+        `;
+        footer.innerHTML = renderGiftFooterHTML(currentUser.coins || 0);
+
+        wireGiftImageFallbacks(body);
+
+        function markAllSelectedVisual(isAll) {
+            const allBtn = document.getElementById('select-all-seated-btn');
+            if (!allBtn) return;
+            allBtn.classList.toggle('ring-2', isAll);
+            allBtn.classList.toggle('ring-pink-400', isAll);
+            allBtn.classList.toggle('bg-purple-800', isAll);
+        }
+        function clearIndividualSelectionVisuals() {
+            body.querySelectorAll('.room-gift-avatar-btn').forEach(b => {
+                b.querySelector('.rg-avatar-img')?.classList.remove('ring-2', 'ring-pink-500');
+                b.querySelector('.rg-selected-badge')?.classList.add('hidden');
+                b.classList.remove('bg-pink-900/40');
+            });
+        }
+
+        document.getElementById('select-all-seated-btn')?.addEventListener('click', () => {
+            audienceMode = 'all';
+            selectedUserIds.clear();
+            clearIndividualSelectionVisuals();
+            markAllSelectedVisual(true);
+        });
+
+        body.querySelectorAll('.room-gift-avatar-btn').forEach(avatarBtn => {
+            avatarBtn.addEventListener('click', () => {
+                audienceMode = 'selected';
+                markAllSelectedVisual(false);
+                const uid = avatarBtn.dataset.userId;
+                const img = avatarBtn.querySelector('.rg-avatar-img');
+                const badge = avatarBtn.querySelector('.rg-selected-badge');
+                if (selectedUserIds.has(uid)) {
+                    selectedUserIds.delete(uid);
+                    img.classList.remove('ring-2', 'ring-pink-500');
+                    badge.classList.add('hidden');
+                    avatarBtn.classList.remove('bg-pink-900/40');
+                } else {
+                    selectedUserIds.add(uid);
+                    img.classList.add('ring-2', 'ring-pink-500');
+                    badge.classList.remove('hidden');
+                    badge.classList.add('flex');
+                    avatarBtn.classList.add('bg-pink-900/40');
+                }
+            });
+        });
+
+        const { getSelectedGift, getQuantity } = wireGiftSelectionAndQty(modal, () => {});
+
+        const sendBtn = footer.querySelector('.gift-send-main-btn');
+        setupGiftSendButton(sendBtn, async () => {
+            const gift = getSelectedGift();
+            const quantity = getQuantity();
+            if (!gift) return false;
+
+            const recipients = audienceMode === 'all'
+                ? seatedUsers.map(u => u.id)
+                : [...selectedUserIds];
+            if (recipients.length === 0) {
+                showFloatingAlert('اختر مستلماً واحداً على الأقل', 'fa-user', 'bg-amber-500');
+                return false;
+            }
+
+            const totalCost = gift.price * quantity * recipients.length;
+            const localUser = JSON.parse(localStorage.getItem('user'));
+            if (!localUser || localUser.coins < totalCost) {
+                showFloatingAlert('رصيد الكوينز غير كافٍ للإرسال', 'fa-coins', 'bg-red-500');
+                return false;
+            }
+
+            // ✅ تحديث متفائل فوري (كامل التكلفة لكل المستلمين دفعة وحدة)
+            localUser.coins -= totalCost;
+            localStorage.setItem('user', JSON.stringify(localUser));
+            const coinsEl = document.getElementById('coins');
+            if (coinsEl) coinsEl.textContent = localUser.coins;
+            footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = localUser.coins);
+
+            // ✅ الهدية تطفو بالمنتصف مرة واحدة، ثم تتوجه لكل مستلم على حدة (تأثير توزيع أنيق)
+            showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', quantity * recipients.length, recipients.length === 1 ? recipients[0] : null);
+
+            let anyFailed = false;
+            for (const receiverId of recipients) {
+                try {
+                    const response = await fetch('/api/gifts/send', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ receiverId, giftId: gift.id, quantity, context: 'private_chat' })
+                    });
+                    const result = await response.json();
+                    if (response.ok) {
+                        if (recipients.length > 1) {
+                            setTimeout(() => showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', quantity, receiverId), 150);
+                        }
+                        notifyRoomGiftSupport(receiverId, gift.price * quantity);
+                        const syncedUser = JSON.parse(localStorage.getItem('user'));
+                        if (syncedUser) {
+                            syncedUser.coins = result.data.newSenderCoins;
+                            localStorage.setItem('user', JSON.stringify(syncedUser));
+                        }
+                        if (coinsEl) coinsEl.textContent = result.data.newSenderCoins;
+                        footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = result.data.newSenderCoins);
+                    } else {
+                        anyFailed = true;
+                    }
+                } catch (error) {
+                    console.error('[ROOM GIFT] Error sending to', receiverId, error);
+                    anyFailed = true;
+                }
+            }
+
+            if (anyFailed) {
+                showFloatingAlert('تعذر إرسال الهدية لبعض المستلمين', 'fa-exclamation-circle', 'bg-red-500');
+                return false;
+            }
+            return true;
+        });
+
+    } catch (error) {
+        console.error('[ROOM GIFT] Error:', error);
+        const body = document.getElementById('room-gift-body');
+        if (body) body.innerHTML = `<div class="text-center text-red-400 py-10">فشل تحميل البيانات</div>`;
     }
 }
 
