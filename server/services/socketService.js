@@ -1008,6 +1008,14 @@ socket.on('refreshBlockData', async () => {
             io.emit('seat-reaction-played', { roomId, seatNumber: parseInt(seatNumber), emoji });
         });
 
+        // ✅ عداد الدعم أسفل المقعد — إشارة عرض بصري فقط (الدفع الفعلي تم أصلاً عبر REST /api/gifts/send)
+        socket.on('room-gift-support', ({ roomId, seatNumber, value }) => {
+            const numValue = Number(value);
+            if (!roomId || !Number.isFinite(numValue) || numValue <= 0) return;
+            const safeValue = Math.min(numValue, 100000); // 🛡️ سقف معقول يمنع تضخيم العداد بقيم وهمية
+            io.emit('room-support-updated', { roomId, seatNumber: parseInt(seatNumber), value: safeValue });
+        });
+
         socket.on('disconnect', async () => {
             console.log(`🔴 User disconnected: ${socket.id} | UserID: ${socket.user.username}`);
             try {
