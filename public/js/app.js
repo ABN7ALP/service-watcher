@@ -649,6 +649,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <button id="room-gift-icon-btn" class="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-pink-400 flex-shrink-0" title="الهدايا">
                         <i class="fas fa-gift text-sm"></i>
                     </button>
+                    <button id="room-messages-icon-btn" class="relative w-6 h-6 flex items-center justify-center text-gray-300 hover:text-blue-400 flex-shrink-0" title="الرسائل الخاصة">
+                        <i class="fas fa-envelope text-sm"></i>
+                        <span id="room-messages-badge" class="hidden absolute -top-1.5 -left-1.5 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">0</span>
+                    </button>
                     <div id="room-chat-input-row" class="hidden flex-1 items-center gap-2">
                         <input id="room-chat-input" maxlength="300" placeholder="اكتب رسالة..." class="flex-1 bg-gray-700/60 border border-gray-600 rounded-full px-3 py-1.5 text-xs text-white focus:ring-purple-500 focus:border-purple-500">
                         <button id="room-chat-send-btn" class="w-7 h-7 rounded-full bg-purple-600 hover:bg-purple-700 flex items-center justify-center text-white flex-shrink-0"><i class="fas fa-paper-plane text-[10px]"></i></button>
@@ -686,6 +690,95 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // ✅ زر هدايا مبسّط بشريط الغرفة (اختيار المستلم التفصيلي قادم بمرحلة لاحقة)
         document.getElementById('room-gift-icon-btn')?.addEventListener('click', () => {
             showNotification('اضغط صورة أي شخص بالمقاعد لإرسال هدية له', 'info');
+        });
+
+        // ✅ أيقونة الرسائل الخاصة — بديل شريط التنقل السفلي المخفي أثناء وضع ملء الشاشة
+        document.getElementById('room-messages-icon-btn')?.addEventListener('click', () => {
+            clearRoomMessagesBadge();
+            if (lastRoomDMSender) {
+                openPrivateChat(lastRoomDMSender.id, lastRoomDMSender.username, true);
+            } else {
+                showNotification('لا توجد رسائل جديدة', 'info');
+            }
+        });
+    }
+
+    // ✅ حالة الرسائل الخاصة الواردة أثناء التواجد داخل غرفة (وضع ملء الشاشة)
+    let roomUnreadDMCount = 0;
+    let lastRoomDMSender = null; // { id, username, profileImage }
+
+    function updateRoomMessagesBadge() {
+        const badge = document.getElementById('room-messages-badge');
+        if (!badge) return;
+        badge.textContent = roomUnreadDMCount > 9 ? '9+' : String(roomUnreadDMCount);
+        badge.classList.toggle('hidden', roomUnreadDMCount === 0);
+    }
+
+    function clearRoomMessagesBadge() {
+        roomUnreadDMCount = 0;
+        updateRoomMessagesBadge();
+    }
+
+    // ✅ فقاعة رسالة واردة عائمة (بأسلوب ماسنجر) — قابلة للسحب، تلتصق بأقرب جانب،
+    // والسحب للأسفل يخفيها (تبقى الشارة بأيقونة الرسائل كمرجع دائم بديل عن الشريط السفلي المخفي)
+    function showIncomingDMBubble(senderId, senderName, profileImage) {
+        document.getElementById('dm-floating-bubble')?.remove();
+
+        const bubble = document.createElement('div');
+        bubble.id = 'dm-floating-bubble';
+        bubble.className = 'dm-floating-bubble';
+        bubble.style.top = '110px';
+        bubble.style.right = '10px';
+        bubble.innerHTML = `<img src="${profileImage}" class="w-full h-full rounded-full object-cover" alt="${escapeHtml(senderName)}">`;
+        document.body.appendChild(bubble);
+
+        let dragging = false, moved = false, startX = 0, startY = 0, origX = 0, origY = 0;
+
+        bubble.addEventListener('pointerdown', (e) => {
+            dragging = true;
+            moved = false;
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = bubble.getBoundingClientRect();
+            origX = rect.left;
+            origY = rect.top;
+            bubble.setPointerCapture(e.pointerId);
+        });
+
+        bubble.addEventListener('pointermove', (e) => {
+            if (!dragging) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) moved = true;
+            bubble.style.left = `${origX + dx}px`;
+            bubble.style.top = `${origY + dy}px`;
+            bubble.style.right = 'auto';
+        });
+
+        bubble.addEventListener('pointerup', () => {
+            dragging = false;
+            const rect = bubble.getBoundingClientRect();
+
+            // ✅ سحب للأسفل بشكل كبير = إخفاء الفقاعة (الشارة تبقى بأيقونة الرسائل كمرجع)
+            if (rect.top > window.innerHeight - 90) {
+                bubble.remove();
+                return;
+            }
+
+            if (!moved) {
+                // ✅ ضغطة بسيطة بدون سحب = فتح نافذة الدردشة المصغّرة مباشرة
+                bubble.remove();
+                clearRoomMessagesBadge();
+                openPrivateChat(senderId, senderName, true);
+                return;
+            }
+
+            // ✅ الالتصاق بأقرب جانب بحركة أنيقة
+            bubble.classList.add('dm-bubble-snapping');
+            const snapLeft = rect.left < window.innerWidth / 2;
+            bubble.style.left = snapLeft ? '8px' : 'auto';
+            bubble.style.right = snapLeft ? 'auto' : '8px';
+            setTimeout(() => bubble.classList.remove('dm-bubble-snapping'), 220);
         });
     }
 
@@ -740,6 +833,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
     function exitFullscreenRoomMode() {
         document.body.classList.remove('in-voice-room');
+        document.getElementById('dm-floating-bubble')?.remove();
     }
 
     // =====================================================
@@ -4312,7 +4406,7 @@ function restoreChatInputArea(targetUserId) {
 
         
 // --- 📨 دالة فتح الدردشة الخاصة ---
-async function openPrivateChat(targetUserId, targetUsername = 'المستخدم') {
+async function openPrivateChat(targetUserId, targetUsername = 'المستخدم', miniMode = false) {
     console.log(`[CHAT] Opening private chat with: ${targetUserId} (${targetUsername})`);
     
     const profileModal = document.getElementById('mini-profile-modal');
@@ -4321,10 +4415,19 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
     // ✅ منع تكرار نوافذ الدردشة: إذا فيه نافذة مفتوحة لشخص آخر، نغلقها أولاً
     const existingChatModal = document.getElementById('private-chat-modal');
     if (existingChatModal) existingChatModal.remove();
-    
+
+    // ✅ وضع مصغّر: نافذة عائمة صغيرة بزاوية الشاشة (تبقي الغرفة ظاهرة خلفها) بدل تغطية الشاشة كاملة —
+    // يُستخدم عند فتح الدردشة من فقاعة رسالة واردة وأنت داخل غرفة صوتية
+    const wrapperClass = miniMode
+        ? 'fixed bottom-20 md:bottom-6 left-2 md:left-6 z-[300] w-[88vw] max-w-[320px]'
+        : 'fixed inset-0 bg-black/80 flex items-center justify-center z-[300] p-2 md:p-4';
+    const cardClass = miniMode
+        ? 'bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full h-[65vh] max-h-[420px] flex flex-col overflow-hidden border-2 border-purple-500/40'
+        : 'bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl h-[85vh] md:h-[80vh] flex flex-col overflow-hidden border-2 border-purple-500/30';
+
     const chatHTML = `
-        <div id="private-chat-modal" data-target-user-id="${targetUserId}" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[300] p-2 md:p-4">
-            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl h-[85vh] md:h-[80vh] flex flex-col overflow-hidden border-2 border-purple-500/30">
+        <div id="private-chat-modal" data-target-user-id="${targetUserId}" class="${wrapperClass}">
+            <div class="${cardClass}">
                 
                 <div class="flex items-center justify-between p-4 bg-gray-900/80 border-b border-gray-700">
                     <div class="flex items-center gap-3">
@@ -9430,6 +9533,18 @@ socket.on('privateMessageReceived', async (data) => {
         } catch (error) { console.error('[CHAT] Error marking as seen instantly:', error); }
         
         } else {
+        // ✅ داخل غرفة (وضع ملء الشاشة): فقاعة عائمة بأسلوب ماسنجر + تحديث شارة أيقونة الرسائل
+        // بدل الاعتماد على شريط التنقل السفلي المخفي بهذا الوضع
+        if (document.body.classList.contains('in-voice-room')) {
+            lastRoomDMSender = {
+                id: data.senderId,
+                username: data.senderName,
+                profileImage: data.message?.sender?.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'
+            };
+            roomUnreadDMCount++;
+            updateRoomMessagesBadge();
+            showIncomingDMBubble(data.senderId, data.senderName, lastRoomDMSender.profileImage);
+        }
         // ✅ لا إشعار جانبي مطلقاً — فقط تحديث شارة العداد (رقم على الأيقونة)
         refreshMessagesNavBadge();
         if (document.getElementById('messages-list-container')) {
