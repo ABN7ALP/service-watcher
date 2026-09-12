@@ -490,6 +490,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     function renderVoiceSeatContent(seatEl, seatData) {
         const isAdminSeat = seatEl.dataset.isAdminSeat === '1';
+        const previousUserId = seatEl.dataset.userId; // ✅ يُحفظ قبل المسح لمعرفة هل الشاغل تغيّر أم بقي نفسه
         seatEl.classList.remove('occupied-seat', 'my-seat', 'locked-seat');
         seatEl.dataset.isLocked = '0';
         delete seatEl.dataset.userId;
@@ -505,17 +506,26 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
         if (seatData && seatData.user) {
             const isMe = seatData.user.id === myUserId;
+            const sameOccupant = previousUserId === seatData.user.id;
             seatEl.classList.add('occupied-seat');
             if (isMe) seatEl.classList.add('my-seat');
             seatEl.dataset.userId = seatData.user.id; // ✅ فهرس مباشر لتحديث الكتم لاحقاً دون إعادة تحميل الشبكة كاملة
             const safeName = escapeHtml(seatData.user.username || '');
             seatEl.title = seatData.user.username || '';
+            // ✅ نحافظ على شارة عداد الدعم لو نفس الشخص لسا قاعد (لا نصفّرها بمجرد إعادة رسم عادية)
+            const keepBadge = sameOccupant ? seatEl.querySelector('.seat-support-badge') : null;
             seatEl.innerHTML = `
                 <img src="${seatData.user.profileImage}" class="voice-seat-avatar" alt="${safeName}">
                 ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
             `;
+            if (keepBadge) {
+                seatEl.appendChild(keepBadge);
+            } else {
+                delete seatEl.dataset.supportTotal;
+            }
         } else {
             delete seatEl.dataset.userId;
+            delete seatEl.dataset.supportTotal; // ✅ يصفّر عداد الدعم بمجرد مغادرة المقعد
             seatEl.innerHTML = isAdminSeat ? '<i class="fas fa-crown"></i>' : seatEl.dataset.seat;
             if (isAdminSeat) seatEl.title = 'مقعد محجوز للإدارة';
         }
@@ -3453,6 +3463,23 @@ function showXpGainAnimation(amount) {
         playSeatReaction(seatNumber, emoji);
     });
 
+    socket.on('room-support-updated', ({ roomId, seatNumber, value }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        const voiceGrid = document.getElementById('voice-chat-grid');
+        if (!voiceGrid) return;
+        const seatEl = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"]`);
+        if (!seatEl) return;
+        const updated = (parseInt(seatEl.dataset.supportTotal) || 0) + value;
+        seatEl.dataset.supportTotal = updated;
+        let badge = seatEl.querySelector('.seat-support-badge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'seat-support-badge';
+            seatEl.appendChild(badge);
+        }
+        badge.textContent = updated > 9999 ? '9999+' : updated;
+    });
+
     socket.on('seat-error', (message) => {
         clearVoiceSeatPending();
         showNotification(message, 'error');
@@ -4577,7 +4604,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
     const shellHTML = `
         <div id="gift-store-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-lg text-white border border-gray-700 max-h-[85vh] flex flex-col">
-                    <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <div class="flex items-center justify-between p-4 border-b border-gray-700 flex-shrink-0">
                     <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift text-pink-400"></i> إرسال هدية لـ ${targetUsername}</h3>
                     <div class="flex items-center gap-1">
                         <button id="gift-store-support-btn" class="report-issue-icon-btn" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle"></i></button>
@@ -4587,6 +4614,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                 <div id="gift-store-body" class="p-4 overflow-y-auto flex-1">
                     <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
                 </div>
+                <div id="gift-store-footer"></div>
             </div>
         </div>
     `;
@@ -4607,43 +4635,73 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
         const gifts = result.data.gifts;
         const currentUser = JSON.parse(localStorage.getItem('user'));
         const body = document.getElementById('gift-store-body');
-        if (!body) return;
+        const footer = document.getElementById('gift-store-footer');
+        if (!body || !footer) return;
 
-        body.innerHTML = `
-            <div class="flex items-center justify-between mb-4 bg-gray-900/50 rounded-xl p-3">
-                <span class="text-sm text-gray-400">رصيدك الحالي</span>
-                <span class="font-bold text-yellow-400 flex items-center gap-1"><i class="fas fa-coins"></i> <span id="gift-store-balance">${currentUser.coins || 0}</span></span>
-            </div>
-            <div id="gift-cards-grid" class="grid grid-cols-3 gap-2">
-                ${gifts.map(g => renderGiftCardHTML(g)).join('')}
-            </div>
-        `;
+        body.innerHTML = `<div id="gift-cards-grid" class="grid grid-cols-3 gap-2">${gifts.map(g => renderGiftCardHTML(g)).join('')}</div>`;
+        footer.innerHTML = renderGiftFooterHTML(currentUser.coins || 0);
 
         wireGiftImageFallbacks(body);
+        const { getSelectedGift, getQuantity } = wireGiftSelectionAndQty(modal, () => {});
 
-        body.querySelectorAll('.gift-card-wrapper').forEach(card => {
-            const toggleBtn = card.querySelector('.gift-card-toggle');
+        const sendBtn = footer.querySelector('.gift-send-main-btn');
+        setupGiftSendButton(sendBtn, async () => {
+            const gift = getSelectedGift();
+            const quantity = getQuantity();
+            if (!gift) return false;
 
-            toggleBtn.addEventListener('click', () => {
-                const isExpanded = card.classList.contains('gift-expanded');
-                body.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-expanded'));
-                if (isExpanded) return;
+            const localUser = JSON.parse(localStorage.getItem('user'));
+            const totalCost = gift.price * quantity;
+            if (!localUser || localUser.coins < totalCost) {
+                showFloatingAlert('رصيد الكوينز غير كافٍ للإرسال', 'fa-coins', 'bg-red-500');
+                return false;
+            }
 
-                card.classList.add('gift-expanded');
+            // ✅ تحديث متفائل فوري
+            localUser.coins -= totalCost;
+            localStorage.setItem('user', JSON.stringify(localUser));
+            const coinsEl = document.getElementById('coins');
+            if (coinsEl) coinsEl.textContent = localUser.coins;
+            footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = localUser.coins);
 
-                const giftData = {
-                    id: card.dataset.giftId,
-                    name: card.dataset.giftName,
-                    price: parseFloat(card.dataset.giftPrice),
-                    icon: card.dataset.giftIcon,
-                    imageUrl: card.dataset.giftImage
-                };
+            showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', quantity, targetUserId);
 
-                const sendBtn = card.querySelector('.inline-send-btn');
-                const counterEl = card.querySelector('.inline-send-counter');
+            try {
+                const response2 = await fetch('/api/gifts/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ receiverId: targetUserId, giftId: gift.id, quantity, context: 'private_chat' })
+                });
+                const result2 = await response2.json();
 
-                setupRapidGiftButton(targetUserId, () => giftData, sendBtn, counterEl);
-            });
+                if (response2.ok) {
+                    const syncedUser = JSON.parse(localStorage.getItem('user'));
+                    if (syncedUser) {
+                        syncedUser.coins = result2.data.newSenderCoins;
+                        localStorage.setItem('user', JSON.stringify(syncedUser));
+                    }
+                    if (coinsEl) coinsEl.textContent = result2.data.newSenderCoins;
+                    footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = result2.data.newSenderCoins);
+                    if (result2.data.message) displayPrivateMessage(result2.data.message, true);
+
+                    // ✅ عداد الدعم أسفل المقعد لو المستلم قاعد بنفس الغرفة المعروضة حالياً
+                    notifyRoomGiftSupport(targetUserId, gift.price * quantity);
+                    return true;
+                } else {
+                    const revertUser = JSON.parse(localStorage.getItem('user'));
+                    if (revertUser) {
+                        revertUser.coins += totalCost;
+                        localStorage.setItem('user', JSON.stringify(revertUser));
+                        if (coinsEl) coinsEl.textContent = revertUser.coins;
+                        footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = revertUser.coins);
+                    }
+                    showFloatingAlert(result2.message || 'فشل إرسال الهدية', 'fa-exclamation-circle', 'bg-red-500');
+                    return false;
+                }
+            } catch (error) {
+                console.error('[GIFT SEND] Error:', error);
+                return false;
+            }
         });
 
     } catch (error) {
@@ -4658,24 +4716,157 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
 // onerror يُربط عبر JavaScript بعد الإدراج (لا inline) حتى لا يخالف سياسة الأمان CSP
 function renderGiftCardHTML(g) {
     return `
-        <div class="gift-card-wrapper bg-gray-800/50 border border-gray-700 rounded-xl p-2 transition-all"
+        <button type="button" class="gift-card-wrapper bg-gray-800/50 border border-gray-700 rounded-xl p-2 transition-all flex flex-col items-center w-full"
              data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}" data-gift-icon="${g.icon || '🎁'}" data-gift-image="${g.imageUrl || ''}">
-            <button class="gift-card-toggle w-full flex flex-col items-center">
-                <div class="gift-visual-slot w-10 h-10 flex items-center justify-center mx-auto">
-                    ${g.imageUrl ? `<img src="${g.imageUrl}" class="gift-visual-img w-10 h-10 object-contain">` : `<span class="text-3xl">${g.icon || '🎁'}</span>`}
-                </div>
-                <span class="text-[11px] font-bold text-center truncate w-full mt-1">${g.name}</span>
-                <span class="text-[10px] text-yellow-400"><i class="fas fa-coins"></i> ${g.discountedPrice || g.price}</span>
-            </button>
-            <div class="gift-card-inline-send hidden mt-2">
-                <button class="inline-send-btn w-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white text-xs py-2 rounded-lg font-bold flex items-center justify-center gap-1 select-none active:scale-95 transition-transform">
-                    <i class="fas fa-paper-plane"></i> إرسال
-                </button>
-                <p class="inline-send-counter text-[10px] text-gray-400 text-center mt-1 hidden"></p>
+            <div class="gift-visual-slot w-10 h-10 flex items-center justify-center mx-auto pointer-events-none">
+                ${g.imageUrl ? `<img src="${g.imageUrl}" class="gift-visual-img w-10 h-10 object-contain">` : `<span class="text-3xl">${g.icon || '🎁'}</span>`}
             </div>
+            <span class="text-[11px] font-bold text-center truncate w-full mt-1 pointer-events-none">${g.name}</span>
+            <span class="text-[10px] text-yellow-400 pointer-events-none"><i class="fas fa-coins"></i> ${g.discountedPrice || g.price}</span>
+        </button>
+    `;
+}
+
+// ✅ تذييل موحّد لكل نوافذ الهدايا: الرصيد أسفل (بدل أعلى النافذة)، قائمة كمية مسندلة (1/7/77/777)،
+// وزر إرسال دائري واحد (بدل زر داخل كل كارد) — نفس الشكل بكل مكان بالمشروع
+function renderGiftFooterHTML(coins) {
+    return `
+        <div class="gift-footer flex items-center gap-2 p-3 border-t border-gray-700 bg-gray-900/60 flex-shrink-0">
+            <span class="text-xs text-yellow-400 flex items-center gap-1 flex-shrink-0 font-bold">
+                <i class="fas fa-coins"></i> <span class="gift-footer-balance">${coins}</span>
+            </span>
+            <div class="flex-1"></div>
+            <div class="relative">
+                <button type="button" class="gift-qty-btn bg-gray-700 hover:bg-gray-600 text-xs rounded-full px-3 py-2 flex items-center gap-1.5 font-bold text-white">
+                    ×<span class="gift-qty-value">1</span> <i class="fas fa-chevron-up text-[8px]"></i>
+                </button>
+                <div class="gift-qty-menu hidden absolute bottom-full mb-2 right-0 bg-gray-800 border border-gray-600 rounded-lg overflow-hidden shadow-xl z-10">
+                    ${[1, 7, 77, 777].map(n => `<button type="button" data-qty="${n}" class="gift-qty-option block w-full text-xs px-5 py-2 hover:bg-gray-700 text-white text-center">×${n}</button>`).join('')}
+                </div>
+            </div>
+            <button type="button" class="gift-send-main-btn" disabled title="اختر هدية أولاً">
+                <i class="fas fa-paper-plane"></i>
+                <span class="gift-send-badge hidden">0</span>
+            </button>
         </div>
     `;
 }
+
+// ✅ يربط تفاعل الكروت (اختيار فقط) + قائمة الكمية داخل أي نافذة هدايا — يُستدعى بعد إدراج القالب
+// callbacks.onSelectGift(giftData|null) يُستدعى عند تغيّر الهدية المختارة
+function wireGiftSelectionAndQty(rootEl, onSelectGift) {
+    let selectedGift = null;
+    let quantity = 1;
+
+    rootEl.querySelectorAll('.gift-card-wrapper').forEach(card => {
+        card.addEventListener('click', () => {
+            const wasSelected = card.classList.contains('gift-card-selected');
+            rootEl.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-card-selected'));
+            if (wasSelected) {
+                selectedGift = null;
+            } else {
+                card.classList.add('gift-card-selected');
+                selectedGift = {
+                    id: card.dataset.giftId,
+                    name: card.dataset.giftName,
+                    price: parseFloat(card.dataset.giftPrice),
+                    icon: card.dataset.giftIcon,
+                    imageUrl: card.dataset.giftImage
+                };
+            }
+            const sendBtn = rootEl.querySelector('.gift-send-main-btn');
+            if (sendBtn) sendBtn.disabled = !selectedGift;
+            onSelectGift(selectedGift, quantity);
+        });
+    });
+
+    const qtyBtn = rootEl.querySelector('.gift-qty-btn');
+    const qtyMenu = rootEl.querySelector('.gift-qty-menu');
+    qtyBtn?.addEventListener('click', () => qtyMenu.classList.toggle('hidden'));
+    rootEl.querySelectorAll('.gift-qty-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+            quantity = parseInt(opt.dataset.qty);
+            rootEl.querySelector('.gift-qty-value').textContent = quantity;
+            qtyMenu.classList.add('hidden');
+            onSelectGift(selectedGift, quantity);
+        });
+    });
+    document.addEventListener('click', (e) => {
+        if (qtyBtn && qtyMenu && !qtyBtn.contains(e.target) && !qtyMenu.contains(e.target)) {
+            qtyMenu.classList.add('hidden');
+        }
+    });
+
+    return { getSelectedGift: () => selectedGift, getQuantity: () => quantity };
+}
+
+// ✅ زر الإرسال الدائري: الضغط المطوّل يحوّله لعدّاد متحرك (حجم/ظل/رقم متزايد)، والإفلات يعيده طبيعياً.
+// fireOnce() يُستدعى بشكل متسارع تدريجياً أثناء الاستمرار بالضغط (سريع بشكل معقول، وليس فائق السرعة)
+function setupGiftSendButton(btn, fireOnce) {
+    if (!btn) return;
+    const badge = btn.querySelector('.gift-send-badge');
+
+    let sentCount = 0;
+    let inFlight = 0;
+    const MAX_CONCURRENT = 4;
+    let active = false;
+    let rampTimeout = null;
+    let intervalMs = 260;
+    const MIN_INTERVAL = 140; // ✅ سقف سرعة معقول (وليس فائق السرعة) بناءً على طلب صريح
+    const ACCEL_FACTOR = 0.9;
+
+    async function fireWrapper() {
+        if (!active) return;
+        sentCount++;
+        if (badge) {
+            badge.textContent = sentCount > 99 ? '99+' : sentCount;
+            badge.classList.remove('hidden');
+        }
+        inFlight++;
+        try {
+            const ok = await fireOnce();
+            if (ok === false) stopSending();
+        } finally {
+            inFlight--;
+        }
+    }
+
+    function scheduleNext() {
+        if (!active) return;
+        rampTimeout = setTimeout(() => {
+            if (!active) return;
+            if (inFlight < MAX_CONCURRENT) fireWrapper();
+            intervalMs = Math.max(MIN_INTERVAL, Math.round(intervalMs * ACCEL_FACTOR));
+            scheduleNext();
+        }, intervalMs);
+    }
+
+    function startSending() {
+        if (active || btn.disabled) return;
+        active = true;
+        sentCount = 0;
+        intervalMs = 260;
+        btn.classList.add('gift-sending');
+        fireWrapper();
+        scheduleNext();
+    }
+
+    function stopSending() {
+        if (!active) return;
+        active = false;
+        clearTimeout(rampTimeout);
+        rampTimeout = null;
+        btn.classList.remove('gift-sending');
+        setTimeout(() => badge?.classList.add('hidden'), 400);
+    }
+
+    btn.addEventListener('mousedown', startSending);
+    btn.addEventListener('touchstart', (e) => { e.preventDefault(); startSending(); }, { passive: false });
+    btn.addEventListener('mouseup', stopSending);
+    btn.addEventListener('mouseleave', stopSending);
+    btn.addEventListener('touchend', stopSending);
+}
+
 
 // ✅ يُستدعى بعد إدراج أي مجموعة كروت هدايا بالصفحة، يربط احتياطي الصورة عبر JS (متوافق مع CSP)
 function wireGiftImageFallbacks(containerEl) {
@@ -4804,7 +4995,7 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
 }
 
 // --- 🎊 تأثير عائم احترافي عند استقبال/إرسال هدية ---
-function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity = 1) {
+function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity = 1, targetUserId = null) {
     const container = document.createElement('div');
     container.className = 'gift-float-container';
     container.innerHTML = `
@@ -4832,7 +5023,37 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
         }, { once: true });
     }
 
+    // ✅ لو المستلم قاعد فعلياً بنفس الغرفة المعروضة حالياً، تطير الهدية نحو مقعده بالضبط
+    // (وإلا: تطفو بالمنتصف وتتلاشى كالسابق — يشمل حالة كونه "مشاهداً" غير جالس)
+    const targetSeatEl = targetUserId ? document.querySelector(`#voice-chat-grid [data-user-id="${targetUserId}"]`) : null;
+    const card = container.querySelector('.gift-float-card');
+    if (targetSeatEl && card) {
+        requestAnimationFrame(() => {
+            const startRect = card.getBoundingClientRect();
+            const endRect = targetSeatEl.getBoundingClientRect();
+            const dx = (endRect.left + endRect.width / 2) - (startRect.left + startRect.width / 2);
+            const dy = (endRect.top + endRect.height / 2) - (startRect.top + startRect.height / 2);
+            card.style.setProperty('--fly-x', `${dx}px`);
+            card.style.setProperty('--fly-y', `${dy}px`);
+            card.classList.add('gift-fly-to-seat');
+            setTimeout(() => {
+                targetSeatEl.classList.add('seat-gift-impact');
+                setTimeout(() => targetSeatEl.classList.remove('seat-gift-impact'), 500);
+            }, 850);
+        });
+        setTimeout(() => container.remove(), 1250);
+        return;
+    }
+
     setTimeout(() => container.remove(), 3500);
+}
+
+// ✅ يبلّغ الغرفة المعروضة حالياً (إن كان المستلم قاعداً فيها) بتحديث عداد الدعم أسفل مقعده
+function notifyRoomGiftSupport(targetUserId, value) {
+    if (!currentVoiceRoomId) return;
+    const seatEl = document.querySelector(`#voice-chat-grid [data-user-id="${targetUserId}"]`);
+    if (!seatEl) return; // المستلم غير قاعد بالغرفة المعروضة حالياً — لا شيء لتحديثه
+    socket.emit('room-gift-support', { roomId: currentVoiceRoomId, seatNumber: parseInt(seatEl.dataset.seat), value });
 }
 
         
