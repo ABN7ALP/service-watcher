@@ -33,7 +33,8 @@ const voiceRoomSchema = new mongoose.Schema({
     isPrivate: { type: Boolean, default: false },
     password: { type: String, select: false }, // 🛡️ لا يُرجَع أبداً إلا بطلب صريح select('+password')
     isLocked: { type: Boolean, default: false }, // ✅ قفل الغرفة بالكامل — لا يدخلها أحد غير المضيف/المسؤولين
-    backgroundImage: { type: String, default: null }, // ✅ خلفية الغرفة (حالياً من قائمة جاهزة مجانية)
+    backgroundImage: { type: String, default: null }, // ✅ الخلفية النشطة حالياً (مجانية أو مدفوعة)
+    backgroundExpiresAt: { type: Date, default: null }, // ✅ متى تنتهي الخلفية المدفوعة (null = مجانية/دائمة)
     seatCount: { type: Number, enum: [8, 15, 24, 80], default: 80 },
     adminSeatCount: { type: Number, default: 5 }, // أول N مقعد محجوز حصرياً للإدارة (0 بالغرف العادية)
     moderators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // ✅ مسؤولون مساعدون عيّنهم المضيف
@@ -253,6 +254,15 @@ voiceRoomSchema.methods.canModerate = function (userId) {
     const uid = userId.toString();
     if (this.host && this.host.toString() === uid) return true;
     return this.moderators.some(m => m.toString() === uid);
+};
+
+// ✅ يسقط الخلفية المدفوعة تلقائياً لو انتهت مدتها (فحص عند كل قراءة، بدون الحاجة لمهمة دورية منفصلة)
+voiceRoomSchema.methods.checkBackgroundExpiry = async function () {
+    if (this.backgroundExpiresAt && this.backgroundExpiresAt < new Date()) {
+        this.backgroundImage = null;
+        this.backgroundExpiresAt = null;
+        await this.save();
+    }
 };
 
 // ✅ زيادة عدد المقاعد فقط (اتجاه واحد: 8←15←24) — يضيف مقاعد فاضية جديدة بدون المساس بالموجود
