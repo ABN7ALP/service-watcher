@@ -969,6 +969,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentRoomModerators = []; // ✅ قائمة مسؤولي الغرفة المعروضة حالياً (لعرضهم بنافذة الإعدادات)
     let currentRoomIsLocked = false;
     let currentRoomBackgroundImage = null;
+    let currentRoomBackgroundExpiresAt = null;
     let currentRoomDescription = '';
 
     // ✅ يطبّق خلفية الغرفة خلف كل شيء (المقاعد/الدردشة/الأيقونات) لكن داخل إطارها فقط
@@ -1278,6 +1279,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             if (result.moderators) currentRoomModerators = result.moderators;
             if (typeof result.isLocked === 'boolean') currentRoomIsLocked = result.isLocked;
             if (result.backgroundImage !== undefined) currentRoomBackgroundImage = result.backgroundImage;
+            if (result.backgroundExpiresAt !== undefined) currentRoomBackgroundExpiresAt = result.backgroundExpiresAt;
             if (result.description !== undefined) currentRoomDescription = result.description;
             applyRoomBackground(currentRoomBackgroundImage);
 
@@ -1308,13 +1310,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ نافذة إنشاء غرفة جديدة — بنفس أسلوب نافذة إنشاء التحدي تماماً للتناسق البصري
     // ✅ نافذة إعدادات الغرفة — تظهر فقط للمضيف (يتحقق منها السيرفر أيضاً عند الحفظ)
     function showRoomSettingsModal(room) {
-        const freeBackgrounds = [
-            { url: null, label: 'بدون' },
-            { url: 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=200&q=50', label: '1' },
-            { url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=200&q=50', label: '2' },
-            { url: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=200&q=50', label: '3' },
-            { url: 'https://images.unsplash.com/photo-1531265726475-91b64616e854?w=200&q=50', label: '4' }
-        ];
         const seatSteps = [8, 15, 24];
         const nextSeatStep = seatSteps.find(s => s > room.seatCount);
         const occupiedNow = document.querySelectorAll('#voice-chat-grid .occupied-seat').length;
@@ -1351,14 +1346,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
                     <div>
                         <label class="text-sm block mb-1.5">خلفية الغرفة</label>
-                        <div class="grid grid-cols-5 gap-2">
-                            ${freeBackgrounds.map(bg => `
-                                <button type="button" data-bg="${bg.url || ''}" class="settings-bg-option aspect-square rounded-lg border-2 ${(currentRoomBackgroundImage || '') === (bg.url || '') ? 'border-purple-500' : 'border-transparent'} bg-gray-700 flex items-center justify-center overflow-hidden">
-                                    ${bg.url ? `<img src="${bg.url}" class="w-full h-full object-cover">` : '<i class="fas fa-ban text-gray-400 text-xs"></i>'}
-                                </button>
-                            `).join('')}
-                        </div>
-                        <p class="text-[11px] text-gray-500 mt-1">خلفيات مجانية حالياً — قريباً: خلفيات مميزة قابلة للشراء</p>
+                        <button type="button" id="open-bg-shop-btn" class="w-full bg-gray-700 hover:bg-gray-600 text-sm py-2.5 rounded-lg font-bold flex items-center justify-center gap-2">
+                            <i class="fas fa-image text-purple-400"></i> تغيير خلفية الغرفة
+                        </button>
                     </div>
 
                     ${!room.isOfficial && nextSeatStep ? `
@@ -1402,16 +1392,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             modal.querySelector('#settings-password-field').classList.toggle('hidden', !e.target.checked);
         });
 
-        let selectedBackground = currentRoomBackgroundImage || null;
-        modal.querySelectorAll('.settings-bg-option').forEach(btn => {
-            btn.addEventListener('click', () => {
-                selectedBackground = btn.dataset.bg || null;
-                modal.querySelectorAll('.settings-bg-option').forEach(b => b.classList.remove('border-purple-500'));
-                modal.querySelectorAll('.settings-bg-option').forEach(b => b.classList.add('border-transparent'));
-                btn.classList.remove('border-transparent');
-                btn.classList.add('border-purple-500');
-            });
-        });
+        modal.querySelector('#open-bg-shop-btn').addEventListener('click', () => showRoomBackgroundShopModal(room));
 
         // ✅ زيادة المقاعد فورية (منفصلة عن باقي الحفظ — تغيير بنيوي لا رجعة فيه)
         modal.querySelector('#settings-increase-seats-btn')?.addEventListener('click', async (e) => {
@@ -1459,7 +1440,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
             const wantsLocked = modal.querySelector('#settings-isLocked').checked;
             data.isLocked = wantsLocked;
-            data.backgroundImage = selectedBackground || '';
 
             // ✅ لو يقفل الآن والغرفة فيها ناس، نسأله صراحة: طرد الجميع أم يبقوا؟
             if (wantsLocked && !currentRoomIsLocked && occupiedNow > 0) {
@@ -1499,6 +1479,164 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 submitBtn.innerHTML = originalHTML;
             }
         });
+    }
+
+    // ✅ متجر خلفيات الغرفة — تبويبان: "خاصتي" (المجانية الدائمة) و"المظهر" (مدفوعة، 5 أيام لكل واحدة)
+    async function showRoomBackgroundShopModal(room) {
+        const existing = document.getElementById('room-bg-shop-modal');
+        if (existing) existing.remove();
+
+        const shellHTML = `
+            <div id="room-bg-shop-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[330] p-4">
+                <div class="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm text-white border border-gray-700 max-h-[85vh] flex flex-col">
+                    <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                        <h3 class="text-base font-bold"><i class="fas fa-image text-purple-400"></i> خلفية الغرفة</h3>
+                        <button id="close-bg-shop" class="text-gray-400 hover:text-white p-1"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="flex border-b border-gray-700 flex-shrink-0">
+                        <button class="bg-shop-tab flex-1 py-2.5 text-sm font-bold border-b-2 border-purple-500 text-white" data-tab="mine">خاصتي</button>
+                        <button class="bg-shop-tab flex-1 py-2.5 text-sm font-bold border-b-2 border-transparent text-gray-400" data-tab="shop">المظهر</button>
+                    </div>
+                    <div id="bg-shop-body" class="p-4 overflow-y-auto flex-1">
+                        <div class="text-center py-10 text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+        const modal = document.getElementById('room-bg-shop-modal');
+        document.getElementById('close-bg-shop').addEventListener('click', () => modal.remove());
+        modal.addEventListener('click', (e) => { if (e.target.id === 'room-bg-shop-modal') modal.remove(); });
+
+        let shopData = null;
+        try {
+            const shopRes = await fetch('/api/voice-room/background-shop', { headers: { 'Authorization': `Bearer ${token}` } });
+            shopData = await shopRes.json();
+        } catch (error) {
+            console.error('[BG SHOP] Load error:', error);
+        }
+        if (!shopData) {
+            document.getElementById('bg-shop-body').innerHTML = '<p class="text-center text-red-400 py-10">فشل تحميل المتجر</p>';
+            return;
+        }
+
+        let activeTab = 'mine';
+
+        function renderMineTab() {
+            const isFree = !currentRoomBackgroundImage;
+            const daysLeft = currentRoomBackgroundExpiresAt
+                ? Math.max(0, Math.ceil((new Date(currentRoomBackgroundExpiresAt) - Date.now()) / 86400000))
+                : null;
+            return `
+                <button id="activate-free-bg-btn" class="w-full text-right bg-gray-700/50 rounded-xl p-3 flex items-center gap-3 ${isFree ? 'ring-2 ring-purple-500' : ''}">
+                    <img src="${shopData.freeDefault}" class="w-14 h-14 rounded-lg object-cover flex-shrink-0">
+                    <div class="flex-1">
+                        <p class="font-bold text-sm">الخلفية المجانية</p>
+                        <p class="text-[11px] text-gray-400">دائمة ومتاحة لكل الغرف</p>
+                    </div>
+                    ${isFree ? '<i class="fas fa-check-circle text-purple-400"></i>' : ''}
+                </button>
+                ${!isFree ? `
+                    <div class="mt-3 bg-gray-700/50 rounded-xl p-3 flex items-center gap-3 ring-2 ring-amber-500">
+                        <img src="${currentRoomBackgroundImage}" class="w-14 h-14 rounded-lg object-cover flex-shrink-0">
+                        <div class="flex-1">
+                            <p class="font-bold text-sm">الخلفية المفعّلة حالياً</p>
+                            <p class="text-[11px] text-amber-400">${daysLeft !== null ? `تنتهي خلال ${daysLeft} يوم` : ''}</p>
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        function renderShopTab() {
+            return `
+                <div class="grid grid-cols-2 gap-3">
+                    ${shopData.premium.map(bg => {
+                        const isActive = currentRoomBackgroundImage === bg.url;
+                        return `
+                        <button class="bg-shop-item-btn text-right bg-gray-700/50 rounded-xl overflow-hidden ${isActive ? 'ring-2 ring-amber-500' : ''}" data-id="${bg.id}">
+                            <img src="${bg.url}" class="w-full aspect-video object-cover">
+                            <div class="p-2">
+                                <p class="text-[11px] text-yellow-400 font-bold"><i class="fas fa-coins"></i> ${bg.price} / ${shopData.days} أيام</p>
+                                ${isActive ? '<p class="text-[10px] text-amber-400 mt-0.5">مفعّلة حالياً</p>' : ''}
+                            </div>
+                        </button>`;
+                    }).join('')}
+                </div>
+            `;
+        }
+
+        function renderTab() {
+            const body = document.getElementById('bg-shop-body');
+            body.innerHTML = activeTab === 'mine' ? renderMineTab() : renderShopTab();
+
+            if (activeTab === 'mine') {
+                document.getElementById('activate-free-bg-btn')?.addEventListener('click', async () => {
+                    await applyRoomBackgroundChoice(room.id, 'free');
+                    modal.remove();
+                });
+            } else {
+                body.querySelectorAll('.bg-shop-item-btn').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const bgId = btn.dataset.id;
+                        const bg = shopData.premium.find(b => b.id === bgId);
+                        if (!bg || currentRoomBackgroundImage === bg.url) return; // مفعّلة أصلاً
+                        if (!confirm(`شراء هذي الخلفية بـ ${bg.price} كوينز لمدة ${shopData.days} أيام؟`)) return;
+                        await applyRoomBackgroundChoice(room.id, bgId);
+                        modal.remove();
+                    });
+                });
+            }
+        }
+
+        modal.querySelectorAll('.bg-shop-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                activeTab = tab.dataset.tab;
+                modal.querySelectorAll('.bg-shop-tab').forEach(t => {
+                    const isActive = t === tab;
+                    t.classList.toggle('border-purple-500', isActive);
+                    t.classList.toggle('text-white', isActive);
+                    t.classList.toggle('border-transparent', !isActive);
+                    t.classList.toggle('text-gray-400', !isActive);
+                });
+                renderTab();
+            });
+        });
+
+        renderTab();
+    }
+
+    // ✅ يرسل اختيار الخلفية للسيرفر (مجانية فورية، أو شراء مدفوعة) ويحدّث كل شيء محلياً
+    async function applyRoomBackgroundChoice(roomId, backgroundId) {
+        try {
+            const response = await fetch(`/api/voice-room/rooms/${roomId}/background`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ backgroundId })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                showNotification(result.message || 'تعذر تفعيل الخلفية', 'error');
+                return;
+            }
+            currentRoomBackgroundImage = result.backgroundImage;
+            currentRoomBackgroundExpiresAt = result.backgroundExpiresAt;
+            applyRoomBackground(currentRoomBackgroundImage);
+
+            if (result.newBalance !== null && result.newBalance !== undefined) {
+                const localUser = JSON.parse(localStorage.getItem('user'));
+                if (localUser) {
+                    localUser.coins = result.newBalance;
+                    localStorage.setItem('user', JSON.stringify(localUser));
+                }
+                const coinsEl = document.getElementById('coins');
+                if (coinsEl) coinsEl.textContent = result.newBalance;
+            }
+            showNotification('تم تفعيل الخلفية ✅', 'success');
+        } catch (error) {
+            console.error('[BG SHOP] Purchase error:', error);
+            showNotification('حدث خطأ، حاول مجدداً', 'error');
+        }
     }
 
     function showCreateRoomModal() {
