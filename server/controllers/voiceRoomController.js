@@ -104,6 +104,11 @@ exports.getRoomById = async (req, res) => {
         const isHost = room.host && room.host._id.toString() === req.user.id;
         const isModerator = room.moderators.some(m => m.toString() === req.user.id);
 
+        // 🛡️ غرفة مقفولة بالكامل — لا يدخلها أحد غير المضيف/المسؤولين (منفصل عن حماية كلمة المرور)
+        if (room.isLocked && !isHost && !isModerator) {
+            return res.status(403).json({ status: 'fail', message: 'هذه الغرفة مقفلة حالياً من المضيف' });
+        }
+
         // 🛡️ حماية دخول الغرفة نفسها بكلمة مرور (وليس فقط الجلوس على مقعد) — لا يشمل المضيف/المسؤولين
         if (room.isPrivate && !isHost && !isModerator) {
             const suppliedPassword = req.query.password || '';
@@ -133,6 +138,8 @@ exports.getRoomById = async (req, res) => {
             host: room.host,
             isOfficial: room.isOfficial,
             isPrivate: room.isPrivate,
+            isLocked: room.isLocked,
+            backgroundImage: room.backgroundImage,
             seatCount: room.seatCount,
             adminSeatCount: room.adminSeatCount,
             seats,
@@ -161,7 +168,7 @@ exports.updateRoom = async (req, res) => {
             return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية تعديل هذه الغرفة' });
         }
 
-        const { name, description, isPrivate, password } = req.body;
+        const { name, description, isPrivate, password, isLocked, kickAll, backgroundImage, seatCount } = req.body;
 
         if (name !== undefined) {
             const cleanName = String(name).trim();
@@ -190,8 +197,65 @@ exports.updateRoom = async (req, res) => {
             room.isPrivate = finalIsPrivate;
         }
 
+        // 🛡️ قائمة خلفيات مجانية جاهزة فقط حالياً (المتجر المدفوع مرحلة قادمة منفصلة)
+        if (backgroundImage !== undefined) {
+            const freeBackgrounds = [
+                null,
+                'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=800&q=60',
+                'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=800&q=60',
+                'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&q=60',
+                'https://images.unsplash.com/photo-1531265726475-91b64616e854?w=800&q=60'
+            ];
+            room.backgroundImage = freeBackgrounds.includes(backgroundImage) ? backgroundImage : null;
+        }
+
+        // ✅ زيادة عدد المقاعد فقط (اتجاه واحد 8←15←24)
+        if (seatCount !== undefined) {
+            const ok = room.increaseSeatCount(parseInt(seatCount));
+            if (!ok) {
+                return res.status(400).json({ status: 'fail', message: 'لا يمكن تقليل عدد المقاعد، فقط زيادته (8 ← 15 ← 24)' });
+            }
+        }
+
+        const io = req.app.get('socketio');
+
+        // ✅ قفل/فتح الغرفة — طرد الجميع (إن طُلب) يتم بعد الحفظ كعملية منفصلة، وإلا فإن حفظ هذا
+        // المستند سيُعيد كتابة مصفوفة المقاعد بنسخته القديمة بالذاكرة ويُلغي التفريغ عن طريق الخطأ
+        let shouldKickAll = false;
+        if (isLocked !== undefined) {
+            const finalIsLocked = isLocked === true || isLocked === 'true';
+            room.isLocked = finalIsLocked;
+            shouldKickAll = finalIsLocked && (kickAll === true || kickAll === 'true');
+        }
+
         await room.save();
-        res.json({ status: 'success', room: { id: room._id, name: room.name, description: room.description, isPrivate: room.isPrivate } });
+
+        let kickedSeats = [];
+        if (shouldKickAll) {
+            kickedSeats = await VoiceRoom.releaseAllSeatsInRoom(room._id);
+        }
+
+        // ✅ البث بعد الحفظ: تحرير المقاعد المطرودة + إشعار كل من بالغرفة بإغلاقها لو تم طردهم
+        if (io && kickedSeats.length > 0) {
+            const roomIdStr = room._id.toString();
+            kickedSeats.forEach(seatNumber => {
+                io.emit('user-left-seat', { roomId: roomIdStr, seatNumber });
+            });
+            io.to(`room-chat-${roomIdStr}`).emit('room-force-closed', { roomId: roomIdStr, reason: 'locked' });
+        }
+
+        res.json({
+            status: 'success',
+            room: {
+                id: room._id,
+                name: room.name,
+                description: room.description,
+                isPrivate: room.isPrivate,
+                isLocked: room.isLocked,
+                backgroundImage: room.backgroundImage,
+                seatCount: room.seatCount
+            }
+        });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
     }
