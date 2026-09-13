@@ -637,6 +637,188 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     initRoomFloatingBubble();
 
     // =====================================================
+    // ✅ مشغّل موسيقى الغرفة — عنصر صوت واحد دائم بالصفحة، يُزامن مع بقية المستمعين عبر السوكيت
+    // =====================================================
+    let currentMusicState = null; // آخر حالة موسيقى مستلمة للغرفة المعروضة حالياً
+    let roomMusicLibraryCache = []; // مكتبة أغاني الغرفة المعروضة حالياً (تُحمَّل عند الحاجة)
+
+    function initRoomMusicAudioEl() {
+        if (document.getElementById('room-music-audio')) return;
+        const audio = document.createElement('audio');
+        audio.id = 'room-music-audio';
+        audio.style.display = 'none';
+        document.body.appendChild(audio);
+    }
+    initRoomMusicAudioEl();
+
+    // ✅ يطبّق حالة التشغيل الواردة من السيرفر على عنصر الصوت الفعلي (مزامنة رياضية بالثانية)
+    function applyMusicState(state) {
+        currentMusicState = state;
+        const audio = document.getElementById('room-music-audio');
+        const cdBtn = document.getElementById('room-music-cd-btn');
+        if (!audio) return;
+
+        if (!state) {
+            audio.pause();
+            audio.removeAttribute('src');
+            cdBtn?.classList.remove('cd-spinning');
+            return;
+        }
+
+        if (audio.dataset.currentUrl !== state.url) {
+            audio.src = state.url;
+            audio.dataset.currentUrl = state.url;
+        }
+
+        if (state.isPlaying) {
+            const elapsed = state.pausedAt + (Date.now() - state.startedAt) / 1000;
+            if (Math.abs((audio.currentTime || 0) - elapsed) > 1.5) audio.currentTime = Math.max(0, elapsed);
+            audio.play().catch(() => {}); // ✅ قد يمنعه المتصفح قبل أول تفاعل من المستخدم — طبيعي وغير خطير
+            cdBtn?.classList.add('cd-spinning');
+        } else {
+            audio.currentTime = state.pausedAt;
+            audio.pause();
+            cdBtn?.classList.remove('cd-spinning');
+        }
+    }
+
+    // ✅ المشغّل المصغّر — يظهر بالضغط على أيقونة القرص: العنوان + تشغيل/إيقاف + التالي (للمضيف/المسؤول فقط)
+    async function showMusicPlayerPopup(roomId) {
+        const canControl = roomId !== 'main' && (currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator');
+        const modal = document.createElement('div');
+        modal.id = 'music-player-modal';
+        modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 w-full md:max-w-xs text-white">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center flex-shrink-0 ${currentMusicState?.isPlaying ? 'cd-spinning' : ''}" id="music-popup-cd">
+                        <i class="fas fa-compact-disc text-xl"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold text-sm truncate">${currentMusicState ? escapeHtml(currentMusicState.title) : 'لا توجد أغنية قيد التشغيل'}</p>
+                        <p class="text-[11px] text-gray-400">${currentMusicState ? (currentMusicState.isPlaying ? 'قيد التشغيل' : 'متوقف مؤقتاً') : ''}</p>
+                    </div>
+                </div>
+                ${canControl ? `
+                    <div class="flex items-center justify-center gap-3 mb-3">
+                        <button id="music-toggle-btn" class="w-11 h-11 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center">
+                            <i class="fas ${currentMusicState?.isPlaying ? 'fa-pause' : 'fa-play'}"></i>
+                        </button>
+                        <button id="music-next-btn" class="w-11 h-11 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center">
+                            <i class="fas fa-forward-step"></i>
+                        </button>
+                        <button id="music-add-btn" class="w-11 h-11 rounded-full bg-emerald-600 hover:bg-emerald-700 flex items-center justify-center">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                    <div id="music-library-list" class="space-y-1.5 max-h-40 overflow-y-auto"></div>
+                ` : ''}
+                <button id="close-music-popup" class="w-full text-center py-2 mt-2 rounded-lg bg-gray-700 text-gray-300 text-sm">إغلاق</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'music-player-modal') modal.remove(); });
+        document.getElementById('close-music-popup').addEventListener('click', () => modal.remove());
+
+        if (!canControl) return;
+
+        document.getElementById('music-toggle-btn').addEventListener('click', () => {
+            if (currentMusicState?.isPlaying) socket.emit('room-music-pause', { roomId });
+            else if (currentMusicState) socket.emit('room-music-resume', { roomId });
+            modal.remove();
+        });
+
+        document.getElementById('music-next-btn').addEventListener('click', () => {
+            playNextLibraryTrack(roomId);
+            modal.remove();
+        });
+
+        document.getElementById('music-add-btn').addEventListener('click', () => {
+            modal.remove();
+            openMusicUploadPicker(roomId);
+        });
+
+        await loadMusicLibraryList(roomId, modal);
+    }
+
+    async function loadMusicLibraryList(roomId, modal) {
+        const listEl = modal.querySelector('#music-library-list');
+        if (!listEl) return;
+        try {
+            const response = await fetch(`/api/voice-room/rooms/${roomId}/music`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            roomMusicLibraryCache = result.tracks || [];
+            if (roomMusicLibraryCache.length === 0) {
+                listEl.innerHTML = '<p class="text-[11px] text-gray-500 text-center py-3">لا توجد أغاني بعد — اضغط + لإضافة أول أغنية</p>';
+                return;
+            }
+            listEl.innerHTML = roomMusicLibraryCache.map((t, i) => `
+                <button class="music-track-btn w-full text-right bg-gray-700/50 hover:bg-gray-700 rounded-lg p-2 flex items-center gap-2 ${currentMusicState?.url === t.url ? 'ring-1 ring-emerald-400' : ''}" data-idx="${i}">
+                    <i class="fas fa-music text-emerald-400 text-xs"></i>
+                    <span class="text-xs truncate flex-1">${escapeHtml(t.title)}</span>
+                </button>
+            `).join('');
+            listEl.querySelectorAll('.music-track-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const track = roomMusicLibraryCache[parseInt(btn.dataset.idx)];
+                    socket.emit('room-music-play', { roomId, url: track.url, title: track.title });
+                    document.getElementById('music-player-modal')?.remove();
+                });
+            });
+        } catch (error) {
+            console.error('[MUSIC] Load library error:', error);
+        }
+    }
+
+    function playNextLibraryTrack(roomId) {
+        if (roomMusicLibraryCache.length === 0) {
+            showNotification('لا توجد أغاني أخرى بالمكتبة', 'info');
+            return;
+        }
+        const currentIdx = roomMusicLibraryCache.findIndex(t => t.url === currentMusicState?.url);
+        const next = roomMusicLibraryCache[(currentIdx + 1) % roomMusicLibraryCache.length];
+        socket.emit('room-music-play', { roomId, url: next.url, title: next.title });
+    }
+
+    // ✅ اختيار ملف من الجهاز ورفعه لمكتبة الغرفة (يشتغل تلقائياً للجميع فور اكتمال الرفع)
+    function openMusicUploadPicker(roomId) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'audio/*';
+        input.addEventListener('change', async () => {
+            const file = input.files[0];
+            if (!file) return;
+            if (file.size > 10 * 1024 * 1024) {
+                showNotification('حجم الملف كبير جداً (الحد 10 ميجا)', 'error');
+                return;
+            }
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('title', file.name.replace(/\.[^/.]+$/, ''));
+
+            showNotification('جاري رفع الأغنية...', 'info');
+            try {
+                const response = await fetch(`/api/voice-room/rooms/${roomId}/music/upload`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    showNotification(result.message || 'فشل رفع الأغنية', 'error');
+                    return;
+                }
+                showNotification('تم رفع الأغنية ✅', 'success');
+                socket.emit('room-music-play', { roomId, url: result.track.url, title: result.track.title });
+            } catch (error) {
+                console.error('[MUSIC] Upload error:', error);
+                showNotification('حدث خطأ أثناء الرفع', 'error');
+            }
+        });
+        input.click();
+    }
+
+    // =====================================================
     // ✅ دردشة خاصة بكل غرفة — بديل الدردشة العامة القديمة
     // -----------------------------------------------------
     // مدمجة داخل إطار الغرفة نفسه (وليست عنصراً عائماً منفصلاً) — الرسائل تبقى ظاهرة دائماً
@@ -662,6 +844,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <button id="room-messages-icon-btn" class="relative w-6 h-6 flex items-center justify-center text-gray-300 hover:text-blue-400 flex-shrink-0" title="الرسائل الخاصة">
                         <i class="fas fa-envelope text-sm"></i>
                         <span id="room-messages-badge" class="hidden absolute -top-1.5 -left-1.5 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">0</span>
+                    </button>
+                    <button id="room-music-cd-btn" class="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-emerald-400 flex-shrink-0" title="موسيقى الغرفة">
+                        <i class="fas fa-compact-disc text-sm"></i>
                     </button>
                     <div id="room-chat-input-row" class="hidden flex-1 items-center gap-2">
                         <input id="room-chat-input" maxlength="300" placeholder="اكتب رسالة..." class="flex-1 bg-gray-700/60 border border-gray-600 rounded-full px-3 py-1.5 text-xs text-white focus:ring-purple-500 focus:border-purple-500">
@@ -710,6 +895,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             } else {
                 showNotification('لا توجد رسائل جديدة', 'info');
             }
+        });
+
+        // ✅ أيقونة القرص — تفتح المشغّل المصغّر (تشغيل/إيقاف/التالي للمضيف، عرض فقط للبقية)
+        document.getElementById('room-music-cd-btn')?.addEventListener('click', () => {
+            if (currentVoiceRoomId) showMusicPlayerPopup(currentVoiceRoomId);
         });
     }
 
@@ -835,6 +1025,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function leaveRoomChatUI() {
         if (roomChatCurrentRoomId) socket.emit('leave-room-chat', { roomId: roomChatCurrentRoomId });
         roomChatCurrentRoomId = null;
+        applyMusicState(null);
     }
 
     // ✅ وضع "الغرفة ملء الشاشة" — يخفي هيدر المنصة والتنقّل بالكامل، بالضبط زي التطبيقات المشهورة
@@ -3715,6 +3906,11 @@ function showXpGainAnimation(amount) {
         if (roomId !== currentVoiceRoomId || currentRoomMyRole === 'host') return;
         showNotification('تم قفل الغرفة من المضيف وطرد الجميع', 'warning');
         showRoomBrowserView();
+    });
+
+    // ✅ يصل فقط لمن هو منضم فعلياً لقناة دردشة هذي الغرفة (بث مخصص، وليس عاماً)
+    socket.on('room-music-state', (state) => {
+        applyMusicState(state);
     });
 
     socket.on('seat-reaction-played', ({ roomId, seatNumber, emoji }) => {
