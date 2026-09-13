@@ -520,7 +520,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    نسبياً لحدود الغرفة تلقائياً. هذا يضمن ثباتاً حقيقياً بغض النظر عن طول محتوى الغرفة
    (بعكس sticky الذي يعتمد على طول الصفحة ويفشل بالغرف القصيرة). */
 
-/* 1) صف الأيقونات — أسفل الإطار دائماً */
+/* 1) صف الأيقونات — أسفل الإطار دائماً. الهدايا أقصى طرف، وبقية الأيقونات مجمّعة بالطرف المقابل */
 .room-chat-icon-row-fixed {
     position: fixed;
     bottom: 10px;
@@ -528,27 +528,27 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     z-index: 10;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 0.6rem;
+    justify-content: space-between;
     background: rgba(17,24,39,0.92);
     border-radius: 9999px;
-    padding: 0.45rem 0.9rem;
+    padding: 0.5rem 1rem;
     backdrop-filter: blur(4px);
     box-shadow: 0 4px 14px rgba(0,0,0,0.35);
 }
 
-/* 2) حقل الإدخال — صف مستقل فوق الأيقونات تماماً (وليس بجانبها) لتفادي أي خلل بعرض الهاتف */
+/* 2) حقل الإدخال — صف مستقل فوق الأيقونات تماماً (وليس بجانبها) لتفادي أي خلل بعرض الهاتف.
+   مخفي افتراضياً (hidden) ولا يظهر إلا بالضغط على أيقونة الدردشة. */
 .room-chat-input-fixed {
     position: fixed;
     bottom: 58px;
     left: 12px; right: 12px;
     z-index: 11;
-    display: flex;
     align-items: center;
     gap: 8px;
 }
+.room-chat-input-fixed:not(.hidden) { display: flex; }
 
-/* 3) منطقة الرسائل — تعلو الاثنين، تنمو للأعلى نحو المقاعد */
+/* 3) منطقة الرسائل — تعلو الاثنين، تنمو للأعلى نحو المقاعد، وقابلة للتمرير لعرض السجل بالكامل */
 .room-chat-messages-fixed {
     position: fixed;
     bottom: 62px;
@@ -564,11 +564,17 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     justify-content: flex-end;
     text-shadow: 0 1px 3px rgba(0,0,0,0.9);
     scrollbar-width: thin;
-    pointer-events: none; /* الخلفية الشفافة لا تعيق الضغط على المقاعد خلفها */
+    transition: bottom 0.15s ease;
 }
 .room-chat-messages-fixed:empty { display: none; }
 .room-chat-messages-fixed::-webkit-scrollbar { width: 4px; }
 .room-chat-messages-fixed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 4px; }
+
+/* ✅ لما يظهر حقل الإدخال، نرفع منطقة الرسائل فوقه حتى لا يغطي آخر رسالة */
+body.room-chat-input-open .room-chat-messages-fixed { bottom: 106px; }
+@media (min-width: 768px) {
+    body.room-chat-input-open .room-chat-messages-fixed { bottom: 114px; }
+}
 
 @media (min-width: 768px) {
     .room-chat-icon-row-fixed { bottom: 16px; max-width: 480px; margin: 0 auto; left: 12px; right: 12px; }
