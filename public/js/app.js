@@ -835,22 +835,24 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <button id="room-chat-send-btn" class="w-8 h-8 rounded-full bg-purple-600 hover:bg-purple-700 flex items-center justify-center text-white flex-shrink-0"><i class="fas fa-paper-plane text-[11px]"></i></button>
             </div>
             <div class="room-chat-icon-row-fixed">
-                <button id="room-chat-toggle-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-purple-400 flex-shrink-0" title="دردشة الغرفة">
-                    <i class="fas fa-comment-dots text-base"></i>
+                <button id="room-gift-icon-btn" class="w-9 h-9 flex items-center justify-center text-gray-300 hover:text-pink-400 flex-shrink-0" title="الهدايا">
+                    <i class="fas fa-gift text-lg"></i>
                 </button>
-                <button id="room-my-reaction-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-amber-400 flex-shrink-0" title="تفاعل">
-                    <i class="fas fa-face-laugh-beam text-base"></i>
-                </button>
-                <button id="room-gift-icon-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-pink-400 flex-shrink-0" title="الهدايا">
-                    <i class="fas fa-gift text-base"></i>
-                </button>
-                <button id="room-messages-icon-btn" class="relative w-7 h-7 flex items-center justify-center text-gray-300 hover:text-blue-400 flex-shrink-0" title="الرسائل الخاصة">
-                    <i class="fas fa-envelope text-base"></i>
-                    <span id="room-messages-badge" class="hidden absolute -top-1.5 -left-1.5 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">0</span>
-                </button>
-                <button id="room-music-cd-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-emerald-400 flex-shrink-0" title="موسيقى الغرفة">
-                    <i class="fas fa-compact-disc text-base"></i>
-                </button>
+                <div class="flex items-center gap-2.5">
+                    <button id="room-music-cd-btn" class="w-9 h-9 flex items-center justify-center text-gray-300 hover:text-emerald-400 flex-shrink-0" title="موسيقى الغرفة">
+                        <i class="fas fa-compact-disc text-lg"></i>
+                    </button>
+                    <button id="room-messages-icon-btn" class="relative w-9 h-9 flex items-center justify-center text-gray-300 hover:text-blue-400 flex-shrink-0" title="الرسائل الخاصة">
+                        <i class="fas fa-envelope text-lg"></i>
+                        <span id="room-messages-badge" class="hidden absolute -top-1 -left-1 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">0</span>
+                    </button>
+                    <button id="room-my-reaction-btn" class="w-9 h-9 flex items-center justify-center text-gray-300 hover:text-amber-400 flex-shrink-0" title="تفاعل">
+                        <i class="fas fa-face-laugh-beam text-lg"></i>
+                    </button>
+                    <button id="room-chat-toggle-btn" class="w-9 h-9 flex items-center justify-center text-gray-300 hover:text-purple-400 flex-shrink-0" title="دردشة الغرفة">
+                        <i class="fas fa-comment-dots text-lg"></i>
+                    </button>
+                </div>
             </div>
         `;
     }
@@ -863,6 +865,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         toggleBtn.addEventListener('click', () => {
             const willShow = inputRow.classList.contains('hidden');
             inputRow.classList.toggle('hidden', !willShow);
+            document.body.classList.toggle('room-chat-input-open', willShow); // ✅ يرفع منطقة الرسائل فوق الحقل حتى لا يغطي آخر رسالة
             if (willShow) document.getElementById('room-chat-input')?.focus();
         });
         document.getElementById('room-chat-send-btn')?.addEventListener('click', sendRoomChatMessage);
@@ -994,12 +997,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (!box) return;
         const el = document.createElement('div');
         el.dataset.msgId = msg._id;
-        el.className = 'room-chat-message';
+        const isMyMessage = msg.sender?._id === myUserId;
+        const bubbleClass = msg.sender?.activeBubbleSkinClass || (isMyMessage ? 'bg-purple-800/80' : 'bg-gray-700/70');
+        el.className = `room-chat-message ${bubbleClass}`;
         const safeName = escapeHtml(msg.sender?.username || '');
         const safeContent = escapeHtml(msg.content || '');
         const avatar = msg.sender?.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+        const frameClass = msg.sender?.activeFrameClass || '';
         el.innerHTML = `
-            <img src="${avatar}" class="room-chat-msg-avatar" alt="">
+            <img src="${avatar}" class="room-chat-msg-avatar ${frameClass}" alt="">
             <div class="room-chat-msg-body">
                 <span class="room-chat-msg-name">${safeName}</span>
                 <span class="room-chat-msg-text">${safeContent}</span>
@@ -1032,6 +1038,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (roomChatCurrentRoomId) socket.emit('leave-room-chat', { roomId: roomChatCurrentRoomId });
         roomChatCurrentRoomId = null;
         applyMusicState(null);
+        document.body.classList.remove('room-chat-input-open');
     }
 
     // ✅ وضع "الغرفة ملء الشاشة" — يخفي هيدر المنصة والتنقّل بالكامل، بالضبط زي التطبيقات المشهورة
