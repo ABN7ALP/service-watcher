@@ -961,7 +961,7 @@ socket.on('refreshBlockData', async () => {
                     room: channel
                 });
                 const populatedMessage = await Message.findById(newMessage._id)
-                    .populate('sender', 'username profileImage activeFrameClass');
+                    .populate('sender', 'username profileImage activeFrameClass activeBubbleSkinClass');
                 if (!populatedMessage) return;
 
                 const roomSockets = io.sockets.adapter.rooms.get(channel);
