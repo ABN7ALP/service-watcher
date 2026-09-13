@@ -515,40 +515,91 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     }
 }
 
-/* ✅ دردشة الغرفة الصوتية — 3 عناصر مستقلة، كل واحد fixed بالضبط داخل إطار الغرفة نفسه
-   (وليس الصفحة كاملة) — لأن #main-content يحمل backdrop-blur، فهذا يجعل أي fixed بداخله
-   نسبياً لحدود الغرفة تلقائياً. هذا يضمن ثباتاً حقيقياً بغض النظر عن طول محتوى الغرفة
-   (بعكس sticky الذي يعتمد على طول الصفحة ويفشل بالغرف القصيرة). */
+/* ✅ دردشة الغرفة الصوتية — بآلية التطبيقات المشهورة (Bigo/Yalla/TikTok Live): حقل كتابة
+   واحد ظاهر دائماً + زرّي هدية/المزيد بجانبه (بدل صف أيقونات منفصل يحتاج فتحه أولاً).
+   كله fixed بالضبط داخل إطار الغرفة نفسه (وليس الصفحة كاملة) — لأن #main-content يحمل
+   backdrop-blur، فهذا يجعل أي fixed بداخله نسبياً لحدود الغرفة تلقائياً، ويضمن ثباتاً
+   حقيقياً بغض النظر عن طول محتوى الغرفة (بعكس sticky الذي يفشل بالغرف القصيرة). */
 
-/* 1) صف الأيقونات — أسفل الإطار دائماً. الهدايا أقصى طرف، وبقية الأيقونات مجمّعة بالطرف المقابل */
-.room-chat-icon-row-fixed {
+/* 1) الشريط السفلي الموحّد — حقل الكتابة يأخذ معظم العرض + زرّان مدمجان بجانبه */
+.room-chat-dock-fixed {
     position: fixed;
     bottom: 10px;
     left: 12px; right: 12px;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: rgba(17,24,39,0.92);
-    border-radius: 9999px;
-    padding: 0.5rem 1rem;
-    backdrop-filter: blur(4px);
-    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
-}
-
-/* 2) حقل الإدخال — صف مستقل فوق الأيقونات تماماً (وليس بجانبها) لتفادي أي خلل بعرض الهاتف.
-   مخفي افتراضياً (hidden) ولا يظهر إلا بالضغط على أيقونة الدردشة. */
-.room-chat-input-fixed {
-    position: fixed;
-    bottom: 58px;
-    left: 12px; right: 12px;
     z-index: 11;
+    display: flex;
     align-items: center;
     gap: 8px;
 }
-.room-chat-input-fixed:not(.hidden) { display: flex; }
+.room-chat-input-pill {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(17,24,39,0.92);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 9999px;
+    padding: 6px 16px 6px 6px; /* ✅ فراغ أكبر بجهة اليمين (بداية الكتابة بالعربي)، أضيق قرب زر الإرسال باليسار */
+    backdrop-filter: blur(4px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+}
+.room-chat-input-pill input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #fff;
+    font-size: 13px;
+}
+.room-chat-input-pill input::placeholder { color: rgba(255,255,255,0.45); }
+.room-chat-input-pill button {
+    width: 30px; height: 30px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.5);
+    font-size: 12px;
+    transition: all 0.15s ease;
+}
+.room-chat-input-pill button.room-chat-send-active {
+    background: #9333ea;
+    color: #fff;
+}
+.room-chat-dock-icon {
+    position: relative;
+    width: 42px; height: 42px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(17,24,39,0.92);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #d1d5db;
+    font-size: 17px;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+}
+.room-chat-dock-icon.room-chat-gift-icon { color: #f472b6; }
+/* ✅ نبضة خفيفة حول زر "المزيد" وقت تشغيل موسيقى الغرفة — مؤشر مستمر رغم انتقال أيقونة القرص لداخل القائمة */
+.room-chat-dock-icon.room-music-playing { border-color: rgba(16,185,129,0.7); color: #34d399; }
+@keyframes roomMusicPulse { 0%, 100% { box-shadow: 0 4px 14px rgba(0,0,0,0.35), 0 0 0 0 rgba(16,185,129,0.5); } 50% { box-shadow: 0 4px 14px rgba(0,0,0,0.35), 0 0 0 4px rgba(16,185,129,0); } }
+.room-chat-dock-icon.room-music-playing { animation: roomMusicPulse 1.8s ease-out infinite; }
+.room-chat-mini-badge {
+    position: absolute;
+    top: -3px; left: -3px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    border-radius: 9999px;
+    min-width: 16px; height: 16px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 3px;
+}
 
-/* 3) منطقة الرسائل — تعلو الاثنين، تنمو للأعلى نحو المقاعد، وقابلة للتمرير لعرض السجل بالكامل */
+/* 2) منطقة الرسائل — تعلو الشريط، تنمو للأعلى نحو المقاعد، وقابلة للتمرير لعرض السجل بالكامل */
 .room-chat-messages-fixed {
     position: fixed;
     bottom: 62px;
@@ -561,6 +612,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     padding: 1.5rem 0.5rem 0.25rem;
     display: flex;
     flex-direction: column;
+    align-items: flex-start; /* ✅ flex-start = بداية المحور الداخلي = اليمين بصفحة RTL — الفقاعات تحتضن محتواها وتلتصق بجهة القراءة بدل تمددها بعرض الصندوق كاملاً */
     justify-content: flex-end;
     text-shadow: 0 1px 3px rgba(0,0,0,0.9);
     scrollbar-width: thin;
@@ -570,27 +622,22 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .room-chat-messages-fixed::-webkit-scrollbar { width: 4px; }
 .room-chat-messages-fixed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 4px; }
 
-/* ✅ لما يظهر حقل الإدخال، نرفع منطقة الرسائل فوقه حتى لا يغطي آخر رسالة */
-body.room-chat-input-open .room-chat-messages-fixed { bottom: 106px; }
 @media (min-width: 768px) {
-    body.room-chat-input-open .room-chat-messages-fixed { bottom: 114px; }
-}
-
-@media (min-width: 768px) {
-    .room-chat-icon-row-fixed { bottom: 16px; max-width: 480px; margin: 0 auto; left: 12px; right: 12px; }
-    .room-chat-input-fixed { bottom: 66px; max-width: 480px; margin: 0 auto; left: 12px; right: 12px; }
+    .room-chat-dock-fixed { bottom: 16px; max-width: 480px; margin: 0 auto; left: 12px; right: 12px; }
     .room-chat-messages-fixed { bottom: 70px; max-width: 480px; margin: 0 auto; left: 12px; right: 12px; max-height: 48vh; }
 }
 
-/* ✅ تصميم رسالة احترافي: صورة أكبر قليلاً + الاسم أعلى النص + النص تحته (بدل جنب بعض) */
+/* ✅ فقاعة رسالة تحتضن محتواها (width: fit-content) بدل تمددها بعرض شبه كامل — كل رسالة
+   بحجمها الطبيعي فقط، تماماً كما بتطبيقات الدردشة المعروفة، لا كنص عائم بعرض الشاشة */
 .room-chat-message {
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    padding: 4px 8px;
-    border-radius: 10px;
+    padding: 5px 10px;
+    border-radius: 14px;
     animation: chatMsgIn 0.25s ease-out;
-    max-width: 96%;
+    width: fit-content;
+    max-width: 88%;
     pointer-events: auto;
 }
 .room-chat-msg-avatar {
