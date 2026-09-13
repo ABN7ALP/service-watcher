@@ -24,6 +24,10 @@ const voiceSeatLocks = new Map(); // userId(string) → Promise لآخر عمل�
 
 // ✅ محدد معدل بسيط لدردشة الغرف وتفاعلات الإيموجي (userId → آخر وقت إرسال بالميلي ثانية)
 const roomChatRateLimit = new Map();
+
+// ✅ حالة تشغيل الموسيقى الحيّة لكل غرفة (بالذاكرة — تكفي، لا تحتاج قاعدة بيانات)
+// roomId → { url, title, startedAt(ms), isPlaying, pausedAt(seconds) }
+const roomMusicState = new Map();
 function withUserSeatLock(userId, fn) {
     const key = userId.toString();
     const previous = voiceSeatLocks.get(key) || Promise.resolve();
@@ -929,6 +933,8 @@ socket.on('refreshBlockData', async () => {
         socket.on('join-room-chat', ({ roomId }) => {
             if (!roomId) return;
             socket.join(`room-chat-${roomId}`);
+            const musicState = roomMusicState.get(roomId);
+            if (musicState) socket.emit('room-music-state', musicState); // ✅ مزامنة فورية لمن ينضم متأخراً
         });
 
         socket.on('leave-room-chat', ({ roomId }) => {
@@ -1014,6 +1020,52 @@ socket.on('refreshBlockData', async () => {
             if (!roomId || !Number.isFinite(numValue) || numValue <= 0) return;
             const safeValue = Math.min(numValue, 100000); // 🛡️ سقف معقول يمنع تضخيم العداد بقيم وهمية
             io.emit('room-support-updated', { roomId, seatNumber: parseInt(seatNumber), value: safeValue });
+        });
+
+        // =====================================================
+        // ✅ مشغّل موسيقى الغرفة — المضيف/المسؤولون فقط يتحكمون، الجميع يسمع نفس المسار متزامناً
+        // =====================================================
+        socket.on('room-music-play', async ({ roomId, url, title }) => {
+            const VoiceRoom = require('../models/VoiceRoom');
+            const room = await VoiceRoom.resolveRoom(roomId);
+            if (!room || !room.canModerate(socket.user._id) || !url) return;
+
+            const state = { url, title: title || 'أغنية', startedAt: Date.now(), isPlaying: true, pausedAt: 0 };
+            roomMusicState.set(roomId, state);
+            io.to(`room-chat-${roomId}`).emit('room-music-state', state);
+        });
+
+        socket.on('room-music-pause', async ({ roomId }) => {
+            const VoiceRoom = require('../models/VoiceRoom');
+            const room = await VoiceRoom.resolveRoom(roomId);
+            if (!room || !room.canModerate(socket.user._id)) return;
+
+            const state = roomMusicState.get(roomId);
+            if (!state || !state.isPlaying) return;
+            state.pausedAt += (Date.now() - state.startedAt) / 1000;
+            state.isPlaying = false;
+            io.to(`room-chat-${roomId}`).emit('room-music-state', state);
+        });
+
+        socket.on('room-music-resume', async ({ roomId }) => {
+            const VoiceRoom = require('../models/VoiceRoom');
+            const room = await VoiceRoom.resolveRoom(roomId);
+            if (!room || !room.canModerate(socket.user._id)) return;
+
+            const state = roomMusicState.get(roomId);
+            if (!state || state.isPlaying) return;
+            state.startedAt = Date.now() - state.pausedAt * 1000;
+            state.isPlaying = true;
+            io.to(`room-chat-${roomId}`).emit('room-music-state', state);
+        });
+
+        socket.on('room-music-stop', async ({ roomId }) => {
+            const VoiceRoom = require('../models/VoiceRoom');
+            const room = await VoiceRoom.resolveRoom(roomId);
+            if (!room || !room.canModerate(socket.user._id)) return;
+
+            roomMusicState.delete(roomId);
+            io.to(`room-chat-${roomId}`).emit('room-music-state', null);
         });
 
         socket.on('disconnect', async () => {
