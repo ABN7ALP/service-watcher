@@ -167,7 +167,7 @@ const setupMiddleware = (app) => {
                 // ✅ مصادر ملفات الخطوط الفعلية (Font Awesome وGoogle Fonts يجلبان ملفات خط من نطاقات منفصلة)
                 "font-src": ["'self'", "data:", "https://cdnjs.cloudflare.com", "https://fonts.gstatic.com"],
                 // ✅ الإصلاح: إضافة blob: لمعاينة الصور/الفيديو محلياً قبل رفعها (createObjectURL)
-                "img-src": ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://i.ibb.co"],
+                "img-src": ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://i.ibb.co", "https://images.unsplash.com"],
                 "media-src": ["'self'", "blob:", "https://res.cloudinary.com"],
                 // ✅ الاتصال (fetch/XHR/WebSocket) يقتصر على نفس الموقع فقط — يكفي لاتصال Socket.IO
                 // لأن العميل يتصل بنفس أصل الخادم (io() بدون رابط خارجي)، لا بـ cdn.socket.io
