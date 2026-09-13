@@ -2,7 +2,25 @@ const mongoose = require('mongoose');
 const VoiceRoom = require('../models/VoiceRoom');
 const Message = require('../models/Message');
 const User = require('../models/User');
+const RoomBattle = require('../models/RoomBattle');
 const { uploadRoomMusic } = require('../utils/cloudinary');
+
+// ✅ لقطة معركة PK الحالية لغرفة معينة (معلّقة أو فعلية) — تُستخدم لعرض شريط المعركة
+// فوراً عند فتح/إعادة فتح شاشة الغرفة، دون انتظار حدث Socket قد يكون فات وقته
+async function getActiveBattleSnapshot(roomId) {
+    const battle = await RoomBattle.getOpenForRoomPopulated(roomId);
+    if (!battle) return null;
+    return {
+        battleId: battle._id,
+        status: battle.status,
+        roomA: { id: battle.roomA._id, name: battle.roomA.name, coverImage: battle.roomA.coverImage },
+        roomB: { id: battle.roomB._id, name: battle.roomB.name, coverImage: battle.roomB.coverImage },
+        scoreA: battle.scoreA,
+        scoreB: battle.scoreB,
+        durationSeconds: battle.durationSeconds,
+        endsAt: battle.endsAt
+    };
+}
 
 // =====================================================
 // ✅ كتالوج خلفيات الغرفة — خلفية مجانية دائمة + خلفيات مدفوعة (10 كوينز / 5 أيام)
@@ -112,7 +130,8 @@ exports.getRoomById = async (req, res) => {
             .select('+password')
             .populate('seats.user', 'username profileImage activeFrameClass isAdmin')
             .populate('host', 'username profileImage')
-            .populate('moderators', 'username profileImage');
+            .populate('moderators', 'username profileImage')
+            .populate('handRaises.user', 'username profileImage');
         if (!room) {
             return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة أو أُغلقت' });
         }
@@ -164,7 +183,12 @@ exports.getRoomById = async (req, res) => {
             adminSeatCount: room.adminSeatCount,
             seats,
             moderators: room.moderators.map(m => ({ id: m._id, username: m.username, profileImage: m.profileImage })),
-            myRole: isHost ? 'host' : (isModerator ? 'moderator' : 'guest')
+            myRole: isHost ? 'host' : (isModerator ? 'moderator' : 'guest'),
+            // 🛡️ قائمة طلبات الصعود لا تُرسَل إلا للمضيف/المسؤولين — لا فائدة (وربما إحراج) لبقية الحاضرين برؤيتها
+            handRaises: (isHost || isModerator)
+                ? room.handRaises.filter(h => h.user).map(h => ({ userId: h.user._id, username: h.user.username, profileImage: h.user.profileImage }))
+                : [],
+            activeBattle: await getActiveBattleSnapshot(room._id)
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });

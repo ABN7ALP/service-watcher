@@ -45,6 +45,12 @@ const voiceRoomSchema = new mongoose.Schema({
         addedAt: { type: Date, default: Date.now }
     }],
     seats: [seatSchema],
+    // ✅ طلبات "رفع اليد" لطلب الصعود للمايك — قائمة انتظار يراها المضيف/المسؤولون فقط،
+    // ويقدر أي منهم يدعو صاحب الطلب مباشرة لمقعد فاضٍ أو يرفض طلبه
+    handRaises: [{
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        requestedAt: { type: Date, default: Date.now }
+    }],
     status: { type: String, enum: ['active', 'closed'], default: 'active', index: true },
     lastActivityAt: { type: Date, default: Date.now, index: true },
 }, { timestamps: true });
