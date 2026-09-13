@@ -283,7 +283,7 @@ exports.getRoomMessages = async (req, res) => {
         const messages = await Message.find({ room: channel })
             .sort({ createdAt: -1 })
             .limit(50)
-            .populate('sender', 'username profileImage activeFrameClass')
+            .populate('sender', 'username profileImage activeFrameClass activeBubbleSkinClass')
             .lean();
         res.json({ status: 'success', messages: messages.reverse() });
     } catch (error) {
