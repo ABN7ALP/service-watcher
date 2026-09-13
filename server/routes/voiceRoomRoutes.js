@@ -3,6 +3,7 @@ const rateLimit = require('express-rate-limit');
 const voiceRoomController = require('../controllers/voiceRoomController');
 const authMiddleware = require('../middleware/authMiddleware');
 const { safeKeyGenerator } = require('../middleware/globalMiddleware');
+const { chatUpload } = require('../utils/cloudinary');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -25,6 +26,8 @@ router.get('/rooms/:id', voiceRoomController.getRoomById);
 router.get('/rooms/:id/messages', voiceRoomController.getRoomMessages);
 router.patch('/rooms/:id', voiceRoomController.updateRoom);
 router.post('/rooms/:id/background', voiceRoomController.purchaseBackground);
+router.get('/rooms/:id/music', voiceRoomController.getMusicLibrary);
+router.post('/rooms/:id/music/upload', chatUpload.single('file'), voiceRoomController.uploadMusicTrack);
 
 router.get('/', voiceRoomController.getVoiceRoomState);
 
