@@ -657,6 +657,62 @@ body.in-voice-room #main-content {
     min-height: 100vh !important;
 }
 
+/* ✅ شريط معركة PK بين غرفتين — يظهر أعلى شاشة الغرفة فور بدء المعركة، بعرض شريط تقدّم
+   نسبي (نقاط كل غرفة) + عدّاد تنازلي للوقت المتبقي */
+.pk-battle-bar {
+    background: linear-gradient(135deg, rgba(127,29,29,0.4), rgba(154,52,18,0.4));
+    border: 1px solid rgba(251,146,60,0.4);
+    border-radius: 12px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+}
+.pk-battle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.pk-battle-avatar {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1.5px solid rgba(251,146,60,0.6);
+}
+.pk-battle-progress {
+    flex: 1;
+    position: relative;
+    height: 20px;
+    border-radius: 9999px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.08);
+    display: flex;
+}
+.pk-battle-fill-left { background: linear-gradient(90deg,#ef4444,#f97316); transition: width 0.4s ease; }
+.pk-battle-fill-right { background: linear-gradient(90deg,#3b82f6,#06b6d4); transition: width 0.4s ease; }
+.pk-battle-score-left, .pk-battle-score-right {
+    position: absolute;
+    top: 50%; transform: translateY(-50%);
+    font-size: 10px; font-weight: 800; color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+.pk-battle-score-left { left: 8px; }
+.pk-battle-score-right { right: 8px; }
+.pk-battle-vs {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 10px;
+    color: #fde047;
+}
+.pk-battle-timer {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fdba74;
+    margin-top: 4px;
+    letter-spacing: 0.05em;
+}
+
 /* ✅ الفقاعة العائمة لرسالة خاصة واردة وأنت داخل غرفة — بأسلوب ماسنجر (قابلة للسحب) */
 .dm-floating-bubble {
     position: fixed;

@@ -3,6 +3,8 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Message = require('../models/Message');
 const Battle = require('../models/Battle');
+const VoiceRoom = require('../models/VoiceRoom');
+const RoomBattle = require('../models/RoomBattle');
 const { addExperience } = require('../utils/experienceManager'); // ✅✅✅ أضف هذا السطر هنا
 
 // =================================================
@@ -34,6 +36,96 @@ function withUserSeatLock(userId, fn) {
     const run = previous.catch(() => {}).then(fn);
     voiceSeatLocks.set(key, run.catch(() => {})); // نسخة "صامتة" فقط لتسلسل الطلب القادم بأمان
     return run;
+}
+
+// =================================================
+// ✅ معارك PK بين غرفتين — منطق التحدي/البدء/الإنهاء بالكامل هنا (نفس أسلوب التحديات
+// الفردية startGame/endBattle أعلاه)، معتمداً على مستند RoomBattle كمصدر حقيقة وحيد،
+// والمؤقتات هنا فقط لجدولة الإنهاء التلقائي (لا تُخزَّن بها أي بيانات مصيرية).
+// =================================================
+const pendingChallengeTimers = new Map();  // battleId(string) → Timeout (انتهاء صلاحية طلب لم يُرَد عليه)
+const activeBattleTimers = new Map();      // battleId(string) → Timeout (نهاية معركة فعلية)
+
+function clearBattleTimer(map, battleId) {
+    const key = battleId.toString();
+    const t = map.get(key);
+    if (t) { clearTimeout(t); map.delete(key); }
+}
+
+async function emitToBothRooms(io, roomAId, roomBId, event, payload) {
+    io.to(`room-chat-${roomAId}`).emit(event, payload);
+    io.to(`room-chat-${roomBId}`).emit(event, payload);
+}
+
+// ✅ ينهي معركة نشطة (تلقائياً عند انتهاء الوقت، أو دفاعياً لو استُدعيت الحالة بعد انتهاء الوقت فعلياً)
+async function finalizeActiveBattle(io, battleId) {
+    try {
+        clearBattleTimer(activeBattleTimers, battleId);
+        const battle = await RoomBattle.findOne({ _id: battleId, status: 'active' });
+        if (!battle) return;
+
+        let winner = 'draw';
+        if (battle.scoreA > battle.scoreB) winner = 'A';
+        else if (battle.scoreB > battle.scoreA) winner = 'B';
+
+        battle.status = 'ended';
+        battle.winner = winner;
+        await battle.save();
+
+        await emitToBothRooms(io, battle.roomA, battle.roomB, 'pk-battle-ended', {
+            battleId: battle._id.toString(),
+            roomA: battle.roomA.toString(),
+            roomB: battle.roomB.toString(),
+            scoreA: battle.scoreA,
+            scoreB: battle.scoreB,
+            winner
+        });
+    } catch (error) {
+        console.error('[PK BATTLE] Finalize error:', error);
+    }
+}
+
+// ✅ يبدأ معركة فعالة بعد قبول التحدي: يحدد وقت البداية/النهاية ويجدول الإنهاء التلقائي
+async function activateBattle(io, battle) {
+    const now = new Date();
+    battle.status = 'active';
+    battle.startedAt = now;
+    battle.endsAt = new Date(now.getTime() + battle.durationSeconds * 1000);
+    await battle.save();
+
+    const timer = setTimeout(() => finalizeActiveBattle(io, battle._id), battle.durationSeconds * 1000);
+    activeBattleTimers.set(battle._id.toString(), timer);
+
+    const [roomA, roomB] = await Promise.all([
+        VoiceRoom.findById(battle.roomA).select('name coverImage'),
+        VoiceRoom.findById(battle.roomB).select('name coverImage')
+    ]);
+
+    await emitToBothRooms(io, battle.roomA, battle.roomB, 'pk-battle-started', {
+        battleId: battle._id.toString(),
+        roomA: { id: battle.roomA.toString(), name: roomA?.name || '', coverImage: roomA?.coverImage || null },
+        roomB: { id: battle.roomB.toString(), name: roomB?.name || '', coverImage: roomB?.coverImage || null },
+        scoreA: battle.scoreA,
+        scoreB: battle.scoreB,
+        durationSeconds: battle.durationSeconds,
+        endsAt: battle.endsAt
+    });
+}
+
+// ✅ ينهي طلب تحدٍ معلّق لم يُرَد عليه خلال المهلة (رفض ضمني)
+async function expirePendingChallenge(io, battleId) {
+    try {
+        clearBattleTimer(pendingChallengeTimers, battleId);
+        const battle = await RoomBattle.findOneAndUpdate(
+            { _id: battleId, status: 'pending' },
+            { $set: { status: 'expired' } },
+            { new: true }
+        );
+        if (!battle) return;
+        io.to(`room-chat-${battle.roomA}`).emit('pk-challenge-expired', { battleId: battle._id.toString(), roomB: battle.roomB.toString() });
+    } catch (error) {
+        console.error('[PK BATTLE] Expire error:', error);
+    }
 }
 
 /**
@@ -761,6 +853,7 @@ socket.on('refreshBlockData', async () => {
                     { _id: room._id, seats: { $elemMatch: { seatNumber: seatNum, user: null, isLocked: false } } },
                     {
                         $set: { 'seats.$.user': socket.user._id, 'seats.$.joinedAt': new Date(), 'seats.$.isMuted': carryMuted },
+                        $pull: { handRaises: { user: socket.user._id } }, // ✅ صعد بنفسه — لا داعي تبقى يده مرفوعة بقائمة الانتظار
                         $currentDate: { lastActivityAt: true } // ✅ يغذّي ترتيب "الأكثر نشاطاً" بقائمة الغرف
                     },
                     { new: true }
@@ -771,6 +864,7 @@ socket.on('refreshBlockData', async () => {
                     return;
                 }
 
+                io.emit('hand-raise-removed', { roomId: targetRoomId, userId: socket.user.id.toString() });
                 io.emit('user-joined-seat', {
                     roomId: targetRoomId,
                     seatNumber: seatNum,
@@ -925,6 +1019,246 @@ socket.on('refreshBlockData', async () => {
         });
 
         // =====================================================
+        // ✅ رفع اليد — طلب الصعود للمايك (بديل صريح عن انتظار مقعد يفضى بالصدفة)
+        // -----------------------------------------------------
+        // قائمة الطلبات محفوظة بمستند الغرفة نفسها (وليس بالذاكرة) حتى يراها المضيف
+        // مهما تأخر بالرد، ولو أعاد فتح الغرفة من جديد (عبر getRoomById).
+        // =====================================================
+        const MAX_HAND_RAISES = 30; // 🛡️ سقف يمنع إغراق قائمة الانتظار بطلبات وهمية
+
+        socket.on('raise-hand', async ({ roomId }) => withUserSeatLock(`hand-${socket.user._id}`, async () => {
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room) return;
+
+                // ✅ لا فائدة من رفع يد وأنت أصلاً قاعد على مقعد بنفس الغرفة
+                const alreadySeated = room.seats.some(s => s.user && s.user.toString() === socket.user._id.toString());
+                if (alreadySeated) return;
+
+                const alreadyRaised = room.handRaises.some(h => h.user.toString() === socket.user._id.toString());
+                if (alreadyRaised) return;
+                if (room.handRaises.length >= MAX_HAND_RAISES) {
+                    return socket.emit('seat-error', 'قائمة طلبات الصعود ممتلئة حالياً، حاول لاحقاً');
+                }
+
+                await VoiceRoom.updateOne(
+                    { _id: room._id },
+                    { $push: { handRaises: { user: socket.user._id, requestedAt: new Date() } } }
+                );
+
+                const finalRoomId = room.slug === 'main' ? 'main' : room._id.toString();
+                io.to(`room-chat-${finalRoomId}`).emit('hand-raise-added', {
+                    roomId: finalRoomId,
+                    userId: socket.user.id.toString(),
+                    username: socket.user.username,
+                    profileImage: socket.user.profileImage,
+                    requestedAt: new Date()
+                });
+            } catch (error) {
+                console.error('[HAND RAISE] Raise error:', error);
+            }
+        }));
+
+        socket.on('lower-hand', ({ roomId }) => withUserSeatLock(`hand-${socket.user._id}`, async () => {
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room) return;
+
+                await VoiceRoom.updateOne({ _id: room._id }, { $pull: { handRaises: { user: socket.user._id } } });
+
+                const finalRoomId = room.slug === 'main' ? 'main' : room._id.toString();
+                io.to(`room-chat-${finalRoomId}`).emit('hand-raise-removed', { roomId: finalRoomId, userId: socket.user.id.toString() });
+            } catch (error) {
+                console.error('[HAND RAISE] Lower error:', error);
+            }
+        }));
+
+        // ✅ المضيف/المسؤول يدعو صاحب طلب مرفوع مباشرة لمقعد محدد (يُنزله من أي مقعد آخر أولاً إن وُجد)
+        // 🛡️ يقفل بنفس مفتاح مقعد المستهدَف (وليس مفتاح رفع يده) عمداً — هذا يمنع تضارباً حقيقياً
+        // مع أي join-voice-seat/leave-voice-seat يصدر منه أو من قِبله بنفس اللحظة (يعدّل نفس صف المقاعد)
+        socket.on('host-invite-to-seat', ({ roomId, targetUserId, seatNumber }) => withUserSeatLock(targetUserId, async () => {
+            try {
+                const mongoose = require('mongoose');
+                const VoiceRoom = require('../models/VoiceRoom');
+                if (!mongoose.Types.ObjectId.isValid(targetUserId)) return;
+
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room || !room.canModerate(socket.user._id)) {
+                    return socket.emit('seat-error', 'لا تملك صلاحية الإدارة بهذي الغرفة');
+                }
+
+                const seatNum = parseInt(seatNumber);
+                const seat = room.seats.find(s => s.seatNumber === seatNum);
+                if (!seat) return;
+                const isAdminSeat = seatNum <= room.adminSeatCount;
+
+                const targetUser = await User.findById(targetUserId).select('isAdmin');
+                if (!targetUser) return;
+                if (isAdminSeat && !targetUser.isAdmin) {
+                    return socket.emit('seat-error', 'هذا المقعد محجوز للإدارة فقط');
+                }
+
+                await VoiceRoom.releaseUserSeatEverywhere(targetUserId);
+
+                const updatedRoom = await VoiceRoom.findOneAndUpdate(
+                    { _id: room._id, seats: { $elemMatch: { seatNumber: seatNum, user: null, isLocked: false } } },
+                    {
+                        $set: { 'seats.$.user': targetUserId, 'seats.$.joinedAt': new Date(), 'seats.$.isMuted': false },
+                        $pull: { handRaises: { user: targetUserId } },
+                        $currentDate: { lastActivityAt: true }
+                    },
+                    { new: true }
+                );
+
+                if (!updatedRoom) {
+                    return socket.emit('seat-error', 'هذا المقعد محجوز بالفعل أو مقفل');
+                }
+
+                const finalRoomId = room.slug === 'main' ? 'main' : room._id.toString();
+                io.emit('user-joined-seat', {
+                    roomId: finalRoomId,
+                    seatNumber: seatNum,
+                    userId: targetUserId,
+                    username: targetUser.username,
+                    profileImage: targetUser.profileImage,
+                    activeFrameClass: targetUser.activeFrameClass,
+                    isMuted: false
+                });
+                io.to(`room-chat-${finalRoomId}`).emit('hand-raise-removed', { roomId: finalRoomId, userId: targetUserId });
+
+                if (targetUser.socketId) {
+                    io.to(targetUser.socketId).emit('you-were-invited-up', { roomId: finalRoomId, seatNumber: seatNum });
+                }
+            } catch (error) {
+                console.error('[HAND RAISE] Invite error:', error);
+            }
+        }));
+
+        // ✅ المضيف/المسؤول يرفض طلباً مرفوعاً دون دعوته لمقعد
+        socket.on('host-dismiss-hand', async ({ roomId, targetUserId }) => {
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room || !room.canModerate(socket.user._id)) {
+                    return socket.emit('seat-error', 'لا تملك صلاحية الإدارة بهذي الغرفة');
+                }
+
+                await VoiceRoom.updateOne({ _id: room._id }, { $pull: { handRaises: { user: targetUserId } } });
+
+                const finalRoomId = room.slug === 'main' ? 'main' : room._id.toString();
+                io.to(`room-chat-${finalRoomId}`).emit('hand-raise-removed', { roomId: finalRoomId, userId: targetUserId });
+
+                const targetUser = await User.findById(targetUserId).select('socketId');
+                if (targetUser?.socketId) {
+                    io.to(targetUser.socketId).emit('hand-raise-dismissed', { roomId: finalRoomId });
+                }
+            } catch (error) {
+                console.error('[HAND RAISE] Dismiss error:', error);
+            }
+        });
+
+        // =====================================================
+        // ✅ معارك PK بين غرفتين — المضيف فقط يبدأ التحدي أو يرد عليه (وليس المسؤولون المساعدون)
+        // =====================================================
+        socket.on('pk-challenge-room', async ({ roomId, targetRoomId, durationSeconds }) => {
+            try {
+                if (!roomId || !targetRoomId || roomId === targetRoomId) return;
+                const duration = RoomBattle.DURATION_PRESETS_SECONDS.includes(parseInt(durationSeconds))
+                    ? parseInt(durationSeconds) : RoomBattle.DURATION_PRESETS_SECONDS[0];
+
+                const [myRoom, targetRoom] = await Promise.all([
+                    VoiceRoom.findOne({ _id: roomId, status: 'active' }),
+                    VoiceRoom.findOne({ _id: targetRoomId, status: 'active' }).populate('host', 'username socketId')
+                ]);
+
+                if (!myRoom || !myRoom.host || myRoom.host.toString() !== socket.user._id.toString()) {
+                    return socket.emit('seat-error', 'المضيف فقط يقدر يبدأ معركة PK');
+                }
+                if (!targetRoom || !targetRoom.host) {
+                    return socket.emit('seat-error', 'الغرفة المستهدفة غير متاحة للتحدي');
+                }
+                if (myRoom.isOfficial || targetRoom.isOfficial) {
+                    return socket.emit('seat-error', 'لا يمكن تحدي الغرفة الرسمية');
+                }
+
+                const [openForMine, openForTarget] = await Promise.all([
+                    RoomBattle.findOpenForRoom(myRoom._id),
+                    RoomBattle.findOpenForRoom(targetRoom._id)
+                ]);
+                if (openForMine) return socket.emit('seat-error', 'غرفتك بمعركة PK قائمة بالفعل');
+                if (openForTarget) return socket.emit('seat-error', 'هذي الغرفة بمعركة PK قائمة بالفعل');
+
+                const battle = await RoomBattle.create({
+                    roomA: myRoom._id,
+                    roomB: targetRoom._id,
+                    challengedBy: socket.user._id,
+                    durationSeconds: duration,
+                    status: 'pending'
+                });
+
+                const timer = setTimeout(() => expirePendingChallenge(io, battle._id), RoomBattle.CHALLENGE_EXPIRY_SECONDS * 1000);
+                pendingChallengeTimers.set(battle._id.toString(), timer);
+
+                socket.emit('pk-challenge-sent', { battleId: battle._id.toString(), targetRoomName: targetRoom.name });
+
+                if (targetRoom.host.socketId) {
+                    io.to(targetRoom.host.socketId).emit('pk-challenge-received', {
+                        battleId: battle._id.toString(),
+                        challengerRoomId: myRoom._id.toString(),
+                        challengerRoomName: myRoom.name,
+                        challengerRoomCover: myRoom.coverImage,
+                        durationSeconds: duration,
+                        expiresInSeconds: RoomBattle.CHALLENGE_EXPIRY_SECONDS
+                    });
+                }
+            } catch (error) {
+                console.error('[PK BATTLE] Challenge error:', error);
+            }
+        });
+
+        socket.on('pk-challenge-response', async ({ battleId, accept }) => {
+            try {
+                const battle = await RoomBattle.findOne({ _id: battleId, status: 'pending' });
+                if (!battle) return;
+
+                // 🛡️ الرد لا يصح إلا من مضيف الغرفة المتحدّاة (roomB) تحديداً
+                const roomB = await VoiceRoom.findById(battle.roomB).select('host');
+                if (!roomB || !roomB.host || roomB.host.toString() !== socket.user._id.toString()) {
+                    return socket.emit('seat-error', 'ليس لديك تحدٍ بانتظار ردك');
+                }
+
+                clearBattleTimer(pendingChallengeTimers, battle._id);
+
+                if (!accept) {
+                    battle.status = 'declined';
+                    await battle.save();
+                    io.to(`room-chat-${battle.roomA}`).emit('pk-challenge-declined', { battleId: battle._id.toString(), roomB: battle.roomB.toString() });
+                    return;
+                }
+
+                await activateBattle(io, battle);
+            } catch (error) {
+                console.error('[PK BATTLE] Response error:', error);
+            }
+        });
+
+        // ✅ إلغاء تحدٍ معلّق أرسله المضيف نفسه قبل أي رد
+        socket.on('pk-cancel-challenge', async ({ battleId }) => {
+            try {
+                const battle = await RoomBattle.findOne({ _id: battleId, status: 'pending', challengedBy: socket.user._id });
+                if (!battle) return;
+                clearBattleTimer(pendingChallengeTimers, battle._id);
+                battle.status = 'cancelled';
+                await battle.save();
+                io.to(`room-chat-${battle.roomB}`).emit('pk-challenge-expired', { battleId: battle._id.toString(), roomB: battle.roomB.toString() });
+            } catch (error) {
+                console.error('[PK BATTLE] Cancel error:', error);
+            }
+        });
+
+        // =====================================================
         // ✅ دردشة خاصة بكل غرفة (بديل الدردشة العامة القديمة)
         // -----------------------------------------------------
         // كل غرفة قناة Socket.IO منفصلة فعلياً (join/leave حقيقيين) — الرسائل توصل فقط
@@ -952,6 +1286,13 @@ socket.on('refreshBlockData', async () => {
                 const lastSent = roomChatRateLimit.get(rlKey) || 0;
                 if (now - lastSent < 2000) return;
                 roomChatRateLimit.set(rlKey, now);
+
+                // 🛡️ فلترة الكلمات المسيئة — تُرفض الرسالة كاملة ولا تُحفظ ولا تُبث لأحد
+                const { containsProfanity } = require('../utils/profanityFilter');
+                if (containsProfanity(message)) {
+                    socket.emit('room-chat-error', 'رسالتك تحتوي على ألفاظ غير لائقة ولم يتم إرسالها');
+                    return;
+                }
 
                 const channel = `room-chat-${roomId}`;
 

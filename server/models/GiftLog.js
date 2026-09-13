@@ -14,7 +14,10 @@ const giftLogSchema = new mongoose.Schema({
         type: String,
         enum: ['private_chat', 'public_chat', 'profile'],
         default: 'private_chat'
-    }
+    },
+    // ✅ اختياري: الغرفة الصوتية التي أُرسلت منها الهدية (عند الإرسال داخل غرفة) — تُستخدم
+    // لاحتساب نقاط معارك PK بين الغرف دون التأثير على منطق الهدايا الأصلي بشيء
+    room: { type: mongoose.Schema.Types.ObjectId, ref: 'VoiceRoom', default: null, index: true }
 }, { timestamps: true });
 
 giftLogSchema.index({ sender: 1, createdAt: -1 });

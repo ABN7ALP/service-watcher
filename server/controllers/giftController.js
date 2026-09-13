@@ -4,7 +4,36 @@ const GiftLog = require('../models/GiftLog');
 const User = require('../models/User');
 const PrivateChat = require('../models/PrivateChat');
 const PrivateMessage = require('../models/PrivateMessage');
+const RoomBattle = require('../models/RoomBattle');
 const { addGiftExperience } = require('../utils/experienceManager');
+
+// ✅ يُضيف قيمة هدية كنقاط لصف الغرفة التي أُرسلت منها لو كانت طرفاً بمعركة PK نشطة الآن —
+// تحديث ذرّي واحد (findOneAndUpdate + $inc) يمنع فقدان نقاط عند إرسال هدايا متزامنة بسرعة
+async function applyGiftToActiveBattle(io, roomId, totalPrice) {
+    const battle = await RoomBattle.findOne({
+        $or: [{ roomA: roomId }, { roomB: roomId }],
+        status: 'active'
+    });
+    if (!battle) return;
+
+    const isRoomA = battle.roomA.toString() === roomId.toString();
+    const updated = await RoomBattle.findOneAndUpdate(
+        { _id: battle._id, status: 'active' },
+        { $inc: isRoomA ? { scoreA: totalPrice } : { scoreB: totalPrice } },
+        { new: true }
+    );
+    if (!updated || !io) return;
+
+    const payload = {
+        battleId: updated._id.toString(),
+        roomA: updated.roomA.toString(),
+        roomB: updated.roomB.toString(),
+        scoreA: updated.scoreA,
+        scoreB: updated.scoreB
+    };
+    io.to(`room-chat-${updated.roomA}`).emit('pk-score-update', payload);
+    io.to(`room-chat-${updated.roomB}`).emit('pk-score-update', payload);
+}
 
 // ✅ حماية بسيطة من إرسال الهدايا بمعدل غير طبيعي (استدعاء الـ API مباشرة بمعزل عن الواجهة)
 // ملاحظة: هذا حل مناسب لخادم واحد (single instance). عند التوسع لعدة خوادم لاحقاً يفضل نقل هذا لـ Redis
@@ -45,7 +74,7 @@ exports.getGiftShop = async (req, res) => {
 exports.sendGift = async (req, res) => {
     try {
         const senderId = req.user.id;
-        const { receiverId, giftId, quantity = 1, context = 'private_chat' } = req.body;
+        const { receiverId, giftId, quantity = 1, context = 'private_chat', roomId } = req.body;
 
         if (isGiftRateLimited(senderId)) {
             return res.status(429).json({ status: 'fail', message: 'أنت ترسل الهدايا بسرعة كبيرة جداً، انتظر لحظة' });
@@ -95,6 +124,10 @@ exports.sendGift = async (req, res) => {
         }
         sender.coins = updatedSender.coins;
 
+        // 🛡️ roomId اختياري وقادم من العميل — يُتحقق من صحته كـ ObjectId فقط، ولا يُمنح أي ثقة
+        // إضافية (لا صلاحيات، فقط لربط الهدية بمعركة PK نشطة إن وُجدت لهذي الغرفة تحديداً)
+        const cleanRoomId = (roomId && mongoose.Types.ObjectId.isValid(roomId)) ? roomId : null;
+
         const giftLog = await GiftLog.create({
             sender: senderId,
             receiver: receiverId,
@@ -104,8 +137,18 @@ exports.sendGift = async (req, res) => {
             quantity: qty,
             unitPrice: unitPrice,
             totalPrice: totalPrice,
-            context: context
+            context: context,
+            room: cleanRoomId
         });
+
+        // ✅ لو الهدية أُرسلت من داخل غرفة بها معركة PK نشطة الآن، تُضاف قيمتها لنقاط صفّها فوراً
+        if (cleanRoomId) {
+            try {
+                await applyGiftToActiveBattle(req.app.get('socketio'), cleanRoomId, totalPrice);
+            } catch (battleError) {
+                console.error('[PK BATTLE] Failed to apply gift score:', battleError);
+            }
+        }
 
         const io = req.app.get('socketio');
         const safeGiftImage = gift.imageUrl || '';
