@@ -525,19 +525,85 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 #room-chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 4px; }
 #room-chat-messages:empty { display: none; }
 
-/* ✅ تثبيت منطقة الدردشة أسفل إطار الغرفة (بدل نزولها مع باقي الصفحة) — مطابق لموضعها
-   بالتطبيقات المشهورة: منطقة مرنة تنمو للأعلى فوق شريط كتابة ثابت أسفل الشاشة */
+/* ✅ تثبيت منطقة الدردشة أسفل إطار الغرفة فعليًا (فوق شريط النظام بالهاتف مباشرة —
+   وضع ملء الشاشة يخفي شريط تنقّل التطبيق أصلاً، فلا داعي لمسافة كبيرة) */
 .room-chat-dock {
     position: sticky;
-    bottom: 4.5rem; /* فوق شريط التنقل السفلي بالهاتف */
+    bottom: 0.5rem;
     z-index: 10;
-    background: linear-gradient(to top, rgba(17,24,39,0.8), rgba(17,24,39,0.4) 65%, transparent);
-    padding-top: 1.25rem;
-    margin-top: -1.25rem;
-    border-radius: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    max-height: 46vh; /* ✅ تمتد للأعلى نحو المقاعد بدل صندوق صغير */
 }
 @media (min-width: 768px) {
-    .room-chat-dock { bottom: 0.5rem; }
+    .room-chat-dock { bottom: 0.75rem; max-height: 50vh; }
+}
+
+/* ✅ منطقة الرسائل: تنمو للأعلى فوق صف الأيقونات، بخلفية متدرّجة شفافة تحافظ على وضوح النص
+   فوق أي محتوى خلفها دون أن تكون صندوقاً مغلقاً */
+#room-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    background: linear-gradient(to top, rgba(17,24,39,0.85), rgba(17,24,39,0.5) 70%, transparent);
+    border-radius: 0.75rem;
+    padding-top: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end; /* ✅ الرسائل تلتصق بالأسفل قرب الأيقونات وتنمو للأعلى */
+}
+
+/* ✅ صف الأيقونات ثابت وواضح بأسفل منطقة الدردشة، بخلفية منفصلة تميّزه عن الرسائل فوقه */
+.room-chat-icon-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: rgba(17,24,39,0.9);
+    border-radius: 9999px;
+    padding: 0.4rem 0.75rem;
+    flex-shrink: 0;
+    backdrop-filter: blur(4px);
+}
+
+/* ✅ تصميم رسالة احترافي: صورة صغيرة + اسم ملوّن + نص، بدل سطر نص بسيط */
+.room-chat-message {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 3px 6px;
+    border-radius: 10px;
+    animation: chatMsgIn 0.25s ease-out;
+    max-width: 94%;
+}
+.room-chat-msg-avatar {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    margin-top: 2px;
+    border: 1px solid rgba(255,255,255,0.15);
+}
+.room-chat-msg-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 5px;
+    min-width: 0;
+}
+.room-chat-msg-name {
+    font-weight: 800;
+    font-size: 12px;
+    color: #c4b5fd;
+    flex-shrink: 0;
+}
+.room-chat-msg-text {
+    font-size: 13px;
+    color: #f3f4f6;
+    line-height: 1.6;
+    word-break: break-word;
+}
+@keyframes chatMsgIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ✅ الإيموجي المتحرك — يظهر فوق المقعد ويطفو للأعلى مع تلاشٍ تدريجي ثم يختفي */
