@@ -829,30 +829,28 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ يُستدعى من قالب أي غرفة (الرسمية أو غرفة مستخدم) لإدراج منطقة الدردشة داخل إطارها
     function renderRoomChatMarkup() {
         return `
-            <div class="room-chat-dock">
-                <div id="room-chat-messages" class="space-y-0.5 px-2 pb-2"></div>
-                <div class="room-chat-icon-row">
-                    <button id="room-chat-toggle-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-purple-400 flex-shrink-0" title="دردشة الغرفة">
-                        <i class="fas fa-comment-dots text-base"></i>
-                    </button>
-                    <button id="room-my-reaction-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-amber-400 flex-shrink-0" title="تفاعل">
-                        <i class="fas fa-face-laugh-beam text-base"></i>
-                    </button>
-                    <button id="room-gift-icon-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-pink-400 flex-shrink-0" title="الهدايا">
-                        <i class="fas fa-gift text-base"></i>
-                    </button>
-                    <button id="room-messages-icon-btn" class="relative w-7 h-7 flex items-center justify-center text-gray-300 hover:text-blue-400 flex-shrink-0" title="الرسائل الخاصة">
-                        <i class="fas fa-envelope text-base"></i>
-                        <span id="room-messages-badge" class="hidden absolute -top-1.5 -left-1.5 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">0</span>
-                    </button>
-                    <button id="room-music-cd-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-emerald-400 flex-shrink-0" title="موسيقى الغرفة">
-                        <i class="fas fa-compact-disc text-base"></i>
-                    </button>
-                    <div id="room-chat-input-row" class="hidden flex-1 items-center gap-2">
-                        <input id="room-chat-input" maxlength="300" placeholder="اكتب رسالة..." class="flex-1 bg-gray-700/60 border border-gray-600 rounded-full px-3 py-1.5 text-xs text-white focus:ring-purple-500 focus:border-purple-500">
-                        <button id="room-chat-send-btn" class="w-7 h-7 rounded-full bg-purple-600 hover:bg-purple-700 flex items-center justify-center text-white flex-shrink-0"><i class="fas fa-paper-plane text-[10px]"></i></button>
-                    </div>
-                </div>
+            <div id="room-chat-messages" class="room-chat-messages-fixed"></div>
+            <div id="room-chat-input-row" class="hidden room-chat-input-fixed">
+                <input id="room-chat-input" maxlength="300" placeholder="اكتب رسالة..." class="flex-1 bg-gray-700/80 border border-gray-600 rounded-full px-3 py-2 text-xs text-white focus:ring-purple-500 focus:border-purple-500">
+                <button id="room-chat-send-btn" class="w-8 h-8 rounded-full bg-purple-600 hover:bg-purple-700 flex items-center justify-center text-white flex-shrink-0"><i class="fas fa-paper-plane text-[11px]"></i></button>
+            </div>
+            <div class="room-chat-icon-row-fixed">
+                <button id="room-chat-toggle-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-purple-400 flex-shrink-0" title="دردشة الغرفة">
+                    <i class="fas fa-comment-dots text-base"></i>
+                </button>
+                <button id="room-my-reaction-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-amber-400 flex-shrink-0" title="تفاعل">
+                    <i class="fas fa-face-laugh-beam text-base"></i>
+                </button>
+                <button id="room-gift-icon-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-pink-400 flex-shrink-0" title="الهدايا">
+                    <i class="fas fa-gift text-base"></i>
+                </button>
+                <button id="room-messages-icon-btn" class="relative w-7 h-7 flex items-center justify-center text-gray-300 hover:text-blue-400 flex-shrink-0" title="الرسائل الخاصة">
+                    <i class="fas fa-envelope text-base"></i>
+                    <span id="room-messages-badge" class="hidden absolute -top-1.5 -left-1.5 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">0</span>
+                </button>
+                <button id="room-music-cd-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-emerald-400 flex-shrink-0" title="موسيقى الغرفة">
+                    <i class="fas fa-compact-disc text-base"></i>
+                </button>
             </div>
         `;
     }
@@ -865,7 +863,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         toggleBtn.addEventListener('click', () => {
             const willShow = inputRow.classList.contains('hidden');
             inputRow.classList.toggle('hidden', !willShow);
-            inputRow.classList.toggle('flex', willShow);
             if (willShow) document.getElementById('room-chat-input')?.focus();
         });
         document.getElementById('room-chat-send-btn')?.addEventListener('click', sendRoomChatMessage);
@@ -989,6 +986,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (!text) return;
         socket.emit('send-room-message', { roomId: roomChatCurrentRoomId, message: text });
         input.value = '';
+        input.focus(); // ✅ يبقى الحقل جاهزاً مباشرة لرسالة تالية سريعة، بدون إغلاقه
     }
 
     function appendRoomChatMessage(msg) {
