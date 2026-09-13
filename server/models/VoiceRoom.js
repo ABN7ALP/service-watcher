@@ -38,6 +38,12 @@ const voiceRoomSchema = new mongoose.Schema({
     seatCount: { type: Number, enum: [8, 15, 24, 80], default: 80 },
     adminSeatCount: { type: Number, default: 5 }, // أول N مقعد محجوز حصرياً للإدارة (0 بالغرف العادية)
     moderators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // ✅ مسؤولون مساعدون عيّنهم المضيف
+    musicLibrary: [{
+        title: { type: String, maxlength: 60 },
+        url: String,
+        uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        addedAt: { type: Date, default: Date.now }
+    }],
     seats: [seatSchema],
     status: { type: String, enum: ['active', 'closed'], default: 'active', index: true },
     lastActivityAt: { type: Date, default: Date.now, index: true },
