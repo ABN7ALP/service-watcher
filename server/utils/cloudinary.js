@@ -302,6 +302,25 @@ const uploadReceiptImage = (fileBuffer) => {
     });
 };
 
+// 12.5. دالة لرفع أغاني مكتبة الغرفة الصوتية (بدون سقف الـ15 ثانية الخاص برسائل الدردشة الصوتية)
+const uploadRoomMusic = (fileBuffer) => {
+    return new Promise((resolve, reject) => {
+        const uploadOptions = {
+            folder: 'room_music',
+            resource_type: 'video', // Cloudinary يعامل الصوت كـ video
+            format: 'mp3'
+        };
+        const uploadStream = cloudinary.uploader.upload_stream(
+            uploadOptions,
+            (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+            }
+        );
+        uploadStream.end(fileBuffer);
+    });
+};
+
 // 13. التصدير
 module.exports = {
     cloudinary,
@@ -310,6 +329,7 @@ module.exports = {
     uploadChatImage,          // دالة رفع صور الدردشة
     uploadChatVoice,          // دالة رفع صوت الدردشة
     uploadChatVideo,          // دالة رفع فيديو الدردشة
+    uploadRoomMusic,          // دالة رفع أغاني مكتبة الغرفة
     deleteChatMedia,          // دالة حذف وسائط الدردشة
     uploadReceiptImage,        // دالة رفع صورة إشعار التحويل
     deleteFromCloudinary,     // دالة حذف عامة
