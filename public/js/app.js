@@ -830,23 +830,23 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function renderRoomChatMarkup() {
         return `
             <div class="room-chat-dock">
-                <div id="room-chat-messages" class="text-[12px] leading-snug space-y-1 max-h-[16vh] overflow-y-auto px-1"></div>
-                <div class="flex items-center gap-2 px-1 pt-1">
-                    <button id="room-chat-toggle-btn" class="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-purple-400 flex-shrink-0" title="دردشة الغرفة">
-                        <i class="fas fa-comment-dots text-sm"></i>
+                <div id="room-chat-messages" class="space-y-0.5 px-2 pb-2"></div>
+                <div class="room-chat-icon-row">
+                    <button id="room-chat-toggle-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-purple-400 flex-shrink-0" title="دردشة الغرفة">
+                        <i class="fas fa-comment-dots text-base"></i>
                     </button>
-                    <button id="room-my-reaction-btn" class="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-amber-400 flex-shrink-0" title="تفاعل">
-                        <i class="fas fa-face-laugh-beam text-sm"></i>
+                    <button id="room-my-reaction-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-amber-400 flex-shrink-0" title="تفاعل">
+                        <i class="fas fa-face-laugh-beam text-base"></i>
                     </button>
-                    <button id="room-gift-icon-btn" class="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-pink-400 flex-shrink-0" title="الهدايا">
-                        <i class="fas fa-gift text-sm"></i>
+                    <button id="room-gift-icon-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-pink-400 flex-shrink-0" title="الهدايا">
+                        <i class="fas fa-gift text-base"></i>
                     </button>
-                    <button id="room-messages-icon-btn" class="relative w-6 h-6 flex items-center justify-center text-gray-300 hover:text-blue-400 flex-shrink-0" title="الرسائل الخاصة">
-                        <i class="fas fa-envelope text-sm"></i>
+                    <button id="room-messages-icon-btn" class="relative w-7 h-7 flex items-center justify-center text-gray-300 hover:text-blue-400 flex-shrink-0" title="الرسائل الخاصة">
+                        <i class="fas fa-envelope text-base"></i>
                         <span id="room-messages-badge" class="hidden absolute -top-1.5 -left-1.5 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">0</span>
                     </button>
-                    <button id="room-music-cd-btn" class="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-emerald-400 flex-shrink-0" title="موسيقى الغرفة">
-                        <i class="fas fa-compact-disc text-sm"></i>
+                    <button id="room-music-cd-btn" class="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-emerald-400 flex-shrink-0" title="موسيقى الغرفة">
+                        <i class="fas fa-compact-disc text-base"></i>
                     </button>
                     <div id="room-chat-input-row" class="hidden flex-1 items-center gap-2">
                         <input id="room-chat-input" maxlength="300" placeholder="اكتب رسالة..." class="flex-1 bg-gray-700/60 border border-gray-600 rounded-full px-3 py-1.5 text-xs text-white focus:ring-purple-500 focus:border-purple-500">
@@ -996,9 +996,17 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (!box) return;
         const el = document.createElement('div');
         el.dataset.msgId = msg._id;
+        el.className = 'room-chat-message';
         const safeName = escapeHtml(msg.sender?.username || '');
         const safeContent = escapeHtml(msg.content || '');
-        el.innerHTML = `<span class="font-bold text-purple-300">${safeName}:</span> <span class="text-gray-200">${safeContent}</span>`;
+        const avatar = msg.sender?.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+        el.innerHTML = `
+            <img src="${avatar}" class="room-chat-msg-avatar" alt="">
+            <div class="room-chat-msg-body">
+                <span class="room-chat-msg-name">${safeName}</span>
+                <span class="room-chat-msg-text">${safeContent}</span>
+            </div>
+        `;
         box.appendChild(el);
         box.scrollTop = box.scrollHeight;
     }
