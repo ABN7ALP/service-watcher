@@ -659,13 +659,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function applyMusicState(state) {
         currentMusicState = state;
         const audio = document.getElementById('room-music-audio');
-        const cdBtn = document.getElementById('room-music-cd-btn');
+        // ✅ أيقونة الموسيقى انتقلت داخل قائمة "المزيد" (مو ثابتة الظهور)، فمؤشر التشغيل الآن
+        // نبضة خفيفة على زر "المزيد" نفسه — تبقى ملاحظة أن هناك أغنية شغّالة حتى وأنت لا تشاهد القائمة
+        const moreBtn = document.getElementById('room-chat-more-btn');
         if (!audio) return;
 
         if (!state) {
             audio.pause();
             audio.removeAttribute('src');
-            cdBtn?.classList.remove('cd-spinning');
+            moreBtn?.classList.remove('room-music-playing');
             return;
         }
 
@@ -678,11 +680,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const elapsed = state.pausedAt + (Date.now() - state.startedAt) / 1000;
             if (Math.abs((audio.currentTime || 0) - elapsed) > 1.5) audio.currentTime = Math.max(0, elapsed);
             audio.play().catch(() => {}); // ✅ قد يمنعه المتصفح قبل أول تفاعل من المستخدم — طبيعي وغير خطير
-            cdBtn?.classList.add('cd-spinning');
+            moreBtn?.classList.add('room-music-playing');
         } else {
             audio.currentTime = state.pausedAt;
             audio.pause();
-            cdBtn?.classList.remove('cd-spinning');
+            moreBtn?.classList.remove('room-music-playing');
         }
     }
 
@@ -831,66 +833,41 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let roomChatCurrentRoomId = null;
 
     // ✅ يُستدعى من قالب أي غرفة (الرسمية أو غرفة مستخدم) لإدراج منطقة الدردشة داخل إطارها
+    // ✅ شريط دردشة واحد ثابت الظهور دائماً (بدل حقل يُخفى خلف زر) + قائمة "المزيد" المنسدلة
+    // للإجراءات الثانوية — بالضبط آلية التطبيقات المشهورة (Bigo/Yalla/TikTok Live): حقل كتابة
+    // جاهز فوراً، وزرّان فقط بجانبه (هدية + المزيد) بدل صف مزدحم بالأيقونات
     function renderRoomChatMarkup() {
         return `
             <div id="room-chat-messages" class="room-chat-messages-fixed"></div>
-            <div id="room-chat-input-row" class="hidden room-chat-input-fixed">
-                <input id="room-chat-input" maxlength="300" placeholder="اكتب رسالة..." class="flex-1 bg-gray-700/80 border border-gray-600 rounded-full px-3 py-2 text-xs text-white focus:ring-purple-500 focus:border-purple-500">
-                <button id="room-chat-send-btn" class="w-8 h-8 rounded-full bg-purple-600 hover:bg-purple-700 flex items-center justify-center text-white flex-shrink-0"><i class="fas fa-paper-plane text-[11px]"></i></button>
-            </div>
-            <div class="room-chat-icon-row-fixed">
-                <button id="room-gift-icon-btn" class="w-9 h-9 flex items-center justify-center text-gray-300 hover:text-pink-400 flex-shrink-0" title="الهدايا">
-                    <i class="fas fa-gift text-lg"></i>
-                </button>
-                <div class="flex items-center gap-2.5">
-                    <button id="room-raise-hand-btn" class="hidden w-9 h-9 flex items-center justify-center text-gray-300 hover:text-yellow-400 flex-shrink-0" title="رفع اليد لطلب الصعود">
-                        <i class="fas fa-hand-paper text-lg"></i>
-                    </button>
-                    <button id="room-hand-queue-btn" class="hidden relative w-9 h-9 flex items-center justify-center text-gray-300 hover:text-yellow-400 flex-shrink-0" title="طلبات الصعود للمايك">
-                        <i class="fas fa-hand-paper text-lg"></i>
-                        <span id="room-hand-queue-badge" class="hidden absolute -top-1 -left-1 bg-yellow-500 text-gray-900 text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">0</span>
-                    </button>
-                    <button id="room-music-cd-btn" class="w-9 h-9 flex items-center justify-center text-gray-300 hover:text-emerald-400 flex-shrink-0" title="موسيقى الغرفة">
-                        <i class="fas fa-compact-disc text-lg"></i>
-                    </button>
-                    <button id="room-messages-icon-btn" class="relative w-9 h-9 flex items-center justify-center text-gray-300 hover:text-blue-400 flex-shrink-0" title="الرسائل الخاصة">
-                        <i class="fas fa-envelope text-lg"></i>
-                        <span id="room-messages-badge" class="hidden absolute -top-1 -left-1 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">0</span>
-                    </button>
-                    <button id="room-my-reaction-btn" class="w-9 h-9 flex items-center justify-center text-gray-300 hover:text-amber-400 flex-shrink-0" title="تفاعل">
-                        <i class="fas fa-face-laugh-beam text-lg"></i>
-                    </button>
-                    <button id="room-chat-toggle-btn" class="w-9 h-9 flex items-center justify-center text-gray-300 hover:text-purple-400 flex-shrink-0" title="دردشة الغرفة">
-                        <i class="fas fa-comment-dots text-lg"></i>
-                    </button>
+            <div class="room-chat-dock-fixed">
+                <div class="room-chat-input-pill">
+                    <input id="room-chat-input" maxlength="300" placeholder="قل شيئاً...">
+                    <button id="room-chat-send-btn" title="إرسال"><i class="fas fa-paper-plane"></i></button>
                 </div>
+                <button id="room-gift-icon-btn" class="room-chat-dock-icon room-chat-gift-icon" title="الهدايا">
+                    <i class="fas fa-gift"></i>
+                </button>
+                <button id="room-chat-more-btn" class="room-chat-dock-icon" title="المزيد">
+                    <i class="fas fa-ellipsis"></i>
+                    <span id="room-chat-more-badge" class="hidden room-chat-mini-badge">0</span>
+                </button>
             </div>
         `;
     }
 
     // ✅ يربط أحداث صندوق الدردشة — يُستدعى بعد إدراج القالب أعلاه بالصفحة
     function wireRoomChatUI() {
-        const toggleBtn = document.getElementById('room-chat-toggle-btn');
-        const inputRow = document.getElementById('room-chat-input-row');
-        if (!toggleBtn || !inputRow) return;
-        toggleBtn.addEventListener('click', () => {
-            const willShow = inputRow.classList.contains('hidden');
-            inputRow.classList.toggle('hidden', !willShow);
-            document.body.classList.toggle('room-chat-input-open', willShow); // ✅ يرفع منطقة الرسائل فوق الحقل حتى لا يغطي آخر رسالة
-            if (willShow) document.getElementById('room-chat-input')?.focus();
-        });
-        document.getElementById('room-chat-send-btn')?.addEventListener('click', sendRoomChatMessage);
-        document.getElementById('room-chat-input')?.addEventListener('keydown', (e) => {
+        const sendBtn = document.getElementById('room-chat-send-btn');
+        const input = document.getElementById('room-chat-input');
+        if (!sendBtn || !input) return;
+
+        sendBtn.addEventListener('click', sendRoomChatMessage);
+        input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') sendRoomChatMessage();
         });
-
-        // ✅ التفاعل يعمل فقط على مقعدي أنا (مو على شخص ثاني)
-        document.getElementById('room-my-reaction-btn')?.addEventListener('click', () => {
-            if (!myVoiceSeatNumber || myVoiceRoomId !== currentVoiceRoomId) {
-                showNotification('اجلس على مقعد أولاً حتى تقدر تتفاعل', 'info');
-                return;
-            }
-            showReactionPicker(currentVoiceRoomId, myVoiceSeatNumber);
+        // ✅ زر الإرسال يُضاء فقط وفيه نص فعلي — نفس سلوك تطبيقات الدردشة المعروفة
+        input.addEventListener('input', () => {
+            sendBtn.classList.toggle('room-chat-send-active', input.value.trim().length > 0);
         });
 
         // ✅ زر هدايا الغرفة — يفتح نافذة تحديد مستلمين متعددين من المقاعد الفعلية
@@ -898,57 +875,90 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             if (currentVoiceRoomId) showRoomGiftModal(currentVoiceRoomId);
         });
 
-        // ✅ أيقونة الرسائل الخاصة — بديل شريط التنقل السفلي المخفي أثناء وضع ملء الشاشة
-        document.getElementById('room-messages-icon-btn')?.addEventListener('click', () => {
-            clearRoomMessagesBadge();
-            if (lastRoomDMSender) {
-                openPrivateChat(lastRoomDMSender.id, lastRoomDMSender.username, true);
-            } else {
-                showNotification('لا توجد رسائل جديدة', 'info');
-            }
-        });
+        // ✅ زر "المزيد" — يجمّع الموسيقى/الرسائل/التفاعل/رفع اليد بقائمة واحدة بدل صف أيقونات مزدحم
+        document.getElementById('room-chat-more-btn')?.addEventListener('click', showRoomChatMoreSheet);
+    }
 
-        // ✅ أيقونة القرص — تفتح المشغّل المصغّر (تشغيل/إيقاف/التالي للمضيف، عرض فقط للبقية)
-        document.getElementById('room-music-cd-btn')?.addEventListener('click', () => {
-            if (currentVoiceRoomId) showMusicPlayerPopup(currentVoiceRoomId);
-        });
+    // ✅ قائمة "المزيد" المنسدلة — شبكة إجراءات ثانوية بأسلوب موحّد مع بقية نوافذ المشروع السفلية
+    function showRoomChatMoreSheet() {
+        document.getElementById('room-chat-more-sheet')?.remove();
+        const isManager = currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator';
+        const isSeatedHere = myVoiceSeatNumber && myVoiceRoomId === currentVoiceRoomId;
+        const isMainRoom = currentVoiceRoomId === 'main';
 
-        // ✅ رفع/خفض اليد — لمن ليس له مقعد حالياً بهذي الغرفة فقط
-        document.getElementById('room-raise-hand-btn')?.addEventListener('click', () => {
-            if (!currentVoiceRoomId) return;
-            if (myHandRaised) {
-                socket.emit('lower-hand', { roomId: currentVoiceRoomId });
-            } else {
-                socket.emit('raise-hand', { roomId: currentVoiceRoomId });
-            }
-        });
+        const items = [
+            { action: 'music', icon: 'fa-compact-disc', label: 'موسيقى', color: 'text-emerald-400' },
+            { action: 'messages', icon: 'fa-envelope', label: 'رسائلي', color: 'text-blue-400', badge: roomUnreadDMCount },
+            { action: 'reaction', icon: 'fa-face-laugh-beam', label: 'تفاعل', color: 'text-amber-400' }
+        ];
+        if (!isManager && !isSeatedHere && !isMainRoom) {
+            items.push({ action: 'raise-hand', icon: 'fa-hand-paper', label: myHandRaised ? 'خفض اليد' : 'رفع اليد', color: myHandRaised ? 'text-yellow-400' : 'text-gray-300' });
+        }
+        if (isManager) {
+            items.push({ action: 'hand-queue', icon: 'fa-hand-paper', label: 'طلبات الصعود', color: 'text-yellow-400', badge: roomHandQueue.length });
+        }
 
-        // ✅ أيقونة قائمة الطلبات — للمضيف/المسؤول فقط
-        document.getElementById('room-hand-queue-btn')?.addEventListener('click', () => {
-            if (currentVoiceRoomId) showHandQueueSheet(currentVoiceRoomId);
+        const modal = document.createElement('div');
+        modal.id = 'room-chat-more-sheet';
+        modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 pb-5 w-full md:max-w-sm text-white">
+                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mb-4 md:hidden"></div>
+                <div class="grid grid-cols-4 gap-3">
+                    ${items.map(it => `
+                        <button data-action="${it.action}" class="room-more-item flex flex-col items-center gap-1.5">
+                            <span class="relative w-12 h-12 rounded-full bg-gray-700/60 flex items-center justify-center ${it.color}">
+                                <i class="fas ${it.icon} text-lg"></i>
+                                ${it.badge ? `<span class="room-chat-mini-badge">${it.badge > 9 ? '9+' : it.badge}</span>` : ''}
+                            </span>
+                            <span class="text-[11px] text-gray-300">${it.label}</span>
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'room-chat-more-sheet') modal.remove(); });
+
+        modal.querySelectorAll('.room-more-item').forEach(btn => {
+            btn.addEventListener('click', () => {
+                modal.remove();
+                const action = btn.dataset.action;
+                if (action === 'music') {
+                    if (currentVoiceRoomId) showMusicPlayerPopup(currentVoiceRoomId);
+                } else if (action === 'messages') {
+                    clearRoomMessagesBadge();
+                    if (lastRoomDMSender) {
+                        openPrivateChat(lastRoomDMSender.id, lastRoomDMSender.username, true);
+                    } else {
+                        showNotification('لا توجد رسائل جديدة', 'info');
+                    }
+                } else if (action === 'reaction') {
+                    if (!myVoiceSeatNumber || myVoiceRoomId !== currentVoiceRoomId) {
+                        showNotification('اجلس على مقعد أولاً حتى تقدر تتفاعل', 'info');
+                        return;
+                    }
+                    showReactionPicker(currentVoiceRoomId, myVoiceSeatNumber);
+                } else if (action === 'raise-hand') {
+                    if (!currentVoiceRoomId) return;
+                    if (myHandRaised) socket.emit('lower-hand', { roomId: currentVoiceRoomId });
+                    else socket.emit('raise-hand', { roomId: currentVoiceRoomId });
+                } else if (action === 'hand-queue') {
+                    if (currentVoiceRoomId) showHandQueueSheet(currentVoiceRoomId);
+                }
+            });
         });
     }
 
-    // ✅ يحدّث ظهور أيقونتي رفع اليد/قائمة الطلبات بحسب دوري الحالي بالغرفة وهل أنا قاعد أصلاً
+    // ✅ يحدّث شارة زر "المزيد" الموحّدة (رسائل غير مقروءة + طلبات صعود بانتظار المضيف) —
+    // الأيقونات الفردية انتقلت للقائمة المنسدلة، فبقي فقط مؤشر واحد يلفت الانتباه لوجود شيء جديد
     function updateHandRaiseUI() {
-        const raiseBtn = document.getElementById('room-raise-hand-btn');
-        const queueBtn = document.getElementById('room-hand-queue-btn');
-        const isSeatedHere = myVoiceSeatNumber && myVoiceRoomId === currentVoiceRoomId;
+        const badge = document.getElementById('room-chat-more-badge');
+        if (!badge) return;
         const isManager = currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator';
-        const isMainRoom = currentVoiceRoomId === 'main'; // ✅ لا معنى لرفع اليد بالغرفة الرسمية (لا يوجد مضيف يديرها، والمقاعد مفتوحة أصلاً)
-
-        if (raiseBtn) {
-            raiseBtn.classList.toggle('hidden', isSeatedHere || isManager || isMainRoom);
-            raiseBtn.classList.toggle('text-yellow-400', myHandRaised);
-        }
-        if (queueBtn) {
-            queueBtn.classList.toggle('hidden', !isManager);
-            const badge = document.getElementById('room-hand-queue-badge');
-            if (badge) {
-                badge.textContent = roomHandQueue.length > 9 ? '9+' : String(roomHandQueue.length);
-                badge.classList.toggle('hidden', roomHandQueue.length === 0);
-            }
-        }
+        const total = roomUnreadDMCount + (isManager ? roomHandQueue.length : 0);
+        badge.textContent = total > 9 ? '9+' : String(total);
+        badge.classList.toggle('hidden', total === 0);
     }
 
     // ✅ القائمة المسندلة لطلبات الصعود — تظهر للمضيف/المسؤول فقط، بنفس أسلوب بقية النوافذ السفلية
@@ -1019,11 +1029,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let roomUnreadDMCount = 0;
     let lastRoomDMSender = null; // { id, username, profileImage }
 
+    // ✅ الأيقونة المخصصة للرسائل انتقلت لقائمة "المزيد"، فتحديث الشارة يمر بنفس الدالة الموحّدة
     function updateRoomMessagesBadge() {
-        const badge = document.getElementById('room-messages-badge');
-        if (!badge) return;
-        badge.textContent = roomUnreadDMCount > 9 ? '9+' : String(roomUnreadDMCount);
-        badge.classList.toggle('hidden', roomUnreadDMCount === 0);
+        updateHandRaiseUI();
     }
 
     function clearRoomMessagesBadge() {
@@ -1150,7 +1158,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (roomChatCurrentRoomId) socket.emit('leave-room-chat', { roomId: roomChatCurrentRoomId });
         roomChatCurrentRoomId = null;
         applyMusicState(null);
-        document.body.classList.remove('room-chat-input-open');
     }
 
     // ✅ وضع "الغرفة ملء الشاشة" — يخفي هيدر المنصة والتنقّل بالكامل، بالضبط زي التطبيقات المشهورة
