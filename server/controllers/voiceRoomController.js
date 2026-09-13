@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const VoiceRoom = require('../models/VoiceRoom');
 const Message = require('../models/Message');
 const User = require('../models/User');
+const { uploadRoomMusic } = require('../utils/cloudinary');
 
 // =====================================================
 // ✅ كتالوج خلفيات الغرفة — خلفية مجانية دائمة + خلفيات مدفوعة (10 كوينز / 5 أيام)
@@ -392,5 +393,60 @@ exports.purchaseBackground = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// =====================================================
+// ✅ GET /api/voice-room/rooms/:id/music — مكتبة أغاني الغرفة
+// =====================================================
+exports.getMusicLibrary = async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غرفة غير صالح' });
+        }
+        const room = await VoiceRoom.findOne({ _id: req.params.id, status: 'active' }).select('musicLibrary');
+        if (!room) {
+            return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة' });
+        }
+        res.json({ status: 'success', tracks: room.musicLibrary });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// =====================================================
+// ✅ POST /api/voice-room/rooms/:id/music/upload — رفع أغنية جديدة لمكتبة الغرفة (المضيف/المسؤولون فقط)
+// =====================================================
+exports.uploadMusicTrack = async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غرفة غير صالح' });
+        }
+        const room = await VoiceRoom.findOne({ _id: req.params.id, status: 'active' });
+        if (!room) {
+            return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة' });
+        }
+        if (!room.canModerate(req.user.id)) {
+            return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية إضافة أغاني لهذي الغرفة' });
+        }
+        if (!req.file) {
+            return res.status(400).json({ status: 'fail', message: 'لم يتم رفع أي ملف صوتي' });
+        }
+
+        // 🛡️ حد أقصى لعدد الأغاني بمكتبة الغرفة الواحدة (يمنع الإغراق التخزيني)
+        if (room.musicLibrary.length >= 30) {
+            return res.status(400).json({ status: 'fail', message: 'وصلت للحد الأقصى (30 أغنية) بمكتبة هذي الغرفة' });
+        }
+
+        const result = await uploadRoomMusic(req.file.buffer);
+        const cleanTitle = String(req.body.title || req.file.originalname || 'أغنية').trim().slice(0, 60);
+
+        const track = { title: cleanTitle, url: result.secure_url, uploadedBy: req.user.id, addedAt: new Date() };
+        room.musicLibrary.push(track);
+        await room.save();
+
+        res.status(201).json({ status: 'success', track: room.musicLibrary[room.musicLibrary.length - 1] });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message || 'فشل رفع الأغنية' });
     }
 };
