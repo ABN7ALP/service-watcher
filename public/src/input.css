@@ -395,23 +395,31 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .mobile-nav-item.active { color: #a855f7 !important; }
 .mobile-nav-item.active i { transform: translateY(-2px); }
 
-/* ✅ 80 مقعد غرفة صوت — تصميم مضغوط وواضح على كل الأحجام */
-/* ✅ حاوية المقاعد المرنة: حجم مقعد ثابت (لا يتمدد حسب عرض الشاشة) + توسيط تلقائي
-   لكل صف (يشمل آخر صف ناقص) — هذا يحل مشكلة "مقاعد كبيرة بالكمبيوتر وصغيرة بالهاتف"
-   ويملأ فراغات أي عدد مقاعد (8/15/24/80) بأناقة دون الحاجة لتخطيط مخصص لكل حجم */
+/* ✅ غرفة صوت (8 حتى 80 مقعداً) — تصميم مضغوط وواضح على كل الأحجام */
+/* ✅ حاوية المقاعد المرنة: توسيط تلقائي لكل صف (يشمل آخر صف ناقص) — يحل مشكلة "مقاعد كبيرة
+   بالكمبيوتر وصغيرة بالهاتف" ويملأ فراغات أي عدد مقاعد (8/15/24/80) بأناقة دون تخطيط مخصص.
+   labeled: تُفعَّل فقط لغرف المستخدمين (8/15/24 مقعداً) — مساحة أوسع كافية لإظهار الاسم
+   تحت كل مقعد (مو فقط بالـ tooltip)، بعكس الغرفة الرسمية المزدحمة بـ80 مقعداً */
 .voice-seats-flex {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     align-content: flex-start;
-    gap: 14px 16px;
+    gap: clamp(10px, 3vw, 20px) clamp(12px, 3.2vw, 22px);
+}
+.voice-seats-flex.labeled {
+    /* ✅ فراغ رأسي كبير كفاية يستوعب اسم المقعد (وشارة الدعم إن وُجدت) دون تلامس الصف التالي —
+       الاسم/الشارة موضوعان بـ position:absolute فلا يدخلان بحساب ارتفاع الصف تلقائياً */
+    gap: clamp(38px, 7vw, 46px) clamp(14px, 3.5vw, 24px);
 }
 .voice-seat {
-    width: 54px; height: 54px;
+    /* ✅ حجم مرن (clamp) يتدرّج فعلياً مع عرض الشاشة بدل القفز بين 3 مقاسات ثابتة فقط —
+       الحد الأدنى/الأقصى يحفظان نفس مدى الأحجام السابق (هاتف صغير ← كمبيوتر) بدون قفزات */
+    width: clamp(46px, 12.5vw, 64px); height: clamp(46px, 12.5vw, 64px);
     flex: 0 0 auto;
     border-radius: 50%; /* ✅ دائري بالكامل */
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.7rem; font-weight: bold;
+    font-size: clamp(0.62rem, 3vw, 0.8rem); font-weight: bold;
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.1);
     cursor: pointer;
@@ -437,25 +445,27 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     border-radius: 50%;
     object-fit: cover;
 }
-/* ⏸️ محفوظة لمرحلة لاحقة (غرف بمقاعد أقل وأكبر 8/15/24) — غير مستخدمة بالشبكة الحالية المضغوطة
-   (80 مقعداً بمساحة ضيقة جداً؛ الاسم متاح عبر tooltip عند التمرير لتفادي الازدحام البصري) */
+/* ✅ اسم صاحب المقعد أسفله — يظهر فقط بغرف المستخدمين (8/15/24 مقعداً، حاوية .labeled)
+   حيث المساحة تسمح؛ الغرفة الرسمية المزدحمة بـ80 مقعداً تبقى بالـ tooltip فقط لتفادي الازدحام */
 .voice-seat-name {
+    display: none;
     position: absolute;
-    bottom: -1.1rem;
+    bottom: -1.75rem; /* ✅ أسفل شارة عداد الدعم (bottom:-9px) بمسافة كافية تمنع تداخلهما */
     left: 50%; transform: translateX(-50%);
-    font-size: 0.5rem;
+    font-size: 0.58rem;
     font-weight: 600;
     color: #d1d5db;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 3.2rem;
+    max-width: 4rem;
     pointer-events: none;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
 }
+.voice-seats-flex.labeled .voice-seat-name { display: block; }
 /* ✅ تعتيم كامل للصورة + أيقونة ميكروفون مسكّر بالمنتصف — أوضح بكثير من أيقونة صغيرة
    بزاوية، ويظهر بنفس الوضوح عند صاحب المقعد نفسه وعند بقية المستخدمين على حد سواء.
-   الحجم بوحدة em نسبية لخط المقعد، فيتحجّم تلقائياً مع media query الموجودة أصلاً بالأسفل
-   بدل ما يحتاج قاعدة منفصلة لكل حجم شاشة. */
+   الحجم بوحدة em نسبية لخط المقعد، فيتحجّم تلقائياً مع الـ clamp() أعلاه بدون قاعدة إضافية. */
 .voice-seat-mute-overlay {
     position: absolute;
     inset: 0;
@@ -492,15 +502,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 #voice-control-bar.voice-bar-enter {
     animation: voiceBarEnter 0.26s ease-out;
 }
-
-@media (min-width: 768px) {
-    .voice-seats-flex { gap: 18px 20px; }
-    .voice-seat { width: 62px; height: 62px; font-size: 0.78rem; }
-}
-@media (max-width: 380px) {
-    .voice-seats-flex { gap: 10px 12px; }
-    .voice-seat { width: 46px; height: 46px; font-size: 0.6rem; }
-}
+/* ✅ لا حاجة لـ media queries منفصلة لحجم المقعد بعد الآن — clamp() أعلاه يتكفّل بالتدرّج الفعلي */
 
 
 /* ✅ هدايا الشات العام على الهاتف: قائمة منزلقة من الأسفل بدل نافذة كاملة الشاشة */
@@ -627,12 +629,14 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     .room-chat-messages-fixed { bottom: 70px; max-width: 480px; margin: 0 auto; left: 12px; right: 12px; max-height: 48vh; }
 }
 
-/* ✅ فقاعة رسالة تحتضن محتواها (width: fit-content) بدل تمددها بعرض شبه كامل — كل رسالة
-   بحجمها الطبيعي فقط، تماماً كما بتطبيقات الدردشة المعروفة، لا كنص عائم بعرض الشاشة */
+/* ✅ فقاعة رسالة تحتضن محتواها (width: fit-content) بدل تمددها بعرض شبه كامل، وسطر واحد
+   متدفّق (اسم ملوّن + نص متلاصقين، يلتف النص تلقائياً) بدل اسم فوق النص بسطرين — بالضبط
+   أسلوب دردشات البث المباشر المعروفة (Bigo/Yalla/TikTok Live)، وخلفية موحّدة لكل الرسائل
+   (الاسم الملوّن كافٍ لتمييز المتكلم) بدل لونين مختلفين حسب "رسالتي/رسالة غيري" */
 .room-chat-message {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
+    gap: 7px;
     padding: 5px 10px;
     border-radius: 14px;
     animation: chatMsgIn 0.25s ease-out;
@@ -640,31 +644,40 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     max-width: 88%;
     pointer-events: auto;
 }
+.room-chat-bubble-default { background: rgba(17,24,39,0.7); }
 .room-chat-msg-avatar {
-    width: 26px; height: 26px;
+    width: 24px; height: 24px;
     border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0;
-    margin-top: 1px;
+    margin-top: 2px;
     border: 1.5px solid rgba(255,255,255,0.2);
 }
-.room-chat-msg-body {
-    display: flex;
-    flex-direction: column; /* ✅ الاسم فوق، النص تحته */
-    gap: 1px;
+.room-chat-msg-line {
+    margin: 0;
     min-width: 0;
+    font-size: 13px;
+    line-height: 1.55;
 }
 .room-chat-msg-name {
     font-weight: 800;
-    font-size: 11.5px;
-    color: #c4b5fd;
-    line-height: 1.3;
+    font-size: 12px;
+}
+.room-chat-msg-name::after {
+    content: ':';
+    margin-inline-end: 5px;
+    color: rgba(255,255,255,0.4);
+    font-weight: 400;
 }
 .room-chat-msg-text {
-    font-size: 13px;
     color: #f3f4f6;
-    line-height: 1.5;
     word-break: break-word;
+}
+.room-chat-host-badge {
+    color: #fbbf24;
+    font-size: 10px;
+    margin-inline-end: 3px;
+    vertical-align: 1px;
 }
 @keyframes chatMsgIn {
     from { opacity: 0; transform: translateY(6px); }
@@ -826,6 +839,38 @@ body.in-voice-room #main-content {
     padding: 0 4px;
     box-shadow: 0 1px 4px rgba(0,0,0,0.4);
 }
+
+/* ✅ نافذة هدايا الغرفة — شريط مستلمين أفقي قابل للتمرير + شريحة "الكل" دائرية بنفس حجم
+   الصور (بدل زر عريض منفصل)، وشبكة هدايا مضغوطة (4 بالصف) بحجم أصغر ونظيف */
+.room-gift-avatar-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 2px 2px 6px;
+    scrollbar-width: thin;
+}
+.room-gift-avatar-row::-webkit-scrollbar { height: 4px; }
+.room-gift-avatar-row::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+.room-gift-all-circle {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    border: 2px solid transparent;
+    transition: all 0.15s ease;
+}
+.room-gift-all-circle.room-gift-all-active {
+    box-shadow: 0 0 0 2px #1f2937, 0 0 0 4px #ec4899;
+}
+.room-gift-cards-grid .gift-card-wrapper { padding: 6px 3px; border-radius: 10px; }
+.room-gift-cards-grid .gift-visual-slot,
+.room-gift-cards-grid .gift-visual-img { width: 28px; height: 28px; }
+.room-gift-cards-grid .gift-visual-slot span { font-size: 1.15rem; }
+.room-gift-cards-grid .gift-card-wrapper > span { font-size: 9.5px; } /* اسم الهدية وسعرها فقط (تحديد مباشر، لا يمس أيقونة الإيموجي الداخلية) */
 
 /* ✅ عداد الدعم أسفل كل مقعد — يتراكم طوال الجلسة، يصفّر عند مغادرة صاحبه */
 .seat-support-badge {
