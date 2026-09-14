@@ -392,7 +392,47 @@ async function endBattle(io, battleId) {
     }
 }
 
+// =================================================
+// ✅ دورة حياة "بث" غرفة المستخدم — الغرفة تظهر بالتصفح فقط وقت يكون مضيفها مباشراً فعلياً.
+// إنهاء البث (صراحة بزر ✕، أو تلقائياً عند انقطاع اتصال المضيف) نفس المسار بالضبط.
+// =================================================
+// ✅ من يشاهد الغرفة الآن فعلياً — مشتق مباشرة من عضوية قناة دردشتها بالسوكيت (كل من فتح
+// شاشة الغرفة منضمّ لها أصلاً عبر join-room-chat)، فلا حاجة لتتبّع "حضور" منفصل بقاعدة البيانات
+function getRoomViewers(io, roomId) {
+    const channel = `room-chat-${roomId}`;
+    const socketIds = io.sockets.adapter.rooms.get(channel);
+    if (!socketIds) return [];
+    const byUser = new Map(); // ✅ يمنع التكرار لو نفس المستخدم فاتح أكثر من تبويب/جهاز بنفس الوقت
+    for (const socketId of socketIds) {
+        const s = io.sockets.sockets.get(socketId);
+        if (s?.user) byUser.set(s.user.id.toString(), { id: s.user.id.toString(), username: s.user.username, profileImage: s.user.profileImage });
+    }
+    return Array.from(byUser.values());
+}
 
+function broadcastRoomViewerCount(io, roomId) {
+    const count = getRoomViewers(io, roomId).length;
+    io.to(`room-chat-${roomId}`).emit('room-viewer-count', { roomId, count });
+}
+
+async function endRoomBroadcastForHost(io, hostUser) {
+    try {
+        const room = await VoiceRoom.findOne({ host: hostUser._id, isOfficial: false, isLive: true });
+        if (!room) return;
+        const result = await VoiceRoom.endBroadcast(room._id);
+        if (!result) return;
+
+        io.to(`room-chat-${room._id}`).emit('room-broadcast-ended', {
+            roomId: room._id.toString(),
+            hostUsername: hostUser.username,
+            hostProfileImage: hostUser.profileImage,
+            durationSeconds: result.durationSeconds,
+            followerIds: result.room.followers.map(f => f.toString()) // ✅ يمكّن العميل من معرفة "أنا متابع؟" دون طلب REST إضافي (الغرفة عادت isLive:false فلن يقدر يجلبها)
+        });
+    } catch (error) {
+        console.error('[BROADCAST] End error:', error);
+    }
+}
 
 // --- دالة التهيئة الرئيسية ---
 const initializeSocket = (server) => {
@@ -836,6 +876,13 @@ socket.on('refreshBlockData', async () => {
                     return socket.emit('seat-error', 'لا تملك صلاحية الجلوس على مقاعد الإدارة');
                 }
 
+                // 🛡️ الجلوس المباشر بضغطة واحدة صار حصرياً للمضيف/المسؤولين المساعدين — أي ضيف
+                // آخر يرسل "رفع يد" (raise-hand) بدلاً من الجلوس الفوري، والمضيف يوافق أو يرفض.
+                // ليس مجرد إخفاء زر بالواجهة: نفس القاعدة مُطبَّقة هنا مباشرة على مستوى السيرفر.
+                if (targetRoomId !== 'main' && !room.canModerate(socket.user._id)) {
+                    return socket.emit('seat-error', 'اضغط "رفع اليد" لطلب الصعود — الجلوس المباشر للمضيف والمسؤولين فقط');
+                }
+
                 // ✅ ملاحظة: كلمة مرور الغرفة الخاصة تُتحقق منها فقط عند "الدخول للغرفة" (getRoomById)
                 // — من وصل لهذي النقطة فهو أصلاً دخل الغرفة بنجاح، فلا داعي لتكرار الطلب عند الجلوس.
 
@@ -883,6 +930,14 @@ socket.on('refreshBlockData', async () => {
         socket.on('leave-voice-seat', () => withUserSeatLock(socket.user._id, async () => {
             try {
                 const VoiceRoom = require('../models/VoiceRoom');
+
+                // 🛡️ مضيف غرفته الخاصة (المباشرة) لا يقدر ينزل من مقعده — عليه إنهاء البث بدل ذلك
+                // (host-end-broadcast)؛ هذا لا يشمل الغرفة الرسمية (host: null هناك أصلاً)
+                const ownLiveRoom = await VoiceRoom.findOne({ host: socket.user._id, isOfficial: false, isLive: true, 'seats.user': socket.user._id });
+                if (ownLiveRoom) {
+                    return socket.emit('seat-error', 'أنت مضيف هذي الغرفة — أنهِ البث بدل النزول من المقعد');
+                }
+
                 const released = await VoiceRoom.releaseUserSeatEverywhere(socket.user._id) || [];
                 released.forEach(r => {
                     io.emit('user-left-seat', { roomId: r.roomId, seatNumber: r.seatNumber, userId: socket.user.id.toString() });
@@ -922,6 +977,10 @@ socket.on('refreshBlockData', async () => {
                 }
                 const seat = room.seats.find(s => s.seatNumber === parseInt(seatNumber));
                 if (!seat || !seat.user) return;
+                // 🛡️ لا يمكن لأي مسؤول (حتى نفسه) طرد المضيف من مقعده — المضيف ينهي البث بدل ذلك
+                if (room.host && seat.user.toString() === room.host.toString()) {
+                    return socket.emit('seat-error', 'لا يمكن طرد مضيف الغرفة من مقعده');
+                }
                 const kickedUserId = seat.user.toString();
 
                 await VoiceRoom.updateOne(
@@ -966,6 +1025,10 @@ socket.on('refreshBlockData', async () => {
                 }
                 const seat = room.seats.find(s => s.seatNumber === parseInt(seatNumber));
                 if (!seat) return;
+                // 🛡️ قفل مقعد المضيف نفسه يعني طرده منه ضمنياً — ممنوع، هو ينهي البث بدل ذلك
+                if (room.host && seat.user && seat.user.toString() === room.host.toString()) {
+                    return socket.emit('seat-error', 'لا يمكن قفل مقعد المضيف');
+                }
                 const newLockState = !seat.isLocked;
 
                 // ✅ لو المقعد مشغول وقفلناه، نطرد الجالس عليه أولاً (مقعد مقفل يجب أن يكون فاضياً)
@@ -1015,6 +1078,69 @@ socket.on('refreshBlockData', async () => {
                 io.emit('moderator-status-changed', { roomId: finalRoomId, userId: targetUserId, isModerator: !!makeMod });
             } catch (error) {
                 console.error('[HOST ACTION] Set moderator error:', error);
+            }
+        });
+
+        // =====================================================
+        // ✅ بدء/إنهاء البث — المضيف فقط (وليس المسؤولون المساعدون؛ هذا قرار مصيري للغرفة)
+        // =====================================================
+        socket.on('host-start-broadcast', async ({ roomId }) => {
+            try {
+                const room = await VoiceRoom.startBroadcast(roomId, socket.user._id);
+                if (!room) return; // ✅ ليس مضيف هذي الغرفة، أو الغرفة الرسمية — تجاهل صامت وآمن
+                io.emit('user-joined-seat', {
+                    roomId: room._id.toString(),
+                    seatNumber: 1,
+                    userId: socket.user.id.toString(),
+                    username: socket.user.username,
+                    profileImage: socket.user.profileImage,
+                    activeFrameClass: socket.user.activeFrameClass,
+                    isMuted: false
+                });
+                io.to(`room-chat-${room._id}`).emit('room-broadcast-started', { roomId: room._id.toString() });
+            } catch (error) {
+                console.error('[BROADCAST] Start error:', error);
+            }
+        });
+
+        socket.on('host-end-broadcast', async ({ roomId }) => {
+            try {
+                const room = await VoiceRoom.findOne({ _id: roomId, host: socket.user._id, isOfficial: false });
+                if (!room) return socket.emit('seat-error', 'لست مضيف هذي الغرفة');
+                await endRoomBroadcastForHost(io, socket.user);
+            } catch (error) {
+                console.error('[BROADCAST] Explicit end error:', error);
+            }
+        });
+
+        // ✅ متابعة/إلغاء متابعة غرفة تحديداً — مستقل تماماً عن نظام الأصدقاء
+        socket.on('follow-room', async ({ roomId }) => {
+            try {
+                const mongoose = require('mongoose');
+                if (!mongoose.Types.ObjectId.isValid(roomId)) return;
+                const room = await VoiceRoom.findOneAndUpdate(
+                    { _id: roomId, isOfficial: false },
+                    { $addToSet: { followers: socket.user._id } },
+                    { new: true }
+                );
+                if (room) socket.emit('room-follow-updated', { roomId, isFollowing: true, followersCount: room.followers.length });
+            } catch (error) {
+                console.error('[FOLLOW ROOM] Follow error:', error);
+            }
+        });
+
+        socket.on('unfollow-room', async ({ roomId }) => {
+            try {
+                const mongoose = require('mongoose');
+                if (!mongoose.Types.ObjectId.isValid(roomId)) return;
+                const room = await VoiceRoom.findOneAndUpdate(
+                    { _id: roomId, isOfficial: false },
+                    { $pull: { followers: socket.user._id } },
+                    { new: true }
+                );
+                if (room) socket.emit('room-follow-updated', { roomId, isFollowing: false, followersCount: room.followers.length });
+            } catch (error) {
+                console.error('[FOLLOW ROOM] Unfollow error:', error);
             }
         });
 
@@ -1182,6 +1308,9 @@ socket.on('refreshBlockData', async () => {
                 if (myRoom.isOfficial || targetRoom.isOfficial) {
                     return socket.emit('seat-error', 'لا يمكن تحدي الغرفة الرسمية');
                 }
+                if (!targetRoom.isLive) {
+                    return socket.emit('seat-error', 'هذي الغرفة ما إلها بث مباشر حالياً');
+                }
 
                 const [openForMine, openForTarget] = await Promise.all([
                     RoomBattle.findOpenForRoom(myRoom._id),
@@ -1269,11 +1398,20 @@ socket.on('refreshBlockData', async () => {
             socket.join(`room-chat-${roomId}`);
             const musicState = roomMusicState.get(roomId);
             if (musicState) socket.emit('room-music-state', musicState); // ✅ مزامنة فورية لمن ينضم متأخراً
+            broadcastRoomViewerCount(io, roomId);
         });
 
         socket.on('leave-room-chat', ({ roomId }) => {
             if (!roomId) return;
             socket.leave(`room-chat-${roomId}`);
+            broadcastRoomViewerCount(io, roomId);
+        });
+
+        // ✅ القائمة الكاملة الحيّة لمن يشاهد الغرفة الآن (مأخوذة من عضوية قناة السوكيت نفسها،
+        // بلا حاجة لتخزين إضافي بقاعدة البيانات — نفس مصدر عدّاد المشاهدين تماماً)
+        socket.on('get-room-viewers', ({ roomId }) => {
+            if (!roomId) return;
+            socket.emit('room-viewers-list', { roomId, viewers: getRoomViewers(io, roomId) });
         });
 
         socket.on('send-room-message', async ({ roomId, message }) => {
@@ -1409,11 +1547,26 @@ socket.on('refreshBlockData', async () => {
             io.to(`room-chat-${roomId}`).emit('room-music-state', null);
         });
 
+        // ✅ "disconnecting" (وليس "disconnect") لأن socket.rooms ما زالت ممتلئة هنا — بعدها
+        // مباشرة يغادرها Socket.IO تلقائياً قبل إطلاق حدث disconnect، فيفوتنا تحديث العدّاد
+        socket.on('disconnecting', () => {
+            for (const room of socket.rooms) {
+                if (room.startsWith('room-chat-')) {
+                    const roomId = room.slice('room-chat-'.length);
+                    setImmediate(() => broadcastRoomViewerCount(io, roomId)); // ✅ بعد مغادرته فعلياً من القناة
+                }
+            }
+        });
+
         socket.on('disconnect', async () => {
             console.log(`🔴 User disconnected: ${socket.id} | UserID: ${socket.user.username}`);
             try {
                 await User.findByIdAndUpdate(socket.user.id, { isOnline: false, lastActive: new Date() });
                 io.emit('userOnlineStatus', { userId: socket.user.id.toString(), isOnline: false, lastActive: new Date() });
+
+                // ✅ لو كان مضيف غرفة مباشرة حالياً، انقطاع اتصاله ينهي بثّها فوراً (نفس مسار
+                // زر إنهاء البث الصريح) — قبل تحرير مقعده، لأن endBroadcast يُفرغ كل المقاعد أصلاً
+                await endRoomBroadcastForHost(io, socket.user);
 
                 // ✅ تحرير المقعد الصوتي دائماً بالاعتماد على قاعدة البيانات وحدها، وضمن نفس القفل
                 // التسلسلي حتى لا يتصادم مع طلب انضمام/مغادرة وصل بنفس اللحظة تقريباً

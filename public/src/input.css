@@ -414,30 +414,30 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 
 /* ✅ شبكة أعمدة ثابتة العدد (بالضبط أسلوب التطبيقات المشهورة) — عدد الأعمدة لا يتغيّر أبداً
-   بتغيّر عرض الشاشة (يضمن دائماً "صفّين لـ8" أو "3 صفوف لـ15" أو "4 صفوف لـ24")، وحجم كل
-   مقعد وحده يتمدد تلقائياً مع العرض المتاح (aspect-ratio:1 يحافظ على الدائرية دائماً) */
-.voice-seats-flex.cols-4,
+   بتغيّر عرض الشاشة (يضمن دائماً "مربّع 3×3 لـ9 مقاعد كبيرة" أو "3 صفوف لـ15" أو "4 صفوف
+   لـ24")، وحجم كل مقعد وحده يتمدد تلقائياً مع العرض المتاح (aspect-ratio:1 يحافظ على الدائرية) */
+.voice-seats-flex.cols-3,
 .voice-seats-flex.cols-5,
 .voice-seats-flex.cols-6 {
     display: grid;
     align-content: start;
     justify-items: center;
 }
-.voice-seats-flex.cols-4 { grid-template-columns: repeat(4, 1fr); gap: clamp(40px, 8vw, 52px) clamp(10px, 3vw, 22px); }
+.voice-seats-flex.cols-3 { grid-template-columns: repeat(3, 1fr); gap: clamp(44px, 9vw, 58px) clamp(16px, 4vw, 30px); }
 .voice-seats-flex.cols-5 { grid-template-columns: repeat(5, 1fr); gap: clamp(36px, 7vw, 46px) clamp(8px, 2.5vw, 18px); }
 .voice-seats-flex.cols-6 { grid-template-columns: repeat(6, 1fr); gap: clamp(32px, 6vw, 42px) clamp(6px, 2vw, 14px); }
 
-.voice-seats-flex.cols-4 .voice-seat,
+.voice-seats-flex.cols-3 .voice-seat,
 .voice-seats-flex.cols-5 .voice-seat,
 .voice-seats-flex.cols-6 .voice-seat {
     width: 100%; height: auto; aspect-ratio: 1; /* ✅ يملأ عرض عموده كاملاً ويبقى دائرياً دوماً */
 }
-.voice-seats-flex.cols-4 .voice-seat { font-size: clamp(0.95rem, 4.2vw, 1.3rem); }
+.voice-seats-flex.cols-3 .voice-seat { font-size: clamp(1.1rem, 5vw, 1.6rem); }
 .voice-seats-flex.cols-5 .voice-seat { font-size: clamp(0.78rem, 3.2vw, 1rem); }
 .voice-seats-flex.cols-6 .voice-seat { font-size: clamp(0.68rem, 2.6vw, 0.85rem); }
 
 @media (min-width: 768px) {
-    .voice-seats-flex.cols-4,
+    .voice-seats-flex.cols-3 { max-width: 380px; margin: 0 auto; } /* ✅ أضيق من البقية — 3 أعمدة فقط تكبر بسرعة */
     .voice-seats-flex.cols-5,
     .voice-seats-flex.cols-6 {
         max-width: 460px;
@@ -477,7 +477,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     border-radius: 50%;
     object-fit: cover;
 }
-/* ✅ اسم صاحب المقعد أسفله — يظهر فقط بغرف المستخدمين (8/15/24 مقعداً، حاوية .labeled)
+/* ✅ اسم صاحب المقعد أسفله — يظهر فقط بغرف المستخدمين (9/15/24 مقعداً، حاوية .labeled)
    حيث المساحة تسمح؛ الغرفة الرسمية المزدحمة بـ80 مقعداً تبقى بالـ tooltip فقط لتفادي الازدحام */
 .voice-seat-name {
     display: none;
@@ -495,6 +495,14 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     text-shadow: 0 1px 2px rgba(0,0,0,0.8);
 }
 .voice-seats-flex.labeled .voice-seat-name { display: block; }
+/* ✅ نص "انضمام" داخل مقعد فاضٍ بغرف المستخدمين — أصغر من رقم/تاج المقعد العادي لأنها كلمة كاملة */
+.voice-seat-join-label {
+    font-size: 0.62em;
+    font-weight: 700;
+    color: rgba(255,255,255,0.55);
+    letter-spacing: -0.01em;
+}
+.voice-seat.user-seat:hover .voice-seat-join-label { color: #d8b4fe; }
 /* ✅ تعتيم كامل للصورة + أيقونة ميكروفون مسكّر بالمنتصف — أوضح بكثير من أيقونة صغيرة
    بزاوية، ويظهر بنفس الوضوح عند صاحب المقعد نفسه وعند بقية المستخدمين على حد سواء.
    الحجم بوحدة em نسبية لخط المقعد، فيتحجّم تلقائياً مع الـ clamp() أعلاه بدون قاعدة إضافية. */
@@ -519,17 +527,6 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     cursor: not-allowed;
 }
 
-/* ✅ شريط التحكم العائم (كتم/مغادرة) — يظهر فقط لمن لديه مقعد فعلي حالياً */
-#voice-control-bar button.is-muted {
-    background: #ef4444 !important;
-}
-@keyframes voiceBarEnter {
-    from { opacity: 0; transform: translate(-50%, 8px) scale(0.92); }
-    to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
-}
-#voice-control-bar.voice-bar-enter {
-    animation: voiceBarEnter 0.26s ease-out;
-}
 /* ✅ لا حاجة لـ media queries منفصلة لحجم المقعد بعد الآن — clamp() أعلاه يتكفّل بالتدرّج الفعلي */
 
 
@@ -612,10 +609,15 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     box-shadow: 0 4px 14px rgba(0,0,0,0.35);
 }
 .room-chat-dock-icon.room-chat-gift-icon { color: #f472b6; }
+.room-chat-dock-icon.room-chat-leave-icon { color: #f87171; }
 /* ✅ نبضة خفيفة حول زر "المزيد" وقت تشغيل موسيقى الغرفة — مؤشر مستمر رغم انتقال أيقونة القرص لداخل القائمة */
 .room-chat-dock-icon.room-music-playing { border-color: rgba(16,185,129,0.7); color: #34d399; }
 @keyframes roomMusicPulse { 0%, 100% { box-shadow: 0 4px 14px rgba(0,0,0,0.35), 0 0 0 0 rgba(16,185,129,0.5); } 50% { box-shadow: 0 4px 14px rgba(0,0,0,0.35), 0 0 0 4px rgba(16,185,129,0); } }
 .room-chat-dock-icon.room-music-playing { animation: roomMusicPulse 1.8s ease-out infinite; }
+/* ✅ نبضة أرجوانية على زر "اطلب الصعود" (∞) طالما الطلب قائم بانتظار رد المضيف */
+.room-chat-dock-icon.join-request-pending { border-color: rgba(168,85,247,0.7); color: #c084fc; }
+@keyframes joinRequestPulse { 0%, 100% { box-shadow: 0 4px 14px rgba(0,0,0,0.35), 0 0 0 0 rgba(168,85,247,0.5); } 50% { box-shadow: 0 4px 14px rgba(0,0,0,0.35), 0 0 0 4px rgba(168,85,247,0); } }
+.room-chat-dock-icon.join-request-pending { animation: joinRequestPulse 1.6s ease-out infinite; }
 .room-chat-mini-badge {
     position: absolute;
     top: -3px; left: -3px;
@@ -627,6 +629,49 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     min-width: 16px; height: 16px;
     display: flex; align-items: center; justify-content: center;
     padding: 0 3px;
+}
+
+/* ✅ شارة المشاهدين بزاوية الغرفة — صور متراكبة + عدد، ضمن كبسولة واحدة قابلة للضغط */
+.room-viewer-count-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 9999px;
+    padding: 3px 9px 3px 3px;
+    color: #e5e7eb;
+    font-size: 11px;
+    font-weight: 700;
+}
+.room-viewer-avatars {
+    display: flex;
+    flex-direction: row-reverse; /* ✅ أول صورة بالمصفوفة تظهر فوق الباقي */
+}
+.room-viewer-avatar {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid #111827;
+    margin-inline-start: -8px;
+    cursor: pointer;
+}
+.room-viewer-avatar:first-child { margin-inline-start: 0; }
+
+/* ✅ زر متابعة الغرفة (مستقل عن نظام الأصدقاء) — بشاشة "انتهى البث" */
+.follow-room-btn {
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    color: #fff;
+    font-weight: 800;
+    font-size: 13px;
+    padding: 9px 28px;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.follow-room-btn.following {
+    background: rgba(255,255,255,0.08);
+    color: #d1d5db;
 }
 
 /* 2) منطقة الرسائل — تعلو الشريط، تنمو للأعلى نحو المقاعد، وقابلة للتمرير لعرض السجل بالكامل */
