@@ -35,7 +35,7 @@ const voiceRoomSchema = new mongoose.Schema({
     isLocked: { type: Boolean, default: false }, // ✅ قفل الغرفة بالكامل — لا يدخلها أحد غير المضيف/المسؤولين
     backgroundImage: { type: String, default: null }, // ✅ الخلفية النشطة حالياً (مجانية أو مدفوعة)
     backgroundExpiresAt: { type: Date, default: null }, // ✅ متى تنتهي الخلفية المدفوعة (null = مجانية/دائمة)
-    seatCount: { type: Number, enum: [8, 15, 24, 80], default: 80 },
+    seatCount: { type: Number, enum: [9, 15, 24, 80], default: 80 },
     adminSeatCount: { type: Number, default: 5 }, // أول N مقعد محجوز حصرياً للإدارة (0 بالغرف العادية)
     moderators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // ✅ مسؤولون مساعدون عيّنهم المضيف
     musicLibrary: [{
@@ -52,6 +52,13 @@ const voiceRoomSchema = new mongoose.Schema({
         requestedAt: { type: Date, default: Date.now }
     }],
     status: { type: String, enum: ['active', 'closed'], default: 'active', index: true },
+    // ✅ غرف المستخدمين (وليست الرسمية) تعمل بمنطق "بث مباشر": الغرفة موجودة بقاعدة البيانات
+    // دائماً (تاريخها/إعداداتها محفوظة)، لكنها لا تظهر بقائمة التصفح إلا وقت يكون المضيف
+    // فعلياً "مباشر" (isLive)؛ تختفي تلقائياً عند خروجه، وتُستأنف بجلسة بث جديدة عند رجوعه
+    isLive: { type: Boolean, default: true, index: true },
+    liveSince: { type: Date, default: Date.now }, // ✅ بداية جلسة البث الحالية — يُحسب منها "مدة البث" عند انتهائها
+    // ✅ متابعو الغرفة تحديداً (مستقل تماماً عن نظام الأصدقاء) — يظهر لهم زر "متابع" بدل "متابعة"
+    followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     lastActivityAt: { type: Date, default: Date.now, index: true },
 }, { timestamps: true });
 
@@ -87,10 +94,13 @@ voiceRoomSchema.statics.getMainRoom = async function () {
     return room;
 };
 
-// ✅ إنشاء غرفة صوتية جديدة يملكها مستخدم (نظام الغرف المتعددة)
+// ✅ إنشاء غرفة صوتية جديدة يملكها مستخدم (نظام الغرف المتعددة) — المضيف يُجلَس تلقائياً على
+// المقعد رقم 1 فور الإنشاء (لا يقدر ينزل منه — يُنهي البث بدل ذلك، انظر endBroadcast أدناه)
 voiceRoomSchema.statics.createRoom = async function ({ hostId, name, description, coverImage, category, seatCount, isPrivate, password }) {
     const seats = [];
-    for (let i = 1; i <= seatCount; i++) seats.push({ seatNumber: i });
+    for (let i = 1; i <= seatCount; i++) {
+        seats.push(i === 1 ? { seatNumber: 1, user: hostId, joinedAt: new Date() } : { seatNumber: i });
+    }
 
     return this.create({
         name,
@@ -104,6 +114,8 @@ voiceRoomSchema.statics.createRoom = async function ({ hostId, name, description
         isPrivate: !!isPrivate,
         password: isPrivate ? password : undefined,
         seats,
+        isLive: true,
+        liveSince: new Date(),
         status: 'active',
         lastActivityAt: new Date()
     });
@@ -112,7 +124,9 @@ voiceRoomSchema.statics.createRoom = async function ({ hostId, name, description
 // ✅ قائمة الغرف للتصفح (الرسمية + كل غرف المستخدمين) — لا تُرجع كلمة المرور أبداً،
 // ولا مصفوفة المقاعد كاملة (ثقيلة وغير لازمة لقائمة التصفح، فقط عدد الشاغلين الحالي)
 voiceRoomSchema.statics.listRooms = async function ({ search, sort = 'newest', page = 1, limit = 20 } = {}) {
-    const query = { status: 'active' };
+    // ✅ غرفة مستخدم غير مباشرة حالياً (المضيف غير موجود) لا تظهر بالتصفح إطلاقاً —
+    // الرسمية مُستثناة دائماً من هذا الشرط (isLive غير ذي معنى بالنسبة لها)
+    const query = { status: 'active', $or: [{ isOfficial: true }, { isLive: true }] };
     if (search && search.trim()) {
         query.name = { $regex: search.trim().slice(0, 50).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
     }
@@ -277,9 +291,9 @@ voiceRoomSchema.methods.checkBackgroundExpiry = async function () {
     }
 };
 
-// ✅ زيادة عدد المقاعد فقط (اتجاه واحد: 8←15←24) — يضيف مقاعد فاضية جديدة بدون المساس بالموجود
+// ✅ زيادة عدد المقاعد فقط (اتجاه واحد: 9←15←24) — يضيف مقاعد فاضية جديدة بدون المساس بالموجود
 voiceRoomSchema.methods.increaseSeatCount = function (newCount) {
-    const allowedSteps = [8, 15, 24];
+    const allowedSteps = [9, 15, 24];
     if (!allowedSteps.includes(newCount) || newCount <= this.seatCount) return false;
     for (let i = this.seatCount + 1; i <= newCount; i++) {
         this.seats.push({ seatNumber: i });
@@ -289,17 +303,58 @@ voiceRoomSchema.methods.increaseSeatCount = function (newCount) {
 };
 
 // ✅ يحرر كل مقاعد هذي الغرفة دفعة واحدة (يُستخدم عند اختيار المضيف "طرد الجميع" عند قفل الغرفة)
-// يُرجع مصفوفة أرقام المقاعد التي كانت مشغولة، لبثّها للجميع
+// — عدا مقعد المضيف نفسه، فهو مثبَّت دائماً ولا يُطرَد حتى بهذا الإجراء الجماعي —
+// يُرجع مصفوفة أرقام المقاعد التي كانت مشغولة فعلياً وأُفرغت، لبثّها للجميع
 voiceRoomSchema.statics.releaseAllSeatsInRoom = async function (roomId) {
     const room = await this.findById(roomId);
     if (!room) return [];
-    const occupied = room.seats.filter(s => s.user).map(s => s.seatNumber);
+    const hostId = room.host ? room.host.toString() : null;
+    const occupied = room.seats.filter(s => s.user && s.user.toString() !== hostId).map(s => s.seatNumber);
     if (!occupied.length) return [];
     await this.updateOne(
         { _id: roomId },
-        { $set: { 'seats.$[].user': null, 'seats.$[].joinedAt': null, 'seats.$[].isMuted': false } }
+        { $set: { 'seats.$[s].user': null, 'seats.$[s].joinedAt': null, 'seats.$[s].isMuted': false } },
+        { arrayFilters: [{ 's.seatNumber': { $in: occupied } }] }
     );
     return occupied;
+};
+
+// ✅ المضيف يبدأ جلسة بث جديدة بغرفته (عند فتحها وهي غير مباشرة حالياً) — يمسح دردشة الجلسة
+// السابقة، يعيد إجلاسه على المقعد 1 وحده (يُفرغ أي مقاعد أخرى بقيت من الجلسة السابقة)،
+// ويجعل الغرفة ظاهرة بالتصفح من جديد
+voiceRoomSchema.statics.startBroadcast = async function (roomId, hostId) {
+    const Message = require('./Message');
+    const room = await this.findOne({ _id: roomId, host: hostId, isOfficial: false });
+    if (!room) return null;
+
+    await Message.deleteMany({ room: `room-chat-${roomId}` });
+
+    room.isLive = true;
+    room.liveSince = new Date();
+    room.handRaises = [];
+    room.seats.forEach(s => { s.user = null; s.joinedAt = null; s.isMuted = false; s.isLocked = false; });
+    const firstSeat = room.seats.find(s => s.seatNumber === 1);
+    if (firstSeat) { firstSeat.user = hostId; firstSeat.joinedAt = new Date(); }
+    room.lastActivityAt = new Date();
+    await room.save();
+    return room;
+};
+
+// ✅ إنهاء البث (المضيف أنهاه صراحة، أو انقطع اتصاله) — يُفرغ كل المقاعد ويُخفي الغرفة عن
+// التصفح، ويُرجع من كان حاضراً (لإشعارهم بانتهاء البث) ومدته (لعرضها على شاشة الانتهاء)
+voiceRoomSchema.statics.endBroadcast = async function (roomId) {
+    const room = await this.findById(roomId);
+    if (!room || room.isOfficial || !room.isLive) return null;
+
+    const occupantIds = room.seats.filter(s => s.user).map(s => s.user.toString());
+    const durationSeconds = room.liveSince ? Math.max(0, Math.round((Date.now() - room.liveSince.getTime()) / 1000)) : 0;
+
+    room.isLive = false;
+    room.seats.forEach(s => { s.user = null; s.joinedAt = null; s.isMuted = false; });
+    room.handRaises = [];
+    await room.save();
+
+    return { room, occupantIds, durationSeconds };
 };
 
 module.exports = mongoose.model('VoiceRoom', voiceRoomSchema);

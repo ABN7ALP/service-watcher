@@ -103,7 +103,7 @@ exports.createRoom = async (req, res) => {
             description: '',
             coverImage: cleanCover,
             category: 'chat',
-            seatCount: 8,
+            seatCount: 9,
             isPrivate: false,
             password: undefined
         });
@@ -141,6 +141,12 @@ exports.getRoomById = async (req, res) => {
 
         const isHost = room.host && room.host._id.toString() === req.user.id;
         const isModerator = room.moderators.some(m => m.toString() === req.user.id);
+
+        // 🛡️ غرفة مستخدم غير مباشرة حالياً (انتهى بثها) لا يدخلها أحد غير مالكها (ليبدأ بثاً جديداً) —
+        // بقية المستخدمين وصلوا هنا برابط قديم/تصفح متأخر، والشاشة المناسبة لهم "انتهى البث" لا خطأ عام
+        if (!room.isOfficial && !room.isLive && !isHost) {
+            return res.status(404).json({ status: 'fail', message: 'انتهى البث المباشر بهذي الغرفة', broadcastEnded: true });
+        }
 
         // 🛡️ غرفة مقفولة بالكامل — لا يدخلها أحد غير المضيف/المسؤولين (منفصل عن حماية كلمة المرور)
         if (room.isLocked && !isHost && !isModerator) {
@@ -184,6 +190,9 @@ exports.getRoomById = async (req, res) => {
             seats,
             moderators: room.moderators.map(m => ({ id: m._id, username: m.username, profileImage: m.profileImage })),
             myRole: isHost ? 'host' : (isModerator ? 'moderator' : 'guest'),
+            isLive: room.isLive,
+            followersCount: room.followers.length,
+            isFollowing: room.followers.some(f => f.toString() === req.user.id),
             // 🛡️ قائمة طلبات الصعود لا تُرسَل إلا للمضيف/المسؤولين — لا فائدة (وربما إحراج) لبقية الحاضرين برؤيتها
             handRaises: (isHost || isModerator)
                 ? room.handRaises.filter(h => h.user).map(h => ({ userId: h.user._id, username: h.user.username, profileImage: h.user.profileImage }))
