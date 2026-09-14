@@ -196,6 +196,11 @@ voiceRoomSchema.statics.releaseUserSeatEverywhere = async function (userId) {
 
     const released = [];
     for (const room of rooms) {
+        // 🛡️ لا تُحرَّر أبداً مقاعد مضيف بغرفته الخاصة (دائماً مقعد 1) عبر هذا المسار العام —
+        // فقط startBroadcast/endBroadcast الصريحان يتحكمان بمقعده. يحمي من كل الحالات غير
+        // المباشرة: قطع اتصال مؤقت، أو محاولة الجلوس بغرفة أخرى وهو لسا "مثبَّت" بغرفته
+        if (room.host && room.host.toString() === userId.toString()) continue;
+
         const occupied = room.seats.filter(s => s.user && s.user.toString() === userId.toString());
         occupied.forEach(s => {
             released.push({

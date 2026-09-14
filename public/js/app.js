@@ -532,13 +532,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         } else {
             delete seatEl.dataset.userId;
             delete seatEl.dataset.supportTotal; // ✅ يصفّر عداد الدعم بمجرد مغادرة المقعد
-            // ✅ بغرف المستخدمين (وليس الرسمية) المقعد الفاضي يعرض "انضمام" — الضغط عليه يرسل
-            // طلب صعود، وليس جلوساً فورياً — إلا لمقعد الإدارة المحجوز بالغرفة الرسمية فقط
+            // ✅ بغرف المستخدمين (وليس الرسمية) المقعد الفاضي يعرض "+" بالدائرة و"انضمام" تحتها —
+            // الضغط يرسل طلب صعود، وليس جلوساً فورياً — إلا لمقعد الإدارة بالغرفة الرسمية فقط
             if (isAdminSeat) {
                 seatEl.innerHTML = '<i class="fas fa-crown"></i>';
                 seatEl.title = 'مقعد محجوز للإدارة';
             } else if (currentVoiceRoomId !== 'main') {
-                seatEl.innerHTML = '<span class="voice-seat-join-label">انضمام</span>';
+                seatEl.innerHTML = '<i class="fas fa-plus voice-seat-plus"></i><span class="voice-seat-name voice-seat-join-label">انضمام</span>';
             } else {
                 seatEl.innerHTML = seatEl.dataset.seat;
             }
@@ -550,7 +550,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function updateVoiceControlBar() {
         const bubble = document.getElementById('room-floating-bubble');
         if (!bubble) return;
-        const amSeated = !!myVoiceSeatNumber;
+        // ✅ المضيف (دائماً مقعد 1 بغرفته الخاصة — غير مقاعد الإدارة الأولى بالرسمية) لا يشوف
+        // هذي الفقاعة أبداً — علاقته بغرفته مختلفة (مثبَّت فيها، ورجوعه الوحيد هو إنهاء البث)
+        const isHostSeat = myVoiceSeatNumber === 1 && myVoiceRoomId !== 'main';
+        const amSeated = !!myVoiceSeatNumber && !isHostSeat;
         const viewingMyRoom = amSeated && currentVoiceRoomId === myVoiceRoomId;
         bubble.classList.toggle('hidden', !(amSeated && !viewingMyRoom));
     }
@@ -1385,9 +1388,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ غرفة أنشأها مستخدم — قابلة للجلوس فعلياً الآن (نفس منطق الغرفة الرسمية، خاص بهذي الغرفة فقط)
     async function showCustomRoomView(room, password) {
         // ✅ الدخول لغرفة أخرى يُنزلني تلقائياً من مقعدي بالغرفة السابقة (لا يمكن التواجد بغرفتين) —
-        // إلا لو كنت مضيف تلك الغرفة (دائماً مقعد 1): يبقى بثّي شغّالاً وأنا أتصفح مكاناً آخر،
-        // فالسيرفر أصلاً يرفض إنزال المضيف من مقعده (يجب إنهاء البث صراحة لا مجرد التنقّل)
-        if (myVoiceSeatNumber && myVoiceRoomId && myVoiceRoomId !== room.id && myVoiceSeatNumber !== 1) {
+        // إلا لو كنت مضيف تلك الغرفة (مقعد 1 بغرفة مستخدم لا بالرسمية): يبقى بثّي شغّالاً وأنا
+        // أتصفح مكاناً آخر، فالسيرفر أصلاً يرفض إنزال المضيف من مقعده (ينهي البث بدل ذلك)
+        const wasMyOwnHostSeat = myVoiceSeatNumber === 1 && myVoiceRoomId !== 'main';
+        if (myVoiceSeatNumber && myVoiceRoomId && myVoiceRoomId !== room.id && !wasMyOwnHostSeat) {
             leaveVoiceSeat();
         }
         currentVoiceRoomId = room.id;
@@ -1425,7 +1429,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
             ${renderRoomChatMarkup()}
         `;
-        document.getElementById('back-to-rooms-btn-custom').addEventListener('click', showRoomBrowserView);
+        // ✅ المضيف لا يقدر "يرجع" ببساطة — البث لسا شغّال؛ الرجوع بالنسبة له يعني إنهاء البث
+        // صراحة (نفس زر ✕)، وليس مجرد تنقّلاً عادياً كباقي الضيوف
+        document.getElementById('back-to-rooms-btn-custom').addEventListener('click', () => {
+            if (currentRoomMyRole === 'host') {
+                showEndBroadcastConfirm(room.id);
+            } else {
+                showRoomBrowserView();
+            }
+        });
         document.getElementById('room-settings-btn').addEventListener('click', () => showRoomSettingsModal(room));
         document.getElementById('room-end-broadcast-btn').addEventListener('click', () => showEndBroadcastConfirm(room.id));
         document.getElementById('room-viewer-count-btn').addEventListener('click', () => showRoomViewersSheet(room.id));
@@ -1466,12 +1478,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         document.getElementById('room-viewers-sheet')?.remove();
         const modal = document.createElement('div');
         modal.id = 'room-viewers-sheet';
-        modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50';
+        modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-3';
         modal.innerHTML = `
-            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 w-full md:max-w-sm text-white max-h-[65vh] overflow-y-auto">
-                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mb-3 md:hidden"></div>
-                <h3 class="text-sm font-bold mb-3"><i class="fas fa-eye text-purple-400"></i> المشاهدون</h3>
-                <div id="room-viewers-list" class="space-y-2">
+            <div class="room-viewers-sheet-card w-full md:max-w-sm text-white max-h-[65vh] flex flex-col">
+                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-3 md:hidden flex-shrink-0"></div>
+                <h3 class="text-sm font-bold px-4 pt-1 pb-3 flex items-center gap-2 flex-shrink-0">
+                    <i class="fas fa-eye text-purple-400"></i> المشاهدون
+                    <span id="room-viewers-sheet-count" class="text-[11px] font-normal text-gray-400"></span>
+                </h3>
+                <div id="room-viewers-list" class="space-y-1.5 px-3 pb-3 overflow-y-auto">
                     <div class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin"></i></div>
                 </div>
             </div>
@@ -1574,6 +1589,26 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }, 1000);
     }
 
+    // ✅ شاشة نهاية البث بالنسبة للمضيف نفسه — ملخّص بسيط (مدة البث فقط)، بلا صورته ولا زر
+    // متابعة لنفسه، وبلا انتقال عشوائي لغرفة أخرى — فقط رجوع مباشر لقائمة التصفح
+    function showHostBroadcastSummaryScreen({ durationSeconds }) {
+        document.getElementById('broadcast-ended-screen')?.remove();
+        const screen = document.createElement('div');
+        screen.id = 'broadcast-ended-screen';
+        screen.className = 'fixed inset-0 bg-gray-950 flex flex-col items-center justify-center z-[500] p-6 text-center text-white';
+        screen.innerHTML = `
+            <i class="fas fa-signal-stream text-4xl text-purple-400 mb-4"></i>
+            <p class="text-lg font-bold mb-1">انتهى بثّك المباشر</p>
+            <p class="text-sm text-gray-400 mb-6">مدة البث: ${formatBroadcastDuration(durationSeconds || 0)}</p>
+            <button id="close-host-broadcast-summary" class="bg-purple-600 hover:bg-purple-700 rounded-full px-8 py-2.5 font-bold text-sm">رجوع لقائمة الغرف</button>
+        `;
+        document.body.appendChild(screen);
+        document.getElementById('close-host-broadcast-summary').addEventListener('click', () => {
+            screen.remove();
+            showRoomBrowserView();
+        });
+    }
+
     // ✅ يبني شبكة المقاعد الفارغة ويربط أحداث الضغط — مستخدمة من الغرفة الرسمية وغرف المستخدمين معاً
     function renderVoiceRoomSeats(roomId, seatCount, adminSeatCount, isPrivate) {
         const voiceGrid = document.getElementById('voice-chat-grid');
@@ -1602,8 +1637,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 seat.innerHTML = '<i class="fas fa-crown"></i>';
                 seat.title = canSitHere ? 'مقعد إدارة' : 'مقعد محجوز للإدارة';
             } else if (isCustomRoom) {
-                // ✅ بغرف المستخدمين: المقعد الفاضي يعرض "انضمام" — الضغط يرسل طلب صعود، مو جلوساً فورياً
-                seat.innerHTML = '<span class="voice-seat-join-label">انضمام</span>';
+                // ✅ بغرف المستخدمين: مقعد فاضٍ = "+" بالدائرة و"انضمام" تحتها — الضغط يرسل طلب صعود
+                seat.innerHTML = '<i class="fas fa-plus voice-seat-plus"></i><span class="voice-seat-name voice-seat-join-label">انضمام</span>';
             } else {
                 seat.innerHTML = i;
             }
@@ -4516,16 +4551,20 @@ function showXpGainAnimation(amount) {
     socket.on('room-viewers-list', ({ roomId, viewers }) => {
         if (roomId === currentVoiceRoomId) updateRoomViewerWidget(viewers.length, viewers);
 
+        const countLabel = document.getElementById('room-viewers-sheet-count');
+        if (countLabel) countLabel.textContent = `(${viewers.length})`;
+
         const listEl = document.getElementById('room-viewers-list');
         if (!listEl) return;
         if (viewers.length === 0) {
-            listEl.innerHTML = '<p class="text-center text-xs text-gray-500 py-6">لا يوجد مشاهدون حالياً</p>';
+            listEl.innerHTML = '<p class="text-center text-xs text-gray-500 py-8">لا يوجد مشاهدون حالياً</p>';
             return;
         }
         listEl.innerHTML = viewers.map(v => `
-            <button data-user-id="${v.id}" data-username="${escapeHtml(v.username)}" class="room-viewer-row w-full flex items-center gap-2.5 bg-gray-700/40 hover:bg-gray-700 rounded-lg p-2 text-right">
-                <img src="${v.profileImage}" class="w-9 h-9 rounded-full object-cover flex-shrink-0">
-                <span class="text-sm truncate">${escapeHtml(v.username)}</span>
+            <button data-user-id="${v.id}" data-username="${escapeHtml(v.username)}" class="room-viewer-row w-full flex items-center gap-2.5 rounded-xl p-2 text-right">
+                <img src="${v.profileImage}" class="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-1 ring-white/10">
+                <span class="text-sm font-medium truncate flex-1">${escapeHtml(v.username)}</span>
+                <i class="fas fa-chevron-left text-[10px] text-gray-500"></i>
             </button>
         `).join('');
         listEl.querySelectorAll('.room-viewer-row').forEach(btn => {
@@ -4539,14 +4578,27 @@ function showXpGainAnimation(amount) {
     // =====================================================
     // ✅ دورة حياة البث — بدء/انتهاء
     // =====================================================
-    socket.on('room-broadcast-started', ({ roomId }) => {
-        if (roomId !== currentVoiceRoomId) return;
-        fetchAndRenderVoiceSnapshot(roomId, currentRoomPassword);
-    });
+    // ✅ لا حاجة لإعادة جلب/رسم الغرفة كاملة هنا — user-joined-seat (يُرسَل بنفس لحظة بدء
+    // البث) يكفي وحده لتحديث مقعد المضيف؛ إعادة الرسم الكاملة كانت تُحسّ وكأن الغرفة
+    // "تُعاد كتابتها" بلا داعٍ (كل الصور تُعاد تحميلها دفعة واحدة)
+    socket.on('room-broadcast-started', () => {});
 
     socket.on('room-broadcast-ended', (payload) => {
+        // ✅ لو كانت غرفتي التي أنا قاعد فيها (حتى وأنا أتصفح مكاناً آخر وقتها) — تصفير الحالة
+        // فوراً يُخفي الفقاعة العائمة تلقائياً (لم تعد هناك غرفة أرجع لها)
+        if (myVoiceRoomId === payload.roomId) {
+            myVoiceSeatNumber = null;
+            myVoiceRoomId = null;
+            updateVoiceControlBar();
+        }
         if (payload.roomId !== currentVoiceRoomId) return;
-        showBroadcastEndedScreen(payload);
+        // ✅ المضيف نفسه يشوف ملخّصاً بسيطاً (مدة بثّه فقط) — لا صورته ولا زر متابعة لنفسه،
+        // ولا انتقال عشوائي لغرفة أخرى، فقط رجوع مباشر لقائمة التصفح
+        if (currentRoomMyRole === 'host') {
+            showHostBroadcastSummaryScreen(payload);
+        } else {
+            showBroadcastEndedScreen(payload);
+        }
     });
 
     socket.on('room-follow-updated', ({ isFollowing, followersCount }) => {
@@ -5887,8 +5939,8 @@ async function showRoomGiftModal(roomId) {
     if (existing) existing.remove();
 
     const shellHTML = `
-        <div id="room-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320]">
-            <div class="room-gift-sheet bg-gray-900/97 rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-xs text-white max-h-[62vh] flex flex-col animate-[slideUp_0.25s_ease-out]">
+        <div id="room-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-3">
+            <div class="room-gift-sheet w-full md:max-w-xs text-white max-h-[54vh] flex flex-col animate-[slideUp_0.25s_ease-out]">
                 <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1.5 md:hidden flex-shrink-0"></div>
                 <div id="room-gift-body" class="px-3 pb-2 overflow-y-auto flex-1">
                     <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>

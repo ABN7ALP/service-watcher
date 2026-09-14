@@ -423,7 +423,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     align-content: start;
     justify-items: center;
 }
-.voice-seats-flex.cols-3 { grid-template-columns: repeat(3, 1fr); gap: clamp(44px, 9vw, 58px) clamp(16px, 4vw, 30px); }
+.voice-seats-flex.cols-3 { grid-template-columns: repeat(3, 1fr); gap: clamp(50px, 10vw, 62px) clamp(16px, 4vw, 30px); }
 .voice-seats-flex.cols-5 { grid-template-columns: repeat(5, 1fr); gap: clamp(36px, 7vw, 46px) clamp(8px, 2.5vw, 18px); }
 .voice-seats-flex.cols-6 { grid-template-columns: repeat(6, 1fr); gap: clamp(32px, 6vw, 42px) clamp(6px, 2vw, 14px); }
 
@@ -432,7 +432,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .voice-seats-flex.cols-6 .voice-seat {
     width: 100%; height: auto; aspect-ratio: 1; /* ✅ يملأ عرض عموده كاملاً ويبقى دائرياً دوماً */
 }
-.voice-seats-flex.cols-3 .voice-seat { font-size: clamp(1.1rem, 5vw, 1.6rem); }
+/* ✅ سقف حجم أقصى للمقعد نفسه (وليس بس للحاوية) — يمنعه من ملء العمود كاملاً على الهواتف
+   العريضة، ويعطي مسافة بصرية طبيعية بين المقاعد حتى ضمن نفس الصف */
+.voice-seats-flex.cols-3 .voice-seat { max-width: 92px; font-size: clamp(1.05rem, 4.2vw, 1.35rem); }
 .voice-seats-flex.cols-5 .voice-seat { font-size: clamp(0.78rem, 3.2vw, 1rem); }
 .voice-seats-flex.cols-6 .voice-seat { font-size: clamp(0.68rem, 2.6vw, 0.85rem); }
 
@@ -452,8 +454,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     border-radius: 50%; /* ✅ دائري بالكامل */
     display: flex; align-items: center; justify-content: center;
     font-size: clamp(0.62rem, 3vw, 0.8rem); font-weight: bold;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: transparent; /* ✅ لا خلفية للمقعد الفاضي — شبه شفاف بالكامل، فقط حلقة رفيعة تحدّده */
+    border: 1.5px solid rgba(255,255,255,0.18);
     cursor: pointer;
     transition: all 0.2s ease;
     position: relative;
@@ -495,14 +497,19 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     text-shadow: 0 1px 2px rgba(0,0,0,0.8);
 }
 .voice-seats-flex.labeled .voice-seat-name { display: block; }
-/* ✅ نص "انضمام" داخل مقعد فاضٍ بغرف المستخدمين — أصغر من رقم/تاج المقعد العادي لأنها كلمة كاملة */
+/* ✅ نص "انضمام" أسفل مقعد فاضٍ بغرف المستخدمين — بنفس حجم/موضع اسم الشاغل بالضبط (نفس الكلاس
+   الأساسي .voice-seat-name)، فقط بلون أخفت قليلاً لتمييزه كـ"حالة فاضية" لا اسم شخص حقيقي */
 .voice-seat-join-label {
-    font-size: 0.62em;
-    font-weight: 700;
-    color: rgba(255,255,255,0.55);
-    letter-spacing: -0.01em;
+    color: rgba(255,255,255,0.45);
+    font-weight: 600;
 }
 .voice-seat.user-seat:hover .voice-seat-join-label { color: #d8b4fe; }
+/* ✅ "+" بمنتصف المقعد الفاضي — حجم متوسط، وبلا أي خلفية للدائرة نفسها (شبه شفافة بالكامل) */
+.voice-seat-plus {
+    font-size: 0.85em;
+    color: rgba(255,255,255,0.4);
+}
+.voice-seat.user-seat:hover .voice-seat-plus { color: #c4b5fd; }
 /* ✅ تعتيم كامل للصورة + أيقونة ميكروفون مسكّر بالمنتصف — أوضح بكثير من أيقونة صغيرة
    بزاوية، ويظهر بنفس الوضوح عند صاحب المقعد نفسه وعند بقية المستخدمين على حد سواء.
    الحجم بوحدة em نسبية لخط المقعد، فيتحجّم تلقائياً مع الـ clamp() أعلاه بدون قاعدة إضافية. */
@@ -631,31 +638,48 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     padding: 0 3px;
 }
 
-/* ✅ شارة المشاهدين بزاوية الغرفة — صور متراكبة + عدد، ضمن كبسولة واحدة قابلة للضغط */
+/* ✅ شارة المشاهدين بزاوية الغرفة — صور متراكبة + عدد، ضمن كبسولة واحدة قابلة للضغط.
+   تباعد وحجم أوضح من المحاولة الأولى (كانت تحس متلاصقة/مزدحمة) */
 .room-viewer-count-btn {
     display: flex;
     align-items: center;
-    gap: 5px;
-    background: rgba(255,255,255,0.08);
+    gap: 7px;
+    min-height: 30px;
+    background: rgba(17,24,39,0.78);
+    border: 1px solid rgba(255,255,255,0.12);
     border-radius: 9999px;
-    padding: 3px 9px 3px 3px;
-    color: #e5e7eb;
-    font-size: 11px;
-    font-weight: 700;
+    padding: 4px 11px 4px 5px;
+    color: #f3f4f6;
+    font-size: 11.5px;
+    font-weight: 800;
 }
 .room-viewer-avatars {
     display: flex;
     flex-direction: row-reverse; /* ✅ أول صورة بالمصفوفة تظهر فوق الباقي */
+    padding-inline-end: 1px;
 }
 .room-viewer-avatar {
-    width: 20px; height: 20px;
+    width: 22px; height: 22px;
     border-radius: 50%;
     object-fit: cover;
-    border: 1.5px solid #111827;
+    border: 1.5px solid #1f2937;
     margin-inline-start: -8px;
     cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
 .room-viewer-avatar:first-child { margin-inline-start: 0; }
+
+/* ✅ نافذة قائمة المشاهدين — بطاقة صلبة أنيقة بدل خلفية شفافة باهتة */
+.room-viewers-sheet-card {
+    background: #1a1f2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.5);
+    animation: slideUp 0.25s ease-out;
+}
+@media (min-width: 768px) { .room-viewers-sheet-card { border-radius: 20px; } }
+.room-viewer-row { transition: background 0.12s ease; }
+.room-viewer-row:hover, .room-viewer-row:active { background: rgba(255,255,255,0.06); }
 
 /* ✅ زر متابعة الغرفة (مستقل عن نظام الأصدقاء) — بشاشة "انتهى البث" */
 .follow-room-btn {
@@ -687,6 +711,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     padding: 1.5rem 0.5rem 0.25rem;
     display: flex;
     flex-direction: column;
+    gap: 6px; /* ✅ فراغ مضمون بين الرسائل بغض النظر عن تنسيق فقاعة الشخص (كانت فقاعات بعض الأشكال المشتراة تلتصق ببعضها بدون هذا) */
     align-items: flex-start; /* ✅ flex-start = بداية المحور الداخلي = اليمين بصفحة RTL — الفقاعات تحتضن محتواها وتلتصق بجهة القراءة بدل تمددها بعرض الصندوق كاملاً */
     justify-content: flex-end;
     text-shadow: 0 1px 3px rgba(0,0,0,0.9);
@@ -916,6 +941,13 @@ body.in-voice-room #main-content {
 /* ✅ نافذة هدايا الغرفة — شريط مستلمين أفقي قابل للتمرير + شريحة "الكل" دائرية بنفس حجم
    الصور (بدل زر عريض منفصل)، وكروت هدايا بلا حدود ظاهرة (تظهر فقط عند التحديد) وصورة
    هدية كبيرة نسبياً داخل كارد صغير (3 بالصف — يحتاج تمرير لعرض الباقي، وهذا مقصود) */
+.room-gift-sheet {
+    background: #1a1f2e; /* ✅ لون صلب (وليس نصف شفاف) — يبقى واضحاً حتى فوق خلفية غرفة داكنة */
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.5);
+}
+@media (min-width: 768px) { .room-gift-sheet { border-radius: 20px; } }
 .room-gift-avatar-row {
     display: flex;
     align-items: flex-start;
