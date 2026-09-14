@@ -167,10 +167,12 @@ exports.sendGift = async (req, res) => {
         };
 
         // ✅ الإصلاح الجوهري: ننشئ رسالة حقيقية بالمحادثة الخاصة (تُحفظ بقاعدة البيانات وتصل فوراً للطرف الآخر)
+        // — لكن ليس لهدايا الغرفة: هذي تظهر كإعلان داخل دردشة الغرفة نفسها (فقاعة ذهبية)، لا كرسالة
+        // خاصة ولا فقاعة إشعار عائمة فوق الغرفة (كان هذا هو السلوك المزعج سابقاً)
         let savedMessage = null;
         let unreadCountForReceiver = 0;
 
-        if (context === 'private_chat') {
+        if (context === 'private_chat' && !cleanRoomId) {
             const participants = [senderId.toString(), receiverId.toString()].sort();
             const chatId = participants.join('_');
 
@@ -225,6 +227,23 @@ exports.sendGift = async (req, res) => {
                     senderName: sender.username
                 });
             }
+        }
+
+        // ✅ إعلان الهدية داخل دردشة الغرفة نفسها (فقاعة ذهبية) — بديل الرسالة الخاصة/الإشعار
+        // العائم السابقين، بنفس أسلوب "فلان أرسل هدية لفلان" بالتطبيقات المشهورة
+        if (cleanRoomId && io) {
+            io.to(`room-chat-${cleanRoomId}`).emit('room-gift-announcement', {
+                roomId: cleanRoomId,
+                fromUserId: senderId,
+                fromUsername: sender.username,
+                fromProfileImage: sender.profileImage,
+                toUserId: receiverId,
+                toUsername: receiver.username,
+                giftName: gift.name,
+                giftImage: safeGiftImage,
+                giftIcon: gift.icon || '🎁',
+                quantity: qty
+            });
         }
 
         if (sender.socketId && io) {

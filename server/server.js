@@ -57,6 +57,7 @@ app.use('/api/gift-redemption', require('./routes/giftRedemptionRoutes'));
 app.use('/api/deposits', require('./routes/depositRoutes')); // ✅ نظام شحن الرصيد الدولاري (منفصل عن الكوينز)
 app.use('/api/reports', require('./routes/reportRoutes')); // ✅ نظام البلاغات
 app.use('/api/support', require('./routes/supportRoutes')); // ✅ نظام الدعم الفني والاستئناف
+app.use('/api/music', require('./routes/musicRoutes')); // ✅ مكتبة أغاني مشتركة للغرف الصوتية
 
 
 // --- مسار "التقاط الكل" لخدمة الواجهة الأمامية --

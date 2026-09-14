@@ -434,6 +434,31 @@ async function endRoomBroadcastForHost(io, hostUser) {
     }
 }
 
+// ✅ مهلة سماح قبل إنهاء البث تلقائياً عند انقطاع اتصال المضيف — بدونها: أي انقطاع عابر
+// (الهاتف يقفل الشاشة، تبديل شبكة، تحميل الصفحة من جديد) كان يُنهي البث فوراً بلا داعٍ،
+// رغم أن المضيف يعود بعد ثوانٍ قليلة فعلياً. الاتصال الجديد بنفس الهوية يُلغي المهلة تلقائياً.
+const DISCONNECT_GRACE_MS = 25 * 1000;
+const pendingBroadcastEndTimers = new Map(); // hostId(string) → Timeout
+
+function cancelPendingBroadcastEnd(userId) {
+    const key = userId.toString();
+    const timer = pendingBroadcastEndTimers.get(key);
+    if (timer) {
+        clearTimeout(timer);
+        pendingBroadcastEndTimers.delete(key);
+    }
+}
+
+function scheduleBroadcastEndAfterDisconnect(io, hostUser) {
+    const key = hostUser._id.toString();
+    cancelPendingBroadcastEnd(key); // ✅ يمنع تراكم أكثر من مؤقّت لنفس المضيف
+    const timer = setTimeout(() => {
+        pendingBroadcastEndTimers.delete(key);
+        endRoomBroadcastForHost(io, hostUser);
+    }, DISCONNECT_GRACE_MS);
+    pendingBroadcastEndTimers.set(key, timer);
+}
+
 // --- دالة التهيئة الرئيسية ---
 const initializeSocket = (server) => {
         const io = new Server(server, {
@@ -484,6 +509,7 @@ const initializeSocket = (server) => {
                 try {
             await User.findByIdAndUpdate(socket.user.id, { socketId: socket.id, isOnline: true });
             io.emit('userOnlineStatus', { userId: socket.user.id.toString(), isOnline: true });
+            cancelPendingBroadcastEnd(socket.user._id); // ✅ عاد بسرعة — يلغي مهلة إنهاء البث المجدولة إن وُجدت
 
             // ✅ تحويل كل الرسائل التي وصلته وهو غير متصل إلى "تم التسليم" فوراً + إعلام كل مُرسِل بذلك
             const PrivateMessage = require('../models/PrivateMessage');
@@ -1107,6 +1133,7 @@ socket.on('refreshBlockData', async () => {
             try {
                 const room = await VoiceRoom.findOne({ _id: roomId, host: socket.user._id, isOfficial: false });
                 if (!room) return socket.emit('seat-error', 'لست مضيف هذي الغرفة');
+                cancelPendingBroadcastEnd(socket.user._id); // ✅ إنهاء صريح — لا داعي لمؤقّت مهلة قد يكون مجدولاً
                 await endRoomBroadcastForHost(io, socket.user);
             } catch (error) {
                 console.error('[BROADCAST] Explicit end error:', error);
@@ -1220,7 +1247,9 @@ socket.on('refreshBlockData', async () => {
                 if (!seat) return;
                 const isAdminSeat = seatNum <= room.adminSeatCount;
 
-                const targetUser = await User.findById(targetUserId).select('isAdmin');
+                // 🛡️ باگ سابق: select('isAdmin') فقط كان يجعل username/profileImage/activeFrameClass
+                // undefined بحدث user-joined-seat المُرسَل بالأسفل — يظهر كصورة مكسورة وبدون إطار للمدعو
+                const targetUser = await User.findById(targetUserId).select('isAdmin username profileImage activeFrameClass socketId');
                 if (!targetUser) return;
                 if (isAdminSeat && !targetUser.isAdmin) {
                     return socket.emit('seat-error', 'هذا المقعد محجوز للإدارة فقط');
@@ -1564,9 +1593,9 @@ socket.on('refreshBlockData', async () => {
                 await User.findByIdAndUpdate(socket.user.id, { isOnline: false, lastActive: new Date() });
                 io.emit('userOnlineStatus', { userId: socket.user.id.toString(), isOnline: false, lastActive: new Date() });
 
-                // ✅ لو كان مضيف غرفة مباشرة حالياً، انقطاع اتصاله ينهي بثّها فوراً (نفس مسار
-                // زر إنهاء البث الصريح) — قبل تحرير مقعده، لأن endBroadcast يُفرغ كل المقاعد أصلاً
-                await endRoomBroadcastForHost(io, socket.user);
+                // ✅ لو كان مضيف غرفة مباشرة حالياً، لا نُنهي بثّه فوراً — مهلة سماح قصيرة تحسّباً
+                // لانقطاع عابر (قفل شاشة الهاتف، تبديل شبكة) يعود بعدها المضيف خلال ثوانٍ فعلياً
+                scheduleBroadcastEndAfterDisconnect(io, socket.user);
 
                 // ✅ تحرير المقعد الصوتي دائماً بالاعتماد على قاعدة البيانات وحدها، وضمن نفس القفل
                 // التسلسلي حتى لا يتصادم مع طلب انضمام/مغادرة وصل بنفس اللحظة تقريباً
