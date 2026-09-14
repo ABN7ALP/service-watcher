@@ -412,6 +412,38 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
        الاسم/الشارة موضوعان بـ position:absolute فلا يدخلان بحساب ارتفاع الصف تلقائياً */
     gap: clamp(38px, 7vw, 46px) clamp(14px, 3.5vw, 24px);
 }
+
+/* ✅ شبكة أعمدة ثابتة العدد (بالضبط أسلوب التطبيقات المشهورة) — عدد الأعمدة لا يتغيّر أبداً
+   بتغيّر عرض الشاشة (يضمن دائماً "صفّين لـ8" أو "3 صفوف لـ15" أو "4 صفوف لـ24")، وحجم كل
+   مقعد وحده يتمدد تلقائياً مع العرض المتاح (aspect-ratio:1 يحافظ على الدائرية دائماً) */
+.voice-seats-flex.cols-4,
+.voice-seats-flex.cols-5,
+.voice-seats-flex.cols-6 {
+    display: grid;
+    align-content: start;
+    justify-items: center;
+}
+.voice-seats-flex.cols-4 { grid-template-columns: repeat(4, 1fr); gap: clamp(40px, 8vw, 52px) clamp(10px, 3vw, 22px); }
+.voice-seats-flex.cols-5 { grid-template-columns: repeat(5, 1fr); gap: clamp(36px, 7vw, 46px) clamp(8px, 2.5vw, 18px); }
+.voice-seats-flex.cols-6 { grid-template-columns: repeat(6, 1fr); gap: clamp(32px, 6vw, 42px) clamp(6px, 2vw, 14px); }
+
+.voice-seats-flex.cols-4 .voice-seat,
+.voice-seats-flex.cols-5 .voice-seat,
+.voice-seats-flex.cols-6 .voice-seat {
+    width: 100%; height: auto; aspect-ratio: 1; /* ✅ يملأ عرض عموده كاملاً ويبقى دائرياً دوماً */
+}
+.voice-seats-flex.cols-4 .voice-seat { font-size: clamp(0.95rem, 4.2vw, 1.3rem); }
+.voice-seats-flex.cols-5 .voice-seat { font-size: clamp(0.78rem, 3.2vw, 1rem); }
+.voice-seats-flex.cols-6 .voice-seat { font-size: clamp(0.68rem, 2.6vw, 0.85rem); }
+
+@media (min-width: 768px) {
+    .voice-seats-flex.cols-4,
+    .voice-seats-flex.cols-5,
+    .voice-seats-flex.cols-6 {
+        max-width: 460px;
+        margin: 0 auto;
+    }
+}
 .voice-seat {
     /* ✅ حجم مرن (clamp) يتدرّج فعلياً مع عرض الشاشة بدل القفز بين 3 مقاسات ثابتة فقط —
        الحد الأدنى/الأقصى يحفظان نفس مدى الأحجام السابق (هاتف صغير ← كمبيوتر) بدون قفزات */
@@ -841,7 +873,8 @@ body.in-voice-room #main-content {
 }
 
 /* ✅ نافذة هدايا الغرفة — شريط مستلمين أفقي قابل للتمرير + شريحة "الكل" دائرية بنفس حجم
-   الصور (بدل زر عريض منفصل)، وشبكة هدايا مضغوطة (4 بالصف) بحجم أصغر ونظيف */
+   الصور (بدل زر عريض منفصل)، وكروت هدايا بلا حدود ظاهرة (تظهر فقط عند التحديد) وصورة
+   هدية كبيرة نسبياً داخل كارد صغير (3 بالصف — يحتاج تمرير لعرض الباقي، وهذا مقصود) */
 .room-gift-avatar-row {
     display: flex;
     align-items: flex-start;
@@ -866,11 +899,17 @@ body.in-voice-room #main-content {
 .room-gift-all-circle.room-gift-all-active {
     box-shadow: 0 0 0 2px #1f2937, 0 0 0 4px #ec4899;
 }
-.room-gift-cards-grid .gift-card-wrapper { padding: 6px 3px; border-radius: 10px; }
+/* ✅ الكارد بلا حدود/خلفية افتراضياً — الحدود والخلفية الوردية تظهران فقط عبر
+   .gift-card-selected المشتركة (لا نلمسها هنا)، :not() يمنع override الحالة المحدَّدة */
+.room-gift-cards-grid .gift-card-wrapper:not(.gift-card-selected) {
+    background: transparent;
+    border-color: transparent;
+}
+.room-gift-cards-grid .gift-card-wrapper { padding: 5px 2px; border-radius: 12px; }
 .room-gift-cards-grid .gift-visual-slot,
-.room-gift-cards-grid .gift-visual-img { width: 28px; height: 28px; }
-.room-gift-cards-grid .gift-visual-slot span { font-size: 1.15rem; }
-.room-gift-cards-grid .gift-card-wrapper > span { font-size: 9.5px; } /* اسم الهدية وسعرها فقط (تحديد مباشر، لا يمس أيقونة الإيموجي الداخلية) */
+.room-gift-cards-grid .gift-visual-img { width: 46px; height: 46px; }
+.room-gift-cards-grid .gift-visual-slot span { font-size: 2rem; }
+.room-gift-cards-grid .gift-card-wrapper > span { font-size: 10px; } /* اسم الهدية وسعرها فقط (تحديد مباشر، لا يمس أيقونة الإيموجي الداخلية) */
 
 /* ✅ عداد الدعم أسفل كل مقعد — يتراكم طوال الجلسة، يصفّر عند مغادرة صاحبه */
 .seat-support-badge {

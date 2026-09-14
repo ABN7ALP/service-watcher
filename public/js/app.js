@@ -1417,6 +1417,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // ✅ الاسم يظهر تحت المقعد فقط بغرف المستخدمين (8/15/24) — مساحة كافية، بعكس الرسمية
         // المزدحمة بـ80 مقعداً حيث الـ tooltip يبقى وحده كافياً وأوضح بصرياً
         voiceGrid.classList.toggle('labeled', seatCount <= 24);
+        // ✅ شبكة أعمدة ثابتة العدد حسب سعة الغرفة (بالضبط أسلوب التطبيقات المشهورة): 8 مقاعد
+        // = 4 أعمدة (صفّان، مقاعد كبيرة)، 15 = 5 أعمدة (3 صفوف)، 24 = 6 أعمدة (4 صفوف) —
+        // العدد ثابت دائماً بغض النظر عن عرض الشاشة، وحجم المقعد وحده يتمدد مع العرض المتاح
+        // (بعكس الغرفة الرسمية الـ80 مقعداً التي تبقى بتخطيطها المضغوط المرن القديم)
+        voiceGrid.classList.remove('cols-4', 'cols-5', 'cols-6');
+        if (seatCount === 8) voiceGrid.classList.add('cols-4');
+        else if (seatCount === 15) voiceGrid.classList.add('cols-5');
+        else if (seatCount === 24) voiceGrid.classList.add('cols-6');
         for (let i = 1; i <= seatCount; i++) {
             const seat = document.createElement('div');
             const isAdminSeat = i <= adminSeatCount;
@@ -5631,23 +5639,18 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
 }
 
 // ✅ نافذة هدايا الغرفة — تحديد مستلم واحد أو عدة مستلمين من المقاعد الفعلية الجالسين حالياً، أو "الجميع"
-// ✅ نافذة هدايا الغرفة — مسندلة من الأسفل بالهاتف (نافذة عادية أصغر بالكمبيوتر)، بنفس أسلوب
-// بقية النوافذ السفلية بالمشروع. عمداً بدون إغلاق بالضغط خارجها (اختيارات هدية/مستلمين
-// متعددة الخطوات، وإغلاقها بضغطة خارجية عرضية يُفقد كل ما اختاره المستخدم) — الإغلاق فقط
-// عبر زر × الصريح، أو تلقائياً لا شيء غيره.
+// ✅ نافذة هدايا الغرفة — مسندلة من الأسفل بالهاتف (نافذة صغيرة مركزية بالكمبيوتر)، بخلفية
+// شفافة كلياً (لا تعتم الغرفة خلفها) والضغط خارجها يغلقها — بلا هيدر/عنوان (أيقونة الهدية
+// بشريط الغرفة أصلاً كافية كسياق)، بأسلوب نوافذ تطبيقات الهواتف المصغّرة.
 async function showRoomGiftModal(roomId) {
     const existing = document.getElementById('room-gift-modal');
     if (existing) existing.remove();
 
     const shellHTML = `
-        <div id="room-gift-modal" class="fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-[320]">
-            <div class="room-gift-sheet bg-gradient-to-b from-gray-800 to-gray-900 rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-sm text-white border border-gray-700/60 max-h-[72vh] flex flex-col animate-[slideUp_0.25s_ease-out]">
-                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2.5 mb-1 md:hidden"></div>
-                <div class="flex items-center justify-between px-3.5 py-2.5 border-b border-gray-700/60 flex-shrink-0">
-                    <h3 class="text-sm font-bold flex items-center gap-1.5"><i class="fas fa-gift text-pink-400"></i> إرسال هدية</h3>
-                    <button id="close-room-gift" class="text-gray-400 hover:text-white w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-700/60"><i class="fas fa-times text-sm"></i></button>
-                </div>
-                <div id="room-gift-body" class="p-3 overflow-y-auto flex-1">
+        <div id="room-gift-modal" class="fixed inset-0 bg-transparent flex items-end md:items-center justify-center z-[320]">
+            <div class="room-gift-sheet bg-gray-900/97 rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-xs text-white max-h-[62vh] flex flex-col animate-[slideUp_0.25s_ease-out]">
+                <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1.5 md:hidden flex-shrink-0"></div>
+                <div id="room-gift-body" class="px-3 pb-2 overflow-y-auto flex-1">
                     <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
                 </div>
                 <div id="room-gift-footer"></div>
@@ -5657,7 +5660,7 @@ async function showRoomGiftModal(roomId) {
 
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('room-gift-modal');
-    document.getElementById('close-room-gift').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target.id === 'room-gift-modal') modal.remove(); });
 
     try {
         const url = roomId === 'main' ? '/api/voice-room' : `/api/voice-room/rooms/${roomId}`;
@@ -5678,8 +5681,7 @@ async function showRoomGiftModal(roomId) {
         if (!body || !footer) return;
 
         body.innerHTML = `
-            <p class="text-[11px] text-gray-500 mb-1.5">المستلمون (الجالسون على المقاعد)</p>
-            <div id="room-gift-avatars" class="room-gift-avatar-row mb-3">
+            <div id="room-gift-avatars" class="room-gift-avatar-row mb-2.5">
                 ${seatedUsers.length === 0 ? '<p class="text-[11px] text-gray-500 py-3">لا يوجد أحد قاعد على مقعد حالياً</p>' : `
                     <button id="select-all-seated-btn" class="room-gift-all-btn relative flex flex-col items-center gap-1 flex-shrink-0" title="إرسال للجميع">
                         <span class="room-gift-all-circle rg-avatar-img">الكل</span>
@@ -5698,7 +5700,7 @@ async function showRoomGiftModal(roomId) {
                     `).join('')}
                 `}
             </div>
-            <div id="room-gift-cards-grid" class="room-gift-cards-grid grid grid-cols-4 gap-1.5">
+            <div id="room-gift-cards-grid" class="room-gift-cards-grid grid grid-cols-3 gap-2">
                 ${gifts.map(g => renderGiftCardHTML(g)).join('')}
             </div>
         `;
