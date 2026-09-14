@@ -521,6 +521,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             seatEl.innerHTML = `
                 <img src="${seatData.user.profileImage}" class="voice-seat-avatar" alt="${safeName}">
                 ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
+                <span class="voice-seat-name">${safeName}</span>
             `;
             if (keepBadge) {
                 seatEl.appendChild(keepBadge);
@@ -1112,13 +1113,27 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         input.focus(); // ✅ يبقى الحقل جاهزاً مباشرة لرسالة تالية سريعة، بدون إغلاقه
     }
 
+    // ✅ لون اسم ثابت لكل مستخدم (مُشتق من معرّفه) — بديل اللون الموحّد السابق، بنفس أسلوب
+    // دردشات البث المباشر المعروفة (كل معلّق له لون اسم مميّز يسهّل تتبع الكلام بمحادثة مزدحمة)
+    const ROOM_CHAT_NAME_COLORS = ['#f472b6', '#a78bfa', '#60a5fa', '#34d399', '#fbbf24', '#fb7185', '#22d3ee', '#c084fc'];
+    function getChatNameColor(userId) {
+        if (!userId) return ROOM_CHAT_NAME_COLORS[0];
+        let hash = 0;
+        for (let i = 0; i < userId.length; i++) hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
+        return ROOM_CHAT_NAME_COLORS[hash % ROOM_CHAT_NAME_COLORS.length];
+    }
+
+    // ✅ سطر واحد متدفّق (اسم ملوّن + نص) بدل اسم فوق النص بسطرين — نفس أسلوب دردشات
+    // البث المباشر المعروفة (Bigo/Yalla/TikTok Live)، وخلفية فقاعة موحّدة للجميع (الاسم
+    // الملوّن كافٍ لتمييز المتكلم، فلا داعي لتلوين مختلف "لرسالتي" مقابل البقية)
     function appendRoomChatMessage(msg) {
         const box = document.getElementById('room-chat-messages');
         if (!box) return;
         const el = document.createElement('div');
         el.dataset.msgId = msg._id;
-        const isMyMessage = msg.sender?._id === myUserId;
-        const bubbleClass = msg.sender?.activeBubbleSkinClass || (isMyMessage ? 'bg-purple-800/80' : 'bg-gray-700/70');
+        const senderId = msg.sender?._id || '';
+        const isHostMsg = !!currentRoomHostId && senderId === currentRoomHostId;
+        const bubbleClass = msg.sender?.activeBubbleSkinClass || 'room-chat-bubble-default';
         el.className = `room-chat-message ${bubbleClass}`;
         const safeName = escapeHtml(msg.sender?.username || '');
         const safeContent = escapeHtml(msg.content || '');
@@ -1126,10 +1141,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const frameClass = msg.sender?.activeFrameClass || '';
         el.innerHTML = `
             <img src="${avatar}" class="room-chat-msg-avatar ${frameClass}" alt="">
-            <div class="room-chat-msg-body">
-                <span class="room-chat-msg-name">${safeName}</span>
-                <span class="room-chat-msg-text">${safeContent}</span>
-            </div>
+            <p class="room-chat-msg-line">
+                ${isHostMsg ? '<i class="fas fa-crown room-chat-host-badge" title="المضيف"></i>' : ''}<span class="room-chat-msg-name" style="color:${getChatNameColor(senderId)}">${safeName}</span><span class="room-chat-msg-text">${safeContent}</span>
+            </p>
         `;
         box.appendChild(el);
         box.scrollTop = box.scrollHeight;
@@ -1290,6 +1304,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentRoomPassword = null; // ✅ كلمة المرور المُتحقق منها للغرفة المعروضة حالياً (لإعادة المزامنة عند إعادة الاتصال)
     let currentRoomMyRole = 'guest'; // ✅ دوري بالغرفة المعروضة حالياً: host / moderator / guest
     let currentRoomModerators = []; // ✅ قائمة مسؤولي الغرفة المعروضة حالياً (لعرضهم بنافذة الإعدادات)
+    let currentRoomHostId = null; // ✅ معرّف مضيف الغرفة المعروضة حالياً (لعرض تاج المضيف بجانب اسمه بالدردشة)
     let currentRoomIsLocked = false;
     let currentRoomBackgroundImage = null;
     let currentRoomBackgroundExpiresAt = null;
@@ -1358,6 +1373,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         currentVoiceRoomId = room.id;
         currentRoomPassword = password || null;
         currentRoomMyRole = 'guest';
+        currentRoomHostId = null;
         currentRoomIsLocked = false;
         currentRoomBackgroundImage = null;
         currentRoomDescription = '';
@@ -1398,6 +1414,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const voiceGrid = document.getElementById('voice-chat-grid');
         if (!voiceGrid) return;
         voiceGrid.innerHTML = '';
+        // ✅ الاسم يظهر تحت المقعد فقط بغرف المستخدمين (8/15/24) — مساحة كافية، بعكس الرسمية
+        // المزدحمة بـ80 مقعداً حيث الـ tooltip يبقى وحده كافياً وأوضح بصرياً
+        voiceGrid.classList.toggle('labeled', seatCount <= 24);
         for (let i = 1; i <= seatCount; i++) {
             const seat = document.createElement('div');
             const isAdminSeat = i <= adminSeatCount;
@@ -1602,6 +1621,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 const settingsBtn = document.getElementById('room-settings-btn');
                 if (settingsBtn) settingsBtn.classList.toggle('hidden', currentRoomMyRole !== 'host');
             }
+            currentRoomHostId = result.host?.id || result.host?._id || null;
             if (result.moderators) currentRoomModerators = result.moderators;
             if (result.handRaises) roomHandQueue = result.handRaises;
             updateHandRaiseUI();
@@ -2285,6 +2305,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         currentVoiceRoomId = 'main';
         currentRoomPassword = null;
         currentRoomMyRole = 'guest';
+        currentRoomHostId = null;
         currentRoomIsLocked = false;
         currentRoomBackgroundImage = null;
         currentRoomDescription = '';
@@ -5610,18 +5631,23 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
 }
 
 // ✅ نافذة هدايا الغرفة — تحديد مستلم واحد أو عدة مستلمين من المقاعد الفعلية الجالسين حالياً، أو "الجميع"
+// ✅ نافذة هدايا الغرفة — مسندلة من الأسفل بالهاتف (نافذة عادية أصغر بالكمبيوتر)، بنفس أسلوب
+// بقية النوافذ السفلية بالمشروع. عمداً بدون إغلاق بالضغط خارجها (اختيارات هدية/مستلمين
+// متعددة الخطوات، وإغلاقها بضغطة خارجية عرضية يُفقد كل ما اختاره المستخدم) — الإغلاق فقط
+// عبر زر × الصريح، أو تلقائياً لا شيء غيره.
 async function showRoomGiftModal(roomId) {
     const existing = document.getElementById('room-gift-modal');
     if (existing) existing.remove();
 
     const shellHTML = `
-        <div id="room-gift-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
-            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-lg text-white border border-gray-700 max-h-[85vh] flex flex-col">
-                <div class="flex items-center justify-between p-4 border-b border-gray-700 flex-shrink-0">
-                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift text-pink-400"></i> إرسال هدية بالغرفة</h3>
-                    <button id="close-room-gift" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+        <div id="room-gift-modal" class="fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-[320]">
+            <div class="room-gift-sheet bg-gradient-to-b from-gray-800 to-gray-900 rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-sm text-white border border-gray-700/60 max-h-[72vh] flex flex-col animate-[slideUp_0.25s_ease-out]">
+                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2.5 mb-1 md:hidden"></div>
+                <div class="flex items-center justify-between px-3.5 py-2.5 border-b border-gray-700/60 flex-shrink-0">
+                    <h3 class="text-sm font-bold flex items-center gap-1.5"><i class="fas fa-gift text-pink-400"></i> إرسال هدية</h3>
+                    <button id="close-room-gift" class="text-gray-400 hover:text-white w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-700/60"><i class="fas fa-times text-sm"></i></button>
                 </div>
-                <div id="room-gift-body" class="p-4 overflow-y-auto flex-1">
+                <div id="room-gift-body" class="p-3 overflow-y-auto flex-1">
                     <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
                 </div>
                 <div id="room-gift-footer"></div>
@@ -5632,7 +5658,6 @@ async function showRoomGiftModal(roomId) {
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('room-gift-modal');
     document.getElementById('close-room-gift').addEventListener('click', () => modal.remove());
-    modal.addEventListener('click', (e) => { if (e.target.id === 'room-gift-modal') modal.remove(); });
 
     try {
         const url = roomId === 'main' ? '/api/voice-room' : `/api/voice-room/rooms/${roomId}`;
@@ -5653,24 +5678,27 @@ async function showRoomGiftModal(roomId) {
         if (!body || !footer) return;
 
         body.innerHTML = `
-            <p class="text-xs text-gray-400 mb-2">اختر المستلمين (الجالسين حالياً على المقاعد)</p>
-            <button id="select-all-seated-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-xs py-2 rounded-lg font-bold mb-3 transition-all">
-                <i class="fas fa-users"></i> إرسال للجميع (${seatedUsers.length})
-            </button>
-            <div id="room-gift-avatars" class="grid grid-cols-6 sm:grid-cols-8 gap-2 mb-4 max-h-40 overflow-y-auto p-2 bg-gray-900/30 rounded-xl">
-                ${seatedUsers.length === 0 ? '<p class="col-span-full text-xs text-gray-500 text-center py-6">لا يوجد أحد قاعد على مقعد حالياً</p>' : seatedUsers.map(u => `
-                    <button class="room-gift-avatar-btn relative flex flex-col items-center gap-1 p-1 rounded-lg transition-all" data-user-id="${u.id}" data-username="${escapeHtml(u.username)}" title="${escapeHtml(u.username)}">
-                        <span class="relative inline-block">
-                            <img src="${u.profileImage}" class="w-7 h-7 rounded-full object-cover border-2 border-gray-600 transition-all rg-avatar-img">
-                            <span class="rg-selected-badge hidden absolute -top-1 -right-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
-                                <i class="fas fa-check text-white" style="font-size:6px"></i>
-                            </span>
-                        </span>
-                        <span class="text-[8px] leading-tight truncate w-full text-center">${escapeHtml(u.username)}</span>
+            <p class="text-[11px] text-gray-500 mb-1.5">المستلمون (الجالسون على المقاعد)</p>
+            <div id="room-gift-avatars" class="room-gift-avatar-row mb-3">
+                ${seatedUsers.length === 0 ? '<p class="text-[11px] text-gray-500 py-3">لا يوجد أحد قاعد على مقعد حالياً</p>' : `
+                    <button id="select-all-seated-btn" class="room-gift-all-btn relative flex flex-col items-center gap-1 flex-shrink-0" title="إرسال للجميع">
+                        <span class="room-gift-all-circle rg-avatar-img">الكل</span>
+                        <span class="text-[8px] leading-tight text-gray-400">${seatedUsers.length}</span>
                     </button>
-                `).join('')}
+                    ${seatedUsers.map(u => `
+                        <button class="room-gift-avatar-btn relative flex flex-col items-center gap-1 flex-shrink-0" data-user-id="${u.id}" data-username="${escapeHtml(u.username)}" title="${escapeHtml(u.username)}">
+                            <span class="relative inline-block">
+                                <img src="${u.profileImage}" class="w-8 h-8 rounded-full object-cover border-2 border-gray-600 transition-all rg-avatar-img">
+                                <span class="rg-selected-badge hidden absolute -top-1 -left-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
+                                    <i class="fas fa-check text-white" style="font-size:6px"></i>
+                                </span>
+                            </span>
+                            <span class="text-[8px] leading-tight truncate w-10 text-center">${escapeHtml(u.username)}</span>
+                        </button>
+                    `).join('')}
+                `}
             </div>
-            <div id="room-gift-cards-grid" class="grid grid-cols-3 gap-2">
+            <div id="room-gift-cards-grid" class="room-gift-cards-grid grid grid-cols-4 gap-1.5">
                 ${gifts.map(g => renderGiftCardHTML(g)).join('')}
             </div>
         `;
@@ -5679,11 +5707,7 @@ async function showRoomGiftModal(roomId) {
         wireGiftImageFallbacks(body);
 
         function markAllSelectedVisual(isAll) {
-            const allBtn = document.getElementById('select-all-seated-btn');
-            if (!allBtn) return;
-            allBtn.classList.toggle('ring-2', isAll);
-            allBtn.classList.toggle('ring-pink-400', isAll);
-            allBtn.classList.toggle('bg-purple-800', isAll);
+            document.getElementById('select-all-seated-btn')?.querySelector('.rg-avatar-img')?.classList.toggle('room-gift-all-active', isAll);
         }
         function clearIndividualSelectionVisuals() {
             body.querySelectorAll('.room-gift-avatar-btn').forEach(b => {
