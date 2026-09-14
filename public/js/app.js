@@ -5639,15 +5639,15 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
 }
 
 // ✅ نافذة هدايا الغرفة — تحديد مستلم واحد أو عدة مستلمين من المقاعد الفعلية الجالسين حالياً، أو "الجميع"
-// ✅ نافذة هدايا الغرفة — مسندلة من الأسفل بالهاتف (نافذة صغيرة مركزية بالكمبيوتر)، بخلفية
-// شفافة كلياً (لا تعتم الغرفة خلفها) والضغط خارجها يغلقها — بلا هيدر/عنوان (أيقونة الهدية
-// بشريط الغرفة أصلاً كافية كسياق)، بأسلوب نوافذ تطبيقات الهواتف المصغّرة.
+// ✅ نافذة هدايا الغرفة — مسندلة من الأسفل بالهاتف (نافذة صغيرة مركزية بالكمبيوتر)، خلفية
+// معتمة كباقي نوافذ المشروع، والضغط خارجها يغلقها — بلا هيدر/عنوان (أيقونة الهدية بشريط
+// الغرفة أصلاً كافية كسياق)، بأسلوب نوافذ تطبيقات الهواتف المصغّرة.
 async function showRoomGiftModal(roomId) {
     const existing = document.getElementById('room-gift-modal');
     if (existing) existing.remove();
 
     const shellHTML = `
-        <div id="room-gift-modal" class="fixed inset-0 bg-transparent flex items-end md:items-center justify-center z-[320]">
+        <div id="room-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320]">
             <div class="room-gift-sheet bg-gray-900/97 rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-xs text-white max-h-[62vh] flex flex-col animate-[slideUp_0.25s_ease-out]">
                 <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1.5 md:hidden flex-shrink-0"></div>
                 <div id="room-gift-body" class="px-3 pb-2 overflow-y-auto flex-1">

@@ -510,11 +510,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     font-size: 1.7em;
     pointer-events: none; /* لا يمنع الضغط على المقعد نفسه (مغادرة/تبديل) */
 }
-/* ✅ تمييز واضح لمقعدي أنا بالذات وسط 80 مقعد */
-.voice-seat.my-seat {
-    border-color: #facc15;
-    box-shadow: 0 0 0 2px rgba(250,204,21,0.35), 0 0 12px rgba(250,204,21,0.4);
-}
+/* ✅ لا إطار مميَّز لمقعدي أنا بالذات — بطلب صريح: يبقى بلا تأثير بصري إضافي عن بقية المقاعد */
 /* ✅ مقعد مقفل من الإدارة/المضيف — لا يُمكن الجلوس عليه */
 .voice-seat.locked-seat {
     background: rgba(255,255,255,0.03);
@@ -905,11 +901,25 @@ body.in-voice-room #main-content {
     background: transparent;
     border-color: transparent;
 }
-.room-gift-cards-grid .gift-card-wrapper { padding: 5px 2px; border-radius: 12px; }
+.room-gift-cards-grid .gift-card-wrapper {
+    padding: 5px 2px;
+    border-radius: 12px;
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.18s ease, box-shadow 0.18s ease;
+}
 .room-gift-cards-grid .gift-visual-slot,
-.room-gift-cards-grid .gift-visual-img { width: 46px; height: 46px; }
-.room-gift-cards-grid .gift-visual-slot span { font-size: 2rem; }
+.room-gift-cards-grid .gift-visual-img { width: 54px; height: 54px; }
+.room-gift-cards-grid .gift-visual-slot span { font-size: 2.3rem; }
 .room-gift-cards-grid .gift-card-wrapper > span { font-size: 10px; } /* اسم الهدية وسعرها فقط (تحديد مباشر، لا يمس أيقونة الإيموجي الداخلية) */
+
+/* ✅ إحساس لمسي أجمل عند التحديد: انتفاخ خفيف للكارد كامل + نبض مستمر خفيف لصورة الهدية نفسها */
+.room-gift-cards-grid .gift-card-wrapper.gift-card-selected { transform: scale(1.06); }
+.room-gift-cards-grid .gift-card-wrapper.gift-card-selected .gift-visual-slot {
+    animation: roomGiftSelectedPulse 1.4s ease-in-out infinite;
+}
+@keyframes roomGiftSelectedPulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(236,72,153,0)); }
+    50%      { transform: scale(1.1); filter: drop-shadow(0 0 9px rgba(236,72,153,0.65)); }
+}
 
 /* ✅ عداد الدعم أسفل كل مقعد — يتراكم طوال الجلسة، يصفّر عند مغادرة صاحبه */
 .seat-support-badge {
