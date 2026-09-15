@@ -58,6 +58,7 @@ app.use('/api/deposits', require('./routes/depositRoutes')); // ✅ نظام ش�
 app.use('/api/reports', require('./routes/reportRoutes')); // ✅ نظام البلاغات
 app.use('/api/support', require('./routes/supportRoutes')); // ✅ نظام الدعم الفني والاستئناف
 app.use('/api/music', require('./routes/musicRoutes')); // ✅ مكتبة أغاني مشتركة للغرف الصوتية
+app.use('/api/suggestions', require('./routes/suggestionRoutes')); // ✅ صندوق اقتراحات/ملاحظات عام
 
 
 // --- مسار "التقاط الكل" لخدمة الواجهة الأمامية --

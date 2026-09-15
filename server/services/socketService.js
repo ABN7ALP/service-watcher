@@ -422,6 +422,14 @@ async function endRoomBroadcastForHost(io, hostUser) {
         const result = await VoiceRoom.endBroadcast(room._id);
         if (!result) return;
 
+        // ✅ يوقف أي أغنية شغّالة فوراً عند انتهاء البث — بدونه كانت الأغنية/المشغّل العائم
+        // يبقيان ظاهرين حتى إعادة تحميل الصفحة، وقد تُستأنف أغنية "قديمة" عند بث تالٍ لنفس الغرفة
+        const roomIdStr = room._id.toString();
+        if (roomMusicState.has(roomIdStr)) {
+            roomMusicState.delete(roomIdStr);
+            io.to(`room-chat-${roomIdStr}`).emit('room-music-state', null);
+        }
+
         io.to(`room-chat-${room._id}`).emit('room-broadcast-ended', {
             roomId: room._id.toString(),
             hostUsername: hostUser.username,
@@ -1538,7 +1546,7 @@ socket.on('refreshBlockData', async () => {
             const room = await VoiceRoom.resolveRoom(roomId);
             if (!room || !room.canModerate(socket.user._id) || !url) return;
 
-            const state = { url, title: title || 'أغنية', startedAt: Date.now(), isPlaying: true, pausedAt: 0 };
+            const state = { roomId, url, title: title || 'أغنية', startedAt: Date.now(), isPlaying: true, pausedAt: 0 };
             roomMusicState.set(roomId, state);
             io.to(`room-chat-${roomId}`).emit('room-music-state', state);
         });

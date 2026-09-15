@@ -29,6 +29,8 @@
                 <li class="menu-item" data-page="transactions"><i class="fas fa-exchange-alt"></i><span>المعاملات المالية</span></li>
                 <li class="menu-item" data-page="battles"><i class="fas fa-gamepad"></i><span>التحديات النشطة</span></li>
                 <li class="menu-item" data-page="gifts"><i class="fas fa-gifts"></i><span>إدارة الهدايا</span></li>
+                <li class="menu-item" data-page="music"><i class="fas fa-music"></i><span>مكتبة الموسيقى</span></li>
+                <li class="menu-item" data-page="suggestions"><i class="fas fa-lightbulb"></i><span>الاقتراحات</span></li>
                 <li class="menu-item" data-page="reports"><i class="fas fa-flag"></i><span>البلاغات</span></li>
                                 <li class="menu-item" data-page="support"><i class="fas fa-life-ring"></i><span>تذاكر الدعم</span></li>
                 <li class="menu-item" data-page="logs"><i class="fas fa-history"></i><span>سجلات النظام</span></li>
@@ -189,6 +191,41 @@
                     <button class="btn btn-primary" id="addGiftBtn"><i class="fas fa-plus"></i> إضافة هدية</button>
                 </div>
                 <div id="giftsGridContainer" class="stats-grid"></div>
+            </div>
+
+            <!-- Music Library -->
+            <div id="music-page" class="page">
+                <div class="page-header">
+                    <h1><i class="fas fa-music"></i> مكتبة الموسيقى المشتركة</h1>
+                    <div class="header-actions">
+                        <div class="search-box"><input type="text" id="musicSearch" placeholder="بحث بالعنوان أو الفنان..."><i class="fas fa-search"></i></div>
+                        <button class="btn btn-primary" id="addMusicTrackBtn"><i class="fas fa-plus"></i> إضافة أغنية</button>
+                    </div>
+                </div>
+                <p class="text-muted small px-2">الأغاني هنا تظهر تلقائياً لكل مضيفي الغرف الصوتية عبر البحث داخل مشغّل الموسيقى — لا رفع مباشر من المستخدمين، فقط اقتراحات (راجع صفحة "الاقتراحات").</p>
+                <div id="musicTracksListContainer" class="table-responsive p-3"></div>
+                <div class="pagination-container"><ul class="pagination" id="musicTracksPagination"></ul></div>
+            </div>
+
+            <!-- Suggestions -->
+            <div id="suggestions-page" class="page">
+                <div class="page-header">
+                    <h1><i class="fas fa-lightbulb"></i> الاقتراحات والملاحظات</h1>
+                    <div class="header-actions">
+                        <select id="suggestionsTypeFilter" class="form-control" style="width:auto">
+                            <option value="all">كل الأنواع</option>
+                            <option value="song">اقتراح أغنية</option>
+                            <option value="general">ملاحظة عامة</option>
+                        </select>
+                        <select id="suggestionsStatusFilter" class="form-control" style="width:auto">
+                            <option value="pending">قيد الانتظار</option>
+                            <option value="reviewed">تمت المراجعة</option>
+                            <option value="dismissed">مرفوضة</option>
+                            <option value="all">الكل</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="suggestionsListContainer" class="table-responsive p-3"></div>
             </div>
 
             <!-- Reports -->

@@ -38,12 +38,6 @@ const voiceRoomSchema = new mongoose.Schema({
     seatCount: { type: Number, enum: [9, 15, 24, 80], default: 80 },
     adminSeatCount: { type: Number, default: 5 }, // أول N مقعد محجوز حصرياً للإدارة (0 بالغرف العادية)
     moderators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // ✅ مسؤولون مساعدون عيّنهم المضيف
-    musicLibrary: [{
-        title: { type: String, maxlength: 60 },
-        url: String,
-        uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-        addedAt: { type: Date, default: Date.now }
-    }],
     seats: [seatSchema],
     // ✅ طلبات "رفع اليد" لطلب الصعود للمايك — قائمة انتظار يراها المضيف/المسؤولون فقط،
     // ويقدر أي منهم يدعو صاحب الطلب مباشرة لمقعد فاضٍ أو يرفض طلبه

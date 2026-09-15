@@ -137,6 +137,18 @@ class AdminDashboard {
                 document.getElementById('logsSeverityFilter')?.addEventListener('change', () => this.loadLogs(1));
         document.getElementById('transactionsTypeFilter')?.addEventListener('change', () => this.loadTransactions(1));
         document.getElementById('addGiftBtn')?.addEventListener('click', () => this.showGiftFormModal());
+        document.getElementById('addMusicTrackBtn')?.addEventListener('click', () => this.showMusicTrackFormModal());
+        document.getElementById('suggestionsStatusFilter')?.addEventListener('change', () => this.loadSuggestions());
+        document.getElementById('suggestionsTypeFilter')?.addEventListener('change', () => this.loadSuggestions());
+
+        const musicSearch = document.getElementById('musicSearch');
+        if (musicSearch) {
+            let t;
+            musicSearch.addEventListener('input', (e) => {
+                clearTimeout(t);
+                t = setTimeout(() => this.loadMusicTracks(1, e.target.value), 450);
+            });
+        }
 
         let txSearchTimer;
         document.getElementById('transactionsSearch')?.addEventListener('input', (e) => {
@@ -182,6 +194,8 @@ class AdminDashboard {
             transactions: () => this.loadTransactions(1),
             battles: () => this.loadBattles(),
             gifts: () => this.loadGifts(),
+            music: () => this.loadMusicTracks(1),
+            suggestions: () => this.loadSuggestions(),
             reports: () => this.loadReports(),
             support: () => this.loadSupportTickets(),
             logs: () => this.loadLogs(1),
@@ -752,6 +766,146 @@ class AdminDashboard {
         });
     }
 
+    // ================= Music Library =================
+    async loadMusicTracks(page = 1, q = '') {
+        try {
+            const query = q ? `&q=${encodeURIComponent(q)}` : '';
+            const data = await this.api('GET', `/music-tracks?page=${page}${query}`);
+            const c = document.getElementById('musicTracksListContainer');
+            if (!data.tracks || !data.tracks.length) {
+                c.innerHTML = '<div class="empty-state"><i class="fas fa-music fa-2x"></i><p>لا توجد أغاني بعد — راجع صفحة الاقتراحات لاقتراحات المضيفين</p></div>';
+                this.renderPagination('musicTracksPagination', 0, 1, () => {});
+                return;
+            }
+            c.innerHTML = `
+                <table class="table table-hover">
+                    <thead><tr><th>العنوان</th><th>الفنان</th><th>التصنيف</th><th>أُضيفت</th><th>الإجراءات</th></tr></thead>
+                    <tbody>
+                        ${data.tracks.map(t => `
+                            <tr>
+                                <td><strong>${escapeHtml(t.title)}</strong></td>
+                                <td>${escapeHtml(t.artist || '-')}</td>
+                                <td><span class="status-badge status-online">${escapeHtml(t.category || 'عام')}</span></td>
+                                <td>${formatDate(t.createdAt)}</td>
+                                <td>
+                                    <button class="btn-action btn-view" data-preview="${t._id}" data-url="${escapeHtml(t.url)}" title="استماع"><i class="fas fa-play"></i></button>
+                                    <button class="btn-action btn-delete" data-delete="${t._id}" data-title="${escapeHtml(t.title)}" title="حذف"><i class="fas fa-trash"></i></button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            c.querySelectorAll('[data-preview]').forEach(btn => btn.addEventListener('click', () => {
+                window.open(btn.dataset.url, '_blank', 'noopener');
+            }));
+            c.querySelectorAll('[data-delete]').forEach(btn => btn.addEventListener('click', () =>
+                this.confirmAction(`حذف أغنية "${btn.dataset.title}" من المكتبة المشتركة؟`, async () => {
+                    await this.api('DELETE', `/music-tracks/${btn.dataset.delete}`);
+                    this.showToast('تم حذف الأغنية', 'success'); this.loadMusicTracks(page, q);
+                })
+            ));
+            this.renderPagination('musicTracksPagination', data.totalPages, data.currentPage, (p) => this.loadMusicTracks(p, q));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    showMusicTrackFormModal() {
+        const modal = this.openModal(`
+            <div class="modal-overlay active">
+                <div class="modal-content" style="max-width:480px;">
+                    <div class="modal-header"><h3>إضافة أغنية للمكتبة المشتركة</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                    <div class="modal-body">
+                        <div class="form-group"><label>العنوان *</label><input type="text" class="form-control" id="trackTitle"></div>
+                        <div class="form-group"><label>الفنان</label><input type="text" class="form-control" id="trackArtist"></div>
+                        <div class="form-group"><label>رابط ملف صوتي مباشر (mp3/…) *</label><input type="text" class="form-control" id="trackUrl" placeholder="https://..."></div>
+                        <div class="form-group"><label>صورة الغلاف (اختياري)</label><input type="text" class="form-control" id="trackCover" placeholder="https://..."></div>
+                        <div class="form-group"><label>التصنيف</label><input type="text" class="form-control" id="trackCategory" placeholder="عام" value="عام"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" data-dismiss>إلغاء</button>
+                        <button class="btn btn-primary" id="saveTrackBtn">إضافة</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        modal.querySelector('#saveTrackBtn').addEventListener('click', async () => {
+            const payload = {
+                title: modal.querySelector('#trackTitle').value.trim(),
+                artist: modal.querySelector('#trackArtist').value.trim(),
+                url: modal.querySelector('#trackUrl').value.trim(),
+                coverImage: modal.querySelector('#trackCover').value.trim() || null,
+                category: modal.querySelector('#trackCategory').value.trim() || 'عام'
+            };
+            if (!payload.title || !payload.url) { this.showToast('العنوان والرابط مطلوبان', 'error'); return; }
+            try {
+                await this.api('POST', '/music-tracks', payload);
+                this.showToast('تمت إضافة الأغنية', 'success');
+                modal.remove();
+                this.loadMusicTracks(1);
+            } catch (error) { this.showToast(error.message, 'error'); }
+        });
+    }
+
+    // ================= Suggestions =================
+    async loadSuggestions() {
+        const status = document.getElementById('suggestionsStatusFilter')?.value || 'pending';
+        const type = document.getElementById('suggestionsTypeFilter')?.value || 'all';
+        try {
+            const data = await this.api('GET', `/suggestions?status=${status}&type=${type}`);
+            const c = document.getElementById('suggestionsListContainer');
+            if (!data.suggestions.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-lightbulb fa-2x"></i><p>لا توجد اقتراحات حالياً</p></div>'; return; }
+
+            c.innerHTML = data.suggestions.map(s => `
+                <div class="activity-item ${s.status === 'pending' ? 'warning' : 'info'}">
+                    <div class="activity-icon"><i class="fas ${s.type === 'song' ? 'fa-music' : 'fa-comment-dots'}"></i></div>
+                    <div class="activity-content">
+                        <div class="title">${escapeHtml(s.submittedBy?.username || 'محذوف')} —
+                            <span class="status-badge ${s.type === 'song' ? 'status-pending' : 'status-online'}">${s.type === 'song' ? 'اقتراح أغنية' : 'ملاحظة عامة'}</span>
+                            ${s.status !== 'pending' ? `<span class="status-badge ${s.status === 'dismissed' ? 'status-banned' : 'status-completed'}">${s.status === 'dismissed' ? 'مرفوض' : 'تمت المراجعة'}</span>` : ''}
+                        </div>
+                        <div class="description">
+                            ${s.type === 'song'
+                                ? `<strong>${escapeHtml(s.songTitle)}</strong>${s.songArtist ? ` — ${escapeHtml(s.songArtist)}` : ''}${s.songUrl ? ` — <a href="${escapeHtml(s.songUrl)}" target="_blank" rel="noopener">رابط مرجعي</a>` : ''}`
+                                : escapeHtml(s.message)}
+                        </div>
+                        ${s.adminNote ? `<div class="description small text-muted">ملاحظتك: ${escapeHtml(s.adminNote)}</div>` : ''}
+                        <div class="activity-time">${formatDate(s.createdAt)}</div>
+                    </div>
+                    ${s.status === 'pending' ? `
+                        <div style="display:flex;gap:6px;">
+                            ${s.type === 'song' ? `<button class="btn-action btn-view" data-add-track="${s._id}" data-title="${escapeHtml(s.songTitle)}" data-artist="${escapeHtml(s.songArtist || '')}" title="إضافة للمكتبة"><i class="fas fa-plus"></i></button>` : ''}
+                            <button class="btn-action btn-edit" data-review="${s._id}" title="تمت المراجعة"><i class="fas fa-check"></i></button>
+                            <button class="btn-action btn-delete" data-dismiss-sug="${s._id}" title="رفض"><i class="fas fa-times"></i></button>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+
+            c.querySelectorAll('[data-add-track]').forEach(btn => btn.addEventListener('click', () => {
+                this.showMusicTrackFormModal();
+                // ✅ تعبئة مسبقة من الاقتراح لتوفير وقت النسخ اليدوي
+                setTimeout(() => {
+                    const titleInput = document.getElementById('trackTitle');
+                    const artistInput = document.getElementById('trackArtist');
+                    if (titleInput) titleInput.value = btn.dataset.title;
+                    if (artistInput) artistInput.value = btn.dataset.artist;
+                }, 0);
+            }));
+            c.querySelectorAll('[data-review]').forEach(btn => btn.addEventListener('click', () => this.resolveSuggestion(btn.dataset.review, 'reviewed')));
+            c.querySelectorAll('[data-dismiss-sug]').forEach(btn => btn.addEventListener('click', () =>
+                this.confirmAction('رفض هذا الاقتراح؟', () => this.resolveSuggestion(btn.dataset.dismissSug, 'dismissed'), false)
+            ));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    async resolveSuggestion(suggestionId, status) {
+        try {
+            await this.api('POST', `/suggestions/${suggestionId}/resolve`, { status });
+            this.showToast('تم تحديث الاقتراح', 'success');
+            this.loadSuggestions();
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
     // ================= Reports =================
         async loadReports() {
         const status = document.getElementById('reportsStatusFilter')?.value || 'pending';
@@ -1143,7 +1297,11 @@ class AdminDashboard {
         const socketUrl = window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin;
         this.socket = io(`${socketUrl}/admin`, { auth: { token: this.token } });
         this.socket.on('connect', () => console.log('✅ Admin socket connected'));
-        this.socket.on('admin-notification', (n) => this.showToast(n.message, n.type));
+        this.socket.on('admin-notification', (n) => {
+            this.showToast(n.message, n.type);
+            // ✅ لو كنت أصلاً بصفحة الاقتراحات — حدّثها فوراً بدل الاكتفاء بالإشعار
+            if (this.currentPage === 'suggestions') this.loadSuggestions();
+        });
     }
 
     startAutoRefresh() {

@@ -1198,3 +1198,104 @@ exports.resolveSupportTicket = async (req, res) => {
     res.json({ success: true, message: 'تم تحديث التذكرة', ticket });
   } catch (error) { res.status(500).json({ success: false, message: error.message }); }
 };
+
+// =====================================================
+// ✅ إدارة مكتبة الموسيقى المشتركة للغرف الصوتية — منسَّقة بالكامل من لوحة التحكم
+// (لا رفع ولا إضافة مباشرة من المضيفين — راجع Suggestion لاقتراحات الأغاني الواردة منهم)
+// =====================================================
+exports.getMusicTracks = async (req, res) => {
+  try {
+    const MusicTrack = require('../models/MusicTrack');
+    const { q, page = 1, limit = 30 } = req.query;
+    const query = {};
+    if (q && q.trim()) {
+      const safe = q.trim().slice(0, 50).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.$or = [{ title: { $regex: safe, $options: 'i' } }, { artist: { $regex: safe, $options: 'i' } }];
+    }
+    const tracks = await MusicTrack.find(query).sort('-createdAt').limit(limit * 1).skip((page - 1) * limit);
+    const total = await MusicTrack.countDocuments(query);
+    res.json({ success: true, tracks, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+};
+
+exports.saveMusicTrack = async (req, res) => {
+  try {
+    const MusicTrack = require('../models/MusicTrack');
+    const { admin } = req;
+    const { title, artist, url, coverImage, category } = req.body;
+
+    const cleanTitle = String(title || '').trim();
+    const cleanUrl = String(url || '').trim();
+    if (!cleanTitle || cleanTitle.length > 80) {
+      return res.status(400).json({ success: false, message: 'عنوان الأغنية مطلوب (حتى 80 حرفاً)' });
+    }
+    if (!cleanUrl || !/^https?:\/\//.test(cleanUrl)) {
+      return res.status(400).json({ success: false, message: 'رابط ملف صوتي صالح (http/https) مطلوب' });
+    }
+
+    const track = await MusicTrack.create({
+      title: cleanTitle,
+      artist: String(artist || '').trim().slice(0, 60),
+      url: cleanUrl,
+      coverImage: coverImage || null,
+      category: String(category || 'عام').trim().slice(0, 30),
+      addedBy: admin._id
+    });
+
+    await AdminLog.logAction({ admin: admin._id, action: 'add_music_track', details: { title: cleanTitle }, ipAddress: req.ip });
+
+    res.status(201).json({ success: true, message: 'تمت إضافة الأغنية للمكتبة المشتركة', track });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+};
+
+exports.deleteMusicTrack = async (req, res) => {
+  try {
+    const MusicTrack = require('../models/MusicTrack');
+    const { admin } = req;
+    const track = await MusicTrack.findByIdAndDelete(req.params.trackId);
+    if (!track) return res.status(404).json({ success: false, message: 'الأغنية غير موجودة' });
+
+    await AdminLog.logAction({ admin: admin._id, action: 'delete_music_track', details: { title: track.title }, ipAddress: req.ip });
+
+    res.json({ success: true, message: 'تم حذف الأغنية من المكتبة' });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+};
+
+// =====================================================
+// ✅ صندوق الاقتراحات/الملاحظات العام (اقتراحات أغاني + أي ملاحظة أخرى من المستخدمين)
+// =====================================================
+exports.getSuggestions = async (req, res) => {
+  try {
+    const Suggestion = require('../models/Suggestion');
+    const { status = 'pending', type = 'all', page = 1, limit = 50 } = req.query;
+    const query = {};
+    if (status !== 'all') query.status = status;
+    if (type !== 'all') query.type = type;
+
+    const suggestions = await Suggestion.find(query)
+      .populate('submittedBy', 'username profileImage customId')
+      .sort('-createdAt').limit(limit * 1).skip((page - 1) * limit);
+    const total = await Suggestion.countDocuments(query);
+    res.json({ success: true, suggestions, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+};
+
+exports.resolveSuggestion = async (req, res) => {
+  try {
+    const Suggestion = require('../models/Suggestion');
+    const { suggestionId } = req.params;
+    const { status, adminNote } = req.body;
+    const { admin } = req;
+
+    const suggestion = await Suggestion.findById(suggestionId);
+    if (!suggestion) return res.status(404).json({ success: false, message: 'الاقتراح غير موجود' });
+
+    suggestion.status = ['reviewed', 'dismissed'].includes(status) ? status : 'reviewed';
+    suggestion.adminNote = String(adminNote || '').trim().slice(0, 300);
+    suggestion.resolvedBy = admin._id;
+    suggestion.resolvedAt = new Date();
+    await suggestion.save();
+
+    res.json({ success: true, message: 'تم تحديث الاقتراح', suggestion });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+};

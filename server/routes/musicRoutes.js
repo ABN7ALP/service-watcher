@@ -1,15 +1,12 @@
 const express = require('express');
 const musicController = require('../controllers/musicController');
 const authMiddleware = require('../middleware/authMiddleware');
-const adminAuth = require('../middleware/adminAuth');
 
 const router = express.Router();
 
 // ✅ البحث متاح لأي مستخدم مسجّل دخول (يُستخدم من داخل أي غرفة صوتية)
+// ✅ الإضافة/الحذف حصراً عبر لوحة التحكم الآن (راجع /api/admin/music-tracks) — المكتبة
+// مُنسَّقة بالكامل من إدارة المنصة، لا رفع ولا إضافة مباشرة من المضيفين
 router.get('/search', authMiddleware, musicController.searchTracks);
-
-// ✅ الإضافة/الحذف حصراً لمسؤولي المنصة — المكتبة مُنسَّقة (لا رفع عام) لا مصدرها المستخدمون
-router.post('/', adminAuth, musicController.addTrack);
-router.delete('/:id', adminAuth, musicController.deleteTrack);
 
 module.exports = router;
