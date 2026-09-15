@@ -1189,8 +1189,16 @@ body.in-voice-room #main-content {
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 20px 20px 0 0;
     box-shadow: 0 -8px 30px rgba(0,0,0,0.5);
+    /* 🐛 كانت max-h-[54vh] (Tailwind) على بعض الهواتف تحس وكأنها تغطي الشاشة بالكامل —
+       نُقل الحد الأقصى هنا بنفس ارتفاع لوحة الدردشة بالضبط (42vh/48vh) بدل قيمة منفصلة
+       أكبر. dvh أدق من vh على الهاتف (يُحسب من الارتفاع المرئي الفعلي، لا الافتراضي
+       الأكبر حين يكون شريط عنوان المتصفح ظاهراً)، مع vh كـ fallback للمتصفحات الأقدم */
+    max-height: 42vh;
+    max-height: 42dvh;
 }
-@media (min-width: 768px) { .room-gift-sheet { border-radius: 20px; } }
+@media (min-width: 768px) {
+    .room-gift-sheet { border-radius: 20px; max-height: 48vh; max-height: 48dvh; }
+}
 .room-gift-avatar-row {
     display: flex;
     align-items: flex-start;

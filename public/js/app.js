@@ -1535,6 +1535,26 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
     }
 
+    // ✅ يُستدعى بعد إعادة اتصال السوكيت (وليس أول دخول) لاستعادة عضوية قناة دردشة الغرفة
+    // فقط — بلا إعادة عرض تدريجي للسجل كاملاً (كنت أصلاً أشاهده)، فقط استدراك أي رسائل
+    // فعلية وصلت أثناء الانقطاع القصير (لا يُكرّر ما هو معروض أصلاً بالواجهة)
+    function rejoinRoomChatChannel(roomId) {
+        if (!roomId) return;
+        socket.emit('join-room-chat', { roomId });
+        socket.emit('get-room-viewers', { roomId });
+
+        fetch(`/api/voice-room/rooms/${roomId}/messages`, { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(result => {
+                if (result.status !== 'success' || roomChatCurrentRoomId !== roomId) return;
+                const box = document.getElementById('room-chat-messages');
+                if (!box) return;
+                const existingIds = new Set(Array.from(box.children).map(el => el.dataset.msgId));
+                result.messages.filter(m => !existingIds.has(m._id)).forEach(appendRoomChatMessage);
+            })
+            .catch(error => console.error('[ROOM CHAT] Reconnect catch-up error:', error));
+    }
+
     // ✅ عرض سجل الدردشة تدريجياً رسالة تلو الأخرى (بفارق قصير) بدل دفعة واحدة جامدة — إحساس
     // "محادثة جارية الآن" بدل جدار نص، بنفس أسلوب التطبيقات المشهورة (Bigo/Yalla/TikTok Live).
     // الفارق قصير عمداً (وليس التوقيت الحقيقي الفعلي بين الرسائل) وله سقف إجمالي، حتى لا يطول
@@ -4927,6 +4947,11 @@ function showXpGainAnimation(amount) {
     // فتبقى صورته "عالقة" بمكان قديم عند نفسه، أو لا يرى تحرّك بقية المستخدمين، لحين عمل Refresh يدوي
     socket.on('connect', () => {
         if (currentVoiceRoomId) fetchAndRenderVoiceSnapshot(currentVoiceRoomId, currentRoomPassword); // آمنة تماماً حتى لو القسم غير مفتوح حالياً
+        // 🐛 إصلاح جوهري: عضوية قنوات Socket.IO (بما فيها room-chat-<roomId>) تُفقد تماماً مع
+        // أي انقطاع، ولا تُستعاد تلقائياً عند إعادة الاتصال — بدون هذا السطر يبقى المستخدم
+        // "أصمّ" فعلياً عن كل بث حي بالغرفة (رسائل جديدة، انضمام، هدايا، موسيقى...) رغم أن
+        // واجهته تبدو طبيعية تماماً بعد إعادة الاتصال، وهذا بالضبط ما كان يبدو "خللاً بالغرفة"
+        if (roomChatCurrentRoomId) rejoinRoomChatChannel(roomChatCurrentRoomId);
     });
 
     // ✅ إشعار خاص للمطرود نفسه (منفصل عن user-left-seat العام لتوضيح السبب له تحديداً)
@@ -6445,7 +6470,7 @@ async function showRoomGiftModal(roomId) {
 
     const shellHTML = `
         <div id="room-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-3">
-            <div class="room-gift-sheet w-full md:max-w-xs text-white max-h-[54vh] flex flex-col animate-[slideUp_0.25s_ease-out]">
+            <div class="room-gift-sheet w-full md:max-w-xs text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
                 <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1.5 md:hidden flex-shrink-0"></div>
                 <div id="room-gift-body" class="px-3 pb-2 overflow-y-auto flex-1">
                     <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
