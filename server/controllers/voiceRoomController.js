@@ -190,6 +190,7 @@ exports.getRoomById = async (req, res) => {
             moderators: room.moderators.map(m => ({ id: m._id, username: m.username, profileImage: m.profileImage })),
             myRole: isHost ? 'host' : (isModerator ? 'moderator' : 'guest'),
             isLive: room.isLive,
+            chatLocked: room.chatLocked,
             followersCount: room.followers.length,
             isFollowing: room.followers.some(f => f.toString() === req.user.id),
             // 🛡️ قائمة طلبات الصعود لا تُرسَل إلا للمضيف/المسؤولين — لا فائدة (وربما إحراج) لبقية الحاضرين برؤيتها

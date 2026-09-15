@@ -1055,7 +1055,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             <div id="room-chat-messages" class="room-chat-messages-fixed"></div>
             <div class="room-chat-dock-fixed">
                 <div class="room-chat-input-pill">
-                    <input id="room-chat-input" maxlength="300" placeholder="قل شيئاً...">
+                    <input id="room-chat-input" type="text" maxlength="300" placeholder="قل شيئاً..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="room-chat-message-field">
                     <button id="room-chat-send-btn" title="إرسال"><i class="fas fa-paper-plane"></i></button>
                 </div>
                 <button id="room-join-request-btn" class="hidden room-chat-dock-icon" title="اطلب الصعود للمايك">
@@ -1103,6 +1103,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
         // ✅ زر مغادرة المقعد — انتقل من الشريط العائم القديم لهنا (السيرفر يرفضه للمضيف أصلاً)
         document.getElementById('room-leave-seat-btn')?.addEventListener('click', leaveVoiceSeat);
+
+        updateChatLockUI();
     }
 
     // ✅ قائمة "المزيد" المنسدلة — شبكة إجراءات ثانوية بأسلوب موحّد مع بقية نوافذ المشروع السفلية
@@ -1128,6 +1130,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
         if (isManager) {
             items.push({ action: 'hand-queue', icon: 'fa-infinity', label: 'طلبات الصعود', color: 'text-purple-400', badge: roomHandQueue.length });
+        }
+        // ✅ تنظيف/قفل الدردشة — للمضيف/المسؤولين بغرف المستخدمين فقط (لا الرسمية)
+        if (isManager && currentVoiceRoomId !== 'main') {
+            items.push({ action: 'clear-chat', icon: 'fa-broom', label: 'تنظيف الدردشة', color: 'text-gray-300' });
+            items.push({
+                action: 'toggle-chat-lock',
+                icon: currentRoomChatLocked ? 'fa-lock' : 'fa-lock-open',
+                label: currentRoomChatLocked ? 'فتح الدردشة' : 'قفل الدردشة',
+                color: currentRoomChatLocked ? 'text-red-400' : 'text-gray-300'
+            });
         }
 
         const modal = document.createElement('div');
@@ -1177,8 +1189,37 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     toggleVoiceMute();
                 } else if (action === 'hand-queue') {
                     if (currentVoiceRoomId) showHandQueueSheet(currentVoiceRoomId);
+                } else if (action === 'clear-chat') {
+                    showClearChatConfirm();
+                } else if (action === 'toggle-chat-lock') {
+                    if (currentVoiceRoomId) socket.emit('host-toggle-chat-lock', { roomId: currentVoiceRoomId });
                 }
             });
+        });
+    }
+
+    // ✅ تأكيد صغير قبل حذف كل دردشة الغرفة نهائياً — إجراء لا يمكن التراجع عنه
+    function showClearChatConfirm() {
+        document.getElementById('clear-chat-confirm-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'clear-chat-confirm-modal';
+        modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-xl shadow-xl p-5 w-full max-w-xs text-white text-center">
+                <i class="fas fa-broom text-3xl text-amber-400 mb-3"></i>
+                <p class="font-bold mb-1">تنظيف الدردشة؟</p>
+                <p class="text-xs text-gray-400 mb-5">ستُحذف كل رسائل هذي الغرفة نهائياً لدى الجميع — لا يمكن التراجع</p>
+                <div class="flex gap-3">
+                    <button id="cancel-clear-chat" class="flex-1 bg-gray-700 hover:bg-gray-600 py-2.5 rounded-lg font-bold text-sm">تراجع</button>
+                    <button id="confirm-clear-chat" class="flex-1 bg-red-600 hover:bg-red-700 py-2.5 rounded-lg font-bold text-sm">تنظيف</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.querySelector('#cancel-clear-chat').addEventListener('click', () => modal.remove());
+        modal.querySelector('#confirm-clear-chat').addEventListener('click', () => {
+            if (currentVoiceRoomId) socket.emit('host-clear-room-chat', { roomId: currentVoiceRoomId });
+            modal.remove();
         });
     }
 
@@ -1205,6 +1246,20 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const isHostHere = isSeatedHere && currentRoomMyRole === 'host';
             leaveBtn.classList.toggle('hidden', !isSeatedHere || isHostHere);
         }
+    }
+
+    // ✅ يعكس حالة قفل الدردشة على حقل الكتابة — المضيف/المسؤولون يكتبون رغم القفل، الباقي يُمنع بصرياً
+    // بالإضافة لمنع السيرفر فعلياً (دفاع ثنائي: لا يكفي إخفاء/تعطيل الواجهة وحده)
+    function updateChatLockUI() {
+        const input = document.getElementById('room-chat-input');
+        const sendBtn = document.getElementById('room-chat-send-btn');
+        if (!input) return;
+        const isManager = currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator';
+        const blocked = currentRoomChatLocked && !isManager;
+        input.disabled = blocked;
+        input.placeholder = blocked ? 'الدردشة مقفلة من المضيف' : 'قل شيئاً...';
+        sendBtn?.classList.toggle('opacity-40', blocked);
+        if (sendBtn) sendBtn.disabled = blocked;
     }
 
     // ✅ زر "اطلب الصعود" (∞) — أول ضغطة ترسل الطلب، وثاني ضغطة (والطلب لسا قائم) تفتح
@@ -1427,8 +1482,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 ${isHostMsg ? '<i class="fas fa-crown room-chat-host-badge" title="المضيف"></i>' : ''}<span class="room-chat-msg-name" style="color:${getChatNameColor(senderId)}">${safeName}</span><span class="room-chat-msg-text">${safeContent}</span>
             </p>
         `;
+        // ✅ يتابع آخر الرسائل تلقائياً فقط لو كنت أصلاً قريباً من الأسفل — لو مرّرت للأعلى
+        // عمداً لقراءة سجل قديم، وصول رسالة جديدة (أو استكمال العرض التدريجي) ما يخطفك
+        // للأسفل من جديد؛ بالضبط سلوك أي تطبيق دردشة حقيقي
+        const wasNearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 80;
         box.appendChild(el);
-        box.scrollTop = box.scrollHeight;
+        if (wasNearBottom) box.scrollTop = box.scrollHeight;
     }
 
     // ✅ إعلان انضمام — سطر مختصر بدردشة الغرفة "فلان انضم"، وللمضيف/المسؤول زر يد صغير
@@ -1482,14 +1541,21 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // انتظار من يفتح غرفة بسجل طويل (حتى 50 رسالة)
     function revealRoomChatHistory(messages, roomId) {
         if (!messages.length) return;
-        const STEP_MS = 90;
-        const MAX_TOTAL_MS = 1600;
-        const step = messages.length > 1 ? Math.min(STEP_MS, MAX_TOTAL_MS / (messages.length - 1)) : 0;
-        messages.forEach((msg, i) => {
+        // ✅ فارق "جميل ومحسوب" (300ms) بدل الومضة السريعة السابقة — إحساس تدرّج حقيقي
+        // وكأن الأشخاص يتحدثون الآن. يشمل فقط آخر STAGGER_COUNT رسالة (الأحدث/الأقرب
+        // لسياق المحادثة الحالية)؛ الأقدم من ذلك يظهر فوراً كخلفية ثابتة للمحادثة حتى لا
+        // يطول الانتظار عبثاً مع سجل يصل حتى 50 رسالة
+        const STAGGER_STEP_MS = 300;
+        const STAGGER_COUNT = 12;
+        const instantCount = Math.max(0, messages.length - STAGGER_COUNT);
+
+        messages.slice(0, instantCount).forEach(appendRoomChatMessage);
+
+        messages.slice(instantCount).forEach((msg, i) => {
             setTimeout(() => {
                 if (roomChatCurrentRoomId !== roomId) return; // ✅ غادر الغرفة قبل اكتمال العرض — تجاهل
                 appendRoomChatMessage(msg);
-            }, i * step);
+            }, i * STAGGER_STEP_MS);
         });
     }
 
@@ -1633,6 +1699,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentRoomModerators = []; // ✅ قائمة مسؤولي الغرفة المعروضة حالياً (لعرضهم بنافذة الإعدادات)
     let currentRoomHostId = null; // ✅ معرّف مضيف الغرفة المعروضة حالياً (لعرض تاج المضيف بجانب اسمه بالدردشة)
     let currentRoomIsLocked = false;
+    let currentRoomChatLocked = false; // ✅ قفل الدردشة (المضيف/المسؤولون فقط يكتبون) — الغرفة المعروضة حالياً
     let currentRoomBackgroundImage = null;
     let currentRoomBackgroundExpiresAt = null;
     let currentRoomDescription = '';
@@ -1705,6 +1772,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         currentRoomMyRole = 'guest';
         currentRoomHostId = null;
         currentRoomIsLocked = false;
+        currentRoomChatLocked = false;
         currentRoomBackgroundImage = null;
         currentRoomDescription = '';
         myHandRaised = false;
@@ -2003,6 +2071,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const isMe = userId === myUserId;
             const canManage = !isMe && roomId !== 'main' && (currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator');
             const isTargetHost = false; // (نتحقق من صلاحية المنع من السيرفر أصلاً؛ المضيف لن يظهر له خيار إدارة نفسه لأن isMe يمنعه)
+            // ✅ زر التفاعل يظهر فقط بين شخصين جالسين فعلياً بنفس الغرفة حالياً (seatNumber يعني
+            // إن هذا الملف فُتح من مقعد فعلي، وليس مثلاً من قائمة المشاهدين لشخص واقف)
+            const canInteract = !isMe && roomId !== 'main' && !!seatNumber && myVoiceSeatNumber && myVoiceRoomId === roomId;
 
             body.innerHTML = `
                 <div class="flex items-start gap-3">
@@ -2028,6 +2099,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 ${!isMe ? `
                     <div class="flex items-center gap-2 mt-4">
                         <button id="profile-send-gift-btn" class="flex-1 bg-pink-600 hover:bg-pink-700 rounded-lg py-2 text-sm font-bold flex items-center justify-center gap-2"><i class="fas fa-gift"></i> إرسال هدية</button>
+                        ${canInteract ? `<button id="profile-interact-btn" class="flex-1 bg-rose-600 hover:bg-rose-700 rounded-lg py-2 text-sm font-bold flex items-center justify-center gap-2"><i class="fas fa-heart"></i> تفاعل</button>` : ''}
                     </div>
                 ` : ''}
             `;
@@ -2042,6 +2114,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 modal.querySelector('#profile-send-gift-btn').addEventListener('click', () => {
                     modal.remove();
                     showGiftStoreModal(userId, p.username); // ✅ إعادة استخدام نظام الهدايا الموجود أصلاً بالمشروع
+                });
+            }
+            if (canInteract) {
+                modal.querySelector('#profile-interact-btn').addEventListener('click', () => {
+                    modal.remove();
+                    showPairReactionPicker(roomId, userId, p.username);
                 });
             }
         } catch (error) {
@@ -2083,6 +2161,69 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         el.textContent = emoji;
         seatEl.appendChild(el);
         setTimeout(() => el.remove(), 1500);
+    }
+
+    // ✅ تفاعل متصل بين مقعدين — نبضة على المقعدين معاً (نفس تأثير استقبال هدية، لونه مناسب
+    // أصلاً) + طيران الإيموجي من مقعد المُرسل نحو مقعد المستلم (نفس آلية طيران الهدية)، ثم
+    // طفوة قصيرة فوق مقعد المستلم كلمسة أخيرة. أي مقعد ثالث غير معنيّ لا يتأثر إطلاقاً —
+    // التأثير مرتبط حصراً بعنصري DOM الخاصين بمقعدي المُرسل والمستلم
+    function playSeatPairReaction(fromSeat, toSeat, emoji) {
+        const grid = document.getElementById('voice-chat-grid');
+        if (!grid) return;
+        const fromEl = grid.querySelector(`.voice-seat[data-seat="${fromSeat}"]`);
+        const toEl = grid.querySelector(`.voice-seat[data-seat="${toSeat}"]`);
+        if (!fromEl || !toEl) return;
+
+        [fromEl, toEl].forEach(el => {
+            el.classList.add('seat-gift-impact');
+            setTimeout(() => el.classList.remove('seat-gift-impact'), 500);
+        });
+
+        const fromRect = fromEl.getBoundingClientRect();
+        const toRect = toEl.getBoundingClientRect();
+        const startX = fromRect.left + fromRect.width / 2;
+        const startY = fromRect.top + fromRect.height / 2;
+        const deltaX = (toRect.left + toRect.width / 2) - startX;
+        const deltaY = (toRect.top + toRect.height / 2) - startY;
+
+        const flyEl = document.createElement('div');
+        flyEl.className = 'room-gift-fly-icon';
+        flyEl.style.left = `${startX}px`;
+        flyEl.style.top = `${startY}px`;
+        flyEl.innerHTML = `<span>${emoji}</span>`;
+        document.body.appendChild(flyEl);
+        requestAnimationFrame(() => {
+            flyEl.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px)) scale(0.6)`;
+            flyEl.style.opacity = '0';
+        });
+        setTimeout(() => flyEl.remove(), 950);
+
+        setTimeout(() => playSeatReaction(toSeat, emoji), 850);
+    }
+
+    // ✅ منتقي تفاعل بين شخصين — يظهر فقط عبر ملف شخص آخر جالس معك بنفس الغرفة حالياً
+    function showPairReactionPicker(roomId, targetUserId, targetUsername) {
+        const emojis = ['💋', '🤗', '🖐️', '❤️', '🌹'];
+        document.getElementById('pair-reaction-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'pair-reaction-modal';
+        modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 w-full md:w-auto text-white text-center">
+                <p class="text-xs text-gray-400 mb-3">تفاعل مع ${escapeHtml(targetUsername)}</p>
+                <div class="grid grid-cols-5 gap-3">
+                    ${emojis.map(e => `<button data-emoji="${e}" class="pair-reaction-emoji-btn text-3xl p-2 rounded-lg hover:bg-gray-700">${e}</button>`).join('')}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'pair-reaction-modal') modal.remove(); });
+        modal.querySelectorAll('.pair-reaction-emoji-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                socket.emit('send-seat-pair-reaction', { roomId, targetUserId, emoji: btn.dataset.emoji });
+                modal.remove();
+            });
+        });
     }
 
     // ✅ قائمة إدارة مقعد — تظهر فقط للمضيف/المسؤول عبر أيقونة "إدارة الغرفة" بالملف الشخصي
@@ -2172,6 +2313,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 removePkBar();
             }
             if (typeof result.isLocked === 'boolean') currentRoomIsLocked = result.isLocked;
+            if (typeof result.chatLocked === 'boolean') currentRoomChatLocked = result.chatLocked;
+            updateChatLockUI();
             if (result.backgroundImage !== undefined) currentRoomBackgroundImage = result.backgroundImage;
             if (result.backgroundExpiresAt !== undefined) currentRoomBackgroundExpiresAt = result.backgroundExpiresAt;
             if (result.description !== undefined) currentRoomDescription = result.description;
@@ -2848,6 +2991,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         currentRoomMyRole = 'guest';
         currentRoomHostId = null;
         currentRoomIsLocked = false;
+        currentRoomChatLocked = false;
         currentRoomBackgroundImage = null;
         currentRoomDescription = '';
         myHandRaised = false;
@@ -4990,6 +5134,30 @@ function showXpGainAnimation(amount) {
         if (roomId !== roomChatCurrentRoomId) return;
         // ✅ إعادة تحميل بسيطة لآخر 50 رسالة بعد أي تنظيف (أبسط وأضمن من تتبع كل معرّف محذوف)
         enterRoomChat(roomId);
+    });
+
+    // ✅ تنظيف الدردشة من المضيف — يُفرغ صندوق الرسائل لدى الجميع فوراً
+    socket.on('room-chat-cleared', ({ roomId }) => {
+        if (roomId !== roomChatCurrentRoomId) return;
+        const box = document.getElementById('room-chat-messages');
+        if (box) box.innerHTML = '';
+        showNotification('تم تنظيف دردشة الغرفة', 'info');
+    });
+
+    // ✅ قفل/فتح الدردشة — يحدّث حالة حقل الكتابة فوراً لدى الجميع
+    socket.on('room-chat-lock-updated', ({ roomId, locked }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        currentRoomChatLocked = locked;
+        updateChatLockUI();
+        if (currentRoomMyRole !== 'host' && currentRoomMyRole !== 'moderator') {
+            showNotification(locked ? 'قفل المضيف الدردشة' : 'فتح المضيف الدردشة من جديد', 'info');
+        }
+    });
+
+    // ✅ تفاعل بين شخصين جالسين (قبلة/عناق...) — تأثير بصري متصل حول مقعديهما فقط
+    socket.on('seat-pair-reaction-played', ({ roomId, fromSeat, toSeat, emoji }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        playSeatPairReaction(fromSeat, toSeat, emoji);
     });
 
     socket.on('room-force-closed', ({ roomId }) => {
