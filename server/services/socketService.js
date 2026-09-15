@@ -1430,12 +1430,35 @@ socket.on('refreshBlockData', async () => {
         // كل غرفة قناة Socket.IO منفصلة فعلياً (join/leave حقيقيين) — الرسائل توصل فقط
         // لمن هو داخل نفس الغرفة حالياً، وسقف 50 رسالة لكل غرفة على حدة (وليس عالمياً).
         // =====================================================
-        socket.on('join-room-chat', ({ roomId }) => {
+        socket.on('join-room-chat', async ({ roomId }) => {
             if (!roomId) return;
+
+            // ✅ إعلان "انضم فلان" فور دخول الغرفة (مشاهداً، قبل أي طلب صعود) — نُحدّد هل
+            // هذا انضمام حقيقي جديد أم مجرد تبويب/جهاز إضافي لنفس الشخص أصلاً موجود، عبر
+            // فحص عضوية القناة الحالية قبل انضمام هذا السوكيت نفسه (بلا أي تخزين إضافي)
+            const alreadyViewing = roomId !== 'main' && getRoomViewers(io, roomId).some(v => v.id === socket.user.id.toString());
+
             socket.join(`room-chat-${roomId}`);
             const musicState = roomMusicState.get(roomId);
             if (musicState) socket.emit('room-music-state', musicState); // ✅ مزامنة فورية لمن ينضم متأخراً
             broadcastRoomViewerCount(io, roomId);
+
+            if (roomId !== 'main' && !alreadyViewing) {
+                try {
+                    const room = await VoiceRoom.resolveRoom(roomId);
+                    // ✅ لا نُعلن دخول المضيف نفسه لغرفته — وجوده مثبَّت أصلاً بالمقعد الأول
+                    if (room && room.host?.toString() !== socket.user._id.toString()) {
+                        socket.to(`room-chat-${roomId}`).emit('user-entered-room', {
+                            roomId,
+                            userId: socket.user._id.toString(),
+                            username: socket.user.username,
+                            profileImage: socket.user.profileImage
+                        });
+                    }
+                } catch (error) {
+                    console.error('[ROOM CHAT] user-entered-room error:', error);
+                }
+            }
         });
 
         socket.on('leave-room-chat', ({ roomId }) => {
