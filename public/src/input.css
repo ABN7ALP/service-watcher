@@ -732,11 +732,15 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     flex-direction: column;
     gap: 6px; /* ✅ فراغ مضمون بين الرسائل بغض النظر عن تنسيق فقاعة الشخص (كانت فقاعات بعض الأشكال المشتراة تلتصق ببعضها بدون هذا) */
     align-items: flex-start; /* ✅ flex-start = بداية المحور الداخلي = اليمين بصفحة RTL — الفقاعات تحتضن محتواها وتلتصق بجهة القراءة بدل تمددها بعرض الصندوق كاملاً */
-    justify-content: flex-end;
+    /* 🐛 أُزيل justify-content:flex-end من هنا — علّة توافق معروفة (خصوصاً سفاري/iOS): تمنع
+       التمرير فعلياً لأعلى لرؤية سجل أقدم عندما يلتصق المحتوى بالأسفل عبر flex-end، فيبدو
+       التمرير "معطّلاً" رغم overflow-y:auto. البديل أدناه (margin-top:auto على أول رسالة)
+       يعطي نفس الالتصاق بالأسفل عند قصر المحتوى، لكن بتمرير سليم 100% عند الفيضان لأعلى */
     text-shadow: 0 1px 3px rgba(0,0,0,0.9);
     scrollbar-width: thin;
     transition: bottom 0.15s ease;
 }
+.room-chat-messages-fixed > *:first-child { margin-top: auto; }
 .room-chat-messages-fixed:empty { display: none; }
 .room-chat-messages-fixed::-webkit-scrollbar { width: 4px; }
 .room-chat-messages-fixed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 4px; }

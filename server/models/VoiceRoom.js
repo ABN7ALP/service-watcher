@@ -53,6 +53,8 @@ const voiceRoomSchema = new mongoose.Schema({
     liveSince: { type: Date, default: Date.now }, // ✅ بداية جلسة البث الحالية — يُحسب منها "مدة البث" عند انتهائها
     // ✅ متابعو الغرفة تحديداً (مستقل تماماً عن نظام الأصدقاء) — يظهر لهم زر "متابع" بدل "متابعة"
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    // ✅ قفل الدردشة — المضيف/المسؤولون فقط يقدرون يكتبون؛ الباقي يبقى يشاهد فقط
+    chatLocked: { type: Boolean, default: false },
     lastActivityAt: { type: Date, default: Date.now, index: true },
 }, { timestamps: true });
 
