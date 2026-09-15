@@ -894,7 +894,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-gift-fly-icon span { font-size: 2.6rem; display: block; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5)); }
 
-/* ✅ مشغّل الموسيقى العائم — يظهر تلقائياً عند تشغيل أغنية، قابل للسحب لأي مكان بالغرفة */
+/* ✅ مشغّل الموسيقى العائم — للمضيف حصراً، يظهر تلقائياً عند تشغيل أغنية، قابل للسحب لأي مكان بالغرفة */
 .room-floating-music-player {
     position: fixed;
     z-index: 55;
@@ -905,7 +905,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     border: 1px solid rgba(52,211,153,0.3);
     border-radius: 9999px;
     padding: 5px 8px;
-    max-width: 210px;
+    max-width: 230px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.45);
     cursor: grab;
     touch-action: none;
@@ -930,14 +930,35 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
 }
+.room-floating-music-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    flex: 1;
+}
 .room-floating-music-title {
     font-size: 11px;
     color: #e5e7eb;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 80px;
-    flex-shrink: 1;
+    max-width: 90px;
+}
+.room-floating-music-progress {
+    width: 100%;
+    max-width: 90px;
+    height: 3px;
+    border-radius: 9999px;
+    background: rgba(255,255,255,0.12);
+    overflow: hidden;
+}
+.room-floating-music-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #34d399, #10b981);
+    border-radius: 9999px;
+    transition: width 0.2s linear;
 }
 .room-floating-music-btn {
     width: 22px; height: 22px;
@@ -947,6 +968,22 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     font-size: 9px;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
+}
+
+/* ✅ شريط التقدّم داخل نافذة الموسيقى المصغّرة (More > موسيقى) */
+.room-music-popup-progress-track {
+    width: 100%;
+    height: 4px;
+    border-radius: 9999px;
+    background: rgba(255,255,255,0.1);
+    overflow: hidden;
+}
+.room-music-popup-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #34d399, #10b981);
+    border-radius: 9999px;
+    transition: width 0.2s linear;
 }
 
 /* ✅ الإيموجي المتحرك — يظهر فوق المقعد ويطفو للأعلى مع تلاشٍ تدريجي ثم يختفي */

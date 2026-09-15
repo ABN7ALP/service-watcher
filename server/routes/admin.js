@@ -42,6 +42,13 @@ router.get('/investigate/:userId', adminController.getUserInvestigation);
 router.get('/support-tickets', adminController.getSupportTickets);
 router.post('/support-tickets/:ticketId/resolve', adminController.resolveSupportTicket);
 
+router.get('/music-tracks', adminController.getMusicTracks);
+router.post('/music-tracks', adminController.saveMusicTrack);
+router.delete('/music-tracks/:trackId', adminController.deleteMusicTrack);
+
+router.get('/suggestions', adminController.getSuggestions);
+router.post('/suggestions/:suggestionId/resolve', adminController.resolveSuggestion);
+
 router.get('/logs', adminController.getLogs);
 
 router.get('/settings', adminController.getSystemSettings);

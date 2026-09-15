@@ -29,6 +29,8 @@ const adminLogSchema = new mongoose.Schema({
       'create_gift',
       'update_gift',
       'delete_gift',
+      'add_music_track',
+      'delete_music_track',
       'update_settings',
       'system_maintenance',
       'manual_transaction',
