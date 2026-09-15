@@ -900,7 +900,12 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .room-floating-music-player {
     position: fixed;
     z-index: 55;
-    display: flex;
+    /* 🐛 الجذر الحقيقي لعطل زر × وعدم اختفاء المشغّل عند إنهاء البث: هذا الملف يبدأ بـ
+       @tailwind utilities، فكل الأصناف المخصّصة تحته بترتيب المصدر — وبما إن هذا الصنف
+       و.hidden (من Tailwind) نفس درجة التخصيص بالضبط (صنف واحد)، فـ"الأحدث بترتيب المصدر
+       يفوز" كان يجعل display:flex هنا يهزم display:none تبع .hidden دائماً، فتبقى العنصر
+       ظاهرة بصرياً حتى لو أُضيفت له class="hidden" فعلياً! الحل: display هنا فقط عبر
+       :not(.hidden) بدل تعريف غير مشروط، فـ.hidden يفوز دوماً بلا أي تنافس بالأساس */
     align-items: center;
     gap: 8px;
     background: rgba(17,24,39,0.95);
@@ -913,6 +918,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     touch-action: none;
     user-select: none;
 }
+.room-floating-music-player:not(.hidden) { display: flex; }
 .room-floating-music-player:active { cursor: grabbing; }
 .room-floating-music-close {
     width: 24px; height: 24px;
