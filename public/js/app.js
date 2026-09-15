@@ -520,7 +520,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             // ✅ نحافظ على شارة عداد الدعم لو نفس الشخص لسا قاعد (لا نصفّرها بمجرد إعادة رسم عادية)
             const keepBadge = sameOccupant ? seatEl.querySelector('.seat-support-badge') : null;
             seatEl.innerHTML = `
-                <img src="${seatData.user.profileImage}" class="voice-seat-avatar" alt="${safeName}">
+                <img src="${seatData.user.profileImage}" class="voice-seat-avatar" alt="${safeName}" loading="lazy" decoding="async">
                 ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
                 <span class="voice-seat-name">${safeName}</span>
             `;

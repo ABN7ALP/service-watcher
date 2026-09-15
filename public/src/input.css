@@ -357,8 +357,11 @@ input[type="checkbox"] {
 /* ✅ استجابة كاملة للجوال — الموقع العام */
 /* ================================================= */
 @media (max-width: 640px) {
-    /* شبكات الدردشة الصوتية: تتقلص لأعمدة أقل بدل الانكسار */
-    #voice-chat-grid, .circles-grid { grid-template-columns: repeat(5, 1fr) !important; gap: 8px !important; }
+    /* 🐛 حُذفت هنا قاعدة قديمة كانت تفرض 5 أعمدة + 8px فجوة بالقوة (!important) على
+       #voice-chat-grid على كل الهواتف — من عهد قبل نظام cols-3/5/6 ثابت الأعمدة أدناه.
+       بما إنها ID + !important، كانت تتغلّب على كل تصميم الأعمدة (تكسر شكل 3×3 لغرف
+       9 مقاعد إلخ) وتقلّص الفجوة الرأسية لدرجة تجعل تسمية "انضمام" تتداخل بصرياً مع
+       صف المقاعد التالي على الهاتف تحديداً — وهذا بالضبط سبب ظهورها "فوق" المقعد. */
 
     /* أي نافذة كبرى (max-w-lg/xl/2xl) تصبح شبه ملء الشاشة على الجوال مع هامش تنفّس */
     [class*="max-w-lg"], [class*="max-w-xl"], [class*="max-w-2xl"], [class*="max-w-md"] {
@@ -434,9 +437,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 /* ✅ سقف حجم أقصى للمقعد نفسه (وليس بس للحاوية) — يمنعه من ملء العمود كاملاً على الهواتف
    العريضة، ويعطي مسافة بصرية طبيعية بين المقاعد حتى ضمن نفس الصف */
-.voice-seats-flex.cols-3 .voice-seat { max-width: 92px; font-size: clamp(1.05rem, 4.2vw, 1.35rem); }
-.voice-seats-flex.cols-5 .voice-seat { font-size: clamp(0.78rem, 3.2vw, 1rem); }
-.voice-seats-flex.cols-6 .voice-seat { font-size: clamp(0.68rem, 2.6vw, 0.85rem); }
+.voice-seats-flex.cols-3 .voice-seat { max-width: 80px; font-size: clamp(0.95rem, 3.8vw, 1.2rem); }
+.voice-seats-flex.cols-5 .voice-seat { font-size: clamp(0.72rem, 2.9vw, 0.92rem); }
+.voice-seats-flex.cols-6 .voice-seat { font-size: clamp(0.64rem, 2.4vw, 0.8rem); }
 
 @media (min-width: 768px) {
     .voice-seats-flex.cols-3 { max-width: 380px; margin: 0 auto; } /* ✅ أضيق من البقية — 3 أعمدة فقط تكبر بسرعة */
@@ -448,31 +451,39 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .voice-seat {
     /* ✅ حجم مرن (clamp) يتدرّج فعلياً مع عرض الشاشة بدل القفز بين 3 مقاسات ثابتة فقط —
-       الحد الأدنى/الأقصى يحفظان نفس مدى الأحجام السابق (هاتف صغير ← كمبيوتر) بدون قفزات */
-    width: clamp(46px, 12.5vw, 64px); height: clamp(46px, 12.5vw, 64px);
+       مُصغَّر عموماً عن السابق بطلب صريح (كانت الدوائر كبيرة أكثر من اللازم) */
+    width: clamp(42px, 11vw, 58px); height: clamp(42px, 11vw, 58px);
     flex: 0 0 auto;
     border-radius: 50%; /* ✅ دائري بالكامل */
     display: flex; align-items: center; justify-content: center;
-    font-size: clamp(0.62rem, 3vw, 0.8rem); font-weight: bold;
-    background: transparent; /* ✅ لا خلفية للمقعد الفاضي — شبه شفاف بالكامل، فقط حلقة رفيعة تحدّده */
-    border: 1.5px solid rgba(255,255,255,0.18);
+    font-size: clamp(0.6rem, 2.8vw, 0.78rem); font-weight: bold;
+    background: transparent; /* ✅ لا خلفية للمقعد الفاضي — شفاف بالكامل */
+    /* ✅ حلقة خفيفة جداً تكاد لا تُرى — تحدّد موضع المقعد الفاضي بالكاد بلا أي إبراز بصري،
+       بطلب صريح ("خليه خفيف كثير وشفاف يعني بالكاد يبين") */
+    border: 1px solid rgba(255,255,255,0.08);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
     position: relative;
 }
-.voice-seat.user-seat:hover { background: rgba(139,92,246,0.25); border-color: #a855f7; transform: scale(1.05); }
-.voice-seat.admin-seat { background: linear-gradient(135deg,#7c2d12,#450a0a); border-color: #f59e0b; color: #fbbf24; }
+.voice-seat.user-seat:hover { background: rgba(139,92,246,0.16); border-color: rgba(168,85,247,0.4); transform: scale(1.05); }
+.voice-seat.admin-seat { background: linear-gradient(135deg,#7c2d12,#450a0a); border-color: rgba(245,158,11,0.5); color: #fbbf24; }
 
 .voice-seat.seat-forbidden { cursor: not-allowed; }
 .voice-seat.occupied { background: rgba(139,92,246,0.35); border-color: #a855f7; }
 
-/* ✅ مقعد فيه مستخدم فعلي حالياً (صورة حقيقية بدل رقم) */
+/* ✅ مقعد فيه مستخدم فعلي حالياً — حلقة توهّج ناعمة مزدوجة الطبقة عبر box-shadow بدل إطار
+   صلب خام (أسلوب "avatar glow ring" الشائع بتطبيقات البث الصوتي المعروفة): طبقة داخلية
+   حادة رفيعة + هالة خارجية ناعمة منخفضة الشفافية، مع ظل عمق خفيف — أكثر أناقة وحيوية
+   من حد لوني بسيط، وبلا حاجة لأي مكتبة خارجية (CSS خالص، خفيف الأداء لأنه ثابت غير متحرك) */
 .voice-seat.occupied-seat {
     background: transparent;
-    border: 2px solid rgba(139,92,246,0.55);
+    border: none;
     padding: 0;
     overflow: visible;
-    box-shadow: 0 2px 8px rgba(139,92,246,0.25); /* ✅ إحساس أكثر حيوية للمقاعد المشغولة مقارنة بالفاضية */
+    box-shadow:
+        0 0 0 1.5px rgba(168,85,247,0.65),
+        0 0 0 4px rgba(168,85,247,0.12),
+        0 2px 10px rgba(139,92,246,0.22);
 }
 .voice-seat-avatar {
     width: 100%; height: 100%;
