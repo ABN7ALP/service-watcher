@@ -894,18 +894,20 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-gift-fly-icon span { font-size: 2.6rem; display: block; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5)); }
 
-/* ✅ مشغّل الموسيقى العائم — للمضيف حصراً، يظهر تلقائياً عند تشغيل أغنية، قابل للسحب لأي مكان بالغرفة */
+/* ✅ مشغّل الموسيقى العائم — للمضيف حصراً، يظهر تلقائياً عند تشغيل أغنية، قابل للسحب لأي مكان بالغرفة
+   مقاسات الأزرار مقصودة كبيرة (≥32px) لتبقى سهلة اللمس على الهاتف — أزرار صغيرة كانت سبب
+   ظهور لمسات "بلا استجابة" فعلياً لأن الإصبع يُخطئ الهدف ويبدأ سحباً بدل الضغط */
 .room-floating-music-player {
     position: fixed;
     z-index: 55;
     display: flex;
     align-items: center;
-    gap: 7px;
-    background: rgba(17,24,39,0.92);
-    border: 1px solid rgba(52,211,153,0.3);
+    gap: 8px;
+    background: rgba(17,24,39,0.95);
+    border: 1px solid rgba(52,211,153,0.35);
     border-radius: 9999px;
-    padding: 5px 8px;
-    max-width: 230px;
+    padding: 6px 8px 6px 6px;
+    max-width: 260px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.45);
     cursor: grab;
     touch-action: none;
@@ -913,32 +915,32 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-floating-music-player:active { cursor: grabbing; }
 .room-floating-music-close {
-    width: 18px; height: 18px;
+    width: 24px; height: 24px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.1);
-    color: #9ca3af;
-    font-size: 9px;
+    background: rgba(255,255,255,0.12);
+    color: #d1d5db;
+    font-size: 11px;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
 }
 .room-floating-music-disc {
-    width: 26px; height: 26px;
+    width: 30px; height: 30px;
     border-radius: 50%;
     background: linear-gradient(135deg, #10b981, #047857);
     color: #fff;
-    font-size: 11px;
+    font-size: 12px;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
 }
 .room-floating-music-body {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
     min-width: 0;
     flex: 1;
 }
 .room-floating-music-title {
-    font-size: 11px;
+    font-size: 11.5px;
     color: #e5e7eb;
     white-space: nowrap;
     overflow: hidden;
@@ -961,13 +963,19 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     transition: width 0.2s linear;
 }
 .room-floating-music-btn {
-    width: 22px; height: 22px;
+    width: 30px; height: 30px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.12);
     color: #d1fae5;
-    font-size: 9px;
+    font-size: 11px;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
+}
+.room-floating-music-btn-main {
+    width: 34px; height: 34px;
+    background: linear-gradient(135deg, #34d399, #059669);
+    color: #06251b;
+    font-size: 13px;
 }
 
 /* ✅ شريط التقدّم داخل نافذة الموسيقى المصغّرة (More > موسيقى) */
