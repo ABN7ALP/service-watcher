@@ -1542,46 +1542,71 @@ socket.on('refreshBlockData', async () => {
         // ✅ مشغّل موسيقى الغرفة — المضيف/المسؤولون فقط يتحكمون، الجميع يسمع نفس المسار متزامناً
         // =====================================================
         socket.on('room-music-play', async ({ roomId, url, title }) => {
-            const VoiceRoom = require('../models/VoiceRoom');
-            const room = await VoiceRoom.resolveRoom(roomId);
-            if (!room || !room.canModerate(socket.user._id) || !url) return;
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room) return socket.emit('room-music-error', 'الغرفة غير موجودة');
+                if (!room.canModerate(socket.user._id)) return socket.emit('room-music-error', 'لا تملك صلاحية التحكّم بموسيقى هذي الغرفة');
+                if (!url) return socket.emit('room-music-error', 'رابط الأغنية غير صالح');
 
-            const state = { roomId, url, title: title || 'أغنية', startedAt: Date.now(), isPlaying: true, pausedAt: 0 };
-            roomMusicState.set(roomId, state);
-            io.to(`room-chat-${roomId}`).emit('room-music-state', state);
+                const state = { roomId, url, title: title || 'أغنية', startedAt: Date.now(), isPlaying: true, pausedAt: 0 };
+                roomMusicState.set(roomId, state);
+                io.to(`room-chat-${roomId}`).emit('room-music-state', state);
+            } catch (error) {
+                console.error('[MUSIC] room-music-play error:', error);
+                socket.emit('room-music-error', 'تعذّر تشغيل الأغنية');
+            }
         });
 
         socket.on('room-music-pause', async ({ roomId }) => {
-            const VoiceRoom = require('../models/VoiceRoom');
-            const room = await VoiceRoom.resolveRoom(roomId);
-            if (!room || !room.canModerate(socket.user._id)) return;
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room) return socket.emit('room-music-error', 'الغرفة غير موجودة');
+                if (!room.canModerate(socket.user._id)) return socket.emit('room-music-error', 'لا تملك صلاحية التحكّم بموسيقى هذي الغرفة');
 
-            const state = roomMusicState.get(roomId);
-            if (!state || !state.isPlaying) return;
-            state.pausedAt += (Date.now() - state.startedAt) / 1000;
-            state.isPlaying = false;
-            io.to(`room-chat-${roomId}`).emit('room-music-state', state);
+                const state = roomMusicState.get(roomId);
+                if (!state || !state.isPlaying) return;
+                state.pausedAt += (Date.now() - state.startedAt) / 1000;
+                state.isPlaying = false;
+                io.to(`room-chat-${roomId}`).emit('room-music-state', state);
+            } catch (error) {
+                console.error('[MUSIC] room-music-pause error:', error);
+                socket.emit('room-music-error', 'تعذّر إيقاف الأغنية مؤقتاً');
+            }
         });
 
         socket.on('room-music-resume', async ({ roomId }) => {
-            const VoiceRoom = require('../models/VoiceRoom');
-            const room = await VoiceRoom.resolveRoom(roomId);
-            if (!room || !room.canModerate(socket.user._id)) return;
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room) return socket.emit('room-music-error', 'الغرفة غير موجودة');
+                if (!room.canModerate(socket.user._id)) return socket.emit('room-music-error', 'لا تملك صلاحية التحكّم بموسيقى هذي الغرفة');
 
-            const state = roomMusicState.get(roomId);
-            if (!state || state.isPlaying) return;
-            state.startedAt = Date.now() - state.pausedAt * 1000;
-            state.isPlaying = true;
-            io.to(`room-chat-${roomId}`).emit('room-music-state', state);
+                const state = roomMusicState.get(roomId);
+                if (!state || state.isPlaying) return;
+                state.startedAt = Date.now() - state.pausedAt * 1000;
+                state.isPlaying = true;
+                io.to(`room-chat-${roomId}`).emit('room-music-state', state);
+            } catch (error) {
+                console.error('[MUSIC] room-music-resume error:', error);
+                socket.emit('room-music-error', 'تعذّر استئناف الأغنية');
+            }
         });
 
         socket.on('room-music-stop', async ({ roomId }) => {
-            const VoiceRoom = require('../models/VoiceRoom');
-            const room = await VoiceRoom.resolveRoom(roomId);
-            if (!room || !room.canModerate(socket.user._id)) return;
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room) return socket.emit('room-music-error', 'الغرفة غير موجودة');
+                if (!room.canModerate(socket.user._id)) return socket.emit('room-music-error', 'لا تملك صلاحية التحكّم بموسيقى هذي الغرفة');
 
-            roomMusicState.delete(roomId);
-            io.to(`room-chat-${roomId}`).emit('room-music-state', null);
+                roomMusicState.delete(roomId);
+                io.to(`room-chat-${roomId}`).emit('room-music-state', null);
+            } catch (error) {
+                console.error('[MUSIC] room-music-stop error:', error);
+                socket.emit('room-music-error', 'تعذّر إيقاف الأغنية');
+            }
         });
 
         // ✅ "disconnecting" (وليس "disconnect") لأن socket.rooms ما زالت ممتلئة هنا — بعدها

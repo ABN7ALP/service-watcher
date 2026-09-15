@@ -610,6 +610,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // ✅ شريط تقدّم حقيقي (مأخوذ من عنصر الصوت نفسه لا من حساب موازٍ) — بالضبط زي مشغّلات التطبيقات المشهورة
         audio.addEventListener('timeupdate', updateMusicProgressUI);
         audio.addEventListener('loadedmetadata', updateMusicProgressUI);
+        // ✅ آلية دلالة أخطاء: أي فشل بتحميل/تشغيل الملف الصوتي (رابط معطوب، 404، CORS...) يظهر
+        // بالكونسول فوراً بدل الفشل الصامت — يسهّل تشخيص مشاكل روابط المكتبة المشتركة
+        audio.addEventListener('error', () => {
+            console.error('[MUSIC] فشل تحميل/تشغيل الملف الصوتي:', audio.error, 'URL:', audio.dataset.currentUrl);
+        });
     }
     initRoomMusicAudioEl();
 
@@ -666,7 +671,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             // كان يُضاعفها فوق نفسها، فتقفز الأغنية للأمام في كل استئناف (نفس تراكم كل إيقاف سابق)
             const elapsed = (Date.now() - state.startedAt) / 1000;
             if (Math.abs((audio.currentTime || 0) - elapsed) > 1.5) audio.currentTime = Math.max(0, elapsed);
-            audio.play().catch(() => {}); // ✅ قد يمنعه المتصفح قبل أول تفاعل من المستخدم — طبيعي وغير خطير
+            // ✅ قد يمنعه المتصفح قبل أول تفاعل من المستخدم (autoplay policy) — طبيعي وغير خطير، لكن
+            // نسجّله بالكونسول بدل ابتلاعه صامتاً حتى يسهل تمييزه عن خطأ حقيقي بالرابط
+            audio.play().catch((err) => console.warn('[MUSIC] audio.play() لم يبدأ (على الأغلب سياسة تشغيل تلقائي بالمتصفح):', err?.name || err));
             moreBtn?.classList.add('room-music-playing');
         } else {
             audio.currentTime = state.pausedAt;
@@ -675,6 +682,24 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
         updateFloatingMusicPlayer(state);
         updateMusicProgressUI();
+    }
+
+    // ✅ إيقاف مؤقت/استئناف "فوري محلياً" — يطبّق نفس معادلة السيرفر مباشرة على الواجهة
+    // (يوقف/يشغّل الصوت فعلياً فوراً بدل انتظار رحلة السيرفر ذهاباً وإياباً) ثم يرسل الحدث
+    // للسيرفر كمرجع نهائي؛ حالة السيرفر الواردة لاحقاً تُطابقها فتصحّح أي انحراف طفيف بصمت
+    function toggleMusicPlayback(roomId) {
+        if (!currentMusicState || !roomId) return;
+        const optimistic = { ...currentMusicState };
+        if (optimistic.isPlaying) {
+            optimistic.pausedAt = (optimistic.pausedAt || 0) + (Date.now() - optimistic.startedAt) / 1000;
+            optimistic.isPlaying = false;
+            socket.emit('room-music-pause', { roomId });
+        } else {
+            optimistic.startedAt = Date.now() - (optimistic.pausedAt || 0) * 1000;
+            optimistic.isPlaying = true;
+            socket.emit('room-music-resume', { roomId });
+        }
+        applyMusicState(optimistic);
     }
 
     // ✅ مشغّل موسيقى عائم صغير — يظهر تلقائياً بمجرد تشغيل أي أغنية بالغرفة، قابل للسحب
@@ -705,12 +730,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <span id="floating-music-title" class="room-floating-music-title"></span>
                 <div class="room-floating-music-progress"><div id="floating-music-progress-fill" class="room-floating-music-progress-fill"></div></div>
             </div>
-            <button id="floating-music-toggle" type="button" class="room-floating-music-btn"><i class="fas fa-play"></i></button>
+            <button id="floating-music-toggle" type="button" class="room-floating-music-btn room-floating-music-btn-main"><i class="fas fa-play"></i></button>
             <button id="floating-music-next" type="button" class="room-floating-music-btn"><i class="fas fa-forward-step"></i></button>
         `;
         document.body.appendChild(el);
         wireFloatingMusicPlayerDrag(el);
 
+        // ✅ تفويض أحداث واحد ثابت للأبد — العنصر لا يُعاد بناؤه بعدها إطلاقاً (راجع updateFloatingMusicPlayer)
         el.addEventListener('click', (e) => {
             const btn = e.target.closest('button');
             if (!btn) return;
@@ -719,8 +745,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 floatingMusicDismissed = true;
                 el.classList.add('hidden');
             } else if (btn.id === 'floating-music-toggle') {
-                if (currentMusicState?.isPlaying) socket.emit('room-music-pause', { roomId: currentVoiceRoomId });
-                else if (currentMusicState) socket.emit('room-music-resume', { roomId: currentVoiceRoomId });
+                toggleMusicPlayback(currentVoiceRoomId);
             } else if (btn.id === 'floating-music-next') {
                 playNextLibraryTrack(currentVoiceRoomId);
             }
@@ -738,26 +763,41 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         updateMusicProgressUI();
     }
 
-    // ✅ سحب حر بأي اتجاه داخل الشاشة (وليس فقط جانب واحد) — نفس آلية pointer events
-    // المستخدمة بفقاعة الرسالة الخاصة العائمة
+    // ✅ سحب حر بأي اتجاه داخل الشاشة (وليس فقط جانب واحد) — نفس آلية فقاعة الرسالة الخاصة العائمة،
+    // لكن بعتبة حركة (لا يبدأ السحب فعلياً إلا بعد تحرّك حقيقي) بدل الاعتماد حصراً على دقّة تحديد
+    // العنصر عند لحظة اللمس — لمسة إصبع على هاتف نادراً ما تكون دقيقة 100% على أزرار صغيرة،
+    // وبدون هذي العتبة كان أي لمس قريب من زر (×) مثلاً يُلتقط كبداية سحب فيبدو "معطّلاً"
+    const DRAG_MOVE_THRESHOLD = 6;
     function wireFloatingMusicPlayerDrag(el) {
-        let dragging = false, startX = 0, startY = 0, origX = 0, origY = 0;
+        let tracking = false, dragging = false, startX = 0, startY = 0, origX = 0, origY = 0, pointerId = null;
         el.addEventListener('pointerdown', (e) => {
-            if (e.target.closest('button')) return; // ✅ لا يبدأ سحباً عند الضغط على أزرار التحكم
-            dragging = true;
+            if (e.target.closest('button')) return; // ✅ لمسة داخل زر فعلياً — لا تُعامل كسحب إطلاقاً
+            tracking = true;
+            dragging = false;
+            pointerId = e.pointerId;
             startX = e.clientX; startY = e.clientY;
             const rect = el.getBoundingClientRect();
             origX = rect.left; origY = rect.top;
-            el.setPointerCapture(e.pointerId);
         });
         el.addEventListener('pointermove', (e) => {
-            if (!dragging) return;
-            const newX = Math.min(Math.max(0, origX + (e.clientX - startX)), window.innerWidth - el.offsetWidth);
-            const newY = Math.min(Math.max(0, origY + (e.clientY - startY)), window.innerHeight - el.offsetHeight);
+            if (!tracking || e.pointerId !== pointerId) return;
+            const dx = e.clientX - startX, dy = e.clientY - startY;
+            if (!dragging) {
+                if (Math.hypot(dx, dy) < DRAG_MOVE_THRESHOLD) return; // ✅ لسا ضمن هامش اللمسة الثابتة
+                dragging = true;
+                el.setPointerCapture(pointerId);
+            }
+            const newX = Math.min(Math.max(0, origX + dx), window.innerWidth - el.offsetWidth);
+            const newY = Math.min(Math.max(0, origY + dy), window.innerHeight - el.offsetHeight);
             el.style.left = `${newX}px`;
             el.style.top = `${newY}px`;
         });
-        el.addEventListener('pointerup', () => { dragging = false; });
+        const endTracking = () => {
+            if (dragging && pointerId !== null) { try { el.releasePointerCapture(pointerId); } catch (_) {} }
+            tracking = false; dragging = false; pointerId = null;
+        };
+        el.addEventListener('pointerup', endTracking);
+        el.addEventListener('pointercancel', endTracking);
     }
 
     // ✅ المشغّل المصغّر — يظهر بالضغط على أيقونة القرص: العنوان + شريط تقدّم + تشغيل/إيقاف
@@ -813,8 +853,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (!canControl) return;
 
         document.getElementById('music-toggle-btn').addEventListener('click', () => {
-            if (currentMusicState?.isPlaying) socket.emit('room-music-pause', { roomId });
-            else if (currentMusicState) socket.emit('room-music-resume', { roomId });
+            toggleMusicPlayback(roomId);
             modal.remove();
         });
 
@@ -1718,6 +1757,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         document.body.appendChild(modal);
         modal.querySelector('#cancel-end-broadcast').addEventListener('click', () => modal.remove());
         modal.querySelector('#confirm-end-broadcast').addEventListener('click', () => {
+            // ✅ إيقاف الموسيقى/إخفاء المشغّل العائم فوراً محلياً — لا ننتظر رحلة السيرفر
+            // ذهاباً وإياباً (يصل حدث room-broadcast-ended بعدها ليؤكد نفس الشيء)
+            if (currentMusicState?.roomId === roomId) applyMusicState(null);
             socket.emit('host-end-broadcast', { roomId });
             modal.remove();
         });
@@ -4935,6 +4977,13 @@ function showXpGainAnimation(amount) {
     // ✅ يصل فقط لمن هو منضم فعلياً لقناة دردشة هذي الغرفة (بث مخصص، وليس عاماً)
     socket.on('room-music-state', (state) => {
         applyMusicState(state);
+    });
+
+    // ✅ آلية دلالة أخطاء لمشغّل الموسيقى — أي رفض من السيرفر (صلاحية، رابط غير صالح...)
+    // يظهر بالكونسول فوراً بدل الفشل الصامت، بالإضافة لتنبيه بسيط لمن يحاول التحكّم
+    socket.on('room-music-error', (message) => {
+        console.error('[MUSIC]', message);
+        showNotification(message, 'error');
     });
 
     socket.on('seat-reaction-played', ({ roomId, seatNumber, emoji }) => {
