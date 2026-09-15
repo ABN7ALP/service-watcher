@@ -520,7 +520,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             // ✅ نحافظ على شارة عداد الدعم لو نفس الشخص لسا قاعد (لا نصفّرها بمجرد إعادة رسم عادية)
             const keepBadge = sameOccupant ? seatEl.querySelector('.seat-support-badge') : null;
             seatEl.innerHTML = `
-                <img src="${seatData.user.profileImage}" class="voice-seat-avatar" alt="${safeName}" loading="lazy" decoding="async">
+                <img src="${seatData.user.profileImage}" class="voice-seat-avatar ${seatData.user.activeFrameClass || ''}" alt="${safeName}" loading="lazy" decoding="async">
                 ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
                 <span class="voice-seat-name">${safeName}</span>
             `;
@@ -1469,11 +1469,28 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const response = await fetch(`/api/voice-room/rooms/${roomId}/messages`, { headers: { 'Authorization': `Bearer ${token}` } });
             const result = await response.json();
             if (response.ok && result.status === 'success') {
-                result.messages.forEach(appendRoomChatMessage);
+                revealRoomChatHistory(result.messages, roomId);
             }
         } catch (error) {
             console.error('Failed to load room messages:', error);
         }
+    }
+
+    // ✅ عرض سجل الدردشة تدريجياً رسالة تلو الأخرى (بفارق قصير) بدل دفعة واحدة جامدة — إحساس
+    // "محادثة جارية الآن" بدل جدار نص، بنفس أسلوب التطبيقات المشهورة (Bigo/Yalla/TikTok Live).
+    // الفارق قصير عمداً (وليس التوقيت الحقيقي الفعلي بين الرسائل) وله سقف إجمالي، حتى لا يطول
+    // انتظار من يفتح غرفة بسجل طويل (حتى 50 رسالة)
+    function revealRoomChatHistory(messages, roomId) {
+        if (!messages.length) return;
+        const STEP_MS = 90;
+        const MAX_TOTAL_MS = 1600;
+        const step = messages.length > 1 ? Math.min(STEP_MS, MAX_TOTAL_MS / (messages.length - 1)) : 0;
+        messages.forEach((msg, i) => {
+            setTimeout(() => {
+                if (roomChatCurrentRoomId !== roomId) return; // ✅ غادر الغرفة قبل اكتمال العرض — تجاهل
+                appendRoomChatMessage(msg);
+            }, i * step);
+        });
     }
 
     // ✅ يُستدعى عند مغادرة شاشة الغرفة (رجوع لقائمة التصفح أو قسم آخر) — يغادر قناة الدردشة فقط
@@ -4723,7 +4740,8 @@ function showXpGainAnimation(amount) {
             isMuted: !!isMuted,
             user: { id: userId, username, profileImage, activeFrameClass }
         });
-        appendJoinAnnouncement(userId, username, profileImage);
+        // ✅ إعلان "انضم" انتقل ليظهر فور دخول الغرفة (راجع user-entered-room) بدل انتظار
+        // الصعود لمقعد — الجلوس على مقعد لم يعد يُكرّر نفس الإعلان
     });
 
     socket.on('user-left-seat', ({ roomId, seatNumber, userId }) => {
@@ -4960,6 +4978,12 @@ function showXpGainAnimation(amount) {
     socket.on('new-room-message', ({ roomId, message }) => {
         if (roomId !== roomChatCurrentRoomId) return;
         appendRoomChatMessage(message);
+    });
+
+    // ✅ إعلان انضمام فوري لدخول الغرفة (مشاهداً) — قبل أي طلب صعود، بالضبط زي التطبيقات المشهورة
+    socket.on('user-entered-room', ({ roomId, userId, username, profileImage }) => {
+        if (roomId !== roomChatCurrentRoomId) return;
+        appendJoinAnnouncement(userId, username, profileImage);
     });
 
     socket.on('room-chat-cleanup', ({ roomId }) => {

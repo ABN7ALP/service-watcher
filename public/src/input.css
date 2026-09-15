@@ -409,6 +409,14 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     justify-content: center;
     align-content: flex-start;
     gap: clamp(10px, 3vw, 20px) clamp(12px, 3.2vw, 22px);
+    /* ✅ مساحة تمرير حقيقية أسفل الشبكة تساوي تقريباً ارتفاع منطقة الدردشة العائمة (fixed)
+       + الشريط السفلي — بدونها كانت آخر صفوف المقاعد بغرف كثيرة المقاعد (15/24) تبقى
+       عالقة خلف الدردشة على الشاشات الصغيرة بلا أي طريقة لتمريرها للأعلى وكشفها، لأن
+       الدردشة fixed بحدود الشاشة نفسها وليست جزءاً من التدفّق العادي للصفحة */
+    padding-bottom: calc(42vh + 90px);
+}
+@media (min-width: 768px) {
+    .voice-seats-flex { padding-bottom: calc(48vh + 110px); }
 }
 .voice-seats-flex.labeled {
     /* ✅ فراغ رأسي كبير كفاية يستوعب اسم المقعد (وشارة الدعم إن وُجدت) دون تلامس الصف التالي —
@@ -803,7 +811,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     align-self: flex-start;
 }
 .room-chat-join-avatar {
-    width: 16px; height: 16px;
+    width: 20px; height: 20px;
     border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0;
@@ -816,11 +824,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-chat-join-text b { color: rgba(255,255,255,0.75); font-weight: 700; }
 .room-chat-greet-btn {
-    width: 20px; height: 20px;
+    /* ✅ كُبِّر من 20px إلى 28px — نفس درس مشغّل الموسيقى: هدف لمس أصغر من ~28px على
+       الهاتف يُخطئه الإصبع غالباً ويبدو "بلا استجابة" رغم أن مستمعه سليم */
+    width: 28px; height: 28px;
     border-radius: 50%;
     background: rgba(251,191,36,0.18);
     color: #fbbf24;
-    font-size: 10px;
+    font-size: 12px;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
 }
