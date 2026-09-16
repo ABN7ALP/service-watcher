@@ -1185,7 +1185,11 @@ body.in-voice-room #main-content {
    الصور (بدل زر عريض منفصل)، وكروت هدايا بلا حدود ظاهرة (تظهر فقط عند التحديد) وصورة
    هدية كبيرة نسبياً داخل كارد صغير (3 بالصف — يحتاج تمرير لعرض الباقي، وهذا مقصود) */
 .room-gift-sheet {
-    background: #1a1f2e; /* ✅ لون صلب (وليس نصف شفاف) — يبقى واضحاً حتى فوق خلفية غرفة داكنة */
+    /* ✅ توهّج زجاجي (vibrancy) بأسلوب macOS — شفافية عالية جداً (94%) فبقية يقرأ كخلفية
+       صلبة تماماً (لا رجوع لمشكلة "بلا خلفية" السابقة)، مع طبقة ضبابية خفيفة خلفها فقط */
+    background: rgba(21,26,40,0.94);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 20px 20px 0 0;
     box-shadow: 0 -8px 30px rgba(0,0,0,0.5);
@@ -1198,6 +1202,67 @@ body.in-voice-room #main-content {
 }
 @media (min-width: 768px) {
     .room-gift-sheet { border-radius: 20px; max-height: 48vh; max-height: 48dvh; }
+}
+
+/* ✅ رأس ثابت بعنوان + زر إغلاق دائري رمادي هادئ (مقصود تفادي ألوان "أضواء المرور" الثلاثة
+   تبع نوافذ macOS — لا معنى وظيفياً لتصغير/تكبير بورقة سفلية على الهاتف، وكانت ستُربك) مع
+   خط فاصل خفيف أسفله — بالضبط أسلوب رأس لوحة إعدادات macOS Big Sur */
+.gift-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 8px;
+    flex-shrink: 0;
+}
+.gift-sheet-header h3 {
+    font-size: 14px;
+    font-weight: 800;
+    color: #f3f4f6;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.gift-sheet-header h3 i { color: #f472b6; }
+.gift-sheet-close {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    color: #9ca3af;
+    font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.gift-sheet-close:hover { background: rgba(255,255,255,0.16); color: #e5e7eb; }
+
+/* ✅ شريط تصنيفات مقسَّم (segmented control) — نفس أسلوب "System Settings" بـ macOS:
+   مسار بخلفية غائرة خفيفة، والتبويب النشط يظهر كشريحة مرتفعة بخلفية متباينة */
+.gift-category-tabs {
+    display: flex;
+    gap: 3px;
+    background: rgba(0,0,0,0.25);
+    border-radius: 10px;
+    padding: 3px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.gift-category-tabs::-webkit-scrollbar { display: none; }
+.gift-category-tab {
+    flex: 1 0 auto;
+    white-space: nowrap;
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.55);
+    padding: 5px 12px;
+    border-radius: 7px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.gift-category-tab.active {
+    background: rgba(255,255,255,0.14);
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 .room-gift-avatar-row {
     display: flex;
@@ -1291,5 +1356,70 @@ body.in-voice-room #main-content {
 .cd-spinning {
     animation: cdSpin 3s linear infinite;
     color: #34d399 !important;
+}
+
+/* ✅ تنبيه "بثّك لسا شغّال" — بأسلوب Material <Alert severity="warning">: شريط مستطيل
+   أفقي بخلفية كهرمانية باهتة، أيقونة + نص + إجراء، أعلى الشاشة، يختفي تلقائياً */
+.still-live-banner {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 94vw;
+    width: 420px;
+    background: rgba(120,53,15,0.95);
+    border: 1px solid rgba(251,191,36,0.4);
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    backdrop-filter: blur(6px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    animation: stillLiveBannerIn 0.3s ease-out;
+}
+@keyframes stillLiveBannerIn {
+    from { opacity: 0; transform: translate(-50%, -12px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.still-live-banner-icon {
+    color: #fbbf24;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+.still-live-banner-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.still-live-banner-text b { font-size: 12.5px; color: #fef3c7; }
+.still-live-banner-text span { font-size: 11px; color: rgba(254,243,199,0.75); }
+.still-live-banner-btn {
+    flex-shrink: 0;
+    background: #fbbf24;
+    color: #451a03;
+    font-size: 11.5px;
+    font-weight: 800;
+    padding: 7px 14px;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+.still-live-banner-close {
+    flex-shrink: 0;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.1);
+    color: #fef3c7;
+    font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+}
+@media (max-width: 480px) {
+    .still-live-banner { flex-wrap: wrap; }
+    .still-live-banner-text { order: 1; width: 100%; }
+    .still-live-banner-btn { order: 2; }
 }
 
