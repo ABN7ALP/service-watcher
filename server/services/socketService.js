@@ -30,6 +30,17 @@ const roomChatRateLimit = new Map();
 // ✅ حالة تشغيل الموسيقى الحيّة لكل غرفة (بالذاكرة — تكفي، لا تحتاج قاعدة بيانات)
 // roomId → { url, title, startedAt(ms), isPlaying, pausedAt(seconds) }
 const roomMusicState = new Map();
+
+// ✅ دعوات المضيف لمقعد محدد — بانتظار قبول/رفض صاحب الدعوة قبل إجلاسه فعلياً (لم يعد
+// إجلاساً فورياً كما سابقاً). المفتاح: `${roomId}:${targetUserId}`
+// → { seatNumber, hostSocketId, expiresAt }
+const pendingSeatInvites = new Map();
+const SEAT_INVITE_TTL_MS = 25 * 1000;
+
+// ✅ تهدئة 26 ثانية بعد رفض صريح لنفس الشخص بنفس الغرفة — يمنع إزعاجه بدعوة متكررة فوراً.
+// نفس المفتاح: `${roomId}:${targetUserId}` → طابع وقت آخر رفض
+const seatInviteDeclineCooldown = new Map();
+const SEAT_INVITE_COOLDOWN_MS = 26 * 1000;
 function withUserSeatLock(userId, fn) {
     const key = userId.toString();
     const previous = voiceSeatLocks.get(key) || Promise.resolve();
@@ -1275,7 +1286,8 @@ socket.on('refreshBlockData', async () => {
             }
         }));
 
-        // ✅ المضيف/المسؤول يدعو صاحب طلب مرفوع مباشرة لمقعد محدد (يُنزله من أي مقعد آخر أولاً إن وُجد)
+        // ✅ المضيف/المسؤول يدعو شخصاً (صاحب طلب مرفوع، أو أي حاضر بالغرفة) لمقعد محدد — لا
+        // يُجلَس فوراً كما سابقاً، بل تُرسَل له دعوة ينتظر قبوله/رفضه صراحة عليها أولاً
         // 🛡️ يقفل بنفس مفتاح مقعد المستهدَف (وليس مفتاح رفع يده) عمداً — هذا يمنع تضارباً حقيقياً
         // مع أي join-voice-seat/leave-voice-seat يصدر منه أو من قِبله بنفس اللحظة (يعدّل نفس صف المقاعد)
         socket.on('host-invite-to-seat', ({ roomId, targetUserId, seatNumber }) => withUserSeatLock(targetUserId, async () => {
@@ -1292,49 +1304,104 @@ socket.on('refreshBlockData', async () => {
                 const seatNum = parseInt(seatNumber);
                 const seat = room.seats.find(s => s.seatNumber === seatNum);
                 if (!seat) return;
+                if (seat.user) return socket.emit('seat-error', 'هذا المقعد مشغول بالفعل');
+                if (seat.isLocked) return socket.emit('seat-error', 'هذا المقعد مقفل حالياً');
                 const isAdminSeat = seatNum <= room.adminSeatCount;
 
-                // 🛡️ باگ سابق: select('isAdmin') فقط كان يجعل username/profileImage/activeFrameClass
-                // undefined بحدث user-joined-seat المُرسَل بالأسفل — يظهر كصورة مكسورة وبدون إطار للمدعو
-                const targetUser = await User.findById(targetUserId).select('isAdmin username profileImage activeFrameClass socketId');
+                const targetUser = await User.findById(targetUserId).select('isAdmin username profileImage socketId');
                 if (!targetUser) return;
                 if (isAdminSeat && !targetUser.isAdmin) {
                     return socket.emit('seat-error', 'هذا المقعد محجوز للإدارة فقط');
                 }
+                if (!targetUser.socketId) {
+                    return socket.emit('seat-error', 'هذا المستخدم غير متصل حالياً');
+                }
 
-                await VoiceRoom.releaseUserSeatEverywhere(targetUserId);
+                const finalRoomId = room.slug === 'main' ? 'main' : room._id.toString();
+                const cooldownKey = `${finalRoomId}:${targetUserId}`;
 
+                // 🛡️ تهدئة 26 ثانية بعد رفض صريح لنفس الشخص — يمنع إزعاجه بدعوة متكررة فوراً
+                const lastDecline = seatInviteDeclineCooldown.get(cooldownKey);
+                if (lastDecline) {
+                    const remainingMs = SEAT_INVITE_COOLDOWN_MS - (Date.now() - lastDecline);
+                    if (remainingMs > 0) {
+                        return socket.emit('seat-error', `انتظر ${Math.ceil(remainingMs / 1000)} ثانية قبل إعادة دعوة هذا الشخص`);
+                    }
+                    seatInviteDeclineCooldown.delete(cooldownKey);
+                }
+
+                pendingSeatInvites.set(cooldownKey, {
+                    seatNumber: seatNum,
+                    hostSocketId: socket.id,
+                    expiresAt: Date.now() + SEAT_INVITE_TTL_MS
+                });
+
+                io.to(targetUser.socketId).emit('seat-invite-received', {
+                    roomId: finalRoomId,
+                    roomName: room.name,
+                    seatNumber: seatNum,
+                    fromUserId: socket.user.id.toString(),
+                    fromUsername: socket.user.username,
+                    fromProfileImage: socket.user.profileImage,
+                    expiresInMs: SEAT_INVITE_TTL_MS
+                });
+            } catch (error) {
+                console.error('[HAND RAISE] Invite error:', error);
+            }
+        }));
+
+        // ✅ المدعو يرد على دعوة المقعد صراحة — القبول وحده يُجلسه فعلياً (بنفس ذرية join-voice-seat)
+        socket.on('seat-invite-respond', ({ roomId, accept }) => withUserSeatLock(socket.user._id, async () => {
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room) return;
+
+                const finalRoomId = room.slug === 'main' ? 'main' : room._id.toString();
+                const key = `${finalRoomId}:${socket.user.id.toString()}`;
+                const invite = pendingSeatInvites.get(key);
+                pendingSeatInvites.delete(key);
+                if (!invite || Date.now() > invite.expiresAt) {
+                    return socket.emit('seat-error', 'انتهت صلاحية الدعوة');
+                }
+
+                if (!accept) {
+                    seatInviteDeclineCooldown.set(key, Date.now());
+                    io.to(invite.hostSocketId).emit('seat-invite-declined', {
+                        roomId: finalRoomId,
+                        targetUsername: socket.user.username,
+                        cooldownSeconds: Math.round(SEAT_INVITE_COOLDOWN_MS / 1000)
+                    });
+                    return;
+                }
+
+                await VoiceRoom.releaseUserSeatEverywhere(socket.user._id);
                 const updatedRoom = await VoiceRoom.findOneAndUpdate(
-                    { _id: room._id, seats: { $elemMatch: { seatNumber: seatNum, user: null, isLocked: false } } },
+                    { _id: room._id, seats: { $elemMatch: { seatNumber: invite.seatNumber, user: null, isLocked: false } } },
                     {
-                        $set: { 'seats.$.user': targetUserId, 'seats.$.joinedAt': new Date(), 'seats.$.isMuted': false },
-                        $pull: { handRaises: { user: targetUserId } },
+                        $set: { 'seats.$.user': socket.user._id, 'seats.$.joinedAt': new Date(), 'seats.$.isMuted': false },
+                        $pull: { handRaises: { user: socket.user._id } },
                         $currentDate: { lastActivityAt: true }
                     },
                     { new: true }
                 );
 
                 if (!updatedRoom) {
-                    return socket.emit('seat-error', 'هذا المقعد محجوز بالفعل أو مقفل');
+                    return socket.emit('seat-error', 'هذا المقعد لم يعد متاحاً — شغله أحد قبلك');
                 }
 
-                const finalRoomId = room.slug === 'main' ? 'main' : room._id.toString();
                 io.emit('user-joined-seat', {
                     roomId: finalRoomId,
-                    seatNumber: seatNum,
-                    userId: targetUserId,
-                    username: targetUser.username,
-                    profileImage: targetUser.profileImage,
-                    activeFrameClass: targetUser.activeFrameClass,
+                    seatNumber: invite.seatNumber,
+                    userId: socket.user.id.toString(),
+                    username: socket.user.username,
+                    profileImage: socket.user.profileImage,
+                    activeFrameClass: socket.user.activeFrameClass,
                     isMuted: false
                 });
-                io.to(`room-chat-${finalRoomId}`).emit('hand-raise-removed', { roomId: finalRoomId, userId: targetUserId });
-
-                if (targetUser.socketId) {
-                    io.to(targetUser.socketId).emit('you-were-invited-up', { roomId: finalRoomId, seatNumber: seatNum });
-                }
+                io.to(`room-chat-${finalRoomId}`).emit('hand-raise-removed', { roomId: finalRoomId, userId: socket.user.id.toString() });
             } catch (error) {
-                console.error('[HAND RAISE] Invite error:', error);
+                console.error('[SEAT INVITE] Respond error:', error);
             }
         }));
 

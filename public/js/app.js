@@ -534,13 +534,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             // حماية إضافية حتى لو فات حدث user-left-seat سابقاً بسبب انقطاع اتصال مؤقت (نادر
             // بعد إصلاح إعادة الانضمام التلقائي لقناة الغرفة)، فيبقى previousUserId قديماً عالقاً
             seatEl.querySelector('.seat-support-badge')?.remove();
-            // ✅ بغرف المستخدمين (وليس الرسمية) المقعد الفاضي يعرض "+" بالدائرة و"انضمام" تحتها —
-            // الضغط يرسل طلب صعود، وليس جلوساً فورياً — إلا لمقعد الإدارة بالغرفة الرسمية فقط
+            // ✅ بغرف المستخدمين (وليس الرسمية) المقعد الفاضي يعرض "+" بالدائرة، والنص تحتها
+            // "دعوة" للمضيف (يدعو أحد الحاضرين لهذا المقعد تحديداً) أو "انضمام" لبقية
+            // المستخدمين (يرسل طلب صعود) — إلا لمقعد الإدارة بالغرفة الرسمية فقط
             if (isAdminSeat) {
                 seatEl.innerHTML = '<i class="fas fa-crown"></i>';
                 seatEl.title = 'مقعد محجوز للإدارة';
             } else if (currentVoiceRoomId !== 'main') {
-                seatEl.innerHTML = '<i class="fas fa-plus voice-seat-plus"></i><span class="voice-seat-name voice-seat-join-label">انضمام</span>';
+                const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'انضمام';
+                seatEl.innerHTML = `<i class="fas fa-plus voice-seat-plus"></i><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
             } else {
                 seatEl.innerHTML = seatEl.dataset.seat;
             }
@@ -636,11 +638,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     function minimizeVoiceRoomView(room) {
+        // 🐛 كان ناقصاً seatCount/isPrivate هنا — عند الرجوع كانت renderVoiceRoomSeats تُستدعى
+        // بـ seatCount = undefined فتفشل حلقة إنشاء المقاعد بصمت (0 <= undefined دائماً خطأ)،
+        // فلا تُرسَم أي مقاعد ولا يظهر أي أحد رغم نجاح الرجوع نفسه فعلياً
         minimizedRoomInfo = {
             id: room.id,
             name: room.name,
             coverImage: currentRoomCoverImage || room.coverImage || null,
-            isOfficial: !!room.isOfficial
+            isOfficial: !!room.isOfficial,
+            seatCount: room.seatCount,
+            isPrivate: room.isPrivate
         };
         exitFullscreenRoomMode();
         showRoomMinimizedBubble();
@@ -654,7 +661,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (room.isOfficial) {
             showVoiceRoomsView();
         } else {
-            showCustomRoomView({ id: room.id, name: room.name, coverImage: room.coverImage, isOfficial: false }, currentRoomPassword);
+            showCustomRoomView({ id: room.id, name: room.name, coverImage: room.coverImage, isOfficial: false, seatCount: room.seatCount, isPrivate: room.isPrivate }, currentRoomPassword);
         }
     }
 
@@ -1329,6 +1336,19 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             badge.classList.toggle('hidden', total === 0);
         }
 
+        // ✅ زر نابض ظاهر برأس الغرفة مباشرة للمضيف/المسؤول عند وجود طلبات صعود — بدل الاكتفاء
+        // بشارة مدفونة داخل قائمة "المزيد" التي يحتاج فتحها أولاً ليلاحظها
+        const handQueueBtn = document.getElementById('room-hand-queue-btn');
+        if (handQueueBtn) {
+            const hasRequests = isManager && roomHandQueue.length > 0;
+            handQueueBtn.classList.toggle('hidden', !hasRequests);
+            const handQueueBadge = document.getElementById('room-hand-queue-badge');
+            if (handQueueBadge) {
+                handQueueBadge.textContent = roomHandQueue.length > 9 ? '9+' : String(roomHandQueue.length);
+                handQueueBadge.classList.toggle('hidden', roomHandQueue.length === 0);
+            }
+        }
+
         const isSeatedHere = myVoiceSeatNumber && myVoiceRoomId === currentVoiceRoomId;
         const isMainRoom = currentVoiceRoomId === 'main';
         const joinBtn = document.getElementById('room-join-request-btn');
@@ -1457,6 +1477,75 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const seats = Array.from(voiceGrid.querySelectorAll('.voice-seat'));
         const free = seats.find(s => s.dataset.isAdminSeat !== '1' && s.dataset.isLocked !== '1' && !s.dataset.userId);
         return free ? parseInt(free.dataset.seat) : null;
+    }
+
+    // ✅ ضغط المضيف على مقعد فاضٍ يفتح هذي الورقة: قائمة الحاضرين بالغرفة (غير الجالسين
+    // فعلياً على مقعد آخر) ليدعو أحدهم صراحة لهذا المقعد تحديداً — القبول من طرفه (وليس
+    // إجلاساً فورياً)؛ نفس مصدر بيانات ورقة "المشاهدون" (room-viewers-list) بتصفية مختلفة
+    function showInviteToSeatSheet(roomId, seatNumber) {
+        document.getElementById('seat-invite-picker-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'seat-invite-picker-modal';
+        modal.dataset.seatNumber = seatNumber;
+        modal.className = 'fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50 p-3';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl w-full md:max-w-sm text-white max-h-[70vh] flex flex-col">
+                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2.5 mb-2 md:hidden flex-shrink-0"></div>
+                <h3 class="text-sm font-bold px-4 pt-1 pb-2 flex items-center gap-2 flex-shrink-0">
+                    <i class="fas fa-user-plus text-purple-400"></i> ادعُ أحداً للمقعد ${seatNumber}
+                </h3>
+                <div id="seat-invite-picker-list" class="space-y-1.5 px-3 pb-4 overflow-y-auto">
+                    <div class="text-center text-gray-400 py-8"><i class="fas fa-spinner fa-spin"></i></div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'seat-invite-picker-modal') modal.remove(); });
+        socket.emit('get-room-viewers', { roomId });
+    }
+
+    // ✅ نافذة أنيقة تصل للمدعو عند دعوة المضيف له لمقعد محدد — قبول/رفض صريحان، لا إجلاس
+    // فوري قبل رده. لمسة حسّية عند القبول (اهتزاز خفيف + نبضة بصرية) قبل الإغلاق مباشرة
+    function showSeatInviteReceivedModal({ roomId, roomName, seatNumber, fromUsername, fromProfileImage, expiresInMs }) {
+        document.getElementById('seat-invite-received-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'seat-invite-received-modal';
+        modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[310] p-4';
+        modal.innerHTML = `
+            <div class="seat-invite-card">
+                <div class="seat-invite-avatar-wrap">
+                    <img src="${fromProfileImage || ''}" class="seat-invite-avatar">
+                    <span class="seat-invite-mic-badge"><i class="fas fa-microphone"></i></span>
+                </div>
+                <p class="seat-invite-title">${escapeHtml(fromUsername || '')} يدعوك للصعود 🎤</p>
+                <p class="seat-invite-sub">${escapeHtml(roomName || '')} — المقعد ${seatNumber}</p>
+                <div class="seat-invite-actions">
+                    <button type="button" id="seat-invite-decline-btn" class="seat-invite-decline-btn">رفض</button>
+                    <button type="button" id="seat-invite-accept-btn" class="seat-invite-accept-btn">
+                        <i class="fas fa-check"></i> قبول
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        let responded = false;
+        const respond = (accept) => {
+            if (responded) return;
+            responded = true;
+            clearTimeout(autoExpireTimer);
+            socket.emit('seat-invite-respond', { roomId, accept });
+            modal.remove();
+        };
+
+        document.getElementById('seat-invite-accept-btn').addEventListener('click', (e) => {
+            if (navigator.vibrate) navigator.vibrate(35); // ✅ لمسة حسّية بالهاتف لو مدعومة (لا تكسر شيئاً لو غير مدعومة)
+            e.currentTarget.classList.add('seat-invite-accept-pop');
+            setTimeout(() => respond(true), 160);
+        });
+        document.getElementById('seat-invite-decline-btn').addEventListener('click', () => respond(false));
+
+        const autoExpireTimer = setTimeout(() => { if (!responded) { responded = true; modal.remove(); } }, expiresInMs || 25000);
     }
 
     // ✅ حالة الرسائل الخاصة الواردة أثناء التواجد داخل غرفة (وضع ملء الشاشة)
@@ -1923,6 +2012,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </button>
                 <div class="flex-1"></div>
                 <div class="flex items-center gap-2 flex-shrink-0">
+                    <button id="room-hand-queue-btn" class="hidden room-hand-queue-btn" title="طلبات الصعود">
+                        <i class="fas fa-hand-paper"></i>
+                        <span id="room-hand-queue-badge" class="room-hand-queue-badge hidden">0</span>
+                    </button>
                     <button id="room-power-btn" class="w-8 h-8 rounded-full bg-gray-700/60 hover:bg-gray-600 flex items-center justify-center text-gray-300" title="خيارات الخروج">
                         <i class="fas fa-power-off"></i>
                     </button>
@@ -1952,6 +2045,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
         document.getElementById('room-power-btn').addEventListener('click', () => showRoomExitOptionsSheet(room));
         document.getElementById('room-viewer-count-btn').addEventListener('click', () => showRoomViewersSheet(room.id));
+        document.getElementById('room-hand-queue-btn').addEventListener('click', () => showHandQueueSheet(room.id));
         // ✅ لا يوجد زر رجوع ظاهر بعد الآن — السحب لأسفل من رأس الغرفة (نفس أسلوب تطبيقات
         // البث المباشر المعروفة) هو آلية الخروج البديلة على الهاتف؛ زر ✕ يبقى للمضيف صراحة
         wireRoomHeaderSwipeToExit(document.getElementById('room-header-bar'), room);
@@ -2273,8 +2367,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 seat.innerHTML = '<i class="fas fa-crown"></i>';
                 seat.title = canSitHere ? 'مقعد إدارة' : 'مقعد محجوز للإدارة';
             } else if (isCustomRoom) {
-                // ✅ بغرف المستخدمين: مقعد فاضٍ = "+" بالدائرة و"انضمام" تحتها — الضغط يرسل طلب صعود
-                seat.innerHTML = '<i class="fas fa-plus voice-seat-plus"></i><span class="voice-seat-name voice-seat-join-label">انضمام</span>';
+                // ✅ بغرف المستخدمين: مقعد فاضٍ = "+" بالدائرة، والنص تحتها يختلف حسب من يشاهد —
+                // "دعوة" للمضيف (يفتح قائمة الحاضرين ليدعو أحدهم لهذا المقعد تحديداً)، و"انضمام"
+                // لبقية المستخدمين (يرسل طلب صعود ينتظر موافقة المضيف)
+                const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'انضمام';
+                seat.innerHTML = `<i class="fas fa-plus voice-seat-plus"></i><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
             } else {
                 seat.innerHTML = i;
             }
@@ -2294,10 +2391,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     // وليس جلوساً فورياً — القرار للمضيف
                     sendSeatJoinRequest();
                 } else if (!isLocked && currentRoomMyRole === 'host') {
-                    // 🐛 إصلاح: المضيف ثابت دائماً على مقعده رقم 1 بغرفته المباشرة — الضغط على أي
-                    // مقعد فاضٍ آخر كان يستدعي joinVoiceSeat فينضم له أيضاً (لأن السيرفر لا يُحرِّر
-                    // مقعد المضيف تلقائياً)، فتظهر صورته مستنسخة على أكثر من مقعد بنفس اللحظة
-                    return;
+                    // 🐛 المضيف ثابت دائماً على مقعده رقم 1 بغرفته المباشرة — لا يقدر "ينضم" لمقعد
+                    // آخر بنفسه (كان يُسبّب استنساخه على أكثر من مقعد). الضغط على مقعد فاضٍ يفتح
+                    // له بدلاً من ذلك قائمة الحاضرين ليدعو أحدهم لهذا المقعد تحديداً
+                    showInviteToSeatSheet(roomId, i);
                 } else if (!isLocked) {
                     // ✅ كلمة مرور الغرفة تُتحقق منها فقط عند الدخول للغرفة نفسها، لا تُطلب مجدداً عند الجلوس
                     joinVoiceSeat(i);
@@ -5261,21 +5358,23 @@ function showXpGainAnimation(amount) {
         document.querySelector(`#hand-queue-list [data-user-id="${userId}"]`)?.remove();
     });
 
-    socket.on('you-were-invited-up', ({ roomId }) => {
-        if (roomId !== currentVoiceRoomId) return;
-        showNotification('وافق المضيف على طلبك — تم إصعادك للمقعد 🎤', 'success');
-    });
-
     socket.on('hand-raise-dismissed', ({ roomId }) => {
         myHandRaised = false;
         if (roomId === currentVoiceRoomId) updateHandRaiseUI();
         showNotification('تم رفض طلب الصعود من المضيف', 'info');
     });
 
-    socket.on('you-were-invited-up', ({ roomId }) => {
-        if (roomId === currentVoiceRoomId) {
-            document.getElementById('cancel-join-request-modal')?.remove();
-        }
+    // ✅ دعوة المضيف لمقعد محدد — تُعرض دائماً بغض النظر عن الشاشة المفتوحة حالياً (قد تصل
+    // وأنت مُصغِّر الغرفة)، وينتظر السيرفر قراري الصريح (قبول/رفض) قبل أي إجلاس فعلي
+    socket.on('seat-invite-received', (payload) => {
+        document.getElementById('cancel-join-request-modal')?.remove();
+        showSeatInviteReceivedModal(payload);
+    });
+
+    // ✅ إشعار سريع للمضيف من الأسفل (أسلوب تطبيقات الجوال) عند رفض الدعوة — يذكّره بمهلة
+    // إعادة المحاولة بدل تركه يخمّن لماذا لم يظهر الشخص على المقعد
+    socket.on('seat-invite-declined', ({ targetUsername, cooldownSeconds }) => {
+        showBottomToast(`${targetUsername} رفض الدعوة — يمكنك إعادة المحاولة خلال ${cooldownSeconds || 26} ثانية`, 'fa-user-xmark');
     });
 
     // =====================================================
@@ -5311,6 +5410,34 @@ function showXpGainAnimation(amount) {
                 showUserProfileSheet(currentVoiceRoomId, null, btn.dataset.userId, btn.dataset.username);
             });
         });
+
+        // ✅ نفس مصدر البيانات، تصفية وسلوك مختلفان: ورقة "دعوة لمقعد" تستثني من هم جالسون
+        // فعلياً على مقعد آخر بالغرفة، والضغط يرسل دعوة صريحة بدل فتح الملف الشخصي
+        const pickerModal = document.getElementById('seat-invite-picker-modal');
+        const pickerList = document.getElementById('seat-invite-picker-list');
+        if (pickerModal && pickerList && roomId === currentVoiceRoomId) {
+            const seatedIds = new Set(Array.from(document.querySelectorAll('#voice-chat-grid [data-user-id]')).map(el => el.dataset.userId));
+            const invitable = viewers.filter(v => !seatedIds.has(v.id));
+            if (invitable.length === 0) {
+                pickerList.innerHTML = '<p class="text-center text-xs text-gray-500 py-8">لا يوجد أحد متاح للدعوة حالياً</p>';
+            } else {
+                pickerList.innerHTML = invitable.map(v => `
+                    <button data-user-id="${v.id}" data-username="${escapeHtml(v.username)}" class="room-viewer-row w-full flex items-center gap-2.5 rounded-xl p-2 text-right">
+                        <img src="${v.profileImage}" class="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-1 ring-white/10">
+                        <span class="text-sm font-medium truncate flex-1">${escapeHtml(v.username)}</span>
+                        <i class="fas fa-user-plus text-[11px] text-purple-400"></i>
+                    </button>
+                `).join('');
+                pickerList.querySelectorAll('.room-viewer-row').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const seatNumber = parseInt(pickerModal.dataset.seatNumber);
+                        socket.emit('host-invite-to-seat', { roomId: currentVoiceRoomId, targetUserId: btn.dataset.userId, seatNumber });
+                        pickerModal.remove();
+                        showNotification(`تم إرسال الدعوة لـ ${btn.dataset.username}`, 'success');
+                    });
+                });
+            }
+        }
     });
 
     // =====================================================
@@ -5994,6 +6121,23 @@ function showFloatingAlert(message, icon = 'fa-check-circle', color = 'bg-green-
     setTimeout(() => {
         alertElement.remove();
     }, 1900);
+}
+
+// ✅ إشعار عائم من أسفل الشاشة — بالضبط أسلوب Toast تطبيقات الجوال (Android/iOS)، بعكس
+// showNotification/showFloatingAlert اللتين تظهران أعلى/منتصف الشاشة. يُكدَّس فوق بعضه لو
+// وصل أكثر من إشعار بنفس اللحظة بدل أن يتراكب ويُخفي بعضه بعضاً
+function showBottomToast(message, icon = 'fa-info-circle') {
+    const stacked = document.querySelectorAll('.bottom-toast').length;
+    const el = document.createElement('div');
+    el.className = 'bottom-toast';
+    el.style.setProperty('--toast-offset', `${stacked * 52}px`);
+    el.innerHTML = `<i class="fas ${icon}"></i><span>${escapeHtml(message)}</span>`;
+    document.body.appendChild(el);
+    setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transform = 'translate(-50%, 16px)';
+        setTimeout(() => el.remove(), 300);
+    }, 3600);
 }
 
         // --- ✅ دالة جديدة: عرض ملفي الشخصي (مختصر) من قائمة "المزيد" ---
