@@ -1308,7 +1308,7 @@ socket.on('refreshBlockData', async () => {
                 if (seat.isLocked) return socket.emit('seat-error', 'هذا المقعد مقفل حالياً');
                 const isAdminSeat = seatNum <= room.adminSeatCount;
 
-                const targetUser = await User.findById(targetUserId).select('isAdmin username profileImage socketId');
+                const targetUser = await User.findById(targetUserId).select('isAdmin username profileImage activeFrameClass socketId');
                 if (!targetUser) return;
                 if (isAdminSeat && !targetUser.isAdmin) {
                     return socket.emit('seat-error', 'هذا المقعد محجوز للإدارة فقط');
@@ -1318,6 +1318,40 @@ socket.on('refreshBlockData', async () => {
                 }
 
                 const finalRoomId = room.slug === 'main' ? 'main' : room._id.toString();
+
+                // ✅ لو هذا الشخص رافع يده أصلاً (طلب الصعود بنفسه)، فموافقة المضيف هنا هي
+                // "قبول طلبه" لا "دعوة جديدة" — طلبه هو نفسه القبول، فيُجلَس مباشرة بلا أي
+                // نافذة قبول/رفض إضافية له (كانت تُحس غريبة: هو من طلب أصلاً!). آلية القبول/الرفض
+                // الصريحة تبقى فقط للدعوة التي يبدأها المضيف بنفسه لشخص لم يطلب شيئاً
+                const isApprovingRaisedHand = room.handRaises.some(h => h.user.toString() === targetUserId);
+                if (isApprovingRaisedHand) {
+                    await VoiceRoom.releaseUserSeatEverywhere(targetUserId);
+                    const updatedRoom = await VoiceRoom.findOneAndUpdate(
+                        { _id: room._id, seats: { $elemMatch: { seatNumber: seatNum, user: null, isLocked: false } } },
+                        {
+                            $set: { 'seats.$.user': targetUserId, 'seats.$.joinedAt': new Date(), 'seats.$.isMuted': false },
+                            $pull: { handRaises: { user: targetUserId } },
+                            $currentDate: { lastActivityAt: true }
+                        },
+                        { new: true }
+                    );
+                    if (!updatedRoom) {
+                        return socket.emit('seat-error', 'هذا المقعد محجوز بالفعل أو مقفل');
+                    }
+                    io.emit('user-joined-seat', {
+                        roomId: finalRoomId,
+                        seatNumber: seatNum,
+                        userId: targetUserId,
+                        username: targetUser.username,
+                        profileImage: targetUser.profileImage,
+                        activeFrameClass: targetUser.activeFrameClass,
+                        isMuted: false
+                    });
+                    io.to(`room-chat-${finalRoomId}`).emit('hand-raise-removed', { roomId: finalRoomId, userId: targetUserId });
+                    io.to(targetUser.socketId).emit('you-were-invited-up', { roomId: finalRoomId, seatNumber: seatNum });
+                    return;
+                }
+
                 const cooldownKey = `${finalRoomId}:${targetUserId}`;
 
                 // 🛡️ تهدئة 26 ثانية بعد رفض صريح لنفس الشخص — يمنع إزعاجه بدعوة متكررة فوراً

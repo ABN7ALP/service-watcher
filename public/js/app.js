@@ -5433,11 +5433,19 @@ function showXpGainAnimation(amount) {
         showNotification('تم رفض طلب الصعود من المضيف', 'info');
     });
 
-    // ✅ دعوة المضيف لمقعد محدد — تُعرض دائماً بغض النظر عن الشاشة المفتوحة حالياً (قد تصل
-    // وأنت مُصغِّر الغرفة)، وينتظر السيرفر قراري الصريح (قبول/رفض) قبل أي إجلاس فعلي
+    // ✅ دعوة المضيف لمقعد محدد (شخص لم يطلب شيئاً بنفسه) — تُعرض دائماً بغض النظر عن الشاشة
+    // المفتوحة حالياً (قد تصل وأنت مُصغِّر الغرفة)، وينتظر السيرفر قراري الصريح قبل أي إجلاس
     socket.on('seat-invite-received', (payload) => {
         document.getElementById('cancel-join-request-modal')?.remove();
         showSeatInviteReceivedModal(payload);
+    });
+
+    // ✅ المضيف وافق على طلب صعودي أنا نفسي (رفعت يدي وطلبت) — إجلاس مباشر بلا أي نافذة
+    // قبول/رفض إضافية (طلبي هو نفسه موافقتي)، فقط تأكيد سريع
+    socket.on('you-were-invited-up', ({ roomId }) => {
+        document.getElementById('cancel-join-request-modal')?.remove();
+        if (roomId !== currentVoiceRoomId) return;
+        showNotification('وافق المضيف على طلبك — تم إصعادك للمقعد 🎤', 'success');
     });
 
     // ✅ إشعار سريع للمضيف من الأسفل (أسلوب تطبيقات الجوال) عند رفض الدعوة — يذكّره بمهلة
