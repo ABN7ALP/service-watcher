@@ -1133,6 +1133,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (isManager) {
             items.push({ action: 'hand-queue', icon: 'fa-infinity', label: 'طلبات الصعود', color: 'text-purple-400', badge: roomHandQueue.length });
         }
+        // ✅ تحدي PK — انتقل هنا من نافذة الإعدادات (المضيف فقط، وليس المسؤولين — قرار مصيري للغرفة)
+        if (currentRoomMyRole === 'host' && currentVoiceRoomId !== 'main') {
+            items.push({ action: 'pk-challenge', icon: 'fa-bolt', label: 'تحدي PK', color: 'text-orange-400' });
+        }
         // ✅ تنظيف/قفل الدردشة — للمضيف/المسؤولين بغرف المستخدمين فقط (لا الرسمية)
         if (isManager && currentVoiceRoomId !== 'main') {
             items.push({ action: 'clear-chat', icon: 'fa-broom', label: 'تنظيف الدردشة', color: 'text-gray-300' });
@@ -1191,6 +1195,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     toggleVoiceMute();
                 } else if (action === 'hand-queue') {
                     if (currentVoiceRoomId) showHandQueueSheet(currentVoiceRoomId);
+                } else if (action === 'pk-challenge') {
+                    if (currentVoiceRoomId) showPkChallengeModal({ id: currentVoiceRoomId });
                 } else if (action === 'clear-chat') {
                     showClearChatConfirm();
                 } else if (action === 'toggle-chat-lock') {
@@ -1727,6 +1733,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentRoomBackgroundImage = null;
     let currentRoomBackgroundExpiresAt = null;
     let currentRoomDescription = '';
+    let currentRoomHostUsername = ''; // ✅ لعرضه ببطاقة معلومات الغرفة (المالك)
+    let currentRoomHostProfileImage = '';
+    let currentRoomFollowersCount = 0;
+    let currentRoomIsFollowing = false;
+    let currentRoomCode = null; // ✅ آيدي الغرفة القصير القابل للبحث — يُعرض برأس الغرفة
+    let currentRoomCoverImage = null;
 
     // ✅ يطبّق خلفية الغرفة خلف كل شيء (المقاعد/الدردشة/الأيقونات) لكن داخل إطارها فقط
     function applyRoomBackground(url) {
@@ -1799,25 +1811,33 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         currentRoomChatLocked = false;
         currentRoomBackgroundImage = null;
         currentRoomDescription = '';
+        currentRoomHostUsername = room.host?.username || '';
+        currentRoomHostProfileImage = room.host?.profileImage || '';
+        currentRoomFollowersCount = 0;
+        currentRoomIsFollowing = false;
+        currentRoomCode = room.roomCode || null;
+        currentRoomCoverImage = room.coverImage || null;
         myHandRaised = false;
         roomHandQueue = [];
         currentPkBattle = null;
         enterFullscreenRoomMode();
         mainContent.innerHTML = `
-            <div class="flex justify-between items-center mb-3">
-                <div class="flex items-center gap-2 min-w-0">
-                    <button id="back-to-rooms-btn-custom" class="w-8 h-8 rounded-full bg-gray-700/60 hover:bg-gray-600 flex items-center justify-center text-gray-300 flex-shrink-0" title="رجوع لقائمة الغرف">
-                        <i class="fas fa-arrow-right"></i>
-                    </button>
-                    <h2 class="text-lg md:text-xl font-bold truncate">${room.isPrivate ? '<i class="fas fa-lock text-amber-400 text-sm"></i> ' : ''}${escapeHtml(room.name)}</h2>
-                </div>
+            <div id="room-header-bar" class="flex justify-between items-center mb-3 gap-2">
+                <button id="room-info-trigger-btn" class="room-info-trigger" title="معلومات الغرفة">
+                    <img id="room-info-cover-img" src="${room.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-cover-img">
+                    <span class="min-w-0 flex flex-col items-start">
+                        <span id="room-info-name" class="room-info-name">${room.isPrivate ? '<i class="fas fa-lock text-amber-400 text-[10px]"></i> ' : ''}${escapeHtml(room.name)}</span>
+                        <span id="room-info-code" class="room-info-code">${room.roomCode ? `ID: ${room.roomCode}` : ''}</span>
+                    </span>
+                </button>
+                <button id="room-header-follow-btn" class="hidden follow-room-btn follow-room-btn-compact js-room-follow-btn" data-following="0" title="متابعة الغرفة">
+                    <i class="fas fa-plus"></i>
+                </button>
+                <div class="flex-1"></div>
                 <div class="flex items-center gap-2 flex-shrink-0">
                     <button id="room-viewer-count-btn" class="room-viewer-count-btn" title="المشاهدون">
                         <span id="room-viewer-avatars" class="room-viewer-avatars"></span>
                         <span id="room-viewer-count-num">0</span>
-                    </button>
-                    <button id="room-settings-btn" class="hidden w-8 h-8 rounded-full bg-gray-700/60 hover:bg-gray-600 flex items-center justify-center text-gray-300" title="إعدادات الغرفة">
-                        <i class="fas fa-cog"></i>
                     </button>
                     <button id="room-end-broadcast-btn" class="hidden w-8 h-8 rounded-full bg-red-600/80 hover:bg-red-600 flex items-center justify-center text-white" title="إنهاء البث">
                         <i class="fas fa-times"></i>
@@ -1827,18 +1847,23 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
             ${renderRoomChatMarkup()}
         `;
-        // ✅ المضيف لا يقدر "يرجع" ببساطة — البث لسا شغّال؛ الرجوع بالنسبة له يعني إنهاء البث
-        // صراحة (نفس زر ✕)، وليس مجرد تنقّلاً عادياً كباقي الضيوف
-        document.getElementById('back-to-rooms-btn-custom').addEventListener('click', () => {
+        // ✅ الإغلاق/الرجوع لم يعد زراً مستقلاً — النقر على بطاقة معلومات الغرفة يفتح إعداداتها
+        // (للمضيف) أو معلوماتها (للضيف)؛ المضيف ينهي بثّه صراحة بزر ✕ لو أراد الخروج فعلياً
+        document.getElementById('room-info-trigger-btn').addEventListener('click', () => {
             if (currentRoomMyRole === 'host') {
-                showEndBroadcastConfirm(room.id);
+                showRoomSettingsModal(room);
             } else {
-                showRoomBrowserView();
+                showRoomInfoCard(room);
             }
         });
-        document.getElementById('room-settings-btn').addEventListener('click', () => showRoomSettingsModal(room));
+        document.getElementById('room-header-follow-btn').addEventListener('click', () => {
+            socket.emit(currentRoomIsFollowing ? 'unfollow-room' : 'follow-room', { roomId: room.id });
+        });
         document.getElementById('room-end-broadcast-btn').addEventListener('click', () => showEndBroadcastConfirm(room.id));
         document.getElementById('room-viewer-count-btn').addEventListener('click', () => showRoomViewersSheet(room.id));
+        // ✅ لا يوجد زر رجوع ظاهر بعد الآن — السحب لأسفل من رأس الغرفة (نفس أسلوب تطبيقات
+        // البث المباشر المعروفة) هو آلية الخروج البديلة على الهاتف؛ زر ✕ يبقى للمضيف صراحة
+        wireRoomHeaderSwipeToExit(document.getElementById('room-header-bar'), room);
         wireRoomChatUI();
 
         renderVoiceRoomSeats(room.id, room.seatCount, 0, room.isPrivate);
@@ -1846,6 +1871,45 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         updateVoiceControlBar();
         enterRoomChat(room.id);
     }
+
+    // ✅ سحب لأسفل من رأس الغرفة يخرج منها — بديل زر الرجوع المحذوف (أسلوب تطبيقات البث
+    // المباشر المعروفة). يُربط من جديد بكل دخول للغرفة (العنصر نفسه يُعاد إنشاؤه في كل مرة)
+    function wireRoomHeaderSwipeToExit(headerEl, room) {
+        if (!headerEl) return;
+        let startY = null;
+        headerEl.addEventListener('touchstart', (e) => {
+            if (e.touches.length !== 1) return;
+            startY = e.touches[0].clientY;
+        }, { passive: true });
+        headerEl.addEventListener('touchend', (e) => {
+            if (startY === null) return;
+            const delta = e.changedTouches[0].clientY - startY;
+            startY = null;
+            if (delta > 60) exitCurrentVoiceRoomView(room);
+        }, { passive: true });
+    }
+
+    // ✅ منطق الخروج الموحّد من الغرفة (سحب الهاتف/زر Escape بالكمبيوتر): المضيف يُسأل صراحة
+    // (بثّه لسا شغّال)، والضيف يرجع مباشرة لقائمة التصفح
+    function exitCurrentVoiceRoomView(room) {
+        if (currentRoomMyRole === 'host') {
+            showEndBroadcastConfirm(room.id);
+        } else {
+            showRoomBrowserView();
+        }
+    }
+
+    // ✅ زر Escape بالكمبيوتر — نفس دور السحب بالهاتف، لضمان وجود مخرج واضح لمستخدمي سطح
+    // المكتب أيضاً بعد حذف زر الرجوع الظاهر. يُسجَّل مرة واحدة فقط (وليس بكل دخول غرفة) ويقرأ
+    // الحالة الحالية من المتغيرات العامة مباشرة — يتجنب تراكم مستمعين مكررين بكل زيارة
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (!document.body.classList.contains('in-voice-room')) return;
+        // ✅ لو فيه نافذة/ورقة مفتوحة فوق الغرفة حالياً، اتركها هي من يُغلَق أولاً (لا نتجاوزها)
+        if (document.querySelector('[id$="-modal"], [id$="-sheet"], .modal-overlay.active')) return;
+        if (!currentVoiceRoomId) return;
+        exitCurrentVoiceRoomView({ id: currentVoiceRoomId });
+    });
 
     // ✅ زر ✕ بزاوية الغرفة — للمضيف فقط، يظهر تأكيداً قبل إنهاء البث فعلياً
     function showEndBroadcastConfirm(roomId) {
@@ -1949,6 +2013,55 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
     }
 
+    // ✅ بطاقة معلومات الغرفة — تظهر للضيوف عند الضغط على شريط الغرفة برأس الشاشة (بديل نافذة
+    // "من نحن" القديمة غير الموجودة أصلاً سابقاً): المالك، عدد المتابعين الحقيقي، ولفل الغرفة
+    // كمرجع بصري فقط لتطوير لاحق (لا قيمة فعلية له بعد)
+    function showRoomInfoCard(room) {
+        document.getElementById('room-info-card')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'room-info-card';
+        modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-3';
+        modal.innerHTML = `
+            <div class="room-info-card-sheet w-full md:max-w-sm text-white">
+                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-3 md:hidden flex-shrink-0"></div>
+                <div class="px-4 pb-5">
+                    <div class="flex items-center gap-3 mb-4">
+                        <img src="${currentRoomCoverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-card-cover">
+                        <div class="min-w-0">
+                            <p class="font-bold text-base truncate">${escapeHtml(room.name)}</p>
+                            <p class="text-[11px] text-gray-400">${currentRoomCode ? `ID: ${currentRoomCode}` : ''}</p>
+                        </div>
+                    </div>
+                    <div class="room-info-card-owner-row">
+                        <img src="${currentRoomHostProfileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-card-owner-img">
+                        <div class="min-w-0 flex-1">
+                            <p class="text-[10px] text-gray-500">مالك الغرفة</p>
+                            <p class="text-sm font-bold truncate">${escapeHtml(currentRoomHostUsername || '—')}</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 mt-3">
+                        <div class="room-info-stat-box">
+                            <p id="room-info-followers-count" class="room-info-stat-num">${currentRoomFollowersCount}</p>
+                            <p class="room-info-stat-label">متابع</p>
+                        </div>
+                        <div class="room-info-stat-box">
+                            <p class="room-info-stat-num text-amber-400">Lv.1</p>
+                            <p class="room-info-stat-label">لفل الغرفة (قريباً)</p>
+                        </div>
+                    </div>
+                    <button id="room-info-card-follow-btn" class="follow-room-btn js-room-follow-btn w-full justify-center mt-4" data-following="${currentRoomIsFollowing ? '1' : '0'}">
+                        ${currentRoomIsFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة'}
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'room-info-card') modal.remove(); });
+        modal.querySelector('#room-info-card-follow-btn').addEventListener('click', () => {
+            socket.emit(currentRoomIsFollowing ? 'unfollow-room' : 'follow-room', { roomId: room.id });
+        });
+    }
+
     // ✅ شاشة "انتهى البث المباشر" — تظهر لكل من كان بالغرفة لحظة إنهاء المضيف لبثّه. صورة
     // المضيف + زر متابعة خاص بالغرفة + مدة البث، وانتقال تلقائي خلال ثوانٍ قليلة لغرفة بث
     // أخرى عشوائية (أو رجوع لقائمة التصفح لو ما في غرف بث أخرى حالياً)
@@ -1973,7 +2086,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             <img src="${hostProfileImage}" class="w-24 h-24 rounded-full object-cover border-4 border-gray-700 shadow-2xl mb-4">
             <p class="text-lg font-bold mb-1">لقد انتهى البث المباشر</p>
             <p class="text-sm text-gray-400 mb-5">${escapeHtml(hostUsername)}</p>
-            <button id="follow-room-btn" data-following="${isFollowing ? '1' : '0'}" class="follow-room-btn ${isFollowing ? 'following' : ''} mb-6">
+            <button id="follow-room-btn" data-following="${isFollowing ? '1' : '0'}" class="follow-room-btn js-room-follow-btn ${isFollowing ? 'following' : ''} mb-6">
                 ${isFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة'}
             </button>
             <p class="text-xs text-gray-500">مدة البث: ${formatBroadcastDuration(durationSeconds || 0)}</p>
@@ -2351,16 +2464,36 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
             if (result.myRole) {
                 currentRoomMyRole = result.myRole;
-                const settingsBtn = document.getElementById('room-settings-btn');
-                if (settingsBtn) settingsBtn.classList.toggle('hidden', currentRoomMyRole !== 'host');
                 const endBroadcastBtn = document.getElementById('room-end-broadcast-btn');
                 if (endBroadcastBtn) endBroadcastBtn.classList.toggle('hidden', currentRoomMyRole !== 'host');
+                // ✅ زر المتابعة لا معنى له للمضيف بغرفته نفسها ولا بالغرفة الرسمية (بلا مالك) — يظهر للضيوف فقط
+                const headerFollowBtn = document.getElementById('room-header-follow-btn');
+                if (headerFollowBtn) headerFollowBtn.classList.toggle('hidden', currentRoomMyRole === 'host' || result.isOfficial);
                 // ✅ المضيف فتح غرفته وهي غير مباشرة حالياً — يبدأ جلسة بث جديدة تلقائياً وفورياً
                 if (currentRoomMyRole === 'host' && result.isLive === false) {
                     socket.emit('host-start-broadcast', { roomId });
                 }
             }
             currentRoomHostId = result.host?.id || result.host?._id || null;
+            currentRoomHostUsername = result.host?.username || currentRoomHostUsername;
+            currentRoomHostProfileImage = result.host?.profileImage || currentRoomHostProfileImage;
+            if (typeof result.followersCount === 'number') currentRoomFollowersCount = result.followersCount;
+            if (typeof result.isFollowing === 'boolean') currentRoomIsFollowing = result.isFollowing;
+            document.querySelectorAll('.js-room-follow-btn').forEach(btn => {
+                btn.dataset.following = currentRoomIsFollowing ? '1' : '0';
+                btn.innerHTML = currentRoomIsFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة';
+                btn.classList.toggle('following', currentRoomIsFollowing);
+            });
+            if (result.roomCode) {
+                currentRoomCode = result.roomCode;
+                const codeEl = document.getElementById('room-info-code');
+                if (codeEl) codeEl.textContent = `ID: ${result.roomCode}`;
+            }
+            if (result.coverImage) {
+                currentRoomCoverImage = result.coverImage;
+                const coverEl = document.getElementById('room-info-cover-img');
+                if (coverEl) coverEl.src = result.coverImage;
+            }
             if (result.moderators) currentRoomModerators = result.moderators;
             if (result.handRaises) roomHandQueue = result.handRaises;
             updateHandRaiseUI();
@@ -2412,59 +2545,47 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
         const modal = document.createElement('div');
         modal.id = 'room-settings-modal';
-        modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4';
+        modal.className = 'fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50 md:p-4';
         modal.innerHTML = `
-            <div class="bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-sm text-white max-h-[85vh] overflow-y-auto">
-                <h3 class="text-lg font-bold mb-4"><i class="fas fa-cog text-purple-400"></i> إعدادات الغرفة</h3>
-                <form id="room-settings-form" class="space-y-4">
-                    <div>
-                        <label class="text-sm">اسم الغرفة</label>
-                        <input type="text" name="name" value="${escapeHtml(room.name)}" maxlength="40" required class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
-                    </div>
-                    <div>
-                        <label class="text-sm">إعلان الغرفة (اختياري)</label>
-                        <input type="text" name="description" value="${escapeHtml(currentRoomDescription || '')}" maxlength="120" placeholder="اكتب وصفاً قصيراً للغرفة..." class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
-                    </div>
-                    <div class="flex items-center">
-                        <input type="checkbox" id="settings-isPrivate" name="isPrivate" ${room.isPrivate ? 'checked' : ''} class="w-4 h-4 rounded">
-                        <label for="settings-isPrivate" class="mr-2 text-sm">غرفة خاصة (بكلمة مرور)</label>
-                    </div>
-                    <div id="settings-password-field" class="${room.isPrivate ? '' : 'hidden'}">
-                        <label class="text-sm">${room.isPrivate ? 'كلمة مرور جديدة (اتركه فاضياً للإبقاء الحالية)' : 'كلمة المرور'}</label>
-                        <input type="password" name="password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1">
+            <div class="room-settings-panel bg-gray-800 md:rounded-xl rounded-t-2xl shadow-xl p-4 w-full md:max-w-sm text-white max-h-[80vh] overflow-y-auto">
+                <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mb-3 md:hidden flex-shrink-0"></div>
+                <h3 class="text-sm font-bold mb-3 flex items-center gap-2"><i class="fas fa-cog text-purple-400"></i> إعدادات الغرفة</h3>
+                <form id="room-settings-form" class="space-y-3">
+                    <div class="space-y-2">
+                        <input type="text" name="name" value="${escapeHtml(room.name)}" maxlength="40" required placeholder="اسم الغرفة" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
+                        <input type="text" name="description" value="${escapeHtml(currentRoomDescription || '')}" maxlength="120" placeholder="إعلان الغرفة (اختياري)" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
                     </div>
 
-                    <div class="flex items-center justify-between bg-gray-700/40 rounded-lg p-2.5">
-                        <span class="text-sm flex items-center gap-2"><i class="fas fa-lock text-amber-400"></i> قفل الغرفة</span>
-                        <input type="checkbox" id="settings-isLocked" ${currentRoomIsLocked ? 'checked' : ''} class="w-4 h-4 rounded">
+                    <div class="room-settings-section">
+                        <p class="room-settings-section-title">الخصوصية والوصول</p>
+                        <div class="flex items-center justify-between bg-gray-700/40 rounded-lg p-2.5">
+                            <span class="text-xs flex items-center gap-2"><i class="fas fa-key text-amber-400"></i> غرفة خاصة (بكلمة مرور)</span>
+                            <input type="checkbox" id="settings-isPrivate" name="isPrivate" ${room.isPrivate ? 'checked' : ''} class="w-4 h-4 rounded">
+                        </div>
+                        <div id="settings-password-field" class="${room.isPrivate ? '' : 'hidden'} mt-2">
+                            <input type="password" name="password" placeholder="${room.isPrivate ? 'كلمة مرور جديدة (اتركه فاضياً للإبقاء الحالية)' : 'كلمة المرور'}" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm">
+                        </div>
+                        <div class="flex items-center justify-between bg-gray-700/40 rounded-lg p-2.5 mt-2">
+                            <span class="text-xs flex items-center gap-2"><i class="fas fa-lock text-amber-400"></i> قفل الغرفة (لا يدخلها أحد جديد)</span>
+                            <input type="checkbox" id="settings-isLocked" ${currentRoomIsLocked ? 'checked' : ''} class="w-4 h-4 rounded">
+                        </div>
                     </div>
-                    <p class="text-[11px] text-gray-500 -mt-2">لن يستطيع أحد جديد الدخول للغرفة وهي مقفلة (عدا المسؤولين)</p>
 
-                    <div>
-                        <label class="text-sm block mb-1.5">خلفية الغرفة</label>
-                        <button type="button" id="open-bg-shop-btn" class="w-full bg-gray-700 hover:bg-gray-600 text-sm py-2.5 rounded-lg font-bold flex items-center justify-center gap-2">
-                            <i class="fas fa-image text-purple-400"></i> تغيير خلفية الغرفة
-                        </button>
+                    <div class="room-settings-section">
+                        <p class="room-settings-section-title">التخصيص</p>
+                        <div class="grid ${!room.isOfficial && nextSeatStep ? 'grid-cols-2' : 'grid-cols-1'} gap-2">
+                            <button type="button" id="open-bg-shop-btn" class="room-settings-mini-btn">
+                                <i class="fas fa-image text-purple-400"></i> الخلفية
+                            </button>
+                            ${!room.isOfficial && nextSeatStep ? `
+                            <button type="button" id="settings-increase-seats-btn" data-next="${nextSeatStep}" class="room-settings-mini-btn" title="لا يمكن التراجع بعد الزيادة">
+                                <i class="fas fa-chair text-emerald-400"></i> ${room.seatCount} → ${nextSeatStep} مقعد
+                            </button>` : ''}
+                        </div>
                     </div>
 
-                    ${!room.isOfficial ? `
-                    <div>
-                        <button type="button" id="open-pk-challenge-btn" class="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-sm py-2.5 rounded-lg font-bold flex items-center justify-center gap-2">
-                            <i class="fas fa-bolt"></i> تحدي غرفة أخرى (PK)
-                        </button>
-                    </div>` : ''}
-
-                    ${!room.isOfficial && nextSeatStep ? `
-                    <div>
-                        <label class="text-sm block mb-1.5">عدد المقاعد الحالي: ${room.seatCount}</label>
-                        <button type="button" id="settings-increase-seats-btn" data-next="${nextSeatStep}" class="w-full bg-gray-700 hover:bg-gray-600 text-sm py-2 rounded-lg font-bold">
-                            <i class="fas fa-plus"></i> زيادة إلى ${nextSeatStep} مقعد
-                        </button>
-                        <p class="text-[11px] text-gray-500 mt-1">لا يمكن التراجع بعد الزيادة</p>
-                    </div>` : ''}
-
-                    <div>
-                        <label class="text-sm block mb-1.5">المسؤولون المساعدون</label>
+                    <div class="room-settings-section">
+                        <p class="room-settings-section-title">المسؤولون المساعدون</p>
                         <div id="settings-moderators-list" class="space-y-1.5">
                             ${currentRoomModerators.length === 0
                                 ? '<p class="text-xs text-gray-500">لا يوجد مسؤولون بعد — عيّن أحداً من ملفه الشخصي داخل الغرفة</p>'
@@ -2480,9 +2601,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         </div>
                     </div>
 
-                    <div class="flex justify-end gap-3 pt-2">
-                        <button type="button" id="cancel-room-settings" class="bg-gray-600 hover:bg-gray-500 text-white py-2 px-4 rounded-lg">إلغاء</button>
-                        <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg">حفظ</button>
+                    <div class="flex justify-end gap-3 pt-1">
+                        <button type="button" id="cancel-room-settings" class="bg-gray-600 hover:bg-gray-500 text-white py-2 px-4 rounded-lg text-sm">إلغاء</button>
+                        <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg text-sm">حفظ</button>
                     </div>
                 </form>
             </div>
@@ -2496,10 +2617,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
 
         modal.querySelector('#open-bg-shop-btn').addEventListener('click', () => showRoomBackgroundShopModal(room));
-        modal.querySelector('#open-pk-challenge-btn')?.addEventListener('click', () => {
-            modal.remove();
-            showPkChallengeModal(room);
-        });
 
         // ✅ زيادة المقاعد فورية (منفصلة عن باقي الحفظ — تغيير بنيوي لا رجعة فيه)
         modal.querySelector('#settings-increase-seats-btn')?.addEventListener('click', async (e) => {
@@ -2578,8 +2695,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 applyRoomBackground(currentRoomBackgroundImage);
                 modal.remove();
                 showNotification('تم حفظ الإعدادات ✅', 'success');
-                const h2 = mainContent.querySelector('h2');
-                if (h2) h2.textContent = data.name;
+                const nameEl = document.getElementById('room-info-name');
+                if (nameEl) nameEl.innerHTML = `${data.isPrivate ? '<i class="fas fa-lock text-amber-400 text-[10px]"></i> ' : ''}${escapeHtml(data.name)}`;
             } catch (error) {
                 showNotification('حدث خطأ، حاول مجدداً', 'error');
                 submitBtn.disabled = false;
@@ -5156,13 +5273,19 @@ function showXpGainAnimation(amount) {
     });
 
     socket.on('room-follow-updated', ({ isFollowing, followersCount }) => {
-        const btn = document.getElementById('follow-room-btn');
-        if (!btn) return;
-        btn.dataset.following = isFollowing ? '1' : '0';
-        btn.innerHTML = isFollowing
-            ? '<i class="fas fa-check"></i> متابَع'
-            : '<i class="fas fa-plus"></i> متابعة';
-        btn.classList.toggle('following', isFollowing);
+        currentRoomIsFollowing = isFollowing;
+        if (typeof followersCount === 'number') currentRoomFollowersCount = followersCount;
+        // ✅ يحدّث كل نسخ زر المتابعة الحالية بآن واحد (رأس الغرفة + بطاقة المعلومات + شاشة
+        // انتهاء البث) — قد يكون أكثر من واحد ظاهراً بنفس اللحظة حسب الشاشة المفتوحة
+        document.querySelectorAll('.js-room-follow-btn').forEach(btn => {
+            btn.dataset.following = isFollowing ? '1' : '0';
+            btn.innerHTML = isFollowing
+                ? '<i class="fas fa-check"></i> متابَع'
+                : '<i class="fas fa-plus"></i> متابعة';
+            btn.classList.toggle('following', isFollowing);
+        });
+        const countEl = document.getElementById('room-info-followers-count');
+        if (countEl && typeof followersCount === 'number') countEl.textContent = followersCount;
     });
 
     // ✅ إعلان هدية بالغرفة — فقاعة ذهبية بالدردشة + شريط جانبي + أيقونة طائرة نحو المستلم

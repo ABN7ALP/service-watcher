@@ -206,6 +206,7 @@ exports.getRoomById = async (req, res) => {
             description: room.description,
             category: room.category,
             roomCode: room.roomCode || null,
+            coverImage: room.coverImage,
             host: room.host,
             isOfficial: room.isOfficial,
             isPrivate: room.isPrivate,
