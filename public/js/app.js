@@ -1195,8 +1195,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // ✅ زر "المزيد" — يجمّع الموسيقى/الرسائل/التفاعل بقائمة واحدة بدل صف أيقونات مزدحم
         document.getElementById('room-chat-more-btn')?.addEventListener('click', showRoomChatMoreSheet);
 
-        // ✅ زر الصعود (∞) — يرسل طلباً، وإن كان طلب مُرسَل أصلاً يعرض نافذة إلغائه
-        document.getElementById('room-join-request-btn')?.addEventListener('click', sendSeatJoinRequest);
+        // ✅ زر (∞): للمضيف/المسؤول يفتح قائمة طلبات الصعود المعلّقة (لا يرسل طلباً لنفسه أبداً)،
+        // ولبقية المستخدمين يرسل طلب صعود — وإن كان طلب مُرسَل أصلاً يعرض نافذة إلغائه
+        document.getElementById('room-join-request-btn')?.addEventListener('click', () => {
+            const isManager = currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator';
+            if (isManager) {
+                if (currentVoiceRoomId) showHandQueueSheet(currentVoiceRoomId);
+            } else {
+                sendSeatJoinRequest();
+            }
+        });
 
         // ✅ زر مغادرة المقعد — انتقل من الشريط العائم القديم لهنا (السيرفر يرفضه للمضيف أصلاً)
         document.getElementById('room-leave-seat-btn')?.addEventListener('click', leaveVoiceSeat);
@@ -1336,25 +1344,38 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             badge.classList.toggle('hidden', total === 0);
         }
 
-        // ✅ زر نابض ظاهر برأس الغرفة مباشرة للمضيف/المسؤول عند وجود طلبات صعود — بدل الاكتفاء
-        // بشارة مدفونة داخل قائمة "المزيد" التي يحتاج فتحها أولاً ليلاحظها
-        const handQueueBtn = document.getElementById('room-hand-queue-btn');
-        if (handQueueBtn) {
-            const hasRequests = isManager && roomHandQueue.length > 0;
-            handQueueBtn.classList.toggle('hidden', !hasRequests);
-            const handQueueBadge = document.getElementById('room-hand-queue-badge');
-            if (handQueueBadge) {
-                handQueueBadge.textContent = roomHandQueue.length > 9 ? '9+' : String(roomHandQueue.length);
-                handQueueBadge.classList.toggle('hidden', roomHandQueue.length === 0);
-            }
-        }
-
         const isSeatedHere = myVoiceSeatNumber && myVoiceRoomId === currentVoiceRoomId;
         const isMainRoom = currentVoiceRoomId === 'main';
+        // ✅ نفس زر (∞) بشريط الغرفة يتحوّل دوره حسب من يشاهده: للمضيف/المسؤول يصير مؤشر
+        // طلبات الصعود (يظهر فقط عند وجود طلب فعلي، مع وميض بسيط)، ولبقية المستخدمين يبقى
+        // بدوره الأصلي "اطلب الصعود" — بدل زر منفصل جديد
         const joinBtn = document.getElementById('room-join-request-btn');
         if (joinBtn) {
-            joinBtn.classList.toggle('hidden', isSeatedHere || isManager || isMainRoom);
-            joinBtn.classList.toggle('join-request-pending', myHandRaised);
+            let badge = joinBtn.querySelector('.room-chat-mini-badge');
+            if (isManager) {
+                const hasRequests = !isMainRoom && roomHandQueue.length > 0;
+                joinBtn.classList.toggle('hidden', !hasRequests);
+                joinBtn.classList.toggle('room-hand-queue-blink', hasRequests);
+                joinBtn.classList.remove('join-request-pending');
+                joinBtn.title = 'طلبات الصعود';
+                if (hasRequests) {
+                    if (!badge) {
+                        badge = document.createElement('span');
+                        badge.className = 'room-chat-mini-badge';
+                        joinBtn.appendChild(badge);
+                    }
+                    badge.textContent = roomHandQueue.length > 9 ? '9+' : String(roomHandQueue.length);
+                    badge.classList.remove('hidden');
+                } else {
+                    badge?.classList.add('hidden');
+                }
+            } else {
+                joinBtn.classList.remove('room-hand-queue-blink');
+                badge?.classList.add('hidden');
+                joinBtn.classList.toggle('hidden', isSeatedHere || isMainRoom);
+                joinBtn.classList.toggle('join-request-pending', myHandRaised);
+                joinBtn.title = 'اطلب الصعود للمايك';
+            }
         }
         const leaveBtn = document.getElementById('room-leave-seat-btn');
         if (leaveBtn) {
@@ -1482,26 +1503,79 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ ضغط المضيف على مقعد فاضٍ يفتح هذي الورقة: قائمة الحاضرين بالغرفة (غير الجالسين
     // فعلياً على مقعد آخر) ليدعو أحدهم صراحة لهذا المقعد تحديداً — القبول من طرفه (وليس
     // إجلاساً فورياً)؛ نفس مصدر بيانات ورقة "المشاهدون" (room-viewers-list) بتصفية مختلفة
+    let seatInvitePickerViewers = null; // ✅ نتيجة آخر get-room-viewers — تُستخدم لتصفية البحث محلياً بلا طلب سيرفر جديد بكل حرف
     function showInviteToSeatSheet(roomId, seatNumber) {
         document.getElementById('seat-invite-picker-modal')?.remove();
+        seatInvitePickerViewers = null;
         const modal = document.createElement('div');
         modal.id = 'seat-invite-picker-modal';
         modal.dataset.seatNumber = seatNumber;
         modal.className = 'fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50 p-3';
         modal.innerHTML = `
-            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl w-full md:max-w-sm text-white max-h-[70vh] flex flex-col">
+            <div class="seat-invite-picker-sheet w-full md:max-w-sm text-white flex flex-col">
                 <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2.5 mb-2 md:hidden flex-shrink-0"></div>
-                <h3 class="text-sm font-bold px-4 pt-1 pb-2 flex items-center gap-2 flex-shrink-0">
-                    <i class="fas fa-user-plus text-purple-400"></i> ادعُ أحداً للمقعد ${seatNumber}
-                </h3>
+                <div class="px-4 pt-1 pb-2.5 flex-shrink-0">
+                    <h3 class="text-sm font-bold flex items-center gap-2 mb-2.5">
+                        <i class="fas fa-user-plus text-purple-400"></i> ادعُ أحداً للمقعد ${seatNumber}
+                    </h3>
+                    <div class="seat-invite-search-wrap">
+                        <i class="fas fa-magnifying-glass"></i>
+                        <input id="seat-invite-search" type="text" placeholder="ابحث بالاسم..." autocomplete="off">
+                    </div>
+                </div>
                 <div id="seat-invite-picker-list" class="space-y-1.5 px-3 pb-4 overflow-y-auto">
-                    <div class="text-center text-gray-400 py-8"><i class="fas fa-spinner fa-spin"></i></div>
+                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
                 </div>
             </div>
         `;
         document.body.appendChild(modal);
         modal.addEventListener('click', (e) => { if (e.target.id === 'seat-invite-picker-modal') modal.remove(); });
+        modal.querySelector('#seat-invite-search').addEventListener('input', (e) => {
+            renderSeatInvitePickerRows(e.target.value.trim());
+        });
         socket.emit('get-room-viewers', { roomId });
+    }
+
+    // ✅ يستثني من هم جالسون فعلياً على مقعد آخر بالغرفة، ويطبّق فلتر البحث الحالي (إن وُجد)
+    function renderSeatInvitePickerList(viewers) {
+        seatInvitePickerViewers = viewers;
+        const searchInput = document.getElementById('seat-invite-search');
+        renderSeatInvitePickerRows(searchInput ? searchInput.value.trim() : '');
+    }
+
+    function renderSeatInvitePickerRows(searchTerm) {
+        const pickerModal = document.getElementById('seat-invite-picker-modal');
+        const pickerList = document.getElementById('seat-invite-picker-list');
+        if (!pickerModal || !pickerList || !seatInvitePickerViewers) return;
+
+        const seatedIds = new Set(Array.from(document.querySelectorAll('#voice-chat-grid [data-user-id]')).map(el => el.dataset.userId));
+        const term = (searchTerm || '').toLowerCase();
+        const invitable = seatInvitePickerViewers.filter(v =>
+            !seatedIds.has(v.id) && (!term || v.username.toLowerCase().includes(term))
+        );
+
+        if (invitable.length === 0) {
+            pickerList.innerHTML = `<p class="text-center text-xs text-gray-500 py-10">${term ? 'لا نتائج مطابقة' : 'لا يوجد أحد متاح للدعوة حالياً'}</p>`;
+            return;
+        }
+
+        pickerList.innerHTML = invitable.map(v => `
+            <div class="seat-invite-picker-row">
+                <img src="${v.profileImage}" class="seat-invite-picker-avatar">
+                <span class="seat-invite-picker-name">${escapeHtml(v.username)}</span>
+                <button type="button" class="seat-invite-picker-btn" data-user-id="${v.id}" data-username="${escapeHtml(v.username)}">
+                    <i class="fas fa-paper-plane"></i> دعوة
+                </button>
+            </div>
+        `).join('');
+        pickerList.querySelectorAll('.seat-invite-picker-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const seatNumber = parseInt(pickerModal.dataset.seatNumber);
+                socket.emit('host-invite-to-seat', { roomId: currentVoiceRoomId, targetUserId: btn.dataset.userId, seatNumber });
+                pickerModal.remove();
+                showNotification(`تم إرسال الدعوة لـ ${btn.dataset.username}`, 'success');
+            });
+        });
     }
 
     // ✅ نافذة أنيقة تصل للمدعو عند دعوة المضيف له لمقعد محدد — قبول/رفض صريحان، لا إجلاس
@@ -2012,10 +2086,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </button>
                 <div class="flex-1"></div>
                 <div class="flex items-center gap-2 flex-shrink-0">
-                    <button id="room-hand-queue-btn" class="hidden room-hand-queue-btn" title="طلبات الصعود">
-                        <i class="fas fa-hand-paper"></i>
-                        <span id="room-hand-queue-badge" class="room-hand-queue-badge hidden">0</span>
-                    </button>
                     <button id="room-power-btn" class="w-8 h-8 rounded-full bg-gray-700/60 hover:bg-gray-600 flex items-center justify-center text-gray-300" title="خيارات الخروج">
                         <i class="fas fa-power-off"></i>
                     </button>
@@ -2045,7 +2115,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
         document.getElementById('room-power-btn').addEventListener('click', () => showRoomExitOptionsSheet(room));
         document.getElementById('room-viewer-count-btn').addEventListener('click', () => showRoomViewersSheet(room.id));
-        document.getElementById('room-hand-queue-btn').addEventListener('click', () => showHandQueueSheet(room.id));
         // ✅ لا يوجد زر رجوع ظاهر بعد الآن — السحب لأسفل من رأس الغرفة (نفس أسلوب تطبيقات
         // البث المباشر المعروفة) هو آلية الخروج البديلة على الهاتف؛ زر ✕ يبقى للمضيف صراحة
         wireRoomHeaderSwipeToExit(document.getElementById('room-header-bar'), room);
@@ -5410,34 +5479,15 @@ function showXpGainAnimation(amount) {
                 showUserProfileSheet(currentVoiceRoomId, null, btn.dataset.userId, btn.dataset.username);
             });
         });
+    });
 
-        // ✅ نفس مصدر البيانات، تصفية وسلوك مختلفان: ورقة "دعوة لمقعد" تستثني من هم جالسون
-        // فعلياً على مقعد آخر بالغرفة، والضغط يرسل دعوة صريحة بدل فتح الملف الشخصي
-        const pickerModal = document.getElementById('seat-invite-picker-modal');
-        const pickerList = document.getElementById('seat-invite-picker-list');
-        if (pickerModal && pickerList && roomId === currentVoiceRoomId) {
-            const seatedIds = new Set(Array.from(document.querySelectorAll('#voice-chat-grid [data-user-id]')).map(el => el.dataset.userId));
-            const invitable = viewers.filter(v => !seatedIds.has(v.id));
-            if (invitable.length === 0) {
-                pickerList.innerHTML = '<p class="text-center text-xs text-gray-500 py-8">لا يوجد أحد متاح للدعوة حالياً</p>';
-            } else {
-                pickerList.innerHTML = invitable.map(v => `
-                    <button data-user-id="${v.id}" data-username="${escapeHtml(v.username)}" class="room-viewer-row w-full flex items-center gap-2.5 rounded-xl p-2 text-right">
-                        <img src="${v.profileImage}" class="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-1 ring-white/10">
-                        <span class="text-sm font-medium truncate flex-1">${escapeHtml(v.username)}</span>
-                        <i class="fas fa-user-plus text-[11px] text-purple-400"></i>
-                    </button>
-                `).join('');
-                pickerList.querySelectorAll('.room-viewer-row').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        const seatNumber = parseInt(pickerModal.dataset.seatNumber);
-                        socket.emit('host-invite-to-seat', { roomId: currentVoiceRoomId, targetUserId: btn.dataset.userId, seatNumber });
-                        pickerModal.remove();
-                        showNotification(`تم إرسال الدعوة لـ ${btn.dataset.username}`, 'success');
-                    });
-                });
-            }
-        }
+    // 🐛 إصلاح: ورقة "دعوة لمقعد" كانت تعلَق على التحميل دائماً — كانت مبنية كفرع إضافي
+    // داخل مستمع room-viewers-list أعلاه، لكن ذاك المستمع يخرج مبكراً (return) بمجرد عدم
+    // وجود عنصر ورقة "المشاهدون" نفسها بالـ DOM (وهي بالضبط غير موجودة وقت فتح ورقة الدعوة)،
+    // فلا يصل التنفيذ للفرع الجديد إطلاقاً. مستمع مستقل تماماً هنا يحل المشكلة جذرياً
+    socket.on('room-viewers-list', ({ roomId, viewers }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        renderSeatInvitePickerList(viewers);
     });
 
     // =====================================================
