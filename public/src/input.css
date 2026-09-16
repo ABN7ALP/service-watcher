@@ -716,6 +716,117 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     background: rgba(255,255,255,0.08);
     color: #d1d5db;
 }
+/* ✅ نسخة مصغّرة من زر المتابعة — برأس الغرفة نفسها (بدل زر الرجوع المحذوف) */
+.follow-room-btn-compact {
+    font-size: 10.5px;
+    padding: 5px 12px;
+    flex-shrink: 0;
+}
+
+/* =====================================================
+   ✅ رأس الغرفة الجديد — بطاقة معلومات (غلاف + آيدي + اسم) بدل زر الرجوع، تُفتح منها
+   إعدادات الغرفة (للمضيف) أو بطاقة معلوماتها (للضيف)
+   ===================================================== */
+.room-info-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1 1 auto;
+    text-align: right;
+    padding: 3px 8px 3px 3px;
+    border-radius: 9999px;
+    background: rgba(17,24,39,0.5);
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: background 0.15s ease;
+}
+.room-info-trigger:active { background: rgba(17,24,39,0.75); }
+.room-info-cover-img {
+    width: 32px; height: 32px;
+    border-radius: 9px;
+    object-fit: cover;
+    flex-shrink: 0;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+.room-info-name {
+    font-size: 13px;
+    font-weight: 800;
+    color: #f3f4f6;
+    max-width: 38vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+@media (min-width: 768px) { .room-info-name { max-width: 220px; } }
+.room-info-code {
+    font-size: 9.5px;
+    color: #9ca3af;
+    font-weight: 700;
+}
+
+/* ✅ بطاقة معلومات الغرفة (للضيوف) — ورقة سفلية بنفس أسلوب بقية أوراق المشروع */
+.room-info-card-sheet {
+    background: #1a1f2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.5);
+    animation: slideUp 0.25s ease-out;
+}
+@media (min-width: 768px) { .room-info-card-sheet { border-radius: 20px; } }
+.room-info-card-cover {
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    object-fit: cover;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+.room-info-card-owner-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px;
+    padding: 8px 10px;
+}
+.room-info-card-owner-img {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,0.15);
+}
+.room-info-stat-box {
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px;
+    padding: 10px 6px;
+    text-align: center;
+}
+.room-info-stat-num { font-size: 16px; font-weight: 800; color: #f3f4f6; }
+.room-info-stat-label { font-size: 10px; color: #9ca3af; margin-top: 2px; }
+
+/* ✅ نافذة إعدادات الغرفة المُعاد هيكلتها — أقسام مُجمَّعة بعناوين صغيرة بدل قائمة مسطّحة طويلة */
+.room-settings-section { display: flex; flex-direction: column; gap: 8px; }
+.room-settings-section-title {
+    font-size: 10.5px;
+    font-weight: 800;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.room-settings-mini-btn {
+    background: rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 9px 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-align: center;
+}
+.room-settings-mini-btn:hover { background: rgba(255,255,255,0.1); }
 
 /* 2) منطقة الرسائل — تعلو الشريط، تنمو للأعلى نحو المقاعد، وقابلة للتمرير لعرض السجل بالكامل */
 .room-chat-messages-fixed {
@@ -857,11 +968,14 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     vertical-align: -3px;
 }
 
-/* ✅ شريط إعلان الهدية الجانبي العائم — أسلوب TikTok Live، ينزلق من الجانب ويختفي تلقائياً */
+/* ✅ شريط إعلان الهدية الجانبي العائم — أسلوب TikTok Live، ينزلق من الجانب لكن من منتصف
+   الشاشة رأسياً (وليس أعلاها) ويختفي تلقائياً؛ عند تكرار نفس الهدية من نفس المُرسل بفارق
+   قصير يُزاد عداد ×N بدل إنشاء شريط جديد فوق القديم */
 .room-gift-side-banner {
     position: fixed;
-    top: 96px;
+    top: 50%;
     right: 10px;
+    transform: translateY(-50%);
     z-index: 60;
     display: flex;
     align-items: center;
@@ -878,12 +992,26 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     animation: giftBannerOut 0.35s ease-in forwards;
 }
 @keyframes giftBannerIn {
-    from { transform: translateX(110%); opacity: 0; }
-    to   { transform: translateX(0); opacity: 1; }
+    from { transform: translate(110%, -50%); opacity: 0; }
+    to   { transform: translate(0, -50%); opacity: 1; }
 }
 @keyframes giftBannerOut {
-    from { transform: translateX(0); opacity: 1; }
-    to   { transform: translateX(110%); opacity: 0; }
+    from { transform: translate(0, -50%); opacity: 1; }
+    to   { transform: translate(110%, -50%); opacity: 0; }
+}
+.room-gift-banner-count {
+    flex-shrink: 0;
+    background: rgba(251,191,36,0.2);
+    color: #fbbf24;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    animation: giftBannerCountPop 0.25s ease-out;
+}
+@keyframes giftBannerCountPop {
+    0% { transform: scale(1.4); }
+    100% { transform: scale(1); }
 }
 .room-gift-banner-avatar {
     width: 28px; height: 28px;
@@ -1141,44 +1269,16 @@ body.in-voice-room #main-content {
     box-shadow: 0 0 0 1px rgba(236,72,153,0.5);
 }
 
-/* ✅ قائمة الكمية المسندلة (1/7/77/777) */
-.gift-qty-menu { min-width: 64px; }
-
-/* ✅ زر الإرسال الدائري — الضغط المطوّل يحوّله لعدّاد نابض بدل نص "إرسال" ثابت */
-.gift-send-main-btn {
-    position: relative;
-    width: 46px; height: 46px;
-    border-radius: 9999px;
-    background: linear-gradient(135deg, #ec4899, #a855f7);
-    color: #fff;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-    font-size: 1rem;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-    box-shadow: 0 2px 8px rgba(219,39,119,0.4);
-}
-.gift-send-main-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+/* ✅ زر الإرسال — الضغط المطوّل يحوّله لحالة نابضة بدل شكله الثابت (تصميمه الكامل أسفل
+   بقرب الشريحة المقسَّمة لاختيار الكمية) */
 .gift-send-main-btn.gift-sending {
-    transform: scale(1.18);
-    box-shadow: 0 0 0 7px rgba(236,72,153,0.22), 0 4px 16px rgba(219,39,119,0.65);
+    transform: scale(1.06);
+    box-shadow: 0 0 0 5px rgba(16,185,129,0.22), 0 4px 16px rgba(5,150,105,0.5);
     animation: giftSendPulse 0.9s ease-in-out infinite;
 }
 @keyframes giftSendPulse {
-    0%, 100% { box-shadow: 0 0 0 7px rgba(236,72,153,0.22), 0 4px 16px rgba(219,39,119,0.65); }
-    50%      { box-shadow: 0 0 0 11px rgba(236,72,153,0.12), 0 4px 16px rgba(219,39,119,0.65); }
-}
-.gift-send-badge {
-    position: absolute;
-    top: -6px; left: -6px;
-    background: #fff;
-    color: #db2777;
-    font-size: 10px;
-    font-weight: 800;
-    min-width: 18px; height: 18px;
-    border-radius: 9999px;
-    display: flex; align-items: center; justify-content: center;
-    padding: 0 4px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    0%, 100% { box-shadow: 0 0 0 5px rgba(16,185,129,0.22), 0 4px 16px rgba(5,150,105,0.5); }
+    50%      { box-shadow: 0 0 0 8px rgba(16,185,129,0.12), 0 4px 16px rgba(5,150,105,0.5); }
 }
 
 /* ✅ نافذة هدايا الغرفة — شريط مستلمين أفقي قابل للتمرير + شريحة "الكل" دائرية بنفس حجم
@@ -1204,38 +1304,17 @@ body.in-voice-room #main-content {
     .room-gift-sheet { border-radius: 20px; max-height: 48vh; max-height: 48dvh; }
 }
 
-/* ✅ رأس ثابت بعنوان + زر إغلاق دائري رمادي هادئ (مقصود تفادي ألوان "أضواء المرور" الثلاثة
-   تبع نوافذ macOS — لا معنى وظيفياً لتصغير/تكبير بورقة سفلية على الهاتف، وكانت ستُربك) مع
-   خط فاصل خفيف أسفله — بالضبط أسلوب رأس لوحة إعدادات macOS Big Sur */
+/* ✅ رأس ثابت: يحتضن شريط المستلمين مباشرةً (بدل عنوان نصي + زر إغلاق X — الإغلاق يتم
+   بالنقر خارج النافذة أو زر رجوع الهاتف، وشريط المستلمين أهم معلومة يحتاجها المستخدم أولاً) */
 .gift-sheet-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 6px 12px 10px;
+    gap: 8px;
+    padding: 8px 10px 6px;
     border-bottom: 1px solid rgba(255,255,255,0.08);
     margin-bottom: 8px;
     flex-shrink: 0;
 }
-.gift-sheet-header h3 {
-    font-size: 14px;
-    font-weight: 800;
-    color: #f3f4f6;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-}
-.gift-sheet-header h3 i { color: #f472b6; }
-.gift-sheet-close {
-    width: 26px; height: 26px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.08);
-    color: #9ca3af;
-    font-size: 11px;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-    transition: background 0.15s ease, color 0.15s ease;
-}
-.gift-sheet-close:hover { background: rgba(255,255,255,0.16); color: #e5e7eb; }
 
 /* ✅ شريط تصنيفات مقسَّم (segmented control) — نفس أسلوب "System Settings" بـ macOS:
    مسار بخلفية غائرة خفيفة، والتبويب النشط يظهر كشريحة مرتفعة بخلفية متباينة */
@@ -1264,6 +1343,101 @@ body.in-voice-room #main-content {
     color: #fff;
     box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
+
+/* ✅ اختيار الكمية (1/7/77/777) — segmented control مكشوف دائماً (بدل قائمة منسدلة
+   مخفية) بنفس أسلوب SwiftUI Picker(.segmented): مسار واحد متصل، وشريحة واحدة فقط
+   محدَّدة دوماً، مرئية مباشرة بلا أي ضغطة إضافية لكشفها */
+.gift-qty-segmented {
+    display: flex;
+    background: rgba(0,0,0,0.3);
+    border-radius: 9px;
+    padding: 2px;
+    gap: 2px;
+}
+.gift-qty-segment {
+    padding: 5px 9px;
+    font-size: 10.5px;
+    font-weight: 800;
+    color: rgba(255,255,255,0.55);
+    border-radius: 6px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.gift-qty-segment.active {
+    background: rgba(255,255,255,0.16);
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+/* ✅ زر الإرسال — مستطيل هادئ اللون بدل الدائرة السابقة، حجم أصغر قليلاً */
+.gift-send-main-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 84px;
+    height: 34px;
+    padding: 0 16px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 800;
+    flex-shrink: 0;
+    position: relative;
+    box-shadow: 0 2px 8px rgba(16,185,129,0.35);
+}
+.gift-send-main-btn:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+.gift-send-main-btn .gift-send-badge {
+    background: rgba(0,0,0,0.3);
+    font-size: 10px;
+    font-weight: 800;
+    border-radius: 9999px;
+    padding: 1px 6px;
+}
+
+/* ✅ زر "All" — أسود لمعي هادئ بلمسة احترافية بدل التدرّج الوردي السابق، وأصغر حجماً */
+.room-gift-all-circle {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(155deg, #343a46, #12151c);
+    color: #e5e7eb;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.18), 0 2px 5px rgba(0,0,0,0.45);
+    transition: all 0.15s ease;
+}
+.room-gift-all-circle.room-gift-all-active {
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.22), 0 0 0 2px #1f2937, 0 0 0 4px rgba(255,255,255,0.3);
+}
+
+/* ✅ "طابع" احترافي لصور المستلمين بشريط اختيار الهدية — حلقة فاتحة خفيفة + ظل ناعم،
+   إحساس صورة "مقصوصة" ومرفوعة عن الخلفية (أسلوب ملصقات أنيق)، وأصغر من السابق */
+.rg-avatar-img {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(255,255,255,0.82);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+    transition: transform 0.15s ease;
+}
+.room-gift-avatar-btn:active .rg-avatar-img,
+.public-gift-avatar-btn:active .rg-avatar-img {
+    transform: scale(0.92);
+}
+
+/* ✅ شبكة الهدايا: ارتفاع ثابت يعرض صفّين فقط (بغض النظر عن عدد الهدايا الكلي)، وتمرير
+   داخلي لعرض الباقي — بدل تمدّد النافذة كاملة مع كل هدية تُضاف مستقبلاً */
+.room-gift-cards-grid {
+    max-height: 190px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+.room-gift-cards-grid::-webkit-scrollbar { width: 4px; }
+.room-gift-cards-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+
 .room-gift-avatar-row {
     display: flex;
     align-items: flex-start;
@@ -1271,23 +1445,10 @@ body.in-voice-room #main-content {
     overflow-x: auto;
     padding: 2px 2px 6px;
     scrollbar-width: thin;
+    min-width: 0;
 }
 .room-gift-avatar-row::-webkit-scrollbar { height: 4px; }
 .room-gift-avatar-row::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
-.room-gift-all-circle {
-    width: 32px; height: 32px;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(135deg, #a855f7, #ec4899);
-    color: #fff;
-    font-size: 9px;
-    font-weight: 800;
-    border: 2px solid transparent;
-    transition: all 0.15s ease;
-}
-.room-gift-all-circle.room-gift-all-active {
-    box-shadow: 0 0 0 2px #1f2937, 0 0 0 4px #ec4899;
-}
 /* ✅ الكارد بلا حدود/خلفية افتراضياً — الحدود والخلفية الوردية تظهران فقط عبر
    .gift-card-selected المشتركة (لا نلمسها هنا)، :not() يمنع override الحالة المحدَّدة */
 .room-gift-cards-grid .gift-card-wrapper:not(.gift-card-selected) {

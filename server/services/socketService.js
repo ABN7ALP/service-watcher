@@ -437,6 +437,8 @@ async function endRoomBroadcastForHost(io, hostUser) {
             durationSeconds: result.durationSeconds,
             followerIds: result.room.followers.map(f => f.toString()) // ✅ يمكّن العميل من معرفة "أنا متابع؟" دون طلب REST إضافي (الغرفة عادت isLive:false فلن يقدر يجلبها)
         });
+        // ✅ تختفي فوراً من قائمة تصفح الغرف عند كل من فتحها حالياً — نفس آلية الظهور الفوري
+        io.emit('room-went-offline', { roomId: room._id.toString() });
     } catch (error) {
         console.error('[BROADCAST] End error:', error);
     }
@@ -1144,6 +1146,23 @@ socket.on('refreshBlockData', async () => {
                     isMuted: false
                 });
                 io.to(`room-chat-${room._id}`).emit('room-broadcast-started', { roomId: room._id.toString() });
+                // ✅ تظهر فوراً بقائمة تصفح الغرف عند كل من فتحها حالياً — بلا حاجة لتنقل/تحديث صفحة
+                io.emit('room-went-live', {
+                    room: {
+                        id: room._id.toString(),
+                        name: room.name,
+                        description: room.description,
+                        coverImage: room.coverImage,
+                        host: { _id: socket.user.id.toString(), username: socket.user.username, profileImage: socket.user.profileImage },
+                        category: room.category,
+                        seatCount: room.seatCount,
+                        isOfficial: false,
+                        isPrivate: room.isPrivate,
+                        roomCode: room.roomCode,
+                        occupied: 1,
+                        createdAt: room.createdAt
+                    }
+                });
             } catch (error) {
                 console.error('[BROADCAST] Start error:', error);
             }

@@ -12,5 +12,6 @@ router.get('/leaderboard/top-senders', giftController.getTopSendersThisMonth);
 router.get('/leaderboard/top-receivers', giftController.getTopReceiversThisMonth);
 router.get('/user/:userId/summary', giftController.getUserGiftsSummary);
 router.post('/send-public', giftController.sendPublicGift);
+router.post('/send-batch', giftController.sendGiftBatch);
 
 module.exports = router;
