@@ -530,6 +530,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         } else {
             delete seatEl.dataset.userId;
             delete seatEl.dataset.supportTotal; // ✅ يصفّر عداد الدعم بمجرد مغادرة المقعد
+            // 🛡️ إزالة صريحة إضافية للشارة (وليس الاعتماد فقط على استبدال innerHTML أدناه) —
+            // حماية إضافية حتى لو فات حدث user-left-seat سابقاً بسبب انقطاع اتصال مؤقت (نادر
+            // بعد إصلاح إعادة الانضمام التلقائي لقناة الغرفة)، فيبقى previousUserId قديماً عالقاً
+            seatEl.querySelector('.seat-support-badge')?.remove();
             // ✅ بغرف المستخدمين (وليس الرسمية) المقعد الفاضي يعرض "+" بالدائرة و"انضمام" تحتها —
             // الضغط يرسل طلب صعود، وليس جلوساً فورياً — إلا لمقعد الإدارة بالغرفة الرسمية فقط
             if (isAdminSeat) {
@@ -6517,8 +6521,7 @@ async function showRoomGiftModal(roomId) {
             <div class="room-gift-sheet w-full md:max-w-sm text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
                 <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
                 <div class="gift-sheet-header flex-shrink-0">
-                    <h3><i class="fas fa-gift"></i> إرسال هدية</h3>
-                    <button id="close-room-gift" class="gift-sheet-close"><i class="fas fa-times"></i></button>
+                    <div id="room-gift-avatars" class="room-gift-avatar-row flex-1"></div>
                 </div>
                 <div id="room-gift-body" class="px-3 pb-2 overflow-y-auto flex-1">
                     <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
@@ -6530,7 +6533,6 @@ async function showRoomGiftModal(roomId) {
 
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('room-gift-modal');
-    document.getElementById('close-room-gift')?.addEventListener('click', () => modal.remove());
     modal.addEventListener('click', (e) => { if (e.target.id === 'room-gift-modal') modal.remove(); });
 
     try {
@@ -6551,26 +6553,26 @@ async function showRoomGiftModal(roomId) {
         const footer = document.getElementById('room-gift-footer');
         if (!body || !footer) return;
 
-        body.innerHTML = `
-            <div id="room-gift-avatars" class="room-gift-avatar-row mb-2.5">
-                ${seatedUsers.length === 0 ? '<p class="text-[11px] text-gray-500 py-3">لا يوجد أحد قاعد على مقعد حالياً</p>' : `
-                    <button id="select-all-seated-btn" class="room-gift-all-btn relative flex flex-col items-center gap-1 flex-shrink-0" title="إرسال للجميع">
-                        <span class="room-gift-all-circle rg-avatar-img">الكل</span>
-                        <span class="text-[8px] leading-tight text-gray-400">${seatedUsers.length}</span>
-                    </button>
-                    ${seatedUsers.map(u => `
-                        <button class="room-gift-avatar-btn relative flex flex-col items-center gap-1 flex-shrink-0" data-user-id="${u.id}" data-username="${escapeHtml(u.username)}" title="${escapeHtml(u.username)}">
-                            <span class="relative inline-block">
-                                <img src="${u.profileImage}" class="w-8 h-8 rounded-full object-cover border-2 border-gray-600 transition-all rg-avatar-img">
-                                <span class="rg-selected-badge hidden absolute -top-1 -left-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
-                                    <i class="fas fa-check text-white" style="font-size:6px"></i>
-                                </span>
+        document.getElementById('room-gift-avatars').innerHTML = `
+            ${seatedUsers.length === 0 ? '<p class="text-[11px] text-gray-500 py-1.5">لا يوجد أحد قاعد على مقعد حالياً</p>' : `
+                <button id="select-all-seated-btn" class="room-gift-all-btn relative flex flex-col items-center gap-1 flex-shrink-0" title="إرسال للجميع">
+                    <span class="room-gift-all-circle rg-avatar-img">All</span>
+                    <span class="text-[8px] leading-tight text-gray-400">${seatedUsers.length}</span>
+                </button>
+                ${seatedUsers.map(u => `
+                    <button class="room-gift-avatar-btn relative flex flex-col items-center gap-1 flex-shrink-0" data-user-id="${u.id}" data-username="${escapeHtml(u.username)}" title="${escapeHtml(u.username)}">
+                        <span class="relative inline-block">
+                            <img src="${u.profileImage}" class="rg-avatar-img">
+                            <span class="rg-selected-badge hidden absolute -top-1 -left-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
+                                <i class="fas fa-check text-white" style="font-size:6px"></i>
                             </span>
-                            <span class="text-[8px] leading-tight truncate w-10 text-center">${escapeHtml(u.username)}</span>
-                        </button>
-                    `).join('')}
-                `}
-            </div>
+                        </span>
+                        <span class="text-[8px] leading-tight truncate w-10 text-center">${escapeHtml(u.username)}</span>
+                    </button>
+                `).join('')}
+            `}
+        `;
+        body.innerHTML = `
             <div class="gift-category-tabs mb-2"></div>
             <div id="room-gift-cards-grid" class="room-gift-cards-grid grid grid-cols-3 gap-2">
                 ${gifts.map(g => renderGiftCardHTML(g)).join('')}
@@ -6585,7 +6587,7 @@ async function showRoomGiftModal(roomId) {
             document.getElementById('select-all-seated-btn')?.querySelector('.rg-avatar-img')?.classList.toggle('room-gift-all-active', isAll);
         }
         function clearIndividualSelectionVisuals() {
-            body.querySelectorAll('.room-gift-avatar-btn').forEach(b => {
+            modal.querySelectorAll('.room-gift-avatar-btn').forEach(b => {
                 b.querySelector('.rg-avatar-img')?.classList.remove('ring-2', 'ring-pink-500');
                 b.querySelector('.rg-selected-badge')?.classList.add('hidden');
                 b.classList.remove('bg-pink-900/40');
@@ -6599,7 +6601,7 @@ async function showRoomGiftModal(roomId) {
             markAllSelectedVisual(true);
         });
 
-        body.querySelectorAll('.room-gift-avatar-btn').forEach(avatarBtn => {
+        modal.querySelectorAll('.room-gift-avatar-btn').forEach(avatarBtn => {
             avatarBtn.addEventListener('click', () => {
                 audienceMode = 'selected';
                 markAllSelectedVisual(false);
@@ -6644,51 +6646,64 @@ async function showRoomGiftModal(roomId) {
                 return false;
             }
 
-            // ✅ تحديث متفائل فوري (كامل التكلفة لكل المستلمين دفعة وحدة)
+            // ✅ تحديث متفائل فوري — نفس الرقم الذي سيؤكده السيرفر بالضبط لاحقاً (خصم واحد
+            // بنداء واحد)، فلا "قفزة" مرئية للرصيد أبداً (كانت المشكلة سابقاً: حلقة نداءات
+            // متتالية، كل استجابة ترجع الرصيد بعد خصم مستلم واحد فقط، فيبدو الرصيد "يصعد
+            // وينزل" بالتتابع قبل أن يستقر أخيراً على الرقم الصحيح)
             localUser.coins -= totalCost;
             localStorage.setItem('user', JSON.stringify(localUser));
             const coinsEl = document.getElementById('coins');
             if (coinsEl) coinsEl.textContent = localUser.coins;
             footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = localUser.coins);
 
-            // ✅ الهدية تطفو بالمنتصف مرة واحدة، ثم تتوجه لكل مستلم على حدة (تأثير توزيع أنيق)
+            // ✅ الدعم/المؤثرات تصل لكل المستلمين بنفس اللحظة تماماً (لا تتابع بفاصل زمني)
             showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', quantity * recipients.length, recipients.length === 1 ? recipients[0] : null);
-
-            let anyFailed = false;
-            for (const receiverId of recipients) {
-                try {
-                    const response = await fetch('/api/gifts/send', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                        body: JSON.stringify({ receiverId, giftId: gift.id, quantity, context: 'private_chat', roomId: roomId === 'main' ? undefined : roomId })
-                    });
-                    const result = await response.json();
-                    if (response.ok) {
-                        if (recipients.length > 1) {
-                            setTimeout(() => showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', quantity, receiverId), 150);
-                        }
-                        notifyRoomGiftSupport(receiverId, gift.price * quantity);
-                        const syncedUser = JSON.parse(localStorage.getItem('user'));
-                        if (syncedUser) {
-                            syncedUser.coins = result.data.newSenderCoins;
-                            localStorage.setItem('user', JSON.stringify(syncedUser));
-                        }
-                        if (coinsEl) coinsEl.textContent = result.data.newSenderCoins;
-                        footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = result.data.newSenderCoins);
-                    } else {
-                        anyFailed = true;
-                    }
-                } catch (error) {
-                    console.error('[ROOM GIFT] Error sending to', receiverId, error);
-                    anyFailed = true;
-                }
+            if (recipients.length > 1) {
+                recipients.forEach(receiverId => showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', quantity, receiverId));
             }
+            recipients.forEach(receiverId => notifyRoomGiftSupport(receiverId, gift.price * quantity));
 
-            if (anyFailed) {
-                showFloatingAlert('تعذر إرسال الهدية لبعض المستلمين', 'fa-exclamation-circle', 'bg-red-500');
+            const revertOptimisticDeduction = () => {
+                const revertUser = JSON.parse(localStorage.getItem('user'));
+                if (!revertUser) return;
+                revertUser.coins += totalCost;
+                localStorage.setItem('user', JSON.stringify(revertUser));
+                if (coinsEl) coinsEl.textContent = revertUser.coins;
+                footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = revertUser.coins);
+            };
+
+            try {
+                // ✅ نداء شبكة واحد لكل المستلمين دفعة واحدة (بدل حلقة نداء لكل مستلم) — أسرع،
+                // ويصل للجميع بنفس اللحظة فعلياً، ويرجع رصيداً نهائياً واحداً موثوقاً
+                const response = await fetch('/api/gifts/send-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ recipientIds: recipients, giftId: gift.id, quantity, roomId: roomId === 'main' ? undefined : roomId })
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    const syncedUser = JSON.parse(localStorage.getItem('user'));
+                    if (syncedUser) {
+                        syncedUser.coins = result.data.newSenderCoins;
+                        localStorage.setItem('user', JSON.stringify(syncedUser));
+                    }
+                    if (coinsEl) coinsEl.textContent = result.data.newSenderCoins;
+                    footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = result.data.newSenderCoins);
+                    return true;
+                }
+
+                revertOptimisticDeduction();
+                // ✅ حد معدّل الإرسال (429) أثناء ضغط مستمر سريع: لا نقاطع المستخدم ولا نزعجه
+                // بتنبيه — فقط نتراجع عن خصم هذي المحاولة ونكمل بهدوء بالتكرار التالي تلقائياً
+                if (response.status === 429) return true;
+                showFloatingAlert(result.message || 'تعذر إرسال الهدية', 'fa-exclamation-circle', 'bg-red-500');
+                return false;
+            } catch (error) {
+                console.error('[ROOM GIFT] Error sending:', error);
+                revertOptimisticDeduction();
                 return false;
             }
-            return true;
         });
 
     } catch (error) {
@@ -6723,16 +6738,11 @@ function renderGiftFooterHTML(coins) {
                 <i class="fas fa-coins"></i> <span class="gift-footer-balance">${coins}</span>
             </span>
             <div class="flex-1"></div>
-            <div class="relative">
-                <button type="button" class="gift-qty-btn bg-gray-700 hover:bg-gray-600 text-xs rounded-full px-3 py-2 flex items-center gap-1.5 font-bold text-white">
-                    ×<span class="gift-qty-value">1</span> <i class="fas fa-chevron-up text-[8px]"></i>
-                </button>
-                <div class="gift-qty-menu hidden absolute bottom-full mb-2 right-0 bg-gray-800 border border-gray-600 rounded-lg overflow-hidden shadow-xl z-10">
-                    ${[1, 7, 77, 777].map(n => `<button type="button" data-qty="${n}" class="gift-qty-option block w-full text-xs px-5 py-2 hover:bg-gray-700 text-white text-center">×${n}</button>`).join('')}
-                </div>
+            <div class="gift-qty-segmented" role="group">
+                ${[1, 7, 77, 777].map((n, i) => `<button type="button" data-qty="${n}" class="gift-qty-segment${i === 0 ? ' active' : ''}">×${n}</button>`).join('')}
             </div>
             <button type="button" class="gift-send-main-btn" disabled title="اختر هدية أولاً">
-                <i class="fas fa-paper-plane"></i>
+                <i class="fas fa-paper-plane"></i> إرسال
                 <span class="gift-send-badge hidden">0</span>
             </button>
         </div>
@@ -6769,21 +6779,14 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
         onSelectGift(selectedGift, quantity);
     });
 
-    const qtyBtn = rootEl.querySelector('.gift-qty-btn');
-    const qtyMenu = rootEl.querySelector('.gift-qty-menu');
-    qtyBtn?.addEventListener('click', () => qtyMenu.classList.toggle('hidden'));
-    rootEl.querySelectorAll('.gift-qty-option').forEach(opt => {
-        opt.addEventListener('click', () => {
-            quantity = parseInt(opt.dataset.qty);
-            rootEl.querySelector('.gift-qty-value').textContent = quantity;
-            qtyMenu.classList.add('hidden');
+    // ✅ اختيار الكمية: segmented control مكشوف دائماً — شريحة واحدة فقط محدَّدة بأي لحظة
+    rootEl.querySelectorAll('.gift-qty-segment').forEach(seg => {
+        seg.addEventListener('click', () => {
+            rootEl.querySelectorAll('.gift-qty-segment').forEach(s => s.classList.remove('active'));
+            seg.classList.add('active');
+            quantity = parseInt(seg.dataset.qty);
             onSelectGift(selectedGift, quantity);
         });
-    });
-    document.addEventListener('click', (e) => {
-        if (qtyBtn && qtyMenu && !qtyBtn.contains(e.target) && !qtyMenu.contains(e.target)) {
-            qtyMenu.classList.add('hidden');
-        }
     });
 
     return { getSelectedGift: () => selectedGift, getQuantity: () => quantity };
@@ -7048,7 +7051,10 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
     const targetSeatEl = targetUserId ? document.querySelector(`#voice-chat-grid [data-user-id="${targetUserId}"]`) : null;
     const card = container.querySelector('.gift-float-card');
     if (targetSeatEl && card) {
-        requestAnimationFrame(() => {
+        // ✅ تطفو بمكانها أولاً (~1.4 ثانية، قريب من ثانيتين كما طُلب) قبل الانطلاق نحو
+        // المستلم — كانت تنطلق شبه فورياً سابقاً (بالإطار التالي مباشرة) فتحس مبتورة
+        const FLOAT_BEFORE_FLY_MS = 1400;
+        setTimeout(() => {
             const startRect = card.getBoundingClientRect();
             const endRect = targetSeatEl.getBoundingClientRect();
             const dx = (endRect.left + endRect.width / 2) - (startRect.left + startRect.width / 2);
@@ -7060,8 +7066,8 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
                 targetSeatEl.classList.add('seat-gift-impact');
                 setTimeout(() => targetSeatEl.classList.remove('seat-gift-impact'), 500);
             }, 850);
-        });
-        setTimeout(() => container.remove(), 1250);
+        }, FLOAT_BEFORE_FLY_MS);
+        setTimeout(() => container.remove(), FLOAT_BEFORE_FLY_MS + 1250);
         return;
     }
 
@@ -7097,23 +7103,47 @@ function appendRoomGiftChatMessage({ fromUsername, toUsername, giftName, giftIco
     box.scrollTop = box.scrollHeight;
 }
 
+// ✅ حالة الشريط الحالي — يسمح بجمع الإرسالات المتكررة (نفس المُرسل/نفس الهدية) بعدّاد
+// ×N واحد بدل إعادة إنشاء الشريط من الصفر في كل مرة (كانت تبدو كومضات متلاحقة مزعجة)
+let roomGiftBannerState = null; // { key, count, timer }
 function showRoomGiftSideBanner({ fromUsername, fromProfileImage, toUsername, giftName, giftImage, giftIcon, quantity }) {
-    document.getElementById('room-gift-side-banner')?.remove();
-    const el = document.createElement('div');
-    el.id = 'room-gift-side-banner';
-    el.className = 'room-gift-side-banner';
-    const qtyText = quantity > 1 ? `×${quantity} ` : '';
-    el.innerHTML = `
-        <img src="${fromProfileImage}" class="room-gift-banner-avatar">
-        <div class="room-gift-banner-text">
-            <b>${escapeHtml(fromUsername)}</b>
-            <span>أرسل ${qtyText}${escapeHtml(giftName)} إلى ${escapeHtml(toUsername)}</span>
-        </div>
-        ${giftImage ? `<img src="${giftImage}" class="room-gift-banner-icon">` : `<span class="room-gift-banner-icon-emoji">${giftIcon || '🎁'}</span>`}
-    `;
-    document.body.appendChild(el);
-    setTimeout(() => el.classList.add('room-gift-banner-out'), 3000);
-    setTimeout(() => el.remove(), 3400);
+    const key = `${fromUsername}::${giftName}`;
+    let el = document.getElementById('room-gift-side-banner');
+    const isSameStreak = el && roomGiftBannerState && roomGiftBannerState.key === key;
+
+    if (isSameStreak) {
+        roomGiftBannerState.count += (quantity || 1);
+        const countEl = el.querySelector('.room-gift-banner-count');
+        if (countEl) countEl.textContent = `×${roomGiftBannerState.count}`;
+        // ✅ نبضة صغيرة تلفت الانتباه للعدّاد المتزايد
+        countEl?.classList.remove('room-gift-banner-count'); void countEl?.offsetWidth; countEl?.classList.add('room-gift-banner-count');
+        el.classList.remove('room-gift-banner-out');
+    } else {
+        el?.remove();
+        el = document.createElement('div');
+        el.id = 'room-gift-side-banner';
+        el.className = 'room-gift-side-banner';
+        el.innerHTML = `
+            <img src="${fromProfileImage}" class="room-gift-banner-avatar">
+            <div class="room-gift-banner-text">
+                <b>${escapeHtml(fromUsername)}</b>
+                <span>أرسل ${escapeHtml(giftName)} إلى ${escapeHtml(toUsername)}</span>
+            </div>
+            ${giftImage ? `<img src="${giftImage}" class="room-gift-banner-icon">` : `<span class="room-gift-banner-icon-emoji">${giftIcon || '🎁'}</span>`}
+            <span class="room-gift-banner-count">×${quantity || 1}</span>
+        `;
+        document.body.appendChild(el);
+        roomGiftBannerState = { key, count: quantity || 1, timer: null };
+    }
+
+    clearTimeout(roomGiftBannerState.timer);
+    roomGiftBannerState.timer = setTimeout(() => {
+        el.classList.add('room-gift-banner-out');
+        setTimeout(() => {
+            el.remove();
+            if (roomGiftBannerState?.key === key) roomGiftBannerState = null;
+        }, 400);
+    }, 3000);
 }
 
 // ✅ أيقونة تطير من منتصف الغرفة نحو مقعد المستلم — بلا أي خلفية، مجرد الصورة/الإيموجي عائماً.
@@ -8366,11 +8396,8 @@ function confirmRedeem(redeemTo) {
             <div class="room-gift-sheet w-full md:max-w-sm text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
                 <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
                 <div class="gift-sheet-header flex-shrink-0">
-                    <h3><i class="fas fa-gift"></i> إرسال هدية بالشات العام</h3>
-                    <div class="flex items-center gap-1">
-                        <button id="public-gift-support-btn" class="report-issue-icon-btn" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle"></i></button>
-                        <button id="close-public-gift" class="gift-sheet-close"><i class="fas fa-times"></i></button>
-                    </div>
+                    <div id="public-gift-avatars" class="room-gift-avatar-row flex-1"></div>
+                    <button id="public-gift-support-btn" class="report-issue-icon-btn flex-shrink-0" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle"></i></button>
                 </div>
                 <div id="public-gift-body" class="px-3 pb-2 overflow-y-auto flex-1">
                     <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
@@ -8383,7 +8410,6 @@ function confirmRedeem(redeemTo) {
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('public-gift-modal');
 
-     document.getElementById('close-public-gift').addEventListener('click', () => modal.remove());
     document.getElementById('public-gift-support-btn').addEventListener('click', () => showQuickSupportModal('gift_issue', 'مشكلة في هدايا الشات العام'));
     modal.addEventListener('click', (e) => { if (e.target.id === 'public-gift-modal') modal.remove(); });
 
@@ -8402,25 +8428,24 @@ function confirmRedeem(redeemTo) {
 
         const body = document.getElementById('public-gift-body');
         const footer = document.getElementById('public-gift-footer');
-        body.innerHTML = `
-            <p class="text-xs text-gray-400 mb-2">اختر المستلمين</p>
-            <div id="public-gift-avatars" class="grid grid-cols-6 sm:grid-cols-8 gap-2 mb-3 max-h-32 overflow-y-auto p-2 bg-gray-900/30 rounded-xl">
-                <button id="select-all-online-btn" class="room-gift-all-btn relative flex flex-col items-center gap-1 flex-shrink-0" title="إرسال للجميع">
-                    <span class="room-gift-all-circle rg-avatar-img">الكل</span>
-                    <span class="text-[8px] leading-tight text-gray-400">${onlineUsers.length}</span>
-                </button>
-                ${onlineUsers.length === 0 ? '<p class="col-span-full text-xs text-gray-500 text-center py-4">لا يوجد أشخاص متصلون حالياً</p>' : onlineUsers.map(u => `
-                    <button class="public-gift-avatar-btn relative flex flex-col items-center gap-1 p-1 rounded-lg transition-all" data-user-id="${u._id}" data-username="${escapeHtml(u.username)}" title="${escapeHtml(u.username)}">
-                        <span class="relative inline-block">
-                            <img src="${u.profileImage}" class="w-7 h-7 rounded-full object-cover border-2 border-gray-600 transition-all rg-avatar-img ${u.activeFrameClass || ''}">
-                            <span class="rg-selected-badge hidden absolute -top-1 -left-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
-                                <i class="fas fa-check text-white" style="font-size:6px"></i>
-                            </span>
+        document.getElementById('public-gift-avatars').innerHTML = `
+            <button id="select-all-online-btn" class="room-gift-all-btn relative flex flex-col items-center gap-1 flex-shrink-0" title="إرسال للجميع">
+                <span class="room-gift-all-circle rg-avatar-img">All</span>
+                <span class="text-[8px] leading-tight text-gray-400">${onlineUsers.length}</span>
+            </button>
+            ${onlineUsers.length === 0 ? '<p class="text-[11px] text-gray-500 py-1.5">لا يوجد أشخاص متصلون حالياً</p>' : onlineUsers.map(u => `
+                <button class="public-gift-avatar-btn relative flex flex-col items-center gap-1 flex-shrink-0" data-user-id="${u._id}" data-username="${escapeHtml(u.username)}" title="${escapeHtml(u.username)}">
+                    <span class="relative inline-block">
+                        <img src="${u.profileImage}" class="rg-avatar-img ${u.activeFrameClass || ''}">
+                        <span class="rg-selected-badge hidden absolute -top-1 -left-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
+                            <i class="fas fa-check text-white" style="font-size:6px"></i>
                         </span>
-                        <span class="text-[8px] leading-tight truncate w-full text-center">${escapeHtml(u.username)}</span>
-                    </button>
-                `).join('')}
-            </div>
+                    </span>
+                    <span class="text-[8px] leading-tight truncate w-10 text-center">${escapeHtml(u.username)}</span>
+                </button>
+            `).join('')}
+        `;
+        body.innerHTML = `
             <div class="gift-category-tabs mb-2"></div>
             <div id="public-gift-cards-grid" class="room-gift-cards-grid grid grid-cols-3 gap-2">
                 ${gifts.map(g => renderGiftCardHTML(g)).join('')}
@@ -8434,7 +8459,7 @@ function confirmRedeem(redeemTo) {
                 <span id="pg-send-counter" class="hidden text-[11px] text-gray-400 flex-1 text-center"></span>
                 <div class="flex-1"></div>
                 <button type="button" id="public-gift-send-btn" class="gift-send-main-btn" disabled title="اختر هدية أولاً">
-                    <i class="fas fa-paper-plane"></i>
+                    <i class="fas fa-paper-plane"></i> إرسال
                 </button>
             </div>
         `;
@@ -8447,7 +8472,7 @@ function confirmRedeem(redeemTo) {
         }
 
         function clearIndividualSelectionVisuals() {
-            body.querySelectorAll('.public-gift-avatar-btn').forEach(b => {
+            modal.querySelectorAll('.public-gift-avatar-btn').forEach(b => {
                 b.querySelector('.rg-avatar-img')?.classList.remove('ring-2', 'ring-pink-500');
                 b.querySelector('.rg-selected-badge')?.classList.add('hidden');
                 b.classList.remove('bg-pink-900/40');
@@ -8461,7 +8486,7 @@ function confirmRedeem(redeemTo) {
             markAllSelectedVisual(true);
         });
 
-        body.querySelectorAll('.public-gift-avatar-btn').forEach(avatarBtn => {
+        modal.querySelectorAll('.public-gift-avatar-btn').forEach(avatarBtn => {
             avatarBtn.addEventListener('click', () => {
                 audienceMode = 'selected';
                 markAllSelectedVisual(false);
@@ -8610,8 +8635,12 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
                     if (coinsEl) coinsEl.textContent = revertUser.coins;
                     if (balanceEl) balanceEl.textContent = revertUser.coins;
                 }
-                stopRapidSending();
-                showFloatingAlert(result.message || 'فشل إرسال الهدية', 'fa-exclamation-circle', 'bg-red-500');
+                // ✅ حد معدّل الإرسال (429) أثناء ضغط مستمر سريع: لا نقاطع المستخدم ولا نزعجه
+                // بتنبيه — فقط نتراجع عن خصم هذي المحاولة ونكمل بهدوء بالتكرار التالي تلقائياً
+                if (response.status !== 429) {
+                    stopRapidSending();
+                    showFloatingAlert(result.message || 'فشل إرسال الهدية', 'fa-exclamation-circle', 'bg-red-500');
+                }
             }
         } catch (error) {
             console.error('[RAPID PUBLIC GIFT] Error:', error);
