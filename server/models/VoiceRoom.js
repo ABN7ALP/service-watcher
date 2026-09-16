@@ -24,6 +24,9 @@ const seatSchema = new mongoose.Schema({
 const voiceRoomSchema = new mongoose.Schema({
     // فقط الغرفة الرسمية (main) تستخدم هذا الحقل — بقية الغرف بدونه (sparse يسمح بتكرار "بدون قيمة")
     slug: { type: String, unique: true, sparse: true },
+    // ✅ آيدي قصير مميّز لكل غرفة مستخدم (6 أرقام) — يُنشأ تلقائياً عند إنشاء الغرفة، ويبقى
+    // ثابتاً طوال عمرها (لا يتغيّر حتى لو تغيّر اسمها)، ويُستخدم للبحث المباشر عنها بالتصفح
+    roomCode: { type: String, unique: true, sparse: true, index: true },
     name: { type: String, default: 'غرفة صوتية', maxlength: 40 },
     description: { type: String, default: '', maxlength: 120 },
     coverImage: { type: String, default: null },
@@ -90,6 +93,18 @@ voiceRoomSchema.statics.getMainRoom = async function () {
     return room;
 };
 
+// ✅ يولّد آيدي قصيراً (6 أرقام) غير مستخدم حالياً لغرفة جديدة — احتمال التصادم ضئيل جداً
+// (مليون قيمة ممكنة)، لكن الحلقة تعيد المحاولة باحتمال أقل من واحد بالمليون لعدم ترك أي فرصة
+voiceRoomSchema.statics.generateRoomCode = async function () {
+    for (let attempt = 0; attempt < 8; attempt++) {
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        const exists = await this.exists({ roomCode: code });
+        if (!exists) return code;
+    }
+    // ✅ احتياط أخير (شبه مستحيل الوصول له عملياً): آيدي أطول لضمان عدم التصادم
+    return String(Date.now()).slice(-6) + String(Math.floor(Math.random() * 10));
+};
+
 // ✅ إنشاء غرفة صوتية جديدة يملكها مستخدم (نظام الغرف المتعددة) — المضيف يُجلَس تلقائياً على
 // المقعد رقم 1 فور الإنشاء (لا يقدر ينزل منه — يُنهي البث بدل ذلك، انظر endBroadcast أدناه)
 voiceRoomSchema.statics.createRoom = async function ({ hostId, name, description, coverImage, category, seatCount, isPrivate, password }) {
@@ -97,6 +112,8 @@ voiceRoomSchema.statics.createRoom = async function ({ hostId, name, description
     for (let i = 1; i <= seatCount; i++) {
         seats.push(i === 1 ? { seatNumber: 1, user: hostId, joinedAt: new Date() } : { seatNumber: i });
     }
+
+    const roomCode = await this.generateRoomCode();
 
     return this.create({
         name,
@@ -110,6 +127,7 @@ voiceRoomSchema.statics.createRoom = async function ({ hostId, name, description
         isPrivate: !!isPrivate,
         password: isPrivate ? password : undefined,
         seats,
+        roomCode,
         isLive: true,
         liveSince: new Date(),
         status: 'active',
@@ -124,7 +142,10 @@ voiceRoomSchema.statics.listRooms = async function ({ search, sort = 'newest', p
     // الرسمية مُستثناة دائماً من هذا الشرط (isLive غير ذي معنى بالنسبة لها)
     const query = { status: 'active', $or: [{ isOfficial: true }, { isLive: true }] };
     if (search && search.trim()) {
-        query.name = { $regex: search.trim().slice(0, 50).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+        const cleanSearch = search.trim().slice(0, 50);
+        const escapedSearch = cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // ✅ يبحث بالاسم أو بآيدي الغرفة القصير معاً (نفس الطلب: البحث عبر الآيدي)
+        query.$and = [{ $or: [{ name: { $regex: escapedSearch, $options: 'i' } }, { roomCode: cleanSearch }] }];
     }
 
     const sortMap = {
@@ -166,6 +187,7 @@ voiceRoomSchema.statics.listRooms = async function ({ search, sort = 'newest', p
             seatCount: r.seatCount,
             isOfficial: r.isOfficial,
             isPrivate: r.isPrivate,
+            roomCode: r.roomCode || null,
             occupied: occupancyMap.get(r._id.toString()) || 0,
             createdAt: r.createdAt
         })),

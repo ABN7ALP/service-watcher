@@ -59,7 +59,7 @@ exports.listRooms = async (req, res) => {
 exports.getMyRoom = async (req, res) => {
     try {
         const room = await VoiceRoom.findOne({ host: req.user.id, status: 'active' }).select('-password -seats');
-        res.json({ status: 'success', room: room ? { id: room._id, name: room.name, coverImage: room.coverImage, seatCount: room.seatCount, isPrivate: room.isPrivate, isOfficial: false, isLive: room.isLive, host: req.user.id } : null });
+        res.json({ status: 'success', room: room ? { id: room._id, name: room.name, coverImage: room.coverImage, seatCount: room.seatCount, isPrivate: room.isPrivate, isOfficial: false, isLive: room.isLive, roomCode: room.roomCode || null, host: req.user.id } : null });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
     }
@@ -107,9 +107,30 @@ exports.createRoom = async (req, res) => {
             password: undefined
         });
 
+        // ✅ الغرفة "مباشرة" فوراً عند الإنشاء (isLive افتراضياً) — تظهر فوراً لكل من يتصفح
+        // قائمة الغرف بلا حاجة لتنقل أو تحديث صفحة (نفس آلية بدء بث غرفة موجودة مسبقاً)
+        if (req.io) {
+            req.io.emit('room-went-live', {
+                room: {
+                    id: room._id.toString(),
+                    name: room.name,
+                    description: room.description,
+                    coverImage: room.coverImage,
+                    host: { _id: req.user.id, username: req.user.username, profileImage: req.user.profileImage },
+                    category: room.category,
+                    seatCount: room.seatCount,
+                    isOfficial: false,
+                    isPrivate: room.isPrivate,
+                    roomCode: room.roomCode,
+                    occupied: 1,
+                    createdAt: room.createdAt
+                }
+            });
+        }
+
         res.status(201).json({
             status: 'success',
-            room: { id: room._id, name: room.name, coverImage: room.coverImage, seatCount: room.seatCount, isPrivate: room.isPrivate }
+            room: { id: room._id, name: room.name, coverImage: room.coverImage, seatCount: room.seatCount, isPrivate: room.isPrivate, roomCode: room.roomCode }
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
@@ -137,6 +158,12 @@ exports.getRoomById = async (req, res) => {
 
         // ✅ يسقط الخلفية المدفوعة تلقائياً لو انتهت مدتها قبل إرسال الرد
         await room.checkBackgroundExpiry();
+
+        // ✅ ترقية ذاتية لغرف أُنشئت قبل إضافة نظام الآيدي القصير — مرة واحدة فقط لكل غرفة قديمة
+        if (!room.isOfficial && !room.roomCode) {
+            room.roomCode = await VoiceRoom.generateRoomCode();
+            await room.save();
+        }
 
         const isHost = room.host && room.host._id.toString() === req.user.id;
         const isModerator = room.moderators.some(m => m.toString() === req.user.id);
@@ -178,6 +205,7 @@ exports.getRoomById = async (req, res) => {
             name: room.name,
             description: room.description,
             category: room.category,
+            roomCode: room.roomCode || null,
             host: room.host,
             isOfficial: room.isOfficial,
             isPrivate: room.isPrivate,

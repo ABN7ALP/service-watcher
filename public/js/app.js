@@ -1615,10 +1615,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
         const card = document.createElement('div');
         card.className = 'room-card bg-gray-700/50 rounded-xl overflow-hidden cursor-pointer hover:ring-2 hover:ring-purple-500 hover:-translate-y-0.5 transition-all';
+        card.dataset.roomId = room.id;
         card.innerHTML = `
             <div class="relative w-full aspect-video bg-gradient-to-br from-purple-900/40 to-gray-800">
                 ${cover}
                 ${badge}
+                ${room.roomCode ? `<span class="absolute bottom-1.5 left-1.5 bg-black/60 text-gray-200 text-[9px] font-bold px-1.5 py-0.5 rounded-full">ID: ${room.roomCode}</span>` : ''}
             </div>
             <div class="p-2.5">
                 <p class="font-bold text-sm truncate">${escapeHtml(room.name)}</p>
@@ -1645,7 +1647,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
             </div>
             <div class="relative mb-3">
-                <input id="room-search-input" type="text" placeholder="ابحث عن غرفة..." class="w-full bg-gray-700/50 border border-gray-600 rounded-lg p-2 pr-9 text-sm focus:ring-purple-500 focus:border-purple-500">
+                <input id="room-search-input" type="text" placeholder="ابحث بالاسم أو آيدي الغرفة..." class="w-full bg-gray-700/50 border border-gray-600 rounded-lg p-2 pr-9 text-sm focus:ring-purple-500 focus:border-purple-500">
                 <i class="fas fa-search absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
             </div>
             <div class="flex gap-2 mb-4">
@@ -5110,6 +5112,25 @@ function showXpGainAnimation(amount) {
     // البث) يكفي وحده لتحديث مقعد المضيف؛ إعادة الرسم الكاملة كانت تُحسّ وكأن الغرفة
     // "تُعاد كتابتها" بلا داعٍ (كل الصور تُعاد تحميلها دفعة واحدة)
     socket.on('room-broadcast-started', () => {});
+
+    // ✅ ظهور/اختفاء فوري بقائمة تصفح الغرف عند بدء/انتهاء بث أي مضيف — فقط لو شاشة
+    // التصفح مفتوحة فعلياً حالياً (grid موجود بالـ DOM)، وإلا يُتجاهل الحدث بصمت وأمان
+    socket.on('room-went-live', ({ room } = {}) => {
+        const grid = document.getElementById('room-list-grid');
+        if (!grid || !room) return;
+        if (grid.querySelector(`[data-room-id="${room.id}"]`)) return; // ✅ لا تكرار لو وصل الحدث أكثر من مرة
+        const searchTerm = (document.getElementById('room-search-input')?.value || '').trim().toLowerCase();
+        if (searchTerm && !room.name.toLowerCase().includes(searchTerm) && room.roomCode !== searchTerm) return;
+        grid.prepend(renderRoomCard(room));
+        document.getElementById('room-list-empty')?.classList.add('hidden');
+    });
+
+    socket.on('room-went-offline', ({ roomId } = {}) => {
+        const grid = document.getElementById('room-list-grid');
+        if (!grid || !roomId) return;
+        grid.querySelector(`[data-room-id="${roomId}"]`)?.remove();
+        document.getElementById('room-list-empty')?.classList.toggle('hidden', grid.children.length > 0);
+    });
 
     socket.on('room-broadcast-ended', (payload) => {
         // ✅ لو كانت غرفتي التي أنا قاعد فيها (حتى وأنا أتصفح مكاناً آخر وقتها) — تصفير الحالة
