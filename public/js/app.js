@@ -598,6 +598,94 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     initRoomFloatingBubble();
 
     // =====================================================
+    // ✅ تصغير الغرفة صراحة (زر ⏻ برأس الغرفة → "تصغير") — بمنطق مستقل عن الفقاعة أعلاه
+    // (تلك تلقائية للضيف الجالس فقط)؛ هذا يعمل للمضيف وللمشاهد غير الجالس أيضاً: تختفي واجهة
+    // الغرفة وتستمر بالخلفية (البث/المقعد/الاتصال كله يبقى كما هو بجانب السيرفر) مع فقاعة
+    // عائمة صريحة للرجوع، أو إنهائها مباشرة من الفقاعة نفسها بلا حاجة للرجوع أولاً
+    // =====================================================
+    let minimizedRoomInfo = null; // { id, name, coverImage, isOfficial }
+
+    function removeRoomMinimizedBubble() {
+        document.getElementById('room-minimized-bubble')?.remove();
+        minimizedRoomInfo = null;
+    }
+
+    function showRoomMinimizedBubble() {
+        document.getElementById('room-minimized-bubble')?.remove();
+        if (!minimizedRoomInfo) return;
+        const bubble = document.createElement('div');
+        bubble.id = 'room-minimized-bubble';
+        bubble.className = 'room-minimized-bubble';
+        bubble.title = 'ارجع للغرفة';
+        bubble.innerHTML = `
+            <span class="room-minimized-bubble-pulse"></span>
+            <img src="${minimizedRoomInfo.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-minimized-bubble-img">
+            <button type="button" class="room-minimized-bubble-close" title="إنهاء"><i class="fas fa-times"></i></button>
+        `;
+        document.body.appendChild(bubble);
+        bubble.addEventListener('click', (e) => {
+            if (e.target.closest('.room-minimized-bubble-close')) {
+                e.stopPropagation();
+                const room = minimizedRoomInfo;
+                removeRoomMinimizedBubble();
+                if (room) exitCurrentVoiceRoomView(room);
+                return;
+            }
+            resumeMinimizedRoom();
+        });
+    }
+
+    function minimizeVoiceRoomView(room) {
+        minimizedRoomInfo = {
+            id: room.id,
+            name: room.name,
+            coverImage: currentRoomCoverImage || room.coverImage || null,
+            isOfficial: !!room.isOfficial
+        };
+        exitFullscreenRoomMode();
+        showRoomMinimizedBubble();
+        showRoomBrowserView();
+    }
+
+    function resumeMinimizedRoom() {
+        if (!minimizedRoomInfo) return;
+        const room = minimizedRoomInfo;
+        removeRoomMinimizedBubble();
+        if (room.isOfficial) {
+            showVoiceRoomsView();
+        } else {
+            showCustomRoomView({ id: room.id, name: room.name, coverImage: room.coverImage, isOfficial: false }, currentRoomPassword);
+        }
+    }
+
+    // ✅ ورقة خيارَي الخروج — زر ⏻ بجانب المشاهدين برأس الغرفة
+    function showRoomExitOptionsSheet(room) {
+        document.getElementById('room-exit-options-sheet')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'room-exit-options-sheet';
+        modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 pb-5 w-full md:max-w-xs text-white">
+                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mb-4 md:hidden"></div>
+                <div class="grid grid-cols-2 gap-3">
+                    <button type="button" id="room-exit-now-btn" class="flex flex-col items-center gap-1.5">
+                        <span class="w-12 h-12 rounded-full bg-red-600/20 flex items-center justify-center text-red-400"><i class="fas fa-power-off text-lg"></i></span>
+                        <span class="text-[11px] text-gray-300">خروج</span>
+                    </button>
+                    <button type="button" id="room-minimize-btn" class="flex flex-col items-center gap-1.5">
+                        <span class="w-12 h-12 rounded-full bg-gray-700/60 flex items-center justify-center text-gray-200"><i class="fas fa-compress text-lg"></i></span>
+                        <span class="text-[11px] text-gray-300">تصغير</span>
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'room-exit-options-sheet') modal.remove(); });
+        modal.querySelector('#room-exit-now-btn').addEventListener('click', () => { modal.remove(); exitCurrentVoiceRoomView(room); });
+        modal.querySelector('#room-minimize-btn').addEventListener('click', () => { modal.remove(); minimizeVoiceRoomView(room); });
+    }
+
+    // =====================================================
     // ✅ مشغّل موسيقى الغرفة — عنصر صوت واحد دائم بالصفحة، يُزامن مع بقية المستمعين عبر السوكيت
     // =====================================================
     let currentMusicState = null; // آخر حالة موسيقى مستلمة للغرفة المعروضة حالياً
@@ -1835,20 +1923,23 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </button>
                 <div class="flex-1"></div>
                 <div class="flex items-center gap-2 flex-shrink-0">
+                    <button id="room-power-btn" class="w-8 h-8 rounded-full bg-gray-700/60 hover:bg-gray-600 flex items-center justify-center text-gray-300" title="خيارات الخروج">
+                        <i class="fas fa-power-off"></i>
+                    </button>
                     <button id="room-viewer-count-btn" class="room-viewer-count-btn" title="المشاهدون">
                         <span id="room-viewer-avatars" class="room-viewer-avatars"></span>
                         <span id="room-viewer-count-num">0</span>
-                    </button>
-                    <button id="room-end-broadcast-btn" class="hidden w-8 h-8 rounded-full bg-red-600/80 hover:bg-red-600 flex items-center justify-center text-white" title="إنهاء البث">
-                        <i class="fas fa-times"></i>
                     </button>
                 </div>
             </div>
             <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
             ${renderRoomChatMarkup()}
         `;
+        // ✅ إعادة تعيين أي فقاعة "غرفة مُصغَّرة" سابقة — الدخول لواجهة الغرفة (نفسها أو غرفة
+        // أخرى) يعني أننا لم نعد بوضع التصغير بعد الآن
+        removeRoomMinimizedBubble();
         // ✅ الإغلاق/الرجوع لم يعد زراً مستقلاً — النقر على بطاقة معلومات الغرفة يفتح إعداداتها
-        // (للمضيف) أو معلوماتها (للضيف)؛ المضيف ينهي بثّه صراحة بزر ✕ لو أراد الخروج فعلياً
+        // (للمضيف) أو معلوماتها (للضيف)؛ زر ⏻ يفتح خياري الخروج الصريح أو التصغير للخلفية
         document.getElementById('room-info-trigger-btn').addEventListener('click', () => {
             if (currentRoomMyRole === 'host') {
                 showRoomSettingsModal(room);
@@ -1859,7 +1950,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         document.getElementById('room-header-follow-btn').addEventListener('click', () => {
             socket.emit(currentRoomIsFollowing ? 'unfollow-room' : 'follow-room', { roomId: room.id });
         });
-        document.getElementById('room-end-broadcast-btn').addEventListener('click', () => showEndBroadcastConfirm(room.id));
+        document.getElementById('room-power-btn').addEventListener('click', () => showRoomExitOptionsSheet(room));
         document.getElementById('room-viewer-count-btn').addEventListener('click', () => showRoomViewersSheet(room.id));
         // ✅ لا يوجد زر رجوع ظاهر بعد الآن — السحب لأسفل من رأس الغرفة (نفس أسلوب تطبيقات
         // البث المباشر المعروفة) هو آلية الخروج البديلة على الهاتف؛ زر ✕ يبقى للمضيف صراحة
@@ -1938,38 +2029,35 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
     }
 
-    // ✅ تنبيه "بثّك لسا شغّال" — يظهر بعد أي اتصال/إعادة اتصال لو اكتشفنا إنك مضيف غرفة
-    // مباشرة فعلياً لكنك مو داخلها حالياً (أشهر سبب: تحديث الصفحة قطعك عن واجهة الغرفة بلا
-    // ما ينهي بثّك). بأسلوب Material <Alert severity="warning"> — شريط مستطيل أعلى الشاشة
-    // بأيقونة تحذير + إجراء سريع، ويختفي تلقائياً لو تجوهل
-    function showStillLiveBanner(room) {
-        document.getElementById('still-live-banner')?.remove();
-        const el = document.createElement('div');
-        el.id = 'still-live-banner';
-        el.className = 'still-live-banner';
-        el.innerHTML = `
-            <i class="fas fa-triangle-exclamation still-live-banner-icon"></i>
-            <div class="still-live-banner-text">
-                <b>بثّك المباشر لسا شغّال</b>
-                <span>غادرت واجهة الغرفة (تحديث الصفحة مثلاً) والبث مستمر بدونك</span>
+    // ✅ نافذة "بثّك لسا شغّال" — تظهر بعد أي اتصال/إعادة اتصال لو اكتشفنا إنك مضيف غرفة مباشرة
+    // فعلياً لكنك مو داخلها حالياً (أشهر سبب: تحديث الصفحة قطعك عن واجهة الغرفة بلا ما ينهي
+    // بثّك). نافذة بسيطة بخيارين واضحين فقط — لا تنبيه عابر يُتجاهل بصمت ويبقي البث "يتيماً"
+    function showStillLiveModal(room) {
+        document.getElementById('still-live-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'still-live-modal';
+        modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[300] p-4';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-xl shadow-xl p-5 w-full max-w-xs text-white text-center">
+                <i class="fas fa-tower-broadcast text-3xl text-purple-400 mb-3"></i>
+                <p class="font-bold mb-1">بثّك المباشر لسا شغّال</p>
+                <p class="text-xs text-gray-400 mb-5">غادرت واجهة الغرفة (تحديث الصفحة مثلاً) والبث مستمر بدونك</p>
+                <div class="flex flex-col gap-2.5">
+                    <button type="button" id="still-live-return-btn" class="w-full bg-purple-600 hover:bg-purple-700 py-2.5 rounded-lg font-bold text-sm">الرجوع للبث</button>
+                    <button type="button" id="still-live-end-btn" class="w-full bg-red-600 hover:bg-red-700 py-2.5 rounded-lg font-bold text-sm">إنهاء البث</button>
+                </div>
             </div>
-            <button id="still-live-banner-return" class="still-live-banner-btn">ارجع للغرفة</button>
-            <button id="still-live-banner-close" class="still-live-banner-close" title="إغلاق"><i class="fas fa-times"></i></button>
         `;
-        document.body.appendChild(el);
-
-        const dismiss = () => {
-            el.style.opacity = '0';
-            el.style.transform = 'translate(-50%, -12px)';
-            setTimeout(() => el.remove(), 300);
-        };
-        el.querySelector('#still-live-banner-close').addEventListener('click', dismiss);
-        el.querySelector('#still-live-banner-return').addEventListener('click', () => {
-            dismiss();
+        document.body.appendChild(modal);
+        modal.querySelector('#still-live-return-btn').addEventListener('click', () => {
+            modal.remove();
             enterVoiceRoom(room);
         });
-        const autoDismissTimer = setTimeout(dismiss, 9000);
-        el.addEventListener('mouseenter', () => clearTimeout(autoDismissTimer)); // ✅ لا يختفي وأنت تقرأه بالكمبيوتر
+        modal.querySelector('#still-live-end-btn').addEventListener('click', () => {
+            modal.remove();
+            socket.emit('host-end-broadcast', { roomId: room.id });
+            showNotification('تم إنهاء البث', 'info');
+        });
     }
 
     // ✅ قائمة المشاهدين المسندلة — تُطلب حيّة من السيرفر عند الفتح (مصدرها عضوية قناة السوكيت)
@@ -2205,6 +2293,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     // ✅ ضيف بغرفة مستخدم: الضغط على مقعد فاضٍ = طلب صعود (نفس زر رفع اليد بالضبط)،
                     // وليس جلوساً فورياً — القرار للمضيف
                     sendSeatJoinRequest();
+                } else if (!isLocked && currentRoomMyRole === 'host') {
+                    // 🐛 إصلاح: المضيف ثابت دائماً على مقعده رقم 1 بغرفته المباشرة — الضغط على أي
+                    // مقعد فاضٍ آخر كان يستدعي joinVoiceSeat فينضم له أيضاً (لأن السيرفر لا يُحرِّر
+                    // مقعد المضيف تلقائياً)، فتظهر صورته مستنسخة على أكثر من مقعد بنفس اللحظة
+                    return;
                 } else if (!isLocked) {
                     // ✅ كلمة مرور الغرفة تُتحقق منها فقط عند الدخول للغرفة نفسها، لا تُطلب مجدداً عند الجلوس
                     joinVoiceSeat(i);
@@ -2464,8 +2557,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
             if (result.myRole) {
                 currentRoomMyRole = result.myRole;
-                const endBroadcastBtn = document.getElementById('room-end-broadcast-btn');
-                if (endBroadcastBtn) endBroadcastBtn.classList.toggle('hidden', currentRoomMyRole !== 'host');
                 // ✅ زر المتابعة لا معنى له للمضيف بغرفته نفسها ولا بالغرفة الرسمية (بلا مالك) — يظهر للضيوف فقط
                 const headerFollowBtn = document.getElementById('room-header-follow-btn');
                 if (headerFollowBtn) headerFollowBtn.classList.toggle('hidden', currentRoomMyRole === 'host' || result.isOfficial);
@@ -5115,7 +5206,7 @@ function showXpGainAnimation(amount) {
             .then(r => r.json())
             .then(result => {
                 if (result.status === 'success' && result.room && result.room.isLive && currentVoiceRoomId !== result.room.id) {
-                    showStillLiveBanner(result.room);
+                    showStillLiveModal(result.room);
                 }
             })
             .catch(() => {});
@@ -5293,7 +5384,9 @@ function showXpGainAnimation(amount) {
         if (data.roomId !== currentVoiceRoomId) return;
         appendRoomGiftChatMessage(data);
         showRoomGiftSideBanner(data);
-        showRoomGiftFlyAnimation(data.giftImage, data.giftIcon, data.toUserId);
+        // ✅ مصدر الحقيقة الوحيد للمؤثر البصري لكل من بالغرفة (المرسل والمستلم والمشاهدون) —
+        // صورة الهدية تطفو كبيرة بمنتصف الشاشة ثم تطير بأناقة نحو مقعد المدعوم بالضبط
+        showGiftFloatingAnimation(data.giftImage, data.giftName, data.fromUsername, data.quantity, data.toUserId);
     });
 
     // =====================================================
@@ -6800,11 +6893,11 @@ async function showRoomGiftModal(roomId) {
             if (coinsEl) coinsEl.textContent = localUser.coins;
             footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = localUser.coins);
 
-            // ✅ الدعم/المؤثرات تصل لكل المستلمين بنفس اللحظة تماماً (لا تتابع بفاصل زمني)
-            showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', quantity * recipients.length, recipients.length === 1 ? recipients[0] : null);
-            if (recipients.length > 1) {
-                recipients.forEach(receiverId => showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', quantity, receiverId));
-            }
+            // 🐛 إصلاح: كان يُستدعى هنا محلياً بالتفاؤل (نسخة) بينما صدى السيرفر room-gift-announcement
+            // يستدعي أيضاً مؤثراً مختلفاً تماماً (showRoomGiftFlyAnimation المصغّر السابق) — يتعارضان
+            // بصرياً وأحدهما فعلياً "لا يعمل" كما يُحس. الحل: مصدر حقيقة واحد فقط — صدى السيرفر
+            // (بث لكل مستلم فوراً عبر Promise.all أصلاً) يشغّل المؤثر الكبير الوحيد لكل الحاضرين
+            // (المرسل والمستلمين والمشاهدين) بنفس اللحظة تماماً — لا نداء محلي هنا بعد الآن
             recipients.forEach(receiverId => notifyRoomGiftSupport(receiverId, gift.price * quantity));
 
             const revertOptimisticDeduction = () => {
@@ -7195,9 +7288,8 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
     const targetSeatEl = targetUserId ? document.querySelector(`#voice-chat-grid [data-user-id="${targetUserId}"]`) : null;
     const card = container.querySelector('.gift-float-card');
     if (targetSeatEl && card) {
-        // ✅ تطفو بمكانها أولاً (~1.4 ثانية، قريب من ثانيتين كما طُلب) قبل الانطلاق نحو
-        // المستلم — كانت تنطلق شبه فورياً سابقاً (بالإطار التالي مباشرة) فتحس مبتورة
-        const FLOAT_BEFORE_FLY_MS = 1400;
+        // ✅ تطفو بمكانها بمنتصف الشاشة (~ثانيتين بالضبط كما طُلب) قبل الانطلاق نحو المستلم
+        const FLOAT_BEFORE_FLY_MS = 2000;
         setTimeout(() => {
             const startRect = card.getBoundingClientRect();
             const endRect = targetSeatEl.getBoundingClientRect();
@@ -7290,35 +7382,8 @@ function showRoomGiftSideBanner({ fromUsername, fromProfileImage, toUsername, gi
     }, 3000);
 }
 
-// ✅ أيقونة تطير من منتصف الغرفة نحو مقعد المستلم — بلا أي خلفية، مجرد الصورة/الإيموجي عائماً.
-// كل استدعاء عنصر DOM مستقل، فيدعم عدة هدايا متزامنة بشكل طبيعي دون تعارض
-function showRoomGiftFlyAnimation(giftImage, giftIcon, targetUserId) {
-    const grid = document.getElementById('voice-chat-grid');
-    if (!grid) return;
-    const gridRect = grid.getBoundingClientRect();
-    const startX = gridRect.left + gridRect.width / 2;
-    const startY = gridRect.top + gridRect.height / 2;
-    let deltaX = 0, deltaY = -40;
-    const targetSeat = grid.querySelector(`[data-user-id="${targetUserId}"]`);
-    if (targetSeat) {
-        const r = targetSeat.getBoundingClientRect();
-        deltaX = (r.left + r.width / 2) - startX;
-        deltaY = (r.top + r.height / 2) - startY;
-    }
-    const el = document.createElement('div');
-    el.className = 'room-gift-fly-icon';
-    el.style.left = `${startX}px`;
-    el.style.top = `${startY}px`;
-    el.innerHTML = giftImage ? `<img src="${giftImage}" alt="">` : `<span>${giftIcon || '🎁'}</span>`;
-    document.body.appendChild(el);
-    requestAnimationFrame(() => {
-        el.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px)) scale(0.5)`;
-        el.style.opacity = '0';
-    });
-    setTimeout(() => el.remove(), 950);
-}
 
-        
+
 
  // =================================================
 // ============ نظام شراء الكوينزات =================

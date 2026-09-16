@@ -185,52 +185,64 @@ input[type="checkbox"] {
 
 
 
-/* ===== تأثير الهدية العائم ===== */
+/* ===== تأثير الهدية العائم — صورة كبيرة بمنتصف الشاشة تماماً، تطفو مكانها ثم تطير نحو
+   المدعوم بأناقة (بدل الكبسولة الصغيرة السابقة القريبة من الأعلى) ===== */
 .gift-float-container {
     position: fixed;
-    top: 20%;
+    top: 50%;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translate(-50%, -50%);
     z-index: 500;
     pointer-events: none;
     animation: gift-float-rise 3.5s ease-out forwards;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 @keyframes gift-float-rise {
-    0% { opacity: 0; transform: translateX(-50%) translateY(40px) scale(0.7); }
-    15% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.05); }
-    25% { transform: translateX(-50%) translateY(0) scale(1); }
-    80% { opacity: 1; }
-    100% { opacity: 0; transform: translateX(-50%) translateY(-60px) scale(0.9); }
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+    15%  { opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
+    25%  { transform: translate(-50%, -50%) scale(1); }
+    80%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
 }
 
 .gift-float-card {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 12px;
-    background: linear-gradient(135deg, rgba(124,58,237,0.95), rgba(219,39,119,0.95));
-    border: 2px solid rgba(255,255,255,0.3);
-    border-radius: 20px;
-    padding: 12px 20px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    gap: 10px;
 }
 
 .gift-float-image {
-    width: 50px;
-    height: 50px;
+    width: min(130px, 32vw);
+    height: min(130px, 32vw);
     object-fit: contain;
-    filter: drop-shadow(0 0 8px rgba(255,255,255,0.6));
-    animation: gift-icon-bounce 0.6s ease-in-out infinite alternate;
+    filter: drop-shadow(0 10px 26px rgba(0,0,0,0.55));
+    animation: gift-icon-bounce 1.1s ease-in-out infinite alternate;
 }
 
 @keyframes gift-icon-bounce {
-    from { transform: scale(1) rotate(-5deg); }
-    to { transform: scale(1.1) rotate(5deg); }
+    from { transform: scale(1) translateY(0); }
+    to   { transform: scale(1.05) translateY(-8px); }
 }
 
-.gift-float-text { display: flex; flex-direction: column; color: white; }
-.gift-float-sender { font-weight: bold; font-size: 0.9rem; }
-.gift-float-name { font-size: 0.8rem; opacity: 0.9; }
+.gift-float-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: #fff;
+    text-align: center;
+    background: rgba(17,24,39,0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    padding: 6px 18px;
+    border-radius: 9999px;
+    border: 1px solid rgba(255,255,255,0.15);
+}
+.gift-float-sender { font-weight: 800; font-size: 13px; }
+.gift-float-name { font-size: 11px; opacity: 0.85; }
 
 .gift-float-sparkles span {
     position: absolute;
@@ -1031,7 +1043,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .room-gift-banner-icon { width: 26px; height: 26px; object-fit: contain; flex-shrink: 0; }
 .room-gift-banner-icon-emoji { font-size: 20px; flex-shrink: 0; }
 
-/* ✅ أيقونة الهدية الطائرة من منتصف الغرفة نحو مقعد المستلم — بلا أي خلفية أو صندوق */
+/* ✅ أيقونة طائرة من مقعد لآخر — تُستخدم حالياً فقط لتفاعل الإيموجي بين مقعدين
+   (playSeatPairReaction)؛ مؤثر الهدايا صار يستخدم showGiftFloatingAnimation الموحّدة بدلها */
 .room-gift-fly-icon {
     position: fixed;
     width: 52px; height: 52px;
@@ -1135,6 +1148,48 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     background: linear-gradient(135deg, #34d399, #059669);
     color: #06251b;
     font-size: 13px;
+}
+
+/* ✅ فقاعة "الغرفة مُصغَّرة" — تصغير صريح من زر ⏻ برأس الغرفة (يعمل للمضيف والمشاهد
+   على حد سواء، بعكس الفقاعة التلقائية الأخرى الخاصة بالضيف الجالس فقط) */
+.room-minimized-bubble {
+    position: fixed;
+    bottom: 88px;
+    right: 16px;
+    z-index: 300;
+    width: 54px; height: 54px;
+    cursor: pointer;
+}
+@media (min-width: 768px) { .room-minimized-bubble { bottom: 24px; right: 32px; } }
+.room-minimized-bubble-img {
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #a855f7;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+}
+.room-minimized-bubble-pulse {
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid rgba(168,85,247,0.55);
+    animation: roomBubblePulse 1.8s ease-out infinite;
+    pointer-events: none;
+}
+@keyframes roomBubblePulse {
+    0%   { transform: scale(0.9); opacity: 0.8; }
+    100% { transform: scale(1.4); opacity: 0; }
+}
+.room-minimized-bubble-close {
+    position: absolute;
+    top: -4px; left: -4px;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: #1f2937;
+    border: 1.5px solid rgba(255,255,255,0.25);
+    color: #f87171;
+    font-size: 9px;
+    display: flex; align-items: center; justify-content: center;
 }
 
 /* ✅ شريط التقدّم داخل نافذة الموسيقى المصغّرة (More > موسيقى) */
@@ -1519,68 +1574,4 @@ body.in-voice-room #main-content {
     color: #34d399 !important;
 }
 
-/* ✅ تنبيه "بثّك لسا شغّال" — بأسلوب Material <Alert severity="warning">: شريط مستطيل
-   أفقي بخلفية كهرمانية باهتة، أيقونة + نص + إجراء، أعلى الشاشة، يختفي تلقائياً */
-.still-live-banner {
-    position: fixed;
-    top: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 650;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    max-width: 94vw;
-    width: 420px;
-    background: rgba(120,53,15,0.95);
-    border: 1px solid rgba(251,191,36,0.4);
-    border-radius: 12px;
-    padding: 10px 12px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-    backdrop-filter: blur(6px);
-    transition: opacity 0.3s ease, transform 0.3s ease;
-    animation: stillLiveBannerIn 0.3s ease-out;
-}
-@keyframes stillLiveBannerIn {
-    from { opacity: 0; transform: translate(-50%, -12px); }
-    to   { opacity: 1; transform: translate(-50%, 0); }
-}
-.still-live-banner-icon {
-    color: #fbbf24;
-    font-size: 18px;
-    flex-shrink: 0;
-}
-.still-live-banner-text {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-}
-.still-live-banner-text b { font-size: 12.5px; color: #fef3c7; }
-.still-live-banner-text span { font-size: 11px; color: rgba(254,243,199,0.75); }
-.still-live-banner-btn {
-    flex-shrink: 0;
-    background: #fbbf24;
-    color: #451a03;
-    font-size: 11.5px;
-    font-weight: 800;
-    padding: 7px 14px;
-    border-radius: 8px;
-    white-space: nowrap;
-}
-.still-live-banner-close {
-    flex-shrink: 0;
-    width: 24px; height: 24px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.1);
-    color: #fef3c7;
-    font-size: 10px;
-    display: flex; align-items: center; justify-content: center;
-}
-@media (max-width: 480px) {
-    .still-live-banner { flex-wrap: wrap; }
-    .still-live-banner-text { order: 1; width: 100%; }
-    .still-live-banner-btn { order: 2; }
-}
 
