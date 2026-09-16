@@ -669,6 +669,43 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     padding: 0 3px;
 }
 
+/* ✅ زر طلبات الصعود النابض برأس الغرفة — يظهر فقط للمضيف/المسؤول ووجود طلبات فعلية.
+   حلقة متقطعة تدور + تخفت/تسطع بالتناوب — إحساس "إشارة تنقطع وتعاود الاتصال" لافت للنظر */
+.room-hand-queue-btn {
+    position: relative;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(168,85,247,0.18);
+    color: #d8b4fe;
+    font-size: 13px;
+    flex-shrink: 0;
+}
+.room-hand-queue-btn::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px dashed #a855f7;
+    animation: roomHandQueueSpin 3s linear infinite, roomHandQueueBlink 1.3s ease-in-out infinite;
+    pointer-events: none;
+}
+@keyframes roomHandQueueSpin { to { transform: rotate(360deg); } }
+@keyframes roomHandQueueBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.room-hand-queue-badge {
+    position: absolute;
+    top: -4px; right: -4px;
+    min-width: 16px; height: 16px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    border-radius: 9999px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 3px;
+    border: 1.5px solid #111827;
+}
+
 /* ✅ شارة المشاهدين بزاوية الغرفة — صور متراكبة + عدد، ضمن كبسولة واحدة قابلة للضغط.
    تباعد وحجم أوضح من المحاولة الأولى (كانت تحس متلاصقة/مزدحمة) */
 .room-viewer-count-btn {
@@ -1150,6 +1187,129 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     font-size: 13px;
 }
 
+/* ✅ Toast من أسفل الشاشة — أسلوب تطبيقات الجوال، منفصل تماماً عن إشعارات أعلى/منتصف
+   الشاشة الموجودة أصلاً (showNotification/showFloatingAlert) */
+.bottom-toast {
+    position: fixed;
+    bottom: calc(88px + var(--toast-offset, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 90vw;
+    background: rgba(17,24,39,0.94);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #f3f4f6;
+    font-size: 12.5px;
+    font-weight: 700;
+    padding: 10px 16px;
+    border-radius: 9999px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    animation: bottomToastIn 0.3s ease-out;
+}
+@media (min-width: 768px) { .bottom-toast { bottom: calc(24px + var(--toast-offset, 0px)); } }
+.bottom-toast i { color: #f87171; flex-shrink: 0; }
+@keyframes bottomToastIn {
+    from { opacity: 0; transform: translate(-50%, 16px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* ✅ نافذة دعوة المضيف لمقعد — بطاقة أنيقة بأسلوب "مكالمة واردة"، مركز الشاشة، مع حلقة
+   متوهجة نابضة حول صورة الداعي وشارة ميكروفون صغيرة تؤكد سياق الدعوة */
+.seat-invite-card {
+    background: linear-gradient(160deg, rgba(30,20,50,0.97), rgba(17,24,39,0.97));
+    border: 1px solid rgba(168,85,247,0.25);
+    border-radius: 22px;
+    box-shadow: 0 16px 50px rgba(0,0,0,0.6);
+    padding: 28px 22px 22px;
+    width: 100%;
+    max-width: 300px;
+    text-align: center;
+    color: #fff;
+    animation: seatInviteCardIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes seatInviteCardIn {
+    from { opacity: 0; transform: scale(0.85); }
+    to   { opacity: 1; transform: scale(1); }
+}
+.seat-invite-avatar-wrap {
+    position: relative;
+    width: 84px; height: 84px;
+    margin: 0 auto 16px;
+}
+.seat-invite-avatar {
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid rgba(255,255,255,0.15);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+    position: relative;
+    z-index: 1;
+}
+.seat-invite-avatar-wrap::before,
+.seat-invite-avatar-wrap::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 2px solid rgba(168,85,247,0.55);
+    animation: seatInvitePulse 1.6s ease-out infinite;
+}
+.seat-invite-avatar-wrap::after { animation-delay: 0.5s; }
+@keyframes seatInvitePulse {
+    0%   { transform: scale(0.92); opacity: 0.9; }
+    100% { transform: scale(1.35); opacity: 0; }
+}
+.seat-invite-mic-badge {
+    position: absolute;
+    bottom: -2px; left: -2px;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    color: #fff;
+    font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid #1a1225;
+    z-index: 2;
+}
+.seat-invite-title { font-size: 15px; font-weight: 800; margin-bottom: 4px; }
+.seat-invite-sub { font-size: 12px; color: #9ca3af; margin-bottom: 22px; }
+.seat-invite-actions { display: flex; gap: 10px; }
+.seat-invite-decline-btn {
+    flex: 1;
+    background: rgba(255,255,255,0.08);
+    color: #d1d5db;
+    font-weight: 800;
+    font-size: 13px;
+    padding: 11px 0;
+    border-radius: 9999px;
+}
+.seat-invite-accept-btn {
+    flex: 1.3;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    color: #fff;
+    font-weight: 800;
+    font-size: 13px;
+    padding: 11px 0;
+    border-radius: 9999px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    box-shadow: 0 4px 16px rgba(168,85,247,0.4);
+    transition: transform 0.15s ease;
+}
+.seat-invite-accept-btn.seat-invite-accept-pop {
+    animation: seatInviteAcceptPop 0.35s ease-out;
+}
+@keyframes seatInviteAcceptPop {
+    0%   { transform: scale(1); box-shadow: 0 4px 16px rgba(168,85,247,0.4); }
+    40%  { transform: scale(1.12); box-shadow: 0 0 0 10px rgba(168,85,247,0.25), 0 4px 16px rgba(168,85,247,0.5); }
+    100% { transform: scale(1.04); box-shadow: 0 0 0 16px rgba(168,85,247,0), 0 4px 16px rgba(168,85,247,0.4); }
+}
+
 /* ✅ فقاعة "الغرفة مُصغَّرة" — تصغير صريح من زر ⏻ برأس الغرفة (يعمل للمضيف والمشاهد
    على حد سواء، بعكس الفقاعة التلقائية الأخرى الخاصة بالضيف الجالس فقط) */
 .room-minimized-bubble {
@@ -1159,6 +1319,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     z-index: 300;
     width: 54px; height: 54px;
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 @media (min-width: 768px) { .room-minimized-bubble { bottom: 24px; right: 32px; } }
 .room-minimized-bubble-img {
@@ -1167,6 +1329,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     object-fit: cover;
     border: 2px solid #a855f7;
     box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+    -webkit-user-drag: none;
 }
 .room-minimized-bubble-pulse {
     position: absolute;
@@ -1180,16 +1343,24 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     0%   { transform: scale(0.9); opacity: 0.8; }
     100% { transform: scale(1.4); opacity: 0; }
 }
+/* 🐛 إصلاح: كانت متراكبة فعلياً فوق زاوية صورة الفقاعة (فقط -4px)، فتحس الضغطة "عالقة"
+   بينها وبين الصورة على الهاتف — الآن أبعد تماماً بلا أي تراكم (دائرتان منفصلتان تماماً
+   هندسياً)، ومساحة لمس ≥22px، مع منع أي تظليل/تمييز لمس افتراضي من المتصفح */
 .room-minimized-bubble-close {
     position: absolute;
-    top: -4px; left: -4px;
-    width: 20px; height: 20px;
+    top: -14px; left: -14px;
+    width: 22px; height: 22px;
     border-radius: 50%;
     background: #1f2937;
     border: 1.5px solid rgba(255,255,255,0.25);
     color: #f87171;
     font-size: 9px;
     display: flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-appearance: none;
+    appearance: none;
+    touch-action: manipulation;
+    z-index: 1;
 }
 
 /* ✅ شريط التقدّم داخل نافذة الموسيقى المصغّرة (More > موسيقى) */
