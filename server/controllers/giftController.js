@@ -92,6 +92,12 @@ exports.sendGift = async (req, res) => {
             Gift.findById(giftId)
         ]);
 
+        // 🛡️ sender نادراً ما يكون null (حساب حُذف بلحظة بين إصدار التوكن وهذا الطلب مثلاً)،
+        // لكن بدون هذا التحقق كانت القراءات اللاحقة (sender.username...) ترمي خطأ غير
+        // متوقع — كانت أحد الأسباب المحتملة لتعطّل الخادم بالكامل (راجع unhandledRejection بـ server.js)
+        if (!sender) {
+            return res.status(401).json({ status: 'fail', message: 'يرجى تسجيل الدخول من جديد' });
+        }
         if (!receiver) {
             return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
         }
@@ -344,6 +350,7 @@ exports.sendPublicGift = async (req, res) => {
         }
 
         const sender = await User.findById(senderId);
+        if (!sender) return res.status(401).json({ status: 'fail', message: 'يرجى تسجيل الدخول من جديد' });
         const gift = await Gift.findById(giftId);
         if (!gift || !gift.isActive) return res.status(404).json({ status: 'fail', message: 'الهدية غير متوفرة' });
 
