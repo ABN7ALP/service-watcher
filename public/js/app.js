@@ -468,8 +468,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // زر الدردشة العامة العائم بالهاتف
     document.getElementById('mobile-public-chat-fab')?.addEventListener('click', showMobilePublicChatSheet);
 
-    // ✅ زر إرسال الهدايا بالشريط السفلي
-    document.getElementById('mobile-voice-gift-btn')?.addEventListener('click', showPublicGiftModal);
 
     // ✅ زر "ملفي الشخصي" داخل قائمة المزيد
     document.getElementById('mobile-sheet-my-profile-btn')?.addEventListener('click', () => {
@@ -1868,6 +1866,40 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             socket.emit('host-end-broadcast', { roomId });
             modal.remove();
         });
+    }
+
+    // ✅ تنبيه "بثّك لسا شغّال" — يظهر بعد أي اتصال/إعادة اتصال لو اكتشفنا إنك مضيف غرفة
+    // مباشرة فعلياً لكنك مو داخلها حالياً (أشهر سبب: تحديث الصفحة قطعك عن واجهة الغرفة بلا
+    // ما ينهي بثّك). بأسلوب Material <Alert severity="warning"> — شريط مستطيل أعلى الشاشة
+    // بأيقونة تحذير + إجراء سريع، ويختفي تلقائياً لو تجوهل
+    function showStillLiveBanner(room) {
+        document.getElementById('still-live-banner')?.remove();
+        const el = document.createElement('div');
+        el.id = 'still-live-banner';
+        el.className = 'still-live-banner';
+        el.innerHTML = `
+            <i class="fas fa-triangle-exclamation still-live-banner-icon"></i>
+            <div class="still-live-banner-text">
+                <b>بثّك المباشر لسا شغّال</b>
+                <span>غادرت واجهة الغرفة (تحديث الصفحة مثلاً) والبث مستمر بدونك</span>
+            </div>
+            <button id="still-live-banner-return" class="still-live-banner-btn">ارجع للغرفة</button>
+            <button id="still-live-banner-close" class="still-live-banner-close" title="إغلاق"><i class="fas fa-times"></i></button>
+        `;
+        document.body.appendChild(el);
+
+        const dismiss = () => {
+            el.style.opacity = '0';
+            el.style.transform = 'translate(-50%, -12px)';
+            setTimeout(() => el.remove(), 300);
+        };
+        el.querySelector('#still-live-banner-close').addEventListener('click', dismiss);
+        el.querySelector('#still-live-banner-return').addEventListener('click', () => {
+            dismiss();
+            enterVoiceRoom(room);
+        });
+        const autoDismissTimer = setTimeout(dismiss, 9000);
+        el.addEventListener('mouseenter', () => clearTimeout(autoDismissTimer)); // ✅ لا يختفي وأنت تقرأه بالكمبيوتر
     }
 
     // ✅ قائمة المشاهدين المسندلة — تُطلب حيّة من السيرفر عند الفتح (مصدرها عضوية قناة السوكيت)
@@ -4952,6 +4984,18 @@ function showXpGainAnimation(amount) {
         // "أصمّ" فعلياً عن كل بث حي بالغرفة (رسائل جديدة، انضمام، هدايا، موسيقى...) رغم أن
         // واجهته تبدو طبيعية تماماً بعد إعادة الاتصال، وهذا بالضبط ما كان يبدو "خللاً بالغرفة"
         if (roomChatCurrentRoomId) rejoinRoomChatChannel(roomChatCurrentRoomId);
+
+        // ✅ لو كنت مضيف غرفة لا تزال مباشرة فعلياً بس أنت مو داخلها حالياً (تحديث الصفحة
+        // مثلاً يُخرجك من واجهة الغرفة بدون ما ينهي بثّك الفعلي — البث يبقى شغّالاً "يتيماً"
+        // بلا علمك) — نبّهه بلطف مع خيار رجوع سريع، بدل ما يكتشف لاحقاً إنه كان لسا مباشراً
+        fetch('/api/voice-room/my-room', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(result => {
+                if (result.status === 'success' && result.room && result.room.isLive && currentVoiceRoomId !== result.room.id) {
+                    showStillLiveBanner(result.room);
+                }
+            })
+            .catch(() => {});
     });
 
     // ✅ إشعار خاص للمطرود نفسه (منفصل عن user-left-seat العام لتوضيح السبب له تحديداً)
@@ -6470,8 +6514,12 @@ async function showRoomGiftModal(roomId) {
 
     const shellHTML = `
         <div id="room-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-3">
-            <div class="room-gift-sheet w-full md:max-w-xs text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
-                <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1.5 md:hidden flex-shrink-0"></div>
+            <div class="room-gift-sheet w-full md:max-w-sm text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
+                <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
+                <div class="gift-sheet-header flex-shrink-0">
+                    <h3><i class="fas fa-gift"></i> إرسال هدية</h3>
+                    <button id="close-room-gift" class="gift-sheet-close"><i class="fas fa-times"></i></button>
+                </div>
                 <div id="room-gift-body" class="px-3 pb-2 overflow-y-auto flex-1">
                     <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
                 </div>
@@ -6482,6 +6530,7 @@ async function showRoomGiftModal(roomId) {
 
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('room-gift-modal');
+    document.getElementById('close-room-gift')?.addEventListener('click', () => modal.remove());
     modal.addEventListener('click', (e) => { if (e.target.id === 'room-gift-modal') modal.remove(); });
 
     try {
@@ -6522,6 +6571,7 @@ async function showRoomGiftModal(roomId) {
                     `).join('')}
                 `}
             </div>
+            <div class="gift-category-tabs mb-2"></div>
             <div id="room-gift-cards-grid" class="room-gift-cards-grid grid grid-cols-3 gap-2">
                 ${gifts.map(g => renderGiftCardHTML(g)).join('')}
             </div>
@@ -6529,6 +6579,7 @@ async function showRoomGiftModal(roomId) {
         footer.innerHTML = renderGiftFooterHTML(currentUser.coins || 0);
 
         wireGiftImageFallbacks(body);
+        wireGiftCategoryTabs(body, gifts, '#room-gift-cards-grid');
 
         function markAllSelectedVisual(isAll) {
             document.getElementById('select-all-seated-btn')?.querySelector('.rg-avatar-img')?.classList.toggle('room-gift-all-active', isAll);
@@ -6694,26 +6745,28 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
     let selectedGift = null;
     let quantity = 1;
 
-    rootEl.querySelectorAll('.gift-card-wrapper').forEach(card => {
-        card.addEventListener('click', () => {
-            const wasSelected = card.classList.contains('gift-card-selected');
-            rootEl.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-card-selected'));
-            if (wasSelected) {
-                selectedGift = null;
-            } else {
-                card.classList.add('gift-card-selected');
-                selectedGift = {
-                    id: card.dataset.giftId,
-                    name: card.dataset.giftName,
-                    price: parseFloat(card.dataset.giftPrice),
-                    icon: card.dataset.giftIcon,
-                    imageUrl: card.dataset.giftImage
-                };
-            }
-            const sendBtn = rootEl.querySelector('.gift-send-main-btn');
-            if (sendBtn) sendBtn.disabled = !selectedGift;
-            onSelectGift(selectedGift, quantity);
-        });
+    // ✅ تفويض أحداث على الحاوية الثابتة بدل ربط مباشر بكل كارد — يبقى يعمل تلقائياً حتى
+    // لو أُعيد بناء شبكة الهدايا لاحقاً (فلترة حسب التصنيف مثلاً) بلا أي إعادة ربط يدوية
+    rootEl.addEventListener('click', (e) => {
+        const card = e.target.closest('.gift-card-wrapper');
+        if (!card || !rootEl.contains(card)) return;
+        const wasSelected = card.classList.contains('gift-card-selected');
+        rootEl.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-card-selected'));
+        if (wasSelected) {
+            selectedGift = null;
+        } else {
+            card.classList.add('gift-card-selected');
+            selectedGift = {
+                id: card.dataset.giftId,
+                name: card.dataset.giftName,
+                price: parseFloat(card.dataset.giftPrice),
+                icon: card.dataset.giftIcon,
+                imageUrl: card.dataset.giftImage
+            };
+        }
+        const sendBtn = rootEl.querySelector('.gift-send-main-btn');
+        if (sendBtn) sendBtn.disabled = !selectedGift;
+        onSelectGift(selectedGift, quantity);
     });
 
     const qtyBtn = rootEl.querySelector('.gift-qty-btn');
@@ -6812,6 +6865,37 @@ function wireGiftImageFallbacks(containerEl) {
             const slot = this.closest('.gift-visual-slot');
             if (slot) slot.innerHTML = `<span class="text-3xl">${icon}</span>`;
         }, { once: true });
+    });
+}
+
+// ✅ شريط تصنيفات مقسَّم (segmented control) فوق شبكة الهدايا — تصفية محلية فقط (القائمة
+// محمّلة أصلاً بالكامل، بلا أي طلب سيرفر إضافي)، ومُعاد استخدامه بكل نوافذ الهدايا. يُخفى
+// تلقائياً لو كل الهدايا بتصنيف واحد فقط (لا فائدة من شريط بخيار وحيد)
+const GIFT_CATEGORY_LABELS = { common: 'عادية', rare: 'نادرة', epic: 'أسطورية', legendary: 'خرافية' };
+function wireGiftCategoryTabs(rootEl, gifts, gridSelector) {
+    const tabsEl = rootEl.querySelector('.gift-category-tabs');
+    const gridEl = rootEl.querySelector(gridSelector);
+    if (!tabsEl || !gridEl) return;
+    const present = ['common', 'rare', 'epic', 'legendary'].filter(c => gifts.some(g => (g.category || 'common') === c));
+    if (present.length <= 1) return;
+
+    tabsEl.innerHTML = `
+        <button type="button" class="gift-category-tab active" data-cat="all">الكل</button>
+        ${present.map(c => `<button type="button" class="gift-category-tab" data-cat="${c}">${GIFT_CATEGORY_LABELS[c]}</button>`).join('')}
+    `;
+    tabsEl.querySelectorAll('.gift-category-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabsEl.querySelectorAll('.gift-category-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const cat = tab.dataset.cat;
+            const filtered = cat === 'all' ? gifts : gifts.filter(g => (g.category || 'common') === cat);
+            gridEl.innerHTML = filtered.map(renderGiftCardHTML).join('');
+            wireGiftImageFallbacks(gridEl);
+            // ✅ أي اختيار سابق قد يختفي بصرياً بالتبويب الجديد (تصنيف مختلف) — نُعطّل زر
+            // الإرسال حتى اختيار جديد صريح، بدل إبقائه فعّالاً بلا أي تحديد ظاهر بالشبكة
+            const sendBtn = rootEl.querySelector('.gift-send-main-btn');
+            if (sendBtn) sendBtn.disabled = true;
+        });
     });
 }
 // --- ⚡ محرك الإرسال المتسارع (نسخة سريعة وآمنة): إرسال متراكب بدون انتظار كل رد، مع تحديث متفائل فوري ---
@@ -8278,18 +8362,20 @@ function confirmRedeem(redeemTo) {
     if (existing) existing.remove();
 
     const shellHTML = `
-        <div id="public-gift-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
-            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[88vh] flex flex-col">
-                    <div class="flex items-center justify-between p-4 border-b border-gray-700">
-                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift text-pink-400"></i> إرسال هدية بالشات العام</h3>
+        <div id="public-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-3">
+            <div class="room-gift-sheet w-full md:max-w-sm text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
+                <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
+                <div class="gift-sheet-header flex-shrink-0">
+                    <h3><i class="fas fa-gift"></i> إرسال هدية بالشات العام</h3>
                     <div class="flex items-center gap-1">
                         <button id="public-gift-support-btn" class="report-issue-icon-btn" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle"></i></button>
-                        <button id="close-public-gift" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                        <button id="close-public-gift" class="gift-sheet-close"><i class="fas fa-times"></i></button>
                     </div>
                 </div>
-                <div id="public-gift-body" class="p-4 overflow-y-auto flex-1">
+                <div id="public-gift-body" class="px-3 pb-2 overflow-y-auto flex-1">
                     <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
                 </div>
+                <div id="public-gift-footer"></div>
             </div>
         </div>
     `;
@@ -8315,47 +8401,55 @@ function confirmRedeem(redeemTo) {
         let audienceMode = 'selected';
 
         const body = document.getElementById('public-gift-body');
+        const footer = document.getElementById('public-gift-footer');
         body.innerHTML = `
-            <div class="flex items-center justify-between mb-3 bg-gray-900/50 rounded-xl p-3">
-                <span class="text-sm text-gray-400">رصيدك الحالي</span>
-                <span class="font-bold text-yellow-400 flex items-center gap-1"><i class="fas fa-coins"></i> <span id="pg-balance">${localUserSnapshot.coins || 0}</span></span>
-            </div>
             <p class="text-xs text-gray-400 mb-2">اختر المستلمين</p>
-            <button id="select-all-online-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-xs py-2 rounded-lg font-bold mb-3 transition-all">
-                <i class="fas fa-users"></i> إرسال للجميع (${onlineUsers.length})
-            </button>
-            <div id="public-gift-avatars" class="grid grid-cols-6 sm:grid-cols-8 gap-2 mb-4 max-h-40 overflow-y-auto p-2 bg-gray-900/30 rounded-xl">
-                ${onlineUsers.length === 0 ? '<p class="col-span-full text-xs text-gray-500 text-center py-6">لا يوجد أشخاص متصلون حالياً</p>' : onlineUsers.map(u => `
-                    <button class="public-gift-avatar-btn relative flex flex-col items-center gap-1 p-1 rounded-lg transition-all" data-user-id="${u._id}" data-username="${u.username}" title="${u.username}">
+            <div id="public-gift-avatars" class="grid grid-cols-6 sm:grid-cols-8 gap-2 mb-3 max-h-32 overflow-y-auto p-2 bg-gray-900/30 rounded-xl">
+                <button id="select-all-online-btn" class="room-gift-all-btn relative flex flex-col items-center gap-1 flex-shrink-0" title="إرسال للجميع">
+                    <span class="room-gift-all-circle rg-avatar-img">الكل</span>
+                    <span class="text-[8px] leading-tight text-gray-400">${onlineUsers.length}</span>
+                </button>
+                ${onlineUsers.length === 0 ? '<p class="col-span-full text-xs text-gray-500 text-center py-4">لا يوجد أشخاص متصلون حالياً</p>' : onlineUsers.map(u => `
+                    <button class="public-gift-avatar-btn relative flex flex-col items-center gap-1 p-1 rounded-lg transition-all" data-user-id="${u._id}" data-username="${escapeHtml(u.username)}" title="${escapeHtml(u.username)}">
                         <span class="relative inline-block">
-                            <img src="${u.profileImage}" class="w-7 h-7 rounded-full object-cover border-2 border-gray-600 transition-all public-avatar-img ${u.activeFrameClass || ''}">
-                            <span class="pg-selected-badge hidden absolute -top-1 -right-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
+                            <img src="${u.profileImage}" class="w-7 h-7 rounded-full object-cover border-2 border-gray-600 transition-all rg-avatar-img ${u.activeFrameClass || ''}">
+                            <span class="rg-selected-badge hidden absolute -top-1 -left-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
                                 <i class="fas fa-check text-white" style="font-size:6px"></i>
                             </span>
                         </span>
-                        <span class="text-[8px] leading-tight truncate w-full text-center">${u.username}</span>
+                        <span class="text-[8px] leading-tight truncate w-full text-center">${escapeHtml(u.username)}</span>
                     </button>
                 `).join('')}
             </div>
-            <p class="text-xs text-gray-400 mb-2">اختر الهدية (اضغط عليها، واستمر بالضغط على زر الإرسال للإرسال السريع المتتالي)</p>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="gift-category-tabs mb-2"></div>
+            <div id="public-gift-cards-grid" class="room-gift-cards-grid grid grid-cols-3 gap-2">
                 ${gifts.map(g => renderGiftCardHTML(g)).join('')}
+            </div>
+        `;
+        footer.innerHTML = `
+            <div class="flex items-center gap-2 p-3 border-t border-gray-700 bg-gray-900/60 flex-shrink-0">
+                <span class="text-xs text-yellow-400 flex items-center gap-1 flex-shrink-0 font-bold">
+                    <i class="fas fa-coins"></i> <span id="pg-balance">${localUserSnapshot.coins || 0}</span>
+                </span>
+                <span id="pg-send-counter" class="hidden text-[11px] text-gray-400 flex-1 text-center"></span>
+                <div class="flex-1"></div>
+                <button type="button" id="public-gift-send-btn" class="gift-send-main-btn" disabled title="اختر هدية أولاً">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
             </div>
         `;
 
         wireGiftImageFallbacks(body);
+        wireGiftCategoryTabs(body, gifts, '#public-gift-cards-grid');
 
         function markAllSelectedVisual(isAll) {
-            const allBtn = document.getElementById('select-all-online-btn');
-            if (!allBtn) return;
-            if (isAll) allBtn.classList.add('ring-2', 'ring-pink-400', 'bg-purple-700');
-            else allBtn.classList.remove('ring-2', 'ring-pink-400', 'bg-purple-700');
+            document.getElementById('select-all-online-btn')?.querySelector('.rg-avatar-img')?.classList.toggle('room-gift-all-active', isAll);
         }
 
         function clearIndividualSelectionVisuals() {
             body.querySelectorAll('.public-gift-avatar-btn').forEach(b => {
-                b.querySelector('.public-avatar-img')?.classList.remove('ring-2', 'ring-pink-500');
-                b.querySelector('.pg-selected-badge')?.classList.add('hidden');
+                b.querySelector('.rg-avatar-img')?.classList.remove('ring-2', 'ring-pink-500');
+                b.querySelector('.rg-selected-badge')?.classList.add('hidden');
                 b.classList.remove('bg-pink-900/40');
             });
         }
@@ -8372,8 +8466,8 @@ function confirmRedeem(redeemTo) {
                 audienceMode = 'selected';
                 markAllSelectedVisual(false);
                 const uid = avatarBtn.dataset.userId;
-                const img = avatarBtn.querySelector('.public-avatar-img');
-                const badge = avatarBtn.querySelector('.pg-selected-badge');
+                const img = avatarBtn.querySelector('.rg-avatar-img');
+                const badge = avatarBtn.querySelector('.rg-selected-badge');
                 if (selectedUserIds.has(uid)) {
                     selectedUserIds.delete(uid);
                     img.classList.remove('ring-2', 'ring-pink-500');
@@ -8389,35 +8483,41 @@ function confirmRedeem(redeemTo) {
             });
         });
 
-        body.querySelectorAll('.gift-card-wrapper').forEach(card => {
-            const toggleBtn = card.querySelector('.gift-card-toggle');
-
-            toggleBtn.addEventListener('click', () => {
-                const isExpanded = card.classList.contains('gift-expanded');
-                body.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-expanded'));
-                if (isExpanded) return;
-
-                card.classList.add('gift-expanded');
-
-                const giftData = {
+        // 🐛 إصلاح: هذا القسم كان معطّلاً بالكامل — الكود القديم كان يتوقّع بنية كارد قديمة
+        // (زر توسيع داخلي .gift-card-toggle) لم تعد موجودة إطلاقاً بقالب renderGiftCardHTML
+        // الموحّد الحالي، فكان `.querySelector('.gift-card-toggle')` يرجع null ويرمي خطأ فوراً
+        // عند فتح النافذة — يظهر معه "فشل تحميل البيانات" دوماً. الحل: تحديد الهدية بالضغط
+        // على الكارد نفسه (تفويض أحداث يبقى يعمل حتى بعد إعادة رسم الشبكة بفلترة التصنيفات)،
+        // وزر إرسال واحد ثابت بالتذييل يستخدم نفس محرك الإرسال المتسارع الأصلي والسليم أصلاً
+        let selectedGift = null;
+        body.addEventListener('click', (e) => {
+            const card = e.target.closest('.gift-card-wrapper');
+            if (!card || !body.contains(card)) return;
+            const wasSelected = card.classList.contains('gift-card-selected');
+            body.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-card-selected'));
+            const sendBtn = document.getElementById('public-gift-send-btn');
+            if (wasSelected) {
+                selectedGift = null;
+                if (sendBtn) sendBtn.disabled = true;
+            } else {
+                card.classList.add('gift-card-selected');
+                selectedGift = {
                     id: card.dataset.giftId,
                     name: card.dataset.giftName,
                     price: parseFloat(card.dataset.giftPrice),
                     icon: card.dataset.giftIcon,
                     imageUrl: card.dataset.giftImage
                 };
-
-                const sendBtn = card.querySelector('.inline-send-btn');
-                const counterEl = card.querySelector('.inline-send-counter');
-
-                setupRapidPublicGiftButton(
-                    () => giftData,
-                    () => ({ audienceMode, selectedUserIds, onlineCount: onlineUsers.length }),
-                    sendBtn,
-                    counterEl
-                );
-            });
+                if (sendBtn) sendBtn.disabled = false;
+            }
         });
+
+        setupRapidPublicGiftButton(
+            () => selectedGift,
+            () => ({ audienceMode, selectedUserIds, onlineCount: onlineUsers.length }),
+            document.getElementById('public-gift-send-btn'),
+            document.getElementById('pg-send-counter')
+        );
 
     } catch (error) {
         console.error('[PUBLIC GIFT] Error:', error);

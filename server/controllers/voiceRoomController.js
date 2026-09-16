@@ -59,7 +59,7 @@ exports.listRooms = async (req, res) => {
 exports.getMyRoom = async (req, res) => {
     try {
         const room = await VoiceRoom.findOne({ host: req.user.id, status: 'active' }).select('-password -seats');
-        res.json({ status: 'success', room: room ? { id: room._id, name: room.name, coverImage: room.coverImage, seatCount: room.seatCount, isPrivate: room.isPrivate, isOfficial: false } : null });
+        res.json({ status: 'success', room: room ? { id: room._id, name: room.name, coverImage: room.coverImage, seatCount: room.seatCount, isPrivate: room.isPrivate, isOfficial: false, isLive: room.isLive, host: req.user.id } : null });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
     }
