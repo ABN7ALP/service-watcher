@@ -646,6 +646,10 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     backdrop-filter: blur(4px);
     box-shadow: 0 4px 14px rgba(0,0,0,0.35);
 }
+/* 🐛 إصلاح: هذا الصنف يُصرّح display صراحة ويأتي بالملف بعد طبقة utilities الخاصة بـ
+   Tailwind، فكانت .hidden (فئة واحدة أيضاً) لا تُخفي زري "اطلب الصعود"/"مغادرة المقعد"
+   إطلاقاً رغم toggle('hidden', true) بالجافاسكربت — يظهران دائماً بغض النظر عن حالة المقعد */
+.room-chat-dock-icon.hidden { display: none; }
 .room-chat-dock-icon.room-chat-gift-icon { color: #f472b6; }
 .room-chat-dock-icon.room-chat-leave-icon { color: #f87171; }
 /* ✅ نبضة خفيفة حول زر "المزيد" وقت تشغيل موسيقى الغرفة — مؤشر مستمر رغم انتقال أيقونة القرص لداخل القائمة */
@@ -672,6 +676,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     display: flex; align-items: center; justify-content: center;
     padding: 0 3px;
 }
+/* 🐛 نفس إصلاح .hidden أعلاه — بلا هذا كانت شارة عداد "المزيد" (وشارة عداد طلبات الصعود
+   على زر ∞) تظهر دائماً حتى بالعدد صفر */
+.room-chat-mini-badge.hidden { display: none; }
 
 /* ✅ شارة المشاهدين بزاوية الغرفة — صور متراكبة + عدد، ضمن كبسولة واحدة قابلة للضغط.
    تباعد وحجم أوضح من المحاولة الأولى (كانت تحس متلاصقة/مزدحمة) */
@@ -732,6 +739,12 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     background: rgba(255,255,255,0.08);
     color: #d1d5db;
 }
+/* 🐛 إصلاح: .follow-room-btn تُصرّح display صراحة، وبما أنها تأتي بالملف بعد طبقة
+   utilities الخاصة بـ Tailwind (حيث .hidden فقط display:none بلا !important)، فتساوي
+   الخصوصية (فئة واحدة لكل منهما) يجعل الأحدث بترتيب الملف هو الفائز دائماً — أي إن .hidden
+   لم تكن تُخفي هذا الزر إطلاقاً (كان يظهر حتى للمضيف رغم toggle('hidden', true) بالجافاسكربت).
+   خصوصية أعلى صراحة (فئتان) تضمن فوز .hidden كلما اجتمعت مع .follow-room-btn */
+.follow-room-btn.hidden { display: none; }
 /* ✅ نسخة مصغّرة من زر المتابعة — برأس الغرفة نفسها (بدل زر الرجوع المحذوف) */
 .follow-room-btn-compact {
     font-size: 10.5px;
@@ -1358,15 +1371,14 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    على حد سواء، بعكس الفقاعة التلقائية الأخرى الخاصة بالضيف الجالس فقط) */
 .room-minimized-bubble {
     position: fixed;
-    bottom: 88px;
-    right: 16px;
     z-index: 300;
     width: 54px; height: 54px;
-    cursor: pointer;
+    cursor: grab;
     -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
+    touch-action: none;
 }
-@media (min-width: 768px) { .room-minimized-bubble { bottom: 24px; right: 32px; } }
+.room-minimized-bubble:active { cursor: grabbing; }
+.room-minimized-bubble.dm-bubble-snapping { transition: left 0.2s ease, right 0.2s ease, top 0.2s ease; }
 .room-minimized-bubble-img {
     width: 100%; height: 100%;
     border-radius: 50%;
@@ -1394,16 +1406,23 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     position: absolute;
     top: -14px; left: -14px;
     width: 22px; height: 22px;
+    min-width: 22px; min-height: 22px;
+    max-width: 22px; max-height: 22px;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
     border-radius: 50%;
     background: #1f2937;
     border: 1.5px solid rgba(255,255,255,0.25);
     color: #f87171;
     font-size: 9px;
+    line-height: 1;
     display: flex; align-items: center; justify-content: center;
     -webkit-tap-highlight-color: transparent;
     -webkit-appearance: none;
     appearance: none;
-    touch-action: manipulation;
+    outline: none;
+    box-shadow: none;
     z-index: 1;
 }
 

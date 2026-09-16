@@ -612,6 +612,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         minimizedRoomInfo = null;
     }
 
+    // ✅ فقاعة قابلة للسحب بحرية (نفس أسلوب dm-floating-bubble تماماً — Pointer Events موحّدة
+    // للمس والماوس معاً) — تلتصق بأقرب جانب عند الإفلات، وتفرّق بين ضغطة بسيطة (رجوع للغرفة)
+    // وسحب فعلي (لا تُفتح الغرفة بالخطأ أثناء تحريكها)
     function showRoomMinimizedBubble() {
         document.getElementById('room-minimized-bubble')?.remove();
         if (!minimizedRoomInfo) return;
@@ -619,21 +622,60 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         bubble.id = 'room-minimized-bubble';
         bubble.className = 'room-minimized-bubble';
         bubble.title = 'ارجع للغرفة';
+        bubble.style.top = '110px';
+        bubble.style.right = '10px';
         bubble.innerHTML = `
             <span class="room-minimized-bubble-pulse"></span>
             <img src="${minimizedRoomInfo.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-minimized-bubble-img">
             <button type="button" class="room-minimized-bubble-close" title="إنهاء"><i class="fas fa-times"></i></button>
         `;
         document.body.appendChild(bubble);
-        bubble.addEventListener('click', (e) => {
-            if (e.target.closest('.room-minimized-bubble-close')) {
-                e.stopPropagation();
-                const room = minimizedRoomInfo;
-                removeRoomMinimizedBubble();
-                if (room) exitCurrentVoiceRoomView(room);
+
+        let dragging = false, moved = false, startX = 0, startY = 0, origX = 0, origY = 0;
+
+        bubble.addEventListener('pointerdown', (e) => {
+            dragging = true;
+            moved = false;
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = bubble.getBoundingClientRect();
+            origX = rect.left;
+            origY = rect.top;
+            bubble.setPointerCapture(e.pointerId);
+        });
+
+        bubble.addEventListener('pointermove', (e) => {
+            if (!dragging) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) moved = true;
+            if (moved) {
+                bubble.style.left = `${origX + dx}px`;
+                bubble.style.top = `${origY + dy}px`;
+                bubble.style.right = 'auto';
+            }
+        });
+
+        bubble.addEventListener('pointerup', (e) => {
+            dragging = false;
+            if (!moved) {
+                // ✅ ضغطة بسيطة بلا سحب فعلي — نفرّق بين النقر على × (إنهاء) أو أي مكان آخر (رجوع)
+                if (e.target.closest('.room-minimized-bubble-close')) {
+                    const room = minimizedRoomInfo;
+                    removeRoomMinimizedBubble();
+                    if (room) exitCurrentVoiceRoomView(room);
+                } else {
+                    resumeMinimizedRoom();
+                }
                 return;
             }
-            resumeMinimizedRoom();
+            // ✅ الالتصاق بأقرب جانب بحركة أنيقة بعد سحب فعلي
+            const rect = bubble.getBoundingClientRect();
+            bubble.classList.add('dm-bubble-snapping');
+            const snapLeft = rect.left < window.innerWidth / 2;
+            bubble.style.left = snapLeft ? '8px' : 'auto';
+            bubble.style.right = snapLeft ? 'auto' : '8px';
+            setTimeout(() => bubble.classList.remove('dm-bubble-snapping'), 220);
         });
     }
 
@@ -2149,6 +2191,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (currentRoomMyRole === 'host') {
             showEndBroadcastConfirm(room.id);
         } else {
+            // 🐛 إصلاح: الخروج كان مجرد تنقّل واجهة فقط بلا تحرير المقعد فعلياً — لو كنت جالساً،
+            // يبقى الجميع يراك "قاعداً" رغم خروجك (التحرير كان يحصل بشكل كسول جداً لاحقاً، فقط
+            // عند دخولك غرفة أخرى). الآن يُرسَل طلب مغادرة المقعد صراحة فور الخروج الفعلي
+            if (myVoiceSeatNumber && myVoiceRoomId === room.id) {
+                leaveVoiceSeat();
+            }
             showRoomBrowserView();
         }
     }
