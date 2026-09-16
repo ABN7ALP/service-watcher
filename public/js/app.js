@@ -482,6 +482,19 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let myVoiceRoomId = null;      // ✅ أي غرفة أنا قاعد فيها فعلياً حالياً ('main' أو معرّف غرفة مستخدم)، أو null
     let currentVoiceRoomId = null; // ✅ أي غرفة معروضة بالشاشة الآن (قد تختلف عن مكان جلوسي لو كنت أتصفح فقط)
     let myIsMuted = false;         // ✅ حالة كتمي الحقيقية (زر الكتم انتقل لقائمة "المزيد")
+    let roomAudioMuted = false;    // ✅ كتم شخصي محلي بحت لكل صوت الغرفة (موسيقى + متحدثون) — لا يؤثر على أحد غيري
+
+    // ✅ كتم/فتح كل مصادر الصوت المحلية دفعة واحدة (عنصر الموسيقى + عناصر صوت المتحدثين الحيّة)
+    function applyRoomAudioMuteState() {
+        const musicAudio = document.getElementById('room-music-audio');
+        if (musicAudio) musicAudio.muted = roomAudioMuted;
+        document.querySelectorAll('.voice-peer-audio').forEach(el => { el.muted = roomAudioMuted; });
+    }
+    function toggleRoomAudioMute() {
+        roomAudioMuted = !roomAudioMuted;
+        applyRoomAudioMuteState();
+        showNotification(roomAudioMuted ? 'تم كتم كل أصوات الغرفة (موسيقى ومتحدثين) عندك أنت فقط' : 'تم إلغاء الكتم', 'info');
+    }
 
     // ✅ رفع اليد لطلب الصعود للمايك — حالة الغرفة المعروضة حالياً فقط
     let myHandRaised = false;
@@ -631,11 +644,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         `;
         document.body.appendChild(bubble);
 
-        let dragging = false, moved = false, startX = 0, startY = 0, origX = 0, origY = 0;
+        let dragging = false, moved = false, startX = 0, startY = 0, origX = 0, origY = 0, startedOnClose = false;
 
         bubble.addEventListener('pointerdown', (e) => {
             dragging = true;
             moved = false;
+            // 🐛 إصلاح: setPointerCapture أدناه "يُعيد توجيه" كل e.target اللاحق (بما فيها
+            // pointerup) للعنصر الملتقط نفسه (الفقاعة كاملة) بدل العنصر الفعلي تحت الإصبع —
+            // فكان closest('.room-minimized-bubble-close') عند pointerup لا يطابق أبداً حتى
+            // لو الضغطة بدأت فعلياً على زر ×. نحفظ النية هنا عند pointerdown قبل أي التقاط
+            startedOnClose = !!e.target.closest('.room-minimized-bubble-close');
             startX = e.clientX;
             startY = e.clientY;
             const rect = bubble.getBoundingClientRect();
@@ -656,11 +674,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             }
         });
 
-        bubble.addEventListener('pointerup', (e) => {
+        bubble.addEventListener('pointerup', () => {
             dragging = false;
             if (!moved) {
                 // ✅ ضغطة بسيطة بلا سحب فعلي — نفرّق بين النقر على × (إنهاء) أو أي مكان آخر (رجوع)
-                if (e.target.closest('.room-minimized-bubble-close')) {
+                if (startedOnClose) {
                     const room = minimizedRoomInfo;
                     removeRoomMinimizedBubble();
                     if (room) exitCurrentVoiceRoomView(room);
@@ -693,7 +711,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         };
         exitFullscreenRoomMode();
         showRoomMinimizedBubble();
-        showRoomBrowserView();
+        // 🐛 إصلاح: showRoomBrowserView() كانت تُغادر قناة دردشة الغرفة فعلياً وتوقف الموسيقى
+        // وتُصفّر currentVoiceRoomId — يعني "التصغير" كان يقطع كل شيء بدل إبقائه بالخلفية.
+        // renderRoomBrowserContent() ترسم نفس واجهة التصفح فقط، دون مغادرة الغرفة فعلياً —
+        // الموسيقى تستمر، والدردشة/الهدايا تبقى تصل (لن تُرسَم بصرياً وأنت مُصغِّر، لكن حالتها
+        // تبقى محدَّثة فتظهر صحيحة فوراً عند رجوعك)
+        renderRoomBrowserContent();
     }
 
     function resumeMinimizedRoom() {
@@ -830,7 +853,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (!currentMusicState || !roomId) return;
         const optimistic = { ...currentMusicState };
         if (optimistic.isPlaying) {
-            optimistic.pausedAt = (optimistic.pausedAt || 0) + (Date.now() - optimistic.startedAt) / 1000;
+            // 🐛 نفس إصلاح السيرفر: startedAt تتضمّن pausedAt القديمة ضمنياً أصلاً (مضبوطة عند
+            // آخر استئناف)، فـ(الآن - startedAt) وحدها تساوي موضع التشغيل الحقيقي — لا تُجمع فوق
+            // القديمة (كان يُضاعفها بكل دورة إيقاف/استئناف فتقفز الأغنية للأمام تراكمياً)
+            optimistic.pausedAt = (Date.now() - optimistic.startedAt) / 1000;
             optimistic.isPlaying = false;
             socket.emit('room-music-pause', { roomId });
         } else {
@@ -1264,7 +1290,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             { action: 'music', icon: 'fa-compact-disc', label: 'موسيقى', color: 'text-emerald-400' },
             { action: 'messages', icon: 'fa-envelope', label: 'رسائلي', color: 'text-blue-400', badge: roomUnreadDMCount },
             { action: 'reaction', icon: 'fa-face-laugh-beam', label: 'تفاعل', color: 'text-amber-400' },
-            { action: 'suggest', icon: 'fa-lightbulb', label: 'اقتراح', color: 'text-yellow-300' }
+            { action: 'suggest', icon: 'fa-lightbulb', label: 'اقتراح', color: 'text-yellow-300' },
+            // ✅ كتم شخصي محلي بحت (لا يؤثر على أحد غيري) — يشمل الموسيقى وصوت المتحدثين معاً
+            {
+                action: 'toggle-room-mute',
+                icon: roomAudioMuted ? 'fa-volume-xmark' : 'fa-volume-high',
+                label: roomAudioMuted ? 'إلغاء كتم الصوت' : 'كتم كل الأصوات',
+                color: roomAudioMuted ? 'text-red-400' : 'text-gray-300'
+            }
         ];
         // ✅ الكتم انتقل من الشريط العائم القديم لهنا — يظهر فقط وأنت فعلياً قاعد على مقعد
         if (isSeatedHere) {
@@ -1336,6 +1369,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     showReactionPicker(currentVoiceRoomId, myVoiceSeatNumber);
                 } else if (action === 'suggest') {
                     showGeneralSuggestionModal();
+                } else if (action === 'toggle-room-mute') {
+                    toggleRoomAudioMute();
                 } else if (action === 'mute') {
                     toggleVoiceMute();
                 } else if (action === 'hand-queue') {
@@ -1937,10 +1972,21 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         return card;
     }
 
+    // ✅ التصفح الكامل: يغادر أي غرفة كنت بها فعلياً (يُلغي الاشتراك بقناتها، يوقف موسيقاها)
+    // قبل رسم قائمة الغرف — هذا هو مسار "مغادرة حقيقية"، وليس المسار المستخدم عند التصغير
     async function showRoomBrowserView() {
         currentVoiceRoomId = null;
         leaveRoomChatUI();
         exitFullscreenRoomMode();
+        renderRoomBrowserContent();
+    }
+
+    // 🐛 إصلاح جوهري: كانت showRoomBrowserView دائماً تُنادى عند "تصغير" الغرفة أيضاً، لكنها
+    // تُصفّر currentVoiceRoomId وتغادر قناة دردشة الغرفة (leave-room-chat) وتوقف الموسيقى —
+    // أي إن "التصغير" كان فعلياً يقطع كل شيء (الصوت، الدردشة، تحديثات الهدايا) بدل إبقائها
+    // تعمل بالخلفية كما هو مقصود منه تماماً. الآن رسم واجهة التصفح مفصول تماماً عن مغادرة
+    // الغرفة فعلياً — التصغير يستدعي هذي الدالة مباشرة بلا أي تصفير لحالة الغرفة
+    function renderRoomBrowserContent() {
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-3">
                 <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
@@ -2166,6 +2212,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         await fetchAndRenderVoiceSnapshot(room.id, currentRoomPassword);
         updateVoiceControlBar();
         enterRoomChat(room.id);
+        applyRoomAudioMuteState(); // ✅ يطبّق كتمي المحلي (إن كان مفعّلاً) على عنصر الموسيقى وأي صوت متحدثين جديد
+        // ✅ لقطة الحالة قد تُظهرني جالساً أصلاً (مضيف يفتح غرفته من جديد مثلاً) بلا أي حدث
+        // جلوس حي يُطلق شبكة الصوت — نتأكد هنا صراحة من الاتصال بكل من هو جالس معي بالفعل
+        if (myVoiceSeatNumber && myVoiceRoomId === room.id) connectVoiceMeshToCurrentlySeated();
     }
 
     // ✅ سحب لأسفل من رأس الغرفة يخرج منها — بديل زر الرجوع المحذوف (أسلوب تطبيقات البث
@@ -3527,6 +3577,221 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (!myVoiceSeatNumber) return;
         socket.emit('toggle-mute', { isMuted: !myIsMuted });
     }
+
+    // =====================================================
+    // ✅ الصوت الحي بين الجالسين على المقاعد (WebRTC Mesh) — كل من يجلس على مقعد يتصل
+    // مباشرة (نظير لنظير) بكل من يجلس على مقعد آخر بنفس الغرفة. السيرفر لا يلمس الصوت
+    // إطلاقاً، فقط يُوصّل رسائل التفاوض (SDP/ICE) بين الطرفين عبر Socket.IO الموجود أصلاً.
+    // مبني بالكامل على أدوات المتصفح الأصلية (RTCPeerConnection + getUserMedia) بلا أي
+    // مكتبة أو خادم وسائط خارجي — يعمل ممتازاً لعدد المقاعد المعتاد (9/15/24)، فالصوت
+    // وحده (بدون فيديو) خفيف جداً على الشبكة والمعالج حتى مع عدة اتصالات متزامنة.
+    // 🔭 للتوسّع لاحقاً: تمكين "المشاهدين" (غير الجالسين) من سماع الجالسين أيضاً، أو دعم
+    // الغرفة الرسمية بـ80 مقعداً بكفاءة، يحتاج فعلياً خادم وسائط مركزي (SFU مثل LiveKit
+    // أو mediasoup) — هذا يتطلب بنية تحتية إضافية (خادم وسائط منفصل + غالباً TURN مخصص)
+    // خارج نطاق حل بلا بنية تحتية جديدة، ومقصود تأجيله لمرحلة لاحقة عند الحاجة الفعلية له
+    // =====================================================
+    const VOICE_ICE_SERVERS = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+    ];
+    const voicePeerConnections = new Map(); // peerUserId(string) → RTCPeerConnection
+    let localMicStream = null;
+    let micPermissionDenied = false; // ✅ لا نُزعج المستخدم بطلب صلاحية متكرر لو رفضها صراحة مرة
+
+    // ✅ كاشف "من يتكلم الآن" — يحلّل مستوى الصوت الفعلي لكل تدفق صوت أستقبله (Web Audio
+    // API، محلياً بالكامل بمتصفحي أنا، بلا أي إشارة سيرفر إضافية) ويُضيء حلقة خضراء حول
+    // مقعده تلقائياً. نفس الآلية تُطبَّق على صوتي أنا نفسي لإضاءة مقعدي عند حديثي أيضاً
+    const voiceSpeakingDetectors = new Map(); // userId(string) → { audioCtx, intervalId }
+    const SPEAKING_VOLUME_THRESHOLD = 18; // مُعاير تجريبياً: يلتقط الكلام العادي، يتجاهل الضجيج الخلفي الخفيف
+
+    function attachSpeakingDetector(stream, forUserId) {
+        try {
+            detachSpeakingDetector(forUserId); // ✅ يمنع كاشفَين متراكبَين لنفس الشخص لو أُعيد الاستدعاء
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx || !stream.getAudioTracks().length) return;
+            const audioCtx = new AudioCtx();
+            const source = audioCtx.createMediaStreamSource(stream);
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 512;
+            source.connect(analyser);
+            const data = new Uint8Array(analyser.frequencyBinCount);
+            let speaking = false;
+            const intervalId = setInterval(() => {
+                analyser.getByteFrequencyData(data);
+                const avg = data.reduce((a, b) => a + b, 0) / data.length;
+                // ✅ لو كان هذا صوتي أنا وأنا مكتوم، لا تُضئ مقعدي حتى لو التقط المايك ضجيجاً
+                const isSpeaking = avg > SPEAKING_VOLUME_THRESHOLD && !(forUserId === myUserId && myIsMuted);
+                if (isSpeaking !== speaking) {
+                    speaking = isSpeaking;
+                    document.querySelector(`#voice-chat-grid [data-user-id="${forUserId}"]`)?.classList.toggle('voice-seat-speaking', isSpeaking);
+                }
+            }, 150);
+            voiceSpeakingDetectors.set(forUserId, { audioCtx, intervalId });
+        } catch (error) {
+            console.warn('[VOICE] فشل تفعيل كاشف التحدث:', error);
+        }
+    }
+
+    function detachSpeakingDetector(forUserId) {
+        const d = voiceSpeakingDetectors.get(forUserId);
+        if (d) {
+            clearInterval(d.intervalId);
+            d.audioCtx.close().catch(() => {});
+            voiceSpeakingDetectors.delete(forUserId);
+        }
+        document.querySelector(`#voice-chat-grid [data-user-id="${forUserId}"]`)?.classList.remove('voice-seat-speaking');
+    }
+
+    async function ensureLocalMicStream() {
+        if (localMicStream) return localMicStream;
+        if (micPermissionDenied) return null;
+        if (!navigator.mediaDevices?.getUserMedia) return null; // ✅ متصفح قديم/سياق غير آمن (يتطلب HTTPS)
+        try {
+            localMicStream = await navigator.mediaDevices.getUserMedia({
+                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+            });
+            // ✅ يعكس حالة كتمي الحالية فوراً (لو كنت مكتوماً أصلاً قبل توفّر المايك)
+            localMicStream.getAudioTracks().forEach(t => { t.enabled = !myIsMuted; });
+            attachSpeakingDetector(localMicStream, myUserId); // ✅ يُضيء مقعدي أنا نفسي عند حديثي
+            return localMicStream;
+        } catch (error) {
+            console.warn('[VOICE] تعذّر الوصول للمايكروفون:', error?.name || error);
+            micPermissionDenied = true;
+            showFloatingAlert('تعذّر الوصول للمايكروفون — تحقّق من إذن الوصول له', 'fa-microphone-slash', 'bg-red-500');
+            return null;
+        }
+    }
+
+    function getOrCreateVoicePeer(peerUserId) {
+        let pc = voicePeerConnections.get(peerUserId);
+        if (pc) return pc;
+
+        pc = new RTCPeerConnection({ iceServers: VOICE_ICE_SERVERS });
+        voicePeerConnections.set(peerUserId, pc);
+
+        if (localMicStream) {
+            localMicStream.getTracks().forEach(track => pc.addTrack(track, localMicStream));
+        } else {
+            // ✅ لو رفض المايك أو لم يُتَح بعد، نُصرّح صراحة بنيّة "استقبال فقط" — بدونها قد
+            // لا يتضمّن عرض الاتصال أي مقطع صوت إطلاقاً، فيتعطّل استقباله لصوت الطرف الآخر
+            // أيضاً (وليس فقط عجزه عن الإرسال). هذا يضمن أن من رفض إذن المايك يبقى قادراً
+            // على سماع بقية الجالسين حتى لو ما قدر يتكلم هو
+            pc.addTransceiver('audio', { direction: 'recvonly' });
+        }
+
+        pc.onicecandidate = (e) => {
+            if (e.candidate && currentVoiceRoomId) {
+                socket.emit('voice-webrtc-ice-candidate', { roomId: currentVoiceRoomId, toUserId: peerUserId, candidate: e.candidate });
+            }
+        };
+
+        // ✅ عنصر صوت مخفي لكل نظير — يُلحَق بالصفحة نفسها (وليس داخل mainContent) فيبقى
+        // شغّالاً حتى أثناء تصغير الغرفة (نفس منطق عنصر صوت الموسيقى تماماً)
+        pc.ontrack = (e) => {
+            let audioEl = document.getElementById(`voice-peer-audio-${peerUserId}`);
+            if (!audioEl) {
+                audioEl = document.createElement('audio');
+                audioEl.id = `voice-peer-audio-${peerUserId}`;
+                audioEl.className = 'voice-peer-audio';
+                audioEl.autoplay = true;
+                audioEl.muted = roomAudioMuted;
+                audioEl.style.display = 'none';
+                document.body.appendChild(audioEl);
+            }
+            audioEl.srcObject = e.streams[0];
+            attachSpeakingDetector(e.streams[0], peerUserId);
+        };
+
+        pc.onconnectionstatechange = () => {
+            if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) {
+                teardownVoicePeer(peerUserId);
+            }
+        };
+
+        return pc;
+    }
+
+    // ✅ "أنا الجديد" دائماً من ينشئ العرض (offer) — يمنع تعارض عرضين متزامنين لنفس الزوج
+    async function initiateVoiceCallTo(peerUserId) {
+        if (!currentVoiceRoomId || !peerUserId || peerUserId === myUserId) return;
+        if (voicePeerConnections.has(peerUserId)) return; // ✅ اتصال قائم أصلاً — لا تكرار
+        await ensureLocalMicStream();
+        const pc = getOrCreateVoicePeer(peerUserId);
+        try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            socket.emit('voice-webrtc-offer', { roomId: currentVoiceRoomId, toUserId: peerUserId, sdp: offer });
+        } catch (error) {
+            console.error('[VOICE] فشل إنشاء عرض اتصال:', error);
+            teardownVoicePeer(peerUserId);
+        }
+    }
+
+    function teardownVoicePeer(peerUserId) {
+        const pc = voicePeerConnections.get(peerUserId);
+        if (pc) {
+            pc.onicecandidate = null;
+            pc.ontrack = null;
+            pc.onconnectionstatechange = null;
+            pc.close();
+            voicePeerConnections.delete(peerUserId);
+        }
+        document.getElementById(`voice-peer-audio-${peerUserId}`)?.remove();
+        detachSpeakingDetector(peerUserId);
+    }
+
+    function teardownAllVoicePeers() {
+        Array.from(voicePeerConnections.keys()).forEach(teardownVoicePeer);
+        detachSpeakingDetector(myUserId);
+        if (localMicStream) {
+            localMicStream.getTracks().forEach(t => t.stop());
+            localMicStream = null;
+        }
+    }
+
+    // ✅ يتصل بكل من هو جالس فعلياً حالياً على شبكة المقاعد المعروضة — يُستدعى فور تأكّد
+    // جلوسي أنا (سواء جلوس مباشر أو دعوة مقبولة)، ومرة إضافية بعد أي لقطة حالة كاملة
+    function connectVoiceMeshToCurrentlySeated() {
+        const grid = document.getElementById('voice-chat-grid');
+        if (!grid) return;
+        Array.from(grid.querySelectorAll('[data-user-id]'))
+            .map(el => el.dataset.userId)
+            .filter(id => id && id !== myUserId)
+            .forEach(peerId => initiateVoiceCallTo(peerId));
+    }
+
+    socket.on('voice-webrtc-offer', async ({ fromUserId, payload }) => {
+        await ensureLocalMicStream();
+        const pc = getOrCreateVoicePeer(fromUserId);
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(payload));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('voice-webrtc-answer', { roomId: currentVoiceRoomId, toUserId: fromUserId, sdp: answer });
+        } catch (error) {
+            console.error('[VOICE] فشل معالجة عرض وارد:', error);
+        }
+    });
+
+    socket.on('voice-webrtc-answer', async ({ fromUserId, payload }) => {
+        const pc = voicePeerConnections.get(fromUserId);
+        if (!pc) return;
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(payload));
+        } catch (error) {
+            console.error('[VOICE] فشل معالجة رد وارد:', error);
+        }
+    });
+
+    socket.on('voice-webrtc-ice-candidate', async ({ fromUserId, payload }) => {
+        const pc = voicePeerConnections.get(fromUserId);
+        if (!pc) return;
+        try {
+            await pc.addIceCandidate(new RTCIceCandidate(payload));
+        } catch (error) {
+            console.error('[VOICE] فشل إضافة مرشّح ICE:', error);
+        }
+    });
 
     // ✅ قسم التحديات الجديد: يحوي إنشاء التحدي + قائمة التحديات (منقول بالكامل من الرئيسية القديمة)
     function showChallengesView() {
@@ -5343,11 +5608,15 @@ function showXpGainAnimation(amount) {
     // هنا تلقائياً) — كل ما تحتاجه هذي الدالة هو تحديث حالة myIsMuted نفسها فقط
     function syncMuteButtonUI(isMuted) {
         myIsMuted = !!isMuted;
+        // ✅ الكتم الحقيقي الآن: تعطيل مسار الصوت المحلي فعلياً (لا مجرد أيقونة) — الجميع
+        // بالشبكة يتوقفون عن سماعي فوراً بلا أي إعادة تفاوض بالاتصال (المسار يبقى متصلاً)
+        if (localMicStream) localMicStream.getAudioTracks().forEach(t => { t.enabled = !myIsMuted; });
     }
 
     // ✅ تحديث حي لمقاعد الغرفة الصوتية (تتحقق من وجود الشبكة بالصفحة أولاً لأن المستخدم قد يكون بقسم آخر)
     socket.on('user-joined-seat', ({ roomId, seatNumber, userId, username, profileImage, activeFrameClass, isMuted }) => {
-        if (userId === myUserId) {
+        const isMe = userId === myUserId;
+        if (isMe) {
             myVoiceSeatNumber = seatNumber;
             myVoiceRoomId = roomId;
             syncMuteButtonUI(!!isMuted); // ✅ يعكس حالة الكتم الحقيقية المرحّلة من المقعد السابق، لا يصفّرها
@@ -5355,6 +5624,9 @@ function showXpGainAnimation(amount) {
         }
         updateVoiceControlBar();
         if (roomId !== currentVoiceRoomId) return; // تحديث بغرفة غير معروضة بالشاشة حالياً — لا داعي لتحديث الشبكة
+        // ✅ أنا "الجديد" بشبكة الصوت دائماً عند جلوسي — أبادر بالاتصال بكل من هو جالس أصلاً
+        // (هم ينتظرون عرضي أنا، لا يبادرون من طرفهم — يمنع تعارض عرضين متزامنين لنفس الزوج)
+        if (isMe) connectVoiceMeshToCurrentlySeated();
         const voiceGrid = document.getElementById('voice-chat-grid');
         if (!voiceGrid) return;
         const seatEl = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"]`);
@@ -5373,6 +5645,9 @@ function showXpGainAnimation(amount) {
             myVoiceSeatNumber = null;
             myVoiceRoomId = null;
             clearVoiceSeatPending();
+            teardownAllVoicePeers(); // ✅ لم أعد جزءاً من شبكة صوت هذي الغرفة إطلاقاً
+        } else {
+            teardownVoicePeer(userId); // ✅ أنهِ اتصالي معه تحديداً فقط — بقية الشبكة يستمرون طبيعياً
         }
         updateVoiceControlBar();
         if (roomId !== currentVoiceRoomId) return;
@@ -5580,6 +5855,7 @@ function showXpGainAnimation(amount) {
             myVoiceSeatNumber = null;
             myVoiceRoomId = null;
             updateVoiceControlBar();
+            teardownAllVoicePeers(); // ✅ انتهى البث فأُفرِغت كل المقاعد — لا user-left-seat يصدر هنا فعلياً
         }
         // 🐛 إصلاح: إيقاف أي أغنية تخص هذي الغرفة فوراً بغض النظر عن الشاشة المعروضة حالياً
         // (عنصر الصوت عالمي بالصفحة) — بدونه كان المشغّل العائم/الصوت يبقيان حتى إعادة تحميل الصفحة
