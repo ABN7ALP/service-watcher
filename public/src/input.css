@@ -656,6 +656,10 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .room-chat-dock-icon.join-request-pending { border-color: rgba(168,85,247,0.7); color: #c084fc; }
 @keyframes joinRequestPulse { 0%, 100% { box-shadow: 0 4px 14px rgba(0,0,0,0.35), 0 0 0 0 rgba(168,85,247,0.5); } 50% { box-shadow: 0 4px 14px rgba(0,0,0,0.35), 0 0 0 4px rgba(168,85,247,0); } }
 .room-chat-dock-icon.join-request-pending { animation: joinRequestPulse 1.6s ease-out infinite; }
+/* ✅ نفس زر (∞) عند المضيف/المسؤول: يظهر فقط ووصل طلب صعود فعلي، ويومض ببساطة (بدون أي
+   حلقة دوّارة) حتى يُفتح ويُعالَج — لا يظهر إطلاقاً بلا طلبات معلّقة */
+.room-chat-dock-icon.room-hand-queue-blink { border-color: rgba(168,85,247,0.7); color: #c084fc; animation: roomHandQueueBlink 1s ease-in-out infinite; }
+@keyframes roomHandQueueBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 .room-chat-mini-badge {
     position: absolute;
     top: -3px; left: -3px;
@@ -667,43 +671,6 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     min-width: 16px; height: 16px;
     display: flex; align-items: center; justify-content: center;
     padding: 0 3px;
-}
-
-/* ✅ زر طلبات الصعود النابض برأس الغرفة — يظهر فقط للمضيف/المسؤول ووجود طلبات فعلية.
-   حلقة متقطعة تدور + تخفت/تسطع بالتناوب — إحساس "إشارة تنقطع وتعاود الاتصال" لافت للنظر */
-.room-hand-queue-btn {
-    position: relative;
-    width: 32px; height: 32px;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    background: rgba(168,85,247,0.18);
-    color: #d8b4fe;
-    font-size: 13px;
-    flex-shrink: 0;
-}
-.room-hand-queue-btn::before {
-    content: '';
-    position: absolute;
-    inset: -4px;
-    border-radius: 50%;
-    border: 2px dashed #a855f7;
-    animation: roomHandQueueSpin 3s linear infinite, roomHandQueueBlink 1.3s ease-in-out infinite;
-    pointer-events: none;
-}
-@keyframes roomHandQueueSpin { to { transform: rotate(360deg); } }
-@keyframes roomHandQueueBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-.room-hand-queue-badge {
-    position: absolute;
-    top: -4px; right: -4px;
-    min-width: 16px; height: 16px;
-    background: #ef4444;
-    color: #fff;
-    font-size: 9px;
-    font-weight: 800;
-    border-radius: 9999px;
-    display: flex; align-items: center; justify-content: center;
-    padding: 0 3px;
-    border: 1.5px solid #111827;
 }
 
 /* ✅ شارة المشاهدين بزاوية الغرفة — صور متراكبة + عدد، ضمن كبسولة واحدة قابلة للضغط.
@@ -1309,6 +1276,83 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     40%  { transform: scale(1.12); box-shadow: 0 0 0 10px rgba(168,85,247,0.25), 0 4px 16px rgba(168,85,247,0.5); }
     100% { transform: scale(1.04); box-shadow: 0 0 0 16px rgba(168,85,247,0), 0 4px 16px rgba(168,85,247,0.4); }
 }
+
+/* ✅ ورقة "دعوة لمقعد" — نفس أسلوب بقية أوراق المشروع السفلية، مع حقل بحث فوري وصفوف
+   أنيقة بزر دعوة واضح وغير مضغوط لكل شخص (بدل أيقونة صغيرة مطمورة بنهاية صف كامل قابل للضغط) */
+.seat-invite-picker-sheet {
+    background: #1a1f2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.5);
+    max-height: 72vh;
+    max-height: 72dvh;
+    animation: slideUp 0.25s ease-out;
+}
+@media (min-width: 768px) { .seat-invite-picker-sheet { border-radius: 20px; } }
+.seat-invite-search-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.seat-invite-search-wrap i {
+    position: absolute;
+    right: 12px;
+    color: #6b7280;
+    font-size: 12px;
+    pointer-events: none;
+}
+.seat-invite-search-wrap input {
+    width: 100%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 9999px;
+    padding: 9px 34px 9px 14px;
+    font-size: 12.5px;
+    color: #f3f4f6;
+}
+.seat-invite-search-wrap input::placeholder { color: #6b7280; }
+.seat-invite-search-wrap input:focus { border-color: rgba(168,85,247,0.5); }
+.seat-invite-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 8px;
+    border-radius: 12px;
+    transition: background 0.12s ease;
+}
+.seat-invite-picker-row:hover { background: rgba(255,255,255,0.05); }
+.seat-invite-picker-avatar {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1.5px solid rgba(255,255,255,0.1);
+}
+.seat-invite-picker-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #e5e7eb;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.seat-invite-picker-btn {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    color: #fff;
+    font-size: 11.5px;
+    font-weight: 800;
+    padding: 8px 16px;
+    border-radius: 9999px;
+    box-shadow: 0 2px 10px rgba(168,85,247,0.35);
+    transition: transform 0.12s ease;
+}
+.seat-invite-picker-btn:active { transform: scale(0.94); }
 
 /* ✅ فقاعة "الغرفة مُصغَّرة" — تصغير صريح من زر ⏻ برأس الغرفة (يعمل للمضيف والمشاهد
    على حد سواء، بعكس الفقاعة التلقائية الأخرى الخاصة بالضيف الجالس فقط) */
