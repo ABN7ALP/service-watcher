@@ -510,6 +510,20 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     border-radius: 50%;
     object-fit: cover;
 }
+/* ✅ حلقة خضراء نابضة حول أي مقعد يتحدث فعلياً الآن (كشف حي لمستوى الصوت عبر Web Audio API
+   — انظر attachSpeakingDetector بالعميل) — بديل بصري فوري "من يتكلم الآن" بدون أي إشارة
+   سيرفر إضافية (كل عميل يحلّل الصوت الذي يستقبله بنفسه، بلا أي حمل إضافي على الخادم) */
+.voice-seat.occupied-seat.voice-seat-speaking {
+    box-shadow:
+        0 0 0 2px rgba(52,211,153,0.9),
+        0 0 0 5px rgba(52,211,153,0.25),
+        0 2px 14px rgba(16,185,129,0.4);
+    animation: voiceSeatSpeakingPulse 1.1s ease-in-out infinite;
+}
+@keyframes voiceSeatSpeakingPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.045); }
+}
 /* ✅ اسم صاحب المقعد أسفله — يظهر فقط بغرف المستخدمين (9/15/24 مقعداً، حاوية .labeled)
    حيث المساحة تسمح؛ الغرفة الرسمية المزدحمة بـ80 مقعداً تبقى بالـ tooltip فقط لتفادي الازدحام */
 .voice-seat-name {

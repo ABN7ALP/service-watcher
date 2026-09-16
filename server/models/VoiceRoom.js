@@ -328,18 +328,22 @@ voiceRoomSchema.methods.increaseSeatCount = function (newCount) {
 // ✅ يحرر كل مقاعد هذي الغرفة دفعة واحدة (يُستخدم عند اختيار المضيف "طرد الجميع" عند قفل الغرفة)
 // — عدا مقعد المضيف نفسه، فهو مثبَّت دائماً ولا يُطرَد حتى بهذا الإجراء الجماعي —
 // يُرجع مصفوفة أرقام المقاعد التي كانت مشغولة فعلياً وأُفرغت، لبثّها للجميع
+// ✅ يُرجع {seatNumber, userId} لكل مقعد أُفرِغ (وليس رقم المقعد وحده) — العميل يحتاج
+// userId ليُنهي اتصالات الصوت الحي (WebRTC) الخاصة بكل شخص طُرد تحديداً، لا فقط تحديث المقعد بصرياً
 voiceRoomSchema.statics.releaseAllSeatsInRoom = async function (roomId) {
     const room = await this.findById(roomId);
     if (!room) return [];
     const hostId = room.host ? room.host.toString() : null;
-    const occupied = room.seats.filter(s => s.user && s.user.toString() !== hostId).map(s => s.seatNumber);
-    if (!occupied.length) return [];
+    const occupiedSeats = room.seats.filter(s => s.user && s.user.toString() !== hostId);
+    if (!occupiedSeats.length) return [];
+    const released = occupiedSeats.map(s => ({ seatNumber: s.seatNumber, userId: s.user.toString() }));
+    const seatNumbers = occupiedSeats.map(s => s.seatNumber);
     await this.updateOne(
         { _id: roomId },
         { $set: { 'seats.$[s].user': null, 'seats.$[s].joinedAt': null, 'seats.$[s].isMuted': false } },
-        { arrayFilters: [{ 's.seatNumber': { $in: occupied } }] }
+        { arrayFilters: [{ 's.seatNumber': { $in: seatNumbers } }] }
     );
-    return occupied;
+    return released;
 };
 
 // ✅ المضيف يبدأ جلسة بث جديدة بغرفته (عند فتحها وهي غير مباشرة حالياً) — يمسح دردشة الجلسة

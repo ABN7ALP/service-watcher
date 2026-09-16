@@ -27,6 +27,20 @@ const voiceSeatLocks = new Map(); // userId(string) → Promise لآخر عمل�
 // ✅ محدد معدل بسيط لدردشة الغرف وتفاعلات الإيموجي (userId → آخر وقت إرسال بالميلي ثانية)
 const roomChatRateLimit = new Map();
 
+// ✅ محدد معدل لرسائل تفاوض WebRTC (عرض/رد/مرشّحات ICE) — سخي بما يكفي لعدة اتصالات
+// متزامنة تتفاوض بنفس اللحظة (كل اتصال قد يحتاج عدة مرشّحات ICE)، ويمنع إغراق متعمّد فقط
+const voiceSignalRateLimit = new Map(); // userId(string) → [timestamps]
+const VOICE_SIGNAL_WINDOW_MS = 2000;
+const VOICE_SIGNAL_MAX = 60;
+function isVoiceSignalRateLimited(userId) {
+    const now = Date.now();
+    const key = userId.toString();
+    const timestamps = (voiceSignalRateLimit.get(key) || []).filter(t => now - t < VOICE_SIGNAL_WINDOW_MS);
+    timestamps.push(now);
+    voiceSignalRateLimit.set(key, timestamps);
+    return timestamps.length > VOICE_SIGNAL_MAX;
+}
+
 // ✅ حالة تشغيل الموسيقى الحيّة لكل غرفة (بالذاكرة — تكفي، لا تحتاج قاعدة بيانات)
 // roomId → { url, title, startedAt(ms), isPlaying, pausedAt(seconds) }
 const roomMusicState = new Map();
@@ -424,6 +438,23 @@ function getRoomViewers(io, roomId) {
 function broadcastRoomViewerCount(io, roomId) {
     const count = getRoomViewers(io, roomId).length;
     io.to(`room-chat-${roomId}`).emit('room-viewer-count', { roomId, count });
+}
+
+// ✅ يبحث عن socketId حيّ لمستخدم معيّن ضمن قناة دردشة غرفة معيّنة تحديداً — نفس منطق
+// getRoomViewers لكن لهدف واحد محدد بدل قائمة كاملة
+function findRoomMemberSocketId(io, roomId, userId) {
+    const channel = `room-chat-${roomId}`;
+    const socketIds = io.sockets.adapter.rooms.get(channel);
+    if (!socketIds) return null;
+    const target = userId.toString();
+    for (const socketId of socketIds) {
+        const s = io.sockets.sockets.get(socketId);
+        if (s?.user && s.user.id.toString() === target) return socketId;
+    }
+    return null;
+}
+function isInRoomChannel(io, roomId, userId) {
+    return !!findRoomMemberSocketId(io, roomId, userId);
 }
 
 async function endRoomBroadcastForHost(io, hostUser) {
@@ -1013,6 +1044,31 @@ socket.on('refreshBlockData', async () => {
                 console.error('[VOICE SEAT] Leave seat error:', error);
             }
         }));
+
+        // =====================================================
+        // ✅ إشارات WebRTC للصوت الحي بين الجالسين على المقاعد — السيرفر لا يلمس الوسائط
+        // إطلاقاً، فقط يُوصّل رسائل التفاوض (SDP/ICE) بين طرفين. 🛡️ لا يُرسِل الإشارة إلا لو
+        // الطرفان كلاهما فعلياً بنفس قناة دردشة الغرفة — يمنع استخدام هذا كقناة إشارات
+        // تعسفية بين أي مستخدمين (لا علاقة لهما بأي غرفة مشتركة)
+        // =====================================================
+        function relayVoiceSignal(eventName, { roomId, toUserId, payload }) {
+            if (!roomId || !toUserId || !payload) return;
+            if (isVoiceSignalRateLimited(socket.user._id)) return;
+            if (!isInRoomChannel(io, roomId, socket.user._id) || !isInRoomChannel(io, roomId, toUserId)) return;
+            const targetSocketId = findRoomMemberSocketId(io, roomId, toUserId);
+            if (!targetSocketId) return;
+            io.to(targetSocketId).emit(eventName, { roomId, fromUserId: socket.user.id.toString(), payload });
+        }
+
+        socket.on('voice-webrtc-offer', ({ roomId, toUserId, sdp }) => {
+            relayVoiceSignal('voice-webrtc-offer', { roomId, toUserId, payload: sdp });
+        });
+        socket.on('voice-webrtc-answer', ({ roomId, toUserId, sdp }) => {
+            relayVoiceSignal('voice-webrtc-answer', { roomId, toUserId, payload: sdp });
+        });
+        socket.on('voice-webrtc-ice-candidate', ({ roomId, toUserId, candidate }) => {
+            relayVoiceSignal('voice-webrtc-ice-candidate', { roomId, toUserId, payload: candidate });
+        });
 
         socket.on('toggle-mute', async ({ isMuted }) => {
             try {
