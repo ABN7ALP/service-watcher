@@ -1807,7 +1807,11 @@ socket.on('refreshBlockData', async () => {
 
                 const state = roomMusicState.get(roomId);
                 if (!state || !state.isPlaying) return;
-                state.pausedAt += (Date.now() - state.startedAt) / 1000;
+                // 🐛 إصلاح: كانت += تجمع فوق pausedAt القديمة، لكن startedAt (مضبوطة عند آخر
+                // استئناف بمعادلة now - pausedAt*1000) تتضمنها أصلاً ضمنياً — فـ (الآن - startedAt)
+                // تساوي بمفردها موضع التشغيل الحقيقي كاملاً. الجمع كان يُضاعف pausedAt في كل
+                // دورة إيقاف/استئناف، فتقفز الأغنية للأمام تراكمياً مع كل تكرار
+                state.pausedAt = (Date.now() - state.startedAt) / 1000;
                 state.isPlaying = false;
                 io.to(`room-chat-${roomId}`).emit('room-music-state', state);
             } catch (error) {

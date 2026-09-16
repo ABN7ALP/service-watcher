@@ -482,6 +482,19 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let myVoiceRoomId = null;      // ✅ أي غرفة أنا قاعد فيها فعلياً حالياً ('main' أو معرّف غرفة مستخدم)، أو null
     let currentVoiceRoomId = null; // ✅ أي غرفة معروضة بالشاشة الآن (قد تختلف عن مكان جلوسي لو كنت أتصفح فقط)
     let myIsMuted = false;         // ✅ حالة كتمي الحقيقية (زر الكتم انتقل لقائمة "المزيد")
+    let roomAudioMuted = false;    // ✅ كتم شخصي محلي بحت لكل صوت الغرفة (موسيقى + متحدثون) — لا يؤثر على أحد غيري
+
+    // ✅ كتم/فتح كل مصادر الصوت المحلية دفعة واحدة (عنصر الموسيقى + عناصر صوت المتحدثين الحيّة)
+    function applyRoomAudioMuteState() {
+        const musicAudio = document.getElementById('room-music-audio');
+        if (musicAudio) musicAudio.muted = roomAudioMuted;
+        document.querySelectorAll('.voice-peer-audio').forEach(el => { el.muted = roomAudioMuted; });
+    }
+    function toggleRoomAudioMute() {
+        roomAudioMuted = !roomAudioMuted;
+        applyRoomAudioMuteState();
+        showNotification(roomAudioMuted ? 'تم كتم كل أصوات الغرفة (موسيقى ومتحدثين) عندك أنت فقط' : 'تم إلغاء الكتم', 'info');
+    }
 
     // ✅ رفع اليد لطلب الصعود للمايك — حالة الغرفة المعروضة حالياً فقط
     let myHandRaised = false;
@@ -631,11 +644,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         `;
         document.body.appendChild(bubble);
 
-        let dragging = false, moved = false, startX = 0, startY = 0, origX = 0, origY = 0;
+        let dragging = false, moved = false, startX = 0, startY = 0, origX = 0, origY = 0, startedOnClose = false;
 
         bubble.addEventListener('pointerdown', (e) => {
             dragging = true;
             moved = false;
+            // 🐛 إصلاح: setPointerCapture أدناه "يُعيد توجيه" كل e.target اللاحق (بما فيها
+            // pointerup) للعنصر الملتقط نفسه (الفقاعة كاملة) بدل العنصر الفعلي تحت الإصبع —
+            // فكان closest('.room-minimized-bubble-close') عند pointerup لا يطابق أبداً حتى
+            // لو الضغطة بدأت فعلياً على زر ×. نحفظ النية هنا عند pointerdown قبل أي التقاط
+            startedOnClose = !!e.target.closest('.room-minimized-bubble-close');
             startX = e.clientX;
             startY = e.clientY;
             const rect = bubble.getBoundingClientRect();
@@ -656,11 +674,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             }
         });
 
-        bubble.addEventListener('pointerup', (e) => {
+        bubble.addEventListener('pointerup', () => {
             dragging = false;
             if (!moved) {
                 // ✅ ضغطة بسيطة بلا سحب فعلي — نفرّق بين النقر على × (إنهاء) أو أي مكان آخر (رجوع)
-                if (e.target.closest('.room-minimized-bubble-close')) {
+                if (startedOnClose) {
                     const room = minimizedRoomInfo;
                     removeRoomMinimizedBubble();
                     if (room) exitCurrentVoiceRoomView(room);
@@ -693,7 +711,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         };
         exitFullscreenRoomMode();
         showRoomMinimizedBubble();
-        showRoomBrowserView();
+        // 🐛 إصلاح: showRoomBrowserView() كانت تُغادر قناة دردشة الغرفة فعلياً وتوقف الموسيقى
+        // وتُصفّر currentVoiceRoomId — يعني "التصغير" كان يقطع كل شيء بدل إبقائه بالخلفية.
+        // renderRoomBrowserContent() ترسم نفس واجهة التصفح فقط، دون مغادرة الغرفة فعلياً —
+        // الموسيقى تستمر، والدردشة/الهدايا تبقى تصل (لن تُرسَم بصرياً وأنت مُصغِّر، لكن حالتها
+        // تبقى محدَّثة فتظهر صحيحة فوراً عند رجوعك)
+        renderRoomBrowserContent();
     }
 
     function resumeMinimizedRoom() {
@@ -830,7 +853,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (!currentMusicState || !roomId) return;
         const optimistic = { ...currentMusicState };
         if (optimistic.isPlaying) {
-            optimistic.pausedAt = (optimistic.pausedAt || 0) + (Date.now() - optimistic.startedAt) / 1000;
+            // 🐛 نفس إصلاح السيرفر: startedAt تتضمّن pausedAt القديمة ضمنياً أصلاً (مضبوطة عند
+            // آخر استئناف)، فـ(الآن - startedAt) وحدها تساوي موضع التشغيل الحقيقي — لا تُجمع فوق
+            // القديمة (كان يُضاعفها بكل دورة إيقاف/استئناف فتقفز الأغنية للأمام تراكمياً)
+            optimistic.pausedAt = (Date.now() - optimistic.startedAt) / 1000;
             optimistic.isPlaying = false;
             socket.emit('room-music-pause', { roomId });
         } else {
@@ -1264,7 +1290,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             { action: 'music', icon: 'fa-compact-disc', label: 'موسيقى', color: 'text-emerald-400' },
             { action: 'messages', icon: 'fa-envelope', label: 'رسائلي', color: 'text-blue-400', badge: roomUnreadDMCount },
             { action: 'reaction', icon: 'fa-face-laugh-beam', label: 'تفاعل', color: 'text-amber-400' },
-            { action: 'suggest', icon: 'fa-lightbulb', label: 'اقتراح', color: 'text-yellow-300' }
+            { action: 'suggest', icon: 'fa-lightbulb', label: 'اقتراح', color: 'text-yellow-300' },
+            // ✅ كتم شخصي محلي بحت (لا يؤثر على أحد غيري) — يشمل الموسيقى وصوت المتحدثين معاً
+            {
+                action: 'toggle-room-mute',
+                icon: roomAudioMuted ? 'fa-volume-xmark' : 'fa-volume-high',
+                label: roomAudioMuted ? 'إلغاء كتم الصوت' : 'كتم كل الأصوات',
+                color: roomAudioMuted ? 'text-red-400' : 'text-gray-300'
+            }
         ];
         // ✅ الكتم انتقل من الشريط العائم القديم لهنا — يظهر فقط وأنت فعلياً قاعد على مقعد
         if (isSeatedHere) {
@@ -1336,6 +1369,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     showReactionPicker(currentVoiceRoomId, myVoiceSeatNumber);
                 } else if (action === 'suggest') {
                     showGeneralSuggestionModal();
+                } else if (action === 'toggle-room-mute') {
+                    toggleRoomAudioMute();
                 } else if (action === 'mute') {
                     toggleVoiceMute();
                 } else if (action === 'hand-queue') {
@@ -1937,10 +1972,21 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         return card;
     }
 
+    // ✅ التصفح الكامل: يغادر أي غرفة كنت بها فعلياً (يُلغي الاشتراك بقناتها، يوقف موسيقاها)
+    // قبل رسم قائمة الغرف — هذا هو مسار "مغادرة حقيقية"، وليس المسار المستخدم عند التصغير
     async function showRoomBrowserView() {
         currentVoiceRoomId = null;
         leaveRoomChatUI();
         exitFullscreenRoomMode();
+        renderRoomBrowserContent();
+    }
+
+    // 🐛 إصلاح جوهري: كانت showRoomBrowserView دائماً تُنادى عند "تصغير" الغرفة أيضاً، لكنها
+    // تُصفّر currentVoiceRoomId وتغادر قناة دردشة الغرفة (leave-room-chat) وتوقف الموسيقى —
+    // أي إن "التصغير" كان فعلياً يقطع كل شيء (الصوت، الدردشة، تحديثات الهدايا) بدل إبقائها
+    // تعمل بالخلفية كما هو مقصود منه تماماً. الآن رسم واجهة التصفح مفصول تماماً عن مغادرة
+    // الغرفة فعلياً — التصغير يستدعي هذي الدالة مباشرة بلا أي تصفير لحالة الغرفة
+    function renderRoomBrowserContent() {
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-3">
                 <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
@@ -2166,6 +2212,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         await fetchAndRenderVoiceSnapshot(room.id, currentRoomPassword);
         updateVoiceControlBar();
         enterRoomChat(room.id);
+        applyRoomAudioMuteState(); // ✅ يطبّق كتمي المحلي (إن كان مفعّلاً) على عنصر الموسيقى وأي صوت متحدثين جديد
     }
 
     // ✅ سحب لأسفل من رأس الغرفة يخرج منها — بديل زر الرجوع المحذوف (أسلوب تطبيقات البث
