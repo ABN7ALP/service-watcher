@@ -3760,38 +3760,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             .forEach(peerId => initiateVoiceCallTo(peerId));
     }
 
-    socket.on('voice-webrtc-offer', async ({ fromUserId, payload }) => {
-        await ensureLocalMicStream();
-        const pc = getOrCreateVoicePeer(fromUserId);
-        try {
-            await pc.setRemoteDescription(new RTCSessionDescription(payload));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit('voice-webrtc-answer', { roomId: currentVoiceRoomId, toUserId: fromUserId, sdp: answer });
-        } catch (error) {
-            console.error('[VOICE] فشل معالجة عرض وارد:', error);
-        }
-    });
-
-    socket.on('voice-webrtc-answer', async ({ fromUserId, payload }) => {
-        const pc = voicePeerConnections.get(fromUserId);
-        if (!pc) return;
-        try {
-            await pc.setRemoteDescription(new RTCSessionDescription(payload));
-        } catch (error) {
-            console.error('[VOICE] فشل معالجة رد وارد:', error);
-        }
-    });
-
-    socket.on('voice-webrtc-ice-candidate', async ({ fromUserId, payload }) => {
-        const pc = voicePeerConnections.get(fromUserId);
-        if (!pc) return;
-        try {
-            await pc.addIceCandidate(new RTCIceCandidate(payload));
-        } catch (error) {
-            console.error('[VOICE] فشل إضافة مرشّح ICE:', error);
-        }
-    });
+    // 🐛 ملاحظة: مستمعات socket.on('voice-webrtc-...') نُقلت أسفل تعريف `const socket`
+    // (بعد تهيئة Socket.IO) لتفادي خطأ "Cannot access 'socket' before initialization" —
+    // كانت هنا كاستدعاء فوري يُنفَّذ أثناء المرور التسلسلي على الدالة، أي قبل وصول التنفيذ
+    // لسطر `const socket = io(...)` الموجود لاحقاً بنفس الدالة (Temporal Dead Zone)
 
     // ✅ قسم التحديات الجديد: يحوي إنشاء التحدي + قائمة التحديات (منقول بالكامل من الرئيسية القديمة)
     function showChallengesView() {
@@ -5336,6 +5308,41 @@ document.getElementById('user-id-container').addEventListener('click', () => {
     const socket = io({
         auth: {
             token: token
+        }
+    });
+
+    // ✅ مستمعات إشارات صوت الـ WebRTC (SDP/ICE) — لازم تكون بعد تعريف socket مباشرة
+    // (انظر ملاحظة أعلى قسم "الصوت الحي بين الجالسين" لسبب النقل هنا تحديداً)
+    socket.on('voice-webrtc-offer', async ({ fromUserId, payload }) => {
+        await ensureLocalMicStream();
+        const pc = getOrCreateVoicePeer(fromUserId);
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(payload));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('voice-webrtc-answer', { roomId: currentVoiceRoomId, toUserId: fromUserId, sdp: answer });
+        } catch (error) {
+            console.error('[VOICE] فشل معالجة عرض وارد:', error);
+        }
+    });
+
+    socket.on('voice-webrtc-answer', async ({ fromUserId, payload }) => {
+        const pc = voicePeerConnections.get(fromUserId);
+        if (!pc) return;
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(payload));
+        } catch (error) {
+            console.error('[VOICE] فشل معالجة رد وارد:', error);
+        }
+    });
+
+    socket.on('voice-webrtc-ice-candidate', async ({ fromUserId, payload }) => {
+        const pc = voicePeerConnections.get(fromUserId);
+        if (!pc) return;
+        try {
+            await pc.addIceCandidate(new RTCIceCandidate(payload));
+        } catch (error) {
+            console.error('[VOICE] فشل إضافة مرشّح ICE:', error);
         }
     });
 
