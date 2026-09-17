@@ -3,6 +3,7 @@ const VoiceRoom = require('../models/VoiceRoom');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const RoomBattle = require('../models/RoomBattle');
+const SeatChallenge = require('../models/SeatChallenge');
 
 // ✅ لقطة معركة PK الحالية لغرفة معينة (معلّقة أو فعلية) — تُستخدم لعرض شريط المعركة
 // فوراً عند فتح/إعادة فتح شاشة الغرفة، دون انتظار حدث Socket قد يكون فات وقته
@@ -18,6 +19,27 @@ async function getActiveBattleSnapshot(roomId) {
         scoreB: battle.scoreB,
         durationSeconds: battle.durationSeconds,
         endsAt: battle.endsAt
+    };
+}
+
+// ✅ لقطة تحدي الأعضاء الفعلي الحالي (لو موجود) — نفس فكرة لقطة معركة PK أعلاه، يعرض شريط
+// التحدي فوراً لمن يفتح/يعيد فتح شاشة الغرفة أثناء تحدٍ جارٍ، بلا انتظار حدث Socket فائت
+async function getActiveSeatChallengeSnapshot(roomId) {
+    const challenge = await SeatChallenge.getActiveForRoomPopulated(roomId);
+    if (!challenge) return null;
+    return {
+        challengeId: challenge._id,
+        participants: challenge.participants.map(p => ({
+            userId: p.user._id,
+            username: p.user.username,
+            profileImage: p.user.profileImage,
+            seatNumber: p.seatNumber,
+            team: p.team
+        })),
+        scoreA: challenge.scoreA,
+        scoreB: challenge.scoreB,
+        durationSeconds: challenge.durationSeconds,
+        endsAt: challenge.endsAt
     };
 }
 
@@ -261,7 +283,8 @@ exports.getRoomById = async (req, res) => {
             handRaises: (isHost || isModerator)
                 ? room.handRaises.filter(h => h.user).map(h => ({ userId: h.user._id, username: h.user.username, profileImage: h.user.profileImage }))
                 : [],
-            activeBattle: await getActiveBattleSnapshot(room._id)
+            activeBattle: await getActiveBattleSnapshot(room._id),
+            activeSeatChallenge: room.isOfficial ? null : await getActiveSeatChallengeSnapshot(room._id)
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });

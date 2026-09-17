@@ -61,6 +61,32 @@ async function applyGiftToRoomSupport(io, roomId, totalPrice) {
     }
 }
 
+// ✅ يضيف قيمة هدية كنقاط لفريق المستلِم لو كان طرفاً بتحدٍ نشط الآن داخل نفس الغرفة (تحدٍ
+// بين أعضاء، وليس معركة PK بين غرفتين — راجع applyGiftToActiveBattle أعلاه لتلك). مثل بقية
+// خطّافات الهدايا: لا يُوقف إرسالها أبداً حتى لو فشل (لا تحدٍ نشط غالباً — يُتجاهل بصمت)
+async function applyGiftToActiveSeatChallenge(io, roomId, receiverId, totalPrice) {
+    const SeatChallenge = require('../models/SeatChallenge');
+    const challenge = await SeatChallenge.findOne({ room: roomId, status: 'active', 'participants.user': receiverId });
+    if (!challenge) return;
+
+    const participant = challenge.participants.find(p => p.user.toString() === receiverId.toString());
+    if (!participant) return;
+    const isTeamA = participant.team === 'A';
+
+    const updated = await SeatChallenge.findOneAndUpdate(
+        { _id: challenge._id, status: 'active' },
+        { $inc: isTeamA ? { scoreA: totalPrice } : { scoreB: totalPrice } },
+        { new: true }
+    );
+    if (!updated || !io) return;
+
+    io.to(`room-chat-${roomId}`).emit('seat-challenge-score-update', {
+        challengeId: updated._id.toString(),
+        scoreA: updated.scoreA,
+        scoreB: updated.scoreB
+    });
+}
+
 // ✅ حماية بسيطة من إرسال الهدايا بمعدل غير طبيعي (استدعاء الـ API مباشرة بمعزل عن الواجهة)
 // ملاحظة: هذا حل مناسب لخادم واحد (single instance). عند التوسع لعدة خوادم لاحقاً يفضل نقل هذا لـ Redis
 const giftRateMap = new Map(); // userId -> [timestamps]
@@ -187,6 +213,11 @@ exports.sendGift = async (req, res) => {
                 await applyGiftToRoomSupport(ioForRoom, cleanRoomId, totalPrice);
             } catch (supportError) {
                 console.error('[ROOM LEVEL] Failed to apply support points:', supportError);
+            }
+            try {
+                await applyGiftToActiveSeatChallenge(ioForRoom, cleanRoomId, receiverId, totalPrice);
+            } catch (challengeError) {
+                console.error('[SEAT CHALLENGE] Failed to apply gift score:', challengeError);
             }
         }
 
@@ -418,6 +449,13 @@ exports.sendGiftBatch = async (req, res) => {
             };
 
             if (cleanRoomId) {
+                // ✅ تحدي الأعضاء يُحسَب لكل مستلم على حدة (بعكس PK/مستوى الغرفة أعلاه، المحسوبين
+                // إجمالاً) — مستلمو الإرسال الجماعي قد يكونون بفريقين مختلفين، فلا يصح تجميعهم
+                try {
+                    await applyGiftToActiveSeatChallenge(io, cleanRoomId, receiverId, totalPrice);
+                } catch (challengeError) {
+                    console.error('[SEAT CHALLENGE] Failed to apply gift score:', challengeError);
+                }
                 if (io) {
                     io.to(`room-chat-${cleanRoomId}`).emit('room-gift-announcement', {
                         roomId: cleanRoomId, fromUserId: senderId, fromUsername: sender.username, fromProfileImage: sender.profileImage,

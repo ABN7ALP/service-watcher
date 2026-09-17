@@ -1316,6 +1316,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (currentRoomMyRole === 'host' && currentVoiceRoomId !== 'main') {
             items.push({ action: 'pk-challenge', icon: 'fa-bolt', label: 'تحدي PK', color: 'text-orange-400' });
         }
+        // ✅ تحدٍ بين أعضاء الغرفة نفسها — المضيف والمسؤولون معاً (بعكس تحدي PK بين الغرف،
+        // قرار داخلي بسيط بالغرفة نفسها لا يحتاج صلاحية المضيف حصراً)
+        if (isManager && currentVoiceRoomId !== 'main') {
+            items.push({ action: 'seat-challenge', icon: 'fa-fire', label: 'تحدٍ بين أعضاء', color: 'text-red-400' });
+        }
         // ✅ تنظيف/قفل الدردشة — للمضيف/المسؤولين بغرف المستخدمين فقط (لا الرسمية)
         if (isManager && currentVoiceRoomId !== 'main') {
             items.push({ action: 'clear-chat', icon: 'fa-broom', label: 'تنظيف الدردشة', color: 'text-gray-300' });
@@ -1378,6 +1383,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     if (currentVoiceRoomId) showHandQueueSheet(currentVoiceRoomId);
                 } else if (action === 'pk-challenge') {
                     if (currentVoiceRoomId) showPkChallengeModal({ id: currentVoiceRoomId });
+                } else if (action === 'seat-challenge') {
+                    if (currentVoiceRoomId) showSeatChallengeCreateModal({ id: currentVoiceRoomId });
                 } else if (action === 'clear-chat') {
                     showClearChatConfirm();
                 } else if (action === 'toggle-chat-lock') {
@@ -2908,6 +2915,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             } else {
                 removePkBar();
             }
+            if (result.activeSeatChallenge) {
+                renderSeatChallengeBar(result.activeSeatChallenge);
+            } else {
+                removeSeatChallengeBar();
+            }
             if (typeof result.isLocked === 'boolean') currentRoomIsLocked = result.isLocked;
             if (typeof result.chatLocked === 'boolean') currentRoomChatLocked = result.chatLocked;
             if (typeof result.level === 'number') currentRoomLevel = result.level;
@@ -3451,6 +3463,316 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         document.body.appendChild(modal);
         modal.querySelector('#close-pk-result').addEventListener('click', () => modal.remove());
         modal.addEventListener('click', (e) => { if (e.target.id === 'pk-result-modal') modal.remove(); });
+    }
+
+    // =====================================================
+    // ✅ تحدٍ بين أعضاء داخل نفس الغرفة (بعكس معركة PK أعلاه: بين شخصين/فريقين من نفس
+    // الغرفة، وليس بين غرفتين) — إنشاء (المضيف/المسؤول فقط)، دعوات فردية، شريط حي بتأثيرات
+    // "اقتراب من الحسم"، ونافذة نتيجة قوية بصرياً للفائز/الخاسر
+    // =====================================================
+    let currentSeatChallenge = null;
+    let seatChallengeCountdownInterval = null;
+    let seatChallengeFireShownFor = null; // 'A' | 'B' | null — يمنع تكرار تنبيه نفس التصدّر كل تحديث نقاط
+
+    // ✅ نافذة إنشاء التحدي — يختار المضيف/المسؤول 2 أو 4 من الجالسين حالياً (تُقرأ مباشرة من
+    // شبكة المقاعد بالشاشة، بلا طلب شبكة إضافي)، يُوزَّعون فريقين تلقائياً بالترتيب (أول
+    // نصف 🔵، والباقي 🔴)، ثم مدة التحدي — كل هذا محلي فقط، السيرفر يتحقق من كل شيء مجدداً
+    function showSeatChallengeCreateModal(room) {
+        document.getElementById('seat-challenge-create-modal')?.remove();
+        const candidates = Array.from(document.querySelectorAll('#voice-chat-grid .occupied-seat'))
+            .map(el => ({
+                userId: el.dataset.userId,
+                username: el.title || '',
+                profileImage: el.querySelector('img')?.src || '',
+                seatNumber: parseInt(el.dataset.seat)
+            }))
+            .filter(c => !!c.userId);
+
+        if (candidates.length < 2) {
+            showNotification('يحتاج التحدي شخصين جالسين على الأقل', 'info');
+            return;
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'seat-challenge-create-modal';
+        modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-xl shadow-xl p-5 w-full max-w-sm text-white max-h-[85vh] overflow-y-auto">
+                <h3 class="text-lg font-bold mb-3"><i class="fas fa-fire text-red-400"></i> تحدٍ بين أعضاء</h3>
+                <div class="mb-3">
+                    <label class="text-xs text-gray-400 block mb-1.5">حجم التحدي</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button type="button" data-size="2" class="challenge-size-btn bg-purple-600 text-xs py-2 rounded-lg font-bold">1 ضد 1</button>
+                        <button type="button" data-size="4" class="challenge-size-btn bg-gray-700 text-xs py-2 rounded-lg font-bold">2 ضد 2</button>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="text-xs text-gray-400 block mb-1.5">مدة التحدي</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button type="button" data-sec="60" class="challenge-duration-btn bg-purple-600 text-xs py-2 rounded-lg font-bold">دقيقة</button>
+                        <button type="button" data-sec="120" class="challenge-duration-btn bg-gray-700 text-xs py-2 rounded-lg font-bold">دقيقتان</button>
+                        <button type="button" data-sec="180" class="challenge-duration-btn bg-gray-700 text-xs py-2 rounded-lg font-bold">3 دقائق</button>
+                    </div>
+                </div>
+                <p id="challenge-pick-label" class="text-xs text-gray-400 mb-1.5">اخترت 0 من 2 — 🔵 مقابل 🔴</p>
+                <div id="challenge-candidates-list" class="space-y-1.5 max-h-52 overflow-y-auto mb-3"></div>
+                <button type="button" id="confirm-seat-challenge" disabled class="w-full bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed py-2.5 rounded-lg font-bold text-sm mb-2">إرسال الدعوات</button>
+                <button type="button" id="cancel-seat-challenge-create" class="w-full text-center py-2 rounded-lg bg-gray-700 text-gray-300 text-sm">إلغاء</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'seat-challenge-create-modal') modal.remove(); });
+        modal.querySelector('#cancel-seat-challenge-create').addEventListener('click', () => modal.remove());
+
+        let size = 2;
+        let selectedDuration = 60;
+        let selected = []; // [{ userId, team }]
+
+        function renderCandidates() {
+            const list = modal.querySelector('#challenge-candidates-list');
+            list.innerHTML = candidates.map(c => {
+                const sel = selected.find(s => s.userId === c.userId);
+                const teamBadge = sel ? (sel.team === 'A' ? '🔵' : '🔴') : '';
+                return `
+                    <button type="button" class="challenge-candidate-btn ${sel ? 'challenge-candidate-selected' : ''}" data-user-id="${c.userId}">
+                        <img src="${c.profileImage}" class="w-8 h-8 rounded-full flex-shrink-0">
+                        <span class="text-xs flex-1 text-right truncate">${escapeHtml(c.username)}</span>
+                        ${teamBadge ? `<span class="text-sm">${teamBadge}</span>` : ''}
+                    </button>
+                `;
+            }).join('');
+            list.querySelectorAll('.challenge-candidate-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const userId = btn.dataset.userId;
+                    const existingIdx = selected.findIndex(s => s.userId === userId);
+                    if (existingIdx !== -1) {
+                        selected.splice(existingIdx, 1);
+                    } else {
+                        if (selected.length >= size) return;
+                        selected.push({ userId, team: null }); // الفريق يُحسَب أدناه دائماً، لا هنا
+                    }
+                    // 🐛 إصلاح: تعيين الفريق وقت الإضافة فقط كان يُنتج فريقين غير متكافئين لو أُلغي
+                    // اختيار شخص بمنتصف القائمة ثم اختير آخر بدلاً عنه (مثال: أختار 4، أُلغي
+                    // الثاني، أختار خامساً — كان يصبح 1 مقابل 3 دون أي تنبيه، ويرفضه السيرفر
+                    // لاحقاً بلا توضيح). إعادة حساب الفريقين كاملة حسب الترتيب الحالي تضمن توازناً
+                    // تاماً دائماً (نصف الأول 🔵، نصف الثاني 🔴) بغض النظر عن أي تعديل سابق
+                    selected.forEach((s, i) => { s.team = i < size / 2 ? 'A' : 'B'; });
+                    renderCandidates();
+                    updateConfirmState();
+                });
+            });
+        }
+
+        function updateConfirmState() {
+            modal.querySelector('#confirm-seat-challenge').disabled = selected.length !== size;
+            modal.querySelector('#challenge-pick-label').textContent = `اخترت ${selected.length} من ${size} — 🔵 مقابل 🔴`;
+        }
+
+        modal.querySelectorAll('.challenge-size-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                size = parseInt(btn.dataset.size);
+                selected = [];
+                modal.querySelectorAll('.challenge-size-btn').forEach(b => b.classList.remove('bg-purple-600'));
+                modal.querySelectorAll('.challenge-size-btn').forEach(b => b.classList.add('bg-gray-700'));
+                btn.classList.remove('bg-gray-700');
+                btn.classList.add('bg-purple-600');
+                renderCandidates();
+                updateConfirmState();
+            });
+        });
+        modal.querySelectorAll('.challenge-duration-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedDuration = parseInt(btn.dataset.sec);
+                modal.querySelectorAll('.challenge-duration-btn').forEach(b => b.classList.remove('bg-purple-600'));
+                modal.querySelectorAll('.challenge-duration-btn').forEach(b => b.classList.add('bg-gray-700'));
+                btn.classList.remove('bg-gray-700');
+                btn.classList.add('bg-purple-600');
+            });
+        });
+
+        renderCandidates();
+        updateConfirmState();
+
+        modal.querySelector('#confirm-seat-challenge').addEventListener('click', () => {
+            if (selected.length !== size) return;
+            socket.emit('create-seat-challenge', { roomId: room.id, participants: selected, durationSeconds: selectedDuration });
+            showNotification('تم إرسال الدعوات ⏳', 'info');
+            modal.remove();
+        });
+    }
+
+    // ✅ نافذة استقبال دعوة تحدٍ — تظهر فقط لمن دعاه المضيف/المسؤول صراحة، بعدّاد تنازلي
+    // يطابق مهلة السيرفر (30 ثانية) — إغلاق تلقائي عند انتهائها (رفض ضمني من طرف السيرفر)
+    function showSeatChallengeInviteModal(data) {
+        document.getElementById('seat-challenge-invite-modal')?.remove();
+        const myTeam = data.participants.find(p => p.userId === myUserId)?.team;
+        const teamEmoji = myTeam === 'A' ? '🔵' : '🔴';
+
+        const modal = document.createElement('div');
+        modal.id = 'seat-challenge-invite-modal';
+        modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[65] p-4';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-xl shadow-xl p-5 w-full max-w-xs text-white text-center">
+                <i class="fas fa-fire text-3xl text-red-400 mb-3"></i>
+                <p class="font-bold text-base mb-1">تحدٍ من ${escapeHtml(data.invitedBy)}!</p>
+                <p class="text-xs text-gray-400 mb-4">أنت بالفريق ${teamEmoji} — هل تقبل؟</p>
+                <div class="flex gap-2">
+                    <button id="decline-seat-challenge" class="flex-1 bg-gray-700 hover:bg-gray-600 py-2 rounded-lg text-sm font-bold">رفض</button>
+                    <button id="accept-seat-challenge" class="flex-1 bg-red-600 hover:bg-red-700 py-2 rounded-lg text-sm font-bold">قبول</button>
+                </div>
+                <p id="seat-challenge-invite-countdown" class="text-[10px] text-gray-500 mt-3"></p>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.querySelector('#accept-seat-challenge').addEventListener('click', () => {
+            socket.emit('seat-challenge-response', { challengeId: data.challengeId, accept: true });
+            modal.remove();
+        });
+        modal.querySelector('#decline-seat-challenge').addEventListener('click', () => {
+            socket.emit('seat-challenge-response', { challengeId: data.challengeId, accept: false });
+            modal.remove();
+        });
+
+        let remaining = data.expiresInSeconds || 30;
+        const countdownEl = modal.querySelector('#seat-challenge-invite-countdown');
+        const tick = () => {
+            if (!document.body.contains(modal)) return;
+            countdownEl.textContent = `${remaining} ثانية للرد`;
+            remaining--;
+            if (remaining < 0) { modal.remove(); return; }
+            setTimeout(tick, 1000);
+        };
+        tick();
+    }
+
+    // ✅ شريط التحدي الحي — نفس فكرة شريط PK لكن بفريقين 🔵/🔴 بدل غرفتين، وخط فاصل رفيع
+    // بالمنتصف، ويُدرَج مباشرة بعد شريط PK لو كان موجوداً (نادراً ما يتزامنان، لكن احتياطاً)
+    function renderSeatChallengeBar(data) {
+        document.getElementById('seat-challenge-bar')?.remove();
+        currentSeatChallenge = data;
+        seatChallengeFireShownFor = null;
+
+        const teamA = data.participants.filter(p => p.team === 'A');
+        const teamB = data.participants.filter(p => p.team === 'B');
+
+        const bar = document.createElement('div');
+        bar.id = 'seat-challenge-bar';
+        bar.className = 'seat-challenge-bar';
+        bar.innerHTML = `
+            <div class="seat-challenge-row">
+                <div class="seat-challenge-team seat-challenge-team-a">
+                    ${teamA.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                </div>
+                <div class="seat-challenge-progress">
+                    <div id="seat-challenge-fill-a" class="seat-challenge-fill-a"></div>
+                    <div id="seat-challenge-fill-b" class="seat-challenge-fill-b"></div>
+                    <div class="seat-challenge-divider"></div>
+                    <span id="seat-challenge-score-a" class="seat-challenge-score-a">0</span>
+                    <span class="seat-challenge-vs"><i class="fas fa-fire"></i></span>
+                    <span id="seat-challenge-score-b" class="seat-challenge-score-b">0</span>
+                </div>
+                <div class="seat-challenge-team seat-challenge-team-b">
+                    ${teamB.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                </div>
+            </div>
+            <div id="seat-challenge-timer" class="seat-challenge-timer"></div>
+        `;
+        const insertAfter = document.getElementById('pk-battle-bar') || mainContent.querySelector('.flex.justify-between.items-center');
+        if (insertAfter) insertAfter.insertAdjacentElement('afterend', bar);
+        else mainContent.prepend(bar);
+
+        updateSeatChallengeScores(data.scoreA, data.scoreB);
+
+        clearInterval(seatChallengeCountdownInterval);
+        if (data.endsAt) {
+            const updateTimer = () => {
+                const timerEl = document.getElementById('seat-challenge-timer');
+                if (!timerEl) { clearInterval(seatChallengeCountdownInterval); return; }
+                const remainingMs = new Date(data.endsAt).getTime() - Date.now();
+                if (remainingMs <= 0) { timerEl.textContent = '00:00'; clearInterval(seatChallengeCountdownInterval); return; }
+                const m = Math.floor(remainingMs / 60000);
+                const s = Math.floor((remainingMs % 60000) / 1000);
+                timerEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            };
+            updateTimer();
+            seatChallengeCountdownInterval = setInterval(updateTimer, 1000);
+        }
+    }
+
+    // ✅ تحديث النقاط + تأثيرات "اقتراب من الحسم" — نار على الفريق المتصدّر بوضوح (68%+ من
+    // مجموع النقاط)، وخوف مرتجف على الفريق المتأخر (عبر CSS مباشرة من صنف واحد بالحاوية،
+    // انظر seat-challenge-lead-a/b بملف الأنماط) — لا يتكرر التنبيه لنفس التصدّر كل تحديث
+    function updateSeatChallengeScores(scoreA, scoreB) {
+        if (currentSeatChallenge) { currentSeatChallenge.scoreA = scoreA; currentSeatChallenge.scoreB = scoreB; }
+        const total = scoreA + scoreB;
+        const pctA = total > 0 ? Math.round((scoreA / total) * 100) : 50;
+        document.getElementById('seat-challenge-fill-a')?.style.setProperty('width', `${pctA}%`);
+        document.getElementById('seat-challenge-fill-b')?.style.setProperty('width', `${100 - pctA}%`);
+        const scoreAEl = document.getElementById('seat-challenge-score-a');
+        const scoreBEl = document.getElementById('seat-challenge-score-b');
+        if (scoreAEl) scoreAEl.textContent = scoreA;
+        if (scoreBEl) scoreBEl.textContent = scoreB;
+
+        const bar = document.getElementById('seat-challenge-bar');
+        if (!bar || total < 40) return; // ✅ لا تأثيرات قبل وجود فارق نقاط ذو معنى فعلياً
+        const leadingTeam = pctA >= 68 ? 'A' : (pctA <= 32 ? 'B' : null);
+        if (leadingTeam && leadingTeam !== seatChallengeFireShownFor) {
+            seatChallengeFireShownFor = leadingTeam;
+            bar.classList.remove('seat-challenge-lead-a', 'seat-challenge-lead-b');
+            bar.classList.add(leadingTeam === 'A' ? 'seat-challenge-lead-a' : 'seat-challenge-lead-b');
+            showBottomToast(leadingTeam === 'A' ? '🔥 الفريق الأزرق يقترب من الحسم!' : '🔥 الفريق الأحمر يقترب من الحسم!', 'fa-fire');
+        } else if (!leadingTeam && seatChallengeFireShownFor) {
+            seatChallengeFireShownFor = null;
+            bar.classList.remove('seat-challenge-lead-a', 'seat-challenge-lead-b');
+        }
+    }
+
+    function removeSeatChallengeBar() {
+        clearInterval(seatChallengeCountdownInterval);
+        currentSeatChallenge = null;
+        seatChallengeFireShownFor = null;
+        document.getElementById('seat-challenge-bar')?.remove();
+    }
+
+    // ✅ نافذة نتيجة التحدي — قوية بصرياً وتختلف باختلاف من يشاهدها: شرر ذهبي متطاير للفائز
+    // المشارك، بطاقة مهتزة داكنة للخاسر المشارك، وملخص محايد لمن كان مجرد مشاهد (يُغلق تلقائياً)
+    function showSeatChallengeResultModal(data) {
+        removeSeatChallengeBar();
+        document.getElementById('seat-challenge-result-modal')?.remove();
+
+        const myParticipant = data.participants.find(p => p.userId === myUserId);
+        const isDraw = data.winner === 'draw';
+        const iWon = !!myParticipant && !isDraw && myParticipant.team === data.winner;
+        const iLost = !!myParticipant && !isDraw && !iWon;
+
+        let title, icon, cardClass;
+        if (isDraw) { title = 'تعادل!'; icon = 'fa-handshake'; cardClass = ''; }
+        else if (iWon) { title = 'فزت! 🏆'; icon = 'fa-trophy'; cardClass = 'seat-challenge-result-card-win'; }
+        else if (iLost) { title = 'خسرت الجولة'; icon = 'fa-face-frown'; cardClass = 'seat-challenge-result-card-lose'; }
+        else { title = data.winner === 'A' ? 'فاز الفريق 🔵' : 'فاز الفريق 🔴'; icon = 'fa-trophy'; cardClass = ''; }
+
+        const particles = iWon ? Array.from({ length: 16 }, (_, i) => {
+            const angle = Math.round((360 / 16) * i);
+            const delay = (Math.random() * 0.2).toFixed(2);
+            return `<span class="seat-challenge-confetti" style="--angle:${angle}deg; --delay:${delay}s"></span>`;
+        }).join('') : '';
+
+        const modal = document.createElement('div');
+        modal.id = 'seat-challenge-result-modal';
+        modal.className = 'fixed inset-0 bg-black/75 flex items-center justify-center z-[65] p-4';
+        modal.innerHTML = `
+            <div class="seat-challenge-result-card ${cardClass}">
+                ${particles}
+                <i class="fas ${icon} seat-challenge-result-icon"></i>
+                <p class="seat-challenge-result-title">${title}</p>
+                <p class="seat-challenge-result-score">${data.scoreA} 🔵 — 🔴 ${data.scoreB}</p>
+                <button id="close-seat-challenge-result" class="seat-challenge-result-close-btn">إغلاق</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.querySelector('#close-seat-challenge-result').addEventListener('click', () => modal.remove());
+        modal.addEventListener('click', (e) => { if (e.target.id === 'seat-challenge-result-modal') modal.remove(); });
+        if (!myParticipant) setTimeout(() => modal.remove(), 4000); // ✅ مجرد مشاهد غير مشارك — لا حاجة لإغلاق يدوي
     }
 
     // ✅ متجر خلفيات الغرفة — تبويبان: "خاصتي" (المجانية الدائمة) و"المظهر" (مدفوعة، 5 أيام لكل واحدة)
@@ -6290,6 +6612,52 @@ function showXpGainAnimation(amount) {
         if (data.roomA !== currentVoiceRoomId && data.roomB !== currentVoiceRoomId) return;
         removePkBar();
         showPkResultModal(data);
+    });
+
+    // =====================================================
+    // ✅ تحدٍ بين أعضاء داخل نفس الغرفة — تحديثات حية للدعوة/الشريط/النتيجة
+    // =====================================================
+    socket.on('seat-challenge-created', () => {
+        // ✅ تأكيد بسيط — الإشعار الرئيسي ظهر فوراً عند الإرسال بالواجهة نفسها
+    });
+
+    socket.on('seat-challenge-invite', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        showSeatChallengeInviteModal(data);
+    });
+
+    socket.on('seat-challenge-pending', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        showBottomToast('⏳ تحدٍ جديد بانتظار موافقة المدعوين', 'fa-fire');
+    });
+
+    socket.on('seat-challenge-declined', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        document.getElementById('seat-challenge-invite-modal')?.remove();
+        showNotification(`تم رفض التحدي${data.declinedBy ? ' من ' + data.declinedBy : ''}`, 'info');
+    });
+
+    socket.on('seat-challenge-expired', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        document.getElementById('seat-challenge-invite-modal')?.remove();
+        showNotification('انتهت مهلة الرد على التحدي', 'info');
+    });
+
+    socket.on('seat-challenge-started', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        document.getElementById('seat-challenge-invite-modal')?.remove();
+        renderSeatChallengeBar(data);
+        showNotification('بدأ التحدي! 🔥', 'success');
+    });
+
+    socket.on('seat-challenge-score-update', (data) => {
+        if (!currentSeatChallenge || currentSeatChallenge.challengeId !== data.challengeId) return;
+        updateSeatChallengeScores(data.scoreA, data.scoreB);
+    });
+
+    socket.on('seat-challenge-ended', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        showSeatChallengeResultModal(data);
     });
 
     socket.on('new-room-message', ({ roomId, message }) => {

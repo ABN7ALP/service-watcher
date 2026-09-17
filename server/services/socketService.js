@@ -5,6 +5,7 @@ const Message = require('../models/Message');
 const Battle = require('../models/Battle');
 const VoiceRoom = require('../models/VoiceRoom');
 const RoomBattle = require('../models/RoomBattle');
+const SeatChallenge = require('../models/SeatChallenge');
 const { addExperience } = require('../utils/experienceManager'); // ✅✅✅ أضف هذا السطر هنا
 
 // =================================================
@@ -150,6 +151,91 @@ async function expirePendingChallenge(io, battleId) {
         io.to(`room-chat-${battle.roomA}`).emit('pk-challenge-expired', { battleId: battle._id.toString(), roomB: battle.roomB.toString() });
     } catch (error) {
         console.error('[PK BATTLE] Expire error:', error);
+    }
+}
+
+// =================================================
+// ✅ تحدي بين أعضاء داخل نفس الغرفة (وليس بين غرفتين كـ RoomBattle أعلاه) — نفس فلسفة
+// معارك PK بالضبط (المستند مصدر الحقيقة، المؤقتات هنا فقط للجدولة)، لكن بدعوات متعددة
+// (2 أو 4 أشخاص) بدل طرف واحد يرد. انظر server/models/SeatChallenge.js للصيغة الكاملة
+// =================================================
+const pendingSeatChallengeTimers = new Map(); // challengeId(string) → Timeout (مهلة دعوة لم يُرَد عليها بالكامل)
+const activeSeatChallengeTimers = new Map();  // challengeId(string) → Timeout (نهاية تحدٍ فعلي)
+
+function clearSeatChallengeTimer(map, challengeId) {
+    const key = challengeId.toString();
+    const t = map.get(key);
+    if (t) { clearTimeout(t); map.delete(key); }
+}
+
+// ✅ ملخص مبسّط لبثّه للعميل — نفس الشكل يُستخدم بكل أحداث الدورة (بدء/تحديث نتيجة/انتهاء)
+function buildSeatChallengeSnapshot(challenge) {
+    return {
+        challengeId: challenge._id.toString(),
+        roomId: challenge.room.toString(),
+        participants: challenge.participants.map(p => ({
+            userId: p.user._id ? p.user._id.toString() : p.user.toString(),
+            username: p.user.username || undefined,
+            profileImage: p.user.profileImage || undefined,
+            seatNumber: p.seatNumber,
+            team: p.team
+        })),
+        scoreA: challenge.scoreA,
+        scoreB: challenge.scoreB,
+        durationSeconds: challenge.durationSeconds,
+        endsAt: challenge.endsAt,
+        winner: challenge.winner
+    };
+}
+
+async function finalizeActiveSeatChallenge(io, challengeId) {
+    try {
+        clearSeatChallengeTimer(activeSeatChallengeTimers, challengeId);
+        const challenge = await SeatChallenge.findOne({ _id: challengeId, status: 'active' }).populate('participants.user', 'username profileImage');
+        if (!challenge) return;
+
+        let winner = 'draw';
+        if (challenge.scoreA > challenge.scoreB) winner = 'A';
+        else if (challenge.scoreB > challenge.scoreA) winner = 'B';
+
+        challenge.status = 'ended';
+        challenge.winner = winner;
+        await challenge.save();
+
+        io.to(`room-chat-${challenge.room}`).emit('seat-challenge-ended', buildSeatChallengeSnapshot(challenge));
+    } catch (error) {
+        console.error('[SEAT CHALLENGE] Finalize error:', error);
+    }
+}
+
+async function activateSeatChallenge(io, challenge) {
+    const now = new Date();
+    challenge.status = 'active';
+    challenge.startedAt = now;
+    challenge.endsAt = new Date(now.getTime() + challenge.durationSeconds * 1000);
+    await challenge.save();
+    await challenge.populate('participants.user', 'username profileImage');
+
+    const timer = setTimeout(() => finalizeActiveSeatChallenge(io, challenge._id), challenge.durationSeconds * 1000);
+    activeSeatChallengeTimers.set(challenge._id.toString(), timer);
+
+    io.to(`room-chat-${challenge.room}`).emit('seat-challenge-started', buildSeatChallengeSnapshot(challenge));
+}
+
+// ✅ دعوة لم يوافق عليها الجميع خلال المهلة — إلغاء تلقائي بالكامل (وليس فقط لمن لم يرد)،
+// أبسط وأوضح من محاولة تشغيل التحدي بعدد أقل ممن اختاره المضيف أصلاً
+async function expirePendingSeatChallenge(io, challengeId) {
+    try {
+        clearSeatChallengeTimer(pendingSeatChallengeTimers, challengeId);
+        const challenge = await SeatChallenge.findOneAndUpdate(
+            { _id: challengeId, status: 'pending' },
+            { $set: { status: 'expired' } },
+            { new: true }
+        );
+        if (!challenge) return;
+        io.to(`room-chat-${challenge.room}`).emit('seat-challenge-expired', { challengeId: challenge._id.toString(), roomId: challenge.room.toString() });
+    } catch (error) {
+        console.error('[SEAT CHALLENGE] Expire error:', error);
     }
 }
 
@@ -1686,6 +1772,141 @@ socket.on('refreshBlockData', async () => {
                 io.to(`room-chat-${battle.roomB}`).emit('pk-challenge-expired', { battleId: battle._id.toString(), roomB: battle.roomB.toString() });
             } catch (error) {
                 console.error('[PK BATTLE] Cancel error:', error);
+            }
+        });
+
+        // =====================================================
+        // ✅ تحدٍ بين أعضاء داخل نفس الغرفة — المضيف أو أحد المسؤولين ينشئه، يختار 2 أو 4
+        // من الجالسين حالياً ويوزّعهم فريقين متساويين، ولا يبدأ إلا بموافقة الجميع صراحة
+        // =====================================================
+        socket.on('create-seat-challenge', async ({ roomId, participants, durationSeconds }) => {
+            try {
+                if (!roomId || !Array.isArray(participants) || ![2, 4].includes(participants.length)) {
+                    return socket.emit('seat-error', 'اختر شخصين أو أربعة بالضبط لبدء التحدي');
+                }
+                const duration = SeatChallenge.DURATION_PRESETS_SECONDS.includes(parseInt(durationSeconds))
+                    ? parseInt(durationSeconds) : SeatChallenge.DURATION_PRESETS_SECONDS[0];
+
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room || !room.canModerate(socket.user._id)) {
+                    return socket.emit('seat-error', 'لا تملك صلاحية إنشاء تحدٍ بهذي الغرفة');
+                }
+                if (room.isOfficial) {
+                    return socket.emit('seat-error', 'لا يمكن إنشاء تحدٍ بالغرفة الرسمية');
+                }
+
+                const open = await SeatChallenge.findOpenForRoom(room._id);
+                if (open) return socket.emit('seat-error', 'يوجد تحدٍ قائم بالفعل بهذي الغرفة');
+
+                // 🛡️ كل مشارك مُقترَح يجب أن يكون جالساً فعلياً على مقعد بهذي الغرفة الآن — لا
+                // نثق بأي شيء قادم من العميل بخصوص هوية/مقعد المشاركين، فقط نتحقق من مصدر
+                // الحقيقة (نسخة الغرفة بقاعدة البيانات) قبل إنشاء أي تحدٍ فعلي
+                const myId = socket.user._id.toString();
+                const teamCounts = { A: 0, B: 0 };
+                const seenUserIds = new Set();
+                const finalParticipants = [];
+                for (const p of participants) {
+                    if (!p || typeof p.userId !== 'string' || !['A', 'B'].includes(p.team)) {
+                        return socket.emit('seat-error', 'بيانات مشارك غير صالحة');
+                    }
+                    if (seenUserIds.has(p.userId)) {
+                        return socket.emit('seat-error', 'لا يمكن اختيار نفس الشخص مرتين');
+                    }
+                    seenUserIds.add(p.userId);
+                    const seat = room.seats.find(s => s.user && s.user.toString() === p.userId);
+                    if (!seat) {
+                        return socket.emit('seat-error', 'أحد المختارين لم يعد جالساً على مقعد');
+                    }
+                    teamCounts[p.team]++;
+                    finalParticipants.push({ user: p.userId, seatNumber: seat.seatNumber, team: p.team, accepted: p.userId === myId });
+                }
+                const expectedPerTeam = participants.length / 2;
+                if (teamCounts.A !== expectedPerTeam || teamCounts.B !== expectedPerTeam) {
+                    return socket.emit('seat-error', 'يجب أن يتساوى عدد أفراد الفريقين');
+                }
+
+                const challenge = await SeatChallenge.create({
+                    room: room._id,
+                    createdBy: socket.user._id,
+                    participants: finalParticipants,
+                    durationSeconds: duration,
+                    status: 'pending'
+                });
+                await challenge.populate('participants.user', 'username profileImage');
+
+                const timer = setTimeout(() => expirePendingSeatChallenge(io, challenge._id), SeatChallenge.CHALLENGE_EXPIRY_SECONDS * 1000);
+                pendingSeatChallengeTimers.set(challenge._id.toString(), timer);
+
+                const snapshot = buildSeatChallengeSnapshot(challenge);
+                socket.emit('seat-challenge-created', snapshot);
+
+                // ✅ إشعار كل مدعو (عدا المنشئ نفسه، مقبول تلقائياً) على حدة بدعوته الشخصية
+                finalParticipants.forEach(p => {
+                    if (p.user === myId) return;
+                    const targetSocketId = findRoomMemberSocketId(io, roomId, p.user);
+                    if (targetSocketId) {
+                        io.to(targetSocketId).emit('seat-challenge-invite', {
+                            ...snapshot,
+                            invitedBy: socket.user.username,
+                            expiresInSeconds: SeatChallenge.CHALLENGE_EXPIRY_SECONDS
+                        });
+                    }
+                });
+                // ✅ الجميع بالغرفة يرى أن تحدياً معلّقاً قائم الآن (بانتظار ردود المدعوين)
+                io.to(`room-chat-${room._id}`).emit('seat-challenge-pending', snapshot);
+            } catch (error) {
+                console.error('[SEAT CHALLENGE] Create error:', error);
+            }
+        });
+
+        socket.on('seat-challenge-response', async ({ challengeId, accept }) => {
+            try {
+                const challenge = await SeatChallenge.findOne({ _id: challengeId, status: 'pending' });
+                if (!challenge) return;
+                const myId = socket.user._id.toString();
+                const participant = challenge.participants.find(p => p.user.toString() === myId);
+                if (!participant) return socket.emit('seat-error', 'ليس لديك دعوة بانتظار ردك بهذا التحدي');
+
+                if (!accept) {
+                    clearSeatChallengeTimer(pendingSeatChallengeTimers, challenge._id);
+                    challenge.status = 'declined';
+                    await challenge.save();
+                    io.to(`room-chat-${challenge.room}`).emit('seat-challenge-declined', {
+                        challengeId: challenge._id.toString(),
+                        roomId: challenge.room.toString(),
+                        declinedBy: socket.user.username
+                    });
+                    return;
+                }
+
+                participant.accepted = true;
+                await challenge.save();
+
+                if (challenge.allAccepted()) {
+                    clearSeatChallengeTimer(pendingSeatChallengeTimers, challenge._id);
+                    await activateSeatChallenge(io, challenge);
+                } else {
+                    io.to(`room-chat-${challenge.room}`).emit('seat-challenge-participant-accepted', {
+                        challengeId: challenge._id.toString(),
+                        userId: myId
+                    });
+                }
+            } catch (error) {
+                console.error('[SEAT CHALLENGE] Response error:', error);
+            }
+        });
+
+        // ✅ إلغاء تحدٍ معلّق أنشأه هذا المستخدم نفسه قبل اكتمال الردود عليه
+        socket.on('cancel-seat-challenge', async ({ challengeId }) => {
+            try {
+                const challenge = await SeatChallenge.findOne({ _id: challengeId, status: 'pending', createdBy: socket.user._id });
+                if (!challenge) return;
+                clearSeatChallengeTimer(pendingSeatChallengeTimers, challenge._id);
+                challenge.status = 'cancelled';
+                await challenge.save();
+                io.to(`room-chat-${challenge.room}`).emit('seat-challenge-expired', { challengeId: challenge._id.toString(), roomId: challenge.room.toString() });
+            } catch (error) {
+                console.error('[SEAT CHALLENGE] Cancel error:', error);
             }
         });
 
