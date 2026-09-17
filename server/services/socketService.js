@@ -1139,7 +1139,10 @@ socket.on('refreshBlockData', async () => {
             }
         });
 
-        socket.on('host-toggle-lock-seat', async ({ roomId, seatNumber }) => {
+        // ✅ desiredLock اختياري — لو أُرسل صراحة (true/false) يُفرَض بدل التبديل التلقائي حول
+        // الحالة الحالية. تحتاجه قائمة إدارة الملف الشخصي بالغرفة لزر "إنزال وقفل المقعد"
+        // الصريح: يجب أن يقفل دائماً بلا شرط، لا أن "يُبدّل" فيفتحه بالخطأ لو كان مقفولاً أصلاً
+        socket.on('host-toggle-lock-seat', async ({ roomId, seatNumber, desiredLock }) => {
             try {
                 const VoiceRoom = require('../models/VoiceRoom');
                 const room = await VoiceRoom.resolveRoom(roomId);
@@ -1152,7 +1155,7 @@ socket.on('refreshBlockData', async () => {
                 if (room.host && seat.user && seat.user.toString() === room.host.toString()) {
                     return socket.emit('seat-error', 'لا يمكن قفل مقعد المضيف');
                 }
-                const newLockState = !seat.isLocked;
+                const newLockState = typeof desiredLock === 'boolean' ? desiredLock : !seat.isLocked;
 
                 // ✅ لو المقعد مشغول وقفلناه، نطرد الجالس عليه أولاً (مقعد مقفل يجب أن يكون فاضياً)
                 let kickedUserId = null;
@@ -1176,6 +1179,72 @@ socket.on('refreshBlockData', async () => {
                 io.emit('seat-lock-changed', { roomId, seatNumber: parseInt(seatNumber), isLocked: newLockState });
             } catch (error) {
                 console.error('[HOST ACTION] Lock toggle error:', error);
+            }
+        });
+
+        // ✅ طرد من الغرفة بالكامل (وليس فقط من مقعد) — يُمنع من الدخول إطلاقاً حتى يُنهي
+        // المضيف البث ويبدأ جلسة جديدة. يُستخدم من قائمة إدارة الملف الشخصي عندما يكون
+        // الهدف "مشاهداً" غير جالس على أي مقعد (الجالسون لهم زرّا "إنزال"/"إنزال وقفل" بدلاً منه)
+        socket.on('host-kick-room', async ({ roomId, targetUserId }) => {
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room || !room.canModerate(socket.user._id)) {
+                    return socket.emit('seat-error', 'لا تملك صلاحية الإدارة بهذي الغرفة');
+                }
+                if (room.isOfficial) {
+                    return socket.emit('seat-error', 'لا يمكن الطرد من الغرفة الرسمية');
+                }
+                if (room.host && targetUserId === room.host.toString()) {
+                    return socket.emit('seat-error', 'لا يمكن طرد مضيف الغرفة');
+                }
+                // 🛡️ مسؤول مساعد لا يقدر يطرد مسؤولاً آخر — فقط المضيف يملك هذي الصلاحية عليهم
+                const actorIsHost = room.host && room.host.toString() === socket.user._id.toString();
+                const targetIsModerator = room.moderators.some(m => m.toString() === targetUserId);
+                if (targetIsModerator && !actorIsHost) {
+                    return socket.emit('seat-error', 'لا يمكن لمسؤول طرد مسؤول آخر');
+                }
+
+                await VoiceRoom.kickUserFromRoom(room._id, targetUserId);
+
+                // ✅ لو كان جالساً فعلياً بلحظة الطرد (سباق توقيت نادر) حرّر مقعده أيضاً
+                const seat = room.seats.find(s => s.user && s.user.toString() === targetUserId);
+                if (seat) {
+                    await VoiceRoom.updateOne(
+                        { _id: room._id, 'seats.seatNumber': seat.seatNumber },
+                        { $set: { 'seats.$.user': null, 'seats.$.joinedAt': null, 'seats.$.isMuted': false } }
+                    );
+                    io.emit('user-left-seat', { roomId, seatNumber: seat.seatNumber, userId: targetUserId });
+                }
+
+                // ✅ نُخرجه فعلياً من قناة دردشة الغرفة (Socket.IO) حتى لا يبقى "مشاهداً" ظاهراً
+                const targetSocketId = findRoomMemberSocketId(io, roomId, targetUserId);
+                if (targetSocketId) {
+                    io.sockets.sockets.get(targetSocketId)?.leave(`room-chat-${roomId}`);
+                }
+                io.emit('you-were-kicked-from-room', { roomId, userId: targetUserId });
+                broadcastRoomViewerCount(io, roomId);
+            } catch (error) {
+                console.error('[HOST ACTION] Kick from room error:', error);
+            }
+        });
+
+        // ✅ إلغاء طرد — يسمح للمضيف بمراجعة قائمة المطرودين بالإعدادات والتراجع عن طرد بالخطأ
+        // بلا انتظار إنهاء البث بالكامل لإعادة فتحه من جديد
+        socket.on('host-unkick-room', async ({ roomId, targetUserId }) => {
+            try {
+                const VoiceRoom = require('../models/VoiceRoom');
+                const room = await VoiceRoom.resolveRoom(roomId);
+                if (!room || !room.canModerate(socket.user._id)) {
+                    return socket.emit('seat-error', 'لا تملك صلاحية الإدارة بهذي الغرفة');
+                }
+                await VoiceRoom.updateOne(
+                    { _id: room._id },
+                    { $pull: { kickedUsers: { user: targetUserId } } }
+                );
+                socket.emit('room-user-unkicked', { roomId, userId: targetUserId });
+            } catch (error) {
+                console.error('[HOST ACTION] Unkick error:', error);
             }
         });
 

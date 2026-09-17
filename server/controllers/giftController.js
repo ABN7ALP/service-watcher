@@ -35,6 +35,31 @@ async function applyGiftToActiveBattle(io, roomId, totalPrice) {
     io.to(`room-chat-${updated.roomB}`).emit('pk-score-update', payload);
 }
 
+// ✅ يضيف قيمة أي هدية أُرسلت داخل غرفة (بغض النظر عن وجود معركة PK نشطة أم لا) كـ"نقاط دعم"
+// تراكمية دائمة لتلك الغرفة — هذا ما يرفع مستوى الغرفة (1-5) ويفتح مزايا كتوسيع المقاعد.
+// انظر VoiceRoom.addSupportPoints/LEVEL_THRESHOLDS للصيغة الكاملة. لا يُوقف إرسال الهدية أبداً
+// حتى لو فشل (الغرفة الرسمية مثلاً بلا نظام مستوى — يُرجع null بأمان ويُتجاهل بصمت)
+async function applyGiftToRoomSupport(io, roomId, totalPrice) {
+    const VoiceRoom = require('../models/VoiceRoom');
+    const result = await VoiceRoom.addSupportPoints(roomId, totalPrice);
+    if (!result || !io) return;
+
+    io.to(`room-chat-${roomId}`).emit('room-support-points-updated', {
+        roomId: roomId.toString(),
+        supportPoints: result.supportPoints,
+        level: result.level,
+        pointsToNextLevel: VoiceRoom.pointsToNextLevel(result.supportPoints, result.level)
+    });
+
+    if (result.leveledUp) {
+        io.to(`room-chat-${roomId}`).emit('room-leveled-up', {
+            roomId: roomId.toString(),
+            newLevel: result.level,
+            unlockedSeatCounts: result.unlockedSeatCounts
+        });
+    }
+}
+
 // ✅ حماية بسيطة من إرسال الهدايا بمعدل غير طبيعي (استدعاء الـ API مباشرة بمعزل عن الواجهة)
 // ملاحظة: هذا حل مناسب لخادم واحد (single instance). عند التوسع لعدة خوادم لاحقاً يفضل نقل هذا لـ Redis
 const giftRateMap = new Map(); // userId -> [timestamps]
@@ -151,10 +176,16 @@ exports.sendGift = async (req, res) => {
 
         // ✅ لو الهدية أُرسلت من داخل غرفة بها معركة PK نشطة الآن، تُضاف قيمتها لنقاط صفّها فوراً
         if (cleanRoomId) {
+            const ioForRoom = req.app.get('socketio');
             try {
-                await applyGiftToActiveBattle(req.app.get('socketio'), cleanRoomId, totalPrice);
+                await applyGiftToActiveBattle(ioForRoom, cleanRoomId, totalPrice);
             } catch (battleError) {
                 console.error('[PK BATTLE] Failed to apply gift score:', battleError);
+            }
+            try {
+                await applyGiftToRoomSupport(ioForRoom, cleanRoomId, totalPrice);
+            } catch (supportError) {
+                console.error('[ROOM LEVEL] Failed to apply support points:', supportError);
             }
         }
 
@@ -367,6 +398,11 @@ exports.sendGiftBatch = async (req, res) => {
                 await applyGiftToActiveBattle(io, cleanRoomId, totalCost);
             } catch (battleError) {
                 console.error('[PK BATTLE] Failed to apply gift score:', battleError);
+            }
+            try {
+                await applyGiftToRoomSupport(io, cleanRoomId, totalCost);
+            } catch (supportError) {
+                console.error('[ROOM LEVEL] Failed to apply support points:', supportError);
             }
         }
 

@@ -3685,7 +3685,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 if (howlBinStreak > 12 && !howlingWarningShownThisSession) { // ~12×60ms ≈ 720ms استمرار
                     howlingWarningShownThisSession = true;
                     gateGain.gain.setTargetAtTime(0.15, ctx.currentTime, 0.05); // كتم جزئي فوري يكسر الحلقة
-                    showFloatingAlert('🎧 لاحظنا احتمال وجود صدى — جرّب سماعة الرأس أو ابعد جهازك عمّن بجانبك', 'fa-headphones', 'bg-amber-500');
+                    // 🐛 إصلاح: showFloatingAlert نص طويل بلا حد أقصى للعرض تكسر على الهاتف (كبسولة
+                    // منتصف الشاشة بلا max-width) وتختفي خلال 1.9 ثانية فقط — قصيرة جداً لقراءة
+                    // نص كهذا. showBottomToast جاهزة أصلاً لبالضبط هذي الحالة: أسفل الشاشة، عرض
+                    // محدود (90vw)، مدة أطول (3.6 ثانية) — استخدمناها هنا مع رسالة أقصر وأوضح
+                    showBottomToast('🎧 صدى محتمل — جرّب سماعة الرأس', 'fa-headphones');
                 }
             } else {
                 howlBinStreak = 0;
