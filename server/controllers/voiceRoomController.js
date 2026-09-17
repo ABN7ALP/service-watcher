@@ -279,6 +279,8 @@ exports.getRoomById = async (req, res) => {
             kickedUsers: (!room.isOfficial && (isHost || isModerator))
                 ? await getKickedUsersSnapshot(room)
                 : [],
+            // 🛡️ قائمة الكلمات المحظورة المخصّصة — للمضيف فقط (هو من يضبطها بالإعدادات)
+            bannedWords: (!room.isOfficial && isHost) ? room.bannedWords : [],
             // 🛡️ قائمة طلبات الصعود لا تُرسَل إلا للمضيف/المسؤولين — لا فائدة (وربما إحراج) لبقية الحاضرين برؤيتها
             handRaises: (isHost || isModerator)
                 ? room.handRaises.filter(h => h.user).map(h => ({ userId: h.user._id, username: h.user.username, profileImage: h.user.profileImage }))
@@ -308,7 +310,7 @@ exports.updateRoom = async (req, res) => {
             return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية تعديل هذه الغرفة' });
         }
 
-        const { name, description, isPrivate, password, isLocked, kickAll, seatCount } = req.body;
+        const { name, description, isPrivate, password, isLocked, kickAll, seatCount, bannedWords } = req.body;
 
         if (name !== undefined) {
             const cleanName = String(name).trim();
@@ -320,6 +322,18 @@ exports.updateRoom = async (req, res) => {
 
         if (description !== undefined) {
             room.description = String(description).trim().slice(0, 120);
+        }
+
+        // ✅ قائمة كلمات محظورة إضافية خاصة بهذي الغرفة — طبقة مساعدة يضبطها المضيف بنفسه
+        // فوق الفلتر العام؛ سقف 50 كلمة و30 حرفاً لكل كلمة يمنع إساءة استخدام الحقل نفسه
+        if (bannedWords !== undefined) {
+            if (!Array.isArray(bannedWords)) {
+                return res.status(400).json({ status: 'fail', message: 'قائمة الكلمات المحظورة غير صالحة' });
+            }
+            room.bannedWords = bannedWords
+                .map(w => String(w).trim().slice(0, 30))
+                .filter(Boolean)
+                .slice(0, 50);
         }
 
         if (isPrivate !== undefined) {
@@ -397,11 +411,72 @@ exports.updateRoom = async (req, res) => {
                 seatCount: room.seatCount,
                 level: room.level,
                 supportPoints: room.supportPoints,
-                unlockedSeatCounts: VoiceRoom.getUnlockedSeatCounts(room.level)
+                unlockedSeatCounts: VoiceRoom.getUnlockedSeatCounts(room.level),
+                bannedWords: room.bannedWords
             }
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// =====================================================
+// ✅ PATCH /api/voice-room/rooms/:id/cover — رفع صورة غلاف مخصّصة من جهاز المضيف (المضيف فقط)
+// نفس نمط تحديث الصورة الشخصية بالضبط (userController.updateProfilePicture): فحص المحتوى
+// الفعلي للملف بالبايتات (لا الترويسة القابلة للتزوير)، ثم رفع لـCloudinary بمجلد مخصّص
+// =====================================================
+exports.uploadRoomCover = async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غرفة غير صالح' });
+        }
+        if (!req.file) {
+            return res.status(400).json({ status: 'fail', message: 'الرجاء اختيار ملف صورة' });
+        }
+
+        const room = await VoiceRoom.findOne({ _id: req.params.id, status: 'active', isOfficial: { $ne: true } });
+        if (!room) {
+            return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة' });
+        }
+        if (!room.host || room.host.toString() !== req.user.id) {
+            return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية تعديل هذه الغرفة' });
+        }
+
+        const { cloudinary, deleteFromCloudinary, getPublicIdFromUrl, assertRealType } = require('../utils/cloudinary');
+
+        // 🛡️ التحقق من المحتوى الفعلي للملف قبل رفعه (لا من الترويسة القابلة للتزوير)
+        try {
+            assertRealType(req.file.buffer, ['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+        } catch (typeErr) {
+            return res.status(400).json({ status: 'fail', message: typeErr.message });
+        }
+
+        if (room.coverImage && room.coverImage.includes('cloudinary')) {
+            const oldPublicId = getPublicIdFromUrl(room.coverImage);
+            if (oldPublicId) await deleteFromCloudinary(oldPublicId);
+        }
+
+        const result = await new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+                {
+                    folder: 'battle_platform_room_covers',
+                    public_id: room._id.toString(),
+                    overwrite: true,
+                    format: 'webp',
+                    transformation: [{ width: 480, height: 270, crop: 'fill' }] // نسبة 16:9 تطابق بطاقة الغرفة بقائمة التصفح
+                },
+                (error, uploaded) => { if (error) reject(error); else resolve(uploaded); }
+            );
+            uploadStream.end(req.file.buffer);
+        });
+
+        room.coverImage = result.secure_url;
+        await room.save();
+
+        res.json({ status: 'success', coverImage: room.coverImage });
+    } catch (error) {
+        console.error('Error in uploadRoomCover:', error);
+        res.status(500).json({ status: 'error', message: 'فشل رفع صورة الغلاف' });
     }
 };
 

@@ -62,6 +62,13 @@ const upload = multer({
     limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 }).single('profileImage');
 
+// 5ب. Multer لصورة غلاف الغرفة (نفس فلتر/سقف الصور الشخصية، حقل مختلف بالاسم فقط)
+const roomCoverUpload = multer({
+    storage: storage,
+    fileFilter: profileImageFilter,
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+}).single('coverImage');
+
 // 6. Multer للدردشات
 const chatUpload = multer({
     storage: storage,
@@ -325,6 +332,7 @@ const uploadRoomMusic = (fileBuffer) => {
 module.exports = {
     cloudinary,
     upload,                    // للملفات الشخصية (middleware)
+    roomCoverUpload,          // لصورة غلاف الغرفة (middleware)
     chatUpload,               // للدردشات (middleware)
     uploadChatImage,          // دالة رفع صور الدردشة
     uploadChatVoice,          // دالة رفع صوت الدردشة

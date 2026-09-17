@@ -69,6 +69,9 @@ const voiceRoomSchema = new mongoose.Schema({
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     // ✅ قفل الدردشة — المضيف/المسؤولون فقط يقدرون يكتبون؛ الباقي يبقى يشاهد فقط
     chatLocked: { type: Boolean, default: false },
+    // ✅ كلمات إضافية يحظرها المضيف خصيصاً بدردشة غرفته — طبقة مساعدة فوق الفلتر العام
+    // (server/utils/profanityFilter.js)، تُفحَص بنفس منطق التطبيع/التحايل هناك تماماً
+    bannedWords: { type: [{ type: String, maxlength: 30, trim: true }], default: [] },
     lastActivityAt: { type: Date, default: Date.now, index: true },
 }, { timestamps: true });
 

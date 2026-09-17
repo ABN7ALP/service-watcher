@@ -3,6 +3,7 @@ const rateLimit = require('express-rate-limit');
 const voiceRoomController = require('../controllers/voiceRoomController');
 const authMiddleware = require('../middleware/authMiddleware');
 const { safeKeyGenerator } = require('../middleware/globalMiddleware');
+const { roomCoverUpload } = require('../utils/cloudinary');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -24,6 +25,7 @@ router.post('/rooms', roomCreationLimiter, voiceRoomController.createRoom);
 router.get('/rooms/:id', voiceRoomController.getRoomById);
 router.get('/rooms/:id/messages', voiceRoomController.getRoomMessages);
 router.patch('/rooms/:id', voiceRoomController.updateRoom);
+router.patch('/rooms/:id/cover', roomCoverUpload, voiceRoomController.uploadRoomCover);
 router.post('/rooms/:id/background', voiceRoomController.purchaseBackground);
 
 router.get('/', voiceRoomController.getVoiceRoomState);
