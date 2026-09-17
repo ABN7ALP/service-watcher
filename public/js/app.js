@@ -1477,6 +1477,20 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (sendBtn) sendBtn.disabled = blocked;
     }
 
+    // ✅ شارة مستوى الغرفة الصغيرة برأس الغرفة — مخفية تماماً بالغرفة الرسمية (لا نظام مستوى
+    // لها، currentRoomLevel تبقى null). لون متدرّج حسب المستوى (كلما ارتفع صار أفخم/أذهب)
+    function updateRoomLevelBadgeUI() {
+        const badge = document.getElementById('room-info-level-badge');
+        if (!badge) return;
+        if (currentRoomLevel === null) { badge.classList.add('hidden'); return; }
+        badge.classList.remove('hidden');
+        badge.className = `room-level-badge room-level-badge-${currentRoomLevel}`;
+        badge.innerHTML = `<i class="fas fa-star"></i> Lv.${currentRoomLevel}`;
+        badge.title = currentRoomPointsToNextLevel > 0
+            ? `${currentRoomPointsToNextLevel.toLocaleString('en-US')} نقطة دعم للمستوى التالي`
+            : 'أعلى مستوى!';
+    }
+
     // ✅ زر "اطلب الصعود" (∞) — أول ضغطة ترسل الطلب، وثاني ضغطة (والطلب لسا قائم) تفتح
     // نافذة سفلية بسيطة تسأل إن كنت تريد إلغاءه
     function sendSeatJoinRequest() {
@@ -2071,6 +2085,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentRoomHostId = null; // ✅ معرّف مضيف الغرفة المعروضة حالياً (لعرض تاج المضيف بجانب اسمه بالدردشة)
     let currentRoomIsLocked = false;
     let currentRoomChatLocked = false; // ✅ قفل الدردشة (المضيف/المسؤولون فقط يكتبون) — الغرفة المعروضة حالياً
+    // ✅ نظام مستوى الغرفة (1-5) — يرتفع بتراكم قيمة الهدايا المُرسَلة داخلها، ويفتح توسيع
+    // المقاعد تدريجياً. null بالغرفة الرسمية (لا نظام مستوى لها). انظر VoiceRoom.js بالسيرفر
+    let currentRoomLevel = null;
+    let currentRoomSupportPoints = 0;
+    let currentRoomPointsToNextLevel = 0;
+    let currentRoomLevelProgressPercent = 0;
+    let currentRoomUnlockedSeatCounts = [9];
+    let currentRoomKickedUsers = []; // ✅ للمضيف/المسؤولين فقط — تُعرَض بنافذة الإعدادات مع خيار إلغاء الطرد
     let currentRoomBackgroundImage = null;
     let currentRoomBackgroundExpiresAt = null;
     let currentRoomDescription = '';
@@ -2168,7 +2190,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <img id="room-info-cover-img" src="${room.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-cover-img">
                     <span class="min-w-0 flex flex-col items-start">
                         <span id="room-info-name" class="room-info-name">${room.isPrivate ? '<i class="fas fa-lock text-amber-400 text-[10px]"></i> ' : ''}${escapeHtml(room.name)}</span>
-                        <span id="room-info-code" class="room-info-code">${room.roomCode ? `ID: ${room.roomCode}` : ''}</span>
+                        <span class="flex items-center gap-1.5">
+                            <span id="room-info-code" class="room-info-code">${room.roomCode ? `ID: ${room.roomCode}` : ''}</span>
+                            <span id="room-info-level-badge" class="room-level-badge hidden"></span>
+                        </span>
                     </span>
                 </button>
                 <button id="room-header-follow-btn" class="hidden follow-room-btn follow-room-btn-compact js-room-follow-btn" data-following="0" title="متابعة الغرفة">
@@ -2758,7 +2783,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     // ✅ قائمة إدارة مقعد — تظهر فقط للمضيف/المسؤول عبر أيقونة "إدارة الغرفة" بالملف الشخصي
+    // ✅ قائمة الإدارة تختلف جذرياً حسب حال الهدف: جالس على مقعد فعلاً (seatNumber رقم حقيقي)
+    // مقابل مجرّد "مشاهد" بلا مقعد (seatNumber = null، مفتوحة من قائمة المشاهدين مثلاً) — لا
+    // معنى لـ"كتم"/"قفل مقعد" لمن لا يملك مقعداً أصلاً، فيظهر له فقط خيار طرد من الغرفة كاملة
     function showSeatModerationMenu(roomId, seatNumber, targetUserId, username) {
+        const isSeated = seatNumber !== null && seatNumber !== undefined;
         const modal = document.createElement('div');
         modal.id = 'seat-mod-modal';
         modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50';
@@ -2766,19 +2795,25 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-3.5 w-full md:w-auto text-white">
                 <p class="text-center text-[11px] text-gray-400 mb-2.5 truncate">${escapeHtml(username)}</p>
                 <div class="flex items-center justify-center gap-3">
+                    ${isSeated ? `
                     <button data-action="mute" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
                         <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-microphone-slash text-amber-400"></i></span>كتم
                     </button>
-                    <button data-action="kick" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
+                    <button data-action="kick-seat" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
                         <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-user-slash text-red-400"></i></span>إنزال
                     </button>
-                    <button data-action="lock" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
-                        <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-lock text-gray-300"></i></span>قفل المقعد
+                    <button data-action="kick-seat-lock" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
+                        <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-lock text-orange-400"></i></span>إنزال وقفل
                     </button>
                     ${currentRoomMyRole === 'host' ? `
                     <button data-action="mod" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
                         <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-user-shield text-emerald-400"></i></span>مسؤول
                     </button>` : ''}
+                    ` : `
+                    <button data-action="kick-room" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
+                        <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-door-open text-red-400"></i></span>طرد من الغرفة
+                    </button>
+                    `}
                 </div>
             </div>
         `;
@@ -2788,11 +2823,18 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             btn.addEventListener('click', () => {
                 const action = btn.dataset.action;
                 if (action === 'mute') socket.emit('host-mute-seat', { roomId, seatNumber, isMuted: true });
-                else if (action === 'kick') socket.emit('host-kick-seat', { roomId, seatNumber });
-                else if (action === 'lock') socket.emit('host-toggle-lock-seat', { roomId, seatNumber });
+                else if (action === 'kick-seat') socket.emit('host-kick-seat', { roomId, seatNumber });
+                // ✅ desiredLock:true صراحة — يضمن أنه يقفل دائماً (لا يُبدّل حول الحالة الحالية
+                // فيفتح المقعد بالخطأ لو كان مقفولاً أصلاً)، ويُنزل الجالس ضمنياً لو كان مشغولاً
+                else if (action === 'kick-seat-lock') socket.emit('host-toggle-lock-seat', { roomId, seatNumber, desiredLock: true });
                 else if (action === 'mod') {
                     socket.emit('host-set-moderator', { roomId, targetUserId, makeMod: true });
                     showNotification('تم تعيينه كمسؤول ✅', 'success');
+                } else if (action === 'kick-room') {
+                    if (confirm(`طرد ${username} من الغرفة بالكامل؟ لن يستطيع الدخول حتى تُنهي البث وتبدأ جلسة جديدة.`)) {
+                        socket.emit('host-kick-room', { roomId, targetUserId });
+                        showNotification('تم الطرد من الغرفة', 'success');
+                    }
                 }
                 modal.remove();
             });
@@ -2810,6 +2852,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
             const result = await response.json();
 
+            if (response.status === 403 && result.kicked) {
+                showNotification(result.message || 'تم طردك من هذي الغرفة', 'error');
+                showRoomBrowserView();
+                return;
+            }
             if (response.status === 403 && result.requiresPassword) {
                 showNotification('كلمة مرور الغرفة غير صحيحة', 'error');
                 showRoomBrowserView();
@@ -2863,6 +2910,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             }
             if (typeof result.isLocked === 'boolean') currentRoomIsLocked = result.isLocked;
             if (typeof result.chatLocked === 'boolean') currentRoomChatLocked = result.chatLocked;
+            if (typeof result.level === 'number') currentRoomLevel = result.level;
+            if (typeof result.supportPoints === 'number') currentRoomSupportPoints = result.supportPoints;
+            if (typeof result.pointsToNextLevel === 'number') currentRoomPointsToNextLevel = result.pointsToNextLevel;
+            if (typeof result.levelProgressPercent === 'number') currentRoomLevelProgressPercent = result.levelProgressPercent;
+            if (result.unlockedSeatCounts) currentRoomUnlockedSeatCounts = result.unlockedSeatCounts;
+            if (result.kickedUsers) currentRoomKickedUsers = result.kickedUsers;
+            updateRoomLevelBadgeUI();
             updateChatLockUI();
             if (result.backgroundImage !== undefined) currentRoomBackgroundImage = result.backgroundImage;
             if (result.backgroundExpiresAt !== undefined) currentRoomBackgroundExpiresAt = result.backgroundExpiresAt;
@@ -2894,21 +2948,122 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
     }
 
-    // ✅ نافذة إنشاء غرفة جديدة — بنفس أسلوب نافذة إنشاء التحدي تماماً للتناسق البصري
-    // ✅ نافذة إعدادات الغرفة — تظهر فقط للمضيف (يتحقق منها السيرفر أيضاً عند الحفظ)
+    // ✅ شارة "قفل" أنيقة على خيار مقاعد غير مفتوح بعد + رقم المستوى المطلوب — نص المولّد
+    // مستقل تماماً حتى يسهل إعادة استخدامه بأي مكان لاحقاً بلا اعتماد على متغيرات نافذة بعينها
+    function buildSeatTierOptionsHTML(currentSeatCount) {
+        const tierUnlockLevel = { 9: 1, 15: 3, 24: 5 };
+        return [9, 15, 24].map(n => {
+            const unlocked = currentRoomUnlockedSeatCounts.includes(n);
+            const isCurrent = n === currentSeatCount;
+            const classes = ['seat-tier-btn'];
+            if (isCurrent) classes.push('seat-tier-btn-active');
+            if (!unlocked) classes.push('seat-tier-btn-locked');
+            return `
+                <button type="button" class="${classes.join(' ')}" data-seats="${n}" ${!unlocked || isCurrent ? 'disabled' : ''}>
+                    <span class="seat-tier-btn-num">${n}</span>
+                    <span class="seat-tier-btn-label">${unlocked ? 'مقعد' : `<i class="fas fa-lock"></i> Lv.${tierUnlockLevel[n]}`}</span>
+                </button>
+            `;
+        }).join('');
+    }
+
+    // ✅ يُحدَّث حياً لو وصل حدث نقاط/مستوى بينما النافذة مفتوحة فعلاً — لا شيء لو كانت مغلقة
+    function updateRoomLevelProgressUI() {
+        const badge = document.getElementById('room-settings-level-badge');
+        if (!badge) return;
+        badge.textContent = `Lv.${currentRoomLevel}`;
+        badge.className = `room-settings-level-badge room-level-badge-${currentRoomLevel}`;
+        const fill = document.getElementById('room-settings-level-progress-fill');
+        if (fill) fill.style.width = `${currentRoomLevelProgressPercent}%`;
+        const text = document.getElementById('room-settings-level-progress-text');
+        if (text) {
+            text.textContent = currentRoomPointsToNextLevel > 0
+                ? `${currentRoomPointsToNextLevel.toLocaleString('en-US')} نقطة دعم للمستوى التالي`
+                : 'أعلى مستوى — أحسنت! 🏆';
+        }
+    }
+
+    // ✅ يُحدَّث حياً لو ألغى المضيف طرد أحد بينما النافذة مفتوحة — يُخفي القسم كاملاً لو فرغت القائمة
+    function renderKickedUsersListUI() {
+        const section = document.getElementById('settings-kicked-section');
+        const list = document.getElementById('settings-kicked-list');
+        if (!list || !section) return;
+        section.classList.toggle('hidden', currentRoomKickedUsers.length === 0);
+        list.innerHTML = currentRoomKickedUsers.map(u => `
+            <div class="flex items-center justify-between bg-gray-700/50 rounded-lg p-1.5" data-kicked-id="${u.id}">
+                <div class="flex items-center gap-2 min-w-0">
+                    <img src="${u.profileImage}" class="w-6 h-6 rounded-full flex-shrink-0">
+                    <span class="text-xs truncate">${escapeHtml(u.username)}</span>
+                </div>
+                <button type="button" class="unkick-btn text-emerald-400 hover:text-emerald-300 text-xs px-2" data-kicked-id="${u.id}">إلغاء الطرد</button>
+            </div>
+        `).join('');
+        list.querySelectorAll('.unkick-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                socket.emit('host-unkick-room', { roomId: currentVoiceRoomId, targetUserId: btn.dataset.kickedId });
+                btn.closest('[data-kicked-id]')?.remove();
+            });
+        });
+    }
+
+    // ✅ احتفال بصري قصير عند ارتقاء مستوى الغرفة — يظهر للجميع بالغرفة بنفس اللحظة (بطاقة
+    // متوهجة بمنتصف الشاشة + شرر نجوم متطاير، تختفي تلقائياً بلا حاجة لأي تفاعل من المستخدم)
+    function celebrateRoomLevelUp(newLevel) {
+        document.getElementById('room-levelup-celebration')?.remove();
+        const el = document.createElement('div');
+        el.id = 'room-levelup-celebration';
+        el.className = 'room-levelup-celebration';
+        const particles = Array.from({ length: 14 }, (_, i) => {
+            const angle = Math.round((360 / 14) * i);
+            const delay = (Math.random() * 0.15).toFixed(2);
+            return `<span class="room-levelup-particle" style="--angle:${angle}deg; --delay:${delay}s"></span>`;
+        }).join('');
+        el.innerHTML = `
+            <div class="room-levelup-card room-level-badge-${newLevel}">
+                ${particles}
+                <i class="fas fa-star room-levelup-icon"></i>
+                <p class="room-levelup-title">ارتقت الغرفة!</p>
+                <p class="room-levelup-level">Lv.${newLevel}</p>
+            </div>
+        `;
+        document.body.appendChild(el);
+        setTimeout(() => {
+            el.classList.add('room-levelup-fade-out');
+            setTimeout(() => el.remove(), 400);
+        }, 2600);
+    }
+
+    // ✅ نافذة إعدادات الغرفة — تظهر فقط للمضيف (يتحقق منها السيرفر أيضاً عند الحفظ). أُعيد
+    // هيكلتها كاملة: بطاقة مستوى/تقدّم أعلى النافذة، أقسام مضغوطة بعناوين واضحة، شريحة
+    // اختيار مقاعد بدل زر "زيادة" وحيد (تدعم التوسيع والتقليص معاً، مربوطة بمستوى الغرفة)،
+    // وقسم "المطرودون" الجديد لمراجعة/التراجع عن طرد بلا انتظار إنهاء البث بالكامل
     function showRoomSettingsModal(room) {
-        const seatSteps = [9, 15, 24];
-        const nextSeatStep = seatSteps.find(s => s > room.seatCount);
         const occupiedNow = document.querySelectorAll('#voice-chat-grid .occupied-seat').length;
 
         const modal = document.createElement('div');
         modal.id = 'room-settings-modal';
         modal.className = 'fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50 md:p-4';
         modal.innerHTML = `
-            <div class="room-settings-panel bg-gray-800 md:rounded-xl rounded-t-2xl shadow-xl p-4 w-full md:max-w-sm text-white max-h-[80vh] overflow-y-auto">
+            <div class="room-settings-panel bg-gray-800 md:rounded-xl rounded-t-2xl shadow-xl p-4 w-full md:max-w-sm text-white max-h-[85vh] overflow-y-auto">
                 <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mb-3 md:hidden flex-shrink-0"></div>
-                <h3 class="text-sm font-bold mb-3 flex items-center gap-2"><i class="fas fa-cog text-purple-400"></i> إعدادات الغرفة</h3>
-                <form id="room-settings-form" class="space-y-3">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-bold flex items-center gap-2"><i class="fas fa-cog text-purple-400"></i> إعدادات الغرفة</h3>
+                    <button type="button" id="close-room-settings-x" class="w-7 h-7 rounded-full bg-gray-700/70 hover:bg-gray-600 flex items-center justify-center text-gray-300 text-xs"><i class="fas fa-times"></i></button>
+                </div>
+
+                ${!room.isOfficial ? `
+                <div class="room-settings-level-card">
+                    <div class="flex items-center justify-between">
+                        <span id="room-settings-level-badge" class="room-settings-level-badge room-level-badge-${currentRoomLevel}">Lv.${currentRoomLevel}</span>
+                        <span class="text-[10px] text-gray-300"><i class="fas fa-gift text-pink-400"></i> ${currentRoomSupportPoints.toLocaleString('en-US')} نقطة دعم</span>
+                    </div>
+                    <div class="room-settings-level-progress-track">
+                        <div id="room-settings-level-progress-fill" class="room-settings-level-progress-fill" style="width:${currentRoomLevelProgressPercent}%"></div>
+                    </div>
+                    <p id="room-settings-level-progress-text" class="text-[10px] text-gray-400 mt-1">${currentRoomPointsToNextLevel > 0 ? `${currentRoomPointsToNextLevel.toLocaleString('en-US')} نقطة دعم للمستوى التالي` : 'أعلى مستوى — أحسنت! 🏆'}</p>
+                </div>` : ''}
+
+                <form id="room-settings-form" class="space-y-3 mt-3">
                     <div class="space-y-2">
                         <input type="text" name="name" value="${escapeHtml(room.name)}" maxlength="40" required placeholder="اسم الغرفة" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
                         <input type="text" name="description" value="${escapeHtml(currentRoomDescription || '')}" maxlength="120" placeholder="إعلان الغرفة (اختياري)" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
@@ -2924,22 +3079,27 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                             <input type="password" name="password" placeholder="${room.isPrivate ? 'كلمة مرور جديدة (اتركه فاضياً للإبقاء الحالية)' : 'كلمة المرور'}" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm">
                         </div>
                         <div class="flex items-center justify-between bg-gray-700/40 rounded-lg p-2.5 mt-2">
-                            <span class="text-xs flex items-center gap-2"><i class="fas fa-lock text-amber-400"></i> قفل الغرفة (لا يدخلها أحد جديد)</span>
+                            <span class="text-xs flex items-center gap-2">
+                                <i class="fas fa-lock text-amber-400"></i> قفل الغرفة
+                                <button type="button" id="lock-room-info-btn" class="room-settings-info-btn" title="ما فائدة هذا الخيار؟"><i class="fas fa-question"></i></button>
+                            </span>
                             <input type="checkbox" id="settings-isLocked" ${currentRoomIsLocked ? 'checked' : ''} class="w-4 h-4 rounded">
                         </div>
                     </div>
 
+                    ${!room.isOfficial ? `
+                    <div class="room-settings-section">
+                        <p class="room-settings-section-title">المقاعد</p>
+                        <div id="settings-seat-tier-options" class="seat-tier-options">
+                            ${buildSeatTierOptionsHTML(room.seatCount)}
+                        </div>
+                    </div>` : ''}
+
                     <div class="room-settings-section">
                         <p class="room-settings-section-title">التخصيص</p>
-                        <div class="grid ${!room.isOfficial && nextSeatStep ? 'grid-cols-2' : 'grid-cols-1'} gap-2">
-                            <button type="button" id="open-bg-shop-btn" class="room-settings-mini-btn">
-                                <i class="fas fa-image text-purple-400"></i> الخلفية
-                            </button>
-                            ${!room.isOfficial && nextSeatStep ? `
-                            <button type="button" id="settings-increase-seats-btn" data-next="${nextSeatStep}" class="room-settings-mini-btn" title="لا يمكن التراجع بعد الزيادة">
-                                <i class="fas fa-chair text-emerald-400"></i> ${room.seatCount} → ${nextSeatStep} مقعد
-                            </button>` : ''}
-                        </div>
+                        <button type="button" id="open-bg-shop-btn" class="room-settings-mini-btn w-full">
+                            <i class="fas fa-image text-purple-400"></i> خلفية الغرفة
+                        </button>
                     </div>
 
                     <div class="room-settings-section">
@@ -2959,6 +3119,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         </div>
                     </div>
 
+                    <div id="settings-kicked-section" class="room-settings-section ${currentRoomKickedUsers.length === 0 ? 'hidden' : ''}">
+                        <p class="room-settings-section-title">المطرودون <span class="text-gray-500">— يمكن التراجع قبل إنهاء البث</span></p>
+                        <div id="settings-kicked-list" class="space-y-1.5"></div>
+                    </div>
+
                     <div class="flex justify-end gap-3 pt-1">
                         <button type="button" id="cancel-room-settings" class="bg-gray-600 hover:bg-gray-500 text-white py-2 px-4 rounded-lg text-sm">إلغاء</button>
                         <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg text-sm">حفظ</button>
@@ -2967,41 +3132,59 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             </div>
         `;
         document.body.appendChild(modal);
+        renderKickedUsersListUI();
 
-        modal.querySelector('#cancel-room-settings').addEventListener('click', () => modal.remove());
-        modal.addEventListener('click', (e) => { if (e.target.id === 'room-settings-modal') modal.remove(); });
+        const closeModal = () => modal.remove();
+        modal.querySelector('#cancel-room-settings').addEventListener('click', closeModal);
+        modal.querySelector('#close-room-settings-x').addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'room-settings-modal') closeModal(); });
         modal.querySelector('#settings-isPrivate').addEventListener('change', (e) => {
             modal.querySelector('#settings-password-field').classList.toggle('hidden', !e.target.checked);
+        });
+        // ✅ "قفل الغرفة" لا يمنع من هم داخلها حالياً من البقاء والتحدث — فقط يمنع مشاهدين
+        // جدد من الدخول، مفيد للحظة خاصة أو نقاش هادئ بلا مقاطعات متكررة من قادمين جدد
+        modal.querySelector('#lock-room-info-btn').addEventListener('click', () => {
+            showNotification('قفل الغرفة يمنع دخول مشاهدين جدد فقط — من هم بداخلها حالياً يبقون ويقدرون يتحدثون بلا تأثير، مفيد لحظة خاصة أو نقاش هادئ بلا مقاطعات', 'info');
         });
 
         modal.querySelector('#open-bg-shop-btn').addEventListener('click', () => showRoomBackgroundShopModal(room));
 
-        // ✅ زيادة المقاعد فورية (منفصلة عن باقي الحفظ — تغيير بنيوي لا رجعة فيه)
-        modal.querySelector('#settings-increase-seats-btn')?.addEventListener('click', async (e) => {
-            const btn = e.currentTarget;
-            const newCount = parseInt(btn.dataset.next);
-            if (!confirm(`زيادة عدد المقاعد إلى ${newCount}؟ لا يمكن التراجع بعدها.`)) return;
-            btn.disabled = true;
-            try {
-                const response = await fetch(`/api/voice-room/rooms/${room.id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ seatCount: newCount })
+        // ✅ تغيير المقاعد فوري ومنفصل عن باقي الحفظ — كل من بالغرفة يرى التحديث لحظياً
+        // (room-seat-count-updated) بلا أي حاجة للخروج والعودة. مُعاد ربطها كدالة مستقلة
+        // (وليس حلقة مرة واحدة) لأن الأزرار تُعاد رسمها بالكامل بعد كل تغيير ناجح — بدونها
+        // تبقى الأزرار الجديدة "ميتة" بلا أي مستمع نقر بعد أول تغيير بنفس فتحة النافذة
+        function wireSeatTierButtons() {
+            modal.querySelectorAll('.seat-tier-btn:not([disabled])').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const newCount = parseInt(btn.dataset.seats);
+                    const isShrinking = newCount < room.seatCount;
+                    if (isShrinking && !confirm(`تقليص المقاعد إلى ${newCount}؟ يجب إنزال أي جالس على مقعد فوق رقم ${newCount} أولاً.`)) return;
+                    modal.querySelectorAll('.seat-tier-btn').forEach(b => b.disabled = true);
+                    try {
+                        const response = await fetch(`/api/voice-room/rooms/${room.id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ seatCount: newCount })
+                        });
+                        const result = await response.json();
+                        if (!response.ok) {
+                            showNotification(result.message || 'تعذر تغيير عدد المقاعد', 'error');
+                            modal.querySelectorAll('.seat-tier-btn').forEach(b => b.disabled = false);
+                            return;
+                        }
+                        room.seatCount = newCount;
+                        const seatSection = document.getElementById('settings-seat-tier-options');
+                        if (seatSection) seatSection.innerHTML = buildSeatTierOptionsHTML(newCount);
+                        wireSeatTierButtons();
+                        showNotification(`تم تحديث عدد المقاعد إلى ${newCount} ✅`, 'success');
+                    } catch (error) {
+                        showNotification('حدث خطأ، حاول مجدداً', 'error');
+                        modal.querySelectorAll('.seat-tier-btn').forEach(b => b.disabled = false);
+                    }
                 });
-                const result = await response.json();
-                if (!response.ok) {
-                    showNotification(result.message || 'تعذر زيادة المقاعد', 'error');
-                    btn.disabled = false;
-                    return;
-                }
-                showNotification('تمت زيادة المقاعد ✅ — أعد فتح الغرفة لرؤية التغيير', 'success');
-                modal.remove();
-                showCustomRoomView({ ...room, seatCount: newCount }, currentRoomPassword);
-            } catch (error) {
-                showNotification('حدث خطأ، حاول مجدداً', 'error');
-                btn.disabled = false;
-            }
-        });
+            });
+        }
+        wireSeatTierButtons();
 
         modal.querySelectorAll('.remove-mod-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -3051,7 +3234,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 currentRoomBackgroundImage = result.room.backgroundImage;
                 currentRoomDescription = result.room.description;
                 applyRoomBackground(currentRoomBackgroundImage);
-                modal.remove();
+                closeModal();
                 showNotification('تم حفظ الإعدادات ✅', 'success');
                 const nameEl = document.getElementById('room-info-name');
                 if (nameEl) nameEl.innerHTML = `${data.isPrivate ? '<i class="fas fa-lock text-amber-400 text-[10px]"></i> ' : ''}${escapeHtml(data.name)}`;
@@ -6154,6 +6337,56 @@ function showXpGainAnimation(amount) {
         if (roomId !== currentVoiceRoomId || currentRoomMyRole === 'host') return;
         showNotification('تم قفل الغرفة من المضيف وطرد الجميع', 'warning');
         showRoomBrowserView();
+    });
+
+    // ✅ نقاط دعم الغرفة تحدّثت (هدية أُرسلت بداخلها) — تحديث صامت للشارة، بلا إشعار مزعج
+    // على كل هدية (سيصل غالباً بمعدل عالٍ بغرفة نشطة). المستوى نفسه له حدث احتفالي منفصل أدناه
+    socket.on('room-support-points-updated', ({ roomId, supportPoints, level, pointsToNextLevel, levelProgressPercent }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        currentRoomSupportPoints = supportPoints;
+        currentRoomLevel = level;
+        currentRoomPointsToNextLevel = pointsToNextLevel;
+        currentRoomLevelProgressPercent = levelProgressPercent;
+        updateRoomLevelBadgeUI();
+        updateRoomLevelProgressUI();
+    });
+
+    // ✅ ارتفع مستوى الغرفة فعلياً — احتفال بصري للجميع بالغرفة + تحديث فوري لخيارات توسيع
+    // المقاعد المتاحة بنافذة إعدادات المضيف (لو كانت مفتوحة بنفس اللحظة)
+    socket.on('room-leveled-up', ({ roomId, newLevel, unlockedSeatCounts }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        currentRoomLevel = newLevel;
+        currentRoomUnlockedSeatCounts = unlockedSeatCounts;
+        updateRoomLevelBadgeUI();
+        updateRoomLevelProgressUI();
+        celebrateRoomLevelUp(newLevel);
+    });
+
+    // 🐛 إصلاح: تغيير عدد المقاعد كان يتطلب خروجاً وعودة لرؤيته — الآن يصل فوراً للجميع
+    // بالغرفة ويُعاد رسم الشبكة بالعدد الجديد بلا أي حاجة لإعادة فتح الغرفة يدوياً
+    socket.on('room-seat-count-updated', async ({ roomId, seatCount }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        renderVoiceRoomSeats(roomId, seatCount, 0, false);
+        await fetchAndRenderVoiceSnapshot(roomId, currentRoomPassword);
+        if (currentRoomMyRole !== 'host') {
+            showBottomToast(`عدد المقاعد صار ${seatCount} الآن`, 'fa-chair');
+        }
+    });
+
+    // ✅ طردني المضيف/مسؤول من الغرفة بالكامل — إخراج فوري لقائمة التصفح مع رسالة واضحة
+    socket.on('you-were-kicked-from-room', ({ roomId, userId }) => {
+        if (userId !== myUserId) return;
+        if (roomId === currentVoiceRoomId) {
+            showNotification('تم طردك من هذي الغرفة من قِبل الإدارة', 'error');
+            showRoomBrowserView();
+        }
+    });
+
+    // ✅ تأكيد إلغاء طرد (يصل للمضيف/المسؤول نفسه فقط) — يحدّث قائمة المطرودين بنافذة الإعدادات لو مفتوحة
+    socket.on('room-user-unkicked', ({ roomId, userId }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        currentRoomKickedUsers = currentRoomKickedUsers.filter(u => u.id !== userId);
+        renderKickedUsersListUI();
     });
 
     // ✅ يصل فقط لمن هو منضم فعلياً لقناة دردشة هذي الغرفة (بث مخصص، وليس عاماً)

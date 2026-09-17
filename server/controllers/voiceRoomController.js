@@ -251,6 +251,7 @@ exports.getRoomById = async (req, res) => {
             level: room.isOfficial ? null : room.level,
             supportPoints: room.isOfficial ? null : room.supportPoints,
             pointsToNextLevel: room.isOfficial ? null : VoiceRoom.pointsToNextLevel(room.supportPoints, room.level),
+            levelProgressPercent: room.isOfficial ? null : VoiceRoom.levelProgressPercent(room.supportPoints, room.level),
             unlockedSeatCounts: room.isOfficial ? null : VoiceRoom.getUnlockedSeatCounts(room.level),
             // 🛡️ قائمة المطرودين لا تُرسَل إلا للمضيف/المسؤولين — بيانات إدارية داخلية بحتة
             kickedUsers: (!room.isOfficial && (isHost || isModerator))

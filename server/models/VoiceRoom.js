@@ -352,6 +352,17 @@ voiceRoomSchema.statics.pointsToNextLevel = function (points, level) {
     return next ? Math.max(0, next.minPoints - points) : 0;
 };
 
+// ✅ نسبة التقدّم (0-100) داخل المستوى الحالي — لشريط تقدّم بصري بالواجهة (100 لو أعلى مستوى)
+voiceRoomSchema.statics.levelProgressPercent = function (points, level) {
+    if (level >= 5) return 100;
+    const current = this.LEVEL_THRESHOLDS.find(t => t.level === level);
+    const next = this.LEVEL_THRESHOLDS.find(t => t.level === level + 1);
+    if (!current || !next) return 100;
+    const span = next.minPoints - current.minPoints;
+    if (span <= 0) return 100;
+    return Math.min(100, Math.max(0, Math.round((points - current.minPoints) / span * 100)));
+};
+
 // ✅ أعداد المقاعد المتاحة للاختيار عند هذا المستوى — 9 متاحة دائماً، 15 من مستوى 3،
 // 24 من مستوى 5 (القيم الفعلية بجدول LEVEL_THRESHOLDS أعلاه)
 voiceRoomSchema.statics.getUnlockedSeatCounts = function (level) {

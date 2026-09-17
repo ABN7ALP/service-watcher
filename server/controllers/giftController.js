@@ -48,7 +48,8 @@ async function applyGiftToRoomSupport(io, roomId, totalPrice) {
         roomId: roomId.toString(),
         supportPoints: result.supportPoints,
         level: result.level,
-        pointsToNextLevel: VoiceRoom.pointsToNextLevel(result.supportPoints, result.level)
+        pointsToNextLevel: VoiceRoom.pointsToNextLevel(result.supportPoints, result.level),
+        levelProgressPercent: VoiceRoom.levelProgressPercent(result.supportPoints, result.level)
     });
 
     if (result.leveledUp) {
