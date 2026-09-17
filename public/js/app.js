@@ -1316,6 +1316,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (currentRoomMyRole === 'host' && currentVoiceRoomId !== 'main') {
             items.push({ action: 'pk-challenge', icon: 'fa-bolt', label: 'تحدي PK', color: 'text-orange-400' });
         }
+        // ✅ تحدٍ بين أعضاء الغرفة نفسها — المضيف والمسؤولون معاً (بعكس تحدي PK بين الغرف،
+        // قرار داخلي بسيط بالغرفة نفسها لا يحتاج صلاحية المضيف حصراً)
+        if (isManager && currentVoiceRoomId !== 'main') {
+            items.push({ action: 'seat-challenge', icon: 'fa-fire', label: 'تحدٍ بين أعضاء', color: 'text-red-400' });
+        }
         // ✅ تنظيف/قفل الدردشة — للمضيف/المسؤولين بغرف المستخدمين فقط (لا الرسمية)
         if (isManager && currentVoiceRoomId !== 'main') {
             items.push({ action: 'clear-chat', icon: 'fa-broom', label: 'تنظيف الدردشة', color: 'text-gray-300' });
@@ -1378,6 +1383,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     if (currentVoiceRoomId) showHandQueueSheet(currentVoiceRoomId);
                 } else if (action === 'pk-challenge') {
                     if (currentVoiceRoomId) showPkChallengeModal({ id: currentVoiceRoomId });
+                } else if (action === 'seat-challenge') {
+                    if (currentVoiceRoomId) showSeatChallengeCreateModal({ id: currentVoiceRoomId });
                 } else if (action === 'clear-chat') {
                     showClearChatConfirm();
                 } else if (action === 'toggle-chat-lock') {
@@ -1475,6 +1482,20 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         input.placeholder = blocked ? 'الدردشة مقفلة من المضيف' : 'قل شيئاً...';
         sendBtn?.classList.toggle('opacity-40', blocked);
         if (sendBtn) sendBtn.disabled = blocked;
+    }
+
+    // ✅ شارة مستوى الغرفة الصغيرة برأس الغرفة — مخفية تماماً بالغرفة الرسمية (لا نظام مستوى
+    // لها، currentRoomLevel تبقى null). لون متدرّج حسب المستوى (كلما ارتفع صار أفخم/أذهب)
+    function updateRoomLevelBadgeUI() {
+        const badge = document.getElementById('room-info-level-badge');
+        if (!badge) return;
+        if (currentRoomLevel === null) { badge.classList.add('hidden'); return; }
+        badge.classList.remove('hidden');
+        badge.className = `room-level-badge room-level-badge-${currentRoomLevel}`;
+        badge.innerHTML = `<i class="fas fa-star"></i> Lv.${currentRoomLevel}`;
+        badge.title = currentRoomPointsToNextLevel > 0
+            ? `${currentRoomPointsToNextLevel.toLocaleString('en-US')} نقطة دعم للمستوى التالي`
+            : 'أعلى مستوى!';
     }
 
     // ✅ زر "اطلب الصعود" (∞) — أول ضغطة ترسل الطلب، وثاني ضغطة (والطلب لسا قائم) تفتح
@@ -2071,6 +2092,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentRoomHostId = null; // ✅ معرّف مضيف الغرفة المعروضة حالياً (لعرض تاج المضيف بجانب اسمه بالدردشة)
     let currentRoomIsLocked = false;
     let currentRoomChatLocked = false; // ✅ قفل الدردشة (المضيف/المسؤولون فقط يكتبون) — الغرفة المعروضة حالياً
+    // ✅ نظام مستوى الغرفة (1-5) — يرتفع بتراكم قيمة الهدايا المُرسَلة داخلها، ويفتح توسيع
+    // المقاعد تدريجياً. null بالغرفة الرسمية (لا نظام مستوى لها). انظر VoiceRoom.js بالسيرفر
+    let currentRoomLevel = null;
+    let currentRoomSupportPoints = 0;
+    let currentRoomPointsToNextLevel = 0;
+    let currentRoomLevelProgressPercent = 0;
+    let currentRoomUnlockedSeatCounts = [9];
+    let currentRoomKickedUsers = []; // ✅ للمضيف/المسؤولين فقط — تُعرَض بنافذة الإعدادات مع خيار إلغاء الطرد
     let currentRoomBackgroundImage = null;
     let currentRoomBackgroundExpiresAt = null;
     let currentRoomDescription = '';
@@ -2168,7 +2197,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <img id="room-info-cover-img" src="${room.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-cover-img">
                     <span class="min-w-0 flex flex-col items-start">
                         <span id="room-info-name" class="room-info-name">${room.isPrivate ? '<i class="fas fa-lock text-amber-400 text-[10px]"></i> ' : ''}${escapeHtml(room.name)}</span>
-                        <span id="room-info-code" class="room-info-code">${room.roomCode ? `ID: ${room.roomCode}` : ''}</span>
+                        <span class="flex items-center gap-1.5">
+                            <span id="room-info-code" class="room-info-code">${room.roomCode ? `ID: ${room.roomCode}` : ''}</span>
+                            <span id="room-info-level-badge" class="room-level-badge hidden"></span>
+                        </span>
                     </span>
                 </button>
                 <button id="room-header-follow-btn" class="hidden follow-room-btn follow-room-btn-compact js-room-follow-btn" data-following="0" title="متابعة الغرفة">
@@ -2758,7 +2790,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     // ✅ قائمة إدارة مقعد — تظهر فقط للمضيف/المسؤول عبر أيقونة "إدارة الغرفة" بالملف الشخصي
+    // ✅ قائمة الإدارة تختلف جذرياً حسب حال الهدف: جالس على مقعد فعلاً (seatNumber رقم حقيقي)
+    // مقابل مجرّد "مشاهد" بلا مقعد (seatNumber = null، مفتوحة من قائمة المشاهدين مثلاً) — لا
+    // معنى لـ"كتم"/"قفل مقعد" لمن لا يملك مقعداً أصلاً، فيظهر له فقط خيار طرد من الغرفة كاملة
     function showSeatModerationMenu(roomId, seatNumber, targetUserId, username) {
+        const isSeated = seatNumber !== null && seatNumber !== undefined;
         const modal = document.createElement('div');
         modal.id = 'seat-mod-modal';
         modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50';
@@ -2766,19 +2802,25 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-3.5 w-full md:w-auto text-white">
                 <p class="text-center text-[11px] text-gray-400 mb-2.5 truncate">${escapeHtml(username)}</p>
                 <div class="flex items-center justify-center gap-3">
+                    ${isSeated ? `
                     <button data-action="mute" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
                         <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-microphone-slash text-amber-400"></i></span>كتم
                     </button>
-                    <button data-action="kick" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
+                    <button data-action="kick-seat" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
                         <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-user-slash text-red-400"></i></span>إنزال
                     </button>
-                    <button data-action="lock" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
-                        <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-lock text-gray-300"></i></span>قفل المقعد
+                    <button data-action="kick-seat-lock" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
+                        <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-lock text-orange-400"></i></span>إنزال وقفل
                     </button>
                     ${currentRoomMyRole === 'host' ? `
                     <button data-action="mod" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
                         <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-user-shield text-emerald-400"></i></span>مسؤول
                     </button>` : ''}
+                    ` : `
+                    <button data-action="kick-room" class="flex flex-col items-center gap-1 text-[10px] text-gray-300">
+                        <span class="w-11 h-11 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-door-open text-red-400"></i></span>طرد من الغرفة
+                    </button>
+                    `}
                 </div>
             </div>
         `;
@@ -2788,11 +2830,18 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             btn.addEventListener('click', () => {
                 const action = btn.dataset.action;
                 if (action === 'mute') socket.emit('host-mute-seat', { roomId, seatNumber, isMuted: true });
-                else if (action === 'kick') socket.emit('host-kick-seat', { roomId, seatNumber });
-                else if (action === 'lock') socket.emit('host-toggle-lock-seat', { roomId, seatNumber });
+                else if (action === 'kick-seat') socket.emit('host-kick-seat', { roomId, seatNumber });
+                // ✅ desiredLock:true صراحة — يضمن أنه يقفل دائماً (لا يُبدّل حول الحالة الحالية
+                // فيفتح المقعد بالخطأ لو كان مقفولاً أصلاً)، ويُنزل الجالس ضمنياً لو كان مشغولاً
+                else if (action === 'kick-seat-lock') socket.emit('host-toggle-lock-seat', { roomId, seatNumber, desiredLock: true });
                 else if (action === 'mod') {
                     socket.emit('host-set-moderator', { roomId, targetUserId, makeMod: true });
                     showNotification('تم تعيينه كمسؤول ✅', 'success');
+                } else if (action === 'kick-room') {
+                    if (confirm(`طرد ${username} من الغرفة بالكامل؟ لن يستطيع الدخول حتى تُنهي البث وتبدأ جلسة جديدة.`)) {
+                        socket.emit('host-kick-room', { roomId, targetUserId });
+                        showNotification('تم الطرد من الغرفة', 'success');
+                    }
                 }
                 modal.remove();
             });
@@ -2810,6 +2859,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
             const result = await response.json();
 
+            if (response.status === 403 && result.kicked) {
+                showNotification(result.message || 'تم طردك من هذي الغرفة', 'error');
+                showRoomBrowserView();
+                return;
+            }
             if (response.status === 403 && result.requiresPassword) {
                 showNotification('كلمة مرور الغرفة غير صحيحة', 'error');
                 showRoomBrowserView();
@@ -2861,8 +2915,20 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             } else {
                 removePkBar();
             }
+            if (result.activeSeatChallenge) {
+                renderSeatChallengeBar(result.activeSeatChallenge);
+            } else {
+                removeSeatChallengeBar();
+            }
             if (typeof result.isLocked === 'boolean') currentRoomIsLocked = result.isLocked;
             if (typeof result.chatLocked === 'boolean') currentRoomChatLocked = result.chatLocked;
+            if (typeof result.level === 'number') currentRoomLevel = result.level;
+            if (typeof result.supportPoints === 'number') currentRoomSupportPoints = result.supportPoints;
+            if (typeof result.pointsToNextLevel === 'number') currentRoomPointsToNextLevel = result.pointsToNextLevel;
+            if (typeof result.levelProgressPercent === 'number') currentRoomLevelProgressPercent = result.levelProgressPercent;
+            if (result.unlockedSeatCounts) currentRoomUnlockedSeatCounts = result.unlockedSeatCounts;
+            if (result.kickedUsers) currentRoomKickedUsers = result.kickedUsers;
+            updateRoomLevelBadgeUI();
             updateChatLockUI();
             if (result.backgroundImage !== undefined) currentRoomBackgroundImage = result.backgroundImage;
             if (result.backgroundExpiresAt !== undefined) currentRoomBackgroundExpiresAt = result.backgroundExpiresAt;
@@ -2894,21 +2960,122 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
     }
 
-    // ✅ نافذة إنشاء غرفة جديدة — بنفس أسلوب نافذة إنشاء التحدي تماماً للتناسق البصري
-    // ✅ نافذة إعدادات الغرفة — تظهر فقط للمضيف (يتحقق منها السيرفر أيضاً عند الحفظ)
+    // ✅ شارة "قفل" أنيقة على خيار مقاعد غير مفتوح بعد + رقم المستوى المطلوب — نص المولّد
+    // مستقل تماماً حتى يسهل إعادة استخدامه بأي مكان لاحقاً بلا اعتماد على متغيرات نافذة بعينها
+    function buildSeatTierOptionsHTML(currentSeatCount) {
+        const tierUnlockLevel = { 9: 1, 15: 3, 24: 5 };
+        return [9, 15, 24].map(n => {
+            const unlocked = currentRoomUnlockedSeatCounts.includes(n);
+            const isCurrent = n === currentSeatCount;
+            const classes = ['seat-tier-btn'];
+            if (isCurrent) classes.push('seat-tier-btn-active');
+            if (!unlocked) classes.push('seat-tier-btn-locked');
+            return `
+                <button type="button" class="${classes.join(' ')}" data-seats="${n}" ${!unlocked || isCurrent ? 'disabled' : ''}>
+                    <span class="seat-tier-btn-num">${n}</span>
+                    <span class="seat-tier-btn-label">${unlocked ? 'مقعد' : `<i class="fas fa-lock"></i> Lv.${tierUnlockLevel[n]}`}</span>
+                </button>
+            `;
+        }).join('');
+    }
+
+    // ✅ يُحدَّث حياً لو وصل حدث نقاط/مستوى بينما النافذة مفتوحة فعلاً — لا شيء لو كانت مغلقة
+    function updateRoomLevelProgressUI() {
+        const badge = document.getElementById('room-settings-level-badge');
+        if (!badge) return;
+        badge.textContent = `Lv.${currentRoomLevel}`;
+        badge.className = `room-settings-level-badge room-level-badge-${currentRoomLevel}`;
+        const fill = document.getElementById('room-settings-level-progress-fill');
+        if (fill) fill.style.width = `${currentRoomLevelProgressPercent}%`;
+        const text = document.getElementById('room-settings-level-progress-text');
+        if (text) {
+            text.textContent = currentRoomPointsToNextLevel > 0
+                ? `${currentRoomPointsToNextLevel.toLocaleString('en-US')} نقطة دعم للمستوى التالي`
+                : 'أعلى مستوى — أحسنت! 🏆';
+        }
+    }
+
+    // ✅ يُحدَّث حياً لو ألغى المضيف طرد أحد بينما النافذة مفتوحة — يُخفي القسم كاملاً لو فرغت القائمة
+    function renderKickedUsersListUI() {
+        const section = document.getElementById('settings-kicked-section');
+        const list = document.getElementById('settings-kicked-list');
+        if (!list || !section) return;
+        section.classList.toggle('hidden', currentRoomKickedUsers.length === 0);
+        list.innerHTML = currentRoomKickedUsers.map(u => `
+            <div class="flex items-center justify-between bg-gray-700/50 rounded-lg p-1.5" data-kicked-id="${u.id}">
+                <div class="flex items-center gap-2 min-w-0">
+                    <img src="${u.profileImage}" class="w-6 h-6 rounded-full flex-shrink-0">
+                    <span class="text-xs truncate">${escapeHtml(u.username)}</span>
+                </div>
+                <button type="button" class="unkick-btn text-emerald-400 hover:text-emerald-300 text-xs px-2" data-kicked-id="${u.id}">إلغاء الطرد</button>
+            </div>
+        `).join('');
+        list.querySelectorAll('.unkick-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                socket.emit('host-unkick-room', { roomId: currentVoiceRoomId, targetUserId: btn.dataset.kickedId });
+                btn.closest('[data-kicked-id]')?.remove();
+            });
+        });
+    }
+
+    // ✅ احتفال بصري قصير عند ارتقاء مستوى الغرفة — يظهر للجميع بالغرفة بنفس اللحظة (بطاقة
+    // متوهجة بمنتصف الشاشة + شرر نجوم متطاير، تختفي تلقائياً بلا حاجة لأي تفاعل من المستخدم)
+    function celebrateRoomLevelUp(newLevel) {
+        document.getElementById('room-levelup-celebration')?.remove();
+        const el = document.createElement('div');
+        el.id = 'room-levelup-celebration';
+        el.className = 'room-levelup-celebration';
+        const particles = Array.from({ length: 14 }, (_, i) => {
+            const angle = Math.round((360 / 14) * i);
+            const delay = (Math.random() * 0.15).toFixed(2);
+            return `<span class="room-levelup-particle" style="--angle:${angle}deg; --delay:${delay}s"></span>`;
+        }).join('');
+        el.innerHTML = `
+            <div class="room-levelup-card room-level-badge-${newLevel}">
+                ${particles}
+                <i class="fas fa-star room-levelup-icon"></i>
+                <p class="room-levelup-title">ارتقت الغرفة!</p>
+                <p class="room-levelup-level">Lv.${newLevel}</p>
+            </div>
+        `;
+        document.body.appendChild(el);
+        setTimeout(() => {
+            el.classList.add('room-levelup-fade-out');
+            setTimeout(() => el.remove(), 400);
+        }, 2600);
+    }
+
+    // ✅ نافذة إعدادات الغرفة — تظهر فقط للمضيف (يتحقق منها السيرفر أيضاً عند الحفظ). أُعيد
+    // هيكلتها كاملة: بطاقة مستوى/تقدّم أعلى النافذة، أقسام مضغوطة بعناوين واضحة، شريحة
+    // اختيار مقاعد بدل زر "زيادة" وحيد (تدعم التوسيع والتقليص معاً، مربوطة بمستوى الغرفة)،
+    // وقسم "المطرودون" الجديد لمراجعة/التراجع عن طرد بلا انتظار إنهاء البث بالكامل
     function showRoomSettingsModal(room) {
-        const seatSteps = [9, 15, 24];
-        const nextSeatStep = seatSteps.find(s => s > room.seatCount);
         const occupiedNow = document.querySelectorAll('#voice-chat-grid .occupied-seat').length;
 
         const modal = document.createElement('div');
         modal.id = 'room-settings-modal';
         modal.className = 'fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50 md:p-4';
         modal.innerHTML = `
-            <div class="room-settings-panel bg-gray-800 md:rounded-xl rounded-t-2xl shadow-xl p-4 w-full md:max-w-sm text-white max-h-[80vh] overflow-y-auto">
+            <div class="room-settings-panel bg-gray-800 md:rounded-xl rounded-t-2xl shadow-xl p-4 w-full md:max-w-sm text-white max-h-[85vh] overflow-y-auto">
                 <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mb-3 md:hidden flex-shrink-0"></div>
-                <h3 class="text-sm font-bold mb-3 flex items-center gap-2"><i class="fas fa-cog text-purple-400"></i> إعدادات الغرفة</h3>
-                <form id="room-settings-form" class="space-y-3">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-bold flex items-center gap-2"><i class="fas fa-cog text-purple-400"></i> إعدادات الغرفة</h3>
+                    <button type="button" id="close-room-settings-x" class="w-7 h-7 rounded-full bg-gray-700/70 hover:bg-gray-600 flex items-center justify-center text-gray-300 text-xs"><i class="fas fa-times"></i></button>
+                </div>
+
+                ${!room.isOfficial ? `
+                <div class="room-settings-level-card">
+                    <div class="flex items-center justify-between">
+                        <span id="room-settings-level-badge" class="room-settings-level-badge room-level-badge-${currentRoomLevel}">Lv.${currentRoomLevel}</span>
+                        <span class="text-[10px] text-gray-300"><i class="fas fa-gift text-pink-400"></i> ${currentRoomSupportPoints.toLocaleString('en-US')} نقطة دعم</span>
+                    </div>
+                    <div class="room-settings-level-progress-track">
+                        <div id="room-settings-level-progress-fill" class="room-settings-level-progress-fill" style="width:${currentRoomLevelProgressPercent}%"></div>
+                    </div>
+                    <p id="room-settings-level-progress-text" class="text-[10px] text-gray-400 mt-1">${currentRoomPointsToNextLevel > 0 ? `${currentRoomPointsToNextLevel.toLocaleString('en-US')} نقطة دعم للمستوى التالي` : 'أعلى مستوى — أحسنت! 🏆'}</p>
+                </div>` : ''}
+
+                <form id="room-settings-form" class="space-y-3 mt-3">
                     <div class="space-y-2">
                         <input type="text" name="name" value="${escapeHtml(room.name)}" maxlength="40" required placeholder="اسم الغرفة" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
                         <input type="text" name="description" value="${escapeHtml(currentRoomDescription || '')}" maxlength="120" placeholder="إعلان الغرفة (اختياري)" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
@@ -2924,22 +3091,27 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                             <input type="password" name="password" placeholder="${room.isPrivate ? 'كلمة مرور جديدة (اتركه فاضياً للإبقاء الحالية)' : 'كلمة المرور'}" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm">
                         </div>
                         <div class="flex items-center justify-between bg-gray-700/40 rounded-lg p-2.5 mt-2">
-                            <span class="text-xs flex items-center gap-2"><i class="fas fa-lock text-amber-400"></i> قفل الغرفة (لا يدخلها أحد جديد)</span>
+                            <span class="text-xs flex items-center gap-2">
+                                <i class="fas fa-lock text-amber-400"></i> قفل الغرفة
+                                <button type="button" id="lock-room-info-btn" class="room-settings-info-btn" title="ما فائدة هذا الخيار؟"><i class="fas fa-question"></i></button>
+                            </span>
                             <input type="checkbox" id="settings-isLocked" ${currentRoomIsLocked ? 'checked' : ''} class="w-4 h-4 rounded">
                         </div>
                     </div>
 
+                    ${!room.isOfficial ? `
+                    <div class="room-settings-section">
+                        <p class="room-settings-section-title">المقاعد</p>
+                        <div id="settings-seat-tier-options" class="seat-tier-options">
+                            ${buildSeatTierOptionsHTML(room.seatCount)}
+                        </div>
+                    </div>` : ''}
+
                     <div class="room-settings-section">
                         <p class="room-settings-section-title">التخصيص</p>
-                        <div class="grid ${!room.isOfficial && nextSeatStep ? 'grid-cols-2' : 'grid-cols-1'} gap-2">
-                            <button type="button" id="open-bg-shop-btn" class="room-settings-mini-btn">
-                                <i class="fas fa-image text-purple-400"></i> الخلفية
-                            </button>
-                            ${!room.isOfficial && nextSeatStep ? `
-                            <button type="button" id="settings-increase-seats-btn" data-next="${nextSeatStep}" class="room-settings-mini-btn" title="لا يمكن التراجع بعد الزيادة">
-                                <i class="fas fa-chair text-emerald-400"></i> ${room.seatCount} → ${nextSeatStep} مقعد
-                            </button>` : ''}
-                        </div>
+                        <button type="button" id="open-bg-shop-btn" class="room-settings-mini-btn w-full">
+                            <i class="fas fa-image text-purple-400"></i> خلفية الغرفة
+                        </button>
                     </div>
 
                     <div class="room-settings-section">
@@ -2959,6 +3131,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         </div>
                     </div>
 
+                    <div id="settings-kicked-section" class="room-settings-section ${currentRoomKickedUsers.length === 0 ? 'hidden' : ''}">
+                        <p class="room-settings-section-title">المطرودون <span class="text-gray-500">— يمكن التراجع قبل إنهاء البث</span></p>
+                        <div id="settings-kicked-list" class="space-y-1.5"></div>
+                    </div>
+
                     <div class="flex justify-end gap-3 pt-1">
                         <button type="button" id="cancel-room-settings" class="bg-gray-600 hover:bg-gray-500 text-white py-2 px-4 rounded-lg text-sm">إلغاء</button>
                         <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg text-sm">حفظ</button>
@@ -2967,41 +3144,59 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             </div>
         `;
         document.body.appendChild(modal);
+        renderKickedUsersListUI();
 
-        modal.querySelector('#cancel-room-settings').addEventListener('click', () => modal.remove());
-        modal.addEventListener('click', (e) => { if (e.target.id === 'room-settings-modal') modal.remove(); });
+        const closeModal = () => modal.remove();
+        modal.querySelector('#cancel-room-settings').addEventListener('click', closeModal);
+        modal.querySelector('#close-room-settings-x').addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'room-settings-modal') closeModal(); });
         modal.querySelector('#settings-isPrivate').addEventListener('change', (e) => {
             modal.querySelector('#settings-password-field').classList.toggle('hidden', !e.target.checked);
+        });
+        // ✅ "قفل الغرفة" لا يمنع من هم داخلها حالياً من البقاء والتحدث — فقط يمنع مشاهدين
+        // جدد من الدخول، مفيد للحظة خاصة أو نقاش هادئ بلا مقاطعات متكررة من قادمين جدد
+        modal.querySelector('#lock-room-info-btn').addEventListener('click', () => {
+            showNotification('قفل الغرفة يمنع دخول مشاهدين جدد فقط — من هم بداخلها حالياً يبقون ويقدرون يتحدثون بلا تأثير، مفيد لحظة خاصة أو نقاش هادئ بلا مقاطعات', 'info');
         });
 
         modal.querySelector('#open-bg-shop-btn').addEventListener('click', () => showRoomBackgroundShopModal(room));
 
-        // ✅ زيادة المقاعد فورية (منفصلة عن باقي الحفظ — تغيير بنيوي لا رجعة فيه)
-        modal.querySelector('#settings-increase-seats-btn')?.addEventListener('click', async (e) => {
-            const btn = e.currentTarget;
-            const newCount = parseInt(btn.dataset.next);
-            if (!confirm(`زيادة عدد المقاعد إلى ${newCount}؟ لا يمكن التراجع بعدها.`)) return;
-            btn.disabled = true;
-            try {
-                const response = await fetch(`/api/voice-room/rooms/${room.id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ seatCount: newCount })
+        // ✅ تغيير المقاعد فوري ومنفصل عن باقي الحفظ — كل من بالغرفة يرى التحديث لحظياً
+        // (room-seat-count-updated) بلا أي حاجة للخروج والعودة. مُعاد ربطها كدالة مستقلة
+        // (وليس حلقة مرة واحدة) لأن الأزرار تُعاد رسمها بالكامل بعد كل تغيير ناجح — بدونها
+        // تبقى الأزرار الجديدة "ميتة" بلا أي مستمع نقر بعد أول تغيير بنفس فتحة النافذة
+        function wireSeatTierButtons() {
+            modal.querySelectorAll('.seat-tier-btn:not([disabled])').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const newCount = parseInt(btn.dataset.seats);
+                    const isShrinking = newCount < room.seatCount;
+                    if (isShrinking && !confirm(`تقليص المقاعد إلى ${newCount}؟ يجب إنزال أي جالس على مقعد فوق رقم ${newCount} أولاً.`)) return;
+                    modal.querySelectorAll('.seat-tier-btn').forEach(b => b.disabled = true);
+                    try {
+                        const response = await fetch(`/api/voice-room/rooms/${room.id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ seatCount: newCount })
+                        });
+                        const result = await response.json();
+                        if (!response.ok) {
+                            showNotification(result.message || 'تعذر تغيير عدد المقاعد', 'error');
+                            modal.querySelectorAll('.seat-tier-btn').forEach(b => b.disabled = false);
+                            return;
+                        }
+                        room.seatCount = newCount;
+                        const seatSection = document.getElementById('settings-seat-tier-options');
+                        if (seatSection) seatSection.innerHTML = buildSeatTierOptionsHTML(newCount);
+                        wireSeatTierButtons();
+                        showNotification(`تم تحديث عدد المقاعد إلى ${newCount} ✅`, 'success');
+                    } catch (error) {
+                        showNotification('حدث خطأ، حاول مجدداً', 'error');
+                        modal.querySelectorAll('.seat-tier-btn').forEach(b => b.disabled = false);
+                    }
                 });
-                const result = await response.json();
-                if (!response.ok) {
-                    showNotification(result.message || 'تعذر زيادة المقاعد', 'error');
-                    btn.disabled = false;
-                    return;
-                }
-                showNotification('تمت زيادة المقاعد ✅ — أعد فتح الغرفة لرؤية التغيير', 'success');
-                modal.remove();
-                showCustomRoomView({ ...room, seatCount: newCount }, currentRoomPassword);
-            } catch (error) {
-                showNotification('حدث خطأ، حاول مجدداً', 'error');
-                btn.disabled = false;
-            }
-        });
+            });
+        }
+        wireSeatTierButtons();
 
         modal.querySelectorAll('.remove-mod-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -3051,7 +3246,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 currentRoomBackgroundImage = result.room.backgroundImage;
                 currentRoomDescription = result.room.description;
                 applyRoomBackground(currentRoomBackgroundImage);
-                modal.remove();
+                closeModal();
                 showNotification('تم حفظ الإعدادات ✅', 'success');
                 const nameEl = document.getElementById('room-info-name');
                 if (nameEl) nameEl.innerHTML = `${data.isPrivate ? '<i class="fas fa-lock text-amber-400 text-[10px]"></i> ' : ''}${escapeHtml(data.name)}`;
@@ -3268,6 +3463,316 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         document.body.appendChild(modal);
         modal.querySelector('#close-pk-result').addEventListener('click', () => modal.remove());
         modal.addEventListener('click', (e) => { if (e.target.id === 'pk-result-modal') modal.remove(); });
+    }
+
+    // =====================================================
+    // ✅ تحدٍ بين أعضاء داخل نفس الغرفة (بعكس معركة PK أعلاه: بين شخصين/فريقين من نفس
+    // الغرفة، وليس بين غرفتين) — إنشاء (المضيف/المسؤول فقط)، دعوات فردية، شريط حي بتأثيرات
+    // "اقتراب من الحسم"، ونافذة نتيجة قوية بصرياً للفائز/الخاسر
+    // =====================================================
+    let currentSeatChallenge = null;
+    let seatChallengeCountdownInterval = null;
+    let seatChallengeFireShownFor = null; // 'A' | 'B' | null — يمنع تكرار تنبيه نفس التصدّر كل تحديث نقاط
+
+    // ✅ نافذة إنشاء التحدي — يختار المضيف/المسؤول 2 أو 4 من الجالسين حالياً (تُقرأ مباشرة من
+    // شبكة المقاعد بالشاشة، بلا طلب شبكة إضافي)، يُوزَّعون فريقين تلقائياً بالترتيب (أول
+    // نصف 🔵، والباقي 🔴)، ثم مدة التحدي — كل هذا محلي فقط، السيرفر يتحقق من كل شيء مجدداً
+    function showSeatChallengeCreateModal(room) {
+        document.getElementById('seat-challenge-create-modal')?.remove();
+        const candidates = Array.from(document.querySelectorAll('#voice-chat-grid .occupied-seat'))
+            .map(el => ({
+                userId: el.dataset.userId,
+                username: el.title || '',
+                profileImage: el.querySelector('img')?.src || '',
+                seatNumber: parseInt(el.dataset.seat)
+            }))
+            .filter(c => !!c.userId);
+
+        if (candidates.length < 2) {
+            showNotification('يحتاج التحدي شخصين جالسين على الأقل', 'info');
+            return;
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'seat-challenge-create-modal';
+        modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-xl shadow-xl p-5 w-full max-w-sm text-white max-h-[85vh] overflow-y-auto">
+                <h3 class="text-lg font-bold mb-3"><i class="fas fa-fire text-red-400"></i> تحدٍ بين أعضاء</h3>
+                <div class="mb-3">
+                    <label class="text-xs text-gray-400 block mb-1.5">حجم التحدي</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button type="button" data-size="2" class="challenge-size-btn bg-purple-600 text-xs py-2 rounded-lg font-bold">1 ضد 1</button>
+                        <button type="button" data-size="4" class="challenge-size-btn bg-gray-700 text-xs py-2 rounded-lg font-bold">2 ضد 2</button>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="text-xs text-gray-400 block mb-1.5">مدة التحدي</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button type="button" data-sec="60" class="challenge-duration-btn bg-purple-600 text-xs py-2 rounded-lg font-bold">دقيقة</button>
+                        <button type="button" data-sec="120" class="challenge-duration-btn bg-gray-700 text-xs py-2 rounded-lg font-bold">دقيقتان</button>
+                        <button type="button" data-sec="180" class="challenge-duration-btn bg-gray-700 text-xs py-2 rounded-lg font-bold">3 دقائق</button>
+                    </div>
+                </div>
+                <p id="challenge-pick-label" class="text-xs text-gray-400 mb-1.5">اخترت 0 من 2 — 🔵 مقابل 🔴</p>
+                <div id="challenge-candidates-list" class="space-y-1.5 max-h-52 overflow-y-auto mb-3"></div>
+                <button type="button" id="confirm-seat-challenge" disabled class="w-full bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed py-2.5 rounded-lg font-bold text-sm mb-2">إرسال الدعوات</button>
+                <button type="button" id="cancel-seat-challenge-create" class="w-full text-center py-2 rounded-lg bg-gray-700 text-gray-300 text-sm">إلغاء</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'seat-challenge-create-modal') modal.remove(); });
+        modal.querySelector('#cancel-seat-challenge-create').addEventListener('click', () => modal.remove());
+
+        let size = 2;
+        let selectedDuration = 60;
+        let selected = []; // [{ userId, team }]
+
+        function renderCandidates() {
+            const list = modal.querySelector('#challenge-candidates-list');
+            list.innerHTML = candidates.map(c => {
+                const sel = selected.find(s => s.userId === c.userId);
+                const teamBadge = sel ? (sel.team === 'A' ? '🔵' : '🔴') : '';
+                return `
+                    <button type="button" class="challenge-candidate-btn ${sel ? 'challenge-candidate-selected' : ''}" data-user-id="${c.userId}">
+                        <img src="${c.profileImage}" class="w-8 h-8 rounded-full flex-shrink-0">
+                        <span class="text-xs flex-1 text-right truncate">${escapeHtml(c.username)}</span>
+                        ${teamBadge ? `<span class="text-sm">${teamBadge}</span>` : ''}
+                    </button>
+                `;
+            }).join('');
+            list.querySelectorAll('.challenge-candidate-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const userId = btn.dataset.userId;
+                    const existingIdx = selected.findIndex(s => s.userId === userId);
+                    if (existingIdx !== -1) {
+                        selected.splice(existingIdx, 1);
+                    } else {
+                        if (selected.length >= size) return;
+                        selected.push({ userId, team: null }); // الفريق يُحسَب أدناه دائماً، لا هنا
+                    }
+                    // 🐛 إصلاح: تعيين الفريق وقت الإضافة فقط كان يُنتج فريقين غير متكافئين لو أُلغي
+                    // اختيار شخص بمنتصف القائمة ثم اختير آخر بدلاً عنه (مثال: أختار 4، أُلغي
+                    // الثاني، أختار خامساً — كان يصبح 1 مقابل 3 دون أي تنبيه، ويرفضه السيرفر
+                    // لاحقاً بلا توضيح). إعادة حساب الفريقين كاملة حسب الترتيب الحالي تضمن توازناً
+                    // تاماً دائماً (نصف الأول 🔵، نصف الثاني 🔴) بغض النظر عن أي تعديل سابق
+                    selected.forEach((s, i) => { s.team = i < size / 2 ? 'A' : 'B'; });
+                    renderCandidates();
+                    updateConfirmState();
+                });
+            });
+        }
+
+        function updateConfirmState() {
+            modal.querySelector('#confirm-seat-challenge').disabled = selected.length !== size;
+            modal.querySelector('#challenge-pick-label').textContent = `اخترت ${selected.length} من ${size} — 🔵 مقابل 🔴`;
+        }
+
+        modal.querySelectorAll('.challenge-size-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                size = parseInt(btn.dataset.size);
+                selected = [];
+                modal.querySelectorAll('.challenge-size-btn').forEach(b => b.classList.remove('bg-purple-600'));
+                modal.querySelectorAll('.challenge-size-btn').forEach(b => b.classList.add('bg-gray-700'));
+                btn.classList.remove('bg-gray-700');
+                btn.classList.add('bg-purple-600');
+                renderCandidates();
+                updateConfirmState();
+            });
+        });
+        modal.querySelectorAll('.challenge-duration-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedDuration = parseInt(btn.dataset.sec);
+                modal.querySelectorAll('.challenge-duration-btn').forEach(b => b.classList.remove('bg-purple-600'));
+                modal.querySelectorAll('.challenge-duration-btn').forEach(b => b.classList.add('bg-gray-700'));
+                btn.classList.remove('bg-gray-700');
+                btn.classList.add('bg-purple-600');
+            });
+        });
+
+        renderCandidates();
+        updateConfirmState();
+
+        modal.querySelector('#confirm-seat-challenge').addEventListener('click', () => {
+            if (selected.length !== size) return;
+            socket.emit('create-seat-challenge', { roomId: room.id, participants: selected, durationSeconds: selectedDuration });
+            showNotification('تم إرسال الدعوات ⏳', 'info');
+            modal.remove();
+        });
+    }
+
+    // ✅ نافذة استقبال دعوة تحدٍ — تظهر فقط لمن دعاه المضيف/المسؤول صراحة، بعدّاد تنازلي
+    // يطابق مهلة السيرفر (30 ثانية) — إغلاق تلقائي عند انتهائها (رفض ضمني من طرف السيرفر)
+    function showSeatChallengeInviteModal(data) {
+        document.getElementById('seat-challenge-invite-modal')?.remove();
+        const myTeam = data.participants.find(p => p.userId === myUserId)?.team;
+        const teamEmoji = myTeam === 'A' ? '🔵' : '🔴';
+
+        const modal = document.createElement('div');
+        modal.id = 'seat-challenge-invite-modal';
+        modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[65] p-4';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-xl shadow-xl p-5 w-full max-w-xs text-white text-center">
+                <i class="fas fa-fire text-3xl text-red-400 mb-3"></i>
+                <p class="font-bold text-base mb-1">تحدٍ من ${escapeHtml(data.invitedBy)}!</p>
+                <p class="text-xs text-gray-400 mb-4">أنت بالفريق ${teamEmoji} — هل تقبل؟</p>
+                <div class="flex gap-2">
+                    <button id="decline-seat-challenge" class="flex-1 bg-gray-700 hover:bg-gray-600 py-2 rounded-lg text-sm font-bold">رفض</button>
+                    <button id="accept-seat-challenge" class="flex-1 bg-red-600 hover:bg-red-700 py-2 rounded-lg text-sm font-bold">قبول</button>
+                </div>
+                <p id="seat-challenge-invite-countdown" class="text-[10px] text-gray-500 mt-3"></p>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.querySelector('#accept-seat-challenge').addEventListener('click', () => {
+            socket.emit('seat-challenge-response', { challengeId: data.challengeId, accept: true });
+            modal.remove();
+        });
+        modal.querySelector('#decline-seat-challenge').addEventListener('click', () => {
+            socket.emit('seat-challenge-response', { challengeId: data.challengeId, accept: false });
+            modal.remove();
+        });
+
+        let remaining = data.expiresInSeconds || 30;
+        const countdownEl = modal.querySelector('#seat-challenge-invite-countdown');
+        const tick = () => {
+            if (!document.body.contains(modal)) return;
+            countdownEl.textContent = `${remaining} ثانية للرد`;
+            remaining--;
+            if (remaining < 0) { modal.remove(); return; }
+            setTimeout(tick, 1000);
+        };
+        tick();
+    }
+
+    // ✅ شريط التحدي الحي — نفس فكرة شريط PK لكن بفريقين 🔵/🔴 بدل غرفتين، وخط فاصل رفيع
+    // بالمنتصف، ويُدرَج مباشرة بعد شريط PK لو كان موجوداً (نادراً ما يتزامنان، لكن احتياطاً)
+    function renderSeatChallengeBar(data) {
+        document.getElementById('seat-challenge-bar')?.remove();
+        currentSeatChallenge = data;
+        seatChallengeFireShownFor = null;
+
+        const teamA = data.participants.filter(p => p.team === 'A');
+        const teamB = data.participants.filter(p => p.team === 'B');
+
+        const bar = document.createElement('div');
+        bar.id = 'seat-challenge-bar';
+        bar.className = 'seat-challenge-bar';
+        bar.innerHTML = `
+            <div class="seat-challenge-row">
+                <div class="seat-challenge-team seat-challenge-team-a">
+                    ${teamA.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                </div>
+                <div class="seat-challenge-progress">
+                    <div id="seat-challenge-fill-a" class="seat-challenge-fill-a"></div>
+                    <div id="seat-challenge-fill-b" class="seat-challenge-fill-b"></div>
+                    <div class="seat-challenge-divider"></div>
+                    <span id="seat-challenge-score-a" class="seat-challenge-score-a">0</span>
+                    <span class="seat-challenge-vs"><i class="fas fa-fire"></i></span>
+                    <span id="seat-challenge-score-b" class="seat-challenge-score-b">0</span>
+                </div>
+                <div class="seat-challenge-team seat-challenge-team-b">
+                    ${teamB.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                </div>
+            </div>
+            <div id="seat-challenge-timer" class="seat-challenge-timer"></div>
+        `;
+        const insertAfter = document.getElementById('pk-battle-bar') || mainContent.querySelector('.flex.justify-between.items-center');
+        if (insertAfter) insertAfter.insertAdjacentElement('afterend', bar);
+        else mainContent.prepend(bar);
+
+        updateSeatChallengeScores(data.scoreA, data.scoreB);
+
+        clearInterval(seatChallengeCountdownInterval);
+        if (data.endsAt) {
+            const updateTimer = () => {
+                const timerEl = document.getElementById('seat-challenge-timer');
+                if (!timerEl) { clearInterval(seatChallengeCountdownInterval); return; }
+                const remainingMs = new Date(data.endsAt).getTime() - Date.now();
+                if (remainingMs <= 0) { timerEl.textContent = '00:00'; clearInterval(seatChallengeCountdownInterval); return; }
+                const m = Math.floor(remainingMs / 60000);
+                const s = Math.floor((remainingMs % 60000) / 1000);
+                timerEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            };
+            updateTimer();
+            seatChallengeCountdownInterval = setInterval(updateTimer, 1000);
+        }
+    }
+
+    // ✅ تحديث النقاط + تأثيرات "اقتراب من الحسم" — نار على الفريق المتصدّر بوضوح (68%+ من
+    // مجموع النقاط)، وخوف مرتجف على الفريق المتأخر (عبر CSS مباشرة من صنف واحد بالحاوية،
+    // انظر seat-challenge-lead-a/b بملف الأنماط) — لا يتكرر التنبيه لنفس التصدّر كل تحديث
+    function updateSeatChallengeScores(scoreA, scoreB) {
+        if (currentSeatChallenge) { currentSeatChallenge.scoreA = scoreA; currentSeatChallenge.scoreB = scoreB; }
+        const total = scoreA + scoreB;
+        const pctA = total > 0 ? Math.round((scoreA / total) * 100) : 50;
+        document.getElementById('seat-challenge-fill-a')?.style.setProperty('width', `${pctA}%`);
+        document.getElementById('seat-challenge-fill-b')?.style.setProperty('width', `${100 - pctA}%`);
+        const scoreAEl = document.getElementById('seat-challenge-score-a');
+        const scoreBEl = document.getElementById('seat-challenge-score-b');
+        if (scoreAEl) scoreAEl.textContent = scoreA;
+        if (scoreBEl) scoreBEl.textContent = scoreB;
+
+        const bar = document.getElementById('seat-challenge-bar');
+        if (!bar || total < 40) return; // ✅ لا تأثيرات قبل وجود فارق نقاط ذو معنى فعلياً
+        const leadingTeam = pctA >= 68 ? 'A' : (pctA <= 32 ? 'B' : null);
+        if (leadingTeam && leadingTeam !== seatChallengeFireShownFor) {
+            seatChallengeFireShownFor = leadingTeam;
+            bar.classList.remove('seat-challenge-lead-a', 'seat-challenge-lead-b');
+            bar.classList.add(leadingTeam === 'A' ? 'seat-challenge-lead-a' : 'seat-challenge-lead-b');
+            showBottomToast(leadingTeam === 'A' ? '🔥 الفريق الأزرق يقترب من الحسم!' : '🔥 الفريق الأحمر يقترب من الحسم!', 'fa-fire');
+        } else if (!leadingTeam && seatChallengeFireShownFor) {
+            seatChallengeFireShownFor = null;
+            bar.classList.remove('seat-challenge-lead-a', 'seat-challenge-lead-b');
+        }
+    }
+
+    function removeSeatChallengeBar() {
+        clearInterval(seatChallengeCountdownInterval);
+        currentSeatChallenge = null;
+        seatChallengeFireShownFor = null;
+        document.getElementById('seat-challenge-bar')?.remove();
+    }
+
+    // ✅ نافذة نتيجة التحدي — قوية بصرياً وتختلف باختلاف من يشاهدها: شرر ذهبي متطاير للفائز
+    // المشارك، بطاقة مهتزة داكنة للخاسر المشارك، وملخص محايد لمن كان مجرد مشاهد (يُغلق تلقائياً)
+    function showSeatChallengeResultModal(data) {
+        removeSeatChallengeBar();
+        document.getElementById('seat-challenge-result-modal')?.remove();
+
+        const myParticipant = data.participants.find(p => p.userId === myUserId);
+        const isDraw = data.winner === 'draw';
+        const iWon = !!myParticipant && !isDraw && myParticipant.team === data.winner;
+        const iLost = !!myParticipant && !isDraw && !iWon;
+
+        let title, icon, cardClass;
+        if (isDraw) { title = 'تعادل!'; icon = 'fa-handshake'; cardClass = ''; }
+        else if (iWon) { title = 'فزت! 🏆'; icon = 'fa-trophy'; cardClass = 'seat-challenge-result-card-win'; }
+        else if (iLost) { title = 'خسرت الجولة'; icon = 'fa-face-frown'; cardClass = 'seat-challenge-result-card-lose'; }
+        else { title = data.winner === 'A' ? 'فاز الفريق 🔵' : 'فاز الفريق 🔴'; icon = 'fa-trophy'; cardClass = ''; }
+
+        const particles = iWon ? Array.from({ length: 16 }, (_, i) => {
+            const angle = Math.round((360 / 16) * i);
+            const delay = (Math.random() * 0.2).toFixed(2);
+            return `<span class="seat-challenge-confetti" style="--angle:${angle}deg; --delay:${delay}s"></span>`;
+        }).join('') : '';
+
+        const modal = document.createElement('div');
+        modal.id = 'seat-challenge-result-modal';
+        modal.className = 'fixed inset-0 bg-black/75 flex items-center justify-center z-[65] p-4';
+        modal.innerHTML = `
+            <div class="seat-challenge-result-card ${cardClass}">
+                ${particles}
+                <i class="fas ${icon} seat-challenge-result-icon"></i>
+                <p class="seat-challenge-result-title">${title}</p>
+                <p class="seat-challenge-result-score">${data.scoreA} 🔵 — 🔴 ${data.scoreB}</p>
+                <button id="close-seat-challenge-result" class="seat-challenge-result-close-btn">إغلاق</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.querySelector('#close-seat-challenge-result').addEventListener('click', () => modal.remove());
+        modal.addEventListener('click', (e) => { if (e.target.id === 'seat-challenge-result-modal') modal.remove(); });
+        if (!myParticipant) setTimeout(() => modal.remove(), 4000); // ✅ مجرد مشاهد غير مشارك — لا حاجة لإغلاق يدوي
     }
 
     // ✅ متجر خلفيات الغرفة — تبويبان: "خاصتي" (المجانية الدائمة) و"المظهر" (مدفوعة، 5 أيام لكل واحدة)
@@ -3685,7 +4190,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 if (howlBinStreak > 12 && !howlingWarningShownThisSession) { // ~12×60ms ≈ 720ms استمرار
                     howlingWarningShownThisSession = true;
                     gateGain.gain.setTargetAtTime(0.15, ctx.currentTime, 0.05); // كتم جزئي فوري يكسر الحلقة
-                    showFloatingAlert('🎧 لاحظنا احتمال وجود صدى — جرّب سماعة الرأس أو ابعد جهازك عمّن بجانبك', 'fa-headphones', 'bg-amber-500');
+                    // 🐛 إصلاح: showFloatingAlert نص طويل بلا حد أقصى للعرض تكسر على الهاتف (كبسولة
+                    // منتصف الشاشة بلا max-width) وتختفي خلال 1.9 ثانية فقط — قصيرة جداً لقراءة
+                    // نص كهذا. showBottomToast جاهزة أصلاً لبالضبط هذي الحالة: أسفل الشاشة، عرض
+                    // محدود (90vw)، مدة أطول (3.6 ثانية) — استخدمناها هنا مع رسالة أقصر وأوضح
+                    showBottomToast('🎧 صدى محتمل — جرّب سماعة الرأس', 'fa-headphones');
                 }
             } else {
                 howlBinStreak = 0;
@@ -6105,6 +6614,52 @@ function showXpGainAnimation(amount) {
         showPkResultModal(data);
     });
 
+    // =====================================================
+    // ✅ تحدٍ بين أعضاء داخل نفس الغرفة — تحديثات حية للدعوة/الشريط/النتيجة
+    // =====================================================
+    socket.on('seat-challenge-created', () => {
+        // ✅ تأكيد بسيط — الإشعار الرئيسي ظهر فوراً عند الإرسال بالواجهة نفسها
+    });
+
+    socket.on('seat-challenge-invite', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        showSeatChallengeInviteModal(data);
+    });
+
+    socket.on('seat-challenge-pending', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        showBottomToast('⏳ تحدٍ جديد بانتظار موافقة المدعوين', 'fa-fire');
+    });
+
+    socket.on('seat-challenge-declined', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        document.getElementById('seat-challenge-invite-modal')?.remove();
+        showNotification(`تم رفض التحدي${data.declinedBy ? ' من ' + data.declinedBy : ''}`, 'info');
+    });
+
+    socket.on('seat-challenge-expired', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        document.getElementById('seat-challenge-invite-modal')?.remove();
+        showNotification('انتهت مهلة الرد على التحدي', 'info');
+    });
+
+    socket.on('seat-challenge-started', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        document.getElementById('seat-challenge-invite-modal')?.remove();
+        renderSeatChallengeBar(data);
+        showNotification('بدأ التحدي! 🔥', 'success');
+    });
+
+    socket.on('seat-challenge-score-update', (data) => {
+        if (!currentSeatChallenge || currentSeatChallenge.challengeId !== data.challengeId) return;
+        updateSeatChallengeScores(data.scoreA, data.scoreB);
+    });
+
+    socket.on('seat-challenge-ended', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        showSeatChallengeResultModal(data);
+    });
+
     socket.on('new-room-message', ({ roomId, message }) => {
         if (roomId !== roomChatCurrentRoomId) return;
         appendRoomChatMessage(message);
@@ -6150,6 +6705,56 @@ function showXpGainAnimation(amount) {
         if (roomId !== currentVoiceRoomId || currentRoomMyRole === 'host') return;
         showNotification('تم قفل الغرفة من المضيف وطرد الجميع', 'warning');
         showRoomBrowserView();
+    });
+
+    // ✅ نقاط دعم الغرفة تحدّثت (هدية أُرسلت بداخلها) — تحديث صامت للشارة، بلا إشعار مزعج
+    // على كل هدية (سيصل غالباً بمعدل عالٍ بغرفة نشطة). المستوى نفسه له حدث احتفالي منفصل أدناه
+    socket.on('room-support-points-updated', ({ roomId, supportPoints, level, pointsToNextLevel, levelProgressPercent }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        currentRoomSupportPoints = supportPoints;
+        currentRoomLevel = level;
+        currentRoomPointsToNextLevel = pointsToNextLevel;
+        currentRoomLevelProgressPercent = levelProgressPercent;
+        updateRoomLevelBadgeUI();
+        updateRoomLevelProgressUI();
+    });
+
+    // ✅ ارتفع مستوى الغرفة فعلياً — احتفال بصري للجميع بالغرفة + تحديث فوري لخيارات توسيع
+    // المقاعد المتاحة بنافذة إعدادات المضيف (لو كانت مفتوحة بنفس اللحظة)
+    socket.on('room-leveled-up', ({ roomId, newLevel, unlockedSeatCounts }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        currentRoomLevel = newLevel;
+        currentRoomUnlockedSeatCounts = unlockedSeatCounts;
+        updateRoomLevelBadgeUI();
+        updateRoomLevelProgressUI();
+        celebrateRoomLevelUp(newLevel);
+    });
+
+    // 🐛 إصلاح: تغيير عدد المقاعد كان يتطلب خروجاً وعودة لرؤيته — الآن يصل فوراً للجميع
+    // بالغرفة ويُعاد رسم الشبكة بالعدد الجديد بلا أي حاجة لإعادة فتح الغرفة يدوياً
+    socket.on('room-seat-count-updated', async ({ roomId, seatCount }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        renderVoiceRoomSeats(roomId, seatCount, 0, false);
+        await fetchAndRenderVoiceSnapshot(roomId, currentRoomPassword);
+        if (currentRoomMyRole !== 'host') {
+            showBottomToast(`عدد المقاعد صار ${seatCount} الآن`, 'fa-chair');
+        }
+    });
+
+    // ✅ طردني المضيف/مسؤول من الغرفة بالكامل — إخراج فوري لقائمة التصفح مع رسالة واضحة
+    socket.on('you-were-kicked-from-room', ({ roomId, userId }) => {
+        if (userId !== myUserId) return;
+        if (roomId === currentVoiceRoomId) {
+            showNotification('تم طردك من هذي الغرفة من قِبل الإدارة', 'error');
+            showRoomBrowserView();
+        }
+    });
+
+    // ✅ تأكيد إلغاء طرد (يصل للمضيف/المسؤول نفسه فقط) — يحدّث قائمة المطرودين بنافذة الإعدادات لو مفتوحة
+    socket.on('room-user-unkicked', ({ roomId, userId }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        currentRoomKickedUsers = currentRoomKickedUsers.filter(u => u.id !== userId);
+        renderKickedUsersListUI();
     });
 
     // ✅ يصل فقط لمن هو منضم فعلياً لقناة دردشة هذي الغرفة (بث مخصص، وليس عاماً)

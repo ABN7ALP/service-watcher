@@ -41,6 +41,17 @@ const voiceRoomSchema = new mongoose.Schema({
     seatCount: { type: Number, enum: [9, 15, 24, 80], default: 80 },
     adminSeatCount: { type: Number, default: 5 }, // أول N مقعد محجوز حصرياً للإدارة (0 بالغرف العادية)
     moderators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // ✅ مسؤولون مساعدون عيّنهم المضيف
+    // ✅ مستوى الغرفة (1-5) — يرتفع بتراكم "نقاط دعم" الغرفة (قيمة الهدايا المُرسَلة بداخلها)،
+    // ويفتح مزايا تدريجياً (حالياً: توسيع المقاعد). انظر LEVEL_THRESHOLDS أسفل الملف للصيغة
+    // الكاملة، ومكافآت المضيف عند بلوغ مستوى معيّن واجهة فقط حالياً (سيُبنى نظامها لاحقاً)
+    level: { type: Number, default: 1, min: 1, max: 5 },
+    supportPoints: { type: Number, default: 0 }, // مجموع قيمة كل الهدايا المُرسَلة داخل هذي الغرفة (تراكمي، لا يُصفَّر بين البثوث)
+    // ✅ من طردهم المضيف/المسؤولون من الغرفة (وليس فقط من مقعد) — يُمنعون من الدخول إطلاقاً
+    // حتى يُنهي المضيف البث ويبدأ جلسة جديدة (انظر startBroadcast أدناه، يُفرغها تلقائياً)
+    kickedUsers: [{
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        kickedAt: { type: Date, default: Date.now }
+    }],
     seats: [seatSchema],
     // ✅ طلبات "رفع اليد" لطلب الصعود للمايك — قائمة انتظار يراها المضيف/المسؤولون فقط،
     // ويقدر أي منهم يدعو صاحب الطلب مباشرة لمقعد فاضٍ أو يرفض طلبه
@@ -314,15 +325,119 @@ voiceRoomSchema.methods.checkBackgroundExpiry = async function () {
     }
 };
 
-// ✅ زيادة عدد المقاعد فقط (اتجاه واحد: 9←15←24) — يضيف مقاعد فاضية جديدة بدون المساس بالموجود
-voiceRoomSchema.methods.increaseSeatCount = function (newCount) {
-    const allowedSteps = [9, 15, 24];
-    if (!allowedSteps.includes(newCount) || newCount <= this.seatCount) return false;
-    for (let i = this.seatCount + 1; i <= newCount; i++) {
-        this.seats.push({ seatNumber: i });
+// =====================================================
+// ✅ نظام مستوى الغرفة — يرتفع بتراكم قيمة الهدايا المُرسَلة داخلها (supportPoints)، ويفتح
+// خيار توسيع المقاعد تدريجياً. عدّل الأرقام هنا فقط لإعادة موازنة الاقتصاد لاحقاً بلا أي
+// تغيير بأي مكان آخر بالكود — كل شيء يقرأ من هذا الجدول وحده
+// =====================================================
+voiceRoomSchema.statics.LEVEL_THRESHOLDS = [
+    { level: 1, minPoints: 0 },
+    { level: 2, minPoints: 1000 },
+    { level: 3, minPoints: 5000 },   // 🔓 يفتح خيار 15 مقعداً
+    { level: 4, minPoints: 15000 },
+    { level: 5, minPoints: 40000 },  // 🔓 يفتح خيار 24 مقعداً
+];
+
+voiceRoomSchema.statics.computeLevelForPoints = function (points) {
+    let level = 1;
+    for (const tier of this.LEVEL_THRESHOLDS) {
+        if (points >= tier.minPoints) level = tier.level;
+    }
+    return level;
+};
+
+// ✅ نقاط الدعم الناقصة للوصول للمستوى التالي (0 لو كانت الغرفة عند أعلى مستوى أصلاً)
+voiceRoomSchema.statics.pointsToNextLevel = function (points, level) {
+    const next = this.LEVEL_THRESHOLDS.find(t => t.level === level + 1);
+    return next ? Math.max(0, next.minPoints - points) : 0;
+};
+
+// ✅ نسبة التقدّم (0-100) داخل المستوى الحالي — لشريط تقدّم بصري بالواجهة (100 لو أعلى مستوى)
+voiceRoomSchema.statics.levelProgressPercent = function (points, level) {
+    if (level >= 5) return 100;
+    const current = this.LEVEL_THRESHOLDS.find(t => t.level === level);
+    const next = this.LEVEL_THRESHOLDS.find(t => t.level === level + 1);
+    if (!current || !next) return 100;
+    const span = next.minPoints - current.minPoints;
+    if (span <= 0) return 100;
+    return Math.min(100, Math.max(0, Math.round((points - current.minPoints) / span * 100)));
+};
+
+// ✅ أعداد المقاعد المتاحة للاختيار عند هذا المستوى — 9 متاحة دائماً، 15 من مستوى 3،
+// 24 من مستوى 5 (القيم الفعلية بجدول LEVEL_THRESHOLDS أعلاه)
+voiceRoomSchema.statics.getUnlockedSeatCounts = function (level) {
+    if (level >= 5) return [9, 15, 24];
+    if (level >= 3) return [9, 15];
+    return [9];
+};
+
+// ✅ إضافة نقاط دعم ذرّية لغرفة (يُستدعى عند إرسال هدية بداخلها) — يُحدّث المستوى تلقائياً
+// لو تجاوزت النقاط عتبة مستوى أعلى، ويُرجع ما يلزم العميل لعرض تنبيه/رسوم "ترقية مستوى"
+voiceRoomSchema.statics.addSupportPoints = async function (roomId, points) {
+    if (!points || points <= 0) return null;
+    const updated = await this.findOneAndUpdate(
+        { _id: roomId, isOfficial: { $ne: true } },
+        { $inc: { supportPoints: points } },
+        { new: true }
+    );
+    if (!updated) return null;
+
+    const newLevel = this.computeLevelForPoints(updated.supportPoints);
+    const leveledUp = newLevel > updated.level;
+    if (leveledUp) {
+        updated.level = newLevel;
+        await updated.save();
+    }
+    return {
+        supportPoints: updated.supportPoints,
+        level: updated.level,
+        leveledUp,
+        unlockedSeatCounts: this.getUnlockedSeatCounts(updated.level)
+    };
+};
+
+// ✅ تغيير عدد المقاعد (الاتجاهان: توسيع أو تقليص) — يتحقق أن العدد المطلوب مفتوح فعلاً
+// بمستوى الغرفة الحالي، ويرفض التقليص لو فيه جالس على مقعد سيُحذَف (رقمه أكبر من العدد الجديد)
+voiceRoomSchema.methods.setSeatCount = function (newCount) {
+    const allowed = [9, 15, 24];
+    if (!allowed.includes(newCount)) {
+        return { ok: false, message: 'عدد مقاعد غير صالح' };
+    }
+    const unlockedForLevel = this.constructor.getUnlockedSeatCounts(this.level);
+    if (!unlockedForLevel.includes(newCount)) {
+        return { ok: false, message: `توسيع المقاعد لـ ${newCount} يتطلب وصول الغرفة لمستوى أعلى أولاً` };
+    }
+    if (newCount === this.seatCount) {
+        return { ok: true, changed: false };
+    }
+    if (newCount > this.seatCount) {
+        for (let i = this.seatCount + 1; i <= newCount; i++) {
+            this.seats.push({ seatNumber: i });
+        }
+    } else {
+        const blockingSeat = this.seats.find(s => s.seatNumber > newCount && s.user);
+        if (blockingSeat) {
+            return { ok: false, message: `أنزل الجالسين على المقاعد فوق رقم ${newCount} أولاً` };
+        }
+        this.seats = this.seats.filter(s => s.seatNumber <= newCount);
     }
     this.seatCount = newCount;
-    return true;
+    return { ok: true, changed: true };
+};
+
+// ✅ هل هذا المستخدم مطرود من الغرفة (وليس فقط من مقعد)؟ — يُمنع من الدخول إطلاقاً حتى
+// يُنهي المضيف البث ويبدأ جلسة جديدة (kickedUsers تُفرَّغ تلقائياً بـ startBroadcast)
+voiceRoomSchema.methods.isUserKicked = function (userId) {
+    const uid = userId.toString();
+    return this.kickedUsers.some(k => k.user && k.user.toString() === uid);
+};
+
+// ✅ طرد مستخدم من الغرفة بالكامل — إضافة ذرّية تمنع تكراره لو نُقر الزر مرتين بالخطأ
+voiceRoomSchema.statics.kickUserFromRoom = async function (roomId, userId) {
+    await this.updateOne(
+        { _id: roomId, 'kickedUsers.user': { $ne: userId } },
+        { $push: { kickedUsers: { user: userId, kickedAt: new Date() } } }
+    );
 };
 
 // ✅ يحرر كل مقاعد هذي الغرفة دفعة واحدة (يُستخدم عند اختيار المضيف "طرد الجميع" عند قفل الغرفة)
@@ -359,6 +474,9 @@ voiceRoomSchema.statics.startBroadcast = async function (roomId, hostId) {
     room.isLive = true;
     room.liveSince = new Date();
     room.handRaises = [];
+    // ✅ بداية جلسة بث جديدة = فرصة جديدة للجميع — من طُردوا بالجلسة السابقة يقدرون الدخول
+    // من جديد الآن (بالضبط الشرط الذي طلبه المضيف: لا عودة إلا بإعادة فتح البث)
+    room.kickedUsers = [];
     room.seats.forEach(s => { s.user = null; s.joinedAt = null; s.isMuted = false; s.isLocked = false; });
     const firstSeat = room.seats.find(s => s.seatNumber === 1);
     if (firstSeat) { firstSeat.user = hostId; firstSeat.joinedAt = new Date(); }

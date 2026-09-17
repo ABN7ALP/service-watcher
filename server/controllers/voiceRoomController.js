@@ -3,6 +3,7 @@ const VoiceRoom = require('../models/VoiceRoom');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const RoomBattle = require('../models/RoomBattle');
+const SeatChallenge = require('../models/SeatChallenge');
 
 // ✅ لقطة معركة PK الحالية لغرفة معينة (معلّقة أو فعلية) — تُستخدم لعرض شريط المعركة
 // فوراً عند فتح/إعادة فتح شاشة الغرفة، دون انتظار حدث Socket قد يكون فات وقته
@@ -19,6 +20,45 @@ async function getActiveBattleSnapshot(roomId) {
         durationSeconds: battle.durationSeconds,
         endsAt: battle.endsAt
     };
+}
+
+// ✅ لقطة تحدي الأعضاء الفعلي الحالي (لو موجود) — نفس فكرة لقطة معركة PK أعلاه، يعرض شريط
+// التحدي فوراً لمن يفتح/يعيد فتح شاشة الغرفة أثناء تحدٍ جارٍ، بلا انتظار حدث Socket فائت
+async function getActiveSeatChallengeSnapshot(roomId) {
+    const challenge = await SeatChallenge.getActiveForRoomPopulated(roomId);
+    if (!challenge) return null;
+    return {
+        challengeId: challenge._id,
+        participants: challenge.participants.map(p => ({
+            userId: p.user._id,
+            username: p.user.username,
+            profileImage: p.user.profileImage,
+            seatNumber: p.seatNumber,
+            team: p.team
+        })),
+        scoreA: challenge.scoreA,
+        scoreB: challenge.scoreB,
+        durationSeconds: challenge.durationSeconds,
+        endsAt: challenge.endsAt
+    };
+}
+
+// ✅ قائمة المطرودين من الغرفة بأسماء/صور واضحة (للمضيف/المسؤولين فقط) — تسمح بمراجعتهم
+// وإلغاء طرد أحدهم بالخطأ دون انتظار إنهاء البث بالكامل لإعادة فتحه من جديد
+async function getKickedUsersSnapshot(room) {
+    if (!room.kickedUsers.length) return [];
+    const User = require('../models/User');
+    const ids = room.kickedUsers.map(k => k.user);
+    const users = await User.find({ _id: { $in: ids } }).select('username profileImage').lean();
+    const userMap = new Map(users.map(u => [u._id.toString(), u]));
+    return room.kickedUsers
+        .map(k => {
+            const u = userMap.get(k.user.toString());
+            if (!u) return null;
+            return { id: u._id, username: u.username, profileImage: u.profileImage, kickedAt: k.kickedAt };
+        })
+        .filter(Boolean)
+        .reverse(); // الأحدث طرداً أولاً
 }
 
 // =====================================================
@@ -168,6 +208,13 @@ exports.getRoomById = async (req, res) => {
         const isHost = room.host && room.host._id.toString() === req.user.id;
         const isModerator = room.moderators.some(m => m.toString() === req.user.id);
 
+        // 🛡️ مستخدم مطرود من هذي الغرفة بالكامل (وليس فقط من مقعد) — يُمنع من الدخول إطلاقاً
+        // حتى يُنهي المضيف البث ويبدأ جلسة جديدة (kickedUsers تُفرَّغ تلقائياً حينها، انظر
+        // VoiceRoom.startBroadcast)؛ فحص أولوية قبل أي شيء آخر — حتى قبل حالة القفل/الخصوصية
+        if (!room.isOfficial && !isHost && room.isUserKicked(req.user.id)) {
+            return res.status(403).json({ status: 'fail', message: 'تم طردك من هذي الغرفة من قِبل الإدارة', kicked: true });
+        }
+
         // 🛡️ غرفة مستخدم غير مباشرة حالياً (انتهى بثها) لا يدخلها أحد غير مالكها (ليبدأ بثاً جديداً) —
         // بقية المستخدمين وصلوا هنا برابط قديم/تصفح متأخر، والشاشة المناسبة لهم "انتهى البث" لا خطأ عام
         if (!room.isOfficial && !room.isLive && !isHost) {
@@ -222,11 +269,22 @@ exports.getRoomById = async (req, res) => {
             chatLocked: room.chatLocked,
             followersCount: room.followers.length,
             isFollowing: room.followers.some(f => f.toString() === req.user.id),
+            // ✅ نظام مستوى الغرفة — يُرسَل دائماً (حتى للضيوف، تُبنى منه شارة المستوى بالواجهة)
+            level: room.isOfficial ? null : room.level,
+            supportPoints: room.isOfficial ? null : room.supportPoints,
+            pointsToNextLevel: room.isOfficial ? null : VoiceRoom.pointsToNextLevel(room.supportPoints, room.level),
+            levelProgressPercent: room.isOfficial ? null : VoiceRoom.levelProgressPercent(room.supportPoints, room.level),
+            unlockedSeatCounts: room.isOfficial ? null : VoiceRoom.getUnlockedSeatCounts(room.level),
+            // 🛡️ قائمة المطرودين لا تُرسَل إلا للمضيف/المسؤولين — بيانات إدارية داخلية بحتة
+            kickedUsers: (!room.isOfficial && (isHost || isModerator))
+                ? await getKickedUsersSnapshot(room)
+                : [],
             // 🛡️ قائمة طلبات الصعود لا تُرسَل إلا للمضيف/المسؤولين — لا فائدة (وربما إحراج) لبقية الحاضرين برؤيتها
             handRaises: (isHost || isModerator)
                 ? room.handRaises.filter(h => h.user).map(h => ({ userId: h.user._id, username: h.user.username, profileImage: h.user.profileImage }))
                 : [],
-            activeBattle: await getActiveBattleSnapshot(room._id)
+            activeBattle: await getActiveBattleSnapshot(room._id),
+            activeSeatChallenge: room.isOfficial ? null : await getActiveSeatChallengeSnapshot(room._id)
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
@@ -281,12 +339,14 @@ exports.updateRoom = async (req, res) => {
 
         // ✅ الخلفية الآن تُدار عبر نقطتي /background/shop و/background/purchase المخصصتين (تدعم الشراء والانتهاء)
 
-        // ✅ زيادة عدد المقاعد فقط (اتجاه واحد 8←15←24)
+        // ✅ تغيير عدد المقاعد (توسيع أو تقليص) — مربوط بمستوى الغرفة (انظر VoiceRoom.setSeatCount)
+        let seatCountChanged = false;
         if (seatCount !== undefined) {
-            const ok = room.increaseSeatCount(parseInt(seatCount));
-            if (!ok) {
-                return res.status(400).json({ status: 'fail', message: 'لا يمكن تقليل عدد المقاعد، فقط زيادته (8 ← 15 ← 24)' });
+            const result = room.setSeatCount(parseInt(seatCount));
+            if (!result.ok) {
+                return res.status(400).json({ status: 'fail', message: result.message });
             }
+            seatCountChanged = result.changed;
         }
 
         const io = req.app.get('socketio');
@@ -316,6 +376,15 @@ exports.updateRoom = async (req, res) => {
             io.to(`room-chat-${roomIdStr}`).emit('room-force-closed', { roomId: roomIdStr, reason: 'locked' });
         }
 
+        // ✅ تغيير المقاعد يظهر فوراً للجميع بالغرفة بلا حاجة للخروج والعودة — العميل يعيد جلب
+        // لقطة الحالة ويُعيد رسم شبكة المقاعد بالعدد الجديد فور استقبال هذا الحدث
+        if (io && seatCountChanged) {
+            io.to(`room-chat-${room._id}`).emit('room-seat-count-updated', {
+                roomId: room._id.toString(),
+                seatCount: room.seatCount
+            });
+        }
+
         res.json({
             status: 'success',
             room: {
@@ -325,7 +394,10 @@ exports.updateRoom = async (req, res) => {
                 isPrivate: room.isPrivate,
                 isLocked: room.isLocked,
                 backgroundImage: room.backgroundImage,
-                seatCount: room.seatCount
+                seatCount: room.seatCount,
+                level: room.level,
+                supportPoints: room.supportPoints,
+                unlockedSeatCounts: VoiceRoom.getUnlockedSeatCounts(room.level)
             }
         });
     } catch (error) {
