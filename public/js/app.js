@@ -411,6 +411,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (viewId !== 'arena') {
             leaveRoomChatUI(); // ✅ دردشة الغرفة خاصة بمشاهدتها فقط، تختفي بمغادرة القسم
             exitFullscreenRoomMode();
+            teardownAllVoicePeers(); // 🐛 إصلاح: مغادرة قناة الدردشة تعني مغادرة شبكة الصوت أيضاً بنفس اللحظة
         }
 
         // تفعيل الشريط الجانبي (سطح المكتب)
@@ -1978,6 +1979,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         currentVoiceRoomId = null;
         leaveRoomChatUI();
         exitFullscreenRoomMode();
+        teardownAllVoicePeers(); // 🐛 إصلاح: كنت "مشاهداً" مستمعاً فقط قد لا يصدر له أي user-left-seat إطلاقاً
         renderRoomBrowserContent();
     }
 
@@ -2214,8 +2216,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         enterRoomChat(room.id);
         applyRoomAudioMuteState(); // ✅ يطبّق كتمي المحلي (إن كان مفعّلاً) على عنصر الموسيقى وأي صوت متحدثين جديد
         // ✅ لقطة الحالة قد تُظهرني جالساً أصلاً (مضيف يفتح غرفته من جديد مثلاً) بلا أي حدث
-        // جلوس حي يُطلق شبكة الصوت — نتأكد هنا صراحة من الاتصال بكل من هو جالس معي بالفعل
-        if (myVoiceSeatNumber && myVoiceRoomId === room.id) connectVoiceMeshToCurrentlySeated();
+        // جلوس حي يُطلق شبكة الصوت — نتأكد هنا صراحة من الاتصال بكل من هو جالس فعلياً، سواء
+        // كنت أنا جالساً (اتصال ثنائي) أو مجرّد مشاهد فتح شاشة الغرفة توّاً (استماع فقط)
+        if (currentVoiceRoomId === room.id) connectVoiceMeshToCurrentlySeated();
     }
 
     // ✅ سحب لأسفل من رأس الغرفة يخرج منها — بديل زر الرجوع المحذوف (أسلوب تطبيقات البث
@@ -3579,24 +3582,124 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     // =====================================================
-    // ✅ الصوت الحي بين الجالسين على المقاعد (WebRTC Mesh) — كل من يجلس على مقعد يتصل
-    // مباشرة (نظير لنظير) بكل من يجلس على مقعد آخر بنفس الغرفة. السيرفر لا يلمس الصوت
-    // إطلاقاً، فقط يُوصّل رسائل التفاوض (SDP/ICE) بين الطرفين عبر Socket.IO الموجود أصلاً.
-    // مبني بالكامل على أدوات المتصفح الأصلية (RTCPeerConnection + getUserMedia) بلا أي
-    // مكتبة أو خادم وسائط خارجي — يعمل ممتازاً لعدد المقاعد المعتاد (9/15/24)، فالصوت
-    // وحده (بدون فيديو) خفيف جداً على الشبكة والمعالج حتى مع عدة اتصالات متزامنة.
-    // 🔭 للتوسّع لاحقاً: تمكين "المشاهدين" (غير الجالسين) من سماع الجالسين أيضاً، أو دعم
-    // الغرفة الرسمية بـ80 مقعداً بكفاءة، يحتاج فعلياً خادم وسائط مركزي (SFU مثل LiveKit
-    // أو mediasoup) — هذا يتطلب بنية تحتية إضافية (خادم وسائط منفصل + غالباً TURN مخصص)
-    // خارج نطاق حل بلا بنية تحتية جديدة، ومقصود تأجيله لمرحلة لاحقة عند الحاجة الفعلية له
+    // ✅ الصوت الحي بين الجالسين على المقاعد (WebRTC) — نمط "نجمي" مختلط:
+    // • جالس ↔ جالس: اتصال مباشر (نظير لنظير) ثنائي الاتجاه بين كل من يجلس على مقعد وكل
+    //   من يجلس على مقعد آخر بنفس الغرفة (شبكة كاملة صغيرة، بحد أقصى 24 مقعداً).
+    // • جالس → مشاهد: كل "مشاهد" (غير جالس، لكنه بشاشة الغرفة) يتصل استقبالاً فقط بكل من
+    //   هو جالس حالياً، فيسمعه دون أن يُطلب منه إذن المايك إطلاقاً (ليس بحاجة له كمستمع).
+    //   بهذا يسمع كل من بالغرفة كل من يتحدث فعلياً، لا الجالسين فقط بين بعضهم.
+    // السيرفر لا يلمس الصوت إطلاقاً، فقط يُوصّل رسائل التفاوض (SDP/ICE) عبر Socket.IO
+    // الموجود أصلاً، بعد التحقق أن الطرفين فعلاً بقناة الغرفة (انظر isInRoomChannel
+    // بـsocketService.js) + تحديد معدّل — بلا أي مكتبة أو خادم وسائط خارجي.
+    // 🛡️ سقف MAX_VOICE_PEER_CONNECTIONS يحمي جهاز كل مستخدم من إرهاق موارده لو تضخّم عدد
+    // المشاهدين المتزامنين كثيراً (كل جالس يتحمّل إرسال صوته لكل مشاهد على حدة).
+    // 🔭 حدود معروفة ومقصودة: هذا النمط ("نجمة" من كل جالس لكل مشاهد) يعمل ممتاز لعدد
+    // معتدل من المشاهدين المتزامنين لكل متحدث (الصوت وحده خفيف جداً: ~24kbps لكل اتصال)،
+    // لكنه لن يتحمّل آلاف المشاهدين المتزامنين على متحدث واحد (كل اتصال إضافي = رفع صوت
+    // إضافي فعلي من جهاز المتحدث نفسه) — التوسّع لذاك المستوى يحتاج خادم وسائط مركزي
+    // حقيقي (SFU مثل LiveKit/mediasoup)، بنية تحتية منفصلة خارج نطاق هذا الحل بالكامل
     // =====================================================
     const VOICE_ICE_SERVERS = [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' }
     ];
+    const MAX_VOICE_PEER_CONNECTIONS = 60; // 🛡️ سقف حماية لجهاز المستخدم نفسه — انظر الشرح أعلاه
     const voicePeerConnections = new Map(); // peerUserId(string) → RTCPeerConnection
-    let localMicStream = null;
+    let localMicStream = null;      // التدفق المُرسَل فعلياً للنظراء (بعد سلسلة التحسين أدناه إن نجحت)
+    let localMicRawStream = null;   // التدفق الخام من الجهاز — محتفَظ به فقط لإيقاف المايك فعلياً عند الإنهاء
+    let micDspCleanup = null;       // تنظيف سياق معالجة الصوت المحلي (AudioContext + المؤقتات)
+    let howlingWarningShownThisSession = false; // ✅ تحذير صدى واحد لكل جلسة تحدّث — لا إزعاج متكرر
     let micPermissionDenied = false; // ✅ لا نُزعج المستخدم بطلب صلاحية متكرر لو رفضها صراحة مرة
+
+    // ✅ سلسلة تحسين الصوت الصادر — Web Audio API أصلي بالكامل بلا أي مكتبة خارجية:
+    // 1) مرشّح تمرير عالٍ يقصّ الدمدمة تحت 90Hz (مسك الجهاز، ضجيج المكيّف...)
+    // 2) ضاغط ديناميكي يمنع تشويه/"صرير" القطع (clipping) عند اقتراب الصوت من المايك،
+    //    ويقرّب مستوى الصوت العام فلا يبقى المتحدث الهادئ خافتاً جداً أمام الصاخب
+    // 3) بوّابة ضجيج تلقائية بعتبتين منفصلتين للفتح/الإغلاق (تمنع "رفرفة" البوابة قرب
+    //    العتبة) تُسكت المايك تماماً حين لا يوجد كلام حقيقي — تقطع أي فحيح/صرير خلفية
+    //    مستمر، وتُقلّل تلقائياً مدة انفتاح المايك، ما يقلّل فرصة التقاطه صدى سمّاعة جهاز
+    //    مجاور بالواقع (هذا هو السبب الجذري الفعلي لصدى/تكرار الصوت بين جالسين متجاورين:
+    //    مايك كل جهاز يبقى مفتوحاً طوال الوقت فيلتقط صوت سمّاعة الجهاز الآخر ويعيد بثّه،
+    //    فتتكوّن حلقة صدى مستمرة — إغلاق أي مايك لا يتحدث صاحبه فعلياً يكسر الحلقة تلقائياً)
+    // 4) كاشف "صدى/صرير محتمل" ذكي: يراقب توزّع نفس بيانات الترددات ليكتشف نغمة ضيّقة
+    //    النطاق مستمرة (بصمة صوت الصدى المميزة، مختلفة تماماً عن توزّع الكلام الطبيعي
+    //    عريض النطاق)، فيخفّض صوتي الصادر تلقائياً فوراً لكسر الحلقة، وينبّهني لاستخدام
+    //    سماعة رأس — إجراء ذاتي بحت يلمس صوتي أنا فقط، لا يلمس صوت أي مستخدم آخر إطلاقاً
+    function buildProcessedMicStream(rawStream) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return null;
+        const ctx = new AudioCtx();
+        const source = ctx.createMediaStreamSource(rawStream);
+
+        const highpass = ctx.createBiquadFilter();
+        highpass.type = 'highpass';
+        highpass.frequency.value = 90;
+        highpass.Q.value = 0.7;
+
+        const compressor = ctx.createDynamicsCompressor();
+        compressor.threshold.value = -28;
+        compressor.knee.value = 22;
+        compressor.ratio.value = 9;
+        compressor.attack.value = 0.003;
+        compressor.release.value = 0.15;
+
+        const gateGain = ctx.createGain();
+        gateGain.gain.value = 0;
+
+        const destination = ctx.createMediaStreamDestination();
+        source.connect(highpass);
+        highpass.connect(compressor);
+        compressor.connect(gateGain);
+        gateGain.connect(destination);
+
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        highpass.connect(analyser);
+        const freqData = new Uint8Array(analyser.frequencyBinCount);
+
+        const GATE_OPEN_THRESHOLD = 14;
+        const GATE_CLOSE_THRESHOLD = 8;
+        let gateOpen = false;
+        let howlBinStreak = 0;
+
+        const intervalId = setInterval(() => {
+            analyser.getByteFrequencyData(freqData);
+            let sum = 0, peak = 0;
+            for (let i = 0; i < freqData.length; i++) {
+                sum += freqData[i];
+                if (freqData[i] > peak) peak = freqData[i];
+            }
+            const avg = sum / freqData.length;
+
+            if (!gateOpen && avg > GATE_OPEN_THRESHOLD) {
+                gateOpen = true;
+                gateGain.gain.setTargetAtTime(1, ctx.currentTime, 0.01);
+            } else if (gateOpen && avg < GATE_CLOSE_THRESHOLD) {
+                gateOpen = false;
+                gateGain.gain.setTargetAtTime(0, ctx.currentTime, 0.25);
+            }
+
+            if (avg > GATE_OPEN_THRESHOLD) {
+                const isNarrowBand = peak > 0 && (peak / Math.max(avg, 1)) > 4.2;
+                howlBinStreak = isNarrowBand ? howlBinStreak + 1 : 0;
+                if (howlBinStreak > 12 && !howlingWarningShownThisSession) { // ~12×60ms ≈ 720ms استمرار
+                    howlingWarningShownThisSession = true;
+                    gateGain.gain.setTargetAtTime(0.15, ctx.currentTime, 0.05); // كتم جزئي فوري يكسر الحلقة
+                    showFloatingAlert('🎧 لاحظنا احتمال وجود صدى — جرّب سماعة الرأس أو ابعد جهازك عمّن بجانبك', 'fa-headphones', 'bg-amber-500');
+                }
+            } else {
+                howlBinStreak = 0;
+            }
+        }, 60);
+
+        return {
+            stream: destination.stream,
+            cleanup: () => {
+                clearInterval(intervalId);
+                ctx.close().catch(() => {});
+            }
+        };
+    }
 
     // ✅ كاشف "من يتكلم الآن" — يحلّل مستوى الصوت الفعلي لكل تدفق صوت أستقبله (Web Audio
     // API، محلياً بالكامل بمتصفحي أنا، بلا أي إشارة سيرفر إضافية) ويُضيء حلقة خضراء حول
@@ -3647,9 +3750,27 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (micPermissionDenied) return null;
         if (!navigator.mediaDevices?.getUserMedia) return null; // ✅ متصفح قديم/سياق غير آمن (يتطلب HTTPS)
         try {
-            localMicStream = await navigator.mediaDevices.getUserMedia({
-                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+            const rawStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: { ideal: true },
+                    noiseSuppression: { ideal: true },
+                    autoGainControl: { ideal: true },
+                    channelCount: { ideal: 1 },
+                    sampleRate: { ideal: 48000 }
+                }
             });
+            localMicRawStream = rawStream;
+            // ✅ تمرير الصوت عبر سلسلة التحسين المحلية (راجع buildProcessedMicStream أعلاه)؛
+            // لو فشلت لأي سبب (متصفح لا يدعم Web Audio مثلاً) نتراجع بأمان للصوت الخام مباشرة
+            // بدل تعطيل الميزة كاملة — التحسين إضافة اختيارية، ليس شرطاً لعمل الصوت الحي أصلاً
+            let outputStream = rawStream;
+            try {
+                const processed = buildProcessedMicStream(rawStream);
+                if (processed) { outputStream = processed.stream; micDspCleanup = processed.cleanup; }
+            } catch (dspError) {
+                console.warn('[VOICE] تعذّر تفعيل سلسلة تحسين الصوت — استخدام الصوت الخام مباشرة:', dspError);
+            }
+            localMicStream = outputStream;
             // ✅ يعكس حالة كتمي الحالية فوراً (لو كنت مكتوماً أصلاً قبل توفّر المايك)
             localMicStream.getAudioTracks().forEach(t => { t.enabled = !myIsMuted; });
             attachSpeakingDetector(localMicStream, myUserId); // ✅ يُضيء مقعدي أنا نفسي عند حديثي
@@ -3715,7 +3836,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     async function initiateVoiceCallTo(peerUserId) {
         if (!currentVoiceRoomId || !peerUserId || peerUserId === myUserId) return;
         if (voicePeerConnections.has(peerUserId)) return; // ✅ اتصال قائم أصلاً — لا تكرار
-        await ensureLocalMicStream();
+        if (voicePeerConnections.size >= MAX_VOICE_PEER_CONNECTIONS) return; // 🛡️ حماية من إرهاق جهازي
+        // ✅ لا نطلب إذن المايك إطلاقاً لمجرد "مشاهد" يريد الاستماع فقط — يُفعَّل المايك فقط
+        // لمن يجلس فعلياً على مقعد؛ اتصال المشاهد يبقى استقبالاً فقط تلقائياً (recvonly أدناه)
+        if (myVoiceSeatNumber) await ensureLocalMicStream();
         const pc = getOrCreateVoicePeer(peerUserId);
         try {
             const offer = await pc.createOffer();
@@ -3743,14 +3867,22 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function teardownAllVoicePeers() {
         Array.from(voicePeerConnections.keys()).forEach(teardownVoicePeer);
         detachSpeakingDetector(myUserId);
-        if (localMicStream) {
-            localMicStream.getTracks().forEach(t => t.stop());
-            localMicStream = null;
+        // 🐛 يجب إيقاف التدفق الخام من الجهاز فعلياً (لا التدفق المُعالَج فقط) وإلا يبقى ضوء
+        // المايك بالجهاز مضاءً — التدفق المُعالَج مبنيّ من MediaStreamDestination اصطناعي
+        // لا يملك اتصالاً حقيقياً بعتاد المايك، فإيقافه وحده لا يُطفئ المايك الفعلي إطلاقاً
+        if (localMicRawStream) {
+            localMicRawStream.getTracks().forEach(t => t.stop());
+            localMicRawStream = null;
         }
+        if (micDspCleanup) { micDspCleanup(); micDspCleanup = null; }
+        localMicStream = null;
+        howlingWarningShownThisSession = false; // ✅ يسمح بتحذير جديد لو تكرر الوضع بجلسة تحدّث تالية
     }
 
-    // ✅ يتصل بكل من هو جالس فعلياً حالياً على شبكة المقاعد المعروضة — يُستدعى فور تأكّد
-    // جلوسي أنا (سواء جلوس مباشر أو دعوة مقبولة)، ومرة إضافية بعد أي لقطة حالة كاملة
+    // ✅ يتصل بكل من هو جالس فعلياً حالياً على شبكة المقاعد المعروضة — يعمل لكل من يعرض
+    // شاشة الغرفة سواء كان جالساً على مقعد (اتصال ثنائي الاتجاه) أو مجرد مشاهد (استقبال
+    // فقط تلقائياً، دون طلب إذن مايك) — يُستدعى فور جلوسي أنا، وأيضاً فور فتحي لشاشة الغرفة
+    // كمشاهد عادي، ومرة إضافية بعد أي لقطة حالة كاملة لضمان عدم فوات أحد
     function connectVoiceMeshToCurrentlySeated() {
         const grid = document.getElementById('voice-chat-grid');
         if (!grid) return;
@@ -5314,6 +5446,12 @@ document.getElementById('user-id-container').addEventListener('click', () => {
     // ✅ مستمعات إشارات صوت الـ WebRTC (SDP/ICE) — لازم تكون بعد تعريف socket مباشرة
     // (انظر ملاحظة أعلى قسم "الصوت الحي بين الجالسين" لسبب النقل هنا تحديداً)
     socket.on('voice-webrtc-offer', async ({ fromUserId, payload }) => {
+        // 🛡️ سقف حماية: لو بلغ عدد اتصالاتي الصوتية المتزامنة الحد الأقصى (مثلاً إقبال
+        // مشاهدين كبير على الاستماع لي) نتجاهل عروضاً جديدة بأمان بدل إرهاق جهازي
+        if (!voicePeerConnections.has(fromUserId) && voicePeerConnections.size >= MAX_VOICE_PEER_CONNECTIONS) {
+            console.warn('[VOICE] بلغتُ الحد الأقصى لاتصالات الصوت المتزامنة — تجاهلت عرضاً جديداً لحماية الجهاز');
+            return;
+        }
         await ensureLocalMicStream();
         const pc = getOrCreateVoicePeer(fromUserId);
         try {
@@ -5631,9 +5769,21 @@ function showXpGainAnimation(amount) {
         }
         updateVoiceControlBar();
         if (roomId !== currentVoiceRoomId) return; // تحديث بغرفة غير معروضة بالشاشة حالياً — لا داعي لتحديث الشبكة
-        // ✅ أنا "الجديد" بشبكة الصوت دائماً عند جلوسي — أبادر بالاتصال بكل من هو جالس أصلاً
-        // (هم ينتظرون عرضي أنا، لا يبادرون من طرفهم — يمنع تعارض عرضين متزامنين لنفس الزوج)
-        if (isMe) connectVoiceMeshToCurrentlySeated();
+        if (isMe) {
+            // 🐛 إصلاح: لو كنت أصلاً "مشاهداً" أستمع لبعض الجالسين قبل جلوسي هذا (اتصال استقبال
+            // فقط بلا مايك)، يجب إغلاق تلك الاتصالات أولاً وإعادة إنشائها من الصفر الآن كمتحدث
+            // (بمايك فعلي هذي المرة) — وإلا تبقى عالقة بشكلها القديم بلا إرسال، فأبقى "أخرس"
+            // تجاههم تحديداً رغم جلوسي فعلياً على مقعد (RTCPeerConnection لا يمكن ترقية اتجاهه
+            // بسهولة وأماناً بعد العرض الأول، فالإعادة من الصفر أبسط وأضمن من إعادة التفاوض)
+            teardownAllVoicePeers();
+            // ✅ أنا "الجديد" بشبكة الصوت دائماً عند جلوسي — أبادر بالاتصال بكل من هو جالس
+            // أصلاً (هم ينتظرون عرضي أنا، لا يبادرون من طرفهم — يمنع تعارض عرضين متزامنين)
+            connectVoiceMeshToCurrentlySeated();
+        } else if (!myVoiceSeatNumber) {
+            // ✅ أنا مجرّد مشاهد، وشخص آخر صعد للتو لمقعد — أتصل به فوراً استماعاً فقط (بلا
+            // طلب إذن مايك) لأسمعه؛ لست بحاجة لإعادة مسح كل الشبكة، فقط هذا الشخص الجديد
+            initiateVoiceCallTo(userId);
+        }
         const voiceGrid = document.getElementById('voice-chat-grid');
         if (!voiceGrid) return;
         const seatEl = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"]`);
@@ -5648,16 +5798,21 @@ function showXpGainAnimation(amount) {
     });
 
     socket.on('user-left-seat', ({ roomId, seatNumber, userId }) => {
-        if (userId === myUserId) {
+        const isMe = userId === myUserId;
+        if (isMe) {
             myVoiceSeatNumber = null;
             myVoiceRoomId = null;
             clearVoiceSeatPending();
-            teardownAllVoicePeers(); // ✅ لم أعد جزءاً من شبكة صوت هذي الغرفة إطلاقاً
+            teardownAllVoicePeers(); // ✅ لم أعد جزءاً من شبكة صوت هذي الغرفة إطلاقاً كمتحدث
         } else {
             teardownVoicePeer(userId); // ✅ أنهِ اتصالي معه تحديداً فقط — بقية الشبكة يستمرون طبيعياً
         }
         updateVoiceControlBar();
         if (roomId !== currentVoiceRoomId) return;
+        // 🐛 إصلاح: نزلتُ عن مقعدي لكني ما زلت أشاهد الغرفة — بدون هذا كنت أبقى "أصمّ" تماماً
+        // (لا أسمع أحداً) حتى أعيد فتح الغرفة يدوياً؛ الاتصال هنا يعود استماعاً فقط تلقائياً
+        // بكل من تبقى جالساً، بما أن myVoiceSeatNumber صار فارغاً الآن
+        if (isMe) connectVoiceMeshToCurrentlySeated();
         const voiceGrid = document.getElementById('voice-chat-grid');
         if (!voiceGrid) return;
         const seatEl = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"]`);
@@ -5862,6 +6017,11 @@ function showXpGainAnimation(amount) {
             myVoiceSeatNumber = null;
             myVoiceRoomId = null;
             updateVoiceControlBar();
+        }
+        // 🐛 إصلاح: تُغلَق كل اتصالات الصوت أيضاً لو كنت مجرّد "مشاهد" (غير جالس) بنفس هذي
+        // الغرفة المعروضة حالياً — بدون هذا كانت تبقى اتصالاتي بالجالسين (الذين اختفوا الآن)
+        // معلَّقة بلا داعٍ حتى أغادر الشاشة يدوياً؛ كل اتصالاتي دوماً تخص currentVoiceRoomId فقط
+        if (payload.roomId === currentVoiceRoomId) {
             teardownAllVoicePeers(); // ✅ انتهى البث فأُفرِغت كل المقاعد — لا user-left-seat يصدر هنا فعلياً
         }
         // 🐛 إصلاح: إيقاف أي أغنية تخص هذي الغرفة فوراً بغض النظر عن الشاشة المعروضة حالياً
