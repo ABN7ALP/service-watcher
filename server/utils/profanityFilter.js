@@ -6,6 +6,19 @@
 // الفجّة/الجنسية الصريحة والشتائم غير المُلتبسة فقط — تجنّباً لحظر كلمات عادية لها استخدام بريء.
 // =====================================================
 
+// ✅ تطبيع أرقام "العربيزي" الشائعة (الدردشة العربية بحروف لاتينية/أرقام) لمرادفها الحرفي
+// العربي قبل الفحص — تحايل واسع الانتشار فعلياً (كتابة الشتيمة بأرقام تشبه شكل الحرف: 3=ع،
+// 7=ح، 2=ء، 6=ط، 9=ص) كانت القائمة العربية السابقة عمياء عنه تماماً بما إنها تطابق حروفاً
+// عربية فقط. يُطبَّق هذا فقط على النسخة الداخلية للفحص — لا يُغيّر النص المعروض بالدردشة إطلاقاً
+function normalizeArabizi(text) {
+    return text
+        .replace(/3/g, 'ع')
+        .replace(/7/g, 'ح')
+        .replace(/2/g, 'ء')
+        .replace(/6/g, 'ط')
+        .replace(/9/g, 'ص');
+}
+
 // ✅ يوحّد أشكال الحروف العربية المتقاربة (لأن كثير من التحايل يعتمد استبدال حرف بآخر قريب الشكل)
 function normalizeArabicLetters(text) {
     return text
@@ -23,7 +36,7 @@ function stripDiacritics(text) {
 
 // ✅ نسخة "مضغوطة" بلا فراغات/رموز — تكشف التحايل بمسافات بين الحروف (ك س م ← كسم)
 function toCompactForm(text) {
-    const cleaned = normalizeArabicLetters(stripDiacritics(text.toLowerCase()));
+    const cleaned = normalizeArabicLetters(stripDiacritics(normalizeArabizi(text.toLowerCase())));
     return cleaned.replace(/[^a-zء-ي0-9]/g, '');
 }
 
@@ -67,4 +80,21 @@ function containsProfanity(rawText) {
     return false;
 }
 
-module.exports = { containsProfanity };
+/**
+ * ✅ فحص إضافي بقائمة كلمات مخصّصة (يضبطها المضيف لغرفته بالإعدادات) — نفس منطق التطبيع
+ * والمطابقة المضغوطة أعلاه بالضبط، فيستفيد تلقائياً من كل حمايات التحايل (مسافات، تشكيل،
+ * تكرار حروف، عربيزي...) بلا أي كود مكرر. يُستدعى بعد containsProfanity كطبقة ثانية اختيارية.
+ */
+function containsCustomBannedWords(rawText, customWords) {
+    if (!rawText || !Array.isArray(customWords) || customWords.length === 0) return false;
+    const compact = toCompactForm(rawText);
+    const englishCompact = collapseRepeats(rawText.toLowerCase()).replace(/[^a-z]/g, '');
+    return customWords.some(w => {
+        if (!w || typeof w !== 'string') return false;
+        const wCompact = toCompactForm(w);
+        if (!wCompact) return false;
+        return compact.includes(wCompact) || englishCompact.includes(wCompact);
+    });
+}
+
+module.exports = { containsProfanity, containsCustomBannedWords };

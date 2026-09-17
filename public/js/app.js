@@ -1614,9 +1614,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             <div class="seat-invite-picker-sheet w-full md:max-w-sm text-white flex flex-col">
                 <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2.5 mb-2 md:hidden flex-shrink-0"></div>
                 <div class="px-4 pt-1 pb-2.5 flex-shrink-0">
-                    <h3 class="text-sm font-bold flex items-center gap-2 mb-2.5">
-                        <i class="fas fa-user-plus text-purple-400"></i> ادعُ أحداً للمقعد ${seatNumber}
-                    </h3>
+                    <div class="flex items-center justify-between gap-2 mb-2.5">
+                        <h3 class="text-sm font-bold flex items-center gap-2">
+                            <i class="fas fa-user-plus text-purple-400"></i> ادعُ أحداً للمقعد ${seatNumber}
+                        </h3>
+                        <button type="button" id="seat-invite-lock-btn" class="seat-invite-lock-btn" title="قفل هذا المقعد بدل دعوة أحد">
+                            <i class="fas fa-lock"></i> قفل المقعد
+                        </button>
+                    </div>
                     <div class="seat-invite-search-wrap">
                         <i class="fas fa-magnifying-glass"></i>
                         <input id="seat-invite-search" type="text" placeholder="ابحث بالاسم..." autocomplete="off">
@@ -1631,6 +1636,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         modal.addEventListener('click', (e) => { if (e.target.id === 'seat-invite-picker-modal') modal.remove(); });
         modal.querySelector('#seat-invite-search').addEventListener('input', (e) => {
             renderSeatInvitePickerRows(e.target.value.trim());
+        });
+        // ✅ بديل مباشر لدعوة أحد — يقفل المقعد الفاضي نفسه بدل انتظار اختيار شخص
+        modal.querySelector('#seat-invite-lock-btn').addEventListener('click', () => {
+            socket.emit('host-toggle-lock-seat', { roomId, seatNumber, desiredLock: true });
+            modal.remove();
+            showNotification(`تم قفل المقعد ${seatNumber} ✅`, 'success');
         });
         socket.emit('get-room-viewers', { roomId });
     }
@@ -2100,6 +2111,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentRoomLevelProgressPercent = 0;
     let currentRoomUnlockedSeatCounts = [9];
     let currentRoomKickedUsers = []; // ✅ للمضيف/المسؤولين فقط — تُعرَض بنافذة الإعدادات مع خيار إلغاء الطرد
+    let currentRoomBannedWords = []; // ✅ للمضيف فقط — كلمات إضافية يحظرها بدردشة غرفته تحديداً
+    let voiceSnapshotFetchSeq = 0; // ✅ حماية fetchAndRenderVoiceSnapshot من استجابات متأخرة خارج الترتيب
     let currentRoomBackgroundImage = null;
     let currentRoomBackgroundExpiresAt = null;
     let currentRoomDescription = '';
@@ -2243,7 +2256,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         wireRoomChatUI();
 
         renderVoiceRoomSeats(room.id, room.seatCount, 0, room.isPrivate);
-        await fetchAndRenderVoiceSnapshot(room.id, currentRoomPassword);
+        // 🐛 إصلاح: لو رُفض الدخول (مطرود/كلمة مرور خطأ/بث منتهٍ) — الدالة نفسها تنقل الشاشة
+        // فعلياً لقائمة التصفح، لكن بدون هذا التحقق كانت بقية هذي الدالة تكمل تنفيذها فتنضم
+        // فعلياً لقناة دردشة الغرفة (enterRoomChat) رغم الرفض، فيظهر "دخول" لحظي مزعج قبل الطرد
+        const snapshotOk = await fetchAndRenderVoiceSnapshot(room.id, currentRoomPassword);
+        if (!snapshotOk) return;
         updateVoiceControlBar();
         enterRoomChat(room.id);
         applyRoomAudioMuteState(); // ✅ يطبّق كتمي المحلي (إن كان مفعّلاً) على عنصر الموسيقى وأي صوت متحدثين جديد
@@ -2849,9 +2866,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     // ✅ يجلب لقطة الحالة الحقيقية لأي غرفة (الرسمية أو غرفة مستخدم) ويرسمها على الشبكة الحالية
+    // 🐛 إصلاح جوهري: هذي الدالة تُرجع الآن true/false صراحة، وكل استدعاء لها (خصوصاً بفتح
+    // الغرفة بـshowCustomRoomView) يجب أن يتحقق من القيمة ويتوقف فوراً لو false — بدون هذا
+    // كان "return" المبكر هنا (عند رفض الدخول: مطرود/كلمة مرور خطأ/بث منتهٍ) يُنهي هذي الدالة
+    // فقط، بينما يستمر المستدعي بتنفيذ بقية خطوات فتح الغرفة (enterRoomChat وغيرها) وكأن شيئاً
+    // لم يحصل — وهذا بالضبط سبب "الدخول اللحظي" الذي يراه المطرود قبل إخراجه (انضمامه الفعلي
+    // لقناة الدردشة يحصل فعلياً قبل أن تُكمل showRoomBrowserView التنقّل بعيداً)
     async function fetchAndRenderVoiceSnapshot(roomId, password) {
         const voiceGrid = document.getElementById('voice-chat-grid');
-        if (!voiceGrid) return;
+        if (!voiceGrid) return false;
+        const mySeq = ++voiceSnapshotFetchSeq;
         try {
             const url = roomId === 'main'
                 ? '/api/voice-room'
@@ -2859,22 +2883,28 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
             const result = await response.json();
 
+            // 🛡️ حماية من استجابات متأخرة خارج الترتيب — شبكة متقطّعة/إعادة اتصال متكررة سريعة
+            // قد تُطلق عدة نداءات لهذي الدالة، وقد يصل أقدمها متأخراً بعد أحدثها. بدون هذا الفحص
+            // كانت بيانات قديمة تُطبَّق فوق بيانات أحدث فعلاً منها، فتظهر الشاشة "تتذبذب"/ترتد
+            // لحالة قديمة للحظة — بالضبط ما وُصف بأنه "كلاتشات" بعد إعادة اتصال متكررة
+            if (mySeq !== voiceSnapshotFetchSeq) return false;
+
             if (response.status === 403 && result.kicked) {
                 showNotification(result.message || 'تم طردك من هذي الغرفة', 'error');
                 showRoomBrowserView();
-                return;
+                return false;
             }
             if (response.status === 403 && result.requiresPassword) {
                 showNotification('كلمة مرور الغرفة غير صحيحة', 'error');
                 showRoomBrowserView();
-                return;
+                return false;
             }
             if (response.status === 404 && result.broadcastEnded) {
                 showNotification('انتهى البث المباشر بهذي الغرفة', 'info');
                 showRoomBrowserView();
-                return;
+                return false;
             }
-            if (!response.ok || result.status !== 'success') return;
+            if (!response.ok || result.status !== 'success') return false;
 
             if (result.myRole) {
                 currentRoomMyRole = result.myRole;
@@ -2928,6 +2958,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             if (typeof result.levelProgressPercent === 'number') currentRoomLevelProgressPercent = result.levelProgressPercent;
             if (result.unlockedSeatCounts) currentRoomUnlockedSeatCounts = result.unlockedSeatCounts;
             if (result.kickedUsers) currentRoomKickedUsers = result.kickedUsers;
+            if (result.bannedWords) currentRoomBannedWords = result.bannedWords;
             updateRoomLevelBadgeUI();
             updateChatLockUI();
             if (result.backgroundImage !== undefined) currentRoomBackgroundImage = result.backgroundImage;
@@ -2955,8 +2986,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             }
             updateVoiceControlBar();
             updateHandRaiseUI();
+            return true;
         } catch (error) {
             console.error('Failed to load voice room snapshot:', error);
+            return false;
         }
     }
 
@@ -3109,9 +3142,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
                     <div class="room-settings-section">
                         <p class="room-settings-section-title">التخصيص</p>
-                        <button type="button" id="open-bg-shop-btn" class="room-settings-mini-btn w-full">
-                            <i class="fas fa-image text-purple-400"></i> خلفية الغرفة
-                        </button>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button type="button" id="open-bg-shop-btn" class="room-settings-mini-btn">
+                                <i class="fas fa-image text-purple-400"></i> خلفية الغرفة
+                            </button>
+                            <button type="button" id="change-room-cover-btn" class="room-settings-mini-btn">
+                                <i class="fas fa-camera text-emerald-400"></i> صورة الغلاف
+                            </button>
+                        </div>
+                        <input type="file" id="room-cover-file-input" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden">
                     </div>
 
                     <div class="room-settings-section">
@@ -3129,6 +3168,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                                     </div>
                                 `).join('')}
                         </div>
+                    </div>
+
+                    <div class="room-settings-section">
+                        <p class="room-settings-section-title">كلمات محظورة إضافية <span class="text-gray-500">— مساعدة للفلتر العام</span></p>
+                        <textarea name="bannedWordsText" rows="2" maxlength="1500" placeholder="افصل كل كلمة بفاصلة أو سطر جديد..." class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">${escapeHtml(currentRoomBannedWords.join(', '))}</textarea>
+                        <p class="text-[10px] text-gray-500">هذي الكلمات لن تظهر بدردشة غرفتك إطلاقاً، بالإضافة للفلتر العام</p>
                     </div>
 
                     <div id="settings-kicked-section" class="room-settings-section ${currentRoomKickedUsers.length === 0 ? 'hidden' : ''}">
@@ -3160,6 +3205,42 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
 
         modal.querySelector('#open-bg-shop-btn').addEventListener('click', () => showRoomBackgroundShopModal(room));
+
+        // ✅ رفع صورة غلاف مخصّصة من جهاز المضيف — منفصل عن باقي الحفظ (فوري بمجرد الاختيار)
+        const coverBtn = modal.querySelector('#change-room-cover-btn');
+        const coverInput = modal.querySelector('#room-cover-file-input');
+        coverBtn.addEventListener('click', () => coverInput.click());
+        coverInput.addEventListener('change', async () => {
+            const file = coverInput.files?.[0];
+            if (!file) return;
+            const originalHTML = coverBtn.innerHTML;
+            coverBtn.disabled = true;
+            coverBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جارِ الرفع...';
+            try {
+                const formData = new FormData();
+                formData.append('coverImage', file);
+                const response = await fetch(`/api/voice-room/rooms/${room.id}/cover`, {
+                    method: 'PATCH',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    showNotification(result.message || 'تعذر رفع صورة الغلاف', 'error');
+                    return;
+                }
+                currentRoomCoverImage = result.coverImage;
+                const headerCoverEl = document.getElementById('room-info-cover-img');
+                if (headerCoverEl) headerCoverEl.src = result.coverImage;
+                showNotification('تم تحديث صورة الغلاف ✅', 'success');
+            } catch (error) {
+                showNotification('حدث خطأ، حاول مجدداً', 'error');
+            } finally {
+                coverBtn.disabled = false;
+                coverBtn.innerHTML = originalHTML;
+                coverInput.value = '';
+            }
+        });
 
         // ✅ تغيير المقاعد فوري ومنفصل عن باقي الحفظ — كل من بالغرفة يرى التحديث لحظياً
         // (room-seat-count-updated) بلا أي حاجة للخروج والعودة. مُعاد ربطها كدالة مستقلة
@@ -3214,6 +3295,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
             data.isPrivate = data.isPrivate === 'on';
+
+            // ✅ حقل نصي بالواجهة (سطر/فاصلة لكل كلمة) يتحوّل هنا لمصفوفة — الشكل الذي يتوقعه السيرفر
+            data.bannedWords = (data.bannedWordsText || '')
+                .split(/[,\n]/)
+                .map(w => w.trim())
+                .filter(Boolean);
+            delete data.bannedWordsText;
 
             const wantsLocked = modal.querySelector('#settings-isLocked').checked;
             data.isLocked = wantsLocked;
@@ -3699,9 +3787,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
     }
 
-    // ✅ تحديث النقاط + تأثيرات "اقتراب من الحسم" — نار على الفريق المتصدّر بوضوح (68%+ من
-    // مجموع النقاط)، وخوف مرتجف على الفريق المتأخر (عبر CSS مباشرة من صنف واحد بالحاوية،
-    // انظر seat-challenge-lead-a/b بملف الأنماط) — لا يتكرر التنبيه لنفس التصدّر كل تحديث
+    let seatChallengeFireInterval = null;
+
+    // ✅ تحديث النقاط + تأثيرات "اقتراب من الحسم" — نار DOM حقيقية متصاعدة (وليست تدرّج CSS
+    // فقط) فوق تعبئة الفريق المتصدّر بوضوح (68%+ من مجموع النقاط)، وخوف مرتجف قوي على الفريق
+    // المتأخر — لا يتكرر التنبيه لنفس التصدّر كل تحديث نقاط، فقط عند تغيّر من هو المتصدّر
     function updateSeatChallengeScores(scoreA, scoreB) {
         if (currentSeatChallenge) { currentSeatChallenge.scoreA = scoreA; currentSeatChallenge.scoreB = scoreB; }
         const total = scoreA + scoreB;
@@ -3714,21 +3804,55 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (scoreBEl) scoreBEl.textContent = scoreB;
 
         const bar = document.getElementById('seat-challenge-bar');
-        if (!bar || total < 40) return; // ✅ لا تأثيرات قبل وجود فارق نقاط ذو معنى فعلياً
+        if (!bar || total < 40) { stopSeatChallengeFireEffect(); return; } // ✅ لا تأثيرات قبل فارق نقاط ذو معنى فعلياً
         const leadingTeam = pctA >= 68 ? 'A' : (pctA <= 32 ? 'B' : null);
         if (leadingTeam && leadingTeam !== seatChallengeFireShownFor) {
             seatChallengeFireShownFor = leadingTeam;
             bar.classList.remove('seat-challenge-lead-a', 'seat-challenge-lead-b');
             bar.classList.add(leadingTeam === 'A' ? 'seat-challenge-lead-a' : 'seat-challenge-lead-b');
             showBottomToast(leadingTeam === 'A' ? '🔥 الفريق الأزرق يقترب من الحسم!' : '🔥 الفريق الأحمر يقترب من الحسم!', 'fa-fire');
+            startSeatChallengeFireEffect(leadingTeam);
         } else if (!leadingTeam && seatChallengeFireShownFor) {
             seatChallengeFireShownFor = null;
             bar.classList.remove('seat-challenge-lead-a', 'seat-challenge-lead-b');
+            stopSeatChallengeFireEffect();
         }
+    }
+
+    // ✅ يولّد شعلات نار DOM حقيقية (🔥/✨) تتصاعد فوق تعبئة الفريق المتصدّر باستمرار طالما
+    // بقي متصدّراً — كل شعلة بموضع أفقي عشوائي فوق التعبئة فعلياً (لا داخل الشريط المقصوص
+    // overflow:hidden، بل فوقه مباشرة كطبقة منفصلة) فتبدو "تشتعل" وتهرب للأعلى بشكل طبيعي
+    function startSeatChallengeFireEffect(leadingTeam) {
+        stopSeatChallengeFireEffect();
+        const fillId = leadingTeam === 'A' ? 'seat-challenge-fill-a' : 'seat-challenge-fill-b';
+        const spawnFlame = () => {
+            const bar = document.getElementById('seat-challenge-bar');
+            const fillEl = document.getElementById(fillId);
+            if (!bar || !fillEl) { stopSeatChallengeFireEffect(); return; }
+            const barRect = bar.getBoundingClientRect();
+            const fillRect = fillEl.getBoundingClientRect();
+            const flame = document.createElement('span');
+            flame.className = 'seat-challenge-flame';
+            flame.textContent = Math.random() > 0.75 ? '✨' : '🔥';
+            flame.style.left = `${fillRect.left - barRect.left + Math.random() * fillRect.width}px`;
+            flame.style.top = `${fillRect.top - barRect.top}px`;
+            flame.style.animationDuration = `${0.7 + Math.random() * 0.5}s`;
+            bar.appendChild(flame);
+            setTimeout(() => flame.remove(), 1300);
+        };
+        spawnFlame();
+        seatChallengeFireInterval = setInterval(spawnFlame, 180);
+    }
+
+    function stopSeatChallengeFireEffect() {
+        clearInterval(seatChallengeFireInterval);
+        seatChallengeFireInterval = null;
+        document.querySelectorAll('.seat-challenge-flame').forEach(el => el.remove());
     }
 
     function removeSeatChallengeBar() {
         clearInterval(seatChallengeCountdownInterval);
+        stopSeatChallengeFireEffect();
         currentSeatChallenge = null;
         seatChallengeFireShownFor = null;
         document.getElementById('seat-challenge-bar')?.remove();
@@ -6277,6 +6401,10 @@ function showXpGainAnimation(amount) {
             clearVoiceSeatPending();
         }
         updateVoiceControlBar();
+        // 🐛 إصلاح: زر "مغادرة المقعد"/"طلب الصعود" (∞) يعتمدان على updateHandRaiseUI وليس
+        // updateVoiceControlBar (التي تُحدّث فقاعة "رجوع لغرفتي" فقط) — بدون هذا السطر يبقى
+        // الزر القديم ظاهراً حتى يصل حدث آخر غير متعلّق يُحدّثه بالصدفة
+        updateHandRaiseUI();
         if (roomId !== currentVoiceRoomId) return; // تحديث بغرفة غير معروضة بالشاشة حالياً — لا داعي لتحديث الشبكة
         if (isMe) {
             // 🐛 إصلاح: لو كنت أصلاً "مشاهداً" أستمع لبعض الجالسين قبل جلوسي هذا (اتصال استقبال
@@ -6317,6 +6445,9 @@ function showXpGainAnimation(amount) {
             teardownVoicePeer(userId); // ✅ أنهِ اتصالي معه تحديداً فقط — بقية الشبكة يستمرون طبيعياً
         }
         updateVoiceControlBar();
+        // 🐛 إصلاح: نفس خلل زر "مغادرة المقعد" بالضبط (راجع user-joined-seat أعلاه) — بدونه
+        // يبقى زر "مغادرة المقعد" ظاهراً بعد المغادرة الفعلية بدل عودته لزر "طلب الصعود" (∞)
+        updateHandRaiseUI();
         if (roomId !== currentVoiceRoomId) return;
         // 🐛 إصلاح: نزلتُ عن مقعدي لكني ما زلت أشاهد الغرفة — بدون هذا كنت أبقى "أصمّ" تماماً
         // (لا أسمع أحداً) حتى أعيد فتح الغرفة يدوياً؛ الاتصال هنا يعود استماعاً فقط تلقائياً
@@ -6352,7 +6483,22 @@ function showXpGainAnimation(amount) {
     // — بدونها، أي بث حصل أثناء انقطاع مؤقت (تبديل شبكة، نوم الجهاز، إلخ) يضيع على المستخدم فعلياً
     // فتبقى صورته "عالقة" بمكان قديم عند نفسه، أو لا يرى تحرّك بقية المستخدمين، لحين عمل Refresh يدوي
     socket.on('connect', () => {
-        if (currentVoiceRoomId) fetchAndRenderVoiceSnapshot(currentVoiceRoomId, currentRoomPassword); // آمنة تماماً حتى لو القسم غير مفتوح حالياً
+        if (currentVoiceRoomId) {
+            // آمنة تماماً حتى لو القسم غير مفتوح حالياً
+            fetchAndRenderVoiceSnapshot(currentVoiceRoomId, currentRoomPassword).then(ok => {
+                // 🐛 إصلاح: اتصالات الصوت الحي (WebRTC) لا تُعاد بناؤها تلقائياً عند إعادة اتصال
+                // السوكيت — كل شيء آخر بالواجهة (المقاعد/الدردشة/الموسيقى) يعود طبيعياً تماماً
+                // فيبدو كل شيء سليماً، لكن اتصالات RTCPeerConnection القديمة (التي قد تكون
+                // تعطّلت فعلياً بنفس سبب انقطاع السوكيت، أو حتى لم تُكتشف بعد كمعطّلة) تبقى
+                // كما هي — لا شيء يُعيد بناءها إلا حدث جلوس/مغادرة جديد لأحدهم. إعادة البناء
+                // الكاملة هنا (بعد التأكد أني ما زلت مصرَّحاً بمشاهدة الغرفة فعلياً) تضمن صوتاً
+                // سليماً دوماً بعد أي إعادة اتصال، بدل انتظار حظ حدوث حدث آخر يكشف المشكلة
+                if (ok && currentVoiceRoomId) {
+                    teardownAllVoicePeers();
+                    connectVoiceMeshToCurrentlySeated();
+                }
+            });
+        }
         // 🐛 إصلاح جوهري: عضوية قنوات Socket.IO (بما فيها room-chat-<roomId>) تُفقد تماماً مع
         // أي انقطاع، ولا تُستعاد تلقائياً عند إعادة الاتصال — بدون هذا السطر يبقى المستخدم
         // "أصمّ" فعلياً عن كل بث حي بالغرفة (رسائل جديدة، انضمام، هدايا، موسيقى...) رغم أن
@@ -8077,9 +8223,14 @@ async function showRoomGiftModal(roomId) {
             fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
         ]);
 
-        const seatedUsers = (roomRes.seats || []).filter(s => s.user).map(s => s.user);
         const gifts = shopRes.data.gifts;
         const currentUser = JSON.parse(localStorage.getItem('user')) || {};
+        // 🐛 إصلاح: نفسي كنت أظهر ضمن قائمة "من أهدي؟" لو كنت جالساً على مقعد — تحديد هدية
+        // لنفسي يُرفَض بالسيرفر بالفعل، لكن الواجهة كانت تخصم الرصيد وتُظهر شارة "دعمت نفسي"
+        // على مقعدي بشكل متفائل قبل تأكيد السيرفر أصلاً؛ استبعادي من القائمة هنا يمنع المشكلة
+        // من جذرها (لا خيار لاختيار نفسي إطلاقاً)، لا مجرد رفض الطلب لاحقاً بعد فوات الأوان
+        const myIdStr = currentUser._id ? currentUser._id.toString() : null;
+        const seatedUsers = (roomRes.seats || []).filter(s => s.user && s.user.id !== myIdStr).map(s => s.user);
 
         let selectedUserIds = new Set();
         let audienceMode = 'selected';
@@ -8196,7 +8347,12 @@ async function showRoomGiftModal(roomId) {
             // بصرياً وأحدهما فعلياً "لا يعمل" كما يُحس. الحل: مصدر حقيقة واحد فقط — صدى السيرفر
             // (بث لكل مستلم فوراً عبر Promise.all أصلاً) يشغّل المؤثر الكبير الوحيد لكل الحاضرين
             // (المرسل والمستلمين والمشاهدين) بنفس اللحظة تماماً — لا نداء محلي هنا بعد الآن
-            recipients.forEach(receiverId => notifyRoomGiftSupport(receiverId, gift.price * quantity));
+            //
+            // 🐛 إصلاح إضافي: كان هذا النداء يُطلَق هنا بالتفاؤل أيضاً — أي فشل لاحق (رصيد غير
+            // كافٍ فعلياً بالسيرفر، رفض هدية-لنفسي، انقطاع شبكة، حد معدّل) يُبقي شارة "الدعم"
+            // ظاهرة على مقعد المستلم رغم عدم وصول الهدية فعلياً أبداً، ولا تراجع عنها (بعكس
+            // الرصيد الذي يعود بـrevertOptimisticDeduction أدناه). نُطلقه الآن فقط بعد تأكيد
+            // نجاح السيرفر صراحة (انظر أسفل هذا الاستدعاء نفسه)
 
             const revertOptimisticDeduction = () => {
                 const revertUser = JSON.parse(localStorage.getItem('user'));
@@ -8225,6 +8381,8 @@ async function showRoomGiftModal(roomId) {
                     }
                     if (coinsEl) coinsEl.textContent = result.data.newSenderCoins;
                     footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = result.data.newSenderCoins);
+                    // ✅ يُطلَق فقط بعد تأكيد نجاح السيرفر صراحة — راجع الشرح أعلى هذي الدالة
+                    recipients.forEach(receiverId => notifyRoomGiftSupport(receiverId, gift.price * quantity));
                     return true;
                 }
 

@@ -1042,6 +1042,9 @@ socket.on('refreshBlockData', async () => {
                 if (!room) {
                     return socket.emit('seat-error', 'الغرفة غير موجودة أو أُغلقت');
                 }
+                if (!room.isOfficial && room.isUserKicked(socket.user._id)) {
+                    return socket.emit('seat-error', 'تم طردك من هذي الغرفة');
+                }
 
                 if (!Number.isInteger(seatNum) || seatNum < 1 || seatNum > room.seatCount) {
                     return socket.emit('seat-error', 'رقم مقعد غير صالح');
@@ -1293,6 +1296,16 @@ socket.on('refreshBlockData', async () => {
 
                 await VoiceRoom.kickUserFromRoom(room._id, targetUserId);
 
+                // 🐛 إصلاح: طلب صعود قديم لهذا الشخص (لو رفع يده قبل طرده) كان يبقى بقائمة
+                // الانتظار رغم طرده — فيقدر المضيف "يوافق" عليه لاحقاً بالغلط فيُجلَس شخص
+                // مطرود فعلياً بلا أي فحص (host-invite-to-seat أدناه يتحقق الآن من isUserKicked
+                // أيضاً كحماية إضافية، لكن إزالته هنا فوراً أنظف: لا يبقى بالقائمة أصلاً)
+                const hadHandRaise = room.handRaises.some(h => h.user.toString() === targetUserId);
+                if (hadHandRaise) {
+                    await VoiceRoom.updateOne({ _id: room._id }, { $pull: { handRaises: { user: targetUserId } } });
+                    io.to(`room-chat-${roomId}`).emit('hand-raise-removed', { roomId, userId: targetUserId });
+                }
+
                 // ✅ لو كان جالساً فعلياً بلحظة الطرد (سباق توقيت نادر) حرّر مقعده أيضاً
                 const seat = room.seats.find(s => s.user && s.user.toString() === targetUserId);
                 if (seat) {
@@ -1453,6 +1466,7 @@ socket.on('refreshBlockData', async () => {
                 const VoiceRoom = require('../models/VoiceRoom');
                 const room = await VoiceRoom.resolveRoom(roomId);
                 if (!room) return;
+                if (!room.isOfficial && room.isUserKicked(socket.user._id)) return; // 🛡️ مطرود من الغرفة — لا يقدر حتى يطلب الصعود
 
                 // ✅ لا فائدة من رفع يد وأنت أصلاً قاعد على مقعد بنفس الغرفة
                 const alreadySeated = room.seats.some(s => s.user && s.user.toString() === socket.user._id.toString());
@@ -1510,6 +1524,12 @@ socket.on('refreshBlockData', async () => {
                 const room = await VoiceRoom.resolveRoom(roomId);
                 if (!room || !room.canModerate(socket.user._id)) {
                     return socket.emit('seat-error', 'لا تملك صلاحية الإدارة بهذي الغرفة');
+                }
+                // 🛡️ حماية من سباق: طلب صعود قديم لشخص طُرد لاحقاً من الغرفة (kickUserFromRoom
+                // يُفرّغ handRaises فور الطرد فعلياً، لكن هذا فحص دفاعي إضافي هنا مباشرة قبل
+                // أي إجلاس فعلي — يمنع إجلاس مطرود حتى لو نجا طلبه من التنظيف لأي سبب)
+                if (!room.isOfficial && room.isUserKicked(targetUserId)) {
+                    return socket.emit('seat-error', 'هذا المستخدم مطرود من الغرفة، لا يمكن إجلاسه');
                 }
 
                 const seatNum = parseInt(seatNumber);
@@ -1601,6 +1621,10 @@ socket.on('refreshBlockData', async () => {
                 const VoiceRoom = require('../models/VoiceRoom');
                 const room = await VoiceRoom.resolveRoom(roomId);
                 if (!room) return;
+                // 🛡️ مستخدم طُرد من الغرفة بين إرسال الدعوة وردّه عليها — يُمنع من الإجلاس رغم دعوته السابقة
+                if (!room.isOfficial && room.isUserKicked(socket.user._id)) {
+                    return socket.emit('seat-error', 'لم تعد جزءاً من هذي الغرفة');
+                }
 
                 const finalRoomId = room.slug === 'main' ? 'main' : room._id.toString();
                 const key = `${finalRoomId}:${socket.user.id.toString()}`;
@@ -1965,8 +1989,9 @@ socket.on('refreshBlockData', async () => {
                 if (!roomId || !message || !message.trim() || message.length > 300) return;
 
                 // 🛡️ دردشة مقفلة من المضيف/المسؤولين — يبقى مسموحاً لهم هم فقط الكتابة
+                let roomCheck = null;
                 if (roomId !== 'main') {
-                    const roomCheck = await VoiceRoom.resolveRoom(roomId);
+                    roomCheck = await VoiceRoom.resolveRoom(roomId);
                     if (roomCheck?.chatLocked && !roomCheck.canModerate(socket.user._id)) {
                         socket.emit('room-chat-error', 'الدردشة مقفلة حالياً من المضيف');
                         return;
@@ -1980,9 +2005,11 @@ socket.on('refreshBlockData', async () => {
                 if (now - lastSent < 2000) return;
                 roomChatRateLimit.set(rlKey, now);
 
-                // 🛡️ فلترة الكلمات المسيئة — تُرفض الرسالة كاملة ولا تُحفظ ولا تُبث لأحد
-                const { containsProfanity } = require('../utils/profanityFilter');
-                if (containsProfanity(message)) {
+                // 🛡️ فلترة الكلمات المسيئة — القائمة العامة أولاً، ثم قائمة الغرفة المخصّصة (إن
+                // وُجدت — يضيفها المضيف بإعداداتها كمساعد إضافي لكلمات لم تلتقطها القائمة العامة).
+                // ترفض الرسالة كاملة ولا تُحفظ ولا تُبث لأحد بأي من الحالتين
+                const { containsProfanity, containsCustomBannedWords } = require('../utils/profanityFilter');
+                if (containsProfanity(message) || containsCustomBannedWords(message, roomCheck?.bannedWords)) {
                     socket.emit('room-chat-error', 'رسالتك تحتوي على ألفاظ غير لائقة ولم يتم إرسالها');
                     return;
                 }
