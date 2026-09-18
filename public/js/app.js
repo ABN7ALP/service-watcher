@@ -484,12 +484,30 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentVoiceRoomId = null; // ✅ أي غرفة معروضة بالشاشة الآن (قد تختلف عن مكان جلوسي لو كنت أتصفح فقط)
     let myIsMuted = false;         // ✅ حالة كتمي الحقيقية (زر الكتم انتقل لقائمة "المزيد")
     let roomAudioMuted = false;    // ✅ كتم شخصي محلي بحت لكل صوت الغرفة (موسيقى + متحدثون) — لا يؤثر على أحد غيري
+    // 🐛 إصلاح جوهري: الكتم (سواء الذاتي أو كتم المضيف لأحد) كان يعتمد بالكامل على أن جهاز
+    // المتحدث نفسه يُعطّل مساره الصادر (track.enabled) — بروتوكول WebRTC نظير-لنظير هنا بلا
+    // خادم وسائط مركزي، فلا توجد طريقة "تفرض" الكتم من بعيد. أي تأخّر/تعثّر بوصول أو تنفيذ
+    // حدث الكتم عند جهاز المتحدث نفسه (اتصال بطيء، تبويب بالخلفية...) يعني بقاء صوته مسموعاً
+    // فعلياً لبقية الحاضرين رغم ظهوره "مكتوماً" بصرياً عندهم. الحل: كل طرف مُستقبِل يُطبّق
+    // الكتم بنفسه أيضاً على عنصر الصوت المستقبَل من ذاك الشخص تحديداً — طبقة حماية مستقلة
+    // لا تعتمد على جهاز الطرف الآخر إطلاقاً، تضمن الكتم الفعلي حتى لو فشلت الطبقة الأولى
+    const seatMutedUsers = new Set(); // userId(string) → مكتوم حالياً (مقعده)، بحسب آخر حالة وصلت
+
+    // ✅ يُطبَّق دائماً بدل ضبط .muted مباشرة — يجمع بين كتمي الشخصي الشامل للغرفة وكتم
+    // ذاك الشخص تحديداً (بمقعده)، فلا يُلغي أحدهما الآخر بالخطأ عند تبديل أيّهما
+    function applyPeerAudioMuteState(userId) {
+        const audioEl = document.getElementById(`voice-peer-audio-${userId}`);
+        if (audioEl) audioEl.muted = roomAudioMuted || seatMutedUsers.has(userId);
+    }
 
     // ✅ كتم/فتح كل مصادر الصوت المحلية دفعة واحدة (عنصر الموسيقى + عناصر صوت المتحدثين الحيّة)
     function applyRoomAudioMuteState() {
         const musicAudio = document.getElementById('room-music-audio');
         if (musicAudio) musicAudio.muted = roomAudioMuted;
-        document.querySelectorAll('.voice-peer-audio').forEach(el => { el.muted = roomAudioMuted; });
+        document.querySelectorAll('.voice-peer-audio').forEach(el => {
+            const userId = el.id.replace('voice-peer-audio-', '');
+            applyPeerAudioMuteState(userId);
+        });
     }
     function toggleRoomAudioMute() {
         roomAudioMuted = !roomAudioMuted;
@@ -2974,6 +2992,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 if (seatData.user && seatData.user.id === myUserId) {
                     foundSeat = seatData.seatNumber;
                 }
+                // 🐛 إصلاح: من كان مكتوماً أصلاً قبل انضمامي (لقطة حالة، لا حدث حي) يجب أن يبقى
+                // مكتوماً بصوت مستقبَل عندي أيضاً فور اتصالي به — بدون هذا كان يُسمَع لحظياً
+                // حتى يصل حدث كتم جديد لاحقاً (راجع seatMutedUsers/applyPeerAudioMuteState)
+                if (seatData.user) {
+                    if (seatData.isMuted) seatMutedUsers.add(seatData.user.id); else seatMutedUsers.delete(seatData.user.id);
+                    applyPeerAudioMuteState(seatData.user.id);
+                }
             });
 
             if (foundSeat !== null) {
@@ -4448,10 +4473,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 audioEl.id = `voice-peer-audio-${peerUserId}`;
                 audioEl.className = 'voice-peer-audio';
                 audioEl.autoplay = true;
-                audioEl.muted = roomAudioMuted;
                 audioEl.style.display = 'none';
                 document.body.appendChild(audioEl);
             }
+            // 🐛 إصلاح: قد يكون هذا الشخص مكتوماً أصلاً (من المضيف مثلاً) قبل أن يصل اتصالي
+            // الصوتي به أساساً — نطبّق حالة الكتم المعروفة الآن صراحة بدل الاعتماد فقط على
+            // roomAudioMuted، وإلا يُسمَع صوته لحظياً قبل أي حدث كتم لاحق يُصلح الوضع
+            applyPeerAudioMuteState(peerUserId);
             audioEl.srcObject = e.streams[0];
             attachSpeakingDetector(e.streams[0], peerUserId);
         };
@@ -6436,6 +6464,7 @@ function showXpGainAnimation(amount) {
 
     socket.on('user-left-seat', ({ roomId, seatNumber, userId }) => {
         const isMe = userId === myUserId;
+        seatMutedUsers.delete(userId); // ✅ تنظيف — لا داعي يبقى بالذاكرة، سيصل توصيف كتم جديد لو عاد وجلس لاحقاً
         if (isMe) {
             myVoiceSeatNumber = null;
             myVoiceRoomId = null;
@@ -6462,6 +6491,10 @@ function showXpGainAnimation(amount) {
 
     socket.on('user-toggled-mute', ({ roomId, userId, isMuted }) => {
         if (userId === myUserId) syncMuteButtonUI(isMuted);
+        // 🐛 إصلاح: طبقة كتم مستقلة على جهة كل مستقبِل — راجع الشرح الكامل أعلى seatMutedUsers.
+        // تُطبَّق بغض النظر عن الغرفة المعروضة حالياً (قد أستمع لهم مصغّراً بالخلفية)
+        if (isMuted) seatMutedUsers.add(userId); else seatMutedUsers.delete(userId);
+        applyPeerAudioMuteState(userId);
         if (roomId !== currentVoiceRoomId) return;
         const voiceGrid = document.getElementById('voice-chat-grid');
         if (!voiceGrid) return;

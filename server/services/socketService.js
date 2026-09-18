@@ -601,6 +601,44 @@ function scheduleBroadcastEndAfterDisconnect(io, hostUser) {
     pendingBroadcastEndTimers.set(key, timer);
 }
 
+// 🐛 إصلاح جوهري: كان أي جالس عادي (غير مضيف) يُنزَل عن مقعده فوراً بمجرد أي انقطاع اتصال،
+// ولو انقطاعاً عابراً جداً (تذبذب شبكة، تبويب بالخلفية لحظة، نفق قصير) — بعكس المضيف الذي
+// يملك مهلة سماح 90 ثانية بالضبط لنفس السيناريوهات. مع عدة مستخدمين متصلين بآن واحد (كل
+// واحد بشبكته الخاصة) يرتفع احتمال حدوث هذا لأحدهم كثيراً، فيبدو وكأن "الناس تنزل عن
+// مقاعدها لوحدها عشوائياً" — وهذا بالضبط ما كان يحصل، ليس خللاً عشوائياً بل تصميماً ناقصاً.
+// مهلة أقصر من المضيف (45 لا 90 ثانية) توازن بين نفس الحماية وعدم حجز مقعد شاغر فعلياً لوقت طويل
+const SEAT_DISCONNECT_GRACE_MS = 45 * 1000;
+const pendingSeatReleaseTimers = new Map(); // userId(string) → Timeout
+
+function cancelPendingSeatRelease(userId) {
+    const key = userId.toString();
+    const timer = pendingSeatReleaseTimers.get(key);
+    if (timer) {
+        clearTimeout(timer);
+        pendingSeatReleaseTimers.delete(key);
+    }
+}
+
+function scheduleSeatReleaseAfterDisconnect(io, user) {
+    const key = user._id.toString();
+    cancelPendingSeatRelease(key); // ✅ يمنع تراكم أكثر من مؤقّت لنفس المستخدم
+    const timer = setTimeout(async () => {
+        pendingSeatReleaseTimers.delete(key);
+        try {
+            const VoiceRoom = require('../models/VoiceRoom');
+            await withUserSeatLock(key, async () => {
+                const released = await VoiceRoom.releaseUserSeatEverywhere(user._id) || [];
+                released.forEach(r => {
+                    io.emit('user-left-seat', { roomId: r.roomId, seatNumber: r.seatNumber, userId: key });
+                });
+            });
+        } catch (error) {
+            console.error('[SEAT] Delayed release error:', error);
+        }
+    }, SEAT_DISCONNECT_GRACE_MS);
+    pendingSeatReleaseTimers.set(key, timer);
+}
+
 // --- دالة التهيئة الرئيسية ---
 const initializeSocket = (server) => {
         const io = new Server(server, {
@@ -660,6 +698,7 @@ const initializeSocket = (server) => {
             await User.findByIdAndUpdate(socket.user.id, { socketId: socket.id, isOnline: true });
             io.emit('userOnlineStatus', { userId: socket.user.id.toString(), isOnline: true });
             cancelPendingBroadcastEnd(socket.user._id); // ✅ عاد بسرعة — يلغي مهلة إنهاء البث المجدولة إن وُجدت
+            cancelPendingSeatRelease(socket.user._id); // ✅ عاد بسرعة — يلغي مهلة تحرير مقعده المجدولة إن وُجدت (لم يفقد مقعده أصلاً)
 
             // ✅ تحويل كل الرسائل التي وصلته وهو غير متصل إلى "تم التسليم" فوراً + إعلام كل مُرسِل بذلك
             const PrivateMessage = require('../models/PrivateMessage');
@@ -2247,15 +2286,10 @@ socket.on('refreshBlockData', async () => {
                 // لانقطاع عابر (قفل شاشة الهاتف، تبديل شبكة) يعود بعدها المضيف خلال ثوانٍ فعلياً
                 scheduleBroadcastEndAfterDisconnect(io, socket.user);
 
-                // ✅ تحرير المقعد الصوتي دائماً بالاعتماد على قاعدة البيانات وحدها، وضمن نفس القفل
-                // التسلسلي حتى لا يتصادم مع طلب انضمام/مغادرة وصل بنفس اللحظة تقريباً
-                await withUserSeatLock(socket.user._id, async () => {
-                    const VoiceRoom = require('../models/VoiceRoom');
-                    const released = await VoiceRoom.releaseUserSeatEverywhere(socket.user._id) || [];
-                    released.forEach(r => {
-                        io.emit('user-left-seat', { roomId: r.roomId, seatNumber: r.seatNumber, userId: socket.user.id.toString() });
-                    });
-                });
+                // 🐛 إصلاح: نفس مهلة السماح تُمنح الآن لأي جالس عادي أيضاً (وليس المضيف فقط) —
+                // لا نُنزله عن مقعده فوراً لمجرد انقطاع عابر، بل بعد مهلة قصيرة يُلغيها فوراً لو
+                // عاد الاتصال خلالها (انظر معالج 'connection' أعلاه: cancelPendingSeatRelease)
+                scheduleSeatReleaseAfterDisconnect(io, socket.user);
             } catch (error) { console.error('Failed to update offline status:', error); }
         });
     });
