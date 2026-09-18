@@ -27,7 +27,7 @@ const voiceRoomSchema = new mongoose.Schema({
     // ✅ آيدي قصير مميّز لكل غرفة مستخدم (6 أرقام) — يُنشأ تلقائياً عند إنشاء الغرفة، ويبقى
     // ثابتاً طوال عمرها (لا يتغيّر حتى لو تغيّر اسمها)، ويُستخدم للبحث المباشر عنها بالتصفح
     roomCode: { type: String, unique: true, sparse: true, index: true },
-    name: { type: String, default: 'غرفة صوتية', maxlength: 40 },
+    name: { type: String, default: 'غرفة صوتية', maxlength: 22 },
     description: { type: String, default: '', maxlength: 120 },
     coverImage: { type: String, default: null },
     host: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true }, // null = الغرفة الرسمية

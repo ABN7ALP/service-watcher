@@ -3078,8 +3078,25 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     // ✅ احتفال بصري قصير عند ارتقاء مستوى الغرفة — يظهر للجميع بالغرفة بنفس اللحظة (بطاقة
     // متوهجة بمنتصف الشاشة + شرر نجوم متطاير، تختفي تلقائياً بلا حاجة لأي تفاعل من المستخدم)
+    // ✅ انفجار قصاصات ورقية حقيقي (فيزياء جاذبية/دوران) عبر مكتبة canvas-confetti إن نجح
+    // تحميلها من الـCDN — طبقة احتفال إضافية فوق تأثيرات CSS الموجودة، بلا أي اعتماد صلب
+    // عليها: لو فشل تحميل المكتبة (لا اتصال، حاجب إعلانات) يبقى كل شيء يعمل طبيعياً بدونها
+    function fireConfettiBurst(colors) {
+        if (typeof confetti !== 'function') return;
+        try {
+            confetti({
+                particleCount: 90,
+                spread: 75,
+                startVelocity: 38,
+                origin: { y: 0.6 },
+                colors: colors || ['#a855f7', '#ec4899', '#fbbf24', '#3b82f6']
+            });
+        } catch (e) { /* لا شيء — تأثير بصري اختياري فقط */ }
+    }
+
     function celebrateRoomLevelUp(newLevel) {
         document.getElementById('room-levelup-celebration')?.remove();
+        fireConfettiBurst(['#fbbf24', '#f59e0b', '#a855f7']);
         const el = document.createElement('div');
         el.id = 'room-levelup-celebration';
         el.className = 'room-levelup-celebration';
@@ -3135,7 +3152,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
                 <form id="room-settings-form" class="space-y-3 mt-3">
                     <div class="space-y-2">
-                        <input type="text" name="name" value="${escapeHtml(room.name)}" maxlength="40" required placeholder="اسم الغرفة" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
+                        <input type="text" name="name" value="${escapeHtml(room.name)}" maxlength="22" required placeholder="اسم الغرفة" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
                         <input type="text" name="description" value="${escapeHtml(currentRoomDescription || '')}" maxlength="120" placeholder="إعلان الغرفة (اختياري)" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
                     </div>
 
@@ -3151,7 +3168,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         <div class="flex items-center justify-between bg-gray-700/40 rounded-lg p-2.5 mt-2">
                             <span class="text-xs flex items-center gap-2">
                                 <i class="fas fa-lock text-amber-400"></i> قفل الغرفة
-                                <button type="button" id="lock-room-info-btn" class="room-settings-info-btn" title="ما فائدة هذا الخيار؟"><i class="fas fa-question"></i></button>
                             </span>
                             <input type="checkbox" id="settings-isLocked" ${currentRoomIsLocked ? 'checked' : ''} class="w-4 h-4 rounded">
                         </div>
@@ -3197,8 +3213,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
                     <div class="room-settings-section">
                         <p class="room-settings-section-title">كلمات محظورة إضافية <span class="text-gray-500">— مساعدة للفلتر العام</span></p>
-                        <textarea name="bannedWordsText" rows="2" maxlength="1500" placeholder="افصل كل كلمة بفاصلة أو سطر جديد..." class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">${escapeHtml(currentRoomBannedWords.join(', '))}</textarea>
-                        <p class="text-[10px] text-gray-500">هذي الكلمات لن تظهر بدردشة غرفتك إطلاقاً، بالإضافة للفلتر العام</p>
+                        <div id="banned-words-chips" class="banned-words-chips"></div>
+                        <input type="text" id="banned-word-input" maxlength="30" placeholder="اكتب كلمة واضغط Enter لإضافتها..." class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
+                        <p class="text-[10px] text-gray-500">هذي الكلمات محفوظة تلقائياً ولن تظهر بدردشة غرفتك إطلاقاً — اضغط × لحذف أي كلمة</p>
                     </div>
 
                     <div id="settings-kicked-section" class="room-settings-section ${currentRoomKickedUsers.length === 0 ? 'hidden' : ''}">
@@ -3222,11 +3239,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         modal.addEventListener('click', (e) => { if (e.target.id === 'room-settings-modal') closeModal(); });
         modal.querySelector('#settings-isPrivate').addEventListener('change', (e) => {
             modal.querySelector('#settings-password-field').classList.toggle('hidden', !e.target.checked);
-        });
-        // ✅ "قفل الغرفة" لا يمنع من هم داخلها حالياً من البقاء والتحدث — فقط يمنع مشاهدين
-        // جدد من الدخول، مفيد للحظة خاصة أو نقاش هادئ بلا مقاطعات متكررة من قادمين جدد
-        modal.querySelector('#lock-room-info-btn').addEventListener('click', () => {
-            showNotification('قفل الغرفة يمنع دخول مشاهدين جدد فقط — من هم بداخلها حالياً يبقون ويقدرون يتحدثون بلا تأثير، مفيد لحظة خاصة أو نقاش هادئ بلا مقاطعات', 'info');
         });
 
         modal.querySelector('#open-bg-shop-btn').addEventListener('click', () => showRoomBackgroundShopModal(room));
@@ -3314,19 +3326,55 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             });
         });
 
+        // ✅ واجهة "شرائح" (chips) لكلمات الحظر بدل حقل نصي خام — كل كلمة تُضاف فوراً كشريحة
+        // قابلة للحذف بنقرة، وتُحفَظ ضمن currentRoomBannedWords (تصل جاهزة من السيرفر أصلاً
+        // عند فتح الإعدادات، فليست مشكلة "لا تُحفظ" كما بدت للمستخدم — المشكلة كانت وضوح العرض)
+        let bannedWordsList = [...currentRoomBannedWords];
+        function renderBannedWordsChips() {
+            const wrap = modal.querySelector('#banned-words-chips');
+            if (!wrap) return;
+            if (bannedWordsList.length === 0) {
+                wrap.innerHTML = '<p class="text-[11px] text-gray-500">لا توجد كلمات محظورة بعد</p>';
+                return;
+            }
+            wrap.innerHTML = bannedWordsList.map((w, i) => `
+                <span class="banned-word-chip" data-idx="${i}">
+                    ${escapeHtml(w)}
+                    <button type="button" class="banned-word-chip-remove" data-idx="${i}" aria-label="حذف">×</button>
+                </span>
+            `).join('');
+            wrap.querySelectorAll('.banned-word-chip-remove').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    bannedWordsList.splice(Number(btn.dataset.idx), 1);
+                    renderBannedWordsChips();
+                });
+            });
+        }
+        renderBannedWordsChips();
+        const bannedWordInput = modal.querySelector('#banned-word-input');
+        bannedWordInput.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ',') return;
+            e.preventDefault();
+            const word = bannedWordInput.value.trim().replace(/,$/, '');
+            if (!word) return;
+            if (bannedWordsList.length >= 50) {
+                showNotification('الحد الأقصى 50 كلمة محظورة', 'error');
+                return;
+            }
+            if (!bannedWordsList.includes(word)) {
+                bannedWordsList.push(word);
+                renderBannedWordsChips();
+            }
+            bannedWordInput.value = '';
+        });
+
         const form = modal.querySelector('#room-settings-form');
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
             data.isPrivate = data.isPrivate === 'on';
-
-            // ✅ حقل نصي بالواجهة (سطر/فاصلة لكل كلمة) يتحوّل هنا لمصفوفة — الشكل الذي يتوقعه السيرفر
-            data.bannedWords = (data.bannedWordsText || '')
-                .split(/[,\n]/)
-                .map(w => w.trim())
-                .filter(Boolean);
-            delete data.bannedWordsText;
+            data.bannedWords = bannedWordsList;
 
             const wantsLocked = modal.querySelector('#settings-isLocked').checked;
             data.isLocked = wantsLocked;
@@ -3772,23 +3820,32 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         bar.id = 'seat-challenge-bar';
         bar.className = 'seat-challenge-bar';
         bar.innerHTML = `
+            <div class="seat-challenge-header">
+                <span class="seat-challenge-live-badge"><span class="seat-challenge-live-dot"></span> تحدي مباشر</span>
+                <span id="seat-challenge-timer" class="seat-challenge-timer-pill"></span>
+            </div>
             <div class="seat-challenge-row">
-                <div class="seat-challenge-team seat-challenge-team-a">
-                    ${teamA.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                <div class="seat-challenge-side seat-challenge-side-a">
+                    <div class="seat-challenge-team seat-challenge-team-a">
+                        ${teamA.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                    </div>
+                    <span id="seat-challenge-score-a" class="seat-challenge-score seat-challenge-score-a">0</span>
                 </div>
-                <div class="seat-challenge-progress">
-                    <div id="seat-challenge-fill-a" class="seat-challenge-fill-a"></div>
-                    <div id="seat-challenge-fill-b" class="seat-challenge-fill-b"></div>
-                    <div class="seat-challenge-divider"></div>
-                    <span id="seat-challenge-score-a" class="seat-challenge-score-a">0</span>
-                    <span class="seat-challenge-vs"><i class="fas fa-fire"></i></span>
-                    <span id="seat-challenge-score-b" class="seat-challenge-score-b">0</span>
+                <div class="seat-challenge-progress-wrap">
+                    <div class="seat-challenge-progress">
+                        <div id="seat-challenge-fill-a" class="seat-challenge-fill-a"></div>
+                        <div id="seat-challenge-fill-b" class="seat-challenge-fill-b"></div>
+                        <div class="seat-challenge-divider"></div>
+                    </div>
+                    <span class="seat-challenge-vs-badge">VS</span>
                 </div>
-                <div class="seat-challenge-team seat-challenge-team-b">
-                    ${teamB.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                <div class="seat-challenge-side seat-challenge-side-b">
+                    <span id="seat-challenge-score-b" class="seat-challenge-score seat-challenge-score-b">0</span>
+                    <div class="seat-challenge-team seat-challenge-team-b">
+                        ${teamB.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                    </div>
                 </div>
             </div>
-            <div id="seat-challenge-timer" class="seat-challenge-timer"></div>
         `;
         const insertAfter = document.getElementById('pk-battle-bar') || mainContent.querySelector('.flex.justify-between.items-center');
         if (insertAfter) insertAfter.insertAdjacentElement('afterend', bar);
@@ -3899,6 +3956,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         else if (iWon) { title = 'فزت! 🏆'; icon = 'fa-trophy'; cardClass = 'seat-challenge-result-card-win'; }
         else if (iLost) { title = 'خسرت الجولة'; icon = 'fa-face-frown'; cardClass = 'seat-challenge-result-card-lose'; }
         else { title = data.winner === 'A' ? 'فاز الفريق 🔵' : 'فاز الفريق 🔴'; icon = 'fa-trophy'; cardClass = ''; }
+
+        if (iWon) fireConfettiBurst(['#3b82f6', '#06b6d4', '#fbbf24']);
 
         const particles = iWon ? Array.from({ length: 16 }, (_, i) => {
             const angle = Math.round((360 / 16) * i);
@@ -4101,7 +4160,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <form id="create-room-form" class="space-y-4">
                     <div>
                         <label class="text-sm">اسم الغرفة</label>
-                        <input type="text" name="name" maxlength="40" required autofocus class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
+                        <input type="text" name="name" maxlength="22" required autofocus class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
                     </div>
                     <div>
                         <label class="text-sm mb-1 block">اختر غلافاً</label>
@@ -6939,6 +6998,24 @@ function showXpGainAnimation(amount) {
     // ✅ يصل فقط لمن هو منضم فعلياً لقناة دردشة هذي الغرفة (بث مخصص، وليس عاماً)
     socket.on('room-music-state', (state) => {
         applyMusicState(state);
+    });
+
+    // ✅ غلاف الغرفة يتحدّث فوراً عند الجميع بلحظة تغييره من المضيف — بدون هذا كان الغلاف
+    // القديم يبقى ظاهراً عند كل من بالغرفة غير المضيف حتى يعيدوا فتحها يدوياً
+    socket.on('room-cover-updated', ({ roomId, coverImage }) => {
+        if (!coverImage) return;
+        if (roomId === currentVoiceRoomId) {
+            currentRoomCoverImage = coverImage;
+            const headerCoverEl = document.getElementById('room-info-cover-img');
+            if (headerCoverEl) headerCoverEl.src = coverImage;
+            const infoCardCoverEl = document.querySelector('#room-info-card .room-info-card-cover');
+            if (infoCardCoverEl) infoCardCoverEl.src = coverImage;
+        }
+        if (minimizedRoomInfo && minimizedRoomInfo.id === roomId) {
+            minimizedRoomInfo.coverImage = coverImage;
+            const bubbleImg = document.querySelector('.room-minimized-bubble-img');
+            if (bubbleImg) bubbleImg.src = coverImage;
+        }
     });
 
     // ✅ آلية دلالة أخطاء لمشغّل الموسيقى — أي رفض من السيرفر (صلاحية، رابط غير صالح...)

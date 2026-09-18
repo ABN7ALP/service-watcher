@@ -115,8 +115,8 @@ exports.createRoom = async (req, res) => {
 
         // 🛡️ تحقق صارم من كل مدخل — لا نثق بأي شيء قادم من العميل مهما بدا الشكل بالواجهة سليماً
         const cleanName = String(name || '').trim();
-        if (!cleanName || cleanName.length < 2 || cleanName.length > 40) {
-            return res.status(400).json({ status: 'fail', message: 'اسم الغرفة يجب أن يكون بين 2 و40 حرفاً' });
+        if (!cleanName || cleanName.length < 2 || cleanName.length > 22) {
+            return res.status(400).json({ status: 'fail', message: 'اسم الغرفة يجب أن يكون بين 2 و22 حرفاً' });
         }
 
         // 🛡️ غرفة واحدة فقط لكل مستخدم — أيقونة الإنشاء تأخذه مباشرة لغرفته لو عنده وحدة أصلاً
@@ -314,8 +314,8 @@ exports.updateRoom = async (req, res) => {
 
         if (name !== undefined) {
             const cleanName = String(name).trim();
-            if (!cleanName || cleanName.length < 2 || cleanName.length > 40) {
-                return res.status(400).json({ status: 'fail', message: 'اسم الغرفة يجب أن يكون بين 2 و40 حرفاً' });
+            if (!cleanName || cleanName.length < 2 || cleanName.length > 22) {
+                return res.status(400).json({ status: 'fail', message: 'اسم الغرفة يجب أن يكون بين 2 و22 حرفاً' });
             }
             room.name = cleanName;
         }
@@ -472,6 +472,15 @@ exports.uploadRoomCover = async (req, res) => {
 
         room.coverImage = result.secure_url;
         await room.save();
+
+        // ✅ يبث الغلاف الجديد لحظياً لكل من بالغرفة (رأس الصفحة + بطاقة معلومات الغرفة) —
+        // بدون هذا كان يبقى القديم ظاهراً عند الجميع غيري حتى يعيدوا فتح الغرفة يدوياً
+        if (req.io) {
+            req.io.to(`room-chat-${room._id}`).emit('room-cover-updated', {
+                roomId: room._id.toString(),
+                coverImage: room.coverImage
+            });
+        }
 
         res.json({ status: 'success', coverImage: room.coverImage });
     } catch (error) {
