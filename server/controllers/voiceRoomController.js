@@ -94,6 +94,18 @@ exports.listRooms = async (req, res) => {
 };
 
 // =====================================================
+// ✅ GET /api/voice-room/rankings — أقوى 10 غرف (منصّة تتويج) بأكبر متابعين+دعم معاً
+// =====================================================
+exports.getRoomRankings = async (req, res) => {
+    try {
+        const rooms = await VoiceRoom.getTopRankedRooms(10);
+        res.json({ status: 'success', rooms });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// =====================================================
 // ✅ GET /api/voice-room/my-room — غرفتي الخاصة إن وُجدت (لتوجيه أيقونة الإنشاء مباشرة إليها)
 // =====================================================
 exports.getMyRoom = async (req, res) => {

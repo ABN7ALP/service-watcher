@@ -2464,10 +2464,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                             <p class="room-info-stat-label">متابع</p>
                         </div>
                         <div class="room-info-stat-box">
-                            <p class="room-info-stat-num text-amber-400">Lv.1</p>
-                            <p class="room-info-stat-label">لفل الغرفة (قريباً)</p>
+                            <p class="room-info-stat-num text-amber-400">${currentRoomLevel !== null ? `Lv.${currentRoomLevel}` : '—'}</p>
+                            <p class="room-info-stat-label">مستوى الغرفة</p>
                         </div>
                     </div>
+                    ${currentRoomLevel !== null ? `
+                        <button id="room-info-rankings-btn" class="room-info-rankings-btn mt-2">
+                            <i class="fas fa-trophy"></i> غرف الصدارة — شاهد ترتيب أقوى الغرف
+                        </button>
+                    ` : ''}
                     <button id="room-info-card-follow-btn" class="follow-room-btn js-room-follow-btn w-full justify-center mt-4" data-following="${currentRoomIsFollowing ? '1' : '0'}">
                         ${currentRoomIsFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة'}
                     </button>
@@ -2478,6 +2483,102 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         modal.addEventListener('click', (e) => { if (e.target.id === 'room-info-card') modal.remove(); });
         modal.querySelector('#room-info-card-follow-btn').addEventListener('click', () => {
             socket.emit(currentRoomIsFollowing ? 'unfollow-room' : 'follow-room', { roomId: room.id });
+        });
+        modal.querySelector('#room-info-rankings-btn')?.addEventListener('click', () => {
+            showRoomRankingsModal();
+        });
+    }
+
+    // ✅ منصّة تتويج أقوى 10 غرف — الأول أعلى بالمنتصف، الثاني والثالث بجانبيه، وباقي الغرف
+    // بقائمة مرتبة أسفلهم. الترتيب بأكبر عدد متابعين + نقاط دعم معاً (يحسبه السيرفر)
+    async function showRoomRankingsModal() {
+        document.getElementById('room-rankings-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'room-rankings-modal';
+        modal.className = 'fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-[70] p-3';
+        modal.innerHTML = `
+            <div class="room-rankings-sheet w-full md:max-w-md text-white">
+                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
+                <div class="room-rankings-header">
+                    <p class="room-rankings-title"><i class="fas fa-trophy text-amber-400"></i> غرف الصدارة</p>
+                    <button id="close-room-rankings" class="room-rankings-close-btn"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="room-rankings-body" class="room-rankings-body">
+                    <div class="text-center py-10 text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'room-rankings-modal') modal.remove(); });
+        modal.querySelector('#close-room-rankings').addEventListener('click', () => modal.remove());
+
+        try {
+            const response = await fetch('/api/voice-room/rankings', { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            const body = modal.querySelector('#room-rankings-body');
+            if (!body) return;
+            const rooms = (response.ok && result.rooms) ? result.rooms : [];
+            if (rooms.length === 0) {
+                body.innerHTML = '<p class="text-center text-gray-400 text-sm py-10">لا توجد غرف متصدّرة بعد — كن أول من يتصدّر! 🏆</p>';
+                return;
+            }
+            renderRoomRankingsBody(body, rooms);
+        } catch (error) {
+            const body = modal.querySelector('#room-rankings-body');
+            if (body) body.innerHTML = '<p class="text-center text-red-400 text-sm py-10">تعذر تحميل الترتيب، حاول مجدداً</p>';
+        }
+    }
+
+    function renderRoomRankingsBody(body, rooms) {
+        const podium = rooms.slice(0, 3);
+        const rest = rooms.slice(3);
+        const podiumCard = (r, rank) => r ? `
+            <div class="rankings-podium-card rankings-podium-rank-${rank}" data-room-id="${r.id}">
+                <div class="rankings-podium-crown">${rank === 1 ? '👑' : rank === 2 ? '🥈' : '🥉'}</div>
+                <img src="${r.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="rankings-podium-cover">
+                <p class="rankings-podium-name">${escapeHtml(r.name)}</p>
+                <p class="rankings-podium-host">${escapeHtml(r.host?.username || '—')}</p>
+                <div class="rankings-podium-stats">
+                    <span><i class="fas fa-heart"></i> ${r.followersCount}</span>
+                    <span><i class="fas fa-star"></i> Lv.${r.level}</span>
+                </div>
+                <div class="rankings-podium-pedestal">${rank}</div>
+            </div>
+        ` : '<div class="rankings-podium-card rankings-podium-empty"></div>';
+
+        body.innerHTML = `
+            <div class="rankings-podium-row">
+                ${podiumCard(podium[1], 2)}
+                ${podiumCard(podium[0], 1)}
+                ${podiumCard(podium[2], 3)}
+            </div>
+            ${rest.length > 0 ? `
+                <div class="rankings-list">
+                    ${rest.map((r, i) => `
+                        <div class="rankings-list-row" data-room-id="${r.id}">
+                            <span class="rankings-list-rank">${i + 4}</span>
+                            <img src="${r.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="rankings-list-cover">
+                            <div class="min-w-0 flex-1">
+                                <p class="rankings-list-name">${escapeHtml(r.name)}</p>
+                                <p class="rankings-list-host">${escapeHtml(r.host?.username || '—')}</p>
+                            </div>
+                            <span class="rankings-list-followers"><i class="fas fa-heart"></i> ${r.followersCount}</span>
+                            <span class="room-level-badge room-level-badge-${r.level}">Lv.${r.level}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : ''}
+        `;
+
+        body.querySelectorAll('[data-room-id]').forEach(el => {
+            el.addEventListener('click', () => {
+                const roomId = el.dataset.roomId;
+                const room = rooms.find(r => r.id === roomId);
+                if (!room) return;
+                document.getElementById('room-rankings-modal')?.remove();
+                document.getElementById('room-info-card')?.remove();
+                enterVoiceRoom({ id: room.id, name: room.name, coverImage: room.coverImage, isOfficial: false, isPrivate: room.isPrivate });
+            });
         });
     }
 

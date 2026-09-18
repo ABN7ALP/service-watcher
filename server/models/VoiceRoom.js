@@ -399,6 +399,41 @@ voiceRoomSchema.statics.addSupportPoints = async function (roomId, points) {
     };
 };
 
+// =====================================================
+// ✅ ترتيب أقوى الغرف (منصّة تتويج) — بأكبر عدد متابعين وأكبر نقاط دعم معاً، وليس أحدهما فقط.
+// كل متابع يزن هنا بقدر FOLLOWER_WEIGHT_IN_RANKING نقطة دعم (وزن واحد ثابت لإعادة الموازنة
+// لاحقاً بلا أي تعديل بمكان آخر) — تُستبعد الغرفة الرسمية (لا مستوى/دعم حقيقي لها) وأي غرفة
+// بلا أي متابعين أو دعم إطلاقاً (لا فائدة من عرضها كـ"متصدّرة" وهي فارغة تماماً)
+const FOLLOWER_WEIGHT_IN_RANKING = 50;
+voiceRoomSchema.statics.getTopRankedRooms = async function (limit = 10) {
+    const safeLimit = Math.min(Math.max(parseInt(limit) || 10, 1), 10);
+    const rooms = await this.aggregate([
+        { $match: { status: 'active', isOfficial: { $ne: true } } },
+        { $addFields: { followersCount: { $size: { $ifNull: ['$followers', []] } } } },
+        { $addFields: { rankScore: { $add: [{ $multiply: ['$followersCount', FOLLOWER_WEIGHT_IN_RANKING] }, '$supportPoints'] } } },
+        { $match: { rankScore: { $gt: 0 } } },
+        { $sort: { rankScore: -1, createdAt: 1 } },
+        { $limit: safeLimit },
+        { $lookup: { from: 'users', localField: 'host', foreignField: '_id', as: 'hostInfo' } },
+        { $project: {
+            name: 1, coverImage: 1, level: 1, supportPoints: 1, followersCount: 1, isLive: 1, roomCode: 1, isPrivate: 1,
+            host: { $arrayElemAt: ['$hostInfo', 0] }
+        } }
+    ]);
+    return rooms.map(r => ({
+        id: r._id,
+        name: r.name,
+        coverImage: r.coverImage,
+        level: r.level,
+        supportPoints: r.supportPoints,
+        followersCount: r.followersCount,
+        isLive: r.isLive,
+        isPrivate: !!r.isPrivate,
+        roomCode: r.roomCode || null,
+        host: r.host ? { username: r.host.username, profileImage: r.host.profileImage } : null
+    }));
+};
+
 // ✅ تغيير عدد المقاعد (الاتجاهان: توسيع أو تقليص) — يتحقق أن العدد المطلوب مفتوح فعلاً
 // بمستوى الغرفة الحالي، ويرفض التقليص لو فيه جالس على مقعد سيُحذَف (رقمه أكبر من العدد الجديد)
 voiceRoomSchema.methods.setSeatCount = function (newCount) {
