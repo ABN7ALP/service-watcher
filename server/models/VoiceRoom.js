@@ -27,7 +27,7 @@ const voiceRoomSchema = new mongoose.Schema({
     // ✅ آيدي قصير مميّز لكل غرفة مستخدم (6 أرقام) — يُنشأ تلقائياً عند إنشاء الغرفة، ويبقى
     // ثابتاً طوال عمرها (لا يتغيّر حتى لو تغيّر اسمها)، ويُستخدم للبحث المباشر عنها بالتصفح
     roomCode: { type: String, unique: true, sparse: true, index: true },
-    name: { type: String, default: 'غرفة صوتية', maxlength: 40 },
+    name: { type: String, default: 'غرفة صوتية', maxlength: 22 },
     description: { type: String, default: '', maxlength: 120 },
     coverImage: { type: String, default: null },
     host: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true }, // null = الغرفة الرسمية
@@ -203,7 +203,10 @@ voiceRoomSchema.statics.listRooms = async function ({ search, sort = 'newest', p
             isPrivate: r.isPrivate,
             roomCode: r.roomCode || null,
             occupied: occupancyMap.get(r._id.toString()) || 0,
-            createdAt: r.createdAt
+            createdAt: r.createdAt,
+            // ✅ لعرض شارة المستوى/المتابعين ببطاقة الغرفة بالصفحة الرئيسية — null بالرسمية (لا نظام مستوى لها)
+            level: r.isOfficial ? null : r.level,
+            followersCount: (r.followers || []).length
         })),
         total,
         page: safePage,
@@ -397,6 +400,41 @@ voiceRoomSchema.statics.addSupportPoints = async function (roomId, points) {
         leveledUp,
         unlockedSeatCounts: this.getUnlockedSeatCounts(updated.level)
     };
+};
+
+// =====================================================
+// ✅ ترتيب أقوى الغرف (منصّة تتويج) — بأكبر عدد متابعين وأكبر نقاط دعم معاً، وليس أحدهما فقط.
+// كل متابع يزن هنا بقدر FOLLOWER_WEIGHT_IN_RANKING نقطة دعم (وزن واحد ثابت لإعادة الموازنة
+// لاحقاً بلا أي تعديل بمكان آخر) — تُستبعد الغرفة الرسمية (لا مستوى/دعم حقيقي لها) وأي غرفة
+// بلا أي متابعين أو دعم إطلاقاً (لا فائدة من عرضها كـ"متصدّرة" وهي فارغة تماماً)
+const FOLLOWER_WEIGHT_IN_RANKING = 50;
+voiceRoomSchema.statics.getTopRankedRooms = async function (limit = 10) {
+    const safeLimit = Math.min(Math.max(parseInt(limit) || 10, 1), 10);
+    const rooms = await this.aggregate([
+        { $match: { status: 'active', isOfficial: { $ne: true } } },
+        { $addFields: { followersCount: { $size: { $ifNull: ['$followers', []] } } } },
+        { $addFields: { rankScore: { $add: [{ $multiply: ['$followersCount', FOLLOWER_WEIGHT_IN_RANKING] }, '$supportPoints'] } } },
+        { $match: { rankScore: { $gt: 0 } } },
+        { $sort: { rankScore: -1, createdAt: 1 } },
+        { $limit: safeLimit },
+        { $lookup: { from: 'users', localField: 'host', foreignField: '_id', as: 'hostInfo' } },
+        { $project: {
+            name: 1, coverImage: 1, level: 1, supportPoints: 1, followersCount: 1, isLive: 1, roomCode: 1, isPrivate: 1,
+            host: { $arrayElemAt: ['$hostInfo', 0] }
+        } }
+    ]);
+    return rooms.map(r => ({
+        id: r._id,
+        name: r.name,
+        coverImage: r.coverImage,
+        level: r.level,
+        supportPoints: r.supportPoints,
+        followersCount: r.followersCount,
+        isLive: r.isLive,
+        isPrivate: !!r.isPrivate,
+        roomCode: r.roomCode || null,
+        host: r.host ? { username: r.host.username, profileImage: r.host.profileImage } : null
+    }));
 };
 
 // ✅ تغيير عدد المقاعد (الاتجاهان: توسيع أو تقليص) — يتحقق أن العدد المطلوب مفتوح فعلاً

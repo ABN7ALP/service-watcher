@@ -461,6 +461,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .voice-seats-flex.cols-5 .voice-seat { font-size: clamp(0.72rem, 2.9vw, 0.92rem); }
 .voice-seats-flex.cols-6 .voice-seat { font-size: clamp(0.64rem, 2.4vw, 0.8rem); }
 
+/* ✅ تصغير شبكة الـ9 مقاعد تحديداً على الهواتف الصغيرة (بطلب صريح — كانت كبيرة عليها) —
+   يقلّص السقف الأقصى لحجم المقعد والفراغات المرافقة له بدون التأثير على الهواتف العادية/الأجهزة اللوحية */
+@media (max-width: 420px) {
+    .voice-seats-flex.cols-3 { gap: clamp(36px, 8vw, 48px) clamp(9px, 2.8vw, 16px); }
+    .voice-seats-flex.cols-3 .voice-seat { max-width: 60px; font-size: clamp(0.78rem, 3.2vw, 0.95rem); }
+}
+
 @media (min-width: 768px) {
     .voice-seats-flex.cols-3 { max-width: 380px; margin: 0 auto; } /* ✅ أضيق من البقية — 3 أعمدة فقط تكبر بسرعة */
     .voice-seats-flex.cols-5,
@@ -759,12 +766,21 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    لم تكن تُخفي هذا الزر إطلاقاً (كان يظهر حتى للمضيف رغم toggle('hidden', true) بالجافاسكربت).
    خصوصية أعلى صراحة (فئتان) تضمن فوز .hidden كلما اجتمعت مع .follow-room-btn */
 .follow-room-btn.hidden { display: none; }
-/* ✅ نسخة مصغّرة من زر المتابعة — برأس الغرفة نفسها (بدل زر الرجوع المحذوف) */
+/* 🐛 إصلاح: نسخة رأس الغرفة كانت تحمل نفس التدرّج اللوني الصريح (بنفسجي-وردي) لزر المتابعة
+   العادي حتى بعد التصغير — لون صاخب يتعارض بصرياً مع بقية أزرار الرأس المحايدة (⏻/المشاهدون
+   الدائرية الرمادية)، فيبدو "كبيراً وغير أنيق" رغم صغر حجمه الفعلي. الآن دائرة محايدة صغيرة
+   مطابقة تماماً لبقية أزرار الرأس، ولون الأيقونة وحده يميّز حالة المتابعة (بنفسجي = تابع الآن) */
 .follow-room-btn-compact {
-    font-size: 10.5px;
-    padding: 5px 12px;
+    background: rgba(255,255,255,0.08) !important;
+    color: #d1d5db;
+    width: 32px; height: 32px;
+    padding: 0 !important;
+    justify-content: center;
     flex-shrink: 0;
 }
+.follow-room-btn-compact:not(.following) i { color: #c084fc; }
+.follow-room-btn-compact.following { background: rgba(255,255,255,0.08) !important; }
+.follow-room-btn-compact.following i { color: #6b7280; }
 
 /* =====================================================
    ✅ رأس الغرفة الجديد — بطاقة معلومات (غلاف + آيدي + اسم) بدل زر الرجوع، تُفتح منها
@@ -847,6 +863,150 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .room-info-stat-num { font-size: 16px; font-weight: 800; color: #f3f4f6; }
 .room-info-stat-label { font-size: 10px; color: #9ca3af; margin-top: 2px; }
 
+/* ✅ زر "غرف الصدارة" ببطاقة معلومات الغرفة — يفتح منصّة التتويج بدل "قريباً" ثابتة */
+.room-info-rankings-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    background: linear-gradient(90deg, rgba(251,191,36,0.14), rgba(168,85,247,0.14));
+    border: 1px solid rgba(251,191,36,0.3);
+    color: #fde68a;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px;
+    border-radius: 10px;
+}
+.room-info-rankings-btn:hover { background: linear-gradient(90deg, rgba(251,191,36,0.22), rgba(168,85,247,0.22)); }
+.room-info-rankings-btn i { color: #fbbf24; }
+
+/* =====================================================
+   ✅ منصّة تتويج أقوى الغرف — الأول أعلى بالمنتصف ومرتفع عن البقية، الثاني/الثالث بجانبيه،
+   وباقي الغرف (حتى 10) بقائمة مرتبة أسفلهم. أسلوب "Top 3 podium" شائع بتطبيقات البث الشهيرة
+   ===================================================== */
+.room-rankings-sheet {
+    background: #1a1f2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.5);
+    animation: slideUp 0.25s ease-out;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+@media (min-width: 768px) { .room-rankings-sheet { border-radius: 20px; } }
+.room-rankings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px 10px;
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.room-rankings-title { font-size: 15px; font-weight: 800; color: #fff; }
+.room-rankings-close-btn {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    color: #d1d5db;
+    display: flex; align-items: center; justify-content: center;
+}
+.room-rankings-body { padding: 18px 14px 20px; overflow-y: auto; }
+
+.rankings-podium-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 18px;
+}
+.rankings-podium-card {
+    flex: 1;
+    max-width: 118px;
+    position: relative;
+    background: rgba(255,255,255,0.05);
+    border-radius: 14px;
+    padding: 20px 8px 10px;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.08);
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+.rankings-podium-card:active { transform: scale(0.96); }
+.rankings-podium-card.rankings-podium-empty { visibility: hidden; }
+/* ✅ الأول أكبر وأعلى فعلياً (margin-bottom سالب يرفعه بصرياً عن الثاني/الثالث) بحلقة ذهبية متوهّجة */
+.rankings-podium-rank-1 {
+    order: 2;
+    max-width: 132px;
+    padding-top: 26px;
+    margin-bottom: 14px;
+    background: linear-gradient(160deg, rgba(251,191,36,0.16), rgba(255,255,255,0.05));
+    border: 1px solid rgba(251,191,36,0.5);
+    box-shadow: 0 0 20px rgba(251,191,36,0.25);
+    z-index: 2;
+}
+.rankings-podium-rank-2 { order: 1; border-color: rgba(203,213,225,0.4); }
+.rankings-podium-rank-3 { order: 3; border-color: rgba(217,119,6,0.4); }
+.rankings-podium-crown {
+    position: absolute;
+    top: -14px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 22px;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+.rankings-podium-rank-1 .rankings-podium-crown { font-size: 26px; top: -18px; }
+.rankings-podium-cover {
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin: 0 auto 6px;
+    border: 2px solid rgba(255,255,255,0.2);
+}
+.rankings-podium-rank-1 .rankings-podium-cover { width: 62px; height: 62px; border-color: #fbbf24; }
+.rankings-podium-name { font-size: 12px; font-weight: 800; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rankings-podium-host { font-size: 9.5px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.rankings-podium-stats {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 9.5px;
+    font-weight: 700;
+    color: #d1d5db;
+}
+.rankings-podium-stats i { color: #f472b6; margin-inline-end: 2px; }
+.rankings-podium-pedestal {
+    margin-top: 8px;
+    font-size: 11px;
+    font-weight: 900;
+    color: #1a1f2e;
+    background: linear-gradient(180deg, #fde68a, #f59e0b);
+    border-radius: 6px;
+    padding: 2px 0;
+}
+.rankings-podium-rank-2 .rankings-podium-pedestal { background: linear-gradient(180deg, #e5e7eb, #9ca3af); }
+.rankings-podium-rank-3 .rankings-podium-pedestal { background: linear-gradient(180deg, #fdba74, #c2410c); color: #fff; }
+
+.rankings-list { display: flex; flex-direction: column; gap: 6px; }
+.rankings-list-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px;
+    padding: 6px 8px;
+    cursor: pointer;
+}
+.rankings-list-row:active { background: rgba(255,255,255,0.08); }
+.rankings-list-rank { width: 18px; text-align: center; font-size: 12px; font-weight: 800; color: #9ca3af; flex-shrink: 0; }
+.rankings-list-cover { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.rankings-list-name { font-size: 12px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rankings-list-host { font-size: 10px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rankings-list-followers { font-size: 10.5px; font-weight: 700; color: #f472b6; flex-shrink: 0; }
+.rankings-list-followers i { margin-inline-end: 2px; }
+
 /* ✅ نافذة إعدادات الغرفة المُعاد هيكلتها — أقسام مُجمَّعة بعناوين صغيرة بدل قائمة مسطّحة طويلة */
 .room-settings-section { display: flex; flex-direction: column; gap: 8px; }
 /* 🐛 إصلاح: بلا هذا السطر، .hidden (تعريفها بأول الملف ضمن @tailwind utilities) تُهزَم أمام
@@ -918,6 +1078,16 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     box-shadow: 0 0 10px rgba(251,191,36,0.5);
 }
 .room-settings-level-badge { font-size: 13px; padding: 4px 11px; }
+/* ✅ نسخة مصغّرة من الشارة تحديداً بجانب آيدي الغرفة برأس الصفحة — الشارة الأصلية كانت
+   كبيرة نسبياً لمساحة ضيقة جداً بجانب "ID: xxxx"؛ هذي أصغر وأكثر تناسقاً بنفس التدرّج اللوني */
+#room-info-level-badge.room-level-badge {
+    font-size: 8.5px;
+    font-weight: 700;
+    padding: 1.5px 6px;
+    gap: 2px;
+    letter-spacing: 0.2px;
+}
+#room-info-level-badge.room-level-badge i { font-size: 7.5px; }
 
 /* ✅ زر (ⓘ) صغير بجانب "قفل الغرفة" — يشرح فائدة الخيار بنقرة بدل الحاجة لتخمينه */
 .room-settings-info-btn {
@@ -932,6 +1102,41 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     flex-shrink: 0;
 }
 .room-settings-info-btn:hover { background: rgba(255,255,255,0.22); }
+
+/* ✅ شرائح كلمات الحظر — عرض واضح لما تم حفظه فعلياً مع إمكانية حذف كل كلمة بنقرة، بدل
+   حقل نصي خام كانت الكلمات المحفوظة "تختفي" بصرياً داخله ويُظن أنها لم تُحفظ */
+.banned-words-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+    min-height: 20px;
+}
+.banned-word-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(239,68,68,0.14);
+    color: #fca5a5;
+    border: 1px solid rgba(239,68,68,0.25);
+    border-radius: 999px;
+    padding: 3px 6px 3px 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.banned-word-chip-remove {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: rgba(239,68,68,0.25);
+    color: #fee2e2;
+    font-size: 12px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.banned-word-chip-remove:hover { background: rgba(239,68,68,0.45); }
 
 /* ✅ شريحة اختيار عدد المقاعد — 3 خيارات جنباً لجنب، تُقفَل بصرياً (أيقونة قفل + المستوى
    المطلوب) لو لم تُفتح بعد بمستوى الغرفة الحالي، والخيار الحالي يُبرَز بحدود بنفسجية */
@@ -1730,68 +1935,159 @@ body.in-voice-room #main-content {
    ===================================================== */
 .seat-challenge-bar {
     position: relative; /* ✅ يُثبّت شعلات النار (position:absolute) بالنسبة للشريط نفسه، فوق التعبئة المقصوصة مباشرة */
-    background: linear-gradient(135deg, rgba(30,58,138,0.35), rgba(127,29,29,0.35));
-    border: 1px solid rgba(139,92,246,0.35);
-    border-radius: 12px;
-    padding: 8px 10px;
+    background: linear-gradient(160deg, rgba(17,24,39,0.92), rgba(30,20,55,0.92));
+    border: 1px solid transparent;
+    background-clip: padding-box;
+    border-radius: 16px;
+    padding: 9px 12px 10px;
     margin-bottom: 10px;
     overflow: visible;
+    box-shadow:
+        0 0 0 1px rgba(168,85,247,0.35),
+        0 4px 18px rgba(0,0,0,0.35),
+        inset 0 1px 0 rgba(255,255,255,0.05);
 }
-.seat-challenge-row { display: flex; align-items: center; gap: 8px; }
+/* ✅ بطاقة رأس صغيرة أعلى الشريط — شارة "مباشر" نابضة + عدّاد وقت بشكل كبسولة مستقلة بدل
+   سطر نص باهت أسفل الشريط (يعطي إحساساً أقوى "بحدث حي" لا مجرد عداد رقمي) */
+.seat-challenge-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 7px;
+}
+.seat-challenge-live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 800;
+    color: #f5d0fe;
+    letter-spacing: 0.03em;
+}
+.seat-challenge-live-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #f43f5e;
+    box-shadow: 0 0 6px 1px rgba(244,63,94,0.9);
+    animation: seatChallengeLiveDotPulse 1s ease-in-out infinite;
+}
+@keyframes seatChallengeLiveDotPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+}
+.seat-challenge-timer-pill {
+    font-size: 10.5px;
+    font-weight: 800;
+    color: #e9d5ff;
+    background: rgba(168,85,247,0.18);
+    border: 1px solid rgba(168,85,247,0.4);
+    border-radius: 999px;
+    padding: 2px 9px;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+}
+.seat-challenge-row { display: flex; align-items: center; gap: 7px; }
+.seat-challenge-side {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+}
+.seat-challenge-side-b { flex-direction: row-reverse; }
 .seat-challenge-team {
     display: flex;
-    gap: 3px;
-    flex-shrink: 0;
     position: relative;
 }
+.seat-challenge-team .seat-challenge-avatar:not(:first-child) { margin-inline-start: -9px; }
 .seat-challenge-team-b { flex-direction: row-reverse; }
+.seat-challenge-team-b .seat-challenge-avatar:not(:first-child) { margin-inline-start: 0; margin-inline-end: -9px; }
+/* ✅ عناقيد صور متراكبة بحلقة توهّج بلون الفريق (أسلوب "team roster" بتطبيقات البث الشهيرة) —
+   أوضح بكثير من صفّ صور متباعدة بسيطة، ويبرز هوية كل فريق بنظرة واحدة */
 .seat-challenge-avatar {
-    width: 26px; height: 26px;
+    width: 27px; height: 27px;
     border-radius: 50%;
     object-fit: cover;
-    border: 1.5px solid rgba(255,255,255,0.25);
+    border: 2px solid #1a1730;
+    box-shadow: 0 0 0 1.5px rgba(59,130,246,0.75);
+}
+.seat-challenge-team-b .seat-challenge-avatar { box-shadow: 0 0 0 1.5px rgba(239,68,68,0.75); }
+.seat-challenge-score {
+    font-size: 13px;
+    font-weight: 900;
+    color: #93c5fd;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    min-width: 16px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.seat-challenge-score-b { color: #fca5a5; }
+.seat-challenge-progress-wrap {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
 }
 .seat-challenge-progress {
     flex: 1;
     position: relative;
-    height: 20px;
+    height: 16px;
     border-radius: 9999px;
     overflow: hidden;
-    background: rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.06);
     display: flex;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.4);
 }
-.seat-challenge-fill-a { background: linear-gradient(90deg,#3b82f6,#06b6d4); transition: width 0.4s ease; }
-.seat-challenge-fill-b { background: linear-gradient(90deg,#ef4444,#f97316); transition: width 0.4s ease; }
+.seat-challenge-fill-a {
+    background: linear-gradient(90deg,#2563eb,#3b82f6,#22d3ee);
+    transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+    position: relative;
+}
+.seat-challenge-fill-b {
+    background: linear-gradient(90deg,#f97316,#ef4444,#dc2626);
+    transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+    position: relative;
+}
+/* ✅ لمعة انسيابية متحركة فوق كل تعبئة بثبات (وليس فقط عند التصدّر) — تعطي الشريط "حياة"
+   بصرية دائمة بدل تدرّج لوني ثابت جامد */
+.seat-challenge-fill-a::after,
+.seat-challenge-fill-b::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+    background-size: 60px 100%;
+    animation: seatChallengeShine 2.2s linear infinite;
+}
+@keyframes seatChallengeShine {
+    0% { background-position: -80px 0; }
+    100% { background-position: 220px 0; }
+}
 .seat-challenge-divider {
     position: absolute;
-    top: 2px; bottom: 2px; left: 50%;
+    top: 1px; bottom: 1px; left: 50%;
     width: 2px;
-    background: rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.55);
     transform: translateX(-50%);
     border-radius: 2px;
+    z-index: 3;
 }
-.seat-challenge-score-a, .seat-challenge-score-b {
-    position: absolute;
-    top: 50%; transform: translateY(-50%);
-    font-size: 10px; font-weight: 800; color: #fff;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
-}
-.seat-challenge-score-a { left: 8px; }
-.seat-challenge-score-b { right: 8px; }
-.seat-challenge-vs {
+/* ✅ شارة VS دائرية بحلقة تدرّج فوق نقطة الفاصل تماماً — بديل احترافي لأيقونة نار صغيرة عائمة،
+   أسلوب "center emblem" المعتمد بشرائط تحدي التطبيقات الشهيرة */
+.seat-challenge-vs-badge {
     position: absolute;
     left: 50%; top: 50%;
     transform: translate(-50%, -50%);
-    font-size: 10px;
-    color: #fde047;
-}
-.seat-challenge-timer {
-    text-align: center;
-    font-size: 11px;
-    font-weight: 700;
-    color: #c4b5fd;
-    margin-top: 4px;
-    letter-spacing: 0.05em;
+    z-index: 4;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8.5px;
+    font-weight: 900;
+    color: #fff;
+    background: linear-gradient(135deg,#a855f7,#ec4899);
+    box-shadow: 0 0 0 3px #1a1730, 0 0 10px 1px rgba(236,72,153,0.6);
 }
 
 /* ✅ شعلات نار DOM حقيقية (تُولَّد من JS، انظر startSeatChallengeFireEffect بـapp.js) —
@@ -2242,6 +2538,226 @@ body.in-voice-room #main-content {
 .cd-spinning {
     animation: cdSpin 3s linear infinite;
     color: #34d399 !important;
+}
+
+/* =====================================================
+   ✅ الصفحة الرئيسية (تصفح الغرف — تبويب "الرئيسية" بالتنقّل) — إعادة هيكلة كاملة: رأس مضغوط
+   بزر اختصار لمنصّة الصدارة، شريط بحث/فرز موحَّد، بطاقات أكثر اكتناز بمعلومات أوضح (مستوى/متابعين)
+   ===================================================== */
+.arena-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.arena-header-title {
+    font-size: 17px;
+    font-weight: 800;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.arena-header-title i { color: #a855f7; }
+.arena-header-sub { font-size: 11px; color: #9ca3af; margin-top: 1px; }
+.arena-rankings-shortcut {
+    flex-shrink: 0;
+    width: 38px; height: 38px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(251,191,36,0.16), rgba(168,85,247,0.16));
+    border: 1px solid rgba(251,191,36,0.35);
+    color: #fbbf24;
+    font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+}
+.arena-rankings-shortcut:hover { background: linear-gradient(135deg, rgba(251,191,36,0.26), rgba(168,85,247,0.26)); }
+
+.arena-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+.arena-search-box {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+.arena-search-box i {
+    position: absolute;
+    right: 12px;
+    color: #6b7280;
+    font-size: 12px;
+    pointer-events: none;
+}
+.arena-search-box input {
+    width: 100%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 999px;
+    padding: 9px 34px 9px 14px;
+    font-size: 12.5px;
+    color: #f3f4f6;
+}
+.arena-search-box input:focus { border-color: rgba(168,85,247,0.5); background: rgba(255,255,255,0.09); }
+.arena-search-box input::placeholder { color: #6b7280; }
+.arena-sort-tabs {
+    flex-shrink: 0;
+    display: flex;
+    gap: 4px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 999px;
+    padding: 3px;
+}
+.room-sort-tab {
+    font-size: 11px;
+    font-weight: 700;
+    color: #9ca3af;
+    padding: 6px 11px;
+    border-radius: 999px;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.room-sort-tab.active { background: #7c3aed; color: #fff; }
+
+.arena-room-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    padding-bottom: 96px;
+}
+@media (min-width: 768px) {
+    .arena-room-grid { grid-template-columns: repeat(4, 1fr); padding-bottom: 20px; }
+}
+.arena-room-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.arena-room-card:hover { border-color: rgba(168,85,247,0.4); transform: translateY(-2px); }
+.arena-card-cover-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: linear-gradient(160deg, rgba(88,28,135,0.35), rgba(17,24,39,0.6));
+}
+.arena-card-cover-img { width: 100%; height: 100%; object-fit: cover; }
+.arena-card-cover-placeholder {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+    color: rgba(196,181,253,0.4);
+}
+.arena-card-tag {
+    position: absolute;
+    top: 6px; right: 6px;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+.arena-card-tag-official { background: #f59e0b; color: #1a1200; }
+.arena-card-tag-private {
+    background: rgba(17,24,39,0.8);
+    color: #e5e7eb;
+    width: 19px; height: 19px;
+    padding: 0;
+    justify-content: center;
+}
+.arena-card-level {
+    position: absolute;
+    top: 6px; left: 6px;
+    font-size: 8px !important;
+    padding: 1.5px 6px !important;
+}
+.arena-card-id-tag {
+    position: absolute;
+    bottom: 5px; left: 5px;
+    background: rgba(17,24,39,0.75);
+    color: #d1d5db;
+    font-size: 8.5px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 999px;
+}
+.arena-card-hot-tag {
+    position: absolute;
+    bottom: 5px; right: 5px;
+    font-size: 13px;
+    filter: drop-shadow(0 0 4px rgba(251,146,60,0.8));
+}
+.arena-card-body { padding: 8px 9px 9px; }
+.arena-card-name {
+    font-size: 12.5px;
+    font-weight: 800;
+    color: #f3f4f6;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.arena-card-host-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 4px;
+    min-width: 0;
+}
+.arena-card-host-img { width: 15px; height: 15px; border-radius: 50%; flex-shrink: 0; object-fit: cover; }
+.arena-card-host-name { font-size: 10px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arena-card-stats-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 6px;
+}
+.arena-card-occupancy { font-size: 10.5px; color: #c4b5fd; font-weight: 700; }
+.arena-card-followers { font-size: 10px; color: #f472b6; font-weight: 700; }
+.arena-card-followers i { margin-inline-end: 2px; }
+
+.arena-empty-state {
+    text-align: center;
+    color: #6b7280;
+    padding: 50px 20px;
+}
+.arena-empty-state i { font-size: 30px; margin-bottom: 8px; display: block; opacity: 0.6; }
+.arena-empty-state p { font-size: 13px; }
+
+.arena-create-fab {
+    position: fixed;
+    bottom: 80px; right: 16px;
+    z-index: 40;
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #9333ea, #7c3aed);
+    box-shadow: 0 6px 20px rgba(124,58,237,0.5);
+    color: #fff;
+    font-size: 19px;
+    display: flex; align-items: center; justify-content: center;
+}
+.arena-create-fab:active { transform: scale(0.9); }
+@media (min-width: 768px) { .arena-create-fab { bottom: 24px; right: 32px; } }
+
+/* ✅ بطاقات هيكلية (skeleton) أثناء تحميل القائمة */
+.arena-room-card-skeleton { cursor: default; }
+.arena-skeleton-block { background: rgba(255,255,255,0.06); animation: arenaSkeletonPulse 1.3s ease-in-out infinite; }
+.arena-skeleton-line {
+    height: 9px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.08);
+    animation: arenaSkeletonPulse 1.3s ease-in-out infinite;
+}
+@keyframes arenaSkeletonPulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
 }
 
 

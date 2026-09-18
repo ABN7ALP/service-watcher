@@ -147,6 +147,10 @@
     <div id="notification-container" class="fixed top-5 right-5 z-50 space-y-2"></div>
 
         <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <!-- ✅ مكتبة قصاصات ورقية خفيفة (~6kb) للاحتفالات البصرية (فوز التحدي/الترقية)؛ اختياريّة
+         تماماً — الكود بـapp.js يتحقّق من وجود window.confetti قبل استخدامها فلا يتأثر شيء
+         لو تعذّر تحميلها لأي سبب (لا اتصال، حاجب إعلانات...) -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js" defer></script>
     <script src="/js/app.js"></script>
     <div id="game-container"></div>
     <script src="/js/register-sw.js"></script>

@@ -484,12 +484,30 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentVoiceRoomId = null; // ✅ أي غرفة معروضة بالشاشة الآن (قد تختلف عن مكان جلوسي لو كنت أتصفح فقط)
     let myIsMuted = false;         // ✅ حالة كتمي الحقيقية (زر الكتم انتقل لقائمة "المزيد")
     let roomAudioMuted = false;    // ✅ كتم شخصي محلي بحت لكل صوت الغرفة (موسيقى + متحدثون) — لا يؤثر على أحد غيري
+    // 🐛 إصلاح جوهري: الكتم (سواء الذاتي أو كتم المضيف لأحد) كان يعتمد بالكامل على أن جهاز
+    // المتحدث نفسه يُعطّل مساره الصادر (track.enabled) — بروتوكول WebRTC نظير-لنظير هنا بلا
+    // خادم وسائط مركزي، فلا توجد طريقة "تفرض" الكتم من بعيد. أي تأخّر/تعثّر بوصول أو تنفيذ
+    // حدث الكتم عند جهاز المتحدث نفسه (اتصال بطيء، تبويب بالخلفية...) يعني بقاء صوته مسموعاً
+    // فعلياً لبقية الحاضرين رغم ظهوره "مكتوماً" بصرياً عندهم. الحل: كل طرف مُستقبِل يُطبّق
+    // الكتم بنفسه أيضاً على عنصر الصوت المستقبَل من ذاك الشخص تحديداً — طبقة حماية مستقلة
+    // لا تعتمد على جهاز الطرف الآخر إطلاقاً، تضمن الكتم الفعلي حتى لو فشلت الطبقة الأولى
+    const seatMutedUsers = new Set(); // userId(string) → مكتوم حالياً (مقعده)، بحسب آخر حالة وصلت
+
+    // ✅ يُطبَّق دائماً بدل ضبط .muted مباشرة — يجمع بين كتمي الشخصي الشامل للغرفة وكتم
+    // ذاك الشخص تحديداً (بمقعده)، فلا يُلغي أحدهما الآخر بالخطأ عند تبديل أيّهما
+    function applyPeerAudioMuteState(userId) {
+        const audioEl = document.getElementById(`voice-peer-audio-${userId}`);
+        if (audioEl) audioEl.muted = roomAudioMuted || seatMutedUsers.has(userId);
+    }
 
     // ✅ كتم/فتح كل مصادر الصوت المحلية دفعة واحدة (عنصر الموسيقى + عناصر صوت المتحدثين الحيّة)
     function applyRoomAudioMuteState() {
         const musicAudio = document.getElementById('room-music-audio');
         if (musicAudio) musicAudio.muted = roomAudioMuted;
-        document.querySelectorAll('.voice-peer-audio').forEach(el => { el.muted = roomAudioMuted; });
+        document.querySelectorAll('.voice-peer-audio').forEach(el => {
+            const userId = el.id.replace('voice-peer-audio-', '');
+            applyPeerAudioMuteState(userId);
+        });
     }
     function toggleRoomAudioMute() {
         roomAudioMuted = !roomAudioMuted;
@@ -1973,36 +1991,53 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const hostName = room.host ? room.host.username : 'الإدارة';
         const hostImg = room.host ? room.host.profileImage : 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
         const badge = room.isOfficial
-            ? '<span class="absolute top-2 right-2 bg-amber-500 text-gray-900 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><i class="fas fa-crown"></i>رسمية</span>'
-            : (room.isPrivate ? '<span class="absolute top-2 right-2 bg-gray-900/80 text-gray-200 text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center"><i class="fas fa-lock"></i></span>' : '');
+            ? '<span class="arena-card-tag arena-card-tag-official"><i class="fas fa-crown"></i> رسمية</span>'
+            : (room.isPrivate ? '<span class="arena-card-tag arena-card-tag-private"><i class="fas fa-lock"></i></span>' : '');
         const cover = room.coverImage
-            ? `<img src="${room.coverImage}" class="w-full h-full object-cover">`
-            : `<div class="w-full h-full flex items-center justify-center text-3xl text-purple-300/40"><i class="fas fa-microphone-lines"></i></div>`;
+            ? `<img src="${room.coverImage}" class="arena-card-cover-img">`
+            : `<div class="arena-card-cover-placeholder"><i class="fas fa-microphone-lines"></i></div>`;
         const isHot = room.occupied >= Math.max(4, room.seatCount * 0.5);
+        const levelBadge = (!room.isOfficial && room.level) ? `<span class="arena-card-level room-level-badge room-level-badge-${room.level}">Lv.${room.level}</span>` : '';
 
         const card = document.createElement('div');
-        card.className = 'room-card bg-gray-700/50 rounded-xl overflow-hidden cursor-pointer hover:ring-2 hover:ring-purple-500 hover:-translate-y-0.5 transition-all';
+        card.className = 'arena-room-card';
         card.dataset.roomId = room.id;
         card.innerHTML = `
-            <div class="relative w-full aspect-video bg-gradient-to-br from-purple-900/40 to-gray-800">
+            <div class="arena-card-cover-wrap">
                 ${cover}
                 ${badge}
-                ${room.roomCode ? `<span class="absolute bottom-1.5 left-1.5 bg-black/60 text-gray-200 text-[9px] font-bold px-1.5 py-0.5 rounded-full">ID: ${room.roomCode}</span>` : ''}
+                ${levelBadge}
+                ${room.roomCode ? `<span class="arena-card-id-tag">ID: ${room.roomCode}</span>` : ''}
+                ${isHot ? '<span class="arena-card-hot-tag">🔥</span>' : ''}
             </div>
-            <div class="p-2.5">
-                <p class="font-bold text-sm truncate">${escapeHtml(room.name)}</p>
-                <div class="flex items-center gap-1.5 mt-1 min-w-0">
-                    <img src="${hostImg}" class="w-4 h-4 rounded-full flex-shrink-0">
-                    <span class="text-[11px] text-gray-400 truncate">${escapeHtml(hostName)}</span>
+            <div class="arena-card-body">
+                <p class="arena-card-name">${escapeHtml(room.name)}</p>
+                <div class="arena-card-host-row">
+                    <img src="${hostImg}" class="arena-card-host-img">
+                    <span class="arena-card-host-name">${escapeHtml(hostName)}</span>
                 </div>
-                <div class="flex items-center justify-between mt-2">
-                    <span class="text-[11px] text-purple-300"><i class="fas fa-headphones"></i> ${room.occupied}/${room.seatCount}</span>
-                    ${isHot ? '<span class="text-[10px] text-orange-400">🔥 نشطة</span>' : ''}
+                <div class="arena-card-stats-row">
+                    <span class="arena-card-occupancy"><i class="fas fa-headphones"></i> ${room.occupied}/${room.seatCount}</span>
+                    ${room.followersCount > 0 ? `<span class="arena-card-followers"><i class="fas fa-heart"></i> ${room.followersCount}</span>` : ''}
                 </div>
             </div>
         `;
         card.addEventListener('click', () => enterVoiceRoom(room));
         return card;
+    }
+
+    // ✅ بطاقات هيكلية (skeleton) بمكان القائمة أثناء التحميل — إحساس أسرع وأكثر احترافية
+    // من شبكة فارغة تماماً حتى وصول الرد
+    function renderRoomCardSkeletons(count = 8) {
+        return Array.from({ length: count }, () => `
+            <div class="arena-room-card arena-room-card-skeleton">
+                <div class="arena-card-cover-wrap arena-skeleton-block"></div>
+                <div class="arena-card-body">
+                    <div class="arena-skeleton-line" style="width:70%"></div>
+                    <div class="arena-skeleton-line" style="width:45%; margin-top:6px;"></div>
+                </div>
+            </div>
+        `).join('');
     }
 
     // ✅ التصفح الكامل: يغادر أي غرفة كنت بها فعلياً (يُلغي الاشتراك بقناتها، يوقف موسيقاها)
@@ -2020,22 +2055,36 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // أي إن "التصغير" كان فعلياً يقطع كل شيء (الصوت، الدردشة، تحديثات الهدايا) بدل إبقائها
     // تعمل بالخلفية كما هو مقصود منه تماماً. الآن رسم واجهة التصفح مفصول تماماً عن مغادرة
     // الغرفة فعلياً — التصغير يستدعي هذي الدالة مباشرة بلا أي تصفير لحالة الغرفة
+    // ✅ إعادة هيكلة الصفحة الرئيسية (شاشة "الرئيسية" بالتنقّل — تصفح الغرف): رأس مضغوط بزر
+    // اختصار مباشر لمنصّة الصدارة، شريط بحث/فرز موحَّد، بطاقات أكثر اكتناز (شارة مستوى +
+    // متابعين + سخونة)، وهياكل تحميل (skeletons) بدل شبكة فارغة أثناء الجلب
     function renderRoomBrowserContent() {
         mainContent.innerHTML = `
-            <div class="flex justify-between items-center mb-3">
-                <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
+            <div class="arena-header">
+                <div class="min-w-0">
+                    <h2 class="arena-header-title"><i class="fas fa-microphone-lines"></i> غرف الدردشة الصوتية</h2>
+                    <p class="arena-header-sub">انضم لغرفة الآن أو أنشئ غرفتك الخاصة</p>
+                </div>
+                <button id="arena-rankings-shortcut" class="arena-rankings-shortcut" title="غرف الصدارة">
+                    <i class="fas fa-trophy"></i>
+                </button>
             </div>
-            <div class="relative mb-3">
-                <input id="room-search-input" type="text" placeholder="ابحث بالاسم أو آيدي الغرفة..." class="w-full bg-gray-700/50 border border-gray-600 rounded-lg p-2 pr-9 text-sm focus:ring-purple-500 focus:border-purple-500">
-                <i class="fas fa-search absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+            <div class="arena-toolbar">
+                <div class="arena-search-box">
+                    <i class="fas fa-search"></i>
+                    <input id="room-search-input" type="text" placeholder="ابحث بالاسم أو آيدي الغرفة...">
+                </div>
+                <div class="arena-sort-tabs">
+                    <button class="room-sort-tab active" data-sort="newest">الأحدث</button>
+                    <button class="room-sort-tab" data-sort="active">الأكثر نشاطاً</button>
+                </div>
             </div>
-            <div class="flex gap-2 mb-4">
-                <button class="room-sort-tab bg-purple-600 text-white text-xs font-bold px-3 py-1.5 rounded-full transition-colors" data-sort="newest">الأحدث</button>
-                <button class="room-sort-tab bg-gray-700/50 text-gray-300 text-xs font-bold px-3 py-1.5 rounded-full transition-colors" data-sort="active">الأكثر نشاطاً</button>
+            <div id="room-list-grid" class="arena-room-grid">${renderRoomCardSkeletons()}</div>
+            <div id="room-list-empty" class="hidden arena-empty-state">
+                <i class="fas fa-microphone-slash"></i>
+                <p>لا توجد غرف مطابقة حالياً</p>
             </div>
-            <div id="room-list-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3 pb-24 md:pb-2"></div>
-            <div id="room-list-empty" class="hidden text-center text-gray-400 text-sm py-10">لا توجد غرف مطابقة حالياً</div>
-            <button id="create-room-fab" class="fixed bottom-20 md:bottom-6 right-4 md:right-8 z-40 w-14 h-14 rounded-full bg-purple-600 hover:bg-purple-700 shadow-2xl flex items-center justify-center text-white text-xl active:scale-90 transition-transform" title="إنشاء غرفة جديدة">
+            <button id="create-room-fab" class="arena-create-fab" title="إنشاء غرفة جديدة">
                 <i class="fas fa-plus"></i>
             </button>
         `;
@@ -2069,14 +2118,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         mainContent.querySelectorAll('.room-sort-tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 currentSort = tab.dataset.sort;
-                mainContent.querySelectorAll('.room-sort-tab').forEach(t => {
-                    t.classList.remove('bg-purple-600', 'text-white');
-                    t.classList.add('bg-gray-700/50', 'text-gray-300');
-                });
-                tab.classList.remove('bg-gray-700/50', 'text-gray-300');
-                tab.classList.add('bg-purple-600', 'text-white');
+                mainContent.querySelectorAll('.room-sort-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
                 loadRooms();
             });
+        });
+
+        document.getElementById('arena-rankings-shortcut').addEventListener('click', () => {
+            showRoomRankingsModal();
         });
 
         // ✅ أيقونة الإنشاء: عنده غرفة بالفعل → تدخله لها مباشرة (غرفة واحدة فقط لكل مستخدم)
@@ -2446,10 +2495,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                             <p class="room-info-stat-label">متابع</p>
                         </div>
                         <div class="room-info-stat-box">
-                            <p class="room-info-stat-num text-amber-400">Lv.1</p>
-                            <p class="room-info-stat-label">لفل الغرفة (قريباً)</p>
+                            <p class="room-info-stat-num text-amber-400">${currentRoomLevel !== null ? `Lv.${currentRoomLevel}` : '—'}</p>
+                            <p class="room-info-stat-label">مستوى الغرفة</p>
                         </div>
                     </div>
+                    ${currentRoomLevel !== null ? `
+                        <button id="room-info-rankings-btn" class="room-info-rankings-btn mt-2">
+                            <i class="fas fa-trophy"></i> غرف الصدارة — شاهد ترتيب أقوى الغرف
+                        </button>
+                    ` : ''}
                     <button id="room-info-card-follow-btn" class="follow-room-btn js-room-follow-btn w-full justify-center mt-4" data-following="${currentRoomIsFollowing ? '1' : '0'}">
                         ${currentRoomIsFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة'}
                     </button>
@@ -2460,6 +2514,111 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         modal.addEventListener('click', (e) => { if (e.target.id === 'room-info-card') modal.remove(); });
         modal.querySelector('#room-info-card-follow-btn').addEventListener('click', () => {
             socket.emit(currentRoomIsFollowing ? 'unfollow-room' : 'follow-room', { roomId: room.id });
+        });
+        modal.querySelector('#room-info-rankings-btn')?.addEventListener('click', () => {
+            showRoomRankingsModal();
+        });
+    }
+
+    // ✅ منصّة تتويج أقوى 10 غرف — الأول أعلى بالمنتصف، الثاني والثالث بجانبيه، وباقي الغرف
+    // بقائمة مرتبة أسفلهم. الترتيب بأكبر عدد متابعين + نقاط دعم معاً (يحسبه السيرفر)
+    async function showRoomRankingsModal() {
+        document.getElementById('room-rankings-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'room-rankings-modal';
+        modal.className = 'fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-[70] p-3';
+        modal.innerHTML = `
+            <div class="room-rankings-sheet w-full md:max-w-md text-white">
+                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
+                <div class="room-rankings-header">
+                    <p class="room-rankings-title"><i class="fas fa-trophy text-amber-400"></i> غرف الصدارة</p>
+                    <button id="close-room-rankings" class="room-rankings-close-btn"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="room-rankings-body" class="room-rankings-body">
+                    <div class="text-center py-10 text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'room-rankings-modal') modal.remove(); });
+        modal.querySelector('#close-room-rankings').addEventListener('click', () => modal.remove());
+
+        try {
+            const response = await fetch('/api/voice-room/rankings', { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            const body = modal.querySelector('#room-rankings-body');
+            if (!body) return;
+            const rooms = (response.ok && result.rooms) ? result.rooms : [];
+            if (rooms.length === 0) {
+                body.innerHTML = '<p class="text-center text-gray-400 text-sm py-10">لا توجد غرف متصدّرة بعد — كن أول من يتصدّر! 🏆</p>';
+                return;
+            }
+            renderRoomRankingsBody(body, rooms);
+        } catch (error) {
+            const body = modal.querySelector('#room-rankings-body');
+            if (body) body.innerHTML = '<p class="text-center text-red-400 text-sm py-10">تعذر تحميل الترتيب، حاول مجدداً</p>';
+        }
+    }
+
+    function renderRoomRankingsBody(body, rooms) {
+        const podium = rooms.slice(0, 3);
+        const rest = rooms.slice(3);
+        const podiumCard = (r, rank) => r ? `
+            <div class="rankings-podium-card rankings-podium-rank-${rank}" data-room-id="${r.id}">
+                <div class="rankings-podium-crown">${rank === 1 ? '👑' : rank === 2 ? '🥈' : '🥉'}</div>
+                <img src="${r.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="rankings-podium-cover">
+                <p class="rankings-podium-name">${escapeHtml(r.name)}</p>
+                <p class="rankings-podium-host">${escapeHtml(r.host?.username || '—')}</p>
+                <div class="rankings-podium-stats">
+                    <span><i class="fas fa-heart"></i> ${r.followersCount}</span>
+                    <span><i class="fas fa-star"></i> Lv.${r.level}</span>
+                </div>
+                <div class="rankings-podium-pedestal">${rank}</div>
+            </div>
+        ` : '<div class="rankings-podium-card rankings-podium-empty"></div>';
+
+        body.innerHTML = `
+            <div class="rankings-podium-row">
+                ${podiumCard(podium[1], 2)}
+                ${podiumCard(podium[0], 1)}
+                ${podiumCard(podium[2], 3)}
+            </div>
+            ${rest.length > 0 ? `
+                <div class="rankings-list">
+                    ${rest.map((r, i) => `
+                        <div class="rankings-list-row" data-room-id="${r.id}">
+                            <span class="rankings-list-rank">${i + 4}</span>
+                            <img src="${r.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="rankings-list-cover">
+                            <div class="min-w-0 flex-1">
+                                <p class="rankings-list-name">${escapeHtml(r.name)}</p>
+                                <p class="rankings-list-host">${escapeHtml(r.host?.username || '—')}</p>
+                            </div>
+                            <span class="rankings-list-followers"><i class="fas fa-heart"></i> ${r.followersCount}</span>
+                            <span class="room-level-badge room-level-badge-${r.level}">Lv.${r.level}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : ''}
+        `;
+
+        body.querySelectorAll('[data-room-id]').forEach(el => {
+            el.addEventListener('click', () => {
+                const roomId = el.dataset.roomId;
+                const room = rooms.find(r => r.id === roomId);
+                if (!room) return;
+                document.getElementById('room-rankings-modal')?.remove();
+                document.getElementById('room-info-card')?.remove();
+                // 🐛 إصلاح: فتح منصّة الصدارة من داخل غرفة أخرى ثم الدخول لغرفة مختلفة كان يتخطّى
+                // تنظيف الغرفة الحالية (قناة دردشتها + شبكة صوتها) — بخلاف مسار "مغادرة حقيقية"
+                // المُستخدَم بكل مكان آخر (انظر showRoomBrowserView)، فتبقى اتصالات WebRTC قديمة
+                // معلّقة بالخلفية وأنا فعلياً بغرفة جديدة. نفس التنظيف هنا قبل الدخول مباشرة
+                if (currentVoiceRoomId && currentVoiceRoomId !== room.id) {
+                    leaveRoomChatUI();
+                    exitFullscreenRoomMode();
+                    teardownAllVoicePeers();
+                }
+                enterVoiceRoom({ id: room.id, name: room.name, coverImage: room.coverImage, isOfficial: false, isPrivate: room.isPrivate });
+            });
         });
     }
 
@@ -2974,6 +3133,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 if (seatData.user && seatData.user.id === myUserId) {
                     foundSeat = seatData.seatNumber;
                 }
+                // 🐛 إصلاح: من كان مكتوماً أصلاً قبل انضمامي (لقطة حالة، لا حدث حي) يجب أن يبقى
+                // مكتوماً بصوت مستقبَل عندي أيضاً فور اتصالي به — بدون هذا كان يُسمَع لحظياً
+                // حتى يصل حدث كتم جديد لاحقاً (راجع seatMutedUsers/applyPeerAudioMuteState)
+                if (seatData.user) {
+                    if (seatData.isMuted) seatMutedUsers.add(seatData.user.id); else seatMutedUsers.delete(seatData.user.id);
+                    applyPeerAudioMuteState(seatData.user.id);
+                }
             });
 
             if (foundSeat !== null) {
@@ -3053,8 +3219,25 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     // ✅ احتفال بصري قصير عند ارتقاء مستوى الغرفة — يظهر للجميع بالغرفة بنفس اللحظة (بطاقة
     // متوهجة بمنتصف الشاشة + شرر نجوم متطاير، تختفي تلقائياً بلا حاجة لأي تفاعل من المستخدم)
+    // ✅ انفجار قصاصات ورقية حقيقي (فيزياء جاذبية/دوران) عبر مكتبة canvas-confetti إن نجح
+    // تحميلها من الـCDN — طبقة احتفال إضافية فوق تأثيرات CSS الموجودة، بلا أي اعتماد صلب
+    // عليها: لو فشل تحميل المكتبة (لا اتصال، حاجب إعلانات) يبقى كل شيء يعمل طبيعياً بدونها
+    function fireConfettiBurst(colors) {
+        if (typeof confetti !== 'function') return;
+        try {
+            confetti({
+                particleCount: 90,
+                spread: 75,
+                startVelocity: 38,
+                origin: { y: 0.6 },
+                colors: colors || ['#a855f7', '#ec4899', '#fbbf24', '#3b82f6']
+            });
+        } catch (e) { /* لا شيء — تأثير بصري اختياري فقط */ }
+    }
+
     function celebrateRoomLevelUp(newLevel) {
         document.getElementById('room-levelup-celebration')?.remove();
+        fireConfettiBurst(['#fbbf24', '#f59e0b', '#a855f7']);
         const el = document.createElement('div');
         el.id = 'room-levelup-celebration';
         el.className = 'room-levelup-celebration';
@@ -3110,7 +3293,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
                 <form id="room-settings-form" class="space-y-3 mt-3">
                     <div class="space-y-2">
-                        <input type="text" name="name" value="${escapeHtml(room.name)}" maxlength="40" required placeholder="اسم الغرفة" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
+                        <input type="text" name="name" value="${escapeHtml(room.name)}" maxlength="22" required placeholder="اسم الغرفة" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
                         <input type="text" name="description" value="${escapeHtml(currentRoomDescription || '')}" maxlength="120" placeholder="إعلان الغرفة (اختياري)" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
                     </div>
 
@@ -3126,7 +3309,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         <div class="flex items-center justify-between bg-gray-700/40 rounded-lg p-2.5 mt-2">
                             <span class="text-xs flex items-center gap-2">
                                 <i class="fas fa-lock text-amber-400"></i> قفل الغرفة
-                                <button type="button" id="lock-room-info-btn" class="room-settings-info-btn" title="ما فائدة هذا الخيار؟"><i class="fas fa-question"></i></button>
                             </span>
                             <input type="checkbox" id="settings-isLocked" ${currentRoomIsLocked ? 'checked' : ''} class="w-4 h-4 rounded">
                         </div>
@@ -3172,8 +3354,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
                     <div class="room-settings-section">
                         <p class="room-settings-section-title">كلمات محظورة إضافية <span class="text-gray-500">— مساعدة للفلتر العام</span></p>
-                        <textarea name="bannedWordsText" rows="2" maxlength="1500" placeholder="افصل كل كلمة بفاصلة أو سطر جديد..." class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">${escapeHtml(currentRoomBannedWords.join(', '))}</textarea>
-                        <p class="text-[10px] text-gray-500">هذي الكلمات لن تظهر بدردشة غرفتك إطلاقاً، بالإضافة للفلتر العام</p>
+                        <div id="banned-words-chips" class="banned-words-chips"></div>
+                        <input type="text" id="banned-word-input" maxlength="30" placeholder="اكتب كلمة واضغط Enter لإضافتها..." class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-sm focus:ring-purple-500 focus:border-purple-500">
+                        <p class="text-[10px] text-gray-500">هذي الكلمات محفوظة تلقائياً ولن تظهر بدردشة غرفتك إطلاقاً — اضغط × لحذف أي كلمة</p>
                     </div>
 
                     <div id="settings-kicked-section" class="room-settings-section ${currentRoomKickedUsers.length === 0 ? 'hidden' : ''}">
@@ -3197,11 +3380,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         modal.addEventListener('click', (e) => { if (e.target.id === 'room-settings-modal') closeModal(); });
         modal.querySelector('#settings-isPrivate').addEventListener('change', (e) => {
             modal.querySelector('#settings-password-field').classList.toggle('hidden', !e.target.checked);
-        });
-        // ✅ "قفل الغرفة" لا يمنع من هم داخلها حالياً من البقاء والتحدث — فقط يمنع مشاهدين
-        // جدد من الدخول، مفيد للحظة خاصة أو نقاش هادئ بلا مقاطعات متكررة من قادمين جدد
-        modal.querySelector('#lock-room-info-btn').addEventListener('click', () => {
-            showNotification('قفل الغرفة يمنع دخول مشاهدين جدد فقط — من هم بداخلها حالياً يبقون ويقدرون يتحدثون بلا تأثير، مفيد لحظة خاصة أو نقاش هادئ بلا مقاطعات', 'info');
         });
 
         modal.querySelector('#open-bg-shop-btn').addEventListener('click', () => showRoomBackgroundShopModal(room));
@@ -3289,19 +3467,55 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             });
         });
 
+        // ✅ واجهة "شرائح" (chips) لكلمات الحظر بدل حقل نصي خام — كل كلمة تُضاف فوراً كشريحة
+        // قابلة للحذف بنقرة، وتُحفَظ ضمن currentRoomBannedWords (تصل جاهزة من السيرفر أصلاً
+        // عند فتح الإعدادات، فليست مشكلة "لا تُحفظ" كما بدت للمستخدم — المشكلة كانت وضوح العرض)
+        let bannedWordsList = [...currentRoomBannedWords];
+        function renderBannedWordsChips() {
+            const wrap = modal.querySelector('#banned-words-chips');
+            if (!wrap) return;
+            if (bannedWordsList.length === 0) {
+                wrap.innerHTML = '<p class="text-[11px] text-gray-500">لا توجد كلمات محظورة بعد</p>';
+                return;
+            }
+            wrap.innerHTML = bannedWordsList.map((w, i) => `
+                <span class="banned-word-chip" data-idx="${i}">
+                    ${escapeHtml(w)}
+                    <button type="button" class="banned-word-chip-remove" data-idx="${i}" aria-label="حذف">×</button>
+                </span>
+            `).join('');
+            wrap.querySelectorAll('.banned-word-chip-remove').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    bannedWordsList.splice(Number(btn.dataset.idx), 1);
+                    renderBannedWordsChips();
+                });
+            });
+        }
+        renderBannedWordsChips();
+        const bannedWordInput = modal.querySelector('#banned-word-input');
+        bannedWordInput.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ',') return;
+            e.preventDefault();
+            const word = bannedWordInput.value.trim().replace(/,$/, '');
+            if (!word) return;
+            if (bannedWordsList.length >= 50) {
+                showNotification('الحد الأقصى 50 كلمة محظورة', 'error');
+                return;
+            }
+            if (!bannedWordsList.includes(word)) {
+                bannedWordsList.push(word);
+                renderBannedWordsChips();
+            }
+            bannedWordInput.value = '';
+        });
+
         const form = modal.querySelector('#room-settings-form');
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
             data.isPrivate = data.isPrivate === 'on';
-
-            // ✅ حقل نصي بالواجهة (سطر/فاصلة لكل كلمة) يتحوّل هنا لمصفوفة — الشكل الذي يتوقعه السيرفر
-            data.bannedWords = (data.bannedWordsText || '')
-                .split(/[,\n]/)
-                .map(w => w.trim())
-                .filter(Boolean);
-            delete data.bannedWordsText;
+            data.bannedWords = bannedWordsList;
 
             const wantsLocked = modal.querySelector('#settings-isLocked').checked;
             data.isLocked = wantsLocked;
@@ -3747,23 +3961,32 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         bar.id = 'seat-challenge-bar';
         bar.className = 'seat-challenge-bar';
         bar.innerHTML = `
+            <div class="seat-challenge-header">
+                <span class="seat-challenge-live-badge"><span class="seat-challenge-live-dot"></span> تحدي مباشر</span>
+                <span id="seat-challenge-timer" class="seat-challenge-timer-pill"></span>
+            </div>
             <div class="seat-challenge-row">
-                <div class="seat-challenge-team seat-challenge-team-a">
-                    ${teamA.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                <div class="seat-challenge-side seat-challenge-side-a">
+                    <div class="seat-challenge-team seat-challenge-team-a">
+                        ${teamA.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                    </div>
+                    <span id="seat-challenge-score-a" class="seat-challenge-score seat-challenge-score-a">0</span>
                 </div>
-                <div class="seat-challenge-progress">
-                    <div id="seat-challenge-fill-a" class="seat-challenge-fill-a"></div>
-                    <div id="seat-challenge-fill-b" class="seat-challenge-fill-b"></div>
-                    <div class="seat-challenge-divider"></div>
-                    <span id="seat-challenge-score-a" class="seat-challenge-score-a">0</span>
-                    <span class="seat-challenge-vs"><i class="fas fa-fire"></i></span>
-                    <span id="seat-challenge-score-b" class="seat-challenge-score-b">0</span>
+                <div class="seat-challenge-progress-wrap">
+                    <div class="seat-challenge-progress">
+                        <div id="seat-challenge-fill-a" class="seat-challenge-fill-a"></div>
+                        <div id="seat-challenge-fill-b" class="seat-challenge-fill-b"></div>
+                        <div class="seat-challenge-divider"></div>
+                    </div>
+                    <span class="seat-challenge-vs-badge">VS</span>
                 </div>
-                <div class="seat-challenge-team seat-challenge-team-b">
-                    ${teamB.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                <div class="seat-challenge-side seat-challenge-side-b">
+                    <span id="seat-challenge-score-b" class="seat-challenge-score seat-challenge-score-b">0</span>
+                    <div class="seat-challenge-team seat-challenge-team-b">
+                        ${teamB.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                    </div>
                 </div>
             </div>
-            <div id="seat-challenge-timer" class="seat-challenge-timer"></div>
         `;
         const insertAfter = document.getElementById('pk-battle-bar') || mainContent.querySelector('.flex.justify-between.items-center');
         if (insertAfter) insertAfter.insertAdjacentElement('afterend', bar);
@@ -3874,6 +4097,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         else if (iWon) { title = 'فزت! 🏆'; icon = 'fa-trophy'; cardClass = 'seat-challenge-result-card-win'; }
         else if (iLost) { title = 'خسرت الجولة'; icon = 'fa-face-frown'; cardClass = 'seat-challenge-result-card-lose'; }
         else { title = data.winner === 'A' ? 'فاز الفريق 🔵' : 'فاز الفريق 🔴'; icon = 'fa-trophy'; cardClass = ''; }
+
+        if (iWon) fireConfettiBurst(['#3b82f6', '#06b6d4', '#fbbf24']);
 
         const particles = iWon ? Array.from({ length: 16 }, (_, i) => {
             const angle = Math.round((360 / 16) * i);
@@ -4076,7 +4301,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <form id="create-room-form" class="space-y-4">
                     <div>
                         <label class="text-sm">اسم الغرفة</label>
-                        <input type="text" name="name" maxlength="40" required autofocus class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
+                        <input type="text" name="name" maxlength="22" required autofocus class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mt-1 focus:ring-purple-500 focus:border-purple-500">
                     </div>
                     <div>
                         <label class="text-sm mb-1 block">اختر غلافاً</label>
@@ -4448,10 +4673,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 audioEl.id = `voice-peer-audio-${peerUserId}`;
                 audioEl.className = 'voice-peer-audio';
                 audioEl.autoplay = true;
-                audioEl.muted = roomAudioMuted;
                 audioEl.style.display = 'none';
                 document.body.appendChild(audioEl);
             }
+            // 🐛 إصلاح: قد يكون هذا الشخص مكتوماً أصلاً (من المضيف مثلاً) قبل أن يصل اتصالي
+            // الصوتي به أساساً — نطبّق حالة الكتم المعروفة الآن صراحة بدل الاعتماد فقط على
+            // roomAudioMuted، وإلا يُسمَع صوته لحظياً قبل أي حدث كتم لاحق يُصلح الوضع
+            applyPeerAudioMuteState(peerUserId);
             audioEl.srcObject = e.streams[0];
             attachSpeakingDetector(e.streams[0], peerUserId);
         };
@@ -6436,6 +6664,7 @@ function showXpGainAnimation(amount) {
 
     socket.on('user-left-seat', ({ roomId, seatNumber, userId }) => {
         const isMe = userId === myUserId;
+        seatMutedUsers.delete(userId); // ✅ تنظيف — لا داعي يبقى بالذاكرة، سيصل توصيف كتم جديد لو عاد وجلس لاحقاً
         if (isMe) {
             myVoiceSeatNumber = null;
             myVoiceRoomId = null;
@@ -6462,6 +6691,10 @@ function showXpGainAnimation(amount) {
 
     socket.on('user-toggled-mute', ({ roomId, userId, isMuted }) => {
         if (userId === myUserId) syncMuteButtonUI(isMuted);
+        // 🐛 إصلاح: طبقة كتم مستقلة على جهة كل مستقبِل — راجع الشرح الكامل أعلى seatMutedUsers.
+        // تُطبَّق بغض النظر عن الغرفة المعروضة حالياً (قد أستمع لهم مصغّراً بالخلفية)
+        if (isMuted) seatMutedUsers.add(userId); else seatMutedUsers.delete(userId);
+        applyPeerAudioMuteState(userId);
         if (roomId !== currentVoiceRoomId) return;
         const voiceGrid = document.getElementById('voice-chat-grid');
         if (!voiceGrid) return;
@@ -6906,6 +7139,24 @@ function showXpGainAnimation(amount) {
     // ✅ يصل فقط لمن هو منضم فعلياً لقناة دردشة هذي الغرفة (بث مخصص، وليس عاماً)
     socket.on('room-music-state', (state) => {
         applyMusicState(state);
+    });
+
+    // ✅ غلاف الغرفة يتحدّث فوراً عند الجميع بلحظة تغييره من المضيف — بدون هذا كان الغلاف
+    // القديم يبقى ظاهراً عند كل من بالغرفة غير المضيف حتى يعيدوا فتحها يدوياً
+    socket.on('room-cover-updated', ({ roomId, coverImage }) => {
+        if (!coverImage) return;
+        if (roomId === currentVoiceRoomId) {
+            currentRoomCoverImage = coverImage;
+            const headerCoverEl = document.getElementById('room-info-cover-img');
+            if (headerCoverEl) headerCoverEl.src = coverImage;
+            const infoCardCoverEl = document.querySelector('#room-info-card .room-info-card-cover');
+            if (infoCardCoverEl) infoCardCoverEl.src = coverImage;
+        }
+        if (minimizedRoomInfo && minimizedRoomInfo.id === roomId) {
+            minimizedRoomInfo.coverImage = coverImage;
+            const bubbleImg = document.querySelector('.room-minimized-bubble-img');
+            if (bubbleImg) bubbleImg.src = coverImage;
+        }
     });
 
     // ✅ آلية دلالة أخطاء لمشغّل الموسيقى — أي رفض من السيرفر (صلاحية، رابط غير صالح...)
