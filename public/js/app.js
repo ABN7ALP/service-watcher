@@ -2608,6 +2608,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 if (!room) return;
                 document.getElementById('room-rankings-modal')?.remove();
                 document.getElementById('room-info-card')?.remove();
+                // 🐛 إصلاح: فتح منصّة الصدارة من داخل غرفة أخرى ثم الدخول لغرفة مختلفة كان يتخطّى
+                // تنظيف الغرفة الحالية (قناة دردشتها + شبكة صوتها) — بخلاف مسار "مغادرة حقيقية"
+                // المُستخدَم بكل مكان آخر (انظر showRoomBrowserView)، فتبقى اتصالات WebRTC قديمة
+                // معلّقة بالخلفية وأنا فعلياً بغرفة جديدة. نفس التنظيف هنا قبل الدخول مباشرة
+                if (currentVoiceRoomId && currentVoiceRoomId !== room.id) {
+                    leaveRoomChatUI();
+                    exitFullscreenRoomMode();
+                    teardownAllVoicePeers();
+                }
                 enterVoiceRoom({ id: room.id, name: room.name, coverImage: room.coverImage, isOfficial: false, isPrivate: room.isPrivate });
             });
         });
