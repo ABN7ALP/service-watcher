@@ -1991,36 +1991,53 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const hostName = room.host ? room.host.username : 'الإدارة';
         const hostImg = room.host ? room.host.profileImage : 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
         const badge = room.isOfficial
-            ? '<span class="absolute top-2 right-2 bg-amber-500 text-gray-900 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><i class="fas fa-crown"></i>رسمية</span>'
-            : (room.isPrivate ? '<span class="absolute top-2 right-2 bg-gray-900/80 text-gray-200 text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center"><i class="fas fa-lock"></i></span>' : '');
+            ? '<span class="arena-card-tag arena-card-tag-official"><i class="fas fa-crown"></i> رسمية</span>'
+            : (room.isPrivate ? '<span class="arena-card-tag arena-card-tag-private"><i class="fas fa-lock"></i></span>' : '');
         const cover = room.coverImage
-            ? `<img src="${room.coverImage}" class="w-full h-full object-cover">`
-            : `<div class="w-full h-full flex items-center justify-center text-3xl text-purple-300/40"><i class="fas fa-microphone-lines"></i></div>`;
+            ? `<img src="${room.coverImage}" class="arena-card-cover-img">`
+            : `<div class="arena-card-cover-placeholder"><i class="fas fa-microphone-lines"></i></div>`;
         const isHot = room.occupied >= Math.max(4, room.seatCount * 0.5);
+        const levelBadge = (!room.isOfficial && room.level) ? `<span class="arena-card-level room-level-badge room-level-badge-${room.level}">Lv.${room.level}</span>` : '';
 
         const card = document.createElement('div');
-        card.className = 'room-card bg-gray-700/50 rounded-xl overflow-hidden cursor-pointer hover:ring-2 hover:ring-purple-500 hover:-translate-y-0.5 transition-all';
+        card.className = 'arena-room-card';
         card.dataset.roomId = room.id;
         card.innerHTML = `
-            <div class="relative w-full aspect-video bg-gradient-to-br from-purple-900/40 to-gray-800">
+            <div class="arena-card-cover-wrap">
                 ${cover}
                 ${badge}
-                ${room.roomCode ? `<span class="absolute bottom-1.5 left-1.5 bg-black/60 text-gray-200 text-[9px] font-bold px-1.5 py-0.5 rounded-full">ID: ${room.roomCode}</span>` : ''}
+                ${levelBadge}
+                ${room.roomCode ? `<span class="arena-card-id-tag">ID: ${room.roomCode}</span>` : ''}
+                ${isHot ? '<span class="arena-card-hot-tag">🔥</span>' : ''}
             </div>
-            <div class="p-2.5">
-                <p class="font-bold text-sm truncate">${escapeHtml(room.name)}</p>
-                <div class="flex items-center gap-1.5 mt-1 min-w-0">
-                    <img src="${hostImg}" class="w-4 h-4 rounded-full flex-shrink-0">
-                    <span class="text-[11px] text-gray-400 truncate">${escapeHtml(hostName)}</span>
+            <div class="arena-card-body">
+                <p class="arena-card-name">${escapeHtml(room.name)}</p>
+                <div class="arena-card-host-row">
+                    <img src="${hostImg}" class="arena-card-host-img">
+                    <span class="arena-card-host-name">${escapeHtml(hostName)}</span>
                 </div>
-                <div class="flex items-center justify-between mt-2">
-                    <span class="text-[11px] text-purple-300"><i class="fas fa-headphones"></i> ${room.occupied}/${room.seatCount}</span>
-                    ${isHot ? '<span class="text-[10px] text-orange-400">🔥 نشطة</span>' : ''}
+                <div class="arena-card-stats-row">
+                    <span class="arena-card-occupancy"><i class="fas fa-headphones"></i> ${room.occupied}/${room.seatCount}</span>
+                    ${room.followersCount > 0 ? `<span class="arena-card-followers"><i class="fas fa-heart"></i> ${room.followersCount}</span>` : ''}
                 </div>
             </div>
         `;
         card.addEventListener('click', () => enterVoiceRoom(room));
         return card;
+    }
+
+    // ✅ بطاقات هيكلية (skeleton) بمكان القائمة أثناء التحميل — إحساس أسرع وأكثر احترافية
+    // من شبكة فارغة تماماً حتى وصول الرد
+    function renderRoomCardSkeletons(count = 8) {
+        return Array.from({ length: count }, () => `
+            <div class="arena-room-card arena-room-card-skeleton">
+                <div class="arena-card-cover-wrap arena-skeleton-block"></div>
+                <div class="arena-card-body">
+                    <div class="arena-skeleton-line" style="width:70%"></div>
+                    <div class="arena-skeleton-line" style="width:45%; margin-top:6px;"></div>
+                </div>
+            </div>
+        `).join('');
     }
 
     // ✅ التصفح الكامل: يغادر أي غرفة كنت بها فعلياً (يُلغي الاشتراك بقناتها، يوقف موسيقاها)
@@ -2038,22 +2055,36 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // أي إن "التصغير" كان فعلياً يقطع كل شيء (الصوت، الدردشة، تحديثات الهدايا) بدل إبقائها
     // تعمل بالخلفية كما هو مقصود منه تماماً. الآن رسم واجهة التصفح مفصول تماماً عن مغادرة
     // الغرفة فعلياً — التصغير يستدعي هذي الدالة مباشرة بلا أي تصفير لحالة الغرفة
+    // ✅ إعادة هيكلة الصفحة الرئيسية (شاشة "الرئيسية" بالتنقّل — تصفح الغرف): رأس مضغوط بزر
+    // اختصار مباشر لمنصّة الصدارة، شريط بحث/فرز موحَّد، بطاقات أكثر اكتناز (شارة مستوى +
+    // متابعين + سخونة)، وهياكل تحميل (skeletons) بدل شبكة فارغة أثناء الجلب
     function renderRoomBrowserContent() {
         mainContent.innerHTML = `
-            <div class="flex justify-between items-center mb-3">
-                <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-microphone-lines text-purple-400"></i> غرف الدردشة الصوتية</h2>
+            <div class="arena-header">
+                <div class="min-w-0">
+                    <h2 class="arena-header-title"><i class="fas fa-microphone-lines"></i> غرف الدردشة الصوتية</h2>
+                    <p class="arena-header-sub">انضم لغرفة الآن أو أنشئ غرفتك الخاصة</p>
+                </div>
+                <button id="arena-rankings-shortcut" class="arena-rankings-shortcut" title="غرف الصدارة">
+                    <i class="fas fa-trophy"></i>
+                </button>
             </div>
-            <div class="relative mb-3">
-                <input id="room-search-input" type="text" placeholder="ابحث بالاسم أو آيدي الغرفة..." class="w-full bg-gray-700/50 border border-gray-600 rounded-lg p-2 pr-9 text-sm focus:ring-purple-500 focus:border-purple-500">
-                <i class="fas fa-search absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+            <div class="arena-toolbar">
+                <div class="arena-search-box">
+                    <i class="fas fa-search"></i>
+                    <input id="room-search-input" type="text" placeholder="ابحث بالاسم أو آيدي الغرفة...">
+                </div>
+                <div class="arena-sort-tabs">
+                    <button class="room-sort-tab active" data-sort="newest">الأحدث</button>
+                    <button class="room-sort-tab" data-sort="active">الأكثر نشاطاً</button>
+                </div>
             </div>
-            <div class="flex gap-2 mb-4">
-                <button class="room-sort-tab bg-purple-600 text-white text-xs font-bold px-3 py-1.5 rounded-full transition-colors" data-sort="newest">الأحدث</button>
-                <button class="room-sort-tab bg-gray-700/50 text-gray-300 text-xs font-bold px-3 py-1.5 rounded-full transition-colors" data-sort="active">الأكثر نشاطاً</button>
+            <div id="room-list-grid" class="arena-room-grid">${renderRoomCardSkeletons()}</div>
+            <div id="room-list-empty" class="hidden arena-empty-state">
+                <i class="fas fa-microphone-slash"></i>
+                <p>لا توجد غرف مطابقة حالياً</p>
             </div>
-            <div id="room-list-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3 pb-24 md:pb-2"></div>
-            <div id="room-list-empty" class="hidden text-center text-gray-400 text-sm py-10">لا توجد غرف مطابقة حالياً</div>
-            <button id="create-room-fab" class="fixed bottom-20 md:bottom-6 right-4 md:right-8 z-40 w-14 h-14 rounded-full bg-purple-600 hover:bg-purple-700 shadow-2xl flex items-center justify-center text-white text-xl active:scale-90 transition-transform" title="إنشاء غرفة جديدة">
+            <button id="create-room-fab" class="arena-create-fab" title="إنشاء غرفة جديدة">
                 <i class="fas fa-plus"></i>
             </button>
         `;
@@ -2087,14 +2118,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         mainContent.querySelectorAll('.room-sort-tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 currentSort = tab.dataset.sort;
-                mainContent.querySelectorAll('.room-sort-tab').forEach(t => {
-                    t.classList.remove('bg-purple-600', 'text-white');
-                    t.classList.add('bg-gray-700/50', 'text-gray-300');
-                });
-                tab.classList.remove('bg-gray-700/50', 'text-gray-300');
-                tab.classList.add('bg-purple-600', 'text-white');
+                mainContent.querySelectorAll('.room-sort-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
                 loadRooms();
             });
+        });
+
+        document.getElementById('arena-rankings-shortcut').addEventListener('click', () => {
+            showRoomRankingsModal();
         });
 
         // ✅ أيقونة الإنشاء: عنده غرفة بالفعل → تدخله لها مباشرة (غرفة واحدة فقط لكل مستخدم)

@@ -203,7 +203,10 @@ voiceRoomSchema.statics.listRooms = async function ({ search, sort = 'newest', p
             isPrivate: r.isPrivate,
             roomCode: r.roomCode || null,
             occupied: occupancyMap.get(r._id.toString()) || 0,
-            createdAt: r.createdAt
+            createdAt: r.createdAt,
+            // ✅ لعرض شارة المستوى/المتابعين ببطاقة الغرفة بالصفحة الرئيسية — null بالرسمية (لا نظام مستوى لها)
+            level: r.isOfficial ? null : r.level,
+            followersCount: (r.followers || []).length
         })),
         total,
         page: safePage,
