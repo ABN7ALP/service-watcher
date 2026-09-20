@@ -284,6 +284,9 @@ exports.getRoomById = async (req, res) => {
             // ✅ نظام مستوى الغرفة — يُرسَل دائماً (حتى للضيوف، تُبنى منه شارة المستوى بالواجهة)
             level: room.isOfficial ? null : room.level,
             supportPoints: room.isOfficial ? null : room.supportPoints,
+            // ✅ دعم جلسة البث الحالية فقط (يُصفَّر تلقائياً بكل بدء بث جديد) — يُعرض برأس
+            // الغرفة بدل آيدي الغرفة الثابت
+            sessionSupportPoints: room.isOfficial ? null : room.sessionSupportPoints,
             pointsToNextLevel: room.isOfficial ? null : VoiceRoom.pointsToNextLevel(room.supportPoints, room.level),
             levelProgressPercent: room.isOfficial ? null : VoiceRoom.levelProgressPercent(room.supportPoints, room.level),
             unlockedSeatCounts: room.isOfficial ? null : VoiceRoom.getUnlockedSeatCounts(room.level),

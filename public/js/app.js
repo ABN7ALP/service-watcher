@@ -1516,6 +1516,17 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             : 'أعلى مستوى!';
     }
 
+    // ✅ شارة دعم جلسة البث الحالية برأس الغرفة — محل آيدي الغرفة الثابت الذي أُزيل من هناك
+    // (يبقى متاحاً ببطاقة معلومات الغرفة ومنصّة الصدارة). تُصفَّر تلقائياً بكل بدء بث جديد
+    function updateRoomSessionSupportUI() {
+        const el = document.getElementById('room-info-session-support');
+        const numEl = document.getElementById('room-info-session-support-num');
+        if (!el || !numEl) return;
+        if (currentRoomLevel === null) { el.classList.add('hidden'); return; }
+        el.classList.remove('hidden');
+        numEl.textContent = currentRoomSessionSupportPoints.toLocaleString('en-US');
+    }
+
     // ✅ زر "اطلب الصعود" (∞) — أول ضغطة ترسل الطلب، وثاني ضغطة (والطلب لسا قائم) تفتح
     // نافذة سفلية بسيطة تسأل إن كنت تريد إلغاءه
     function sendSeatJoinRequest() {
@@ -2156,6 +2167,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // المقاعد تدريجياً. null بالغرفة الرسمية (لا نظام مستوى لها). انظر VoiceRoom.js بالسيرفر
     let currentRoomLevel = null;
     let currentRoomSupportPoints = 0;
+    let currentRoomSessionSupportPoints = 0; // ✅ دعم هذي الجلسة فقط — يُصفَّر بكل بدء بث جديد، يُعرض برأس الغرفة بدل الآيدي
     let currentRoomPointsToNextLevel = 0;
     let currentRoomLevelProgressPercent = 0;
     let currentRoomUnlockedSeatCounts = [9];
@@ -2255,25 +2267,30 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         enterFullscreenRoomMode();
         mainContent.innerHTML = `
             <div id="room-header-bar" class="flex justify-between items-center mb-3 gap-2">
-                <button id="room-info-trigger-btn" class="room-info-trigger" title="معلومات الغرفة">
-                    <img id="room-info-cover-img" src="${room.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-cover-img">
-                    <span class="min-w-0 flex flex-col items-start">
-                        <span id="room-info-name" class="room-info-name">${room.isPrivate ? '<i class="fas fa-lock text-amber-400 text-[10px]"></i> ' : ''}${escapeHtml(room.name)}</span>
-                        <span class="flex items-center gap-1.5">
-                            <span id="room-info-code" class="room-info-code">${room.roomCode ? `ID: ${room.roomCode}` : ''}</span>
-                            <span id="room-info-level-badge" class="room-level-badge hidden"></span>
+                <div id="room-info-card-widget" class="room-info-card-widget">
+                    <button id="room-info-trigger-btn" class="room-info-trigger" title="معلومات الغرفة">
+                        <img id="room-info-cover-img" src="${room.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-cover-img">
+                        <span class="min-w-0 flex flex-col items-start">
+                            <span id="room-info-name" class="room-info-name">${room.isPrivate ? '<i class="fas fa-lock text-amber-400 text-[10px]"></i> ' : ''}${escapeHtml(room.name)}</span>
+                            <span class="room-info-meta-row">
+                                <span id="room-info-level-badge" class="room-level-badge hidden"></span>
+                                <span id="room-info-session-support" class="room-info-session-support hidden">
+                                    <i class="fas fa-bolt"></i><span id="room-info-session-support-num">0</span>
+                                </span>
+                            </span>
                         </span>
-                    </span>
-                </button>
-                <button id="room-header-follow-btn" class="hidden follow-room-btn follow-room-btn-compact js-room-follow-btn" data-following="0" title="متابعة الغرفة">
-                    <i class="fas fa-plus"></i>
-                </button>
+                    </button>
+                    <button id="room-header-follow-btn" class="hidden follow-room-btn js-room-follow-btn room-header-follow-pill" data-following="0" title="متابعة الغرفة">
+                        <i class="fas fa-plus"></i> متابعة
+                    </button>
+                </div>
                 <div class="flex-1"></div>
                 <div class="flex items-center gap-2 flex-shrink-0">
                     <button id="room-power-btn" class="w-8 h-8 rounded-full bg-gray-700/60 hover:bg-gray-600 flex items-center justify-center text-gray-300" title="خيارات الخروج">
                         <i class="fas fa-power-off"></i>
                     </button>
                     <button id="room-viewer-count-btn" class="room-viewer-count-btn" title="المشاهدون">
+                        <i class="fas fa-eye"></i>
                         <span id="room-viewer-avatars" class="room-viewer-avatars"></span>
                         <span id="room-viewer-count-num">0</span>
                     </button>
@@ -3086,9 +3103,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 btn.classList.toggle('following', currentRoomIsFollowing);
             });
             if (result.roomCode) {
-                currentRoomCode = result.roomCode;
-                const codeEl = document.getElementById('room-info-code');
-                if (codeEl) codeEl.textContent = `ID: ${result.roomCode}`;
+                currentRoomCode = result.roomCode; // ✅ لا يزال يُستخدم ببطاقة معلومات الغرفة ومنصّة الصدارة، وإن أُزيل من رأس الغرفة نفسه
             }
             if (result.coverImage) {
                 currentRoomCoverImage = result.coverImage;
@@ -3113,12 +3128,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             if (typeof result.chatLocked === 'boolean') currentRoomChatLocked = result.chatLocked;
             if (typeof result.level === 'number') currentRoomLevel = result.level;
             if (typeof result.supportPoints === 'number') currentRoomSupportPoints = result.supportPoints;
+            if (typeof result.sessionSupportPoints === 'number') currentRoomSessionSupportPoints = result.sessionSupportPoints;
             if (typeof result.pointsToNextLevel === 'number') currentRoomPointsToNextLevel = result.pointsToNextLevel;
             if (typeof result.levelProgressPercent === 'number') currentRoomLevelProgressPercent = result.levelProgressPercent;
             if (result.unlockedSeatCounts) currentRoomUnlockedSeatCounts = result.unlockedSeatCounts;
             if (result.kickedUsers) currentRoomKickedUsers = result.kickedUsers;
             if (result.bannedWords) currentRoomBannedWords = result.bannedWords;
             updateRoomLevelBadgeUI();
+            updateRoomSessionSupportUI();
             updateChatLockUI();
             if (result.backgroundImage !== undefined) currentRoomBackgroundImage = result.backgroundImage;
             if (result.backgroundExpiresAt !== undefined) currentRoomBackgroundExpiresAt = result.backgroundExpiresAt;
@@ -3547,6 +3564,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 currentRoomIsLocked = result.room.isLocked;
                 currentRoomBackgroundImage = result.room.backgroundImage;
                 currentRoomDescription = result.room.description;
+                // 🐛 إصلاح: لم تكن هذي القيمة تُحدَّث محلياً بعد الحفظ الناجح، فتبقى الكلمات المحظورة
+                // بالذاكرة قديمة (فارغة غالباً) — عند فتح الإعدادات مجدداً بنفس الجلسة تظهر الشرائح
+                // وكأنها "اختفت" رغم أن السيرفر حفظها بنجاح فعلاً؛ الآن تُطابق ما أكّده السيرفر تماماً
+                if (Array.isArray(result.room.bannedWords)) currentRoomBannedWords = result.room.bannedWords;
                 applyRoomBackground(currentRoomBackgroundImage);
                 closeModal();
                 showNotification('تم حفظ الإعدادات ✅', 'success');
@@ -6830,9 +6851,9 @@ function showXpGainAnimation(amount) {
     // =====================================================
     // ✅ مشاهدو الغرفة — عدّاد حي + قائمة عند الطلب (مصدرها عضوية قناة السوكيت بالسيرفر)
     // =====================================================
-    socket.on('room-viewer-count', ({ roomId, count }) => {
+    socket.on('room-viewer-count', ({ roomId, count, preview }) => {
         if (roomId !== currentVoiceRoomId) return;
-        updateRoomViewerWidget(count, null);
+        updateRoomViewerWidget(count, preview || null);
     });
 
     socket.on('room-viewers-list', ({ roomId, viewers }) => {
@@ -6877,7 +6898,18 @@ function showXpGainAnimation(amount) {
     // ✅ لا حاجة لإعادة جلب/رسم الغرفة كاملة هنا — user-joined-seat (يُرسَل بنفس لحظة بدء
     // البث) يكفي وحده لتحديث مقعد المضيف؛ إعادة الرسم الكاملة كانت تُحسّ وكأن الغرفة
     // "تُعاد كتابتها" بلا داعٍ (كل الصور تُعاد تحميلها دفعة واحدة)
-    socket.on('room-broadcast-started', () => {});
+    // 🐛 إصلاح: السيرفر يُفرّغ kickedUsers فعلياً عند كل بدء بث جديد (انظر VoiceRoom.startBroadcast)،
+    // لكن هذا المستمع كان لا يفعل شيئاً إطلاقاً، فتبقى قائمة "المطرودون" بنافذة الإعدادات
+    // تعرض أسماء قديمة محلياً حتى بعد إغلاق البث وإعادة فتحه رغم انتهاء أثرهم فعلياً بالسيرفر
+    socket.on('room-broadcast-started', ({ roomId } = {}) => {
+        if (roomId && roomId === currentVoiceRoomId) {
+            currentRoomKickedUsers = [];
+            renderKickedUsersListUI();
+            // ✅ دعم جلسة البث يُصفَّر بالسيرفر تلقائياً عند كل بدء بث جديد — نطابق ذلك هنا فوراً
+            currentRoomSessionSupportPoints = 0;
+            updateRoomSessionSupportUI();
+        }
+    });
 
     // ✅ ظهور/اختفاء فوري بقائمة تصفح الغرف عند بدء/انتهاء بث أي مضيف — فقط لو شاشة
     // التصفح مفتوحة فعلياً حالياً (grid موجود بالـ DOM)، وإلا يُتجاهل الحدث بصمت وأمان
@@ -7088,14 +7120,16 @@ function showXpGainAnimation(amount) {
 
     // ✅ نقاط دعم الغرفة تحدّثت (هدية أُرسلت بداخلها) — تحديث صامت للشارة، بلا إشعار مزعج
     // على كل هدية (سيصل غالباً بمعدل عالٍ بغرفة نشطة). المستوى نفسه له حدث احتفالي منفصل أدناه
-    socket.on('room-support-points-updated', ({ roomId, supportPoints, level, pointsToNextLevel, levelProgressPercent }) => {
+    socket.on('room-support-points-updated', ({ roomId, supportPoints, sessionSupportPoints, level, pointsToNextLevel, levelProgressPercent }) => {
         if (roomId !== currentVoiceRoomId) return;
         currentRoomSupportPoints = supportPoints;
+        if (typeof sessionSupportPoints === 'number') currentRoomSessionSupportPoints = sessionSupportPoints;
         currentRoomLevel = level;
         currentRoomPointsToNextLevel = pointsToNextLevel;
         currentRoomLevelProgressPercent = levelProgressPercent;
         updateRoomLevelBadgeUI();
         updateRoomLevelProgressUI();
+        updateRoomSessionSupportUI();
     });
 
     // ✅ ارتفع مستوى الغرفة فعلياً — احتفال بصري للجميع بالغرفة + تحديث فوري لخيارات توسيع

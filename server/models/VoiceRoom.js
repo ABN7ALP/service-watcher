@@ -46,6 +46,9 @@ const voiceRoomSchema = new mongoose.Schema({
     // الكاملة، ومكافآت المضيف عند بلوغ مستوى معيّن واجهة فقط حالياً (سيُبنى نظامها لاحقاً)
     level: { type: Number, default: 1, min: 1, max: 5 },
     supportPoints: { type: Number, default: 0 }, // مجموع قيمة كل الهدايا المُرسَلة داخل هذي الغرفة (تراكمي، لا يُصفَّر بين البثوث)
+    // ✅ نفس الفكرة لكن لجلسة البث الحالية فقط — تُصفَّر تلقائياً بكل startBroadcast جديد (انظر
+    // أدناه)، وتُعرض برأس الغرفة بدل الآيدي الثابت لإعطاء إحساس "حيوية" هذا البث تحديداً
+    sessionSupportPoints: { type: Number, default: 0 },
     // ✅ من طردهم المضيف/المسؤولون من الغرفة (وليس فقط من مقعد) — يُمنعون من الدخول إطلاقاً
     // حتى يُنهي المضيف البث ويبدأ جلسة جديدة (انظر startBroadcast أدناه، يُفرغها تلقائياً)
     kickedUsers: [{
@@ -383,7 +386,7 @@ voiceRoomSchema.statics.addSupportPoints = async function (roomId, points) {
     if (!points || points <= 0) return null;
     const updated = await this.findOneAndUpdate(
         { _id: roomId, isOfficial: { $ne: true } },
-        { $inc: { supportPoints: points } },
+        { $inc: { supportPoints: points, sessionSupportPoints: points } },
         { new: true }
     );
     if (!updated) return null;
@@ -396,6 +399,7 @@ voiceRoomSchema.statics.addSupportPoints = async function (roomId, points) {
     }
     return {
         supportPoints: updated.supportPoints,
+        sessionSupportPoints: updated.sessionSupportPoints,
         level: updated.level,
         leveledUp,
         unlockedSeatCounts: this.getUnlockedSeatCounts(updated.level)
@@ -518,6 +522,7 @@ voiceRoomSchema.statics.startBroadcast = async function (roomId, hostId) {
     // ✅ بداية جلسة بث جديدة = فرصة جديدة للجميع — من طُردوا بالجلسة السابقة يقدرون الدخول
     // من جديد الآن (بالضبط الشرط الذي طلبه المضيف: لا عودة إلا بإعادة فتح البث)
     room.kickedUsers = [];
+    room.sessionSupportPoints = 0; // ✅ تصفير عدّاد دعم هذي الجلسة تحديداً (المتراكم supportPoints لا يتأثر أبداً)
     room.seats.forEach(s => { s.user = null; s.joinedAt = null; s.isMuted = false; s.isLocked = false; });
     const firstSeat = room.seats.find(s => s.seatNumber === 1);
     if (firstSeat) { firstSeat.user = hostId; firstSeat.joinedAt = new Date(); }

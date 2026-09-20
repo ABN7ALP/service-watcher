@@ -47,6 +47,7 @@ async function applyGiftToRoomSupport(io, roomId, totalPrice) {
     io.to(`room-chat-${roomId}`).emit('room-support-points-updated', {
         roomId: roomId.toString(),
         supportPoints: result.supportPoints,
+        sessionSupportPoints: result.sessionSupportPoints,
         level: result.level,
         pointsToNextLevel: VoiceRoom.pointsToNextLevel(result.supportPoints, result.level),
         levelProgressPercent: VoiceRoom.levelProgressPercent(result.supportPoints, result.level)
