@@ -865,7 +865,10 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     background: rgba(255,255,255,0.05);
     border-radius: 12px;
     padding: 8px 10px;
+    cursor: pointer;
+    transition: background 0.15s ease;
 }
+.room-info-card-owner-row:active { background: rgba(255,255,255,0.1); }
 .room-info-card-owner-img {
     width: 34px; height: 34px;
     border-radius: 50%;
@@ -2756,5 +2759,151 @@ body.in-voice-room #main-content {
     0%, 100% { opacity: 0.5; }
     50% { opacity: 1; }
 }
+
+/* =====================================================
+   ✅ إعادة هيكلة "الملف الشخصي الكامل" (showFullProfilePage) — غلاف + صورة متراكبة نصفها
+   خارج الإطار (أسلوب "profile header" شائع)، شارتا جنس/عمر تحت الاسم مباشرة، بطاقة إنجازات
+   وبطاقتا نادي معجبين/حماة كواجهة تمهيدية فقط، ومؤثر خروج انزلاقي للأسفل يطابق الدخول
+   ===================================================== */
+.full-profile-page-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    z-index: 330;
+    display: flex;
+    align-items: flex-end;
+    animation: fullProfileFadeIn 0.2s ease-out;
+}
+@keyframes fullProfileFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.full-profile-backdrop-exit { animation: fullProfileFadeOut 0.22s ease-in forwards; }
+@keyframes fullProfileFadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+.full-profile-sheet {
+    background: #111827;
+    width: 100%;
+    border-radius: 20px 20px 0 0;
+    display: flex;
+    flex-direction: column;
+    max-height: 92vh;
+    position: relative;
+    animation: slideUp 0.25s ease-out;
+}
+.full-profile-exit { animation: fullProfileSlideDown 0.22s ease-in forwards; }
+@keyframes fullProfileSlideDown { from { transform: translateY(0); } to { transform: translateY(100%); } }
+
+.full-profile-close-btn {
+    position: absolute;
+    top: 10px; left: 10px;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: rgba(17,24,39,0.6);
+    color: #d1d5db;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+}
+
+.full-profile-cover {
+    height: 64px;
+    background: linear-gradient(135deg, rgba(126,34,206,0.55), rgba(219,39,119,0.35));
+    border-radius: 20px 20px 0 0;
+    position: relative;
+    flex-shrink: 0;
+}
+/* ✅ الصورة نصفها فوق الغلاف ونصفها الآخر خارجه بالأسفل (transform:translateY(-50%) بالضبط
+   على حدود الغلاف السفلية) — بطلب صريح "صورتي خارج نصفه من إطار الملف الشخصي" */
+.full-profile-avatar {
+    position: absolute;
+    left: 50%; top: 64px;
+    transform: translate(-50%, -50%);
+    width: 92px; height: 92px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 4px solid #111827;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+.full-profile-identity {
+    text-align: center;
+    padding: 52px 16px 4px;
+}
+.full-profile-name {
+    font-size: 16px;
+    font-weight: 800;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+.full-profile-id { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+.full-profile-badge-row {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 9px;
+}
+.full-profile-mini-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #e5e7eb;
+}
+
+/* ✅ بطاقة الإنجازات — واجهة تمهيدية فقط (سيُبنى نظامها لاحقاً)، خمس خانات فارغة منقّطة */
+.full-profile-achievements-card {
+    background: linear-gradient(135deg, rgba(168,85,247,0.12), rgba(255,255,255,0.03));
+    border: 1px solid rgba(168,85,247,0.25);
+    border-radius: 14px;
+    padding: 12px;
+}
+.full-profile-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12.5px;
+    font-weight: 800;
+    color: #e9d5ff;
+    margin-bottom: 9px;
+}
+.full-profile-card-header i { color: #c084fc; margin-inline-end: 4px; }
+.full-profile-soon-tag {
+    font-size: 9px;
+    font-weight: 800;
+    background: rgba(255,255,255,0.08);
+    color: #9ca3af;
+    padding: 2px 7px;
+    border-radius: 999px;
+    display: inline-block;
+}
+.full-profile-achievements-row { display: flex; gap: 8px; justify-content: center; }
+.full-profile-achievement-slot {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+    border: 1px dashed rgba(255,255,255,0.18);
+    color: rgba(255,255,255,0.22);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+}
+
+/* ✅ بطاقتا "نادي المعجبين" و"الحماة" — نفس فكرة الإنجازات، جنباً إلى جنب وأصغر حجماً */
+.full-profile-mini-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 12px 8px;
+    text-align: center;
+}
+.full-profile-mini-card-icon { font-size: 20px; margin-bottom: 5px; display: block; }
+.full-profile-mini-card-title { font-size: 11px; font-weight: 700; color: #e5e7eb; margin-bottom: 4px; }
 
 

@@ -2499,12 +2499,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                             <p class="text-[11px] text-gray-400">${currentRoomCode ? `ID: ${currentRoomCode}` : ''}</p>
                         </div>
                     </div>
-                    <div class="room-info-card-owner-row">
+                    <div id="room-info-card-owner-row" class="room-info-card-owner-row" role="button" title="عرض الملف الشخصي للمضيف">
                         <img src="${currentRoomHostProfileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-card-owner-img">
                         <div class="min-w-0 flex-1">
                             <p class="text-[10px] text-gray-500">مالك الغرفة</p>
                             <p class="text-sm font-bold truncate">${escapeHtml(currentRoomHostUsername || '—')}</p>
                         </div>
+                        <i class="fas fa-chevron-left text-[10px] text-gray-500"></i>
                     </div>
                     <div class="grid grid-cols-2 gap-2 mt-3">
                         <div class="room-info-stat-box">
@@ -2536,6 +2537,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             modal.remove();
             goToRoomRankingsLeaderboard();
         });
+        // ✅ ربط دخول البث بالملف الشخصي للمستخدم — الضغط على صف مالك الغرفة (صورته/اسمه)
+        // يفتح ملفه الشخصي الكامل مباشرة (showFullProfilePage)، لا فقط اسمه كنص ثابت غير قابل للتفاعل
+        if (currentRoomHostId) {
+            modal.querySelector('#room-info-card-owner-row')?.addEventListener('click', () => {
+                modal.remove();
+                showFullProfilePage(currentRoomHostId);
+            });
+        }
     }
 
     // ✅ منصّة تتويج أقوى 10 غرف — الأول أعلى بالمنتصف، الثاني والثالث بجانبيه، وباقي الغرف
@@ -8004,17 +8013,26 @@ async function showMiniProfileModal(userId) {
 }
 
 // --- ✅ صفحة الملف الشخصي الكامل — نافذة سفلية كبيرة بكل التفاصيل (المستوى، الهدايا، الإحصائيات) ---
+// ✅ إغلاق بمؤثر انزلاق للأسفل (بدل اختفاء فوري) — يطابق مؤثر الدخول (slideUp) باتجاه معاكس،
+// وينتظر انتهاء الأنيميشن فعلياً قبل حذف العنصر من الـDOM
+function closeFullProfilePage() {
+    const page = document.getElementById('full-profile-page');
+    const sheet = document.getElementById('full-profile-sheet');
+    if (!page || !sheet) { page?.remove(); return; }
+    page.classList.add('full-profile-backdrop-exit');
+    sheet.classList.add('full-profile-exit');
+    setTimeout(() => page.remove(), 220);
+}
+
 async function showFullProfilePage(userId) {
     const existing = document.getElementById('full-profile-page');
     if (existing) existing.remove();
 
     const shellHTML = `
-        <div id="full-profile-page" class="fixed inset-0 bg-black/80 z-[330] flex items-end">
-            <div class="bg-gray-900 w-full rounded-t-2xl flex flex-col animate-[slideUp_0.25s_ease-out]" style="max-height:92vh;">
-                <div class="flex items-center justify-between p-3 border-b border-gray-700 flex-shrink-0">
-                    <h3 class="font-bold text-sm flex items-center gap-2"><i class="fas fa-user text-purple-400"></i> الملف الشخصي</h3>
-                    <button id="close-full-profile" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
-                </div>
+        <div id="full-profile-page" class="full-profile-page-backdrop">
+            <div id="full-profile-sheet" class="full-profile-sheet">
+                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 flex-shrink-0"></div>
+                <button id="close-full-profile" class="full-profile-close-btn"><i class="fas fa-times"></i></button>
                 <div id="full-profile-body" class="flex-1 overflow-y-auto">
                     <div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
                 </div>
@@ -8023,8 +8041,8 @@ async function showFullProfilePage(userId) {
     `;
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const page = document.getElementById('full-profile-page');
-    document.getElementById('close-full-profile').addEventListener('click', () => page.remove());
-    page.addEventListener('click', (e) => { if (e.target.id === 'full-profile-page') page.remove(); });
+    document.getElementById('close-full-profile').addEventListener('click', closeFullProfilePage);
+    page.addEventListener('click', (e) => { if (e.target.id === 'full-profile-page') closeFullProfilePage(); });
 
     try {
         const [userRes, giftRes] = await Promise.all([
@@ -8044,10 +8062,16 @@ async function showFullProfilePage(userId) {
 
         const body = document.getElementById('full-profile-body');
         body.innerHTML = `
-            <div class="relative bg-gradient-to-b from-purple-800/30 to-transparent pt-6 pb-4 px-4 text-center">
-                <img src="${u.profileImage}" class="w-20 h-20 rounded-full mx-auto border-4 border-gray-900 shadow-lg object-cover ${u.activeFrameClass || ''}">
-                <h2 class="text-base font-bold mt-2 flex items-center justify-center gap-1">${u.username} ${getAgentBadgeHTML(u.isAgent)}</h2>
-                <p class="text-[11px] text-gray-400 mt-0.5">ID: ${u.customId}</p>
+            <div class="full-profile-cover">
+                <img src="${u.profileImage}" class="full-profile-avatar ${u.activeFrameClass || ''}">
+            </div>
+            <div class="full-profile-identity">
+                <h2 class="full-profile-name">${u.username} ${getAgentBadgeHTML(u.isAgent)}</h2>
+                <p class="full-profile-id">ID: ${u.customId}</p>
+                <div class="full-profile-badge-row">
+                    <span class="full-profile-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
+                    <span class="full-profile-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${u.age} سنة</span>
+                </div>
             </div>
 
             <div class="px-4 mb-4">
@@ -8075,14 +8099,35 @@ async function showFullProfilePage(userId) {
                 </div>
             </div>
 
+            <!-- ✅ بطاقة "الإنجازات" — واجهة فقط حالياً (سيُبنى نظامها لاحقاً)، بشارة "قريباً" واضحة -->
+            <div class="px-4 mb-3">
+                <div class="full-profile-achievements-card">
+                    <div class="full-profile-card-header">
+                        <span><i class="fas fa-medal"></i> الإنجازات</span>
+                        <span class="full-profile-soon-tag">قريباً</span>
+                    </div>
+                    <div class="full-profile-achievements-row">
+                        ${Array.from({ length: 5 }, () => '<span class="full-profile-achievement-slot"><i class="fas fa-trophy"></i></span>').join('')}
+                    </div>
+                </div>
+            </div>
+
+            <!-- ✅ بطاقتا "نادي المعجبين" و"الحماة" — واجهة فقط حالياً، جنباً إلى جنب -->
+            <div class="grid grid-cols-2 gap-2 px-4 mb-4">
+                <div class="full-profile-mini-card">
+                    <i class="fas fa-users full-profile-mini-card-icon" style="color:#f472b6"></i>
+                    <p class="full-profile-mini-card-title">نادي المعجبين</p>
+                    <span class="full-profile-soon-tag">قريباً</span>
+                </div>
+                <div class="full-profile-mini-card">
+                    <i class="fas fa-shield-halved full-profile-mini-card-icon" style="color:#60a5fa"></i>
+                    <p class="full-profile-mini-card-title">الحماة</p>
+                    <span class="full-profile-soon-tag">قريباً</span>
+                </div>
+            </div>
+
             <p class="text-xs text-gray-400 px-4 mb-2">المعلومات الشخصية</p>
             <div class="grid grid-cols-2 gap-2 px-4 mb-4 text-xs">
-                <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
-                    <i class="fas ${genderInfo.icon} ${genderInfo.color} w-4 text-center"></i><span>${genderInfo.text}</span>
-                </div>
-                <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
-                    <i class="fas fa-birthday-cake text-pink-400 w-4 text-center"></i><span>${u.age} سنة</span>
-                </div>
                 <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
                     <i class="fas ${socialInfo.icon} text-red-400 w-4 text-center"></i><span>${socialInfo.text}</span>
                 </div>
