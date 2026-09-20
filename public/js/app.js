@@ -2136,7 +2136,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
 
         document.getElementById('arena-rankings-shortcut').addEventListener('click', () => {
-            showRoomRankingsModal();
+            goToRoomRankingsLeaderboard();
         });
 
         // ✅ أيقونة الإنشاء: عنده غرفة بالفعل → تدخله لها مباشرة (غرفة واحدة فقط لكل مستخدم)
@@ -2533,50 +2533,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             socket.emit(currentRoomIsFollowing ? 'unfollow-room' : 'follow-room', { roomId: room.id });
         });
         modal.querySelector('#room-info-rankings-btn')?.addEventListener('click', () => {
-            showRoomRankingsModal();
+            modal.remove();
+            goToRoomRankingsLeaderboard();
         });
     }
 
     // ✅ منصّة تتويج أقوى 10 غرف — الأول أعلى بالمنتصف، الثاني والثالث بجانبيه، وباقي الغرف
-    // بقائمة مرتبة أسفلهم. الترتيب بأكبر عدد متابعين + نقاط دعم معاً (يحسبه السيرفر)
-    async function showRoomRankingsModal() {
-        document.getElementById('room-rankings-modal')?.remove();
-        const modal = document.createElement('div');
-        modal.id = 'room-rankings-modal';
-        modal.className = 'fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-[70] p-3';
-        modal.innerHTML = `
-            <div class="room-rankings-sheet w-full md:max-w-md text-white">
-                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
-                <div class="room-rankings-header">
-                    <p class="room-rankings-title"><i class="fas fa-trophy text-amber-400"></i> غرف الصدارة</p>
-                    <button id="close-room-rankings" class="room-rankings-close-btn"><i class="fas fa-times"></i></button>
-                </div>
-                <div id="room-rankings-body" class="room-rankings-body">
-                    <div class="text-center py-10 text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-        modal.addEventListener('click', (e) => { if (e.target.id === 'room-rankings-modal') modal.remove(); });
-        modal.querySelector('#close-room-rankings').addEventListener('click', () => modal.remove());
-
-        try {
-            const response = await fetch('/api/voice-room/rankings', { headers: { 'Authorization': `Bearer ${token}` } });
-            const result = await response.json();
-            const body = modal.querySelector('#room-rankings-body');
-            if (!body) return;
-            const rooms = (response.ok && result.rooms) ? result.rooms : [];
-            if (rooms.length === 0) {
-                body.innerHTML = '<p class="text-center text-gray-400 text-sm py-10">لا توجد غرف متصدّرة بعد — كن أول من يتصدّر! 🏆</p>';
-                return;
-            }
-            renderRoomRankingsBody(body, rooms);
-        } catch (error) {
-            const body = modal.querySelector('#room-rankings-body');
-            if (body) body.innerHTML = '<p class="text-center text-red-400 text-sm py-10">تعذر تحميل الترتيب، حاول مجدداً</p>';
-        }
-    }
-
+    // بقائمة مرتبة أسفلهم. الترتيب بأكبر عدد متابعين + نقاط دعم معاً (يحسبه السيرفر). كانت
+    // نافذة منفصلة (room-rankings-modal)، دُمجت الآن كتبويب "الغرف" داخل شاشة "المتصدرين"
+    // نفسها (showLeaderboardView) بدل واجهة مستقلة — هذي الدالة وحدها بقيت، تُستدعى من هناك
     function renderRoomRankingsBody(body, rooms) {
         const podium = rooms.slice(0, 3);
         const rest = rooms.slice(3);
@@ -2623,9 +2588,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 const roomId = el.dataset.roomId;
                 const room = rooms.find(r => r.id === roomId);
                 if (!room) return;
-                document.getElementById('room-rankings-modal')?.remove();
-                document.getElementById('room-info-card')?.remove();
-                // 🐛 إصلاح: فتح منصّة الصدارة من داخل غرفة أخرى ثم الدخول لغرفة مختلفة كان يتخطّى
+                // 🐛 إصلاح: الدخول لغرفة من هذي القائمة بينما أنا أصلاً داخل غرفة أخرى كان يتخطّى
                 // تنظيف الغرفة الحالية (قناة دردشتها + شبكة صوتها) — بخلاف مسار "مغادرة حقيقية"
                 // المُستخدَم بكل مكان آخر (انظر showRoomBrowserView)، فتبقى اتصالات WebRTC قديمة
                 // معلّقة بالخلفية وأنا فعلياً بغرفة جديدة. نفس التنظيف هنا قبل الدخول مباشرة
@@ -10635,11 +10598,21 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
 // ============ قسم المتصدرين (Leaderboard) =========
 // =================================================
 
+// ✅ يفتح شاشة "المتصدرين" مباشرة على تبويب "الغرف" — نداء واحد يضبط الاختيار المبدئي
+// ثم يُشغّل التنقّل القياسي (يُقرأ ويُصفَّر داخل showLeaderboardView نفسها فور تنفيذها)
+let leaderboardInitialTabOverride = null;
+function goToRoomRankingsLeaderboard() {
+    leaderboardInitialTabOverride = 'rooms';
+    switchToView('leaderboard');
+}
+
 async function showLeaderboardView() {
+    const initialType = leaderboardInitialTabOverride || 'senders';
+    leaderboardInitialTabOverride = null;
     mainContent.innerHTML = `
         <div class="flex flex-col h-full">
             <h2 class="text-xl font-bold mb-3 flex items-center gap-2"><i class="fas fa-trophy text-yellow-400"></i> المتصدرين</h2>
-            <div class="flex gap-2 mb-2">
+            <div id="lb-range-row" class="flex gap-2 mb-2">
                 <button class="lb-range-btn flex-1 py-1.5 rounded-lg text-xs font-bold bg-purple-600 text-white" data-range="week">هذا الأسبوع</button>
                 <button class="lb-range-btn flex-1 py-1.5 rounded-lg text-xs font-bold bg-gray-700 text-gray-300" data-range="month">هذا الشهر</button>
                 <button class="lb-range-btn flex-1 py-1.5 rounded-lg text-xs font-bold bg-gray-700 text-gray-300" data-range="year">هذا العام</button>
@@ -10647,6 +10620,7 @@ async function showLeaderboardView() {
             <div class="flex gap-2 mb-4">
                 <button id="lb-tab-senders" class="flex-1 py-2 rounded-lg text-sm font-bold bg-pink-600 text-white"><i class="fas fa-hand-holding-heart mr-1"></i> الأكثر إهداءً</button>
                 <button id="lb-tab-receivers" class="flex-1 py-2 rounded-lg text-sm font-bold bg-gray-700 text-gray-300"><i class="fas fa-crown mr-1"></i> الأكثر تلقياً</button>
+                <button id="lb-tab-rooms" class="flex-1 py-2 rounded-lg text-sm font-bold bg-gray-700 text-gray-300"><i class="fas fa-trophy mr-1"></i> الغرف</button>
             </div>
             <div id="leaderboard-list-container" class="flex-grow overflow-y-auto space-y-2 pr-1">
                 <div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-3xl"></i></div>
@@ -10654,7 +10628,7 @@ async function showLeaderboardView() {
         </div>
     `;
 
-    let currentType = 'senders';
+    let currentType = initialType;
     let currentRange = 'week';
 
     document.querySelectorAll('.lb-range-btn').forEach(btn => {
@@ -10676,7 +10650,16 @@ async function showLeaderboardView() {
         setLeaderboardTab('receivers');
         loadLeaderboard(currentType, currentRange);
     });
+    // ✅ تبويب "الغرف" — نفس منصّة التتويج (أول 3 + قائمة) المُستخدَمة سابقاً بنافذة منفصلة
+    // داخل الغرفة، مدموجة الآن هنا كتبويب ثالث بدل واجهة مستقلة (ترتيب لا يتعلّق بفترة زمنية،
+    // فشريط الفترات يُخفى معه)
+    document.getElementById('lb-tab-rooms').addEventListener('click', function() {
+        currentType = 'rooms';
+        setLeaderboardTab('rooms');
+        loadLeaderboard(currentType, currentRange);
+    });
 
+    setLeaderboardTab(currentType);
     await loadLeaderboard(currentType, currentRange);
 }
 
@@ -10684,19 +10667,18 @@ async function showLeaderboardView() {
 function setLeaderboardTab(type) {
     const sendersBtn = document.getElementById('lb-tab-senders');
     const receiversBtn = document.getElementById('lb-tab-receivers');
-    if (!sendersBtn || !receiversBtn) return;
+    const roomsBtn = document.getElementById('lb-tab-rooms');
+    const rangeRow = document.getElementById('lb-range-row');
+    if (!sendersBtn || !receiversBtn || !roomsBtn) return;
 
-    if (type === 'senders') {
-        sendersBtn.classList.add('bg-pink-600', 'text-white');
-        sendersBtn.classList.remove('bg-gray-700', 'text-gray-300');
-        receiversBtn.classList.add('bg-gray-700', 'text-gray-300');
-        receiversBtn.classList.remove('bg-pink-600', 'text-white');
-    } else {
-        receiversBtn.classList.add('bg-pink-600', 'text-white');
-        receiversBtn.classList.remove('bg-gray-700', 'text-gray-300');
-        sendersBtn.classList.add('bg-gray-700', 'text-gray-300');
-        sendersBtn.classList.remove('bg-pink-600', 'text-white');
-    }
+    [sendersBtn, receiversBtn, roomsBtn].forEach(btn => {
+        btn.classList.remove('bg-pink-600', 'text-white');
+        btn.classList.add('bg-gray-700', 'text-gray-300');
+    });
+    const activeBtn = type === 'senders' ? sendersBtn : (type === 'receivers' ? receiversBtn : roomsBtn);
+    activeBtn.classList.add('bg-pink-600', 'text-white');
+    activeBtn.classList.remove('bg-gray-700', 'text-gray-300');
+    if (rangeRow) rangeRow.classList.toggle('hidden', type === 'rooms'); // ✅ لا فترة زمنية لترتيب الغرف — تراكمي دائماً
 }
 
 async function loadLeaderboard(type, range = 'week') {
@@ -10704,6 +10686,23 @@ async function loadLeaderboard(type, range = 'week') {
     if (!container) return;
 
     container.innerHTML = `<div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-3xl"></i></div>`;
+
+    if (type === 'rooms') {
+        try {
+            const response = await fetch('/api/voice-room/rankings', { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            const rooms = (response.ok && result.rooms) ? result.rooms : [];
+            if (rooms.length === 0) {
+                container.innerHTML = '<div class="text-center text-gray-400 py-16"><i class="fas fa-trophy text-4xl mb-4"></i><p>لا توجد غرف متصدّرة بعد — كن أول من يتصدّر! 🏆</p></div>';
+                return;
+            }
+            renderRoomRankingsBody(container, rooms);
+        } catch (error) {
+            container.innerHTML = '<div class="text-center text-red-400 py-16">تعذر تحميل الترتيب، حاول مجدداً</div>';
+        }
+        return;
+    }
+
     const endpoint = type === 'senders' ? '/api/gifts/leaderboard/top-senders' : '/api/gifts/leaderboard/top-receivers';
 
     try {

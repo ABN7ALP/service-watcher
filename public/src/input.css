@@ -902,38 +902,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 
 /* =====================================================
    ✅ منصّة تتويج أقوى الغرف — الأول أعلى بالمنتصف ومرتفع عن البقية، الثاني/الثالث بجانبيه،
-   وباقي الغرف (حتى 10) بقائمة مرتبة أسفلهم. أسلوب "Top 3 podium" شائع بتطبيقات البث الشهيرة
+   وباقي الغرف (حتى 10) بقائمة مرتبة أسفلهم. أسلوب "Top 3 podium" شائع بتطبيقات البث الشهيرة.
+   مدموجة كتبويب "الغرف" داخل شاشة "المتصدرين" (لا نافذة مستقلة بعد الآن، انظر showLeaderboardView)
    ===================================================== */
-.room-rankings-sheet {
-    background: #1a1f2e;
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 20px 20px 0 0;
-    box-shadow: 0 -8px 30px rgba(0,0,0,0.5);
-    animation: slideUp 0.25s ease-out;
-    max-height: 85vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-@media (min-width: 768px) { .room-rankings-sheet { border-radius: 20px; } }
-.room-rankings-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 16px 10px;
-    flex-shrink: 0;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-}
-.room-rankings-title { font-size: 15px; font-weight: 800; color: #fff; }
-.room-rankings-close-btn {
-    width: 28px; height: 28px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.08);
-    color: #d1d5db;
-    display: flex; align-items: center; justify-content: center;
-}
-.room-rankings-body { padding: 18px 14px 20px; overflow-y: auto; }
-
 .rankings-podium-row {
     display: flex;
     align-items: flex-end;
