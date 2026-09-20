@@ -1516,6 +1516,17 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             : 'أعلى مستوى!';
     }
 
+    // ✅ شارة دعم جلسة البث الحالية برأس الغرفة — محل آيدي الغرفة الثابت الذي أُزيل من هناك
+    // (يبقى متاحاً ببطاقة معلومات الغرفة ومنصّة الصدارة). تُصفَّر تلقائياً بكل بدء بث جديد
+    function updateRoomSessionSupportUI() {
+        const el = document.getElementById('room-info-session-support');
+        const numEl = document.getElementById('room-info-session-support-num');
+        if (!el || !numEl) return;
+        if (currentRoomLevel === null) { el.classList.add('hidden'); return; }
+        el.classList.remove('hidden');
+        numEl.textContent = currentRoomSessionSupportPoints.toLocaleString('en-US');
+    }
+
     // ✅ زر "اطلب الصعود" (∞) — أول ضغطة ترسل الطلب، وثاني ضغطة (والطلب لسا قائم) تفتح
     // نافذة سفلية بسيطة تسأل إن كنت تريد إلغاءه
     function sendSeatJoinRequest() {
@@ -2125,7 +2136,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
 
         document.getElementById('arena-rankings-shortcut').addEventListener('click', () => {
-            showRoomRankingsModal();
+            goToRoomRankingsLeaderboard();
         });
 
         // ✅ أيقونة الإنشاء: عنده غرفة بالفعل → تدخله لها مباشرة (غرفة واحدة فقط لكل مستخدم)
@@ -2156,6 +2167,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // المقاعد تدريجياً. null بالغرفة الرسمية (لا نظام مستوى لها). انظر VoiceRoom.js بالسيرفر
     let currentRoomLevel = null;
     let currentRoomSupportPoints = 0;
+    let currentRoomSessionSupportPoints = 0; // ✅ دعم هذي الجلسة فقط — يُصفَّر بكل بدء بث جديد، يُعرض برأس الغرفة بدل الآيدي
     let currentRoomPointsToNextLevel = 0;
     let currentRoomLevelProgressPercent = 0;
     let currentRoomUnlockedSeatCounts = [9];
@@ -2255,25 +2267,30 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         enterFullscreenRoomMode();
         mainContent.innerHTML = `
             <div id="room-header-bar" class="flex justify-between items-center mb-3 gap-2">
-                <button id="room-info-trigger-btn" class="room-info-trigger" title="معلومات الغرفة">
-                    <img id="room-info-cover-img" src="${room.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-cover-img">
-                    <span class="min-w-0 flex flex-col items-start">
-                        <span id="room-info-name" class="room-info-name">${room.isPrivate ? '<i class="fas fa-lock text-amber-400 text-[10px]"></i> ' : ''}${escapeHtml(room.name)}</span>
-                        <span class="flex items-center gap-1.5">
-                            <span id="room-info-code" class="room-info-code">${room.roomCode ? `ID: ${room.roomCode}` : ''}</span>
-                            <span id="room-info-level-badge" class="room-level-badge hidden"></span>
+                <div id="room-info-card-widget" class="room-info-card-widget">
+                    <button id="room-info-trigger-btn" class="room-info-trigger" title="معلومات الغرفة">
+                        <img id="room-info-cover-img" src="${room.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-cover-img">
+                        <span class="min-w-0 flex flex-col items-start">
+                            <span id="room-info-name" class="room-info-name">${room.isPrivate ? '<i class="fas fa-lock text-amber-400 text-[10px]"></i> ' : ''}${escapeHtml(room.name)}</span>
+                            <span class="room-info-meta-row">
+                                <span id="room-info-level-badge" class="room-level-badge hidden"></span>
+                                <span id="room-info-session-support" class="room-info-session-support hidden">
+                                    <i class="fas fa-bolt"></i><span id="room-info-session-support-num">0</span>
+                                </span>
+                            </span>
                         </span>
-                    </span>
-                </button>
-                <button id="room-header-follow-btn" class="hidden follow-room-btn follow-room-btn-compact js-room-follow-btn" data-following="0" title="متابعة الغرفة">
-                    <i class="fas fa-plus"></i>
-                </button>
+                    </button>
+                    <button id="room-header-follow-btn" class="hidden follow-room-btn js-room-follow-btn room-header-follow-pill" data-following="0" title="متابعة الغرفة">
+                        <i class="fas fa-plus"></i> متابعة
+                    </button>
+                </div>
                 <div class="flex-1"></div>
                 <div class="flex items-center gap-2 flex-shrink-0">
                     <button id="room-power-btn" class="w-8 h-8 rounded-full bg-gray-700/60 hover:bg-gray-600 flex items-center justify-center text-gray-300" title="خيارات الخروج">
                         <i class="fas fa-power-off"></i>
                     </button>
                     <button id="room-viewer-count-btn" class="room-viewer-count-btn" title="المشاهدون">
+                        <i class="fas fa-eye"></i>
                         <span id="room-viewer-avatars" class="room-viewer-avatars"></span>
                         <span id="room-viewer-count-num">0</span>
                     </button>
@@ -2482,12 +2499,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                             <p class="text-[11px] text-gray-400">${currentRoomCode ? `ID: ${currentRoomCode}` : ''}</p>
                         </div>
                     </div>
-                    <div class="room-info-card-owner-row">
+                    <div id="room-info-card-owner-row" class="room-info-card-owner-row" role="button" title="عرض الملف الشخصي للمضيف">
                         <img src="${currentRoomHostProfileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-card-owner-img">
                         <div class="min-w-0 flex-1">
                             <p class="text-[10px] text-gray-500">مالك الغرفة</p>
                             <p class="text-sm font-bold truncate">${escapeHtml(currentRoomHostUsername || '—')}</p>
                         </div>
+                        <i class="fas fa-chevron-left text-[10px] text-gray-500"></i>
                     </div>
                     <div class="grid grid-cols-2 gap-2 mt-3">
                         <div class="room-info-stat-box">
@@ -2516,50 +2534,23 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             socket.emit(currentRoomIsFollowing ? 'unfollow-room' : 'follow-room', { roomId: room.id });
         });
         modal.querySelector('#room-info-rankings-btn')?.addEventListener('click', () => {
-            showRoomRankingsModal();
+            modal.remove();
+            goToRoomRankingsLeaderboard();
         });
-    }
-
-    // ✅ منصّة تتويج أقوى 10 غرف — الأول أعلى بالمنتصف، الثاني والثالث بجانبيه، وباقي الغرف
-    // بقائمة مرتبة أسفلهم. الترتيب بأكبر عدد متابعين + نقاط دعم معاً (يحسبه السيرفر)
-    async function showRoomRankingsModal() {
-        document.getElementById('room-rankings-modal')?.remove();
-        const modal = document.createElement('div');
-        modal.id = 'room-rankings-modal';
-        modal.className = 'fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-[70] p-3';
-        modal.innerHTML = `
-            <div class="room-rankings-sheet w-full md:max-w-md text-white">
-                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
-                <div class="room-rankings-header">
-                    <p class="room-rankings-title"><i class="fas fa-trophy text-amber-400"></i> غرف الصدارة</p>
-                    <button id="close-room-rankings" class="room-rankings-close-btn"><i class="fas fa-times"></i></button>
-                </div>
-                <div id="room-rankings-body" class="room-rankings-body">
-                    <div class="text-center py-10 text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-        modal.addEventListener('click', (e) => { if (e.target.id === 'room-rankings-modal') modal.remove(); });
-        modal.querySelector('#close-room-rankings').addEventListener('click', () => modal.remove());
-
-        try {
-            const response = await fetch('/api/voice-room/rankings', { headers: { 'Authorization': `Bearer ${token}` } });
-            const result = await response.json();
-            const body = modal.querySelector('#room-rankings-body');
-            if (!body) return;
-            const rooms = (response.ok && result.rooms) ? result.rooms : [];
-            if (rooms.length === 0) {
-                body.innerHTML = '<p class="text-center text-gray-400 text-sm py-10">لا توجد غرف متصدّرة بعد — كن أول من يتصدّر! 🏆</p>';
-                return;
-            }
-            renderRoomRankingsBody(body, rooms);
-        } catch (error) {
-            const body = modal.querySelector('#room-rankings-body');
-            if (body) body.innerHTML = '<p class="text-center text-red-400 text-sm py-10">تعذر تحميل الترتيب، حاول مجدداً</p>';
+        // ✅ ربط دخول البث بالملف الشخصي للمستخدم — الضغط على صف مالك الغرفة (صورته/اسمه)
+        // يفتح ملفه الشخصي الكامل مباشرة (showFullProfilePage)، لا فقط اسمه كنص ثابت غير قابل للتفاعل
+        if (currentRoomHostId) {
+            modal.querySelector('#room-info-card-owner-row')?.addEventListener('click', () => {
+                modal.remove();
+                showFullProfilePage(currentRoomHostId);
+            });
         }
     }
 
+    // ✅ منصّة تتويج أقوى 10 غرف — الأول أعلى بالمنتصف، الثاني والثالث بجانبيه، وباقي الغرف
+    // بقائمة مرتبة أسفلهم. الترتيب بأكبر عدد متابعين + نقاط دعم معاً (يحسبه السيرفر). كانت
+    // نافذة منفصلة (room-rankings-modal)، دُمجت الآن كتبويب "الغرف" داخل شاشة "المتصدرين"
+    // نفسها (showLeaderboardView) بدل واجهة مستقلة — هذي الدالة وحدها بقيت، تُستدعى من هناك
     function renderRoomRankingsBody(body, rooms) {
         const podium = rooms.slice(0, 3);
         const rest = rooms.slice(3);
@@ -2606,9 +2597,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 const roomId = el.dataset.roomId;
                 const room = rooms.find(r => r.id === roomId);
                 if (!room) return;
-                document.getElementById('room-rankings-modal')?.remove();
-                document.getElementById('room-info-card')?.remove();
-                // 🐛 إصلاح: فتح منصّة الصدارة من داخل غرفة أخرى ثم الدخول لغرفة مختلفة كان يتخطّى
+                // 🐛 إصلاح: الدخول لغرفة من هذي القائمة بينما أنا أصلاً داخل غرفة أخرى كان يتخطّى
                 // تنظيف الغرفة الحالية (قناة دردشتها + شبكة صوتها) — بخلاف مسار "مغادرة حقيقية"
                 // المُستخدَم بكل مكان آخر (انظر showRoomBrowserView)، فتبقى اتصالات WebRTC قديمة
                 // معلّقة بالخلفية وأنا فعلياً بغرفة جديدة. نفس التنظيف هنا قبل الدخول مباشرة
@@ -3086,9 +3075,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 btn.classList.toggle('following', currentRoomIsFollowing);
             });
             if (result.roomCode) {
-                currentRoomCode = result.roomCode;
-                const codeEl = document.getElementById('room-info-code');
-                if (codeEl) codeEl.textContent = `ID: ${result.roomCode}`;
+                currentRoomCode = result.roomCode; // ✅ لا يزال يُستخدم ببطاقة معلومات الغرفة ومنصّة الصدارة، وإن أُزيل من رأس الغرفة نفسه
             }
             if (result.coverImage) {
                 currentRoomCoverImage = result.coverImage;
@@ -3113,12 +3100,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             if (typeof result.chatLocked === 'boolean') currentRoomChatLocked = result.chatLocked;
             if (typeof result.level === 'number') currentRoomLevel = result.level;
             if (typeof result.supportPoints === 'number') currentRoomSupportPoints = result.supportPoints;
+            if (typeof result.sessionSupportPoints === 'number') currentRoomSessionSupportPoints = result.sessionSupportPoints;
             if (typeof result.pointsToNextLevel === 'number') currentRoomPointsToNextLevel = result.pointsToNextLevel;
             if (typeof result.levelProgressPercent === 'number') currentRoomLevelProgressPercent = result.levelProgressPercent;
             if (result.unlockedSeatCounts) currentRoomUnlockedSeatCounts = result.unlockedSeatCounts;
             if (result.kickedUsers) currentRoomKickedUsers = result.kickedUsers;
             if (result.bannedWords) currentRoomBannedWords = result.bannedWords;
             updateRoomLevelBadgeUI();
+            updateRoomSessionSupportUI();
             updateChatLockUI();
             if (result.backgroundImage !== undefined) currentRoomBackgroundImage = result.backgroundImage;
             if (result.backgroundExpiresAt !== undefined) currentRoomBackgroundExpiresAt = result.backgroundExpiresAt;
@@ -3547,6 +3536,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 currentRoomIsLocked = result.room.isLocked;
                 currentRoomBackgroundImage = result.room.backgroundImage;
                 currentRoomDescription = result.room.description;
+                // 🐛 إصلاح: لم تكن هذي القيمة تُحدَّث محلياً بعد الحفظ الناجح، فتبقى الكلمات المحظورة
+                // بالذاكرة قديمة (فارغة غالباً) — عند فتح الإعدادات مجدداً بنفس الجلسة تظهر الشرائح
+                // وكأنها "اختفت" رغم أن السيرفر حفظها بنجاح فعلاً؛ الآن تُطابق ما أكّده السيرفر تماماً
+                if (Array.isArray(result.room.bannedWords)) currentRoomBannedWords = result.room.bannedWords;
                 applyRoomBackground(currentRoomBackgroundImage);
                 closeModal();
                 showNotification('تم حفظ الإعدادات ✅', 'success');
@@ -6830,9 +6823,9 @@ function showXpGainAnimation(amount) {
     // =====================================================
     // ✅ مشاهدو الغرفة — عدّاد حي + قائمة عند الطلب (مصدرها عضوية قناة السوكيت بالسيرفر)
     // =====================================================
-    socket.on('room-viewer-count', ({ roomId, count }) => {
+    socket.on('room-viewer-count', ({ roomId, count, preview }) => {
         if (roomId !== currentVoiceRoomId) return;
-        updateRoomViewerWidget(count, null);
+        updateRoomViewerWidget(count, preview || null);
     });
 
     socket.on('room-viewers-list', ({ roomId, viewers }) => {
@@ -6877,7 +6870,18 @@ function showXpGainAnimation(amount) {
     // ✅ لا حاجة لإعادة جلب/رسم الغرفة كاملة هنا — user-joined-seat (يُرسَل بنفس لحظة بدء
     // البث) يكفي وحده لتحديث مقعد المضيف؛ إعادة الرسم الكاملة كانت تُحسّ وكأن الغرفة
     // "تُعاد كتابتها" بلا داعٍ (كل الصور تُعاد تحميلها دفعة واحدة)
-    socket.on('room-broadcast-started', () => {});
+    // 🐛 إصلاح: السيرفر يُفرّغ kickedUsers فعلياً عند كل بدء بث جديد (انظر VoiceRoom.startBroadcast)،
+    // لكن هذا المستمع كان لا يفعل شيئاً إطلاقاً، فتبقى قائمة "المطرودون" بنافذة الإعدادات
+    // تعرض أسماء قديمة محلياً حتى بعد إغلاق البث وإعادة فتحه رغم انتهاء أثرهم فعلياً بالسيرفر
+    socket.on('room-broadcast-started', ({ roomId } = {}) => {
+        if (roomId && roomId === currentVoiceRoomId) {
+            currentRoomKickedUsers = [];
+            renderKickedUsersListUI();
+            // ✅ دعم جلسة البث يُصفَّر بالسيرفر تلقائياً عند كل بدء بث جديد — نطابق ذلك هنا فوراً
+            currentRoomSessionSupportPoints = 0;
+            updateRoomSessionSupportUI();
+        }
+    });
 
     // ✅ ظهور/اختفاء فوري بقائمة تصفح الغرف عند بدء/انتهاء بث أي مضيف — فقط لو شاشة
     // التصفح مفتوحة فعلياً حالياً (grid موجود بالـ DOM)، وإلا يُتجاهل الحدث بصمت وأمان
@@ -7088,14 +7092,16 @@ function showXpGainAnimation(amount) {
 
     // ✅ نقاط دعم الغرفة تحدّثت (هدية أُرسلت بداخلها) — تحديث صامت للشارة، بلا إشعار مزعج
     // على كل هدية (سيصل غالباً بمعدل عالٍ بغرفة نشطة). المستوى نفسه له حدث احتفالي منفصل أدناه
-    socket.on('room-support-points-updated', ({ roomId, supportPoints, level, pointsToNextLevel, levelProgressPercent }) => {
+    socket.on('room-support-points-updated', ({ roomId, supportPoints, sessionSupportPoints, level, pointsToNextLevel, levelProgressPercent }) => {
         if (roomId !== currentVoiceRoomId) return;
         currentRoomSupportPoints = supportPoints;
+        if (typeof sessionSupportPoints === 'number') currentRoomSessionSupportPoints = sessionSupportPoints;
         currentRoomLevel = level;
         currentRoomPointsToNextLevel = pointsToNextLevel;
         currentRoomLevelProgressPercent = levelProgressPercent;
         updateRoomLevelBadgeUI();
         updateRoomLevelProgressUI();
+        updateRoomSessionSupportUI();
     });
 
     // ✅ ارتفع مستوى الغرفة فعلياً — احتفال بصري للجميع بالغرفة + تحديث فوري لخيارات توسيع
@@ -8007,17 +8013,26 @@ async function showMiniProfileModal(userId) {
 }
 
 // --- ✅ صفحة الملف الشخصي الكامل — نافذة سفلية كبيرة بكل التفاصيل (المستوى، الهدايا، الإحصائيات) ---
+// ✅ إغلاق بمؤثر انزلاق للأسفل (بدل اختفاء فوري) — يطابق مؤثر الدخول (slideUp) باتجاه معاكس،
+// وينتظر انتهاء الأنيميشن فعلياً قبل حذف العنصر من الـDOM
+function closeFullProfilePage() {
+    const page = document.getElementById('full-profile-page');
+    const sheet = document.getElementById('full-profile-sheet');
+    if (!page || !sheet) { page?.remove(); return; }
+    page.classList.add('full-profile-backdrop-exit');
+    sheet.classList.add('full-profile-exit');
+    setTimeout(() => page.remove(), 220);
+}
+
 async function showFullProfilePage(userId) {
     const existing = document.getElementById('full-profile-page');
     if (existing) existing.remove();
 
     const shellHTML = `
-        <div id="full-profile-page" class="fixed inset-0 bg-black/80 z-[330] flex items-end">
-            <div class="bg-gray-900 w-full rounded-t-2xl flex flex-col animate-[slideUp_0.25s_ease-out]" style="max-height:92vh;">
-                <div class="flex items-center justify-between p-3 border-b border-gray-700 flex-shrink-0">
-                    <h3 class="font-bold text-sm flex items-center gap-2"><i class="fas fa-user text-purple-400"></i> الملف الشخصي</h3>
-                    <button id="close-full-profile" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
-                </div>
+        <div id="full-profile-page" class="full-profile-page-backdrop">
+            <div id="full-profile-sheet" class="full-profile-sheet">
+                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 flex-shrink-0"></div>
+                <button id="close-full-profile" class="full-profile-close-btn"><i class="fas fa-times"></i></button>
                 <div id="full-profile-body" class="flex-1 overflow-y-auto">
                     <div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
                 </div>
@@ -8026,8 +8041,8 @@ async function showFullProfilePage(userId) {
     `;
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const page = document.getElementById('full-profile-page');
-    document.getElementById('close-full-profile').addEventListener('click', () => page.remove());
-    page.addEventListener('click', (e) => { if (e.target.id === 'full-profile-page') page.remove(); });
+    document.getElementById('close-full-profile').addEventListener('click', closeFullProfilePage);
+    page.addEventListener('click', (e) => { if (e.target.id === 'full-profile-page') closeFullProfilePage(); });
 
     try {
         const [userRes, giftRes] = await Promise.all([
@@ -8047,10 +8062,16 @@ async function showFullProfilePage(userId) {
 
         const body = document.getElementById('full-profile-body');
         body.innerHTML = `
-            <div class="relative bg-gradient-to-b from-purple-800/30 to-transparent pt-6 pb-4 px-4 text-center">
-                <img src="${u.profileImage}" class="w-20 h-20 rounded-full mx-auto border-4 border-gray-900 shadow-lg object-cover ${u.activeFrameClass || ''}">
-                <h2 class="text-base font-bold mt-2 flex items-center justify-center gap-1">${u.username} ${getAgentBadgeHTML(u.isAgent)}</h2>
-                <p class="text-[11px] text-gray-400 mt-0.5">ID: ${u.customId}</p>
+            <div class="full-profile-cover">
+                <img src="${u.profileImage}" class="full-profile-avatar ${u.activeFrameClass || ''}">
+            </div>
+            <div class="full-profile-identity">
+                <h2 class="full-profile-name">${u.username} ${getAgentBadgeHTML(u.isAgent)}</h2>
+                <p class="full-profile-id">ID: ${u.customId}</p>
+                <div class="full-profile-badge-row">
+                    <span class="full-profile-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
+                    <span class="full-profile-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${u.age} سنة</span>
+                </div>
             </div>
 
             <div class="px-4 mb-4">
@@ -8078,14 +8099,35 @@ async function showFullProfilePage(userId) {
                 </div>
             </div>
 
+            <!-- ✅ بطاقة "الإنجازات" — واجهة فقط حالياً (سيُبنى نظامها لاحقاً)، بشارة "قريباً" واضحة -->
+            <div class="px-4 mb-3">
+                <div class="full-profile-achievements-card">
+                    <div class="full-profile-card-header">
+                        <span><i class="fas fa-medal"></i> الإنجازات</span>
+                        <span class="full-profile-soon-tag">قريباً</span>
+                    </div>
+                    <div class="full-profile-achievements-row">
+                        ${Array.from({ length: 5 }, () => '<span class="full-profile-achievement-slot"><i class="fas fa-trophy"></i></span>').join('')}
+                    </div>
+                </div>
+            </div>
+
+            <!-- ✅ بطاقتا "نادي المعجبين" و"الحماة" — واجهة فقط حالياً، جنباً إلى جنب -->
+            <div class="grid grid-cols-2 gap-2 px-4 mb-4">
+                <div class="full-profile-mini-card">
+                    <i class="fas fa-users full-profile-mini-card-icon" style="color:#f472b6"></i>
+                    <p class="full-profile-mini-card-title">نادي المعجبين</p>
+                    <span class="full-profile-soon-tag">قريباً</span>
+                </div>
+                <div class="full-profile-mini-card">
+                    <i class="fas fa-shield-halved full-profile-mini-card-icon" style="color:#60a5fa"></i>
+                    <p class="full-profile-mini-card-title">الحماة</p>
+                    <span class="full-profile-soon-tag">قريباً</span>
+                </div>
+            </div>
+
             <p class="text-xs text-gray-400 px-4 mb-2">المعلومات الشخصية</p>
             <div class="grid grid-cols-2 gap-2 px-4 mb-4 text-xs">
-                <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
-                    <i class="fas ${genderInfo.icon} ${genderInfo.color} w-4 text-center"></i><span>${genderInfo.text}</span>
-                </div>
-                <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
-                    <i class="fas fa-birthday-cake text-pink-400 w-4 text-center"></i><span>${u.age} سنة</span>
-                </div>
                 <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
                     <i class="fas ${socialInfo.icon} text-red-400 w-4 text-center"></i><span>${socialInfo.text}</span>
                 </div>
@@ -10601,11 +10643,21 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
 // ============ قسم المتصدرين (Leaderboard) =========
 // =================================================
 
+// ✅ يفتح شاشة "المتصدرين" مباشرة على تبويب "الغرف" — نداء واحد يضبط الاختيار المبدئي
+// ثم يُشغّل التنقّل القياسي (يُقرأ ويُصفَّر داخل showLeaderboardView نفسها فور تنفيذها)
+let leaderboardInitialTabOverride = null;
+function goToRoomRankingsLeaderboard() {
+    leaderboardInitialTabOverride = 'rooms';
+    switchToView('leaderboard');
+}
+
 async function showLeaderboardView() {
+    const initialType = leaderboardInitialTabOverride || 'senders';
+    leaderboardInitialTabOverride = null;
     mainContent.innerHTML = `
         <div class="flex flex-col h-full">
             <h2 class="text-xl font-bold mb-3 flex items-center gap-2"><i class="fas fa-trophy text-yellow-400"></i> المتصدرين</h2>
-            <div class="flex gap-2 mb-2">
+            <div id="lb-range-row" class="flex gap-2 mb-2">
                 <button class="lb-range-btn flex-1 py-1.5 rounded-lg text-xs font-bold bg-purple-600 text-white" data-range="week">هذا الأسبوع</button>
                 <button class="lb-range-btn flex-1 py-1.5 rounded-lg text-xs font-bold bg-gray-700 text-gray-300" data-range="month">هذا الشهر</button>
                 <button class="lb-range-btn flex-1 py-1.5 rounded-lg text-xs font-bold bg-gray-700 text-gray-300" data-range="year">هذا العام</button>
@@ -10613,6 +10665,7 @@ async function showLeaderboardView() {
             <div class="flex gap-2 mb-4">
                 <button id="lb-tab-senders" class="flex-1 py-2 rounded-lg text-sm font-bold bg-pink-600 text-white"><i class="fas fa-hand-holding-heart mr-1"></i> الأكثر إهداءً</button>
                 <button id="lb-tab-receivers" class="flex-1 py-2 rounded-lg text-sm font-bold bg-gray-700 text-gray-300"><i class="fas fa-crown mr-1"></i> الأكثر تلقياً</button>
+                <button id="lb-tab-rooms" class="flex-1 py-2 rounded-lg text-sm font-bold bg-gray-700 text-gray-300"><i class="fas fa-trophy mr-1"></i> الغرف</button>
             </div>
             <div id="leaderboard-list-container" class="flex-grow overflow-y-auto space-y-2 pr-1">
                 <div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-3xl"></i></div>
@@ -10620,7 +10673,7 @@ async function showLeaderboardView() {
         </div>
     `;
 
-    let currentType = 'senders';
+    let currentType = initialType;
     let currentRange = 'week';
 
     document.querySelectorAll('.lb-range-btn').forEach(btn => {
@@ -10642,7 +10695,16 @@ async function showLeaderboardView() {
         setLeaderboardTab('receivers');
         loadLeaderboard(currentType, currentRange);
     });
+    // ✅ تبويب "الغرف" — نفس منصّة التتويج (أول 3 + قائمة) المُستخدَمة سابقاً بنافذة منفصلة
+    // داخل الغرفة، مدموجة الآن هنا كتبويب ثالث بدل واجهة مستقلة (ترتيب لا يتعلّق بفترة زمنية،
+    // فشريط الفترات يُخفى معه)
+    document.getElementById('lb-tab-rooms').addEventListener('click', function() {
+        currentType = 'rooms';
+        setLeaderboardTab('rooms');
+        loadLeaderboard(currentType, currentRange);
+    });
 
+    setLeaderboardTab(currentType);
     await loadLeaderboard(currentType, currentRange);
 }
 
@@ -10650,19 +10712,18 @@ async function showLeaderboardView() {
 function setLeaderboardTab(type) {
     const sendersBtn = document.getElementById('lb-tab-senders');
     const receiversBtn = document.getElementById('lb-tab-receivers');
-    if (!sendersBtn || !receiversBtn) return;
+    const roomsBtn = document.getElementById('lb-tab-rooms');
+    const rangeRow = document.getElementById('lb-range-row');
+    if (!sendersBtn || !receiversBtn || !roomsBtn) return;
 
-    if (type === 'senders') {
-        sendersBtn.classList.add('bg-pink-600', 'text-white');
-        sendersBtn.classList.remove('bg-gray-700', 'text-gray-300');
-        receiversBtn.classList.add('bg-gray-700', 'text-gray-300');
-        receiversBtn.classList.remove('bg-pink-600', 'text-white');
-    } else {
-        receiversBtn.classList.add('bg-pink-600', 'text-white');
-        receiversBtn.classList.remove('bg-gray-700', 'text-gray-300');
-        sendersBtn.classList.add('bg-gray-700', 'text-gray-300');
-        sendersBtn.classList.remove('bg-pink-600', 'text-white');
-    }
+    [sendersBtn, receiversBtn, roomsBtn].forEach(btn => {
+        btn.classList.remove('bg-pink-600', 'text-white');
+        btn.classList.add('bg-gray-700', 'text-gray-300');
+    });
+    const activeBtn = type === 'senders' ? sendersBtn : (type === 'receivers' ? receiversBtn : roomsBtn);
+    activeBtn.classList.add('bg-pink-600', 'text-white');
+    activeBtn.classList.remove('bg-gray-700', 'text-gray-300');
+    if (rangeRow) rangeRow.classList.toggle('hidden', type === 'rooms'); // ✅ لا فترة زمنية لترتيب الغرف — تراكمي دائماً
 }
 
 async function loadLeaderboard(type, range = 'week') {
@@ -10670,6 +10731,23 @@ async function loadLeaderboard(type, range = 'week') {
     if (!container) return;
 
     container.innerHTML = `<div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-3xl"></i></div>`;
+
+    if (type === 'rooms') {
+        try {
+            const response = await fetch('/api/voice-room/rankings', { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            const rooms = (response.ok && result.rooms) ? result.rooms : [];
+            if (rooms.length === 0) {
+                container.innerHTML = '<div class="text-center text-gray-400 py-16"><i class="fas fa-trophy text-4xl mb-4"></i><p>لا توجد غرف متصدّرة بعد — كن أول من يتصدّر! 🏆</p></div>';
+                return;
+            }
+            renderRoomRankingsBody(container, rooms);
+        } catch (error) {
+            container.innerHTML = '<div class="text-center text-red-400 py-16">تعذر تحميل الترتيب، حاول مجدداً</div>';
+        }
+        return;
+    }
+
     const endpoint = type === 'senders' ? '/api/gifts/leaderboard/top-senders' : '/api/gifts/leaderboard/top-receivers';
 
     try {

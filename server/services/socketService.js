@@ -522,8 +522,11 @@ function getRoomViewers(io, roomId) {
 }
 
 function broadcastRoomViewerCount(io, roomId) {
-    const count = getRoomViewers(io, roomId).length;
-    io.to(`room-chat-${roomId}`).emit('room-viewer-count', { roomId, count });
+    const viewers = getRoomViewers(io, roomId);
+    // ✅ معاينة صغيرة (أول 3) تُرسَل مع كل تحديث عدد — تُبقي شريط الصور المتراكبة برأس
+    // الغرفة حياً فعلياً عند أي دخول/خروج مشاهد، لا فقط الرقم (كان يتحدّث حياً بالفعل،
+    // بخلاف الصور التي كانت تجمد على أول قائمة جُلبت عند الدخول فقط)
+    io.to(`room-chat-${roomId}`).emit('room-viewer-count', { roomId, count: viewers.length, preview: viewers.slice(0, 3) });
 }
 
 // ✅ يبحث عن socketId حيّ لمستخدم معيّن ضمن قناة دردشة غرفة معيّنة تحديداً — نفس منطق
