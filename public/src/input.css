@@ -2966,7 +2966,6 @@ body.in-voice-room #main-content {
     position: sticky;
     top: 0;
     z-index: 3;
-    background: linear-gradient(180deg, rgba(17,24,39,0.9), transparent);
 }
 .profile-hub-icon-btn {
     width: 32px; height: 32px;
@@ -2978,27 +2977,55 @@ body.in-voice-room #main-content {
     flex-shrink: 0;
 }
 .profile-hub-icon-btn:active { background: rgba(255,255,255,0.16); }
+/* ✅ أيقونات مسطّحة بلا خلفية دائرية (عين/ساعة/مزيد) — تطفو مباشرة فوق صورة الغلاف */
+.profile-hub-icon-btn-flat {
+    width: 32px; height: 32px;
+    background: transparent;
+    color: #f1f5f9;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+    text-shadow: 0 1px 5px rgba(0,0,0,0.7);
+}
+.profile-hub-icon-btn-flat:active { opacity: 0.6; }
 .profile-hub-body { flex: 1; overflow-y: auto; padding-bottom: 30px; }
 
 .profile-hub-cover {
-    height: 110px;
+    height: 120px;
     margin-top: -48px; /* ✅ يمتد خلف الشريط العلوي الشفاف قليلاً لإحساس أكثر انسيابية */
     background: linear-gradient(135deg, rgba(126,34,206,0.5), rgba(219,39,119,0.3));
     background-size: cover;
     background-position: center;
     position: relative;
 }
-.profile-hub-avatar {
+/* ✅ صورتي بموضع جانبي هندسي فوق الغلاف — مربّع دائري الزوايا بإطار متدرّج مائل خلفه بدل
+   الدائرة المتوسِّطة التقليدية */
+.profile-hub-avatar-wrap {
     position: absolute;
-    left: 50%; bottom: 0;
-    transform: translate(-50%, 50%);
-    width: 96px; height: 96px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 4px solid #111827;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    right: 18px;
+    bottom: -28px;
+    width: 84px;
+    height: 84px;
+    z-index: 2;
 }
-.profile-hub-identity { text-align: center; padding: 56px 16px 6px; }
+.profile-hub-avatar-wrap::before {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    transform: rotate(-8deg);
+    z-index: -1;
+}
+.profile-hub-avatar {
+    width: 100%; height: 100%;
+    display: block;
+    border-radius: 20px;
+    object-fit: cover;
+    border: 3px solid #111827;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+}
+.profile-hub-identity { text-align: center; padding: 34px 16px 6px; }
 .profile-hub-name { font-size: 17px; font-weight: 800; color: #fff; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .profile-hub-id { font-size: 11px; color: #9ca3af; margin-top: 2px; }
 .profile-hub-badge-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
@@ -3091,6 +3118,21 @@ body.in-voice-room #main-content {
 }
 .profile-hub-action-primary { background: linear-gradient(135deg, #a855f7, #ec4899); color: #fff; }
 .profile-hub-action-secondary { background: rgba(255,255,255,0.06); color: #e5e7eb; }
+/* ✅ زر تحرير طافٍ بلا تدرّج لوني — مع شارة نسبة اكتمال الملف صغيرة بجانبه */
+.profile-hub-action-edit {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.16);
+    color: #e5e7eb;
+}
+.profile-hub-action-edit:active { background: rgba(255,255,255,0.05); }
+.profile-hub-completion-badge {
+    font-size: 10px;
+    font-weight: 800;
+    color: #c4b5fd;
+    background: rgba(168,85,247,0.15);
+    padding: 1.5px 7px;
+    border-radius: 999px;
+}
 
 .profile-hub-section-title {
     display: flex; align-items: center; gap: 6px;

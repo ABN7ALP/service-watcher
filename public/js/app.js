@@ -7767,9 +7767,9 @@ async function showMyProfileHub() {
                 <div class="profile-hub-topbar">
                     <button id="close-profile-hub" class="profile-hub-icon-btn" title="إغلاق"><i class="fas fa-times"></i></button>
                     <div class="flex-1"></div>
-                    <button id="profile-hub-clock-btn" class="profile-hub-icon-btn" title="قريباً"><i class="fas fa-clock"></i></button>
-                    <button id="profile-hub-visitors-btn" class="profile-hub-icon-btn" title="سجل الزوار"><i class="fas fa-eye"></i></button>
-                    <button id="profile-hub-more-btn" class="profile-hub-icon-btn" title="المزيد"><i class="fas fa-ellipsis-h"></i></button>
+                    <button id="profile-hub-clock-btn" class="profile-hub-icon-btn-flat" title="قريباً"><i class="fas fa-clock"></i></button>
+                    <button id="profile-hub-visitors-btn" class="profile-hub-icon-btn-flat" title="سجل الزوار"><i class="fas fa-eye"></i></button>
+                    <button id="profile-hub-more-btn" class="profile-hub-icon-btn-flat" title="المزيد"><i class="fas fa-ellipsis-h"></i></button>
                 </div>
                 <div id="profile-hub-body" class="profile-hub-body">
                     <div class="text-center text-gray-400 py-20"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
@@ -7827,9 +7827,24 @@ function renderProfileHubBody(u) {
         return a;
     })();
 
+    // ✅ نسبة اكتمال الملف الشخصي — تُحتسب من حقول التحرير الفعلية (لا وهمية)
+    const completionChecks = [
+        !!u.coverImage,
+        !!(u.status && u.status.trim()),
+        !!u.birthDate,
+        !!(u.hometown && u.hometown.trim()),
+        !!(u.location && u.location.trim()),
+        !!(u.socialLinks && (u.socialLinks.instagram || u.socialLinks.youtube || u.socialLinks.tiktok)),
+        !!(Array.isArray(u.education) && u.education.length > 0),
+        !!(u.job && u.job.title && u.job.title.trim())
+    ];
+    const completionPct = Math.round((completionChecks.filter(Boolean).length / completionChecks.length) * 100);
+
     body.innerHTML = `
         <div class="profile-hub-cover" style="${u.coverImage ? `background-image:url('${u.coverImage}')` : ''}">
-            <img src="${u.profileImage}" class="profile-hub-avatar ${u.activeFrameClass || ''}">
+            <div class="profile-hub-avatar-wrap">
+                <img src="${u.profileImage}" class="profile-hub-avatar ${u.activeFrameClass || ''}">
+            </div>
         </div>
         <div class="profile-hub-identity">
             <h2 class="profile-hub-name">${escapeHtml(u.username || '')} ${getAgentBadgeHTML(u.isAgent)}</h2>
@@ -7876,7 +7891,10 @@ function renderProfileHubBody(u) {
         </div>
 
         <div class="profile-hub-actions-row">
-            <button id="profile-hub-edit-btn" class="profile-hub-action-btn profile-hub-action-primary"><i class="fas fa-pen"></i> تحرير</button>
+            <button id="profile-hub-edit-btn" class="profile-hub-action-btn profile-hub-action-edit">
+                <i class="fas fa-pen"></i> تحرير
+                <span class="profile-hub-completion-badge">${completionPct}%</span>
+            </button>
             <button id="profile-hub-discover-btn" class="profile-hub-action-btn profile-hub-action-secondary"><i class="fas fa-user-plus"></i> اقتراحات</button>
         </div>
     `;
