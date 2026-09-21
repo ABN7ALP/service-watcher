@@ -474,8 +474,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     document.getElementById('mobile-sheet-my-profile-btn')?.addEventListener('click', () => {
         document.getElementById('mobile-more-sheet')?.classList.add('hidden');
         document.getElementById('mobile-more-sheet')?.classList.remove('flex');
-        showMyProfileModal();
+        showMyProfileHub();
     });
+    // ✅ سطح المكتب: الصورة الشخصية بالشريط الجانبي كانت غير قابلة للنقر إطلاقاً — تفتح الآن
+    // نفس مركز الملف الشخصي المتاح للهاتف عبر "المزيد"، بدل أن تبقى ميزة حصرية للهاتف فقط
+    document.getElementById('profileImage')?.addEventListener('click', () => showMyProfileHub());
 
     // ✅ الرئيسية الجديدة: غرف صوت فقط (80 مقعداً، 5 منها إدارية 1-5)
     // ✅ حالة المقاعد الآن حقيقية 100% من قاعدة البيانات (لقطة عند الفتح + تحديث حي عبر Socket)
@@ -6306,6 +6309,16 @@ document.getElementById('user-id-container').addEventListener('click', () => {
             console.warn('[VOICE] بلغتُ الحد الأقصى لاتصالات الصوت المتزامنة — تجاهلت عرضاً جديداً لحماية الجهاز');
             return;
         }
+        // 🐛 إصلاح جوهري لبق "لا يتصل فعلياً بعد إعادة الاتصال التلقائي": لو وصلني عرض جديد
+        // من طرف أملك معه اتصالاً بالفعل، فهذا يعني غالباً أنه أعاد بناء اتصاله من الصفر (بعد
+        // انقطاع/إعادة اتصال سوكيت — انظر معالج socket.on('connect') أعلاه) بشهادات ICE/DTLS
+        // جديدة تماماً. إعادة استخدام اتصالي القديم معه هنا (كما كان يحدث سابقاً عبر
+        // getOrCreateVoicePeer) يفشل بصمت غالباً: تبدو الواجهة "متصلة" لكن لا صوت فعلياً،
+        // لأن اتصالي القديم لا يطابق الجلسة الجديدة تماماً. الأصح دائماً هو هدم اتصالي به
+        // وبناء واحد جديد كلياً قبل معالجة أي عرض وارد، لا الافتراض أن القديم لا يزال صالحاً
+        if (voicePeerConnections.has(fromUserId)) {
+            teardownVoicePeer(fromUserId);
+        }
         await ensureLocalMicStream();
         const pc = getOrCreateVoicePeer(fromUserId);
         try {
@@ -7242,6 +7255,11 @@ function showXpGainAnimation(amount) {
         showBannedModal(reason, banExpires, isPermanent);
     });
 
+    // ✅ نكزة وصلتني من شخص آخر — إشعار لحظي بسيط، لا حاجة لأي حالة محفوظة
+    socket.on('user-poked', ({ fromUsername }) => {
+        showBottomToast(`${fromUsername || 'شخص ما'} نكزك 👋`, 'fa-hand-point-up');
+    });
+
 socket.on('publicGiftAnnouncement', (data) => {
     const existing = document.querySelectorAll('.public-gift-toast');
     // ✅ حد أقصى 2 إشعارات متراكبة بنفس اللحظة لتفادي الفوضى البصرية عند إرسال سريع متتالي
@@ -7698,52 +7716,659 @@ function showBottomToast(message, icon = 'fa-info-circle') {
 }
 
         // --- ✅ دالة جديدة: عرض ملفي الشخصي (مختصر) من قائمة "المزيد" ---
-function showMyProfileModal() {
-    const existing = document.getElementById('my-profile-modal');
-    if (existing) existing.remove();
+// ✅ تخمين تقريبي "للموقع الحالي" من المنطقة الزمنية بالمتصفح — بلا أي طلب صلاحية GPS ولا
+// استدعاء خدمة خارجية (خصوصية أفضل، صفر اعتمادية شبكة). تقريبي عمداً — يكفي لعرض "بلد/منطقة"
+// عامة بالملف الشخصي، وليس موقعاً دقيقاً
+function guessLocationFromTimezone() {
+    try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+        const map = {
+            'Asia/Amman': 'الأردن', 'Asia/Riyadh': 'السعودية', 'Asia/Dubai': 'الإمارات',
+            'Asia/Kuwait': 'الكويت', 'Asia/Qatar': 'قطر', 'Asia/Bahrain': 'البحرين',
+            'Asia/Baghdad': 'العراق', 'Asia/Damascus': 'سوريا', 'Asia/Beirut': 'لبنان',
+            'Asia/Jerusalem': 'فلسطين', 'Asia/Gaza': 'فلسطين', 'Asia/Hebron': 'فلسطين',
+            'Africa/Cairo': 'مصر', 'Africa/Tripoli': 'ليبيا', 'Africa/Tunis': 'تونس',
+            'Africa/Algiers': 'الجزائر', 'Africa/Casablanca': 'المغرب', 'Africa/Khartoum': 'السودان',
+            'Asia/Aden': 'اليمن', 'Asia/Muscat': 'عُمان'
+        };
+        return map[tz] || '';
+    } catch (e) { return ''; }
+}
 
-    const localUser = JSON.parse(localStorage.getItem('user')) || {};
-    const requiredXp = calculateRequiredXp(localUser.level || 1);
-    const progress = Math.min(((localUser.experience || 0) / requiredXp) * 100, 100);
+// ✅ مركز الملف الشخصي (Profile Hub) — إعادة هيكلة كاملة تحل محل البطاقة الصغيرة القديمة:
+// غلاف + صورة متراكبة، اسم/آيدي/جنس/عمر/موقع، متابعون/متابَعون/دعم مُستلَم، محفظة حقيقية،
+// خصائص "قريباً" (VIP/مركز صنّاع المحتوى/مركز الألعاب)، مركز مضيف بإحصائيات حقيقية حالية،
+// تعديل + اكتشاف أشخاص، وقسم إعدادات مضغوط (يبقى الإعدادات الكاملة الحالية بمكانها المستقل)
+async function showMyProfileHub() {
+    document.getElementById('my-profile-modal')?.remove(); // ✅ تنظيف أي نسخة قديمة من الاسم السابق للدالة لو بقيت بالذاكرة من كاش قديم
+    document.getElementById('profile-hub-page')?.remove();
 
-    const html = `
-        <div id="my-profile-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[310] p-3">
-            <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-[280px] text-white border border-purple-500/25 overflow-hidden">
-                <div class="relative bg-gradient-to-r from-purple-700/30 to-pink-700/25 pt-5 pb-3 px-4 text-center">
-                    <img src="${localUser.profileImage}" class="w-16 h-16 rounded-full mx-auto border-4 border-gray-900 object-cover shadow-lg ${localUser.activeFrameClass || ''}">
-                    <h2 class="text-sm font-bold mt-2 flex items-center justify-center gap-1">${localUser.username || ''} ${getAgentBadgeHTML(localUser.isAgent)}</h2>
-                    <div class="text-[10px] text-gray-300 mt-1 inline-flex items-center gap-1.5 bg-black/25 px-2 py-0.5 rounded-full">
-                        <i class="fas fa-id-card"></i><span>${localUser.customId || ''}</span>
-                    </div>
+    const shellHTML = `
+        <div id="profile-hub-page" class="profile-hub-backdrop">
+            <div id="profile-hub-sheet" class="profile-hub-sheet">
+                <div class="profile-hub-topbar">
+                    <button id="close-profile-hub" class="profile-hub-icon-btn" title="إغلاق"><i class="fas fa-times"></i></button>
+                    <div class="flex-1"></div>
+                    <button id="profile-hub-clock-btn" class="profile-hub-icon-btn" title="قريباً"><i class="fas fa-clock"></i></button>
+                    <button id="profile-hub-visitors-btn" class="profile-hub-icon-btn" title="زوّار ملفي"><i class="fas fa-eye"></i></button>
+                    <button id="profile-hub-more-btn" class="profile-hub-icon-btn" title="المزيد"><i class="fas fa-ellipsis-h"></i></button>
                 </div>
-                <div class="px-4 py-3 border-b border-gray-700/50">
-                    <div class="flex justify-between items-center text-[11px] mb-1">
-                        <span class="font-bold text-yellow-400">المستوى ${localUser.level || 1}</span>
-                        <span class="text-gray-400">${Math.floor(localUser.experience || 0)}/${requiredXp} XP</span>
-                    </div>
-                    <div class="w-full bg-gray-700 rounded-full h-1.5">
-                        <div class="bg-gradient-to-r from-yellow-400 to-orange-500 h-1.5 rounded-full" style="width:${progress}%"></div>
-                    </div>
+                <div id="profile-hub-body" class="profile-hub-body">
+                    <div class="text-center text-gray-400 py-20"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
                 </div>
-                <div class="px-4 py-3 border-b border-gray-700/50">
-                    <p class="text-[10px] text-gray-400 mb-1">حالتك الحالية</p>
-                    <p class="text-xs text-gray-200 italic truncate">${localUser.status || '🚀 جاهز للتحديات!'}</p>
-                </div>
-                <div class="grid grid-cols-2 gap-2 p-3">
-                    <button id="my-profile-edit-status" class="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1"><i class="fas fa-pen"></i> تعديل الحالة</button>
-                    <button id="my-profile-open-settings" class="bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1"><i class="fas fa-cog"></i> الإعدادات</button>
-                </div>
-                <button id="close-my-profile-modal" class="w-full text-gray-400 hover:text-white text-xs py-2.5 border-t border-gray-700/50">إغلاق</button>
             </div>
         </div>
     `;
-    document.getElementById('game-container').insertAdjacentHTML('beforeend', html);
-    const modal = document.getElementById('my-profile-modal');
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+    const page = document.getElementById('profile-hub-page');
+    document.getElementById('close-profile-hub').addEventListener('click', () => page.remove());
+    document.getElementById('profile-hub-clock-btn').addEventListener('click', () => showNotification('هذه الخاصية قريباً 🕐', 'info'));
+    document.getElementById('profile-hub-visitors-btn').addEventListener('click', () => showProfileVisitorsSheet());
+    document.getElementById('profile-hub-more-btn').addEventListener('click', () => showProfileHubMoreMenu());
 
-    document.getElementById('my-profile-edit-status').addEventListener('click', () => { showStatusEditModal(); });
-    document.getElementById('my-profile-open-settings').addEventListener('click', () => { modal.remove(); switchToView('settings'); });
-    document.getElementById('close-my-profile-modal').addEventListener('click', () => modal.remove());
-    modal.addEventListener('click', (e) => { if (e.target.id === 'my-profile-modal') modal.remove(); });
+    try {
+        const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await response.json();
+        if (!response.ok || result.status !== 'success') throw new Error();
+        const u = result.data.user;
+        localStorage.setItem('user', JSON.stringify(u)); // ✅ يبقي النسخة المحلية محدَّثة (نفس ما تفعله refreshUserData)
+
+        // ✅ يحفظ موقعاً مخمَّناً تلقائياً أول مرة فقط (لو الحقل فاضي) — لا يُعيد الكتابة فوق اختيار المستخدم لاحقاً
+        if (!u.location) {
+            const guess = guessLocationFromTimezone();
+            if (guess) {
+                fetch('/api/users/updateProfile', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ location: guess })
+                }).catch(() => {});
+                u.location = guess;
+            }
+        }
+
+        renderProfileHubBody(u);
+    } catch (error) {
+        console.error('[PROFILE HUB] Error:', error);
+        const body = document.getElementById('profile-hub-body');
+        if (body) body.innerHTML = '<div class="text-center text-red-400 py-16">تعذر تحميل ملفك الشخصي</div>';
+    }
+
+    page.addEventListener('click', (e) => { if (e.target.id === 'profile-hub-page') page.remove(); });
+}
+
+function renderProfileHubBody(u) {
+    const body = document.getElementById('profile-hub-body');
+    if (!body) return;
+    const genderInfo = u.gender === 'male' ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' } : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
+    const age = (() => {
+        if (!u.birthDate) return null;
+        const today = new Date(); const bd = new Date(u.birthDate);
+        let a = today.getFullYear() - bd.getFullYear();
+        const m = today.getMonth() - bd.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < bd.getDate())) a--;
+        return a;
+    })();
+
+    body.innerHTML = `
+        <div class="profile-hub-cover" style="${u.coverImage ? `background-image:url('${u.coverImage}')` : ''}">
+            <img src="${u.profileImage}" class="profile-hub-avatar ${u.activeFrameClass || ''}">
+        </div>
+        <div class="profile-hub-identity">
+            <h2 class="profile-hub-name">${escapeHtml(u.username || '')} ${getAgentBadgeHTML(u.isAgent)}</h2>
+            <p class="profile-hub-id">ID: ${escapeHtml(String(u.customId || ''))}</p>
+            <div class="profile-hub-badge-row">
+                <span class="profile-hub-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
+                ${age !== null ? `<span class="profile-hub-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${age} سنة</span>` : ''}
+                ${u.location ? `<span class="profile-hub-mini-badge"><i class="fas fa-location-dot text-emerald-400"></i> ${escapeHtml(u.location)}</span>` : ''}
+            </div>
+        </div>
+
+        <div class="profile-hub-stats-row">
+            <div class="profile-hub-stat"><span class="profile-hub-stat-num">${(u.followers || []).length}</span><span class="profile-hub-stat-label">متابِعون</span></div>
+            <div class="profile-hub-stat"><span class="profile-hub-stat-num">${(u.following || []).length}</span><span class="profile-hub-stat-label">متابَعون</span></div>
+            <div class="profile-hub-stat" id="profile-hub-coins-received-stat"><span class="profile-hub-stat-num">…</span><span class="profile-hub-stat-label">كوينز مُستلَمة</span></div>
+        </div>
+
+        ${u.showWallet !== false ? `
+        <div class="profile-hub-wallet-card">
+            <div class="profile-hub-wallet-icon"><i class="fas fa-wallet"></i></div>
+            <div class="flex-1 min-w-0">
+                <p class="profile-hub-wallet-title">محفظتي</p>
+                <p class="profile-hub-wallet-sub"><i class="fas fa-coins text-yellow-400"></i> ${(u.coins || 0).toLocaleString('en-US')} كوينز &nbsp;•&nbsp; <i class="fas fa-dollar-sign text-green-400"></i> ${(u.balance || 0).toFixed(2)}</p>
+            </div>
+            <button id="profile-hub-wallet-btn" class="profile-hub-wallet-action">استبدال / شراء</button>
+        </div>` : ''}
+
+        <div class="profile-hub-feature-grid">
+            ${u.showVipBadge !== false ? `
+            <button class="profile-hub-feature-tile" id="profile-hub-vip-btn">
+                <i class="fas fa-crown" style="color:#fbbf24"></i>
+                <span>VIP</span>
+                <span class="profile-hub-soon-tag">قريباً</span>
+            </button>` : ''}
+            <button class="profile-hub-feature-tile" id="profile-hub-creator-btn">
+                <i class="fas fa-star" style="color:#c084fc"></i>
+                <span>مركز صنّاع المحتوى</span>
+                <span class="profile-hub-soon-tag">قريباً</span>
+            </button>
+            <button class="profile-hub-feature-tile" id="profile-hub-games-btn">
+                <i class="fas fa-gamepad" style="color:#60a5fa"></i>
+                <span>مركز الألعاب</span>
+                <span class="profile-hub-soon-tag">قريباً</span>
+            </button>
+            <button class="profile-hub-feature-tile" id="profile-hub-host-center-btn">
+                <i class="fas fa-microphone-lines" style="color:#f472b6"></i>
+                <span>مركز المضيف</span>
+            </button>
+        </div>
+
+        <div class="profile-hub-actions-row">
+            <button id="profile-hub-edit-btn" class="profile-hub-action-btn profile-hub-action-primary"><i class="fas fa-pen"></i> تحرير</button>
+            <button id="profile-hub-discover-btn" class="profile-hub-action-btn profile-hub-action-secondary"><i class="fas fa-user-plus"></i> اقتراحات</button>
+        </div>
+
+        <div class="profile-hub-section-title"><i class="fas fa-cog"></i> الإعدادات</div>
+        <div class="profile-hub-settings-list">
+            <button class="profile-hub-settings-row" id="profile-hub-full-settings-btn"><i class="fas fa-user-cog"></i><span>الحساب والخصوصية والمزيد</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
+            ${['عام', 'التنبيهات', 'اللغة', 'ذاكرة نظيفة', 'جودة الفيديو', 'مفضّلة'].map(label => `
+                <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
+            `).join('')}
+        </div>
+        <div class="profile-hub-section-title"><i class="fas fa-info-circle"></i> نبذة</div>
+        <div class="profile-hub-settings-list">
+            ${['السياسات والقوانين', 'الدعم والمساعدة', 'حولنا'].map(label => `
+                <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
+            `).join('')}
+        </div>
+        <div class="profile-hub-settings-list">
+            <button id="profile-hub-logout-btn" class="profile-hub-settings-row profile-hub-logout-row"><i class="fas fa-sign-out-alt"></i><span>تسجيل الخروج</span></button>
+        </div>
+        <p class="profile-hub-version">الإصدار 1.0.0 — مدعوم من abn.7alp</p>
+    `;
+
+    // ✅ كوينز مُستلَمة — إعادة استخدام ملخص الهدايا الموجود أصلاً (نفس مصدر قسم "هداياي المستلمة" بالإعدادات)
+    fetch(`/api/gifts/user/${u._id}/summary`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(res => {
+            const el = document.querySelector('#profile-hub-coins-received-stat .profile-hub-stat-num');
+            if (el && res.status === 'success') el.textContent = (res.data.totalCoinsValue || 0).toLocaleString('en-US');
+        })
+        .catch(() => {});
+
+    document.getElementById('profile-hub-wallet-btn')?.addEventListener('click', () => showBuyCoinsModal());
+    document.getElementById('profile-hub-vip-btn')?.addEventListener('click', () => showNotification('خاصية VIP قريباً ✨', 'info'));
+    document.getElementById('profile-hub-creator-btn').addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
+    document.getElementById('profile-hub-games-btn').addEventListener('click', () => showNotification('مركز الألعاب قريباً 🎮', 'info'));
+    document.getElementById('profile-hub-host-center-btn').addEventListener('click', () => showHostCenterSheet());
+    document.getElementById('profile-hub-edit-btn').addEventListener('click', () => showProfileEditSheet(u));
+    document.getElementById('profile-hub-discover-btn').addEventListener('click', () => showDiscoverPeopleSheet());
+    document.getElementById('profile-hub-full-settings-btn').addEventListener('click', () => { document.getElementById('profile-hub-page')?.remove(); switchToView('settings'); });
+    body.querySelectorAll('.profile-hub-settings-soon').forEach(btn => {
+        btn.addEventListener('click', () => showNotification(`قسم "${btn.dataset.label}" قيد إعادة الهيكلة، قريباً جداً`, 'info'));
+    });
+    document.getElementById('profile-hub-logout-btn').addEventListener('click', () => {
+        showConfirmationModal('هل أنت متأكد من تسجيل الخروج؟', () => {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/login.html';
+        });
+    });
+}
+
+// ✅ مركز المضيف — إحصائيات حقيقية حالية لغرفتي (لو عندي غرفة) بدل بيانات وهمية؛ الرسوم
+// البيانية الأسبوعية/الشهرية/السنوية تحتاج بيانات تاريخية غير مُجمَّعة بعد بالنظام، فتُعرض
+// "قريباً" بدل اختلاقها — لا نعرض أبداً رقماً غير حقيقي
+async function showHostCenterSheet() {
+    document.getElementById('host-center-sheet')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'host-center-sheet';
+    modal.className = 'fixed inset-0 bg-black/70 z-[320] flex items-end md:items-center justify-center p-3';
+    modal.innerHTML = `
+        <div class="profile-hub-subsheet-card w-full md:max-w-sm">
+            <div class="flex items-center justify-between mb-3">
+                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-microphone-lines text-pink-400"></i> مركز المضيف</p>
+                <button id="close-host-center" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="host-center-body" class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'host-center-sheet') modal.remove(); });
+    document.getElementById('close-host-center').addEventListener('click', () => modal.remove());
+
+    try {
+        const response = await fetch('/api/voice-room/my-room', { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await response.json();
+        const roomBody = document.getElementById('host-center-body');
+        if (!roomBody) return;
+        if (result.status !== 'success' || !result.room) {
+            roomBody.innerHTML = '<p class="text-sm text-gray-400 py-6">لا تملك غرفة بعد — أنشئ غرفتك من الرئيسية لتظهر إحصائياتها هنا</p>';
+            return;
+        }
+        const roomDetailsRes = await fetch(`/api/voice-room/rooms/${result.room.id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const roomDetails = await roomDetailsRes.json();
+        const followersCount = roomDetails.followersCount || 0;
+        const level = roomDetails.level ?? '—';
+        const supportPoints = roomDetails.supportPoints || 0;
+        roomBody.innerHTML = `
+            <div class="grid grid-cols-3 gap-2 mb-3">
+                <div class="profile-hub-hc-stat"><span>${followersCount}</span><label>متابعو الغرفة</label></div>
+                <div class="profile-hub-hc-stat"><span>Lv.${level}</span><label>المستوى</label></div>
+                <div class="profile-hub-hc-stat"><span>${supportPoints.toLocaleString('en-US')}</span><label>دعم تراكمي</label></div>
+            </div>
+            <p class="text-[11px] text-gray-500 text-center py-3 border-t border-gray-700/50">تحليلات تفصيلية (أسبوعي/شهري/سنوي، أكبر داعم، الجنس الأكثر متابعة...) قريباً 📊</p>
+        `;
+    } catch (error) {
+        const roomBody = document.getElementById('host-center-body');
+        if (roomBody) roomBody.innerHTML = '<p class="text-sm text-red-400 py-6">تعذر تحميل الإحصائيات</p>';
+    }
+}
+
+// ✅ قائمة "المزيد" — مشاركة/محفظة/مركز صنّاع المحتوى/رمز QR
+function showProfileHubMoreMenu() {
+    document.getElementById('profile-hub-more-menu')?.remove();
+    const localUser = JSON.parse(localStorage.getItem('user')) || {};
+    const modal = document.createElement('div');
+    modal.id = 'profile-hub-more-menu';
+    modal.className = 'fixed inset-0 bg-black/60 z-[325] flex items-end justify-center';
+    modal.innerHTML = `
+        <div class="bg-gray-800 w-full md:max-w-sm rounded-t-2xl p-3 pb-5 animate-[slideUp_0.2s_ease-out]">
+            <div class="w-10 h-1.5 bg-gray-600 rounded-full mx-auto mb-3"></div>
+            <button id="hub-more-share" class="profile-hub-settings-row"><i class="fas fa-share-nodes text-purple-400"></i><span>مشاركة الملف الشخصي</span></button>
+            <button id="hub-more-wallet" class="profile-hub-settings-row"><i class="fas fa-wallet text-yellow-400"></i><span>المحفظة</span></button>
+            <button id="hub-more-creator" class="profile-hub-settings-row"><i class="fas fa-star text-purple-400"></i><span>مركز صنّاع المحتوى</span><span class="profile-hub-soon-tag">قريباً</span></button>
+            <button id="hub-more-qr" class="profile-hub-settings-row"><i class="fas fa-qrcode text-emerald-400"></i><span>رمز QR</span></button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'profile-hub-more-menu') modal.remove(); });
+    document.getElementById('hub-more-share').addEventListener('click', async () => {
+        modal.remove();
+        const shareText = `تابعني على منصة التحديات! معرّفي: ${localUser.customId || ''}`;
+        try {
+            if (navigator.share) {
+                await navigator.share({ text: shareText });
+            } else {
+                await navigator.clipboard.writeText(shareText);
+                showNotification('تم نسخ رابط المشاركة ✅', 'success');
+            }
+        } catch (e) { /* المستخدم ألغى المشاركة — لا حاجة لأي رد فعل */ }
+    });
+    document.getElementById('hub-more-wallet').addEventListener('click', () => { modal.remove(); showBuyCoinsModal(); });
+    document.getElementById('hub-more-creator').addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
+    document.getElementById('hub-more-qr').addEventListener('click', () => { modal.remove(); showProfileQrModal(localUser); });
+}
+
+// ✅ رمز QR لمشاركة الملف الشخصي — عبر مكتبة qrcodejs الخفيفة (CDN، يتحقق من توفّرها فعلياً
+// قبل الاستخدام فلا يتعطّل شيء لو تعذّر تحميلها)
+function showProfileQrModal(localUser) {
+    document.getElementById('profile-qr-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'profile-qr-modal';
+    modal.className = 'fixed inset-0 bg-black/70 z-[330] flex items-center justify-center p-4';
+    modal.innerHTML = `
+        <div class="profile-hub-subsheet-card w-full max-w-[280px] text-center">
+            <p class="font-bold text-sm mb-3"><i class="fas fa-qrcode text-emerald-400"></i> رمز QR لملفك</p>
+            <div id="profile-qr-canvas-holder" class="w-[180px] h-[180px] bg-white rounded-xl mx-auto flex items-center justify-center"></div>
+            <p class="text-[11px] text-gray-400 mt-3">ID: ${escapeHtml(String(localUser.customId || ''))}</p>
+            <button id="close-profile-qr" class="profile-hub-action-btn profile-hub-action-secondary w-full mt-4">إغلاق</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'profile-qr-modal') modal.remove(); });
+    document.getElementById('close-profile-qr').addEventListener('click', () => modal.remove());
+
+    const holder = document.getElementById('profile-qr-canvas-holder');
+    if (typeof QRCode === 'function' && holder) {
+        new QRCode(holder, { text: `ID:${localUser.customId || ''}`, width: 170, height: 170, colorDark: '#111827', colorLight: '#ffffff' });
+    } else if (holder) {
+        holder.innerHTML = `<span class="text-gray-500 text-xs px-4">تعذّر تحميل مولّد رمز QR</span>`;
+    }
+}
+
+// ✅ ورقة "زوّار ملفي" — إجمالي مشاهدات/زوّار مميَّزين + نفس الشيء لليوم + توزيع يومي
+async function showProfileVisitorsSheet() {
+    document.getElementById('profile-visitors-sheet')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'profile-visitors-sheet';
+    modal.className = 'fixed inset-0 bg-black/70 z-[320] flex items-end md:items-center justify-center p-3';
+    modal.innerHTML = `
+        <div class="profile-hub-subsheet-card w-full md:max-w-sm" style="max-height:75vh; display:flex; flex-direction:column;">
+            <div class="flex items-center justify-between mb-3 flex-shrink-0">
+                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-eye text-purple-400"></i> زوّار ملفي</p>
+                <button id="close-profile-visitors" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="profile-visitors-body" class="text-center text-gray-400 py-10 overflow-y-auto"><i class="fas fa-spinner fa-spin"></i></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'profile-visitors-sheet') modal.remove(); });
+    document.getElementById('close-profile-visitors').addEventListener('click', () => modal.remove());
+
+    try {
+        const response = await fetch('/api/users/me/profile-visits', { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await response.json();
+        const bodyEl = document.getElementById('profile-visitors-body');
+        if (!bodyEl) return;
+        if (!response.ok || result.status !== 'success') throw new Error();
+        const d = result.data;
+        const dayLabel = (dateStr) => {
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+            const d2 = new Date(dateStr + 'T00:00:00');
+            if (d2.getTime() === today.getTime()) return 'اليوم';
+            if (d2.getTime() === yesterday.getTime()) return 'أمس';
+            return dateStr;
+        };
+        bodyEl.innerHTML = `
+            <div class="grid grid-cols-2 gap-2 mb-3 flex-shrink-0">
+                <div class="profile-hub-hc-stat"><span>${d.totalVisitors}</span><label>إجمالي الزوّار</label></div>
+                <div class="profile-hub-hc-stat"><span>${d.totalViews}</span><label>إجمالي المشاهدات</label></div>
+                <div class="profile-hub-hc-stat"><span>${d.todayVisitors}</span><label>زوّار اليوم</label></div>
+                <div class="profile-hub-hc-stat"><span>${d.todayViews}</span><label>مشاهدات اليوم</label></div>
+            </div>
+            ${d.dailyBreakdown.length === 0
+                ? '<p class="text-xs text-gray-500 text-center py-6">لا توجد زيارات بعد</p>'
+                : `<div class="space-y-1.5">${d.dailyBreakdown.map(row => `
+                    <div class="flex items-center justify-between bg-gray-800/40 rounded-lg px-3 py-2 text-xs">
+                        <span class="text-gray-300">${dayLabel(row.date)}</span>
+                        <span class="font-bold text-purple-300">${row.visitorsCount} ${row.visitorsCount === 1 ? 'زائر' : 'زوّار'}</span>
+                    </div>
+                `).join('')}</div>`
+            }
+        `;
+    } catch (error) {
+        const bodyEl = document.getElementById('profile-visitors-body');
+        if (bodyEl) bodyEl.innerHTML = '<p class="text-sm text-red-400 py-6">تعذر تحميل سجل الزوّار</p>';
+    }
+}
+
+// ✅ ورقة "اكتشاف أشخاص" — اقتراحات متابعة بسيطة، النقر على أي بطاقة يفتح ملفه الشخصي الكامل
+async function showDiscoverPeopleSheet() {
+    document.getElementById('discover-people-sheet')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'discover-people-sheet';
+    modal.className = 'fixed inset-0 bg-black/70 z-[320] flex items-end md:items-center justify-center p-3';
+    modal.innerHTML = `
+        <div class="profile-hub-subsheet-card w-full md:max-w-sm" style="max-height:75vh; display:flex; flex-direction:column;">
+            <div class="flex items-center justify-between mb-3 flex-shrink-0">
+                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-user-plus text-purple-400"></i> اقتراحات متابعة</p>
+                <button id="close-discover-people" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="discover-people-body" class="text-center text-gray-400 py-10 overflow-y-auto"><i class="fas fa-spinner fa-spin"></i></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'discover-people-sheet') modal.remove(); });
+    document.getElementById('close-discover-people').addEventListener('click', () => modal.remove());
+
+    try {
+        const response = await fetch('/api/users/discover/people', { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await response.json();
+        const bodyEl = document.getElementById('discover-people-body');
+        if (!bodyEl) return;
+        if (!response.ok || result.status !== 'success') throw new Error();
+        const users = result.data.users;
+        if (users.length === 0) {
+            bodyEl.innerHTML = '<p class="text-xs text-gray-500 text-center py-6">لا توجد اقتراحات جديدة حالياً</p>';
+            return;
+        }
+        bodyEl.innerHTML = `<div class="grid grid-cols-3 gap-2">${users.map(u => `
+            <button class="discover-person-card" data-user-id="${u._id}">
+                <img src="${u.profileImage}" class="discover-person-avatar ${u.activeFrameClass || ''}">
+                <span class="discover-person-name">${escapeHtml(u.username)}</span>
+                <span class="discover-person-level">Lv.${u.level || 1}</span>
+            </button>
+        `).join('')}</div>`;
+        bodyEl.querySelectorAll('.discover-person-card').forEach(card => {
+            card.addEventListener('click', () => {
+                modal.remove();
+                showFullProfilePage(card.dataset.userId);
+            });
+        });
+    } catch (error) {
+        const bodyEl = document.getElementById('discover-people-body');
+        if (bodyEl) bodyEl.innerHTML = '<p class="text-sm text-red-400 py-6">تعذر تحميل الاقتراحات</p>';
+    }
+}
+
+// ✅ ورقة تحرير الملف الشخصي — كل الحقول الجديدة، مع رفع صورة شخصية/غلاف منفصلين
+function showProfileEditSheet(u) {
+    document.getElementById('profile-edit-sheet')?.remove();
+    let educationEntries = (u.education || []).map(e => ({ institution: e.institution || '', period: e.period || '' }));
+    const social = u.socialLinks || {};
+    const job = u.job || {};
+    const birthDateValue = u.birthDate ? new Date(u.birthDate).toISOString().slice(0, 10) : '';
+
+    const modal = document.createElement('div');
+    modal.id = 'profile-edit-sheet';
+    modal.className = 'fixed inset-0 bg-black/75 z-[330] flex items-end md:items-center justify-center';
+    modal.innerHTML = `
+        <div class="profile-edit-card">
+            <div class="flex items-center justify-between p-3 border-b border-gray-700 flex-shrink-0">
+                <p class="font-bold text-sm"><i class="fas fa-pen text-purple-400"></i> تحرير الملف الشخصي</p>
+                <button id="close-profile-edit" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 space-y-4" id="profile-edit-scroll">
+                <div class="profile-edit-media-block">
+                    <div id="profile-edit-cover-preview" class="profile-edit-cover-preview" style="${u.coverImage ? `background-image:url('${u.coverImage}')` : ''}">
+                        <button type="button" id="profile-edit-cover-btn" class="profile-edit-camera-btn profile-edit-camera-cover" title="تغيير الغلاف"><i class="fas fa-camera"></i></button>
+                    </div>
+                    <div class="profile-edit-avatar-wrap">
+                        <img id="profile-edit-avatar-preview" src="${u.profileImage}" class="profile-edit-avatar-preview">
+                        <button type="button" id="profile-edit-avatar-btn" class="profile-edit-camera-btn profile-edit-camera-avatar" title="تغيير الصورة الشخصية"><i class="fas fa-camera"></i></button>
+                    </div>
+                </div>
+                <input type="file" id="profile-edit-cover-file" accept="image/*" class="hidden">
+                <input type="file" id="profile-edit-avatar-file" accept="image/*" class="hidden">
+
+                <div>
+                    <label class="profile-edit-label">الحالة / السيرة الذاتية</label>
+                    <textarea id="edit-status" maxlength="100" rows="2" class="profile-edit-input">${escapeHtml(u.status || '')}</textarea>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="profile-edit-label">تاريخ الميلاد</label>
+                        <input type="date" id="edit-birthdate" value="${birthDateValue}" class="profile-edit-input">
+                    </div>
+                    <div>
+                        <label class="profile-edit-label">الجنس</label>
+                        <select id="edit-gender" class="profile-edit-input">
+                            <option value="male" ${u.gender === 'male' ? 'selected' : ''}>ذكر</option>
+                            <option value="female" ${u.gender === 'female' ? 'selected' : ''}>أنثى</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="profile-edit-label">مسقط الرأس</label>
+                        <input type="text" id="edit-hometown" maxlength="40" value="${escapeHtml(u.hometown || '')}" class="profile-edit-input" placeholder="مثلاً: عمّان">
+                    </div>
+                    <div>
+                        <label class="profile-edit-label">الموقع الحالي <span class="text-gray-500">(يُحدَّد تلقائياً)</span></label>
+                        <input type="text" id="edit-location" maxlength="40" value="${escapeHtml(u.location || '')}" class="profile-edit-input">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="profile-edit-label">حسابات التواصل</label>
+                    <div class="space-y-1.5">
+                        <div class="profile-edit-social-row"><i class="fab fa-instagram text-pink-400"></i><input type="text" id="edit-instagram" maxlength="60" value="${escapeHtml(social.instagram || '')}" class="profile-edit-input" placeholder="معرّف إنستجرام"></div>
+                        <div class="profile-edit-social-row"><i class="fab fa-youtube text-red-400"></i><input type="text" id="edit-youtube" maxlength="60" value="${escapeHtml(social.youtube || '')}" class="profile-edit-input" placeholder="قناة يوتيوب"></div>
+                        <div class="profile-edit-social-row"><i class="fab fa-tiktok text-gray-200"></i><input type="text" id="edit-tiktok" maxlength="60" value="${escapeHtml(social.tiktok || '')}" class="profile-edit-input" placeholder="معرّف تيك توك"></div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="profile-edit-label mb-0">التعليم</label>
+                        <button type="button" id="add-education-btn" class="profile-edit-add-btn"><i class="fas fa-plus"></i></button>
+                    </div>
+                    <div id="education-entries-list" class="space-y-2"></div>
+                </div>
+
+                <div>
+                    <label class="profile-edit-label">المهنة</label>
+                    <div class="space-y-1.5">
+                        <input type="text" id="edit-job-title" maxlength="50" value="${escapeHtml(job.title || '')}" class="profile-edit-input" placeholder="المسمى الوظيفي">
+                        <input type="text" id="edit-job-company" maxlength="50" value="${escapeHtml(job.company || '')}" class="profile-edit-input" placeholder="الشركة">
+                        <div class="grid grid-cols-2 gap-2">
+                            <input type="text" id="edit-job-from" maxlength="20" value="${escapeHtml(job.from || '')}" class="profile-edit-input" placeholder="من">
+                            <input type="text" id="edit-job-to" maxlength="20" value="${escapeHtml(job.to || '')}" class="profile-edit-input" placeholder="إلى">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="profile-edit-label">إظهار في ملفي الشخصي</label>
+                    <div class="profile-edit-toggle-row">
+                        <span><i class="fas fa-crown text-yellow-400"></i> شارة VIP</span>
+                        <label class="hub-toggle"><input type="checkbox" id="edit-show-vip" ${u.showVipBadge !== false ? 'checked' : ''}><span class="hub-toggle-slider"></span></label>
+                    </div>
+                    <div class="profile-edit-toggle-row">
+                        <span><i class="fas fa-wallet text-emerald-400"></i> المحفظة</span>
+                        <label class="hub-toggle"><input type="checkbox" id="edit-show-wallet" ${u.showWallet !== false ? 'checked' : ''}><span class="hub-toggle-slider"></span></label>
+                    </div>
+                </div>
+            </div>
+            <div class="p-3 border-t border-gray-700 flex-shrink-0">
+                <button id="save-profile-edit-btn" class="profile-hub-action-btn profile-hub-action-primary w-full justify-center"><i class="fas fa-check"></i> حفظ التغييرات</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'profile-edit-sheet') modal.remove(); });
+    document.getElementById('close-profile-edit').addEventListener('click', () => modal.remove());
+
+    function renderEducationEntries() {
+        const list = document.getElementById('education-entries-list');
+        if (!list) return;
+        if (educationEntries.length === 0) {
+            list.innerHTML = '<p class="text-[11px] text-gray-500">لا توجد إدخالات — اضغط + لإضافة مدرسة أو جامعة</p>';
+            return;
+        }
+        list.innerHTML = educationEntries.map((e, i) => `
+            <div class="profile-edit-education-row" data-idx="${i}">
+                <div class="flex-1 space-y-1">
+                    <input type="text" class="profile-edit-input edu-institution" maxlength="80" placeholder="اسم المدرسة/الجامعة" value="${escapeHtml(e.institution)}">
+                    <input type="text" class="profile-edit-input edu-period" maxlength="30" placeholder="الفترة (مثلاً 2018 - 2022)" value="${escapeHtml(e.period)}">
+                </div>
+                <button type="button" class="profile-edit-remove-edu-btn" data-idx="${i}"><i class="fas fa-trash"></i></button>
+            </div>
+        `).join('');
+        list.querySelectorAll('.edu-institution').forEach((input, i) => input.addEventListener('input', () => { educationEntries[i].institution = input.value; }));
+        list.querySelectorAll('.edu-period').forEach((input, i) => input.addEventListener('input', () => { educationEntries[i].period = input.value; }));
+        list.querySelectorAll('.profile-edit-remove-edu-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                educationEntries.splice(Number(btn.dataset.idx), 1);
+                renderEducationEntries();
+            });
+        });
+    }
+    renderEducationEntries();
+    document.getElementById('add-education-btn').addEventListener('click', () => {
+        if (educationEntries.length >= 10) { showNotification('الحد الأقصى 10 إدخالات', 'error'); return; }
+        educationEntries.push({ institution: '', period: '' });
+        renderEducationEntries();
+        document.getElementById('profile-edit-scroll').scrollTop = document.getElementById('profile-edit-scroll').scrollHeight;
+    });
+
+    // ✅ رفع الصورة الشخصية/الغلاف — نفس نمط بقية أزرار الرفع بالمشروع (اختيار فوري عند التغيير)
+    document.getElementById('profile-edit-avatar-btn').addEventListener('click', () => document.getElementById('profile-edit-avatar-file').click());
+    document.getElementById('profile-edit-avatar-file').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('profileImage', file);
+        try {
+            const response = await fetch('/api/users/updateProfilePicture', { method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
+            const result = await response.json();
+            if (response.ok) {
+                document.getElementById('profile-edit-avatar-preview').src = result.data.user.profileImage;
+                localStorage.setItem('user', JSON.stringify(result.data.user));
+                showNotification('تم تحديث الصورة الشخصية ✅', 'success');
+            } else {
+                showNotification(result.message || 'تعذر رفع الصورة', 'error');
+            }
+        } catch (error) { showNotification('حدث خطأ، حاول مجدداً', 'error'); }
+    });
+    document.getElementById('profile-edit-cover-btn').addEventListener('click', () => document.getElementById('profile-edit-cover-file').click());
+    document.getElementById('profile-edit-cover-file').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('coverImage', file);
+        try {
+            const response = await fetch('/api/users/updateCoverImage', { method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
+            const result = await response.json();
+            if (response.ok) {
+                document.getElementById('profile-edit-cover-preview').style.backgroundImage = `url('${result.data.user.coverImage}')`;
+                localStorage.setItem('user', JSON.stringify(result.data.user));
+                showNotification('تم تحديث الغلاف ✅', 'success');
+            } else {
+                showNotification(result.message || 'تعذر رفع الغلاف', 'error');
+            }
+        } catch (error) { showNotification('حدث خطأ، حاول مجدداً', 'error'); }
+    });
+
+    document.getElementById('save-profile-edit-btn').addEventListener('click', async () => {
+        const saveBtn = document.getElementById('save-profile-edit-btn');
+        const originalHTML = saveBtn.innerHTML;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+        const statusVal = document.getElementById('edit-status').value.trim();
+        if (!statusVal) {
+            showNotification('الحالة لا يمكن أن تكون فارغة', 'error');
+            saveBtn.disabled = false; saveBtn.innerHTML = originalHTML;
+            return;
+        }
+
+        const payload = {
+            status: statusVal,
+            birthDate: document.getElementById('edit-birthdate').value || undefined,
+            gender: document.getElementById('edit-gender').value,
+            hometown: document.getElementById('edit-hometown').value.trim(),
+            location: document.getElementById('edit-location').value.trim(),
+            socialLinks: {
+                instagram: document.getElementById('edit-instagram').value.trim(),
+                youtube: document.getElementById('edit-youtube').value.trim(),
+                tiktok: document.getElementById('edit-tiktok').value.trim()
+            },
+            education: educationEntries.filter(e => e.institution.trim()),
+            job: {
+                title: document.getElementById('edit-job-title').value.trim(),
+                company: document.getElementById('edit-job-company').value.trim(),
+                from: document.getElementById('edit-job-from').value.trim(),
+                to: document.getElementById('edit-job-to').value.trim()
+            },
+            showVipBadge: document.getElementById('edit-show-vip').checked,
+            showWallet: document.getElementById('edit-show-wallet').checked
+        };
+
+        try {
+            const response = await fetch('/api/users/updateProfile', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                showNotification(result.message || 'تعذر حفظ التغييرات', 'error');
+                saveBtn.disabled = false; saveBtn.innerHTML = originalHTML;
+                return;
+            }
+            localStorage.setItem('user', JSON.stringify(result.data.user));
+            showNotification('تم حفظ ملفك الشخصي ✅', 'success');
+            modal.remove();
+            renderProfileHubBody(result.data.user); // ✅ يعيد رسم الخلفية (مركز الملف الشخصي) بالبيانات الجديدة فوراً
+        } catch (error) {
+            showNotification('حدث خطأ، حاول مجدداً', 'error');
+            saveBtn.disabled = false; saveBtn.innerHTML = originalHTML;
+        }
+    });
 }
 
         
@@ -7851,7 +8476,7 @@ async function showMiniProfileModal(userId) {
                             <div class="text-[10px] text-gray-400">المستوى</div>
                         </div>
                         <div class="text-center py-2">
-                            <div class="text-lg font-bold text-purple-400">${profileUser.friends ? profileUser.friends.length : 0}</div>
+                            <div class="text-lg font-bold text-purple-400">${profileUser.friendsCount ?? 0}</div>
                             <div class="text-[10px] text-gray-400">الأصدقاء</div>
                         </div>
                     </div>
@@ -8021,7 +8646,7 @@ function closeFullProfilePage() {
     if (!page || !sheet) { page?.remove(); return; }
     page.classList.add('full-profile-backdrop-exit');
     sheet.classList.add('full-profile-exit');
-    setTimeout(() => page.remove(), 220);
+    setTimeout(() => page.remove(), 280);
 }
 
 async function showFullProfilePage(userId) {
@@ -8031,7 +8656,6 @@ async function showFullProfilePage(userId) {
     const shellHTML = `
         <div id="full-profile-page" class="full-profile-page-backdrop">
             <div id="full-profile-sheet" class="full-profile-sheet">
-                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 flex-shrink-0"></div>
                 <button id="close-full-profile" class="full-profile-close-btn"><i class="fas fa-times"></i></button>
                 <div id="full-profile-body" class="flex-1 overflow-y-auto">
                     <div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
@@ -8066,8 +8690,8 @@ async function showFullProfilePage(userId) {
                 <img src="${u.profileImage}" class="full-profile-avatar ${u.activeFrameClass || ''}">
             </div>
             <div class="full-profile-identity">
-                <h2 class="full-profile-name">${u.username} ${getAgentBadgeHTML(u.isAgent)}</h2>
-                <p class="full-profile-id">ID: ${u.customId}</p>
+                <h2 class="full-profile-name">${escapeHtml(u.username)} ${getAgentBadgeHTML(u.isAgent)}</h2>
+                <p class="full-profile-id">ID: ${escapeHtml(String(u.customId || ''))}</p>
                 <div class="full-profile-badge-row">
                     <span class="full-profile-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
                     <span class="full-profile-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${u.age} سنة</span>
@@ -8086,7 +8710,7 @@ async function showFullProfilePage(userId) {
 
             <div class="grid grid-cols-3 gap-2 px-4 mb-4">
                 <div class="bg-gray-800/50 rounded-xl p-3 text-center">
-                    <div class="text-lg font-bold text-purple-400">${u.friends ? u.friends.length : 0}</div>
+                    <div class="text-lg font-bold text-purple-400">${u.friendsCount ?? 0}</div>
                     <div class="text-[10px] text-gray-400 mt-0.5">أصدقاء</div>
                 </div>
                 <div class="bg-gray-800/50 rounded-xl p-3 text-center">
@@ -8136,15 +8760,185 @@ async function showFullProfilePage(userId) {
                 </div>
             </div>
 
-            <div class="px-4 pb-6">
+            <div class="px-4 pb-4">
                 <p class="text-xs text-gray-400 mb-1">الحالة</p>
-                <p class="text-xs text-gray-200 italic bg-gray-800/40 rounded-lg px-3 py-2">${u.status || '🚀 جاهز للتحديات!'}</p>
+                <p class="text-xs text-gray-200 italic bg-gray-800/40 rounded-lg px-3 py-2">${escapeHtml(u.status || '🚀 جاهز للتحديات!')}</p>
             </div>
+
+            ${userId !== myUserId ? `
+            <div class="px-4 pb-5 flex items-center gap-2">
+                <button id="full-profile-follow-btn" class="full-profile-action-btn full-profile-action-follow ${u.isFollowing ? 'following' : ''}">
+                    <i class="fas ${u.isFollowing ? 'fa-check' : 'fa-plus'}"></i> ${u.isFollowing ? 'متابَع' : 'متابعة'}
+                </button>
+                <button id="full-profile-message-btn" class="full-profile-action-btn full-profile-action-icon" title="رسالة"><i class="fas fa-comment-dots"></i></button>
+                <button id="full-profile-like-gift-btn" class="full-profile-action-btn full-profile-action-icon" title="إعجاب / هدية سريعة"><i class="fas fa-heart"></i></button>
+                <button id="full-profile-poke-btn" class="full-profile-action-btn full-profile-action-icon" title="نكزة"><i class="fas fa-hand-point-up"></i></button>
+            </div>
+            ` : ''}
         `;
+
+        if (userId !== myUserId) {
+            document.getElementById('full-profile-follow-btn').addEventListener('click', async () => {
+                const btn = document.getElementById('full-profile-follow-btn');
+                const nowFollowing = !btn.classList.contains('following');
+                btn.disabled = true;
+                try {
+                    const response = await fetch(`/api/users/${userId}/follow`, { method: nowFollowing ? 'POST' : 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+                    const result = await response.json();
+                    if (response.ok) {
+                        btn.classList.toggle('following', nowFollowing);
+                        btn.innerHTML = nowFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة';
+                    } else {
+                        showNotification(result.message || 'تعذر تنفيذ الطلب', 'error');
+                    }
+                } catch (error) {
+                    showNotification('حدث خطأ، حاول مجدداً', 'error');
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+            document.getElementById('full-profile-message-btn').addEventListener('click', () => {
+                closeFullProfilePage();
+                openPrivateChat(userId, u.username);
+            });
+            document.getElementById('full-profile-like-gift-btn').addEventListener('click', () => {
+                showQuickGiftPicker(userId, u.username);
+            });
+            document.getElementById('full-profile-poke-btn').addEventListener('click', async (e) => {
+                const btn = e.currentTarget;
+                btn.disabled = true;
+                try {
+                    const response = await fetch(`/api/users/${userId}/poke`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                    if (response.ok) showNotification(`تم نكز ${u.username} 👋`, 'success');
+                    else { const r = await response.json(); showNotification(r.message || 'تعذر إرسال النكزة', 'error'); }
+                } catch (error) {
+                    showNotification('حدث خطأ، حاول مجدداً', 'error');
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+        }
     } catch (error) {
         console.error('[FULL PROFILE] Error:', error);
         document.getElementById('full-profile-body').innerHTML = `<div class="text-center text-red-400 py-16">فشل تحميل الملف الشخصي</div>`;
     }
+}
+
+// ✅ هدية سريعة — شريط صور أفقي (شريط فيلم) بدل نافذة متجر الهدايا الكاملة: اختيار هدية
+// واحدة بلمسة، وزر إرسال واحد كبير أسفله (كمية 1 دائماً). يعيد استخدام كتالوج/بطاقة الهدايا
+// الموجودَين أصلاً (renderGiftCardHTML، /api/gifts/shop) بدل بناء نظام مستقل من الصفر
+async function showQuickGiftPicker(targetUserId, targetUsername) {
+    document.getElementById('quick-gift-picker')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'quick-gift-picker';
+    modal.className = 'fixed inset-0 bg-black/75 z-[335] flex items-end justify-center';
+    modal.innerHTML = `
+        <div class="quick-gift-card">
+            <div class="flex items-center justify-between p-3 border-b border-gray-700 flex-shrink-0">
+                <p class="font-bold text-sm"><i class="fas fa-heart text-pink-400"></i> إعجاب سريع لـ ${escapeHtml(targetUsername)}</p>
+                <button id="close-quick-gift" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="quick-gift-strip" class="quick-gift-strip">
+                <div class="w-full text-center text-gray-400 py-8"><i class="fas fa-spinner fa-spin"></i></div>
+            </div>
+            <div class="p-3 border-t border-gray-700 flex-shrink-0">
+                <button id="quick-gift-send-btn" class="profile-hub-action-btn profile-hub-action-primary w-full justify-center" disabled>
+                    <i class="fas fa-paper-plane"></i> اختر هدية أولاً
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'quick-gift-picker') modal.remove(); });
+    document.getElementById('close-quick-gift').addEventListener('click', () => modal.remove());
+
+    let selectedGift = null;
+    try {
+        const response = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await response.json();
+        const strip = document.getElementById('quick-gift-strip');
+        if (!strip) return;
+        const gifts = result.status === 'success' ? result.data.gifts : [];
+        if (!gifts || gifts.length === 0) {
+            strip.innerHTML = '<p class="text-xs text-gray-500 w-full text-center py-8">لا توجد هدايا متاحة حالياً</p>';
+            return;
+        }
+        strip.innerHTML = gifts.map(g => `
+            <button type="button" class="quick-gift-item" data-gift-id="${g._id}" data-gift-name="${escapeHtml(g.name)}" data-gift-image="${g.imageUrl || ''}" data-gift-icon="${g.icon || '🎁'}" data-gift-price="${g.discountedPrice || g.price}">
+                <div class="quick-gift-item-visual">${g.imageUrl ? `<img src="${g.imageUrl}">` : `<span>${g.icon || '🎁'}</span>`}</div>
+                <span class="quick-gift-item-name">${escapeHtml(g.name)}</span>
+                <span class="quick-gift-item-price"><i class="fas fa-coins"></i> ${g.discountedPrice || g.price}</span>
+            </button>
+        `).join('');
+        const sendBtn = document.getElementById('quick-gift-send-btn');
+        strip.querySelectorAll('.quick-gift-item').forEach(item => {
+            item.addEventListener('click', () => {
+                strip.querySelectorAll('.quick-gift-item').forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                selectedGift = {
+                    id: item.dataset.giftId, name: item.dataset.giftName,
+                    image: item.dataset.giftImage, icon: item.dataset.giftIcon, price: item.dataset.giftPrice
+                };
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = `<i class="fas fa-paper-plane"></i> إرسال ${escapeHtml(selectedGift.name)}`;
+            });
+        });
+    } catch (error) {
+        const strip = document.getElementById('quick-gift-strip');
+        if (strip) strip.innerHTML = '<p class="text-xs text-red-400 w-full text-center py-8">تعذر تحميل الهدايا</p>';
+    }
+
+    document.getElementById('quick-gift-send-btn').addEventListener('click', async () => {
+        if (!selectedGift) return;
+        const sendBtn = document.getElementById('quick-gift-send-btn');
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        try {
+            const response = await fetch('/api/gifts/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ receiverId: targetUserId, giftId: selectedGift.id, quantity: 1, context: 'private_chat' })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                showNotification(result.message || 'تعذر إرسال الهدية', 'error');
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = `<i class="fas fa-paper-plane"></i> إرسال ${escapeHtml(selectedGift.name)}`;
+                return;
+            }
+            const syncedUser = JSON.parse(localStorage.getItem('user'));
+            if (syncedUser) { syncedUser.coins = result.data.newSenderCoins; localStorage.setItem('user', JSON.stringify(syncedUser)); }
+            const coinsEl = document.getElementById('coins');
+            if (coinsEl) coinsEl.textContent = result.data.newSenderCoins;
+            modal.remove();
+            showGiftThankYouModal(targetUsername, selectedGift);
+        } catch (error) {
+            showNotification('حدث خطأ، حاول مجدداً', 'error');
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = `<i class="fas fa-paper-plane"></i> إرسال ${escapeHtml(selectedGift.name)}`;
+        }
+    });
+}
+
+// ✅ نافذة شكر بعد إرسال هدية سريعة — احتفال بصري بسيط (قصاصات ورقية + قفزة الصورة) بدل
+// إغلاق صامت، تشجيعاً للتفاعل المتكرر
+function showGiftThankYouModal(targetUsername, gift) {
+    document.getElementById('gift-thank-you-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'gift-thank-you-modal';
+    modal.className = 'fixed inset-0 bg-black/75 z-[340] flex items-center justify-center p-4';
+    modal.innerHTML = `
+        <div class="gift-thankyou-card">
+            <div class="gift-thankyou-visual">${gift.image ? `<img src="${gift.image}">` : `<span>${gift.icon || '🎁'}</span>`}</div>
+            <p class="gift-thankyou-title">شكراً لدعمك يا ${escapeHtml(targetUsername)}! 💜</p>
+            <p class="gift-thankyou-sub">تم إرسال "${escapeHtml(gift.name)}" بنجاح</p>
+            <button id="close-gift-thankyou" class="profile-hub-action-btn profile-hub-action-primary w-full justify-center mt-3">تمام</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    fireConfettiBurst(['#ec4899', '#a855f7', '#fbbf24']);
+    document.getElementById('close-gift-thankyou').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target.id === 'gift-thank-you-modal') modal.remove(); });
 }
 
         // --- 🧩 دالة مساعدة: تُرجع HTML شريط إدخال الدردشة الخاصة (نص مرة واحدة، تُستخدم بأكثر من مكان) ---
