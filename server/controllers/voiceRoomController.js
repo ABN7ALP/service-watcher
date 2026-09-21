@@ -5,6 +5,41 @@ const User = require('../models/User');
 const RoomBattle = require('../models/RoomBattle');
 const SeatChallenge = require('../models/SeatChallenge');
 
+// =====================================================
+// ✅ GET /api/voice-room/ice-servers — إعدادات خوادم ICE (STUN/TURN) لاتصالات الصوت الحي
+// (WebRTC) — سبب جوهري لعطل الصوت بين مستخدمَين خلف شبكتَين/دولتَين مختلفتين: STUN وحده
+// (السابق) يكفي فقط عندما تسمح شبكة الطرفين باتصال مباشر (NAT بسيط)؛ خلف NAT متماثل
+// (شائع بشبكات الجوال/الشركات، وأكثر احتمالاً بين شبكتين/دولتين مختلفتين) يفشل الاتصال
+// المباشر تماماً ولا ينقذه إلا خادم TURN يُعيد توجيه الوسائط كوسيط. القيم تُقرأ من متغيرات
+// بيئة الخادم (TURN_URLS مفصولة بفواصل + TURN_USERNAME + TURN_CREDENTIAL) لو أراد المشروع
+// حساب TURN مخصّصاً موثوقاً للإنتاج (Twilio/Xirsys/coturn ذاتي الاستضافة)؛ بدونها يُستخدم
+// احتياطي مجاني معروف (Open Relay Project) يعمل فوراً بلا أي إعداد إضافي — بيانات اعتماد
+// عامة منشورة رسمياً من مزوّدها للاستخدام المفتوح، لكنها محدودة السعة وغير مضمونة للإنتاج
+// الحقيقي طويل الأمد؛ يُنصح بالانتقال لحساب TURN مخصّص عند نمو عدد المستخدمين المتزامنين
+// =====================================================
+exports.getIceServers = (req, res) => {
+    const iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+    ];
+
+    const turnUrlsEnv = (process.env.TURN_URLS || '').trim();
+    if (turnUrlsEnv && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
+        const urls = turnUrlsEnv.split(',').map(u => u.trim()).filter(Boolean);
+        if (urls.length > 0) {
+            iceServers.push({ urls, username: process.env.TURN_USERNAME, credential: process.env.TURN_CREDENTIAL });
+        }
+    } else {
+        iceServers.push(
+            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+        );
+    }
+
+    res.status(200).json({ status: 'success', iceServers });
+};
+
 // ✅ لقطة معركة PK الحالية لغرفة معينة (معلّقة أو فعلية) — تُستخدم لعرض شريط المعركة
 // فوراً عند فتح/إعادة فتح شاشة الغرفة، دون انتظار حدث Socket قد يكون فات وقته
 async function getActiveBattleSnapshot(roomId) {

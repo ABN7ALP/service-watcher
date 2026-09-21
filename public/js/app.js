@@ -4449,10 +4449,28 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // إضافي فعلي من جهاز المتحدث نفسه) — التوسّع لذاك المستوى يحتاج خادم وسائط مركزي
     // حقيقي (SFU مثل LiveKit/mediasoup)، بنية تحتية منفصلة خارج نطاق هذا الحل بالكامل
     // =====================================================
-    const VOICE_ICE_SERVERS = [
+    // 🐛 إصلاح بق جوهري: "لا نسمع بعضنا إطلاقاً بين دولتين/شبكتين مختلفتين" — STUN وحده (كان
+    // هنا سابقاً) يكفي فقط لاتصال مباشر بين طرفين خلف NAT بسيط؛ خلف NAT متماثل (symmetric —
+    // شائع جداً بشبكات الجوال/بعض مزوّدي الإنترنت، وأكثر احتمالاً كلما اختلفت الشبكتان أكثر)
+    // يفشل الاتصال المباشر تماماً ولا ينقذه إلا خادم TURN يُعيد توجيه الوسائط كوسيط. تُجلَب
+    // القيمة الفعلية من السيرفر (يقرأها من متغيرات بيئته، ويحتوي احتياطياً مجانياً جاهزاً لو
+    // لم تُضبَط) بدل تثبيتها هنا — تُحدَّث لاحقاً من الخادم بلا أي تعديل كود عميل
+    let VOICE_ICE_SERVERS = [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' }
     ];
+    async function loadVoiceIceServers() {
+        try {
+            const response = await fetch('/api/voice-room/ice-servers', { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            if (response.ok && result.status === 'success' && Array.isArray(result.iceServers) && result.iceServers.length > 0) {
+                VOICE_ICE_SERVERS = result.iceServers;
+            }
+        } catch (error) {
+            console.warn('[VOICE] تعذّر جلب إعدادات خوادم ICE من السيرفر — الاستمرار بـSTUN فقط كاحتياطي', error);
+        }
+    }
+    loadVoiceIceServers();
     const MAX_VOICE_PEER_CONNECTIONS = 60; // 🛡️ سقف حماية لجهاز المستخدم نفسه — انظر الشرح أعلاه
     const voicePeerConnections = new Map(); // peerUserId(string) → RTCPeerConnection
     let localMicStream = null;      // التدفق المُرسَل فعلياً للنظراء (بعد سلسلة التحسين أدناه إن نجحت)
