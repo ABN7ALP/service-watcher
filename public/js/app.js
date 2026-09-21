@@ -6306,6 +6306,16 @@ document.getElementById('user-id-container').addEventListener('click', () => {
             console.warn('[VOICE] بلغتُ الحد الأقصى لاتصالات الصوت المتزامنة — تجاهلت عرضاً جديداً لحماية الجهاز');
             return;
         }
+        // 🐛 إصلاح جوهري لبق "لا يتصل فعلياً بعد إعادة الاتصال التلقائي": لو وصلني عرض جديد
+        // من طرف أملك معه اتصالاً بالفعل، فهذا يعني غالباً أنه أعاد بناء اتصاله من الصفر (بعد
+        // انقطاع/إعادة اتصال سوكيت — انظر معالج socket.on('connect') أعلاه) بشهادات ICE/DTLS
+        // جديدة تماماً. إعادة استخدام اتصالي القديم معه هنا (كما كان يحدث سابقاً عبر
+        // getOrCreateVoicePeer) يفشل بصمت غالباً: تبدو الواجهة "متصلة" لكن لا صوت فعلياً،
+        // لأن اتصالي القديم لا يطابق الجلسة الجديدة تماماً. الأصح دائماً هو هدم اتصالي به
+        // وبناء واحد جديد كلياً قبل معالجة أي عرض وارد، لا الافتراض أن القديم لا يزال صالحاً
+        if (voicePeerConnections.has(fromUserId)) {
+            teardownVoicePeer(fromUserId);
+        }
         await ensureLocalMicStream();
         const pc = getOrCreateVoicePeer(fromUserId);
         try {
@@ -8021,7 +8031,7 @@ function closeFullProfilePage() {
     if (!page || !sheet) { page?.remove(); return; }
     page.classList.add('full-profile-backdrop-exit');
     sheet.classList.add('full-profile-exit');
-    setTimeout(() => page.remove(), 220);
+    setTimeout(() => page.remove(), 280);
 }
 
 async function showFullProfilePage(userId) {
@@ -8031,7 +8041,6 @@ async function showFullProfilePage(userId) {
     const shellHTML = `
         <div id="full-profile-page" class="full-profile-page-backdrop">
             <div id="full-profile-sheet" class="full-profile-sheet">
-                <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 flex-shrink-0"></div>
                 <button id="close-full-profile" class="full-profile-close-btn"><i class="fas fa-times"></i></button>
                 <div id="full-profile-body" class="flex-1 overflow-y-auto">
                     <div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
