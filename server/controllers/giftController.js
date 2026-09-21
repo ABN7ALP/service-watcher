@@ -578,6 +578,55 @@ exports.getUserGiftsSummary = async (req, res) => {
     }
 };
 
+// ✅ مساهمون (من دعم هذا المستخدم بالهدايا) + الهدايا المتلقّاة — لعرض بطاقة "المساهمون
+// والهدايا" بنافذة الإعجاب السريع بالملف الشخصي (اضغط عدد الداعمين → قائمة مساهمين + تبويب هدايا)
+exports.getUserContributors = async (req, res) => {
+    try {
+        const targetUserId = req.params.userId;
+        const targetObjId = new mongoose.Types.ObjectId(targetUserId);
+
+        const [contributors, totalAgg, giftsBreakdown] = await Promise.all([
+            GiftLog.aggregate([
+                { $match: { receiver: targetObjId } },
+                { $group: { _id: '$sender', totalContributed: { $sum: '$totalPrice' }, giftsCount: { $sum: '$quantity' } } },
+                { $sort: { totalContributed: -1 } },
+                { $limit: 50 },
+                { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+                { $unwind: '$user' },
+                { $project: {
+                    userId: '$_id', username: '$user.username', profileImage: '$user.profileImage',
+                    activeFrameClass: '$user.activeFrameClass', totalContributed: 1, giftsCount: 1
+                } }
+            ]),
+            GiftLog.aggregate([
+                { $match: { receiver: targetObjId } },
+                { $group: { _id: null, totalGiftsCount: { $sum: '$quantity' }, totalCoinsValue: { $sum: '$totalPrice' } } }
+            ]),
+            GiftLog.aggregate([
+                { $match: { receiver: targetObjId } },
+                { $group: { _id: '$gift', giftName: { $first: '$giftName' }, giftImage: { $first: '$giftImage' }, totalCount: { $sum: '$quantity' } } },
+                { $sort: { totalCount: -1 } },
+                { $limit: 30 }
+            ])
+        ]);
+
+        const totals = totalAgg[0] || { totalGiftsCount: 0, totalCoinsValue: 0 };
+        res.status(200).json({
+            status: 'success',
+            data: {
+                contributorsCount: contributors.length,
+                totalGiftsCount: totals.totalGiftsCount,
+                totalCoinsValue: totals.totalCoinsValue,
+                contributors,
+                gifts: giftsBreakdown.map(g => ({ giftId: g._id, name: g.giftName, image: g.giftImage, count: g.totalCount }))
+            }
+        });
+    } catch (error) {
+        console.error('[ERROR] in getUserContributors:', error);
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
+    }
+};
+
 // إرسال هدية جماعية بالشات العام (لأشخاص محددين أو للجميع)
 exports.sendPublicGift = async (req, res) => {
     try {
