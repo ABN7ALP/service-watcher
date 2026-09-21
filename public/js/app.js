@@ -8845,7 +8845,10 @@ async function showFullProfilePage(userId) {
                     <span class="full-profile-mini-badge"><i class="fas fa-star text-yellow-400"></i> Lv.${u.level || 1}</span>
                     <span class="full-profile-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
                     <span class="full-profile-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${u.age} سنة</span>
+                    ${u.socialStatus ? `<span class="full-profile-mini-badge"><i class="fas ${socialInfo.icon} text-red-400"></i> ${escapeHtml(socialInfo.text)}</span>` : ''}
+                    ${u.educationStatus ? `<span class="full-profile-mini-badge"><i class="fas ${educationInfo.icon} text-blue-400"></i> ${escapeHtml(educationInfo.text)}</span>` : ''}
                 </div>
+                <p class="full-profile-bio-text">${escapeHtml(u.status || '🚀 جاهز للتحديات!')}</p>
             </div>
 
             <div class="full-profile-stats-row">
@@ -8884,21 +8887,6 @@ async function showFullProfilePage(userId) {
                     <p class="full-profile-mini-card-title">الحماة</p>
                     <span class="full-profile-soon-tag">قريباً</span>
                 </div>
-            </div>
-
-            <p class="text-xs text-gray-400 px-4 mb-2">المعلومات الشخصية</p>
-            <div class="grid grid-cols-2 gap-2 px-4 mb-4 text-xs">
-                <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
-                    <i class="fas ${socialInfo.icon} text-red-400 w-4 text-center"></i><span>${socialInfo.text}</span>
-                </div>
-                <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
-                    <i class="fas ${educationInfo.icon} text-blue-400 w-4 text-center"></i><span>${educationInfo.text}</span>
-                </div>
-            </div>
-
-            <div class="px-4 pb-4">
-                <p class="text-xs text-gray-400 mb-1">الحالة</p>
-                <p class="text-xs text-gray-200 italic bg-gray-800/40 rounded-lg px-3 py-2">${escapeHtml(u.status || '🚀 جاهز للتحديات!')}</p>
             </div>
 
             ${userId !== myUserId ? `

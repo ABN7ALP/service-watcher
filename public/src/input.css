@@ -2832,7 +2832,7 @@ body.in-voice-room #main-content {
 }
 .full-profile-identity {
     text-align: center;
-    padding: 52px 16px 4px;
+    padding: 52px 16px 10px;
 }
 .full-profile-name {
     font-size: 16px;
@@ -2847,7 +2847,8 @@ body.in-voice-room #main-content {
 .full-profile-badge-row {
     display: flex;
     justify-content: center;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 6px 8px;
     margin-top: 9px;
 }
 .full-profile-mini-badge {
@@ -2862,22 +2863,33 @@ body.in-voice-room #main-content {
     font-weight: 700;
     color: #e5e7eb;
 }
+/* ✅ الحالة/السيرة — بلا تسمية وبلا خلفية، تجلس مباشرة تحت الشارات بأناقة */
+.full-profile-bio-text {
+    font-size: 11.5px;
+    color: #d1d5db;
+    font-style: italic;
+    text-align: center;
+    margin-top: 8px;
+    padding: 0 20px;
+    line-height: 1.5;
+}
 
-/* ✅ بطاقة الإنجازات — واجهة تمهيدية فقط (سيُبنى نظامها لاحقاً)، خمس خانات فارغة منقّطة */
+/* ✅ بطاقة الإنجازات — واجهة تمهيدية فقط (سيُبنى نظامها لاحقاً)، خمس خانات فارغة منقّطة؛
+   مصغَّرة قليلاً لتوفير مساحة الملف الشخصي */
 .full-profile-achievements-card {
     background: linear-gradient(135deg, rgba(168,85,247,0.12), rgba(255,255,255,0.03));
     border: 1px solid rgba(168,85,247,0.25);
-    border-radius: 14px;
-    padding: 12px;
+    border-radius: 12px;
+    padding: 9px;
 }
 .full-profile-card-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 12.5px;
+    font-size: 11.5px;
     font-weight: 800;
     color: #e9d5ff;
-    margin-bottom: 9px;
+    margin-bottom: 7px;
 }
 .full-profile-card-header i { color: #c084fc; margin-inline-end: 4px; }
 .full-profile-soon-tag {
@@ -2889,9 +2901,9 @@ body.in-voice-room #main-content {
     border-radius: 999px;
     display: inline-block;
 }
-.full-profile-achievements-row { display: flex; gap: 8px; justify-content: center; }
+.full-profile-achievements-row { display: flex; gap: 6px; justify-content: center; }
 .full-profile-achievement-slot {
-    width: 38px; height: 38px;
+    width: 32px; height: 32px;
     border-radius: 50%;
     background: rgba(255,255,255,0.05);
     border: 1px dashed rgba(255,255,255,0.18);
@@ -2899,7 +2911,7 @@ body.in-voice-room #main-content {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 14px;
+    font-size: 12px;
 }
 
 /* ✅ بطاقتا "نادي المعجبين" و"الحماة" — نفس فكرة الإنجازات، جنباً إلى جنب وأصغر حجماً */
