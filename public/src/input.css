@@ -2761,22 +2761,22 @@ body.in-voice-room #main-content {
 }
 
 /* =====================================================
-   ✅ إعادة هيكلة "الملف الشخصي الكامل" (showFullProfilePage) — بطاقة صغيرة مدروسة في منتصف
-   الشاشة بدل ورقة سفلية تغطي الصفحة بالكامل (بطلب صريح)، بمؤثر دخول/خروج "قفزة" مرنة (overshoot
-   spring) بدل انزلاق مسطّح — أقرب لإحساس "فقاعة تقفز" فعلياً. غلاف + صورة متراكبة نصفها خارج
-   الإطار، شارتا جنس/عمر تحت الاسم مباشرة، بطاقة إنجازات وبطاقتا نادي معجبين/حماة تمهيدية فقط
+   ✅ إعادة هيكلة "الملف الشخصي الكامل" (showFullProfilePage) — ورقة سفلية (بطلب صريح: "يضهر
+   من تحت")، بنفس حجم نافذة الهدايا تقريباً (max-w-lg بعرض سطح المكتب، حتى 85% من ارتفاع
+   الشاشة) بدل بطاقة مركزية — نفس أسلوب بقية أوراق المشروع (room-viewers-sheet-card وغيرها).
+   غلاف + صورة متراكبة نصفها خارج الإطار، شارات جنس/عمر/مستوى تحت الاسم مباشرة
    ===================================================== */
 .full-profile-page-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.75);
+    background: rgba(0,0,0,0.6);
     z-index: 330;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
-    padding: 16px;
     animation: fullProfileFadeIn 0.2s ease-out;
 }
+@media (min-width: 768px) { .full-profile-page-backdrop { align-items: center; padding: 16px; } }
 @keyframes fullProfileFadeIn { from { opacity: 0; } to { opacity: 1; } }
 .full-profile-backdrop-exit { animation: fullProfileFadeOut 0.22s ease-in forwards; }
 @keyframes fullProfileFadeOut { from { opacity: 1; } to { opacity: 0; } }
@@ -2784,28 +2784,18 @@ body.in-voice-room #main-content {
 .full-profile-sheet {
     background: #111827;
     width: 100%;
-    max-width: 340px;
-    max-height: min(78vh, 620px);
-    border-radius: 22px;
+    max-width: 512px;
+    max-height: 85vh;
+    border-radius: 22px 22px 0 0;
     display: flex;
     flex-direction: column;
     position: relative;
-    box-shadow: 0 20px 50px rgba(0,0,0,0.55);
-    /* ✅ قفزة دخول مرنة (overshoot) — تتجاوز حجمها الطبيعي قليلاً ثم تستقر، إحساس "فقاعة تقفز" حي */
-    animation: fullProfileJumpIn 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
+    animation: slideUp 0.25s ease-out;
 }
-@keyframes fullProfileJumpIn {
-    0%   { transform: translateY(24px) scale(0.82); opacity: 0; }
-    60%  { transform: translateY(-4px) scale(1.03); opacity: 1; }
-    100% { transform: translateY(0) scale(1); opacity: 1; }
-}
-/* ✅ قفزة خروج — ترتفع وتكبر قليلاً كأنها تقفز، ثم تنكمش وتختفي بسرعة */
-.full-profile-exit { animation: fullProfileJumpOut 0.28s cubic-bezier(0.5, 0, 0.75, 0) forwards; }
-@keyframes fullProfileJumpOut {
-    0%   { transform: translateY(0) scale(1); opacity: 1; }
-    35%  { transform: translateY(-10px) scale(1.05); opacity: 1; }
-    100% { transform: translateY(30px) scale(0.75); opacity: 0; }
-}
+@media (min-width: 768px) { .full-profile-sheet { border-radius: 22px; } }
+.full-profile-exit { animation: fullProfileSlideDown 0.22s ease-in forwards; }
+@keyframes fullProfileSlideDown { from { transform: translateY(0); } to { transform: translateY(100%); } }
 
 .full-profile-close-btn {
     position: absolute;
@@ -3332,8 +3322,13 @@ body.in-voice-room #main-content {
     text-align: center;
     max-width: 300px;
     width: 100%;
-    animation: fullProfileJumpIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: giftThankyouJumpIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+}
+@keyframes giftThankyouJumpIn {
+    0%   { transform: translateY(24px) scale(0.82); opacity: 0; }
+    60%  { transform: translateY(-4px) scale(1.03); opacity: 1; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 .gift-thankyou-visual {
     width: 84px; height: 84px;
@@ -3350,5 +3345,96 @@ body.in-voice-room #main-content {
 }
 .gift-thankyou-title { font-size: 15px; font-weight: 800; color: #fff; }
 .gift-thankyou-sub { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+
+/* ✅ صف متابِعين/متابَعين ببطاقة الملف الشخصي المصغّرة — بلا صناديق خلفية، نفس أسلوب إحصائيات
+   مركز الملف الشخصي (.profile-hub-stat)، وقابل للنقر لفتح قائمة المتابِعين/المتابَعين */
+.full-profile-stats-row {
+    display: flex;
+    justify-content: center;
+    gap: 36px;
+    padding: 10px 16px 4px;
+}
+.full-profile-stat-clickable {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+.full-profile-stat-num { font-size: 15px; font-weight: 800; color: #fff; }
+.full-profile-stat-label { font-size: 10.5px; color: #9ca3af; }
+
+/* =====================================================
+   ✅ ورقة متابِعين/متابَعين — تبويبان + اقتراحات "لك" بصفوف مكدَّسة أسفل بعضها
+   ===================================================== */
+.follow-connections-card {
+    background: #111827;
+    width: 100%;
+    max-width: 480px;
+    max-height: 80vh;
+    border-radius: 20px 20px 0 0;
+    display: flex;
+    flex-direction: column;
+    animation: slideUp 0.25s ease-out;
+}
+@media (min-width: 768px) { .follow-connections-card { border-radius: 20px; } }
+.follow-tabs-row {
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.follow-tab-btn {
+    flex: 1;
+    text-align: center;
+    padding: 8px;
+    border-radius: 10px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #9ca3af;
+}
+.follow-tab-btn.active { background: rgba(168,85,247,0.16); color: #e9d5ff; }
+
+.follow-connections-list { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; }
+.follow-connection-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+.follow-connection-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.follow-connection-name { font-size: 12.5px; font-weight: 700; color: #f3f4f6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.follow-connection-level { font-size: 10px; color: #fbbf24; font-weight: 700; }
+.follow-connection-btn {
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 7px 14px;
+    border-radius: 999px;
+}
+.follow-connection-btn.following { background: rgba(255,255,255,0.08); color: #d1d5db; }
+
+.follow-suggestions-title {
+    font-size: 11px;
+    font-weight: 800;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin: 18px 0 8px;
+}
+/* ✅ صفوف الاقتراحات مكدَّسة أسفل بعضها (لا شبكة) بطلب صريح، مع زر × بسيط بلا خلفية لإزالة الاقتراح */
+.follow-suggestion-wrap { display: flex; align-items: center; gap: 6px; }
+.follow-suggestion-wrap .follow-connection-row { flex: 1; }
+.follow-suggestion-dismiss {
+    flex-shrink: 0;
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    color: #6b7280;
+    font-size: 13px;
+    background: transparent;
+}
+.follow-suggestion-dismiss:active { color: #9ca3af; }
 
 

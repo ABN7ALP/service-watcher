@@ -7824,8 +7824,8 @@ function renderProfileHubBody(u) {
         </div>
 
         <div class="profile-hub-stats-row">
-            <div class="profile-hub-stat"><span class="profile-hub-stat-num">${(u.followers || []).length}</span><span class="profile-hub-stat-label">متابِعون</span></div>
-            <div class="profile-hub-stat"><span class="profile-hub-stat-num">${(u.following || []).length}</span><span class="profile-hub-stat-label">متابَعون</span></div>
+            <button type="button" class="profile-hub-stat" id="profile-hub-followers-stat"><span class="profile-hub-stat-num">${(u.followers || []).length}</span><span class="profile-hub-stat-label">متابِعون</span></button>
+            <button type="button" class="profile-hub-stat" id="profile-hub-following-stat"><span class="profile-hub-stat-num">${(u.following || []).length}</span><span class="profile-hub-stat-label">متابَعون</span></button>
             <div class="profile-hub-stat" id="profile-hub-coins-received-stat"><span class="profile-hub-stat-num">…</span><span class="profile-hub-stat-label">كوينز مُستلَمة</span></div>
         </div>
 
@@ -7895,6 +7895,8 @@ function renderProfileHubBody(u) {
         })
         .catch(() => {});
 
+    document.getElementById('profile-hub-followers-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'followers'));
+    document.getElementById('profile-hub-following-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'following'));
     document.getElementById('profile-hub-wallet-btn')?.addEventListener('click', () => showBuyCoinsModal());
     document.getElementById('profile-hub-vip-btn')?.addEventListener('click', () => showNotification('خاصية VIP قريباً ✨', 'info'));
     document.getElementById('profile-hub-creator-btn').addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
@@ -8081,6 +8083,137 @@ async function showProfileVisitorsSheet() {
         const bodyEl = document.getElementById('profile-visitors-body');
         if (bodyEl) bodyEl.innerHTML = '<p class="text-sm text-red-400 py-6">تعذر تحميل سجل الزوّار</p>';
     }
+}
+
+// ✅ يربط زر متابعة/إلغاء متابعة موحَّد — يُستخدم بقائمتي المتابِعين/المتابَعين وباقتراحات "لك"
+// معاً بدل تكرار نفس منطق الطلب في كل مكان
+function wireFollowConnectionButton(btn) {
+    btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const targetUserId = btn.dataset.userId;
+        const nowFollowing = !btn.classList.contains('following');
+        btn.disabled = true;
+        try {
+            const response = await fetch(`/api/users/${targetUserId}/follow`, { method: nowFollowing ? 'POST' : 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+            if (response.ok) {
+                btn.classList.toggle('following', nowFollowing);
+                btn.textContent = nowFollowing ? 'متابَع' : 'متابعة';
+            } else {
+                const r = await response.json();
+                showNotification(r.message || 'تعذر تنفيذ الطلب', 'error');
+            }
+        } catch (error) {
+            showNotification('حدث خطأ، حاول مجدداً', 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    });
+}
+
+// ✅ صف شخص موحَّد (قوائم المتابِعين/المتابَعين + اقتراحات) — صورة/اسم/مستوى + زر متابعة،
+// النقر على الصف (لا الزر) يفتح ملفه الشخصي الكامل
+function renderFollowPersonRowHTML(u, extraClass = '') {
+    return `
+        <div class="follow-connection-row ${extraClass}" data-user-id="${u._id}">
+            <img src="${u.profileImage}" class="follow-connection-avatar ${u.activeFrameClass || ''}">
+            <div class="min-w-0 flex-1">
+                <p class="follow-connection-name">${escapeHtml(u.username)}</p>
+                <p class="follow-connection-level">Lv.${u.level || 1}</p>
+            </div>
+            <button type="button" class="follow-connection-btn ${u.isFollowedByMe ? 'following' : ''}" data-user-id="${u._id}">${u.isFollowedByMe ? 'متابَع' : 'متابعة'}</button>
+        </div>
+    `;
+}
+
+// ✅ ورقة متابِعين/متابَعين — تبويبان، وأسفل كل قائمة قسم "اقتراحات لك" (صفوف مكدَّسة تحت
+// بعضها لا شبكة)، كل اقتراح بزر × بسيط بلا خلفية يزيله من القائمة فوراً (محلياً فقط، بلا حفظ)
+async function showFollowConnectionsSheet(userId, username, initialTab = 'followers') {
+    document.getElementById('follow-connections-sheet')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'follow-connections-sheet';
+    modal.className = 'fixed inset-0 bg-black/70 z-[335] flex items-end md:items-center justify-center';
+    modal.innerHTML = `
+        <div class="follow-connections-card">
+            <div class="flex items-center justify-between p-3 border-b border-gray-700 flex-shrink-0">
+                <p class="font-bold text-sm truncate">${escapeHtml(username || '')}</p>
+                <button id="close-follow-connections" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="follow-tabs-row flex-shrink-0">
+                <button id="fc-tab-followers" class="follow-tab-btn">متابعون</button>
+                <button id="fc-tab-following" class="follow-tab-btn">متابَعة</button>
+            </div>
+            <div id="fc-list" class="flex-1 overflow-y-auto px-3 pb-3">
+                <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'follow-connections-sheet') modal.remove(); });
+    document.getElementById('close-follow-connections').addEventListener('click', () => modal.remove());
+
+    async function loadTab(tab) {
+        document.getElementById('fc-tab-followers').classList.toggle('active', tab === 'followers');
+        document.getElementById('fc-tab-following').classList.toggle('active', tab === 'following');
+        const listEl = document.getElementById('fc-list');
+        listEl.innerHTML = '<div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>';
+        try {
+            const response = await fetch(`/api/users/${userId}/${tab}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            if (!response.ok || result.status !== 'success') throw new Error();
+            const users = result.data.users;
+            listEl.innerHTML = `
+                <div class="follow-connections-list">
+                    ${users.length === 0
+                        ? `<p class="text-xs text-gray-500 text-center py-6">${tab === 'followers' ? 'لا يوجد متابعون بعد' : 'لا تتابع أحداً بعد'}</p>`
+                        : users.map(u => renderFollowPersonRowHTML(u)).join('')
+                    }
+                </div>
+                <div id="fc-suggestions-slot"></div>
+            `;
+            listEl.querySelectorAll('.follow-connection-row').forEach(row => {
+                row.addEventListener('click', () => { modal.remove(); showFullProfilePage(row.dataset.userId); });
+            });
+            listEl.querySelectorAll('.follow-connection-btn').forEach(wireFollowConnectionButton);
+            loadSuggestionsForConnectionsSheet();
+        } catch (error) {
+            listEl.innerHTML = '<p class="text-xs text-red-400 text-center py-6">تعذر تحميل القائمة</p>';
+        }
+    }
+
+    async function loadSuggestionsForConnectionsSheet() {
+        const slot = document.getElementById('fc-suggestions-slot');
+        if (!slot) return;
+        try {
+            const response = await fetch('/api/users/discover/people', { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            if (!response.ok || result.status !== 'success' || result.data.users.length === 0) return;
+            slot.innerHTML = `
+                <p class="follow-suggestions-title">اقتراحات لك</p>
+                <div class="follow-connections-list">
+                    ${result.data.users.map(u => `
+                        <div class="follow-suggestion-wrap">
+                            ${renderFollowPersonRowHTML(u)}
+                            <button type="button" class="follow-suggestion-dismiss" title="إزالة"><i class="fas fa-times"></i></button>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            slot.querySelectorAll('.follow-connection-row').forEach(row => {
+                row.addEventListener('click', () => { modal.remove(); showFullProfilePage(row.dataset.userId); });
+            });
+            slot.querySelectorAll('.follow-connection-btn').forEach(wireFollowConnectionButton);
+            slot.querySelectorAll('.follow-suggestion-dismiss').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    btn.closest('.follow-suggestion-wrap')?.remove();
+                });
+            });
+        } catch (error) { /* اقتراحات ثانوية — فشلها الصامت لا يعطّل القائمة الأساسية */ }
+    }
+
+    document.getElementById('fc-tab-followers').addEventListener('click', () => loadTab('followers'));
+    document.getElementById('fc-tab-following').addEventListener('click', () => loadTab('following'));
+    loadTab(initialTab === 'following' ? 'following' : 'followers');
 }
 
 // ✅ ورقة "اكتشاف أشخاص" — اقتراحات متابعة بسيطة، النقر على أي بطاقة يفتح ملفه الشخصي الكامل
@@ -8669,17 +8802,10 @@ async function showFullProfilePage(userId) {
     page.addEventListener('click', (e) => { if (e.target.id === 'full-profile-page') closeFullProfilePage(); });
 
     try {
-        const [userRes, giftRes] = await Promise.all([
-            fetch(`/api/users/${userId}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            fetch(`/api/gifts/user/${userId}/summary`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
-        ]);
+        const userRes = await fetch(`/api/users/${userId}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
 
         if (userRes.status !== 'success') throw new Error();
         const u = userRes.data.user;
-        const giftSummary = giftRes.status === 'success' ? giftRes.data : { totalGiftsCount: 0, totalCoinsValue: 0 };
-
-        const requiredXp = calculateRequiredXp(u.level || 1);
-        const progress = Math.min(((u.experience || 0) / requiredXp) * 100, 100);
         const socialInfo = getSocialStatus(u.socialStatus);
         const educationInfo = getEducationStatus(u.educationStatus);
         const genderInfo = u.gender === 'male' ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' } : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
@@ -8693,34 +8819,21 @@ async function showFullProfilePage(userId) {
                 <h2 class="full-profile-name">${escapeHtml(u.username)} ${getAgentBadgeHTML(u.isAgent)}</h2>
                 <p class="full-profile-id">ID: ${escapeHtml(String(u.customId || ''))}</p>
                 <div class="full-profile-badge-row">
+                    <span class="full-profile-mini-badge"><i class="fas fa-star text-yellow-400"></i> Lv.${u.level || 1}</span>
                     <span class="full-profile-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
                     <span class="full-profile-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${u.age} سنة</span>
                 </div>
             </div>
 
-            <div class="px-4 mb-4">
-                <div class="flex justify-between items-center text-xs mb-1">
-                    <span class="font-bold text-yellow-400">المستوى ${u.level}</span>
-                    <span class="text-gray-400">${Math.floor(u.experience || 0)} / ${requiredXp} XP</span>
-                </div>
-                <div class="w-full bg-gray-700 rounded-full h-2">
-                    <div class="bg-gradient-to-r from-yellow-400 to-orange-500 h-2 rounded-full" style="width:${progress}%"></div>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-3 gap-2 px-4 mb-4">
-                <div class="bg-gray-800/50 rounded-xl p-3 text-center">
-                    <div class="text-lg font-bold text-purple-400">${u.friendsCount ?? 0}</div>
-                    <div class="text-[10px] text-gray-400 mt-0.5">أصدقاء</div>
-                </div>
-                <div class="bg-gray-800/50 rounded-xl p-3 text-center">
-                    <div class="text-lg font-bold text-pink-400">${giftSummary.totalGiftsCount}</div>
-                    <div class="text-[10px] text-gray-400 mt-0.5">هدية مُستلَمة</div>
-                </div>
-                <div class="bg-gray-800/50 rounded-xl p-3 text-center">
-                    <div class="text-lg font-bold text-yellow-400">${giftSummary.totalCoinsValue.toLocaleString()}</div>
-                    <div class="text-[10px] text-gray-400 mt-0.5">قيمة الهدايا (كوينز)</div>
-                </div>
+            <div class="full-profile-stats-row">
+                <button type="button" id="full-profile-following-stat" class="full-profile-stat-clickable">
+                    <span class="full-profile-stat-num">${u.followingCount ?? 0}</span>
+                    <span class="full-profile-stat-label">متابَعة</span>
+                </button>
+                <button type="button" id="full-profile-followers-stat" class="full-profile-stat-clickable">
+                    <span class="full-profile-stat-num">${u.followersCount ?? 0}</span>
+                    <span class="full-profile-stat-label">متابعون</span>
+                </button>
             </div>
 
             <!-- ✅ بطاقة "الإنجازات" — واجهة فقط حالياً (سيُبنى نظامها لاحقاً)، بشارة "قريباً" واضحة -->
@@ -8776,6 +8889,13 @@ async function showFullProfilePage(userId) {
             </div>
             ` : ''}
         `;
+
+        document.getElementById('full-profile-following-stat').addEventListener('click', () => {
+            showFollowConnectionsSheet(userId, u.username, 'following');
+        });
+        document.getElementById('full-profile-followers-stat').addEventListener('click', () => {
+            showFollowConnectionsSheet(userId, u.username, 'followers');
+        });
 
         if (userId !== myUserId) {
             document.getElementById('full-profile-follow-btn').addEventListener('click', async () => {

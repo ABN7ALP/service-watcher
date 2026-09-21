@@ -371,6 +371,62 @@ const unfollowUser = async (req, res) => {
     }
 };
 
+// ✅ حقول بطاقة شخص واحد بقائمة متابعين/متابَعين — نفس الحقول المختصرة المستخدَمة بقائمة الاكتشاف
+const FOLLOW_LIST_USER_FIELDS = 'username profileImage customId level activeFrameClass';
+
+// =====================================================
+// ✅ قائمة متابِعي شخص (من يتابعه) — كل صف يحمل isFollowedByMe (هل أنا أتابعه هو أيضاً؟)
+// لعرض زر "متابعة رد" لمن لا أتابعهم بعد، بدل زر متابعة موحَّد لا يعكس الحالة الحقيقية
+// =====================================================
+const getFollowersList = async (req, res) => {
+    try {
+        const targetId = req.params.id;
+        if (!mongoose.Types.ObjectId.isValid(targetId)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف مستخدم غير صالح' });
+        }
+        const [target, me] = await Promise.all([
+            User.findById(targetId).select('followers').populate('followers', FOLLOW_LIST_USER_FIELDS),
+            User.findById(req.user.id).select('following')
+        ]);
+        if (!target) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
+        const myFollowingSet = new Set((me?.following || []).map(String));
+        const users = target.followers.map(u => ({
+            _id: u._id, username: u.username, profileImage: u.profileImage, customId: u.customId,
+            level: u.level, activeFrameClass: u.activeFrameClass,
+            isFollowedByMe: myFollowingSet.has(u._id.toString())
+        }));
+        res.status(200).json({ status: 'success', data: { users } });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
+    }
+};
+
+// =====================================================
+// ✅ قائمة من يتابعهم شخص معيّن
+// =====================================================
+const getFollowingList = async (req, res) => {
+    try {
+        const targetId = req.params.id;
+        if (!mongoose.Types.ObjectId.isValid(targetId)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف مستخدم غير صالح' });
+        }
+        const [target, me] = await Promise.all([
+            User.findById(targetId).select('following').populate('following', FOLLOW_LIST_USER_FIELDS),
+            User.findById(req.user.id).select('following')
+        ]);
+        if (!target) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
+        const myFollowingSet = new Set((me?.following || []).map(String));
+        const users = target.following.map(u => ({
+            _id: u._id, username: u.username, profileImage: u.profileImage, customId: u.customId,
+            level: u.level, activeFrameClass: u.activeFrameClass,
+            isFollowedByMe: myFollowingSet.has(u._id.toString())
+        }));
+        res.status(200).json({ status: 'success', data: { users } });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
+    }
+};
+
 // =====================================================
 // ✅ سجل زوّار ملفي الشخصي — إجمالي المشاهدات/الزوّار المميَّزين + نفس الشيء لليوم + توزيع
 // يومي (عدد الزوّار المميَّزين لكل يوم، آخر 30 يوماً) — لقسم "الزوّار" بمركز الملف الشخصي
@@ -500,5 +556,7 @@ module.exports = {
     unfollowUser,
     getMyProfileVisits,
     pokeUser,
-    discoverPeople
+    discoverPeople,
+    getFollowersList,
+    getFollowingList
 };

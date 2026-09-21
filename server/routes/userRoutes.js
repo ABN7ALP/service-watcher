@@ -25,6 +25,8 @@ router.get('/me/details', userController.getMeDetails);
 router.post('/:id/follow', userController.followUser);
 router.delete('/:id/follow', userController.unfollowUser);
 router.post('/:id/poke', userController.pokeUser);
+router.get('/:id/followers', userController.getFollowersList);
+router.get('/:id/following', userController.getFollowingList);
 router.get('/me/profile-visits', userController.getMyProfileVisits);
 router.get('/discover/people', userController.discoverPeople);
 router.get('/:id', userController.getUserById);
