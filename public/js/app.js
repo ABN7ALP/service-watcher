@@ -9190,6 +9190,7 @@ async function showQuickGiftContributorsSheet(targetUserId, targetUsername) {
         body.querySelectorAll('.qgc-contributor').forEach(el => {
             el.addEventListener('click', () => {
                 modal.remove();
+                document.getElementById('quick-gift-picker')?.remove(); // ✅ وإلا تبقى فوق الملف الشخصي الجديد (z-index أعلى)
                 showFullProfilePage(el.dataset.userId);
             });
         });

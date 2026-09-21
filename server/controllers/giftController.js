@@ -583,6 +583,9 @@ exports.getUserGiftsSummary = async (req, res) => {
 exports.getUserContributors = async (req, res) => {
     try {
         const targetUserId = req.params.userId;
+        if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف مستخدم غير صالح' });
+        }
         const targetObjId = new mongoose.Types.ObjectId(targetUserId);
 
         // ✅ يُحتسب فقط من هدايا "الإعجاب السريع" (context: profile) — أي عبر هذا الزر تحديداً
