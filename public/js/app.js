@@ -7768,7 +7768,7 @@ async function showMyProfileHub() {
                     <button id="close-profile-hub" class="profile-hub-icon-btn" title="إغلاق"><i class="fas fa-times"></i></button>
                     <div class="flex-1"></div>
                     <button id="profile-hub-clock-btn" class="profile-hub-icon-btn" title="قريباً"><i class="fas fa-clock"></i></button>
-                    <button id="profile-hub-visitors-btn" class="profile-hub-icon-btn" title="زوّار ملفي"><i class="fas fa-eye"></i></button>
+                    <button id="profile-hub-visitors-btn" class="profile-hub-icon-btn" title="سجل الزوار"><i class="fas fa-eye"></i></button>
                     <button id="profile-hub-more-btn" class="profile-hub-icon-btn" title="المزيد"><i class="fas fa-ellipsis-h"></i></button>
                 </div>
                 <div id="profile-hub-body" class="profile-hub-body">
@@ -7847,36 +7847,31 @@ function renderProfileHubBody(u) {
             <div class="profile-hub-stat" id="profile-hub-coins-received-stat"><span class="profile-hub-stat-num">…</span><span class="profile-hub-stat-label">كوينز مُستلَمة</span></div>
         </div>
 
-        ${u.showWallet !== false ? `
-        <div class="profile-hub-wallet-card">
-            <div class="profile-hub-wallet-icon"><i class="fas fa-wallet"></i></div>
-            <div class="flex-1 min-w-0">
-                <p class="profile-hub-wallet-title">محفظتي</p>
-                <p class="profile-hub-wallet-sub"><i class="fas fa-coins text-yellow-400"></i> ${(u.coins || 0).toLocaleString('en-US')} كوينز &nbsp;•&nbsp; <i class="fas fa-dollar-sign text-green-400"></i> ${(u.balance || 0).toFixed(2)}</p>
-            </div>
-            <button id="profile-hub-wallet-btn" class="profile-hub-wallet-action">استبدال / شراء</button>
-        </div>` : ''}
-
-        <div class="profile-hub-feature-grid">
-            ${u.showVipBadge !== false ? `
-            <button class="profile-hub-feature-tile" id="profile-hub-vip-btn">
-                <i class="fas fa-crown" style="color:#fbbf24"></i>
-                <span>VIP</span>
-                <span class="profile-hub-soon-tag">قريباً</span>
+        <div class="profile-hub-quick-row">
+            ${u.showWallet !== false ? `
+            <button class="profile-hub-quick-tile" id="profile-hub-wallet-btn" title="محفظتي — ${(u.coins || 0).toLocaleString('en-US')} كوينز">
+                <span class="profile-hub-quick-icon" style="background:rgba(251,191,36,0.15); color:#fbbf24;"><i class="fas fa-wallet"></i></span>
+                <span class="profile-hub-quick-label">محفظتي</span>
             </button>` : ''}
-            <button class="profile-hub-feature-tile" id="profile-hub-creator-btn">
-                <i class="fas fa-star" style="color:#c084fc"></i>
-                <span>مركز صنّاع المحتوى</span>
-                <span class="profile-hub-soon-tag">قريباً</span>
+            ${u.showVipBadge !== false ? `
+            <button class="profile-hub-quick-tile" id="profile-hub-vip-btn">
+                <span class="profile-hub-quick-icon" style="background:rgba(251,191,36,0.15); color:#fbbf24;"><i class="fas fa-crown"></i></span>
+                <span class="profile-hub-quick-label">VIP</span>
+                <span class="profile-hub-quick-dot"></span>
+            </button>` : ''}
+            <button class="profile-hub-quick-tile" id="profile-hub-creator-btn">
+                <span class="profile-hub-quick-icon" style="background:rgba(192,132,252,0.15); color:#c084fc;"><i class="fas fa-star"></i></span>
+                <span class="profile-hub-quick-label">صنّاع المحتوى</span>
+                <span class="profile-hub-quick-dot"></span>
             </button>
-            <button class="profile-hub-feature-tile" id="profile-hub-games-btn">
-                <i class="fas fa-gamepad" style="color:#60a5fa"></i>
-                <span>مركز الألعاب</span>
-                <span class="profile-hub-soon-tag">قريباً</span>
+            <button class="profile-hub-quick-tile" id="profile-hub-games-btn">
+                <span class="profile-hub-quick-icon" style="background:rgba(96,165,250,0.15); color:#60a5fa;"><i class="fas fa-gamepad"></i></span>
+                <span class="profile-hub-quick-label">الألعاب</span>
+                <span class="profile-hub-quick-dot"></span>
             </button>
-            <button class="profile-hub-feature-tile" id="profile-hub-host-center-btn">
-                <i class="fas fa-microphone-lines" style="color:#f472b6"></i>
-                <span>مركز المضيف</span>
+            <button class="profile-hub-quick-tile" id="profile-hub-host-center-btn">
+                <span class="profile-hub-quick-icon" style="background:rgba(244,114,182,0.15); color:#f472b6;"><i class="fas fa-microphone-lines"></i></span>
+                <span class="profile-hub-quick-label">مركز المضيف</span>
             </button>
         </div>
 
@@ -7884,24 +7879,6 @@ function renderProfileHubBody(u) {
             <button id="profile-hub-edit-btn" class="profile-hub-action-btn profile-hub-action-primary"><i class="fas fa-pen"></i> تحرير</button>
             <button id="profile-hub-discover-btn" class="profile-hub-action-btn profile-hub-action-secondary"><i class="fas fa-user-plus"></i> اقتراحات</button>
         </div>
-
-        <div class="profile-hub-section-title"><i class="fas fa-cog"></i> الإعدادات</div>
-        <div class="profile-hub-settings-list">
-            <button class="profile-hub-settings-row" id="profile-hub-full-settings-btn"><i class="fas fa-user-cog"></i><span>الحساب والخصوصية والمزيد</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
-            ${['عام', 'التنبيهات', 'اللغة', 'ذاكرة نظيفة', 'جودة الفيديو', 'مفضّلة'].map(label => `
-                <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
-            `).join('')}
-        </div>
-        <div class="profile-hub-section-title"><i class="fas fa-info-circle"></i> نبذة</div>
-        <div class="profile-hub-settings-list">
-            ${['السياسات والقوانين', 'الدعم والمساعدة', 'حولنا'].map(label => `
-                <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
-            `).join('')}
-        </div>
-        <div class="profile-hub-settings-list">
-            <button id="profile-hub-logout-btn" class="profile-hub-settings-row profile-hub-logout-row"><i class="fas fa-sign-out-alt"></i><span>تسجيل الخروج</span></button>
-        </div>
-        <p class="profile-hub-version">الإصدار 1.0.0 — مدعوم من abn.7alp</p>
     `;
 
     // ✅ كوينز مُستلَمة — إعادة استخدام ملخص الهدايا الموجود أصلاً (نفس مصدر قسم "هداياي المستلمة" بالإعدادات)
@@ -7922,8 +7899,50 @@ function renderProfileHubBody(u) {
     document.getElementById('profile-hub-host-center-btn').addEventListener('click', () => showHostCenterSheet());
     document.getElementById('profile-hub-edit-btn').addEventListener('click', () => showProfileEditSheet(u));
     document.getElementById('profile-hub-discover-btn').addEventListener('click', () => showDiscoverPeopleSheet());
-    document.getElementById('profile-hub-full-settings-btn').addEventListener('click', () => { document.getElementById('profile-hub-page')?.remove(); switchToView('settings'); });
-    body.querySelectorAll('.profile-hub-settings-soon').forEach(btn => {
+}
+
+// ✅ ورقة "الإعدادات" — مُنقولة بالكامل هنا خارج جسم مركز الملف الشخصي، تُفتح فقط من قائمة
+// الثلاث نقاط (المزيد) — تحرير/الحساب/التنبيهات/نبذة/تسجيل الخروج
+function showProfileHubSettingsSheet() {
+    document.getElementById('profile-hub-settings-sheet')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'profile-hub-settings-sheet';
+    modal.className = 'fixed inset-0 bg-black/70 z-[326] flex items-end md:items-center justify-center p-3';
+    modal.innerHTML = `
+        <div class="profile-hub-subsheet-card w-full md:max-w-sm" style="max-height:80vh; display:flex; flex-direction:column;">
+            <div class="flex items-center justify-between mb-3 flex-shrink-0">
+                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-cog text-gray-300"></i> الإعدادات</p>
+                <button id="close-profile-hub-settings" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="overflow-y-auto">
+                <div class="profile-hub-settings-list">
+                    <button class="profile-hub-settings-row" id="profile-hub-full-settings-btn"><i class="fas fa-user-cog"></i><span>الحساب والخصوصية والمزيد</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
+                    ${['عام', 'التنبيهات', 'اللغة', 'ذاكرة نظيفة', 'جودة الفيديو', 'مفضّلة'].map(label => `
+                        <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
+                    `).join('')}
+                </div>
+                <div class="profile-hub-section-title"><i class="fas fa-info-circle"></i> نبذة</div>
+                <div class="profile-hub-settings-list">
+                    ${['السياسات والقوانين', 'الدعم والمساعدة', 'حولنا'].map(label => `
+                        <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
+                    `).join('')}
+                </div>
+                <div class="profile-hub-settings-list">
+                    <button id="profile-hub-logout-btn" class="profile-hub-settings-row profile-hub-logout-row"><i class="fas fa-sign-out-alt"></i><span>تسجيل الخروج</span></button>
+                </div>
+                <p class="profile-hub-version">الإصدار 1.0.0 — مدعوم من abn.7alp</p>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'profile-hub-settings-sheet') modal.remove(); });
+    document.getElementById('close-profile-hub-settings').addEventListener('click', () => modal.remove());
+    document.getElementById('profile-hub-full-settings-btn').addEventListener('click', () => {
+        modal.remove();
+        document.getElementById('profile-hub-page')?.remove();
+        switchToView('settings');
+    });
+    modal.querySelectorAll('.profile-hub-settings-soon').forEach(btn => {
         btn.addEventListener('click', () => showNotification(`قسم "${btn.dataset.label}" قيد إعادة الهيكلة، قريباً جداً`, 'info'));
     });
     document.getElementById('profile-hub-logout-btn').addEventListener('click', () => {
@@ -7997,7 +8016,7 @@ function showProfileHubMoreMenu() {
             <button id="hub-more-share" class="profile-hub-settings-row"><i class="fas fa-share-nodes text-purple-400"></i><span>مشاركة الملف الشخصي</span></button>
             <button id="hub-more-wallet" class="profile-hub-settings-row"><i class="fas fa-wallet text-yellow-400"></i><span>المحفظة</span></button>
             <button id="hub-more-creator" class="profile-hub-settings-row"><i class="fas fa-star text-purple-400"></i><span>مركز صنّاع المحتوى</span><span class="profile-hub-soon-tag">قريباً</span></button>
-            <button id="hub-more-qr" class="profile-hub-settings-row"><i class="fas fa-qrcode text-emerald-400"></i><span>رمز QR</span></button>
+            <button id="hub-more-settings" class="profile-hub-settings-row"><i class="fas fa-cog text-gray-300"></i><span>الإعدادات</span></button>
         </div>
     `;
     document.body.appendChild(modal);
@@ -8016,37 +8035,11 @@ function showProfileHubMoreMenu() {
     });
     document.getElementById('hub-more-wallet').addEventListener('click', () => { modal.remove(); showBuyCoinsModal(); });
     document.getElementById('hub-more-creator').addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
-    document.getElementById('hub-more-qr').addEventListener('click', () => { modal.remove(); showProfileQrModal(localUser); });
+    document.getElementById('hub-more-settings').addEventListener('click', () => { modal.remove(); showProfileHubSettingsSheet(); });
 }
 
-// ✅ رمز QR لمشاركة الملف الشخصي — عبر مكتبة qrcodejs الخفيفة (CDN، يتحقق من توفّرها فعلياً
-// قبل الاستخدام فلا يتعطّل شيء لو تعذّر تحميلها)
-function showProfileQrModal(localUser) {
-    document.getElementById('profile-qr-modal')?.remove();
-    const modal = document.createElement('div');
-    modal.id = 'profile-qr-modal';
-    modal.className = 'fixed inset-0 bg-black/70 z-[330] flex items-center justify-center p-4';
-    modal.innerHTML = `
-        <div class="profile-hub-subsheet-card w-full max-w-[280px] text-center">
-            <p class="font-bold text-sm mb-3"><i class="fas fa-qrcode text-emerald-400"></i> رمز QR لملفك</p>
-            <div id="profile-qr-canvas-holder" class="w-[180px] h-[180px] bg-white rounded-xl mx-auto flex items-center justify-center"></div>
-            <p class="text-[11px] text-gray-400 mt-3">ID: ${escapeHtml(String(localUser.customId || ''))}</p>
-            <button id="close-profile-qr" class="profile-hub-action-btn profile-hub-action-secondary w-full mt-4">إغلاق</button>
-        </div>
-    `;
-    document.body.appendChild(modal);
-    modal.addEventListener('click', (e) => { if (e.target.id === 'profile-qr-modal') modal.remove(); });
-    document.getElementById('close-profile-qr').addEventListener('click', () => modal.remove());
-
-    const holder = document.getElementById('profile-qr-canvas-holder');
-    if (typeof QRCode === 'function' && holder) {
-        new QRCode(holder, { text: `ID:${localUser.customId || ''}`, width: 170, height: 170, colorDark: '#111827', colorLight: '#ffffff' });
-    } else if (holder) {
-        holder.innerHTML = `<span class="text-gray-500 text-xs px-4">تعذّر تحميل مولّد رمز QR</span>`;
-    }
-}
-
-// ✅ ورقة "زوّار ملفي" — إجمالي مشاهدات/زوّار مميَّزين + نفس الشيء لليوم + توزيع يومي
+// ✅ ورقة "سجل الزوار" — زوّار/مشاهدات/نكزات اليوم فقط بصف واحد بلا خلفيات، وتحتها هويات
+// آخر الزوار (صور ضبابية + اسم مخفي) تُكشف تلقائياً عند وصول صاحب الملف للفل 3
 async function showProfileVisitorsSheet() {
     document.getElementById('profile-visitors-sheet')?.remove();
     const modal = document.createElement('div');
@@ -8055,7 +8048,7 @@ async function showProfileVisitorsSheet() {
     modal.innerHTML = `
         <div class="profile-hub-subsheet-card w-full md:max-w-sm" style="max-height:75vh; display:flex; flex-direction:column;">
             <div class="flex items-center justify-between mb-3 flex-shrink-0">
-                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-eye text-purple-400"></i> زوّار ملفي</p>
+                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-eye text-purple-400"></i> سجل الزوار</p>
                 <button id="close-profile-visitors" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
             </div>
             <div id="profile-visitors-body" class="text-center text-gray-400 py-10 overflow-y-auto"><i class="fas fa-spinner fa-spin"></i></div>
@@ -8072,30 +8065,24 @@ async function showProfileVisitorsSheet() {
         if (!bodyEl) return;
         if (!response.ok || result.status !== 'success') throw new Error();
         const d = result.data;
-        const dayLabel = (dateStr) => {
-            const today = new Date(); today.setHours(0, 0, 0, 0);
-            const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
-            const d2 = new Date(dateStr + 'T00:00:00');
-            if (d2.getTime() === today.getTime()) return 'اليوم';
-            if (d2.getTime() === yesterday.getTime()) return 'أمس';
-            return dateStr;
-        };
+
+        const visitorsListHTML = (d.recentVisitors || []).length === 0
+            ? '<p class="text-xs text-gray-500 text-center py-6">لا توجد زيارات بعد</p>'
+            : `<div class="profile-hub-visitors-list">${d.recentVisitors.map(v => `
+                <div class="profile-hub-visitor-row">
+                    <img src="${v.profileImage}" class="profile-hub-visitor-avatar ${v.activeFrameClass || ''} ${d.identityRevealed ? '' : 'blurred'}">
+                    <span class="profile-hub-visitor-name ${d.identityRevealed ? '' : 'blurred-text'}">${d.identityRevealed ? escapeHtml(v.username || '') : 'زائر'}</span>
+                </div>
+            `).join('')}</div>`;
+
         bodyEl.innerHTML = `
-            <div class="grid grid-cols-2 gap-2 mb-3 flex-shrink-0">
-                <div class="profile-hub-hc-stat"><span>${d.totalVisitors}</span><label>إجمالي الزوّار</label></div>
-                <div class="profile-hub-hc-stat"><span>${d.totalViews}</span><label>إجمالي المشاهدات</label></div>
-                <div class="profile-hub-hc-stat"><span>${d.todayVisitors}</span><label>زوّار اليوم</label></div>
-                <div class="profile-hub-hc-stat"><span>${d.todayViews}</span><label>مشاهدات اليوم</label></div>
+            <div class="profile-hub-visitors-today-row flex-shrink-0">
+                <div class="phv-stat"><span>${d.todayVisitors}</span><label>زوار اليوم</label></div>
+                <div class="phv-stat"><span>${d.todayViews}</span><label>مشاهدات اليوم</label></div>
+                <div class="phv-stat"><span>${d.todayPokes}</span><label>نكز اليوم</label></div>
             </div>
-            ${d.dailyBreakdown.length === 0
-                ? '<p class="text-xs text-gray-500 text-center py-6">لا توجد زيارات بعد</p>'
-                : `<div class="space-y-1.5">${d.dailyBreakdown.map(row => `
-                    <div class="flex items-center justify-between bg-gray-800/40 rounded-lg px-3 py-2 text-xs">
-                        <span class="text-gray-300">${dayLabel(row.date)}</span>
-                        <span class="font-bold text-purple-300">${row.visitorsCount} ${row.visitorsCount === 1 ? 'زائر' : 'زوّار'}</span>
-                    </div>
-                `).join('')}</div>`
-            }
+            ${!d.identityRevealed ? `<p class="profile-hub-visitors-lock-note"><i class="fas fa-lock"></i> تُكشف هويات الزوار عند وصولك إلى Lv.3</p>` : ''}
+            ${visitorsListHTML}
         `;
     } catch (error) {
         const bodyEl = document.getElementById('profile-visitors-body');

@@ -3025,59 +3025,49 @@ body.in-voice-room #main-content {
 .profile-hub-stat-num { font-size: 15px; font-weight: 800; color: #fff; }
 .profile-hub-stat-label { font-size: 10px; color: #9ca3af; }
 
-.profile-hub-wallet-card {
+/* ✅ صف مدمج واحد وصغير (محفظة/VIP/صنّاع محتوى/ألعاب/مركز المضيف) — بلا "مكعبات" كبيرة،
+   يوفّر مساحة الملف الشخصي؛ كل عنصر أيقونة دائرية صغيرة + تسمية مصغّرة أسفلها */
+.profile-hub-quick-row {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 12px 16px 0;
-    padding: 12px;
-    background: linear-gradient(135deg, rgba(251,191,36,0.1), rgba(255,255,255,0.03));
-    border: 1px solid rgba(251,191,36,0.25);
-    border-radius: 14px;
+    justify-content: space-between;
+    gap: 4px;
+    margin: 14px 16px 0;
 }
-.profile-hub-wallet-icon {
-    width: 38px; height: 38px;
-    border-radius: 50%;
-    background: rgba(251,191,36,0.18);
-    color: #fbbf24;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px;
-    flex-shrink: 0;
-}
-.profile-hub-wallet-title { font-size: 12.5px; font-weight: 800; color: #fff; }
-.profile-hub-wallet-sub { font-size: 10.5px; color: #d1d5db; margin-top: 2px; }
-.profile-hub-wallet-action {
-    flex-shrink: 0;
-    background: rgba(251,191,36,0.18);
-    color: #fde68a;
-    font-size: 10.5px;
-    font-weight: 800;
-    padding: 7px 12px;
-    border-radius: 999px;
-}
-
-.profile-hub-feature-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-    margin: 12px 16px 0;
-}
-.profile-hub-feature-tile {
+.profile-hub-quick-tile {
     position: relative;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px;
-    padding: 14px 8px;
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    color: #e5e7eb;
-    text-align: center;
+    gap: 4px;
+    padding: 2px;
 }
-.profile-hub-feature-tile i { font-size: 19px; }
+.profile-hub-quick-icon {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.profile-hub-quick-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: #cbd5e1;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+.profile-hub-quick-dot {
+    position: absolute;
+    top: 0; left: calc(50% + 8px);
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #f59e0b;
+    border: 1.5px solid #111827;
+}
 .profile-hub-soon-tag {
     font-size: 8.5px;
     font-weight: 800;
@@ -3154,6 +3144,33 @@ body.in-voice-room #main-content {
 }
 .profile-hub-hc-stat span { display: block; font-size: 15px; font-weight: 800; color: #fff; }
 .profile-hub-hc-stat label { font-size: 9.5px; color: #9ca3af; }
+
+/* ✅ صف زوار/مشاهدات/نكز اليوم — بلا مربعات أو خلفية، بجانب بعضهم في المنتصف */
+.profile-hub-visitors-today-row {
+    display: flex;
+    justify-content: center;
+    gap: 22px;
+    padding: 6px 0 14px;
+}
+.phv-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.phv-stat span { font-size: 17px; font-weight: 800; color: #fff; }
+.phv-stat label { font-size: 10px; color: #9ca3af; }
+
+.profile-hub-visitors-lock-note {
+    text-align: center;
+    font-size: 10.5px;
+    color: #9ca3af;
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px;
+    padding: 6px 10px;
+    margin-bottom: 10px;
+}
+.profile-hub-visitors-list { display: flex; flex-direction: column; gap: 8px; }
+.profile-hub-visitor-row { display: flex; align-items: center; gap: 10px; padding: 4px 2px; }
+.profile-hub-visitor-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.profile-hub-visitor-avatar.blurred { filter: blur(6px); }
+.profile-hub-visitor-name { font-size: 12.5px; font-weight: 700; color: #e5e7eb; }
+.profile-hub-visitor-name.blurred-text { color: #6b7280; filter: blur(2px); }
 
 /* ✅ بطاقات اقتراحات الأشخاص (اكتشاف) */
 .discover-person-card {
