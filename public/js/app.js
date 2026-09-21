@@ -7861,7 +7861,7 @@ async function showMiniProfileModal(userId) {
                             <div class="text-[10px] text-gray-400">المستوى</div>
                         </div>
                         <div class="text-center py-2">
-                            <div class="text-lg font-bold text-purple-400">${profileUser.friends ? profileUser.friends.length : 0}</div>
+                            <div class="text-lg font-bold text-purple-400">${profileUser.friendsCount ?? 0}</div>
                             <div class="text-[10px] text-gray-400">الأصدقاء</div>
                         </div>
                     </div>
@@ -8095,7 +8095,7 @@ async function showFullProfilePage(userId) {
 
             <div class="grid grid-cols-3 gap-2 px-4 mb-4">
                 <div class="bg-gray-800/50 rounded-xl p-3 text-center">
-                    <div class="text-lg font-bold text-purple-400">${u.friends ? u.friends.length : 0}</div>
+                    <div class="text-lg font-bold text-purple-400">${u.friendsCount ?? 0}</div>
                     <div class="text-[10px] text-gray-400 mt-0.5">أصدقاء</div>
                 </div>
                 <div class="bg-gray-800/50 rounded-xl p-3 text-center">

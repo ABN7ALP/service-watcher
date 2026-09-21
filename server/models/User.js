@@ -56,6 +56,36 @@ const userSchema = new mongoose.Schema({
     ownedBubbleSkins: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ChatBubbleSkin' }],
     activeBubbleSkinClass: { type: String, default: null },
 
+    // =====================================================
+    // ✅ حقول مركز الملف الشخصي (Profile Hub) — غلاف + بيانات إضافية قابلة للتعديل
+    // =====================================================
+    coverImage: { type: String, default: null }, // غلاف الملف الشخصي (منفصل عن الصورة الشخصية profileImage)
+    hometown: { type: String, default: '', maxlength: 40, trim: true }, // ✅ مسقط الرأس — يحدّده المستخدم يدوياً
+    location: { type: String, default: '', maxlength: 40, trim: true }, // ✅ الموقع الحالي — يُحدَّد تلقائياً (تخمين تقريبي من المنطقة الزمنية بالمتصفح، بلا أي طلب صلاحية GPS)
+    socialLinks: {
+        instagram: { type: String, default: '', maxlength: 60, trim: true },
+        youtube: { type: String, default: '', maxlength: 60, trim: true },
+        tiktok: { type: String, default: '', maxlength: 60, trim: true }
+    },
+    // ✅ إدخالات تعليم متعددة (زر "+") — اسم مؤسسة تعليمية + فترة نصية حرة (مثلاً "2018 - 2022")
+    education: [{
+        institution: { type: String, required: true, maxlength: 80, trim: true },
+        period: { type: String, default: '', maxlength: 30, trim: true }
+    }],
+    job: {
+        title: { type: String, default: '', maxlength: 50, trim: true },
+        company: { type: String, default: '', maxlength: 50, trim: true },
+        from: { type: String, default: '', maxlength: 20, trim: true },
+        to: { type: String, default: '', maxlength: 20, trim: true }
+    },
+    // ✅ تحكّم المستخدم بإظهار/إخفاء خصائص معيّنة أمام زوّار ملفه الشخصي
+    showVipBadge: { type: Boolean, default: true },
+    showWallet: { type: Boolean, default: true },
+    // ✅ متابعة أحادية الاتجاه بين الأشخاص (منفصلة تماماً عن نظام الصداقة friends أعلاه،
+    // ومنفصلة عن متابعة الغرف بـVoiceRoom.followers) — يُبنى عليها عدّاد "متابعين/متابَعين"
+    followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+
     // --- ✅ الحقول الجديدة لنظام الصداقة ---
     friends: [{
         type: mongoose.Schema.Types.ObjectId,
