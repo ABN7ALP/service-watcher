@@ -18,6 +18,7 @@ const roomCreationLimiter = rateLimit({
     message: { status: 'fail', message: 'إنشاء غرف كثيرة جداً خلال وقت قصير. حاول لاحقاً.' },
 });
 
+router.get('/ice-servers', voiceRoomController.getIceServers);
 router.get('/rooms', voiceRoomController.listRooms);
 router.get('/rankings', voiceRoomController.getRoomRankings);
 router.get('/my-room', voiceRoomController.getMyRoom);

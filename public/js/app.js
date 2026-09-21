@@ -4449,10 +4449,28 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // إضافي فعلي من جهاز المتحدث نفسه) — التوسّع لذاك المستوى يحتاج خادم وسائط مركزي
     // حقيقي (SFU مثل LiveKit/mediasoup)، بنية تحتية منفصلة خارج نطاق هذا الحل بالكامل
     // =====================================================
-    const VOICE_ICE_SERVERS = [
+    // 🐛 إصلاح بق جوهري: "لا نسمع بعضنا إطلاقاً بين دولتين/شبكتين مختلفتين" — STUN وحده (كان
+    // هنا سابقاً) يكفي فقط لاتصال مباشر بين طرفين خلف NAT بسيط؛ خلف NAT متماثل (symmetric —
+    // شائع جداً بشبكات الجوال/بعض مزوّدي الإنترنت، وأكثر احتمالاً كلما اختلفت الشبكتان أكثر)
+    // يفشل الاتصال المباشر تماماً ولا ينقذه إلا خادم TURN يُعيد توجيه الوسائط كوسيط. تُجلَب
+    // القيمة الفعلية من السيرفر (يقرأها من متغيرات بيئته، ويحتوي احتياطياً مجانياً جاهزاً لو
+    // لم تُضبَط) بدل تثبيتها هنا — تُحدَّث لاحقاً من الخادم بلا أي تعديل كود عميل
+    let VOICE_ICE_SERVERS = [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' }
     ];
+    async function loadVoiceIceServers() {
+        try {
+            const response = await fetch('/api/voice-room/ice-servers', { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            if (response.ok && result.status === 'success' && Array.isArray(result.iceServers) && result.iceServers.length > 0) {
+                VOICE_ICE_SERVERS = result.iceServers;
+            }
+        } catch (error) {
+            console.warn('[VOICE] تعذّر جلب إعدادات خوادم ICE من السيرفر — الاستمرار بـSTUN فقط كاحتياطي', error);
+        }
+    }
+    loadVoiceIceServers();
     const MAX_VOICE_PEER_CONNECTIONS = 60; // 🛡️ سقف حماية لجهاز المستخدم نفسه — انظر الشرح أعلاه
     const voicePeerConnections = new Map(); // peerUserId(string) → RTCPeerConnection
     let localMicStream = null;      // التدفق المُرسَل فعلياً للنظراء (بعد سلسلة التحسين أدناه إن نجحت)
@@ -7749,9 +7767,9 @@ async function showMyProfileHub() {
                 <div class="profile-hub-topbar">
                     <button id="close-profile-hub" class="profile-hub-icon-btn" title="إغلاق"><i class="fas fa-times"></i></button>
                     <div class="flex-1"></div>
-                    <button id="profile-hub-clock-btn" class="profile-hub-icon-btn" title="قريباً"><i class="fas fa-clock"></i></button>
-                    <button id="profile-hub-visitors-btn" class="profile-hub-icon-btn" title="زوّار ملفي"><i class="fas fa-eye"></i></button>
-                    <button id="profile-hub-more-btn" class="profile-hub-icon-btn" title="المزيد"><i class="fas fa-ellipsis-h"></i></button>
+                    <button id="profile-hub-clock-btn" class="profile-hub-icon-btn-flat" title="قريباً"><i class="fas fa-clock"></i></button>
+                    <button id="profile-hub-visitors-btn" class="profile-hub-icon-btn-flat" title="سجل الزوار"><i class="fas fa-eye"></i></button>
+                    <button id="profile-hub-more-btn" class="profile-hub-icon-btn-flat" title="المزيد"><i class="fas fa-ellipsis-h"></i></button>
                 </div>
                 <div id="profile-hub-body" class="profile-hub-body">
                     <div class="text-center text-gray-400 py-20"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
@@ -7809,9 +7827,24 @@ function renderProfileHubBody(u) {
         return a;
     })();
 
+    // ✅ نسبة اكتمال الملف الشخصي — تُحتسب من حقول التحرير الفعلية (لا وهمية)
+    const completionChecks = [
+        !!u.coverImage,
+        !!(u.status && u.status.trim()),
+        !!u.birthDate,
+        !!(u.hometown && u.hometown.trim()),
+        !!(u.location && u.location.trim()),
+        !!(u.socialLinks && (u.socialLinks.instagram || u.socialLinks.youtube || u.socialLinks.tiktok)),
+        !!(Array.isArray(u.education) && u.education.length > 0),
+        !!(u.job && u.job.title && u.job.title.trim())
+    ];
+    const completionPct = Math.round((completionChecks.filter(Boolean).length / completionChecks.length) * 100);
+
     body.innerHTML = `
         <div class="profile-hub-cover" style="${u.coverImage ? `background-image:url('${u.coverImage}')` : ''}">
-            <img src="${u.profileImage}" class="profile-hub-avatar ${u.activeFrameClass || ''}">
+            <div class="profile-hub-avatar-wrap">
+                <img src="${u.profileImage}" class="profile-hub-avatar ${u.activeFrameClass || ''}">
+            </div>
         </div>
         <div class="profile-hub-identity">
             <h2 class="profile-hub-name">${escapeHtml(u.username || '')} ${getAgentBadgeHTML(u.isAgent)}</h2>
@@ -7829,61 +7862,41 @@ function renderProfileHubBody(u) {
             <div class="profile-hub-stat" id="profile-hub-coins-received-stat"><span class="profile-hub-stat-num">…</span><span class="profile-hub-stat-label">كوينز مُستلَمة</span></div>
         </div>
 
-        ${u.showWallet !== false ? `
-        <div class="profile-hub-wallet-card">
-            <div class="profile-hub-wallet-icon"><i class="fas fa-wallet"></i></div>
-            <div class="flex-1 min-w-0">
-                <p class="profile-hub-wallet-title">محفظتي</p>
-                <p class="profile-hub-wallet-sub"><i class="fas fa-coins text-yellow-400"></i> ${(u.coins || 0).toLocaleString('en-US')} كوينز &nbsp;•&nbsp; <i class="fas fa-dollar-sign text-green-400"></i> ${(u.balance || 0).toFixed(2)}</p>
-            </div>
-            <button id="profile-hub-wallet-btn" class="profile-hub-wallet-action">استبدال / شراء</button>
-        </div>` : ''}
-
-        <div class="profile-hub-feature-grid">
-            ${u.showVipBadge !== false ? `
-            <button class="profile-hub-feature-tile" id="profile-hub-vip-btn">
-                <i class="fas fa-crown" style="color:#fbbf24"></i>
-                <span>VIP</span>
-                <span class="profile-hub-soon-tag">قريباً</span>
+        <div class="profile-hub-quick-row">
+            ${u.showWallet !== false ? `
+            <button class="profile-hub-quick-tile" id="profile-hub-wallet-btn" title="محفظتي — ${(u.coins || 0).toLocaleString('en-US')} كوينز">
+                <span class="profile-hub-quick-icon" style="background:rgba(251,191,36,0.15); color:#fbbf24;"><i class="fas fa-wallet"></i></span>
+                <span class="profile-hub-quick-label">محفظتي</span>
             </button>` : ''}
-            <button class="profile-hub-feature-tile" id="profile-hub-creator-btn">
-                <i class="fas fa-star" style="color:#c084fc"></i>
-                <span>مركز صنّاع المحتوى</span>
-                <span class="profile-hub-soon-tag">قريباً</span>
+            ${u.showVipBadge !== false ? `
+            <button class="profile-hub-quick-tile" id="profile-hub-vip-btn">
+                <span class="profile-hub-quick-icon" style="background:rgba(251,191,36,0.15); color:#fbbf24;"><i class="fas fa-crown"></i></span>
+                <span class="profile-hub-quick-label">VIP</span>
+                <span class="profile-hub-quick-dot"></span>
+            </button>` : ''}
+            <button class="profile-hub-quick-tile" id="profile-hub-creator-btn">
+                <span class="profile-hub-quick-icon" style="background:rgba(192,132,252,0.15); color:#c084fc;"><i class="fas fa-star"></i></span>
+                <span class="profile-hub-quick-label">صنّاع المحتوى</span>
+                <span class="profile-hub-quick-dot"></span>
             </button>
-            <button class="profile-hub-feature-tile" id="profile-hub-games-btn">
-                <i class="fas fa-gamepad" style="color:#60a5fa"></i>
-                <span>مركز الألعاب</span>
-                <span class="profile-hub-soon-tag">قريباً</span>
+            <button class="profile-hub-quick-tile" id="profile-hub-games-btn">
+                <span class="profile-hub-quick-icon" style="background:rgba(96,165,250,0.15); color:#60a5fa;"><i class="fas fa-gamepad"></i></span>
+                <span class="profile-hub-quick-label">الألعاب</span>
+                <span class="profile-hub-quick-dot"></span>
             </button>
-            <button class="profile-hub-feature-tile" id="profile-hub-host-center-btn">
-                <i class="fas fa-microphone-lines" style="color:#f472b6"></i>
-                <span>مركز المضيف</span>
+            <button class="profile-hub-quick-tile" id="profile-hub-host-center-btn">
+                <span class="profile-hub-quick-icon" style="background:rgba(244,114,182,0.15); color:#f472b6;"><i class="fas fa-microphone-lines"></i></span>
+                <span class="profile-hub-quick-label">مركز المضيف</span>
             </button>
         </div>
 
         <div class="profile-hub-actions-row">
-            <button id="profile-hub-edit-btn" class="profile-hub-action-btn profile-hub-action-primary"><i class="fas fa-pen"></i> تحرير</button>
+            <button id="profile-hub-edit-btn" class="profile-hub-action-btn profile-hub-action-edit">
+                <i class="fas fa-pen"></i> تحرير
+                <span class="profile-hub-completion-badge">${completionPct}%</span>
+            </button>
             <button id="profile-hub-discover-btn" class="profile-hub-action-btn profile-hub-action-secondary"><i class="fas fa-user-plus"></i> اقتراحات</button>
         </div>
-
-        <div class="profile-hub-section-title"><i class="fas fa-cog"></i> الإعدادات</div>
-        <div class="profile-hub-settings-list">
-            <button class="profile-hub-settings-row" id="profile-hub-full-settings-btn"><i class="fas fa-user-cog"></i><span>الحساب والخصوصية والمزيد</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
-            ${['عام', 'التنبيهات', 'اللغة', 'ذاكرة نظيفة', 'جودة الفيديو', 'مفضّلة'].map(label => `
-                <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
-            `).join('')}
-        </div>
-        <div class="profile-hub-section-title"><i class="fas fa-info-circle"></i> نبذة</div>
-        <div class="profile-hub-settings-list">
-            ${['السياسات والقوانين', 'الدعم والمساعدة', 'حولنا'].map(label => `
-                <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
-            `).join('')}
-        </div>
-        <div class="profile-hub-settings-list">
-            <button id="profile-hub-logout-btn" class="profile-hub-settings-row profile-hub-logout-row"><i class="fas fa-sign-out-alt"></i><span>تسجيل الخروج</span></button>
-        </div>
-        <p class="profile-hub-version">الإصدار 1.0.0 — مدعوم من abn.7alp</p>
     `;
 
     // ✅ كوينز مُستلَمة — إعادة استخدام ملخص الهدايا الموجود أصلاً (نفس مصدر قسم "هداياي المستلمة" بالإعدادات)
@@ -7904,8 +7917,50 @@ function renderProfileHubBody(u) {
     document.getElementById('profile-hub-host-center-btn').addEventListener('click', () => showHostCenterSheet());
     document.getElementById('profile-hub-edit-btn').addEventListener('click', () => showProfileEditSheet(u));
     document.getElementById('profile-hub-discover-btn').addEventListener('click', () => showDiscoverPeopleSheet());
-    document.getElementById('profile-hub-full-settings-btn').addEventListener('click', () => { document.getElementById('profile-hub-page')?.remove(); switchToView('settings'); });
-    body.querySelectorAll('.profile-hub-settings-soon').forEach(btn => {
+}
+
+// ✅ ورقة "الإعدادات" — مُنقولة بالكامل هنا خارج جسم مركز الملف الشخصي، تُفتح فقط من قائمة
+// الثلاث نقاط (المزيد) — تحرير/الحساب/التنبيهات/نبذة/تسجيل الخروج
+function showProfileHubSettingsSheet() {
+    document.getElementById('profile-hub-settings-sheet')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'profile-hub-settings-sheet';
+    modal.className = 'fixed inset-0 bg-black/70 z-[326] flex items-end md:items-center justify-center p-3';
+    modal.innerHTML = `
+        <div class="profile-hub-subsheet-card w-full md:max-w-sm" style="max-height:80vh; display:flex; flex-direction:column;">
+            <div class="flex items-center justify-between mb-3 flex-shrink-0">
+                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-cog text-gray-300"></i> الإعدادات</p>
+                <button id="close-profile-hub-settings" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="overflow-y-auto">
+                <div class="profile-hub-settings-list">
+                    <button class="profile-hub-settings-row" id="profile-hub-full-settings-btn"><i class="fas fa-user-cog"></i><span>الحساب والخصوصية والمزيد</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
+                    ${['عام', 'التنبيهات', 'اللغة', 'ذاكرة نظيفة', 'جودة الفيديو', 'مفضّلة'].map(label => `
+                        <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
+                    `).join('')}
+                </div>
+                <div class="profile-hub-section-title"><i class="fas fa-info-circle"></i> نبذة</div>
+                <div class="profile-hub-settings-list">
+                    ${['السياسات والقوانين', 'الدعم والمساعدة', 'حولنا'].map(label => `
+                        <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
+                    `).join('')}
+                </div>
+                <div class="profile-hub-settings-list">
+                    <button id="profile-hub-logout-btn" class="profile-hub-settings-row profile-hub-logout-row"><i class="fas fa-sign-out-alt"></i><span>تسجيل الخروج</span></button>
+                </div>
+                <p class="profile-hub-version">الإصدار 1.0.0 — مدعوم من abn.7alp</p>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'profile-hub-settings-sheet') modal.remove(); });
+    document.getElementById('close-profile-hub-settings').addEventListener('click', () => modal.remove());
+    document.getElementById('profile-hub-full-settings-btn').addEventListener('click', () => {
+        modal.remove();
+        document.getElementById('profile-hub-page')?.remove();
+        switchToView('settings');
+    });
+    modal.querySelectorAll('.profile-hub-settings-soon').forEach(btn => {
         btn.addEventListener('click', () => showNotification(`قسم "${btn.dataset.label}" قيد إعادة الهيكلة، قريباً جداً`, 'info'));
     });
     document.getElementById('profile-hub-logout-btn').addEventListener('click', () => {
@@ -7979,7 +8034,7 @@ function showProfileHubMoreMenu() {
             <button id="hub-more-share" class="profile-hub-settings-row"><i class="fas fa-share-nodes text-purple-400"></i><span>مشاركة الملف الشخصي</span></button>
             <button id="hub-more-wallet" class="profile-hub-settings-row"><i class="fas fa-wallet text-yellow-400"></i><span>المحفظة</span></button>
             <button id="hub-more-creator" class="profile-hub-settings-row"><i class="fas fa-star text-purple-400"></i><span>مركز صنّاع المحتوى</span><span class="profile-hub-soon-tag">قريباً</span></button>
-            <button id="hub-more-qr" class="profile-hub-settings-row"><i class="fas fa-qrcode text-emerald-400"></i><span>رمز QR</span></button>
+            <button id="hub-more-settings" class="profile-hub-settings-row"><i class="fas fa-cog text-gray-300"></i><span>الإعدادات</span></button>
         </div>
     `;
     document.body.appendChild(modal);
@@ -7998,37 +8053,11 @@ function showProfileHubMoreMenu() {
     });
     document.getElementById('hub-more-wallet').addEventListener('click', () => { modal.remove(); showBuyCoinsModal(); });
     document.getElementById('hub-more-creator').addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
-    document.getElementById('hub-more-qr').addEventListener('click', () => { modal.remove(); showProfileQrModal(localUser); });
+    document.getElementById('hub-more-settings').addEventListener('click', () => { modal.remove(); showProfileHubSettingsSheet(); });
 }
 
-// ✅ رمز QR لمشاركة الملف الشخصي — عبر مكتبة qrcodejs الخفيفة (CDN، يتحقق من توفّرها فعلياً
-// قبل الاستخدام فلا يتعطّل شيء لو تعذّر تحميلها)
-function showProfileQrModal(localUser) {
-    document.getElementById('profile-qr-modal')?.remove();
-    const modal = document.createElement('div');
-    modal.id = 'profile-qr-modal';
-    modal.className = 'fixed inset-0 bg-black/70 z-[330] flex items-center justify-center p-4';
-    modal.innerHTML = `
-        <div class="profile-hub-subsheet-card w-full max-w-[280px] text-center">
-            <p class="font-bold text-sm mb-3"><i class="fas fa-qrcode text-emerald-400"></i> رمز QR لملفك</p>
-            <div id="profile-qr-canvas-holder" class="w-[180px] h-[180px] bg-white rounded-xl mx-auto flex items-center justify-center"></div>
-            <p class="text-[11px] text-gray-400 mt-3">ID: ${escapeHtml(String(localUser.customId || ''))}</p>
-            <button id="close-profile-qr" class="profile-hub-action-btn profile-hub-action-secondary w-full mt-4">إغلاق</button>
-        </div>
-    `;
-    document.body.appendChild(modal);
-    modal.addEventListener('click', (e) => { if (e.target.id === 'profile-qr-modal') modal.remove(); });
-    document.getElementById('close-profile-qr').addEventListener('click', () => modal.remove());
-
-    const holder = document.getElementById('profile-qr-canvas-holder');
-    if (typeof QRCode === 'function' && holder) {
-        new QRCode(holder, { text: `ID:${localUser.customId || ''}`, width: 170, height: 170, colorDark: '#111827', colorLight: '#ffffff' });
-    } else if (holder) {
-        holder.innerHTML = `<span class="text-gray-500 text-xs px-4">تعذّر تحميل مولّد رمز QR</span>`;
-    }
-}
-
-// ✅ ورقة "زوّار ملفي" — إجمالي مشاهدات/زوّار مميَّزين + نفس الشيء لليوم + توزيع يومي
+// ✅ ورقة "سجل الزوار" — زوّار/مشاهدات/نكزات اليوم فقط بصف واحد بلا خلفيات، وتحتها هويات
+// آخر الزوار (صور ضبابية + اسم مخفي) تُكشف تلقائياً عند وصول صاحب الملف للفل 3
 async function showProfileVisitorsSheet() {
     document.getElementById('profile-visitors-sheet')?.remove();
     const modal = document.createElement('div');
@@ -8037,7 +8066,7 @@ async function showProfileVisitorsSheet() {
     modal.innerHTML = `
         <div class="profile-hub-subsheet-card w-full md:max-w-sm" style="max-height:75vh; display:flex; flex-direction:column;">
             <div class="flex items-center justify-between mb-3 flex-shrink-0">
-                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-eye text-purple-400"></i> زوّار ملفي</p>
+                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-eye text-purple-400"></i> سجل الزوار</p>
                 <button id="close-profile-visitors" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
             </div>
             <div id="profile-visitors-body" class="text-center text-gray-400 py-10 overflow-y-auto"><i class="fas fa-spinner fa-spin"></i></div>
@@ -8054,30 +8083,24 @@ async function showProfileVisitorsSheet() {
         if (!bodyEl) return;
         if (!response.ok || result.status !== 'success') throw new Error();
         const d = result.data;
-        const dayLabel = (dateStr) => {
-            const today = new Date(); today.setHours(0, 0, 0, 0);
-            const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
-            const d2 = new Date(dateStr + 'T00:00:00');
-            if (d2.getTime() === today.getTime()) return 'اليوم';
-            if (d2.getTime() === yesterday.getTime()) return 'أمس';
-            return dateStr;
-        };
+
+        const visitorsListHTML = (d.recentVisitors || []).length === 0
+            ? '<p class="text-xs text-gray-500 text-center py-6">لا توجد زيارات بعد</p>'
+            : `<div class="profile-hub-visitors-list">${d.recentVisitors.map(v => `
+                <div class="profile-hub-visitor-row">
+                    <img src="${v.profileImage}" class="profile-hub-visitor-avatar ${v.activeFrameClass || ''} ${d.identityRevealed ? '' : 'blurred'}">
+                    <span class="profile-hub-visitor-name ${d.identityRevealed ? '' : 'blurred-text'}">${d.identityRevealed ? escapeHtml(v.username || '') : 'زائر'}</span>
+                </div>
+            `).join('')}</div>`;
+
         bodyEl.innerHTML = `
-            <div class="grid grid-cols-2 gap-2 mb-3 flex-shrink-0">
-                <div class="profile-hub-hc-stat"><span>${d.totalVisitors}</span><label>إجمالي الزوّار</label></div>
-                <div class="profile-hub-hc-stat"><span>${d.totalViews}</span><label>إجمالي المشاهدات</label></div>
-                <div class="profile-hub-hc-stat"><span>${d.todayVisitors}</span><label>زوّار اليوم</label></div>
-                <div class="profile-hub-hc-stat"><span>${d.todayViews}</span><label>مشاهدات اليوم</label></div>
+            <div class="profile-hub-visitors-today-row flex-shrink-0">
+                <div class="phv-stat"><span>${d.todayVisitors}</span><label>زوار اليوم</label></div>
+                <div class="phv-stat"><span>${d.todayViews}</span><label>مشاهدات اليوم</label></div>
+                <div class="phv-stat"><span>${d.todayPokes}</span><label>نكز اليوم</label></div>
             </div>
-            ${d.dailyBreakdown.length === 0
-                ? '<p class="text-xs text-gray-500 text-center py-6">لا توجد زيارات بعد</p>'
-                : `<div class="space-y-1.5">${d.dailyBreakdown.map(row => `
-                    <div class="flex items-center justify-between bg-gray-800/40 rounded-lg px-3 py-2 text-xs">
-                        <span class="text-gray-300">${dayLabel(row.date)}</span>
-                        <span class="font-bold text-purple-300">${row.visitorsCount} ${row.visitorsCount === 1 ? 'زائر' : 'زوّار'}</span>
-                    </div>
-                `).join('')}</div>`
-            }
+            ${!d.identityRevealed ? `<p class="profile-hub-visitors-lock-note"><i class="fas fa-lock"></i> تُكشف هويات الزوار عند وصولك إلى Lv.3</p>` : ''}
+            ${visitorsListHTML}
         `;
     } catch (error) {
         const bodyEl = document.getElementById('profile-visitors-body');
@@ -8822,7 +8845,10 @@ async function showFullProfilePage(userId) {
                     <span class="full-profile-mini-badge"><i class="fas fa-star text-yellow-400"></i> Lv.${u.level || 1}</span>
                     <span class="full-profile-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
                     <span class="full-profile-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${u.age} سنة</span>
+                    ${u.socialStatus ? `<span class="full-profile-mini-badge"><i class="fas ${socialInfo.icon} text-red-400"></i> ${escapeHtml(socialInfo.text)}</span>` : ''}
+                    ${u.educationStatus ? `<span class="full-profile-mini-badge"><i class="fas ${educationInfo.icon} text-blue-400"></i> ${escapeHtml(educationInfo.text)}</span>` : ''}
                 </div>
+                <p class="full-profile-bio-text">${escapeHtml(u.status || '🚀 جاهز للتحديات!')}</p>
             </div>
 
             <div class="full-profile-stats-row">
@@ -8861,21 +8887,6 @@ async function showFullProfilePage(userId) {
                     <p class="full-profile-mini-card-title">الحماة</p>
                     <span class="full-profile-soon-tag">قريباً</span>
                 </div>
-            </div>
-
-            <p class="text-xs text-gray-400 px-4 mb-2">المعلومات الشخصية</p>
-            <div class="grid grid-cols-2 gap-2 px-4 mb-4 text-xs">
-                <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
-                    <i class="fas ${socialInfo.icon} text-red-400 w-4 text-center"></i><span>${socialInfo.text}</span>
-                </div>
-                <div class="flex items-center gap-2 bg-gray-800/40 rounded-lg px-3 py-2">
-                    <i class="fas ${educationInfo.icon} text-blue-400 w-4 text-center"></i><span>${educationInfo.text}</span>
-                </div>
-            </div>
-
-            <div class="px-4 pb-4">
-                <p class="text-xs text-gray-400 mb-1">الحالة</p>
-                <p class="text-xs text-gray-200 italic bg-gray-800/40 rounded-lg px-3 py-2">${escapeHtml(u.status || '🚀 جاهز للتحديات!')}</p>
             </div>
 
             ${userId !== myUserId ? `
@@ -8944,9 +8955,9 @@ async function showFullProfilePage(userId) {
     }
 }
 
-// ✅ هدية سريعة — شريط صور أفقي (شريط فيلم) بدل نافذة متجر الهدايا الكاملة: اختيار هدية
-// واحدة بلمسة، وزر إرسال واحد كبير أسفله (كمية 1 دائماً). يعيد استخدام كتالوج/بطاقة الهدايا
-// الموجودَين أصلاً (renderGiftCardHTML، /api/gifts/shop) بدل بناء نظام مستقل من الصفر
+// ✅ هدية سريعة — بطاقة واحدة كبيرة (بدل شريط فيلم مصغّر) تُقلَّب دائرياً بالسحب جانباً أو
+// بأزرار التنقّل، بأسلوب دائري (كرة تدور) بدل قائمة عريضة؛ فوقها صف "دعمه X شخص" يفتح
+// قائمة المساهمين/الهدايا. يعيد استخدام كتالوج الهدايا الموجود أصلاً (/api/gifts/shop)
 async function showQuickGiftPicker(targetUserId, targetUsername) {
     document.getElementById('quick-gift-picker')?.remove();
     const modal = document.createElement('div');
@@ -8954,16 +8965,27 @@ async function showQuickGiftPicker(targetUserId, targetUsername) {
     modal.className = 'fixed inset-0 bg-black/75 z-[335] flex items-end justify-center';
     modal.innerHTML = `
         <div class="quick-gift-card">
-            <div class="flex items-center justify-between p-3 border-b border-gray-700 flex-shrink-0">
-                <p class="font-bold text-sm"><i class="fas fa-heart text-pink-400"></i> إعجاب سريع لـ ${escapeHtml(targetUsername)}</p>
+            <div class="flex items-center justify-end p-2 flex-shrink-0">
                 <button id="close-quick-gift" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
             </div>
-            <div id="quick-gift-strip" class="quick-gift-strip">
-                <div class="w-full text-center text-gray-400 py-8"><i class="fas fa-spinner fa-spin"></i></div>
+            <div class="quick-gift-header">
+                <p class="quick-gift-title-text"><i class="fas fa-heart text-pink-400"></i> إعجاب سريع لـ ${escapeHtml(targetUsername)}</p>
+                <button type="button" id="quick-gift-supporters-btn" class="quick-gift-supporters-btn hidden">
+                    <span id="quick-gift-supporters-avatars" class="quick-gift-supporters-avatars"></span>
+                    <span id="quick-gift-supporters-text" class="quick-gift-supporters-text"></span>
+                </button>
             </div>
+            <div class="quick-gift-carousel">
+                <button type="button" id="quick-gift-prev" class="quick-gift-nav-btn" aria-label="السابق"><i class="fas fa-chevron-right"></i></button>
+                <div id="quick-gift-stage" class="quick-gift-stage">
+                    <div class="w-full text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
+                </div>
+                <button type="button" id="quick-gift-next" class="quick-gift-nav-btn" aria-label="التالي"><i class="fas fa-chevron-left"></i></button>
+            </div>
+            <div id="quick-gift-dots" class="quick-gift-dots"></div>
             <div class="p-3 border-t border-gray-700 flex-shrink-0">
                 <button id="quick-gift-send-btn" class="profile-hub-action-btn profile-hub-action-primary w-full justify-center" disabled>
-                    <i class="fas fa-paper-plane"></i> اختر هدية أولاً
+                    <i class="fas fa-spinner fa-spin"></i>
                 </button>
             </div>
         </div>
@@ -8972,52 +8994,103 @@ async function showQuickGiftPicker(targetUserId, targetUsername) {
     modal.addEventListener('click', (e) => { if (e.target.id === 'quick-gift-picker') modal.remove(); });
     document.getElementById('close-quick-gift').addEventListener('click', () => modal.remove());
 
-    let selectedGift = null;
+    // ✅ صف "دعمه X شخص" — عدّاد مساهمي الإعجاب السريع تحديداً (لا كل هدايا المستخدم)
+    fetch(`/api/gifts/user/${targetUserId}/contributors`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(res => {
+            if (res.status !== 'success' || !res.data || res.data.contributorsCount === 0) return;
+            const btn = document.getElementById('quick-gift-supporters-btn');
+            if (!btn) return;
+            const d = res.data;
+            document.getElementById('quick-gift-supporters-avatars').innerHTML = d.contributors.slice(0, 5)
+                .map(c => `<img src="${c.profileImage}" class="quick-gift-supporter-avatar">`).join('');
+            document.getElementById('quick-gift-supporters-text').textContent =
+                `تمت مساعدته من ${d.contributorsCount.toLocaleString('en-US')} ${d.contributorsCount === 1 ? 'شخص' : 'أشخاص'}`;
+            btn.classList.remove('hidden');
+            btn.addEventListener('click', () => showQuickGiftContributorsSheet(targetUserId, targetUsername));
+        })
+        .catch(() => {});
+
+    let gifts = [];
+    let currentIndex = 0;
+    const stage = document.getElementById('quick-gift-stage');
+    const sendBtn = document.getElementById('quick-gift-send-btn');
+    const dotsEl = document.getElementById('quick-gift-dots');
+
+    function renderDots() {
+        if (!dotsEl) return;
+        dotsEl.innerHTML = gifts.map((_, i) => `<span class="quick-gift-dot ${i === currentIndex ? 'active' : ''}"></span>`).join('');
+    }
+
+    function renderStage() {
+        const g = gifts[currentIndex];
+        stage.innerHTML = `
+            <div class="quick-gift-stage-card">
+                <div class="quick-gift-stage-visual">${g.image ? `<img src="${g.image}">` : `<span>${g.icon || '🎁'}</span>`}</div>
+                <p class="quick-gift-stage-name">${escapeHtml(g.name)}</p>
+                <p class="quick-gift-stage-price"><i class="fas fa-coins text-yellow-400"></i> ${g.price}</p>
+            </div>
+        `;
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = `<i class="fas fa-paper-plane"></i> إرسال ${escapeHtml(g.name)}`;
+        renderDots();
+    }
+
+    function goToGift(newIndex, direction) {
+        if (gifts.length < 2 || newIndex === currentIndex) return;
+        const card = stage.querySelector('.quick-gift-stage-card');
+        if (card) card.classList.add(direction === 'next' ? 'quick-gift-flip-out-next' : 'quick-gift-flip-out-prev');
+        setTimeout(() => {
+            currentIndex = newIndex;
+            renderStage();
+            const newCard = stage.querySelector('.quick-gift-stage-card');
+            if (!newCard) return;
+            newCard.classList.add(direction === 'next' ? 'quick-gift-flip-in-next' : 'quick-gift-flip-in-prev');
+            setTimeout(() => newCard.classList.remove('quick-gift-flip-in-next', 'quick-gift-flip-in-prev'), 260);
+        }, 160);
+    }
+    const nextGift = () => goToGift((currentIndex + 1) % gifts.length, 'next');
+    const prevGift = () => goToGift((currentIndex - 1 + gifts.length) % gifts.length, 'prev');
+    document.getElementById('quick-gift-next').addEventListener('click', nextGift);
+    document.getElementById('quick-gift-prev').addEventListener('click', prevGift);
+
+    // ✅ سحب جانبي (لمس) للتنقّل الدائري بين الهدايا — بأسلوب "قلّاب دائري"
+    let touchStartX = null;
+    stage.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; }, { passive: true });
+    stage.addEventListener('touchend', (e) => {
+        if (touchStartX === null) return;
+        const dx = e.changedTouches[0].clientX - touchStartX;
+        touchStartX = null;
+        if (Math.abs(dx) < 40) return;
+        if (dx < 0) nextGift(); else prevGift();
+    }, { passive: true });
+
     try {
         const response = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } });
         const result = await response.json();
-        const strip = document.getElementById('quick-gift-strip');
-        if (!strip) return;
-        const gifts = result.status === 'success' ? result.data.gifts : [];
-        if (!gifts || gifts.length === 0) {
-            strip.innerHTML = '<p class="text-xs text-gray-500 w-full text-center py-8">لا توجد هدايا متاحة حالياً</p>';
+        if (!stage) return;
+        gifts = (result.status === 'success' ? result.data.gifts : []).map(g => ({
+            id: g._id, name: g.name, image: g.imageUrl || '', icon: g.icon || '🎁', price: g.discountedPrice || g.price
+        }));
+        if (gifts.length === 0) {
+            stage.innerHTML = '<p class="text-xs text-gray-500 w-full text-center py-10">لا توجد هدايا متاحة حالياً</p>';
             return;
         }
-        strip.innerHTML = gifts.map(g => `
-            <button type="button" class="quick-gift-item" data-gift-id="${g._id}" data-gift-name="${escapeHtml(g.name)}" data-gift-image="${g.imageUrl || ''}" data-gift-icon="${g.icon || '🎁'}" data-gift-price="${g.discountedPrice || g.price}">
-                <div class="quick-gift-item-visual">${g.imageUrl ? `<img src="${g.imageUrl}">` : `<span>${g.icon || '🎁'}</span>`}</div>
-                <span class="quick-gift-item-name">${escapeHtml(g.name)}</span>
-                <span class="quick-gift-item-price"><i class="fas fa-coins"></i> ${g.discountedPrice || g.price}</span>
-            </button>
-        `).join('');
-        const sendBtn = document.getElementById('quick-gift-send-btn');
-        strip.querySelectorAll('.quick-gift-item').forEach(item => {
-            item.addEventListener('click', () => {
-                strip.querySelectorAll('.quick-gift-item').forEach(i => i.classList.remove('selected'));
-                item.classList.add('selected');
-                selectedGift = {
-                    id: item.dataset.giftId, name: item.dataset.giftName,
-                    image: item.dataset.giftImage, icon: item.dataset.giftIcon, price: item.dataset.giftPrice
-                };
-                sendBtn.disabled = false;
-                sendBtn.innerHTML = `<i class="fas fa-paper-plane"></i> إرسال ${escapeHtml(selectedGift.name)}`;
-            });
-        });
+        renderStage();
     } catch (error) {
-        const strip = document.getElementById('quick-gift-strip');
-        if (strip) strip.innerHTML = '<p class="text-xs text-red-400 w-full text-center py-8">تعذر تحميل الهدايا</p>';
+        if (stage) stage.innerHTML = '<p class="text-xs text-red-400 w-full text-center py-10">تعذر تحميل الهدايا</p>';
     }
 
-    document.getElementById('quick-gift-send-btn').addEventListener('click', async () => {
+    sendBtn.addEventListener('click', async () => {
+        const selectedGift = gifts[currentIndex];
         if (!selectedGift) return;
-        const sendBtn = document.getElementById('quick-gift-send-btn');
         sendBtn.disabled = true;
         sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         try {
             const response = await fetch('/api/gifts/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ receiverId: targetUserId, giftId: selectedGift.id, quantity: 1, context: 'private_chat' })
+                body: JSON.stringify({ receiverId: targetUserId, giftId: selectedGift.id, quantity: 1, context: 'profile' })
             });
             const result = await response.json();
             if (!response.ok) {
@@ -9040,8 +9113,95 @@ async function showQuickGiftPicker(targetUserId, targetUsername) {
     });
 }
 
-// ✅ نافذة شكر بعد إرسال هدية سريعة — احتفال بصري بسيط (قصاصات ورقية + قفزة الصورة) بدل
-// إغلاق صامت، تشجيعاً للتفاعل المتكرر
+// ✅ ورقة "المساهمون والهدايا" — تُفتح بالنقر على صف "دعمه X شخص" بنافذة الإعجاب السريع:
+// صورة/اسم صاحب الملف + قوس مسرحي بإجمالي هدايا الإعجاب السريع، وتبويبان (مساهمون/هدايا)
+async function showQuickGiftContributorsSheet(targetUserId, targetUsername) {
+    document.getElementById('quick-gift-contributors-sheet')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'quick-gift-contributors-sheet';
+    modal.className = 'fixed inset-0 bg-black/75 z-[338] flex items-end md:items-center justify-center';
+    modal.innerHTML = `
+        <div class="quick-gift-contributors-card">
+            <button id="close-quick-gift-contributors" class="profile-hub-icon-btn quick-gift-contributors-close"><i class="fas fa-times"></i></button>
+            <div id="qgc-body" class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-xl"></i></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'quick-gift-contributors-sheet') modal.remove(); });
+    document.getElementById('close-quick-gift-contributors').addEventListener('click', () => modal.remove());
+
+    try {
+        const [miniRes, contribRes] = await Promise.all([
+            fetch(`/api/users/${targetUserId}/mini-profile`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            fetch(`/api/gifts/user/${targetUserId}/contributors`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+        ]);
+        const body = document.getElementById('qgc-body');
+        if (!body) return;
+        if (miniRes.status !== 'success' || contribRes.status !== 'success') throw new Error();
+        const u = miniRes.data;
+        const d = contribRes.data;
+
+        body.innerHTML = `
+            <div class="qgc-header">
+                <img src="${u.profileImage}" class="qgc-avatar ${u.activeFrameClass || ''}">
+                <p class="qgc-name">${escapeHtml(u.username)}</p>
+            </div>
+            <div class="qgc-arch">
+                <div class="qgc-arch-shape"></div>
+                <div class="qgc-arch-content">
+                    <i class="fas fa-gift"></i>
+                    <span class="qgc-arch-count">${(d.totalGiftsCount || 0).toLocaleString('en-US')}</span>
+                    <span class="qgc-arch-label">هدية عبر الإعجاب السريع</span>
+                </div>
+            </div>
+            <div class="qgc-tabs">
+                <button type="button" class="qgc-tab active" data-tab="contributors">مساهمون (${d.contributorsCount || 0})</button>
+                <button type="button" class="qgc-tab" data-tab="gifts">هدايا</button>
+            </div>
+            <div id="qgc-tab-contributors" class="qgc-tab-panel">
+                ${(d.contributors && d.contributors.length) ? `<div class="qgc-contributors-grid">${d.contributors.map(c => `
+                    <button type="button" class="qgc-contributor" data-user-id="${c.userId}">
+                        <img src="${c.profileImage}" class="qgc-contributor-avatar ${c.activeFrameClass || ''}">
+                        <span class="qgc-contributor-name">${escapeHtml(c.username)}</span>
+                    </button>
+                `).join('')}</div>` : '<p class="qgc-empty">لا يوجد مساهمون بعد</p>'}
+            </div>
+            <div id="qgc-tab-gifts" class="qgc-tab-panel hidden">
+                ${(d.gifts && d.gifts.length) ? `<div class="qgc-gifts-grid">${d.gifts.map(g => `
+                    <div class="qgc-gift-item">
+                        <div class="qgc-gift-visual">${g.image ? `<img src="${g.image}">` : '<span>🎁</span>'}</div>
+                        <span class="qgc-gift-name">${escapeHtml(g.name || '')}</span>
+                        <span class="qgc-gift-count">×${g.count}</span>
+                    </div>
+                `).join('')}</div>` : '<p class="qgc-empty">لا توجد هدايا بعد</p>'}
+            </div>
+        `;
+
+        const tabs = body.querySelectorAll('.qgc-tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                body.querySelectorAll('.qgc-tab-panel').forEach(p => p.classList.add('hidden'));
+                document.getElementById(`qgc-tab-${tab.dataset.tab}`)?.classList.remove('hidden');
+            });
+        });
+
+        body.querySelectorAll('.qgc-contributor').forEach(el => {
+            el.addEventListener('click', () => {
+                modal.remove();
+                document.getElementById('quick-gift-picker')?.remove(); // ✅ وإلا تبقى فوق الملف الشخصي الجديد (z-index أعلى)
+                showFullProfilePage(el.dataset.userId);
+            });
+        });
+    } catch (error) {
+        const body = document.getElementById('qgc-body');
+        if (body) body.innerHTML = '<p class="text-sm text-red-400 py-10">تعذر تحميل البيانات</p>';
+    }
+}
+
+// ✅ نافذة شكر بعد إرسال هدية سريعة — صورة الهدية تقفز خارج الإطار وتتشقلب ثم تهبط كمؤثرات
+// (بلا زر "تمام" إطلاقاً) — تختفي تلقائياً فور انتهاء الحركة، أو فوراً عند النقر خارجها
 function showGiftThankYouModal(targetUsername, gift) {
     document.getElementById('gift-thank-you-modal')?.remove();
     const modal = document.createElement('div');
@@ -9052,13 +9212,27 @@ function showGiftThankYouModal(targetUsername, gift) {
             <div class="gift-thankyou-visual">${gift.image ? `<img src="${gift.image}">` : `<span>${gift.icon || '🎁'}</span>`}</div>
             <p class="gift-thankyou-title">شكراً لدعمك يا ${escapeHtml(targetUsername)}! 💜</p>
             <p class="gift-thankyou-sub">تم إرسال "${escapeHtml(gift.name)}" بنجاح</p>
-            <button id="close-gift-thankyou" class="profile-hub-action-btn profile-hub-action-primary w-full justify-center mt-3">تمام</button>
         </div>
     `;
     document.body.appendChild(modal);
     fireConfettiBurst(['#ec4899', '#a855f7', '#fbbf24']);
-    document.getElementById('close-gift-thankyou').addEventListener('click', () => modal.remove());
-    modal.addEventListener('click', (e) => { if (e.target.id === 'gift-thank-you-modal') modal.remove(); });
+
+    let dismissTimer = null;
+    const closeModal = () => {
+        if (!document.body.contains(modal)) return;
+        clearTimeout(dismissTimer);
+        modal.classList.add('gift-thankyou-closing');
+        setTimeout(() => modal.remove(), 200);
+    };
+    modal.addEventListener('click', (e) => { if (e.target.id === 'gift-thank-you-modal') closeModal(); });
+
+    // ✅ احتياطي: لو تعذّر إطلاق حدث نهاية الحركة لأي سبب (متصفح قديم مثلاً)، تُغلَق تلقائياً بعد مهلة معقولة
+    dismissTimer = setTimeout(closeModal, 3800);
+    const visual = modal.querySelector('.gift-thankyou-visual');
+    visual?.addEventListener('animationend', () => {
+        clearTimeout(dismissTimer);
+        dismissTimer = setTimeout(closeModal, 1400); // مهلة قصيرة لقراءة نص الشكر بعد هبوط الهدية
+    }, { once: true });
 }
 
         // --- 🧩 دالة مساعدة: تُرجع HTML شريط إدخال الدردشة الخاصة (نص مرة واحدة، تُستخدم بأكثر من مكان) ---

@@ -3,6 +3,7 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const ProfileVisit = require('../models/ProfileVisit');
+const Poke = require('../models/Poke');
 const { cloudinary, deleteFromCloudinary, getPublicIdFromUrl, assertRealType } = require('../utils/cloudinary');
 
 // ✅ يسجّل زيارة ملف شخصي (حدث خام لكل مشاهدة) — بتهدئة بسيطة: لا يُسجَّل حدث جديد لنفس
@@ -437,7 +438,7 @@ const getMyProfileVisits = async (req, res) => {
         const startOfToday = new Date();
         startOfToday.setHours(0, 0, 0, 0);
 
-        const [totalViews, totalVisitorIds, todayViews, todayVisitorIds, dailyGroups] = await Promise.all([
+        const [totalViews, totalVisitorIds, todayViews, todayVisitorIds, dailyGroups, todayPokes, recentVisitorGroups] = await Promise.all([
             ProfileVisit.countDocuments({ visited: myId }),
             ProfileVisit.distinct('visitor', { visited: myId }),
             ProfileVisit.countDocuments({ visited: myId, visitedAt: { $gte: startOfToday } }),
@@ -450,8 +451,25 @@ const getMyProfileVisits = async (req, res) => {
                 } },
                 { $sort: { _id: -1 } },
                 { $limit: 30 }
+            ]),
+            Poke.countDocuments({ to: myId, createdAt: { $gte: startOfToday } }),
+            // ✅ آخر الزوار (هوياتهم) — تُعرض ضبابية بالواجهة حتى يصل صاحب الملف للفل 3
+            ProfileVisit.aggregate([
+                { $match: { visited: myId } },
+                { $group: { _id: '$visitor', lastVisitedAt: { $max: '$visitedAt' } } },
+                { $sort: { lastVisitedAt: -1 } },
+                { $limit: 20 },
+                { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+                { $unwind: '$user' },
+                { $project: {
+                    userId: '$_id', username: '$user.username', profileImage: '$user.profileImage',
+                    activeFrameClass: '$user.activeFrameClass', lastVisitedAt: 1
+                } }
             ])
         ]);
+
+        const myLevel = req.user.level || 1;
+        const identityRevealed = myLevel >= 3;
 
         res.status(200).json({
             status: 'success',
@@ -460,7 +478,16 @@ const getMyProfileVisits = async (req, res) => {
                 totalVisitors: totalVisitorIds.length,
                 todayViews,
                 todayVisitors: todayVisitorIds.length,
-                dailyBreakdown: dailyGroups.map(g => ({ date: g._id, visitorsCount: g.visitors.length }))
+                todayPokes,
+                dailyBreakdown: dailyGroups.map(g => ({ date: g._id, visitorsCount: g.visitors.length })),
+                identityRevealed,
+                recentVisitors: recentVisitorGroups.map(v => ({
+                    userId: v.userId,
+                    username: identityRevealed ? v.username : null,
+                    profileImage: v.profileImage,
+                    activeFrameClass: v.activeFrameClass,
+                    lastVisitedAt: v.lastVisitedAt
+                }))
             }
         });
     } catch (error) {
@@ -469,7 +496,7 @@ const getMyProfileVisits = async (req, res) => {
     }
 };
 
-// ✅ "نكزة" — إشعار لحظي خفيف لشخص متصل الآن فقط (لا يُخزَّن، لا فائدة من إرساله لمن هو غير متصل)
+// ✅ "نكزة" — إشعار لحظي فوري إن كان الطرف متصلاً، ويُسجَّل دائماً بسجل Poke لحساب "نكز اليوم"
 const pokeUser = async (req, res) => {
     try {
         const targetId = req.params.id;
@@ -484,6 +511,8 @@ const pokeUser = async (req, res) => {
         if (req.io && target.isOnline && target.socketId) {
             req.io.to(target.socketId).emit('user-poked', { fromUserId: req.user.id, fromUsername: req.user.username, fromProfileImage: req.user.profileImage });
         }
+        // ✅ يُسجَّل دائماً (متصل أو لا) — مصدر عدّاد "نكز اليوم" بمركز الملف الشخصي؛ لا يُفشل الطلب أبداً
+        Poke.create({ from: req.user.id, to: targetId }).catch(err => console.error('[POKE] Failed to record:', err));
         res.status(200).json({ status: 'success' });
     } catch (error) {
         res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });

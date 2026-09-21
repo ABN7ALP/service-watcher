@@ -2832,7 +2832,7 @@ body.in-voice-room #main-content {
 }
 .full-profile-identity {
     text-align: center;
-    padding: 52px 16px 4px;
+    padding: 52px 16px 10px;
 }
 .full-profile-name {
     font-size: 16px;
@@ -2847,7 +2847,8 @@ body.in-voice-room #main-content {
 .full-profile-badge-row {
     display: flex;
     justify-content: center;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 6px 8px;
     margin-top: 9px;
 }
 .full-profile-mini-badge {
@@ -2862,22 +2863,33 @@ body.in-voice-room #main-content {
     font-weight: 700;
     color: #e5e7eb;
 }
+/* ✅ الحالة/السيرة — بلا تسمية وبلا خلفية، تجلس مباشرة تحت الشارات بأناقة */
+.full-profile-bio-text {
+    font-size: 11.5px;
+    color: #d1d5db;
+    font-style: italic;
+    text-align: center;
+    margin-top: 8px;
+    padding: 0 20px;
+    line-height: 1.5;
+}
 
-/* ✅ بطاقة الإنجازات — واجهة تمهيدية فقط (سيُبنى نظامها لاحقاً)، خمس خانات فارغة منقّطة */
+/* ✅ بطاقة الإنجازات — واجهة تمهيدية فقط (سيُبنى نظامها لاحقاً)، خمس خانات فارغة منقّطة؛
+   مصغَّرة قليلاً لتوفير مساحة الملف الشخصي */
 .full-profile-achievements-card {
     background: linear-gradient(135deg, rgba(168,85,247,0.12), rgba(255,255,255,0.03));
     border: 1px solid rgba(168,85,247,0.25);
-    border-radius: 14px;
-    padding: 12px;
+    border-radius: 12px;
+    padding: 9px;
 }
 .full-profile-card-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 12.5px;
+    font-size: 11.5px;
     font-weight: 800;
     color: #e9d5ff;
-    margin-bottom: 9px;
+    margin-bottom: 7px;
 }
 .full-profile-card-header i { color: #c084fc; margin-inline-end: 4px; }
 .full-profile-soon-tag {
@@ -2889,9 +2901,9 @@ body.in-voice-room #main-content {
     border-radius: 999px;
     display: inline-block;
 }
-.full-profile-achievements-row { display: flex; gap: 8px; justify-content: center; }
+.full-profile-achievements-row { display: flex; gap: 6px; justify-content: center; }
 .full-profile-achievement-slot {
-    width: 38px; height: 38px;
+    width: 32px; height: 32px;
     border-radius: 50%;
     background: rgba(255,255,255,0.05);
     border: 1px dashed rgba(255,255,255,0.18);
@@ -2899,7 +2911,7 @@ body.in-voice-room #main-content {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 14px;
+    font-size: 12px;
 }
 
 /* ✅ بطاقتا "نادي المعجبين" و"الحماة" — نفس فكرة الإنجازات، جنباً إلى جنب وأصغر حجماً */
@@ -2966,7 +2978,6 @@ body.in-voice-room #main-content {
     position: sticky;
     top: 0;
     z-index: 3;
-    background: linear-gradient(180deg, rgba(17,24,39,0.9), transparent);
 }
 .profile-hub-icon-btn {
     width: 32px; height: 32px;
@@ -2978,27 +2989,55 @@ body.in-voice-room #main-content {
     flex-shrink: 0;
 }
 .profile-hub-icon-btn:active { background: rgba(255,255,255,0.16); }
+/* ✅ أيقونات مسطّحة بلا خلفية دائرية (عين/ساعة/مزيد) — تطفو مباشرة فوق صورة الغلاف */
+.profile-hub-icon-btn-flat {
+    width: 32px; height: 32px;
+    background: transparent;
+    color: #f1f5f9;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+    text-shadow: 0 1px 5px rgba(0,0,0,0.7);
+}
+.profile-hub-icon-btn-flat:active { opacity: 0.6; }
 .profile-hub-body { flex: 1; overflow-y: auto; padding-bottom: 30px; }
 
 .profile-hub-cover {
-    height: 110px;
+    height: 120px;
     margin-top: -48px; /* ✅ يمتد خلف الشريط العلوي الشفاف قليلاً لإحساس أكثر انسيابية */
     background: linear-gradient(135deg, rgba(126,34,206,0.5), rgba(219,39,119,0.3));
     background-size: cover;
     background-position: center;
     position: relative;
 }
-.profile-hub-avatar {
+/* ✅ صورتي بموضع جانبي هندسي فوق الغلاف — مربّع دائري الزوايا بإطار متدرّج مائل خلفه بدل
+   الدائرة المتوسِّطة التقليدية */
+.profile-hub-avatar-wrap {
     position: absolute;
-    left: 50%; bottom: 0;
-    transform: translate(-50%, 50%);
-    width: 96px; height: 96px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 4px solid #111827;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    right: 18px;
+    bottom: -28px;
+    width: 84px;
+    height: 84px;
+    z-index: 2;
 }
-.profile-hub-identity { text-align: center; padding: 56px 16px 6px; }
+.profile-hub-avatar-wrap::before {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    transform: rotate(-8deg);
+    z-index: -1;
+}
+.profile-hub-avatar {
+    width: 100%; height: 100%;
+    display: block;
+    border-radius: 20px;
+    object-fit: cover;
+    border: 3px solid #111827;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+}
+.profile-hub-identity { text-align: center; padding: 34px 16px 6px; }
 .profile-hub-name { font-size: 17px; font-weight: 800; color: #fff; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .profile-hub-id { font-size: 11px; color: #9ca3af; margin-top: 2px; }
 .profile-hub-badge-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
@@ -3025,59 +3064,49 @@ body.in-voice-room #main-content {
 .profile-hub-stat-num { font-size: 15px; font-weight: 800; color: #fff; }
 .profile-hub-stat-label { font-size: 10px; color: #9ca3af; }
 
-.profile-hub-wallet-card {
+/* ✅ صف مدمج واحد وصغير (محفظة/VIP/صنّاع محتوى/ألعاب/مركز المضيف) — بلا "مكعبات" كبيرة،
+   يوفّر مساحة الملف الشخصي؛ كل عنصر أيقونة دائرية صغيرة + تسمية مصغّرة أسفلها */
+.profile-hub-quick-row {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 12px 16px 0;
-    padding: 12px;
-    background: linear-gradient(135deg, rgba(251,191,36,0.1), rgba(255,255,255,0.03));
-    border: 1px solid rgba(251,191,36,0.25);
-    border-radius: 14px;
+    justify-content: space-between;
+    gap: 4px;
+    margin: 14px 16px 0;
 }
-.profile-hub-wallet-icon {
-    width: 38px; height: 38px;
-    border-radius: 50%;
-    background: rgba(251,191,36,0.18);
-    color: #fbbf24;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px;
-    flex-shrink: 0;
-}
-.profile-hub-wallet-title { font-size: 12.5px; font-weight: 800; color: #fff; }
-.profile-hub-wallet-sub { font-size: 10.5px; color: #d1d5db; margin-top: 2px; }
-.profile-hub-wallet-action {
-    flex-shrink: 0;
-    background: rgba(251,191,36,0.18);
-    color: #fde68a;
-    font-size: 10.5px;
-    font-weight: 800;
-    padding: 7px 12px;
-    border-radius: 999px;
-}
-
-.profile-hub-feature-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-    margin: 12px 16px 0;
-}
-.profile-hub-feature-tile {
+.profile-hub-quick-tile {
     position: relative;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px;
-    padding: 14px 8px;
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    color: #e5e7eb;
-    text-align: center;
+    gap: 4px;
+    padding: 2px;
 }
-.profile-hub-feature-tile i { font-size: 19px; }
+.profile-hub-quick-icon {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.profile-hub-quick-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: #cbd5e1;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+.profile-hub-quick-dot {
+    position: absolute;
+    top: 0; left: calc(50% + 8px);
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #f59e0b;
+    border: 1.5px solid #111827;
+}
 .profile-hub-soon-tag {
     font-size: 8.5px;
     font-weight: 800;
@@ -3101,6 +3130,21 @@ body.in-voice-room #main-content {
 }
 .profile-hub-action-primary { background: linear-gradient(135deg, #a855f7, #ec4899); color: #fff; }
 .profile-hub-action-secondary { background: rgba(255,255,255,0.06); color: #e5e7eb; }
+/* ✅ زر تحرير طافٍ بلا تدرّج لوني — مع شارة نسبة اكتمال الملف صغيرة بجانبه */
+.profile-hub-action-edit {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.16);
+    color: #e5e7eb;
+}
+.profile-hub-action-edit:active { background: rgba(255,255,255,0.05); }
+.profile-hub-completion-badge {
+    font-size: 10px;
+    font-weight: 800;
+    color: #c4b5fd;
+    background: rgba(168,85,247,0.15);
+    padding: 1.5px 7px;
+    border-radius: 999px;
+}
 
 .profile-hub-section-title {
     display: flex; align-items: center; gap: 6px;
@@ -3154,6 +3198,33 @@ body.in-voice-room #main-content {
 }
 .profile-hub-hc-stat span { display: block; font-size: 15px; font-weight: 800; color: #fff; }
 .profile-hub-hc-stat label { font-size: 9.5px; color: #9ca3af; }
+
+/* ✅ صف زوار/مشاهدات/نكز اليوم — بلا مربعات أو خلفية، بجانب بعضهم في المنتصف */
+.profile-hub-visitors-today-row {
+    display: flex;
+    justify-content: center;
+    gap: 22px;
+    padding: 6px 0 14px;
+}
+.phv-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.phv-stat span { font-size: 17px; font-weight: 800; color: #fff; }
+.phv-stat label { font-size: 10px; color: #9ca3af; }
+
+.profile-hub-visitors-lock-note {
+    text-align: center;
+    font-size: 10.5px;
+    color: #9ca3af;
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px;
+    padding: 6px 10px;
+    margin-bottom: 10px;
+}
+.profile-hub-visitors-list { display: flex; flex-direction: column; gap: 8px; }
+.profile-hub-visitor-row { display: flex; align-items: center; gap: 10px; padding: 4px 2px; }
+.profile-hub-visitor-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.profile-hub-visitor-avatar.blurred { filter: blur(6px); }
+.profile-hub-visitor-name { font-size: 12.5px; font-weight: 700; color: #e5e7eb; }
+.profile-hub-visitor-name.blurred-text { color: #6b7280; filter: blur(2px); }
 
 /* ✅ بطاقات اقتراحات الأشخاص (اكتشاف) */
 .discover-person-card {
@@ -3288,31 +3359,90 @@ body.in-voice-room #main-content {
     flex-direction: column;
     animation: slideUp 0.25s ease-out;
 }
-.quick-gift-strip {
-    display: flex;
-    gap: 10px;
-    overflow-x: auto;
-    padding: 14px;
-    scroll-snap-type: x proximity;
+/* ✅ ترويسة عنوان الإعجاب السريع — نص في المنتصف + صف "دعمه X شخص" أسفله */
+.quick-gift-header { text-align: center; padding: 0 16px 10px; }
+.quick-gift-title-text { font-size: 13.5px; font-weight: 800; color: #fff; }
+.quick-gift-supporters-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    background: none;
+    border: none;
 }
-.quick-gift-item {
-    scroll-snap-align: start;
-    flex: 0 0 auto;
-    width: 92px;
+.quick-gift-supporters-btn.hidden { display: none; }
+.quick-gift-supporters-avatars { display: flex; }
+.quick-gift-supporter-avatar {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid #111827;
+    margin-inline-start: -7px;
+}
+.quick-gift-supporter-avatar:first-child { margin-inline-start: 0; }
+.quick-gift-supporters-text { font-size: 10.5px; font-weight: 700; color: #c4b5fd; }
+
+/* ✅ "كرة" الهدية الواحدة — بطاقة كبيرة وحيدة بمنتصف الواجهة، تُقلَّب دائرياً بالسحب/الأزرار */
+.quick-gift-carousel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 6px 10px;
+    perspective: 700px;
+}
+.quick-gift-nav-btn {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    color: #cbd5e1;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+.quick-gift-nav-btn:active { background: rgba(255,255,255,0.14); }
+.quick-gift-stage {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    min-height: 190px;
+    align-items: center;
+    touch-action: pan-y;
+}
+.quick-gift-stage-card {
+    width: 190px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 5px;
-    background: rgba(255,255,255,0.04);
-    border: 2px solid transparent;
-    border-radius: 14px;
-    padding: 12px 6px;
+    gap: 6px;
+    padding: 18px 10px;
+    background: radial-gradient(circle at 50% 35%, rgba(168,85,247,0.18), rgba(255,255,255,0.03) 70%);
+    border: 1px solid rgba(168,85,247,0.22);
+    border-radius: 50%;
+    aspect-ratio: 1 / 1;
+    justify-content: center;
+    transform-style: preserve-3d;
+    transition: transform 0.18s ease, opacity 0.18s ease;
 }
-.quick-gift-item.selected { border-color: #a855f7; background: rgba(168,85,247,0.12); }
-.quick-gift-item-visual { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; font-size: 34px; }
-.quick-gift-item-visual img { width: 100%; height: 100%; object-fit: contain; }
-.quick-gift-item-name { font-size: 10.5px; font-weight: 700; color: #e5e7eb; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.quick-gift-item-price { font-size: 10px; color: #fbbf24; font-weight: 700; }
+.quick-gift-stage-visual { width: 74px; height: 74px; display: flex; align-items: center; justify-content: center; font-size: 52px; }
+.quick-gift-stage-visual img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.4)); }
+.quick-gift-stage-name { font-size: 12px; font-weight: 800; color: #fff; text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-gift-stage-price { font-size: 11px; color: #fbbf24; font-weight: 700; }
+.quick-gift-flip-out-next { transform: rotateY(-75deg) scale(0.82); opacity: 0; }
+.quick-gift-flip-out-prev { transform: rotateY(75deg) scale(0.82); opacity: 0; }
+.quick-gift-flip-in-next { animation: quickGiftFlipInNext 0.26s ease-out; }
+.quick-gift-flip-in-prev { animation: quickGiftFlipInPrev 0.26s ease-out; }
+@keyframes quickGiftFlipInNext {
+    from { transform: rotateY(75deg) scale(0.82); opacity: 0; }
+    to   { transform: rotateY(0) scale(1); opacity: 1; }
+}
+@keyframes quickGiftFlipInPrev {
+    from { transform: rotateY(-75deg) scale(0.82); opacity: 0; }
+    to   { transform: rotateY(0) scale(1); opacity: 1; }
+}
+.quick-gift-dots { display: flex; justify-content: center; gap: 5px; padding-bottom: 4px; }
+.quick-gift-dot { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,0.18); }
+.quick-gift-dot.active { background: #a855f7; width: 14px; border-radius: 999px; }
 
 .gift-thankyou-card {
     background: #1a1f2e;
@@ -3322,29 +3452,128 @@ body.in-voice-room #main-content {
     text-align: center;
     max-width: 300px;
     width: 100%;
+    overflow: visible; /* ✅ تسمح لصورة الهدية بالقفز خارج حدود البطاقة أثناء الحركة */
     animation: giftThankyouJumpIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     box-shadow: 0 20px 50px rgba(0,0,0,0.5);
 }
+.gift-thankyou-card.gift-thankyou-closing { animation: giftThankyouFadeOut 0.2s ease-in forwards; }
 @keyframes giftThankyouJumpIn {
     0%   { transform: translateY(24px) scale(0.82); opacity: 0; }
     60%  { transform: translateY(-4px) scale(1.03); opacity: 1; }
     100% { transform: translateY(0) scale(1); opacity: 1; }
 }
+@keyframes giftThankyouFadeOut {
+    from { transform: scale(1); opacity: 1; }
+    to   { transform: scale(0.92); opacity: 0; }
+}
+/* ✅ صورة الهدية تقفز خارج الإطار، تتشقلب بالدوران، ثم تهبط بثبات — أبطأ من "بوب" بسيطة */
 .gift-thankyou-visual {
     width: 84px; height: 84px;
     margin: 0 auto 12px;
     display: flex; align-items: center; justify-content: center;
     font-size: 56px;
-    animation: giftThankyouPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: giftThankyouTumbleLand 1.3s cubic-bezier(0.22, 0.68, 0.35, 1.1);
 }
-.gift-thankyou-visual img { width: 100%; height: 100%; object-fit: contain; }
-@keyframes giftThankyouPop {
-    0% { transform: scale(0.3) rotate(-15deg); opacity: 0; }
-    60% { transform: scale(1.15) rotate(5deg); opacity: 1; }
-    100% { transform: scale(1) rotate(0); opacity: 1; }
+.gift-thankyou-visual img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 10px 18px rgba(0,0,0,0.5)); }
+@keyframes giftThankyouTumbleLand {
+    0%   { transform: translateY(-90px) scale(0.4) rotate(0deg); opacity: 0; }
+    30%  { transform: translateY(6px) scale(1.18) rotate(190deg); opacity: 1; }
+    50%  { transform: translateY(-18px) scale(0.94) rotate(320deg); }
+    68%  { transform: translateY(6px) scale(1.06) rotate(365deg); }
+    84%  { transform: translateY(-4px) scale(0.98) rotate(358deg); }
+    100% { transform: translateY(0) scale(1) rotate(360deg); opacity: 1; }
 }
 .gift-thankyou-title { font-size: 15px; font-weight: 800; color: #fff; }
 .gift-thankyou-sub { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+
+/* =====================================================
+   ✅ ورقة "المساهمون والهدايا" — قوس مسرحي + تبويبا مساهمون/هدايا
+   ===================================================== */
+.quick-gift-contributors-card {
+    background: #111827;
+    width: 100%;
+    max-width: 380px;
+    max-height: 82vh;
+    display: flex;
+    flex-direction: column;
+    border-radius: 20px 20px 0 0;
+    animation: slideUp 0.25s ease-out;
+    position: relative;
+    overflow-y: auto;
+}
+@media (min-width: 768px) {
+    .quick-gift-contributors-card { border-radius: 20px; }
+}
+.quick-gift-contributors-close { position: absolute; top: 10px; left: 10px; z-index: 2; }
+.qgc-header { text-align: center; padding: 22px 16px 0; }
+.qgc-avatar {
+    width: 74px; height: 74px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #1a1f2e;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+}
+.qgc-name { font-size: 13.5px; font-weight: 800; color: #fff; margin-top: 6px; }
+
+/* ✅ قوس بمظهر مسرحي (نصف بيضاوي علوي) يحمل إجمالي هدايا الإعجاب السريع */
+.qgc-arch { position: relative; margin: 14px 24px 4px; padding-top: 10px; }
+.qgc-arch-shape {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 64px;
+    border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+    background: linear-gradient(180deg, rgba(168,85,247,0.32), rgba(168,85,247,0.04));
+    border: 1px solid rgba(168,85,247,0.28);
+    border-bottom: none;
+}
+.qgc-arch-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 14px 0 16px;
+}
+.qgc-arch-content i { color: #fbbf24; font-size: 17px; }
+.qgc-arch-count { font-size: 19px; font-weight: 800; color: #fff; }
+.qgc-arch-label { font-size: 9.5px; color: #c4b5fd; }
+
+.qgc-tabs { display: flex; gap: 6px; padding: 10px 16px 4px; }
+.qgc-tab {
+    flex: 1;
+    text-align: center;
+    padding: 8px 6px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    color: #9ca3af;
+    font-size: 11.5px;
+    font-weight: 800;
+}
+.qgc-tab.active { background: rgba(168,85,247,0.18); color: #e9d5ff; }
+.qgc-tab-panel { padding: 10px 16px 18px; }
+.qgc-tab-panel.hidden { display: none; }
+.qgc-empty { text-align: center; font-size: 11.5px; color: #6b7280; padding: 20px 0; }
+
+.qgc-contributors-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 6px; }
+.qgc-contributor { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.qgc-contributor-avatar { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; }
+.qgc-contributor-name { font-size: 9.5px; color: #cbd5e1; text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.qgc-gifts-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 6px; }
+.qgc-gift-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 12px;
+    padding: 8px 4px;
+}
+.qgc-gift-visual { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; font-size: 26px; }
+.qgc-gift-visual img { width: 100%; height: 100%; object-fit: contain; }
+.qgc-gift-name { font-size: 9px; color: #e5e7eb; text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qgc-gift-count { font-size: 9.5px; color: #fbbf24; font-weight: 700; }
 
 /* ✅ صف متابِعين/متابَعين ببطاقة الملف الشخصي المصغّرة — بلا صناديق خلفية، نفس أسلوب إحصائيات
    مركز الملف الشخصي (.profile-hub-stat)، وقابل للنقر لفتح قائمة المتابِعين/المتابَعين */
