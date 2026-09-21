@@ -585,9 +585,11 @@ exports.getUserContributors = async (req, res) => {
         const targetUserId = req.params.userId;
         const targetObjId = new mongoose.Types.ObjectId(targetUserId);
 
+        // ✅ يُحتسب فقط من هدايا "الإعجاب السريع" (context: profile) — أي عبر هذا الزر تحديداً
+        // بالملف الشخصي، وليس كل هدايا المستخدم من كل مكان بالتطبيق
         const [contributors, totalAgg, giftsBreakdown] = await Promise.all([
             GiftLog.aggregate([
-                { $match: { receiver: targetObjId } },
+                { $match: { receiver: targetObjId, context: 'profile' } },
                 { $group: { _id: '$sender', totalContributed: { $sum: '$totalPrice' }, giftsCount: { $sum: '$quantity' } } },
                 { $sort: { totalContributed: -1 } },
                 { $limit: 50 },
@@ -599,11 +601,11 @@ exports.getUserContributors = async (req, res) => {
                 } }
             ]),
             GiftLog.aggregate([
-                { $match: { receiver: targetObjId } },
+                { $match: { receiver: targetObjId, context: 'profile' } },
                 { $group: { _id: null, totalGiftsCount: { $sum: '$quantity' }, totalCoinsValue: { $sum: '$totalPrice' } } }
             ]),
             GiftLog.aggregate([
-                { $match: { receiver: targetObjId } },
+                { $match: { receiver: targetObjId, context: 'profile' } },
                 { $group: { _id: '$gift', giftName: { $first: '$giftName' }, giftImage: { $first: '$giftImage' }, totalCount: { $sum: '$quantity' } } },
                 { $sort: { totalCount: -1 } },
                 { $limit: 30 }

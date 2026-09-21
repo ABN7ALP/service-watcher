@@ -8955,9 +8955,9 @@ async function showFullProfilePage(userId) {
     }
 }
 
-// ✅ هدية سريعة — شريط صور أفقي (شريط فيلم) بدل نافذة متجر الهدايا الكاملة: اختيار هدية
-// واحدة بلمسة، وزر إرسال واحد كبير أسفله (كمية 1 دائماً). يعيد استخدام كتالوج/بطاقة الهدايا
-// الموجودَين أصلاً (renderGiftCardHTML، /api/gifts/shop) بدل بناء نظام مستقل من الصفر
+// ✅ هدية سريعة — بطاقة واحدة كبيرة (بدل شريط فيلم مصغّر) تُقلَّب دائرياً بالسحب جانباً أو
+// بأزرار التنقّل، بأسلوب دائري (كرة تدور) بدل قائمة عريضة؛ فوقها صف "دعمه X شخص" يفتح
+// قائمة المساهمين/الهدايا. يعيد استخدام كتالوج الهدايا الموجود أصلاً (/api/gifts/shop)
 async function showQuickGiftPicker(targetUserId, targetUsername) {
     document.getElementById('quick-gift-picker')?.remove();
     const modal = document.createElement('div');
@@ -8965,16 +8965,27 @@ async function showQuickGiftPicker(targetUserId, targetUsername) {
     modal.className = 'fixed inset-0 bg-black/75 z-[335] flex items-end justify-center';
     modal.innerHTML = `
         <div class="quick-gift-card">
-            <div class="flex items-center justify-between p-3 border-b border-gray-700 flex-shrink-0">
-                <p class="font-bold text-sm"><i class="fas fa-heart text-pink-400"></i> إعجاب سريع لـ ${escapeHtml(targetUsername)}</p>
+            <div class="flex items-center justify-end p-2 flex-shrink-0">
                 <button id="close-quick-gift" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
             </div>
-            <div id="quick-gift-strip" class="quick-gift-strip">
-                <div class="w-full text-center text-gray-400 py-8"><i class="fas fa-spinner fa-spin"></i></div>
+            <div class="quick-gift-header">
+                <p class="quick-gift-title-text"><i class="fas fa-heart text-pink-400"></i> إعجاب سريع لـ ${escapeHtml(targetUsername)}</p>
+                <button type="button" id="quick-gift-supporters-btn" class="quick-gift-supporters-btn hidden">
+                    <span id="quick-gift-supporters-avatars" class="quick-gift-supporters-avatars"></span>
+                    <span id="quick-gift-supporters-text" class="quick-gift-supporters-text"></span>
+                </button>
             </div>
+            <div class="quick-gift-carousel">
+                <button type="button" id="quick-gift-prev" class="quick-gift-nav-btn" aria-label="السابق"><i class="fas fa-chevron-right"></i></button>
+                <div id="quick-gift-stage" class="quick-gift-stage">
+                    <div class="w-full text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
+                </div>
+                <button type="button" id="quick-gift-next" class="quick-gift-nav-btn" aria-label="التالي"><i class="fas fa-chevron-left"></i></button>
+            </div>
+            <div id="quick-gift-dots" class="quick-gift-dots"></div>
             <div class="p-3 border-t border-gray-700 flex-shrink-0">
                 <button id="quick-gift-send-btn" class="profile-hub-action-btn profile-hub-action-primary w-full justify-center" disabled>
-                    <i class="fas fa-paper-plane"></i> اختر هدية أولاً
+                    <i class="fas fa-spinner fa-spin"></i>
                 </button>
             </div>
         </div>
@@ -8983,52 +8994,103 @@ async function showQuickGiftPicker(targetUserId, targetUsername) {
     modal.addEventListener('click', (e) => { if (e.target.id === 'quick-gift-picker') modal.remove(); });
     document.getElementById('close-quick-gift').addEventListener('click', () => modal.remove());
 
-    let selectedGift = null;
+    // ✅ صف "دعمه X شخص" — عدّاد مساهمي الإعجاب السريع تحديداً (لا كل هدايا المستخدم)
+    fetch(`/api/gifts/user/${targetUserId}/contributors`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(res => {
+            if (res.status !== 'success' || !res.data || res.data.contributorsCount === 0) return;
+            const btn = document.getElementById('quick-gift-supporters-btn');
+            if (!btn) return;
+            const d = res.data;
+            document.getElementById('quick-gift-supporters-avatars').innerHTML = d.contributors.slice(0, 5)
+                .map(c => `<img src="${c.profileImage}" class="quick-gift-supporter-avatar">`).join('');
+            document.getElementById('quick-gift-supporters-text').textContent =
+                `تمت مساعدته من ${d.contributorsCount.toLocaleString('en-US')} ${d.contributorsCount === 1 ? 'شخص' : 'أشخاص'}`;
+            btn.classList.remove('hidden');
+            btn.addEventListener('click', () => showQuickGiftContributorsSheet(targetUserId, targetUsername));
+        })
+        .catch(() => {});
+
+    let gifts = [];
+    let currentIndex = 0;
+    const stage = document.getElementById('quick-gift-stage');
+    const sendBtn = document.getElementById('quick-gift-send-btn');
+    const dotsEl = document.getElementById('quick-gift-dots');
+
+    function renderDots() {
+        if (!dotsEl) return;
+        dotsEl.innerHTML = gifts.map((_, i) => `<span class="quick-gift-dot ${i === currentIndex ? 'active' : ''}"></span>`).join('');
+    }
+
+    function renderStage() {
+        const g = gifts[currentIndex];
+        stage.innerHTML = `
+            <div class="quick-gift-stage-card">
+                <div class="quick-gift-stage-visual">${g.image ? `<img src="${g.image}">` : `<span>${g.icon || '🎁'}</span>`}</div>
+                <p class="quick-gift-stage-name">${escapeHtml(g.name)}</p>
+                <p class="quick-gift-stage-price"><i class="fas fa-coins text-yellow-400"></i> ${g.price}</p>
+            </div>
+        `;
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = `<i class="fas fa-paper-plane"></i> إرسال ${escapeHtml(g.name)}`;
+        renderDots();
+    }
+
+    function goToGift(newIndex, direction) {
+        if (gifts.length < 2 || newIndex === currentIndex) return;
+        const card = stage.querySelector('.quick-gift-stage-card');
+        if (card) card.classList.add(direction === 'next' ? 'quick-gift-flip-out-next' : 'quick-gift-flip-out-prev');
+        setTimeout(() => {
+            currentIndex = newIndex;
+            renderStage();
+            const newCard = stage.querySelector('.quick-gift-stage-card');
+            if (!newCard) return;
+            newCard.classList.add(direction === 'next' ? 'quick-gift-flip-in-next' : 'quick-gift-flip-in-prev');
+            setTimeout(() => newCard.classList.remove('quick-gift-flip-in-next', 'quick-gift-flip-in-prev'), 260);
+        }, 160);
+    }
+    const nextGift = () => goToGift((currentIndex + 1) % gifts.length, 'next');
+    const prevGift = () => goToGift((currentIndex - 1 + gifts.length) % gifts.length, 'prev');
+    document.getElementById('quick-gift-next').addEventListener('click', nextGift);
+    document.getElementById('quick-gift-prev').addEventListener('click', prevGift);
+
+    // ✅ سحب جانبي (لمس) للتنقّل الدائري بين الهدايا — بأسلوب "قلّاب دائري"
+    let touchStartX = null;
+    stage.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; }, { passive: true });
+    stage.addEventListener('touchend', (e) => {
+        if (touchStartX === null) return;
+        const dx = e.changedTouches[0].clientX - touchStartX;
+        touchStartX = null;
+        if (Math.abs(dx) < 40) return;
+        if (dx < 0) nextGift(); else prevGift();
+    }, { passive: true });
+
     try {
         const response = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } });
         const result = await response.json();
-        const strip = document.getElementById('quick-gift-strip');
-        if (!strip) return;
-        const gifts = result.status === 'success' ? result.data.gifts : [];
-        if (!gifts || gifts.length === 0) {
-            strip.innerHTML = '<p class="text-xs text-gray-500 w-full text-center py-8">لا توجد هدايا متاحة حالياً</p>';
+        if (!stage) return;
+        gifts = (result.status === 'success' ? result.data.gifts : []).map(g => ({
+            id: g._id, name: g.name, image: g.imageUrl || '', icon: g.icon || '🎁', price: g.discountedPrice || g.price
+        }));
+        if (gifts.length === 0) {
+            stage.innerHTML = '<p class="text-xs text-gray-500 w-full text-center py-10">لا توجد هدايا متاحة حالياً</p>';
             return;
         }
-        strip.innerHTML = gifts.map(g => `
-            <button type="button" class="quick-gift-item" data-gift-id="${g._id}" data-gift-name="${escapeHtml(g.name)}" data-gift-image="${g.imageUrl || ''}" data-gift-icon="${g.icon || '🎁'}" data-gift-price="${g.discountedPrice || g.price}">
-                <div class="quick-gift-item-visual">${g.imageUrl ? `<img src="${g.imageUrl}">` : `<span>${g.icon || '🎁'}</span>`}</div>
-                <span class="quick-gift-item-name">${escapeHtml(g.name)}</span>
-                <span class="quick-gift-item-price"><i class="fas fa-coins"></i> ${g.discountedPrice || g.price}</span>
-            </button>
-        `).join('');
-        const sendBtn = document.getElementById('quick-gift-send-btn');
-        strip.querySelectorAll('.quick-gift-item').forEach(item => {
-            item.addEventListener('click', () => {
-                strip.querySelectorAll('.quick-gift-item').forEach(i => i.classList.remove('selected'));
-                item.classList.add('selected');
-                selectedGift = {
-                    id: item.dataset.giftId, name: item.dataset.giftName,
-                    image: item.dataset.giftImage, icon: item.dataset.giftIcon, price: item.dataset.giftPrice
-                };
-                sendBtn.disabled = false;
-                sendBtn.innerHTML = `<i class="fas fa-paper-plane"></i> إرسال ${escapeHtml(selectedGift.name)}`;
-            });
-        });
+        renderStage();
     } catch (error) {
-        const strip = document.getElementById('quick-gift-strip');
-        if (strip) strip.innerHTML = '<p class="text-xs text-red-400 w-full text-center py-8">تعذر تحميل الهدايا</p>';
+        if (stage) stage.innerHTML = '<p class="text-xs text-red-400 w-full text-center py-10">تعذر تحميل الهدايا</p>';
     }
 
-    document.getElementById('quick-gift-send-btn').addEventListener('click', async () => {
+    sendBtn.addEventListener('click', async () => {
+        const selectedGift = gifts[currentIndex];
         if (!selectedGift) return;
-        const sendBtn = document.getElementById('quick-gift-send-btn');
         sendBtn.disabled = true;
         sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         try {
             const response = await fetch('/api/gifts/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ receiverId: targetUserId, giftId: selectedGift.id, quantity: 1, context: 'private_chat' })
+                body: JSON.stringify({ receiverId: targetUserId, giftId: selectedGift.id, quantity: 1, context: 'profile' })
             });
             const result = await response.json();
             if (!response.ok) {
@@ -9051,8 +9113,94 @@ async function showQuickGiftPicker(targetUserId, targetUsername) {
     });
 }
 
-// ✅ نافذة شكر بعد إرسال هدية سريعة — احتفال بصري بسيط (قصاصات ورقية + قفزة الصورة) بدل
-// إغلاق صامت، تشجيعاً للتفاعل المتكرر
+// ✅ ورقة "المساهمون والهدايا" — تُفتح بالنقر على صف "دعمه X شخص" بنافذة الإعجاب السريع:
+// صورة/اسم صاحب الملف + قوس مسرحي بإجمالي هدايا الإعجاب السريع، وتبويبان (مساهمون/هدايا)
+async function showQuickGiftContributorsSheet(targetUserId, targetUsername) {
+    document.getElementById('quick-gift-contributors-sheet')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'quick-gift-contributors-sheet';
+    modal.className = 'fixed inset-0 bg-black/75 z-[338] flex items-end md:items-center justify-center';
+    modal.innerHTML = `
+        <div class="quick-gift-contributors-card">
+            <button id="close-quick-gift-contributors" class="profile-hub-icon-btn quick-gift-contributors-close"><i class="fas fa-times"></i></button>
+            <div id="qgc-body" class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-xl"></i></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'quick-gift-contributors-sheet') modal.remove(); });
+    document.getElementById('close-quick-gift-contributors').addEventListener('click', () => modal.remove());
+
+    try {
+        const [miniRes, contribRes] = await Promise.all([
+            fetch(`/api/users/${targetUserId}/mini-profile`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            fetch(`/api/gifts/user/${targetUserId}/contributors`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+        ]);
+        const body = document.getElementById('qgc-body');
+        if (!body) return;
+        if (miniRes.status !== 'success' || contribRes.status !== 'success') throw new Error();
+        const u = miniRes.data;
+        const d = contribRes.data;
+
+        body.innerHTML = `
+            <div class="qgc-header">
+                <img src="${u.profileImage}" class="qgc-avatar ${u.activeFrameClass || ''}">
+                <p class="qgc-name">${escapeHtml(u.username)}</p>
+            </div>
+            <div class="qgc-arch">
+                <div class="qgc-arch-shape"></div>
+                <div class="qgc-arch-content">
+                    <i class="fas fa-gift"></i>
+                    <span class="qgc-arch-count">${(d.totalGiftsCount || 0).toLocaleString('en-US')}</span>
+                    <span class="qgc-arch-label">هدية عبر الإعجاب السريع</span>
+                </div>
+            </div>
+            <div class="qgc-tabs">
+                <button type="button" class="qgc-tab active" data-tab="contributors">مساهمون (${d.contributorsCount || 0})</button>
+                <button type="button" class="qgc-tab" data-tab="gifts">هدايا</button>
+            </div>
+            <div id="qgc-tab-contributors" class="qgc-tab-panel">
+                ${(d.contributors && d.contributors.length) ? `<div class="qgc-contributors-grid">${d.contributors.map(c => `
+                    <button type="button" class="qgc-contributor" data-user-id="${c.userId}">
+                        <img src="${c.profileImage}" class="qgc-contributor-avatar ${c.activeFrameClass || ''}">
+                        <span class="qgc-contributor-name">${escapeHtml(c.username)}</span>
+                    </button>
+                `).join('')}</div>` : '<p class="qgc-empty">لا يوجد مساهمون بعد</p>'}
+            </div>
+            <div id="qgc-tab-gifts" class="qgc-tab-panel hidden">
+                ${(d.gifts && d.gifts.length) ? `<div class="qgc-gifts-grid">${d.gifts.map(g => `
+                    <div class="qgc-gift-item">
+                        <div class="qgc-gift-visual">${g.image ? `<img src="${g.image}">` : '<span>🎁</span>'}</div>
+                        <span class="qgc-gift-name">${escapeHtml(g.name || '')}</span>
+                        <span class="qgc-gift-count">×${g.count}</span>
+                    </div>
+                `).join('')}</div>` : '<p class="qgc-empty">لا توجد هدايا بعد</p>'}
+            </div>
+        `;
+
+        const tabs = body.querySelectorAll('.qgc-tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                body.querySelectorAll('.qgc-tab-panel').forEach(p => p.classList.add('hidden'));
+                document.getElementById(`qgc-tab-${tab.dataset.tab}`)?.classList.remove('hidden');
+            });
+        });
+
+        body.querySelectorAll('.qgc-contributor').forEach(el => {
+            el.addEventListener('click', () => {
+                modal.remove();
+                showFullProfilePage(el.dataset.userId);
+            });
+        });
+    } catch (error) {
+        const body = document.getElementById('qgc-body');
+        if (body) body.innerHTML = '<p class="text-sm text-red-400 py-10">تعذر تحميل البيانات</p>';
+    }
+}
+
+// ✅ نافذة شكر بعد إرسال هدية سريعة — صورة الهدية تقفز خارج الإطار وتتشقلب ثم تهبط كمؤثرات
+// (بلا زر "تمام" إطلاقاً) — تختفي تلقائياً فور انتهاء الحركة، أو فوراً عند النقر خارجها
 function showGiftThankYouModal(targetUsername, gift) {
     document.getElementById('gift-thank-you-modal')?.remove();
     const modal = document.createElement('div');
@@ -9063,13 +9211,27 @@ function showGiftThankYouModal(targetUsername, gift) {
             <div class="gift-thankyou-visual">${gift.image ? `<img src="${gift.image}">` : `<span>${gift.icon || '🎁'}</span>`}</div>
             <p class="gift-thankyou-title">شكراً لدعمك يا ${escapeHtml(targetUsername)}! 💜</p>
             <p class="gift-thankyou-sub">تم إرسال "${escapeHtml(gift.name)}" بنجاح</p>
-            <button id="close-gift-thankyou" class="profile-hub-action-btn profile-hub-action-primary w-full justify-center mt-3">تمام</button>
         </div>
     `;
     document.body.appendChild(modal);
     fireConfettiBurst(['#ec4899', '#a855f7', '#fbbf24']);
-    document.getElementById('close-gift-thankyou').addEventListener('click', () => modal.remove());
-    modal.addEventListener('click', (e) => { if (e.target.id === 'gift-thank-you-modal') modal.remove(); });
+
+    let dismissTimer = null;
+    const closeModal = () => {
+        if (!document.body.contains(modal)) return;
+        clearTimeout(dismissTimer);
+        modal.classList.add('gift-thankyou-closing');
+        setTimeout(() => modal.remove(), 200);
+    };
+    modal.addEventListener('click', (e) => { if (e.target.id === 'gift-thank-you-modal') closeModal(); });
+
+    // ✅ احتياطي: لو تعذّر إطلاق حدث نهاية الحركة لأي سبب (متصفح قديم مثلاً)، تُغلَق تلقائياً بعد مهلة معقولة
+    dismissTimer = setTimeout(closeModal, 3800);
+    const visual = modal.querySelector('.gift-thankyou-visual');
+    visual?.addEventListener('animationend', () => {
+        clearTimeout(dismissTimer);
+        dismissTimer = setTimeout(closeModal, 1400); // مهلة قصيرة لقراءة نص الشكر بعد هبوط الهدية
+    }, { once: true });
 }
 
         // --- 🧩 دالة مساعدة: تُرجع HTML شريط إدخال الدردشة الخاصة (نص مرة واحدة، تُستخدم بأكثر من مكان) ---
