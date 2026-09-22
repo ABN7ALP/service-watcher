@@ -8002,16 +8002,83 @@ function renderProfileHubBody(u) {
             </button>
             <button id="profile-hub-discover-btn" class="profile-hub-discover-circle" title="اقتراحات"><i class="fas fa-user-plus"></i></button>
         </div>
+
+        <div class="profile-hub-section-title"><i class="fas fa-video"></i> الفيديوهات</div>
+        <div class="profile-hub-video-tabs">
+            <button type="button" class="profile-hub-video-tab active" data-tab="video" title="فيديوهاتي"><i class="fas fa-video"></i></button>
+            <button type="button" class="profile-hub-video-tab" data-tab="repost" title="إعادة النشر"><i class="fas fa-retweet"></i></button>
+            <button type="button" class="profile-hub-video-tab" data-tab="saved" title="المحفوظة"><i class="fas fa-bookmark"></i></button>
+            <button type="button" class="profile-hub-video-tab" data-tab="liked" title="أعجبتني"><i class="fas fa-heart"></i></button>
+        </div>
+        <div class="profile-hub-video-empty">
+            <i class="fas fa-clapperboard"></i>
+            <p id="profile-hub-video-empty-text">لا توجد فيديوهات بعد — قريباً سنعمل على هذي الميزة 🎬</p>
+        </div>
+
+        <div class="profile-hub-section-title"><i class="fas fa-shield-halved"></i> لوحة الإشراف</div>
+        <div class="profile-hub-admin-strip">
+            <div class="profile-hub-admin-card">
+                <i class="fas fa-gem" style="color:#fbbf24"></i>
+                <span class="profile-hub-admin-card-title">مستوى الثروة</span>
+                <span class="profile-hub-soon-tag">قريباً</span>
+            </div>
+            <div class="profile-hub-admin-card">
+                <i class="fas fa-medal" style="color:#c084fc"></i>
+                <span class="profile-hub-admin-card-title">الإنجازات</span>
+                <span class="profile-hub-soon-tag">قريباً</span>
+            </div>
+            <div class="profile-hub-admin-card">
+                <i class="fas fa-users" style="color:#f472b6"></i>
+                <span class="profile-hub-admin-card-title">نادي المعجبين</span>
+                <span class="profile-hub-soon-tag">قريباً</span>
+            </div>
+            <div class="profile-hub-admin-card">
+                <i class="fas fa-shield-halved" style="color:#60a5fa"></i>
+                <span class="profile-hub-admin-card-title">الحماة</span>
+                <span class="profile-hub-soon-tag">قريباً</span>
+            </div>
+            <div class="profile-hub-admin-card">
+                <i class="fas fa-gift" style="color:#34d399"></i>
+                <span class="profile-hub-admin-card-title">الهدايا المستلمة</span>
+                <span class="profile-hub-admin-card-num" id="profile-hub-gifts-received-num">…</span>
+            </div>
+        </div>
     `;
 
-    // ✅ كوينز مُستلَمة — إعادة استخدام ملخص الهدايا الموجود أصلاً (نفس مصدر قسم "هداياي المستلمة" بالإعدادات)
+    // ✅ كوينز مُستلَمة + عدد الهدايا المستلمة (لوحة الإشراف) — نداء واحد لنفس ملخص الهدايا الموجود أصلاً
     fetch(`/api/gifts/user/${u._id}/summary`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(r => r.json())
         .then(res => {
-            const el = document.querySelector('#profile-hub-coins-received-stat .profile-hub-stat-num');
-            if (el && res.status === 'success') el.textContent = (res.data.totalCoinsValue || 0).toLocaleString('en-US');
+            if (res.status !== 'success') return;
+            const coinsEl = document.querySelector('#profile-hub-coins-received-stat .profile-hub-stat-num');
+            if (coinsEl) coinsEl.textContent = (res.data.totalCoinsValue || 0).toLocaleString('en-US');
+            const giftsEl = document.getElementById('profile-hub-gifts-received-num');
+            if (giftsEl) giftsEl.textContent = (res.data.totalGiftsCount || 0).toLocaleString('en-US');
         })
         .catch(() => {});
+
+    // ✅ تبويبات الفيديو (فيديوهاتي/إعادة نشر/محفوظة/أعجبتني) — تبديل بصري فقط حالياً، المحتوى
+    // الفعلي "قريباً" — الميزة كلها لا تزال قيد التطوير
+    const VIDEO_TAB_EMPTY_TEXT = {
+        video: 'لا توجد فيديوهات بعد — قريباً سنعمل على هذي الميزة 🎬',
+        repost: 'لا توجد إعادة نشر بعد — قريباً سنعمل على هذي الميزة 🔁',
+        saved: 'لا يوجد محفوظات بعد — قريباً سنعمل على هذي الميزة 🔖',
+        liked: 'لا يوجد إعجابات بعد — قريباً سنعمل على هذي الميزة ❤️'
+    };
+    body.querySelectorAll('.profile-hub-video-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            body.querySelectorAll('.profile-hub-video-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const textEl = document.getElementById('profile-hub-video-empty-text');
+            if (textEl) textEl.textContent = VIDEO_TAB_EMPTY_TEXT[tab.dataset.tab] || VIDEO_TAB_EMPTY_TEXT.video;
+        });
+    });
+    body.querySelectorAll('.profile-hub-admin-card').forEach(card => {
+        card.addEventListener('click', () => {
+            if (!card.querySelector('.profile-hub-soon-tag')) return; // ✅ بطاقة "الهدايا المستلمة" الحقيقية لا تفعل شيئاً بعد (لا صفحة تفصيلية بعد)
+            showNotification('هذه الميزة قريباً 🌟', 'info');
+        });
+    });
 
     document.getElementById('profile-hub-followers-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'followers'));
     document.getElementById('profile-hub-following-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'following'));
