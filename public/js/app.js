@@ -8199,8 +8199,12 @@ async function showHostCenterSheet() {
         </div>
     `;
     document.body.appendChild(modal);
-    modal.addEventListener('click', (e) => { if (e.target.id === 'host-center-sheet') modal.remove(); });
-    document.getElementById('close-host-center').addEventListener('click', () => modal.remove());
+    // ✅ يُتلَف الرسم البياني صراحة عند الإغلاق — وإلا يبقى كائن Chart.js حياً بالذاكرة بلا داعٍ
+    // بعد إزالة الـcanvas من الـDOM، خصوصاً لو فتح المضيف هذي الورقة عدة مرات أثناء بثّه
+    let hostChartInstance = null;
+    const closeHostCenter = () => { hostChartInstance?.destroy(); modal.remove(); };
+    modal.addEventListener('click', (e) => { if (e.target.id === 'host-center-sheet') closeHostCenter(); });
+    document.getElementById('close-host-center').addEventListener('click', closeHostCenter);
 
     try {
         const response = await fetch('/api/voice-room/my-room', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -8240,7 +8244,6 @@ async function showHostCenterSheet() {
 
         if (!analyticsData) return;
 
-        let hostChartInstance = null;
         function renderAnalyticsPanel(range) {
             roomBody.querySelectorAll('.host-analytics-tab').forEach(t => t.classList.toggle('active', t.dataset.range === range));
             const wrap = document.getElementById('host-analytics-chart-wrap');
