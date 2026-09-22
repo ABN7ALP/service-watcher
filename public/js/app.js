@@ -1309,6 +1309,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const isSeatedHere = myVoiceSeatNumber && myVoiceRoomId === currentVoiceRoomId;
 
         const items = [
+            // ✅ متاح للجميع دوماً — إصلاح فوري لأي "خلل" بالاتصال الصوتي أو الدردشة بالغرفة
+            { action: 'fix-connection', icon: 'fa-wand-magic-sparkles', label: 'إصلاح الاتصال', color: 'text-cyan-400' },
             { action: 'music', icon: 'fa-compact-disc', label: 'موسيقى', color: 'text-emerald-400' },
             { action: 'messages', icon: 'fa-envelope', label: 'رسائلي', color: 'text-blue-400', badge: roomUnreadDMCount },
             { action: 'reaction', icon: 'fa-face-laugh-beam', label: 'تفاعل', color: 'text-amber-400' },
@@ -1379,7 +1381,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             btn.addEventListener('click', () => {
                 modal.remove();
                 const action = btn.dataset.action;
-                if (action === 'music') {
+                if (action === 'fix-connection') {
+                    fixVoiceConnectionNow();
+                } else if (action === 'music') {
                     if (currentVoiceRoomId) showMusicPlayerPopup(currentVoiceRoomId);
                 } else if (action === 'messages') {
                     clearRoomMessagesBadge();
@@ -4766,6 +4770,43 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             .filter(id => id && id !== myUserId)
             .forEach(peerId => initiateVoiceCallTo(peerId));
     }
+
+    // ✅ "إصلاح الاتصال" اليدوي — نفس ما يحصل تلقائياً بعد إعادة اتصال السوكيت (إعادة جلب
+    // لقطة الغرفة كاملة، إعادة بناء كل اتصالات الصوت من الصفر، إعادة الانضمام لقناة دردشة
+    // الغرفة)، لكن بضغطة زر واحدة فورية — لحالات قد لا يكتشفها السوكيت بسرعة كافية بنفسه
+    // (تبديل شبكة WiFi↔بيانات، رجوع من الخلفية بعد وقت طويل، أو أي "خلل" ظاهري بالغرفة)
+    let fixConnectionInFlight = false;
+    async function fixVoiceConnectionNow(silent = false) {
+        if (!currentVoiceRoomId) {
+            if (!silent) showNotification('لست داخل غرفة حالياً', 'info');
+            return;
+        }
+        if (fixConnectionInFlight) return; // ✅ يمنع تكرار التشغيل المتزامن لو ضُغط الزر أكثر من مرة بسرعة
+        fixConnectionInFlight = true;
+        if (!silent) showNotification('جارِ إصلاح الاتصال... 🔧', 'info');
+        try {
+            const ok = await fetchAndRenderVoiceSnapshot(currentVoiceRoomId, currentRoomPassword);
+            if (ok && currentVoiceRoomId) {
+                teardownAllVoicePeers();
+                connectVoiceMeshToCurrentlySeated();
+            }
+            if (roomChatCurrentRoomId) rejoinRoomChatChannel(roomChatCurrentRoomId);
+            if (!silent) showNotification(ok ? 'تم إصلاح الاتصال ✅' : 'تعذر الإصلاح — تحقق من اتصالك بالإنترنت', ok ? 'success' : 'error');
+        } catch (error) {
+            if (!silent) showNotification('تعذر إصلاح الاتصال، حاول مجدداً', 'error');
+        } finally {
+            fixConnectionInFlight = false;
+        }
+    }
+
+    // ✅ خروج التطبيق من الخلفية (فتح الشاشة بعد إطفائها، أو العودة لتبويب الهاتف) — لا ننتظر
+    // اكتشاف السوكيت للانقطاع بنفسه (قد يتأخر ثوانٍ أو أكثر)؛ نُصلح استباقياً فور ظهور الصفحة
+    // مجدداً، بصمت (بلا إشعارات) طالما كنت أصلاً داخل غرفة
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && currentVoiceRoomId) {
+            fixVoiceConnectionNow(true);
+        }
+    });
 
     // 🐛 ملاحظة: مستمعات socket.on('voice-webrtc-...') نُقلت أسفل تعريف `const socket`
     // (بعد تهيئة Socket.IO) لتفادي خطأ "Cannot access 'socket' before initialization" —

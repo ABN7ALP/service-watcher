@@ -1639,7 +1639,8 @@ socket.on('refreshBlockData', async () => {
 
                 pendingSeatInvites.set(cooldownKey, {
                     seatNumber: seatNum,
-                    hostSocketId: socket.id,
+                    hostSocketId: socket.id, // ✅ مسار سريع فقط — قد يصبح قديماً لو أعاد المضيف الاتصال قبل رد المدعو
+                    hostUserId: socket.user.id.toString(), // ✅ مصدر الحقيقة الفعلي — يُعاد تحليله لسوكيت حيّ عند الرد
                     expiresAt: Date.now() + SEAT_INVITE_TTL_MS
                 });
 
@@ -1678,11 +1679,21 @@ socket.on('refreshBlockData', async () => {
 
                 if (!accept) {
                     seatInviteDeclineCooldown.set(key, Date.now());
-                    io.to(invite.hostSocketId).emit('seat-invite-declined', {
-                        roomId: finalRoomId,
-                        targetUsername: socket.user.username,
-                        cooldownSeconds: Math.round(SEAT_INVITE_COOLDOWN_MS / 1000)
-                    });
+                    // 🛡️ إصلاح: لو أعاد المضيف الاتصال (سوكيت جديد) بين إرسال الدعوة ورفضها، invite.hostSocketId
+                    // يصبح معرّف سوكيت ميت فيضيع الإشعار صامتاً — نُعيد تحليل سوكيته الحيّ الحالي من قاعدة
+                    // البيانات أولاً (يُحدَّث عند كل اتصال)، ونستخدم hostSocketId المحفوظ فقط كاحتياط أخير
+                    let hostTargetSocketId = invite.hostSocketId;
+                    if (invite.hostUserId) {
+                        const liveHost = await User.findById(invite.hostUserId).select('socketId').lean();
+                        if (liveHost?.socketId) hostTargetSocketId = liveHost.socketId;
+                    }
+                    if (hostTargetSocketId) {
+                        io.to(hostTargetSocketId).emit('seat-invite-declined', {
+                            roomId: finalRoomId,
+                            targetUsername: socket.user.username,
+                            cooldownSeconds: Math.round(SEAT_INVITE_COOLDOWN_MS / 1000)
+                        });
+                    }
                     return;
                 }
 
