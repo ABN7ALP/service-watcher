@@ -4526,18 +4526,32 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' }
     ];
-    async function loadVoiceIceServers() {
+    // 🐛 إصلاح بق جوهري إضافي (لا يزال الصوت يفشل بين شبكات مختلفة رغم وجود TURN): هذا الجلب
+    // كان "أطلقه وانسه" بلا انتظار — أي اتصال صوتي (getOrCreateVoicePeer) يُنشأ قبل اكتمال هذا
+    // الطلب (شائع جداً: دخول غرفة والجلوس بسرعة فور فتح التطبيق) يُبنى بقائمة STUN فقط الاحتياطية
+    // الثابتة أعلاه، ويبقى عالقاً عليها للأبد حتى لو اكتمل الجلب لاحقاً (القائمة تُحدَّث لكن
+    // اتصال RTCPeerConnection موجود أصلاً لا يُعيد قراءتها). كذلك فشل الجلب مرة واحدة (انقطاع
+    // شبكة عابر، أو 502 من الخادم أثناء إعادة نشر) كان يُسقط المحاولة نهائياً بلا أي إعادة
+    // محاولة — فتبقى الجلسة كلها عالقة على STUN فقط. الإصلاح: نحتفظ بوعد الجلب (يُنتظَر صراحة
+    // بكل مكان يُنشئ اتصالاً جديداً قبل استخدام القائمة)، ونعيد المحاولة تلقائياً عدة مرات لو فشل
+    async function loadVoiceIceServers(retriesLeft = 3) {
         try {
             const response = await fetch('/api/voice-room/ice-servers', { headers: { 'Authorization': `Bearer ${token}` } });
             const result = await response.json();
             if (response.ok && result.status === 'success' && Array.isArray(result.iceServers) && result.iceServers.length > 0) {
                 VOICE_ICE_SERVERS = result.iceServers;
+                return;
             }
+            throw new Error('استجابة غير صالحة من الخادم');
         } catch (error) {
-            console.warn('[VOICE] تعذّر جلب إعدادات خوادم ICE من السيرفر — الاستمرار بـSTUN فقط كاحتياطي', error);
+            if (retriesLeft > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                return loadVoiceIceServers(retriesLeft - 1);
+            }
+            console.warn('[VOICE] تعذّر جلب إعدادات خوادم ICE من السيرفر بعد عدة محاولات — الاستمرار بـSTUN فقط كاحتياطي (زر "إصلاح الاتصال" بالغرفة يعيد المحاولة)', error);
         }
     }
-    loadVoiceIceServers();
+    let voiceIceServersReadyPromise = loadVoiceIceServers();
     const MAX_VOICE_PEER_CONNECTIONS = 60; // 🛡️ سقف حماية لجهاز المستخدم نفسه — انظر الشرح أعلاه
     const voicePeerConnections = new Map(); // peerUserId(string) → RTCPeerConnection
     let localMicStream = null;      // التدفق المُرسَل فعلياً للنظراء (بعد سلسلة التحسين أدناه إن نجحت)
@@ -4722,8 +4736,17 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
     }
 
-    function getOrCreateVoicePeer(peerUserId) {
+    async function getOrCreateVoicePeer(peerUserId) {
         let pc = voicePeerConnections.get(peerUserId);
+        if (pc) return pc;
+
+        // ✅ ينتظر اكتمال جلب خوادم TURN/STUN الحقيقية من الخادم قبل بناء أي اتصال جديد —
+        // بدون هذا كان اتصال يُبنى مبكراً جداً (دخول سريع للغرفة) يعلق على STUN فقط للأبد
+        await voiceIceServersReadyPromise;
+
+        // 🛡️ اتصال قد يكون أُنشئ بالتوازي أثناء الانتظار أعلاه (نداء آخر لنفس الشخص وصل أولاً) —
+        // نستخدمه بدل بناء اتصال مكرر يستبدل الأول ويُفقده مرجعه
+        pc = voicePeerConnections.get(peerUserId);
         if (pc) return pc;
 
         pc = new RTCPeerConnection({ iceServers: VOICE_ICE_SERVERS });
@@ -4744,6 +4767,24 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 socket.emit('voice-webrtc-ice-candidate', { roomId: currentVoiceRoomId, toUserId: peerUserId, candidate: e.candidate });
             }
         };
+        // ✅ تشخيصي فقط (بلا أي بيانات حسّاسة تُرسَل لأي مكان — طباعة محلية بمتصفحي أنا فقط):
+        // يوضّح بسجل التصفح هل تم فعلياً استخدام مرحّل TURN لهذا الاتصال (relay) أو STUN
+        // المباشر فقط (host/srflx) — أول أداة تشخيص حقيقية لو تكرّرت مشكلة "الصوت بين شبكات
+        // مختلفة" رغم كل الإصلاحات، بدل التخمين الأعمى في الجولة القادمة
+        pc.addEventListener('connectionstatechange', () => {
+            if (pc.connectionState === 'connected') {
+                pc.getStats(null).then(stats => {
+                    let usedRelay = false;
+                    stats.forEach(report => {
+                        if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.nominated) {
+                            const local = stats.get(report.localCandidateId);
+                            if (local && local.candidateType === 'relay') usedRelay = true;
+                        }
+                    });
+                    console.debug(`[VOICE] اتصال ${peerUserId} تم عبر ${usedRelay ? 'خادم TURN (relay) ✅' : 'اتصال مباشر (STUN) — لا حاجة لـTURN بينكما'}`);
+                }).catch(() => {});
+            }
+        });
 
         // ✅ عنصر صوت مخفي لكل نظير — يُلحَق بالصفحة نفسها (وليس داخل mainContent) فيبقى
         // شغّالاً حتى أثناء تصغير الغرفة (نفس منطق عنصر صوت الموسيقى تماماً)
@@ -4782,7 +4823,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // ✅ لا نطلب إذن المايك إطلاقاً لمجرد "مشاهد" يريد الاستماع فقط — يُفعَّل المايك فقط
         // لمن يجلس فعلياً على مقعد؛ اتصال المشاهد يبقى استقبالاً فقط تلقائياً (recvonly أدناه)
         if (myVoiceSeatNumber) await ensureLocalMicStream();
-        const pc = getOrCreateVoicePeer(peerUserId);
+        const pc = await getOrCreateVoicePeer(peerUserId);
         try {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
@@ -4848,7 +4889,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         fixConnectionInFlight = true;
         if (!silent) showNotification('جارِ إصلاح الاتصال... 🔧', 'info');
         try {
+            // ✅ يعيد جلب خوادم TURN/STUN من جديد أيضاً — لو فشل الجلب الأول عند تحميل الصفحة
+            // (انقطاع عابر، أو 502 من الخادم أثناء إعادة نشر) كانت الجلسة تبقى عالقة على STUN
+            // فقط للأبد بلا أي مسار تعافٍ سوى إعادة تحميل الصفحة كاملة؛ هذا الزر يمنحها فرصة أخرى
+            voiceIceServersReadyPromise = loadVoiceIceServers();
             const ok = await fetchAndRenderVoiceSnapshot(currentVoiceRoomId, currentRoomPassword);
+            await voiceIceServersReadyPromise;
             if (ok && currentVoiceRoomId) {
                 teardownAllVoicePeers();
                 connectVoiceMeshToCurrentlySeated();
@@ -6442,7 +6488,7 @@ document.getElementById('user-id-container').addEventListener('click', () => {
             teardownVoicePeer(fromUserId);
         }
         await ensureLocalMicStream();
-        const pc = getOrCreateVoicePeer(fromUserId);
+        const pc = await getOrCreateVoicePeer(fromUserId);
         try {
             await pc.setRemoteDescription(new RTCSessionDescription(payload));
             const answer = await pc.createAnswer();
