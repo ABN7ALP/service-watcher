@@ -8968,7 +8968,7 @@ async function showFullProfilePage(userId) {
 
         const body = document.getElementById('full-profile-body');
         body.innerHTML = `
-            <div class="full-profile-cover">
+            <div class="full-profile-cover" style="${u.coverImage ? `background-image:url('${u.coverImage}')` : ''}">
                 <img src="${u.profileImage}" class="full-profile-avatar ${u.activeFrameClass || ''}">
             </div>
             <div class="full-profile-identity">

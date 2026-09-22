@@ -562,20 +562,25 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     color: rgba(255,255,255,0.4);
 }
 .voice-seat.user-seat:hover .voice-seat-plus { color: #c4b5fd; }
-/* ✅ تعتيم كامل للصورة + أيقونة ميكروفون مسكّر بالمنتصف — أوضح بكثير من أيقونة صغيرة
-   بزاوية، ويظهر بنفس الوضوح عند صاحب المقعد نفسه وعند بقية المستخدمين على حد سواء.
+/* ✅ شارة صغيرة تطفو خارج حافة الصورة الدائرية (زاوية سفلية) بدل تعتيم الوجه بالكامل —
+   لا تحجب هوية الجالس، وتبقى واضحة تماماً لصاحب المقعد ولبقية المستخدمين على حد سواء.
    الحجم بوحدة em نسبية لخط المقعد، فيتحجّم تلقائياً مع الـ clamp() أعلاه بدون قاعدة إضافية. */
 .voice-seat-mute-overlay {
     position: absolute;
-    inset: 0;
+    bottom: -0.15em;
+    left: -0.15em;
+    width: 1.35em;
+    height: 1.35em;
     border-radius: 50%;
-    background: rgba(17, 24, 39, 0.68);
+    background: #ef4444;
+    border: 2px solid #111827;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fca5a5;
-    font-size: 1.7em;
+    color: #fff;
+    font-size: 0.62em;
     pointer-events: none; /* لا يمنع الضغط على المقعد نفسه (مغادرة/تبديل) */
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
 }
 /* ✅ لا إطار مميَّز لمقعدي أنا بالذات — بطلب صريح: يبقى بلا تأثير بصري إضافي عن بقية المقاعد */
 /* ✅ مقعد مقفل من الإدارة/المضيف — لا يُمكن الجلوس عليه */
@@ -2909,23 +2914,30 @@ body.in-voice-room #main-content {
 }
 
 .full-profile-cover {
-    height: 64px;
+    height: 118px;
     background: linear-gradient(135deg, rgba(126,34,206,0.55), rgba(219,39,119,0.35));
+    background-size: cover;
+    background-position: center;
     border-radius: 20px 20px 0 0;
     position: relative;
     flex-shrink: 0;
 }
 /* ✅ الصورة نصفها فوق الغلاف ونصفها الآخر خارجه بالأسفل (transform:translateY(-50%) بالضبط
-   على حدود الغلاف السفلية) — بطلب صريح "صورتي خارج نصفه من إطار الملف الشخصي" */
+   على حدود الغلاف السفلية) — بطلب صريح "صورتي خارج نصفه من إطار الملف الشخصي". الشكل الآن
+   مربّع دائري الزوايا (squircle) بحلقة توهّج ثنائية اللون بدل الدائرة البسيطة السابقة —
+   أبسط من إطار هندسي كامل لكنه أقوى بصرياً من دائرة عادية بلا لمسة */
 .full-profile-avatar {
     position: absolute;
-    left: 50%; top: 64px;
+    left: 50%; top: 118px;
     transform: translate(-50%, -50%);
     width: 92px; height: 92px;
-    border-radius: 50%;
+    border-radius: 26px;
     object-fit: cover;
     border: 4px solid #111827;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    box-shadow:
+        0 0 0 2px rgba(168,85,247,0.55),
+        0 0 0 5px rgba(219,39,119,0.18),
+        0 6px 18px rgba(0,0,0,0.5);
 }
 .full-profile-identity {
     text-align: center;
