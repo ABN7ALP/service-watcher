@@ -8508,12 +8508,9 @@ function showProfileEditSheet(u) {
             </div>
             <div class="flex-1 overflow-y-auto p-4 space-y-4" id="profile-edit-scroll">
                 <div class="profile-edit-media-block">
-                    <div id="profile-edit-cover-preview" class="profile-edit-cover-preview" style="${u.coverImage ? `background-image:url('${u.coverImage}')` : ''}">
-                        <button type="button" id="profile-edit-cover-btn" class="profile-edit-camera-btn profile-edit-camera-cover" title="تغيير الغلاف"><i class="fas fa-camera"></i></button>
-                    </div>
+                    <div id="profile-edit-cover-preview" class="profile-edit-cover-preview" style="${u.coverImage ? `background-image:url('${u.coverImage}')` : ''}" title="تغيير الغلاف"></div>
                     <div class="profile-edit-avatar-wrap">
-                        <img id="profile-edit-avatar-preview" src="${u.profileImage}" class="profile-edit-avatar-preview">
-                        <button type="button" id="profile-edit-avatar-btn" class="profile-edit-camera-btn profile-edit-camera-avatar" title="تغيير الصورة الشخصية"><i class="fas fa-camera"></i></button>
+                        <img id="profile-edit-avatar-preview" src="${u.profileImage}" class="profile-edit-avatar-preview" title="تغيير الصورة الشخصية">
                     </div>
                 </div>
                 <input type="file" id="profile-edit-cover-file" accept="image/*" class="hidden">
@@ -8632,8 +8629,39 @@ function showProfileEditSheet(u) {
         document.getElementById('profile-edit-scroll').scrollTop = document.getElementById('profile-edit-scroll').scrollHeight;
     });
 
-    // ✅ رفع الصورة الشخصية/الغلاف — نفس نمط بقية أزرار الرفع بالمشروع (اختيار فوري عند التغيير)
-    document.getElementById('profile-edit-avatar-btn').addEventListener('click', () => document.getElementById('profile-edit-avatar-file').click());
+    // ✅ رفع الصورة الشخصية/الغلاف — النقر على الصورة نفسها (بلا أيقونة كاميرا ظاهرة) يفتح
+    // ورقة اختيار مصدر صغيرة: التقاط صورة مباشرة أو اختيار من ملفات الجهاز
+    function showPhotoSourceSheet(onCapture, onChoose) {
+        document.getElementById('photo-source-sheet')?.remove();
+        const sheet = document.createElement('div');
+        sheet.id = 'photo-source-sheet';
+        sheet.className = 'fixed inset-0 bg-black/60 flex items-end justify-center z-[335]';
+        sheet.innerHTML = `
+            <div class="bg-gray-800 w-full md:max-w-sm rounded-t-2xl p-3 pb-5 animate-[slideUp_0.2s_ease-out]">
+                <div class="w-10 h-1.5 bg-gray-600 rounded-full mx-auto mb-3"></div>
+                <button id="photo-source-capture" class="profile-hub-settings-row"><i class="fas fa-camera text-purple-400"></i><span>التقط صورة</span></button>
+                <button id="photo-source-choose" class="profile-hub-settings-row"><i class="fas fa-images text-emerald-400"></i><span>اختيار من الملفات</span></button>
+            </div>
+        `;
+        document.body.appendChild(sheet);
+        sheet.addEventListener('click', (e) => { if (e.target.id === 'photo-source-sheet') sheet.remove(); });
+        document.getElementById('photo-source-capture').addEventListener('click', () => { sheet.remove(); onCapture(); });
+        document.getElementById('photo-source-choose').addEventListener('click', () => { sheet.remove(); onChoose(); });
+    }
+    document.getElementById('profile-edit-avatar-preview').addEventListener('click', () => {
+        const fileInput = document.getElementById('profile-edit-avatar-file');
+        showPhotoSourceSheet(
+            () => { fileInput.setAttribute('capture', 'user'); fileInput.click(); },
+            () => { fileInput.removeAttribute('capture'); fileInput.click(); }
+        );
+    });
+    document.getElementById('profile-edit-cover-preview').addEventListener('click', () => {
+        const fileInput = document.getElementById('profile-edit-cover-file');
+        showPhotoSourceSheet(
+            () => { fileInput.setAttribute('capture', 'environment'); fileInput.click(); },
+            () => { fileInput.removeAttribute('capture'); fileInput.click(); }
+        );
+    });
     document.getElementById('profile-edit-avatar-file').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -8651,7 +8679,6 @@ function showProfileEditSheet(u) {
             }
         } catch (error) { showNotification('حدث خطأ، حاول مجدداً', 'error'); }
     });
-    document.getElementById('profile-edit-cover-btn').addEventListener('click', () => document.getElementById('profile-edit-cover-file').click());
     document.getElementById('profile-edit-cover-file').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -9006,6 +9033,20 @@ function closeFullProfilePage() {
     setTimeout(() => page.remove(), 280);
 }
 
+// ✅ يبني رابطاً كاملاً قابلاً للفتح من معرّف/رابط التواصل الاجتماعي المُدخَل بحرية بحقل التحرير
+// (قد يكون رابطاً كاملاً جاهزاً، أو مجرد معرّف — كلاهما مدعوم)
+function buildSocialLinkUrl(platform, rawValue) {
+    if (!rawValue) return null;
+    const value = rawValue.trim();
+    if (!value) return null;
+    if (/^https?:\/\//i.test(value)) return value;
+    const handle = value.replace(/^@/, '');
+    if (platform === 'instagram') return `https://instagram.com/${handle}`;
+    if (platform === 'youtube') return `https://youtube.com/${handle}`;
+    if (platform === 'tiktok') return `https://tiktok.com/@${handle}`;
+    return null;
+}
+
 async function showFullProfilePage(userId) {
     const existing = document.getElementById('full-profile-page');
     if (existing) existing.remove();
@@ -9050,6 +9091,17 @@ async function showFullProfilePage(userId) {
                     ${u.educationStatus ? `<span class="full-profile-mini-badge"><i class="fas ${educationInfo.icon} text-blue-400"></i> ${escapeHtml(educationInfo.text)}</span>` : ''}
                 </div>
                 <p class="full-profile-bio-text">${escapeHtml(u.status || '🚀 جاهز للتحديات!')}</p>
+                ${(() => {
+                    const links = [
+                        { platform: 'instagram', icon: 'fab fa-instagram', color: '#f472b6', url: buildSocialLinkUrl('instagram', u.socialLinks?.instagram) },
+                        { platform: 'youtube', icon: 'fab fa-youtube', color: '#f87171', url: buildSocialLinkUrl('youtube', u.socialLinks?.youtube) },
+                        { platform: 'tiktok', icon: 'fab fa-tiktok', color: '#e5e7eb', url: buildSocialLinkUrl('tiktok', u.socialLinks?.tiktok) }
+                    ].filter(l => l.url);
+                    if (links.length === 0) return '';
+                    return `<div class="full-profile-social-row">${links.map(l => `
+                        <button type="button" class="full-profile-social-btn" data-url="${escapeHtml(l.url)}" style="color:${l.color}"><i class="${l.icon}"></i></button>
+                    `).join('')}</div>`;
+                })()}
             </div>
 
             <div class="full-profile-stats-row">
@@ -9107,6 +9159,11 @@ async function showFullProfilePage(userId) {
         });
         document.getElementById('full-profile-followers-stat').addEventListener('click', () => {
             showFollowConnectionsSheet(userId, u.username, 'followers');
+        });
+        body.querySelectorAll('.full-profile-social-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                window.open(btn.dataset.url, '_blank', 'noopener,noreferrer');
+            });
         });
 
         if (userId !== myUserId) {

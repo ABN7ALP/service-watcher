@@ -2982,6 +2982,15 @@ body.in-voice-room #main-content {
     padding: 0 20px;
     line-height: 1.5;
 }
+.full-profile-social-row { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
+.full-profile-social-btn {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+}
+.full-profile-social-btn:active { background: rgba(255,255,255,0.14); }
 
 /* ✅ بطاقة الإنجازات — واجهة تمهيدية فقط (سيُبنى نظامها لاحقاً)، خمس خانات فارغة منقّطة؛
    مصغَّرة قليلاً لتوفير مساحة الملف الشخصي */
@@ -3436,12 +3445,14 @@ body.in-voice-room #main-content {
 }
 @media (min-width: 768px) { .profile-edit-card { border-radius: 20px; max-height: 85vh; } }
 .profile-edit-media-block { position: relative; margin: -16px -16px 44px; }
+/* ✅ لا أيقونة كاميرا ظاهرة بعد الآن — النقر على الصورة نفسها يفتح ورقة "التقط/اختر" */
 .profile-edit-cover-preview {
     height: 90px;
     background: linear-gradient(135deg, rgba(126,34,206,0.5), rgba(219,39,119,0.3));
     background-size: cover;
     background-position: center;
     position: relative;
+    cursor: pointer;
 }
 .profile-edit-avatar-wrap {
     position: absolute;
@@ -3452,19 +3463,8 @@ body.in-voice-room #main-content {
     border-radius: 50%;
     object-fit: cover;
     border: 4px solid #111827;
+    cursor: pointer;
 }
-.profile-edit-camera-btn {
-    position: absolute;
-    width: 26px; height: 26px;
-    border-radius: 50%;
-    background: rgba(17,24,39,0.85);
-    color: #e5e7eb;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 11px;
-    border: 2px solid #111827;
-}
-.profile-edit-camera-cover { top: 8px; left: 8px; }
-.profile-edit-camera-avatar { bottom: -4px; right: -4px; }
 .profile-edit-label { display: block; font-size: 11px; font-weight: 700; color: #9ca3af; margin-bottom: 5px; }
 .profile-edit-input {
     width: 100%;
@@ -3478,19 +3478,23 @@ body.in-voice-room #main-content {
 .profile-edit-input:focus { border-color: rgba(168,85,247,0.5); }
 .profile-edit-social-row { display: flex; align-items: center; gap: 8px; }
 .profile-edit-social-row i { width: 18px; text-align: center; flex-shrink: 0; }
+/* ✅ زر إضافة تعليم — بلا خلفية مليئة، طافٍ وخفيف بدل دائرة أرجوانية صلبة */
 .profile-edit-add-btn {
     width: 26px; height: 26px;
     border-radius: 50%;
-    background: rgba(168,85,247,0.18);
+    background: transparent;
+    border: 1px solid rgba(192,132,252,0.4);
     color: #c084fc;
     display: flex; align-items: center; justify-content: center;
     font-size: 12px;
 }
+.profile-edit-add-btn:active { background: rgba(168,85,247,0.12); }
 .profile-edit-education-row { display: flex; align-items: flex-start; gap: 8px; background: rgba(255,255,255,0.03); border-radius: 10px; padding: 8px; }
 .profile-edit-remove-edu-btn {
     width: 30px; height: 30px;
-    border-radius: 8px;
-    background: rgba(239,68,68,0.14);
+    border-radius: 50%;
+    background: transparent;
+    border: 1px solid rgba(252,165,165,0.35);
     color: #fca5a5;
     display: flex; align-items: center; justify-content: center;
     font-size: 12px;
