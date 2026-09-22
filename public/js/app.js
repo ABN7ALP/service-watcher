@@ -8386,6 +8386,21 @@ function renderFollowPersonRowHTML(u, extraClass = '') {
     `;
 }
 
+// ✅ هيكل تحميل نابض (skeleton) بدل مؤشر دوّار وحيد — يحاكي شكل صفوف الأشخاص الحقيقية،
+// فيشعر التحميل بأنه أسرع وأكثر سلاسة (نفس أسلوب فيسبوك/لينكدإن الشائع)
+function renderFollowSkeletonRows(count = 5) {
+    return `<div class="follow-skeleton-list">${Array.from({ length: count }, () => `
+        <div class="follow-skeleton-row">
+            <span class="follow-skeleton-avatar"></span>
+            <div class="follow-skeleton-lines">
+                <span class="follow-skeleton-line long"></span>
+                <span class="follow-skeleton-line short"></span>
+            </div>
+            <span class="follow-skeleton-btn"></span>
+        </div>
+    `).join('')}</div>`;
+}
+
 // ✅ ورقة متابِعين/متابَعين — تبويبان، وأسفل كل قائمة قسم "اقتراحات لك" (صفوف مكدَّسة تحت
 // بعضها لا شبكة)، كل اقتراح بزر × بسيط بلا خلفية يزيله من القائمة فوراً (محلياً فقط، بلا حفظ)
 async function showFollowConnectionsSheet(userId, username, initialTab = 'followers') {
@@ -8404,7 +8419,7 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
                 <button id="fc-tab-following" class="follow-tab-btn">متابَعة</button>
             </div>
             <div id="fc-list" class="flex-1 overflow-y-auto px-3 pb-3">
-                <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
+                ${renderFollowSkeletonRows(5)}
             </div>
         </div>
     `;
@@ -8416,14 +8431,14 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
         document.getElementById('fc-tab-followers').classList.toggle('active', tab === 'followers');
         document.getElementById('fc-tab-following').classList.toggle('active', tab === 'following');
         const listEl = document.getElementById('fc-list');
-        listEl.innerHTML = '<div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>';
+        listEl.innerHTML = renderFollowSkeletonRows(5);
         try {
             const response = await fetch(`/api/users/${userId}/${tab}`, { headers: { 'Authorization': `Bearer ${token}` } });
             const result = await response.json();
             if (!response.ok || result.status !== 'success') throw new Error();
             const users = result.data.users;
             listEl.innerHTML = `
-                <div class="follow-connections-list">
+                <div class="follow-connections-list fade-in-content">
                     ${users.length === 0
                         ? `<p class="text-xs text-gray-500 text-center py-6">${tab === 'followers' ? 'لا يوجد متابعون بعد' : 'لا تتابع أحداً بعد'}</p>`
                         : users.map(u => renderFollowPersonRowHTML(u)).join('')
@@ -8449,8 +8464,8 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
             const result = await response.json();
             if (!response.ok || result.status !== 'success' || result.data.users.length === 0) return;
             slot.innerHTML = `
-                <p class="follow-suggestions-title">اقتراحات لك</p>
-                <div class="follow-connections-list">
+                <p class="follow-suggestions-title fade-in-content">اقتراحات لك</p>
+                <div class="follow-connections-list fade-in-content">
                     ${result.data.users.map(u => `
                         <div class="follow-suggestion-wrap">
                             ${renderFollowPersonRowHTML(u)}
@@ -8477,6 +8492,16 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
     loadTab(initialTab === 'following' ? 'following' : 'followers');
 }
 
+// ✅ هيكل تحميل نابض لشبكة بطاقات "اكتشاف أشخاص" (3 أعمدة) — نفس فكرة renderFollowSkeletonRows
+function renderDiscoverSkeletonCards(count = 6) {
+    return `<div class="grid grid-cols-3 gap-2">${Array.from({ length: count }, () => `
+        <div class="discover-person-card">
+            <span class="follow-skeleton-avatar" style="width:52px; height:52px;"></span>
+            <span class="follow-skeleton-line short" style="margin-top:6px;"></span>
+        </div>
+    `).join('')}</div>`;
+}
+
 // ✅ ورقة "اكتشاف أشخاص" — اقتراحات متابعة بسيطة، النقر على أي بطاقة يفتح ملفه الشخصي الكامل
 async function showDiscoverPeopleSheet() {
     document.getElementById('discover-people-sheet')?.remove();
@@ -8489,7 +8514,7 @@ async function showDiscoverPeopleSheet() {
                 <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-user-plus text-purple-400"></i> اقتراحات متابعة</p>
                 <button id="close-discover-people" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
             </div>
-            <div id="discover-people-body" class="text-center text-gray-400 py-10 overflow-y-auto"><i class="fas fa-spinner fa-spin"></i></div>
+            <div id="discover-people-body" class="overflow-y-auto">${renderDiscoverSkeletonCards(6)}</div>
         </div>
     `;
     document.body.appendChild(modal);
@@ -8507,7 +8532,7 @@ async function showDiscoverPeopleSheet() {
             bodyEl.innerHTML = '<p class="text-xs text-gray-500 text-center py-6">لا توجد اقتراحات جديدة حالياً</p>';
             return;
         }
-        bodyEl.innerHTML = `<div class="grid grid-cols-3 gap-2">${users.map(u => `
+        bodyEl.innerHTML = `<div class="grid grid-cols-3 gap-2 fade-in-content">${users.map(u => `
             <button class="discover-person-card" data-user-id="${u._id}">
                 <img src="${u.profileImage}" class="discover-person-avatar ${u.activeFrameClass || ''}">
                 <span class="discover-person-name">${escapeHtml(u.username)}</span>
