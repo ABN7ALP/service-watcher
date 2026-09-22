@@ -7958,6 +7958,7 @@ function renderProfileHubBody(u) {
                 ${age !== null ? `<span class="profile-hub-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${age} سنة</span>` : ''}
                 ${u.location ? `<span class="profile-hub-mini-badge"><i class="fas fa-location-dot text-emerald-400"></i> ${escapeHtml(u.location)}</span>` : ''}
             </div>
+            <p class="profile-hub-bio-text">${escapeHtml(u.status || '🚀 جاهز للتحديات!')}</p>
         </div>
 
         <div class="profile-hub-stats-row">
@@ -7996,10 +7997,10 @@ function renderProfileHubBody(u) {
 
         <div class="profile-hub-actions-row">
             <button id="profile-hub-edit-btn" class="profile-hub-action-btn profile-hub-action-edit">
-                <i class="fas fa-pen"></i> تحرير
+                <i class="fas fa-pen"></i> تحرير الملف الشخصي
                 <span class="profile-hub-completion-badge">${completionPct}%</span>
             </button>
-            <button id="profile-hub-discover-btn" class="profile-hub-action-btn profile-hub-action-secondary"><i class="fas fa-user-plus"></i> اقتراحات</button>
+            <button id="profile-hub-discover-btn" class="profile-hub-discover-circle" title="اقتراحات"><i class="fas fa-user-plus"></i></button>
         </div>
     `;
 
