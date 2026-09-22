@@ -4,6 +4,7 @@ const Message = require('../models/Message');
 const User = require('../models/User');
 const RoomBattle = require('../models/RoomBattle');
 const SeatChallenge = require('../models/SeatChallenge');
+const GiftLog = require('../models/GiftLog');
 
 // =====================================================
 // ✅ GET /api/voice-room/ice-servers — إعدادات خوادم ICE (STUN/TURN) لاتصالات الصوت الحي
@@ -340,6 +341,80 @@ exports.getRoomById = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// =====================================================
+// ✅ GET /api/voice-room/rooms/:id/analytics — تحليلات مركز المضيف (المضيف فقط):
+// اتجاه الدعم أسبوعياً (آخر 7 أيام)/شهرياً (آخر 12 شهراً)/سنوياً (آخر 5 سنوات)، أكبر داعم،
+// وتوزيع جنس متابعي الغرفة — كل هذا مبني من GiftLog.room (نفس مصدر supportPoints بالضبط)
+// =====================================================
+exports.getRoomAnalytics = async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غرفة غير صالح' });
+        }
+        const room = await VoiceRoom.findById(req.params.id).select('host followers');
+        if (!room) return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة' });
+        if (!room.host || room.host.toString() !== req.user.id) {
+            return res.status(403).json({ status: 'fail', message: 'هذي الإحصائيات متاحة لمالك الغرفة فقط' });
+        }
+
+        const now = new Date();
+        const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); sevenDaysAgo.setHours(0, 0, 0, 0);
+        const twelveMonthsAgo = new Date(now); twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 11); twelveMonthsAgo.setDate(1); twelveMonthsAgo.setHours(0, 0, 0, 0);
+        const fiveYearsAgo = new Date(now.getFullYear() - 4, 0, 1);
+
+        const [weeklyAgg, monthlyAgg, yearlyAgg, topSupporterAgg, genderAgg] = await Promise.all([
+            GiftLog.aggregate([
+                { $match: { room: room._id, createdAt: { $gte: sevenDaysAgo } } },
+                { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, total: { $sum: '$totalPrice' } } },
+                { $sort: { _id: 1 } }
+            ]),
+            GiftLog.aggregate([
+                { $match: { room: room._id, createdAt: { $gte: twelveMonthsAgo } } },
+                { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } }, total: { $sum: '$totalPrice' } } },
+                { $sort: { _id: 1 } }
+            ]),
+            GiftLog.aggregate([
+                { $match: { room: room._id, createdAt: { $gte: fiveYearsAgo } } },
+                { $group: { _id: { $dateToString: { format: '%Y', date: '$createdAt' } }, total: { $sum: '$totalPrice' } } },
+                { $sort: { _id: 1 } }
+            ]),
+            GiftLog.aggregate([
+                { $match: { room: room._id } },
+                { $group: { _id: '$sender', total: { $sum: '$totalPrice' } } },
+                { $sort: { total: -1 } },
+                { $limit: 1 },
+                { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+                { $unwind: '$user' },
+                { $project: { userId: '$_id', username: '$user.username', profileImage: '$user.profileImage', activeFrameClass: '$user.activeFrameClass', total: 1 } }
+            ]),
+            User.aggregate([
+                { $match: { _id: { $in: room.followers } } },
+                { $group: { _id: '$gender', count: { $sum: 1 } } }
+            ])
+        ]);
+
+        const genderBreakdown = { male: 0, female: 0 };
+        genderAgg.forEach(g => {
+            if (g._id === 'male') genderBreakdown.male = g.count;
+            else if (g._id === 'female') genderBreakdown.female = g.count;
+        });
+
+        res.status(200).json({
+            status: 'success',
+            data: {
+                weekly: weeklyAgg.map(d => ({ label: d._id, value: d.total })),
+                monthly: monthlyAgg.map(d => ({ label: d._id, value: d.total })),
+                yearly: yearlyAgg.map(d => ({ label: d._id, value: d.total })),
+                topSupporter: topSupporterAgg[0] || null,
+                genderBreakdown
+            }
+        });
+    } catch (error) {
+        console.error('[ERROR] in getRoomAnalytics:', error);
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
     }
 };
 

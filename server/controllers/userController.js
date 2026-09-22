@@ -339,6 +339,15 @@ const updateStatus = async (req, res) => {
 // ✅ متابعة/إلغاء متابعة شخص — أحادية الاتجاه (منفصلة تماماً عن نظام الصداقة friends،
 // ومنفصلة عن متابعة الغرف بـVoiceRoom.followers). يُحدّث الطرفين معاً (followers/following)
 // =====================================================
+// ✅ يبثّ تغيّر حالة المتابعة لحظياً لأي واجهة مفتوحة حالياً (مركز ملفي، الملف الكامل لأي طرف،
+// أي جلسة/جهاز آخر لنفس المستخدمين) — بث عام خفيف الحمل (حدث نادر نسبياً) بدل نظام اشتراك
+// معقّد لكل ملف شخصي يُعرض؛ كل عميل يتجاهله لو لا شيء بواجهته يخص المستخدمَين المعنيَّين
+function broadcastFollowChanged(req, { targetId, targetFollowersCount, followerId, followerFollowingCount, isFollowing }) {
+    const io = req.app.get('socketio');
+    if (!io) return;
+    io.emit('follow-changed', { targetUserId: targetId, targetFollowersCount, followerId, followerFollowingCount, isFollowing });
+}
+
 const followUser = async (req, res) => {
     try {
         const targetId = req.params.id;
@@ -350,7 +359,11 @@ const followUser = async (req, res) => {
         }
         const target = await User.findByIdAndUpdate(targetId, { $addToSet: { followers: req.user.id } }, { new: true }).select('followers');
         if (!target) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
-        await User.findByIdAndUpdate(req.user.id, { $addToSet: { following: targetId } });
+        const follower = await User.findByIdAndUpdate(req.user.id, { $addToSet: { following: targetId } }, { new: true }).select('following');
+        broadcastFollowChanged(req, {
+            targetId, targetFollowersCount: target.followers.length,
+            followerId: req.user.id, followerFollowingCount: follower.following.length, isFollowing: true
+        });
         res.status(200).json({ status: 'success', data: { followersCount: target.followers.length, isFollowing: true } });
     } catch (error) {
         res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
@@ -365,7 +378,11 @@ const unfollowUser = async (req, res) => {
         }
         const target = await User.findByIdAndUpdate(targetId, { $pull: { followers: req.user.id } }, { new: true }).select('followers');
         if (!target) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
-        await User.findByIdAndUpdate(req.user.id, { $pull: { following: targetId } });
+        const follower = await User.findByIdAndUpdate(req.user.id, { $pull: { following: targetId } }, { new: true }).select('following');
+        broadcastFollowChanged(req, {
+            targetId, targetFollowersCount: target.followers.length,
+            followerId: req.user.id, followerFollowingCount: follower.following.length, isFollowing: false
+        });
         res.status(200).json({ status: 'success', data: { followersCount: target.followers.length, isFollowing: false } });
     } catch (error) {
         res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });

@@ -562,20 +562,25 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     color: rgba(255,255,255,0.4);
 }
 .voice-seat.user-seat:hover .voice-seat-plus { color: #c4b5fd; }
-/* ✅ تعتيم كامل للصورة + أيقونة ميكروفون مسكّر بالمنتصف — أوضح بكثير من أيقونة صغيرة
-   بزاوية، ويظهر بنفس الوضوح عند صاحب المقعد نفسه وعند بقية المستخدمين على حد سواء.
+/* ✅ شارة صغيرة تطفو خارج حافة الصورة الدائرية (زاوية سفلية) بدل تعتيم الوجه بالكامل —
+   لا تحجب هوية الجالس، وتبقى واضحة تماماً لصاحب المقعد ولبقية المستخدمين على حد سواء.
    الحجم بوحدة em نسبية لخط المقعد، فيتحجّم تلقائياً مع الـ clamp() أعلاه بدون قاعدة إضافية. */
 .voice-seat-mute-overlay {
     position: absolute;
-    inset: 0;
+    bottom: -0.15em;
+    left: -0.15em;
+    width: 1.35em;
+    height: 1.35em;
     border-radius: 50%;
-    background: rgba(17, 24, 39, 0.68);
+    background: #ef4444;
+    border: 2px solid #111827;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fca5a5;
-    font-size: 1.7em;
+    color: #fff;
+    font-size: 0.62em;
     pointer-events: none; /* لا يمنع الضغط على المقعد نفسه (مغادرة/تبديل) */
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
 }
 /* ✅ لا إطار مميَّز لمقعدي أنا بالذات — بطلب صريح: يبقى بلا تأثير بصري إضافي عن بقية المقاعد */
 /* ✅ مقعد مقفل من الإدارة/المضيف — لا يُمكن الجلوس عليه */
@@ -884,6 +889,102 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-info-stat-num { font-size: 16px; font-weight: 800; color: #f3f4f6; }
 .room-info-stat-label { font-size: 10px; color: #9ca3af; margin-top: 2px; }
+
+/* =====================================================
+   ✅ ورقة الملف الشخصي داخل سياق الغرفة (مقعد/مشاهد/دردشة) — صورة تطفو فوق حافة البطاقة
+   بلا تدرّج خلفي، بلا زر إغلاق، ID قابل للنسخ، وإدارة الغرفة مدمجة مباشرة
+   ===================================================== */
+.room-profile-sheet-card {
+    background: #1a1f2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -10px 34px rgba(0,0,0,0.5);
+    width: 100%;
+    max-width: 380px;
+    position: relative;
+    overflow: visible;
+    padding-top: 30px;
+    animation: slideUp 0.25s ease-out;
+}
+@media (min-width: 768px) { .room-profile-sheet-card { border-radius: 20px; margin-bottom: 16px; } }
+.room-profile-body { padding-bottom: 4px; }
+.room-profile-header { text-align: center; padding: 0 16px 4px; position: relative; }
+.room-profile-avatar-wrap {
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 64px;
+    height: 64px;
+    z-index: 2;
+}
+.room-profile-avatar {
+    width: 100%; height: 100%;
+    display: block;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #1a1f2e;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+    cursor: pointer;
+}
+.room-profile-name { font-size: 14px; font-weight: 800; color: #fff; margin-top: 6px; }
+.room-profile-id-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    color: #9ca3af;
+    background: rgba(255,255,255,0.06);
+    padding: 3px 10px;
+    border-radius: 999px;
+    margin-top: 5px;
+}
+.room-profile-id-copy:active { background: rgba(255,255,255,0.14); }
+.room-profile-badge-row { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
+.room-profile-mini-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #e5e7eb;
+}
+.room-profile-mgmt-row {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    padding: 12px 16px 2px;
+}
+.room-profile-mgmt-btn { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.room-profile-mgmt-icon {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+}
+.room-profile-mgmt-label { font-size: 9.5px; color: #cbd5e1; }
+.room-profile-actions-row { display: flex; gap: 8px; padding: 14px 16px 18px; }
+.room-profile-action-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 38px;
+    border-radius: 12px;
+    font-size: 12.5px;
+    font-weight: 800;
+    background: rgba(255,255,255,0.06);
+    color: #e5e7eb;
+}
+.room-profile-action-gift { background: rgba(236,72,153,0.18); color: #f9a8d4; }
+.room-profile-action-interact { background: rgba(244,63,94,0.18); color: #fda4af; }
 
 /* ✅ زر "غرف الصدارة" ببطاقة معلومات الغرفة — يفتح منصّة التتويج بدل "قريباً" ثابتة */
 .room-info-rankings-btn {
@@ -1284,6 +1385,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     flex-shrink: 0;
     margin-top: 2px;
     border: 1.5px solid rgba(255,255,255,0.2);
+    cursor: pointer;
 }
 .room-chat-msg-line {
     margin: 0;
@@ -2812,23 +2914,30 @@ body.in-voice-room #main-content {
 }
 
 .full-profile-cover {
-    height: 64px;
+    height: 118px;
     background: linear-gradient(135deg, rgba(126,34,206,0.55), rgba(219,39,119,0.35));
+    background-size: cover;
+    background-position: center;
     border-radius: 20px 20px 0 0;
     position: relative;
     flex-shrink: 0;
 }
 /* ✅ الصورة نصفها فوق الغلاف ونصفها الآخر خارجه بالأسفل (transform:translateY(-50%) بالضبط
-   على حدود الغلاف السفلية) — بطلب صريح "صورتي خارج نصفه من إطار الملف الشخصي" */
+   على حدود الغلاف السفلية) — بطلب صريح "صورتي خارج نصفه من إطار الملف الشخصي". الشكل الآن
+   مربّع دائري الزوايا (squircle) بحلقة توهّج ثنائية اللون بدل الدائرة البسيطة السابقة —
+   أبسط من إطار هندسي كامل لكنه أقوى بصرياً من دائرة عادية بلا لمسة */
 .full-profile-avatar {
     position: absolute;
-    left: 50%; top: 64px;
+    left: 50%; top: 118px;
     transform: translate(-50%, -50%);
     width: 92px; height: 92px;
-    border-radius: 50%;
+    border-radius: 26px;
     object-fit: cover;
     border: 4px solid #111827;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    box-shadow:
+        0 0 0 2px rgba(168,85,247,0.55),
+        0 0 0 5px rgba(219,39,119,0.18),
+        0 6px 18px rgba(0,0,0,0.5);
 }
 .full-profile-identity {
     text-align: center;
@@ -2873,6 +2982,15 @@ body.in-voice-room #main-content {
     padding: 0 20px;
     line-height: 1.5;
 }
+.full-profile-social-row { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
+.full-profile-social-btn {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+}
+.full-profile-social-btn:active { background: rgba(255,255,255,0.14); }
 
 /* ✅ بطاقة الإنجازات — واجهة تمهيدية فقط (سيُبنى نظامها لاحقاً)، خمس خانات فارغة منقّطة؛
    مصغَّرة قليلاً لتوفير مساحة الملف الشخصي */
@@ -3051,6 +3169,13 @@ body.in-voice-room #main-content {
     font-weight: 700;
     color: #e5e7eb;
 }
+.profile-hub-bio-text {
+    font-size: 11.5px;
+    color: #d1d5db;
+    font-style: italic;
+    margin-top: 8px;
+    line-height: 1.5;
+}
 
 .profile-hub-stats-row {
     display: flex;
@@ -3145,6 +3270,20 @@ body.in-voice-room #main-content {
     padding: 1.5px 7px;
     border-radius: 999px;
 }
+/* ✅ زر الاقتراحات — دائرة صغيرة ثابتة العرض بدل زر عريض بنص، فيبقى زر التحرير المطاطي
+   (flex:1) وحيداً يأخذ كل المساحة المتبقية فيصبح أطول تلقائياً */
+.profile-hub-discover-circle {
+    width: 38px; height: 38px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    color: #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+}
+.profile-hub-discover-circle:active { background: rgba(255,255,255,0.12); }
 
 .profile-hub-section-title {
     display: flex; align-items: center; gap: 6px;
@@ -3155,6 +3294,57 @@ body.in-voice-room #main-content {
     letter-spacing: 0.03em;
     margin: 18px 16px 8px;
 }
+
+/* ✅ قسم "الفيديوهات" — تبويبات صغيرة (فيديو/إعادة نشر/محفوظة/إعجابات) فوق حالة فارغة موحّدة؛
+   الميزة كلها قيد التطوير، هذا هيكلها البصري فقط */
+.profile-hub-video-tabs { display: flex; justify-content: center; gap: 8px; margin: 0 16px; }
+.profile-hub-video-tab {
+    width: 40px; height: 34px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    color: #9ca3af;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    border-bottom: 2px solid transparent;
+}
+.profile-hub-video-tab.active { background: rgba(168,85,247,0.15); color: #e9d5ff; border-bottom-color: #a855f7; }
+.profile-hub-video-empty {
+    margin: 10px 16px 4px;
+    padding: 22px 12px;
+    text-align: center;
+    background: rgba(255,255,255,0.025);
+    border: 1px dashed rgba(255,255,255,0.1);
+    border-radius: 14px;
+}
+.profile-hub-video-empty i { font-size: 22px; color: rgba(255,255,255,0.18); }
+.profile-hub-video-empty p { font-size: 11px; color: #6b7280; margin-top: 8px; }
+
+/* ✅ "لوحة الإشراف" — شريط فيلم أفقي قابل للتمرير: ثروة/إنجازات/نادي المعجبين/الحماة/هدايا مستلمة */
+.profile-hub-admin-strip {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 0 16px 4px;
+    scroll-snap-type: x proximity;
+}
+.profile-hub-admin-card {
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+    width: 88px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 14px 8px;
+    text-align: center;
+}
+.profile-hub-admin-card i { font-size: 19px; }
+.profile-hub-admin-card-title { font-size: 10px; font-weight: 700; color: #e5e7eb; }
+.profile-hub-admin-card-num { font-size: 13px; font-weight: 800; color: #fff; }
+
 .profile-hub-settings-list {
     margin: 0 16px;
     background: rgba(255,255,255,0.03);
@@ -3198,6 +3388,60 @@ body.in-voice-room #main-content {
 }
 .profile-hub-hc-stat span { display: block; font-size: 15px; font-weight: 800; color: #fff; }
 .profile-hub-hc-stat label { font-size: 9.5px; color: #9ca3af; }
+
+/* =====================================================
+   ✅ تحليلات مركز المضيف — تبويبات أسبوعي/شهري/سنوي + رسم بياني (Chart.js) + أكبر داعم
+   + توزيع جنس المتابعين
+   ===================================================== */
+.host-analytics-tabs { display: flex; gap: 6px; padding-top: 4px; }
+.host-analytics-tab {
+    flex: 1;
+    text-align: center;
+    padding: 7px 6px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    color: #9ca3af;
+    font-size: 11px;
+    font-weight: 800;
+}
+.host-analytics-tab.active { background: rgba(168,85,247,0.18); color: #e9d5ff; }
+.host-analytics-chart-wrap { margin-top: 10px; min-height: 130px; position: relative; }
+.host-analytics-empty {
+    text-align: center;
+    font-size: 11px;
+    color: #6b7280;
+    padding: 40px 10px;
+}
+.host-analytics-label { font-size: 10px; color: #9ca3af; font-weight: 700; margin: 14px 0 6px; }
+.host-analytics-gender-bar {
+    display: flex;
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.06);
+}
+.host-analytics-gender-bar-male { background: #60a5fa; height: 100%; }
+.host-analytics-gender-bar-female { background: #f472b6; height: 100%; }
+.host-analytics-gender-legend {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #d1d5db;
+    margin-top: 5px;
+}
+.host-analytics-top-supporter {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, rgba(251,191,36,0.1), rgba(255,255,255,0.03));
+    border: 1px solid rgba(251,191,36,0.22);
+    border-radius: 12px;
+    padding: 10px;
+    margin-top: 14px;
+}
+.host-analytics-top-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.host-analytics-top-name { font-size: 12px; font-weight: 800; color: #fff; }
+.host-analytics-top-value { font-size: 11px; font-weight: 800; color: #fde68a; flex-shrink: 0; }
 
 /* ✅ صف زوار/مشاهدات/نكز اليوم — بلا مربعات أو خلفية، بجانب بعضهم في المنتصف */
 .profile-hub-visitors-today-row {
@@ -3255,12 +3499,14 @@ body.in-voice-room #main-content {
 }
 @media (min-width: 768px) { .profile-edit-card { border-radius: 20px; max-height: 85vh; } }
 .profile-edit-media-block { position: relative; margin: -16px -16px 44px; }
+/* ✅ لا أيقونة كاميرا ظاهرة بعد الآن — النقر على الصورة نفسها يفتح ورقة "التقط/اختر" */
 .profile-edit-cover-preview {
     height: 90px;
     background: linear-gradient(135deg, rgba(126,34,206,0.5), rgba(219,39,119,0.3));
     background-size: cover;
     background-position: center;
     position: relative;
+    cursor: pointer;
 }
 .profile-edit-avatar-wrap {
     position: absolute;
@@ -3271,19 +3517,8 @@ body.in-voice-room #main-content {
     border-radius: 50%;
     object-fit: cover;
     border: 4px solid #111827;
+    cursor: pointer;
 }
-.profile-edit-camera-btn {
-    position: absolute;
-    width: 26px; height: 26px;
-    border-radius: 50%;
-    background: rgba(17,24,39,0.85);
-    color: #e5e7eb;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 11px;
-    border: 2px solid #111827;
-}
-.profile-edit-camera-cover { top: 8px; left: 8px; }
-.profile-edit-camera-avatar { bottom: -4px; right: -4px; }
 .profile-edit-label { display: block; font-size: 11px; font-weight: 700; color: #9ca3af; margin-bottom: 5px; }
 .profile-edit-input {
     width: 100%;
@@ -3297,19 +3532,23 @@ body.in-voice-room #main-content {
 .profile-edit-input:focus { border-color: rgba(168,85,247,0.5); }
 .profile-edit-social-row { display: flex; align-items: center; gap: 8px; }
 .profile-edit-social-row i { width: 18px; text-align: center; flex-shrink: 0; }
+/* ✅ زر إضافة تعليم — بلا خلفية مليئة، طافٍ وخفيف بدل دائرة أرجوانية صلبة */
 .profile-edit-add-btn {
     width: 26px; height: 26px;
     border-radius: 50%;
-    background: rgba(168,85,247,0.18);
+    background: transparent;
+    border: 1px solid rgba(192,132,252,0.4);
     color: #c084fc;
     display: flex; align-items: center; justify-content: center;
     font-size: 12px;
 }
+.profile-edit-add-btn:active { background: rgba(168,85,247,0.12); }
 .profile-edit-education-row { display: flex; align-items: flex-start; gap: 8px; background: rgba(255,255,255,0.03); border-radius: 10px; padding: 8px; }
 .profile-edit-remove-edu-btn {
     width: 30px; height: 30px;
-    border-radius: 8px;
-    background: rgba(239,68,68,0.14);
+    border-radius: 50%;
+    background: transparent;
+    border: 1px solid rgba(252,165,165,0.35);
     color: #fca5a5;
     display: flex; align-items: center; justify-content: center;
     font-size: 12px;
@@ -3644,6 +3883,42 @@ body.in-voice-room #main-content {
     border-radius: 999px;
 }
 .follow-connection-btn.following { background: rgba(255,255,255,0.08); color: #d1d5db; }
+
+/* ✅ هيكل تحميل نابض (skeleton) — بديل أكثر سلاسة لمؤشر دوّار وحيد أثناء تحميل قوائم
+   المتابِعين/المتابَعين/الاقتراحات؛ كتل رمادية نابضة بنفس شكل الصفوف الحقيقية تقريباً */
+.follow-skeleton-list { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
+.follow-skeleton-row { display: flex; align-items: center; gap: 10px; }
+.follow-skeleton-avatar {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.07);
+    flex-shrink: 0;
+    animation: skeletonPulse 1.3s ease-in-out infinite;
+}
+.follow-skeleton-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.follow-skeleton-line {
+    height: 9px;
+    border-radius: 5px;
+    background: rgba(255,255,255,0.07);
+    animation: skeletonPulse 1.3s ease-in-out infinite;
+}
+.follow-skeleton-line.long { width: 65%; }
+.follow-skeleton-line.short { width: 35%; }
+.follow-skeleton-btn {
+    width: 62px; height: 26px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.07);
+    flex-shrink: 0;
+    animation: skeletonPulse 1.3s ease-in-out infinite;
+}
+@keyframes skeletonPulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+/* ✅ انتقال ظهور ناعم للمحتوى الحقيقي فور وصوله (بدل ظهور فوري جاف) */
+.fade-in-content { animation: fadeInContent 0.25s ease-out; }
+@keyframes fadeInContent {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
 
 .follow-suggestions-title {
     font-size: 11px;
