@@ -4559,6 +4559,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let micDspCleanup = null;       // تنظيف سياق معالجة الصوت المحلي (AudioContext + المؤقتات)
     let howlingWarningShownThisSession = false; // ✅ تحذير صدى واحد لكل جلسة تحدّث — لا إزعاج متكرر
     let micPermissionDenied = false; // ✅ لا نُزعج المستخدم بطلب صلاحية متكرر لو رفضها صراحة مرة
+    let voiceFailureWarningShownThisSession = false; // ✅ تحذير فشل اتصال صوتي واحد لكل جلسة — لا إزعاج متكرر لو فشل أكثر من اتصال بنفس الوقت
 
     // ✅ سلسلة تحسين الصوت الصادر — Web Audio API أصلي بالكامل بلا أي مكتبة خارجية:
     // 1) مرشّح تمرير عالٍ يقصّ الدمدمة تحت 90Hz (مسك الجهاز، ضجيج المكيّف...)
@@ -4762,17 +4763,30 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             pc.addTransceiver('audio', { direction: 'recvonly' });
         }
 
+        // ✅ تشخيصي: عدد مرشّحات ICE المُجمَّعة حسب نوعها (host/srflx/relay) — لو لم يظهر أي
+        // "relay" إطلاقاً رغم استمرار المشكلة، يعني خادم TURN نفسه لم يستجب لهذا الجهاز
+        // (شبكة/جدار حماية يحجبه، أو الخادم المجاني نفسه معطّل مؤقتاً)، لا مشكلة بكودنا
+        const gatheredCandidateTypes = { host: 0, srflx: 0, relay: 0 };
         pc.onicecandidate = (e) => {
             if (e.candidate && currentVoiceRoomId) {
+                if (e.candidate.type && gatheredCandidateTypes[e.candidate.type] !== undefined) {
+                    gatheredCandidateTypes[e.candidate.type]++;
+                }
                 socket.emit('voice-webrtc-ice-candidate', { roomId: currentVoiceRoomId, toUserId: peerUserId, candidate: e.candidate });
             }
         };
-        // ✅ تشخيصي فقط (بلا أي بيانات حسّاسة تُرسَل لأي مكان — طباعة محلية بمتصفحي أنا فقط):
-        // يوضّح بسجل التصفح هل تم فعلياً استخدام مرحّل TURN لهذا الاتصال (relay) أو STUN
-        // المباشر فقط (host/srflx) — أول أداة تشخيص حقيقية لو تكرّرت مشكلة "الصوت بين شبكات
-        // مختلفة" رغم كل الإصلاحات، بدل التخمين الأعمى في الجولة القادمة
+        pc.onicegatheringstatechange = () => {
+            if (pc.iceGatheringState === 'complete') {
+                console.log(`[VOICE] اكتمل جمع مرشّحات الاتصال بـ${peerUserId} — مباشر: ${gatheredCandidateTypes.host}, عبر STUN: ${gatheredCandidateTypes.srflx}, عبر TURN: ${gatheredCandidateTypes.relay}${gatheredCandidateTypes.relay === 0 ? ' ⚠️ لا يوجد أي مرشّح TURN — تحقّق من وصول جهازك لخادم TURN' : ''}`);
+            }
+        };
+        // ✅ يوضّح بسجل التصفح (ظاهر دائماً، لا "console.debug" المخفي افتراضياً بأدوات المطوّر)
+        // هل تم فعلياً استخدام مرحّل TURN لهذا الاتصال أو اتصال مباشر — أول أداة تشخيص حقيقية
+        // لو تكرّرت مشكلة "الصوت بين شبكات مختلفة" رغم كل الإصلاحات، بدل التخمين الأعمى
+        let everConnected = false;
         pc.addEventListener('connectionstatechange', () => {
             if (pc.connectionState === 'connected') {
+                everConnected = true;
                 pc.getStats(null).then(stats => {
                     let usedRelay = false;
                     stats.forEach(report => {
@@ -4781,8 +4795,17 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                             if (local && local.candidateType === 'relay') usedRelay = true;
                         }
                     });
-                    console.debug(`[VOICE] اتصال ${peerUserId} تم عبر ${usedRelay ? 'خادم TURN (relay) ✅' : 'اتصال مباشر (STUN) — لا حاجة لـTURN بينكما'}`);
+                    console.log(`[VOICE] اتصال ${peerUserId} تم عبر ${usedRelay ? 'خادم TURN (relay) ✅' : 'اتصال مباشر (STUN) — لا حاجة لـTURN بينكما'}`);
                 }).catch(() => {});
+            } else if (pc.connectionState === 'failed' && !everConnected) {
+                // 🛡️ فشل حقيقي لم يصل "متصل" ولو مرة — مختلف عن إغلاق طبيعي (شخص غادر مقعده بعد
+                // محادثة ناجحة) الذي لا يستحق أي تنبيه. نُنبّه المستخدم مرة واحدة فقط بالجلسة —
+                // لا يحتاج فتح أدوات المطوّر أبداً ليعرف أن هناك مشكلة اتصال صوتي حقيقية
+                console.warn(`[VOICE] فشل الاتصال الصوتي بـ${peerUserId} نهائياً — لم يصل لحالة "متصل" إطلاقاً. مرشّحات مُجمَّعة: مباشر=${gatheredCandidateTypes.host}, STUN=${gatheredCandidateTypes.srflx}, TURN=${gatheredCandidateTypes.relay}`);
+                if (!voiceFailureWarningShownThisSession) {
+                    voiceFailureWarningShownThisSession = true;
+                    showNotification('تعذّر الاتصال الصوتي بأحد الجالسين — جرّب "إصلاح الاتصال" من قائمة المزيد بالغرفة', 'error');
+                }
             }
         });
 
@@ -4860,6 +4883,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (micDspCleanup) { micDspCleanup(); micDspCleanup = null; }
         localMicStream = null;
         howlingWarningShownThisSession = false; // ✅ يسمح بتحذير جديد لو تكرر الوضع بجلسة تحدّث تالية
+        voiceFailureWarningShownThisSession = false;
     }
 
     // ✅ يتصل بكل من هو جالس فعلياً حالياً على شبكة المقاعد المعروضة — يعمل لكل من يعرض
