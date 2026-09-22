@@ -3389,6 +3389,60 @@ body.in-voice-room #main-content {
 .profile-hub-hc-stat span { display: block; font-size: 15px; font-weight: 800; color: #fff; }
 .profile-hub-hc-stat label { font-size: 9.5px; color: #9ca3af; }
 
+/* =====================================================
+   ✅ تحليلات مركز المضيف — تبويبات أسبوعي/شهري/سنوي + رسم بياني (Chart.js) + أكبر داعم
+   + توزيع جنس المتابعين
+   ===================================================== */
+.host-analytics-tabs { display: flex; gap: 6px; padding-top: 4px; }
+.host-analytics-tab {
+    flex: 1;
+    text-align: center;
+    padding: 7px 6px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    color: #9ca3af;
+    font-size: 11px;
+    font-weight: 800;
+}
+.host-analytics-tab.active { background: rgba(168,85,247,0.18); color: #e9d5ff; }
+.host-analytics-chart-wrap { margin-top: 10px; min-height: 130px; position: relative; }
+.host-analytics-empty {
+    text-align: center;
+    font-size: 11px;
+    color: #6b7280;
+    padding: 40px 10px;
+}
+.host-analytics-label { font-size: 10px; color: #9ca3af; font-weight: 700; margin: 14px 0 6px; }
+.host-analytics-gender-bar {
+    display: flex;
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.06);
+}
+.host-analytics-gender-bar-male { background: #60a5fa; height: 100%; }
+.host-analytics-gender-bar-female { background: #f472b6; height: 100%; }
+.host-analytics-gender-legend {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #d1d5db;
+    margin-top: 5px;
+}
+.host-analytics-top-supporter {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, rgba(251,191,36,0.1), rgba(255,255,255,0.03));
+    border: 1px solid rgba(251,191,36,0.22);
+    border-radius: 12px;
+    padding: 10px;
+    margin-top: 14px;
+}
+.host-analytics-top-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.host-analytics-top-name { font-size: 12px; font-weight: 800; color: #fff; }
+.host-analytics-top-value { font-size: 11px; font-weight: 800; color: #fde68a; flex-shrink: 0; }
+
 /* ✅ صف زوار/مشاهدات/نكز اليوم — بلا مربعات أو خلفية، بجانب بعضهم في المنتصف */
 .profile-hub-visitors-today-row {
     display: flex;

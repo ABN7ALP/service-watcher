@@ -8211,19 +8211,117 @@ async function showHostCenterSheet() {
             roomBody.innerHTML = '<p class="text-sm text-gray-400 py-6">لا تملك غرفة بعد — أنشئ غرفتك من الرئيسية لتظهر إحصائياتها هنا</p>';
             return;
         }
-        const roomDetailsRes = await fetch(`/api/voice-room/rooms/${result.room.id}`, { headers: { 'Authorization': `Bearer ${token}` } });
-        const roomDetails = await roomDetailsRes.json();
+        const [roomDetailsRes, analyticsRes] = await Promise.all([
+            fetch(`/api/voice-room/rooms/${result.room.id}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            fetch(`/api/voice-room/rooms/${result.room.id}/analytics`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+        ]);
+        const roomDetails = roomDetailsRes;
         const followersCount = roomDetails.followersCount || 0;
         const level = roomDetails.level ?? '—';
         const supportPoints = roomDetails.supportPoints || 0;
+        const analyticsData = analyticsRes.status === 'success' ? analyticsRes.data : null;
+
         roomBody.innerHTML = `
             <div class="grid grid-cols-3 gap-2 mb-3">
                 <div class="profile-hub-hc-stat"><span>${followersCount}</span><label>متابعو الغرفة</label></div>
                 <div class="profile-hub-hc-stat"><span>Lv.${level}</span><label>المستوى</label></div>
                 <div class="profile-hub-hc-stat"><span>${supportPoints.toLocaleString('en-US')}</span><label>دعم تراكمي</label></div>
             </div>
-            <p class="text-[11px] text-gray-500 text-center py-3 border-t border-gray-700/50">تحليلات تفصيلية (أسبوعي/شهري/سنوي، أكبر داعم، الجنس الأكثر متابعة...) قريباً 📊</p>
+            ${analyticsData ? `
+            <div class="host-analytics-tabs">
+                <button type="button" class="host-analytics-tab active" data-range="weekly">أسبوعي</button>
+                <button type="button" class="host-analytics-tab" data-range="monthly">شهري</button>
+                <button type="button" class="host-analytics-tab" data-range="yearly">سنوي</button>
+            </div>
+            <div id="host-analytics-chart-wrap" class="host-analytics-chart-wrap"></div>
+            <div id="host-analytics-extra"></div>
+            ` : `<p class="text-[11px] text-gray-500 text-center py-3 border-t border-gray-700/50">تعذّر تحميل التحليلات التفصيلية</p>`}
         `;
+
+        if (!analyticsData) return;
+
+        let hostChartInstance = null;
+        function renderAnalyticsPanel(range) {
+            roomBody.querySelectorAll('.host-analytics-tab').forEach(t => t.classList.toggle('active', t.dataset.range === range));
+            const wrap = document.getElementById('host-analytics-chart-wrap');
+            if (!wrap) return;
+            const rows = analyticsData[range] || [];
+            if (hostChartInstance) { hostChartInstance.destroy(); hostChartInstance = null; }
+            if (rows.length === 0) {
+                wrap.innerHTML = '<p class="host-analytics-empty">لا يوجد دعم مسجَّل بهذي الفترة بعد</p>';
+                return;
+            }
+            if (typeof Chart !== 'function') {
+                wrap.innerHTML = '<p class="host-analytics-empty">تعذّر تحميل مكتبة الرسم البياني</p>';
+                return;
+            }
+            wrap.innerHTML = '<canvas id="host-analytics-chart" height="130"></canvas>';
+            const ctx = document.getElementById('host-analytics-chart').getContext('2d');
+            hostChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: rows.map(r => r.label),
+                    datasets: [{
+                        data: rows.map(r => r.value),
+                        borderColor: '#a855f7',
+                        backgroundColor: 'rgba(168,85,247,0.15)',
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 2.5,
+                        pointBackgroundColor: '#ec4899',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { color: '#9ca3af', font: { size: 9 } }, grid: { display: false } },
+                        y: { ticks: { color: '#9ca3af', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.06)' }, beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        function renderAnalyticsExtra() {
+            const el = document.getElementById('host-analytics-extra');
+            if (!el) return;
+            const g = analyticsData.genderBreakdown || { male: 0, female: 0 };
+            const total = g.male + g.female;
+            const malePct = total ? Math.round((g.male / total) * 100) : 0;
+            const femalePct = total ? 100 - malePct : 0;
+            const ts = analyticsData.topSupporter;
+            el.innerHTML = `
+                ${total > 0 ? `
+                <div class="host-analytics-gender">
+                    <p class="host-analytics-label">توزيع جنس المتابعين</p>
+                    <div class="host-analytics-gender-bar">
+                        <div class="host-analytics-gender-bar-male" style="width:${malePct}%"></div>
+                        <div class="host-analytics-gender-bar-female" style="width:${femalePct}%"></div>
+                    </div>
+                    <div class="host-analytics-gender-legend">
+                        <span><i class="fas fa-mars text-blue-400"></i> ${malePct}%</span>
+                        <span><i class="fas fa-venus text-pink-400"></i> ${femalePct}%</span>
+                    </div>
+                </div>` : ''}
+                ${ts ? `
+                <div class="host-analytics-top-supporter">
+                    <img src="${ts.profileImage}" class="host-analytics-top-avatar ${ts.activeFrameClass || ''}">
+                    <div class="min-w-0 flex-1">
+                        <p class="host-analytics-label" style="margin:0;">أكبر داعم</p>
+                        <p class="host-analytics-top-name">${escapeHtml(ts.username)}</p>
+                    </div>
+                    <span class="host-analytics-top-value"><i class="fas fa-coins text-yellow-400"></i> ${ts.total.toLocaleString('en-US')}</span>
+                </div>` : ''}
+            `;
+        }
+
+        roomBody.querySelectorAll('.host-analytics-tab').forEach(tab => {
+            tab.addEventListener('click', () => renderAnalyticsPanel(tab.dataset.range));
+        });
+        renderAnalyticsPanel('weekly');
+        renderAnalyticsExtra();
     } catch (error) {
         const roomBody = document.getElementById('host-center-body');
         if (roomBody) roomBody.innerHTML = '<p class="text-sm text-red-400 py-6">تعذر تحميل الإحصائيات</p>';
