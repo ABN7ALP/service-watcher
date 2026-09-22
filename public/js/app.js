@@ -8034,6 +8034,7 @@ function showProfileHubMoreMenu() {
             <button id="hub-more-share" class="profile-hub-settings-row"><i class="fas fa-share-nodes text-purple-400"></i><span>مشاركة الملف الشخصي</span></button>
             <button id="hub-more-wallet" class="profile-hub-settings-row"><i class="fas fa-wallet text-yellow-400"></i><span>المحفظة</span></button>
             <button id="hub-more-creator" class="profile-hub-settings-row"><i class="fas fa-star text-purple-400"></i><span>مركز صنّاع المحتوى</span><span class="profile-hub-soon-tag">قريباً</span></button>
+            <button id="hub-more-qr" class="profile-hub-settings-row"><i class="fas fa-qrcode text-emerald-400"></i><span>رمز QR</span></button>
             <button id="hub-more-settings" class="profile-hub-settings-row"><i class="fas fa-cog text-gray-300"></i><span>الإعدادات</span></button>
         </div>
     `;
@@ -8053,7 +8054,35 @@ function showProfileHubMoreMenu() {
     });
     document.getElementById('hub-more-wallet').addEventListener('click', () => { modal.remove(); showBuyCoinsModal(); });
     document.getElementById('hub-more-creator').addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
+    document.getElementById('hub-more-qr').addEventListener('click', () => { modal.remove(); showProfileQrModal(localUser); });
     document.getElementById('hub-more-settings').addEventListener('click', () => { modal.remove(); showProfileHubSettingsSheet(); });
+}
+
+// ✅ رمز QR لمشاركة الملف الشخصي — عبر مكتبة qrcodejs الخفيفة (CDN، يتحقق من توفّرها فعلياً
+// قبل الاستخدام فلا يتعطّل شيء لو تعذّر تحميلها)
+function showProfileQrModal(localUser) {
+    document.getElementById('profile-qr-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'profile-qr-modal';
+    modal.className = 'fixed inset-0 bg-black/70 z-[330] flex items-center justify-center p-4';
+    modal.innerHTML = `
+        <div class="profile-hub-subsheet-card w-full max-w-[280px] text-center">
+            <p class="font-bold text-sm mb-3"><i class="fas fa-qrcode text-emerald-400"></i> رمز QR لملفك</p>
+            <div id="profile-qr-canvas-holder" class="w-[180px] h-[180px] bg-white rounded-xl mx-auto flex items-center justify-center"></div>
+            <p class="text-[11px] text-gray-400 mt-3">ID: ${escapeHtml(String(localUser.customId || ''))}</p>
+            <button id="close-profile-qr" class="profile-hub-action-btn profile-hub-action-secondary w-full mt-4">إغلاق</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'profile-qr-modal') modal.remove(); });
+    document.getElementById('close-profile-qr').addEventListener('click', () => modal.remove());
+
+    const holder = document.getElementById('profile-qr-canvas-holder');
+    if (typeof QRCode === 'function' && holder) {
+        new QRCode(holder, { text: `ID:${localUser.customId || ''}`, width: 170, height: 170, colorDark: '#111827', colorLight: '#ffffff' });
+    } else if (holder) {
+        holder.innerHTML = `<span class="text-gray-500 text-xs px-4">تعذّر تحميل مولّد رمز QR</span>`;
+    }
 }
 
 // ✅ ورقة "سجل الزوار" — زوّار/مشاهدات/نكزات اليوم فقط بصف واحد بلا خلفيات، وتحتها هويات
