@@ -6885,6 +6885,43 @@ function showXpGainAnimation(amount) {
         showNotification('تم إنزالك من المقعد من قِبل إدارة الغرفة', 'warning');
     });
 
+    // ✅ تحديث فوري لعدّادات المتابَعين/المتابِعين أينما ظهرت حالياً — مركز ملفي (إن كنت أنا
+    // طرفاً بالحدث)، أو صفحة الملف الكامل المفتوحة حالياً (إن كانت لأحد طرفي الحدث)، وزر
+    // المتابعة نفسه لو كان الطرف الآخر من غيّر حالة المتابعة من جهاز/جلسة أخرى لي
+    socket.on('follow-changed', ({ targetUserId, targetFollowersCount, followerId, followerFollowingCount, isFollowing }) => {
+        if (targetUserId === myUserId) {
+            const el = document.querySelector('#profile-hub-followers-stat .profile-hub-stat-num');
+            if (el) el.textContent = targetFollowersCount;
+        }
+        if (followerId === myUserId) {
+            const el = document.querySelector('#profile-hub-following-stat .profile-hub-stat-num');
+            if (el) el.textContent = followerFollowingCount;
+        }
+        const fpPage = document.getElementById('full-profile-page');
+        const openProfileUserId = fpPage?.dataset.userId;
+        if (openProfileUserId && openProfileUserId === targetUserId) {
+            const el = document.querySelector('#full-profile-followers-stat .full-profile-stat-num');
+            if (el) el.textContent = targetFollowersCount;
+            if (followerId === myUserId) {
+                const btn = document.getElementById('full-profile-follow-btn');
+                if (btn) btn.innerHTML = isFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة';
+                btn?.classList.toggle('following', isFollowing);
+            }
+        }
+        if (openProfileUserId && openProfileUserId === followerId) {
+            const el = document.querySelector('#full-profile-following-stat .full-profile-stat-num');
+            if (el) el.textContent = followerFollowingCount;
+        }
+        // ✅ أي صف مفتوح حالياً بقائمة متابِعين/متابَعين لنفس الشخص المتأثَر (من غيّرتُ متابعته أنا
+        // تحديداً من جهاز/جلسة أخرى) — يُحدَّث زر المتابعة بصفه دون الحاجة لإعادة فتح القائمة
+        if (followerId === myUserId) {
+            document.querySelectorAll(`.follow-connection-btn[data-user-id="${targetUserId}"]`).forEach(btn => {
+                btn.classList.toggle('following', isFollowing);
+                btn.textContent = isFollowing ? 'متابَع' : 'متابعة';
+            });
+        }
+    });
+
     socket.on('seat-lock-changed', ({ roomId, seatNumber, isLocked }) => {
         if (roomId !== currentVoiceRoomId) return;
         const voiceGrid = document.getElementById('voice-chat-grid');
@@ -9063,6 +9100,7 @@ async function showFullProfilePage(userId) {
     `;
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const page = document.getElementById('full-profile-page');
+    page.dataset.userId = userId; // ✅ يسمح لمستمع 'follow-changed' بمعرفة صاحب الملف المعروض حالياً
     document.getElementById('close-full-profile').addEventListener('click', closeFullProfilePage);
     page.addEventListener('click', (e) => { if (e.target.id === 'full-profile-page') closeFullProfilePage(); });
 
