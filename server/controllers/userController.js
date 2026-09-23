@@ -4,7 +4,19 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const ProfileVisit = require('../models/ProfileVisit');
 const Poke = require('../models/Poke');
+const GiftLog = require('../models/GiftLog');
 const { cloudinary, deleteFromCloudinary, getPublicIdFromUrl, assertRealType } = require('../utils/cloudinary');
+
+// ✅ سلّم "شارة الثراء" (تطوّر حسب مجموع قيمة الهدايا المستلمة) — نفس تدرّج LEVEL_THRESHOLDS
+// بموديل VoiceRoom (0 / 1000 / 5000 / 15000 / 40000) للاتساق مع بقية أنظمة المستويات بالمشروع
+const WEALTH_TIER_THRESHOLDS = [0, 1000, 5000, 15000, 40000];
+function computeWealthTier(totalCoinsValue) {
+    let tier = 1;
+    for (let i = 0; i < WEALTH_TIER_THRESHOLDS.length; i++) {
+        if (totalCoinsValue >= WEALTH_TIER_THRESHOLDS[i]) tier = i + 1;
+    }
+    return tier;
+}
 
 // ✅ يسجّل زيارة ملف شخصي (حدث خام لكل مشاهدة) — بتهدئة بسيطة: لا يُسجَّل حدث جديد لنفس
 // الزائر لنفس الشخص خلال 5 دقائق (يمنع تضخيم "المشاهدات" من فتح/إغلاق سريع متكرر أو إساءة
@@ -159,15 +171,26 @@ const getMeDetails = async (req, res) => {
     }
 };
 
-// ✅ دالة جديدة لجلب بيانات الملف الشخصي المصغر
+// ✅ دالة جديدة لجلب بيانات الملف الشخصي المصغر — تُستخدم بنافذة ملف سياق الغرفة (مقعد/دردشة/
+// مشاهد/مالك الغرفة) بكل مكان، لذا تحمل كل ما تحتاجه تلك النافذة بطلب واحد: حالة المتابعة،
+// شارات ديموغرافية مصغّرة، ومستوى "الثراء" (محسوب من مجموع قيمة الهدايا المستلمة فعلياً)
 const getUserMiniProfile = async (req, res) => {
     try {
         const currentUserId = req.user?. id;
         const targetUserId = req.params.id;
+        if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف مستخدم غير صالح' });
+        }
 
-            const user = await User.findById(targetUserId)
-            .select('username profileImage customId level friends isAgent activeFrameClass isBot')
-            .populate('friends', '_id');
+        const [user, wealthAgg] = await Promise.all([
+            User.findById(targetUserId)
+                .select('username profileImage customId level friends followers isAgent activeFrameClass isBot gender birthDate socialStatus')
+                .populate('friends', '_id'),
+            GiftLog.aggregate([
+                { $match: { receiver: new mongoose.Types.ObjectId(targetUserId) } },
+                { $group: { _id: null, totalCoinsValue: { $sum: '$totalPrice' } } }
+            ])
+        ]);
 
         if (!user) {
             return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على المستخدم.' });
@@ -175,6 +198,10 @@ const getUserMiniProfile = async (req, res) => {
 
         // التحقق من حالة الصداقة
         const areFriends = currentUserId && user.friends.some(f => f._id.toString() === currentUserId);
+        // ✅ حالة المتابعة (نظام منفصل عن الصداقة) — تلزم لعرض زر متابعة صحيح الحالة بأي مكان
+        // يُعرَض فيه هذا الملف المصغّر (نافذة ملف الغرفة تحديداً)
+        const isFollowedByMe = !!(currentUserId && user.followers.some(f => f.toString() === currentUserId));
+        const wealthPoints = (wealthAgg[0] && wealthAgg[0].totalCoinsValue) || 0;
 
                 res.status(200).json({
             status: 'success',
@@ -186,12 +213,19 @@ const getUserMiniProfile = async (req, res) => {
                 level: user.level,
                 friendsCount: user.friends.length,
                 areFriends: areFriends || false,
+                isFollowedByMe,
                 isAgent: user.isAgent,
                 activeFrameClass: user.activeFrameClass,
-                isBot: user.isBot || false
+                isBot: user.isBot || false,
+                gender: user.gender,
+                age: user.age,
+                socialStatus: user.socialStatus,
+                wealthTier: computeWealthTier(wealthPoints),
+                wealthPoints
             }
         });
     } catch (error) {
+        console.error('[ERROR] in getUserMiniProfile:', error);
         res.status(500).json({ status: 'error', message: 'خطأ في الخادم.' });
     }
 };

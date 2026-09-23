@@ -2158,44 +2158,6 @@ socket.on('refreshBlockData', async () => {
             io.emit('seat-reaction-played', { roomId, seatNumber: parseInt(seatNumber), emoji });
         });
 
-        // =====================================================
-        // ✅ تفاعل بين شخصين جالسين (قبلة/عناق...) — يظهر تأثير بصري متصل حول مقعديهما معاً.
-        // يتطلب أن يكون المُرسل والمستلم جالسين فعلياً بنفس الغرفة (مقعدان مختلفان)؛ أي شخص
-        // آخر جالس بمقعد ثالث لا يتأثر إطلاقاً — التأثير مرتبط برقمي المقعدين المحدَّدين فقط
-        // =====================================================
-        socket.on('send-seat-pair-reaction', async ({ roomId, targetUserId, emoji }) => {
-            try {
-                const PAIR_REACTIONS = ['💋', '🤗', '🖐️', '❤️', '🌹'];
-                if (!roomId || !targetUserId || !PAIR_REACTIONS.includes(emoji)) return;
-                if (targetUserId === socket.user._id.toString()) return; // 🛡️ لا تفاعل مع النفس
-
-                const VoiceRoom = require('../models/VoiceRoom');
-                const room = await VoiceRoom.resolveRoom(roomId);
-                if (!room) return;
-
-                // 🛡️ كلاهما لازم يكون جالساً فعلياً بنفس الغرفة حالياً — لا تفاعل مع مشاهد واقف
-                const fromSeat = room.seats.find(s => s.user && s.user.toString() === socket.user._id.toString());
-                const toSeat = room.seats.find(s => s.user && s.user.toString() === targetUserId);
-                if (!fromSeat || !toSeat) return;
-
-                // 🛡️ محدد معدل: تفاعل واحد كل ثانيتين لكل مُرسل
-                const rlKey = `pair-reaction-${socket.user._id}`;
-                const now = Date.now();
-                const lastSent = roomChatRateLimit.get(rlKey) || 0;
-                if (now - lastSent < 2000) return;
-                roomChatRateLimit.set(rlKey, now);
-
-                io.to(`room-chat-${roomId}`).emit('seat-pair-reaction-played', {
-                    roomId,
-                    fromSeat: fromSeat.seatNumber,
-                    toSeat: toSeat.seatNumber,
-                    emoji
-                });
-            } catch (error) {
-                console.error('[SEAT PAIR REACTION] Error:', error);
-            }
-        });
-
         // ✅ عداد الدعم أسفل المقعد — إشارة عرض بصري فقط (الدفع الفعلي تم أصلاً عبر REST /api/gifts/send)
         socket.on('room-gift-support', ({ roomId, seatNumber, value }) => {
             const numValue = Number(value);

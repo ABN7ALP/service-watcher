@@ -1893,6 +1893,17 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             el.querySelector('.room-chat-msg-avatar').addEventListener('click', () => {
                 showUserProfileSheet(currentVoiceRoomId, null, senderId, msg.sender?.username || '');
             });
+            // ✅ النقر على نص الرسالة نفسها (وليس الصورة فقط) يجهّز منشن رد سريع فوراً بحقل
+            // الكتابة ويفتح الكيبورد — بلا حاجة للمرور عبر نافذة الملف الشخصي لمجرد الرد
+            if (senderId !== myUserId) {
+                el.querySelector('.room-chat-msg-line').addEventListener('click', () => {
+                    const input = document.getElementById('room-chat-input');
+                    if (!input) return;
+                    input.value = `@${msg.sender?.username || ''} `;
+                    input.focus();
+                    input.setSelectionRange(input.value.length, input.value.length);
+                });
+            }
         }
         // ✅ يتابع آخر الرسائل تلقائياً فقط لو كنت أصلاً قريباً من الأسفل — لو مرّرت للأعلى
         // عمداً لقراءة سجل قديم، وصول رسالة جديدة (أو استكمال العرض التدريجي) ما يخطفك
@@ -2551,12 +2562,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             modal.remove();
             goToRoomRankingsLeaderboard();
         });
-        // ✅ ربط دخول البث بالملف الشخصي للمستخدم — الضغط على صف مالك الغرفة (صورته/اسمه)
-        // يفتح ملفه الشخصي الكامل مباشرة (showFullProfilePage)، لا فقط اسمه كنص ثابت غير قابل للتفاعل
+        // ✅ ربط دخول البث بالملف الشخصي للمستخدم — الضغط على صف مالك الغرفة (صورته/اسمه) يفتح
+        // نفس نافذة ملف الغرفة المصغّرة المستخدَمة بكل مكان آخر بالغرفة (مقعد/دردشة/مشاهد)،
+        // لتجربة موحّدة بدل القفز لصفحة الملف الكامل المنفصلة عن سياق الغرفة
         if (currentRoomHostId) {
             modal.querySelector('#room-info-card-owner-row')?.addEventListener('click', () => {
                 modal.remove();
-                showFullProfilePage(currentRoomHostId);
+                showUserProfileSheet(room.id, null, currentRoomHostId, currentRoomHostUsername || '');
             });
         }
     }
@@ -2793,6 +2805,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const modal = document.createElement('div');
         modal.id = 'user-profile-sheet';
         modal.className = 'fixed inset-0 bg-black/60 flex items-end justify-center z-50';
+        // ✅ يسمح لمستمع 'follow-changed' بمزامنة زر المتابعة هنا لحظياً لو غُيّرت الحالة من جهاز/جلسة أخرى
+        modal.dataset.userId = userId;
         modal.innerHTML = `
             <div class="room-profile-sheet-card">
                 <div id="user-profile-sheet-body" class="room-profile-body">
@@ -2815,25 +2829,54 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const isMe = userId === myUserId;
             const isSeated = seatNumber !== null && seatNumber !== undefined;
             const canManage = !isMe && roomId !== 'main' && (currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator');
-            // ✅ زر التفاعل يظهر فقط بين شخصين جالسين فعلياً بنفس الغرفة حالياً (seatNumber يعني
-            // إن هذا الملف فُتح من مقعد فعلي، وليس مثلاً من قائمة المشاهدين لشخص واقف)
-            const canInteract = !isMe && roomId !== 'main' && isSeated && myVoiceSeatNumber && myVoiceRoomId === roomId;
             // 🛡️ المضيف أثناء بثّه المباشر لا يُسمح له بمغادرة سياق الغرفة للملف الشخصي الكامل
             // (قد يشتّته أثناء الإدارة الحيّة) — يبقى ضمن هذي النافذة المصغّرة فقط
             const allowFullProfileNav = !(currentRoomMyRole === 'host' && roomId !== 'main');
+            const socialInfo = p.socialStatus ? getSocialStatus(p.socialStatus) : null;
 
             body.innerHTML = `
+                ${!isMe ? `<button type="button" id="room-profile-report-btn" class="room-profile-report-btn" title="إبلاغ"><i class="fas fa-flag"></i></button>` : ''}
                 <div class="room-profile-header">
                     <div class="room-profile-avatar-wrap">
                         <img id="room-profile-avatar-img" src="${p.profileImage}" class="room-profile-avatar ${p.activeFrameClass || ''}" title="${allowFullProfileNav ? 'عرض الملف الكامل' : ''}">
                     </div>
-                    <p class="room-profile-name">${escapeHtml(p.username)} ${getAgentBadgeHTML(p.isAgent)}</p>
-                    <button type="button" id="room-profile-id-copy" class="room-profile-id-copy" data-id="${escapeHtml(String(p.customId || ''))}">
-                        <i class="fas fa-id-card"></i> ID: ${escapeHtml(String(p.customId || ''))} <i class="fas fa-copy"></i>
-                    </button>
+                    <div class="room-profile-name-id-row">
+                        <p class="room-profile-name">${escapeHtml(p.username)} ${getAgentBadgeHTML(p.isAgent)}</p>
+                        <button type="button" id="room-profile-id-copy" class="room-profile-id-copy" data-id="${escapeHtml(String(p.customId || ''))}">
+                            <i class="fas fa-id-card"></i> ID: ${escapeHtml(String(p.customId || ''))} <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
                     <div class="room-profile-badge-row">
+                        <span class="room-profile-wealth-badge room-profile-wealth-tier-${p.wealthTier}" title="مستوى الثراء">
+                            <i class="fas fa-feather-alt room-profile-wealth-wing room-profile-wealth-wing-left"></i>
+                            <i class="fas fa-shield-alt room-profile-wealth-shield"></i>
+                            <i class="fas fa-feather-alt room-profile-wealth-wing room-profile-wealth-wing-right"></i>
+                        </span>
                         <span class="room-profile-mini-badge"><i class="fas fa-star text-yellow-400"></i> Lv.${p.level}</span>
-                        <span class="room-profile-mini-badge"><i class="fas fa-user-friends text-purple-400"></i> ${p.friendsCount}</span>
+                        ${p.gender ? `<span class="room-profile-mini-badge room-profile-mini-badge-sm"><i class="fas ${p.gender === 'male' ? 'fa-mars text-blue-400' : 'fa-venus text-pink-400'}"></i></span>` : ''}
+                        ${p.age ? `<span class="room-profile-mini-badge room-profile-mini-badge-sm"><i class="fas fa-birthday-cake text-pink-300"></i> ${p.age}</span>` : ''}
+                        ${socialInfo ? `<span class="room-profile-mini-badge room-profile-mini-badge-sm"><i class="fas ${socialInfo.icon} text-red-300"></i> ${escapeHtml(socialInfo.text)}</span>` : ''}
+                    </div>
+                    <div class="room-profile-mini-row">
+                        <div class="room-profile-mini-item">
+                            <i class="fas fa-medal" style="color:#fbbf24;font-size:20px"></i>
+                            <span class="room-profile-mini-item-label">الإنجازات</span>
+                        </div>
+                        <div class="room-profile-mini-item">
+                            <span class="club-icon-fanclub club-icon-sm">
+                                <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
+                                <i class="fas fa-heart club-icon-heart"></i>
+                                <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
+                            </span>
+                            <span class="room-profile-mini-item-label">نادي المعجبين</span>
+                        </div>
+                        <div class="room-profile-mini-item">
+                            <span class="club-icon-guardian club-icon-sm">
+                                <i class="fas fa-shield-halved club-icon-shield"></i>
+                                <i class="fas fa-heart club-icon-shield-heart"></i>
+                            </span>
+                            <span class="room-profile-mini-item-label">الحماة</span>
+                        </div>
                     </div>
                 </div>
                 ${canManage ? `
@@ -2858,7 +2901,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <div class="room-profile-actions-row">
                         <button id="room-profile-message-btn" class="room-profile-action-btn"><i class="fas fa-comment-dots"></i> رسالة</button>
                         <button id="room-profile-send-gift-btn" class="room-profile-action-btn room-profile-action-gift"><i class="fas fa-gift"></i> هدية</button>
-                        ${canInteract ? `<button id="room-profile-interact-btn" class="room-profile-action-btn room-profile-action-interact"><i class="fas fa-heart"></i> تفاعل</button>` : ''}
+                        <button id="room-profile-follow-btn" class="room-profile-action-btn room-profile-action-follow ${p.isFollowedByMe ? 'following' : ''}">
+                            <i class="fas ${p.isFollowedByMe ? 'fa-check' : 'fa-plus'}"></i> ${p.isFollowedByMe ? 'متابَع' : 'متابعة'}
+                        </button>
                     </div>
                 ` : ''}
             `;
@@ -2869,6 +2914,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     showFullProfilePage(userId);
                 });
             }
+
+            modal.querySelector('#room-profile-report-btn')?.addEventListener('click', () => {
+                modal.remove();
+                showReportModal({ type: 'user', reportedUserId: userId, reportedUsername: p.username }); // ✅ إعادة استخدام نظام الإبلاغ الموجود أصلاً
+            });
 
             modal.querySelector('#room-profile-id-copy').addEventListener('click', async (e) => {
                 const idToCopy = e.currentTarget.dataset.id;
@@ -2914,12 +2964,23 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 modal.remove();
                 showGiftStoreModal(userId, p.username); // ✅ إعادة استخدام نظام الهدايا الموجود أصلاً بالمشروع
             });
-            if (canInteract) {
-                modal.querySelector('#room-profile-interact-btn').addEventListener('click', () => {
-                    modal.remove();
-                    showPairReactionPicker(roomId, userId, p.username);
-                });
-            }
+            // ✅ متابعة/إلغاء متابعة مباشرة من نافذة ملف الغرفة — نفس مسار REST المستخدَم بالملف
+            // الكامل (يبث 'follow-changed' لكل الواجهات المفتوحة تلقائياً من طرف الخادم)
+            modal.querySelector('#room-profile-follow-btn')?.addEventListener('click', async (e) => {
+                const btn = e.currentTarget;
+                const nowFollowing = !btn.classList.contains('following');
+                btn.disabled = true;
+                try {
+                    const followRes = await fetch(`/api/users/${userId}/follow`, { method: nowFollowing ? 'POST' : 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+                    if (!followRes.ok) throw new Error();
+                    btn.classList.toggle('following', nowFollowing);
+                    btn.innerHTML = nowFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة';
+                } catch (error) {
+                    showNotification('تعذر تحديث حالة المتابعة', 'error');
+                } finally {
+                    btn.disabled = false;
+                }
+            });
         } catch (error) {
             console.error('Failed to load profile:', error);
         }
@@ -2959,69 +3020,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         el.textContent = emoji;
         seatEl.appendChild(el);
         setTimeout(() => el.remove(), 1500);
-    }
-
-    // ✅ تفاعل متصل بين مقعدين — نبضة على المقعدين معاً (نفس تأثير استقبال هدية، لونه مناسب
-    // أصلاً) + طيران الإيموجي من مقعد المُرسل نحو مقعد المستلم (نفس آلية طيران الهدية)، ثم
-    // طفوة قصيرة فوق مقعد المستلم كلمسة أخيرة. أي مقعد ثالث غير معنيّ لا يتأثر إطلاقاً —
-    // التأثير مرتبط حصراً بعنصري DOM الخاصين بمقعدي المُرسل والمستلم
-    function playSeatPairReaction(fromSeat, toSeat, emoji) {
-        const grid = document.getElementById('voice-chat-grid');
-        if (!grid) return;
-        const fromEl = grid.querySelector(`.voice-seat[data-seat="${fromSeat}"]`);
-        const toEl = grid.querySelector(`.voice-seat[data-seat="${toSeat}"]`);
-        if (!fromEl || !toEl) return;
-
-        [fromEl, toEl].forEach(el => {
-            el.classList.add('seat-gift-impact');
-            setTimeout(() => el.classList.remove('seat-gift-impact'), 500);
-        });
-
-        const fromRect = fromEl.getBoundingClientRect();
-        const toRect = toEl.getBoundingClientRect();
-        const startX = fromRect.left + fromRect.width / 2;
-        const startY = fromRect.top + fromRect.height / 2;
-        const deltaX = (toRect.left + toRect.width / 2) - startX;
-        const deltaY = (toRect.top + toRect.height / 2) - startY;
-
-        const flyEl = document.createElement('div');
-        flyEl.className = 'room-gift-fly-icon';
-        flyEl.style.left = `${startX}px`;
-        flyEl.style.top = `${startY}px`;
-        flyEl.innerHTML = `<span>${emoji}</span>`;
-        document.body.appendChild(flyEl);
-        requestAnimationFrame(() => {
-            flyEl.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px)) scale(0.6)`;
-            flyEl.style.opacity = '0';
-        });
-        setTimeout(() => flyEl.remove(), 950);
-
-        setTimeout(() => playSeatReaction(toSeat, emoji), 850);
-    }
-
-    // ✅ منتقي تفاعل بين شخصين — يظهر فقط عبر ملف شخص آخر جالس معك بنفس الغرفة حالياً
-    function showPairReactionPicker(roomId, targetUserId, targetUsername) {
-        const emojis = ['💋', '🤗', '🖐️', '❤️', '🌹'];
-        document.getElementById('pair-reaction-modal')?.remove();
-        const modal = document.createElement('div');
-        modal.id = 'pair-reaction-modal';
-        modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50';
-        modal.innerHTML = `
-            <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 w-full md:w-auto text-white text-center">
-                <p class="text-xs text-gray-400 mb-3">تفاعل مع ${escapeHtml(targetUsername)}</p>
-                <div class="grid grid-cols-5 gap-3">
-                    ${emojis.map(e => `<button data-emoji="${e}" class="pair-reaction-emoji-btn text-3xl p-2 rounded-lg hover:bg-gray-700">${e}</button>`).join('')}
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-        modal.addEventListener('click', (e) => { if (e.target.id === 'pair-reaction-modal') modal.remove(); });
-        modal.querySelectorAll('.pair-reaction-emoji-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                socket.emit('send-seat-pair-reaction', { roomId, targetUserId, emoji: btn.dataset.emoji });
-                modal.remove();
-            });
-        });
     }
 
     // ✅ قائمة إدارة مقعد — تظهر فقط للمضيف/المسؤول عبر أيقونة "إدارة الغرفة" بالملف الشخصي
@@ -6991,6 +6989,15 @@ function showXpGainAnimation(amount) {
             const el = document.querySelector('#full-profile-following-stat .full-profile-stat-num');
             if (el) el.textContent = followerFollowingCount;
         }
+        // ✅ نافذة ملف الغرفة المصغّرة (showUserProfileSheet) المفتوحة حالياً لنفس الشخص المتأثَر
+        const roomSheet = document.getElementById('user-profile-sheet');
+        if (roomSheet && roomSheet.dataset.userId === targetUserId && followerId === myUserId) {
+            const btn = document.getElementById('room-profile-follow-btn');
+            if (btn) {
+                btn.innerHTML = isFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة';
+                btn.classList.toggle('following', isFollowing);
+            }
+        }
         // ✅ أي صف مفتوح حالياً بقائمة متابِعين/متابَعين لنفس الشخص المتأثَر (من غيّرتُ متابعته أنا
         // تحديداً من جهاز/جلسة أخرى) — يُحدَّث زر المتابعة بصفه دون الحاجة لإعادة فتح القائمة
         if (followerId === myUserId) {
@@ -7327,12 +7334,6 @@ function showXpGainAnimation(amount) {
         if (currentRoomMyRole !== 'host' && currentRoomMyRole !== 'moderator') {
             showNotification(locked ? 'قفل المضيف الدردشة' : 'فتح المضيف الدردشة من جديد', 'info');
         }
-    });
-
-    // ✅ تفاعل بين شخصين جالسين (قبلة/عناق...) — تأثير بصري متصل حول مقعديهما فقط
-    socket.on('seat-pair-reaction-played', ({ roomId, fromSeat, toSeat, emoji }) => {
-        if (roomId !== currentVoiceRoomId) return;
-        playSeatPairReaction(fromSeat, toSeat, emoji);
     });
 
     socket.on('room-force-closed', ({ roomId }) => {
@@ -8144,12 +8145,19 @@ function renderProfileHubBody(u) {
                 <span class="profile-hub-soon-tag">قريباً</span>
             </div>
             <div class="profile-hub-admin-card">
-                <i class="fas fa-users" style="color:#f472b6"></i>
+                <span class="club-icon-fanclub club-icon-sm" style="margin:0 auto 2px">
+                    <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
+                    <i class="fas fa-heart club-icon-heart"></i>
+                    <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
+                </span>
                 <span class="profile-hub-admin-card-title">نادي المعجبين</span>
                 <span class="profile-hub-soon-tag">قريباً</span>
             </div>
             <div class="profile-hub-admin-card">
-                <i class="fas fa-shield-halved" style="color:#60a5fa"></i>
+                <span class="club-icon-guardian club-icon-sm" style="margin:0 auto 2px">
+                    <i class="fas fa-shield-halved club-icon-shield"></i>
+                    <i class="fas fa-heart club-icon-shield-heart"></i>
+                </span>
                 <span class="profile-hub-admin-card-title">الحماة</span>
                 <span class="profile-hub-soon-tag">قريباً</span>
             </div>
@@ -9371,15 +9379,23 @@ async function showFullProfilePage(userId) {
                 </div>
             </div>
 
-            <!-- ✅ بطاقتا "نادي المعجبين" و"الحماة" — واجهة فقط حالياً، جنباً إلى جنب -->
+            <!-- ✅ بطاقتا "نادي المعجبين" و"الحماة" — واجهة فقط حالياً، جنباً إلى جنب —
+                 قلب زهري بأجنحة بيضاء / درع متدرّج أبيض بقلبه قلب زهري (تصميم موحّد بكل مكان) -->
             <div class="grid grid-cols-2 gap-2 px-4 mb-4">
                 <div class="full-profile-mini-card">
-                    <i class="fas fa-users full-profile-mini-card-icon" style="color:#f472b6"></i>
+                    <span class="club-icon-fanclub" style="margin:0 auto 4px">
+                        <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
+                        <i class="fas fa-heart club-icon-heart"></i>
+                        <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
+                    </span>
                     <p class="full-profile-mini-card-title">نادي المعجبين</p>
                     <span class="full-profile-soon-tag">قريباً</span>
                 </div>
                 <div class="full-profile-mini-card">
-                    <i class="fas fa-shield-halved full-profile-mini-card-icon" style="color:#60a5fa"></i>
+                    <span class="club-icon-guardian" style="margin:0 auto 4px">
+                        <i class="fas fa-shield-halved club-icon-shield"></i>
+                        <i class="fas fa-heart club-icon-shield-heart"></i>
+                    </span>
                     <p class="full-profile-mini-card-title">الحماة</p>
                     <span class="full-profile-soon-tag">قريباً</span>
                 </div>

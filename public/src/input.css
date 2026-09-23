@@ -903,15 +903,16 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     max-width: 380px;
     position: relative;
     overflow: visible;
-    padding-top: 30px;
     animation: slideUp 0.25s ease-out;
 }
 @media (min-width: 768px) { .room-profile-sheet-card { border-radius: 20px; margin-bottom: 16px; } }
-.room-profile-body { padding-bottom: 4px; }
-.room-profile-header { text-align: center; padding: 0 16px 4px; position: relative; }
+.room-profile-body { padding-bottom: 4px; position: relative; }
+/* ✅ padding-top: 42px يفسح فوق حافة البطاقة تماماً مساحة نصف ارتفاع الصورة (64px)، فتطفو
+   الصورة نصفها خارج البطاقة (top:-32px) والنصف الآخر بداخلها دون تغطية الاسم تحتها */
+.room-profile-header { text-align: center; padding: 42px 16px 4px; position: relative; }
 .room-profile-avatar-wrap {
     position: absolute;
-    top: -30px;
+    top: -32px;
     left: 50%;
     transform: translateX(-50%);
     width: 64px;
@@ -927,20 +928,44 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     box-shadow: 0 6px 16px rgba(0,0,0,0.5);
     cursor: pointer;
 }
-.room-profile-name { font-size: 14px; font-weight: 800; color: #fff; margin-top: 6px; }
+/* ✅ إبلاغ — علامة علم بلا خلفية بزاوية البطاقة (نفس موضع أزرار الإغلاق المعتادة، لكن بلا
+   إطار/خلفية حفاظاً على أناقة الواجهة الخالية من الأزرار الصريحة) */
+.room-profile-report-btn {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    background: transparent;
+    border: none;
+    color: rgba(255,255,255,0.32);
+    font-size: 15px;
+    padding: 6px;
+    z-index: 3;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+.room-profile-report-btn:active { color: #f87171; }
+.room-profile-name-id-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 2px;
+}
+.room-profile-name { font-size: 14px; font-weight: 800; color: #fff; }
 .room-profile-id-copy {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     font-size: 10.5px;
     color: #9ca3af;
-    background: rgba(255,255,255,0.06);
-    padding: 3px 10px;
-    border-radius: 999px;
-    margin-top: 5px;
+    background: transparent;
+    border: none;
+    padding: 2px 0;
 }
-.room-profile-id-copy:active { background: rgba(255,255,255,0.14); }
-.room-profile-badge-row { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
+.room-profile-id-copy:active { opacity: 0.6; }
+.room-profile-badge-row { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 .room-profile-mini-badge {
     display: inline-flex;
     align-items: center;
@@ -952,6 +977,112 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     font-weight: 700;
     color: #e5e7eb;
 }
+.room-profile-mini-badge-sm { padding: 2px 7px; font-size: 9.5px; }
+
+/* ✅ شارة "مستوى الثراء" — درع يتدرّج بصرياً عبر 5 مستويات حسب مجموع قيمة الهدايا المستلمة
+   فعلياً (نفس تدرّج نقاط مستوى الغرفة بالمشروع: 0/1000/5000/15000/40000)؛ تبدأ درعاً بسيطاً
+   وتتطوّر لأجنحة ثم توهّج ثم تلألؤ ألماسي بالمستوى الأعلى — إحساس تصاعدي واضح لقوة الدعم */
+.room-profile-wealth-badge {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 26px;
+}
+.room-profile-wealth-shield { font-size: 17px; color: #9ca3af; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+.room-profile-wealth-wing {
+    position: absolute;
+    top: 46%;
+    font-size: 9px;
+    color: #fff;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.room-profile-wealth-wing-left { left: -6px; transform: translateY(-50%) rotate(-30deg) scaleX(-1); }
+.room-profile-wealth-wing-right { right: -6px; transform: translateY(-50%) rotate(30deg); }
+.room-profile-wealth-tier-2 .room-profile-wealth-shield { color: #fb923c; }
+.room-profile-wealth-tier-3 .room-profile-wealth-shield { color: #fbbf24; filter: drop-shadow(0 0 4px rgba(251,191,36,0.6)); }
+.room-profile-wealth-tier-3 .room-profile-wealth-wing { opacity: 0.85; }
+.room-profile-wealth-tier-4 .room-profile-wealth-shield { color: #fde047; filter: drop-shadow(0 0 7px rgba(253,224,71,0.85)); }
+.room-profile-wealth-tier-4 .room-profile-wealth-wing { opacity: 1; color: #fef9c3; }
+.room-profile-wealth-tier-5 .room-profile-wealth-shield {
+    filter: drop-shadow(0 0 8px rgba(199,210,254,0.9));
+}
+/* ملاحظة: أيقونات Font Awesome ترسم الرمز الفعلي عبر ::before (خط ويب)، لذا التدرّج اللوني
+   بتقنية background-clip:text لازم يُطبَّق على ::before نفسه، لا على عنصر <i> الفارغ */
+.room-profile-wealth-tier-5 .room-profile-wealth-shield::before {
+    background: linear-gradient(120deg, #93c5fd, #ffffff, #c4b5fd, #ffffff);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: wealthShimmer 2.5s linear infinite;
+}
+.room-profile-wealth-tier-5 .room-profile-wealth-wing { opacity: 1; color: #e0e7ff; }
+@keyframes wealthShimmer { 0% { background-position: 0% 0; } 100% { background-position: 300% 0; } }
+
+/* ✅ صف مصغّر: إنجازات مضغوطة (أيقونة واحدة بدل شريط عريض) + نادي المعجبين + الحماة، جنباً
+   لجنب داخل ورقة ملف الغرفة الصغيرة — كلها لا تزال "قريباً" (واجهة تمهيدية فقط) */
+.room-profile-mini-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px 16px 2px;
+}
+.room-profile-mini-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    flex: 1;
+    max-width: 90px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 12px;
+    padding: 8px 4px 6px;
+}
+.room-profile-mini-item-label { font-size: 8.5px; color: #9ca3af; font-weight: 700; white-space: nowrap; }
+
+/* ✅ أيقونات "نادي المعجبين" (قلب زهري بأجنحة بيضاء صغيرة) و"الحماة" (درع متدرّج أبيض بقلبه
+   قلب زهري) — تصميم موحّد يُعاد استخدامه بكل مكان تظهر فيه هذي المفاهيم بالتطبيق */
+.club-icon-fanclub, .club-icon-guardian {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.club-icon-heart { font-size: 19px; color: #f472b6; filter: drop-shadow(0 2px 4px rgba(244,114,182,0.55)); }
+.club-icon-wing { position: absolute; top: 50%; font-size: 10px; color: #fff; opacity: 0.9; }
+.club-icon-wing-left { left: -1px; transform: translateY(-62%) rotate(-25deg) scaleX(-1); }
+.club-icon-wing-right { right: -1px; transform: translateY(-62%) rotate(25deg); }
+.club-icon-shield {
+    font-size: 32px;
+    filter: drop-shadow(0 2px 5px rgba(255,255,255,0.3));
+}
+/* ملاحظة: رمز Font Awesome يُرسَم عبر ::before (خط ويب)، لذا تدرّج اللون بتقنية
+   background-clip:text لازم يُطبَّق على ::before نفسه، لا على عنصر <i> الفارغ */
+.club-icon-shield::before {
+    background: linear-gradient(145deg, #ffffff, #cbd5e1);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+.club-icon-shield-heart {
+    position: absolute;
+    font-size: 12px;
+    color: #f472b6;
+    top: 54%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+.club-icon-sm { width: 30px; height: 30px; }
+.club-icon-sm .club-icon-heart { font-size: 14px; }
+.club-icon-sm .club-icon-wing { font-size: 8px; }
+.club-icon-sm .club-icon-shield { font-size: 24px; }
+.club-icon-sm .club-icon-shield-heart { font-size: 9px; }
+
 .room-profile-mgmt-row {
     display: flex;
     justify-content: center;
@@ -984,7 +1115,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     color: #e5e7eb;
 }
 .room-profile-action-gift { background: rgba(236,72,153,0.18); color: #f9a8d4; }
-.room-profile-action-interact { background: rgba(244,63,94,0.18); color: #fda4af; }
+.room-profile-action-follow { background: linear-gradient(135deg, #a855f7, #ec4899); color: #fff; }
+.room-profile-action-follow.following { background: rgba(255,255,255,0.06); color: #e5e7eb; }
 
 /* ✅ زر "غرف الصدارة" ببطاقة معلومات الغرفة — يفتح منصّة التتويج بدل "قريباً" ثابتة */
 .room-info-rankings-btn {
@@ -1392,7 +1524,10 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     min-width: 0;
     font-size: 13px;
     line-height: 1.55;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
 }
+.room-chat-msg-line:active { opacity: 0.7; }
 .room-chat-msg-name {
     font-weight: 800;
     font-size: 12px;
