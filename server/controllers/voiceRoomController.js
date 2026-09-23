@@ -28,6 +28,26 @@ const GiftLog = require('../models/GiftLog');
 if (!process.env.TURN_URLS || !process.env.TURN_USERNAME || !process.env.TURN_CREDENTIAL) {
     console.warn('[VOICE] ⚠️ لا يوجد خادم TURN مخصّص مضبوط (TURN_URLS/TURN_USERNAME/TURN_CREDENTIAL) — سيُستخدم الاحتياطي المجاني المشترك (Open Relay Project)، وهو غير مضمون الموثوقية دائماً. للحصول على صوت موثوق بين شبكات مختلفة: أنشئ حساباً مجانياً بـhttps://dashboard.metered.ca/signup (20GB مجاناً شهرياً) واضبط متغيرات البيئة الثلاثة أعلاه بقيم حسابك');
 }
+// 🐛 إصلاح جوهري: قيمة TURN_URLS كانت تُستخدم كما هي بلا أي تحقق — أي خطأ لصق بسيط بلوحة
+// متغيرات البيئة (مسافة زائدة تُفسَد لاحقاً، أو رابط بمعامل غير "transport" أو بقيمة نقل
+// غير udp/tcp) كان يمر للعميل كما هو، فيرمي `new RTCPeerConnection(...)` استثناءً متزامناً
+// ("ICE server parsing failed") يمنع تكوين أي اتصال صوتي بالكامل — أسوأ من عدم ضبط TURN
+// إطلاقاً. الآن نتحقق من كل رابط صراحة قبل إرساله؛ أي رابط غير صالح يُستبعَد وحده (لا يُسقط
+// الإعداد بالكامل)، مع تحذير بالسجلات يوضّح بالضبط أي رابط كان المشكلة
+const VALID_TURN_URL_PATTERN = /^(turn|turns|stun):[^?]+(\?transport=(udp|tcp))?$/i;
+function sanitizeTurnUrls(rawUrls) {
+    const valid = [];
+    const rejected = [];
+    rawUrls.forEach(u => {
+        if (VALID_TURN_URL_PATTERN.test(u)) valid.push(u);
+        else rejected.push(u);
+    });
+    if (rejected.length > 0) {
+        console.warn(`[VOICE] ⚠️ ${rejected.length} رابط TURN بمتغير TURN_URLS غير صالح واستُبعِد (تحقّق من القيمة بلوحة Railway — لا مسافات/أحرف زائدة، وصيغة المعامل ?transport=udp أو ?transport=tcp فقط):`, rejected);
+    }
+    return valid;
+}
+
 exports.getIceServers = (req, res) => {
     const iceServers = [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -36,7 +56,7 @@ exports.getIceServers = (req, res) => {
 
     const turnUrlsEnv = (process.env.TURN_URLS || '').trim();
     if (turnUrlsEnv && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
-        const urls = turnUrlsEnv.split(',').map(u => u.trim()).filter(Boolean);
+        const urls = sanitizeTurnUrls(turnUrlsEnv.split(',').map(u => u.trim()).filter(Boolean));
         if (urls.length > 0) {
             iceServers.push({ urls, username: process.env.TURN_USERNAME, credential: process.env.TURN_CREDENTIAL });
         }

@@ -4750,7 +4750,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         pc = voicePeerConnections.get(peerUserId);
         if (pc) return pc;
 
-        pc = new RTCPeerConnection({ iceServers: VOICE_ICE_SERVERS });
+        // 🛡️ دفاعي: لو حوت VOICE_ICE_SERVERS رابطاً غير صالح (رغم التحقق بالسيرفر، احتياطاً
+        // لأي خطأ إعداد لم يُعَد نشره بعد) يرمي RTCPeerConnection استثناءً متزامناً فوراً
+        // ("ICE server parsing failed") يمنع أي اتصال صوتي بالكامل حتى لو STUN وحده كافٍ
+        // بهذي الحالة — نتراجع فوراً لقائمة STUN آمنة معروفة بدل تعطّل الميزة كاملة
+        try {
+            pc = new RTCPeerConnection({ iceServers: VOICE_ICE_SERVERS });
+        } catch (error) {
+            console.error('[VOICE] ⚠️ إعداد خوادم ICE به رابط غير صالح — التراجع مؤقتاً لـSTUN فقط:', error, VOICE_ICE_SERVERS);
+            pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] });
+        }
         voicePeerConnections.set(peerUserId, pc);
 
         if (localMicStream) {
