@@ -2847,36 +2847,35 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         </button>
                     </div>
                     <div class="room-profile-badge-row">
-                        <span class="room-profile-wealth-badge room-profile-wealth-tier-${p.wealthTier}" title="مستوى الثراء">
-                            <i class="fas fa-feather-alt room-profile-wealth-wing room-profile-wealth-wing-left"></i>
-                            <i class="fas fa-shield-alt room-profile-wealth-shield"></i>
-                            <i class="fas fa-feather-alt room-profile-wealth-wing room-profile-wealth-wing-right"></i>
-                        </span>
+                        ${renderSupportBadgeHTML('giving', p.supportGiving)}
+                        ${renderSupportBadgeHTML('receiving', p.supportReceiving)}
                         <span class="room-profile-mini-badge"><i class="fas fa-star text-yellow-400"></i> Lv.${p.level}</span>
                         ${p.gender ? `<span class="room-profile-mini-badge room-profile-mini-badge-sm"><i class="fas ${p.gender === 'male' ? 'fa-mars text-blue-400' : 'fa-venus text-pink-400'}"></i></span>` : ''}
                         ${p.age ? `<span class="room-profile-mini-badge room-profile-mini-badge-sm"><i class="fas fa-birthday-cake text-pink-300"></i> ${p.age}</span>` : ''}
                         ${socialInfo ? `<span class="room-profile-mini-badge room-profile-mini-badge-sm"><i class="fas ${socialInfo.icon} text-red-300"></i> ${escapeHtml(socialInfo.text)}</span>` : ''}
                     </div>
-                    <div class="room-profile-mini-row">
-                        <div class="room-profile-mini-item">
-                            <i class="fas fa-medal" style="color:#fbbf24;font-size:20px"></i>
-                            <span class="room-profile-mini-item-label">الإنجازات</span>
-                        </div>
-                        <div class="room-profile-mini-item">
-                            <span class="club-icon-fanclub club-icon-sm">
-                                <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
-                                <i class="fas fa-heart club-icon-heart"></i>
-                                <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
-                            </span>
-                            <span class="room-profile-mini-item-label">نادي المعجبين</span>
-                        </div>
-                        <div class="room-profile-mini-item">
-                            <span class="club-icon-guardian club-icon-sm">
-                                <i class="fas fa-shield-halved club-icon-shield"></i>
-                                <i class="fas fa-heart club-icon-shield-heart"></i>
-                            </span>
-                            <span class="room-profile-mini-item-label">الحماة</span>
-                        </div>
+                </div>
+                <div class="room-profile-achv-card" id="room-profile-achv-card">
+                    <div class="room-profile-achv-left"><i class="fas fa-medal"></i><span class="room-profile-achv-title">الإنجازات</span></div>
+                    <span class="room-profile-soon-chip">قريباً</span>
+                </div>
+                <div class="room-profile-club-row">
+                    <div class="room-profile-club-card" id="room-profile-fanclub-card">
+                        <span class="club-icon-fanclub">
+                            <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
+                            <i class="fas fa-heart club-icon-heart"></i>
+                            <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
+                        </span>
+                        <p class="room-profile-club-title">نادي المعجبين</p>
+                        <p class="room-profile-club-sub">انضم الآن</p>
+                    </div>
+                    <div class="room-profile-club-card" id="room-profile-guardian-card">
+                        <span class="club-icon-guardian">
+                            <i class="fas fa-shield-halved club-icon-shield"></i>
+                            <i class="fas fa-heart club-icon-shield-heart"></i>
+                        </span>
+                        <p class="room-profile-club-title">الحماة</p>
+                        <span class="room-profile-soon-chip">قريباً</span>
                     </div>
                 </div>
                 ${canManage ? `
@@ -2902,7 +2901,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         <button id="room-profile-message-btn" class="room-profile-action-btn"><i class="fas fa-comment-dots"></i> رسالة</button>
                         <button id="room-profile-send-gift-btn" class="room-profile-action-btn room-profile-action-gift"><i class="fas fa-gift"></i> هدية</button>
                         <button id="room-profile-follow-btn" class="room-profile-action-btn room-profile-action-follow ${p.isFollowedByMe ? 'following' : ''}">
-                            <i class="fas ${p.isFollowedByMe ? 'fa-check' : 'fa-plus'}"></i> ${p.isFollowedByMe ? 'متابَع' : 'متابعة'}
+                            <i class="fas ${p.isFollowedByMe ? 'fa-heart' : 'fa-plus'}"></i> ${p.isFollowedByMe ? 'انضمام' : 'متابعة'}
                         </button>
                     </div>
                 ` : ''}
@@ -2950,36 +2949,57 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     });
                 });
             }
-            // ✅ "رسالة" هنا تعني منشن جاهز داخل دردشة الغرفة العامة (رد سريع)، وليس فتح محادثة خاصة
+            // ✅ "رسالة" تفتح المحادثة الخاصة الحقيقية بدل منشن بدردشة الغرفة — لو لست تتابعه
+            // بعد، تظهر بعدها نافذة لطيفة تقترح متابعته (يمكن تجاهلها والاستمرار بالمحادثة)
             modal.querySelector('#room-profile-message-btn')?.addEventListener('click', () => {
                 modal.remove();
-                const input = document.getElementById('room-chat-input');
-                if (input) {
-                    input.value = `@${p.username} `;
-                    input.focus();
-                    input.setSelectionRange(input.value.length, input.value.length);
+                openPrivateChat(userId, p.username);
+                if (!p.isFollowedByMe) {
+                    setTimeout(() => showFollowPromptModal(userId, p.username, p.profileImage), 450);
                 }
             });
+            // ✅ نفس نافذة إرسال الهدايا المستخدَمة داخل الغرفة بالضبط (وليس نافذة منفصلة)، لكن
+            // بمستلم واحد محدَّد سلفاً (هذا الشخص) بدل قائمة اختيار من الجالسين على المقاعد
             modal.querySelector('#room-profile-send-gift-btn')?.addEventListener('click', () => {
                 modal.remove();
-                showGiftStoreModal(userId, p.username); // ✅ إعادة استخدام نظام الهدايا الموجود أصلاً بالمشروع
+                showRoomGiftModal(roomId, { id: userId, username: p.username, profileImage: p.profileImage });
             });
-            // ✅ متابعة/إلغاء متابعة مباشرة من نافذة ملف الغرفة — نفس مسار REST المستخدَم بالملف
-            // الكامل (يبث 'follow-changed' لكل الواجهات المفتوحة تلقائياً من طرف الخادم)
+            // ✅ زر المتابعة: أول ضغطة تتابعه فعلياً ويتحوّل فوراً لاختصار "انضمام" لنادي
+            // المعجبين (قلب) بدل تبديل حالة المتابعة — إلغاء المتابعة متاح من الملف الكامل فقط
             modal.querySelector('#room-profile-follow-btn')?.addEventListener('click', async (e) => {
                 const btn = e.currentTarget;
-                const nowFollowing = !btn.classList.contains('following');
+                if (btn.classList.contains('following')) {
+                    modal.remove();
+                    showFanClubSheet(userId, p.username, p.profileImage);
+                    return;
+                }
                 btn.disabled = true;
                 try {
-                    const followRes = await fetch(`/api/users/${userId}/follow`, { method: nowFollowing ? 'POST' : 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+                    const followRes = await fetch(`/api/users/${userId}/follow`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
                     if (!followRes.ok) throw new Error();
-                    btn.classList.toggle('following', nowFollowing);
-                    btn.innerHTML = nowFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة';
+                    btn.classList.add('following');
+                    btn.innerHTML = '<i class="fas fa-heart"></i> انضمام';
                 } catch (error) {
                     showNotification('تعذر تحديث حالة المتابعة', 'error');
                 } finally {
                     btn.disabled = false;
                 }
+            });
+            modal.querySelectorAll('.support-badge').forEach(el => {
+                el.addEventListener('click', () => {
+                    const kind = el.dataset.supportKind;
+                    showSupportLevelInfoModal(kind, kind === 'giving' ? p.supportGiving : p.supportReceiving);
+                });
+            });
+            modal.querySelector('#room-profile-achv-card')?.addEventListener('click', () => {
+                showComingSoonSheet('الإنجازات', 'نظام الإنجازات قيد التطوير حالياً — ترقّبه قريباً!', 'fa-medal');
+            });
+            modal.querySelector('#room-profile-guardian-card')?.addEventListener('click', () => {
+                showComingSoonSheet('الحماة', 'ميزة "الحماة" قادمة قريباً!', 'fa-shield-halved');
+            });
+            modal.querySelector('#room-profile-fanclub-card')?.addEventListener('click', () => {
+                modal.remove();
+                showFanClubSheet(userId, p.username, p.profileImage);
             });
         } catch (error) {
             console.error('Failed to load profile:', error);
@@ -6994,7 +7014,7 @@ function showXpGainAnimation(amount) {
         if (roomSheet && roomSheet.dataset.userId === targetUserId && followerId === myUserId) {
             const btn = document.getElementById('room-profile-follow-btn');
             if (btn) {
-                btn.innerHTML = isFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة';
+                btn.innerHTML = isFollowing ? '<i class="fas fa-heart"></i> انضمام' : '<i class="fas fa-plus"></i> متابعة';
                 btn.classList.toggle('following', isFollowing);
             }
         }
@@ -7006,6 +7026,34 @@ function showXpGainAnimation(amount) {
                 btn.textContent = isFollowing ? 'متابَع' : 'متابعة';
             });
         }
+    });
+
+    // ✅ شارتا الدعم/التلقي تحدّثتا (هدية أُرسلت أو استُلمت، أو انضمام نادي معجبين) — تحديث
+    // حي لأي واجهة مفتوحة حالياً تعرض شارات هذا المستخدم تحديداً (نافذة ملف الغرفة الوحيدة
+    // التي تعرضها اليوم؛ يُتجاهل بصمت لو لا شيء مفتوحاً له)
+    socket.on('support-level-updated', ({ userId, giving, receiving }) => {
+        const sheet = document.getElementById('user-profile-sheet');
+        if (!sheet || sheet.dataset.userId !== userId) return;
+        const givingBadge = sheet.querySelector('.support-badge-giving');
+        const receivingBadge = sheet.querySelector('.support-badge-receiving');
+        if (givingBadge) {
+            givingBadge.className = `support-badge support-badge-giving tier-${giving.tierIndex}`;
+            const lvl = givingBadge.querySelector('.support-badge-level');
+            if (lvl) lvl.textContent = giving.level;
+        }
+        if (receivingBadge) {
+            receivingBadge.className = `support-badge support-badge-receiving tier-${receiving.tierIndex}`;
+            const lvl = receivingBadge.querySelector('.support-badge-level');
+            if (lvl) lvl.textContent = receiving.level;
+        }
+    });
+
+    // ✅ انضمام عضو جديد لنادي معجبين — تحديث حي لعدّاد الأعضاء لو نافذة هذا النادي مفتوحة حالياً
+    socket.on('fanclub-member-count-updated', ({ ownerId, memberCount }) => {
+        const fcModal = document.getElementById('fanclub-modal');
+        if (!fcModal || fcModal.dataset.ownerId !== ownerId) return;
+        const el = document.getElementById('fanclub-member-count-num');
+        if (el) el.textContent = memberCount;
     });
 
     socket.on('seat-lock-changed', ({ roomId, seatNumber, isLocked }) => {
@@ -9297,6 +9345,285 @@ function buildSocialLinkUrl(platform, rawValue) {
     return null;
 }
 
+// ✅ شارة دعم/تلقي واحدة — نفس القالب لكلا الاتجاهين (مسار "ما أرسله المستخدم من دعم" ومسار
+// "ما استلمه فعلياً")، يميّزهما فقط data-support-kind (يحدّد اللون بالـCSS) وأيقونة الوسط
+// (لهب للدعم، تاج للتلقي) — تُستخدم بنافذة ملف الغرفة وبالملف الكامل معاً
+function renderSupportBadgeHTML(kind, info) {
+    if (!info) return '';
+    const icon = kind === 'giving' ? 'fa-fire' : 'fa-crown';
+    const label = kind === 'giving' ? 'مستوى الدعم' : 'مستوى التلقي';
+    return `
+        <span class="support-badge support-badge-${kind} tier-${info.tierIndex}" data-support-kind="${kind}" title="${label}">
+            <i class="fas ${icon} support-badge-icon"></i>
+            <span class="support-badge-level">${info.level}</span>
+        </span>
+    `;
+}
+
+// ✅ لوحة صغيرة عامة "قريباً" — تُستخدم للإنجازات والحماة بنافذة ملف الغرفة وبالملف الكامل معاً
+function showComingSoonSheet(title, text, icon) {
+    document.getElementById('coming-soon-sheet')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'coming-soon-sheet';
+    modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-[340] p-4';
+    modal.innerHTML = `
+        <div class="coming-soon-sheet-card">
+            <div class="coming-soon-icon"><i class="fas ${icon}"></i></div>
+            <p class="coming-soon-title">${escapeHtml(title)}</p>
+            <p class="coming-soon-text">${escapeHtml(text)}</p>
+            <button type="button" id="coming-soon-ok-btn" class="coming-soon-ok-btn">حسناً</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'coming-soon-sheet') modal.remove(); });
+    modal.querySelector('#coming-soon-ok-btn').addEventListener('click', () => modal.remove());
+}
+
+// ✅ لوحة شرح شارة الدعم/التلقي — المستوى الحالي، فئته المسمّاة، شريط تقدّم للمستوى
+// التالي، وعدد الكوينز اللازمة للوصول إليه؛ قسم المكافآت "قريباً" فقط حالياً
+function showSupportLevelInfoModal(kind, info) {
+    if (!info) return;
+    document.getElementById('support-info-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'support-info-modal';
+    modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-[340] p-4';
+    const icon = kind === 'giving' ? 'fa-fire' : 'fa-crown';
+    const title = kind === 'giving' ? 'مستوى الدعم' : 'مستوى التلقي';
+    const desc = kind === 'giving'
+        ? 'يرتفع كلما دعمتَ الآخرين بإرسال الهدايا لهم'
+        : 'يرتفع كلما استلمتَ دعماً أكبر من الآخرين بالهدايا';
+    modal.innerHTML = `
+        <div class="support-info-card">
+            <div class="support-info-badge-wrap">
+                <span class="support-badge support-badge-${kind} tier-${info.tierIndex}">
+                    <i class="fas ${icon} support-badge-icon"></i>
+                    <span class="support-badge-level">${info.level}</span>
+                </span>
+            </div>
+            <p class="support-info-title">${title} — Lv.${info.level}</p>
+            <p class="support-info-tier">فئة "${escapeHtml(info.tierName)}" · ${desc}</p>
+            <div class="support-info-progress-track">
+                <div class="support-info-progress-fill" style="width:${info.progressPercent}%"></div>
+            </div>
+            <p class="support-info-progress-label">
+                ${info.isMax ? 'وصلت لأعلى مستوى حالياً 🎉' : `تحتاج <b>${info.pointsToNext.toLocaleString()}</b> كوينز إضافية للمستوى التالي`}
+            </p>
+            <div class="support-info-rewards-row">
+                <i class="fas fa-gift"></i>
+                <span class="support-info-rewards-text">مكافآت خاصة عند كل مستوى جديد — قريباً</span>
+            </div>
+            <button type="button" id="support-info-ok-btn" class="coming-soon-ok-btn" style="margin-top:16px">حسناً</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'support-info-modal') modal.remove(); });
+    modal.querySelector('#support-info-ok-btn').addEventListener('click', () => modal.remove());
+}
+
+// ✅ نافذة "نادي المعجبين" — عرض الانضمام (بوردة رمزية بكوينز واحد)، ترتيب أقوى النوادي
+// (يومي/أسبوعي عبر أيقونة الكأس)، وقائمة أعضاء أي نادٍ (بالنقر على صف بالترتيب). ثلاث
+// "شاشات" تتبادل داخل نفس الورقة (لا نوافذ منفصلة)، بزر رجوع واحد يعرف دوماً وجهته التالية.
+// تُستدعى من نافذة ملف الغرفة والملف الكامل معاً — نافذة موحّدة بكل مكان
+async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
+    document.getElementById('fanclub-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'fanclub-modal';
+    modal.dataset.ownerId = ownerId; // ✅ يسمح لمستمع 'fanclub-member-count-updated' بمزامنة العدّاد لحظياً
+    modal.className = 'fixed inset-0 bg-black/60 flex items-end justify-center z-[320] p-0';
+    modal.innerHTML = `
+        <div class="fanclub-sheet-card">
+            <div class="fanclub-sheet-header">
+                <button type="button" id="fanclub-back-btn" class="fanclub-header-btn" style="visibility:hidden"><i class="fas fa-arrow-right"></i></button>
+                <span class="fanclub-header-title">نادي المعجبين</span>
+                <button type="button" id="fanclub-trophy-btn" class="fanclub-header-btn fanclub-trophy-btn" title="ترتيب النوادي"><i class="fas fa-trophy"></i></button>
+            </div>
+            <div id="fanclub-sheet-body" class="fanclub-sheet-body">
+                <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'fanclub-modal') modal.remove(); });
+
+    let backTarget = null; // null | 'join' | 'leaderboard'
+    let lastPeriod = 'weekly';
+    const backBtn = modal.querySelector('#fanclub-back-btn');
+    const trophyBtn = modal.querySelector('#fanclub-trophy-btn');
+    const body = modal.querySelector('#fanclub-sheet-body');
+
+    function setHeader(mode) {
+        if (mode === 'join') { backBtn.style.visibility = 'hidden'; trophyBtn.style.visibility = 'visible'; backTarget = null; }
+        else if (mode === 'leaderboard') { backBtn.style.visibility = 'visible'; trophyBtn.style.visibility = 'hidden'; backTarget = 'join'; }
+        else { backBtn.style.visibility = 'visible'; trophyBtn.style.visibility = 'hidden'; backTarget = 'leaderboard'; }
+    }
+
+    async function renderJoinView() {
+        setHeader('join');
+        body.innerHTML = `<div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>`;
+        try {
+            const [summaryRes, shopRes] = await Promise.all([
+                fetch(`/api/fanclub/${ownerId}/summary`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+                fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+            ]);
+            if (summaryRes.status !== 'success') throw new Error();
+            const s = summaryRes.data;
+            const rose = (shopRes.data?.gifts || []).find(g => g.name === 'وردة');
+            body.innerHTML = `
+                <div class="fanclub-owner-avatar-wrap"><img src="${ownerProfileImage}" class="fanclub-owner-avatar"></div>
+                <p class="fanclub-owner-name">نادي ${escapeHtml(ownerUsername)}</p>
+                <p class="fanclub-member-count"><b id="fanclub-member-count-num">${s.memberCount}</b> عضو في النادي</p>
+                <button type="button" id="fanclub-join-btn" class="fanclub-join-btn ${s.isMember ? 'joined' : ''}" ${s.isMember ? 'disabled' : ''}>
+                    <i class="fas ${s.isMember ? 'fa-check' : 'fa-heart'}"></i> ${s.isMember ? 'أنت عضو بالفعل' : 'الانضمام إلى نادي المعجبين'}
+                </button>
+                ${rose ? `
+                <div class="fanclub-gift-preview">
+                    <img src="${rose.imageUrl}" onerror="this.style.display='none'">
+                    <span class="fanclub-gift-preview-text">الانضمام يرسل وردة رمزية لصاحب النادي</span>
+                    <span class="fanclub-gift-preview-price"><i class="fas fa-coins"></i> 1</span>
+                </div>` : ''}
+            `;
+            modal.querySelector('#fanclub-join-btn')?.addEventListener('click', async (e) => {
+                if (s.isMember) return;
+                const btn = e.currentTarget;
+                btn.disabled = true;
+                try {
+                    const joinRes = await fetch(`/api/fanclub/${ownerId}/join`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                    const joinResult = await joinRes.json();
+                    if (!joinRes.ok) {
+                        showNotification(joinResult.message || 'تعذر الانضمام', 'error');
+                        btn.disabled = false;
+                        return;
+                    }
+                    if (joinResult.data.newCoins !== undefined) {
+                        const localUser = JSON.parse(localStorage.getItem('user'));
+                        if (localUser) {
+                            localUser.coins = joinResult.data.newCoins;
+                            localStorage.setItem('user', JSON.stringify(localUser));
+                            const coinsEl = document.getElementById('coins');
+                            if (coinsEl) coinsEl.textContent = localUser.coins;
+                        }
+                    }
+                    showNotification(`انضممت لنادي ${escapeHtml(ownerUsername)} 🌹`, 'success');
+                    renderJoinView();
+                } catch (error) {
+                    showNotification('تعذر الانضمام', 'error');
+                    btn.disabled = false;
+                }
+            });
+        } catch (error) {
+            body.innerHTML = `<p class="text-center text-gray-400 py-6">تعذر تحميل نادي المعجبين</p>`;
+        }
+    }
+
+    async function renderLeaderboardView(period = 'weekly') {
+        lastPeriod = period;
+        setHeader('leaderboard');
+        body.innerHTML = `<div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>`;
+        try {
+            const res = await fetch(`/api/fanclub/leaderboard?period=${period}&limit=10`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+            if (res.status !== 'success') throw new Error();
+            const { leaders, myRank } = res.data;
+            const myProfileImage = (JSON.parse(localStorage.getItem('user')) || {}).profileImage || '';
+            body.innerHTML = `
+                <p class="fanclub-rank-explainer">يتم ترتيب نوادي المعجبين بناءً على إجمالي عدد الأعضاء. تُحدَّث الترتيبات أسبوعياً، وستفوز أعلى 10 نوادٍ بمكافآت كوينز أو فرص أكثر — قريباً.</p>
+                <div class="fanclub-rank-tabs">
+                    <span class="fanclub-rank-tab ${period === 'daily' ? 'active' : ''}" data-period="daily">اليوم</span>
+                    <span class="fanclub-rank-tab ${period === 'weekly' ? 'active' : ''}" data-period="weekly">الأسبوع</span>
+                </div>
+                <div class="fanclub-rank-list">
+                    ${leaders.length === 0 ? '<p class="fanclub-rank-empty">لا توجد نوادٍ مصنَّفة بعد</p>' : leaders.map(l => `
+                        <div class="fanclub-rank-row" data-rank="${l.rank}" data-owner-id="${l.ownerId}" data-owner-username="${escapeHtml(l.username)}">
+                            <span class="fanclub-rank-num">${l.rank}</span>
+                            <img src="${l.profileImage}" class="fanclub-rank-avatar">
+                            <span class="fanclub-rank-name">${escapeHtml(l.username)}</span>
+                            <span class="fanclub-rank-counts">اليوم: <b>${l.todayMembers}</b><br>الإجمالي: <b>${l.totalMembers}</b></span>
+                        </div>
+                    `).join('')}
+                </div>
+                ${myRank && !myRank.inTop ? `
+                    <div class="fanclub-my-rank-pin">
+                        <span class="fanclub-rank-num">${myRank.rank}</span>
+                        <img src="${myProfileImage}" class="fanclub-rank-avatar">
+                        <span class="fanclub-rank-name">أنا</span>
+                        <span class="fanclub-rank-counts">اليوم: <b>${myRank.todayMembers}</b><br>الإجمالي: <b>${myRank.totalMembers}</b></span>
+                    </div>
+                ` : ''}
+            `;
+            body.querySelectorAll('.fanclub-rank-tab').forEach(tab => {
+                tab.addEventListener('click', () => renderLeaderboardView(tab.dataset.period));
+            });
+            body.querySelectorAll('.fanclub-rank-row').forEach(row => {
+                row.addEventListener('click', () => renderMembersView(row.dataset.ownerId, row.dataset.ownerUsername));
+            });
+        } catch (error) {
+            body.innerHTML = `<p class="text-center text-gray-400 py-6">تعذر تحميل الترتيب</p>`;
+        }
+    }
+
+    async function renderMembersView(targetOwnerId, targetOwnerUsername) {
+        setHeader('members');
+        body.innerHTML = `<div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>`;
+        try {
+            const res = await fetch(`/api/fanclub/${targetOwnerId}/members?limit=50`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+            if (res.status !== 'success') throw new Error();
+            const members = res.data.members;
+            body.innerHTML = `
+                <p class="fanclub-rank-explainer">أعضاء نادي ${escapeHtml(targetOwnerUsername)}</p>
+                <div class="fanclub-members-list">
+                    ${members.length === 0 ? '<p class="fanclub-rank-empty">لا يوجد أعضاء بعد</p>' : members.map(m => `
+                        <div class="fanclub-member-row">
+                            <img src="${m.profileImage}">
+                            <span>${escapeHtml(m.username)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        } catch (error) {
+            body.innerHTML = `<p class="text-center text-gray-400 py-6">تعذر تحميل الأعضاء</p>`;
+        }
+    }
+
+    backBtn.addEventListener('click', () => {
+        if (backTarget === 'join') renderJoinView();
+        else if (backTarget === 'leaderboard') renderLeaderboardView(lastPeriod);
+    });
+    trophyBtn.addEventListener('click', () => renderLeaderboardView('weekly'));
+
+    renderJoinView();
+}
+
+// ✅ نافذة "هل تود متابعته؟" — تظهر بعد فتح محادثة خاصة مع شخص لست تتابعه بعد، يمكن تجاهلها
+function showFollowPromptModal(userId, username, profileImage) {
+    document.getElementById('follow-prompt-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'follow-prompt-modal';
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[350] p-4';
+    modal.innerHTML = `
+        <div class="follow-prompt-card">
+            <img src="${profileImage}" class="follow-prompt-avatar">
+            <p class="follow-prompt-text">هل تودّ متابعة <b>${escapeHtml(username)}</b>؟</p>
+            <button type="button" id="follow-prompt-follow-btn" class="follow-prompt-follow-btn"><i class="fas fa-plus"></i> متابعة</button>
+            <button type="button" id="follow-prompt-dismiss-btn" class="follow-prompt-dismiss-btn">ليس الآن</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'follow-prompt-modal') modal.remove(); });
+    modal.querySelector('#follow-prompt-dismiss-btn').addEventListener('click', () => modal.remove());
+    modal.querySelector('#follow-prompt-follow-btn').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try {
+            const res = await fetch(`/api/users/${userId}/follow`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) throw new Error();
+            showNotification(`أصبحت تتابع ${escapeHtml(username)} ✅`, 'success');
+            modal.remove();
+        } catch (error) {
+            showNotification('تعذر إتمام المتابعة', 'error');
+            btn.disabled = false;
+        }
+    });
+}
+
 async function showFullProfilePage(userId) {
     const existing = document.getElementById('full-profile-page');
     if (existing) existing.remove();
@@ -9335,6 +9662,8 @@ async function showFullProfilePage(userId) {
                 <h2 class="full-profile-name">${escapeHtml(u.username)} ${getAgentBadgeHTML(u.isAgent)}</h2>
                 <p class="full-profile-id">ID: ${escapeHtml(String(u.customId || ''))}</p>
                 <div class="full-profile-badge-row">
+                    ${renderSupportBadgeHTML('giving', u.supportGiving)}
+                    ${renderSupportBadgeHTML('receiving', u.supportReceiving)}
                     <span class="full-profile-mini-badge"><i class="fas fa-star text-yellow-400"></i> Lv.${u.level || 1}</span>
                     <span class="full-profile-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
                     <span class="full-profile-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${u.age} سنة</span>
@@ -9382,16 +9711,15 @@ async function showFullProfilePage(userId) {
             <!-- ✅ بطاقتا "نادي المعجبين" و"الحماة" — واجهة فقط حالياً، جنباً إلى جنب —
                  قلب زهري بأجنحة بيضاء / درع متدرّج أبيض بقلبه قلب زهري (تصميم موحّد بكل مكان) -->
             <div class="grid grid-cols-2 gap-2 px-4 mb-4">
-                <div class="full-profile-mini-card">
+                <div class="full-profile-mini-card" id="full-profile-fanclub-card" style="cursor:pointer">
                     <span class="club-icon-fanclub" style="margin:0 auto 4px">
                         <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
                         <i class="fas fa-heart club-icon-heart"></i>
                         <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
                     </span>
                     <p class="full-profile-mini-card-title">نادي المعجبين</p>
-                    <span class="full-profile-soon-tag">قريباً</span>
                 </div>
-                <div class="full-profile-mini-card">
+                <div class="full-profile-mini-card" id="full-profile-guardian-card" style="cursor:pointer">
                     <span class="club-icon-guardian" style="margin:0 auto 4px">
                         <i class="fas fa-shield-halved club-icon-shield"></i>
                         <i class="fas fa-heart club-icon-shield-heart"></i>
@@ -9423,6 +9751,18 @@ async function showFullProfilePage(userId) {
             btn.addEventListener('click', () => {
                 window.open(btn.dataset.url, '_blank', 'noopener,noreferrer');
             });
+        });
+        body.querySelectorAll('.support-badge').forEach(el => {
+            el.addEventListener('click', () => {
+                const kind = el.dataset.supportKind;
+                showSupportLevelInfoModal(kind, kind === 'giving' ? u.supportGiving : u.supportReceiving);
+            });
+        });
+        document.getElementById('full-profile-fanclub-card')?.addEventListener('click', () => {
+            showFanClubSheet(userId, u.username, u.profileImage);
+        });
+        document.getElementById('full-profile-guardian-card')?.addEventListener('click', () => {
+            showComingSoonSheet('الحماة', 'ميزة "الحماة" قادمة قريباً!', 'fa-shield-halved');
         });
 
         if (userId !== myUserId) {
@@ -10091,7 +10431,11 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
 // ✅ نافذة هدايا الغرفة — مسندلة من الأسفل بالهاتف (نافذة صغيرة مركزية بالكمبيوتر)، خلفية
 // معتمة كباقي نوافذ المشروع، والضغط خارجها يغلقها — بلا هيدر/عنوان (أيقونة الهدية بشريط
 // الغرفة أصلاً كافية كسياق)، بأسلوب نوافذ تطبيقات الهواتف المصغّرة.
-async function showRoomGiftModal(roomId) {
+// ✅ presetTarget اختياري ({id, username, profileImage}) — يُستخدَم عند فتح هذي النافذة من
+// ملف شخص محدَّد (نافذة ملف الغرفة) بدل اختيار مستلم من قائمة الجالسين على المقاعد؛ يعرض
+// صورته الوحيدة مقفلة بدل صف الاختيار المتعدد، وبقية الواجهة (شبكة الهدايا، التبويبات،
+// التذييل) هي نفسها بالضبط — نافذة واحدة موحّدة بكل مكان بدل تصميمين مختلفين للهدايا
+async function showRoomGiftModal(roomId, presetTarget = null) {
     const existing = document.getElementById('room-gift-modal');
     if (existing) existing.remove();
 
@@ -10115,29 +10459,46 @@ async function showRoomGiftModal(roomId) {
     modal.addEventListener('click', (e) => { if (e.target.id === 'room-gift-modal') modal.remove(); });
 
     try {
-        const url = roomId === 'main' ? '/api/voice-room' : `/api/voice-room/rooms/${roomId}`;
-        const [roomRes, shopRes] = await Promise.all([
-            fetch(url, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
-        ]);
+        let gifts, seatedUsers;
+        if (presetTarget) {
+            const shopRes = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+            gifts = shopRes.data.gifts;
+            seatedUsers = [];
+        } else {
+            const url = roomId === 'main' ? '/api/voice-room' : `/api/voice-room/rooms/${roomId}`;
+            const [roomRes, shopRes] = await Promise.all([
+                fetch(url, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+                fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+            ]);
 
-        const gifts = shopRes.data.gifts;
-        const currentUser = JSON.parse(localStorage.getItem('user')) || {};
-        // 🐛 إصلاح: نفسي كنت أظهر ضمن قائمة "من أهدي؟" لو كنت جالساً على مقعد — تحديد هدية
-        // لنفسي يُرفَض بالسيرفر بالفعل، لكن الواجهة كانت تخصم الرصيد وتُظهر شارة "دعمت نفسي"
-        // على مقعدي بشكل متفائل قبل تأكيد السيرفر أصلاً؛ استبعادي من القائمة هنا يمنع المشكلة
-        // من جذرها (لا خيار لاختيار نفسي إطلاقاً)، لا مجرد رفض الطلب لاحقاً بعد فوات الأوان
-        const myIdStr = currentUser._id ? currentUser._id.toString() : null;
-        const seatedUsers = (roomRes.seats || []).filter(s => s.user && s.user.id !== myIdStr).map(s => s.user);
+            gifts = shopRes.data.gifts;
+            const currentUser = JSON.parse(localStorage.getItem('user')) || {};
+            // 🐛 إصلاح: نفسي كنت أظهر ضمن قائمة "من أهدي؟" لو كنت جالساً على مقعد — تحديد هدية
+            // لنفسي يُرفَض بالسيرفر بالفعل، لكن الواجهة كانت تخصم الرصيد وتُظهر شارة "دعمت نفسي"
+            // على مقعدي بشكل متفائل قبل تأكيد السيرفر أصلاً؛ استبعادي من القائمة هنا يمنع المشكلة
+            // من جذرها (لا خيار لاختيار نفسي إطلاقاً)، لا مجرد رفض الطلب لاحقاً بعد فوات الأوان
+            const myIdStr = currentUser._id ? currentUser._id.toString() : null;
+            seatedUsers = (roomRes.seats || []).filter(s => s.user && s.user.id !== myIdStr).map(s => s.user);
+        }
 
-        let selectedUserIds = new Set();
+        let selectedUserIds = new Set(presetTarget ? [presetTarget.id] : []);
         let audienceMode = 'selected';
 
         const body = document.getElementById('room-gift-body');
         const footer = document.getElementById('room-gift-footer');
         if (!body || !footer) return;
 
-        document.getElementById('room-gift-avatars').innerHTML = `
+        document.getElementById('room-gift-avatars').innerHTML = presetTarget ? `
+            <span class="relative flex flex-col items-center gap-1 flex-shrink-0" title="${escapeHtml(presetTarget.username)}">
+                <span class="relative inline-block">
+                    <img src="${presetTarget.profileImage}" class="rg-avatar-img ring-2 ring-pink-500">
+                    <span class="absolute -top-1 -left-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 flex items-center justify-center">
+                        <i class="fas fa-check text-white" style="font-size:6px"></i>
+                    </span>
+                </span>
+                <span class="text-[8px] leading-tight truncate w-10 text-center">${escapeHtml(presetTarget.username)}</span>
+            </span>
+        ` : `
             ${seatedUsers.length === 0 ? '<p class="text-[11px] text-gray-500 py-1.5">لا يوجد أحد قاعد على مقعد حالياً</p>' : `
                 <button id="select-all-seated-btn" class="room-gift-all-btn relative flex flex-col items-center gap-1 flex-shrink-0" title="إرسال للجميع">
                     <span class="room-gift-all-circle rg-avatar-img">All</span>
