@@ -88,6 +88,27 @@ async function applyGiftToActiveSeatChallenge(io, roomId, receiverId, totalPrice
     });
 }
 
+// ✅ يبثّ تحديث "مستوى الدعم" (شارتا دعم/تلقي) لحظياً لأي واجهة مفتوحة حالياً لهذا المستخدم —
+// بث عام خفيف الحمل (نفس نمط follow-changed) بدل نظام اشتراك مخصّص لكل شخص؛ لا يُنتظَر
+// (fire-and-forget) كي لا يبطئ استجابة إرسال الهدية نفسها، ولا يُفشلها أبداً لو حدث خطأ هنا
+async function broadcastSupportLevelUpdate(io, userId) {
+    if (!io || !userId) return;
+    try {
+        const { computeSupportLevelInfo } = require('../utils/supportLevels');
+        const uid = new mongoose.Types.ObjectId(userId);
+        const [givingAgg, receivingAgg] = await Promise.all([
+            GiftLog.aggregate([{ $match: { sender: uid } }, { $group: { _id: null, total: { $sum: '$totalPrice' } } }]),
+            GiftLog.aggregate([{ $match: { receiver: uid } }, { $group: { _id: null, total: { $sum: '$totalPrice' } } }])
+        ]);
+        const giving = computeSupportLevelInfo((givingAgg[0] && givingAgg[0].total) || 0);
+        const receiving = computeSupportLevelInfo((receivingAgg[0] && receivingAgg[0].total) || 0);
+        io.emit('support-level-updated', { userId: userId.toString(), giving, receiving });
+    } catch (error) {
+        console.error('[SUPPORT LEVEL] Failed to broadcast update:', error);
+    }
+}
+exports.broadcastSupportLevelUpdate = broadcastSupportLevelUpdate;
+
 // ✅ حماية بسيطة من إرسال الهدايا بمعدل غير طبيعي (استدعاء الـ API مباشرة بمعزل عن الواجهة)
 // ملاحظة: هذا حل مناسب لخادم واحد (single instance). عند التوسع لعدة خوادم لاحقاً يفضل نقل هذا لـ Redis
 const giftRateMap = new Map(); // userId -> [timestamps]
@@ -331,6 +352,9 @@ exports.sendGift = async (req, res) => {
 
                 await addGiftExperience(io, senderId, totalPrice, 'sender');
         await addGiftExperience(io, receiverId, totalPrice, 'receiver');
+        // ✅ لا يُنتظَر (fire-and-forget) — تحديث الشارات لا يجب أن يؤخّر استجابة إرسال الهدية
+        broadcastSupportLevelUpdate(io, senderId);
+        broadcastSupportLevelUpdate(io, receiverId);
 
         res.status(201).json({
             status: 'success',
@@ -508,6 +532,9 @@ exports.sendGiftBatch = async (req, res) => {
 
         await addGiftExperience(io, senderId, totalCost, 'sender');
         await Promise.all(validReceivers.map(r => addGiftExperience(io, r._id, totalPrice, 'receiver')));
+        // ✅ لا يُنتظَر — تحديث الشارات لا يجب أن يؤخّر استجابة إرسال الهدية
+        broadcastSupportLevelUpdate(io, senderId);
+        validReceivers.forEach(r => broadcastSupportLevelUpdate(io, r._id));
 
         res.status(201).json({
             status: 'success',

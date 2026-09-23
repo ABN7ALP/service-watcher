@@ -12,7 +12,7 @@ const giftLogSchema = new mongoose.Schema({
     redeemed: { type: Boolean, default: false }, // ✅ يمنع استبدال نفس الهدية مرتين
     context: {
         type: String,
-        enum: ['private_chat', 'public_chat', 'profile'],
+        enum: ['private_chat', 'public_chat', 'profile', 'fanclub_join'],
         default: 'private_chat'
     },
     // ✅ اختياري: الغرفة الصوتية التي أُرسلت منها الهدية (عند الإرسال داخل غرفة) — تُستخدم

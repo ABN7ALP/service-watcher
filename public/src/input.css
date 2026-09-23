@@ -907,16 +907,16 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 @media (min-width: 768px) { .room-profile-sheet-card { border-radius: 20px; margin-bottom: 16px; } }
 .room-profile-body { padding-bottom: 4px; position: relative; }
-/* ✅ padding-top: 42px يفسح فوق حافة البطاقة تماماً مساحة نصف ارتفاع الصورة (64px)، فتطفو
-   الصورة نصفها خارج البطاقة (top:-32px) والنصف الآخر بداخلها دون تغطية الاسم تحتها */
-.room-profile-header { text-align: center; padding: 42px 16px 4px; position: relative; }
+/* ✅ padding-top: 46px يفسح فوق حافة البطاقة تماماً مساحة نصف ارتفاع الصورة (72px)، فتطفو
+   الصورة نصفها خارج البطاقة (top:-36px) والنصف الآخر بداخلها دون تغطية الاسم تحتها */
+.room-profile-header { text-align: center; padding: 46px 16px 4px; position: relative; }
 .room-profile-avatar-wrap {
     position: absolute;
-    top: -32px;
+    top: -36px;
     left: 50%;
     transform: translateX(-50%);
-    width: 64px;
-    height: 64px;
+    width: 72px;
+    height: 72px;
     z-index: 2;
 }
 .room-profile-avatar {
@@ -979,69 +979,83 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-profile-mini-badge-sm { padding: 2px 7px; font-size: 9.5px; }
 
-/* ✅ شارة "مستوى الثراء" — درع يتدرّج بصرياً عبر 5 مستويات حسب مجموع قيمة الهدايا المستلمة
-   فعلياً (نفس تدرّج نقاط مستوى الغرفة بالمشروع: 0/1000/5000/15000/40000)؛ تبدأ درعاً بسيطاً
-   وتتطوّر لأجنحة ثم توهّج ثم تلألؤ ألماسي بالمستوى الأعلى — إحساس تصاعدي واضح لقوة الدعم */
-.room-profile-wealth-badge {
+/* ✅ شارتا "مستوى الدعم" — مسارٌ منفصل لكل اتجاه: دعم (ما أرسله المستخدم) وتلقي (ما استلمه)،
+   بشكل درع مضلّع حقيقي (clip-path) بدل الاعتماد على شكل أيقونة الخط فقط — تدرّج لوني وتوهّج
+   يتصاعدان عبر 4 فئات مسمّاة (مبتدئ/محترف/خبير/مخضرم)، مع رقم المستوى ظاهراً أسفل الرمز.
+   النقر على أي منهما يفتح لوحة توضّح الفائدة والنقاط اللازمة للمستوى التالي */
+.support-badge {
     position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 26px;
-}
-.room-profile-wealth-shield { font-size: 17px; color: #9ca3af; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
-.room-profile-wealth-wing {
-    position: absolute;
-    top: 46%;
-    font-size: 9px;
-    color: #fff;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-.room-profile-wealth-wing-left { left: -6px; transform: translateY(-50%) rotate(-30deg) scaleX(-1); }
-.room-profile-wealth-wing-right { right: -6px; transform: translateY(-50%) rotate(30deg); }
-.room-profile-wealth-tier-2 .room-profile-wealth-shield { color: #fb923c; }
-.room-profile-wealth-tier-3 .room-profile-wealth-shield { color: #fbbf24; filter: drop-shadow(0 0 4px rgba(251,191,36,0.6)); }
-.room-profile-wealth-tier-3 .room-profile-wealth-wing { opacity: 0.85; }
-.room-profile-wealth-tier-4 .room-profile-wealth-shield { color: #fde047; filter: drop-shadow(0 0 7px rgba(253,224,71,0.85)); }
-.room-profile-wealth-tier-4 .room-profile-wealth-wing { opacity: 1; color: #fef9c3; }
-.room-profile-wealth-tier-5 .room-profile-wealth-shield {
-    filter: drop-shadow(0 0 8px rgba(199,210,254,0.9));
-}
-/* ملاحظة: أيقونات Font Awesome ترسم الرمز الفعلي عبر ::before (خط ويب)، لذا التدرّج اللوني
-   بتقنية background-clip:text لازم يُطبَّق على ::before نفسه، لا على عنصر <i> الفارغ */
-.room-profile-wealth-tier-5 .room-profile-wealth-shield::before {
-    background: linear-gradient(120deg, #93c5fd, #ffffff, #c4b5fd, #ffffff);
-    background-size: 300% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    animation: wealthShimmer 2.5s linear infinite;
-}
-.room-profile-wealth-tier-5 .room-profile-wealth-wing { opacity: 1; color: #e0e7ff; }
-@keyframes wealthShimmer { 0% { background-position: 0% 0; } 100% { background-position: 300% 0; } }
-
-/* ✅ صف مصغّر: إنجازات مضغوطة (أيقونة واحدة بدل شريط عريض) + نادي المعجبين + الحماة، جنباً
-   لجنب داخل ورقة ملف الغرفة الصغيرة — كلها لا تزال "قريباً" (واجهة تمهيدية فقط) */
-.room-profile-mini-row {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    padding: 10px 16px 2px;
-}
-.room-profile-mini-item {
+    width: 34px;
+    height: 39px;
+    clip-path: polygon(50% 0%, 100% 16%, 100% 62%, 50% 100%, 0% 62%, 0% 16%);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 3px;
-    flex: 1;
-    max-width: 90px;
-    background: rgba(255,255,255,0.04);
-    border-radius: 12px;
-    padding: 8px 4px 6px;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
 }
-.room-profile-mini-item-label { font-size: 8.5px; color: #9ca3af; font-weight: 700; white-space: nowrap; }
+.support-badge:active { transform: scale(0.93); }
+.support-badge-giving { background: linear-gradient(160deg, #fb923c, #7c2d12); }
+.support-badge-receiving { background: linear-gradient(160deg, #fbbf24, #78350f); }
+.support-badge-icon { font-size: 12px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+.support-badge-level { font-size: 8.5px; font-weight: 900; color: #fff; line-height: 1; margin-top: 1px; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+.support-badge.tier-2 { filter: brightness(1.08); box-shadow: 0 0 6px rgba(255,255,255,0.18); }
+.support-badge.tier-3 { filter: brightness(1.16); box-shadow: 0 0 10px rgba(255,255,255,0.3); }
+.support-badge.tier-4 {
+    background-size: 220% 220%;
+    animation: supportBadgeShimmer 3s ease infinite;
+    box-shadow: 0 0 14px rgba(255,255,255,0.45);
+}
+.support-badge-giving.tier-4 { background: linear-gradient(160deg, #fdba74, #fb923c, #ea580c, #fb923c); }
+.support-badge-receiving.tier-4 { background: linear-gradient(160deg, #fde68a, #fef9c3, #fbbf24, #fef9c3); }
+@keyframes supportBadgeShimmer { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+
+/* ✅ لوحة شرح شارة الدعم/التلقي (تظهر عند النقر) */
+.support-info-card { background: #1a1f2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 18px; width: 100%; max-width: 330px; padding: 20px; animation: slideUp 0.2s ease-out; }
+.support-info-badge-wrap { display: flex; justify-content: center; margin-bottom: 10px; }
+.support-info-badge-wrap .support-badge { width: 52px; height: 60px; }
+.support-info-badge-wrap .support-badge-icon { font-size: 20px; }
+.support-info-badge-wrap .support-badge-level { font-size: 13px; }
+.support-info-title { text-align: center; font-size: 15px; font-weight: 800; color: #fff; }
+.support-info-tier { text-align: center; font-size: 11.5px; color: #9ca3af; margin-top: 2px; }
+.support-info-progress-track { height: 8px; background: rgba(255,255,255,0.08); border-radius: 999px; margin-top: 14px; overflow: hidden; }
+.support-info-progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #f472b6, #a855f7); }
+.support-info-progress-label { font-size: 10.5px; color: #9ca3af; text-align: center; margin-top: 6px; }
+.support-info-rewards-row { display: flex; align-items: center; gap: 8px; margin-top: 16px; background: rgba(255,255,255,0.04); border-radius: 12px; padding: 10px 12px; }
+.support-info-rewards-row i { color: #c084fc; font-size: 15px; }
+.support-info-rewards-text { font-size: 11px; color: #cbd5e1; flex: 1; }
+
+/* ✅ بطاقة "الإنجازات" العريضة — بنفس روح بطاقة الملف الكامل (وليست الأيقونة المصغّرة
+   السابقة) + بطاقتا "نادي المعجبين"/"الحماة" المستطيلتان جنباً إلى جنب أسفلها، وكلها قابلة
+   للنقر: الإنجازات والحماة تعرضان "قريباً"، ونادي المعجبين يفتح نافذته الحقيقية */
+.room-profile-achv-card {
+    margin: 12px 16px 0;
+    background: rgba(255,255,255,0.04);
+    border-radius: 14px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+}
+.room-profile-achv-left { display: flex; align-items: center; gap: 8px; }
+.room-profile-achv-left i { font-size: 15px; color: #c084fc; }
+.room-profile-achv-title { font-size: 12.5px; font-weight: 800; color: #e5e7eb; }
+.room-profile-soon-chip { font-size: 9px; color: #9ca3af; background: rgba(255,255,255,0.06); padding: 3px 9px; border-radius: 999px; flex-shrink: 0; }
+.room-profile-club-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 16px 0; }
+.room-profile-club-card {
+    background: rgba(255,255,255,0.04);
+    border-radius: 14px;
+    padding: 10px 8px 9px;
+    text-align: center;
+    cursor: pointer;
+}
+.room-profile-club-card .club-icon-fanclub,
+.room-profile-club-card .club-icon-guardian { margin: 0 auto; }
+.room-profile-club-title { font-size: 11px; font-weight: 800; color: #e5e7eb; margin-top: 5px; }
+.room-profile-club-sub { font-size: 9.5px; color: #9ca3af; margin-top: 2px; }
 
 /* ✅ أيقونات "نادي المعجبين" (قلب زهري بأجنحة بيضاء صغيرة) و"الحماة" (درع متدرّج أبيض بقلبه
    قلب زهري) — تصميم موحّد يُعاد استخدامه بكل مكان تظهر فيه هذي المفاهيم بالتطبيق */
@@ -1116,7 +1130,154 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-profile-action-gift { background: rgba(236,72,153,0.18); color: #f9a8d4; }
 .room-profile-action-follow { background: linear-gradient(135deg, #a855f7, #ec4899); color: #fff; }
-.room-profile-action-follow.following { background: rgba(255,255,255,0.06); color: #e5e7eb; }
+/* ✅ بعد نجاح المتابعة يتحوّل الزر فوراً لاختصار "انضمام" لنادي المعجبين (قلب + نص) بدل
+   إلغاء المتابعة — إلغاء المتابعة متاح فقط من الملف الكامل/قائمة المتابَعين */
+.room-profile-action-follow.following { background: rgba(236,72,153,0.14); color: #f9a8d4; }
+
+/* =====================================================
+   ✅ نافذة صغيرة عامة "قريباً" — تُستخدم للإنجازات والحماة بنافذة ملف الغرفة
+   ===================================================== */
+.coming-soon-sheet-card {
+    background: #1a1f2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px;
+    width: 100%;
+    max-width: 320px;
+    padding: 26px 22px;
+    text-align: center;
+    animation: slideUp 0.2s ease-out;
+}
+.coming-soon-icon { width: 56px; height: 56px; border-radius: 50%; background: rgba(192,132,252,0.15); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; font-size: 22px; color: #c084fc; }
+.coming-soon-title { font-size: 15px; font-weight: 800; color: #fff; }
+.coming-soon-text { font-size: 12px; color: #9ca3af; margin-top: 6px; line-height: 1.6; }
+.coming-soon-ok-btn { margin-top: 18px; width: 100%; height: 40px; border-radius: 12px; background: rgba(255,255,255,0.06); color: #e5e7eb; font-size: 13px; font-weight: 800; }
+
+/* =====================================================
+   ✅ نافذة "نادي المعجبين" — الانضمام (بورده رمزية بكوينز واحد)، ترتيب النوادي (يومي/أسبوعي)،
+   وقائمة أعضاء أي نادٍ — بلا خلفيات للصفوف (كل شيء طافٍ)، ألوان مراكز التتويج فقط للتمييز
+   ===================================================== */
+.fanclub-sheet-card {
+    background: #1a1f2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-width: 400px;
+    max-height: 82vh;
+    display: flex;
+    flex-direction: column;
+    animation: slideUp 0.25s ease-out;
+}
+@media (min-width: 768px) { .fanclub-sheet-card { border-radius: 20px; margin-bottom: 16px; } }
+.fanclub-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 14px 6px;
+    flex-shrink: 0;
+}
+.fanclub-header-btn { background: transparent; border: none; color: #cbd5e1; font-size: 16px; padding: 8px; cursor: pointer; }
+.fanclub-header-btn.fanclub-trophy-btn { color: #fbbf24; }
+.fanclub-header-title { font-size: 13.5px; font-weight: 800; color: #fff; }
+.fanclub-sheet-body { padding: 4px 18px 20px; overflow-y: auto; flex: 1; }
+
+/* --- عرض "الانضمام" الافتراضي --- */
+.fanclub-owner-avatar-wrap { display: flex; justify-content: center; margin-top: 4px; }
+.fanclub-owner-avatar { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,0.1); box-shadow: 0 6px 18px rgba(0,0,0,0.4); }
+.fanclub-owner-name { text-align: center; font-size: 14.5px; font-weight: 800; color: #fff; margin-top: 10px; }
+.fanclub-member-count { text-align: center; font-size: 12px; color: #9ca3af; margin-top: 3px; }
+.fanclub-member-count b { color: #f472b6; font-weight: 800; }
+
+.fanclub-join-btn {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    height: 48px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #ec4899, #a855f7);
+    color: #fff;
+    font-weight: 800;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: none;
+    cursor: pointer;
+    margin-top: 18px;
+}
+.fanclub-join-btn::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -60%;
+    width: 40%; height: 100%;
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,0.6), transparent);
+    transform: skewX(-20deg);
+    animation: fanclubShine 2.6s ease-in-out infinite;
+}
+@keyframes fanclubShine { 0% { left: -60%; } 55% { left: 130%; } 100% { left: 130%; } }
+.fanclub-join-btn.joined { background: rgba(255,255,255,0.07); color: #d1d5db; }
+.fanclub-join-btn.joined::after { display: none; }
+.fanclub-join-btn:disabled { opacity: 0.7; cursor: default; }
+
+.fanclub-gift-preview {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 12px;
+    padding: 8px 12px;
+}
+.fanclub-gift-preview img { width: 30px; height: 30px; object-fit: contain; }
+.fanclub-gift-preview-text { font-size: 11px; color: #cbd5e1; flex: 1; }
+.fanclub-gift-preview-price { font-size: 11.5px; font-weight: 800; color: #fbbf24; display: flex; align-items: center; gap: 4px; }
+
+/* --- عرض ترتيب النوادي --- */
+.fanclub-rank-explainer { font-size: 11px; color: #9ca3af; line-height: 1.7; text-align: center; padding: 0 4px 12px; }
+.fanclub-rank-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.fanclub-rank-tab { flex: 1; text-align: center; padding: 7px 0; border-radius: 10px; font-size: 11.5px; font-weight: 800; color: #9ca3af; background: rgba(255,255,255,0.04); cursor: pointer; }
+.fanclub-rank-tab.active { background: rgba(236,72,153,0.18); color: #f9a8d4; }
+.fanclub-rank-list { display: flex; flex-direction: column; }
+.fanclub-rank-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; }
+.fanclub-rank-row:last-child { border-bottom: none; }
+.fanclub-rank-num { width: 22px; text-align: center; font-weight: 900; font-size: 13px; color: #9ca3af; flex-shrink: 0; }
+.fanclub-rank-row[data-rank="1"] .fanclub-rank-num { color: #fbbf24; font-size: 15px; }
+.fanclub-rank-row[data-rank="2"] .fanclub-rank-num { color: #38bdf8; font-size: 14px; }
+.fanclub-rank-row[data-rank="3"] .fanclub-rank-num { color: #d97706; font-size: 14px; }
+.fanclub-rank-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.fanclub-rank-name { font-size: 12.5px; font-weight: 700; color: #e5e7eb; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fanclub-rank-counts { font-size: 9.5px; color: #9ca3af; text-align: left; flex-shrink: 0; line-height: 1.5; }
+.fanclub-rank-counts b { color: #cbd5e1; font-weight: 800; }
+.fanclub-rank-empty { text-align: center; font-size: 12px; color: #6b7280; padding: 24px 0; }
+.fanclub-my-rank-pin {
+    display: flex; align-items: center; gap: 10px; padding: 10px 2px 2px;
+    margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+/* --- عرض قائمة أعضاء نادٍ --- */
+.fanclub-members-list { display: flex; flex-direction: column; gap: 10px; }
+.fanclub-member-row { display: flex; align-items: center; gap: 10px; }
+.fanclub-member-row img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+.fanclub-member-row span { font-size: 12px; font-weight: 700; color: #e5e7eb; }
+
+/* =====================================================
+   ✅ نافذة "هل تود متابعته؟" — تظهر عند إرسال رسالة لشخص لست تتابعه بعد
+   ===================================================== */
+.follow-prompt-card {
+    background: linear-gradient(165deg, #2d1b4e 0%, #4c1d95 55%, #831843 100%);
+    border-radius: 22px;
+    padding: 26px 22px 22px;
+    width: 100%;
+    max-width: 300px;
+    text-align: center;
+    animation: slideUp 0.2s ease-out;
+    box-shadow: 0 14px 40px rgba(0,0,0,0.5);
+}
+.follow-prompt-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,0.35); box-shadow: 0 6px 16px rgba(0,0,0,0.4); }
+.follow-prompt-text { color: #fff; font-size: 14px; font-weight: 700; margin-top: 14px; line-height: 1.6; }
+.follow-prompt-text b { color: #f9a8d4; }
+.follow-prompt-follow-btn { margin-top: 18px; width: 100%; height: 44px; border-radius: 14px; background: #fff; color: #831843; font-weight: 800; font-size: 13.5px; }
+.follow-prompt-dismiss-btn { margin-top: 10px; width: 100%; height: 36px; background: transparent; color: rgba(255,255,255,0.65); font-size: 12px; font-weight: 700; }
 
 /* ✅ زر "غرف الصدارة" ببطاقة معلومات الغرفة — يفتح منصّة التتويج بدل "قريباً" ثابتة */
 .room-info-rankings-btn {

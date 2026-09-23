@@ -49,6 +49,7 @@ app.use('/api/chat-media', require('./routes/chatMediaRoutes')); // ⭐ الجد
 app.use('/api/admin', require('./routes/admin')); // ✅ لوحة التحكم
 app.use('/api/frames', require('./routes/frameRoutes')); // ✅ سنضيفها بالفقرة 6
 app.use('/api/gifts', require('./routes/giftRoutes')); // ✅ نظام الهدايا والمتصدرين
+app.use('/api/fanclub', require('./routes/fanClubRoutes')); // ✅ نظام نادي المعجبين
 app.use('/api/withdrawals', require('./routes/withdrawalRoutes'));
 app.use('/api/voice-room', require('./routes/voiceRoomRoutes')); // ✅ حالة مقاعد الغرفة الصوتية
 app.use('/api/coin-purchase', require('./routes/coinPurchaseRoutes')); // ✅ نظام شراء الكوينزات

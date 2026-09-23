@@ -6,16 +6,20 @@ const ProfileVisit = require('../models/ProfileVisit');
 const Poke = require('../models/Poke');
 const GiftLog = require('../models/GiftLog');
 const { cloudinary, deleteFromCloudinary, getPublicIdFromUrl, assertRealType } = require('../utils/cloudinary');
+const { computeSupportLevelInfo } = require('../utils/supportLevels');
 
-// ✅ سلّم "شارة الثراء" (تطوّر حسب مجموع قيمة الهدايا المستلمة) — نفس تدرّج LEVEL_THRESHOLDS
-// بموديل VoiceRoom (0 / 1000 / 5000 / 15000 / 40000) للاتساق مع بقية أنظمة المستويات بالمشروع
-const WEALTH_TIER_THRESHOLDS = [0, 1000, 5000, 15000, 40000];
-function computeWealthTier(totalCoinsValue) {
-    let tier = 1;
-    for (let i = 0; i < WEALTH_TIER_THRESHOLDS.length; i++) {
-        if (totalCoinsValue >= WEALTH_TIER_THRESHOLDS[i]) tier = i + 1;
-    }
-    return tier;
+// ✅ يحسب مساري "الدعم" (ما أرسله المستخدم من كوينز كهدايا لآخرين) و"التلقي" (ما استلمه
+// فعلياً) معاً بنداء واحد — يُستخدم بالملف المصغّر وبالملف الكامل معاً لضمان نفس الأرقام بكل مكان
+async function computeSupportLevels(targetUserId) {
+    const uid = new mongoose.Types.ObjectId(targetUserId);
+    const [givingAgg, receivingAgg] = await Promise.all([
+        GiftLog.aggregate([{ $match: { sender: uid } }, { $group: { _id: null, total: { $sum: '$totalPrice' } } }]),
+        GiftLog.aggregate([{ $match: { receiver: uid } }, { $group: { _id: null, total: { $sum: '$totalPrice' } } }])
+    ]);
+    return {
+        giving: computeSupportLevelInfo((givingAgg[0] && givingAgg[0].total) || 0),
+        receiving: computeSupportLevelInfo((receivingAgg[0] && receivingAgg[0].total) || 0)
+    };
 }
 
 // ✅ يسجّل زيارة ملف شخصي (حدث خام لكل مشاهدة) — بتهدئة بسيطة: لا يُسجَّل حدث جديد لنفس
@@ -105,7 +109,10 @@ const PUBLIC_PROFILE_FIELDS = 'username customId profileImage coverImage gender 
 
 const getUserById = async (req, res) => {
     try {
-        const user = await User.findById(req.params.id).select(PUBLIC_PROFILE_FIELDS);
+        const [user, supportLevels] = await Promise.all([
+            User.findById(req.params.id).select(PUBLIC_PROFILE_FIELDS),
+            computeSupportLevels(req.params.id)
+        ]);
         if (!user) {
             return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على المستخدم.' });
         }
@@ -122,6 +129,8 @@ const getUserById = async (req, res) => {
                     followersCount: obj.followers.length,
                     followingCount: obj.following.length,
                     isFollowing,
+                    supportGiving: supportLevels.giving,
+                    supportReceiving: supportLevels.receiving,
                     friends: undefined, followers: undefined, following: undefined // ✅ الأعداد فقط تُرسَل، لا قوائم معرّفات المستخدمين الآخرين بالكامل
                 }
             }
@@ -182,14 +191,11 @@ const getUserMiniProfile = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'معرّف مستخدم غير صالح' });
         }
 
-        const [user, wealthAgg] = await Promise.all([
+        const [user, supportLevels] = await Promise.all([
             User.findById(targetUserId)
                 .select('username profileImage customId level friends followers isAgent activeFrameClass isBot gender birthDate socialStatus')
                 .populate('friends', '_id'),
-            GiftLog.aggregate([
-                { $match: { receiver: new mongoose.Types.ObjectId(targetUserId) } },
-                { $group: { _id: null, totalCoinsValue: { $sum: '$totalPrice' } } }
-            ])
+            computeSupportLevels(targetUserId)
         ]);
 
         if (!user) {
@@ -201,7 +207,6 @@ const getUserMiniProfile = async (req, res) => {
         // ✅ حالة المتابعة (نظام منفصل عن الصداقة) — تلزم لعرض زر متابعة صحيح الحالة بأي مكان
         // يُعرَض فيه هذا الملف المصغّر (نافذة ملف الغرفة تحديداً)
         const isFollowedByMe = !!(currentUserId && user.followers.some(f => f.toString() === currentUserId));
-        const wealthPoints = (wealthAgg[0] && wealthAgg[0].totalCoinsValue) || 0;
 
                 res.status(200).json({
             status: 'success',
@@ -220,8 +225,8 @@ const getUserMiniProfile = async (req, res) => {
                 gender: user.gender,
                 age: user.age,
                 socialStatus: user.socialStatus,
-                wealthTier: computeWealthTier(wealthPoints),
-                wealthPoints
+                supportGiving: supportLevels.giving,
+                supportReceiving: supportLevels.receiving
             }
         });
     } catch (error) {
