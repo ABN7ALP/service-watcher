@@ -148,16 +148,21 @@ const getMeDetails = async (req, res) => {
         const rawUser = await User.findById(req.user.id);
         await checkAndExpireActiveFrame(rawUser);
 
-        const user = await User.findById(req.user. id)
-            .populate('friends', 'username profileImage customId level')
-            .populate('friendRequestsReceived', 'username profileImage customId')
-            .populate('friendRequestsSent', 'username profileImage customId');
+        const [user, supportLevels] = await Promise.all([
+            User.findById(req.user. id)
+                .populate('friends', 'username profileImage customId level')
+                .populate('friendRequestsReceived', 'username profileImage customId')
+                .populate('friendRequestsSent', 'username profileImage customId'),
+            computeSupportLevels(req.user.id)
+        ]);
 
         res.status(200).json({
             status: 'success',
             data:  {
                 user: {
                     ... user. toObject(),
+                    supportGiving: supportLevels.giving,
+                    supportReceiving: supportLevels.receiving,
                     // ✅ إضافة عدد الأصدقاء بصيغة محسنة
                     friendsStats: {
                         totalFriends:  user.friends.length,
