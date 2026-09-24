@@ -1309,9 +1309,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const isSeatedHere = myVoiceSeatNumber && myVoiceRoomId === currentVoiceRoomId;
 
         const items = [
-            // ✅ متاح للجميع دوماً — إصلاح فوري لأي "خلل" بالاتصال الصوتي أو الدردشة بالغرفة
-            { action: 'fix-connection', icon: 'fa-wand-magic-sparkles', label: 'إصلاح الاتصال', color: 'text-cyan-400' },
-            { action: 'music', icon: 'fa-compact-disc', label: 'موسيقى', color: 'text-emerald-400' },
             { action: 'messages', icon: 'fa-envelope', label: 'رسائلي', color: 'text-blue-400', badge: roomUnreadDMCount },
             { action: 'reaction', icon: 'fa-face-laugh-beam', label: 'تفاعل', color: 'text-amber-400' },
             { action: 'suggest', icon: 'fa-lightbulb', label: 'اقتراح', color: 'text-yellow-300' },
@@ -1381,16 +1378,29 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             btn.addEventListener('click', () => {
                 modal.remove();
                 const action = btn.dataset.action;
-                if (action === 'fix-connection') {
-                    fixVoiceConnectionNow();
-                } else if (action === 'music') {
-                    if (currentVoiceRoomId) showMusicPlayerPopup(currentVoiceRoomId);
-                } else if (action === 'messages') {
+                if (action === 'messages') {
                     clearRoomMessagesBadge();
                     if (lastRoomDMSender) {
                         openPrivateChat(lastRoomDMSender.id, lastRoomDMSender.username, true);
                     } else {
-                        showNotification('لا توجد رسائل جديدة', 'info');
+                        // ✅ لا رسائل جديدة محدَّدة — بدل تنبيه بلا فائدة، ينتقل لقسم الرسائل
+                        // الخاصة كاملاً مباشرة، مع تصغير الغرفة للخلفية أولاً (تبقى متصلة صوتياً
+                        // ومقعده محجوز لو كان جالساً — نفس آلية فقاعة "غرفة مُصغَّرة" المعتادة،
+                        // بعكس التنقل عبر switchToView العادي الذي يقطع الاتصال بالغرفة بالكامل)
+                        const nameEl = document.getElementById('room-info-name');
+                        minimizeVoiceRoomView({
+                            id: currentVoiceRoomId,
+                            name: nameEl ? nameEl.textContent.trim() : '',
+                            coverImage: currentRoomCoverImage,
+                            isOfficial: currentVoiceRoomId === 'main',
+                            seatCount: document.querySelectorAll('#voice-chat-grid .voice-seat').length || undefined,
+                            isPrivate: !!currentRoomPassword
+                        });
+                        showMessagesView();
+                        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('bg-purple-600', 'text-white'));
+                        document.querySelector('.nav-item[href="#messages"]')?.classList.add('bg-purple-600', 'text-white');
+                        document.querySelectorAll('.mobile-nav-item').forEach(i => i.classList.remove('active'));
+                        document.querySelector('.mobile-nav-item[data-target="messages"]')?.classList.add('active');
                     }
                 } else if (action === 'reaction') {
                     if (!myVoiceSeatNumber || myVoiceRoomId !== currentVoiceRoomId) {
@@ -2519,9 +2529,23 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <div class="px-4 pb-5">
                     <div class="flex items-center gap-3 mb-4">
                         <img src="${currentRoomCoverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-card-cover">
-                        <div class="min-w-0">
+                        <div class="min-w-0 flex-1">
                             <p class="font-bold text-base truncate">${escapeHtml(room.name)}</p>
-                            <p class="text-[11px] text-gray-400">${currentRoomCode ? `ID: ${currentRoomCode}` : ''}</p>
+                            ${currentRoomCode ? `
+                                <button type="button" id="room-info-id-copy" class="room-info-id-copy" data-id="${escapeHtml(String(currentRoomCode))}">
+                                    <i class="fas fa-id-card"></i> ID: ${escapeHtml(String(currentRoomCode))} <i class="fas fa-copy"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                        <div class="room-info-card-header-actions">
+                            ${currentRoomLevel !== null ? `
+                                <button type="button" id="room-info-rankings-icon-btn" class="room-info-icon-btn room-info-rankings-icon-btn" title="ترتيب أقوى الغرف">
+                                    <i class="fas fa-trophy"></i>
+                                </button>
+                            ` : ''}
+                            <button type="button" id="room-info-report-btn" class="room-info-icon-btn room-info-report-btn" title="الإبلاغ عن الغرفة">
+                                <i class="fas fa-flag"></i>
+                            </button>
                         </div>
                     </div>
                     <div id="room-info-card-owner-row" class="room-info-card-owner-row" role="button" title="عرض الملف الشخصي للمضيف">
@@ -2542,11 +2566,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                             <p class="room-info-stat-label">مستوى الغرفة</p>
                         </div>
                     </div>
-                    ${currentRoomLevel !== null ? `
-                        <button id="room-info-rankings-btn" class="room-info-rankings-btn mt-2">
-                            <i class="fas fa-trophy"></i> غرف الصدارة — شاهد ترتيب أقوى الغرف
-                        </button>
-                    ` : ''}
                     <button id="room-info-card-follow-btn" class="follow-room-btn js-room-follow-btn w-full justify-center mt-4" data-following="${currentRoomIsFollowing ? '1' : '0'}">
                         ${currentRoomIsFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة'}
                     </button>
@@ -2558,9 +2577,22 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         modal.querySelector('#room-info-card-follow-btn').addEventListener('click', () => {
             socket.emit(currentRoomIsFollowing ? 'unfollow-room' : 'follow-room', { roomId: room.id });
         });
-        modal.querySelector('#room-info-rankings-btn')?.addEventListener('click', () => {
+        modal.querySelector('#room-info-rankings-icon-btn')?.addEventListener('click', () => {
             modal.remove();
             goToRoomRankingsLeaderboard();
+        });
+        modal.querySelector('#room-info-report-btn')?.addEventListener('click', () => {
+            modal.remove();
+            showReportModal({ type: 'room', reportedUserId: currentRoomHostId, reportedUsername: currentRoomHostUsername || room.name, roomId: room.id });
+        });
+        modal.querySelector('#room-info-id-copy')?.addEventListener('click', async (e) => {
+            const idToCopy = e.currentTarget.dataset.id;
+            try {
+                await navigator.clipboard.writeText(idToCopy);
+                showNotification('تم نسخ الـ ID ✅', 'success');
+            } catch (error) {
+                showNotification('تعذر نسخ الـ ID', 'error');
+            }
         });
         // ✅ ربط دخول البث بالملف الشخصي للمستخدم — الضغط على صف مالك الغرفة (صورته/اسمه) يفتح
         // نفس نافذة ملف الغرفة المصغّرة المستخدَمة بكل مكان آخر بالغرفة (مقعد/دردشة/مشاهد)،
@@ -2847,9 +2879,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         </button>
                     </div>
                     <div class="room-profile-badge-row">
-                        ${renderSupportBadgeHTML('giving', p.supportGiving)}
-                        ${renderSupportBadgeHTML('receiving', p.supportReceiving)}
-                        <span class="room-profile-mini-badge"><i class="fas fa-star text-yellow-400"></i> Lv.${p.level}</span>
+                        ${renderRoomProfileSupportBadgeHTML('giving', p.supportGiving)}
+                        ${renderRoomProfileSupportBadgeHTML('receiving', p.supportReceiving)}
                         ${p.gender ? `<span class="room-profile-mini-badge room-profile-mini-badge-sm"><i class="fas ${p.gender === 'male' ? 'fa-mars text-blue-400' : 'fa-venus text-pink-400'}"></i></span>` : ''}
                         ${p.age ? `<span class="room-profile-mini-badge room-profile-mini-badge-sm"><i class="fas fa-birthday-cake text-pink-300"></i> ${p.age}</span>` : ''}
                         ${socialInfo ? `<span class="room-profile-mini-badge room-profile-mini-badge-sm"><i class="fas ${socialInfo.icon} text-red-300"></i> ${escapeHtml(socialInfo.text)}</span>` : ''}
@@ -2859,23 +2890,20 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <div class="room-profile-achv-left"><i class="fas fa-medal"></i><span class="room-profile-achv-title">الإنجازات</span></div>
                     <span class="room-profile-soon-chip">قريباً</span>
                 </div>
-                <div class="room-profile-club-row">
-                    <div class="room-profile-club-card" id="room-profile-fanclub-card">
-                        <span class="club-icon-fanclub">
-                            <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
-                            <i class="fas fa-heart club-icon-heart"></i>
-                            <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
-                        </span>
-                        <p class="room-profile-club-title">نادي المعجبين</p>
-                        <p class="room-profile-club-sub">انضم الآن</p>
+                <div class="room-profile-club-row room-profile-club-row-rect">
+                    <div class="room-profile-club-card room-profile-club-card-rect" id="room-profile-fanclub-card">
+                        <img src="https://res.cloudinary.com/dntlt5xry/image/upload/v1790284710/ai-generated-love-heart-flying-with-cute-wings-3d-design-suitable-for-valentine-and-design-elements-png.png" class="room-profile-club-icon-img" alt="">
+                        <div class="room-profile-club-card-text">
+                            <p class="room-profile-club-title">نادي المعجبين</p>
+                            <p class="room-profile-club-sub">انضم الآن</p>
+                        </div>
                     </div>
-                    <div class="room-profile-club-card" id="room-profile-guardian-card">
-                        <span class="club-icon-guardian">
-                            <i class="fas fa-shield-halved club-icon-shield"></i>
-                            <i class="fas fa-heart club-icon-shield-heart"></i>
-                        </span>
-                        <p class="room-profile-club-title">الحماة</p>
-                        <span class="room-profile-soon-chip">قريباً</span>
+                    <div class="room-profile-club-card room-profile-club-card-rect" id="room-profile-guardian-card">
+                        <img src="https://res.cloudinary.com/dntlt5xry/image/upload/v1790284531/game-badges-violet-heart-with-wings-and-crown-game-app-badge-icon-png.png" class="room-profile-club-icon-img" alt="">
+                        <div class="room-profile-club-card-text">
+                            <p class="room-profile-club-title">الحماة</p>
+                            <span class="room-profile-soon-chip">قريباً</span>
+                        </div>
                     </div>
                 </div>
                 ${canManage ? `
@@ -2985,7 +3013,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     btn.disabled = false;
                 }
             });
-            modal.querySelectorAll('.support-badge').forEach(el => {
+            modal.querySelectorAll('.room-profile-support-badge').forEach(el => {
                 el.addEventListener('click', () => {
                     const kind = el.dataset.supportKind;
                     showSupportLevelInfoModal(kind, kind === 'giving' ? p.supportGiving : p.supportReceiving);
@@ -4831,7 +4859,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 console.warn(`[VOICE] فشل الاتصال الصوتي بـ${peerUserId} نهائياً — لم يصل لحالة "متصل" إطلاقاً. مرشّحات مُجمَّعة: مباشر=${gatheredCandidateTypes.host}, STUN=${gatheredCandidateTypes.srflx}, TURN=${gatheredCandidateTypes.relay}`);
                 if (!voiceFailureWarningShownThisSession) {
                     voiceFailureWarningShownThisSession = true;
-                    showNotification('تعذّر الاتصال الصوتي بأحد الجالسين — جرّب "إصلاح الاتصال" من قائمة المزيد بالغرفة', 'error');
+                    // ✅ لم يعد هناك زر يدوي "إصلاح الاتصال" بقائمة المزيد — نحاول الإصلاح
+                    // صامتاً تلقائياً بدل توجيه المستخدم لزر غير موجود؛ ننبّهه فقط لو استمرت
+                    // المشكلة فعلياً بعد المحاولة الصامتة
+                    fixVoiceConnectionNow(true).then(ok => {
+                        if (!ok) showNotification('تعذّر الاتصال الصوتي بأحد الجالسين — تحقق من اتصالك بالإنترنت', 'error');
+                    });
                 }
             }
         });
@@ -4952,8 +4985,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             }
             if (roomChatCurrentRoomId) rejoinRoomChatChannel(roomChatCurrentRoomId);
             if (!silent) showNotification(ok ? 'تم إصلاح الاتصال ✅' : 'تعذر الإصلاح — تحقق من اتصالك بالإنترنت', ok ? 'success' : 'error');
+            return !!ok; // ✅ يسمح لمُستدعين صامتين (كالتشغيل التلقائي بعد فشل اتصال صوتي) بمعرفة النتيجة الفعلية
         } catch (error) {
             if (!silent) showNotification('تعذر إصلاح الاتصال، حاول مجدداً', 'error');
+            return false;
         } finally {
             fixConnectionInFlight = false;
         }
@@ -5220,14 +5255,14 @@ function renderMessagesList(chats) {
 
         return `
             <div class="message-item flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all hover:bg-gray-700/40 ${hasUnread ? 'bg-purple-900/20 border border-purple-500/20' : 'bg-gray-800/20'} ${isBlocked ? 'opacity-70' : ''}" 
-                 data-user-id="${other._id}" data-username="${other.username}">
+                 data-user-id="${other._id}" data-username="${escapeHtml(other.username)}">
                                 <div class="relative flex-shrink-0">
                     <img src="${other.profileImage}" class="w-12 h-12 rounded-full object-cover border-2 ${isBlocked ? 'border-red-500 grayscale' : hasUnread ? 'border-purple-500' : 'border-gray-600'} ${other.activeFrameClass || ''}">
                     ${hasUnread ? `<span class="absolute -top-1 -right-1 bg-purple-600 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">${chat.unreadCount > 9 ? '9+' : chat.unreadCount}</span>` : ''}
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="flex justify-between items-center gap-2">
-                        <span class="font-bold text-sm truncate flex items-center gap-1 ${hasUnread ? 'text-white' : 'text-gray-300'}">${other.username} ${getAgentBadgeIconHTML(other.isAgent)}</span>
+                        <span class="font-bold text-sm truncate flex items-center gap-1 ${hasUnread ? 'text-white' : 'text-gray-300'}">${escapeHtml(other.username)} ${getAgentBadgeIconHTML(other.isAgent)}</span>
                         ${isBlocked ? '<span class="text-[10px] bg-red-900/40 text-red-300 px-2 py-0.5 rounded-full flex-shrink-0">محظور</span>' : `<span class="text-xs flex-shrink-0 ${hasUnread ? 'text-purple-400 font-bold' : 'text-gray-500'}">${timeText}</span>`}
                     </div>
                     <div class="flex items-center gap-1 text-xs truncate mt-0.5 ${isBlocked ? 'text-red-400' : hasUnread ? 'text-gray-200' : 'text-gray-400'}">
@@ -5394,7 +5429,7 @@ async function showSettingsView() {
                     <form id="username-update-form" class="space-y-3">
                         <div>
                             <label class="block text-xs font-medium mb-1.5">الاسم الحالي</label>
-                            <input type="text" value="${localUser.username}" 
+                            <input type="text" value="${escapeHtml(localUser.username)}" 
                                    class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-sm cursor-not-allowed" 
                                    disabled>
                         </div>
@@ -5600,7 +5635,7 @@ async function showSettingsView() {
                                         <img src="${user.profileImage}" 
                                              class="w-8 h-8 rounded-full border-2 border-red-500">
                                         <div>
-                                            <p class="font-medium text-xs">${user.username}</p>
+                                            <p class="font-medium text-xs">${escapeHtml(user.username)}</p>
                                             <p class="text-[10px] text-gray-400">ID: ${user.customId}</p>
                                         </div>
                                     </div>
@@ -6086,7 +6121,7 @@ async function handleUsernameUpdate(e) {
     // --- 3. تهيئة واجهة المستخدم ببيانات المستخدم ---
 function updateUIWithUserData(userData) {
     const usernameEl = document.getElementById('username');
-    if (usernameEl) usernameEl.innerHTML = `${userData.username} ${getAgentBadgeHTML(userData.isAgent)}`;
+    if (usernameEl) usernameEl.innerHTML = `${escapeHtml(userData.username)} ${getAgentBadgeHTML(userData.isAgent)}`;
 
     document.getElementById('balance').textContent = userData.balance.toFixed(2);
     document.getElementById('coins').textContent = userData.coins;
@@ -6755,7 +6790,11 @@ function showXpGainAnimation(amount) {
         const notification = document.createElement('div');
         notification.className = `floating-toast fixed left-1/2 -translate-x-1/2 z-[600] flex items-center gap-2 px-4 py-2.5 rounded-full text-white text-sm shadow-2xl backdrop-blur-sm ${colors[type] || colors.info}`;
         notification.style.top = `${16 + stacked * 52}px`;
-        notification.innerHTML = `<i class="fas ${icon[type] || icon.info}"></i><span>${message}</span>`;
+        // 🛡️ إصلاح أمني: كانت message تُدرَج كـinnerHTML دون تهريب — أي username غير مُقيَّد
+        // بالسكيما يُحقَن هنا حَرفياً (XSS مخزّن) بكل مكان ناداها بدون escapeHtml يدوياً بنفسه
+        // (نسيان متكرر ومتوقَّع). نفس نمط الحماية عند المصدر المستخدَم أصلاً بـshowBottomToast
+        // المجاورة — تهريب واحد هنا يحمي كل نداء حالي ومستقبلي دفعة واحدة
+        notification.innerHTML = `<i class="fas ${icon[type] || icon.info}"></i><span>${escapeHtml(message)}</span>`;
         document.body.appendChild(notification);
 
         setTimeout(() => {
@@ -7563,7 +7602,7 @@ socket.on('publicGiftAnnouncement', (data) => {
         <div class="flex items-center gap-2 bg-gradient-to-r from-pink-600/90 to-purple-600/90 border border-pink-400/40 rounded-full px-4 py-2 text-xs shadow-lg backdrop-blur-sm">
             <img src="${data.senderProfileImage}" class="w-5 h-5 rounded-full">
             ${giftVisual}
-            <span><b>${data.senderUsername}</b> أرسل ${data.giftName} 🎉 ${data.audienceText}</span>
+            <span><b>${escapeHtml(data.senderUsername)}</b> أرسل ${data.giftName} 🎉 ${data.audienceText}</span>
         </div>
     `;
     document.body.appendChild(toast);
@@ -7595,7 +7634,7 @@ socket.on('publicGiftAnnouncement', (data) => {
 
 socket.on('privateMessageEdited', ({ messageId, newContent }) => {
     const el = document.querySelector(`[data-message-id="${messageId}"] .message-content p`);
-    if (el) el.innerHTML = `${newContent} <span class="text-[10px] text-gray-400">(معدّلة)</span>`;
+    if (el) el.innerHTML = `${escapeHtml(newContent)} <span class="text-[10px] text-gray-400">(معدّلة)</span>`;
 });
   
         
@@ -7634,7 +7673,7 @@ socket.on('unblockedFromSettings', (data) => {
     
     // إشعار فوري
     showNotification(`تم رفع الحظر عن ${data.unblockedUsername}`, 'success');
-    
+
     // تحديث البيانات
     setTimeout(() => {
         refreshUserData();
@@ -9158,7 +9197,7 @@ async function showMiniProfileModal(userId) {
                     <div class="relative bg-gradient-to-r from-purple-700/30 to-pink-700/25 pt-5 pb-3 px-4 text-center">
                         <img id="mini-profile-avatar-img" src="${profileUser.profileImage}" 
                              class="w-16 h-16 rounded-full mx-auto border-4 border-gray-900 object-cover shadow-lg cursor-pointer hover:opacity-90 transition ${profileUser.activeFrameClass || ''}" title="عرض الملف الكامل">
-                        <h2 class="text-sm font-bold mt-2 flex items-center justify-center gap-1">${profileUser.username} ${getAgentBadgeHTML(profileUser.isAgent)}</h2>
+                        <h2 class="text-sm font-bold mt-2 flex items-center justify-center gap-1">${escapeHtml(profileUser.username)} ${getAgentBadgeHTML(profileUser.isAgent)}</h2>
                         <div class="text-[10px] text-gray-300 mt-1 cursor-pointer inline-flex items-center gap-1.5 copy-id-btn bg-black/25 px-2 py-0.5 rounded-full">
                            <i class="fas fa-id-card"></i>
                            <span>${profileUser.customId}</span>
@@ -9219,7 +9258,7 @@ async function showMiniProfileModal(userId) {
                             <span class="text-[9px] mt-0.5">هدية</span>
                         </button>
                         ${blockButtonHTML}
-                        <button class="action-btn report-user-btn text-orange-400 hover:bg-orange-900" data-user-id="${profileUser._id}" data-username="${profileUser.username}">
+                        <button class="action-btn report-user-btn text-orange-400 hover:bg-orange-900" data-user-id="${profileUser._id}" data-username="${escapeHtml(profileUser.username)}">
                             <i class="fas fa-flag"></i>
                             <span class="text-[9px] mt-0.5">إبلاغ</span>
                         </button>
@@ -9387,6 +9426,27 @@ function renderSupportBadgeHTML(kind, info) {
     `;
 }
 
+// ✅ نسخة مصغّرة "طافية" (بلا خلفية/توهّج) من شارة الدعم/التلقي، بصور شارات حقيقية تتدرّج
+// مع فئة المستخدم (مبتدئ/محترف-خبير/مخضرم) بدل الكبسولة اللونية — خاصة بنافذة ملف الغرفة
+// (showUserProfileSheet) فقط، لا تمسّ renderSupportBadgeHTML المستخدَمة بالملف الكامل ولوحة
+// الشرف بمكان آخر
+const ROOM_PROFILE_SUPPORT_BADGE_IMAGES = [
+    'https://res.cloudinary.com/dntlt5xry/image/upload/v1790284846/golden-medal-of-the-achievement-award-badges-png.png',
+    'https://res.cloudinary.com/dntlt5xry/image/upload/v1790284904/game-badges-button-in-circle-frame-with-wings-and-crown-png.png',
+    'https://res.cloudinary.com/dntlt5xry/image/upload/v1790284957/game-badges-button-in-circle-frame-with-wings-and-heart-png.png'
+];
+function renderRoomProfileSupportBadgeHTML(kind, info) {
+    if (!info) return '';
+    const label = kind === 'giving' ? 'مستوى الدعم' : 'مستوى التلقي';
+    const imgIndex = info.tierIndex <= 1 ? 0 : (info.tierIndex >= 4 ? 2 : 1);
+    return `
+        <span class="room-profile-support-badge" data-support-kind="${kind}" title="${label}">
+            <img src="${ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex]}" class="room-profile-support-badge-img" alt="">
+            <span class="room-profile-support-badge-lv">Lv.${info.level}</span>
+        </span>
+    `;
+}
+
 // ✅ لوحة صغيرة عامة "قريباً" — تُستخدم للإنجازات والحماة بنافذة ملف الغرفة وبالملف الكامل معاً
 function showComingSoonSheet(title, text, icon) {
     document.getElementById('coming-soon-sheet')?.remove();
@@ -9504,27 +9564,34 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
         setHeader('join');
         body.innerHTML = `<div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>`;
         try {
-            const [summaryRes, shopRes] = await Promise.all([
+            const [summaryRes, shopRes, membersPreviewRes] = await Promise.all([
                 fetch(`/api/fanclub/${ownerId}/summary`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-                fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+                fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+                fetch(`/api/fanclub/${ownerId}/members?limit=3`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()).catch(() => null)
             ]);
             if (summaryRes.status !== 'success') throw new Error();
             const s = summaryRes.data;
             const rose = (shopRes.data?.gifts || []).find(g => g.name === 'وردة');
+            const previewMembers = (membersPreviewRes?.data?.members || []).slice(0, 3);
             body.innerHTML = `
                 <div class="fanclub-owner-avatar-wrap"><img src="${ownerProfileImage}" class="fanclub-owner-avatar"></div>
                 <p class="fanclub-owner-name">نادي ${escapeHtml(ownerUsername)}</p>
-                <p class="fanclub-member-count"><b id="fanclub-member-count-num">${s.memberCount}</b> عضو في النادي</p>
-                <button type="button" id="fanclub-join-btn" class="fanclub-join-btn ${s.isMember ? 'joined' : ''}" ${s.isMember ? 'disabled' : ''}>
-                    <i class="fas ${s.isMember ? 'fa-check' : 'fa-heart'}"></i> ${s.isMember ? 'أنت عضو بالفعل' : 'الانضمام إلى نادي المعجبين'}
+                <button type="button" id="fanclub-member-preview-row" class="fanclub-member-preview-row" ${previewMembers.length === 0 ? 'style="visibility:hidden"' : ''}>
+                    <span class="fanclub-member-preview-avatars">
+                        ${previewMembers.map(m => `<img src="${m.profileImage}" class="fanclub-member-preview-avatar">`).join('')}
+                    </span>
+                    <span class="fanclub-member-preview-count"><b id="fanclub-member-count-num">${s.memberCount}</b> عضو</span>
+                    <i class="fas fa-chevron-left fanclub-member-preview-arrow"></i>
                 </button>
-                ${rose ? `
-                <div class="fanclub-gift-preview">
-                    <img src="${rose.imageUrl}" onerror="this.style.display='none'">
-                    <span class="fanclub-gift-preview-text">الانضمام يرسل وردة رمزية لصاحب النادي</span>
-                    <span class="fanclub-gift-preview-price"><i class="fas fa-coins"></i> 1</span>
-                </div>` : ''}
+                <button type="button" id="fanclub-join-btn" class="fanclub-join-btn ${s.isMember ? 'joined' : ''}" ${s.isMember ? 'disabled' : ''}>
+                    ${s.isMember ? '<i class="fas fa-check"></i> أنت عضو بالفعل' : `
+                        ${rose ? `<img src="${rose.imageUrl}" class="fanclub-join-btn-rose" onerror="this.style.display='none'">` : '<i class="fas fa-heart"></i>'}
+                        <span>الانضمام</span>
+                        <span class="fanclub-join-btn-price"><s>10</s> (1)</span>
+                    `}
+                </button>
             `;
+            modal.querySelector('#fanclub-member-preview-row')?.addEventListener('click', () => renderMembersView(ownerId, ownerUsername));
             modal.querySelector('#fanclub-join-btn')?.addEventListener('click', async (e) => {
                 if (s.isMember) return;
                 const btn = e.currentTarget;
@@ -9546,7 +9613,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                             if (coinsEl) coinsEl.textContent = localUser.coins;
                         }
                     }
-                    showNotification(`انضممت لنادي ${escapeHtml(ownerUsername)} 🌹`, 'success');
+                    showNotification(`انضممت لنادي ${ownerUsername} 🌹`, 'success');
                     renderJoinView();
                 } catch (error) {
                     showNotification('تعذر الانضمام', 'error');
@@ -9658,7 +9725,7 @@ function showFollowPromptModal(userId, username, profileImage) {
         try {
             const res = await fetch(`/api/users/${userId}/follow`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
             if (!res.ok) throw new Error();
-            showNotification(`أصبحت تتابع ${escapeHtml(username)} ✅`, 'success');
+            showNotification(`أصبحت تتابع ${username} ✅`, 'success');
             modal.remove();
         } catch (error) {
             showNotification('تعذر إتمام المتابعة', 'error');
@@ -10270,10 +10337,10 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                         <button id="close-private-chat" class="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700">
                             <i class="fas fa-arrow-right text-lg"></i>
                         </button>
-                        <img id="chat-user-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%234b5563'/%3E%3C/svg%3E" alt="${targetUsername}" 
+                        <img id="chat-user-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%234b5563'/%3E%3C/svg%3E" alt="${escapeHtml(targetUsername)}" 
                              class="w-10 h-10 rounded-full border-2 border-purple-500 object-cover">
                         <div>
-                            <h3 id="chat-user-name" class="font-bold text-white">${targetUsername}</h3>
+                            <h3 id="chat-user-name" class="font-bold text-white">${escapeHtml(targetUsername)}</h3>
                             <p id="chat-user-status" class="text-xs text-gray-400">
                                 <i class="fas fa-circle text-green-500 mr-1"></i> متصل الآن
                             </p>
@@ -10338,7 +10405,7 @@ function lockChatForBlockedUser(targetUserId, targetUsername) {
     inputArea.innerHTML = `
         <div class="text-center">
             <p class="text-sm text-red-400 mb-3">
-                <i class="fas fa-ban mr-1"></i> لقد قمت بحظر ${targetUsername}، لا يمكنك مراسلته
+                <i class="fas fa-ban mr-1"></i> لقد قمت بحظر ${escapeHtml(targetUsername)}، لا يمكنك مراسلته
             </p>
             <div class="flex gap-2">
                 <button id="locked-chat-unblock-btn" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg text-sm font-bold">
@@ -10414,7 +10481,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
         <div id="gift-store-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-lg text-white border border-gray-700 max-h-[85vh] flex flex-col">
                     <div class="flex items-center justify-between p-4 border-b border-gray-700 flex-shrink-0">
-                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift text-pink-400"></i> إرسال هدية لـ ${targetUsername}</h3>
+                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift text-pink-400"></i> إرسال هدية لـ ${escapeHtml(targetUsername)}</h3>
                     <div class="flex items-center gap-1">
                         <button id="gift-store-support-btn" class="report-issue-icon-btn" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle"></i></button>
                         <button id="close-gift-store" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
@@ -10552,6 +10619,11 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
     modal.addEventListener('click', (e) => { if (e.target.id === 'room-gift-modal') modal.remove(); });
 
     try {
+        // 🐛 إصلاح: كان يُعلَّن داخل else فقط (فرع الاختيار المتعدد) بينما يُستخدَم لاحقاً بلا
+        // شرط لبناء التذييل — أي فتح لهذي النافذة بمستلم محدَّد سلفاً (presetTarget، من زر
+        // الهدية بنافذة ملف الغرفة) كان يرمي ReferenceError صامتاً يظهر للمستخدم كـ"فشل تحميل
+        // البيانات" رغم نجاح كل الطلبات الشبكية فعلياً
+        const currentUser = JSON.parse(localStorage.getItem('user')) || {};
         let gifts, seatedUsers;
         if (presetTarget) {
             const shopRes = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
@@ -10565,7 +10637,6 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             ]);
 
             gifts = shopRes.data.gifts;
-            const currentUser = JSON.parse(localStorage.getItem('user')) || {};
             // 🐛 إصلاح: نفسي كنت أظهر ضمن قائمة "من أهدي؟" لو كنت جالساً على مقعد — تحديد هدية
             // لنفسي يُرفَض بالسيرفر بالفعل، لكن الواجهة كانت تخصم الرصيد وتُظهر شارة "دعمت نفسي"
             // على مقعدي بشكل متفائل قبل تأكيد السيرفر أصلاً؛ استبعادي من القائمة هنا يمنع المشكلة
@@ -11070,7 +11141,7 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
         <div class="gift-float-card">
             <img src="${giftImage || ''}" class="gift-float-image">
             <div class="gift-float-text">
-                <span class="gift-float-sender">${fromUsername}</span>
+                <span class="gift-float-sender">${escapeHtml(fromUsername)}</span>
                 <span class="gift-float-name">أرسل ${giftName}${quantity > 1 ? ' × ' + quantity : ''} 🎁</span>
             </div>
         </div>
@@ -11650,7 +11721,7 @@ function renderAgentList() {
             <div class="flex items-center gap-3 bg-gray-800/50 rounded-xl p-3 mb-3">
                 <img src="${agent.profileImage}" class="w-12 h-12 rounded-full object-cover border-2 ${agent.isOnline ? 'border-green-500' : 'border-gray-600'}">
                 <div class="flex-1 min-w-0">
-                    <p class="font-bold text-sm truncate">${agent.username}</p>
+                    <p class="font-bold text-sm truncate">${escapeHtml(agent.username)}</p>
                     <p class="text-xs ${agent.isOnline ? 'text-green-400' : 'text-gray-500'}">${agent.isOnline ? 'متصل الآن' : 'غير متصل'}</p>
                 </div>
                 <div class="flex gap-2">
@@ -11659,7 +11730,7 @@ function renderAgentList() {
                             <i class="fab fa-whatsapp text-white"></i>
                         </a>
                     ` : ''}
-                    <button class="agent-chat-btn w-9 h-9 bg-purple-600 hover:bg-purple-700 rounded-full flex items-center justify-center" data-agent-id="${agent.id}" data-agent-name="${agent.username}">
+                    <button class="agent-chat-btn w-9 h-9 bg-purple-600 hover:bg-purple-700 rounded-full flex items-center justify-center" data-agent-id="${agent.id}" data-agent-name="${escapeHtml(agent.username)}">
                         <i class="fas fa-comment-dots text-white"></i>
                     </button>
                 </div>
@@ -12108,7 +12179,7 @@ async function showReportModal(context) {
         <div id="report-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[500] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-red-500/30 max-h-[88vh] flex flex-col">
                 <div class="flex items-center justify-between p-4 border-b border-gray-700">
-                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-flag text-red-400"></i> الإبلاغ عن ${context.type === 'user' ? 'مستخدم' : 'رسالة'}</h3>
+                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-flag text-red-400"></i> الإبلاغ عن ${context.type === 'user' ? 'مستخدم' : context.type === 'room' ? 'غرفة' : 'رسالة'}</h3>
                     <button id="close-report-modal" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
                 </div>
                 <div class="p-4 overflow-y-auto flex-1">
@@ -12213,7 +12284,11 @@ async function showReportModal(context) {
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         try {
             const payload = {
-                type: context.type,
+                // 🐛 إصلاح: 'room' نوع عرضي فقط بالواجهة (للعنوان)، سكيما Report بالسيرفر لا
+                // تعرف سوى ['user','message','content','payment','other'] — إرسالها كما هي
+                // سترفض بصمت من enum الـ Mongoose. نحوّلها هنا إلى 'content' مع إبقاء roomId
+                // بالحمولة ليُميّز البلاغ كبلاغ عن غرفة عند المراجعة
+                type: context.type === 'room' ? 'content' : context.type,
                 reportedUserId: context.reportedUserId,
                 reason: selectedReason,
                 details: detailsInput.value.trim(),
@@ -12828,7 +12903,7 @@ async function loadLeaderboard(type, range = 'week') {
                 <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${index < 3 ? `bg-gradient-to-br ${rankColors[index]} text-white` : 'bg-gray-700 text-gray-300'}">${index + 1}</div>
                 <img src="${leader.profileImage}" class="w-11 h-11 rounded-full object-cover border-2 border-gray-600 ${leader.activeFrameClass || ''}">
                 <div class="flex-1 min-w-0">
-                    <p class="font-bold text-sm truncate">${leader.username}</p>
+                    <p class="font-bold text-sm truncate">${escapeHtml(leader.username)}</p>
                     <p class="text-xs text-gray-400">${leader.giftsCount} هدية</p>
                 </div>
                 <span class="font-bold text-yellow-400 flex items-center gap-1 text-sm"><i class="fas fa-coins"></i> ${leader[valueKey].toLocaleString()}</span>
@@ -12997,13 +13072,13 @@ async function loadChatUserData(userId) {
                 if (chatModal) chatModal.dataset.isBot = user.isBot ? 'true' : 'false';
 
                 if (user.isBot) {
-                    if (name) name.innerHTML = `${user.username} <span class="text-purple-400"><i class="fas fa-robot"></i></span>`;
+                    if (name) name.innerHTML = `${escapeHtml(user.username)} <span class="text-purple-400"><i class="fas fa-robot"></i></span>`;
                     const statusEl = document.getElementById('chat-user-status');
                     if (statusEl) statusEl.innerHTML = '<span class="text-purple-300"><i class="fas fa-shield-halved"></i> حساب رسمي</span>';
                     setupPrivateChatEvents(userId);
                 } else {
                     // ✅ المصدر الوحيد لكتابة الاسم + الشارة — لا يُكتب فوقه من أي مكان آخر
-                    if (name) name.innerHTML = `${user.username} ${getAgentBadgeIconHTML(user.isAgent)}`;
+                    if (name) name.innerHTML = `${escapeHtml(user.username)} ${getAgentBadgeIconHTML(user.isAgent)}`;
                 }
             }
         }
@@ -14843,7 +14918,7 @@ function displayPrivateMessage(message, isMyMessage = false) {
             ${!isMyMessage ? `
                 <div class="flex items-center gap-2 mb-1">
                     <img src="${message.sender?.profileImage || 'https://via.placeholder.com/20'}" class="w-5 h-5 rounded-full">
-                    <span class="text-xs font-bold">${message.sender?.username || 'مستخدم'}</span>
+                    <span class="text-xs font-bold">${escapeHtml(message.sender?.username || 'مستخدم')}</span>
                 </div>
             ` : ''}
 
@@ -14856,7 +14931,7 @@ function displayPrivateMessage(message, isMyMessage = false) {
             <div class="flex justify-between items-center mt-2">
                 <span class="text-xs opacity-70">${new Date(message.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
                     <div class="flex items-center gap-1">
-                    ${statusIcon}
+                    <span class="message-status">${statusIcon}</span>
                     ${replyButton}
                     ${optionsButton}
                 </div>
@@ -15199,20 +15274,6 @@ function bindMediaEvents(messageElement, message) {
     }
 }
 
-// --- 🔄 دالة تحديث حالة الرسالة ---
-function updateMessageStatus(messageElement, status) {
-    const statusContainer = messageElement.querySelector('.message-status');
-    if (!statusContainer) return;
-    
-    if (status.seen) {
-        statusContainer.innerHTML = '<i class="fas fa-check-double text-blue-400 text-xs" title="مقروءة"></i>';
-    } else if (status.delivered) {
-        statusContainer.innerHTML = '<i class="fas fa-check-double text-gray-400 text-xs" title="تم التسليم"></i>';
-    }
-}
-
-
-        
         
         
     // --- ✅ دالة لعرض بروفايل مستخدم حظرك (مصممة بشكل أفضل) ---
@@ -15256,7 +15317,7 @@ function showBlockedProfileModal(userId, blockData) {
                     </div>
                     
                     <!-- الاسم -->
-                    <h2 class="text-xl font-bold text-gray-300 mb-3">${blockData.targetUser.username}</h2>
+                    <h2 class="text-xl font-bold text-gray-300 mb-3">${escapeHtml(blockData.targetUser.username)}</h2>
                     
                     <!-- الرسالة البسيطة -->
                     <p class="text-gray-400 text-center mb-8 leading-relaxed">
@@ -15357,7 +15418,7 @@ function showOneMessageModal(targetUserId, targetUsername) {
                 <div class="p-6">
                     <h3 class="text-lg font-bold mb-4 flex items-center gap-3">
                         <i class="fas fa-paper-plane text-blue-400"></i>
-                        إرسال رسالة لـ ${targetUsername}
+                        إرسال رسالة لـ ${escapeHtml(targetUsername)}
                     </h3>
                     
                     <div class="mb-4">
@@ -15619,7 +15680,7 @@ function displayMessage(message) {
     }
 
                 messageElement.innerHTML = `
-        <img src="${message.sender.profileImage}" alt="${message.sender.username}" 
+        <img src="${message.sender.profileImage}" alt="${escapeHtml(message.sender.username)}" 
              class="w-7 h-7 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-400 flex-shrink-0 ${message.sender.activeFrameClass || ''}" data-user-id="${message.sender._id}">
         <div class="min-w-0 flex-1">
             ${replyHTML}
@@ -15960,18 +16021,18 @@ socket.on('privateMessageReceived', async (data) => {
     }
 });
 
-// 🔄 مستمع لتحديث حالة الرسالة
-// ✅ لا نُحدّث الشكل الظاهر للعلامة (✓ مقابل ✓✓) بشكل حي أثناء بقاء المحادثة مفتوحة عند المرسل —
-// العلامة الزرقاء المزدوجة تظهر فقط عند إعادة فتح/تحميل المحادثة من جديد (loadChatHistoryFromServer)
+// 🔄 مستمع لتحديث حالة الرسالة — حي وفوري: صار عندي تسليم (✓✓ رمادي) بلحظة اتصال المستقبل
+// فعلياً بالمنصة (بغض النظر عن فتحه للمحادثة تحديداً أم لا)، وتتحول فوراً لأزرق (✓✓) بلحظة
+// فتحه للمحادثة وتحميلها — بلا حاجة لإعادة فتح/تحميل المحادثة يدوياً لرؤية التحديث
 socket.on('messageStatusUpdated', (data) => {
     console.log('[CHAT] Message status updated:', data.messageId, data.status);
 
     const messageElement = document.querySelector(`[data-message-id="${data.messageId}"]`);
     if (messageElement) {
         const statusContainer = messageElement.querySelector('.message-status');
-        if (statusContainer && false) { // ✅ معطّل عمداً — التحديث الحي للعلامة الزرقاء متوقف بطلب المستخدم
+        if (statusContainer) {
             if (data.status === 'seen') {
-                statusContainer.innerHTML = '<i class="fas fa-check-double text-blue-400 text-xs" title="مقروءة"></i>';
+                statusContainer.innerHTML = '<i class="fas fa-check-double text-blue-400 text-xs" title="تمت المشاهدة"></i>';
             } else if (data.status === 'delivered') {
                 statusContainer.innerHTML = '<i class="fas fa-check-double text-gray-400 text-xs" title="تم التسليم"></i>';
             }
@@ -16046,7 +16107,7 @@ async function showFriendRequestsModal() {
             <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
                 <div class="flex items-center gap-3">
                     <img src="${sender.profileImage}" data-user-id="${sender._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
-                    <span>${sender.username}</span>
+                    <span>${escapeHtml(sender.username)}</span>
                 </div>
                 <div class="flex gap-2">
                     <button class="friend-action-btn bg-blue-600 hover:bg-blue-700 text-white text-xs py-1 px-3 rounded-full" data-action="accept-request" data-user-id="${sender._id}">قبول</button>
@@ -16110,7 +16171,7 @@ async function showFriendsListModal() {
                 <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
                     <div class="flex items-center gap-3">
                         <img src="${friend.profileImage}" data-user-id="${friend._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
-                        <span>${friend.username}</span>
+                        <span>${escapeHtml(friend.username)}</span>
                     </div>
                     <button class="friend-action-btn bg-red-600 hover:bg-red-700 text-white text-xs py-1 px-3 rounded-full" data-action="remove-friend" data-user-id="${friend._id}">حذف</button>
                 </div>
@@ -16153,7 +16214,7 @@ async function updateFriendsAvatars(friendsList) {
         
         avatar.innerHTML = `
             <img src="${friend.profileImage}" 
-                 alt="${friend.username}"
+                 alt="${escapeHtml(friend.username)}"
                  class="w-10 h-10 rounded-full border-2 border-gray-600 hover:border-purple-500 cursor-pointer transition-all"
                  data-user-id="${friend._id}">
         `;
@@ -16201,7 +16262,7 @@ async function updateFriendsAvatars(friendsList) {
                 <span class="font-bold text-purple-300">${battle.type}</span>
                 ${privateIcon}
                 <div class="flex items-center gap-1 text-yellow-400"><i class="fas fa-coins"></i><span>${battle.betAmount}</span></div>
-                <div class="flex -space-x-2">${battle.players.map(p => `<img src="${p.profileImage}" alt="${p.username}" class="w-8 h-8 rounded-full border-2 border-gray-600">`).join('')}</div>
+                <div class="flex -space-x-2">${battle.players.map(p => `<img src="${p.profileImage}" alt="${escapeHtml(p.username)}" class="w-8 h-8 rounded-full border-2 border-gray-600">`).join('')}</div>
             </div>
             <div class="flex items-center gap-3">
                 <span class="text-sm text-gray-400">${battle.players.length} / ${maxPlayers}</span>
@@ -16442,7 +16503,7 @@ const modalHTML = `
             <div class="grid grid-cols-2 gap-2 sm:gap-6 items-center">
                 <!-- اللاعب الحالي -->
                 <div class="flex flex-col items-center">
-                    <p class="text-base sm:text-xl font-bold mb-2">${user.username} (أنت)</p>
+                    <p class="text-base sm:text-xl font-bold mb-2">${escapeHtml(user.username)} (أنت)</p>
                     
                     <!-- ✅ الإصلاح: أزرار متجاوبة -->
                     <button id="click-btn" class="w-32 h-32 sm:w-48 sm:h-48 bg-purple-600 rounded-full text-4xl sm:text-5xl font-bold shadow-lg transform transition hover:scale-105 active:scale-95 focus:outline-none">
@@ -16561,7 +16622,7 @@ function showReplyBar(message) {
         targetContainer.parentNode.insertBefore(replyBar, targetContainer);
     }
     replyBar.innerHTML = `
-        <span>الرد على <strong>${message.sender.username}</strong></span>
+        <span>الرد على <strong>${escapeHtml(message.sender.username)}</strong></span>
         <button id="cancel-reply" class="text-red-400 hover:text-red-600">&times;</button>
     `;
     document.getElementById('cancel-reply').addEventListener('click', () => {
