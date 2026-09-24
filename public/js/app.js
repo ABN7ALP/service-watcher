@@ -9345,17 +9345,18 @@ function buildSocialLinkUrl(platform, rawValue) {
     return null;
 }
 
-// ✅ شارة دعم/تلقي واحدة — نفس القالب لكلا الاتجاهين (مسار "ما أرسله المستخدم من دعم" ومسار
-// "ما استلمه فعلياً")، يميّزهما فقط data-support-kind (يحدّد اللون بالـCSS) وأيقونة الوسط
-// (لهب للدعم، تاج للتلقي) — تُستخدم بنافذة ملف الغرفة وبالملف الكامل معاً
+// ✅ شارة دعم/تلقي واحدة — كبسولة صغيرة مقسومة لجزأين (أيقونة + رقم المستوى)، بنفس أسلوب
+// شارات مستوى تطبيقات البث الشهيرة. يميّزهما فقط data-support-kind (يحدّد اللون بالـCSS)
+// وأيقونة الجزء الأول (بوق/مكبّر صوت للدعم، ميكروفون للتلقي) — تُستخدم بنافذة ملف الغرفة
+// وبالملف الكامل معاً
 function renderSupportBadgeHTML(kind, info) {
     if (!info) return '';
-    const icon = kind === 'giving' ? 'fa-fire' : 'fa-crown';
+    const icon = kind === 'giving' ? 'fa-bullhorn' : 'fa-microphone';
     const label = kind === 'giving' ? 'مستوى الدعم' : 'مستوى التلقي';
     return `
         <span class="support-badge support-badge-${kind} tier-${info.tierIndex}" data-support-kind="${kind}" title="${label}">
-            <i class="fas ${icon} support-badge-icon"></i>
-            <span class="support-badge-level">${info.level}</span>
+            <span class="support-badge-icon-seg"><i class="fas ${icon}"></i></span>
+            <span class="support-badge-level-seg">Lv.${info.level}</span>
         </span>
     `;
 }
@@ -9379,40 +9380,56 @@ function showComingSoonSheet(title, text, icon) {
     modal.querySelector('#coming-soon-ok-btn').addEventListener('click', () => modal.remove());
 }
 
-// ✅ لوحة شرح شارة الدعم/التلقي — المستوى الحالي، فئته المسمّاة، شريط تقدّم للمستوى
-// التالي، وعدد الكوينز اللازمة للوصول إليه؛ قسم المكافآت "قريباً" فقط حالياً
+// ✅ لوحة شرح شارة الدعم/التلقي — بانر علوي بلون المسار + الشارة مكبّرة، نقاطك الحالية
+// والمطلوبة للمستوى التالي كأرقام صريحة (لا فقط شريط تقدّم)، ومعاينة مزايا قادمة
 function showSupportLevelInfoModal(kind, info) {
     if (!info) return;
     document.getElementById('support-info-modal')?.remove();
     const modal = document.createElement('div');
     modal.id = 'support-info-modal';
     modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-[340] p-4';
-    const icon = kind === 'giving' ? 'fa-fire' : 'fa-crown';
+    const icon = kind === 'giving' ? 'fa-bullhorn' : 'fa-microphone';
     const title = kind === 'giving' ? 'مستوى الدعم' : 'مستوى التلقي';
     const desc = kind === 'giving'
         ? 'يرتفع كلما دعمتَ الآخرين بإرسال الهدايا لهم'
         : 'يرتفع كلما استلمتَ دعماً أكبر من الآخرين بالهدايا';
     modal.innerHTML = `
         <div class="support-info-card">
-            <div class="support-info-badge-wrap">
+            <div class="support-info-banner ${kind}">
                 <span class="support-badge support-badge-${kind} tier-${info.tierIndex}">
-                    <i class="fas ${icon} support-badge-icon"></i>
-                    <span class="support-badge-level">${info.level}</span>
+                    <span class="support-badge-icon-seg"><i class="fas ${icon}"></i></span>
+                    <span class="support-badge-level-seg">Lv.${info.level}</span>
                 </span>
+                <p class="support-info-level-title">${title}</p>
+                <span class="support-info-tier-chip">فئة "${escapeHtml(info.tierName)}"</span>
             </div>
-            <p class="support-info-title">${title} — Lv.${info.level}</p>
-            <p class="support-info-tier">فئة "${escapeHtml(info.tierName)}" · ${desc}</p>
-            <div class="support-info-progress-track">
-                <div class="support-info-progress-fill" style="width:${info.progressPercent}%"></div>
+            <div class="support-info-body">
+                <p class="support-info-desc">${desc}</p>
+                <div class="support-info-stats-grid">
+                    <div class="support-info-stat-box">
+                        <p class="support-info-stat-num">${info.points.toLocaleString()}</p>
+                        <p class="support-info-stat-label">نقاطك الحالية</p>
+                    </div>
+                    <div class="support-info-stat-box">
+                        <p class="support-info-stat-num">${info.isMax ? '—' : info.nextThreshold.toLocaleString()}</p>
+                        <p class="support-info-stat-label">${info.isMax ? 'أعلى مستوى' : `مطلوب للفل ${info.level + 1}`}</p>
+                    </div>
+                </div>
+                <div class="support-info-progress-track">
+                    <div class="support-info-progress-fill" style="width:${info.progressPercent}%"></div>
+                </div>
+                <p class="support-info-progress-label">
+                    ${info.isMax ? 'وصلت لأعلى مستوى حالياً 🎉' : `باقي <b>${info.pointsToNext.toLocaleString()}</b> كوينز للمستوى التالي`}
+                </p>
+                <p class="support-info-benefits-title">مزايا هذا المسار</p>
+                <div class="support-info-benefits-row">
+                    <div class="support-info-benefit-chip"><i class="fas fa-palette"></i><span>لون اسم مميز</span></div>
+                    <div class="support-info-benefit-chip"><i class="fas fa-bolt"></i><span>تأثير دخول</span></div>
+                    <div class="support-info-benefit-chip"><i class="fas fa-vector-square"></i><span>إطار خاص</span></div>
+                </div>
+                <p class="support-info-lock-note"><i class="fas fa-lock"></i> المزايا أعلاه قادمة قريباً</p>
+                <button type="button" id="support-info-ok-btn" class="coming-soon-ok-btn" style="margin-top:16px">حسناً</button>
             </div>
-            <p class="support-info-progress-label">
-                ${info.isMax ? 'وصلت لأعلى مستوى حالياً 🎉' : `تحتاج <b>${info.pointsToNext.toLocaleString()}</b> كوينز إضافية للمستوى التالي`}
-            </p>
-            <div class="support-info-rewards-row">
-                <i class="fas fa-gift"></i>
-                <span class="support-info-rewards-text">مكافآت خاصة عند كل مستوى جديد — قريباً</span>
-            </div>
-            <button type="button" id="support-info-ok-btn" class="coming-soon-ok-btn" style="margin-top:16px">حسناً</button>
         </div>
     `;
     document.body.appendChild(modal);
@@ -9645,10 +9662,17 @@ async function showFullProfilePage(userId) {
     page.addEventListener('click', (e) => { if (e.target.id === 'full-profile-page') closeFullProfilePage(); });
 
     try {
-        const userRes = await fetch(`/api/users/${userId}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+        const authHeaders = { headers: { 'Authorization': `Bearer ${token}` } };
+        const [userRes, giftSummaryRes, fanClubSummaryRes] = await Promise.all([
+            fetch(`/api/users/${userId}`, authHeaders).then(r => r.json()),
+            fetch(`/api/gifts/user/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null),
+            fetch(`/api/fanclub/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null)
+        ]);
 
         if (userRes.status !== 'success') throw new Error();
         const u = userRes.data.user;
+        const giftsReceivedCount = (giftSummaryRes && giftSummaryRes.status === 'success') ? giftSummaryRes.data.totalGiftsCount : 0;
+        const fanClubMemberCount = (fanClubSummaryRes && fanClubSummaryRes.status === 'success') ? fanClubSummaryRes.data.memberCount : 0;
         const socialInfo = getSocialStatus(u.socialStatus);
         const educationInfo = getEducationStatus(u.educationStatus);
         const genderInfo = u.gender === 'male' ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' } : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
@@ -9695,38 +9719,67 @@ async function showFullProfilePage(userId) {
                 </button>
             </div>
 
-            <!-- ✅ بطاقة "الإنجازات" — واجهة فقط حالياً (سيُبنى نظامها لاحقاً)، بشارة "قريباً" واضحة -->
-            <div class="px-4 mb-3">
-                <div class="full-profile-achievements-card">
-                    <div class="full-profile-card-header">
-                        <span><i class="fas fa-medal"></i> الإنجازات</span>
-                        <span class="full-profile-soon-tag">قريباً</span>
+            <!-- ✅ تبويبا "لوحة الشرف"/"فيديو" — إلهام تصميمي من تطبيقات البث المعروفة: صفوف
+                 ملوّنة (مستوى التلقي/الدعم/الإنجازات/الحماة+نادي المعجبين/الهدايا)؛ الفيديو
+                 لا يزال "قريباً" فقط حسب الطلب -->
+            <div class="full-profile-tabs">
+                <span class="full-profile-tab active" data-tab="honor">لوحة الشرف</span>
+                <span class="full-profile-tab" data-tab="video">فيديو</span>
+            </div>
+
+            <div id="full-profile-tab-honor" class="honor-board">
+                <div class="honor-row honor-row-receiving" id="honor-row-receiving">
+                    <div class="honor-row-left"><i class="fas fa-microphone"></i> مستوى التلقي</div>
+                    <div class="honor-row-right">
+                        ${renderSupportBadgeHTML('receiving', u.supportReceiving)}
+                        <i class="fas fa-chevron-left honor-row-chevron"></i>
                     </div>
-                    <div class="full-profile-achievements-row">
-                        ${Array.from({ length: 5 }, () => '<span class="full-profile-achievement-slot"><i class="fas fa-trophy"></i></span>').join('')}
+                </div>
+                <div class="honor-row honor-row-giving" id="honor-row-giving">
+                    <div class="honor-row-left"><i class="fas fa-bullhorn"></i> مستوى الدعم</div>
+                    <div class="honor-row-right">
+                        ${renderSupportBadgeHTML('giving', u.supportGiving)}
+                        <i class="fas fa-chevron-left honor-row-chevron"></i>
+                    </div>
+                </div>
+                <div class="honor-row honor-row-achv" id="full-profile-achv-row">
+                    <div class="honor-row-left"><i class="fas fa-medal"></i> الإنجازات</div>
+                    <div class="honor-row-right">
+                        <span class="honor-row-count">قريباً</span>
+                        <i class="fas fa-chevron-left honor-row-chevron"></i>
+                    </div>
+                </div>
+                <div class="honor-split-row">
+                    <div class="honor-mini-card" id="full-profile-guardian-card">
+                        <div class="honor-mini-top"><i class="fas fa-chevron-left"></i> 0</div>
+                        <span class="club-icon-guardian" style="margin:0 auto">
+                            <i class="fas fa-shield-halved club-icon-shield"></i>
+                            <i class="fas fa-heart club-icon-shield-heart"></i>
+                        </span>
+                        <p class="honor-mini-title">الحماة</p>
+                        <span class="honor-mini-soon">قريباً</span>
+                    </div>
+                    <div class="honor-mini-card" id="full-profile-fanclub-card">
+                        <div class="honor-mini-top"><i class="fas fa-chevron-left"></i> ${fanClubMemberCount.toLocaleString()}</div>
+                        <span class="club-icon-fanclub" style="margin:0 auto">
+                            <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
+                            <i class="fas fa-heart club-icon-heart"></i>
+                            <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
+                        </span>
+                        <p class="honor-mini-title">نادي المعجبين</p>
+                    </div>
+                </div>
+                <div class="honor-row honor-row-gifts">
+                    <div class="honor-row-left"><i class="fas fa-gift" style="color:#34d399"></i> الهدايا المستلمة</div>
+                    <div class="honor-row-right">
+                        <span class="honor-row-count">${giftsReceivedCount.toLocaleString()}</span>
                     </div>
                 </div>
             </div>
 
-            <!-- ✅ بطاقتا "نادي المعجبين" و"الحماة" — واجهة فقط حالياً، جنباً إلى جنب —
-                 قلب زهري بأجنحة بيضاء / درع متدرّج أبيض بقلبه قلب زهري (تصميم موحّد بكل مكان) -->
-            <div class="grid grid-cols-2 gap-2 px-4 mb-4">
-                <div class="full-profile-mini-card" id="full-profile-fanclub-card" style="cursor:pointer">
-                    <span class="club-icon-fanclub" style="margin:0 auto 4px">
-                        <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
-                        <i class="fas fa-heart club-icon-heart"></i>
-                        <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
-                    </span>
-                    <p class="full-profile-mini-card-title">نادي المعجبين</p>
-                </div>
-                <div class="full-profile-mini-card" id="full-profile-guardian-card" style="cursor:pointer">
-                    <span class="club-icon-guardian" style="margin:0 auto 4px">
-                        <i class="fas fa-shield-halved club-icon-shield"></i>
-                        <i class="fas fa-heart club-icon-shield-heart"></i>
-                    </span>
-                    <p class="full-profile-mini-card-title">الحماة</p>
-                    <span class="full-profile-soon-tag">قريباً</span>
-                </div>
+            <div id="full-profile-tab-video" class="full-profile-video-soon" style="display:none">
+                <i class="fas fa-clapperboard"></i>
+                <p>لا توجد فيديوهات بعد — قريباً سنعمل على هذي الميزة 🎬</p>
             </div>
 
             ${userId !== myUserId ? `
@@ -9752,11 +9805,25 @@ async function showFullProfilePage(userId) {
                 window.open(btn.dataset.url, '_blank', 'noopener,noreferrer');
             });
         });
-        body.querySelectorAll('.support-badge').forEach(el => {
-            el.addEventListener('click', () => {
-                const kind = el.dataset.supportKind;
-                showSupportLevelInfoModal(kind, kind === 'giving' ? u.supportGiving : u.supportReceiving);
+        // ✅ تبويبا لوحة الشرف/فيديو — كلا القسمين مرسومان مسبقاً بالـDOM، التبديل بينهما
+        // مجرد إظهار/إخفاء (لا نداء شبكة إضافي عند التنقل بينهما)
+        body.querySelectorAll('.full-profile-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                body.querySelectorAll('.full-profile-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                const isHonor = tab.dataset.tab === 'honor';
+                document.getElementById('full-profile-tab-honor').style.display = isHonor ? '' : 'none';
+                document.getElementById('full-profile-tab-video').style.display = isHonor ? 'none' : '';
             });
+        });
+        document.getElementById('honor-row-receiving')?.addEventListener('click', () => {
+            showSupportLevelInfoModal('receiving', u.supportReceiving);
+        });
+        document.getElementById('honor-row-giving')?.addEventListener('click', () => {
+            showSupportLevelInfoModal('giving', u.supportGiving);
+        });
+        document.getElementById('full-profile-achv-row')?.addEventListener('click', () => {
+            showComingSoonSheet('الإنجازات', 'نظام الإنجازات قيد التطوير حالياً — ترقّبه قريباً!', 'fa-medal');
         });
         document.getElementById('full-profile-fanclub-card')?.addEventListener('click', () => {
             showFanClubSheet(userId, u.username, u.profileImage);

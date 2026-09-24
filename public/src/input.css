@@ -979,53 +979,74 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-profile-mini-badge-sm { padding: 2px 7px; font-size: 9.5px; }
 
-/* ✅ شارتا "مستوى الدعم" — مسارٌ منفصل لكل اتجاه: دعم (ما أرسله المستخدم) وتلقي (ما استلمه)،
-   بشكل درع مضلّع حقيقي (clip-path) بدل الاعتماد على شكل أيقونة الخط فقط — تدرّج لوني وتوهّج
-   يتصاعدان عبر 4 فئات مسمّاة (مبتدئ/محترف/خبير/مخضرم)، مع رقم المستوى ظاهراً أسفل الرمز.
-   النقر على أي منهما يفتح لوحة توضّح الفائدة والنقاط اللازمة للمستوى التالي */
+/* ✅ شارتا "مستوى الدعم" — كبسولة صغيرة أنيقة مقسومة لجزأين (نفس أسلوب شارات مستوى التطبيقات
+   المشهورة): جزء الأيقونة ملوّن، وجزء الرقم بلون أغمق قليلاً من نفس العائلة اللونية. دعم
+   (ما أرسله المستخدم) أزرق، تلقي (ما استلمه) بنفسجي — الحجم ثابت بكل المستويات، فقط التوهّج
+   والتدرّج اللوني يتصاعدان عبر الفئات الأربع (مبتدئ/محترف/خبير/مخضرم) */
 .support-badge {
-    position: relative;
-    width: 34px;
-    height: 39px;
-    clip-path: polygon(50% 0%, 100% 16%, 100% 62%, 50% 100%, 0% 62%, 0% 16%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    display: inline-flex;
+    align-items: stretch;
+    height: 20px;
+    border-radius: 999px;
+    overflow: hidden;
     cursor: pointer;
     flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.35);
     transition: transform 0.15s ease;
 }
-.support-badge:active { transform: scale(0.93); }
-.support-badge-giving { background: linear-gradient(160deg, #fb923c, #7c2d12); }
-.support-badge-receiving { background: linear-gradient(160deg, #fbbf24, #78350f); }
-.support-badge-icon { font-size: 12px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
-.support-badge-level { font-size: 8.5px; font-weight: 900; color: #fff; line-height: 1; margin-top: 1px; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
-.support-badge.tier-2 { filter: brightness(1.08); box-shadow: 0 0 6px rgba(255,255,255,0.18); }
-.support-badge.tier-3 { filter: brightness(1.16); box-shadow: 0 0 10px rgba(255,255,255,0.3); }
-.support-badge.tier-4 {
-    background-size: 220% 220%;
-    animation: supportBadgeShimmer 3s ease infinite;
-    box-shadow: 0 0 14px rgba(255,255,255,0.45);
-}
-.support-badge-giving.tier-4 { background: linear-gradient(160deg, #fdba74, #fb923c, #ea580c, #fb923c); }
-.support-badge-receiving.tier-4 { background: linear-gradient(160deg, #fde68a, #fef9c3, #fbbf24, #fef9c3); }
-@keyframes supportBadgeShimmer { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+.support-badge:active { transform: scale(0.94); }
+.support-badge-icon-seg { width: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.support-badge-icon-seg i { font-size: 10px; color: #fff; }
+.support-badge-level-seg { display: flex; align-items: center; padding: 0 8px; font-size: 10px; font-weight: 800; color: #fff; white-space: nowrap; }
+.support-badge-giving .support-badge-icon-seg { background: #3b82f6; }
+.support-badge-giving .support-badge-level-seg { background: #1d4ed8; }
+.support-badge-receiving .support-badge-icon-seg { background: #8b5cf6; }
+.support-badge-receiving .support-badge-level-seg { background: #6d28d9; }
+.support-badge.tier-2 { box-shadow: 0 0 6px rgba(147,197,253,0.4); }
+.support-badge.tier-3 { box-shadow: 0 0 9px rgba(147,197,253,0.55); }
+.support-badge.tier-4 { box-shadow: 0 0 13px rgba(196,181,253,0.7); }
+.support-badge.tier-4 .support-badge-icon-seg,
+.support-badge.tier-4 .support-badge-level-seg { background-size: 200% 100%; animation: supportBadgeShimmer 2.2s linear infinite; }
+.support-badge-giving.tier-4 .support-badge-icon-seg { background: linear-gradient(90deg, #3b82f6, #93c5fd, #3b82f6); }
+.support-badge-giving.tier-4 .support-badge-level-seg { background: linear-gradient(90deg, #1d4ed8, #60a5fa, #1d4ed8); }
+.support-badge-receiving.tier-4 .support-badge-icon-seg { background: linear-gradient(90deg, #8b5cf6, #ddd6fe, #8b5cf6); }
+.support-badge-receiving.tier-4 .support-badge-level-seg { background: linear-gradient(90deg, #6d28d9, #a78bfa, #6d28d9); }
+@keyframes supportBadgeShimmer { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
 
-/* ✅ لوحة شرح شارة الدعم/التلقي (تظهر عند النقر) */
-.support-info-card { background: #1a1f2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 18px; width: 100%; max-width: 330px; padding: 20px; animation: slideUp 0.2s ease-out; }
-.support-info-badge-wrap { display: flex; justify-content: center; margin-bottom: 10px; }
-.support-info-badge-wrap .support-badge { width: 52px; height: 60px; }
-.support-info-badge-wrap .support-badge-icon { font-size: 20px; }
-.support-info-badge-wrap .support-badge-level { font-size: 13px; }
-.support-info-title { text-align: center; font-size: 15px; font-weight: 800; color: #fff; }
-.support-info-tier { text-align: center; font-size: 11.5px; color: #9ca3af; margin-top: 2px; }
-.support-info-progress-track { height: 8px; background: rgba(255,255,255,0.08); border-radius: 999px; margin-top: 14px; overflow: hidden; }
-.support-info-progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #f472b6, #a855f7); }
-.support-info-progress-label { font-size: 10.5px; color: #9ca3af; text-align: center; margin-top: 6px; }
-.support-info-rewards-row { display: flex; align-items: center; gap: 8px; margin-top: 16px; background: rgba(255,255,255,0.04); border-radius: 12px; padding: 10px 12px; }
-.support-info-rewards-row i { color: #c084fc; font-size: 15px; }
-.support-info-rewards-text { font-size: 11px; color: #cbd5e1; flex: 1; }
+/* ✅ لوحة شرح شارة الدعم/التلقي — بانر علوي بلون المسار + الشارة مكبّرة، ثم نقاطك الحالية
+   والمطلوبة للمستوى التالي بشكل صريح (أرقام واضحة، لا فقط شريط تقدّم)، ومعاينة مزايا قادمة */
+.support-info-card {
+    background: linear-gradient(180deg, #1e2436, #171b28);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px;
+    width: 100%;
+    max-width: 340px;
+    overflow: hidden;
+    animation: slideUp 0.2s ease-out;
+}
+.support-info-banner { padding: 26px 20px 18px; text-align: center; }
+.support-info-banner.giving { background: linear-gradient(160deg, #3b82f6, #1e3a8a); }
+.support-info-banner.receiving { background: linear-gradient(160deg, #8b5cf6, #4c1d95); }
+.support-info-banner .support-badge { height: 30px; margin: 0 auto; transform: scale(1.55); box-shadow: 0 3px 10px rgba(0,0,0,0.35); }
+.support-info-banner .support-badge-icon-seg i { font-size: 13px; }
+.support-info-banner .support-badge-level-seg { font-size: 12px; padding: 0 11px; }
+.support-info-level-title { font-size: 19px; font-weight: 900; color: #fff; margin-top: 16px; }
+.support-info-tier-chip { display: inline-block; margin-top: 7px; font-size: 11px; font-weight: 800; color: #fff; background: rgba(255,255,255,0.2); padding: 3px 13px; border-radius: 999px; }
+.support-info-body { padding: 18px 20px 20px; }
+.support-info-desc { font-size: 11.5px; color: #9ca3af; text-align: center; }
+.support-info-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+.support-info-stat-box { background: rgba(255,255,255,0.04); border-radius: 12px; padding: 10px; text-align: center; }
+.support-info-stat-num { font-size: 15px; font-weight: 900; color: #fff; }
+.support-info-stat-label { font-size: 9.5px; color: #9ca3af; margin-top: 2px; }
+.support-info-progress-track { height: 9px; background: rgba(255,255,255,0.08); border-radius: 999px; margin-top: 16px; overflow: hidden; }
+.support-info-progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #60a5fa, #c4b5fd); }
+.support-info-progress-label { font-size: 10.5px; color: #9ca3af; text-align: center; margin-top: 8px; }
+.support-info-benefits-title { font-size: 11px; font-weight: 800; color: #9ca3af; margin-top: 18px; margin-bottom: 8px; }
+.support-info-benefits-row { display: flex; gap: 8px; }
+.support-info-benefit-chip { flex: 1; background: rgba(255,255,255,0.04); border-radius: 12px; padding: 10px 6px; text-align: center; }
+.support-info-benefit-chip i { font-size: 15px; color: #c4b5fd; display: block; margin-bottom: 5px; }
+.support-info-benefit-chip span { font-size: 9px; color: #9ca3af; }
+.support-info-lock-note { font-size: 10px; color: #6b7280; text-align: center; margin-top: 8px; }
 
 /* ✅ بطاقة "الإنجازات" العريضة — بنفس روح بطاقة الملف الكامل (وليست الأيقونة المصغّرة
    السابقة) + بطاقتا "نادي المعجبين"/"الحماة" المستطيلتان جنباً إلى جنب أسفلها، وكلها قابلة
@@ -3288,56 +3309,65 @@ body.in-voice-room #main-content {
 }
 .full-profile-social-btn:active { background: rgba(255,255,255,0.14); }
 
-/* ✅ بطاقة الإنجازات — واجهة تمهيدية فقط (سيُبنى نظامها لاحقاً)، خمس خانات فارغة منقّطة؛
-   مصغَّرة قليلاً لتوفير مساحة الملف الشخصي */
-.full-profile-achievements-card {
-    background: linear-gradient(135deg, rgba(168,85,247,0.12), rgba(255,255,255,0.03));
-    border: 1px solid rgba(168,85,247,0.25);
-    border-radius: 12px;
-    padding: 9px;
+/* =====================================================
+   ✅ تبويبا "لوحة الشرف" و"فيديو" أسفل هوية الملف الشخصي الكامل، وصفوف "لوحة الشرف"
+   الملوّنة (مستوى الدعم/التلقي/الإنجازات/نادي المعجبين والحماة/الهدايا) — إلهام تصميمي من
+   تطبيقات البث المباشر المشهورة: كل صف بلون تدرّجي مختلف، بلا حدود صريحة، رقم/شارة يسار
+   الصف وعنوان+أيقونة يمينه (بترتيب DOM طبيعي يعكسه RTL تلقائياً)
+   ===================================================== */
+.full-profile-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 28px;
+    padding: 4px 16px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 12px;
 }
-.full-profile-card-header {
+.full-profile-tab {
+    font-size: 13px;
+    font-weight: 800;
+    color: #6b7280;
+    padding-bottom: 9px;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+}
+.full-profile-tab.active { color: #fff; border-bottom-color: #a855f7; }
+
+.honor-board { padding: 0 16px 20px; display: flex; flex-direction: column; gap: 8px; }
+.honor-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 11.5px;
-    font-weight: 800;
-    color: #e9d5ff;
-    margin-bottom: 7px;
+    border-radius: 14px;
+    padding: 13px 15px;
+    cursor: pointer;
 }
-.full-profile-card-header i { color: #c084fc; margin-inline-end: 4px; }
-.full-profile-soon-tag {
-    font-size: 9px;
-    font-weight: 800;
-    background: rgba(255,255,255,0.08);
-    color: #9ca3af;
-    padding: 2px 7px;
-    border-radius: 999px;
-    display: inline-block;
-}
-.full-profile-achievements-row { display: flex; gap: 6px; justify-content: center; }
-.full-profile-achievement-slot {
-    width: 32px; height: 32px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.05);
-    border: 1px dashed rgba(255,255,255,0.18);
-    color: rgba(255,255,255,0.22);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-}
+.honor-row-left { display: flex; align-items: center; gap: 8px; color: #fff; font-weight: 800; font-size: 12.5px; }
+.honor-row-left i { font-size: 14px; opacity: 0.9; }
+.honor-row-right { display: flex; align-items: center; gap: 8px; }
+.honor-row-count { color: rgba(255,255,255,0.75); font-size: 12px; font-weight: 700; }
+.honor-row-chevron { color: rgba(255,255,255,0.4); font-size: 11px; }
+.honor-row-receiving { background: linear-gradient(120deg, #78350f, #451a03); }
+.honor-row-giving { background: linear-gradient(120deg, #1e3a8a, #172554); }
+.honor-row-achv { background: linear-gradient(120deg, #b91c1c, #7c2d12); }
+.honor-row-gifts { background: rgba(255,255,255,0.04); }
+.honor-row-gifts .honor-row-left { color: #e5e7eb; }
 
-/* ✅ بطاقتا "نادي المعجبين" و"الحماة" — نفس فكرة الإنجازات، جنباً إلى جنب وأصغر حجماً */
-.full-profile-mini-card {
+.honor-split-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.honor-mini-card {
     background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px;
-    padding: 12px 8px;
+    border-radius: 14px;
+    padding: 12px 8px 10px;
     text-align: center;
+    cursor: pointer;
 }
-.full-profile-mini-card-icon { font-size: 20px; margin-bottom: 5px; display: block; }
-.full-profile-mini-card-title { font-size: 11px; font-weight: 700; color: #e5e7eb; margin-bottom: 4px; }
+.honor-mini-top { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 10.5px; color: rgba(255,255,255,0.5); font-weight: 700; margin-bottom: 6px; }
+.honor-mini-title { font-size: 11px; font-weight: 800; color: #e5e7eb; margin-top: 6px; }
+.honor-mini-soon { font-size: 9px; color: #9ca3af; background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 999px; display: inline-block; margin-top: 4px; }
+
+.full-profile-video-soon { text-align: center; padding: 50px 20px; color: #6b7280; }
+.full-profile-video-soon i { font-size: 32px; margin-bottom: 12px; display: block; color: #4b5563; }
+.full-profile-video-soon p { font-size: 12.5px; }
 
 /* ✅ زر متابعة/رسالة/إعجاب-هدية/نكزة أسفل بطاقة الملف الشخصي المصغّرة (showFullProfilePage) */
 .full-profile-action-btn {
