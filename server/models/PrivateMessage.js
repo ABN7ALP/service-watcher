@@ -74,10 +74,19 @@ const privateMessageSchema = new mongoose.Schema({
         // للصور والفيديو
         thumbnail: String,
         originalFileName: String,
-        
+
         // تشفير
         isEncrypted: { type: Boolean, default: false },
-        encryptionKey: String
+        encryptionKey: String,
+
+        // 🐛 إصلاح: هذي الحقول الأربعة كانت تُرسَل فعلياً من sendGift/sendGiftBatch لكن
+        // metadata سكيما مُقيَّدة صراحة (بلا Mixed) تُسقِط بصمت أي حقل غير مُعرَّف هنا عند
+        // الحفظ — فتصل كل رسالة هدية بلا صورة ولا سعر أبداً (لا خطأ شبكة، البيانات لم تُحفظ
+        // من الأساس). للهدايا:
+        giftId: { type: mongoose.Schema.Types.ObjectId, ref: 'Gift' },
+        giftImage: String,
+        giftPrice: Number,
+        giftQuantity: Number
     },
     
     // حالة الرسالة
@@ -92,6 +101,12 @@ const privateMessageSchema = new mongoose.Schema({
         deletedForSender: { type: Boolean, default: false },
         deletedForReceiver: { type: Boolean, default: false },
         deletedAt: Date,
+
+        // ✅ "حذف للجميع": تختفي فوراً لدى الطرفين (عبر نفس علمي deletedForSender/deletedForReceiver
+        // أعلاه)، لكن المستند ووسائطه على Cloudinary يبقيان بقاعدة البيانات 3 ساعات إضافية
+        // لأغراض المراجعة/البلاغات قبل حذفهما فعلياً (mediaCleanupJob)
+        deletedForEveryone: { type: Boolean, default: false },
+        deletedForEveryoneAt: Date,
         
         // المشاهدة (لـ View Once)
         viewed: { type: Boolean, default: false },

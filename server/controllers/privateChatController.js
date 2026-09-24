@@ -397,13 +397,20 @@ exports.deleteMessage = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'انتهت مهلة حذف هذه الرسالة للجميع (5 دقائق)، يمكنك حذفها من عندك فقط' });
         }
 
-        const publicId = message.metadata?.publicId;
-        if (publicId) {
-            const resourceType = message.type === 'image' ? 'image' : 'video';
-            await deleteChatMedia(publicId, resourceType);
-        }
-
-        await PrivateMessage.findByIdAndDelete(messageId);
+        // 🐛 إصلاح: "حذف للجميع" كان يحذف المستند فعلياً من قاعدة البيانات (وملف Cloudinary
+        // معه) لحظياً — فيفقد الطرفان أي دليل على محتوى الرسالة (صورة/صوت) عند وقوع بلاغ
+        // لاحق. الآن: تختفي الرسالة فوراً لدى الطرفين (نفس علمَي deletedForSender/deletedForReceiver
+        // المستخدمين أصلاً بفلترة جلب المحادثة بأعلى الملف — لا حاجة لتعديل أي استعلام جلب)،
+        // لكن المستند ووسائطه يبقيان بقاعدة البيانات 3 ساعات إضافية لأغراض المراجعة/البلاغات
+        // قبل حذفهما فعلياً عبر mediaCleanupJob. نمدّد expiresAt (مهلة TTL الأصلية للمستند،
+        // +12 ساعة من الإنشاء) لضمان بقاء المستند 3 ساعات كاملة من لحظة الحذف بغض النظر عن
+        // عمره الأصلي، مع هامش نصف ساعة يضمن أن يسبقه اكتساح المهمة الدورية دوماً
+        message.status.deletedForSender = true;
+        message.status.deletedForReceiver = true;
+        message.status.deletedForEveryone = true;
+        message.status.deletedForEveryoneAt = new Date();
+        message.expiresAt = new Date(Date.now() + 3.5 * 60 * 60 * 1000);
+        await message.save();
 
         const io = req.app.get('socketio');
         const otherUserId = isSender ? message.receiver : message.sender;

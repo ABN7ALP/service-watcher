@@ -890,6 +890,54 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .room-info-stat-num { font-size: 16px; font-weight: 800; color: #f3f4f6; }
 .room-info-stat-label { font-size: 10px; color: #9ca3af; margin-top: 2px; }
 
+/* ✅ ID الغرفة القابل للنسخ ببطاقة معلومات الغرفة — بلا خلفية، بنفس أسلوب room-profile-id-copy */
+.room-info-id-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10.5px;
+    color: #9ca3af;
+    background: transparent;
+    border: none;
+    padding: 2px 0;
+    margin-top: 2px;
+}
+.room-info-id-copy:active { opacity: 0.6; }
+
+/* ✅ أيقونتا الإبلاغ والترتيب — طافيتان بلا خلفية بجانب صورة/اسم الغرفة */
+.room-info-card-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    align-self: flex-start;
+}
+.room-info-icon-btn {
+    background: transparent;
+    border: none;
+    color: #9ca3af;
+    font-size: 15px;
+    padding: 6px;
+    line-height: 1;
+    transition: color 0.15s ease, opacity 0.15s ease;
+}
+.room-info-icon-btn:active { opacity: 0.6; }
+.room-info-icon-btn.room-info-report-btn:hover,
+.room-info-icon-btn.room-info-report-btn:active { color: #f87171; }
+.room-info-icon-btn.room-info-rankings-icon-btn { color: #fbbf24; }
+
+/* ✅ زر متابعة بطاقة معلومات الغرفة — إطار بلا خلفية ولا تدرّج (مختلف عن .follow-room-btn العام) */
+#room-info-card-follow-btn.follow-room-btn {
+    background: transparent;
+    border: 1.5px solid #a855f7;
+    color: #d8b4fe;
+    box-shadow: none;
+}
+#room-info-card-follow-btn.follow-room-btn[data-following="1"] {
+    border-color: rgba(255,255,255,0.25);
+    color: #d1d5db;
+}
+
 /* =====================================================
    ✅ ورقة الملف الشخصي داخل سياق الغرفة (مقعد/مشاهد/دردشة) — صورة تطفو فوق حافة البطاقة
    بلا تدرّج خلفي، بلا زر إغلاق، ID قابل للنسخ، وإدارة الغرفة مدمجة مباشرة
@@ -1013,6 +1061,20 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .support-badge-receiving.tier-4 .support-badge-level-seg { background: linear-gradient(90deg, #6d28d9, #a78bfa, #6d28d9); }
 @keyframes supportBadgeShimmer { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
 
+/* ✅ نسخة "طافية" من شارة الدعم/التلقي بصورة شارة حقيقية بدل الكبسولة الملوّنة — بلا خلفية
+   ولا توهّج، أصغر حجماً — خاصة بنافذة ملف الغرفة (showUserProfileSheet) فقط */
+.room-profile-support-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+}
+.room-profile-support-badge:active { transform: scale(0.92); }
+.room-profile-support-badge-img { width: 16px; height: 16px; object-fit: contain; flex-shrink: 0; }
+.room-profile-support-badge-lv { font-size: 10px; font-weight: 800; color: #e5e7eb; }
+
 /* ✅ لوحة شرح شارة الدعم/التلقي — بانر علوي بلون المسار + الشارة مكبّرة، ثم نقاطك الحالية
    والمطلوبة للمستوى التالي بشكل صريح (أرقام واضحة، لا فقط شريط تقدّم)، ومعاينة مزايا قادمة */
 .support-info-card {
@@ -1077,6 +1139,21 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .room-profile-club-card .club-icon-guardian { margin: 0 auto; }
 .room-profile-club-title { font-size: 11px; font-weight: 800; color: #e5e7eb; margin-top: 5px; }
 .room-profile-club-sub { font-size: 9.5px; color: #9ca3af; margin-top: 2px; }
+
+/* ✅ بطاقتا نادي المعجبين/الحماة بنافذة ملف الغرفة تحديداً — أصغر ومستطيلتان (أيقونة+نص
+   بجانب بعض أفقياً) بدل المربّع السابق (أيقونة فوق النص) */
+.room-profile-club-row-rect { margin: 6px 16px 0; gap: 7px; }
+.room-profile-club-card-rect {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    text-align: right;
+}
+.room-profile-club-icon-img { width: 26px; height: 26px; object-fit: contain; flex-shrink: 0; }
+.room-profile-club-card-rect .room-profile-club-card-text { min-width: 0; flex: 1; }
+.room-profile-club-card-rect .room-profile-club-title { margin-top: 0; font-size: 10.5px; }
+.room-profile-club-card-rect .room-profile-club-sub { margin-top: 1px; }
 
 /* ✅ أيقونات "نادي المعجبين" (قلب زهري بأجنحة بيضاء صغيرة) و"الحماة" (درع متدرّج أبيض بقلبه
    قلب زهري) — تصميم موحّد يُعاد استخدامه بكل مكان تظهر فيه هذي المفاهيم بالتطبيق */
@@ -1205,8 +1282,32 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-owner-avatar-wrap { display: flex; justify-content: center; margin-top: 4px; }
 .fanclub-owner-avatar { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,0.1); box-shadow: 0 6px 18px rgba(0,0,0,0.4); }
 .fanclub-owner-name { text-align: center; font-size: 14.5px; font-weight: 800; color: #fff; margin-top: 10px; }
-.fanclub-member-count { text-align: center; font-size: 12px; color: #9ca3af; margin-top: 3px; }
-.fanclub-member-count b { color: #f472b6; font-weight: 800; }
+
+/* ✅ معاينة الأعضاء (2-3 صور متراكبة) بدل نص "X عضو في النادي" الجاف — بسهم بسيط يفتح
+   القائمة الكاملة (renderMembersView) */
+.fanclub-member-preview-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin: 6px auto 0;
+    background: transparent;
+    border: none;
+    padding: 4px 8px;
+    cursor: pointer;
+}
+.fanclub-member-preview-avatars { display: flex; }
+.fanclub-member-preview-avatar {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid #1a1f2e;
+    margin-inline-start: -7px;
+}
+.fanclub-member-preview-avatar:first-child { margin-inline-start: 0; }
+.fanclub-member-preview-count { font-size: 11.5px; color: #9ca3af; }
+.fanclub-member-preview-count b { color: #f472b6; font-weight: 800; }
+.fanclub-member-preview-arrow { font-size: 9px; color: #6b7280; }
 
 .fanclub-join-btn {
     position: relative;
@@ -1240,18 +1341,18 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-join-btn.joined::after { display: none; }
 .fanclub-join-btn:disabled { opacity: 0.7; cursor: default; }
 
-.fanclub-gift-preview {
-    display: flex;
+/* ✅ صورة الوردة + السعر القديم/الجديد مدموجان داخل زر الانضمام نفسه بدل بانر تعليمات
+   منفصل أسفله — تصميم مختصر بصري لا يحتاج نصاً شارحاً إضافياً */
+.fanclub-join-btn-rose { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
+.fanclub-join-btn-price {
+    display: inline-flex;
     align-items: center;
-    gap: 10px;
-    margin-top: 14px;
-    background: rgba(255,255,255,0.04);
-    border-radius: 12px;
-    padding: 8px 12px;
+    gap: 4px;
+    font-size: 11.5px;
+    font-weight: 700;
+    opacity: 0.9;
 }
-.fanclub-gift-preview img { width: 30px; height: 30px; object-fit: contain; }
-.fanclub-gift-preview-text { font-size: 11px; color: #cbd5e1; flex: 1; }
-.fanclub-gift-preview-price { font-size: 11.5px; font-weight: 800; color: #fbbf24; display: flex; align-items: center; gap: 4px; }
+.fanclub-join-btn-price s { opacity: 0.65; }
 
 /* --- عرض ترتيب النوادي --- */
 .fanclub-rank-explainer { font-size: 11px; color: #9ca3af; line-height: 1.7; text-align: center; padding: 0 4px 12px; }
@@ -1299,24 +1400,6 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .follow-prompt-text b { color: #f9a8d4; }
 .follow-prompt-follow-btn { margin-top: 18px; width: 100%; height: 44px; border-radius: 14px; background: #fff; color: #831843; font-weight: 800; font-size: 13.5px; }
 .follow-prompt-dismiss-btn { margin-top: 10px; width: 100%; height: 36px; background: transparent; color: rgba(255,255,255,0.65); font-size: 12px; font-weight: 700; }
-
-/* ✅ زر "غرف الصدارة" ببطاقة معلومات الغرفة — يفتح منصّة التتويج بدل "قريباً" ثابتة */
-.room-info-rankings-btn {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    background: linear-gradient(90deg, rgba(251,191,36,0.14), rgba(168,85,247,0.14));
-    border: 1px solid rgba(251,191,36,0.3);
-    color: #fde68a;
-    font-size: 11.5px;
-    font-weight: 700;
-    padding: 8px;
-    border-radius: 10px;
-}
-.room-info-rankings-btn:hover { background: linear-gradient(90deg, rgba(251,191,36,0.22), rgba(168,85,247,0.22)); }
-.room-info-rankings-btn i { color: #fbbf24; }
 
 /* =====================================================
    ✅ منصّة تتويج أقوى الغرف — الأول أعلى بالمنتصف ومرتفع عن البقية، الثاني/الثالث بجانبيه،
