@@ -8168,56 +8168,71 @@ function renderProfileHubBody(u) {
             <button id="profile-hub-discover-btn" class="profile-hub-discover-circle" title="اقتراحات"><i class="fas fa-user-plus"></i></button>
         </div>
 
-        <div class="profile-hub-section-title"><i class="fas fa-video"></i> الفيديوهات</div>
-        <div class="profile-hub-video-tabs">
-            <button type="button" class="profile-hub-video-tab active" data-tab="video" title="فيديوهاتي"><i class="fas fa-video"></i></button>
-            <button type="button" class="profile-hub-video-tab" data-tab="repost" title="إعادة النشر"><i class="fas fa-retweet"></i></button>
-            <button type="button" class="profile-hub-video-tab" data-tab="saved" title="المحفوظة"><i class="fas fa-bookmark"></i></button>
-            <button type="button" class="profile-hub-video-tab" data-tab="liked" title="أعجبتني"><i class="fas fa-heart"></i></button>
-        </div>
-        <div class="profile-hub-video-empty">
-            <i class="fas fa-clapperboard"></i>
-            <p id="profile-hub-video-empty-text">لا توجد فيديوهات بعد — قريباً سنعمل على هذي الميزة 🎬</p>
+        <!-- ✅ تبويبا "لوحة الشرف"/"فيديو" — نفس التصميم المستخدَم بالملف الكامل بالضبط: صفوف
+             ملوّنة لمستوى التلقي/الدعم/الإنجازات/الحماة+نادي المعجبين/الهدايا المستلمة؛ الفيديو
+             لا يزال "قريباً" فقط حسب الطلب -->
+        <div class="full-profile-tabs">
+            <span class="full-profile-tab active" data-tab="honor">لوحة الشرف</span>
+            <span class="full-profile-tab" data-tab="video">فيديو</span>
         </div>
 
-        <div class="profile-hub-section-title"><i class="fas fa-shield-halved"></i> لوحة الإشراف</div>
-        <div class="profile-hub-admin-strip">
-            <div class="profile-hub-admin-card">
-                <i class="fas fa-gem" style="color:#fbbf24"></i>
-                <span class="profile-hub-admin-card-title">مستوى الثروة</span>
-                <span class="profile-hub-soon-tag">قريباً</span>
+        <div id="profile-hub-tab-honor" class="honor-board">
+            <div class="honor-row honor-row-receiving" id="profile-hub-honor-receiving">
+                <div class="honor-row-left"><i class="fas fa-microphone"></i> مستوى التلقي</div>
+                <div class="honor-row-right">
+                    ${renderSupportBadgeHTML('receiving', u.supportReceiving)}
+                    <i class="fas fa-chevron-left honor-row-chevron"></i>
+                </div>
             </div>
-            <div class="profile-hub-admin-card">
-                <i class="fas fa-medal" style="color:#c084fc"></i>
-                <span class="profile-hub-admin-card-title">الإنجازات</span>
-                <span class="profile-hub-soon-tag">قريباً</span>
+            <div class="honor-row honor-row-giving" id="profile-hub-honor-giving">
+                <div class="honor-row-left"><i class="fas fa-bullhorn"></i> مستوى الدعم</div>
+                <div class="honor-row-right">
+                    ${renderSupportBadgeHTML('giving', u.supportGiving)}
+                    <i class="fas fa-chevron-left honor-row-chevron"></i>
+                </div>
             </div>
-            <div class="profile-hub-admin-card">
-                <span class="club-icon-fanclub club-icon-sm" style="margin:0 auto 2px">
-                    <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
-                    <i class="fas fa-heart club-icon-heart"></i>
-                    <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
-                </span>
-                <span class="profile-hub-admin-card-title">نادي المعجبين</span>
-                <span class="profile-hub-soon-tag">قريباً</span>
+            <div class="honor-row honor-row-achv" id="profile-hub-honor-achv">
+                <div class="honor-row-left"><i class="fas fa-medal"></i> الإنجازات</div>
+                <div class="honor-row-right">
+                    <span class="honor-row-count">قريباً</span>
+                    <i class="fas fa-chevron-left honor-row-chevron"></i>
+                </div>
             </div>
-            <div class="profile-hub-admin-card">
-                <span class="club-icon-guardian club-icon-sm" style="margin:0 auto 2px">
-                    <i class="fas fa-shield-halved club-icon-shield"></i>
-                    <i class="fas fa-heart club-icon-shield-heart"></i>
-                </span>
-                <span class="profile-hub-admin-card-title">الحماة</span>
-                <span class="profile-hub-soon-tag">قريباً</span>
+            <div class="honor-split-row">
+                <div class="honor-mini-card" id="profile-hub-honor-guardian">
+                    <div class="honor-mini-top"><i class="fas fa-chevron-left"></i> 0</div>
+                    <span class="club-icon-guardian" style="margin:0 auto">
+                        <i class="fas fa-shield-halved club-icon-shield"></i>
+                        <i class="fas fa-heart club-icon-shield-heart"></i>
+                    </span>
+                    <p class="honor-mini-title">الحماة</p>
+                    <span class="honor-mini-soon">قريباً</span>
+                </div>
+                <div class="honor-mini-card" id="profile-hub-honor-fanclub">
+                    <div class="honor-mini-top"><i class="fas fa-chevron-left"></i> <span id="profile-hub-fanclub-count">…</span></div>
+                    <span class="club-icon-fanclub" style="margin:0 auto">
+                        <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
+                        <i class="fas fa-heart club-icon-heart"></i>
+                        <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
+                    </span>
+                    <p class="honor-mini-title">نادي المعجبين</p>
+                </div>
             </div>
-            <div class="profile-hub-admin-card">
-                <i class="fas fa-gift" style="color:#34d399"></i>
-                <span class="profile-hub-admin-card-title">الهدايا المستلمة</span>
-                <span class="profile-hub-admin-card-num" id="profile-hub-gifts-received-num">…</span>
+            <div class="honor-row honor-row-gifts">
+                <div class="honor-row-left"><i class="fas fa-gift" style="color:#34d399"></i> الهدايا المستلمة</div>
+                <div class="honor-row-right">
+                    <span class="honor-row-count" id="profile-hub-gifts-received-num">…</span>
+                </div>
             </div>
+        </div>
+
+        <div id="profile-hub-tab-video" class="full-profile-video-soon" style="display:none">
+            <i class="fas fa-clapperboard"></i>
+            <p>لا توجد فيديوهات بعد — قريباً سنعمل على هذي الميزة 🎬</p>
         </div>
     `;
 
-    // ✅ كوينز مُستلَمة + عدد الهدايا المستلمة (لوحة الإشراف) — نداء واحد لنفس ملخص الهدايا الموجود أصلاً
+    // ✅ كوينز مُستلَمة + عدد الهدايا المستلمة (لوحة الشرف) — نداء واحد لنفس ملخص الهدايا الموجود أصلاً
     fetch(`/api/gifts/user/${u._id}/summary`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(r => r.json())
         .then(res => {
@@ -8228,28 +8243,39 @@ function renderProfileHubBody(u) {
             if (giftsEl) giftsEl.textContent = (res.data.totalGiftsCount || 0).toLocaleString('en-US');
         })
         .catch(() => {});
+    // ✅ عدد أعضاء نادي معجبيني الحقيقي (لوحة الشرف)
+    fetch(`/api/fanclub/${u._id}/summary`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(res => {
+            if (res.status !== 'success') return;
+            const el = document.getElementById('profile-hub-fanclub-count');
+            if (el) el.textContent = (res.data.memberCount || 0).toLocaleString('en-US');
+        })
+        .catch(() => {});
 
-    // ✅ تبويبات الفيديو (فيديوهاتي/إعادة نشر/محفوظة/أعجبتني) — تبديل بصري فقط حالياً، المحتوى
-    // الفعلي "قريباً" — الميزة كلها لا تزال قيد التطوير
-    const VIDEO_TAB_EMPTY_TEXT = {
-        video: 'لا توجد فيديوهات بعد — قريباً سنعمل على هذي الميزة 🎬',
-        repost: 'لا توجد إعادة نشر بعد — قريباً سنعمل على هذي الميزة 🔁',
-        saved: 'لا يوجد محفوظات بعد — قريباً سنعمل على هذي الميزة 🔖',
-        liked: 'لا يوجد إعجابات بعد — قريباً سنعمل على هذي الميزة ❤️'
-    };
-    body.querySelectorAll('.profile-hub-video-tab').forEach(tab => {
+    body.querySelectorAll('.full-profile-tab').forEach(tab => {
         tab.addEventListener('click', () => {
-            body.querySelectorAll('.profile-hub-video-tab').forEach(t => t.classList.remove('active'));
+            body.querySelectorAll('.full-profile-tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
-            const textEl = document.getElementById('profile-hub-video-empty-text');
-            if (textEl) textEl.textContent = VIDEO_TAB_EMPTY_TEXT[tab.dataset.tab] || VIDEO_TAB_EMPTY_TEXT.video;
+            const isHonor = tab.dataset.tab === 'honor';
+            document.getElementById('profile-hub-tab-honor').style.display = isHonor ? '' : 'none';
+            document.getElementById('profile-hub-tab-video').style.display = isHonor ? 'none' : '';
         });
     });
-    body.querySelectorAll('.profile-hub-admin-card').forEach(card => {
-        card.addEventListener('click', () => {
-            if (!card.querySelector('.profile-hub-soon-tag')) return; // ✅ بطاقة "الهدايا المستلمة" الحقيقية لا تفعل شيئاً بعد (لا صفحة تفصيلية بعد)
-            showNotification('هذه الميزة قريباً 🌟', 'info');
-        });
+    document.getElementById('profile-hub-honor-receiving')?.addEventListener('click', () => {
+        showSupportLevelInfoModal('receiving', u.supportReceiving);
+    });
+    document.getElementById('profile-hub-honor-giving')?.addEventListener('click', () => {
+        showSupportLevelInfoModal('giving', u.supportGiving);
+    });
+    document.getElementById('profile-hub-honor-achv')?.addEventListener('click', () => {
+        showComingSoonSheet('الإنجازات', 'نظام الإنجازات قيد التطوير حالياً — ترقّبه قريباً!', 'fa-medal');
+    });
+    document.getElementById('profile-hub-honor-guardian')?.addEventListener('click', () => {
+        showComingSoonSheet('الحماة', 'ميزة "الحماة" قادمة قريباً!', 'fa-shield-halved');
+    });
+    document.getElementById('profile-hub-honor-fanclub')?.addEventListener('click', () => {
+        showFanClubSheet(u._id, u.username, u.profileImage);
     });
 
     document.getElementById('profile-hub-followers-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'followers'));

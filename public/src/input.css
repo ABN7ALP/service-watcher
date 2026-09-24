@@ -3621,56 +3621,6 @@ body.in-voice-room #main-content {
     margin: 18px 16px 8px;
 }
 
-/* ✅ قسم "الفيديوهات" — تبويبات صغيرة (فيديو/إعادة نشر/محفوظة/إعجابات) فوق حالة فارغة موحّدة؛
-   الميزة كلها قيد التطوير، هذا هيكلها البصري فقط */
-.profile-hub-video-tabs { display: flex; justify-content: center; gap: 8px; margin: 0 16px; }
-.profile-hub-video-tab {
-    width: 40px; height: 34px;
-    border-radius: 10px;
-    background: rgba(255,255,255,0.04);
-    color: #9ca3af;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 14px;
-    border-bottom: 2px solid transparent;
-}
-.profile-hub-video-tab.active { background: rgba(168,85,247,0.15); color: #e9d5ff; border-bottom-color: #a855f7; }
-.profile-hub-video-empty {
-    margin: 10px 16px 4px;
-    padding: 22px 12px;
-    text-align: center;
-    background: rgba(255,255,255,0.025);
-    border: 1px dashed rgba(255,255,255,0.1);
-    border-radius: 14px;
-}
-.profile-hub-video-empty i { font-size: 22px; color: rgba(255,255,255,0.18); }
-.profile-hub-video-empty p { font-size: 11px; color: #6b7280; margin-top: 8px; }
-
-/* ✅ "لوحة الإشراف" — شريط فيلم أفقي قابل للتمرير: ثروة/إنجازات/نادي المعجبين/الحماة/هدايا مستلمة */
-.profile-hub-admin-strip {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding: 0 16px 4px;
-    scroll-snap-type: x proximity;
-}
-.profile-hub-admin-card {
-    scroll-snap-align: start;
-    flex: 0 0 auto;
-    width: 88px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px;
-    padding: 14px 8px;
-    text-align: center;
-}
-.profile-hub-admin-card i { font-size: 19px; }
-.profile-hub-admin-card-title { font-size: 10px; font-weight: 700; color: #e5e7eb; }
-.profile-hub-admin-card-num { font-size: 13px; font-weight: 800; color: #fff; }
-
 .profile-hub-settings-list {
     margin: 0 16px;
     background: rgba(255,255,255,0.03);
