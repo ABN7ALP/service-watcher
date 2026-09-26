@@ -3016,7 +3016,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             modal.querySelectorAll('.room-profile-support-badge').forEach(el => {
                 el.addEventListener('click', () => {
                     const kind = el.dataset.supportKind;
-                    showSupportLevelInfoModal(kind, kind === 'giving' ? p.supportGiving : p.supportReceiving);
+                    showSupportLevelInfoModal(kind, kind === 'giving' ? p.supportGiving : p.supportReceiving, p.profileImage);
                 });
             });
             modal.querySelector('#room-profile-achv-card')?.addEventListener('click', () => {
@@ -8302,10 +8302,10 @@ function renderProfileHubBody(u) {
         });
     });
     document.getElementById('profile-hub-honor-receiving')?.addEventListener('click', () => {
-        showSupportLevelInfoModal('receiving', u.supportReceiving);
+        showSupportLevelInfoModal('receiving', u.supportReceiving, u.profileImage);
     });
     document.getElementById('profile-hub-honor-giving')?.addEventListener('click', () => {
-        showSupportLevelInfoModal('giving', u.supportGiving);
+        showSupportLevelInfoModal('giving', u.supportGiving, u.profileImage);
     });
     document.getElementById('profile-hub-honor-achv')?.addEventListener('click', () => {
         showComingSoonSheet('الإنجازات', 'نظام الإنجازات قيد التطوير حالياً — ترقّبه قريباً!', 'fa-medal');
@@ -9441,8 +9441,10 @@ function renderRoomProfileSupportBadgeHTML(kind, info) {
     const imgIndex = info.tierIndex <= 1 ? 0 : (info.tierIndex >= 4 ? 2 : 1);
     return `
         <span class="room-profile-support-badge" data-support-kind="${kind}" title="${label}">
-            <img src="${ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex]}" class="room-profile-support-badge-img" alt="">
-            <span class="room-profile-support-badge-lv">Lv.${info.level}</span>
+            <span class="room-profile-support-badge-imgwrap">
+                <img src="${ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex]}" class="room-profile-support-badge-img" alt="">
+                <span class="room-profile-support-badge-lv">${info.level}</span>
+            </span>
         </span>
     `;
 }
@@ -9466,61 +9468,134 @@ function showComingSoonSheet(title, text, icon) {
     modal.querySelector('#coming-soon-ok-btn').addEventListener('click', () => modal.remove());
 }
 
-// ✅ لوحة شرح شارة الدعم/التلقي — بانر علوي بلون المسار + الشارة مكبّرة، نقاطك الحالية
-// والمطلوبة للمستوى التالي كأرقام صريحة (لا فقط شريط تقدّم)، ومعاينة مزايا قادمة
-function showSupportLevelInfoModal(kind, info) {
+// ✅ نفس منحنى الخبرة الموجود بـserver/utils/supportLevels.js حرفياً (يجب إبقاؤه متطابقاً
+// معه عند أي تعديل مستقبلي للمنحنى) — يُستخدم هنا فقط لعرض جدول "كم خبرة يحتاج كل مستوى"
+// بنافذة تفاصيل الشارة؛ حساب المستوى الفعلي للمستخدم يبقى بالكامل بالسيرفر
+const SUPPORT_LEVEL_THRESHOLDS_REF = [
+    0, 100, 800, 2500, 6000,
+    12000, 22000, 38000, 60000, 100000,
+    160000, 250000, 400000, 650000, 1000000,
+    1600000, 1800000, 2100000, 2400000, 2800000,
+    3200000, 3600000, 4100000, 4600000, 5300000,
+    6000000, 6700000, 7600000, 8500000, 9600000,
+    11000000, 12000000, 13000000, 15000000, 17000000,
+    18000000, 20000000, 22000000, 25000000, 27000000,
+    30000000, 33000000, 36000000, 39000000, 43000000,
+    47000000, 51000000, 55000000, 59000000, 64000000,
+    69000000, 74000000, 80000000, 85000000, 91000000,
+    98000000, 100000000, 110000000, 120000000, 130000000,
+    140000000, 150000000, 160000000, 170000000, 180000000,
+    190000000, 200000000, 210000000, 220000000, 230000000,
+    240000000, 250000000, 260000000, 270000000, 280000000,
+    290000000, 300000000, 310000000, 320000000, 330000000
+];
+
+// ✅ لوحة "تفاصيل شارة الدعم/التلقي" — ورقة سفلية فاخرة: صورة المستخدم داخل إطار الشارة
+// نفسها (كأنها مدالية بورتريه)، شريط تقدّم ذهبي معدني من المستوى الحالي للتالي، زر "!" يفتح
+// جدول الخبرة الكامل، وقسما "صلاحية المستوى" (شبكة مزايا قادمة قريباً) و"مهمة المستوى"
+function showSupportLevelInfoModal(kind, info, profileImage) {
     if (!info) return;
     document.getElementById('support-info-modal')?.remove();
     const modal = document.createElement('div');
     modal.id = 'support-info-modal';
-    modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-[340] p-4';
-    const icon = kind === 'giving' ? 'fa-bullhorn' : 'fa-microphone';
+    modal.className = 'fixed inset-0 bg-black/70 flex items-end justify-center z-[340]';
     const title = kind === 'giving' ? 'مستوى الدعم' : 'مستوى التلقي';
-    const desc = kind === 'giving'
-        ? 'يرتفع كلما دعمتَ الآخرين بإرسال الهدايا لهم'
-        : 'يرتفع كلما استلمتَ دعماً أكبر من الآخرين بالهدايا';
+    const imgIndex = info.tierIndex <= 1 ? 0 : (info.tierIndex >= 4 ? 2 : 1);
+    const badgeImg = ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex];
+    const nextLabel = info.isMax ? 'MAX' : `Lv.${info.level + 1}`;
+
     modal.innerHTML = `
-        <div class="support-info-card">
-            <div class="support-info-banner ${kind}">
-                <span class="support-badge support-badge-${kind} tier-${info.tierIndex}">
-                    <span class="support-badge-icon-seg"><i class="fas ${icon}"></i></span>
-                    <span class="support-badge-level-seg">Lv.${info.level}</span>
-                </span>
-                <p class="support-info-level-title">${title}</p>
-                <span class="support-info-tier-chip">فئة "${escapeHtml(info.tierName)}"</span>
-            </div>
-            <div class="support-info-body">
-                <p class="support-info-desc">${desc}</p>
-                <div class="support-info-stats-grid">
-                    <div class="support-info-stat-box">
-                        <p class="support-info-stat-num">${info.points.toLocaleString()}</p>
-                        <p class="support-info-stat-label">نقاطك الحالية</p>
+        <div class="support-info-sheet-lux">
+            <div class="w-10 h-1 bg-white/15 rounded-full mx-auto mt-2.5 mb-1 flex-shrink-0"></div>
+            <div class="support-info-lux-body">
+                <div class="support-portrait-frame">
+                    <img src="${profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="support-portrait-avatar">
+                    <img src="${badgeImg}" class="support-portrait-badge-img" alt="">
+                </div>
+                <p class="support-info-lux-title">${title} <span class="support-info-lux-lv">Lv.${info.level}</span></p>
+                <p class="support-info-lux-tier">فئة "${escapeHtml(info.tierName)}"</p>
+
+                <div class="support-progress-row-lux">
+                    <span class="support-progress-endlabel">Lv.${info.level}</span>
+                    <div class="support-progress-track-lux">
+                        <div class="support-progress-fill-lux" style="width:${info.progressPercent}%"></div>
                     </div>
-                    <div class="support-info-stat-box">
-                        <p class="support-info-stat-num">${info.isMax ? '—' : info.nextThreshold.toLocaleString()}</p>
-                        <p class="support-info-stat-label">${info.isMax ? 'أعلى مستوى' : `مطلوب للفل ${info.level + 1}`}</p>
-                    </div>
+                    <span class="support-progress-endlabel">${nextLabel}</span>
                 </div>
-                <div class="support-info-progress-track">
-                    <div class="support-info-progress-fill" style="width:${info.progressPercent}%"></div>
+                <div class="support-need-row-lux">
+                    <span>${info.isMax ? 'وصلت لأعلى مستوى 🎉' : `يحتاج <b>${info.pointsToNext.toLocaleString()}</b> خبرة للترقية`}</span>
+                    <button type="button" id="support-xp-info-btn" class="support-info-circle-btn" title="جدول الخبرة"><i class="fas fa-exclamation"></i></button>
                 </div>
-                <p class="support-info-progress-label">
-                    ${info.isMax ? 'وصلت لأعلى مستوى حالياً 🎉' : `باقي <b>${info.pointsToNext.toLocaleString()}</b> كوينز للمستوى التالي`}
-                </p>
-                <p class="support-info-benefits-title">مزايا هذا المسار</p>
-                <div class="support-info-benefits-row">
-                    <div class="support-info-benefit-chip"><i class="fas fa-palette"></i><span>لون اسم مميز</span></div>
-                    <div class="support-info-benefit-chip"><i class="fas fa-bolt"></i><span>تأثير دخول</span></div>
-                    <div class="support-info-benefit-chip"><i class="fas fa-vector-square"></i><span>إطار خاص</span></div>
+
+                <p class="support-lux-section-title">صلاحية المستوى</p>
+                <div class="support-perks-grid">
+                    <button type="button" class="support-perk-box" data-perk="chest">
+                        <span class="support-perk-icon"><i class="fas fa-box-open"></i></span>
+                        <span class="support-perk-label">صندوق الكنز</span>
+                    </button>
+                    <button type="button" class="support-perk-box" data-perk="bubble">
+                        <span class="support-perk-icon"><i class="fas fa-comments"></i></span>
+                        <span class="support-perk-label">فقاعات الدردشة</span>
+                    </button>
+                    <button type="button" class="support-perk-box" data-perk="upgrade">
+                        <span class="support-perk-icon support-perk-icon-up">UP</span>
+                        <span class="support-perk-label">إعلان ترقية</span>
+                    </button>
+                    <button type="button" class="support-perk-box" data-perk="fame">
+                        <span class="support-perk-icon"><i class="fas fa-trophy"></i></span>
+                        <span class="support-perk-label">لوحة المشاهير</span>
+                    </button>
+                    <button type="button" class="support-perk-box" data-perk="room">
+                        <span class="support-perk-icon"><i class="fas fa-shirt"></i></span>
+                        <span class="support-perk-label">مظهر غرفة مخصص</span>
+                    </button>
+                    <button type="button" class="support-perk-box" data-perk="badge">
+                        <span class="support-perk-icon"><i class="fas fa-award"></i></span>
+                        <span class="support-perk-label">الوسام</span>
+                    </button>
                 </div>
-                <p class="support-info-lock-note"><i class="fas fa-lock"></i> المزايا أعلاه قادمة قريباً</p>
-                <button type="button" id="support-info-ok-btn" class="coming-soon-ok-btn" style="margin-top:16px">حسناً</button>
+
+                <p class="support-lux-section-title">مهمة المستوى</p>
+                <div class="support-mission-soon-lux">قريباً</div>
             </div>
         </div>
     `;
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => { if (e.target.id === 'support-info-modal') modal.remove(); });
-    modal.querySelector('#support-info-ok-btn').addEventListener('click', () => modal.remove());
+    modal.querySelectorAll('.support-perk-box').forEach(btn => {
+        btn.addEventListener('click', () => showComingSoonSheet('صلاحيات المستوى', 'هذه الميزة قادمة قريباً!', 'fa-star'));
+    });
+    modal.querySelector('#support-xp-info-btn')?.addEventListener('click', () => showSupportXPTableModal());
+}
+
+// ✅ جدول "كم خبرة يحتاج كل مستوى" الكامل (1 إلى 80) — نافذة صغيرة منفصلة تُفتح من علامة
+// التعجب بجانب شريط التقدّم
+function showSupportXPTableModal() {
+    document.getElementById('support-xp-table-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'support-xp-table-modal';
+    modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[345] p-4';
+    modal.innerHTML = `
+        <div class="support-xp-table-card">
+            <button type="button" id="support-xp-table-close" class="support-xp-table-close"><i class="fas fa-times"></i></button>
+            <p class="support-xp-table-title">تلقّي الهدايا أو أرسل الهدايا لتحصيل خبرة، يمكنك ترقية المستوى</p>
+            <div class="support-xp-table-headrow">
+                <span>Lv</span>
+                <span>Exp</span>
+            </div>
+            <div class="support-xp-table-scroll">
+                ${SUPPORT_LEVEL_THRESHOLDS_REF.map((xp, i) => `
+                    <div class="support-xp-table-row">
+                        <span class="support-xp-table-lv">${i + 1}</span>
+                        <span class="support-xp-table-exp">${xp.toLocaleString()}</span>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'support-xp-table-modal') modal.remove(); });
+    modal.querySelector('#support-xp-table-close').addEventListener('click', () => modal.remove());
 }
 
 // ✅ نافذة "نادي المعجبين" — عرض الانضمام (بوردة رمزية بكوينز واحد)، ترتيب أقوى النوادي
@@ -9910,10 +9985,10 @@ async function showFullProfilePage(userId) {
             });
         });
         document.getElementById('honor-row-receiving')?.addEventListener('click', () => {
-            showSupportLevelInfoModal('receiving', u.supportReceiving);
+            showSupportLevelInfoModal('receiving', u.supportReceiving, u.profileImage);
         });
         document.getElementById('honor-row-giving')?.addEventListener('click', () => {
-            showSupportLevelInfoModal('giving', u.supportGiving);
+            showSupportLevelInfoModal('giving', u.supportGiving, u.profileImage);
         });
         document.getElementById('full-profile-achv-row')?.addEventListener('click', () => {
             showComingSoonSheet('الإنجازات', 'نظام الإنجازات قيد التطوير حالياً — ترقّبه قريباً!', 'fa-medal');
