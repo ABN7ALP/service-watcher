@@ -1072,43 +1072,197 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     transition: transform 0.15s ease;
 }
 .room-profile-support-badge:active { transform: scale(0.92); }
-.room-profile-support-badge-img { width: 16px; height: 16px; object-fit: contain; flex-shrink: 0; }
-.room-profile-support-badge-lv { font-size: 10px; font-weight: 800; color: #e5e7eb; }
-
-/* ✅ لوحة شرح شارة الدعم/التلقي — بانر علوي بلون المسار + الشارة مكبّرة، ثم نقاطك الحالية
-   والمطلوبة للمستوى التالي بشكل صريح (أرقام واضحة، لا فقط شريط تقدّم)، ومعاينة مزايا قادمة */
-.support-info-card {
-    background: linear-gradient(180deg, #1e2436, #171b28);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 20px;
-    width: 100%;
-    max-width: 340px;
-    overflow: hidden;
-    animation: slideUp 0.2s ease-out;
+/* 🐛 تصحيح: الفل كان نصاً منفصلاً بجانب الصورة — الآن يندمج بمنتصف الصورة نفسها وكأنه جزء
+   منها (كبسولة رقمية على مدالية الشارة) بدل رقم عائم بجوارها */
+.room-profile-support-badge-imgwrap { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.room-profile-support-badge-img { width: 24px; height: 24px; object-fit: contain; }
+.room-profile-support-badge-lv {
+    position: absolute;
+    top: 54%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 8.5px;
+    font-weight: 900;
+    color: #451a03;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.4);
+    line-height: 1;
+    pointer-events: none;
 }
-.support-info-banner { padding: 26px 20px 18px; text-align: center; }
-.support-info-banner.giving { background: linear-gradient(160deg, #3b82f6, #1e3a8a); }
-.support-info-banner.receiving { background: linear-gradient(160deg, #8b5cf6, #4c1d95); }
-.support-info-banner .support-badge { height: 30px; margin: 0 auto; transform: scale(1.55); box-shadow: 0 3px 10px rgba(0,0,0,0.35); }
-.support-info-banner .support-badge-icon-seg i { font-size: 13px; }
-.support-info-banner .support-badge-level-seg { font-size: 12px; padding: 0 11px; }
-.support-info-level-title { font-size: 19px; font-weight: 900; color: #fff; margin-top: 16px; }
-.support-info-tier-chip { display: inline-block; margin-top: 7px; font-size: 11px; font-weight: 800; color: #fff; background: rgba(255,255,255,0.2); padding: 3px 13px; border-radius: 999px; }
-.support-info-body { padding: 18px 20px 20px; }
-.support-info-desc { font-size: 11.5px; color: #9ca3af; text-align: center; }
-.support-info-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
-.support-info-stat-box { background: rgba(255,255,255,0.04); border-radius: 12px; padding: 10px; text-align: center; }
-.support-info-stat-num { font-size: 15px; font-weight: 900; color: #fff; }
-.support-info-stat-label { font-size: 9.5px; color: #9ca3af; margin-top: 2px; }
-.support-info-progress-track { height: 9px; background: rgba(255,255,255,0.08); border-radius: 999px; margin-top: 16px; overflow: hidden; }
-.support-info-progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #60a5fa, #c4b5fd); }
-.support-info-progress-label { font-size: 10.5px; color: #9ca3af; text-align: center; margin-top: 8px; }
-.support-info-benefits-title { font-size: 11px; font-weight: 800; color: #9ca3af; margin-top: 18px; margin-bottom: 8px; }
-.support-info-benefits-row { display: flex; gap: 8px; }
-.support-info-benefit-chip { flex: 1; background: rgba(255,255,255,0.04); border-radius: 12px; padding: 10px 6px; text-align: center; }
-.support-info-benefit-chip i { font-size: 15px; color: #c4b5fd; display: block; margin-bottom: 5px; }
-.support-info-benefit-chip span { font-size: 9px; color: #9ca3af; }
-.support-info-lock-note { font-size: 10px; color: #6b7280; text-align: center; margin-top: 8px; }
+
+/* =====================================================
+   ✅ ورقة "تفاصيل شارة الدعم/التلقي" الفاخرة — خلفية بنية قريبة من السواد، إطار ذهبي لامع
+   سميك بنقاط "مبرومة" علوية (مظهر معدني مطروق)، صورة المستخدم داخل إطار الشارة نفسها،
+   شريط تقدّم ذهبي معدني متحرّك، وشبكة "صلاحية المستوى" + قسم "مهمة المستوى"
+   ===================================================== */
+.support-info-sheet-lux {
+    width: 100%;
+    max-width: 420px;
+    max-height: 88vh;
+    overflow-y: auto;
+    position: relative;
+    background:
+        radial-gradient(circle at 15% 0%, rgba(251,191,36,0.10), transparent 40%),
+        radial-gradient(circle at 95% 15%, rgba(251,191,36,0.08), transparent 35%),
+        radial-gradient(circle at 50% 100%, rgba(251,191,36,0.06), transparent 45%),
+        linear-gradient(165deg, #221206, #0e0704);
+    border: 3px solid transparent;
+    border-image: linear-gradient(135deg, #fde68a, #b45309, #fbbf24, #78350f, #fde68a) 1;
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 0 0 1px rgba(251,191,36,0.25) inset, 0 -8px 40px rgba(251,191,36,0.12), 0 -4px 30px rgba(0,0,0,0.6);
+    animation: slideUp 0.25s ease-out;
+}
+@media (min-width: 768px) { .support-info-sheet-lux { border-radius: 24px; margin-bottom: 16px; } }
+.support-info-sheet-lux::before {
+    content: '';
+    position: absolute;
+    top: 7px; left: 0; right: 0;
+    height: 4px;
+    background-image: radial-gradient(circle, #fde68a 1.4px, transparent 1.6px);
+    background-size: 16px 100%;
+    opacity: 0.55;
+    pointer-events: none;
+}
+.support-info-lux-body { padding: 10px 20px 26px; text-align: center; }
+
+.support-portrait-frame {
+    position: relative;
+    width: 88px;
+    height: 88px;
+    margin: 6px auto 0;
+}
+.support-portrait-avatar {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -46%);
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+.support-portrait-badge-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+}
+.support-info-lux-title { font-size: 16px; font-weight: 900; color: #fde68a; margin-top: 10px; }
+.support-info-lux-lv { color: #fff; opacity: 0.85; font-weight: 800; }
+.support-info-lux-tier { font-size: 11px; color: #d6a94a; margin-top: 3px; }
+
+.support-progress-row-lux { display: flex; align-items: center; gap: 8px; margin-top: 20px; }
+.support-progress-endlabel { font-size: 10.5px; font-weight: 800; color: #fde68a; flex-shrink: 0; }
+.support-progress-track-lux {
+    flex: 1;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(251,191,36,0.25);
+    overflow: hidden;
+}
+.support-progress-fill-lux {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #78350f, #fbbf24, #fef3c7, #fbbf24, #78350f);
+    background-size: 200% 100%;
+    animation: supportBadgeShimmer 2.6s linear infinite;
+}
+.support-need-row-lux {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: 11px;
+    color: #d1b378;
+}
+.support-need-row-lux b { color: #fde68a; }
+.support-info-circle-btn {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: rgba(251,191,36,0.15);
+    border: 1px solid rgba(251,191,36,0.5);
+    color: #fde68a;
+    font-size: 9px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.support-lux-section-title { font-size: 12px; font-weight: 800; color: #fde68a; text-align: right; margin-top: 22px; margin-bottom: 10px; }
+.support-perks-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.support-perk-box {
+    background: linear-gradient(160deg, #6b3410, #2b1204);
+    border: 1px solid rgba(251,191,36,0.3);
+    border-radius: 14px;
+    padding: 12px 4px 9px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+.support-perk-box:active { transform: scale(0.95); }
+.support-perk-icon { font-size: 18px; color: #fde68a; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+.support-perk-icon-up {
+    width: 24px; height: 24px;
+    border-radius: 50% 50% 50% 4px;
+    background: linear-gradient(160deg, #fde68a, #b45309);
+    color: #2b1204;
+    font-size: 9px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.support-perk-label { font-size: 9.5px; color: #e9c98a; text-align: center; line-height: 1.3; }
+.support-mission-soon-lux {
+    background: linear-gradient(160deg, #6b3410, #2b1204);
+    border: 1px solid rgba(251,191,36,0.3);
+    border-radius: 14px;
+    padding: 16px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 800;
+    color: #d1b378;
+}
+
+/* ✅ جدول "كم خبرة يحتاج كل مستوى" — نافذة صغيرة منفصلة، خلفية بنية داكنة قريبة من السواد */
+.support-xp-table-card {
+    width: 100%;
+    max-width: 320px;
+    max-height: 80vh;
+    background: linear-gradient(165deg, #221206, #0e0704);
+    border: 2px solid rgba(251,191,36,0.4);
+    border-radius: 18px;
+    padding: 18px 16px 14px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+.support-xp-table-close { position: absolute; top: 10px; left: 10px; background: transparent; border: none; color: #d1b378; font-size: 14px; padding: 6px; }
+.support-xp-table-title { font-size: 11.5px; font-weight: 700; color: #fde68a; text-align: center; line-height: 1.7; margin-bottom: 12px; padding: 0 10px; }
+.support-xp-table-headrow {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 10px 8px;
+    border-bottom: 1px solid rgba(251,191,36,0.3);
+    font-size: 11px;
+    font-weight: 800;
+    color: #fde68a;
+    flex-shrink: 0;
+}
+.support-xp-table-scroll { overflow-y: auto; margin-top: 6px; }
+.support-xp-table-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 7px 10px;
+    font-size: 11.5px;
+    color: #e9c98a;
+    border-bottom: 1px solid rgba(251,191,36,0.08);
+}
+.support-xp-table-lv { font-weight: 800; color: #fde68a; }
+.support-xp-table-exp { color: #d1b378; }
 
 /* ✅ بطاقة "الإنجازات" العريضة — بنفس روح بطاقة الملف الكامل (وليست الأيقونة المصغّرة
    السابقة) + بطاقتا "نادي المعجبين"/"الحماة" المستطيلتان جنباً إلى جنب أسفلها، وكلها قابلة
