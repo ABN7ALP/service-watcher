@@ -1467,6 +1467,12 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 /* --- عرض "تفاصيل النادي" --- */
 .fanclub-portrait-row { display: flex; align-items: center; justify-content: center; margin-top: 8px; position: relative; }
 .fanclub-owner-avatar { width: 76px; height: 76px; border-radius: 50%; object-fit: cover; border: 3px solid #facc15; box-shadow: 0 6px 18px rgba(0,0,0,0.4); position: relative; z-index: 2; margin-inline-start: -14px; }
+/* ✅ "نجم الأسبوع الحالي" — صورة المتصدّر الحالي بمساهمات هذا الأسبوع، تظهر بجانب صاحب
+   النادي حياً (تتبدّل فوراً كلما تغيّر المتصدّر)، بإطار تاج ذهبي يمنحها طابع الفوز */
+.fanclub-weekly-leader-slot { background: transparent; border: none; padding: 0; position: relative; margin-inline-start: -12px; z-index: 3; display: flex; flex-direction: column; align-items: center; animation: fanclubLeaderPop 0.4s ease-out; }
+.fanclub-weekly-leader-avatar { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; border: 2.5px solid #fbbf24; box-shadow: 0 4px 12px rgba(251,191,36,0.45); }
+.fanclub-weekly-leader-crown { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); color: #fbbf24; font-size: 13px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)); z-index: 1; }
+@keyframes fanclubLeaderPop { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
 /* ✅ شعار النادي (تاج + جناحان + قاعدة داكنة بأيقونة مركزية) — يظهر خلف/بجانب صورة صاحب
    النادي، ألوانه تتبدّل حسب الشعار المُختار (4 قوالب مغلقة، بلا صور مرفوعة من المستخدم) */
 .fanclub-emblem { position: relative; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; z-index: 1; }
@@ -1476,17 +1482,23 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-emblem-wing { position: absolute; top: 46%; font-size: 15px; opacity: 0.95; }
 .fanclub-emblem-wing-left { left: -2px; transform: translateY(-50%) rotate(-20deg) scaleX(-1); }
 .fanclub-emblem-wing-right { right: -2px; transform: translateY(-50%) rotate(20deg); }
-.fanclub-emblem-heart_wings .fanclub-emblem-icon { color: #f472b6; }
-.fanclub-emblem-heart_wings .fanclub-emblem-wing { color: #fbcfe8; }
-.fanclub-emblem-shield_wings .fanclub-emblem-icon { color: #7dd3fc; }
-.fanclub-emblem-shield_wings .fanclub-emblem-wing { color: #cbd5e1; }
-.fanclub-emblem-shield_wings .fanclub-emblem-crown { color: #cbd5e1; }
-.fanclub-emblem-crown_gold .fanclub-emblem-icon { color: #fde68a; }
-.fanclub-emblem-crown_gold .fanclub-emblem-wing { color: #fcd34d; }
-.fanclub-emblem-crown_gold .fanclub-emblem-crown { color: #fef3c7; font-size: 16px; }
-.fanclub-emblem-star_royal .fanclub-emblem-icon { color: #c4b5fd; }
-.fanclub-emblem-star_royal .fanclub-emblem-wing { color: #ddd6fe; }
-.fanclub-emblem-star_royal .fanclub-emblem-crown { color: #e9d5ff; }
+/* ✅ 5 ألوان مغلقة لشعار النادي (نفس قائمة FAN_CLUB_COLORS بالعميل) — تُلوّن القاعدة الداكنة
+   والقلب/التاج/الجناحين بتدرّج مطابق لكل لون، بلا أي صور مرفوعة من المستخدم */
+.fanclub-emblem-pink .fanclub-emblem-base { background: linear-gradient(160deg, #db2777, #831843); }
+.fanclub-emblem-pink .fanclub-emblem-icon, .fanclub-emblem-pink .fanclub-emblem-crown { color: #fbcfe8; }
+.fanclub-emblem-pink .fanclub-emblem-wing { color: #f472b6; }
+.fanclub-emblem-yellow .fanclub-emblem-base { background: linear-gradient(160deg, #a16207, #713f12); }
+.fanclub-emblem-yellow .fanclub-emblem-icon, .fanclub-emblem-yellow .fanclub-emblem-crown { color: #fef3c7; }
+.fanclub-emblem-yellow .fanclub-emblem-wing { color: #fcd34d; }
+.fanclub-emblem-purple .fanclub-emblem-base { background: linear-gradient(160deg, #7e22ce, #4c1d95); }
+.fanclub-emblem-purple .fanclub-emblem-icon, .fanclub-emblem-purple .fanclub-emblem-crown { color: #e9d5ff; }
+.fanclub-emblem-purple .fanclub-emblem-wing { color: #c4b5fd; }
+.fanclub-emblem-blue .fanclub-emblem-base { background: linear-gradient(160deg, #1d4ed8, #1e3a8a); }
+.fanclub-emblem-blue .fanclub-emblem-icon, .fanclub-emblem-blue .fanclub-emblem-crown { color: #dbeafe; }
+.fanclub-emblem-blue .fanclub-emblem-wing { color: #93c5fd; }
+.fanclub-emblem-orange .fanclub-emblem-base { background: linear-gradient(160deg, #c2410c, #7c2d12); }
+.fanclub-emblem-orange .fanclub-emblem-icon, .fanclub-emblem-orange .fanclub-emblem-crown { color: #fed7aa; }
+.fanclub-emblem-orange .fanclub-emblem-wing { color: #fdba74; }
 
 .fanclub-owner-name-row { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 12px; flex-wrap: wrap; }
 .fanclub-owner-name { font-size: 14.5px; font-weight: 800; color: #fff; }
@@ -1561,30 +1573,65 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-rename-confirm-btn { color: #ec4899; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.1); }
 .fanclub-rename-cancel-btn { color: #d1d5db; }
 
-/* ✅ منتقي "شعار المجموعة" */
-.fanclub-emblem-picker-card { background: #1a1f2e; border-radius: 20px 20px 0 0; width: 100%; max-width: 380px; padding: 18px; animation: slideUp 0.25s ease-out; }
-@media (min-width: 768px) { .fanclub-emblem-picker-card { border-radius: 20px; margin-bottom: 16px; } }
-.fanclub-emblem-picker-title { font-size: 13.5px; font-weight: 800; color: #fff; text-align: center; margin-bottom: 16px; }
-.fanclub-emblem-picker-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-.fanclub-emblem-picker-item { background: rgba(255,255,255,0.04); border: 2px solid transparent; border-radius: 16px; padding: 16px 8px 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.fanclub-emblem-picker-item.active { border-color: #ec4899; background: rgba(236,72,153,0.08); }
-.fanclub-emblem-picker-label { font-size: 11px; color: #d1d5db; font-weight: 700; }
+/* ✅ منتقيا "شعار المجموعة"/"هدية المجموعة" — بطاقة مشتركة: إغلاق X + عنوان، صف عدّاد/تلميح
+   "انقر للتعديل"، بطاقة معاينة داكنة، شبكة ألوان (3 أعمدة)، وزر حفظ عريض بالأسفل */
+.fanclub-color-picker-card { background: #100d12; border-radius: 20px; width: 100%; max-width: 380px; padding: 18px; animation: slideUp 0.2s ease-out; }
+.fanclub-color-picker-header { display: flex; align-items: center; justify-content: center; position: relative; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 14px; }
+.fanclub-color-picker-close { position: absolute; right: 0; background: transparent; border: none; color: #d1d5db; font-size: 16px; padding: 4px; }
+.fanclub-color-picker-title { font-size: 14px; font-weight: 800; color: #fff; }
+.fanclub-color-picker-hintrow { display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; color: #6b7280; margin-bottom: 10px; }
+.fanclub-color-picker-hint { background: transparent; border: none; color: #6b7280; font-size: 10.5px; }
+.fanclub-color-picker-preview { background: rgba(255,255,255,0.03); border-radius: 14px; padding: 20px 12px; display: flex; align-items: center; justify-content: center; min-height: 96px; margin-bottom: 18px; }
+.fanclub-color-picker-section-title { font-size: 12px; font-weight: 700; color: #d1d5db; margin-bottom: 10px; }
+.fanclub-color-picker-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+.fanclub-color-picker-item { background: rgba(255,255,255,0.04); border: 2px solid transparent; border-radius: 12px; padding: 14px 6px; display: flex; align-items: center; justify-content: center; min-height: 62px; }
+.fanclub-color-picker-item.active { border-color: #ec4899; }
+.fanclub-color-picker-save { width: 100%; height: 48px; border-radius: 999px; background: linear-gradient(90deg, #ec4899, #f43f5e); color: #fff; font-weight: 800; font-size: 14px; border: none; }
 
-/* ✅ منتقي "هدية المجموعة" */
-.fanclub-gift-picker-card { background: #1a1f2e; border-radius: 20px 20px 0 0; width: 100%; max-width: 400px; max-height: 72vh; overflow-y: auto; padding: 18px; animation: slideUp 0.25s ease-out; }
-@media (min-width: 768px) { .fanclub-gift-picker-card { border-radius: 20px; margin-bottom: 16px; } }
-.fanclub-gift-picker-title { font-size: 13.5px; font-weight: 800; color: #fff; text-align: center; margin-bottom: 16px; }
-.fanclub-gift-picker-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.fanclub-gift-picker-item { background: rgba(255,255,255,0.04); border: 2px solid transparent; border-radius: 14px; padding: 10px 4px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.fanclub-gift-picker-item.active { border-color: #a855f7; background: rgba(168,85,247,0.1); }
-.fanclub-gift-picker-img { width: 40px; height: 40px; object-fit: contain; }
-.fanclub-gift-picker-name { font-size: 10px; color: #d1d5db; text-align: center; }
+/* ✅ شارة "شعار النادي" المصغّرة على هيئة مفتاح/بطاقة أفقية — تُستخدم بمعاينة منتقي الشعار،
+   لونها الوحيد المتبدّل بين القوالب الخمسة */
+.fanclub-emblem-preview-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    padding: 0 4px 0 16px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 800;
+    color: #fff;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.fanclub-emblem-preview-pill-icon {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.25);
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #fff;
+}
+.fanclub-emblem-preview-pill-pink { background: linear-gradient(90deg, #ec4899, #db2777); }
+.fanclub-emblem-preview-pill-yellow { background: linear-gradient(90deg, #eab308, #a16207); }
+.fanclub-emblem-preview-pill-purple { background: linear-gradient(90deg, #a855f7, #7e22ce); }
+.fanclub-emblem-preview-pill-blue { background: linear-gradient(90deg, #3b82f6, #1d4ed8); }
+.fanclub-emblem-preview-pill-orange { background: linear-gradient(90deg, #f97316, #c2410c); }
+.fanclub-color-picker-item .fanclub-emblem-preview-pill { pointer-events: none; }
+
+.fanclub-gift-preview-visual { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.fanclub-gift-preview-img { width: 72px; height: 72px; object-fit: contain; }
+.fanclub-gift-swatch-img { width: 34px; height: 34px; object-fit: contain; }
 
 .fanclub-join-btn {
     position: relative;
     overflow: hidden;
     width: 100%;
-    height: 54px;
+    height: 56px;
     border-radius: 14px;
     background: linear-gradient(135deg, #ec4899, #a855f7);
     color: #fff;
@@ -1595,7 +1642,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     justify-content: space-between;
     gap: 10px;
     padding: 0 8px 0 18px;
-    border: none;
+    border: 1.5px solid rgba(255,255,255,0.28);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 8px 18px rgba(168,85,247,0.35);
     cursor: pointer;
     margin-top: 18px;
 }
@@ -1620,15 +1668,16 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     font-family: 'Cairo', sans-serif;
     font-weight: 900;
     font-style: italic;
-    font-size: 20px;
-    letter-spacing: 0.3px;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    font-size: 21.5px;
+    letter-spacing: 0.4px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 .fanclub-join-btn-price-group {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    background: rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.16);
+    border: 1px solid rgba(255,255,255,0.32);
     border-radius: 999px;
     padding: 5px 11px 5px 7px;
     flex-shrink: 0;
@@ -1675,6 +1724,56 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-member-row-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .fanclub-member-row-name { font-size: 12.5px; font-weight: 700; color: #e5e7eb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fanclub-member-row-contrib { font-size: 10.5px; color: #6b7280; flex-shrink: 0; }
+.fanclub-member-row-rank { width: 18px; text-align: center; font-size: 11px; font-weight: 800; color: #6b7280; flex-shrink: 0; }
+.fanclub-member-row[data-user-id] { cursor: pointer; }
+
+/* ✅ "قائمة المعجبين VIP" — لافتة مكافآت + عدّاد تنازلي حقيقي لموعد التصفير الأسبوعي +
+   منصّة تتويج (المركز الأول وسط ومكبَّر، الثاني يمين، الثالث يسار) بصور حقيقية داخل إطار
+   تاج/أجنحة يمنح إحساساً فاخراً يبني ثقة المستخدمين بجدّية النظام */
+.fanclub-vip-banner {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: linear-gradient(90deg, rgba(251,191,36,0.16), rgba(236,72,153,0.16));
+    border: 1px solid rgba(251,191,36,0.3); border-radius: 12px;
+    padding: 9px 10px; margin-top: 6px; font-size: 11px; font-weight: 800; color: #fde68a;
+}
+.fanclub-vip-banner i { color: #fbbf24; font-size: 11px; }
+.fanclub-vip-countdown {
+    text-align: center; font-size: 11px; color: #9ca3af; padding: 9px 0 4px;
+}
+.fanclub-vip-countdown i { color: #f9a8d4; margin-inline-end: 4px; }
+.fanclub-vip-countdown b { color: #fff; font-weight: 800; letter-spacing: 0.5px; }
+.fanclub-vip-podium {
+    display: flex; align-items: flex-end; justify-content: center; gap: 6px;
+    position: relative; padding: 22px 6px 6px; margin-top: 4px;
+}
+.fanclub-vip-wing { position: absolute; top: 30px; font-size: 26px; color: rgba(255,255,255,0.06); }
+.fanclub-vip-wing-left { left: -2px; transform: rotate(-15deg) scaleX(-1); }
+.fanclub-vip-wing-right { right: -2px; transform: rotate(15deg); }
+.fanclub-vip-podium-slot { display: flex; flex-direction: column; align-items: center; width: 84px; position: relative; z-index: 1; }
+.fanclub-vip-podium-crown { position: absolute; top: -13px; left: 50%; transform: translateX(-50%); font-size: 15px; z-index: 2; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)); }
+.fanclub-vip-podium-crown-1 { color: #fbbf24; font-size: 19px; top: -17px; }
+.fanclub-vip-podium-crown-2 { color: #cbd5e1; }
+.fanclub-vip-podium-crown-3 { color: #d97706; }
+.fanclub-vip-podium-frame { border-radius: 50%; padding: 3px; display: flex; align-items: center; justify-content: center; position: relative; }
+.fanclub-vip-podium-frame-1 { width: 72px; height: 72px; background: linear-gradient(145deg, #fde68a, #b45309); box-shadow: 0 6px 16px rgba(251,191,36,0.4); }
+.fanclub-vip-podium-frame-2 { width: 58px; height: 58px; background: linear-gradient(145deg, #e2e8f0, #64748b); }
+.fanclub-vip-podium-frame-3 { width: 58px; height: 58px; background: linear-gradient(145deg, #fdba74, #9a3412); }
+.fanclub-vip-podium-avatar { width: calc(100% - 6px); height: calc(100% - 6px); border-radius: 50%; object-fit: cover; border: 2px solid #100d12; }
+.fanclub-vip-podium-rankbadge {
+    position: absolute; bottom: -3px; left: 50%; transform: translateX(-50%);
+    width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 900; color: #100d12; border: 2px solid #100d12;
+}
+.fanclub-vip-podium-rankbadge-1 { background: #fbbf24; }
+.fanclub-vip-podium-rankbadge-2 { background: #cbd5e1; }
+.fanclub-vip-podium-rankbadge-3 { background: #d97706; }
+.fanclub-vip-podium-name { font-size: 11px; font-weight: 700; color: #e5e7eb; margin-top: 8px; max-width: 84px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fanclub-vip-podium-points { font-size: 9.5px; color: #fbbf24; margin-top: 1px; }
+.fanclub-vip-podium-points i { font-size: 8px; margin-inline-end: 2px; }
+.fanclub-vip-podium-slot[data-user-id] { cursor: pointer; }
+.fanclub-vip-podium-empty .fanclub-vip-podium-frame { background: rgba(255,255,255,0.06); border: 1.5px dashed rgba(255,255,255,0.18); }
+.fanclub-vip-podium-dash { color: #4b5563; font-size: 13px; font-weight: 900; }
+.fanclub-vip-podium-empty .fanclub-vip-podium-name { color: #6b7280; }
 
 /* =====================================================
    ✅ نافذة "هل تود متابعته؟" — تظهر عند إرسال رسالة لشخص لست تتابعه بعد
@@ -3665,7 +3764,17 @@ body.in-voice-room #main-content {
     font-size: 11px;
     font-weight: 700;
     color: #e5e7eb;
+    font-family: inherit;
 }
+/* ✅ شارة "نجم النادي الأسبوعي" — دائمة (مركز أول بالأسبوع الماضي المكتمل)، ذهبية لتمييزها
+   عن باقي شارات المعلومات الثابتة، وقابلة للنقر (تنقل لنادي المعجبين المعنيّ) */
+.full-profile-weekly-badge {
+    cursor: pointer;
+    background: linear-gradient(90deg, rgba(251,191,36,0.18), rgba(236,72,153,0.14));
+    border-color: rgba(251,191,36,0.4);
+    color: #fde68a;
+}
+.full-profile-weekly-badge i { color: #fbbf24; }
 /* ✅ الحالة/السيرة — بلا تسمية وبلا خلفية، تجلس مباشرة تحت الشارات بأناقة */
 .full-profile-bio-text {
     font-size: 11.5px;

@@ -40,13 +40,13 @@ const userSchema = new mongoose.Schema({
     activeFrameClass: { type: String, default: null },
     activeFrameExpiresAt: { type: Date, default: null },
     hasReceivedWelcomeFrame: { type: Boolean, default: false }, // منع تكرار هدية الترحيب
-    // ✅ تخصيص نادي المعجبين (يُعدَّلها صاحب النادي فقط، تظهر لكل زوّار ناديه)
+    // ✅ تخصيص نادي المعجبين (يُعدَّلها صاحب النادي فقط، تظهر لكل زوّار ناديه) — الهدية تبقى
+    // الوردة نفسها دوماً والشعار نفس الأيقونة دوماً؛ التخصيص الوحيد لكليهما هو اللون (5 ألوان
+    // مغلقة، تُطبَّق بفلتر CSS على نفس صورة الوردة/الشعار بلا أي صور مرفوعة من المستخدم)
     fanClub: {
         name: { type: String, maxlength: 13, default: null }, // null = يُعرض "نادي {username}" افتراضياً
-        // شعار النادي — قيمة من قائمة مغلقة مُعرَّفة بـfanClubEmblems.js (لا نص حر، لمنع أي حقن)
-        emblemId: { type: String, enum: ['heart_wings', 'shield_wings', 'crown_gold', 'star_royal'], default: 'heart_wings' },
-        // هدية الانضمام المخصصة لهذا النادي — تظهر بزر الانضمام بدل الوردة الافتراضية (السعر يبقى ثابتاً 1 كوينز دوماً)
-        joinGiftId: { type: mongoose.Schema.Types.ObjectId, ref: 'Gift', default: null }
+        emblemColorId: { type: String, enum: ['pink', 'yellow', 'purple', 'blue', 'orange'], default: 'pink' },
+        giftColorId: { type: String, enum: ['pink', 'yellow', 'purple', 'blue', 'orange'], default: 'pink' }
     },
     // ✅ حقول جديدة للوحة التحكم
     isBanned: { type: Boolean, default: false },

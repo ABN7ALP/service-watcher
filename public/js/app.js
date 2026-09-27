@@ -9620,18 +9620,24 @@ function showSupportXPTableModal() {
 // (يومي/أسبوعي عبر أيقونة الكأس)، وقائمة أعضاء أي نادٍ (بالنقر على صف بالترتيب). ثلاث
 // "شاشات" تتبادل داخل نفس الورقة (لا نوافذ منفصلة)، بزر رجوع واحد يعرف دوماً وجهته التالية.
 // تُستدعى من نافذة ملف الغرفة والملف الكامل معاً — نافذة موحّدة بكل مكان
-// ✅ خرائط عرض شارة النادي — تُطابق قائمة fanClub.emblemId المغلقة بالخادم بالضبط
-const FAN_CLUB_EMBLEM_EMOJI = { heart_wings: '💕', shield_wings: '🛡️', crown_gold: '👑', star_royal: '⭐' };
-const FAN_CLUB_EMBLEM_LABELS = { heart_wings: 'أجنحة القلب', shield_wings: 'درع الحماية', crown_gold: 'التاج الذهبي', star_royal: 'النجمة الملكية' };
-function fanClubEmblemHTML(emblemId) {
-    const id = FAN_CLUB_EMBLEM_EMOJI[emblemId] ? emblemId : 'heart_wings';
-    const centerIcon = id === 'star_royal' ? 'fa-star' : id === 'shield_wings' ? 'fa-shield-halved' : 'fa-heart';
+// ✅ الألوان الخمسة المغلقة المشتركة بين شعار النادي وهدية الانضمام — الأيقونة/الصورة نفسها
+// دوماً، اللون فقط يتبدّل: swatch للدوائر المصغّرة بالمنتقي ولون أيقونة الشعار، وfilter فلتر
+// CSS حقيقي يُعاد به تلوين صورة الوردة الرمزية نفسها (بلا أي صور إضافية مرفوعة)
+const FAN_CLUB_COLORS = {
+    pink: { label: 'وردي', swatch: '#ec4899', filter: 'none' },
+    yellow: { label: 'أصفر', swatch: '#eab308', filter: 'hue-rotate(275deg) saturate(1.6) brightness(1.05)' },
+    purple: { label: 'بنفسجي', swatch: '#a855f7', filter: 'hue-rotate(65deg) saturate(1.4)' },
+    blue: { label: 'أزرق', swatch: '#3b82f6', filter: 'hue-rotate(140deg) saturate(1.5)' },
+    orange: { label: 'برتقالي', swatch: '#f97316', filter: 'hue-rotate(320deg) saturate(1.4) brightness(1.05)' }
+};
+function fanClubEmblemHTML(colorId) {
+    const id = FAN_CLUB_COLORS[colorId] ? colorId : 'pink';
     return `
         <span class="fanclub-emblem fanclub-emblem-${id}">
             <i class="fas fa-crown fanclub-emblem-crown"></i>
             <i class="fas fa-feather-alt fanclub-emblem-wing fanclub-emblem-wing-left"></i>
             <i class="fas fa-feather-alt fanclub-emblem-wing fanclub-emblem-wing-right"></i>
-            <span class="fanclub-emblem-base"><i class="fas ${centerIcon} fanclub-emblem-icon"></i></span>
+            <span class="fanclub-emblem-base"><i class="fas fa-heart fanclub-emblem-icon"></i></span>
         </span>
     `;
 }
@@ -9658,16 +9664,21 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
         </div>
     `;
     document.body.appendChild(modal);
-    modal.addEventListener('click', (e) => { if (e.target.id === 'fanclub-modal') modal.remove(); });
+    modal.addEventListener('click', (e) => { if (e.target.id === 'fanclub-modal') { stopVipCountdown(); modal.remove(); } });
 
     let backTarget = 'help'; // 'help' | 'join' | 'leaderboard' | 'close'
     let lastPeriod = 'weekly';
     let activeTab = 'details'; // 'details' | 'medallion'
     let joinData = null;
+    let vipCountdownTimer = null; // ✅ عدّاد قائمة المعجبين VIP التنازلي — يجب تنظيفه عند مغادرة تلك النافذة/إغلاق الورقة
     const backBtn = modal.querySelector('#fanclub-back-btn');
     const trophyBtn = modal.querySelector('#fanclub-trophy-btn');
     const titlewrap = modal.querySelector('#fanclub-header-titlewrap');
     const body = modal.querySelector('#fanclub-sheet-body');
+
+    function stopVipCountdown() {
+        if (vipCountdownTimer) { clearInterval(vipCountdownTimer); vipCountdownTimer = null; }
+    }
 
     function renderTabs() {
         titlewrap.innerHTML = `
@@ -9702,7 +9713,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
             backBtn.style.visibility = 'visible';
             trophyBtn.style.visibility = 'hidden';
             backTarget = 'close';
-            titlewrap.innerHTML = `<span class="fanclub-header-title">أعضاء</span>`;
+            titlewrap.innerHTML = `<span class="fanclub-header-title">قائمة المعجبين VIP</span>`;
         }
     }
 
@@ -9728,26 +9739,32 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
     async function renderDetailsBody(s) {
         const isOwner = !!s.isOwner;
         const displayName = s.clubName ? escapeHtml(s.clubName) : `نادي ${escapeHtml(ownerUsername)}`;
-        const emoji = FAN_CLUB_EMBLEM_EMOJI[s.emblemId] || '💕';
-        let joinGiftImg = s.joinGift?.imageUrl || null;
-        let joinGiftOldPrice = s.joinGift?.price || 10;
-        if (!isOwner && !joinGiftImg) {
+        // ✅ الهدية الرمزية تبقى الوردة الحقيقية بمتجر الهدايا دوماً (لضمان صورة/سعر صحيحين
+        // دائماً) — فقط لونها المعروض يتبدّل حسب اختيار صاحب النادي (فلتر CSS)
+        let rose = null;
+        if (!isOwner) {
             try {
                 const shopRes = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
-                const rose = (shopRes.data?.gifts || []).find(g => g.name === 'وردة');
-                if (rose) { joinGiftImg = rose.imageUrl; joinGiftOldPrice = rose.price; }
+                rose = (shopRes.data?.gifts || []).find(g => g.name === 'وردة') || null;
             } catch (error) { /* الصورة تجميلية بحتة — زر الانضمام يعمل بلا صورة أيضاً */ }
         }
-        // 🛡️ لو بدّل المستخدم التبويب أثناء انتظار fetch الوردة الاحتياطي أعلاه، لا نكتب فوق
-        // محتوى تبويب "ميدالية المعجب" الذي ربما أصبح ظاهراً الآن
+        // 🛡️ لو بدّل المستخدم التبويب أثناء انتظار fetch الوردة أعلاه، لا نكتب فوق محتوى
+        // تبويب "ميدالية المعجب" الذي ربما أصبح ظاهراً الآن
         if (activeTab !== 'details') return;
+        const giftColor = FAN_CLUB_COLORS[s.giftColorId] || FAN_CLUB_COLORS.pink;
         body.innerHTML = `
             <div class="fanclub-portrait-row">
-                ${fanClubEmblemHTML(s.emblemId)}
+                ${fanClubEmblemHTML(s.emblemColorId)}
                 <img src="${ownerProfileImage}" class="fanclub-owner-avatar">
+                ${s.currentLeader ? `
+                    <button type="button" id="fanclub-weekly-leader-btn" class="fanclub-weekly-leader-slot" title="نجم الأسبوع الحالي: ${escapeHtml(s.currentLeader.username)}">
+                        <span class="fanclub-weekly-leader-crown"><i class="fas fa-crown"></i></span>
+                        <img src="${s.currentLeader.profileImage}" class="fanclub-weekly-leader-avatar">
+                    </button>
+                ` : ''}
             </div>
             <div class="fanclub-owner-name-row">
-                <span class="fanclub-owner-name">${emoji} ${displayName}</span>
+                <span class="fanclub-owner-name">💕 ${displayName}</span>
                 ${isOwner ? `<button type="button" id="fanclub-rename-btn" class="fanclub-inline-edit-btn" title="تعديل الاسم"><i class="fas fa-pen"></i></button>` : ''}
                 <span class="fanclub-owner-name-dot">•</span>
                 <button type="button" id="fanclub-members-link" class="fanclub-members-link"><i class="fas fa-chevron-left"></i> ${s.memberCount} من الأعضاء</button>
@@ -9769,14 +9786,15 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                     ${s.isMember ? '<i class="fas fa-check"></i> أنت عضو بالفعل' : `
                         <span class="fanclub-join-btn-text">الانضمام</span>
                         <span class="fanclub-join-btn-price-group">
-                            ${joinGiftImg ? `<img src="${joinGiftImg}" class="fanclub-join-btn-rose" onerror="this.style.display='none'">` : '<i class="fas fa-heart"></i>'}
-                            <span class="fanclub-join-btn-price"><s>${joinGiftOldPrice}</s> 1</span>
+                            ${rose ? `<img src="${rose.imageUrl}" class="fanclub-join-btn-rose" style="filter:${giftColor.filter}" onerror="this.style.display='none'">` : '<i class="fas fa-heart"></i>'}
+                            <span class="fanclub-join-btn-price"><s>${rose ? rose.price : 10}</s> 1</span>
                         </span>
                     `}
                 </button>
             `}
         `;
         modal.querySelector('#fanclub-members-link')?.addEventListener('click', () => renderMembersView(ownerId, ownerUsername));
+        modal.querySelector('#fanclub-weekly-leader-btn')?.addEventListener('click', () => showFullProfilePage(s.currentLeader.userId));
         modal.querySelector('#fanclub-rename-btn')?.addEventListener('click', () => showFanClubRenameModal(s, ownerUsername, () => { renderJoinView(); }));
         modal.querySelector('#fanclub-emblem-pill')?.addEventListener('click', () => showFanClubEmblemPicker(s, () => { renderJoinView(); }));
         modal.querySelector('#fanclub-gift-pill')?.addEventListener('click', () => showFanClubGiftPicker(s, () => { renderJoinView(); }));
@@ -9825,22 +9843,22 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
             if (activeTab !== 'medallion') return; // 🛡️ نفس حارس السباق أعلاه — لو بدّل التبويب أثناء الانتظار
             body.innerHTML = `
                 <div class="fanclub-medallion-wrap">
-                    ${fanClubEmblemHTML(s.emblemId)}
-                    <p class="fanclub-medallion-title">${FAN_CLUB_EMBLEM_LABELS[s.emblemId] || FAN_CLUB_EMBLEM_LABELS.heart_wings}</p>
+                    ${fanClubEmblemHTML(s.emblemColorId)}
+                    <p class="fanclub-medallion-title">ميدالية نادي ${escapeHtml(ownerUsername)}</p>
                     ${s.isOwner ? `
                         <p class="fanclub-medallion-desc">هذه ميدالية نادي معجبينك — يظهرها أعضاؤك دلالةً على انتمائهم لناديك</p>
                     ` : s.isMember ? `
                         <div class="fanclub-medallion-stats">
                             <div class="fanclub-medallion-stat-box">
                                 <p class="fanclub-medallion-stat-num">${myContribution.toLocaleString()}</p>
-                                <p class="fanclub-medallion-stat-label">نقاط مساهمتك</p>
+                                <p class="fanclub-medallion-stat-label">مساهمتك هذا الأسبوع</p>
                             </div>
                             <div class="fanclub-medallion-stat-box">
                                 <p class="fanclub-medallion-stat-num">${myRank ? '#' + myRank : '—'}</p>
-                                <p class="fanclub-medallion-stat-label">ترتيبك بالنادي</p>
+                                <p class="fanclub-medallion-stat-label">ترتيبك هذا الأسبوع</p>
                             </div>
                         </div>
-                        <p class="fanclub-medallion-desc">استمر بدعم ${escapeHtml(ownerUsername)} بالهدايا لترتقي بترتيبك بين الأعضاء</p>
+                        <p class="fanclub-medallion-desc">تُصفَّر المساهمات والمراكز كل أسبوع — استمر بدعم ${escapeHtml(ownerUsername)} بالهدايا لتتصدّر قائمة VIP</p>
                     ` : `
                         <p class="fanclub-medallion-desc">انضم لهذا النادي لتحصل على ميداليتك الخاصة وتبدأ بتجميع نقاط المساهمة</p>
                     `}
@@ -9896,27 +9914,95 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
         }
     }
 
+    // ✅ "قائمة المعجبين VIP" — منصّة (المركز 1 وسط ومكبَّر، 2 يمين، 3 يسار) بصور الأعضاء
+    // الحقيقية داخل إطار تاج+أجنحة، تليها بقية الأعضاء بقائمة عادية؛ الترتيب أسبوعي بالكامل
+    // (getMembers أصبحت تُرجع مساهمات الأسبوع الجاري فقط) مع عدّاد تنازلي حقيقي لموعد التصفير
     async function renderMembersView(targetOwnerId, targetOwnerUsername) {
+        stopVipCountdown();
         setHeader('members');
         body.innerHTML = `<div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>`;
         try {
             const res = await fetch(`/api/fanclub/${targetOwnerId}/members?limit=50`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
             if (res.status !== 'success') throw new Error();
             const members = res.data.members;
+            const weekEndsAt = res.data.weekEndsAt ? new Date(res.data.weekEndsAt) : null;
+            const top3 = members.slice(0, 3);
+            const rest = members.slice(3);
+
+            const podiumSlot = (rank) => {
+                const m = top3[rank - 1];
+                if (!m) {
+                    return `
+                        <div class="fanclub-vip-podium-slot fanclub-vip-podium-empty">
+                            <div class="fanclub-vip-podium-frame fanclub-vip-podium-frame-${rank}">
+                                <span class="fanclub-vip-podium-dash">ـ ـ ـ</span>
+                            </div>
+                            <p class="fanclub-vip-podium-name">بانتظارك</p>
+                        </div>
+                    `;
+                }
+                return `
+                    <div class="fanclub-vip-podium-slot" data-user-id="${m.userId}">
+                        <span class="fanclub-vip-podium-crown fanclub-vip-podium-crown-${rank}"><i class="fas fa-crown"></i></span>
+                        <div class="fanclub-vip-podium-frame fanclub-vip-podium-frame-${rank}">
+                            <img src="${m.profileImage}" class="fanclub-vip-podium-avatar">
+                            <span class="fanclub-vip-podium-rankbadge fanclub-vip-podium-rankbadge-${rank}">${rank}</span>
+                        </div>
+                        <p class="fanclub-vip-podium-name">${escapeHtml(m.username)}</p>
+                        <p class="fanclub-vip-podium-points"><i class="fas fa-gem"></i> ${m.contributionPoints.toLocaleString()}</p>
+                    </div>
+                `;
+            };
+
             body.innerHTML = `
-                <p class="fanclub-members-explainer">يتم فرز الأعضاء حسب العدد الإجمالي للكوينز الذي يشاركون به</p>
+                <div class="fanclub-vip-banner">
+                    <i class="fas fa-sparkles"></i>
+                    <span>المكافآت الحصرية لأعلى 3 مراكز أسبوعياً</span>
+                    <i class="fas fa-sparkles"></i>
+                </div>
+                <div class="fanclub-vip-countdown">
+                    <i class="fas fa-hourglass-half"></i> ينتهي التصنيف بعد <b id="fanclub-vip-countdown-num">--:--:--</b>
+                </div>
+                <div class="fanclub-vip-podium">
+                    <span class="fanclub-vip-wing fanclub-vip-wing-left"><i class="fas fa-feather-alt"></i></span>
+                    ${podiumSlot(2)}
+                    ${podiumSlot(1)}
+                    ${podiumSlot(3)}
+                    <span class="fanclub-vip-wing fanclub-vip-wing-right"><i class="fas fa-feather-alt"></i></span>
+                </div>
+                <p class="fanclub-members-explainer">يُصنَّف الأعضاء أسبوعياً حسب مساهماتهم بالهدايا لهذا النادي — تُصفَّر النقاط والمراكز كل أسبوع، وتبقى العضوية دائمة</p>
                 <div class="fanclub-members-list">
-                    ${members.length === 0 ? '<p class="fanclub-rank-empty">لا يوجد أعضاء بعد</p>' : members.map(m => `
-                        <div class="fanclub-member-row">
+                    ${rest.length === 0
+                        ? (top3.length === 0 ? '<p class="fanclub-rank-empty">لا يوجد أعضاء بعد</p>' : '')
+                        : rest.map((m, i) => `
+                        <div class="fanclub-member-row" data-user-id="${m.userId}">
+                            <span class="fanclub-member-row-rank">${i + 4}</span>
                             <span class="fanclub-member-row-identity">
                                 <img src="${m.profileImage}" class="fanclub-member-row-avatar">
                                 <span class="fanclub-member-row-name">${escapeHtml(m.username)}</span>
                             </span>
-                            <span class="fanclub-member-row-contrib">نقاط المساهمة: ${m.contributionPoints.toLocaleString()}</span>
+                            <span class="fanclub-member-row-contrib">${m.contributionPoints.toLocaleString()}</span>
                         </div>
                     `).join('')}
                 </div>
             `;
+            body.querySelectorAll('[data-user-id]').forEach(el => {
+                el.addEventListener('click', () => showFullProfilePage(el.dataset.userId));
+            });
+            if (weekEndsAt) {
+                const updateCountdown = () => {
+                    const numEl = document.getElementById('fanclub-vip-countdown-num');
+                    if (!numEl) { stopVipCountdown(); return; } // 🛡️ الورقة أُغلقت/انتقلت — العنصر لم يعد بالمستند
+                    const diff = weekEndsAt.getTime() - Date.now();
+                    if (diff <= 0) { numEl.textContent = '00:00:00'; stopVipCountdown(); return; }
+                    const h = Math.floor(diff / 3600000);
+                    const m = Math.floor((diff % 3600000) / 60000);
+                    const sec = Math.floor((diff % 60000) / 1000);
+                    numEl.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+                };
+                updateCountdown();
+                vipCountdownTimer = setInterval(updateCountdown, 1000);
+            }
         } catch (error) {
             body.innerHTML = `<p class="text-center text-gray-400 py-6">تعذر تحميل الأعضاء</p>`;
         }
@@ -9926,7 +10012,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
         if (backTarget === 'help') showFanClubHelpModal();
         else if (backTarget === 'join') renderJoinView();
         else if (backTarget === 'leaderboard') renderLeaderboardView(lastPeriod);
-        else if (backTarget === 'close') modal.remove();
+        else if (backTarget === 'close') { stopVipCountdown(); modal.remove(); }
     });
     trophyBtn.addEventListener('click', () => renderLeaderboardView('weekly'));
 
@@ -10007,115 +10093,184 @@ function showFanClubRenameModal(s, ownerUsername, onSaved) {
     });
 }
 
-// ✅ منتقي "شعار المجموعة" — قائمة مغلقة من 4 شعارات جاهزة (لا صور مخصّصة يرفعها المستخدم،
-// حماية من محتوى غير لائق) — كل شعار مبني من نفس مكوّنات الأيقونات الموجودة أصلاً بالتطبيق
+// ✅ منتقي "شعار المجموعة" — الشعار نفسه دوماً (قلب مجنّح)، فقط لونه يتبدّل بين 5 ألوان
+// مغلقة (لا صور مخصّصة يرفعها المستخدم — حماية من محتوى غير لائق)
 function showFanClubEmblemPicker(s, onSaved) {
     document.getElementById('fanclub-emblem-picker-modal')?.remove();
     const modal = document.createElement('div');
     modal.id = 'fanclub-emblem-picker-modal';
-    modal.className = 'fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-[335]';
-    const emblemIds = Object.keys(FAN_CLUB_EMBLEM_EMOJI);
+    modal.className = 'fixed inset-0 bg-black/75 flex items-center justify-center z-[335] p-4';
+    const displayName = s.clubName || `نادي ${ownerUsername}`;
     modal.innerHTML = `
-        <div class="fanclub-emblem-picker-card">
-            <p class="fanclub-emblem-picker-title">تخصيص شعار المجموعة</p>
-            <div class="fanclub-emblem-picker-grid">
-                ${emblemIds.map(id => `
-                    <button type="button" class="fanclub-emblem-picker-item ${id === (s.emblemId || 'heart_wings') ? 'active' : ''}" data-emblem-id="${id}">
-                        ${fanClubEmblemHTML(id)}
-                        <span class="fanclub-emblem-picker-label">${FAN_CLUB_EMBLEM_LABELS[id]}</span>
+        <div class="fanclub-color-picker-card">
+            <div class="fanclub-color-picker-header">
+                <button type="button" id="fanclub-color-picker-close" class="fanclub-color-picker-close"><i class="fas fa-times"></i></button>
+                <p class="fanclub-color-picker-title">تخصيص شعار المجموعة</p>
+            </div>
+            <div class="fanclub-color-picker-hintrow">
+                <span id="fanclub-color-picker-counter">${Math.min(displayName.length, 6)}/6</span>
+                <button type="button" id="fanclub-color-picker-rename" class="fanclub-color-picker-hint">انقر لتعديل نصوص الشعار</button>
+            </div>
+            <div class="fanclub-color-picker-preview">
+                <span id="fanclub-emblem-preview-pill" class="fanclub-emblem-preview-pill"></span>
+            </div>
+            <p class="fanclub-color-picker-section-title">حدد لون الشعار</p>
+            <div class="fanclub-color-picker-grid">
+                ${Object.keys(FAN_CLUB_COLORS).map(id => `
+                    <button type="button" class="fanclub-color-picker-item ${id === (s.emblemColorId || 'pink') ? 'active' : ''}" data-color-id="${id}">
+                        <span class="fanclub-emblem-preview-pill fanclub-emblem-preview-pill-${id}">${escapeHtml(displayName)}<span class="fanclub-emblem-preview-pill-icon"><i class="fas fa-heart"></i></span></span>
                     </button>
                 `).join('')}
             </div>
+            <button type="button" id="fanclub-color-picker-save" class="fanclub-color-picker-save">حفظ</button>
         </div>
     `;
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => { if (e.target.id === 'fanclub-emblem-picker-modal') modal.remove(); });
+    modal.querySelector('#fanclub-color-picker-close').addEventListener('click', () => modal.remove());
+    modal.querySelector('#fanclub-color-picker-rename').addEventListener('click', () => {
+        modal.remove();
+        showFanClubRenameModal(s, ownerUsername, () => { renderJoinView(); });
+    });
 
-    modal.querySelectorAll('.fanclub-emblem-picker-item').forEach(item => {
-        item.addEventListener('click', async () => {
-            const emblemId = item.dataset.emblemId;
-            if (emblemId === (s.emblemId || 'heart_wings')) { modal.remove(); return; }
-            modal.querySelectorAll('.fanclub-emblem-picker-item').forEach(x => x.disabled = true);
-            try {
-                const res = await fetch('/api/fanclub/settings', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ emblemId })
-                });
-                const result = await res.json();
-                if (!res.ok) {
-                    showNotification(result.message || 'تعذر الحفظ', 'error');
-                    modal.querySelectorAll('.fanclub-emblem-picker-item').forEach(x => x.disabled = false);
-                    return;
-                }
-                showNotification('تم تغيير الشعار ✅', 'success');
-                modal.remove();
-                if (onSaved) onSaved();
-            } catch (error) {
-                showNotification('تعذر الحفظ', 'error');
-                modal.querySelectorAll('.fanclub-emblem-picker-item').forEach(x => x.disabled = false);
-            }
+    let selectedColorId = s.emblemColorId || 'pink';
+    function updatePreview() {
+        const previewPill = modal.querySelector('#fanclub-emblem-preview-pill');
+        previewPill.className = `fanclub-emblem-preview-pill fanclub-emblem-preview-pill-${selectedColorId}`;
+        previewPill.innerHTML = `${escapeHtml(displayName)}<span class="fanclub-emblem-preview-pill-icon"><i class="fas fa-heart"></i></span>`;
+    }
+    updatePreview();
+
+    modal.querySelectorAll('.fanclub-color-picker-item').forEach(item => {
+        item.addEventListener('click', () => {
+            modal.querySelectorAll('.fanclub-color-picker-item').forEach(x => x.classList.remove('active'));
+            item.classList.add('active');
+            selectedColorId = item.dataset.colorId;
+            updatePreview();
         });
     });
-}
 
-// ✅ منتقي "هدية المجموعة" — يختار صاحب النادي أي هدية حقيقية من متجر الهدايا لتمثيل نادي
-// معجبيه بزر الانضمام (السعر الفعلي للانضمام يبقى ثابتاً كوينز واحد دوماً، هذا تخصيص عرض فقط)
-async function showFanClubGiftPicker(s, onSaved) {
-    document.getElementById('fanclub-gift-picker-modal')?.remove();
-    const modal = document.createElement('div');
-    modal.id = 'fanclub-gift-picker-modal';
-    modal.className = 'fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-[335]';
-    modal.innerHTML = `
-        <div class="fanclub-gift-picker-card">
-            <p class="fanclub-gift-picker-title">تخصيص هدية المجموعة</p>
-            <div id="fanclub-gift-picker-grid" class="fanclub-gift-picker-grid">
-                <div class="text-center text-gray-400 py-10 col-span-full"><i class="fas fa-spinner fa-spin"></i></div>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(modal);
-    modal.addEventListener('click', (e) => { if (e.target.id === 'fanclub-gift-picker-modal') modal.remove(); });
-
-    async function chooseGift(giftId) {
+    modal.querySelector('#fanclub-color-picker-save').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        if (selectedColorId === (s.emblemColorId || 'pink')) { modal.remove(); return; }
+        btn.disabled = true;
         try {
             const res = await fetch('/api/fanclub/settings', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ joinGiftId: giftId })
+                body: JSON.stringify({ emblemColorId: selectedColorId })
             });
             const result = await res.json();
-            if (!res.ok) { showNotification(result.message || 'تعذر الحفظ', 'error'); return; }
-            showNotification('تم تحديد هدية النادي ✅', 'success');
+            if (!res.ok) {
+                showNotification(result.message || 'تعذر الحفظ', 'error');
+                btn.disabled = false;
+                return;
+            }
+            showNotification('تم تغيير لون الشعار ✅', 'success');
             modal.remove();
             if (onSaved) onSaved();
         } catch (error) {
             showNotification('تعذر الحفظ', 'error');
+            btn.disabled = false;
         }
+    });
+}
+
+// ✅ منتقي "هدية المجموعة" — الهدية تبقى الوردة الحقيقية دوماً، فقط لونها يتبدّل بين 5 ألوان
+// مغلقة عبر فلتر CSS (بلا صور مخصّصة يرفعها المستخدم)
+async function showFanClubGiftPicker(s, onSaved) {
+    document.getElementById('fanclub-gift-picker-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'fanclub-gift-picker-modal';
+    modal.className = 'fixed inset-0 bg-black/75 flex items-center justify-center z-[335] p-4';
+    const displayName = s.clubName || `نادي ${ownerUsername}`;
+    modal.innerHTML = `
+        <div class="fanclub-color-picker-card">
+            <div class="fanclub-color-picker-header">
+                <button type="button" id="fanclub-color-picker-close" class="fanclub-color-picker-close"><i class="fas fa-times"></i></button>
+                <p class="fanclub-color-picker-title">تخصيص هدية المجموعة</p>
+            </div>
+            <div class="fanclub-color-picker-hintrow">
+                <span id="fanclub-color-picker-counter">${Math.min(displayName.length, 6)}/6</span>
+                <button type="button" id="fanclub-color-picker-rename" class="fanclub-color-picker-hint">انقر لتعديل اسم الهدية</button>
+            </div>
+            <div class="fanclub-color-picker-preview">
+                <div id="fanclub-gift-preview-visual" class="fanclub-gift-preview-visual">
+                    <div class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin"></i></div>
+                </div>
+            </div>
+            <p class="fanclub-color-picker-section-title">حدد لون الهدية</p>
+            <div id="fanclub-gift-color-grid" class="fanclub-color-picker-grid"></div>
+            <button type="button" id="fanclub-color-picker-save" class="fanclub-color-picker-save">حفظ</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'fanclub-gift-picker-modal') modal.remove(); });
+    modal.querySelector('#fanclub-color-picker-close').addEventListener('click', () => modal.remove());
+    modal.querySelector('#fanclub-color-picker-rename').addEventListener('click', () => {
+        modal.remove();
+        showFanClubRenameModal(s, ownerUsername, () => { renderJoinView(); });
+    });
+
+    let selectedColorId = s.giftColorId || 'pink';
+    let roseImg = null;
+
+    function updatePreview() {
+        const visual = modal.querySelector('#fanclub-gift-preview-visual');
+        if (!visual) return;
+        const color = FAN_CLUB_COLORS[selectedColorId] || FAN_CLUB_COLORS.pink;
+        visual.innerHTML = roseImg
+            ? `<img src="${roseImg}" class="fanclub-gift-preview-img" style="filter:${color.filter}" onerror="this.style.visibility='hidden'">`
+            : `<i class="fas fa-heart" style="font-size:56px;color:${color.swatch}"></i>`;
+        visual.insertAdjacentHTML('beforeend', `<span class="fanclub-emblem-preview-pill fanclub-emblem-preview-pill-${selectedColorId}">${escapeHtml(displayName)}</span>`);
     }
 
     try {
         const shopRes = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
-        const gifts = shopRes.status === 'success' ? shopRes.data.gifts : [];
-        const grid = modal.querySelector('#fanclub-gift-picker-grid');
-        if (!grid) return;
-        if (gifts.length === 0) {
-            grid.innerHTML = '<p class="text-center text-gray-400 py-8 text-sm col-span-full">لا توجد هدايا متاحة حالياً</p>';
-            return;
-        }
-        grid.innerHTML = gifts.map(g => `
-            <button type="button" class="fanclub-gift-picker-item ${s.joinGift?.giftId === g._id ? 'active' : ''}" data-gift-id="${g._id}">
-                <img src="${g.imageUrl}" class="fanclub-gift-picker-img" onerror="this.style.visibility='hidden'">
-                <span class="fanclub-gift-picker-name">${escapeHtml(g.name)}</span>
-            </button>
-        `).join('');
-        grid.querySelectorAll('.fanclub-gift-picker-item').forEach(item => {
-            item.addEventListener('click', () => chooseGift(item.dataset.giftId));
+        const rose = (shopRes.data?.gifts || []).find(g => g.name === 'وردة');
+        roseImg = rose ? rose.imageUrl : null;
+    } catch (error) { /* المعاينة تجميلية — الحفظ يعمل بلا صورة أيضاً */ }
+    updatePreview();
+
+    const grid = modal.querySelector('#fanclub-gift-color-grid');
+    grid.innerHTML = Object.keys(FAN_CLUB_COLORS).map(id => `
+        <button type="button" class="fanclub-color-picker-item ${id === selectedColorId ? 'active' : ''}" data-color-id="${id}">
+            ${roseImg ? `<img src="${roseImg}" class="fanclub-gift-swatch-img" style="filter:${FAN_CLUB_COLORS[id].filter}">` : `<i class="fas fa-heart" style="color:${FAN_CLUB_COLORS[id].swatch}"></i>`}
+        </button>
+    `).join('');
+    grid.querySelectorAll('.fanclub-color-picker-item').forEach(item => {
+        item.addEventListener('click', () => {
+            grid.querySelectorAll('.fanclub-color-picker-item').forEach(x => x.classList.remove('active'));
+            item.classList.add('active');
+            selectedColorId = item.dataset.colorId;
+            updatePreview();
         });
-    } catch (error) {
-        const grid = modal.querySelector('#fanclub-gift-picker-grid');
-        if (grid) grid.innerHTML = '<p class="text-center text-red-400 py-8 text-sm col-span-full">تعذر تحميل الهدايا</p>';
-    }
+    });
+
+    modal.querySelector('#fanclub-color-picker-save').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        if (selectedColorId === (s.giftColorId || 'pink')) { modal.remove(); return; }
+        btn.disabled = true;
+        try {
+            const res = await fetch('/api/fanclub/settings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ giftColorId: selectedColorId })
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                showNotification(result.message || 'تعذر الحفظ', 'error');
+                btn.disabled = false;
+                return;
+            }
+            showNotification('تم تغيير لون الهدية ✅', 'success');
+            modal.remove();
+            if (onSaved) onSaved();
+        } catch (error) {
+            showNotification('تعذر الحفظ', 'error');
+            btn.disabled = false;
+        }
+    });
 }
 
 // ✅ نافذة "هل تود متابعته؟" — تظهر بعد فتح محادثة خاصة مع شخص لست تتابعه بعد، يمكن تجاهلها
@@ -10172,16 +10327,20 @@ async function showFullProfilePage(userId) {
 
     try {
         const authHeaders = { headers: { 'Authorization': `Bearer ${token}` } };
-        const [userRes, giftSummaryRes, fanClubSummaryRes] = await Promise.all([
+        const [userRes, giftSummaryRes, fanClubSummaryRes, weeklyWinsRes] = await Promise.all([
             fetch(`/api/users/${userId}`, authHeaders).then(r => r.json()),
             fetch(`/api/gifts/user/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null),
-            fetch(`/api/fanclub/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null)
+            fetch(`/api/fanclub/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null),
+            fetch(`/api/fanclub/${userId}/weekly-wins`, authHeaders).then(r => r.json()).catch(() => null)
         ]);
 
         if (userRes.status !== 'success') throw new Error();
         const u = userRes.data.user;
         const giftsReceivedCount = (giftSummaryRes && giftSummaryRes.status === 'success') ? giftSummaryRes.data.totalGiftsCount : 0;
         const fanClubMemberCount = (fanClubSummaryRes && fanClubSummaryRes.status === 'success') ? fanClubSummaryRes.data.memberCount : 0;
+        // ✅ "نجوم النادي الأسبوعي" — شارات دائمة (مركز أول بالأسبوع الماضي المكتمل) تبقى
+        // بالملف حتى بعد تصفير المراكز الأسبوعي، وتنقل عند النقر لنادي المعجبين الذي فاز به
+        const weeklyWins = (weeklyWinsRes && weeklyWinsRes.status === 'success') ? weeklyWinsRes.data.wins : [];
         const socialInfo = getSocialStatus(u.socialStatus);
         const educationInfo = getEducationStatus(u.educationStatus);
         const genderInfo = u.gender === 'male' ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' } : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
@@ -10202,6 +10361,11 @@ async function showFullProfilePage(userId) {
                     <span class="full-profile-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${u.age} سنة</span>
                     ${u.socialStatus ? `<span class="full-profile-mini-badge"><i class="fas ${socialInfo.icon} text-red-400"></i> ${escapeHtml(socialInfo.text)}</span>` : ''}
                     ${u.educationStatus ? `<span class="full-profile-mini-badge"><i class="fas ${educationInfo.icon} text-blue-400"></i> ${escapeHtml(educationInfo.text)}</span>` : ''}
+                    ${weeklyWins.map(w => `
+                        <button type="button" class="full-profile-mini-badge full-profile-weekly-badge" data-owner-id="${w.ownerId}" data-owner-username="${escapeHtml(w.ownerUsername)}" data-owner-image="${escapeHtml(w.ownerProfileImage)}" title="نجم نادي ${escapeHtml(w.ownerUsername)} الأسبوعي">
+                            <i class="fas fa-crown"></i> نجم نادي ${escapeHtml(w.ownerUsername)}
+                        </button>
+                    `).join('')}
                 </div>
                 <p class="full-profile-bio-text">${escapeHtml(u.status || '🚀 جاهز للتحديات!')}</p>
                 ${(() => {
@@ -10335,7 +10499,16 @@ async function showFullProfilePage(userId) {
             showComingSoonSheet('الإنجازات', 'نظام الإنجازات قيد التطوير حالياً — ترقّبه قريباً!', 'fa-medal');
         });
         document.getElementById('full-profile-fanclub-card')?.addEventListener('click', () => {
+            // 🛡️ إغلاق ورقة الملف الكامل أولاً — z-index نادي المعجبين أقل من الملف الكامل،
+            // فبقاؤه مفتوحاً خلفها كان يجعل ناديَ المعجبين يُفتح لكن يبقى مخفياً تماماً عن العين
+            closeFullProfilePage();
             showFanClubSheet(userId, u.username, u.profileImage);
+        });
+        body.querySelectorAll('.full-profile-weekly-badge').forEach(btn => {
+            btn.addEventListener('click', () => {
+                closeFullProfilePage();
+                showFanClubSheet(btn.dataset.ownerId, btn.dataset.ownerUsername, btn.dataset.ownerImage);
+            });
         });
         document.getElementById('full-profile-guardian-card')?.addEventListener('click', () => {
             showComingSoonSheet('الحماة', 'ميزة "الحماة" قادمة قريباً!', 'fa-shield-halved');
