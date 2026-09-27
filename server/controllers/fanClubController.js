@@ -22,6 +22,10 @@ function startOfWeekUTC() {
     return d;
 }
 
+// ✅ قائمة شعارات النادي المغلقة — نفس القيم المسموحة بـUser.fanClub.emblemId (enum)، تُصدَّر
+// هنا أيضاً لتُعرَض بمنتقي الشعارات بالعميل دون تكرار القائمة يدوياً بمكانين مختلفين
+const EMBLEM_IDS = ['heart_wings', 'shield_wings', 'crown_gold', 'star_royal'];
+
 exports.getSummary = async (req, res) => {
     try {
         const ownerId = req.params.ownerId;
@@ -29,13 +33,13 @@ exports.getSummary = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
         }
         const [owner, memberCount, isMember] = await Promise.all([
-            User.findById(ownerId).select('username profileImage fanClub').populate('fanClub.featuredMemberId', 'username profileImage'),
+            User.findById(ownerId).select('username profileImage fanClub').populate('fanClub.joinGiftId', 'name imageUrl price discountedPrice'),
             FanClubMembership.countDocuments({ owner: ownerId }),
             FanClubMembership.exists({ owner: ownerId, member: req.user.id })
         ]);
         if (!owner) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
 
-        const featured = owner.fanClub?.featuredMemberId;
+        const joinGift = owner.fanClub?.joinGiftId;
         res.status(200).json({
             status: 'success',
             data: {
@@ -43,8 +47,8 @@ exports.getSummary = async (req, res) => {
                 ownerUsername: owner.username,
                 ownerProfileImage: owner.profileImage,
                 clubName: owner.fanClub?.name || null,
-                badgeColor: owner.fanClub?.badgeColor || '#f472b6',
-                featuredMember: featured ? { userId: featured._id, username: featured.username, profileImage: featured.profileImage } : null,
+                emblemId: owner.fanClub?.emblemId || 'heart_wings',
+                joinGift: joinGift ? { giftId: joinGift._id, name: joinGift.name, imageUrl: joinGift.imageUrl, price: joinGift.price } : null,
                 isOwner: ownerId === req.user.id.toString(),
                 memberCount,
                 isMember: !!isMember,
@@ -57,12 +61,12 @@ exports.getSummary = async (req, res) => {
     }
 };
 
-// ✅ تخصيص النادي — الاسم (حد أقصى 13 حرفاً، يُتحقق منه هنا أيضاً بجانب maxlength بالسكيما
-// لضمان رسالة خطأ واضحة بدل فشل صامت) ولون الشارة (يُتحقق أنه صيغة hex صالحة فقط، يُحقن
-// مباشرة كـinline style بواجهة العميل لاحقاً — قيمة غير مفحوصة هنا قد تفتح ثغرة CSS injection)
+// ✅ تخصيص النادي — الاسم (حد أقصى 13 حرفاً)، الشعار (قيمة من قائمة مغلقة EMBLEM_IDS فقط —
+// لا نص حر إطلاقاً هنا لمنع أي حقن)، وهدية الانضمام المخصصة (يُتحقَّق أنها هدية حقيقية فعّالة
+// بمتجر الهدايا قبل قبولها). أي حقل من الثلاثة اختياري بنفس الطلب
 exports.updateSettings = async (req, res) => {
     try {
-        const { name, badgeColor } = req.body;
+        const { name, emblemId, joinGiftId } = req.body;
         const update = {};
 
         if (name !== undefined) {
@@ -72,54 +76,43 @@ exports.updateSettings = async (req, res) => {
             }
             update['fanClub.name'] = trimmed || null;
         }
-        if (badgeColor !== undefined) {
-            if (!/^#[0-9a-fA-F]{6}$/.test(badgeColor)) {
-                return res.status(400).json({ status: 'fail', message: 'صيغة لون غير صالحة' });
+        if (emblemId !== undefined) {
+            if (!EMBLEM_IDS.includes(emblemId)) {
+                return res.status(400).json({ status: 'fail', message: 'شعار غير صالح' });
             }
-            update['fanClub.badgeColor'] = badgeColor;
+            update['fanClub.emblemId'] = emblemId;
+        }
+        if (joinGiftId !== undefined) {
+            if (joinGiftId === null || joinGiftId === '') {
+                update['fanClub.joinGiftId'] = null;
+            } else {
+                if (!mongoose.Types.ObjectId.isValid(joinGiftId)) {
+                    return res.status(400).json({ status: 'fail', message: 'هدية غير صالحة' });
+                }
+                const gift = await Gift.findOne({ _id: joinGiftId, isActive: true }).select('_id');
+                if (!gift) {
+                    return res.status(400).json({ status: 'fail', message: 'هذه الهدية غير متوفرة حالياً' });
+                }
+                update['fanClub.joinGiftId'] = joinGiftId;
+            }
         }
         if (Object.keys(update).length === 0) {
             return res.status(400).json({ status: 'fail', message: 'لا يوجد ما يُحدَّث' });
         }
 
-        const updated = await User.findByIdAndUpdate(req.user.id, { $set: update }, { new: true }).select('fanClub');
+        const updated = await User.findByIdAndUpdate(req.user.id, { $set: update }, { new: true })
+            .select('fanClub').populate('fanClub.joinGiftId', 'name imageUrl price discountedPrice');
+        const joinGift = updated.fanClub?.joinGiftId;
         res.status(200).json({
             status: 'success',
-            data: { clubName: updated.fanClub?.name || null, badgeColor: updated.fanClub?.badgeColor || '#f472b6' }
+            data: {
+                clubName: updated.fanClub?.name || null,
+                emblemId: updated.fanClub?.emblemId || 'heart_wings',
+                joinGift: joinGift ? { giftId: joinGift._id, name: joinGift.name, imageUrl: joinGift.imageUrl, price: joinGift.price } : null
+            }
         });
     } catch (error) {
         console.error('[FAN CLUB] updateSettings error:', error);
-        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
-    }
-};
-
-// ✅ "العضو المميّز" — صورة صغيرة تظهر بجانب صورة صاحب النادي، يختارها صاحب النادي من بين
-// أعضاء ناديه فعلياً فقط (يُتحقّق من العضوية هنا لمنع تمييز أي مستخدم عشوائي غير عضو أصلاً)
-exports.setFeaturedMember = async (req, res) => {
-    try {
-        const { memberId } = req.body;
-
-        if (memberId === null || memberId === undefined || memberId === '') {
-            await User.findByIdAndUpdate(req.user.id, { $set: { 'fanClub.featuredMemberId': null } });
-            return res.status(200).json({ status: 'success', data: { featuredMember: null } });
-        }
-
-        if (!mongoose.Types.ObjectId.isValid(memberId)) {
-            return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
-        }
-        const isMember = await FanClubMembership.exists({ owner: req.user.id, member: memberId });
-        if (!isMember) {
-            return res.status(400).json({ status: 'fail', message: 'هذا الشخص ليس عضواً بناديك' });
-        }
-
-        await User.findByIdAndUpdate(req.user.id, { $set: { 'fanClub.featuredMemberId': memberId } });
-        const featuredUser = await User.findById(memberId).select('username profileImage');
-        res.status(200).json({
-            status: 'success',
-            data: { featuredMember: featuredUser ? { userId: featuredUser._id, username: featuredUser.username, profileImage: featuredUser.profileImage } : null }
-        });
-    } catch (error) {
-        console.error('[FAN CLUB] setFeaturedMember error:', error);
         res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
     }
 };
@@ -210,6 +203,8 @@ exports.joinFanClub = async (req, res) => {
     }
 };
 
+// ✅ الأعضاء مرتَّبون حسب إجمالي ما دعموا به صاحب النادي (كل الهدايا التي أرسلوها له)، الأعلى
+// أولاً — يطابق سلوك تطبيقات البث المباشر المشهورة (فرز أعضاء النادي حسب المساهمة لا الانضمام)
 exports.getMembers = async (req, res) => {
     try {
         const ownerId = req.params.ownerId;
@@ -219,24 +214,29 @@ exports.getMembers = async (req, res) => {
         const limit = Math.min(parseInt(req.query.limit) || 50, 100);
         const skip = Math.max(parseInt(req.query.skip) || 0, 0);
 
-        const memberships = await FanClubMembership.find({ owner: ownerId })
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
-            .populate('member', 'username profileImage customId activeFrameClass');
+        const [memberships, contributions] = await Promise.all([
+            FanClubMembership.find({ owner: ownerId }).populate('member', 'username profileImage customId activeFrameClass'),
+            GiftLog.aggregate([
+                { $match: { receiver: new mongoose.Types.ObjectId(ownerId) } },
+                { $group: { _id: '$sender', total: { $sum: '$totalPrice' } } }
+            ])
+        ]);
+        const contributionMap = new Map(contributions.map(c => [c._id.toString(), c.total]));
 
-        res.status(200).json({
-            status: 'success',
-            data: {
-                members: memberships.filter(m => m.member).map(m => ({
-                    userId: m.member._id,
-                    username: m.member.username,
-                    profileImage: m.member.profileImage,
-                    activeFrameClass: m.member.activeFrameClass,
-                    joinedAt: m.createdAt
-                }))
-            }
-        });
+        const members = memberships
+            .filter(m => m.member)
+            .map(m => ({
+                userId: m.member._id,
+                username: m.member.username,
+                profileImage: m.member.profileImage,
+                activeFrameClass: m.member.activeFrameClass,
+                joinedAt: m.createdAt,
+                contributionPoints: contributionMap.get(m.member._id.toString()) || 0
+            }))
+            .sort((a, b) => b.contributionPoints - a.contributionPoints)
+            .slice(skip, skip + limit);
+
+        res.status(200).json({ status: 'success', data: { members } });
     } catch (error) {
         console.error('[FAN CLUB] getMembers error:', error);
         res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });

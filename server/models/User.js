@@ -43,8 +43,10 @@ const userSchema = new mongoose.Schema({
     // ✅ تخصيص نادي المعجبين (يُعدَّلها صاحب النادي فقط، تظهر لكل زوّار ناديه)
     fanClub: {
         name: { type: String, maxlength: 13, default: null }, // null = يُعرض "نادي {username}" افتراضياً
-        badgeColor: { type: String, default: '#f472b6' },
-        featuredMemberId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
+        // شعار النادي — قيمة من قائمة مغلقة مُعرَّفة بـfanClubEmblems.js (لا نص حر، لمنع أي حقن)
+        emblemId: { type: String, enum: ['heart_wings', 'shield_wings', 'crown_gold', 'star_royal'], default: 'heart_wings' },
+        // هدية الانضمام المخصصة لهذا النادي — تظهر بزر الانضمام بدل الوردة الافتراضية (السعر يبقى ثابتاً 1 كوينز دوماً)
+        joinGiftId: { type: mongoose.Schema.Types.ObjectId, ref: 'Gift', default: null }
     },
     // ✅ حقول جديدة للوحة التحكم
     isBanned: { type: Boolean, default: false },
