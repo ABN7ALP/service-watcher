@@ -12,5 +12,7 @@ router.post('/:ownerId/join', fanClubController.joinFanClub);
 router.get('/:ownerId/members', fanClubController.getMembers);
 // ✅ تخصيص النادي (اسم/شعار/هدية انضمام) — صاحب النادي فقط، يُستخرج من req.user (توكن الجلسة)
 router.patch('/settings', fanClubController.updateSettings);
+// ✅ شارات "نجم النادي الأسبوعي" الدائمة لمستخدم معيّن — تُعرض بملفه الشخصي لأي زائر
+router.get('/:userId/weekly-wins', fanClubController.getWeeklyWins);
 
 module.exports = router;
