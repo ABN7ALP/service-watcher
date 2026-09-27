@@ -1458,96 +1458,127 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-header-title { font-size: 13.5px; font-weight: 800; color: #fff; }
 .fanclub-sheet-body { padding: 4px 18px 20px; overflow-y: auto; flex: 1; }
 
-/* --- عرض "الانضمام" الافتراضي --- */
-.fanclub-owner-avatar-wrap { display: flex; justify-content: center; margin-top: 4px; position: relative; }
-.fanclub-owner-avatar { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,0.1); box-shadow: 0 6px 18px rgba(0,0,0,0.4); }
-/* ✅ "العضو المميّز" — صورة نصف حجم صورة صاحب النادي، متدلّية من حافتها اليسرى */
-.fanclub-featured-slot {
+/* ✅ تبويبا رأس النافذة — تفاصيل النادي / ميدالية المعجب */
+.fanclub-header-titlewrap { display: flex; align-items: center; gap: 14px; flex: 1; justify-content: center; }
+.fanclub-header-tab { background: transparent; border: none; color: #6b7280; font-size: 11.5px; font-weight: 700; padding: 4px 2px; position: relative; }
+.fanclub-header-tab.active { color: #fff; font-weight: 800; }
+.fanclub-header-tab.active::after { content: ''; position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%); width: 16px; height: 2.5px; border-radius: 999px; background: #ec4899; }
+
+/* --- عرض "تفاصيل النادي" --- */
+.fanclub-portrait-row { display: flex; align-items: center; justify-content: center; margin-top: 8px; position: relative; }
+.fanclub-owner-avatar { width: 76px; height: 76px; border-radius: 50%; object-fit: cover; border: 3px solid #facc15; box-shadow: 0 6px 18px rgba(0,0,0,0.4); position: relative; z-index: 2; margin-inline-start: -14px; }
+/* ✅ شعار النادي (تاج + جناحان + قاعدة داكنة بأيقونة مركزية) — يظهر خلف/بجانب صورة صاحب
+   النادي، ألوانه تتبدّل حسب الشعار المُختار (4 قوالب مغلقة، بلا صور مرفوعة من المستخدم) */
+.fanclub-emblem { position: relative; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; z-index: 1; }
+.fanclub-emblem-base { width: 34px; height: 40px; border-radius: 50% 50% 45% 45%; background: linear-gradient(160deg, #1f2937, #111827); display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 8px rgba(0,0,0,0.5); }
+.fanclub-emblem-icon { font-size: 15px; }
+.fanclub-emblem-crown { position: absolute; top: -6px; font-size: 13px; color: #fbbf24; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+.fanclub-emblem-wing { position: absolute; top: 46%; font-size: 15px; opacity: 0.95; }
+.fanclub-emblem-wing-left { left: -2px; transform: translateY(-50%) rotate(-20deg) scaleX(-1); }
+.fanclub-emblem-wing-right { right: -2px; transform: translateY(-50%) rotate(20deg); }
+.fanclub-emblem-heart_wings .fanclub-emblem-icon { color: #f472b6; }
+.fanclub-emblem-heart_wings .fanclub-emblem-wing { color: #fbcfe8; }
+.fanclub-emblem-shield_wings .fanclub-emblem-icon { color: #7dd3fc; }
+.fanclub-emblem-shield_wings .fanclub-emblem-wing { color: #cbd5e1; }
+.fanclub-emblem-shield_wings .fanclub-emblem-crown { color: #cbd5e1; }
+.fanclub-emblem-crown_gold .fanclub-emblem-icon { color: #fde68a; }
+.fanclub-emblem-crown_gold .fanclub-emblem-wing { color: #fcd34d; }
+.fanclub-emblem-crown_gold .fanclub-emblem-crown { color: #fef3c7; font-size: 16px; }
+.fanclub-emblem-star_royal .fanclub-emblem-icon { color: #c4b5fd; }
+.fanclub-emblem-star_royal .fanclub-emblem-wing { color: #ddd6fe; }
+.fanclub-emblem-star_royal .fanclub-emblem-crown { color: #e9d5ff; }
+
+.fanclub-owner-name-row { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 12px; flex-wrap: wrap; }
+.fanclub-owner-name { font-size: 14.5px; font-weight: 800; color: #fff; }
+.fanclub-inline-edit-btn { background: transparent; border: none; color: #9ca3af; font-size: 11px; padding: 2px; }
+.fanclub-owner-name-dot { color: #6b7280; font-size: 11px; }
+.fanclub-members-link { background: transparent; border: none; color: #9ca3af; font-size: 12px; padding: 0; display: inline-flex; align-items: center; gap: 4px; }
+.fanclub-members-link i { font-size: 9px; }
+
+.fanclub-section-divider-label {
+    text-align: center;
+    font-size: 11px;
+    color: #6b7280;
+    margin: 20px 0 14px;
+    position: relative;
+}
+.fanclub-section-divider-label::before, .fanclub-section-divider-label::after {
+    content: '';
     position: absolute;
-    left: calc(50% - 4px);
-    bottom: -2px;
-    width: 38px; height: 38px;
-    border-radius: 50%;
-    overflow: hidden;
-    background: #1a1f2e;
-    border: 2.5px solid #1a1f2e;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    top: 50%;
+    width: 26%;
+    height: 1px;
+    background: rgba(255,255,255,0.08);
+}
+.fanclub-section-divider-label::before { right: 0; }
+.fanclub-section-divider-label::after { left: 0; }
+
+.fanclub-pill {
+    width: 100%;
     display: flex;
     align-items: center;
-    justify-content: center;
-    color: #9ca3af;
-    font-size: 13px;
-}
-.fanclub-featured-slot img { width: 100%; height: 100%; object-fit: cover; }
-.fanclub-owner-name-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; }
-.fanclub-owner-name { text-align: center; font-size: 14.5px; font-weight: 800; color: #fff; }
-.fanclub-customize-btn { background: rgba(255,255,255,0.08); border: none; color: #d1d5db; font-size: 10px; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-
-/* ✅ نافذة تخصيص النادي (اسم + لون الشارة) — صاحب النادي فقط */
-.fanclub-customize-card {
-    background: #1a1f2e;
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 20px;
-    padding: 20px;
-    width: 100%;
-    max-width: 320px;
-    animation: slideUp 0.2s ease-out;
-}
-.fanclub-customize-title { font-size: 14px; font-weight: 800; color: #fff; text-align: center; margin-bottom: 16px; }
-.fanclub-customize-label { font-size: 11px; color: #9ca3af; display: block; margin-bottom: 6px; }
-.fanclub-customize-input { width: 100%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 9px 12px; font-size: 13px; color: #fff; }
-.fanclub-customize-counter { font-size: 9.5px; color: #6b7280; text-align: left; margin-top: 3px; margin-bottom: 14px; }
-.fanclub-customize-colors { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
-.fanclub-color-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
-.fanclub-color-swatch.active { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,0.3); }
-.fanclub-customize-save-btn { width: 100%; height: 42px; border-radius: 12px; background: linear-gradient(135deg, #ec4899, #a855f7); color: #fff; font-weight: 800; font-size: 13px; border: none; }
-.fanclub-customize-cancel-btn { width: 100%; height: 36px; margin-top: 8px; background: transparent; color: #9ca3af; font-size: 12px; border: none; }
-
-/* ✅ منتقي "العضو المميّز" */
-.fanclub-featured-picker-card {
-    background: #1a1f2e;
-    border-radius: 20px 20px 0 0;
-    width: 100%;
-    max-width: 380px;
-    max-height: 70vh;
-    display: flex;
-    flex-direction: column;
-    padding: 18px;
-    animation: slideUp 0.25s ease-out;
-}
-@media (min-width: 768px) { .fanclub-featured-picker-card { border-radius: 20px; margin-bottom: 16px; } }
-.fanclub-featured-picker-title { font-size: 13.5px; font-weight: 800; color: #fff; text-align: center; margin-bottom: 12px; }
-.fanclub-featured-picker-list { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.fanclub-featured-picker-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 10px; background: transparent; border: none; color: #e5e7eb; font-size: 13px; }
-.fanclub-featured-picker-row:active { background: rgba(255,255,255,0.06); }
-.fanclub-featured-picker-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
-.fanclub-featured-remove-btn { margin-top: 10px; width: 100%; height: 38px; background: rgba(239,68,68,0.12); color: #f87171; border-radius: 10px; font-size: 12px; font-weight: 700; border: none; flex-shrink: 0; }
-
-/* ✅ معاينة الأعضاء (2-3 صور متراكبة) بدل نص "X عضو في النادي" الجاف — بسهم بسيط يفتح
-   القائمة الكاملة (renderMembersView) */
-.fanclub-member-preview-row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    margin: 6px auto 0;
-    background: transparent;
+    gap: 10px;
+    height: 46px;
+    border-radius: 999px;
     border: none;
-    padding: 4px 8px;
-    cursor: pointer;
+    padding: 0 16px;
+    margin-bottom: 10px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 800;
 }
-.fanclub-member-preview-avatars { display: flex; }
-.fanclub-member-preview-avatar {
-    width: 20px; height: 20px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 1.5px solid #1a1f2e;
-    margin-inline-start: -7px;
-}
-.fanclub-member-preview-avatar:first-child { margin-inline-start: 0; }
-.fanclub-member-preview-count { font-size: 11.5px; color: #9ca3af; }
-.fanclub-member-preview-count b { color: #f472b6; font-weight: 800; }
-.fanclub-member-preview-arrow { font-size: 9px; color: #6b7280; }
+.fanclub-pill-chevron { font-size: 11px; opacity: 0.85; }
+.fanclub-pill-label { flex: 1; text-align: center; }
+.fanclub-pill-icon { font-size: 17px; flex-shrink: 0; opacity: 0.9; }
+.fanclub-pill-emblem { background: linear-gradient(90deg, #f97316, #fb7185); }
+.fanclub-pill-gift { background: linear-gradient(90deg, #a855f7, #d8b4fe); }
+
+/* --- عرض "ميدالية المعجب" --- */
+.fanclub-medallion-wrap { text-align: center; padding-top: 8px; }
+.fanclub-medallion-wrap .fanclub-emblem { margin: 0 auto; }
+.fanclub-medallion-title { font-size: 14px; font-weight: 800; color: #fff; margin-top: 12px; }
+.fanclub-medallion-desc { font-size: 11.5px; color: #9ca3af; line-height: 1.8; margin-top: 10px; padding: 0 8px; }
+.fanclub-medallion-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+.fanclub-medallion-stat-box { background: rgba(255,255,255,0.04); border-radius: 12px; padding: 12px; }
+.fanclub-medallion-stat-num { font-size: 17px; font-weight: 900; color: #facc15; }
+.fanclub-medallion-stat-label { font-size: 10px; color: #9ca3af; margin-top: 3px; }
+
+/* ✅ نافذة شرح "؟" */
+.fanclub-help-card { background: #1a1f2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 22px; width: 100%; max-width: 320px; animation: slideUp 0.2s ease-out; }
+.fanclub-help-title { font-size: 14px; font-weight: 800; color: #fff; text-align: center; margin-bottom: 12px; }
+.fanclub-help-text { font-size: 12px; color: #9ca3af; line-height: 1.9; text-align: center; }
+.fanclub-help-close-btn { width: 100%; height: 40px; margin-top: 18px; border-radius: 12px; background: rgba(255,255,255,0.08); color: #fff; font-weight: 700; font-size: 13px; border: none; }
+
+/* ✅ نافذة "تعديل اسم المجموعة" — حوار مركزي بأسلوب iOS، صف عدّاد+الاسم الحالي فوق حقل
+   الإدخال، وزرا تأكيد/إلغاء نصّيان يفصلهما خط عمودي أسفل النافذة */
+.fanclub-rename-card { background: #1a1a1a; border-radius: 18px; width: 100%; max-width: 330px; padding: 20px 18px 0; animation: slideUp 0.2s ease-out; overflow: hidden; }
+.fanclub-rename-title { font-size: 14.5px; font-weight: 800; color: #fff; text-align: center; margin-bottom: 16px; }
+.fanclub-rename-meta-row { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #9ca3af; margin-bottom: 8px; }
+.fanclub-rename-counter { color: #d1d5db; }
+.fanclub-rename-input { width: 100%; background: rgba(255,255,255,0.06); border: none; border-radius: 10px; padding: 12px; font-size: 13px; color: #fff; text-align: right; margin-bottom: 18px; }
+.fanclub-rename-footer { display: flex; border-top: 1px solid rgba(255,255,255,0.1); margin: 0 -18px; }
+.fanclub-rename-confirm-btn, .fanclub-rename-cancel-btn { flex: 1; height: 46px; background: transparent; border: none; font-size: 13.5px; font-weight: 700; }
+.fanclub-rename-confirm-btn { color: #ec4899; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.1); }
+.fanclub-rename-cancel-btn { color: #d1d5db; }
+
+/* ✅ منتقي "شعار المجموعة" */
+.fanclub-emblem-picker-card { background: #1a1f2e; border-radius: 20px 20px 0 0; width: 100%; max-width: 380px; padding: 18px; animation: slideUp 0.25s ease-out; }
+@media (min-width: 768px) { .fanclub-emblem-picker-card { border-radius: 20px; margin-bottom: 16px; } }
+.fanclub-emblem-picker-title { font-size: 13.5px; font-weight: 800; color: #fff; text-align: center; margin-bottom: 16px; }
+.fanclub-emblem-picker-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.fanclub-emblem-picker-item { background: rgba(255,255,255,0.04); border: 2px solid transparent; border-radius: 16px; padding: 16px 8px 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.fanclub-emblem-picker-item.active { border-color: #ec4899; background: rgba(236,72,153,0.08); }
+.fanclub-emblem-picker-label { font-size: 11px; color: #d1d5db; font-weight: 700; }
+
+/* ✅ منتقي "هدية المجموعة" */
+.fanclub-gift-picker-card { background: #1a1f2e; border-radius: 20px 20px 0 0; width: 100%; max-width: 400px; max-height: 72vh; overflow-y: auto; padding: 18px; animation: slideUp 0.25s ease-out; }
+@media (min-width: 768px) { .fanclub-gift-picker-card { border-radius: 20px; margin-bottom: 16px; } }
+.fanclub-gift-picker-title { font-size: 13.5px; font-weight: 800; color: #fff; text-align: center; margin-bottom: 16px; }
+.fanclub-gift-picker-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.fanclub-gift-picker-item { background: rgba(255,255,255,0.04); border: 2px solid transparent; border-radius: 14px; padding: 10px 4px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.fanclub-gift-picker-item.active { border-color: #a855f7; background: rgba(168,85,247,0.1); }
+.fanclub-gift-picker-img { width: 40px; height: 40px; object-fit: contain; }
+.fanclub-gift-picker-name { font-size: 10px; color: #d1d5db; text-align: center; }
 
 .fanclub-join-btn {
     position: relative;
@@ -1636,11 +1667,14 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.08);
 }
 
-/* --- عرض قائمة أعضاء نادٍ --- */
-.fanclub-members-list { display: flex; flex-direction: column; gap: 10px; }
-.fanclub-member-row { display: flex; align-items: center; gap: 10px; }
-.fanclub-member-row img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
-.fanclub-member-row span { font-size: 12px; font-weight: 700; color: #e5e7eb; }
+/* --- عرض قائمة أعضاء نادٍ — مُرتَّبة حسب نقاط المساهمة (الأعلى أولاً)، كل صف يعرضها صراحة --- */
+.fanclub-members-explainer { font-size: 11px; color: #9ca3af; line-height: 1.7; text-align: center; padding: 0 4px 14px; }
+.fanclub-members-list { display: flex; flex-direction: column; gap: 14px; }
+.fanclub-member-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.fanclub-member-row-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fanclub-member-row-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.fanclub-member-row-name { font-size: 12.5px; font-weight: 700; color: #e5e7eb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fanclub-member-row-contrib { font-size: 10.5px; color: #6b7280; flex-shrink: 0; }
 
 /* =====================================================
    ✅ نافذة "هل تود متابعته؟" — تظهر عند إرسال رسالة لشخص لست تتابعه بعد
