@@ -3016,7 +3016,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             modal.querySelectorAll('.room-profile-support-badge').forEach(el => {
                 el.addEventListener('click', () => {
                     const kind = el.dataset.supportKind;
-                    showSupportLevelInfoModal(kind, kind === 'giving' ? p.supportGiving : p.supportReceiving, p.profileImage);
+                    showSupportLevelInfoModal(kind, kind === 'giving' ? p.supportGiving : p.supportReceiving, p.profileImage, p.username);
                 });
             });
             modal.querySelector('#room-profile-achv-card')?.addEventListener('click', () => {
@@ -8302,10 +8302,10 @@ function renderProfileHubBody(u) {
         });
     });
     document.getElementById('profile-hub-honor-receiving')?.addEventListener('click', () => {
-        showSupportLevelInfoModal('receiving', u.supportReceiving, u.profileImage);
+        showSupportLevelInfoModal('receiving', u.supportReceiving, u.profileImage, u.username);
     });
     document.getElementById('profile-hub-honor-giving')?.addEventListener('click', () => {
-        showSupportLevelInfoModal('giving', u.supportGiving, u.profileImage);
+        showSupportLevelInfoModal('giving', u.supportGiving, u.profileImage, u.username);
     });
     document.getElementById('profile-hub-honor-achv')?.addEventListener('click', () => {
         showComingSoonSheet('الإنجازات', 'نظام الإنجازات قيد التطوير حالياً — ترقّبه قريباً!', 'fa-medal');
@@ -9443,7 +9443,7 @@ function renderRoomProfileSupportBadgeHTML(kind, info) {
         <span class="room-profile-support-badge" data-support-kind="${kind}" title="${label}">
             <span class="room-profile-support-badge-imgwrap">
                 <img src="${ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex]}" class="room-profile-support-badge-img" alt="">
-                <span class="room-profile-support-badge-lv">${info.level}</span>
+                <span class="room-profile-support-badge-ribbon">${info.level}</span>
             </span>
         </span>
     `;
@@ -9493,13 +9493,14 @@ const SUPPORT_LEVEL_THRESHOLDS_REF = [
 // ✅ لوحة "تفاصيل شارة الدعم/التلقي" — ورقة سفلية فاخرة: صورة المستخدم داخل إطار الشارة
 // نفسها (كأنها مدالية بورتريه)، شريط تقدّم ذهبي معدني من المستوى الحالي للتالي، زر "!" يفتح
 // جدول الخبرة الكامل، وقسما "صلاحية المستوى" (شبكة مزايا قادمة قريباً) و"مهمة المستوى"
-function showSupportLevelInfoModal(kind, info, profileImage) {
+function showSupportLevelInfoModal(kind, info, profileImage, username) {
     if (!info) return;
     document.getElementById('support-info-modal')?.remove();
     const modal = document.createElement('div');
     modal.id = 'support-info-modal';
     modal.className = 'fixed inset-0 bg-black/70 flex items-end justify-center z-[340]';
     const title = kind === 'giving' ? 'مستوى الدعم' : 'مستوى التلقي';
+    const kindIcon = kind === 'giving' ? 'fa-bullhorn' : 'fa-microphone';
     const imgIndex = info.tierIndex <= 1 ? 0 : (info.tierIndex >= 4 ? 2 : 1);
     const badgeImg = ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex];
     const nextLabel = info.isMax ? 'MAX' : `Lv.${info.level + 1}`;
@@ -9508,12 +9509,21 @@ function showSupportLevelInfoModal(kind, info, profileImage) {
         <div class="support-info-sheet-lux">
             <div class="w-10 h-1 bg-white/15 rounded-full mx-auto mt-2.5 mb-1 flex-shrink-0"></div>
             <div class="support-info-lux-body">
-                <div class="support-portrait-frame">
-                    <img src="${profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="support-portrait-avatar">
-                    <img src="${badgeImg}" class="support-portrait-badge-img" alt="">
+                <div class="support-lux-header">
+                    <i class="fas ${kindIcon}"></i>
+                    <span>${title}</span>
                 </div>
-                <p class="support-info-lux-title">${title} <span class="support-info-lux-lv">Lv.${info.level}</span></p>
-                <p class="support-info-lux-tier">فئة "${escapeHtml(info.tierName)}"</p>
+
+                <div class="support-portrait-row">
+                    <div class="support-portrait-frame">
+                        <img src="${profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="support-portrait-avatar">
+                        <span class="support-portrait-badge-corner"><img src="${badgeImg}" alt=""></span>
+                    </div>
+                    <div class="support-portrait-info">
+                        <p class="support-portrait-name">${escapeHtml(username || '')} <span class="support-portrait-lv">Lv.${info.level}</span></p>
+                        <p class="support-portrait-tier">فئة "${escapeHtml(info.tierName)}"</p>
+                    </div>
+                </div>
 
                 <div class="support-progress-row-lux">
                     <span class="support-progress-endlabel">Lv.${info.level}</span>
@@ -9527,36 +9537,44 @@ function showSupportLevelInfoModal(kind, info, profileImage) {
                     <button type="button" id="support-xp-info-btn" class="support-info-circle-btn" title="جدول الخبرة"><i class="fas fa-exclamation"></i></button>
                 </div>
 
-                <p class="support-lux-section-title">صلاحية المستوى</p>
-                <div class="support-perks-grid">
-                    <button type="button" class="support-perk-box" data-perk="chest">
-                        <span class="support-perk-icon"><i class="fas fa-box-open"></i></span>
-                        <span class="support-perk-label">صندوق الكنز</span>
-                    </button>
-                    <button type="button" class="support-perk-box" data-perk="bubble">
-                        <span class="support-perk-icon"><i class="fas fa-comments"></i></span>
-                        <span class="support-perk-label">فقاعات الدردشة</span>
-                    </button>
-                    <button type="button" class="support-perk-box" data-perk="upgrade">
-                        <span class="support-perk-icon support-perk-icon-up">UP</span>
-                        <span class="support-perk-label">إعلان ترقية</span>
-                    </button>
-                    <button type="button" class="support-perk-box" data-perk="fame">
-                        <span class="support-perk-icon"><i class="fas fa-trophy"></i></span>
-                        <span class="support-perk-label">لوحة المشاهير</span>
-                    </button>
-                    <button type="button" class="support-perk-box" data-perk="room">
-                        <span class="support-perk-icon"><i class="fas fa-shirt"></i></span>
-                        <span class="support-perk-label">مظهر غرفة مخصص</span>
-                    </button>
-                    <button type="button" class="support-perk-box" data-perk="badge">
-                        <span class="support-perk-icon"><i class="fas fa-award"></i></span>
-                        <span class="support-perk-label">الوسام</span>
-                    </button>
+                <div class="support-two-col-lux">
+                    <div class="support-col-lux">
+                        <p class="support-lux-section-title">صلاحية المستوى</p>
+                        <div class="support-perks-grid-2col">
+                            <button type="button" class="support-perk-box" data-perk="chest">
+                                <span class="support-perk-icon"><i class="fas fa-box-open"></i></span>
+                                <span class="support-perk-label">صندوق الكنز</span>
+                            </button>
+                            <button type="button" class="support-perk-box" data-perk="bubble">
+                                <span class="support-perk-icon"><i class="fas fa-comments"></i></span>
+                                <span class="support-perk-label">فقاعات الدردشة</span>
+                            </button>
+                            <button type="button" class="support-perk-box" data-perk="upgrade">
+                                <span class="support-perk-icon support-perk-icon-up">UP</span>
+                                <span class="support-perk-label">إعلان ترقية</span>
+                            </button>
+                            <button type="button" class="support-perk-box" data-perk="fame">
+                                <span class="support-perk-icon"><i class="fas fa-trophy"></i></span>
+                                <span class="support-perk-label">لوحة المشاهير</span>
+                            </button>
+                            <button type="button" class="support-perk-box" data-perk="room">
+                                <span class="support-perk-icon"><i class="fas fa-shirt"></i></span>
+                                <span class="support-perk-label">مظهر غرفة مخصص</span>
+                            </button>
+                            <button type="button" class="support-perk-box" data-perk="badge">
+                                <span class="support-perk-icon"><i class="fas fa-award"></i></span>
+                                <span class="support-perk-label">الوسام</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="support-col-lux">
+                        <p class="support-lux-section-title">مهمة المستوى</p>
+                        <div class="support-mission-soon-lux">
+                            <i class="fas fa-hourglass-half"></i>
+                            <span>قريباً</span>
+                        </div>
+                    </div>
                 </div>
-
-                <p class="support-lux-section-title">مهمة المستوى</p>
-                <div class="support-mission-soon-lux">قريباً</div>
             </div>
         </div>
     `;
@@ -9648,9 +9666,24 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
             const s = summaryRes.data;
             const rose = (shopRes.data?.gifts || []).find(g => g.name === 'وردة');
             const previewMembers = (membersPreviewRes?.data?.members || []).slice(0, 3);
+            const isOwner = !!s.isOwner;
+            const displayName = s.clubName ? escapeHtml(s.clubName) : `نادي ${escapeHtml(ownerUsername)}`;
+            // 🛡️ لون الشارة قيمة يُخزّنها المستخدم ويُعاد حقنها هنا كـ inline style — نتحقق من
+            // صيغتها Hex الصارمة مجدداً على العميل (بجانب تحقق الخادم عند الحفظ) دفاعاً بعمق
+            const safeBadgeColor = /^#[0-9a-fA-F]{6}$/.test(s.badgeColor) ? s.badgeColor : '#f472b6';
             body.innerHTML = `
-                <div class="fanclub-owner-avatar-wrap"><img src="${ownerProfileImage}" class="fanclub-owner-avatar"></div>
-                <p class="fanclub-owner-name">نادي ${escapeHtml(ownerUsername)}</p>
+                <div class="fanclub-owner-avatar-wrap">
+                    <img src="${ownerProfileImage}" class="fanclub-owner-avatar" style="border-color:${safeBadgeColor}">
+                    ${(s.featuredMember || isOwner) ? `
+                        <button type="button" id="fanclub-featured-slot" class="fanclub-featured-slot" title="${isOwner ? 'اختر عضواً مميزاً' : ''}">
+                            ${s.featuredMember ? `<img src="${s.featuredMember.profileImage}">` : '<i class="fas fa-plus"></i>'}
+                        </button>
+                    ` : ''}
+                </div>
+                <div class="fanclub-owner-name-row">
+                    <p class="fanclub-owner-name">${displayName}</p>
+                    ${isOwner ? `<button type="button" id="fanclub-customize-btn" class="fanclub-customize-btn" title="تخصيص النادي"><i class="fas fa-pen"></i></button>` : ''}
+                </div>
                 <button type="button" id="fanclub-member-preview-row" class="fanclub-member-preview-row" ${previewMembers.length === 0 ? 'style="visibility:hidden"' : ''}>
                     <span class="fanclub-member-preview-avatars">
                         ${previewMembers.map(m => `<img src="${m.profileImage}" class="fanclub-member-preview-avatar">`).join('')}
@@ -9658,15 +9691,24 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                     <span class="fanclub-member-preview-count"><b id="fanclub-member-count-num">${s.memberCount}</b> عضو</span>
                     <i class="fas fa-chevron-left fanclub-member-preview-arrow"></i>
                 </button>
+                ${isOwner ? '' : `
                 <button type="button" id="fanclub-join-btn" class="fanclub-join-btn ${s.isMember ? 'joined' : ''}" ${s.isMember ? 'disabled' : ''}>
                     ${s.isMember ? '<i class="fas fa-check"></i> أنت عضو بالفعل' : `
-                        ${rose ? `<img src="${rose.imageUrl}" class="fanclub-join-btn-rose" onerror="this.style.display='none'">` : '<i class="fas fa-heart"></i>'}
-                        <span>الانضمام</span>
-                        <span class="fanclub-join-btn-price"><s>10</s> (1)</span>
+                        <span class="fanclub-join-btn-text">الانضمام</span>
+                        <span class="fanclub-join-btn-price-group">
+                            ${rose ? `<img src="${rose.imageUrl}" class="fanclub-join-btn-rose" onerror="this.style.display='none'">` : '<i class="fas fa-heart"></i>'}
+                            <span class="fanclub-join-btn-price"><s>10</s> 1</span>
+                        </span>
                     `}
                 </button>
+                `}
             `;
             modal.querySelector('#fanclub-member-preview-row')?.addEventListener('click', () => renderMembersView(ownerId, ownerUsername));
+            modal.querySelector('#fanclub-customize-btn')?.addEventListener('click', () => showFanClubCustomizeSheet(s, renderJoinView));
+            modal.querySelector('#fanclub-featured-slot')?.addEventListener('click', () => {
+                if (isOwner) { showFanClubFeaturedMemberPicker(ownerId, renderJoinView); }
+                else if (s.featuredMember) { modal.remove(); showFullProfilePage(s.featuredMember.userId); }
+            });
             modal.querySelector('#fanclub-join-btn')?.addEventListener('click', async (e) => {
                 if (s.isMember) return;
                 const btn = e.currentTarget;
@@ -9775,6 +9817,132 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
     trophyBtn.addEventListener('click', () => renderLeaderboardView('weekly'));
 
     renderJoinView();
+}
+
+// ✅ نافذة تخصيص نادي المعجبين — صاحب النادي فقط: اسم مخصص (حد أقصى 13 حرفاً) ولون الشارة
+function showFanClubCustomizeSheet(s, onSaved) {
+    document.getElementById('fanclub-customize-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'fanclub-customize-modal';
+    modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[335] p-4';
+    const colors = ['#f472b6', '#a855f7', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#14b8a6', '#eab308'];
+    const currentColor = /^#[0-9a-fA-F]{6}$/.test(s.badgeColor) ? s.badgeColor : '#f472b6';
+    modal.innerHTML = `
+        <div class="fanclub-customize-card">
+            <p class="fanclub-customize-title"><i class="fas fa-pen"></i> تخصيص النادي</p>
+            <label class="fanclub-customize-label">اسم النادي</label>
+            <input type="text" id="fanclub-name-input" maxlength="13" placeholder="${escapeHtml(s.ownerUsername ? 'نادي ' + s.ownerUsername : 'اسم النادي')}" value="${escapeHtml(s.clubName || '')}" class="fanclub-customize-input">
+            <p class="fanclub-customize-counter"><span id="fanclub-name-counter">${(s.clubName || '').length}</span>/13</p>
+            <label class="fanclub-customize-label">لون الشارة</label>
+            <div class="fanclub-customize-colors">
+                ${colors.map(c => `<button type="button" class="fanclub-color-swatch ${c === currentColor ? 'active' : ''}" data-color="${c}" style="background:${c}"></button>`).join('')}
+            </div>
+            <button type="button" id="fanclub-customize-save-btn" class="fanclub-customize-save-btn">حفظ</button>
+            <button type="button" id="fanclub-customize-cancel-btn" class="fanclub-customize-cancel-btn">إلغاء</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'fanclub-customize-modal') modal.remove(); });
+    modal.querySelector('#fanclub-customize-cancel-btn').addEventListener('click', () => modal.remove());
+
+    let selectedColor = currentColor;
+    const nameInput = modal.querySelector('#fanclub-name-input');
+    const counterEl = modal.querySelector('#fanclub-name-counter');
+    nameInput.addEventListener('input', () => { counterEl.textContent = nameInput.value.length; });
+
+    modal.querySelectorAll('.fanclub-color-swatch').forEach(sw => {
+        sw.addEventListener('click', () => {
+            modal.querySelectorAll('.fanclub-color-swatch').forEach(x => x.classList.remove('active'));
+            sw.classList.add('active');
+            selectedColor = sw.dataset.color;
+        });
+    });
+
+    modal.querySelector('#fanclub-customize-save-btn').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try {
+            const res = await fetch('/api/fanclub/settings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ name: nameInput.value.trim(), badgeColor: selectedColor })
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                showNotification(result.message || 'تعذر الحفظ', 'error');
+                btn.disabled = false;
+                return;
+            }
+            showNotification('تم حفظ التخصيص ✅', 'success');
+            modal.remove();
+            if (onSaved) onSaved();
+        } catch (error) {
+            showNotification('تعذر الحفظ', 'error');
+            btn.disabled = false;
+        }
+    });
+}
+
+// ✅ منتقي "العضو المميّز" — صاحب النادي يختار أحد أعضاء ناديه الفعليين لعرض صورته الصغيرة
+// بجانب صورته بنافذة النادي (يُتحقَّق من العضوية الحقيقية بالخادم عند الحفظ)
+async function showFanClubFeaturedMemberPicker(ownerId, onSaved) {
+    document.getElementById('fanclub-featured-picker-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'fanclub-featured-picker-modal';
+    modal.className = 'fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-[335]';
+    modal.innerHTML = `
+        <div class="fanclub-featured-picker-card">
+            <p class="fanclub-featured-picker-title">اختر عضواً مميزاً</p>
+            <div id="fanclub-featured-picker-list" class="fanclub-featured-picker-list">
+                <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
+            </div>
+            <button type="button" id="fanclub-featured-remove-btn" class="fanclub-featured-remove-btn"><i class="fas fa-times"></i> إزالة العضو المميز</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'fanclub-featured-picker-modal') modal.remove(); });
+
+    async function setFeatured(memberId) {
+        try {
+            const res = await fetch('/api/fanclub/featured-member', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ memberId })
+            });
+            const result = await res.json();
+            if (!res.ok) { showNotification(result.message || 'تعذر الحفظ', 'error'); return; }
+            modal.remove();
+            if (onSaved) onSaved();
+        } catch (error) {
+            showNotification('تعذر الحفظ', 'error');
+        }
+    }
+
+    modal.querySelector('#fanclub-featured-remove-btn').addEventListener('click', () => setFeatured(null));
+
+    try {
+        const res = await fetch(`/api/fanclub/${ownerId}/members?limit=50`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await res.json();
+        const list = modal.querySelector('#fanclub-featured-picker-list');
+        if (!list) return;
+        const members = result.status === 'success' ? result.data.members : [];
+        if (members.length === 0) {
+            list.innerHTML = '<p class="text-center text-gray-400 py-8 text-sm">لا يوجد أعضاء بعد</p>';
+            return;
+        }
+        list.innerHTML = members.map(m => `
+            <button type="button" class="fanclub-featured-picker-row" data-user-id="${m.userId}">
+                <img src="${m.profileImage}" class="fanclub-featured-picker-avatar">
+                <span>${escapeHtml(m.username)}</span>
+            </button>
+        `).join('');
+        list.querySelectorAll('.fanclub-featured-picker-row').forEach(row => {
+            row.addEventListener('click', () => setFeatured(row.dataset.userId));
+        });
+    } catch (error) {
+        const list = modal.querySelector('#fanclub-featured-picker-list');
+        if (list) list.innerHTML = '<p class="text-center text-red-400 py-8 text-sm">تعذر تحميل الأعضاء</p>';
+    }
 }
 
 // ✅ نافذة "هل تود متابعته؟" — تظهر بعد فتح محادثة خاصة مع شخص لست تتابعه بعد، يمكن تجاهلها
@@ -9985,10 +10153,10 @@ async function showFullProfilePage(userId) {
             });
         });
         document.getElementById('honor-row-receiving')?.addEventListener('click', () => {
-            showSupportLevelInfoModal('receiving', u.supportReceiving, u.profileImage);
+            showSupportLevelInfoModal('receiving', u.supportReceiving, u.profileImage, u.username);
         });
         document.getElementById('honor-row-giving')?.addEventListener('click', () => {
-            showSupportLevelInfoModal('giving', u.supportGiving, u.profileImage);
+            showSupportLevelInfoModal('giving', u.supportGiving, u.profileImage, u.username);
         });
         document.getElementById('full-profile-achv-row')?.addEventListener('click', () => {
             showComingSoonSheet('الإنجازات', 'نظام الإنجازات قيد التطوير حالياً — ترقّبه قريباً!', 'fa-medal');

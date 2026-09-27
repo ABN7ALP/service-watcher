@@ -10,5 +10,8 @@ router.get('/leaderboard', fanClubController.getLeaderboard);
 router.get('/:ownerId/summary', fanClubController.getSummary);
 router.post('/:ownerId/join', fanClubController.joinFanClub);
 router.get('/:ownerId/members', fanClubController.getMembers);
+// ✅ تخصيص النادي (اسم/لون الشارة) — صاحب النادي فقط، يُستخرج من req.user (توكن الجلسة)
+router.patch('/settings', fanClubController.updateSettings);
+router.post('/featured-member', fanClubController.setFeaturedMember);
 
 module.exports = router;

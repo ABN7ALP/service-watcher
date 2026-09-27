@@ -350,8 +350,14 @@ exports.sendGift = async (req, res) => {
             io.to(sender.socketId).emit('giftSentConfirmation', giftEventPayload);
         }
 
-                await addGiftExperience(io, senderId, totalPrice, 'sender');
-        await addGiftExperience(io, receiverId, totalPrice, 'receiver');
+                // 🐛 إصلاح أداء: كانا يُنتظران بالتتابع (await فقرة فقرة) — كل واحد يقرأ ويحفظ مستند
+        // مستخدم كامل بشكل منفصل، فيتضاعف زمن استجابة إرسال الهدية بلا فائدة بما أنهما يعدّلان
+        // مستخدمين مختلفين تماماً (لا تعارض بينهما). تشغيلهما معاً يقلّص هذا الجزء من التأخير
+        // إلى النصف تقريباً — وهو أحد أسباب "تعليق زر الإرسال لحظة" بالإعجاب السريع بالواجهة
+        await Promise.all([
+            addGiftExperience(io, senderId, totalPrice, 'sender'),
+            addGiftExperience(io, receiverId, totalPrice, 'receiver')
+        ]);
         // ✅ لا يُنتظَر (fire-and-forget) — تحديث الشارات لا يجب أن يؤخّر استجابة إرسال الهدية
         broadcastSupportLevelUpdate(io, senderId);
         broadcastSupportLevelUpdate(io, receiverId);
@@ -530,8 +536,12 @@ exports.sendGiftBatch = async (req, res) => {
             io.to(sender.socketId).emit('balanceUpdate', { newBalance: sender.balance, newCoins: sender.coins });
         }
 
-        await addGiftExperience(io, senderId, totalCost, 'sender');
-        await Promise.all(validReceivers.map(r => addGiftExperience(io, r._id, totalPrice, 'receiver')));
+        // 🐛 إصلاح أداء: نفس نمط التتابع غير الضروري بأعلى — دمج المرسل مع كل المستلمين بنداء
+        // Promise.all واحد بدل انتظار المرسل أولاً ثم الدُفعة
+        await Promise.all([
+            addGiftExperience(io, senderId, totalCost, 'sender'),
+            ...validReceivers.map(r => addGiftExperience(io, r._id, totalPrice, 'receiver'))
+        ]);
         // ✅ لا يُنتظَر — تحديث الشارات لا يجب أن يؤخّر استجابة إرسال الهدية
         broadcastSupportLevelUpdate(io, senderId);
         validReceivers.forEach(r => broadcastSupportLevelUpdate(io, r._id));
@@ -742,10 +752,12 @@ exports.sendPublicGift = async (req, res) => {
         });
 
         // ✅ منح الخبرة: المرسل حسب إجمالي ما أنفقه، وكل مستلم حسب قيمة الهدية التي استلمها فعلياً
-        await addGiftExperience(io, senderId, totalCost, 'sender');
-        for (const rid of finalRecipientIds) {
-            await addGiftExperience(io, rid, unitPrice, 'receiver');
-        }
+        // 🐛 إصلاح أداء: كانت حلقة for تنتظر مستلماً تلو الآخر بالتتابع (نداء قاعدة بيانات كامل
+        // لكل واحد) — بطيء جداً مع جمهور كبير. الآن الكل بالتوازي بنداء Promise.all واحد
+        await Promise.all([
+            addGiftExperience(io, senderId, totalCost, 'sender'),
+            ...finalRecipientIds.map(rid => addGiftExperience(io, rid, unitPrice, 'receiver'))
+        ]);
 
         const audienceText = audience === 'all'
             ? `للجميع (${finalRecipientIds.length} شخص)`

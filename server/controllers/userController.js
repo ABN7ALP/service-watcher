@@ -557,7 +557,9 @@ const getMyProfileVisits = async (req, res) => {
     }
 };
 
-// ✅ "نكزة" — إشعار لحظي فوري إن كان الطرف متصلاً، ويُسجَّل دائماً بسجل Poke لحساب "نكز اليوم"
+// ✅ "نكزة" — مرة واحدة فقط لكل شخص كل 24 ساعة (بطلب المستخدم)، إشعار لحظي فوري إن كان
+// الطرف متصلاً، ويُسجَّل دائماً بسجل Poke لحساب "نكز اليوم" ولفرض مهلة التكرار
+const POKE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const pokeUser = async (req, res) => {
     try {
         const targetId = req.params.id;
@@ -569,11 +571,25 @@ const pokeUser = async (req, res) => {
         }
         const target = await User.findById(targetId).select('isOnline socketId');
         if (!target) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
+
+        const lastPoke = await Poke.findOne({
+            from: req.user.id,
+            to: targetId,
+            createdAt: { $gte: new Date(Date.now() - POKE_COOLDOWN_MS) }
+        }).sort({ createdAt: -1 }).select('createdAt');
+        if (lastPoke) {
+            return res.status(429).json({
+                status: 'fail',
+                message: 'لقد قمت بنكزه من قبل، حاول مجدداً بعد مرور 24 ساعة',
+                data: { nextAvailableAt: new Date(lastPoke.createdAt.getTime() + POKE_COOLDOWN_MS) }
+            });
+        }
+
         if (req.io && target.isOnline && target.socketId) {
             req.io.to(target.socketId).emit('user-poked', { fromUserId: req.user.id, fromUsername: req.user.username, fromProfileImage: req.user.profileImage });
         }
-        // ✅ يُسجَّل دائماً (متصل أو لا) — مصدر عدّاد "نكز اليوم" بمركز الملف الشخصي؛ لا يُفشل الطلب أبداً
-        Poke.create({ from: req.user.id, to: targetId }).catch(err => console.error('[POKE] Failed to record:', err));
+        // ✅ يُسجَّل دائماً (متصل أو لا) — مصدر عدّاد "نكز اليوم" بمركز الملف الشخصي، ومرجع مهلة التكرار أعلاه
+        await Poke.create({ from: req.user.id, to: targetId });
         res.status(200).json({ status: 'success' });
     } catch (error) {
         res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });

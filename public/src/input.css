@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -1072,26 +1072,36 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     transition: transform 0.15s ease;
 }
 .room-profile-support-badge:active { transform: scale(0.92); }
-/* 🐛 تصحيح: الفل كان نصاً منفصلاً بجانب الصورة — الآن يندمج بمنتصف الصورة نفسها وكأنه جزء
-   منها (كبسولة رقمية على مدالية الشارة) بدل رقم عائم بجوارها */
-.room-profile-support-badge-imgwrap { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+/* 🐛 تصحيح: الفل كان نصاً غامق اللون فوق منتصف الصورة الذهبية مباشرة (قليل التباين وغير
+   واضح). الآن شارة صغيرة "ريبون" (شريط وسام) متدلّية من أسفل حافة الصورة — نمط الأوسمة
+   الحقيقية — بخلفية داكنة وتباين عالٍ يضمن وضوح الرقم دوماً بغضّ النظر عن ألوان صورة الشارة */
+.room-profile-support-badge-imgwrap { position: relative; display: inline-flex; align-items: flex-start; justify-content: center; flex-shrink: 0; padding-bottom: 5px; }
 .room-profile-support-badge-img { width: 24px; height: 24px; object-fit: contain; }
-.room-profile-support-badge-lv {
+.room-profile-support-badge-ribbon {
     position: absolute;
-    top: 54%; left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 8.5px;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 14px;
+    padding: 0 3px;
+    height: 10px;
+    line-height: 10px;
+    text-align: center;
+    font-size: 7.5px;
     font-weight: 900;
-    color: #451a03;
-    text-shadow: 0 1px 0 rgba(255,255,255,0.4);
-    line-height: 1;
+    color: #fff8e1;
+    background: linear-gradient(180deg, #d97706, #7c2d12);
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.18) inset;
     pointer-events: none;
 }
 
 /* =====================================================
-   ✅ ورقة "تفاصيل شارة الدعم/التلقي" الفاخرة — خلفية بنية قريبة من السواد، إطار ذهبي لامع
-   سميك بنقاط "مبرومة" علوية (مظهر معدني مطروق)، صورة المستخدم داخل إطار الشارة نفسها،
-   شريط تقدّم ذهبي معدني متحرّك، وشبكة "صلاحية المستوى" + قسم "مهمة المستوى"
+   ✅ ورقة "تفاصيل شارة الدعم/التلقي" — إعادة هيكلة كاملة: خلفية كحلية قريبة من السواد (أهدأ
+   وأرقى من البني)، عنوان المسار بالأعلى، صورة المستخدم هي العنصر الرئيسي (حلقة ذهبية) مع
+   شارة المستوى كأيقونة صغيرة بزاويتها السفلى (بدل تركيبها فوق الصورة بالكامل — كانت تحجب
+   صورة المستخدم كلياً لأن صور الشارات نفسها ليست شفافة بمنتصفها)، الاسم والفل بجانب الصورة،
+   شريط تقدّم ذهبي معدني، وقسما "صلاحية المستوى"/"مهمة المستوى" جنباً إلى جنب بالأسفل
    ===================================================== */
 .support-info-sheet-lux {
     width: 100%;
@@ -1099,71 +1109,78 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     max-height: 88vh;
     overflow-y: auto;
     position: relative;
-    background:
-        radial-gradient(circle at 15% 0%, rgba(251,191,36,0.10), transparent 40%),
-        radial-gradient(circle at 95% 15%, rgba(251,191,36,0.08), transparent 35%),
-        radial-gradient(circle at 50% 100%, rgba(251,191,36,0.06), transparent 45%),
-        linear-gradient(165deg, #221206, #0e0704);
-    border: 3px solid transparent;
-    border-image: linear-gradient(135deg, #fde68a, #b45309, #fbbf24, #78350f, #fde68a) 1;
+    background: radial-gradient(circle at 50% 0%, rgba(250,204,21,0.08), transparent 55%), linear-gradient(170deg, #171a22, #0a0b0f);
+    border: 2px solid rgba(250,204,21,0.35);
     border-radius: 24px 24px 0 0;
-    box-shadow: 0 0 0 1px rgba(251,191,36,0.25) inset, 0 -8px 40px rgba(251,191,36,0.12), 0 -4px 30px rgba(0,0,0,0.6);
+    box-shadow: 0 0 0 1px rgba(250,204,21,0.12) inset, 0 -6px 30px rgba(250,204,21,0.08), 0 -4px 30px rgba(0,0,0,0.6);
     animation: slideUp 0.25s ease-out;
 }
 @media (min-width: 768px) { .support-info-sheet-lux { border-radius: 24px; margin-bottom: 16px; } }
-.support-info-sheet-lux::before {
-    content: '';
-    position: absolute;
-    top: 7px; left: 0; right: 0;
-    height: 4px;
-    background-image: radial-gradient(circle, #fde68a 1.4px, transparent 1.6px);
-    background-size: 16px 100%;
-    opacity: 0.55;
-    pointer-events: none;
-}
-.support-info-lux-body { padding: 10px 20px 26px; text-align: center; }
+.support-info-lux-body { padding: 6px 20px 26px; }
 
+.support-lux-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 800;
+    color: #facc15;
+    padding: 8px 0 14px;
+    border-bottom: 1px solid rgba(250,204,21,0.15);
+}
+.support-lux-header i { font-size: 12px; }
+
+.support-portrait-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
 .support-portrait-frame {
     position: relative;
-    width: 88px;
-    height: 88px;
-    margin: 6px auto 0;
+    width: 62px;
+    height: 62px;
+    flex-shrink: 0;
 }
 .support-portrait-avatar {
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -46%);
-    width: 46px;
-    height: 46px;
-    border-radius: 50%;
-    object-fit: cover;
-}
-.support-portrait-badge-img {
-    position: absolute;
-    inset: 0;
     width: 100%;
     height: 100%;
-    object-fit: contain;
-    pointer-events: none;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2.5px solid #facc15;
+    box-shadow: 0 0 0 3px rgba(250,204,21,0.18), 0 4px 10px rgba(0,0,0,0.4);
+    display: block;
 }
-.support-info-lux-title { font-size: 16px; font-weight: 900; color: #fde68a; margin-top: 10px; }
-.support-info-lux-lv { color: #fff; opacity: 0.85; font-weight: 800; }
-.support-info-lux-tier { font-size: 11px; color: #d6a94a; margin-top: 3px; }
+/* ✅ الشارة أصبحت أيقونة مرفقة صغيرة بزاوية الصورة (نمط "وسام على الصدر") بدل تغطية الصورة
+   بالكامل — تبقى صورة المستخدم واضحة ظاهرة دوماً بغضّ النظر عن شكل/شفافية صورة الشارة */
+.support-portrait-badge-corner {
+    position: absolute;
+    bottom: -4px; left: -4px;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: #14161d;
+    border: 2px solid #14161d;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.support-portrait-badge-corner img { width: 20px; height: 20px; object-fit: contain; }
+.support-portrait-info { flex: 1; min-width: 0; text-align: right; }
+.support-portrait-name { font-size: 15px; font-weight: 800; color: #f3f4f6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.support-portrait-lv { color: #facc15; font-weight: 900; margin-right: 4px; }
+.support-portrait-tier { font-size: 11px; color: #a1a1aa; margin-top: 3px; }
 
 .support-progress-row-lux { display: flex; align-items: center; gap: 8px; margin-top: 20px; }
-.support-progress-endlabel { font-size: 10.5px; font-weight: 800; color: #fde68a; flex-shrink: 0; }
+.support-progress-endlabel { font-size: 10.5px; font-weight: 800; color: #facc15; flex-shrink: 0; }
 .support-progress-track-lux {
     flex: 1;
-    height: 10px;
+    height: 9px;
     border-radius: 999px;
-    background: rgba(0,0,0,0.45);
-    border: 1px solid rgba(251,191,36,0.25);
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(250,204,21,0.2);
     overflow: hidden;
 }
 .support-progress-fill-lux {
     height: 100%;
     border-radius: 999px;
-    background: linear-gradient(90deg, #78350f, #fbbf24, #fef3c7, #fbbf24, #78350f);
+    background: linear-gradient(90deg, #b45309, #facc15, #fef9c3, #facc15, #b45309);
     background-size: 200% 100%;
     animation: supportBadgeShimmer 2.6s linear infinite;
 }
@@ -1174,15 +1191,15 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     gap: 8px;
     margin-top: 10px;
     font-size: 11px;
-    color: #d1b378;
+    color: #a1a1aa;
 }
-.support-need-row-lux b { color: #fde68a; }
+.support-need-row-lux b { color: #facc15; }
 .support-info-circle-btn {
     width: 18px; height: 18px;
     border-radius: 50%;
-    background: rgba(251,191,36,0.15);
-    border: 1px solid rgba(251,191,36,0.5);
-    color: #fde68a;
+    background: rgba(250,204,21,0.12);
+    border: 1px solid rgba(250,204,21,0.5);
+    color: #facc15;
     font-size: 9px;
     display: inline-flex;
     align-items: center;
@@ -1190,66 +1207,75 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     flex-shrink: 0;
 }
 
-.support-lux-section-title { font-size: 12px; font-weight: 800; color: #fde68a; text-align: right; margin-top: 22px; margin-bottom: 10px; }
-.support-perks-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+/* ✅ "صلاحية المستوى" و"مهمة المستوى" جنباً إلى جنب (عمودان متساويان) بدل التتابع الرأسي */
+.support-two-col-lux { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 24px; align-items: start; }
+.support-col-lux { display: flex; flex-direction: column; }
+.support-lux-section-title { font-size: 11.5px; font-weight: 800; color: #facc15; text-align: right; margin-bottom: 9px; }
+.support-perks-grid-2col { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; flex: 1; }
 .support-perk-box {
-    background: linear-gradient(160deg, #6b3410, #2b1204);
-    border: 1px solid rgba(251,191,36,0.3);
-    border-radius: 14px;
-    padding: 12px 4px 9px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(250,204,21,0.18);
+    border-radius: 12px;
+    padding: 9px 3px 7px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
 }
 .support-perk-box:active { transform: scale(0.95); }
-.support-perk-icon { font-size: 18px; color: #fde68a; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+.support-perk-icon { font-size: 15px; color: #facc15; }
 .support-perk-icon-up {
-    width: 24px; height: 24px;
-    border-radius: 50% 50% 50% 4px;
-    background: linear-gradient(160deg, #fde68a, #b45309);
-    color: #2b1204;
-    font-size: 9px;
+    width: 19px; height: 19px;
+    border-radius: 50% 50% 50% 3px;
+    background: #facc15;
+    color: #171a22;
+    font-size: 7.5px;
     font-weight: 900;
     display: flex;
     align-items: center;
     justify-content: center;
 }
-.support-perk-label { font-size: 9.5px; color: #e9c98a; text-align: center; line-height: 1.3; }
+.support-perk-label { font-size: 8.5px; color: #d4d4d8; text-align: center; line-height: 1.25; }
 .support-mission-soon-lux {
-    background: linear-gradient(160deg, #6b3410, #2b1204);
-    border: 1px solid rgba(251,191,36,0.3);
-    border-radius: 14px;
-    padding: 16px;
+    flex: 1;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(250,204,21,0.18);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px 8px;
     text-align: center;
-    font-size: 12px;
-    font-weight: 800;
-    color: #d1b378;
+    color: #a1a1aa;
 }
+.support-mission-soon-lux i { font-size: 18px; color: #facc15; opacity: 0.8; }
+.support-mission-soon-lux span { font-size: 11.5px; font-weight: 800; }
 
-/* ✅ جدول "كم خبرة يحتاج كل مستوى" — نافذة صغيرة منفصلة، خلفية بنية داكنة قريبة من السواد */
+/* ✅ جدول "كم خبرة يحتاج كل مستوى" — نافذة صغيرة منفصلة، بنفس الهوية الكحلية/الذهبية الجديدة */
 .support-xp-table-card {
     width: 100%;
     max-width: 320px;
     max-height: 80vh;
-    background: linear-gradient(165deg, #221206, #0e0704);
-    border: 2px solid rgba(251,191,36,0.4);
+    background: linear-gradient(170deg, #171a22, #0a0b0f);
+    border: 2px solid rgba(250,204,21,0.4);
     border-radius: 18px;
     padding: 18px 16px 14px;
     position: relative;
     display: flex;
     flex-direction: column;
 }
-.support-xp-table-close { position: absolute; top: 10px; left: 10px; background: transparent; border: none; color: #d1b378; font-size: 14px; padding: 6px; }
-.support-xp-table-title { font-size: 11.5px; font-weight: 700; color: #fde68a; text-align: center; line-height: 1.7; margin-bottom: 12px; padding: 0 10px; }
+.support-xp-table-close { position: absolute; top: 10px; left: 10px; background: transparent; border: none; color: #a1a1aa; font-size: 14px; padding: 6px; }
+.support-xp-table-title { font-size: 11.5px; font-weight: 700; color: #facc15; text-align: center; line-height: 1.7; margin-bottom: 12px; padding: 0 10px; }
 .support-xp-table-headrow {
     display: flex;
     justify-content: space-between;
     padding: 0 10px 8px;
-    border-bottom: 1px solid rgba(251,191,36,0.3);
+    border-bottom: 1px solid rgba(250,204,21,0.3);
     font-size: 11px;
     font-weight: 800;
-    color: #fde68a;
+    color: #facc15;
     flex-shrink: 0;
 }
 .support-xp-table-scroll { overflow-y: auto; margin-top: 6px; }
@@ -1258,11 +1284,11 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     justify-content: space-between;
     padding: 7px 10px;
     font-size: 11.5px;
-    color: #e9c98a;
-    border-bottom: 1px solid rgba(251,191,36,0.08);
+    color: #d4d4d8;
+    border-bottom: 1px solid rgba(250,204,21,0.08);
 }
-.support-xp-table-lv { font-weight: 800; color: #fde68a; }
-.support-xp-table-exp { color: #d1b378; }
+.support-xp-table-lv { font-weight: 800; color: #facc15; }
+.support-xp-table-exp { color: #a1a1aa; }
 
 /* ✅ بطاقة "الإنجازات" العريضة — بنفس روح بطاقة الملف الكامل (وليست الأيقونة المصغّرة
    السابقة) + بطاقتا "نادي المعجبين"/"الحماة" المستطيلتان جنباً إلى جنب أسفلها، وكلها قابلة
@@ -1433,9 +1459,69 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-sheet-body { padding: 4px 18px 20px; overflow-y: auto; flex: 1; }
 
 /* --- عرض "الانضمام" الافتراضي --- */
-.fanclub-owner-avatar-wrap { display: flex; justify-content: center; margin-top: 4px; }
+.fanclub-owner-avatar-wrap { display: flex; justify-content: center; margin-top: 4px; position: relative; }
 .fanclub-owner-avatar { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,0.1); box-shadow: 0 6px 18px rgba(0,0,0,0.4); }
-.fanclub-owner-name { text-align: center; font-size: 14.5px; font-weight: 800; color: #fff; margin-top: 10px; }
+/* ✅ "العضو المميّز" — صورة نصف حجم صورة صاحب النادي، متدلّية من حافتها اليسرى */
+.fanclub-featured-slot {
+    position: absolute;
+    left: calc(50% - 4px);
+    bottom: -2px;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #1a1f2e;
+    border: 2.5px solid #1a1f2e;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    font-size: 13px;
+}
+.fanclub-featured-slot img { width: 100%; height: 100%; object-fit: cover; }
+.fanclub-owner-name-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; }
+.fanclub-owner-name { text-align: center; font-size: 14.5px; font-weight: 800; color: #fff; }
+.fanclub-customize-btn { background: rgba(255,255,255,0.08); border: none; color: #d1d5db; font-size: 10px; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+/* ✅ نافذة تخصيص النادي (اسم + لون الشارة) — صاحب النادي فقط */
+.fanclub-customize-card {
+    background: #1a1f2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px;
+    padding: 20px;
+    width: 100%;
+    max-width: 320px;
+    animation: slideUp 0.2s ease-out;
+}
+.fanclub-customize-title { font-size: 14px; font-weight: 800; color: #fff; text-align: center; margin-bottom: 16px; }
+.fanclub-customize-label { font-size: 11px; color: #9ca3af; display: block; margin-bottom: 6px; }
+.fanclub-customize-input { width: 100%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 9px 12px; font-size: 13px; color: #fff; }
+.fanclub-customize-counter { font-size: 9.5px; color: #6b7280; text-align: left; margin-top: 3px; margin-bottom: 14px; }
+.fanclub-customize-colors { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.fanclub-color-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+.fanclub-color-swatch.active { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,0.3); }
+.fanclub-customize-save-btn { width: 100%; height: 42px; border-radius: 12px; background: linear-gradient(135deg, #ec4899, #a855f7); color: #fff; font-weight: 800; font-size: 13px; border: none; }
+.fanclub-customize-cancel-btn { width: 100%; height: 36px; margin-top: 8px; background: transparent; color: #9ca3af; font-size: 12px; border: none; }
+
+/* ✅ منتقي "العضو المميّز" */
+.fanclub-featured-picker-card {
+    background: #1a1f2e;
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-width: 380px;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    padding: 18px;
+    animation: slideUp 0.25s ease-out;
+}
+@media (min-width: 768px) { .fanclub-featured-picker-card { border-radius: 20px; margin-bottom: 16px; } }
+.fanclub-featured-picker-title { font-size: 13.5px; font-weight: 800; color: #fff; text-align: center; margin-bottom: 12px; }
+.fanclub-featured-picker-list { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.fanclub-featured-picker-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 10px; background: transparent; border: none; color: #e5e7eb; font-size: 13px; }
+.fanclub-featured-picker-row:active { background: rgba(255,255,255,0.06); }
+.fanclub-featured-picker-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.fanclub-featured-remove-btn { margin-top: 10px; width: 100%; height: 38px; background: rgba(239,68,68,0.12); color: #f87171; border-radius: 10px; font-size: 12px; font-weight: 700; border: none; flex-shrink: 0; }
 
 /* ✅ معاينة الأعضاء (2-3 صور متراكبة) بدل نص "X عضو في النادي" الجاف — بسهم بسيط يفتح
    القائمة الكاملة (renderMembersView) */
@@ -1467,7 +1553,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     position: relative;
     overflow: hidden;
     width: 100%;
-    height: 48px;
+    height: 54px;
     border-radius: 14px;
     background: linear-gradient(135deg, #ec4899, #a855f7);
     color: #fff;
@@ -1475,8 +1561,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     font-size: 14px;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 8px;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 8px 0 18px;
     border: none;
     cursor: pointer;
     margin-top: 18px;
@@ -1491,22 +1578,41 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     animation: fanclubShine 2.6s ease-in-out infinite;
 }
 @keyframes fanclubShine { 0% { left: -60%; } 55% { left: 130%; } 100% { left: 130%; } }
-.fanclub-join-btn.joined { background: rgba(255,255,255,0.07); color: #d1d5db; }
+.fanclub-join-btn.joined { background: rgba(255,255,255,0.07); color: #d1d5db; justify-content: center; }
 .fanclub-join-btn.joined::after { display: none; }
 .fanclub-join-btn:disabled { opacity: 0.7; cursor: default; }
 
-/* ✅ صورة الوردة + السعر القديم/الجديد مدموجان داخل زر الانضمام نفسه بدل بانر تعليمات
-   منفصل أسفله — تصميم مختصر بصري لا يحتاج نصاً شارحاً إضافياً */
+/* ✅ نص "الانضمام" بخط مميّز كبير مائل يكاد يملأ الزر، والوردة + السعر القديم/الجديد مجموعان
+   معاً بكبسولة صغيرة بجانبه (نفس عائلة الخط والوزن والميل، بحجم أصغر) — بدل بانر تعليمات
+   منفصل أسفل الزر، تصميم مختصر بصري لا يحتاج نصاً شارحاً إضافياً */
+.fanclub-join-btn-text {
+    font-family: 'Cairo', sans-serif;
+    font-weight: 900;
+    font-style: italic;
+    font-size: 20px;
+    letter-spacing: 0.3px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.fanclub-join-btn-price-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 999px;
+    padding: 5px 11px 5px 7px;
+    flex-shrink: 0;
+}
 .fanclub-join-btn-rose { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
 .fanclub-join-btn-price {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 11.5px;
-    font-weight: 700;
-    opacity: 0.9;
+    font-family: 'Cairo', sans-serif;
+    font-weight: 900;
+    font-style: italic;
+    font-size: 13px;
 }
-.fanclub-join-btn-price s { opacity: 0.65; }
+.fanclub-join-btn-price s { opacity: 0.65; font-weight: 700; }
 
 /* --- عرض ترتيب النوادي --- */
 .fanclub-rank-explainer { font-size: 11px; color: #9ca3af; line-height: 1.7; text-align: center; padding: 0 4px 12px; }
@@ -4224,15 +4330,19 @@ body.in-voice-room #main-content {
     margin: 0 auto 12px;
     display: flex; align-items: center; justify-content: center;
     font-size: 56px;
-    animation: giftThankyouTumbleLand 1.3s cubic-bezier(0.22, 0.68, 0.35, 1.1);
+    animation: giftThankyouTumbleLand 1.1s cubic-bezier(0.33, 1, 0.68, 1);
 }
 .gift-thankyou-visual img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 10px 18px rgba(0,0,0,0.5)); }
+/* 🐛 إصلاح: النسخة السابقة كانت تدور 190° بأول 30% فقط من المدة (تبدو "سريعة جداً" بالبداية)
+   ثم تُرجع الدوران خطوة للخلف (365°→358°) قبل إكماله لـ360° — رجوع فعلي بزاوية الدوران يُحسّ
+   كـ"تقطيع/ثقل" مرئي حقيقي وليس تخيّلاً. الآن الدوران يتصاعد دوماً للأمام بلا أي تراجع
+   (0→200→340→360)، والقفزة الرأسية (النزول-الارتداد-الاستقرار) منفصلة تماماً عن الدوران */
 @keyframes giftThankyouTumbleLand {
-    0%   { transform: translateY(-90px) scale(0.4) rotate(0deg); opacity: 0; }
-    30%  { transform: translateY(6px) scale(1.18) rotate(190deg); opacity: 1; }
-    50%  { transform: translateY(-18px) scale(0.94) rotate(320deg); }
-    68%  { transform: translateY(6px) scale(1.06) rotate(365deg); }
-    84%  { transform: translateY(-4px) scale(0.98) rotate(358deg); }
+    0%   { transform: translateY(-90px) scale(0.5) rotate(0deg); opacity: 0; }
+    16%  { opacity: 1; }
+    45%  { transform: translateY(8px) scale(1.14) rotate(200deg); }
+    70%  { transform: translateY(-12px) scale(0.97) rotate(340deg); }
+    88%  { transform: translateY(3px) scale(1.02) rotate(360deg); }
     100% { transform: translateY(0) scale(1) rotate(360deg); opacity: 1; }
 }
 .gift-thankyou-title { font-size: 15px; font-weight: 800; color: #fff; }
