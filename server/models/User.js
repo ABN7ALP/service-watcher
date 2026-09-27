@@ -40,6 +40,12 @@ const userSchema = new mongoose.Schema({
     activeFrameClass: { type: String, default: null },
     activeFrameExpiresAt: { type: Date, default: null },
     hasReceivedWelcomeFrame: { type: Boolean, default: false }, // منع تكرار هدية الترحيب
+    // ✅ تخصيص نادي المعجبين (يُعدَّلها صاحب النادي فقط، تظهر لكل زوّار ناديه)
+    fanClub: {
+        name: { type: String, maxlength: 13, default: null }, // null = يُعرض "نادي {username}" افتراضياً
+        badgeColor: { type: String, default: '#f472b6' },
+        featuredMemberId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
+    },
     // ✅ حقول جديدة للوحة التحكم
     isBanned: { type: Boolean, default: false },
     banReason: { type: String, default: null },

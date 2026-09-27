@@ -8,5 +8,7 @@ const pokeSchema = new mongoose.Schema({
 });
 
 pokeSchema.index({ to: 1, createdAt: -1 });
+// ✅ يخدم فحص "هل نكزت هذا الشخص خلال آخر 24 ساعة؟" بسرعة (مرة واحدة باليوم لكل شخص)
+pokeSchema.index({ from: 1, to: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Poke', pokeSchema);
