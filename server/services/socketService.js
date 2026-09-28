@@ -2069,6 +2069,14 @@ socket.on('refreshBlockData', async () => {
 
                 const channel = `room-chat-${roomId}`;
 
+                // ✅ مهمة "الدردشة اليومية" بنادي المعجبين — لا تُنتظَر (fire-and-forget)، لا تؤثر
+                // على إرسال الرسالة نفسه أبداً حتى لو فشلت. تُمنح فقط لو المرسل عضو بالفعل بنادي
+                // مضيف هذي الغرفة تحديداً (roomCheck.host)، مرة واحدة يومياً (تُحسم داخل الدالة)
+                if (roomCheck?.host && roomCheck.host.toString() !== socket.user.id.toString()) {
+                    const { creditDailyChat } = require('../controllers/fanClubController');
+                    creditDailyChat(io, roomCheck.host, socket.user.id);
+                }
+
                 const newMessage = await Message.create({
                     content: message.trim(),
                     sender: socket.user.id,
