@@ -1458,11 +1458,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-header-title { font-size: 13.5px; font-weight: 800; color: #fff; }
 .fanclub-sheet-body { padding: 4px 18px 20px; overflow-y: auto; flex: 1; }
 
-/* ✅ تبويبا رأس النافذة — تفاصيل النادي / ميدالية المعجب */
 .fanclub-header-titlewrap { display: flex; align-items: center; gap: 14px; flex: 1; justify-content: center; }
-.fanclub-header-tab { background: transparent; border: none; color: #6b7280; font-size: 11.5px; font-weight: 700; padding: 4px 2px; position: relative; }
-.fanclub-header-tab.active { color: #fff; font-weight: 800; }
-.fanclub-header-tab.active::after { content: ''; position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%); width: 16px; height: 2.5px; border-radius: 999px; background: #ec4899; }
 
 /* --- عرض "تفاصيل النادي" --- */
 .fanclub-portrait-row { display: flex; align-items: center; justify-content: center; margin-top: 8px; position: relative; }
@@ -1473,32 +1469,15 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-weekly-leader-avatar { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; border: 2.5px solid #fbbf24; box-shadow: 0 4px 12px rgba(251,191,36,0.45); }
 .fanclub-weekly-leader-crown { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); color: #fbbf24; font-size: 13px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)); z-index: 1; }
 @keyframes fanclubLeaderPop { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
-/* ✅ شعار النادي (تاج + جناحان + قاعدة داكنة بأيقونة مركزية) — يظهر خلف/بجانب صورة صاحب
-   النادي، ألوانه تتبدّل حسب الشعار المُختار (4 قوالب مغلقة، بلا صور مرفوعة من المستخدم) */
+/* ✅ شعار النادي (تاج + جناحان + قاعدة داكنة بأيقونة مركزية) — هوية بصرية ثابتة للنادي نفسه
+   (لا تخصيص حر لصاحب النادي)، منفصلة عن شارة مستوى الزائر الشخصية (fanclub-level-badge) */
 .fanclub-emblem { position: relative; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; z-index: 1; }
-.fanclub-emblem-base { width: 34px; height: 40px; border-radius: 50% 50% 45% 45%; background: linear-gradient(160deg, #1f2937, #111827); display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 8px rgba(0,0,0,0.5); }
-.fanclub-emblem-icon { font-size: 15px; }
+.fanclub-emblem-base { width: 34px; height: 40px; border-radius: 50% 50% 45% 45%; background: linear-gradient(160deg, #db2777, #831843); display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 8px rgba(0,0,0,0.5); }
+.fanclub-emblem-icon { font-size: 15px; color: #fbcfe8; }
 .fanclub-emblem-crown { position: absolute; top: -6px; font-size: 13px; color: #fbbf24; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
-.fanclub-emblem-wing { position: absolute; top: 46%; font-size: 15px; opacity: 0.95; }
+.fanclub-emblem-wing { position: absolute; top: 46%; font-size: 15px; opacity: 0.95; color: #f472b6; }
 .fanclub-emblem-wing-left { left: -2px; transform: translateY(-50%) rotate(-20deg) scaleX(-1); }
 .fanclub-emblem-wing-right { right: -2px; transform: translateY(-50%) rotate(20deg); }
-/* ✅ 5 ألوان مغلقة لشعار النادي (نفس قائمة FAN_CLUB_COLORS بالعميل) — تُلوّن القاعدة الداكنة
-   والقلب/التاج/الجناحين بتدرّج مطابق لكل لون، بلا أي صور مرفوعة من المستخدم */
-.fanclub-emblem-pink .fanclub-emblem-base { background: linear-gradient(160deg, #db2777, #831843); }
-.fanclub-emblem-pink .fanclub-emblem-icon, .fanclub-emblem-pink .fanclub-emblem-crown { color: #fbcfe8; }
-.fanclub-emblem-pink .fanclub-emblem-wing { color: #f472b6; }
-.fanclub-emblem-yellow .fanclub-emblem-base { background: linear-gradient(160deg, #a16207, #713f12); }
-.fanclub-emblem-yellow .fanclub-emblem-icon, .fanclub-emblem-yellow .fanclub-emblem-crown { color: #fef3c7; }
-.fanclub-emblem-yellow .fanclub-emblem-wing { color: #fcd34d; }
-.fanclub-emblem-purple .fanclub-emblem-base { background: linear-gradient(160deg, #7e22ce, #4c1d95); }
-.fanclub-emblem-purple .fanclub-emblem-icon, .fanclub-emblem-purple .fanclub-emblem-crown { color: #e9d5ff; }
-.fanclub-emblem-purple .fanclub-emblem-wing { color: #c4b5fd; }
-.fanclub-emblem-blue .fanclub-emblem-base { background: linear-gradient(160deg, #1d4ed8, #1e3a8a); }
-.fanclub-emblem-blue .fanclub-emblem-icon, .fanclub-emblem-blue .fanclub-emblem-crown { color: #dbeafe; }
-.fanclub-emblem-blue .fanclub-emblem-wing { color: #93c5fd; }
-.fanclub-emblem-orange .fanclub-emblem-base { background: linear-gradient(160deg, #c2410c, #7c2d12); }
-.fanclub-emblem-orange .fanclub-emblem-icon, .fanclub-emblem-orange .fanclub-emblem-crown { color: #fed7aa; }
-.fanclub-emblem-orange .fanclub-emblem-wing { color: #fdba74; }
 
 .fanclub-owner-name-row { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 12px; flex-wrap: wrap; }
 .fanclub-owner-name { font-size: 14.5px; font-weight: 800; color: #fff; }
@@ -1525,35 +1504,54 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-section-divider-label::before { right: 0; }
 .fanclub-section-divider-label::after { left: 0; }
 
-.fanclub-pill {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    height: 46px;
-    border-radius: 999px;
-    border: none;
-    padding: 0 16px;
-    margin-bottom: 10px;
-    color: #fff;
-    font-size: 13px;
-    font-weight: 800;
+.fanclub-owner-note {
+    font-size: 11px; color: #9ca3af; line-height: 1.8; text-align: center;
+    padding: 12px 14px; background: rgba(255,255,255,0.03); border-radius: 12px; margin-top: 8px;
 }
-.fanclub-pill-chevron { font-size: 11px; opacity: 0.85; }
-.fanclub-pill-label { flex: 1; text-align: center; }
-.fanclub-pill-icon { font-size: 17px; flex-shrink: 0; opacity: 0.9; }
-.fanclub-pill-emblem { background: linear-gradient(90deg, #f97316, #fb7185); }
-.fanclub-pill-gift { background: linear-gradient(90deg, #a855f7, #d8b4fe); }
+.fanclub-owner-note i { color: #60a5fa; margin-inline-end: 4px; }
 
-/* --- عرض "ميدالية المعجب" --- */
-.fanclub-medallion-wrap { text-align: center; padding-top: 8px; }
-.fanclub-medallion-wrap .fanclub-emblem { margin: 0 auto; }
-.fanclub-medallion-title { font-size: 14px; font-weight: 800; color: #fff; margin-top: 12px; }
-.fanclub-medallion-desc { font-size: 11.5px; color: #9ca3af; line-height: 1.8; margin-top: 10px; padding: 0 8px; }
-.fanclub-medallion-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
-.fanclub-medallion-stat-box { background: rgba(255,255,255,0.04); border-radius: 12px; padding: 12px; }
-.fanclub-medallion-stat-num { font-size: 17px; font-weight: 900; color: #facc15; }
-.fanclub-medallion-stat-label { font-size: 10px; color: #9ca3af; margin-top: 3px; }
+/* ✅ بطاقة "مستوى المعجب" — تدرّجها اللوني وأيقونتها تُحدَّدان ديناميكياً عبر متغيّرات CSS
+   (--tier-c1/--tier-c2) مُرسَلة من الخادم حسب فئة المستوى (برونزي/فضي/ذهبي/بلاتيني/أسطوري) */
+.fanclub-level-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px; padding: 14px 16px; margin-top: 14px;
+}
+.fanclub-level-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.fanclub-level-badge {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 900; color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+.fanclub-level-badge i { color: var(--tier-c1); }
+.fanclub-level-tier-name {
+    font-size: 11px; font-weight: 800; color: #fff; background: linear-gradient(90deg, var(--tier-c1), var(--tier-c2));
+    padding: 3px 12px; border-radius: 999px;
+}
+.fanclub-level-progress-track { height: 8px; border-radius: 999px; background: rgba(0,0,0,0.35); overflow: hidden; }
+.fanclub-level-progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--tier-c1), var(--tier-c2)); transition: width 0.4s ease-out; }
+.fanclub-level-progress-label { font-size: 10.5px; color: #d1d5db; margin-top: 7px; text-align: center; }
+
+/* ✅ قائمة المهام اليومية — صف لكل مهمة: أيقونة + عنوان/مكافأة + حالة (✅ تم / زر مطالبة / تلقائي) */
+.fanclub-missions-list { display: flex; flex-direction: column; gap: 8px; }
+.fanclub-mission-row {
+    display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 10px 12px;
+}
+.fanclub-mission-row.claimed { opacity: 0.6; }
+.fanclub-mission-icon {
+    width: 32px; height: 32px; border-radius: 50%; background: rgba(236,72,153,0.14); color: #f9a8d4;
+    display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0;
+}
+.fanclub-mission-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fanclub-mission-title { font-size: 12px; font-weight: 700; color: #e5e7eb; }
+.fanclub-mission-points { font-size: 10px; color: #fbbf24; }
+.fanclub-mission-done { color: #34d399; font-size: 15px; flex-shrink: 0; }
+.fanclub-mission-pending { font-size: 10px; color: #6b7280; flex-shrink: 0; }
+.fanclub-mission-claim-btn {
+    background: linear-gradient(90deg, #ec4899, #a855f7); color: #fff; font-size: 11px; font-weight: 800;
+    border: none; border-radius: 999px; padding: 7px 14px; flex-shrink: 0;
+}
+.fanclub-mission-claim-btn:disabled { opacity: 0.6; }
 
 /* ✅ نافذة شرح "؟" */
 .fanclub-help-card { background: #1a1f2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 22px; width: 100%; max-width: 320px; animation: slideUp 0.2s ease-out; }
@@ -1572,60 +1570,6 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-rename-confirm-btn, .fanclub-rename-cancel-btn { flex: 1; height: 46px; background: transparent; border: none; font-size: 13.5px; font-weight: 700; }
 .fanclub-rename-confirm-btn { color: #ec4899; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.1); }
 .fanclub-rename-cancel-btn { color: #d1d5db; }
-
-/* ✅ منتقيا "شعار المجموعة"/"هدية المجموعة" — بطاقة مشتركة: إغلاق X + عنوان، صف عدّاد/تلميح
-   "انقر للتعديل"، بطاقة معاينة داكنة، شبكة ألوان (3 أعمدة)، وزر حفظ عريض بالأسفل */
-.fanclub-color-picker-card { background: #100d12; border-radius: 20px; width: 100%; max-width: 380px; padding: 18px; animation: slideUp 0.2s ease-out; }
-.fanclub-color-picker-header { display: flex; align-items: center; justify-content: center; position: relative; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 14px; }
-.fanclub-color-picker-close { position: absolute; right: 0; background: transparent; border: none; color: #d1d5db; font-size: 16px; padding: 4px; }
-.fanclub-color-picker-title { font-size: 14px; font-weight: 800; color: #fff; }
-.fanclub-color-picker-hintrow { display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; color: #6b7280; margin-bottom: 10px; }
-.fanclub-color-picker-hint { background: transparent; border: none; color: #6b7280; font-size: 10.5px; }
-.fanclub-color-picker-preview { background: rgba(255,255,255,0.03); border-radius: 14px; padding: 20px 12px; display: flex; align-items: center; justify-content: center; min-height: 96px; margin-bottom: 18px; }
-.fanclub-color-picker-section-title { font-size: 12px; font-weight: 700; color: #d1d5db; margin-bottom: 10px; }
-.fanclub-color-picker-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
-.fanclub-color-picker-item { background: rgba(255,255,255,0.04); border: 2px solid transparent; border-radius: 12px; padding: 14px 6px; display: flex; align-items: center; justify-content: center; min-height: 62px; }
-.fanclub-color-picker-item.active { border-color: #ec4899; }
-.fanclub-color-picker-save { width: 100%; height: 48px; border-radius: 999px; background: linear-gradient(90deg, #ec4899, #f43f5e); color: #fff; font-weight: 800; font-size: 14px; border: none; }
-
-/* ✅ شارة "شعار النادي" المصغّرة على هيئة مفتاح/بطاقة أفقية — تُستخدم بمعاينة منتقي الشعار،
-   لونها الوحيد المتبدّل بين القوالب الخمسة */
-.fanclub-emblem-preview-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    height: 34px;
-    padding: 0 4px 0 16px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 800;
-    color: #fff;
-    white-space: nowrap;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.fanclub-emblem-preview-pill-icon {
-    width: 26px; height: 26px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.25);
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    color: #fff;
-}
-.fanclub-emblem-preview-pill-pink { background: linear-gradient(90deg, #ec4899, #db2777); }
-.fanclub-emblem-preview-pill-yellow { background: linear-gradient(90deg, #eab308, #a16207); }
-.fanclub-emblem-preview-pill-purple { background: linear-gradient(90deg, #a855f7, #7e22ce); }
-.fanclub-emblem-preview-pill-blue { background: linear-gradient(90deg, #3b82f6, #1d4ed8); }
-.fanclub-emblem-preview-pill-orange { background: linear-gradient(90deg, #f97316, #c2410c); }
-.fanclub-color-picker-item .fanclub-emblem-preview-pill { pointer-events: none; }
-
-.fanclub-gift-preview-visual { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.fanclub-gift-preview-img { width: 72px; height: 72px; object-fit: contain; }
-.fanclub-gift-swatch-img { width: 34px; height: 34px; object-fit: contain; }
 
 .fanclub-join-btn {
     position: relative;
@@ -1723,13 +1667,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-member-row-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .fanclub-member-row-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .fanclub-member-row-name { font-size: 12.5px; font-weight: 700; color: #e5e7eb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fanclub-member-row-contrib { font-size: 10.5px; color: #6b7280; flex-shrink: 0; }
+.fanclub-member-row-level { font-size: 10.5px; color: #fbbf24; font-weight: 700; flex-shrink: 0; }
 .fanclub-member-row-rank { width: 18px; text-align: center; font-size: 11px; font-weight: 800; color: #6b7280; flex-shrink: 0; }
 .fanclub-member-row[data-user-id] { cursor: pointer; }
 
-/* ✅ "قائمة المعجبين VIP" — لافتة مكافآت + عدّاد تنازلي حقيقي لموعد التصفير الأسبوعي +
-   منصّة تتويج (المركز الأول وسط ومكبَّر، الثاني يمين، الثالث يسار) بصور حقيقية داخل إطار
-   تاج/أجنحة يمنح إحساساً فاخراً يبني ثقة المستخدمين بجدّية النظام */
+/* ✅ "أعلى المعجبين" — لافتة + منصّة تتويج (المركز الأول وسط ومكبَّر، الثاني يمين، الثالث
+   يسار) بصور حقيقية داخل إطار تاج/أجنحة متدرّج حسب فئة مستوى كل عضو، يمنح إحساساً فاخراً
+   يبني ثقة المستخدمين بجدّية النظام — ترتيب دائم حسب نقاط الولاء التراكمية، لا تصفير أبداً */
 .fanclub-vip-banner {
     display: flex; align-items: center; justify-content: center; gap: 8px;
     background: linear-gradient(90deg, rgba(251,191,36,0.16), rgba(236,72,153,0.16));
@@ -1737,11 +1681,6 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     padding: 9px 10px; margin-top: 6px; font-size: 11px; font-weight: 800; color: #fde68a;
 }
 .fanclub-vip-banner i { color: #fbbf24; font-size: 11px; }
-.fanclub-vip-countdown {
-    text-align: center; font-size: 11px; color: #9ca3af; padding: 9px 0 4px;
-}
-.fanclub-vip-countdown i { color: #f9a8d4; margin-inline-end: 4px; }
-.fanclub-vip-countdown b { color: #fff; font-weight: 800; letter-spacing: 0.5px; }
 .fanclub-vip-podium {
     display: flex; align-items: flex-end; justify-content: center; gap: 6px;
     position: relative; padding: 22px 6px 6px; margin-top: 4px;
@@ -2086,6 +2025,12 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     background: radial-gradient(circle at 50% 0%, rgba(251,191,36,0.35), rgba(17,24,39,0.96));
     border-color: rgba(251,191,36,0.45);
     box-shadow: 0 0 45px rgba(251,191,36,0.4);
+}
+/* ✅ احتفال ارتقاء مستوى المعجب — نفس بطاقة ارتقاء الغرفة بتدرّج ذهبي/وردي مميَّز */
+.fanclub-levelup-card {
+    background: radial-gradient(circle at 50% 0%, rgba(251,191,36,0.32), rgba(236,72,153,0.18), rgba(17,24,39,0.96));
+    border-color: rgba(251,191,36,0.45);
+    box-shadow: 0 0 45px rgba(251,191,36,0.35);
 }
 .room-levelup-icon {
     font-size: 34px;

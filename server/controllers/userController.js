@@ -408,6 +408,11 @@ const followUser = async (req, res) => {
             targetId, targetFollowersCount: target.followers.length,
             followerId: req.user.id, followerFollowingCount: follower.following.length, isFollowing: true
         });
+        // ✅ مكافأة متابعة نادي المعجبين — لا تُنتظَر، تُمنح فقط لو req.user عضو بالفعل بنادي
+        // targetId (تُحسم ذرّياً داخل الدالة نفسها لمرة واحدة فقط لكل علاقة)
+        const io = req.app.get('socketio');
+        const { creditFollowBonus } = require('./fanClubController');
+        creditFollowBonus(io, targetId, req.user.id);
         res.status(200).json({ status: 'success', data: { followersCount: target.followers.length, isFollowing: true } });
     } catch (error) {
         res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });

@@ -6,6 +6,9 @@ const PrivateChat = require('../models/PrivateChat');
 const PrivateMessage = require('../models/PrivateMessage');
 const RoomBattle = require('../models/RoomBattle');
 const { addGiftExperience } = require('../utils/experienceManager');
+// ✅ نقاط "مستوى المعجب" لكل هدية — منح تراكمي دائم بمعدّل 1:1 مع الكوينز المُنفَقة، ينشئ
+// عضوية نادي المعجبين تلقائياً لو لم تكن موجودة (انضمام ضمني بأول هدية حقيقية)
+const { awardFanPoints } = require('./fanClubController');
 
 // ✅ يُضيف قيمة هدية كنقاط لصف الغرفة التي أُرسلت منها لو كانت طرفاً بمعركة PK نشطة الآن —
 // تحديث ذرّي واحد (findOneAndUpdate + $inc) يمنع فقدان نقاط عند إرسال هدايا متزامنة بسرعة
@@ -361,6 +364,7 @@ exports.sendGift = async (req, res) => {
         // ✅ لا يُنتظَر (fire-and-forget) — تحديث الشارات لا يجب أن يؤخّر استجابة إرسال الهدية
         broadcastSupportLevelUpdate(io, senderId);
         broadcastSupportLevelUpdate(io, receiverId);
+        awardFanPoints(io, receiverId, senderId, totalPrice);
 
         res.status(201).json({
             status: 'success',
@@ -544,7 +548,10 @@ exports.sendGiftBatch = async (req, res) => {
         ]);
         // ✅ لا يُنتظَر — تحديث الشارات لا يجب أن يؤخّر استجابة إرسال الهدية
         broadcastSupportLevelUpdate(io, senderId);
-        validReceivers.forEach(r => broadcastSupportLevelUpdate(io, r._id));
+        validReceivers.forEach(r => {
+            broadcastSupportLevelUpdate(io, r._id);
+            awardFanPoints(io, r._id, senderId, totalPrice); // ✅ totalPrice = لكل مستلم على حدة (وليس totalCost الإجمالي)
+        });
 
         res.status(201).json({
             status: 'success',
@@ -758,6 +765,8 @@ exports.sendPublicGift = async (req, res) => {
             addGiftExperience(io, senderId, totalCost, 'sender'),
             ...finalRecipientIds.map(rid => addGiftExperience(io, rid, unitPrice, 'receiver'))
         ]);
+        // ✅ لا يُنتظَر — نفس مبدأ نقاط المعجب بالإرسال الفردي/الجماعي، لكل مستلم بقيمة ما استلمه فعلياً
+        finalRecipientIds.forEach(rid => awardFanPoints(io, rid, senderId, unitPrice));
 
         const audienceText = audience === 'all'
             ? `للجميع (${finalRecipientIds.length} شخص)`
