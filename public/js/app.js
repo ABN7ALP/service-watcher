@@ -9543,7 +9543,6 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
     const kindIcon = kind === 'giving' ? 'fa-bullhorn' : 'fa-microphone';
     const imgIndex = info.tierIndex <= 1 ? 0 : (info.tierIndex >= 4 ? 2 : 1);
     const badgeImg = ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex];
-    const nextLabel = info.isMax ? 'MAX' : `Lv.${info.level + 1}`;
 
     modal.innerHTML = `
         <div class="support-info-sheet-lux">
@@ -9565,17 +9564,11 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
                     </div>
                 </div>
 
-                <div class="support-progress-row-lux">
-                    <span class="support-progress-endlabel">Lv.${info.level}</span>
-                    <div class="support-progress-track-lux">
-                        <div class="support-progress-fill-lux" style="width:${info.progressPercent}%"></div>
-                    </div>
-                    <span class="support-progress-endlabel">${nextLabel}</span>
-                </div>
-                <div class="support-need-row-lux">
-                    <span>${info.isMax ? 'وصلت لأعلى مستوى 🎉' : `يحتاج <b>${info.pointsToNext.toLocaleString()}</b> خبرة للترقية`}</span>
-                    <button type="button" id="support-xp-info-btn" class="support-info-circle-btn" title="جدول الخبرة"><i class="fas fa-exclamation"></i></button>
-                </div>
+                ${tierLevelCardHTML(info, 'خبرة')}
+                <button type="button" id="support-xp-info-btn" class="support-xp-info-row">
+                    <span class="support-info-circle-btn"><i class="fas fa-exclamation"></i></span>
+                    <span>جدول الخبرة الكامل بكل المستويات</span>
+                </button>
 
                 <div class="support-two-col-lux">
                     <div class="support-col-lux">
@@ -9686,21 +9679,22 @@ function fanClubEmblemHTML(colorId) {
     return `<span class="fanclub-emblem-corner fanclub-emblem-corner-${id}"><i class="fas fa-heart"></i></span>`;
 }
 
-// ✅ بطاقة "مستوى المعجب" — تاج/شارة يتبدّل تدرّجها اللوني وأيقونتها تلقائياً حسب فئة المستوى
-// (برونزي/فضي/ذهبي/بلاتيني/أسطوري، مُرسَلة جاهزة من الخادم عبر tierGradient/tierIcon) +
-// شريط تقدّم حقيقي نحو المستوى التالي
-function fanClubLevelCardHTML(levelInfo) {
+// ✅ بطاقة "مستوى" مشتركة — تاج/شارة يتبدّل تدرّجها اللوني وأيقونتها تلقائياً حسب فئة المستوى
+// (مُرسَلة جاهزة من الخادم عبر tierGradient/tierIcon) + شريط تقدّم حقيقي نحو المستوى التالي.
+// نفس المكوّن يُستخدم لكل أنظمة المستويات بالتطبيق — مستوى المعجب (نادي المعجبين) ومستوى
+// الدعم/التلقي العام — لغة بصرية واحدة موحّدة بدل بناء بطاقة منفصلة لكل نظام
+function tierLevelCardHTML(levelInfo, unitLabel = 'نقطة') {
     const [c1, c2] = levelInfo.tierGradient;
     return `
-        <div class="fanclub-level-card" style="--tier-c1:${c1};--tier-c2:${c2}">
-            <div class="fanclub-level-card-top">
-                <span class="fanclub-level-badge"><i class="fas ${levelInfo.tierIcon}"></i> Lv.${levelInfo.level}</span>
-                <span class="fanclub-level-tier-name">${escapeHtml(levelInfo.tierName)}</span>
+        <div class="tier-level-card" style="--tier-c1:${c1};--tier-c2:${c2}">
+            <div class="tier-level-card-top">
+                <span class="tier-level-badge"><i class="fas ${levelInfo.tierIcon}"></i> Lv.${levelInfo.level}</span>
+                <span class="tier-level-tier-name">${escapeHtml(levelInfo.tierName)}</span>
             </div>
-            <div class="fanclub-level-progress-track">
-                <div class="fanclub-level-progress-fill" style="width:${levelInfo.progressPercent}%"></div>
+            <div class="tier-level-progress-track">
+                <div class="tier-level-progress-fill" style="width:${levelInfo.progressPercent}%"></div>
             </div>
-            <p class="fanclub-level-progress-label">${levelInfo.isMax ? 'وصلت لأعلى مستوى 🎉' : `${levelInfo.pointsToNext.toLocaleString()} نقطة للمستوى التالي`}</p>
+            <p class="tier-level-progress-label">${levelInfo.isMax ? 'وصلت لأعلى مستوى 🎉' : `${levelInfo.pointsToNext.toLocaleString()} ${unitLabel} للمستوى التالي`}</p>
         </div>
     `;
 }
@@ -9740,7 +9734,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
             <div class="fanclub-sheet-header">
                 <button type="button" id="fanclub-trophy-btn" class="fanclub-header-btn fanclub-trophy-btn" title="ترتيب النوادي"><i class="fas fa-trophy"></i></button>
                 <div id="fanclub-header-titlewrap" class="fanclub-header-titlewrap"></div>
-                <button type="button" id="fanclub-back-btn" class="fanclub-header-btn"><i class="fas fa-question"></i></button>
+                <button type="button" id="fanclub-back-btn" class="fanclub-header-btn"><i class="fas fa-circle-exclamation"></i></button>
             </div>
             <div id="fanclub-sheet-body" class="fanclub-sheet-body">
                 <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
@@ -9763,7 +9757,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
 
     function setHeader(mode) {
         if (mode === 'join') {
-            backBtn.innerHTML = '<i class="fas fa-question"></i>';
+            backBtn.innerHTML = '<i class="fas fa-circle-exclamation"></i>';
             backBtn.style.visibility = 'visible';
             trophyBtn.style.visibility = 'visible';
             backTarget = 'help';
@@ -9819,7 +9813,6 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
             <div class="fanclub-portrait-row">
                 <span class="fanclub-owner-frame">
                     <img src="${ownerProfileImage}" class="fanclub-owner-avatar">
-                    ${fanClubEmblemHTML(s.emblemColorId)}
                     ${s.currentLeader ? `
                         <button type="button" id="fanclub-weekly-leader-btn" class="fanclub-weekly-leader-slot" title="نجم الأسبوع الحالي: ${escapeHtml(s.currentLeader.username)}">
                             <img src="${s.currentLeader.profileImage}" class="fanclub-weekly-leader-avatar profile-frame-contributor">
@@ -9853,8 +9846,13 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                         <span class="fanclub-join-btn-price"><s>${rose ? rose.price : 10}</s> 1</span>
                     </span>
                 </button>
+                <div class="fanclub-reward-preview-box fanclub-reward-preview-compact">
+                    <img src="${FAN_CLUB_CONTRIBUTOR_FRAME_IMG}" class="fanclub-reward-preview-img" alt="">
+                    <p class="fanclub-reward-preview-label">إطار المساهم</p>
+                    <p class="fanclub-reward-preview-desc">يُمنح دائماً لمن يحتل المركز الأول أسبوعاً كاملاً — يظهر على صورتك بكل مكان</p>
+                </div>
             ` : s.myLevelInfo ? `
-                ${fanClubLevelCardHTML(s.myLevelInfo)}
+                ${tierLevelCardHTML(s.myLevelInfo)}
                 ${missions ? fanClubMissionsHTML(missions) : '<p class="fanclub-members-explainer">تعذر تحميل المهام اليومية حالياً</p>'}
             ` : ''}
         `;
@@ -10007,13 +10005,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                     ${podiumSlot(3)}
                     <span class="fanclub-vip-wing fanclub-vip-wing-right"><i class="fas fa-feather-alt"></i></span>
                 </div>
-                <p class="fanclub-section-divider-label">ستحصل على الجوائز التالية</p>
-                <div class="fanclub-reward-preview-box">
-                    <img src="${FAN_CLUB_CONTRIBUTOR_FRAME_IMG}" class="fanclub-reward-preview-img" alt="">
-                    <p class="fanclub-reward-preview-label">إطار المساهم</p>
-                    <p class="fanclub-reward-preview-desc">يُمنح دائماً لمن يحتل المركز الأول أسبوعاً كاملاً — يظهر على صورتك بكل مكان</p>
-                </div>
-                <p class="fanclub-members-explainer">يُصنَّف الأعضاء حسب نقاط الولاء التراكمية الدائمة (هدايا + مهام يومية) — لا تُصفَّر أبداً، تماماً كأندية المعجبين بتطبيقات البث المشهورة</p>
+                <p class="fanclub-members-explainer">يُصنَّف الأعضاء حسب نقاط الولاء التراكمية الدائمة (هدايا + مهام يومية)</p>
                 <div class="fanclub-members-list">
                     ${rest.length === 0
                         ? (top3.length === 0 ? '<p class="fanclub-rank-empty">لا يوجد أعضاء بعد</p>' : '')
@@ -10057,7 +10049,25 @@ function showFanClubHelpModal() {
     modal.innerHTML = `
         <div class="fanclub-help-card">
             <p class="fanclub-help-title"><i class="fas fa-circle-question"></i> ما هو نادي المعجبين؟</p>
-            <p class="fanclub-help-text">انضم لنادي معجبين أي مذيع بإرسال هدية رمزية بكوينز واحد، أو تلقائياً بأول هدية حقيقية تُرسلها له. ترتقي بمستوى معجب حقيقي (1-20) بهذا النادي تحديداً كلما دعمته — كل كوينز يُنفَق = نقطة، بالإضافة لمهام يومية (حضور/دردشة/هدية/متابعة) تمنحك نقاطاً إضافية. النقاط تراكمية دائماً ولا تُصفَّر أبداً.</p>
+            <p class="fanclub-help-text">انضم لنادي معجبين أي مذيع بإرسال هدية رمزية بكوينز واحد، أو تلقائياً بأول هدية حقيقية تُرسلها له. ترتقي بمستوى معجب حقيقي (1-20) بهذا النادي تحديداً كلما دعمته — كل كوينز يُنفَق = نقطة، بالإضافة لمهام يومية تمنحك نقاطاً إضافية. النقاط تراكمية دائماً ولا تُصفَّر أبداً.</p>
+            <p class="fanclub-section-divider-label">ماذا ستحصل عليه عند الانضمام؟</p>
+            <div class="fanclub-reward-preview-box fanclub-reward-preview-help">
+                <img src="${FAN_CLUB_CONTRIBUTOR_FRAME_IMG}" class="fanclub-reward-preview-img" alt="">
+                <p class="fanclub-reward-preview-label">إطار المساهم</p>
+                <p class="fanclub-reward-preview-desc">يُمنح دائماً لمن يحتل المركز الأول أسبوعاً كاملاً — يظهر على صورتك بكل مكان</p>
+            </div>
+            <div class="fanclub-help-benefit-row">
+                <i class="fas fa-id-badge fanclub-help-benefit-icon"></i>
+                <span class="fanclub-help-benefit-text">شارة عضوية بلون النادي تظهر بملفك الشخصي</span>
+            </div>
+            <div class="fanclub-help-benefit-row">
+                <i class="fas fa-chart-line fanclub-help-benefit-icon"></i>
+                <span class="fanclub-help-benefit-text">مستوى معجب حقيقي (1-20) بمزايا تتوسّع مع دعمك</span>
+            </div>
+            <div class="fanclub-help-benefit-row">
+                <i class="fas fa-calendar-check fanclub-help-benefit-icon"></i>
+                <span class="fanclub-help-benefit-text">مهام يومية (حضور/دردشة/هدية/متابعة) بنقاط إضافية</span>
+            </div>
             <button type="button" id="fanclub-help-close-btn" class="fanclub-help-close-btn">حسناً</button>
         </div>
     `;
@@ -10314,20 +10324,27 @@ async function showFullProfilePage(userId) {
 
     try {
         const authHeaders = { headers: { 'Authorization': `Bearer ${token}` } };
-        const [userRes, giftSummaryRes, fanClubSummaryRes, weeklyWinsRes] = await Promise.all([
+        const [userRes, giftSummaryRes, fanClubSummaryRes, weeklyWinsRes, membershipsRes] = await Promise.all([
             fetch(`/api/users/${userId}`, authHeaders).then(r => r.json()),
             fetch(`/api/gifts/user/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null),
             fetch(`/api/fanclub/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null),
-            fetch(`/api/fanclub/${userId}/weekly-wins`, authHeaders).then(r => r.json()).catch(() => null)
+            fetch(`/api/fanclub/${userId}/weekly-wins`, authHeaders).then(r => r.json()).catch(() => null),
+            fetch(`/api/fanclub/${userId}/memberships`, authHeaders).then(r => r.json()).catch(() => null)
         ]);
 
         if (userRes.status !== 'success') throw new Error();
         const u = userRes.data.user;
         const giftsReceivedCount = (giftSummaryRes && giftSummaryRes.status === 'success') ? giftSummaryRes.data.totalGiftsCount : 0;
         const fanClubMemberCount = (fanClubSummaryRes && fanClubSummaryRes.status === 'success') ? fanClubSummaryRes.data.memberCount : 0;
+        // ✅ اسم نادي هذا المستخدم الحقيقي (المخصَّص عبر إعادة التسمية) — بدل تسمية ثابتة عامة،
+        // يعكس زر البطاقة دوماً آخر اسم اعتمده صاحب النادي، مطابقاً لعنوان ورقة النادي نفسها
+        const fanClubDisplayName = (fanClubSummaryRes && fanClubSummaryRes.status === 'success' && fanClubSummaryRes.data.clubName) ? fanClubSummaryRes.data.clubName : 'نادي المعجبين';
         // ✅ "نجوم النادي الأسبوعي" — شارات دائمة (مركز أول بالأسبوع الماضي المكتمل) تبقى
         // بالملف حتى بعد تصفير المراكز الأسبوعي، وتنقل عند النقر لنادي المعجبين الذي فاز به
         const weeklyWins = (weeklyWinsRes && weeklyWinsRes.status === 'success') ? weeklyWinsRes.data.wins : [];
+        // ✅ شارات عضوية أندية المعجبين — شعار كل نادٍ بلونه الذي اختاره صاحبه، تُمنح تلقائياً
+        // لكل عضو فعلي بغضّ النظر عن مستواه، وتنقل عند النقر لنادي المعجبين المعنيّ
+        const fanClubs = (membershipsRes && membershipsRes.status === 'success') ? membershipsRes.data.clubs : [];
         const socialInfo = getSocialStatus(u.socialStatus);
         const educationInfo = getEducationStatus(u.educationStatus);
         const genderInfo = u.gender === 'male' ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' } : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
@@ -10351,6 +10368,12 @@ async function showFullProfilePage(userId) {
                     ${weeklyWins.map(w => `
                         <button type="button" class="full-profile-mini-badge full-profile-weekly-badge" data-owner-id="${w.ownerId}" data-owner-username="${escapeHtml(w.ownerUsername)}" data-owner-image="${escapeHtml(w.ownerProfileImage)}" title="نجم نادي ${escapeHtml(w.ownerUsername)} الأسبوعي">
                             <i class="fas fa-crown"></i> نجم نادي ${escapeHtml(w.ownerUsername)}
+                        </button>
+                    `).join('')}
+                    ${fanClubs.map(c => `
+                        <button type="button" class="full-profile-mini-badge fanclub-member-badge" data-owner-id="${c.ownerId}" data-owner-username="${escapeHtml(c.ownerUsername)}" data-owner-image="${escapeHtml(c.ownerProfileImage)}" title="عضو بنادي ${escapeHtml(c.clubName || c.ownerUsername)}">
+                            <span class="fanclub-member-badge-icon">${fanClubEmblemHTML(c.emblemColorId)}</span>
+                            ${escapeHtml(c.clubName || `نادي ${c.ownerUsername}`)}
                         </button>
                     `).join('')}
                 </div>
@@ -10426,7 +10449,7 @@ async function showFullProfilePage(userId) {
                             <i class="fas fa-heart club-icon-heart"></i>
                             <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
                         </span>
-                        <p class="honor-mini-title">نادي المعجبين</p>
+                        <p class="honor-mini-title">${escapeHtml(fanClubDisplayName)}</p>
                     </div>
                 </div>
                 <div class="honor-row honor-row-gifts">
@@ -10491,7 +10514,7 @@ async function showFullProfilePage(userId) {
             closeFullProfilePage();
             showFanClubSheet(userId, u.username, u.profileImage);
         });
-        body.querySelectorAll('.full-profile-weekly-badge').forEach(btn => {
+        body.querySelectorAll('.full-profile-weekly-badge, .fanclub-member-badge').forEach(btn => {
             btn.addEventListener('click', () => {
                 closeFullProfilePage();
                 showFanClubSheet(btn.dataset.ownerId, btn.dataset.ownerUsername, btn.dataset.ownerImage);
