@@ -76,6 +76,7 @@ mongoose.connect(process.env.MONGODB_URI)
         console.log('✅ MongoDB connected successfully.');
         await require('./utils/autoSeed')();
         require('./utils/mediaCleanupJob').startMediaCleanupJob(); // ✅ حذف تلقائي كل 24 ساعة (رسائل + وسائط Cloudinary)
+        require('./utils/fanClubWeeklyFrameJob').startFanClubWeeklyFrameJob(io); // ✅ منح إطار المساهم لفائزي الأسبوع تلقائياً
         // ✅ إصلاح فهرس slug القديم قبل أي شيء (يمنع خطأ E11000 عند إنشاء غرف جديدة)
         await require('./models/VoiceRoom').fixSlugIndex();
         // ✅ تنظيف أي مقاعد صوتية مكررة تراكمت قبل إصلاح القفل التسلسلي (مرة واحدة عند كل إقلاع، آمنة تماماً)

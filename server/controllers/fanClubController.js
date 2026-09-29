@@ -16,6 +16,12 @@ const { computeFanLevelInfo } = require('../utils/fanClubLevels');
 
 const JOIN_PRICE = 1; // ✅ سعر ثابت للانضمام الصريح — منفصل تماماً عن سعر الوردة الحقيقي بمتجر الهدايا العام
 
+// ✅ قائمة الألوان المغلقة المشتركة بين شعار النادي وهدية الانضمام — نفس القيم المسموحة
+// بـUser.fanClub.emblemColorId/giftColorId (enum). الوردة/الشعار نفسهما دوماً؛ اللون فقط
+// يتبدّل (يُطبَّق بفلتر CSS بالعميل، بلا أي صور مرفوعة من المستخدم) — هوية بصرية عامة للنادي
+// يختارها صاحبه، منفصلة تماماً عن شارة مستوى كل معجب (محسوبة تلقائياً، غير قابلة للتخصيص)
+const FAN_CLUB_COLOR_IDS = ['pink', 'yellow', 'purple', 'blue', 'orange'];
+
 // ✅ قيم مكافآت المهام اليومية/لمرة واحدة — أرقام صغيرة مقصودة (مقارنة بعتبات المستويات
 // المبنية أساساً على كوينز الهدايا الحقيقية) كي تبقى حافزاً إضافياً لا مساراً بديلاً للسخاء
 const DAILY_CHECKIN_BONUS = 15;
@@ -56,6 +62,9 @@ function getLastWeekRange() {
     start.setUTCDate(start.getUTCDate() - 7);
     return { start, end: curStart };
 }
+// ✅ مُصدَّرتان لإعادة استخدامهما بـfanClubWeeklyFrameJob.js (منح إطار المساهم) بلا تكرار للمنطق
+exports.currentWeekStartUTC = currentWeekStartUTC;
+exports.getLastWeekRange = getLastWeekRange;
 
 // ✅ يحسب صاحب أعلى مساهمة (هدايا) لمالك نادٍ معيّن خلال فترة زمنية معطاة
 async function computeTopContributor(ownerId, range) {
@@ -207,6 +216,8 @@ exports.getSummary = async (req, res) => {
                 ownerUsername: owner.username,
                 ownerProfileImage: owner.profileImage,
                 clubName: owner.fanClub?.name || null,
+                emblemColorId: owner.fanClub?.emblemColorId || 'pink',
+                giftColorId: owner.fanClub?.giftColorId || 'pink',
                 isOwner: ownerId === req.user.id.toString(),
                 memberCount,
                 isMember: !!membership,
@@ -226,22 +237,45 @@ exports.getSummary = async (req, res) => {
     }
 };
 
-// ✅ تخصيص النادي — الاسم فقط (حد أقصى 13 حرفاً). تصميم الشارة يُحدَّد تلقائياً من مستوى كل
-// معجب، ليس اختياراً حراً لصاحب النادي
+// ✅ تخصيص النادي — الاسم (حد أقصى 13 حرفاً)، ولون كل من الشعار وهدية الانضمام (قيمة من
+// قائمة مغلقة FAN_CLUB_COLOR_IDS فقط — لا نص حر إطلاقاً هنا لمنع أي حقن). أي حقل من الثلاثة اختياري
 exports.updateSettings = async (req, res) => {
     try {
-        const { name } = req.body;
-        if (name === undefined) {
+        const { name, emblemColorId, giftColorId } = req.body;
+        const update = {};
+
+        if (name !== undefined) {
+            const trimmed = String(name || '').trim();
+            if (trimmed.length > 13) {
+                return res.status(400).json({ status: 'fail', message: 'اسم النادي يجب ألا يتجاوز 13 حرفاً' });
+            }
+            update['fanClub.name'] = trimmed || null;
+        }
+        if (emblemColorId !== undefined) {
+            if (!FAN_CLUB_COLOR_IDS.includes(emblemColorId)) {
+                return res.status(400).json({ status: 'fail', message: 'لون غير صالح' });
+            }
+            update['fanClub.emblemColorId'] = emblemColorId;
+        }
+        if (giftColorId !== undefined) {
+            if (!FAN_CLUB_COLOR_IDS.includes(giftColorId)) {
+                return res.status(400).json({ status: 'fail', message: 'لون غير صالح' });
+            }
+            update['fanClub.giftColorId'] = giftColorId;
+        }
+        if (Object.keys(update).length === 0) {
             return res.status(400).json({ status: 'fail', message: 'لا يوجد ما يُحدَّث' });
         }
-        const trimmed = String(name || '').trim();
-        if (trimmed.length > 13) {
-            return res.status(400).json({ status: 'fail', message: 'اسم النادي يجب ألا يتجاوز 13 حرفاً' });
-        }
-        const updated = await User.findByIdAndUpdate(
-            req.user.id, { $set: { 'fanClub.name': trimmed || null } }, { new: true }
-        ).select('fanClub');
-        res.status(200).json({ status: 'success', data: { clubName: updated.fanClub?.name || null } });
+
+        const updated = await User.findByIdAndUpdate(req.user.id, { $set: update }, { new: true }).select('fanClub');
+        res.status(200).json({
+            status: 'success',
+            data: {
+                clubName: updated.fanClub?.name || null,
+                emblemColorId: updated.fanClub?.emblemColorId || 'pink',
+                giftColorId: updated.fanClub?.giftColorId || 'pink'
+            }
+        });
     } catch (error) {
         console.error('[FAN CLUB] updateSettings error:', error);
         res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
