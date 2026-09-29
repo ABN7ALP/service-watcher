@@ -38,6 +38,6 @@ NEVER provide basic, quick-and-dirty, or "tutorial-level" code. Every line of co
 - **No Excuses:** If I ask for a feature like "Likee's Fan Club", build the entire system (DB schema, backend logic, cron jobs, and UI) exactly how the real app does it.
 - **Commit Directives:** When making changes to the GitHub repo, ensure commits are atomic, well-tested, and don't break existing features.
 - **Concise Responses:** I do not need long explanations. Just say "Understood" and provide the production-ready code or push the changes directly to GitHub.
-
+ لاي
 ---
 **Final Rule:** If you are unsure about a design or logic decision, default to how **TikTok/Likee** implements it, ensuring maximum engagement, security, and visual appeal.
