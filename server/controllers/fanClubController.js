@@ -480,6 +480,35 @@ exports.claimCheckIn = async (req, res) => {
     }
 };
 
+// ✅ شارات "عضوية نادي المعجبين" لملف مستخدم معيّن — النادي هوية بصرية (شعار بلون يختاره
+// صاحبه) تُمنح تلقائياً لكل عضو فعلي وتظهر بملفه الشخصي، بغضّ النظر عن مستواه بذلك النادي.
+// حد أقصى 6 (الأحدث انضماماً) يمنع إغراق صف الشارات لمن ينضم لأندية كثيرة جداً
+exports.getMemberships = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
+        }
+        const memberships = await FanClubMembership.find({ member: userId })
+            .sort({ createdAt: -1 })
+            .limit(6)
+            .populate('owner', 'username profileImage fanClub');
+        const clubs = memberships
+            .filter(m => m.owner)
+            .map(m => ({
+                ownerId: m.owner._id,
+                ownerUsername: m.owner.username,
+                ownerProfileImage: m.owner.profileImage,
+                clubName: m.owner.fanClub?.name || null,
+                emblemColorId: m.owner.fanClub?.emblemColorId || 'pink'
+            }));
+        res.status(200).json({ status: 'success', data: { clubs } });
+    } catch (error) {
+        console.error('[FAN CLUB] getMemberships error:', error);
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
+    }
+};
+
 // ✅ "نجم النادي الأسبوعي" — شارة دائمة تُمنح لمن حلّ بالمركز الأول بمساهمات نادٍ معيّن خلال
 // الأسبوع الماضي المكتمل فعلياً (لا الأسبوع الجاري). تُحسب عند الطلب مباشرة من GiftLog بحدود
 // تاريخ ثابتة (بلا حفظ أي سجل/وظيفة مجدولة) — بيانات الأسابيع الماضية لا تتغيّر، فالحساب

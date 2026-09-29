@@ -14,6 +14,8 @@ router.get('/:ownerId/members', fanClubController.getMembers);
 router.patch('/settings', fanClubController.updateSettings);
 // ✅ شارات "نجم النادي الأسبوعي" الدائمة لمستخدم معيّن — تُعرض بملفه الشخصي لأي زائر
 router.get('/:userId/weekly-wins', fanClubController.getWeeklyWins);
+// ✅ شارات عضوية أندية المعجبين (شعار كل نادٍ بلون صاحبه) — تُعرض بملف المستخدم لأي زائر
+router.get('/:userId/memberships', fanClubController.getMemberships);
 // ✅ مهام المعجب اليومية لهذا النادي (حالة العضو الحالي) + مطالبة حضور اليوم
 router.get('/:ownerId/missions', fanClubController.getMissions);
 router.post('/:ownerId/missions/checkin', fanClubController.claimCheckIn);

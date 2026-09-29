@@ -34,11 +34,13 @@ const SUPPORT_LEVEL_THRESHOLDS = [
     290000000, 300000000, 310000000, 320000000, 330000000  // Lv.76 - Lv.80 (الحد الأقصى الحالي)
 ];
 
+// ✅ تدرّج لوني + أيقونة لكل فئة — بنفس لغة نظام "مستوى المعجب" (fanClubLevels.js) بأندية
+// المعجبين: تصاعد بصري واحد من الرمادي الفاتح إلى الذهبي فالسماوي وحتى البنفسجي الأسطوري
 const SUPPORT_TIERS = [
-    { name: 'مبتدئ', from: 1, to: 20 },
-    { name: 'محترف', from: 21, to: 40 },
-    { name: 'خبير', from: 41, to: 60 },
-    { name: 'مخضرم', from: 61, to: 80 }
+    { name: 'مبتدئ', from: 1, to: 20, gradient: ['#94a3b8', '#475569'], icon: 'fa-shield-halved' },
+    { name: 'محترف', from: 21, to: 40, gradient: ['#fbbf24', '#b45309'], icon: 'fa-medal' },
+    { name: 'خبير', from: 41, to: 60, gradient: ['#67e8f9', '#0e7490'], icon: 'fa-gem' },
+    { name: 'مخضرم', from: 61, to: 80, gradient: ['#f0abfc', '#a855f7'], icon: 'fa-crown' }
 ];
 
 const MAX_LEVEL = SUPPORT_LEVEL_THRESHOLDS.length;
@@ -64,6 +66,8 @@ function computeSupportLevelInfo(totalCoins) {
         points: coins,
         tierName: tier.name,
         tierIndex,
+        tierIcon: tier.icon,
+        tierGradient: tier.gradient,
         currentThreshold,
         nextThreshold,
         pointsToNext,

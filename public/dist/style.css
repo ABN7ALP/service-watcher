@@ -4974,49 +4974,21 @@ button, input, select, textarea {
   margin-top: 3px;
 }
 
-.support-progress-row-lux {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 20px;
-}
+/* ✅ بطاقة المستوى نفسها استُبدلت بمكوّن .tier-level-card المشترك (راجع tierLevelCardHTML) —
+   لغة بصرية واحدة موحّدة مع بطاقة "مستوى المعجب" بنادي المعجبين بدل شريط تقدّم مخصّص منفصل */
 
-.support-progress-endlabel {
-  font-size: 10.5px;
-  font-weight: 800;
-  color: #facc15;
-  flex-shrink: 0;
-}
-
-.support-progress-track-lux {
-  flex: 1;
-  height: 9px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(250,204,21,0.2);
-  overflow: hidden;
-}
-
-.support-progress-fill-lux {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #b45309, #facc15, #fef9c3, #facc15, #b45309);
-  background-size: 200% 100%;
-  animation: supportBadgeShimmer 2.6s linear infinite;
-}
-
-.support-need-row-lux {
+.support-xp-info-row {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
   margin-top: 10px;
   font-size: 11px;
   color: #a1a1aa;
-}
-
-.support-need-row-lux b {
-  color: #facc15;
+  cursor: pointer;
 }
 
 .support-info-circle-btn {
@@ -5553,8 +5525,11 @@ button, input, select, textarea {
   cursor: pointer;
 }
 
+/* ✅ أيقونة "ترتيب النوادي" — رسم بسيط محايد (لا كأس ذهبي فاقع) بنفس لغة بقية أيقونات الرأس */
+
 .fanclub-header-btn.fanclub-trophy-btn {
-  color: #fbbf24;
+  color: #cbd5e1;
+  opacity: 0.9;
 }
 
 .fanclub-header-title {
@@ -5596,6 +5571,7 @@ button, input, select, textarea {
   display: inline-flex;
   width: 88px;
   height: 88px;
+  margin-inline-start: 26px;
 }
 
 .fanclub-owner-avatar {
@@ -5609,8 +5585,9 @@ button, input, select, textarea {
   display: block;
 }
 
-/* ✅ وسام شعار النادي المصغّر — دائرة صغيرة بزاوية الصورة السفلية اليسرى (لا تغطيها)، لونها
-   فقط يتبدّل بين 5 قوالب مغلقة يختارها صاحب النادي */
+/* ✅ وسام شعار النادي المصغّر — هوية النادي الآن شارة تُمنح للأعضاء بملفاتهم الشخصية (راجع
+   full-profile-mini-badge.fanclub-member-badge) لا زخرفة على صورة صاحب النادي نفسه؛ الأنماط
+   بقيت هنا لتُستخدم بمعاينة المنتقي والشارة الشخصية معاً بنفس اللغة البصرية */
 
 .fanclub-emblem-corner {
   position: absolute;
@@ -5658,23 +5635,24 @@ button, input, select, textarea {
 }
 
 /* ✅ "نجم الأسبوع الحالي" — صورة المتصدّر الحالي بمساهمات هذا الأسبوع، ملتصقة بزاوية صورة
-   صاحب النادي السفلية اليمنى (منخفضة قليلاً كي تبدو "مُعلَّقة" باحترافية لا طافية بجانبها)،
-   بإطار "إطار المساهم" الدائم نفسه الذي يُمنح فعلياً لمن يفوز بمركز الأسبوع كاملاً */
+   صاحب النادي السفلية اليسرى (منخفضة قليلاً كي تبدو "مُعلَّقة" باحترافية لا طافية بجانبها)،
+   بإطار "إطار المساهم" الدائم نفسه الذي يُمنح فعلياً لمن يفوز بمركز الأسبوع كاملاً — مُكبَّرة
+   لتُقرَأ تفاصيل الإطار الحقيقي (PNG شفاف الخلفية) بوضوح */
 
 .fanclub-weekly-leader-slot {
   background: transparent;
   border: none;
   padding: 0;
   position: absolute;
-  bottom: -10px;
-  right: -14px;
+  bottom: -8px;
+  left: -30px;
   z-index: 3;
   animation: fanclubLeaderPop 0.4s ease-out;
 }
 
 .fanclub-weekly-leader-avatar {
-  width: 42px;
-  height: 42px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
   -o-object-fit: cover;
      object-fit: cover;
@@ -5914,10 +5892,12 @@ button, input, select, textarea {
      object-fit: contain;
 }
 
-/* ✅ بطاقة "مستوى المعجب" — تدرّجها اللوني وأيقونتها تُحدَّدان ديناميكياً عبر متغيّرات CSS
-   (--tier-c1/--tier-c2) مُرسَلة من الخادم حسب فئة المستوى (برونزي/فضي/ذهبي/بلاتيني/أسطوري) */
+/* ✅ بطاقة "مستوى" مشتركة — تدرّجها اللوني وأيقونتها تُحدَّدان ديناميكياً عبر متغيّرات CSS
+   (--tier-c1/--tier-c2) مُرسَلة من الخادم حسب فئة المستوى. مكوّن واحد تُعاد استخدامه لكل من
+   بطاقة "مستوى المعجب" (نادي المعجبين) وبطاقتَي "مستوى الدعم/التلقي" العامّتين — لغة بصرية
+   موحّدة بدل ازدواج التصميم بين نظامين مختلفين لكنهما بنفس المفهوم */
 
-.fanclub-level-card {
+.tier-level-card {
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 16px;
@@ -5925,14 +5905,14 @@ button, input, select, textarea {
   margin-top: 14px;
 }
 
-.fanclub-level-card-top {
+.tier-level-card-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
 }
 
-.fanclub-level-badge {
+.tier-level-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -5942,11 +5922,11 @@ button, input, select, textarea {
   text-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
 
-.fanclub-level-badge i {
+.tier-level-badge i {
   color: var(--tier-c1);
 }
 
-.fanclub-level-tier-name {
+.tier-level-tier-name {
   font-size: 11px;
   font-weight: 800;
   color: #fff;
@@ -5955,21 +5935,21 @@ button, input, select, textarea {
   border-radius: 999px;
 }
 
-.fanclub-level-progress-track {
+.tier-level-progress-track {
   height: 8px;
   border-radius: 999px;
   background: rgba(0,0,0,0.35);
   overflow: hidden;
 }
 
-.fanclub-level-progress-fill {
+.tier-level-progress-fill {
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--tier-c1), var(--tier-c2));
   transition: width 0.4s ease-out;
 }
 
-.fanclub-level-progress-label {
+.tier-level-progress-label {
   font-size: 10.5px;
   color: #d1d5db;
   margin-top: 7px;
@@ -6057,7 +6037,7 @@ button, input, select, textarea {
   opacity: 0.6;
 }
 
-/* ✅ نافذة شرح "؟" */
+/* ✅ نافذة شرح "؟" — تشرح النظام ثم تفصّل مكاسب الانضمام (الإطار أولاً، ثم شارات نصية) */
 
 .fanclub-help-card {
   background: #1a1f2e;
@@ -6065,12 +6045,14 @@ button, input, select, textarea {
   border-radius: 20px;
   padding: 22px;
   width: 100%;
-  max-width: 320px;
+  max-width: 340px;
+  max-height: 84vh;
+  overflow-y: auto;
   animation: slideUp 0.2s ease-out;
 }
 
 .fanclub-help-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   color: #fff;
   text-align: center;
@@ -6078,9 +6060,9 @@ button, input, select, textarea {
 }
 
 .fanclub-help-text {
-  font-size: 12px;
+  font-size: 13px;
   color: #9ca3af;
-  line-height: 1.9;
+  line-height: 1.95;
   text-align: center;
 }
 
@@ -6094,6 +6076,52 @@ button, input, select, textarea {
   font-weight: 700;
   font-size: 13px;
   border: none;
+}
+
+/* ✅ نسخة الإطار داخل نافذة الشرح — أصغر من معاينة "أعلى المعجبين" لتناسب نافذة الشرح المكتظة */
+
+.fanclub-reward-preview-help {
+  padding: 12px;
+}
+
+.fanclub-reward-preview-help .fanclub-reward-preview-img {
+  width: 56px;
+  height: 56px;
+}
+
+.fanclub-reward-preview-help .fanclub-reward-preview-label {
+  font-size: 12px;
+}
+
+.fanclub-reward-preview-help .fanclub-reward-preview-desc {
+  font-size: 10px;
+}
+
+.fanclub-help-benefit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.fanclub-help-benefit-row:last-of-type {
+  border-bottom: none;
+}
+
+.fanclub-help-benefit-icon {
+  width: 26px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 13px;
+  color: #fbbf24;
+}
+
+.fanclub-help-benefit-text {
+  font-size: 12px;
+  color: #d1d5db;
+  line-height: 1.6;
+  text-align: right;
 }
 
 /* ✅ نافذة "تعديل اسم المجموعة" — حوار مركزي بأسلوب iOS، صف عدّاد+الاسم الحالي فوق حقل
@@ -6697,6 +6725,30 @@ button, input, select, textarea {
   line-height: 1.7;
   margin-top: 4px;
   max-width: 260px;
+}
+
+/* ✅ نسخة مصغّرة — تظهر أسفل زر الانضمام مباشرة (بدل شاشة أعلى المعجبين) لتحفيز الانضمام
+   بمعرفة المكافأة الحقيقية فوراً، بلا احتلال مساحة كبيرة من شاشة التفاصيل الرئيسية */
+
+.fanclub-reward-preview-compact {
+  padding: 10px 12px;
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
+.fanclub-reward-preview-compact .fanclub-reward-preview-img {
+  width: 44px;
+  height: 44px;
+}
+
+.fanclub-reward-preview-compact .fanclub-reward-preview-label {
+  font-size: 11px;
+  margin-top: 5px;
+}
+
+.fanclub-reward-preview-compact .fanclub-reward-preview-desc {
+  font-size: 9.5px;
+  margin-top: 2px;
 }
 
 /* =====================================================
@@ -9874,6 +9926,30 @@ body.in-voice-room #main-content {
   color: #fbbf24;
 }
 
+/* ✅ شارة "عضوية نادي معجبين" — شعار النادي (لون اختاره صاحبه) مصغّراً داخل كبسولة الشارة
+   العادية؛ fanclub-member-badge-icon يُلغي التموضع المطلق لـfanclub-emblem-corner (مصمّم
+   أصلاً ليكون زاوية على صورة) ويحوّله لأيقونة صغيرة عادية تناسب داخل صف الشارات */
+
+.fanclub-member-badge {
+  cursor: pointer;
+}
+
+.fanclub-member-badge-icon {
+  position: relative;
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.fanclub-member-badge-icon .fanclub-emblem-corner {
+  position: static;
+  width: 100%;
+  height: 100%;
+  font-size: 7px;
+  border-width: 1px;
+}
+
 /* ✅ الحالة/السيرة — بلا تسمية وبلا خلفية، تجلس مباشرة تحت الشارات بأناقة */
 
 .full-profile-bio-text {
@@ -10035,6 +10111,9 @@ body.in-voice-room #main-content {
   font-weight: 800;
   color: #e5e7eb;
   margin-top: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .honor-mini-soon {
