@@ -198,7 +198,7 @@ const getUserMiniProfile = async (req, res) => {
 
         const [user, supportLevels] = await Promise.all([
             User.findById(targetUserId)
-                .select('username profileImage customId level friends followers isAgent activeFrameClass isBot gender birthDate socialStatus')
+                .select('username profileImage customId level friends followers isAgent activeFrameClass isBot gender birthDate socialStatus fanClub')
                 .populate('friends', '_id'),
             computeSupportLevels(targetUserId)
         ]);
@@ -230,6 +230,7 @@ const getUserMiniProfile = async (req, res) => {
                 gender: user.gender,
                 age: user.age,
                 socialStatus: user.socialStatus,
+                clubName: user.fanClub?.name || null,
                 supportGiving: supportLevels.giving,
                 supportReceiving: supportLevels.receiving
             }

@@ -2894,7 +2894,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <div class="room-profile-club-card room-profile-club-card-rect" id="room-profile-fanclub-card">
                         <img src="https://res.cloudinary.com/dntlt5xry/image/upload/v1790284710/ai-generated-love-heart-flying-with-cute-wings-3d-design-suitable-for-valentine-and-design-elements-png.png" class="room-profile-club-icon-img" alt="">
                         <div class="room-profile-club-card-text">
-                            <p class="room-profile-club-title">نادي المعجبين</p>
+                            <p class="room-profile-club-title">${escapeHtml(p.clubName || 'نادي المعجبين')}</p>
                             <p class="room-profile-club-sub">انضم الآن</p>
                         </div>
                     </div>
@@ -8294,7 +8294,7 @@ function renderProfileHubBody(u) {
                         <i class="fas fa-heart club-icon-heart"></i>
                         <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
                     </span>
-                    <p class="honor-mini-title">نادي المعجبين</p>
+                    <p class="honor-mini-title" id="profile-hub-fanclub-title">نادي المعجبين</p>
                 </div>
             </div>
             <div class="honor-row honor-row-gifts">
@@ -8322,13 +8322,16 @@ function renderProfileHubBody(u) {
             if (giftsEl) giftsEl.textContent = (res.data.totalGiftsCount || 0).toLocaleString('en-US');
         })
         .catch(() => {});
-    // ✅ عدد أعضاء نادي معجبيني الحقيقي (لوحة الشرف)
+    // ✅ عدد أعضاء نادي معجبيني الحقيقي + اسم النادي الحقيقي (لوحة الشرف) — الاسم يعكس آخر
+    // تسمية اعتمدها المستخدم بدل تسمية ثابتة عامة، مطابقاً لعنوان ورقة النادي نفسها
     fetch(`/api/fanclub/${u._id}/summary`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(r => r.json())
         .then(res => {
             if (res.status !== 'success') return;
             const el = document.getElementById('profile-hub-fanclub-count');
             if (el) el.textContent = (res.data.memberCount || 0).toLocaleString('en-US');
+            const titleEl = document.getElementById('profile-hub-fanclub-title');
+            if (titleEl && res.data.clubName) titleEl.textContent = res.data.clubName;
         })
         .catch(() => {});
 
@@ -9530,9 +9533,11 @@ const SUPPORT_LEVEL_THRESHOLDS_REF = [
     290000000, 300000000, 310000000, 320000000, 330000000
 ];
 
-// ✅ لوحة "تفاصيل شارة الدعم/التلقي" — ورقة سفلية فاخرة: صورة المستخدم داخل إطار الشارة
-// نفسها (كأنها مدالية بورتريه)، شريط تقدّم ذهبي معدني من المستوى الحالي للتالي، زر "!" يفتح
-// جدول الخبرة الكامل، وقسما "صلاحية المستوى" (شبكة مزايا قادمة قريباً) و"مهمة المستوى"
+// ✅ لوحة "تفاصيل شارة الدعم/التلقي" — أُعيد بناؤها بالكامل كبطاقة عضوية فاخرة (hero card)
+// بتدرّج لوني حقيقي يتبدّل تلقائياً حسب فئة المستخدم (--tier-c1/--tier-c2 من computeSupportLevelInfo)
+// بدل ثيم ذهبي ثابت للجميع بغضّ النظر عن رتبتهم الفعلية؛ صورته داخل إطار أبيض شفاف + شارة
+// المستوى كأيقونة صغيرة بزاويتها، شريط تقدّم مدمج بالبطاقة، زر "!" يفتح جدول الخبرة الكامل،
+// وقسما "صلاحية المستوى" (شبكة مزايا قادمة قريباً) و"مهمة المستوى" بلونَي الفئة نفسها
 function showSupportLevelInfoModal(kind, info, profileImage, username) {
     if (!info) return;
     document.getElementById('support-info-modal')?.remove();
@@ -9543,28 +9548,37 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
     const kindIcon = kind === 'giving' ? 'fa-bullhorn' : 'fa-microphone';
     const imgIndex = info.tierIndex <= 1 ? 0 : (info.tierIndex >= 4 ? 2 : 1);
     const badgeImg = ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex];
+    const [c1, c2] = info.tierGradient;
 
     modal.innerHTML = `
         <div class="support-info-sheet-lux">
             <div class="w-10 h-1 bg-white/15 rounded-full mx-auto mt-2.5 mb-1 flex-shrink-0"></div>
-            <div class="support-info-lux-body">
-                <div class="support-lux-header">
-                    <i class="fas ${kindIcon}"></i>
-                    <span>${title}</span>
+            <div class="support-info-lux-body" style="--tier-c1:${c1};--tier-c2:${c2}">
+                <!-- ✅ بطاقة عضوية فاخرة — لونها الحقيقي هو تدرّج فئة المستخدم نفسها (لا ذهبي
+                     ثابت للجميع)، فتعكس رتبته الفعلية: رمادي للمبتدئ، ذهبي للمحترف، سماوي
+                     للخبير، بنفسجي للمخضرم — بنفس فلسفة بطاقات VIP المصرفية/الألعاب الحقيقية -->
+                <div class="support-hero-card">
+                    <div class="support-hero-shine"></div>
+                    <div class="support-hero-top">
+                        <span class="support-hero-kind"><i class="fas ${kindIcon}"></i> ${title}</span>
+                        <span class="support-hero-tier-chip"><i class="fas ${info.tierIcon}"></i> ${escapeHtml(info.tierName)}</span>
+                    </div>
+                    <div class="support-hero-mid">
+                        <div class="support-hero-avatar-frame">
+                            <img src="${profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="support-hero-avatar">
+                            <span class="support-hero-badge-corner"><img src="${badgeImg}" alt=""></span>
+                        </div>
+                        <div class="support-hero-identity">
+                            <p class="support-hero-name">${escapeHtml(username || '')}</p>
+                            <p class="support-hero-level">Lv.${info.level}</p>
+                        </div>
+                    </div>
+                    <div class="support-hero-progress-track">
+                        <div class="support-hero-progress-fill" style="width:${info.progressPercent}%"></div>
+                    </div>
+                    <p class="support-hero-progress-label">${info.isMax ? 'وصلت لأعلى مستوى 🎉' : `${info.pointsToNext.toLocaleString()} خبرة للمستوى التالي`}</p>
                 </div>
 
-                <div class="support-portrait-row">
-                    <div class="support-portrait-frame">
-                        <img src="${profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="support-portrait-avatar">
-                        <span class="support-portrait-badge-corner"><img src="${badgeImg}" alt=""></span>
-                    </div>
-                    <div class="support-portrait-info">
-                        <p class="support-portrait-name">${escapeHtml(username || '')} <span class="support-portrait-lv">Lv.${info.level}</span></p>
-                        <p class="support-portrait-tier">فئة "${escapeHtml(info.tierName)}"</p>
-                    </div>
-                </div>
-
-                ${tierLevelCardHTML(info, 'خبرة')}
                 <button type="button" id="support-xp-info-btn" class="support-xp-info-row">
                     <span class="support-info-circle-btn"><i class="fas fa-exclamation"></i></span>
                     <span>جدول الخبرة الكامل بكل المستويات</span>
@@ -9669,14 +9683,71 @@ const FAN_CLUB_COLORS = {
     orange: { label: 'برتقالي', swatch: '#f97316', filter: 'hue-rotate(320deg) saturate(1.4) brightness(1.05)' }
 };
 // ✅ صورة "إطار المساهم" — نفس الإطار الحصري الحقيقي الذي يُمنح دائماً لمن يفوز بالمركز الأول
-// بنادٍ لأسبوع كامل (server/utils/fanClubWeeklyFrameJob.js)، مُستخدمة هنا فقط لمعاينته
-// بلافتة "أعلى المعجبين" — نفس الرابط المضروب بالخادم (autoSeed.js) بالضبط
+// بنادٍ لأسبوع كامل (server/utils/fanClubWeeklyFrameJob.js)؛ نفس الرابط بالضبط المضروب
+// بالخادم (autoSeed.js) — تُستخدم هنا لمعاينته بشاشات النادي وكذلك كتراكب حقيقي فوق صورة
+// أي فائز حالياً يرتديه (راجع wrapContributorFrames أسفله)
 const FAN_CLUB_CONTRIBUTOR_FRAME_IMG = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png';
 
-// ✅ وسام النادي المصغّر — دائرة صغيرة بزاوية صورة صاحب النادي (لا يغطيها)، لونها فقط يتبدّل
-function fanClubEmblemHTML(colorId) {
+// 🐛 إصلاح جوهري: زخارف "إطار المساهم" (تاج، جوهرتان، أجنحة) تتوغّل داخل الصورة نفسها بدل
+// حدّ رفيع حولها فقط — فتقنية border-image المستخدمة سابقاً كانت خاطئة جذرياً: بكسلات
+// <img> الفعلية تُرسَم دوماً فوق خلفية/حدّ نفس العنصر (ترتيب الرسم بمعيار CSS)، فتُغطّي أي
+// جزء من الإطار يُفترض أن يظهر فوقها بدل خلفها. البديل الصحيح الوحيد تقنياً: عنصر <img>
+// منفصل يُرسم فوق صورة المستخدم مباشرة. بما أن class="profile-frame-contributor" يُدرَج
+// بعشرات القوالب بالتطبيق (مقاعد الغرفة، الدردشة، الرسائل، الملف الكامل...) كصنف مباشر على
+// <img> خام بلا أي حاوية، تعديل كل موقع يدوياً كان سيكون مخاطرة كبيرة ببنية Flex/Grid لكل
+// سياق — الحل بدلاً من ذلك: مراقب DOM عام (نطاقه محصور بهذا الصنف تحديداً، نادر الحدوث فعلياً
+// إذ لا يظهر إلا لفائزي المركز الأول أسبوعياً) يكتشف أي <img> جديد يحمله ويُحيطه بحاوية
+// بحجم مُقاس فعلياً (لا نسبة مئوية تعتمد على أب مُعرَّف مسبقاً، يعمل بكل سياق) + طبقة تراكب
+// حقيقية فوقه — بلا أي تعديل لعشرات دوال العرض القائمة
+function wrapContributorFrames(root = document) {
+    // إضافة تراكب لأي صورة جديدة تحمل هذا الإطار
+    root.querySelectorAll('img.profile-frame-contributor:not(.frame-overlay-wrapped)').forEach(img => {
+        const rect = img.getBoundingClientRect();
+        if (!rect.width || !rect.height) return; // لم يُرسَم بعد (مثلاً display:none) — تُعاد المحاولة بالدفعة التالية
+        img.classList.add('frame-overlay-wrapped');
+        const wrap = document.createElement('span');
+        wrap.className = 'frame-overlay-wrap';
+        wrap.style.width = `${rect.width}px`;
+        wrap.style.height = `${rect.height}px`;
+        img.parentNode.insertBefore(wrap, img);
+        wrap.appendChild(img);
+        const overlay = document.createElement('img');
+        overlay.src = FAN_CLUB_CONTRIBUTOR_FRAME_IMG;
+        overlay.className = 'frame-overlay-art';
+        overlay.alt = '';
+        wrap.appendChild(overlay);
+    });
+    // 🛡️ إزالة التراكب لو المستخدم بدّل لإطار آخر لاحقاً — applyFrameToAvatar (نفس عنصر <img>
+    // الحي) يُزيل صنف profile-frame-contributor دون إزالة الحاوية/التراكب اللذين أضفناهما،
+    // فيبقى إطار المساهم "شبحاً" فوق صورة لم تعد ترتديه فعلياً لولا هذا التنظيف العكسي
+    root.querySelectorAll('.frame-overlay-wrap > img.frame-overlay-wrapped:not(.profile-frame-contributor)').forEach(img => {
+        const wrap = img.parentNode;
+        img.classList.remove('frame-overlay-wrapped');
+        wrap.parentNode.insertBefore(img, wrap);
+        wrap.remove();
+    });
+}
+let frameOverlaySweepScheduled = false;
+const frameOverlayObserver = new MutationObserver(() => {
+    if (frameOverlaySweepScheduled) return;
+    frameOverlaySweepScheduled = true;
+    requestAnimationFrame(() => { frameOverlaySweepScheduled = false; wrapContributorFrames(); });
+});
+frameOverlayObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+wrapContributorFrames();
+
+// ✅ شعار النادي (تاج + جناحان + قاعدة داكنة بقلب مركزي) — يُستخدم فقط بنافذة "تخصيص شعار
+// المجموعة" (معاينة + منتقي الألوان)؛ sizeClass يتيح حجماً صغيراً بشبكة المنتقي وكبيراً بالمعاينة
+function fanClubEmblemHTML(colorId, sizeClass = 'fanclub-emblem-sm') {
     const id = FAN_CLUB_COLORS[colorId] ? colorId : 'pink';
-    return `<span class="fanclub-emblem-corner fanclub-emblem-corner-${id}"><i class="fas fa-heart"></i></span>`;
+    return `
+        <span class="fanclub-emblem ${sizeClass} fanclub-emblem-${id}">
+            <i class="fas fa-crown fanclub-emblem-crown"></i>
+            <span class="fanclub-emblem-base"><i class="fas fa-heart fanclub-emblem-icon"></i></span>
+            <i class="fas fa-feather-alt fanclub-emblem-wing fanclub-emblem-wing-left"></i>
+            <i class="fas fa-feather-alt fanclub-emblem-wing fanclub-emblem-wing-right"></i>
+        </span>
+    `;
 }
 
 // ✅ بطاقة "مستوى" مشتركة — تاج/شارة يتبدّل تدرّجها اللوني وأيقونتها تلقائياً حسب فئة المستوى
@@ -9839,18 +9910,17 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                     <span class="fanclub-pill-icon"><i class="fas fa-gift"></i></span>
                 </button>
             ` : !s.isMember ? `
-                <button type="button" id="fanclub-join-btn" class="fanclub-join-btn">
+                <p class="fanclub-section-divider-label">ستحصل على إطار المساهم</p>
+                <div class="fanclub-reward-preview-box fanclub-reward-preview-compact fanclub-reward-preview-frame-only">
+                    <img src="${FAN_CLUB_CONTRIBUTOR_FRAME_IMG}" class="fanclub-reward-preview-img" alt="">
+                </div>
+                <button type="button" id="fanclub-join-btn" class="fanclub-join-btn fanclub-join-btn-raised">
                     <span class="fanclub-join-btn-text">الانضمام الى نادي المعجبين</span>
                     <span class="fanclub-join-btn-price-group">
                         ${rose ? `<img src="${rose.imageUrl}" class="fanclub-join-btn-rose" style="filter:${giftColor.filter}" onerror="this.style.display='none'">` : '<i class="fas fa-heart"></i>'}
                         <span class="fanclub-join-btn-price"><s>${rose ? rose.price : 10}</s> 1</span>
                     </span>
                 </button>
-                <div class="fanclub-reward-preview-box fanclub-reward-preview-compact">
-                    <img src="${FAN_CLUB_CONTRIBUTOR_FRAME_IMG}" class="fanclub-reward-preview-img" alt="">
-                    <p class="fanclub-reward-preview-label">إطار المساهم</p>
-                    <p class="fanclub-reward-preview-desc">يُمنح دائماً لمن يحتل المركز الأول أسبوعاً كاملاً — يظهر على صورتك بكل مكان</p>
-                </div>
             ` : s.myLevelInfo ? `
                 ${tierLevelCardHTML(s.myLevelInfo)}
                 ${missions ? fanClubMissionsHTML(missions) : '<p class="fanclub-members-explainer">تعذر تحميل المهام اليومية حالياً</p>'}
@@ -10147,13 +10217,13 @@ function showFanClubEmblemPicker(s, onSaved) {
                 <p class="fanclub-color-picker-title">تخصيص شعار المجموعة</p>
             </div>
             <div class="fanclub-color-picker-preview">
-                <span id="fanclub-emblem-preview-badge" class="fanclub-emblem-corner fanclub-emblem-preview-large"><i class="fas fa-heart"></i></span>
+                <span id="fanclub-emblem-preview-badge">${fanClubEmblemHTML(s.emblemColorId || 'pink', 'fanclub-emblem-lg')}</span>
             </div>
             <p class="fanclub-color-picker-section-title">حدد لون الشعار</p>
             <div class="fanclub-color-picker-grid">
                 ${Object.keys(FAN_CLUB_COLORS).map(id => `
                     <button type="button" class="fanclub-color-picker-item ${id === (s.emblemColorId || 'pink') ? 'active' : ''}" data-color-id="${id}">
-                        <span class="fanclub-emblem-corner fanclub-emblem-preview-large fanclub-emblem-corner-${id}"><i class="fas fa-heart"></i></span>
+                        ${fanClubEmblemHTML(id, 'fanclub-emblem-sm')}
                     </button>
                 `).join('')}
             </div>
@@ -10171,7 +10241,7 @@ function showFanClubEmblemPicker(s, onSaved) {
             item.classList.add('active');
             selectedColorId = item.dataset.colorId;
             const preview = modal.querySelector('#fanclub-emblem-preview-badge');
-            preview.className = `fanclub-emblem-corner fanclub-emblem-preview-large fanclub-emblem-corner-${selectedColorId}`;
+            preview.innerHTML = fanClubEmblemHTML(selectedColorId, 'fanclub-emblem-lg');
         });
     });
 
@@ -10324,12 +10394,11 @@ async function showFullProfilePage(userId) {
 
     try {
         const authHeaders = { headers: { 'Authorization': `Bearer ${token}` } };
-        const [userRes, giftSummaryRes, fanClubSummaryRes, weeklyWinsRes, membershipsRes] = await Promise.all([
+        const [userRes, giftSummaryRes, fanClubSummaryRes, weeklyWinsRes] = await Promise.all([
             fetch(`/api/users/${userId}`, authHeaders).then(r => r.json()),
             fetch(`/api/gifts/user/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null),
             fetch(`/api/fanclub/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null),
-            fetch(`/api/fanclub/${userId}/weekly-wins`, authHeaders).then(r => r.json()).catch(() => null),
-            fetch(`/api/fanclub/${userId}/memberships`, authHeaders).then(r => r.json()).catch(() => null)
+            fetch(`/api/fanclub/${userId}/weekly-wins`, authHeaders).then(r => r.json()).catch(() => null)
         ]);
 
         if (userRes.status !== 'success') throw new Error();
@@ -10342,9 +10411,6 @@ async function showFullProfilePage(userId) {
         // ✅ "نجوم النادي الأسبوعي" — شارات دائمة (مركز أول بالأسبوع الماضي المكتمل) تبقى
         // بالملف حتى بعد تصفير المراكز الأسبوعي، وتنقل عند النقر لنادي المعجبين الذي فاز به
         const weeklyWins = (weeklyWinsRes && weeklyWinsRes.status === 'success') ? weeklyWinsRes.data.wins : [];
-        // ✅ شارات عضوية أندية المعجبين — شعار كل نادٍ بلونه الذي اختاره صاحبه، تُمنح تلقائياً
-        // لكل عضو فعلي بغضّ النظر عن مستواه، وتنقل عند النقر لنادي المعجبين المعنيّ
-        const fanClubs = (membershipsRes && membershipsRes.status === 'success') ? membershipsRes.data.clubs : [];
         const socialInfo = getSocialStatus(u.socialStatus);
         const educationInfo = getEducationStatus(u.educationStatus);
         const genderInfo = u.gender === 'male' ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' } : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
@@ -10368,12 +10434,6 @@ async function showFullProfilePage(userId) {
                     ${weeklyWins.map(w => `
                         <button type="button" class="full-profile-mini-badge full-profile-weekly-badge" data-owner-id="${w.ownerId}" data-owner-username="${escapeHtml(w.ownerUsername)}" data-owner-image="${escapeHtml(w.ownerProfileImage)}" title="نجم نادي ${escapeHtml(w.ownerUsername)} الأسبوعي">
                             <i class="fas fa-crown"></i> نجم نادي ${escapeHtml(w.ownerUsername)}
-                        </button>
-                    `).join('')}
-                    ${fanClubs.map(c => `
-                        <button type="button" class="full-profile-mini-badge fanclub-member-badge" data-owner-id="${c.ownerId}" data-owner-username="${escapeHtml(c.ownerUsername)}" data-owner-image="${escapeHtml(c.ownerProfileImage)}" title="عضو بنادي ${escapeHtml(c.clubName || c.ownerUsername)}">
-                            <span class="fanclub-member-badge-icon">${fanClubEmblemHTML(c.emblemColorId)}</span>
-                            ${escapeHtml(c.clubName || `نادي ${c.ownerUsername}`)}
                         </button>
                     `).join('')}
                 </div>
@@ -10514,7 +10574,7 @@ async function showFullProfilePage(userId) {
             closeFullProfilePage();
             showFanClubSheet(userId, u.username, u.profileImage);
         });
-        body.querySelectorAll('.full-profile-weekly-badge, .fanclub-member-badge').forEach(btn => {
+        body.querySelectorAll('.full-profile-weekly-badge').forEach(btn => {
             btn.addEventListener('click', () => {
                 closeFullProfilePage();
                 showFanClubSheet(btn.dataset.ownerId, btn.dataset.ownerUsername, btn.dataset.ownerImage);
