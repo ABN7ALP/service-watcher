@@ -40,12 +40,14 @@ const userSchema = new mongoose.Schema({
     activeFrameClass: { type: String, default: null },
     activeFrameExpiresAt: { type: Date, default: null },
     hasReceivedWelcomeFrame: { type: Boolean, default: false }, // منع تكرار هدية الترحيب
-    // ✅ تخصيص نادي المعجبين — الاسم فقط (يُعدَّله صاحب النادي، يظهر لكل زوّار ناديه). شارة
-    // النادي وتصميمها تحدّدها المنصّة حسب مستوى كل معجب (نظام مستويات حقيقي — راجع
-    // server/utils/fanClubLevels.js) وليست تخصيصاً حراً لصاحب النادي، بنفس فلسفة تطبيقات
-    // البث المشهورة (Bigo/TikTok) حيث تصميم الشارة يعكس ولاء العضو الفعلي لا اختياراً جمالياً
+    // ✅ تخصيص نادي المعجبين — الاسم، ولون كل من شعار المجموعة وهديتها (5 ألوان مغلقة، تُطبَّق
+    // بفلتر CSS على نفس صورتي الشعار/الوردة بلا أي صور مرفوعة من المستخدم). منفصل تماماً عن
+    // نظام "مستوى المعجب" (server/utils/fanClubLevels.js) — شارة المستوى تعكس ولاء كل عضو على
+    // حدة وتُحسب تلقائياً، بينما لون الشعار/الهدية هنا هوية بصرية عامة للنادي يختارها صاحبه
     fanClub: {
-        name: { type: String, maxlength: 13, default: null } // null = يُعرض "نادي {username}" افتراضياً
+        name: { type: String, maxlength: 13, default: null }, // null = يُعرض "نادي {username}" افتراضياً
+        emblemColorId: { type: String, enum: ['pink', 'yellow', 'purple', 'blue', 'orange'], default: 'pink' },
+        giftColorId: { type: String, enum: ['pink', 'yellow', 'purple', 'blue', 'orange'], default: 'pink' }
     },
     // ✅ حقول جديدة للوحة التحكم
     isBanned: { type: Boolean, default: false },

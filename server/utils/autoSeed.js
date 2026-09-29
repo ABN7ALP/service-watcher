@@ -35,7 +35,10 @@ async function seedFramesIfMissing() {
         { name: 'إطار قوس قزح', cssClass: 'profile-frame-rainbow', isActive: true, sortOrder: 3, prices: { days7: 150, days30: 450, days365: 3500 } },
         { name: 'إطار ناري', cssClass: 'profile-frame-fire', isActive: true, sortOrder: 4, prices: { days7: 200, days30: 600, days365: 4800 } },
         { name: 'إطار جليدي', cssClass: 'profile-frame-ice', isActive: true, sortOrder: 5, prices: { days7: 200, days30: 600, days365: 4800 } },
-        { name: 'إطار ملكي', cssClass: 'profile-frame-royal', isActive: true, sortOrder: 6, prices: { days7: 350, days30: 1000, days365: 8000 } }
+        { name: 'إطار ملكي', cssClass: 'profile-frame-royal', isActive: true, sortOrder: 6, prices: { days7: 350, days30: 1000, days365: 8000 } },
+        // ✅ إطار حصري غير مباع بالمتجر (isActive:false) — يُمنح فقط تلقائياً لمن يفوز بالمركز
+        // الأول بمساهمات نادي معجبين لأسبوع كامل (راجع server/utils/fanClubWeeklyFrameJob.js)
+        { name: 'إطار المساهم', cssClass: 'profile-frame-contributor', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png', isActive: false, sortOrder: 7, prices: { days7: 0, days30: 0, days365: 0 } }
     ];
     for (const f of frames) {
         const exists = await ProfileFrame.findOne({ name: f.name });
