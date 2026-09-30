@@ -27,18 +27,24 @@ async function seedGiftsIfMissing() {
     }
 }
 
+// ✅ مجموعة الإطارات الحالية للمتجر — أُعيد تصميمها بالكامل بأربع فئات ندرة حقيقية (عادي/نادر/
+// ملحمي/أسطوري)، كل واحد بشكل/تقنية CSS مختلفة فعلياً (حلقة مزدوجة هادئة، حافة مفصّصة كالجوهرة،
+// حلقة نار تدور حقيقياً بتحريك زاوية conic-gradient نفسها عبر @property لا مجرد hue-rotate،
+// وحلقة ذهبية مزدوجة بلمعان دوّار خلفها) — بدل الإطارات الست القديمة المسطّحة (حدّ ملوّن + توهّج
+// فقط) التي أُحيلت للتقاعد (راجع migrateRetireOldFrames أدناه، لا تُحذف كي لا يفقدها من يملكها)
 async function seedFramesIfMissing() {
     const frames = [
         { name: 'إطار الترحيب', cssClass: 'profile-frame-welcome', isActive: false, sortOrder: 0, prices: { days7: 0, days30: 0, days365: 0 } },
-        { name: 'إطار ذهبي كلاسيكي', cssClass: 'profile-frame-classic-gold', isActive: true, sortOrder: 1, prices: { days7: 50, days30: 150, days365: 1200 } },
-        { name: 'إطار نيون بنفسجي', cssClass: 'profile-frame-neon-purple', isActive: true, sortOrder: 2, prices: { days7: 90, days30: 280, days365: 2200 } },
-        { name: 'إطار قوس قزح', cssClass: 'profile-frame-rainbow', isActive: true, sortOrder: 3, prices: { days7: 150, days30: 450, days365: 3500 } },
-        { name: 'إطار ناري', cssClass: 'profile-frame-fire', isActive: true, sortOrder: 4, prices: { days7: 200, days30: 600, days365: 4800 } },
-        { name: 'إطار جليدي', cssClass: 'profile-frame-ice', isActive: true, sortOrder: 5, prices: { days7: 200, days30: 600, days365: 4800 } },
-        { name: 'إطار ملكي', cssClass: 'profile-frame-royal', isActive: true, sortOrder: 6, prices: { days7: 350, days30: 1000, days365: 8000 } },
+        { name: 'الحلقة الفضية', cssClass: 'profile-frame-silver-elegant', isActive: true, sortOrder: 1, prices: { days7: 40, days30: 120, days365: 900 } },
+        { name: 'جوهرة الزمرد', cssClass: 'profile-frame-emerald-facet', isActive: true, sortOrder: 2, prices: { days7: 120, days30: 350, days365: 2800 } },
+        { name: 'إعصار اللهب', cssClass: 'profile-frame-flame-vortex', isActive: true, sortOrder: 3, prices: { days7: 250, days30: 750, days365: 6000 } },
+        { name: 'تاج الأساطير', cssClass: 'profile-frame-golden-legend', isActive: true, sortOrder: 4, prices: { days7: 400, days30: 1200, days365: 9500 } },
         // ✅ إطار حصري غير مباع بالمتجر (isActive:false) — يُمنح فقط تلقائياً لمن يفوز بالمركز
         // الأول بمساهمات نادي معجبين لأسبوع كامل (راجع server/utils/fanClubWeeklyFrameJob.js)
-        { name: 'إطار المساهم', cssClass: 'profile-frame-contributor', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png', isActive: false, sortOrder: 7, prices: { days7: 0, days30: 0, days365: 0 } }
+        { name: 'إطار المساهم', cssClass: 'profile-frame-contributor', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png', isActive: false, sortOrder: 7, prices: { days7: 0, days30: 0, days365: 0 } },
+        // ✅ إطار مهمة — غير مباع (isActive:false)، يُمنح تلقائياً لمن يكمل مهمة الحضور اليومي
+        // بمستوى الدعم 7 أيام متتالية (راجع server/controllers/userController.js claimSupportCheckIn)
+        { name: 'إطار المثابر', cssClass: 'profile-frame-persistent', isActive: false, sortOrder: 8, prices: { days7: 0, days30: 0, days365: 0 } }
     ];
     for (const f of frames) {
         const exists = await ProfileFrame.findOne({ name: f.name });
@@ -46,6 +52,18 @@ async function seedFramesIfMissing() {
             await ProfileFrame.create(f);
             console.log(`🖼️ [AUTO-SEED] تمت إضافة الإطار: ${f.name}`);
         }
+    }
+}
+
+// 🔧 يحيل الإطارات الستة القديمة (المصمّمة بأسلوب مبتدئ — حدّ ملوّن مسطّح + توهّج فقط) للتقاعد
+// من المتجر دون حذفها إطلاقاً — أي مستخدم اشتراها/يملكها يحتفظ بها ويقدر يبقيها مفعّلة، فقط
+// لن تظهر بعد الآن كخيار شراء جديد لمن لا يملكها؛ isActive:false تكفي وحدها (getFrameShop
+// يستعلم isActive:true فقط)، ولا حاجة لأي تعديل على ownedFrames أو activeFrame الحاليين
+async function migrateRetireOldFrames() {
+    const retiredNames = ['إطار ذهبي كلاسيكي', 'إطار نيون بنفسجي', 'إطار قوس قزح', 'إطار ناري', 'إطار جليدي', 'إطار ملكي'];
+    const result = await ProfileFrame.updateMany({ name: { $in: retiredNames }, isActive: true }, { $set: { isActive: false } });
+    if (result.modifiedCount > 0) {
+        console.log(`🔧 [MIGRATION] تمت إحالة ${result.modifiedCount} إطاراً قديماً للتقاعد من المتجر`);
     }
 }
 
@@ -173,6 +191,7 @@ module.exports = async function autoSeed() {
         await migrateGiftImageUrls(); // ✅ جديد
         await seedGiftsIfMissing();
         await seedFramesIfMissing();
+        await migrateRetireOldFrames(); // ✅ بعد seedFramesIfMissing كي توجد الإطارات الجديدة أولاً كبديل
         await seedBubbleSkinsIfMissing();
         await require('../models/OneTimeMessageLog').syncIndexes(); // ✅ سبب مشكلة رقم 6 أدناه
     } catch (error) {

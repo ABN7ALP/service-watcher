@@ -40,15 +40,6 @@ body {
 .action-btn.received-btn { @apply text-blue-400 hover:bg-blue-900; }
 .action-btn.friend-btn { @apply text-green-400 hover:bg-green-900; }
 
-/* --- ✅ أنماط الإشعار العائم --- */
-@keyframes float-up-and-fade {
-    0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
-    25% { transform: translate(-50%, -100%) scale(1); opacity: 1; }
-    100% { transform: translate(-50%, -250%) scale(1.2); opacity: 0; }
-}
-.floating-alert {
-    animation: float-up-and-fade 2s ease-out forwards;
-}
 /* أنماط الأقسام القابلة للطي */
 .collapsible-content {
     transition: max-height 0.3s ease-out, opacity 0.3s ease;
@@ -181,6 +172,140 @@ input[type="checkbox"] {
     animation: royal-glow 2.5s ease-in-out infinite;
 }
 
+/* =====================================================
+   ✅ الجيل الجديد من إطارات المتجر — أُعيد تصميمها بالكامل (الستة أعلاه أُحيلت للتقاعد من
+   المتجر، راجع migrateRetireOldFrames بـautoSeed.js — بقيت هنا فقط لمن ما زال يملكها/مفعّلة
+   لديه). أربع فئات ندرة حقيقية، كل واحدة بتقنية/عمق مختلف فعلياً بدل حدّ ملوّن مسطّح موحّد:
+   حلقة مزدوجة هادئة ثابتة (عادي)، حلقة مطبّقة الطبقات بتوهّج نابض (نادر)، حلقة نار تدور
+   دوراناً حقيقياً (ملحمي — تحريك زاوية conic-gradient نفسها عبر @property لا مجرد hue-rotate
+   بصري كالإطار القديم)، وحلقة ذهبية مزدوجة بلمعان دوّار خلفها (أسطوري). كلها تعمل بنفس تقنية
+   حدّ/ظل الصورة الخام (لا حاوية إضافية) فتُطبَّق تلقائياً بأي مكان بالتطبيق بمجرد الكلاس
+   ===================================================== */
+@property --frame-spin-angle {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
+}
+@keyframes frame-spin { to { --frame-spin-angle: 360deg; } }
+
+/* عادي — حلقة فضية مزدوجة أنيقة هادئة، بلا حركة، مظهر معدني نظيف */
+.profile-frame-silver-elegant {
+    border: 3px solid transparent !important;
+    background: linear-gradient(#0000, #0000) padding-box,
+                linear-gradient(135deg, #f8fafc, #94a3b8 45%, #e2e8f0 60%, #64748b) border-box;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.3), 0 2px 10px rgba(148,163,184,0.35);
+}
+
+/* نادر — حلقة زمرّدية بطبقتين (ظل خارجي + حدّ داخلي) توحي بالعمق، مع نبض توهّج هادئ */
+@keyframes emerald-facet-pulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(16,185,129,0.55), 0 0 0 4px rgba(6,95,70,0.35); }
+    50% { box-shadow: 0 0 18px rgba(52,211,153,0.8), 0 0 0 4px rgba(16,185,129,0.5); }
+}
+.profile-frame-emerald-facet {
+    border: 3px solid transparent !important;
+    background: linear-gradient(#0000, #0000) padding-box,
+                linear-gradient(160deg, #6ee7b7, #059669 50%, #34d399) border-box;
+    animation: emerald-facet-pulse 2.4s ease-in-out infinite;
+}
+
+/* ملحمي — حلقة نارية تدور دوراناً حقيقياً (زاوية conic-gradient نفسها متحرّكة عبر @property،
+   وليس فلتر hue-rotate بصري فقط كالإطار الناري القديم) — "جزء متحرك" حقيقي كما طُلب */
+.profile-frame-flame-vortex {
+    border: 4px solid transparent !important;
+    background: linear-gradient(#0000, #0000) padding-box,
+                conic-gradient(from var(--frame-spin-angle), #7c2d12, #f97316, #fde047, #ea580c, #7c2d12) border-box;
+    animation: frame-spin 3s linear infinite;
+    box-shadow: 0 0 16px rgba(249,115,22,0.55);
+}
+
+/* أسطوري — أغلى فئة: حلقة ذهبية مزدوجة ثابتة (حدّ خارجي + خط أبيض داخلي كحافة عملة) فوقها
+   حلقة لمعان ذهبي رفيعة تدور خلفها ببطء (نفس تقنية الدوران الحقيقي) — إحساس عملة ذهبية
+   تلمع وتدور، أفخم طبقتين متزامنتين بدل طبقة واحدة */
+.profile-frame-golden-legend {
+    border: 4px double #fde68a !important;
+    box-shadow:
+        0 0 0 2px #92400e,
+        0 0 14px rgba(251,191,36,0.6),
+        0 0 0 6px transparent;
+    position: relative;
+    background:
+        linear-gradient(#0000, #0000) padding-box,
+        conic-gradient(from var(--frame-spin-angle), transparent 0deg, rgba(255,255,255,0.9) 25deg, transparent 55deg, transparent 360deg) border-box;
+    animation: frame-spin 4s linear infinite;
+}
+
+/* ✅ إطار مهمة "المثابر" — يُمنح تلقائياً لمن يكمل مهمة الحضور اليومي 7 أيام متتالية بمستوى
+   الدعم (claimSupportCheckIn). أزرق فولاذي هادئ بخط متقطّع يرمز لـ"تتابع الأيام"، مع نبض بسيط */
+@keyframes persistent-pulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(56,189,248,0.5); }
+    50% { box-shadow: 0 0 16px rgba(125,211,252,0.75); }
+}
+.profile-frame-persistent {
+    border: 3px dashed #38bdf8 !important;
+    animation: persistent-pulse 2.6s ease-in-out infinite;
+}
+
+/* =====================================================
+   ✅ نافذة "متجر الإطارات" — ورقة سفلية مستقلة (showFrameShopModal) بدل قسم قابل للطي مدفون
+   بالإعدادات: معاينة كبيرة للإطار المفعّل حالياً بصورة المستخدم الفعلية، ثم شبكة بطاقات
+   (عمودان) بمعاينة حقيقية لكل إطار + شريط مدد نقرة واحدة بدل <select> خام
+   ===================================================== */
+.frame-shop-sheet {
+    background: #1a1f2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-width: 420px;
+    max-height: 88vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    animation: slideUp 0.25s ease-out;
+}
+@media (min-width: 768px) { .frame-shop-sheet { border-radius: 20px; margin-bottom: 16px; } }
+.frame-shop-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px 4px; }
+.frame-shop-title { font-size: 14px; font-weight: 800; color: #fff; display: inline-flex; align-items: center; gap: 7px; }
+.frame-shop-title i { color: #fbbf24; }
+.frame-shop-coins { font-size: 12.5px; font-weight: 800; color: #facc15; display: inline-flex; align-items: center; gap: 5px; }
+
+.frame-shop-current-preview { display: flex; flex-direction: column; align-items: center; padding: 14px 18px 6px; }
+.frame-shop-current-avatar-wrap { width: 88px; height: 88px; }
+.frame-shop-current-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.frame-shop-current-label { font-size: 12px; font-weight: 700; color: #d1d5db; margin-top: 10px; }
+.frame-shop-remove-btn { background: transparent; border: none; color: #9ca3af; font-size: 10.5px; text-decoration: underline; margin-top: 4px; }
+
+.frame-shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 18px 24px; }
+.frame-shop-card {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px; padding: 14px 10px 12px; display: flex; flex-direction: column; align-items: center;
+}
+.frame-shop-card.active { border-color: rgba(251,191,36,0.5); background: rgba(251,191,36,0.05); }
+.frame-shop-card-avatar-wrap { width: 56px; height: 56px; }
+.frame-shop-card-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.frame-shop-card-name { font-size: 11.5px; font-weight: 800; color: #f3f4f6; margin-top: 9px; text-align: center; }
+.frame-shop-card-expiry { font-size: 9px; color: #9ca3af; margin-top: 3px; }
+.frame-shop-card-owned-label { font-size: 9.5px; color: #4ade80; margin-top: 3px; font-weight: 700; }
+.frame-shop-equip-btn {
+    width: 100%; margin-top: 9px; padding: 7px 0; border-radius: 999px; border: none;
+    background: linear-gradient(90deg, #a855f7, #ec4899); color: #fff; font-size: 11px; font-weight: 800;
+}
+.frame-shop-equip-btn:disabled { background: rgba(255,255,255,0.08); color: #9ca3af; }
+.frame-shop-duration-pills { display: flex; gap: 3px; width: 100%; margin-top: 9px; background: rgba(255,255,255,0.04); border-radius: 999px; padding: 3px; }
+.frame-shop-duration-pill {
+    flex: 1; background: transparent; border: none; border-radius: 999px; padding: 5px 2px;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    font-size: 8.5px; font-weight: 700; color: #9ca3af;
+}
+.frame-shop-duration-pill span { font-size: 8px; color: #facc15; font-weight: 800; }
+.frame-shop-duration-pill.active { background: rgba(255,255,255,0.1); color: #fff; }
+.frame-shop-duration-pill.active span { color: #fde68a; }
+.frame-shop-purchase-btn {
+    width: 100%; margin-top: 7px; padding: 7px 0; border-radius: 999px; border: none;
+    background: linear-gradient(90deg, #16a34a, #22c55e); color: #fff; font-size: 11px; font-weight: 800;
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+}
+.frame-shop-purchase-btn:disabled { opacity: 0.6; }
+
 /* ✅ "إطار المساهم" — إطار حصري غير مباع بالمتجر، يُمنح تلقائياً لمن يفوز بالمركز الأول
    بنادي معجبين لأسبوع كامل (server/utils/fanClubWeeklyFrameJob.js). زخارفه (تاج أعلى، جوهرتان
    يمين ويسار، أجنحة أسفل) تتوغّل داخل الصورة نفسها، فلا يمكن رسمها كحدّ رفيع حولها
@@ -190,15 +315,14 @@ input[type="checkbox"] {
    هذا تلقائياً بأي مكان بالتطبيق (بلا تعديل عشرات دوال عرض الصور القائمة) */
 .frame-overlay-wrap { position: relative; display: inline-block; line-height: 0; vertical-align: middle; }
 .frame-overlay-wrap > img.profile-frame-contributor { width: 100%; height: 100%; }
-/* 🐛 إصلاح: 134% كانت قياساً خاطئاً (مبنياً على سمك الحلقة نفسها على القطر لا على أضيق نقطة
-   فعلية بالفتحة الشفافة) — قِسْت الصورة الحقيقية بكسلاً بكسل (750×750، نصف قطر الفتحة الشفافة
-   عند التاج أعلى ≈222px فقط، أضيق نقطة بالتصميم كله) فتبيّن أن 134% تجعل الصورة أكبر من
-   الفتحة عند التاج فيُحشَر الإطار على الصورة بمظهر "مضغوط" بدل التفاف أنيق حولها. 168%
-   (750 ÷ 222×2) يضمن للصورة مساحة كافية بأضيق نقطة، وobject-fit:contain يمنع أي تمدّد غير
-   متساوٍ لو اختلف عرض/ارتفاع الحاوية المقاسة ببكسل كسري (شيوع بتخطيطات Flex/Grid) */
+/* 🐛 إصلاح ثانٍ: 168% (750÷222×2 بالضبط) كانت تترك هامشاً 0.5%- فقط عند أضيق نقطة (تحت
+   التاج) — عملياً صفر تسامح، فتبقى الصورة تلامس/تتجاوز حافة الفتحة بالضبط هناك، بمظهر
+   "الصورة أكبر من الإطار بشكل بسيط" كما لوحظ فعلياً. رفعتها لـ195% (هامش أمان ~15% حول أضيق
+   نقطة، يمتص أي تفاوت قياس ببكسل كسري) — الإطار الآن يلتف حول الصورة بمسافة مريحة بأي زاوية،
+   لا يلامسها أبداً حتى تحت التاج/الأجنحة أضيق الأماكن */
 .frame-overlay-art {
     position: absolute; top: 50%; left: 50%;
-    width: 168%; height: 168%;
+    width: 195%; height: 195%;
     object-fit: contain;
     transform: translate(-50%, -50%);
     pointer-events: none;
@@ -860,16 +984,32 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-info-session-support i { font-size: 7.5px; }
 .room-info-session-support.hidden { display: none; }
-/* ✅ زر متابعة الرأس — بيضاوي صغير بنفس تدرّج زر المتابعة القياسي، يتّسع لنصه الحقيقي
-   ("+ متابعة" / "✓ متابَع") بدل قصّه داخل دائرة ضيّقة */
-.room-header-follow-pill {
+/* ✅ زر متابعة الرأس — أُعيدت هيكلته بالكامل: دائرة أيقونة صغيرة (26px) مستقلة تماماً عن
+   .js-room-follow-btn (لا نص يُقحَم بها إطلاقاً بعد الآن، فلا تكرار للفيضان الذي وقع بالمحاولتين
+   السابقتين). حالتان فقط: "+" بتدرّج المتابعة القياسي قبل المتابعة، وقلب وردي بعدها — يفتح
+   الضغط عليها حينها نادي معجبي المضيف مباشرة بدل تكرار زر متابعة لا فائدة منه بعد تفعيله */
+.room-header-follow-circle {
     flex-shrink: 0;
-    font-size: 10.5px;
-    padding: 6px 12px;
-    gap: 4px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
     margin: 0;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    color: #fff;
+    box-shadow: 0 1px 4px rgba(168,85,247,0.4);
+    transition: transform 0.15s ease, background 0.15s ease;
 }
-.room-header-follow-pill.hidden { display: none; }
+.room-header-follow-circle:active { transform: scale(0.9); }
+.room-header-follow-circle.following {
+    background: rgba(236,72,153,0.16);
+    color: #ec4899;
+    box-shadow: none;
+}
+.room-header-follow-circle.hidden { display: none; }
 
 /* ✅ بطاقة معلومات الغرفة (للضيوف) — ورقة سفلية بنفس أسلوب بقية أوراق المشروع */
 .room-info-card-sheet {
@@ -1262,6 +1402,15 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 
 /* ✅ صفحة المهام — قائمة صفوف بنفس لغة قائمة الصلاحيات، حالة كل مهمة (تم/مطالبة/تلقائي) */
 .support-mission-list { display: flex; flex-direction: column; gap: 7px; }
+/* ✅ شريط تتابع الحضور — يقرّب المستخدم من "إطار المثابر" الحصري عند 7 أيام متتالية */
+.support-mission-streak-row {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(251,146,60,0.08); border: 1px solid rgba(251,146,60,0.25);
+    border-radius: 12px; padding: 9px 12px; margin-bottom: 2px;
+}
+.support-mission-streak-row i { color: #fb923c; font-size: 14px; }
+.support-mission-streak-row span:nth-child(2) { flex: 1; font-size: 11.5px; font-weight: 800; color: #f3f4f6; }
+.support-mission-streak-goal { font-size: 9.5px; color: #fdba74; font-weight: 700; white-space: nowrap; }
 .support-mission-row {
     display: flex; align-items: center; gap: 10px;
     background: rgba(255,255,255,0.03);
@@ -3277,16 +3426,26 @@ body.in-voice-room #main-content {
 }
 
 /* ✅ زر الإرسال — الضغط المطوّل يحوّله لحالة نابضة بدل شكله الثابت (تصميمه الكامل أسفل
-   بقرب الشريحة المقسَّمة لاختيار الكمية) */
+   بقرب الشريحة المقسَّمة لاختيار الكمية). لون النبض بنفس تدرّج بنفسجي/وردي الزر نفسه
+   (بعد إعادة تصميمه من أخضر منفصل عن هوية التطبيق إلى تدرّج العلامة الموحَّد) */
 .gift-send-main-btn.gift-sending {
     transform: scale(1.06);
-    box-shadow: 0 0 0 5px rgba(16,185,129,0.22), 0 4px 16px rgba(5,150,105,0.5);
+    box-shadow: 0 0 0 5px rgba(168,85,247,0.25), 0 4px 16px rgba(236,72,153,0.5);
     animation: giftSendPulse 0.9s ease-in-out infinite;
 }
 @keyframes giftSendPulse {
-    0%, 100% { box-shadow: 0 0 0 5px rgba(16,185,129,0.22), 0 4px 16px rgba(5,150,105,0.5); }
-    50%      { box-shadow: 0 0 0 8px rgba(16,185,129,0.12), 0 4px 16px rgba(5,150,105,0.5); }
+    0%, 100% { box-shadow: 0 0 0 5px rgba(168,85,247,0.25), 0 4px 16px rgba(236,72,153,0.5); }
+    50%      { box-shadow: 0 0 0 8px rgba(168,85,247,0.14), 0 4px 16px rgba(236,72,153,0.5); }
 }
+
+/* ✅ كروت متجر الهدايا بنافذة "إرسال هدية" من الملف الشخصي (showGiftStoreModal) — تصغير
+   طفيف وتباعد أدق يحل الإحساس بكِبر/تراكب الكروت المُبلَّغ عنه. يستهدف #gift-cards-grid
+   حصراً كي لا يمسّ شبكات هدايا الغرفة المضبوطة أصلاً بحجم مختلف مقصود (.room-gift-cards-grid) */
+#gift-cards-grid.grid { gap: 6px; }
+#gift-cards-grid .gift-card-wrapper { padding: 6px 4px; border-radius: 12px; }
+#gift-cards-grid .gift-visual-slot,
+#gift-cards-grid .gift-visual-img { width: 34px; height: 34px; }
+#gift-cards-grid .gift-visual-slot span { font-size: 1.7rem; }
 
 /* ✅ نافذة هدايا الغرفة — شريط مستلمين أفقي قابل للتمرير + شريحة "الكل" دائرية بنفس حجم
    الصور (بدل زر عريض منفصل)، وكروت هدايا بلا حدود ظاهرة (تظهر فقط عند التحديد) وصورة
@@ -3375,24 +3534,29 @@ body.in-voice-room #main-content {
     box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
-/* ✅ زر الإرسال — مستطيل هادئ اللون بدل الدائرة السابقة، حجم أصغر قليلاً */
+/* ✅ زر الإرسال — أُعيدت هيكلته بالكامل: كبسولة بتدرّج هوية التطبيق البنفسجي/الوردي
+   (نفس تدرّج المتابعة وكارد الهدية المحدَّد) بدل الأخضر المنفصل سابقاً عن باقي الألوان،
+   بحافة لامعة خفيفة وظل أوضح يمنحه إحساس زر رئيسي حقيقي لا مستطيلاً باهتاً */
 .gift-send-main-btn {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    min-width: 84px;
-    height: 34px;
-    padding: 0 16px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, #10b981, #059669);
+    min-width: 90px;
+    height: 36px;
+    padding: 0 18px;
+    border-radius: 9999px;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    border: 1px solid rgba(255,255,255,0.18);
     color: #fff;
     font-size: 12.5px;
     font-weight: 800;
     flex-shrink: 0;
     position: relative;
-    box-shadow: 0 2px 8px rgba(16,185,129,0.35);
+    box-shadow: 0 3px 10px rgba(168,85,247,0.45);
+    transition: transform 0.12s ease;
 }
+.gift-send-main-btn:not(:disabled):active { transform: scale(0.95); }
 .gift-send-main-btn:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
 .gift-send-main-btn .gift-send-badge {
     background: rgba(0,0,0,0.3);

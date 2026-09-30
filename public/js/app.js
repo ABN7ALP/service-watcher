@@ -287,7 +287,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let method = 'POST';
     let successMessage = '';
     let icon = 'fa-check-circle';
-    let color = 'bg-green-500';
+    let type = 'success';
 
     // إذا كان هناك زر، حفظ حالته الأصلية
     let originalButtonHTML = '';
@@ -311,7 +311,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             url = `/api/friends/reject-request/${userId}`;
             successMessage = 'تم إلغاء الطلب';
             icon = 'fa-info-circle';
-            color = 'bg-blue-500';
+            type = 'info';
             break;
         case 'remove-friend':
             // ⭐⭐ الحل الجديد ⭐⭐
@@ -324,7 +324,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 });
             }
             
-            showFloatingAlert('تم حذف الصديق', 'fa-trash', 'bg-red-500');
+            showNotification('تم حذف الصديق', 'error', 'fa-trash');
             
             setTimeout(() => {
                 if (modalElement) {
@@ -365,7 +365,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             throw new Error(result.message || 'Action failed');
         }
         
-        showFloatingAlert(successMessage, icon, color);
+        showNotification(successMessage, type, icon);
         const refreshSuccess = await refreshUserData();
         
         if (refreshSuccess) {
@@ -2024,6 +2024,18 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function enterFullscreenRoomMode() {
         document.body.classList.add('in-voice-room');
     }
+
+    // ✅ زر متابعة رأس الغرفة المصغّر — أيقونة فقط (لا نص) كي لا يتصادم أبداً مع عدّاد دعم
+    // الجلسة المجاور له بالبطاقة نفسها على الشاشات الضيقة؛ مستقل تماماً عن .js-room-follow-btn
+    // العام (لا يشارك مزامنة النص الكامل معه) — بعد المتابعة يتحوّل لاختصار نادي معجبين المضيف
+    function updateRoomHeaderFollowIcon(isFollowing) {
+        const btn = document.getElementById('room-header-follow-btn');
+        if (!btn) return;
+        btn.dataset.following = isFollowing ? '1' : '0';
+        btn.classList.toggle('following', isFollowing);
+        btn.innerHTML = isFollowing ? '<i class="fas fa-heart"></i>' : '<i class="fas fa-plus"></i>';
+        btn.title = isFollowing ? 'نادي معجبين المضيف' : 'متابعة الغرفة';
+    }
     function exitFullscreenRoomMode() {
         document.body.classList.remove('in-voice-room');
         document.getElementById('dm-floating-bubble')?.remove();
@@ -2315,8 +2327,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                             </span>
                         </span>
                     </button>
-                    <button id="room-header-follow-btn" class="hidden follow-room-btn js-room-follow-btn room-header-follow-pill" data-following="0" title="متابعة الغرفة">
-                        <i class="fas fa-plus"></i> متابعة
+                    <button id="room-header-follow-btn" class="hidden room-header-follow-circle" data-following="0" title="متابعة الغرفة">
+                        <i class="fas fa-plus"></i>
                     </button>
                 </div>
                 <div class="flex-1"></div>
@@ -2346,9 +2358,17 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 showRoomInfoCard(room);
             }
         });
+        // ✅ زر متابعة الرأس المصغّر — أول ضغطة تتابع فقط (بلا إلغاء متابعة من هنا، متاح من
+        // بطاقة معلومات الغرفة)، ثم يتحوّل لاختصار نادي معجبين المضيف مباشرة — نفس فلسفة زر
+        // المتابعة بملف الغرفة المصغّر تماماً (showUserProfileSheet)
         document.getElementById('room-header-follow-btn').addEventListener('click', () => {
-            socket.emit(currentRoomIsFollowing ? 'unfollow-room' : 'follow-room', { roomId: room.id });
+            if (currentRoomIsFollowing) {
+                if (currentRoomHostId) showFanClubSheet(currentRoomHostId, currentRoomHostUsername, currentRoomHostProfileImage);
+                return;
+            }
+            socket.emit('follow-room', { roomId: room.id });
         });
+        updateRoomHeaderFollowIcon(currentRoomIsFollowing);
         document.getElementById('room-power-btn').addEventListener('click', () => showRoomExitOptionsSheet(room));
         document.getElementById('room-viewer-count-btn').addEventListener('click', () => showRoomViewersSheet(room.id));
         // ✅ لا يوجد زر رجوع ظاهر بعد الآن — السحب لأسفل من رأس الغرفة (نفس أسلوب تطبيقات
@@ -3190,6 +3210,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 btn.innerHTML = currentRoomIsFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة';
                 btn.classList.toggle('following', currentRoomIsFollowing);
             });
+            updateRoomHeaderFollowIcon(currentRoomIsFollowing);
             if (result.roomCode) {
                 currentRoomCode = result.roomCode; // ✅ لا يزال يُستخدم ببطاقة معلومات الغرفة ومنصّة الصدارة، وإن أُزيل من رأس الغرفة نفسه
             }
@@ -4823,7 +4844,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         } catch (error) {
             console.warn('[VOICE] تعذّر الوصول للمايكروفون:', error?.name || error);
             micPermissionDenied = true;
-            showFloatingAlert('تعذّر الوصول للمايكروفون — تحقّق من إذن الوصول له', 'fa-microphone-slash', 'bg-red-500');
+            showNotification('تعذّر الوصول للمايكروفون — تحقّق من إذن الوصول له', 'error', 'fa-microphone-slash');
             return null;
         }
     }
@@ -5398,21 +5419,18 @@ async function showSettingsView() {
 
     let blockedUsers = [];
     let blockedCount = 0;
-    let frameShopData = { frames: [], activeFrame: null, coins: 0 };
     let bubbleShopData = { skins: [], activeClass: null, coins: 0 };
 
-    const [blockedResult, frameResult, bubbleResult] = await Promise.allSettled([
+    // ✅ متجر الإطارات أصبح نافذة مستقلة (showFrameShopModal) تجلب بياناتها بنفسها عند فتحها —
+    // بلا حاجة لجلبها هنا مسبقاً لكل زيارة للإعدادات حتى لو المستخدم لن يفتحها إطلاقاً
+    const [blockedResult, bubbleResult] = await Promise.allSettled([
         fetch('/api/blocks/blocked-list', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
-        fetch('/api/frames/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
         fetch('/api/bubble-skins/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : null)
     ]);
 
     if (blockedResult.status === 'fulfilled' && blockedResult.value) {
         blockedUsers = blockedResult.value.data.blockedUsers || [];
         blockedCount = blockedUsers.length;
-    }
-    if (frameResult.status === 'fulfilled' && frameResult.value) {
-        frameShopData = frameResult.value.data;
     }
     if (bubbleResult.status === 'fulfilled' && bubbleResult.value) {
         bubbleShopData = bubbleResult.value.data;
@@ -5536,56 +5554,17 @@ async function showSettingsView() {
                 </div>
             </div>
              <!-- =========================================== -->
-            <!-- 5. قسم متجر الإطارات (الجديد) -->
+            <!-- 5. متجر الإطارات — أصبح نافذة مستقلة كاملة (showFrameShopModal) بدل قسم قابل
+                 للطي داخل الإعدادات؛ هذا الصف مجرد بوابة دخول -->
             <!-- =========================================== -->
             <div class="mb-3">
-                <div class="collapsible-header bg-white/30 dark:bg-gray-800/50 p-3 rounded-lg cursor-pointer flex justify-between items-center" data-target="frames-shop-section">
-                                        <h3 class="text-sm font-bold flex items-center gap-2">
+                <button type="button" id="open-frame-shop-btn" class="w-full bg-white/30 dark:bg-gray-800/50 p-3 rounded-lg flex justify-between items-center">
+                    <h3 class="text-sm font-bold flex items-center gap-2">
                         <i class="fas fa-crown text-purple-400"></i>متجر الإطارات
                         <button id="frames-support-btn" class="report-issue-icon-btn" style="width:22px;height:22px;" title="الإبلاغ عن مشكلة" onclick="event.stopPropagation();"><i class="fas fa-exclamation-triangle" style="font-size:0.6rem;"></i></button>
                     </h3>
-                    <i class="fas fa-chevron-down text-xs transition-transform duration-300"></i>
-                </div>
-                
-                <div id="frames-shop-section" class="collapsible-content hidden bg-gray-800/30 p-4 rounded-b-lg">
-                    <div class="flex items-center justify-between mb-3 bg-gray-900/50 rounded-xl p-2.5">
-                        <span class="text-xs text-gray-400">رصيدك الحالي</span>
-                        <span class="font-bold text-yellow-400 flex items-center gap-1 text-sm">
-                            <i class="fas fa-coins"></i> ${frameShopData.coins}
-                        </span>
-                    </div>
-
-                       <div class="grid grid-cols-3 gap-2">
-                        ${frameShopData.frames.filter(f => f.name !== 'إطار الترحيب').map(f => {
-                            const owned = f.ownedInstance;
-                            const isActive = frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString();
-                            const isExpired = owned && owned.expiresAt && new Date(owned.expiresAt) < new Date();
-
-                            return `
-                            <div class="bg-gray-900/40 rounded-xl p-2 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'}">
-                                <div class="w-12 h-12 mx-auto rounded-full ${f.cssClass} bg-gray-700 mb-1.5"></div>
-                                <p class="text-[11px] font-bold mb-1 truncate">${f.name}</p>
-                                
-                                ${owned && !isExpired ? `
-                                    ${owned.activatedAt ? `<p class="text-[9px] text-gray-400 mb-1.5">ينتهي: ${new Date(owned.expiresAt).toLocaleDateString('ar-SA')}</p>` : `<p class="text-[9px] text-green-400 mb-1.5">بحوزتك</p>`}
-                                    <button class="equip-frame-btn w-full text-[10px] py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}" 
-                                            data-frame-id="${f._id}" ${isActive ? 'disabled' : ''}>
-                                        ${isActive ? 'مُفعّل' : 'تفعيل'}
-                                    </button>
-                                ` : `
-                                    <select class="frame-duration-select w-full text-[10px] bg-gray-700 rounded p-1 mb-1.5" data-frame-id="${f._id}">
-                                        <option value="7">7 أيام - ${f.prices.days7}</option>
-                                        <option value="30">30 يوم - ${f.prices.days30}</option>
-                                        <option value="365">سنة - ${f.prices.days365}</option>
-                                    </select>
-                                    <button class="purchase-frame-btn w-full text-[10px] py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-frame-id="${f._id}">
-                                        شراء
-                                    </button>
-                                `}
-                            </div>
-                        `}).join('')}
-                    </div>
-                </div>
+                    <i class="fas fa-chevron-left text-xs"></i>
+                </button>
             </div>
 
             <!-- =========================================== -->
@@ -5712,115 +5691,154 @@ async function showSettingsView() {
 }
 
 
-async function reloadFrameShopSection() {
-    try {
-        const frameResponse = await fetch('/api/frames/shop', { headers: { 'Authorization': `Bearer ${token}` } });
-        const frameResult = await frameResponse.json();
-        if (!frameResponse.ok) throw new Error();
-        const frameShopData = frameResult.data;
-
-        const section = document.getElementById('frames-shop-section');
-        if (!section) return;
-
-                section.innerHTML = `
-            <div class="flex items-center justify-between mb-3 bg-gray-900/50 rounded-xl p-2.5">
-                <span class="text-xs text-gray-400">رصيدك الحالي</span>
-                <span class="font-bold text-yellow-400 flex items-center gap-1 text-sm">
-                    <i class="fas fa-coins"></i> ${frameShopData.coins}
-                </span>
+// ✅ بطاقة إطار واحدة بالمتجر — معاينة حقيقية بصورة المستخدم الفعلية بدل دائرة رمادية فارغة
+// (الإطارات كلها أصناف CSS خام تُطبَّق مباشرة على <img>، فالمعاينة هنا مطابقة تماماً لما
+// سيظهر فعلياً بكل مكان بالتطبيق بمجرد التفعيل)؛ شريط أيام قابل للنقر بدل <select> خام
+function frameShopCardHTML(f, activeFrameId, userPhoto) {
+    const owned = f.ownedInstance;
+    const isActive = activeFrameId && activeFrameId.toString() === f._id.toString();
+    const isExpired = owned && owned.expiresAt && new Date(owned.expiresAt) < new Date();
+    const showOwned = owned && !isExpired;
+    return `
+        <div class="frame-shop-card ${isActive ? 'active' : ''}">
+            <div class="frame-shop-card-avatar-wrap">
+                <img src="${userPhoto}" class="frame-shop-card-avatar ${f.cssClass}">
             </div>
-            <div class="grid grid-cols-3 gap-2">
-                ${frameShopData.frames.filter(f => f.name !== 'إطار الترحيب').map(f => {
-                    const owned = f.ownedInstance;
-                    const isActive = frameShopData.activeFrame && frameShopData.activeFrame.toString() === f._id.toString();
-                    const isExpired = owned && owned.expiresAt && new Date(owned.expiresAt) < new Date();
-                    return `
-                    <div class="bg-gray-900/40 rounded-xl p-2 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'}">
-                        <div class="w-12 h-12 mx-auto rounded-full ${f.cssClass} bg-gray-700 mb-1.5"></div>
-                        <p class="text-[11px] font-bold mb-1 truncate">${f.name}</p>
-                        ${owned && !isExpired ? `
-                            ${owned.activatedAt ? `<p class="text-[9px] text-gray-400 mb-1.5">ينتهي: ${new Date(owned.expiresAt).toLocaleDateString('ar-SA')}</p>` : `<p class="text-[9px] text-green-400 mb-1.5">بحوزتك</p>`}
-                            <button class="equip-frame-btn w-full text-[10px] py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}"
-                                    data-frame-id="${f._id}" ${isActive ? 'disabled' : ''}>
-                                ${isActive ? 'مُفعّل' : 'تفعيل'}
-                            </button>
-                        ` : `
-                            <select class="frame-duration-select w-full text-[10px] bg-gray-700 rounded p-1 mb-1.5" data-frame-id="${f._id}">
-                                <option value="7">7 أيام - ${f.prices.days7}</option>
-                                <option value="30">30 يوم - ${f.prices.days30}</option>
-                                <option value="365">سنة - ${f.prices.days365}</option>
-                            </select>
-                            <button class="purchase-frame-btn w-full text-[10px] py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-frame-id="${f._id}">
-                                شراء
-                            </button>
-                        `}
-                    </div>
-                `}).join('')}
-            </div>
-        `;
-        bindFrameShopButtons();
-    } catch (error) {
-        console.error('Failed to reload frame shop:', error);
-    }
+            <p class="frame-shop-card-name">${escapeHtml(f.name)}</p>
+            ${showOwned ? `
+                ${owned.activatedAt ? `<p class="frame-shop-card-expiry">ينتهي ${new Date(owned.expiresAt).toLocaleDateString('ar-SA')}</p>` : `<p class="frame-shop-card-owned-label"><i class="fas fa-check-circle"></i> بحوزتك</p>`}
+                <button type="button" class="frame-shop-equip-btn" data-frame-id="${f._id}" ${isActive ? 'disabled' : ''}>
+                    ${isActive ? '<i class="fas fa-check"></i> مُفعّل' : 'تفعيل'}
+                </button>
+            ` : `
+                <div class="frame-shop-duration-pills" data-frame-id="${f._id}">
+                    <button type="button" class="frame-shop-duration-pill active" data-duration="7">7 أيام<span>${f.prices.days7}</span></button>
+                    <button type="button" class="frame-shop-duration-pill" data-duration="30">30 يوم<span>${f.prices.days30}</span></button>
+                    <button type="button" class="frame-shop-duration-pill" data-duration="365">سنة<span>${f.prices.days365}</span></button>
+                </div>
+                <button type="button" class="frame-shop-purchase-btn" data-frame-id="${f._id}" data-selected-duration="7">
+                    <i class="fas fa-coins"></i> شراء
+                </button>
+            `}
+        </div>
+    `;
 }
 
-function bindFrameShopButtons() {
-    document.querySelectorAll('.purchase-frame-btn').forEach(btn => {
-        btn.addEventListener('click', async function() {
-            const frameId = this.dataset.frameId;
-            const durationSelect = document.querySelector(`.frame-duration-select[data-frame-id="${frameId}"]`);
-            const duration = durationSelect ? durationSelect.value : '7';
-            this.disabled = true;
-            this.textContent = '...';
-            try {
-                const response = await fetch('/api/frames/purchase', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ frameId, duration })
-                });
-                const result = await response.json();
-                if (response.ok) {
-                    showNotification(result.message, 'success');
-                    await refreshUserData();
-                    await reloadFrameShopSection();
-                } else {
-                    showNotification(result.message || 'فشل الشراء', 'error');
-                    this.disabled = false;
-                    this.textContent = 'شراء';
-                }
-            } catch (error) {
-                showNotification('خطأ في الاتصال بالخادم', 'error');
-                this.disabled = false;
-                this.textContent = 'شراء';
-            }
-        });
-    });
+// ✅ نافذة "متجر الإطارات" — أصبحت ورقة سفلية مستقلة كاملة بدل قسم قابل للطي مدفون بالإعدادات:
+// معاينة حية كبيرة للإطار المفعّل حالياً بصورتك الفعلية، ثم شبكة بطاقات (عمودان) لكل إطار
+// متاح، كل واحد بمعاينة حقيقية + شريط مدد نقرة واحدة بدل قائمة منسدلة
+async function showFrameShopModal() {
+    document.getElementById('frame-shop-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'frame-shop-modal';
+    modal.className = 'fixed inset-0 bg-black/70 flex items-end justify-center z-[340]';
+    const localUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const userPhoto = localUser.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+    modal.innerHTML = `
+        <div class="frame-shop-sheet">
+            <div class="w-10 h-1 bg-white/15 rounded-full mx-auto mt-2.5 mb-1 flex-shrink-0"></div>
+            <div class="frame-shop-header">
+                <span class="frame-shop-title"><i class="fas fa-crown"></i> متجر الإطارات</span>
+                <span class="frame-shop-coins"><i class="fas fa-coins"></i> <span id="frame-shop-coins-value">...</span></span>
+            </div>
+            <div id="frame-shop-current-preview" class="frame-shop-current-preview">
+                <div class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin"></i></div>
+            </div>
+            <div id="frame-shop-grid" class="frame-shop-grid"></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'frame-shop-modal') modal.remove(); });
 
-    document.querySelectorAll('.equip-frame-btn').forEach(btn => {
-        btn.addEventListener('click', async function() {
-            const frameId = this.dataset.frameId;
-            this.disabled = true;
-            try {
-                const response = await fetch('/api/frames/equip', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ frameId })
-                });
-                const result = await response.json();
-                if (response.ok) {
-                    showNotification(result.message, 'success');
-                    await refreshUserData();
-                    await reloadFrameShopSection();
-                } else {
-                    showNotification(result.message || 'فشل التفعيل', 'error');
-                    this.disabled = false;
-                }
-            } catch (error) {
-                showNotification('خطأ في الاتصال بالخادم', 'error');
-                this.disabled = false;
+    async function reload() {
+        try {
+            const res = await fetch('/api/frames/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+            if (res.status !== 'success') throw new Error();
+            const data = res.data;
+            const coinsEl = modal.querySelector('#frame-shop-coins-value');
+            if (coinsEl) coinsEl.textContent = data.coins.toLocaleString();
+
+            const activeMeta = data.activeFrame ? data.frames.find(f => f._id.toString() === data.activeFrame.toString()) : null;
+            const preview = modal.querySelector('#frame-shop-current-preview');
+            preview.innerHTML = `
+                <div class="frame-shop-current-avatar-wrap">
+                    <img src="${userPhoto}" class="frame-shop-current-avatar ${activeMeta ? activeMeta.cssClass : ''}">
+                </div>
+                <p class="frame-shop-current-label">${activeMeta ? escapeHtml(activeMeta.name) : 'بلا إطار مفعّل حالياً'}</p>
+                ${activeMeta ? `<button type="button" id="frame-shop-remove-btn" class="frame-shop-remove-btn">إزالة الإطار</button>` : ''}
+            `;
+            preview.querySelector('#frame-shop-remove-btn')?.addEventListener('click', () => equipFrame(null));
+
+            const grid = modal.querySelector('#frame-shop-grid');
+            grid.innerHTML = data.frames
+                .filter(f => f.name !== 'إطار الترحيب' && f.name !== 'إطار المثابر')
+                .map(f => frameShopCardHTML(f, data.activeFrame, userPhoto)).join('');
+            bindCardEvents();
+        } catch (error) {
+            console.error('Failed to load frame shop:', error);
+            showNotification('تعذر تحميل متجر الإطارات', 'error');
+        }
+    }
+
+    async function purchaseFrame(frameId, duration, btn) {
+        btn.disabled = true;
+        try {
+            const res = await fetch('/api/frames/purchase', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ frameId, duration })
+            }).then(r => r.json());
+            if (res.status === 'success') {
+                showNotification(res.message, 'success');
+                await refreshUserData();
+                await reload();
+            } else {
+                showNotification(res.message || 'فشل الشراء', 'error');
+                btn.disabled = false;
             }
+        } catch (error) {
+            showNotification('خطأ في الاتصال بالخادم', 'error');
+            btn.disabled = false;
+        }
+    }
+
+    async function equipFrame(frameId) {
+        try {
+            const res = await fetch('/api/frames/equip', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ frameId })
+            }).then(r => r.json());
+            if (res.status === 'success') {
+                showNotification(res.message, 'success');
+                await refreshUserData();
+                await reload();
+            } else {
+                showNotification(res.message || 'فشل التفعيل', 'error');
+            }
+        } catch (error) {
+            showNotification('خطأ في الاتصال بالخادم', 'error');
+        }
+    }
+
+    function bindCardEvents() {
+        modal.querySelectorAll('.frame-shop-duration-pills').forEach(row => {
+            row.querySelectorAll('.frame-shop-duration-pill').forEach(pill => {
+                pill.addEventListener('click', () => {
+                    row.querySelectorAll('.frame-shop-duration-pill').forEach(p => p.classList.remove('active'));
+                    pill.classList.add('active');
+                    const purchaseBtn = modal.querySelector(`.frame-shop-purchase-btn[data-frame-id="${row.dataset.frameId}"]`);
+                    if (purchaseBtn) purchaseBtn.dataset.selectedDuration = pill.dataset.duration;
+                });
+            });
         });
-    });
+        modal.querySelectorAll('.frame-shop-purchase-btn').forEach(btn => {
+            btn.addEventListener('click', () => purchaseFrame(btn.dataset.frameId, btn.dataset.selectedDuration, btn));
+        });
+        modal.querySelectorAll('.frame-shop-equip-btn').forEach(btn => {
+            btn.addEventListener('click', () => equipFrame(btn.dataset.frameId));
+        });
+    }
+
+    await reload();
 }
 
 async function reloadBubbleShopSection() {
@@ -5943,9 +5961,9 @@ function setupSettingsEvents() {
 
 
 
-     bindFrameShopButtons();
-    bindBubbleShopButtons();
-    document.getElementById('frames-support-btn')?.addEventListener('click', () => showQuickSupportModal('frame_issue', 'مشكلة في الإطارات'));
+     bindBubbleShopButtons();
+    document.getElementById('open-frame-shop-btn')?.addEventListener('click', () => showFrameShopModal());
+    document.getElementById('frames-support-btn')?.addEventListener('click', (e) => { e.stopPropagation(); showQuickSupportModal('frame_issue', 'مشكلة في الإطارات'); });
     
     // 2. تحديث الصورة الشخصية
     document.getElementById('select-image-btn').addEventListener('click', () => {
@@ -6310,7 +6328,7 @@ async function blockUser(userId, modalElement) {
         const result = await response.json();
  
         if (response.ok) {
-            showFloatingAlert('تم الحظر', 'fa-ban', 'bg-red-500');
+            showNotification('تم الحظر', 'error', 'fa-ban');
             
             await refreshUserData();
             
@@ -6349,7 +6367,7 @@ async function blockUser(userId, modalElement) {
             
             return true;
           } else {
-            showFloatingAlert(result.message || 'فشل حظر المستخدم', 'fa-exclamation-circle', 'bg-red-500');
+            showNotification(result.message || 'فشل حظر المستخدم', 'error');
             return false;
         }
         
@@ -6377,7 +6395,7 @@ async function unblockUser(userId, modalElement) {
         const result = await response.json();
  
         if (response.ok) {
-            showFloatingAlert('تم رفع حظر', 'fa-ban', 'bg-red-500');
+            showNotification('تم رفع حظر', 'success', 'fa-ban');
             
             await refreshUserData();
 
@@ -6826,8 +6844,11 @@ function showXpGainAnimation(amount) {
     // =========== قسم عام وأحداث السوكيت =============
     // =================================================
 
-        function showNotification(message, type = 'info') {
+        function showNotification(message, type = 'info', customIcon = null) {
         // ✅ استُبدل الصندوق الجانبي المزعج بإشعار عائم أنيق يظهر أعلى المنتصف ثم يختفي تلقائياً
+        // ✅ المسار الموحَّد الوحيد لكل إشعارات التطبيق العائمة بلا استثناء (بعد دمج showFloatingAlert
+        // المنفصلة سابقاً هنا) — customIcon اختياري يحافظ على أيقونة مخصّصة بالسياق (مثلاً fa-ban
+        // عند الحظر) فوق ألوان/تصميم موحَّد لكل الإشعارات
         const colors = { success: 'bg-green-500/90', error: 'bg-red-500/90', info: 'bg-purple-600/90', warning: 'bg-yellow-500/90' };
         const icon = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle', warning: 'fa-exclamation-triangle' };
 
@@ -6839,7 +6860,7 @@ function showXpGainAnimation(amount) {
         // بالسكيما يُحقَن هنا حَرفياً (XSS مخزّن) بكل مكان ناداها بدون escapeHtml يدوياً بنفسه
         // (نسيان متكرر ومتوقَّع). نفس نمط الحماية عند المصدر المستخدَم أصلاً بـshowBottomToast
         // المجاورة — تهريب واحد هنا يحمي كل نداء حالي ومستقبلي دفعة واحدة
-        notification.innerHTML = `<i class="fas ${icon[type] || icon.info}"></i><span>${escapeHtml(message)}</span>`;
+        notification.innerHTML = `<i class="fas ${customIcon || icon[type] || icon.info}"></i><span>${escapeHtml(message)}</span>`;
         document.body.appendChild(notification);
 
         setTimeout(() => {
@@ -7357,6 +7378,7 @@ function showXpGainAnimation(amount) {
                 : '<i class="fas fa-plus"></i> متابعة';
             btn.classList.toggle('following', isFollowing);
         });
+        updateRoomHeaderFollowIcon(isFollowing);
         const countEl = document.getElementById('room-info-followers-count');
         if (countEl && typeof followersCount === 'number') countEl.textContent = followersCount;
     });
@@ -8080,22 +8102,10 @@ function showConfirmationModal(message, onConfirm) {
 }
 
 
-// --- ✅ دالة جديدة للإشعار العائم ---
-function showFloatingAlert(message, icon = 'fa-check-circle', color = 'bg-green-500') {
-    const alertElement = document.createElement('div');
-    alertElement.innerHTML = `<i class="fas ${icon} mr-2"></i> ${message}`;
-    alertElement.className = `floating-alert fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ${color}/80 text-white font-bold px-4 py-2 rounded-full shadow-lg z-[600]`;
-    
-    document.body.appendChild(alertElement);
-
-    setTimeout(() => {
-        alertElement.remove();
-    }, 1900);
-}
-
 // ✅ إشعار عائم من أسفل الشاشة — بالضبط أسلوب Toast تطبيقات الجوال (Android/iOS)، بعكس
-// showNotification/showFloatingAlert اللتين تظهران أعلى/منتصف الشاشة. يُكدَّس فوق بعضه لو
-// وصل أكثر من إشعار بنفس اللحظة بدل أن يتراكب ويُخفي بعضه بعضاً
+// showNotification (أعلى الشاشة) التي أصبحت المسار الوحيد للإشعارات العلوية/المركزية بعد
+// دمج showFloatingAlert المنفصلة سابقاً فيها (كانت مصدر ثغرة XSS: message تُدرَج كـinnerHTML
+// دون تهريب). يُكدَّس فوق بعضه لو وصل أكثر من إشعار بنفس اللحظة بدل أن يتراكب ويُخفي بعضه بعضاً
 function showBottomToast(message, icon = 'fa-info-circle') {
     const stacked = document.querySelectorAll('.bottom-toast').length;
     const el = document.createElement('div');
@@ -9408,7 +9418,7 @@ async function showMiniProfileModal(userId) {
                         // زر إرسال هدية
             if (e.target.closest('.gift-action-btn')) {
                 if (profileUser.isBot) {
-                    showFloatingAlert('لا يمكن إرسال هدايا لهذا الحساب', 'fa-robot', 'bg-purple-600');
+                    showNotification('لا يمكن إرسال هدايا لهذا الحساب', 'info', 'fa-robot');
                     return;
                 }
                 const giftTargetId = e.target.closest('.gift-action-btn').dataset.userId;
@@ -9419,7 +9429,7 @@ async function showMiniProfileModal(userId) {
             
             if (e.target.closest('.block-action-btn')) {
                 if (profileUser.isBot) {
-                    showFloatingAlert('لا يمكنك حظر الحساب الرسمي للمنصة', 'fa-robot', 'bg-purple-600');
+                    showNotification('لا يمكنك حظر الحساب الرسمي للمنصة', 'info', 'fa-robot');
                     return;
                 }
                 const userIdToBlock = e.target.closest('.block-action-btn').dataset.userId;
@@ -9434,7 +9444,7 @@ async function showMiniProfileModal(userId) {
             }
                         if (e.target.closest('.report-user-btn')) {
                 if (profileUser.isBot) {
-                    showFloatingAlert('لا يمكن الإبلاغ عن الحساب الرسمي للمنصة', 'fa-robot', 'bg-purple-600');
+                    showNotification('لا يمكن الإبلاغ عن الحساب الرسمي للمنصة', 'info', 'fa-robot');
                     return;
                 }
                 const btn = e.target.closest('.report-user-btn');
@@ -9596,7 +9606,7 @@ function supportPrivilegesListHTML(info) {
 }
 // ✅ صفحة "مهمة المستوى" — للسخاء (giving) فقط، تُبنى بعد جلب /api/users/support/missions؛
 // التلقي (receiving) بلا مهام قابلة للإنجاز (ما يستلمه المستخدم فعل غيره، لا فعله هو)
-function supportMissionsGivingHTML(missions, giftSentToday) {
+function supportMissionsGivingHTML(missions, giftSentToday, streak) {
     const giftRow = `
         <div class="support-mission-row ${giftSentToday ? 'claimed' : ''}">
             <span class="support-mission-icon"><i class="fas fa-gift"></i></span>
@@ -9607,8 +9617,17 @@ function supportMissionsGivingHTML(missions, giftSentToday) {
             ${giftSentToday ? '<span class="support-mission-done"><i class="fas fa-check"></i></span>' : '<span class="support-mission-auto">تلقائي</span>'}
         </div>
     `;
+    // ✅ شريط تتابع الحضور اليومي — كل حضور متتالٍ يقرّبك من "إطار المثابر" الحصري عند 7 أيام
+    const streakRow = `
+        <div class="support-mission-streak-row">
+            <i class="fas fa-fire"></i>
+            <span>${streak > 0 ? `${streak} ${streak === 1 ? 'يوم متتالٍ' : 'أيام متتالية'}` : 'ابدأ تتابعاً اليوم'}</span>
+            <span class="support-mission-streak-goal">${streak >= 7 ? '🏆 إطار المثابر بحوزتك' : `${Math.max(0, 7 - streak)} أيام لإطار المثابر`}</span>
+        </div>
+    `;
     return `
         <div class="support-mission-list">
+            ${streakRow}
             ${missions.map(m => `
                 <div class="support-mission-row ${m.claimed ? 'claimed' : ''}">
                     <span class="support-mission-icon"><i class="fas ${m.icon}"></i></span>
@@ -9751,6 +9770,9 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
             }
             showNotification(`✅ +${res.data.pointsGained.toLocaleString()} خبرة`, 'success');
             fireConfettiBurst(['#facc15', ...info.tierGradient]);
+            if (res.data.frameGranted) {
+                setTimeout(() => showNotification(`🏆 حصلت على "${res.data.frameGranted}" بشكل دائم — 7 أيام حضور متتالية!`, 'success'), 900);
+            }
             applyNewLevelInfo(res.data.levelInfo);
             await loadMissionsFace();
         } catch (error) {
@@ -9769,7 +9791,8 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
             const res = await fetch('/api/users/support/missions', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
             const missions = res.status === 'success' ? res.data.missions : [];
             const giftSentToday = res.status === 'success' ? res.data.giftSentToday : false;
-            backFace.innerHTML = supportMissionsGivingHTML(missions, giftSentToday);
+            const streak = res.status === 'success' ? res.data.streak : 0;
+            backFace.innerHTML = supportMissionsGivingHTML(missions, giftSentToday, streak);
         } catch (error) {
             backFace.innerHTML = `<p class="text-center text-gray-400 py-6">تعذر تحميل مهام اليوم حالياً</p>`;
         }
@@ -11353,7 +11376,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
             const localUser = JSON.parse(localStorage.getItem('user'));
             const totalCost = gift.price * quantity;
             if (!localUser || localUser.coins < totalCost) {
-                showFloatingAlert('رصيد الكوينز غير كافٍ للإرسال', 'fa-coins', 'bg-red-500');
+                showNotification('رصيد الكوينز غير كافٍ للإرسال', 'error', 'fa-coins');
                 return false;
             }
 
@@ -11395,7 +11418,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                         if (coinsEl) coinsEl.textContent = revertUser.coins;
                         footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = revertUser.coins);
                     }
-                    showFloatingAlert(result2.message || 'فشل إرسال الهدية', 'fa-exclamation-circle', 'bg-red-500');
+                    showNotification(result2.message || 'فشل إرسال الهدية', 'error');
                     return false;
                 }
             } catch (error) {
@@ -11568,14 +11591,14 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 ? seatedUsers.map(u => u.id)
                 : [...selectedUserIds];
             if (recipients.length === 0) {
-                showFloatingAlert('اختر مستلماً واحداً على الأقل', 'fa-user', 'bg-amber-500');
+                showNotification('اختر مستلماً واحداً على الأقل', 'warning', 'fa-user');
                 return false;
             }
 
             const totalCost = gift.price * quantity * recipients.length;
             const localUser = JSON.parse(localStorage.getItem('user'));
             if (!localUser || localUser.coins < totalCost) {
-                showFloatingAlert('رصيد الكوينز غير كافٍ للإرسال', 'fa-coins', 'bg-red-500');
+                showNotification('رصيد الكوينز غير كافٍ للإرسال', 'error', 'fa-coins');
                 return false;
             }
 
@@ -11637,7 +11660,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 // ✅ حد معدّل الإرسال (429) أثناء ضغط مستمر سريع: لا نقاطع المستخدم ولا نزعجه
                 // بتنبيه — فقط نتراجع عن خصم هذي المحاولة ونكمل بهدوء بالتكرار التالي تلقائياً
                 if (response.status === 429) return true;
-                showFloatingAlert(result.message || 'تعذر إرسال الهدية', 'fa-exclamation-circle', 'bg-red-500');
+                showNotification(result.message || 'تعذر إرسال الهدية', 'error');
                 return false;
             } catch (error) {
                 console.error('[ROOM GIFT] Error sending:', error);
@@ -11864,7 +11887,7 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
         const localUser = JSON.parse(localStorage.getItem('user'));
         if (!localUser || localUser.coins < gift.price) {
             stopRapidSending();
-            showFloatingAlert('رصيد الكوينز غير كافٍ للإرسال', 'fa-coins', 'bg-red-500');
+            showNotification('رصيد الكوينز غير كافٍ للإرسال', 'error', 'fa-coins');
             return;
         }
 
@@ -11917,7 +11940,7 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
                     if (balanceEl) balanceEl.textContent = revertUser.coins;
                 }
                 stopRapidSending();
-                showFloatingAlert(result.message || 'فشل إرسال الهدية', 'fa-exclamation-circle', 'bg-red-500');
+                showNotification(result.message || 'فشل إرسال الهدية', 'error');
             }
         } catch (error) {
             console.error('[RAPID GIFT] Error:', error);
@@ -13490,7 +13513,7 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
         const recipientCount = audienceMode === 'all' ? onlineCount : selectedUserIds.size;
         if (recipientCount === 0) {
             stopRapidSending();
-            showFloatingAlert('يجب اختيار شخص أولاً', 'fa-user-plus', 'bg-yellow-500');
+            showNotification('يجب اختيار شخص أولاً', 'warning', 'fa-user-plus');
             return;
         }
 
@@ -13498,7 +13521,7 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
         const cost = gift.price * recipientCount;
         if (!localUser || localUser.coins < cost) {
             stopRapidSending();
-            showFloatingAlert('رصيد الكوينز غير كافٍ', 'fa-coins', 'bg-red-500');
+            showNotification('رصيد الكوينز غير كافٍ', 'error', 'fa-coins');
             return;
         }
 
@@ -13555,7 +13578,7 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
                 // بتنبيه — فقط نتراجع عن خصم هذي المحاولة ونكمل بهدوء بالتكرار التالي تلقائياً
                 if (response.status !== 429) {
                     stopRapidSending();
-                    showFloatingAlert(result.message || 'فشل إرسال الهدية', 'fa-exclamation-circle', 'bg-red-500');
+                    showNotification(result.message || 'فشل إرسال الهدية', 'error');
                 }
             }
         } catch (error) {
@@ -17158,12 +17181,12 @@ async function updateFriendsAvatars(friendsList) {
             });
             const result = await response.json();
             if (!response.ok) {
-                alert(result.message || 'فشل الانضمام');
+                showNotification(result.message || 'فشل الانضمام', 'error');
                 joinBtn.disabled = false;
                 joinBtn.textContent = 'انضم';
             }
         } catch (error) {
-            alert('خطأ في الاتصال بالخادم');
+            showNotification('خطأ في الاتصال بالخادم', 'error');
             joinBtn.disabled = false;
             joinBtn.textContent = 'انضم';
         }
