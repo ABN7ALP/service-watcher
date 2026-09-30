@@ -28,6 +28,9 @@ router.post('/:id/poke', userController.pokeUser);
 router.get('/:id/followers', userController.getFollowersList);
 router.get('/:id/following', userController.getFollowingList);
 router.get('/me/profile-visits', userController.getMyProfileVisits);
+// ✅ مهام "مستوى الدعم" اليومية — قبل الأنماط الديناميكية (:id) كي لا يُبتلع "support" كمعرّف
+router.get('/support/missions', userController.getSupportMissions);
+router.post('/support/checkin', userController.claimSupportCheckIn);
 router.get('/discover/people', userController.discoverPeople);
 router.get('/:id', userController.getUserById);
 // ✅ مسار جديد لجلب بيانات المستخدم بسرعة (للملف الشخصي المصغر)

@@ -49,6 +49,15 @@ const userSchema = new mongoose.Schema({
         emblemColorId: { type: String, enum: ['pink', 'yellow', 'purple', 'blue', 'orange'], default: 'pink' },
         giftColorId: { type: String, enum: ['pink', 'yellow', 'purple', 'blue', 'orange'], default: 'pink' }
     },
+    // ✅ مهام "مستوى الدعم" اليومية (للسخاء/giving فقط — التلقي/receiving مبني على أفعال
+    // آخرين، لا مهام قابلة للإنجاز منه). bonusXP يُضاف حرفياً فوق كوينز الهدايا الحقيقية عند
+    // حساب مستوى الدعم (server/controllers/userController.js computeSupportLevels) — لا يُغيّر
+    // رصيد المستخدم الفعلي (coins)، مجرد نقاط ولاء إضافية بنفس فلسفة نقاط نادي المعجبين تماماً
+    supportMissions: {
+        lastCheckInAt: { type: Date, default: null },
+        lastChatBonusAt: { type: Date, default: null },
+        bonusXP: { type: Number, default: 0 }
+    },
     // ✅ حقول جديدة للوحة التحكم
     isBanned: { type: Boolean, default: false },
     banReason: { type: String, default: null },
