@@ -2032,9 +2032,16 @@ socket.on('refreshBlockData', async () => {
 
         // ✅ القائمة الكاملة الحيّة لمن يشاهد الغرفة الآن (مأخوذة من عضوية قناة السوكيت نفسها،
         // بلا حاجة لتخزين إضافي بقاعدة البيانات — نفس مصدر عدّاد المشاهدين تماماً)
-        socket.on('get-room-viewers', ({ roomId }) => {
+        socket.on('get-room-viewers', async ({ roomId }) => {
             if (!roomId) return;
-            socket.emit('room-viewers-list', { roomId, viewers: getRoomViewers(io, roomId) });
+            const viewers = getRoomViewers(io, roomId);
+            // ✅ مرتبة الغرفة ضمن ترتيب أقوى الغرف — لا معنى لها للغرفة الرسمية أو لآيدي غير صالح
+            let roomRank = null;
+            const mongoose = require('mongoose');
+            if (roomId !== 'main' && mongoose.Types.ObjectId.isValid(roomId)) {
+                try { roomRank = await VoiceRoom.getRoomRank(roomId); } catch (e) { /* تُترك null بصمت */ }
+            }
+            socket.emit('room-viewers-list', { roomId, viewers, roomRank });
         });
 
         socket.on('send-room-message', async ({ roomId, message }) => {

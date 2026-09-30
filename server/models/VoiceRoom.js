@@ -441,6 +441,28 @@ voiceRoomSchema.statics.getTopRankedRooms = async function (limit = 10) {
     }));
 };
 
+// ✅ مرتبة هذي الغرفة تحديداً ضمن نفس ترتيب getTopRankedRooms أعلاه (نفس صيغة rankScore
+// بالضبط) — بعدّ الغرف الأخرى الأعلى نقاطاً بدل جلب القائمة كاملة، أرخص من صفحة الترتيب
+// عندما نحتاج فقط رقم مرتبة غرفة واحدة (نافذة المشاهدين مثلاً). null لو الغرفة رسمية أو
+// بلا أي نقاط دعم/متابعين إطلاقاً (نفس شرط الاستبعاد من الترتيب العام تماماً — "غير مصنّفة")
+voiceRoomSchema.statics.getRoomRank = async function (roomId) {
+    const room = await this.findById(roomId).select('followers supportPoints isOfficial status');
+    if (!room || room.isOfficial || room.status !== 'active') return null;
+
+    const followersCount = (room.followers || []).length;
+    const rankScore = followersCount * FOLLOWER_WEIGHT_IN_RANKING + (room.supportPoints || 0);
+    if (rankScore <= 0) return null;
+
+    const higher = await this.aggregate([
+        { $match: { status: 'active', isOfficial: { $ne: true }, _id: { $ne: room._id } } },
+        { $addFields: { followersCount: { $size: { $ifNull: ['$followers', []] } } } },
+        { $addFields: { rankScore: { $add: [{ $multiply: ['$followersCount', FOLLOWER_WEIGHT_IN_RANKING] }, '$supportPoints'] } } },
+        { $match: { rankScore: { $gt: rankScore } } },
+        { $count: 'count' }
+    ]);
+    return (higher[0]?.count || 0) + 1;
+};
+
 // ✅ تغيير عدد المقاعد (الاتجاهان: توسيع أو تقليص) — يتحقق أن العدد المطلوب مفتوح فعلاً
 // بمستوى الغرفة الحالي، ويرفض التقليص لو فيه جالس على مقعد سيُحذَف (رقمه أكبر من العدد الجديد)
 voiceRoomSchema.methods.setSeatCount = function (newCount) {
