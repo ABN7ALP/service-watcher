@@ -182,16 +182,20 @@ input[type="checkbox"] {
 }
 
 /* ✅ "إطار المساهم" — إطار حصري غير مباع بالمتجر، يُمنح تلقائياً لمن يفوز بالمركز الأول
-   بنادي معجبين لأسبوع كامل (server/utils/fanClubWeeklyFrameJob.js). يستخدم border-image
-   بصورة حقيقية (بدل تأثير CSS بحت كباقي الإطارات) — يعمل مباشرة على نفس عنصر <img> الحالي
-   بلا أي تغيير على مئات نقاط عرض الصور بالتطبيق (كل مكان يعرض activeFrameClass بالفعل).
-   قيم slice/width مبدئية معقولة — قد تحتاج ضبطاً دقيقاً بعد معاينة الصورة فعلياً على الواجهة */
-.profile-frame-contributor {
-    border: 6px solid transparent !important;
-    border-image-source: url('https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png') !important;
-    border-image-slice: 40 fill !important;
-    border-image-width: 6px !important;
-    border-image-repeat: stretch !important;
+   بنادي معجبين لأسبوع كامل (server/utils/fanClubWeeklyFrameJob.js). زخارفه (تاج أعلى، جوهرتان
+   يمين ويسار، أجنحة أسفل) تتوغّل داخل الصورة نفسها، فلا يمكن رسمها كحدّ رفيع حولها
+   (border-image) — بكسلات <img> الفعلية تُرسَم دوماً فوق أي خلفية/حدّ لنفس العنصر مهما كانت
+   طريقة الرسم، فتُغطّي أي زخرفة يُفترض أن تتراكب فوقها. البديل الصحيح تقنياً الوحيد: عنصر
+   منفصل يُرسم فوق الصورة مباشرة — راجع wrapContributorFrames()/public/js/app.js التي تُطبّق
+   هذا تلقائياً بأي مكان بالتطبيق (بلا تعديل عشرات دوال عرض الصور القائمة) */
+.frame-overlay-wrap { position: relative; display: inline-block; line-height: 0; vertical-align: middle; }
+.frame-overlay-wrap > img.profile-frame-contributor { width: 100%; height: 100%; }
+.frame-overlay-art {
+    position: absolute; top: 50%; left: 50%;
+    width: 134%; height: 134%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 2;
 }
 
 
@@ -1110,11 +1114,12 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 
 /* =====================================================
-   ✅ ورقة "تفاصيل شارة الدعم/التلقي" — إعادة هيكلة كاملة: خلفية كحلية قريبة من السواد (أهدأ
-   وأرقى من البني)، عنوان المسار بالأعلى، صورة المستخدم هي العنصر الرئيسي (حلقة ذهبية) مع
-   شارة المستوى كأيقونة صغيرة بزاويتها السفلى (بدل تركيبها فوق الصورة بالكامل — كانت تحجب
-   صورة المستخدم كلياً لأن صور الشارات نفسها ليست شفافة بمنتصفها)، الاسم والفل بجانب الصورة،
-   شريط تقدّم ذهبي معدني، وقسما "صلاحية المستوى"/"مهمة المستوى" جنباً إلى جنب بالأسفل
+   ✅ ورقة "تفاصيل شارة الدعم/التلقي" — أُعيدت هيكلتها بالكامل كبطاقة عضوية فاخرة (hero card)
+   بلغة تصميم مختلفة جذرياً عن السابق: الصفحة نفسها محايدة (كحلي قريب من السواد، بلا ثيم
+   ذهبي ثابت)، وكل الألوان الفعلية تأتي ديناميكياً من --tier-c1/--tier-c2 (تدرّج فئة المستخدم
+   الحقيقية من computeSupportLevelInfo) — البطاقة تتلوّن رمادياً لمبتدئ، ذهبياً لمحترف، سماوياً
+   لخبير، وبنفسجياً لمخضرم، تماماً كبطاقات العضوية VIP الحقيقية (مصرفية/ألعاب) التي تتبدّل
+   حسب رتبة حاملها بدل لون واحد ثابت يوهم الجميع بنفس المكانة
    ===================================================== */
 .support-info-sheet-lux {
     width: 100%;
@@ -1122,77 +1127,72 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     max-height: 88vh;
     overflow-y: auto;
     position: relative;
-    background: radial-gradient(circle at 50% 0%, rgba(250,204,21,0.08), transparent 55%), linear-gradient(170deg, #171a22, #0a0b0f);
-    border: 2px solid rgba(250,204,21,0.35);
+    background: linear-gradient(170deg, #14171f, #090a0d);
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: 24px 24px 0 0;
-    box-shadow: 0 0 0 1px rgba(250,204,21,0.12) inset, 0 -6px 30px rgba(250,204,21,0.08), 0 -4px 30px rgba(0,0,0,0.6);
+    box-shadow: 0 -4px 30px rgba(0,0,0,0.6);
     animation: slideUp 0.25s ease-out;
 }
 @media (min-width: 768px) { .support-info-sheet-lux { border-radius: 24px; margin-bottom: 16px; } }
-.support-info-lux-body { padding: 6px 20px 26px; }
+.support-info-lux-body { padding: 14px 18px 26px; }
 
-.support-lux-header {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    font-size: 13px;
-    font-weight: 800;
-    color: #facc15;
-    padding: 8px 0 14px;
-    border-bottom: 1px solid rgba(250,204,21,0.15);
-}
-.support-lux-header i { font-size: 12px; }
-
-.support-portrait-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
-.support-portrait-frame {
+/* ✅ بطاقة العضوية نفسها — تدرّج الفئة يملأ الخلفية مباشرة، مع طبقة تعتيم خفيفة (linear-gradient
+   إضافي) تحافظ على وضوح النص الأبيض فوق أي تدرّج (فاتح كالفضي أو داكن كالبنفسجي على حدّ سواء) */
+.support-hero-card {
     position: relative;
-    width: 62px;
-    height: 62px;
-    flex-shrink: 0;
+    overflow: hidden;
+    border-radius: 18px;
+    padding: 16px 16px 14px;
+    background: linear-gradient(160deg, rgba(0,0,0,0.18), rgba(0,0,0,0.42)), linear-gradient(135deg, var(--tier-c1), var(--tier-c2));
+    box-shadow: 0 10px 26px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.08) inset;
 }
-.support-portrait-avatar {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 2.5px solid #facc15;
-    box-shadow: 0 0 0 3px rgba(250,204,21,0.18), 0 4px 10px rgba(0,0,0,0.4);
+.support-hero-shine {
+    position: absolute; top: 0; left: -60%; width: 45%; height: 100%;
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,0.22), transparent);
+    transform: skewX(-20deg);
+    animation: fanclubShine 3.2s ease-in-out infinite;
+}
+.support-hero-top { display: flex; align-items: center; justify-content: space-between; position: relative; z-index: 1; }
+.support-hero-kind { font-size: 11.5px; font-weight: 800; color: rgba(255,255,255,0.85); display: inline-flex; align-items: center; gap: 5px; }
+.support-hero-tier-chip {
+    font-size: 10.5px; font-weight: 800; color: #fff; background: rgba(255,255,255,0.2);
+    padding: 3px 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px;
+    backdrop-filter: blur(3px);
+}
+.support-hero-mid { display: flex; align-items: center; gap: 12px; margin-top: 16px; position: relative; z-index: 1; }
+.support-hero-avatar-frame { position: relative; width: 58px; height: 58px; flex-shrink: 0; }
+.support-hero-avatar {
+    width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
+    border: 2.5px solid rgba(255,255,255,0.75);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.45);
     display: block;
 }
-/* ✅ الشارة أصبحت أيقونة مرفقة صغيرة بزاوية الصورة (نمط "وسام على الصدر") بدل تغطية الصورة
-   بالكامل — تبقى صورة المستخدم واضحة ظاهرة دوماً بغضّ النظر عن شكل/شفافية صورة الشارة */
-.support-portrait-badge-corner {
-    position: absolute;
-    bottom: -4px; left: -4px;
-    width: 26px; height: 26px;
-    border-radius: 50%;
-    background: #14161d;
-    border: 2px solid #14161d;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+/* ✅ الشارة أيقونة مرفقة صغيرة بزاوية الصورة (نمط "وسام على الصدر") — تبقى صورة المستخدم
+   واضحة ظاهرة دوماً بغضّ النظر عن شكل/شفافية صورة الشارة */
+.support-hero-badge-corner {
+    position: absolute; bottom: -4px; left: -4px; width: 24px; height: 24px; border-radius: 50%;
+    background: #14161d; border: 2px solid #14161d; box-shadow: 0 1px 4px rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center;
 }
-.support-portrait-badge-corner img { width: 20px; height: 20px; object-fit: contain; }
-.support-portrait-info { flex: 1; min-width: 0; text-align: right; }
-.support-portrait-name { font-size: 15px; font-weight: 800; color: #f3f4f6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.support-portrait-lv { color: #facc15; font-weight: 900; margin-right: 4px; }
-.support-portrait-tier { font-size: 11px; color: #a1a1aa; margin-top: 3px; }
+.support-hero-badge-corner img { width: 18px; height: 18px; object-fit: contain; }
+.support-hero-identity { flex: 1; min-width: 0; text-align: right; }
+.support-hero-name { font-size: 15px; font-weight: 800; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px rgba(0,0,0,0.35); }
+.support-hero-level { font-size: 12px; font-weight: 900; color: rgba(255,255,255,0.85); margin-top: 2px; }
+.support-hero-progress-track { height: 8px; border-radius: 999px; background: rgba(0,0,0,0.32); overflow: hidden; margin-top: 14px; position: relative; z-index: 1; }
+.support-hero-progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, rgba(255,255,255,0.75), #fff); transition: width 0.4s ease-out; }
+.support-hero-progress-label { font-size: 10.5px; color: rgba(255,255,255,0.8); margin-top: 7px; text-align: center; position: relative; z-index: 1; }
 
-/* ✅ بطاقة المستوى نفسها استُبدلت بمكوّن .tier-level-card المشترك (راجع tierLevelCardHTML) —
-   لغة بصرية واحدة موحّدة مع بطاقة "مستوى المعجب" بنادي المعجبين بدل شريط تقدّم مخصّص منفصل */
 .support-xp-info-row {
     display: flex; align-items: center; justify-content: center; gap: 8px;
-    width: 100%; background: transparent; border: none; margin-top: 10px;
+    width: 100%; background: transparent; border: none; margin-top: 14px;
     font-size: 11px; color: #a1a1aa; cursor: pointer;
 }
 .support-info-circle-btn {
     width: 18px; height: 18px;
     border-radius: 50%;
-    background: rgba(250,204,21,0.12);
-    border: 1px solid rgba(250,204,21,0.5);
-    color: #facc15;
+    background: color-mix(in srgb, var(--tier-c1) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tier-c1) 55%, transparent);
+    color: var(--tier-c1);
     font-size: 9px;
     display: inline-flex;
     align-items: center;
@@ -1200,14 +1200,15 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     flex-shrink: 0;
 }
 
-/* ✅ "صلاحية المستوى" و"مهمة المستوى" جنباً إلى جنب (عمودان متساويان) بدل التتابع الرأسي */
-.support-two-col-lux { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 24px; align-items: start; }
+/* ✅ "صلاحية المستوى" و"مهمة المستوى" جنباً إلى جنب — لمساتها اللونية (عناوين، حدود، أيقونات)
+   تتبع الآن var(--tier-c1) الديناميكي بدل ذهبي ثابت، فتتبدّل هي أيضاً حسب فئة المستخدم */
+.support-two-col-lux { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 22px; align-items: start; }
 .support-col-lux { display: flex; flex-direction: column; }
-.support-lux-section-title { font-size: 11.5px; font-weight: 800; color: #facc15; text-align: right; margin-bottom: 9px; }
+.support-lux-section-title { font-size: 11.5px; font-weight: 800; color: var(--tier-c1); text-align: right; margin-bottom: 9px; }
 .support-perks-grid-2col { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; flex: 1; }
 .support-perk-box {
     background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(250,204,21,0.18);
+    border: 1px solid color-mix(in srgb, var(--tier-c1) 22%, transparent);
     border-radius: 12px;
     padding: 9px 3px 7px;
     display: flex;
@@ -1216,11 +1217,11 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     gap: 5px;
 }
 .support-perk-box:active { transform: scale(0.95); }
-.support-perk-icon { font-size: 15px; color: #facc15; }
+.support-perk-icon { font-size: 15px; color: var(--tier-c1); }
 .support-perk-icon-up {
     width: 19px; height: 19px;
     border-radius: 50% 50% 50% 3px;
-    background: #facc15;
+    background: var(--tier-c1);
     color: #171a22;
     font-size: 7.5px;
     font-weight: 900;
@@ -1232,7 +1233,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .support-mission-soon-lux {
     flex: 1;
     background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(250,204,21,0.18);
+    border: 1px solid color-mix(in srgb, var(--tier-c1) 22%, transparent);
     border-radius: 12px;
     display: flex;
     flex-direction: column;
@@ -1243,16 +1244,19 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     text-align: center;
     color: #a1a1aa;
 }
-.support-mission-soon-lux i { font-size: 18px; color: #facc15; opacity: 0.8; }
+.support-mission-soon-lux i { font-size: 18px; color: var(--tier-c1); opacity: 0.9; }
 .support-mission-soon-lux span { font-size: 11.5px; font-weight: 800; }
 
 /* ✅ جدول "كم خبرة يحتاج كل مستوى" — نافذة صغيرة منفصلة، بنفس الهوية الكحلية/الذهبية الجديدة */
+/* ✅ جدول مرجعي عام (كل الفئات الأربع معاً 1-80) — لا يتبع تدرّج فئة واحدة كالبطاقة الأم،
+   فلونه محايد بارد ثابت بدل الذهبي القديم، ليتماشى مع الهوية الكحلية الجديدة بلا إيحاء
+   بانتمائه لفئة معيّنة */
 .support-xp-table-card {
     width: 100%;
     max-width: 320px;
     max-height: 80vh;
     background: linear-gradient(170deg, #171a22, #0a0b0f);
-    border: 2px solid rgba(250,204,21,0.4);
+    border: 1px solid rgba(147,197,253,0.35);
     border-radius: 18px;
     padding: 18px 16px 14px;
     position: relative;
@@ -1260,15 +1264,15 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     flex-direction: column;
 }
 .support-xp-table-close { position: absolute; top: 10px; left: 10px; background: transparent; border: none; color: #a1a1aa; font-size: 14px; padding: 6px; }
-.support-xp-table-title { font-size: 11.5px; font-weight: 700; color: #facc15; text-align: center; line-height: 1.7; margin-bottom: 12px; padding: 0 10px; }
+.support-xp-table-title { font-size: 11.5px; font-weight: 700; color: #93c5fd; text-align: center; line-height: 1.7; margin-bottom: 12px; padding: 0 10px; }
 .support-xp-table-headrow {
     display: flex;
     justify-content: space-between;
     padding: 0 10px 8px;
-    border-bottom: 1px solid rgba(250,204,21,0.3);
+    border-bottom: 1px solid rgba(147,197,253,0.25);
     font-size: 11px;
     font-weight: 800;
-    color: #facc15;
+    color: #93c5fd;
     flex-shrink: 0;
 }
 .support-xp-table-scroll { overflow-y: auto; margin-top: 6px; }
@@ -1278,9 +1282,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     padding: 7px 10px;
     font-size: 11.5px;
     color: #d4d4d8;
-    border-bottom: 1px solid rgba(250,204,21,0.08);
+    border-bottom: 1px solid rgba(147,197,253,0.08);
 }
-.support-xp-table-lv { font-weight: 800; color: #facc15; }
+.support-xp-table-lv { font-weight: 800; color: #93c5fd; }
 .support-xp-table-exp { color: #a1a1aa; }
 
 /* ✅ بطاقة "الإنجازات" العريضة — بنفس روح بطاقة الملف الكامل (وليست الأيقونة المصغّرة
@@ -1461,22 +1465,41 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    طافية بجانبها — نفس أسلوب "وسام على الصدر" المستخدم بشارات مستوى الدعم بالتطبيق */
 .fanclub-owner-frame { position: relative; display: inline-flex; width: 88px; height: 88px; margin-inline-start: 26px; }
 .fanclub-owner-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid #facc15; box-shadow: 0 6px 18px rgba(0,0,0,0.4); display: block; }
-/* ✅ وسام شعار النادي المصغّر — هوية النادي الآن شارة تُمنح للأعضاء بملفاتهم الشخصية (راجع
-   full-profile-mini-badge.fanclub-member-badge) لا زخرفة على صورة صاحب النادي نفسه؛ الأنماط
-   بقيت هنا لتُستخدم بمعاينة المنتقي والشارة الشخصية معاً بنفس اللغة البصرية */
-.fanclub-emblem-corner {
-    position: absolute; bottom: -3px; left: -3px; z-index: 2;
-    width: 28px; height: 28px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    border: 2.5px solid #100d12; box-shadow: 0 1px 5px rgba(0,0,0,0.5);
-    color: #fff; font-size: 12px;
-}
-.fanclub-emblem-corner-pink { background: linear-gradient(145deg, #ec4899, #831843); }
-.fanclub-emblem-corner-yellow { background: linear-gradient(145deg, #eab308, #713f12); }
-.fanclub-emblem-corner-purple { background: linear-gradient(145deg, #a855f7, #4c1d95); }
-.fanclub-emblem-corner-blue { background: linear-gradient(145deg, #3b82f6, #1e3a8a); }
-.fanclub-emblem-corner-orange { background: linear-gradient(145deg, #f97316, #7c2d12); }
-.fanclub-emblem-preview-large { position: static; width: 56px; height: 56px; font-size: 22px; border-width: 0; }
+/* ✅ شعار النادي (تاج + جناحان + قاعدة داكنة بأيقونة قلب مركزية) — الشكل الذهبي الأصلي الذي
+   يفضّله صاحب النادي، بخمس ألوان مغلقة (emblemColorId) يختار من بينها عبر "تخصيص شعار
+   المجموعة" فقط — مجرد هوية بصرية بنافذة التخصيص، لا يُعرض على صورة صاحب النادي ولا بملفات
+   الأعضاء (تلك المفاهيم أُلغيت؛ مستوى المعجب هو شارة العضو الفعلية بملفه الشخصي) */
+.fanclub-emblem { position: relative; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.fanclub-emblem-sm { width: 40px; height: 40px; }
+.fanclub-emblem-sm .fanclub-emblem-base { width: 24px; height: 28px; }
+.fanclub-emblem-sm .fanclub-emblem-icon { font-size: 10px; }
+.fanclub-emblem-sm .fanclub-emblem-crown { font-size: 10px; top: -5px; }
+.fanclub-emblem-sm .fanclub-emblem-wing { font-size: 11px; }
+.fanclub-emblem-lg { width: 68px; height: 68px; }
+.fanclub-emblem-lg .fanclub-emblem-base { width: 38px; height: 44px; }
+.fanclub-emblem-lg .fanclub-emblem-icon { font-size: 16px; }
+.fanclub-emblem-lg .fanclub-emblem-crown { font-size: 16px; top: -8px; }
+.fanclub-emblem-lg .fanclub-emblem-wing { font-size: 17px; }
+.fanclub-emblem-base { border-radius: 50% 50% 45% 45%; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 8px rgba(0,0,0,0.5); }
+.fanclub-emblem-crown { position: absolute; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+.fanclub-emblem-wing { position: absolute; top: 46%; opacity: 0.95; }
+.fanclub-emblem-wing-left { left: -4px; transform: translateY(-50%) rotate(-20deg) scaleX(-1); }
+.fanclub-emblem-wing-right { right: -4px; transform: translateY(-50%) rotate(20deg); }
+.fanclub-emblem-pink .fanclub-emblem-base { background: linear-gradient(160deg, #db2777, #831843); }
+.fanclub-emblem-pink .fanclub-emblem-icon, .fanclub-emblem-pink .fanclub-emblem-crown { color: #fbcfe8; }
+.fanclub-emblem-pink .fanclub-emblem-wing { color: #f472b6; }
+.fanclub-emblem-yellow .fanclub-emblem-base { background: linear-gradient(160deg, #a16207, #713f12); }
+.fanclub-emblem-yellow .fanclub-emblem-icon, .fanclub-emblem-yellow .fanclub-emblem-crown { color: #fef3c7; }
+.fanclub-emblem-yellow .fanclub-emblem-wing { color: #fcd34d; }
+.fanclub-emblem-purple .fanclub-emblem-base { background: linear-gradient(160deg, #7e22ce, #4c1d95); }
+.fanclub-emblem-purple .fanclub-emblem-icon, .fanclub-emblem-purple .fanclub-emblem-crown { color: #e9d5ff; }
+.fanclub-emblem-purple .fanclub-emblem-wing { color: #c4b5fd; }
+.fanclub-emblem-blue .fanclub-emblem-base { background: linear-gradient(160deg, #1d4ed8, #1e3a8a); }
+.fanclub-emblem-blue .fanclub-emblem-icon, .fanclub-emblem-blue .fanclub-emblem-crown { color: #dbeafe; }
+.fanclub-emblem-blue .fanclub-emblem-wing { color: #93c5fd; }
+.fanclub-emblem-orange .fanclub-emblem-base { background: linear-gradient(160deg, #c2410c, #7c2d12); }
+.fanclub-emblem-orange .fanclub-emblem-icon, .fanclub-emblem-orange .fanclub-emblem-crown { color: #fed7aa; }
+.fanclub-emblem-orange .fanclub-emblem-wing { color: #fdba74; }
 /* ✅ "نجم الأسبوع الحالي" — صورة المتصدّر الحالي بمساهمات هذا الأسبوع، ملتصقة بزاوية صورة
    صاحب النادي السفلية اليسرى (منخفضة قليلاً كي تبدو "مُعلَّقة" باحترافية لا طافية بجانبها)،
    بإطار "إطار المساهم" الدائم نفسه الذي يُمنح فعلياً لمن يفوز بمركز الأسبوع كاملاً — مُكبَّرة
@@ -1775,6 +1798,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-reward-preview-compact .fanclub-reward-preview-img { width: 44px; height: 44px; }
 .fanclub-reward-preview-compact .fanclub-reward-preview-label { font-size: 11px; margin-top: 5px; }
 .fanclub-reward-preview-compact .fanclub-reward-preview-desc { font-size: 9.5px; margin-top: 2px; }
+/* ✅ نسخة "الإطار فقط" — تظهر فوق زر الانضمام مباشرة (العنوان أصبح فاصل قسم بخطين بالأعلى
+   بنفس أسلوب "المهام اليومية")؛ الصندوق نفسه بلا نص داخلي، تركيزه الكامل على صورة الإطار */
+.fanclub-reward-preview-frame-only { display: flex; align-items: center; justify-content: center; padding: 10px; margin-top: 0; }
+.fanclub-reward-preview-frame-only .fanclub-reward-preview-img { width: 58px; height: 58px; }
+/* ✅ الزر يتبع صندوق الإطار مباشرة الآن (بدل نص/أزرار تخصيص) — رفعه بتقليل الهامش العلوي
+   يجعل الصندوق والزر يقرآن كوحدة واحدة متماسكة بدل مسافة فضفاضة بينهما */
+.fanclub-join-btn-raised { margin-top: 8px; }
 
 /* =====================================================
    ✅ نافذة "هل تود متابعته؟" — تظهر عند إرسال رسالة لشخص لست تتابعه بعد
@@ -3782,14 +3812,6 @@ body.in-voice-room #main-content {
     color: #fde68a;
 }
 .full-profile-weekly-badge i { color: #fbbf24; }
-/* ✅ شارة "عضوية نادي معجبين" — شعار النادي (لون اختاره صاحبه) مصغّراً داخل كبسولة الشارة
-   العادية؛ fanclub-member-badge-icon يُلغي التموضع المطلق لـfanclub-emblem-corner (مصمّم
-   أصلاً ليكون زاوية على صورة) ويحوّله لأيقونة صغيرة عادية تناسب داخل صف الشارات */
-.fanclub-member-badge { cursor: pointer; }
-.fanclub-member-badge-icon { position: relative; display: inline-flex; width: 14px; height: 14px; flex-shrink: 0; }
-.fanclub-member-badge-icon .fanclub-emblem-corner {
-    position: static; width: 100%; height: 100%; font-size: 7px; border-width: 1px;
-}
 /* ✅ الحالة/السيرة — بلا تسمية وبلا خلفية، تجلس مباشرة تحت الشارات بأناقة */
 .full-profile-bio-text {
     font-size: 11.5px;
