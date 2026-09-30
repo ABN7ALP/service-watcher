@@ -3312,12 +3312,21 @@ input[type="checkbox"] {
   height: 100%;
 }
 
+/* 🐛 إصلاح: 134% كانت قياساً خاطئاً (مبنياً على سمك الحلقة نفسها على القطر لا على أضيق نقطة
+   فعلية بالفتحة الشفافة) — قِسْت الصورة الحقيقية بكسلاً بكسل (750×750، نصف قطر الفتحة الشفافة
+   عند التاج أعلى ≈222px فقط، أضيق نقطة بالتصميم كله) فتبيّن أن 134% تجعل الصورة أكبر من
+   الفتحة عند التاج فيُحشَر الإطار على الصورة بمظهر "مضغوط" بدل التفاف أنيق حولها. 168%
+   (750 ÷ 222×2) يضمن للصورة مساحة كافية بأضيق نقطة، وobject-fit:contain يمنع أي تمدّد غير
+   متساوٍ لو اختلف عرض/ارتفاع الحاوية المقاسة ببكسل كسري (شيوع بتخطيطات Flex/Grid) */
+
 .frame-overlay-art {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 134%;
-  height: 134%;
+  width: 168%;
+  height: 168%;
+  -o-object-fit: contain;
+     object-fit: contain;
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 2;
@@ -5082,104 +5091,253 @@ button, input, select, textarea {
   flex-shrink: 0;
 }
 
-/* ✅ "صلاحية المستوى" و"مهمة المستوى" جنباً إلى جنب — لمساتها اللونية (عناوين، حدود، أيقونات)
-   تتبع الآن var(--tier-c1) الديناميكي بدل ذهبي ثابت، فتتبدّل هي أيضاً حسب فئة المستخدم */
+/* ✅ تبويبا "صلاحية المستوى"/"مهمة المستوى" — شريحة مقسومة (segmented control) فوق مشهد
+   الانقلاب؛ لون التبويب النشط var(--tier-c1) الديناميكي بدل ذهبي ثابت */
 
-.support-two-col-lux {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-top: 22px;
-  align-items: start;
+.support-flip-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 20px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+  padding: 4px;
 }
 
-.support-col-lux {
+.support-flip-tab {
+  flex: 1;
+  padding: 9px 0;
+  border: none;
+  background: transparent;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: background 0.25s, color 0.25s;
+}
+
+.support-flip-tab.active {
+  background: linear-gradient(90deg, var(--tier-c1), var(--tier-c2));
+  color: #fff;
+}
+
+/* ✅ الانقلاب كصفحتَي كتاب حقيقيتين — perspective على المشهد، تدوير 3D حقيقي على البطاقة
+   نفسها (rotateY 180°)، والوجه الخلفي مقلوب مسبقاً (rotateY(180deg)) كي يظهر بشكله الصحيح
+   حين يدور الأب — الارتفاع يُضبط ديناميكياً بجافاسكربت (syncFlipHeight) بما أن كلا الوجهين
+   position:absolute فلا يُسهمان تلقائياً بارتفاع الحاوية الأب */
+
+.support-flip-scene {
+  perspective: 1600px;
+  margin-top: 14px;
+}
+
+.support-flip-card {
+  position: relative;
+  width: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.65s cubic-bezier(0.4, 0.2, 0.2, 1);
+}
+
+.support-flip-card.flipped {
+  transform: rotateY(180deg);
+}
+
+.support-flip-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.support-flip-back {
+  transform: rotateY(180deg);
+}
+
+/* ✅ خارطة طريق الصلاحيات — صف لكل صلاحية: أيقونة، عنوان+وصف، وحالة (✅ مفتوحة الآن أو 🔒
+   تُفتح بالمستوى X المحسوب فعلياً) — لمساتها اللونية أيضاً var(--tier-c1) الديناميكي */
+
+.support-privilege-list {
   display: flex;
   flex-direction: column;
+  gap: 7px;
 }
 
-.support-lux-section-title {
-  font-size: 11.5px;
-  font-weight: 800;
+.support-privilege-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid color-mix(in srgb, var(--tier-c1) 18%, transparent);
+  border-radius: 12px;
+  padding: 10px 12px;
+  opacity: 0.55;
+}
+
+.support-privilege-row.unlocked {
+  opacity: 1;
+  border-color: color-mix(in srgb, var(--tier-c1) 40%, transparent);
+}
+
+.support-privilege-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--tier-c1) 16%, transparent);
   color: var(--tier-c1);
+  font-size: 13px;
+}
+
+.support-privilege-info {
+  flex: 1;
+  min-width: 0;
   text-align: right;
-  margin-bottom: 9px;
 }
 
-.support-perks-grid-2col {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 6px;
-  flex: 1;
-}
-
-.support-perk-box {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid color-mix(in srgb, var(--tier-c1) 22%, transparent);
-  border-radius: 12px;
-  padding: 9px 3px 7px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-}
-
-.support-perk-box:active {
-  transform: scale(0.95);
-}
-
-.support-perk-icon {
-  font-size: 15px;
-  color: var(--tier-c1);
-}
-
-.support-perk-icon-up {
-  width: 19px;
-  height: 19px;
-  border-radius: 50% 50% 50% 3px;
-  background: var(--tier-c1);
-  color: #171a22;
-  font-size: 7.5px;
-  font-weight: 900;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.support-perk-label {
-  font-size: 8.5px;
-  color: #d4d4d8;
-  text-align: center;
-  line-height: 1.25;
-}
-
-.support-mission-soon-lux {
-  flex: 1;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid color-mix(in srgb, var(--tier-c1) 22%, transparent);
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 16px 8px;
-  text-align: center;
-  color: #a1a1aa;
-}
-
-.support-mission-soon-lux i {
-  font-size: 18px;
-  color: var(--tier-c1);
-  opacity: 0.9;
-}
-
-.support-mission-soon-lux span {
-  font-size: 11.5px;
+.support-privilege-title {
+  font-size: 12px;
   font-weight: 800;
+  color: #f3f4f6;
 }
 
-/* ✅ جدول "كم خبرة يحتاج كل مستوى" — نافذة صغيرة منفصلة، بنفس الهوية الكحلية/الذهبية الجديدة */
+.support-privilege-desc {
+  font-size: 10px;
+  color: #9ca3af;
+  margin-top: 2px;
+  line-height: 1.5;
+}
+
+.support-privilege-state {
+  font-size: 10px;
+  font-weight: 800;
+  color: #6b7280;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.support-privilege-row.unlocked .support-privilege-state {
+  color: #4ade80;
+}
+
+/* ✅ صفحة المهام — قائمة صفوف بنفس لغة قائمة الصلاحيات، حالة كل مهمة (تم/مطالبة/تلقائي) */
+
+.support-mission-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.support-mission-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid color-mix(in srgb, var(--tier-c1) 18%, transparent);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.support-mission-row.claimed {
+  border-color: color-mix(in srgb, var(--tier-c1) 40%, transparent);
+}
+
+.support-mission-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--tier-c1) 16%, transparent);
+  color: var(--tier-c1);
+  font-size: 13px;
+}
+
+.support-mission-info {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+}
+
+.support-mission-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #f3f4f6;
+}
+
+.support-mission-points {
+  font-size: 10px;
+  color: #9ca3af;
+  margin-top: 2px;
+}
+
+.support-mission-done {
+  color: #4ade80;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.support-mission-auto {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #6b7280;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.support-mission-claim-btn {
+  flex-shrink: 0;
+  background: linear-gradient(90deg, var(--tier-c1), var(--tier-c2));
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 800;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+}
+
+.support-mission-claim-btn:disabled {
+  opacity: 0.6;
+}
+
+.support-mission-receiving-note {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 24px 12px;
+  color: #9ca3af;
+}
+
+.support-mission-receiving-note i {
+  font-size: 26px;
+  color: var(--tier-c1);
+}
+
+.support-mission-receiving-note p {
+  font-size: 11.5px;
+  line-height: 1.8;
+  max-width: 260px;
+}
+
+/* ✅ بطاقة احتفال ارتقاء مستوى الدعم/التلقي — نفس بطاقة ارتقاء الغرفة/النادي، بتدرّج الفئة
+   الجديدة الفعلي (--tier-c1/--tier-c2) بدل لون ثابت */
+
+.support-levelup-card {
+  background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--tier-c1) 35%, transparent), rgba(17,24,39,0.96));
+  border-color: color-mix(in srgb, var(--tier-c1) 45%, transparent);
+  box-shadow: 0 0 45px color-mix(in srgb, var(--tier-c1) 35%, transparent);
+}
+
+.support-levelup-card .room-levelup-icon {
+  color: var(--tier-c1);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--tier-c1) 60%, transparent));
+}
 
 /* ✅ جدول مرجعي عام (كل الفئات الأربع معاً 1-80) — لا يتبع تدرّج فئة واحدة كالبطاقة الأم،
    فلونه محايد بارد ثابت بدل الذهبي القديم، ليتماشى مع الهوية الكحلية الجديدة بلا إيحاء

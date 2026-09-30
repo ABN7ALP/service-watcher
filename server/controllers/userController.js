@@ -8,18 +8,112 @@ const GiftLog = require('../models/GiftLog');
 const { cloudinary, deleteFromCloudinary, getPublicIdFromUrl, assertRealType } = require('../utils/cloudinary');
 const { computeSupportLevelInfo } = require('../utils/supportLevels');
 
+// ✅ قيم مكافآت مهام "مستوى الدعم" اليومية — عمداً كبيرة نسبياً بالمستويات الأولى (100 كوينز
+// فقط تكفي لـLv.2) لتكون حافز عادة حقيقياً بالأيام الأولى، وتصبح تلقائياً هامشية بالمستويات
+// العليا (ملايين الكوينز) — تماماً كيف تصمَّم مكافآت الحضور اليومي بتطبيقات البث المشهورة:
+// تجذب مستخدماً جديداً لفتح التطبيق يومياً، دون أن تصبح مساراً بديلاً حقيقياً عن السخاء الفعلي
+const SUPPORT_DAILY_CHECKIN_BONUS = 300;
+const SUPPORT_DAILY_CHAT_BONUS = 200;
+
+function startOfTodayUTC() {
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0);
+    return d;
+}
+
 // ✅ يحسب مساري "الدعم" (ما أرسله المستخدم من كوينز كهدايا لآخرين) و"التلقي" (ما استلمه
-// فعلياً) معاً بنداء واحد — يُستخدم بالملف المصغّر وبالملف الكامل معاً لضمان نفس الأرقام بكل مكان
+// فعلياً) معاً بنداء واحد — يُستخدم بالملف المصغّر وبالملف الكامل معاً لضمان نفس الأرقام بكل
+// مكان. مستوى "الدعم" تحديداً يضيف bonusXP (مهام يومية قابلة للإنجاز) فوق كوينز الهدايا
+// الحقيقية؛ "التلقي" يبقى مبنياً حصراً على ما استلمه المستخدم فعلياً (لا مهام له، فهو ليس
+// فعلاً يقوم به المستخدم نفسه)
 async function computeSupportLevels(targetUserId) {
     const uid = new mongoose.Types.ObjectId(targetUserId);
-    const [givingAgg, receivingAgg] = await Promise.all([
+    const [givingAgg, receivingAgg, user] = await Promise.all([
         GiftLog.aggregate([{ $match: { sender: uid } }, { $group: { _id: null, total: { $sum: '$totalPrice' } } }]),
-        GiftLog.aggregate([{ $match: { receiver: uid } }, { $group: { _id: null, total: { $sum: '$totalPrice' } } }])
+        GiftLog.aggregate([{ $match: { receiver: uid } }, { $group: { _id: null, total: { $sum: '$totalPrice' } } }]),
+        User.findById(uid).select('supportMissions.bonusXP')
     ]);
+    const bonusXP = user?.supportMissions?.bonusXP || 0;
     return {
-        giving: computeSupportLevelInfo((givingAgg[0] && givingAgg[0].total) || 0),
+        giving: computeSupportLevelInfo(((givingAgg[0] && givingAgg[0].total) || 0) + bonusXP),
         receiving: computeSupportLevelInfo((receivingAgg[0] && receivingAgg[0].total) || 0)
     };
+}
+
+// ✅ حالة مهام اليوم — GET بسيط، لا يُغيّر شيئاً؛ تُستخدَم لتلوين النافذة (مطالبة/تم) عند فتحها
+const getSupportMissions = async (req, res) => {
+    try {
+        const uid = new mongoose.Types.ObjectId(req.user.id);
+        const todayStart = startOfTodayUTC();
+        const [user, giftToday] = await Promise.all([
+            User.findById(uid).select('supportMissions'),
+            GiftLog.exists({ sender: uid, createdAt: { $gte: todayStart } })
+        ]);
+        const claimedToday = (date) => !!date && date >= todayStart;
+        res.status(200).json({
+            status: 'success',
+            data: {
+                giftSentToday: !!giftToday,
+                missions: [
+                    { id: 'checkin', title: 'تسجيل الحضور اليومي', icon: 'fa-calendar-check', points: SUPPORT_DAILY_CHECKIN_BONUS, claimed: claimedToday(user?.supportMissions?.lastCheckInAt), manual: true },
+                    { id: 'chat', title: 'الدردشة بأي غرفة اليوم', icon: 'fa-comments', points: SUPPORT_DAILY_CHAT_BONUS, claimed: claimedToday(user?.supportMissions?.lastChatBonusAt), manual: false }
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('[SUPPORT MISSIONS] getSupportMissions error:', error);
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
+    }
+};
+
+// ✅ مطالبة حضور يومي — نفس نمط claimCheckIn بنادي المعجبين بالضبط: findOneAndUpdate شرطي
+// ذرّي (لا قراءة-ثم-كتابة) يمنع أي سباق يمنح المكافأة مرتين لو ضُغط الزر مرتين بسرعة
+const claimSupportCheckIn = async (req, res) => {
+    try {
+        const todayStart = startOfTodayUTC();
+        const user = await User.findOneAndUpdate(
+            {
+                _id: req.user.id,
+                $or: [{ 'supportMissions.lastCheckInAt': null }, { 'supportMissions.lastCheckInAt': { $lt: todayStart } }]
+            },
+            { $inc: { 'supportMissions.bonusXP': SUPPORT_DAILY_CHECKIN_BONUS }, $set: { 'supportMissions.lastCheckInAt': new Date() } },
+            { new: true }
+        );
+        if (!user) {
+            return res.status(400).json({ status: 'fail', message: 'سجّلت حضورك اليوم بالفعل' });
+        }
+        const io = req.app.get('socketio');
+        const { giving } = await computeSupportLevels(req.user.id);
+        const { broadcastSupportLevelUpdate } = require('./giftController');
+        broadcastSupportLevelUpdate(io, req.user.id, 'giving', SUPPORT_DAILY_CHECKIN_BONUS);
+        res.status(200).json({ status: 'success', data: { levelInfo: giving, pointsGained: SUPPORT_DAILY_CHECKIN_BONUS } });
+    } catch (error) {
+        console.error('[SUPPORT MISSIONS] claimSupportCheckIn error:', error);
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
+    }
+};
+
+// ✅ مكافأة الدردشة اليومية العامة (أي غرفة، وليست خاصة بنادي معجبين معيّن) — تُستدعى من
+// socketService.js عند كل رسالة دردشة بغرفة، fire-and-forget دوماً (لا تؤثر أبداً على إرسال
+// الرسالة نفسها حتى لو فشلت). مرة واحدة يومياً فقط، بنفس نمط findOneAndUpdate الذرّي
+async function creditGlobalChatBonus(io, userId) {
+    if (!userId) return;
+    try {
+        const todayStart = startOfTodayUTC();
+        const user = await User.findOneAndUpdate(
+            {
+                _id: userId,
+                $or: [{ 'supportMissions.lastChatBonusAt': null }, { 'supportMissions.lastChatBonusAt': { $lt: todayStart } }]
+            },
+            { $inc: { 'supportMissions.bonusXP': SUPPORT_DAILY_CHAT_BONUS }, $set: { 'supportMissions.lastChatBonusAt': new Date() } },
+            { new: true }
+        );
+        if (!user) return;
+        const { broadcastSupportLevelUpdate } = require('./giftController');
+        broadcastSupportLevelUpdate(io, userId, 'giving', SUPPORT_DAILY_CHAT_BONUS);
+    } catch (error) {
+        console.error('[SUPPORT MISSIONS] creditGlobalChatBonus error:', error);
+    }
 }
 
 // ✅ يسجّل زيارة ملف شخصي (حدث خام لكل مشاهدة) — بتهدئة بسيطة: لا يُسجَّل حدث جديد لنفس
@@ -670,5 +764,9 @@ module.exports = {
     pokeUser,
     discoverPeople,
     getFollowersList,
-    getFollowingList
+    getFollowingList,
+    computeSupportLevels,
+    getSupportMissions,
+    claimSupportCheckIn,
+    creditGlobalChatBonus
 };

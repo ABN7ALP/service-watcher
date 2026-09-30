@@ -93,19 +93,36 @@ async function applyGiftToActiveSeatChallenge(io, roomId, receiverId, totalPrice
 
 // ✅ يبثّ تحديث "مستوى الدعم" (شارتا دعم/تلقي) لحظياً لأي واجهة مفتوحة حالياً لهذا المستخدم —
 // بث عام خفيف الحمل (نفس نمط follow-changed) بدل نظام اشتراك مخصّص لكل شخص؛ لا يُنتظَر
-// (fire-and-forget) كي لا يبطئ استجابة إرسال الهدية نفسها، ولا يُفشلها أبداً لو حدث خطأ هنا
-async function broadcastSupportLevelUpdate(io, userId) {
+// (fire-and-forget) كي لا يبطئ استجابة إرسال الهدية نفسها، ولا يُفشلها أبداً لو حدث خطأ هنا.
+// 🐛 كانت الدالة تُكرّر نفس منطق تجميع computeSupportLevels بـuserController.js حرفياً (فيصبح
+// bonusXP المهام اليومية غير محسوب هنا تحديداً، فيتضارب الرقم المبثوث حياً هنا مع رقم أي
+// نداء API آخر) — استبدلته بنداء الدالة المشتركة نفسها، مصدر حقيقة واحد لحساب مستوى الدعم
+// بكل مكان بالتطبيق. kind/delta اختياريان: لو مررا (مصدر المكافأة: 'giving' أو 'receiving'،
+// وكم أُضيف بهذه العملية تحديداً)، تكتشف الدالة تجاوز حاجز مستوى جديد وتبثّ احتفالاً منفصلاً
+async function broadcastSupportLevelUpdate(io, userId, kind, delta) {
     if (!io || !userId) return;
     try {
+        const { computeSupportLevels } = require('./userController');
         const { computeSupportLevelInfo } = require('../utils/supportLevels');
-        const uid = new mongoose.Types.ObjectId(userId);
-        const [givingAgg, receivingAgg] = await Promise.all([
-            GiftLog.aggregate([{ $match: { sender: uid } }, { $group: { _id: null, total: { $sum: '$totalPrice' } } }]),
-            GiftLog.aggregate([{ $match: { receiver: uid } }, { $group: { _id: null, total: { $sum: '$totalPrice' } } }])
-        ]);
-        const giving = computeSupportLevelInfo((givingAgg[0] && givingAgg[0].total) || 0);
-        const receiving = computeSupportLevelInfo((receivingAgg[0] && receivingAgg[0].total) || 0);
+        const { giving, receiving } = await computeSupportLevels(userId);
         io.emit('support-level-updated', { userId: userId.toString(), giving, receiving });
+
+        if (kind && delta > 0) {
+            const afterInfo = kind === 'giving' ? giving : receiving;
+            const beforeInfo = computeSupportLevelInfo(Math.max(0, afterInfo.points - delta));
+            if (afterInfo.level > beforeInfo.level) {
+                const user = await User.findById(userId).select('socketId');
+                if (user?.socketId) {
+                    io.to(user.socketId).emit('support-level-up', {
+                        kind,
+                        newLevel: afterInfo.level,
+                        tierName: afterInfo.tierName,
+                        tierIcon: afterInfo.tierIcon,
+                        tierGradient: afterInfo.tierGradient
+                    });
+                }
+            }
+        }
     } catch (error) {
         console.error('[SUPPORT LEVEL] Failed to broadcast update:', error);
     }
@@ -362,8 +379,8 @@ exports.sendGift = async (req, res) => {
             addGiftExperience(io, receiverId, totalPrice, 'receiver')
         ]);
         // ✅ لا يُنتظَر (fire-and-forget) — تحديث الشارات لا يجب أن يؤخّر استجابة إرسال الهدية
-        broadcastSupportLevelUpdate(io, senderId);
-        broadcastSupportLevelUpdate(io, receiverId);
+        broadcastSupportLevelUpdate(io, senderId, 'giving', totalPrice);
+        broadcastSupportLevelUpdate(io, receiverId, 'receiving', totalPrice);
         awardFanPoints(io, receiverId, senderId, totalPrice);
 
         res.status(201).json({
@@ -547,9 +564,9 @@ exports.sendGiftBatch = async (req, res) => {
             ...validReceivers.map(r => addGiftExperience(io, r._id, totalPrice, 'receiver'))
         ]);
         // ✅ لا يُنتظَر — تحديث الشارات لا يجب أن يؤخّر استجابة إرسال الهدية
-        broadcastSupportLevelUpdate(io, senderId);
+        broadcastSupportLevelUpdate(io, senderId, 'giving', totalCost);
         validReceivers.forEach(r => {
-            broadcastSupportLevelUpdate(io, r._id);
+            broadcastSupportLevelUpdate(io, r._id, 'receiving', totalPrice);
             awardFanPoints(io, r._id, senderId, totalPrice); // ✅ totalPrice = لكل مستلم على حدة (وليس totalCost الإجمالي)
         });
 

@@ -2076,6 +2076,12 @@ socket.on('refreshBlockData', async () => {
                     const { creditDailyChat } = require('../controllers/fanClubController');
                     creditDailyChat(io, roomCheck.host, socket.user.id);
                 }
+                // ✅ مهمة "الدردشة اليومية" لمستوى الدعم العام — منفصلة تماماً عن مكافأة نادي
+                // المعجبين أعلاه (تلك خاصة بمضيف غرفة معيّن، هذي عامة بأي غرفة)، مرة واحدة يومياً
+                {
+                    const { creditGlobalChatBonus } = require('../controllers/userController');
+                    creditGlobalChatBonus(io, socket.user.id);
+                }
 
                 const newMessage = await Message.create({
                     content: message.trim(),

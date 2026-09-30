@@ -3388,6 +3388,29 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }, 2600);
     }
 
+    // ✅ احتفال ارتقاء "مستوى الدعم/التلقي" العام — نفس أسلوب احتفال نادي المعجبين، بلون
+    // تدرّج الفئة الجديدة نفسها (--tier-c1/--tier-c2) بدل لون ثابت، فيعكس الفئة الفعلية المُرتقاة إليها
+    function celebrateSupportLevelUp(kind, newLevel, tierName, tierIcon, tierGradient) {
+        document.getElementById('support-levelup-celebration')?.remove();
+        const [c1, c2] = tierGradient;
+        fireConfettiBurst(['#ffffff', c1, c2]);
+        const el = document.createElement('div');
+        el.id = 'support-levelup-celebration';
+        el.className = 'room-levelup-celebration';
+        el.innerHTML = `
+            <div class="room-levelup-card support-levelup-card" style="--tier-c1:${c1};--tier-c2:${c2}">
+                <i class="fas ${tierIcon} room-levelup-icon"></i>
+                <p class="room-levelup-title">ارتقيت بمستوى ${kind === 'giving' ? 'الدعم' : 'التلقي'}!</p>
+                <p class="room-levelup-level">Lv.${newLevel} · ${escapeHtml(tierName || '')}</p>
+            </div>
+        `;
+        document.body.appendChild(el);
+        setTimeout(() => {
+            el.classList.add('room-levelup-fade-out');
+            setTimeout(() => el.remove(), 400);
+        }, 2600);
+    }
+
     // ✅ نافذة إعدادات الغرفة — تظهر فقط للمضيف (يتحقق منها السيرفر أيضاً عند الحفظ). أُعيد
     // هيكلتها كاملة: بطاقة مستوى/تقدّم أعلى النافذة، أقسام مضغوطة بعناوين واضحة، شريحة
     // اختيار مقاعد بدل زر "زيادة" وحيد (تدعم التوسيع والتقليص معاً، مربوطة بمستوى الغرفة)،
@@ -7109,6 +7132,12 @@ function showXpGainAnimation(amount) {
         }
     });
 
+    // ✅ احتفال ارتقاء مستوى دعم/تلقي حقيقي — يصل فقط لصاحب الحدث شخصياً (io.to(socketId) من
+    // الخادم)، أياً كان مصدر الارتقاء (هدية أُرسلت/استُلمت، مكافأة حضور، أو مكافأة دردشة يومية)
+    socket.on('support-level-up', ({ kind, newLevel, tierName, tierIcon, tierGradient }) => {
+        celebrateSupportLevelUp(kind, newLevel, tierName, tierIcon, tierGradient);
+    });
+
     // ✅ انضمام عضو جديد لنادي معجبين — تحديث حي لعدّاد الأعضاء لو نافذة هذا النادي مفتوحة حالياً
     socket.on('fanclub-member-count-updated', ({ ownerId, memberCount }) => {
         const fcModal = document.getElementById('fanclub-modal');
@@ -9533,11 +9562,86 @@ const SUPPORT_LEVEL_THRESHOLDS_REF = [
     290000000, 300000000, 310000000, 320000000, 330000000
 ];
 
+// ✅ خارطة طريق "صلاحيات المستوى" الحقيقية — عتباتها مبنية على حدود SUPPORT_TIERS الفعلية
+// بالخادم (مبتدئ 1-20/محترف 21-40/خبير 41-60/مخضرم 61-80)، وحالتها (مفتوحة/مقفلة) تُحسب من
+// مستوى المستخدم الفعلي دوماً — لا أرقام وهمية. "الوسام" و"احتفال الترقية" حقيقيان فعلاً
+// (مفعّلان بكل مكان بالتطبيق)؛ البقية خارطة طريق صادقة (تُعرض بحالة القفل ومستوى الفتح
+// الحقيقيين حتى قبل اكتمال بنائها بالكامل، بدل شريحة "قريباً" فارغة بلا أي معلومة)
+const SUPPORT_LEVEL_PRIVILEGES = [
+    { level: 1, icon: 'fa-award', title: 'الوسام', desc: 'شارة مستواك تظهر تلقائياً بالدردشة، ملفك الشخصي، وكل الغرف' },
+    { level: 10, icon: 'fa-bullhorn', title: 'احتفال الترقية', desc: 'احتفال خاص فوري يظهر لك عند وصولك لمستوى جديد' },
+    { level: 20, icon: 'fa-box-open', title: 'صندوق الكنز اليومي', desc: 'صندوق يومي إضافي بمكافآت خبرة أكبر' },
+    { level: 30, icon: 'fa-comments', title: 'فقاعات دردشة حصرية', desc: 'فقاعات دردشة خاصة بمتجر الفقاعات لا تُشترى بالكوينز' },
+    { level: 45, icon: 'fa-trophy', title: 'لوحة المشاهير', desc: 'تظهر بقوائم أعلى الداعمين على مستوى التطبيق' },
+    { level: 61, icon: 'fa-shirt', title: 'مظهر غرفة مخصص', desc: 'خصّص ألوان وخلفية غرفتك بمظهر حصري' }
+];
+function supportPrivilegesListHTML(info) {
+    return `
+        <div class="support-privilege-list">
+            ${SUPPORT_LEVEL_PRIVILEGES.map(p => {
+                const unlocked = info.level >= p.level;
+                return `
+                    <div class="support-privilege-row ${unlocked ? 'unlocked' : ''}">
+                        <span class="support-privilege-icon"><i class="fas ${p.icon}"></i></span>
+                        <div class="support-privilege-info">
+                            <p class="support-privilege-title">${p.title}</p>
+                            <p class="support-privilege-desc">${p.desc}</p>
+                        </div>
+                        <span class="support-privilege-state">${unlocked ? '<i class="fas fa-check-circle"></i>' : `<i class="fas fa-lock"></i> Lv.${p.level}`}</span>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+// ✅ صفحة "مهمة المستوى" — للسخاء (giving) فقط، تُبنى بعد جلب /api/users/support/missions؛
+// التلقي (receiving) بلا مهام قابلة للإنجاز (ما يستلمه المستخدم فعل غيره، لا فعله هو)
+function supportMissionsGivingHTML(missions, giftSentToday) {
+    const giftRow = `
+        <div class="support-mission-row ${giftSentToday ? 'claimed' : ''}">
+            <span class="support-mission-icon"><i class="fas fa-gift"></i></span>
+            <div class="support-mission-info">
+                <p class="support-mission-title">إرسال أي هدية اليوم</p>
+                <p class="support-mission-points">تُحتسب تلقائياً — كل كوينز يُنفَق نقطة خبرة</p>
+            </div>
+            ${giftSentToday ? '<span class="support-mission-done"><i class="fas fa-check"></i></span>' : '<span class="support-mission-auto">تلقائي</span>'}
+        </div>
+    `;
+    return `
+        <div class="support-mission-list">
+            ${missions.map(m => `
+                <div class="support-mission-row ${m.claimed ? 'claimed' : ''}">
+                    <span class="support-mission-icon"><i class="fas ${m.icon}"></i></span>
+                    <div class="support-mission-info">
+                        <p class="support-mission-title">${escapeHtml(m.title)}</p>
+                        <p class="support-mission-points">+${m.points.toLocaleString()} خبرة</p>
+                    </div>
+                    ${m.claimed
+                        ? '<span class="support-mission-done"><i class="fas fa-check"></i></span>'
+                        : m.manual
+                            ? `<button type="button" class="support-mission-claim-btn" data-mission-id="${m.id}">مطالبة</button>`
+                            : '<span class="support-mission-auto">تلقائي</span>'}
+                </div>
+            `).join('')}
+            ${giftRow}
+        </div>
+    `;
+}
+function supportMissionsReceivingHTML() {
+    return `
+        <div class="support-mission-receiving-note">
+            <i class="fas fa-gift"></i>
+            <p>يرتفع هذا المستوى تلقائياً كل ما استلمت هدايا من الآخرين — لا مهام لإنجازها هنا، فقط كن نشطاً وودوداً واستمتع بالبث!</p>
+        </div>
+    `;
+}
+
 // ✅ لوحة "تفاصيل شارة الدعم/التلقي" — أُعيد بناؤها بالكامل كبطاقة عضوية فاخرة (hero card)
 // بتدرّج لوني حقيقي يتبدّل تلقائياً حسب فئة المستخدم (--tier-c1/--tier-c2 من computeSupportLevelInfo)
 // بدل ثيم ذهبي ثابت للجميع بغضّ النظر عن رتبتهم الفعلية؛ صورته داخل إطار أبيض شفاف + شارة
 // المستوى كأيقونة صغيرة بزاويتها، شريط تقدّم مدمج بالبطاقة، زر "!" يفتح جدول الخبرة الكامل،
-// وقسما "صلاحية المستوى" (شبكة مزايا قادمة قريباً) و"مهمة المستوى" بلونَي الفئة نفسها
+// وصفحتا "صلاحية المستوى"/"مهمة المستوى" تنقلبان كصفحتَي كتاب (تدوير 3D حقيقي) بدل عمودين
+// متجاورين — بلمسة نبض عند فتح كل صفحة تشعر المستخدم أنه يقلّب كتاباً حقيقياً
 function showSupportLevelInfoModal(kind, info, profileImage, username) {
     if (!info) return;
     document.getElementById('support-info-modal')?.remove();
@@ -9553,7 +9657,7 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
     modal.innerHTML = `
         <div class="support-info-sheet-lux">
             <div class="w-10 h-1 bg-white/15 rounded-full mx-auto mt-2.5 mb-1 flex-shrink-0"></div>
-            <div class="support-info-lux-body" style="--tier-c1:${c1};--tier-c2:${c2}">
+            <div class="support-info-lux-body" id="support-info-lux-body" style="--tier-c1:${c1};--tier-c2:${c2}">
                 <!-- ✅ بطاقة عضوية فاخرة — لونها الحقيقي هو تدرّج فئة المستخدم نفسها (لا ذهبي
                      ثابت للجميع)، فتعكس رتبته الفعلية: رمادي للمبتدئ، ذهبي للمحترف، سماوي
                      للخبير، بنفسجي للمخضرم — بنفس فلسفة بطاقات VIP المصرفية/الألعاب الحقيقية -->
@@ -9561,7 +9665,7 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
                     <div class="support-hero-shine"></div>
                     <div class="support-hero-top">
                         <span class="support-hero-kind"><i class="fas ${kindIcon}"></i> ${title}</span>
-                        <span class="support-hero-tier-chip"><i class="fas ${info.tierIcon}"></i> ${escapeHtml(info.tierName)}</span>
+                        <span class="support-hero-tier-chip" id="support-hero-tier-chip"><i class="fas ${info.tierIcon}"></i> ${escapeHtml(info.tierName)}</span>
                     </div>
                     <div class="support-hero-mid">
                         <div class="support-hero-avatar-frame">
@@ -9570,13 +9674,13 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
                         </div>
                         <div class="support-hero-identity">
                             <p class="support-hero-name">${escapeHtml(username || '')}</p>
-                            <p class="support-hero-level">Lv.${info.level}</p>
+                            <p class="support-hero-level" id="support-hero-level">Lv.${info.level}</p>
                         </div>
                     </div>
                     <div class="support-hero-progress-track">
-                        <div class="support-hero-progress-fill" style="width:${info.progressPercent}%"></div>
+                        <div class="support-hero-progress-fill" id="support-hero-progress-fill" style="width:${info.progressPercent}%"></div>
                     </div>
-                    <p class="support-hero-progress-label">${info.isMax ? 'وصلت لأعلى مستوى 🎉' : `${info.pointsToNext.toLocaleString()} خبرة للمستوى التالي`}</p>
+                    <p class="support-hero-progress-label" id="support-hero-progress-label">${info.isMax ? 'وصلت لأعلى مستوى 🎉' : `${info.pointsToNext.toLocaleString()} خبرة للمستوى التالي`}</p>
                 </div>
 
                 <button type="button" id="support-xp-info-btn" class="support-xp-info-row">
@@ -9584,41 +9688,17 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
                     <span>جدول الخبرة الكامل بكل المستويات</span>
                 </button>
 
-                <div class="support-two-col-lux">
-                    <div class="support-col-lux">
-                        <p class="support-lux-section-title">صلاحية المستوى</p>
-                        <div class="support-perks-grid-2col">
-                            <button type="button" class="support-perk-box" data-perk="chest">
-                                <span class="support-perk-icon"><i class="fas fa-box-open"></i></span>
-                                <span class="support-perk-label">صندوق الكنز</span>
-                            </button>
-                            <button type="button" class="support-perk-box" data-perk="bubble">
-                                <span class="support-perk-icon"><i class="fas fa-comments"></i></span>
-                                <span class="support-perk-label">فقاعات الدردشة</span>
-                            </button>
-                            <button type="button" class="support-perk-box" data-perk="upgrade">
-                                <span class="support-perk-icon support-perk-icon-up">UP</span>
-                                <span class="support-perk-label">إعلان ترقية</span>
-                            </button>
-                            <button type="button" class="support-perk-box" data-perk="fame">
-                                <span class="support-perk-icon"><i class="fas fa-trophy"></i></span>
-                                <span class="support-perk-label">لوحة المشاهير</span>
-                            </button>
-                            <button type="button" class="support-perk-box" data-perk="room">
-                                <span class="support-perk-icon"><i class="fas fa-shirt"></i></span>
-                                <span class="support-perk-label">مظهر غرفة مخصص</span>
-                            </button>
-                            <button type="button" class="support-perk-box" data-perk="badge">
-                                <span class="support-perk-icon"><i class="fas fa-award"></i></span>
-                                <span class="support-perk-label">الوسام</span>
-                            </button>
+                <div class="support-flip-tabs">
+                    <button type="button" class="support-flip-tab active" data-page="privileges">صلاحية المستوى</button>
+                    <button type="button" class="support-flip-tab" data-page="mission">مهمة المستوى</button>
+                </div>
+                <div class="support-flip-scene">
+                    <div class="support-flip-card" id="support-flip-card">
+                        <div class="support-flip-face support-flip-front" id="support-flip-front">
+                            ${supportPrivilegesListHTML(info)}
                         </div>
-                    </div>
-                    <div class="support-col-lux">
-                        <p class="support-lux-section-title">مهمة المستوى</p>
-                        <div class="support-mission-soon-lux">
-                            <i class="fas fa-hourglass-half"></i>
-                            <span>قريباً</span>
+                        <div class="support-flip-face support-flip-back" id="support-flip-back">
+                            <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
                         </div>
                     </div>
                 </div>
@@ -9627,10 +9707,95 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
     `;
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => { if (e.target.id === 'support-info-modal') modal.remove(); });
-    modal.querySelectorAll('.support-perk-box').forEach(btn => {
-        btn.addEventListener('click', () => showComingSoonSheet('صلاحيات المستوى', 'هذه الميزة قادمة قريباً!', 'fa-star'));
-    });
     modal.querySelector('#support-xp-info-btn')?.addEventListener('click', () => showSupportXPTableModal());
+
+    // ✅ صفحتا "الصلاحية"/"المهمة" تنقلبان كصفحتَي كتاب حقيقيتين (تدوير 3D 180°) بدل تبديل
+    // فوري — flipCard يضبط ارتفاع البطاقة على أطول وجه حالياً (الوجهان position:absolute، فلا
+    // يُسهمان تلقائياً بارتفاع الحاوية) كي لا يُقصّ أي محتوى مهما اختلف طول كل صفحة عن الأخرى
+    const flipCard = modal.querySelector('#support-flip-card');
+    const frontFace = modal.querySelector('#support-flip-front');
+    const backFace = modal.querySelector('#support-flip-back');
+    function syncFlipHeight() {
+        flipCard.style.height = `${Math.max(frontFace.scrollHeight, backFace.scrollHeight)}px`;
+    }
+    syncFlipHeight();
+
+    // ✅ يطبّق مستوى جديداً (بعد مكافأة حضور) على كل عناصر البطاقة الحية دفعة واحدة — صفحة
+    // الصلاحيات، شريط التقدّم، الاسم/الأيقونة/التدرّج اللوني الخاص بالفئة — بلا إعادة فتح النافذة
+    function applyNewLevelInfo(newInfo) {
+        frontFace.innerHTML = supportPrivilegesListHTML(newInfo);
+        syncFlipHeight();
+        const [nc1, nc2] = newInfo.tierGradient;
+        const body = modal.querySelector('#support-info-lux-body');
+        body.style.setProperty('--tier-c1', nc1);
+        body.style.setProperty('--tier-c2', nc2);
+        const tierChip = modal.querySelector('#support-hero-tier-chip');
+        if (tierChip) tierChip.innerHTML = `<i class="fas ${newInfo.tierIcon}"></i> ${escapeHtml(newInfo.tierName)}`;
+        const levelEl = modal.querySelector('#support-hero-level');
+        if (levelEl) levelEl.textContent = `Lv.${newInfo.level}`;
+        const fillEl = modal.querySelector('#support-hero-progress-fill');
+        if (fillEl) fillEl.style.width = `${newInfo.progressPercent}%`;
+        const labelEl = modal.querySelector('#support-hero-progress-label');
+        if (labelEl) labelEl.textContent = newInfo.isMax ? 'وصلت لأعلى مستوى 🎉' : `${newInfo.pointsToNext.toLocaleString()} خبرة للمستوى التالي`;
+    }
+
+    async function handleClaimCheckIn(e) {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try {
+            const res = await fetch('/api/users/support/checkin', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+            if (res.status !== 'success') {
+                showNotification(res.message || 'تعذر تسجيل الحضور', 'error');
+                btn.disabled = false;
+                return;
+            }
+            showNotification(`✅ +${res.data.pointsGained.toLocaleString()} خبرة`, 'success');
+            fireConfettiBurst(['#facc15', ...info.tierGradient]);
+            applyNewLevelInfo(res.data.levelInfo);
+            await loadMissionsFace();
+        } catch (error) {
+            showNotification('تعذر تسجيل الحضور', 'error');
+            btn.disabled = false;
+        }
+    }
+
+    async function loadMissionsFace() {
+        if (kind !== 'giving') {
+            backFace.innerHTML = supportMissionsReceivingHTML();
+            syncFlipHeight();
+            return;
+        }
+        try {
+            const res = await fetch('/api/users/support/missions', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+            const missions = res.status === 'success' ? res.data.missions : [];
+            const giftSentToday = res.status === 'success' ? res.data.giftSentToday : false;
+            backFace.innerHTML = supportMissionsGivingHTML(missions, giftSentToday);
+        } catch (error) {
+            backFace.innerHTML = `<p class="text-center text-gray-400 py-6">تعذر تحميل مهام اليوم حالياً</p>`;
+        }
+        syncFlipHeight();
+        backFace.querySelector('.support-mission-claim-btn')?.addEventListener('click', handleClaimCheckIn);
+    }
+
+    let missionsLoaded = false;
+    async function ensureMissionsLoaded() {
+        if (missionsLoaded) return;
+        missionsLoaded = true;
+        await loadMissionsFace();
+    }
+
+    modal.querySelectorAll('.support-flip-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            const page = tab.dataset.page;
+            modal.querySelectorAll('.support-flip-tab').forEach(t => t.classList.toggle('active', t === tab));
+            if (page === 'mission') {
+                flipCard.classList.add('flipped');
+                ensureMissionsLoaded();
+            } else {
+                flipCard.classList.remove('flipped');
+            }
+        });
+    });
 }
 
 // ✅ جدول "كم خبرة يحتاج كل مستوى" الكامل (1 إلى 80) — نافذة صغيرة منفصلة تُفتح من علامة

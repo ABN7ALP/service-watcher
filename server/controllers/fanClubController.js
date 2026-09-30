@@ -350,8 +350,11 @@ exports.joinFanClub = async (req, res) => {
         if (io) {
             io.emit('fanclub-member-count-updated', { ownerId, memberCount });
             const { broadcastSupportLevelUpdate } = require('./giftController');
-            broadcastSupportLevelUpdate(io, memberId);
-            broadcastSupportLevelUpdate(io, ownerId);
+            // 🛡️ الدلتا مشروطة بوجود "rose" فعلاً — هي فقط ما يُنشئ سجل GiftLog الذي يُحتسب
+            // بمجموع مستوى الدعم؛ بلا هذا الشرط قد نبلّغ عن دلتا لم تُضَف فعلياً للمجموع الحقيقي
+            const joinDelta = rose ? JOIN_PRICE : 0;
+            broadcastSupportLevelUpdate(io, memberId, 'giving', joinDelta);
+            broadcastSupportLevelUpdate(io, ownerId, 'receiving', joinDelta);
             if (owner.socketId) {
                 io.to(owner.socketId).emit('fanclub-new-member', {
                     memberId, memberUsername: updatedMember.username, memberProfileImage: updatedMember.profileImage, memberCount
