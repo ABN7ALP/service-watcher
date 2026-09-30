@@ -56,7 +56,8 @@ const userSchema = new mongoose.Schema({
     supportMissions: {
         lastCheckInAt: { type: Date, default: null },
         lastChatBonusAt: { type: Date, default: null },
-        bonusXP: { type: Number, default: 0 }
+        bonusXP: { type: Number, default: 0 },
+        streakCount: { type: Number, default: 0 } // ✅ تتابع أيام الحضور اليومي — يمنح "إطار المثابر" عند بلوغ 7
     },
     // ✅ حقول جديدة للوحة التحكم
     isBanned: { type: Boolean, default: false },

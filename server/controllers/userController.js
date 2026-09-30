@@ -54,6 +54,7 @@ const getSupportMissions = async (req, res) => {
             status: 'success',
             data: {
                 giftSentToday: !!giftToday,
+                streak: user?.supportMissions?.streakCount || 0,
                 missions: [
                     { id: 'checkin', title: 'تسجيل الحضور اليومي', icon: 'fa-calendar-check', points: SUPPORT_DAILY_CHECKIN_BONUS, claimed: claimedToday(user?.supportMissions?.lastCheckInAt), manual: true },
                     { id: 'chat', title: 'الدردشة بأي غرفة اليوم', icon: 'fa-comments', points: SUPPORT_DAILY_CHAT_BONUS, claimed: claimedToday(user?.supportMissions?.lastChatBonusAt), manual: false }
@@ -67,26 +68,53 @@ const getSupportMissions = async (req, res) => {
 };
 
 // ✅ مطالبة حضور يومي — نفس نمط claimCheckIn بنادي المعجبين بالضبط: findOneAndUpdate شرطي
-// ذرّي (لا قراءة-ثم-كتابة) يمنع أي سباق يمنح المكافأة مرتين لو ضُغط الزر مرتين بسرعة
+// ذرّي (لا قراءة-ثم-كتابة) يمنع أي سباق يمنح المكافأة مرتين لو ضُغط الزر مرتين بسرعة. يحسب
+// أيضاً تتابع الأيام (streak) ويمنح "إطار المثابر" تلقائياً (مرة واحدة فقط) عند بلوغ 7 أيام
+// متتالية — الاستعلام الأول وحده هو ما يحسم السباق (شرطي على تاريخ اليوم)؛ التحديث الثاني
+// (الستريك + منح الإطار) يقع بأمان بعده لأن يوم هذا المستخدم "محسوم" أصلاً بالاستعلام الأول
 const claimSupportCheckIn = async (req, res) => {
     try {
         const todayStart = startOfTodayUTC();
-        const user = await User.findOneAndUpdate(
+        const yesterdayStart = new Date(todayStart);
+        yesterdayStart.setUTCDate(yesterdayStart.getUTCDate() - 1);
+
+        const prevUser = await User.findOneAndUpdate(
             {
                 _id: req.user.id,
                 $or: [{ 'supportMissions.lastCheckInAt': null }, { 'supportMissions.lastCheckInAt': { $lt: todayStart } }]
             },
             { $inc: { 'supportMissions.bonusXP': SUPPORT_DAILY_CHECKIN_BONUS }, $set: { 'supportMissions.lastCheckInAt': new Date() } },
-            { new: true }
+            { new: false }
         );
-        if (!user) {
+        if (!prevUser) {
             return res.status(400).json({ status: 'fail', message: 'سجّلت حضورك اليوم بالفعل' });
         }
+
+        const prevCheckIn = prevUser.supportMissions?.lastCheckInAt;
+        const continuesStreak = prevCheckIn && prevCheckIn >= yesterdayStart && prevCheckIn < todayStart;
+        const newStreak = continuesStreak ? (prevUser.supportMissions?.streakCount || 0) + 1 : 1;
+
+        const streakUpdate = { $set: { 'supportMissions.streakCount': newStreak } };
+        let frameGranted = null;
+        if (newStreak >= 7) {
+            const ProfileFrame = require('../models/ProfileFrame');
+            const persistentFrame = await ProfileFrame.findOne({ name: 'إطار المثابر' });
+            const alreadyOwns = persistentFrame && prevUser.ownedFrames.some(o => o.frame.toString() === persistentFrame._id.toString());
+            if (persistentFrame && !alreadyOwns) {
+                streakUpdate.$push = { ownedFrames: { frame: persistentFrame._id, purchasedAt: new Date(), durationDays: 36500, activatedAt: null, expiresAt: null } };
+                frameGranted = persistentFrame.name;
+            }
+        }
+        await User.updateOne({ _id: req.user.id }, streakUpdate);
+
         const io = req.app.get('socketio');
         const { giving } = await computeSupportLevels(req.user.id);
         const { broadcastSupportLevelUpdate } = require('./giftController');
         broadcastSupportLevelUpdate(io, req.user.id, 'giving', SUPPORT_DAILY_CHECKIN_BONUS);
-        res.status(200).json({ status: 'success', data: { levelInfo: giving, pointsGained: SUPPORT_DAILY_CHECKIN_BONUS } });
+        res.status(200).json({
+            status: 'success',
+            data: { levelInfo: giving, pointsGained: SUPPORT_DAILY_CHECKIN_BONUS, streak: newStreak, frameGranted }
+        });
     } catch (error) {
         console.error('[SUPPORT MISSIONS] claimSupportCheckIn error:', error);
         res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
