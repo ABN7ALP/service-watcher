@@ -130,7 +130,7 @@ async function getKickedUsersSnapshot(room) {
 // =====================================================
 // ✅ كتالوج خلفيات الغرفة — خلفية مجانية دائمة + خلفيات مدفوعة (10 كوينز / 5 أيام)
 // =====================================================
-const FREE_DEFAULT_BACKGROUND = 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=800&q=60';
+const FREE_DEFAULT_BACKGROUND = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790798203/voice_room_background.png';
 const PREMIUM_BACKGROUNDS = [
     { id: 'bg_galaxy', url: 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=800&q=60', price: 10 },
     { id: 'bg_neon', url: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?w=800&q=60', price: 10 },

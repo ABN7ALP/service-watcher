@@ -554,6 +554,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const keepBadge = sameOccupant ? seatEl.querySelector('.seat-support-badge') : null;
             seatEl.innerHTML = `
                 <img src="${seatData.user.profileImage}" class="voice-seat-avatar ${seatData.user.activeFrameClass || ''}" alt="${safeName}" loading="lazy" decoding="async">
+                ${frameDecorationHTML(seatData.user.activeFrameClass)}
                 ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
                 <span class="voice-seat-name">${safeName}</span>
             `;
@@ -2232,15 +2233,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentRoomCoverImage = null;
 
     // ✅ يطبّق خلفية الغرفة خلف كل شيء (المقاعد/الدردشة/الأيقونات) لكن داخل إطارها فقط
+    // ✅ خلفية افتراضية لكل الغرف التي لم يشترِ مضيفها خلفية مخصّصة من المتجر (بطلب صريح) —
+    // نفس التراكب الغامق (55%) يبقى فوقها كما فوق أي خلفية مشتراة، وكل نصوص/فقاعات الدردشة
+    // أصلاً بخلفية داكنة شبه معتمة (.room-chat-bubble-default) فتبقى مقروءة فوق أي صورة خلفية
+    const DEFAULT_ROOM_BACKGROUND = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790798203/voice_room_background.png';
     function applyRoomBackground(url) {
         if (!mainContent) return;
-        if (url) {
-            mainContent.style.backgroundImage = `linear-gradient(rgba(17,24,39,0.55), rgba(17,24,39,0.55)), url(${url})`;
-            mainContent.style.backgroundSize = 'cover';
-            mainContent.style.backgroundPosition = 'center';
-        } else {
-            mainContent.style.backgroundImage = 'none';
-        }
+        const bgUrl = url || DEFAULT_ROOM_BACKGROUND;
+        mainContent.style.backgroundImage = `linear-gradient(rgba(17,24,39,0.55), rgba(17,24,39,0.55)), url(${bgUrl})`;
+        mainContent.style.backgroundSize = 'cover';
+        mainContent.style.backgroundPosition = 'center';
     }
 
     function enterVoiceRoom(room, password) {
@@ -2333,13 +2335,13 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </div>
                 <div class="flex-1"></div>
                 <div class="flex items-center gap-2 flex-shrink-0">
-                    <button id="room-power-btn" class="w-8 h-8 rounded-full bg-gray-700/60 hover:bg-gray-600 flex items-center justify-center text-gray-300" title="خيارات الخروج">
-                        <i class="fas fa-power-off"></i>
-                    </button>
                     <button id="room-viewer-count-btn" class="room-viewer-count-btn" title="المشاهدون">
                         <i class="fas fa-eye"></i>
                         <span id="room-viewer-avatars" class="room-viewer-avatars"></span>
                         <span id="room-viewer-count-num">0</span>
+                    </button>
+                    <button id="room-power-btn" class="w-7 h-7 rounded-full bg-gray-700/60 hover:bg-gray-600 flex items-center justify-center text-gray-300 text-[13px] flex-shrink-0" title="خيارات الخروج">
+                        <i class="fas fa-power-off"></i>
                     </button>
                 </div>
             </div>
@@ -2494,16 +2496,29 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
     }
 
-    // ✅ قائمة المشاهدين المسندلة — تُطلب حيّة من السيرفر عند الفتح (مصدرها عضوية قناة السوكيت)
+    // ✅ قائمة المشاهدين المسندلة — تُطلب حيّة من السيرفر عند الفتح (مصدرها عضوية قناة السوكيت).
+    // ✅ أُعيدت هيكلتها بالكامل: تظهر من الأسفل (كانت كذلك أصلاً)، ورأسها الآن يخصّص صفاً
+    // لكوينز الجلسة الحالية (دعم مُرسَل) وترتيب الغرفة (رقم مرتبتها ضمن أقوى الغرف)، ثم
+    // عدد المشاهدين أسفلهما مباشرة — بدل عنوان "المشاهدون" المجرّد فقط
     function showRoomViewersSheet(roomId) {
         document.getElementById('room-viewers-sheet')?.remove();
         const modal = document.createElement('div');
         modal.id = 'room-viewers-sheet';
         modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-3';
         modal.innerHTML = `
-            <div class="room-viewers-sheet-card w-full md:max-w-sm text-white max-h-[65vh] flex flex-col">
+            <div class="room-viewers-sheet-card w-full md:max-w-sm text-white max-h-[70vh] flex flex-col">
                 <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-3 md:hidden flex-shrink-0"></div>
-                <h3 class="text-sm font-bold px-4 pt-1 pb-3 flex items-center gap-2 flex-shrink-0">
+                <div class="grid grid-cols-2 gap-2 px-4 pb-3 flex-shrink-0">
+                    <div class="room-info-stat-box">
+                        <p class="room-info-stat-num text-amber-400"><i class="fas fa-coins text-[13px]"></i> <span id="room-viewers-sheet-coins">0</span></p>
+                        <p class="room-info-stat-label">كوينز مُرسَلة بالجلسة</p>
+                    </div>
+                    <div class="room-info-stat-box">
+                        <p class="room-info-stat-num text-purple-300"><span id="room-viewers-sheet-rank">—</span></p>
+                        <p class="room-info-stat-label">ترتيب الغرفة</p>
+                    </div>
+                </div>
+                <h3 class="text-sm font-bold px-4 pb-2.5 flex items-center gap-2 flex-shrink-0 border-t border-white/5 pt-2.5">
                     <i class="fas fa-eye text-purple-400"></i> المشاهدون
                     <span id="room-viewers-sheet-count" class="text-[11px] font-normal text-gray-400"></span>
                 </h3>
@@ -2513,11 +2528,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             </div>
         `;
         document.body.appendChild(modal);
+        const coinsEl = document.getElementById('room-viewers-sheet-coins');
+        if (coinsEl) coinsEl.textContent = currentRoomSessionSupportPoints.toLocaleString('en-US');
         modal.addEventListener('click', (e) => { if (e.target.id === 'room-viewers-sheet') modal.remove(); });
         socket.emit('get-room-viewers', { roomId });
     }
 
-    // ✅ يحدّث شارة العدد + شريط الصور المتراكبة أعلى زاوية الغرفة
+    // ✅ يحدّث شارة العدد + شريط الصور المتراكبة أعلى زاوية الغرفة. النقر على أي صورة هنا لا
+    // يفتح ملفها الشخصي مباشرة بعد الآن (بطلب صريح) — يُترك يصعد طبيعياً لزر #room-viewer-count-btn
+    // الأب فيفتح نافذة المشاهدين الكاملة تماماً كالنقر على الرقم، وملف أي شخص يبقى متاحاً بضغطة
+    // إضافية واحدة من داخل تلك القائمة (showRoomViewersSheet)
     function updateRoomViewerWidget(count, viewers) {
         const numEl = document.getElementById('room-viewer-count-num');
         if (numEl) numEl.textContent = count > 999 ? '999+' : String(count);
@@ -2526,12 +2546,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             avatarsEl.innerHTML = viewers.slice(0, 3).map(v => `
                 <img src="${v.profileImage}" data-user-id="${v.id}" class="room-viewer-avatar" title="${escapeHtml(v.username)}">
             `).join('');
-            avatarsEl.querySelectorAll('.room-viewer-avatar').forEach(img => {
-                img.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    showUserProfileSheet(currentVoiceRoomId, null, img.dataset.userId, img.title);
-                });
-            });
         }
     }
 
@@ -2891,6 +2905,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <div class="room-profile-header">
                     <div class="room-profile-avatar-wrap">
                         <img id="room-profile-avatar-img" src="${p.profileImage}" class="room-profile-avatar ${p.activeFrameClass || ''}" title="${allowFullProfileNav ? 'عرض الملف الكامل' : ''}">
+                        ${frameDecorationHTML(p.activeFrameClass)}
                     </div>
                     <div class="room-profile-name-id-row">
                         <p class="room-profile-name">${escapeHtml(p.username)} ${getAgentBadgeHTML(p.isAgent)}</p>
@@ -5703,6 +5718,7 @@ function frameShopCardHTML(f, activeFrameId, userPhoto) {
         <div class="frame-shop-card ${isActive ? 'active' : ''}">
             <div class="frame-shop-card-avatar-wrap">
                 <img src="${userPhoto}" class="frame-shop-card-avatar ${f.cssClass}">
+                ${frameDecorationHTML(f.cssClass)}
             </div>
             <p class="frame-shop-card-name">${escapeHtml(f.name)}</p>
             ${showOwned ? `
@@ -5763,6 +5779,7 @@ async function showFrameShopModal() {
             preview.innerHTML = `
                 <div class="frame-shop-current-avatar-wrap">
                     <img src="${userPhoto}" class="frame-shop-current-avatar ${activeMeta ? activeMeta.cssClass : ''}">
+                    ${frameDecorationHTML(activeMeta ? activeMeta.cssClass : null)}
                 </div>
                 <p class="frame-shop-current-label">${activeMeta ? escapeHtml(activeMeta.name) : 'بلا إطار مفعّل حالياً'}</p>
                 ${activeMeta ? `<button type="button" id="frame-shop-remove-btn" class="frame-shop-remove-btn">إزالة الإطار</button>` : ''}
@@ -7263,11 +7280,13 @@ function showXpGainAnimation(amount) {
         updateRoomViewerWidget(count, preview || null);
     });
 
-    socket.on('room-viewers-list', ({ roomId, viewers }) => {
+    socket.on('room-viewers-list', ({ roomId, viewers, roomRank }) => {
         if (roomId === currentVoiceRoomId) updateRoomViewerWidget(viewers.length, viewers);
 
         const countLabel = document.getElementById('room-viewers-sheet-count');
         if (countLabel) countLabel.textContent = `(${viewers.length})`;
+        const rankEl = document.getElementById('room-viewers-sheet-rank');
+        if (rankEl) rankEl.textContent = roomRank ? `#${roomRank}` : 'غير مصنّفة';
 
         const listEl = document.getElementById('room-viewers-list');
         if (!listEl) return;
@@ -9890,13 +9909,19 @@ const FAN_CLUB_CONTRIBUTOR_FRAME_IMG = 'https://res.cloudinary.com/dntlt5xry/ima
 function wrapContributorFrames(root = document) {
     // إضافة تراكب لأي صورة جديدة تحمل هذا الإطار
     root.querySelectorAll('img.profile-frame-contributor:not(.frame-overlay-wrapped)').forEach(img => {
-        const rect = img.getBoundingClientRect();
-        if (!rect.width || !rect.height) return; // لم يُرسَم بعد (مثلاً display:none) — تُعاد المحاولة بالدفعة التالية
+        // 🐛 إصلاح: getBoundingClientRect() يعكس أي transform:scale() من عنصر أب يتحرّك حالياً
+        // (مثلاً حاوية تدخل بأنيميشن "pop" من 0.6 إلى 1) — لو رُصدت الصورة هنا مبكراً أثناء
+        // الأنيميشن، يُحفَظ حجم التراكب أصغر من الحقيقي بشكل دائم (px ثابتة لا تكبر لاحقاً مع
+        // اكتمال الأنيميشن)، فيبدو الإطار غير متناسق مع الصورة. offsetWidth/offsetHeight يقرآن
+        // صندوق التخطيط الفعلي فقط (بلا أي تأثير من transform البصري)، فيُعطيان القياس الحقيقي
+        // دوماً بغض النظر عن أي أنيميشن تكبير/تصغير جارٍ بأي عنصر أب وقت الرصد
+        const w = img.offsetWidth, h = img.offsetHeight;
+        if (!w || !h) return; // لم يُرسَم بعد (مثلاً display:none) — تُعاد المحاولة بالدفعة التالية
         img.classList.add('frame-overlay-wrapped');
         const wrap = document.createElement('span');
         wrap.className = 'frame-overlay-wrap';
-        wrap.style.width = `${rect.width}px`;
-        wrap.style.height = `${rect.height}px`;
+        wrap.style.width = `${w}px`;
+        wrap.style.height = `${h}px`;
         img.parentNode.insertBefore(wrap, img);
         wrap.appendChild(img);
         const overlay = document.createElement('img');
@@ -10606,7 +10631,10 @@ async function showFullProfilePage(userId) {
         const body = document.getElementById('full-profile-body');
         body.innerHTML = `
             <div class="full-profile-cover" style="${u.coverImage ? `background-image:url('${u.coverImage}')` : ''}">
-                <img src="${u.profileImage}" class="full-profile-avatar ${u.activeFrameClass || ''}">
+                <div class="full-profile-avatar-wrap">
+                    <img src="${u.profileImage}" class="full-profile-avatar ${u.activeFrameClass || ''}">
+                    ${frameDecorationHTML(u.activeFrameClass)}
+                </div>
             </div>
             <div class="full-profile-identity">
                 <h2 class="full-profile-name">${escapeHtml(u.username)} ${getAgentBadgeHTML(u.isAgent)}</h2>
@@ -11313,6 +11341,24 @@ function applyFrameToAvatar(imgEl, activeFrameClass) {
     if (activeFrameClass) {
         imgEl.classList.add(activeFrameClass);
     }
+}
+
+// ✅ زخرفة تاج+أجنحة+جواهر متحركة فوق "إطار الأساطير" (profile-frame-golden-legend) — تُدرَج
+// فقط بثلاث واجهات استعراض صريحة طلبها المستخدم (المقعد/الملف المصغّر/الملف الكامل)، لا كل
+// الأماكن التي يظهر بها activeFrameClass (~20 موقعاً): هذا إطار قابل للشراء مفتوح، فقد يظهر
+// بكثافة كبيرة بآن واحد (كل رسالة دردشة/صف متصدّرين)؛ مراقب DOM عام كإطار المساهم (نادر
+// أسبوعياً) غير آمن هنا. يُستدعى فقط حيث الحاوية الأب مضمونة (position:relative/absolute)
+function frameDecorationHTML(activeFrameClass) {
+    if (activeFrameClass !== 'profile-frame-golden-legend') return '';
+    return `
+        <span class="frame-icon-overlay" aria-hidden="true">
+            <i class="fas fa-crown frame-icon frame-icon-crown"></i>
+            <i class="fas fa-feather-alt frame-icon frame-icon-wing frame-icon-wing-left"></i>
+            <i class="fas fa-feather-alt frame-icon frame-icon-wing frame-icon-wing-right"></i>
+            <i class="fas fa-gem frame-icon frame-icon-gem frame-icon-gem-left"></i>
+            <i class="fas fa-gem frame-icon frame-icon-gem frame-icon-gem-right"></i>
+        </span>
+    `;
 }
         
 
