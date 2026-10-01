@@ -38,15 +38,24 @@ async function seedFramesIfMissing() {
         { name: 'جوهرة الزمرد', cssClass: 'profile-frame-emerald-facet', isActive: false, sortOrder: 2, prices: { days7: 120, days30: 350, days365: 2800 } },
         { name: 'إعصار اللهب', cssClass: 'profile-frame-flame-vortex', isActive: false, sortOrder: 3, prices: { days7: 250, days30: 750, days365: 6000 } },
         { name: 'تاج الأساطير', cssClass: 'profile-frame-golden-legend', isActive: false, sortOrder: 4, prices: { days7: 400, days30: 1200, days365: 9500 } },
-        // ✅ أول إطار-صورة حقيقي بالمتجر (overlay حقيقي فوق الصورة الشخصية، راجع
-        // IMAGE_OVERLAY_FRAMES بـapp.js) — تجربة أولى قبل إرسال بقية روابط الإطارات
+        // ✅ إطارات-صورة حقيقية بالمتجر (overlay حقيقي فوق الصورة الشخصية، راجع
+        // IMAGE_OVERLAY_FRAMES بـapp.js) — مجموعة أولى من تسعة، مُسعَّرة بتدرّج حسب
+        // الندرة الظاهرة من اسم كل صورة (ملكي/تاج أساسي → أسطوري/مخلوقات أسطورية)
         { name: 'الإطار الفاخر', cssClass: 'profile-frame-luxury-01', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif', isActive: true, sortOrder: 1, prices: { days7: 400, days30: 1200, days365: 9500 } },
+        { name: 'الإطار الملكي', cssClass: 'profile-frame-royal-01', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790892729/royal_frame_600px.gif', isActive: true, sortOrder: 2, prices: { days7: 150, days30: 450, days365: 3500 } },
+        { name: 'إطار التاج', cssClass: 'profile-frame-crown-01', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790894895/crown_frame_600px.gif', isActive: true, sortOrder: 3, prices: { days7: 150, days30: 450, days365: 3500 } },
+        { name: 'التاج الأسود والذهبي', cssClass: 'profile-frame-black-gold-crown', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790895602/black_gold_crown_frame_600px.webp', isActive: true, sortOrder: 4, prices: { days7: 250, days30: 750, days365: 6000 } },
+        { name: 'الإطار القوطي الملكي', cssClass: 'profile-frame-gothic-royal', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896169/gothic_royal_frame.webp', isActive: true, sortOrder: 5, prices: { days7: 250, days30: 750, days365: 6000 } },
+        { name: 'إطار الجمشت الملكي', cssClass: 'profile-frame-amethyst-royal', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896497/amethyst_royal_frame.webp', isActive: true, sortOrder: 6, prices: { days7: 300, days30: 900, days365: 7000 } },
+        { name: 'إطار تنانين النار', cssClass: 'profile-frame-fire-dragons', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897430/fire_dragons_frame.webp', isActive: true, sortOrder: 7, prices: { days7: 450, days30: 1350, days365: 10500 } },
+        { name: 'إطار الأسد والنحلة والياقوت', cssClass: 'profile-frame-lion-bee-sapphire', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897852/lion_bee_sapphire_frame.webp', isActive: true, sortOrder: 8, prices: { days7: 450, days30: 1350, days365: 10500 } },
+        { name: 'إطار فارس بيغاسوس', cssClass: 'profile-frame-pegasus-warrior', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790898291/pegasus_warrior_frame.webp', isActive: true, sortOrder: 9, prices: { days7: 500, days30: 1500, days365: 12000 } },
         // ✅ إطار حصري غير مباع بالمتجر (isActive:false) — يُمنح فقط تلقائياً لمن يفوز بالمركز
         // الأول بمساهمات نادي معجبين لأسبوع كامل (راجع server/utils/fanClubWeeklyFrameJob.js)
-        { name: 'إطار المساهم', cssClass: 'profile-frame-contributor', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png', isActive: false, sortOrder: 7, prices: { days7: 0, days30: 0, days365: 0 } },
+        { name: 'إطار المساهم', cssClass: 'profile-frame-contributor', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png', isActive: false, sortOrder: 20, prices: { days7: 0, days30: 0, days365: 0 } },
         // ✅ إطار مهمة — غير مباع (isActive:false)، يُمنح تلقائياً لمن يكمل مهمة الحضور اليومي
         // بمستوى الدعم 7 أيام متتالية (راجع server/controllers/userController.js claimSupportCheckIn)
-        { name: 'إطار المثابر', cssClass: 'profile-frame-persistent', isActive: false, sortOrder: 8, prices: { days7: 0, days30: 0, days365: 0 } }
+        { name: 'إطار المثابر', cssClass: 'profile-frame-persistent', isActive: false, sortOrder: 21, prices: { days7: 0, days30: 0, days365: 0 } }
     ];
     for (const f of frames) {
         const exists = await ProfileFrame.findOne({ name: f.name });
