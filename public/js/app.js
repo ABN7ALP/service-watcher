@@ -11384,61 +11384,22 @@ function applyFrameToAvatar(imgEl, activeFrameClass) {
 // الأماكن التي يظهر بها activeFrameClass (~20 موقعاً): هذا إطار قابل للشراء مفتوح، فقد يظهر
 // بكثافة كبيرة بآن واحد (كل رسالة دردشة/صف متصدّرين)؛ مراقب DOM عام كإطار المساهم (نادر
 // أسبوعياً) غير آمن هنا. يُستدعى فقط حيث الحاوية الأب مضمونة (position:relative/absolute)
+// ✅ روابط OpenMoji (مكتبة رسوم مفتوحة المصدر CC BY-SA 4.0) عبر jsdelivr — نفس النطاق
+// الموثوق أصلاً بـCSP (script-src/style-src) للوحة التحكم، أُضيف الآن لـimg-src أيضاً
+// (راجع server/middleware/globalMiddleware.js) ليُسمح بعرضها. onerror يُخفي أي صورة تفشل
+// بهدوء بدل أيقونة "صورة مكسورة" — إن لم يعمل رابط معيّن نصلحه سوياً لاحقاً
+const FRAME_LEGEND_CROWN_IMG = 'https://cdn.jsdelivr.net/npm/openmoji@17.0.0/color/svg/1F451.svg';
+const FRAME_LEGEND_FEATHER_IMG = 'https://cdn.jsdelivr.net/npm/openmoji@17.0.0/color/svg/1FAB6.svg';
+const FRAME_LEGEND_GEM_IMG = 'https://cdn.jsdelivr.net/npm/openmoji@17.0.0/color/svg/1F48E.svg';
 function frameDecorationHTML(activeFrameClass) {
     if (activeFrameClass !== 'profile-frame-golden-legend') return '';
-    // ✅ رسم متجهي (SVG) مرسوم يدوياً بالكامل محلياً — بلا أي اعتماد على صورة/مكتبة خارجية
-    // (شبكة هذا البيئة تمنع التحقق من أي رابط خارجي قبل النشر)، بتدرّجات لونية حقيقية وتفاصيل
-    // (جواهر على رؤوس التاج، ريش الجناح متراكب، جوهرة مفصّصة بخطوط وجه) أغنى بصرياً من أيقونة
-    // خط واحد مسطّحة
     return `
         <span class="frame-icon-overlay" aria-hidden="true">
-            <svg viewBox="0 0 100 80" class="frame-icon frame-icon-crown">
-                <defs>
-                    <linearGradient id="frameCrownGold" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#fff6c8"/>
-                        <stop offset="45%" stop-color="#fcd34d"/>
-                        <stop offset="100%" stop-color="#b45309"/>
-                    </linearGradient>
-                </defs>
-                <path d="M8 70 L8 35 L26 50 L36 20 L50 42 L64 20 L74 50 L92 35 L92 70 Z" fill="url(#frameCrownGold)" stroke="#78350f" stroke-width="2.5" stroke-linejoin="round"/>
-                <rect x="8" y="64" width="84" height="11" rx="3" fill="url(#frameCrownGold)" stroke="#78350f" stroke-width="2.5"/>
-                <circle cx="36" cy="20" r="6.5" fill="#ef4444" stroke="#7f1d1d" stroke-width="1.5"/>
-                <circle cx="50" cy="42" r="5.5" fill="#60a5fa" stroke="#1e3a8a" stroke-width="1.5"/>
-                <circle cx="64" cy="20" r="6.5" fill="#ef4444" stroke="#7f1d1d" stroke-width="1.5"/>
-            </svg>
-            <svg viewBox="0 0 100 60" class="frame-icon frame-icon-wing frame-icon-wing-left">
-                <defs>
-                    <linearGradient id="frameWingGold" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%" stop-color="#fde68a"/>
-                        <stop offset="100%" stop-color="#fffbeb"/>
-                    </linearGradient>
-                </defs>
-                <path d="M2 50 Q20 10 95 5 Q70 20 60 30 Q85 28 92 20 Q65 42 48 40 Q68 46 78 44 Q50 58 20 54 Q35 56 40 52 Q15 56 2 50 Z" fill="url(#frameWingGold)" stroke="#b45309" stroke-width="1.5" stroke-linejoin="round"/>
-            </svg>
-            <svg viewBox="0 0 100 60" class="frame-icon frame-icon-wing frame-icon-wing-right">
-                <path d="M2 50 Q20 10 95 5 Q70 20 60 30 Q85 28 92 20 Q65 42 48 40 Q68 46 78 44 Q50 58 20 54 Q35 56 40 52 Q15 56 2 50 Z" fill="url(#frameWingGold)" stroke="#b45309" stroke-width="1.5" stroke-linejoin="round"/>
-            </svg>
-            <svg viewBox="0 0 60 60" class="frame-icon frame-icon-gem frame-icon-gem-left">
-                <defs>
-                    <linearGradient id="frameGemCyan" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#a5f3fc"/>
-                        <stop offset="50%" stop-color="#22d3ee"/>
-                        <stop offset="100%" stop-color="#0e7490"/>
-                    </linearGradient>
-                </defs>
-                <polygon points="30,4 50,22 42,56 18,56 10,22" fill="url(#frameGemCyan)" stroke="#164e63" stroke-width="2" stroke-linejoin="round"/>
-                <polygon points="30,4 50,22 30,30 10,22" fill="#ffffff" fill-opacity="0.35"/>
-                <line x1="30" y1="30" x2="30" y2="4" stroke="#164e63" stroke-width="1" opacity="0.5"/>
-                <line x1="30" y1="30" x2="18" y2="56" stroke="#164e63" stroke-width="1" opacity="0.5"/>
-                <line x1="30" y1="30" x2="42" y2="56" stroke="#164e63" stroke-width="1" opacity="0.5"/>
-            </svg>
-            <svg viewBox="0 0 60 60" class="frame-icon frame-icon-gem frame-icon-gem-right">
-                <polygon points="30,4 50,22 42,56 18,56 10,22" fill="url(#frameGemCyan)" stroke="#164e63" stroke-width="2" stroke-linejoin="round"/>
-                <polygon points="30,4 50,22 30,30 10,22" fill="#ffffff" fill-opacity="0.35"/>
-                <line x1="30" y1="30" x2="30" y2="4" stroke="#164e63" stroke-width="1" opacity="0.5"/>
-                <line x1="30" y1="30" x2="18" y2="56" stroke="#164e63" stroke-width="1" opacity="0.5"/>
-                <line x1="30" y1="30" x2="42" y2="56" stroke="#164e63" stroke-width="1" opacity="0.5"/>
-            </svg>
+            <img src="${FRAME_LEGEND_CROWN_IMG}" class="frame-icon frame-icon-crown" onerror="this.style.display='none'" alt="">
+            <img src="${FRAME_LEGEND_FEATHER_IMG}" class="frame-icon frame-icon-wing frame-icon-wing-left" onerror="this.style.display='none'" alt="">
+            <img src="${FRAME_LEGEND_FEATHER_IMG}" class="frame-icon frame-icon-wing frame-icon-wing-right" onerror="this.style.display='none'" alt="">
+            <img src="${FRAME_LEGEND_GEM_IMG}" class="frame-icon frame-icon-gem frame-icon-gem-left" onerror="this.style.display='none'" alt="">
+            <img src="${FRAME_LEGEND_GEM_IMG}" class="frame-icon frame-icon-gem frame-icon-gem-right" onerror="this.style.display='none'" alt="">
         </span>
     `;
 }
@@ -11496,7 +11457,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
         const footer = document.getElementById('gift-store-footer');
         if (!body || !footer) return;
 
-        body.innerHTML = `<div id="gift-cards-grid" class="grid grid-cols-3 gap-2">${gifts.map(g => renderGiftCardHTML(g)).join('')}</div>`;
+        body.innerHTML = `<div id="gift-cards-grid" class="grid grid-cols-4 gap-2">${gifts.map(g => renderGiftCardHTML(g)).join('')}</div>`;
         footer.innerHTML = renderGiftFooterHTML(currentUser.coins || 0);
 
         wireGiftImageFallbacks(body);
@@ -11832,12 +11793,12 @@ function renderGiftCardHTML(g) {
 function renderGiftFooterHTML(coins) {
     return `
         <div class="gift-footer flex items-center gap-2 p-3 border-t border-gray-700 bg-gray-900/60 flex-shrink-0">
-            <span class="text-xs text-yellow-400 flex items-center gap-1 flex-shrink-0 font-bold">
+            <span class="gift-footer-balance-pill">
                 <i class="fas fa-coins"></i> <span class="gift-footer-balance">${coins}</span>
             </span>
             <div class="flex-1"></div>
             <div class="gift-qty-segmented" role="group">
-                ${[1, 7, 77, 777].map((n, i) => `<button type="button" data-qty="${n}" class="gift-qty-segment${i === 0 ? ' active' : ''}">×${n}</button>`).join('')}
+                ${[1, 6, 66, 166, 999].map((n, i) => `<button type="button" data-qty="${n}" class="gift-qty-segment${i === 0 ? ' active' : ''}">×${n}</button>`).join('')}
             </div>
             <button type="button" class="gift-send-main-btn" disabled title="اختر هدية أولاً">
                 <i class="fas fa-paper-plane"></i> إرسال
