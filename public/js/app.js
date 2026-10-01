@@ -9929,7 +9929,15 @@ const FAN_CLUB_CONTRIBUTOR_FRAME_IMG = 'https://res.cloudinary.com/dntlt5xry/ima
 // تُضاف هنا — صنف واحد لكل إطار صورة جديد يُشترى من المتجر (راجع autoSeed.js لنفس الروابط)
 const IMAGE_OVERLAY_FRAMES = {
     'profile-frame-contributor': FAN_CLUB_CONTRIBUTOR_FRAME_IMG,
-    'profile-frame-luxury-01': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif'
+    'profile-frame-luxury-01': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif',
+    'profile-frame-royal-01': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790892729/royal_frame_600px.gif',
+    'profile-frame-crown-01': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790894895/crown_frame_600px.gif',
+    'profile-frame-black-gold-crown': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790895602/black_gold_crown_frame_600px.webp',
+    'profile-frame-gothic-royal': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896169/gothic_royal_frame.webp',
+    'profile-frame-amethyst-royal': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896497/amethyst_royal_frame.webp',
+    'profile-frame-fire-dragons': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897430/fire_dragons_frame.webp',
+    'profile-frame-lion-bee-sapphire': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897852/lion_bee_sapphire_frame.webp',
+    'profile-frame-pegasus-warrior': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790898291/pegasus_warrior_frame.webp'
 };
 const IMAGE_OVERLAY_FRAME_CLASSES = Object.keys(IMAGE_OVERLAY_FRAMES);
 
