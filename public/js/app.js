@@ -9923,23 +9923,31 @@ const FAN_CLUB_COLORS = {
 // ✅ صورة "إطار المساهم" — نفس الإطار الحصري الحقيقي الذي يُمنح دائماً لمن يفوز بالمركز الأول
 // بنادٍ لأسبوع كامل (server/utils/fanClubWeeklyFrameJob.js)؛ نفس الرابط بالضبط المضروب
 // بالخادم (autoSeed.js) — تُستخدم هنا لمعاينته بشاشات النادي وكذلك كتراكب حقيقي فوق صورة
-// أي فائز حالياً يرتديه (راجع wrapContributorFrames أسفله)
+// أي فائز حالياً يرتديه (راجع IMAGE_OVERLAY_FRAMES/wrapImageOverlayFrames أسفله)
 const FAN_CLUB_CONTRIBUTOR_FRAME_IMG = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png';
+// ✅ خريطة عامة: أي صنف إطار يحتاج صورة تراكب حقيقية فوق الصورة الشخصية (بدل حدّ CSS بسيط)
+// تُضاف هنا — صنف واحد لكل إطار صورة جديد يُشترى من المتجر (راجع autoSeed.js لنفس الروابط)
+const IMAGE_OVERLAY_FRAMES = {
+    'profile-frame-contributor': FAN_CLUB_CONTRIBUTOR_FRAME_IMG,
+    'profile-frame-luxury-01': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif'
+};
+const IMAGE_OVERLAY_FRAME_CLASSES = Object.keys(IMAGE_OVERLAY_FRAMES);
 
-// 🐛 إصلاح جوهري: زخارف "إطار المساهم" (تاج، جوهرتان، أجنحة) تتوغّل داخل الصورة نفسها بدل
+// 🐛 إصلاح جوهري: زخارف هذي الإطارات (تاج، جواهر، أجنحة...) تتوغّل داخل الصورة نفسها بدل
 // حدّ رفيع حولها فقط — فتقنية border-image المستخدمة سابقاً كانت خاطئة جذرياً: بكسلات
 // <img> الفعلية تُرسَم دوماً فوق خلفية/حدّ نفس العنصر (ترتيب الرسم بمعيار CSS)، فتُغطّي أي
 // جزء من الإطار يُفترض أن يظهر فوقها بدل خلفها. البديل الصحيح الوحيد تقنياً: عنصر <img>
-// منفصل يُرسم فوق صورة المستخدم مباشرة. بما أن class="profile-frame-contributor" يُدرَج
-// بعشرات القوالب بالتطبيق (مقاعد الغرفة، الدردشة، الرسائل، الملف الكامل...) كصنف مباشر على
-// <img> خام بلا أي حاوية، تعديل كل موقع يدوياً كان سيكون مخاطرة كبيرة ببنية Flex/Grid لكل
-// سياق — الحل بدلاً من ذلك: مراقب DOM عام (نطاقه محصور بهذا الصنف تحديداً، نادر الحدوث فعلياً
-// إذ لا يظهر إلا لفائزي المركز الأول أسبوعياً) يكتشف أي <img> جديد يحمله ويُحيطه بحاوية
+// منفصل يُرسم فوق صورة المستخدم مباشرة. بما أن أصناف هذي الإطارات تُدرَج بعشرات القوالب
+// بالتطبيق (مقاعد الغرفة، الدردشة، الرسائل، الملف الكامل...) كصنف مباشر على <img> خام بلا
+// أي حاوية، تعديل كل موقع يدوياً كان سيكون مخاطرة كبيرة ببنية Flex/Grid لكل سياق — الحل
+// بدلاً من ذلك: مراقب DOM عام يكتشف أي <img> جديد يحمل أياً من هذي الأصناف ويُحيطه بحاوية
 // بحجم مُقاس فعلياً (لا نسبة مئوية تعتمد على أب مُعرَّف مسبقاً، يعمل بكل سياق) + طبقة تراكب
 // حقيقية فوقه — بلا أي تعديل لعشرات دوال العرض القائمة
-function wrapContributorFrames(root = document) {
-    // إضافة تراكب لأي صورة جديدة تحمل هذا الإطار
-    root.querySelectorAll('img.profile-frame-contributor:not(.frame-overlay-wrapped)').forEach(img => {
+function wrapImageOverlayFrames(root = document) {
+    // إضافة تراكب لأي صورة جديدة تحمل أحد هذي الإطارات
+    const selector = IMAGE_OVERLAY_FRAME_CLASSES.map(c => `img.${c}:not(.frame-overlay-wrapped)`).join(',');
+    root.querySelectorAll(selector).forEach(img => {
+        const matchedClass = IMAGE_OVERLAY_FRAME_CLASSES.find(c => img.classList.contains(c));
         // 🐛 إصلاح: getBoundingClientRect() يعكس أي transform:scale() من عنصر أب يتحرّك حالياً
         // (مثلاً حاوية تدخل بأنيميشن "pop" من 0.6 إلى 1) — لو رُصدت الصورة هنا مبكراً أثناء
         // الأنيميشن، يُحفَظ حجم التراكب أصغر من الحقيقي بشكل دائم (px ثابتة لا تكبر لاحقاً مع
@@ -9956,15 +9964,17 @@ function wrapContributorFrames(root = document) {
         img.parentNode.insertBefore(wrap, img);
         wrap.appendChild(img);
         const overlay = document.createElement('img');
-        overlay.src = FAN_CLUB_CONTRIBUTOR_FRAME_IMG;
+        overlay.src = IMAGE_OVERLAY_FRAMES[matchedClass];
         overlay.className = 'frame-overlay-art';
         overlay.alt = '';
         wrap.appendChild(overlay);
     });
     // 🛡️ إزالة التراكب لو المستخدم بدّل لإطار آخر لاحقاً — applyFrameToAvatar (نفس عنصر <img>
-    // الحي) يُزيل صنف profile-frame-contributor دون إزالة الحاوية/التراكب اللذين أضفناهما،
-    // فيبقى إطار المساهم "شبحاً" فوق صورة لم تعد ترتديه فعلياً لولا هذا التنظيف العكسي
-    root.querySelectorAll('.frame-overlay-wrap > img.frame-overlay-wrapped:not(.profile-frame-contributor)').forEach(img => {
+    // الحي) يُزيل صنف الإطار القديم دون إزالة الحاوية/التراكب اللذين أضفناهما، فيبقى الإطار
+    // "شبحاً" فوق صورة لم تعد ترتديه فعلياً لولا هذا التنظيف العكسي
+    root.querySelectorAll('.frame-overlay-wrap > img.frame-overlay-wrapped').forEach(img => {
+        const stillHasOverlayFrame = IMAGE_OVERLAY_FRAME_CLASSES.some(c => img.classList.contains(c));
+        if (stillHasOverlayFrame) return;
         const wrap = img.parentNode;
         img.classList.remove('frame-overlay-wrapped');
         wrap.parentNode.insertBefore(img, wrap);
@@ -9975,10 +9985,10 @@ let frameOverlaySweepScheduled = false;
 const frameOverlayObserver = new MutationObserver(() => {
     if (frameOverlaySweepScheduled) return;
     frameOverlaySweepScheduled = true;
-    requestAnimationFrame(() => { frameOverlaySweepScheduled = false; wrapContributorFrames(); });
+    requestAnimationFrame(() => { frameOverlaySweepScheduled = false; wrapImageOverlayFrames(); });
 });
 frameOverlayObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-wrapContributorFrames();
+wrapImageOverlayFrames();
 
 // ✅ شعار النادي (تاج + جناحان + قاعدة داكنة بقلب مركزي) — يُستخدم فقط بنافذة "تخصيص شعار
 // المجموعة" (معاينة + منتقي الألوان)؛ sizeClass يتيح حجماً صغيراً بشبكة المنتقي وكبيراً بالمعاينة

@@ -27,18 +27,20 @@ async function seedGiftsIfMissing() {
     }
 }
 
-// ✅ مجموعة الإطارات الحالية للمتجر — أُعيد تصميمها بالكامل بأربع فئات ندرة حقيقية (عادي/نادر/
-// ملحمي/أسطوري)، كل واحد بشكل/تقنية CSS مختلفة فعلياً (حلقة مزدوجة هادئة، حافة مفصّصة كالجوهرة،
-// حلقة نار تدور حقيقياً بتحريك زاوية conic-gradient نفسها عبر @property لا مجرد hue-rotate،
-// وحلقة ذهبية مزدوجة بلمعان دوّار خلفها) — بدل الإطارات الست القديمة المسطّحة (حدّ ملوّن + توهّج
-// فقط) التي أُحيلت للتقاعد (راجع migrateRetireOldFrames أدناه، لا تُحذف كي لا يفقدها من يملكها)
+// ✅ مجموعة الإطارات الحالية للمتجر — تجربة أول إطار-صورة حقيقي خارجي ("الإطار الفاخر") بطلب
+// صريح، بانتظار مراجعته قبل إرسال بقية الروابط. الإطارات الأربعة CSS السابقة (الحلقة الفضية/
+// جوهرة الزمرد/إعصار اللهب/تاج الأساطير) أُحيلت للتقاعد (راجع migrateRetireOldFrames أدناه،
+// لا تُحذف كي لا يفقدها من يملكها فعلاً) فيبقى هذا الإطار وحده خيار الشراء الوحيد مؤقتاً
 async function seedFramesIfMissing() {
     const frames = [
         { name: 'إطار الترحيب', cssClass: 'profile-frame-welcome', isActive: false, sortOrder: 0, prices: { days7: 0, days30: 0, days365: 0 } },
-        { name: 'الحلقة الفضية', cssClass: 'profile-frame-silver-elegant', isActive: true, sortOrder: 1, prices: { days7: 40, days30: 120, days365: 900 } },
-        { name: 'جوهرة الزمرد', cssClass: 'profile-frame-emerald-facet', isActive: true, sortOrder: 2, prices: { days7: 120, days30: 350, days365: 2800 } },
-        { name: 'إعصار اللهب', cssClass: 'profile-frame-flame-vortex', isActive: true, sortOrder: 3, prices: { days7: 250, days30: 750, days365: 6000 } },
-        { name: 'تاج الأساطير', cssClass: 'profile-frame-golden-legend', isActive: true, sortOrder: 4, prices: { days7: 400, days30: 1200, days365: 9500 } },
+        { name: 'الحلقة الفضية', cssClass: 'profile-frame-silver-elegant', isActive: false, sortOrder: 1, prices: { days7: 40, days30: 120, days365: 900 } },
+        { name: 'جوهرة الزمرد', cssClass: 'profile-frame-emerald-facet', isActive: false, sortOrder: 2, prices: { days7: 120, days30: 350, days365: 2800 } },
+        { name: 'إعصار اللهب', cssClass: 'profile-frame-flame-vortex', isActive: false, sortOrder: 3, prices: { days7: 250, days30: 750, days365: 6000 } },
+        { name: 'تاج الأساطير', cssClass: 'profile-frame-golden-legend', isActive: false, sortOrder: 4, prices: { days7: 400, days30: 1200, days365: 9500 } },
+        // ✅ أول إطار-صورة حقيقي بالمتجر (overlay حقيقي فوق الصورة الشخصية، راجع
+        // IMAGE_OVERLAY_FRAMES بـapp.js) — تجربة أولى قبل إرسال بقية روابط الإطارات
+        { name: 'الإطار الفاخر', cssClass: 'profile-frame-luxury-01', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif', isActive: true, sortOrder: 1, prices: { days7: 400, days30: 1200, days365: 9500 } },
         // ✅ إطار حصري غير مباع بالمتجر (isActive:false) — يُمنح فقط تلقائياً لمن يفوز بالمركز
         // الأول بمساهمات نادي معجبين لأسبوع كامل (راجع server/utils/fanClubWeeklyFrameJob.js)
         { name: 'إطار المساهم', cssClass: 'profile-frame-contributor', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png', isActive: false, sortOrder: 7, prices: { days7: 0, days30: 0, days365: 0 } },
@@ -55,12 +57,16 @@ async function seedFramesIfMissing() {
     }
 }
 
-// 🔧 يحيل الإطارات الستة القديمة (المصمّمة بأسلوب مبتدئ — حدّ ملوّن مسطّح + توهّج فقط) للتقاعد
-// من المتجر دون حذفها إطلاقاً — أي مستخدم اشتراها/يملكها يحتفظ بها ويقدر يبقيها مفعّلة، فقط
-// لن تظهر بعد الآن كخيار شراء جديد لمن لا يملكها؛ isActive:false تكفي وحدها (getFrameShop
-// يستعلم isActive:true فقط)، ولا حاجة لأي تعديل على ownedFrames أو activeFrame الحاليين
+// 🔧 يحيل الإطارات القديمة (ستة مسطّحة بأسلوب مبتدئ + أربعة CSS أحدث) للتقاعد من المتجر دون
+// حذفها إطلاقاً — أي مستخدم اشتراها/يملكها يحتفظ بها ويقدر يبقيها مفعّلة، فقط لن تظهر بعد
+// الآن كخيار شراء جديد لمن لا يملكها؛ isActive:false تكفي وحدها (getFrameShop يستعلم
+// isActive:true فقط)، ولا حاجة لأي تعديل على ownedFrames أو activeFrame الحاليين
 async function migrateRetireOldFrames() {
-    const retiredNames = ['إطار ذهبي كلاسيكي', 'إطار نيون بنفسجي', 'إطار قوس قزح', 'إطار ناري', 'إطار جليدي', 'إطار ملكي'];
+    const retiredNames = [
+        'إطار ذهبي كلاسيكي', 'إطار نيون بنفسجي', 'إطار قوس قزح', 'إطار ناري', 'إطار جليدي', 'إطار ملكي',
+        // ✅ أُحيلت الآن أيضاً — "الإطار الفاخر" (صورة خارجية حقيقية) هو الخيار الوحيد مؤقتاً
+        'الحلقة الفضية', 'جوهرة الزمرد', 'إعصار اللهب', 'تاج الأساطير'
+    ];
     const result = await ProfileFrame.updateMany({ name: { $in: retiredNames }, isActive: true }, { $set: { isActive: false } });
     if (result.modifiedCount > 0) {
         console.log(`🔧 [MIGRATION] تمت إحالة ${result.modifiedCount} إطاراً قديماً للتقاعد من المتجر`);
