@@ -2040,7 +2040,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function exitFullscreenRoomMode() {
         document.body.classList.remove('in-voice-room');
         document.getElementById('dm-floating-bubble')?.remove();
-        applyRoomBackground(null);
+        clearRoomBackground();
     }
 
     // =====================================================
@@ -2234,15 +2234,24 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     // ✅ يطبّق خلفية الغرفة خلف كل شيء (المقاعد/الدردشة/الأيقونات) لكن داخل إطارها فقط
     // ✅ خلفية افتراضية لكل الغرف التي لم يشترِ مضيفها خلفية مخصّصة من المتجر (بطلب صريح) —
-    // نفس التراكب الغامق (55%) يبقى فوقها كما فوق أي خلفية مشتراة، وكل نصوص/فقاعات الدردشة
-    // أصلاً بخلفية داكنة شبه معتمة (.room-chat-bubble-default) فتبقى مقروءة فوق أي صورة خلفية
+    // تراكب غامق أقوى (65%) فوقها يبقيها هادئة بصرياً فلا تُزاحم نصوص/شارات الرأس، وكل
+    // نصوص/فقاعات الدردشة أصلاً بخلفية داكنة شبه معتمة (.room-chat-bubble-default) فتبقى
+    // مقروءة فوق أي صورة خلفية. mainContent نفسه حاوية مشتركة لكل شاشات التطبيق (وليس حصراً
+    // للغرفة) — applyRoomBackground(null) كانت تُستخدَم سابقاً لمسحها نهائياً عند الخروج، لكن
+    // بعد إضافة هذا الافتراضي صار استدعاؤها بـnull يعيد ضبط نفس الخلفية الافتراضية بدل مسحها،
+    // فتبقى "مسرَّبة" خارج الغرفة على بقية شاشات التطبيق. clearRoomBackground() أدناه مسار
+    // مستقل صريح للمسح الحقيقي — لا يُستبدَل بالقيمة الافتراضية أبداً
     const DEFAULT_ROOM_BACKGROUND = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790798203/voice_room_background.png';
     function applyRoomBackground(url) {
         if (!mainContent) return;
         const bgUrl = url || DEFAULT_ROOM_BACKGROUND;
-        mainContent.style.backgroundImage = `linear-gradient(rgba(17,24,39,0.55), rgba(17,24,39,0.55)), url(${bgUrl})`;
+        mainContent.style.backgroundImage = `linear-gradient(rgba(17,24,39,0.65), rgba(17,24,39,0.65)), url(${bgUrl})`;
         mainContent.style.backgroundSize = 'cover';
         mainContent.style.backgroundPosition = 'center';
+    }
+    function clearRoomBackground() {
+        if (!mainContent) return;
+        mainContent.style.backgroundImage = 'none';
     }
 
     function enterVoiceRoom(room, password) {
@@ -2523,7 +2532,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <span id="room-viewers-sheet-count" class="text-[11px] font-normal text-gray-400"></span>
                 </h3>
                 <div id="room-viewers-list" class="space-y-1.5 px-3 pb-3 overflow-y-auto">
-                    <div class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin"></i></div>
+                    ${[1,2,3,4].map(() => `
+                        <div class="flex items-center gap-2.5 p-2">
+                            <div class="skeleton-shimmer w-10 h-10 rounded-full flex-shrink-0"></div>
+                            <div class="skeleton-shimmer h-3.5 rounded-full flex-1"></div>
+                        </div>
+                    `).join('')}
                 </div>
             </div>
         `;
@@ -2876,7 +2890,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         modal.innerHTML = `
             <div class="room-profile-sheet-card">
                 <div id="user-profile-sheet-body" class="room-profile-body">
-                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
+                    <div class="flex flex-col items-center pt-8 pb-4 px-4">
+                        <div class="skeleton-shimmer w-20 h-20 rounded-full mb-3"></div>
+                        <div class="skeleton-shimmer w-32 h-4 rounded-full mb-2"></div>
+                        <div class="skeleton-shimmer w-20 h-3 rounded-full mb-4"></div>
+                        <div class="flex gap-2 w-full">
+                            <div class="skeleton-shimmer flex-1 h-9 rounded-xl"></div>
+                            <div class="skeleton-shimmer flex-1 h-9 rounded-xl"></div>
+                            <div class="skeleton-shimmer flex-1 h-9 rounded-xl"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -9230,9 +9253,17 @@ async function showMiniProfileModal(userId) {
     // ✅ الإصلاح 1 (السرعة): نعرض هيكل تحميل فوري بدل انتظار الطلبات — نافذة سفلية أنيقة
     const loadingShellHTML = `
         <div id="mini-profile-modal" class="fixed inset-0 bg-black/70 z-[310] flex items-end justify-center">
-            <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-t-2xl shadow-2xl w-full max-w-md text-white p-8 text-center border-t border-purple-500/25 animate-[slideUp_0.25s_ease-out]">
-                <i class="fas fa-spinner fa-spin text-2xl text-purple-400 mb-3"></i>
-                <p class="text-xs text-gray-400">جاري تحميل الملف الشخصي...</p>
+            <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-t-2xl shadow-2xl w-full max-w-md text-white p-6 border-t border-purple-500/25 animate-[slideUp_0.25s_ease-out]">
+                <div class="flex flex-col items-center">
+                    <div class="skeleton-shimmer w-20 h-20 rounded-full mb-3"></div>
+                    <div class="skeleton-shimmer w-36 h-4 rounded-full mb-2"></div>
+                    <div class="skeleton-shimmer w-24 h-3 rounded-full mb-4"></div>
+                    <div class="flex gap-2 w-full">
+                        <div class="skeleton-shimmer flex-1 h-9 rounded-xl"></div>
+                        <div class="skeleton-shimmer flex-1 h-9 rounded-xl"></div>
+                        <div class="skeleton-shimmer flex-1 h-9 rounded-xl"></div>
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -10021,7 +10052,12 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                 <button type="button" id="fanclub-back-btn" class="fanclub-header-btn"><i class="fas fa-circle-exclamation"></i></button>
             </div>
             <div id="fanclub-sheet-body" class="fanclub-sheet-body">
-                <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
+                <div class="flex flex-col items-center pt-6 pb-4 px-4">
+                    <div class="skeleton-shimmer w-16 h-16 rounded-full mb-3"></div>
+                    <div class="skeleton-shimmer w-40 h-4 rounded-full mb-2"></div>
+                    <div class="skeleton-shimmer w-28 h-3 rounded-full mb-4"></div>
+                    <div class="skeleton-shimmer w-full h-11 rounded-full"></div>
+                </div>
             </div>
         </div>
     `;
@@ -11350,13 +11386,59 @@ function applyFrameToAvatar(imgEl, activeFrameClass) {
 // أسبوعياً) غير آمن هنا. يُستدعى فقط حيث الحاوية الأب مضمونة (position:relative/absolute)
 function frameDecorationHTML(activeFrameClass) {
     if (activeFrameClass !== 'profile-frame-golden-legend') return '';
+    // ✅ رسم متجهي (SVG) مرسوم يدوياً بالكامل محلياً — بلا أي اعتماد على صورة/مكتبة خارجية
+    // (شبكة هذا البيئة تمنع التحقق من أي رابط خارجي قبل النشر)، بتدرّجات لونية حقيقية وتفاصيل
+    // (جواهر على رؤوس التاج، ريش الجناح متراكب، جوهرة مفصّصة بخطوط وجه) أغنى بصرياً من أيقونة
+    // خط واحد مسطّحة
     return `
         <span class="frame-icon-overlay" aria-hidden="true">
-            <i class="fas fa-crown frame-icon frame-icon-crown"></i>
-            <i class="fas fa-feather-alt frame-icon frame-icon-wing frame-icon-wing-left"></i>
-            <i class="fas fa-feather-alt frame-icon frame-icon-wing frame-icon-wing-right"></i>
-            <i class="fas fa-gem frame-icon frame-icon-gem frame-icon-gem-left"></i>
-            <i class="fas fa-gem frame-icon frame-icon-gem frame-icon-gem-right"></i>
+            <svg viewBox="0 0 100 80" class="frame-icon frame-icon-crown">
+                <defs>
+                    <linearGradient id="frameCrownGold" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#fff6c8"/>
+                        <stop offset="45%" stop-color="#fcd34d"/>
+                        <stop offset="100%" stop-color="#b45309"/>
+                    </linearGradient>
+                </defs>
+                <path d="M8 70 L8 35 L26 50 L36 20 L50 42 L64 20 L74 50 L92 35 L92 70 Z" fill="url(#frameCrownGold)" stroke="#78350f" stroke-width="2.5" stroke-linejoin="round"/>
+                <rect x="8" y="64" width="84" height="11" rx="3" fill="url(#frameCrownGold)" stroke="#78350f" stroke-width="2.5"/>
+                <circle cx="36" cy="20" r="6.5" fill="#ef4444" stroke="#7f1d1d" stroke-width="1.5"/>
+                <circle cx="50" cy="42" r="5.5" fill="#60a5fa" stroke="#1e3a8a" stroke-width="1.5"/>
+                <circle cx="64" cy="20" r="6.5" fill="#ef4444" stroke="#7f1d1d" stroke-width="1.5"/>
+            </svg>
+            <svg viewBox="0 0 100 60" class="frame-icon frame-icon-wing frame-icon-wing-left">
+                <defs>
+                    <linearGradient id="frameWingGold" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stop-color="#fde68a"/>
+                        <stop offset="100%" stop-color="#fffbeb"/>
+                    </linearGradient>
+                </defs>
+                <path d="M2 50 Q20 10 95 5 Q70 20 60 30 Q85 28 92 20 Q65 42 48 40 Q68 46 78 44 Q50 58 20 54 Q35 56 40 52 Q15 56 2 50 Z" fill="url(#frameWingGold)" stroke="#b45309" stroke-width="1.5" stroke-linejoin="round"/>
+            </svg>
+            <svg viewBox="0 0 100 60" class="frame-icon frame-icon-wing frame-icon-wing-right">
+                <path d="M2 50 Q20 10 95 5 Q70 20 60 30 Q85 28 92 20 Q65 42 48 40 Q68 46 78 44 Q50 58 20 54 Q35 56 40 52 Q15 56 2 50 Z" fill="url(#frameWingGold)" stroke="#b45309" stroke-width="1.5" stroke-linejoin="round"/>
+            </svg>
+            <svg viewBox="0 0 60 60" class="frame-icon frame-icon-gem frame-icon-gem-left">
+                <defs>
+                    <linearGradient id="frameGemCyan" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#a5f3fc"/>
+                        <stop offset="50%" stop-color="#22d3ee"/>
+                        <stop offset="100%" stop-color="#0e7490"/>
+                    </linearGradient>
+                </defs>
+                <polygon points="30,4 50,22 42,56 18,56 10,22" fill="url(#frameGemCyan)" stroke="#164e63" stroke-width="2" stroke-linejoin="round"/>
+                <polygon points="30,4 50,22 30,30 10,22" fill="#ffffff" fill-opacity="0.35"/>
+                <line x1="30" y1="30" x2="30" y2="4" stroke="#164e63" stroke-width="1" opacity="0.5"/>
+                <line x1="30" y1="30" x2="18" y2="56" stroke="#164e63" stroke-width="1" opacity="0.5"/>
+                <line x1="30" y1="30" x2="42" y2="56" stroke="#164e63" stroke-width="1" opacity="0.5"/>
+            </svg>
+            <svg viewBox="0 0 60 60" class="frame-icon frame-icon-gem frame-icon-gem-right">
+                <polygon points="30,4 50,22 42,56 18,56 10,22" fill="url(#frameGemCyan)" stroke="#164e63" stroke-width="2" stroke-linejoin="round"/>
+                <polygon points="30,4 50,22 30,30 10,22" fill="#ffffff" fill-opacity="0.35"/>
+                <line x1="30" y1="30" x2="30" y2="4" stroke="#164e63" stroke-width="1" opacity="0.5"/>
+                <line x1="30" y1="30" x2="18" y2="56" stroke="#164e63" stroke-width="1" opacity="0.5"/>
+                <line x1="30" y1="30" x2="42" y2="56" stroke="#164e63" stroke-width="1" opacity="0.5"/>
+            </svg>
         </span>
     `;
 }
@@ -11381,7 +11463,14 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                     </div>
                 </div>
                 <div id="gift-store-body" class="p-4 overflow-y-auto flex-1">
-                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
+                    <div class="grid grid-cols-3 gap-2">
+                        ${Array.from({ length: 9 }).map(() => `
+                            <div class="flex flex-col items-center gap-1.5 p-2">
+                                <div class="skeleton-shimmer w-9 h-9 rounded-full"></div>
+                                <div class="skeleton-shimmer w-full h-2.5 rounded-full"></div>
+                            </div>
+                        `).join('')}
+                    </div>
                 </div>
                 <div id="gift-store-footer"></div>
             </div>
@@ -11784,7 +11873,10 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
             };
         }
         const sendBtn = rootEl.querySelector('.gift-send-main-btn');
-        if (sendBtn) sendBtn.disabled = !selectedGift;
+        if (sendBtn) {
+            sendBtn.disabled = !selectedGift;
+            sendBtn.classList.toggle('ready', !!selectedGift);
+        }
         onSelectGift(selectedGift, quantity);
     });
 
@@ -11906,7 +11998,7 @@ function wireGiftCategoryTabs(rootEl, gifts, gridSelector) {
             // ✅ أي اختيار سابق قد يختفي بصرياً بالتبويب الجديد (تصنيف مختلف) — نُعطّل زر
             // الإرسال حتى اختيار جديد صريح، بدل إبقائه فعّالاً بلا أي تحديد ظاهر بالشبكة
             const sendBtn = rootEl.querySelector('.gift-send-main-btn');
-            if (sendBtn) sendBtn.disabled = true;
+            if (sendBtn) { sendBtn.disabled = true; sendBtn.classList.remove('ready'); }
         });
     });
 }
@@ -13508,7 +13600,7 @@ function confirmRedeem(redeemTo) {
             const sendBtn = document.getElementById('public-gift-send-btn');
             if (wasSelected) {
                 selectedGift = null;
-                if (sendBtn) sendBtn.disabled = true;
+                if (sendBtn) { sendBtn.disabled = true; sendBtn.classList.remove('ready'); }
             } else {
                 card.classList.add('gift-card-selected');
                 selectedGift = {
@@ -13518,7 +13610,7 @@ function confirmRedeem(redeemTo) {
                     icon: card.dataset.giftIcon,
                     imageUrl: card.dataset.giftImage
                 };
-                if (sendBtn) sendBtn.disabled = false;
+                if (sendBtn) { sendBtn.disabled = false; sendBtn.classList.add('ready'); }
             }
         });
 

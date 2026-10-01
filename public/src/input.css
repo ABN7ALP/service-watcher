@@ -8,6 +8,21 @@
 body {
   font-family: 'cairo', 'sans-serif';
 }
+
+/* ✅ هيكل تحميل عام (Skeleton/Shimmer) — بديل موحَّد لدوّار "fa-spinner" المجرَّد بنوافذ المحتوى
+   الرئيسية (الملف المصغّر، نادي المعجبين، متجر الهدايا، مشاهدو الغرفة): كتل رمادية بنفس شكل
+   المحتوى النهائي تقريباً، مع تلألؤ ضوئي متحرك عبرها — إحساس تحميل أسرع وأكثر احترافية من
+   دوّار وحيد في منتصف شاشة فارغة. يُستخدَم كصنف عام (skeleton-shimmer) + أحجام Tailwind inline
+   لكل سياق بدل تكرار صنف مخصّص لكل حالة */
+@keyframes skeletonShimmer {
+    0% { background-position: -150% 0; }
+    100% { background-position: 150% 0; }
+}
+.skeleton-shimmer {
+    background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.06) 75%);
+    background-size: 250% 100%;
+    animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
 /* --- ✅ أنماط أنيميشن اكتساب الخبرة --- */
 @keyframes xp-float-up {
     0% {
@@ -314,12 +329,18 @@ input[type="checkbox"] {
    منفصل يُرسم فوق الصورة مباشرة — راجع wrapContributorFrames()/public/js/app.js التي تُطبّق
    هذا تلقائياً بأي مكان بالتطبيق (بلا تعديل عشرات دوال عرض الصور القائمة) */
 .frame-overlay-wrap { position: relative; display: inline-block; line-height: 0; vertical-align: middle; }
-.frame-overlay-wrap > img.profile-frame-contributor { width: 100%; height: 100%; }
-/* 🐛 إصلاح ثانٍ: 168% (750÷222×2 بالضبط) كانت تترك هامشاً 0.5%- فقط عند أضيق نقطة (تحت
-   التاج) — عملياً صفر تسامح، فتبقى الصورة تلامس/تتجاوز حافة الفتحة بالضبط هناك، بمظهر
-   "الصورة أكبر من الإطار بشكل بسيط" كما لوحظ فعلياً. رفعتها لـ195% (هامش أمان ~15% حول أضيق
-   نقطة، يمتص أي تفاوت قياس ببكسل كسري) — الإطار الآن يلتف حول الصورة بمسافة مريحة بأي زاوية،
-   لا يلامسها أبداً حتى تحت التاج/الأجنحة أضيق الأماكن */
+/* 🐛 إصلاح ثالث وجذري: رفع نسبة تراكب الإطار (168%→195%) كان يحل المشكلة عند نقطة واحدة
+   بعينها بافتراض شكل الفتحة دائري بالضبط — لكن فتحة PNG الفعلية غير دائرية تماماً (تتعرّج
+   عند التاج/الأجنحة)، فتبقى الصورة الدائرية الكاملة (100%) تلامس/تتجاوز الحافة عند زوايا
+   أخرى لم تُقَس. الحل الجذري الصحيح بدل ملاحقة النسبة المثالية للإطار: تصغير الصورة نفسها
+   داخل حاويتها (87% بدل 100%) فتترك هامشاً داخلياً مضموناً حول كامل محيطها أياً كان شكل
+   الفتحة الحقيقي — لا تلامس حافة الإطار أبداً بأي زاوية مهما كانت غير منتظمة */
+.frame-overlay-wrap > img.profile-frame-contributor {
+    width: 87%; height: 87%;
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+}
 .frame-overlay-art {
     position: absolute; top: 50%; left: 50%;
     width: 195%; height: 195%;
@@ -346,20 +367,21 @@ input[type="checkbox"] {
 }
 .frame-icon-overlay .frame-icon {
     position: absolute;
+    display: block;
+    overflow: visible;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55));
 }
 .frame-icon-crown {
     top: -38cqw; left: 50%;
+    width: 46cqw; height: 36.8cqw;
     transform: translateX(-50%);
-    font-size: 46cqw;
-    color: #fde047;
     animation: frameCrownGlow 2.2s ease-in-out infinite;
 }
 @keyframes frameCrownGlow {
     0%, 100% { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55)) drop-shadow(0 0 4px rgba(251,191,36,0.4)); }
     50%      { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55)) drop-shadow(0 0 10px rgba(251,191,36,0.95)); }
 }
-.frame-icon-wing { top: 28%; font-size: 34cqw; color: #fde68a; }
+.frame-icon-wing { top: 28%; width: 34cqw; height: 20.4cqw; }
 .frame-icon-wing-left  { left: -26cqw; transform: rotate(-30deg) scaleX(-1); animation: frameWingFlutterL 2.6s ease-in-out infinite; }
 .frame-icon-wing-right { right: -26cqw; transform: rotate(30deg); animation: frameWingFlutterR 2.6s ease-in-out infinite; }
 @keyframes frameWingFlutterL {
@@ -370,7 +392,7 @@ input[type="checkbox"] {
     0%, 100% { transform: rotate(30deg); }
     50%      { transform: rotate(18deg); }
 }
-.frame-icon-gem { bottom: 4%; font-size: 20cqw; color: #67e8f9; }
+.frame-icon-gem { bottom: 4%; width: 20cqw; height: 20cqw; }
 .frame-icon-gem-left  { left: 6%; animation: frameGemTwinkle 1.8s ease-in-out infinite; }
 .frame-icon-gem-right { right: 6%; animation: frameGemTwinkle 1.8s ease-in-out infinite 0.9s; }
 @keyframes frameGemTwinkle {
@@ -981,13 +1003,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .room-info-card-widget {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     min-width: 0;
     flex: 1 1 auto;
     background: rgba(17,24,39,0.5);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 9999px;
-    padding: 3px 4px 3px 3px;
+    padding: 4px 6px 4px 3px;
 }
 .room-info-trigger {
     display: flex;
@@ -1040,25 +1062,31 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    الضغط عليها حينها نادي معجبي المضيف مباشرة بدل تكرار زر متابعة لا فائدة منه بعد تفعيله */
 .room-header-follow-circle {
     flex-shrink: 0;
-    width: 28px;
-    height: 28px;
+    box-sizing: content-box;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    padding: 0;
+    border: none;
     margin: 0;
     background: linear-gradient(135deg, #a855f7, #ec4899);
     color: #fff;
     box-shadow: 0 1px 4px rgba(168,85,247,0.4);
     transition: transform 0.15s ease, background 0.15s ease;
 }
+.room-header-follow-circle i {
+    font-size: 13px;
+    line-height: 1;
+    display: block;
+}
 .room-header-follow-circle:active { transform: scale(0.9); }
 .room-header-follow-circle.following {
     background: rgba(236,72,153,0.16);
-    border: 1px solid rgba(236,72,153,0.4);
+    box-shadow: inset 0 0 0 1px rgba(236,72,153,0.4);
     color: #ec4899;
-    box-shadow: none;
 }
 .room-header-follow-circle.hidden { display: none; }
 
@@ -3470,10 +3498,36 @@ body.in-voice-room #main-content {
 }
 
 /* ✅ كارد الهدية المختار (بدون زر إرسال داخلي — الاختيار فقط تمييز بصري) */
+/* ✅ مؤشّر التحديد — بأسلوب Likee: زوايا منحنية بدل إطار/خلفية كاملة تحيط الكارد بالكامل
+   (كانت تُحس "صندوقاً" مقحَماً). خطّان منحنيان بزاويتين متقابلتين فقط، يظهران بأنيميشن خفيف */
+.gift-card-wrapper { position: relative; }
 .gift-card-wrapper.gift-card-selected {
-    border-color: #ec4899;
-    background: rgba(236,72,153,0.12);
-    box-shadow: 0 0 0 1px rgba(236,72,153,0.5);
+    border-color: transparent;
+    background: rgba(236,72,153,0.06);
+    box-shadow: none;
+}
+.gift-card-wrapper.gift-card-selected::before,
+.gift-card-wrapper.gift-card-selected::after {
+    content: '';
+    position: absolute;
+    width: 16px; height: 16px;
+    border: 2.5px solid #ec4899;
+    pointer-events: none;
+    animation: giftCornerPop 0.2s ease-out;
+}
+.gift-card-wrapper.gift-card-selected::before {
+    top: -3px; left: -3px;
+    border-right: none; border-bottom: none;
+    border-radius: 9px 0 0 0;
+}
+.gift-card-wrapper.gift-card-selected::after {
+    bottom: -3px; right: -3px;
+    border-left: none; border-top: none;
+    border-radius: 0 0 9px 0;
+}
+@keyframes giftCornerPop {
+    from { opacity: 0; transform: scale(0.6); }
+    to   { opacity: 1; transform: scale(1); }
 }
 
 /* ✅ زر الإرسال — الضغط المطوّل يحوّله لحالة نابضة بدل شكله الثابت (تصميمه الكامل أسفل
@@ -3585,9 +3639,9 @@ body.in-voice-room #main-content {
     box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
-/* ✅ زر الإرسال — أُعيدت هيكلته بالكامل: كبسولة بتدرّج هوية التطبيق البنفسجي/الوردي
-   (نفس تدرّج المتابعة وكارد الهدية المحدَّد) بدل الأخضر المنفصل سابقاً عن باقي الألوان،
-   بحافة لامعة خفيفة وظل أوضح يمنحه إحساس زر رئيسي حقيقي لا مستطيلاً باهتاً */
+/* ✅ زر الإرسال — بأسلوب Likee (راجع الصورة المرفقة): لا يظهر إطلاقاً حتى تُحدَّد هدية —
+   عندها يبرز بكبسولة منحنية عائمة (لا صندوق تذييل ثقيل خلفه، راجع .gift-footer أدناه)
+   بتدرّج هوية التطبيق البنفسجي/الوردي، بأنيميشن بروز سلس بدل ظهور مفاجئ */
 .gift-send-main-btn {
     display: flex;
     align-items: center;
@@ -3605,10 +3659,17 @@ body.in-voice-room #main-content {
     flex-shrink: 0;
     position: relative;
     box-shadow: 0 3px 10px rgba(168,85,247,0.45);
-    transition: transform 0.12s ease;
+    transition: transform 0.12s ease, opacity 0.18s ease;
+    opacity: 0;
+    transform: scale(0.75);
+    pointer-events: none;
 }
-.gift-send-main-btn:not(:disabled):active { transform: scale(0.95); }
-.gift-send-main-btn:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+.gift-send-main-btn.ready {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+}
+.gift-send-main-btn.ready:active { transform: scale(0.92); }
 .gift-send-main-btn .gift-send-badge {
     background: rgba(0,0,0,0.3);
     font-size: 10px;
