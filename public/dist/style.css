@@ -3709,10 +3709,10 @@ input[type="checkbox"] {
 }
 
 .frame-icon-crown {
-  top: -38cqw;
+  top: -36cqw;
   left: 50%;
-  width: 46cqw;
-  height: 36.8cqw;
+  width: 42cqw;
+  height: 42cqw;
   transform: translateX(-50%);
   animation: frameCrownGlow 2.2s ease-in-out infinite;
 }
@@ -3729,8 +3729,8 @@ input[type="checkbox"] {
 
 .frame-icon-wing {
   top: 28%;
-  width: 34cqw;
-  height: 20.4cqw;
+  width: 30cqw;
+  height: 30cqw;
 }
 
 .frame-icon-wing-left  {
@@ -4812,7 +4812,10 @@ button, input, select, textarea {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 1 1 auto;
+  /* ✅ يحتضن محتواه فقط (لا يتمدّد ليملأ المساحة المتبقية) — بطلب صريح: كان "طويلاً" عن
+       محتواه لأنه ينافس الفاصل flex-1 المجاور على نفس المساحة. flex-shrink يبقى مسموحاً كي
+       يتقلّص مع اسم غرفة قصير بدل البقاء بعرض ثابت أكبر من اللازم */
+  flex: 0 1 auto;
   background: rgba(17,24,39,0.5);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 9999px;
@@ -4899,8 +4902,9 @@ button, input, select, textarea {
 .room-header-follow-circle {
   flex-shrink: 0;
   box-sizing: content-box;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -4908,6 +4912,7 @@ button, input, select, textarea {
   padding: 0;
   border: none;
   margin: 0;
+  overflow: hidden;
   background: linear-gradient(135deg, #a855f7, #ec4899);
   color: #fff;
   box-shadow: 0 1px 4px rgba(168,85,247,0.4);
@@ -9952,46 +9957,46 @@ body.in-voice-room #main-content {
 }
 
 /* ✅ زر الإرسال — الضغط المطوّل يحوّله لحالة نابضة بدل شكله الثابت (تصميمه الكامل أسفل
-   بقرب الشريحة المقسَّمة لاختيار الكمية). لون النبض بنفس تدرّج بنفسجي/وردي الزر نفسه
-   (بعد إعادة تصميمه من أخضر منفصل عن هوية التطبيق إلى تدرّج العلامة الموحَّد) */
+   بقرب الشريحة المقسَّمة لاختيار الكمية). لون النبض بنفس وردي Likee الصريح للزر نفسه */
 
 .gift-send-main-btn.gift-sending {
   transform: scale(1.06);
-  box-shadow: 0 0 0 5px rgba(168,85,247,0.25), 0 4px 16px rgba(236,72,153,0.5);
+  box-shadow: 0 0 0 5px rgba(236,27,106,0.3), 0 4px 16px rgba(236,27,106,0.5);
   animation: giftSendPulse 0.9s ease-in-out infinite;
 }
 
 @keyframes giftSendPulse {
   0%, 100% {
-    box-shadow: 0 0 0 5px rgba(168,85,247,0.25), 0 4px 16px rgba(236,72,153,0.5);
+    box-shadow: 0 0 0 5px rgba(236,27,106,0.3), 0 4px 16px rgba(236,27,106,0.5);
   }
 
   50%      {
-    box-shadow: 0 0 0 8px rgba(168,85,247,0.14), 0 4px 16px rgba(236,72,153,0.5);
+    box-shadow: 0 0 0 8px rgba(236,27,106,0.16), 0 4px 16px rgba(236,27,106,0.5);
   }
 }
 
-/* ✅ كروت متجر الهدايا بنافذة "إرسال هدية" من الملف الشخصي (showGiftStoreModal) — تصغير
-   طفيف وتباعد أدق يحل الإحساس بكِبر/تراكب الكروت المُبلَّغ عنه. يستهدف #gift-cards-grid
-   حصراً كي لا يمسّ شبكات هدايا الغرفة المضبوطة أصلاً بحجم مختلف مقصود (.room-gift-cards-grid) */
+/* ✅ كروت متجر الهدايا بنافذة "إرسال هدية" من الملف الشخصي (showGiftStoreModal) — 4 أعمدة
+   (بدل 3) بطلب صريح لمطابقة شبكة Likee المرجعية بالضبط، مع تصغير يناسب العرض الأضيق لكل
+   كارد. يستهدف #gift-cards-grid حصراً كي لا يمسّ شبكات هدايا الغرفة المضبوطة أصلاً بحجم
+   مختلف مقصود (.room-gift-cards-grid) */
 
 #gift-cards-grid.grid {
-  gap: 6px;
+  gap: 5px;
 }
 
 #gift-cards-grid .gift-card-wrapper {
-  padding: 6px 4px;
-  border-radius: 12px;
+  padding: 5px 3px;
+  border-radius: 11px;
 }
 
 #gift-cards-grid .gift-visual-slot,
 #gift-cards-grid .gift-visual-img {
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
 }
 
 #gift-cards-grid .gift-visual-slot span {
-  font-size: 1.7rem;
+  font-size: 1.4rem;
 }
 
 /* ✅ نافذة هدايا الغرفة — شريط مستلمين أفقي قابل للتمرير + شريحة "الكل" دائرية بنفس حجم
@@ -10070,21 +10075,21 @@ body.in-voice-room #main-content {
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
-/* ✅ اختيار الكمية (1/7/77/777) — segmented control مكشوف دائماً (بدل قائمة منسدلة
-   مخفية) بنفس أسلوب SwiftUI Picker(.segmented): مسار واحد متصل، وشريحة واحدة فقط
-   محدَّدة دوماً، مرئية مباشرة بلا أي ضغطة إضافية لكشفها */
+/* ✅ اختيار الكمية (1/6/66/166/999 — نفس قيم Likee بالضبط) — segmented control مكشوف دائماً
+   (بدل قائمة منسدلة مخفية) بنفس أسلوب SwiftUI Picker(.segmented): مسار واحد متصل، وشريحة
+   واحدة فقط محدَّدة دوماً، مرئية مباشرة بلا أي ضغطة إضافية لكشفها */
 
 .gift-qty-segmented {
   display: flex;
   background: rgba(0,0,0,0.3);
   border-radius: 9px;
   padding: 2px;
-  gap: 2px;
+  gap: 1px;
 }
 
 .gift-qty-segment {
-  padding: 5px 9px;
-  font-size: 10.5px;
+  padding: 5px 6px;
+  font-size: 9.5px;
   font-weight: 800;
   color: rgba(255,255,255,0.55);
   border-radius: 6px;
@@ -10097,9 +10102,25 @@ body.in-voice-room #main-content {
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
+/* ✅ كبسولة رصيد الكوينز بالتذييل — بأسلوب Likee (كبسولة داكنة مستقلة) بدل نص عادٍ فقط */
+
+.gift-footer-balance-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #fbbf24;
+  background: rgba(0,0,0,0.3);
+  border-radius: 9999px;
+  padding: 6px 12px;
+}
+
 /* ✅ زر الإرسال — بأسلوب Likee (راجع الصورة المرفقة): لا يظهر إطلاقاً حتى تُحدَّد هدية —
    عندها يبرز بكبسولة منحنية عائمة (لا صندوق تذييل ثقيل خلفه، راجع .gift-footer أدناه)
-   بتدرّج هوية التطبيق البنفسجي/الوردي، بأنيميشن بروز سلس بدل ظهور مفاجئ */
+   بوردي Likee الصريح (مطابقة الصورة المرجعية بالضبط) بدل تدرّج هوية التطبيق، بأنيميشن بروز
+   سلس بدل ظهور مفاجئ */
 
 .gift-send-main-btn {
   display: flex;
@@ -10110,14 +10131,14 @@ body.in-voice-room #main-content {
   height: 36px;
   padding: 0 18px;
   border-radius: 9999px;
-  background: linear-gradient(135deg, #a855f7, #ec4899);
-  border: 1px solid rgba(255,255,255,0.18);
+  background: #ec1b6a;
+  border: none;
   color: #fff;
   font-size: 12.5px;
   font-weight: 800;
   flex-shrink: 0;
   position: relative;
-  box-shadow: 0 3px 10px rgba(168,85,247,0.45);
+  box-shadow: 0 3px 10px rgba(236,27,106,0.5);
   transition: transform 0.12s ease, opacity 0.18s ease;
   opacity: 0;
   transform: scale(0.75);
