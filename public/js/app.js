@@ -10066,8 +10066,8 @@ const IMAGE_OVERLAY_FRAME_CLASSES = Object.keys(IMAGE_OVERLAY_FRAMES);
 // يجوز أن ينزل عن 140% (الحد الأدنى الذي يضمن أن فتحة الإطار تبقى أكبر من الصورة الثابتة
 // عند 100% فلا تظهر حوافها)، فهذا السقف تحديداً (وليس أقل) هو كل ما يمكن خفضه بأمان — بقية
 // الحل يأتي من تكبير المسافة أسفل/حول الصورة بهذي الحاويات (راجع input.css) بدل خنق الإطار
-// أكثر. يُستثنى منه: إطار المساهم (مُقاس فعلياً، يعمل بلا شكوى بكل مكان) والمقعد (مساحة
-// الاسم تحته فسيحة أصلاً via bottom:-1.75rem، لا حاجة لتقييده إطلاقاً)
+// أكثر. يُستثنى منه المقعد فقط (مساحة الاسم تحته فسيحة أصلاً via bottom:-1.75rem، لا حاجة
+// لتقييده إطلاقاً)
 const OVERLAY_TIGHT_CONTEXT_CAP = 140;
 const OVERLAY_TIGHT_CONTEXT_SELECTOR = [
     '.room-profile-avatar-wrap', '.full-profile-avatar-wrap', '.profile-hub-avatar-wrap',
@@ -10077,11 +10077,9 @@ const OVERLAY_TIGHT_CONTEXT_SELECTOR = [
 function isInTightOverlayContext(img) {
     return !!img.closest(OVERLAY_TIGHT_CONTEXT_SELECTOR);
 }
-// ✅ طلب صريح: إطار المساهم (الممنوح أسبوعياً، نسبته الخاصة 195% غير مقاسة لأي سياق ضيق)
-// تبيّن أنه كبير أيضاً داخل نافذة نادي المعجبين تحديداً (منصة أعلى 3 + صف المتصدّر الأسبوعي
-// + صفوف الأعضاء كلها صور صغيرة متقاربة) رغم أنه يعمل بلا شكوى بالمقعد/الملف الشخصي. لذا
-// يُستثنى هذا السياق وحده من إعفاء "إطار المساهم" العام — كل الإطارات بلا استثناء تخضع
-// للسقف هنا، بعكس OVERLAY_TIGHT_CONTEXT_SELECTOR أعلاه الذي ما زال يُعفيه بالسياقات الأخرى
+// ✅ نافذة نادي المعجبين (منصة أعلى 3 + صف المتصدّر الأسبوعي + صفوف الأعضاء) سياق ضيق
+// إضافي خارج قائمة OVERLAY_TIGHT_CONTEXT_SELECTOR أعلاه (حاوياتها بأصناف مختلفة تماماً)،
+// فتُقيَّد بنفس السقف عبر فحص منفصل هنا
 const OVERLAY_FANCLUB_CONTEXT_SELECTOR = '#fanclub-modal';
 function isInFanClubOverlayContext(img) {
     return !!img.closest(OVERLAY_FANCLUB_CONTEXT_SELECTOR);
@@ -10162,8 +10160,11 @@ function wrapImageOverlayFrames(root = document) {
         // ✅ ملاحظات دقيقة جداً بكل سياق أكّدت: الملف الشخصي المصغّر/الكامل، صفحة الحساب،
         // بطاقة المتجر، وصفوف المشاهدين/الطلبات كلها "ضيقة" (الاسم يجلس قريباً جداً من
         // الصورة) بعكس المقعد (مساحة فسيحة تحته أصلاً) — تُقيَّد هناك بسقف صارم بدل تصغير
-        // الإطار نفسه أكثر من اللازم؛ راجع input.css لزيادة الهوامش حول تلك الحاويات بدلاً
-        if (isInFanClubOverlayContext(img) || (matchedClass !== 'profile-frame-contributor' && isInTightOverlayContext(img))) {
+        // الإطار نفسه أكثر من اللازم؛ راجع input.css لزيادة الهوامش حول تلك الحاويات بدلاً.
+        // 🐛 إصلاح: إطار المساهم كان مُستثنى من هذا السقف بافتراض أنه "مقاس ليعمل بكل مكان" —
+        // تبيّن خاطئاً بعد شكاوى متكررة بسياقات ضيقة مختلفة (نادي المعجبين أولاً، ثم الملف
+        // الشخصي المصغّر والكامل) — لا استثناء له بعد الآن، يخضع لنفس السقف كبقية الإطارات
+        if (isInFanClubOverlayContext(img) || isInTightOverlayContext(img)) {
             artScale = Math.min(artScale, OVERLAY_TIGHT_CONTEXT_CAP);
         }
         const wrap = document.createElement('span');
@@ -10220,7 +10221,7 @@ function wrapImageOverlayFrames(root = document) {
         const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
         const w2 = img.offsetWidth;
         let artScale = Math.min(config.artScale ?? DEFAULT_OVERLAY_ART_SCALE, computeOverlayArtScaleCap(img, w2));
-        if (isInFanClubOverlayContext(img) || (matchedClass !== 'profile-frame-contributor' && isInTightOverlayContext(img))) {
+        if (isInFanClubOverlayContext(img) || isInTightOverlayContext(img)) {
             artScale = Math.min(artScale, OVERLAY_TIGHT_CONTEXT_CAP);
         }
         img.style.width = `${photoScale}%`;
@@ -12046,19 +12047,21 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
 // ✅ دالة موحّدة لبناء كارد الهدية (تُستخدم بالخاصة والعامة)
 // ✅ دالة موحّدة لبناء كارد الهدية — الصورة الحقيقية أولاً، واحتياطي أنيق فقط عند الفشل الفعلي
 // onerror يُربط عبر JavaScript بعد الإدراج (لا inline) حتى لا يخالف سياسة الأمان CSP
-// ✅ بحث معمّق + طلب صريح: أُعيدت هيكلة التحديد بأسلوب Likee الحقيقي — لا إطار/زاويا حول
-// الكارد عند التحديد، بل زر إرسال فعلي يظهر فوق الهدية نفسها مباشرة (راجع
-// .gift-card-send-slot أدناه، تُملأ ديناميكياً من wireGiftSelectionAndQty عند التحديد)
+// ✅ بحث + طلب صريح (بمرجع صورة Bigo Live مُرفقة): عند التحديد، صف الاسم/السعر يُستبدَل
+// بزر "إرسال" مستطيل ثابت بعرض الكارد كاملاً (لا دائرة عائمة فوق الصورة) — راجع
+// .gift-card-label-row/.gift-card-send-slot أدناه، التبديل بينهما عبر .gift-card-selected فقط
 function renderGiftCardHTML(g) {
     return `
         <button type="button" class="gift-card-wrapper bg-gray-800/50 border border-gray-700 rounded-xl p-2 transition-all flex flex-col items-center w-full"
              data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}" data-gift-icon="${g.icon || '🎁'}" data-gift-image="${g.imageUrl || ''}">
             <div class="gift-visual-slot w-10 h-10 flex items-center justify-center mx-auto pointer-events-none">
                 ${g.imageUrl ? `<img src="${g.imageUrl}" class="gift-visual-img w-10 h-10 object-contain">` : `<span class="text-3xl">${g.icon || '🎁'}</span>`}
-                <span class="gift-card-send-slot"></span>
             </div>
-            <span class="text-[11px] font-bold text-center truncate w-full mt-1 pointer-events-none">${g.name}</span>
-            <span class="text-[10px] text-yellow-400 pointer-events-none"><i class="fas fa-coins"></i> ${g.discountedPrice || g.price}</span>
+            <div class="gift-card-label-row pointer-events-none">
+                <span class="text-[11px] font-bold text-center truncate w-full mt-1">${g.name}</span>
+                <span class="text-[10px] text-yellow-400"><i class="fas fa-coins"></i> ${g.discountedPrice || g.price}</span>
+            </div>
+            <span class="gift-card-send-slot"></span>
         </button>
     `;
 }
@@ -12121,7 +12124,7 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
             if (slot) {
                 newSendBtn = document.createElement('span');
                 newSendBtn.className = 'gift-card-send-btn';
-                newSendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
+                newSendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال';
                 slot.appendChild(newSendBtn);
             }
         }

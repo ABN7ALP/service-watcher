@@ -9958,9 +9958,8 @@ body.in-voice-room #main-content {
   }
 }
 
-/* ✅ كارد الهدية المختار — بحث معمّق + طلب صريح: أُعيدت الهيكلة بأسلوب Likee الحقيقي، لا
-   إطار/زوايا منحنية حول الكارد عند التحديد (كانت تُحس "صندوقاً" مقحَماً) — فقط توهّج خلفية
-   خفيف جداً للكارد، وزر الإرسال الفعلي يظهر فوق الهدية نفسها مباشرة (راجع .gift-card-send-btn) */
+/* ✅ كارد الهدية المختار — بمرجع صورة Bigo Live مُرفقة بطلب صريح: لا إطار/توهّج خلف الصورة
+   عند التحديد إطلاقاً، صف الاسم/السعر يُستبدَل بزر "إرسال" مستطيل ثابت بعرض الكارد كاملاً */
 
 .gift-card-wrapper {
   position: relative;
@@ -9968,75 +9967,64 @@ body.in-voice-room #main-content {
 
 .gift-card-wrapper.gift-card-selected {
   border-color: transparent;
-  background: rgba(236,72,153,0.06);
   box-shadow: none;
 }
 
-/* ✅ حاوية الصورة/الأيقونة بحاجة لسياق تموضع كي يظهر زر الإرسال فوقها مباشرة بالضبط */
-
-.gift-visual-slot {
-  position: relative;
+.gift-card-label-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
 }
 
-/* ✅ منفذ زر الإرسال — فارغ دائماً (لا يشغل مساحة بصرياً) حتى تُحدَّد هدية، حينها
-   wireGiftSelectionAndQty يُدرج بداخله .gift-card-send-btn فعلياً. pointer-events:none هنا
-   مهم كي لا يحجب النقر عن .gift-visual-slot (المعطَّلة أصلاً pointer-events-none) حين فارغاً */
+/* ✅ منفذ زر الإرسال — فارغ ومخفي افتراضياً (صف الاسم/السعر هو الظاهر)، يظهر فقط حين
+   wireGiftSelectionAndQty يُدرج بداخله .gift-card-send-btn عند التحديد (راجع .gift-card-selected) */
 
 .gift-card-send-slot {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
+  display: none;
+  width: 100%;
+  margin-top: 3px;
 }
 
-/* ✅ زر الإرسال فوق الهدية المحدَّدة مباشرة — وردي Likee الصريح، دائري صغير، بروز سلس.
-   pointer-events:auto صريح لأن .gift-visual-slot الأب pointer-events-none (موروثة) */
+.gift-card-wrapper.gift-card-selected .gift-card-label-row {
+  display: none;
+}
+
+.gift-card-wrapper.gift-card-selected .gift-card-send-slot {
+  display: block;
+}
+
+/* ✅ زر الإرسال — مستطيل ثابت بعرض الكارد (بمرجع صورة Bigo Live)، وردي Likee الصريح،
+   بلا أي أنيميشن ظهور/نبض — ثابت تماماً كما بالمرجع، فقط ضغطة فعلية تُطلق الإرسال */
 
 .gift-card-send-btn {
-  pointer-events: auto;
-  width: 22px;
-  height: 22px;
-  border-radius: 9999px;
-  background: #ec1b6a;
-  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 3px;
+  width: 100%;
+  height: 19px;
+  border-radius: 6px;
+  background: #ec1b6a;
+  color: #fff;
   font-size: 9.5px;
-  box-shadow: 0 2px 8px rgba(236,27,106,0.65);
-  border: 1.5px solid rgba(255,255,255,0.4);
+  font-weight: 800;
   cursor: pointer;
-  animation: giftSendBtnPop 0.18s ease-out;
 }
 
 /* ✅ شبكة هدايا الغرفة/العامة أكبر (47px) — الزر يكبر تناسقاً معها */
 
 .room-gift-cards-grid .gift-card-send-btn {
-  width: 30px;
-  height: 30px;
-  font-size: 13px;
+  height: 22px;
+  font-size: 11px;
 }
 
 .gift-card-send-btn:active {
-  transform: scale(0.88);
+  filter: brightness(0.92);
 }
 
 .gift-card-send-btn.gift-sending {
-  animation: giftSendPulse 0.9s ease-in-out infinite;
-}
-
-@keyframes giftSendBtnPop {
-  from {
-    opacity: 0;
-    transform: scale(0.5);
-  }
-
-  to   {
-    opacity: 1;
-    transform: scale(1);
-  }
+  filter: brightness(1.12);
 }
 
 /* ✅ زر الإرسال — الضغط المطوّل يحوّله لحالة نابضة بدل شكله الثابت (تصميمه الكامل أسفل
@@ -10080,14 +10068,6 @@ body.in-voice-room #main-content {
 
 #gift-cards-grid .gift-visual-slot span {
   font-size: 1.25rem;
-}
-
-/* 🐛 إصلاح: القاعدة أعلاه (span عام) أقوى تحديداً من .gift-card-send-btn فتكبّر أيقونة
-   زر الإرسال المُدرَج بداخل .gift-visual-slot أيضاً (هو <span> فعلياً) — استثناء صريح أقوى
-   تحديداً يستعيد حجمها الصحيح */
-
-#gift-cards-grid .gift-visual-slot span.gift-card-send-btn {
-  font-size: 9.5px;
 }
 
 /* ✅ التذييل الجديد عائم فوق الشبكة (راجع .gift-footer أدناه) — سياق تموضع + حشوة إضافية
@@ -10403,13 +10383,7 @@ body.in-voice-room #main-content {
   font-size: 2rem;
 }
 
-/* 🐛 إصلاح: نفس مشكلة التحديد أعلى — استثناء زر الإرسال من تكبير أيقونات .gift-visual-slot */
-
-.room-gift-cards-grid .gift-visual-slot span.gift-card-send-btn {
-  font-size: 13px;
-}
-
-.room-gift-cards-grid .gift-card-wrapper > span {
+.room-gift-cards-grid .gift-card-label-row > span {
   font-size: 10px;
 }
 
@@ -10425,15 +10399,15 @@ body.in-voice-room #main-content {
   animation: roomGiftSelectedPulse 1.4s ease-in-out infinite;
 }
 
+/* ✅ طلب صريح (بمرجع صورة Bigo Live): يبقى نبض الحجم فقط على الصورة، بلا أي توهّج/ظل حولها */
+
 @keyframes roomGiftSelectedPulse {
   0%, 100% {
     transform: scale(1);
-    filter: drop-shadow(0 0 0 rgba(236,72,153,0));
   }
 
   50%      {
-    transform: scale(1.1);
-    filter: drop-shadow(0 0 9px rgba(236,72,153,0.65));
+    transform: scale(1.08);
   }
 }
 
