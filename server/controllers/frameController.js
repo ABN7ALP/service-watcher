@@ -1,5 +1,6 @@
 const ProfileFrame = require('../models/ProfileFrame');
 const User = require('../models/User');
+const { broadcastUserFrameChange } = require('../services/socketService');
 
 const DURATION_DAYS_MAP = { '7': 'days7', '30': 'days30', '365': 'days365' };
 
@@ -9,7 +10,7 @@ exports.getFrameShop = async (req, res) => {
         const user = await User.findById(req.user.id).select('ownedFrames activeFrame coins activeFrameExpiresAt');
 
         // ✅ إزالة أي إطار مفعّل انتهت صلاحيته تلقائياً عند كل فتح للمتجر (فحص فوري)
-        await checkAndExpireActiveFrame(user);
+        await checkAndExpireActiveFrame(user, req.io);
 
         const ownedMap = {};
         user.ownedFrames.forEach(o => { ownedMap[o.frame.toString()] = o; });
@@ -94,6 +95,7 @@ exports.setActiveFrame = async (req, res) => {
             user.activeFrameClass = null;
             user.activeFrameExpiresAt = null;
             await user.save();
+            broadcastUserFrameChange(req.io, userId, null);
             return res.status(200).json({ status: 'success', message: 'تمت إزالة الإطار', data: { activeFrameClass: null } });
         }
 
@@ -122,6 +124,7 @@ exports.setActiveFrame = async (req, res) => {
         user.activeFrameClass = frame.cssClass;
         user.activeFrameExpiresAt = ownedInstance.expiresAt;
         await user.save();
+        broadcastUserFrameChange(req.io, userId, frame.cssClass);
 
         res.status(200).json({
             status: 'success',
@@ -135,13 +138,14 @@ exports.setActiveFrame = async (req, res) => {
 };
 
 // ✅ دالة مساعدة: تُزيل الإطار المفعّل تلقائياً من كل مكان إذا انتهت صلاحيته
-async function checkAndExpireActiveFrame(user) {
+async function checkAndExpireActiveFrame(user, io = null) {
     if (user.activeFrameExpiresAt && user.activeFrameExpiresAt < new Date()) {
         user.activeFrame = null;
         user.activeFrameClass = null;
         user.activeFrameExpiresAt = null;
         await user.save();
         console.log(`[FRAME EXPIRE] Frame auto-removed for user ${user._id}`);
+        if (io) broadcastUserFrameChange(io, user._id, null);
     }
 }
 

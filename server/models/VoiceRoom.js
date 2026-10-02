@@ -177,7 +177,7 @@ voiceRoomSchema.statics.listRooms = async function ({ search, sort = 'newest', p
     const [rooms, total] = await Promise.all([
         this.find(query)
             .select('-password -seats')
-            .populate('host', 'username profileImage')
+            .populate('host', 'username profileImage activeFrameClass')
             .sort(sortMap[sort] || sortMap.newest)
             .skip(skip)
             .limit(safeLimit)

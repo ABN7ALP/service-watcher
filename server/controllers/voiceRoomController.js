@@ -99,6 +99,7 @@ async function getActiveSeatChallengeSnapshot(roomId) {
             userId: p.user._id,
             username: p.user.username,
             profileImage: p.user.profileImage,
+            activeFrameClass: p.user.activeFrameClass,
             seatNumber: p.seatNumber,
             team: p.team
         })),
@@ -267,9 +268,9 @@ exports.getRoomById = async (req, res) => {
         const room = await VoiceRoom.findOne({ _id: req.params.id, status: 'active' })
             .select('+password')
             .populate('seats.user', 'username profileImage activeFrameClass isAdmin')
-            .populate('host', 'username profileImage')
-            .populate('moderators', 'username profileImage')
-            .populate('handRaises.user', 'username profileImage');
+            .populate('host', 'username profileImage activeFrameClass')
+            .populate('moderators', 'username profileImage activeFrameClass')
+            .populate('handRaises.user', 'username profileImage activeFrameClass');
         if (!room) {
             return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة أو أُغلقت' });
         }
@@ -364,7 +365,7 @@ exports.getRoomById = async (req, res) => {
             bannedWords: (!room.isOfficial && isHost) ? room.bannedWords : [],
             // 🛡️ قائمة طلبات الصعود لا تُرسَل إلا للمضيف/المسؤولين — لا فائدة (وربما إحراج) لبقية الحاضرين برؤيتها
             handRaises: (isHost || isModerator)
-                ? room.handRaises.filter(h => h.user).map(h => ({ userId: h.user._id, username: h.user.username, profileImage: h.user.profileImage }))
+                ? room.handRaises.filter(h => h.user).map(h => ({ userId: h.user._id, username: h.user.username, profileImage: h.user.profileImage, activeFrameClass: h.user.activeFrameClass || '' }))
                 : [],
             activeBattle: await getActiveBattleSnapshot(room._id),
             activeSeatChallenge: room.isOfficial ? null : await getActiveSeatChallengeSnapshot(room._id)

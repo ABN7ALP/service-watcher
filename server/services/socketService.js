@@ -177,6 +177,7 @@ function buildSeatChallengeSnapshot(challenge) {
             userId: p.user._id ? p.user._id.toString() : p.user.toString(),
             username: p.user.username || undefined,
             profileImage: p.user.profileImage || undefined,
+            activeFrameClass: p.user.activeFrameClass || undefined,
             seatNumber: p.seatNumber,
             team: p.team
         })),
@@ -191,7 +192,7 @@ function buildSeatChallengeSnapshot(challenge) {
 async function finalizeActiveSeatChallenge(io, challengeId) {
     try {
         clearSeatChallengeTimer(activeSeatChallengeTimers, challengeId);
-        const challenge = await SeatChallenge.findOne({ _id: challengeId, status: 'active' }).populate('participants.user', 'username profileImage');
+        const challenge = await SeatChallenge.findOne({ _id: challengeId, status: 'active' }).populate('participants.user', 'username profileImage activeFrameClass');
         if (!challenge) return;
 
         let winner = 'draw';
@@ -214,7 +215,7 @@ async function activateSeatChallenge(io, challenge) {
     challenge.startedAt = now;
     challenge.endsAt = new Date(now.getTime() + challenge.durationSeconds * 1000);
     await challenge.save();
-    await challenge.populate('participants.user', 'username profileImage');
+    await challenge.populate('participants.user', 'username profileImage activeFrameClass');
 
     const timer = setTimeout(() => finalizeActiveSeatChallenge(io, challenge._id), challenge.durationSeconds * 1000);
     activeSeatChallengeTimers.set(challenge._id.toString(), timer);
@@ -516,9 +517,29 @@ function getRoomViewers(io, roomId) {
     const byUser = new Map(); // ✅ يمنع التكرار لو نفس المستخدم فاتح أكثر من تبويب/جهاز بنفس الوقت
     for (const socketId of socketIds) {
         const s = io.sockets.sockets.get(socketId);
-        if (s?.user) byUser.set(s.user.id.toString(), { id: s.user.id.toString(), username: s.user.username, profileImage: s.user.profileImage });
+        if (s?.user) byUser.set(s.user.id.toString(), { id: s.user.id.toString(), username: s.user.username, profileImage: s.user.profileImage, activeFrameClass: s.user.activeFrameClass || '' });
     }
     return Array.from(byUser.values());
+}
+
+// ✅ تبديل/إزالة الإطار (متجر الإطارات) يبث فورياً لكل مكان يُحتمَل ظهور صورة هذا المستخدم به
+// الآن — مقعده الحالي بأي غرفة (لو جالس)، كل من يشاهد تلك الغرفة (قائمة المشاهدين)، وأي
+// تبويب/جهاز آخر مفتوح له هو نفسه (مزامنة فورية بلا إعادة تحميل) — بدل الاعتماد على إعادة
+// فتح الشاشة لرؤية الإطار الجديد كما كان الحال سابقاً
+function broadcastUserFrameChange(io, userId, activeFrameClass) {
+    const userIdStr = userId.toString();
+    const notifiedRooms = new Set();
+    for (const [, s] of io.sockets.sockets) {
+        if (!s.user || s.user.id.toString() !== userIdStr) continue;
+        // ✅ مزامنة فورية لهذا المستخدم نفسه على أي تبويب/جهاز آخر مفتوح له
+        s.emit('user-frame-changed', { userId: userIdStr, activeFrameClass: activeFrameClass || '' });
+        for (const room of s.rooms) {
+            if (room.startsWith('room-chat-') && !notifiedRooms.has(room)) {
+                notifiedRooms.add(room);
+                io.to(room).emit('user-frame-changed', { userId: userIdStr, activeFrameClass: activeFrameClass || '' });
+            }
+        }
+    }
 }
 
 function broadcastRoomViewerCount(io, roomId) {
@@ -1531,6 +1552,7 @@ socket.on('refreshBlockData', async () => {
                     userId: socket.user.id.toString(),
                     username: socket.user.username,
                     profileImage: socket.user.profileImage,
+                    activeFrameClass: socket.user.activeFrameClass || '',
                     requestedAt: new Date()
                 });
             } catch (error) {
@@ -1651,6 +1673,7 @@ socket.on('refreshBlockData', async () => {
                     fromUserId: socket.user.id.toString(),
                     fromUsername: socket.user.username,
                     fromProfileImage: socket.user.profileImage,
+                    fromActiveFrameClass: socket.user.activeFrameClass || '',
                     expiresInMs: SEAT_INVITE_TTL_MS
                 });
             } catch (error) {
@@ -1909,7 +1932,7 @@ socket.on('refreshBlockData', async () => {
                     durationSeconds: duration,
                     status: 'pending'
                 });
-                await challenge.populate('participants.user', 'username profileImage');
+                await challenge.populate('participants.user', 'username profileImage activeFrameClass');
 
                 const timer = setTimeout(() => expirePendingSeatChallenge(io, challenge._id), SeatChallenge.CHALLENGE_EXPIRY_SECONDS * 1000);
                 pendingSeatChallengeTimers.set(challenge._id.toString(), timer);
@@ -2297,3 +2320,4 @@ socket.on('refreshBlockData', async () => {
 
 
 module.exports = initializeSocket;
+module.exports.broadcastUserFrameChange = broadcastUserFrameChange;
