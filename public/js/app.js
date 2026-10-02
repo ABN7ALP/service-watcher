@@ -9926,18 +9926,29 @@ const FAN_CLUB_COLORS = {
 // أي فائز حالياً يرتديه (راجع IMAGE_OVERLAY_FRAMES/wrapImageOverlayFrames أسفله)
 const FAN_CLUB_CONTRIBUTOR_FRAME_IMG = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png';
 // ✅ خريطة عامة: أي صنف إطار يحتاج صورة تراكب حقيقية فوق الصورة الشخصية (بدل حدّ CSS بسيط)
-// تُضاف هنا — صنف واحد لكل إطار صورة جديد يُشترى من المتجر (راجع autoSeed.js لنفس الروابط)
+// تُضاف هنا — صنف واحد لكل إطار صورة جديد يُشترى من المتجر (راجع autoSeed.js لنفس الروابط).
+//
+// 🐛 إصلاح جوهري بعد ملاحظة صريحة: تكبير الحاوية كاملة (transform:scale) يُكبّر الصورة
+// والإطار معاً بنفس النسبة — لا يُغيّر إطلاقاً أياً منهما "يتجاوز" الآخر أكثر، فقط يُكبّر
+// الوحدة بأكملها ظاهرياً (وهذا بالضبط ما لوحظ: "كبّرت الصورة والهامش، لا الإطار"). التحكّم
+// الحقيقي بمدى تجاوز حلقة الإطار لحافة الصورة هو حصراً نسبتا photoScale/artScale أدناه —
+// كل إطار-صورة مُقاس بدقة (كإطار المساهم: فتحته الشفافة محسوبة فعلياً عبر Python/PIL سابقاً)
+// يحتفظ بنسبته الخاصة المضبوطة؛ أي إطار جديد لم يُقَس بعد (شبكة هذي البيئة تمنع تحميل الصور
+// الخارجية للقياس) يأخذ قيماً افتراضية متحفّظة جداً (صورة أصغر نسبياً + تراكب أكبر بكثير)
+// تضمن تجاوز الإطار لحافة الصورة حتى لو كانت حلقته الفعلية رفيعة نسبة لمساحة قماشته الشفافة
+const DEFAULT_OVERLAY_PHOTO_SCALE = 62;  // % من الحاوية — الصورة الشخصية نفسها
+const DEFAULT_OVERLAY_ART_SCALE = 340;   // % من الحاوية — صورة الإطار الزخرفية
 const IMAGE_OVERLAY_FRAMES = {
-    'profile-frame-contributor': FAN_CLUB_CONTRIBUTOR_FRAME_IMG,
-    'profile-frame-luxury-01': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif',
-    'profile-frame-royal-01': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790892729/royal_frame_600px.gif',
-    'profile-frame-crown-01': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790894895/crown_frame_600px.gif',
-    'profile-frame-black-gold-crown': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790895602/black_gold_crown_frame_600px.webp',
-    'profile-frame-gothic-royal': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896169/gothic_royal_frame.webp',
-    'profile-frame-amethyst-royal': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896497/amethyst_royal_frame.webp',
-    'profile-frame-fire-dragons': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897430/fire_dragons_frame.webp',
-    'profile-frame-lion-bee-sapphire': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897852/lion_bee_sapphire_frame.webp',
-    'profile-frame-pegasus-warrior': 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790898291/pegasus_warrior_frame.webp'
+    'profile-frame-contributor': { url: FAN_CLUB_CONTRIBUTOR_FRAME_IMG, photoScale: 87, artScale: 195 },
+    'profile-frame-luxury-01': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif' },
+    'profile-frame-royal-01': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790892729/royal_frame_600px.gif' },
+    'profile-frame-crown-01': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790894895/crown_frame_600px.gif' },
+    'profile-frame-black-gold-crown': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790895602/black_gold_crown_frame_600px.webp' },
+    'profile-frame-gothic-royal': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896169/gothic_royal_frame.webp' },
+    'profile-frame-amethyst-royal': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896497/amethyst_royal_frame.webp' },
+    'profile-frame-fire-dragons': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897430/fire_dragons_frame.webp' },
+    'profile-frame-lion-bee-sapphire': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897852/lion_bee_sapphire_frame.webp' },
+    'profile-frame-pegasus-warrior': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790898291/pegasus_warrior_frame.webp' }
 };
 const IMAGE_OVERLAY_FRAME_CLASSES = Object.keys(IMAGE_OVERLAY_FRAMES);
 
@@ -9965,16 +9976,28 @@ function wrapImageOverlayFrames(root = document) {
         const w = img.offsetWidth, h = img.offsetHeight;
         if (!w || !h) return; // لم يُرسَم بعد (مثلاً display:none) — تُعاد المحاولة بالدفعة التالية
         img.classList.add('frame-overlay-wrapped');
+        const config = IMAGE_OVERLAY_FRAMES[matchedClass];
+        const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
+        const artScale = config.artScale ?? DEFAULT_OVERLAY_ART_SCALE;
         const wrap = document.createElement('span');
         wrap.className = 'frame-overlay-wrap';
         wrap.style.width = `${w}px`;
         wrap.style.height = `${h}px`;
         img.parentNode.insertBefore(wrap, img);
         wrap.appendChild(img);
+        // 🎯 النسبة الحقيقية التي تتحكم بتجاوز الإطار لحواف الصورة هي نسبة عرض/ارتفاع
+        // صورة الملف الشخصي إلى صورة الإطار الزخرفية (كلتاهما كنسبة % من نفس الصندوق) —
+        // وليس transform:scale() على الحاوية، لأنه يكبّر الاثنين بنفس المعامل فلا يغيّر
+        // نسبتهما لبعضهما. لذا نضبطهما هنا Inline لكل إطار حسب قياسه الفعلي، بدل نسبة
+        // عامة ثابتة في CSS لا تناسب كل الإطارات.
+        img.style.width = `${photoScale}%`;
+        img.style.height = `${photoScale}%`;
         const overlay = document.createElement('img');
-        overlay.src = IMAGE_OVERLAY_FRAMES[matchedClass];
+        overlay.src = config.url;
         overlay.className = 'frame-overlay-art';
         overlay.alt = '';
+        overlay.style.width = `${artScale}%`;
+        overlay.style.height = `${artScale}%`;
         wrap.appendChild(overlay);
     });
     // 🛡️ إزالة التراكب لو المستخدم بدّل لإطار آخر لاحقاً — applyFrameToAvatar (نفس عنصر <img>
