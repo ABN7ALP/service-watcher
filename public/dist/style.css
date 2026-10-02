@@ -9994,37 +9994,51 @@ body.in-voice-room #main-content {
   display: block;
 }
 
-/* ✅ زر الإرسال — مستطيل ثابت بعرض الكارد (بمرجع صورة Bigo Live)، وردي Likee الصريح،
-   بلا أي أنيميشن ظهور/نبض — ثابت تماماً كما بالمرجع، فقط ضغطة فعلية تُطلق الإرسال */
+/* ✅ طلب صريح: الزر السابق كان مسطحاً بلا أي حس لمسي — "ميت". إعادة بناء حقيقية بإحساس
+   زر فعلي ملموس: تدرّج لوني (عمق)، "شفة" سفلية داكنة (box-shadow صلب) تحاكي سماكة زر حقيقي
+   قابل للضغط، ولمعة علوية داخلية (inset highlight) — كلها ثابتة بلا أي أنيميشن عند الظهور
+   (كما طُلب سابقاً)، والحس اللمسي الحقيقي يأتي فقط من استجابة :active الفعلية عند الضغط
+   (انخفاض + تفلطح الشفة السفلية) تماماً كزر مادي حقيقي يُضغط */
 
 .gift-card-send-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 4px;
   width: 100%;
-  height: 19px;
-  border-radius: 6px;
-  background: #ec1b6a;
+  height: 27px;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #ff3d85 0%, #e0116a 65%, #d20d62 100%);
   color: #fff;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 800;
+  letter-spacing: 0.2px;
   cursor: pointer;
+  box-shadow:
+        0 2px 0 #a90a4f,
+        0 4px 7px rgba(224,17,106,0.45),
+        inset 0 1px 0 rgba(255,255,255,0.35);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease;
 }
 
-/* ✅ شبكة هدايا الغرفة/العامة أكبر (47px) — الزر يكبر تناسقاً معها */
+/* ✅ شبكة هدايا الغرفة/العامة أكبر — الزر يكبر تناسقاً معها */
 
 .room-gift-cards-grid .gift-card-send-btn {
-  height: 22px;
-  font-size: 11px;
+  height: 34px;
+  font-size: 13px;
+  border-radius: 10px;
 }
 
 .gift-card-send-btn:active {
-  filter: brightness(0.92);
+  transform: translateY(2px);
+  box-shadow:
+        0 0 0 #a90a4f,
+        0 1px 3px rgba(224,17,106,0.4),
+        inset 0 1px 0 rgba(255,255,255,0.2);
 }
 
 .gift-card-send-btn.gift-sending {
-  filter: brightness(1.12);
+  filter: brightness(1.1);
 }
 
 /* ✅ زر الإرسال — الضغط المطوّل يحوّله لحالة نابضة بدل شكله الثابت (تصميمه الكامل أسفل
@@ -10051,23 +10065,26 @@ body.in-voice-room #main-content {
    كارد. يستهدف #gift-cards-grid حصراً كي لا يمسّ شبكات هدايا الغرفة المضبوطة أصلاً بحجم
    مختلف مقصود (.room-gift-cards-grid) */
 
+/* ✅ طلب صريح: الهدايا كانت صغيرة جداً داخل نافذة واسعة — "محاصرة بمكان صغير". تكبير حقيقي
+   للصورة وحشوة الكارد، لا مجرد تكبير النافذة نفسها (التي لا تحل الإحساس بصغر الهدية) */
+
 #gift-cards-grid.grid {
-  gap: 5px;
+  gap: 8px;
 }
 
 #gift-cards-grid .gift-card-wrapper {
-  padding: 5px 3px;
-  border-radius: 11px;
+  padding: 8px 4px;
+  border-radius: 12px;
 }
 
 #gift-cards-grid .gift-visual-slot,
 #gift-cards-grid .gift-visual-img {
-  width: 25px;
-  height: 25px;
+  width: 38px;
+  height: 38px;
 }
 
 #gift-cards-grid .gift-visual-slot span {
-  font-size: 1.25rem;
+  font-size: 1.9rem;
 }
 
 /* ✅ التذييل الجديد عائم فوق الشبكة (راجع .gift-footer أدناه) — سياق تموضع + حشوة إضافية
@@ -10321,14 +10338,15 @@ body.in-voice-room #main-content {
 }
 
 /* ✅ شبكة الهدايا: ارتفاع ثابت يعرض صفّين فقط (بغض النظر عن عدد الهدايا الكلي)، وتمرير
-   داخلي لعرض الباقي — بدل تمدّد النافذة كاملة مع كل هدية تُضاف مستقبلاً */
+   داخلي لعرض الباقي — بدل تمدّد النافذة كاملة مع كل هدية تُضاف مستقبلاً. ✅ طلب صريح: زيادة
+   الارتفاع (230px بدل 190px) لاستيعاب الهدايا المُكبَّرة بلا ازدحام */
 
 .room-gift-cards-grid {
-  max-height: 190px;
+  max-height: 230px;
   overflow-y: auto;
   scrollbar-width: thin;
   /* ✅ حشوة أسفلية كي لا يُغطّى آخر صفّ هدايا خلف .gift-footer العائم دائماً عند التمرير للأسفل */
-  padding-bottom: 54px;
+  padding-bottom: 60px;
 }
 
 .room-gift-cards-grid::-webkit-scrollbar {
@@ -10368,19 +10386,21 @@ body.in-voice-room #main-content {
 }
 
 .room-gift-cards-grid .gift-card-wrapper {
-  padding: 5px 2px;
+  padding: 8px 3px;
   border-radius: 12px;
   transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.18s ease, box-shadow 0.18s ease;
 }
 
+/* ✅ طلب صريح: الهدايا صغيرة محاصرة بمكان ضيق — تكبير حقيقي بدل الاكتفاء بتكبير النافذة */
+
 .room-gift-cards-grid .gift-visual-slot,
 .room-gift-cards-grid .gift-visual-img {
-  width: 47px;
-  height: 47px;
+  width: 58px;
+  height: 58px;
 }
 
 .room-gift-cards-grid .gift-visual-slot span {
-  font-size: 2rem;
+  font-size: 2.5rem;
 }
 
 .room-gift-cards-grid .gift-card-label-row > span {
