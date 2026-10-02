@@ -10029,9 +10029,12 @@ const FAN_CLUB_CONTRIBUTOR_FRAME_IMG = 'https://res.cloudinary.com/dntlt5xry/ima
 // أصغر من دائرة المقعد"). الصورة يجب أن تبقى 100% (تماماً كحافة المقعد)، والإطار يتجاوز
 // تلك الحافة فقط عبر نسبته الأكبر (artScale) بما أنه عنصر منفصل بلا overflow:hidden عليه
 const DEFAULT_OVERLAY_PHOTO_SCALE = 100; // % من الحاوية — الصورة الشخصية تماماً كحافة المقعد/الملف (مثالية، لا تُلمَس)
-// ✅ بطلب صريح: الصورة أصبحت مثالية الآن، لكن الإطار نفسه لسا صغيراً — رفعتها من 300%→420%
-// (الرافعة الوحيدة لحجم الإطار بما أن الصورة تبقى 100% ثابتة، والحاوية بلا transform:scale)
-const DEFAULT_OVERLAY_ART_SCALE = 420;   // % من الحاوية — صورة الإطار الزخرفية تتجاوز الحافة بوضوح
+// 🐛 الجولة السابقة رفعت هذي النسبة (300%→420%) ظناً أن الإطار لا يتأثر بها — لكن السبب
+// الحقيقي كان قصّ خفي (max-width:100% من Tailwind Preflight) يُبطل أي قيمة هنا تماماً مهما
+// كبرت. بعد رفع ذاك القصّ، تبيّن أن القيمة الفعلية كانت تُطبَّق أخيراً وبقوة كاملة — فبدت
+// الإطارات ضخمة جداً (380:screenshot). رجعتها لقيمة واقعية قريبة من نسبة "إطار المساهم"
+// المُثبَتة فعلياً (87%/195% ≈ 2.24×) بما أن الصورة هنا ثابتة 100% بدل 87%
+const DEFAULT_OVERLAY_ART_SCALE = 180;   // % من الحاوية — صورة الإطار الزخرفية تتجاوز الحافة بوضوح دون تضخّم
 const IMAGE_OVERLAY_FRAMES = {
     'profile-frame-contributor': { url: FAN_CLUB_CONTRIBUTOR_FRAME_IMG, photoScale: 87, artScale: 195 },
     'profile-frame-luxury-01': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif' },
