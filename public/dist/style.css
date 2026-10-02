@@ -10048,43 +10048,64 @@ body.in-voice-room #main-content {
   transform: scale(0.97);
 }
 
-/* ✅ دائرة "Combo" — مطابقة لتسلسل الفيديو المُرفق: بعد أول ضغطة الزر يتحوّل فوراً لدائرة
-   بعدّاد تنازلي (راجع setupGiftComboSend بـapp.js للمنطق الزمني الكامل) — شارة ×N صغيرة
-   أعلاها، رقم العدّ كبير بالمنتصف، وكلمة Combo أسفله بخط أصغر */
+/* ✅ دائرة "Combo" — مطابقة دقيقة لصورة/فيديو حقيقيين راجعتهما مباشرة (لا وصف نصي فقط):
+   دائرة حقيقية (لا مستطيل) بحلقة بيضاء رفيعة + توهّج وردي خارجي ناعم حولها — بعد أول ضغطة
+   الزر يتحوّل فوراً إليها (راجع setupGiftComboSend بـapp.js للمنطق الزمني الكامل). شارة
+   "×1"/"Good" تعوم فوق حافتها العلوية (position:absolute، خارج الدائرة نفسها تماماً كالمرجع)،
+   رقم العدّ كبير بالمنتصف، وكلمة Combo أسفله */
 
 .gift-card-send-btn.gift-combo-active {
+  position: relative;
   flex-direction: column;
   gap: 0;
-  height: auto;
-  min-height: 25px;
-  padding: 3px 0 4px;
-  border-radius: 10px;
+  width: 58px;
+  height: 58px;
+  margin: 0 auto;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.9);
+  box-shadow: 0 0 0 5px rgba(245,11,108,0.18), 0 0 16px 2px rgba(245,11,108,0.55);
 }
 
 .room-gift-cards-grid .gift-card-send-btn.gift-combo-active {
-  min-height: 32px;
-  border-radius: 12px;
+  width: 78px;
+  height: 78px;
 }
 
 .gift-combo-badge {
-  font-size: 8px;
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #f50b6c;
+  color: #fff;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  font-size: 9px;
   font-weight: 800;
-  line-height: 1;
-  opacity: 0.9;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.35);
+}
+
+.room-gift-cards-grid .gift-combo-badge {
+  font-size: 10.5px;
+  top: -13px;
+  padding: 3px 11px;
 }
 
 .gift-combo-number {
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 800;
   line-height: 1.1;
 }
 
 .room-gift-cards-grid .gift-combo-number {
-  font-size: 16px;
+  font-size: 22px;
 }
 
 .gift-combo-label {
-  font-size: 7px;
+  font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.4px;
@@ -10093,7 +10114,7 @@ body.in-voice-room #main-content {
 }
 
 .room-gift-cards-grid .gift-combo-label {
-  font-size: 8px;
+  font-size: 9.5px;
 }
 
 /* ✅ زر الإرسال — الضغط المطوّل يحوّله لحالة نابضة بدل شكله الثابت (تصميمه الكامل أسفل
