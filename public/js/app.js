@@ -10081,7 +10081,15 @@ function computeOverlayArtScaleCap(img, seatSizePx) {
     if (gaps.length === 0) return Infinity;
     const safeGap = Math.min(...gaps);
     const maxOverflowEachSide = safeGap * 0.4;
-    return 100 + (2 * maxOverflowEachSide / seatSizePx) * 100;
+    // 🐛 بحث خارجي مُتعمَّق (طلب صريح) كشف أن فتحة إطار-الصورة الشفافة نفسها دائرية عادة
+    // بكل أطقم الإطارات الجاهزة (التاج/الأجنحة غير المنتظمة تقتصر على المحيط الخارجي فقط)،
+    // وأن artScale يجب أن يبقى أكبر من قيمة دنيا معيّنة وإلا "تنكمش" الفتحة الفعلية لتصبح
+    // أصغر من الصورة نفسها (الثابتة عند 100%) فتظهر حوافها خارج الإطار — بالضبط ما لاحظه
+    // المستخدم ("الإطار صغير ويترك أجزاء من الصورة ظاهرة") بعد تفعيل سقف منع التصادم بالجولة
+    // السابقة بشبكات 15/24 مقعداً المزدحمة. لذا لا نسمح للسقف أبداً بالنزول دون 140% — تحمي
+    // محاذاة الإطار مع الصورة بالحد الأدنى، حتى لو تطلّب ذلك تقارباً طفيفاً بين حلقتَي إطارين
+    // متجاورين بأضيق الشبكات (أهون بصرياً من إطار "مكسور" يُظهر حواف الصورة الخام)
+    return Math.max(140, 100 + (2 * maxOverflowEachSide / seatSizePx) * 100);
 }
 
 function wrapImageOverlayFrames(root = document) {
@@ -10115,6 +10123,11 @@ function wrapImageOverlayFrames(root = document) {
         // عامة ثابتة في CSS لا تناسب كل الإطارات.
         img.style.width = `${photoScale}%`;
         img.style.height = `${photoScale}%`;
+        // ✅ حلقة احتياط (راجع .frame-overlay-ring بـinput.css) — تُدرَج بين الصورة والزخرفة
+        // لتمتص أي خلل محاذاة طفيف بين حافة الصورة الدائرية وفتحة الإطار غير المقاسة فعلياً
+        const ring = document.createElement('span');
+        ring.className = 'frame-overlay-ring';
+        wrap.appendChild(ring);
         const overlay = document.createElement('img');
         overlay.src = config.url;
         overlay.className = 'frame-overlay-art';

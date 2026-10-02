@@ -2918,6 +2918,12 @@ video {
   box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
+.ring{
+  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+}
+
 .ring-1{
   --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
   --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);
@@ -3696,6 +3702,28 @@ input[type="checkbox"] {
   max-width: none;
   height: auto;
   /* width/height تُضبط Inline حسب artScale الخاص بكل إطار — راجع wrapImageOverlayFrames() */
+}
+
+/* ✅ "حلقة احتياط" (backing/glow ring) — بحث مُتعمَّق أكّد أن هذا هو الأسلوب القياسي المتّبع
+   بكل أطقم إطارات الصور الشخصية الجاهزة (Bigo/TikTok/Discord وغيرها) لحل بالضبط مشكلة
+   "حافة الصورة الدائرية الكاملة تُطابق/تتجاوز فتحة الإطار الزخرفية عند بعض الزوايا فتظهر
+   جزئياً من خلفه" — فتحة PNG الإطار غالباً دائرية فعلاً (الجزء غير المنتظم هو المحيط
+   الخارجي فقط: التاج/الأجنحة)، لكن بما أننا لا نستطيع قياس نسبة الفتحة الحقيقية لكل إطار
+   من الثماني الجديدة (الشبكة تمنع تحميل الصور الخارجية للقياس)، فحلقة رفيعة متوهّجة بلون
+   ذهبي دافئ مموضعة بين الصورة والزخرفة تمتص أي خلل محاذاة طفيف (تسريب أو فجوة) عند أي زاوية
+   دون الحاجة لمعرفة تلك النسبة بالضبط — تبدو كظل/عمق طبيعي للإطار لا كخطأ تصميم */
+
+.frame-overlay-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 108%;
+  height: 108%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  z-index: 1;
+  pointer-events: none;
+  box-shadow: 0 0 0 3px rgba(217,160,60,0.55), 0 0 7px 2px rgba(217,160,60,0.45);
 }
 
 /* =====================================================
