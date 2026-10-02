@@ -286,7 +286,9 @@ input[type="checkbox"] {
 .frame-shop-current-preview { display: flex; flex-direction: column; align-items: center; padding: 14px 18px 6px; }
 .frame-shop-current-avatar-wrap { position: relative; width: 88px; height: 88px; margin: 0 auto; }
 .frame-shop-current-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
-.frame-shop-current-label { font-size: 12px; font-weight: 700; color: #d1d5db; margin-top: 10px; }
+/* ✅ margin-top: 24px = أقصى تجاوز آمن للإطار بهذا السياق الضيق (140% سقف ⇒ ~17.6px من
+   صورة 88px) + هامش فاصل — ملاحظات دقيقة لكل إطار أثبتت تغطية الاسم بالمتجر لعدة إطارات */
+.frame-shop-current-label { font-size: 12px; font-weight: 700; color: #d1d5db; margin-top: 24px; }
 .frame-shop-remove-btn { background: transparent; border: none; color: #9ca3af; font-size: 10.5px; text-decoration: underline; margin-top: 4px; }
 
 .frame-shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 18px 24px; }
@@ -297,7 +299,9 @@ input[type="checkbox"] {
 .frame-shop-card.active { border-color: rgba(251,191,36,0.5); background: rgba(251,191,36,0.05); }
 .frame-shop-card-avatar-wrap { position: relative; width: 56px; height: 56px; margin: 0 auto; }
 .frame-shop-card-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
-.frame-shop-card-name { font-size: 11.5px; font-weight: 800; color: #f3f4f6; margin-top: 9px; text-align: center; }
+/* ✅ margin-top: 16px = أقصى تجاوز آمن للإطار بهذا السياق الضيق (140% سقف ⇒ ~11.2px من
+   صورة 56px) + هامش فاصل — نفس سبب frame-shop-current-label أعلاه */
+.frame-shop-card-name { font-size: 11.5px; font-weight: 800; color: #f3f4f6; margin-top: 16px; text-align: center; }
 .frame-shop-card-expiry { font-size: 9px; color: #9ca3af; margin-top: 3px; }
 .frame-shop-card-owned-label { font-size: 9.5px; color: #4ade80; margin-top: 3px; font-weight: 700; }
 .frame-shop-equip-btn {
@@ -1234,10 +1238,11 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 @media (min-width: 768px) { .room-profile-sheet-card { border-radius: 20px; margin-bottom: 16px; } }
 .room-profile-body { padding-bottom: 4px; position: relative; }
-/* ✅ padding-top: 52px يفسح فوق حافة البطاقة تماماً مساحة نصف ارتفاع الصورة (84px)، فتطفو
-   الصورة نصفها خارج البطاقة (top:-42px) والنصف الآخر بداخلها دون تغطية الاسم تحتها.
-   ✅ كُبِّرت من 72px إلى 84px بطلب صريح (الصورة والإطار بالنوافذ/الملفات الشخصية صغيرة) */
-.room-profile-header { text-align: center; padding: 52px 16px 4px; position: relative; }
+/* ✅ padding-top: 70px = نصف ارتفاع الصورة (42px) + أقصى تجاوز آمن للإطار فوق هذا السياق
+   الضيق (OVERLAY_TIGHT_CONTEXT_CAP=140% بـapp.js ⇒ ~16.8px) + هامش فاصل (10px) — يمنع
+   تغطية الاسم أسفله مهما كان الإطار المُفعَّل، بدل خنق حجم الإطار نفسه أكثر من اللازم
+   (ملاحظات دقيقة لكل إطار على حدة أثبتت أن هذا السياق تحديداً كان يُغطّي الاسم) */
+.room-profile-header { text-align: center; padding: 70px 16px 4px; position: relative; }
 .room-profile-avatar-wrap {
     position: absolute;
     top: -42px;
@@ -4156,9 +4161,13 @@ body.in-voice-room #main-content {
         0 0 0 5px rgba(219,39,119,0.18),
         0 6px 18px rgba(0,0,0,0.5);
 }
+/* ✅ padding-top: 84px = نصف ارتفاع الصورة (54px) + أقصى تجاوز آمن للإطار (140% سقف
+   السياقات الضيقة بـapp.js ⇒ ~21.6px) + هامش فاصل (8px) — أكثر شكوى متكررة بملاحظات
+   المستخدم الدقيقة لكل إطار كانت "الملف الكامل كبير يغطي الاسم"؛ الحل هنا توسيع المسافة
+   المتاحة تحت الصورة بدل تصغير الإطار نفسه أكثر من سقفه الآمن (140%) */
 .full-profile-identity {
     text-align: center;
-    padding: 60px 16px 10px;
+    padding: 84px 16px 10px;
 }
 .full-profile-name {
     font-size: 16px;
@@ -4394,7 +4403,10 @@ body.in-voice-room #main-content {
     border: 3px solid #111827;
     box-shadow: 0 6px 18px rgba(0,0,0,0.5);
 }
-.profile-hub-identity { text-align: center; padding: 34px 16px 6px; }
+/* ✅ padding-top: 54px = التداخل الثابت أسفل الغلاف (28px) + أقصى تجاوز آمن للإطار (140%
+   سقف السياقات الضيقة ⇒ ~19px) + هامش فاصل (7px) — نفس مبدأ full-profile-identity أعلاه،
+   يحمي اسم المستخدم من تغطية أي إطار مُفعَّل بصفحة حسابي الشخصية */
+.profile-hub-identity { text-align: center; padding: 54px 16px 6px; }
 .profile-hub-name { font-size: 17px; font-weight: 800; color: #fff; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .profile-hub-id { font-size: 11px; color: #9ca3af; margin-top: 2px; }
 .profile-hub-badge-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 9px; }

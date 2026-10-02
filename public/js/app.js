@@ -5769,7 +5769,7 @@ function frameShopCardHTML(f, activeFrameId, userPhoto) {
     return `
         <div class="frame-shop-card ${isActive ? 'active' : ''}">
             <div class="frame-shop-card-avatar-wrap">
-                <img src="${userPhoto}" class="frame-shop-card-avatar ${f.cssClass}">
+                <img src="${userPhoto}" class="frame-shop-card-avatar ${f.cssClass}" decoding="async">
                 ${frameDecorationHTML(f.cssClass)}
             </div>
             <p class="frame-shop-card-name">${escapeHtml(f.name)}</p>
@@ -5832,7 +5832,7 @@ async function showFrameShopModal() {
         const preview = modal.querySelector('#frame-shop-current-preview');
         preview.innerHTML = `
             <div class="frame-shop-current-avatar-wrap">
-                <img src="${userPhoto}" class="frame-shop-current-avatar ${activeMeta ? activeMeta.cssClass : ''}">
+                <img src="${userPhoto}" class="frame-shop-current-avatar ${activeMeta ? activeMeta.cssClass : ''}" decoding="async">
                 ${frameDecorationHTML(activeMeta ? activeMeta.cssClass : null)}
             </div>
             <p class="frame-shop-current-label">${activeMeta ? escapeHtml(activeMeta.name) : 'بلا إطار مفعّل حالياً'}</p>
@@ -5918,7 +5918,7 @@ async function showFrameShopModal() {
                     if (preview) {
                         preview.innerHTML = `
                             <div class="frame-shop-current-avatar-wrap">
-                                <img src="${userPhoto}" class="frame-shop-current-avatar ${activeMeta ? activeMeta.cssClass : ''}">
+                                <img src="${userPhoto}" class="frame-shop-current-avatar ${activeMeta ? activeMeta.cssClass : ''}" decoding="async">
                                 ${frameDecorationHTML(activeMeta ? activeMeta.cssClass : null)}
                             </div>
                             <p class="frame-shop-current-label">${activeMeta ? escapeHtml(activeMeta.name) : 'بلا إطار مفعّل حالياً'}</p>
@@ -7403,7 +7403,7 @@ function showXpGainAnimation(amount) {
             return;
         }
         listEl.innerHTML = viewers.map(v => `
-            <button data-user-id="${v.id}" data-username="${escapeHtml(v.username)}" class="room-viewer-row w-full flex items-center gap-2.5 rounded-xl p-2 text-right">
+            <button data-user-id="${v.id}" data-username="${escapeHtml(v.username)}" class="room-viewer-row w-full flex items-center gap-4 rounded-xl p-2 text-right">
                 <img src="${v.profileImage}" class="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-1 ring-white/10 ${v.activeFrameClass || ''}">
                 <span class="text-sm font-medium truncate flex-1">${escapeHtml(v.username)}</span>
                 <i class="fas fa-chevron-left text-[10px] text-gray-500"></i>
@@ -10035,19 +10035,59 @@ const DEFAULT_OVERLAY_PHOTO_SCALE = 100; // % من الحاوية — الصور
 // الإطارات ضخمة جداً (380:screenshot). رجعتها لقيمة واقعية قريبة من نسبة "إطار المساهم"
 // المُثبَتة فعلياً (87%/195% ≈ 2.24×) بما أن الصورة هنا ثابتة 100% بدل 87%
 const DEFAULT_OVERLAY_ART_SCALE = 180;   // % من الحاوية — صورة الإطار الزخرفية تتجاوز الحافة بوضوح دون تضخّم
+// ✅ ملاحظات دقيقة جداً لكل إطار على حدة بكل سياق (مقعد/ملف مصغّر/ملف كامل/متجر/مشاهدات)
+// كشفت أن قيمة واحدة لا تناسب كل السياقات (مقاس الحاوية يختلف جذرياً: مقعد 42-80px مقابل
+// ملف كامل 108px بنفس بطاقة ضيقة)، وأن بعض الإطارات (العقيق الجمشتي/تنانين النار) تحتاج
+// قيمة أساس أعلى من البقية خصيصاً على المقعد. القيم هنا هي "أساس المقعد" لكل إطار؛ باقي
+// السياقات تُقيَّد لاحقاً بسقف ثابت (OVERLAY_TIGHT_CONTEXT_CAP) بدل تكرار قيم يدوية لكل مكان
 const IMAGE_OVERLAY_FRAMES = {
     'profile-frame-contributor': { url: FAN_CLUB_CONTRIBUTOR_FRAME_IMG, photoScale: 87, artScale: 195 },
     'profile-frame-luxury-01': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif' },
-    'profile-frame-royal-01': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790892729/royal_frame_600px.gif' },
+    // ✅ "صغّر الصورة مع الإطار قليلاً" — طلب صريح لهذا الإطار تحديداً (كان الأكثر شكوى: يغطي
+    // الاسم بالملف الكامل والمتجر معاً، لا الملف الكامل فقط كبقية الإطارات)
+    'profile-frame-royal-01': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790892729/royal_frame_600px.gif', photoScale: 95 },
     'profile-frame-crown-01': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790894895/crown_frame_600px.gif' },
-    'profile-frame-black-gold-crown': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790895602/black_gold_crown_frame_600px.webp' },
+    // ✅ طلب صريح: هذا الإطار "جميل لكن يبدو قبيحاً دوماً عند الحجم الكبير" — يُصغَّر تلقائياً
+    // (صورة + إطار معاً) بكل سياق بلا استثناء، بعكس بقية الإطارات التي تحتفظ بحجمها الكامل
+    // على المقعد تحديداً وتُقيَّد فقط بالسياقات الضيقة
+    'profile-frame-black-gold-crown': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790895602/black_gold_crown_frame_600px.webp', photoScale: 92, artScale: 140 },
     'profile-frame-gothic-royal': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896169/gothic_royal_frame.webp' },
-    'profile-frame-amethyst-royal': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896497/amethyst_royal_frame.webp' },
-    'profile-frame-fire-dragons': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897430/fire_dragons_frame.webp' },
+    // ✅ "يظهر صغيراً وغير ملائم على المقعد" (الوحيد مع تنين النار الذي لم يكن كافياً بالقيمة
+    // الافتراضية 180% رغم أنها مثالية لكل الإطارات الأخرى على المقعد تحديداً)
+    'profile-frame-amethyst-royal': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896497/amethyst_royal_frame.webp', artScale: 210 },
+    // ✅ "غير مثالي على المقعد، يحتاج تعديل" — نفس حالة الجمشت الملكي أعلاه بالضبط
+    'profile-frame-fire-dragons': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897430/fire_dragons_frame.webp', artScale: 210 },
     'profile-frame-lion-bee-sapphire': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897852/lion_bee_sapphire_frame.webp' },
     'profile-frame-pegasus-warrior': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790898291/pegasus_warrior_frame.webp' }
 };
 const IMAGE_OVERLAY_FRAME_CLASSES = Object.keys(IMAGE_OVERLAY_FRAMES);
+// ✅ سقف صارم لحجم الإطار في أي "سياق ضيق" (ملف شخصي مصغّر/كامل، صفحة حسابي، بطاقة متجر،
+// صف مشاهد) حيث يجلس اسم المستخدم قريباً جداً من الصورة — بحث معمّق سابق أثبت أن الإطار لا
+// يجوز أن ينزل عن 140% (الحد الأدنى الذي يضمن أن فتحة الإطار تبقى أكبر من الصورة الثابتة
+// عند 100% فلا تظهر حوافها)، فهذا السقف تحديداً (وليس أقل) هو كل ما يمكن خفضه بأمان — بقية
+// الحل يأتي من تكبير المسافة أسفل/حول الصورة بهذي الحاويات (راجع input.css) بدل خنق الإطار
+// أكثر. يُستثنى منه: إطار المساهم (مُقاس فعلياً، يعمل بلا شكوى بكل مكان) والمقعد (مساحة
+// الاسم تحته فسيحة أصلاً via bottom:-1.75rem، لا حاجة لتقييده إطلاقاً)
+const OVERLAY_TIGHT_CONTEXT_CAP = 140;
+const OVERLAY_TIGHT_CONTEXT_SELECTOR = [
+    '.room-profile-avatar-wrap', '.full-profile-avatar-wrap', '.profile-hub-avatar-wrap',
+    '.frame-shop-card-avatar-wrap', '.frame-shop-current-avatar-wrap',
+    '#room-viewers-list', '#seat-invite-picker-list', '#hand-queue-list'
+].join(',');
+function isInTightOverlayContext(img) {
+    return !!img.closest(OVERLAY_TIGHT_CONTEXT_SELECTOR);
+}
+// ✅ تقليص وزن تحميل الإطار بصيغة Cloudinary — المصدر الفعلي للأصل "الثقل" الذي اشتكى منه
+// المستخدم بالمتجر: كل الإطارات الثمانية مرفوعة بدقة خام 512-600px (GIF متحرك أحياناً)
+// بينما تُعرض فعلياً بـ56-150px فقط حسب السياق؛ المتصفح كان يحمّل ويفكّ تشفير الدقة الكاملة
+// 9 مرات دفعة واحدة عند فتح المتجر بغضّ النظر عن حجم العرض الفعلي. Cloudinary يدعم تصغير
+// الصورة فعلياً (لا فقط بصرياً عبر CSS) بإضافة w_<عرض> لمسار الرابط — نطلب ضعف حجم العرض
+// الفعلي تقريباً (وضوح كافٍ للشاشات عالية الكثافة) بدل الدقة الخام الكاملة دوماً
+function cloudinarySized(url, targetWidthPx) {
+    if (!url || !url.includes('res.cloudinary.com') || !url.includes('/upload/')) return url;
+    const w = Math.max(80, Math.min(640, Math.round(targetWidthPx)));
+    return url.replace('/upload/', `/upload/w_${w},c_limit,q_auto,f_auto/`);
+}
 
 // 🐛 إصلاح جوهري: زخارف هذي الإطارات (تاج، جواهر، أجنحة...) تتوغّل داخل الصورة نفسها بدل
 // حدّ رفيع حولها فقط — فتقنية border-image المستخدمة سابقاً كانت خاطئة جذرياً: بكسلات
@@ -10109,7 +10149,14 @@ function wrapImageOverlayFrames(root = document) {
         img.dataset.frameClass = matchedClass; // ✅ يسمح لمسار "تبديل الإطار فورياً" أدناه باكتشاف التغيير
         const config = IMAGE_OVERLAY_FRAMES[matchedClass];
         const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
-        const artScale = Math.min(config.artScale ?? DEFAULT_OVERLAY_ART_SCALE, computeOverlayArtScaleCap(img, w));
+        let artScale = Math.min(config.artScale ?? DEFAULT_OVERLAY_ART_SCALE, computeOverlayArtScaleCap(img, w));
+        // ✅ ملاحظات دقيقة جداً بكل سياق أكّدت: الملف الشخصي المصغّر/الكامل، صفحة الحساب،
+        // بطاقة المتجر، وصفوف المشاهدين/الطلبات كلها "ضيقة" (الاسم يجلس قريباً جداً من
+        // الصورة) بعكس المقعد (مساحة فسيحة تحته أصلاً) — تُقيَّد هناك بسقف صارم بدل تصغير
+        // الإطار نفسه أكثر من اللازم؛ راجع input.css لزيادة الهوامش حول تلك الحاويات بدلاً
+        if (matchedClass !== 'profile-frame-contributor' && isInTightOverlayContext(img)) {
+            artScale = Math.min(artScale, OVERLAY_TIGHT_CONTEXT_CAP);
+        }
         const wrap = document.createElement('span');
         wrap.className = 'frame-overlay-wrap';
         wrap.style.width = `${w}px`;
@@ -10129,9 +10176,13 @@ function wrapImageOverlayFrames(root = document) {
         ring.className = 'frame-overlay-ring';
         wrap.appendChild(ring);
         const overlay = document.createElement('img');
-        overlay.src = config.url;
+        // ✅ تقليص وزن التحميل: نطلب من Cloudinary حجماً فعلياً أقرب لحجم العرض الحقيقي
+        // (بدل الدقة الخام 512-600px دوماً) — أهم إصلاح لثقل فتح متجر الإطارات تحديداً
+        overlay.src = cloudinarySized(config.url, w * (artScale / 100) * 2);
         overlay.className = 'frame-overlay-art';
         overlay.alt = '';
+        overlay.loading = 'lazy';
+        overlay.decoding = 'async';
         overlay.style.width = `${artScale}%`;
         overlay.style.height = `${artScale}%`;
         wrap.appendChild(overlay);
@@ -10158,12 +10209,16 @@ function wrapImageOverlayFrames(root = document) {
         img.dataset.frameClass = matchedClass;
         const config = IMAGE_OVERLAY_FRAMES[matchedClass];
         const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
-        const artScale = Math.min(config.artScale ?? DEFAULT_OVERLAY_ART_SCALE, computeOverlayArtScaleCap(img, img.offsetWidth));
+        const w2 = img.offsetWidth;
+        let artScale = Math.min(config.artScale ?? DEFAULT_OVERLAY_ART_SCALE, computeOverlayArtScaleCap(img, w2));
+        if (matchedClass !== 'profile-frame-contributor' && isInTightOverlayContext(img)) {
+            artScale = Math.min(artScale, OVERLAY_TIGHT_CONTEXT_CAP);
+        }
         img.style.width = `${photoScale}%`;
         img.style.height = `${photoScale}%`;
         const overlay = img.parentNode.querySelector('.frame-overlay-art');
         if (overlay) {
-            overlay.src = config.url;
+            overlay.src = cloudinarySized(config.url, w2 * (artScale / 100) * 2);
             overlay.style.width = `${artScale}%`;
             overlay.style.height = `${artScale}%`;
         }
