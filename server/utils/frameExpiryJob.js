@@ -2,6 +2,7 @@
 // ✅ مهمة دورية لإزالة الإطارات المنتهية من كل المستخدمين دفعة واحدة
 
 const User = require('../models/User');
+const { broadcastUserFrameChange } = require('../services/socketService');
 
 const expireFrames = async (io) => {
     try {
@@ -22,9 +23,11 @@ const expireFrames = async (io) => {
 
         console.log(`[FRAME EXPIRY] Expired frames for ${result.modifiedCount} user(s)`);
 
-        // إشعار المتصلين فقط ليُحدّثوا واجهتهم فوراً
+        // إشعار المتصلين فقط ليُحدّثوا واجهتهم فوراً — بما في ذلك كل من يشاهدهم حالياً بغرفة
+        // (مقعد/قائمة مشاهدين)، لا فقط صاحب الإطار نفسه، بنفس آلية التفعيل/الإزالة اليدوية
         if (io) {
             for (const u of affected) {
+                broadcastUserFrameChange(io, u._id, null);
                 if (u.socketId) {
                     io.to(u.socketId).emit('frameExpired', {
                         message: 'انتهت صلاحية إطارك. يمكنك تجديده من المتجر.'

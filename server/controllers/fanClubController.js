@@ -202,7 +202,7 @@ exports.getSummary = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
         }
         const [owner, memberCount, membership, currentLeader] = await Promise.all([
-            User.findById(ownerId).select('username profileImage fanClub'),
+            User.findById(ownerId).select('username profileImage activeFrameClass fanClub'),
             FanClubMembership.countDocuments({ owner: ownerId }),
             FanClubMembership.findOne({ owner: ownerId, member: req.user.id }),
             computeTopContributor(ownerId, getCurrentWeekRange())
@@ -215,6 +215,7 @@ exports.getSummary = async (req, res) => {
                 ownerId,
                 ownerUsername: owner.username,
                 ownerProfileImage: owner.profileImage,
+                ownerActiveFrameClass: owner.activeFrameClass || '',
                 clubName: owner.fanClub?.name || null,
                 emblemColorId: owner.fanClub?.emblemColorId || 'pink',
                 giftColorId: owner.fanClub?.giftColorId || 'pink',

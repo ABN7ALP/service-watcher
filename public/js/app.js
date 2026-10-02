@@ -1595,7 +1595,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             }
             return roomHandQueue.map(h => `
                 <div class="flex items-center gap-2.5 p-2 rounded-lg bg-gray-700/40" data-user-id="${h.userId}">
-                    <img src="${h.profileImage}" class="w-9 h-9 rounded-full object-cover flex-shrink-0">
+                    <img src="${h.profileImage}" class="w-9 h-9 rounded-full object-cover flex-shrink-0 ${h.activeFrameClass || ''}">
                     <span class="flex-1 text-sm truncate">${escapeHtml(h.username)}</span>
                     <button data-action="invite" class="w-8 h-8 rounded-full bg-emerald-600 hover:bg-emerald-700 flex items-center justify-center flex-shrink-0" title="دعوة لمقعد"><i class="fas fa-check text-xs"></i></button>
                     <button data-action="dismiss" class="w-8 h-8 rounded-full bg-gray-600 hover:bg-gray-500 flex items-center justify-center flex-shrink-0" title="رفض"><i class="fas fa-times text-xs"></i></button>
@@ -1717,8 +1717,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
 
         pickerList.innerHTML = invitable.map(v => `
-            <div class="seat-invite-picker-row">
-                <img src="${v.profileImage}" class="seat-invite-picker-avatar">
+            <div class="seat-invite-picker-row" data-user-id="${v.id}">
+                <img src="${v.profileImage}" class="seat-invite-picker-avatar ${v.activeFrameClass || ''}">
                 <span class="seat-invite-picker-name">${escapeHtml(v.username)}</span>
                 <button type="button" class="seat-invite-picker-btn" data-user-id="${v.id}" data-username="${escapeHtml(v.username)}">
                     <i class="fas fa-paper-plane"></i> دعوة
@@ -1737,7 +1737,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     // ✅ نافذة أنيقة تصل للمدعو عند دعوة المضيف له لمقعد محدد — قبول/رفض صريحان، لا إجلاس
     // فوري قبل رده. لمسة حسّية عند القبول (اهتزاز خفيف + نبضة بصرية) قبل الإغلاق مباشرة
-    function showSeatInviteReceivedModal({ roomId, roomName, seatNumber, fromUsername, fromProfileImage, expiresInMs }) {
+    function showSeatInviteReceivedModal({ roomId, roomName, seatNumber, fromUsername, fromProfileImage, fromActiveFrameClass, expiresInMs }) {
         document.getElementById('seat-invite-received-modal')?.remove();
         const modal = document.createElement('div');
         modal.id = 'seat-invite-received-modal';
@@ -1745,7 +1745,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         modal.innerHTML = `
             <div class="seat-invite-card">
                 <div class="seat-invite-avatar-wrap">
-                    <img src="${fromProfileImage || ''}" class="seat-invite-avatar">
+                    <img src="${fromProfileImage || ''}" class="seat-invite-avatar ${fromActiveFrameClass || ''}">
                     <span class="seat-invite-mic-badge"><i class="fas fa-microphone"></i></span>
                 </div>
                 <p class="seat-invite-title">${escapeHtml(fromUsername || '')} يدعوك للصعود 🎤</p>
@@ -2043,6 +2043,32 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         clearRoomBackground();
     }
 
+    // ✅ تبديل/شراء/إزالة إطار من المتجر يصل هنا فورياً عبر user-frame-changed (socket) — تحديث
+    // كل صورة لهذا المستخدم ظاهرة الآن بأي مكان بالشاشة الحالية (مقعد الغرفة، قائمة المشاهدين،
+    // طلبات الصعود، مالك الغرفة بالبطاقة) بلا أي إعادة تحميل أو إعادة فتح للنافذة — بدلاً من
+    // فرض انتظار المستخدمين لإعادة فتح الشاشة ليروا الإطار الجديد
+    function applyFrameChangeByUserId(userId, activeFrameClass) {
+        if (!userId) return;
+        const targets = [
+            ...document.querySelectorAll(`#voice-chat-grid [data-user-id="${userId}"] .voice-seat-avatar`),
+            ...document.querySelectorAll(`#room-viewers-list [data-user-id="${userId}"] img`),
+            ...document.querySelectorAll(`#hand-queue-list [data-user-id="${userId}"] img`),
+            ...document.querySelectorAll(`#seat-invite-picker-list [data-user-id="${userId}"] img`)
+        ];
+        if (currentRoomHostId === userId) {
+            currentRoomHostActiveFrameClass = activeFrameClass || '';
+            const ownerImg = document.querySelector('#room-info-card .room-info-card-owner-img');
+            if (ownerImg) targets.push(ownerImg);
+        }
+        targets.forEach(img => applyFrameToAvatar(img, activeFrameClass));
+        if (userId === myUserId) {
+            try {
+                const cached = JSON.parse(localStorage.getItem('user') || 'null');
+                if (cached) { cached.activeFrameClass = activeFrameClass || null; localStorage.setItem('user', JSON.stringify(cached)); }
+            } catch (error) { /* تجاهل — تحديث واجهة فقط، لا يوقف أي مسار آخر */ }
+        }
+    }
+
     // =====================================================
     // ✅ متصفح الغرف الصوتية (المرحلة 2 — نظام الغرف المتعددة)
     // =====================================================
@@ -2227,6 +2253,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentRoomDescription = '';
     let currentRoomHostUsername = ''; // ✅ لعرضه ببطاقة معلومات الغرفة (المالك)
     let currentRoomHostProfileImage = '';
+    let currentRoomHostActiveFrameClass = ''; // ✅ إطار مالك الغرفة — لعرضه ببطاقة معلومات الغرفة
     let currentRoomFollowersCount = 0;
     let currentRoomIsFollowing = false;
     let currentRoomCode = null; // ✅ آيدي الغرفة القصير القابل للبحث — يُعرض برأس الغرفة
@@ -2315,6 +2342,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         currentRoomDescription = '';
         currentRoomHostUsername = room.host?.username || '';
         currentRoomHostProfileImage = room.host?.profileImage || '';
+        currentRoomHostActiveFrameClass = room.host?.activeFrameClass || '';
         currentRoomFollowersCount = 0;
         currentRoomIsFollowing = false;
         currentRoomCode = room.roomCode || null;
@@ -2597,7 +2625,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         </div>
                     </div>
                     <div id="room-info-card-owner-row" class="room-info-card-owner-row" role="button" title="عرض الملف الشخصي للمضيف">
-                        <img src="${currentRoomHostProfileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-card-owner-img">
+                        <img src="${currentRoomHostProfileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-card-owner-img ${currentRoomHostActiveFrameClass || ''}">
                         <div class="min-w-0 flex-1">
                             <p class="text-[10px] text-gray-500">مالك الغرفة</p>
                             <p class="text-sm font-bold truncate">${escapeHtml(currentRoomHostUsername || '—')}</p>
@@ -3241,6 +3269,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             currentRoomHostId = result.host?.id || result.host?._id || null;
             currentRoomHostUsername = result.host?.username || currentRoomHostUsername;
             currentRoomHostProfileImage = result.host?.profileImage || currentRoomHostProfileImage;
+            currentRoomHostActiveFrameClass = result.host?.activeFrameClass || currentRoomHostActiveFrameClass;
             if (typeof result.followersCount === 'number') currentRoomFollowersCount = result.followersCount;
             if (typeof result.isFollowing === 'boolean') currentRoomIsFollowing = result.isFollowing;
             document.querySelectorAll('.js-room-follow-btn').forEach(btn => {
@@ -4181,7 +4210,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             <div class="seat-challenge-row">
                 <div class="seat-challenge-side seat-challenge-side-a">
                     <div class="seat-challenge-team seat-challenge-team-a">
-                        ${teamA.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                        ${teamA.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar ${p.activeFrameClass || ''}" title="${escapeHtml(p.username || '')}">`).join('')}
                     </div>
                     <span id="seat-challenge-score-a" class="seat-challenge-score seat-challenge-score-a">0</span>
                 </div>
@@ -4196,7 +4225,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <div class="seat-challenge-side seat-challenge-side-b">
                     <span id="seat-challenge-score-b" class="seat-challenge-score seat-challenge-score-b">0</span>
                     <div class="seat-challenge-team seat-challenge-team-b">
-                        ${teamB.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar" title="${escapeHtml(p.username || '')}">`).join('')}
+                        ${teamB.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar ${p.activeFrameClass || ''}" title="${escapeHtml(p.username || '')}">`).join('')}
                     </div>
                 </div>
             </div>
@@ -5789,31 +5818,41 @@ async function showFrameShopModal() {
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => { if (e.target.id === 'frame-shop-modal') modal.remove(); });
 
+    // ✅ آخر بيانات متجر مُجلَبة — تُستخدم لإعادة رسم فورية بلا طلب شبكة إضافي بعد شراء/تفعيل
+    // (كانت كل عملية تُعيد جلب /api/frames/shop من جديد ثم تُعيد بناء الشبكة كاملة، أي
+    // إعادة تحميل/فكّ-تشفير صور كل الإطارات الـN دفعة واحدة — هذا كان المصدر الحقيقي
+    // لبطء/ثقل الشراء والتفعيل الذي أشار له المستخدم صراحة)
+    let lastShopData = null;
+
+    function renderShopState(data) {
+        const coinsEl = modal.querySelector('#frame-shop-coins-value');
+        if (coinsEl) coinsEl.textContent = data.coins.toLocaleString();
+
+        const activeMeta = data.activeFrame ? data.frames.find(f => f._id.toString() === data.activeFrame.toString()) : null;
+        const preview = modal.querySelector('#frame-shop-current-preview');
+        preview.innerHTML = `
+            <div class="frame-shop-current-avatar-wrap">
+                <img src="${userPhoto}" class="frame-shop-current-avatar ${activeMeta ? activeMeta.cssClass : ''}">
+                ${frameDecorationHTML(activeMeta ? activeMeta.cssClass : null)}
+            </div>
+            <p class="frame-shop-current-label">${activeMeta ? escapeHtml(activeMeta.name) : 'بلا إطار مفعّل حالياً'}</p>
+            ${activeMeta ? `<button type="button" id="frame-shop-remove-btn" class="frame-shop-remove-btn">إزالة الإطار</button>` : ''}
+        `;
+        preview.querySelector('#frame-shop-remove-btn')?.addEventListener('click', () => equipFrame(null));
+
+        const grid = modal.querySelector('#frame-shop-grid');
+        grid.innerHTML = data.frames
+            .filter(f => f.name !== 'إطار الترحيب' && f.name !== 'إطار المثابر')
+            .map(f => frameShopCardHTML(f, data.activeFrame, userPhoto)).join('');
+        bindCardEvents();
+    }
+
     async function reload() {
         try {
             const res = await fetch('/api/frames/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
             if (res.status !== 'success') throw new Error();
-            const data = res.data;
-            const coinsEl = modal.querySelector('#frame-shop-coins-value');
-            if (coinsEl) coinsEl.textContent = data.coins.toLocaleString();
-
-            const activeMeta = data.activeFrame ? data.frames.find(f => f._id.toString() === data.activeFrame.toString()) : null;
-            const preview = modal.querySelector('#frame-shop-current-preview');
-            preview.innerHTML = `
-                <div class="frame-shop-current-avatar-wrap">
-                    <img src="${userPhoto}" class="frame-shop-current-avatar ${activeMeta ? activeMeta.cssClass : ''}">
-                    ${frameDecorationHTML(activeMeta ? activeMeta.cssClass : null)}
-                </div>
-                <p class="frame-shop-current-label">${activeMeta ? escapeHtml(activeMeta.name) : 'بلا إطار مفعّل حالياً'}</p>
-                ${activeMeta ? `<button type="button" id="frame-shop-remove-btn" class="frame-shop-remove-btn">إزالة الإطار</button>` : ''}
-            `;
-            preview.querySelector('#frame-shop-remove-btn')?.addEventListener('click', () => equipFrame(null));
-
-            const grid = modal.querySelector('#frame-shop-grid');
-            grid.innerHTML = data.frames
-                .filter(f => f.name !== 'إطار الترحيب' && f.name !== 'إطار المثابر')
-                .map(f => frameShopCardHTML(f, data.activeFrame, userPhoto)).join('');
-            bindCardEvents();
+            lastShopData = res.data;
+            renderShopState(lastShopData);
         } catch (error) {
             console.error('Failed to load frame shop:', error);
             showNotification('تعذر تحميل متجر الإطارات', 'error');
@@ -5829,8 +5868,18 @@ async function showFrameShopModal() {
             }).then(r => r.json());
             if (res.status === 'success') {
                 showNotification(res.message, 'success');
-                await refreshUserData();
-                await reload();
+                // ✅ تحديث البيانات المحلية المخزَّنة مباشرة من رد الشراء نفسه (الكوينز الجديدة
+                // + تسجيل الملكية) بدل إعادة جلب /api/frames/shop بالكامل من الصفر — نفس تأثير
+                // reload() البصري فوراً، بلا طلب شبكة ثانٍ ولا إعادة تحميل صور كل الإطارات
+                if (lastShopData && typeof res.data?.newCoins === 'number') {
+                    lastShopData.coins = res.data.newCoins;
+                    const frame = lastShopData.frames.find(f => f._id.toString() === frameId.toString());
+                    if (frame) frame.ownedInstance = { purchasedAt: new Date(), durationDays: parseInt(duration), activatedAt: null, expiresAt: null };
+                    renderShopState(lastShopData);
+                } else {
+                    await reload();
+                }
+                refreshUserData(); // 🔄 مزامنة رصيد الكوينز بالرأس/الشريط الجانبي — بالخلفية، بلا انتظار
             } else {
                 showNotification(res.message || 'فشل الشراء', 'error');
                 btn.disabled = false;
@@ -5849,8 +5898,38 @@ async function showFrameShopModal() {
             }).then(r => r.json());
             if (res.status === 'success') {
                 showNotification(res.message, 'success');
-                await refreshUserData();
-                await reload();
+                // ✅ تفعيل/إزالة لا يغيّر شيئاً بالصور نفسها (نفس الصورة + نفس صنف الإطار لكل
+                // بطاقة) — فقط أي بطاقة هي "المُفعّلة" حالياً. تبديل الأصناف/الأزرار على عناصر
+                // DOM القائمة مباشرة بدل إعادة بناء الشبكة بالكامل يمنع إعادة تحميل/فكّ تشفير
+                // صور كل الإطارات الأخرى غير المتأثرة — هذا بالضبط كان مصدر "الثقل" الملموس
+                if (lastShopData) {
+                    lastShopData.activeFrame = frameId || null;
+                    const grid = modal.querySelector('#frame-shop-grid');
+                    grid?.querySelectorAll('.frame-shop-card').forEach(card => {
+                        const equipBtn = card.querySelector('.frame-shop-equip-btn');
+                        if (!equipBtn) return; // بطاقة غير مملوكة بعد (شراء) — لا علاقة لها بالتفعيل
+                        const isNowActive = !!frameId && equipBtn.dataset.frameId === frameId.toString();
+                        card.classList.toggle('active', isNowActive);
+                        equipBtn.disabled = isNowActive;
+                        equipBtn.innerHTML = isNowActive ? '<i class="fas fa-check"></i> مُفعّل' : 'تفعيل';
+                    });
+                    const activeMeta = frameId ? lastShopData.frames.find(f => f._id.toString() === frameId.toString()) : null;
+                    const preview = modal.querySelector('#frame-shop-current-preview');
+                    if (preview) {
+                        preview.innerHTML = `
+                            <div class="frame-shop-current-avatar-wrap">
+                                <img src="${userPhoto}" class="frame-shop-current-avatar ${activeMeta ? activeMeta.cssClass : ''}">
+                                ${frameDecorationHTML(activeMeta ? activeMeta.cssClass : null)}
+                            </div>
+                            <p class="frame-shop-current-label">${activeMeta ? escapeHtml(activeMeta.name) : 'بلا إطار مفعّل حالياً'}</p>
+                            ${activeMeta ? `<button type="button" id="frame-shop-remove-btn" class="frame-shop-remove-btn">إزالة الإطار</button>` : ''}
+                        `;
+                        preview.querySelector('#frame-shop-remove-btn')?.addEventListener('click', () => equipFrame(null));
+                    }
+                } else {
+                    await reload();
+                }
+                refreshUserData(); // 🔄 مزامنة إطار الصورة بالرأس/الشريط الجانبي — بالخلفية، بلا انتظار
             } else {
                 showNotification(res.message || 'فشل التفعيل', 'error');
             }
@@ -7249,11 +7328,17 @@ function showXpGainAnimation(amount) {
     // =====================================================
     // ✅ رفع اليد لطلب الصعود للمايك — تحديثات حية لقائمة الانتظار والمرسل نفسه
     // =====================================================
-    socket.on('hand-raise-added', ({ roomId, userId, username, profileImage }) => {
+    // ✅ شراء/تفعيل/إزالة إطار (متجر الإطارات) — تحديث فوري بلا إعادة تحميل لكل مكان تظهر به
+    // صورة هذا المستخدم بالشاشة الحالية؛ راجع applyFrameChangeByUserId أعلاه للتفاصيل
+    socket.on('user-frame-changed', ({ userId, activeFrameClass }) => {
+        applyFrameChangeByUserId(userId, activeFrameClass);
+    });
+
+    socket.on('hand-raise-added', ({ roomId, userId, username, profileImage, activeFrameClass }) => {
         if (userId === myUserId) { myHandRaised = true; updateHandRaiseUI(); }
         if (roomId !== currentVoiceRoomId) return;
         if (!roomHandQueue.some(h => h.userId === userId)) {
-            roomHandQueue.push({ userId, username, profileImage });
+            roomHandQueue.push({ userId, username, profileImage, activeFrameClass });
         }
         updateHandRaiseUI();
         const listEl = document.getElementById('hand-queue-list');
@@ -7319,7 +7404,7 @@ function showXpGainAnimation(amount) {
         }
         listEl.innerHTML = viewers.map(v => `
             <button data-user-id="${v.id}" data-username="${escapeHtml(v.username)}" class="room-viewer-row w-full flex items-center gap-2.5 rounded-xl p-2 text-right">
-                <img src="${v.profileImage}" class="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-1 ring-white/10">
+                <img src="${v.profileImage}" class="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-1 ring-white/10 ${v.activeFrameClass || ''}">
                 <span class="text-sm font-medium truncate flex-1">${escapeHtml(v.username)}</span>
                 <i class="fas fa-chevron-left text-[10px] text-gray-500"></i>
             </button>
@@ -9936,8 +10021,15 @@ const FAN_CLUB_CONTRIBUTOR_FRAME_IMG = 'https://res.cloudinary.com/dntlt5xry/ima
 // يحتفظ بنسبته الخاصة المضبوطة؛ أي إطار جديد لم يُقَس بعد (شبكة هذي البيئة تمنع تحميل الصور
 // الخارجية للقياس) يأخذ قيماً افتراضية متحفّظة جداً (صورة أصغر نسبياً + تراكب أكبر بكثير)
 // تضمن تجاوز الإطار لحافة الصورة حتى لو كانت حلقته الفعلية رفيعة نسبة لمساحة قماشته الشفافة
-const DEFAULT_OVERLAY_PHOTO_SCALE = 62;  // % من الحاوية — الصورة الشخصية نفسها
-const DEFAULT_OVERLAY_ART_SCALE = 340;   // % من الحاوية — صورة الإطار الزخرفية
+// 🐛 تصحيح جوهري (الجولة السابقة أخطأت هنا): حاوية الالتفاف (wrap) تُقاس بالضبط على حجم
+// <img> الأصلي قبل التغليف — وهذا الحجم هو نفسه دائرة المقعد/الملف الشخصي (كل الاستخدامات
+// تضع width:100%; height:100% على الصورة داخل حاويتها الدائرية). فتصغير الصورة هنا لنسبة
+// أقل من 100% (كـ62% سابقاً) لا "يفسح مكاناً للإطار" كما افتُرض، بل يترك فجوة فعلية بين
+// حافة الصورة وحافة دائرة المقعد نفسها — وهذا ما لاحظه المستخدم بالضبط ("الصورة والإطار
+// أصغر من دائرة المقعد"). الصورة يجب أن تبقى 100% (تماماً كحافة المقعد)، والإطار يتجاوز
+// تلك الحافة فقط عبر نسبته الأكبر (artScale) بما أنه عنصر منفصل بلا overflow:hidden عليه
+const DEFAULT_OVERLAY_PHOTO_SCALE = 100; // % من الحاوية — الصورة الشخصية تماماً كحافة المقعد/الملف
+const DEFAULT_OVERLAY_ART_SCALE = 300;   // % من الحاوية — صورة الإطار الزخرفية تتجاوز الحافة بوضوح
 const IMAGE_OVERLAY_FRAMES = {
     'profile-frame-contributor': { url: FAN_CLUB_CONTRIBUTOR_FRAME_IMG, photoScale: 87, artScale: 195 },
     'profile-frame-luxury-01': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif' },
@@ -9976,6 +10068,7 @@ function wrapImageOverlayFrames(root = document) {
         const w = img.offsetWidth, h = img.offsetHeight;
         if (!w || !h) return; // لم يُرسَم بعد (مثلاً display:none) — تُعاد المحاولة بالدفعة التالية
         img.classList.add('frame-overlay-wrapped');
+        img.dataset.frameClass = matchedClass; // ✅ يسمح لمسار "تبديل الإطار فورياً" أدناه باكتشاف التغيير
         const config = IMAGE_OVERLAY_FRAMES[matchedClass];
         const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
         const artScale = config.artScale ?? DEFAULT_OVERLAY_ART_SCALE;
@@ -10005,11 +10098,32 @@ function wrapImageOverlayFrames(root = document) {
     // "شبحاً" فوق صورة لم تعد ترتديه فعلياً لولا هذا التنظيف العكسي
     root.querySelectorAll('.frame-overlay-wrap > img.frame-overlay-wrapped').forEach(img => {
         const stillHasOverlayFrame = IMAGE_OVERLAY_FRAME_CLASSES.some(c => img.classList.contains(c));
-        if (stillHasOverlayFrame) return;
-        const wrap = img.parentNode;
-        img.classList.remove('frame-overlay-wrapped');
-        wrap.parentNode.insertBefore(img, wrap);
-        wrap.remove();
+        if (!stillHasOverlayFrame) {
+            const wrap = img.parentNode;
+            img.classList.remove('frame-overlay-wrapped');
+            delete img.dataset.frameClass;
+            wrap.parentNode.insertBefore(img, wrap);
+            wrap.remove();
+            return;
+        }
+        // ✅ تبديل فوري بين إطارَين مختلفَين (مثلاً بعد شراء/تفعيل إطار جديد بالمتجر بينما
+        // صورة المستخدم ظاهرة حالياً بغرفة/قائمة مفتوحة) — الصورة تبقى "مُغلَّفة" أصلاً فيتجاوزها
+        // مسار الإضافة أعلاه (يستثني img.frame-overlay-wrapped)، فتبقى صورة الإطار القديمة
+        // عالقة بلا تحديث لولا هذي المزامنة الصريحة لـsrc/النسب كل مرة يختلف الصنف الفعلي
+        const matchedClass = IMAGE_OVERLAY_FRAME_CLASSES.find(c => img.classList.contains(c));
+        if (matchedClass === img.dataset.frameClass) return; // لم يتغيّر — لا حاجة لإعادة الضبط
+        img.dataset.frameClass = matchedClass;
+        const config = IMAGE_OVERLAY_FRAMES[matchedClass];
+        const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
+        const artScale = config.artScale ?? DEFAULT_OVERLAY_ART_SCALE;
+        img.style.width = `${photoScale}%`;
+        img.style.height = `${photoScale}%`;
+        const overlay = img.parentNode.querySelector('.frame-overlay-art');
+        if (overlay) {
+            overlay.src = config.url;
+            overlay.style.width = `${artScale}%`;
+            overlay.style.height = `${artScale}%`;
+        }
     });
 }
 let frameOverlaySweepScheduled = false;
@@ -10173,7 +10287,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
         body.innerHTML = `
             <div class="fanclub-portrait-row">
                 <span class="fanclub-owner-frame">
-                    <img src="${ownerProfileImage}" class="fanclub-owner-avatar">
+                    <img src="${ownerProfileImage}" class="fanclub-owner-avatar ${s.ownerActiveFrameClass || ''}">
                     ${s.currentLeader ? `
                         <button type="button" id="fanclub-weekly-leader-btn" class="fanclub-weekly-leader-slot" title="نجم الأسبوع الحالي: ${escapeHtml(s.currentLeader.username)}">
                             <img src="${s.currentLeader.profileImage}" class="fanclub-weekly-leader-avatar profile-frame-contributor">
@@ -10343,7 +10457,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                     <div class="fanclub-vip-podium-slot" data-user-id="${m.userId}">
                         <span class="fanclub-vip-podium-crown fanclub-vip-podium-crown-${rank}"><i class="fas fa-crown"></i></span>
                         <div class="fanclub-vip-podium-frame fanclub-vip-podium-frame-${rank}" style="background:linear-gradient(145deg,${c1},${c2})">
-                            <img src="${m.profileImage}" class="fanclub-vip-podium-avatar">
+                            <img src="${m.profileImage}" class="fanclub-vip-podium-avatar ${m.activeFrameClass || ''}">
                             <span class="fanclub-vip-podium-rankbadge fanclub-vip-podium-rankbadge-${rank}">${rank}</span>
                         </div>
                         <p class="fanclub-vip-podium-name">${escapeHtml(m.username)}</p>
@@ -10373,7 +10487,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                         <div class="fanclub-member-row" data-user-id="${m.userId}">
                             <span class="fanclub-member-row-rank">${i + 4}</span>
                             <span class="fanclub-member-row-identity">
-                                <img src="${m.profileImage}" class="fanclub-member-row-avatar">
+                                <img src="${m.profileImage}" class="fanclub-member-row-avatar ${m.activeFrameClass || ''}">
                                 <span class="fanclub-member-row-name">${escapeHtml(m.username)}</span>
                             </span>
                             <span class="fanclub-member-row-level"><i class="fas ${m.tierIcon}"></i> Lv.${m.level}</span>

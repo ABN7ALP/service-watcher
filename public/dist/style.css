@@ -3646,20 +3646,21 @@ input[type="checkbox"] {
    IMAGE_OVERLAY_FRAMES/wrapImageOverlayFrames()/public/js/app.js التي تُطبّق هذا تلقائياً
    بأي مكان بالتطبيق (بلا تعديل عشرات دوال عرض الصور القائمة) */
 
-/* 🐛 تصحيح جذري: transform:scale() على الحاوية يكبّر الصورة الشخصية وصورة الإطار معاً
-   بنفس المعامل (كلتاهما نسبة % من نفس الصندوق) — فلا يغيّر أبداً مدى تجاوز حلقة الإطار
-   لحافة الصورة؛ هذا فقط "يقرّب الكاميرا" من المجموعة ككل (ويكبّر الهامش الخارجي حول
-   المقعد معه). الرافعة الحقيقية الوحيدة هي نسبة عرض/ارتفاع img الداخلية إلى overlay
-   الخارجية — وتضبطها الآن wrapImageOverlayFrames() Inline لكل إطار (photoScale/artScale
-   في IMAGE_OVERLAY_FRAMES)، لأن كل إطار له نسبة فتحة-إلى-قماش مختلفة. أبقينا تكبيراً
-   طفيفاً فقط (1.12) ليمنح الإطار مساحة بصرية أوضح دون تضخيم الهامش حول المقعد */
+/* 🐛 تصحيح جذري (نهائي): transform:scale() على الحاوية يكبّر الصورة الشخصية وصورة الإطار
+   معاً بنفس المعامل (كلتاهما نسبة % من نفس الصندوق) — فلا يغيّر أبداً مدى تجاوز حلقة
+   الإطار لحافة الصورة؛ هذا فقط "يقرّب الكاميرا" من المجموعة ككل، فيكبّر الصورة نفسها
+   بصرياً فوق حجم دائرة المقعد (هذا بالضبط ما رفضه المستخدم: "كبّرت الصورة والهامش
+   لا الإطار"). أُزيل هذا الـtransform نهائياً. الرافعة الصحيحة الوحيدة الآن: نسبة
+   عرض/ارتفاع img الداخلية (=100% دوماً، تماماً كحافة المقعد) إلى overlay الخارجية
+   (أكبر من 100%) — تضبطها wrapImageOverlayFrames() Inline لكل إطار (photoScale/artScale
+   في IMAGE_OVERLAY_FRAMES)، فتتجاوز حلقة الإطار حافة الصورة دون تغيير حجم الصورة نفسها،
+   ودون عنصر overflow:hidden على الحاوية يقصّ هذا التجاوز */
 
 .frame-overlay-wrap {
   position: relative;
   display: inline-block;
   line-height: 0;
   vertical-align: middle;
-  transform: scale(1.12);
 }
 
 .frame-overlay-wrap > img {
@@ -5103,22 +5104,23 @@ button, input, select, textarea {
   position: relative;
 }
 
-/* ✅ padding-top: 46px يفسح فوق حافة البطاقة تماماً مساحة نصف ارتفاع الصورة (72px)، فتطفو
-   الصورة نصفها خارج البطاقة (top:-36px) والنصف الآخر بداخلها دون تغطية الاسم تحتها */
+/* ✅ padding-top: 52px يفسح فوق حافة البطاقة تماماً مساحة نصف ارتفاع الصورة (84px)، فتطفو
+   الصورة نصفها خارج البطاقة (top:-42px) والنصف الآخر بداخلها دون تغطية الاسم تحتها.
+   ✅ كُبِّرت من 72px إلى 84px بطلب صريح (الصورة والإطار بالنوافذ/الملفات الشخصية صغيرة) */
 
 .room-profile-header {
   text-align: center;
-  padding: 46px 16px 4px;
+  padding: 52px 16px 4px;
   position: relative;
 }
 
 .room-profile-avatar-wrap {
   position: absolute;
-  top: -36px;
+  top: -42px;
   left: 50%;
   transform: translateX(-50%);
-  width: 72px;
-  height: 72px;
+  width: 84px;
+  height: 84px;
   z-index: 2;
 }
 
@@ -10839,13 +10841,15 @@ body.in-voice-room #main-content {
    مربّع دائري الزوايا (squircle) بحلقة توهّج ثنائية اللون بدل الدائرة البسيطة السابقة —
    أبسط من إطار هندسي كامل لكنه أقوى بصرياً من دائرة عادية بلا لمسة */
 
+/* ✅ كُبِّرت من 92px إلى 108px بطلب صريح (الصورة والإطار بالملفات الشخصية/النوافذ صغيرة) */
+
 .full-profile-avatar-wrap {
   position: absolute;
   left: 50%;
   top: 118px;
   transform: translate(-50%, -50%);
-  width: 92px;
-  height: 92px;
+  width: 108px;
+  height: 108px;
 }
 
 .full-profile-avatar {
@@ -10864,7 +10868,7 @@ body.in-voice-room #main-content {
 
 .full-profile-identity {
   text-align: center;
-  padding: 52px 16px 10px;
+  padding: 60px 16px 10px;
 }
 
 .full-profile-name {
@@ -11236,12 +11240,16 @@ body.in-voice-room #main-content {
 /* ✅ صورتي بموضع جانبي هندسي فوق الغلاف — مربّع دائري الزوايا بإطار متدرّج مائل خلفه بدل
    الدائرة المتوسِّطة التقليدية */
 
+/* ✅ كُبِّرت من 84px إلى 96px بطلب صريح (الصورة والإطار بالملفات الشخصية/النوافذ صغيرة).
+   ثابتة من الأسفل (bottom:-28px) فلا تحتاج تعديل أي مسافة أخرى — فقط حافتها العلوية
+   تتحرك للأعلى داخل الغلاف، والتداخل أسفل الغلاف يبقى 28px كما هو مضبوط مسبقاً */
+
 .profile-hub-avatar-wrap {
   position: absolute;
   right: 18px;
   bottom: -28px;
-  width: 84px;
-  height: 84px;
+  width: 96px;
+  height: 96px;
   z-index: 2;
 }
 

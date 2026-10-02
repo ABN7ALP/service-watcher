@@ -268,7 +268,7 @@ const getMeDetails = async (req, res) => {
         // ✅ فحص وإزالة الإطار تلقائياً إذا انتهت صلاحيته، في كل استدعاء لبيانات المستخدم
         const { checkAndExpireActiveFrame } = require('./frameController');
         const rawUser = await User.findById(req.user.id);
-        await checkAndExpireActiveFrame(rawUser);
+        await checkAndExpireActiveFrame(rawUser, req.io);
 
         const [user, supportLevels] = await Promise.all([
             User.findById(req.user. id)

@@ -42,7 +42,7 @@ seatChallengeSchema.statics.findOpenForRoom = function (roomId) {
 };
 
 seatChallengeSchema.statics.getActiveForRoomPopulated = function (roomId) {
-    return this.findOne({ room: roomId, status: 'active' }).populate('participants.user', 'username profileImage');
+    return this.findOne({ room: roomId, status: 'active' }).populate('participants.user', 'username profileImage activeFrameClass');
 };
 
 seatChallengeSchema.methods.allAccepted = function () {
