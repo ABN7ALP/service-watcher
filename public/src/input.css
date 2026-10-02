@@ -337,11 +337,21 @@ input[type="checkbox"] {
    (أكبر من 100%) — تضبطها wrapImageOverlayFrames() Inline لكل إطار (photoScale/artScale
    في IMAGE_OVERLAY_FRAMES)، فتتجاوز حلقة الإطار حافة الصورة دون تغيير حجم الصورة نفسها،
    ودون عنصر overflow:hidden على الحاوية يقصّ هذا التجاوز */
+/* 🐛 السبب الجذري الحقيقي وراء "الإطار لم يتغير حجمه إطلاقاً" عبر كل الجولات السابقة
+   (160%→195%→260%→300%→420%): قاعدة Tailwind Preflight العامة `img, video { max-width:100% }`
+   (public/dist/style.css) تُطبَّق على كل <img> بالصفحة بلا استثناء، وmax-width يقصّ العرض
+   الفعلي النهائي دوماً بغض النظر عن قيمة width المضبوطة (Inline أو غيرها) — فكانت صورة
+   الإطار تُجبَر فعلياً على 100% من عرض الحاوية (=نفس حجم الصورة الشخصية تماماً) أياً كانت
+   artScale المطلوبة، وهذا ما جعلها تبدو دوماً "صغيرة" ومطابقة لحجم الصورة لا أكبر منها.
+   الصورة الشخصية نفسها لم تتأثر فقط لأن قيمتها (100%) تساوي السقف بالضبط (تطابق محض).
+   max-width: none هنا يرفع هذا السقف الخفي عن عنصرَي الالتفاف والتراكب فقط، بلا أي أثر
+   على باقي صور الموقع الأخرى (قاعدة Tailwind تبقى سارية عليها كالمعتاد) */
 .frame-overlay-wrap { position: relative; display: inline-block; line-height: 0; vertical-align: middle; }
 .frame-overlay-wrap > img {
     position: absolute; top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     border-radius: 50%;
+    max-width: none; height: auto;
     /* width/height تُضبط Inline حسب photoScale الخاص بكل إطار — راجع wrapImageOverlayFrames() */
 }
 .frame-overlay-art {
@@ -350,6 +360,7 @@ input[type="checkbox"] {
     transform: translate(-50%, -50%);
     pointer-events: none;
     z-index: 2;
+    max-width: none; height: auto;
     /* width/height تُضبط Inline حسب artScale الخاص بكل إطار — راجع wrapImageOverlayFrames() */
 }
 
