@@ -10077,6 +10077,15 @@ const OVERLAY_TIGHT_CONTEXT_SELECTOR = [
 function isInTightOverlayContext(img) {
     return !!img.closest(OVERLAY_TIGHT_CONTEXT_SELECTOR);
 }
+// ✅ طلب صريح: إطار المساهم (الممنوح أسبوعياً، نسبته الخاصة 195% غير مقاسة لأي سياق ضيق)
+// تبيّن أنه كبير أيضاً داخل نافذة نادي المعجبين تحديداً (منصة أعلى 3 + صف المتصدّر الأسبوعي
+// + صفوف الأعضاء كلها صور صغيرة متقاربة) رغم أنه يعمل بلا شكوى بالمقعد/الملف الشخصي. لذا
+// يُستثنى هذا السياق وحده من إعفاء "إطار المساهم" العام — كل الإطارات بلا استثناء تخضع
+// للسقف هنا، بعكس OVERLAY_TIGHT_CONTEXT_SELECTOR أعلاه الذي ما زال يُعفيه بالسياقات الأخرى
+const OVERLAY_FANCLUB_CONTEXT_SELECTOR = '#fanclub-modal';
+function isInFanClubOverlayContext(img) {
+    return !!img.closest(OVERLAY_FANCLUB_CONTEXT_SELECTOR);
+}
 // ✅ تقليص وزن تحميل الإطار بصيغة Cloudinary — المصدر الفعلي للأصل "الثقل" الذي اشتكى منه
 // المستخدم بالمتجر: كل الإطارات الثمانية مرفوعة بدقة خام 512-600px (GIF متحرك أحياناً)
 // بينما تُعرض فعلياً بـ56-150px فقط حسب السياق؛ المتصفح كان يحمّل ويفكّ تشفير الدقة الكاملة
@@ -10154,7 +10163,7 @@ function wrapImageOverlayFrames(root = document) {
         // بطاقة المتجر، وصفوف المشاهدين/الطلبات كلها "ضيقة" (الاسم يجلس قريباً جداً من
         // الصورة) بعكس المقعد (مساحة فسيحة تحته أصلاً) — تُقيَّد هناك بسقف صارم بدل تصغير
         // الإطار نفسه أكثر من اللازم؛ راجع input.css لزيادة الهوامش حول تلك الحاويات بدلاً
-        if (matchedClass !== 'profile-frame-contributor' && isInTightOverlayContext(img)) {
+        if (isInFanClubOverlayContext(img) || (matchedClass !== 'profile-frame-contributor' && isInTightOverlayContext(img))) {
             artScale = Math.min(artScale, OVERLAY_TIGHT_CONTEXT_CAP);
         }
         const wrap = document.createElement('span');
@@ -10211,7 +10220,7 @@ function wrapImageOverlayFrames(root = document) {
         const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
         const w2 = img.offsetWidth;
         let artScale = Math.min(config.artScale ?? DEFAULT_OVERLAY_ART_SCALE, computeOverlayArtScaleCap(img, w2));
-        if (matchedClass !== 'profile-frame-contributor' && isInTightOverlayContext(img)) {
+        if (isInFanClubOverlayContext(img) || (matchedClass !== 'profile-frame-contributor' && isInTightOverlayContext(img))) {
             artScale = Math.min(artScale, OVERLAY_TIGHT_CONTEXT_CAP);
         }
         img.style.width = `${photoScale}%`;

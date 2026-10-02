@@ -6590,12 +6590,14 @@ button, input, select, textarea {
   }
 }
 
+/* ✅ margin-top: 24px يستوعب أقصى تجاوز آمن لإطار-صورة المالك (140% سقف ⇒ ~17.6px من 88px) */
+
 .fanclub-owner-name-row {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  margin-top: 12px;
+  margin-top: 24px;
   flex-wrap: wrap;
 }
 
@@ -7565,11 +7567,14 @@ button, input, select, textarea {
   background: #d97706;
 }
 
+/* ✅ margin-top: 20px يستوعب أقصى تجاوز آمن لإطار-صورة (140% سقف نادي المعجبين ⇒ ~13px من
+   إطار المركز الأول 72px) — إطار المساهم كان يغطي اسم المتصدّر بهامش 8px القديم */
+
 .fanclub-vip-podium-name {
   font-size: 11px;
   font-weight: 700;
   color: #e5e7eb;
-  margin-top: 8px;
+  margin-top: 20px;
   max-width: 84px;
   white-space: nowrap;
   overflow: hidden;

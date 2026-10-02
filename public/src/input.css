@@ -1835,7 +1835,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-weekly-leader-avatar { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; display: block; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
 @keyframes fanclubLeaderPop { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
 
-.fanclub-owner-name-row { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 12px; flex-wrap: wrap; }
+/* ✅ margin-top: 24px يستوعب أقصى تجاوز آمن لإطار-صورة المالك (140% سقف ⇒ ~17.6px من 88px) */
+.fanclub-owner-name-row { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 24px; flex-wrap: wrap; }
 .fanclub-owner-name { font-size: 14.5px; font-weight: 800; color: #fff; }
 .fanclub-inline-edit-btn { background: transparent; border: none; color: #9ca3af; font-size: 11px; padding: 2px; }
 .fanclub-owner-name-dot { color: #6b7280; font-size: 11px; }
@@ -2097,7 +2098,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-vip-podium-rankbadge-1 { background: #fbbf24; }
 .fanclub-vip-podium-rankbadge-2 { background: #cbd5e1; }
 .fanclub-vip-podium-rankbadge-3 { background: #d97706; }
-.fanclub-vip-podium-name { font-size: 11px; font-weight: 700; color: #e5e7eb; margin-top: 8px; max-width: 84px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* ✅ margin-top: 20px يستوعب أقصى تجاوز آمن لإطار-صورة (140% سقف نادي المعجبين ⇒ ~13px من
+   إطار المركز الأول 72px) — إطار المساهم كان يغطي اسم المتصدّر بهامش 8px القديم */
+.fanclub-vip-podium-name { font-size: 11px; font-weight: 700; color: #e5e7eb; margin-top: 20px; max-width: 84px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fanclub-vip-podium-points { font-size: 9.5px; color: #fbbf24; margin-top: 1px; }
 .fanclub-vip-podium-points i { font-size: 8px; margin-inline-end: 2px; }
 .fanclub-vip-podium-slot[data-user-id] { cursor: pointer; }
