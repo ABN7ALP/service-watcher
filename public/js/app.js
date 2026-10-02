@@ -11787,8 +11787,8 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
             }
         }
 
-        const { getSelectedGift, getQuantity } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
-            if (sendBtnEl) setupGiftSendButton(sendBtnEl, fireOnce);
+        const { getSelectedGift, getQuantity, deselectAll } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
+            if (sendBtnEl) setupGiftComboSend(sendBtnEl, fireOnce, deselectAll);
         });
 
     } catch (error) {
@@ -12033,8 +12033,8 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             }
         }
 
-        const { getSelectedGift, getQuantity } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
-            if (sendBtnEl) setupGiftSendButton(sendBtnEl, fireOnce);
+        const { getSelectedGift, getQuantity, deselectAll } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
+            if (sendBtnEl) setupGiftComboSend(sendBtnEl, fireOnce, deselectAll);
         });
 
     } catch (error) {
@@ -12047,9 +12047,9 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
 // ✅ دالة موحّدة لبناء كارد الهدية (تُستخدم بالخاصة والعامة)
 // ✅ دالة موحّدة لبناء كارد الهدية — الصورة الحقيقية أولاً، واحتياطي أنيق فقط عند الفشل الفعلي
 // onerror يُربط عبر JavaScript بعد الإدراج (لا inline) حتى لا يخالف سياسة الأمان CSP
-// ✅ بحث + طلب صريح (بمرجع صورة Bigo Live مُرفقة): عند التحديد، صف الاسم/السعر يُستبدَل
-// بزر "إرسال" مستطيل ثابت بعرض الكارد كاملاً (لا دائرة عائمة فوق الصورة) — راجع
-// .gift-card-label-row/.gift-card-send-slot أدناه، التبديل بينهما عبر .gift-card-selected فقط
+// ✅ مطابقة دقيقة لتحليل بكسل مُرفق من تطبيق Bigo Live الحقيقي: عند التحديد، الاسم فقط
+// يختفي (السعر يبقى ظاهراً ويصعد تلقائياً لمكان الاسم عبر flex)، وزر الإرسال يظهر أسفله —
+// راجع .gift-card-name/.gift-card-send-slot أدناه، التبديل عبر .gift-card-selected فقط
 function renderGiftCardHTML(g) {
     return `
         <button type="button" class="gift-card-wrapper bg-gray-800/50 border border-gray-700 rounded-xl p-2 transition-all flex flex-col items-center w-full"
@@ -12058,8 +12058,8 @@ function renderGiftCardHTML(g) {
                 ${g.imageUrl ? `<img src="${g.imageUrl}" class="gift-visual-img w-10 h-10 object-contain">` : `<span class="text-3xl">${g.icon || '🎁'}</span>`}
             </div>
             <div class="gift-card-label-row pointer-events-none">
-                <span class="text-[11px] font-bold text-center truncate w-full mt-1">${g.name}</span>
-                <span class="text-[10px] text-yellow-400"><i class="fas fa-coins"></i> ${g.discountedPrice || g.price}</span>
+                <span class="gift-card-name text-center truncate w-full mt-1">${g.name}</span>
+                <span class="gift-card-price"><i class="fas fa-coins"></i> ${g.discountedPrice || g.price}</span>
             </div>
             <span class="gift-card-send-slot"></span>
         </button>
@@ -12086,7 +12086,7 @@ function renderGiftFooterHTML(coins) {
 // ✅ يربط تفاعل الكروت (اختيار + زر إرسال يظهر فوق الهدية نفسها) + قائمة الكمية داخل أي
 // نافذة هدايا — يُستدعى بعد إدراج القالب. onSelectGift(giftData|null, quantity, sendBtnEl|null)
 // يُستدعى عند تغيّر الهدية المختارة أو الكمية؛ sendBtnEl هو عنصر <button> جديد كل مرة
-// يُحدَّد هدية (أو null عند إلغاء التحديد) — المستدعي يربطه بـsetupGiftSendButton بمنطقه
+// يُحدَّد هدية (أو null عند إلغاء التحديد) — المستدعي يربطه بـsetupGiftComboSend بمنطقه
 // الخاص (كل نافذة لها fireOnce مختلفة: خاص/غرفة/متعدد مستلمين)
 function wireGiftSelectionAndQty(rootEl, onSelectGift) {
     let selectedGift = null;
@@ -12096,10 +12096,19 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
         rootEl.querySelectorAll('.gift-card-send-slot').forEach(slot => { slot.innerHTML = ''; });
     }
 
+    // ✅ إلغاء التحديد برمجياً (لا بضغطة مستخدم) — يُستدعى عند انتهاء الكومبو بالعدّاد
+    // (راجع setupGiftComboSend) كي يرجع الكارد لشكله الطبيعي ويُصفَّر التحديد في كل مكان
+    function deselectAll() {
+        rootEl.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-card-selected'));
+        clearAllSendSlots();
+        selectedGift = null;
+        onSelectGift(null, quantity, null);
+    }
+
     // ✅ تفويض أحداث على الحاوية الثابتة بدل ربط مباشر بكل كارد — يبقى يعمل تلقائياً حتى
     // لو أُعيد بناء شبكة الهدايا لاحقاً (فلترة حسب التصنيف مثلاً) بلا أي إعادة ربط يدوية
     rootEl.addEventListener('click', (e) => {
-        // 🐛 إصلاح: زر الإرسال الجديد يقع داخل .gift-card-wrapper نفسه (فوق الهدية مباشرة)
+        // 🐛 إصلاح: زر الإرسال/الكومبو يقع داخل .gift-card-wrapper نفسه (أسفل الهدية مباشرة)
         // فنقرة عليه تصعد أيضاً كنقرة على الكارد الأب، فتُلغي التحديد فوراً وتحذف الزر
         // نفسه أثناء استخدامه — نتجاهل هذي الفقاعة صريحاً هنا
         if (e.target.closest('.gift-card-send-btn')) return;
@@ -12143,74 +12152,57 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
         });
     });
 
-    return { getSelectedGift: () => selectedGift, getQuantity: () => quantity };
+    return { getSelectedGift: () => selectedGift, getQuantity: () => quantity, deselectAll };
 }
 
-// ✅ زر الإرسال الدائري: الضغط المطوّل يحوّله لعدّاد متحرك (حجم/ظل/رقم متزايد)، والإفلات يعيده طبيعياً.
-// fireOnce() يُستدعى بشكل متسارع تدريجياً أثناء الاستمرار بالضغط (سريع بشكل معقول، وليس فائق السرعة)
-function setupGiftSendButton(btn, fireOnce) {
+// ✅ آلية الإرسال الحقيقية بأسلوب Bigo Live (مطابقة لتحليل فيديو مُرفق بالتفصيل، بطلب صريح):
+// ضغطة واحدة = إرسال فوري + تحوّل الزر مباشرة لدائرة "Combo" بعدّاد تنازلي من 30 (~2.75 ثانية،
+// نفس إيقاع المرجع ~11 عدّة/ثانية). أي ضغطة إضافية أثناء العدّ = إرسال جديد فوري + إعادة
+// العدّاد لـ30 + زيادة شارة ×N الصغيرة أعلى الدائرة. ينتهي الكومبو (الزر يرجع لشكله الطبيعي
+// والكارد يُلغى تحديده بالكامل عبر onComboEnd) عند وصول العدّاد لـ0 بلا ضغط، أو تلقائياً لو
+// المستخدم اختار هدية أخرى (clearAllSendSlots بـwireGiftSelectionAndQty يُزيل هذا العنصر نفسه)
+function setupGiftComboSend(btn, fireOnce, onComboEnd) {
     if (!btn) return;
-    const badge = btn.querySelector('.gift-send-badge');
+    const COMBO_START = 30;
+    const TICK_MS = 92; // ✅ 30 عدّة خلال ~2.76 ثانية — يطابق إيقاع المرجع المُقاس (~11/ثانية)
 
-    let sentCount = 0;
-    let inFlight = 0;
-    const MAX_CONCURRENT = 4;
-    let active = false;
-    let rampTimeout = null;
-    let intervalMs = 260;
-    const MIN_INTERVAL = 140; // ✅ سقف سرعة معقول (وليس فائق السرعة) بناءً على طلب صريح
-    const ACCEL_FACTOR = 0.9;
+    let tickTimer = null;
+    let count = COMBO_START;
+    let tapCount = 0;
+    let inCombo = false;
 
-    async function fireWrapper() {
-        if (!active) return;
-        sentCount++;
-        if (badge) {
-            badge.textContent = sentCount > 99 ? '99+' : sentCount;
-            badge.classList.remove('hidden');
-        }
-        inFlight++;
-        try {
-            const ok = await fireOnce();
-            if (ok === false) stopSending();
-        } finally {
-            inFlight--;
-        }
+    function render() {
+        btn.innerHTML = inCombo
+            ? `<span class="gift-combo-badge">×${tapCount}</span><span class="gift-combo-number">${count}</span><span class="gift-combo-label">Combo</span>`
+            : '<i class="fas fa-paper-plane"></i> إرسال';
+        btn.classList.toggle('gift-combo-active', inCombo);
     }
 
-    function scheduleNext() {
-        if (!active) return;
-        rampTimeout = setTimeout(() => {
-            if (!active) return;
-            if (inFlight < MAX_CONCURRENT) fireWrapper();
-            intervalMs = Math.max(MIN_INTERVAL, Math.round(intervalMs * ACCEL_FACTOR));
-            scheduleNext();
-        }, intervalMs);
+    function endCombo() {
+        if (!inCombo) return;
+        inCombo = false;
+        clearInterval(tickTimer);
+        tickTimer = null;
+        onComboEnd?.();
     }
 
-    function startSending() {
-        if (active || btn.disabled) return;
-        active = true;
-        sentCount = 0;
-        intervalMs = 260;
-        btn.classList.add('gift-sending');
-        fireWrapper();
-        scheduleNext();
+    function tick() {
+        count--;
+        const numEl = btn.querySelector('.gift-combo-number');
+        if (numEl) numEl.textContent = count;
+        if (count <= 0) endCombo();
     }
 
-    function stopSending() {
-        if (!active) return;
-        active = false;
-        clearTimeout(rampTimeout);
-        rampTimeout = null;
-        btn.classList.remove('gift-sending');
-        setTimeout(() => badge?.classList.add('hidden'), 400);
-    }
-
-    btn.addEventListener('mousedown', startSending);
-    btn.addEventListener('touchstart', (e) => { e.preventDefault(); startSending(); }, { passive: false });
-    btn.addEventListener('mouseup', stopSending);
-    btn.addEventListener('mouseleave', stopSending);
-    btn.addEventListener('touchend', stopSending);
+    btn.addEventListener('click', async () => {
+        tapCount++;
+        count = COMBO_START;
+        inCombo = true;
+        render();
+        clearInterval(tickTimer);
+        tickTimer = setInterval(tick, TICK_MS);
+        const ok = await fireOnce();
+        if (ok === false) endCombo();
+    });
 }
 
 

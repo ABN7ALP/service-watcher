@@ -9958,8 +9958,9 @@ body.in-voice-room #main-content {
   }
 }
 
-/* ✅ كارد الهدية المختار — بمرجع صورة Bigo Live مُرفقة بطلب صريح: لا إطار/توهّج خلف الصورة
-   عند التحديد إطلاقاً، صف الاسم/السعر يُستبدَل بزر "إرسال" مستطيل ثابت بعرض الكارد كاملاً */
+/* ✅ كارد الهدية — مطابقة دقيقة لتحليل بكسل حقيقي من تطبيق Bigo Live (صورة + فيديو مُرفقان
+   بطلب صريح). عند التحديد: لا إطار/توهّج حول الكارد؛ اسم الهدية فقط يختفي (السعر يبقى
+   ظاهراً ويصعد تلقائياً لمكان الاسم عبر flex، بلا أي JS إضافي)، وزر الإرسال يظهر أسفله */
 
 .gift-card-wrapper {
   position: relative;
@@ -9977,28 +9978,45 @@ body.in-voice-room #main-content {
   width: 100%;
 }
 
-/* ✅ منفذ زر الإرسال — فارغ ومخفي افتراضياً (صف الاسم/السعر هو الظاهر)، يظهر فقط حين
-   wireGiftSelectionAndQty يُدرج بداخله .gift-card-send-btn عند التحديد (راجع .gift-card-selected) */
+.gift-card-name {
+  display: block;
+  width: 100%;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.gift-card-price {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: #8a8a8d;
+  font-size: 11px;
+}
+
+/* ✅ الاسم فقط يختفي عند التحديد — السعر يبقى ويصعد مكانه تلقائياً (flex)، تماماً كالمرجع */
+
+.gift-card-wrapper.gift-card-selected .gift-card-name {
+  display: none;
+}
+
+/* ✅ منفذ زر الإرسال — فارغ ومخفي افتراضياً، يظهر فقط حين wireGiftSelectionAndQty يُدرج
+   بداخله .gift-card-send-btn عند التحديد (راجع .gift-card-selected) */
 
 .gift-card-send-slot {
   display: none;
   width: 100%;
-  margin-top: 3px;
-}
-
-.gift-card-wrapper.gift-card-selected .gift-card-label-row {
-  display: none;
+  margin-top: 4px;
 }
 
 .gift-card-wrapper.gift-card-selected .gift-card-send-slot {
   display: block;
 }
 
-/* ✅ طلب صريح: الزر السابق كان مسطحاً بلا أي حس لمسي — "ميت". إعادة بناء حقيقية بإحساس
-   زر فعلي ملموس: تدرّج لوني (عمق)، "شفة" سفلية داكنة (box-shadow صلب) تحاكي سماكة زر حقيقي
-   قابل للضغط، ولمعة علوية داخلية (inset highlight) — كلها ثابتة بلا أي أنيميشن عند الظهور
-   (كما طُلب سابقاً)، والحس اللمسي الحقيقي يأتي فقط من استجابة :active الفعلية عند الضغط
-   (انخفاض + تفلطح الشفة السفلية) تماماً كزر مادي حقيقي يُضغط */
+/* ✅ زر الإرسال — مطابق لشكل المرجع بالضبط: مستطيل مصمت بلا أي تدرّج/ظل، زوايا غير متماثلة
+   (الجزء العلوي شبه حاد والسفلي مستدير بالكامل)، نص عريض واضح. الحس اللمسي الحقيقي المطلوب
+   يأتي من حجمه الفعلي البارز + استجابة :active عند الضغط الفعلي (وليس من ظلال مصطنعة) */
 
 .gift-card-send-btn {
   display: flex;
@@ -10006,39 +10024,76 @@ body.in-voice-room #main-content {
   justify-content: center;
   gap: 4px;
   width: 100%;
-  height: 27px;
-  border-radius: 9px;
-  background: linear-gradient(180deg, #ff3d85 0%, #e0116a 65%, #d20d62 100%);
+  height: 25px;
+  border-radius: 3px 3px 11px 11px;
+  background: #f50b6c;
   color: #fff;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.2px;
   cursor: pointer;
-  box-shadow:
-        0 2px 0 #a90a4f,
-        0 4px 7px rgba(224,17,106,0.45),
-        inset 0 1px 0 rgba(255,255,255,0.35);
-  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease;
+  transition: filter 0.08s ease, transform 0.08s ease;
 }
 
 /* ✅ شبكة هدايا الغرفة/العامة أكبر — الزر يكبر تناسقاً معها */
 
 .room-gift-cards-grid .gift-card-send-btn {
-  height: 34px;
+  height: 32px;
   font-size: 13px;
-  border-radius: 10px;
+  border-radius: 4px 4px 14px 14px;
 }
 
 .gift-card-send-btn:active {
-  transform: translateY(2px);
-  box-shadow:
-        0 0 0 #a90a4f,
-        0 1px 3px rgba(224,17,106,0.4),
-        inset 0 1px 0 rgba(255,255,255,0.2);
+  filter: brightness(0.88);
+  transform: scale(0.97);
 }
 
-.gift-card-send-btn.gift-sending {
-  filter: brightness(1.1);
+/* ✅ دائرة "Combo" — مطابقة لتسلسل الفيديو المُرفق: بعد أول ضغطة الزر يتحوّل فوراً لدائرة
+   بعدّاد تنازلي (راجع setupGiftComboSend بـapp.js للمنطق الزمني الكامل) — شارة ×N صغيرة
+   أعلاها، رقم العدّ كبير بالمنتصف، وكلمة Combo أسفله بخط أصغر */
+
+.gift-card-send-btn.gift-combo-active {
+  flex-direction: column;
+  gap: 0;
+  height: auto;
+  min-height: 25px;
+  padding: 3px 0 4px;
+  border-radius: 10px;
+}
+
+.room-gift-cards-grid .gift-card-send-btn.gift-combo-active {
+  min-height: 32px;
+  border-radius: 12px;
+}
+
+.gift-combo-badge {
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+.gift-combo-number {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.room-gift-cards-grid .gift-combo-number {
+  font-size: 16px;
+}
+
+.gift-combo-label {
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  opacity: 0.85;
+  line-height: 1;
+}
+
+.room-gift-cards-grid .gift-combo-label {
+  font-size: 8px;
 }
 
 /* ✅ زر الإرسال — الضغط المطوّل يحوّله لحالة نابضة بدل شكله الثابت (تصميمه الكامل أسفل
@@ -10403,11 +10458,15 @@ body.in-voice-room #main-content {
   font-size: 2.5rem;
 }
 
-.room-gift-cards-grid .gift-card-label-row > span {
-  font-size: 10px;
+/* ✅ أكبر قليلاً من المتجر الخاص تناسقاً مع حجم الأيقونة الأكبر هنا */
+
+.room-gift-cards-grid .gift-card-name {
+  font-size: 13px;
 }
 
-/* اسم الهدية وسعرها فقط (تحديد مباشر، لا يمس أيقونة الإيموجي الداخلية) */
+.room-gift-cards-grid .gift-card-price {
+  font-size: 12px;
+}
 
 /* ✅ إحساس لمسي أجمل عند التحديد: انتفاخ خفيف للكارد كامل + نبض مستمر خفيف لصورة الهدية نفسها */
 
