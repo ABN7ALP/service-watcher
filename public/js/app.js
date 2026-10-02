@@ -10059,6 +10059,31 @@ const IMAGE_OVERLAY_FRAME_CLASSES = Object.keys(IMAGE_OVERLAY_FRAMES);
 // بدلاً من ذلك: مراقب DOM عام يكتشف أي <img> جديد يحمل أياً من هذي الأصناف ويُحيطه بحاوية
 // بحجم مُقاس فعلياً (لا نسبة مئوية تعتمد على أب مُعرَّف مسبقاً، يعمل بكل سياق) + طبقة تراكب
 // حقيقية فوقه — بلا أي تعديل لعشرات دوال العرض القائمة
+// ✅ بحث مُتعمَّق (بطلب صريح): عند توسّع الغرفة لـ15/24 مقعداً، تتقلّص الفجوة الحقيقية بين
+// المقاعد بسرعة أكبر من تقلّص حجم المقعد نفسه (من gap:16-30px بـ3 أعمدة إلى 6-14px بـ6
+// أعمدة — راجع .voice-seats-flex.cols-3/5/6 بـinput.css) بينما artScale تبقى نسبة مئوية
+// ثابتة من حجم المقعد ذاته بغضّ النظر عن المساحة المتبقية فعلياً حوله. بحساب رياضي: مقعد
+// 53px بشبكة الـ24 (cols-6) مع artScale=180% يمتد ~21px خارج كل حافة، بينما الفجوة الفعلية
+// هناك ~7-8px فقط — أي امتداد كهذا يتجاوز نصف الفجوة أضعافاً ويُلامس/يتداخل مع إطار المقعد
+// المجاور حتماً. الحل الهندسي الصحيح: حساب الفجوة الحقيقية من CSS نفسه ديناميكياً عند كل
+// تغليف (لا قيم مُصمَّمة يدوياً لكل كثافة تنكسر لاحقاً لو تغيّرت gap بالتصميم)، وتحديد سقف
+// امتداد لا يتجاوز 40% من تلك الفجوة لكل جانب — يضمن فاصلاً بصرياً واضحاً (٪60 الباقية)
+// يمنع تلامس إطارَي مقعدين متجاورين إطلاقاً مهما كانت كثافة الشبكة (9/15/24/80 مقعداً)،
+// تلقائياً وبلا تدخّل يدوي. خارج شبكة المقاعد (ملف شخصي/متجر/قوائم مشاهدين) لا "جار" حقيقي
+// مجاور، فلا سقف إضافي يُفرض هناك — الإعداد الكامل (configuredArtScale) يُطبَّق كما هو
+function computeOverlayArtScaleCap(img, seatSizePx) {
+    const seatBox = img.closest('.voice-seat');
+    if (!seatBox) return Infinity;
+    const gridEl = seatBox.closest('.voice-seats-flex');
+    if (!gridEl) return Infinity;
+    const cs = getComputedStyle(gridEl);
+    const gaps = [parseFloat(cs.columnGap), parseFloat(cs.rowGap)].filter(g => Number.isFinite(g) && g > 0);
+    if (gaps.length === 0) return Infinity;
+    const safeGap = Math.min(...gaps);
+    const maxOverflowEachSide = safeGap * 0.4;
+    return 100 + (2 * maxOverflowEachSide / seatSizePx) * 100;
+}
+
 function wrapImageOverlayFrames(root = document) {
     // إضافة تراكب لأي صورة جديدة تحمل أحد هذي الإطارات
     const selector = IMAGE_OVERLAY_FRAME_CLASSES.map(c => `img.${c}:not(.frame-overlay-wrapped)`).join(',');
@@ -10076,7 +10101,7 @@ function wrapImageOverlayFrames(root = document) {
         img.dataset.frameClass = matchedClass; // ✅ يسمح لمسار "تبديل الإطار فورياً" أدناه باكتشاف التغيير
         const config = IMAGE_OVERLAY_FRAMES[matchedClass];
         const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
-        const artScale = config.artScale ?? DEFAULT_OVERLAY_ART_SCALE;
+        const artScale = Math.min(config.artScale ?? DEFAULT_OVERLAY_ART_SCALE, computeOverlayArtScaleCap(img, w));
         const wrap = document.createElement('span');
         wrap.className = 'frame-overlay-wrap';
         wrap.style.width = `${w}px`;
@@ -10120,7 +10145,7 @@ function wrapImageOverlayFrames(root = document) {
         img.dataset.frameClass = matchedClass;
         const config = IMAGE_OVERLAY_FRAMES[matchedClass];
         const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
-        const artScale = config.artScale ?? DEFAULT_OVERLAY_ART_SCALE;
+        const artScale = Math.min(config.artScale ?? DEFAULT_OVERLAY_ART_SCALE, computeOverlayArtScaleCap(img, img.offsetWidth));
         img.style.width = `${photoScale}%`;
         img.style.height = `${photoScale}%`;
         const overlay = img.parentNode.querySelector('.frame-overlay-art');
