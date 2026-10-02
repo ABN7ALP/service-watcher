@@ -12155,12 +12155,14 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
     return { getSelectedGift: () => selectedGift, getQuantity: () => quantity, deselectAll };
 }
 
-// ✅ آلية الإرسال الحقيقية بأسلوب Bigo Live (مطابقة لتحليل فيديو مُرفق بالتفصيل، بطلب صريح):
-// ضغطة واحدة = إرسال فوري + تحوّل الزر مباشرة لدائرة "Combo" بعدّاد تنازلي من 30 (~2.75 ثانية،
-// نفس إيقاع المرجع ~11 عدّة/ثانية). أي ضغطة إضافية أثناء العدّ = إرسال جديد فوري + إعادة
-// العدّاد لـ30 + زيادة شارة ×N الصغيرة أعلى الدائرة. ينتهي الكومبو (الزر يرجع لشكله الطبيعي
-// والكارد يُلغى تحديده بالكامل عبر onComboEnd) عند وصول العدّاد لـ0 بلا ضغط، أو تلقائياً لو
-// المستخدم اختار هدية أخرى (clearAllSendSlots بـwireGiftSelectionAndQty يُزيل هذا العنصر نفسه)
+// ✅ آلية الإرسال الحقيقية بأسلوب Bigo Live (مطابقة لفيديو + صورة مُرفقين بالتفصيل، بطلب صريح
+// بمراجعة مباشرة مني للمرفقين لا الاعتماد على وصف نصي فقط): ضغطة واحدة = إرسال فوري + تحوّل
+// الزر مباشرة لدائرة "Combo" بعدّاد تنازلي من 30 (~2.75 ثانية، نفس إيقاع المرجع ~11 عدّة/ثانية).
+// أي ضغطة إضافية أثناء العدّ = إرسال جديد فوري + إعادة العدّاد لـ30. الشارة الصغيرة أعلى
+// الدائرة: "×1" بالضغطة الأولى فقط، ثم تتحوّل لـ"Good" ثابتة بقية الكومبو (مطابقة حرفية لما
+// ظهر بالصورة المُرفقة — لا تعود رقماً متزايداً بعد أول ضغطة إضافية). ينتهي الكومبو (الزر
+// يرجع لشكله الطبيعي والكارد يُلغى تحديده بالكامل عبر onComboEnd) عند وصول العدّاد لـ0 بلا
+// ضغط، أو تلقائياً لو المستخدم اختار هدية أخرى (clearAllSendSlots يُزيل هذا العنصر نفسه)
 function setupGiftComboSend(btn, fireOnce, onComboEnd) {
     if (!btn) return;
     const COMBO_START = 30;
@@ -12172,8 +12174,9 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
     let inCombo = false;
 
     function render() {
+        const badgeText = tapCount <= 1 ? `×${tapCount}` : 'Good';
         btn.innerHTML = inCombo
-            ? `<span class="gift-combo-badge">×${tapCount}</span><span class="gift-combo-number">${count}</span><span class="gift-combo-label">Combo</span>`
+            ? `<span class="gift-combo-badge">${badgeText}</span><span class="gift-combo-number">${count}</span><span class="gift-combo-label">Combo</span>`
             : '<i class="fas fa-paper-plane"></i> إرسال';
         btn.classList.toggle('gift-combo-active', inCombo);
     }
