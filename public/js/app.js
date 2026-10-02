@@ -11787,8 +11787,8 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
             }
         }
 
-        const { getSelectedGift, getQuantity, deselectAll } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
-            if (sendBtnEl) setupGiftComboSend(sendBtnEl, fireOnce, deselectAll);
+        const { getSelectedGift, getQuantity, deselectAll, registerComboTeardown } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
+            if (sendBtnEl) registerComboTeardown(setupGiftComboSend(sendBtnEl, fireOnce, deselectAll).forceEnd);
         });
 
     } catch (error) {
@@ -12033,8 +12033,8 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             }
         }
 
-        const { getSelectedGift, getQuantity, deselectAll } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
-            if (sendBtnEl) setupGiftComboSend(sendBtnEl, fireOnce, deselectAll);
+        const { getSelectedGift, getQuantity, deselectAll, registerComboTeardown } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
+            if (sendBtnEl) registerComboTeardown(setupGiftComboSend(sendBtnEl, fireOnce, deselectAll).forceEnd);
         });
 
     } catch (error) {
@@ -12091,6 +12091,14 @@ function renderGiftFooterHTML(coins) {
 function wireGiftSelectionAndQty(rootEl, onSelectGift) {
     let selectedGift = null;
     let quantity = 1;
+    // 🐛 إصلاح: لو بدّل المستخدم لهدية أخرى أثناء فترة سماح كومبو سابق لم ينتهِ بعد (العدّاد
+    // لم يصل صفر)، يبقى مؤقّت ذاك الكومبو يعمل بالخلفية على عنصر مفصول عن DOM فعلياً — عند
+    // وصوله للصفر لاحقاً يستدعي onComboEnd (deselectAll) فيُصفِّر selectedGift رغم أن
+    // المستخدم اختار هدية جديدة بالفعل، فيفقد قدرته على إرسالها بصمت دون أي تنبيه. نتتبّع
+    // دالة إيقاف الكومبو النشط حالياً ونستدعيها صراحة عند أي تبديل/إلغاء تحديد
+    let activeComboForceEnd = null;
+    function registerComboTeardown(fn) { activeComboForceEnd = fn; }
+    function endActiveCombo() { activeComboForceEnd?.(); activeComboForceEnd = null; }
 
     function clearAllSendSlots() {
         rootEl.querySelectorAll('.gift-card-send-slot').forEach(slot => { slot.innerHTML = ''; });
@@ -12099,7 +12107,8 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
     // ✅ إلغاء التحديد برمجياً (لا بضغطة مستخدم) — يُستدعى عند انتهاء الكومبو بالعدّاد
     // (راجع setupGiftComboSend) كي يرجع الكارد لشكله الطبيعي ويُصفَّر التحديد في كل مكان
     function deselectAll() {
-        rootEl.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-card-selected'));
+        endActiveCombo();
+        rootEl.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-card-selected', 'gift-combo-sending'));
         clearAllSendSlots();
         selectedGift = null;
         onSelectGift(null, quantity, null);
@@ -12114,8 +12123,9 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
         if (e.target.closest('.gift-card-send-btn')) return;
         const card = e.target.closest('.gift-card-wrapper');
         if (!card || !rootEl.contains(card)) return;
+        endActiveCombo();
         const wasSelected = card.classList.contains('gift-card-selected');
-        rootEl.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-card-selected'));
+        rootEl.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-card-selected', 'gift-combo-sending'));
         clearAllSendSlots();
         let newSendBtn = null;
         if (wasSelected) {
@@ -12152,38 +12162,72 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
         });
     });
 
-    return { getSelectedGift: () => selectedGift, getQuantity: () => quantity, deselectAll };
+    return { getSelectedGift: () => selectedGift, getQuantity: () => quantity, deselectAll, registerComboTeardown };
 }
 
-// ✅ آلية الإرسال الحقيقية بأسلوب Bigo Live (مطابقة لفيديو + صورة مُرفقين بالتفصيل، بطلب صريح
-// بمراجعة مباشرة مني للمرفقين لا الاعتماد على وصف نصي فقط): ضغطة واحدة = إرسال فوري + تحوّل
-// الزر مباشرة لدائرة "Combo" بعدّاد تنازلي من 30 (~2.75 ثانية، نفس إيقاع المرجع ~11 عدّة/ثانية).
-// أي ضغطة إضافية أثناء العدّ = إرسال جديد فوري + إعادة العدّاد لـ30. الشارة الصغيرة أعلى
-// الدائرة: "×1" بالضغطة الأولى فقط، ثم تتحوّل لـ"Good" ثابتة بقية الكومبو (مطابقة حرفية لما
-// ظهر بالصورة المُرفقة — لا تعود رقماً متزايداً بعد أول ضغطة إضافية). ينتهي الكومبو (الزر
-// يرجع لشكله الطبيعي والكارد يُلغى تحديده بالكامل عبر onComboEnd) عند وصول العدّاد لـ0 بلا
-// ضغط، أو تلقائياً لو المستخدم اختار هدية أخرى (clearAllSendSlots يُزيل هذا العنصر نفسه)
+// ✅ آلية الإرسال النهائية بأسلوب Bigo Live — مراجعة مباشرة مني للفيديو والصور المُرفقة (لا
+// وصف نصي فقط)، بتحسينات إضافية بطلب صريح:
+// • نقرة سريعة = إرسال فوري واحد. الاستمرار بالضغط (press-and-hold) = إرسال متسارع تدريجياً
+//   بلا فواصل (نفس محرك التسارع المُثبَت سابقاً: يبدأ 260ms ويتسارع حتى 140ms)، يتوقف التسارع
+//   فور رفع الإصبع/الفأرة — لكن حلقة الكومبو نفسها تكمل عدّها التنازلي كفترة سماح مستقلة
+// • صورة الهدية تختفي عند أول إرسال وتحلّ الدائرة محلّها بالضبط (لا أسفلها)، وتعود الصورة
+//   فقط عند انتهاء الكومبو بالكامل (راجع .gift-combo-sending بـinput.css)
+// • الحلقة البيضاء حول الدائرة عدّاد تنازلي حي فعلياً (SVG stroke-dashoffset يتحرك كل tick)
+//   بدل إطار ثابت، يفرغ تدريجياً مع اقتراب نهاية الكومبو
+// • الشارة أعلى الدائرة أصبحت "مهمة" تصاعدية حقيقية: n/هدف (9 ثم 12 ثم 22 ثم 36 ثم كل مرة
+//   +14) تزيد بكل إرسال، وتتحوّل لـ"Good" لحظة الوصول للهدف قبل أن يبدأ هدف جديد أكبر
 function setupGiftComboSend(btn, fireOnce, onComboEnd) {
     if (!btn) return;
     const COMBO_START = 30;
     const TICK_MS = 92; // ✅ 30 عدّة خلال ~2.76 ثانية — يطابق إيقاع المرجع المُقاس (~11/ثانية)
+    const RING_R = 17;
+    const RING_C = 2 * Math.PI * RING_R;
+
+    // ✅ أهداف المهمة التصاعدية — القيم الأربعة الأولى مطابقة حرفياً لما طُلب (9/12/22/36)،
+    // وبعدها يستمر التصاعد تلقائياً بنفس آخر فارق معلوم (14) دون الحاجة لقائمة لا نهائية
+    const MISSION_TIERS = [9, 12, 22, 36];
+    function missionTarget(tier) {
+        if (tier < MISSION_TIERS.length) return MISSION_TIERS[tier];
+        const lastGap = MISSION_TIERS[MISSION_TIERS.length - 1] - MISSION_TIERS[MISSION_TIERS.length - 2];
+        return MISSION_TIERS[MISSION_TIERS.length - 1] + lastGap * (tier - MISSION_TIERS.length + 1);
+    }
+
+    const card = btn.closest('.gift-card-wrapper');
 
     let tickTimer = null;
     let count = COMBO_START;
-    let tapCount = 0;
     let inCombo = false;
+    let missionTier = 0;
+    let missionProgress = 0;
+    let inFlight = 0;
+    const MAX_CONCURRENT = 4; // ✅ نفس سقف المحرك القديم المُثبَت — يمنع إغراق الخادم أثناء التسارع
 
-    function render() {
-        const badgeText = tapCount <= 1 ? `×${tapCount}` : 'Good';
-        btn.innerHTML = inCombo
-            ? `<span class="gift-combo-badge">${badgeText}</span><span class="gift-combo-number">${count}</span><span class="gift-combo-label">Combo</span>`
-            : '<i class="fas fa-paper-plane"></i> إرسال';
-        btn.classList.toggle('gift-combo-active', inCombo);
+    function updateRing() {
+        const fg = btn.querySelector('.gift-combo-ring-fg');
+        if (!fg) return;
+        const pct = Math.max(0, count / COMBO_START);
+        fg.style.strokeDashoffset = `${RING_C * (1 - pct)}`;
+    }
+
+    function renderCombo(badgeText) {
+        btn.innerHTML = `
+            <svg class="gift-combo-ring" viewBox="0 0 40 40">
+                <circle class="gift-combo-ring-bg" cx="20" cy="20" r="${RING_R}"></circle>
+                <circle class="gift-combo-ring-fg" cx="20" cy="20" r="${RING_R}" style="stroke-dasharray:${RING_C}"></circle>
+            </svg>
+            <span class="gift-combo-badge">${badgeText}</span>
+            <span class="gift-combo-number">${count}</span>
+            <span class="gift-combo-label">Combo</span>
+        `;
+        updateRing();
+        btn.classList.add('gift-combo-active');
+        card?.classList.add('gift-combo-sending');
     }
 
     function endCombo() {
         if (!inCombo) return;
         inCombo = false;
+        stopHold();
         clearInterval(tickTimer);
         tickTimer = null;
         onComboEnd?.();
@@ -12191,21 +12235,83 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
 
     function tick() {
         count--;
+        updateRing();
         const numEl = btn.querySelector('.gift-combo-number');
         if (numEl) numEl.textContent = count;
         if (count <= 0) endCombo();
     }
 
-    btn.addEventListener('click', async () => {
-        tapCount++;
-        count = COMBO_START;
+    // ✅ إرسال فوري واحد + إعادة عدّاد الكومبو لـ30 + تقدّم المهمة التصاعدية — متزامن بالكامل
+    // (التحديث البصري فوري قبل انتظار الشبكة)؛ نداء الإرسال الفعلي يعمل بالخلفية بلا انتظار
+    // كي لا يُبطئ تسارع الضغط المستمر (نفس فلسفة التفاؤل الفوري المُعتمدة بكل الإرسال هنا)
+    function fireOnceAndReset() {
         inCombo = true;
-        render();
+        count = COMBO_START;
+        missionProgress++;
+        const target = missionTarget(missionTier);
+        const reachedGoal = missionProgress >= target;
+        renderCombo(reachedGoal ? 'Good' : `${missionProgress}/${target}`);
+        if (reachedGoal) { missionTier++; missionProgress = 0; }
         clearInterval(tickTimer);
         tickTimer = setInterval(tick, TICK_MS);
-        const ok = await fireOnce();
-        if (ok === false) endCombo();
-    });
+
+        inFlight++;
+        fireOnce().then(ok => {
+            if (ok === false) endCombo();
+        }).finally(() => { inFlight--; });
+    }
+
+    let holdActive = false;
+    let holdTimeout = null;
+    let holdIntervalMs = 260;
+    const HOLD_MIN_INTERVAL = 140;
+    const HOLD_ACCEL_FACTOR = 0.9;
+
+    function scheduleHoldNext() {
+        if (!holdActive) return;
+        holdTimeout = setTimeout(() => {
+            if (!holdActive) return;
+            if (inFlight < MAX_CONCURRENT) fireOnceAndReset();
+            holdIntervalMs = Math.max(HOLD_MIN_INTERVAL, Math.round(holdIntervalMs * HOLD_ACCEL_FACTOR));
+            scheduleHoldNext();
+        }, holdIntervalMs);
+    }
+
+    function startHold() {
+        if (holdActive) return;
+        holdActive = true;
+        holdIntervalMs = 260;
+        scheduleHoldNext();
+    }
+
+    function stopHold() {
+        holdActive = false;
+        clearTimeout(holdTimeout);
+        holdTimeout = null;
+    }
+
+    // ✅ pointerdown = إرسال فوري دوماً (نقرة أو بداية ضغط مطوّل) + بدء محرك التسارع المحتمل؛
+    // إفلات سريع قبل أول تكرار hold (260ms) يُلغي التسارع فيبقى إرسال واحد فقط (نقرة عادية)
+    btn.addEventListener('mousedown', () => { fireOnceAndReset(); startHold(); });
+    btn.addEventListener('touchstart', (e) => { e.preventDefault(); fireOnceAndReset(); startHold(); }, { passive: false });
+    btn.addEventListener('mouseup', stopHold);
+    btn.addEventListener('mouseleave', stopHold);
+    btn.addEventListener('touchend', stopHold);
+
+    // 🐛 إصلاح: لو بدّل المستخدم لهدية أخرى أثناء فترة سماح الكومبو (العدّاد لم يصل صفر بعد)،
+    // يُفكَّك الزر/الحاوية فوراً عبر clearAllSendSlots لكن tickTimer/holdTimeout يبقيان
+    // يعملان بالخلفية على عنصر مفصول عن DOM — عند وصولهما لاحقاً للصفر يستدعيان onComboEnd
+    // (أي deselectAll) فيُصفِّران selectedGift رغم أن المستخدم اختار هدية جديدة فعلاً بالفعل،
+    // فتُفقَد قدرته على إرسالها بصمت. forceEnd يُستدعى صراحة عند أي تبديل (راجع
+    // wireGiftSelectionAndQty) لإيقاف المؤقّتات فوراً دون إعادة تشغيل onComboEnd
+    function forceEnd() {
+        stopHold();
+        clearInterval(tickTimer);
+        tickTimer = null;
+        inCombo = false;
+    }
+
+    return { forceEnd };
 }
 
 
@@ -12400,8 +12506,10 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
     const targetSeatEl = targetUserId ? document.querySelector(`#voice-chat-grid [data-user-id="${targetUserId}"]`) : null;
     const card = container.querySelector('.gift-float-card');
     if (targetSeatEl && card) {
-        // ✅ تطفو بمكانها بمنتصف الشاشة (~ثانيتين بالضبط كما طُلب) قبل الانطلاق نحو المستلم
-        const FLOAT_BEFORE_FLY_MS = 2000;
+        // 🐛 إصلاح: كانت 2000ms (طلب سابق) — أصبحت تُحس كفاصل زمني مزعج قبل ظهور مؤثرات
+        // الهدية فعلياً، خصوصاً مع الإرسال المتسارع الجديد (ضغط مستمر/كومبو) حيث تتراكم
+        // عدة هدايا منتظرة دورها؛ طلب صريح لاحق بتسريعها — "طفحة" قصيرة فقط قبل الانطلاق
+        const FLOAT_BEFORE_FLY_MS = 350;
         setTimeout(() => {
             const startRect = card.getBoundingClientRect();
             const endRect = targetSeatEl.getBoundingClientRect();
@@ -12419,7 +12527,7 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
         return;
     }
 
-    setTimeout(() => container.remove(), 3500);
+    setTimeout(() => container.remove(), 1800);
 }
 
 // ✅ يبلّغ الغرفة المعروضة حالياً (إن كان المستلم قاعداً فيها) بتحديث عداد الدعم أسفل مقعده

@@ -3852,7 +3852,9 @@ input[type="checkbox"] {
   transform: translate(-50%, -50%);
   z-index: 500;
   pointer-events: none;
-  animation: gift-float-rise 3.5s ease-out forwards;
+  /* ✅ طلب صريح: تقصير الفاصل الزمني قبل ظهور مؤثرات الهدية — خصوصاً مهم الآن مع الإرسال
+       المتسارع الجديد (ضغط مستمر) حيث تتراكم عدة تأثيرات متتالية بسرعة */
+  animation: gift-float-rise 1.8s ease-out forwards;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -10048,56 +10050,90 @@ body.in-voice-room #main-content {
   transform: scale(0.97);
 }
 
-/* ✅ دائرة "Combo" — مطابقة دقيقة لصورة/فيديو حقيقيين راجعتهما مباشرة (لا وصف نصي فقط):
-   دائرة حقيقية (لا مستطيل) بحلقة بيضاء رفيعة + توهّج وردي خارجي ناعم حولها — بعد أول ضغطة
-   الزر يتحوّل فوراً إليها (راجع setupGiftComboSend بـapp.js للمنطق الزمني الكامل). شارة
-   "×1"/"Good" تعوم فوق حافتها العلوية (position:absolute، خارج الدائرة نفسها تماماً كالمرجع)،
-   رقم العدّ كبير بالمنتصف، وكلمة Combo أسفله */
+/* ✅ دائرة "Combo" — طلب صريح بمراجعة مباشرة مني للفيديو/الصور مرتين (لا وصف نصي فقط) +
+   تحسينات لاحقة: تظهر مباشرة في مكان صورة الهدية نفسها (لا أسفلها) — صورة الهدية تختفي
+   (راجع .gift-combo-sending أدناه) والدائرة تحلّ محلّها بالضبط عبر position:absolute فوق
+   .gift-visual-slot، مركزية أفقياً بـmargin auto داخل الحاوية الكاملة العرض. الحلقة حولها
+   ليست إطاراً ثابتاً — SVG حقيقي (stroke-dashoffset يتحرك كل tick بـsetupGiftComboSend)
+   يُفرَّغ تدريجياً مع اقتراب نهاية العدّ التنازلي، بتوهّج وردي خارجي ناعم حول الدائرة كلها */
 
 .gift-card-send-btn.gift-combo-active {
-  position: relative;
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
   flex-direction: column;
   gap: 0;
   width: 58px;
   height: 58px;
-  margin: 0 auto;
+  margin: 0;
   padding: 0;
   border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.9);
-  box-shadow: 0 0 0 5px rgba(245,11,108,0.18), 0 0 16px 2px rgba(245,11,108,0.55);
+  box-shadow: 0 0 16px 2px rgba(245,11,108,0.55);
 }
 
 .room-gift-cards-grid .gift-card-send-btn.gift-combo-active {
   width: 78px;
   height: 78px;
+  top: 8px;
 }
+
+/* ✅ حلقة العدّ التنازلي — دائرتان SVG متراكبتان: خلفية باهتة ثابتة + حلقة بيضاء تتحرك فعلياً
+   (stroke-dashoffset) فوقها، بدوران -90deg كي تبدأ الإفراغ من الأعلى كعقارب الساعة بالعكس */
+
+.gift-combo-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.gift-combo-ring-bg {
+  fill: rgba(245,11,108,0.92);
+  stroke: rgba(255,255,255,0.25);
+  stroke-width: 2.2;
+}
+
+.gift-combo-ring-fg {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.09s linear;
+}
+
+/* ✅ الشارة فوق الدائرة تماماً (خارجها بفجوة واضحة، لا عليها) — بنفس وردي/توهّج الدائرة نفسها */
 
 .gift-combo-badge {
   position: absolute;
-  top: -11px;
+  top: -22px;
   left: 50%;
   transform: translateX(-50%);
   background: #f50b6c;
   color: #fff;
-  padding: 2px 9px;
+  padding: 2px 10px;
   border-radius: 9999px;
   font-size: 9px;
   font-weight: 800;
   line-height: 1.4;
   white-space: nowrap;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.35);
+  box-shadow: 0 0 10px 2px rgba(245,11,108,0.6), 0 2px 4px rgba(0,0,0,0.35);
 }
 
 .room-gift-cards-grid .gift-combo-badge {
   font-size: 10.5px;
-  top: -13px;
-  padding: 3px 11px;
+  top: -26px;
+  padding: 3px 12px;
 }
 
 .gift-combo-number {
+  position: relative;
   font-size: 17px;
   font-weight: 800;
   line-height: 1.1;
+  z-index: 1;
 }
 
 .room-gift-cards-grid .gift-combo-number {
@@ -10105,16 +10141,26 @@ body.in-voice-room #main-content {
 }
 
 .gift-combo-label {
+  position: relative;
   font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   opacity: 0.85;
   line-height: 1;
+  z-index: 1;
 }
 
 .room-gift-cards-grid .gift-combo-label {
   font-size: 9.5px;
+}
+
+/* ✅ صورة الهدية تختفي أثناء الإرسال النشط (الكومبو) وتعود عند انتهائه — الدائرة تحلّ
+   محلّها بالضبط بنفس الموضع (راجع .gift-card-send-btn.gift-combo-active أعلاه) */
+
+.gift-card-wrapper.gift-combo-sending .gift-visual-slot > img,
+.gift-card-wrapper.gift-combo-sending .gift-visual-slot > span {
+  visibility: hidden;
 }
 
 /* ✅ زر الإرسال — الضغط المطوّل يحوّله لحالة نابضة بدل شكله الثابت (تصميمه الكامل أسفل
