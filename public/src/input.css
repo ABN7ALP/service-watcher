@@ -1654,6 +1654,16 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     text-align: right;
 }
 .room-profile-club-icon-img { width: 26px; height: 26px; object-fit: contain; flex-shrink: 0; }
+/* ✅ طلب صريح: "ميّز لون العملة" — الأيقونة أصلاً أسود مسطّح؛ تلوين CSS filter لذهبي/كهرماني
+   (نفس عائلة لون أرقام الكوينز #fbbf24) بدل تركها سوداء باهتة على خلفيات داكنة */
+.coin-icon-img {
+    display: inline-block;
+    vertical-align: -2px;
+    object-fit: contain;
+    flex-shrink: 0;
+    filter: invert(74%) sepia(77%) saturate(1500%) hue-rotate(1deg) brightness(103%) contrast(101%)
+            drop-shadow(0 1px 1px rgba(0,0,0,0.35));
+}
 .room-profile-club-card-rect .room-profile-club-card-text { min-width: 0; flex: 1; }
 .room-profile-club-card-rect .room-profile-club-title { margin-top: 0; font-size: 10.5px; }
 .room-profile-club-card-rect .room-profile-club-sub { margin-top: 1px; }
@@ -3550,6 +3560,10 @@ body.in-voice-room #main-content {
 .gift-card-wrapper { position: relative; }
 .gift-card-wrapper.gift-card-selected {
     border-color: transparent;
+    /* 🐛 إصلاح: الخلفية الرمادية الشبه-شفافة (Tailwind bg-gray-800/50 الثابتة على الكارد)
+       كانت لا تزال ظاهرة عند التحديد رغم إزالة لون الحدّ فقط — تُحس "صندوقاً" مستطيلاً
+       واضحاً خصوصاً مع الدائرة الأكبر فوقها الآن. طلب صريح: إزالتها بالكامل أيضاً */
+    background: transparent;
     box-shadow: none;
 }
 
@@ -3593,6 +3607,8 @@ body.in-voice-room #main-content {
 /* ✅ زر الإرسال — مطابق لشكل المرجع بالضبط: مستطيل مصمت بلا أي تدرّج/ظل، زوايا غير متماثلة
    (الجزء العلوي شبه حاد والسفلي مستدير بالكامل)، نص عريض واضح. الحس اللمسي الحقيقي المطلوب
    يأتي من حجمه الفعلي البارز + استجابة :active عند الضغط الفعلي (وليس من ظلال مصطنعة) */
+/* ✅ طلب صريح: لون أحمر مائل للخمري لكن أقرب للأحمر (لا وردي/ماجنتا كالسابق)، مصمت وجاف
+   (بلا لمعان/تدرّج) بحدّة تباين أوضح ليبان "ملموساً" حقيقياً */
 .gift-card-send-btn {
     display: flex;
     align-items: center;
@@ -3601,7 +3617,7 @@ body.in-voice-room #main-content {
     width: 100%;
     height: 25px;
     border-radius: 3px 3px 11px 11px;
-    background: #f50b6c;
+    background: #b7123f;
     color: #fff;
     font-size: 11px;
     font-weight: 600;
@@ -3615,14 +3631,15 @@ body.in-voice-room #main-content {
     font-size: 13px;
     border-radius: 4px 4px 14px 14px;
 }
-.gift-card-send-btn:active { filter: brightness(0.88); transform: scale(0.97); }
+.gift-card-send-btn:active { filter: brightness(0.85); transform: scale(0.97); }
 
-/* ✅ دائرة "Combo" — طلب صريح بمراجعة مباشرة مني للفيديو/الصور مرتين (لا وصف نصي فقط) +
-   تحسينات لاحقة: تظهر مباشرة في مكان صورة الهدية نفسها (لا أسفلها) — صورة الهدية تختفي
-   (راجع .gift-combo-sending أدناه) والدائرة تحلّ محلّها بالضبط عبر position:absolute فوق
-   .gift-visual-slot، مركزية أفقياً بـmargin auto داخل الحاوية الكاملة العرض. الحلقة حولها
-   ليست إطاراً ثابتاً — SVG حقيقي (stroke-dashoffset يتحرك كل tick بـsetupGiftComboSend)
-   يُفرَّغ تدريجياً مع اقتراب نهاية العدّ التنازلي، بتوهّج وردي خارجي ناعم حول الدائرة كلها */
+/* ✅ دائرة "Combo" — طلب صريح بمراجعة مباشرة مني للفيديو/الصور مرتين (لا وصف نصي فقط)، مع
+   لمسة تجميل إضافية بطلب صريح ("خليها أحلى، لمستك الجميلة"): تدرّج إشعاعي حقيقي (لا تعبئة
+   مسطّحة) يمنحها عمقاً، وتوهّج خارجي بنفس عائلة اللون الخمري الجديد. تظهر مباشرة في مكان
+   صورة الهدية نفسها (لا أسفلها) — صورة الهدية تختفي (راجع .gift-combo-sending أدناه) والدائرة
+   تحلّ محلّها بالضبط عبر position:absolute فوق .gift-visual-slot. الحلقة حولها ليست إطاراً
+   ثابتاً — SVG حقيقي (stroke-dashoffset يتحرك كل tick بـsetupGiftComboSend) يُفرَّغ تدريجياً
+   مع اقتراب نهاية العدّ التنازلي */
 .gift-card-send-btn.gift-combo-active {
     position: absolute;
     top: 6px;
@@ -3635,7 +3652,7 @@ body.in-voice-room #main-content {
     margin: 0;
     padding: 0;
     border-radius: 50%;
-    box-shadow: 0 0 16px 2px rgba(245,11,108,0.55);
+    box-shadow: 0 0 18px 3px rgba(183,18,63,0.6);
 }
 .room-gift-cards-grid .gift-card-send-btn.gift-combo-active {
     width: 78px;
@@ -3643,8 +3660,9 @@ body.in-voice-room #main-content {
     top: 8px;
 }
 
-/* ✅ حلقة العدّ التنازلي — دائرتان SVG متراكبتان: خلفية باهتة ثابتة + حلقة بيضاء تتحرك فعلياً
-   (stroke-dashoffset) فوقها، بدوران -90deg كي تبدأ الإفراغ من الأعلى كعقارب الساعة بالعكس */
+/* ✅ حلقة العدّ التنازلي — دائرتان SVG متراكبتان: تعبئة إشعاعية (تدرّج من مركز وردي-خمري فاتح
+   لحافة أغمق، عمق حقيقي بدل لون مسطّح) + حلقة بيضاء تتحرك فعلياً (stroke-dashoffset) فوقها،
+   بدوران -90deg كي تبدأ الإفراغ من الأعلى كعقارب الساعة بالعكس */
 .gift-combo-ring {
     position: absolute;
     inset: 0;
@@ -3654,8 +3672,8 @@ body.in-voice-room #main-content {
     pointer-events: none;
 }
 .gift-combo-ring-bg {
-    fill: rgba(245,11,108,0.92);
-    stroke: rgba(255,255,255,0.25);
+    fill: url(#giftComboGradient);
+    stroke: rgba(255,255,255,0.3);
     stroke-width: 2.2;
 }
 .gift-combo-ring-fg {
@@ -3666,21 +3684,25 @@ body.in-voice-room #main-content {
     transition: stroke-dashoffset 0.09s linear;
 }
 
-/* ✅ الشارة فوق الدائرة تماماً (خارجها بفجوة واضحة، لا عليها) — بنفس وردي/توهّج الدائرة نفسها */
+/* ✅ الشارة فوق الدائرة تماماً (خارجها بفجوة واضحة، لا عليها) — طلب صريح: خلفية زهرية
+   شفافة بتوهّج خفيف (لا وردي مصمت كالسابق) — طابع رقيق أنيق بدل كبسولة صلبة */
 .gift-combo-badge {
     position: absolute;
     top: -22px;
     left: 50%;
     transform: translateX(-50%);
-    background: #f50b6c;
-    color: #fff;
+    background: rgba(236,72,153,0.3);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    border: 1px solid rgba(236,72,153,0.5);
+    color: #ffd7ea;
     padding: 2px 10px;
     border-radius: 9999px;
     font-size: 9px;
     font-weight: 800;
     line-height: 1.4;
     white-space: nowrap;
-    box-shadow: 0 0 10px 2px rgba(245,11,108,0.6), 0 2px 4px rgba(0,0,0,0.35);
+    box-shadow: 0 0 9px 1px rgba(236,72,153,0.45);
 }
 .room-gift-cards-grid .gift-combo-badge { font-size: 10.5px; top: -26px; padding: 3px 12px; }
 .gift-combo-number {
@@ -3689,6 +3711,9 @@ body.in-voice-room #main-content {
     font-weight: 800;
     line-height: 1.1;
     z-index: 1;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.45), 0 0 10px rgba(255,255,255,0.35);
+    letter-spacing: 0.3px;
 }
 .room-gift-cards-grid .gift-combo-number { font-size: 22px; }
 .gift-combo-label {
@@ -3757,11 +3782,13 @@ body.in-voice-room #main-content {
        نُقل الحد الأقصى هنا بنفس ارتفاع لوحة الدردشة بالضبط (42vh/48vh) بدل قيمة منفصلة
        أكبر. dvh أدق من vh على الهاتف (يُحسب من الارتفاع المرئي الفعلي، لا الافتراضي
        الأكبر حين يكون شريط عنوان المتصفح ظاهراً)، مع vh كـ fallback للمتصفحات الأقدم */
-    max-height: 42vh;
-    max-height: 42dvh;
+    /* ✅ طلب صريح: زيادة طول النافذة قليلاً (استغلالاً بصف شريط المستلمين المُصغَّر أدناه،
+       لا تمدّداً فارغاً) لإعطاء شبكة الهدايا مساحة أكبر */
+    max-height: 48vh;
+    max-height: 48dvh;
 }
 @media (min-width: 768px) {
-    .room-gift-sheet { border-radius: 20px; max-height: 48vh; max-height: 48dvh; }
+    .room-gift-sheet { border-radius: 20px; max-height: 54vh; max-height: 54dvh; }
 }
 
 /* ✅ رأس ثابت: يحتضن شريط المستلمين مباشرةً (بدل عنوان نصي + زر إغلاق X — الإغلاق يتم
@@ -3770,9 +3797,9 @@ body.in-voice-room #main-content {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 10px 6px;
+    padding: 5px 10px 4px;
     border-bottom: 1px solid rgba(255,255,255,0.08);
-    margin-bottom: 8px;
+    margin-bottom: 4px;
     flex-shrink: 0;
 }
 
@@ -3812,7 +3839,8 @@ body.in-voice-room #main-content {
     display: flex;
     align-items: center;
     flex-shrink: 0;
-    background: rgba(0,0,0,0.3);
+    background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 9999px;
     padding: 2px;
     gap: 1px;
@@ -3835,14 +3863,27 @@ body.in-voice-room #main-content {
 .gift-footer-balance-pill {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     flex-shrink: 0;
     font-size: 11px;
     font-weight: 800;
-    color: #fbbf24;
-    background: rgba(0,0,0,0.3);
+    color: #ffcf4d;
+    background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 9999px;
-    padding: 5px 11px;
+    padding: 5px 12px;
+    transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+/* ✅ طلب صريح: تأثير بصري خفيف لكن جميل عند نقص الكوينز عن تكلفة الهدية/الكمية المحدَّدة */
+.gift-footer-balance-pill.low-balance {
+    color: #ff8a8a;
+    border-color: rgba(248,113,113,0.45);
+    box-shadow: 0 0 10px 1px rgba(248,113,113,0.35);
+    animation: giftLowBalancePulse 1.1s ease-in-out infinite;
+}
+@keyframes giftLowBalancePulse {
+    0%, 100% { box-shadow: 0 0 8px 0px rgba(248,113,113,0.3); }
+    50% { box-shadow: 0 0 13px 3px rgba(248,113,113,0.55); }
 }
 
 /* ✅ بحث معمّق + طلب صريح: التذييل نفسه بلا خلفية/حدّ خاص به إطلاقاً — يعوم شفافاً فوق
@@ -3913,14 +3954,14 @@ body.in-voice-room #main-content {
 
 /* ✅ زر "All" — أسود لمعي هادئ بلمسة احترافية بدل التدرّج الوردي السابق، وأصغر حجماً */
 .room-gift-all-circle {
-    width: 26px; height: 26px;
+    width: 22px; height: 22px;
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     background: linear-gradient(155deg, #343a46, #12151c);
     color: #e5e7eb;
-    font-size: 8px;
+    font-size: 7px;
     font-weight: 800;
-    letter-spacing: 0.2px;
+    letter-spacing: 0.1px;
     border: 1px solid rgba(255,255,255,0.14);
     box-shadow: inset 0 1px 1px rgba(255,255,255,0.18), 0 2px 5px rgba(0,0,0,0.45);
     transition: all 0.15s ease;
@@ -3932,10 +3973,10 @@ body.in-voice-room #main-content {
 /* ✅ "طابع" احترافي لصور المستلمين بشريط اختيار الهدية — حلقة فاتحة خفيفة + ظل ناعم،
    إحساس صورة "مقصوصة" ومرفوعة عن الخلفية (أسلوب ملصقات أنيق)، وأصغر من السابق */
 .rg-avatar-img {
-    width: 26px; height: 26px;
+    width: 22px; height: 22px;
     border-radius: 50%;
     object-fit: cover;
-    border: 2px solid rgba(255,255,255,0.82);
+    border: 1.5px solid rgba(255,255,255,0.82);
     box-shadow: 0 2px 6px rgba(0,0,0,0.45);
     transition: transform 0.15s ease;
 }
@@ -3948,7 +3989,7 @@ body.in-voice-room #main-content {
    داخلي لعرض الباقي — بدل تمدّد النافذة كاملة مع كل هدية تُضاف مستقبلاً. ✅ طلب صريح: زيادة
    الارتفاع (230px بدل 190px) لاستيعاب الهدايا المُكبَّرة بلا ازدحام */
 .room-gift-cards-grid {
-    max-height: 230px;
+    max-height: 244px;
     overflow-y: auto;
     scrollbar-width: thin;
     /* ✅ حشوة أسفلية كي لا يُغطّى آخر صفّ هدايا خلف .gift-footer العائم دائماً عند التمرير للأسفل */
@@ -3998,12 +4039,16 @@ body.in-voice-room #main-content {
     50%      { transform: scale(1.08); }
 }
 
-/* ✅ عداد الدعم أسفل كل مقعد — يتراكم طوال الجلسة، يصفّر عند مغادرة صاحبه */
+/* ✅ عداد الدعم أسفل كل مقعد — بحث معمّق + طلب صريح (أسلوب Bigo/Likee/TikTok Live): مربوط
+   بالمستخدم داخل جلسة الغرفة (لا برقم المقعد)، يظهر بمجرد الجلوس (حتى 0) ويختفي فقط مع
+   فراغ المقعد كلياً. 🐛 إصلاح: كان بلا z-index فيختفي خلف زخارف الإطار (.frame-overlay-art
+   بـz-index:2، .frame-icon-overlay بـz-index:3) — أعلى منهما الآن ليبقى ظاهراً دوماً فوقها */
 .seat-support-badge {
     position: absolute;
     bottom: -9px;
     left: 50%;
     transform: translateX(-50%);
+    z-index: 5;
     background: linear-gradient(135deg, #fbbf24, #f59e0b);
     color: #1f2937;
     font-size: 9px;

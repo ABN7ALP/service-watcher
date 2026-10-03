@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { getRoomSupportTotal } = require('../services/socketService');
 const VoiceRoom = require('../models/VoiceRoom');
 const Message = require('../models/Message');
 const User = require('../models/User');
@@ -321,7 +322,11 @@ exports.getRoomById = async (req, res) => {
                 id: s.user._id,
                 username: s.user.username,
                 profileImage: s.user.profileImage,
-                activeFrameClass: s.user.activeFrameClass
+                activeFrameClass: s.user.activeFrameClass,
+                // ✅ طلب صريح: مجموع عداد الدعم التراكمي لهذا المستخدم بهذي الغرفة — مصدر
+                // الحقيقة بالذاكرة بـsocketService (roomSupportTally)، يُضمَّن هنا كي يظهر
+                // فوراً عند الدخول الأول للغرفة (لا ينتظر أول حدث Socket حي بعده فقط)
+                supportTotal: getRoomSupportTotal(req.params.id, s.user._id.toString())
             } : null
         }));
 
@@ -686,7 +691,8 @@ exports.getVoiceRoomState = async (req, res) => {
                 id: s.user._id,
                 username: s.user.username,
                 profileImage: s.user.profileImage,
-                activeFrameClass: s.user.activeFrameClass
+                activeFrameClass: s.user.activeFrameClass,
+                supportTotal: getRoomSupportTotal('main', s.user._id.toString())
             } : null
         }));
 

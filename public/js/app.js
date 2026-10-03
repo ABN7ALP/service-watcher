@@ -528,7 +528,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     function renderVoiceSeatContent(seatEl, seatData) {
         const isAdminSeat = seatEl.dataset.isAdminSeat === '1';
-        const previousUserId = seatEl.dataset.userId; // ✅ يُحفظ قبل المسح لمعرفة هل الشاغل تغيّر أم بقي نفسه
         seatEl.classList.remove('occupied-seat', 'my-seat', 'locked-seat');
         seatEl.dataset.isLocked = '0';
         delete seatEl.dataset.userId;
@@ -544,25 +543,26 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
         if (seatData && seatData.user) {
             const isMe = seatData.user.id === myUserId;
-            const sameOccupant = previousUserId === seatData.user.id;
             seatEl.classList.add('occupied-seat');
             if (isMe) seatEl.classList.add('my-seat');
             seatEl.dataset.userId = seatData.user.id; // ✅ فهرس مباشر لتحديث الكتم لاحقاً دون إعادة تحميل الشبكة كاملة
             const safeName = escapeHtml(seatData.user.username || '');
             seatEl.title = seatData.user.username || '';
-            // ✅ نحافظ على شارة عداد الدعم لو نفس الشخص لسا قاعد (لا نصفّرها بمجرد إعادة رسم عادية)
-            const keepBadge = sameOccupant ? seatEl.querySelector('.seat-support-badge') : null;
+            // ✅ بحث معمّق + طلب صريح (أسلوب Bigo/Likee/TikTok Live): عداد الدعم مربوط بالشخص
+            // داخل هذي الجلسة بالغرفة، لا برقم المقعد — السيرفر هو مصدر الحقيقة الوحيد
+            // (roomSupportTally بـsocketService)، فيبقى seatData.user.supportTotal صحيحاً
+            // سواء بقي نفس الشخص، وقف وعاد لنفس المقعد أو مقعد آخر، أو شغله شخص جديد تماماً
+            // (عندها يصل 0 من السيرفر نفسه) — لا حاجة لأي منطق "sameOccupant" محلي بعد الآن.
+            // القيمة تظهر دوماً (حتى 0) بمجرد الجلوس — لا تختفي إلا مع فراغ المقعد كلياً أدناه
+            const supportTotal = Number(seatData.user.supportTotal) || 0;
+            seatEl.dataset.supportTotal = supportTotal;
             seatEl.innerHTML = `
                 <img src="${seatData.user.profileImage}" class="voice-seat-avatar ${seatData.user.activeFrameClass || ''}" alt="${safeName}" loading="lazy" decoding="async">
                 ${frameDecorationHTML(seatData.user.activeFrameClass)}
                 ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
                 <span class="voice-seat-name">${safeName}</span>
+                <span class="seat-support-badge">${supportTotal > 9999 ? '9999+' : supportTotal}</span>
             `;
-            if (keepBadge) {
-                seatEl.appendChild(keepBadge);
-            } else {
-                delete seatEl.dataset.supportTotal;
-            }
         } else {
             delete seatEl.dataset.userId;
             delete seatEl.dataset.supportTotal; // ✅ يصفّر عداد الدعم بمجرد مغادرة المقعد
@@ -2547,7 +2547,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-3 md:hidden flex-shrink-0"></div>
                 <div class="grid grid-cols-2 gap-2 px-4 pb-3 flex-shrink-0">
                     <div class="room-info-stat-box">
-                        <p class="room-info-stat-num text-amber-400"><i class="fas fa-coins text-[13px]"></i> <span id="room-viewers-sheet-coins">0</span></p>
+                        <p class="room-info-stat-num text-amber-400">${coinIconHTML(13)} <span id="room-viewers-sheet-coins">0</span></p>
                         <p class="room-info-stat-label">كوينز مُرسَلة بالجلسة</p>
                     </div>
                     <div class="room-info-stat-box">
@@ -4442,7 +4442,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         <button class="bg-shop-item-btn text-right bg-gray-700/50 rounded-xl overflow-hidden ${isActive ? 'ring-2 ring-amber-500' : ''}" data-id="${bg.id}">
                             <img src="${bg.url}" class="w-full aspect-video object-cover">
                             <div class="p-2">
-                                <p class="text-[11px] text-yellow-400 font-bold"><i class="fas fa-coins"></i> ${bg.price} / ${shopData.days} أيام</p>
+                                <p class="text-[11px] text-yellow-400 font-bold">${coinIconHTML(13)} ${bg.price} / ${shopData.days} أيام</p>
                                 ${isActive ? '<p class="text-[10px] text-amber-400 mt-0.5">مفعّلة حالياً</p>' : ''}
                             </div>
                         </button>`;
@@ -5645,7 +5645,7 @@ async function showSettingsView() {
                 <div id="bubble-shop-section" class="collapsible-content hidden bg-gray-800/30 p-4 rounded-b-lg">
                     <div class="flex items-center justify-between mb-3 bg-gray-900/50 rounded-xl p-2.5">
                         <span class="text-xs text-gray-400">رصيدك الحالي</span>
-                        <span class="font-bold text-yellow-400 text-sm"><i class="fas fa-coins"></i> ${bubbleShopData.coins}</span>
+                        <span class="font-bold text-yellow-400 text-sm">${coinIconHTML(14)} ${bubbleShopData.coins}</span>
                     </div>
                     <div class="grid grid-cols-3 gap-2">
                         ${bubbleShopData.skins.map(s => {
@@ -5653,9 +5653,9 @@ async function showSettingsView() {
                             return `
                             <div class="rounded-xl p-2 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'} ${s.cssClass}">
                                 <p class="text-[11px] font-bold mb-1 truncate">${s.name}</p>
-                                <p class="text-[10px] text-yellow-300 mb-1.5"><i class="fas fa-coins"></i> ${s.price}</p>
+                                <p class="text-[10px] text-yellow-300 mb-1.5">${coinIconHTML(12)} ${s.price}</p>
                                 ${s.owned ? `
-                                    <button class="equip-bubble-btn w-full text-[10px] py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}" 
+                                    <button class="equip-bubble-btn w-full text-[10px] py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}"
                                             data-skin-id="${s._id}" ${isActive ? 'disabled' : ''}>
                                         ${isActive ? 'مُفعّل' : 'تفعيل'}
                                     </button>
@@ -5785,7 +5785,7 @@ function frameShopCardHTML(f, activeFrameId, userPhoto) {
                     <button type="button" class="frame-shop-duration-pill" data-duration="365">سنة<span>${f.prices.days365}</span></button>
                 </div>
                 <button type="button" class="frame-shop-purchase-btn" data-frame-id="${f._id}" data-selected-duration="7">
-                    <i class="fas fa-coins"></i> شراء
+                    ${coinIconHTML(14)} شراء
                 </button>
             `}
         </div>
@@ -5807,7 +5807,7 @@ async function showFrameShopModal() {
             <div class="w-10 h-1 bg-white/15 rounded-full mx-auto mt-2.5 mb-1 flex-shrink-0"></div>
             <div class="frame-shop-header">
                 <span class="frame-shop-title"><i class="fas fa-crown"></i> متجر الإطارات</span>
-                <span class="frame-shop-coins"><i class="fas fa-coins"></i> <span id="frame-shop-coins-value">...</span></span>
+                <span class="frame-shop-coins">${coinIconHTML(14)} <span id="frame-shop-coins-value">...</span></span>
             </div>
             <div id="frame-shop-current-preview" class="frame-shop-current-preview">
                 <div class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin"></i></div>
@@ -5973,7 +5973,7 @@ async function reloadBubbleShopSection() {
                 section.innerHTML = `
             <div class="flex items-center justify-between mb-3 bg-gray-900/50 rounded-xl p-2.5">
                 <span class="text-xs text-gray-400">رصيدك الحالي</span>
-                <span class="font-bold text-yellow-400 text-sm"><i class="fas fa-coins"></i> ${bubbleShopData.coins}</span>
+                <span class="font-bold text-yellow-400 text-sm">${coinIconHTML(14)} ${bubbleShopData.coins}</span>
             </div>
             <div class="grid grid-cols-3 gap-2">
                 ${bubbleShopData.skins.map(s => {
@@ -5981,7 +5981,7 @@ async function reloadBubbleShopSection() {
                     return `
                     <div class="rounded-xl p-2 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'} ${s.cssClass}">
                         <p class="text-[11px] font-bold mb-1 truncate">${s.name}</p>
-                        <p class="text-[10px] text-yellow-300 mb-1.5"><i class="fas fa-coins"></i> ${s.price}</p>
+                        <p class="text-[10px] text-yellow-300 mb-1.5">${coinIconHTML(12)} ${s.price}</p>
                         ${s.owned ? `
                             <button class="equip-bubble-btn w-full text-[10px] py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}"
                                     data-skin-id="${s._id}" ${isActive ? 'disabled' : ''}>
@@ -7069,7 +7069,7 @@ function showXpGainAnimation(amount) {
     }
 
     // ✅ تحديث حي لمقاعد الغرفة الصوتية (تتحقق من وجود الشبكة بالصفحة أولاً لأن المستخدم قد يكون بقسم آخر)
-    socket.on('user-joined-seat', ({ roomId, seatNumber, userId, username, profileImage, activeFrameClass, isMuted }) => {
+    socket.on('user-joined-seat', ({ roomId, seatNumber, userId, username, profileImage, activeFrameClass, isMuted, supportTotal }) => {
         const isMe = userId === myUserId;
         if (isMe) {
             myVoiceSeatNumber = seatNumber;
@@ -7105,7 +7105,7 @@ function showXpGainAnimation(amount) {
         renderVoiceSeatContent(seatEl, {
             isLocked: false,
             isMuted: !!isMuted,
-            user: { id: userId, username, profileImage, activeFrameClass }
+            user: { id: userId, username, profileImage, activeFrameClass, supportTotal }
         });
         // ✅ إعلان "انضم" انتقل ليظهر فور دخول الغرفة (راجع user-entered-room) بدل انتظار
         // الصعود لمقعد — الجلوس على مقعد لم يعد يُكرّر نفس الإعلان
@@ -7734,21 +7734,24 @@ function showXpGainAnimation(amount) {
         playSeatReaction(seatNumber, emoji);
     });
 
-    socket.on('room-support-updated', ({ roomId, seatNumber, value }) => {
+    // ✅ بحث معمّق + طلب صريح (أسلوب Bigo/Likee/TikTok Live): value الآن المجموع الكلي
+    // النهائي من السيرفر مباشرة (مصدر الحقيقة الوحيد — راجع roomSupportTally بـsocketService)
+    // لا دلتا (Δ) تُضاف محلياً، فيبقى متطابقاً بالضبط بين كل من يشاهد الغرفة مهما دخل متأخراً.
+    // التحقق من userId يحمي من تحديث عابر وصل بعد تغيّر شاغل المقعد فعلياً (نادر لكن ممكن)
+    socket.on('room-support-updated', ({ roomId, seatNumber, userId, value }) => {
         if (roomId !== currentVoiceRoomId) return;
         const voiceGrid = document.getElementById('voice-chat-grid');
         if (!voiceGrid) return;
         const seatEl = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"]`);
-        if (!seatEl) return;
-        const updated = (parseInt(seatEl.dataset.supportTotal) || 0) + value;
-        seatEl.dataset.supportTotal = updated;
+        if (!seatEl || (userId && seatEl.dataset.userId !== userId)) return;
+        seatEl.dataset.supportTotal = value;
         let badge = seatEl.querySelector('.seat-support-badge');
         if (!badge) {
             badge = document.createElement('span');
             badge.className = 'seat-support-badge';
             seatEl.appendChild(badge);
         }
-        badge.textContent = updated > 9999 ? '9999+' : updated;
+        badge.textContent = value > 9999 ? '9999+' : value;
     });
 
     socket.on('seat-error', (message) => {
@@ -8724,7 +8727,7 @@ async function showHostCenterSheet() {
                         <p class="host-analytics-label" style="margin:0;">أكبر داعم</p>
                         <p class="host-analytics-top-name">${escapeHtml(ts.username)}</p>
                     </div>
-                    <span class="host-analytics-top-value"><i class="fas fa-coins text-yellow-400"></i> ${ts.total.toLocaleString('en-US')}</span>
+                    <span class="host-analytics-top-value">${coinIconHTML(16)} ${ts.total.toLocaleString('en-US')}</span>
                 </div>` : ''}
             `;
         }
@@ -10010,6 +10013,11 @@ const FAN_CLUB_COLORS = {
 // بالخادم (autoSeed.js) — تُستخدم هنا لمعاينته بشاشات النادي وكذلك كتراكب حقيقي فوق صورة
 // أي فائز حالياً يرتديه (راجع IMAGE_OVERLAY_FRAMES/wrapImageOverlayFrames أسفله)
 const FAN_CLUB_CONTRIBUTOR_FRAME_IMG = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png';
+// ✅ أيقونة الكوينز الموحّدة — تستبدل أيقونة Font Awesome الجنيرك في كل مكان يُعرض فيه رصيد/سعر بالكوينز
+const COIN_ICON_URL = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791022522/black_coin_icon.png';
+function coinIconHTML(px = 14) {
+    return `<img src="${COIN_ICON_URL}" class="coin-icon-img" style="width:${px}px;height:${px}px" alt="">`;
+}
 // ✅ خريطة عامة: أي صنف إطار يحتاج صورة تراكب حقيقية فوق الصورة الشخصية (بدل حدّ CSS بسيط)
 // تُضاف هنا — صنف واحد لكل إطار صورة جديد يُشترى من المتجر (راجع autoSeed.js لنفس الروابط).
 //
@@ -11219,7 +11227,7 @@ async function showQuickGiftPicker(targetUserId, targetUsername) {
             <div class="quick-gift-stage-card">
                 <div class="quick-gift-stage-visual">${g.image ? `<img src="${g.image}">` : `<span>${g.icon || '🎁'}</span>`}</div>
                 <p class="quick-gift-stage-name">${escapeHtml(g.name)}</p>
-                <p class="quick-gift-stage-price"><i class="fas fa-coins text-yellow-400"></i> ${g.price}</p>
+                <p class="quick-gift-stage-price">${coinIconHTML(15)} ${g.price}</p>
             </div>
         `;
         sendBtn.disabled = false;
@@ -11746,6 +11754,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
             const coinsEl = document.getElementById('coins');
             if (coinsEl) coinsEl.textContent = localUser.coins;
             footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = localUser.coins);
+            checkLowBalance();
 
             showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', quantity, targetUserId);
 
@@ -11765,6 +11774,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                     }
                     if (coinsEl) coinsEl.textContent = result2.data.newSenderCoins;
                     footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = result2.data.newSenderCoins);
+                    checkLowBalance();
                     if (result2.data.message) displayPrivateMessage(result2.data.message, true);
 
                     // ✅ عداد الدعم أسفل المقعد لو المستلم قاعد بنفس الغرفة المعروضة حالياً
@@ -11777,6 +11787,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                         localStorage.setItem('user', JSON.stringify(revertUser));
                         if (coinsEl) coinsEl.textContent = revertUser.coins;
                         footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = revertUser.coins);
+                        checkLowBalance();
                     }
                     showNotification(result2.message || 'فشل إرسال الهدية', 'error');
                     return false;
@@ -11787,7 +11798,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
             }
         }
 
-        const { getSelectedGift, getQuantity, deselectAll, registerComboTeardown } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
+        const { getSelectedGift, getQuantity, deselectAll, registerComboTeardown, checkLowBalance } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
             if (sendBtnEl) registerComboTeardown(setupGiftComboSend(sendBtnEl, fireOnce, deselectAll).forceEnd);
         });
 
@@ -11975,6 +11986,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             const coinsEl = document.getElementById('coins');
             if (coinsEl) coinsEl.textContent = localUser.coins;
             footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = localUser.coins);
+            checkLowBalance();
 
             // 🐛 إصلاح: كان يُستدعى هنا محلياً بالتفاؤل (نسخة) بينما صدى السيرفر room-gift-announcement
             // يستدعي أيضاً مؤثراً مختلفاً تماماً (showRoomGiftFlyAnimation المصغّر السابق) — يتعارضان
@@ -11995,6 +12007,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 localStorage.setItem('user', JSON.stringify(revertUser));
                 if (coinsEl) coinsEl.textContent = revertUser.coins;
                 footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = revertUser.coins);
+                checkLowBalance();
             };
 
             try {
@@ -12015,6 +12028,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                     }
                     if (coinsEl) coinsEl.textContent = result.data.newSenderCoins;
                     footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = result.data.newSenderCoins);
+                    checkLowBalance();
                     // ✅ يُطلَق فقط بعد تأكيد نجاح السيرفر صراحة — راجع الشرح أعلى هذي الدالة
                     recipients.forEach(receiverId => notifyRoomGiftSupport(receiverId, gift.price * quantity));
                     return true;
@@ -12033,7 +12047,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             }
         }
 
-        const { getSelectedGift, getQuantity, deselectAll, registerComboTeardown } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
+        const { getSelectedGift, getQuantity, deselectAll, registerComboTeardown, checkLowBalance } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
             if (sendBtnEl) registerComboTeardown(setupGiftComboSend(sendBtnEl, fireOnce, deselectAll).forceEnd);
         });
 
@@ -12059,7 +12073,7 @@ function renderGiftCardHTML(g) {
             </div>
             <div class="gift-card-label-row pointer-events-none">
                 <span class="gift-card-name text-center truncate w-full mt-1">${g.name}</span>
-                <span class="gift-card-price"><i class="fas fa-coins"></i> ${g.discountedPrice || g.price}</span>
+                <span class="gift-card-price">${coinIconHTML(13)} ${g.discountedPrice || g.price}</span>
             </div>
             <span class="gift-card-send-slot"></span>
         </button>
@@ -12074,7 +12088,7 @@ function renderGiftFooterHTML(coins) {
     return `
         <div class="gift-footer flex-shrink-0">
             <span class="gift-footer-balance-pill">
-                <i class="fas fa-coins"></i> <span class="gift-footer-balance">${coins}</span>
+                ${coinIconHTML(13)} <span class="gift-footer-balance">${coins}</span>
             </span>
             <div class="gift-qty-segmented" role="group">
                 ${[1, 6, 66, 166, 999].map((n, i) => `<button type="button" data-qty="${n}" class="gift-qty-segment${i === 0 ? ' active' : ''}">×${n}</button>`).join('')}
@@ -12100,6 +12114,17 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
     function registerComboTeardown(fn) { activeComboForceEnd = fn; }
     function endActiveCombo() { activeComboForceEnd?.(); activeComboForceEnd = null; }
 
+    // ✅ طلب صريح: تأثير بصري خفيف لكن جميل على كبسولة الرصيد عندما يكون الرصيد غير كافٍ
+    // لتكلفة الهدية المحدَّدة × الكمية المحدَّدة — يُستدعى عند أي تغيّر بالتحديد/الكمية/الرصيد
+    function updateLowBalanceVisual() {
+        const pill = rootEl.querySelector('.gift-footer-balance-pill');
+        if (!pill) return;
+        const balanceEl = rootEl.querySelector('.gift-footer-balance');
+        const coins = balanceEl ? parseFloat(balanceEl.textContent) || 0 : 0;
+        const totalCost = selectedGift ? selectedGift.price * quantity : 0;
+        pill.classList.toggle('low-balance', !!selectedGift && totalCost > coins);
+    }
+
     function clearAllSendSlots() {
         rootEl.querySelectorAll('.gift-card-send-slot').forEach(slot => { slot.innerHTML = ''; });
     }
@@ -12111,6 +12136,7 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
         rootEl.querySelectorAll('.gift-card-wrapper').forEach(c => c.classList.remove('gift-card-selected', 'gift-combo-sending'));
         clearAllSendSlots();
         selectedGift = null;
+        updateLowBalanceVisual();
         onSelectGift(null, quantity, null);
     }
 
@@ -12147,6 +12173,7 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
                 slot.appendChild(newSendBtn);
             }
         }
+        updateLowBalanceVisual();
         onSelectGift(selectedGift, quantity, newSendBtn);
     });
 
@@ -12156,13 +12183,14 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
             rootEl.querySelectorAll('.gift-qty-segment').forEach(s => s.classList.remove('active'));
             seg.classList.add('active');
             quantity = parseInt(seg.dataset.qty);
+            updateLowBalanceVisual();
             // ✅ تغيير الكمية فقط لا يُنشئ زر إرسال جديداً (الزر الحالي بالكارد المحدَّد يبقى
             // كما هو ويستخدم الكمية الجديدة عبر getQuantity() المغلقة عليه أصلاً)
             onSelectGift(selectedGift, quantity, null);
         });
     });
 
-    return { getSelectedGift: () => selectedGift, getQuantity: () => quantity, deselectAll, registerComboTeardown };
+    return { getSelectedGift: () => selectedGift, getQuantity: () => quantity, deselectAll, registerComboTeardown, checkLowBalance: updateLowBalanceVisual };
 }
 
 // ✅ آلية الإرسال النهائية بأسلوب Bigo Live — مراجعة مباشرة مني للفيديو والصور المُرفقة (لا
@@ -12212,6 +12240,13 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
     function renderCombo(badgeText) {
         btn.innerHTML = `
             <svg class="gift-combo-ring" viewBox="0 0 40 40">
+                <defs>
+                    <radialGradient id="giftComboGradient" cx="35%" cy="30%" r="75%">
+                        <stop offset="0%" stop-color="#ff6fa8"></stop>
+                        <stop offset="55%" stop-color="#f5107a"></stop>
+                        <stop offset="100%" stop-color="#b7123f"></stop>
+                    </radialGradient>
+                </defs>
                 <circle class="gift-combo-ring-bg" cx="20" cy="20" r="${RING_R}"></circle>
                 <circle class="gift-combo-ring-fg" cx="20" cy="20" r="${RING_R}" style="stroke-dasharray:${RING_C}"></circle>
             </svg>
@@ -12284,19 +12319,35 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
         scheduleHoldNext();
     }
 
+    let holdSafetyTimer = null;
     function stopHold() {
         holdActive = false;
         clearTimeout(holdTimeout);
         holdTimeout = null;
+        clearTimeout(holdSafetyTimer);
+        holdSafetyTimer = null;
     }
 
-    // ✅ pointerdown = إرسال فوري دوماً (نقرة أو بداية ضغط مطوّل) + بدء محرك التسارع المحتمل؛
-    // إفلات سريع قبل أول تكرار hold (260ms) يُلغي التسارع فيبقى إرسال واحد فقط (نقرة عادية)
-    btn.addEventListener('mousedown', () => { fireOnceAndReset(); startHold(); });
-    btn.addEventListener('touchstart', (e) => { e.preventDefault(); fireOnceAndReset(); startHold(); }, { passive: false });
-    btn.addEventListener('mouseup', stopHold);
-    btn.addEventListener('mouseleave', stopHold);
-    btn.addEventListener('touchend', stopHold);
+    // 🐛 إصلاح جذري (طلب صريح): "اضغط مرة ثانية يستمر الإرسال تلقائياً بلا توقف" — السبب
+    // الجذري: خلط mousedown+touchstart منفصلين على نفس الزر يُسبّب أحداثاً مزدوجة فعلياً على
+    // الأجهزة اللمسية (touchstart يُطلق أيضاً أحداث mouse اصطناعية لاحقاً رغم preventDefault
+    // بحالات معيّنة)، فيبدأ محرّكا تسارع مستقلّان من ضغطة واحدة فعلياً — أحدهما قد يفلت من
+    // stopHold الطبيعي. الحل الصحيح: Pointer Events الموحّدة (تُغطّي فأرة/لمس/قلم بحدث واحد
+    // لا يتكرّر) + setPointerCapture (يضمن وصول pointerup لنفس العنصر دوماً حتى لو تغيّر
+    // شكله/موضعه أثناء الضغط — بالضبط حالتنا: أيقونة تتحوّل لدائرة فوراً عند أول ضغطة).
+    // + سقف أمان صارم (15 ثانية) كطبقة حماية أخيرة مهما كان السبب — لا يجوز أبداً أن يستمر
+    // إرسال فعلي تلقائي بلا أي تفاعل مستخدم حقيقي، فهذا إنفاق كوينز حقيقي بلا تحكّم
+    btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        try { btn.setPointerCapture(e.pointerId); } catch (_) { /* بعض المتصفحات القديمة لا تدعمها — المتابعة بأمان */ }
+        fireOnceAndReset();
+        startHold();
+        clearTimeout(holdSafetyTimer);
+        holdSafetyTimer = setTimeout(stopHold, 15000);
+    });
+    btn.addEventListener('pointerup', stopHold);
+    btn.addEventListener('pointercancel', stopHold);
+    btn.addEventListener('pointerleave', stopHold);
 
     // 🐛 إصلاح: لو بدّل المستخدم لهدية أخرى أثناء فترة سماح الكومبو (العدّاد لم يصل صفر بعد)،
     // يُفكَّك الزر/الحاوية فوراً عبر clearAllSendSlots لكن tickTimer/holdTimeout يبقيان
@@ -12535,7 +12586,9 @@ function notifyRoomGiftSupport(targetUserId, value) {
     if (!currentVoiceRoomId) return;
     const seatEl = document.querySelector(`#voice-chat-grid [data-user-id="${targetUserId}"]`);
     if (!seatEl) return; // المستلم غير قاعد بالغرفة المعروضة حالياً — لا شيء لتحديثه
-    socket.emit('room-gift-support', { roomId: currentVoiceRoomId, seatNumber: parseInt(seatEl.dataset.seat), value });
+    // ✅ targetUserId صريح الآن — السيرفر يربط التراكم بالمستخدم نفسه (راجع roomSupportTally)
+    // لا برقم المقعد، كي يبقى تراكمه معه لو وقف وعاد وجلس بنفس الغرفة
+    socket.emit('room-gift-support', { roomId: currentVoiceRoomId, seatNumber: parseInt(seatEl.dataset.seat), targetUserId, value });
 }
 
 // =====================================================
@@ -12620,7 +12673,7 @@ async function showBuyCoinsModal() {
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[88vh] flex flex-col">
                     <div class="flex items-center justify-between p-4 border-b border-gray-700">
                     <h3 class="text-lg font-bold flex items-center gap-2">
-                        <i class="fas fa-coins text-yellow-400"></i> شحن الكوينزات
+                        ${coinIconHTML(18)} شحن الكوينزات
                     </h3>
                     <div class="flex items-center gap-1">
                         <button id="coins-support-btn" class="report-issue-icon-btn" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle"></i></button>
@@ -12760,7 +12813,7 @@ function renderAmountEntry(method) {
         </div>
         <div class="bg-gray-900/50 rounded-xl p-3 mb-4 flex justify-between items-center">
             <span class="text-sm text-gray-400">ستحصل على</span>
-            <span id="calculated-coins" class="font-bold text-yellow-400">${info.minUSD * info.coinRate} <i class="fas fa-coins"></i></span>
+            <span id="calculated-coins" class="font-bold text-yellow-400">${info.minUSD * info.coinRate} ${coinIconHTML(15)}</span>
         </div>
         <button id="continue-purchase-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2.5 rounded-lg font-bold">
             متابعة
@@ -12772,7 +12825,7 @@ function renderAmountEntry(method) {
     const amountInput = document.getElementById('purchase-amount-input');
     amountInput.addEventListener('input', () => {
         const val = parseFloat(amountInput.value) || 0;
-        document.getElementById('calculated-coins').innerHTML = `${Math.round(val * info.coinRate)} <i class="fas fa-coins"></i>`;
+        document.getElementById('calculated-coins').innerHTML = `${Math.round(val * info.coinRate)} ${coinIconHTML(15)}`;
     });
 
     document.getElementById('continue-purchase-btn').addEventListener('click', async () => {
@@ -12829,7 +12882,7 @@ function renderBalancePurchaseEntry() {
         </div>
         <div class="bg-gray-900/50 rounded-xl p-3 mb-4 flex justify-between items-center">
             <span class="text-sm text-gray-400">ستحصل على</span>
-            <span id="balance-purchase-coins" class="font-bold text-yellow-400">${info.minUSD * info.coinRate} <i class="fas fa-coins"></i></span>
+            <span id="balance-purchase-coins" class="font-bold text-yellow-400">${info.minUSD * info.coinRate} ${coinIconHTML(15)}</span>
         </div>
         <button id="confirm-balance-purchase-btn" class="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg font-bold">تأكيد الشراء الفوري</button>
     `;
@@ -12839,7 +12892,7 @@ function renderBalancePurchaseEntry() {
     const amountInput = document.getElementById('balance-purchase-amount');
     amountInput.addEventListener('input', () => {
         const val = parseFloat(amountInput.value) || 0;
-        document.getElementById('balance-purchase-coins').innerHTML = `${Math.round(val * info.coinRate)} <i class="fas fa-coins"></i>`;
+        document.getElementById('balance-purchase-coins').innerHTML = `${Math.round(val * info.coinRate)} ${coinIconHTML(15)}`;
     });
 
     document.getElementById('confirm-balance-purchase-btn').addEventListener('click', async () => {
@@ -13779,7 +13832,7 @@ async function loadGiftsReceivedSummary() {
                         <p class="text-[10px] font-normal opacity-80">تحويل لرصيد</p>
                     </button>
                     <button id="redeem-to-coins-btn" class="bg-yellow-600 hover:bg-yellow-700 text-white py-3 rounded-lg text-sm font-bold">
-                        <i class="fas fa-coins"></i><br>${d.coinsIfRedeemed}
+                        ${coinIconHTML(14)}<br>${d.coinsIfRedeemed}
                         <p class="text-[10px] font-normal opacity-80">تحويل لكوينز</p>
                     </button>
                 </div>
@@ -13887,7 +13940,7 @@ function confirmRedeem(redeemTo) {
         footer.innerHTML = `
             <div class="flex items-center gap-2 p-3 border-t border-gray-700 bg-gray-900/60 flex-shrink-0">
                 <span class="text-xs text-yellow-400 flex items-center gap-1 flex-shrink-0 font-bold">
-                    <i class="fas fa-coins"></i> <span id="pg-balance">${localUserSnapshot.coins || 0}</span>
+                    ${coinIconHTML(12)} <span id="pg-balance">${localUserSnapshot.coins || 0}</span>
                 </span>
                 <span id="pg-send-counter" class="hidden text-[11px] text-gray-400 flex-1 text-center"></span>
                 <div class="flex-1"></div>
@@ -14247,7 +14300,7 @@ async function loadLeaderboard(type, range = 'week') {
                     <p class="font-bold text-sm truncate">${escapeHtml(leader.username)}</p>
                     <p class="text-xs text-gray-400">${leader.giftsCount} هدية</p>
                 </div>
-                <span class="font-bold text-yellow-400 flex items-center gap-1 text-sm"><i class="fas fa-coins"></i> ${leader[valueKey].toLocaleString()}</span>
+                <span class="font-bold text-yellow-400 flex items-center gap-1 text-sm">${coinIconHTML(14)} ${leader[valueKey].toLocaleString()}</span>
             </div>
         `).join('');
 
@@ -16729,7 +16782,7 @@ function showInsufficientCoinsModal(message) {
     const html = `
         <div id="insufficient-coins-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[400] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-xs text-white p-6 text-center border border-yellow-600/30">
-                <i class="fas fa-coins text-4xl text-yellow-400 mb-3"></i>
+                <span class="flex justify-center mb-3">${coinIconHTML(44)}</span>
                 <p class="text-sm mb-5">${message}</p>
                 <div class="flex gap-2">
                     <button id="ic-cancel-btn" class="flex-1 bg-gray-700 hover:bg-gray-600 py-2 rounded-lg text-sm">إلغاء</button>
@@ -17602,7 +17655,7 @@ async function updateFriendsAvatars(friendsList) {
             <div class="flex items-center gap-3">
                 <span class="font-bold text-purple-300">${battle.type}</span>
                 ${privateIcon}
-                <div class="flex items-center gap-1 text-yellow-400"><i class="fas fa-coins"></i><span>${battle.betAmount}</span></div>
+                <div class="flex items-center gap-1 text-yellow-400">${coinIconHTML(14)}<span>${battle.betAmount}</span></div>
                 <div class="flex -space-x-2">${battle.players.map(p => `<img src="${p.profileImage}" alt="${escapeHtml(p.username)}" class="w-8 h-8 rounded-full border-2 border-gray-600">`).join('')}</div>
             </div>
             <div class="flex items-center gap-3">
