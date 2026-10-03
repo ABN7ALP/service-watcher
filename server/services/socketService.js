@@ -46,6 +46,27 @@ function isVoiceSignalRateLimited(userId) {
 // roomId → { url, title, startedAt(ms), isPlaying, pausedAt(seconds) }
 const roomMusicState = new Map();
 
+// ✅ تراكم "عداد الدعم" أسفل مقعد كل مستخدم — بطلب صريح + بحث معمّق عن سلوك Bigo/Likee/TikTok
+// Live: القيمة مرتبطة بالشخص داخل هذي الجلسة بالغرفة تحديداً، لا برقم المقعد نفسه — تبقى
+// كما هي لو وقف ثم عاد وجلس (بنفس المقعد أو غيره)، ولا تُصفَّر إلا لو غادر الغرفة فعلياً
+// (وليس مجرد وقوفه عن مقعده) ثم عاد. بالذاكرة فقط (ephemeral) — ليست قيمة دائمة بقاعدة
+// البيانات، تماماً كحالة الموسيقى أعلاه؛ تُمسَح تلقائياً مع مسح الغرفة نفسها من الذاكرة
+// roomId(string) → Map(userId(string) → total(number))
+const roomSupportTally = new Map();
+function getRoomSupportTotal(roomId, userId) {
+    return roomSupportTally.get(roomId)?.get(userId) || 0;
+}
+function addRoomSupportTotal(roomId, userId, value) {
+    if (!roomSupportTally.has(roomId)) roomSupportTally.set(roomId, new Map());
+    const roomMap = roomSupportTally.get(roomId);
+    const updated = (roomMap.get(userId) || 0) + value;
+    roomMap.set(userId, updated);
+    return updated;
+}
+function clearRoomSupportTotal(roomId, userId) {
+    roomSupportTally.get(roomId)?.delete(userId);
+}
+
 // ✅ دعوات المضيف لمقعد محدد — بانتظار قبول/رفض صاحب الدعوة قبل إجلاسه فعلياً (لم يعد
 // إجلاساً فورياً كما سابقاً). المفتاح: `${roomId}:${targetUserId}`
 // → { seatNumber, hostSocketId, expiresAt }
@@ -1169,7 +1190,8 @@ socket.on('refreshBlockData', async () => {
                     username: socket.user.username,
                     profileImage: socket.user.profileImage,
                     activeFrameClass: socket.user.activeFrameClass,
-                    isMuted: carryMuted
+                    isMuted: carryMuted,
+                    supportTotal: getRoomSupportTotal(targetRoomId, socket.user.id.toString())
                 });
             } catch (error) {
                 console.error('[VOICE SEAT] Join seat error:', error);
@@ -1449,7 +1471,8 @@ socket.on('refreshBlockData', async () => {
                     username: socket.user.username,
                     profileImage: socket.user.profileImage,
                     activeFrameClass: socket.user.activeFrameClass,
-                    isMuted: false
+                    isMuted: false,
+                    supportTotal: getRoomSupportTotal(room._id.toString(), socket.user.id.toString())
                 });
                 io.to(`room-chat-${room._id}`).emit('room-broadcast-started', { roomId: room._id.toString() });
                 // ✅ تظهر فوراً بقائمة تصفح الغرف عند كل من فتحها حالياً — بلا حاجة لتنقل/تحديث صفحة
@@ -1640,7 +1663,8 @@ socket.on('refreshBlockData', async () => {
                         username: targetUser.username,
                         profileImage: targetUser.profileImage,
                         activeFrameClass: targetUser.activeFrameClass,
-                        isMuted: false
+                        isMuted: false,
+                        supportTotal: getRoomSupportTotal(finalRoomId, targetUserId)
                     });
                     io.to(`room-chat-${finalRoomId}`).emit('hand-raise-removed', { roomId: finalRoomId, userId: targetUserId });
                     io.to(targetUser.socketId).emit('you-were-invited-up', { roomId: finalRoomId, seatNumber: seatNum });
@@ -1742,7 +1766,8 @@ socket.on('refreshBlockData', async () => {
                     username: socket.user.username,
                     profileImage: socket.user.profileImage,
                     activeFrameClass: socket.user.activeFrameClass,
-                    isMuted: false
+                    isMuted: false,
+                    supportTotal: getRoomSupportTotal(finalRoomId, socket.user.id.toString())
                 });
                 io.to(`room-chat-${finalRoomId}`).emit('hand-raise-removed', { roomId: finalRoomId, userId: socket.user.id.toString() });
             } catch (error) {
@@ -2051,6 +2076,12 @@ socket.on('refreshBlockData', async () => {
             if (!roomId) return;
             socket.leave(`room-chat-${roomId}`);
             broadcastRoomViewerCount(io, roomId);
+            // ✅ طلب صريح: عداد الدعم يُصفَّر فقط عند مغادرة الغرفة فعلياً (لا مجرد الوقوف عن
+            // مقعد) — نتحقق أولاً أنه لا يوجد تبويب/جهاز آخر لنفس المستخدم لا يزال يشاهد هذي
+            // الغرفة (getRoomViewers بعد socket.leave أعلاه) قبل مسح تراكمه، كي لا يُصفَّر
+            // بالخطأ لمجرد إغلاق تبويب واحد بينما تبويب آخر له لا يزال مفتوحاً بنفس الغرفة
+            const stillViewing = getRoomViewers(io, roomId).some(v => v.id === socket.user.id.toString());
+            if (!stillViewing) clearRoomSupportTotal(roomId, socket.user.id.toString());
         });
 
         // ✅ القائمة الكاملة الحيّة لمن يشاهد الغرفة الآن (مأخوذة من عضوية قناة السوكيت نفسها،
@@ -2202,12 +2233,16 @@ socket.on('refreshBlockData', async () => {
             io.emit('seat-reaction-played', { roomId, seatNumber: parseInt(seatNumber), emoji });
         });
 
-        // ✅ عداد الدعم أسفل المقعد — إشارة عرض بصري فقط (الدفع الفعلي تم أصلاً عبر REST /api/gifts/send)
-        socket.on('room-gift-support', ({ roomId, seatNumber, value }) => {
+        // ✅ عداد الدعم أسفل المقعد — إشارة عرض بصري فقط (الدفع الفعلي تم أصلاً عبر REST
+        // /api/gifts/send). السيرفر الآن مصدر الحقيقة الوحيد للمجموع التراكمي لكل (مستخدم +
+        // غرفة) — راجع roomSupportTally أعلى الملف — فيُرسِل الرقم الكلي النهائي مباشرة بدل
+        // دلتا (Δ) يُضاف محلياً بكل عميل على حدة، فلا يختلف ما يراه عميلان دخلا بلحظات مختلفة
+        socket.on('room-gift-support', ({ roomId, seatNumber, targetUserId, value }) => {
             const numValue = Number(value);
-            if (!roomId || !Number.isFinite(numValue) || numValue <= 0) return;
+            if (!roomId || !targetUserId || !Number.isFinite(numValue) || numValue <= 0) return;
             const safeValue = Math.min(numValue, 100000); // 🛡️ سقف معقول يمنع تضخيم العداد بقيم وهمية
-            io.emit('room-support-updated', { roomId, seatNumber: parseInt(seatNumber), value: safeValue });
+            const total = addRoomSupportTotal(roomId, targetUserId, safeValue);
+            io.emit('room-support-updated', { roomId, seatNumber: parseInt(seatNumber), userId: targetUserId, value: total });
         });
 
         // =====================================================
@@ -2310,6 +2345,18 @@ socket.on('refreshBlockData', async () => {
                 // لا نُنزله عن مقعده فوراً لمجرد انقطاع عابر، بل بعد مهلة قصيرة يُلغيها فوراً لو
                 // عاد الاتصال خلالها (انظر معالج 'connection' أعلاه: cancelPendingSeatRelease)
                 scheduleSeatReleaseAfterDisconnect(io, socket.user);
+
+                // ✅ تنظيف احتياطي لعداد الدعم: انقطاع اتصال فعلي (إغلاق التطبيق/التبويب) بلا
+                // leave-room-chat صريح — نفس منطق التنظيف هناك بالضبط (تحقّق عدم وجود تبويب
+                // آخر لنفس المستخدم بالغرفة قبل المسح)، يمنع تسرّب ذاكرة طويل الأمد لمستخدمين
+                // لا يعودون. socket.rooms لا تزال تحتوي قنوات هذا السوكيت هنا تحديداً (قبل أن
+                // يُزيلها socket.io تلقائياً بعد انتهاء حدث disconnect هذا)
+                for (const channel of socket.rooms) {
+                    if (!channel.startsWith('room-chat-')) continue;
+                    const roomId = channel.slice('room-chat-'.length);
+                    const stillViewing = getRoomViewers(io, roomId).some(v => v.id === socket.user.id.toString());
+                    if (!stillViewing) clearRoomSupportTotal(roomId, socket.user.id.toString());
+                }
             } catch (error) { console.error('Failed to update offline status:', error); }
         });
     });
@@ -2321,3 +2368,6 @@ socket.on('refreshBlockData', async () => {
 
 module.exports = initializeSocket;
 module.exports.broadcastUserFrameChange = broadcastUserFrameChange;
+// ✅ تُستخدَم من واجهات REST (voiceRoomController) لتضمين المجموع التراكمي الحالي لكل
+// مستخدم جالس ضمن لقطة حالة الغرفة الأولى (قبل أي حدث Socket حي) — راجع roomSupportTally أعلاه
+module.exports.getRoomSupportTotal = getRoomSupportTotal;
