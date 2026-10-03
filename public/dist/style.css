@@ -10041,6 +10041,14 @@ body.in-voice-room #main-content {
   letter-spacing: 0.2px;
   cursor: pointer;
   transition: filter 0.08s ease, transform 0.08s ease;
+  /* ✅ تحصين إضافي للهاتف: يمنع أي تمرير/تكبير/تمييز لمسي افتراضي يتعارض مع Pointer Events
+       المخصّصة (setupGiftComboSend)، خصوصاً أن الزر يتحوّل لموضع/حجم مختلف تماماً (دائرة
+       مطلقة التموضع) لحظة الضغط — نفس التغيّر المفاجئ الذي قد يُحرِّض سلوك لمس افتراضي */
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+     -moz-user-select: none;
+          user-select: none;
 }
 
 /* ✅ شبكة هدايا الغرفة/العامة أكبر — الزر يكبر تناسقاً معها، لكن طلب صريح: كان كبيراً زيادة */
@@ -13126,10 +13134,11 @@ body.in-voice-room #main-content {
   color: #9ca3af;
 }
 
-/* ✅ طلب صريح: "ضف مواثرات حينما ينقصون او يزيدون ... وخلي الخلفية غامقه ايضا لهم قليلا" —
-   كبسولة الكوينز الدائمة بالهيدر (أكثر مكان يراه المستخدم للرصيد) أغمق قليلاً بالوضع الداكن،
-   + نبضة خضراء عند الزيادة (إيداع/استرجاع) أو حمراء عند النقصان (إرسال هدية/شراء) على أي
-   عنصر يعرض رصيداً (راجع setCoinText/setHeaderCoins بـapp.js) */
+/* ✅ طلب صريح: "ضف مواثرات ... وخلي الخلفية غامقه ايضا لهم قليلا" — كبسولة الكوينز الدائمة
+   بالهيدر (أكثر مكان يراه المستخدم للرصيد) أغمق قليلاً بالوضع الداكن.
+   ✅ طلب صريح لاحق: أُزيلت نبضة الأحمر عند النقصان بالكامل (لا تُحسِّس المستخدم بأنه "يُنفق")
+   وأُزيلت نبضة الأخضر عند الزيادة أيضاً — استُبدلت بمؤثر عملات حقيقية تتهاوى (راجع
+   .falling-coin-fx/.coin-land-pulse أدناه، ودالتا setCoinText/spawnFallingCoinsEffect بـapp.js) */
 
 :root:not([data-theme="light"]) .coins,
 :root[data-theme="dark"] .coins {
@@ -13139,32 +13148,63 @@ body.in-voice-room #main-content {
 #coins, .gift-footer-balance, #frame-shop-coins-value, #gift-store-balance, #pg-balance,
 #calculated-coins, #balance-purchase-coins {
   display: inline-block;
-  transition: color 0.2s ease, text-shadow 0.2s ease;
 }
 
-.coin-pulse-up {
-  color: #4ade80 !important;
-  text-shadow: 0 0 10px rgba(74,222,128,0.65);
-  animation: coinPulseScale 0.5s ease;
+/* ✅ عملات صغيرة تسقط من أعلى العنصر وتهبط بارتداد خفيف — ثابتة الموضع بإحداثيات الشاشة
+   الفعلية (محسوبة بـJS عبر getBoundingClientRect)، تُحذف تلقائياً بعد السقوط */
+
+.falling-coin-fx {
+  position: fixed;
+  width: 14px;
+  height: 14px;
+  z-index: 500;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));
+  animation: fallingCoinDrop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
-.coin-pulse-down {
-  color: #f87171 !important;
-  text-shadow: 0 0 10px rgba(248,113,113,0.65);
-  animation: coinPulseScale 0.5s ease;
-}
-
-@keyframes coinPulseScale {
+@keyframes fallingCoinDrop {
   0% {
-    transform: scale(1);
+    transform: translateY(0) scale(0.6) rotate(0deg);
+    opacity: 0;
   }
 
-  30% {
-    transform: scale(1.28);
+  15% {
+    opacity: 1;
+  }
+
+  70% {
+    transform: translateY(26px) scale(1) rotate(180deg);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(32px) scale(0.3) rotate(220deg);
+    opacity: 0;
+  }
+}
+
+/* ✅ نبضة توهّج ذهبي خفيفة على الرقم نفسه لحظة "هبوط" العملات — نفس عائلة لون الكوينز
+   المعتمد بالتطبيق (لا أخضر/أحمر) */
+
+.coin-land-pulse {
+  animation: coinLandPulse 0.5s ease;
+}
+
+@keyframes coinLandPulse {
+  0% {
+    transform: scale(1);
+    text-shadow: none;
+  }
+
+  35% {
+    transform: scale(1.22);
+    text-shadow: 0 0 10px rgba(255,207,77,0.85);
   }
 
   100% {
     transform: scale(1);
+    text-shadow: none;
   }
 }
 

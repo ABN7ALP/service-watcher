@@ -3629,7 +3629,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         coverInput.addEventListener('change', () => {
             const file = coverInput.files?.[0];
             if (!file) return;
-            showImageCropperModal(file, 480 / 270, async (cropped) => {
+            showImageCropperModal(file, 1, async (cropped) => {
                 const originalHTML = coverBtn.innerHTML;
                 coverBtn.disabled = true;
                 coverBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جارِ الرفع...';
@@ -6220,9 +6220,11 @@ document.querySelectorAll('.unblock-user-btn').forEach(btn => {
 // ✅ طلب صريح: "اجعلها تلتقط الجزء الفوق من الصورة او امكانية تحديد كيف يريد عرضها اقتصاص" —
 // نافذة اقتصاص حقيقية (Cropper.js، بحث مكتبات: خفيفة بلا اعتماديات، تدعم اللمس أصلياً) تمنح
 // المستخدم حرية كاملة لتحديد موضع/حجم الاقتصاص قبل الرفع، بدل الاقتصاص التلقائي الثابت
-// بالسيرفر فقط (gravity:face / fill مركزي) الذي لا يمنحه أي تحكّم. aspectRatio: 1 للصور
-// الشخصية (مربع)، نسبة الغلاف (640:260 أو 480:270) لصور الأغلفة. onCropped(blob|file) يستقبل
-// ملف الصورة بعد الاقتصاص (أو الملف الأصلي كما هو لو تعذّر تحميل المكتبة — تدهور سلس بلا تعطيل)
+// بالسيرفر فقط (gravity:face / fill مركزي) الذي لا يمنحه أي تحكّم.
+// ✅ طلب صريح لاحق: aspectRatio تُمرَّر دوماً كـ1 (مربعة) لكل الاستخدامات الحالية (صورة
+// شخصية/غلاف ملف شخصي/غلاف غرفة) — بقيت معاملاً عاماً لمرونة أي استخدام مستقبلي مختلف.
+// onCropped(blob|file) يستقبل ملف الصورة بعد الاقتصاص (أو الملف الأصلي كما هو لو تعذّر
+// تحميل المكتبة — تدهور سلس بلا تعطيل)
 function showImageCropperModal(file, aspectRatio, onCropped) {
     if (typeof Cropper === 'undefined') {
         onCropped(file);
@@ -8061,10 +8063,11 @@ socket.on('levelUp', ({ newLevel }) => {
     });
 
         socket.on('coinsUpdated', ({ newCoins }) => {
-    // ✅ طلب صريح: "خلي أمور إنفاق الكوينز فوري بكل الجهات" — هذا صدى السيرفر الحقيقي (مصدر
-    // الحقيقة) لأي تغيّر برصيد المستخدم من أي مصدر (هدية صادرة/واردة، شراء، إيداع)؛ تحديث
-    // فوري للهيدر هنا يضمن اتساق الرصيد بكل مكان مفتوح حالياً بالتطبيق بلا أي تأخير
-    setHeaderCoins(newCoins);
+    // ✅ طلب صريح: "فوري لدرجة بدون أي تحديث لصفحة أو نافذة" — صدى السيرفر الحقيقي (مصدر
+    // الحقيقة) لأي تغيّر برصيد المستخدم من أي مصدر (هدية صادرة/واردة، شراء، إيداع مدير/وكيل)؛
+    // يُحدِّث فوراً الهيدر الدائم + أي كبسولة رصيد أخرى مفتوحة حالياً (نافذة هدايا، متجر
+    // إطارات...) بلا أي حاجة لإغلاق/فتح النافذة أو تحديث الصفحة (راجع setAllVisibleCoinDisplays)
+    setAllVisibleCoinDisplays(newCoins);
     const localUser = JSON.parse(localStorage.getItem('user'));
     if (localUser) {
         localUser.coins = newCoins;
@@ -9325,7 +9328,7 @@ function showProfileEditSheet(u) {
     document.getElementById('profile-edit-cover-file').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        showImageCropperModal(file, 640 / 260, async (cropped) => {
+        showImageCropperModal(file, 1, async (cropped) => {
             const formData = new FormData();
             formData.append('coverImage', cropped, 'cover.jpg');
             try {
@@ -10088,21 +10091,55 @@ const COIN_ICON_URL = 'https://res.cloudinary.com/dntlt5xry/image/upload/v179102
 function coinIconHTML(px = 14) {
     return `<img src="${COIN_ICON_URL}" class="coin-icon-img" style="width:${px}px;height:${px}px" alt="">`;
 }
-// ✅ طلب صريح: "ضف لهم مواثرات حينما ينقصون او يزيدون" — نقطة تحديث موحّدة قابلة لإعادة
-// الاستخدام على أي عنصر يعرض رصيد كوينز (الهيدر الدائم، تذييل نوافذ الهدايا، متجر الإطارات،
-// حاسبة الشحن...) — تحدّث القيمة فوراً (لا تأخير) وتُضيف نبضة خضراء عند الزيادة أو حمراء عند
-// النقصان، فقط لو تغيّرت القيمة فعلياً عن سابقتها (راجع .coin-pulse-up/down بـinput.css)
+// ✅ طلب صريح لاحق: أُزيلت تماماً نبضة اللون الأحمر عند نقصان الرصيد (الإرسال/الإنفاق) —
+// "هذا يُحسِّس المستخدم أنه ينفق، ونحن بطبيعتنا نريد حثّه على الشحن والدعم وإرسال الهدايا"؛
+// الإنفاق يُحدَّث الرقم فوراً بصمت بلا أي مؤثر سلبي. الزيادة (إيداع/استرجاع) فقط تحصل على
+// مؤثر إيجابي — ليس نبضة لون أخضر، بل عملات حقيقية "تتهاوى" وتهبط داخل الرصيد (راجع
+// spawnFallingCoinsEffect) — نقطة تحديث موحّدة قابلة لإعادة الاستخدام على أي عنصر يعرض رصيد
 function setCoinText(el, newValue) {
     if (!el) return;
     const prev = parseFloat((el.textContent || '0').replace(/,/g, '')) || 0;
     const next = Number(newValue) || 0;
     el.textContent = next.toLocaleString('en-US');
-    if (next === prev) return;
-    el.classList.remove('coin-pulse-up', 'coin-pulse-down');
-    void el.offsetWidth;
-    el.classList.add(next > prev ? 'coin-pulse-up' : 'coin-pulse-down');
-    clearTimeout(el._coinPulseTimer);
-    el._coinPulseTimer = setTimeout(() => el.classList.remove('coin-pulse-up', 'coin-pulse-down'), 600);
+    if (next > prev) spawnFallingCoinsEffect(el);
+}
+
+// ✅ مؤثر "عملات تتهاوى" عند زيادة الرصيد — عملات صغيرة حقيقية (نفس أيقونة الكوينز الموحَّدة)
+// تسقط من الأعلى وتهبط بارتداد خفيف فوق العنصر نفسه (موضعها الفعلي عبر getBoundingClientRect
+// بالضبط فوق العنصر بغض النظر عن مكانه بالصفحة)، مع نبضة توهّج ذهبي خفيفة على الرقم نفسه —
+// لا أخضر/أحمر، بل نفس عائلة لون الكوينز الذهبي المعتمد بالتطبيق
+function spawnFallingCoinsEffect(anchorEl) {
+    if (!anchorEl) return;
+    const rect = anchorEl.getBoundingClientRect();
+    const originX = rect.left + rect.width / 2;
+    const originY = rect.top;
+    for (let i = 0; i < 3; i++) {
+        const coin = document.createElement('img');
+        coin.src = COIN_ICON_URL;
+        coin.className = 'falling-coin-fx';
+        coin.alt = '';
+        const dx = (Math.random() - 0.5) * 28;
+        coin.style.left = `${originX + dx - 7}px`;
+        coin.style.top = `${originY - 22 - Math.random() * 10}px`;
+        coin.style.animationDelay = `${i * 70}ms`;
+        document.body.appendChild(coin);
+        setTimeout(() => coin.remove(), 900);
+    }
+    anchorEl.classList.remove('coin-land-pulse');
+    void anchorEl.offsetWidth;
+    anchorEl.classList.add('coin-land-pulse');
+    clearTimeout(anchorEl._coinPulseTimer);
+    anchorEl._coinPulseTimer = setTimeout(() => anchorEl.classList.remove('coin-land-pulse'), 500);
+}
+
+// ✅ طلب صريح: التحديث يجب أن يصل فوراً بلا أي حاجة لتحديث الصفحة/إغلاق وفتح النافذة — لو
+// كانت نافذة هدايا مفتوحة وقت إيداع المدير/الوكيل للرصيد، كبسولتها الخاصة تتحدّث هي أيضاً
+// بنفس اللحظة (راجع socket.on('coinsUpdated') أدناه الذي يستدعي هذي القائمة بالكامل، لا
+// الهيدر فقط كما كان سابقاً)
+function setAllVisibleCoinDisplays(newValue) {
+    setHeaderCoins(newValue);
+    document.querySelectorAll('.gift-footer-balance, #frame-shop-coins-value, #gift-store-balance, #pg-balance')
+        .forEach(el => setCoinText(el, newValue));
 }
 // ✅ الهيدر الدائم (مصدر الرصيد الظاهر بكل شاشة) — نقطة التحديث الوحيدة المطلوبة بكل مكان
 // بالتطبيق يُفترض أن يُحدِّث رصيد المستخدم (طلب صريح: "خلي أمور إنفاق الكوينز فوري بكل الجهات")
@@ -11877,11 +11914,27 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                         footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, revertUser.coins));
                         checkLowBalance();
                     }
+                    // ✅ حد معدّل الإرسال (429) أثناء ضغط مستمر سريع: لا نقاطع الكومبو ولا
+                    // نزعج المستخدم بتنبيه — فقط نتراجع عن خصم هذي المحاولة ونكمل بهدوء
+                    if (response2.status === 429) return true;
                     showNotification(result2.message || 'فشل إرسال الهدية', 'error');
                     return false;
                 }
             } catch (error) {
+                // 🐛 إصلاح: لم يكن هذا الفرع يتراجع عن الخصم المتفائل إطلاقاً عند فشل الشبكة
+                // (انقطاع اتصال، مهلة) — الرصيد يبقى مخصوماً محلياً بلا مبرر فعلي، وهذا بالضبط
+                // أكثر شيوعاً على الهاتف (شبكة جوّال/واي فاي ضعيفة) من سطح المكتب — يطابق
+                // الملاحظة الصريحة بأن الدائرة "تختفي بسرعة البرق على الهواتف" أكثر من غيرها
                 console.error('[GIFT SEND] Error:', error);
+                const revertUser = JSON.parse(localStorage.getItem('user'));
+                if (revertUser) {
+                    revertUser.coins += totalCost;
+                    localStorage.setItem('user', JSON.stringify(revertUser));
+                    setHeaderCoins(revertUser.coins);
+                    footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, revertUser.coins));
+                    checkLowBalance();
+                }
+                showNotification('حدث خطأ بالاتصال، حاول مجدداً', 'error');
                 return false;
             }
         }
@@ -12127,6 +12180,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             } catch (error) {
                 console.error('[ROOM GIFT] Error sending:', error);
                 revertOptimisticDeduction();
+                showNotification('حدث خطأ بالاتصال، حاول مجدداً', 'error');
                 return false;
             }
         }
@@ -12592,7 +12646,17 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
                 showNotification(result.message || 'فشل إرسال الهدية', 'error');
             }
         } catch (error) {
+            // 🐛 إصلاح: لم يكن هذا الفرع يتراجع عن الخصم المتفائل عند فشل الشبكة — الرصيد
+            // يبقى مخصوماً محلياً بلا مبرر (راجع نفس الإصلاح بـfireOnce الخاصة أعلى الملف)
             console.error('[RAPID GIFT] Error:', error);
+            const revertUser = JSON.parse(localStorage.getItem('user'));
+            if (revertUser) {
+                revertUser.coins += gift.price;
+                localStorage.setItem('user', JSON.stringify(revertUser));
+                setHeaderCoins(revertUser.coins);
+                setCoinText(balanceEl, revertUser.coins);
+            }
+            stopRapidSending();
         } finally {
             inFlight--;
         }
@@ -14227,7 +14291,16 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
                 }
             }
         } catch (error) {
+            // 🐛 إصلاح: لم يكن هذا الفرع يتراجع عن الخصم المتفائل عند فشل الشبكة
             console.error('[RAPID PUBLIC GIFT] Error:', error);
+            const revertUser = JSON.parse(localStorage.getItem('user'));
+            if (revertUser) {
+                revertUser.coins += cost;
+                localStorage.setItem('user', JSON.stringify(revertUser));
+                setHeaderCoins(revertUser.coins);
+                setCoinText(balanceEl, revertUser.coins);
+            }
+            stopRapidSending();
         } finally {
             inFlight--;
         }
