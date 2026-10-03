@@ -2075,10 +2075,6 @@ video {
   background-color: rgb(219 39 119 / 0.8);
 }
 
-.bg-pink-900\/40{
-  background-color: rgb(131 24 67 / 0.4);
-}
-
 .bg-purple-400{
   --tw-bg-opacity: 1;
   background-color: rgb(192 132 252 / var(--tw-bg-opacity, 1));
@@ -2939,11 +2935,6 @@ video {
 .ring-emerald-400{
   --tw-ring-opacity: 1;
   --tw-ring-color: rgb(52 211 153 / var(--tw-ring-opacity, 1));
-}
-
-.ring-pink-500{
-  --tw-ring-opacity: 1;
-  --tw-ring-color: rgb(236 72 153 / var(--tw-ring-opacity, 1));
 }
 
 .ring-purple-500{
@@ -10039,25 +10030,25 @@ body.in-voice-room #main-content {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   width: 100%;
-  height: 25px;
-  border-radius: 3px 3px 11px 11px;
+  height: 20px;
+  border-radius: 3px 3px 10px 10px;
   background: #b7123f;
   color: #fff;
-  font-size: 11px;
+  font-size: 9.5px;
   font-weight: 600;
   letter-spacing: 0.2px;
   cursor: pointer;
   transition: filter 0.08s ease, transform 0.08s ease;
 }
 
-/* ✅ شبكة هدايا الغرفة/العامة أكبر — الزر يكبر تناسقاً معها */
+/* ✅ شبكة هدايا الغرفة/العامة أكبر — الزر يكبر تناسقاً معها، لكن طلب صريح: كان كبيراً زيادة */
 
 .room-gift-cards-grid .gift-card-send-btn {
-  height: 32px;
-  font-size: 13px;
-  border-radius: 4px 4px 14px 14px;
+  height: 26px;
+  font-size: 11px;
+  border-radius: 4px 4px 12px 12px;
 }
 
 .gift-card-send-btn:active {
@@ -10086,12 +10077,22 @@ body.in-voice-room #main-content {
   padding: 0;
   border-radius: 50%;
   box-shadow: 0 0 18px 3px rgba(183,18,63,0.6);
+  opacity: 1;
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
 .room-gift-cards-grid .gift-card-send-btn.gift-combo-active {
   width: 78px;
   height: 78px;
   top: 8px;
+}
+
+/* ✅ خروج سلس للدائرة لحظة انتهاء الكومبو (راجع endCombo بـsetupGiftComboSend) بدل إزالتها
+   الفورية من DOM — يعطي تلاشياً متناسقاً مع عودة صورة الهدية بنفس التوقيت بالضبط */
+
+.gift-card-send-btn.gift-combo-active.gift-combo-exiting {
+  opacity: 0;
+  transform: translateX(-50%) scale(0.82);
 }
 
 /* ✅ حلقة العدّ التنازلي — دائرتان SVG متراكبتان: تعبئة إشعاعية (تدرّج من مركز وردي-خمري فاتح
@@ -10180,11 +10181,22 @@ body.in-voice-room #main-content {
 }
 
 /* ✅ صورة الهدية تختفي أثناء الإرسال النشط (الكومبو) وتعود عند انتهائه — الدائرة تحلّ
-   محلّها بالضبط بنفس الموضع (راجع .gift-card-send-btn.gift-combo-active أعلاه) */
+   محلّها بالضبط بنفس الموضع (راجع .gift-card-send-btn.gift-combo-active أعلاه).
+   🐛 إصلاح: طلب صريح "على الهواتف تظهر الدائرة بسرعة وتختفي بسرعة البرق" — السبب الفعلي:
+   visibility:hidden/visible تُبدِّل فوراً بلا أي انتقال، فيبدو التحوّل كقفزة مفاجئة (أوضح على
+   شاشات الهاتف الصغيرة) — تحويل لـopacity/scale القابلين للانتقال السلس (lauout محفوظ بلا
+   احتلال مساحة زيادة، تماماً كـvisibility، لكن بانتقال حقيقي بالاتجاهين) */
+
+.gift-visual-slot > img,
+.gift-visual-slot > span {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
 
 .gift-card-wrapper.gift-combo-sending .gift-visual-slot > img,
 .gift-card-wrapper.gift-combo-sending .gift-visual-slot > span {
-  visibility: hidden;
+  opacity: 0;
+  transform: scale(0.8);
+  pointer-events: none;
 }
 
 /* ✅ زر الإرسال — الضغط المطوّل يحوّله لحالة نابضة بدل شكله الثابت (تصميمه الكامل أسفل
@@ -10293,12 +10305,15 @@ body.in-voice-room #main-content {
 /* ✅ شريط تصنيفات مقسَّم (segmented control) — نفس أسلوب "System Settings" بـ macOS:
    مسار بخلفية غائرة خفيفة، والتبويب النشط يظهر كشريحة مرتفعة بخلفية متباينة */
 
+/* ✅ طلب صريح: "بلا خلفية وأصغر قليلاً" — إزالة خلفية الشريط والكبسولة المرتفعة للتبويب
+   النشط كلياً (لم تعد "كبسولة System Settings")، تمييز التبويب النشط فقط بلون أبيض ناصع +
+   خط سفلي رقيق بدل الصندوق، لكسب مساحة رأسية إضافية داخل النافذة */
+
 .gift-category-tabs {
   display: flex;
-  gap: 3px;
-  background: rgba(0,0,0,0.25);
-  border-radius: 10px;
-  padding: 3px;
+  gap: 2px;
+  background: transparent;
+  padding: 0;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -10310,49 +10325,66 @@ body.in-voice-room #main-content {
 .gift-category-tab {
   flex: 1 0 auto;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 9.5px;
   font-weight: 700;
-  color: rgba(255,255,255,0.55);
-  padding: 5px 12px;
-  border-radius: 7px;
-  transition: background 0.15s ease, color 0.15s ease;
+  color: rgba(255,255,255,0.5);
+  padding: 3px 9px;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
 .gift-category-tab.active {
-  background: rgba(255,255,255,0.14);
+  background: transparent;
   color: #fff;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  box-shadow: none;
+  border-bottom-color: #ec1b6a;
 }
 
 /* ✅ اختيار الكمية (1/6/66/166/999 — نفس قيم Likee بالضبط) — segmented control مكشوف دائماً
    (بدل قائمة منسدلة مخفية) بنفس أسلوب SwiftUI Picker(.segmented): مسار واحد متصل، وشريحة
    واحدة فقط محدَّدة دوماً، مرئية مباشرة بلا أي ضغطة إضافية لكشفها. كبسولة بنفس أسلوب كبسولة
-   الكوينز بالضبط (نفس الخلفية الداكنة + استدارة كاملة) بطلب صريح */
+   الكوينز بالضبط (نفس الخلفية الداكنة + استدارة كاملة) بطلب صريح، وأغمق أكثر بطلب صريح لاحق.
+   ✅ طلب صريح: "المربع الذي يحدّد الرقم ينتقل بطريقة جميلة" — شريحة .gift-qty-thumb واحدة
+   تنزلق فعلياً (transform+width محسوبان بـJS عبر positionQtyThumb) بدل تبديل خلفية كل زر */
 
 .gift-qty-segmented {
+  position: relative;
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  background: rgba(0,0,0,0.55);
+  background: rgba(0,0,0,0.68);
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 9999px;
   padding: 2px;
   gap: 1px;
 }
 
+.gift-qty-thumb {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  height: calc(100% - 4px);
+  background: rgba(255,255,255,0.18);
+  border-radius: 9999px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), width 0.22s ease;
+  pointer-events: none;
+}
+
 .gift-qty-segment {
+  position: relative;
+  z-index: 1;
   padding: 4px 5px;
   font-size: 9px;
   font-weight: 800;
   color: rgba(255,255,255,0.55);
   border-radius: 999px;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: color 0.15s ease;
 }
 
 .gift-qty-segment.active {
-  background: rgba(255,255,255,0.16);
   color: #fff;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
 /* ✅ كبسولة رصيد الكوينز بالتذييل — بأسلوب Likee (كبسولة داكنة مستقلة) بدل نص عادٍ فقط */
@@ -10365,11 +10397,11 @@ body.in-voice-room #main-content {
   font-size: 11px;
   font-weight: 800;
   color: #ffcf4d;
-  background: rgba(0,0,0,0.55);
+  background: rgba(0,0,0,0.68);
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 9999px;
   padding: 5px 12px;
-  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, color 0.2s ease, text-shadow 0.2s ease;
 }
 
 /* ✅ طلب صريح: تأثير بصري خفيف لكن جميل عند نقص الكوينز عن تكلفة الهدية/الكمية المحدَّدة */
@@ -10565,12 +10597,12 @@ body.in-voice-room #main-content {
 
 .room-gift-cards-grid .gift-visual-slot,
 .room-gift-cards-grid .gift-visual-img {
-  width: 58px;
-  height: 58px;
+  width: 50px;
+  height: 50px;
 }
 
 .room-gift-cards-grid .gift-visual-slot span {
-  font-size: 2.5rem;
+  font-size: 2.15rem;
 }
 
 /* ✅ أكبر قليلاً من المتجر الخاص تناسقاً مع حجم الأيقونة الأكبر هنا */
@@ -13092,6 +13124,124 @@ body.in-voice-room #main-content {
 
 .follow-suggestion-dismiss:active {
   color: #9ca3af;
+}
+
+/* ✅ طلب صريح: "ضف مواثرات حينما ينقصون او يزيدون ... وخلي الخلفية غامقه ايضا لهم قليلا" —
+   كبسولة الكوينز الدائمة بالهيدر (أكثر مكان يراه المستخدم للرصيد) أغمق قليلاً بالوضع الداكن،
+   + نبضة خضراء عند الزيادة (إيداع/استرجاع) أو حمراء عند النقصان (إرسال هدية/شراء) على أي
+   عنصر يعرض رصيداً (راجع setCoinText/setHeaderCoins بـapp.js) */
+
+:root:not([data-theme="light"]) .coins,
+:root[data-theme="dark"] .coins {
+  background-color: rgba(0,0,0,0.38) !important;
+}
+
+#coins, .gift-footer-balance, #frame-shop-coins-value, #gift-store-balance, #pg-balance,
+#calculated-coins, #balance-purchase-coins {
+  display: inline-block;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+.coin-pulse-up {
+  color: #4ade80 !important;
+  text-shadow: 0 0 10px rgba(74,222,128,0.65);
+  animation: coinPulseScale 0.5s ease;
+}
+
+.coin-pulse-down {
+  color: #f87171 !important;
+  text-shadow: 0 0 10px rgba(248,113,113,0.65);
+  animation: coinPulseScale 0.5s ease;
+}
+
+@keyframes coinPulseScale {
+  0% {
+    transform: scale(1);
+  }
+
+  30% {
+    transform: scale(1.28);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ✅ طلب صريح: نافذة اقتصاص حقيقية عند رفع صورة شخصية/غلاف (بدل اقتصاص تلقائي ثابت بالسيرفر
+   فقط) — شاشة كاملة سوداء (أسلوب Instagram/WhatsApp القياسي لنوافذ الاقتصاص) تحتضن Cropper.js */
+
+.image-cropper-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+}
+
+.image-cropper-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  padding-top: max(12px, env(safe-area-inset-top));
+  background: #111;
+}
+
+.image-cropper-title {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.image-cropper-header-btn {
+  color: #e5e7eb;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 10px;
+}
+
+.image-cropper-confirm-btn {
+  color: #fff;
+  background: #ec1b6a;
+  border-radius: 9999px;
+  padding: 6px 16px;
+}
+
+.image-cropper-stage {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #000;
+}
+
+.image-cropper-stage img {
+  display: block;
+  max-width: 100%;
+}
+
+/* ✅ تخصيص مقابض/خطوط Cropper.js الافتراضية لتتماشى مع هوية التطبيق (وردي بدل الأزرق الافتراضي) */
+
+.cropper-view-box, .cropper-face {
+  border-radius: 0;
+}
+
+.cropper-point {
+  background-color: #ec1b6a;
+  width: 8px;
+  height: 8px;
+  opacity: 0.9;
+}
+
+.cropper-line {
+  background-color: #ec1b6a;
+  opacity: 0.6;
+}
+
+.cropper-view-box {
+  outline: 1px solid rgba(236,27,106,0.8);
 }
 
 .hover\:scale-105:hover{

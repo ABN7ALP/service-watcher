@@ -3626,36 +3626,38 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const coverBtn = modal.querySelector('#change-room-cover-btn');
         const coverInput = modal.querySelector('#room-cover-file-input');
         coverBtn.addEventListener('click', () => coverInput.click());
-        coverInput.addEventListener('change', async () => {
+        coverInput.addEventListener('change', () => {
             const file = coverInput.files?.[0];
             if (!file) return;
-            const originalHTML = coverBtn.innerHTML;
-            coverBtn.disabled = true;
-            coverBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جارِ الرفع...';
-            try {
-                const formData = new FormData();
-                formData.append('coverImage', file);
-                const response = await fetch(`/api/voice-room/rooms/${room.id}/cover`, {
-                    method: 'PATCH',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                    body: formData
-                });
-                const result = await response.json();
-                if (!response.ok) {
-                    showNotification(result.message || 'تعذر رفع صورة الغلاف', 'error');
-                    return;
+            showImageCropperModal(file, 480 / 270, async (cropped) => {
+                const originalHTML = coverBtn.innerHTML;
+                coverBtn.disabled = true;
+                coverBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جارِ الرفع...';
+                try {
+                    const formData = new FormData();
+                    formData.append('coverImage', cropped, 'room-cover.jpg');
+                    const response = await fetch(`/api/voice-room/rooms/${room.id}/cover`, {
+                        method: 'PATCH',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData
+                    });
+                    const result = await response.json();
+                    if (!response.ok) {
+                        showNotification(result.message || 'تعذر رفع صورة الغلاف', 'error');
+                        return;
+                    }
+                    currentRoomCoverImage = result.coverImage;
+                    const headerCoverEl = document.getElementById('room-info-cover-img');
+                    if (headerCoverEl) headerCoverEl.src = result.coverImage;
+                    showNotification('تم تحديث صورة الغلاف ✅', 'success');
+                } catch (error) {
+                    showNotification('حدث خطأ، حاول مجدداً', 'error');
+                } finally {
+                    coverBtn.disabled = false;
+                    coverBtn.innerHTML = originalHTML;
+                    coverInput.value = '';
                 }
-                currentRoomCoverImage = result.coverImage;
-                const headerCoverEl = document.getElementById('room-info-cover-img');
-                if (headerCoverEl) headerCoverEl.src = result.coverImage;
-                showNotification('تم تحديث صورة الغلاف ✅', 'success');
-            } catch (error) {
-                showNotification('حدث خطأ، حاول مجدداً', 'error');
-            } finally {
-                coverBtn.disabled = false;
-                coverBtn.innerHTML = originalHTML;
-                coverInput.value = '';
-            }
+            });
         });
 
         // ✅ تغيير المقاعد فوري ومنفصل عن باقي الحفظ — كل من بالغرفة يرى التحديث لحظياً
@@ -4514,8 +4516,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     localUser.coins = result.newBalance;
                     localStorage.setItem('user', JSON.stringify(localUser));
                 }
-                const coinsEl = document.getElementById('coins');
-                if (coinsEl) coinsEl.textContent = result.newBalance;
+                setHeaderCoins(result.newBalance);
             }
             showNotification('تم تفعيل الخلفية ✅', 'success');
         } catch (error) {
@@ -5825,8 +5826,7 @@ async function showFrameShopModal() {
     let lastShopData = null;
 
     function renderShopState(data) {
-        const coinsEl = modal.querySelector('#frame-shop-coins-value');
-        if (coinsEl) coinsEl.textContent = data.coins.toLocaleString();
+        setCoinText(modal.querySelector('#frame-shop-coins-value'), data.coins);
 
         const activeMeta = data.activeFrame ? data.frames.find(f => f._id.toString() === data.activeFrame.toString()) : null;
         const preview = modal.querySelector('#frame-shop-current-preview');
@@ -6091,14 +6091,12 @@ function setupSettingsEvents() {
     
     document.getElementById('image-file-input').addEventListener('change', (e) => {
         const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                document.getElementById('settings-profile-image').src = event.target.result;
-            };
-            reader.readAsDataURL(file);
+        if (!file) return;
+        showImageCropperModal(file, 1, (cropped) => {
+            pendingCroppedProfileImage = cropped;
+            document.getElementById('settings-profile-image').src = URL.createObjectURL(cropped);
             document.getElementById('upload-image-btn').classList.remove('hidden');
-        }
+        });
     });
     
     document.getElementById('image-upload-form').addEventListener('submit', handleImageUpload);
@@ -6219,17 +6217,79 @@ document.querySelectorAll('.unblock-user-btn').forEach(btn => {
 });
  }
 
+// ✅ طلب صريح: "اجعلها تلتقط الجزء الفوق من الصورة او امكانية تحديد كيف يريد عرضها اقتصاص" —
+// نافذة اقتصاص حقيقية (Cropper.js، بحث مكتبات: خفيفة بلا اعتماديات، تدعم اللمس أصلياً) تمنح
+// المستخدم حرية كاملة لتحديد موضع/حجم الاقتصاص قبل الرفع، بدل الاقتصاص التلقائي الثابت
+// بالسيرفر فقط (gravity:face / fill مركزي) الذي لا يمنحه أي تحكّم. aspectRatio: 1 للصور
+// الشخصية (مربع)، نسبة الغلاف (640:260 أو 480:270) لصور الأغلفة. onCropped(blob|file) يستقبل
+// ملف الصورة بعد الاقتصاص (أو الملف الأصلي كما هو لو تعذّر تحميل المكتبة — تدهور سلس بلا تعطيل)
+function showImageCropperModal(file, aspectRatio, onCropped) {
+    if (typeof Cropper === 'undefined') {
+        onCropped(file);
+        return;
+    }
+    document.getElementById('image-cropper-modal')?.remove();
+
+    const objectUrl = URL.createObjectURL(file);
+    const modal = document.createElement('div');
+    modal.id = 'image-cropper-modal';
+    modal.className = 'image-cropper-modal';
+    modal.innerHTML = `
+        <div class="image-cropper-header">
+            <button type="button" id="image-cropper-cancel" class="image-cropper-header-btn">إلغاء</button>
+            <span class="image-cropper-title">اقتصاص الصورة</span>
+            <button type="button" id="image-cropper-confirm" class="image-cropper-header-btn image-cropper-confirm-btn">تم</button>
+        </div>
+        <div class="image-cropper-stage">
+            <img id="image-cropper-img" src="${objectUrl}" alt="">
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const imgEl = document.getElementById('image-cropper-img');
+    const cropper = new Cropper(imgEl, {
+        aspectRatio,
+        viewMode: 1,
+        dragMode: 'move',
+        autoCropArea: 1,
+        background: false,
+        responsive: true,
+        guides: false,
+        center: false,
+        highlight: false
+    });
+
+    function cleanup() {
+        cropper.destroy();
+        URL.revokeObjectURL(objectUrl);
+        modal.remove();
+    }
+
+    document.getElementById('image-cropper-cancel').addEventListener('click', cleanup);
+    document.getElementById('image-cropper-confirm').addEventListener('click', () => {
+        const canvas = cropper.getCroppedCanvas({ maxWidth: 1600, maxHeight: 1600, imageSmoothingQuality: 'high' });
+        canvas.toBlob((blob) => {
+            cleanup();
+            onCropped(blob || file);
+        }, 'image/jpeg', 0.92);
+    });
+}
+
+// ✅ أُضيف الاقتصاص: الملف النهائي المختار بعد اقتصاص المستخدم (أو null قبل أي اختيار) —
+// handleImageUpload يرفعه بدل fileInput.files[0] الخام مباشرة
+let pendingCroppedProfileImage = null;
+
 // دالة جديدة لمعالجة رفع الصورة
 async function handleImageUpload(e) {
     e.preventDefault();
     const fileInput = document.getElementById('image-file-input');
-    if (!fileInput.files || fileInput.files.length === 0) {
+    if ((!fileInput.files || fileInput.files.length === 0) && !pendingCroppedProfileImage) {
         showNotification('الرجاء اختيار صورة أولاً.', 'error');
         return;
     }
 
     const formData = new FormData();
-    formData.append('profileImage', fileInput.files[0]);
+    formData.append('profileImage', pendingCroppedProfileImage || fileInput.files[0], 'profile.jpg');
 
     const uploadBtn = document.getElementById('upload-image-btn');
     uploadBtn.disabled = true;
@@ -6250,6 +6310,7 @@ async function handleImageUpload(e) {
             localStorage.setItem('user', JSON.stringify(localUser));
             document.getElementById('profileImage').src = localUser.profileImage; // تحديث الصورة في الشريط العلوي
             uploadBtn.classList.add('hidden');
+            pendingCroppedProfileImage = null;
         } else {
             showNotification(result.message || 'فشل رفع الصورة', 'error');
         }
@@ -6306,7 +6367,10 @@ function updateUIWithUserData(userData) {
     if (usernameEl) usernameEl.innerHTML = `${escapeHtml(userData.username)} ${getAgentBadgeHTML(userData.isAgent)}`;
 
     document.getElementById('balance').textContent = userData.balance.toFixed(2);
-    document.getElementById('coins').textContent = userData.coins;
+    // ✅ تحميل أولي فقط (لا تغيّر حقيقي بالرصيد) — بلا أي مواثرة نبض كي لا تظهر نبضة خضراء
+    // كاذبة عند أول فتح للتطبيق؛ راجع setHeaderCoins للتحديثات الحقيقية اللاحقة بكل مكان آخر
+    const coinsHeaderEl = document.getElementById('coins');
+    if (coinsHeaderEl) coinsHeaderEl.textContent = Number(userData.coins || 0).toLocaleString('en-US');
     document.getElementById('userLevel').textContent = userData.level;
 
     const profileImgEl = document.getElementById('profileImage');
@@ -7997,8 +8061,10 @@ socket.on('levelUp', ({ newLevel }) => {
     });
 
         socket.on('coinsUpdated', ({ newCoins }) => {
-    const coinsEl = document.getElementById('coins');
-    if (coinsEl) coinsEl.textContent = newCoins;
+    // ✅ طلب صريح: "خلي أمور إنفاق الكوينز فوري بكل الجهات" — هذا صدى السيرفر الحقيقي (مصدر
+    // الحقيقة) لأي تغيّر برصيد المستخدم من أي مصدر (هدية صادرة/واردة، شراء، إيداع)؛ تحديث
+    // فوري للهيدر هنا يضمن اتساق الرصيد بكل مكان مفتوح حالياً بالتطبيق بلا أي تأخير
+    setHeaderCoins(newCoins);
     const localUser = JSON.parse(localStorage.getItem('user'));
     if (localUser) {
         localUser.coins = newCoins;
@@ -9237,39 +9303,43 @@ function showProfileEditSheet(u) {
             () => { fileInput.removeAttribute('capture'); fileInput.click(); }
         );
     });
-    document.getElementById('profile-edit-avatar-file').addEventListener('change', async (e) => {
+    document.getElementById('profile-edit-avatar-file').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        const formData = new FormData();
-        formData.append('profileImage', file);
-        try {
-            const response = await fetch('/api/users/updateProfilePicture', { method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
-            const result = await response.json();
-            if (response.ok) {
-                document.getElementById('profile-edit-avatar-preview').src = result.data.user.profileImage;
-                localStorage.setItem('user', JSON.stringify(result.data.user));
-                showNotification('تم تحديث الصورة الشخصية ✅', 'success');
-            } else {
-                showNotification(result.message || 'تعذر رفع الصورة', 'error');
-            }
-        } catch (error) { showNotification('حدث خطأ، حاول مجدداً', 'error'); }
+        showImageCropperModal(file, 1, async (cropped) => {
+            const formData = new FormData();
+            formData.append('profileImage', cropped, 'avatar.jpg');
+            try {
+                const response = await fetch('/api/users/updateProfilePicture', { method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
+                const result = await response.json();
+                if (response.ok) {
+                    document.getElementById('profile-edit-avatar-preview').src = result.data.user.profileImage;
+                    localStorage.setItem('user', JSON.stringify(result.data.user));
+                    showNotification('تم تحديث الصورة الشخصية ✅', 'success');
+                } else {
+                    showNotification(result.message || 'تعذر رفع الصورة', 'error');
+                }
+            } catch (error) { showNotification('حدث خطأ، حاول مجدداً', 'error'); }
+        });
     });
-    document.getElementById('profile-edit-cover-file').addEventListener('change', async (e) => {
+    document.getElementById('profile-edit-cover-file').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        const formData = new FormData();
-        formData.append('coverImage', file);
-        try {
-            const response = await fetch('/api/users/updateCoverImage', { method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
-            const result = await response.json();
-            if (response.ok) {
-                document.getElementById('profile-edit-cover-preview').style.backgroundImage = `url('${result.data.user.coverImage}')`;
-                localStorage.setItem('user', JSON.stringify(result.data.user));
-                showNotification('تم تحديث الغلاف ✅', 'success');
-            } else {
-                showNotification(result.message || 'تعذر رفع الغلاف', 'error');
-            }
-        } catch (error) { showNotification('حدث خطأ، حاول مجدداً', 'error'); }
+        showImageCropperModal(file, 640 / 260, async (cropped) => {
+            const formData = new FormData();
+            formData.append('coverImage', cropped, 'cover.jpg');
+            try {
+                const response = await fetch('/api/users/updateCoverImage', { method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
+                const result = await response.json();
+                if (response.ok) {
+                    document.getElementById('profile-edit-cover-preview').style.backgroundImage = `url('${result.data.user.coverImage}')`;
+                    localStorage.setItem('user', JSON.stringify(result.data.user));
+                    showNotification('تم تحديث الغلاف ✅', 'success');
+                } else {
+                    showNotification(result.message || 'تعذر رفع الغلاف', 'error');
+                }
+            } catch (error) { showNotification('حدث خطأ، حاول مجدداً', 'error'); }
+        });
     });
 
     document.getElementById('save-profile-edit-btn').addEventListener('click', async () => {
@@ -10018,6 +10088,27 @@ const COIN_ICON_URL = 'https://res.cloudinary.com/dntlt5xry/image/upload/v179102
 function coinIconHTML(px = 14) {
     return `<img src="${COIN_ICON_URL}" class="coin-icon-img" style="width:${px}px;height:${px}px" alt="">`;
 }
+// ✅ طلب صريح: "ضف لهم مواثرات حينما ينقصون او يزيدون" — نقطة تحديث موحّدة قابلة لإعادة
+// الاستخدام على أي عنصر يعرض رصيد كوينز (الهيدر الدائم، تذييل نوافذ الهدايا، متجر الإطارات،
+// حاسبة الشحن...) — تحدّث القيمة فوراً (لا تأخير) وتُضيف نبضة خضراء عند الزيادة أو حمراء عند
+// النقصان، فقط لو تغيّرت القيمة فعلياً عن سابقتها (راجع .coin-pulse-up/down بـinput.css)
+function setCoinText(el, newValue) {
+    if (!el) return;
+    const prev = parseFloat((el.textContent || '0').replace(/,/g, '')) || 0;
+    const next = Number(newValue) || 0;
+    el.textContent = next.toLocaleString('en-US');
+    if (next === prev) return;
+    el.classList.remove('coin-pulse-up', 'coin-pulse-down');
+    void el.offsetWidth;
+    el.classList.add(next > prev ? 'coin-pulse-up' : 'coin-pulse-down');
+    clearTimeout(el._coinPulseTimer);
+    el._coinPulseTimer = setTimeout(() => el.classList.remove('coin-pulse-up', 'coin-pulse-down'), 600);
+}
+// ✅ الهيدر الدائم (مصدر الرصيد الظاهر بكل شاشة) — نقطة التحديث الوحيدة المطلوبة بكل مكان
+// بالتطبيق يُفترض أن يُحدِّث رصيد المستخدم (طلب صريح: "خلي أمور إنفاق الكوينز فوري بكل الجهات")
+function setHeaderCoins(newValue) {
+    setCoinText(document.getElementById('coins'), newValue);
+}
 // ✅ خريطة عامة: أي صنف إطار يحتاج صورة تراكب حقيقية فوق الصورة الشخصية (بدل حدّ CSS بسيط)
 // تُضاف هنا — صنف واحد لكل إطار صورة جديد يُشترى من المتجر (راجع autoSeed.js لنفس الروابط).
 //
@@ -10467,8 +10558,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                     if (localUser) {
                         localUser.coins = joinResult.data.newCoins;
                         localStorage.setItem('user', JSON.stringify(localUser));
-                        const coinsEl = document.getElementById('coins');
-                        if (coinsEl) coinsEl.textContent = localUser.coins;
+                        setHeaderCoins(localUser.coins);
                     }
                 }
                 showNotification(`انضممت لنادي ${ownerUsername} 🌹`, 'success');
@@ -11300,8 +11390,7 @@ async function showQuickGiftPicker(targetUserId, targetUsername) {
             }
             const syncedUser = JSON.parse(localStorage.getItem('user'));
             if (syncedUser) { syncedUser.coins = result.data.newSenderCoins; localStorage.setItem('user', JSON.stringify(syncedUser)); }
-            const coinsEl = document.getElementById('coins');
-            if (coinsEl) coinsEl.textContent = result.data.newSenderCoins;
+            setHeaderCoins(result.data.newSenderCoins);
             modal.remove();
             showGiftThankYouModal(targetUsername, selectedGift);
         } catch (error) {
@@ -11751,9 +11840,8 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
             // ✅ تحديث متفائل فوري
             localUser.coins -= totalCost;
             localStorage.setItem('user', JSON.stringify(localUser));
-            const coinsEl = document.getElementById('coins');
-            if (coinsEl) coinsEl.textContent = localUser.coins;
-            footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = localUser.coins);
+            setHeaderCoins(localUser.coins);
+            footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, localUser.coins));
             checkLowBalance();
 
             showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', quantity, targetUserId);
@@ -11772,8 +11860,8 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                         syncedUser.coins = result2.data.newSenderCoins;
                         localStorage.setItem('user', JSON.stringify(syncedUser));
                     }
-                    if (coinsEl) coinsEl.textContent = result2.data.newSenderCoins;
-                    footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = result2.data.newSenderCoins);
+                    setHeaderCoins(result2.data.newSenderCoins);
+                    footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, result2.data.newSenderCoins));
                     checkLowBalance();
                     if (result2.data.message) displayPrivateMessage(result2.data.message, true);
 
@@ -11785,8 +11873,8 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                     if (revertUser) {
                         revertUser.coins += totalCost;
                         localStorage.setItem('user', JSON.stringify(revertUser));
-                        if (coinsEl) coinsEl.textContent = revertUser.coins;
-                        footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = revertUser.coins);
+                        setHeaderCoins(revertUser.coins);
+                        footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, revertUser.coins));
                         checkLowBalance();
                     }
                     showNotification(result2.message || 'فشل إرسال الهدية', 'error');
@@ -11822,8 +11910,8 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
     if (existing) existing.remove();
 
     const shellHTML = `
-        <div id="room-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-3">
-            <div class="room-gift-sheet w-full md:max-w-sm text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
+        <div id="room-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-2">
+            <div class="room-gift-sheet w-full md:max-w-md text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
                 <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
                 <div class="gift-sheet-header flex-shrink-0">
                     <div id="room-gift-avatars" class="room-gift-avatar-row flex-1"></div>
@@ -11847,6 +11935,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         // البيانات" رغم نجاح كل الطلبات الشبكية فعلياً
         const currentUser = JSON.parse(localStorage.getItem('user')) || {};
         let gifts, seatedUsers;
+        let hostId = null;
         if (presetTarget) {
             const shopRes = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
             gifts = shopRes.data.gifts;
@@ -11865,9 +11954,12 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             // من جذرها (لا خيار لاختيار نفسي إطلاقاً)، لا مجرد رفض الطلب لاحقاً بعد فوات الأوان
             const myIdStr = currentUser._id ? currentUser._id.toString() : null;
             seatedUsers = (roomRes.seats || []).filter(s => s.user && s.user.id !== myIdStr).map(s => s.user);
+            // ✅ طلب صريح: مالك الغرفة محدَّد تلقائياً كمستلم افتراضي لو كان جالساً على مقعد
+            if (roomRes.host) hostId = (roomRes.host._id || roomRes.host).toString();
         }
 
-        let selectedUserIds = new Set(presetTarget ? [presetTarget.id] : []);
+        const hostIsSeated = !!hostId && seatedUsers.some(u => u.id === hostId);
+        let selectedUserIds = new Set(presetTarget ? [presetTarget.id] : (hostIsSeated ? [hostId] : []));
         let audienceMode = 'selected';
 
         const body = document.getElementById('room-gift-body');
@@ -11877,7 +11969,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         document.getElementById('room-gift-avatars').innerHTML = presetTarget ? `
             <span class="relative flex flex-col items-center gap-1 flex-shrink-0" title="${escapeHtml(presetTarget.username)}">
                 <span class="relative inline-block">
-                    <img src="${presetTarget.profileImage}" class="rg-avatar-img ring-2 ring-pink-500">
+                    <img src="${presetTarget.profileImage}" class="rg-avatar-img">
                     <span class="absolute -top-1 -left-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 flex items-center justify-center">
                         <i class="fas fa-check text-white" style="font-size:6px"></i>
                     </span>
@@ -11894,7 +11986,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                     <button class="room-gift-avatar-btn relative flex flex-col items-center gap-1 flex-shrink-0" data-user-id="${u.id}" data-username="${escapeHtml(u.username)}" title="${escapeHtml(u.username)}">
                         <span class="relative inline-block">
                             <img src="${u.profileImage}" class="rg-avatar-img">
-                            <span class="rg-selected-badge hidden absolute -top-1 -left-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
+                            <span class="rg-selected-badge ${u.id === hostId ? 'flex' : 'hidden'} absolute -top-1 -left-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
                                 <i class="fas fa-check text-white" style="font-size:6px"></i>
                             </span>
                         </span>
@@ -11919,9 +12011,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         }
         function clearIndividualSelectionVisuals() {
             modal.querySelectorAll('.room-gift-avatar-btn').forEach(b => {
-                b.querySelector('.rg-avatar-img')?.classList.remove('ring-2', 'ring-pink-500');
                 b.querySelector('.rg-selected-badge')?.classList.add('hidden');
-                b.classList.remove('bg-pink-900/40');
             });
         }
 
@@ -11937,19 +12027,14 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 audienceMode = 'selected';
                 markAllSelectedVisual(false);
                 const uid = avatarBtn.dataset.userId;
-                const img = avatarBtn.querySelector('.rg-avatar-img');
                 const badge = avatarBtn.querySelector('.rg-selected-badge');
                 if (selectedUserIds.has(uid)) {
                     selectedUserIds.delete(uid);
-                    img.classList.remove('ring-2', 'ring-pink-500');
                     badge.classList.add('hidden');
-                    avatarBtn.classList.remove('bg-pink-900/40');
                 } else {
                     selectedUserIds.add(uid);
-                    img.classList.add('ring-2', 'ring-pink-500');
                     badge.classList.remove('hidden');
                     badge.classList.add('flex');
-                    avatarBtn.classList.add('bg-pink-900/40');
                 }
             });
         });
@@ -11983,9 +12068,8 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             // وينزل" بالتتابع قبل أن يستقر أخيراً على الرقم الصحيح)
             localUser.coins -= totalCost;
             localStorage.setItem('user', JSON.stringify(localUser));
-            const coinsEl = document.getElementById('coins');
-            if (coinsEl) coinsEl.textContent = localUser.coins;
-            footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = localUser.coins);
+            setHeaderCoins(localUser.coins);
+            footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, localUser.coins));
             checkLowBalance();
 
             // 🐛 إصلاح: كان يُستدعى هنا محلياً بالتفاؤل (نسخة) بينما صدى السيرفر room-gift-announcement
@@ -12005,8 +12089,8 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 if (!revertUser) return;
                 revertUser.coins += totalCost;
                 localStorage.setItem('user', JSON.stringify(revertUser));
-                if (coinsEl) coinsEl.textContent = revertUser.coins;
-                footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = revertUser.coins);
+                setHeaderCoins(revertUser.coins);
+                footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, revertUser.coins));
                 checkLowBalance();
             };
 
@@ -12026,8 +12110,8 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                         syncedUser.coins = result.data.newSenderCoins;
                         localStorage.setItem('user', JSON.stringify(syncedUser));
                     }
-                    if (coinsEl) coinsEl.textContent = result.data.newSenderCoins;
-                    footer.querySelectorAll('.gift-footer-balance').forEach(el => el.textContent = result.data.newSenderCoins);
+                    setHeaderCoins(result.data.newSenderCoins);
+                    footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, result.data.newSenderCoins));
                     checkLowBalance();
                     // ✅ يُطلَق فقط بعد تأكيد نجاح السيرفر صراحة — راجع الشرح أعلى هذي الدالة
                     recipients.forEach(receiverId => notifyRoomGiftSupport(receiverId, gift.price * quantity));
@@ -12091,6 +12175,7 @@ function renderGiftFooterHTML(coins) {
                 ${coinIconHTML(13)} <span class="gift-footer-balance">${coins}</span>
             </span>
             <div class="gift-qty-segmented" role="group">
+                <span class="gift-qty-thumb"></span>
                 ${[1, 6, 66, 166, 999].map((n, i) => `<button type="button" data-qty="${n}" class="gift-qty-segment${i === 0 ? ' active' : ''}">×${n}</button>`).join('')}
             </div>
         </div>
@@ -12177,11 +12262,22 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
         onSelectGift(selectedGift, quantity, newSendBtn);
     });
 
+    // ✅ طلب صريح: "المربع الذي يحدّد الرقم ينتقل بطريقة جميلة" — شريحة مرئية (thumb) تنزلق
+    // فعلياً بين الأزرار (transform/width) بدل تبديل خلفية كل زر بشكل منفصل بلا حركة انتقالية
+    // حقيقية؛ القياس لحظي (offsetLeft/offsetWidth) لأن عرض كل زر يختلف باختلاف عدد أرقامه
+    function positionQtyThumb(seg) {
+        const thumb = rootEl.querySelector('.gift-qty-thumb');
+        if (!thumb || !seg) return;
+        thumb.style.width = `${seg.offsetWidth}px`;
+        thumb.style.transform = `translateX(${seg.offsetLeft}px)`;
+    }
+
     // ✅ اختيار الكمية: segmented control مكشوف دائماً — شريحة واحدة فقط محدَّدة بأي لحظة
     rootEl.querySelectorAll('.gift-qty-segment').forEach(seg => {
         seg.addEventListener('click', () => {
             rootEl.querySelectorAll('.gift-qty-segment').forEach(s => s.classList.remove('active'));
             seg.classList.add('active');
+            positionQtyThumb(seg);
             quantity = parseInt(seg.dataset.qty);
             updateLowBalanceVisual();
             // ✅ تغيير الكمية فقط لا يُنشئ زر إرسال جديداً (الزر الحالي بالكارد المحدَّد يبقى
@@ -12189,6 +12285,8 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
             onSelectGift(selectedGift, quantity, null);
         });
     });
+    // ✅ تموضع أولي فوري (بلا أنيميشن ظاهر) على الشريحة النشطة افتراضياً (×1) عند أول رسم
+    positionQtyThumb(rootEl.querySelector('.gift-qty-segment.active'));
 
     return { getSelectedGift: () => selectedGift, getQuantity: () => quantity, deselectAll, registerComboTeardown, checkLowBalance: updateLowBalanceVisual };
 }
@@ -12259,13 +12357,21 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
         card?.classList.add('gift-combo-sending');
     }
 
+    // 🐛 إصلاح طلب صريح: "على الهواتف تظهر الدائرة بسرعة وتختفي بسرعة البرق" — كانت
+    // onComboEnd (أي deselectAll) تُستدعى فوراً فتُمحى الدائرة من DOM بلا أي انتقال بصري
+    // (clearAllSendSlots يُفرِّغ innerHTML مباشرة) — نضيف فئة خروج سلسة (راجع
+    // .gift-combo-exiting بـinput.css) وننتظر مدة الانتقال بالضبط قبل الإزالة الفعلية، فتتلاشى
+    // الدائرة بأنيميشن متناسق مع عودة صورة الهدية بنفس اللحظة تماماً بدل القفزة المفاجئة
+    let exitTimer = null;
     function endCombo() {
         if (!inCombo) return;
         inCombo = false;
         stopHold();
         clearInterval(tickTimer);
         tickTimer = null;
-        onComboEnd?.();
+        btn.classList.add('gift-combo-exiting');
+        clearTimeout(exitTimer);
+        exitTimer = setTimeout(() => { onComboEnd?.(); }, 160);
     }
 
     function tick() {
@@ -12359,6 +12465,7 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
         stopHold();
         clearInterval(tickTimer);
         tickTimer = null;
+        clearTimeout(exitTimer);
         inCombo = false;
     }
 
@@ -12437,10 +12544,9 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
         // ✅ تحديث متفائل فوري: نخصم محلياً قبل رد الخادم لإحساس فوري بالسرعة
         localUser.coins -= gift.price;
         localStorage.setItem('user', JSON.stringify(localUser));
-        const coinsEl = document.getElementById('coins');
-        if (coinsEl) coinsEl.textContent = localUser.coins;
+        setHeaderCoins(localUser.coins);
         const balanceEl = document.getElementById('gift-store-balance');
-        if (balanceEl) balanceEl.textContent = localUser.coins;
+        setCoinText(balanceEl, localUser.coins);
 
                 sentCount++;
         const mySeq = ++requestSeq; // ✅ كل طلب يأخذ رقماً تسلسلياً فريداً
@@ -12469,8 +12575,8 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
                         syncedUser.coins = result.data.newSenderCoins;
                         localStorage.setItem('user', JSON.stringify(syncedUser));
                     }
-                    if (coinsEl) coinsEl.textContent = result.data.newSenderCoins;
-                    if (balanceEl) balanceEl.textContent = result.data.newSenderCoins;
+                    setHeaderCoins(result.data.newSenderCoins);
+                    setCoinText(balanceEl, result.data.newSenderCoins);
                 }
                 if (result.data.message) displayPrivateMessage(result.data.message, true);
             } else {
@@ -12479,8 +12585,8 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
                 if (revertUser) {
                     revertUser.coins += gift.price;
                     localStorage.setItem('user', JSON.stringify(revertUser));
-                    if (coinsEl) coinsEl.textContent = revertUser.coins;
-                    if (balanceEl) balanceEl.textContent = revertUser.coins;
+                    setHeaderCoins(revertUser.coins);
+                    setCoinText(balanceEl, revertUser.coins);
                 }
                 stopRapidSending();
                 showNotification(result.message || 'فشل إرسال الهدية', 'error');
@@ -13878,8 +13984,8 @@ function confirmRedeem(redeemTo) {
     if (existing) existing.remove();
 
     const shellHTML = `
-        <div id="public-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-3">
-            <div class="room-gift-sheet w-full md:max-w-sm text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
+        <div id="public-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-2">
+            <div class="room-gift-sheet w-full md:max-w-md text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
                 <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
                 <div class="gift-sheet-header flex-shrink-0">
                     <div id="public-gift-avatars" class="room-gift-avatar-row flex-1"></div>
@@ -13959,9 +14065,7 @@ function confirmRedeem(redeemTo) {
 
         function clearIndividualSelectionVisuals() {
             modal.querySelectorAll('.public-gift-avatar-btn').forEach(b => {
-                b.querySelector('.rg-avatar-img')?.classList.remove('ring-2', 'ring-pink-500');
                 b.querySelector('.rg-selected-badge')?.classList.add('hidden');
-                b.classList.remove('bg-pink-900/40');
             });
         }
 
@@ -13977,19 +14081,14 @@ function confirmRedeem(redeemTo) {
                 audienceMode = 'selected';
                 markAllSelectedVisual(false);
                 const uid = avatarBtn.dataset.userId;
-                const img = avatarBtn.querySelector('.rg-avatar-img');
                 const badge = avatarBtn.querySelector('.rg-selected-badge');
                 if (selectedUserIds.has(uid)) {
                     selectedUserIds.delete(uid);
-                    img.classList.remove('ring-2', 'ring-pink-500');
                     badge.classList.add('hidden');
-                    avatarBtn.classList.remove('bg-pink-900/40');
                 } else {
                     selectedUserIds.add(uid);
-                    img.classList.add('ring-2', 'ring-pink-500');
                     badge.classList.remove('hidden');
                     badge.classList.add('flex');
-                    avatarBtn.classList.add('bg-pink-900/40');
                 }
             });
         });
@@ -14075,10 +14174,9 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
         // ✅ تحديث متفائل فوري
         localUser.coins -= cost;
         localStorage.setItem('user', JSON.stringify(localUser));
-        const coinsEl = document.getElementById('coins');
-        if (coinsEl) coinsEl.textContent = localUser.coins;
+        setHeaderCoins(localUser.coins);
         const balanceEl = document.getElementById('pg-balance');
-        if (balanceEl) balanceEl.textContent = localUser.coins;
+        setCoinText(balanceEl, localUser.coins);
 
                 sentCount++;
         const mySeq = ++requestSeq;
@@ -14110,16 +14208,16 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
                         syncedUser.coins = result.data.newCoins;
                         localStorage.setItem('user', JSON.stringify(syncedUser));
                     }
-                    if (coinsEl) coinsEl.textContent = result.data.newCoins;
-                    if (balanceEl) balanceEl.textContent = result.data.newCoins;
+                    setHeaderCoins(result.data.newCoins);
+                    setCoinText(balanceEl, result.data.newCoins);
                 }
             } else {
                 const revertUser = JSON.parse(localStorage.getItem('user'));
                 if (revertUser) {
                     revertUser.coins += cost;
                     localStorage.setItem('user', JSON.stringify(revertUser));
-                    if (coinsEl) coinsEl.textContent = revertUser.coins;
-                    if (balanceEl) balanceEl.textContent = revertUser.coins;
+                    setHeaderCoins(revertUser.coins);
+                    setCoinText(balanceEl, revertUser.coins);
                 }
                 // ✅ حد معدّل الإرسال (429) أثناء ضغط مستمر سريع: لا نقاطع المستخدم ولا نزعجه
                 // بتنبيه — فقط نتراجع عن خصم هذي المحاولة ونكمل بهدوء بالتكرار التالي تلقائياً
