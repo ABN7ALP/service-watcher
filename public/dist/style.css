@@ -10049,6 +10049,14 @@ body.in-voice-room #main-content {
   -webkit-user-select: none;
      -moz-user-select: none;
           user-select: none;
+  /* 🐛 إصلاح طلب صريح (يظهر فقط على الهاتف، أحياناً يعمل صحيحاً وأحياناً لا — سلوك غير
+       ثابت يطابق تماماً علّة WebKit معروفة): ترقية الزر لطبقة تركيب (compositing layer)
+       مسبقاً عبر will-change، قبل أي انتقال فعلي — بعض متصفحات الهاتف (خصوصاً Safari/WebKit)
+       تتجاهل أول انتقال CSS فعلياً وتقفز مباشرة لحالته النهائية حين تترافق ترقية الطبقة
+       (position:absolute + transform الجديدين بـ.gift-combo-active) مع بداية الانتقال بنفس
+       اللحظة — ما يُفسِّر "تظهر وتختفي بسرعة" أحياناً، وتعمل بشكل طبيعي أحياناً أخرى (علّة
+       توقيت لا منطق) بينما سطح المكتب (بلا نفس قيود WebKit) يعمل دائماً بشكل سليم */
+  will-change: opacity, transform;
 }
 
 /* ✅ شبكة هدايا الغرفة/العامة أكبر — الزر يكبر تناسقاً معها، لكن طلب صريح: كان كبيراً زيادة */
@@ -10198,6 +10206,7 @@ body.in-voice-room #main-content {
 .gift-visual-slot > img,
 .gift-visual-slot > span {
   transition: opacity 0.16s ease, transform 0.16s ease;
+  will-change: opacity, transform;
 }
 
 .gift-card-wrapper.gift-combo-sending .gift-visual-slot > img,
@@ -13151,21 +13160,26 @@ body.in-voice-room #main-content {
 }
 
 /* ✅ عملات صغيرة تسقط من أعلى العنصر وتهبط بارتداد خفيف — ثابتة الموضع بإحداثيات الشاشة
-   الفعلية (محسوبة بـJS عبر getBoundingClientRect)، تُحذف تلقائياً بعد السقوط */
+   الفعلية (محسوبة بـJS عبر getBoundingClientRect)، تُحذف تلقائياً بعد السقوط.
+   🐛 إصلاح طلب صريح: "قبيحة، تشبه أكياس القمامة" — السبب الفعلي: نفس أيقونة الكوينز
+   الأساسية (سوداء مسطّحة بلا تلوين) بلا فلتر التذهيب المعتمد بـ.coin-icon-img، وبدوران كامل
+   220deg يجعل شكلها المسطّح غير مفهوم أثناء السقوط. أُضيف نفس فلتر التذهيب + تكبير خفيف +
+   دوران بسيط جداً (تمايل بدل دوران كامل) لتبقى مقروءة كعملة واضحة طوال السقوط */
 
 .falling-coin-fx {
   position: fixed;
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
   z-index: 500;
   pointer-events: none;
-  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));
-  animation: fallingCoinDrop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  filter: invert(74%) sepia(77%) saturate(1500%) hue-rotate(1deg) brightness(103%) contrast(101%)
+            drop-shadow(0 2px 3px rgba(0,0,0,0.5));
+  animation: fallingCoinDrop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 @keyframes fallingCoinDrop {
   0% {
-    transform: translateY(0) scale(0.6) rotate(0deg);
+    transform: translateY(0) scale(0.5) rotate(0deg);
     opacity: 0;
   }
 
@@ -13173,13 +13187,18 @@ body.in-voice-room #main-content {
     opacity: 1;
   }
 
-  70% {
-    transform: translateY(26px) scale(1) rotate(180deg);
+  65% {
+    transform: translateY(42px) scale(1.05) rotate(-8deg);
+    opacity: 1;
+  }
+
+  85% {
+    transform: translateY(48px) scale(0.9) rotate(6deg);
     opacity: 1;
   }
 
   100% {
-    transform: translateY(32px) scale(0.3) rotate(220deg);
+    transform: translateY(50px) scale(0.5) rotate(0deg);
     opacity: 0;
   }
 }

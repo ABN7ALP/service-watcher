@@ -4516,7 +4516,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     localUser.coins = result.newBalance;
                     localStorage.setItem('user', JSON.stringify(localUser));
                 }
-                setHeaderCoins(result.newBalance);
+                setHeaderCoinsSilent(result.newBalance);
             }
             showNotification('تم تفعيل الخلفية ✅', 'success');
         } catch (error) {
@@ -5826,7 +5826,7 @@ async function showFrameShopModal() {
     let lastShopData = null;
 
     function renderShopState(data) {
-        setCoinText(modal.querySelector('#frame-shop-coins-value'), data.coins);
+        setCoinTextSilent(modal.querySelector('#frame-shop-coins-value'), data.coins);
 
         const activeMeta = data.activeFrame ? data.frames.find(f => f._id.toString() === data.activeFrame.toString()) : null;
         const preview = modal.querySelector('#frame-shop-current-preview');
@@ -10093,9 +10093,20 @@ function coinIconHTML(px = 14) {
 }
 // ✅ طلب صريح لاحق: أُزيلت تماماً نبضة اللون الأحمر عند نقصان الرصيد (الإرسال/الإنفاق) —
 // "هذا يُحسِّس المستخدم أنه ينفق، ونحن بطبيعتنا نريد حثّه على الشحن والدعم وإرسال الهدايا"؛
-// الإنفاق يُحدَّث الرقم فوراً بصمت بلا أي مؤثر سلبي. الزيادة (إيداع/استرجاع) فقط تحصل على
-// مؤثر إيجابي — ليس نبضة لون أخضر، بل عملات حقيقية "تتهاوى" وتهبط داخل الرصيد (راجع
-// spawnFallingCoinsEffect) — نقطة تحديث موحّدة قابلة لإعادة الاستخدام على أي عنصر يعرض رصيد
+// الإنفاق يُحدَّث الرقم فوراً بصمت بلا أي مؤثر. مؤثر العملات المتهاوية (الإيداع/الاسترجاع
+// فقط) حصراً عبر setCoinText أدناه — لا تستدعه أبداً من مسارات الإرسال/الشراء المتفائلة،
+// فهي أصلاً تخصم أولاً (next < prev) ثم تؤكّد قيمة السيرفر (next يساوي القيمة المخصومة
+// غالباً أو حتى تتراجع محلياً لحظياً بسبب تزامن طلبات)، وأي اكتشاف "زيادة" هناك زائف تماماً —
+// بالضبط البلاغ الصريح: "أثناء الإرسال العملات تتهاوى رغم أنني أنفق". setCoinTextSilent
+// هي الافتراضية الصحيحة لكل تحديث محلي (متفائل/تأكيد سيرفر لعملية أنت بدأتها)
+function setCoinTextSilent(el, newValue) {
+    if (!el) return;
+    const next = Number(newValue) || 0;
+    el.textContent = next.toLocaleString('en-US');
+}
+// ✅ النسخة "الذكية" — تُستخدم فقط لصدى socket.on('coinsUpdated') (إيداع مدير/وكيل/شراء
+// كوينز مؤكَّد من السيرفر، لا من مسار إرسال/شراء محلي أنت بدأته) — تُشغّل مؤثر العملات
+// المتهاوية فقط لو ارتفعت القيمة فعلاً عن ما كان معروضاً
 function setCoinText(el, newValue) {
     if (!el) return;
     const prev = parseFloat((el.textContent || '0').replace(/,/g, '')) || 0;
@@ -10118,12 +10129,12 @@ function spawnFallingCoinsEffect(anchorEl) {
         coin.src = COIN_ICON_URL;
         coin.className = 'falling-coin-fx';
         coin.alt = '';
-        const dx = (Math.random() - 0.5) * 28;
-        coin.style.left = `${originX + dx - 7}px`;
-        coin.style.top = `${originY - 22 - Math.random() * 10}px`;
+        const dx = (Math.random() - 0.5) * 30;
+        coin.style.left = `${originX + dx - 10}px`;
+        coin.style.top = `${originY - 30 - Math.random() * 12}px`;
         coin.style.animationDelay = `${i * 70}ms`;
         document.body.appendChild(coin);
-        setTimeout(() => coin.remove(), 900);
+        setTimeout(() => coin.remove(), 1000);
     }
     anchorEl.classList.remove('coin-land-pulse');
     void anchorEl.offsetWidth;
@@ -10135,14 +10146,20 @@ function spawnFallingCoinsEffect(anchorEl) {
 // ✅ طلب صريح: التحديث يجب أن يصل فوراً بلا أي حاجة لتحديث الصفحة/إغلاق وفتح النافذة — لو
 // كانت نافذة هدايا مفتوحة وقت إيداع المدير/الوكيل للرصيد، كبسولتها الخاصة تتحدّث هي أيضاً
 // بنفس اللحظة (راجع socket.on('coinsUpdated') أدناه الذي يستدعي هذي القائمة بالكامل، لا
-// الهيدر فقط كما كان سابقاً)
+// الهيدر فقط كما كان سابقاً). ✅ تستخدم عمداً النسخة "الذكية" (مؤثر العملات المتهاوية) —
+// هذي القائمة تُستدعى فقط من صدى إيداع/شراء حقيقي مؤكَّد من السيرفر (coinsUpdated)، لا من
+// أي مسار إنفاق محلي، فالزيادة هنا حقيقية دائماً ويحق لها الاحتفال البصري
 function setAllVisibleCoinDisplays(newValue) {
     setHeaderCoins(newValue);
     document.querySelectorAll('.gift-footer-balance, #frame-shop-coins-value, #gift-store-balance, #pg-balance')
         .forEach(el => setCoinText(el, newValue));
 }
-// ✅ الهيدر الدائم (مصدر الرصيد الظاهر بكل شاشة) — نقطة التحديث الوحيدة المطلوبة بكل مكان
-// بالتطبيق يُفترض أن يُحدِّث رصيد المستخدم (طلب صريح: "خلي أمور إنفاق الكوينز فوري بكل الجهات")
+// ✅ نسخة صامتة من الهيدر (بلا أي مؤثر) — للاستخدام بكل مسارات الإنفاق/الشراء المحلية.
+function setHeaderCoinsSilent(newValue) {
+    setCoinTextSilent(document.getElementById('coins'), newValue);
+}
+// ✅ نسخة "ذكية" من الهيدر (مؤثر العملات المتهاوية عند الزيادة) — للاستخدام فقط من
+// setAllVisibleCoinDisplays (صدى coinsUpdated الحقيقي)
 function setHeaderCoins(newValue) {
     setCoinText(document.getElementById('coins'), newValue);
 }
@@ -10595,7 +10612,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                     if (localUser) {
                         localUser.coins = joinResult.data.newCoins;
                         localStorage.setItem('user', JSON.stringify(localUser));
-                        setHeaderCoins(localUser.coins);
+                        setHeaderCoinsSilent(localUser.coins);
                     }
                 }
                 showNotification(`انضممت لنادي ${ownerUsername} 🌹`, 'success');
@@ -11427,7 +11444,7 @@ async function showQuickGiftPicker(targetUserId, targetUsername) {
             }
             const syncedUser = JSON.parse(localStorage.getItem('user'));
             if (syncedUser) { syncedUser.coins = result.data.newSenderCoins; localStorage.setItem('user', JSON.stringify(syncedUser)); }
-            setHeaderCoins(result.data.newSenderCoins);
+            setHeaderCoinsSilent(result.data.newSenderCoins);
             modal.remove();
             showGiftThankYouModal(targetUsername, selectedGift);
         } catch (error) {
@@ -11877,8 +11894,8 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
             // ✅ تحديث متفائل فوري
             localUser.coins -= totalCost;
             localStorage.setItem('user', JSON.stringify(localUser));
-            setHeaderCoins(localUser.coins);
-            footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, localUser.coins));
+            setHeaderCoinsSilent(localUser.coins);
+            footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, localUser.coins));
             checkLowBalance();
 
             showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', quantity, targetUserId);
@@ -11897,8 +11914,8 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                         syncedUser.coins = result2.data.newSenderCoins;
                         localStorage.setItem('user', JSON.stringify(syncedUser));
                     }
-                    setHeaderCoins(result2.data.newSenderCoins);
-                    footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, result2.data.newSenderCoins));
+                    setHeaderCoinsSilent(result2.data.newSenderCoins);
+                    footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, result2.data.newSenderCoins));
                     checkLowBalance();
                     if (result2.data.message) displayPrivateMessage(result2.data.message, true);
 
@@ -11910,8 +11927,8 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                     if (revertUser) {
                         revertUser.coins += totalCost;
                         localStorage.setItem('user', JSON.stringify(revertUser));
-                        setHeaderCoins(revertUser.coins);
-                        footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, revertUser.coins));
+                        setHeaderCoinsSilent(revertUser.coins);
+                        footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, revertUser.coins));
                         checkLowBalance();
                     }
                     // ✅ حد معدّل الإرسال (429) أثناء ضغط مستمر سريع: لا نقاطع الكومبو ولا
@@ -11930,8 +11947,8 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                 if (revertUser) {
                     revertUser.coins += totalCost;
                     localStorage.setItem('user', JSON.stringify(revertUser));
-                    setHeaderCoins(revertUser.coins);
-                    footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, revertUser.coins));
+                    setHeaderCoinsSilent(revertUser.coins);
+                    footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, revertUser.coins));
                     checkLowBalance();
                 }
                 showNotification('حدث خطأ بالاتصال، حاول مجدداً', 'error');
@@ -12121,8 +12138,8 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             // وينزل" بالتتابع قبل أن يستقر أخيراً على الرقم الصحيح)
             localUser.coins -= totalCost;
             localStorage.setItem('user', JSON.stringify(localUser));
-            setHeaderCoins(localUser.coins);
-            footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, localUser.coins));
+            setHeaderCoinsSilent(localUser.coins);
+            footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, localUser.coins));
             checkLowBalance();
 
             // 🐛 إصلاح: كان يُستدعى هنا محلياً بالتفاؤل (نسخة) بينما صدى السيرفر room-gift-announcement
@@ -12142,8 +12159,8 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 if (!revertUser) return;
                 revertUser.coins += totalCost;
                 localStorage.setItem('user', JSON.stringify(revertUser));
-                setHeaderCoins(revertUser.coins);
-                footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, revertUser.coins));
+                setHeaderCoinsSilent(revertUser.coins);
+                footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, revertUser.coins));
                 checkLowBalance();
             };
 
@@ -12163,8 +12180,8 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                         syncedUser.coins = result.data.newSenderCoins;
                         localStorage.setItem('user', JSON.stringify(syncedUser));
                     }
-                    setHeaderCoins(result.data.newSenderCoins);
-                    footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinText(el, result.data.newSenderCoins));
+                    setHeaderCoinsSilent(result.data.newSenderCoins);
+                    footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, result.data.newSenderCoins));
                     checkLowBalance();
                     // ✅ يُطلَق فقط بعد تأكيد نجاح السيرفر صراحة — راجع الشرح أعلى هذي الدالة
                     recipients.forEach(receiverId => notifyRoomGiftSupport(receiverId, gift.price * quantity));
@@ -12598,9 +12615,9 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
         // ✅ تحديث متفائل فوري: نخصم محلياً قبل رد الخادم لإحساس فوري بالسرعة
         localUser.coins -= gift.price;
         localStorage.setItem('user', JSON.stringify(localUser));
-        setHeaderCoins(localUser.coins);
+        setHeaderCoinsSilent(localUser.coins);
         const balanceEl = document.getElementById('gift-store-balance');
-        setCoinText(balanceEl, localUser.coins);
+        setCoinTextSilent(balanceEl, localUser.coins);
 
                 sentCount++;
         const mySeq = ++requestSeq; // ✅ كل طلب يأخذ رقماً تسلسلياً فريداً
@@ -12629,8 +12646,8 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
                         syncedUser.coins = result.data.newSenderCoins;
                         localStorage.setItem('user', JSON.stringify(syncedUser));
                     }
-                    setHeaderCoins(result.data.newSenderCoins);
-                    setCoinText(balanceEl, result.data.newSenderCoins);
+                    setHeaderCoinsSilent(result.data.newSenderCoins);
+                    setCoinTextSilent(balanceEl, result.data.newSenderCoins);
                 }
                 if (result.data.message) displayPrivateMessage(result.data.message, true);
             } else {
@@ -12639,8 +12656,8 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
                 if (revertUser) {
                     revertUser.coins += gift.price;
                     localStorage.setItem('user', JSON.stringify(revertUser));
-                    setHeaderCoins(revertUser.coins);
-                    setCoinText(balanceEl, revertUser.coins);
+                    setHeaderCoinsSilent(revertUser.coins);
+                    setCoinTextSilent(balanceEl, revertUser.coins);
                 }
                 stopRapidSending();
                 showNotification(result.message || 'فشل إرسال الهدية', 'error');
@@ -12653,8 +12670,8 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
             if (revertUser) {
                 revertUser.coins += gift.price;
                 localStorage.setItem('user', JSON.stringify(revertUser));
-                setHeaderCoins(revertUser.coins);
-                setCoinText(balanceEl, revertUser.coins);
+                setHeaderCoinsSilent(revertUser.coins);
+                setCoinTextSilent(balanceEl, revertUser.coins);
             }
             stopRapidSending();
         } finally {
@@ -14238,9 +14255,9 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
         // ✅ تحديث متفائل فوري
         localUser.coins -= cost;
         localStorage.setItem('user', JSON.stringify(localUser));
-        setHeaderCoins(localUser.coins);
+        setHeaderCoinsSilent(localUser.coins);
         const balanceEl = document.getElementById('pg-balance');
-        setCoinText(balanceEl, localUser.coins);
+        setCoinTextSilent(balanceEl, localUser.coins);
 
                 sentCount++;
         const mySeq = ++requestSeq;
@@ -14272,16 +14289,16 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
                         syncedUser.coins = result.data.newCoins;
                         localStorage.setItem('user', JSON.stringify(syncedUser));
                     }
-                    setHeaderCoins(result.data.newCoins);
-                    setCoinText(balanceEl, result.data.newCoins);
+                    setHeaderCoinsSilent(result.data.newCoins);
+                    setCoinTextSilent(balanceEl, result.data.newCoins);
                 }
             } else {
                 const revertUser = JSON.parse(localStorage.getItem('user'));
                 if (revertUser) {
                     revertUser.coins += cost;
                     localStorage.setItem('user', JSON.stringify(revertUser));
-                    setHeaderCoins(revertUser.coins);
-                    setCoinText(balanceEl, revertUser.coins);
+                    setHeaderCoinsSilent(revertUser.coins);
+                    setCoinTextSilent(balanceEl, revertUser.coins);
                 }
                 // ✅ حد معدّل الإرسال (429) أثناء ضغط مستمر سريع: لا نقاطع المستخدم ولا نزعجه
                 // بتنبيه — فقط نتراجع عن خصم هذي المحاولة ونكمل بهدوء بالتكرار التالي تلقائياً
@@ -14297,8 +14314,8 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
             if (revertUser) {
                 revertUser.coins += cost;
                 localStorage.setItem('user', JSON.stringify(revertUser));
-                setHeaderCoins(revertUser.coins);
-                setCoinText(balanceEl, revertUser.coins);
+                setHeaderCoinsSilent(revertUser.coins);
+                setCoinTextSilent(balanceEl, revertUser.coins);
             }
             stopRapidSending();
         } finally {
