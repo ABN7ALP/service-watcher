@@ -11980,7 +11980,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
     if (existing) existing.remove();
 
     const shellHTML = `
-        <div id="room-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-2">
+        <div id="room-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-0 md:p-2">
             <div class="room-gift-sheet w-full md:max-w-md text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
                 <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
                 <div class="gift-sheet-header flex-shrink-0">
@@ -12631,12 +12631,19 @@ function wireGiftCategoryTabs(rootEl, gifts, gridSelector) {
     `;
     tabsEl.querySelectorAll('.gift-category-tab').forEach(tab => {
         tab.addEventListener('click', () => {
+            if (tab.classList.contains('active')) return;
             tabsEl.querySelectorAll('.gift-category-tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             const cat = tab.dataset.cat;
             const filtered = cat === 'all' ? gifts : gifts.filter(g => (g.category || 'common') === cat);
             gridEl.innerHTML = filtered.map(renderGiftCardHTML).join('');
             wireGiftImageFallbacks(gridEl);
+            // ✅ إحساس مطاطي عند تبديل التصنيف بدل قطع فجائي — نزيل الكلاس أولاً لإجبار إعادة
+            // تشغيل الأنيميشن حتى لو نُقر تبويب آخر قبل انتهاء الحركة السابقة
+            gridEl.classList.remove('gift-grid-squish');
+            void gridEl.offsetWidth;
+            gridEl.classList.add('gift-grid-squish');
+            gridEl.addEventListener('animationend', () => gridEl.classList.remove('gift-grid-squish'), { once: true });
             // ✅ أي اختيار سابق قد يختفي بصرياً بالتبويب الجديد (تصنيف مختلف) — نُعطّل زر
             // الإرسال حتى اختيار جديد صريح، بدل إبقائه فعّالاً بلا أي تحديد ظاهر بالشبكة
             const sendBtn = rootEl.querySelector('.gift-send-main-btn');
@@ -14124,7 +14131,7 @@ function confirmRedeem(redeemTo) {
     if (existing) existing.remove();
 
     const shellHTML = `
-        <div id="public-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-2">
+        <div id="public-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-0 md:p-2">
             <div class="room-gift-sheet w-full md:max-w-md text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
                 <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
                 <div class="gift-sheet-header flex-shrink-0">

@@ -3656,13 +3656,13 @@ body.in-voice-room #main-content {
    مع اقتراب نهاية العدّ التنازلي */
 .gift-card-send-btn.gift-combo-active {
     position: absolute;
-    top: 6px;
+    top: 7px;
     left: 50%;
     transform: translateX(-50%);
     flex-direction: column;
     gap: 0;
-    width: 58px;
-    height: 58px;
+    width: 52px;
+    height: 52px;
     margin: 0;
     padding: 0;
     border-radius: 50%;
@@ -3670,10 +3670,11 @@ body.in-voice-room #main-content {
     opacity: 1;
     transition: opacity 0.16s ease, transform 0.16s ease;
 }
+/* ✅ طلب صريح: تصغير حجم الدائرة قليلاً (كانت كبيرة نسبياً داخل خانة شبكة ضيقة) */
 .room-gift-cards-grid .gift-card-send-btn.gift-combo-active {
-    width: 78px;
-    height: 78px;
-    top: 8px;
+    width: 66px;
+    height: 66px;
+    top: 9px;
 }
 /* ✅ خروج سلس للدائرة لحظة انتهاء الكومبو (راجع endCombo بـsetupGiftComboSend) بدل إزالتها
    الفورية من DOM — يعطي تلاشياً متناسقاً مع عودة صورة الهدية بنفس التوقيت بالضبط */
@@ -3772,7 +3773,7 @@ body.in-voice-room #main-content {
     text-shadow: 0 1px 2px rgba(0,0,0,0.45), 0 0 10px rgba(255,255,255,0.35);
     letter-spacing: 0.3px;
 }
-.room-gift-cards-grid .gift-combo-number { font-size: 22px; }
+.room-gift-cards-grid .gift-combo-number { font-size: 19px; }
 .gift-combo-label {
     position: relative;
     font-size: 8px;
@@ -3851,12 +3852,12 @@ body.in-voice-room #main-content {
        أكبر. dvh أدق من vh على الهاتف (يُحسب من الارتفاع المرئي الفعلي، لا الافتراضي
        الأكبر حين يكون شريط عنوان المتصفح ظاهراً)، مع vh كـ fallback للمتصفحات الأقدم */
     /* ✅ طلب صريح: زيادة طول النافذة قليلاً (استغلالاً بصف شريط المستلمين المُصغَّر أدناه،
-       لا تمدّداً فارغاً) لإعطاء شبكة الهدايا مساحة أكبر */
-    max-height: 48vh;
-    max-height: 48dvh;
+       لا تمدّداً فارغاً) لإعطاء شبكة الهدايا مساحة أكبر — ✅ طلب صريح لاحق: زيادة إضافية */
+    max-height: 56vh;
+    max-height: 56dvh;
 }
 @media (min-width: 768px) {
-    .room-gift-sheet { border-radius: 20px; max-height: 54vh; max-height: 54dvh; }
+    .room-gift-sheet { border-radius: 20px; max-height: 60vh; max-height: 60dvh; }
 }
 
 /* ✅ رأس ثابت: يحتضن شريط المستلمين مباشرةً (بدل عنوان نصي + زر إغلاق X — الإغلاق يتم
@@ -3888,10 +3889,10 @@ body.in-voice-room #main-content {
 .gift-category-tab {
     flex: 1 0 auto;
     white-space: nowrap;
-    font-size: 9.5px;
+    font-size: 11.5px;
     font-weight: 700;
     color: rgba(255,255,255,0.5);
-    padding: 3px 9px;
+    padding: 5px 11px;
     border-radius: 0;
     border-bottom: 2px solid transparent;
     transition: color 0.15s ease, border-color 0.15s ease;
@@ -3903,12 +3904,26 @@ body.in-voice-room #main-content {
     border-bottom-color: #ec1b6a;
 }
 
+/* ✅ طلب صريح: إحساس "مطاطي" عند تبديل التصنيف (عادي/نادرة/أسطورية/خرافية) بدل قطع فجائي —
+   الشبكة تتقلص بخفة ثم تعود بارتداد مرن (نفس منحنى overshoot المستخدم بشريحة الكمية)، تماماً
+   كإحساس "قص مشهد فيديو وظهور آخر بمطاطية خفيفة" الذي وصفه المستخدم */
+.gift-grid-squish {
+    transform-origin: center top;
+    animation: giftGridSquish 0.36s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes giftGridSquish {
+    0% { transform: scale(1); opacity: 1; }
+    30% { transform: scale(0.91); opacity: 0.5; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
 /* ✅ اختيار الكمية (1/6/66/166/999 — نفس قيم Likee بالضبط) — segmented control مكشوف دائماً
    (بدل قائمة منسدلة مخفية) بنفس أسلوب SwiftUI Picker(.segmented): مسار واحد متصل، وشريحة
    واحدة فقط محدَّدة دوماً، مرئية مباشرة بلا أي ضغطة إضافية لكشفها. كبسولة بنفس أسلوب كبسولة
    الكوينز بالضبط (نفس الخلفية الداكنة + استدارة كاملة) بطلب صريح، وأغمق أكثر بطلب صريح لاحق.
    ✅ طلب صريح: "المربع الذي يحدّد الرقم ينتقل بطريقة جميلة" — شريحة .gift-qty-thumb واحدة
    تنزلق فعلياً (transform+width محسوبان بـJS عبر positionQtyThumb) بدل تبديل خلفية كل زر */
+/* ✅ طلب صريح: الخلفية السوداء الغامقة أكبر قليلاً (حشوة أكبر) لتتّسع للأرقام المُكبَّرة */
 .gift-qty-segmented {
     position: relative;
     display: flex;
@@ -3916,17 +3931,21 @@ body.in-voice-room #main-content {
     flex-shrink: 0;
     background: rgba(0,0,0,0.68);
     border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 9999px;
-    padding: 2px;
+    border-radius: 12px;
+    padding: 3px;
     gap: 1px;
 }
+/* 🐛 إصلاح طلب صريح: "الخلفية بيضوية، خليها متناسقة" — السبب: زاوية استدارة كاملة (9999px)
+   فوق صندوق يختلف عرضه (×1/×6 أضيق بكثير من ×166/×999) بارتفاع ثابت ينتج دائرة للقيم
+   القصيرة وبيضة ممدودة للقيم الطويلة. زاوية استدارة صغيرة وثابتة (10px) تبقى مستطيلاً
+   منحني الحواف متناسقاً بصرياً بغض النظر عن عدد الأرقام */
 .gift-qty-thumb {
     position: absolute;
-    top: 2px;
+    top: 3px;
     left: 0;
-    height: calc(100% - 4px);
+    height: calc(100% - 6px);
     background: rgba(255,255,255,0.18);
-    border-radius: 9999px;
+    border-radius: 10px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), width 0.22s ease;
     pointer-events: none;
@@ -3934,11 +3953,11 @@ body.in-voice-room #main-content {
 .gift-qty-segment {
     position: relative;
     z-index: 1;
-    padding: 4px 5px;
-    font-size: 9px;
+    padding: 5px 8px;
+    font-size: 11px;
     font-weight: 800;
     color: rgba(255,255,255,0.55);
-    border-radius: 999px;
+    border-radius: 10px;
     transition: color 0.15s ease;
 }
 .gift-qty-segment.active {
@@ -3951,26 +3970,18 @@ body.in-voice-room #main-content {
     align-items: center;
     gap: 5px;
     flex-shrink: 0;
-    font-size: 11px;
+    font-size: 13.5px;
     font-weight: 800;
     color: #ffcf4d;
     background: rgba(0,0,0,0.68);
     border: 1px solid rgba(255,255,255,0.06);
     border-radius: 9999px;
-    padding: 5px 12px;
+    padding: 6px 13px;
     transition: box-shadow 0.25s ease, border-color 0.25s ease, color 0.2s ease, text-shadow 0.2s ease;
 }
-/* ✅ طلب صريح: تأثير بصري خفيف لكن جميل عند نقص الكوينز عن تكلفة الهدية/الكمية المحدَّدة */
-.gift-footer-balance-pill.low-balance {
-    color: #ff8a8a;
-    border-color: rgba(248,113,113,0.45);
-    box-shadow: 0 0 10px 1px rgba(248,113,113,0.35);
-    animation: giftLowBalancePulse 1.1s ease-in-out infinite;
-}
-@keyframes giftLowBalancePulse {
-    0%, 100% { box-shadow: 0 0 8px 0px rgba(248,113,113,0.3); }
-    50% { box-shadow: 0 0 13px 3px rgba(248,113,113,0.55); }
-}
+/* ✅ طلب صريح لاحق: أُزيل توهّج الأحمر على كبسولة الرصيد عند اختيار هدية بالكامل — المنطق
+   بـapp.js (updateLowBalanceVisual) لا يزال يُضيف/يُزيل كلاس low-balance، لكنه الآن بلا أي
+   تأثير بصري عمداً (ترك الكلاس بلا تنسيق أبسط وأسلم من نزع كل نقاط الاستدعاء بالكود) */
 
 /* ✅ بحث معمّق + طلب صريح: التذييل نفسه بلا خلفية/حدّ خاص به إطلاقاً — يعوم شفافاً فوق
    شبكة الهدايا (الحاوية الأب تحتاج position:relative، راجع .room-gift-sheet/.gift-store-sheet)
@@ -4075,7 +4086,7 @@ body.in-voice-room #main-content {
    داخلي لعرض الباقي — بدل تمدّد النافذة كاملة مع كل هدية تُضاف مستقبلاً. ✅ طلب صريح: زيادة
    الارتفاع (230px بدل 190px) لاستيعاب الهدايا المُكبَّرة بلا ازدحام */
 .room-gift-cards-grid {
-    max-height: 244px;
+    max-height: 300px;
     overflow-y: auto;
     scrollbar-width: thin;
     /* ✅ حشوة أسفلية كي لا يُغطّى آخر صفّ هدايا خلف .gift-footer العائم دائماً عند التمرير للأسفل */
@@ -4111,8 +4122,8 @@ body.in-voice-room #main-content {
 .room-gift-cards-grid .gift-visual-img { width: 50px; height: 50px; }
 .room-gift-cards-grid .gift-visual-slot span { font-size: 2.15rem; }
 /* ✅ أكبر قليلاً من المتجر الخاص تناسقاً مع حجم الأيقونة الأكبر هنا */
-.room-gift-cards-grid .gift-card-name { font-size: 13px; }
-.room-gift-cards-grid .gift-card-price { font-size: 12px; }
+.room-gift-cards-grid .gift-card-name { font-size: 11px; }
+.room-gift-cards-grid .gift-card-price { font-size: 10px; }
 
 /* ✅ إحساس لمسي أجمل عند التحديد: انتفاخ خفيف للكارد كامل + نبض مستمر خفيف لصورة الهدية نفسها */
 .room-gift-cards-grid .gift-card-wrapper.gift-card-selected { transform: scale(1.06); }
