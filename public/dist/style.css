@@ -10111,6 +10111,47 @@ body.in-voice-room #main-content {
   transform: translateX(-50%) scale(0.82);
 }
 
+/* 🐛 إصلاح جذري (طلب صريح: "أعد هيكلتها" بعد تأكيد المشكلة لا تزال تحدث على الهواتف رغم
+   إصلاح أحداث pointer): العنصر الذي يحمل Pointer Capture (.gift-card-send-btn) كان
+   يُعاد بناء innerHTML بالكامل من الصفر عند بدء/تحديث الكومبو (renderCombo بـapp.js) —
+   استبدال محتوى عنصر ملتقط أثناء ضغطة لمسية نشطة هو سبب موثَّق لتعطّل توصيل أحداث
+   pointerup/cancel على متصفحات هاتف معيّنة (أثبتناه بتحليل فيديو فعلي: نفس العلّة).
+   الحل الجذري الصحيح: عنصر الزر لا يُعاد بناؤه إطلاقاً بعد إنشائه الأول — كل المحتوى (نص
+   "إرسال" العادي + حلقة الكومبو/الشارة/الرقم) موجود بالـDOM منذ البداية دائماً، ونُبدِّل
+   الظهور فقط عبر display (راجع newSendBtn.innerHTML بـwireGiftSelectionAndQty و
+   renderCombo المُعاد كتابتها لتحدّث نصوصاً فقط لا تبني عناصر جديدة) */
+
+.gcsb-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: inherit;
+}
+
+.gift-card-send-btn .gift-combo-ring,
+.gift-card-send-btn .gift-combo-badge,
+.gift-card-send-btn .gift-combo-number,
+.gift-card-send-btn .gift-combo-label {
+  display: none;
+}
+
+.gift-card-send-btn.gift-combo-active .gcsb-label {
+  display: none;
+}
+
+.gift-card-send-btn.gift-combo-active .gift-combo-ring {
+  display: block;
+}
+
+.gift-card-send-btn.gift-combo-active .gift-combo-badge {
+  display: inline-block;
+}
+
+.gift-card-send-btn.gift-combo-active .gift-combo-number,
+.gift-card-send-btn.gift-combo-active .gift-combo-label {
+  display: block;
+}
+
 /* ✅ حلقة العدّ التنازلي — دائرتان SVG متراكبتان: تعبئة إشعاعية (تدرّج من مركز وردي-خمري فاتح
    لحافة أغمق، عمق حقيقي بدل لون مسطّح) + حلقة بيضاء تتحرك فعلياً (stroke-dashoffset) فوقها،
    بدوران -90deg كي تبدأ الإفراغ من الأعلى كعقارب الساعة بالعكس */

@@ -11957,7 +11957,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
         }
 
         const { getSelectedGift, getQuantity, deselectAll, registerComboTeardown, checkLowBalance } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
-            if (sendBtnEl) registerComboTeardown(setupGiftComboSend(sendBtnEl, fireOnce, deselectAll).forceEnd);
+            if (sendBtnEl) registerComboTeardown(setupGiftComboSend(sendBtnEl, fireOnce, deselectAll).forceEnd, sendBtnEl);
         });
 
     } catch (error) {
@@ -12203,7 +12203,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         }
 
         const { getSelectedGift, getQuantity, deselectAll, registerComboTeardown, checkLowBalance } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
-            if (sendBtnEl) registerComboTeardown(setupGiftComboSend(sendBtnEl, fireOnce, deselectAll).forceEnd);
+            if (sendBtnEl) registerComboTeardown(setupGiftComboSend(sendBtnEl, fireOnce, deselectAll).forceEnd, sendBtnEl);
         });
 
     } catch (error) {
@@ -12267,8 +12267,9 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
     // المستخدم اختار هدية جديدة بالفعل، فيفقد قدرته على إرسالها بصمت دون أي تنبيه. نتتبّع
     // دالة إيقاف الكومبو النشط حالياً ونستدعيها صراحة عند أي تبديل/إلغاء تحديد
     let activeComboForceEnd = null;
-    function registerComboTeardown(fn) { activeComboForceEnd = fn; }
-    function endActiveCombo() { activeComboForceEnd?.(); activeComboForceEnd = null; }
+    let activeComboBtnEl = null;
+    function registerComboTeardown(fn, btnEl) { activeComboForceEnd = fn; activeComboBtnEl = btnEl || null; }
+    function endActiveCombo() { activeComboForceEnd?.(); activeComboForceEnd = null; activeComboBtnEl = null; }
 
     // ✅ طلب صريح: تأثير بصري خفيف لكن جميل على كبسولة الرصيد عندما يكون الرصيد غير كافٍ
     // لتكلفة الهدية المحدَّدة × الكمية المحدَّدة — يُستدعى عند أي تغيّر بالتحديد/الكمية/الرصيد
@@ -12303,6 +12304,19 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
         // فنقرة عليه تصعد أيضاً كنقرة على الكارد الأب، فتُلغي التحديد فوراً وتحذف الزر
         // نفسه أثناء استخدامه — نتجاهل هذي الفقاعة صريحاً هنا
         if (e.target.closest('.gift-card-send-btn')) return;
+        // 🐛 إصلاح (طلب صريح: "يمكن بسبب ضيق المساحة... نقرات غلق"): دائرة الكومبو النشطة
+        // position:absolute بحجم أكبر من مكانها الأصلي بالشبكة (58-78px) فتتجاوز فعلياً حدود
+        // كرت الهدية المجاور بمساحة ضيقة كهذي — بعض المتصفحات لا تُطبِّق pointer capture على
+        // حدث click المُصنَّع من اللمس بنفس صرامة أحداث pointer الخام (علّة توافق معروفة)،
+        // فقد يُحلّ target فعلياً لعنصر الكرت المجاور تحت الدائرة رغم أن النقرة فعلياً وقعت
+        // داخل حدود الدائرة بصرياً. نتحقق من إحداثيات النقرة مقابل حدود الزر النشط فعلياً
+        // بغض النظر عمّا حلّ إليه target — يمنع إنهاء/تبديل الهدية خطأً من نقرة صحيحة على الدائرة
+        if (activeComboBtnEl) {
+            const r = activeComboBtnEl.getBoundingClientRect();
+            if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+                return;
+            }
+        }
         const card = e.target.closest('.gift-card-wrapper');
         if (!card || !rootEl.contains(card)) return;
         endActiveCombo();
@@ -12325,7 +12339,30 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
             if (slot) {
                 newSendBtn = document.createElement('span');
                 newSendBtn.className = 'gift-card-send-btn';
-                newSendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال';
+                // 🐛 إصلاح جذري (طلب صريح: "أعد هيكلتها" بعد تأكيد المشكلة لا تزال تحدث على
+                // الهواتف): عنصر الكومبو بالكامل (حلقة + شارة + رقم) موجود بالـDOM منذ هذي
+                // اللحظة الأولى، مخفياً بـCSS فقط (راجع .gift-card-send-btn.gift-combo-active
+                // بـinput.css) — renderCombo أدناه لن تعيد بناء innerHTML بعد الآن إطلاقاً،
+                // فقط تُحدِّث نصوصاً وتُبدِّل كلاسات. هذا يمنع العنصر المُلتقط (setPointerCapture)
+                // من التغيّر بنيوياً أثناء ضغطة نشطة — السبب الجذري المؤكَّد بتحليل فيديو فعلي
+                // وراء توقّف توصيل pointerup/cancel على متصفحات هاتف معيّنة
+                newSendBtn.innerHTML = `
+                    <span class="gcsb-label"><i class="fas fa-paper-plane"></i> إرسال</span>
+                    <svg class="gift-combo-ring" viewBox="0 0 40 40">
+                        <defs>
+                            <radialGradient id="giftComboGradient" cx="35%" cy="30%" r="75%">
+                                <stop offset="0%" stop-color="#ff6fa8"></stop>
+                                <stop offset="55%" stop-color="#f5107a"></stop>
+                                <stop offset="100%" stop-color="#b7123f"></stop>
+                            </radialGradient>
+                        </defs>
+                        <circle class="gift-combo-ring-bg" cx="20" cy="20" r="17"></circle>
+                        <circle class="gift-combo-ring-fg" cx="20" cy="20" r="17" style="stroke-dasharray:${2 * Math.PI * 17}"></circle>
+                    </svg>
+                    <span class="gift-combo-badge"></span>
+                    <span class="gift-combo-number"></span>
+                    <span class="gift-combo-label">Combo</span>
+                `;
                 slot.appendChild(newSendBtn);
             }
         }
@@ -12406,24 +12443,16 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
         fg.style.strokeDashoffset = `${RING_C * (1 - pct)}`;
     }
 
+    // 🐛 إصلاح جذري: لم تعد تبني DOM من الصفر إطلاقاً — فقط تُحدِّث نصوصاً على عناصر موجودة
+    // منذ إنشاء الزر الأول (راجع newSendBtn.innerHTML بـwireGiftSelectionAndQty) وتُبدِّل
+    // كلاسات الظهور. العنصر الملتقط (btn) لا تتغيّر بنيته إطلاقاً بعد الآن أثناء أي ضغطة
     function renderCombo(badgeText) {
-        btn.innerHTML = `
-            <svg class="gift-combo-ring" viewBox="0 0 40 40">
-                <defs>
-                    <radialGradient id="giftComboGradient" cx="35%" cy="30%" r="75%">
-                        <stop offset="0%" stop-color="#ff6fa8"></stop>
-                        <stop offset="55%" stop-color="#f5107a"></stop>
-                        <stop offset="100%" stop-color="#b7123f"></stop>
-                    </radialGradient>
-                </defs>
-                <circle class="gift-combo-ring-bg" cx="20" cy="20" r="${RING_R}"></circle>
-                <circle class="gift-combo-ring-fg" cx="20" cy="20" r="${RING_R}" style="stroke-dasharray:${RING_C}"></circle>
-            </svg>
-            <span class="gift-combo-badge">${badgeText}</span>
-            <span class="gift-combo-number">${count}</span>
-            <span class="gift-combo-label">Combo</span>
-        `;
+        const badgeEl = btn.querySelector('.gift-combo-badge');
+        const numEl = btn.querySelector('.gift-combo-number');
+        if (badgeEl) badgeEl.textContent = badgeText;
+        if (numEl) numEl.textContent = count;
         updateRing();
+        btn.classList.remove('gift-combo-exiting');
         btn.classList.add('gift-combo-active');
         card?.classList.add('gift-combo-sending');
     }
@@ -12458,6 +12487,11 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
     // كي لا يُبطئ تسارع الضغط المستمر (نفس فلسفة التفاؤل الفوري المُعتمدة بكل الإرسال هنا)
     function fireOnceAndReset() {
         inCombo = true;
+        // 🐛 إصلاح: لو جاءت ضغطة جديدة أثناء نافذة تلاشي خروج (160ms) كومبو سابق لم يُطبَّق
+        // onComboEnd بعد (exitTimer معلَّق)، كان يبقى يعمل بالخلفية ويستدعي onComboEnd
+        // (deselectAll) لاحقاً رغم أن كومبو جديداً بدأ بالفعل — يُلغي تحديد المستخدم الجديد
+        // بصمت. يجب إلغاؤه صراحة عند أي بداية كومبو جديدة فعلية
+        clearTimeout(exitTimer);
         count = COMBO_START;
         missionProgress++;
         const target = missionTarget(missionTier);
@@ -12517,7 +12551,7 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
     // الفعلي: على Chrome هذا الهاتف تحديداً، استبدال btn.innerHTML لعنصر ملتقط Pointer
     // Capture (renderCombo تستبدل محتوى btn بالكامل) ضمن نفس معالج pointerdown يمنع وصول
     // pointerup/pointercancel/pointerleave لنفس العنصر إطلاقاً — فتبقى حالة الضغط "نشطة" إلى
-    // الأبد من منظور الكود. الإصلاح: الاستماع أيضاً على document (لا daha فقط عنصر الزر الذي
+    // الأبد من منظور الكود. الإصلاح: الاستماع أيضاً على document (لا على عنصر الزر فقط، الذي
     // يتغيّر محتواه) — الحدث يصل لـdocument بثقة تامة بغض النظر عن أي تغيّر بمحتوى/شكل العنصر
     // الذي بدأ عليه الضغط، مع فلترة pointerId للتأكد من مطابقته لنفس الضغطة. + سقف أمان مخفَّض
     // جذرياً من 15 ثانية لـ3 ثوانٍ فقط الآن بعد إثبات حدوث هذا فعلياً على جهاز حقيقي — لا يجوز
