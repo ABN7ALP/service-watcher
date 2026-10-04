@@ -12497,34 +12497,59 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
     }
 
     let holdSafetyTimer = null;
+    // ✅ تنظيف أي مستمعين على document لم يُحذفوا بعد (مثلاً لو أوقف المؤقّت الآمن الضغط قبل
+    // وصول أي حدث تحرّر فعلي) — يمنع تراكم مستمعين يتيمين على document مع كل ضغطة
+    let pendingReleaseCleanup = null;
     function stopHold() {
         holdActive = false;
         clearTimeout(holdTimeout);
         holdTimeout = null;
         clearTimeout(holdSafetyTimer);
         holdSafetyTimer = null;
+        pendingReleaseCleanup?.();
     }
 
-    // 🐛 إصلاح جذري (طلب صريح): "اضغط مرة ثانية يستمر الإرسال تلقائياً بلا توقف" — السبب
-    // الجذري: خلط mousedown+touchstart منفصلين على نفس الزر يُسبّب أحداثاً مزدوجة فعلياً على
-    // الأجهزة اللمسية (touchstart يُطلق أيضاً أحداث mouse اصطناعية لاحقاً رغم preventDefault
-    // بحالات معيّنة)، فيبدأ محرّكا تسارع مستقلّان من ضغطة واحدة فعلياً — أحدهما قد يفلت من
-    // stopHold الطبيعي. الحل الصحيح: Pointer Events الموحّدة (تُغطّي فأرة/لمس/قلم بحدث واحد
-    // لا يتكرّر) + setPointerCapture (يضمن وصول pointerup لنفس العنصر دوماً حتى لو تغيّر
-    // شكله/موضعه أثناء الضغط — بالضبط حالتنا: أيقونة تتحوّل لدائرة فوراً عند أول ضغطة).
-    // + سقف أمان صارم (15 ثانية) كطبقة حماية أخيرة مهما كان السبب — لا يجوز أبداً أن يستمر
-    // إرسال فعلي تلقائي بلا أي تفاعل مستخدم حقيقي، فهذا إنفاق كوينز حقيقي بلا تحكّم
+    // 🐛 إصلاح جذري مؤكَّد بتحليل فيديو فعلي أرسله المستخدم (فحص الفيديو إطاراً إطاراً):
+    // الرقم كان يرتد لـ30 عدة مرات خلال أقل من ثانيتين (30→29→28→30→29→28→30...) ورصيد
+    // المستخدم انخفض 3 أضعاف سعر الهدية الواحدة (240 بدل 80) من ضغطة واحدة فعلياً — دليل
+    // قاطع أن محرّك التسارع (startHold/scheduleHoldNext) بقي يعمل ولم يتوقف إطلاقاً، ولم
+    // ينته إلا لحظة ضغط المستخدم ببطاقة هدية أخرى (forceEnd عبر تبديل الكرت). السبب الجذري
+    // الفعلي: على Chrome هذا الهاتف تحديداً، استبدال btn.innerHTML لعنصر ملتقط Pointer
+    // Capture (renderCombo تستبدل محتوى btn بالكامل) ضمن نفس معالج pointerdown يمنع وصول
+    // pointerup/pointercancel/pointerleave لنفس العنصر إطلاقاً — فتبقى حالة الضغط "نشطة" إلى
+    // الأبد من منظور الكود. الإصلاح: الاستماع أيضاً على document (لا daha فقط عنصر الزر الذي
+    // يتغيّر محتواه) — الحدث يصل لـdocument بثقة تامة بغض النظر عن أي تغيّر بمحتوى/شكل العنصر
+    // الذي بدأ عليه الضغط، مع فلترة pointerId للتأكد من مطابقته لنفس الضغطة. + سقف أمان مخفَّض
+    // جذرياً من 15 ثانية لـ3 ثوانٍ فقط الآن بعد إثبات حدوث هذا فعلياً على جهاز حقيقي — لا يجوز
+    // إطلاقاً استمرار إرسال فعلي تلقائي لثوانٍ طويلة بلا أي تفاعل مستخدم حقيقي
     btn.addEventListener('pointerdown', (e) => {
         e.preventDefault();
-        try { btn.setPointerCapture(e.pointerId); } catch (_) { /* بعض المتصفحات القديمة لا تدعمها — المتابعة بأمان */ }
+        const pointerId = e.pointerId;
+        try { btn.setPointerCapture(pointerId); } catch (_) { /* بعض المتصفحات القديمة لا تدعمها — المتابعة بأمان */ }
         fireOnceAndReset();
         startHold();
         clearTimeout(holdSafetyTimer);
-        holdSafetyTimer = setTimeout(stopHold, 15000);
+        holdSafetyTimer = setTimeout(stopHold, 3000);
+
+        // ✅ المصدر الموثوق فعلياً (مؤكَّد بالفيديو): document، لا btn نفسه
+        pendingReleaseCleanup?.();
+        const releaseOnDocument = (ev) => {
+            if (ev.pointerId !== pointerId) return;
+            stopHold();
+        };
+        document.addEventListener('pointerup', releaseOnDocument, true);
+        document.addEventListener('pointercancel', releaseOnDocument, true);
+        pendingReleaseCleanup = () => {
+            document.removeEventListener('pointerup', releaseOnDocument, true);
+            document.removeEventListener('pointercancel', releaseOnDocument, true);
+            pendingReleaseCleanup = null;
+        };
     });
+    // ✅ تبقى كطبقة دفاع إضافية — لا ضرر من استدعاء stopHold أكثر من مرة
     btn.addEventListener('pointerup', stopHold);
     btn.addEventListener('pointercancel', stopHold);
     btn.addEventListener('pointerleave', stopHold);
+    btn.addEventListener('lostpointercapture', stopHold);
 
     // 🐛 إصلاح: لو بدّل المستخدم لهدية أخرى أثناء فترة سماح الكومبو (العدّاد لم يصل صفر بعد)،
     // يُفكَّك الزر/الحاوية فوراً عبر clearAllSendSlots لكن tickTimer/holdTimeout يبقيان
