@@ -12329,20 +12329,34 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
         // فنقرة عليه تصعد أيضاً كنقرة على الكارد الأب، فتُلغي التحديد فوراً وتحذف الزر
         // نفسه أثناء استخدامه — نتجاهل هذي الفقاعة صريحاً هنا
         if (e.target.closest('.gift-card-send-btn')) return;
-        // 🐛 إصلاح (طلب صريح: "يمكن بسبب ضيق المساحة... نقرات غلق"): دائرة الكومبو النشطة
-        // position:absolute بحجم أكبر من مكانها الأصلي بالشبكة (58-78px) فتتجاوز فعلياً حدود
-        // كرت الهدية المجاور بمساحة ضيقة كهذي — بعض المتصفحات لا تُطبِّق pointer capture على
-        // حدث click المُصنَّع من اللمس بنفس صرامة أحداث pointer الخام (علّة توافق معروفة)،
-        // فقد يُحلّ target فعلياً لعنصر الكرت المجاور تحت الدائرة رغم أن النقرة فعلياً وقعت
-        // داخل حدود الدائرة بصرياً. نتحقق من إحداثيات النقرة مقابل حدود الزر النشط فعلياً
-        // بغض النظر عمّا حلّ إليه target — يمنع إنهاء/تبديل الهدية خطأً من نقرة صحيحة على الدائرة
+
+        const card = e.target.closest('.gift-card-wrapper');
+
+        // 🐛 الإصلاح الجذري الفعلي (مؤكَّد بتحليل فيديو مستقل إطاراً بإطار): عند pointerdown
+        // يتحوّل زر الإرسال لحلقة كومبو position:absolute تنتقل لمكان صورة الهدية (أعلى
+        // الكارد)، بينما إصبع المستخدم فعلياً لا يزال عند الموضع الأصلي لزر "إرسال" (أسفل
+        // الكارد). على كروم أندرويد، النقرة الوهمية (ghost click) التي يُصنِّعها المتصفح من
+        // نفس لمسة التحرير هذي لا تتبع pointer capture إطلاقاً — يُحدَّد target عندها عبر
+        // اختبار موقع الإصبع الفعلي لحظة الرفع، أي الموضع **الأصلي السفلي**، لا موضع الحلقة
+        // الجديد. هذا الموضع صار فارغاً أو جسم الكارد نفسه بعد انتقال الزر، فتُعامَل كنقرة
+        // "ألغِ التحديد" خطأً — بغض النظر عن أي حارس إحداثيات مقابل الحلقة (حارسها يفترض أن
+        // target وقع *داخل* حدود الحلقة الجديدة، وهذا تحديداً ما لا يحدث هنا).
+        // الحل الحقيقي: لا نعتمد على مكان هبوط النقرة إطلاقاً — أي click يقع على نفس الكارد
+        // خلال نافذة قصيرة (500ms) بعد تحرير ضغطة كومبو فعلية عليه (علامة lastComboRelease
+        // بـstopHold أعلى بـsetupGiftComboSend) يُعتبر صدى نفس تلك اللمسة، لا نقرة مستخدم
+        // جديدة متعمّدة لإلغاء التحديد — فيُتجاهل بالكامل
+        if (card && card.dataset.lastComboRelease) {
+            const sinceRelease = Date.now() - parseInt(card.dataset.lastComboRelease, 10);
+            if (sinceRelease >= 0 && sinceRelease < 500) return;
+        }
+
+        // ✅ طبقة دفاع إضافية تبقى لحالة مختلفة (تجاوز بصري للحلقة فوق كارد مجاور بمساحة ضيقة)
         if (activeComboBtnEl) {
             const r = activeComboBtnEl.getBoundingClientRect();
             if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
                 return;
             }
         }
-        const card = e.target.closest('.gift-card-wrapper');
         if (!card || !rootEl.contains(card)) return;
         endActiveCombo();
         const wasSelected = card.classList.contains('gift-card-selected');
@@ -12566,6 +12580,10 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
         clearTimeout(holdSafetyTimer);
         holdSafetyTimer = null;
         pendingReleaseCleanup?.();
+        // 🐛 علامة زمنية على الكارد: نقرة "شبح" (ghost click) محتملة من نفس لمسة التحرير هذي
+        // (راجع الشرح الكامل عند حارسها بـwireGiftSelectionAndQty/root click listener) — تلك
+        // الدالة تتجاهل أي click يقع على هذا الكارد خلال نافذة قصيرة بعد أي تحرير فعلي هنا
+        if (card) card.dataset.lastComboRelease = String(Date.now());
     }
 
     // 🐛 إصلاح جذري مؤكَّد بتحليل فيديو فعلي أرسله المستخدم (فحص الفيديو إطاراً إطاراً):
