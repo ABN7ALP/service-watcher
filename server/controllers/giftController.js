@@ -401,13 +401,201 @@ exports.sendGift = async (req, res) => {
 };
 
 // =====================================================
-// ✅ إرسال هدية لعدّة مستلمين دفعة واحدة (غرفة/دردشة خاصة) — نداء شبكة واحد بدل حلقة
-// متتالية من نداء لكل مستلم. يحل مشكلتين حقيقيتين كانتا بالحلقة القديمة على العميل:
-// 1) خصم ذري واحد بإجمالي التكلفة الصحيح — بدل خصم جزئي متتالٍ كان يجعل الرصيد المعروض
-//    "يصعد وينزل" (كل استجابة فردية كانت ترجع الرصيد بعد خصم مستلم واحد فقط، فيُستبدَل
-//    الرصيد الصحيح المتفائل مؤقتاً برصيد جزئي أكبر ظاهرياً قبل أن يهبط تدريجياً من جديد).
-// 2) بث giftReceived/room-gift-announcement للجميع بنفس اللحظة تماماً (Promise.all) بدل
-//    وصولها بالتتابع مستلماً بعد مستلم.
+// ✅ قيم الكمية الوحيدة المسموحة بمحرّك الكومبو (1x/6x/66x/166x/999x — تطابق شريط الاختيار
+// بالواجهة حرفياً). 🐛 إصلاح: الإصدار القديم كان يَقبل أي رقم ويُشذِّبه إلى 50 كحد أقصى
+// (Math.min(..., 50)) — بما أن الواجهة تعرض ×166 و×999 فعلياً، كان المستخدم يختار ×999
+// والسيرفر يُنفِّذ ×50 بصمت (يُسلِّم عداً أقل وبسعر أقل مما يراه بالشاشة). الآن: قيمة غير
+// ضمن هذي القائمة تُرفَض صراحة برمز BAD_QTY بدل تشذيبها خطأً
+const ALLOWED_COMBO_QTY = new Set([1, 6, 66, 166, 999]);
+exports.ALLOWED_COMBO_QTY = ALLOWED_COMBO_QTY;
+
+// ✅ معالجة دفعة كومبو واحدة — المنطق الكامل لإرسال هدية لعدّة مستلمين دفعة واحدة (خصم ذري،
+// سجلّات الهدايا، بث الغرفة/رسائل الدردشة الخاصة، نقاط PK/مستوى الغرفة/التحدي، الخبرة، نقاط
+// نادي المعجبين). مُستخرَجة من sendGiftBatch (REST) القديمة كمصدر حقيقة واحد يستخدمه الآن
+// كلاهما: نقطة REST نفسها (taps=1) ومعالج Socket.IO الجديد gift:combo (راجع socketService.js)
+// الذي يُجمِّع عدة "ضغطات" (taps) متتالية من العميل برسالة واحدة بدل نداء HTTP لكل ضغطة.
+// taps يُضرَب مباشرة في الكمية — خصم واحد بالإجمالي الصحيح، لا taps نداءً منفصلاً بالتتابع.
+// ترمي أخطاء مُصنَّفة ({code}) بدل كتابة رد HTTP مباشرة، كي يُترجمها كل مستدعٍ لصيغته الخاصة
+// (status code لـREST، ack({ok:false,code}) لـSocket.IO)
+async function processGiftCombo({ io, senderId, giftId, quantity, taps = 1, recipientIds, roomId }) {
+    const qty = Number(quantity);
+    if (!ALLOWED_COMBO_QTY.has(qty)) {
+        throw Object.assign(new Error('كمية غير صالحة'), { code: 'BAD_QTY' });
+    }
+    const tapCount = Math.max(1, Math.min(parseInt(taps) || 1, 60));
+
+    const cleanRecipientIds = Array.isArray(recipientIds)
+        ? [...new Set(recipientIds.map(String))].filter(id => id !== senderId.toString()).slice(0, 80)
+        : [];
+    if (cleanRecipientIds.length === 0) {
+        throw Object.assign(new Error('يجب اختيار مستلم واحد على الأقل'), { code: 'NO_RECIPIENTS' });
+    }
+
+    const [sender, gift, receivers] = await Promise.all([
+        User.findById(senderId),
+        Gift.findById(giftId),
+        User.find({ _id: { $in: cleanRecipientIds } }).select('username profileImage socketId blockedUsers isBot')
+    ]);
+
+    if (!sender) {
+        throw Object.assign(new Error('يرجى تسجيل الدخول من جديد'), { code: 'NO_SENDER' });
+    }
+    if (!gift || !gift.isActive) {
+        throw Object.assign(new Error('الهدية غير متوفرة حالياً'), { code: 'NO_GIFT' });
+    }
+
+    // 🛡️ استبعاد أي علاقة حظر (بأي اتجاه) والحسابات الآلية — نفس حماية الإرسال الفردي بالضبط
+    const senderBlocked = new Set((sender.blockedUsers || []).map(id => id.toString()));
+    const validReceivers = receivers.filter(r =>
+        !r.isBot &&
+        !senderBlocked.has(r._id.toString()) &&
+        !(r.blockedUsers || []).map(id => id.toString()).includes(senderId.toString())
+    );
+    if (validReceivers.length === 0) {
+        throw Object.assign(new Error('لا يوجد مستلمون متاحون للإرسال'), { code: 'NO_VALID_RECIPIENTS' });
+    }
+
+    const unitPrice = gift.discountedPrice || gift.price;
+    const effectiveQty = qty * tapCount;
+    const totalPrice = unitPrice * effectiveQty; // لكل مستلم (تشمل كل الضغطات المُجمَّعة بهذي الدفعة)
+    const totalCost = totalPrice * validReceivers.length; // الإجمالي الحقيقي المخصوم فعلياً
+
+    // ✅ خصم ذري واحد بكامل التكلفة الحقيقية (عدد المستلمين المقبولين فعلياً بعد الفلترة
+    // × الكمية × عدد الضغطات المُجمَّعة) — يستحيل خصم أكثر من الرصيد الفعلي حتى مع طلبات متزامنة
+    const updatedSender = await User.findOneAndUpdate(
+        { _id: senderId, coins: { $gte: totalCost } },
+        { $inc: { coins: -totalCost } },
+        { new: true }
+    );
+    if (!updatedSender) {
+        throw Object.assign(new Error(`رصيد الكوينز غير كافٍ (تحتاج ${totalCost} كوينز لهذا العدد)`), { code: 'INSUFFICIENT' });
+    }
+    sender.coins = updatedSender.coins;
+
+    const cleanRoomId = (roomId && mongoose.Types.ObjectId.isValid(roomId)) ? roomId : null;
+    const safeGiftImage = gift.imageUrl || '';
+
+    await GiftLog.insertMany(validReceivers.map(r => ({
+        sender: senderId, receiver: r._id, gift: gift._id,
+        giftName: gift.name, giftImage: gift.imageUrl,
+        quantity: effectiveQty, unitPrice, totalPrice, context: 'private_chat', room: cleanRoomId
+    })));
+
+    if (cleanRoomId) {
+        try {
+            await applyGiftToActiveBattle(io, cleanRoomId, totalCost);
+        } catch (battleError) {
+            console.error('[PK BATTLE] Failed to apply gift score:', battleError);
+        }
+        try {
+            await applyGiftToRoomSupport(io, cleanRoomId, totalCost);
+        } catch (supportError) {
+            console.error('[ROOM LEVEL] Failed to apply support points:', supportError);
+        }
+    }
+
+    // ✅ لكل مستلم بالتوازي: إعلان الغرفة (لو بغرفة) أو رسالة دردشة خاصة حقيقية (لو بلا سياق
+    // غرفة — نفس سلوك الإرسال الفردي بالضبط)، ثم بث الحدث اللحظي — الكل بنفس اللحظة تقريباً.
+    // savedMessages تُجمَع لإرجاع صدى الرسالة للمرسل نفسه (محادثة 1:1 بلا غرفة فقط — راجع
+    // استخدامها بمعالج gift:combo كي يُظهر العميل فقاعة الهدية بنافذة محادثته المفتوحة فوراً)
+    const savedMessages = [];
+    await Promise.all(validReceivers.map(async (receiver) => {
+        const receiverId = receiver._id.toString();
+        const giftEventPayload = {
+            giftId: gift._id, giftName: gift.name, giftImage: safeGiftImage, quantity: effectiveQty,
+            fromUserId: senderId, fromUsername: sender.username, fromProfileImage: sender.profileImage,
+            animation: gift.animation, context: 'private_chat', timestamp: new Date().toISOString()
+        };
+
+        if (cleanRoomId) {
+            // ✅ تحدي الأعضاء يُحسَب لكل مستلم على حدة (بعكس PK/مستوى الغرفة أعلاه، المحسوبين
+            // إجمالاً) — مستلمو الإرسال الجماعي قد يكونون بفريقين مختلفين، فلا يصح تجميعهم
+            try {
+                await applyGiftToActiveSeatChallenge(io, cleanRoomId, receiverId, totalPrice);
+            } catch (challengeError) {
+                console.error('[SEAT CHALLENGE] Failed to apply gift score:', challengeError);
+            }
+            if (io) {
+                io.to(`room-chat-${cleanRoomId}`).emit('room-gift-announcement', {
+                    roomId: cleanRoomId, fromUserId: senderId, fromUsername: sender.username, fromProfileImage: sender.profileImage,
+                    toUserId: receiverId, toUsername: receiver.username, giftName: gift.name,
+                    giftImage: safeGiftImage, giftIcon: gift.icon || '🎁', quantity: effectiveQty
+                });
+            }
+        } else {
+            const participants = [senderId.toString(), receiverId].sort();
+            const chatId = participants.join('_');
+            let chat = await PrivateChat.findOne({ chatId });
+            if (!chat) {
+                chat = await PrivateChat.create({
+                    chatId, participants,
+                    participantData: [
+                        { userId: senderId, username: sender.username, profileImage: sender.profileImage },
+                        { userId: receiverId, username: receiver.username, profileImage: receiver.profileImage }
+                    ]
+                });
+            }
+            const newMessage = await PrivateMessage.create({
+                chatId, sender: senderId, receiver: receiverId, type: 'gift',
+                content: `${gift.name}${effectiveQty > 1 ? ' × ' + effectiveQty : ''}`,
+                metadata: { giftId: gift._id, giftImage: safeGiftImage, giftPrice: totalPrice, giftQuantity: effectiveQty }
+            });
+            chat.lastMessage = `🎁 هدية ${gift.name}`;
+            chat.lastMessageAt = new Date();
+            chat.lastMessageBy = senderId;
+            chat.messageCount += 1;
+            const currentUnread = chat.unreadCount.get(receiverId) || 0;
+            chat.unreadCount.set(receiverId, currentUnread + 1);
+            chat.hiddenBy = chat.hiddenBy.filter(id => id.toString() !== senderId.toString() && id.toString() !== receiverId);
+            await chat.save();
+            const populatedMessage = await PrivateMessage.findById(newMessage._id)
+                .populate('sender', 'username profileImage')
+                .lean();
+            savedMessages.push(populatedMessage);
+            if (receiver.socketId && io) {
+                io.to(receiver.socketId).emit('privateMessageReceived', {
+                    message: populatedMessage, chatId: chat.chatId, senderId, senderName: sender.username
+                });
+            }
+        }
+
+        if (receiver.socketId && io) {
+            io.to(receiver.socketId).emit('giftReceived', giftEventPayload);
+        }
+    }));
+
+    if (sender.socketId && io) {
+        io.to(sender.socketId).emit('balanceUpdate', { newBalance: sender.balance, newCoins: sender.coins });
+    }
+
+    // 🐛 إصلاح أداء: نفس نمط التتابع غير الضروري بأعلى — دمج المرسل مع كل المستلمين بنداء
+    // Promise.all واحد بدل انتظار المرسل أولاً ثم الدُفعة
+    await Promise.all([
+        addGiftExperience(io, senderId, totalCost, 'sender'),
+        ...validReceivers.map(r => addGiftExperience(io, r._id, totalPrice, 'receiver'))
+    ]);
+    // ✅ لا يُنتظَر — تحديث الشارات لا يجب أن يؤخّر استجابة إرسال الهدية
+    broadcastSupportLevelUpdate(io, senderId, 'giving', totalCost);
+    validReceivers.forEach(r => {
+        broadcastSupportLevelUpdate(io, r._id, 'receiving', totalPrice);
+        awardFanPoints(io, r._id, senderId, totalPrice); // ✅ totalPrice = لكل مستلم على حدة (وليس totalCost الإجمالي)
+    });
+
+    return {
+        balance: sender.coins,
+        recipientCount: validReceivers.length,
+        giftName: gift.name,
+        // ✅ صدى الرسالة فقط لحالة الإرسال الخاص الفردي (مستلم واحد بلا غرفة) — نفس حالة
+        // الاستخدام الوحيدة التي تحتاجه العميل فعلياً (محادثة 1:1 مفتوحة)
+        message: (!cleanRoomId && savedMessages.length === 1) ? savedMessages[0] : null
+    };
+}
+exports.processGiftCombo = processGiftCombo;
+
+// =====================================================
+// ✅ إرسال هدية لعدّة مستلمين دفعة واحدة (غرفة/دردشة خاصة) — الآن غلاف HTTP رقيق فقط حول
+// processGiftCombo أعلاه (taps=1)؛ كل منطق الخصم/البث/السجلّات موحَّد بمكان واحد يشاركه
+// محرّك الكومبو الجديد عبر Socket.IO (gift:combo بـsocketService.js)
 // =====================================================
 exports.sendGiftBatch = async (req, res) => {
     try {
@@ -418,165 +606,23 @@ exports.sendGiftBatch = async (req, res) => {
             return res.status(429).json({ status: 'fail', message: 'أنت ترسل الهدايا بسرعة كبيرة جداً، انتظر لحظة' });
         }
 
-        const cleanRecipientIds = Array.isArray(recipientIds)
-            ? [...new Set(recipientIds.map(String))].filter(id => id !== senderId).slice(0, 80)
-            : [];
-        if (cleanRecipientIds.length === 0) {
-            return res.status(400).json({ status: 'fail', message: 'يجب اختيار مستلم واحد على الأقل' });
-        }
-
-        const qty = Math.max(1, Math.min(parseInt(quantity) || 1, 50));
-
-        const [sender, gift, receivers] = await Promise.all([
-            User.findById(senderId),
-            Gift.findById(giftId),
-            User.find({ _id: { $in: cleanRecipientIds } }).select('username profileImage socketId blockedUsers isBot')
-        ]);
-
-        if (!sender) {
-            return res.status(401).json({ status: 'fail', message: 'يرجى تسجيل الدخول من جديد' });
-        }
-        if (!gift || !gift.isActive) {
-            return res.status(404).json({ status: 'fail', message: 'الهدية غير متوفرة حالياً' });
-        }
-
-        // 🛡️ استبعاد أي علاقة حظر (بأي اتجاه) والحسابات الآلية — نفس حماية الإرسال الفردي بالضبط
-        const senderBlocked = new Set((sender.blockedUsers || []).map(id => id.toString()));
-        const validReceivers = receivers.filter(r =>
-            !r.isBot &&
-            !senderBlocked.has(r._id.toString()) &&
-            !(r.blockedUsers || []).map(id => id.toString()).includes(senderId.toString())
-        );
-        if (validReceivers.length === 0) {
-            return res.status(400).json({ status: 'fail', message: 'لا يوجد مستلمون متاحون للإرسال' });
-        }
-
-        const unitPrice = gift.discountedPrice || gift.price;
-        const totalPrice = unitPrice * qty; // لكل مستلم
-        const totalCost = totalPrice * validReceivers.length; // الإجمالي الحقيقي المخصوم فعلياً
-
-        // ✅ خصم ذري واحد بكامل التكلفة الحقيقية (عدد المستلمين المقبولين فعلياً بعد الفلترة،
-        // وليس عدد المطلوبين أصلاً) — يستحيل خصم أكثر من الرصيد الفعلي حتى مع طلبات متزامنة
-        const updatedSender = await User.findOneAndUpdate(
-            { _id: senderId, coins: { $gte: totalCost } },
-            { $inc: { coins: -totalCost } },
-            { new: true }
-        );
-        if (!updatedSender) {
-            return res.status(400).json({ status: 'fail', message: `رصيد الكوينز غير كافٍ (تحتاج ${totalCost} كوينز لهذا العدد)` });
-        }
-        sender.coins = updatedSender.coins;
-
-        const cleanRoomId = (roomId && mongoose.Types.ObjectId.isValid(roomId)) ? roomId : null;
         const io = req.app.get('socketio');
-        const safeGiftImage = gift.imageUrl || '';
-
-        await GiftLog.insertMany(validReceivers.map(r => ({
-            sender: senderId, receiver: r._id, gift: gift._id,
-            giftName: gift.name, giftImage: gift.imageUrl,
-            quantity: qty, unitPrice, totalPrice, context: 'private_chat', room: cleanRoomId
-        })));
-
-        if (cleanRoomId) {
-            try {
-                await applyGiftToActiveBattle(io, cleanRoomId, totalCost);
-            } catch (battleError) {
-                console.error('[PK BATTLE] Failed to apply gift score:', battleError);
-            }
-            try {
-                await applyGiftToRoomSupport(io, cleanRoomId, totalCost);
-            } catch (supportError) {
-                console.error('[ROOM LEVEL] Failed to apply support points:', supportError);
-            }
-        }
-
-        // ✅ لكل مستلم بالتوازي: إعلان الغرفة (لو بغرفة) أو رسالة دردشة خاصة حقيقية (لو بلا سياق
-        // غرفة — نفس سلوك الإرسال الفردي بالضبط)، ثم بث الحدث اللحظي — الكل بنفس اللحظة تقريباً
-        await Promise.all(validReceivers.map(async (receiver) => {
-            const receiverId = receiver._id.toString();
-            const giftEventPayload = {
-                giftId: gift._id, giftName: gift.name, giftImage: safeGiftImage, quantity: qty,
-                fromUserId: senderId, fromUsername: sender.username, fromProfileImage: sender.profileImage,
-                animation: gift.animation, context: 'private_chat', timestamp: new Date().toISOString()
-            };
-
-            if (cleanRoomId) {
-                // ✅ تحدي الأعضاء يُحسَب لكل مستلم على حدة (بعكس PK/مستوى الغرفة أعلاه، المحسوبين
-                // إجمالاً) — مستلمو الإرسال الجماعي قد يكونون بفريقين مختلفين، فلا يصح تجميعهم
-                try {
-                    await applyGiftToActiveSeatChallenge(io, cleanRoomId, receiverId, totalPrice);
-                } catch (challengeError) {
-                    console.error('[SEAT CHALLENGE] Failed to apply gift score:', challengeError);
-                }
-                if (io) {
-                    io.to(`room-chat-${cleanRoomId}`).emit('room-gift-announcement', {
-                        roomId: cleanRoomId, fromUserId: senderId, fromUsername: sender.username, fromProfileImage: sender.profileImage,
-                        toUserId: receiverId, toUsername: receiver.username, giftName: gift.name,
-                        giftImage: safeGiftImage, giftIcon: gift.icon || '🎁', quantity: qty
-                    });
-                }
-            } else {
-                const participants = [senderId.toString(), receiverId].sort();
-                const chatId = participants.join('_');
-                let chat = await PrivateChat.findOne({ chatId });
-                if (!chat) {
-                    chat = await PrivateChat.create({
-                        chatId, participants,
-                        participantData: [
-                            { userId: senderId, username: sender.username, profileImage: sender.profileImage },
-                            { userId: receiverId, username: receiver.username, profileImage: receiver.profileImage }
-                        ]
-                    });
-                }
-                await PrivateMessage.create({
-                    chatId, sender: senderId, receiver: receiverId, type: 'gift',
-                    content: `${gift.name}${qty > 1 ? ' × ' + qty : ''}`,
-                    metadata: { giftId: gift._id, giftImage: safeGiftImage, giftPrice: totalPrice, giftQuantity: qty }
-                });
-                chat.lastMessage = `🎁 هدية ${gift.name}`;
-                chat.lastMessageAt = new Date();
-                chat.lastMessageBy = senderId;
-                chat.messageCount += 1;
-                const currentUnread = chat.unreadCount.get(receiverId) || 0;
-                chat.unreadCount.set(receiverId, currentUnread + 1);
-                chat.hiddenBy = chat.hiddenBy.filter(id => id.toString() !== senderId.toString() && id.toString() !== receiverId);
-                await chat.save();
-                if (receiver.socketId && io) {
-                    io.to(receiver.socketId).emit('privateMessageReceived', {
-                        chatId: chat.chatId, senderId, senderName: sender.username
-                    });
-                }
-            }
-
-            if (receiver.socketId && io) {
-                io.to(receiver.socketId).emit('giftReceived', giftEventPayload);
-            }
-        }));
-
-        if (sender.socketId && io) {
-            io.to(sender.socketId).emit('balanceUpdate', { newBalance: sender.balance, newCoins: sender.coins });
-        }
-
-        // 🐛 إصلاح أداء: نفس نمط التتابع غير الضروري بأعلى — دمج المرسل مع كل المستلمين بنداء
-        // Promise.all واحد بدل انتظار المرسل أولاً ثم الدُفعة
-        await Promise.all([
-            addGiftExperience(io, senderId, totalCost, 'sender'),
-            ...validReceivers.map(r => addGiftExperience(io, r._id, totalPrice, 'receiver'))
-        ]);
-        // ✅ لا يُنتظَر — تحديث الشارات لا يجب أن يؤخّر استجابة إرسال الهدية
-        broadcastSupportLevelUpdate(io, senderId, 'giving', totalCost);
-        validReceivers.forEach(r => {
-            broadcastSupportLevelUpdate(io, r._id, 'receiving', totalPrice);
-            awardFanPoints(io, r._id, senderId, totalPrice); // ✅ totalPrice = لكل مستلم على حدة (وليس totalCost الإجمالي)
-        });
+        const result = await processGiftCombo({ io, senderId, giftId, quantity, taps: 1, recipientIds, roomId });
 
         res.status(201).json({
             status: 'success',
-            message: `تم إرسال هدية ${gift.name} بنجاح`,
-            data: { newSenderCoins: sender.coins, recipientCount: validReceivers.length }
+            message: `تم إرسال هدية ${result.giftName} بنجاح`,
+            data: { newSenderCoins: result.balance, recipientCount: result.recipientCount, message: result.message }
         });
 
     } catch (error) {
+        if (error && error.code) {
+            const statusMap = {
+                BAD_QTY: 400, NO_RECIPIENTS: 400, NO_SENDER: 401, NO_GIFT: 404,
+                NO_VALID_RECIPIENTS: 400, INSUFFICIENT: 400
+            };
+            return res.status(statusMap[error.code] || 400).json({ status: 'fail', message: error.message });
+        }
         console.error('[ERROR] in sendGiftBatch:', error);
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم أثناء إرسال الهدية' });
     }
