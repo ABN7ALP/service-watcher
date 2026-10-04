@@ -85,20 +85,19 @@ function withUserSeatLock(userId, fn) {
     return run;
 }
 
-// =================================================
-// ✅ قفل تسلسلي مستقل خاص بمحرّك إرسال الهدايا المُجمَّع (gift:combo) — نفس فكرة
-// withUserSeatLock تماماً (بروميس مسلسلة لكل مستخدم)، لكن بمساحة مفاتيح منفصلة تماماً كي لا
-// تتشارك قفلاً مع عمليات المقعد الصوتي لنفس المستخدم (لا علاقة بينهما إطلاقاً). بدون هذا
-// القفل: لو وصلت دفعتا كومبو لنفس المستخدم بسرعة كبيرة (شبكة بطيئة + إعادة محاولة)، يمكن أن
-// تُنفَّذا بالتوازي فتقرآ الرصيد قبل أن تكتب الأخرى تغييره — القفل يضمن تنفيذهما تباعاً دائماً
-const giftComboLocks = new Map();
-function withUserGiftLock(userId, fn) {
-    const key = `gift-${userId.toString()}`;
-    const previous = giftComboLocks.get(key) || Promise.resolve();
-    const run = previous.catch(() => {}).then(fn);
-    giftComboLocks.set(key, run.catch(() => {}));
-    return run;
-}
+// 🐛 إصلاح جذري: جرّبت بجولة سابقة قفلاً تسلسلياً هنا (withUserGiftLock، بنفس فكرة
+// withUserSeatLock) بنيّة منع تسابق نظري على القراءة قبل الكتابة. لكن خصم الكوينز نفسه
+// (findOneAndUpdate + $inc بشرط الرصيد بـprocessGiftCombo) عملية ذرّية واحدة على مستوى
+// القاعدة بالفعل — لا حاجة لقفل تطبيقي إضافي لأمانها، كانت موجودة بالتصميم القديم (REST) بلا
+// أي قفل طوال عمر المشروع بلا مشكلة. والقفل هنا كان الضرر الفعلي: كل دفعة تنفّذ عدة نداءات
+// قاعدة بيانات متتالية (الخصم، سجلّات الهدية، إنشاء/جلب المحادثة والرسالة...) — تسلسل
+// الدفعات بقفل واحد يعني الدفعة العاشرة تنتظر التاسعة والثامنة... قبلها، فيتراكم تأخير
+// حقيقي أثناء الضغط المستمر حتى يتجاوز مهلة الـack بالعميل (6 ثوانٍ) — فيُعامَل العميل هذا
+// كفشل ويتراجع عن الخصم محلياً رغم أن السيرفر يُكمل تنفيذها بنجاح لاحقاً فعلياً (الهدية تصل
+// فعلاً، لكن متأخرة، والعميل ظنّ أنها فشلت). الحل: لا قفل إطلاقاً — الدفعات تُنفَّذ بالتوازي
+// بأمان كامل (الخصم ذرّي بغض النظر عن الترتيب)، وراجع الإصلاح الموازي بـprocessGiftCombo
+// (idempotency عبر "حجز الفتحة" أولاً، لا فحص-ثم-تنفيذ) الذي يُغلق التسابق النظري الوحيد
+// المتبقي (طلبان بنفس comboId+seq بالضبط) دون أي قفل تطبيقي
 
 // ✅ محدد معدّل مستقل لرسائل gift:combo — تتجاوز Express rate limiter بالكامل (Socket.IO لا
 // REST)، فتحتاج حمايتها الخاصة. سخي بما يكفي لتسارع حقيقي كامل (دفعة كل 250ms من العميل
@@ -2293,60 +2292,68 @@ socket.on('refreshBlockData', async () => {
         //    عن ترتيب إرسالها، فتكتب استجابة طلب أقدم فوق رصيد أحدث. هنا العميل (createComboSender)
         //    يطبّق الرصيد بترتيب seq المنطقي دائماً، لا بترتيب وصول الرد الفعلي.
         // 2) تكرار الخصم لو أعاد العميل إرسال نفس الرسالة (نفس comboId+seq) بعد انقطاع شبكة
-        //    قبل استلام ack — GiftComboTx يحفظ نتيجة كل (مُرسِل+جلسة+رقم) فريدة، فإعادة محاولة
-        //    بنفس المفتاح تُرجع نفس النتيجة المخزَّنة بدل تنفيذ الخصم ثانية.
-        // 3) تزاحم طلبات نفس المستخدم (withUserGiftLock يسلسلها دائماً، كـwithUserSeatLock
-        //    بعمليات المقعد تماماً) — لا تُنفَّذ دفعتان لنفس المستخدم بالتوازي أبداً.
+        //    قبل استلام ack — GiftComboTx "يحجز" مفتاح كل (مُرسِل+جلسة+رقم) فريد أولاً (إدراج
+        //    ذرّي بفهرس unique) قبل أي خصم فعلي؛ محاولة ثانية بنفس المفتاح تصطدم بالحجز
+        //    فترجع نتيجته المخزَّنة بدل تنفيذ الخصم ثانية — بلا أي قفل تطبيقي يسلسل الدفعات
+        //    (جولة سابقة استخدمت قفلاً لكل مستخدم، فتسبّب بتراكم تأخير حقيقي أثناء الضغط
+        //    المستمر حتى تجاوز مهلة ack بالعميل — راجع الشرح الكامل أعلى withUserSeatLock)
         // الخصم نفسه يبقى بالضبط نفس العملية الذرية القديمة (findOneAndUpdate + $inc بشرط
         // توفر الرصيد) داخل processGiftCombo — لم نغيّر جوهر الحماية المالية، فقط النقل.
         // =====================================================
-        socket.on('gift:combo', (payload, ack) => {
+        socket.on('gift:combo', async (payload, ack) => {
             // ✅ بلا ack لا يمكن تأكيد نجاح/فشل العملية بأمان للعميل — نتجاهل أي نداء بلا دالة رد
             if (typeof ack !== 'function') return;
             if (isGiftComboRateLimited(socket.user._id)) {
                 return ack({ ok: false, code: 'RATE_LIMITED', message: 'إرسال سريع جداً، انتظر لحظة' });
             }
-            withUserGiftLock(socket.user._id, async () => {
+            try {
+                const { comboId, seq, taps, giftId, quantity, recipientIds, roomId } = payload || {};
+                if (typeof comboId !== 'string' || !comboId || comboId.length > 80) {
+                    return ack({ ok: false, code: 'BAD_COMBO_ID' });
+                }
+                if (!Number.isInteger(seq) || seq < 1 || seq > 1000000) {
+                    return ack({ ok: false, code: 'BAD_SEQ' });
+                }
+                if (!Number.isInteger(taps) || taps < 1 || taps > 60) {
+                    return ack({ ok: false, code: 'BAD_TAPS' });
+                }
+
+                const GiftComboTx = require('../models/GiftComboTx');
+                const key = `${socket.user._id}:${comboId}:${seq}`;
+
+                // ✅ حجز "ذرّي" لمفتاح هذي الدفعة أولاً (قبل أي خصم فعلي) — فهرس unique على
+                // key يضمن أن إدراجين لنفس المفتاح بالتوازي، أحدهما فقط ينجح دائماً بغض النظر
+                // عن ترتيب التنفيذ، فيُغلق تسابق "فحص ثم تنفيذ" الذي كان يحتاج قفلاً لمنعه
+                let claim;
                 try {
-                    const { comboId, seq, taps, giftId, quantity, recipientIds, roomId } = payload || {};
-                    if (typeof comboId !== 'string' || !comboId || comboId.length > 80) {
-                        return ack({ ok: false, code: 'BAD_COMBO_ID' });
+                    claim = await GiftComboTx.create({ key, sender: socket.user._id, comboId, seq, balanceAfter: 0 });
+                } catch (claimError) {
+                    if (claimError && claimError.code === 11000) {
+                        const existing = await GiftComboTx.findOne({ key }).select('balanceAfter').lean();
+                        return ack({ ok: true, balance: existing ? existing.balanceAfter : 0 });
                     }
-                    if (!Number.isInteger(seq) || seq < 1 || seq > 1000000) {
-                        return ack({ ok: false, code: 'BAD_SEQ' });
-                    }
-                    if (!Number.isInteger(taps) || taps < 1 || taps > 60) {
-                        return ack({ ok: false, code: 'BAD_TAPS' });
-                    }
+                    throw claimError;
+                }
 
-                    // ✅ Idempotency: نفس (المرسل + جلسة الكومبو + الرقم التسلسلي) لو تكرّر
-                    // (العميل أعاد إرسال نفس الرسالة بعد عدم استلام ack) يُعيد نفس النتيجة
-                    // المخزَّنة سابقاً فوراً بدل تنفيذ الخصم مرة ثانية
-                    const GiftComboTx = require('../models/GiftComboTx');
-                    const key = `${socket.user._id}:${comboId}:${seq}`;
-                    const existing = await GiftComboTx.findOne({ key }).select('balanceAfter').lean();
-                    if (existing) {
-                        return ack({ ok: true, balance: existing.balanceAfter });
-                    }
-
+                try {
                     const { processGiftCombo } = require('../controllers/giftController');
                     const result = await processGiftCombo({
                         io, senderId: socket.user._id, giftId, quantity, taps, recipientIds, roomId
                     });
-
-                    await GiftComboTx.create({ key, sender: socket.user._id, comboId, seq, balanceAfter: result.balance });
+                    claim.balanceAfter = result.balance;
+                    await claim.save();
                     ack({ ok: true, balance: result.balance, message: result.message });
-                } catch (error) {
-                    // 🛡️ مفتاح مكرَّر فعلياً بقاعدة البيانات (سباق نادر جداً تجاوز القفل، أو
-                    // إعادة إرسال وصلت بين نجاح الخصم وكتابة سجل Idempotency) — لا نُعيد الخصم
-                    // أبداً، فقط نُرجع فشلاً آمناً (الرصيد الحقيقي سيصل لاحقاً عبر المسار الطبيعي)
-                    if (error && error.code === 11000) {
-                        return ack({ ok: false, code: 'DUPLICATE' });
-                    }
-                    console.error('[GIFT COMBO] error:', error);
-                    ack({ ok: false, code: (error && error.code) || 'ERR', message: error && error.message });
+                } catch (processError) {
+                    // ✅ فشلت العملية فعلياً بعد حجز المفتاح (رصيد غير كافٍ، هدية غير موجودة...) —
+                    // نحذف الحجز كي لا يبقى سجلاً "صفرياً" زائفاً للأبد لو احتاج عميل مستقبلي
+                    // إعادة محاولة بنفس comboId+seq (العميل الحالي لا يعيد المحاولة إطلاقاً)
+                    await GiftComboTx.deleteOne({ _id: claim._id }).catch(() => {});
+                    throw processError;
                 }
-            });
+            } catch (error) {
+                console.error('[GIFT COMBO] error:', error);
+                ack({ ok: false, code: (error && error.code) || 'ERR', message: error && error.message });
+            }
         });
 
         // =====================================================

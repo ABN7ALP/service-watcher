@@ -289,17 +289,24 @@ exports.sendGift = async (req, res) => {
             const participants = [senderId.toString(), receiverId.toString()].sort();
             const chatId = participants.join('_');
 
-            let chat = await PrivateChat.findOne({ chatId });
-            if (!chat) {
-                chat = await PrivateChat.create({
-                    chatId,
-                    participants,
-                    participantData: [
-                        { userId: senderId, username: sender.username, profileImage: sender.profileImage },
-                        { userId: receiverId, username: receiver.username, profileImage: receiver.profileImage }
-                    ]
-                });
-            }
+            // 🐛 إصلاح تسابق نظري: find-then-create غير ذرّي — لو نُفِّذ نداءان لنفس المحادثة
+            // بالتوازي (ممكن الآن بما أن دفعات الكومبو لا تُسلسَل تطبيقياً بعد الآن، راجع
+            // processGiftCombo)، كلاهما يجد null فيحاولان الإنشاء معاً فيصطدم أحدهما بفهرس
+            // unique على chatId. upsert ذرّي على مستوى القاعدة يغلق هذا تماماً بغض النظر عن التزامن
+            const chat = await PrivateChat.findOneAndUpdate(
+                { chatId },
+                {
+                    $setOnInsert: {
+                        chatId,
+                        participants,
+                        participantData: [
+                            { userId: senderId, username: sender.username, profileImage: sender.profileImage },
+                            { userId: receiverId, username: receiver.username, profileImage: receiver.profileImage }
+                        ]
+                    }
+                },
+                { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
 
             const newMessage = await PrivateMessage.create({
                 chatId,
@@ -525,16 +532,25 @@ async function processGiftCombo({ io, senderId, giftId, quantity, taps = 1, reci
         } else {
             const participants = [senderId.toString(), receiverId].sort();
             const chatId = participants.join('_');
-            let chat = await PrivateChat.findOne({ chatId });
-            if (!chat) {
-                chat = await PrivateChat.create({
-                    chatId, participants,
-                    participantData: [
-                        { userId: senderId, username: sender.username, profileImage: sender.profileImage },
-                        { userId: receiverId, username: receiver.username, profileImage: receiver.profileImage }
-                    ]
-                });
-            }
+            // 🐛 إصلاح تسابق فعلي: find-then-create غير ذرّي — بما أن دفعات الكومبو المتعددة لنفس
+            // المرسل لا تُسلسَل تطبيقياً بعد الآن (راجع الشرح بـsocketService.js/gift:combo)،
+            // يمكن لدفعتين متتاليتين بنفس المحادثة أن تُنفَّذا بالتوازي فعلياً، فيجد كلاهما
+            // null ويحاولان الإنشاء معاً، فيصطدم أحدهما بفهرس unique على chatId ويفشل الطلب
+            // كاملاً رغم أن الخصم نجح فعلاً قبله — هذا بالضبط أحد أسباب "الهدية لا تصل والرصيد
+            // يُخصَم". upsert ذرّي على مستوى القاعدة يغلق هذا تماماً بغض النظر عن التزامن
+            const chat = await PrivateChat.findOneAndUpdate(
+                { chatId },
+                {
+                    $setOnInsert: {
+                        chatId, participants,
+                        participantData: [
+                            { userId: senderId, username: sender.username, profileImage: sender.profileImage },
+                            { userId: receiverId, username: receiver.username, profileImage: receiver.profileImage }
+                        ]
+                    }
+                },
+                { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
             const newMessage = await PrivateMessage.create({
                 chatId, sender: senderId, receiver: receiverId, type: 'gift',
                 content: `${gift.name}${effectiveQty > 1 ? ' × ' + effectiveQty : ''}`,
