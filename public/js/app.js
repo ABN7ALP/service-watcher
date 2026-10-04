@@ -11879,6 +11879,14 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
         // ✅ أُعيدت الهيكلة: fireOnce مُعرَّفة قبل الربط كي يستخدمها callback الاختيار أدناه
         // (استدعاؤها الفعلي لا يحدث إلا عند ضغط زر الإرسال الذي يظهر فوق الهدية نفسها بعد
         // تحديدها — راجع wireGiftSelectionAndQty/renderGiftCardHTML للتصميم الجديد بأسلوب Likee)
+        // 🐛 إصلاح "الرصيد يرقص": محرّك الكومبو يسمح بعدة نداءات fireOnce متزامنة (حتى 4
+        // بالخلفية). كانت كل استجابة ناجحة تكتب result2.data.newSenderCoins مباشرة بلا أي
+        // ترتيب — فلو وصلت استجابة لطلب أقدم بعد استجابة لطلب أحدث (تسابق شبكة طبيعي)، يرتد
+        // الرصيد المعروض للقيمة الأقدم الأقل دقة للحظة قبل أن يصحّح نفسه. نفس حل
+        // setupRapidGiftButton/setupRapidPublicGiftButton: كل طلب يأخذ رقماً تسلسلياً (seq)
+        // فريداً، ولا تُطبَّق أي استجابة إلا إذا كانت لأحدث طلب أُرسل حتى الآن
+        let giftSendSeq = 0;
+        let latestAppliedGiftSeq = 0;
         async function fireOnce() {
             const gift = getSelectedGift();
             const quantity = getQuantity();
@@ -11898,6 +11906,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
             footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, localUser.coins));
             checkLowBalance();
 
+            const mySeq = ++giftSendSeq;
             showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', quantity, targetUserId);
 
             try {
@@ -11909,14 +11918,19 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                 const result2 = await response2.json();
 
                 if (response2.ok) {
-                    const syncedUser = JSON.parse(localStorage.getItem('user'));
-                    if (syncedUser) {
-                        syncedUser.coins = result2.data.newSenderCoins;
-                        localStorage.setItem('user', JSON.stringify(syncedUser));
+                    // ✅ نطبّق فقط استجابة أحدث طلب أُرسل حتى الآن — يمنع ارتداد الرصيد لقيمة
+                    // قديمة لو وصل رد متأخر بعد رد أحدث منه
+                    if (mySeq > latestAppliedGiftSeq) {
+                        latestAppliedGiftSeq = mySeq;
+                        const syncedUser = JSON.parse(localStorage.getItem('user'));
+                        if (syncedUser) {
+                            syncedUser.coins = result2.data.newSenderCoins;
+                            localStorage.setItem('user', JSON.stringify(syncedUser));
+                        }
+                        setHeaderCoinsSilent(result2.data.newSenderCoins);
+                        footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, result2.data.newSenderCoins));
+                        checkLowBalance();
                     }
-                    setHeaderCoinsSilent(result2.data.newSenderCoins);
-                    footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, result2.data.newSenderCoins));
-                    checkLowBalance();
                     if (result2.data.message) displayPrivateMessage(result2.data.message, true);
 
                     // ✅ عداد الدعم أسفل المقعد لو المستلم قاعد بنفس الغرفة المعروضة حالياً
@@ -12112,6 +12126,11 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         // ✅ أُعيدت الهيكلة: fireOnce مُعرَّفة قبل الربط كي يستخدمها callback الاختيار أدناه
         // (استدعاؤها الفعلي لا يحدث إلا عند ضغط زر الإرسال الذي يظهر فوق الهدية نفسها بعد
         // تحديدها — راجع wireGiftSelectionAndQty/renderGiftCardHTML للتصميم الجديد بأسلوب Likee)
+        // 🐛 إصلاح "الرصيد يرقص" — نفس السبب والحل المُطبَّق بـfireOnce أعلى الملف (المتجر
+        // الخاص): نداءات fireOnce متزامنة عبر محرّك الكومبو، كل استجابة ناجحة تكتب الرصيد
+        // النهائي مباشرة بلا ترتيب. رقم تسلسلي (seq) لكل طلب يضمن تطبيق أحدث استجابة فقط
+        let giftSendSeq = 0;
+        let latestAppliedGiftSeq = 0;
         async function fireOnce() {
             const gift = getSelectedGift();
             const quantity = getQuantity();
@@ -12164,6 +12183,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 checkLowBalance();
             };
 
+            const mySeq = ++giftSendSeq;
             try {
                 // ✅ نداء شبكة واحد لكل المستلمين دفعة واحدة (بدل حلقة نداء لكل مستلم) — أسرع،
                 // ويصل للجميع بنفس اللحظة فعلياً، ويرجع رصيداً نهائياً واحداً موثوقاً
@@ -12175,14 +12195,19 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 const result = await response.json();
 
                 if (response.ok) {
-                    const syncedUser = JSON.parse(localStorage.getItem('user'));
-                    if (syncedUser) {
-                        syncedUser.coins = result.data.newSenderCoins;
-                        localStorage.setItem('user', JSON.stringify(syncedUser));
+                    // ✅ نطبّق فقط استجابة أحدث طلب أُرسل حتى الآن — يمنع ارتداد الرصيد لقيمة
+                    // قديمة لو وصل رد متأخر بعد رد أحدث منه (راجع الشرح أعلى هذي الدالة)
+                    if (mySeq > latestAppliedGiftSeq) {
+                        latestAppliedGiftSeq = mySeq;
+                        const syncedUser = JSON.parse(localStorage.getItem('user'));
+                        if (syncedUser) {
+                            syncedUser.coins = result.data.newSenderCoins;
+                            localStorage.setItem('user', JSON.stringify(syncedUser));
+                        }
+                        setHeaderCoinsSilent(result.data.newSenderCoins);
+                        footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, result.data.newSenderCoins));
+                        checkLowBalance();
                     }
-                    setHeaderCoinsSilent(result.data.newSenderCoins);
-                    footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, result.data.newSenderCoins));
-                    checkLowBalance();
                     // ✅ يُطلَق فقط بعد تأكيد نجاح السيرفر صراحة — راجع الشرح أعلى هذي الدالة
                     recipients.forEach(receiverId => notifyRoomGiftSupport(receiverId, gift.price * quantity));
                     return true;
