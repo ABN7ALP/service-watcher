@@ -12585,6 +12585,18 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
     btn.addEventListener('pointerleave', stopHold);
     btn.addEventListener('lostpointercapture', stopHold);
 
+    // 🐛 إصلاح جذري جديد: "تعليق ثم إرسال هدايا لوحدها" — سيناريو مختلف عن سيناريو الفيديو
+    // السابق. السبب الأرجح هنا: تجميد المتصفح الفعلي للصفحة بالكامل (Page Lifecycle Freeze)
+    // عند تصغير التطبيق/تبديله/فتح إشعار بينما الإصبع لا يزال "ممسكاً" بزر الإرسال — كل مؤقّتات
+    // JS (holdTimeout وhذا السقف الآمن نفسه) تتجمّد معها، فلا pointerup/pointercancel يصل أبداً
+    // طوال فترة التجميد (أحياناً لا يصل إطلاقاً حتى بعد العودة). عند إعادة إظهار الصفحة يُستأنف
+    // كل شيء دفعة واحدة فيصل تِك الاستمرار المتسارع قبل أن يصل سقف الأمان فعلياً فيُرسل هدية
+    // "من العدم" ظاهرياً للمستخدم. الإصلاح: إيقاف فوري وصريح للضغط المستمر لحظة اختفاء الصفحة
+    // فعلياً (document.hidden)، لا الانتظار لأي مؤقّت قد يتجمّد معها
+    const stopOnPageHidden = () => { if (document.hidden) stopHold(); };
+    document.addEventListener('visibilitychange', stopOnPageHidden);
+    window.addEventListener('pagehide', stopHold);
+
     // 🐛 إصلاح: لو بدّل المستخدم لهدية أخرى أثناء فترة سماح الكومبو (العدّاد لم يصل صفر بعد)،
     // يُفكَّك الزر/الحاوية فوراً عبر clearAllSendSlots لكن tickTimer/holdTimeout يبقيان
     // يعملان بالخلفية على عنصر مفصول عن DOM — عند وصولهما لاحقاً للصفر يستدعيان onComboEnd
@@ -12597,6 +12609,11 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
         tickTimer = null;
         clearTimeout(exitTimer);
         inCombo = false;
+        // ✅ الزر الحالي يُستبدل بزر جديد عند أي إعادة اختيار (راجع wireGiftSelectionAndQty) —
+        // بلا هذا التنظيف كان كل اختيار جديد يُراكم مستمعاً دائماً على document/window لا يُحذف
+        // أبداً طوال الجلسة (تسريب ذاكرة ومستمعين يتراكمون مع كل هدية يختارها المستخدم)
+        document.removeEventListener('visibilitychange', stopOnPageHidden);
+        window.removeEventListener('pagehide', stopHold);
     }
 
     return { forceEnd };
