@@ -86,6 +86,44 @@ function withUserSeatLock(userId, fn) {
 }
 
 // =================================================
+// ✅ قفل تسلسلي مستقل خاص بمحرّك إرسال الهدايا المُجمَّع (gift:combo) — نفس فكرة
+// withUserSeatLock تماماً (بروميس مسلسلة لكل مستخدم)، لكن بمساحة مفاتيح منفصلة تماماً كي لا
+// تتشارك قفلاً مع عمليات المقعد الصوتي لنفس المستخدم (لا علاقة بينهما إطلاقاً). بدون هذا
+// القفل: لو وصلت دفعتا كومبو لنفس المستخدم بسرعة كبيرة (شبكة بطيئة + إعادة محاولة)، يمكن أن
+// تُنفَّذا بالتوازي فتقرآ الرصيد قبل أن تكتب الأخرى تغييره — القفل يضمن تنفيذهما تباعاً دائماً
+const giftComboLocks = new Map();
+function withUserGiftLock(userId, fn) {
+    const key = `gift-${userId.toString()}`;
+    const previous = giftComboLocks.get(key) || Promise.resolve();
+    const run = previous.catch(() => {}).then(fn);
+    giftComboLocks.set(key, run.catch(() => {}));
+    return run;
+}
+
+// ✅ محدد معدّل مستقل لرسائل gift:combo — تتجاوز Express rate limiter بالكامل (Socket.IO لا
+// REST)، فتحتاج حمايتها الخاصة. سخي بما يكفي لتسارع حقيقي كامل (دفعة كل 250ms من العميل
+// السليم) + هامش أمان، لكن يمنع عميلاً مُعدَّلاً من إغراق الخادم برسائل غير مُجمَّعة فعلياً
+const giftComboRateMap = new Map();
+const GIFT_COMBO_RATE_WINDOW_MS = 2000;
+const GIFT_COMBO_RATE_MAX = 16;
+function isGiftComboRateLimited(userId) {
+    const now = Date.now();
+    const key = userId.toString();
+    const timestamps = (giftComboRateMap.get(key) || []).filter(t => now - t < GIFT_COMBO_RATE_WINDOW_MS);
+    timestamps.push(now);
+    giftComboRateMap.set(key, timestamps);
+    return timestamps.length > GIFT_COMBO_RATE_MAX;
+}
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, timestamps] of giftComboRateMap.entries()) {
+        const filtered = timestamps.filter(t => now - t < GIFT_COMBO_RATE_WINDOW_MS);
+        if (filtered.length === 0) giftComboRateMap.delete(key);
+        else giftComboRateMap.set(key, filtered);
+    }
+}, 30 * 1000);
+
+// =================================================
 // ✅ معارك PK بين غرفتين — منطق التحدي/البدء/الإنهاء بالكامل هنا (نفس أسلوب التحديات
 // الفردية startGame/endBattle أعلاه)، معتمداً على مستند RoomBattle كمصدر حقيقة وحيد،
 // والمؤقتات هنا فقط لجدولة الإنهاء التلقائي (لا تُخزَّن بها أي بيانات مصيرية).
@@ -2243,6 +2281,72 @@ socket.on('refreshBlockData', async () => {
             const safeValue = Math.min(numValue, 100000); // 🛡️ سقف معقول يمنع تضخيم العداد بقيم وهمية
             const total = addRoomSupportTotal(roomId, targetUserId, safeValue);
             io.emit('room-support-updated', { roomId, seatNumber: parseInt(seatNumber), userId: targetUserId, value: total });
+        });
+
+        // =====================================================
+        // ✅ محرّك الكومبو المُجمَّع للهدايا (gift:combo) — بديل الإرسال عبر HTTP لكل "ضغطة"
+        // منفردة بمحرّك الكومبو الدائري (راجع createComboSender بـapp.js). العميل يُجمِّع كل
+        // الضغطات المتتالية خلال 250ms برسالة واحدة فقط (comboId + seq تسلسلي + taps)، بدل
+        // نداء مستقل لكل ضغطة — نفس المبدأ الذي تعمل به منصات البث الحي الكبرى (جلسة كومبو
+        // واحدة، لا هدايا منفصلة). هذا يحل 3 مشاكل حقيقية واجهناها بالتصميم القديم:
+        // 1) "الرصيد يرقص" — أصل المشكلة أن استجابات طلبات HTTP متزامنة قد تصل بترتيب مختلف
+        //    عن ترتيب إرسالها، فتكتب استجابة طلب أقدم فوق رصيد أحدث. هنا العميل (createComboSender)
+        //    يطبّق الرصيد بترتيب seq المنطقي دائماً، لا بترتيب وصول الرد الفعلي.
+        // 2) تكرار الخصم لو أعاد العميل إرسال نفس الرسالة (نفس comboId+seq) بعد انقطاع شبكة
+        //    قبل استلام ack — GiftComboTx يحفظ نتيجة كل (مُرسِل+جلسة+رقم) فريدة، فإعادة محاولة
+        //    بنفس المفتاح تُرجع نفس النتيجة المخزَّنة بدل تنفيذ الخصم ثانية.
+        // 3) تزاحم طلبات نفس المستخدم (withUserGiftLock يسلسلها دائماً، كـwithUserSeatLock
+        //    بعمليات المقعد تماماً) — لا تُنفَّذ دفعتان لنفس المستخدم بالتوازي أبداً.
+        // الخصم نفسه يبقى بالضبط نفس العملية الذرية القديمة (findOneAndUpdate + $inc بشرط
+        // توفر الرصيد) داخل processGiftCombo — لم نغيّر جوهر الحماية المالية، فقط النقل.
+        // =====================================================
+        socket.on('gift:combo', (payload, ack) => {
+            // ✅ بلا ack لا يمكن تأكيد نجاح/فشل العملية بأمان للعميل — نتجاهل أي نداء بلا دالة رد
+            if (typeof ack !== 'function') return;
+            if (isGiftComboRateLimited(socket.user._id)) {
+                return ack({ ok: false, code: 'RATE_LIMITED', message: 'إرسال سريع جداً، انتظر لحظة' });
+            }
+            withUserGiftLock(socket.user._id, async () => {
+                try {
+                    const { comboId, seq, taps, giftId, quantity, recipientIds, roomId } = payload || {};
+                    if (typeof comboId !== 'string' || !comboId || comboId.length > 80) {
+                        return ack({ ok: false, code: 'BAD_COMBO_ID' });
+                    }
+                    if (!Number.isInteger(seq) || seq < 1 || seq > 1000000) {
+                        return ack({ ok: false, code: 'BAD_SEQ' });
+                    }
+                    if (!Number.isInteger(taps) || taps < 1 || taps > 60) {
+                        return ack({ ok: false, code: 'BAD_TAPS' });
+                    }
+
+                    // ✅ Idempotency: نفس (المرسل + جلسة الكومبو + الرقم التسلسلي) لو تكرّر
+                    // (العميل أعاد إرسال نفس الرسالة بعد عدم استلام ack) يُعيد نفس النتيجة
+                    // المخزَّنة سابقاً فوراً بدل تنفيذ الخصم مرة ثانية
+                    const GiftComboTx = require('../models/GiftComboTx');
+                    const key = `${socket.user._id}:${comboId}:${seq}`;
+                    const existing = await GiftComboTx.findOne({ key }).select('balanceAfter').lean();
+                    if (existing) {
+                        return ack({ ok: true, balance: existing.balanceAfter });
+                    }
+
+                    const { processGiftCombo } = require('../controllers/giftController');
+                    const result = await processGiftCombo({
+                        io, senderId: socket.user._id, giftId, quantity, taps, recipientIds, roomId
+                    });
+
+                    await GiftComboTx.create({ key, sender: socket.user._id, comboId, seq, balanceAfter: result.balance });
+                    ack({ ok: true, balance: result.balance, message: result.message });
+                } catch (error) {
+                    // 🛡️ مفتاح مكرَّر فعلياً بقاعدة البيانات (سباق نادر جداً تجاوز القفل، أو
+                    // إعادة إرسال وصلت بين نجاح الخصم وكتابة سجل Idempotency) — لا نُعيد الخصم
+                    // أبداً، فقط نُرجع فشلاً آمناً (الرصيد الحقيقي سيصل لاحقاً عبر المسار الطبيعي)
+                    if (error && error.code === 11000) {
+                        return ack({ ok: false, code: 'DUPLICATE' });
+                    }
+                    console.error('[GIFT COMBO] error:', error);
+                    ack({ ok: false, code: (error && error.code) || 'ERR', message: error && error.message });
+                }
+            });
         });
 
         // =====================================================
