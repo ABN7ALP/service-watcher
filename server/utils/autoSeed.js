@@ -55,7 +55,11 @@ async function seedFramesIfMissing() {
         { name: 'إطار المساهم', cssClass: 'profile-frame-contributor', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png', isActive: false, sortOrder: 20, prices: { days7: 0, days30: 0, days365: 0 } },
         // ✅ إطار مهمة — غير مباع (isActive:false)، يُمنح تلقائياً لمن يكمل مهمة الحضور اليومي
         // بمستوى الدعم 7 أيام متتالية (راجع server/controllers/userController.js claimSupportCheckIn)
-        { name: 'إطار المثابر', cssClass: 'profile-frame-persistent', isActive: false, sortOrder: 21, prices: { days7: 0, days30: 0, days365: 0 } }
+        { name: 'إطار المثابر', cssClass: 'profile-frame-persistent', isActive: false, sortOrder: 21, prices: { days7: 0, days30: 0, days365: 0 } },
+        // ✅ إطار خاص بالأدمن فقط (طلب صريح) — isActive:false (لا يُباع لأي مستخدم عادي أبداً)
+        // وadminOnly:true (يتجاوز فحص ownedFrames الاعتيادي بـsetActiveFrame، يُفحَص isAdmin
+        // مباشرة بدلاً منه — راجع server/controllers/frameController.js)
+        { name: 'إطار الأدمن', cssClass: 'profile-frame-admin', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791240482/admin-frame-animated-512.webp', isActive: false, adminOnly: true, sortOrder: 22, prices: { days7: 0, days30: 0, days365: 0 } }
     ];
     for (const f of frames) {
         const exists = await ProfileFrame.findOne({ name: f.name });

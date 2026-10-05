@@ -3045,6 +3045,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         </button>
                     </div>
                     <div class="room-profile-badge-row">
+                        ${renderAdminBadgeHTML(p)}
                         ${renderRoomProfileSupportBadgeHTML('giving', p.supportGiving)}
                         ${renderRoomProfileSupportBadgeHTML('receiving', p.supportReceiving)}
                         ${p.gender ? `<span class="room-profile-mini-badge room-profile-mini-badge-sm"><i class="fas ${p.gender === 'male' ? 'fa-mars text-blue-400' : 'fa-venus text-pink-400'}"></i></span>` : ''}
@@ -6758,6 +6759,8 @@ switchToView('arena');
     if (refreshed) {
         const freshUser = JSON.parse(localStorage.getItem('user'));
         updateFriendRequestsBadge(freshUser.friendRequestsReceived ? freshUser.friendRequestsReceived.length : 0);
+        // ✅ أول جلسة دخول بعد منح isAdmin:true مباشرة بقاعدة البيانات — نافذة احتفال مرّة واحدة فقط
+        maybeShowAdminBadgeCelebration(freshUser);
     }
 
     // ✅ تحديث شارة الرسائل فقط — بدون أي إشعار مزعج
@@ -6986,6 +6989,14 @@ document.body.addEventListener('click', async (e) => {
     if (modalBackdrop && e.target === modalBackdrop) {
         modalBackdrop.remove();
         return; // أوقف التنفيذ هنا
+    }
+
+    // ✅ شارة الأدمن الخاصة — تظهر بأي مكان (ملف كامل/ملف مصغّر)، نقرة واحدة تفتح نافذة
+    // المعلومات بلا حاجة لربط مستمع منفصل بكل دالة عرض تُدرجها (نمط تفويض موحَّد)
+    const adminBadgeBtn = e.target.closest('.admin-special-badge');
+    if (adminBadgeBtn) {
+        showAdminBadgeInfoModal();
+        return;
     }
 
     // --- الجزء الثاني: التعامل مع أزرار الملف الشخصي المصغر --
@@ -7451,7 +7462,9 @@ function showXpGainAnimation(amount) {
     // يتكفّل بتحديث activeFrameClass بالفعل؛ هذا فقط احتفال إضافي يوضح للفائز ماذا حصل بالضبط
     socket.on('fanclub-contributor-frame-earned', ({ frameName }) => {
         fireConfettiBurst(['#fbbf24', '#f59e0b', '#ec4899']);
-        showNotification(`🏆 فزت بمركز الأسبوع الأول! حصلت على "${frameName}" بشكل دائم`, 'success');
+        // ✅ "بشكل دائم" كانت خاطئة بعد تحويل الإطار لهدية مؤقتة أسبوعية (طلب صريح) — الفوز
+        // بنادٍ آخر قبل انتهاء الأسبوع يُجدِّد المدة لأسبوع كامل جديد، لا يُراكمها أبداً
+        showNotification(`🏆 فزت بمركز الأسبوع الأول! حصلت على "${frameName}" لمدة أسبوع كامل`, 'success');
     });
 
     socket.on('seat-lock-changed', ({ roomId, seatNumber, isLocked }) => {
@@ -8522,6 +8535,7 @@ function renderProfileHubBody(u) {
             <h2 class="profile-hub-name">${escapeHtml(u.username || '')} ${getAgentBadgeHTML(u.isAgent)}</h2>
             <p class="profile-hub-id">ID: ${escapeHtml(String(u.customId || ''))}</p>
             <div class="profile-hub-badge-row">
+                ${renderAdminBadgeHTML(u)}
                 <span class="profile-hub-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
                 ${age !== null ? `<span class="profile-hub-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${age} سنة</span>` : ''}
                 ${u.location ? `<span class="profile-hub-mini-badge"><i class="fas fa-location-dot text-emerald-400"></i> ${escapeHtml(u.location)}</span>` : ''}
@@ -8698,6 +8712,7 @@ function renderProfileHubBody(u) {
 // ✅ ورقة "الإعدادات" — مُنقولة بالكامل هنا خارج جسم مركز الملف الشخصي، تُفتح فقط من قائمة
 // الثلاث نقاط (المزيد) — تحرير/الحساب/التنبيهات/نبذة/تسجيل الخروج
 function showProfileHubSettingsSheet() {
+    const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
     document.getElementById('profile-hub-settings-sheet')?.remove();
     const modal = document.createElement('div');
     modal.id = 'profile-hub-settings-sheet';
@@ -8711,6 +8726,7 @@ function showProfileHubSettingsSheet() {
             <div class="overflow-y-auto">
                 <div class="profile-hub-settings-list">
                     <button class="profile-hub-settings-row" id="profile-hub-full-settings-btn"><i class="fas fa-user-cog"></i><span>الحساب والخصوصية والمزيد</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
+                    ${cachedUser.isAdmin ? `<button class="profile-hub-settings-row" id="profile-hub-badges-btn"><i class="fas fa-certificate text-yellow-400"></i><span>الشارات</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>` : ''}
                     ${['عام', 'التنبيهات', 'اللغة', 'ذاكرة نظيفة', 'جودة الفيديو', 'مفضّلة'].map(label => `
                         <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
                     `).join('')}
@@ -8735,6 +8751,10 @@ function showProfileHubSettingsSheet() {
         modal.remove();
         document.getElementById('profile-hub-page')?.remove();
         switchToView('settings');
+    });
+    document.getElementById('profile-hub-badges-btn')?.addEventListener('click', () => {
+        modal.remove();
+        showBadgesSettingsSheet();
     });
     modal.querySelectorAll('.profile-hub-settings-soon').forEach(btn => {
         btn.addEventListener('click', () => showNotification(`قسم "${btn.dataset.label}" قيد إعادة الهيكلة، قريباً جداً`, 'info'));
@@ -9576,7 +9596,7 @@ async function showMiniProfileModal(userId) {
                     <div class="relative bg-gradient-to-r from-purple-700/30 to-pink-700/25 pt-5 pb-3 px-4 text-center">
                         <img id="mini-profile-avatar-img" src="${profileUser.profileImage}" 
                              class="w-16 h-16 rounded-full mx-auto border-4 border-gray-900 object-cover shadow-lg cursor-pointer hover:opacity-90 transition ${profileUser.activeFrameClass || ''}" title="عرض الملف الكامل">
-                        <h2 class="text-sm font-bold mt-2 flex items-center justify-center gap-1">${escapeHtml(profileUser.username)} ${getAgentBadgeHTML(profileUser.isAgent)}</h2>
+                        <h2 class="text-sm font-bold mt-2 flex items-center justify-center gap-1">${escapeHtml(profileUser.username)} ${getAgentBadgeHTML(profileUser.isAgent)} ${renderAdminBadgeHTML(profileUser)}</h2>
                         <div class="text-[10px] text-gray-300 mt-1 cursor-pointer inline-flex items-center gap-1.5 copy-id-btn bg-black/25 px-2 py-0.5 rounded-full">
                            <i class="fas fa-id-card"></i>
                            <span>${profileUser.customId}</span>
@@ -9805,23 +9825,34 @@ function renderSupportBadgeHTML(kind, info) {
     `;
 }
 
-// ✅ نسخة مصغّرة "طافية" (بلا خلفية/توهّج) من شارة الدعم/التلقي، بصور شارات حقيقية تتدرّج
-// مع فئة المستخدم (مبتدئ/محترف-خبير/مخضرم) بدل الكبسولة اللونية — خاصة بنافذة ملف الغرفة
-// (showUserProfileSheet) فقط، لا تمسّ renderSupportBadgeHTML المستخدَمة بالملف الكامل ولوحة
-// الشرف بمكان آخر
-const ROOM_PROFILE_SUPPORT_BADGE_IMAGES = [
-    'https://res.cloudinary.com/dntlt5xry/image/upload/v1790284846/golden-medal-of-the-achievement-award-badges-png.png',
-    'https://res.cloudinary.com/dntlt5xry/image/upload/v1790284904/game-badges-button-in-circle-frame-with-wings-and-crown-png.png',
-    'https://res.cloudinary.com/dntlt5xry/image/upload/v1790284957/game-badges-button-in-circle-frame-with-wings-and-heart-png.png'
+// ✅ طلب صريح: استبدال شارات مستوى الدعم بـ8 صور جديدة موزَّعة على مستويات 1-80 (10 مستويات
+// لكل صورة بدل التدرّج القديم بـ3 صور حسب الفئة فقط) — الثامنة ("المكس") للمستويات الأسطورية
+// 71-80. supportBadgeImageForLevel تُستخدَم بكل مكان تُعرض فيه صورة شارة الدعم بدل الاعتماد
+// على tierIndex (4 فئات فقط) الذي لم يعد يكفي لاختيار الصورة الصحيحة من 8
+const SUPPORT_LEVEL_BADGE_IMAGES = [
+    'https://res.cloudinary.com/dntlt5xry/image/upload/v1791238733/level-1_1024.png',
+    'https://res.cloudinary.com/dntlt5xry/image/upload/v1791238843/level-2_1024.png',
+    'https://res.cloudinary.com/dntlt5xry/image/upload/v1791238873/level-3_1024.png',
+    'https://res.cloudinary.com/dntlt5xry/image/upload/v1791238913/level-4_1024.png',
+    'https://res.cloudinary.com/dntlt5xry/image/upload/v1791238943/level-5_1024.png',
+    'https://res.cloudinary.com/dntlt5xry/image/upload/v1791238964/level-6_1024.png',
+    'https://res.cloudinary.com/dntlt5xry/image/upload/v1791238984/level-7_1024.png',
+    'https://res.cloudinary.com/dntlt5xry/image/upload/v1791239004/level-8_1024.png'
 ];
+function supportBadgeImageForLevel(level) {
+    const idx = Math.min(7, Math.max(0, Math.floor((level - 1) / 10)));
+    return SUPPORT_LEVEL_BADGE_IMAGES[idx];
+}
+// ✅ نسخة مصغّرة "طافية" (بلا خلفية/توهّج) من شارة الدعم/التلقي، بصور شارات حقيقية تتدرّج
+// مع المستوى الفعلي (1-80) بدل الكبسولة اللونية — خاصة بنافذة ملف الغرفة (showUserProfileSheet)
+// فقط، لا تمسّ renderSupportBadgeHTML المستخدَمة بالملف الكامل ولوحة الشرف بمكان آخر
 function renderRoomProfileSupportBadgeHTML(kind, info) {
     if (!info) return '';
     const label = kind === 'giving' ? 'مستوى الدعم' : 'مستوى التلقي';
-    const imgIndex = info.tierIndex <= 1 ? 0 : (info.tierIndex >= 4 ? 2 : 1);
     return `
         <span class="room-profile-support-badge" data-support-kind="${kind}" title="${label}">
             <span class="room-profile-support-badge-imgwrap">
-                <img src="${ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex]}" class="room-profile-support-badge-img" alt="">
+                <img src="${supportBadgeImageForLevel(info.level)}" class="room-profile-support-badge-img" alt="">
                 <span class="room-profile-support-badge-ribbon">${info.level}</span>
             </span>
         </span>
@@ -9833,10 +9864,9 @@ function renderRoomProfileSupportBadgeHTML(kind, info) {
 // (بلا حاجة لتوقّع/حساب مسبّق من طرف العميل — القيمة الحقيقية تصل من الخادم لحظة تأكّد الإرسال)
 function giftModalSupportPreviewHTML(info) {
     if (!info) return '';
-    const imgIndex = info.tierIndex <= 1 ? 0 : (info.tierIndex >= 4 ? 2 : 1);
     return `
         <div class="gift-support-preview">
-            <img src="${ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex]}" class="gift-support-preview-badge" alt="">
+            <img src="${supportBadgeImageForLevel(info.level)}" class="gift-support-preview-badge" alt="">
             <div class="gift-support-preview-info">
                 <div class="gift-support-preview-top">
                     <span class="gift-support-preview-level">Lv.${info.level}</span>
@@ -9852,9 +9882,17 @@ function giftModalSupportPreviewHTML(info) {
 function updateGiftModalSupportPreview(containerId, info) {
     const el = document.getElementById(containerId);
     if (!el || !info) return;
-    const imgIndex = info.tierIndex <= 1 ? 0 : (info.tierIndex >= 4 ? 2 : 1);
+    // 🐛 إصلاح "ليس حياً عند الإرسال": لو فُتحت النافذة بلا supportGiving محفوظة محلياً (توكن
+    // قديم لم يُحدَّث بعد عبر refreshUserData) كانت الحاوية تُرسَم فارغة (giftModalSupportPreviewHTML
+    // ترجع '' بلا معلومات) — فكل عناصر querySelector هنا تُرجع null وتُهمَل الدالة بصمت حتى لو
+    // وصلت بيانات حية صحيحة فعلاً عبر السوكيت لاحقاً. نبني المحتوى كاملاً أول مرة لو لم يكن
+    // موجوداً، بدل افتراض وجوده دوماً
+    if (!el.querySelector('.gift-support-preview')) {
+        el.innerHTML = giftModalSupportPreviewHTML(info);
+        return;
+    }
     const img = el.querySelector('.gift-support-preview-badge');
-    if (img) img.src = ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex];
+    if (img) img.src = supportBadgeImageForLevel(info.level);
     const lvl = el.querySelector('.gift-support-preview-level');
     if (lvl) lvl.textContent = `Lv.${info.level}`;
     const tier = el.querySelector('.gift-support-preview-tier');
@@ -9987,6 +10025,157 @@ function supportMissionsReceivingHTML() {
     `;
 }
 
+// ✅ نافذة معلومات شارة الأدمن — تُفتح بنقرة واحدة من أي مكان تُعرض فيه الشارة (ملف كامل/ملف
+// مصغّر بالغرفة)، عبر التفويض الموحَّد بـdocument.body (راجع ".admin-special-badge" أعلاه).
+// نص عام (لا يفترض كون الناظر هو صاحب الشارة نفسه) يلقّب حامل الشارة بصلاحيات غير محدودة —
+// بصياغة فخمة تناسب "الادمن" كطلب صريح
+function showAdminBadgeInfoModal() {
+    document.getElementById('admin-badge-info-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'admin-badge-info-modal';
+    modal.className = 'fixed inset-0 bg-black/70 flex items-end justify-center z-[345]';
+    modal.innerHTML = `
+        <div class="admin-badge-info-sheet">
+            <div class="w-10 h-1 bg-white/15 rounded-full mx-auto mt-2.5 mb-1 flex-shrink-0"></div>
+            <div class="admin-badge-info-body">
+                <img src="${ADMIN_BADGE_IMG}" class="admin-badge-info-img" alt="">
+                <p class="admin-badge-info-title">شارة الأدمن الأسطورية 👑</p>
+                <p class="admin-badge-info-text">
+                    حامل هذه الشارة هو أحد عظماء هذه المنصة — صلاحياته <b>غير محدودة</b> فعلياً:
+                    يرى ويتحكّم بكل تفصيلة بلوحة التحكم، ويملك كلمة الفصل بكل ما يجري هنا.
+                    احترامه وتقديره واجب على كل من يلتقيه 🌟
+                </p>
+                <button type="button" id="admin-badge-info-close" class="admin-badge-info-close-btn">تمام، فهمت</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'admin-badge-info-modal') modal.remove(); });
+    modal.querySelector('#admin-badge-info-close').addEventListener('click', () => modal.remove());
+}
+
+// ✅ تحديث مرئي/تخزين محلي فوري لحالة ظهور شارة الأدمن — يُستخدم من نافذة الاحتفال الأولى
+// وقسم إعدادات "الشارات" معاً كي لا يتكرر نداء الخادم المنطقي بموضعين مختلفين
+async function setAdminBadgeVisibility(visible, markIntroSeen = false) {
+    try {
+        const response = await fetch('/api/users/me/admin-badge', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ visible, markIntroSeen })
+        });
+        const result = await response.json();
+        if (result.status !== 'success') throw new Error();
+        const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        cachedUser.adminBadgeVisible = result.data.adminBadgeVisible;
+        cachedUser.hasSeenAdminBadgeIntro = result.data.hasSeenAdminBadgeIntro;
+        localStorage.setItem('user', JSON.stringify(cachedUser));
+        return true;
+    } catch (error) {
+        showNotification('تعذّر حفظ التغيير، حاول مجدداً', 'error');
+        return false;
+    }
+}
+
+// ✅ نافذة الاحتفال الأولى بمنح شارة الأدمن — تظهر مرّة واحدة فقط لكل أدمن (hasSeenAdminBadgeIntro
+// يُضبط دائماً بعد هذي النافذة بغضّ النظر عن الخيار المُتّخذ) عند أول تحميل جلسة له بعد منحه
+// isAdmin:true مباشرة بقاعدة البيانات (لا يوجد مسار منح داخل التطبيق ليُبَثّ لحظياً، فالفحص
+// يتم بأول جلب لبيانات الجلسة بدل أي حدث socket). واجهة احتفالية (قصف كونفيتي + تكبير نابض
+// للشارة) مع خيارين: إظهار الشارة بالملف، أو البقاء متخفياً (لا تُعرض لأحد لاحقاً، قابل
+// للتغيير أي وقت من إعدادات "الشارات")
+let adminBadgeCelebrationShown = false;
+function maybeShowAdminBadgeCelebration(userData) {
+    if (!userData || !userData.isAdmin || userData.hasSeenAdminBadgeIntro) return;
+    if (adminBadgeCelebrationShown) return; // 🛡️ يمنع تكرار الفتح لو استُدعيت refreshUserData عدة مرات متتالية قبل اكتمال markIntroSeen
+    adminBadgeCelebrationShown = true;
+
+    const modal = document.createElement('div');
+    modal.id = 'admin-badge-celebration-modal';
+    modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[400] p-4';
+    modal.innerHTML = `
+        <div class="admin-celebration-card">
+            <div class="admin-celebration-confetti" id="admin-celebration-confetti"></div>
+            <img src="${ADMIN_BADGE_IMG}" class="admin-celebration-badge-img" alt="">
+            <p class="admin-celebration-title">تهانينا أيها الأدمن! 👑</p>
+            <p class="admin-celebration-text">
+                لقد نلت شارة الأدمن الأسطورية — رمز صلاحياتك غير المحدودة على كامل هذه المنصة.
+                أنت الآن أحد القلائل الذين يملكون كلمة الفصل في كل شيء هنا ✨
+            </p>
+            <div class="admin-celebration-choices">
+                <button type="button" id="admin-celebration-show" class="admin-celebration-btn admin-celebration-btn-primary">
+                    <i class="fas fa-eye"></i> أظهر شارتي للجميع
+                </button>
+                <button type="button" id="admin-celebration-hide" class="admin-celebration-btn admin-celebration-btn-ghost">
+                    <i class="fas fa-eye-slash"></i> أبقى متخفياً
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    spawnAdminCelebrationConfetti(modal.querySelector('#admin-celebration-confetti'));
+
+    const close = async (visible) => {
+        modal.remove();
+        await setAdminBadgeVisibility(visible, true);
+    };
+    modal.querySelector('#admin-celebration-show').addEventListener('click', () => close(true));
+    modal.querySelector('#admin-celebration-hide').addEventListener('click', () => close(false));
+}
+
+// ✅ قصف كونفيتي بسيط بعناصر CSS خفيفة (بلا أي مكتبة خارجية جديدة) — دفعة واحدة من 40 شريطاً
+// ملوّناً تتساقط بزوايا/سرعات/ألوان عشوائية ثم تُزال تلقائياً بعد انتهاء الحركة
+function spawnAdminCelebrationConfetti(container) {
+    if (!container) return;
+    const colors = ['#fbbf24', '#f472b6', '#60a5fa', '#34d399', '#a78bfa'];
+    for (let i = 0; i < 40; i++) {
+        const piece = document.createElement('span');
+        piece.className = 'admin-confetti-piece';
+        piece.style.left = `${Math.random() * 100}%`;
+        piece.style.background = colors[i % colors.length];
+        piece.style.animationDelay = `${Math.random() * 0.4}s`;
+        piece.style.animationDuration = `${1.8 + Math.random() * 1.2}s`;
+        container.appendChild(piece);
+    }
+    setTimeout(() => { container.innerHTML = ''; }, 3500);
+}
+
+// ✅ قسم إعدادات "الشارات" — حالياً شارة الأدمن فقط (إنشاؤها كقائمة بدل مفتاح مفرد يسمح بإضافة
+// شارات مستقبلية بلا أي تغيير بنيوي)، تُفتح من ورقة الإعدادات الرئيسية ولا تظهر إطلاقاً لغير
+// الأدمن (لا شارات له ليُديرها حالياً)
+function showBadgesSettingsSheet() {
+    const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
+    document.getElementById('badges-settings-sheet')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'badges-settings-sheet';
+    modal.className = 'fixed inset-0 bg-black/70 z-[327] flex items-end md:items-center justify-center p-3';
+    modal.innerHTML = `
+        <div class="profile-hub-subsheet-card w-full md:max-w-sm">
+            <div class="flex items-center justify-between mb-3">
+                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-certificate text-yellow-400"></i> الشارات</p>
+                <button id="close-badges-settings" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="badges-settings-row">
+                <img src="${ADMIN_BADGE_IMG}" class="badges-settings-row-img" alt="">
+                <div class="badges-settings-row-text">
+                    <p class="badges-settings-row-title">شارة الأدمن</p>
+                    <p class="badges-settings-row-sub">إظهارها بملفك الشخصي أمام الجميع</p>
+                </div>
+                <label class="hub-toggle">
+                    <input type="checkbox" id="admin-badge-visible-toggle" ${cachedUser.adminBadgeVisible !== false ? 'checked' : ''}>
+                    <span class="hub-toggle-slider"></span>
+                </label>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'badges-settings-sheet') modal.remove(); });
+    document.getElementById('close-badges-settings').addEventListener('click', () => modal.remove());
+    document.getElementById('admin-badge-visible-toggle').addEventListener('change', async (e) => {
+        const ok = await setAdminBadgeVisibility(e.target.checked);
+        if (ok) showNotification(e.target.checked ? 'ستظهر شارتك للجميع الآن' : 'تم إخفاء شارتك', 'success');
+        else e.target.checked = !e.target.checked; // 🛡️ تراجع بصري لو فشل الحفظ بالخادم
+    });
+}
+
 // ✅ لوحة "تفاصيل شارة الدعم/التلقي" — أُعيد بناؤها بالكامل كبطاقة عضوية فاخرة (hero card)
 // بتدرّج لوني حقيقي يتبدّل تلقائياً حسب فئة المستخدم (--tier-c1/--tier-c2 من computeSupportLevelInfo)
 // بدل ثيم ذهبي ثابت للجميع بغضّ النظر عن رتبتهم الفعلية؛ صورته داخل إطار أبيض شفاف + شارة
@@ -10001,8 +10190,7 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
     modal.className = 'fixed inset-0 bg-black/70 flex items-end justify-center z-[340]';
     const title = kind === 'giving' ? 'مستوى الدعم' : 'مستوى التلقي';
     const kindIcon = kind === 'giving' ? 'fa-bullhorn' : 'fa-microphone';
-    const imgIndex = info.tierIndex <= 1 ? 0 : (info.tierIndex >= 4 ? 2 : 1);
-    const badgeImg = ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex];
+    const badgeImg = supportBadgeImageForLevel(info.level);
     const [c1, c2] = info.tierGradient;
 
     modal.innerHTML = `
@@ -10207,6 +10395,16 @@ const FAN_CLUB_COLORS = {
 // بالخادم (autoSeed.js) — تُستخدم هنا لمعاينته بشاشات النادي وكذلك كتراكب حقيقي فوق صورة
 // أي فائز حالياً يرتديه (راجع IMAGE_OVERLAY_FRAMES/wrapImageOverlayFrames أسفله)
 const FAN_CLUB_CONTRIBUTOR_FRAME_IMG = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png';
+// ✅ شارة الأدمن الخاصة — تُمنح تلقائياً لكل isAdmin:true (لا يوجد مسار منح/سحب بالتطبيق، الحقل
+// يُضبط مباشرة بقاعدة البيانات فقط)، بخيار إخفائها شخصياً (adminBadgeVisible) تماماً كخيار
+// "ابقَ متخفياً" الذي طلبه صاحب الشارة نفسه — إخفاؤها يخفيها عن كل زائر لملفه، لا عن نفسه فقط
+const ADMIN_BADGE_IMG = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791236384/admin-badge-animated-512.webp';
+// ✅ شارة قابلة للنقر بكل سياق تُعرض فيه (ملف كامل/ملف مصغّر) — التفويض الموحَّد بـ
+// document.body's click listener (راجع ".admin-special-badge" هناك) يفتح نافذة المعلومات
+function renderAdminBadgeHTML(user) {
+    if (!user || !user.isAdmin || user.adminBadgeVisible === false) return '';
+    return `<button type="button" class="admin-special-badge" title="شارة الأدمن"><img src="${ADMIN_BADGE_IMG}" alt=""></button>`;
+}
 // ✅ أيقونة الكوينز الموحّدة — تستبدل أيقونة Font Awesome الجنيرك في كل مكان يُعرض فيه رصيد/سعر بالكوينز
 const COIN_ICON_URL = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791022522/black_coin_icon.png';
 function coinIconHTML(px = 14) {
@@ -10315,7 +10513,14 @@ const DEFAULT_OVERLAY_ART_SCALE = 180;   // % من الحاوية — صورة �
 // قيمة أساس أعلى من البقية خصيصاً على المقعد. القيم هنا هي "أساس المقعد" لكل إطار؛ باقي
 // السياقات تُقيَّد لاحقاً بسقف ثابت (OVERLAY_TIGHT_CONTEXT_CAP) بدل تكرار قيم يدوية لكل مكان
 const IMAGE_OVERLAY_FRAMES = {
-    'profile-frame-contributor': { url: FAN_CLUB_CONTRIBUTOR_FRAME_IMG, photoScale: 87, artScale: 195 },
+    // 🐛 إصلاح: photoScale:87 (مع artScale:195) كان يُعطي نسبة إطار-إلى-صورة ~1.61× (140/87)
+    // حتى بعد توحيد سقف الفنّ عند 140% — أعلى بوضوح من نسبة 1.4× (140/100) لكل الإطارات
+    // الأخرى، وهذا تحديداً ما جعل إطار المساهم "يبدو أكبر من البقية" رغم خضوعه لنفس السقف.
+    // لا مبرر لمعاملته مختلفاً بعد الآن — artScale يُقيَّد دوماً لـ140% كبقيتها، فلا حاجة
+    // لتصغير الصورة مسبقاً لحجز مساحة له (كانت ضرورية فقط حين كان artScale يصل فعلياً حتى 195%)
+    'profile-frame-contributor': { url: FAN_CLUB_CONTRIBUTOR_FRAME_IMG, artScale: 195 },
+    // ✅ إطار الأدمن الخاص — نفس نمط بقية الإطارات (photoScale/artScale افتراضي 100%/180%)
+    'profile-frame-admin': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791240482/admin-frame-animated-512.webp' },
     'profile-frame-luxury-01': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif' },
     // ✅ "صغّر الصورة مع الإطار قليلاً" — طلب صريح لهذا الإطار تحديداً (كان الأكثر شكوى: يغطي
     // الاسم بالملف الكامل والمتجر معاً، لا الملف الكامل فقط كبقية الإطارات)
@@ -11245,6 +11450,7 @@ async function showFullProfilePage(userId) {
                 <h2 class="full-profile-name">${escapeHtml(u.username)} ${getAgentBadgeHTML(u.isAgent)}</h2>
                 <p class="full-profile-id">ID: ${escapeHtml(String(u.customId || ''))}</p>
                 <div class="full-profile-badge-row">
+                    ${renderAdminBadgeHTML(u)}
                     ${renderSupportBadgeHTML('giving', u.supportGiving)}
                     ${renderSupportBadgeHTML('receiving', u.supportReceiving)}
                     <span class="full-profile-mini-badge"><i class="fas fa-star text-yellow-400"></i> Lv.${u.level || 1}</span>

@@ -858,6 +858,12 @@ exports.sendPublicGift = async (req, res) => {
         ]);
         // ✅ لا يُنتظَر — نفس مبدأ نقاط المعجب بالإرسال الفردي/الجماعي، لكل مستلم بقيمة ما استلمه فعلياً
         finalRecipientIds.forEach(rid => awardFanPoints(io, rid, senderId, unitPrice));
+        // 🐛 إصلاح: كان هذا المسار (الشات العام) الوحيد الذي لا يستدعي broadcastSupportLevelUpdate
+        // إطلاقاً — فمستوى "الدعم/التلقي" (supportGiving/supportReceiving، المختلف تماماً عن
+        // نظام الخبرة addGiftExperience أعلاه) لا يتحدّث لا بالشارات ولا بمعاينة نافذة الهدايا
+        // لمن يرسل من الشات العام تحديداً، رغم عمله بشكل سليم بالإرسال الخاص/الغرفة
+        broadcastSupportLevelUpdate(io, senderId, 'giving', totalCost);
+        finalRecipientIds.forEach(rid => broadcastSupportLevelUpdate(io, rid, 'receiving', unitPrice));
 
         const audienceText = audience === 'all'
             ? `للجميع (${finalRecipientIds.length} شخص)`

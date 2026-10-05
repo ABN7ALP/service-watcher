@@ -807,6 +807,10 @@ video {
   z-index: 326;
 }
 
+.z-\[327\]{
+  z-index: 327;
+}
+
 .z-\[330\]{
   z-index: 330;
 }
@@ -13522,6 +13526,264 @@ body.in-voice-room #main-content {
 
 .cropper-view-box {
   outline: 1px solid rgba(236,27,106,0.8);
+}
+
+/* =====================================================
+   ✅ شارة الأدمن الخاصة — زر شفاف صغير يحمل صورتها فقط (الصورة نفسها متحركة/مُزخرَفة أصلاً
+   webp)، بلا أي خلفية/إطار إضافي كي لا يُغطّى تصميمها الأصلي؛ نبضة توهّج ذهبية خفيفة تميّزها
+   عن بقية شارات الصف العادية وتدعو للنقر عليها
+   ===================================================== */
+
+.admin-special-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  animation: adminBadgeGlow 2.4s ease-in-out infinite;
+}
+
+.admin-special-badge:active {
+  transform: scale(0.9);
+}
+
+.admin-special-badge img {
+  width: 100%;
+  height: 100%;
+  -o-object-fit: contain;
+     object-fit: contain;
+  display: block;
+}
+
+@keyframes adminBadgeGlow {
+  0%, 100% {
+    filter: drop-shadow(0 0 2px rgba(251,191,36,0.5));
+  }
+
+  50% {
+    filter: drop-shadow(0 0 7px rgba(251,191,36,0.95));
+  }
+}
+
+/* ✅ نافذة معلومات شارة الأدمن — ورقة سفلية بسيطة بنفس روح support-info-sheet-lux */
+
+.admin-badge-info-sheet {
+  width: 100%;
+  max-width: 400px;
+  background: linear-gradient(170deg, #1f1708, #0d0b05);
+  border: 1px solid rgba(251,191,36,0.25);
+  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -4px 30px rgba(0,0,0,0.6);
+  animation: slideUp 0.25s ease-out;
+}
+
+@media (min-width: 768px) {
+  .admin-badge-info-sheet {
+    border-radius: 24px;
+    margin-bottom: 16px;
+  }
+}
+
+.admin-badge-info-body {
+  padding: 6px 22px 26px;
+  text-align: center;
+}
+
+.admin-badge-info-img {
+  width: 92px;
+  height: 92px;
+  -o-object-fit: contain;
+     object-fit: contain;
+  margin: 6px auto 10px;
+  filter: drop-shadow(0 0 16px rgba(251,191,36,0.45));
+}
+
+.admin-badge-info-title {
+  font-size: 16px;
+  font-weight: 900;
+  color: #fbbf24;
+}
+
+.admin-badge-info-text {
+  font-size: 12.5px;
+  color: #e5e7eb;
+  line-height: 1.9;
+  margin-top: 10px;
+}
+
+.admin-badge-info-close-btn {
+  width: 100%;
+  margin-top: 18px;
+  padding: 10px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #1a1407;
+  font-weight: 800;
+  font-size: 13px;
+  border: none;
+}
+
+/* =====================================================
+   ✅ نافذة احتفال منح شارة الأدمن الأولى — بطاقة ذهبية مركزية (نفس هوية room-levelup-card)
+   مع كونفيتي متساقط وخيارَي إظهار/إخفاء
+   ===================================================== */
+
+.admin-celebration-card {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  padding: 28px 24px 24px;
+  border-radius: 22px;
+  text-align: center;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 0%, rgba(251,191,36,0.38), rgba(17,24,39,0.97));
+  border: 1px solid rgba(251,191,36,0.45);
+  box-shadow: 0 0 50px rgba(251,191,36,0.4);
+  animation: roomLevelupPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.admin-celebration-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.admin-confetti-piece {
+  position: absolute;
+  top: -14px;
+  width: 7px;
+  height: 13px;
+  border-radius: 2px;
+  animation-name: adminConfettiFall;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+
+@keyframes adminConfettiFall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(360px) rotate(540deg);
+    opacity: 0;
+  }
+}
+
+.admin-celebration-badge-img {
+  width: 110px;
+  height: 110px;
+  -o-object-fit: contain;
+     object-fit: contain;
+  margin: 0 auto 10px;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 0 20px rgba(251,191,36,0.6));
+  animation: adminCelebrationBadgePulse 1.4s ease-in-out infinite;
+}
+
+@keyframes adminCelebrationBadgePulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+.admin-celebration-title {
+  position: relative;
+  z-index: 1;
+  font-size: 19px;
+  font-weight: 900;
+  color: #fde68a;
+}
+
+.admin-celebration-text {
+  position: relative;
+  z-index: 1;
+  font-size: 12.5px;
+  color: #e5e7eb;
+  line-height: 1.85;
+  margin-top: 10px;
+}
+
+.admin-celebration-choices {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.admin-celebration-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 13px;
+  border: none;
+  cursor: pointer;
+}
+
+.admin-celebration-btn-primary {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #1a1407;
+}
+
+.admin-celebration-btn-ghost {
+  background: rgba(255,255,255,0.06);
+  color: #d1d5db;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+/* ✅ قسم إعدادات "الشارات" — صف واحد بصورة الشارة + نص + مفتاح تبديل hub-toggle الموجود أصلاً */
+
+.badges-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.badges-settings-row-img {
+  width: 36px;
+  height: 36px;
+  -o-object-fit: contain;
+     object-fit: contain;
+  flex-shrink: 0;
+}
+
+.badges-settings-row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.badges-settings-row-title {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.badges-settings-row-sub {
+  font-size: 10.5px;
+  color: #9ca3af;
+  margin-top: 1px;
 }
 
 .hover\:scale-110:hover{

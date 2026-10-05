@@ -227,7 +227,7 @@ const updateProfilePicture = async (req, res) => {
 // المستند كاملاً بلا أي تصفية (عدا كلمة المرور المستثناة أصلاً بـselect:false على مستوى
 // السكيما) — ثغرة تسريب بيانات حقيقية أُصلحت هنا؛ بيانات المستخدم الكاملة لنفسه تبقى متاحة
 // فقط عبر getMeDetails (مُقيَّدة بـreq.user.id أصلاً)
-const PUBLIC_PROFILE_FIELDS = 'username customId profileImage coverImage gender birthDate hometown location socialLinks education job level experience status socialStatus educationStatus activeFrameClass isAgent isBot friends followers following showVipBadge showWallet createdAt';
+const PUBLIC_PROFILE_FIELDS = 'username customId profileImage coverImage gender birthDate hometown location socialLinks education job level experience status socialStatus educationStatus activeFrameClass isAgent isBot friends followers following showVipBadge showWallet createdAt isAdmin adminBadgeVisible';
 
 const getUserById = async (req, res) => {
     try {
@@ -320,7 +320,7 @@ const getUserMiniProfile = async (req, res) => {
 
         const [user, supportLevels] = await Promise.all([
             User.findById(targetUserId)
-                .select('username profileImage customId level friends followers isAgent activeFrameClass isBot gender birthDate socialStatus fanClub')
+                .select('username profileImage customId level friends followers isAgent activeFrameClass isBot gender birthDate socialStatus fanClub isAdmin adminBadgeVisible')
                 .populate('friends', '_id'),
             computeSupportLevels(targetUserId)
         ]);
@@ -353,6 +353,8 @@ const getUserMiniProfile = async (req, res) => {
                 age: user.age,
                 socialStatus: user.socialStatus,
                 clubName: user.fanClub?.name || null,
+                isAdmin: user.isAdmin,
+                adminBadgeVisible: user.adminBadgeVisible,
                 supportGiving: supportLevels.giving,
                 supportReceiving: supportLevels.receiving
             }
@@ -501,6 +503,32 @@ const updateStatus = async (req, res) => {
     }
 };
 
+// =====================================================
+// ✅ شارة الأدمن الخاصة — الأدمن فقط (لا نضيف adminAuth هنا عمداً: مستخدم غير أدمن أصلاً ليس له
+// isAdmin:true ليُغيّره، فنتجاهل طلبه بأمان 403 بلا حاجة لمسار محمي منفصل). visible: إظهار/
+// إخفاء الشارة بملفه الشخصي أمام الجميع. markIntroSeen: يُستدعى مرة واحدة فقط من نافذة
+// الاحتفال الأولى (أياً كان خيار المستخدم) كي لا تتكرر بكل جلسة دخول قادمة؛ نفس المسار يُستخدم
+// أيضاً لاحقاً من قسم إعدادات "الشارات" للتبديل الحر بأي وقت
+// =====================================================
+const updateAdminBadgeVisibility = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('isAdmin adminBadgeVisible hasSeenAdminBadgeIntro');
+        if (!user || !user.isAdmin) {
+            return res.status(403).json({ status: 'fail', message: 'هذه الميزة خاصة بالأدمن فقط' });
+        }
+        const { visible, markIntroSeen } = req.body;
+        if (visible !== undefined) user.adminBadgeVisible = !!visible;
+        if (markIntroSeen) user.hasSeenAdminBadgeIntro = true;
+        await user.save();
+        res.status(200).json({
+            status: 'success',
+            data: { adminBadgeVisible: user.adminBadgeVisible, hasSeenAdminBadgeIntro: user.hasSeenAdminBadgeIntro }
+        });
+    } catch (error) {
+        console.error('[ERROR] in updateAdminBadgeVisibility:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
 
 // =====================================================
 // ✅ متابعة/إلغاء متابعة شخص — أحادية الاتجاه (منفصلة تماماً عن نظام الصداقة friends،
@@ -786,6 +814,7 @@ module.exports = {
     getUserMiniProfile,
     getOnlinePublicRoomUsers,
     updateStatus,
+    updateAdminBadgeVisibility,
     followUser,
     unfollowUser,
     getMyProfileVisits,

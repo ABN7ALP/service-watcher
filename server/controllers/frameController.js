@@ -6,14 +6,25 @@ const DURATION_DAYS_MAP = { '7': 'days7', '30': 'days30', '365': 'days365' };
 
 exports.getFrameShop = async (req, res) => {
     try {
-        const frames = await ProfileFrame.find({ isActive: true }).sort('sortOrder');
-        const user = await User.findById(req.user.id).select('ownedFrames activeFrame coins activeFrameExpiresAt');
+        const user = await User.findById(req.user.id).select('ownedFrames activeFrame activeFrameClass coins activeFrameExpiresAt isAdmin');
 
         // ✅ إزالة أي إطار مفعّل انتهت صلاحيته تلقائياً عند كل فتح للمتجر (فحص فوري)
         await checkAndExpireActiveFrame(user, req.io);
 
         const ownedMap = {};
         user.ownedFrames.forEach(o => { ownedMap[o.frame.toString()] = o; });
+
+        // ✅ القائمة = كتالوج المتجر (isActive:true، شراء متاح للجميع) + أي إطار يملكه المستخدم
+        // فعلاً حتى لو isActive:false (مثل "إطار المساهم" المكتسب حصراً بالفوز الأسبوعي —
+        // غير مباع إطلاقاً، purchaseFrame يرفضه صراحة عبر فحص frame.isActive المنفصل هناك،
+        // فإدراجه هنا للمالك فقط لا يفتح أي ثغرة شراء). بدون هذا كان المستخدم يفوز بالإطار
+        // لكن لا يراه أبداً بقائمته ليُعيد تفعيله بعد تبديله لإطار آخر — طلب صريح. + إطار
+        // الأدمن (adminOnly) يُدرَج فقط لو كان هذا المستخدم أدمن فعلاً حالياً (غير مرتبط بأي
+        // ownedFrames — ownership "ضمنية" بحكم isAdmin نفسها، تُزال تلقائياً لو فُقدت الصلاحية)
+        const ownedFrameIds = Object.keys(ownedMap);
+        const query = { $or: [{ isActive: true }, { _id: { $in: ownedFrameIds } }] };
+        if (user.isAdmin) query.$or.push({ adminOnly: true });
+        const frames = await ProfileFrame.find(query).sort('sortOrder');
 
         res.status(200).json({
             status: 'success',
@@ -23,7 +34,9 @@ exports.getFrameShop = async (req, res) => {
                     name: f.name,
                     cssClass: f.cssClass,
                     prices: f.prices,
-                    ownedInstance: ownedMap[f._id.toString()] || null
+                    // ✅ إطار الأدمن: "مملوك" ضمنياً لأي أدمن حالي بلا حاجة لسجل ownedFrames فعلي
+                    // (activatedAt:null يجعل الواجهة تعرض "بحوزتك" بدل تاريخ انتهاء غير موجود أصلاً)
+                    ownedInstance: ownedMap[f._id.toString()] || (f.adminOnly && user.isAdmin ? { activatedAt: null, expiresAt: null } : null)
                 })),
                 activeFrame: user.activeFrame,
                 activeFrameExpiresAt: user.activeFrameExpiresAt,
@@ -99,13 +112,32 @@ exports.setActiveFrame = async (req, res) => {
             return res.status(200).json({ status: 'success', message: 'تمت إزالة الإطار', data: { activeFrameClass: null } });
         }
 
+        const frame = await ProfileFrame.findById(frameId);
+        if (!frame) return res.status(404).json({ status: 'fail', message: 'الإطار غير موجود' });
+
+        // ✅ إطار الأدمن: يتجاوز نظام ownedFrames/الصلاحية بالكامل — الفحص الوحيد هو isAdmin
+        // نفسها الآن (لا شراء، لا مدة صلاحية؛ "ملكيته" ضمنية طالما بقي أدمن). لا أحد غيره
+        // يقدر يصل لهذا الفرع إطلاقاً (adminOnly لا تظهر بقائمته أصلاً لو لم يكن أدمن)
+        if (frame.adminOnly) {
+            if (!user.isAdmin) {
+                return res.status(403).json({ status: 'fail', message: 'هذا الإطار خاص بالأدمن فقط' });
+            }
+            user.activeFrame = frame._id;
+            user.activeFrameClass = frame.cssClass;
+            user.activeFrameExpiresAt = null;
+            await user.save();
+            broadcastUserFrameChange(req.io, userId, frame.cssClass);
+            return res.status(200).json({
+                status: 'success',
+                message: `تم تفعيل ${frame.name}`,
+                data: { activeFrameClass: frame.cssClass, expiresAt: null }
+            });
+        }
+
         const ownedInstance = user.ownedFrames.find(o => o.frame.toString() === frameId.toString());
         if (!ownedInstance) {
             return res.status(403).json({ status: 'fail', message: 'يجب شراء هذا الإطار أولاً' });
         }
-
-        const frame = await ProfileFrame.findById(frameId);
-        if (!frame) return res.status(404).json({ status: 'fail', message: 'الإطار غير موجود' });
 
         // ✅ القاعدة الدقيقة المطلوبة:
         // - إذا كان هذا الإطار مُفعّلاً من قبل (له activatedAt سابق) → لا نعيد ضبط المدة، نكمل حيث توقفت
@@ -137,9 +169,14 @@ exports.setActiveFrame = async (req, res) => {
     }
 };
 
-// ✅ دالة مساعدة: تُزيل الإطار المفعّل تلقائياً من كل مكان إذا انتهت صلاحيته
+// ✅ دالة مساعدة: تُزيل الإطار المفعّل تلقائياً من كل مكان إذا انتهت صلاحيته — أو إذا كان إطار
+// الأدمن الخاص (activeFrameExpiresAt يبقى null له دائماً فلن تُدركه الصلاحية العادية أبداً)
+// وفُقدت صلاحية isAdmin لاحقاً (تعديل مباشر بقاعدة البيانات) — بلا هذا الفحص الإضافي يبقى
+// إطار الأدمن ظاهراً للأبد على من فُقد منه isAdmin، بعكس كل الإطارات الأخرى المحكومة بمدة فعلية
 async function checkAndExpireActiveFrame(user, io = null) {
-    if (user.activeFrameExpiresAt && user.activeFrameExpiresAt < new Date()) {
+    const expiredByTime = user.activeFrameExpiresAt && user.activeFrameExpiresAt < new Date();
+    const revokedAdminFrame = user.activeFrameClass === 'profile-frame-admin' && !user.isAdmin;
+    if (expiredByTime || revokedAdminFrame) {
         user.activeFrame = null;
         user.activeFrameClass = null;
         user.activeFrameExpiresAt = null;
