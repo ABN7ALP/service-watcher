@@ -1,10 +1,35 @@
 
+// ✅ ترسل أي خطأ يواجهه المستخدم فعلياً إلى لوحة التحكم (سجل أخطاء العميل) بدل ضياعه بـconsole
+// المتصفح وحده. Fire-and-forget بالكامل: لا await، لا throw، ولا تُعاد المحاولة عند الفشل —
+// فشل تسجيل خطأ لا يجب أن يُنتج خطأ جديد يستحق تسجيلاً آخر (حلقة لا نهائية)
+function reportClientError(message, context, extra) {
+    try {
+        let token = null;
+        try { token = localStorage.getItem('token'); } catch (_) {}
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        fetch('/api/client-errors', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                message: String(message == null ? '' : message).slice(0, 500),
+                context: context || '',
+                url: window.location ? window.location.href : '',
+                stack: (extra && extra.stack) ? String(extra.stack).slice(0, 2000) : ''
+            })
+        }).catch(() => {});
+    } catch (_) { /* لا نسمح لفشل التسجيل نفسه بإنتاج خطأ جديد */ }
+}
+
 // ✅ مسجّل أخطاء عام: يطبع بدقة أي خطأ JS غير متوقع مع رقم السطر بدل توقف الصفحة بصمت
 window.addEventListener('error', (event) => {
     console.error(`🔴 [GLOBAL JS ERROR] ${event.message} — الملف: ${event.filename}:${event.lineno}:${event.colno}`);
+    reportClientError(event.message, 'uncaught', { stack: event.error && event.error.stack });
 });
 window.addEventListener('unhandledrejection', (event) => {
     console.error('🔴 [UNHANDLED PROMISE REJECTION]', event.reason);
+    const reason = event.reason;
+    reportClientError(reason && reason.message ? reason.message : String(reason), 'unhandledrejection', { stack: reason && reason.stack });
 });
 
 // 🛡️ ترميز صارم لكل نص يتحكم به المستخدم قبل حقنه في innerHTML.
@@ -7029,6 +7054,9 @@ function showXpGainAnimation(amount) {
         // المجاورة — تهريب واحد هنا يحمي كل نداء حالي ومستقبلي دفعة واحدة
         notification.innerHTML = `<i class="fas ${customIcon || icon[type] || icon.info}"></i><span>${escapeHtml(message)}</span>`;
         document.body.appendChild(notification);
+
+        // ✅ أي خطأ يُعرَض فعلياً للمستخدم عبر هذا المسار الموحَّد يصل تلقائياً للوج بلوحة التحكم
+        if (type === 'error') reportClientError(message, 'notification');
 
         setTimeout(() => {
             notification.style.transition = 'opacity 0.4s, transform 0.4s';

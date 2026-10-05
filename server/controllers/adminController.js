@@ -3,6 +3,7 @@ const Transaction = require('../models/Transaction');
 const Withdrawal = require('../models/Withdrawal');
 const Gift = require('../models/Gift');
 const AdminLog = require('../models/AdminLog');
+const ClientErrorLog = require('../models/ClientErrorLog');
 
 // Admin Dashboard Stats
 exports.getDashboardStats = async (req, res) => {
@@ -581,6 +582,31 @@ exports.getLogs = async (req, res) => {
   }
 };
 
+
+// ✅ سجل أخطاء العميل (الواجهة) — راجع server/controllers/clientErrorController.js
+exports.getClientErrors = async (req, res) => {
+  try {
+    const { page = 1, limit = 50, q = '' } = req.query;
+    const query = {};
+    if (q && q.trim()) {
+      const safe = q.trim().slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.$or = [
+        { message: { $regex: safe, $options: 'i' } },
+        { username: { $regex: safe, $options: 'i' } },
+        { url: { $regex: safe, $options: 'i' } }
+      ];
+    }
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 50;
+    const [errors, total] = await Promise.all([
+      ClientErrorLog.find(query).sort('-createdAt').limit(limitNum).skip((pageNum - 1) * limitNum).lean(),
+      ClientErrorLog.countDocuments(query)
+    ]);
+    res.json({ success: true, errors, totalPages: Math.ceil(total / limitNum), currentPage: pageNum });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 // تعيين/إلغاء صلاحية الوكيل لمستخدم
 exports.setAgentStatus = async (req, res) => {

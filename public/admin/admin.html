@@ -33,6 +33,7 @@
                 <li class="menu-item" data-page="reports"><i class="fas fa-flag"></i><span>البلاغات</span></li>
                                 <li class="menu-item" data-page="support"><i class="fas fa-life-ring"></i><span>تذاكر الدعم</span></li>
                 <li class="menu-item" data-page="logs"><i class="fas fa-history"></i><span>سجلات النظام</span></li>
+                <li class="menu-item" data-page="client-errors"><i class="fas fa-bug"></i><span>أخطاء المستخدمين</span></li>
                 <li class="menu-item" data-page="settings"><i class="fas fa-cog"></i><span>الإعدادات</span></li>
             </ul>
 
@@ -264,6 +265,16 @@
                 </div>
                 <div id="logsListContainer" class="table-responsive p-3"></div>
                 <div class="pagination-container"><ul class="pagination" id="logsPagination"></ul></div>
+            </div>
+
+            <!-- Client Errors -->
+            <div id="client-errors-page" class="page">
+                <div class="page-header">
+                    <h1><i class="fas fa-bug"></i> أخطاء المستخدمين</h1>
+                    <input type="text" id="clientErrorsSearch" class="form-control" style="width:auto" placeholder="بحث برسالة/مستخدم/رابط...">
+                </div>
+                <div id="clientErrorsListContainer" class="table-responsive p-3"></div>
+                <div class="pagination-container"><ul class="pagination" id="clientErrorsPagination"></ul></div>
             </div>
 
             <!-- Settings -->

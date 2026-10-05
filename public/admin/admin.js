@@ -134,6 +134,12 @@ class AdminDashboard {
                 document.getElementById('supportStatusFilter')?.addEventListener('change', () => this.loadSupportTickets());
         document.getElementById('supportTypeFilter')?.addEventListener('change', () => this.loadSupportTickets());
                 document.getElementById('logsSeverityFilter')?.addEventListener('change', () => this.loadLogs(1));
+
+        let clientErrSearchTimer;
+        document.getElementById('clientErrorsSearch')?.addEventListener('input', (e) => {
+            clearTimeout(clientErrSearchTimer);
+            clientErrSearchTimer = setTimeout(() => this.loadClientErrors(1, e.target.value), 450);
+        });
         document.getElementById('transactionsTypeFilter')?.addEventListener('change', () => this.loadTransactions(1));
         document.getElementById('addGiftBtn')?.addEventListener('click', () => this.showGiftFormModal());
         document.getElementById('addMusicTrackBtn')?.addEventListener('click', () => this.showMusicTrackFormModal());
@@ -197,6 +203,7 @@ class AdminDashboard {
             reports: () => this.loadReports(),
             support: () => this.loadSupportTickets(),
             logs: () => this.loadLogs(1),
+            'client-errors': () => this.loadClientErrors(1),
             settings: () => this.loadSettings()
         };
         map[page]?.();
@@ -1132,6 +1139,58 @@ class AdminDashboard {
                         </table>
                         <p class="small text-muted mb-1">البيانات الكاملة:</p>
                         <pre style="background:#f5f5f5;padding:12px;border-radius:8px;font-size:0.8rem;max-height:250px;overflow:auto;direction:ltr;text-align:left;">${escapeHtml(JSON.stringify(log.details || {}, null, 2))}</pre>
+                    </div>
+                </div>
+            </div>
+        `);
+    }
+
+    // ================= Client Errors (أخطاء يواجهها المستخدمون بالواجهة) =================
+    async loadClientErrors(page = 1, search) {
+        try {
+            const q = search !== undefined ? search : (document.getElementById('clientErrorsSearch')?.value || '');
+            const data = await this.api('GET', `/client-errors?page=${page}&limit=50${q ? '&q=' + encodeURIComponent(q) : ''}`);
+            const c = document.getElementById('clientErrorsListContainer');
+            if (!data.errors || !data.errors.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-bug fa-2x"></i><p>لا توجد أخطاء مسجّلة</p></div>'; this.renderPagination('clientErrorsPagination', 0, 1, () => {}); return; }
+
+            c.innerHTML = `<table class="table table-hover"><thead><tr><th>المستخدم</th><th>الرسالة</th><th>السياق</th><th>الرابط</th><th>التاريخ</th><th>تفاصيل</th></tr></thead><tbody>
+                ${data.errors.map((err, i) => `
+                    <tr>
+                        <td>${escapeHtml(err.username || 'غير مسجَّل')}</td>
+                        <td>${escapeHtml((err.message || '').slice(0, 80))}</td>
+                        <td><span class="status-badge status-pending">${escapeHtml(err.context || '-')}</span></td>
+                        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;direction:ltr;text-align:left;">${escapeHtml(err.url || '-')}</td>
+                        <td>${formatDate(err.createdAt)}</td>
+                        <td><button class="btn-action btn-view" data-client-error-details="${i}"><i class="fas fa-eye"></i></button></td>
+                    </tr>
+                `).join('')}
+            </tbody></table>`;
+
+            c.querySelectorAll('[data-client-error-details]').forEach(btn => btn.addEventListener('click', () => {
+                this.showClientErrorDetailsModal(data.errors[btn.dataset.clientErrorDetails]);
+            }));
+
+            this.renderPagination('clientErrorsPagination', data.totalPages, data.currentPage, (p) => this.loadClientErrors(p, q));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    showClientErrorDetailsModal(err) {
+        this.openModal(`
+            <div class="modal-overlay active">
+                <div class="modal-content" style="max-width:600px;">
+                    <div class="modal-header"><h3><i class="fas fa-bug"></i> تفاصيل الخطأ</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                    <div class="modal-body">
+                        <table class="table table-sm">
+                            <tr><th>المستخدم</th><td>${escapeHtml(err.username || 'غير مسجَّل')}</td></tr>
+                            <tr><th>السياق</th><td>${escapeHtml(err.context || '-')}</td></tr>
+                            <tr><th>الرابط</th><td style="direction:ltr;text-align:left;">${escapeHtml(err.url || '-')}</td></tr>
+                            <tr><th>المتصفح</th><td style="direction:ltr;text-align:left;">${escapeHtml(err.userAgent || '-')}</td></tr>
+                            <tr><th>التاريخ</th><td>${formatDate(err.createdAt)}</td></tr>
+                        </table>
+                        <p class="small text-muted mb-1">الرسالة الكاملة:</p>
+                        <pre style="background:#f5f5f5;padding:12px;border-radius:8px;font-size:0.8rem;max-height:120px;overflow:auto;white-space:pre-wrap;">${escapeHtml(err.message || '-')}</pre>
+                        ${err.stack ? `<p class="small text-muted mb-1">تتبّع الخطأ (Stack):</p>
+                        <pre style="background:#f5f5f5;padding:12px;border-radius:8px;font-size:0.75rem;max-height:200px;overflow:auto;direction:ltr;text-align:left;">${escapeHtml(err.stack)}</pre>` : ''}
                     </div>
                 </div>
             </div>
