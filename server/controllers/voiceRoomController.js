@@ -361,7 +361,7 @@ exports.getRoomById = async (req, res) => {
             sessionSupportPoints: room.isOfficial ? null : room.sessionSupportPoints,
             // ✅ أعلى 3 داعمين بهذي الجلسة — يُرسَل مع لقطة الحالة الأولى فيظهر الودجت فوراً
             // عند الدخول حتى بلا انتظار هدية جديدة بعدها (التحديث الحي يأتي لاحقاً عبر السوكيت)
-            topSupporters: room.isOfficial ? [] : VoiceRoom.topSupportersFromMap(room.sessionSupporters),
+            topSupporters: room.isOfficial ? [] : await VoiceRoom.topSupportersFromMap(room.sessionSupporters),
             pointsToNextLevel: room.isOfficial ? null : VoiceRoom.pointsToNextLevel(room.supportPoints, room.level),
             levelProgressPercent: room.isOfficial ? null : VoiceRoom.levelProgressPercent(room.supportPoints, room.level),
             unlockedSeatCounts: room.isOfficial ? null : VoiceRoom.getUnlockedSeatCounts(room.level),

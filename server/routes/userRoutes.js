@@ -18,6 +18,8 @@ router.get('/online/public-room', userController.getOnlinePublicRoomUsers);
 
 // بعد السطر router.patch('/updateProfilePicture', upload, userController.updateProfilePicture);
 router.patch('/updateStatus', userController.updateStatus);  // ✅ أضف هذا السطر
+// ✅ تحكّم الأدمن بإظهار/إخفاء شارته الخاصة + تسجيل أول مشاهدة لنافذة الاحتفال (طلب صريح)
+router.patch('/me/admin-badge', userController.updateAdminBadgeVisibility);
 // مسارات جلب بيانات المستخدمين
 router.get('/me/details', userController.getMeDetails);
 // ✅ متابعة/إلغاء متابعة شخص — قبل :id كي لا يُبتلع الجزء الثابت داخل باراميتر :id (غير

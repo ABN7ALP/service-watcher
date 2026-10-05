@@ -40,6 +40,10 @@ const userSchema = new mongoose.Schema({
     activeFrameClass: { type: String, default: null },
     activeFrameExpiresAt: { type: Date, default: null },
     hasReceivedWelcomeFrame: { type: Boolean, default: false }, // منع تكرار هدية الترحيب
+    // ✅ شارة الأدمن الخاصة — تظهر تلقائياً لكل من isAdmin:true، بخيار إخفائها شخصياً (لا تُلزَم
+    // بإظهارها). hasSeenAdminBadgeIntro يمنع تكرار احتفال "حصلت على الشارة" كل جلسة دخول
+    adminBadgeVisible: { type: Boolean, default: true },
+    hasSeenAdminBadgeIntro: { type: Boolean, default: false },
     // ✅ تخصيص نادي المعجبين — الاسم، ولون كل من شعار المجموعة وهديتها (5 ألوان مغلقة، تُطبَّق
     // بفلتر CSS على نفس صورتي الشعار/الوردة بلا أي صور مرفوعة من المستخدم). منفصل تماماً عن
     // نظام "مستوى المعجب" (server/utils/fanClubLevels.js) — شارة المستوى تعكس ولاء كل عضو على

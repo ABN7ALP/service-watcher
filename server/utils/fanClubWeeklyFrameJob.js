@@ -1,18 +1,23 @@
 // ملف: server/utils/fanClubWeeklyFrameJob.js
 //
-// ✅ مهمة دورية تمنح "إطار المساهم" (إطار دائم حصري غير مباع بالمتجر) تلقائياً لمن حلّ
-// بالمركز الأول بمساهمات نادي معجبين خلال أسبوع كامل — بمجرد اكتمال ذلك الأسبوع فعلياً.
-// نفس أسلوب باقي المهام الدورية البسيطة بالمشروع (frameExpiryJob.js): setInterval داخل
-// العملية، حالة "آخر أسبوع تمت معالجته" محفوظة بمتغيّر بالذاكرة فقط — إعادة تشغيل السيرفر
-// قد تُعيد معالجة نفس الأسبوع مرة إضافية، وهذا آمن تماماً (العملية idempotent بالكامل: لا
-// تُكرَّر ملكية الإطار، وأسوأ أثر جانبي محتمل هو إعادة تفعيله كإطار نشط لو كان المستخدم بدّله)
+// ✅ مهمة دورية تمنح "إطار المساهم" (إطار حصري غير مباع بالمتجر) تلقائياً لمن حلّ بالمركز
+// الأول بمساهمات نادي معجبين خلال أسبوع كامل — بمجرد اكتمال ذلك الأسبوع فعلياً. نفس أسلوب
+// باقي المهام الدورية البسيطة بالمشروع (frameExpiryJob.js): setInterval داخل العملية، حالة
+// "آخر أسبوع تمت معالجته" محفوظة بمتغيّر بالذاكرة فقط — إعادة تشغيل السيرفر قد تُعيد معالجة
+// نفس الأسبوع مرة إضافية، وهذا آمن تماماً (العملية idempotent بالكامل: لا تُكرَّر ملكية
+// الإطار، وأسوأ أثر جانبي محتمل هو إعادة تفعيله كإطار نشط لو كان المستخدم بدّله)
+//
+// 🐛 إصلاح: كان الإطار يُمنح "دائماً" (100 سنة) — طلب صريح الآن: هدية مؤقتة صالحة أسبوع واحد
+// فقط من تاريخ الفوز. الفوز بنادٍ آخر بينما الإطار الحالي لا يزال صالحاً (حتى لو باقٍ له يوم
+// واحد فقط) لا يُراكم المدة — يُصفَّر العدّاد ويُمنح أسبوع كامل جديد من لحظة هذا الفوز بالضبط
+// (expiresAt يُعاد حسابه بالكامل من الصفر بكل منح، بدل أي محاولة جمع/تمديد للمدة القديمة)
 const FanClubMembership = require('../models/FanClubMembership');
 const GiftLog = require('../models/GiftLog');
 const User = require('../models/User');
 const ProfileFrame = require('../models/ProfileFrame');
 
 const CONTRIBUTOR_FRAME_NAME = 'إطار المساهم';
-const PERMANENT_DURATION_DAYS = 36500; // ✅ "دائم" عملياً (100 سنة) — يطابق نمط الحقل required بالسكيمة بلا حاجة لحالة null خاصة
+const CONTRIBUTOR_FRAME_DURATION_DAYS = 7;
 
 let lastProcessedWeekStartMs = null;
 
@@ -44,17 +49,26 @@ async function grantWeeklyContributorFrames(io) {
         const winnerIds = [...new Set(rows.map(r => r.topSender.toString()))];
         if (winnerIds.length === 0) { lastProcessedWeekStartMs = weekStartMs; return; }
 
-        const expiresAt = new Date(Date.now() + PERMANENT_DURATION_DAYS * 24 * 60 * 60 * 1000);
         let grantedCount = 0;
         for (const winnerId of winnerIds) {
+            // ✅ لحظة فوز هذا المستخدم بالضبط — أسبوع كامل جديد من الآن، بصرف النظر عمّا تبقّى
+            // سابقاً (لو امتلكه أصلاً وانتهت صلاحيته جزئياً أو كلياً) أو حتى لو انتهى بالفعل
+            const expiresAt = new Date(Date.now() + CONTRIBUTOR_FRAME_DURATION_DAYS * 24 * 60 * 60 * 1000);
             const user = await User.findById(winnerId).select('ownedFrames socketId');
             if (!user) continue;
-            const alreadyOwned = user.ownedFrames.some(o => o.frame.toString() === frame._id.toString());
-            if (!alreadyOwned) {
+            const existingOwned = user.ownedFrames.find(o => o.frame.toString() === frame._id.toString());
+            if (existingOwned) {
+                // 🐛 التجديد لا التكديس: نُعيد ضبط مدة النسخة المملوكة بالكامل لأسبوع جديد،
+                // بدل إضافة المدة الجديدة لما تبقّى من القديمة (أو تجاهل الفوز الجديد لو لم
+                // تنتهِ القديمة بعد) — يطابق الفوز بنادٍ آخر وهو لا يزال يملك مدة من نادٍ سابق
+                existingOwned.durationDays = CONTRIBUTOR_FRAME_DURATION_DAYS;
+                existingOwned.activatedAt = new Date();
+                existingOwned.expiresAt = expiresAt;
+            } else {
                 user.ownedFrames.push({
                     frame: frame._id,
                     purchasedAt: new Date(),
-                    durationDays: PERMANENT_DURATION_DAYS,
+                    durationDays: CONTRIBUTOR_FRAME_DURATION_DAYS,
                     activatedAt: new Date(),
                     expiresAt
                 });

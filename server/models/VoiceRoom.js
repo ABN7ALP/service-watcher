@@ -415,7 +415,10 @@ voiceRoomSchema.statics.addSupportPoints = async function (roomId, points) {
 // ✅ نقاط داعم فرد بهذي الجلسة تحديداً (أعلى 3 داعمين) — عملية ذرّية واحدة (inc + set معاً)
 // بلا حاجة لقراءة مسبقة: $inc على مفتاح Map بمسار نقطي يُنشئ المفتاح تلقائياً لو غائباً
 // فيستحيل سباق "دخولان مكرّران لنفس المستخدم" (كان ممكناً لو استُخدم findOne ثم push بدلاً).
-// username/profileImage/activeFrameClass تُحدَّث بكل مرة فتبقى طرية بلا أي lookup إضافي لاحقاً
+// 🐛 إصلاح: activeFrameClass لم يعد يُخزَّن هنا (denormalized) — كان يُجمَّد بإطار المُرسِل
+// وقت الهدية فيبقى معروضاً حتى لو بدّل إطاره لاحقاً أو أزاله، فيظهر إطار "خطأ" بالودجت. الآن
+// يُقرأ حياً من جدول المستخدمين لحظة العرض (topSupportersFromMap)، فيعكس الإطار المُفعَّل
+// فعلياً هذه اللحظة بالضبط. username/profileImage يبقيان مُخزَّنين (تغييرهما نادر ولا يُضلّل)
 voiceRoomSchema.statics.addSupporterPoints = async function (roomId, user, points) {
     if (!points || points <= 0 || !user) return null;
     const uid = user._id.toString();
@@ -425,8 +428,7 @@ voiceRoomSchema.statics.addSupporterPoints = async function (roomId, user, point
             $inc: { [`sessionSupporters.${uid}.points`]: points },
             $set: {
                 [`sessionSupporters.${uid}.username`]: user.username,
-                [`sessionSupporters.${uid}.profileImage`]: user.profileImage,
-                [`sessionSupporters.${uid}.activeFrameClass`]: user.activeFrameClass || ''
+                [`sessionSupporters.${uid}.profileImage`]: user.profileImage
             }
         },
         { new: true, select: 'sessionSupporters' }
@@ -435,20 +437,25 @@ voiceRoomSchema.statics.addSupporterPoints = async function (roomId, user, point
     return this.topSupportersFromMap(updated.sessionSupporters);
 };
 
-// ✅ يُحوّل Map التخزين إلى مصفوفة مرتَّبة (الأعلى أولاً) محدودة بأعلى 3 فقط — نفس التنسيق
-// الجاهز للعرض مباشرة بالعميل (id/username/profileImage/activeFrameClass/points)
-voiceRoomSchema.statics.topSupportersFromMap = function (map) {
+// ✅ يُحوّل Map التخزين إلى مصفوفة مرتَّبة (الأعلى أولاً) محدودة بأعلى 3 فقط، بإطار مُفعَّل حيّ
+// (lookup مباشر — 3 مستخدمين كحد أقصى، تكلفة زهيدة جداً وتضمن صحّة الإطار المعروض دوماً) —
+// نفس التنسيق الجاهز للعرض مباشرة بالعميل (id/username/profileImage/activeFrameClass/points)
+voiceRoomSchema.statics.topSupportersFromMap = async function (map) {
     if (!map || map.size === 0) return [];
-    return Array.from(map.entries())
+    const top3 = Array.from(map.entries())
         .map(([userId, data]) => ({
             userId,
             username: data.username || '',
             profileImage: data.profileImage || '',
-            activeFrameClass: data.activeFrameClass || '',
             points: data.points || 0
         }))
         .sort((a, b) => b.points - a.points)
         .slice(0, 3);
+    if (top3.length === 0) return top3;
+    const User = require('./User');
+    const liveUsers = await User.find({ _id: { $in: top3.map(s => s.userId) } }).select('activeFrameClass').lean();
+    const frameByUserId = new Map(liveUsers.map(u => [u._id.toString(), u.activeFrameClass || '']));
+    return top3.map(s => ({ ...s, activeFrameClass: frameByUserId.get(s.userId) || '' }));
 };
 
 // =====================================================
