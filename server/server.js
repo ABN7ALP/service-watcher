@@ -40,7 +40,6 @@ app.use('/dist', express.static(path.join(__dirname, '../public/dist')));
 // --- مسارات API ---
 app.use('/api/auth', require('./routes/authRoutes')); // ✅ أضف هذا السطر
 app.use('/api/messages', require('./routes/messageRoutes')); // ✅ أضف هذا السطر
-app.use('/api/battles', require('./routes/battleRoutes')); // ✅ أضف هذا السطر
 app.use('/api/users', require('./routes/userRoutes')); // ✅✅ أضف هذا السطر
 app.use('/api/friends', require('./routes/friendRoutes')); // ✅✅ أضف هذا السطر
 app.use('/api/blocks', require('./routes/blockRoutes')); // ✅ أضف هذا السطر
@@ -60,6 +59,7 @@ app.use('/api/reports', require('./routes/reportRoutes')); // ✅ نظام ال�
 app.use('/api/support', require('./routes/supportRoutes')); // ✅ نظام الدعم الفني والاستئناف
 app.use('/api/music', require('./routes/musicRoutes')); // ✅ مكتبة أغاني مشتركة للغرف الصوتية
 app.use('/api/suggestions', require('./routes/suggestionRoutes')); // ✅ صندوق اقتراحات/ملاحظات عام
+app.use('/api/client-errors', require('./routes/clientErrorRoutes')); // ✅ أخطاء الواجهة التي يواجهها المستخدمون -> لوحة التحكم
 
 
 // --- مسار "التقاط الكل" لخدمة الواجهة الأمامية --

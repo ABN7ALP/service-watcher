@@ -130,11 +130,16 @@ class AdminDashboard {
         document.getElementById('depositsStatusFilter')?.addEventListener('change', () => this.loadDeposits(1));
         document.getElementById('coinPurchasesStatusFilter')?.addEventListener('change', () => this.loadCoinPurchases(1));
         document.getElementById('withdrawalStatusFilter')?.addEventListener('change', () => this.loadWithdrawals());
-        document.getElementById('battlesStatusFilter')?.addEventListener('change', () => this.loadBattles());
         document.getElementById('reportsStatusFilter')?.addEventListener('change', () => this.loadReports());
                 document.getElementById('supportStatusFilter')?.addEventListener('change', () => this.loadSupportTickets());
         document.getElementById('supportTypeFilter')?.addEventListener('change', () => this.loadSupportTickets());
                 document.getElementById('logsSeverityFilter')?.addEventListener('change', () => this.loadLogs(1));
+
+        let clientErrSearchTimer;
+        document.getElementById('clientErrorsSearch')?.addEventListener('input', (e) => {
+            clearTimeout(clientErrSearchTimer);
+            clientErrSearchTimer = setTimeout(() => this.loadClientErrors(1, e.target.value), 450);
+        });
         document.getElementById('transactionsTypeFilter')?.addEventListener('change', () => this.loadTransactions(1));
         document.getElementById('addGiftBtn')?.addEventListener('click', () => this.showGiftFormModal());
         document.getElementById('addMusicTrackBtn')?.addEventListener('click', () => this.showMusicTrackFormModal());
@@ -192,13 +197,13 @@ class AdminDashboard {
             coinpurchases: () => this.loadCoinPurchases(1),
             withdrawals: () => this.loadWithdrawals(),
             transactions: () => this.loadTransactions(1),
-            battles: () => this.loadBattles(),
             gifts: () => this.loadGifts(),
             music: () => this.loadMusicTracks(1),
             suggestions: () => this.loadSuggestions(),
             reports: () => this.loadReports(),
             support: () => this.loadSupportTickets(),
             logs: () => this.loadLogs(1),
+            'client-errors': () => this.loadClientErrors(1),
             settings: () => this.loadSettings()
         };
         map[page]?.();
@@ -235,14 +240,12 @@ class AdminDashboard {
             document.getElementById('pendingDeposits').textContent = s.pendingDeposits;
             document.getElementById('totalWithdrawals').textContent = `$${s.totalWithdrawals.toLocaleString()}`;
             document.getElementById('pendingWithdrawals').textContent = s.pendingWithdrawals;
-            document.getElementById('activeBattles').textContent = s.activeBattles;
             document.getElementById('todayTransactions').textContent = s.todayTransactions;
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ar-SA');
 
             this.renderAttentionPanel(s);
             this.renderTopList('topDepositors', data.topUsers.depositors, 'totalDeposited', '$');
             this.renderTopList('topGifters', data.topUsers.gifters, 'totalGifted', ' كوينز');
-            this.renderTopList('topWinners', data.topUsers.winners, 'totalWon', '$');
         } catch (error) {
             this.showToast(error.message, 'error');
         }
@@ -336,7 +339,7 @@ class AdminDashboard {
     async showUserDetails(userId) {
         try {
             const data = await this.api('GET', `/users/${userId}`);
-            const { user, transactions, stats } = data;
+            const { user, transactions } = data;
 
             const modal = this.openModal(`
                 <div class="modal-overlay active">
@@ -359,11 +362,10 @@ class AdminDashboard {
                                 </div>
                             </div>
 
-                            <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
+                            <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;">
                                 <div class="stat-card success" style="padding:15px;"><div class="stat-info"><h3 style="font-size:1.3rem;">$${(user.balance || 0).toFixed(2)}</h3><p>الرصيد</p></div></div>
                                 <div class="stat-card warning" style="padding:15px;"><div class="stat-info"><h3 style="font-size:1.3rem;">${(user.coins || 0).toLocaleString()}</h3><p>الكوينز</p></div></div>
                                 <div class="stat-card primary" style="padding:15px;"><div class="stat-info"><h3 style="font-size:1.3rem;">${user.level}</h3><p>المستوى</p></div></div>
-                                <div class="stat-card info" style="padding:15px;"><div class="stat-info"><h3 style="font-size:1.3rem;">${stats.winRate.toFixed(0)}%</h3><p>نسبة الفوز (${stats.totalBattles} تحدي)</p></div></div>
                             </div>
 
                             <h6><i class="fas fa-history"></i> آخر المعاملات</h6>
@@ -645,39 +647,6 @@ class AdminDashboard {
             </tbody></table>`;
 
             this.renderPagination('transactionsPagination', data.totalPages, data.currentPage, (p) => this.loadTransactions(p, search));
-        } catch (error) { this.showToast(error.message, 'error'); }
-    }
-
-    // ================= Battles =================
-    async loadBattles() {
-        const status = document.getElementById('battlesStatusFilter')?.value || 'active';
-        try {
-            const data = await this.api('GET', `/battles?status=${status}`);
-            const c = document.getElementById('battlesListContainer');
-            if (!data.battles.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-gamepad fa-2x"></i><p>لا توجد تحديات</p></div>'; return; }
-
-            c.innerHTML = `<table class="table table-hover"><thead><tr><th>النوع</th><th>الرهان</th><th>اللاعبون</th><th>الحالة</th><th>الفائز</th><th>إجراء</th></tr></thead><tbody>
-                ${data.battles.map(b => {
-                    const players = (b.players || []).map(p => escapeHtml(p.username)).join('، ') || '-';
-                    const canForceEnd = ['waiting', 'in-progress'].includes(b.status);
-                    return `
-                    <tr>
-                        <td>${b.type}</td>
-                        <td>$${b.betAmount}</td>
-                        <td>${players}</td>
-                        <td>${this.battleStatusText(b.status)}</td>
-                        <td>${b.winner || '-'}</td>
-                        <td>${canForceEnd ? `<button class="btn-action btn-delete" data-force-end="${b._id}" title="إنهاء قسري + استرداد"><i class="fas fa-stop-circle"></i></button>` : '-'}</td>
-                    </tr>`;
-                }).join('')}
-            </tbody></table>`;
-
-            c.querySelectorAll('[data-force-end]').forEach(btn => btn.addEventListener('click', () =>
-                this.confirmAction('إنهاء التحدي قسرياً واسترداد الرهانات لكل اللاعبين؟', async () => {
-                    const r = await this.api('POST', `/battles/${btn.dataset.forceEnd}/force-end`, { refund: true });
-                    this.showToast(r.message, 'success'); this.loadBattles();
-                })
-            ));
         } catch (error) { this.showToast(error.message, 'error'); }
     }
 
@@ -1176,6 +1145,58 @@ class AdminDashboard {
         `);
     }
 
+    // ================= Client Errors (أخطاء يواجهها المستخدمون بالواجهة) =================
+    async loadClientErrors(page = 1, search) {
+        try {
+            const q = search !== undefined ? search : (document.getElementById('clientErrorsSearch')?.value || '');
+            const data = await this.api('GET', `/client-errors?page=${page}&limit=50${q ? '&q=' + encodeURIComponent(q) : ''}`);
+            const c = document.getElementById('clientErrorsListContainer');
+            if (!data.errors || !data.errors.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-bug fa-2x"></i><p>لا توجد أخطاء مسجّلة</p></div>'; this.renderPagination('clientErrorsPagination', 0, 1, () => {}); return; }
+
+            c.innerHTML = `<table class="table table-hover"><thead><tr><th>المستخدم</th><th>الرسالة</th><th>السياق</th><th>الرابط</th><th>التاريخ</th><th>تفاصيل</th></tr></thead><tbody>
+                ${data.errors.map((err, i) => `
+                    <tr>
+                        <td>${escapeHtml(err.username || 'غير مسجَّل')}</td>
+                        <td>${escapeHtml((err.message || '').slice(0, 80))}</td>
+                        <td><span class="status-badge status-pending">${escapeHtml(err.context || '-')}</span></td>
+                        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;direction:ltr;text-align:left;">${escapeHtml(err.url || '-')}</td>
+                        <td>${formatDate(err.createdAt)}</td>
+                        <td><button class="btn-action btn-view" data-client-error-details="${i}"><i class="fas fa-eye"></i></button></td>
+                    </tr>
+                `).join('')}
+            </tbody></table>`;
+
+            c.querySelectorAll('[data-client-error-details]').forEach(btn => btn.addEventListener('click', () => {
+                this.showClientErrorDetailsModal(data.errors[btn.dataset.clientErrorDetails]);
+            }));
+
+            this.renderPagination('clientErrorsPagination', data.totalPages, data.currentPage, (p) => this.loadClientErrors(p, q));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    showClientErrorDetailsModal(err) {
+        this.openModal(`
+            <div class="modal-overlay active">
+                <div class="modal-content" style="max-width:600px;">
+                    <div class="modal-header"><h3><i class="fas fa-bug"></i> تفاصيل الخطأ</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                    <div class="modal-body">
+                        <table class="table table-sm">
+                            <tr><th>المستخدم</th><td>${escapeHtml(err.username || 'غير مسجَّل')}</td></tr>
+                            <tr><th>السياق</th><td>${escapeHtml(err.context || '-')}</td></tr>
+                            <tr><th>الرابط</th><td style="direction:ltr;text-align:left;">${escapeHtml(err.url || '-')}</td></tr>
+                            <tr><th>المتصفح</th><td style="direction:ltr;text-align:left;">${escapeHtml(err.userAgent || '-')}</td></tr>
+                            <tr><th>التاريخ</th><td>${formatDate(err.createdAt)}</td></tr>
+                        </table>
+                        <p class="small text-muted mb-1">الرسالة الكاملة:</p>
+                        <pre style="background:#f5f5f5;padding:12px;border-radius:8px;font-size:0.8rem;max-height:120px;overflow:auto;white-space:pre-wrap;">${escapeHtml(err.message || '-')}</pre>
+                        ${err.stack ? `<p class="small text-muted mb-1">تتبّع الخطأ (Stack):</p>
+                        <pre style="background:#f5f5f5;padding:12px;border-radius:8px;font-size:0.75rem;max-height:200px;overflow:auto;direction:ltr;text-align:left;">${escapeHtml(err.stack)}</pre>` : ''}
+                    </div>
+                </div>
+            </div>
+        `);
+    }
+
     actionText(action) {
         const m = {
             login: 'تسجيل دخول', logout: 'تسجيل خروج', ban_user: 'حظر مستخدم', unban_user: 'فك حظر',
@@ -1204,9 +1225,6 @@ class AdminDashboard {
                         <h6 class="mb-3"><i class="fas fa-money-bill-wave text-success"></i> إعدادات السحب</h6>
                         <div class="form-group"><label>الحد الأدنى للسحب ($)</label><input type="number" class="form-control" id="s-minWithdraw" value="${s.minWithdrawUSD}"></div>
                         <div class="form-group"><label>رسوم السحب (لكل 10$)</label><input type="number" step="0.01" class="form-control" id="s-withdrawFee" value="${s.withdrawalFeePer10USD}"></div>
-                        <div class="form-group"><label>نسبة عمولة التحديات %</label><input type="number" step="0.01" class="form-control" id="s-commission" value="${(s.battleCommissionRate * 100).toFixed(2)}">
-                            <small class="text-muted">⚠️ هذا الحقل تجريبي: بعض أجزاء نظام التحديات لا تزال تستخدم قيمة ثابتة بالكود، سيتم توحيدها بتحديث قادم.</small>
-                        </div>
                         <div class="form-group"><label>الحد الأقصى للسحب اليومي ($)</label><input type="number" class="form-control" id="s-maxDailyWithdraw" value="${s.maxDailyWithdrawalUSD}"></div>
                     </div>
                 </div>
@@ -1254,7 +1272,6 @@ class AdminDashboard {
                     maxPurchaseUSD: parseFloat(document.getElementById('s-maxPurchase').value),
                     minWithdrawUSD: parseFloat(document.getElementById('s-minWithdraw').value),
                     withdrawalFeePer10USD: parseFloat(document.getElementById('s-withdrawFee').value),
-                    battleCommissionRate: parseFloat(document.getElementById('s-commission').value) / 100,
                     maxDailyWithdrawalUSD: parseFloat(document.getElementById('s-maxDailyWithdraw').value),
                     coinsToUsdRedemptionRate: parseFloat(document.getElementById('s-redeemCoinRate').value),
                     giftRedemptionHaircutPercent: parseFloat(document.getElementById('s-redeemHaircut').value),
@@ -1281,11 +1298,6 @@ class AdminDashboard {
         const m = { pending: 'قيد الانتظار', completed: 'مكتمل', failed: 'فشل', cancelled: 'ملغي' };
         return m[status] || status;
     }
-    battleStatusText(status) {
-        const m = { waiting: 'انتظار', 'in-progress': 'جارٍ', completed: 'مكتمل', cancelled: 'ملغى' };
-        return m[status] || status;
-    }
-
     updateAdminInfo() {
         const el = document.getElementById('adminName');
         if (el && this.adminData.username) el.textContent = this.adminData.username;

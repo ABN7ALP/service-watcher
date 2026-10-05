@@ -1,10 +1,35 @@
 
+// ✅ ترسل أي خطأ يواجهه المستخدم فعلياً إلى لوحة التحكم (سجل أخطاء العميل) بدل ضياعه بـconsole
+// المتصفح وحده. Fire-and-forget بالكامل: لا await، لا throw، ولا تُعاد المحاولة عند الفشل —
+// فشل تسجيل خطأ لا يجب أن يُنتج خطأ جديد يستحق تسجيلاً آخر (حلقة لا نهائية)
+function reportClientError(message, context, extra) {
+    try {
+        let token = null;
+        try { token = localStorage.getItem('token'); } catch (_) {}
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        fetch('/api/client-errors', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                message: String(message == null ? '' : message).slice(0, 500),
+                context: context || '',
+                url: window.location ? window.location.href : '',
+                stack: (extra && extra.stack) ? String(extra.stack).slice(0, 2000) : ''
+            })
+        }).catch(() => {});
+    } catch (_) { /* لا نسمح لفشل التسجيل نفسه بإنتاج خطأ جديد */ }
+}
+
 // ✅ مسجّل أخطاء عام: يطبع بدقة أي خطأ JS غير متوقع مع رقم السطر بدل توقف الصفحة بصمت
 window.addEventListener('error', (event) => {
     console.error(`🔴 [GLOBAL JS ERROR] ${event.message} — الملف: ${event.filename}:${event.lineno}:${event.colno}`);
+    reportClientError(event.message, 'uncaught', { stack: event.error && event.error.stack });
 });
 window.addEventListener('unhandledrejection', (event) => {
     console.error('🔴 [UNHANDLED PROMISE REJECTION]', event.reason);
+    const reason = event.reason;
+    reportClientError(reason && reason.message ? reason.message : String(reason), 'unhandledrejection', { stack: reason && reason.stack });
 });
 
 // 🛡️ ترميز صارم لكل نص يتحكم به المستخدم قبل حقنه في innerHTML.
@@ -426,7 +451,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
         const viewRenderers = {
             arena: showRoomBrowserView,
-            challenges: showChallengesView,
             settings: showSettingsView,
             messages: showMessagesView,
             leaderboard: showLeaderboardView,
@@ -5142,26 +5166,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // كانت هنا كاستدعاء فوري يُنفَّذ أثناء المرور التسلسلي على الدالة، أي قبل وصول التنفيذ
     // لسطر `const socket = io(...)` الموجود لاحقاً بنفس الدالة (Temporal Dead Zone)
 
-    // ✅ قسم التحديات الجديد: يحوي إنشاء التحدي + قائمة التحديات (منقول بالكامل من الرئيسية القديمة)
-    function showChallengesView() {
-        mainContent.innerHTML = `
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg md:text-xl font-bold"><i class="fas fa-gamepad text-purple-400"></i> ساحة التحديات</h2>
-                <button id="create-battle-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 text-sm">
-                    <i class="fas fa-plus"></i><span>إنشاء تحدي</span>
-                </button>
-            </div>
-            <div id="battle-rooms-container" class="flex-grow overflow-y-auto space-y-3 pr-1">
-                <div id="battles-empty-state" class="text-center text-gray-400 py-10 hidden">
-                    <i class="fas fa-ghost text-4xl mb-4"></i><p>لا توجد تحديات متاحة حالياً. كن أول من يبدأ!</p>
-                </div>
-                <div id="battles-loading-state" class="text-center text-gray-400 py-10"></div>
-            </div>
-        `;
-        document.getElementById('battles-loading-state').innerHTML = skeletonList(4);
-        document.getElementById('create-battle-btn').addEventListener('click', showCreateBattleModal);
-        loadAvailableBattles();
-    }
+    // 🗑️ أُزيلت لعبة "التحدي" (الرهان الفردي بالدولار) بالكامل بطلب صريح — كانت هذا الدالة
+    // (showChallengesView) تبني واجهتها. راجع أيضاً "قسم التحديات (Battles Section)" أسفل
+    // الملف لبقية منطق العميل الذي أُزيل معها
 
     // ✅ نافذة سفلية للدردشة العامة على الهاتف (بدل قسم ثابت يزاحم الرئيسية)
         // ✅ نافذة سفلية للدردشة العامة على الهاتف (بدل قسم ثابت يزاحم الرئيسية)
@@ -7047,6 +7054,9 @@ function showXpGainAnimation(amount) {
         // المجاورة — تهريب واحد هنا يحمي كل نداء حالي ومستقبلي دفعة واحدة
         notification.innerHTML = `<i class="fas ${customIcon || icon[type] || icon.info}"></i><span>${escapeHtml(message)}</span>`;
         document.body.appendChild(notification);
+
+        // ✅ أي خطأ يُعرَض فعلياً للمستخدم عبر هذا المسار الموحَّد يصل تلقائياً للوج بلوحة التحكم
+        if (type === 'error') reportClientError(message, 'notification');
 
         setTimeout(() => {
             notification.style.transition = 'opacity 0.4s, transform 0.4s';
@@ -17972,377 +17982,9 @@ async function updateFriendsAvatars(friendsList) {
     }
 }
 
-        
-       // =================================================
-    // ======== قسم التحديات (Battles Section) =========
-    // =================================================
-
-    // ✅ الإصلاح الجذري: تم حذف "const battlesContainer = ..." من هنا لأنه كان يُنفَّذ
-    // عند تحميل الصفحة، وفي تلك اللحظة #battle-rooms-container غير موجود بالـ DOM إطلاقاً
-    // (يُنشأ فقط لاحقاً داخل showChallengesView() عند فتح تبويب التحديات). هذا كان يجعل
-    // المتغير null للأبد، وأي استخدام له كان يرمي خطأ متزامن يوقف كل الكود بعده في نفس
-    // الدالة (نافذة اللعبة، تحديث كلمة المرور، تعديل الحالة، مميزات المستوى...).
-    // الحل: نجلب العنصر بشكل حي (fresh) في كل استدعاء، ونستخدم تفويض الأحداث عبر
-    // mainContent المستقر (لا يُعاد إنشاؤه أبداً) بدل عنصر يتغير محتواه باستمرار.
-
-    function displayBattleCard(battle) {
-        const container = document.getElementById('battle-rooms-container');
-        if (!container) return; // المستخدم غادر قسم التحديات قبل وصول الرد
-        const card = document.createElement('div');
-        card.className = 'battle-card bg-gray-700/50 p-3 rounded-lg flex justify-between items-center';
-        card.dataset.battleId = battle._id;
-        card.dataset.isPrivate = battle.isPrivate;
-
-        const maxPlayers = battle.type === '1v1' ? 2 : battle.type === '2v2' ? 4 : 8;
-        const privateIcon = battle.isPrivate ? '<i class="fas fa-lock text-yellow-400 ml-2"></i>' : '';
-
-        card.innerHTML = `
-            <div class="flex items-center gap-3">
-                <span class="font-bold text-purple-300">${battle.type}</span>
-                ${privateIcon}
-                <div class="flex items-center gap-1 text-yellow-400">${coinIconHTML(14)}<span>${battle.betAmount}</span></div>
-                <div class="flex -space-x-2">${battle.players.map(p => `<img src="${p.profileImage}" alt="${escapeHtml(p.username)}" class="w-8 h-8 rounded-full border-2 border-gray-600">`).join('')}</div>
-            </div>
-            <div class="flex items-center gap-3">
-                <span class="text-sm text-gray-400">${battle.players.length} / ${maxPlayers}</span>
-                <button class="join-battle-btn bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-1 px-3 rounded-full">انضم</button>
-            </div>
-        `;
-        container.appendChild(card);
-    }
-
-    async function loadAvailableBattles() {
-        const loadingState = document.getElementById('battles-loading-state');
-        const emptyState = document.getElementById('battles-empty-state');
-        const container = document.getElementById('battle-rooms-container');
-        if (!loadingState || !emptyState || !container) return; // القسم غير مفتوح حالياً
-
-        loadingState.classList.remove('hidden');
-        emptyState.classList.add('hidden');
-        container.querySelectorAll('.battle-card').forEach(card => card.remove());
-
-        try {
-            const response = await fetch('/api/battles', { headers: { 'Authorization': `Bearer ${token}` } });
-            const result = await response.json();
-            loadingState.classList.add('hidden');
-            if (response.ok && result.status === 'success') {
-                if (result.data.battles.length === 0) {
-                    emptyState.classList.remove('hidden');
-                } else {
-                    result.data.battles.forEach(displayBattleCard);
-                }
-            } else {
-                showNotification('فشل تحميل التحديات', 'error');
-                emptyState.classList.remove('hidden');
-            }
-        } catch (error) {
-            console.error('Failed to load battles:', error);
-            loadingState.classList.add('hidden');
-            emptyState.classList.remove('hidden');
-        }
-    }
-
-    // ✅ تفويض أحداث "انضم" عبر mainContent المستقر بدل battlesContainer الذي كان null دائماً
-    mainContent.addEventListener('click', async (e) => {
-        const joinBtn = e.target.closest('.join-battle-btn');
-        if (!joinBtn) return;
-
-        const battleCard = joinBtn.closest('.battle-card');
-        if (!battleCard) return;
-        const battleId = battleCard.dataset.battleId;
-        const isPrivate = battleCard.dataset.isPrivate === 'true';
-
-        joinBtn.disabled = true;
-        joinBtn.textContent = 'جاري...';
-
-        let password = null;
-        if (isPrivate) {
-            password = prompt("هذا التحدي خاص، يرجى إدخال كلمة المرور:");
-            if (password === null) {
-                joinBtn.disabled = false;
-                joinBtn.textContent = 'انضم';
-                return;
-            }
-        }
-
-        try {
-            const response = await fetch(`/api/battles/${battleId}/join`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ password: password })
-            });
-            const result = await response.json();
-            if (!response.ok) {
-                showNotification(result.message || 'فشل الانضمام', 'error');
-                joinBtn.disabled = false;
-                joinBtn.textContent = 'انضم';
-            }
-        } catch (error) {
-            showNotification('خطأ في الاتصال بالخادم', 'error');
-            joinBtn.disabled = false;
-            joinBtn.textContent = 'انضم';
-        }
-    });
-
-    // --- استبدل دالة showCreateBattleModal بالكامل بهذه النسخة ---
-
-function showCreateBattleModal() {
-    const modal = document.createElement('div');
-    modal.id = 'create-battle-modal';
-    modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50';
-    
-    const modalHTML = `
-        <div class="bg-gray-200 dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm text-gray-800 dark:text-white transition-colors duration-300">
-            <h3 class="text-lg font-bold mb-4">إنشاء تحدي جديد</h3>
-            <form id="create-battle-form" class="space-y-4">
-                <div>
-                    <label class="text-sm">نوع التحدي</label>
-                    <select name="type" class="w-full bg-gray-300 dark:bg-gray-700 border border-gray-400 dark:border-gray-600 rounded-lg p-2 mt-1 transition-colors duration-300">
-                        <option value="1v1">1 ضد 1</option>
-                        <option value="2v2">2 ضد 2</option>
-                        <option value="4v4">4 ضد 4</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="text-sm">مبلغ الرهان ($)</label>
-                    <input type="number" name="betAmount" value="1" min="1" class="w-full bg-gray-300 dark:bg-gray-700 border border-gray-400 dark:border-gray-600 rounded-lg p-2 mt-1 transition-colors duration-300">
-                </div>
-                <div class="flex items-center">
-                    <input type="checkbox" id="isPrivate" name="isPrivate" class="w-4 h-4 rounded">
-                    <label for="isPrivate" class="mr-2 text-sm">تحدي خاص</label>
-                </div>
-                <div id="password-field" class="hidden">
-                    <label class="text-sm">كلمة المرور</label>
-                    <input type="password" name="password" class="w-full bg-gray-300 dark:bg-gray-700 border border-gray-400 dark:border-gray-600 rounded-lg p-2 mt-1 transition-colors duration-300">
-                </div>
-                <div class="flex justify-end gap-3 pt-4">
-                    <button type="button" id="cancel-create-battle" class="bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg">إلغاء</button>
-                    <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg">تأكيد</button>
-                </div>
-            </form>
-        </div>
-    `;
-    
-    modal.innerHTML = modalHTML;
-    document.body.appendChild(modal);
-
-    // --- ✅✅ الإصلاح هنا: الكود المحدث لربط الأحداث ---
-    // ربط الأحداث بعد إضافة النافذة إلى DOM
-    const cancelButton = modal.querySelector('#cancel-create-battle');
-    const battleForm = modal.querySelector('#create-battle-form');
-    const privateCheckbox = modal.querySelector('#isPrivate');
-
-    if (cancelButton) {
-        cancelButton.addEventListener('click', () => modal.remove());
-    }
-    
-    // إغلاق النافذة عند النقر على الخلفية
-    modal.addEventListener('click', (e) => {
-        if (e.target.id === 'create-battle-modal') {
-            modal.remove();
-        }
-    });
-
-    if (privateCheckbox) {
-        privateCheckbox.addEventListener('change', (e) => {
-            modal.querySelector('#password-field').classList.toggle('hidden', !e.target.checked);
-        });
-    }
-
-        if (battleForm) {
-        battleForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const data = Object.fromEntries(formData.entries());
-            
-            data.betAmount = parseFloat(data.betAmount);
-            data.isPrivate = data.isPrivate === 'on';
-
-            if (!data.type || !data.betAmount || data.betAmount <= 0) {
-                showNotification('يرجى إدخال مبلغ رهان صالح.', 'error');
-                return;
-            }
-            if (data.isPrivate && !data.password) {
-                showNotification('يرجى إدخال كلمة مرور للتحدي الخاص.', 'error');
-                return;
-            }
-
-            // ✅ نمط التحميل الموحّد: تعطيل الزر + دوّارة بدل النص أثناء الطلب
-            const submitBtn = battleForm.querySelector('button[type="submit"]');
-            const originalBtnHTML = submitBtn.innerHTML;
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-
-            try {
-                const response = await fetch('/api/battles', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify(data)
-                });
-                const result = await response.json();
-
-                if (response.ok && result.status === 'success') {
-                    showNotification('تم إنشاء التحدي بنجاح!', 'success');
-                    modal.remove();
-                } else {
-                    showNotification(result.message || 'فشل إنشاء التحدي', 'error');
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = originalBtnHTML;
-                }
-            } catch (error) {
-                showNotification('خطأ في الاتصال بالخادم', 'error');
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalBtnHTML;
-            }
-        });
-    }
-}
-
-        // ✅ تم حذف السطر المكرر لربط زر "create-battle-btn" من هنا — كان يُنفَّذ عند تحميل
-    // الصفحة والزر غير موجود بعد بالـ DOM (يُنشأ فقط داخل showChallengesView)، فكان يرمي
-    // خطأ متزامن يوقف كل الكود التالي. الربط الصحيح موجود أصلاً داخل showChallengesView().
-
-    socket.on('newBattle', (battle) => {
-        const emptyState = document.getElementById('battles-empty-state');
-        if (emptyState) emptyState.classList.add('hidden');
-        displayBattleCard(battle);
-    });
-
-    socket.on('battleUpdate', (updatedBattle) => {
-        const cardToUpdate = document.querySelector(`.battle-card[data-battle-id="${updatedBattle._id}"]`);
-        if (cardToUpdate) cardToUpdate.remove();
-        if (updatedBattle.status === 'waiting') {
-            displayBattleCard(updatedBattle);
-        }
-        const container = document.getElementById('battle-rooms-container');
-        const emptyState = document.getElementById('battles-empty-state');
-        if (container && emptyState && container.querySelectorAll('.battle-card').length === 0) {
-            emptyState.classList.remove('hidden');
-        }
-    });
-
-    // =================================================
-    // =========== قسم اللعبة (Game Section) ===========
-    // =================================================
-
-    function showGameWindow() {
-        const gameContainer = document.getElementById('game-container');
-        if (!gameContainer) return;
-        // --- استبدل متغير modalHTML داخل دالة showGameWindow بهذا ---
-const modalHTML = `
-    <div id="game-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[200] p-4">
-        <div class="bg-gray-800 border-2 border-purple-500 rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-2xl text-white text-center">
-            <h2 class="text-xl sm:text-2xl font-bold mb-4">لعبة النقرات الأسرع!</h2>
-            <div id="game-status" class="mb-4 sm:mb-6 h-20 sm:h-24 flex items-center justify-center">
-                <p class="text-2xl">استعد...</p>
-            </div>
-            <div class="grid grid-cols-2 gap-2 sm:gap-6 items-center">
-                <!-- اللاعب الحالي -->
-                <div class="flex flex-col items-center">
-                    <p class="text-base sm:text-xl font-bold mb-2">${escapeHtml(user.username)} (أنت)</p>
-                    
-                    <!-- ✅ الإصلاح: أزرار متجاوبة -->
-                    <button id="click-btn" class="w-32 h-32 sm:w-48 sm:h-48 bg-purple-600 rounded-full text-4xl sm:text-5xl font-bold shadow-lg transform transition hover:scale-105 active:scale-95 focus:outline-none">
-                        انقر!
-                    </button>
-                    
-                    <p class="mt-2 sm:mt-4 text-2xl sm:text-3xl">النقاط: <span id="my-score">0</span></p>
-                </div>
-                <!-- الخصم -->
-                <div class="flex flex-col items-center">
-                    <p class="text-base sm:text-xl font-bold mb-2">الخصم</p>
-                    
-                    <!-- ✅ الإصلاح: أزرار متجاوبة -->
-                    <div class="w-32 h-32 sm:w-48 sm:h-48 bg-gray-700 rounded-full flex items-center justify-center">
-                        <i class="fas fa-user-secret text-5xl sm:text-6xl text-gray-500"></i>
-                    </div>
-                    
-                    <p class="mt-2 sm:mt-4 text-2xl sm:text-3xl">النقاط: <span id="opponent-score">0</span></p>
-                </div>
-            </div>
-        </div>
-    </div>
-`;
-
-        gameContainer.innerHTML = modalHTML;
-        const clickBtn = document.getElementById('click-btn');
-        if (clickBtn) {
-            clickBtn.addEventListener('click', () => {
-                const gameModal = document.getElementById('game-modal');
-                const battleId = gameModal.dataset.battleId;
-                if (battleId) socket.emit('playerClick', { battleId });
-            });
-        }
-    }
-
-    function updateGameState(gameState) {
-        const gameModal = document.getElementById('game-modal');
-        if (!gameModal || !gameState || typeof gameState.scores === 'undefined') return;
-        const scores = gameState.scores;
-        const myScore = scores[user._id] || 0;
-        const playerIds = Object.keys(scores);
-        const opponentId = playerIds.find(id => id !== user._id);
-        const opponentScore = opponentId ? (scores[opponentId] || 0) : 0;
-        gameModal.querySelector('#my-score').textContent = myScore;
-        gameModal.querySelector('#opponent-score').textContent = opponentScore;
-    }
-
-    socket.on('battleCountdown', ({ countdown, battleId }) => {
-        let gameModal = document.getElementById('game-modal');
-        if (!gameModal) {
-            showGameWindow();
-            gameModal = document.getElementById('game-modal');
-            gameModal.dataset.battleId = battleId;
-        }
-        const statusDiv = gameModal.querySelector('#game-status');
-        if (statusDiv) statusDiv.innerHTML = `<p class="text-6xl font-bold animate-ping">${countdown}</p>`;
-    });
-
-    socket.on('gameStarted', ({ gameState }) => {
-        const gameModal = document.getElementById('game-modal');
-        if (!gameModal) return;
-        const statusDiv = gameModal.querySelector('#game-status');
-        statusDiv.innerHTML = `<p class="text-6xl font-bold text-green-400">انطلق!</p>`;
-        let timer = gameState.timer;
-        const timerInterval = setInterval(() => {
-            const statusDiv = gameModal.querySelector('#game-status');
-            if (statusDiv) statusDiv.innerHTML = `<div class="text-5xl font-mono">${timer}</div>`;
-            timer--;
-            if (timer < 0) {
-                clearInterval(timerInterval);
-                const clickBtn = document.getElementById('click-btn');
-                if (clickBtn) clickBtn.disabled = true;
-            }
-        }, 1000);
-        updateGameState(gameState);
-    });
-
-    socket.on('gameStateUpdate', (gameState) => {
-        updateGameState(gameState);
-    });
-
-    socket.on('gameEnded', ({ battle, winnerId }) => {
-        const gameModal = document.getElementById('game-modal');
-        if (!gameModal) return;
-        const statusDiv = gameModal.querySelector('#game-status');
-        let message = '';
-        if (!winnerId) {
-            message = '<p class="text-4xl font-bold text-yellow-400">تعادل!</p>';
-        } else if (winnerId === user._id) {
-            message = '<p class="text-4xl font-bold text-green-400">لقد فزت!</p>';
-        } else {
-            message = '<p class="text-4xl font-bold text-red-400">لقد خسرت!</p>';
-        }
-        if (statusDiv) statusDiv.innerHTML = message;
-        setTimeout(() => {
-            const modal = document.getElementById('game-modal');
-            if (modal) modal.remove();
-        }, 5000);
-    });
-
+    // 🗑️ أُزيلت لعبة "التحدي" (الرهان الفردي بالدولار + إنشاء/الانضمام/عدّاد التنازل/نتيجة
+    // اللعبة) بالكامل من هنا بطلب صريح — ثغرة أمنية حقيقية (نقر آلي يفوز بمال حقيقي) وتصنيف
+    // قماري محتمل. لا علاقة بمعارك PK بين الغرف (pk-battle-*) أو تحدي المقاعد، تلك بقيت كما هي
     // --- أضف هذه الدالة الجديدة ---
 function showReplyBar(message) {
     replyingToMessage = message;

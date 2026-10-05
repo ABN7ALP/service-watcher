@@ -28,9 +28,6 @@ router.post('/withdrawals/:withdrawalId/review', withdrawalController.reviewWith
 
 router.get('/transactions', adminController.getAllTransactions);
 
-router.get('/battles', adminController.getBattles);
-router.post('/battles/:battleId/force-end', adminController.forceEndBattle);
-
 router.get('/gifts', adminController.getGifts);
 router.post('/gifts', adminController.saveGift);
 router.put('/gifts/:giftId', adminController.saveGift);
@@ -50,6 +47,7 @@ router.get('/suggestions', adminController.getSuggestions);
 router.post('/suggestions/:suggestionId/resolve', adminController.resolveSuggestion);
 
 router.get('/logs', adminController.getLogs);
+router.get('/client-errors', adminController.getClientErrors);
 
 router.get('/settings', adminController.getSystemSettings);
 router.post('/settings', adminController.updateSystemSettings);

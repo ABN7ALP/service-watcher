@@ -293,46 +293,8 @@ module.exports = (socket, io) => {
       adminSocket.leave('transaction-alerts');
     });
 
-    // Real-time battle alerts
-    adminSocket.on('subscribe-battles', () => {
-      adminSocket.join('battle-alerts');
-    });
-
-    // Force end battle
-    adminSocket.on('force-end-battle', async ({ battleId, winner, reason }) => {
-      try {
-        const Battle = require('../models/Battle');
-        const battle = await Battle.findById(battleId);
-        
-        if (battle && battle.status === 'in_progress') {
-          battle.status = 'completed';
-          battle.winner = winner || 'draw';
-          battle.endTime = new Date();
-          await battle.save();
-
-          // Notify battle room
-          io.to(battle.chatRoom).emit('battle-force-ended', {
-            winner: battle.winner,
-            reason,
-            admin: adminSocket.adminName
-          });
-
-          // Log action
-          await AdminLog.logAction({
-            admin: adminSocket.adminId,
-            action: 'update_settings',
-            targetEntity: 'battle',
-            entityId: battleId,
-            details: { action: 'force_end', winner, reason },
-            severity: 'warning'
-          });
-
-          adminSocket.emit('battle-ended', { battleId });
-        }
-      } catch (error) {
-        console.error('Force end battle error:', error);
-      }
-    });
+    // 🗑️ أُزيلت لعبة "التحدي" (الرهان الفردي بالدولار) بالكامل بطلب صريح — تضمّنت هذا
+    // المكان تنبيهات/إنهاء قسري خاصة بها فقط (subscribe-battles / force-end-battle)
 
     // Disconnect
     adminSocket.on('disconnect', async () => {
@@ -362,24 +324,20 @@ module.exports = (socket, io) => {
       const User = require('../models/User');
       const Transaction = require('../models/Transaction');
       const Withdrawal = require('../models/Withdrawal');
-      const Battle = require('../models/Battle');
 
       const [
         pendingDeposits,
         pendingWithdrawals,
-        activeBattles,
         recentUsers
       ] = await Promise.all([
         Transaction.countDocuments({ type: 'deposit', status: 'pending' }),
         Withdrawal.countDocuments({ status: 'pending' }),
-        Battle.countDocuments({ status: { $in: ['waiting', 'ready', 'in_progress'] } }),
         User.find().sort('-createdAt').limit(10).select('username createdAt profileImage')
       ]);
 
       socket.emit('initial-admin-data', {
         pendingDeposits,
         pendingWithdrawals,
-        activeBattles,
         recentUsers,
         serverTime: new Date()
       });
@@ -404,10 +362,4 @@ module.exports = (socket, io) => {
     });
   });
 
-  socket.on('create-battle', (data) => {
-    adminNamespace.to('admin-room').emit('battle-created', {
-      ...data,
-      timestamp: new Date()
-    });
-  });
 };
