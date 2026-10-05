@@ -97,7 +97,11 @@ async function notifyIfLeveledUp(io, ownerId, memberId, pointsAfter, delta) {
                 ownerId: ownerId.toString(),
                 ownerUsername: owner?.username || '',
                 newLevel: afterInfo.level,
-                tierName: afterInfo.tierName
+                tierName: afterInfo.tierName,
+                // ✅ levelInfo الكامل يسمح للعميل بتحديث بطاقة المستوى مكانياً فوراً (بلا إعادة
+                // تحميل الورقة كاملة لجلبه عبر /summary من جديد — كان هو سبب "النافذة تعيد
+                // التحميل عند كسب الهدية/الارتقاء" الذي طُلب إصلاحه)
+                levelInfo: afterInfo
             });
         }
     } catch (error) {

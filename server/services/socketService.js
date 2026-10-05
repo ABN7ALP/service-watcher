@@ -515,9 +515,29 @@ function cancelPendingBroadcastEnd(userId) {
     }
 }
 
-function scheduleBroadcastEndAfterDisconnect(io, hostUser) {
+// 🐛 بحث معمّق (طلب صريح: "أحياناً ينتهي البث تلقائياً رغم أنه شغّال فعلياً عند المضيف") —
+// السبب: pendingBroadcastEndTimers مفتاحها hostId فقط، وscheduleBroadcastEndAfterDisconnect
+// كانت تُستدعى من كل disconnect لذاك المستخدم بلا استثناء، حتى لو كان له اتصال آخر فعّال
+// بالفعل (تبويب/جهاز ثانٍ لم ينقطع، أو تبويب خلفي قديم لم يُغلَق تماماً). الاتصال الثاني لا
+// يُطلق 'connection' جديداً فلا يُلغي المؤقّت (cancelPendingBroadcastEnd يُستدعى فقط هناك)،
+// فيَنتهي البث فعلياً بعد 90 ثانية رغم أن المضيف ما يزال مبثّاً حياً من اتصاله الآخر —
+// بالضبط "الإنهاء الشبحي" الذي وُصف. الإصلاح: لا نُجدول المؤقّت أصلاً لو وُجد اتصال آخر فعّال
+// لنفس المستخدم وقت الانقطاع؛ فحص متكرر لاحقاً غير ممكن هنا لأن المؤقّت نفسه لا يُعاد فحصه
+// أثناء الانتظار، لكن حين ينقطع ذاك الاتصال الآخر بدوره، معالجه الخاص يُعيد هذا الفحص فيُجدول
+// المؤقّت وقتها بأمان (لا اتصال آخر متبقٍ) — فالإنهاء الحقيقي يحدث فقط بعد انقطاع كل الاتصالات
+function hasAnotherLiveSocket(io, userId, excludeSocketId) {
+    const target = userId.toString();
+    for (const [id, s] of io.sockets.sockets) {
+        if (id === excludeSocketId) continue;
+        if (s.user && s.user.id.toString() === target) return true;
+    }
+    return false;
+}
+
+function scheduleBroadcastEndAfterDisconnect(io, hostUser, disconnectingSocketId) {
     const key = hostUser._id.toString();
     cancelPendingBroadcastEnd(key); // ✅ يمنع تراكم أكثر من مؤقّت لنفس المضيف
+    if (hasAnotherLiveSocket(io, hostUser._id, disconnectingSocketId)) return; // ما زال متصلاً من مكان آخر — لا داعي لمهلة إطلاقاً
     const timer = setTimeout(() => {
         pendingBroadcastEndTimers.delete(key);
         endRoomBroadcastForHost(io, hostUser);
@@ -593,11 +613,17 @@ const initializeSocket = (server) => {
         io.on('connection', async (socket) => {
         console.log(`🟢 User connected: ${socket.id} | UserID: ${socket.user.username}`);
         
+                // 🐛 إصلاح "إنهاء بث شبحي": كان إلغاء مهلة إنهاء البث/تحرير المقعد يحدث بعد await
+                // لقاعدة البيانات ضمن نفس try — أي عطل/تأخير مؤقّت بذاك الاستعلام (شائع كسبب
+                // "متقطّع") يُسقط التنفيذ مباشرة لـcatch فلا يُنفَّذ الإلغاء إطلاقاً، فيبقى مؤقّت
+                // قديم من انقطاع سابق يعمل ويُنهي البث فعلياً رغم أن المضيف عاد للاتصال بنجاح
+                // فعلاً على مستوى النقل (socket.io). الإلغاء نفسه محلي وتزامني بالكامل (Map فقط)
+                // ولا يعتمد على أي استعلام قاعدة بيانات — ننفّذه أولاً دوماً، بلا أي اعتماد على try/catch
+                cancelPendingBroadcastEnd(socket.user._id); // ✅ عاد بسرعة — يلغي مهلة إنهاء البث المجدولة إن وُجدت
+                cancelPendingSeatRelease(socket.user._id); // ✅ عاد بسرعة — يلغي مهلة تحرير مقعده المجدولة إن وُجدت (لم يفقد مقعده أصلاً)
                 try {
             await User.findByIdAndUpdate(socket.user.id, { socketId: socket.id, isOnline: true });
             io.emit('userOnlineStatus', { userId: socket.user.id.toString(), isOnline: true });
-            cancelPendingBroadcastEnd(socket.user._id); // ✅ عاد بسرعة — يلغي مهلة إنهاء البث المجدولة إن وُجدت
-            cancelPendingSeatRelease(socket.user._id); // ✅ عاد بسرعة — يلغي مهلة تحرير مقعده المجدولة إن وُجدت (لم يفقد مقعده أصلاً)
 
             // ✅ تحويل كل الرسائل التي وصلته وهو غير متصل إلى "تم التسليم" فوراً + إعلام كل مُرسِل بذلك
             const PrivateMessage = require('../models/PrivateMessage');
@@ -2237,7 +2263,7 @@ socket.on('refreshBlockData', async () => {
 
                 // ✅ لو كان مضيف غرفة مباشرة حالياً، لا نُنهي بثّه فوراً — مهلة سماح قصيرة تحسّباً
                 // لانقطاع عابر (قفل شاشة الهاتف، تبديل شبكة) يعود بعدها المضيف خلال ثوانٍ فعلياً
-                scheduleBroadcastEndAfterDisconnect(io, socket.user);
+                scheduleBroadcastEndAfterDisconnect(io, socket.user, socket.id);
 
                 // 🐛 إصلاح: نفس مهلة السماح تُمنح الآن لأي جالس عادي أيضاً (وليس المضيف فقط) —
                 // لا نُنزله عن مقعده فوراً لمجرد انقطاع عابر، بل بعد مهلة قصيرة يُلغيها فوراً لو
