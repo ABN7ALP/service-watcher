@@ -17,7 +17,6 @@ const systemSettingsSchema = new mongoose.Schema({
     minWithdrawUSD: { type: Number, default: 5 },
     withdrawalFeePer10USD: { type: Number, default: 0.5 },
 
-    battleCommissionRate: { type: Number, default: 0.10, min: 0, max: 0.5 },
     coinsToUsdRedemptionRate: { type: Number, default: 100 }, // كم كوينز = 1$ عند الاستبدال (اجعلها = coinExchangeRate لتكافؤ عادل)
     giftRedemptionHaircutPercent: { type: Number, default: 90, min: 1, max: 100 }, // النسبة المستردة فعلياً (الباقي "ضريبة" مضادة للتلاعب)
     maxDailyWithdrawalUSD: { type: Number, default: 500 }, // ✅ سيُستخدم لاحقاً بالبند 10

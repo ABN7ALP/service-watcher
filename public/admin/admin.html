@@ -27,7 +27,6 @@
                 <li class="menu-item" data-page="coinpurchases"><i class="fas fa-coins"></i><span>شراء الكوينزات</span></li>
                 <li class="menu-item" data-page="withdrawals"><i class="fas fa-money-bill-wave"></i><span>طلبات السحب</span></li>
                 <li class="menu-item" data-page="transactions"><i class="fas fa-exchange-alt"></i><span>المعاملات المالية</span></li>
-                <li class="menu-item" data-page="battles"><i class="fas fa-gamepad"></i><span>التحديات النشطة</span></li>
                 <li class="menu-item" data-page="gifts"><i class="fas fa-gifts"></i><span>إدارة الهدايا</span></li>
                 <li class="menu-item" data-page="music"><i class="fas fa-music"></i><span>مكتبة الموسيقى</span></li>
                 <li class="menu-item" data-page="suggestions"><i class="fas fa-lightbulb"></i><span>الاقتراحات</span></li>
@@ -67,23 +66,18 @@
                         <div class="stat-change"><i class="fas fa-clock"></i> <span id="pendingWithdrawals">0</span> معلقة</div>
                     </div>
                     <div class="stat-card danger">
-                        <div class="stat-icon"><i class="fas fa-gamepad"></i></div>
-                        <div class="stat-info"><h3 id="activeBattles">0</h3><p>تحديات نشطة</p></div>
-                        <div class="stat-change"><i class="fas fa-chart-line"></i> <span id="todayTransactions">0</span> معاملة اليوم</div>
+                        <div class="stat-icon"><i class="fas fa-chart-line"></i></div>
+                        <div class="stat-info"><h3 id="todayTransactions">0</h3><p>معاملة اليوم</p></div>
                     </div>
                 </div>
                 <div class="row mt-4">
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <div class="card"><div class="card-header"><h5><i class="fas fa-trophy"></i> أكبر المودعين</h5></div>
                         <div class="card-body"><div id="topDepositors" class="top-users-list"></div></div></div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <div class="card"><div class="card-header"><h5><i class="fas fa-gift"></i> أكبر المهدين</h5></div>
                         <div class="card-body"><div id="topGifters" class="top-users-list"></div></div></div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card"><div class="card-header"><h5><i class="fas fa-crown"></i> أكبر الرابحين</h5></div>
-                        <div class="card-body"><div id="topWinners" class="top-users-list"></div></div></div>
                     </div>
                 </div>
             </div>
@@ -168,20 +162,6 @@
                 </div>
                 <div id="transactionsListContainer" class="table-responsive p-3"></div>
                 <div class="pagination-container"><ul class="pagination" id="transactionsPagination"></ul></div>
-            </div>
-
-            <!-- Battles -->
-            <div id="battles-page" class="page">
-                <div class="page-header">
-                    <h1><i class="fas fa-gamepad"></i> التحديات</h1>
-                    <select id="battlesStatusFilter" class="form-control" style="width:auto">
-                        <option value="active">النشطة فقط</option>
-                        <option value="completed">المكتملة</option>
-                        <option value="cancelled">الملغاة</option>
-                        <option value="all">الكل</option>
-                    </select>
-                </div>
-                <div id="battlesListContainer" class="table-responsive p-3"></div>
             </div>
 
             <!-- Gifts -->

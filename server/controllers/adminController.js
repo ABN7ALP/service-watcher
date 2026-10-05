@@ -1,7 +1,6 @@
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const Withdrawal = require('../models/Withdrawal');
-const Battle = require('../models/Battle');
 const Gift = require('../models/Gift');
 const AdminLog = require('../models/AdminLog');
 
@@ -27,9 +26,8 @@ exports.getDashboardStats = async (req, res) => {
       ]),
       Transaction.countDocuments({ type: 'deposit', status: 'pending' }),         // 3
       Withdrawal.countDocuments({ status: 'pending' }),                          // 4
-      Battle.countDocuments({ status: { $in: ['waiting', 'in-progress'] } }),     // 5
-      Transaction.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } }), // 6
-      Transaction.aggregate([                                                    // 7
+      Transaction.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } }), // 5
+      Transaction.aggregate([                                                    // 6
         { $match: { type: 'deposit', status: 'completed' } },
         { $group: { _id: '$user', total: { $sum: '$amount' } } },
         { $sort: { total: -1 } }, { $limit: 10 },
@@ -37,7 +35,7 @@ exports.getDashboardStats = async (req, res) => {
         { $unwind: '$u' },
         { $project: { _id: '$u._id', username: '$u.username', profileImage: '$u.profileImage', totalDeposited: '$total' } }
       ]),
-      GiftLog.aggregate([                                                        // 8
+      GiftLog.aggregate([                                                        // 7
         { $match: { createdAt: { $gte: startOfMonth } } },
         { $group: { _id: '$sender', total: { $sum: '$totalPrice' } } },
         { $sort: { total: -1 } }, { $limit: 10 },
@@ -45,17 +43,9 @@ exports.getDashboardStats = async (req, res) => {
         { $unwind: '$u' },
         { $project: { _id: '$u._id', username: '$u.username', profileImage: '$u.profileImage', totalGifted: '$total' } }
       ]),
-      Transaction.aggregate([                                                    // 9
-        { $match: { type: 'win', status: 'completed' } },
-        { $group: { _id: '$user', total: { $sum: '$amount' } } },
-        { $sort: { total: -1 } }, { $limit: 10 },
-        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'u' } },
-        { $unwind: '$u' },
-        { $project: { _id: '$u._id', username: '$u.username', profileImage: '$u.profileImage', totalWon: '$total' } }
-      ]),
-      CoinPurchase.countDocuments({ status: 'pending_review' }),                  // 10
-      ChatReport.countDocuments({ status: 'pending' }),                           // 11
-      User.countDocuments({ isBanned: true })                                     // 12
+      CoinPurchase.countDocuments({ status: 'pending_review' }),                  // 8
+      ChatReport.countDocuments({ status: 'pending' }),                           // 9
+      User.countDocuments({ isBanned: true })                                     // 10
     ]);
 
     results.forEach((r, i) => {
@@ -72,13 +62,15 @@ exports.getDashboardStats = async (req, res) => {
         totalWithdrawals: val(2, [])[0]?.total || 0,
         pendingDeposits: val(3, 0),
         pendingWithdrawals: val(4, 0),
-        activeBattles: val(5, 0),
-        todayTransactions: val(6, 0),
-        pendingCoinPurchases: val(10, 0),
-        pendingReports: val(11, 0),
-        bannedUsers: val(12, 0)
+        todayTransactions: val(5, 0),
+        pendingCoinPurchases: val(8, 0),
+        pendingReports: val(9, 0),
+        bannedUsers: val(10, 0)
       },
-      topUsers: { depositors: val(7, []), gifters: val(8, []), winners: val(9, []) }
+      // 🗑️ أُزيل "winners" (أكثر الفائزين بلعبة التحدي) مع حذف اللعبة بالكامل — كان أصلاً
+      // يعتمد على نوع معاملة 'win' لا يُنشئه أي كود حالي (رصيد الفوز يُحدَّث مباشرة)، فكان
+      // دوماً فارغاً، لكن إزالته تماماً أنظف من ترك استعلام ميت يخص لعبة محذوفة
+      topUsers: { depositors: val(6, []), gifters: val(7, []) }
     });
   } catch (error) {
     console.error('[ADMIN DASHBOARD ERROR]', error);
@@ -139,34 +131,10 @@ exports.getUserDetails = async (req, res) => {
       .sort('-createdAt')
       .limit(100);
 
-    // ✅ الإصلاح الجذري: المسار الصحيح لأعضاء الفرق هو teams.teamA / teams.teamB
-    // (المسار القديم 'teamA.user' لم يكن يطابق أي مستند إطلاقاً، فكانت هذه الدالة
-    // ترجع دائماً قائمة تحديات فارغة ونسبة فوز = 0 مهما كانت بيانات المستخدم الحقيقية)
-    const battles = await Battle.find({
-      $or: [
-        { 'teams.teamA': userId },
-        { 'teams.teamB': userId },
-        { players: userId }
-      ]
-    }).sort('-createdAt').limit(50);
-
-    const completedBattles = battles.filter(b => b.status === 'completed');
-    const wins = completedBattles.filter(b => {
-      const inTeamA = (b.teams?.teamA || []).some(p => p.toString() === userId);
-      const inTeamB = (b.teams?.teamB || []).some(p => p.toString() === userId);
-      return (b.winner === 'teamA' && inTeamA) || (b.winner === 'teamB' && inTeamB);
-    }).length;
-
     res.json({
       success: true,
       user,
-      transactions,
-      battles,
-      stats: {
-        totalBattles: completedBattles.length,
-        totalWins: wins,
-        winRate: completedBattles.length > 0 ? (wins / completedBattles.length * 100) : 0
-      }
+      transactions
     });
 
   } catch (error) {
@@ -923,80 +891,6 @@ exports.getAllTransactions = async (req, res) => {
 
     const total = await Transaction.countDocuments(query);
     res.json({ success: true, transactions, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// =====================================================
-// ✅ إدارة التحديات (مراقبة حية + إنهاء قسري مع استرداد الرهانات)
-// =====================================================
-exports.getBattles = async (req, res) => {
-  try {
-    const { status = 'active', page = 1, limit = 50 } = req.query;
-    const query = {};
-    if (status === 'active') query.status = { $in: ['waiting', 'in-progress'] };
-    else if (status !== 'all') query.status = status;
-
-    const battles = await Battle.find(query)
-      .populate('players', 'username profileImage')
-      .populate('teams.teamA', 'username profileImage')
-      .populate('teams.teamB', 'username profileImage')
-      .sort('-createdAt')
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
-
-    const total = await Battle.countDocuments(query);
-    res.json({ success: true, battles, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-exports.forceEndBattle = async (req, res) => {
-  try {
-    const { battleId } = req.params;
-    const { refund = true } = req.body;
-    const { admin } = req;
-
-    const battle = await Battle.findById(battleId);
-    if (!battle) return res.status(404).json({ success: false, message: 'التحدي غير موجود' });
-    if (['completed', 'cancelled'].includes(battle.status)) {
-      return res.status(400).json({ success: false, message: 'هذا التحدي منتهٍ بالفعل' });
-    }
-
-    if (refund) {
-      const allPlayers = [
-        ...(battle.teams?.teamA || []),
-        ...(battle.teams?.teamB || []),
-        ...(battle.players || [])
-      ];
-      const uniqueIds = [...new Set(allPlayers.map(p => p.toString()))];
-      const io = req.app.get('socketio');
-
-      for (const uid of uniqueIds) {
-        const u = await User.findById(uid);
-        if (u) {
-          u.balance += battle.betAmount || 0;
-          await u.save();
-          if (io && u.socketId) io.to(u.socketId).emit('balanceUpdate', { newBalance: u.balance });
-        }
-      }
-    }
-
-    battle.status = 'cancelled';
-    await battle.save();
-
-    const io = req.app.get('socketio');
-    if (io) io.emit('battleUpdate', battle);
-
-    await AdminLog.logAction({
-      admin: admin._id, action: 'system_maintenance', targetEntity: 'battle',
-      entityId: battle._id, details: { action: 'force_end', refunded: refund },
-      severity: 'warning', ipAddress: req.ip
-    });
-
-    res.json({ success: true, message: 'تم إنهاء التحدي' + (refund ? ' واسترداد الرهانات بنجاح' : ' بدون استرداد') });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

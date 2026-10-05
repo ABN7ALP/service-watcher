@@ -2,7 +2,6 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Message = require('../models/Message');
-const Battle = require('../models/Battle');
 const VoiceRoom = require('../models/VoiceRoom');
 const RoomBattle = require('../models/RoomBattle');
 const SeatChallenge = require('../models/SeatChallenge');
@@ -401,166 +400,9 @@ const verifySocketToken = async (socket, next) => {
     }
 };
 
-// --- الدوال المساعدة لمنطق اللعبة ---
-// --- استبدل دالة startGame بالكامل ---
-async function startGame(io, battleId) {
-    try {
-        console.log(`[SERVER LOG] 1. Attempting to start game for battle: ${battleId}`);
-        const battle = await Battle.findById(battleId);
-        if (!battle || battle.status !== 'in-progress') return;
-
-        const initialScores = {};
-        battle.players.forEach(playerId => {
-            initialScores[playerId.toString()] = 0;
-        });
-        
-        battle.gameState.scores = initialScores;
-        battle.gameState.timer = 10; // فقط نحدد المدة
-        
-        battle.markModified('gameState'); 
-        await battle.save();
-        console.log(`[SERVER LOG] 2. Game state initialized and saved.`);
-
-        const updatedBattle = await Battle.findById(battleId);
-        console.log(`[SERVER LOG] 3. Sending 'gameStarted' with gameState:`, JSON.stringify(updatedBattle.gameState, null, 2));
-        io.to(battleId).emit('gameStarted', { gameState: updatedBattle.toObject().gameState });
-
-
-        // --- ✅✅ الإصلاح الرئيسي: الخادم يحدد متى تنتهي اللعبة فقط ✅✅ ---
-        // لن نقوم بتحديث قاعدة البيانات كل ثانية بعد الآن
-        setTimeout(() => {
-            console.log(`[SERVER LOG] 7. Game time is up. Ending battle ${battleId}`);
-            endBattle(io, battleId);
-        }, 10000); // 10 ثوانٍ
-
-    } catch (error) {
-        console.error(`[SERVER ERROR] Error in startGame:`, error);
-    }
-}
-
-
-// --- استبدل دالة endBattle بالكامل في socketService.js ---
-// --- استبدل دالة endBattle بالكامل في socketService.js ---
-async function endBattle(io, battleId) {
-    try {
-        const battle = await Battle.findById(battleId).populate('players');
-        if (!battle || battle.status !== 'in-progress') return;
-
-        console.log(`[END BATTLE] Ending battle ${battleId}`);
-
-        const scores = battle.gameState.scores;
-        const playerIds = Object.keys(scores);
-        
-        let winnerId = null;
-        let loserId = null;
-
-        if (playerIds.length === 2) {
-            if (scores[playerIds[0]] > scores[playerIds[1]]) {
-                winnerId = playerIds[0];
-                loserId = playerIds[1];
-            } else if (scores[playerIds[1]] > scores[playerIds[0]]) {
-                winnerId = playerIds[1];
-                loserId = playerIds[0];
-            }
-        }
-
-                const totalPot = battle.betAmount * battle.players.length;
-
-        // ✅ العمولة تُقرأ الآن من الإعداد المركزي (SystemSettings) القابل للتعديل من لوحة التحكم
-        const SystemSettings = require('../models/SystemSettings');
-        const settings = await SystemSettings.getSettings();
-        let commissionRate = settings.battleCommissionRate;
-        // 🛡️ حماية صارمة: أي قيمة غير رقمية أو خارج النطاق [0, 0.5] تُرجَع للافتراضي الآمن
-        // (يمنع تحوّل finalPot إلى NaN وإفساد رصيد الفائز نهائياً)
-        if (typeof commissionRate !== 'number' || isNaN(commissionRate) || commissionRate < 0 || commissionRate > 0.5) {
-            commissionRate = 0.10;
-        }
-        // ✅ حساب مالي دقيق يمنع تراكم أخطاء Float
-        const { mulMoney, subMoney } = require('../utils/money');
-        const commission = mulMoney(totalPot, commissionRate);
-        const finalPot = subMoney(totalPot, commission);
-
-        if (winnerId) {
-            console.log(`[END BATTLE] Winner is ${winnerId}, Loser is ${loserId}`);
-                        // ✅ إضافة ذرّية ودقيقة للجائزة (تمنع فقدان الجائزة عند تزامن عمليات أخرى على الرصيد)
-            const { addMoney } = require('../utils/money');
-            const winnerUser = await User.findByIdAndUpdate(
-                winnerId,
-                { $inc: { balance: finalPot } },
-                { new: true }
-            );
-            if (winnerUser) {
-                // تطبيع الرصيد بعد الإضافة الذرّية لمنع تراكم كسور Float
-                winnerUser.balance = addMoney(winnerUser.balance, 0);
-                await winnerUser.save();
-                // --- ✅ الإصلاح: إرسال تحديث الرصيد بشكل فوري ---
-                if (winnerUser.socketId) {
-                    io.to(winnerUser.socketId).emit('balanceUpdate', { newBalance: winnerUser.balance });
-                    console.log(`[END BATTLE] Sent balance update to winner ${winnerUser.username}`);
-                }
-                // --- ✅ منح 10 XP للفائز ---
-                await addExperience(io, winnerId, 0, 'win'); 
-            }
-            
-            if (loserId) {
-                // --- ✅ منح XP للخاسر بناءً على قيمة الرهان ---
-                await addExperience(io, loserId, battle.betAmount, 'loss');
-            }
-
-        } else { // في حالة التعادل
-            console.log(`[END BATTLE] Battle is a draw.`);
-             const { addMoney } = require('../utils/money');
-            for (const player of battle.players) {
-                // ✅ استرداد ذرّي: لا نكتب فوق مستند قديم قد يكون تغيّر أثناء المباراة
-                const refreshed = await User.findByIdAndUpdate(
-                    player._id,
-                    { $inc: { balance: battle.betAmount } },
-                    { new: true }
-                );
-                if (!refreshed) continue;
-
-                refreshed.balance = addMoney(refreshed.balance, 0);
-                await refreshed.save();
-
-                if (refreshed.socketId) {
-                    io.to(refreshed.socketId).emit('balanceUpdate', { newBalance: refreshed.balance });
-                    console.log(`[END BATTLE] Sent balance update to ${refreshed.username} (draw)`);
-                }
-                await addExperience(io, player._id, 0, 'win'); 
-            }
-        }
-
-        battle.status = 'completed';
-        await battle.save();
-
-                // ✅ تسجيل العمولة كمعاملة قابلة للتدقيق (فقط عند وجود فائز فعلي، لا في التعادل)
-        if (winnerId && commission > 0) {
-            try {
-                const Transaction = require('../models/Transaction');
-                await Transaction.create({
-                    user: winnerId,
-                    type: 'commission',
-                    amount: commission,
-                    currency: 'USD',
-                    status: 'completed',
-                    battle: battle._id,
-                    description: `عمولة النظام ${(commissionRate * 100).toFixed(1)}% (${commission}$) من إجمالي ${totalPot}$ — تحدي ${battle.type}`
-                });
-            } catch (e) {
-                // فشل التسجيل لا يجب أن يؤثر على توزيع الجوائز (تمّ قبله)
-                console.error('[END BATTLE] Failed to record commission transaction:', e);
-            }
-        }
-
-        // --- ✅ الإصلاح: إرسال حدث انتهاء اللعبة إلى الغرفة بأكملها ---
-        // هذا هو ما يجعل النافذة تختفي عند الجميع
-        io.to(battleId).emit('gameEnded', { battle: battle.toObject(), winnerId });
-        console.log(`[END BATTLE] Sent 'gameEnded' event to room ${battleId}`);
-
-    } catch (error) {
-        console.error(`[SERVER ERROR] in endBattle for battle ${battleId}:`, error);
-    }
-}
+// 🗑️ أُزيلت لعبة "التحدي" (الرهان الفردي بالدولار + startGame/endBattle/playerClick) بالكامل
+// بطلب صريح — ثغرة أمنية حقيقية (نقر آلي يفوز بمال حقيقي) وتصنيف قماري محتمل. لا علاقة بمعارك
+// PK بين الغرف (RoomBattle) أو تحدي المقاعد (SeatChallenge) أدناه، تلك تبقى كما هي بلا تغيير
 
 // =================================================
 // ✅ دورة حياة "بث" غرفة المستخدم — الغرفة تظهر بالتصفح فقط وقت يكون مضيفها مباشراً فعلياً.
@@ -745,31 +587,6 @@ const initializeSocket = (server) => {
             maxDisconnectionDuration: 2 * 60 * 1000
         }
     });
-
-    io.startBattleCountdown = async (battleId) => {
-        try {
-            const battle = await Battle.findById(battleId).populate('players');
-            if (!battle || battle.status !== 'in-progress') return;
-
-            battle.players.forEach(player => {
-                if (player.socketId && io.sockets.sockets.get(player.socketId)) {
-                    io.sockets.sockets.get(player.socketId).join(battleId);
-                }
-            });
-
-            let countdown = 3;
-            const countdownInterval = setInterval(() => {
-                io.to(battleId).emit('battleCountdown', { countdown, battleId });
-                countdown--;
-                if (countdown < 0) {
-                    clearInterval(countdownInterval);
-                    startGame(io, battleId);
-                }
-            }, 1000);
-        } catch (error) {
-            console.error("Error in startBattleCountdown:", error);
-        }
-    };
 
     io.use(verifySocketToken);
     
@@ -1115,36 +932,6 @@ socket.on('refreshBlockData', async () => {
     }
 });
         
-        socket.on('playerClick', async ({ battleId }) => {
-            try {
-                console.log(`[SERVER LOG] 4. Received 'playerClick' from user ${socket.user.username} for battle ${battleId}`);
-                const battle = await Battle.findById(battleId);
-                if (!battle || battle.status !== 'in-progress' || battle.gameState.timer <= 0) {
-                    console.error(`[SERVER ERROR] 4.1. Click rejected. Battle not found, not in progress, or timer is zero.`);
-                    return;
-                }
-        
-                const userId = socket.user.id.toString();
-                if (!battle.gameState.scores) {
-                    battle.gameState.scores = {};
-                }
-                
-                battle.gameState.scores[userId] = (battle.gameState.scores[userId] || 0) + 1;
-        
-                battle.markModified('gameState');
-                await battle.save();
-                console.log(`[SERVER LOG] 5. Score updated for ${userId}. New score: ${battle.gameState.scores[userId]}`);
-        
-                const updatedBattle = await Battle.findById(battleId);
-                console.log(`[SERVER LOG] 6. Sending 'gameStateUpdate' with gameState:`, JSON.stringify(updatedBattle.gameState, null, 2));
-                io.to(battleId).emit('gameStateUpdate', updatedBattle.toObject().gameState);
-
-        
-            } catch (error) {
-                console.error('[SERVER ERROR] Error in playerClick:', error);
-            }
-        });
-
         // =====================================================
         // ✅ نظام المقاعد الصوتية — حالة حقيقية بقاعدة البيانات
         // -----------------------------------------------------
