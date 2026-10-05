@@ -49,6 +49,12 @@ const voiceRoomSchema = new mongoose.Schema({
     // ✅ نفس الفكرة لكن لجلسة البث الحالية فقط — تُصفَّر تلقائياً بكل startBroadcast جديد (انظر
     // أدناه)، وتُعرض برأس الغرفة بدل الآيدي الثابت لإعطاء إحساس "حيوية" هذا البث تحديداً
     sessionSupportPoints: { type: Number, default: 0 },
+    // ✅ أعلى 3 داعمين بهذي الجلسة تحديداً (طلب صريح) — نفس فلسفة sessionSupportPoints لكن
+    // مُفصَّلة بالمُرسِل: Map بمفتاح userId تُحدَّث atomically بكل هدية (addSupporterPoints
+    // أدناه)، وتُصفَّر بكل startBroadcast جديد. البيانات (username/profileImage/activeFrameClass)
+    // مُخزَّنة مباشرة هنا (لا lookup لاحق) — تُحدَّث تلقائياً بكل هدية جديدة من نفس المستخدم،
+    // فتبقى طرية طوال الجلسة بلا أي استعلام إضافي عند بناء قائمة أعلى 3 لعرضها
+    sessionSupporters: { type: Map, of: mongoose.Schema.Types.Mixed, default: () => new Map() },
     // ✅ من طردهم المضيف/المسؤولون من الغرفة (وليس فقط من مقعد) — يُمنعون من الدخول إطلاقاً
     // حتى يُنهي المضيف البث ويبدأ جلسة جديدة (انظر startBroadcast أدناه، يُفرغها تلقائياً)
     kickedUsers: [{
@@ -406,6 +412,45 @@ voiceRoomSchema.statics.addSupportPoints = async function (roomId, points) {
     };
 };
 
+// ✅ نقاط داعم فرد بهذي الجلسة تحديداً (أعلى 3 داعمين) — عملية ذرّية واحدة (inc + set معاً)
+// بلا حاجة لقراءة مسبقة: $inc على مفتاح Map بمسار نقطي يُنشئ المفتاح تلقائياً لو غائباً
+// فيستحيل سباق "دخولان مكرّران لنفس المستخدم" (كان ممكناً لو استُخدم findOne ثم push بدلاً).
+// username/profileImage/activeFrameClass تُحدَّث بكل مرة فتبقى طرية بلا أي lookup إضافي لاحقاً
+voiceRoomSchema.statics.addSupporterPoints = async function (roomId, user, points) {
+    if (!points || points <= 0 || !user) return null;
+    const uid = user._id.toString();
+    const updated = await this.findOneAndUpdate(
+        { _id: roomId, isOfficial: { $ne: true } },
+        {
+            $inc: { [`sessionSupporters.${uid}.points`]: points },
+            $set: {
+                [`sessionSupporters.${uid}.username`]: user.username,
+                [`sessionSupporters.${uid}.profileImage`]: user.profileImage,
+                [`sessionSupporters.${uid}.activeFrameClass`]: user.activeFrameClass || ''
+            }
+        },
+        { new: true, select: 'sessionSupporters' }
+    );
+    if (!updated) return null;
+    return this.topSupportersFromMap(updated.sessionSupporters);
+};
+
+// ✅ يُحوّل Map التخزين إلى مصفوفة مرتَّبة (الأعلى أولاً) محدودة بأعلى 3 فقط — نفس التنسيق
+// الجاهز للعرض مباشرة بالعميل (id/username/profileImage/activeFrameClass/points)
+voiceRoomSchema.statics.topSupportersFromMap = function (map) {
+    if (!map || map.size === 0) return [];
+    return Array.from(map.entries())
+        .map(([userId, data]) => ({
+            userId,
+            username: data.username || '',
+            profileImage: data.profileImage || '',
+            activeFrameClass: data.activeFrameClass || '',
+            points: data.points || 0
+        }))
+        .sort((a, b) => b.points - a.points)
+        .slice(0, 3);
+};
+
 // =====================================================
 // ✅ ترتيب أقوى الغرف (منصّة تتويج) — بأكبر عدد متابعين وأكبر نقاط دعم معاً، وليس أحدهما فقط.
 // كل متابع يزن هنا بقدر FOLLOWER_WEIGHT_IN_RANKING نقطة دعم (وزن واحد ثابت لإعادة الموازنة
@@ -545,6 +590,7 @@ voiceRoomSchema.statics.startBroadcast = async function (roomId, hostId) {
     // من جديد الآن (بالضبط الشرط الذي طلبه المضيف: لا عودة إلا بإعادة فتح البث)
     room.kickedUsers = [];
     room.sessionSupportPoints = 0; // ✅ تصفير عدّاد دعم هذي الجلسة تحديداً (المتراكم supportPoints لا يتأثر أبداً)
+    room.sessionSupporters = new Map(); // ✅ نفس التصفير لقائمة أعلى 3 داعمين — جلسة جديدة، صفحة بيضاء
     room.seats.forEach(s => { s.user = null; s.joinedAt = null; s.isMuted = false; s.isLocked = false; });
     const firstSeat = room.seats.find(s => s.seatNumber === 1);
     if (firstSeat) { firstSeat.user = hostId; firstSeat.joinedAt = new Date(); }

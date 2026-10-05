@@ -42,10 +42,21 @@ async function applyGiftToActiveBattle(io, roomId, totalPrice) {
 // تراكمية دائمة لتلك الغرفة — هذا ما يرفع مستوى الغرفة (1-5) ويفتح مزايا كتوسيع المقاعد.
 // انظر VoiceRoom.addSupportPoints/LEVEL_THRESHOLDS للصيغة الكاملة. لا يُوقف إرسال الهدية أبداً
 // حتى لو فشل (الغرفة الرسمية مثلاً بلا نظام مستوى — يُرجع null بأمان ويُتجاهل بصمت)
-async function applyGiftToRoomSupport(io, roomId, totalPrice) {
+async function applyGiftToRoomSupport(io, roomId, totalPrice, sender) {
     const VoiceRoom = require('../models/VoiceRoom');
     const result = await VoiceRoom.addSupportPoints(roomId, totalPrice);
     if (!result || !io) return;
+
+    // ✅ أعلى 3 داعمين بهذي الجلسة (طلب صريح) — نفس استدعاء الهدية بالضبط، عملية ذرّية
+    // منفصلة لا تُوقف تحديث مستوى الغرفة أبداً لو فشلت لأي سبب (fire-and-forget آمن)
+    let topSupporters = null;
+    if (sender) {
+        try {
+            topSupporters = await VoiceRoom.addSupporterPoints(roomId, sender, totalPrice);
+        } catch (supporterError) {
+            console.error('[ROOM SUPPORTERS] Failed to apply supporter points:', supporterError);
+        }
+    }
 
     io.to(`room-chat-${roomId}`).emit('room-support-points-updated', {
         roomId: roomId.toString(),
@@ -53,7 +64,8 @@ async function applyGiftToRoomSupport(io, roomId, totalPrice) {
         sessionSupportPoints: result.sessionSupportPoints,
         level: result.level,
         pointsToNextLevel: VoiceRoom.pointsToNextLevel(result.supportPoints, result.level),
-        levelProgressPercent: VoiceRoom.levelProgressPercent(result.supportPoints, result.level)
+        levelProgressPercent: VoiceRoom.levelProgressPercent(result.supportPoints, result.level),
+        ...(topSupporters ? { topSupporters } : {})
     });
 
     if (result.leveledUp) {
@@ -252,7 +264,7 @@ exports.sendGift = async (req, res) => {
                 console.error('[PK BATTLE] Failed to apply gift score:', battleError);
             }
             try {
-                await applyGiftToRoomSupport(ioForRoom, cleanRoomId, totalPrice);
+                await applyGiftToRoomSupport(ioForRoom, cleanRoomId, totalPrice, sender);
             } catch (supportError) {
                 console.error('[ROOM LEVEL] Failed to apply support points:', supportError);
             }
@@ -495,7 +507,7 @@ async function processGiftCombo({ io, senderId, giftId, quantity, taps = 1, reci
             console.error('[PK BATTLE] Failed to apply gift score:', battleError);
         }
         try {
-            await applyGiftToRoomSupport(io, cleanRoomId, totalCost);
+            await applyGiftToRoomSupport(io, cleanRoomId, totalCost, sender);
         } catch (supportError) {
             console.error('[ROOM LEVEL] Failed to apply support points:', supportError);
         }

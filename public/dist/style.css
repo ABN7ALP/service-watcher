@@ -783,10 +783,6 @@ video {
   z-index: 100;
 }
 
-.z-\[200\]{
-  z-index: 200;
-}
-
 .z-\[250\]{
   z-index: 250;
 }
@@ -1423,17 +1419,6 @@ video {
   animation: bounce 1s infinite;
 }
 
-@keyframes ping{
-  75%, 100%{
-    transform: scale(2);
-    opacity: 0;
-  }
-}
-
-.animate-ping{
-  animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-
 @keyframes pulse{
   50%{
     opacity: .5;
@@ -1742,11 +1727,6 @@ video {
   border-color: rgb(209 213 219 / var(--tw-border-opacity, 1));
 }
 
-.border-gray-400{
-  --tw-border-opacity: 1;
-  border-color: rgb(156 163 175 / var(--tw-border-opacity, 1));
-}
-
 .border-gray-600{
   --tw-border-opacity: 1;
   border-color: rgb(75 85 99 / var(--tw-border-opacity, 1));
@@ -1946,16 +1926,6 @@ video {
 
 .bg-gray-200\/50{
   background-color: rgb(229 231 235 / 0.5);
-}
-
-.bg-gray-300{
-  --tw-bg-opacity: 1;
-  background-color: rgb(209 213 219 / var(--tw-bg-opacity, 1));
-}
-
-.bg-gray-500{
-  --tw-bg-opacity: 1;
-  background-color: rgb(107 114 128 / var(--tw-bg-opacity, 1));
 }
 
 .bg-gray-600{
@@ -4782,6 +4752,107 @@ button, input, select, textarea {
   margin-inline-start: 0;
 }
 
+/* ✅ ودجت "أعلى 3 داعمين" بجانب عداد المشاهدين (طلب صريح) — ثلاث دوائر صغيرة متراكبة جزئياً
+   (الأول وسط ومكبَّر قليلاً بحلقة ذهبية، الثاني يمين بحلقة فضية، الثالث يسار بحلقة برونزية)
+   بنفس ارتفاع كبسولة المشاهدين المجاورة تقريباً — مساحة الرأس هنا ضيقة فلا بوديوم كامل كنادي
+   المعجبين، فقط إشارة مُصغَّرة كافية لمعرفة "من يدعم الآن" بنظرة سريعة */
+
+.room-top-supporters-widget {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.room-top-supporters-widget.hidden {
+  display: none;
+}
+
+.room-top-supporter-slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-inline-start: -7px;
+  cursor: pointer;
+}
+
+.room-top-supporter-slot:first-child {
+  margin-inline-start: 0;
+}
+
+.room-top-supporter-slot.empty {
+  visibility: hidden;
+}
+
+.room-top-supporter-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  -o-object-fit: cover;
+     object-fit: cover;
+  border: 2px solid #94a3b8;
+  /* فضي (المركز الثاني) — افتراضي، يُستبدَل بالتعديلين أدناه */
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.room-top-supporter-rank-1 {
+  z-index: 2;
+  margin-top: -3px;
+}
+
+.room-top-supporter-rank-1 .room-top-supporter-avatar {
+  width: 27px;
+  height: 27px;
+  border-color: #fbbf24;
+}
+
+.room-top-supporter-rank-3 .room-top-supporter-avatar {
+  border-color: #d97706;
+}
+
+.room-top-supporter-rank-badge {
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 7px;
+  font-weight: 900;
+  color: #100d12;
+  background: #fde68a;
+  border: 1px solid #100d12;
+  border-radius: 999px;
+  width: 10px;
+  height: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.room-top-supporter-rank-2 .room-top-supporter-rank-badge {
+  background: #e2e8f0;
+}
+
+.room-top-supporter-rank-3 .room-top-supporter-rank-badge {
+  background: #fdba74;
+}
+
+/* ✅ رقم قيمة الدعم أسفل كل صورة (طلب صريح: "يجلسون بهن مع رقم الذي دعموا به") — نص مصغَّر
+   جداً (الحاوية ضيقة أصلاً)، يرتفع هذا العنصر بالصف أعلى من الأزرار المجاورة قليلاً وهذا
+   طبيعي (items-center بالصف الأب يمركزه رأسياً بلا أي قصّ أو كسر تخطيط) */
+
+.room-top-supporter-points {
+  display: block;
+  font-size: 7px;
+  font-weight: 800;
+  color: #d1d5db;
+  margin-top: 1px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 /* ✅ نافذة قائمة المشاهدين — بطاقة صلبة أنيقة بدل خلفية شفافة باهتة */
 
 .room-viewers-sheet-card {
@@ -4931,10 +5002,11 @@ button, input, select, textarea {
   display: none;
 }
 
-/* ✅ زر متابعة الرأس — أُعيدت هيكلته بالكامل: دائرة أيقونة صغيرة (26px) مستقلة تماماً عن
-   .js-room-follow-btn (لا نص يُقحَم بها إطلاقاً بعد الآن، فلا تكرار للفيضان الذي وقع بالمحاولتين
-   السابقتين). حالتان فقط: "+" بتدرّج المتابعة القياسي قبل المتابعة، وقلب وردي بعدها — يفتح
-   الضغط عليها حينها نادي معجبي المضيف مباشرة بدل تكرار زر متابعة لا فائدة منه بعد تفعيله */
+/* ✅ زر متابعة الرأس — حالتان مختلفتان تماماً بالتصميم (طلب صريح): قبل المتابعة دائرة أيقونة
+   صغيرة بتدرّج "+" القياسي (.room-header-follow-circle)، وبعدها — بما أن الضغط يفتح نادي
+   معجبي المضيف مباشرة لا "متابعة" بعد الآن — تختفي الدائرة الثقيلة كلياً وتظهر بدلاً منها
+   أيقونة نادي المعجبين الصغيرة بلا خلفية إطلاقاً (.room-header-fanclub-icon-btn، تُطبَّق مع
+   .club-icon-fanclub .club-icon-xs من القسم الخاص بأيقونات النوادي) */
 
 .room-header-follow-circle {
   flex-shrink: 0;
@@ -4966,13 +5038,27 @@ button, input, select, textarea {
   transform: scale(0.9);
 }
 
-.room-header-follow-circle.following {
-  background: rgba(236,72,153,0.16);
-  box-shadow: inset 0 0 0 1px rgba(236,72,153,0.4);
-  color: #ec4899;
+.room-header-follow-circle.hidden {
+  display: none;
 }
 
-.room-header-follow-circle.hidden {
+.room-header-fanclub-icon-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease;
+}
+
+.room-header-fanclub-icon-btn:active {
+  transform: scale(0.88);
+}
+
+.room-header-fanclub-icon-btn.hidden {
   display: none;
 }
 
@@ -6182,6 +6268,22 @@ button, input, select, textarea {
 
 .club-icon-sm .club-icon-shield-heart {
   font-size: 9px;
+}
+
+/* ✅ أصغر متغيّر — لاستخدامه بسياقات ضيقة جداً كرأس الغرفة (اختصار نادي معجبين بدل زر دائري
+   ثقيل بخلفية متدرّجة) حيث الحجم القياسي الصغير (30px) لا يزال كبيراً نسبياً */
+
+.club-icon-xs {
+  width: 22px;
+  height: 22px;
+}
+
+.club-icon-xs .club-icon-heart {
+  font-size: 11px;
+}
+
+.club-icon-xs .club-icon-wing {
+  font-size: 6px;
 }
 
 .room-profile-mgmt-row {
@@ -10349,6 +10451,64 @@ body.in-voice-room #main-content {
   }
 }
 
+/* ✅ معاينة مستوى الدعم فوق نافذة الهدايا (طلب صريح) — صورة الشارة الحالية + شريط تقدّم
+   نحو المستوى التالي، بنفس تدرّج فئة المستخدم (tierGradient). تتقدّم حياً فعلياً عند إرسال
+   هدية (انتقال CSS سلس على width، نفس أسلوب .tier-level-progress-fill بنادي المعجبين) */
+
+.gift-support-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 2px;
+  flex-shrink: 0;
+}
+
+.gift-support-preview-badge {
+  width: 30px;
+  height: 30px;
+  -o-object-fit: contain;
+     object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.4));
+}
+
+.gift-support-preview-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.gift-support-preview-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+
+.gift-support-preview-level {
+  font-size: 11.5px;
+  font-weight: 900;
+  color: #fde68a;
+}
+
+.gift-support-preview-tier {
+  font-size: 9.5px;
+  color: #9ca3af;
+}
+
+.gift-support-preview-track {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.35);
+  overflow: hidden;
+}
+
+.gift-support-preview-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fbbf24, #a855f7);
+  transition: width 0.5s ease-out;
+}
+
 /* ✅ رأس ثابت: يحتضن شريط المستلمين مباشرةً (بدل عنوان نصي + زر إغلاق X — الإغلاق يتم
    بالنقر خارج النافذة أو زر رجوع الهاتف، وشريط المستلمين أهم معلومة يحتاجها المستخدم أولاً) */
 
@@ -13364,12 +13524,6 @@ body.in-voice-room #main-content {
   outline: 1px solid rgba(236,27,106,0.8);
 }
 
-.hover\:scale-105:hover{
-  --tw-scale-x: 1.05;
-  --tw-scale-y: 1.05;
-  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
-}
-
 .hover\:scale-110:hover{
   --tw-scale-x: 1.1;
   --tw-scale-y: 1.1;
@@ -13631,12 +13785,6 @@ body.in-voice-room #main-content {
   transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
 }
 
-.active\:scale-95:active{
-  --tw-scale-x: .95;
-  --tw-scale-y: .95;
-  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
-}
-
 .disabled\:cursor-not-allowed:disabled{
   cursor: not-allowed;
 }
@@ -13682,11 +13830,6 @@ body.in-voice-room #main-content {
   background-color: rgb(55 65 81 / var(--tw-bg-opacity, 1));
 }
 
-.dark\:bg-gray-800:is(.dark *){
-  --tw-bg-opacity: 1;
-  background-color: rgb(31 41 55 / var(--tw-bg-opacity, 1));
-}
-
 .dark\:bg-gray-800\/50:is(.dark *){
   background-color: rgb(31 41 55 / 0.5);
 }
@@ -13720,28 +13863,8 @@ body.in-voice-room #main-content {
 }
 
 @media (min-width: 640px){
-  .sm\:mb-6{
-    margin-bottom: 1.5rem;
-  }
-
-  .sm\:mt-4{
-    margin-top: 1rem;
-  }
-
   .sm\:inline{
     display: inline;
-  }
-
-  .sm\:h-24{
-    height: 6rem;
-  }
-
-  .sm\:h-48{
-    height: 12rem;
-  }
-
-  .sm\:w-48{
-    width: 12rem;
   }
 
   .sm\:w-auto{
@@ -13754,39 +13877,6 @@ body.in-voice-room #main-content {
 
   .sm\:flex-row{
     flex-direction: row;
-  }
-
-  .sm\:gap-6{
-    gap: 1.5rem;
-  }
-
-  .sm\:p-6{
-    padding: 1.5rem;
-  }
-
-  .sm\:text-2xl{
-    font-size: 1.5rem;
-    line-height: 2rem;
-  }
-
-  .sm\:text-3xl{
-    font-size: 1.875rem;
-    line-height: 2.25rem;
-  }
-
-  .sm\:text-5xl{
-    font-size: 3rem;
-    line-height: 1;
-  }
-
-  .sm\:text-6xl{
-    font-size: 3.75rem;
-    line-height: 1;
-  }
-
-  .sm\:text-xl{
-    font-size: 1.25rem;
-    line-height: 1.75rem;
   }
 }
 

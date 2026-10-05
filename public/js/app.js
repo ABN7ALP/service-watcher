@@ -1569,6 +1569,46 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         numEl.textContent = currentRoomSessionSupportPoints.toLocaleString('en-US');
     }
 
+    // ✅ تنسيق مُصغَّر لرقم الدعم أسفل كل صورة بالودجت أدناه — المساحة ضيقة جداً (شارة ~27px)
+    // فلا تتسع لأرقام كاملة بالفواصل؛ 12500 → "12.5K"، نفس اصطلاح تطبيقات البث المعروفة
+    function formatCompactPoints(n) {
+        try {
+            return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+        } catch (_) {
+            return n >= 1000 ? `${Math.round(n / 100) / 10}K` : String(n);
+        }
+    }
+
+    // ✅ ودجت "أعلى 3 داعمين" بجانب عداد المشاهدين (طلب صريح) — بوديوم مصغّر (1 وسط، 2/3
+    // بجانبيه) يتحدّث حياً عند كل هدية عبر room-support-points-updated؛ مخفي تماماً بالغرفة
+    // الرسمية (لا نظام دعم لها) أو لو لم يدعم أحد بعد بهذي الجلسة (لا بوديوم فارغاً بلا فائدة)
+    function updateRoomTopSupportersUI() {
+        const wrap = document.getElementById('room-top-supporters-widget');
+        if (!wrap) return;
+        if (currentRoomLevel === null || !currentRoomTopSupporters.length) {
+            wrap.classList.add('hidden');
+            wrap.innerHTML = '';
+            return;
+        }
+        wrap.classList.remove('hidden');
+        const order = [1, 0, 2]; // ٢ يمين، ١ وسط ومكبَّر، ٣ يسار — نفس ترتيب منصّات التتويج بالتطبيق
+        wrap.innerHTML = order.map(i => {
+            const s = currentRoomTopSupporters[i];
+            if (!s) return `<span class="room-top-supporter-slot room-top-supporter-rank-${i + 1} empty"></span>`;
+            return `
+                <button type="button" class="room-top-supporter-slot room-top-supporter-rank-${i + 1}" data-user-id="${s.userId}" title="${escapeHtml(s.username)} • ${s.points.toLocaleString('en-US')}">
+                    <img src="${s.profileImage}" class="room-top-supporter-avatar ${s.activeFrameClass || ''}">
+                    <span class="room-top-supporter-rank-badge">${i + 1}</span>
+                    <span class="room-top-supporter-points">${formatCompactPoints(s.points)}</span>
+                </button>
+            `;
+        }).join('');
+        wrap.querySelectorAll('.room-top-supporter-slot[data-user-id]').forEach((btn, idx) => {
+            const s = currentRoomTopSupporters[order[idx]];
+            btn.addEventListener('click', () => showUserProfileSheet(currentVoiceRoomId, null, btn.dataset.userId, s?.username || ''));
+        });
+    }
+
     // ✅ زر "اطلب الصعود" (∞) — أول ضغطة ترسل الطلب، وثاني ضغطة (والطلب لسا قائم) تفتح
     // نافذة سفلية بسيطة تسأل إن كنت تريد إلغاءه
     function sendSeatJoinRequest() {
@@ -2053,12 +2093,18 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ زر متابعة رأس الغرفة المصغّر — أيقونة فقط (لا نص) كي لا يتصادم أبداً مع عدّاد دعم
     // الجلسة المجاور له بالبطاقة نفسها على الشاشات الضيقة؛ مستقل تماماً عن .js-room-follow-btn
     // العام (لا يشارك مزامنة النص الكامل معه) — بعد المتابعة يتحوّل لاختصار نادي معجبين المضيف
+    // ✅ طلب صريح: الزر الذي يظهر بعد متابعة الروم (اختصار نادي المعجبين) كان دائرة ثقيلة
+    // بخلفية متدرّجة — استُبدل بأيقونة نادي المعجبين الصغيرة بلا خلفية (نفس تلك المستخدمة
+    // بالملف الشخصي)، بينما يبقى زر "+" قبل المتابعة كما هو (لم يُشتكَ منه)
     function updateRoomHeaderFollowIcon(isFollowing) {
         const btn = document.getElementById('room-header-follow-btn');
         if (!btn) return;
         btn.dataset.following = isFollowing ? '1' : '0';
-        btn.classList.toggle('following', isFollowing);
-        btn.innerHTML = isFollowing ? '<i class="fas fa-heart"></i>' : '<i class="fas fa-plus"></i>';
+        btn.classList.toggle('room-header-follow-circle', !isFollowing);
+        btn.classList.toggle('room-header-fanclub-icon-btn', isFollowing);
+        btn.innerHTML = isFollowing
+            ? '<span class="club-icon-fanclub club-icon-xs"><i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i><i class="fas fa-heart club-icon-heart"></i><i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i></span>'
+            : '<i class="fas fa-plus"></i>';
         btn.title = isFollowing ? 'نادي معجبين المضيف' : 'متابعة الغرفة';
     }
     function exitFullscreenRoomMode() {
@@ -2266,6 +2312,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentRoomLevel = null;
     let currentRoomSupportPoints = 0;
     let currentRoomSessionSupportPoints = 0; // ✅ دعم هذي الجلسة فقط — يُصفَّر بكل بدء بث جديد، يُعرض برأس الغرفة بدل الآيدي
+    let currentRoomTopSupporters = []; // ✅ أعلى 3 داعمين بهذي الجلسة — [{userId,username,profileImage,activeFrameClass,points}]
     let currentRoomPointsToNextLevel = 0;
     let currentRoomLevelProgressPercent = 0;
     let currentRoomUnlockedSeatCounts = [9];
@@ -2369,6 +2416,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         currentRoomHostActiveFrameClass = room.host?.activeFrameClass || '';
         currentRoomFollowersCount = 0;
         currentRoomIsFollowing = false;
+        currentRoomTopSupporters = []; // ✅ لا يبقى بوديوم الغرفة السابقة ظاهراً للحظة قبل وصول لقطة الحالة الجديدة
         currentRoomCode = room.roomCode || null;
         currentRoomCoverImage = room.coverImage || null;
         myHandRaised = false;
@@ -2396,13 +2444,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </div>
                 <div class="flex-1"></div>
                 <div class="flex items-center gap-2 flex-shrink-0">
+                    <div id="room-top-supporters-widget" class="room-top-supporters-widget hidden"></div>
                     <button id="room-viewer-count-btn" class="room-viewer-count-btn" title="المشاهدون">
                         <i class="fas fa-eye"></i>
                         <span id="room-viewer-avatars" class="room-viewer-avatars"></span>
                         <span id="room-viewer-count-num">0</span>
                     </button>
-                    <button id="room-power-btn" class="w-7 h-7 rounded-full bg-gray-700/60 hover:bg-gray-600 flex items-center justify-center text-gray-300 text-[13px] flex-shrink-0" title="خيارات الخروج">
-                        <i class="fas fa-power-off"></i>
+                    <button id="room-power-btn" class="w-6 h-6 flex items-center justify-center text-gray-300 text-sm flex-shrink-0" title="خيارات الخروج">
+                        <i class="fas fa-xmark"></i>
                     </button>
                 </div>
             </div>
@@ -2444,7 +2493,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // فعلياً لقائمة التصفح، لكن بدون هذا التحقق كانت بقية هذي الدالة تكمل تنفيذها فتنضم
         // فعلياً لقناة دردشة الغرفة (enterRoomChat) رغم الرفض، فيظهر "دخول" لحظي مزعج قبل الطرد
         const snapshotOk = await fetchAndRenderVoiceSnapshot(room.id, currentRoomPassword);
-        if (!snapshotOk) return;
+        // 🐛 إصلاح "الدخول المعلّق" (دخلتُ ولم أظهر بالمشاهدين رغم وصول دعمي فعلياً): fetchAndRenderVoiceSnapshot
+        // تُعيد false أيضاً لمجرّد كونها استجابة متأخرة تجاوزتها استجابة أحدث (مثلاً إعادة اتصال
+        // سوكيت تُطلق نداءً مزاحماً لهذي الدالة نفسها بينما هذا النداء الأول لا يزال معلّقاً) —
+        // رفض حقيقي (طرد/كلمة سر خاطئة/بث منتهٍ) هو الحالة الوحيدة التي تُغيّر currentVoiceRoomId
+        // فعلياً (showRoomBrowserView تُصفّرها)، فنفرّق بذلك بدل افتراض الفشل الحقيقي دوماً — بلا
+        // هذا الفرق، كنا نتوقف هنا فنتجاهل enterRoomChat فلا ننضم لقناة الدردشة/المشاهدين إطلاقاً
+        // رغم أن الشاشة تبدو مُحمَّلة تماماً (بيانات الغرفة رُسمت فعلاً من النداء الأحدث المنافس)
+        if (!snapshotOk && currentVoiceRoomId !== room.id) return;
         updateVoiceControlBar();
         enterRoomChat(room.id);
         applyRoomAudioMuteState(); // ✅ يطبّق كتمي المحلي (إن كان مفعّلاً) على عنصر الموسيقى وأي صوت متحدثين جديد
@@ -3329,6 +3385,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             if (typeof result.level === 'number') currentRoomLevel = result.level;
             if (typeof result.supportPoints === 'number') currentRoomSupportPoints = result.supportPoints;
             if (typeof result.sessionSupportPoints === 'number') currentRoomSessionSupportPoints = result.sessionSupportPoints;
+            if (result.topSupporters) currentRoomTopSupporters = result.topSupporters;
             if (typeof result.pointsToNextLevel === 'number') currentRoomPointsToNextLevel = result.pointsToNextLevel;
             if (typeof result.levelProgressPercent === 'number') currentRoomLevelProgressPercent = result.levelProgressPercent;
             if (result.unlockedSeatCounts) currentRoomUnlockedSeatCounts = result.unlockedSeatCounts;
@@ -3336,6 +3393,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             if (result.bannedWords) currentRoomBannedWords = result.bannedWords;
             updateRoomLevelBadgeUI();
             updateRoomSessionSupportUI();
+            updateRoomTopSupportersUI();
             updateChatLockUI();
             if (result.backgroundImage !== undefined) currentRoomBackgroundImage = result.backgroundImage;
             if (result.backgroundExpiresAt !== undefined) currentRoomBackgroundExpiresAt = result.backgroundExpiresAt;
@@ -7333,18 +7391,33 @@ function showXpGainAnimation(amount) {
     // التي تعرضها اليوم؛ يُتجاهل بصمت لو لا شيء مفتوحاً له)
     socket.on('support-level-updated', ({ userId, giving, receiving }) => {
         const sheet = document.getElementById('user-profile-sheet');
-        if (!sheet || sheet.dataset.userId !== userId) return;
-        const givingBadge = sheet.querySelector('.support-badge-giving');
-        const receivingBadge = sheet.querySelector('.support-badge-receiving');
-        if (givingBadge) {
-            givingBadge.className = `support-badge support-badge-giving tier-${giving.tierIndex}`;
-            const lvl = givingBadge.querySelector('.support-badge-level');
-            if (lvl) lvl.textContent = giving.level;
+        if (sheet && sheet.dataset.userId === userId) {
+            const givingBadge = sheet.querySelector('.support-badge-giving');
+            const receivingBadge = sheet.querySelector('.support-badge-receiving');
+            if (givingBadge) {
+                givingBadge.className = `support-badge support-badge-giving tier-${giving.tierIndex}`;
+                const lvl = givingBadge.querySelector('.support-badge-level');
+                if (lvl) lvl.textContent = giving.level;
+            }
+            if (receivingBadge) {
+                receivingBadge.className = `support-badge support-badge-receiving tier-${receiving.tierIndex}`;
+                const lvl = receivingBadge.querySelector('.support-badge-level');
+                if (lvl) lvl.textContent = receiving.level;
+            }
         }
-        if (receivingBadge) {
-            receivingBadge.className = `support-badge support-badge-receiving tier-${receiving.tierIndex}`;
-            const lvl = receivingBadge.querySelector('.support-badge-level');
-            if (lvl) lvl.textContent = receiving.level;
+        // ✅ معاينة مستوى الدعم فوق نافذة الهدايا (طلب صريح: "عند الإرسال يتقدّم حياً") —
+        // فقط لو الحدث يخصّني أنا شخصياً (مستوى دعمي أنا يتغيّر بإرسالي أنا للهدية)، وأُحدِّث
+        // النسخة المخزَّنة محلياً أيضاً فتعكس أي فتح لاحق للنافذة القيمة الصحيحة من البداية
+        if (userId === myUserId) {
+            updateGiftModalSupportPreview('room-gift-support-preview', giving);
+            updateGiftModalSupportPreview('public-gift-support-preview', giving);
+            try {
+                const cachedUser = JSON.parse(localStorage.getItem('user'));
+                if (cachedUser) {
+                    cachedUser.supportGiving = giving;
+                    localStorage.setItem('user', JSON.stringify(cachedUser));
+                }
+            } catch (_) { /* تحديث محلي تجميلي بحت — فشله لا يستدعي أي معالجة خاصة */ }
         }
     });
 
@@ -7363,13 +7436,14 @@ function showXpGainAnimation(amount) {
     });
 
     // ✅ ارتقاء مستوى معجب بنادٍ ما — احتفال فوري (كونفيتي + بطاقة عائمة) بغضّ النظر عن
-    // النافذة المفتوحة حالياً. لو نافذة هذا النادي بالذات مفتوحة الآن يُعاد جلب بياناتها
-    // (بدل ترقيع الشارة يدوياً بلا كل تفاصيل الفئة/شريط التقدّم الجديدة)
-    socket.on('fanclub-level-up', ({ ownerId, ownerUsername, newLevel, tierName }) => {
+    // النافذة المفتوحة حالياً. لو نافذة هذا النادي بالذات مفتوحة الآن: ترقيع بطاقة المستوى
+    // مكانياً فقط (الخادم يرسل الآن levelInfo الكامل) بدل إعادة تحميل الورقة بالكامل —
+    // هذا بالضبط ما كان يُسبّب "النافذة تعيد التحميل عند كسب الهدية" المُشتكى منه
+    socket.on('fanclub-level-up', ({ ownerId, ownerUsername, newLevel, tierName, levelInfo }) => {
         celebrateFanClubLevelUp(ownerUsername, newLevel, tierName);
         const fcModal = document.getElementById('fanclub-modal');
         if (fcModal && fcModal.dataset.ownerId === ownerId) {
-            fcModal.dispatchEvent(new CustomEvent('fanclub-refresh'));
+            fcModal.dispatchEvent(new CustomEvent('fanclub-refresh', { detail: { levelInfo } }));
         }
     });
 
@@ -7725,16 +7799,18 @@ function showXpGainAnimation(amount) {
 
     // ✅ نقاط دعم الغرفة تحدّثت (هدية أُرسلت بداخلها) — تحديث صامت للشارة، بلا إشعار مزعج
     // على كل هدية (سيصل غالباً بمعدل عالٍ بغرفة نشطة). المستوى نفسه له حدث احتفالي منفصل أدناه
-    socket.on('room-support-points-updated', ({ roomId, supportPoints, sessionSupportPoints, level, pointsToNextLevel, levelProgressPercent }) => {
+    socket.on('room-support-points-updated', ({ roomId, supportPoints, sessionSupportPoints, level, pointsToNextLevel, levelProgressPercent, topSupporters }) => {
         if (roomId !== currentVoiceRoomId) return;
         currentRoomSupportPoints = supportPoints;
         if (typeof sessionSupportPoints === 'number') currentRoomSessionSupportPoints = sessionSupportPoints;
+        if (topSupporters) currentRoomTopSupporters = topSupporters;
         currentRoomLevel = level;
         currentRoomPointsToNextLevel = pointsToNextLevel;
         currentRoomLevelProgressPercent = levelProgressPercent;
         updateRoomLevelBadgeUI();
         updateRoomLevelProgressUI();
         updateRoomSessionSupportUI();
+        updateRoomTopSupportersUI();
     });
 
     // ✅ ارتفع مستوى الغرفة فعلياً — احتفال بصري للجميع بالغرفة + تحديث فوري لخيارات توسيع
@@ -9752,6 +9828,41 @@ function renderRoomProfileSupportBadgeHTML(kind, info) {
     `;
 }
 
+// ✅ معاينة مستوى الدعم فوق نافذة الهدايا (طلب صريح) — صورة شارة مستوى الدعم الحالي + شريط
+// تقدّم نحو المستوى التالي، تُحدَّث حياً فعلياً عند إرسال أي هدية عبر support-level-updated
+// (بلا حاجة لتوقّع/حساب مسبّق من طرف العميل — القيمة الحقيقية تصل من الخادم لحظة تأكّد الإرسال)
+function giftModalSupportPreviewHTML(info) {
+    if (!info) return '';
+    const imgIndex = info.tierIndex <= 1 ? 0 : (info.tierIndex >= 4 ? 2 : 1);
+    return `
+        <div class="gift-support-preview">
+            <img src="${ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex]}" class="gift-support-preview-badge" alt="">
+            <div class="gift-support-preview-info">
+                <div class="gift-support-preview-top">
+                    <span class="gift-support-preview-level">Lv.${info.level}</span>
+                    <span class="gift-support-preview-tier">${escapeHtml(info.tierName)}</span>
+                </div>
+                <div class="gift-support-preview-track">
+                    <div class="gift-support-preview-fill" style="width:${info.progressPercent}%"></div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+function updateGiftModalSupportPreview(containerId, info) {
+    const el = document.getElementById(containerId);
+    if (!el || !info) return;
+    const imgIndex = info.tierIndex <= 1 ? 0 : (info.tierIndex >= 4 ? 2 : 1);
+    const img = el.querySelector('.gift-support-preview-badge');
+    if (img) img.src = ROOM_PROFILE_SUPPORT_BADGE_IMAGES[imgIndex];
+    const lvl = el.querySelector('.gift-support-preview-level');
+    if (lvl) lvl.textContent = `Lv.${info.level}`;
+    const tier = el.querySelector('.gift-support-preview-tier');
+    if (tier) tier.textContent = info.tierName;
+    const fill = el.querySelector('.gift-support-preview-fill');
+    if (fill) fill.style.width = `${info.progressPercent}%`;
+}
+
 // ✅ لوحة صغيرة عامة "قريباً" — تُستخدم للإنجازات والحماة بنافذة ملف الغرفة وبالملف الكامل معاً
 function showComingSoonSheet(title, text, icon) {
     document.getElementById('coming-soon-sheet')?.remove();
@@ -10224,29 +10335,11 @@ const IMAGE_OVERLAY_FRAMES = {
     'profile-frame-pegasus-warrior': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790898291/pegasus_warrior_frame.webp' }
 };
 const IMAGE_OVERLAY_FRAME_CLASSES = Object.keys(IMAGE_OVERLAY_FRAMES);
-// ✅ سقف صارم لحجم الإطار في أي "سياق ضيق" (ملف شخصي مصغّر/كامل، صفحة حسابي، بطاقة متجر،
-// صف مشاهد) حيث يجلس اسم المستخدم قريباً جداً من الصورة — بحث معمّق سابق أثبت أن الإطار لا
+// ✅ سقف صارم لحجم الإطار بكل سياق بلا استثناء (المقعد ضمناً بعد اليوم — راجع تعليق
+// computeOverlayArtScaleCap/wrapImageOverlayFrames) — بحث معمّق سابق أثبت أن الإطار لا
 // يجوز أن ينزل عن 140% (الحد الأدنى الذي يضمن أن فتحة الإطار تبقى أكبر من الصورة الثابتة
-// عند 100% فلا تظهر حوافها)، فهذا السقف تحديداً (وليس أقل) هو كل ما يمكن خفضه بأمان — بقية
-// الحل يأتي من تكبير المسافة أسفل/حول الصورة بهذي الحاويات (راجع input.css) بدل خنق الإطار
-// أكثر. يُستثنى منه المقعد فقط (مساحة الاسم تحته فسيحة أصلاً via bottom:-1.75rem، لا حاجة
-// لتقييده إطلاقاً)
+// عند 100% فلا تظهر حوافها)، فهذا السقف تحديداً (وليس أقل) هو كل ما يمكن خفضه بأمان
 const OVERLAY_TIGHT_CONTEXT_CAP = 140;
-const OVERLAY_TIGHT_CONTEXT_SELECTOR = [
-    '.room-profile-avatar-wrap', '.full-profile-avatar-wrap', '.profile-hub-avatar-wrap',
-    '.frame-shop-card-avatar-wrap', '.frame-shop-current-avatar-wrap',
-    '#room-viewers-list', '#seat-invite-picker-list', '#hand-queue-list'
-].join(',');
-function isInTightOverlayContext(img) {
-    return !!img.closest(OVERLAY_TIGHT_CONTEXT_SELECTOR);
-}
-// ✅ نافذة نادي المعجبين (منصة أعلى 3 + صف المتصدّر الأسبوعي + صفوف الأعضاء) سياق ضيق
-// إضافي خارج قائمة OVERLAY_TIGHT_CONTEXT_SELECTOR أعلاه (حاوياتها بأصناف مختلفة تماماً)،
-// فتُقيَّد بنفس السقف عبر فحص منفصل هنا
-const OVERLAY_FANCLUB_CONTEXT_SELECTOR = '#fanclub-modal';
-function isInFanClubOverlayContext(img) {
-    return !!img.closest(OVERLAY_FANCLUB_CONTEXT_SELECTOR);
-}
 // ✅ تقليص وزن تحميل الإطار بصيغة Cloudinary — المصدر الفعلي للأصل "الثقل" الذي اشتكى منه
 // المستخدم بالمتجر: كل الإطارات الثمانية مرفوعة بدقة خام 512-600px (GIF متحرك أحياناً)
 // بينما تُعرض فعلياً بـ56-150px فقط حسب السياق؛ المتصفح كان يحمّل ويفكّ تشفير الدقة الكاملة
@@ -10319,17 +10412,17 @@ function wrapImageOverlayFrames(root = document) {
         img.dataset.frameClass = matchedClass; // ✅ يسمح لمسار "تبديل الإطار فورياً" أدناه باكتشاف التغيير
         const config = IMAGE_OVERLAY_FRAMES[matchedClass];
         const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
-        let artScale = Math.min(config.artScale ?? DEFAULT_OVERLAY_ART_SCALE, computeOverlayArtScaleCap(img, w));
-        // ✅ ملاحظات دقيقة جداً بكل سياق أكّدت: الملف الشخصي المصغّر/الكامل، صفحة الحساب،
-        // بطاقة المتجر، وصفوف المشاهدين/الطلبات كلها "ضيقة" (الاسم يجلس قريباً جداً من
-        // الصورة) بعكس المقعد (مساحة فسيحة تحته أصلاً) — تُقيَّد هناك بسقف صارم بدل تصغير
-        // الإطار نفسه أكثر من اللازم؛ راجع input.css لزيادة الهوامش حول تلك الحاويات بدلاً.
-        // 🐛 إصلاح: إطار المساهم كان مُستثنى من هذا السقف بافتراض أنه "مقاس ليعمل بكل مكان" —
-        // تبيّن خاطئاً بعد شكاوى متكررة بسياقات ضيقة مختلفة (نادي المعجبين أولاً، ثم الملف
-        // الشخصي المصغّر والكامل) — لا استثناء له بعد الآن، يخضع لنفس السقف كبقية الإطارات
-        if (isInFanClubOverlayContext(img) || isInTightOverlayContext(img)) {
-            artScale = Math.min(artScale, OVERLAY_TIGHT_CONTEXT_CAP);
-        }
+        // 🐛 إصلاح: المقعد وحده كان مُستثنى من OVERLAY_TIGHT_CONTEXT_CAP (بافتراض أن مساحته
+        // الفسيحة أسفله تحتمل إطاراً أكبر)، فبقي يصل فعلياً حتى 210% (إطارات الجمشت/التنانين)
+        // بينما كل سياق آخر مُقيَّد عند 140% — بالضبط لماذا كان المقعد الأكثر شكوى كـ"كبير"
+        // بين كل السياقات الخمسة بطلب المستخدم. لا مبرر هندسي لمعاملته مختلفاً: تطبيق السقف
+        // نفسه بلا استثناء الآن (computeOverlayArtScaleCap يبقى طبقة حماية إضافية خاصة
+        // بالمقعد فقط لمنع تلامس إطارَي مقعدين متجاورين بالشبكات المزدحمة — تعمل الاثنتان معاً)
+        let artScale = Math.min(
+            config.artScale ?? DEFAULT_OVERLAY_ART_SCALE,
+            computeOverlayArtScaleCap(img, w),
+            OVERLAY_TIGHT_CONTEXT_CAP
+        );
         const wrap = document.createElement('span');
         wrap.className = 'frame-overlay-wrap';
         wrap.style.width = `${w}px`;
@@ -10383,10 +10476,12 @@ function wrapImageOverlayFrames(root = document) {
         const config = IMAGE_OVERLAY_FRAMES[matchedClass];
         const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
         const w2 = img.offsetWidth;
-        let artScale = Math.min(config.artScale ?? DEFAULT_OVERLAY_ART_SCALE, computeOverlayArtScaleCap(img, w2));
-        if (isInFanClubOverlayContext(img) || isInTightOverlayContext(img)) {
-            artScale = Math.min(artScale, OVERLAY_TIGHT_CONTEXT_CAP);
-        }
+        // ✅ نفس سقف 140% بلا استثناء للمقعد — راجع التعليق بمسار الإضافة الأولى أعلاه
+        let artScale = Math.min(
+            config.artScale ?? DEFAULT_OVERLAY_ART_SCALE,
+            computeOverlayArtScaleCap(img, w2),
+            OVERLAY_TIGHT_CONTEXT_CAP
+        );
         img.style.width = `${photoScale}%`;
         img.style.height = `${photoScale}%`;
         const overlay = img.parentNode.querySelector('.frame-overlay-art');
@@ -10464,6 +10559,20 @@ function fanClubMissionsHTML(missions) {
         </div>
     `;
 }
+// ✅ سكلتون شيمر لقوائم الصفوف (ترتيب/أعضاء) — يستبدل الدائرة اللولبية بشكل يُقارب العرض
+// الحقيقي (صورة دائرية + سطر نص) بدل بيان تحميل عام، بنفس نمط .skeleton-shimmer الموحَّد
+function fanClubRowSkeletonHTML(rows = 5) {
+    return `
+        <div class="flex flex-col gap-3 px-1 pt-3">
+            ${Array.from({ length: rows }).map(() => `
+                <div class="flex items-center gap-3">
+                    <div class="skeleton-shimmer w-10 h-10 rounded-full flex-shrink-0"></div>
+                    <div class="skeleton-shimmer h-3.5 rounded-full flex-1"></div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
 async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
     document.getElementById('fanclub-modal')?.remove();
     const modal = document.createElement('div');
@@ -10490,8 +10599,17 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => { if (e.target.id === 'fanclub-modal') modal.remove(); });
     // 🛡️ تحديث حي لبطاقة المستوى لو ارتقى المستخدم مستوى بهذا النادي تحديداً أثناء فتح
-    // الورقة — فقط لو الشاشة الحالية هي "تفاصيل النادي" (لا نقفز به بعيداً عن ترتيب/أعضاء)
-    modal.addEventListener('fanclub-refresh', () => { if (backTarget === 'help') renderJoinView(); });
+    // الورقة — فقط لو الشاشة الحالية هي "تفاصيل النادي" (لا نقفز به بعيداً عن ترتيب/أعضاء).
+    // ✅ ترقيع البطاقة مكانياً من levelInfo المُرسَل مع الحدث نفسه بدل إعادة تحميل الورقة
+    // بالكامل (سبينر + طلبي شبكة) — هذا بالضبط ما كان يُسبّب "النافذة تعيد التحميل عند كسب
+    // الهدية" المُشتكى منه؛ renderJoinView() يبقى فقط احتياطاً لو وصل الحدث بلا بيانات كافية
+    modal.addEventListener('fanclub-refresh', (e) => {
+        if (backTarget !== 'help') return;
+        const levelInfo = e.detail?.levelInfo;
+        if (!levelInfo) { renderJoinView(); return; }
+        if (joinData) joinData.myLevelInfo = levelInfo;
+        patchFanClubLevelCard(levelInfo);
+    });
 
     let backTarget = 'help'; // 'help' | 'join' | 'leaderboard' | 'close'
     let lastPeriod = 'weekly';
@@ -10523,9 +10641,26 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
         }
     }
 
+    // ✅ ترقيع بطاقة المستوى مكانياً (الصورة الرمزية الوحيدة المتأثرة بكسب نقاط/ارتقاء مستوى) —
+    // بدل إعادة تحميل الورقة كاملة عبر renderJoinView (سبينر + طلبي شبكة) لمجرد تحديث شريط
+    // تقدّم ورقم مستوى؛ renderJoinView تبقى فقط لتغييرات شكل الشاشة الحقيقية (انضمام↔عضوية)
+    function patchFanClubLevelCard(levelInfo) {
+        const card = body.querySelector('.tier-level-card');
+        if (!card) { renderJoinView(); return; }
+        card.outerHTML = tierLevelCardHTML(levelInfo);
+    }
+
     async function renderJoinView() {
         setHeader('join');
-        body.innerHTML = `<div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>`;
+        // ✅ سكلتون شيمر بدل الدائرة اللولبية — نفس شكل سكلتون الفتح الأول تماماً لثبات بصري
+        body.innerHTML = `
+            <div class="flex flex-col items-center pt-6 pb-4 px-4">
+                <div class="skeleton-shimmer w-16 h-16 rounded-full mb-3"></div>
+                <div class="skeleton-shimmer w-40 h-4 rounded-full mb-2"></div>
+                <div class="skeleton-shimmer w-28 h-3 rounded-full mb-4"></div>
+                <div class="skeleton-shimmer w-full h-11 rounded-full"></div>
+            </div>
+        `;
         try {
             const summaryRes = await fetch(`/api/fanclub/${ownerId}/summary`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
             if (summaryRes.status !== 'success') throw new Error();
@@ -10644,7 +10779,16 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                     return;
                 }
                 showNotification(`+${result.data.pointsGained} نقطة ✅`, 'success');
-                renderJoinView();
+                // ✅ ترقيع مكاني: صف المهمة المحدد يتحوّل لـ"تم" + بطاقة المستوى تُحدَّث من
+                // levelInfo المُرجَع مباشرة — بدل renderJoinView (كانت تُعيد تحميل الورقة
+                // كاملة بسبينر + طلبي شبكة لمجرد "جمع مطالبة" يومية، بالضبط ما طُلب إصلاحه)
+                const missionRow = btn.closest('.fanclub-mission-row');
+                if (missionRow) {
+                    missionRow.classList.add('claimed');
+                    btn.outerHTML = '<span class="fanclub-mission-done"><i class="fas fa-check"></i></span>';
+                }
+                if (joinData) joinData.myLevelInfo = result.data.levelInfo;
+                patchFanClubLevelCard(result.data.levelInfo);
             } catch (error) {
                 showNotification('تعذر تسجيل الحضور', 'error');
                 btn.disabled = false;
@@ -10655,7 +10799,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
     async function renderLeaderboardView(period = 'weekly') {
         lastPeriod = period;
         setHeader('leaderboard');
-        body.innerHTML = `<div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>`;
+        body.innerHTML = fanClubRowSkeletonHTML();
         try {
             const res = await fetch(`/api/fanclub/leaderboard?period=${period}&limit=10`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
             if (res.status !== 'success') throw new Error();
@@ -10702,7 +10846,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
     // الترتيب حسب نقاط المعجب التراكمية الدائمة (points)، لا تصفير أسبوعي بعد الآن
     async function renderMembersView(targetOwnerId, targetOwnerUsername) {
         setHeader('members');
-        body.innerHTML = `<div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>`;
+        body.innerHTML = fanClubRowSkeletonHTML();
         try {
             const res = await fetch(`/api/fanclub/${targetOwnerId}/members?limit=50`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
             if (res.status !== 'success') throw new Error();
@@ -11978,10 +12122,18 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
     const existing = document.getElementById('room-gift-modal');
     if (existing) existing.remove();
 
+    // 🐛 إصلاح: كان يُعلَّن داخل else فقط (فرع الاختيار المتعدد) بينما يُستخدَم لاحقاً بلا
+    // شرط لبناء التذييل — أي فتح لهذي النافذة بمستلم محدَّد سلفاً (presetTarget، من زر
+    // الهدية بنافذة ملف الغرفة) كان يرمي ReferenceError صامتاً يظهر للمستخدم كـ"فشل تحميل
+    // البيانات" رغم نجاح كل الطلبات الشبكية فعلياً. رُفع هنا أيضاً ليُستخدَم مباشرة بمعاينة
+    // مستوى الدعم أسفله (تحتاج supportGiving المخزَّن محلياً قبل أي طلب شبكة)
+    const currentUser = JSON.parse(localStorage.getItem('user')) || {};
+
     const shellHTML = `
         <div id="room-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-0 md:p-2">
             <div class="room-gift-sheet w-full md:max-w-md text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
                 <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
+                <div id="room-gift-support-preview">${giftModalSupportPreviewHTML(currentUser.supportGiving)}</div>
                 <div class="gift-sheet-header flex-shrink-0">
                     <div id="room-gift-avatars" class="room-gift-avatar-row flex-1"></div>
                 </div>
@@ -11998,11 +12150,6 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
     modal.addEventListener('click', (e) => { if (e.target.id === 'room-gift-modal') modal.remove(); });
 
     try {
-        // 🐛 إصلاح: كان يُعلَّن داخل else فقط (فرع الاختيار المتعدد) بينما يُستخدَم لاحقاً بلا
-        // شرط لبناء التذييل — أي فتح لهذي النافذة بمستلم محدَّد سلفاً (presetTarget، من زر
-        // الهدية بنافذة ملف الغرفة) كان يرمي ReferenceError صامتاً يظهر للمستخدم كـ"فشل تحميل
-        // البيانات" رغم نجاح كل الطلبات الشبكية فعلياً
-        const currentUser = JSON.parse(localStorage.getItem('user')) || {};
         let gifts, seatedUsers;
         let hostId = null;
         if (presetTarget) {
@@ -14231,10 +14378,14 @@ function confirmRedeem(redeemTo) {
     const existing = document.getElementById('public-gift-modal');
     if (existing) existing.remove();
 
+    // ✅ رُفع لأعلى (كان داخل try أدناه) ليُستخدَم مباشرة بمعاينة مستوى الدعم بالهيكل قبل أي طلب شبكة
+    const localUserSnapshot = JSON.parse(localStorage.getItem('user')) || {};
+
     const shellHTML = `
         <div id="public-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-0 md:p-2">
             <div class="room-gift-sheet w-full md:max-w-md text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
                 <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
+                <div id="public-gift-support-preview">${giftModalSupportPreviewHTML(localUserSnapshot.supportGiving)}</div>
                 <div class="gift-sheet-header flex-shrink-0">
                     <div id="public-gift-avatars" class="room-gift-avatar-row flex-1"></div>
                     <button id="public-gift-support-btn" class="report-issue-icon-btn flex-shrink-0" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle"></i></button>
@@ -14261,7 +14412,6 @@ function confirmRedeem(redeemTo) {
 
         const onlineUsers = onlineRes.data.users;
         const gifts = shopRes.data.gifts;
-        const localUserSnapshot = JSON.parse(localStorage.getItem('user')) || {};
 
         let selectedUserIds = new Set();
         let audienceMode = 'selected';
