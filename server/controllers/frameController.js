@@ -2,7 +2,8 @@ const ProfileFrame = require('../models/ProfileFrame');
 const User = require('../models/User');
 const { broadcastUserFrameChange } = require('../services/socketService');
 
-const DURATION_DAYS_MAP = { '7': 'days7', '30': 'days30', '365': 'days365' };
+// ✅ طلب صريح: مدد شراء قصيرة فقط (1/3/7 أيام) بدل المدد الطويلة السابقة (7/30/365 يوماً)
+const DURATION_DAYS_MAP = { '1': 'day1', '3': 'day3', '7': 'day7' };
 
 exports.getFrameShop = async (req, res) => {
     try {
@@ -26,6 +27,10 @@ exports.getFrameShop = async (req, res) => {
         if (user.isAdmin) query.$or.push({ adminOnly: true });
         const frames = await ProfileFrame.find(query).sort('sortOrder');
 
+        // ✅ "الصندوق" — إشارة نقطة حمراء لو يوجد أي إطار مملوك لم يُفتَح الصندوق منذ شرائه
+        // (seenInBox:false)؛ إطار الأدمن الضمني (لا سجل ownedFrames حقيقي له) لا يُحسب هنا أبداً
+        const hasUnseenBox = user.ownedFrames.some(o => !o.seenInBox);
+
         res.status(200).json({
             status: 'success',
             data: {
@@ -40,7 +45,8 @@ exports.getFrameShop = async (req, res) => {
                 })),
                 activeFrame: user.activeFrame,
                 activeFrameExpiresAt: user.activeFrameExpiresAt,
-                coins: user.coins
+                coins: user.coins,
+                hasUnseenBox
             }
         });
     } catch (error) {
@@ -52,7 +58,7 @@ exports.getFrameShop = async (req, res) => {
 exports.purchaseFrame = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { frameId, duration } = req.body; // duration: '7' | '30' | '365'
+        const { frameId, duration } = req.body; // duration: '1' | '3' | '7'
 
         const durationKey = DURATION_DAYS_MAP[duration];
         if (!durationKey) {
@@ -76,22 +82,39 @@ exports.purchaseFrame = async (req, res) => {
 
         user.coins -= price;
         // ✅ الشراء وحده لا يبدأ عد الصلاحية — activatedAt و expiresAt يبقيان null لحين التفعيل الفعلي
+        // seenInBox:false يُفعّل النقطة الحمراء على أيقونة "الصندوق" بالمتجر (طلب صريح)
         user.ownedFrames.push({
             frame: frame._id,
             purchasedAt: new Date(),
             durationDays: parseInt(duration),
             activatedAt: null,
-            expiresAt: null
+            expiresAt: null,
+            seenInBox: false
         });
         await user.save();
 
         res.status(200).json({
             status: 'success',
-            message: `تم شراء ${frame.name} بنجاح (صالح ${duration} يوم من لحظة التفعيل)`,
+            message: `تم شراء ${frame.name} بنجاح (صالح ${duration} يوم من لحظة التفعيل) — فعّله من الصندوق`,
             data: { newCoins: user.coins }
         });
     } catch (error) {
         console.error('[ERROR] in purchaseFrame:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
+// ✅ فتح "الصندوق" — يُطفئ النقطة الحمراء جماعياً (كل الإطارات المملوكة تصبح seenInBox:true)،
+// بصرف النظر عن كونها مفعّلة/منتهية/بانتظار التفعيل؛ شراء جديد لاحقاً يعيد تفعيل النقطة فقط
+// لذاك الإطار الجديد (كل عنصر مصفوفة منفصل تماماً، لا حقل عام واحد)
+exports.markFrameBoxSeen = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('ownedFrames');
+        user.ownedFrames.forEach(o => { o.seenInBox = true; });
+        await user.save();
+        res.status(200).json({ status: 'success' });
+    } catch (error) {
+        console.error('[ERROR] in markFrameBoxSeen:', error);
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
     }
 };

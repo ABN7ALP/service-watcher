@@ -582,7 +582,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             seatEl.dataset.supportTotal = supportTotal;
             seatEl.innerHTML = `
                 <img src="${seatData.user.profileImage}" class="voice-seat-avatar ${seatData.user.activeFrameClass || ''}" alt="${safeName}" loading="lazy" decoding="async">
-                ${frameDecorationHTML(seatData.user.activeFrameClass)}
                 ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
                 <span class="voice-seat-name">${safeName}</span>
                 <span class="seat-support-badge">${supportTotal > 9999 ? '9999+' : supportTotal}</span>
@@ -1592,12 +1591,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
         wrap.classList.remove('hidden');
         const order = [1, 0, 2]; // ٢ يمين، ١ وسط ومكبَّر، ٣ يسار — نفس ترتيب منصّات التتويج بالتطبيق
+        // 🐛 طلب صريح: إطار الملف الشخصي المفعَّل لا يُعرَض على صور هذا الودجت تحديداً (مساحته
+        // الضيقة 19-23px لا تحتمل زخرفة إطار إضافية بلا ازدحام بصري) — نتجنّب وضع صنف الإطار
+        // على الـ<img> من أساسه (بعكس كل مكان آخر) كي لا يلتقطها كاشف الإطارات العام
+        // (wrapImageOverlayFrames) الذي يعمل تلقائياً على أي <img> يحمل صنف إطار بأي مكان بالصفحة
         wrap.innerHTML = order.map(i => {
             const s = currentRoomTopSupporters[i];
             if (!s) return `<span class="room-top-supporter-slot room-top-supporter-rank-${i + 1} empty"></span>`;
             return `
                 <button type="button" class="room-top-supporter-slot room-top-supporter-rank-${i + 1}" data-user-id="${s.userId}" title="${escapeHtml(s.username)} • ${s.points.toLocaleString('en-US')}">
-                    <img src="${s.profileImage}" class="room-top-supporter-avatar ${s.activeFrameClass || ''}">
+                    <img src="${s.profileImage}" class="room-top-supporter-avatar">
                     <span class="room-top-supporter-rank-badge">${i + 1}</span>
                     <span class="room-top-supporter-points">${formatCompactPoints(s.points)}</span>
                 </button>
@@ -2103,7 +2106,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         btn.classList.toggle('room-header-follow-circle', !isFollowing);
         btn.classList.toggle('room-header-fanclub-icon-btn', isFollowing);
         btn.innerHTML = isFollowing
-            ? '<span class="club-icon-fanclub club-icon-xs"><i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i><i class="fas fa-heart club-icon-heart"></i><i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i></span>'
+            ? `<img src="${FAN_CLUB_HEART_IMG}" class="room-header-fanclub-img" alt="">`
             : '<i class="fas fa-plus"></i>';
         btn.title = isFollowing ? 'نادي معجبين المضيف' : 'متابعة الغرفة';
     }
@@ -3036,7 +3039,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <div class="room-profile-header">
                     <div class="room-profile-avatar-wrap">
                         <img id="room-profile-avatar-img" src="${p.profileImage}" class="room-profile-avatar ${p.activeFrameClass || ''}" title="${allowFullProfileNav ? 'عرض الملف الكامل' : ''}">
-                        ${frameDecorationHTML(p.activeFrameClass)}
                     </div>
                     <div class="room-profile-name-id-row">
                         <p class="room-profile-name">${escapeHtml(p.username)} ${getAgentBadgeHTML(p.isAgent)}</p>
@@ -5687,20 +5689,6 @@ async function showSettingsView() {
                     </form>
                 </div>
             </div>
-             <!-- =========================================== -->
-            <!-- 5. متجر الإطارات — أصبح نافذة مستقلة كاملة (showFrameShopModal) بدل قسم قابل
-                 للطي داخل الإعدادات؛ هذا الصف مجرد بوابة دخول -->
-            <!-- =========================================== -->
-            <div class="mb-3">
-                <button type="button" id="open-frame-shop-btn" class="w-full bg-white/30 dark:bg-gray-800/50 p-3 rounded-lg flex justify-between items-center">
-                    <h3 class="text-sm font-bold flex items-center gap-2">
-                        <i class="fas fa-crown text-purple-400"></i>متجر الإطارات
-                        <button id="frames-support-btn" class="report-issue-icon-btn" style="width:22px;height:22px;" title="الإبلاغ عن مشكلة" onclick="event.stopPropagation();"><i class="fas fa-exclamation-triangle" style="font-size:0.6rem;"></i></button>
-                    </h3>
-                    <i class="fas fa-chevron-left text-xs"></i>
-                </button>
-            </div>
-
             <!-- =========================================== -->
             <!-- 7. قسم إطارات دردشة الشات العام (الجديد) -->
             <!-- =========================================== -->
@@ -5825,43 +5813,118 @@ async function showSettingsView() {
 }
 
 
-// ✅ بطاقة إطار واحدة بالمتجر — معاينة حقيقية بصورة المستخدم الفعلية بدل دائرة رمادية فارغة
-// (الإطارات كلها أصناف CSS خام تُطبَّق مباشرة على <img>، فالمعاينة هنا مطابقة تماماً لما
-// سيظهر فعلياً بكل مكان بالتطبيق بمجرد التفعيل)؛ شريط أيام قابل للنقر بدل <select> خام
-function frameShopCardHTML(f, activeFrameId, userPhoto) {
-    const owned = f.ownedInstance;
-    const isActive = activeFrameId && activeFrameId.toString() === f._id.toString();
-    const isExpired = owned && owned.expiresAt && new Date(owned.expiresAt) < new Date();
-    const showOwned = owned && !isExpired;
+// ✅ بطاقة إطار واحدة بالمتجر — غير المملوك بعد فقط (المملوك فعلياً انتقل كلياً لـ"الصندوق"،
+// طلب صريح لفصل "تصفّح وشراء" عن "إدارة ما أملكه"). معاينة حقيقية بصورة المستخدم الفعلية
+// بدل دائرة رمادية فارغة؛ بلا اسم على البطاقة إطلاقاً (الاسم ينتقل لنافذة المعاينة فقط عند
+// النقر على الصورة — طلب صريح)؛ شريط مدد (1/3/7 أيام) مضغوط بدل <select> خام
+function frameShopCardHTML(f, userPhoto) {
     return `
-        <div class="frame-shop-card ${isActive ? 'active' : ''}">
-            <div class="frame-shop-card-avatar-wrap">
-                <img src="${userPhoto}" class="frame-shop-card-avatar ${f.cssClass}" decoding="async">
-                ${frameDecorationHTML(f.cssClass)}
-            </div>
-            <p class="frame-shop-card-name">${escapeHtml(f.name)}</p>
-            ${showOwned ? `
-                ${owned.activatedAt ? `<p class="frame-shop-card-expiry">ينتهي ${new Date(owned.expiresAt).toLocaleDateString('ar-SA')}</p>` : `<p class="frame-shop-card-owned-label"><i class="fas fa-check-circle"></i> بحوزتك</p>`}
-                <button type="button" class="frame-shop-equip-btn" data-frame-id="${f._id}" ${isActive ? 'disabled' : ''}>
-                    ${isActive ? '<i class="fas fa-check"></i> مُفعّل' : 'تفعيل'}
-                </button>
-            ` : `
-                <div class="frame-shop-duration-pills" data-frame-id="${f._id}">
-                    <button type="button" class="frame-shop-duration-pill active" data-duration="7">7 أيام<span>${f.prices.days7}</span></button>
-                    <button type="button" class="frame-shop-duration-pill" data-duration="30">30 يوم<span>${f.prices.days30}</span></button>
-                    <button type="button" class="frame-shop-duration-pill" data-duration="365">سنة<span>${f.prices.days365}</span></button>
+        <div class="frame-shop-card">
+            <button type="button" class="frame-shop-card-preview-btn" data-frame-id="${f._id}" title="معاينة">
+                <div class="frame-shop-card-avatar-wrap">
+                    <img src="${userPhoto}" class="frame-shop-card-avatar ${f.cssClass}" decoding="async">
                 </div>
-                <button type="button" class="frame-shop-purchase-btn" data-frame-id="${f._id}" data-selected-duration="7">
-                    ${coinIconHTML(14)} شراء
-                </button>
-            `}
+            </button>
+            <div class="frame-shop-duration-pills" data-frame-id="${f._id}">
+                <button type="button" class="frame-shop-duration-pill active" data-duration="1">يوم<span>${f.prices.day1}</span></button>
+                <button type="button" class="frame-shop-duration-pill" data-duration="3">3 أيام<span>${f.prices.day3}</span></button>
+                <button type="button" class="frame-shop-duration-pill" data-duration="7">7 أيام<span>${f.prices.day7}</span></button>
+            </div>
+            <button type="button" class="frame-shop-purchase-btn" data-frame-id="${f._id}" data-selected-duration="1">
+                ${coinIconHTML(12)} شراء
+            </button>
         </div>
     `;
 }
 
-// ✅ نافذة "متجر الإطارات" — أصبحت ورقة سفلية مستقلة كاملة بدل قسم قابل للطي مدفون بالإعدادات:
-// معاينة حية كبيرة للإطار المفعّل حالياً بصورتك الفعلية، ثم شبكة بطاقات (عمودان) لكل إطار
-// متاح، كل واحد بمعاينة حقيقية + شريط مدد نقرة واحدة بدل قائمة منسدلة
+// ✅ بطاقة تحميل سكيلتون (نفس بنية البطاقة الحقيقية تقريباً) — تظهر فوراً قبل وصول رد الخادم
+function frameShopCardSkeletonHTML() {
+    return `
+        <div class="frame-shop-card">
+            <div class="skeleton-shimmer" style="width:56px;height:56px;border-radius:50%;margin:0 auto;"></div>
+            <div class="skeleton-shimmer" style="width:100%;height:30px;border-radius:999px;margin-top:9px;"></div>
+            <div class="skeleton-shimmer" style="width:100%;height:28px;border-radius:999px;margin-top:7px;"></div>
+        </div>
+    `;
+}
+
+// ✅ تنسيق متبقّي صلاحية إطار مملوك — عدّاد حي (س:د:ث) للمدتين القصيرتين (يوم/3 أيام، تبقى
+// مفيدة بالثواني)، وتاريخ انتهاء صريح فقط للمدة الأطول نسبياً (7 أيام — عدّاد ثوانٍ لأسبوع لا طائل منه)
+function frameRemainingLabel({ expiresAt, durationDays }) {
+    if (!expiresAt) return '';
+    const msLeft = new Date(expiresAt).getTime() - Date.now();
+    if (msLeft <= 0) return 'منتهي الصلاحية';
+    if (durationDays >= 7) {
+        return `ينتهي ${new Date(expiresAt).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' })}`;
+    }
+    const totalSec = Math.floor(msLeft / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    return `متبقٍ ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// ✅ صف إطار واحد داخل "الصندوق" — إطارات مشتراة فعلياً (durationDays محدَّد) + إطار الأدمن
+// الضمني استثناءً (ownedInstance مُصنَّع بالخادم بلا شراء/durationDays حقيقي — راجع
+// getFrameShop) إذ لا طريقة أخرى ليفعّله الأدمن بعد انتقال كل التفعيل للصندوق هنا
+function frameBoxItemHTML(meta, userPhoto, isActive) {
+    const o = meta.ownedInstance;
+    const isImplicit = o.durationDays === undefined; // ✅ إطار الأدمن — لا شراء حقيقي، صلاحية دائمة طالما بقي أدمن
+    const notActivated = !isImplicit && !o.activatedAt;
+    const expired = !isImplicit && o.expiresAt && new Date(o.expiresAt) < new Date();
+    return `
+        <div class="frame-box-item">
+            <img src="${userPhoto}" class="frame-box-item-avatar ${meta.cssClass}" decoding="async">
+            <div class="frame-box-item-text">
+                <p class="frame-box-item-name">${escapeHtml(meta.name)}</p>
+                ${isImplicit
+                    ? `<p class="frame-box-item-status">صلاحية دائمة</p>`
+                    : notActivated
+                        ? `<p class="frame-box-item-status">بانتظار التفعيل</p>`
+                        : expired
+                            ? `<p class="frame-box-item-status frame-box-item-expired">منتهي الصلاحية</p>`
+                            : `<p class="frame-box-item-status frame-box-item-countdown" data-expires-at="${o.expiresAt}" data-duration-days="${o.durationDays}">${frameRemainingLabel(o)}</p>`
+                }
+            </div>
+            ${isActive
+                ? `<button type="button" class="frame-box-remove-btn" data-frame-id="${meta._id}">إزالة</button>`
+                : (!expired ? `<button type="button" class="frame-box-activate-btn" data-frame-id="${meta._id}">تفعيل</button>` : '')}
+        </div>
+    `;
+}
+
+// ✅ نافذة "معاينة الإطار" — واقعية فعلاً: 3 مقاعد حقيقية (نفس أصناف/أحجام المقعد الفعلي
+// بالغرفة .voice-seat/.voice-seats-flex.cols-3) بجانب بعضها، الوسط بصورة المستخدم مع الإطار
+// المرشَّح، والجانبان بصورته بلا إطار للمقارنة. المراقب العام wrapImageOverlayFrames (يعمل
+// تلقائياً على أي <img> بصنف إطار بأي مكان بالصفحة) يُضيف التراكب الزخرفي هنا تلقائياً بلا
+// أي كود خاص — فتُطابق المعاينة الحقيقة 100% (نفس سقف الحجم/منطق التصادم الفعلي بالمقعد).
+// اسم الإطار يظهر هنا فقط، لا على بطاقة المتجر (طلب صريح)
+function showFramePreviewModal(frame, userPhoto) {
+    document.getElementById('frame-preview-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'frame-preview-modal';
+    modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[346] p-4';
+    modal.innerHTML = `
+        <div class="frame-preview-card">
+            <button id="close-frame-preview" class="profile-hub-icon-btn frame-preview-close"><i class="fas fa-times"></i></button>
+            <p class="frame-preview-hint">هكذا سيظهر إطارك على المقعد</p>
+            <div class="voice-seats-flex cols-3 frame-preview-seats-row">
+                <div class="voice-seat occupied-seat"><img src="${userPhoto}" class="voice-seat-avatar" alt=""></div>
+                <div class="voice-seat occupied-seat"><img src="${userPhoto}" class="voice-seat-avatar ${frame.cssClass}" alt=""></div>
+                <div class="voice-seat occupied-seat"><img src="${userPhoto}" class="voice-seat-avatar" alt=""></div>
+            </div>
+            <p class="frame-preview-name">${escapeHtml(frame.name)}</p>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'frame-preview-modal') modal.remove(); });
+    document.getElementById('close-frame-preview').addEventListener('click', () => modal.remove());
+}
+
+// ✅ نافذة "متجر الإطارات" — أصبحت ورقة سفلية مطفية (ألوان مطفأة بدل الفاقعة) بطابع هادئ،
+// تحميل سكيلتون فوري، أيقونة "صندوق" بزاوية الرأس (كل إطاراتي المملوكة + التفعيل) بنقطة
+// حمراء عند وجود شراء جديد لم يُفتح الصندوق منذ حدوثه. الشبكة الرئيسية الآن للتصفّح/الشراء
+// فقط (غير المملوك)، بلا أسماء — النقر على صورة أي بطاقة يفتح معاينة واقعية بالاسم فيها
 async function showFrameShopModal() {
     document.getElementById('frame-shop-modal')?.remove();
     const modal = document.createElement('div');
@@ -5874,12 +5937,18 @@ async function showFrameShopModal() {
             <div class="w-10 h-1 bg-white/15 rounded-full mx-auto mt-2.5 mb-1 flex-shrink-0"></div>
             <div class="frame-shop-header">
                 <span class="frame-shop-title"><i class="fas fa-crown"></i> متجر الإطارات</span>
-                <span class="frame-shop-coins">${coinIconHTML(14)} <span id="frame-shop-coins-value">...</span></span>
+                <div class="frame-shop-header-right">
+                    <span class="frame-shop-coins">${coinIconHTML(14)} <span id="frame-shop-coins-value">...</span></span>
+                    <button type="button" id="frame-shop-box-btn" class="frame-shop-box-btn" title="إطاراتي">
+                        <i class="fas fa-box"></i>
+                        <span id="frame-shop-box-dot" class="frame-shop-box-dot hidden"></span>
+                    </button>
+                </div>
             </div>
             <div id="frame-shop-current-preview" class="frame-shop-current-preview">
-                <div class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin"></i></div>
+                <div class="skeleton-shimmer" style="width:88px;height:88px;border-radius:50%;margin:0 auto;"></div>
             </div>
-            <div id="frame-shop-grid" class="frame-shop-grid"></div>
+            <div id="frame-shop-grid" class="frame-shop-grid">${Array(4).fill(frameShopCardSkeletonHTML()).join('')}</div>
         </div>
     `;
     document.body.appendChild(modal);
@@ -5893,23 +5962,26 @@ async function showFrameShopModal() {
 
     function renderShopState(data) {
         setCoinTextSilent(modal.querySelector('#frame-shop-coins-value'), data.coins);
+        modal.querySelector('#frame-shop-box-dot')?.classList.toggle('hidden', !data.hasUnseenBox);
 
         const activeMeta = data.activeFrame ? data.frames.find(f => f._id.toString() === data.activeFrame.toString()) : null;
         const preview = modal.querySelector('#frame-shop-current-preview');
         preview.innerHTML = `
             <div class="frame-shop-current-avatar-wrap">
                 <img src="${userPhoto}" class="frame-shop-current-avatar ${activeMeta ? activeMeta.cssClass : ''}" decoding="async">
-                ${frameDecorationHTML(activeMeta ? activeMeta.cssClass : null)}
             </div>
             <p class="frame-shop-current-label">${activeMeta ? escapeHtml(activeMeta.name) : 'بلا إطار مفعّل حالياً'}</p>
             ${activeMeta ? `<button type="button" id="frame-shop-remove-btn" class="frame-shop-remove-btn">إزالة الإطار</button>` : ''}
         `;
         preview.querySelector('#frame-shop-remove-btn')?.addEventListener('click', () => equipFrame(null));
 
+        // ✅ الشبكة الرئيسية = فقط ما لم يُشترَ بعد؛ أي إطار مملوك (ownedInstance) انتقل كلياً
+        // للصندوق — لا يظهر هنا إطلاقاً بعد الآن (طلب صريح)
         const grid = modal.querySelector('#frame-shop-grid');
-        grid.innerHTML = data.frames
-            .filter(f => f.name !== 'إطار الترحيب' && f.name !== 'إطار المثابر')
-            .map(f => frameShopCardHTML(f, data.activeFrame, userPhoto)).join('');
+        const buyable = data.frames.filter(f => f.name !== 'إطار الترحيب' && f.name !== 'إطار المثابر' && !f.ownedInstance);
+        grid.innerHTML = buyable.length
+            ? buyable.map(f => frameShopCardHTML(f, userPhoto)).join('')
+            : `<p class="frame-shop-empty-note">امتلكت كل الإطارات المتاحة حالياً 🎉</p>`;
         bindCardEvents();
     }
 
@@ -5936,11 +6008,13 @@ async function showFrameShopModal() {
                 showNotification(res.message, 'success');
                 // ✅ تحديث البيانات المحلية المخزَّنة مباشرة من رد الشراء نفسه (الكوينز الجديدة
                 // + تسجيل الملكية) بدل إعادة جلب /api/frames/shop بالكامل من الصفر — نفس تأثير
-                // reload() البصري فوراً، بلا طلب شبكة ثانٍ ولا إعادة تحميل صور كل الإطارات
+                // reload() البصري فوراً، بلا طلب شبكة ثانٍ ولا إعادة تحميل صور كل الإطارات.
+                // hasUnseenBox:true فوراً — الشراء بالتعريف "شيء جديد" بالصندوق (نقطة حمراء)
                 if (lastShopData && typeof res.data?.newCoins === 'number') {
                     lastShopData.coins = res.data.newCoins;
                     const frame = lastShopData.frames.find(f => f._id.toString() === frameId.toString());
-                    if (frame) frame.ownedInstance = { purchasedAt: new Date(), durationDays: parseInt(duration), activatedAt: null, expiresAt: null };
+                    if (frame) frame.ownedInstance = { purchasedAt: new Date(), durationDays: parseInt(duration), activatedAt: null, expiresAt: null, seenInBox: false };
+                    lastShopData.hasUnseenBox = true;
                     renderShopState(lastShopData);
                 } else {
                     await reload();
@@ -5964,28 +6038,18 @@ async function showFrameShopModal() {
             }).then(r => r.json());
             if (res.status === 'success') {
                 showNotification(res.message, 'success');
-                // ✅ تفعيل/إزالة لا يغيّر شيئاً بالصور نفسها (نفس الصورة + نفس صنف الإطار لكل
-                // بطاقة) — فقط أي بطاقة هي "المُفعّلة" حالياً. تبديل الأصناف/الأزرار على عناصر
-                // DOM القائمة مباشرة بدل إعادة بناء الشبكة بالكامل يمنع إعادة تحميل/فكّ تشفير
-                // صور كل الإطارات الأخرى غير المتأثرة — هذا بالضبط كان مصدر "الثقل" الملموس
+                // ✅ تفعيل/إزالة الإطار أصبح يحدث فقط من "الصندوق" الآن (لا بطاقات شبكة رئيسية
+                // تحمل حالة "مُفعَّل" بعد الآن) — تحديث lastShopData.activeFrame يكفي، وإعادة
+                // رسم المعاينة العلوية فقط (renderShopState كاملة أثقل من اللازم هنا، بما أنها
+                // تعيد رسم الشبكة أيضاً دون أي تغيّر حقيقي بها)
                 if (lastShopData) {
                     lastShopData.activeFrame = frameId || null;
-                    const grid = modal.querySelector('#frame-shop-grid');
-                    grid?.querySelectorAll('.frame-shop-card').forEach(card => {
-                        const equipBtn = card.querySelector('.frame-shop-equip-btn');
-                        if (!equipBtn) return; // بطاقة غير مملوكة بعد (شراء) — لا علاقة لها بالتفعيل
-                        const isNowActive = !!frameId && equipBtn.dataset.frameId === frameId.toString();
-                        card.classList.toggle('active', isNowActive);
-                        equipBtn.disabled = isNowActive;
-                        equipBtn.innerHTML = isNowActive ? '<i class="fas fa-check"></i> مُفعّل' : 'تفعيل';
-                    });
                     const activeMeta = frameId ? lastShopData.frames.find(f => f._id.toString() === frameId.toString()) : null;
                     const preview = modal.querySelector('#frame-shop-current-preview');
                     if (preview) {
                         preview.innerHTML = `
                             <div class="frame-shop-current-avatar-wrap">
                                 <img src="${userPhoto}" class="frame-shop-current-avatar ${activeMeta ? activeMeta.cssClass : ''}" decoding="async">
-                                ${frameDecorationHTML(activeMeta ? activeMeta.cssClass : null)}
                             </div>
                             <p class="frame-shop-current-label">${activeMeta ? escapeHtml(activeMeta.name) : 'بلا إطار مفعّل حالياً'}</p>
                             ${activeMeta ? `<button type="button" id="frame-shop-remove-btn" class="frame-shop-remove-btn">إزالة الإطار</button>` : ''}
@@ -6004,6 +6068,76 @@ async function showFrameShopModal() {
         }
     }
 
+    // ✅ "الصندوق" — قائمة كل ما اشتراه المستخدم فعلياً (لا إطار الأدمن/المساهم/المثابر، مسارات
+    // منحها مختلفة تماماً)؛ فتحه يُطفئ النقطة الحمراء فوراً (محلياً + بطلب للخادم)
+    async function markBoxSeen() {
+        lastShopData.hasUnseenBox = false;
+        modal.querySelector('#frame-shop-box-dot')?.classList.add('hidden');
+        try {
+            await fetch('/api/frames/box/seen', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+        } catch (error) { /* صامت — مجرد مؤشر بصري، لا يفشل أي عملية حرجة بسببه */ }
+    }
+
+    function ownedFrameEntries() {
+        // ✅ كل إطار له ownedInstance حقيقي (شراء/هدية ترحيب/جائزة أسبوعية/مهمة حضور) أو ضمني
+        // (إطار الأدمن) ينتمي للصندوق بلا استثناء — جميعها تُفعَّل/تُزال بنفس المسار (setActiveFrame)
+        return lastShopData.frames.filter(f => f.ownedInstance);
+    }
+
+    function renderBoxList(boxEl) {
+        const entries = ownedFrameEntries();
+        const list = boxEl.querySelector('#frame-box-list');
+        if (!entries.length) {
+            list.innerHTML = `<p class="frame-box-empty-note">لم تشترِ أي إطار بعد</p>`;
+            return;
+        }
+        list.innerHTML = entries.map(f => frameBoxItemHTML(f, userPhoto, lastShopData.activeFrame && lastShopData.activeFrame.toString() === f._id.toString())).join('');
+        list.querySelectorAll('.frame-box-activate-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                await equipFrame(btn.dataset.frameId);
+                renderBoxList(boxEl);
+            });
+        });
+        list.querySelectorAll('.frame-box-remove-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                await equipFrame(null);
+                renderBoxList(boxEl);
+            });
+        });
+    }
+
+    function showFrameBox() {
+        document.getElementById('frame-box-sheet')?.remove();
+        const boxEl = document.createElement('div');
+        boxEl.id = 'frame-box-sheet';
+        boxEl.className = 'fixed inset-0 bg-black/75 flex items-end justify-center z-[345]';
+        boxEl.innerHTML = `
+            <div class="frame-box-card">
+                <div class="w-10 h-1 bg-white/15 rounded-full mx-auto mt-2.5 mb-1 flex-shrink-0"></div>
+                <div class="frame-box-header">
+                    <span class="frame-box-title"><i class="fas fa-box-open"></i> إطاراتي</span>
+                    <button id="close-frame-box" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="frame-box-list" class="frame-box-list"></div>
+            </div>
+        `;
+        document.body.appendChild(boxEl);
+        // ✅ عدّاد حي كل ثانية لأي إطار نشط بمدة قصيرة (1/3 أيام) ما بقي الصندوق مفتوحاً فقط —
+        // يتوقف تلقائياً عند الإغلاق (clearInterval عبر closeBox) فلا يبقى يعمل بالخلفية بلا داعٍ
+        const countdownTimer = setInterval(() => {
+            boxEl.querySelectorAll('.frame-box-item-countdown').forEach(el => {
+                el.textContent = frameRemainingLabel({ expiresAt: el.dataset.expiresAt, durationDays: parseInt(el.dataset.durationDays) });
+            });
+        }, 1000);
+        const closeBox = () => { clearInterval(countdownTimer); boxEl.remove(); };
+        boxEl.addEventListener('click', (e) => { if (e.target.id === 'frame-box-sheet') closeBox(); });
+        document.getElementById('close-frame-box').addEventListener('click', closeBox);
+        renderBoxList(boxEl);
+        markBoxSeen();
+    }
+
     function bindCardEvents() {
         modal.querySelectorAll('.frame-shop-duration-pills').forEach(row => {
             row.querySelectorAll('.frame-shop-duration-pill').forEach(pill => {
@@ -6018,10 +6152,15 @@ async function showFrameShopModal() {
         modal.querySelectorAll('.frame-shop-purchase-btn').forEach(btn => {
             btn.addEventListener('click', () => purchaseFrame(btn.dataset.frameId, btn.dataset.selectedDuration, btn));
         });
-        modal.querySelectorAll('.frame-shop-equip-btn').forEach(btn => {
-            btn.addEventListener('click', () => equipFrame(btn.dataset.frameId));
+        modal.querySelectorAll('.frame-shop-card-preview-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const frame = lastShopData.frames.find(f => f._id.toString() === btn.dataset.frameId.toString());
+                if (frame) showFramePreviewModal(frame, userPhoto);
+            });
         });
     }
+
+    document.getElementById('frame-shop-box-btn').addEventListener('click', showFrameBox);
 
     await reload();
 }
@@ -6147,9 +6286,6 @@ function setupSettingsEvents() {
 
 
      bindBubbleShopButtons();
-    document.getElementById('open-frame-shop-btn')?.addEventListener('click', () => showFrameShopModal());
-    document.getElementById('frames-support-btn')?.addEventListener('click', (e) => { e.stopPropagation(); showQuickSupportModal('frame_issue', 'مشكلة في الإطارات'); });
-    
     // 2. تحديث الصورة الشخصية
     document.getElementById('select-image-btn').addEventListener('click', () => {
         document.getElementById('image-file-input').click();
@@ -8712,7 +8848,6 @@ function renderProfileHubBody(u) {
 // ✅ ورقة "الإعدادات" — مُنقولة بالكامل هنا خارج جسم مركز الملف الشخصي، تُفتح فقط من قائمة
 // الثلاث نقاط (المزيد) — تحرير/الحساب/التنبيهات/نبذة/تسجيل الخروج
 function showProfileHubSettingsSheet() {
-    const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
     document.getElementById('profile-hub-settings-sheet')?.remove();
     const modal = document.createElement('div');
     modal.id = 'profile-hub-settings-sheet';
@@ -8726,7 +8861,7 @@ function showProfileHubSettingsSheet() {
             <div class="overflow-y-auto">
                 <div class="profile-hub-settings-list">
                     <button class="profile-hub-settings-row" id="profile-hub-full-settings-btn"><i class="fas fa-user-cog"></i><span>الحساب والخصوصية والمزيد</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
-                    ${cachedUser.isAdmin ? `<button class="profile-hub-settings-row" id="profile-hub-badges-btn"><i class="fas fa-certificate text-yellow-400"></i><span>الشارات</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>` : ''}
+                    <button class="profile-hub-settings-row" id="profile-hub-badges-btn"><i class="fas fa-certificate text-yellow-400"></i><span>الشارات</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
                     ${['عام', 'التنبيهات', 'اللغة', 'ذاكرة نظيفة', 'جودة الفيديو', 'مفضّلة'].map(label => `
                         <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
                     `).join('')}
@@ -10138,11 +10273,49 @@ function spawnAdminCelebrationConfetti(container) {
     setTimeout(() => { container.innerHTML = ''; }, 3500);
 }
 
-// ✅ قسم إعدادات "الشارات" — حالياً شارة الأدمن فقط (إنشاؤها كقائمة بدل مفتاح مفرد يسمح بإضافة
-// شارات مستقبلية بلا أي تغيير بنيوي)، تُفتح من ورقة الإعدادات الرئيسية ولا تظهر إطلاقاً لغير
-// الأدمن (لا شارات له ليُديرها حالياً)
+// ✅ سجلّ الشارات القابلة للإدارة من قسم "الشارات" — كل شارة جديدة تُضاف هنا فقط (hasBadge/
+// isVisible/setVisible)، فتظهر تلقائياً بالقائمة لمن يملكها فعلاً بلا أي تعديل آخر بالدالة
+// أدناه. لا يشمل هذا السجلّ شارة نادي المعجبين (نظامها الخاص بنافذة النادي نفسها) ولا
+// المعلومات الشخصية/الموقع (قسم مستقل تحته بشرط مستوى 7، راجع renderPersonalInfoGateHTML)
+const PROFILE_BADGE_REGISTRY = [
+    {
+        id: 'admin',
+        img: ADMIN_BADGE_IMG,
+        title: 'شارة الأدمن',
+        sub: 'إظهارها بملفك الشخصي أمام الجميع',
+        hasBadge: (u) => !!u.isAdmin,
+        isVisible: (u) => u.adminBadgeVisible !== false,
+        setVisible: (visible) => setAdminBadgeVisibility(visible)
+    }
+];
+
+// ✅ قسم "المعلومات الشخصية والموقع" داخل ورقة الشارات — صلاحية إخفائها عن الزوّار تُفتح فقط
+// عند بلوغ مستوى 7 بأحد مساري الدعم (سخاء أو تلقٍّ)؛ قبل ذلك يظهر صفّ موضَّح بدل مفتاح تبديل
+// فعّال (الفحص الحقيقي الملزم بالخادم نفسه — راجع updatePersonalInfoVisibility — هذا فقط واجهة)
+function renderPersonalInfoGateHTML(cachedUser) {
+    const givingLevel = cachedUser.supportGiving?.level || 0;
+    const receivingLevel = cachedUser.supportReceiving?.level || 0;
+    const unlocked = givingLevel >= 7 || receivingLevel >= 7;
+    return `
+        <div class="badges-settings-row">
+            <span class="badges-settings-row-icon"><i class="fas fa-user-shield"></i></span>
+            <div class="badges-settings-row-text">
+                <p class="badges-settings-row-title">المعلومات الشخصية والموقع</p>
+                <p class="badges-settings-row-sub">${unlocked ? 'إظهارها بملفك الشخصي أمام الزوّار' : 'يتوفّر عند الوصول لمستوى 7 بالدعم أو التلقي 🔒'}</p>
+            </div>
+            ${unlocked ? `
+                <label class="hub-toggle">
+                    <input type="checkbox" id="personal-info-visible-toggle" ${cachedUser.personalInfoVisible !== false ? 'checked' : ''}>
+                    <span class="hub-toggle-slider"></span>
+                </label>
+            ` : ''}
+        </div>
+    `;
+}
+
 function showBadgesSettingsSheet() {
     const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const ownedBadges = PROFILE_BADGE_REGISTRY.filter(b => b.hasBadge(cachedUser));
     document.getElementById('badges-settings-sheet')?.remove();
     const modal = document.createElement('div');
     modal.id = 'badges-settings-sheet';
@@ -10153,27 +10326,78 @@ function showBadgesSettingsSheet() {
                 <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-certificate text-yellow-400"></i> الشارات</p>
                 <button id="close-badges-settings" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
             </div>
-            <div class="badges-settings-row">
-                <img src="${ADMIN_BADGE_IMG}" class="badges-settings-row-img" alt="">
-                <div class="badges-settings-row-text">
-                    <p class="badges-settings-row-title">شارة الأدمن</p>
-                    <p class="badges-settings-row-sub">إظهارها بملفك الشخصي أمام الجميع</p>
-                </div>
-                <label class="hub-toggle">
-                    <input type="checkbox" id="admin-badge-visible-toggle" ${cachedUser.adminBadgeVisible !== false ? 'checked' : ''}>
-                    <span class="hub-toggle-slider"></span>
-                </label>
+            <div class="badges-settings-list">
+                ${ownedBadges.map(b => `
+                    <div class="badges-settings-row" data-badge-id="${b.id}">
+                        <img src="${b.img}" class="badges-settings-row-img" alt="">
+                        <div class="badges-settings-row-text">
+                            <p class="badges-settings-row-title">${escapeHtml(b.title)}</p>
+                            <p class="badges-settings-row-sub">${escapeHtml(b.sub)}</p>
+                        </div>
+                        <label class="hub-toggle">
+                            <input type="checkbox" class="badge-visible-toggle" data-badge-id="${b.id}" ${b.isVisible(cachedUser) ? 'checked' : ''}>
+                            <span class="hub-toggle-slider"></span>
+                        </label>
+                    </div>
+                `).join('')}
+                ${renderPersonalInfoGateHTML(cachedUser)}
+                <button type="button" id="badges-open-frame-shop-btn" class="badges-settings-row badges-settings-row-link">
+                    <span class="badges-settings-row-icon"><i class="fas fa-crown" style="color:#fbbf24"></i></span>
+                    <div class="badges-settings-row-text">
+                        <p class="badges-settings-row-title">متجر الإطارات</p>
+                        <p class="badges-settings-row-sub">تصفّح وتفعيل إطارات صورتك الشخصية</p>
+                    </div>
+                    <button type="button" id="badges-frame-shop-report-btn" class="report-issue-icon-btn" style="width:22px;height:22px;flex-shrink:0;" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle" style="font-size:0.6rem;"></i></button>
+                    <i class="fas fa-chevron-left profile-hub-chevron"></i>
+                </button>
             </div>
         </div>
     `;
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => { if (e.target.id === 'badges-settings-sheet') modal.remove(); });
     document.getElementById('close-badges-settings').addEventListener('click', () => modal.remove());
-    document.getElementById('admin-badge-visible-toggle').addEventListener('change', async (e) => {
-        const ok = await setAdminBadgeVisibility(e.target.checked);
-        if (ok) showNotification(e.target.checked ? 'ستظهر شارتك للجميع الآن' : 'تم إخفاء شارتك', 'success');
-        else e.target.checked = !e.target.checked; // 🛡️ تراجع بصري لو فشل الحفظ بالخادم
+
+    modal.querySelectorAll('.badge-visible-toggle').forEach(toggle => {
+        toggle.addEventListener('change', async (e) => {
+            const badge = PROFILE_BADGE_REGISTRY.find(b => b.id === e.target.dataset.badgeId);
+            if (!badge) return;
+            const ok = await badge.setVisible(e.target.checked);
+            if (ok) showNotification(e.target.checked ? 'ستظهر شارتك للجميع الآن' : 'تم إخفاء شارتك', 'success');
+            else e.target.checked = !e.target.checked; // 🛡️ تراجع بصري لو فشل الحفظ بالخادم
+        });
     });
+
+    document.getElementById('personal-info-visible-toggle')?.addEventListener('change', async (e) => {
+        const ok = await setPersonalInfoVisibility(e.target.checked);
+        if (ok) showNotification(e.target.checked ? 'ستظهر معلوماتك الشخصية وموقعك للزوّار' : 'تم إخفاء معلوماتك الشخصية وموقعك', 'success');
+        else e.target.checked = !e.target.checked;
+    });
+
+    document.getElementById('badges-open-frame-shop-btn').addEventListener('click', () => showFrameShopModal());
+    document.getElementById('badges-frame-shop-report-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        showQuickSupportModal('frame_issue', 'مشكلة في الإطارات');
+    });
+}
+
+// ✅ راجع updatePersonalInfoVisibility بالخادم — نفس نمط setAdminBadgeVisibility بالضبط
+async function setPersonalInfoVisibility(visible) {
+    try {
+        const response = await fetch('/api/users/me/personal-info-visibility', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ visible })
+        });
+        const result = await response.json();
+        if (result.status !== 'success') throw new Error(result.message || '');
+        const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        cachedUser.personalInfoVisible = result.data.personalInfoVisible;
+        localStorage.setItem('user', JSON.stringify(cachedUser));
+        return true;
+    } catch (error) {
+        showNotification(error.message || 'تعذّر حفظ التغيير، حاول مجدداً', 'error');
+        return false;
+    }
 }
 
 // ✅ لوحة "تفاصيل شارة الدعم/التلقي" — أُعيد بناؤها بالكامل كبطاقة عضوية فاخرة (hero card)
@@ -10395,6 +10619,10 @@ const FAN_CLUB_COLORS = {
 // بالخادم (autoSeed.js) — تُستخدم هنا لمعاينته بشاشات النادي وكذلك كتراكب حقيقي فوق صورة
 // أي فائز حالياً يرتديه (راجع IMAGE_OVERLAY_FRAMES/wrapImageOverlayFrames أسفله)
 const FAN_CLUB_CONTRIBUTOR_FRAME_IMG = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png';
+// ✅ صورة شعار نادي المعجبين الجديدة (طلب صريح) — تستبدل تركيبة قلب+جناحين بخط Font Awesome
+// بزر رأس الغرفة بعد المتابعة فقط (راجع updateRoomHeaderFollowIcon)؛ بقية الأماكن (لوحة
+// الشرف بمركز الملف الشخصي والملف الكامل) لم تُشتَكَ منها فبقيت كما هي بلا تغيير
+const FAN_CLUB_HEART_IMG = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791286502/fanclub-heart-512.png';
 // ✅ شارة الأدمن الخاصة — تُمنح تلقائياً لكل isAdmin:true (لا يوجد مسار منح/سحب بالتطبيق، الحقل
 // يُضبط مباشرة بقاعدة البيانات فقط)، بخيار إخفائها شخصياً (adminBadgeVisible) تماماً كخيار
 // "ابقَ متخفياً" الذي طلبه صاحب الشارة نفسه — إخفاؤها يخفيها عن كل زائر لملفه، لا عن نفسه فقط
@@ -10531,11 +10759,15 @@ const IMAGE_OVERLAY_FRAMES = {
     // على المقعد تحديداً وتُقيَّد فقط بالسياقات الضيقة
     'profile-frame-black-gold-crown': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790895602/black_gold_crown_frame_600px.webp', photoScale: 92, artScale: 140 },
     'profile-frame-gothic-royal': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896169/gothic_royal_frame.webp' },
-    // ✅ "يظهر صغيراً وغير ملائم على المقعد" (الوحيد مع تنين النار الذي لم يكن كافياً بالقيمة
-    // الافتراضية 180% رغم أنها مثالية لكل الإطارات الأخرى على المقعد تحديداً)
-    'profile-frame-amethyst-royal': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896497/amethyst_royal_frame.webp', artScale: 210 },
-    // ✅ "غير مثالي على المقعد، يحتاج تعديل" — نفس حالة الجمشت الملكي أعلاه بالضبط
-    'profile-frame-fire-dragons': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897430/fire_dragons_frame.webp', artScale: 210 },
+    // 🐛 طلب صريح لاحق: "صغير في كل مكان" — فنّ هذا الإطار نفسه (حافة رفيعة بهامش شفاف واسع
+    // حول محيط الصورة) يحتاج فعلياً مساحة أكبر من سقف 140% الموحَّد ليبدو متناسقاً، لا كمشكلة
+    // اتساق كإطار المساهم سابقاً (ذاك كان photoScale غير متسق مع البقية، لا حاجة فنّية حقيقية
+    // لحجم أكبر). exemptFromTightCap يسمح لـartScale بتجاوز الـ140% الموحَّد (مع بقاء
+    // computeOverlayArtScaleCap نفسه — الحارس الديناميكي الحقيقي لمنع تصادم إطارين متجاورين
+    // بالشبكات المزدحمة — فعّالاً دوماً بلا استثناء، فلا رجوع لمخاطر التصادم القديمة)
+    'profile-frame-amethyst-royal': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896497/amethyst_royal_frame.webp', artScale: 210, exemptFromTightCap: true },
+    // ✅ نفس حالة الجمشت الملكي أعلاه بالضبط لكن بدرجة أخف ("صغيرة قليلاً" لا "صغيرة بكل مكان")
+    'profile-frame-fire-dragons': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897430/fire_dragons_frame.webp', artScale: 185, exemptFromTightCap: true },
     'profile-frame-lion-bee-sapphire': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897852/lion_bee_sapphire_frame.webp' },
     'profile-frame-pegasus-warrior': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790898291/pegasus_warrior_frame.webp' }
 };
@@ -10617,16 +10849,14 @@ function wrapImageOverlayFrames(root = document) {
         img.dataset.frameClass = matchedClass; // ✅ يسمح لمسار "تبديل الإطار فورياً" أدناه باكتشاف التغيير
         const config = IMAGE_OVERLAY_FRAMES[matchedClass];
         const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
-        // 🐛 إصلاح: المقعد وحده كان مُستثنى من OVERLAY_TIGHT_CONTEXT_CAP (بافتراض أن مساحته
-        // الفسيحة أسفله تحتمل إطاراً أكبر)، فبقي يصل فعلياً حتى 210% (إطارات الجمشت/التنانين)
-        // بينما كل سياق آخر مُقيَّد عند 140% — بالضبط لماذا كان المقعد الأكثر شكوى كـ"كبير"
-        // بين كل السياقات الخمسة بطلب المستخدم. لا مبرر هندسي لمعاملته مختلفاً: تطبيق السقف
-        // نفسه بلا استثناء الآن (computeOverlayArtScaleCap يبقى طبقة حماية إضافية خاصة
-        // بالمقعد فقط لمنع تلامس إطارَي مقعدين متجاورين بالشبكات المزدحمة — تعمل الاثنتان معاً)
+        // ✅ السقف الموحَّد 140% يُطبَّق على الجميع إلا الإطارات المعلَّمة exemptFromTightCap
+        // (الجمشت الملكي/تنانين النار — فنّها نفسه يحتاج مساحة أكبر فعلياً، راجع التعليق أعلى
+        // IMAGE_OVERLAY_FRAMES)؛ computeOverlayArtScaleCap يبقى فعّالاً دوماً بلا استثناء — هو
+        // الحارس الحقيقي لمنع تصادم إطارَي مقعدين متجاورين، لا الـ140% الثابت
         let artScale = Math.min(
             config.artScale ?? DEFAULT_OVERLAY_ART_SCALE,
             computeOverlayArtScaleCap(img, w),
-            OVERLAY_TIGHT_CONTEXT_CAP
+            config.exemptFromTightCap ? Infinity : OVERLAY_TIGHT_CONTEXT_CAP
         );
         const wrap = document.createElement('span');
         wrap.className = 'frame-overlay-wrap';
@@ -10685,7 +10915,7 @@ function wrapImageOverlayFrames(root = document) {
         let artScale = Math.min(
             config.artScale ?? DEFAULT_OVERLAY_ART_SCALE,
             computeOverlayArtScaleCap(img, w2),
-            OVERLAY_TIGHT_CONTEXT_CAP
+            config.exemptFromTightCap ? Infinity : OVERLAY_TIGHT_CONTEXT_CAP
         );
         img.style.width = `${photoScale}%`;
         img.style.height = `${photoScale}%`;
@@ -11443,7 +11673,6 @@ async function showFullProfilePage(userId) {
             <div class="full-profile-cover" style="${u.coverImage ? `background-image:url('${u.coverImage}')` : ''}">
                 <div class="full-profile-avatar-wrap">
                     <img src="${u.profileImage}" class="full-profile-avatar ${u.activeFrameClass || ''}">
-                    ${frameDecorationHTML(u.activeFrameClass)}
                 </div>
             </div>
             <div class="full-profile-identity">
@@ -12153,31 +12382,6 @@ function applyFrameToAvatar(imgEl, activeFrameClass) {
     }
 }
 
-// ✅ زخرفة تاج+أجنحة+جواهر متحركة فوق "إطار الأساطير" (profile-frame-golden-legend) — تُدرَج
-// فقط بثلاث واجهات استعراض صريحة طلبها المستخدم (المقعد/الملف المصغّر/الملف الكامل)، لا كل
-// الأماكن التي يظهر بها activeFrameClass (~20 موقعاً): هذا إطار قابل للشراء مفتوح، فقد يظهر
-// بكثافة كبيرة بآن واحد (كل رسالة دردشة/صف متصدّرين)؛ مراقب DOM عام كإطار المساهم (نادر
-// أسبوعياً) غير آمن هنا. يُستدعى فقط حيث الحاوية الأب مضمونة (position:relative/absolute)
-// ✅ روابط OpenMoji (مكتبة رسوم مفتوحة المصدر CC BY-SA 4.0) عبر jsdelivr — نفس النطاق
-// الموثوق أصلاً بـCSP (script-src/style-src) للوحة التحكم، أُضيف الآن لـimg-src أيضاً
-// (راجع server/middleware/globalMiddleware.js) ليُسمح بعرضها. onerror يُخفي أي صورة تفشل
-// بهدوء بدل أيقونة "صورة مكسورة" — إن لم يعمل رابط معيّن نصلحه سوياً لاحقاً
-const FRAME_LEGEND_CROWN_IMG = 'https://cdn.jsdelivr.net/npm/openmoji@17.0.0/color/svg/1F451.svg';
-const FRAME_LEGEND_FEATHER_IMG = 'https://cdn.jsdelivr.net/npm/openmoji@17.0.0/color/svg/1FAB6.svg';
-const FRAME_LEGEND_GEM_IMG = 'https://cdn.jsdelivr.net/npm/openmoji@17.0.0/color/svg/1F48E.svg';
-function frameDecorationHTML(activeFrameClass) {
-    if (activeFrameClass !== 'profile-frame-golden-legend') return '';
-    return `
-        <span class="frame-icon-overlay" aria-hidden="true">
-            <img src="${FRAME_LEGEND_CROWN_IMG}" class="frame-icon frame-icon-crown" onerror="this.style.display='none'" alt="">
-            <img src="${FRAME_LEGEND_FEATHER_IMG}" class="frame-icon frame-icon-wing frame-icon-wing-left" onerror="this.style.display='none'" alt="">
-            <img src="${FRAME_LEGEND_FEATHER_IMG}" class="frame-icon frame-icon-wing frame-icon-wing-right" onerror="this.style.display='none'" alt="">
-            <img src="${FRAME_LEGEND_GEM_IMG}" class="frame-icon frame-icon-gem frame-icon-gem-left" onerror="this.style.display='none'" alt="">
-            <img src="${FRAME_LEGEND_GEM_IMG}" class="frame-icon frame-icon-gem frame-icon-gem-right" onerror="this.style.display='none'" alt="">
-        </span>
-    `;
-}
-        
 
 // =================================================
 // ============ نظام الهدايا (Gifts) ================

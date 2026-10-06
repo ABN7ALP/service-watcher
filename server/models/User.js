@@ -32,9 +32,12 @@ const userSchema = new mongoose.Schema({
     ownedFrames: [{
         frame: { type: mongoose.Schema.Types.ObjectId, ref: 'ProfileFrame' },
         purchasedAt: { type: Date, default: Date.now },
-        durationDays: { type: Number, required: true }, // مدة الصلاحية المشتراة (7/30/365)
+        durationDays: { type: Number, required: true }, // مدة الصلاحية المشتراة (1/3/7)
         activatedAt: { type: Date, default: null }, // null = لم يُفعّل بعد، يبقى صالحاً للأبد بالمخزن
-        expiresAt: { type: Date, default: null } // يُحسب فقط عند التفعيل
+        expiresAt: { type: Date, default: null }, // يُحسب فقط عند التفعيل
+        // ✅ "الصندوق" بمتجر الإطارات — يُضبط false عند كل شراء جديد (نقطة حمراء تنبيهية على
+        // أيقونة الصندوق)، ويتحوّل true جماعياً لكل الإطارات المملوكة بمجرد فتح الصندوق مرة
+        seenInBox: { type: Boolean, default: false }
     }],
     activeFrame: { type: mongoose.Schema.Types.ObjectId, ref: 'ProfileFrame', default: null },
     activeFrameClass: { type: String, default: null },
@@ -83,6 +86,11 @@ const userSchema = new mongoose.Schema({
     // ✅ حقول مركز الملف الشخصي (Profile Hub) — غلاف + بيانات إضافية قابلة للتعديل
     // =====================================================
     coverImage: { type: String, default: null }, // غلاف الملف الشخصي (منفصل عن الصورة الشخصية profileImage)
+    // ✅ إخفاء/إظهار المعلومات الشخصية (الجنس/العمر/الحالة الاجتماعية/التعليمية/مسقط الرأس/
+    // الموقع/روابط التواصل) أمام زوّار الملف الشخصي — صلاحية تُفتح فقط عند بلوغ مستوى 7
+    // بأحد مساري "الدعم" (giving/receiving)، تُفحَص بالخادم بكل طلب تغيير (updatePersonalInfoVisibility)
+    // لا بالعميل فقط. لا تخفي شيئاً عن صاحبها نفسه — فقط عن الآخرين (راجع getUserById)
+    personalInfoVisible: { type: Boolean, default: true },
     hometown: { type: String, default: '', maxlength: 40, trim: true }, // ✅ مسقط الرأس — يحدّده المستخدم يدوياً
     location: { type: String, default: '', maxlength: 40, trim: true }, // ✅ الموقع الحالي — يُحدَّد تلقائياً (تخمين تقريبي من المنطقة الزمنية بالمتصفح، بلا أي طلب صلاحية GPS)
     socialLinks: {
