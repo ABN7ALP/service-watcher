@@ -10,11 +10,12 @@ const profileFrameSchema = new mongoose.Schema({
     // يُفعَّل عبر ownedFrames العادية بل بفحص مباشر لـisAdmin بـsetActiveFrame؛ قابل للتفعيل/
     // الإزالة/التبديل من الأدمن نفسه بحرية تماماً كبقية الإطارات، لكن لا أحد غيره يقدر عليه
     adminOnly: { type: Boolean, default: false },
-    // ✅ أسعار مختلفة حسب المدة (يمكن تعديلها بحرية لكل إطار)
+    // ✅ أسعار مختلفة حسب المدة — طلب صريح: 3 مدد قصيرة فقط (1/3/7 أيام) بدل المدد الطويلة
+    // السابقة (7/30/365 يوماً)، يمكن تعديلها بحرية لكل إطار
     prices: {
-        days7: { type: Number, required: true },
-        days30: { type: Number, required: true },
-        days365: { type: Number, required: true }
+        day1: { type: Number, required: true },
+        day3: { type: Number, required: true },
+        day7: { type: Number, required: true }
     }
 }, { timestamps: true });
 

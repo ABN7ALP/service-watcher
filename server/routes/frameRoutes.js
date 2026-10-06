@@ -8,5 +8,6 @@ router.use(authMiddleware);
 router.get('/shop', frameController.getFrameShop);
 router.post('/purchase', frameController.purchaseFrame);
 router.post('/equip', frameController.setActiveFrame);
+router.post('/box/seen', frameController.markFrameBoxSeen);
 
 module.exports = router;

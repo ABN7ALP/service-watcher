@@ -227,7 +227,12 @@ const updateProfilePicture = async (req, res) => {
 // المستند كاملاً بلا أي تصفية (عدا كلمة المرور المستثناة أصلاً بـselect:false على مستوى
 // السكيما) — ثغرة تسريب بيانات حقيقية أُصلحت هنا؛ بيانات المستخدم الكاملة لنفسه تبقى متاحة
 // فقط عبر getMeDetails (مُقيَّدة بـreq.user.id أصلاً)
-const PUBLIC_PROFILE_FIELDS = 'username customId profileImage coverImage gender birthDate hometown location socialLinks education job level experience status socialStatus educationStatus activeFrameClass isAgent isBot friends followers following showVipBadge showWallet createdAt isAdmin adminBadgeVisible';
+const PUBLIC_PROFILE_FIELDS = 'username customId profileImage coverImage gender birthDate hometown location socialLinks education job level experience status socialStatus educationStatus activeFrameClass isAgent isBot friends followers following showVipBadge showWallet createdAt isAdmin adminBadgeVisible personalInfoVisible';
+
+// ✅ الحقول "الشخصية" التي يملك صاحبها حق إخفائها عن الزوّار (راجع personalInfoVisible أعلى
+// وupdatePersonalInfoVisibility أدناه) — لا تشمل الاسم/الصورة/الحالة النصية/المستوى/الشارات
+// (هوية أساسية لا "معلومات شخصية" بمفهوم هذي الميزة)
+const PERSONAL_INFO_FIELDS = ['gender', 'birthDate', 'socialStatus', 'educationStatus', 'hometown', 'location', 'socialLinks', 'education', 'job'];
 
 const getUserById = async (req, res) => {
     try {
@@ -242,6 +247,13 @@ const getUserById = async (req, res) => {
         const obj = user.toObject();
         const isFollowing = !!(requesterId && user.followers.some(f => f.toString() === requesterId));
         await recordProfileVisit(requesterId, req.params.id); // ✅ يسجّل الزيارة قبل الرد (تهدئة 5 دقائق داخلية، ولا يفشل الطلب أبداً)
+        // 🛡️ إخفاء المعلومات الشخصية عن أي زائر غير صاحب الملف نفسه لو اختار صاحبه ذلك — لا تُخفى
+        // أبداً عنه هو (personalInfoVisible تعني "مخفية عن الآخرين"، لا عن نفسه)
+        const isOwner = requesterId && requesterId === req.params.id;
+        if (!obj.personalInfoVisible && !isOwner) {
+            PERSONAL_INFO_FIELDS.forEach(f => { obj[f] = undefined; });
+            obj.age = undefined; // ✅ virtual محسوبة من birthDate — تُحذف أيضاً هنا صراحة
+        }
         res.status(200).json({
             status: 'success',
             data: {
@@ -531,6 +543,27 @@ const updateAdminBadgeVisibility = async (req, res) => {
 };
 
 // =====================================================
+// ✅ إخفاء/إظهار المعلومات الشخصية (راجع personalInfoVisible بـUser.js وPERSONAL_INFO_FIELDS
+// أعلى في هذا الملف) — صلاحية تُفتح فقط لمن بلغ مستوى 7 بأحد مساري "الدعم" (سخاء أو تلقٍّ)،
+// والفحص هنا بالخادم نفسه (لا بالعميل فقط) يمنع أي تحايل بطلب API مباشر من مستخدم لم يبلغ 7 بعد
+// =====================================================
+const updatePersonalInfoVisibility = async (req, res) => {
+    try {
+        const { visible } = req.body;
+        const levels = await computeSupportLevels(req.user.id);
+        const unlocked = levels.giving.level >= 7 || levels.receiving.level >= 7;
+        if (!unlocked) {
+            return res.status(403).json({ status: 'fail', message: 'يلزم الوصول لمستوى 7 بالدعم أو التلقي لإخفاء معلوماتك الشخصية' });
+        }
+        const user = await User.findByIdAndUpdate(req.user.id, { personalInfoVisible: !!visible }, { new: true }).select('personalInfoVisible');
+        res.status(200).json({ status: 'success', data: { personalInfoVisible: user.personalInfoVisible } });
+    } catch (error) {
+        console.error('[ERROR] in updatePersonalInfoVisibility:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
+// =====================================================
 // ✅ متابعة/إلغاء متابعة شخص — أحادية الاتجاه (منفصلة تماماً عن نظام الصداقة friends،
 // ومنفصلة عن متابعة الغرف بـVoiceRoom.followers). يُحدّث الطرفين معاً (followers/following)
 // =====================================================
@@ -815,6 +848,7 @@ module.exports = {
     getOnlinePublicRoomUsers,
     updateStatus,
     updateAdminBadgeVisibility,
+    updatePersonalInfoVisibility,
     followUser,
     unfollowUser,
     getMyProfileVisits,
