@@ -10277,10 +10277,17 @@ function spawnAdminCelebrationConfetti(container) {
 // isVisible/setVisible)، فتظهر تلقائياً بالقائمة لمن يملكها فعلاً بلا أي تعديل آخر بالدالة
 // أدناه. لا يشمل هذا السجلّ شارة نادي المعجبين (نظامها الخاص بنافذة النادي نفسها) ولا
 // المعلومات الشخصية/الموقع (قسم مستقل تحته بشرط مستوى 7، راجع renderPersonalInfoGateHTML)
+// 🐛 إصلاح: img كانت قيمة مباشرة (ADMIN_BADGE_IMG) تُقرَأ فور تنفيذ هذا السطر أثناء تحميل
+// الملف — لكن ADMIN_BADGE_IMG نفسها تُعرَّف لاحقاً أسفل الملف (قرب IMAGE_OVERLAY_FRAMES)، فكان
+// الوصول لها هنا يقع ضمن "منطقة الموت المؤقتة" (TDZ) لمتغيّر const لم يُهيَّأ بعد، فيوقف تنفيذ
+// الملف كاملاً بخطأ "Cannot access before initialization" — انهيار صامت أسقط كل شيء بعده
+// (COIN_ICON_URL وغيرها لم تُعرَّف أبداً تبعاً لذلك). دالة getter كسولة (لا تُنفَّذ إلا عند
+// ندائها فعلياً بـshowBadgesSettingsSheet، بعد اكتمال تحميل الملف بالكامل) تتجنّب المشكلة
+// جذرياً بلا حاجة لإعادة ترتيب تعريفات الملف كله
 const PROFILE_BADGE_REGISTRY = [
     {
         id: 'admin',
-        img: ADMIN_BADGE_IMG,
+        img: () => ADMIN_BADGE_IMG,
         title: 'شارة الأدمن',
         sub: 'إظهارها بملفك الشخصي أمام الجميع',
         hasBadge: (u) => !!u.isAdmin,
@@ -10329,7 +10336,7 @@ function showBadgesSettingsSheet() {
             <div class="badges-settings-list">
                 ${ownedBadges.map(b => `
                     <div class="badges-settings-row" data-badge-id="${b.id}">
-                        <img src="${b.img}" class="badges-settings-row-img" alt="">
+                        <img src="${b.img()}" class="badges-settings-row-img" alt="">
                         <div class="badges-settings-row-text">
                             <p class="badges-settings-row-title">${escapeHtml(b.title)}</p>
                             <p class="badges-settings-row-sub">${escapeHtml(b.sub)}</p>
