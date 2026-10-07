@@ -38,7 +38,7 @@ const voiceRoomSchema = new mongoose.Schema({
     isLocked: { type: Boolean, default: false }, // ✅ قفل الغرفة بالكامل — لا يدخلها أحد غير المضيف/المسؤولين
     backgroundImage: { type: String, default: null }, // ✅ الخلفية النشطة حالياً (مجانية أو مدفوعة)
     backgroundExpiresAt: { type: Date, default: null }, // ✅ متى تنتهي الخلفية المدفوعة (null = مجانية/دائمة)
-    seatCount: { type: Number, enum: [9, 15, 24, 80], default: 80 },
+    seatCount: { type: Number, enum: [9, 13, 19, 80], default: 80 },
     adminSeatCount: { type: Number, default: 5 }, // أول N مقعد محجوز حصرياً للإدارة (0 بالغرف العادية)
     moderators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // ✅ مسؤولون مساعدون عيّنهم المضيف
     // ✅ مستوى الغرفة (1-5) — يرتفع بتراكم "نقاط دعم" الغرفة (قيمة الهدايا المُرسَلة بداخلها)،
@@ -348,9 +348,9 @@ voiceRoomSchema.methods.checkBackgroundExpiry = async function () {
 voiceRoomSchema.statics.LEVEL_THRESHOLDS = [
     { level: 1, minPoints: 0 },
     { level: 2, minPoints: 1000 },
-    { level: 3, minPoints: 5000 },   // 🔓 يفتح خيار 15 مقعداً
+    { level: 3, minPoints: 5000 },   // 🔓 يفتح خيار 13 مقعداً
     { level: 4, minPoints: 15000 },
-    { level: 5, minPoints: 40000 },  // 🔓 يفتح خيار 24 مقعداً
+    { level: 5, minPoints: 40000 },  // 🔓 يفتح خيار 19 مقعداً
 ];
 
 voiceRoomSchema.statics.computeLevelForPoints = function (points) {
@@ -378,11 +378,11 @@ voiceRoomSchema.statics.levelProgressPercent = function (points, level) {
     return Math.min(100, Math.max(0, Math.round((points - current.minPoints) / span * 100)));
 };
 
-// ✅ أعداد المقاعد المتاحة للاختيار عند هذا المستوى — 9 متاحة دائماً، 15 من مستوى 3،
-// 24 من مستوى 5 (القيم الفعلية بجدول LEVEL_THRESHOLDS أعلاه)
+// ✅ أعداد المقاعد المتاحة للاختيار عند هذا المستوى — 9 متاحة دائماً، 13 من مستوى 3،
+// 19 من مستوى 5 (القيم الفعلية بجدول LEVEL_THRESHOLDS أعلاه)
 voiceRoomSchema.statics.getUnlockedSeatCounts = function (level) {
-    if (level >= 5) return [9, 15, 24];
-    if (level >= 3) return [9, 15];
+    if (level >= 5) return [9, 13, 19];
+    if (level >= 3) return [9, 13];
     return [9];
 };
 
@@ -518,7 +518,7 @@ voiceRoomSchema.statics.getRoomRank = async function (roomId) {
 // ✅ تغيير عدد المقاعد (الاتجاهان: توسيع أو تقليص) — يتحقق أن العدد المطلوب مفتوح فعلاً
 // بمستوى الغرفة الحالي، ويرفض التقليص لو فيه جالس على مقعد سيُحذَف (رقمه أكبر من العدد الجديد)
 voiceRoomSchema.methods.setSeatCount = function (newCount) {
-    const allowed = [9, 15, 24];
+    const allowed = [9, 13, 19];
     if (!allowed.includes(newCount)) {
         return { ok: false, message: 'عدد مقاعد غير صالح' };
     }

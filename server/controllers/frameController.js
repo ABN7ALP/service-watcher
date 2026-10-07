@@ -39,6 +39,7 @@ exports.getFrameShop = async (req, res) => {
                     name: f.name,
                     cssClass: f.cssClass,
                     prices: f.prices,
+                    adminOnly: f.adminOnly,
                     // ✅ إطار الأدمن: "مملوك" ضمنياً لأي أدمن حالي بلا حاجة لسجل ownedFrames فعلي
                     // (activatedAt:null يجعل الواجهة تعرض "بحوزتك" بدل تاريخ انتهاء غير موجود أصلاً)
                     ownedInstance: ownedMap[f._id.toString()] || (f.adminOnly && user.isAdmin ? { activatedAt: null, expiresAt: null } : null)
@@ -70,32 +71,51 @@ exports.purchaseFrame = async (req, res) => {
             return res.status(404).json({ status: 'fail', message: 'الإطار غير متوفر' });
         }
 
-        const alreadyOwned = user.ownedFrames.some(o => o.frame.toString() === frameId.toString());
-        if (alreadyOwned) {
-            return res.status(400).json({ status: 'fail', message: 'أنت تمتلك هذا الإطار بالفعل' });
-        }
-
         const price = frame.prices[durationKey];
         if (user.coins < price) {
             return res.status(400).json({ status: 'fail', message: 'رصيد الكوينز غير كافٍ' });
         }
 
+        const newDurationDays = parseInt(duration);
+        // ✅ طلب صريح: الإطار يبقى متاحاً للشراء دائماً حتى لو كان مملوكاً فعلاً — الشراء المتكرر
+        // لا يُرفض بعد الآن، بل تُضاف المدة الجديدة فوق المدة المتبقية الحالية (تكديس/تمديد)
+        // بدل رفضه بخطأ "تمتلكه بالفعل"
+        const existing = user.ownedFrames.find(o => o.frame.toString() === frameId.toString());
         user.coins -= price;
-        // ✅ الشراء وحده لا يبدأ عد الصلاحية — activatedAt و expiresAt يبقيان null لحين التفعيل الفعلي
-        // seenInBox:false يُفعّل النقطة الحمراء على أيقونة "الصندوق" بالمتجر (طلب صريح)
-        user.ownedFrames.push({
-            frame: frame._id,
-            purchasedAt: new Date(),
-            durationDays: parseInt(duration),
-            activatedAt: null,
-            expiresAt: null,
-            seenInBox: false
-        });
+        if (!existing) {
+            // ✅ الشراء وحده لا يبدأ عد الصلاحية — activatedAt و expiresAt يبقيان null لحين التفعيل الفعلي
+            user.ownedFrames.push({
+                frame: frame._id,
+                purchasedAt: new Date(),
+                durationDays: newDurationDays,
+                activatedAt: null,
+                expiresAt: null,
+                seenInBox: false
+            });
+        } else if (!existing.activatedAt) {
+            // لم يُفعَّل بعد — نضيف المدة الجديدة فوق المدة بانتظار التفعيل، بلا بدء عدّ حتى الآن
+            existing.durationDays += newDurationDays;
+            existing.seenInBox = false;
+        } else if (existing.expiresAt && existing.expiresAt < new Date()) {
+            // انتهت صلاحيته فعلاً — إعادة الشراء تعني بدايةً جديدة بانتظار تفعيل جديد (لا تكديس
+            // فوق وقت منتهٍ أصلاً، لا معنى له)
+            existing.durationDays = newDurationDays;
+            existing.activatedAt = null;
+            existing.expiresAt = null;
+            existing.seenInBox = false;
+        } else {
+            // مُفعَّل حالياً وما زال سارياً — تمديد تاريخ الانتهاء الحالي بالمدة الجديدة مباشرة
+            existing.durationDays += newDurationDays;
+            existing.expiresAt = new Date(existing.expiresAt.getTime() + newDurationDays * 24 * 60 * 60 * 1000);
+            existing.seenInBox = false;
+        }
         await user.save();
 
         res.status(200).json({
             status: 'success',
-            message: `تم شراء ${frame.name} بنجاح (صالح ${duration} يوم من لحظة التفعيل) — فعّله من الصندوق`,
+            message: existing
+                ? `تم شراء ${frame.name} بنجاح — أُضيفت ${duration} يوم إلى المدة المتبقية بالصندوق`
+                : `تم شراء ${frame.name} بنجاح (صالح ${duration} يوم من لحظة التفعيل) — فعّله من الصندوق`,
             data: { newCoins: user.coins }
         });
     } catch (error) {

@@ -21,22 +21,19 @@ function startOfTodayUTC() {
     return d;
 }
 
-// ✅ يحسب مساري "الدعم" (ما أرسله المستخدم من كوينز كهدايا لآخرين) و"التلقي" (ما استلمه
-// فعلياً) معاً بنداء واحد — يُستخدم بالملف المصغّر وبالملف الكامل معاً لضمان نفس الأرقام بكل
-// مكان. مستوى "الدعم" تحديداً يضيف bonusXP (مهام يومية قابلة للإنجاز) فوق كوينز الهدايا
-// الحقيقية؛ "التلقي" يبقى مبنياً حصراً على ما استلمه المستخدم فعلياً (لا مهام له، فهو ليس
-// فعلاً يقوم به المستخدم نفسه)
+// ✅ يحسب مستوى "الثروة" (سابقاً "مستوى الدعم" — ما أرسله المستخدم من كوينز كهدايا لآخرين)
+// — يُستخدم بالملف المصغّر وبالملف الكامل معاً لضمان نفس الأرقام بكل مكان. يضيف bonusXP
+// (مهام يومية قابلة للإنجاز) فوق كوينز الهدايا الحقيقية. 🗑️ طلب صريح: آلية "مستوى التلقي"
+// (receiving) أُزيلت بالكامل — غير ضرورية، يبقى مسار "الثروة" (giving سابقاً) وحده
 async function computeSupportLevels(targetUserId) {
     const uid = new mongoose.Types.ObjectId(targetUserId);
-    const [givingAgg, receivingAgg, user] = await Promise.all([
+    const [givingAgg, user] = await Promise.all([
         GiftLog.aggregate([{ $match: { sender: uid } }, { $group: { _id: null, total: { $sum: '$totalPrice' } } }]),
-        GiftLog.aggregate([{ $match: { receiver: uid } }, { $group: { _id: null, total: { $sum: '$totalPrice' } } }]),
         User.findById(uid).select('supportMissions.bonusXP')
     ]);
     const bonusXP = user?.supportMissions?.bonusXP || 0;
     return {
-        giving: computeSupportLevelInfo(((givingAgg[0] && givingAgg[0].total) || 0) + bonusXP),
-        receiving: computeSupportLevelInfo((receivingAgg[0] && receivingAgg[0].total) || 0)
+        giving: computeSupportLevelInfo(((givingAgg[0] && givingAgg[0].total) || 0) + bonusXP)
     };
 }
 
@@ -264,7 +261,6 @@ const getUserById = async (req, res) => {
                     followingCount: obj.following.length,
                     isFollowing,
                     supportGiving: supportLevels.giving,
-                    supportReceiving: supportLevels.receiving,
                     friends: undefined, followers: undefined, following: undefined // ✅ الأعداد فقط تُرسَل، لا قوائم معرّفات المستخدمين الآخرين بالكامل
                 }
             }
@@ -296,7 +292,6 @@ const getMeDetails = async (req, res) => {
                 user: {
                     ... user. toObject(),
                     supportGiving: supportLevels.giving,
-                    supportReceiving: supportLevels.receiving,
                     // ✅ إضافة عدد الأصدقاء بصيغة محسنة
                     friendsStats: {
                         totalFriends:  user.friends.length,
@@ -367,8 +362,7 @@ const getUserMiniProfile = async (req, res) => {
                 clubName: user.fanClub?.name || null,
                 isAdmin: user.isAdmin,
                 adminBadgeVisible: user.adminBadgeVisible,
-                supportGiving: supportLevels.giving,
-                supportReceiving: supportLevels.receiving
+                supportGiving: supportLevels.giving
             }
         });
     } catch (error) {
@@ -542,18 +536,32 @@ const updateAdminBadgeVisibility = async (req, res) => {
     }
 };
 
+// ✅ إظهار/إخفاء شارات "نجم نادي المعجبين الأسبوعي" عن زوّار الملف الشخصي — تحكّم واحد لكل
+// الشارات معاً (طلب صريح: إضافتها لقسم "الشارات" القابل للتحكم)؛ الفحص الملزم بالخادم نفسه
+// بـgetWeeklyWins (fanClubController)، هذا فقط يحفظ التفضيل
+const updateFanClubBadgesVisibility = async (req, res) => {
+    try {
+        const { visible } = req.body;
+        const user = await User.findByIdAndUpdate(req.user.id, { fanClubBadgesVisible: !!visible }, { new: true }).select('fanClubBadgesVisible');
+        res.status(200).json({ status: 'success', data: { fanClubBadgesVisible: user.fanClubBadgesVisible } });
+    } catch (error) {
+        console.error('[ERROR] in updateFanClubBadgesVisibility:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
 // =====================================================
 // ✅ إخفاء/إظهار المعلومات الشخصية (راجع personalInfoVisible بـUser.js وPERSONAL_INFO_FIELDS
-// أعلى في هذا الملف) — صلاحية تُفتح فقط لمن بلغ مستوى 7 بأحد مساري "الدعم" (سخاء أو تلقٍّ)،
+// أعلى في هذا الملف) — صلاحية تُفتح فقط لمن بلغ مستوى 7 بـ"الثروة" (سابقاً مستوى الدعم)،
 // والفحص هنا بالخادم نفسه (لا بالعميل فقط) يمنع أي تحايل بطلب API مباشر من مستخدم لم يبلغ 7 بعد
 // =====================================================
 const updatePersonalInfoVisibility = async (req, res) => {
     try {
         const { visible } = req.body;
         const levels = await computeSupportLevels(req.user.id);
-        const unlocked = levels.giving.level >= 7 || levels.receiving.level >= 7;
+        const unlocked = levels.giving.level >= 7;
         if (!unlocked) {
-            return res.status(403).json({ status: 'fail', message: 'يلزم الوصول لمستوى 7 بالدعم أو التلقي لإخفاء معلوماتك الشخصية' });
+            return res.status(403).json({ status: 'fail', message: 'يلزم الوصول لمستوى 7 بالثروة لإخفاء معلوماتك الشخصية' });
         }
         const user = await User.findByIdAndUpdate(req.user.id, { personalInfoVisible: !!visible }, { new: true }).select('personalInfoVisible');
         res.status(200).json({ status: 'success', data: { personalInfoVisible: user.personalInfoVisible } });
@@ -848,6 +856,7 @@ module.exports = {
     getOnlinePublicRoomUsers,
     updateStatus,
     updateAdminBadgeVisibility,
+    updateFanClubBadgesVisibility,
     updatePersonalInfoVisibility,
     followUser,
     unfollowUser,

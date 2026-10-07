@@ -88,32 +88,8 @@ const calculateRequiredXp = (level) => {
     return level * 1500;
 };
  
-// دالة لإنشاء HTML الخاص بشريط التقدم
-const createLevelProgressHTML = (user) => {
-    const requiredXp = calculateRequiredXp(user.level);
-    const progressPercentage = (user.experience / requiredXp) * 100;
-
-    return `
-        <div class="mt-4" id="level-container">
-            <div class="flex justify-between items-center text-xs mb-1">
-                <span class="font-bold text-yellow-400">LVL ${user.level}</span>
-                <span class="text-gray-400">${Math.floor(user.experience)} / ${requiredXp} XP</span>
-            </div>
-            <div class="w-full bg-gray-700 rounded-full h-2.5">
-                <div id="xp-bar" class="bg-yellow-400 h-2.5 rounded-full" style="width: ${progressPercentage}%"></div>
-            </div>
-            <div id="level-perks-container" class="mt-2 text-center">
-                <button id="perks-toggle-btn" class="text-xs text-purple-400 hover:underline">
-                    مميزات المستوى التالي <i class="fas fa-chevron-down text-xs ml-1"></i>
-                </button>
-                <div id="perks-list" class="hidden text-left bg-gray-800/50 p-2 rounded-md mt-1 text-xs space-y-1">
-                    <p><i class="fas fa-check-circle text-green-400 mr-1"></i> ميزة 1 (مثال)</p>
-                    <p><i class="fas fa-check-circle text-green-400 mr-1"></i> ميزة 2 (مثال)</p>
-                </div>
-            </div>
-        </div>
-    `;
-};
+// 🗑️ طلب صريح: واجهة المستوى القديمة (شريط XP/مميزات المستوى) أُزيلت بالكامل من الملف
+// الشخصي — calculateRequiredXp يبقى (لا يزال يُستخدم لحساب القيم بصمت بالخلفية فقط)
 
 
 
@@ -2929,17 +2905,19 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (!voiceGrid) return;
         voiceGrid.innerHTML = '';
         const isCustomRoom = roomId !== 'main';
-        // ✅ الاسم يظهر تحت المقعد فقط بغرف المستخدمين (9/15/24) — مساحة كافية، بعكس الرسمية
+        // ✅ الاسم يظهر تحت المقعد فقط بغرف المستخدمين (9/13/19) — مساحة كافية، بعكس الرسمية
         // المزدحمة بـ80 مقعداً حيث الـ tooltip يبقى وحده كافياً وأوضح بصرياً
         voiceGrid.classList.toggle('labeled', seatCount <= 24);
         // ✅ شبكة أعمدة ثابتة العدد حسب سعة الغرفة (بالضبط أسلوب التطبيقات المشهورة): 9 مقاعد
-        // = 3 أعمدة (مربّع 3×3 كبير ومتناسق)، 15 = 5 أعمدة (3 صفوف)، 24 = 6 أعمدة (4 صفوف) —
+        // = 3 أعمدة (مربّع 3×3 كبير ومتناسق)، 13 = 5 أعمدة، 19 = 6 أعمدة — عُدِّل العددان من
+        // 15/24 لـ13/19 (طلب صريح) مع تكبير التباعد وتصغير المقعد قليلاً بهاتين الفئتين تحديداً
+        // كي تتسع الإطارات الزخرفية (خصوصاً الجمشت الملكي/تنانين النار) بلا تصادم مع المقعد المجاور.
         // العدد ثابت دائماً بغض النظر عن عرض الشاشة، وحجم المقعد وحده يتمدد مع العرض المتاح
         // (بعكس الغرفة الرسمية الـ80 مقعداً التي تبقى بتخطيطها المضغوط المرن القديم)
         voiceGrid.classList.remove('cols-3', 'cols-5', 'cols-6');
         if (seatCount === 9) voiceGrid.classList.add('cols-3');
-        else if (seatCount === 15) voiceGrid.classList.add('cols-5');
-        else if (seatCount === 24) voiceGrid.classList.add('cols-6');
+        else if (seatCount === 13) voiceGrid.classList.add('cols-5');
+        else if (seatCount === 19) voiceGrid.classList.add('cols-6');
         for (let i = 1; i <= seatCount; i++) {
             const seat = document.createElement('div');
             const isAdminSeat = i <= adminSeatCount;
@@ -3049,7 +3027,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <div class="room-profile-badge-row">
                         ${renderAdminBadgeHTML(p)}
                         ${renderRoomProfileSupportBadgeHTML('giving', p.supportGiving)}
-                        ${renderRoomProfileSupportBadgeHTML('receiving', p.supportReceiving)}
                         ${p.gender ? `<span class="room-profile-mini-badge room-profile-mini-badge-sm"><i class="fas ${p.gender === 'male' ? 'fa-mars text-blue-400' : 'fa-venus text-pink-400'}"></i></span>` : ''}
                         ${p.age ? `<span class="room-profile-mini-badge room-profile-mini-badge-sm"><i class="fas fa-birthday-cake text-pink-300"></i> ${p.age}</span>` : ''}
                         ${socialInfo ? `<span class="room-profile-mini-badge room-profile-mini-badge-sm"><i class="fas ${socialInfo.icon} text-red-300"></i> ${escapeHtml(socialInfo.text)}</span>` : ''}
@@ -3184,8 +3161,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             });
             modal.querySelectorAll('.room-profile-support-badge').forEach(el => {
                 el.addEventListener('click', () => {
-                    const kind = el.dataset.supportKind;
-                    showSupportLevelInfoModal(kind, kind === 'giving' ? p.supportGiving : p.supportReceiving, p.profileImage, p.username);
+                    showSupportLevelInfoModal('giving', p.supportGiving, p.profileImage, p.username);
                 });
             });
             modal.querySelector('#room-profile-achv-card')?.addEventListener('click', () => {
@@ -3440,8 +3416,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ شارة "قفل" أنيقة على خيار مقاعد غير مفتوح بعد + رقم المستوى المطلوب — نص المولّد
     // مستقل تماماً حتى يسهل إعادة استخدامه بأي مكان لاحقاً بلا اعتماد على متغيرات نافذة بعينها
     function buildSeatTierOptionsHTML(currentSeatCount) {
-        const tierUnlockLevel = { 9: 1, 15: 3, 24: 5 };
-        return [9, 15, 24].map(n => {
+        const tierUnlockLevel = { 9: 1, 13: 3, 19: 5 };
+        return [9, 13, 19].map(n => {
             const unlocked = currentRoomUnlockedSeatCounts.includes(n);
             const isCurrent = n === currentSeatCount;
             const classes = ['seat-tier-btn'];
@@ -3573,7 +3549,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         el.innerHTML = `
             <div class="room-levelup-card support-levelup-card" style="--tier-c1:${c1};--tier-c2:${c2}">
                 <i class="fas ${tierIcon} room-levelup-icon"></i>
-                <p class="room-levelup-title">ارتقيت بمستوى ${kind === 'giving' ? 'الدعم' : 'التلقي'}!</p>
+                <p class="room-levelup-title">ارتقيت بمستوى الثروة!</p>
                 <p class="room-levelup-level">Lv.${newLevel} · ${escapeHtml(tierName || '')}</p>
             </div>
         `;
@@ -5975,13 +5951,14 @@ async function showFrameShopModal() {
         `;
         preview.querySelector('#frame-shop-remove-btn')?.addEventListener('click', () => equipFrame(null));
 
-        // ✅ الشبكة الرئيسية = فقط ما لم يُشترَ بعد؛ أي إطار مملوك (ownedInstance) انتقل كلياً
-        // للصندوق — لا يظهر هنا إطلاقاً بعد الآن (طلب صريح)
+        // ✅ طلب صريح: الإطار يبقى متاحاً للشراء دائماً حتى لو كان مملوكاً فعلاً — الشبكة الرئيسية
+        // تعرض كل الإطارات القابلة للشراء بصرف النظر عن الملكية (الشراء المتكرر يُضيف المدة
+        // الجديدة للمتبقي بالصندوق بدل رفضه)؛ الصندوق يبقى منفصلاً لإدارة/تفعيل المملوك فقط
         const grid = modal.querySelector('#frame-shop-grid');
-        const buyable = data.frames.filter(f => f.name !== 'إطار الترحيب' && f.name !== 'إطار المثابر' && !f.ownedInstance);
+        const buyable = data.frames.filter(f => f.name !== 'إطار الترحيب' && f.name !== 'إطار المثابر' && !f.adminOnly);
         grid.innerHTML = buyable.length
             ? buyable.map(f => frameShopCardHTML(f, userPhoto)).join('')
-            : `<p class="frame-shop-empty-note">امتلكت كل الإطارات المتاحة حالياً 🎉</p>`;
+            : `<p class="frame-shop-empty-note">لا توجد إطارات متاحة حالياً</p>`;
         bindCardEvents();
     }
 
@@ -6006,19 +5983,9 @@ async function showFrameShopModal() {
             }).then(r => r.json());
             if (res.status === 'success') {
                 showNotification(res.message, 'success');
-                // ✅ تحديث البيانات المحلية المخزَّنة مباشرة من رد الشراء نفسه (الكوينز الجديدة
-                // + تسجيل الملكية) بدل إعادة جلب /api/frames/shop بالكامل من الصفر — نفس تأثير
-                // reload() البصري فوراً، بلا طلب شبكة ثانٍ ولا إعادة تحميل صور كل الإطارات.
-                // hasUnseenBox:true فوراً — الشراء بالتعريف "شيء جديد" بالصندوق (نقطة حمراء)
-                if (lastShopData && typeof res.data?.newCoins === 'number') {
-                    lastShopData.coins = res.data.newCoins;
-                    const frame = lastShopData.frames.find(f => f._id.toString() === frameId.toString());
-                    if (frame) frame.ownedInstance = { purchasedAt: new Date(), durationDays: parseInt(duration), activatedAt: null, expiresAt: null, seenInBox: false };
-                    lastShopData.hasUnseenBox = true;
-                    renderShopState(lastShopData);
-                } else {
-                    await reload();
-                }
+                // ✅ منطق التكديس (مدة جديدة فوق متبقية/تمديد تاريخ انتهاء مُفعَّل) يتم بالخادم
+                // فقط — إعادة جلب كاملة بدل تحديث محلي تخميني يضمن تطابق الصندوق مع الواقع دوماً
+                await reload();
                 refreshUserData(); // 🔄 مزامنة رصيد الكوينز بالرأس/الشريط الجانبي — بالخلفية، بلا انتظار
             } else {
                 showNotification(res.message || 'فشل الشراء', 'error');
@@ -6575,23 +6542,15 @@ function updateUIWithUserData(userData) {
     // كاذبة عند أول فتح للتطبيق؛ راجع setHeaderCoins للتحديثات الحقيقية اللاحقة بكل مكان آخر
     const coinsHeaderEl = document.getElementById('coins');
     if (coinsHeaderEl) coinsHeaderEl.textContent = Number(userData.coins || 0).toLocaleString('en-US');
-    document.getElementById('userLevel').textContent = userData.level;
 
     const profileImgEl = document.getElementById('profileImage');
     if (profileImgEl) {
         profileImgEl.src = userData.profileImage;
         applyFrameToAvatar(profileImgEl, userData.activeFrameClass);
     }
-    
+
     document.getElementById('user-status-text').textContent = userData.status || '🚀 جاهز للتحديات!';
-    
-    const requiredXP = calculateRequiredXp(userData.level);
-    document.getElementById('currentXP').textContent = Math.floor(userData.experience);
-    document.getElementById('requiredXP').textContent = requiredXP;
-    
-    const progressPercentage = (userData.experience / requiredXP) * 100;
-    document.getElementById('xp-bar').style.width = `${progressPercentage}%`;
-    
+
     const friendsCount = userData.friends ? userData.friends.length : 0;
     document.getElementById('friends-count').textContent = friendsCount;
     
@@ -7533,23 +7492,17 @@ function showXpGainAnimation(amount) {
         }
     });
 
-    // ✅ شارتا الدعم/التلقي تحدّثتا (هدية أُرسلت أو استُلمت، أو انضمام نادي معجبين) — تحديث
-    // حي لأي واجهة مفتوحة حالياً تعرض شارات هذا المستخدم تحديداً (نافذة ملف الغرفة الوحيدة
-    // التي تعرضها اليوم؛ يُتجاهل بصمت لو لا شيء مفتوحاً له)
-    socket.on('support-level-updated', ({ userId, giving, receiving }) => {
+    // ✅ شارة الثروة تحدّثت (هدية أُرسلت) — تحديث حي لأي واجهة مفتوحة حالياً تعرض شارات هذا
+    // المستخدم تحديداً (نافذة ملف الغرفة الوحيدة التي تعرضها اليوم؛ يُتجاهل بصمت لو لا شيء
+    // مفتوحاً له)
+    socket.on('support-level-updated', ({ userId, giving }) => {
         const sheet = document.getElementById('user-profile-sheet');
         if (sheet && sheet.dataset.userId === userId) {
             const givingBadge = sheet.querySelector('.support-badge-giving');
-            const receivingBadge = sheet.querySelector('.support-badge-receiving');
             if (givingBadge) {
                 givingBadge.className = `support-badge support-badge-giving tier-${giving.tierIndex}`;
                 const lvl = givingBadge.querySelector('.support-badge-level');
                 if (lvl) lvl.textContent = giving.level;
-            }
-            if (receivingBadge) {
-                receivingBadge.className = `support-badge support-badge-receiving tier-${receiving.tierIndex}`;
-                const lvl = receivingBadge.querySelector('.support-badge-level');
-                if (lvl) lvl.textContent = receiving.level;
             }
         }
         // ✅ معاينة مستوى الدعم فوق نافذة الهدايا (طلب صريح: "عند الإرسال يتقدّم حياً") —
@@ -8217,17 +8170,9 @@ socket.on('experienceUpdate', ({ level, experience, requiredXp, xpGained }) => {
     // عرض أنيميشن اكتساب الخبرة
     showXpGainAnimation(xpGained);
 
-    // ✅ الإصلاح: هذه هي العناصر الحقيقية الموجودة في index.html
-    // (لم يكن هناك عنصر بمعرف #level-container أصلاً، لذا لم تتحدث الأرقام إلا بعد تحديث الصفحة)
-    const levelSpan = document.getElementById('userLevel');
-    const currentXpSpan = document.getElementById('currentXP');
-    const requiredXpSpan = document.getElementById('requiredXP');
-    const xpBar = document.getElementById('xp-bar');
-
-    if (levelSpan) levelSpan.textContent = level;
-    if (currentXpSpan) currentXpSpan.textContent = Math.floor(experience);
-    if (requiredXpSpan) requiredXpSpan.textContent = requiredXp;
-    if (xpBar) xpBar.style.width = `${Math.min((experience / requiredXp) * 100, 100)}%`;
+    // 🗑️ طلب صريح: واجهة المستوى القديمة أُزيلت من كل مكان (الشريط الجانبي/الملف الشخصي) —
+    // تبقى هذه المزامنة لتحديث level/experience بـlocalStorage فقط (تُستخدم بمكان آخر لفحوصات
+    // مثل بوابة ميزة الرسالة الواحدة)، بلا أي لمس DOM بعد الآن
 
     // تحديث بيانات المستخدم في localStorage
     const localUser = JSON.parse(localStorage.getItem('user'));
@@ -8730,17 +8675,10 @@ function renderProfileHubBody(u) {
         </div>
 
         <div id="profile-hub-tab-honor" class="honor-board">
-            <div class="honor-row honor-row-receiving" id="profile-hub-honor-receiving">
-                <div class="honor-row-left"><i class="fas fa-microphone"></i> مستوى التلقي</div>
-                <div class="honor-row-right">
-                    ${renderSupportBadgeHTML('receiving', u.supportReceiving)}
-                    <i class="fas fa-chevron-left honor-row-chevron"></i>
-                </div>
-            </div>
             <div class="honor-row honor-row-giving" id="profile-hub-honor-giving">
-                <div class="honor-row-left"><i class="fas fa-bullhorn"></i> مستوى الدعم</div>
+                <div class="honor-row-left"><i class="fas fa-gem"></i> الثروة</div>
                 <div class="honor-row-right">
-                    ${renderSupportBadgeHTML('giving', u.supportGiving)}
+                    ${renderRoomProfileSupportBadgeHTML('giving', u.supportGiving)}
                     <i class="fas fa-chevron-left honor-row-chevron"></i>
                 </div>
             </div>
@@ -8818,9 +8756,6 @@ function renderProfileHubBody(u) {
             document.getElementById('profile-hub-tab-video').style.display = isHonor ? 'none' : '';
         });
     });
-    document.getElementById('profile-hub-honor-receiving')?.addEventListener('click', () => {
-        showSupportLevelInfoModal('receiving', u.supportReceiving, u.profileImage, u.username);
-    });
     document.getElementById('profile-hub-honor-giving')?.addEventListener('click', () => {
         showSupportLevelInfoModal('giving', u.supportGiving, u.profileImage, u.username);
     });
@@ -8862,6 +8797,7 @@ function showProfileHubSettingsSheet() {
                 <div class="profile-hub-settings-list">
                     <button class="profile-hub-settings-row" id="profile-hub-full-settings-btn"><i class="fas fa-user-cog"></i><span>الحساب والخصوصية والمزيد</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
                     <button class="profile-hub-settings-row" id="profile-hub-badges-btn"><i class="fas fa-certificate text-yellow-400"></i><span>الشارات</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
+                    <button class="profile-hub-settings-row" id="profile-hub-frame-shop-btn"><i class="fas fa-crown" style="color:#fbbf24"></i><span>متجر الإطارات</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
                     ${['عام', 'التنبيهات', 'اللغة', 'ذاكرة نظيفة', 'جودة الفيديو', 'مفضّلة'].map(label => `
                         <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
                     `).join('')}
@@ -8890,6 +8826,10 @@ function showProfileHubSettingsSheet() {
     document.getElementById('profile-hub-badges-btn')?.addEventListener('click', () => {
         modal.remove();
         showBadgesSettingsSheet();
+    });
+    document.getElementById('profile-hub-frame-shop-btn')?.addEventListener('click', () => {
+        modal.remove();
+        showFrameShopModal();
     });
     modal.querySelectorAll('.profile-hub-settings-soon').forEach(btn => {
         btn.addEventListener('click', () => showNotification(`قسم "${btn.dataset.label}" قيد إعادة الهيكلة، قريباً جداً`, 'info'));
@@ -9202,7 +9142,6 @@ function renderFollowPersonRowHTML(u, extraClass = '') {
             <img src="${u.profileImage}" class="follow-connection-avatar ${u.activeFrameClass || ''}">
             <div class="min-w-0 flex-1">
                 <p class="follow-connection-name">${escapeHtml(u.username)}</p>
-                <p class="follow-connection-level">Lv.${u.level || 1}</p>
             </div>
             <button type="button" class="follow-connection-btn ${u.isFollowedByMe ? 'following' : ''}" data-user-id="${u._id}">${u.isFollowedByMe ? 'متابَع' : 'متابعة'}</button>
         </div>
@@ -9233,7 +9172,7 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
     modal.className = 'fixed inset-0 bg-black/70 z-[335] flex items-end md:items-center justify-center';
     modal.innerHTML = `
         <div class="follow-connections-card">
-            <div class="flex items-center justify-between p-3 border-b border-gray-700 flex-shrink-0">
+            <div class="flex items-center justify-between p-3 flex-shrink-0" style="border-bottom:1px solid rgba(255,255,255,0.08)">
                 <p class="font-bold text-sm truncate">${escapeHtml(username || '')}</p>
                 <button id="close-follow-connections" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
             </div>
@@ -9944,21 +9883,9 @@ function buildSocialLinkUrl(platform, rawValue) {
     return null;
 }
 
-// ✅ شارة دعم/تلقي واحدة — كبسولة صغيرة مقسومة لجزأين (أيقونة + رقم المستوى)، بنفس أسلوب
-// شارات مستوى تطبيقات البث الشهيرة. يميّزهما فقط data-support-kind (يحدّد اللون بالـCSS)
-// وأيقونة الجزء الأول (بوق/مكبّر صوت للدعم، ميكروفون للتلقي) — تُستخدم بنافذة ملف الغرفة
-// وبالملف الكامل معاً
-function renderSupportBadgeHTML(kind, info) {
-    if (!info) return '';
-    const icon = kind === 'giving' ? 'fa-bullhorn' : 'fa-microphone';
-    const label = kind === 'giving' ? 'مستوى الدعم' : 'مستوى التلقي';
-    return `
-        <span class="support-badge support-badge-${kind} tier-${info.tierIndex}" data-support-kind="${kind}" title="${label}">
-            <span class="support-badge-icon-seg"><i class="fas ${icon}"></i></span>
-            <span class="support-badge-level-seg">Lv.${info.level}</span>
-        </span>
-    `;
-}
+// 🗑️ طلب صريح: شارة "الثروة" بالملف الكامل/مركز الملف الشخصي أصبحت تستخدم صورة الشارة
+// المُدرَّجة (renderRoomProfileSupportBadgeHTML) في كل مكان بدل الكبسولة اللونية القديمة —
+// renderSupportBadgeHTML أصبحت بلا أي نداء متبقٍ، أُزيلت بالكامل
 
 // ✅ طلب صريح: استبدال شارات مستوى الدعم بـ8 صور جديدة موزَّعة على مستويات 1-80 (10 مستويات
 // لكل صورة بدل التدرّج القديم بـ3 صور حسب الفئة فقط) — الثامنة ("المكس") للمستويات الأسطورية
@@ -9978,14 +9905,13 @@ function supportBadgeImageForLevel(level) {
     const idx = Math.min(7, Math.max(0, Math.floor((level - 1) / 10)));
     return SUPPORT_LEVEL_BADGE_IMAGES[idx];
 }
-// ✅ نسخة مصغّرة "طافية" (بلا خلفية/توهّج) من شارة الدعم/التلقي، بصور شارات حقيقية تتدرّج
-// مع المستوى الفعلي (1-80) بدل الكبسولة اللونية — خاصة بنافذة ملف الغرفة (showUserProfileSheet)
+// ✅ نسخة مصغّرة "طافية" (بلا خلفية/توهّج) من شارة "الثروة"، بصور شارات حقيقية تتدرّج مع
+// المستوى الفعلي (1-80) بدل الكبسولة اللونية — خاصة بنافذة ملف الغرفة (showUserProfileSheet)
 // فقط، لا تمسّ renderSupportBadgeHTML المستخدَمة بالملف الكامل ولوحة الشرف بمكان آخر
 function renderRoomProfileSupportBadgeHTML(kind, info) {
     if (!info) return '';
-    const label = kind === 'giving' ? 'مستوى الدعم' : 'مستوى التلقي';
     return `
-        <span class="room-profile-support-badge" data-support-kind="${kind}" title="${label}">
+        <span class="room-profile-support-badge" data-support-kind="giving" title="الثروة">
             <span class="room-profile-support-badge-imgwrap">
                 <img src="${supportBadgeImageForLevel(info.level)}" class="room-profile-support-badge-img" alt="">
                 <span class="room-profile-support-badge-ribbon">${info.level}</span>
@@ -10151,14 +10077,6 @@ function supportMissionsGivingHTML(missions, giftSentToday, streak) {
         </div>
     `;
 }
-function supportMissionsReceivingHTML() {
-    return `
-        <div class="support-mission-receiving-note">
-            <i class="fas fa-gift"></i>
-            <p>يرتفع هذا المستوى تلقائياً كل ما استلمت هدايا من الآخرين — لا مهام لإنجازها هنا، فقط كن نشطاً وودوداً واستمتع بالبث!</p>
-        </div>
-    `;
-}
 
 // ✅ نافذة معلومات شارة الأدمن — تُفتح بنقرة واحدة من أي مكان تُعرض فيه الشارة (ملف كامل/ملف
 // مصغّر بالغرفة)، عبر التفويض الموحَّد بـdocument.body (راجع ".admin-special-badge" أعلاه).
@@ -10293,22 +10211,34 @@ const PROFILE_BADGE_REGISTRY = [
         hasBadge: (u) => !!u.isAdmin,
         isVisible: (u) => u.adminBadgeVisible !== false,
         setVisible: (visible) => setAdminBadgeVisibility(visible)
+    },
+    // ✅ طلب صريح: شارات "نجم نادي المعجبين الأسبوعي" (weeklyWins) أصبحت قابلة للتحكم من هنا
+    // أيضاً (كانت مستثناة سابقاً) — تحكّم واحد يخفي/يظهر كل شارات الأسبوع معاً (لا شارة لكل
+    // نادٍ على حدة)؛ hasBadge يعتمد على extra.weeklyWinsCount المُجلَب مسبقاً (لا بيانات
+    // كافية بكائن المستخدم المحلي وحده لمعرفة هل فاز بأي نادٍ الأسبوع الماضي)
+    {
+        id: 'fanclub-weekly',
+        icon: 'fa-crown',
+        title: 'نجم نادي المعجبين الأسبوعي',
+        sub: 'إظهار شارات فوزك الأسبوعي بملفك الشخصي أمام الزوّار',
+        hasBadge: (u, extra) => (extra?.weeklyWinsCount || 0) > 0,
+        isVisible: (u) => u.fanClubBadgesVisible !== false,
+        setVisible: (visible) => setFanClubBadgesVisibility(visible)
     }
 ];
 
 // ✅ قسم "المعلومات الشخصية والموقع" داخل ورقة الشارات — صلاحية إخفائها عن الزوّار تُفتح فقط
-// عند بلوغ مستوى 7 بأحد مساري الدعم (سخاء أو تلقٍّ)؛ قبل ذلك يظهر صفّ موضَّح بدل مفتاح تبديل
-// فعّال (الفحص الحقيقي الملزم بالخادم نفسه — راجع updatePersonalInfoVisibility — هذا فقط واجهة)
+// عند بلوغ مستوى 7 بالثروة؛ قبل ذلك يظهر صفّ موضَّح بدل مفتاح تبديل فعّال (الفحص الحقيقي
+// الملزم بالخادم نفسه — راجع updatePersonalInfoVisibility — هذا فقط واجهة)
 function renderPersonalInfoGateHTML(cachedUser) {
     const givingLevel = cachedUser.supportGiving?.level || 0;
-    const receivingLevel = cachedUser.supportReceiving?.level || 0;
-    const unlocked = givingLevel >= 7 || receivingLevel >= 7;
+    const unlocked = givingLevel >= 7;
     return `
         <div class="badges-settings-row">
             <span class="badges-settings-row-icon"><i class="fas fa-user-shield"></i></span>
             <div class="badges-settings-row-text">
                 <p class="badges-settings-row-title">المعلومات الشخصية والموقع</p>
-                <p class="badges-settings-row-sub">${unlocked ? 'إظهارها بملفك الشخصي أمام الزوّار' : 'يتوفّر عند الوصول لمستوى 7 بالدعم أو التلقي 🔒'}</p>
+                <p class="badges-settings-row-sub">${unlocked ? 'إظهارها بملفك الشخصي أمام الزوّار' : 'يتوفّر عند الوصول لمستوى 7 بالثروة 🔒'}</p>
             </div>
             ${unlocked ? `
                 <label class="hub-toggle">
@@ -10320,9 +10250,19 @@ function renderPersonalInfoGateHTML(cachedUser) {
     `;
 }
 
-function showBadgesSettingsSheet() {
+async function showBadgesSettingsSheet() {
     const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
-    const ownedBadges = PROFILE_BADGE_REGISTRY.filter(b => b.hasBadge(cachedUser));
+    // ✅ عدد مرات الفوز الأسبوعي الفعلي — يلزم لمعرفة هل يملك المستخدم شارة "نجم النادي
+    // الأسبوعي" أصلاً (hasBadge بالسجلّ أعلاه)، بلا انتظار طويل لو فشل الطلب لأي سبب
+    let weeklyWinsCount = 0;
+    try {
+        if (cachedUser._id) {
+            const res = await fetch(`/api/fanclub/${cachedUser._id}/weekly-wins`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+            if (res.status === 'success') weeklyWinsCount = res.data.wins.length;
+        }
+    } catch (error) { /* صامت — تعذّر الجلب يعني فقط عدم إظهار صفّ الشارة، لا يمنع فتح النافذة */ }
+    const extra = { weeklyWinsCount };
+    const ownedBadges = PROFILE_BADGE_REGISTRY.filter(b => b.hasBadge(cachedUser, extra));
     document.getElementById('badges-settings-sheet')?.remove();
     const modal = document.createElement('div');
     modal.id = 'badges-settings-sheet';
@@ -10330,13 +10270,13 @@ function showBadgesSettingsSheet() {
     modal.innerHTML = `
         <div class="profile-hub-subsheet-card w-full md:max-w-sm">
             <div class="flex items-center justify-between mb-3">
-                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-certificate text-yellow-400"></i> الشارات</p>
+                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-certificate" style="color:#d4c593"></i> الشارات</p>
                 <button id="close-badges-settings" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
             </div>
             <div class="badges-settings-list">
                 ${ownedBadges.map(b => `
                     <div class="badges-settings-row" data-badge-id="${b.id}">
-                        <img src="${b.img()}" class="badges-settings-row-img" alt="">
+                        ${b.icon ? `<span class="badges-settings-row-icon"><i class="fas ${b.icon}" style="color:#fbbf24"></i></span>` : `<img src="${b.img()}" class="badges-settings-row-img" alt="">`}
                         <div class="badges-settings-row-text">
                             <p class="badges-settings-row-title">${escapeHtml(b.title)}</p>
                             <p class="badges-settings-row-sub">${escapeHtml(b.sub)}</p>
@@ -10348,15 +10288,6 @@ function showBadgesSettingsSheet() {
                     </div>
                 `).join('')}
                 ${renderPersonalInfoGateHTML(cachedUser)}
-                <button type="button" id="badges-open-frame-shop-btn" class="badges-settings-row badges-settings-row-link">
-                    <span class="badges-settings-row-icon"><i class="fas fa-crown" style="color:#fbbf24"></i></span>
-                    <div class="badges-settings-row-text">
-                        <p class="badges-settings-row-title">متجر الإطارات</p>
-                        <p class="badges-settings-row-sub">تصفّح وتفعيل إطارات صورتك الشخصية</p>
-                    </div>
-                    <button type="button" id="badges-frame-shop-report-btn" class="report-issue-icon-btn" style="width:22px;height:22px;flex-shrink:0;" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle" style="font-size:0.6rem;"></i></button>
-                    <i class="fas fa-chevron-left profile-hub-chevron"></i>
-                </button>
             </div>
         </div>
     `;
@@ -10380,11 +10311,6 @@ function showBadgesSettingsSheet() {
         else e.target.checked = !e.target.checked;
     });
 
-    document.getElementById('badges-open-frame-shop-btn').addEventListener('click', () => showFrameShopModal());
-    document.getElementById('badges-frame-shop-report-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        showQuickSupportModal('frame_issue', 'مشكلة في الإطارات');
-    });
 }
 
 // ✅ راجع updatePersonalInfoVisibility بالخادم — نفس نمط setAdminBadgeVisibility بالضبط
@@ -10407,7 +10333,28 @@ async function setPersonalInfoVisibility(visible) {
     }
 }
 
-// ✅ لوحة "تفاصيل شارة الدعم/التلقي" — أُعيد بناؤها بالكامل كبطاقة عضوية فاخرة (hero card)
+// ✅ نفس نمط setAdminBadgeVisibility/setPersonalInfoVisibility بالضبط — تحكّم واحد لكل شارات
+// "نجم النادي الأسبوعي" معاً
+async function setFanClubBadgesVisibility(visible) {
+    try {
+        const response = await fetch('/api/users/me/fanclub-badges-visibility', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ visible })
+        });
+        const result = await response.json();
+        if (result.status !== 'success') throw new Error(result.message || '');
+        const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        cachedUser.fanClubBadgesVisible = result.data.fanClubBadgesVisible;
+        localStorage.setItem('user', JSON.stringify(cachedUser));
+        return true;
+    } catch (error) {
+        showNotification(error.message || 'تعذّر حفظ التغيير، حاول مجدداً', 'error');
+        return false;
+    }
+}
+
+// ✅ لوحة "تفاصيل شارة الثروة" — أُعيد بناؤها بالكامل كبطاقة عضوية فاخرة (hero card)
 // بتدرّج لوني حقيقي يتبدّل تلقائياً حسب فئة المستخدم (--tier-c1/--tier-c2 من computeSupportLevelInfo)
 // بدل ثيم ذهبي ثابت للجميع بغضّ النظر عن رتبتهم الفعلية؛ صورته داخل إطار أبيض شفاف + شارة
 // المستوى كأيقونة صغيرة بزاويتها، شريط تقدّم مدمج بالبطاقة، زر "!" يفتح جدول الخبرة الكامل،
@@ -10419,8 +10366,8 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
     const modal = document.createElement('div');
     modal.id = 'support-info-modal';
     modal.className = 'fixed inset-0 bg-black/70 flex items-end justify-center z-[340]';
-    const title = kind === 'giving' ? 'مستوى الدعم' : 'مستوى التلقي';
-    const kindIcon = kind === 'giving' ? 'fa-bullhorn' : 'fa-microphone';
+    const title = 'الثروة';
+    const kindIcon = 'fa-gem';
     const badgeImg = supportBadgeImageForLevel(info.level);
     const [c1, c2] = info.tierGradient;
 
@@ -10533,11 +10480,6 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
     }
 
     async function loadMissionsFace() {
-        if (kind !== 'giving') {
-            backFace.innerHTML = supportMissionsReceivingHTML();
-            syncFlipHeight();
-            return;
-        }
         try {
             const res = await fetch('/api/users/support/missions', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
             const missions = res.status === 'success' ? res.data.missions : [];
@@ -11601,6 +11543,31 @@ async function showFanClubGiftPicker(s, onSaved) {
 }
 
 // ✅ نافذة "هل تود متابعته؟" — تظهر بعد فتح محادثة خاصة مع شخص لست تتابعه بعد، يمكن تجاهلها
+// ✅ كاشف سحب أفقي بسيط عام — يستدعي onSwipe() عند أي سحب أفقي حاسم (حركة أفقية ≥ 45px
+// وأكبر وضوحاً من أي حركة عمودية مصاحبة، كي لا يتعارض مع التمرير العمودي العادي للصفحة).
+// بديل بالسحب لا يستبدل النقر على التبويبات — كلاهما يعمل معاً (طلب صريح: "خلي عند التنقل
+// بينهم مثل سحب")؛ يدعم اللمس والفأرة معاً عبر Pointer Events
+function attachSwipeTabSwitch(el, onSwipe) {
+    if (!el) return;
+    let startX = 0, startY = 0, tracking = false;
+    const SWIPE_THRESHOLD = 45;
+    el.addEventListener('pointerdown', (e) => {
+        tracking = true;
+        startX = e.clientX;
+        startY = e.clientY;
+    });
+    el.addEventListener('pointerup', (e) => {
+        if (!tracking) return;
+        tracking = false;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (Math.abs(dx) >= SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            onSwipe(dx < 0 ? 'left' : 'right');
+        }
+    });
+    el.addEventListener('pointercancel', () => { tracking = false; });
+}
+
 function showFollowPromptModal(userId, username, profileImage) {
     document.getElementById('follow-prompt-modal')?.remove();
     const modal = document.createElement('div');
@@ -11664,6 +11631,9 @@ async function showFullProfilePage(userId) {
         if (userRes.status !== 'success') throw new Error();
         const u = userRes.data.user;
         const giftsReceivedCount = (giftSummaryRes && giftSummaryRes.status === 'success') ? giftSummaryRes.data.totalGiftsCount : 0;
+        // ✅ تفصيل الهدايا المستلمة حسب النوع (صورة/اسم/عدد) — لعرضه كشريط فيلم قابل للسحب
+        // بلوحة الشرف (طلب صريح) بدل رقم إجمالي وحيد بلا تفاصيل
+        const giftsBreakdown = (giftSummaryRes && giftSummaryRes.status === 'success') ? (giftSummaryRes.data.gifts || []) : [];
         const fanClubMemberCount = (fanClubSummaryRes && fanClubSummaryRes.status === 'success') ? fanClubSummaryRes.data.memberCount : 0;
         // ✅ اسم نادي هذا المستخدم الحقيقي (المخصَّص عبر إعادة التسمية) — بدل تسمية ثابتة عامة،
         // يعكس زر البطاقة دوماً آخر اسم اعتمده صاحب النادي، مطابقاً لعنوان ورقة النادي نفسها
@@ -11685,21 +11655,28 @@ async function showFullProfilePage(userId) {
             <div class="full-profile-identity">
                 <h2 class="full-profile-name">${escapeHtml(u.username)} ${getAgentBadgeHTML(u.isAgent)}</h2>
                 <p class="full-profile-id">ID: ${escapeHtml(String(u.customId || ''))}</p>
+                <!-- ✅ طلب صريح: فصل الشارات لمجموعات منطقية بدل صفّ واحد مختلط — الهوية
+                     (أدمن/الثروة) أولاً وأبرز، ثم المعلومات الشخصية الديموغرافية، ثم شارات
+                     الإنجاز الأسبوعية (ذهبية) بصفّها الخاص أخيراً لو وُجدت -->
                 <div class="full-profile-badge-row">
                     ${renderAdminBadgeHTML(u)}
-                    ${renderSupportBadgeHTML('giving', u.supportGiving)}
-                    ${renderSupportBadgeHTML('receiving', u.supportReceiving)}
-                    <span class="full-profile-mini-badge"><i class="fas fa-star text-yellow-400"></i> Lv.${u.level || 1}</span>
+                    ${renderRoomProfileSupportBadgeHTML('giving', u.supportGiving)}
+                </div>
+                <div class="full-profile-info-row">
                     <span class="full-profile-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
                     <span class="full-profile-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${u.age} سنة</span>
                     ${u.socialStatus ? `<span class="full-profile-mini-badge"><i class="fas ${socialInfo.icon} text-red-400"></i> ${escapeHtml(socialInfo.text)}</span>` : ''}
                     ${u.educationStatus ? `<span class="full-profile-mini-badge"><i class="fas ${educationInfo.icon} text-blue-400"></i> ${escapeHtml(educationInfo.text)}</span>` : ''}
+                </div>
+                ${weeklyWins.length ? `
+                <div class="full-profile-weekly-row">
                     ${weeklyWins.map(w => `
-                        <button type="button" class="full-profile-mini-badge full-profile-weekly-badge" data-owner-id="${w.ownerId}" data-owner-username="${escapeHtml(w.ownerUsername)}" data-owner-image="${escapeHtml(w.ownerProfileImage)}" title="نجم نادي ${escapeHtml(w.ownerUsername)} الأسبوعي">
+                        <button type="button" class="full-profile-weekly-badge" data-owner-id="${w.ownerId}" data-owner-username="${escapeHtml(w.ownerUsername)}" data-owner-image="${escapeHtml(w.ownerProfileImage)}" title="نجم نادي ${escapeHtml(w.ownerUsername)} الأسبوعي">
                             <i class="fas fa-crown"></i> نجم نادي ${escapeHtml(w.ownerUsername)}
                         </button>
                     `).join('')}
                 </div>
+                ` : ''}
                 <p class="full-profile-bio-text">${escapeHtml(u.status || '🚀 جاهز للتحديات!')}</p>
                 ${(() => {
                     const links = [
@@ -11719,73 +11696,76 @@ async function showFullProfilePage(userId) {
                     <span class="full-profile-stat-num">${u.followingCount ?? 0}</span>
                     <span class="full-profile-stat-label">متابَعة</span>
                 </button>
+                <span class="full-profile-stats-divider"></span>
                 <button type="button" id="full-profile-followers-stat" class="full-profile-stat-clickable">
                     <span class="full-profile-stat-num">${u.followersCount ?? 0}</span>
                     <span class="full-profile-stat-label">متابعون</span>
                 </button>
             </div>
 
-            <!-- ✅ تبويبا "لوحة الشرف"/"فيديو" — إلهام تصميمي من تطبيقات البث المعروفة: صفوف
-                 ملوّنة (مستوى التلقي/الدعم/الإنجازات/الحماة+نادي المعجبين/الهدايا)؛ الفيديو
-                 لا يزال "قريباً" فقط حسب الطلب -->
+            <!-- ✅ طلب صريح: تبديل مكانَي التبويبين (فيديو أولاً، لوحة الشرف ثانياً) + تباعد أكبر
+                 بينهما + تبديل بالسحب (راجع attachFullProfileTabSwipe أسفل) إضافة للنقر -->
             <div class="full-profile-tabs">
-                <span class="full-profile-tab active" data-tab="honor">لوحة الشرف</span>
                 <span class="full-profile-tab" data-tab="video">فيديو</span>
+                <span class="full-profile-tab active" data-tab="honor">لوحة الشرف</span>
             </div>
 
-            <div id="full-profile-tab-honor" class="honor-board">
-                <div class="honor-row honor-row-receiving" id="honor-row-receiving">
-                    <div class="honor-row-left"><i class="fas fa-microphone"></i> مستوى التلقي</div>
-                    <div class="honor-row-right">
-                        ${renderSupportBadgeHTML('receiving', u.supportReceiving)}
-                        <i class="fas fa-chevron-left honor-row-chevron"></i>
+            <div id="full-profile-tabs-viewport" class="full-profile-tabs-viewport">
+                <div id="full-profile-tab-honor" class="honor-board">
+                    <!-- ✅ طلب صريح: استغلال أذكى للمساحة — 4 بطاقات مصغّرة بشبكة 2×2 (الثروة/
+                         الإنجازات/الحماة/نادي المعجبين) بدل صفّين طويلين + صفّ مزدوج منفصل -->
+                    <div class="honor-split-row honor-split-row-4">
+                        <div class="honor-mini-card" id="honor-row-giving">
+                            <div class="honor-mini-top"><i class="fas fa-gem"></i> الثروة</div>
+                            ${renderRoomProfileSupportBadgeHTML('giving', u.supportGiving)}
+                        </div>
+                        <div class="honor-mini-card" id="full-profile-achv-row">
+                            <div class="honor-mini-top"><i class="fas fa-medal" style="color:#f87171"></i> الإنجازات</div>
+                            <span class="honor-mini-soon">قريباً</span>
+                        </div>
+                        <div class="honor-mini-card" id="full-profile-guardian-card">
+                            <div class="honor-mini-top"><i class="fas fa-chevron-left"></i> 0</div>
+                            <span class="club-icon-guardian" style="margin:0 auto">
+                                <i class="fas fa-shield-halved club-icon-shield"></i>
+                                <i class="fas fa-heart club-icon-shield-heart"></i>
+                            </span>
+                            <p class="honor-mini-title">الحماة</p>
+                            <span class="honor-mini-soon">قريباً</span>
+                        </div>
+                        <div class="honor-mini-card" id="full-profile-fanclub-card">
+                            <div class="honor-mini-top"><i class="fas fa-chevron-left"></i> ${fanClubMemberCount.toLocaleString()}</div>
+                            <span class="club-icon-fanclub" style="margin:0 auto">
+                                <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
+                                <i class="fas fa-heart club-icon-heart"></i>
+                                <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
+                            </span>
+                            <p class="honor-mini-title">${escapeHtml(fanClubDisplayName)}</p>
+                        </div>
+                    </div>
+                    <!-- ✅ طلب صريح: الهدايا المستلمة كشريط فيلم أفقي قابل للسحب، أيقونات صغيرة
+                         متناسقة بدل رقم إجمالي وحيد بلا تفاصيل -->
+                    <div class="honor-gifts-section">
+                        <div class="honor-gifts-header">
+                            <span><i class="fas fa-gift" style="color:#34d399"></i> الهدايا المستلمة</span>
+                            <span class="honor-row-count">${giftsReceivedCount.toLocaleString()}</span>
+                        </div>
+                        ${giftsBreakdown.length ? `
+                        <div class="honor-gifts-filmstrip">
+                            ${giftsBreakdown.map(g => `
+                                <div class="honor-gift-chip" title="${escapeHtml(g.name || '')}">
+                                    <img src="${g.image}" alt="" loading="lazy">
+                                    <span class="honor-gift-chip-count">${g.count.toLocaleString()}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        ` : `<p class="honor-gifts-empty">لم يستلم أي هدايا بعد</p>`}
                     </div>
                 </div>
-                <div class="honor-row honor-row-giving" id="honor-row-giving">
-                    <div class="honor-row-left"><i class="fas fa-bullhorn"></i> مستوى الدعم</div>
-                    <div class="honor-row-right">
-                        ${renderSupportBadgeHTML('giving', u.supportGiving)}
-                        <i class="fas fa-chevron-left honor-row-chevron"></i>
-                    </div>
-                </div>
-                <div class="honor-row honor-row-achv" id="full-profile-achv-row">
-                    <div class="honor-row-left"><i class="fas fa-medal"></i> الإنجازات</div>
-                    <div class="honor-row-right">
-                        <span class="honor-row-count">قريباً</span>
-                        <i class="fas fa-chevron-left honor-row-chevron"></i>
-                    </div>
-                </div>
-                <div class="honor-split-row">
-                    <div class="honor-mini-card" id="full-profile-guardian-card">
-                        <div class="honor-mini-top"><i class="fas fa-chevron-left"></i> 0</div>
-                        <span class="club-icon-guardian" style="margin:0 auto">
-                            <i class="fas fa-shield-halved club-icon-shield"></i>
-                            <i class="fas fa-heart club-icon-shield-heart"></i>
-                        </span>
-                        <p class="honor-mini-title">الحماة</p>
-                        <span class="honor-mini-soon">قريباً</span>
-                    </div>
-                    <div class="honor-mini-card" id="full-profile-fanclub-card">
-                        <div class="honor-mini-top"><i class="fas fa-chevron-left"></i> ${fanClubMemberCount.toLocaleString()}</div>
-                        <span class="club-icon-fanclub" style="margin:0 auto">
-                            <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
-                            <i class="fas fa-heart club-icon-heart"></i>
-                            <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
-                        </span>
-                        <p class="honor-mini-title">${escapeHtml(fanClubDisplayName)}</p>
-                    </div>
-                </div>
-                <div class="honor-row honor-row-gifts">
-                    <div class="honor-row-left"><i class="fas fa-gift" style="color:#34d399"></i> الهدايا المستلمة</div>
-                    <div class="honor-row-right">
-                        <span class="honor-row-count">${giftsReceivedCount.toLocaleString()}</span>
-                    </div>
-                </div>
-            </div>
 
-            <div id="full-profile-tab-video" class="full-profile-video-soon" style="display:none">
-                <i class="fas fa-clapperboard"></i>
-                <p>لا توجد فيديوهات بعد — قريباً سنعمل على هذي الميزة 🎬</p>
+                <div id="full-profile-tab-video" class="full-profile-video-soon" style="display:none">
+                    <i class="fas fa-clapperboard"></i>
+                    <p>لا توجد فيديوهات بعد — قريباً سنعمل على هذي الميزة 🎬</p>
+                </div>
             </div>
 
             ${userId !== myUserId ? `
@@ -11812,18 +11792,22 @@ async function showFullProfilePage(userId) {
             });
         });
         // ✅ تبويبا لوحة الشرف/فيديو — كلا القسمين مرسومان مسبقاً بالـDOM، التبديل بينهما
-        // مجرد إظهار/إخفاء (لا نداء شبكة إضافي عند التنقل بينهما)
+        // مجرد إظهار/إخفاء (لا نداء شبكة إضافي عند التنقل بينهما). قابل للتبديل بالنقر أو
+        // بالسحب (راجع attachSwipeTabSwitch أسفل) — طلب صريح
+        function switchFullProfileTab(tabName) {
+            const isHonor = tabName === 'honor';
+            body.querySelectorAll('.full-profile-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+            document.getElementById('full-profile-tab-honor').style.display = isHonor ? '' : 'none';
+            document.getElementById('full-profile-tab-video').style.display = isHonor ? 'none' : '';
+        }
         body.querySelectorAll('.full-profile-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                body.querySelectorAll('.full-profile-tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                const isHonor = tab.dataset.tab === 'honor';
-                document.getElementById('full-profile-tab-honor').style.display = isHonor ? '' : 'none';
-                document.getElementById('full-profile-tab-video').style.display = isHonor ? 'none' : '';
-            });
+            tab.addEventListener('click', () => switchFullProfileTab(tab.dataset.tab));
         });
-        document.getElementById('honor-row-receiving')?.addEventListener('click', () => {
-            showSupportLevelInfoModal('receiving', u.supportReceiving, u.profileImage, u.username);
+        // ✅ سحب أفقي فوق منطقة محتوى التبويبين — سحب لليسار/اليمين (حد أدنى 40px بسرعة
+        // معقولة) يبدّل بين "فيديو"/"لوحة الشرف" تماماً كلو نُقر على التبويب الآخر مباشرة
+        attachSwipeTabSwitch(document.getElementById('full-profile-tabs-viewport'), () => {
+            const active = body.querySelector('.full-profile-tab.active')?.dataset.tab;
+            switchFullProfileTab(active === 'honor' ? 'video' : 'honor');
         });
         document.getElementById('honor-row-giving')?.addEventListener('click', () => {
             showSupportLevelInfoModal('giving', u.supportGiving, u.profileImage, u.username);
@@ -18665,9 +18649,7 @@ async function updateUserStatus(newStatus) {
 document.getElementById('edit-status-btn').addEventListener('click', () => {
     showStatusEditModal();
 });
-// --- ✅ ربط زر عرض مميزات المستوى ---
-document.getElementById('show-level-perks').addEventListener('click', showLevelPerksModal);
-        
+
 // --- ✅ دالة عرض نافذة تعديل الحالة ---
 function showStatusEditModal() {
     const currentStatus = document.getElementById('user-status-text').textContent;
@@ -18729,97 +18711,7 @@ function showStatusEditModal() {
 
 
 
-// --- ✅ دالة عرض مميزات المستوى التالي ---
-function showLevelPerksModal() {
-    const currentLevel = parseInt(document.getElementById('userLevel').textContent);
-    const nextLevel = currentLevel + 1;
-    
-    const perksByLevel = {
-        2: ["🎨 لون اسم مميز في الدردشة", "💬 5 رسائل يومية إضافية"],
-        3: ["🖼️ إطارات خاصة للصورة الشخصية", "🎁 هدية 50 عملة"],
-        5: ["👑 لقب 'محارب'", "⭐ دخول غرف خاصة"],
-        10: ["🏆 لقب 'بطل'", "🚀 سرعة تحميل أسرع", "🎯 مكافأة 500 XP"],
-    };
-    
-    const currentPerks = perksByLevel[currentLevel] || ["🚀 بداية رحلة التحديات!"];
-    const nextPerks = perksByLevel[nextLevel] || ["🔜 مزايا قادمة..."];
-    
-    const modalHTML = `
-        <div id="level-perks-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4">
-            <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white p-6 border-2 border-yellow-500/30">
-                <div class="text-center mb-6">
-                    <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full mb-4">
-                        <i class="fas fa-trophy text-2xl"></i>
-                    </div>
-                    <h3 class="text-xl font-bold">مميزات المستوى</h3>
-                    <p class="text-gray-400 text-sm">المستوى الحالي: <span class="text-yellow-400 font-bold">${currentLevel}</span></p>
-                </div>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <!-- المستوى الحالي -->
-                    <div class="bg-gray-800/50 p-4 rounded-xl">
-                        <h4 class="font-bold text-green-400 mb-3 flex items-center gap-2">
-                            <i class="fas fa-check-circle"></i> مميزاتك الحالية
-                        </h4>
-                        <ul class="space-y-2 text-sm">
-                            ${currentPerks.map(perk => `<li class="flex items-start gap-2"><i class="fas fa-star text-yellow-400 mt-1"></i> ${perk}</li>`).join('')}
-                        </ul>
-                    </div>
-                    
-                    <!-- المستوى التالي -->
-                    <div class="bg-gray-800/50 p-4 rounded-xl border border-yellow-500/30">
-                        <h4 class="font-bold text-yellow-400 mb-3 flex items-center gap-2">
-                            <i class="fas fa-arrow-up"></i> المستوى ${nextLevel} القادم
-                        </h4>
-                        <ul class="space-y-2 text-sm">
-                            ${nextPerks.map(perk => `<li class="flex items-start gap-2"><i class="fas fa-gift text-purple-400 mt-1"></i> ${perk}</li>`).join('')}
-                        </ul>
-                        <div class="mt-4 pt-3 border-t border-gray-700">
-                            <p class="text-xs text-gray-400">
-                                تحتاج <span class="text-yellow-400 font-bold">${calculateRequiredXp(currentLevel) - parseInt(document.getElementById('currentXP').textContent)}</span> XP إضافية
-                            </p>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="mt-6 pt-4 border-t border-gray-700">
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-400">تقدمك الحالي:</span>
-                        <span class="font-bold">${document.getElementById('currentXP').textContent} / ${document.getElementById('requiredXP').textContent} XP</span>
-                    </div>
-                    <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
-                        <div class="bg-gradient-to-r from-yellow-400 to-orange-500 h-2 rounded-full" 
-                             style="width: ${(parseInt(document.getElementById('currentXP').textContent) / parseInt(document.getElementById('requiredXP').textContent) * 100)}%"></div>
-                    </div>
-                </div>
-                
-                <div class="flex justify-center mt-6">
-                    <button id="close-perks-modal" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded-lg transition">
-                        إغلاق
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-        document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
-    
-    const modal = document.getElementById('level-perks-modal');
-    
-    // إغلاق النافذة
-    document.getElementById('close-perks-modal').addEventListener('click', () => {
-        modal.remove();
-    });
-    
-    modal.addEventListener('click', (e) => {
-        if (e.target.id === 'level-perks-modal') {
-            modal.remove();
-        }
-    });
-}
-
-// --- ✅ ربط شريط XP لعرض المميزات ---
-document.querySelector('.mt-4').addEventListener('click', showLevelPerksModal);
-        
+// 🗑️ طلب صريح: نافذة "مميزات المستوى" القديمة أُزيلت بالكامل (واجهة المستوى القديمة لم تعد
+// مرتبطة بأي زر/عنصر DOM بعد حذف شريط XP من الشريط الجانبي والملف الشخصي)
 
 }); // نهاية document.addEventListener

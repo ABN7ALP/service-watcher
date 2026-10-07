@@ -2,6 +2,7 @@ const Gift = require('../models/Gift');
 const ProfileFrame = require('../models/ProfileFrame');
 const ChatBubbleSkin = require('../models/ChatBubbleSkin');
 const User = require('../models/User');
+const VoiceRoom = require('../models/VoiceRoom');
 
 async function seedGiftsIfMissing() {
     const gifts = [
@@ -212,6 +213,24 @@ async function migrateDeleteRetiredFrames() {
     console.log(`🗑️ [MIGRATION] تم حذف ${frames.length} إطاراً متقاعداً نهائياً (${owners.length} مستخدماً سُلخ منهم الإطار)`);
 }
 
+// ✅ طلب صريح: تقليص فئتي المقاعد 15/24 إلى 13/19 (لمراعاة الإطارات الزخرفية الكبيرة على
+// المقعد) — الغرف الموجودة فعلاً بقاعدة البيانات بهذين العددين القديمين يجب تحويلها، وإلا
+// تبقى عالقة بعدد لا يطابق enum الجديد (seatCount) ولا أي صنف CSS أعمدة بالواجهة (cols-5/6
+// تُربط الآن بـ13/19 فقط). من النادر وجود جالسين فوق المقعد 13/19 لحظة إعادة تشغيل الخادم،
+// لكن احتياطاً نُنزل أي جالس برقم مقعد يتجاوز العدد الجديد قبل التقليص
+async function migrateRoomSeatTiers() {
+    const roomsToShrink = await VoiceRoom.find({ seatCount: { $in: [15, 24] } });
+    for (const room of roomsToShrink) {
+        const oldCount = room.seatCount;
+        const newCount = oldCount === 15 ? 13 : 19;
+        room.seats = room.seats.filter(s => s.seatNumber <= newCount);
+        room.seatCount = newCount;
+        if (room.adminSeatCount > newCount) room.adminSeatCount = newCount;
+        await room.save();
+        console.log(`🔧 [MIGRATION] تقليص مقاعد الغرفة "${room.name}" من ${oldCount} إلى ${newCount}`);
+    }
+}
+
 async function seedBotAccountIfMissing() {
     const existing = await User.findOne({ isBot: true });
     if (existing) return;
@@ -238,6 +257,7 @@ module.exports = async function autoSeed() {
         await seedFramesIfMissing();
         await migrateRetireOldFrames(); // ✅ بعد seedFramesIfMissing كي توجد الإطارات الجديدة أولاً كبديل
         await migrateDeleteRetiredFrames(); // ✅ طلب صريح: حذف نهائي لثلاثة منها بالاسم (راجع التعليق أعلى الدالة)
+        await migrateRoomSeatTiers(); // ✅ طلب صريح: تحويل غرف 15/24 مقعداً القديمة لـ13/19
         await seedBubbleSkinsIfMissing();
         await require('../models/OneTimeMessageLog').syncIndexes(); // ✅ سبب مشكلة رقم 6 أدناه
     } catch (error) {

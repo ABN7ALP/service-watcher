@@ -250,14 +250,14 @@ input[type="checkbox"] {
 /* ✅ أيقونة "الصندوق" — كل الإطارات المشتراة فعلياً + تفعيلها، بنقطة حمراء صغيرة عند وجود
    شراء جديد لم يُفتَح الصندوق منذ حدوثه (طلب صريح) */
 .frame-shop-box-btn {
-    position: relative; width: 30px; height: 30px; border-radius: 50%;
-    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-    color: #d1d5db; font-size: 13px; display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
+    position: relative; width: 38px; height: 38px; border-radius: 50%;
+    background: transparent; border: none;
+    color: #e5e7eb; font-size: 21px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: transform 0.12s ease, color 0.12s ease;
 }
-.frame-shop-box-btn:active { background: rgba(255,255,255,0.1); }
+.frame-shop-box-btn:active { transform: scale(0.9); color: #d4c593; }
 .frame-shop-box-dot {
-    position: absolute; top: -2px; right: -2px; width: 9px; height: 9px; border-radius: 50%;
+    position: absolute; top: 1px; right: 1px; width: 9px; height: 9px; border-radius: 50%;
     background: #ef4444; border: 1.5px solid #15181f;
 }
 .frame-shop-box-dot.hidden { display: none; }
@@ -637,8 +637,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 
 /* ✅ غرفة صوت (8 حتى 80 مقعداً) — تصميم مضغوط وواضح على كل الأحجام */
 /* ✅ حاوية المقاعد المرنة: توسيط تلقائي لكل صف (يشمل آخر صف ناقص) — يحل مشكلة "مقاعد كبيرة
-   بالكمبيوتر وصغيرة بالهاتف" ويملأ فراغات أي عدد مقاعد (8/15/24/80) بأناقة دون تخطيط مخصص.
-   labeled: تُفعَّل فقط لغرف المستخدمين (8/15/24 مقعداً) — مساحة أوسع كافية لإظهار الاسم
+   بالكمبيوتر وصغيرة بالهاتف" ويملأ فراغات أي عدد مقاعد (9/13/19/80) بأناقة دون تخطيط مخصص.
+   labeled: تُفعَّل فقط لغرف المستخدمين (9/13/19 مقعداً) — مساحة أوسع كافية لإظهار الاسم
    تحت كل مقعد (مو فقط بالـ tooltip)، بعكس الغرفة الرسمية المزدحمة بـ80 مقعداً */
 .voice-seats-flex {
     display: flex;
@@ -662,8 +662,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 
 /* ✅ شبكة أعمدة ثابتة العدد (بالضبط أسلوب التطبيقات المشهورة) — عدد الأعمدة لا يتغيّر أبداً
-   بتغيّر عرض الشاشة (يضمن دائماً "مربّع 3×3 لـ9 مقاعد كبيرة" أو "3 صفوف لـ15" أو "4 صفوف
-   لـ24")، وحجم كل مقعد وحده يتمدد تلقائياً مع العرض المتاح (aspect-ratio:1 يحافظ على الدائرية) */
+   بتغيّر عرض الشاشة (يضمن دائماً "مربّع 3×3 لـ9 مقاعد كبيرة" أو "~3 صفوف لـ13" أو "~3-4 صفوف
+   لـ19")، وحجم كل مقعد وحده يتمدد تلقائياً مع العرض المتاح (aspect-ratio:1 يحافظ على الدائرية) */
 .voice-seats-flex.cols-3,
 .voice-seats-flex.cols-5,
 .voice-seats-flex.cols-6 {
@@ -672,8 +672,11 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     justify-items: center;
 }
 .voice-seats-flex.cols-3 { grid-template-columns: repeat(3, 1fr); gap: clamp(50px, 10vw, 62px) clamp(16px, 4vw, 30px); }
-.voice-seats-flex.cols-5 { grid-template-columns: repeat(5, 1fr); gap: clamp(36px, 7vw, 46px) clamp(8px, 2.5vw, 18px); }
-.voice-seats-flex.cols-6 { grid-template-columns: repeat(6, 1fr); gap: clamp(32px, 6vw, 42px) clamp(6px, 2vw, 14px); }
+/* ✅ فئتا 13/19 مقعداً (كانت 15/24) — تباعد أكبر من السابق + سقف حجم مقعد أصغر قليلاً (أدناه)
+   بطلب صريح: تفادي تصادم الإطارات الزخرفية الكبيرة (الجمشت الملكي خصوصاً، وتنانين النار
+   بدرجة أقل) بإطار المقعد المجاور */
+.voice-seats-flex.cols-5 { grid-template-columns: repeat(5, 1fr); gap: clamp(44px, 8.5vw, 56px) clamp(14px, 3.6vw, 26px); }
+.voice-seats-flex.cols-6 { grid-template-columns: repeat(6, 1fr); gap: clamp(40px, 7.5vw, 52px) clamp(11px, 3vw, 20px); }
 
 .voice-seats-flex.cols-3 .voice-seat,
 .voice-seats-flex.cols-5 .voice-seat,
@@ -683,8 +686,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 /* ✅ سقف حجم أقصى للمقعد نفسه (وليس بس للحاوية) — يمنعه من ملء العمود كاملاً على الهواتف
    العريضة، ويعطي مسافة بصرية طبيعية بين المقاعد حتى ضمن نفس الصف */
 .voice-seats-flex.cols-3 .voice-seat { max-width: 80px; font-size: clamp(0.95rem, 3.8vw, 1.2rem); }
-.voice-seats-flex.cols-5 .voice-seat { font-size: clamp(0.72rem, 2.9vw, 0.92rem); }
-.voice-seats-flex.cols-6 .voice-seat { font-size: clamp(0.64rem, 2.4vw, 0.8rem); }
+.voice-seats-flex.cols-5 .voice-seat { max-width: 54px; font-size: clamp(0.7rem, 2.8vw, 0.88rem); }
+.voice-seats-flex.cols-6 .voice-seat { max-width: 46px; font-size: clamp(0.62rem, 2.3vw, 0.76rem); }
 
 /* ✅ تصغير شبكة الـ9 مقاعد تحديداً على الهواتف الصغيرة (بطلب صريح — كانت كبيرة عليها) —
    يقلّص السقف الأقصى لحجم المقعد والفراغات المرافقة له بدون التأثير على الهواتف العادية/الأجهزة اللوحية */
@@ -1277,8 +1280,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    بلا تدرّج خلفي، بلا زر إغلاق، ID قابل للنسخ، وإدارة الغرفة مدمجة مباشرة
    ===================================================== */
 .room-profile-sheet-card {
-    background: #1a1f2e;
-    border: 1px solid rgba(255,255,255,0.1);
+    /* ✅ طلب صريح: نفس الطابع المطفي الفاخر لمتجر الإطارات (frame-shop-sheet) بالضبط */
+    background: #15181f;
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: 20px 20px 0 0;
     box-shadow: 0 -10px 34px rgba(0,0,0,0.5);
     width: 100%;
@@ -1308,7 +1312,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     display: block;
     border-radius: 50%;
     object-fit: cover;
-    border: 3px solid #1a1f2e;
+    border: 3px solid #15181f;
     box-shadow: 0 6px 16px rgba(0,0,0,0.5);
     cursor: pointer;
 }
@@ -1363,41 +1367,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-profile-mini-badge-sm { padding: 2px 7px; font-size: 9.5px; }
 
-/* ✅ شارتا "مستوى الدعم" — كبسولة صغيرة أنيقة مقسومة لجزأين (نفس أسلوب شارات مستوى التطبيقات
-   المشهورة): جزء الأيقونة ملوّن، وجزء الرقم بلون أغمق قليلاً من نفس العائلة اللونية. دعم
-   (ما أرسله المستخدم) أزرق، تلقي (ما استلمه) بنفسجي — الحجم ثابت بكل المستويات، فقط التوهّج
-   والتدرّج اللوني يتصاعدان عبر الفئات الأربع (مبتدئ/محترف/خبير/مخضرم) */
-.support-badge {
-    display: inline-flex;
-    align-items: stretch;
-    height: 20px;
-    border-radius: 999px;
-    overflow: hidden;
-    cursor: pointer;
-    flex-shrink: 0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.35);
-    transition: transform 0.15s ease;
-}
-.support-badge:active { transform: scale(0.94); }
-.support-badge-icon-seg { width: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.support-badge-icon-seg i { font-size: 10px; color: #fff; }
-.support-badge-level-seg { display: flex; align-items: center; padding: 0 8px; font-size: 10px; font-weight: 800; color: #fff; white-space: nowrap; }
-.support-badge-giving .support-badge-icon-seg { background: #3b82f6; }
-.support-badge-giving .support-badge-level-seg { background: #1d4ed8; }
-.support-badge-receiving .support-badge-icon-seg { background: #8b5cf6; }
-.support-badge-receiving .support-badge-level-seg { background: #6d28d9; }
-.support-badge.tier-2 { box-shadow: 0 0 6px rgba(147,197,253,0.4); }
-.support-badge.tier-3 { box-shadow: 0 0 9px rgba(147,197,253,0.55); }
-.support-badge.tier-4 { box-shadow: 0 0 13px rgba(196,181,253,0.7); }
-.support-badge.tier-4 .support-badge-icon-seg,
-.support-badge.tier-4 .support-badge-level-seg { background-size: 200% 100%; animation: supportBadgeShimmer 2.2s linear infinite; }
-.support-badge-giving.tier-4 .support-badge-icon-seg { background: linear-gradient(90deg, #3b82f6, #93c5fd, #3b82f6); }
-.support-badge-giving.tier-4 .support-badge-level-seg { background: linear-gradient(90deg, #1d4ed8, #60a5fa, #1d4ed8); }
-.support-badge-receiving.tier-4 .support-badge-icon-seg { background: linear-gradient(90deg, #8b5cf6, #ddd6fe, #8b5cf6); }
-.support-badge-receiving.tier-4 .support-badge-level-seg { background: linear-gradient(90deg, #6d28d9, #a78bfa, #6d28d9); }
-@keyframes supportBadgeShimmer { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
-
-/* ✅ نسخة "طافية" من شارة الدعم/التلقي بصورة شارة حقيقية بدل الكبسولة الملوّنة — بلا خلفية
+/* ✅ نسخة "طافية" من شارة الثروة بصورة شارة حقيقية بدل الكبسولة الملوّنة — بلا خلفية
    ولا توهّج، أصغر حجماً — خاصة بنافذة ملف الغرفة (showUserProfileSheet) فقط */
 .room-profile-support-badge {
     display: inline-flex;
@@ -1607,14 +1577,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     border-radius: 999px; padding: 6px 14px;
 }
 .support-mission-claim-btn:disabled { opacity: 0.6; }
-.support-mission-receiving-note {
-    display: flex; flex-direction: column; align-items: center; gap: 10px;
-    text-align: center; padding: 24px 12px; color: #9ca3af;
-}
-.support-mission-receiving-note i { font-size: 26px; color: var(--tier-c1); }
-.support-mission-receiving-note p { font-size: 11.5px; line-height: 1.8; max-width: 260px; }
 
-/* ✅ بطاقة احتفال ارتقاء مستوى الدعم/التلقي — نفس بطاقة ارتقاء الغرفة/النادي، بتدرّج الفئة
+/* ✅ بطاقة احتفال ارتقاء مستوى الثروة — نفس بطاقة ارتقاء الغرفة/النادي، بتدرّج الفئة
    الجديدة الفعلي (--tier-c1/--tier-c2) بدل لون ثابت */
 .support-levelup-card {
     background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--tier-c1) 35%, transparent), rgba(17,24,39,0.96));
@@ -1793,11 +1757,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     background: rgba(255,255,255,0.06);
     color: #e5e7eb;
 }
-.room-profile-action-gift { background: rgba(236,72,153,0.18); color: #f9a8d4; }
-.room-profile-action-follow { background: linear-gradient(135deg, #a855f7, #ec4899); color: #fff; }
+/* ✅ طلب صريح: ألوان مطفأة متناسقة مع متجر الإطارات بدل الفاقعة (بنفسجي/وردي) — لمسة ذهبية
+   مطفأة موحَّدة لكل أزرار الدعوة للعمل بهذه النافذة */
+.room-profile-action-gift { background: rgba(212,197,147,0.14); color: #d4c593; }
+.room-profile-action-follow { background: rgba(212,197,147,0.16); border: 1px solid rgba(212,197,147,0.35); color: #d4c593; }
 /* ✅ بعد نجاح المتابعة يتحوّل الزر فوراً لاختصار "انضمام" لنادي المعجبين (قلب + نص) بدل
    إلغاء المتابعة — إلغاء المتابعة متاح فقط من الملف الكامل/قائمة المتابَعين */
-.room-profile-action-follow.following { background: rgba(236,72,153,0.14); color: #f9a8d4; }
+.room-profile-action-follow.following { background: rgba(255,255,255,0.06); border-color: transparent; color: #e5e7eb; }
 
 /* =====================================================
    ✅ نافذة صغيرة عامة "قريباً" — تُستخدم للإنجازات والحماة بنافذة ملف الغرفة
@@ -4519,7 +4485,9 @@ body.in-voice-room #main-content {
 @keyframes fullProfileFadeOut { from { opacity: 1; } to { opacity: 0; } }
 
 .full-profile-sheet {
-    background: #111827;
+    /* ✅ طلب صريح: نفس الطابع المطفي الفاخر لمتجر الإطارات بالكامل */
+    background: #15181f;
+    border: 1px solid rgba(255,255,255,0.08);
     width: 100%;
     max-width: 512px;
     max-height: 85vh;
@@ -4573,7 +4541,7 @@ body.in-voice-room #main-content {
     width: 100%; height: 100%;
     border-radius: 26px;
     object-fit: cover;
-    border: 4px solid #111827;
+    border: 4px solid #15181f;
     box-shadow:
         0 0 0 2px rgba(168,85,247,0.55),
         0 0 0 5px rgba(219,39,119,0.18),
@@ -4597,35 +4565,59 @@ body.in-voice-room #main-content {
     gap: 5px;
 }
 .full-profile-id { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+/* ✅ طلب صريح: فصل شارات الهوية (أدمن/الثروة) عن معلومات الملف الديموغرافية عن شارات
+   الإنجاز الأسبوعية — ثلاث مجموعات منطقية منفصلة بدل صفّ واحد مختلط */
 .full-profile-badge-row {
     display: flex;
     justify-content: center;
     flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-top: 10px;
+}
+.full-profile-info-row {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
     gap: 6px 8px;
-    margin-top: 9px;
+    margin-top: 7px;
 }
 .full-profile-mini-badge {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: 999px;
     padding: 4px 10px;
     font-size: 11px;
     font-weight: 700;
-    color: #e5e7eb;
+    color: #d1d5db;
     font-family: inherit;
 }
-/* ✅ شارة "نجم النادي الأسبوعي" — دائمة (مركز أول بالأسبوع الماضي المكتمل)، ذهبية لتمييزها
-   عن باقي شارات المعلومات الثابتة، وقابلة للنقر (تنقل لنادي المعجبين المعنيّ) */
-.full-profile-weekly-badge {
-    cursor: pointer;
-    background: linear-gradient(90deg, rgba(251,191,36,0.18), rgba(236,72,153,0.14));
-    border-color: rgba(251,191,36,0.4);
-    color: #fde68a;
+.full-profile-weekly-row {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    margin-top: 8px;
 }
-.full-profile-weekly-badge i { color: #fbbf24; }
+/* ✅ شارة "نجم النادي الأسبوعي" — دائمة (مركز أول بالأسبوع الماضي المكتمل)، ذهبية مطفأة
+   لتمييزها عن باقي شارات المعلومات الثابتة، وقابلة للنقر (تنقل لنادي المعجبين المعنيّ) */
+.full-profile-weekly-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    font-family: inherit;
+    background: rgba(212,197,147,0.12);
+    border: 1px solid rgba(212,197,147,0.35);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #d4c593;
+}
+.full-profile-weekly-badge i { color: #d4c593; }
 /* ✅ الحالة/السيرة — بلا تسمية وبلا خلفية، تجلس مباشرة تحت الشارات بأناقة */
 .full-profile-bio-text {
     font-size: 11.5px;
@@ -4652,10 +4644,11 @@ body.in-voice-room #main-content {
    تطبيقات البث المباشر المشهورة: كل صف بلون تدرّجي مختلف، بلا حدود صريحة، رقم/شارة يسار
    الصف وعنوان+أيقونة يمينه (بترتيب DOM طبيعي يعكسه RTL تلقائياً)
    ===================================================== */
+/* ✅ طلب صريح: تباعد أكبر بين التبويبين — كانا قريبين جداً من بعض */
 .full-profile-tabs {
     display: flex;
     justify-content: center;
-    gap: 28px;
+    gap: 52px;
     padding: 4px 16px 10px;
     border-bottom: 1px solid rgba(255,255,255,0.08);
     margin-bottom: 12px;
@@ -4668,7 +4661,10 @@ body.in-voice-room #main-content {
     border-bottom: 2px solid transparent;
     cursor: pointer;
 }
-.full-profile-tab.active { color: #fff; border-bottom-color: #a855f7; }
+.full-profile-tab.active { color: #fff; border-bottom-color: #d4c593; }
+/* ✅ منطقة محتوى التبويبين — هدف كاشف السحب attachSwipeTabSwitch (راجع app.js) للتبديل
+   بينهما بالسحب إضافة للنقر */
+.full-profile-tabs-viewport { touch-action: pan-y; }
 
 .honor-board { padding: 0 16px 20px; display: flex; flex-direction: column; gap: 8px; }
 .honor-row {
@@ -4684,7 +4680,6 @@ body.in-voice-room #main-content {
 .honor-row-right { display: flex; align-items: center; gap: 8px; }
 .honor-row-count { color: rgba(255,255,255,0.75); font-size: 12px; font-weight: 700; }
 .honor-row-chevron { color: rgba(255,255,255,0.4); font-size: 11px; }
-.honor-row-receiving { background: linear-gradient(120deg, #78350f, #451a03); }
 .honor-row-giving { background: linear-gradient(120deg, #1e3a8a, #172554); }
 .honor-row-achv { background: linear-gradient(120deg, #b91c1c, #7c2d12); }
 .honor-row-gifts { background: rgba(255,255,255,0.04); }
@@ -4701,6 +4696,37 @@ body.in-voice-room #main-content {
 .honor-mini-top { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 10.5px; color: rgba(255,255,255,0.5); font-weight: 700; margin-bottom: 6px; }
 .honor-mini-title { font-size: 11px; font-weight: 800; color: #e5e7eb; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .honor-mini-soon { font-size: 9px; color: #9ca3af; background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 999px; display: inline-block; margin-top: 4px; }
+
+/* ✅ طلب صريح: استغلال أذكى لمساحة لوحة الشرف بالملف الكامل — شبكة 2×2 لأربع بطاقات
+   (الثروة/الإنجازات/الحماة/نادي المعجبين) بدل صفّين طويلين منفصلين + صفّ مزدوج ثالث */
+.honor-split-row-4 { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; gap: 8px; }
+.honor-split-row-4 .honor-mini-card { min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.honor-split-row-4 .room-profile-support-badge { margin: 0 auto; }
+
+/* ✅ طلب صريح: الهدايا المستلمة كشريط فيلم أفقي قابل للسحب، أيقونات صغيرة متناسقة الحجم */
+.honor-gifts-section { background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 10px 0 12px; margin-top: 2px; }
+.honor-gifts-header { display: flex; align-items: center; justify-content: space-between; padding: 0 14px 10px; color: #e5e7eb; font-weight: 800; font-size: 12.5px; }
+.honor-gifts-filmstrip {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 0 14px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+}
+.honor-gifts-filmstrip::-webkit-scrollbar { display: none; }
+.honor-gift-chip {
+    flex-shrink: 0;
+    width: 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    scroll-snap-align: start;
+}
+.honor-gift-chip img { width: 36px; height: 36px; object-fit: contain; }
+.honor-gift-chip-count { font-size: 10px; font-weight: 800; color: #d4c593; background: rgba(212,197,147,0.12); border-radius: 999px; padding: 1px 7px; }
+.honor-gifts-empty { text-align: center; color: #6b7280; font-size: 11.5px; padding: 6px 14px 2px; }
 
 .full-profile-video-soon { text-align: center; padding: 50px 20px; color: #6b7280; }
 .full-profile-video-soon i { font-size: 32px; margin-bottom: 12px; display: block; color: #4b5563; }
@@ -4719,10 +4745,11 @@ body.in-voice-room #main-content {
 }
 .full-profile-action-follow {
     flex: 1;
-    background: linear-gradient(135deg, #a855f7, #ec4899);
-    color: #fff;
+    background: rgba(212,197,147,0.16);
+    border: 1px solid rgba(212,197,147,0.35);
+    color: #d4c593;
 }
-.full-profile-action-follow.following { background: rgba(255,255,255,0.08); color: #d1d5db; }
+.full-profile-action-follow.following { background: rgba(255,255,255,0.08); border-color: transparent; color: #d1d5db; }
 .full-profile-action-icon {
     width: 36px;
     flex-shrink: 0;
@@ -5203,7 +5230,9 @@ body.in-voice-room #main-content {
     transition: transform 0.15s ease;
 }
 .hub-toggle input:checked + .hub-toggle-slider { background: #7c3aed; }
-.hub-toggle input:checked + .hub-toggle-slider::before { transform: translateX(-16px); }
+/* 🐛 كانت -16px تُخرج الدائرة خارج حدود المسار (left:3px - 16 = -13px سالب)؛ المسار بعرض
+   38px وعرض الدائرة 16px بهامش 3px من كل جانب، فمسافة الحركة الصحيحة السليمة +16px بالضبط */
+.hub-toggle input:checked + .hub-toggle-slider::before { transform: translateX(16px); }
 
 /* =====================================================
    ✅ هدية سريعة (شريط فيلم) + نافذة الشكر
@@ -5439,17 +5468,26 @@ body.in-voice-room #main-content {
 
 /* ✅ صف متابِعين/متابَعين ببطاقة الملف الشخصي المصغّرة — بلا صناديق خلفية، نفس أسلوب إحصائيات
    مركز الملف الشخصي (.profile-hub-stat)، وقابل للنقر لفتح قائمة المتابِعين/المتابَعين */
+/* ✅ طلب صريح: تنسيق أفضل لمكانهما — بطاقة مطفأة واحدة تجمعهما بفاصل عمودي رفيع بينهما،
+   بدل رقمين عائمين بلا احتواء بصري */
 .full-profile-stats-row {
     display: flex;
+    align-items: center;
     justify-content: center;
-    gap: 36px;
-    padding: 10px 16px 4px;
+    gap: 28px;
+    margin: 10px 16px 4px;
+    padding: 10px 0;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
 }
+.full-profile-stats-divider { width: 1px; height: 24px; background: rgba(255,255,255,0.1); }
 .full-profile-stat-clickable {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 2px;
+    flex: 1;
 }
 .full-profile-stat-num { font-size: 15px; font-weight: 800; color: #fff; }
 .full-profile-stat-label { font-size: 10.5px; color: #9ca3af; }
@@ -5458,7 +5496,9 @@ body.in-voice-room #main-content {
    ✅ ورقة متابِعين/متابَعين — تبويبان + اقتراحات "لك" بصفوف مكدَّسة أسفل بعضها
    ===================================================== */
 .follow-connections-card {
-    background: #111827;
+    /* ✅ طلب صريح: نفس الطابع المطفي الفاخر لمتجر الإطارات (frame-shop-sheet) بالضبط */
+    background: #15181f;
+    border: 1px solid rgba(255,255,255,0.08);
     width: 100%;
     max-width: 480px;
     max-height: 80vh;
@@ -5483,7 +5523,7 @@ body.in-voice-room #main-content {
     font-weight: 700;
     color: #9ca3af;
 }
-.follow-tab-btn.active { background: rgba(168,85,247,0.16); color: #e9d5ff; }
+.follow-tab-btn.active { background: rgba(212,197,147,0.14); color: #d4c593; }
 
 .follow-connections-list { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; }
 .follow-connection-row {
@@ -5496,16 +5536,19 @@ body.in-voice-room #main-content {
 .follow-connection-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .follow-connection-name { font-size: 12.5px; font-weight: 700; color: #f3f4f6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .follow-connection-level { font-size: 10px; color: #fbbf24; font-weight: 700; }
+/* ✅ طلب صريح: زر المتابعة بلون مطفي ذهبي بدل التدرّج البنفسجي/الوردي الفاقع، نفس عائلة
+   ألوان متجر الإطارات/نافذة الملف المصغّر */
 .follow-connection-btn {
     flex-shrink: 0;
-    background: linear-gradient(135deg, #a855f7, #ec4899);
-    color: #fff;
+    background: rgba(212,197,147,0.16);
+    border: 1px solid rgba(212,197,147,0.35);
+    color: #d4c593;
     font-size: 11px;
     font-weight: 800;
     padding: 7px 14px;
     border-radius: 999px;
 }
-.follow-connection-btn.following { background: rgba(255,255,255,0.08); color: #d1d5db; }
+.follow-connection-btn.following { background: rgba(255,255,255,0.08); border-color: transparent; color: #d1d5db; }
 
 /* ✅ هيكل تحميل نابض (skeleton) — بديل أكثر سلاسة لمؤشر دوّار وحيد أثناء تحميل قوائم
    المتابِعين/المتابَعين/الاقتراحات؛ كتل رمادية نابضة بنفس شكل الصفوف الحقيقية تقريباً */
@@ -5780,10 +5823,6 @@ body.in-voice-room #main-content {
     width: 100%;
     text-align: inherit;
 }
-/* ✅ صفّ "متجر الإطارات" عنصر <button> حقيقي (قابل للنقر كاملاً) — يُلغي تنسيق الزر الافتراضي
-   ليتطابق تماماً مع صفوف الشارات العادية (<div>) المجاورة له */
-.badges-settings-row-link { border: none; background: rgba(255,255,255,0.04); cursor: pointer; font-family: inherit; }
-.badges-settings-row-link:active { background: rgba(255,255,255,0.07); }
 .badges-settings-row-img { width: 36px; height: 36px; object-fit: contain; flex-shrink: 0; }
 .badges-settings-row-icon {
     width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%;
@@ -5794,5 +5833,22 @@ body.in-voice-room #main-content {
 .badges-settings-row-text { flex: 1; min-width: 0; text-align: start; }
 .badges-settings-row-title { font-size: 12.5px; font-weight: 800; color: #fff; }
 .badges-settings-row-sub { font-size: 10.5px; color: #9ca3af; margin-top: 1px; }
+
+/* ✅ طلب صريح: طابع نافذة "الشارات" مطفي فاخر مثل متجر الإطارات بالضبط (frame-shop-*) —
+   تخصيص محصور بـ#badges-settings-sheet وحدها كي لا يؤثر على نوافذ أخرى تتشارك
+   .profile-hub-subsheet-card/.badges-settings-row (مركز المضيف/QR/الإعدادات ليست المقصودة هنا) */
+#badges-settings-sheet .profile-hub-subsheet-card {
+    background: #15181f;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
+}
+#badges-settings-sheet .badges-settings-row {
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+}
+#badges-settings-sheet .badges-settings-row-icon { background: rgba(255,255,255,0.04); color: #d4c593; }
+#badges-settings-sheet .badges-settings-row-sub { color: #8b8d96; }
+#badges-settings-sheet .hub-toggle input:checked + .hub-toggle-slider { background: #8b7a4d; }
 
 
