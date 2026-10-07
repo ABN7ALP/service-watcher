@@ -88,9 +88,12 @@ const userSchema = new mongoose.Schema({
     coverImage: { type: String, default: null }, // غلاف الملف الشخصي (منفصل عن الصورة الشخصية profileImage)
     // ✅ إخفاء/إظهار المعلومات الشخصية (الجنس/العمر/الحالة الاجتماعية/التعليمية/مسقط الرأس/
     // الموقع/روابط التواصل) أمام زوّار الملف الشخصي — صلاحية تُفتح فقط عند بلوغ مستوى 7
-    // بأحد مساري "الدعم" (giving/receiving)، تُفحَص بالخادم بكل طلب تغيير (updatePersonalInfoVisibility)
+    // بالثروة، تُفحَص بالخادم بكل طلب تغيير (updatePersonalInfoVisibility)
     // لا بالعميل فقط. لا تخفي شيئاً عن صاحبها نفسه — فقط عن الآخرين (راجع getUserById)
     personalInfoVisible: { type: Boolean, default: true },
+    // ✅ إخفاء/إظهار شارات "نجم نادي المعجبين الأسبوعي" عن زوّار الملف الشخصي — تحكّم واحد لكل
+    // الشارات معاً (طلب صريح: إضافتها لقسم الشارات القابلة للتحكم)، يُفحَص بالخادم بـgetWeeklyWins
+    fanClubBadgesVisible: { type: Boolean, default: true },
     hometown: { type: String, default: '', maxlength: 40, trim: true }, // ✅ مسقط الرأس — يحدّده المستخدم يدوياً
     location: { type: String, default: '', maxlength: 40, trim: true }, // ✅ الموقع الحالي — يُحدَّد تلقائياً (تخمين تقريبي من المنطقة الزمنية بالمتصفح، بلا أي طلب صلاحية GPS)
     socialLinks: {

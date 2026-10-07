@@ -20,8 +20,10 @@ router.get('/online/public-room', userController.getOnlinePublicRoomUsers);
 router.patch('/updateStatus', userController.updateStatus);  // ✅ أضف هذا السطر
 // ✅ تحكّم الأدمن بإظهار/إخفاء شارته الخاصة + تسجيل أول مشاهدة لنافذة الاحتفال (طلب صريح)
 router.patch('/me/admin-badge', userController.updateAdminBadgeVisibility);
-// ✅ إخفاء/إظهار المعلومات الشخصية — مُقيَّد بمستوى 7 بالدعم/التلقي (مفحوص بالخادم بالكونترولر)
+// ✅ إخفاء/إظهار المعلومات الشخصية — مُقيَّد بمستوى 7 بالثروة (مفحوص بالخادم بالكونترولر)
 router.patch('/me/personal-info-visibility', userController.updatePersonalInfoVisibility);
+// ✅ إخفاء/إظهار شارات "نجم نادي المعجبين الأسبوعي" عن زوّار الملف الشخصي
+router.patch('/me/fanclub-badges-visibility', userController.updateFanClubBadgesVisibility);
 // مسارات جلب بيانات المستخدمين
 router.get('/me/details', userController.getMeDetails);
 // ✅ متابعة/إلغاء متابعة شخص — قبل :id كي لا يُبتلع الجزء الثابت داخل باراميتر :id (غير

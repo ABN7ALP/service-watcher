@@ -110,33 +110,19 @@ async function notifyIfLeveledUp(io, ownerId, memberId, pointsAfter, delta) {
 }
 
 // ✅ نقطة الدخول الرئيسية لمنح نقاط المعجب — تُستدعى من مسارات إرسال الهدايا (giftController)
-// بمعدّل 1:1 مع الكوينز المُنفَقة. تُنشئ العضوية تلقائياً لو لم تكن موجودة (انضمام ضمني بأول
-// هدية حقيقية، بلا حاجة لزر انضمام صريح) — نفس آلية "Heart Me" بتطبيقات البث المشهورة.
+// بمعدّل 1:1 مع الكوينز المُنفَقة. 🐛 إصلاح صريح: كانت تُنشئ عضوية تلقائياً عند أول هدية حتى
+// لو لم ينضمّ المُرسِل أبداً عبر زر "انضمام" الصريح (joinFanClub) — فيظهر بقائمة أعضاء نادٍ
+// لم يطلب الانضمام إليه إطلاقاً، بلا تفسير ("ليش انضممت تلقائياً؟"). الآن: الهدية تضيف نقاطاً
+// فقط لعضوية موجودة فعلاً (انضم إليها صراحة من قبل) — لا تُنشئ عضوية جديدة أبداً من مجرد هدية.
 // fire-and-forget دوماً من طرف المستدعي (لا يُوقف/يُبطئ استجابة إرسال الهدية أبداً)
 async function awardFanPoints(io, ownerId, memberId, pointsDelta) {
     if (!ownerId || !memberId || String(ownerId) === String(memberId) || pointsDelta <= 0) return null;
     try {
-        let membership = await FanClubMembership.findOneAndUpdate(
+        const membership = await FanClubMembership.findOneAndUpdate(
             { owner: ownerId, member: memberId },
             { $inc: { points: pointsDelta } },
             { new: true }
         );
-        if (!membership) {
-            try {
-                membership = await FanClubMembership.create({ owner: ownerId, member: memberId, points: pointsDelta });
-            } catch (dupError) {
-                if (dupError.code === 11000) {
-                    // 🛡️ سباق نادر: عضوية أُنشئت للتو بطلب متزامن آخر — نضيف النقاط لها بدل تكرارها
-                    membership = await FanClubMembership.findOneAndUpdate(
-                        { owner: ownerId, member: memberId },
-                        { $inc: { points: pointsDelta } },
-                        { new: true }
-                    );
-                } else {
-                    throw dupError;
-                }
-            }
-        }
         if (!membership) return null;
 
         // ✅ مكافأة "هدية اليوم" الثابتة — مرة واحدة يومياً بغضّ النظر عن قيمة/عدد الهدايا
@@ -356,10 +342,9 @@ exports.joinFanClub = async (req, res) => {
             io.emit('fanclub-member-count-updated', { ownerId, memberCount });
             const { broadcastSupportLevelUpdate } = require('./giftController');
             // 🛡️ الدلتا مشروطة بوجود "rose" فعلاً — هي فقط ما يُنشئ سجل GiftLog الذي يُحتسب
-            // بمجموع مستوى الدعم؛ بلا هذا الشرط قد نبلّغ عن دلتا لم تُضَف فعلياً للمجموع الحقيقي
+            // بمجموع مستوى الثروة؛ بلا هذا الشرط قد نبلّغ عن دلتا لم تُضَف فعلياً للمجموع الحقيقي
             const joinDelta = rose ? JOIN_PRICE : 0;
             broadcastSupportLevelUpdate(io, memberId, 'giving', joinDelta);
-            broadcastSupportLevelUpdate(io, ownerId, 'receiving', joinDelta);
             if (owner.socketId) {
                 io.to(owner.socketId).emit('fanclub-new-member', {
                     memberId, memberUsername: updatedMember.username, memberProfileImage: updatedMember.profileImage, memberCount
@@ -497,6 +482,15 @@ exports.getWeeklyWins = async (req, res) => {
         const userId = req.params.userId;
         if (!mongoose.Types.ObjectId.isValid(userId)) {
             return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
+        }
+        // 🛡️ طلب صريح: إخفاء/إظهار شارات "نجم النادي الأسبوعي" يُفحَص بالخادم — لا تُرسَل
+        // لأي زائر غير صاحبها نفسه لو اختار إخفاءها (لا تُخفى عن صاحبها أبداً)
+        const isOwner = req.user?.id && req.user.id === userId;
+        if (!isOwner) {
+            const target = await User.findById(userId).select('fanClubBadgesVisible');
+            if (target && target.fanClubBadgesVisible === false) {
+                return res.status(200).json({ status: 'success', data: { wins: [] } });
+            }
         }
         const ownerIds = await FanClubMembership.find({ member: userId }).distinct('owner');
         if (ownerIds.length === 0) {

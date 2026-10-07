@@ -10212,6 +10212,19 @@ const PROFILE_BADGE_REGISTRY = [
         hasBadge: (u) => !!u.isAdmin,
         isVisible: (u) => u.adminBadgeVisible !== false,
         setVisible: (visible) => setAdminBadgeVisibility(visible)
+    },
+    // ✅ طلب صريح: شارات "نجم نادي المعجبين الأسبوعي" (weeklyWins) أصبحت قابلة للتحكم من هنا
+    // أيضاً (كانت مستثناة سابقاً) — تحكّم واحد يخفي/يظهر كل شارات الأسبوع معاً (لا شارة لكل
+    // نادٍ على حدة)؛ hasBadge يعتمد على extra.weeklyWinsCount المُجلَب مسبقاً (لا بيانات
+    // كافية بكائن المستخدم المحلي وحده لمعرفة هل فاز بأي نادٍ الأسبوع الماضي)
+    {
+        id: 'fanclub-weekly',
+        icon: 'fa-crown',
+        title: 'نجم نادي المعجبين الأسبوعي',
+        sub: 'إظهار شارات فوزك الأسبوعي بملفك الشخصي أمام الزوّار',
+        hasBadge: (u, extra) => (extra?.weeklyWinsCount || 0) > 0,
+        isVisible: (u) => u.fanClubBadgesVisible !== false,
+        setVisible: (visible) => setFanClubBadgesVisibility(visible)
     }
 ];
 
@@ -10238,9 +10251,19 @@ function renderPersonalInfoGateHTML(cachedUser) {
     `;
 }
 
-function showBadgesSettingsSheet() {
+async function showBadgesSettingsSheet() {
     const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
-    const ownedBadges = PROFILE_BADGE_REGISTRY.filter(b => b.hasBadge(cachedUser));
+    // ✅ عدد مرات الفوز الأسبوعي الفعلي — يلزم لمعرفة هل يملك المستخدم شارة "نجم النادي
+    // الأسبوعي" أصلاً (hasBadge بالسجلّ أعلاه)، بلا انتظار طويل لو فشل الطلب لأي سبب
+    let weeklyWinsCount = 0;
+    try {
+        if (cachedUser._id) {
+            const res = await fetch(`/api/fanclub/${cachedUser._id}/weekly-wins`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+            if (res.status === 'success') weeklyWinsCount = res.data.wins.length;
+        }
+    } catch (error) { /* صامت — تعذّر الجلب يعني فقط عدم إظهار صفّ الشارة، لا يمنع فتح النافذة */ }
+    const extra = { weeklyWinsCount };
+    const ownedBadges = PROFILE_BADGE_REGISTRY.filter(b => b.hasBadge(cachedUser, extra));
     document.getElementById('badges-settings-sheet')?.remove();
     const modal = document.createElement('div');
     modal.id = 'badges-settings-sheet';
@@ -10254,7 +10277,7 @@ function showBadgesSettingsSheet() {
             <div class="badges-settings-list">
                 ${ownedBadges.map(b => `
                     <div class="badges-settings-row" data-badge-id="${b.id}">
-                        <img src="${b.img()}" class="badges-settings-row-img" alt="">
+                        ${b.icon ? `<span class="badges-settings-row-icon"><i class="fas ${b.icon}" style="color:#fbbf24"></i></span>` : `<img src="${b.img()}" class="badges-settings-row-img" alt="">`}
                         <div class="badges-settings-row-text">
                             <p class="badges-settings-row-title">${escapeHtml(b.title)}</p>
                             <p class="badges-settings-row-sub">${escapeHtml(b.sub)}</p>
@@ -10303,6 +10326,27 @@ async function setPersonalInfoVisibility(visible) {
         if (result.status !== 'success') throw new Error(result.message || '');
         const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
         cachedUser.personalInfoVisible = result.data.personalInfoVisible;
+        localStorage.setItem('user', JSON.stringify(cachedUser));
+        return true;
+    } catch (error) {
+        showNotification(error.message || 'تعذّر حفظ التغيير، حاول مجدداً', 'error');
+        return false;
+    }
+}
+
+// ✅ نفس نمط setAdminBadgeVisibility/setPersonalInfoVisibility بالضبط — تحكّم واحد لكل شارات
+// "نجم النادي الأسبوعي" معاً
+async function setFanClubBadgesVisibility(visible) {
+    try {
+        const response = await fetch('/api/users/me/fanclub-badges-visibility', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ visible })
+        });
+        const result = await response.json();
+        if (result.status !== 'success') throw new Error(result.message || '');
+        const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        cachedUser.fanClubBadgesVisible = result.data.fanClubBadgesVisible;
         localStorage.setItem('user', JSON.stringify(cachedUser));
         return true;
     } catch (error) {

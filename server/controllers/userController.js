@@ -536,6 +536,20 @@ const updateAdminBadgeVisibility = async (req, res) => {
     }
 };
 
+// ✅ إظهار/إخفاء شارات "نجم نادي المعجبين الأسبوعي" عن زوّار الملف الشخصي — تحكّم واحد لكل
+// الشارات معاً (طلب صريح: إضافتها لقسم "الشارات" القابل للتحكم)؛ الفحص الملزم بالخادم نفسه
+// بـgetWeeklyWins (fanClubController)، هذا فقط يحفظ التفضيل
+const updateFanClubBadgesVisibility = async (req, res) => {
+    try {
+        const { visible } = req.body;
+        const user = await User.findByIdAndUpdate(req.user.id, { fanClubBadgesVisible: !!visible }, { new: true }).select('fanClubBadgesVisible');
+        res.status(200).json({ status: 'success', data: { fanClubBadgesVisible: user.fanClubBadgesVisible } });
+    } catch (error) {
+        console.error('[ERROR] in updateFanClubBadgesVisibility:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
 // =====================================================
 // ✅ إخفاء/إظهار المعلومات الشخصية (راجع personalInfoVisible بـUser.js وPERSONAL_INFO_FIELDS
 // أعلى في هذا الملف) — صلاحية تُفتح فقط لمن بلغ مستوى 7 بـ"الثروة" (سابقاً مستوى الدعم)،
@@ -842,6 +856,7 @@ module.exports = {
     getOnlinePublicRoomUsers,
     updateStatus,
     updateAdminBadgeVisibility,
+    updateFanClubBadgesVisibility,
     updatePersonalInfoVisibility,
     followUser,
     unfollowUser,
