@@ -250,14 +250,14 @@ input[type="checkbox"] {
 /* ✅ أيقونة "الصندوق" — كل الإطارات المشتراة فعلياً + تفعيلها، بنقطة حمراء صغيرة عند وجود
    شراء جديد لم يُفتَح الصندوق منذ حدوثه (طلب صريح) */
 .frame-shop-box-btn {
-    position: relative; width: 30px; height: 30px; border-radius: 50%;
-    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-    color: #d1d5db; font-size: 13px; display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
+    position: relative; width: 38px; height: 38px; border-radius: 50%;
+    background: transparent; border: none;
+    color: #e5e7eb; font-size: 21px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: transform 0.12s ease, color 0.12s ease;
 }
-.frame-shop-box-btn:active { background: rgba(255,255,255,0.1); }
+.frame-shop-box-btn:active { transform: scale(0.9); color: #d4c593; }
 .frame-shop-box-dot {
-    position: absolute; top: -2px; right: -2px; width: 9px; height: 9px; border-radius: 50%;
+    position: absolute; top: 1px; right: 1px; width: 9px; height: 9px; border-radius: 50%;
     background: #ef4444; border: 1.5px solid #15181f;
 }
 .frame-shop-box-dot.hidden { display: none; }
@@ -637,8 +637,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 
 /* ✅ غرفة صوت (8 حتى 80 مقعداً) — تصميم مضغوط وواضح على كل الأحجام */
 /* ✅ حاوية المقاعد المرنة: توسيط تلقائي لكل صف (يشمل آخر صف ناقص) — يحل مشكلة "مقاعد كبيرة
-   بالكمبيوتر وصغيرة بالهاتف" ويملأ فراغات أي عدد مقاعد (8/15/24/80) بأناقة دون تخطيط مخصص.
-   labeled: تُفعَّل فقط لغرف المستخدمين (8/15/24 مقعداً) — مساحة أوسع كافية لإظهار الاسم
+   بالكمبيوتر وصغيرة بالهاتف" ويملأ فراغات أي عدد مقاعد (9/13/19/80) بأناقة دون تخطيط مخصص.
+   labeled: تُفعَّل فقط لغرف المستخدمين (9/13/19 مقعداً) — مساحة أوسع كافية لإظهار الاسم
    تحت كل مقعد (مو فقط بالـ tooltip)، بعكس الغرفة الرسمية المزدحمة بـ80 مقعداً */
 .voice-seats-flex {
     display: flex;
@@ -662,8 +662,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 
 /* ✅ شبكة أعمدة ثابتة العدد (بالضبط أسلوب التطبيقات المشهورة) — عدد الأعمدة لا يتغيّر أبداً
-   بتغيّر عرض الشاشة (يضمن دائماً "مربّع 3×3 لـ9 مقاعد كبيرة" أو "3 صفوف لـ15" أو "4 صفوف
-   لـ24")، وحجم كل مقعد وحده يتمدد تلقائياً مع العرض المتاح (aspect-ratio:1 يحافظ على الدائرية) */
+   بتغيّر عرض الشاشة (يضمن دائماً "مربّع 3×3 لـ9 مقاعد كبيرة" أو "~3 صفوف لـ13" أو "~3-4 صفوف
+   لـ19")، وحجم كل مقعد وحده يتمدد تلقائياً مع العرض المتاح (aspect-ratio:1 يحافظ على الدائرية) */
 .voice-seats-flex.cols-3,
 .voice-seats-flex.cols-5,
 .voice-seats-flex.cols-6 {
@@ -672,8 +672,11 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     justify-items: center;
 }
 .voice-seats-flex.cols-3 { grid-template-columns: repeat(3, 1fr); gap: clamp(50px, 10vw, 62px) clamp(16px, 4vw, 30px); }
-.voice-seats-flex.cols-5 { grid-template-columns: repeat(5, 1fr); gap: clamp(36px, 7vw, 46px) clamp(8px, 2.5vw, 18px); }
-.voice-seats-flex.cols-6 { grid-template-columns: repeat(6, 1fr); gap: clamp(32px, 6vw, 42px) clamp(6px, 2vw, 14px); }
+/* ✅ فئتا 13/19 مقعداً (كانت 15/24) — تباعد أكبر من السابق + سقف حجم مقعد أصغر قليلاً (أدناه)
+   بطلب صريح: تفادي تصادم الإطارات الزخرفية الكبيرة (الجمشت الملكي خصوصاً، وتنانين النار
+   بدرجة أقل) بإطار المقعد المجاور */
+.voice-seats-flex.cols-5 { grid-template-columns: repeat(5, 1fr); gap: clamp(44px, 8.5vw, 56px) clamp(14px, 3.6vw, 26px); }
+.voice-seats-flex.cols-6 { grid-template-columns: repeat(6, 1fr); gap: clamp(40px, 7.5vw, 52px) clamp(11px, 3vw, 20px); }
 
 .voice-seats-flex.cols-3 .voice-seat,
 .voice-seats-flex.cols-5 .voice-seat,
@@ -683,8 +686,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 /* ✅ سقف حجم أقصى للمقعد نفسه (وليس بس للحاوية) — يمنعه من ملء العمود كاملاً على الهواتف
    العريضة، ويعطي مسافة بصرية طبيعية بين المقاعد حتى ضمن نفس الصف */
 .voice-seats-flex.cols-3 .voice-seat { max-width: 80px; font-size: clamp(0.95rem, 3.8vw, 1.2rem); }
-.voice-seats-flex.cols-5 .voice-seat { font-size: clamp(0.72rem, 2.9vw, 0.92rem); }
-.voice-seats-flex.cols-6 .voice-seat { font-size: clamp(0.64rem, 2.4vw, 0.8rem); }
+.voice-seats-flex.cols-5 .voice-seat { max-width: 54px; font-size: clamp(0.7rem, 2.8vw, 0.88rem); }
+.voice-seats-flex.cols-6 .voice-seat { max-width: 46px; font-size: clamp(0.62rem, 2.3vw, 0.76rem); }
 
 /* ✅ تصغير شبكة الـ9 مقاعد تحديداً على الهواتف الصغيرة (بطلب صريح — كانت كبيرة عليها) —
    يقلّص السقف الأقصى لحجم المقعد والفراغات المرافقة له بدون التأثير على الهواتف العادية/الأجهزة اللوحية */
@@ -1384,8 +1387,6 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .support-badge-level-seg { display: flex; align-items: center; padding: 0 8px; font-size: 10px; font-weight: 800; color: #fff; white-space: nowrap; }
 .support-badge-giving .support-badge-icon-seg { background: #3b82f6; }
 .support-badge-giving .support-badge-level-seg { background: #1d4ed8; }
-.support-badge-receiving .support-badge-icon-seg { background: #8b5cf6; }
-.support-badge-receiving .support-badge-level-seg { background: #6d28d9; }
 .support-badge.tier-2 { box-shadow: 0 0 6px rgba(147,197,253,0.4); }
 .support-badge.tier-3 { box-shadow: 0 0 9px rgba(147,197,253,0.55); }
 .support-badge.tier-4 { box-shadow: 0 0 13px rgba(196,181,253,0.7); }
@@ -1393,8 +1394,6 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .support-badge.tier-4 .support-badge-level-seg { background-size: 200% 100%; animation: supportBadgeShimmer 2.2s linear infinite; }
 .support-badge-giving.tier-4 .support-badge-icon-seg { background: linear-gradient(90deg, #3b82f6, #93c5fd, #3b82f6); }
 .support-badge-giving.tier-4 .support-badge-level-seg { background: linear-gradient(90deg, #1d4ed8, #60a5fa, #1d4ed8); }
-.support-badge-receiving.tier-4 .support-badge-icon-seg { background: linear-gradient(90deg, #8b5cf6, #ddd6fe, #8b5cf6); }
-.support-badge-receiving.tier-4 .support-badge-level-seg { background: linear-gradient(90deg, #6d28d9, #a78bfa, #6d28d9); }
 @keyframes supportBadgeShimmer { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
 
 /* ✅ نسخة "طافية" من شارة الدعم/التلقي بصورة شارة حقيقية بدل الكبسولة الملوّنة — بلا خلفية
@@ -1607,14 +1606,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     border-radius: 999px; padding: 6px 14px;
 }
 .support-mission-claim-btn:disabled { opacity: 0.6; }
-.support-mission-receiving-note {
-    display: flex; flex-direction: column; align-items: center; gap: 10px;
-    text-align: center; padding: 24px 12px; color: #9ca3af;
-}
-.support-mission-receiving-note i { font-size: 26px; color: var(--tier-c1); }
-.support-mission-receiving-note p { font-size: 11.5px; line-height: 1.8; max-width: 260px; }
 
-/* ✅ بطاقة احتفال ارتقاء مستوى الدعم/التلقي — نفس بطاقة ارتقاء الغرفة/النادي، بتدرّج الفئة
+/* ✅ بطاقة احتفال ارتقاء مستوى الثروة — نفس بطاقة ارتقاء الغرفة/النادي، بتدرّج الفئة
    الجديدة الفعلي (--tier-c1/--tier-c2) بدل لون ثابت */
 .support-levelup-card {
     background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--tier-c1) 35%, transparent), rgba(17,24,39,0.96));
@@ -4684,7 +4677,6 @@ body.in-voice-room #main-content {
 .honor-row-right { display: flex; align-items: center; gap: 8px; }
 .honor-row-count { color: rgba(255,255,255,0.75); font-size: 12px; font-weight: 700; }
 .honor-row-chevron { color: rgba(255,255,255,0.4); font-size: 11px; }
-.honor-row-receiving { background: linear-gradient(120deg, #78350f, #451a03); }
 .honor-row-giving { background: linear-gradient(120deg, #1e3a8a, #172554); }
 .honor-row-achv { background: linear-gradient(120deg, #b91c1c, #7c2d12); }
 .honor-row-gifts { background: rgba(255,255,255,0.04); }
@@ -5203,7 +5195,9 @@ body.in-voice-room #main-content {
     transition: transform 0.15s ease;
 }
 .hub-toggle input:checked + .hub-toggle-slider { background: #7c3aed; }
-.hub-toggle input:checked + .hub-toggle-slider::before { transform: translateX(-16px); }
+/* 🐛 كانت -16px تُخرج الدائرة خارج حدود المسار (left:3px - 16 = -13px سالب)؛ المسار بعرض
+   38px وعرض الدائرة 16px بهامش 3px من كل جانب، فمسافة الحركة الصحيحة السليمة +16px بالضبط */
+.hub-toggle input:checked + .hub-toggle-slider::before { transform: translateX(16px); }
 
 /* =====================================================
    ✅ هدية سريعة (شريط فيلم) + نافذة الشكر

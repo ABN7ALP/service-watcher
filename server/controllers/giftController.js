@@ -103,34 +103,30 @@ async function applyGiftToActiveSeatChallenge(io, roomId, receiverId, totalPrice
     });
 }
 
-// ✅ يبثّ تحديث "مستوى الدعم" (شارتا دعم/تلقي) لحظياً لأي واجهة مفتوحة حالياً لهذا المستخدم —
-// بث عام خفيف الحمل (نفس نمط follow-changed) بدل نظام اشتراك مخصّص لكل شخص؛ لا يُنتظَر
-// (fire-and-forget) كي لا يبطئ استجابة إرسال الهدية نفسها، ولا يُفشلها أبداً لو حدث خطأ هنا.
-// 🐛 كانت الدالة تُكرّر نفس منطق تجميع computeSupportLevels بـuserController.js حرفياً (فيصبح
-// bonusXP المهام اليومية غير محسوب هنا تحديداً، فيتضارب الرقم المبثوث حياً هنا مع رقم أي
-// نداء API آخر) — استبدلته بنداء الدالة المشتركة نفسها، مصدر حقيقة واحد لحساب مستوى الدعم
-// بكل مكان بالتطبيق. kind/delta اختياريان: لو مررا (مصدر المكافأة: 'giving' أو 'receiving'،
-// وكم أُضيف بهذه العملية تحديداً)، تكتشف الدالة تجاوز حاجز مستوى جديد وتبثّ احتفالاً منفصلاً
+// ✅ يبثّ تحديث "مستوى الثروة" (سابقاً "مستوى الدعم") لحظياً لأي واجهة مفتوحة حالياً لهذا
+// المستخدم — بث عام خفيف الحمل (نفس نمط follow-changed) بدل نظام اشتراك مخصّص لكل شخص؛ لا
+// يُنتظَر (fire-and-forget) كي لا يبطئ استجابة إرسال الهدية نفسها، ولا يُفشلها أبداً لو حدث
+// خطأ هنا. 🗑️ طلب صريح: آلية "مستوى التلقي" (receiving) أُزيلت بالكامل — هذه الدالة تُستدعى
+// الآن فقط للمُرسِل (kind='giving')، لا للمستقبِل
 async function broadcastSupportLevelUpdate(io, userId, kind, delta) {
-    if (!io || !userId) return;
+    if (!io || !userId || kind !== 'giving') return;
     try {
         const { computeSupportLevels } = require('./userController');
         const { computeSupportLevelInfo } = require('../utils/supportLevels');
-        const { giving, receiving } = await computeSupportLevels(userId);
-        io.emit('support-level-updated', { userId: userId.toString(), giving, receiving });
+        const { giving } = await computeSupportLevels(userId);
+        io.emit('support-level-updated', { userId: userId.toString(), giving });
 
-        if (kind && delta > 0) {
-            const afterInfo = kind === 'giving' ? giving : receiving;
-            const beforeInfo = computeSupportLevelInfo(Math.max(0, afterInfo.points - delta));
-            if (afterInfo.level > beforeInfo.level) {
+        if (delta > 0) {
+            const beforeInfo = computeSupportLevelInfo(Math.max(0, giving.points - delta));
+            if (giving.level > beforeInfo.level) {
                 const user = await User.findById(userId).select('socketId');
                 if (user?.socketId) {
                     io.to(user.socketId).emit('support-level-up', {
                         kind,
-                        newLevel: afterInfo.level,
-                        tierName: afterInfo.tierName,
-                        tierIcon: afterInfo.tierIcon,
-                        tierGradient: afterInfo.tierGradient
+                        newLevel: giving.level,
+                        tierName: giving.tierName,
+                        tierIcon: giving.tierIcon,
+                        tierGradient: giving.tierGradient
                     });
                 }
             }
@@ -399,7 +395,6 @@ exports.sendGift = async (req, res) => {
         ]);
         // ✅ لا يُنتظَر (fire-and-forget) — تحديث الشارات لا يجب أن يؤخّر استجابة إرسال الهدية
         broadcastSupportLevelUpdate(io, senderId, 'giving', totalPrice);
-        broadcastSupportLevelUpdate(io, receiverId, 'receiving', totalPrice);
         awardFanPoints(io, receiverId, senderId, totalPrice);
 
         res.status(201).json({
@@ -605,7 +600,6 @@ async function processGiftCombo({ io, senderId, giftId, quantity, taps = 1, reci
     // ✅ لا يُنتظَر — تحديث الشارات لا يجب أن يؤخّر استجابة إرسال الهدية
     broadcastSupportLevelUpdate(io, senderId, 'giving', totalCost);
     validReceivers.forEach(r => {
-        broadcastSupportLevelUpdate(io, r._id, 'receiving', totalPrice);
         awardFanPoints(io, r._id, senderId, totalPrice); // ✅ totalPrice = لكل مستلم على حدة (وليس totalCost الإجمالي)
     });
 
@@ -859,11 +853,10 @@ exports.sendPublicGift = async (req, res) => {
         // ✅ لا يُنتظَر — نفس مبدأ نقاط المعجب بالإرسال الفردي/الجماعي، لكل مستلم بقيمة ما استلمه فعلياً
         finalRecipientIds.forEach(rid => awardFanPoints(io, rid, senderId, unitPrice));
         // 🐛 إصلاح: كان هذا المسار (الشات العام) الوحيد الذي لا يستدعي broadcastSupportLevelUpdate
-        // إطلاقاً — فمستوى "الدعم/التلقي" (supportGiving/supportReceiving، المختلف تماماً عن
-        // نظام الخبرة addGiftExperience أعلاه) لا يتحدّث لا بالشارات ولا بمعاينة نافذة الهدايا
-        // لمن يرسل من الشات العام تحديداً، رغم عمله بشكل سليم بالإرسال الخاص/الغرفة
+        // إطلاقاً — فمستوى "الثروة" (supportGiving، المختلف تماماً عن نظام الخبرة addGiftExperience
+        // أعلاه) لا يتحدّث لا بالشارات ولا بمعاينة نافذة الهدايا لمن يرسل من الشات العام تحديداً،
+        // رغم عمله بشكل سليم بالإرسال الخاص/الغرفة
         broadcastSupportLevelUpdate(io, senderId, 'giving', totalCost);
-        finalRecipientIds.forEach(rid => broadcastSupportLevelUpdate(io, rid, 'receiving', unitPrice));
 
         const audienceText = audience === 'all'
             ? `للجميع (${finalRecipientIds.length} شخص)`
