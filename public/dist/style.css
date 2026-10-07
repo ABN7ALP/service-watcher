@@ -11317,7 +11317,9 @@ body.in-voice-room #main-content {
 }
 
 .full-profile-sheet {
-  background: #111827;
+  /* ✅ طلب صريح: نفس الطابع المطفي الفاخر لمتجر الإطارات بالكامل */
+  background: #15181f;
+  border: 1px solid rgba(255,255,255,0.08);
   width: 100%;
   max-width: 512px;
   max-height: 85vh;
@@ -11398,7 +11400,7 @@ body.in-voice-room #main-content {
   border-radius: 26px;
   -o-object-fit: cover;
      object-fit: cover;
-  border: 4px solid #111827;
+  border: 4px solid #15181f;
   box-shadow:
         0 0 0 2px rgba(168,85,247,0.55),
         0 0 0 5px rgba(219,39,119,0.18),
@@ -11431,40 +11433,67 @@ body.in-voice-room #main-content {
   margin-top: 2px;
 }
 
+/* ✅ طلب صريح: فصل شارات الهوية (أدمن/الثروة) عن معلومات الملف الديموغرافية عن شارات
+   الإنجاز الأسبوعية — ثلاث مجموعات منطقية منفصلة بدل صفّ واحد مختلط */
+
 .full-profile-badge-row {
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 10px;
+}
+
+.full-profile-info-row {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 6px 8px;
-  margin-top: 9px;
+  margin-top: 7px;
 }
 
 .full-profile-mini-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 11px;
   font-weight: 700;
-  color: #e5e7eb;
+  color: #d1d5db;
   font-family: inherit;
 }
 
-/* ✅ شارة "نجم النادي الأسبوعي" — دائمة (مركز أول بالأسبوع الماضي المكتمل)، ذهبية لتمييزها
-   عن باقي شارات المعلومات الثابتة، وقابلة للنقر (تنقل لنادي المعجبين المعنيّ) */
+.full-profile-weekly-row {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin-top: 8px;
+}
+
+/* ✅ شارة "نجم النادي الأسبوعي" — دائمة (مركز أول بالأسبوع الماضي المكتمل)، ذهبية مطفأة
+   لتمييزها عن باقي شارات المعلومات الثابتة، وقابلة للنقر (تنقل لنادي المعجبين المعنيّ) */
 
 .full-profile-weekly-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   cursor: pointer;
-  background: linear-gradient(90deg, rgba(251,191,36,0.18), rgba(236,72,153,0.14));
-  border-color: rgba(251,191,36,0.4);
-  color: #fde68a;
+  font-family: inherit;
+  background: rgba(212,197,147,0.12);
+  border: 1px solid rgba(212,197,147,0.35);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #d4c593;
 }
 
 .full-profile-weekly-badge i {
-  color: #fbbf24;
+  color: #d4c593;
 }
 
 /* ✅ الحالة/السيرة — بلا تسمية وبلا خلفية، تجلس مباشرة تحت الشارات بأناقة */
@@ -11508,10 +11537,12 @@ body.in-voice-room #main-content {
    الصف وعنوان+أيقونة يمينه (بترتيب DOM طبيعي يعكسه RTL تلقائياً)
    ===================================================== */
 
+/* ✅ طلب صريح: تباعد أكبر بين التبويبين — كانا قريبين جداً من بعض */
+
 .full-profile-tabs {
   display: flex;
   justify-content: center;
-  gap: 28px;
+  gap: 52px;
   padding: 4px 16px 10px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
   margin-bottom: 12px;
@@ -11528,7 +11559,14 @@ body.in-voice-room #main-content {
 
 .full-profile-tab.active {
   color: #fff;
-  border-bottom-color: #a855f7;
+  border-bottom-color: #d4c593;
+}
+
+/* ✅ منطقة محتوى التبويبين — هدف كاشف السحب attachSwipeTabSwitch (راجع app.js) للتبديل
+   بينهما بالسحب إضافة للنقر */
+
+.full-profile-tabs-viewport {
+  touch-action: pan-y;
 }
 
 .honor-board {
@@ -11639,6 +11677,93 @@ body.in-voice-room #main-content {
   margin-top: 4px;
 }
 
+/* ✅ طلب صريح: استغلال أذكى لمساحة لوحة الشرف بالملف الكامل — شبكة 2×2 لأربع بطاقات
+   (الثروة/الإنجازات/الحماة/نادي المعجبين) بدل صفّين طويلين منفصلين + صفّ مزدوج ثالث */
+
+.honor-split-row-4 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 8px;
+}
+
+.honor-split-row-4 .honor-mini-card {
+  min-height: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.honor-split-row-4 .room-profile-support-badge {
+  margin: 0 auto;
+}
+
+/* ✅ طلب صريح: الهدايا المستلمة كشريط فيلم أفقي قابل للسحب، أيقونات صغيرة متناسقة الحجم */
+
+.honor-gifts-section {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  padding: 10px 0 12px;
+  margin-top: 2px;
+}
+
+.honor-gifts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px 10px;
+  color: #e5e7eb;
+  font-weight: 800;
+  font-size: 12.5px;
+}
+
+.honor-gifts-filmstrip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 0 14px;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.honor-gifts-filmstrip::-webkit-scrollbar {
+  display: none;
+}
+
+.honor-gift-chip {
+  flex-shrink: 0;
+  width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  scroll-snap-align: start;
+}
+
+.honor-gift-chip img {
+  width: 36px;
+  height: 36px;
+  -o-object-fit: contain;
+     object-fit: contain;
+}
+
+.honor-gift-chip-count {
+  font-size: 10px;
+  font-weight: 800;
+  color: #d4c593;
+  background: rgba(212,197,147,0.12);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.honor-gifts-empty {
+  text-align: center;
+  color: #6b7280;
+  font-size: 11.5px;
+  padding: 6px 14px 2px;
+}
+
 .full-profile-video-soon {
   text-align: center;
   padding: 50px 20px;
@@ -11671,12 +11796,14 @@ body.in-voice-room #main-content {
 
 .full-profile-action-follow {
   flex: 1;
-  background: linear-gradient(135deg, #a855f7, #ec4899);
-  color: #fff;
+  background: rgba(212,197,147,0.16);
+  border: 1px solid rgba(212,197,147,0.35);
+  color: #d4c593;
 }
 
 .full-profile-action-follow.following {
   background: rgba(255,255,255,0.08);
+  border-color: transparent;
   color: #d1d5db;
 }
 
@@ -13075,11 +13202,25 @@ body.in-voice-room #main-content {
 /* ✅ صف متابِعين/متابَعين ببطاقة الملف الشخصي المصغّرة — بلا صناديق خلفية، نفس أسلوب إحصائيات
    مركز الملف الشخصي (.profile-hub-stat)، وقابل للنقر لفتح قائمة المتابِعين/المتابَعين */
 
+/* ✅ طلب صريح: تنسيق أفضل لمكانهما — بطاقة مطفأة واحدة تجمعهما بفاصل عمودي رفيع بينهما،
+   بدل رقمين عائمين بلا احتواء بصري */
+
 .full-profile-stats-row {
   display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 36px;
-  padding: 10px 16px 4px;
+  gap: 28px;
+  margin: 10px 16px 4px;
+  padding: 10px 0;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+}
+
+.full-profile-stats-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(255,255,255,0.1);
 }
 
 .full-profile-stat-clickable {
@@ -13087,6 +13228,7 @@ body.in-voice-room #main-content {
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  flex: 1;
 }
 
 .full-profile-stat-num {

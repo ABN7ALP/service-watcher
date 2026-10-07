@@ -688,18 +688,33 @@ exports.getTopReceiversThisMonth = async (req, res) => {
     }
 };
 
-// ✅ ملخص الهدايا المستلمة لمستخدم محدد (لعرضها بصفحة الملف الشخصي الكامل)
+// ✅ ملخص الهدايا المستلمة لمستخدم محدد (لعرضها بصفحة الملف الشخصي الكامل) — يشمل الآن أيضاً
+// تفصيلاً حسب نوع الهدية (صورة/اسم/عدد) لعرضه كشريط فيلم قابل للسحب بلوحة الشرف (طلب صريح)،
+// بلا تقييد بـcontext (كل هدية استلمها من أي مكان بالتطبيق، بعكس getUserContributors المقيَّد بـ'profile')
 exports.getUserGiftsSummary = async (req, res) => {
     try {
         const targetUserId = req.params.userId;
-        const summary = await GiftLog.aggregate([
-            { $match: { receiver: new mongoose.Types.ObjectId(targetUserId) } },
-            { $group: { _id: null, totalGiftsCount: { $sum: '$quantity' }, totalCoinsValue: { $sum: '$totalPrice' } } }
+        const targetObjId = new mongoose.Types.ObjectId(targetUserId);
+        const [summary, giftsBreakdown] = await Promise.all([
+            GiftLog.aggregate([
+                { $match: { receiver: targetObjId } },
+                { $group: { _id: null, totalGiftsCount: { $sum: '$quantity' }, totalCoinsValue: { $sum: '$totalPrice' } } }
+            ]),
+            GiftLog.aggregate([
+                { $match: { receiver: targetObjId } },
+                { $group: { _id: '$gift', giftName: { $first: '$giftName' }, giftImage: { $first: '$giftImage' }, totalCount: { $sum: '$quantity' } } },
+                { $sort: { totalCount: -1 } },
+                { $limit: 30 }
+            ])
         ]);
         const data = summary[0] || { totalGiftsCount: 0, totalCoinsValue: 0 };
         res.status(200).json({
             status: 'success',
-            data: { totalGiftsCount: data.totalGiftsCount, totalCoinsValue: data.totalCoinsValue }
+            data: {
+                totalGiftsCount: data.totalGiftsCount,
+                totalCoinsValue: data.totalCoinsValue,
+                gifts: giftsBreakdown.map(g => ({ giftId: g._id, name: g.giftName, image: g.giftImage, count: g.totalCount }))
+            }
         });
     } catch (error) {
         console.error('[ERROR] in getUserGiftsSummary:', error);

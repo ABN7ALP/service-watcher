@@ -11543,6 +11543,31 @@ async function showFanClubGiftPicker(s, onSaved) {
 }
 
 // ✅ نافذة "هل تود متابعته؟" — تظهر بعد فتح محادثة خاصة مع شخص لست تتابعه بعد، يمكن تجاهلها
+// ✅ كاشف سحب أفقي بسيط عام — يستدعي onSwipe() عند أي سحب أفقي حاسم (حركة أفقية ≥ 45px
+// وأكبر وضوحاً من أي حركة عمودية مصاحبة، كي لا يتعارض مع التمرير العمودي العادي للصفحة).
+// بديل بالسحب لا يستبدل النقر على التبويبات — كلاهما يعمل معاً (طلب صريح: "خلي عند التنقل
+// بينهم مثل سحب")؛ يدعم اللمس والفأرة معاً عبر Pointer Events
+function attachSwipeTabSwitch(el, onSwipe) {
+    if (!el) return;
+    let startX = 0, startY = 0, tracking = false;
+    const SWIPE_THRESHOLD = 45;
+    el.addEventListener('pointerdown', (e) => {
+        tracking = true;
+        startX = e.clientX;
+        startY = e.clientY;
+    });
+    el.addEventListener('pointerup', (e) => {
+        if (!tracking) return;
+        tracking = false;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (Math.abs(dx) >= SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            onSwipe(dx < 0 ? 'left' : 'right');
+        }
+    });
+    el.addEventListener('pointercancel', () => { tracking = false; });
+}
+
 function showFollowPromptModal(userId, username, profileImage) {
     document.getElementById('follow-prompt-modal')?.remove();
     const modal = document.createElement('div');
@@ -11606,6 +11631,9 @@ async function showFullProfilePage(userId) {
         if (userRes.status !== 'success') throw new Error();
         const u = userRes.data.user;
         const giftsReceivedCount = (giftSummaryRes && giftSummaryRes.status === 'success') ? giftSummaryRes.data.totalGiftsCount : 0;
+        // ✅ تفصيل الهدايا المستلمة حسب النوع (صورة/اسم/عدد) — لعرضه كشريط فيلم قابل للسحب
+        // بلوحة الشرف (طلب صريح) بدل رقم إجمالي وحيد بلا تفاصيل
+        const giftsBreakdown = (giftSummaryRes && giftSummaryRes.status === 'success') ? (giftSummaryRes.data.gifts || []) : [];
         const fanClubMemberCount = (fanClubSummaryRes && fanClubSummaryRes.status === 'success') ? fanClubSummaryRes.data.memberCount : 0;
         // ✅ اسم نادي هذا المستخدم الحقيقي (المخصَّص عبر إعادة التسمية) — بدل تسمية ثابتة عامة،
         // يعكس زر البطاقة دوماً آخر اسم اعتمده صاحب النادي، مطابقاً لعنوان ورقة النادي نفسها
@@ -11627,19 +11655,28 @@ async function showFullProfilePage(userId) {
             <div class="full-profile-identity">
                 <h2 class="full-profile-name">${escapeHtml(u.username)} ${getAgentBadgeHTML(u.isAgent)}</h2>
                 <p class="full-profile-id">ID: ${escapeHtml(String(u.customId || ''))}</p>
+                <!-- ✅ طلب صريح: فصل الشارات لمجموعات منطقية بدل صفّ واحد مختلط — الهوية
+                     (أدمن/الثروة) أولاً وأبرز، ثم المعلومات الشخصية الديموغرافية، ثم شارات
+                     الإنجاز الأسبوعية (ذهبية) بصفّها الخاص أخيراً لو وُجدت -->
                 <div class="full-profile-badge-row">
                     ${renderAdminBadgeHTML(u)}
                     ${renderRoomProfileSupportBadgeHTML('giving', u.supportGiving)}
+                </div>
+                <div class="full-profile-info-row">
                     <span class="full-profile-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
                     <span class="full-profile-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${u.age} سنة</span>
                     ${u.socialStatus ? `<span class="full-profile-mini-badge"><i class="fas ${socialInfo.icon} text-red-400"></i> ${escapeHtml(socialInfo.text)}</span>` : ''}
                     ${u.educationStatus ? `<span class="full-profile-mini-badge"><i class="fas ${educationInfo.icon} text-blue-400"></i> ${escapeHtml(educationInfo.text)}</span>` : ''}
+                </div>
+                ${weeklyWins.length ? `
+                <div class="full-profile-weekly-row">
                     ${weeklyWins.map(w => `
-                        <button type="button" class="full-profile-mini-badge full-profile-weekly-badge" data-owner-id="${w.ownerId}" data-owner-username="${escapeHtml(w.ownerUsername)}" data-owner-image="${escapeHtml(w.ownerProfileImage)}" title="نجم نادي ${escapeHtml(w.ownerUsername)} الأسبوعي">
+                        <button type="button" class="full-profile-weekly-badge" data-owner-id="${w.ownerId}" data-owner-username="${escapeHtml(w.ownerUsername)}" data-owner-image="${escapeHtml(w.ownerProfileImage)}" title="نجم نادي ${escapeHtml(w.ownerUsername)} الأسبوعي">
                             <i class="fas fa-crown"></i> نجم نادي ${escapeHtml(w.ownerUsername)}
                         </button>
                     `).join('')}
                 </div>
+                ` : ''}
                 <p class="full-profile-bio-text">${escapeHtml(u.status || '🚀 جاهز للتحديات!')}</p>
                 ${(() => {
                     const links = [
@@ -11659,66 +11696,76 @@ async function showFullProfilePage(userId) {
                     <span class="full-profile-stat-num">${u.followingCount ?? 0}</span>
                     <span class="full-profile-stat-label">متابَعة</span>
                 </button>
+                <span class="full-profile-stats-divider"></span>
                 <button type="button" id="full-profile-followers-stat" class="full-profile-stat-clickable">
                     <span class="full-profile-stat-num">${u.followersCount ?? 0}</span>
                     <span class="full-profile-stat-label">متابعون</span>
                 </button>
             </div>
 
-            <!-- ✅ تبويبا "لوحة الشرف"/"فيديو" — إلهام تصميمي من تطبيقات البث المعروفة: صفوف
-                 ملوّنة (الثروة/الإنجازات/الحماة+نادي المعجبين/الهدايا)؛ الفيديو لا يزال "قريباً"
-                 فقط حسب الطلب -->
+            <!-- ✅ طلب صريح: تبديل مكانَي التبويبين (فيديو أولاً، لوحة الشرف ثانياً) + تباعد أكبر
+                 بينهما + تبديل بالسحب (راجع attachFullProfileTabSwipe أسفل) إضافة للنقر -->
             <div class="full-profile-tabs">
-                <span class="full-profile-tab active" data-tab="honor">لوحة الشرف</span>
                 <span class="full-profile-tab" data-tab="video">فيديو</span>
+                <span class="full-profile-tab active" data-tab="honor">لوحة الشرف</span>
             </div>
 
-            <div id="full-profile-tab-honor" class="honor-board">
-                <div class="honor-row honor-row-giving" id="honor-row-giving">
-                    <div class="honor-row-left"><i class="fas fa-gem"></i> الثروة</div>
-                    <div class="honor-row-right">
-                        ${renderRoomProfileSupportBadgeHTML('giving', u.supportGiving)}
-                        <i class="fas fa-chevron-left honor-row-chevron"></i>
+            <div id="full-profile-tabs-viewport" class="full-profile-tabs-viewport">
+                <div id="full-profile-tab-honor" class="honor-board">
+                    <!-- ✅ طلب صريح: استغلال أذكى للمساحة — 4 بطاقات مصغّرة بشبكة 2×2 (الثروة/
+                         الإنجازات/الحماة/نادي المعجبين) بدل صفّين طويلين + صفّ مزدوج منفصل -->
+                    <div class="honor-split-row honor-split-row-4">
+                        <div class="honor-mini-card" id="honor-row-giving">
+                            <div class="honor-mini-top"><i class="fas fa-gem"></i> الثروة</div>
+                            ${renderRoomProfileSupportBadgeHTML('giving', u.supportGiving)}
+                        </div>
+                        <div class="honor-mini-card" id="full-profile-achv-row">
+                            <div class="honor-mini-top"><i class="fas fa-medal" style="color:#f87171"></i> الإنجازات</div>
+                            <span class="honor-mini-soon">قريباً</span>
+                        </div>
+                        <div class="honor-mini-card" id="full-profile-guardian-card">
+                            <div class="honor-mini-top"><i class="fas fa-chevron-left"></i> 0</div>
+                            <span class="club-icon-guardian" style="margin:0 auto">
+                                <i class="fas fa-shield-halved club-icon-shield"></i>
+                                <i class="fas fa-heart club-icon-shield-heart"></i>
+                            </span>
+                            <p class="honor-mini-title">الحماة</p>
+                            <span class="honor-mini-soon">قريباً</span>
+                        </div>
+                        <div class="honor-mini-card" id="full-profile-fanclub-card">
+                            <div class="honor-mini-top"><i class="fas fa-chevron-left"></i> ${fanClubMemberCount.toLocaleString()}</div>
+                            <span class="club-icon-fanclub" style="margin:0 auto">
+                                <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
+                                <i class="fas fa-heart club-icon-heart"></i>
+                                <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
+                            </span>
+                            <p class="honor-mini-title">${escapeHtml(fanClubDisplayName)}</p>
+                        </div>
+                    </div>
+                    <!-- ✅ طلب صريح: الهدايا المستلمة كشريط فيلم أفقي قابل للسحب، أيقونات صغيرة
+                         متناسقة بدل رقم إجمالي وحيد بلا تفاصيل -->
+                    <div class="honor-gifts-section">
+                        <div class="honor-gifts-header">
+                            <span><i class="fas fa-gift" style="color:#34d399"></i> الهدايا المستلمة</span>
+                            <span class="honor-row-count">${giftsReceivedCount.toLocaleString()}</span>
+                        </div>
+                        ${giftsBreakdown.length ? `
+                        <div class="honor-gifts-filmstrip">
+                            ${giftsBreakdown.map(g => `
+                                <div class="honor-gift-chip" title="${escapeHtml(g.name || '')}">
+                                    <img src="${g.image}" alt="" loading="lazy">
+                                    <span class="honor-gift-chip-count">${g.count.toLocaleString()}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        ` : `<p class="honor-gifts-empty">لم يستلم أي هدايا بعد</p>`}
                     </div>
                 </div>
-                <div class="honor-row honor-row-achv" id="full-profile-achv-row">
-                    <div class="honor-row-left"><i class="fas fa-medal"></i> الإنجازات</div>
-                    <div class="honor-row-right">
-                        <span class="honor-row-count">قريباً</span>
-                        <i class="fas fa-chevron-left honor-row-chevron"></i>
-                    </div>
-                </div>
-                <div class="honor-split-row">
-                    <div class="honor-mini-card" id="full-profile-guardian-card">
-                        <div class="honor-mini-top"><i class="fas fa-chevron-left"></i> 0</div>
-                        <span class="club-icon-guardian" style="margin:0 auto">
-                            <i class="fas fa-shield-halved club-icon-shield"></i>
-                            <i class="fas fa-heart club-icon-shield-heart"></i>
-                        </span>
-                        <p class="honor-mini-title">الحماة</p>
-                        <span class="honor-mini-soon">قريباً</span>
-                    </div>
-                    <div class="honor-mini-card" id="full-profile-fanclub-card">
-                        <div class="honor-mini-top"><i class="fas fa-chevron-left"></i> ${fanClubMemberCount.toLocaleString()}</div>
-                        <span class="club-icon-fanclub" style="margin:0 auto">
-                            <i class="fas fa-feather-alt club-icon-wing club-icon-wing-left"></i>
-                            <i class="fas fa-heart club-icon-heart"></i>
-                            <i class="fas fa-feather-alt club-icon-wing club-icon-wing-right"></i>
-                        </span>
-                        <p class="honor-mini-title">${escapeHtml(fanClubDisplayName)}</p>
-                    </div>
-                </div>
-                <div class="honor-row honor-row-gifts">
-                    <div class="honor-row-left"><i class="fas fa-gift" style="color:#34d399"></i> الهدايا المستلمة</div>
-                    <div class="honor-row-right">
-                        <span class="honor-row-count">${giftsReceivedCount.toLocaleString()}</span>
-                    </div>
-                </div>
-            </div>
 
-            <div id="full-profile-tab-video" class="full-profile-video-soon" style="display:none">
-                <i class="fas fa-clapperboard"></i>
-                <p>لا توجد فيديوهات بعد — قريباً سنعمل على هذي الميزة 🎬</p>
+                <div id="full-profile-tab-video" class="full-profile-video-soon" style="display:none">
+                    <i class="fas fa-clapperboard"></i>
+                    <p>لا توجد فيديوهات بعد — قريباً سنعمل على هذي الميزة 🎬</p>
+                </div>
             </div>
 
             ${userId !== myUserId ? `
@@ -11745,15 +11792,22 @@ async function showFullProfilePage(userId) {
             });
         });
         // ✅ تبويبا لوحة الشرف/فيديو — كلا القسمين مرسومان مسبقاً بالـDOM، التبديل بينهما
-        // مجرد إظهار/إخفاء (لا نداء شبكة إضافي عند التنقل بينهما)
+        // مجرد إظهار/إخفاء (لا نداء شبكة إضافي عند التنقل بينهما). قابل للتبديل بالنقر أو
+        // بالسحب (راجع attachSwipeTabSwitch أسفل) — طلب صريح
+        function switchFullProfileTab(tabName) {
+            const isHonor = tabName === 'honor';
+            body.querySelectorAll('.full-profile-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+            document.getElementById('full-profile-tab-honor').style.display = isHonor ? '' : 'none';
+            document.getElementById('full-profile-tab-video').style.display = isHonor ? 'none' : '';
+        }
         body.querySelectorAll('.full-profile-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                body.querySelectorAll('.full-profile-tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                const isHonor = tab.dataset.tab === 'honor';
-                document.getElementById('full-profile-tab-honor').style.display = isHonor ? '' : 'none';
-                document.getElementById('full-profile-tab-video').style.display = isHonor ? 'none' : '';
-            });
+            tab.addEventListener('click', () => switchFullProfileTab(tab.dataset.tab));
+        });
+        // ✅ سحب أفقي فوق منطقة محتوى التبويبين — سحب لليسار/اليمين (حد أدنى 40px بسرعة
+        // معقولة) يبدّل بين "فيديو"/"لوحة الشرف" تماماً كلو نُقر على التبويب الآخر مباشرة
+        attachSwipeTabSwitch(document.getElementById('full-profile-tabs-viewport'), () => {
+            const active = body.querySelector('.full-profile-tab.active')?.dataset.tab;
+            switchFullProfileTab(active === 'honor' ? 'video' : 'honor');
         });
         document.getElementById('honor-row-giving')?.addEventListener('click', () => {
             showSupportLevelInfoModal('giving', u.supportGiving, u.profileImage, u.username);
