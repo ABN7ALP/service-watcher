@@ -1280,8 +1280,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    بلا تدرّج خلفي، بلا زر إغلاق، ID قابل للنسخ، وإدارة الغرفة مدمجة مباشرة
    ===================================================== */
 .room-profile-sheet-card {
-    background: #1a1f2e;
-    border: 1px solid rgba(255,255,255,0.1);
+    /* ✅ طلب صريح: نفس الطابع المطفي الفاخر لمتجر الإطارات (frame-shop-sheet) بالضبط */
+    background: #15181f;
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: 20px 20px 0 0;
     box-shadow: 0 -10px 34px rgba(0,0,0,0.5);
     width: 100%;
@@ -1311,7 +1312,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     display: block;
     border-radius: 50%;
     object-fit: cover;
-    border: 3px solid #1a1f2e;
+    border: 3px solid #15181f;
     box-shadow: 0 6px 16px rgba(0,0,0,0.5);
     cursor: pointer;
 }
@@ -1756,11 +1757,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     background: rgba(255,255,255,0.06);
     color: #e5e7eb;
 }
-.room-profile-action-gift { background: rgba(236,72,153,0.18); color: #f9a8d4; }
-.room-profile-action-follow { background: linear-gradient(135deg, #a855f7, #ec4899); color: #fff; }
+/* ✅ طلب صريح: ألوان مطفأة متناسقة مع متجر الإطارات بدل الفاقعة (بنفسجي/وردي) — لمسة ذهبية
+   مطفأة موحَّدة لكل أزرار الدعوة للعمل بهذه النافذة */
+.room-profile-action-gift { background: rgba(212,197,147,0.14); color: #d4c593; }
+.room-profile-action-follow { background: rgba(212,197,147,0.16); border: 1px solid rgba(212,197,147,0.35); color: #d4c593; }
 /* ✅ بعد نجاح المتابعة يتحوّل الزر فوراً لاختصار "انضمام" لنادي المعجبين (قلب + نص) بدل
    إلغاء المتابعة — إلغاء المتابعة متاح فقط من الملف الكامل/قائمة المتابَعين */
-.room-profile-action-follow.following { background: rgba(236,72,153,0.14); color: #f9a8d4; }
+.room-profile-action-follow.following { background: rgba(255,255,255,0.06); border-color: transparent; color: #e5e7eb; }
 
 /* =====================================================
    ✅ نافذة صغيرة عامة "قريباً" — تُستخدم للإنجازات والحماة بنافذة ملف الغرفة
@@ -5422,7 +5425,9 @@ body.in-voice-room #main-content {
    ✅ ورقة متابِعين/متابَعين — تبويبان + اقتراحات "لك" بصفوف مكدَّسة أسفل بعضها
    ===================================================== */
 .follow-connections-card {
-    background: #111827;
+    /* ✅ طلب صريح: نفس الطابع المطفي الفاخر لمتجر الإطارات (frame-shop-sheet) بالضبط */
+    background: #15181f;
+    border: 1px solid rgba(255,255,255,0.08);
     width: 100%;
     max-width: 480px;
     max-height: 80vh;
@@ -5447,7 +5452,7 @@ body.in-voice-room #main-content {
     font-weight: 700;
     color: #9ca3af;
 }
-.follow-tab-btn.active { background: rgba(168,85,247,0.16); color: #e9d5ff; }
+.follow-tab-btn.active { background: rgba(212,197,147,0.14); color: #d4c593; }
 
 .follow-connections-list { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; }
 .follow-connection-row {
@@ -5460,16 +5465,19 @@ body.in-voice-room #main-content {
 .follow-connection-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .follow-connection-name { font-size: 12.5px; font-weight: 700; color: #f3f4f6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .follow-connection-level { font-size: 10px; color: #fbbf24; font-weight: 700; }
+/* ✅ طلب صريح: زر المتابعة بلون مطفي ذهبي بدل التدرّج البنفسجي/الوردي الفاقع، نفس عائلة
+   ألوان متجر الإطارات/نافذة الملف المصغّر */
 .follow-connection-btn {
     flex-shrink: 0;
-    background: linear-gradient(135deg, #a855f7, #ec4899);
-    color: #fff;
+    background: rgba(212,197,147,0.16);
+    border: 1px solid rgba(212,197,147,0.35);
+    color: #d4c593;
     font-size: 11px;
     font-weight: 800;
     padding: 7px 14px;
     border-radius: 999px;
 }
-.follow-connection-btn.following { background: rgba(255,255,255,0.08); color: #d1d5db; }
+.follow-connection-btn.following { background: rgba(255,255,255,0.08); border-color: transparent; color: #d1d5db; }
 
 /* ✅ هيكل تحميل نابض (skeleton) — بديل أكثر سلاسة لمؤشر دوّار وحيد أثناء تحميل قوائم
    المتابِعين/المتابَعين/الاقتراحات؛ كتل رمادية نابضة بنفس شكل الصفوف الحقيقية تقريباً */
@@ -5744,10 +5752,6 @@ body.in-voice-room #main-content {
     width: 100%;
     text-align: inherit;
 }
-/* ✅ صفّ "متجر الإطارات" عنصر <button> حقيقي (قابل للنقر كاملاً) — يُلغي تنسيق الزر الافتراضي
-   ليتطابق تماماً مع صفوف الشارات العادية (<div>) المجاورة له */
-.badges-settings-row-link { border: none; background: rgba(255,255,255,0.04); cursor: pointer; font-family: inherit; }
-.badges-settings-row-link:active { background: rgba(255,255,255,0.07); }
 .badges-settings-row-img { width: 36px; height: 36px; object-fit: contain; flex-shrink: 0; }
 .badges-settings-row-icon {
     width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%;
@@ -5758,5 +5762,22 @@ body.in-voice-room #main-content {
 .badges-settings-row-text { flex: 1; min-width: 0; text-align: start; }
 .badges-settings-row-title { font-size: 12.5px; font-weight: 800; color: #fff; }
 .badges-settings-row-sub { font-size: 10.5px; color: #9ca3af; margin-top: 1px; }
+
+/* ✅ طلب صريح: طابع نافذة "الشارات" مطفي فاخر مثل متجر الإطارات بالضبط (frame-shop-*) —
+   تخصيص محصور بـ#badges-settings-sheet وحدها كي لا يؤثر على نوافذ أخرى تتشارك
+   .profile-hub-subsheet-card/.badges-settings-row (مركز المضيف/QR/الإعدادات ليست المقصودة هنا) */
+#badges-settings-sheet .profile-hub-subsheet-card {
+    background: #15181f;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
+}
+#badges-settings-sheet .badges-settings-row {
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+}
+#badges-settings-sheet .badges-settings-row-icon { background: rgba(255,255,255,0.04); color: #d4c593; }
+#badges-settings-sheet .badges-settings-row-sub { color: #8b8d96; }
+#badges-settings-sheet .hub-toggle input:checked + .hub-toggle-slider { background: #8b7a4d; }
 
 

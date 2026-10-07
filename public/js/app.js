@@ -9142,7 +9142,6 @@ function renderFollowPersonRowHTML(u, extraClass = '') {
             <img src="${u.profileImage}" class="follow-connection-avatar ${u.activeFrameClass || ''}">
             <div class="min-w-0 flex-1">
                 <p class="follow-connection-name">${escapeHtml(u.username)}</p>
-                <p class="follow-connection-level">Lv.${u.level || 1}</p>
             </div>
             <button type="button" class="follow-connection-btn ${u.isFollowedByMe ? 'following' : ''}" data-user-id="${u._id}">${u.isFollowedByMe ? 'متابَع' : 'متابعة'}</button>
         </div>
@@ -9173,7 +9172,7 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
     modal.className = 'fixed inset-0 bg-black/70 z-[335] flex items-end md:items-center justify-center';
     modal.innerHTML = `
         <div class="follow-connections-card">
-            <div class="flex items-center justify-between p-3 border-b border-gray-700 flex-shrink-0">
+            <div class="flex items-center justify-between p-3 flex-shrink-0" style="border-bottom:1px solid rgba(255,255,255,0.08)">
                 <p class="font-bold text-sm truncate">${escapeHtml(username || '')}</p>
                 <button id="close-follow-connections" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
             </div>
@@ -10271,7 +10270,7 @@ async function showBadgesSettingsSheet() {
     modal.innerHTML = `
         <div class="profile-hub-subsheet-card w-full md:max-w-sm">
             <div class="flex items-center justify-between mb-3">
-                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-certificate text-yellow-400"></i> الشارات</p>
+                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-certificate" style="color:#d4c593"></i> الشارات</p>
                 <button id="close-badges-settings" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
             </div>
             <div class="badges-settings-list">
