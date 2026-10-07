@@ -8678,7 +8678,7 @@ function renderProfileHubBody(u) {
             <div class="honor-row honor-row-giving" id="profile-hub-honor-giving">
                 <div class="honor-row-left"><i class="fas fa-gem"></i> الثروة</div>
                 <div class="honor-row-right">
-                    ${renderSupportBadgeHTML('giving', u.supportGiving)}
+                    ${renderRoomProfileSupportBadgeHTML('giving', u.supportGiving)}
                     <i class="fas fa-chevron-left honor-row-chevron"></i>
                 </div>
             </div>
@@ -9884,18 +9884,9 @@ function buildSocialLinkUrl(platform, rawValue) {
     return null;
 }
 
-// ✅ شارة "الثروة" (سابقاً "مستوى الدعم" — آلية "التلقي" المنفصلة أُزيلت بالكامل، طلب صريح) —
-// كبسولة صغيرة مقسومة لجزأين (أيقونة + رقم المستوى)، بنفس أسلوب شارات مستوى تطبيقات البث
-// الشهيرة. تُستخدم بنافذة ملف الغرفة وبالملف الكامل معاً
-function renderSupportBadgeHTML(kind, info) {
-    if (!info) return '';
-    return `
-        <span class="support-badge support-badge-giving tier-${info.tierIndex}" data-support-kind="giving" title="الثروة">
-            <span class="support-badge-icon-seg"><i class="fas fa-gem"></i></span>
-            <span class="support-badge-level-seg">Lv.${info.level}</span>
-        </span>
-    `;
-}
+// 🗑️ طلب صريح: شارة "الثروة" بالملف الكامل/مركز الملف الشخصي أصبحت تستخدم صورة الشارة
+// المُدرَّجة (renderRoomProfileSupportBadgeHTML) في كل مكان بدل الكبسولة اللونية القديمة —
+// renderSupportBadgeHTML أصبحت بلا أي نداء متبقٍ، أُزيلت بالكامل
 
 // ✅ طلب صريح: استبدال شارات مستوى الدعم بـ8 صور جديدة موزَّعة على مستويات 1-80 (10 مستويات
 // لكل صورة بدل التدرّج القديم بـ3 صور حسب الفئة فقط) — الثامنة ("المكس") للمستويات الأسطورية
@@ -11595,7 +11586,7 @@ async function showFullProfilePage(userId) {
                 <p class="full-profile-id">ID: ${escapeHtml(String(u.customId || ''))}</p>
                 <div class="full-profile-badge-row">
                     ${renderAdminBadgeHTML(u)}
-                    ${renderSupportBadgeHTML('giving', u.supportGiving)}
+                    ${renderRoomProfileSupportBadgeHTML('giving', u.supportGiving)}
                     <span class="full-profile-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
                     <span class="full-profile-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${u.age} سنة</span>
                     ${u.socialStatus ? `<span class="full-profile-mini-badge"><i class="fas ${socialInfo.icon} text-red-400"></i> ${escapeHtml(socialInfo.text)}</span>` : ''}
@@ -11643,7 +11634,7 @@ async function showFullProfilePage(userId) {
                 <div class="honor-row honor-row-giving" id="honor-row-giving">
                     <div class="honor-row-left"><i class="fas fa-gem"></i> الثروة</div>
                     <div class="honor-row-right">
-                        ${renderSupportBadgeHTML('giving', u.supportGiving)}
+                        ${renderRoomProfileSupportBadgeHTML('giving', u.supportGiving)}
                         <i class="fas fa-chevron-left honor-row-chevron"></i>
                     </div>
                 </div>
