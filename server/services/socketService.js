@@ -430,8 +430,21 @@ function getRoomViewers(io, roomId) {
 // إصلاح بجانب العميل. صورة المستخدم قد تظهر بأي مكان بالتطبيق — لا قائمة أماكن محدودة
 // يمكن حصرها مسبقاً — فالبث الصحيح الوحيد فعلياً هو بث عام لكل المتصلين؛ applyFrameChangeByUserId
 // بالعميل تتحقق محلياً من وجود صورة هذا المستخدم بالصفحة الحالية فلا يُستهلك شيء بلا طائل
+// 🐛 إصلاح جوهري لاحق (طلب صريح: "عند تغير الإطار يظهر بالمشاهدين برأس الصفحة، لا يظهر
+// بنافذة المشاهدين"): الحدث العام أعلاه يُحدِّث فقط ما هو مرسوم حالياً بالـDOM (البقعة
+// الصحيحة لمن يشاهد فعلاً)، لكن أي طلب "جلب قائمة جديدة" لاحق (فتح نافذة المشاهدين،
+// دعوة لمقعد، جلوس على مقعد...) كان يقرأ socket.user.activeFrameClass مباشرة — نسخة
+// مخزَّنة على السوكيت وقت الاتصال فقط ولا تُحدَّث أبداً بعدها، فتبقى قديمة حتى يُعيد
+// المستخدم الاتصال. تحديثها هنا على كل سوكيت حيّ لهذا المستخدم يحل المشكلة من جذرها —
+// أي قراءة لاحقة لـsocket.user.activeFrameClass بأي مكان بالكود (getRoomViewers، دعوات
+// المقاعد، بث الجلوس...) تعكس القيمة الحقيقية الجديدة فوراً، لا فقط الحدث اللحظي بالعميل
 function broadcastUserFrameChange(io, userId, activeFrameClass) {
     const userIdStr = userId.toString();
+    for (const [, s] of io.sockets.sockets) {
+        if (s.user && s.user.id.toString() === userIdStr) {
+            s.user.activeFrameClass = activeFrameClass || '';
+        }
+    }
     io.emit('user-frame-changed', { userId: userIdStr, activeFrameClass: activeFrameClass || '' });
 }
 
@@ -1931,7 +1944,10 @@ socket.on('refreshBlockData', async () => {
         // بلا حاجة لتخزين إضافي بقاعدة البيانات — نفس مصدر عدّاد المشاهدين تماماً)
         socket.on('get-room-viewers', async ({ roomId }) => {
             if (!roomId) return;
-            const viewers = getRoomViewers(io, roomId);
+            // ✅ طلب صريح: أضيف رقم دعم كل مشاهد "داخل الروم" بنافذة المشاهدين (نفس الرقم
+            // الظاهر أصلاً على شارة مقعده لو كان جالساً — getRoomSupportTotal — الآن يظهر
+            // لكل من بالقائمة بصرف النظر هل هو جالس على مقعد أصلاً أم مجرد مشاهد)
+            const viewers = getRoomViewers(io, roomId).map(v => ({ ...v, supportTotal: getRoomSupportTotal(roomId, v.id) }));
             // ✅ مرتبة الغرفة ضمن ترتيب أقوى الغرف — لا معنى لها للغرفة الرسمية أو لآيدي غير صالح
             let roomRank = null;
             const mongoose = require('mongoose');

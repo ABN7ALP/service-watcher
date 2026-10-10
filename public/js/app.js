@@ -5965,12 +5965,12 @@ async function showFrameShopModal() {
         }
     }
 
-    async function purchaseFrame(frameId, duration, btn) {
+    async function purchaseFrame(frameId, duration, btn, autoRenew = false) {
         btn.disabled = true;
         try {
             const res = await fetch('/api/frames/purchase', {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ frameId, duration })
+                body: JSON.stringify({ frameId, duration, autoRenew })
             }).then(r => r.json());
             if (res.status === 'success') {
                 showNotification(res.message, 'success');
@@ -6127,6 +6127,12 @@ async function showFrameShopModal() {
             const autoRenewChecked = ownsRealInstance && !!o.autoRenew;
             const dynamicEl = previewModal.querySelector('#frame-preview-dynamic');
             if (!dynamicEl) return;
+            // 🐛 إصلاح: المفتاح كان مشروطاً بامتلاك الإطار فعلاً مسبقاً — لمن يعاين إطاراً لم
+            // يشترِه بعد (الحالة الأغلب فعلياً) لا يظهر له خيار التجديد التلقائي أبداً هنا، رغم
+            // أن طلب المستخدم الأصلي وضعه صراحة "بنافذة المعاينة" — أي مرتبطاً بالشراء نفسه لا
+            // بامتلاك سابق. يظهر الآن دوماً: يُطبَّق فوراً (PATCH) لو كان الإطار مملوكاً فعلاً،
+            // وإلا يُحفَظ كتفضيل يُرسَل مع طلب الشراء نفسه (راجع purchaseFrame أسفل وautoRenew
+            // بـpurchaseFrame/frameController.js بالخادم) فيُطبَّق من لحظة الشراء الأولى مباشرة
             dynamicEl.innerHTML = `
                 <div class="frame-shop-duration-pills" data-frame-id="${f._id}">
                     <button type="button" class="frame-shop-duration-pill active" data-duration="1">يوم<span>${f.prices.day1}</span></button>
@@ -6136,19 +6142,17 @@ async function showFrameShopModal() {
                 <button type="button" class="frame-shop-purchase-btn frame-preview-purchase-btn" data-selected-duration="1">
                     ${coinIconHTML(12)} شراء
                 </button>
-                ${ownsRealInstance ? `
-                    <div class="badges-settings-row frame-preview-autorenew-row">
-                        <span class="badges-settings-row-icon"><i class="fas fa-sync-alt"></i></span>
-                        <div class="badges-settings-row-text">
-                            <p class="badges-settings-row-title">تجديد تلقائي</p>
-                            <p class="badges-settings-row-sub">يتجدد تلقائياً عند الانتهاء إن كان رصيدك كافياً</p>
-                        </div>
-                        <label class="hub-toggle">
-                            <input type="checkbox" id="frame-preview-autorenew-toggle" ${autoRenewChecked ? 'checked' : ''}>
-                            <span class="hub-toggle-slider"></span>
-                        </label>
+                <div class="badges-settings-row frame-preview-autorenew-row">
+                    <span class="badges-settings-row-icon"><i class="fas fa-sync-alt"></i></span>
+                    <div class="badges-settings-row-text">
+                        <p class="badges-settings-row-title">تجديد تلقائي</p>
+                        <p class="badges-settings-row-sub">يتجدد تلقائياً عند الانتهاء إن كان رصيدك كافياً</p>
                     </div>
-                ` : ''}
+                    <label class="hub-toggle">
+                        <input type="checkbox" id="frame-preview-autorenew-toggle" ${autoRenewChecked ? 'checked' : ''}>
+                        <span class="hub-toggle-slider"></span>
+                    </label>
+                </div>
             `;
             dynamicEl.querySelectorAll('.frame-shop-duration-pill').forEach(pill => {
                 pill.addEventListener('click', () => {
@@ -6159,11 +6163,15 @@ async function showFrameShopModal() {
                 });
             });
             dynamicEl.querySelector('.frame-preview-purchase-btn')?.addEventListener('click', async (e) => {
-                await purchaseFrame(f._id, e.currentTarget.dataset.selectedDuration, e.currentTarget);
+                const wantsAutoRenew = dynamicEl.querySelector('#frame-preview-autorenew-toggle')?.checked || false;
+                await purchaseFrame(f._id, e.currentTarget.dataset.selectedDuration, e.currentTarget, wantsAutoRenew);
                 renderDynamic(); // ✅ إعادة بناء القسم الديناميكي بزر شراء جديد غير معطَّل + حالة ملكية محدَّثة
             });
             const autoRenewToggle = dynamicEl.querySelector('#frame-preview-autorenew-toggle');
             autoRenewToggle?.addEventListener('change', async () => {
+                // ✅ لا سجل ملكية حقيقي بعد لتطبيق التبديل عليه فوراً — يبقى مجرد تفضيل بالصفحة
+                // (checkbox نفسه) يُقرَأ ويُرسَل مع طلب الشراء القادم أعلى بلا أي نداء شبكة هنا
+                if (!ownsRealInstance) return;
                 const newVal = autoRenewToggle.checked;
                 autoRenewToggle.disabled = true;
                 try {
@@ -6194,10 +6202,16 @@ async function showFrameShopModal() {
             <div class="frame-preview-card">
                 <button id="close-frame-preview" class="profile-hub-icon-btn frame-preview-close"><i class="fas fa-times"></i></button>
                 <p class="frame-preview-hint">هكذا سيظهر إطارك على المقعد</p>
-                <div class="voice-seats-flex cols-3 frame-preview-seats-row">
-                    <div class="voice-seat occupied-seat"><img src="${userPhoto}" class="voice-seat-avatar" alt=""></div>
-                    <div class="voice-seat occupied-seat"><img src="${userPhoto}" class="voice-seat-avatar ${frame.cssClass}" alt=""></div>
-                    <div class="voice-seat occupied-seat"><img src="${userPhoto}" class="voice-seat-avatar" alt=""></div>
+                <!-- 🐛 إصلاح جوهري لاحق: كانت تستعير .voice-seats-flex.cols-3/.voice-seat الحقيقية —
+                     نظام أحجامها مصمَّم لشبكة غرفة كاملة (قيم vw متغيّرة بعرض الشاشة)، فتبقى
+                     النافذة طويلة تتفاوت حسب عرض الجهاز رغم كل ضبط سابق. صنف مخصّص بحجم ثابت
+                     صغير (frame-preview-mini-seat) هنا بدل ذلك — نفس آلية الإطار التزيينية تعمل
+                     تلقائياً (wrapImageOverlayFrames تطابق أي img بصنف إطار بأي مكان، لا تحتاج
+                     .voice-seat تحديداً) لكن بارتفاع صغير متوقّع دوماً بغض النظر عن عرض الشاشة -->
+                <div class="frame-preview-seats-row">
+                    <div class="frame-preview-mini-seat"><img src="${userPhoto}" class="voice-seat-avatar" alt=""></div>
+                    <div class="frame-preview-mini-seat"><img src="${userPhoto}" class="voice-seat-avatar ${frame.cssClass}" alt=""></div>
+                    <div class="frame-preview-mini-seat"><img src="${userPhoto}" class="voice-seat-avatar" alt=""></div>
                 </div>
                 <p class="frame-preview-name">${escapeHtml(frame.name)}</p>
                 <div id="frame-preview-dynamic" class="frame-preview-dynamic"></div>
@@ -7746,6 +7760,7 @@ function showXpGainAnimation(amount) {
             <button data-user-id="${v.id}" data-username="${escapeHtml(v.username)}" class="room-viewer-row w-full flex items-center gap-4 rounded-xl p-2 text-right">
                 <img src="${v.profileImage}" class="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-1 ring-white/10 ${v.activeFrameClass || ''}">
                 <span class="text-sm font-medium truncate flex-1">${escapeHtml(v.username)}</span>
+                ${v.supportTotal > 0 ? `<span class="room-viewer-support" data-support-total><i class="fas fa-bolt"></i>${v.supportTotal > 9999 ? '9999+' : v.supportTotal}</span>` : ''}
                 <i class="fas fa-chevron-left text-[10px] text-gray-500"></i>
             </button>
         `).join('');
@@ -8083,17 +8098,36 @@ function showXpGainAnimation(amount) {
     socket.on('room-support-updated', ({ roomId, seatNumber, userId, value }) => {
         if (roomId !== currentVoiceRoomId) return;
         const voiceGrid = document.getElementById('voice-chat-grid');
-        if (!voiceGrid) return;
-        const seatEl = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"]`);
-        if (!seatEl || (userId && seatEl.dataset.userId !== userId)) return;
-        seatEl.dataset.supportTotal = value;
-        let badge = seatEl.querySelector('.seat-support-badge');
-        if (!badge) {
-            badge = document.createElement('span');
-            badge.className = 'seat-support-badge';
-            seatEl.appendChild(badge);
+        const seatEl = seatNumber ? voiceGrid?.querySelector(`.voice-seat[data-seat="${seatNumber}"]`) : null;
+        if (seatEl && (!userId || seatEl.dataset.userId === userId)) {
+            seatEl.dataset.supportTotal = value;
+            let badge = seatEl.querySelector('.seat-support-badge');
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'seat-support-badge';
+                seatEl.appendChild(badge);
+            }
+            badge.textContent = value > 9999 ? '9999+' : value;
         }
-        badge.textContent = value > 9999 ? '9999+' : value;
+        // ✅ طلب صريح: نفس الرقم يتحدّث فورياً بنافذة المشاهدين (لو كانت مفتوحة) لهذا المستخدم
+        // بعينه، بصرف النظر هل هو جالس على مقعد أصلاً أم مجرد مشاهد — لا يُشترَط seatEl إطلاقاً
+        if (userId) {
+            const viewerRow = document.querySelector(`#room-viewers-list .room-viewer-row[data-user-id="${userId}"]`);
+            if (viewerRow) {
+                let supportBadge = viewerRow.querySelector('[data-support-total]');
+                if (value > 0) {
+                    if (!supportBadge) {
+                        supportBadge = document.createElement('span');
+                        supportBadge.className = 'room-viewer-support';
+                        supportBadge.dataset.supportTotal = '';
+                        viewerRow.querySelector('i.fa-chevron-left')?.insertAdjacentElement('beforebegin', supportBadge);
+                    }
+                    supportBadge.innerHTML = `<i class="fas fa-bolt"></i>${value > 9999 ? '9999+' : value}`;
+                } else {
+                    supportBadge?.remove();
+                }
+            }
+        }
     });
 
     socket.on('seat-error', (message) => {
