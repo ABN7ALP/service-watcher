@@ -59,7 +59,7 @@ exports.getFrameShop = async (req, res) => {
 exports.purchaseFrame = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { frameId, duration } = req.body; // duration: '1' | '3' | '7'
+        const { frameId, duration, autoRenew } = req.body; // duration: '1' | '3' | '7'
 
         const durationKey = DURATION_DAYS_MAP[duration];
         if (!durationKey) {
@@ -81,6 +81,10 @@ exports.purchaseFrame = async (req, res) => {
         // لا يُرفض بعد الآن، بل تُضاف المدة الجديدة فوق المدة المتبقية الحالية (تكديس/تمديد)
         // بدل رفضه بخطأ "تمتلكه بالفعل"
         const existing = user.ownedFrames.find(o => o.frame.toString() === frameId.toString());
+        // ✅ طلب صريح: خيار "تجديد تلقائي" أصبح متاحاً بنافذة المعاينة قبل الشراء مباشرة (لا فقط
+        // لمن يملك الإطار أصلاً) — يُحفَظ كتفضيل هنا لحظة الشراء نفسها بدل انتظار جولة تفعيل/
+        // تبديل منفصلة لاحقاً بالصندوق
+        const wantsAutoRenew = typeof autoRenew === 'boolean' ? autoRenew : undefined;
         user.coins -= price;
         if (!existing) {
             // ✅ الشراء وحده لا يبدأ عد الصلاحية — activatedAt و expiresAt يبقيان null لحين التفعيل الفعلي
@@ -90,12 +94,14 @@ exports.purchaseFrame = async (req, res) => {
                 durationDays: newDurationDays,
                 activatedAt: null,
                 expiresAt: null,
-                seenInBox: false
+                seenInBox: false,
+                autoRenew: !!wantsAutoRenew
             });
         } else if (!existing.activatedAt) {
             // لم يُفعَّل بعد — نضيف المدة الجديدة فوق المدة بانتظار التفعيل، بلا بدء عدّ حتى الآن
             existing.durationDays += newDurationDays;
             existing.seenInBox = false;
+            if (wantsAutoRenew !== undefined) existing.autoRenew = wantsAutoRenew;
         } else if (existing.expiresAt && existing.expiresAt < new Date()) {
             // انتهت صلاحيته فعلاً — إعادة الشراء تعني بدايةً جديدة بانتظار تفعيل جديد (لا تكديس
             // فوق وقت منتهٍ أصلاً، لا معنى له)
@@ -103,11 +109,13 @@ exports.purchaseFrame = async (req, res) => {
             existing.activatedAt = null;
             existing.expiresAt = null;
             existing.seenInBox = false;
+            if (wantsAutoRenew !== undefined) existing.autoRenew = wantsAutoRenew;
         } else {
             // مُفعَّل حالياً وما زال سارياً — تمديد تاريخ الانتهاء الحالي بالمدة الجديدة مباشرة
             existing.durationDays += newDurationDays;
             existing.expiresAt = new Date(existing.expiresAt.getTime() + newDurationDays * 24 * 60 * 60 * 1000);
             existing.seenInBox = false;
+            if (wantsAutoRenew !== undefined) existing.autoRenew = wantsAutoRenew;
         }
         await user.save();
 

@@ -3776,10 +3776,26 @@ input[type="checkbox"] {
    سياق أيقونة معاينة مصغَّرة لا غرفة حقيقية — نُقيّدها بعرض أقصى صغير فيصغر المقعد تبعاً
    (aspect-ratio:1) بلا أي تأثير على حجم المقاعد الفعلي بالغرف نفسها */
 
+/* 🐛 إصلاح جوهري لاحق: صفّ مقاعد مصغَّر مستقل تماماً عن .voice-seats-flex/.voice-seat الحقيقية
+   (أحجامها بالـvw تتغيّر بعرض الشاشة — كانت سبب تفاوت طول النافذة وبقائها كبيرة على
+   شاشات معيّنة رغم الضبط). حجم مقعد ثابت صغير دوماً (42px)، بلا أي تبعية لعرض الجهاز.
+   نظام التراكب الزخرفي (wrapImageOverlayFrames) يطابق أي <img> بصنف إطار تلقائياً بأي مكان —
+   لا تبعية لـ.voice-seat اسماً — فيعمل هنا بلا أي كود خاص، وبلا سقف تصادم (لا يوجد .voice-seats-flex
+   أب هنا فيُرجع computeOverlayArtScaleCap دوماً Infinity)، وهذا مقصود: مقعد واحد فقط مُزخرَف
+   من ثلاثة فلا تصادم حقيقي محتمل مع جار، فتظهر نسبة الإطار الحقيقية المُعدَّة له كاملة */
+
 .frame-preview-seats-row {
-  width: 100%;
-  max-width: 210px;
-  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 28px;
+}
+
+.frame-preview-mini-seat {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
 }
 
 .frame-preview-name {
@@ -5012,6 +5028,27 @@ button, input, select, textarea {
 
 .room-viewer-row:hover, .room-viewer-row:active {
   background: rgba(255,255,255,0.06);
+}
+
+/* ✅ طلب صريح: رقم الدعم الذي قدّمه هذا المشاهد داخل الروم (نفس رقم شارة مقعده لو كان
+   جالساً) — يظهر هنا فقط لمن له رقم فعلي (>0)، فلا يزدحم الصف بأصفار لا طائل منها */
+
+.room-viewer-support {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #d4c593;
+  background: rgba(212,197,147,0.1);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+.room-viewer-support i {
+  font-size: 9px;
+  color: #fbbf24;
 }
 
 /* ✅ زر متابعة الغرفة (مستقل عن نظام الأصدقاء) — بشاشة "انتهى البث" */
