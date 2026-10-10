@@ -2075,7 +2075,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ طلب صريح: الزر الذي يظهر بعد متابعة الروم (اختصار نادي المعجبين) كان دائرة ثقيلة
     // بخلفية متدرّجة — استُبدل بأيقونة نادي المعجبين الصغيرة بلا خلفية (نفس تلك المستخدمة
     // بالملف الشخصي)، بينما يبقى زر "+" قبل المتابعة كما هو (لم يُشتكَ منه)
-    function updateRoomHeaderFollowIcon(isFollowing) {
+    // ✅ animateFollow: true فقط عند استدعاء حقيقي من حدث متابعة حيّ (room-follow-updated) —
+    // لا عند رسم الحالة الأولي لدخول الغرفة (قد يكون متابعاً إياها من قبل، فلا داعي لأي نبضة هنا)
+    function updateRoomHeaderFollowIcon(isFollowing, animateFollow = false) {
         const btn = document.getElementById('room-header-follow-btn');
         if (!btn) return;
         btn.dataset.following = isFollowing ? '1' : '0';
@@ -2085,6 +2087,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             ? `<img src="${FAN_CLUB_HEART_IMG}" class="room-header-fanclub-img" alt="">`
             : '<i class="fas fa-plus"></i>';
         btn.title = isFollowing ? 'نادي معجبين المضيف' : 'متابعة الغرفة';
+        // ✅ طلب صريح: لمسة حسّية (نبضة + حلقة متوهّجة ذهبية) لحظة نجاح المتابعة فعلياً
+        if (animateFollow && isFollowing) {
+            btn.classList.remove('room-follow-pop');
+            requestAnimationFrame(() => {
+                btn.classList.add('room-follow-pop');
+                setTimeout(() => btn.classList.remove('room-follow-pop'), 500);
+            });
+        }
     }
     function exitFullscreenRoomMode() {
         document.body.classList.remove('in-voice-room');
@@ -2092,27 +2102,19 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         clearRoomBackground();
     }
 
-    // ✅ تبديل/شراء/إزالة إطار من المتجر يصل هنا فورياً عبر user-frame-changed (socket) — تحديث
-    // كل صورة لهذا المستخدم ظاهرة الآن بأي مكان بالشاشة الحالية (مقعد الغرفة، قائمة المشاهدين،
-    // طلبات الصعود، مالك الغرفة بالبطاقة) بلا أي إعادة تحميل أو إعادة فتح للنافذة — بدلاً من
-    // فرض انتظار المستخدمين لإعادة فتح الشاشة ليروا الإطار الجديد
+    // ✅ تبديل/شراء/إزالة إطار من المتجر يصل هنا فورياً عبر user-frame-changed (socket، الآن
+    // بثّ عام لكل المتصلين — راجع broadcastUserFrameChange بـsocketService.js) — تحديث كل
+    // صورة لهذا المستخدم ظاهرة الآن بأي مكان بالصفحة الحالية بلا أي إعادة تحميل أو إعادة فتح
+    // للنافذة. 🐛 إصلاح جوهري: كانت قائمة أماكن محدودة بالاسم (مقعد/مشاهدين/طلبات صعود/مالك
+    // الغرفة/ملف مصغّر/ملف كامل فقط) — أي مكان آخر تظهر فيه الصورة (صندوق إطارات، صفوف نادي
+    // معجبين، صدارة...) لم يكن يتحدث مطلقاً. مطابقة عامة بكل عناصر [data-user-id] بالصفحة
+    // (وكل img[data-user-id] مباشرة لمن توضع الصفة على الصورة نفسها لا غلاف حولها) تغطي أي
+    // مكان حالي أو مستقبلي تلقائياً بلا الحاجة لإضافة كل مكان جديد هنا يدوياً كما كان يحدث
     function applyFrameChangeByUserId(userId, activeFrameClass) {
         if (!userId) return;
-        const targets = [
-            ...document.querySelectorAll(`#voice-chat-grid [data-user-id="${userId}"] .voice-seat-avatar`),
-            ...document.querySelectorAll(`#room-viewers-list [data-user-id="${userId}"] img`),
-            ...document.querySelectorAll(`#hand-queue-list [data-user-id="${userId}"] img`),
-            ...document.querySelectorAll(`#seat-invite-picker-list [data-user-id="${userId}"] img`),
-            // ✅ طلب صريح: لو كانت نافذة الملف المصغّر/الكامل لهذا المستخدم بعينه مفتوحة فعلاً
-            // الآن (مثلاً عند انتهاء/تجديد إطاره تلقائياً أثناء تصفّح زائر لملفه)، تُحدَّث صورته
-            // فوراً أيضاً بلا إعادة فتح للنافذة
-            ...document.querySelectorAll(`#mini-profile-avatar-img[data-user-id="${userId}"]`),
-            ...document.querySelectorAll(`#full-profile-page[data-user-id="${userId}"] .full-profile-avatar`)
-        ];
+        const targets = document.querySelectorAll(`[data-user-id="${userId}"] img, img[data-user-id="${userId}"]`);
         if (currentRoomHostId === userId) {
             currentRoomHostActiveFrameClass = activeFrameClass || '';
-            const ownerImg = document.querySelector('#room-info-card .room-info-card-owner-img');
-            if (ownerImg) targets.push(ownerImg);
         }
         targets.forEach(img => applyFrameToAvatar(img, activeFrameClass));
         if (userId === myUserId) {
@@ -2689,7 +2691,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         </div>
                     </div>
                     <div id="room-info-card-owner-row" class="room-info-card-owner-row" role="button" title="عرض الملف الشخصي للمضيف">
-                        <img src="${currentRoomHostProfileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-card-owner-img ${currentRoomHostActiveFrameClass || ''}">
+                        <img data-user-id="${currentRoomHostId || ''}" src="${currentRoomHostProfileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-card-owner-img ${currentRoomHostActiveFrameClass || ''}">
                         <div class="min-w-0 flex-1">
                             <p class="text-[10px] text-gray-500">مالك الغرفة</p>
                             <p class="text-sm font-bold truncate">${escapeHtml(currentRoomHostUsername || '—')}</p>
@@ -5853,9 +5855,11 @@ function frameBoxItemHTML(meta, userPhoto, isActive) {
     const isImplicit = o.durationDays === undefined; // ✅ إطار الأدمن — لا شراء حقيقي، صلاحية دائمة طالما بقي أدمن
     const notActivated = !isImplicit && !o.activatedAt;
     const expired = !isImplicit && o.expiresAt && new Date(o.expiresAt) < new Date();
-    // ✅ طلب صريح: حلقة ذهبية + نص صغير على صورة الصندوق عند تفعيل "التجديد التلقائي" —
-    // فقط لإطار مُفعَّل فعلياً وما زال سارياً (لا معنى لتجديد إطار لم يبدأ عدّه أو منتهٍ أصلاً)
-    const autoRenewOn = !isImplicit && !!o.autoRenew && !expired && !notActivated;
+    // ✅ طلب صريح: حلقة ذهبية + نص صغير على صورة الصندوق عند تفعيل "التجديد التلقائي" — لأي
+    // إطار مملوك فعلياً وغير منتهٍ، بصرف النظر هل هو المُفعَّل حالياً أم بانتظار التفعيل
+    // (نفس شرط ownsRealInstance بنافذة المعاينة — راجع showFramePreviewModal — يبقى متسقاً
+    // بين الصندوق والمعاينة لنفس الإطار)
+    const autoRenewOn = !isImplicit && !!o.autoRenew && !expired;
     return `
         <div class="frame-box-item">
             <div class="frame-box-item-avatar-wrap ${autoRenewOn ? 'frame-box-item-autorenew' : ''}">
@@ -5938,7 +5942,11 @@ async function showFrameShopModal() {
         // تعرض كل الإطارات القابلة للشراء بصرف النظر عن الملكية (الشراء المتكرر يُضيف المدة
         // الجديدة للمتبقي بالصندوق بدل رفضه)؛ الصندوق يبقى منفصلاً لإدارة/تفعيل المملوك فقط
         const grid = modal.querySelector('#frame-shop-grid');
-        const buyable = data.frames.filter(f => f.name !== 'إطار الترحيب' && f.name !== 'إطار المثابر' && !f.adminOnly);
+        // ✅ طلب صريح لاحق: "إطار المساهم" (مكتسب حصراً بالفوز الأسبوعي بنادي المعجبين — راجع
+        // fanClubWeeklyFrameJob.js) كان يظهر هنا قابلاً للشراء رغم isActive:false بقاعدة
+        // البيانات (الحقل غير مُرسَل أصلاً لهذا الرد — راجع getFrameShop)، فأُضيف لقائمة
+        // الاستثناء بالاسم كبقية الإطارات الحصرية غير المباعة — يبقى ظاهراً بالصندوق فقط، وفقط لمن فاز به فعلاً
+        const buyable = data.frames.filter(f => f.name !== 'إطار الترحيب' && f.name !== 'إطار المثابر' && f.name !== 'إطار المساهم' && !f.adminOnly);
         grid.innerHTML = buyable.length
             ? buyable.map(f => frameShopCardHTML(f, userPhoto)).join('')
             : `<p class="frame-shop-empty-note">لا توجد إطارات متاحة حالياً</p>`;
@@ -6108,8 +6116,15 @@ async function showFrameShopModal() {
             const f = lastShopData.frames.find(x => x._id.toString() === frame._id.toString()) || frame;
             const o = f.ownedInstance;
             const isImplicit = o && o.durationDays === undefined;
-            const activated = !!(o && !isImplicit && o.activatedAt);
-            const autoRenewChecked = activated && !!o.autoRenew;
+            const expired = !!(o && !isImplicit && o.expiresAt && new Date(o.expiresAt) < new Date());
+            // 🐛 إصلاح: كان الشرط يتطلّب o.activatedAt (أي: هذا الإطار تحديداً هو المُفعَّل حالياً
+            // على الصورة) — بما إن تفعيلاً واحداً فقط ممكن بنفس اللحظة، يظهر مفتاح التجديد
+            // التلقائي حصراً على أي إطار كان يصادف كونه المُفعَّل وقت الفحص (مثلاً إطار المساهم)،
+            // ويختفي عن كل إطار آخر مملوك فعلياً بالصندوق لمجرد أنه غير مُفعَّل الآن. التجديد
+            // التلقائي خاصية بالشراء نفسه (ownedFrames entry) لا بحالة التفعيل — يظهر لأي إطار
+            // مملوك فعلياً (مدة حقيقية غير منتهية)، بصرف النظر هل هو المُفعَّل حالياً أم لا
+            const ownsRealInstance = !!(o && !isImplicit && !expired);
+            const autoRenewChecked = ownsRealInstance && !!o.autoRenew;
             const dynamicEl = previewModal.querySelector('#frame-preview-dynamic');
             if (!dynamicEl) return;
             dynamicEl.innerHTML = `
@@ -6121,7 +6136,7 @@ async function showFrameShopModal() {
                 <button type="button" class="frame-shop-purchase-btn frame-preview-purchase-btn" data-selected-duration="1">
                     ${coinIconHTML(12)} شراء
                 </button>
-                ${activated ? `
+                ${ownsRealInstance ? `
                     <div class="badges-settings-row frame-preview-autorenew-row">
                         <span class="badges-settings-row-icon"><i class="fas fa-sync-alt"></i></span>
                         <div class="badges-settings-row-text">
@@ -7830,7 +7845,7 @@ function showXpGainAnimation(amount) {
                 : '<i class="fas fa-plus"></i> متابعة';
             btn.classList.toggle('following', isFollowing);
         });
-        updateRoomHeaderFollowIcon(isFollowing);
+        updateRoomHeaderFollowIcon(isFollowing, true);
         const countEl = document.getElementById('room-info-followers-count');
         if (countEl && typeof followersCount === 'number') countEl.textContent = followersCount;
     });
@@ -11880,11 +11895,22 @@ async function showFullProfilePage(userId) {
         // ✅ تبويبا لوحة الشرف/فيديو — كلا القسمين مرسومان مسبقاً بالـDOM، التبديل بينهما
         // مجرد إظهار/إخفاء (لا نداء شبكة إضافي عند التنقل بينهما). قابل للتبديل بالنقر أو
         // بالسحب (راجع attachSwipeTabSwitch أسفل) — طلب صريح
+        // 🐛 إصلاح: التبديل كان تبديل display فوري بلا أي مؤثر بصري — طلب صريح. إعادة
+        // استخدام fade-in-content الموجودة أصلاً (تُستخدم لمحتوى غير متزامن بأماكن أخرى
+        // بالتطبيق) على اللوحة الظاهرة حديثاً فقط، بإعادة تشغيلها فعلياً عبر إزالتها
+        // وإضافتها بعد إعادة تدفّق قسري (reflow) — إضافة الصنف ذاته مجدداً بلا هذا لا يُعيد
+        // تشغيل أنيميشن CSS أبداً طالما الصنف لم يُزَل أولاً
         function switchFullProfileTab(tabName) {
             const isHonor = tabName === 'honor';
             body.querySelectorAll('.full-profile-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
-            document.getElementById('full-profile-tab-honor').style.display = isHonor ? '' : 'none';
-            document.getElementById('full-profile-tab-video').style.display = isHonor ? 'none' : '';
+            const honorPanel = document.getElementById('full-profile-tab-honor');
+            const videoPanel = document.getElementById('full-profile-tab-video');
+            honorPanel.style.display = isHonor ? '' : 'none';
+            videoPanel.style.display = isHonor ? 'none' : '';
+            const shownPanel = isHonor ? honorPanel : videoPanel;
+            shownPanel.classList.remove('fade-in-content');
+            void shownPanel.offsetWidth;
+            shownPanel.classList.add('fade-in-content');
         }
         body.querySelectorAll('.full-profile-tab').forEach(tab => {
             tab.addEventListener('click', () => switchFullProfileTab(tab.dataset.tab));
