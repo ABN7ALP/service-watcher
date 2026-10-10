@@ -1,41 +1,39 @@
 // ملف: server/utils/frameExpiryJob.js
-// ✅ مهمة دورية لإزالة الإطارات المنتهية من كل المستخدمين دفعة واحدة
+// ✅ مهمة دورية لإزالة الإطارات المنتهية من كل المستخدمين دفعة واحدة — تجدّد تلقائياً ما طلب
+// صاحبه تجديده (ورصيده يكفي)، وتحذف نهائياً من "الصندوق" ما لم يُجدَّد (طلب صريح: لا يبقى
+// إطار منتهي الصلاحية ظاهراً للأبد). تُعيد استخدام نفس منطق checkAndExpireActiveFrame
+// (مصدر حقيقة واحد مع المسار اللحظي عند فتح المتجر) بدل تكرار الحساب هنا بصيغة مختلفة
 
 const User = require('../models/User');
-const { broadcastUserFrameChange } = require('../services/socketService');
+const { checkAndExpireActiveFrame } = require('../controllers/frameController');
 
 const expireFrames = async (io) => {
     try {
         const now = new Date();
 
-        // نجلب المتأثرين أولاً (فقط المتصلين نحتاج إشعارهم)
+        // ✅ المتأثرون = من لديه إطار نشط انتهى، أو إطار مملوك (مفعَّل سابقاً) انتهى بصمت
+        // بالصندوق بلا أن يكون هو النشط حالياً
         const affected = await User.find({
-            activeFrameExpiresAt: { $ne: null, $lt: now }
-        }).select('_id socketId username').lean();
+            $or: [
+                { activeFrameExpiresAt: { $ne: null, $lt: now } },
+                { ownedFrames: { $elemMatch: { activatedAt: { $ne: null }, expiresAt: { $ne: null, $lt: now } } } }
+            ]
+        }).select('ownedFrames activeFrame activeFrameClass activeFrameExpiresAt coins isAdmin socketId username');
 
         if (affected.length === 0) return;
 
-        // ✅ تحديث جماعي واحد بدل حلقة حفظ (أسرع بكثير وأقل ضغطاً على القاعدة)
-        const result = await User.updateMany(
-            { activeFrameExpiresAt: { $ne: null, $lt: now } },
-             { $set: { activeFrame: null, activeFrameClass: null, activeFrameExpiresAt: null } }
-        );
-
-        console.log(`[FRAME EXPIRY] Expired frames for ${result.modifiedCount} user(s)`);
-
-        // إشعار المتصلين فقط ليُحدّثوا واجهتهم فوراً — بما في ذلك كل من يشاهدهم حالياً بغرفة
-        // (مقعد/قائمة مشاهدين)، لا فقط صاحب الإطار نفسه، بنفس آلية التفعيل/الإزالة اليدوية
-        if (io) {
-            for (const u of affected) {
-                broadcastUserFrameChange(io, u._id, null);
-                if (u.socketId) {
-                    io.to(u.socketId).emit('frameExpired', {
-                        message: 'انتهت صلاحية إطارك. يمكنك تجديده من المتجر.'
-                    });
-                    io.to(u.socketId).emit('forceRefreshUserData', { reason: 'frame_expired' });
-                }
+        let renewedCount = 0, removedCount = 0;
+        for (const user of affected) {
+            try {
+                const result = await checkAndExpireActiveFrame(user, io);
+                if (result.activeFrameRenewed) renewedCount++;
+                if (result.activeFrameRemoved) removedCount++;
+            } catch (error) {
+                console.error(`[FRAME EXPIRY] Failed for user ${user._id}:`, error);
             }
         }
+
+        console.log(`[FRAME EXPIRY] Processed ${affected.length} user(s) — ${renewedCount} auto-renewed, ${removedCount} active frame(s) removed`);
     } catch (error) {
         // لا نُسقط السيرفر بسبب فشل مهمة دورية
         console.error('[FRAME EXPIRY ERROR]:', error);
@@ -45,9 +43,10 @@ const expireFrames = async (io) => {
 const startFrameExpiryJob = (io) => {
     // تشغيل فوري عند الإقلاع (ينظّف ما انتهى أثناء توقف السيرفر)
     expireFrames(io);
-    // ثم كل 10 دقائق — دقة كافية بلا عبء يُذكر
-    setInterval(() => expireFrames(io), 10 * 60 * 1000);
-    console.log('[FRAME EXPIRY] Job started (runs every 10 minutes)');
+    // ✅ كل دقيقتين بدل 10 — مدد الشراء الآن قصيرة جداً (1/3/7 أيام)، فدقة أعلى تلزم لشعور
+    // "فوري" حقيقي بإزالة/تجديد الإطار بلا انتظار طويل بلا داعٍ
+    setInterval(() => expireFrames(io), 2 * 60 * 1000);
+    console.log('[FRAME EXPIRY] Job started (runs every 2 minutes)');
 };
 
 module.exports = { startFrameExpiryJob, expireFrames };

@@ -212,21 +212,89 @@ exports.setActiveFrame = async (req, res) => {
     }
 };
 
-// ✅ دالة مساعدة: تُزيل الإطار المفعّل تلقائياً من كل مكان إذا انتهت صلاحيته — أو إذا كان إطار
-// الأدمن الخاص (activeFrameExpiresAt يبقى null له دائماً فلن تُدركه الصلاحية العادية أبداً)
-// وفُقدت صلاحية isAdmin لاحقاً (تعديل مباشر بقاعدة البيانات) — بلا هذا الفحص الإضافي يبقى
-// إطار الأدمن ظاهراً للأبد على من فُقد منه isAdmin، بعكس كل الإطارات الأخرى المحكومة بمدة فعلية
+// ✅ طلب صريح: تفعيل/إلغاء "التجديد التلقائي" لإطار مملوك محدَّد — عند انتهاء صلاحيته لاحقاً
+// (راجع checkAndExpireActiveFrame أدناه) يُفحص رصيد المستخدم لحظتها: كافٍ → يُخصم وتُمدَّد
+// الصلاحية بنفس المدة تلقائياً بلا أي تدخل؛ غير كافٍ → يُحذف الإطار كلياً (لا تجديد جزئي)
+exports.setFrameAutoRenew = async (req, res) => {
+    try {
+        const { frameId, autoRenew } = req.body;
+        const user = await User.findById(req.user.id).select('ownedFrames');
+        const entry = user.ownedFrames.find(o => o.frame.toString() === String(frameId));
+        if (!entry) return res.status(404).json({ status: 'fail', message: 'لا تملك هذا الإطار' });
+        entry.autoRenew = !!autoRenew;
+        await user.save();
+        res.status(200).json({ status: 'success', data: { autoRenew: entry.autoRenew } });
+    } catch (error) {
+        console.error('[ERROR] in setFrameAutoRenew:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
+// ✅ دالة مساعدة جوهرية — تُستدعى عند كل فتح للمتجر/تحديث لبيانات المستخدم، وأيضاً دورياً عبر
+// server/utils/frameExpiryJob.js (لضمان الإزالة الفورية من كل مكان حتى لو لم يفتح صاحب الإطار
+// شيئاً بنفسه، بما أن مشاهديه بالغرفة/قوائم المتابعين يرونه أيضاً). تفحص:
+// 1) إطار الأدمن المسحوبة صلاحيته (كما كانت الدالة سابقاً)
+// 2) كل إطار مملوك انتهت صلاحيته (لا فقط المفعَّل حالياً — إطار آخر بالصندوق قد ينتهي بصمت
+//    أيضاً): لو autoRenew مفعّل ورصيده يكفي سعر نفس المدة → تجديد تلقائي كامل (خصم + تمديد)،
+//    وإلا حذف الإطار نهائياً من ownedFrames (طلب صريح: لا يبقى "منتهياً" ظاهراً للأبد بالصندوق)
+const DURATION_KEY_BY_DAYS = { 1: 'day1', 3: 'day3', 7: 'day7' };
 async function checkAndExpireActiveFrame(user, io = null) {
-    const expiredByTime = user.activeFrameExpiresAt && user.activeFrameExpiresAt < new Date();
+    const now = new Date();
+    let changed = false;
+    let activeFrameRemoved = false;
+    let activeFrameRenewed = false;
+
     const revokedAdminFrame = user.activeFrameClass === 'profile-frame-admin' && !user.isAdmin;
-    if (expiredByTime || revokedAdminFrame) {
+    if (revokedAdminFrame) {
+        changed = true;
+        activeFrameRemoved = true;
+    }
+
+    const expiredEntries = user.ownedFrames.filter(o => o.activatedAt && o.expiresAt && o.expiresAt < now);
+    if (expiredEntries.length) {
+        const frames = await ProfileFrame.find({ _id: { $in: expiredEntries.map(o => o.frame) } }).select('prices');
+        const frameById = new Map(frames.map(f => [f._id.toString(), f]));
+        const removeFrameIds = [];
+        for (const entry of expiredEntries) {
+            const frame = frameById.get(entry.frame.toString());
+            const durationKey = DURATION_KEY_BY_DAYS[entry.durationDays];
+            const price = frame && durationKey ? frame.prices[durationKey] : null;
+            const isActive = user.activeFrame && user.activeFrame.toString() === entry.frame.toString();
+            if (entry.autoRenew && price != null && user.coins >= price) {
+                user.coins -= price;
+                entry.expiresAt = new Date(entry.expiresAt.getTime() + entry.durationDays * 24 * 60 * 60 * 1000);
+                entry.seenInBox = false; // ✅ تجديد = "جديد" بالصندوق مجدداً، نفس إشارة الشراء
+                changed = true;
+                if (isActive) {
+                    user.activeFrameExpiresAt = entry.expiresAt;
+                    activeFrameRenewed = true;
+                }
+            } else {
+                removeFrameIds.push(entry.frame.toString());
+                changed = true;
+                if (isActive) activeFrameRemoved = true;
+            }
+        }
+        if (removeFrameIds.length) {
+            user.ownedFrames = user.ownedFrames.filter(o => !removeFrameIds.includes(o.frame.toString()));
+        }
+    }
+
+    if (activeFrameRemoved) {
         user.activeFrame = null;
         user.activeFrameClass = null;
         user.activeFrameExpiresAt = null;
-        await user.save();
-        console.log(`[FRAME EXPIRE] Frame auto-removed for user ${user._id}`);
-        if (io) broadcastUserFrameChange(io, user._id, null);
     }
+
+    if (changed) {
+        await user.save();
+        console.log(`[FRAME EXPIRE] Processed expired frame(s) for user ${user._id}`);
+        if (io) {
+            if (activeFrameRemoved) broadcastUserFrameChange(io, user._id, null);
+            else if (activeFrameRenewed) broadcastUserFrameChange(io, user._id, user.activeFrameClass);
+        }
+    }
+    return { changed, activeFrameRemoved, activeFrameRenewed };
 }
 
 exports.checkAndExpireActiveFrame = checkAndExpireActiveFrame;

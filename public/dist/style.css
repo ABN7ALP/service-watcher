@@ -2097,10 +2097,6 @@ video {
   background-color: rgb(239 68 68 / 0.8);
 }
 
-.bg-red-500\/90{
-  background-color: rgb(239 68 68 / 0.9);
-}
-
 .bg-red-600{
   --tw-bg-opacity: 1;
   background-color: rgb(220 38 38 / var(--tw-bg-opacity, 1));
@@ -2151,10 +2147,6 @@ video {
 
 .bg-yellow-500\/80{
   background-color: rgb(234 179 8 / 0.8);
-}
-
-.bg-yellow-500\/90{
-  background-color: rgb(234 179 8 / 0.9);
 }
 
 .bg-yellow-600{
@@ -3648,6 +3640,44 @@ input[type="checkbox"] {
   -o-object-fit: cover;
      object-fit: cover;
   flex-shrink: 0;
+  display: block;
+}
+
+/* ✅ طلب صريح: حلقة ذهبية رفيعة مطفية حول صورة الإطار بالصندوق + نص صغير خارج الحلقة
+   يُخبر المستخدم أن هذا الإطار سيتجدد تلقائياً عند الانتهاء — تظهر/تختفي فوراً مع تبديل
+   المفتاح بنافذة المعاينة (راجع frame-preview-autorenew-row بـapp.js) */
+
+.frame-box-item-avatar-wrap {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.frame-box-item-avatar-wrap .frame-box-item-avatar {
+  width: 100%;
+  height: 100%;
+}
+
+.frame-box-item-autorenew {
+  box-shadow: 0 0 0 1.5px #d4c593;
+  border-radius: 50%;
+}
+
+.frame-box-item-autorenew-tag {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 7px;
+  font-weight: 800;
+  background: #1c1608;
+  color: #d4c593;
+  border: 1px solid rgba(212,197,147,0.5);
+  padding: 1px 5px;
+  border-radius: 999px;
+  line-height: 1.4;
 }
 
 .frame-box-item-text {
@@ -3709,17 +3739,19 @@ input[type="checkbox"] {
 
 /* =====================================================
    ✅ نافذة "معاينة الإطار" — 3 مقاعد حقيقية (نفس أصناف المقعد الفعلي بالغرفة)، الوسط بالإطار
-   المرشَّح والجانبان بلا إطار للمقارنة؛ اسم الإطار يظهر هنا فقط (طلب صريح)
+   المرشَّح والجانبان بلا إطار للمقارنة؛ اسم الإطار يظهر هنا فقط (طلب صريح). طلب صريح لاحق:
+   تصغير ارتفاعها العام (padding/margins مضغوطة) + إضافة شراء بتحديد مدة ومفتاح تجديد تلقائي
+   مباشرة هنا (راجع frame-preview-dynamic وshowFramePreviewModal بـapp.js)
    ===================================================== */
 
 .frame-preview-card {
   position: relative;
   background: #15181f;
   border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 20px;
-  padding: 28px 20px 22px;
+  border-radius: 18px;
+  padding: 18px 16px 16px;
   width: 100%;
-  max-width: 340px;
+  max-width: 300px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3728,14 +3760,14 @@ input[type="checkbox"] {
 
 .frame-preview-close {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 8px;
+  left: 8px;
 }
 
 .frame-preview-hint {
-  font-size: 11px;
+  font-size: 10.5px;
   color: #71717a;
-  margin-bottom: 18px;
+  margin-bottom: 10px;
   text-align: center;
 }
 
@@ -3744,11 +3776,38 @@ input[type="checkbox"] {
 }
 
 .frame-preview-name {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 800;
   color: #e5e7eb;
-  margin-top: 20px;
+  margin-top: 12px;
   text-align: center;
+}
+
+.frame-preview-dynamic {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  margin-top: 12px;
+}
+
+.frame-preview-dynamic .frame-shop-duration-pills {
+  margin-top: 0;
+}
+
+.frame-preview-autorenew-row {
+  margin-top: 8px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+}
+
+.frame-preview-autorenew-row .badges-settings-row-icon {
+  background: rgba(212,197,147,0.1);
+  color: #d4c593;
+}
+
+.frame-preview-autorenew-row .hub-toggle input:checked + .hub-toggle-slider {
+  background: #8b7a4d;
 }
 
 /* ✅ إطارات-صورة (overlay حقيقي فوق الصورة الشخصية، لا حدّ CSS) — "إطار المساهم" الحصري
@@ -4298,14 +4357,22 @@ button, input, select, textarea {
    بطلب صريح: تفادي تصادم الإطارات الزخرفية الكبيرة (الجمشت الملكي خصوصاً، وتنانين النار
    بدرجة أقل) بإطار المقعد المجاور */
 
+/* 🐛 إصلاح جوهري (طلب صريح: "تنانين النار/الجمشت الملكي صغير بعض الشيء ع مقاعد الغرفة" رغم
+   جولة سابقة رفعت التباعد): computeOverlayArtScaleCap بـapp.js يحسب الفجوة الآمنة كأصغر
+   قيمتين (عمودية↔أفقية)، وكان التباعد الأفقي (column-gap) هنا أضيق كثيراً من الرأسي (14px/
+   11px فقط) فيبقى هو "الحلقة الأضعف" التي تُسقط السقف الديناميكي دوماً تحت 140% الثابتة —
+   فيُلغي عملياً استثناء exemptFromTightCap لهذين الإطارين بالكامل على المقاعد (يُطبَّق عليهما
+   نفس سقف 140% كبقية الإطارات رغم الاستثناء). الحل: تقريب التباعدين الأفقي/الرأسي من بعضهما
+   (كلاهما كبير كفاية الآن) كي يرتفع السقف الديناميكي الفعلي فوق 140% فعلياً ويستفيد الاستثناء */
+
 .voice-seats-flex.cols-5 {
   grid-template-columns: repeat(5, 1fr);
-  gap: clamp(44px, 8.5vw, 56px) clamp(14px, 3.6vw, 26px);
+  gap: clamp(40px, 9vw, 50px) clamp(38px, 8.5vw, 48px);
 }
 
 .voice-seats-flex.cols-6 {
   grid-template-columns: repeat(6, 1fr);
-  gap: clamp(40px, 7.5vw, 52px) clamp(11px, 3vw, 20px);
+  gap: clamp(36px, 8vw, 44px) clamp(34px, 7.5vw, 40px);
 }
 
 .voice-seats-flex.cols-3 .voice-seat,
@@ -8944,15 +9011,17 @@ button, input, select, textarea {
   }
 }
 
-/* ✅ نافذة دعوة المضيف لمقعد — بطاقة أنيقة بأسلوب "مكالمة واردة"، مركز الشاشة، مع حلقة
-   متوهجة نابضة حول صورة الداعي وشارة ميكروفون صغيرة تؤكد سياق الدعوة */
+/* ✅ نافذة دعوة المضيف لمقعد — طلب صريح لاحق: استُبدل الطابع البنفسجي/الفوشي الفاقع
+   بطابع مطفي (matte) أنيق مطابق لمتجر الإطارات (#15181f + حدود شفافة خفيفة) مع لمسة لون
+   واحدة خفيفة فقط (الذهبي المطفي #d4c593) على الحلقة النابضة وزر القبول — "تميز قليل
+   باللون" بدل تدرّج صاخب بكامل البطاقة */
 
 .seat-invite-card {
-  background: linear-gradient(160deg, rgba(30,20,50,0.97), rgba(17,24,39,0.97));
-  border: 1px solid rgba(168,85,247,0.25);
-  border-radius: 22px;
+  background: #15181f;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
   box-shadow: 0 16px 50px rgba(0,0,0,0.6);
-  padding: 28px 22px 22px;
+  padding: 26px 22px 22px;
   width: 100%;
   max-width: 300px;
   text-align: center;
@@ -8985,7 +9054,7 @@ button, input, select, textarea {
   border-radius: 50%;
   -o-object-fit: cover;
      object-fit: cover;
-  border: 3px solid rgba(255,255,255,0.15);
+  border: 3px solid rgba(255,255,255,0.1);
   box-shadow: 0 6px 20px rgba(0,0,0,0.5);
   position: relative;
   z-index: 1;
@@ -8997,7 +9066,7 @@ button, input, select, textarea {
   position: absolute;
   inset: -6px;
   border-radius: 50%;
-  border: 2px solid rgba(168,85,247,0.55);
+  border: 2px solid rgba(212,197,147,0.4);
   animation: seatInvitePulse 1.6s ease-out infinite;
 }
 
@@ -9024,13 +9093,13 @@ button, input, select, textarea {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #a855f7, #ec4899);
-  color: #fff;
+  background: #1c1608;
+  color: #d4c593;
+  border: 2px solid rgba(212,197,147,0.4);
   font-size: 11px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid #1a1225;
   z-index: 2;
 }
 
@@ -9053,8 +9122,9 @@ button, input, select, textarea {
 
 .seat-invite-decline-btn {
   flex: 1;
-  background: rgba(255,255,255,0.08);
-  color: #d1d5db;
+  background: rgba(255,255,255,0.06);
+  color: #9ca3af;
+  border: 1px solid rgba(255,255,255,0.1);
   font-weight: 800;
   font-size: 13px;
   padding: 11px 0;
@@ -9063,8 +9133,9 @@ button, input, select, textarea {
 
 .seat-invite-accept-btn {
   flex: 1.3;
-  background: linear-gradient(135deg, #a855f7, #ec4899);
-  color: #fff;
+  background: rgba(212,197,147,0.14);
+  border: 1px solid rgba(212,197,147,0.4);
+  color: #d4c593;
   font-weight: 800;
   font-size: 13px;
   padding: 11px 0;
@@ -9073,7 +9144,6 @@ button, input, select, textarea {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  box-shadow: 0 4px 16px rgba(168,85,247,0.4);
   transition: transform 0.15s ease;
 }
 
@@ -9084,26 +9154,27 @@ button, input, select, textarea {
 @keyframes seatInviteAcceptPop {
   0%   {
     transform: scale(1);
-    box-shadow: 0 4px 16px rgba(168,85,247,0.4);
+    box-shadow: 0 0 0 0 rgba(212,197,147,0.4);
   }
 
   40%  {
     transform: scale(1.12);
-    box-shadow: 0 0 0 10px rgba(168,85,247,0.25), 0 4px 16px rgba(168,85,247,0.5);
+    box-shadow: 0 0 0 10px rgba(212,197,147,0.2);
   }
 
   100% {
     transform: scale(1.04);
-    box-shadow: 0 0 0 16px rgba(168,85,247,0), 0 4px 16px rgba(168,85,247,0.4);
+    box-shadow: 0 0 0 16px rgba(212,197,147,0);
   }
 }
 
-/* ✅ ورقة "دعوة لمقعد" — نفس أسلوب بقية أوراق المشروع السفلية، مع حقل بحث فوري وصفوف
-   أنيقة بزر دعوة واضح وغير مضغوط لكل شخص (بدل أيقونة صغيرة مطمورة بنهاية صف كامل قابل للضغط) */
+/* ✅ ورقة "دعوة لمقعد" — نفس طابع متجر الإطارات المطفي (#15181f)، حقل بحث فوري وصفوف
+   أنيقة بزر دعوة واضح وغير مضغوط لكل شخص (بدل أيقونة صغيرة مطمورة بنهاية صف كامل قابل للضغط)،
+   مع لمسة ذهبية مطفية خفيفة فقط على زر الدعوة بدل تدرّج بنفسجي/فوشي فاقع */
 
 .seat-invite-picker-sheet {
-  background: #1a1f2e;
-  border: 1px solid rgba(255,255,255,0.1);
+  background: #15181f;
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 20px 20px 0 0;
   box-shadow: 0 -8px 30px rgba(0,0,0,0.5);
   max-height: 72vh;
@@ -9117,16 +9188,17 @@ button, input, select, textarea {
   }
 }
 
-/* ✅ بديل مباشر بأعلى ورقة الدعوة: قفل المقعد الفاضي نفسه بدل اختيار شخص لدعوته */
+/* ✅ بديل مباشر بأعلى ورقة الدعوة: قفل المقعد الفاضي نفسه بدل اختيار شخص لدعوته — أحمر
+   مطفي (نفس درجة frame-box-item-countdown) بدل الأحمر الفاقع السابق */
 
 .seat-invite-lock-btn {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 5px;
-  background: rgba(239,68,68,0.12);
-  color: #fca5a5;
-  border: 1px solid rgba(239,68,68,0.3);
+  background: rgba(196,103,95,0.12);
+  color: #c4675f;
+  border: 1px solid rgba(196,103,95,0.3);
   border-radius: 999px;
   padding: 5px 11px;
   font-size: 11px;
@@ -9134,7 +9206,7 @@ button, input, select, textarea {
 }
 
 .seat-invite-lock-btn:hover {
-  background: rgba(239,68,68,0.2);
+  background: rgba(196,103,95,0.2);
 }
 
 .seat-invite-search-wrap {
@@ -9153,7 +9225,7 @@ button, input, select, textarea {
 
 .seat-invite-search-wrap input {
   width: 100%;
-  background: rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 9999px;
   padding: 9px 34px 9px 14px;
@@ -9170,7 +9242,7 @@ button, input, select, textarea {
 }
 
 .seat-invite-search-wrap input:focus {
-  border-color: rgba(168,85,247,0.5);
+  border-color: rgba(212,197,147,0.4);
 }
 
 .seat-invite-picker-row {
@@ -9183,7 +9255,7 @@ button, input, select, textarea {
 }
 
 .seat-invite-picker-row:hover {
-  background: rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.04);
 }
 
 .seat-invite-picker-avatar {
@@ -9212,13 +9284,13 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, #a855f7, #ec4899);
-  color: #fff;
+  background: rgba(212,197,147,0.14);
+  border: 1px solid rgba(212,197,147,0.4);
+  color: #d4c593;
   font-size: 11.5px;
   font-weight: 800;
   padding: 8px 16px;
   border-radius: 9999px;
-  box-shadow: 0 2px 10px rgba(168,85,247,0.35);
   transition: transform 0.12s ease;
 }
 
@@ -9375,10 +9447,34 @@ body.in-voice-room .container {
   max-width: 100% !important;
 }
 
+/* 🐛 إصلاح جوهري: كان min-height فقط (بلا تثبيت فعلي) — لو تجاوز محتوى الغرفة (هيدر +
+   شبكة مقاعد + منطقة دردشة) ارتفاع شاشة واحدة، ينمو #main-content أطول من الشاشة وتصير
+   الصفحة كاملة قابلة للتمرير، فيضطر المستخدم للتمرير للأسفل قليلاً للوصول لشريط الدردشة/
+   الهدية/المزيد (fixed بالأصل نسبةً لحدود #main-content نفسه بفعل backdrop-filter، لا
+   للشاشة مباشرة — فينزل معه خارج حدود الرؤية). التثبيت الصريح هنا (position:fixed +
+   inset:0 + ارتفاع شاشة واحدة فعلي) يضمن أن الغرفة بأكملها دائماً شاشة واحدة كاملة بلا
+   تمرير صفحة إطلاقاً — تماماً كتطبيقات الجوال المرجعية */
+
 body.in-voice-room #main-content {
   grid-column: span 12 / span 12 !important;
   border-radius: 0 !important;
-  min-height: 100vh !important;
+  position: fixed !important;
+  inset: 0 !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* ✅ شبكة المقاعد تأخذ كل الفراغ المتبقي بعد الهيدر وتتمرّر داخلياً هي وحدها (احتياط فقط —
+   تحجيمها المرن (clamp) مصمَّم أصلاً ليلائم شاشة واحدة دوماً) بدل أن تدفع #main-content
+   كاملاً ليطول عن الشاشة فيُخفى شريط الدردشة/الهدية خارج حدود الرؤية */
+
+body.in-voice-room #main-content > #voice-chat-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* ✅ شريط معركة PK بين غرفتين — يظهر أعلى شاشة الغرفة فور بدء المعركة، بعرض شريط تقدّم

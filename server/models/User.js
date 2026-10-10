@@ -37,7 +37,11 @@ const userSchema = new mongoose.Schema({
         expiresAt: { type: Date, default: null }, // يُحسب فقط عند التفعيل
         // ✅ "الصندوق" بمتجر الإطارات — يُضبط false عند كل شراء جديد (نقطة حمراء تنبيهية على
         // أيقونة الصندوق)، ويتحوّل true جماعياً لكل الإطارات المملوكة بمجرد فتح الصندوق مرة
-        seenInBox: { type: Boolean, default: false }
+        seenInBox: { type: Boolean, default: false },
+        // ✅ طلب صريح: تجديد تلقائي عند انتهاء الصلاحية — يُفحص رصيد المستخدم لحظة الانتهاء
+        // فقط (لا حجز/تجميد مسبق)؛ لو كافياً يُخصم وتُمدَّد الصلاحية بنفس المدة تلقائياً، وإلا
+        // يُحذف الإطار كلياً من ownedFrames (لا يبقى "منتهياً" ظاهراً بالصندوق إلى الأبد)
+        autoRenew: { type: Boolean, default: false }
     }],
     activeFrame: { type: mongoose.Schema.Types.ObjectId, ref: 'ProfileFrame', default: null },
     activeFrameClass: { type: String, default: null },
