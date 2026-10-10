@@ -6990,6 +6990,11 @@ switchToView('arena');
     } catch (error) {
         console.error('[STARTUP] فشل التحقق من الرسائل غير المقروءة:', error);
     }
+
+    // ✅ طلب صريح: تحميل كتالوج الهدايا مسبقاً بالخلفية فور إقلاع التطبيق (بلا حجب أي شيء آخر
+    // هنا) — بهذا يكون جاهزاً بالكاش غالباً حتى عند أول فتح فعلي لأي نافذة هدية بالجلسة، لا فقط
+    // الفتحات اللاحقة. فشل التحميل المسبق صامت تماماً (كل نافذة هدية ستحاول الجلب بنفسها لاحقاً)
+    getGiftShopCatalog().catch(() => {});
 })();
 
 // --- ✅ إضافة عرض البيانات الجديدة ---
@@ -12524,15 +12529,37 @@ function applyFrameToAvatar(imgEl, activeFrameClass) {
 // ============ نظام الهدايا (Gifts) ================
 // =================================================
 
+// ✅ طلب صريح: "ليش نافذة الهدية عند فتحها تحمل؟ لازم تفتح فوري بمحتواها" — كتالوج الهدايا
+// (أسماء/صور/أسعار/فئات) شبه ثابت فعلياً، لا يتغيّر إلا بتدخّل إداري نادر، فكانت كل نافذة
+// (خاص/غرفة/عام) تُعيد جلبه من الصفر بكل فتح — نفس البيانات بالضبط في كل مرة. تُخزَّن هنا
+// بالذاكرة بعد أول جلب فعلي وتُعاد فوراً لكل فتح لاحق طوال الجلسة (الثلاث نوافذ تتشارك نفس
+// الكاش)، مع تجديد صامت بالخلفية كل 5 دقائق احتياطاً لتغيير إداري بلا إلزام المستخدم بالانتظار.
+// تُستدعى أيضاً مسبقاً (prefetch) فور إقلاع التطبيق — راجع نهاية الملف — فيكون الكتالوج جاهزاً
+// غالباً حتى عند أول فتح فعلي لأي نافذة هدية بالجلسة
+let giftShopCatalogCache = null;
+let giftShopCatalogFetchedAt = 0;
+const GIFT_CATALOG_REFRESH_MS = 5 * 60 * 1000;
+async function getGiftShopCatalog() {
+    if (giftShopCatalogCache && (Date.now() - giftShopCatalogFetchedAt < GIFT_CATALOG_REFRESH_MS)) {
+        return giftShopCatalogCache;
+    }
+    const response = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } });
+    const result = await response.json();
+    if (!response.ok || result.status !== 'success') throw new Error('فشل تحميل المتجر');
+    giftShopCatalogCache = result.data.gifts;
+    giftShopCatalogFetchedAt = Date.now();
+    return giftShopCatalogCache;
+}
+
 async function showGiftStoreModal(targetUserId, targetUsername) {
     const existing = document.getElementById('gift-store-modal');
     if (existing) existing.remove();
 
     const shellHTML = `
         <div id="gift-store-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
-            <div class="gift-store-sheet bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-lg text-white border border-gray-700 max-h-[85vh] flex flex-col">
-                    <div class="flex items-center justify-between p-4 border-b border-gray-700 flex-shrink-0">
-                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift text-pink-400"></i> إرسال هدية لـ ${escapeHtml(targetUsername)}</h3>
+            <div class="gift-store-sheet rounded-2xl shadow-2xl w-full max-w-lg text-white border max-h-[85vh] flex flex-col">
+                    <div class="flex items-center justify-between p-4 border-b border-white/10 flex-shrink-0">
+                    <h3 class="text-lg font-bold flex items-center gap-2"><i class="fas fa-gift" style="color:#d4c593"></i> إرسال هدية لـ ${escapeHtml(targetUsername)}</h3>
                     <div class="flex items-center gap-1">
                         <button id="gift-store-support-btn" class="report-issue-icon-btn" title="الإبلاغ عن مشكلة"><i class="fas fa-exclamation-triangle"></i></button>
                         <button id="close-gift-store" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
@@ -12562,11 +12589,7 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
     modal.addEventListener('click', (e) => { if (e.target.id === 'gift-store-modal') modal.remove(); });
 
     try {
-        const response = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } });
-        const result = await response.json();
-        if (!response.ok || result.status !== 'success') throw new Error('فشل تحميل المتجر');
-
-        const gifts = result.data.gifts;
+        const gifts = await getGiftShopCatalog();
         const currentUser = JSON.parse(localStorage.getItem('user'));
         const body = document.getElementById('gift-store-body');
         const footer = document.getElementById('gift-store-footer');
@@ -12700,17 +12723,16 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         let gifts, seatedUsers;
         let hostId = null;
         if (presetTarget) {
-            const shopRes = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
-            gifts = shopRes.data.gifts;
+            gifts = await getGiftShopCatalog();
             seatedUsers = [];
         } else {
             const url = roomId === 'main' ? '/api/voice-room' : `/api/voice-room/rooms/${roomId}`;
-            const [roomRes, shopRes] = await Promise.all([
+            const [roomRes, catalogGifts] = await Promise.all([
                 fetch(url, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-                fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+                getGiftShopCatalog()
             ]);
 
-            gifts = shopRes.data.gifts;
+            gifts = catalogGifts;
             // 🐛 إصلاح: نفسي كنت أظهر ضمن قائمة "من أهدي؟" لو كنت جالساً على مقعد — تحديد هدية
             // لنفسي يُرفَض بالسيرفر بالفعل، لكن الواجهة كانت تخصم الرصيد وتُظهر شارة "دعمت نفسي"
             // على مقعدي بشكل متفائل قبل تأكيد السيرفر أصلاً؛ استبعادي من القائمة هنا يمنع المشكلة
@@ -12733,7 +12755,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             <span class="relative flex flex-col items-center gap-1 flex-shrink-0" title="${escapeHtml(presetTarget.username)}">
                 <span class="relative inline-block">
                     <img src="${presetTarget.profileImage}" class="rg-avatar-img">
-                    <span class="absolute -top-1 -left-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 flex items-center justify-center">
+                    <span class="absolute -top-1 -left-1 w-3.5 h-3.5 bg-[#8b7a4d] rounded-full border-2 border-gray-900 flex items-center justify-center">
                         <i class="fas fa-check text-white" style="font-size:6px"></i>
                     </span>
                 </span>
@@ -12749,7 +12771,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                     <button class="room-gift-avatar-btn relative flex flex-col items-center gap-1 flex-shrink-0" data-user-id="${u.id}" data-username="${escapeHtml(u.username)}" title="${escapeHtml(u.username)}">
                         <span class="relative inline-block">
                             <img src="${u.profileImage}" class="rg-avatar-img">
-                            <span class="rg-selected-badge ${u.id === hostId ? 'flex' : 'hidden'} absolute -top-1 -left-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
+                            <span class="rg-selected-badge ${u.id === hostId ? 'flex' : 'hidden'} absolute -top-1 -left-1 w-3.5 h-3.5 bg-[#8b7a4d] rounded-full border-2 border-gray-900 items-center justify-center">
                                 <i class="fas fa-check text-white" style="font-size:6px"></i>
                             </span>
                         </span>
@@ -12900,10 +12922,13 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
 // يختفي (السعر يبقى ظاهراً ويصعد تلقائياً لمكان الاسم عبر flex)، وزر الإرسال يظهر أسفله —
 // راجع .gift-card-name/.gift-card-send-slot أدناه، التبديل عبر .gift-card-selected فقط
 function renderGiftCardHTML(g) {
+    // ✅ طلب صريح: "اضف زخرفات" — حلقة/توهّج خفيف حول صورة الهدية بلون يميّز فئتها (عادية/
+    // نادرة/أسطورية/خرافية)، نفس فئة wireGiftCategoryTabs تماماً — راجع [data-rarity] بـinput.css
+    const rarity = g.category || 'common';
     return `
-        <button type="button" class="gift-card-wrapper bg-gray-800/50 border border-gray-700 rounded-xl p-2 transition-all flex flex-col items-center w-full"
+        <button type="button" class="gift-card-wrapper rounded-xl p-2 transition-all flex flex-col items-center w-full"
              data-gift-id="${g._id}" data-gift-name="${g.name}" data-gift-price="${g.discountedPrice || g.price}" data-gift-icon="${g.icon || '🎁'}" data-gift-image="${g.imageUrl || ''}">
-            <div class="gift-visual-slot w-10 h-10 flex items-center justify-center mx-auto pointer-events-none">
+            <div class="gift-visual-slot w-10 h-10 flex items-center justify-center mx-auto pointer-events-none" data-rarity="${rarity}">
                 ${g.imageUrl ? `<img src="${g.imageUrl}" class="gift-visual-img w-10 h-10 object-contain">` : `<span class="text-3xl">${g.icon || '🎁'}</span>`}
             </div>
             <div class="gift-card-label-row pointer-events-none">
@@ -13045,9 +13070,9 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
                     <svg class="gift-combo-ring" viewBox="0 0 40 40">
                         <defs>
                             <radialGradient id="giftComboGradient" cx="35%" cy="30%" r="75%">
-                                <stop offset="0%" stop-color="#ff6fa8"></stop>
-                                <stop offset="55%" stop-color="#f5107a"></stop>
-                                <stop offset="100%" stop-color="#b7123f"></stop>
+                                <stop offset="0%" stop-color="#e8d9a8"></stop>
+                                <stop offset="55%" stop-color="#d4c593"></stop>
+                                <stop offset="100%" stop-color="#8b7a4d"></stop>
                             </radialGradient>
                         </defs>
                         <circle class="gift-combo-ring-bg" cx="20" cy="20" r="17"></circle>
@@ -14952,13 +14977,12 @@ function confirmRedeem(redeemTo) {
     modal.addEventListener('click', (e) => { if (e.target.id === 'public-gift-modal') modal.remove(); });
 
     try {
-        const [onlineRes, shopRes] = await Promise.all([
+        const [onlineRes, gifts] = await Promise.all([
             fetch('/api/users/online/public-room', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+            getGiftShopCatalog()
         ]);
 
         const onlineUsers = onlineRes.data.users;
-        const gifts = shopRes.data.gifts;
 
         let selectedUserIds = new Set();
         let audienceMode = 'selected';
@@ -14974,7 +14998,7 @@ function confirmRedeem(redeemTo) {
                 <button class="public-gift-avatar-btn relative flex flex-col items-center gap-1 flex-shrink-0" data-user-id="${u._id}" data-username="${escapeHtml(u.username)}" title="${escapeHtml(u.username)}">
                     <span class="relative inline-block">
                         <img src="${u.profileImage}" class="rg-avatar-img ${u.activeFrameClass || ''}">
-                        <span class="rg-selected-badge hidden absolute -top-1 -left-1 w-3.5 h-3.5 bg-pink-500 rounded-full border-2 border-gray-900 items-center justify-center">
+                        <span class="rg-selected-badge hidden absolute -top-1 -left-1 w-3.5 h-3.5 bg-[#8b7a4d] rounded-full border-2 border-gray-900 items-center justify-center">
                             <i class="fas fa-check text-white" style="font-size:6px"></i>
                         </span>
                     </span>

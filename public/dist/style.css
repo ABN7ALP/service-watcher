@@ -1825,6 +1825,10 @@ video {
   border-color: transparent;
 }
 
+.border-white\/10{
+  border-color: rgb(255 255 255 / 0.1);
+}
+
 .border-white\/5{
   border-color: rgb(255 255 255 / 0.05);
 }
@@ -1844,6 +1848,11 @@ video {
 
 .border-t-transparent{
   border-top-color: transparent;
+}
+
+.bg-\[\#8b7a4d\]{
+  --tw-bg-opacity: 1;
+  background-color: rgb(139 122 77 / var(--tw-bg-opacity, 1));
 }
 
 .bg-black{
@@ -2033,11 +2042,6 @@ video {
 
 .bg-green-600\/20{
   background-color: rgb(22 163 74 / 0.2);
-}
-
-.bg-pink-500{
-  --tw-bg-opacity: 1;
-  background-color: rgb(236 72 153 / var(--tw-bg-opacity, 1));
 }
 
 .bg-pink-600{
@@ -4075,15 +4079,15 @@ input[type="checkbox"] {
 
 @keyframes avatar-spin-border {
   0% {
-    box-shadow: 0 0 0 2px rgba(236,72,153,0.3);
+    box-shadow: 0 0 0 2px rgba(212,197,147,0.3);
   }
 
   50% {
-    box-shadow: 0 0 0 3px rgba(236,72,153,0.8);
+    box-shadow: 0 0 0 3px rgba(212,197,147,0.8);
   }
 
   100% {
-    box-shadow: 0 0 0 2px rgba(236,72,153,0.3);
+    box-shadow: 0 0 0 2px rgba(212,197,147,0.3);
   }
 }
 
@@ -4094,15 +4098,6 @@ input[type="checkbox"] {
 .public-gift-avatar-btn:hover .public-avatar-img {
   animation: avatar-spin-border 1.2s ease-in-out infinite;
   transform: scale(1.05);
-}
-
-.gift-expanded .gift-card-inline-send {
-  display: block !important;
-}
-
-.gift-expanded {
-  border-color: #ec4899 !important;
-  transform: scale(1.03);
 }
 
 .public-gift-toast {
@@ -4119,14 +4114,6 @@ input[type="checkbox"] {
     opacity: 1;
     transform: translate(-50%, 0);
   }
-}
-
-.gift-expanded .gift-card-inline-send {
-  display: block !important;
-}
-
-.gift-expanded {
-  border-color: #ec4899 !important;
 }
 
 /* ✅ زر إبلاغ موحّد لكل الموقع — بارز وواضح المعنى */
@@ -10236,8 +10223,16 @@ body.in-voice-room #main-content > #voice-chat-grid {
    بطلب صريح). عند التحديد: لا إطار/توهّج حول الكارد؛ اسم الهدية فقط يختفي (السعر يبقى
    ظاهراً ويصعد تلقائياً لمكان الاسم عبر flex، بلا أي JS إضافي)، وزر الإرسال يظهر أسفله */
 
+/* 🎨 إعادة تصميم كاملة لاحقة (طلب صريح: "اعد هيكلة نافذة الهدية في كل مكان، اضف لها الطابع
+   الستيلي الجميل الطافي مع زخرفات") — الألوان الوردية/الماجنتا الصاخبة (Likee) بكل أنحاء
+   نظام الهدايا استُبدلت بعائلة الذهبي المطفي الموحَّدة المستخدمة بباقي التطبيق هذي الجولة
+   (#d4c593/#8b7a4d)، بلا أي تغيير على البنية/التوقيت/منطق pointer events المُصحَّح سابقاً
+   بعناية فائقة (إصلاحات كومبو الهواتف الموثَّقة أعلى الملف) — ألوان فقط */
+
 .gift-card-wrapper {
   position: relative;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
 }
 
 .gift-card-wrapper.gift-card-selected {
@@ -10296,8 +10291,8 @@ body.in-voice-room #main-content > #voice-chat-grid {
    (الجزء العلوي شبه حاد والسفلي مستدير بالكامل)، نص عريض واضح. الحس اللمسي الحقيقي المطلوب
    يأتي من حجمه الفعلي البارز + استجابة :active عند الضغط الفعلي (وليس من ظلال مصطنعة) */
 
-/* ✅ طلب صريح: لون أحمر مائل للخمري لكن أقرب للأحمر (لا وردي/ماجنتا كالسابق)، مصمت وجاف
-   (بلا لمعان/تدرّج) بحدّة تباين أوضح ليبان "ملموساً" حقيقياً */
+/* ✅ طلب صريح لاحق: ذهبي مطفي بدل الأحمر/الوردي الصاخب — تعبئة خفيفة شبه شفافة + حدّ ذهبي
+   رفيع (نفس أسلوب frame-shop-purchase-btn)، لا تعبئة مصمتة كاملة؛ البنية/التوقيت دون أي تغيير */
 
 .gift-card-send-btn {
   display: flex;
@@ -10307,8 +10302,9 @@ body.in-voice-room #main-content > #voice-chat-grid {
   width: 100%;
   height: 20px;
   border-radius: 3px 3px 10px 10px;
-  background: #b7123f;
-  color: #fff;
+  background: rgba(212,197,147,0.16);
+  border: 1px solid rgba(212,197,147,0.35);
+  color: #d4c593;
   font-size: 9.5px;
   font-weight: 600;
   letter-spacing: 0.2px;
@@ -10365,7 +10361,7 @@ body.in-voice-room #main-content > #voice-chat-grid {
   margin: 0;
   padding: 0;
   border-radius: 50%;
-  box-shadow: 0 0 18px 3px rgba(183,18,63,0.6);
+  box-shadow: 0 0 18px 3px rgba(212,197,147,0.55);
   opacity: 1;
   transition: opacity 0.16s ease, transform 0.16s ease;
 }
@@ -10462,18 +10458,18 @@ body.in-voice-room #main-content > #voice-chat-grid {
   top: -22px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(236,72,153,0.3);
+  background: rgba(28,22,8,0.55);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-  border: 1px solid rgba(236,72,153,0.5);
-  color: #ffd7ea;
+  border: 1px solid rgba(212,197,147,0.5);
+  color: #f3ecd4;
   padding: 2px 10px;
   border-radius: 9999px;
   font-size: 9px;
   font-weight: 800;
   line-height: 1.4;
   white-space: nowrap;
-  box-shadow: 0 0 9px 1px rgba(236,72,153,0.45);
+  box-shadow: 0 0 9px 1px rgba(212,197,147,0.4);
 }
 
 .room-gift-cards-grid .gift-combo-badge {
@@ -10532,22 +10528,54 @@ body.in-voice-room #main-content > #voice-chat-grid {
   pointer-events: none;
 }
 
+/* ✅ طلب صريح ("اضف زخرفات"): حلقة/توهّج خفيف حول صورة الهدية بلون يميّز فئتها فوراً بنظرة
+   واحدة — نفس فئات wireGiftCategoryTabs بالضبط (common/rare/epic/legendary)، data-rarity
+   يُضبَط بـrenderGiftCardHTML. عادية بلا أي زخرفة (الفئة الافتراضية الأغلب انتشاراً لا تحتاج
+   تمييزاً)؛ التوهّج يتصاعد تدريجياً بالقوة مع ارتفاع الفئة، والخرافية فقط تنبض بخفّة باستمرار
+   كلمسة احتفالية مميَّزة محصورة بأندر فئة فقط — لا إفراط بزخرفة كل كارد بلا تمييز حقيقي */
+
+.gift-visual-slot[data-rarity="rare"] {
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(96,165,250,0.4), 0 0 9px rgba(96,165,250,0.25);
+}
+
+.gift-visual-slot[data-rarity="epic"] {
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(168,85,247,0.45), 0 0 11px rgba(168,85,247,0.3);
+}
+
+.gift-visual-slot[data-rarity="legendary"] {
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(212,197,147,0.55), 0 0 13px rgba(212,197,147,0.4);
+  animation: giftLegendaryGlow 2.2s ease-in-out infinite;
+}
+
+@keyframes giftLegendaryGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 1.5px rgba(212,197,147,0.55), 0 0 13px rgba(212,197,147,0.4);
+  }
+
+  50%      {
+    box-shadow: 0 0 0 1.5px rgba(212,197,147,0.8), 0 0 18px rgba(212,197,147,0.6);
+  }
+}
+
 /* ✅ زر الإرسال — الضغط المطوّل يحوّله لحالة نابضة بدل شكله الثابت (تصميمه الكامل أسفل
    بقرب الشريحة المقسَّمة لاختيار الكمية). لون النبض بنفس وردي Likee الصريح للزر نفسه */
 
 .gift-send-main-btn.gift-sending {
   transform: scale(1.06);
-  box-shadow: 0 0 0 5px rgba(236,27,106,0.3), 0 4px 16px rgba(236,27,106,0.5);
+  box-shadow: 0 0 0 5px rgba(212,197,147,0.3), 0 4px 16px rgba(212,197,147,0.4);
   animation: giftSendPulse 0.9s ease-in-out infinite;
 }
 
 @keyframes giftSendPulse {
   0%, 100% {
-    box-shadow: 0 0 0 5px rgba(236,27,106,0.3), 0 4px 16px rgba(236,27,106,0.5);
+    box-shadow: 0 0 0 5px rgba(212,197,147,0.3), 0 4px 16px rgba(212,197,147,0.4);
   }
 
   50%      {
-    box-shadow: 0 0 0 8px rgba(236,27,106,0.16), 0 4px 16px rgba(236,27,106,0.5);
+    box-shadow: 0 0 0 8px rgba(212,197,147,0.16), 0 4px 16px rgba(212,197,147,0.4);
   }
 }
 
@@ -10581,8 +10609,13 @@ body.in-voice-room #main-content > #voice-chat-grid {
 /* ✅ التذييل الجديد عائم فوق الشبكة (راجع .gift-footer أدناه) — سياق تموضع + حشوة إضافية
    أسفل الشبكة كي لا يُغطّى آخر صفّ هدايا دائماً خلف الشريط العائم */
 
+/* ✅ طلب صريح لاحق: خلفية التدرّج الرمادي العام (Tailwind) استُبدلت بالمطفي الموحَّد #15181f
+   (نفس سائر أوراق التطبيق المُعاد تصميمها هذي الجولة) — الصنفان الآن محذوفان من الـHTML نفسه */
+
 .gift-store-sheet {
   position: relative;
+  background: #15181f;
+  border-color: rgba(255,255,255,0.08);
 }
 
 #gift-store-body {
@@ -10596,12 +10629,10 @@ body.in-voice-room #main-content > #voice-chat-grid {
 .room-gift-sheet {
   /* ✅ سياق تموضع كي يعوم .gift-footer فوق شبكة الهدايا (راجع تعليق .gift-footer) */
   position: relative;
-  /* ✅ توهّج زجاجي (vibrancy) بأسلوب macOS — شفافية عالية جداً (94%) فبقية يقرأ كخلفية
-       صلبة تماماً (لا رجوع لمشكلة "بلا خلفية" السابقة)، مع طبقة ضبابية خفيفة خلفها فقط */
-  background: rgba(21,26,40,0.94);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  border: 1px solid rgba(255,255,255,0.1);
+  /* 🎨 طلب صريح لاحق: الطابع المطفي الموحَّد (#15181f المسطّح) بدل التوهّج الزجاجي الكحلي
+       السابق — نفس خلفية بقية أوراق التطبيق المُعاد تصميمها هذي الجولة، لا طبقة ضبابية */
+  background: #15181f;
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 20px 20px 0 0;
   box-shadow: 0 -8px 30px rgba(0,0,0,0.5);
   /* 🐛 كانت max-h-[54vh] (Tailwind) على بعض الهواتف تحس وكأنها تغطي الشاشة بالكامل —
@@ -10676,7 +10707,7 @@ body.in-voice-room #main-content > #voice-chat-grid {
 .gift-support-preview-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #fbbf24, #a855f7);
+  background: linear-gradient(90deg, #8b7a4d, #d4c593);
   transition: width 0.5s ease-out;
 }
 
@@ -10729,7 +10760,7 @@ body.in-voice-room #main-content > #voice-chat-grid {
   background: transparent;
   color: #fff;
   box-shadow: none;
-  border-bottom-color: #ec1b6a;
+  border-bottom-color: #d4c593;
 }
 
 /* ✅ طلب صريح: إحساس "مطاطي" عند تبديل التصنيف (عادي/نادرة/أسطورية/خرافية) بدل قطع فجائي —
@@ -10820,7 +10851,7 @@ body.in-voice-room #main-content > #voice-chat-grid {
   flex-shrink: 0;
   font-size: 13.5px;
   font-weight: 800;
-  color: #ffcf4d;
+  color: #d4c593;
   background: rgba(0,0,0,0.68);
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 9999px;
@@ -10874,14 +10905,14 @@ body.in-voice-room #main-content > #voice-chat-grid {
   height: 36px;
   padding: 0 18px;
   border-radius: 9999px;
-  background: #ec1b6a;
-  border: none;
-  color: #fff;
+  background: rgba(212,197,147,0.16);
+  border: 1px solid rgba(212,197,147,0.4);
+  color: #d4c593;
   font-size: 12.5px;
   font-weight: 800;
   flex-shrink: 0;
   position: relative;
-  box-shadow: 0 3px 10px rgba(236,27,106,0.5);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.3);
   transition: transform 0.12s ease, opacity 0.18s ease;
   opacity: 0;
   transform: scale(0.75);
@@ -10926,7 +10957,7 @@ body.in-voice-room #main-content > #voice-chat-grid {
 }
 
 .room-gift-all-circle.room-gift-all-active {
-  box-shadow: inset 0 1px 1px rgba(255,255,255,0.22), 0 0 0 2px #1f2937, 0 0 0 4px rgba(255,255,255,0.3);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.22), 0 0 0 2px #1f2937, 0 0 0 4px rgba(212,197,147,0.45);
 }
 
 /* ✅ "طابع" احترافي لصور المستلمين بشريط اختيار الهدية — حلقة فاتحة خفيفة + ظل ناعم،
@@ -11096,11 +11127,11 @@ body.in-voice-room #main-content > #voice-chat-grid {
 
 @keyframes seatGiftImpact {
   0%   {
-    box-shadow: 0 0 0 0 rgba(236,72,153,0.7);
+    box-shadow: 0 0 0 0 rgba(212,197,147,0.7);
   }
 
   100% {
-    box-shadow: 0 0 0 16px rgba(236,72,153,0);
+    box-shadow: 0 0 0 16px rgba(212,197,147,0);
   }
 }
 
