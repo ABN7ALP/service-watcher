@@ -11,8 +11,14 @@ const { addGiftExperience } = require('../utils/experienceManager');
 const { awardFanPoints } = require('./fanClubController');
 
 // ✅ يُضيف قيمة هدية كنقاط لصف الغرفة التي أُرسلت منها لو كانت طرفاً بمعركة PK نشطة الآن —
-// تحديث ذرّي واحد (findOneAndUpdate + $inc) يمنع فقدان نقاط عند إرسال هدايا متزامنة بسرعة
-async function applyGiftToActiveBattle(io, roomId, totalPrice) {
+// تحديث ذرّي واحد (findOneAndUpdate + $inc) يمنع فقدان نقاط عند إرسال هدايا متزامنة بسرعة.
+// 🛡️ مضاعف "القفاز" (battleMultiplier) يُطبَّق هنا فقط على ما يُضاف لـscoreA/scoreB — القيمة
+// الممرَّرة totalPrice نفسها لا تُعدَّل أبداً وتبقى كما هي للمتصل (يستمر بإرسالها كاملة وحقيقية
+// إلى applyGiftToRoomSupport/applyGiftToActiveSeatChallenge بنفس الاستدعاء) — فالمضاعفة مرئية
+// على "الشريط" فقط، لا تصل الكوينز أو نقاط الدعم الحقيقية أبداً. sender اختياري: يُستخدم فقط
+// لتحديث "أفضل 3 داعمين لهذا التحدي" (بنفس القيمة المُضافة فعلياً للشريط بعد أي مضاعفة، لأنه
+// تصنيف خاص بحماس التحدي نفسه لا بالكوينز الحقيقية)
+async function applyGiftToActiveBattle(io, roomId, totalPrice, sender) {
     const battle = await RoomBattle.findOne({
         $or: [{ roomA: roomId }, { roomB: roomId }],
         status: 'active'
@@ -20,22 +26,37 @@ async function applyGiftToActiveBattle(io, roomId, totalPrice) {
     if (!battle) return;
 
     const isRoomA = battle.roomA.toString() === roomId.toString();
+    const side = isRoomA ? 'A' : 'B';
+    const multiplier = battle.battleMultiplier(side);
+    const scoreDelta = totalPrice * multiplier;
+
+    const inc = isRoomA ? { scoreA: scoreDelta } : { scoreB: scoreDelta };
+    if (sender) {
+        inc[`supporters${side}.${sender._id.toString()}`] = scoreDelta;
+    }
+
     const updated = await RoomBattle.findOneAndUpdate(
         { _id: battle._id, status: 'active' },
-        { $inc: isRoomA ? { scoreA: totalPrice } : { scoreB: totalPrice } },
+        { $inc: inc },
         { new: true }
     );
     if (!updated || !io) return;
 
-    const payload = {
-        battleId: updated._id.toString(),
-        roomA: updated.roomA.toString(),
-        roomB: updated.roomB.toString(),
-        scoreA: updated.scoreA,
-        scoreB: updated.scoreB
+    broadcastPkScoreUpdate(io, updated);
+}
+
+// ✅ يبثّ لقطة النقاط لكل غرفة بحمولتها الخاصة — إن كان أحد الصفّين قد رمى "ضباباً" فعّالاً الآن،
+// يرى جمهور الغرفة الأخرى رقمه كـnull (محجوب من الخادم نفسه، لا مجرد إخفاء بالواجهة فقط) بينما
+// يبقى صفّه هو حقيقياً له؛ راجع RoomBattle.buildAudiencePayload. يُستخدم هنا وبنداء المتجر
+// (pk-item-throw بـsocketService.js) معاً حتى تتوحّد لحظة الحجب في كل مسارات تحديث النقاط
+function broadcastPkScoreUpdate(io, battle) {
+    const base = {
+        battleId: battle._id.toString(),
+        roomA: battle.roomA.toString(),
+        roomB: battle.roomB.toString()
     };
-    io.to(`room-chat-${updated.roomA}`).emit('pk-score-update', payload);
-    io.to(`room-chat-${updated.roomB}`).emit('pk-score-update', payload);
+    io.to(`room-chat-${battle.roomA}`).emit('pk-score-update', { ...base, ...battle.buildAudiencePayload('A') });
+    io.to(`room-chat-${battle.roomB}`).emit('pk-score-update', { ...base, ...battle.buildAudiencePayload('B') });
 }
 
 // ✅ يضيف قيمة أي هدية أُرسلت داخل غرفة (بغض النظر عن وجود معركة PK نشطة أم لا) كـ"نقاط دعم"
@@ -255,7 +276,7 @@ exports.sendGift = async (req, res) => {
         if (cleanRoomId) {
             const ioForRoom = req.app.get('socketio');
             try {
-                await applyGiftToActiveBattle(ioForRoom, cleanRoomId, totalPrice);
+                await applyGiftToActiveBattle(ioForRoom, cleanRoomId, totalPrice, sender);
             } catch (battleError) {
                 console.error('[PK BATTLE] Failed to apply gift score:', battleError);
             }
@@ -497,7 +518,7 @@ async function processGiftCombo({ io, senderId, giftId, quantity, taps = 1, reci
 
     if (cleanRoomId) {
         try {
-            await applyGiftToActiveBattle(io, cleanRoomId, totalCost);
+            await applyGiftToActiveBattle(io, cleanRoomId, totalCost, sender);
         } catch (battleError) {
             console.error('[PK BATTLE] Failed to apply gift score:', battleError);
         }
@@ -893,3 +914,11 @@ exports.sendPublicGift = async (req, res) => {
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم أثناء إرسال الهدية' });
     }
 };
+
+// ✅ يُصدِّر خطّافات الهدية-للمعركة/الدعم لإعادة استخدامها من socketService.js — متجر أدوات
+// المعركة (قفاز/ضباب، pk-item-throw) يُعامِل القفاز "مثل الهدية حرفياً" (طلب المستخدم صراحة):
+// يستدعي نفس هذي الدوال الحقيقية بدل إعادة كتابة منطق خصم/بث موازٍ قد ينحرف عنها لاحقاً
+module.exports.applyGiftToActiveBattle = applyGiftToActiveBattle;
+module.exports.applyGiftToRoomSupport = applyGiftToRoomSupport;
+module.exports.applyGiftToActiveSeatChallenge = applyGiftToActiveSeatChallenge;
+module.exports.broadcastPkScoreUpdate = broadcastPkScoreUpdate;

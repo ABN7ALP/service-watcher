@@ -73,19 +73,35 @@ exports.getIceServers = (req, res) => {
 };
 
 // ✅ لقطة معركة PK الحالية لغرفة معينة (معلّقة أو فعلية) — تُستخدم لعرض شريط المعركة
-// فوراً عند فتح/إعادة فتح شاشة الغرفة، دون انتظار حدث Socket قد يكون فات وقته
+// فوراً عند فتح/إعادة فتح شاشة الغرفة، دون انتظار حدث Socket قد يكون فات وقته. تشمل الآن
+// "سجل العقد" لكل غرفة، وتأثيرات القفاز/الضباب الفعّالة حالياً (لتستعيد الواجهة عدّادات
+// التنازل الصحيحة بعد إعادة تحميل الصفحة)، ونقاط تُعتَّم حسب الجمهور (roomId) تماماً كبثّ
+// pk-score-update الحي — صفحة أُعيد تحميلها أثناء ضباب فعّال يجب ألا ترى القيمة الحقيقية
 async function getActiveBattleSnapshot(roomId) {
     const battle = await RoomBattle.getOpenForRoomPopulated(roomId);
     if (!battle) return null;
+    const side = battle.roomA._id.toString() === roomId.toString() ? 'A' : 'B';
+    const audience = battle.status === 'active' ? battle.buildAudiencePayload(side) : { scoreA: battle.scoreA, scoreB: battle.scoreB, fogged: { A: false, B: false } };
+    const [recordA, recordB] = await Promise.all([
+        VoiceRoom.getPkRecord(battle.roomA._id),
+        VoiceRoom.getPkRecord(battle.roomB._id)
+    ]);
+    const now = Date.now();
+    const activeEffects = (battle.effects || [])
+        .filter(e => new Date(e.expiresAt).getTime() > now)
+        .map(e => ({ type: e.type, side: e.side, thrownBy: { id: e.user.toString(), username: e.username }, expiresAt: e.expiresAt }));
     return {
         battleId: battle._id,
         status: battle.status,
         roomA: { id: battle.roomA._id, name: battle.roomA.name, coverImage: battle.roomA.coverImage },
         roomB: { id: battle.roomB._id, name: battle.roomB.name, coverImage: battle.roomB.coverImage },
-        scoreA: battle.scoreA,
-        scoreB: battle.scoreB,
+        ...audience,
         durationSeconds: battle.durationSeconds,
-        endsAt: battle.endsAt
+        endsAt: battle.endsAt,
+        recordA, recordB,
+        activeEffects,
+        topSupportersA: battle.topSupporters('A'),
+        topSupportersB: battle.topSupporters('B')
     };
 }
 
