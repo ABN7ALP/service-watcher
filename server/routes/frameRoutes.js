@@ -9,5 +9,7 @@ router.get('/shop', frameController.getFrameShop);
 router.post('/purchase', frameController.purchaseFrame);
 router.post('/equip', frameController.setActiveFrame);
 router.post('/box/seen', frameController.markFrameBoxSeen);
+// ✅ تفعيل/إلغاء التجديد التلقائي لإطار مملوك محدَّد — راجع checkAndExpireActiveFrame بالكونترولر
+router.patch('/auto-renew', frameController.setFrameAutoRenew);
 
 module.exports = router;

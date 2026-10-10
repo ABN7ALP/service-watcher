@@ -2102,7 +2102,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             ...document.querySelectorAll(`#voice-chat-grid [data-user-id="${userId}"] .voice-seat-avatar`),
             ...document.querySelectorAll(`#room-viewers-list [data-user-id="${userId}"] img`),
             ...document.querySelectorAll(`#hand-queue-list [data-user-id="${userId}"] img`),
-            ...document.querySelectorAll(`#seat-invite-picker-list [data-user-id="${userId}"] img`)
+            ...document.querySelectorAll(`#seat-invite-picker-list [data-user-id="${userId}"] img`),
+            // ✅ طلب صريح: لو كانت نافذة الملف المصغّر/الكامل لهذا المستخدم بعينه مفتوحة فعلاً
+            // الآن (مثلاً عند انتهاء/تجديد إطاره تلقائياً أثناء تصفّح زائر لملفه)، تُحدَّث صورته
+            // فوراً أيضاً بلا إعادة فتح للنافذة
+            ...document.querySelectorAll(`#mini-profile-avatar-img[data-user-id="${userId}"]`),
+            ...document.querySelectorAll(`#full-profile-page[data-user-id="${userId}"] .full-profile-avatar`)
         ];
         if (currentRoomHostId === userId) {
             currentRoomHostActiveFrameClass = activeFrameClass || '';
@@ -5848,9 +5853,15 @@ function frameBoxItemHTML(meta, userPhoto, isActive) {
     const isImplicit = o.durationDays === undefined; // ✅ إطار الأدمن — لا شراء حقيقي، صلاحية دائمة طالما بقي أدمن
     const notActivated = !isImplicit && !o.activatedAt;
     const expired = !isImplicit && o.expiresAt && new Date(o.expiresAt) < new Date();
+    // ✅ طلب صريح: حلقة ذهبية + نص صغير على صورة الصندوق عند تفعيل "التجديد التلقائي" —
+    // فقط لإطار مُفعَّل فعلياً وما زال سارياً (لا معنى لتجديد إطار لم يبدأ عدّه أو منتهٍ أصلاً)
+    const autoRenewOn = !isImplicit && !!o.autoRenew && !expired && !notActivated;
     return `
         <div class="frame-box-item">
-            <img src="${userPhoto}" class="frame-box-item-avatar ${meta.cssClass}" decoding="async">
+            <div class="frame-box-item-avatar-wrap ${autoRenewOn ? 'frame-box-item-autorenew' : ''}">
+                <img src="${userPhoto}" class="frame-box-item-avatar ${meta.cssClass}" decoding="async">
+                ${autoRenewOn ? `<span class="frame-box-item-autorenew-tag">تجديد تلقائي</span>` : ''}
+            </div>
             <div class="frame-box-item-text">
                 <p class="frame-box-item-name">${escapeHtml(meta.name)}</p>
                 ${isImplicit
@@ -5867,34 +5878,6 @@ function frameBoxItemHTML(meta, userPhoto, isActive) {
                 : (!expired ? `<button type="button" class="frame-box-activate-btn" data-frame-id="${meta._id}">تفعيل</button>` : '')}
         </div>
     `;
-}
-
-// ✅ نافذة "معاينة الإطار" — واقعية فعلاً: 3 مقاعد حقيقية (نفس أصناف/أحجام المقعد الفعلي
-// بالغرفة .voice-seat/.voice-seats-flex.cols-3) بجانب بعضها، الوسط بصورة المستخدم مع الإطار
-// المرشَّح، والجانبان بصورته بلا إطار للمقارنة. المراقب العام wrapImageOverlayFrames (يعمل
-// تلقائياً على أي <img> بصنف إطار بأي مكان بالصفحة) يُضيف التراكب الزخرفي هنا تلقائياً بلا
-// أي كود خاص — فتُطابق المعاينة الحقيقة 100% (نفس سقف الحجم/منطق التصادم الفعلي بالمقعد).
-// اسم الإطار يظهر هنا فقط، لا على بطاقة المتجر (طلب صريح)
-function showFramePreviewModal(frame, userPhoto) {
-    document.getElementById('frame-preview-modal')?.remove();
-    const modal = document.createElement('div');
-    modal.id = 'frame-preview-modal';
-    modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[346] p-4';
-    modal.innerHTML = `
-        <div class="frame-preview-card">
-            <button id="close-frame-preview" class="profile-hub-icon-btn frame-preview-close"><i class="fas fa-times"></i></button>
-            <p class="frame-preview-hint">هكذا سيظهر إطارك على المقعد</p>
-            <div class="voice-seats-flex cols-3 frame-preview-seats-row">
-                <div class="voice-seat occupied-seat"><img src="${userPhoto}" class="voice-seat-avatar" alt=""></div>
-                <div class="voice-seat occupied-seat"><img src="${userPhoto}" class="voice-seat-avatar ${frame.cssClass}" alt=""></div>
-                <div class="voice-seat occupied-seat"><img src="${userPhoto}" class="voice-seat-avatar" alt=""></div>
-            </div>
-            <p class="frame-preview-name">${escapeHtml(frame.name)}</p>
-        </div>
-    `;
-    document.body.appendChild(modal);
-    modal.addEventListener('click', (e) => { if (e.target.id === 'frame-preview-modal') modal.remove(); });
-    document.getElementById('close-frame-preview').addEventListener('click', () => modal.remove());
 }
 
 // ✅ نافذة "متجر الإطارات" — أصبحت ورقة سفلية مطفية (ألوان مطفأة بدل الفاقعة) بطابع هادئ،
@@ -6105,6 +6088,112 @@ async function showFrameShopModal() {
         markBoxSeen();
     }
 
+    // ✅ نافذة "معاينة الإطار" — واقعية فعلاً: 3 مقاعد حقيقية (نفس أصناف/أحجام المقعد الفعلي
+    // بالغرفة .voice-seat/.voice-seats-flex.cols-3) بجانب بعضها، الوسط بصورة المستخدم مع الإطار
+    // المرشَّح، والجانبان بصورته بلا إطار للمقارنة. المراقب العام wrapImageOverlayFrames (يعمل
+    // تلقائياً على أي <img> بصنف إطار بأي مكان بالصفحة) يُضيف التراكب الزخرفي هنا تلقائياً بلا
+    // أي كود خاص — فتُطابق المعاينة الحقيقة 100% (نفس سقف الحجم/منطق التصادم الفعلي بالمقعد).
+    // ✅ طلب صريح: انتقلت داخل إغلاق showFrameShopModal (بدل دالة منفصلة بالأعلى) كي تصل مباشرة
+    // لـpurchaseFrame/lastShopData/renderBoxList الموجودة هنا — فالشراء وتبديل التجديد التلقائي
+    // من نافذة المعاينة نفسها يستخدمان نفس مسار الحقيقة الواحدة بلا تكرار منطق
+    function showFramePreviewModal(frame) {
+        document.getElementById('frame-preview-modal')?.remove();
+        const previewModal = document.createElement('div');
+        previewModal.id = 'frame-preview-modal';
+        previewModal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[346] p-4';
+
+        // ✅ يُعاد بناؤها كاملة بعد كل شراء/تبديل تجديد تلقائي — بلا حاجة لإعادة فتح النافذة،
+        // وتقرأ دوماً من lastShopData (لا من `frame` الملتقطة أصلاً) لتعكس الحالة الحقيقية الحالية
+        const renderDynamic = () => {
+            const f = lastShopData.frames.find(x => x._id.toString() === frame._id.toString()) || frame;
+            const o = f.ownedInstance;
+            const isImplicit = o && o.durationDays === undefined;
+            const activated = !!(o && !isImplicit && o.activatedAt);
+            const autoRenewChecked = activated && !!o.autoRenew;
+            const dynamicEl = previewModal.querySelector('#frame-preview-dynamic');
+            if (!dynamicEl) return;
+            dynamicEl.innerHTML = `
+                <div class="frame-shop-duration-pills" data-frame-id="${f._id}">
+                    <button type="button" class="frame-shop-duration-pill active" data-duration="1">يوم<span>${f.prices.day1}</span></button>
+                    <button type="button" class="frame-shop-duration-pill" data-duration="3">3 أيام<span>${f.prices.day3}</span></button>
+                    <button type="button" class="frame-shop-duration-pill" data-duration="7">7 أيام<span>${f.prices.day7}</span></button>
+                </div>
+                <button type="button" class="frame-shop-purchase-btn frame-preview-purchase-btn" data-selected-duration="1">
+                    ${coinIconHTML(12)} شراء
+                </button>
+                ${activated ? `
+                    <div class="badges-settings-row frame-preview-autorenew-row">
+                        <span class="badges-settings-row-icon"><i class="fas fa-sync-alt"></i></span>
+                        <div class="badges-settings-row-text">
+                            <p class="badges-settings-row-title">تجديد تلقائي</p>
+                            <p class="badges-settings-row-sub">يتجدد تلقائياً عند الانتهاء إن كان رصيدك كافياً</p>
+                        </div>
+                        <label class="hub-toggle">
+                            <input type="checkbox" id="frame-preview-autorenew-toggle" ${autoRenewChecked ? 'checked' : ''}>
+                            <span class="hub-toggle-slider"></span>
+                        </label>
+                    </div>
+                ` : ''}
+            `;
+            dynamicEl.querySelectorAll('.frame-shop-duration-pill').forEach(pill => {
+                pill.addEventListener('click', () => {
+                    dynamicEl.querySelectorAll('.frame-shop-duration-pill').forEach(p => p.classList.remove('active'));
+                    pill.classList.add('active');
+                    const purchaseBtn = dynamicEl.querySelector('.frame-preview-purchase-btn');
+                    if (purchaseBtn) purchaseBtn.dataset.selectedDuration = pill.dataset.duration;
+                });
+            });
+            dynamicEl.querySelector('.frame-preview-purchase-btn')?.addEventListener('click', async (e) => {
+                await purchaseFrame(f._id, e.currentTarget.dataset.selectedDuration, e.currentTarget);
+                renderDynamic(); // ✅ إعادة بناء القسم الديناميكي بزر شراء جديد غير معطَّل + حالة ملكية محدَّثة
+            });
+            const autoRenewToggle = dynamicEl.querySelector('#frame-preview-autorenew-toggle');
+            autoRenewToggle?.addEventListener('change', async () => {
+                const newVal = autoRenewToggle.checked;
+                autoRenewToggle.disabled = true;
+                try {
+                    const res = await fetch('/api/frames/auto-renew', {
+                        method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ frameId: f._id, autoRenew: newVal })
+                    }).then(r => r.json());
+                    if (res.status === 'success') {
+                        if (o) o.autoRenew = res.data.autoRenew;
+                        showNotification(newVal ? 'تم تفعيل التجديد التلقائي' : 'تم إلغاء التجديد التلقائي', 'success');
+                        // ✅ الصندوق (لو مفتوحاً بالخلفية) يعكس الحلقة الذهبية فوراً بلا إعادة جلب
+                        const boxEl = document.getElementById('frame-box-sheet');
+                        if (boxEl) renderBoxList(boxEl);
+                    } else {
+                        autoRenewToggle.checked = !newVal;
+                        showNotification(res.message || 'فشل تحديث التجديد التلقائي', 'error');
+                    }
+                } catch (error) {
+                    autoRenewToggle.checked = !newVal;
+                    showNotification('خطأ في الاتصال بالخادم', 'error');
+                } finally {
+                    autoRenewToggle.disabled = false;
+                }
+            });
+        };
+
+        previewModal.innerHTML = `
+            <div class="frame-preview-card">
+                <button id="close-frame-preview" class="profile-hub-icon-btn frame-preview-close"><i class="fas fa-times"></i></button>
+                <p class="frame-preview-hint">هكذا سيظهر إطارك على المقعد</p>
+                <div class="voice-seats-flex cols-3 frame-preview-seats-row">
+                    <div class="voice-seat occupied-seat"><img src="${userPhoto}" class="voice-seat-avatar" alt=""></div>
+                    <div class="voice-seat occupied-seat"><img src="${userPhoto}" class="voice-seat-avatar ${frame.cssClass}" alt=""></div>
+                    <div class="voice-seat occupied-seat"><img src="${userPhoto}" class="voice-seat-avatar" alt=""></div>
+                </div>
+                <p class="frame-preview-name">${escapeHtml(frame.name)}</p>
+                <div id="frame-preview-dynamic" class="frame-preview-dynamic"></div>
+            </div>
+        `;
+        document.body.appendChild(previewModal);
+        renderDynamic();
+        previewModal.addEventListener('click', (e) => { if (e.target.id === 'frame-preview-modal') previewModal.remove(); });
+        previewModal.querySelector('#close-frame-preview').addEventListener('click', () => previewModal.remove());
+    }
+
     function bindCardEvents() {
         modal.querySelectorAll('.frame-shop-duration-pills').forEach(row => {
             row.querySelectorAll('.frame-shop-duration-pill').forEach(pill => {
@@ -6122,7 +6211,7 @@ async function showFrameShopModal() {
         modal.querySelectorAll('.frame-shop-card-preview-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const frame = lastShopData.frames.find(f => f._id.toString() === btn.dataset.frameId.toString());
-                if (frame) showFramePreviewModal(frame, userPhoto);
+                if (frame) showFramePreviewModal(frame);
             });
         });
     }
@@ -7200,34 +7289,18 @@ function showXpGainAnimation(amount) {
     // =========== قسم عام وأحداث السوكيت =============
     // =================================================
 
+        // ✅ طلب صريح لاحق: أُزيل القرص الملوَّن العلوي نهائياً — كل إشعار بالتطبيق بلا استثناء
+        // يستخدم الآن تصميم "صدى محتمل — جرّب سماعة الرأس" نفسه (قرص مطفي سفلي + أيقونة
+        // ملوَّنة فقط، راجع showBottomToast/.bottom-toast) بدل أقراص ملوَّنة بالكامل متفرقة —
+        // المسار الموحَّد الوحيد الحقيقي الآن لكل إشعارات التطبيق العائمة بلا استثناء
         function showNotification(message, type = 'info', customIcon = null) {
-        // ✅ استُبدل الصندوق الجانبي المزعج بإشعار عائم أنيق يظهر أعلى المنتصف ثم يختفي تلقائياً
-        // ✅ المسار الموحَّد الوحيد لكل إشعارات التطبيق العائمة بلا استثناء (بعد دمج showFloatingAlert
-        // المنفصلة سابقاً هنا) — customIcon اختياري يحافظ على أيقونة مخصّصة بالسياق (مثلاً fa-ban
-        // عند الحظر) فوق ألوان/تصميم موحَّد لكل الإشعارات
-        const colors = { success: 'bg-green-500/90', error: 'bg-red-500/90', info: 'bg-purple-600/90', warning: 'bg-yellow-500/90' };
-        const icon = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle', warning: 'fa-exclamation-triangle' };
-
-        const stacked = document.querySelectorAll('.floating-toast').length;
-        const notification = document.createElement('div');
-        notification.className = `floating-toast fixed left-1/2 -translate-x-1/2 z-[600] flex items-center gap-2 px-4 py-2.5 rounded-full text-white text-sm shadow-2xl backdrop-blur-sm ${colors[type] || colors.info}`;
-        notification.style.top = `${16 + stacked * 52}px`;
-        // 🛡️ إصلاح أمني: كانت message تُدرَج كـinnerHTML دون تهريب — أي username غير مُقيَّد
-        // بالسكيما يُحقَن هنا حَرفياً (XSS مخزّن) بكل مكان ناداها بدون escapeHtml يدوياً بنفسه
-        // (نسيان متكرر ومتوقَّع). نفس نمط الحماية عند المصدر المستخدَم أصلاً بـshowBottomToast
-        // المجاورة — تهريب واحد هنا يحمي كل نداء حالي ومستقبلي دفعة واحدة
-        notification.innerHTML = `<i class="fas ${customIcon || icon[type] || icon.info}"></i><span>${escapeHtml(message)}</span>`;
-        document.body.appendChild(notification);
+        const iconByType = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle', warning: 'fa-exclamation-triangle' };
+        const colorByType = { success: '#34d399', error: '#f87171', info: '#d4c593', warning: '#fbbf24' };
 
         // ✅ أي خطأ يُعرَض فعلياً للمستخدم عبر هذا المسار الموحَّد يصل تلقائياً للوج بلوحة التحكم
         if (type === 'error') reportClientError(message, 'notification');
 
-        setTimeout(() => {
-            notification.style.transition = 'opacity 0.4s, transform 0.4s';
-            notification.style.opacity = '0';
-            notification.style.transform = 'translate(-50%, -12px)';
-            setTimeout(() => notification.remove(), 400);
-        }, 2800);
+        showBottomToast(message, customIcon || iconByType[type] || iconByType.info, colorByType[type] || colorByType.info);
     }
         
     // ✅ نافذة الحظر داخل التطبيق (لمستخدم كان متصلاً ثم حُظر لحظياً، أو رفض الخادم طلباً بسبب الحظر)
@@ -8485,12 +8558,14 @@ function showConfirmationModal(message, onConfirm) {
 // showNotification (أعلى الشاشة) التي أصبحت المسار الوحيد للإشعارات العلوية/المركزية بعد
 // دمج showFloatingAlert المنفصلة سابقاً فيها (كانت مصدر ثغرة XSS: message تُدرَج كـinnerHTML
 // دون تهريب). يُكدَّس فوق بعضه لو وصل أكثر من إشعار بنفس اللحظة بدل أن يتراكب ويُخفي بعضه بعضاً
-function showBottomToast(message, icon = 'fa-info-circle') {
+// ✅ iconColor اختياري (يستخدمه showNotification لتمييز نجاح/خطأ/تنبيه بلون الأيقونة فقط)؛
+// نداءات هذا الملف المباشرة (صدى محتمل/رفض دعوة/نكزة...) تبقى بلونها الأحمر الافتراضي كما كانت
+function showBottomToast(message, icon = 'fa-info-circle', iconColor = '#f87171') {
     const stacked = document.querySelectorAll('.bottom-toast').length;
     const el = document.createElement('div');
     el.className = 'bottom-toast';
     el.style.setProperty('--toast-offset', `${stacked * 52}px`);
-    el.innerHTML = `<i class="fas ${icon}"></i><span>${escapeHtml(message)}</span>`;
+    el.innerHTML = `<i class="fas ${icon}" style="color:${iconColor}"></i><span>${escapeHtml(message)}</span>`;
     document.body.appendChild(el);
     setTimeout(() => {
         el.style.opacity = '0';
@@ -9641,9 +9716,15 @@ async function showMiniProfileModal(userId) {
 
         const socialInfo = getSocialStatus(profileUser.socialStatus);
         const educationInfo = getEducationStatus(profileUser.educationStatus);
-        const genderInfo = profileUser.gender === 'male' 
-            ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' }
-            : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
+        // 🐛 إصلاح: نفس خلل showFullProfilePage — gender/age يُحذفان فعلياً من الخادم لغير
+        // المالك لو أخفى صاحب الملف معلوماته الشخصية، فكانت تظهر "أنثى" افتراضياً خاطئة +
+        // "undefined سنة" حرفياً بدل اختفاء الشارتين كلياً
+        const genderInfo = profileUser.gender
+            ? (profileUser.gender === 'male'
+                ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' }
+                : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' })
+            : null;
+        const hasAge = typeof profileUser.age === 'number' && !isNaN(profileUser.age);
 
         const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
 
@@ -9668,7 +9749,7 @@ async function showMiniProfileModal(userId) {
                 <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-t-2xl shadow-2xl w-full max-w-md text-white border-t border-x border-purple-500/25 overflow-hidden animate-[slideUp_0.25s_ease-out]" style="max-height:80vh; overflow-y:auto;">
 
                     <div class="relative bg-gradient-to-r from-purple-700/30 to-pink-700/25 pt-5 pb-3 px-4 text-center">
-                        <img id="mini-profile-avatar-img" src="${profileUser.profileImage}" 
+                        <img id="mini-profile-avatar-img" data-user-id="${profileUser._id}" src="${profileUser.profileImage}"
                              class="w-16 h-16 rounded-full mx-auto border-4 border-gray-900 object-cover shadow-lg cursor-pointer hover:opacity-90 transition ${profileUser.activeFrameClass || ''}" title="عرض الملف الكامل">
                         <h2 class="text-sm font-bold mt-2 flex items-center justify-center gap-1">${escapeHtml(profileUser.username)} ${getAgentBadgeHTML(profileUser.isAgent)} ${renderAdminBadgeHTML(profileUser)}</h2>
                         <div class="text-[10px] text-gray-300 mt-1 cursor-pointer inline-flex items-center gap-1.5 copy-id-btn bg-black/25 px-2 py-0.5 rounded-full">
@@ -9702,22 +9783,22 @@ async function showMiniProfileModal(userId) {
                     </div>
 
                     <div class="grid grid-cols-2 gap-1.5 px-3 py-2.5 text-[11px]">
-                        <div class="flex items-center gap-1.5 bg-gray-800/40 rounded-lg px-2 py-1.5">
+                        ${genderInfo ? `<div class="flex items-center gap-1.5 bg-gray-800/40 rounded-lg px-2 py-1.5">
                             <i class="fas ${genderInfo.icon} ${genderInfo.color} w-3 text-center"></i>
                             <span>${genderInfo.text}</span>
-                        </div>
-                        <div class="flex items-center gap-1.5 bg-gray-800/40 rounded-lg px-2 py-1.5">
+                        </div>` : ''}
+                        ${hasAge ? `<div class="flex items-center gap-1.5 bg-gray-800/40 rounded-lg px-2 py-1.5">
                             <i class="fas fa-birthday-cake text-pink-400 w-3 text-center"></i>
                             <span>${profileUser.age} سنة</span>
-                        </div>
-                        <div class="flex items-center gap-1.5 bg-gray-800/40 rounded-lg px-2 py-1.5">
+                        </div>` : ''}
+                        ${profileUser.socialStatus ? `<div class="flex items-center gap-1.5 bg-gray-800/40 rounded-lg px-2 py-1.5">
                             <i class="fas ${socialInfo.icon} text-red-400 w-3 text-center"></i>
-                            <span>${socialInfo.text}</span>
-                        </div>
-                        <div class="flex items-center gap-1.5 bg-gray-800/40 rounded-lg px-2 py-1.5">
+                            <span>${escapeHtml(socialInfo.text)}</span>
+                        </div>` : ''}
+                        ${profileUser.educationStatus ? `<div class="flex items-center gap-1.5 bg-gray-800/40 rounded-lg px-2 py-1.5">
                             <i class="fas ${educationInfo.icon} text-blue-400 w-3 text-center"></i>
-                            <span>${educationInfo.text}</span>
-                        </div>
+                            <span>${escapeHtml(educationInfo.text)}</span>
+                        </div>` : ''}
                     </div>
 
                     <div id="profile-action-buttons" class="grid grid-cols-6 gap-1 border-t border-gray-700/50 p-2 bg-black/10">
@@ -11643,13 +11724,18 @@ async function showFullProfilePage(userId) {
         const weeklyWins = (weeklyWinsRes && weeklyWinsRes.status === 'success') ? weeklyWinsRes.data.wins : [];
         const socialInfo = getSocialStatus(u.socialStatus);
         const educationInfo = getEducationStatus(u.educationStatus);
-        const genderInfo = u.gender === 'male' ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' } : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
+        // 🐛 إصلاح: كان يفترض gender/age موجودَين دوماً، فيعرض "أنثى" افتراضياً + "undefined سنة"
+        // حرفياً لأي زائر غير المالك لما يُخفي صاحب الملف معلوماته الشخصية (الخادم يحذف هذي
+        // الحقول فعلياً بهذي الحالة — راجع PERSONAL_INFO_FIELDS بـuserController.js) — الآن
+        // الشارتان تختفيان كلياً بدل عرض قيمة فارغة/خاطئة، بنفس نمط socialStatus/educationStatus أسفل
+        const genderInfo = u.gender ? (u.gender === 'male' ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' } : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' }) : null;
+        const hasAge = typeof u.age === 'number' && !isNaN(u.age);
 
         const body = document.getElementById('full-profile-body');
         body.innerHTML = `
             <div class="full-profile-cover" style="${u.coverImage ? `background-image:url('${u.coverImage}')` : ''}">
                 <div class="full-profile-avatar-wrap">
-                    <img src="${u.profileImage}" class="full-profile-avatar ${u.activeFrameClass || ''}">
+                    <img data-user-id="${u._id}" src="${u.profileImage}" class="full-profile-avatar ${u.activeFrameClass || ''}">
                 </div>
             </div>
             <div class="full-profile-identity">
@@ -11663,8 +11749,8 @@ async function showFullProfilePage(userId) {
                     ${renderRoomProfileSupportBadgeHTML('giving', u.supportGiving)}
                 </div>
                 <div class="full-profile-info-row">
-                    <span class="full-profile-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
-                    <span class="full-profile-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${u.age} سنة</span>
+                    ${genderInfo ? `<span class="full-profile-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>` : ''}
+                    ${hasAge ? `<span class="full-profile-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${u.age} سنة</span>` : ''}
                     ${u.socialStatus ? `<span class="full-profile-mini-badge"><i class="fas ${socialInfo.icon} text-red-400"></i> ${escapeHtml(socialInfo.text)}</span>` : ''}
                     ${u.educationStatus ? `<span class="full-profile-mini-badge"><i class="fas ${educationInfo.icon} text-blue-400"></i> ${escapeHtml(educationInfo.text)}</span>` : ''}
                 </div>
