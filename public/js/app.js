@@ -1336,6 +1336,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (currentRoomMyRole === 'host' && currentVoiceRoomId !== 'main') {
             items.push({ action: 'pk-challenge', icon: 'fa-bolt', label: 'تحدي PK', color: 'text-orange-400' });
         }
+        // ✅ متجر أدوات المعركة (قفاز/ضباب) — يظهر للجميع (ليس المضيف فقط، كإرسال أي هدية) فقط
+        // أثناء معركة PK فعلية بهذي الغرفة تحديداً (طلب صريح: "يظهر عند المستخدمين أثناء بدء التحدي")
+        if (currentPkBattle && currentPkBattle.status === 'active' && currentVoiceRoomId !== 'main') {
+            items.push({ action: 'pk-item-store', icon: 'fa-hand-fist', label: 'متجر المعركة', color: 'text-amber-300' });
+        }
         // ✅ تحدٍ بين أعضاء الغرفة نفسها — المضيف والمسؤولون معاً (بعكس تحدي PK بين الغرف،
         // قرار داخلي بسيط بالغرفة نفسها لا يحتاج صلاحية المضيف حصراً)
         if (isManager && currentVoiceRoomId !== 'main') {
@@ -1418,6 +1423,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     if (currentVoiceRoomId) showHandQueueSheet(currentVoiceRoomId);
                 } else if (action === 'pk-challenge') {
                     if (currentVoiceRoomId) showPkChallengeModal({ id: currentVoiceRoomId });
+                } else if (action === 'pk-item-store') {
+                    showPkItemStoreModal();
                 } else if (action === 'seat-challenge') {
                     if (currentVoiceRoomId) showSeatChallengeCreateModal({ id: currentVoiceRoomId });
                 } else if (action === 'clear-chat') {
@@ -3356,7 +3363,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             if (result.handRaises) roomHandQueue = result.handRaises;
             updateHandRaiseUI();
             if (result.activeBattle) {
-                currentPkBattle = result.activeBattle;
+                currentPkBattle = pkBuildBattleState(result.activeBattle);
                 renderPkBar();
             } else {
                 removePkBar();
@@ -3873,30 +3880,56 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     // =====================================================
-    // ✅ معارك PK بين غرفتين — اختيار الغصم، شريط النتيجة الحي، ونافذة نتيجة المعركة
+    // ✅ "عقد التحدي" بين غرفتين (نظام PK المطوَّر) — اختيار الخصم بسجل تعاقدي متراكم (شبه
+    // آلية الشركات الكبرى بتيك توك/لايكي/بيجو لايف)، شريط معركة هندسي بمؤثرات حية، أفضل 3
+    // داعمين لكل صفّ، ومتجر أدوات معركة (قفاز يضاعف العرض على الشريط فقط/ضباب يُعتِّم الرقم
+    // عن الجمهور المنافس)، ونافذة نتيجة بصور ومؤثرات ضباب/دخان متحركة
     // =====================================================
-    let currentPkBattle = null; // { battleId, roomA, roomB, scoreA, scoreB, durationSeconds, endsAt }
+    let currentPkBattle = null; // { battleId, roomA, roomB, scoreA, scoreB, lastKnownScoreA/B, effects:{A,B}, recordA, recordB, durationSeconds, endsAt, status }
     let pkCountdownInterval = null;
+    let pkEffectTickInterval = null;
+    // ✅ آخر أداة رميتها أنا بهذي المعركة (لعرض حالة "آخر استخدام" بالمتجر محلياً دون انتظار
+    // خطأ من السيرفر لو ضغطت زراً معطَّلاً) — يُصفَّر تلقائياً عند انتهاء مدتها بعدّاد المتجر نفسه
+    let myPkThrowCooldown = null; // { item, expiresAt }
+    // ✅ ذاكرة خفيفة محلية (id → {username, profileImage, activeFrameClass}) لاستكمال هوية
+    // "أفضل 3 داعمين" بلا أي استعلام إضافي — تُغذَّى تلقائياً من أي بيانات هوية تعبر هذي الجلسة
+    // بالفعل (قائمة المشاهدين، إعلانات الهدايا، الجالسين بالمقاعد)، وتتدهور بأناقة لمن لم تُرَ هويته بعد
+    const pkUserDisplayCache = new Map();
+    function pkCacheUserDisplay(id, username, profileImage, activeFrameClass) {
+        if (!id) return;
+        const existing = pkUserDisplayCache.get(id) || {};
+        pkUserDisplayCache.set(id, {
+            username: username || existing.username || 'مستخدم',
+            profileImage: profileImage || existing.profileImage || '/images/default-avatar.png',
+            activeFrameClass: (activeFrameClass !== undefined ? activeFrameClass : existing.activeFrameClass) || ''
+        });
+    }
+    function pkResolveUserDisplay(id) {
+        return pkUserDisplayCache.get(id) || { username: 'داعم', profileImage: '/images/default-avatar.png', activeFrameClass: '' };
+    }
 
-    // ✅ نافذة اختيار غرفة للتحدي — بحث + قائمة، بنفس أسلوب بقية النوافذ بالمشروع
+    // ✅ نافذة اختيار غرفة للتحدي — بحث + قائمة + "سجل العقد" الحالي لغرفتك (طابع تعاقد رسمي)
     function showPkChallengeModal(room) {
         const modal = document.createElement('div');
         modal.id = 'pk-challenge-modal';
         modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4';
         modal.innerHTML = `
-            <div class="bg-gray-800 rounded-xl shadow-xl p-5 w-full max-w-sm text-white max-h-[85vh] overflow-y-auto">
-                <h3 class="text-lg font-bold mb-3"><i class="fas fa-bolt text-orange-400"></i> تحدي غرفة أخرى</h3>
-                <input id="pk-room-search" type="text" placeholder="ابحث باسم الغرفة..." class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mb-3 text-sm focus:ring-purple-500 focus:border-purple-500">
+            <div class="pk-contract-sheet w-full max-w-sm max-h-[85vh] overflow-y-auto">
+                <div class="pk-contract-sheet-header">
+                    <h3 class="pk-contract-sheet-title"><i class="fas fa-file-signature"></i> عقد تحدٍ جديد</h3>
+                    <p class="pk-contract-sheet-sub">اختر غرفة لتحدّيها بمعركة PK رسمية</p>
+                </div>
+                <input id="pk-room-search" type="text" placeholder="ابحث باسم الغرفة..." class="pk-contract-input">
                 <div class="mb-3">
-                    <label class="text-xs text-gray-400 block mb-1.5">مدة المعركة</label>
+                    <label class="pk-contract-label">مدة المعركة</label>
                     <div id="pk-duration-picker" class="grid grid-cols-3 gap-2">
-                        <button type="button" data-sec="180" class="pk-duration-btn bg-purple-600 text-xs py-2 rounded-lg font-bold">3 دقائق</button>
-                        <button type="button" data-sec="300" class="pk-duration-btn bg-gray-700 text-xs py-2 rounded-lg font-bold">5 دقائق</button>
-                        <button type="button" data-sec="600" class="pk-duration-btn bg-gray-700 text-xs py-2 rounded-lg font-bold">10 دقائق</button>
+                        <button type="button" data-sec="180" class="pk-duration-btn pk-contract-chip active">3 دقائق</button>
+                        <button type="button" data-sec="300" class="pk-duration-btn pk-contract-chip">5 دقائق</button>
+                        <button type="button" data-sec="600" class="pk-duration-btn pk-contract-chip">10 دقائق</button>
                     </div>
                 </div>
                 <div id="pk-room-list" class="space-y-2 max-h-52 overflow-y-auto mb-3"></div>
-                <button type="button" id="cancel-pk-challenge" class="w-full text-center py-2 rounded-lg bg-gray-700 text-gray-300 text-sm">إلغاء</button>
+                <button type="button" id="cancel-pk-challenge" class="pk-contract-cancel-btn">إلغاء</button>
             </div>
         `;
         document.body.appendChild(modal);
@@ -3907,10 +3940,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         modal.querySelectorAll('.pk-duration-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 selectedDuration = parseInt(btn.dataset.sec);
-                modal.querySelectorAll('.pk-duration-btn').forEach(b => b.classList.remove('bg-purple-600'));
-                modal.querySelectorAll('.pk-duration-btn').forEach(b => b.classList.add('bg-gray-700'));
-                btn.classList.remove('bg-gray-700');
-                btn.classList.add('bg-purple-600');
+                modal.querySelectorAll('.pk-duration-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
             });
         });
 
@@ -3928,7 +3959,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     return;
                 }
                 listEl.innerHTML = rooms.map(r => `
-                    <button data-room-id="${r.id}" data-room-name="${escapeHtml(r.name)}" class="pk-target-room-btn w-full flex items-center gap-2.5 bg-gray-700/50 hover:bg-gray-700 rounded-lg p-2 text-right">
+                    <button data-room-id="${r.id}" data-room-name="${escapeHtml(r.name)}" class="pk-target-room-btn w-full flex items-center gap-2.5 bg-white/5 hover:bg-white/10 rounded-xl p-2 text-right border border-white/5">
                         <img src="${r.coverImage}" class="w-9 h-9 rounded-lg object-cover flex-shrink-0">
                         <span class="flex-1 min-w-0 text-sm truncate">${escapeHtml(r.name)}</span>
                         <span class="text-[10px] text-gray-400 flex-shrink-0">${r.occupied || 0} <i class="fas fa-user"></i></span>
@@ -3938,7 +3969,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     btn.addEventListener('click', () => {
                         socket.emit('pk-challenge-room', { roomId: room.id, targetRoomId: btn.dataset.roomId, durationSeconds: selectedDuration });
                         modal.remove();
-                        showNotification(`تم إرسال تحدي PK لغرفة "${btn.dataset.roomName}" — بانتظار الرد`, 'info');
+                        showNotification(`تم إرسال عقد تحدٍ لغرفة "${btn.dataset.roomName}" — بانتظار الرد`, 'info');
                     });
                 });
             } catch (error) {
@@ -3953,22 +3984,46 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
     }
 
-    // ✅ نافذة تلقّي تحدٍ — تظهر لمضيف الغرفة المستهدفة فقط، مع عدّاد تنازلي للرد قبل انتهاء المهلة
-    function showPkChallengeReceivedModal({ battleId, challengerRoomName, challengerRoomCover, expiresInSeconds }) {
+    // ✅ شريحة صغيرة لعرض سجل W-L-D + سلسلة الانتصارات الحالية — تُستخدم بنافذتي العرض/الاستقبال والنتيجة
+    function pkRecordChipHTML(record) {
+        if (!record) return '';
+        const streak = record.streak || 0;
+        const streakHTML = streak > 0
+            ? `<span class="pk-record-streak pk-record-streak-win"><i class="fas fa-fire"></i> ${streak}</span>`
+            : (streak < 0 ? `<span class="pk-record-streak pk-record-streak-loss">${Math.abs(streak)}</span>` : '');
+        return `
+            <div class="pk-record-chip">
+                <span class="pk-record-w">${record.wins || 0}ف</span>
+                <span class="pk-record-sep">-</span>
+                <span class="pk-record-l">${record.losses || 0}خ</span>
+                ${record.draws ? `<span class="pk-record-sep">-</span><span class="pk-record-d">${record.draws}ت</span>` : ''}
+                ${streakHTML}
+            </div>
+        `;
+    }
+
+    // ✅ نافذة تلقّي "عقد تحدٍ" — تظهر لمضيف الغرفة المستهدفة فقط، بسجلّي الغرفتين معاً
+    // (طابع عرض تعاقد رسمي بين طرفين لهما تاريخ، بدل تحدٍ عابر بلا سياق)
+    function showPkChallengeReceivedModal({ battleId, challengerRoomName, challengerRoomCover, expiresInSeconds, challengerRecord, targetRecord }) {
         document.getElementById('pk-challenge-received-modal')?.remove();
         const modal = document.createElement('div');
         modal.id = 'pk-challenge-received-modal';
         modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4';
         modal.innerHTML = `
-            <div class="bg-gray-800 rounded-xl shadow-xl p-5 w-full max-w-xs text-white text-center">
-                <img src="${challengerRoomCover}" class="w-16 h-16 rounded-xl object-cover mx-auto mb-3 border-2 border-orange-400">
+            <div class="pk-contract-offer-sheet w-full max-w-xs">
+                <div class="pk-contract-offer-seal"><i class="fas fa-file-contract"></i></div>
+                <img src="${challengerRoomCover}" class="pk-contract-offer-avatar">
                 <p class="text-sm text-gray-300 mb-1">غرفة</p>
-                <p class="font-bold text-base mb-3 truncate">${escapeHtml(challengerRoomName)}</p>
-                <p class="text-sm text-orange-300 mb-4"><i class="fas fa-bolt"></i> تتحداك بمعركة PK!</p>
-                <p id="pk-challenge-countdown" class="text-xs text-gray-400 mb-3">${expiresInSeconds} ثانية للرد</p>
-                <div class="flex gap-3">
-                    <button id="pk-decline-btn" class="flex-1 bg-gray-600 hover:bg-gray-500 py-2 rounded-lg font-bold text-sm">رفض</button>
-                    <button id="pk-accept-btn" class="flex-1 bg-gradient-to-r from-red-600 to-orange-600 py-2 rounded-lg font-bold text-sm">قبول التحدي</button>
+                <p class="font-bold text-base mb-2 truncate">${escapeHtml(challengerRoomName)}</p>
+                ${pkRecordChipHTML(challengerRecord)}
+                <p class="text-sm text-orange-300 mt-3 mb-1"><i class="fas fa-bolt"></i> تعرض عليك عقد تحدٍ بمعركة PK!</p>
+                ${targetRecord ? `<div class="text-[10px] text-gray-500 mb-2">سجل غرفتك: ${pkRecordChipHTML(targetRecord)}</div>` : ''}
+                <div class="pk-contract-offer-countdown-ring" id="pk-challenge-countdown-ring">
+                    <span id="pk-challenge-countdown">${expiresInSeconds}</span>
+                </div>
+                <div class="flex gap-3 mt-3">
+                    <button id="pk-decline-btn" class="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 py-2 rounded-lg font-bold text-sm">رفض العقد</button>
+                    <button id="pk-accept-btn" class="flex-1 pk-contract-accept-btn py-2 rounded-lg font-bold text-sm">قبول العقد</button>
                 </div>
             </div>
         `;
@@ -3978,7 +4033,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const countdownEl = document.getElementById('pk-challenge-countdown');
         const interval = setInterval(() => {
             remaining--;
-            if (countdownEl) countdownEl.textContent = `${Math.max(remaining, 0)} ثانية للرد`;
+            if (countdownEl) countdownEl.textContent = Math.max(remaining, 0);
             if (remaining <= 0) {
                 clearInterval(interval);
                 modal.remove();
@@ -3997,41 +4052,134 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
     }
 
-    // ✅ يبني/يحدّث شريط المعركة أعلى شاشة الغرفة — يظهر فقط وأنت تشاهد إحدى الغرفتين المتنافستين
+    // ✅ يُحرّك رقماً بعدّاد سلس بدل القفز المباشر — لمسة حركية صغيرة عند كل تحديث نقاط
+    function pkAnimateNumber(el, from, to, duration = 450) {
+        if (!el || from === to) { if (el) el.textContent = to; return; }
+        const start = performance.now();
+        const diff = to - from;
+        function tick(now) {
+            const progress = Math.min(1, (now - start) / duration);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            el.textContent = Math.round(from + diff * eased).toLocaleString('en-US');
+            if (progress < 1) requestAnimationFrame(tick);
+            else el.textContent = to.toLocaleString('en-US');
+        }
+        requestAnimationFrame(tick);
+    }
+
+    // ✅ يبني صفوف "أفضل 3 داعمين" أسفل الشريط — مكان خاص مدروس لكل صفّ، بميدالية ذهبية/فضية/برونزية
+    function pkRenderSupportersCol(list) {
+        if (!list || list.length === 0) {
+            return `<div class="pk-contract-supporters-empty">كن أول الداعمين</div>`;
+        }
+        const medals = ['🥇', '🥈', '🥉'];
+        return list.map((s, i) => {
+            const u = pkResolveUserDisplay(s.userId);
+            return `
+                <div class="pk-contract-supporter" title="${escapeHtml(u.username)} • ${s.points}">
+                    <span class="pk-contract-supporter-medal">${medals[i] || ''}</span>
+                    <img class="pk-contract-supporter-avatar ${u.activeFrameClass || ''}" src="${u.profileImage}">
+                    <span class="pk-contract-supporter-points">${s.points > 9999 ? '9999+' : s.points}</span>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // ✅ يبني/يحدّث "شريط العقد" أعلى شاشة الغرفة — هيكلة هندسية جديدة كاملة (شارات سداسية
+    // مائلة بدل شريط تقدّم مسطّح تقليدي)، مع مؤثرات: عدّاد أرقام سلس، شارات مواقتة للقفاز
+    // (×2 متوهّج) والضباب (تعتيم حقيقي من الخادم، لا عرضي فقط)، وصف "أفضل 3 داعمين" أسفله
     function renderPkBar() {
-        document.getElementById('pk-battle-bar')?.remove();
-        if (!currentPkBattle || currentPkBattle.status === 'pending') return;
+        if (!currentPkBattle || currentPkBattle.status === 'pending') { document.getElementById('pk-battle-bar')?.remove(); return; }
         const isMineA = currentPkBattle.roomA.id === currentVoiceRoomId;
         const isMineB = currentPkBattle.roomB.id === currentVoiceRoomId;
-        if (!isMineA && !isMineB) return;
+        if (!isMineA && !isMineB) { document.getElementById('pk-battle-bar')?.remove(); return; }
 
-        const left = isMineA ? currentPkBattle.roomA : currentPkBattle.roomB;
-        const right = isMineA ? currentPkBattle.roomB : currentPkBattle.roomA;
-        const leftScore = isMineA ? currentPkBattle.scoreA : currentPkBattle.scoreB;
-        const rightScore = isMineA ? currentPkBattle.scoreB : currentPkBattle.scoreA;
+        const mySide = isMineA ? 'A' : 'B';
+        const oppSide = isMineA ? 'B' : 'A';
+        const left = currentPkBattle[isMineA ? 'roomA' : 'roomB'];
+        const right = currentPkBattle[isMineA ? 'roomB' : 'roomA'];
+        const leftFogged = !!(currentPkBattle.fogged && currentPkBattle.fogged[mySide]);
+        const rightFogged = !!(currentPkBattle.fogged && currentPkBattle.fogged[oppSide]);
+        const leftScore = currentPkBattle.lastKnownScore?.[mySide] ?? 0;
+        const rightScore = currentPkBattle.lastKnownScore?.[oppSide] ?? 0;
         const total = leftScore + rightScore;
         const leftPct = total > 0 ? Math.round((leftScore / total) * 100) : 50;
 
-        const bar = document.createElement('div');
-        bar.id = 'pk-battle-bar';
-        bar.className = 'pk-battle-bar';
-        bar.innerHTML = `
-            <div class="pk-battle-row">
-                <img src="${left.coverImage}" class="pk-battle-avatar">
-                <div class="pk-battle-progress">
-                    <div class="pk-battle-fill-left" style="width:${leftPct}%"></div>
-                    <div class="pk-battle-fill-right" style="width:${100 - leftPct}%"></div>
-                    <span class="pk-battle-score-left">${leftScore}</span>
-                    <span class="pk-battle-vs"><i class="fas fa-bolt"></i></span>
-                    <span class="pk-battle-score-right">${rightScore}</span>
+        let bar = document.getElementById('pk-battle-bar');
+        const isNew = !bar;
+        if (isNew) {
+            bar = document.createElement('div');
+            bar.id = 'pk-battle-bar';
+            bar.className = 'pk-contract-bar';
+            bar.innerHTML = `
+                <div class="pk-contract-top">
+                    <div class="pk-contract-side" data-side-slot="left">
+                        <div class="pk-contract-avatar-wrap">
+                            <img class="pk-contract-avatar" data-avatar>
+                            <div class="pk-contract-effect-ring" data-effect-badge hidden><i data-effect-icon></i><svg class="pk-contract-effect-svg" viewBox="0 0 36 36"><circle class="pk-contract-effect-track" cx="18" cy="18" r="15.5"></circle><circle class="pk-contract-effect-progress" data-effect-progress cx="18" cy="18" r="15.5"></circle></svg></div>
+                        </div>
+                        <div class="pk-contract-hex" data-hex="left">
+                            <span class="pk-contract-score-num" data-score-num>0</span>
+                            <div class="pk-contract-fog" data-fog hidden><i class="fas fa-smog"></i><span>محجوب</span></div>
+                        </div>
+                    </div>
+                    <div class="pk-contract-core">
+                        <div class="pk-contract-seal"><i class="fas fa-bolt"></i></div>
+                        <div id="pk-battle-timer" class="pk-contract-timer">00:00</div>
+                    </div>
+                    <div class="pk-contract-side pk-contract-side-right" data-side-slot="right">
+                        <div class="pk-contract-avatar-wrap">
+                            <img class="pk-contract-avatar" data-avatar>
+                            <div class="pk-contract-effect-ring" data-effect-badge hidden><i data-effect-icon></i><svg class="pk-contract-effect-svg" viewBox="0 0 36 36"><circle class="pk-contract-effect-track" cx="18" cy="18" r="15.5"></circle><circle class="pk-contract-effect-progress" data-effect-progress cx="18" cy="18" r="15.5"></circle></svg></div>
+                        </div>
+                        <div class="pk-contract-hex" data-hex="right">
+                            <span class="pk-contract-score-num" data-score-num>0</span>
+                            <div class="pk-contract-fog" data-fog hidden><i class="fas fa-smog"></i><span>محجوب</span></div>
+                        </div>
+                    </div>
                 </div>
-                <img src="${right.coverImage}" class="pk-battle-avatar">
-            </div>
-            <div id="pk-battle-timer" class="pk-battle-timer"></div>
-        `;
-        const header = mainContent.querySelector('.flex.justify-between.items-center');
-        if (header) header.insertAdjacentElement('afterend', bar);
-        else mainContent.prepend(bar);
+                <div class="pk-contract-track">
+                    <div class="pk-contract-track-fill-left" data-fill-left></div>
+                    <div class="pk-contract-track-fill-right" data-fill-right></div>
+                    <div class="pk-contract-track-divider"></div>
+                </div>
+                <div class="pk-contract-supporters">
+                    <div class="pk-contract-supporters-col" data-supporters="left"></div>
+                    <div class="pk-contract-supporters-label"><i class="fas fa-ranking-star"></i> أفضل الداعمين</div>
+                    <div class="pk-contract-supporters-col" data-supporters="right"></div>
+                </div>
+            `;
+            const header = mainContent.querySelector('.flex.justify-between.items-center');
+            if (header) header.insertAdjacentElement('afterend', bar);
+            else mainContent.prepend(bar);
+        }
+
+        const leftSlot = bar.querySelector('[data-side-slot="left"]');
+        const rightSlot = bar.querySelector('[data-side-slot="right"]');
+        leftSlot.querySelector('[data-avatar]').src = left.coverImage;
+        rightSlot.querySelector('[data-avatar]').src = right.coverImage;
+
+        const leftNumEl = leftSlot.querySelector('[data-score-num]');
+        const rightNumEl = rightSlot.querySelector('[data-score-num]');
+        const prevLeft = parseInt(leftNumEl.dataset.rendered || '0');
+        const prevRight = parseInt(rightNumEl.dataset.rendered || '0');
+        if (!leftFogged) { pkAnimateNumber(leftNumEl, prevLeft, leftScore); leftNumEl.dataset.rendered = leftScore; }
+        if (!rightFogged) { pkAnimateNumber(rightNumEl, prevRight, rightScore); rightNumEl.dataset.rendered = rightScore; }
+        if (prevLeft !== leftScore && leftScore > prevLeft) { leftSlot.querySelector('[data-hex]').classList.add('pk-score-bump'); setTimeout(() => leftSlot.querySelector('[data-hex]')?.classList.remove('pk-score-bump'), 350); }
+        if (prevRight !== rightScore && rightScore > prevRight) { rightSlot.querySelector('[data-hex]').classList.add('pk-score-bump'); setTimeout(() => rightSlot.querySelector('[data-hex]')?.classList.remove('pk-score-bump'), 350); }
+
+        leftSlot.querySelector('[data-hex]').classList.toggle('pk-fogged', leftFogged);
+        leftSlot.querySelector('[data-fog]').hidden = !leftFogged;
+        rightSlot.querySelector('[data-hex]').classList.toggle('pk-fogged', rightFogged);
+        rightSlot.querySelector('[data-fog]').hidden = !rightFogged;
+
+        bar.querySelector('[data-fill-left]').style.width = `${leftPct}%`;
+        bar.querySelector('[data-fill-right]').style.width = `${100 - leftPct}%`;
+
+        bar.querySelector('[data-supporters="left"]').innerHTML = pkRenderSupportersCol(currentPkBattle.topSupporters?.[mySide]);
+        bar.querySelector('[data-supporters="right"]').innerHTML = pkRenderSupportersCol(currentPkBattle.topSupporters?.[oppSide]);
+
+        pkRenderEffectBadges(bar, leftSlot, rightSlot, mySide, oppSide);
 
         clearInterval(pkCountdownInterval);
         if (currentPkBattle.endsAt) {
@@ -4049,34 +4197,231 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
     }
 
-    function removePkBar() {
-        clearInterval(pkCountdownInterval);
-        currentPkBattle = null;
-        document.getElementById('pk-battle-bar')?.remove();
+    // ✅ شارات مواقتة القفاز (×2 متوهّج)/الضباب (سحابة) لكل صفّ — حلقة SVG تُفرَّغ تدريجياً
+    // حسب الوقت المتبقي الحقيقي (expiresAt من الخادم)، لا عدّاد تقديري منفصل قد ينحرف عنه
+    function pkRenderEffectBadges(bar, leftSlot, rightSlot, mySide, oppSide) {
+        const effects = currentPkBattle.effects || {};
+        [['left', mySide, leftSlot], ['right', oppSide, rightSlot]].forEach(([, side, slot]) => {
+            const badge = slot.querySelector('[data-effect-badge]');
+            const sideEffects = effects[side] || {};
+            // ✅ لو كلا الأداتين فعّالتين بآن واحد (ليس ممكناً حالياً بقاعدة منع إعادة الرمي لنفس
+            // المستخدم، لكن مستخدمون مختلفون بنفس الصفّ قد يرميان أدوات مختلفة) يُعرَض القفاز أولاً (أهم بصرياً)
+            const active = sideEffects.glove ? { type: 'glove', expiresAt: sideEffects.glove }
+                : (sideEffects.fog ? { type: 'fog', expiresAt: sideEffects.fog } : null);
+            if (!active) { badge.hidden = true; badge.removeAttribute('data-active-type'); return; }
+            badge.hidden = false;
+            badge.dataset.activeType = active.type;
+            badge.dataset.expiresAt = active.expiresAt;
+            const icon = badge.querySelector('[data-effect-icon]');
+            icon.className = active.type === 'glove' ? 'fas fa-hand-fist' : 'fas fa-smog';
+            badge.classList.toggle('pk-effect-glove', active.type === 'glove');
+            badge.classList.toggle('pk-effect-fog', active.type === 'fog');
+        });
+        pkTickEffectBadges();
+        clearInterval(pkEffectTickInterval);
+        pkEffectTickInterval = setInterval(pkTickEffectBadges, 300);
     }
 
-    // ✅ نافذة نتيجة المعركة — تظهر لكل من الغرفتين عند الانتهاء
-    function showPkResultModal({ roomA, roomB, scoreA, scoreB, winner }) {
+    // ✅ يُحدَّث كل 300ms: يُفرِّغ حلقة SVG التناسبية + يُزيل الشارة/التعتيم محلياً فوراً عند
+    // بلوغ الصفر (لا ينتظر بثّ نقاط جديد من الخادم كي يرفع الضباب بصرياً عن الرقم المجمَّد)
+    function pkTickEffectBadges() {
+        const bar = document.getElementById('pk-battle-bar');
+        if (!bar || !currentPkBattle) { clearInterval(pkEffectTickInterval); return; }
+        const CIRC = 2 * Math.PI * 15.5;
+        bar.querySelectorAll('[data-effect-badge]:not([hidden])').forEach(badge => {
+            const type = badge.dataset.activeType;
+            const expiresAt = parseInt(badge.dataset.expiresAt);
+            const total = type === 'glove' ? 15000 : 12000;
+            const remaining = expiresAt - Date.now();
+            const progressEl = badge.querySelector('[data-effect-progress]');
+            if (remaining <= 0) {
+                badge.hidden = true;
+                const slot = badge.closest('.pk-contract-side');
+                const mySide = currentPkBattle.roomA.id === currentVoiceRoomId ? 'A' : 'B';
+                const actualSide = slot?.dataset.sideSlot === 'left' ? mySide : (mySide === 'A' ? 'B' : 'A');
+                if (currentPkBattle.effects?.[actualSide]) currentPkBattle.effects[actualSide][type] = null;
+                if (type === 'fog' && currentPkBattle.fogged) currentPkBattle.fogged[actualSide] = false;
+                renderPkBar();
+                return;
+            }
+            const pct = Math.max(0, Math.min(1, remaining / total));
+            if (progressEl) progressEl.style.strokeDashoffset = `${CIRC * (1 - pct)}`;
+        });
+    }
+
+    function removePkBar() {
+        clearInterval(pkCountdownInterval);
+        clearInterval(pkEffectTickInterval);
+        currentPkBattle = null;
+        myPkThrowCooldown = null;
+        document.getElementById('pk-battle-bar')?.remove();
+        document.getElementById('pk-item-store-modal')?.remove();
+    }
+
+    // ✅ نافذة نتيجة "العقد" — تظهر لكل من الغرفتين عند الحسم، بصورة بطولة/خسارة + مؤثر
+    // ضباب ودخان متحرك (طلب صريح)، وسجل العقد المُحدَّث لكل غرفة، وأفضل داعمي كل صفّ
+    function showPkResultModal({ roomA, roomB, scoreA, scoreB, winner, recordA, recordB, topSupportersA, topSupportersB }) {
         const isMineA = currentVoiceRoomId === roomA;
         const myScore = isMineA ? scoreA : scoreB;
         const otherScore = isMineA ? scoreB : scoreA;
+        const myRecord = isMineA ? recordA : recordB;
         const iWon = (winner === 'A' && isMineA) || (winner === 'B' && !isMineA);
         const isDraw = winner === 'draw';
+        const mySupporters = isMineA ? topSupportersA : topSupportersB;
 
         const modal = document.createElement('div');
         modal.id = 'pk-result-modal';
-        modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4';
+        modal.className = 'fixed inset-0 bg-black/75 flex items-center justify-center z-[60] p-4';
         modal.innerHTML = `
-            <div class="bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-xs text-white text-center">
-                <i class="fas ${isDraw ? 'fa-handshake text-gray-300' : (iWon ? 'fa-trophy text-yellow-400' : 'fa-face-frown text-gray-400')} text-4xl mb-3"></i>
-                <p class="font-bold text-lg mb-2">${isDraw ? 'تعادل!' : (iWon ? 'فوز غرفتك! 🎉' : 'خسرت هذي الجولة')}</p>
-                <p class="text-sm text-gray-400 mb-4">${myScore} : ${otherScore}</p>
-                <button id="close-pk-result" class="w-full bg-purple-600 hover:bg-purple-700 py-2 rounded-lg font-bold text-sm">إغلاق</button>
+            <div class="pk-result-sheet w-full max-w-xs ${isDraw ? 'pk-result-draw' : (iWon ? 'pk-result-win' : 'pk-result-lose')}">
+                <div class="pk-result-fog-layer"></div>
+                <div class="pk-result-fog-layer pk-result-fog-layer-2"></div>
+                <div class="pk-result-hero">
+                    <i class="fas ${isDraw ? 'fa-handshake' : (iWon ? 'fa-trophy' : 'fa-shield-halved')} pk-result-hero-icon"></i>
+                    ${iWon && !isDraw ? '<div class="pk-result-confetti"></div>' : ''}
+                </div>
+                <p class="pk-result-title">${isDraw ? 'تعادل!' : (iWon ? 'فوز غرفتك! 🎉' : 'خسرت هذي الجولة')}</p>
+                <p class="pk-result-score">${myScore.toLocaleString('en-US')} : ${otherScore.toLocaleString('en-US')}</p>
+                ${myRecord ? `<div class="pk-result-record-label">سجل العقد المُحدَّث</div>${pkRecordChipHTML(myRecord)}` : ''}
+                ${mySupporters && mySupporters.length ? `
+                    <div class="pk-result-supporters-label"><i class="fas fa-ranking-star"></i> أفضل داعمي الجولة</div>
+                    <div class="pk-result-supporters-row">${pkRenderSupportersCol(mySupporters)}</div>
+                ` : ''}
+                <button id="close-pk-result" class="pk-result-close-btn">إغلاق</button>
             </div>
         `;
         document.body.appendChild(modal);
         modal.querySelector('#close-pk-result').addEventListener('click', () => modal.remove());
         modal.addEventListener('click', (e) => { if (e.target.id === 'pk-result-modal') modal.remove(); });
+    }
+
+    // ✅ متجر أدوات المعركة (قفاز/ضباب) — يظهر من قسم "المزيد" أثناء معركة PK فعلية فقط
+    function showPkItemStoreModal() {
+        document.getElementById('pk-item-store-modal')?.remove();
+        if (!currentPkBattle || currentPkBattle.status !== 'active') return;
+
+        const modal = document.createElement('div');
+        modal.id = 'pk-item-store-modal';
+        modal.className = 'fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[55]';
+        modal.innerHTML = `
+            <div class="pk-item-store-sheet w-full md:max-w-sm">
+                <div class="w-10 h-1 bg-white/15 rounded-full mx-auto mb-3 md:hidden"></div>
+                <h3 class="pk-item-store-title"><i class="fas fa-shop"></i> متجر أدوات المعركة</h3>
+                <p class="pk-item-store-sub">خدع تُستخدم أثناء التحدي فقط — لا تؤثر على قيمتها الحقيقية</p>
+                <div class="pk-item-store-grid">
+                    <div class="pk-item-card" data-item="glove">
+                        <div class="pk-item-icon pk-item-icon-glove"><i class="fas fa-hand-fist"></i></div>
+                        <div class="pk-item-name">قفاز الحماس</div>
+                        <div class="pk-item-desc">يضاعف ×2 كل دعم يُرسَل لصفّك على الشريط لمدة 15 ثانية (عرضي فقط، لا يغيّر كوينزك الحقيقية)</div>
+                        <div class="pk-item-price"><i class="fas fa-coins"></i> 3</div>
+                        <button type="button" class="pk-item-buy-btn" data-item-buy="glove">إرسال لشخص</button>
+                    </div>
+                    <div class="pk-item-card" data-item="fog">
+                        <div class="pk-item-icon pk-item-icon-fog"><i class="fas fa-smog"></i></div>
+                        <div class="pk-item-name">ضباب التكتيك</div>
+                        <div class="pk-item-desc">يُخفي رقم دعم صفّك عن الخصم لمدة 12 ثانية — شراء غير محدود</div>
+                        <div class="pk-item-price"><i class="fas fa-coins"></i> 4</div>
+                        <button type="button" class="pk-item-buy-btn" data-item-buy="fog">تفعيل الضباب</button>
+                    </div>
+                </div>
+                <button type="button" id="close-pk-item-store" class="pk-contract-cancel-btn mt-2">إغلاق</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'pk-item-store-modal') modal.remove(); });
+        document.getElementById('close-pk-item-store').addEventListener('click', () => modal.remove());
+
+        function refreshCooldownUI() {
+            const active = myPkThrowCooldown && myPkThrowCooldown.expiresAt > Date.now() ? myPkThrowCooldown : null;
+            modal.querySelectorAll('.pk-item-card').forEach(card => {
+                const item = card.dataset.item;
+                const btn = card.querySelector('.pk-item-buy-btn');
+                if (active) {
+                    const remaining = Math.max(0, Math.ceil((active.expiresAt - Date.now()) / 1000));
+                    if (active.item === item) {
+                        card.classList.add('pk-item-card-active');
+                        btn.disabled = true;
+                        btn.textContent = `آخر استخدام: نشط (${remaining} ث)`;
+                    } else {
+                        card.classList.remove('pk-item-card-active');
+                        card.classList.add('pk-item-card-locked');
+                        btn.disabled = true;
+                        btn.textContent = `انتظر ${remaining} ث`;
+                    }
+                } else {
+                    card.classList.remove('pk-item-card-active', 'pk-item-card-locked');
+                    btn.disabled = false;
+                    btn.textContent = item === 'glove' ? 'إرسال لشخص' : 'تفعيل الضباب';
+                }
+            });
+            if (active) cooldownTimer = setTimeout(refreshCooldownUI, 1000);
+        }
+        let cooldownTimer = null;
+        refreshCooldownUI();
+        const origRemove = modal.remove.bind(modal);
+        modal.remove = () => { clearTimeout(cooldownTimer); origRemove(); };
+
+        modal.querySelectorAll('.pk-item-buy-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const item = btn.dataset.itemBuy;
+                if (myPkThrowCooldown && myPkThrowCooldown.expiresAt > Date.now()) return;
+                if (item === 'glove') {
+                    showPkGloveTargetPicker((targetUserId) => {
+                        throwPkItem(item, targetUserId);
+                    });
+                } else {
+                    throwPkItem(item, null);
+                }
+            });
+        });
+    }
+
+    // ✅ منتقي سريع لمستلم القفاز — نفس نمط اختيار الجالسين بالمقعد بتحدي الأعضاء (DOM مباشرة،
+    // لا نداء شبكة إضافي) — يختار المستخدم شخصاً من غرفته الحالية لدعمه بالقفاز
+    function showPkGloveTargetPicker(onPick) {
+        const myId = JSON.parse(localStorage.getItem('user') || '{}')._id;
+        const candidates = Array.from(document.querySelectorAll('#voice-chat-grid .occupied-seat'))
+            .map(el => ({ userId: el.dataset.userId, username: el.title || '', profileImage: el.querySelector('img')?.src || '' }))
+            .filter(c => !!c.userId && c.userId !== myId);
+        if (candidates.length === 0) {
+            showNotification('لا يوجد أحد جالس حالياً لإرسال القفاز له', 'info');
+            return;
+        }
+        candidates.forEach(c => pkCacheUserDisplay(c.userId, c.username, c.profileImage));
+        const modal = document.createElement('div');
+        modal.id = 'pk-glove-target-modal';
+        modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-[65] p-4';
+        modal.innerHTML = `
+            <div class="pk-contract-sheet w-full max-w-xs">
+                <h3 class="pk-contract-sheet-title mb-3"><i class="fas fa-hand-fist"></i> اختر من يستلم القفاز</h3>
+                <div class="space-y-1.5 max-h-60 overflow-y-auto">
+                    ${candidates.map(c => `
+                        <button type="button" class="pk-target-room-btn w-full flex items-center gap-2.5 bg-white/5 hover:bg-white/10 rounded-xl p-2 text-right border border-white/5" data-user-id="${c.userId}">
+                            <img src="${c.profileImage}" class="w-8 h-8 rounded-full flex-shrink-0 object-cover">
+                            <span class="text-xs flex-1 truncate">${escapeHtml(c.username)}</span>
+                        </button>
+                    `).join('')}
+                </div>
+                <button type="button" id="cancel-pk-glove-target" class="pk-contract-cancel-btn mt-3">إلغاء</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target.id === 'pk-glove-target-modal') modal.remove(); });
+        document.getElementById('cancel-pk-glove-target').addEventListener('click', () => modal.remove());
+        modal.querySelectorAll('[data-user-id]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                modal.remove();
+                onPick(btn.dataset.userId);
+            });
+        });
+    }
+
+    // ✅ يرمي أداة المعركة فعلياً — الخادم هو مصدر الحقيقة الوحيد للسعر/المدة/شرط منع إعادة
+    // الرمي؛ هنا فقط تفاؤل محلي لإغلاق المتجر وتفعيل عدّاد "آخر استخدام" فوراً للمس سلس
+    function throwPkItem(item, targetUserId) {
+        if (!currentPkBattle) return;
+        socket.emit('pk-item-throw', { battleId: currentPkBattle.battleId, roomId: currentVoiceRoomId, item, targetUserId });
+        document.getElementById('pk-item-store-modal')?.remove();
     }
 
     // =====================================================
@@ -7749,6 +8094,8 @@ function showXpGainAnimation(amount) {
 
     socket.on('room-viewers-list', ({ roomId, viewers, roomRank }) => {
         if (roomId === currentVoiceRoomId) updateRoomViewerWidget(viewers.length, viewers);
+        // ✅ تغذية ذاكرة هوية "أفضل داعمي العقد" بأسماء/صور المشاهدين الحاليين — بلا أي استعلام إضافي
+        if (roomId === currentVoiceRoomId) viewers.forEach(v => pkCacheUserDisplay(v.id, v.username, v.profileImage, v.activeFrameClass));
 
         const countLabel = document.getElementById('room-viewers-sheet-count');
         if (countLabel) countLabel.textContent = `(${viewers.length})`;
@@ -7873,6 +8220,8 @@ function showXpGainAnimation(amount) {
     // ✅ إعلان هدية بالغرفة — فقاعة ذهبية بالدردشة + شريط جانبي + أيقونة طائرة نحو المستلم
     socket.on('room-gift-announcement', (data) => {
         if (data.roomId !== currentVoiceRoomId) return;
+        pkCacheUserDisplay(data.fromUserId, data.fromUsername, data.fromProfileImage);
+        pkCacheUserDisplay(data.toUserId, data.toUsername, data.toProfileImage);
         appendRoomGiftChatMessage(data);
         showRoomGiftSideBanner(data);
         // ✅ مصدر الحقيقة الوحيد للمؤثر البصري لكل من بالغرفة (المرسل والمستلم والمشاهدون) —
@@ -7881,8 +8230,31 @@ function showXpGainAnimation(amount) {
     });
 
     // =====================================================
-    // ✅ معارك PK بين غرفتين — تحديثات حية للتحدي والشريط والنتيجة
+    // ✅ "عقد التحدي" بين غرفتين — تحديثات حية للعرض/الشريط الهندسي/أدوات المعركة/النتيجة
     // =====================================================
+    // ✅ يبني حالة currentPkBattle الموحَّدة من لقطة "pk-battle-started" أو لقطة استرجاع
+    // الصفحة (activeBattle) — نفس الشكل كلا المصدرين، يُعاد استخدامها بالمكانين معاً
+    function pkBuildBattleState(data) {
+        const activeEffects = data.activeEffects || [];
+        const effects = { A: { glove: null, fog: null }, B: { glove: null, fog: null } };
+        const fogged = { A: false, B: false };
+        activeEffects.forEach(e => {
+            effects[e.side][e.type] = new Date(e.expiresAt).getTime();
+            if (e.type === 'fog') fogged[e.side] = true;
+            if (e.thrownBy) pkCacheUserDisplay(e.thrownBy.id, e.thrownBy.username);
+        });
+        return {
+            ...data,
+            status: data.status || 'active',
+            fogged: data.fogged || fogged,
+            lastKnownScore: { A: data.scoreA ?? 0, B: data.scoreB ?? 0 },
+            effects,
+            topSupporters: { A: data.topSupportersA || [], B: data.topSupportersB || [] },
+            recordA: data.recordA || null,
+            recordB: data.recordB || null
+        };
+    }
+
     socket.on('pk-challenge-sent', () => {
         // ✅ تأكيد بسيط — الإشعار الرئيسي يظهر فوراً عند الإرسال بالواجهة نفسها
     });
@@ -7892,26 +8264,48 @@ function showXpGainAnimation(amount) {
     });
 
     socket.on('pk-challenge-declined', ({ roomB }) => {
-        showNotification('تم رفض تحدي المعركة', 'info');
+        showNotification('تم رفض عقد التحدي', 'info');
     });
 
     socket.on('pk-challenge-expired', () => {
         document.getElementById('pk-challenge-received-modal')?.remove();
-        showNotification('انتهت مهلة الرد على تحدي المعركة', 'info');
+        showNotification('انتهت مهلة الرد على عقد التحدي', 'info');
     });
 
     socket.on('pk-battle-started', (data) => {
         if (data.roomA.id !== currentVoiceRoomId && data.roomB.id !== currentVoiceRoomId) return;
-        currentPkBattle = { ...data, status: 'active' };
+        currentPkBattle = pkBuildBattleState(data);
         renderPkBar();
-        showNotification('بدأت معركة PK! 🔥', 'success');
+        showNotification('بدأ عقد التحدي! 🔥', 'success');
     });
 
     socket.on('pk-score-update', (data) => {
         if (!currentPkBattle || currentPkBattle.battleId !== data.battleId) return;
         currentPkBattle.scoreA = data.scoreA;
         currentPkBattle.scoreB = data.scoreB;
+        currentPkBattle.fogged = data.fogged || { A: false, B: false };
+        // 🛡️ null = مُعتَّم من الخادم نفسه (ضباب فعّال على هذا الصفّ) — لا نحدّث آخر قيمة معروفة
+        // حتى يرتفع التعتيم، فيبقى الشريط معروضاً عند آخر رقم حقيقي رآه هذا الجمهور بالضبط
+        if (data.scoreA !== null) currentPkBattle.lastKnownScore.A = data.scoreA;
+        if (data.scoreB !== null) currentPkBattle.lastKnownScore.B = data.scoreB;
         renderPkBar();
+    });
+
+    socket.on('pk-battle-item-activated', (data) => {
+        if (!currentPkBattle || currentPkBattle.battleId !== data.battleId) return;
+        pkCacheUserDisplay(data.thrownBy?.id, data.thrownBy?.username);
+        currentPkBattle.effects[data.side][data.item] = new Date(data.expiresAt).getTime();
+        if (data.item === 'fog') currentPkBattle.fogged[data.side] = true;
+        const myId = JSON.parse(localStorage.getItem('user') || '{}')._id;
+        if (data.thrownBy?.id === myId) myPkThrowCooldown = { item: data.item, expiresAt: new Date(data.expiresAt).getTime() };
+        renderPkBar();
+        const mySide = currentPkBattle.roomA.id === currentVoiceRoomId ? 'A' : 'B';
+        const label = data.item === 'glove' ? 'قفاز حماس ×2 لمدة 15 ثانية! 🥊' : 'ضباب تكتيكي يُخفي الدعم لمدة 12 ثانية 🌫️';
+        showNotification(`${data.side === mySide ? 'صفّك' : 'الخصم'}: ${label}`, 'info');
+    });
+
+    socket.on('pk-item-error', (payload) => {
+        showNotification(payload?.message || 'تعذّر استخدام الأداة', 'error');
     });
 
     socket.on('pk-battle-ended', (data) => {

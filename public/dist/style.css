@@ -847,6 +847,10 @@ video {
   z-index: 500;
 }
 
+.z-\[55\]{
+  z-index: 55;
+}
+
 .z-\[600\]{
   z-index: 600;
 }
@@ -1157,6 +1161,10 @@ video {
 
 .max-h-52{
   max-height: 13rem;
+}
+
+.max-h-60{
+  max-height: 15rem;
 }
 
 .max-h-72{
@@ -1760,11 +1768,6 @@ video {
   border-color: rgb(34 197 94 / var(--tw-border-opacity, 1));
 }
 
-.border-orange-400{
-  --tw-border-opacity: 1;
-  border-color: rgb(251 146 60 / var(--tw-border-opacity, 1));
-}
-
 .border-pink-400\/40{
   border-color: rgb(244 114 182 / 0.4);
 }
@@ -2131,6 +2134,10 @@ video {
   background-color: rgb(255 255 255 / 0.3);
 }
 
+.bg-white\/5{
+  background-color: rgb(255 255 255 / 0.05);
+}
+
 .bg-white\/50{
   background-color: rgb(255 255 255 / 0.5);
 }
@@ -2236,12 +2243,6 @@ video {
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
 }
 
-.from-red-600{
-  --tw-gradient-from: #dc2626 var(--tw-gradient-from-position);
-  --tw-gradient-to: rgb(220 38 38 / 0) var(--tw-gradient-to-position);
-  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
-}
-
 .from-red-700{
   --tw-gradient-from: #b91c1c var(--tw-gradient-from-position);
   --tw-gradient-to: rgb(185 28 28 / 0) var(--tw-gradient-to-position);
@@ -2276,10 +2277,6 @@ video {
 
 .to-orange-500{
   --tw-gradient-to: #f97316 var(--tw-gradient-to-position);
-}
-
-.to-orange-600{
-  --tw-gradient-to: #ea580c var(--tw-gradient-to-position);
 }
 
 .to-orange-800{
@@ -2699,6 +2696,11 @@ video {
 
 .leading-tight{
   line-height: 1.25;
+}
+
+.text-amber-300{
+  --tw-text-opacity: 1;
+  color: rgb(252 211 77 / var(--tw-text-opacity, 1));
 }
 
 .text-amber-400{
@@ -9583,87 +9585,886 @@ body.in-voice-room #main-content > #voice-chat-grid {
   padding: 22px;
 }
 
-/* ✅ شريط معركة PK بين غرفتين — يظهر أعلى شاشة الغرفة فور بدء المعركة، بعرض شريط تقدّم
-   نسبي (نقاط كل غرفة) + عدّاد تنازلي للوقت المتبقي */
+/* =====================================================
+   ✅ "عقد التحدي" بين غرفتين (نظام PK المطوَّر بالكامل) — شريط معركة هندسي بشارات مائلة
+   بدل شريط تقدّم مسطّح تقليدي، مؤثرات حركية (عدّاد أرقام سلس، نبض عند كل نقطة، سداسية مركزية
+   دوّارة)، أدوات معركة (قفاز×2 / ضباب تعتيم) بحلقات عدّاد تنازلي حقيقية، وصف "أفضل داعمين"
+   ===================================================== */
 
-.pk-battle-bar {
-  background: linear-gradient(135deg, rgba(127,29,29,0.4), rgba(154,52,18,0.4));
-  border: 1px solid rgba(251,146,60,0.4);
-  border-radius: 12px;
-  padding: 8px 10px;
+.pk-contract-bar {
+  background: linear-gradient(135deg, rgba(127,29,29,0.35), rgba(30,41,59,0.55));
+  border: 1px solid rgba(251,146,60,0.35);
+  border-radius: 14px;
+  padding: 10px 8px 8px;
   margin-bottom: 10px;
+  position: relative;
+  overflow: hidden;
 }
 
-.pk-battle-row {
+.pk-contract-top {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
-.pk-battle-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+.pk-contract-side {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pk-contract-side-right {
+  flex-direction: row-reverse;
+}
+
+.pk-contract-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.pk-contract-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
   -o-object-fit: cover;
      object-fit: cover;
-  flex-shrink: 0;
-  border: 1.5px solid rgba(251,146,60,0.6);
+  border: 1.5px solid rgba(251,146,60,0.55);
 }
 
-.pk-battle-progress {
-  flex: 1;
+/* حلقة SVG عدّاد تنازلي حقيقية للأدوات (قفاز/ضباب) — تلتف حول الصورة الرمزية للصفّ المتأثر */
+
+.pk-contract-effect-ring {
+  position: absolute;
+  inset: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.pk-contract-effect-ring[hidden] {
+  display: none;
+}
+
+.pk-contract-effect-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.pk-contract-effect-track {
+  fill: none;
+  stroke: rgba(255,255,255,0.12);
+  stroke-width: 2.5;
+}
+
+.pk-contract-effect-progress {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 97.4;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 0.3s linear;
+}
+
+.pk-contract-effect-ring.pk-effect-glove .pk-contract-effect-progress {
+  stroke: #fbbf24;
+}
+
+.pk-contract-effect-ring.pk-effect-fog .pk-contract-effect-progress {
+  stroke: #93c5fd;
+}
+
+.pk-contract-effect-ring i {
   position: relative;
-  height: 20px;
-  border-radius: 9999px;
+  z-index: 1;
+  font-size: 9px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10,12,18,0.85);
+  color: #fde68a;
+}
+
+.pk-contract-effect-ring.pk-effect-fog i {
+  color: #bfdbfe;
+}
+
+/* الشارة السداسية الهندسية لعرض الرقم — قطع زاوية معقّدة بدل مستطيل/دائرة مألوفة (ستايل غير شائع) */
+
+.pk-contract-hex {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(120deg, rgba(239,68,68,0.22), rgba(249,115,22,0.14));
+  clip-path: polygon(8% 0%, 100% 0%, 92% 100%, 0% 100%);
+  transition: transform 0.15s ease;
+}
+
+.pk-contract-side-right .pk-contract-hex {
+  background: linear-gradient(120deg, rgba(59,130,246,0.22), rgba(6,182,212,0.14));
+  clip-path: polygon(0% 0%, 92% 0%, 100% 100%, 8% 100%);
+}
+
+.pk-contract-hex::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(8% 0%, 100% 0%, 92% 100%, 0% 100%);
+  border: 1px solid rgba(251,146,60,0.4);
+  pointer-events: none;
+}
+
+.pk-contract-side-right .pk-contract-hex::before {
+  clip-path: polygon(0% 0%, 92% 0%, 100% 100%, 8% 100%);
+  border-color: rgba(96,165,250,0.4);
+}
+
+.pk-contract-hex::after {
+  /* شريط لمعان قطري يتحرّك ببطء — لمسة حركية مستمرة خفيفة على الشارة نفسها */
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 30%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,0.14), transparent);
+  animation: pkHexSheen 3.2s linear infinite;
+}
+
+@keyframes pkHexSheen {
+  0% {
+    left: -40%;
+  }
+
+  100% {
+    left: 110%;
+  }
+}
+
+.pk-contract-score-num {
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  letter-spacing: 0.02em;
+  position: relative;
+  z-index: 1;
+}
+
+.pk-contract-hex.pk-score-bump {
+  animation: pkScoreBump 0.35s ease;
+}
+
+@keyframes pkScoreBump {
+  0% {
+    transform: scale(1);
+  }
+
+  40% {
+    transform: scale(1.08);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ✅ تعتيم الضباب — الرقم الحقيقي محجوب من الخادم نفسه (null)، هذا فقط غلاف بصري مكانه */
+
+.pk-contract-fog {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex-direction: column;
+  background: radial-gradient(ellipse at center, rgba(148,163,184,0.35), rgba(30,41,59,0.55));
+  -webkit-backdrop-filter: blur(1.5px);
+          backdrop-filter: blur(1.5px);
+  font-size: 8px;
+  font-weight: 700;
+  color: #e2e8f0;
+  overflow: hidden;
+}
+
+.pk-contract-hex.pk-fogged .pk-contract-fog {
+  display: flex;
+}
+
+.pk-contract-fog i {
+  font-size: 13px;
+  color: #cbd5e1;
+  animation: pkFogDrift 4s ease-in-out infinite alternate;
+}
+
+.pk-contract-fog::before {
+  content: '';
+  position: absolute;
+  inset: -20% -40%;
+  background: radial-gradient(circle, rgba(255,255,255,0.18), transparent 60%);
+  animation: pkFogDrift2 5s ease-in-out infinite;
+}
+
+@keyframes pkFogDrift {
+  0% {
+    transform: translateX(-3px);
+    opacity: 0.75;
+  }
+
+  100% {
+    transform: translateX(3px);
+    opacity: 1;
+  }
+}
+
+@keyframes pkFogDrift2 {
+  0%,100% {
+    transform: translateX(-10%) scale(1);
+  }
+
+  50% {
+    transform: translateX(10%) scale(1.15);
+  }
+}
+
+/* الختم السداسي المركزي "VS" — حلقة دوّارة مستمرة حول شارة ثابتة، مع عدّاد الوقت أسفله */
+
+.pk-contract-core {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 46px;
+}
+
+.pk-contract-seal {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #fbbf24, #f97316);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  color: #1c1408;
+  font-size: 13px;
+  box-shadow: 0 0 10px rgba(251,191,36,0.5);
+}
+
+.pk-contract-seal::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(251,191,36,0.55);
+  animation: pkSealSpin 7s linear infinite;
+}
+
+@keyframes pkSealSpin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pk-contract-timer {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fdba74;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* خط التقدّم أسفل الشارتين — رفيع بفاصل مركزي بدل الاعتماد على الشارات فقط */
+
+.pk-contract-track {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
   overflow: hidden;
   background: rgba(255,255,255,0.08);
   display: flex;
+  margin-top: 8px;
 }
 
-.pk-battle-fill-left {
+.pk-contract-track-fill-left {
   background: linear-gradient(90deg,#ef4444,#f97316);
-  transition: width 0.4s ease;
+  transition: width 0.5s ease;
 }
 
-.pk-battle-fill-right {
+.pk-contract-track-fill-right {
   background: linear-gradient(90deg,#3b82f6,#06b6d4);
-  transition: width 0.4s ease;
+  transition: width 0.5s ease;
 }
 
-.pk-battle-score-left, .pk-battle-score-right {
+.pk-contract-track-divider {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 10px;
-  font-weight: 800;
-  color: #fff;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
-}
-
-.pk-battle-score-left {
-  left: 8px;
-}
-
-.pk-battle-score-right {
-  right: 8px;
-}
-
-.pk-battle-vs {
-  position: absolute;
+  top: 0;
+  bottom: 0;
   left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 10px;
-  color: #fde047;
+  width: 2px;
+  margin-right: -1px;
+  background: rgba(255,255,255,0.4);
 }
 
-.pk-battle-timer {
-  text-align: center;
+/* ✅ "أفضل الداعمين" — مكان خاص مدروس أسفل الشريط، صفّان متقابلان بميداليات ذهبية/فضية/برونزية */
+
+.pk-contract-supporters {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.pk-contract-supporters-col {
+  flex: 1;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.pk-contract-supporters-col:last-of-type {
+  justify-content: flex-end;
+}
+
+.pk-contract-supporters-label {
+  flex-shrink: 0;
+  font-size: 8px;
+  color: rgba(255,255,255,0.4);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.pk-contract-supporters-empty {
+  font-size: 8px;
+  color: rgba(255,255,255,0.3);
+}
+
+.pk-contract-supporter {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 24px;
+}
+
+.pk-contract-supporter-medal {
+  position: absolute;
+  top: -6px;
+  font-size: 8px;
+  z-index: 1;
+}
+
+.pk-contract-supporter-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  -o-object-fit: cover;
+     object-fit: cover;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+
+.pk-contract-supporter-points {
+  font-size: 7px;
+  font-weight: 700;
+  color: #d4c593;
+  margin-top: 1px;
+}
+
+/* =====================================================
+   ✅ نافذة "عقد تحدٍ جديد" + نافذة استقبال العرض — طابع ماتيّ ذهبي يطابق بقية المشروع
+   ===================================================== */
+
+.pk-contract-sheet {
+  background: #15181f;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 18px;
+  padding: 18px;
+  color: #fff;
+}
+
+.pk-contract-sheet-header {
+  margin-bottom: 10px;
+}
+
+.pk-contract-sheet-title {
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #fff;
+}
+
+.pk-contract-sheet-title i {
+  color: #d4c593;
+}
+
+.pk-contract-sheet-sub {
+  font-size: 11px;
+  color: rgba(255,255,255,0.45);
+  margin-top: 2px;
+}
+
+.pk-contract-label {
+  font-size: 11px;
+  color: rgba(255,255,255,0.45);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.pk-contract-input {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: #fff;
+  margin-bottom: 12px;
+}
+
+.pk-contract-input::-moz-placeholder {
+  color: rgba(255,255,255,0.3);
+}
+
+.pk-contract-input::placeholder {
+  color: rgba(255,255,255,0.3);
+}
+
+.pk-contract-chip {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.65);
   font-size: 11px;
   font-weight: 700;
+  padding: 8px 0;
+  border-radius: 10px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.pk-contract-chip.active {
+  background: rgba(212,197,147,0.16);
+  border-color: rgba(212,197,147,0.4);
+  color: #d4c593;
+}
+
+.pk-contract-cancel-btn {
+  width: 100%;
+  text-align: center;
+  padding: 10px 0;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.6);
+  font-size: 13px;
+}
+
+.pk-contract-offer-sheet {
+  background: #15181f;
+  border: 1px solid rgba(251,191,36,0.25);
+  border-radius: 18px;
+  padding: 20px;
+  color: #fff;
+  text-align: center;
+}
+
+.pk-contract-offer-seal {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: linear-gradient(145deg, #fbbf24, #f97316);
+  color: #1c1408;
+  font-size: 14px;
+}
+
+.pk-contract-offer-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  -o-object-fit: cover;
+     object-fit: cover;
+  margin: 0 auto 10px;
+  border: 2px solid rgba(251,146,60,0.5);
+}
+
+.pk-contract-offer-countdown-ring {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  margin: 10px auto 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 800;
   color: #fdba74;
-  margin-top: 4px;
-  letter-spacing: 0.05em;
+}
+
+.pk-contract-offer-countdown-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px dashed rgba(251,146,60,0.4);
+  animation: pkSealSpin 8s linear infinite;
+}
+
+.pk-contract-accept-btn {
+  background: linear-gradient(90deg, #ef4444, #f97316);
+  color: #fff;
+}
+
+.pk-record-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.pk-record-w {
+  color: #4ade80;
+}
+
+.pk-record-l {
+  color: #f87171;
+}
+
+.pk-record-d {
+  color: #94a3b8;
+}
+
+.pk-record-sep {
+  color: rgba(255,255,255,0.25);
+}
+
+.pk-record-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+  font-size: 9px;
+}
+
+.pk-record-streak-win {
+  color: #fbbf24;
+}
+
+.pk-record-streak-loss {
+  color: #94a3b8;
+}
+
+/* =====================================================
+   ✅ نافذة نتيجة العقد — صورة بطولة/خسارة + مؤثرات ضباب/دخان متحركة (طلب صريح)
+   ===================================================== */
+
+.pk-result-sheet {
+  position: relative;
+  background: #15181f;
+  border-radius: 20px;
+  padding: 26px 20px 20px;
+  color: #fff;
+  text-align: center;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.pk-result-win {
+  border-color: rgba(251,191,36,0.35);
+}
+
+.pk-result-lose {
+  border-color: rgba(100,116,139,0.35);
+}
+
+.pk-result-fog-layer, .pk-result-fog-layer-2 {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  background:
+        radial-gradient(circle at 20% 30%, rgba(255,255,255,0.08), transparent 55%),
+        radial-gradient(circle at 80% 70%, rgba(255,255,255,0.06), transparent 50%);
+  filter: blur(6px);
+  animation: pkSmokeDrift 9s ease-in-out infinite alternate;
+}
+
+.pk-result-fog-layer-2 {
+  animation-duration: 13s;
+  animation-direction: alternate-reverse;
+  opacity: 0.7;
+}
+
+@keyframes pkSmokeDrift {
+  0% {
+    transform: translate(-4%, -2%) scale(1);
+  }
+
+  100% {
+    transform: translate(4%, 3%) scale(1.15);
+  }
+}
+
+.pk-result-hero {
+  position: relative;
+  margin-bottom: 8px;
+  z-index: 1;
+}
+
+.pk-result-hero-icon {
+  font-size: 44px;
+}
+
+.pk-result-win .pk-result-hero-icon {
+  color: #fbbf24;
+  filter: drop-shadow(0 0 14px rgba(251,191,36,0.55));
+}
+
+.pk-result-lose .pk-result-hero-icon {
+  color: #64748b;
+}
+
+.pk-result-draw .pk-result-hero-icon {
+  color: #cbd5e1;
+}
+
+.pk-result-confetti {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  width: 1px;
+  height: 1px;
+}
+
+.pk-result-confetti::before, .pk-result-confetti::after {
+  content: '🎉';
+  position: absolute;
+  font-size: 16px;
+  animation: pkConfettiFall 1.4s ease-in forwards;
+}
+
+.pk-result-confetti::before {
+  left: -40px;
+  animation-delay: 0.05s;
+}
+
+.pk-result-confetti::after {
+  left: 30px;
+  animation-delay: 0.2s;
+}
+
+@keyframes pkConfettiFall {
+  0% {
+    transform: translateY(-10px) rotate(0deg);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(70px) rotate(220deg);
+    opacity: 0;
+  }
+}
+
+.pk-result-title {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 4px;
+  position: relative;
+  z-index: 1;
+}
+
+.pk-result-score {
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
+  margin-bottom: 10px;
+  position: relative;
+  z-index: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.pk-result-record-label, .pk-result-supporters-label {
+  font-size: 10px;
+  color: rgba(255,255,255,0.4);
+  margin-bottom: 6px;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.pk-result-supporters-row {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  position: relative;
+  z-index: 1;
+}
+
+.pk-result-close-btn {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  background: rgba(212,197,147,0.16);
+  border: 1px solid rgba(212,197,147,0.35);
+  color: #d4c593;
+  padding: 10px 0;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+/* =====================================================
+   ✅ متجر أدوات المعركة (قفاز/ضباب) — يظهر من قسم "المزيد" أثناء معركة PK فعلية
+   ===================================================== */
+
+.pk-item-store-sheet {
+  background: #15181f;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px 20px 0 0;
+  padding: 16px;
+  color: #fff;
+}
+
+@media (min-width: 768px) {
+  .pk-item-store-sheet {
+    border-radius: 18px;
+  }
+}
+
+.pk-item-store-title {
+  font-size: 15px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pk-item-store-title i {
+  color: #d4c593;
+}
+
+.pk-item-store-sub {
+  font-size: 10.5px;
+  color: rgba(255,255,255,0.4);
+  margin: 3px 0 12px;
+}
+
+.pk-item-store-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.pk-item-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: 12px 10px;
+  text-align: center;
+  transition: border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.pk-item-icon {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 6px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+}
+
+.pk-item-icon-glove {
+  background: rgba(251,191,36,0.14);
+  color: #fbbf24;
+}
+
+.pk-item-icon-fog {
+  background: rgba(147,197,253,0.14);
+  color: #93c5fd;
+}
+
+.pk-item-name {
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 3px;
+}
+
+.pk-item-desc {
+  font-size: 9.5px;
+  color: rgba(255,255,255,0.45);
+  line-height: 1.4;
+  margin-bottom: 8px;
+  min-height: 40px;
+}
+
+.pk-item-price {
+  font-size: 11px;
+  font-weight: 800;
+  color: #d4c593;
+  margin-bottom: 8px;
+}
+
+.pk-item-price i {
+  color: #fbbf24;
+}
+
+.pk-item-buy-btn {
+  width: 100%;
+  background: rgba(212,197,147,0.16);
+  border: 1px solid rgba(212,197,147,0.35);
+  color: #d4c593;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 8px 4px;
+  border-radius: 9px;
+}
+
+.pk-item-buy-btn:disabled {
+  opacity: 0.55;
+}
+
+.pk-item-card-active {
+  border-color: rgba(251,191,36,0.5);
+}
+
+.pk-item-card-locked {
+  opacity: 0.55;
 }
 
 /* =====================================================
@@ -14313,6 +15114,10 @@ body.in-voice-room #main-content > #voice-chat-grid {
 .hover\:bg-red-700:hover{
   --tw-bg-opacity: 1;
   background-color: rgb(185 28 28 / var(--tw-bg-opacity, 1));
+}
+
+.hover\:bg-white\/10:hover{
+  background-color: rgb(255 255 255 / 0.1);
 }
 
 .hover\:bg-yellow-600:hover{

@@ -55,6 +55,15 @@ const voiceRoomSchema = new mongoose.Schema({
     // مُخزَّنة مباشرة هنا (لا lookup لاحق) — تُحدَّث تلقائياً بكل هدية جديدة من نفس المستخدم،
     // فتبقى طرية طوال الجلسة بلا أي استعلام إضافي عند بناء قائمة أعلى 3 لعرضها
     sessionSupporters: { type: Map, of: mongoose.Schema.Types.Mixed, default: () => new Map() },
+    // ✅ "سجل العقد" الدائم لمعارك PK بين الغرف (لا يُصفَّر بين البثوث، بعكس sessionSupportPoints
+    // أعلاه) — يمنح نظام التحدي بين الغرف طابع "عقود الشركات الكبرى" (تيك توك/لايكي/بيجو): كل
+    // معركة تُحسم تُسجَّل هنا فتبني غرفتك سجلّاً تراكمياً يظهر عند عرض/استقبال عقد تحدٍ جديد.
+    // pkLastResults: آخر 10 نتائج فقط ('W'/'L'/'D')، تُستخدم لحساب "سلسلة الانتصارات/الخسائر"
+    // الحالية حياً من ذيل المصفوفة (راجع formatPkRecord) بدل عدّاد منفصل يحتاج قراءة-قبل-كتابة
+    pkWins: { type: Number, default: 0 },
+    pkLosses: { type: Number, default: 0 },
+    pkDraws: { type: Number, default: 0 },
+    pkLastResults: { type: [String], default: () => [] },
     // ✅ من طردهم المضيف/المسؤولون من الغرفة (وليس فقط من مقعد) — يُمنعون من الدخول إطلاقاً
     // حتى يُنهي المضيف البث ويبدأ جلسة جديدة (انظر startBroadcast أدناه، يُفرغها تلقائياً)
     kickedUsers: [{
@@ -435,6 +444,52 @@ voiceRoomSchema.statics.addSupporterPoints = async function (roomId, user, point
     );
     if (!updated) return null;
     return this.topSupportersFromMap(updated.sessionSupporters);
+};
+
+// ✅ يُسجّل نتيجة معركة PK محسومة لغرفة واحدة (تُستدعى مرتين، مرة لكل غرفة، بالنتيجة المعكوسة
+// للطرف الآخر) — تحديث ذرّي واحد (inc + push محدود) بلا أي قراءة مسبقة، فيستحيل تسابق لو
+// انتهت معركتان لنفس الغرفة بلحظة متقاربة جداً (نادر جداً أصلاً — غرفة بمعركة واحدة بآن واحد)
+voiceRoomSchema.statics.recordBattleOutcome = async function (roomId, outcome) {
+    const resultChar = outcome === 'win' ? 'W' : outcome === 'loss' ? 'L' : 'D';
+    const incField = outcome === 'win' ? 'pkWins' : outcome === 'loss' ? 'pkLosses' : 'pkDraws';
+    const updated = await this.findOneAndUpdate(
+        { _id: roomId },
+        {
+            $inc: { [incField]: 1 },
+            $push: { pkLastResults: { $each: [resultChar], $slice: -10 } }
+        },
+        { new: true, select: 'pkWins pkLosses pkDraws pkLastResults' }
+    );
+    if (!updated) return null;
+    return this.formatPkRecord(updated);
+};
+
+// ✅ يحسب السلسلة الحالية (streak) حياً من ذيل pkLastResults — موجبة لسلسلة انتصارات، سالبة
+// لسلسلة خسائر، صفر لو آخر نتيجة تعادل أو لا يوجد سجل بعد
+voiceRoomSchema.statics.formatPkRecord = function (room) {
+    const results = room.pkLastResults || [];
+    let streak = 0;
+    if (results.length) {
+        const last = results[results.length - 1];
+        if (last !== 'D') {
+            for (let i = results.length - 1; i >= 0 && results[i] === last; i--) streak++;
+            if (last === 'L') streak = -streak;
+        }
+    }
+    return {
+        wins: room.pkWins || 0,
+        losses: room.pkLosses || 0,
+        draws: room.pkDraws || 0,
+        streak,
+        lastResults: results
+    };
+};
+
+// ✅ لقطة "سجل العقد" الحالية لغرفة — تُستهلك عند عرض/استقبال عقد تحدٍ جديد وعند بدء/حسم معركة
+voiceRoomSchema.statics.getPkRecord = async function (roomId) {
+    const room = await this.findById(roomId).select('pkWins pkLosses pkDraws pkLastResults');
+    if (!room) return null;
+    return this.formatPkRecord(room);
 };
 
 // ✅ يُحوّل Map التخزين إلى مصفوفة مرتَّبة (الأعلى أولاً) محدودة بأعلى 3 فقط، بإطار مُفعَّل حيّ

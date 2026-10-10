@@ -5,6 +5,10 @@ const Message = require('../models/Message');
 const VoiceRoom = require('../models/VoiceRoom');
 const RoomBattle = require('../models/RoomBattle');
 const SeatChallenge = require('../models/SeatChallenge');
+// ✅ متجر أدوات معركة PK (قفاز/ضباب) يُعامِل القفاز "مثل الهدية حرفياً" (طلب صريح) — يستدعي
+// نفس خطّافات الهدية الحقيقية بدل تكرار منطق خصم/بث موازٍ؛ لا استدعاء عكسي من giftController
+// لهذا الملف فلا تسابق دائري بالتحميل (require)
+const { applyGiftToActiveBattle, applyGiftToRoomSupport, broadcastPkScoreUpdate } = require('../controllers/giftController');
 const { addExperience } = require('../utils/experienceManager'); // ✅✅✅ أضف هذا السطر هنا
 
 // =================================================
@@ -141,6 +145,11 @@ async function emitToBothRooms(io, roomAId, roomBId, event, payload) {
 }
 
 // ✅ ينهي معركة نشطة (تلقائياً عند انتهاء الوقت، أو دفاعياً لو استُدعيت الحالة بعد انتهاء الوقت فعلياً)
+// 🛡️ النتيجة النهائية تُكشَف حقيقية بالكامل للجميع بلا أي تعتيم ضباب — الضباب يخفي أثناء
+// المعركة فقط (تشويق لحظي)، لا نتيجة الحسم ذاتها. تُسجَّل النتيجة أيضاً بـ"سجل العقد" الدائم
+// لكل غرفة (VoiceRoom.recordBattleOutcome) — هذا ما يمنح نظام التحدي طابع "عقود الشركات
+// الكبرى" (تيك توك/لايكي/بيجو) بدل معركة عابرة بلا أثر، وتُرسَل أعلى 3 داعمين لكل صفّ (معرّف
+// + نقاط فقط — الواجهة تستكمل الاسم/الصورة من قائمة مشاهدي الغرفة المحليّة لديها بالفعل)
 async function finalizeActiveBattle(io, battleId) {
     try {
         clearBattleTimer(activeBattleTimers, battleId);
@@ -155,13 +164,23 @@ async function finalizeActiveBattle(io, battleId) {
         battle.winner = winner;
         await battle.save();
 
+        const outcomeA = winner === 'A' ? 'win' : (winner === 'B' ? 'loss' : 'draw');
+        const outcomeB = winner === 'B' ? 'win' : (winner === 'A' ? 'loss' : 'draw');
+        const [recordA, recordB] = await Promise.all([
+            VoiceRoom.recordBattleOutcome(battle.roomA, outcomeA),
+            VoiceRoom.recordBattleOutcome(battle.roomB, outcomeB)
+        ]);
+
         await emitToBothRooms(io, battle.roomA, battle.roomB, 'pk-battle-ended', {
             battleId: battle._id.toString(),
             roomA: battle.roomA.toString(),
             roomB: battle.roomB.toString(),
             scoreA: battle.scoreA,
             scoreB: battle.scoreB,
-            winner
+            winner,
+            recordA, recordB,
+            topSupportersA: battle.topSupporters('A'),
+            topSupportersB: battle.topSupporters('B')
         });
     } catch (error) {
         console.error('[PK BATTLE] Finalize error:', error);
@@ -179,9 +198,11 @@ async function activateBattle(io, battle) {
     const timer = setTimeout(() => finalizeActiveBattle(io, battle._id), battle.durationSeconds * 1000);
     activeBattleTimers.set(battle._id.toString(), timer);
 
-    const [roomA, roomB] = await Promise.all([
+    const [roomA, roomB, recordA, recordB] = await Promise.all([
         VoiceRoom.findById(battle.roomA).select('name coverImage'),
-        VoiceRoom.findById(battle.roomB).select('name coverImage')
+        VoiceRoom.findById(battle.roomB).select('name coverImage'),
+        VoiceRoom.getPkRecord(battle.roomA),
+        VoiceRoom.getPkRecord(battle.roomB)
     ]);
 
     await emitToBothRooms(io, battle.roomA, battle.roomB, 'pk-battle-started', {
@@ -191,7 +212,8 @@ async function activateBattle(io, battle) {
         scoreA: battle.scoreA,
         scoreB: battle.scoreB,
         durationSeconds: battle.durationSeconds,
-        endsAt: battle.endsAt
+        endsAt: battle.endsAt,
+        recordA, recordB
     });
 }
 
@@ -1699,7 +1721,14 @@ socket.on('refreshBlockData', async () => {
                 const timer = setTimeout(() => expirePendingChallenge(io, battle._id), RoomBattle.CHALLENGE_EXPIRY_SECONDS * 1000);
                 pendingChallengeTimers.set(battle._id.toString(), timer);
 
-                socket.emit('pk-challenge-sent', { battleId: battle._id.toString(), targetRoomName: targetRoom.name });
+                // ✅ "سجل العقد" لكل غرفة يُرفَق بعرض/استقبال التحدي — يعطي عملية الاتفاق طابع
+                // تعاقد رسمي بين طرفين لهما تاريخ، بدل تحدٍ عابر بلا سياق (طلب صريح: شبه عقود الشركات الكبرى)
+                const [challengerRecord, targetRecord] = await Promise.all([
+                    VoiceRoom.getPkRecord(myRoom._id),
+                    VoiceRoom.getPkRecord(targetRoom._id)
+                ]);
+
+                socket.emit('pk-challenge-sent', { battleId: battle._id.toString(), targetRoomName: targetRoom.name, challengerRecord, targetRecord });
 
                 if (targetRoom.host.socketId) {
                     io.to(targetRoom.host.socketId).emit('pk-challenge-received', {
@@ -1708,7 +1737,9 @@ socket.on('refreshBlockData', async () => {
                         challengerRoomName: myRoom.name,
                         challengerRoomCover: myRoom.coverImage,
                         durationSeconds: duration,
-                        expiresInSeconds: RoomBattle.CHALLENGE_EXPIRY_SECONDS
+                        expiresInSeconds: RoomBattle.CHALLENGE_EXPIRY_SECONDS,
+                        challengerRecord,
+                        targetRecord
                     });
                 }
             } catch (error) {
@@ -1753,6 +1784,107 @@ socket.on('refreshBlockData', async () => {
                 io.to(`room-chat-${battle.roomB}`).emit('pk-challenge-expired', { battleId: battle._id.toString(), roomB: battle.roomB.toString() });
             } catch (error) {
                 console.error('[PK BATTLE] Cancel error:', error);
+            }
+        });
+
+        // =====================================================
+        // ✅ متجر أدوات المعركة (قفاز/ضباب) — أي حاضر بأحد الغرفتين المتنافستين (ليس المضيف
+        // فقط، تماماً كإرسال أي هدية عادية بالغرفة) يقدر يشتري. السعر/المدة من RoomBattle.BATTLE_ITEMS
+        // حصراً (لا ثقة بأي سعر/مدة قادمة من العميل) — "آخر رمية لم تنتهِ مدتها لنفس المستخدم"
+        // شرط ضمن فلتر التحديث الذرّي نفسه (findOneAndUpdate + $not/$elemMatch) فيستحيل تجاوزه
+        // حتى بضغطتين متزامنتين تماماً من نفس المستخدم
+        // =====================================================
+        socket.on('pk-item-throw', async ({ battleId, roomId, item, targetUserId }) => {
+            try {
+                const mongoose = require('mongoose');
+                const config = RoomBattle.BATTLE_ITEMS[item];
+                if (!config || !battleId || !roomId || !mongoose.Types.ObjectId.isValid(roomId)) {
+                    return socket.emit('pk-item-error', { message: 'أداة غير صالحة' });
+                }
+                if (item === 'glove') {
+                    if (!targetUserId || !mongoose.Types.ObjectId.isValid(targetUserId) || targetUserId === socket.user._id.toString()) {
+                        return socket.emit('pk-item-error', { message: 'اختر مستلماً للقفاز' });
+                    }
+                    const targetExists = await User.exists({ _id: targetUserId, isBot: { $ne: true } });
+                    if (!targetExists) {
+                        return socket.emit('pk-item-error', { message: 'المستلم غير متاح' });
+                    }
+                }
+                // 🛡️ يجب أن يكون المستخدم حاضراً فعلياً بدردشة الغرفة المرسَلة — لا ثقة بمجرد روايته
+                if (!socket.rooms.has(`room-chat-${roomId}`)) {
+                    return socket.emit('pk-item-error', { message: 'يجب أن تكون داخل الغرفة لرمي الأداة' });
+                }
+
+                // ✅ roomA/roomB ثابتان مدى عمر المستند (لا يتغيّران بعد الإنشاء) — قراءتهما هنا
+                // أولاً لا تفتح أي سباق حقيقي، فقط لتحديد الصفّ قبل إدراج الرمية بالتحديث الذرّي أدناه
+                const battlePeek = await RoomBattle.findOne({ _id: battleId, status: 'active', $or: [{ roomA: roomId }, { roomB: roomId }] }).select('roomA roomB');
+                if (!battlePeek) {
+                    return socket.emit('pk-item-error', { message: 'لا توجد معركة نشطة بهذي الغرفة' });
+                }
+                const side = battlePeek.roomA.toString() === roomId.toString() ? 'A' : 'B';
+
+                const now = new Date();
+                const expiresAt = new Date(now.getTime() + config.durationSeconds * 1000);
+
+                // ✅ تحديث ذرّي واحد: يتحقق من نشاط المعركة + عدم وجود رمية فعّالة لهذا المستخدم
+                // بعينه، ويُسجّل الرمية الجديدة — كل ذلك بعملية واحدة لا تتجزّأ (شرط منع إعادة الرمي)
+                const updatedBattle = await RoomBattle.findOneAndUpdate(
+                    {
+                        _id: battleId,
+                        status: 'active',
+                        effects: { $not: { $elemMatch: { user: socket.user._id, expiresAt: { $gt: now } } } }
+                    },
+                    {
+                        $push: {
+                            effects: { type: item, side, user: socket.user._id, username: socket.user.username, startedAt: now, expiresAt }
+                        }
+                    },
+                    { new: true }
+                );
+                if (!updatedBattle) {
+                    return socket.emit('pk-item-error', { message: 'انتظر حتى تنتهي مهلة آخر أداة رميتها' });
+                }
+
+                // 🛡️ خصم ذرّي حقيقي من الكوينز — لو فشل (رصيد غير كافٍ)، نتراجع عن الرمية المُسجَّلة
+                // أعلاه فوراً كي لا يبقى تأثير نشط بلا سعر حقيقي دُفع
+                const buyer = await User.findOneAndUpdate(
+                    { _id: socket.user._id, coins: { $gte: config.price } },
+                    { $inc: { coins: -config.price } },
+                    { new: true }
+                );
+                if (!buyer) {
+                    await RoomBattle.updateOne({ _id: updatedBattle._id }, { $pull: { effects: { user: socket.user._id, startedAt: now } } });
+                    return socket.emit('pk-item-error', { message: 'رصيد الكوينز غير كافٍ' });
+                }
+                if (buyer.socketId) io.to(buyer.socketId).emit('balanceUpdate', { newBalance: buyer.balance, newCoins: buyer.coins });
+
+                if (item === 'glove') {
+                    // ✅ "مثل الهدية حرفياً" (طلب صريح) — يستلم المستلم قيمتها الحقيقية كاملة (كوينز
+                    // + نقاط دعم الغرفة)، وتُضاف لـ"الشريط" عبر نفس خطّاف الهدية الحقيقي الذي يُطبّق
+                    // المضاعفة تلقائياً بما أن تأثير القفاز الآن فعّال لصفّه (سُجِّل أعلاه قبل هذا الاستدعاء تحديداً)
+                    const target = await User.findByIdAndUpdate(targetUserId, { $inc: { coins: config.price } }, { new: true }).select('username profileImage socketId');
+                    if (target?.socketId) io.to(target.socketId).emit('balanceUpdate', { newBalance: target.balance, newCoins: target.coins });
+                    try { await applyGiftToRoomSupport(io, roomId, config.price, buyer); } catch (e) { console.error('[PK ITEM] support error:', e); }
+                    try { await applyGiftToActiveBattle(io, roomId, config.price, buyer); } catch (e) { console.error('[PK ITEM] battle score error:', e); }
+                } else {
+                    // ✅ ضباب: لا مستلم له — فقط يُفعِّل تعتيم رقم صفّه عن الجمهور المنافس؛ يكفي إعادة
+                    // بثّ لقطة النقاط الحالية (ستُعتِّم تلقائياً الآن لأن التأثير الفعّال موجود بالمستند)
+                    broadcastPkScoreUpdate(io, updatedBattle);
+                }
+
+                const activatedPayload = {
+                    battleId: updatedBattle._id.toString(),
+                    roomA: updatedBattle.roomA.toString(),
+                    roomB: updatedBattle.roomB.toString(),
+                    item, side,
+                    thrownBy: { id: socket.user._id.toString(), username: socket.user.username },
+                    startedAt: now,
+                    expiresAt
+                };
+                await emitToBothRooms(io, updatedBattle.roomA, updatedBattle.roomB, 'pk-battle-item-activated', activatedPayload);
+            } catch (error) {
+                console.error('[PK BATTLE] Item throw error:', error);
+                socket.emit('pk-item-error', { message: 'حدث خطأ، حاول مجدداً' });
             }
         });
 
