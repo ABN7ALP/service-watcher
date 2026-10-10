@@ -354,18 +354,24 @@ input[type="checkbox"] {
    ===================================================== */
 .frame-preview-card {
     position: relative; background: #15181f; border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 18px; padding: 18px 16px 16px; width: 100%; max-width: 300px;
+    border-radius: 18px; padding: 14px 14px 12px; width: 100%; max-width: 280px;
     display: flex; flex-direction: column; align-items: center;
     animation: roomLevelupPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .frame-preview-close { position: absolute; top: 8px; left: 8px; }
-.frame-preview-hint { font-size: 10.5px; color: #71717a; margin-bottom: 10px; text-align: center; }
-.frame-preview-seats-row { width: 100%; }
-.frame-preview-name { font-size: 12.5px; font-weight: 800; color: #e5e7eb; margin-top: 12px; text-align: center; }
-.frame-preview-dynamic { width: 100%; display: flex; flex-direction: column; margin-top: 12px; }
+.frame-preview-hint { font-size: 10px; color: #71717a; margin-bottom: 7px; text-align: center; }
+/* 🐛 طلب صريح لاحق: النافذة كانت "تغطي الصفحة تقريباً" — أكبر مساهم بالارتفاع كان صفّ
+   المقاعد الثلاثة بحجمها الحقيقي الكامل (المشترَك مع .cols-3 الفعلية بالغرف)؛ هنا فقط —
+   سياق أيقونة معاينة مصغَّرة لا غرفة حقيقية — نُقيّدها بعرض أقصى صغير فيصغر المقعد تبعاً
+   (aspect-ratio:1) بلا أي تأثير على حجم المقاعد الفعلي بالغرف نفسها */
+.frame-preview-seats-row { width: 100%; max-width: 210px; margin: 0 auto; }
+.frame-preview-name { font-size: 12px; font-weight: 800; color: #e5e7eb; margin-top: 8px; text-align: center; }
+.frame-preview-dynamic { width: 100%; display: flex; flex-direction: column; margin-top: 8px; }
 .frame-preview-dynamic .frame-shop-duration-pills { margin-top: 0; }
-.frame-preview-autorenew-row { margin-top: 8px; background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; }
-.frame-preview-autorenew-row .badges-settings-row-icon { background: rgba(212,197,147,0.1); color: #d4c593; }
+.frame-preview-autorenew-row { margin-top: 6px; padding: 6px 8px; background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; }
+.frame-preview-autorenew-row .badges-settings-row-icon { width: 26px; height: 26px; font-size: 10px; background: rgba(212,197,147,0.1); color: #d4c593; }
+.frame-preview-autorenew-row .badges-settings-row-title { font-size: 11px; }
+.frame-preview-autorenew-row .badges-settings-row-sub { font-size: 8.5px; }
 .frame-preview-autorenew-row .hub-toggle input:checked + .hub-toggle-slider { background: #8b7a4d; }
 
 /* ✅ إطارات-صورة (overlay حقيقي فوق الصورة الشخصية، لا حدّ CSS) — "إطار المساهم" الحصري
@@ -692,7 +698,6 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     align-content: start;
     justify-items: center;
 }
-.voice-seats-flex.cols-3 { grid-template-columns: repeat(3, 1fr); gap: clamp(50px, 10vw, 62px) clamp(16px, 4vw, 30px); }
 /* ✅ فئتا 13/19 مقعداً (كانت 15/24) — تباعد أكبر من السابق + سقف حجم مقعد أصغر قليلاً (أدناه)
    بطلب صريح: تفادي تصادم الإطارات الزخرفية الكبيرة (الجمشت الملكي خصوصاً، وتنانين النار
    بدرجة أقل) بإطار المقعد المجاور */
@@ -704,6 +709,11 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    نفس سقف 140% كبقية الإطارات رغم الاستثناء). الحل: تقريب التباعدين الأفقي/الرأسي من بعضهما
    (كلاهما كبير كفاية الآن) كي يرتفع السقف الديناميكي الفعلي فوق 140% فعلياً ويستفيد الاستثناء */
 .voice-seats-flex.cols-5 { grid-template-columns: repeat(5, 1fr); gap: clamp(40px, 9vw, 50px) clamp(38px, 8.5vw, 48px); }
+/* 🐛 نفس خلل cols-5/6 بالضبط كان موجوداً هنا أيضاً (column-gap أضيق بكثير من row-gap) —
+   يصيب غرف 9 مقاعد الرسمية وأيضاً نافذة معاينة الإطار بالمتجر (تستخدم نفس .cols-3 لصفّها
+   المصغَّر) — طلب صريح لاحق أثبت الإطارين لا يزالان صغيرين بالمعاينة لنفس السبب. تقريب
+   التباعدين هنا أيضاً بنفس منطق cols-5/6 */
+.voice-seats-flex.cols-3 { grid-template-columns: repeat(3, 1fr); gap: clamp(46px, 9.5vw, 58px) clamp(40px, 9vw, 50px); }
 .voice-seats-flex.cols-6 { grid-template-columns: repeat(6, 1fr); gap: clamp(36px, 8vw, 44px) clamp(34px, 7.5vw, 40px); }
 
 .voice-seats-flex.cols-3 .voice-seat,
@@ -720,7 +730,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 /* ✅ تصغير شبكة الـ9 مقاعد تحديداً على الهواتف الصغيرة (بطلب صريح — كانت كبيرة عليها) —
    يقلّص السقف الأقصى لحجم المقعد والفراغات المرافقة له بدون التأثير على الهواتف العادية/الأجهزة اللوحية */
 @media (max-width: 420px) {
-    .voice-seats-flex.cols-3 { gap: clamp(36px, 8vw, 48px) clamp(9px, 2.8vw, 16px); }
+    /* 🐛 نفس إصلاح التباعد أعلاه لازم أيضاً هنا — كانت النسخة المصغَّرة لهذي الفئة (الهواتف
+       الصغيرة) تعيد نفس الخلل بتباعد أفقي أضيق بكثير من الرأسي */
+    .voice-seats-flex.cols-3 { gap: clamp(34px, 7.5vw, 44px) clamp(30px, 7vw, 40px); }
     .voice-seats-flex.cols-3 .voice-seat { max-width: 60px; font-size: clamp(0.78rem, 3.2vw, 0.95rem); }
 }
 
@@ -1005,9 +1017,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     flex-shrink: 0;
 }
 .room-top-supporters-widget.hidden { display: none; }
-/* 🎨 إعادة تنسيق (طلب صريح): لا إطار ملف شخصي فوق هذي الصور الصغيرة جداً (كان يُحمَّل تلقائياً
-   فقط لحمل الـ<img> صنف الإطار — أُزيل الصنف من JS، لا داعي لأي تبديل هنا)، صور أصغر قليلاً
-   (22/27px → 19/23px)، وتداخل أخفّ بين الشرائح الثلاث (-7px → -5px) لترتيب أهدأ وأقل ازدحاماً */
+/* 🎨 إعادة تنسيق لاحقة (طلب صريح): نفس حجم .room-viewer-avatar المجاورة بالضبط (21px) بدل
+   أحجام متفرّقة أصغر/أكبر منها سابقاً (19/23px)، تباعد حقيقي موجب بين الشرائح الثلاث (بدل
+   تراكب سالب كثيف)، ورقم القيمة أكبر وأوضح بخط أثقل ولون ذهبي مطفي متسق مع هوية التطبيق */
 .room-top-supporter-slot {
     position: relative;
     display: flex;
@@ -1016,20 +1028,20 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     background: none;
     border: none;
     padding: 0;
-    margin-inline-start: -5px;
+    margin-inline-start: 4px;
     cursor: pointer;
 }
 .room-top-supporter-slot:first-child { margin-inline-start: 0; }
 .room-top-supporter-slot.empty { visibility: hidden; }
 .room-top-supporter-avatar {
-    width: 19px; height: 19px;
+    width: 21px; height: 21px;
     border-radius: 50%;
     object-fit: cover;
     border: 2px solid #94a3b8; /* فضي (المركز الثاني) — افتراضي، يُستبدَل بالتعديلين أدناه */
     box-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
-.room-top-supporter-rank-1 { z-index: 2; margin-top: -3px; }
-.room-top-supporter-rank-1 .room-top-supporter-avatar { width: 23px; height: 23px; border-color: #fbbf24; }
+.room-top-supporter-rank-1 { z-index: 2; }
+.room-top-supporter-rank-1 .room-top-supporter-avatar { border-color: #fbbf24; }
 .room-top-supporter-rank-3 .room-top-supporter-avatar { border-color: #d97706; }
 .room-top-supporter-rank-badge {
     position: absolute;
@@ -1044,13 +1056,14 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-top-supporter-rank-2 .room-top-supporter-rank-badge { background: #e2e8f0; }
 .room-top-supporter-rank-3 .room-top-supporter-rank-badge { background: #fdba74; }
-/* ✅ رقم قيمة الدعم أسفل كل صورة (طلب صريح: "يجلسون بهن مع رقم الذي دعموا به") — نص مصغَّر
-   جداً (الحاوية ضيقة أصلاً)، يرتفع هذا العنصر بالصف أعلى من الأزرار المجاورة قليلاً وهذا
-   طبيعي (items-center بالصف الأب يمركزه رأسياً بلا أي قصّ أو كسر تخطيط) */
+/* ✅ رقم قيمة الدعم أسفل كل صورة (طلب صريح: "يجلسون بهن مع رقم الذي دعموا به") — أكبر وأوضح
+   من السابق (7px) + خط أثقل ولون ذهبي مطفي بدل الرمادي العادي، يرتفع هذا العنصر بالصف أعلى
+   من الأزرار المجاورة قليلاً وهذا طبيعي (items-center بالصف الأب يمركزه رأسياً بلا أي قصّ) */
 .room-top-supporter-points {
     display: block;
-    font-size: 7px; font-weight: 800; color: #d1d5db;
-    margin-top: 1px;
+    font-size: 9px; font-weight: 800; color: #d4c593;
+    letter-spacing: 0.2px;
+    margin-top: 1.5px;
     line-height: 1;
     white-space: nowrap;
 }
@@ -1161,35 +1174,48 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    معجبي المضيف مباشرة لا "متابعة" بعد الآن — تختفي الدائرة الثقيلة كلياً وتظهر بدلاً منها
    أيقونة نادي المعجبين الصغيرة بلا خلفية إطلاقاً (.room-header-fanclub-icon-btn، تُطبَّق مع
    .club-icon-fanclub .club-icon-xs من القسم الخاص بأيقونات النوادي) */
-/* 🎨 إعادة تنسيق: الألوان الفاقعة (بنفسجي/وردي متدرّج صارخ) استُبدلت بمظهر "مطفي" أنيق —
-   خلفية زجاجية شبه شفافة بحدّ ناعم بدل تدرّج صاخب، تماشياً مع هوية التطبيق الداكنة الهادئة.
-   الحجم ارتفع قليلاً (32px → 34px) لمساحة لمس أفضل بلا ضخامة */
+/* 🎨 إعادة تصميم كاملة لاحقة (طلب صريح — ظل "قبيحاً" رغم جولات سابقة): أصغر (34px → 27px)،
+   طابع مطفي نظيف (نفس عائلة ألوان متجر الإطارات: حدّ/خلفية بيضاء شفافة خفيفة بلا تدرّج
+   بنفسجي/وردي صارخ)، مع لمسة ذهبية مطفية خفيفة فقط عند التفاعل (ضغط/نجاح متابعة) بدل حدّ
+   ملوَّن دائم — ومواثرات حسّية فعلية: نبضة+دوران أيقونة عند الضغط، وحلقة متوهّجة تتّسع
+   وتخفت (room-follow-pop) تُفعَّل لحظة نجاح المتابعة فعلياً فقط (راجع updateRoomHeaderFollowIcon) */
 .room-header-follow-circle {
     flex-shrink: 0;
     box-sizing: content-box;
-    width: 34px;
-    height: 34px;
+    width: 27px;
+    height: 27px;
     aspect-ratio: 1 / 1;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     padding: 0;
-    border: 1px solid rgba(236,72,153,0.35);
+    border: 1px solid rgba(255,255,255,0.14);
     margin: 0;
-    overflow: hidden;
-    background: rgba(255,255,255,0.07);
-    color: #f0abfc;
-    box-shadow: 0 1px 6px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(255,255,255,0.04);
-    transition: transform 0.15s ease, background 0.15s ease;
+    overflow: visible;
+    position: relative;
+    background: rgba(255,255,255,0.06);
+    color: #d1d5db;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s ease, border-color 0.15s ease;
 }
 .room-header-follow-circle i {
-    font-size: 13px;
+    font-size: 10.5px;
     line-height: 1;
     display: block;
+    transition: transform 0.2s ease;
 }
-.room-header-follow-circle:active { transform: scale(0.9); background: rgba(236,72,153,0.16); }
+.room-header-follow-circle:active { transform: scale(0.82); background: rgba(212,197,147,0.16); border-color: rgba(212,197,147,0.45); }
+.room-header-follow-circle:active i { transform: rotate(90deg); }
 .room-header-follow-circle.hidden { display: none; }
+.room-header-follow-circle.room-follow-pop { animation: roomFollowPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.room-header-follow-circle.room-follow-pop::after {
+    content: ''; position: absolute; inset: -3px; border-radius: 50%;
+    border: 1.5px solid rgba(212,197,147,0.65);
+    animation: roomFollowRing 0.5s ease-out forwards;
+}
+@keyframes roomFollowPop { 0% { transform: scale(1); } 45% { transform: scale(1.3); } 100% { transform: scale(1); } }
+@keyframes roomFollowRing { 0% { opacity: 1; transform: scale(0.8); } 100% { opacity: 0; transform: scale(1.7); } }
 .room-header-fanclub-icon-btn {
     flex-shrink: 0; background: transparent; border: none; padding: 0; margin: 0;
     display: inline-flex; align-items: center; justify-content: center;
@@ -3209,13 +3235,22 @@ body.in-voice-room #main-content {
     display: flex !important;
     flex-direction: column !important;
 }
-/* ✅ شبكة المقاعد تأخذ كل الفراغ المتبقي بعد الهيدر وتتمرّر داخلياً هي وحدها (احتياط فقط —
-   تحجيمها المرن (clamp) مصمَّم أصلاً ليلائم شاشة واحدة دوماً) بدل أن تدفع #main-content
-   كاملاً ليطول عن الشاشة فيُخفى شريط الدردشة/الهدية خارج حدود الرؤية */
+/* 🐛 إصلاح جوهري لاحق: overflow-y:auto هنا كان يقصّ زخرفة الإطارات الزخرفية المتعمَّد
+   تجاوزها حدود دائرة الصورة (نظام exemptFromTightCap/computeOverlayArtScaleCap) عند
+   المقاعد القريبة من حافة الشبكة — طلب صريح: "الإطار والمستخدم الجالس يتداخلون بعض الشيء
+   بالزاوية وكأنه مقصوص". overflow:hidden على #main-content بالأعلى كافٍ وحده لمنع تمرير
+   الصفحة (الهدف الأصلي لهذا الإصلاح)؛ ترك تجاوز هذي الشبكة نفسها ظاهراً (visible) يسمح
+   لزخرفة الإطار بالتوغّل خارج حدود المقعد كما صُمِّمت دون أي قصّ، بلا عودة لمشكلة التمرير
+   (تحجيم المقاعد المرن (clamp) مصمَّم أصلاً ليلائم شاشة واحدة دوماً) */
 body.in-voice-room #main-content > #voice-chat-grid {
     flex: 1 1 auto;
     min-height: 0;
-    overflow-y: auto;
+    /* ✅ هامش إضافي حول الشبكة نفسها (غير تباعد #main-content العام الذي يبقى كما هو لبقية
+       عناصره) — زخرفة الإطارات بمقاعد الحافة (أول/آخر عمود وصف) تتوغّل خارج حدود المقعد
+       بمقدار يفوق غالباً padding الحاوية الأب الافتراضي (12-16px)، فتُقصّ من overflow:hidden
+       بـ#main-content رغم عدم وجود مقعد مجاور يتصادم معها أصلاً على تلك الجهة — هامش أكبر هنا
+       يمنحها نفس مساحة التوغّل التي تحصل عليها المقاعد الداخلية عبر الفجوة بينها وبين جاراتها */
+    padding: 22px;
 }
 
 /* ✅ شريط معركة PK بين غرفتين — يظهر أعلى شاشة الغرفة فور بدء المعركة، بعرض شريط تقدّم
@@ -4714,6 +4749,7 @@ body.in-voice-room #main-content > #voice-chat-grid {
     padding-bottom: 9px;
     border-bottom: 2px solid transparent;
     cursor: pointer;
+    transition: color 0.2s ease, border-color 0.2s ease;
 }
 .full-profile-tab.active { color: #fff; border-bottom-color: #d4c593; }
 /* ✅ منطقة محتوى التبويبين — هدف كاشف السحب attachSwipeTabSwitch (راجع app.js) للتبديل

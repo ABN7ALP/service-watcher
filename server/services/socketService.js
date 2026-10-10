@@ -422,24 +422,17 @@ function getRoomViewers(io, roomId) {
     return Array.from(byUser.values());
 }
 
-// ✅ تبديل/إزالة الإطار (متجر الإطارات) يبث فورياً لكل مكان يُحتمَل ظهور صورة هذا المستخدم به
-// الآن — مقعده الحالي بأي غرفة (لو جالس)، كل من يشاهد تلك الغرفة (قائمة المشاهدين)، وأي
-// تبويب/جهاز آخر مفتوح له هو نفسه (مزامنة فورية بلا إعادة تحميل) — بدل الاعتماد على إعادة
-// فتح الشاشة لرؤية الإطار الجديد كما كان الحال سابقاً
+// 🐛 إصلاح جوهري (طلب صريح: "تفعيل/إزالة الإطار لا يتحدث فوري عند الجميع — بالملف الشخصي
+// الكامل والمصغّر، وحتى لو كنت جالساً ع مقعد"): كانت النسخة السابقة تبثّ فقط لقنوات
+// room-chat-<roomId> التي يكون صاحب الإطار نفسه عضواً بها حالياً + جلساته الخاصة — أي من
+// يفتح ملفه الشخصي (كامل/مصغّر) من مكان لا يشاركه فيه غرفة صوتية حالياً (قائمة متابعين،
+// صدارة، نادي معجبين، أو حتى غرفة أخرى تماماً) لا يصله الحدث إطلاقاً بصرف النظر عن أي
+// إصلاح بجانب العميل. صورة المستخدم قد تظهر بأي مكان بالتطبيق — لا قائمة أماكن محدودة
+// يمكن حصرها مسبقاً — فالبث الصحيح الوحيد فعلياً هو بث عام لكل المتصلين؛ applyFrameChangeByUserId
+// بالعميل تتحقق محلياً من وجود صورة هذا المستخدم بالصفحة الحالية فلا يُستهلك شيء بلا طائل
 function broadcastUserFrameChange(io, userId, activeFrameClass) {
     const userIdStr = userId.toString();
-    const notifiedRooms = new Set();
-    for (const [, s] of io.sockets.sockets) {
-        if (!s.user || s.user.id.toString() !== userIdStr) continue;
-        // ✅ مزامنة فورية لهذا المستخدم نفسه على أي تبويب/جهاز آخر مفتوح له
-        s.emit('user-frame-changed', { userId: userIdStr, activeFrameClass: activeFrameClass || '' });
-        for (const room of s.rooms) {
-            if (room.startsWith('room-chat-') && !notifiedRooms.has(room)) {
-                notifiedRooms.add(room);
-                io.to(room).emit('user-frame-changed', { userId: userIdStr, activeFrameClass: activeFrameClass || '' });
-            }
-        }
-    }
+    io.emit('user-frame-changed', { userId: userIdStr, activeFrameClass: activeFrameClass || '' });
 }
 
 function broadcastRoomViewerCount(io, roomId) {
