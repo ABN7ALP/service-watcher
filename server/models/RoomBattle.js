@@ -46,10 +46,17 @@ const roomBattleSchema = new mongoose.Schema({
     },
     scoreA: { type: Number, default: 0, min: 0 },
     scoreB: { type: Number, default: 0, min: 0 },
-    // ✅ نقاط كل داعم (القيمة الحقيقية المُضافة فعلياً للشريط، بعد أي مضاعفة قفاز — هذا تحديداً
-    // تصنيف "أكثر ثلاث دعماً لهذا التحدي" وليس سجل كوينز حقيقي، راجع topSupporters أسفله)
-    supportersA: { type: Map, of: Number, default: () => new Map() },
-    supportersB: { type: Map, of: Number, default: () => new Map() },
+    // ✅ 🛡️ الدعم الحقيقي البحت (قبل أي مضاعفة قفاز) لكل صفّ — مصدر الحقيقة الوحيد لأي نظام
+    // تصنيف/ترتيب يُبنى على هذي المعركة (كدوري PK الأسبوعي)، كي لا تتسرّب إليه قيمة القفاز
+    // الوهمية أبداً، تماماً كما لا تتسرّب للكوينز أو نقاط دعم الغرفة (راجع applyGiftToActiveBattle)
+    realSupportA: { type: Number, default: 0, min: 0 },
+    realSupportB: { type: Number, default: 0, min: 0 },
+    // ✅ نقاط كل داعم (القيمة المُضافة فعلياً للشريط، بعد أي مضاعفة قفاز — تصنيف "أفضل 3 داعمين
+    // لهذا التحدي" تحديداً، حماس لحظي لا كوينز حقيقية) + هويته مُجمَّدة وقت كل هدية (username/
+    // profileImage) بنفس أسلوب VoiceRoom.sessionSupporters بالضبط — بثّها مباشرة لكل الجمهور
+    // بدل الاعتماد على ذاكرة العميل المحلية (كانت السبب: الداعم يظهر فقط لمن رآه بصفحته هو تحديداً)
+    supportersA: { type: Map, of: mongoose.Schema.Types.Mixed, default: () => new Map() },
+    supportersB: { type: Map, of: mongoose.Schema.Types.Mixed, default: () => new Map() },
     effects: { type: [effectSchema], default: () => [] },
     startedAt: { type: Date, default: null },
     endsAt: { type: Date, default: null },
@@ -120,16 +127,27 @@ roomBattleSchema.methods.buildAudiencePayload = function (audienceSide) {
     };
 };
 
-// ✅ أعلى 3 داعمين لهذا التحدي بصف معيّن — تُستخدم بشريط "أفضل 3 داعمين" أسفل الخط. تُرجع
-// فقط المعرّف والنقاط؛ الواجهة تستكمل الاسم/الصورة من قائمة مشاهدي الغرفة المخزّنة لديها محلياً
-// بالفعل (لا استعلام قاعدة بيانات إضافي بكل تحديث نقاط — أداء)
-roomBattleSchema.methods.topSupporters = function (side, limit = 3) {
+// ✅ أعلى 3 داعمين لهذا التحدي بصف معيّن — تُستخدم بشريط "أفضل 3 داعمين" أسفل الخط ونافذة
+// النتيجة. تُرجع الهوية الكاملة (username/profileImage المُجمَّدين وقت الهدية + activeFrameClass
+// حيّ) مباشرة من الخادم — بلا أي اعتماد على ما قد يكون العميل رآه أو لم يره من قبل، فيظهر
+// الداعم لكل الجمهور لا لمن صادف أن لديه بياناته محليّاً فقط (نفس أسلوب VoiceRoom.topSupportersFromMap)
+roomBattleSchema.methods.topSupporters = async function (side, limit = 3) {
     const map = side === 'A' ? this.supportersA : this.supportersB;
     if (!map || map.size === 0) return [];
-    return Array.from(map.entries())
-        .map(([userId, points]) => ({ userId, points }))
+    const top = Array.from(map.entries())
+        .map(([userId, data]) => ({
+            userId,
+            username: data?.username || '',
+            profileImage: data?.profileImage || '',
+            points: data?.points || 0
+        }))
         .sort((a, b) => b.points - a.points)
         .slice(0, limit);
+    if (top.length === 0) return top;
+    const User = require('./User');
+    const liveUsers = await User.find({ _id: { $in: top.map(s => s.userId) } }).select('activeFrameClass').lean();
+    const frameByUserId = new Map(liveUsers.map(u => [u._id.toString(), u.activeFrameClass || '']));
+    return top.map(s => ({ ...s, activeFrameClass: frameByUserId.get(s.userId) || '' }));
 };
 
 module.exports = mongoose.model('RoomBattle', roomBattleSchema);

@@ -82,9 +82,11 @@ async function getActiveBattleSnapshot(roomId) {
     if (!battle) return null;
     const side = battle.roomA._id.toString() === roomId.toString() ? 'A' : 'B';
     const audience = battle.status === 'active' ? battle.buildAudiencePayload(side) : { scoreA: battle.scoreA, scoreB: battle.scoreB, fogged: { A: false, B: false } };
-    const [recordA, recordB] = await Promise.all([
+    const [recordA, recordB, topSupportersA, topSupportersB] = await Promise.all([
         VoiceRoom.getPkRecord(battle.roomA._id),
-        VoiceRoom.getPkRecord(battle.roomB._id)
+        VoiceRoom.getPkRecord(battle.roomB._id),
+        battle.topSupporters('A'),
+        battle.topSupporters('B')
     ]);
     const now = Date.now();
     const activeEffects = (battle.effects || [])
@@ -100,8 +102,7 @@ async function getActiveBattleSnapshot(roomId) {
         endsAt: battle.endsAt,
         recordA, recordB,
         activeEffects,
-        topSupportersA: battle.topSupporters('A'),
-        topSupportersB: battle.topSupporters('B')
+        topSupportersA, topSupportersB
     };
 }
 
@@ -184,6 +185,35 @@ exports.getRoomRankings = async (req, res) => {
     try {
         const rooms = await VoiceRoom.getTopRankedRooms(10);
         res.json({ status: 'success', rooms });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// =====================================================
+// ✅ GET /api/voice-room/pk-league — "دوري PK الأسبوعي": أقوى 10 غرف هذا الأسبوع التقويمي
+// بمجموع (فوز×500 + دعم حقيقي)؛ راجع RoomWeeklyPk للصيغة الكاملة. يعيد أيضاً weekKey الحالي
+// كي تعرف الواجهة أي أسبوع تعرض بدقة (مفيد لعرض "ينتهي الأسبوع بعد..." لاحقاً إن احتاجت)
+// =====================================================
+exports.getPkLeague = async (req, res) => {
+    try {
+        const RoomWeeklyPk = require('../models/RoomWeeklyPk');
+        const weekKey = RoomWeeklyPk.getCurrentWeekKey();
+        const entries = await RoomWeeklyPk.getTopRooms(weekKey, 10);
+        const rooms = entries
+            .filter(e => e.room) // 🛡️ تجاهل مستندات غرفة محذوفة بأمان بدل كسر القائمة كاملة
+            .map(e => ({
+                id: e.room._id,
+                name: e.room.name,
+                coverImage: e.room.coverImage,
+                level: e.room.level,
+                wins: e.wins,
+                losses: e.losses,
+                draws: e.draws,
+                supportPoints: e.supportPoints,
+                score: e.score
+            }));
+        res.json({ status: 'success', weekKey, rooms });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
     }

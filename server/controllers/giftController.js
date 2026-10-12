@@ -11,13 +11,14 @@ const { addGiftExperience } = require('../utils/experienceManager');
 const { awardFanPoints } = require('./fanClubController');
 
 // ✅ يُضيف قيمة هدية كنقاط لصف الغرفة التي أُرسلت منها لو كانت طرفاً بمعركة PK نشطة الآن —
-// تحديث ذرّي واحد (findOneAndUpdate + $inc) يمنع فقدان نقاط عند إرسال هدايا متزامنة بسرعة.
-// 🛡️ مضاعف "القفاز" (battleMultiplier) يُطبَّق هنا فقط على ما يُضاف لـscoreA/scoreB — القيمة
-// الممرَّرة totalPrice نفسها لا تُعدَّل أبداً وتبقى كما هي للمتصل (يستمر بإرسالها كاملة وحقيقية
-// إلى applyGiftToRoomSupport/applyGiftToActiveSeatChallenge بنفس الاستدعاء) — فالمضاعفة مرئية
-// على "الشريط" فقط، لا تصل الكوينز أو نقاط الدعم الحقيقية أبداً. sender اختياري: يُستخدم فقط
-// لتحديث "أفضل 3 داعمين لهذا التحدي" (بنفس القيمة المُضافة فعلياً للشريط بعد أي مضاعفة، لأنه
-// تصنيف خاص بحماس التحدي نفسه لا بالكوينز الحقيقية)
+// تحديث ذرّي واحد (findOneAndUpdate + $inc/$set) يمنع فقدان نقاط عند إرسال هدايا متزامنة بسرعة.
+// 🛡️ مضاعف "القفاز" (battleMultiplier) يُطبَّق هنا فقط على ما يُضاف لـscoreA/scoreB وبطاقة
+// الداعم — القيمة الممرَّرة totalPrice نفسها لا تُعدَّل أبداً وتبقى كما هي للمتصل (يستمر بإرسالها
+// كاملة وحقيقية إلى applyGiftToRoomSupport/applyGiftToActiveSeatChallenge بنفس الاستدعاء، وإلى
+// realSupportA/B هنا أيضاً) — فالمضاعفة مرئية على "الشريط" وتصنيف الداعمين فقط، لا تصل الكوينز
+// أو نقاط الدعم الحقيقية أو أي نظام ترتيب خارجي (كدوري PK الأسبوعي) أبداً. sender اختياري: يُستخدم
+// لتحديث "أفضل 3 داعمين لهذا التحدي" — هوية الداعم (username/profileImage) تُجمَّد هنا مباشرة في
+// نفس التحديث الذرّي (بدل انتظار العميل يراها بمكان آخر) كي تظهر لكل الجمهور فوراً لا للمُرسِل فقط
 async function applyGiftToActiveBattle(io, roomId, totalPrice, sender) {
     const battle = await RoomBattle.findOne({
         $or: [{ roomA: roomId }, { roomB: roomId }],
@@ -30,14 +31,22 @@ async function applyGiftToActiveBattle(io, roomId, totalPrice, sender) {
     const multiplier = battle.battleMultiplier(side);
     const scoreDelta = totalPrice * multiplier;
 
-    const inc = isRoomA ? { scoreA: scoreDelta } : { scoreB: scoreDelta };
+    const inc = isRoomA
+        ? { scoreA: scoreDelta, realSupportA: totalPrice }
+        : { scoreB: scoreDelta, realSupportB: totalPrice };
+    const update = { $inc: inc };
     if (sender) {
-        inc[`supporters${side}.${sender._id.toString()}`] = scoreDelta;
+        const uid = sender._id.toString();
+        inc[`supporters${side}.${uid}.points`] = scoreDelta;
+        update.$set = {
+            [`supporters${side}.${uid}.username`]: sender.username,
+            [`supporters${side}.${uid}.profileImage`]: sender.profileImage
+        };
     }
 
     const updated = await RoomBattle.findOneAndUpdate(
         { _id: battle._id, status: 'active' },
-        { $inc: inc },
+        update,
         { new: true }
     );
     if (!updated || !io) return;

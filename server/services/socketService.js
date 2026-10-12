@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Message = require('../models/Message');
 const VoiceRoom = require('../models/VoiceRoom');
 const RoomBattle = require('../models/RoomBattle');
+const RoomWeeklyPk = require('../models/RoomWeeklyPk');
 const SeatChallenge = require('../models/SeatChallenge');
 // ✅ متجر أدوات معركة PK (قفاز/ضباب) يُعامِل القفاز "مثل الهدية حرفياً" (طلب صريح) — يستدعي
 // نفس خطّافات الهدية الحقيقية بدل تكرار منطق خصم/بث موازٍ؛ لا استدعاء عكسي من giftController
@@ -166,10 +167,35 @@ async function finalizeActiveBattle(io, battleId) {
 
         const outcomeA = winner === 'A' ? 'win' : (winner === 'B' ? 'loss' : 'draw');
         const outcomeB = winner === 'B' ? 'win' : (winner === 'A' ? 'loss' : 'draw');
-        const [recordA, recordB] = await Promise.all([
+        const [recordA, recordB, topSupportersA, topSupportersB] = await Promise.all([
             VoiceRoom.recordBattleOutcome(battle.roomA, outcomeA),
-            VoiceRoom.recordBattleOutcome(battle.roomB, outcomeB)
+            VoiceRoom.recordBattleOutcome(battle.roomB, outcomeB),
+            battle.topSupporters('A'),
+            battle.topSupporters('B')
         ]);
+
+        // ✅ "دوري PK الأسبوعي" — رتبة كل غرفة بنقاطها الحالية (قبل هذي المعركة) ثم بعد تسجيل
+        // نتيجتها، كي تُظهر نافذة النتيجة مؤثر "تسلّق الترتيب" (طلب صريح) لحظة الفوز تحديداً.
+        // 🛡️ realSupportA/B (غير المُضخَّم بالقفاز) هو ما يُغذّي هذا الترتيب الدائم، لا scoreA/B
+        const weekKey = RoomWeeklyPk.getCurrentWeekKey();
+        const [weeklyBeforeA, weeklyBeforeB] = await Promise.all([
+            RoomWeeklyPk.findOne({ room: battle.roomA, weekKey }).lean(),
+            RoomWeeklyPk.findOne({ room: battle.roomB, weekKey }).lean()
+        ]);
+        const [rankBeforeA, rankBeforeB] = await Promise.all([
+            RoomWeeklyPk.getRank(weekKey, weeklyBeforeA?.score || 0),
+            RoomWeeklyPk.getRank(weekKey, weeklyBeforeB?.score || 0)
+        ]);
+        const [weeklyAfterA, weeklyAfterB] = await Promise.all([
+            RoomWeeklyPk.recordOutcome(battle.roomA, outcomeA, battle.realSupportA, weekKey),
+            RoomWeeklyPk.recordOutcome(battle.roomB, outcomeB, battle.realSupportB, weekKey)
+        ]);
+        const [rankAfterA, rankAfterB] = await Promise.all([
+            RoomWeeklyPk.getRank(weekKey, weeklyAfterA.score),
+            RoomWeeklyPk.getRank(weekKey, weeklyAfterB.score)
+        ]);
+        const weeklyRankA = { before: weeklyBeforeA ? rankBeforeA : null, after: rankAfterA, score: weeklyAfterA.score };
+        const weeklyRankB = { before: weeklyBeforeB ? rankBeforeB : null, after: rankAfterB, score: weeklyAfterB.score };
 
         await emitToBothRooms(io, battle.roomA, battle.roomB, 'pk-battle-ended', {
             battleId: battle._id.toString(),
@@ -179,8 +205,8 @@ async function finalizeActiveBattle(io, battleId) {
             scoreB: battle.scoreB,
             winner,
             recordA, recordB,
-            topSupportersA: battle.topSupporters('A'),
-            topSupportersB: battle.topSupporters('B')
+            topSupportersA, topSupportersB,
+            weeklyRankA, weeklyRankB
         });
     } catch (error) {
         console.error('[PK BATTLE] Finalize error:', error);
