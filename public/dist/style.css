@@ -10240,66 +10240,133 @@ body.in-voice-room #main-content > #voice-chat-grid {
   z-index: 1;
 }
 
-.pk-result-hero-icon {
-  font-size: 44px;
-}
+/* ✅ خلفية القصف الذهبي الشفافة — طبقة صورة ممتدة فوق خلفية النافذة، بوضع مزج "screen" حتى
+   لا تُخفي أي جزء غامق بالصورة الواجهة الداكنة أسفلها (شفافية مضمونة بصرياً بغض النظر عن
+   قناة alpha الفعلية بالملف نفسه)، وتُحجَّم تلقائياً لحواف الورقة دون تكرار أو تمدّد مُشوِّه */
 
-.pk-result-win .pk-result-hero-icon {
-  color: #fbbf24;
-  filter: drop-shadow(0 0 14px rgba(251,191,36,0.55));
-}
-
-.pk-result-lose .pk-result-hero-icon {
-  color: #64748b;
-}
-
-.pk-result-draw .pk-result-hero-icon {
-  color: #cbd5e1;
-}
-
-.pk-result-confetti {
+.pk-result-confetti-bg {
   position: absolute;
-  top: -10px;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  -o-object-fit: cover;
+     object-fit: cover;
+  opacity: 0.6;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ✅ إطار البطل الرسمي (مُستبدَل بدل أيقونة الكأس البسيطة) — صورة الفائز أعلى داعم بهذا
+   التحدي مُركَّبة أسفل الإطار الدائري المدمج بالصورة نفسها (z-index أقل)، والإطار المزخرف
+   فوقها (z-index أعلى)، بنفس تقنية تركيب "الإطار فوق الصورة الشخصية" المُستخدَمة بكل الإطارات
+   بالمشروع — لا حاجة لمعرفة أبعاد البكسل الدقيقة للدائرة المدمجة؛ الحجم والموضع نسبيان بالكامل */
+
+.pk-result-hero-win {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  margin: 0 auto 6px;
+  z-index: 1;
+}
+
+.pk-result-winner-avatar {
+  position: absolute;
   left: 50%;
-  width: 1px;
-  height: 1px;
+  bottom: 9%;
+  width: 36%;
+  height: 36%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  -o-object-fit: cover;
+     object-fit: cover;
+  z-index: 1;
 }
 
-.pk-result-confetti::before, .pk-result-confetti::after {
-  content: '🎉';
+.pk-result-winner-frame {
   position: absolute;
-  font-size: 16px;
-  animation: pkConfettiFall 1.4s ease-in forwards;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  -o-object-fit: contain;
+     object-fit: contain;
+  z-index: 2;
+  pointer-events: none;
 }
 
-.pk-result-confetti::before {
-  left: -40px;
-  animation-delay: 0.05s;
+/* ✅ أيقونة الخسارة الحزينة (مُستبدَلة بدل أيقونة الدرع) — طابع أكثر قتامة/جدّية يعكس "خسارة
+   حقيقية" (طلب صريح)، بلا أي تأثير توهّج احتفالي يناقض الشعور المطلوب */
+
+.pk-result-hero-lose {
+  position: relative;
+  margin: 0 auto 4px;
+  z-index: 1;
+  filter: saturate(0.6);
 }
 
-.pk-result-confetti::after {
-  left: 30px;
-  animation-delay: 0.2s;
+.pk-result-lose-icon {
+  width: 76px;
+  height: 76px;
+  -o-object-fit: contain;
+     object-fit: contain;
 }
 
-@keyframes pkConfettiFall {
+.pk-result-lose .pk-result-sheet, .pk-result-lose {
+  animation: pkLoseSettle 0.5s ease both;
+}
+
+@keyframes pkLoseSettle {
   0% {
-    transform: translateY(-10px) rotate(0deg);
-    opacity: 1;
+    transform: translateY(-6px);
+    opacity: 0.4;
   }
 
   100% {
-    transform: translateY(70px) rotate(220deg);
-    opacity: 0;
+    transform: translateY(0);
+    opacity: 1;
   }
+}
+
+/* ✅ إطار التعادل — طابع متزن مستقل (لا فوز ولا خسارة): ميزان ذهبي-فضي داخل حلقة سداسية هادئة */
+
+.pk-result-hero-draw {
+  position: relative;
+  margin: 0 auto 10px;
+  z-index: 1;
+}
+
+.pk-result-draw-frame {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: #e2e8f0;
+  background: linear-gradient(135deg, rgba(148,163,184,0.18), rgba(100,116,139,0.1));
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  border: 1px solid rgba(203,213,225,0.3);
 }
 
 .pk-result-title {
   font-size: 18px;
   font-weight: 800;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   position: relative;
   z-index: 1;
+}
+
+.pk-result-subtitle {
+  font-size: 11px;
+  color: rgba(255,255,255,0.45);
+  margin-bottom: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.pk-result-lose .pk-result-title {
+  color: #cbd5e1;
 }
 
 .pk-result-score {
@@ -10309,6 +10376,51 @@ body.in-voice-room #main-content > #voice-chat-grid {
   position: relative;
   z-index: 1;
   font-variant-numeric: tabular-nums;
+}
+
+/* ✅ شريحة "دوري PK الأسبوعي" — مؤثر تسلّق/تراجع الترتيب (طلب صريح)، لون أخضر للصعود وأحمر
+   مخفَّف للتراجع، وذهبي لدخول جديد */
+
+.pk-rank-climb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.55);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  padding: 6px 12px;
+  margin: 0 auto 10px;
+  width: -moz-fit-content;
+  width: fit-content;
+  position: relative;
+  z-index: 1;
+}
+
+.pk-rank-climb-num {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+}
+
+.pk-rank-climb-up {
+  color: #4ade80;
+  border-color: rgba(74,222,128,0.3);
+  background: rgba(74,222,128,0.08);
+}
+
+.pk-rank-climb-down {
+  color: #fca5a5;
+  border-color: rgba(252,165,165,0.25);
+  background: rgba(252,165,165,0.06);
+}
+
+.pk-rank-climb-new {
+  color: #fbbf24;
+  border-color: rgba(251,191,36,0.3);
+  background: rgba(251,191,36,0.08);
 }
 
 .pk-result-record-label, .pk-result-supporters-label {
@@ -10465,6 +10577,205 @@ body.in-voice-room #main-content > #voice-chat-grid {
 
 .pk-item-card-locked {
   opacity: 0.55;
+}
+
+/* =====================================================
+   ✅ "دوري PK الأسبوعي" — تبويب مستقل بشاشة المتصدرين، بهويته البصرية الخاصة (شارات مُقطَّعة
+   الزوايا بدل البطاقات الدائرية التقليدية) حتى يبرز كنظام تصنيف منفصل بذاته لا تكراراً لترتيب
+   الغرف العام — نفس مقاييس/تخطيط rankings-podium-* تماماً، ألوان وزخرفة PK حصرياً
+   ===================================================== */
+
+.pk-league-podium-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.pk-league-podium-card {
+  flex: 1;
+  max-width: 118px;
+  position: relative;
+  background: rgba(255,255,255,0.05);
+  clip-path: polygon(10% 0%, 100% 0%, 100% 92%, 90% 100%, 0% 100%, 0% 8%);
+  padding: 22px 8px 12px;
+  text-align: center;
+  border: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.pk-league-podium-card:active {
+  transform: scale(0.96);
+}
+
+.pk-league-podium-card.pk-league-podium-empty {
+  visibility: hidden;
+}
+
+.pk-league-podium-rank-1 {
+  order: 2;
+  max-width: 132px;
+  padding-top: 28px;
+  margin-bottom: 14px;
+  background: linear-gradient(160deg, rgba(251,146,60,0.18), rgba(255,255,255,0.05));
+  border: 1px solid rgba(251,146,60,0.5);
+  box-shadow: 0 0 20px rgba(251,146,60,0.25);
+  z-index: 2;
+}
+
+.pk-league-podium-rank-2 {
+  order: 1;
+  border-color: rgba(147,197,253,0.4);
+}
+
+.pk-league-podium-rank-3 {
+  order: 3;
+  border-color: rgba(217,119,6,0.4);
+}
+
+.pk-league-podium-crown {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 22px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+
+.pk-league-podium-rank-1 .pk-league-podium-crown {
+  font-size: 26px;
+  top: -18px;
+}
+
+.pk-league-podium-cover {
+  width: 50px;
+  height: 50px;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  -o-object-fit: cover;
+     object-fit: cover;
+  margin: 0 auto 6px;
+  border: 2px solid rgba(255,255,255,0.2);
+}
+
+.pk-league-podium-rank-1 .pk-league-podium-cover {
+  width: 60px;
+  height: 60px;
+  border-color: #fb923c;
+}
+
+.pk-league-podium-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pk-league-podium-record {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 3px;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.pk-league-podium-score {
+  margin-top: 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #fbbf24;
+}
+
+.pk-league-podium-score i {
+  margin-inline-end: 2px;
+}
+
+.pk-league-podium-pedestal {
+  margin-top: 7px;
+  font-size: 11px;
+  font-weight: 900;
+  color: #1a1f2e;
+  background: linear-gradient(180deg, #fdba74, #f97316);
+  border-radius: 6px;
+  padding: 2px 0;
+}
+
+.pk-league-podium-rank-2 .pk-league-podium-pedestal {
+  background: linear-gradient(180deg, #bfdbfe, #60a5fa);
+}
+
+.pk-league-podium-rank-3 .pk-league-podium-pedestal {
+  background: linear-gradient(180deg, #fdba74, #c2410c);
+  color: #fff;
+}
+
+.pk-league-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pk-league-list-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.pk-league-list-row:active {
+  background: rgba(255,255,255,0.08);
+}
+
+.pk-league-list-rank {
+  width: 18px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.pk-league-list-cover {
+  width: 32px;
+  height: 32px;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  -o-object-fit: cover;
+     object-fit: cover;
+  flex-shrink: 0;
+}
+
+.pk-league-list-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pk-league-list-record {
+  font-size: 9.5px;
+  display: flex;
+  gap: 4px;
+}
+
+.pk-league-list-score {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #fbbf24;
+  flex-shrink: 0;
+}
+
+.pk-league-list-score i {
+  margin-inline-end: 2px;
 }
 
 /* =====================================================
@@ -15333,8 +15644,16 @@ body.in-voice-room #main-content > #voice-chat-grid {
     display: inline;
   }
 
+  .sm\:flex{
+    display: flex;
+  }
+
   .sm\:w-auto{
     width: auto;
+  }
+
+  .sm\:flex-1{
+    flex: 1 1 0%;
   }
 
   .sm\:grid-cols-6{
