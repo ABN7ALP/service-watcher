@@ -3616,7 +3616,10 @@ body.in-voice-room #main-content > #voice-chat-grid {
     0% { transform: translate(-4%, -2%) scale(1); }
     100% { transform: translate(4%, 3%) scale(1.15); }
 }
-.pk-result-hero { position: relative; margin-bottom: 8px; z-index: 1; }
+/* 🐛 إصلاح: display:flex صريح هنا (بدل الاعتماد على text-align الموروث من الورقة) — كان هذا
+   سبب ظهور أيقونة الخسارة ملتصقة بحافة جانبية بدل المنتصف: margin:auto وحدها على عنصر block
+   بلا عرض محدَّد لا تُوسِّط شيئاً، وأي عنصر يعتمد فقط على خاصية موروثة قد تنكسر بسهولة لاحقاً */
+.pk-result-hero { position: relative; margin-bottom: 8px; z-index: 1; display: flex; align-items: center; justify-content: center; }
 
 /* ✅ خلفية القصف الذهبي الشفافة — طبقة صورة ممتدة فوق خلفية النافذة، بوضع مزج "screen" حتى
    لا تُخفي أي جزء غامق بالصورة الواجهة الداكنة أسفلها (شفافية مضمونة بصرياً بغض النظر عن
@@ -3631,18 +3634,18 @@ body.in-voice-room #main-content > #voice-chat-grid {
     z-index: 0;
 }
 
-/* ✅ إطار البطل الرسمي (مُستبدَل بدل أيقونة الكأس البسيطة) — صورة الفائز أعلى داعم بهذا
-   التحدي مُركَّبة أسفل الإطار الدائري المدمج بالصورة نفسها (z-index أقل)، والإطار المزخرف
-   فوقها (z-index أعلى)، بنفس تقنية تركيب "الإطار فوق الصورة الشخصية" المُستخدَمة بكل الإطارات
-   بالمشروع — لا حاجة لمعرفة أبعاد البكسل الدقيقة للدائرة المدمجة؛ الحجم والموضع نسبيان بالكامل */
-.pk-result-hero-win { position: relative; width: 150px; height: 150px; margin: 0 auto 6px; z-index: 1; }
-.pk-result-winner-avatar {
-    position: absolute;
-    left: 50%; bottom: 9%;
-    width: 36%; height: 36%;
-    transform: translateX(-50%);
-    border-radius: 50%;
-    object-fit: cover;
+/* 🐛 إعادة بناء كاملة بعد بلاغين: الصورة الحقيقية طويلة عمودياً (680×1050 — قيست مباشرة من
+   الملف المُرفَق)، لا مربّعة. الحاوية الآن بنفس هذي النسبة تماماً (aspect-ratio) فتملأ الصورة
+   كامل الحاوية بلا أي تصغير يترك فراغاً جانبياً يُزيح حساب المواضع المئوية. العنوان/التقديم/
+   النتيجة انتقلوا الآن *داخل* مستطيل الإطار العلوي (هذا ما يجعلها فعلاً "إطار النافذة" لا
+   صندوقاً صغيراً منفصلاً)، وصورة الداعم صغيرة ومحصورة تماماً بموضع الميدالية الدائرية المدمجة
+   أسفل الصورة (قيس مركزها ونصف قطرها من بكسلات الملف نفسه: مركز 49.9%/85.8% عرض/ارتفاع،
+   قطر ≈22% من عرض الإطار) — لا تلمس مستطيل الإطار الفارغ إطلاقاً */
+.pk-result-hero-win {
+    position: relative;
+    width: 172px;
+    aspect-ratio: 680 / 1050;
+    margin: 0 auto 10px;
     z-index: 1;
 }
 .pk-result-winner-frame {
@@ -3652,16 +3655,36 @@ body.in-voice-room #main-content > #voice-chat-grid {
     z-index: 2;
     pointer-events: none;
 }
+.pk-result-winner-text {
+    position: absolute;
+    left: 18%; right: 18%;
+    top: 14%;
+    z-index: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+}
+.pk-result-winner-text .pk-result-title { font-size: 14.5px; margin-bottom: 3px; line-height: 1.25; }
+.pk-result-winner-text .pk-result-subtitle { font-size: 9.5px; margin-bottom: 4px; }
+.pk-result-winner-text .pk-result-score { font-size: 12px; margin-bottom: 0; }
+.pk-result-winner-avatar {
+    position: absolute;
+    left: 49.9%; top: 85.8%;
+    width: 21%;
+    aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    object-fit: cover;
+    z-index: 1;
+}
 
 /* ✅ أيقونة الخسارة الحزينة (مُستبدَلة بدل أيقونة الدرع) — طابع أكثر قتامة/جدّية يعكس "خسارة
    حقيقية" (طلب صريح)، بلا أي تأثير توهّج احتفالي يناقض الشعور المطلوب */
-.pk-result-hero-lose { position: relative; margin: 0 auto 4px; z-index: 1; filter: saturate(0.6); }
-.pk-result-lose-icon { width: 76px; height: 76px; object-fit: contain; }
+.pk-result-hero-lose { margin-bottom: 4px; filter: saturate(0.6); }
+.pk-result-lose-icon { width: 76px; height: 76px; object-fit: contain; display: block; }
 .pk-result-lose .pk-result-sheet, .pk-result-lose { animation: pkLoseSettle 0.5s ease both; }
 @keyframes pkLoseSettle { 0% { transform: translateY(-6px); opacity: 0.4; } 100% { transform: translateY(0); opacity: 1; } }
 
 /* ✅ إطار التعادل — طابع متزن مستقل (لا فوز ولا خسارة): ميزان ذهبي-فضي داخل حلقة سداسية هادئة */
-.pk-result-hero-draw { position: relative; margin: 0 auto 10px; z-index: 1; }
+.pk-result-hero-draw { margin-bottom: 10px; }
 .pk-result-draw-frame {
     width: 64px; height: 64px;
     margin: 0 auto;

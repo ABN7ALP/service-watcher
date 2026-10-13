@@ -4375,6 +4375,18 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // أيقونة الكأس البسيطة) ومُدمَج فيه دائرياً صورة أكثر داعم أرسل هدايا هذا التحدي، فوق خلفية
     // قصف ذهبي شفافة؛ الخسارة بأيقونة حزينة بدل الدرع مع طابع أكثر قتامة وجدّية؛ التعادل بإطار
     // متزن مستقل. مؤثر "تسلّق الترتيب" بدوري PK الأسبوعي يظهر لأي تغيّر رتبة (صعوداً أو نزولاً)
+    // 🐛 إعادة هيكلة كاملة بعد بلاغين: (1) صورة الداعم كانت كبيرة ومُقحَمة فوق مستطيل الإطار
+    // الفارغ بدل أن تكون صغيرة داخل الميدالية الدائرية المدمجة بأسفل الإطار نفسه فقط — السبب
+    // الجذري: الحاوية كانت مربّعة (150×150) بينما صورة الإطار الحقيقية طويلة عمودياً (نسبة
+    // 680×1050)، فـobject-fit:contain صغّر الإطار داخل الحاوية تاركاً فراغاً جانبياً، وموضع
+    // الصورة المئوي (محسوب على أساس الحاوية المربّعة) لم يعد يطابق موضع الميدالية الفعلي
+    // بالإطار المصغَّر. الحل: الحاوية الآن بنفس نسبة الإطار تماماً (aspect-ratio) فتُطابق الصورة
+    // أبعادها دون أي تصغير/تمدّد، وموضع الميدالية والنص محسوبان بدقة بالنسبة المئوية الحقيقية
+    // لبكسلات الإطار نفسه (قيست مباشرة من الملف). النص (العنوان/التقديم) انتقل الآن ليكون
+    // *داخل* مستطيل الإطار العلوي بدل أسفله — هذا ما يجعل هذي الصورة فعلاً "إطار النافذة" لا
+    // مجرد صندوق صغير أسفلها. (2) أيقونة الخسارة كانت تظهر لصق الحافة اليمنى بدل المنتصف لأن
+    // الحاوية المُحيطة بها لم تكن تتوسّط فعلياً (margin:auto على عنصر block بلا عرض محدَّد لا
+    // يفعل شيئاً) — أُصلحت الآن بتوسيط flex صريح لا يعتمد على خاصية موروثة قد تُكسَر بسهولة
     function showPkResultModal({ roomA, roomB, scoreA, scoreB, winner, recordA, recordB, topSupportersA, topSupportersB, weeklyRankA, weeklyRankB }) {
         const isMineA = currentVoiceRoomId === roomA;
         const myScore = isMineA ? scoreA : scoreB;
@@ -4386,31 +4398,42 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const myWeeklyRank = isMineA ? weeklyRankA : weeklyRankB;
         const topSupporter = mySupporters && mySupporters[0];
 
+        const scoreLineHTML = `<p class="pk-result-score">${myScore.toLocaleString('en-US')} : ${otherScore.toLocaleString('en-US')}</p>`;
+
         let heroHTML;
-        let titleText;
-        let subtitleText = '';
+        let outerTitleHTML = ''; // ✅ تُستخدَم فقط للخسارة/التعادل (العنوان خارج الإطار بهذي الحالتين)
         if (isDraw) {
             heroHTML = `<div class="pk-result-hero pk-result-hero-draw"><div class="pk-result-draw-frame"><i class="fas fa-scale-balanced"></i></div></div>`;
-            titleText = 'تعادل!';
-            subtitleText = 'عقد متكافئ — لا فائز هذي المرة';
+            outerTitleHTML = `
+                <p class="pk-result-title">تعادل!</p>
+                <p class="pk-result-subtitle">عقد متكافئ — لا فائز هذي المرة</p>
+                ${scoreLineHTML}
+            `;
         } else if (iWon) {
             const winnerAvatar = topSupporter?.profileImage || '/images/default-avatar.png';
+            const supporterCaption = topSupporter?.username ? `بقيادة دعم <strong>${escapeHtml(topSupporter.username)}</strong>` : '';
             heroHTML = `
                 <div class="pk-result-hero pk-result-hero-win">
-                    <img class="pk-result-winner-avatar" src="${winnerAvatar}">
                     <img class="pk-result-winner-frame" src="https://res.cloudinary.com/dntlt5xry/image/upload/v1791839333/pk-winner-frame-animated-680.webp">
+                    <div class="pk-result-winner-text">
+                        <p class="pk-result-title">فوز غرفتك! 🎉</p>
+                        ${supporterCaption ? `<p class="pk-result-subtitle">${supporterCaption}</p>` : ''}
+                        ${scoreLineHTML}
+                    </div>
+                    <img class="pk-result-winner-avatar" src="${winnerAvatar}">
                 </div>
             `;
-            titleText = 'فوز غرفتك! 🎉';
-            if (topSupporter?.username) subtitleText = `بقيادة دعم <strong>${escapeHtml(topSupporter.username)}</strong>`;
         } else {
             heroHTML = `
                 <div class="pk-result-hero pk-result-hero-lose">
                     <img class="pk-result-lose-icon" src="https://res.cloudinary.com/dntlt5xry/image/upload/v1791841726/lose-icon-animated-512.webp">
                 </div>
             `;
-            titleText = 'خسرت غرفتك هذي الجولة';
-            subtitleText = 'العقد القادم فرصتك للعودة بقوة';
+            outerTitleHTML = `
+                <p class="pk-result-title">خسرت غرفتك هذي الجولة</p>
+                <p class="pk-result-subtitle">العقد القادم فرصتك للعودة بقوة</p>
+                ${scoreLineHTML}
+            `;
         }
 
         const modal = document.createElement('div');
@@ -4421,9 +4444,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 ${iWon && !isDraw ? '<img class="pk-result-confetti-bg" src="https://res.cloudinary.com/dntlt5xry/image/upload/v1791840194/confetti-gold-1080.webp" aria-hidden="true">' : ''}
                 ${!iWon ? '<div class="pk-result-fog-layer"></div><div class="pk-result-fog-layer pk-result-fog-layer-2"></div>' : ''}
                 ${heroHTML}
-                <p class="pk-result-title">${titleText}</p>
-                ${subtitleText ? `<p class="pk-result-subtitle">${subtitleText}</p>` : ''}
-                <p class="pk-result-score">${myScore.toLocaleString('en-US')} : ${otherScore.toLocaleString('en-US')}</p>
+                ${outerTitleHTML}
                 ${pkRankClimbHTML(myWeeklyRank)}
                 ${myRecord ? `<div class="pk-result-record-label">سجل العقد المُحدَّث</div>${pkRecordChipHTML(myRecord)}` : ''}
                 ${mySupporters && mySupporters.length ? `
