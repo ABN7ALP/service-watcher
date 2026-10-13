@@ -663,7 +663,9 @@ exports.updateSystemSettings = async (req, res) => {
       'visaCardNumber', 'visaHolderName',
       'minWithdrawUSD', 'withdrawalFeePer10USD',
       'battleCommissionRate', 'maintenanceMode', 'maintenanceMessage',
-      'coinsToUsdRedemptionRate', 'giftRedemptionHaircutPercent', 'maxDailyWithdrawalUSD'
+      'coinsToUsdRedemptionRate', 'giftRedemptionHaircutPercent', 'maxDailyWithdrawalUSD',
+      'pkWinLp', 'pkLossLp', 'pkDrawLp', 'pkSupportLpDivisor', 'pkLpCapPerBattle',
+      'pkMinDurationSeconds', 'pkMinSupportCoins', 'pkMaxDailyMatchesPerPair'
     ];
     const updates = {};
     for (const field of allowedFields) {

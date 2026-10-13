@@ -51,6 +51,7 @@ app.use('/api/gifts', require('./routes/giftRoutes')); // ✅ نظام الهد�
 app.use('/api/fanclub', require('./routes/fanClubRoutes')); // ✅ نظام نادي المعجبين
 app.use('/api/withdrawals', require('./routes/withdrawalRoutes'));
 app.use('/api/voice-room', require('./routes/voiceRoomRoutes')); // ✅ حالة مقاعد الغرفة الصوتية
+app.use('/api/pk-league', require('./routes/pkLeagueRoutes')); // ✅ دوري PK الأسبوعي (ترتيب/غرفتي/مواجهات)
 app.use('/api/coin-purchase', require('./routes/coinPurchaseRoutes')); // ✅ نظام شراء الكوينزات
 app.use('/api/bubble-skins', require('./routes/bubbleSkinRoutes'));
 app.use('/api/gift-redemption', require('./routes/giftRedemptionRoutes'));
@@ -77,6 +78,7 @@ mongoose.connect(process.env.MONGODB_URI)
         await require('./utils/autoSeed')();
         require('./utils/mediaCleanupJob').startMediaCleanupJob(); // ✅ حذف تلقائي كل 24 ساعة (رسائل + وسائط Cloudinary)
         require('./utils/fanClubWeeklyFrameJob').startFanClubWeeklyFrameJob(io); // ✅ منح إطار المساهم لفائزي الأسبوع تلقائياً
+        require('./utils/pkSeasonCloseJob').startPkSeasonCloseJob(io); // ✅ إغلاق موسم دوري PK الأسبوعي + منح مكافآت المراكز تلقائياً
         // ✅ إصلاح فهرس slug القديم قبل أي شيء (يمنع خطأ E11000 عند إنشاء غرف جديدة)
         await require('./models/VoiceRoom').fixSlugIndex();
         // ✅ تنظيف أي مقاعد صوتية مكررة تراكمت قبل إصلاح القفل التسلسلي (مرة واحدة عند كل إقلاع، آمنة تماماً)

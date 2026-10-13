@@ -24,6 +24,19 @@ const systemSettingsSchema = new mongoose.Schema({
     maintenanceMode: { type: Boolean, default: false },
     maintenanceMessage: { type: String, default: 'الموقع تحت الصيانة حالياً، عد لاحقاً' },
 
+    // ✅ صيغة نقاط دوري PK الأسبوعي (قابلة للتعديل من لوحة الإدارة) — راجع pkLeagueEngine.js
+    // للصيغة الكاملة: lp = نتيجة_الثابتة + floor(الدعم_الحقيقي_المُستلَم ÷ pkSupportLpDivisor)،
+    // بحد أقصى pkLpCapPerBattle لكل تحدٍّ واحد مهما بلغ الدعم
+    pkWinLp: { type: Number, default: 300 },
+    pkLossLp: { type: Number, default: 50 },
+    pkDrawLp: { type: Number, default: 120 },
+    pkSupportLpDivisor: { type: Number, default: 100 }, // كل N كوينز دعم حقيقي = نقطة دوري واحدة
+    pkLpCapPerBattle: { type: Number, default: 2000 },
+    // ✅ مكافحة التلاعب — راجع pkLeagueEngine.checkAntiCheat للتفاصيل الكاملة
+    pkMinDurationSeconds: { type: Number, default: 60 },
+    pkMinSupportCoins: { type: Number, default: 50 },
+    pkMaxDailyMatchesPerPair: { type: Number, default: 3 },
+
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 

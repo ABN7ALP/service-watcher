@@ -21,7 +21,6 @@ const roomCreationLimiter = rateLimit({
 router.get('/ice-servers', voiceRoomController.getIceServers);
 router.get('/rooms', voiceRoomController.listRooms);
 router.get('/rankings', voiceRoomController.getRoomRankings);
-router.get('/pk-league', voiceRoomController.getPkLeague);
 router.get('/my-room', voiceRoomController.getMyRoom);
 router.get('/background-shop', voiceRoomController.getBackgroundShop);
 router.post('/rooms', roomCreationLimiter, voiceRoomController.createRoom);

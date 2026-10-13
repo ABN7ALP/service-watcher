@@ -191,35 +191,6 @@ exports.getRoomRankings = async (req, res) => {
 };
 
 // =====================================================
-// ✅ GET /api/voice-room/pk-league — "دوري PK الأسبوعي": أقوى 10 غرف هذا الأسبوع التقويمي
-// بمجموع (فوز×500 + دعم حقيقي)؛ راجع RoomWeeklyPk للصيغة الكاملة. يعيد أيضاً weekKey الحالي
-// كي تعرف الواجهة أي أسبوع تعرض بدقة (مفيد لعرض "ينتهي الأسبوع بعد..." لاحقاً إن احتاجت)
-// =====================================================
-exports.getPkLeague = async (req, res) => {
-    try {
-        const RoomWeeklyPk = require('../models/RoomWeeklyPk');
-        const weekKey = RoomWeeklyPk.getCurrentWeekKey();
-        const entries = await RoomWeeklyPk.getTopRooms(weekKey, 10);
-        const rooms = entries
-            .filter(e => e.room) // 🛡️ تجاهل مستندات غرفة محذوفة بأمان بدل كسر القائمة كاملة
-            .map(e => ({
-                id: e.room._id,
-                name: e.room.name,
-                coverImage: e.room.coverImage,
-                level: e.room.level,
-                wins: e.wins,
-                losses: e.losses,
-                draws: e.draws,
-                supportPoints: e.supportPoints,
-                score: e.score
-            }));
-        res.json({ status: 'success', weekKey, rooms });
-    } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
-    }
-};
-
-// =====================================================
 // ✅ GET /api/voice-room/my-room — غرفتي الخاصة إن وُجدت (لتوجيه أيقونة الإنشاء مباشرة إليها)
 // =====================================================
 exports.getMyRoom = async (req, res) => {
