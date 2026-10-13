@@ -61,6 +61,18 @@ const roomBattleSchema = new mongoose.Schema({
     startedAt: { type: Date, default: null },
     endsAt: { type: Date, default: null },
     winner: { type: String, enum: ['A', 'B', 'draw', null], default: null },
+    // ✅ إحصاءات زينة لنافذة النتيجة (عدد الهدايا الحقيقي + أعلى كومبو رُمي بدفعة واحدة) —
+    // راجع giftController.applyGiftToActiveBattle لمكان تحديثها بالضبط
+    totalGiftUnits: { type: Number, default: 0, min: 0 },
+    highestCombo: { type: Number, default: 0, min: 0 },
+    // ✅ 🛡️ علم تسوية دوري PK — ذرّي ومنفصل تماماً عن status/winner: يضمن استحالة احتساب
+    // نقاط الدوري مرتين لنفس المعركة حتى لو استُدعي finalizeActiveBattle أكثر من مرة (طلب
+    // صريح: idempotent بمعرّف التحدي) — راجع pkLeagueEngine.settleBattle
+    lpSettled: { type: Boolean, default: false },
+    // ✅ هل احتُسبت نقاط الدوري فعلياً لهذي المعركة بعد اجتياز مكافحة التلاعب؟ + السبب لو لا،
+    // ليُراجعها فريق الإدارة لاحقاً (طلب صريح: "سجّل حالات الاشتباه للإدارة")
+    lpCounted: { type: Boolean, default: null },
+    lpSkippedReason: { type: String, default: null }
 }, { timestamps: true });
 
 // ✅ يمنع أي غرفة (سواء طرفها A أو B) من الدخول بأكثر من معركة معلّقة/فعلية بنفس الوقت

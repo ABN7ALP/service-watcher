@@ -4,8 +4,8 @@ const User = require('../models/User');
 const Message = require('../models/Message');
 const VoiceRoom = require('../models/VoiceRoom');
 const RoomBattle = require('../models/RoomBattle');
-const RoomWeeklyPk = require('../models/RoomWeeklyPk');
 const SeatChallenge = require('../models/SeatChallenge');
+const pkLeagueEngine = require('../utils/pkLeagueEngine');
 // ✅ متجر أدوات معركة PK (قفاز/ضباب) يُعامِل القفاز "مثل الهدية حرفياً" (طلب صريح) — يستدعي
 // نفس خطّافات الهدية الحقيقية بدل تكرار منطق خصم/بث موازٍ؛ لا استدعاء عكسي من giftController
 // لهذا الملف فلا تسابق دائري بالتحميل (require)
@@ -145,12 +145,89 @@ async function emitToBothRooms(io, roomAId, roomBId, event, payload) {
     io.to(`room-chat-${roomBId}`).emit(event, payload);
 }
 
+// ✅ نص العنوان الثابت لكل نتيجة — زينة نصّية فقط بلا أي بيانات مستخدم، فلا خطر حقن إطلاقاً
+const PK_RESULT_TITLES = { win: 'فوز ساحق!', loss: 'خسارة…', draw: 'تعادل!' };
+
+// ✅ "الأسبوع 41 · ينتهي بعد 2ي 6س" — نص ثابت يُبنى من حقول الموسم فقط (weekKey/endsAt)، بلا
+// أي بيانات مستخدم، يطابق شكل week بالنموذج الإلزامي بالضبط
+function formatWeekLabel(season) {
+    const weekNum = parseInt((season.weekKey || '').split('W')[1], 10) || 0;
+    const msLeft = Math.max(0, new Date(season.endsAt).getTime() - Date.now());
+    const daysLeft = Math.floor(msLeft / 86400000);
+    const hoursLeft = Math.floor((msLeft % 86400000) / 3600000);
+    return `الأسبوع ${weekNum} · ينتهي بعد ${daysLeft}ي ${hoursLeft}س`;
+}
+
+// ✅ "05:00" — مدة المعركة الفعلية (startedAt→endsAt الحقيقيين) بصيغة mm:ss كما بالنموذج
+function formatDuration(seconds) {
+    const total = Math.max(0, Math.round(seconds || 0));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// ✅ 🛡️ "أكبر داعم" بنافذة النتيجة = الأكثر إرساناً كوينز حقيقية لهذي الغرفة بهذا التحدي تحديداً
+// (طلب صريح) — يُرتَّب بـrealCoins غير المُضخَّم بالقفاز، لا بـpoints (المضخَّمة، لزينة شريط
+// "أفضل 3 داعمين" الحيّ فقط عبر battle.topSupporters) — فلا يفوز بالميدالية داعم صغير فقط لأن
+// رميته صادفت نافذة قفاز فعّالة لصفّه
+function pickMvp(battle, side) {
+    const map = side === 'A' ? battle.supportersA : battle.supportersB;
+    if (!map || map.size === 0) return null;
+    let best = null;
+    for (const data of map.values()) {
+        const coins = data?.realCoins || 0;
+        if (coins > 0 && (!best || coins > best.coins)) {
+            best = { name: data?.username || '', coins, img: data?.profileImage || '' };
+        }
+    }
+    return best;
+}
+
+// ✅ يبني حمولة pk:result بمنظور غرفة واحدة بعينها (a = هذي الغرفة، b = الخصم) — كل غرفة
+// تستقبل نسختها الخاصة بنداء مستقل (راجع finalizeActiveBattle بالأسفل)، بنفس شكل DATA الذي
+// يفرضه نموذج التصميم الإلزامي بالضبط. 🛡️ sub/title لا تحمل أي HTML أو اسم غرفة خام هنا عمداً
+// (اسم الغرفة مُدخَل مستخدم) — العميل يبنيها بأمان عبر escapeHtml من حقلي a.name/b.name
+function buildPkResultPayload(battle, mySide, outcome, roomInfo, settlement, durationSeconds) {
+    const oppSide = mySide === 'A' ? 'B' : 'A';
+    const myRoom = roomInfo[mySide];
+    const oppRoom = roomInfo[oppSide];
+    const mySettlement = settlement && settlement.eligible ? settlement[mySide] : null;
+
+    return {
+        battleId: battle._id.toString(),
+        outcome,
+        title: PK_RESULT_TITLES[outcome],
+        a: { id: (mySide === 'A' ? battle.roomA : battle.roomB).toString(), name: myRoom.name, pts: mySide === 'A' ? battle.scoreA : battle.scoreB, img: myRoom.coverImage || null },
+        b: { id: (oppSide === 'A' ? battle.roomA : battle.roomB).toString(), name: oppRoom.name, pts: oppSide === 'A' ? battle.scoreA : battle.scoreB, img: oppRoom.coverImage || null },
+        dur: formatDuration(durationSeconds),
+        gifts: battle.totalGiftUnits,
+        fans: battle.supportersA.size + battle.supportersB.size,
+        combo: `x${battle.highestCombo}`,
+        mvp: pickMvp(battle, mySide),
+        mvpLabel: outcome === 'loss' ? 'صمد حتى النهاية' : 'أكبر داعم',
+        // ✅ null لو لم تُحتسَب نقاط الدوري لهذي المعركة (مكافحة التلاعب رفضتها) — العميل يُخفي
+        // قسم الدوري بأناقة بدل عرض أرقام فارغة أو مزيَّفة
+        league: mySettlement ? {
+            week: formatWeekLabel(settlement.season),
+            rankBefore: mySettlement.rankBefore,
+            rankAfter: mySettlement.rankAfter,
+            lpBefore: mySettlement.lpBefore,
+            lpAfter: mySettlement.lpAfter,
+            record: mySettlement.record,
+            neighbours: mySettlement.neighbours,
+            passedBy: mySettlement.hint ? mySettlement.hint.passedBy : null,
+            gapToOld: mySettlement.hint ? mySettlement.hint.gapToOld : null,
+            headToHead: mySettlement.headToHead
+        } : null
+    };
+}
+
 // ✅ ينهي معركة نشطة (تلقائياً عند انتهاء الوقت، أو دفاعياً لو استُدعيت الحالة بعد انتهاء الوقت فعلياً)
 // 🛡️ النتيجة النهائية تُكشَف حقيقية بالكامل للجميع بلا أي تعتيم ضباب — الضباب يخفي أثناء
 // المعركة فقط (تشويق لحظي)، لا نتيجة الحسم ذاتها. تُسجَّل النتيجة أيضاً بـ"سجل العقد" الدائم
-// لكل غرفة (VoiceRoom.recordBattleOutcome) — هذا ما يمنح نظام التحدي طابع "عقود الشركات
-// الكبرى" (تيك توك/لايكي/بيجو) بدل معركة عابرة بلا أثر، وتُرسَل أعلى 3 داعمين لكل صفّ (معرّف
-// + نقاط فقط — الواجهة تستكمل الاسم/الصورة من قائمة مشاهدي الغرفة المحليّة لديها بالفعل)
+// لكل غرفة (VoiceRoom.recordBattleOutcome، ميزة قديمة منفصلة تماماً عن دوري PK الأسبوعي) ثم
+// تُسوَّى عبر pkLeagueEngine.settleBattle (مكافحة تلاعب + LP + ترتيب/جيران) وتُبثّ كل غرفة
+// حدث pk:result بمنظورها الخاص تماماً كما يتوقّع نموذج التصميم الإلزامي
 async function finalizeActiveBattle(io, battleId) {
     try {
         clearBattleTimer(activeBattleTimers, battleId);
@@ -167,47 +244,31 @@ async function finalizeActiveBattle(io, battleId) {
 
         const outcomeA = winner === 'A' ? 'win' : (winner === 'B' ? 'loss' : 'draw');
         const outcomeB = winner === 'B' ? 'win' : (winner === 'A' ? 'loss' : 'draw');
-        const [recordA, recordB, topSupportersA, topSupportersB] = await Promise.all([
+        const durationSeconds = battle.startedAt && battle.endsAt
+            ? (new Date(battle.endsAt).getTime() - new Date(battle.startedAt).getTime()) / 1000
+            : battle.durationSeconds;
+
+        const [recordA, recordB, roomA, roomB, settlement] = await Promise.all([
             VoiceRoom.recordBattleOutcome(battle.roomA, outcomeA),
             VoiceRoom.recordBattleOutcome(battle.roomB, outcomeB),
-            battle.topSupporters('A'),
-            battle.topSupporters('B')
+            VoiceRoom.findById(battle.roomA).select('name coverImage').lean(),
+            VoiceRoom.findById(battle.roomB).select('name coverImage').lean(),
+            pkLeagueEngine.settleBattle(battle, winner)
         ]);
 
-        // ✅ "دوري PK الأسبوعي" — رتبة كل غرفة بنقاطها الحالية (قبل هذي المعركة) ثم بعد تسجيل
-        // نتيجتها، كي تُظهر نافذة النتيجة مؤثر "تسلّق الترتيب" (طلب صريح) لحظة الفوز تحديداً.
-        // 🛡️ realSupportA/B (غير المُضخَّم بالقفاز) هو ما يُغذّي هذا الترتيب الدائم، لا scoreA/B
-        const weekKey = RoomWeeklyPk.getCurrentWeekKey();
-        const [weeklyBeforeA, weeklyBeforeB] = await Promise.all([
-            RoomWeeklyPk.findOne({ room: battle.roomA, weekKey }).lean(),
-            RoomWeeklyPk.findOne({ room: battle.roomB, weekKey }).lean()
-        ]);
-        const [rankBeforeA, rankBeforeB] = await Promise.all([
-            RoomWeeklyPk.getRank(weekKey, weeklyBeforeA?.score || 0),
-            RoomWeeklyPk.getRank(weekKey, weeklyBeforeB?.score || 0)
-        ]);
-        const [weeklyAfterA, weeklyAfterB] = await Promise.all([
-            RoomWeeklyPk.recordOutcome(battle.roomA, outcomeA, battle.realSupportA, weekKey),
-            RoomWeeklyPk.recordOutcome(battle.roomB, outcomeB, battle.realSupportB, weekKey)
-        ]);
-        const [rankAfterA, rankAfterB] = await Promise.all([
-            RoomWeeklyPk.getRank(weekKey, weeklyAfterA.score),
-            RoomWeeklyPk.getRank(weekKey, weeklyAfterB.score)
-        ]);
-        const weeklyRankA = { before: weeklyBeforeA ? rankBeforeA : null, after: rankAfterA, score: weeklyAfterA.score };
-        const weeklyRankB = { before: weeklyBeforeB ? rankBeforeB : null, after: rankAfterB, score: weeklyAfterB.score };
+        const roomInfo = {
+            A: { name: roomA?.name || '', coverImage: roomA?.coverImage || null },
+            B: { name: roomB?.name || '', coverImage: roomB?.coverImage || null }
+        };
 
-        await emitToBothRooms(io, battle.roomA, battle.roomB, 'pk-battle-ended', {
-            battleId: battle._id.toString(),
-            roomA: battle.roomA.toString(),
-            roomB: battle.roomB.toString(),
-            scoreA: battle.scoreA,
-            scoreB: battle.scoreB,
-            winner,
-            recordA, recordB,
-            topSupportersA, topSupportersB,
-            weeklyRankA, weeklyRankB
-        });
+        // ✅ "سجل العقد" الدائم (ميزة سابقة منفصلة عن دوري PK الأسبوعي) محفوظ أعلى بالفعل عبر
+        // VoiceRoom.recordBattleOutcome ويُقرأ عند بدء كل معركة تالية (pk-battle-started) —
+        // لا مستهلك للبثّ اللحظي فور الحسم، فلا بثّ منفصل له هنا (recordA/recordB محسوبتان
+        // فقط ليستمر توازي الاستدعاءات أعلى، لا لأي استخدام آخر)
+        io.to(`room-chat-${battle.roomA}`).emit('pk:result',
+            buildPkResultPayload(battle, 'A', outcomeA, roomInfo, settlement, durationSeconds));
+        io.to(`room-chat-${battle.roomB}`).emit('pk:result',
+            buildPkResultPayload(battle, 'B', outcomeB, roomInfo, settlement, durationSeconds));
     } catch (error) {
         console.error('[PK BATTLE] Finalize error:', error);
     }

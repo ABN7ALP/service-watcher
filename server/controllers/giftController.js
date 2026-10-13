@@ -19,7 +19,10 @@ const { awardFanPoints } = require('./fanClubController');
 // أو نقاط الدعم الحقيقية أو أي نظام ترتيب خارجي (كدوري PK الأسبوعي) أبداً. sender اختياري: يُستخدم
 // لتحديث "أفضل 3 داعمين لهذا التحدي" — هوية الداعم (username/profileImage) تُجمَّد هنا مباشرة في
 // نفس التحديث الذرّي (بدل انتظار العميل يراها بمكان آخر) كي تظهر لكل الجمهور فوراً لا للمُرسِل فقط
-async function applyGiftToActiveBattle(io, roomId, totalPrice, sender) {
+// ✅ giftUnitsDelta/comboSize لنافذة النتيجة فقط (زينة): giftUnitsDelta = كم قطعة هدية حقيقية
+// وصلت بهذا النداء (تراكمي، تُجمع كل مرة)، comboSize = حجم هذا الكومبو بعينه (×999 مثلاً، لا
+// يُجمَع بل يُسجَّل الأعلى فقط عبر $max) — راجع RoomBattle.totalGiftUnits/highestCombo
+async function applyGiftToActiveBattle(io, roomId, totalPrice, sender, giftUnitsDelta = 1, comboSize = 1) {
     const battle = await RoomBattle.findOne({
         $or: [{ roomA: roomId }, { roomB: roomId }],
         status: 'active'
@@ -32,12 +35,16 @@ async function applyGiftToActiveBattle(io, roomId, totalPrice, sender) {
     const scoreDelta = totalPrice * multiplier;
 
     const inc = isRoomA
-        ? { scoreA: scoreDelta, realSupportA: totalPrice }
-        : { scoreB: scoreDelta, realSupportB: totalPrice };
-    const update = { $inc: inc };
+        ? { scoreA: scoreDelta, realSupportA: totalPrice, totalGiftUnits: giftUnitsDelta }
+        : { scoreB: scoreDelta, realSupportB: totalPrice, totalGiftUnits: giftUnitsDelta };
+    const update = { $inc: inc, $max: { highestCombo: comboSize } };
     if (sender) {
         const uid = sender._id.toString();
         inc[`supporters${side}.${uid}.points`] = scoreDelta;
+        // ✅ 🛡️ نسخة غير مُضخَّمة بالقفاز من مساهمة هذا الداعم بعينه — نفس فلسفة realSupportA/B
+        // تماماً لكن لكل داعم على حدة، كي يُحدَّد "أكبر داعم" بدوري PK (pk:result.mvp) بالكوينز
+        // الحقيقية التي أرسلها لا بنقاط الشريط المحفَّزة لحظياً (راجع pickMvp بـsocketService.js)
+        inc[`supporters${side}.${uid}.realCoins`] = totalPrice;
         update.$set = {
             [`supporters${side}.${uid}.username`]: sender.username,
             [`supporters${side}.${uid}.profileImage`]: sender.profileImage
@@ -285,7 +292,7 @@ exports.sendGift = async (req, res) => {
         if (cleanRoomId) {
             const ioForRoom = req.app.get('socketio');
             try {
-                await applyGiftToActiveBattle(ioForRoom, cleanRoomId, totalPrice, sender);
+                await applyGiftToActiveBattle(ioForRoom, cleanRoomId, totalPrice, sender, qty, qty);
             } catch (battleError) {
                 console.error('[PK BATTLE] Failed to apply gift score:', battleError);
             }
@@ -527,7 +534,7 @@ async function processGiftCombo({ io, senderId, giftId, quantity, taps = 1, reci
 
     if (cleanRoomId) {
         try {
-            await applyGiftToActiveBattle(io, cleanRoomId, totalCost, sender);
+            await applyGiftToActiveBattle(io, cleanRoomId, totalCost, sender, effectiveQty * validReceivers.length, effectiveQty);
         } catch (battleError) {
             console.error('[PK BATTLE] Failed to apply gift score:', battleError);
         }

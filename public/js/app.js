@@ -2818,63 +2818,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
     }
 
-    // ✅ "دوري PK الأسبوعي" — قسم مستقل بهويته البصرية الخاصة (شارات سداسية مائلة تماماً كشريط
-    // المعركة نفسه، لا منصّة التتويج الدائرية المُستخدَمة بترتيب الغرف العام) — تصنيف مدروس على
-    // (فوز×500 + دعم حقيقي)، يُبرز تكوين الدوري كنظام منفصل بذاته لا مجرد تبويب إضافي بالمظهر
-    function renderPkLeagueBody(body, rooms) {
-        const podium = rooms.slice(0, 3);
-        const rest = rooms.slice(3);
-        const podiumCard = (r, rank) => r ? `
-            <div class="pk-league-podium-card pk-league-podium-rank-${rank}" data-room-id="${r.id}">
-                <div class="pk-league-podium-crown">${rank === 1 ? '👑' : rank === 2 ? '🥈' : '🥉'}</div>
-                <img src="${r.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="pk-league-podium-cover">
-                <p class="pk-league-podium-name">${escapeHtml(r.name)}</p>
-                <div class="pk-league-podium-record">
-                    <span class="pk-record-w">${r.wins}ف</span><span class="pk-record-sep">-</span><span class="pk-record-l">${r.losses}خ</span>
-                </div>
-                <div class="pk-league-podium-score"><i class="fas fa-bolt"></i> ${r.score.toLocaleString('en-US')}</div>
-                <div class="pk-league-podium-pedestal">${rank}</div>
-            </div>
-        ` : '<div class="pk-league-podium-card pk-league-podium-empty"></div>';
-
-        body.innerHTML = `
-            <div class="pk-league-podium-row">
-                ${podiumCard(podium[1], 2)}
-                ${podiumCard(podium[0], 1)}
-                ${podiumCard(podium[2], 3)}
-            </div>
-            ${rest.length > 0 ? `
-                <div class="pk-league-list">
-                    ${rest.map((r, i) => `
-                        <div class="pk-league-list-row" data-room-id="${r.id}">
-                            <span class="pk-league-list-rank">${i + 4}</span>
-                            <img src="${r.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="pk-league-list-cover">
-                            <div class="min-w-0 flex-1">
-                                <p class="pk-league-list-name">${escapeHtml(r.name)}</p>
-                                <p class="pk-league-list-record"><span class="pk-record-w">${r.wins}ف</span> <span class="pk-record-l">${r.losses}خ</span> <span class="pk-record-d">${r.draws}ت</span></p>
-                            </div>
-                            <span class="pk-league-list-score"><i class="fas fa-bolt"></i> ${r.score.toLocaleString('en-US')}</span>
-                        </div>
-                    `).join('')}
-                </div>
-            ` : ''}
-        `;
-
-        body.querySelectorAll('[data-room-id]').forEach(el => {
-            el.addEventListener('click', () => {
-                const roomId = el.dataset.roomId;
-                const room = rooms.find(r => r.id === roomId);
-                if (!room) return;
-                if (currentVoiceRoomId && currentVoiceRoomId !== room.id) {
-                    leaveRoomChatUI();
-                    exitFullscreenRoomMode();
-                    teardownAllVoicePeers();
-                }
-                enterVoiceRoom({ id: room.id, name: room.name, coverImage: room.coverImage, isOfficial: false, isPrivate: false });
-            });
-        });
-    }
-
     // ✅ شاشة "انتهى البث المباشر" — تظهر لكل من كان بالغرفة لحظة إنهاء المضيف لبثّه. صورة
     // المضيف + زر متابعة خاص بالغرفة + مدة البث، وانتقال تلقائي خلال ثوانٍ قليلة لغرفة بث
     // أخرى عشوائية (أو رجوع لقائمة التصفح لو ما في غرف بث أخرى حالياً)
@@ -3422,6 +3365,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             if (result.activeBattle) {
                 currentPkBattle = pkBuildBattleState(result.activeBattle);
                 renderPkBar();
+                preloadPkResultAssets(); // ✅ معركة كانت فعلاً قد بدأت قبل انضمامي/إعادة تحميلي — نفس ضمان التحميل المسبق
             } else {
                 removePkBar();
             }
@@ -4323,145 +4267,427 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         document.getElementById('pk-item-store-modal')?.remove();
     }
 
-    // ✅ نافذة نتيجة "العقد" — تظهر لكل من الغرفتين عند الحسم، بصورة بطولة/خسارة + مؤثر
-    // ضباب ودخان متحرك (طلب صريح)، وسجل العقد المُحدَّث لكل غرفة، وأفضل داعمي كل صفّ
-    // ✅ عدّاد ترتيب "دوري PK الأسبوعي" بنفس منحنى تسهيل عدّاد النقاط — يُستخدم لمؤثر "تسلّق
-    // الترتيب" (طلب صريح: من المرتبة 290 إلى 190 بحركة واضحة، لا قفزة مباشرة)
-    function pkAnimateRank(el, from, to, duration = 900) {
-        if (!el) return;
-        const start = performance.now();
-        const diff = to - from;
-        function tick(now) {
-            const progress = Math.min(1, (now - start) / duration);
-            const eased = 1 - Math.pow(1 - progress, 3);
-            el.textContent = `#${Math.round(from + diff * eased)}`;
-            if (progress < 1) requestAnimationFrame(tick);
-            else el.textContent = `#${to}`;
-        }
-        requestAnimationFrame(tick);
+    // ✅ نافذة نتيجة دوري PK الأسبوعي — منفَّذة حرفياً من نموذج التصميم الإلزامي
+    // (docs/design/pk-result-window-prototype.html): الإطار الحقيقي (فوز أو خسارة بإعادة
+    // تلوين نفس الإطار بـfilter، لا إطار منفصل) يغطي البطاقة بالكامل *فوق* المحتوى، وصورة
+    // أكبر داعم تظهر عبر فتحته الدائرية المدمجة (z-index أسفل الإطار، لا صندوق منفصل)، وحركة
+    // سلّم/عدّاد رتبة بنفس خوارزمية/توقيتات النموذج تماماً. تُستقبَل من حدث pk:result بمنظور
+    // غرفتي دائماً (a=غرفتي، b=الخصم)، ولكل غرفة في المعركة نسختها الخاصة من الخادم.
+    // 🛡️ لا شيء يُحسَب هنا من بيانات المعركة نفسها (كل رقم من الخادم) — المبنيّ محلياً فقط نص
+    // ثابت (تسمية الزر) وربط HTML أسماء الغرف بأمان عبر escapeHtml (قرار أمني متعمَّد: تجنّب
+    // innerHTML خام لاسم غرفة قد يحمل محتوى مستخدم، خلافاً لحرفية النموذج الذي يُضمِّن HTML خام
+    // بحقل sub لأن بياناته التجريبية ثابتة فقط)
+    function pkResultSubHTML(d) {
+        const verb = d.outcome === 'win' ? 'هزمت' : (d.outcome === 'loss' ? 'سقطت أمام' : 'تعادلت مع');
+        return `<b>${escapeHtml(d.a.name)}</b> ${verb} ${escapeHtml(d.b.name)}`;
     }
 
-    // ✅ شريحة "دوري PK الأسبوعي" بنافذة النتيجة — جديد بالدوري، تسلّق للأعلى، أو تراجع لو خسرت
-    // ترتيبها (يُعزّز "الشعور الحقيقي بالخسارة" المطلوب — ليس فقط لحظة الفوز)
-    function pkRankClimbHTML(weeklyRank) {
-        if (!weeklyRank || weeklyRank.after == null) return '';
-        if (weeklyRank.before == null) {
-            return `
-                <div class="pk-rank-climb pk-rank-climb-new">
-                    <i class="fas fa-star"></i>
-                    <span>دخلت دوري PK الأسبوعي بالمرتبة <strong>#${weeklyRank.after}</strong></span>
-                </div>
-            `;
-        }
-        if (weeklyRank.before === weeklyRank.after) {
-            return `
-                <div class="pk-rank-climb">
-                    <i class="fas fa-ranking-star"></i>
-                    <span>ترتيبك بدوري PK الأسبوعي: <strong>#${weeklyRank.after}</strong></span>
-                </div>
-            `;
-        }
-        const improved = weeklyRank.after < weeklyRank.before;
+    function pkLpLineHTML(lg) {
+        const delta = lg.lpAfter - lg.lpBefore;
+        const sign = delta >= 0 ? '+' : '';
+        return `<span>نقاط الدوري <b>${lg.lpAfter.toLocaleString('en-US')}</b> (${sign}${delta.toLocaleString('en-US')})</span><span>${lg.record.wins} فوز · ${lg.record.losses} خسارة</span>`;
+    }
+
+    function pkHintText(d) {
+        if (d.outcome !== 'loss' || !d.league || d.league.passedBy == null) return '';
+        return `تجاوزتكم ${d.league.passedBy} غرفة · ينقصكم ${d.league.gapToOld.toLocaleString('en-US')} نقطة لـ #${d.league.rankBefore}`;
+    }
+
+    function pkMvpCapHTML(d) {
+        return `<b>${escapeHtml(d.mvpLabel)}</b> · ${escapeHtml(d.mvp.name)}<br><small>🪙 ${d.mvp.coins.toLocaleString('en-US')} خلال التحدي</small>`;
+    }
+
+    function pkLeagueSectionHTML(d) {
+        const lg = d.league;
+        const initialRank = lg.rankBefore ?? lg.rankAfter; // ✅ دخول جديد بلا رتبة سابقة: لا عدّاد، الرقم النهائي مباشرة
         return `
-            <div class="pk-rank-climb ${improved ? 'pk-rank-climb-up' : 'pk-rank-climb-down'}">
-                <i class="fas fa-${improved ? 'arrow-trend-up' : 'arrow-trend-down'}"></i>
-                <span>دوري PK الأسبوعي:</span>
-                <span class="pk-rank-climb-num" data-rank-climb data-from="${weeklyRank.before}" data-to="${weeklyRank.after}">#${weeklyRank.before}</span>
+            <div class="league">
+                <div class="league__top"><span>🏆 <b>الدوري الأسبوعي</b></span><span>${escapeHtml(lg.week)}</span></div>
+                <div class="rank"><span class="rank__old" data-pk="oldRank">#${initialRank}</span><span class="rank__now" data-pk="rank">#${initialRank}</span><span class="delta" data-pk="delta"></span></div>
+                <div class="lp">${pkLpLineHTML(lg)}</div>
+                <div class="hint">${pkHintText(d)}</div>
+                <div class="ladder" data-pk="ladder"></div>
             </div>
         `;
     }
 
-    // ✅ نافذة نتيجة "العقد" — أعيدت هيكلتها بالكامل: الفوز بإطار البطل الرسمي (مُستبدَل بدل
-    // أيقونة الكأس البسيطة) ومُدمَج فيه دائرياً صورة أكثر داعم أرسل هدايا هذا التحدي، فوق خلفية
-    // قصف ذهبي شفافة؛ الخسارة بأيقونة حزينة بدل الدرع مع طابع أكثر قتامة وجدّية؛ التعادل بإطار
-    // متزن مستقل. مؤثر "تسلّق الترتيب" بدوري PK الأسبوعي يظهر لأي تغيّر رتبة (صعوداً أو نزولاً)
-    // 🐛 إعادة هيكلة كاملة بعد بلاغين: (1) صورة الداعم كانت كبيرة ومُقحَمة فوق مستطيل الإطار
-    // الفارغ بدل أن تكون صغيرة داخل الميدالية الدائرية المدمجة بأسفل الإطار نفسه فقط — السبب
-    // الجذري: الحاوية كانت مربّعة (150×150) بينما صورة الإطار الحقيقية طويلة عمودياً (نسبة
-    // 680×1050)، فـobject-fit:contain صغّر الإطار داخل الحاوية تاركاً فراغاً جانبياً، وموضع
-    // الصورة المئوي (محسوب على أساس الحاوية المربّعة) لم يعد يطابق موضع الميدالية الفعلي
-    // بالإطار المصغَّر. الحل: الحاوية الآن بنفس نسبة الإطار تماماً (aspect-ratio) فتُطابق الصورة
-    // أبعادها دون أي تصغير/تمدّد، وموضع الميدالية والنص محسوبان بدقة بالنسبة المئوية الحقيقية
-    // لبكسلات الإطار نفسه (قيست مباشرة من الملف). النص (العنوان/التقديم) انتقل الآن ليكون
-    // *داخل* مستطيل الإطار العلوي بدل أسفله — هذا ما يجعل هذي الصورة فعلاً "إطار النافذة" لا
-    // مجرد صندوق صغير أسفلها. (2) أيقونة الخسارة كانت تظهر لصق الحافة اليمنى بدل المنتصف لأن
-    // الحاوية المُحيطة بها لم تكن تتوسّط فعلياً (margin:auto على عنصر block بلا عرض محدَّد لا
-    // يفعل شيئاً) — أُصلحت الآن بتوسيط flex صريح لا يعتمد على خاصية موروثة قد تُكسَر بسهولة
-    function showPkResultModal({ roomA, roomB, scoreA, scoreB, winner, recordA, recordB, topSupportersA, topSupportersB, weeklyRankA, weeklyRankB }) {
-        const isMineA = currentVoiceRoomId === roomA;
-        const myScore = isMineA ? scoreA : scoreB;
-        const otherScore = isMineA ? scoreB : scoreA;
-        const myRecord = isMineA ? recordA : recordB;
-        const iWon = (winner === 'A' && isMineA) || (winner === 'B' && !isMineA);
-        const isDraw = winner === 'draw';
-        const mySupporters = isMineA ? topSupportersA : topSupportersB;
-        const myWeeklyRank = isMineA ? weeklyRankA : weeklyRankB;
-        const topSupporter = mySupporters && mySupporters[0];
+    function pkPrefersReducedMotion() {
+        try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+    }
 
-        const scoreLineHTML = `<p class="pk-result-score">${myScore.toLocaleString('en-US')} : ${otherScore.toLocaleString('en-US')}</p>`;
+    function showPkResultWindow(d) {
+        document.getElementById('pk-result-overlay')?.remove();
+        const isWin = d.outcome === 'win';
+        const isLose = d.outcome === 'loss';
+        const heroSrc = isWin ? PK_RESULT_ASSET_URLS.trophy : (isLose ? PK_RESULT_ASSET_URLS.loseIcon : null);
+        const defaultAvatar = '/images/default-avatar.png';
 
-        let heroHTML;
-        let outerTitleHTML = ''; // ✅ تُستخدَم فقط للخسارة/التعادل (العنوان خارج الإطار بهذي الحالتين)
-        if (isDraw) {
-            heroHTML = `<div class="pk-result-hero pk-result-hero-draw"><div class="pk-result-draw-frame"><i class="fas fa-scale-balanced"></i></div></div>`;
-            outerTitleHTML = `
-                <p class="pk-result-title">تعادل!</p>
-                <p class="pk-result-subtitle">عقد متكافئ — لا فائز هذي المرة</p>
-                ${scoreLineHTML}
-            `;
-        } else if (iWon) {
-            const winnerAvatar = topSupporter?.profileImage || '/images/default-avatar.png';
-            const supporterCaption = topSupporter?.username ? `بقيادة دعم <strong>${escapeHtml(topSupporter.username)}</strong>` : '';
-            heroHTML = `
-                <div class="pk-result-hero pk-result-hero-win">
-                    <img class="pk-result-winner-frame" src="https://res.cloudinary.com/dntlt5xry/image/upload/v1791839333/pk-winner-frame-animated-680.webp">
-                    <div class="pk-result-winner-text">
-                        <p class="pk-result-title">فوز غرفتك! 🎉</p>
-                        ${supporterCaption ? `<p class="pk-result-subtitle">${supporterCaption}</p>` : ''}
-                        ${scoreLineHTML}
+        const overlay = document.createElement('div');
+        overlay.id = 'pk-result-overlay';
+        overlay.className = 'pk-result-overlay';
+        overlay.innerHTML = `
+            <div class="stage ${isLose ? 'lose' : ''}">
+                <div class="pk">
+                    <div class="pk__body">
+                        <div class="pk__confetti"></div><div class="pk__rain"></div>
+                        <div class="pk__content">
+                            <div class="head shake"><h1>${escapeHtml(d.title)}</h1><p>${pkResultSubHTML(d)}</p></div>
+                            <div class="score">
+                                <div class="team team--a"><img src="${d.a.img || defaultAvatar}"><div><div class="nm">${escapeHtml(d.a.name)}</div><div class="pt">${d.a.pts.toLocaleString('en-US')}</div></div></div>
+                                <div class="vs">VS</div>
+                                <div class="team team--b"><img src="${d.b.img || defaultAvatar}"><div><div class="nm">${escapeHtml(d.b.name)}</div><div class="pt">${d.b.pts.toLocaleString('en-US')}</div></div></div>
+                                <div class="bar"><i data-pk="bar"></i></div>
+                            </div>
+                            <div class="stats">
+                                <div class="stat"><b>${escapeHtml(d.dur)}</b><span>المدة</span></div>
+                                <div class="stat"><b>${d.gifts.toLocaleString('en-US')}</b><span>هدية</span></div>
+                                <div class="stat"><b>${d.fans}</b><span>داعم</span></div>
+                                <div class="stat"><b>${escapeHtml(d.combo)}</b><span>أعلى كومبو</span></div>
+                            </div>
+                            ${d.league ? pkLeagueSectionHTML(d) : ''}
+                        </div>
                     </div>
-                    <img class="pk-result-winner-avatar" src="${winnerAvatar}">
+                    <img class="pk__frame" src="${PK_RESULT_ASSET_URLS.winnerFrame}" alt="">
+                    ${heroSrc ? `<img class="pk__hero" src="${heroSrc}" alt="">` : ''}
+                    ${d.mvp ? `<div class="mvp"><img src="${d.mvp.img || defaultAvatar}"></div><div class="mvp-cap">${pkMvpCapHTML(d)}</div>` : ''}
                 </div>
-            `;
-        } else {
-            heroHTML = `
-                <div class="pk-result-hero pk-result-hero-lose">
-                    <img class="pk-result-lose-icon" src="https://res.cloudinary.com/dntlt5xry/image/upload/v1791841726/lose-icon-animated-512.webp">
+                <div class="actions">
+                    ${isWin ? '<button class="btn btn--gold" data-pk-action="standings">عرض ترتيب الدوري</button>' : ''}
+                    ${isLose ? '<button class="btn btn--red" data-pk-action="revenge">⚔️ اطلب ثأراً</button>' : ''}
+                    <button class="btn btn--ghost" data-pk-action="close">إغلاق</button>
                 </div>
-            `;
-            outerTitleHTML = `
-                <p class="pk-result-title">خسرت غرفتك هذي الجولة</p>
-                <p class="pk-result-subtitle">العقد القادم فرصتك للعودة بقوة</p>
-                ${scoreLineHTML}
-            `;
-        }
-
-        const modal = document.createElement('div');
-        modal.id = 'pk-result-modal';
-        modal.className = 'fixed inset-0 bg-black/75 flex items-center justify-center z-[60] p-4';
-        modal.innerHTML = `
-            <div class="pk-result-sheet w-full max-w-xs ${isDraw ? 'pk-result-draw' : (iWon ? 'pk-result-win' : 'pk-result-lose')}">
-                ${iWon && !isDraw ? '<img class="pk-result-confetti-bg" src="https://res.cloudinary.com/dntlt5xry/image/upload/v1791840194/confetti-gold-1080.webp" aria-hidden="true">' : ''}
-                ${!iWon ? '<div class="pk-result-fog-layer"></div><div class="pk-result-fog-layer pk-result-fog-layer-2"></div>' : ''}
-                ${heroHTML}
-                ${outerTitleHTML}
-                ${pkRankClimbHTML(myWeeklyRank)}
-                ${myRecord ? `<div class="pk-result-record-label">سجل العقد المُحدَّث</div>${pkRecordChipHTML(myRecord)}` : ''}
-                ${mySupporters && mySupporters.length ? `
-                    <div class="pk-result-supporters-label"><i class="fas fa-ranking-star"></i> أفضل داعمي الجولة</div>
-                    <div class="pk-result-supporters-row">${pkRenderSupportersCol(mySupporters)}</div>
-                ` : ''}
-                <button id="close-pk-result" class="pk-result-close-btn">إغلاق</button>
             </div>
         `;
-        document.body.appendChild(modal);
-        modal.querySelector('#close-pk-result').addEventListener('click', () => modal.remove());
-        modal.addEventListener('click', (e) => { if (e.target.id === 'pk-result-modal') modal.remove(); });
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        overlay.querySelector('[data-pk-action="close"]').addEventListener('click', () => overlay.remove());
+        overlay.querySelector('[data-pk-action="standings"]')?.addEventListener('click', () => { overlay.remove(); openPkLeagueView(); });
+        overlay.querySelector('[data-pk-action="revenge"]')?.addEventListener('click', () => { overlay.remove(); requestPkRevenge(d); });
 
-        const rankEl = modal.querySelector('[data-rank-climb]');
-        if (rankEl) {
-            setTimeout(() => pkAnimateRank(rankEl, parseInt(rankEl.dataset.from), parseInt(rankEl.dataset.to)), 450);
+        const confettiEl = overlay.querySelector('.pk__confetti');
+        if (confettiEl) confettiEl.style.backgroundImage = `url(${PK_RESULT_ASSET_URLS.confetti})`;
+        // ✅ طلب صريح: canvas-confetti بألوان ذهبية بالفوز فقط — تُلغى مع تفضيل تقليل الحركة
+        if (isWin && !pkPrefersReducedMotion()) {
+            fireConfettiBurst(['#ffd45a', '#fff3c4', '#f0a81c', '#fff7e0']);
         }
+
+        requestAnimationFrame(() => {
+            const barEl = overlay.querySelector('[data-pk="bar"]');
+            if (barEl) {
+                const total = d.a.pts + d.b.pts;
+                barEl.style.width = (total > 0 ? (d.a.pts / total * 100) : 50) + '%';
+            }
+        });
+
+        if (d.league) pkAnimateResultLadder(overlay, d);
+    }
+
+    // ✅ يبني حركة سلّم الترتيب + عدّاد الرتبة + شارة الفرق — نفس الخوارزمية/التوقيتات حرفياً
+    // من النموذج الإلزامي (راجع render() بـdocs/design/pk-result-window-prototype.html).
+    // "تحسّنت" (improved) تُحدَّد بنفس معيار الخادم بالضبط (pkLeagueEngine.getNeighbours):
+    // رتبة فارغة = دخول جديد، أو رقم رتبة أصغر فعلياً — فيستحيل انحراف حركة السلّم عن شكل
+    // مصفوفة الجيران (3 بلا صفّي، أو 2 + صفّي الاصطناعي) المُستلَمة من الخادم
+    function pkAnimateResultLadder(overlay, d) {
+        const lg = d.league;
+        const leagueEl = overlay.querySelector('.league');
+        const ladder = overlay.querySelector('[data-pk="ladder"]');
+        if (!ladder) return;
+        const improved = lg.rankBefore == null || lg.rankAfter < lg.rankBefore;
+        const H = 29;
+        const rows = [];
+        const defaultAvatar = '/images/default-avatar.png';
+        const mk = (r, n, s, img, isMe) => {
+            const el = document.createElement('div');
+            el.className = 'row' + (isMe ? ' me' : '');
+            el.innerHTML = `<span class="r">#${r}</span><img src="${img || defaultAvatar}"><span class="n">${escapeHtml(n)}</span><span class="s">${s.toLocaleString('en-US')}</span>`;
+            ladder.appendChild(el);
+            return el;
+        };
+        const myInitialRank = lg.rankBefore ?? lg.rankAfter;
+
+        if (improved) {
+            lg.neighbours.forEach((x, i) => {
+                const el = mk(x.r, x.n, x.s, x.img);
+                el.style.transform = `translateY(${i * H}px)`;
+                rows.push([el, i, x]);
+            });
+            const me = mk(myInitialRank, d.a.name, lg.lpAfter, d.a.img, true);
+            me.style.transform = `translateY(${3 * H + 40}px)`;
+            setTimeout(() => {
+                rows.forEach(([el, i, x]) => {
+                    if (i >= 1) {
+                        el.style.transform = `translateY(${(i + 1) * H}px)`;
+                        el.querySelector('.r').textContent = '#' + (x.r + 1);
+                    }
+                });
+                me.style.transform = `translateY(${1 * H}px)`;
+            }, 30);
+            setTimeout(() => { me.querySelector('.r').textContent = '#' + lg.rankAfter; }, 2400);
+        } else {
+            const me = mk(myInitialRank, d.a.name, lg.lpAfter, d.a.img, true);
+            me.style.transform = 'translateY(0)';
+            lg.neighbours.filter(x => !x.me).forEach((x, i) => {
+                const el = mk(x.r, x.n, x.s, x.img);
+                el.style.transform = `translateY(${(i + 1) * H}px)`;
+                rows.push([el, i]);
+            });
+            setTimeout(() => {
+                rows.forEach(([el, i]) => { el.style.transform = `translateY(${i * H}px)`; });
+                me.style.transform = `translateY(${2 * H}px)`;
+            }, 30);
+            setTimeout(() => { me.querySelector('.r').textContent = '#' + lg.rankAfter; }, 2400);
+        }
+
+        if (lg.rankBefore == null) return; // ✅ دخول جديد — لا رتبة سابقة لعدّاد "من-إلى"، الرقم الثابت بالأعلى صحيح مسبقاً
+
+        const rankEl = overlay.querySelector('[data-pk="rank"]');
+        const deltaEl = overlay.querySelector('[data-pk="delta"]');
+        if (deltaEl) {
+            const diff = lg.rankBefore - lg.rankAfter;
+            deltaEl.className = 'delta ' + (diff > 0 ? 'up' : 'down');
+            deltaEl.textContent = (diff > 0 ? '▲ ' : '▼ ') + Math.abs(diff);
+        }
+        if (pkPrefersReducedMotion()) {
+            if (rankEl) rankEl.textContent = '#' + lg.rankAfter;
+            leagueEl?.classList.add('done');
+            return;
+        }
+        if (rankEl) {
+            const t0 = performance.now() + 1200, T = 1400;
+            const tick = (now) => {
+                const p = Math.min(1, Math.max(0, (now - t0) / T));
+                const eased = 1 - Math.pow(1 - p, 3);
+                rankEl.textContent = '#' + Math.round(lg.rankBefore + (lg.rankAfter - lg.rankBefore) * eased);
+                if (p < 1) requestAnimationFrame(tick);
+                else leagueEl?.classList.add('done');
+            };
+            requestAnimationFrame(tick);
+        }
+        setTimeout(() => leagueEl?.classList.add('done'), 2600);
+    }
+
+    // ✅ "اطلب ثأراً" — يرسل دعوة تحدٍّ جديدة للغرفة الفائزة عبر نظام دعوات PK الموجود بالضبط
+    // (نفس socket.emit('pk-challenge-room', ...) الذي تستخدمه showPkChallengeModal)، فيحترم
+    // كل قيوده تلقائياً (لا تحدٍّ مزدوج، رد مضيف الغرفة الأخرى، مهلة 30 ثانية...) بلا مسار موازٍ
+    function requestPkRevenge(d) {
+        if (!currentVoiceRoomId || !d.b?.id) return;
+        socket.emit('pk-challenge-room', { roomId: currentVoiceRoomId, targetRoomId: d.b.id, durationSeconds: 180 });
+        showNotification(`تم إرسال طلب الثأر لغرفة "${d.b.name}" — بانتظار الرد`, 'info');
+    }
+
+    // =====================================================
+    // ✅ صفحة "دوري PK الأسبوعي" — منصّة أفضل 3 + قائمة بتحميل تدريجي (cursor) + سطر غرفتي
+    // مثبّت دائماً بالأسفل + عدّاد تنازلي لنهاية الأسبوع + تبويب "الأسبوع الماضي". بنفس اللغة
+    // البصرية الذهبية المستخدمة بترتيب الغرف العام — إعادة استخدام مباشرة لصفوف/منصّة
+    // .rankings-podium-*/.rankings-list-* (لا تكرار CSS مشابه بلا داعٍ). تُفتح من زر "عرض
+    // ترتيب الدوري" بنافذة النتيجة. 🛡️ لا شيء يُحسَب هنا من بيانات الترتيب (كل رقم من الخادم)
+    // =====================================================
+    let pkLeagueState = { week: 'current', cursor: null, loadingMore: false };
+    let pkLeagueCountdownTimer = null;
+
+    function openPkLeagueView() {
+        if (currentVoiceRoomId) { leaveRoomChatUI(); exitFullscreenRoomMode(); teardownAllVoicePeers(); }
+        navItems.forEach(i => i.classList.remove('bg-purple-600', 'text-white'));
+        document.querySelectorAll('.mobile-nav-item').forEach(i => i.classList.remove('active'));
+        renderPkLeagueView('current');
+    }
+
+    function renderPkLeagueView(week) {
+        clearInterval(pkLeagueCountdownTimer);
+        pkLeagueState = { week, cursor: null, loadingMore: false };
+        mainContent.innerHTML = `
+            <div class="flex flex-col h-full">
+                <div class="flex items-center gap-2 mb-2">
+                    <button id="pk-league-back" class="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-gray-300"><i class="fas fa-arrow-right"></i></button>
+                    <h2 class="text-lg font-bold flex items-center gap-2 flex-1"><i class="fas fa-trophy text-yellow-400"></i> دوري PK الأسبوعي</h2>
+                </div>
+                <div id="pk-league-countdown" class="text-center text-[11px] text-yellow-400/80 mb-2"></div>
+                <div class="flex gap-2 mb-3">
+                    <button id="pk-league-tab-current" class="flex-1 py-1.5 rounded-lg text-xs font-bold ${week === 'current' ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300'}">هذا الأسبوع</button>
+                    <button id="pk-league-tab-previous" class="flex-1 py-1.5 rounded-lg text-xs font-bold ${week === 'previous' ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300'}">الأسبوع الماضي</button>
+                </div>
+                <div id="pk-league-body" class="flex-grow overflow-y-auto space-y-2 pr-1 pb-2">
+                    <div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-3xl"></i></div>
+                </div>
+                <div id="pk-league-my-row" class="pt-2"></div>
+            </div>
+        `;
+        document.getElementById('pk-league-back').addEventListener('click', () => switchToView('arena'));
+        document.getElementById('pk-league-tab-current').addEventListener('click', () => { if (pkLeagueState.week !== 'current') renderPkLeagueView('current'); });
+        document.getElementById('pk-league-tab-previous').addEventListener('click', () => { if (pkLeagueState.week !== 'previous') renderPkLeagueView('previous'); });
+        loadPkLeagueStandings();
+    }
+
+    async function loadPkLeagueStandings() {
+        const body = document.getElementById('pk-league-body');
+        const myRowEl = document.getElementById('pk-league-my-row');
+        try {
+            const response = await fetch(`/api/pk-league/standings?week=${pkLeagueState.week}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            if (!response.ok || result.status !== 'success') throw new Error(result.message || 'فشل التحميل');
+
+            pkLeagueState.cursor = result.nextCursor;
+            pkLeagueUpdateCountdown(result.season);
+
+            if (!result.season || (result.podium.length === 0 && result.rows.length === 0)) {
+                body.innerHTML = `<div class="text-center text-gray-400 py-16"><i class="fas fa-trophy text-4xl mb-4"></i><p>${pkLeagueState.week === 'previous' ? 'لا يوجد أرشيف لأسبوع ماضٍ بعد' : 'لا توجد نتائج معارك هذا الأسبوع بعد — كن أول من يتصدّر الدوري! ⚔️'}</p></div>`;
+                myRowEl.innerHTML = '';
+                return;
+            }
+
+            body.innerHTML = pkLeaguePodiumHTML(result.podium) +
+                `<div id="pk-league-list">${result.rows.map(r => pkLeagueRowHTML(r, false)).join('')}</div>` +
+                (result.nextCursor ? `<button id="pk-league-load-more" class="w-full py-2.5 rounded-xl text-xs font-bold bg-white/5 text-gray-300 mt-2">تحميل المزيد</button>` : '');
+            pkLeagueWireRowClicks(body);
+            document.getElementById('pk-league-load-more')?.addEventListener('click', loadPkLeagueMore);
+
+            myRowEl.innerHTML = result.myRoom ? `<div class="text-[10px] text-gray-500 mb-1 px-1">غرفتي</div>${pkLeagueRowHTML(result.myRoom, true)}` : '';
+            pkLeagueWireRowClicks(myRowEl);
+        } catch (error) {
+            console.error('[PK LEAGUE] Load error:', error);
+            body.innerHTML = `
+                <div class="text-center text-red-400 py-16">
+                    <p class="mb-3">تعذر تحميل ترتيب الدوري</p>
+                    <button id="pk-league-retry" class="px-4 py-1.5 rounded-lg bg-white/10 text-white text-xs">إعادة المحاولة</button>
+                </div>
+            `;
+            document.getElementById('pk-league-retry').addEventListener('click', loadPkLeagueStandings);
+        }
+    }
+
+    async function loadPkLeagueMore() {
+        if (pkLeagueState.loadingMore || !pkLeagueState.cursor) return;
+        pkLeagueState.loadingMore = true;
+        const btn = document.getElementById('pk-league-load-more');
+        if (btn) { btn.disabled = true; btn.textContent = 'جارٍ التحميل...'; }
+        try {
+            const response = await fetch(`/api/pk-league/standings?week=${pkLeagueState.week}&cursor=${encodeURIComponent(pkLeagueState.cursor)}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            if (!response.ok || result.status !== 'success') throw new Error('load failed');
+            pkLeagueState.cursor = result.nextCursor;
+            const list = document.getElementById('pk-league-list');
+            if (list) list.insertAdjacentHTML('beforeend', result.rows.map(r => pkLeagueRowHTML(r, false)).join(''));
+            pkLeagueWireRowClicks(list);
+            if (btn) { if (result.nextCursor) { btn.disabled = false; btn.textContent = 'تحميل المزيد'; } else btn.remove(); }
+        } catch (error) {
+            if (btn) { btn.disabled = false; btn.textContent = 'فشل التحميل — أعد المحاولة'; }
+        } finally {
+            pkLeagueState.loadingMore = false;
+        }
+    }
+
+    function pkLeaguePodiumHTML(podium) {
+        const defaultCover = 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+        const card = (r, rank) => r && r.room ? `
+            <div class="rankings-podium-card rankings-podium-rank-${rank}" data-pk-room-id="${r.room.id}">
+                <div class="rankings-podium-crown">${rank === 1 ? '👑' : rank === 2 ? '🥈' : '🥉'}</div>
+                <img src="${r.room.coverImage || defaultCover}" class="rankings-podium-cover">
+                <p class="rankings-podium-name">${escapeHtml(r.room.name)}</p>
+                <div class="rankings-podium-stats"><span><i class="fas fa-bolt"></i> ${r.lp.toLocaleString('en-US')}</span></div>
+                <div class="rankings-podium-pedestal">${rank}</div>
+            </div>
+        ` : '<div class="rankings-podium-card rankings-podium-empty"></div>';
+        return `<div class="rankings-podium-row">${card(podium[1], 2)}${card(podium[0], 1)}${card(podium[2], 3)}</div>`;
+    }
+
+    function pkLeagueRowHTML(r, isMine) {
+        if (!r || !r.room) return '';
+        const defaultCover = 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+        return `
+            <div class="rankings-list-row ${isMine ? 'border border-yellow-500/40 bg-yellow-500/5' : ''}" data-pk-room-id="${r.room.id}">
+                <span class="rankings-list-rank">#${r.rank}</span>
+                <img src="${r.room.coverImage || defaultCover}" class="rankings-list-cover">
+                <div class="min-w-0 flex-1">
+                    <p class="rankings-list-name">${escapeHtml(r.room.name)}</p>
+                    <p class="text-[9px] text-gray-500">${r.wins} فوز · ${r.losses} خسارة${r.streak > 0 ? ` · 🔥${r.streak}` : ''}</p>
+                </div>
+                <span class="rankings-list-followers"><i class="fas fa-bolt text-yellow-400"></i> ${r.lp.toLocaleString('en-US')}</span>
+            </div>
+        `;
+    }
+
+    function pkLeagueWireRowClicks(container) {
+        container?.querySelectorAll('[data-pk-room-id]').forEach(el => {
+            el.addEventListener('click', () => showPkRoomDetailSheet(el.dataset.pkRoomId));
+        });
+    }
+
+    function pkLeagueUpdateCountdown(season) {
+        clearInterval(pkLeagueCountdownTimer);
+        const el = document.getElementById('pk-league-countdown');
+        if (!el) return;
+        if (!season || pkLeagueState.week === 'previous') {
+            el.textContent = season ? 'موسم مُغلَق' : '';
+            return;
+        }
+        const render = () => {
+            const msLeft = Math.max(0, new Date(season.endsAt).getTime() - Date.now());
+            const d = Math.floor(msLeft / 86400000), h = Math.floor((msLeft % 86400000) / 3600000), m = Math.floor((msLeft % 3600000) / 60000);
+            el.textContent = `ينتهي الأسبوع بعد ${d}ي ${h}س ${m}د`;
+        };
+        render();
+        pkLeagueCountdownTimer = setInterval(render, 30000);
+    }
+
+    // ✅ تفاصيل غرفة بالدوري عند الضغط عليها: LP/سجلها/سلسلتها الحالية + سجل مواجهاتها معي
+    async function showPkRoomDetailSheet(roomId) {
+        document.getElementById('pk-room-detail-sheet')?.remove();
+        const sheet = document.createElement('div');
+        sheet.id = 'pk-room-detail-sheet';
+        sheet.className = 'fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[55]';
+        sheet.innerHTML = `
+            <div class="bg-[#15181f] border border-white/10 rounded-t-2xl md:rounded-2xl w-full max-w-sm p-4">
+                <div id="pk-room-detail-body" class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
+                <button id="pk-room-detail-close" class="w-full mt-2 py-2.5 rounded-xl bg-white/10 text-white text-sm font-bold">إغلاق</button>
+            </div>
+        `;
+        document.body.appendChild(sheet);
+        sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.remove(); });
+        sheet.querySelector('#pk-room-detail-close').addEventListener('click', () => sheet.remove());
+
+        const bodyEl = sheet.querySelector('#pk-room-detail-body');
+        async function load() {
+            bodyEl.innerHTML = '<div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>';
+            try {
+                const response = await fetch(`/api/pk-league/room/${roomId}?week=${pkLeagueState.week}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await response.json();
+                if (!response.ok || result.status !== 'success') throw new Error('failed');
+                if (!result.room) {
+                    bodyEl.innerHTML = '<p class="text-center text-gray-400 py-10">لا تملك هذي الغرفة ترتيباً بهذا الأسبوع</p>';
+                    return;
+                }
+                const r = result.room, h2h = result.headToHead;
+                bodyEl.innerHTML = `
+                    <div class="flex items-center gap-3 mb-4">
+                        <img src="${r.room.coverImage || '/images/default-avatar.png'}" class="w-12 h-12 rounded-xl object-cover">
+                        <div class="flex-1 min-w-0">
+                            <p class="font-bold truncate">${escapeHtml(r.room.name)}</p>
+                            <p class="text-xs text-gray-400">المرتبة #${r.rank} · ${r.lp.toLocaleString('en-US')} نقطة دوري</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 mb-4 text-center">
+                        <div class="bg-white/5 rounded-xl py-2"><p class="text-sm font-bold text-green-400">${r.wins}</p><p class="text-[9px] text-gray-500">فوز</p></div>
+                        <div class="bg-white/5 rounded-xl py-2"><p class="text-sm font-bold text-red-400">${r.losses}</p><p class="text-[9px] text-gray-500">خسارة</p></div>
+                        <div class="bg-white/5 rounded-xl py-2"><p class="text-sm font-bold text-yellow-400">${r.streak}</p><p class="text-[9px] text-gray-500">سلسلة حالية</p></div>
+                    </div>
+                    ${h2h ? `
+                        <div class="bg-white/5 rounded-xl p-3 text-center">
+                            <p class="text-[10px] text-gray-500 mb-1">سجل المواجهات معي</p>
+                            <p class="text-sm font-bold"><span class="text-green-400">${h2h.myWins}</span> - <span class="text-gray-400">${h2h.draws}</span> - <span class="text-red-400">${h2h.opponentWins}</span></p>
+                        </div>
+                    ` : ''}
+                `;
+            } catch (error) {
+                bodyEl.innerHTML = `
+                    <div class="text-center text-red-400 py-10">
+                        <p class="mb-3 text-sm">تعذر تحميل تفاصيل الغرفة</p>
+                        <button id="pk-room-detail-retry" class="px-4 py-1.5 rounded-lg bg-white/10 text-white text-xs">إعادة المحاولة</button>
+                    </div>
+                `;
+                bodyEl.querySelector('#pk-room-detail-retry').addEventListener('click', load);
+            }
+        }
+        load();
     }
 
     // ✅ متجر أدوات المعركة (قفاز/ضباب) — يظهر من قسم "المزيد" أثناء معركة PK فعلية فقط
@@ -8401,6 +8627,31 @@ function showXpGainAnimation(amount) {
     // =====================================================
     // ✅ "عقد التحدي" بين غرفتين — تحديثات حية للعرض/الشريط الهندسي/أدوات المعركة/النتيجة
     // =====================================================
+    // ✅ أصول نافذة النتيجة (Cloudinary) — ثابتة بمكان واحد يستهلكه المُحمِّل المسبق هنا
+    // ونافذة النتيجة نفسها لاحقاً، فلا يتكرر الرابط الحرفي بمكانين قد ينحرفا عن بعضهما.
+    // 🛡️ الكأس لم يُرفَع بعد (رابطه فارغ عمداً بالمواصفة) — null يُستثنى تلقائياً من التحميل
+    // المسبق والعرض لاحقاً بدل صورة مكسورة، بلا توقف أي شيء آخر بانتظاره
+    const PK_RESULT_ASSET_URLS = {
+        winnerFrame: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791839333/pk-winner-frame-animated-680.webp',
+        confetti: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791840194/confetti-gold-1080.webp',
+        loseIcon: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791841726/lose-icon-animated-512.webp',
+        trophy: null
+    };
+    let pkResultAssetsPreloaded = false;
+
+    // ✅ طلب صريح: تُحمَّل أصول نافذة النتيجة لحظة "بدء" التحدي (هذي الدالة، من مستمع
+    // pk-battle-started بالأسفل) لا لحظة "نهايته" — فتكون جاهزة بذاكرة المتصفح بالفعل عند ظهور
+    // النافذة فعلياً دقائق بعدها، بلا أي وميض/تأخير تحميل لحظة الحسم بالضبط حين يراها المستخدم
+    function preloadPkResultAssets() {
+        if (pkResultAssetsPreloaded) return; // ✅ مرة واحدة تكفي لكل جلسة تبويب — لا تكرار عبثي
+        pkResultAssetsPreloaded = true;
+        Object.values(PK_RESULT_ASSET_URLS).forEach(url => {
+            if (!url) return;
+            const img = new Image();
+            img.src = url;
+        });
+    }
+
     // ✅ يبني حالة currentPkBattle الموحَّدة من لقطة "pk-battle-started" أو لقطة استرجاع
     // الصفحة (activeBattle) — نفس الشكل كلا المصدرين، يُعاد استخدامها بالمكانين معاً
     function pkBuildBattleState(data) {
@@ -8445,6 +8696,7 @@ function showXpGainAnimation(amount) {
         if (data.roomA.id !== currentVoiceRoomId && data.roomB.id !== currentVoiceRoomId) return;
         currentPkBattle = pkBuildBattleState(data);
         renderPkBar();
+        preloadPkResultAssets(); // ✅ لحظة بدء التحدي بالضبط، لا لحظة نهايته (طلب صريح)
         showNotification('بدأ عقد التحدي! 🔥', 'success');
     });
 
@@ -8477,10 +8729,11 @@ function showXpGainAnimation(amount) {
         showNotification(payload?.message || 'تعذّر استخدام الأداة', 'error');
     });
 
-    socket.on('pk-battle-ended', (data) => {
-        if (data.roomA !== currentVoiceRoomId && data.roomB !== currentVoiceRoomId) return;
+    // ✅ نتيجة دوري PK الأسبوعي — كل غرفة تستقبل نسختها الخاصة (a=غرفتي دائماً) بهذا الحدث
+    // تحديداً (راجع socketService.finalizeActiveBattle) فلا حاجة لفلترة معرّف الغرفة هنا
+    socket.on('pk:result', (data) => {
         removePkBar();
-        showPkResultModal(data);
+        showPkResultWindow(data);
     });
 
     // =====================================================
@@ -15833,7 +16086,6 @@ async function showLeaderboardView() {
                 <button id="lb-tab-senders" class="py-2 rounded-lg text-sm font-bold bg-pink-600 text-white sm:flex-1"><i class="fas fa-hand-holding-heart mr-1"></i> الأكثر إهداءً</button>
                 <button id="lb-tab-receivers" class="py-2 rounded-lg text-sm font-bold bg-gray-700 text-gray-300 sm:flex-1"><i class="fas fa-crown mr-1"></i> الأكثر تلقياً</button>
                 <button id="lb-tab-rooms" class="py-2 rounded-lg text-sm font-bold bg-gray-700 text-gray-300 sm:flex-1"><i class="fas fa-trophy mr-1"></i> الغرف</button>
-                <button id="lb-tab-pkleague" class="py-2 rounded-lg text-sm font-bold bg-gray-700 text-gray-300 sm:flex-1"><i class="fas fa-medal mr-1"></i> دوري PK</button>
             </div>
             <div id="leaderboard-list-container" class="flex-grow overflow-y-auto space-y-2 pr-1">
                 <div class="text-center text-gray-400 py-16"><i class="fas fa-spinner fa-spin text-3xl"></i></div>
@@ -15871,13 +16123,6 @@ async function showLeaderboardView() {
         setLeaderboardTab('rooms');
         loadLeaderboard(currentType, currentRange);
     });
-    // ✅ تبويب "دوري PK" — ترتيب أسبوعي تراكمي بذاته (مجموع الفوز×500 + الدعم الحقيقي)، لا
-    // علاقة له بفترات الأكثر إهداءً/تلقياً — فشريط الفترات يُخفى معه كتبويب الغرف بالضبط
-    document.getElementById('lb-tab-pkleague').addEventListener('click', function() {
-        currentType = 'pkleague';
-        setLeaderboardTab('pkleague');
-        loadLeaderboard(currentType, currentRange);
-    });
 
     setLeaderboardTab(currentType);
     await loadLeaderboard(currentType, currentRange);
@@ -15888,18 +16133,17 @@ function setLeaderboardTab(type) {
     const sendersBtn = document.getElementById('lb-tab-senders');
     const receiversBtn = document.getElementById('lb-tab-receivers');
     const roomsBtn = document.getElementById('lb-tab-rooms');
-    const pkLeagueBtn = document.getElementById('lb-tab-pkleague');
     const rangeRow = document.getElementById('lb-range-row');
-    if (!sendersBtn || !receiversBtn || !roomsBtn || !pkLeagueBtn) return;
+    if (!sendersBtn || !receiversBtn || !roomsBtn) return;
 
-    [sendersBtn, receiversBtn, roomsBtn, pkLeagueBtn].forEach(btn => {
+    [sendersBtn, receiversBtn, roomsBtn].forEach(btn => {
         btn.classList.remove('bg-pink-600', 'text-white');
         btn.classList.add('bg-gray-700', 'text-gray-300');
     });
-    const activeBtn = type === 'senders' ? sendersBtn : (type === 'receivers' ? receiversBtn : (type === 'rooms' ? roomsBtn : pkLeagueBtn));
+    const activeBtn = type === 'senders' ? sendersBtn : (type === 'receivers' ? receiversBtn : roomsBtn);
     activeBtn.classList.add('bg-pink-600', 'text-white');
     activeBtn.classList.remove('bg-gray-700', 'text-gray-300');
-    if (rangeRow) rangeRow.classList.toggle('hidden', type === 'rooms' || type === 'pkleague'); // ✅ لا فترة زمنية لترتيب الغرف أو دوري PK — تراكمي/أسبوعي ثابت
+    if (rangeRow) rangeRow.classList.toggle('hidden', type === 'rooms'); // ✅ لا فترة زمنية لترتيب الغرف — تراكمي ثابت
 }
 
 async function loadLeaderboard(type, range = 'week') {
@@ -15920,22 +16164,6 @@ async function loadLeaderboard(type, range = 'week') {
             renderRoomRankingsBody(container, rooms);
         } catch (error) {
             container.innerHTML = '<div class="text-center text-red-400 py-16">تعذر تحميل الترتيب، حاول مجدداً</div>';
-        }
-        return;
-    }
-
-    if (type === 'pkleague') {
-        try {
-            const response = await fetch('/api/voice-room/pk-league', { headers: { 'Authorization': `Bearer ${token}` } });
-            const result = await response.json();
-            const rooms = (response.ok && result.rooms) ? result.rooms : [];
-            if (rooms.length === 0) {
-                container.innerHTML = '<div class="text-center text-gray-400 py-16"><i class="fas fa-medal text-4xl mb-4"></i><p>لا توجد نتائج معارك هذا الأسبوع بعد — كن أول من يتصدّر دوري PK! ⚔️</p></div>';
-                return;
-            }
-            renderPkLeagueBody(container, rooms);
-        } catch (error) {
-            container.innerHTML = '<div class="text-center text-red-400 py-16">تعذر تحميل دوري PK، حاول مجدداً</div>';
         }
         return;
     }
