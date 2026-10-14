@@ -528,6 +528,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     function renderVoiceSeatContent(seatEl, seatData) {
         const isAdminSeat = seatEl.dataset.isAdminSeat === '1';
+        const seatNo = seatEl.dataset.seat;
         seatEl.classList.remove('occupied-seat', 'my-seat', 'locked-seat');
         seatEl.dataset.isLocked = '0';
         delete seatEl.dataset.userId;
@@ -536,7 +537,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (seatData && seatData.isLocked) {
             seatEl.classList.add('locked-seat');
             seatEl.dataset.isLocked = '1';
-            seatEl.innerHTML = '<i class="fas fa-lock"></i>';
+            // ✅ رقم المقعد يبقى ظاهراً حتى مقفلاً (يساعد المضيف/المسؤول على تمييز أي مقعد يفتح)
+            seatEl.innerHTML = `<div class="voice-seat-av-wrap"><i class="fas fa-lock"></i><span class="voice-seat-no">${seatNo}</span></div>`;
             seatEl.title = 'مقعد مقفل';
             return;
         }
@@ -556,32 +558,49 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             // القيمة تظهر دوماً (حتى 0) بمجرد الجلوس — لا تختفي إلا مع فراغ المقعد كلياً أدناه
             const supportTotal = Number(seatData.user.supportTotal) || 0;
             seatEl.dataset.supportTotal = supportTotal;
+            // ✅ .voice-seat-av-wrap يحوي الآن كل ما يرتبط بصرياً بالصورة الدائرية (موجتا التحدّث
+            // الحقيقي خلف الصورة، الصورة نفسها، شارة الكتم، رقم المقعد) — الاسم وعداد الدعم
+            // تدفّق عادي أسفله كإخوة بنفس .voice-seat (بدل position:absolute قديم بالكامل)
             seatEl.innerHTML = `
-                <img src="${seatData.user.profileImage}" class="voice-seat-avatar ${seatData.user.activeFrameClass || ''}" alt="${safeName}" loading="lazy" decoding="async">
-                ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
+                <div class="voice-seat-av-wrap">
+                    <span class="voice-seat-wave"></span>
+                    <span class="voice-seat-wave"></span>
+                    <img src="${seatData.user.profileImage}" class="voice-seat-avatar ${seatData.user.activeFrameClass || ''}" alt="${safeName}" loading="lazy" decoding="async">
+                    ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
+                    <span class="voice-seat-no">${seatNo}</span>
+                    <span class="seat-support-badge">${formatCompactPoints(supportTotal)}</span>
+                </div>
                 <span class="voice-seat-name">${safeName}</span>
-                <span class="seat-support-badge">${supportTotal > 9999 ? '9999+' : supportTotal}</span>
             `;
         } else {
             delete seatEl.dataset.userId;
             delete seatEl.dataset.supportTotal; // ✅ يصفّر عداد الدعم بمجرد مغادرة المقعد
-            // 🛡️ إزالة صريحة إضافية للشارة (وليس الاعتماد فقط على استبدال innerHTML أدناه) —
-            // حماية إضافية حتى لو فات حدث user-left-seat سابقاً بسبب انقطاع اتصال مؤقت (نادر
-            // بعد إصلاح إعادة الانضمام التلقائي لقناة الغرفة)، فيبقى previousUserId قديماً عالقاً
-            seatEl.querySelector('.seat-support-badge')?.remove();
             // ✅ بغرف المستخدمين (وليس الرسمية) المقعد الفاضي يعرض "+" بالدائرة، والنص تحتها
             // "دعوة" للمضيف (يدعو أحد الحاضرين لهذا المقعد تحديداً) أو "انضمام" لبقية
             // المستخدمين (يرسل طلب صعود) — إلا لمقعد الإدارة بالغرفة الرسمية فقط
             if (isAdminSeat) {
-                seatEl.innerHTML = '<i class="fas fa-crown"></i>';
+                seatEl.innerHTML = '<div class="voice-seat-av-wrap"><i class="fas fa-crown"></i></div>';
                 seatEl.title = 'مقعد محجوز للإدارة';
             } else if (currentVoiceRoomId !== 'main') {
                 const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'انضمام';
-                seatEl.innerHTML = `<i class="fas fa-plus voice-seat-plus"></i><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
+                seatEl.innerHTML = `<div class="voice-seat-av-wrap"><i class="fas fa-plus voice-seat-plus"></i></div><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
             } else {
-                seatEl.innerHTML = seatEl.dataset.seat;
+                seatEl.innerHTML = `<div class="voice-seat-av-wrap">${seatNo}</div>`;
             }
         }
+        syncSeatVipRings(); // ✅ شاغل المقعد تغيّر — لو كان أحد أعلى داعمَين، تتبعه حلقته الذهبية لمقعده الجديد فوراً
+    }
+
+    // ✅ حلقة ذهبية لأعلى داعمَين بالغرفة (طلب صريح) — تُطابق مقاعدهما الحاليَين بـcurrentRoomTopSupporters
+    // (نفس مصدر بيانات ودجت البوديوم أعلاه، مُرتَّب تنازلياً من السيرفر) بواسطة data-user-id الذي
+    // renderVoiceSeatContent يضبطه على كل مقعد مشغول؛ تُستدعى بعد أي تغيير بإشغال مقعد أو بترتيب الداعمين
+    function syncSeatVipRings() {
+        const voiceGrid = document.getElementById('voice-chat-grid');
+        if (!voiceGrid) return;
+        const topTwoIds = new Set(currentRoomTopSupporters.slice(0, 2).map(s => s.userId));
+        voiceGrid.querySelectorAll('.voice-seat').forEach(seatEl => {
+            seatEl.classList.toggle('vip', !!seatEl.dataset.userId && topTwoIds.has(seatEl.dataset.userId));
+        });
     }
 
     // ✅ الكتم والمغادرة صارا أيقونتين بشريط الغرفة نفسه (وقائمة "المزيد") — هذي الدالة الآن
@@ -1237,10 +1256,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ شريط دردشة واحد ثابت الظهور دائماً (بدل حقل يُخفى خلف زر) + قائمة "المزيد" المنسدلة
     // للإجراءات الثانوية — بالضبط آلية التطبيقات المشهورة (Bigo/Yalla/TikTok Live): حقل كتابة
     // جاهز فوراً، وزرّان فقط بجانبه (هدية + المزيد) بدل صف مزدحم بالأيقونات
+    // ✅ طلب صريح (نموذج التصميم الإلزامي): المايك والتفاعل أزرار مستقلة بشريط الأدوات —
+    // لا داخل قائمة "المزيد" كما كانت. 🛡️ "طلب الصعود"/"مغادرة المقعد" بقيا بمكانهما الأصلي
+    // بلا أي تغيير بالمعرّف أو السلوك (طلب صريح آخر: "حافظ على كل الوظائف دون استثناء") —
+    // زران جديدان فقط أُضيفا بجانبهما، لا نقل/حذف لأي زر موجود
     function renderRoomChatMarkup() {
         return `
-            <div id="room-chat-messages" class="room-chat-messages-fixed"></div>
-            <div class="room-chat-dock-fixed">
+            <div id="room-chat-messages" class="room-chat-messages"></div>
+            <div class="room-chat-dock">
                 <div class="room-chat-input-pill">
                     <input id="room-chat-input" type="text" maxlength="300" placeholder="قل شيئاً..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="room-chat-message-field">
                     <button id="room-chat-send-btn" title="إرسال"><i class="fas fa-paper-plane"></i></button>
@@ -1250,6 +1273,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </button>
                 <button id="room-leave-seat-btn" class="hidden room-chat-dock-icon room-chat-leave-icon" title="مغادرة المقعد">
                     <i class="fas fa-door-open"></i>
+                </button>
+                <button id="room-mic-toggle-btn" class="hidden room-chat-dock-icon" title="المايك">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <button id="room-reaction-btn" class="hidden room-chat-dock-icon" title="تفاعل">
+                    <i class="fas fa-face-smile"></i>
                 </button>
                 <button id="room-gift-icon-btn" class="room-chat-dock-icon room-chat-gift-icon" title="الهدايا">
                     <i class="fas fa-gift"></i>
@@ -1299,6 +1328,17 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // ✅ زر مغادرة المقعد — انتقل من الشريط العائم القديم لهنا (السيرفر يرفضه للمضيف أصلاً)
         document.getElementById('room-leave-seat-btn')?.addEventListener('click', leaveVoiceSeat);
 
+        // ✅ زرّا المايك/التفاعل المستقلّان الجديدان (نموذج التصميم الإلزامي) — نفس الدالتين
+        // الحقيقيتين بالضبط التي كانت تُستدعى من قائمة "المزيد" سابقاً، بلا أي منطق موازٍ
+        document.getElementById('room-mic-toggle-btn')?.addEventListener('click', toggleVoiceMute);
+        document.getElementById('room-reaction-btn')?.addEventListener('click', () => {
+            if (!myVoiceSeatNumber || myVoiceRoomId !== currentVoiceRoomId) {
+                showNotification('اجلس على مقعد أولاً حتى تقدر تتفاعل', 'info');
+                return;
+            }
+            showReactionPicker(currentVoiceRoomId, myVoiceSeatNumber);
+        });
+
         updateChatLockUI();
     }
 
@@ -1306,11 +1346,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function showRoomChatMoreSheet() {
         document.getElementById('room-chat-more-sheet')?.remove();
         const isManager = currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator';
-        const isSeatedHere = myVoiceSeatNumber && myVoiceRoomId === currentVoiceRoomId;
 
+        // ✅ المايك والتفاعل انتقلا لزرّين مستقلّين بشريط الأدوات (طلب صريح: نموذج التصميم
+        // الإلزامي) — لم يعودا هنا كي لا يتكرّر نفس الإجراء بمدخلين مختلفين
         const items = [
             { action: 'messages', icon: 'fa-envelope', label: 'رسائلي', color: 'text-blue-400', badge: roomUnreadDMCount },
-            { action: 'reaction', icon: 'fa-face-laugh-beam', label: 'تفاعل', color: 'text-amber-400' },
             { action: 'suggest', icon: 'fa-lightbulb', label: 'اقتراح', color: 'text-yellow-300' },
             // ✅ كتم شخصي محلي بحت (لا يؤثر على أحد غيري) — يشمل الموسيقى وصوت المتحدثين معاً
             {
@@ -1320,15 +1360,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 color: roomAudioMuted ? 'text-red-400' : 'text-gray-300'
             }
         ];
-        // ✅ الكتم انتقل من الشريط العائم القديم لهنا — يظهر فقط وأنت فعلياً قاعد على مقعد
-        if (isSeatedHere) {
-            items.push({
-                action: 'mute',
-                icon: myIsMuted ? 'fa-microphone-slash' : 'fa-microphone',
-                label: myIsMuted ? 'إلغاء الكتم' : 'كتم صوتي',
-                color: myIsMuted ? 'text-red-400' : 'text-gray-300'
-            });
-        }
         if (isManager) {
             items.push({ action: 'hand-queue', icon: 'fa-infinity', label: 'طلبات الصعود', color: 'text-purple-400', badge: roomHandQueue.length });
         }
@@ -1408,18 +1439,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         document.querySelectorAll('.mobile-nav-item').forEach(i => i.classList.remove('active'));
                         document.querySelector('.mobile-nav-item[data-target="messages"]')?.classList.add('active');
                     }
-                } else if (action === 'reaction') {
-                    if (!myVoiceSeatNumber || myVoiceRoomId !== currentVoiceRoomId) {
-                        showNotification('اجلس على مقعد أولاً حتى تقدر تتفاعل', 'info');
-                        return;
-                    }
-                    showReactionPicker(currentVoiceRoomId, myVoiceSeatNumber);
                 } else if (action === 'suggest') {
                     showGeneralSuggestionModal();
                 } else if (action === 'toggle-room-mute') {
                     toggleRoomAudioMute();
-                } else if (action === 'mute') {
-                    toggleVoiceMute();
                 } else if (action === 'hand-queue') {
                     if (currentVoiceRoomId) showHandQueueSheet(currentVoiceRoomId);
                 } else if (action === 'pk-challenge') {
@@ -1511,6 +1534,21 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const isHostHere = isSeatedHere && currentRoomMyRole === 'host';
             leaveBtn.classList.toggle('hidden', !isSeatedHere || isHostHere);
         }
+        // ✅ المايك والتفاعل — زران مستقلّان يظهران فقط وأنت فعلياً جالس على مقعد بهذي الغرفة
+        // (نفس شرط ظهورهما سابقاً داخل قائمة "المزيد" بالضبط، راجع updateMicToggleButtonUI للون)
+        document.getElementById('room-reaction-btn')?.classList.toggle('hidden', !isSeatedHere);
+        document.getElementById('room-mic-toggle-btn')?.classList.toggle('hidden', !isSeatedHere);
+        updateMicToggleButtonUI();
+    }
+
+    // ✅ يلوّن زر المايك المستقل حسب myIsMuted الحقيقية — يُستدعى من updateHandRaiseUI أعلاه
+    // (كل تغيّر بحالة المقعد) ومن syncMuteButtonUI (كل تغيّر بحالة الكتم نفسها) معاً
+    function updateMicToggleButtonUI() {
+        const btn = document.getElementById('room-mic-toggle-btn');
+        if (!btn) return;
+        btn.classList.toggle('room-chat-mic-muted', myIsMuted);
+        btn.title = myIsMuted ? 'إلغاء الكتم' : 'كتم صوتي';
+        btn.querySelector('i').className = `fas ${myIsMuted ? 'fa-microphone-slash' : 'fa-microphone'}`;
     }
 
     // ✅ يعكس حالة قفل الدردشة على حقل الكتابة — المضيف/المسؤولون يكتبون رغم القفل، الباقي يُمنع بصرياً
@@ -1552,6 +1590,28 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         numEl.textContent = currentRoomSessionSupportPoints.toLocaleString('en-US');
     }
 
+    // ✅ شارة ترتيب الغرفة بدوري المواجهات الأسبوعي (نظام pkLeagueEngine الحالي، طلب صريح
+    // بالسطر الثاني) — لا بوديوم جديد، فقط ترتيب هذي الغرفة الحالي؛ تُخفى تماماً لو لم تُسجّل
+    // الغرفة نتيجة بعد هذا الأسبوع (لا ترتيب فارغاً بلا فائدة)، والضغط عليها يفتح نفس تفاصيل
+    // الغرفة الكاملة (LP/سجلها/سلسلتها) المستخدَمة أصلاً بقائمة الدوري
+    async function loadRoomLeagueChip(roomId) {
+        const chip = document.getElementById('room-info-league-chip');
+        if (!chip) return;
+        chip.classList.add('hidden');
+        if (roomId === 'main') return; // ✅ لا دوري للغرفة الرسمية
+        try {
+            const response = await fetch(`/api/pk-league/room/${roomId}?week=current`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            // 🐛 إصلاح: الغرفة قد تتغيّر (المستخدم خرج ودخل غرفة أخرى) بينما هذا الطلب لا يزال
+            // معلّقاً — بدون هذا التحقق تظهر شارة ترتيب غرفة سابقة فوق غرفة حالية مختلفة تماماً
+            if (currentVoiceRoomId !== roomId) return;
+            if (!response.ok || result.status !== 'success' || !result.room) return;
+            chip.querySelector('#room-info-league-chip-rank').textContent = `#${result.room.rank}`;
+            chip.classList.remove('hidden');
+            chip.onclick = (e) => { e.stopPropagation(); showPkRoomDetailSheet(roomId); };
+        } catch (_) { /* ✅ فشل الجلب يبقي الشارة مخفية بصمت — ليست معلومة أساسية تستدعي رسالة خطأ */ }
+    }
+
     // ✅ تنسيق مُصغَّر لرقم الدعم أسفل كل صورة بالودجت أدناه — المساحة ضيقة جداً (شارة ~27px)
     // فلا تتسع لأرقام كاملة بالفواصل؛ 12500 → "12.5K"، نفس اصطلاح تطبيقات البث المعروفة
     function formatCompactPoints(n) {
@@ -1571,6 +1631,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (currentRoomLevel === null || !currentRoomTopSupporters.length) {
             wrap.classList.add('hidden');
             wrap.innerHTML = '';
+            syncSeatVipRings(); // ✅ لا داعمين الآن (مثلاً غرفة جديدة) — يُزيل أي حلقة ذهبية باقية من جلسة سابقة
             return;
         }
         wrap.classList.remove('hidden');
@@ -1594,6 +1655,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const s = currentRoomTopSupporters[order[idx]];
             btn.addEventListener('click', () => showUserProfileSheet(currentVoiceRoomId, null, btn.dataset.userId, s?.username || ''));
         });
+        syncSeatVipRings(); // ✅ ترتيب الداعمين قد تغيّر بلا تغيير بإشغال المقاعد نفسها (هدية فقط) — يُعيد مطابقة الحلقة الذهبية
     }
 
     // ✅ زر "اطلب الصعود" (∞) — أول ضغطة ترسل الطلب، وثاني ضغطة (والطلب لسا قائم) تفتح
@@ -1973,6 +2035,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const wasNearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 80;
         box.appendChild(el);
         if (wasNearBottom) box.scrollTop = box.scrollHeight;
+        // ✅ طلب صريح: تحتفظ بآخر 60 رسالة بالـDOM فقط — لا سجل قابل للتمرير لأعلى بدردشة الغرفة
+        // (بعكس الدردشة العامة)، فحذف الأقدم هنا آمن تماماً وبلا أي تأثير على قراءة سجل سابق
+        while (box.children.length > 60) box.firstElementChild.remove();
     }
 
     // ✅ إعلان انضمام — سطر مختصر بدردشة الغرفة "فلان انضم"، وللمضيف/المسؤول زر يد صغير
@@ -2075,6 +2140,36 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ وضع "الغرفة ملء الشاشة" — يخفي هيدر المنصة والتنقّل بالكامل، بالضبط زي التطبيقات المشهورة
     function enterFullscreenRoomMode() {
         document.body.classList.add('in-voice-room');
+        setupVoiceRoomKeyboardInset();
+    }
+
+    // ✅ طلب صريح: احترام visualViewport عند فتح لوحة المفاتيح — حقل الكتابة يبقى ظاهراً
+    // ولا تقفز المقاعد. الحيلة: ارتفاع #main-content نفسه (ومنه cqh التي تحسب عليها مقاسات
+    // المقاعد) يبقى ثابتاً دوماً (100dvh الحقيقي الكامل، غير مرتبط بالكيبورد) — فقط حشو
+    // أسفله (padding-bottom) يكبر بمقدار ارتفاع الكيبورد تقريباً (الفارق بين innerHeight
+    // الثابت وvisualViewport.height المتقلّص فعلياً فور ظهوره)، فينكمش فقط .room-chat-messages
+    // المرن لاستيعاب الفرق، تماماً كما تنكمش الدردشة عند أي تغيّر آخر بالمساحة المتاحة —
+    // دون أي تأثير على حجم المقاعد المحسوب من عرض/ارتفاع الحاوية الثابتين
+    let voiceRoomVvHandler = null;
+    function setupVoiceRoomKeyboardInset() {
+        if (!window.visualViewport || voiceRoomVvHandler) return;
+        voiceRoomVvHandler = () => {
+            if (!document.body.classList.contains('in-voice-room')) return;
+            const vv = window.visualViewport;
+            const inset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+            document.documentElement.style.setProperty('--room-kb-inset', `${inset}px`);
+        };
+        window.visualViewport.addEventListener('resize', voiceRoomVvHandler);
+        window.visualViewport.addEventListener('scroll', voiceRoomVvHandler);
+        voiceRoomVvHandler();
+    }
+    function teardownVoiceRoomKeyboardInset() {
+        if (voiceRoomVvHandler && window.visualViewport) {
+            window.visualViewport.removeEventListener('resize', voiceRoomVvHandler);
+            window.visualViewport.removeEventListener('scroll', voiceRoomVvHandler);
+        }
+        voiceRoomVvHandler = null;
+        document.documentElement.style.removeProperty('--room-kb-inset');
     }
 
     // ✅ زر متابعة رأس الغرفة المصغّر — أيقونة فقط (لا نص) كي لا يتصادم أبداً مع عدّاد دعم
@@ -2108,6 +2203,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         document.body.classList.remove('in-voice-room');
         document.getElementById('dm-floating-bubble')?.remove();
         clearRoomBackground();
+        teardownVoiceRoomKeyboardInset();
     }
 
     // ✅ تبديل/شراء/إزالة إطار من المتجر يصل هنا فورياً عبر user-frame-changed (socket، الآن
@@ -2416,6 +2512,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         myHandRaised = false;
         roomHandQueue = [];
         currentPkBattle = null;
+        // ✅ لا يبقى شريط هدية (أو طابوره) من الغرفة السابقة عالقاً فوق غرفة جديدة دخلتها للتو
+        // 🐛 مراجعة: clearTimeout + زيادة الجيل قبل التصفير — يُبطل أي مؤقّت فادي/تنظيف معلّق
+        // (render أو dismiss) من الغرفة السابقة كان سيُنفَّذ لاحقاً على حالة غرفة لم تعد قائمة
+        clearTimeout(roomGiftBannerState?.timer);
+        roomGiftBannerGen++;
+        document.getElementById('room-gift-side-banner')?.remove();
+        roomGiftBannerQueue = [];
+        roomGiftBannerShowing = false;
+        roomGiftBannerState = null;
         enterFullscreenRoomMode();
         mainContent.innerHTML = `
             <div id="room-header-bar" class="flex justify-between items-center mb-3 gap-2">
@@ -2428,6 +2533,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                                 <span id="room-info-level-badge" class="room-level-badge hidden"></span>
                                 <span id="room-info-session-support" class="room-info-session-support hidden">
                                     <i class="fas fa-bolt"></i><span id="room-info-session-support-num">0</span>
+                                </span>
+                                <span id="room-info-league-chip" class="room-info-league-chip hidden">
+                                    <i class="fas fa-trophy"></i><span id="room-info-league-chip-rank"></span>
                                 </span>
                             </span>
                         </span>
@@ -2450,7 +2558,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </div>
             </div>
             <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
+            <div id="room-gift-lane" class="room-gift-lane"></div>
             ${renderRoomChatMarkup()}
+            <div id="room-kb-spacer" class="room-kb-spacer"></div>
         `;
         // ✅ إعادة تعيين أي فقاعة "غرفة مُصغَّرة" سابقة — الدخول لواجهة الغرفة (نفسها أو غرفة
         // أخرى) يعني أننا لم نعد بوضع التصغير بعد الآن
@@ -2481,6 +2591,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // البث المباشر المعروفة) هو آلية الخروج البديلة على الهاتف؛ زر ✕ يبقى للمضيف صراحة
         wireRoomHeaderSwipeToExit(document.getElementById('room-header-bar'), room);
         wireRoomChatUI();
+        loadRoomLeagueChip(room.id);
 
         renderVoiceRoomSeats(room.id, room.seatCount, 0, room.isPrivate);
         // 🐛 إصلاح: لو رُفض الدخول (مطرود/كلمة مرور خطأ/بث منتهٍ) — الدالة نفسها تنقل الشاشة
@@ -2923,34 +3034,31 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // ✅ الاسم يظهر تحت المقعد فقط بغرف المستخدمين (9/13/19) — مساحة كافية، بعكس الرسمية
         // المزدحمة بـ80 مقعداً حيث الـ tooltip يبقى وحده كافياً وأوضح بصرياً
         voiceGrid.classList.toggle('labeled', seatCount <= 24);
-        // ✅ شبكة أعمدة ثابتة العدد حسب سعة الغرفة (بالضبط أسلوب التطبيقات المشهورة): 9 مقاعد
-        // = 3 أعمدة (مربّع 3×3 كبير ومتناسق)، 13 = 5 أعمدة، 19 = 6 أعمدة — عُدِّل العددان من
-        // 15/24 لـ13/19 (طلب صريح) مع تكبير التباعد وتصغير المقعد قليلاً بهاتين الفئتين تحديداً
-        // كي تتسع الإطارات الزخرفية (خصوصاً الجمشت الملكي/تنانين النار) بلا تصادم مع المقعد المجاور.
-        // العدد ثابت دائماً بغض النظر عن عرض الشاشة، وحجم المقعد وحده يتمدد مع العرض المتاح
-        // (بعكس الغرفة الرسمية الـ80 مقعداً التي تبقى بتخطيطها المضغوط المرن القديم)
-        voiceGrid.classList.remove('cols-3', 'cols-5', 'cols-6');
-        if (seatCount === 9) voiceGrid.classList.add('cols-3');
-        else if (seatCount === 13) voiceGrid.classList.add('cols-5');
-        else if (seatCount === 19) voiceGrid.classList.add('cols-6');
+        // ✅ عدد الأعمدة الآن متغيّر --cols تقوده data-seat-count بـinput.css (يطابق النموذج
+        // الإلزامي docs/design/voice-room-prototype.html بالضبط: 9→4، 13→4، 19→6، 80→8) —
+        // استبدل نظام كلاسات cols-3/cols-5/cols-6 الثابت القديم بالكامل
+        voiceGrid.dataset.seatCount = seatCount;
         for (let i = 1; i <= seatCount; i++) {
             const seat = document.createElement('div');
             const isAdminSeat = i <= adminSeatCount;
             const canSitHere = !isAdminSeat || (user && user.isAdmin);
-            seat.className = `voice-seat ${isAdminSeat ? 'admin-seat' : 'user-seat'} ${canSitHere ? '' : 'seat-forbidden'}`;
+            // ✅ مقعد المضيف (دائماً رقم 1 بغرفة مستخدم) يأخذ صنف host-seat — يمنحه النموذج صفّاً
+            // كاملاً لوحده أعلى الشبكة وحلقة متدرّجة دوّارة عند الإشغال (راجع .host-seat بـCSS)
+            const isHostSeat = isCustomRoom && i === 1;
+            seat.className = `voice-seat ${isAdminSeat ? 'admin-seat' : 'user-seat'} ${canSitHere ? '' : 'seat-forbidden'} ${isHostSeat ? 'host-seat' : ''}`;
             seat.dataset.seat = i;
             seat.dataset.isAdminSeat = isAdminSeat ? '1' : '0';
             if (isAdminSeat) {
-                seat.innerHTML = '<i class="fas fa-crown"></i>';
+                seat.innerHTML = '<div class="voice-seat-av-wrap"><i class="fas fa-crown"></i></div>';
                 seat.title = canSitHere ? 'مقعد إدارة' : 'مقعد محجوز للإدارة';
             } else if (isCustomRoom) {
                 // ✅ بغرف المستخدمين: مقعد فاضٍ = "+" بالدائرة، والنص تحتها يختلف حسب من يشاهد —
                 // "دعوة" للمضيف (يفتح قائمة الحاضرين ليدعو أحدهم لهذا المقعد تحديداً)، و"انضمام"
                 // لبقية المستخدمين (يرسل طلب صعود ينتظر موافقة المضيف)
                 const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'انضمام';
-                seat.innerHTML = `<i class="fas fa-plus voice-seat-plus"></i><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
+                seat.innerHTML = `<div class="voice-seat-av-wrap"><i class="fas fa-plus voice-seat-plus"></i></div><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
             } else {
-                seat.innerHTML = i;
+                seat.innerHTML = `<div class="voice-seat-av-wrap">${i}</div>`;
             }
             seat.addEventListener('click', () => {
                 const occupantId = seat.dataset.userId;
@@ -3194,16 +3302,23 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
     }
 
+    // ✅ Fluent 3D من public/assets/pk/emoji فقط (طلب صريح) — نفس مجلّد أيقونات معركة PK، بلا
+    // أي إيموجي نصي يونيكود بعد الآن. المجلّد مُصمَّم لسياق المعركة، فاختيار الثمانية هنا هو
+    // أقرب مجموعة عامة الطابع منه تصلح كـ"تفاعلات غرفة" (حماس/احتفال/تقدير/إعجاب/برود/احترام/قوة/صدمة)
+    const ROOM_REACTION_EMOJIS = ['fire', 'party_popper', 'trophy', 'sparkles', 'smiling_face_with_sunglasses', 'handshake', 'flexed_biceps', 'face_screaming_in_fear'];
+    function reactionEmojiUrl(name) {
+        return `/assets/pk/emoji/${name}${name === 'flexed_biceps' ? '_3d_default' : '_3d'}.webp`;
+    }
+
     // ✅ منتقي الإيموجي المتحرك — يظهر التفاعل فوق صورة المستخدم عند الجميع بالغرفة لحظياً
     function showReactionPicker(roomId, seatNumber) {
-        const emojis = ['❤️', '😂', '👏', '🔥', '😍', '👍', '🎉', '😮'];
         const modal = document.createElement('div');
         modal.id = 'reaction-picker-modal';
         modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50';
         modal.innerHTML = `
             <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 w-full md:w-auto">
                 <div class="grid grid-cols-4 gap-3">
-                    ${emojis.map(e => `<button data-emoji="${e}" class="reaction-emoji-btn text-3xl p-2 rounded-lg hover:bg-gray-700">${e}</button>`).join('')}
+                    ${ROOM_REACTION_EMOJIS.map(e => `<button data-emoji="${e}" class="reaction-emoji-btn p-2 rounded-lg hover:bg-gray-700"><img src="${reactionEmojiUrl(e)}" class="w-9 h-9" alt=""></button>`).join('')}
                 </div>
             </div>
         `;
@@ -3217,16 +3332,19 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
     }
 
-    // ✅ يعرض الإيموجي المتحرك فوق صورة المقعد لثوانٍ قليلة ثم يختفي تلقائياً
+    // ✅ يعرض الإيموجي المتحرك فوق صورة المقعد لثوانٍ قليلة ثم يختفي تلقائياً — داخل
+    // .voice-seat-av-wrap نفسه (الصندوق الدائري position:relative) لا .voice-seat العام،
+    // كي يبقى مرتكزاً بصرياً فوق الصورة بالضبط بغض النظر عن موضع اسم الشاغل أسفلها
     function playSeatReaction(seatNumber, emoji) {
         const voiceGrid = document.getElementById('voice-chat-grid');
         if (!voiceGrid) return;
-        const seatEl = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"]`);
-        if (!seatEl) return;
-        const el = document.createElement('div');
+        const wrap = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"] .voice-seat-av-wrap`);
+        if (!wrap) return;
+        const el = document.createElement('img');
         el.className = 'voice-seat-reaction';
-        el.textContent = emoji;
-        seatEl.appendChild(el);
+        el.src = reactionEmojiUrl(emoji);
+        el.alt = '';
+        wrap.appendChild(el);
         setTimeout(() => el.remove(), 1500);
     }
 
@@ -4166,8 +4284,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     </div>
                 </div>
             `;
-            const header = mainContent.querySelector('.flex.justify-between.items-center');
-            if (header) header.insertAdjacentElement('afterend', bar);
+            // ✅ طلب صريح: شريط PK يأتي بعد المقاعد مباشرة بتسلسل التدفّق (قبل مسار الهدايا/الدردشة)
+            // — لا بعد الرأس كما كان سابقاً، كي يطابق ترتيب النموذج الإلزامي بالضبط
+            const seatsGrid = document.getElementById('voice-chat-grid');
+            if (seatsGrid) seatsGrid.insertAdjacentElement('afterend', bar);
             else mainContent.prepend(bar);
 
             currentPkBattle.pkRider = 'crossed_swords';
@@ -5199,7 +5319,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </div>
             </div>
         `;
-        const insertAfter = document.getElementById('pk-battle-bar') || mainContent.querySelector('.flex.justify-between.items-center');
+        const insertAfter = document.getElementById('pk-battle-bar') || document.getElementById('voice-chat-grid');
         if (insertAfter) insertAfter.insertAdjacentElement('afterend', bar);
         else mainContent.prepend(bar);
 
@@ -5594,6 +5714,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         myHandRaised = false;
         roomHandQueue = [];
         currentPkBattle = null;
+        clearTimeout(roomGiftBannerState?.timer);
+        roomGiftBannerGen++;
+        document.getElementById('room-gift-side-banner')?.remove();
+        roomGiftBannerQueue = [];
+        roomGiftBannerShowing = false;
+        roomGiftBannerState = null;
         enterFullscreenRoomMode();
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-4">
@@ -5606,7 +5732,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <span class="text-xs text-gray-400">80 مقعد</span>
             </div>
             <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
+            <div id="room-gift-lane" class="room-gift-lane"></div>
             ${renderRoomChatMarkup()}
+            <div id="room-kb-spacer" class="room-kb-spacer"></div>
         `;
         document.getElementById('back-to-rooms-btn').addEventListener('click', showRoomBrowserView);
         wireRoomChatUI();
@@ -5827,7 +5955,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 const isSpeaking = avg > SPEAKING_VOLUME_THRESHOLD && !(forUserId === myUserId && myIsMuted);
                 if (isSpeaking !== speaking) {
                     speaking = isSpeaking;
-                    document.querySelector(`#voice-chat-grid [data-user-id="${forUserId}"]`)?.classList.toggle('voice-seat-speaking', isSpeaking);
+                    document.querySelector(`#voice-chat-grid [data-user-id="${forUserId}"]`)?.classList.toggle('talk', isSpeaking);
                 }
             }, 150);
             voiceSpeakingDetectors.set(forUserId, { audioCtx, intervalId });
@@ -5843,7 +5971,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             d.audioCtx.close().catch(() => {});
             voiceSpeakingDetectors.delete(forUserId);
         }
-        document.querySelector(`#voice-chat-grid [data-user-id="${forUserId}"]`)?.classList.remove('voice-seat-speaking');
+        document.querySelector(`#voice-chat-grid [data-user-id="${forUserId}"]`)?.classList.remove('talk');
     }
 
     async function ensureLocalMicStream() {
@@ -8312,6 +8440,7 @@ function showXpGainAnimation(amount) {
         // ✅ الكتم الحقيقي الآن: تعطيل مسار الصوت المحلي فعلياً (لا مجرد أيقونة) — الجميع
         // بالشبكة يتوقفون عن سماعي فوراً بلا أي إعادة تفاوض بالاتصال (المسار يبقى متصلاً)
         if (localMicStream) localMicStream.getAudioTracks().forEach(t => { t.enabled = !myIsMuted; });
+        updateMicToggleButtonUI();
     }
 
     // ✅ تحديث حي لمقاعد الغرفة الصوتية (تتحقق من وجود الشبكة بالصفحة أولاً لأن المستخدم قد يكون بقسم آخر)
@@ -14693,49 +14822,128 @@ function appendRoomGiftChatMessage({ fromUsername, toUsername, giftName, giftIco
     `;
     box.appendChild(el);
     box.scrollTop = box.scrollHeight;
+    while (box.children.length > 60) box.firstElementChild.remove(); // ✅ نفس سقف 60 رسالة بالـDOM لدردشة الغرفة
 }
 
 // ✅ حالة الشريط الحالي — يسمح بجمع الإرسالات المتكررة (نفس المُرسل/نفس الهدية) بعدّاد
 // ×N واحد بدل إعادة إنشاء الشريط من الصفر في كل مرة (كانت تبدو كومضات متلاحقة مزعجة)
-let roomGiftBannerState = null; // { key, count, timer }
-function showRoomGiftSideBanner({ fromUsername, fromProfileImage, toUsername, giftName, giftImage, giftIcon, quantity }) {
-    const key = `${fromUsername}::${giftName}`;
-    let el = document.getElementById('room-gift-side-banner');
-    const isSameStreak = el && roomGiftBannerState && roomGiftBannerState.key === key;
+let roomGiftBannerState = null; // { key, count, timer, leaving }
+// ✅ طابور حقيقي (طلب صريح: "بطابور حتى لا تتراكب الإعلانات") — هدية من مُرسل/نوع مختلف
+// بينما شريط آخر معروض لا تُدمَّره فوراً بعد الآن، بل تنتظر دورها؛ هدية مطابقة لآخر عنصر
+// بالطابور (لا للمعروض حالياً) تُدمَج بعدّاده بدل فتح عنصر طابور جديد لكل هدية متكررة.
+// سقف صغير يمنع تراكماً بلا حدود بغرفة نشطة جداً — الأحدث يبقى أهم من استعراض كل حدث قديم
+let roomGiftBannerQueue = [];
+let roomGiftBannerShowing = false;
+// 🐛 مراجعة PR #99: مؤقّت التنظيف الداخلي بـdismissRoomGiftSideBanner (400ms بعد بدء الاختفاء)
+// لا تملك mergeIntoShowingGiftBanner مرجعاً له لتُلغيه (معرّف محلياً هناك فقط) — فهدية
+// بنفس المُرسل/الهدية تصل أثناء نافذة الاختفاء تلك كانت "تُحيي" الشريط (تُلغي صنف الاختفاء
+// وتُجدول مؤقّت 3 ثوانٍ جديداً) بينما المؤقّت الداخلي القديم يبقى شغّالاً ويُزيل الشريط ويُصفّر
+// الحالة/الطابور تحت أقدام الشريط "المُحيا" حديثاً. عدّاد جيل بسيط يُبطل أي مؤقّت معلّق من قبل
+// آخر render/تصفير تلقائياً — يزيد عند كل عرض جديد وعند كل تصفير (دخول غرفة)؛ كل setTimeout
+// يلتقط قيمته وقت الجدولة ويتحقق أنها لم تتغيّر قبل تنفيذ أي شيء
+let roomGiftBannerGen = 0;
+const ROOM_GIFT_BANNER_QUEUE_CAP = 6;
 
-    if (isSameStreak) {
-        roomGiftBannerState.count += (quantity || 1);
-        const countEl = el.querySelector('.room-gift-banner-count');
-        if (countEl) countEl.textContent = `×${roomGiftBannerState.count}`;
-        // ✅ نبضة صغيرة تلفت الانتباه للعدّاد المتزايد
-        countEl?.classList.remove('room-gift-banner-count'); void countEl?.offsetWidth; countEl?.classList.add('room-gift-banner-count');
-        el.classList.remove('room-gift-banner-out');
-    } else {
-        el?.remove();
-        el = document.createElement('div');
-        el.id = 'room-gift-side-banner';
-        el.className = 'room-gift-side-banner';
-        el.innerHTML = `
-            <img src="${fromProfileImage}" class="room-gift-banner-avatar">
-            <div class="room-gift-banner-text">
-                <b>${escapeHtml(fromUsername)}</b>
-                <span>أرسل ${escapeHtml(giftName)} إلى ${escapeHtml(toUsername)}</span>
-            </div>
-            ${giftImage ? `<img src="${giftImage}" class="room-gift-banner-icon">` : `<span class="room-gift-banner-icon-emoji">${giftIcon || '🎁'}</span>`}
-            <span class="room-gift-banner-count">×${quantity || 1}</span>
-        `;
-        document.body.appendChild(el);
-        roomGiftBannerState = { key, count: quantity || 1, timer: null };
+function isHttpsImageUrl(url) {
+    return typeof url === 'string' && url.startsWith('https://');
+}
+
+function showRoomGiftSideBanner(payload) {
+    const key = `${payload.fromUsername}::${payload.giftName}`;
+    // 🐛 مراجعة: شريط "بصدد الاختفاء" (leaving) لا يُدمَج فيه أبداً حتى لو كان بنفس المفتاح —
+    // الهدية تذهب للطابور لتُعرض بشريط جديد نظيف بدل محاولة إحياء شريط يُزال فعلياً
+    const isSameAsShowing = roomGiftBannerShowing && roomGiftBannerState && roomGiftBannerState.key === key && !roomGiftBannerState.leaving;
+    if (isSameAsShowing) {
+        mergeIntoShowingGiftBanner(payload);
+        return;
     }
+    if (roomGiftBannerShowing) {
+        const lastQueued = roomGiftBannerQueue[roomGiftBannerQueue.length - 1];
+        if (lastQueued && `${lastQueued.fromUsername}::${lastQueued.giftName}` === key) {
+            lastQueued.quantity = (lastQueued.quantity || 1) + (payload.quantity || 1);
+        } else if (roomGiftBannerQueue.length < ROOM_GIFT_BANNER_QUEUE_CAP) {
+            roomGiftBannerQueue.push(payload);
+        }
+        return;
+    }
+    renderRoomGiftSideBanner(payload);
+}
 
+function mergeIntoShowingGiftBanner({ quantity }) {
+    const el = document.getElementById('room-gift-side-banner');
+    if (!el || !roomGiftBannerState) return;
+    roomGiftBannerState.count += (quantity || 1);
+    const countEl = el.querySelector('.room-gift-banner-count');
+    if (countEl) countEl.textContent = `×${roomGiftBannerState.count}`;
+    // ✅ نبضة صغيرة تلفت الانتباه للعدّاد المتزايد
+    countEl?.classList.remove('room-gift-banner-count'); void countEl?.offsetWidth; countEl?.classList.add('room-gift-banner-count');
+    el.classList.remove('room-gift-banner-out');
     clearTimeout(roomGiftBannerState.timer);
+    const key = roomGiftBannerState.key;
+    const gen = roomGiftBannerGen;
     roomGiftBannerState.timer = setTimeout(() => {
-        el.classList.add('room-gift-banner-out');
-        setTimeout(() => {
-            el.remove();
-            if (roomGiftBannerState?.key === key) roomGiftBannerState = null;
-        }, 400);
+        if (gen !== roomGiftBannerGen) return;
+        dismissRoomGiftSideBanner(el, key);
     }, 3000);
+}
+
+function renderRoomGiftSideBanner({ fromUsername, fromProfileImage, toUsername, giftName, giftImage, giftIcon, quantity }) {
+    const key = `${fromUsername}::${giftName}`;
+    document.getElementById('room-gift-side-banner')?.remove();
+    const el = document.createElement('div');
+    el.id = 'room-gift-side-banner';
+    el.className = 'room-gift-side-banner';
+    // 🐛 مراجعة: fromProfileImage/giftImage لم تكونا تُفحَصان قبل الحقن بـsrc عبر innerHTML —
+    // أي قيمة تحمل علامة اقتباس تخرج من سياق الخاصية وتحقن HTML/سمات عشوائية (مثال:
+    // fromProfileImage = '" onerror="...'). الآن: تُقبل فقط لو بدأت بـhttps:// فعلياً، وإلا
+    // صورة افتراضية (أو أيقونة الإيموجي الاحتياطية للهدية كما كانت أصلاً)؛ والصور تُبنى
+    // بـcreateElement+src (خاصية DOM، لا تحليل HTML) لا بتضمينها نصاً داخل innerHTML إطلاقاً
+    const avatarUrl = isHttpsImageUrl(fromProfileImage) ? fromProfileImage : '/images/default-avatar.png';
+    const giftImgUrl = isHttpsImageUrl(giftImage) ? giftImage : null;
+    el.innerHTML = `
+        <div class="room-gift-banner-text">
+            <b>${escapeHtml(fromUsername)}</b>
+            <span>أرسل ${escapeHtml(giftName)} إلى ${escapeHtml(toUsername)}</span>
+        </div>
+        ${giftImgUrl ? '' : `<span class="room-gift-banner-icon-emoji">${giftIcon || '🎁'}</span>`}
+        <span class="room-gift-banner-count">×${quantity || 1}</span>
+    `;
+    const avatarImg = document.createElement('img');
+    avatarImg.className = 'room-gift-banner-avatar';
+    avatarImg.src = avatarUrl;
+    el.insertBefore(avatarImg, el.firstChild);
+    if (giftImgUrl) {
+        const giftImg = document.createElement('img');
+        giftImg.className = 'room-gift-banner-icon';
+        giftImg.src = giftImgUrl;
+        el.querySelector('.room-gift-banner-count').insertAdjacentElement('beforebegin', giftImg);
+    }
+    // 🐛 مراجعة: كان يُضاف لـdocument.body بـposition:fixed;top:50% فيغطي المقاعد على الشاشات
+    // القصيرة — الآن يُضاف داخل مسار .room-gift-lane (height:0) بتدفّق الغرفة نفسه بين PK
+    // والدردشة (طابق النموذج الإلزامي)، فموضعه مضمون بلا تغطية أي مقعد مهما كان حجم الشاشة
+    (document.getElementById('room-gift-lane') || document.body).appendChild(el);
+    roomGiftBannerShowing = true;
+    roomGiftBannerGen++; // ✅ جيل جديد لكل عرض — يُبطل تلقائياً أي مؤقّت معلّق من عرض سابق
+    const gen = roomGiftBannerGen;
+    roomGiftBannerState = { key, count: quantity || 1, timer: null, leaving: false };
+    roomGiftBannerState.timer = setTimeout(() => {
+        if (gen !== roomGiftBannerGen) return;
+        dismissRoomGiftSideBanner(el, key);
+    }, 3000);
+}
+
+function dismissRoomGiftSideBanner(el, key) {
+    if (roomGiftBannerState?.key === key) roomGiftBannerState.leaving = true;
+    el.classList.add('room-gift-banner-out');
+    const gen = roomGiftBannerGen;
+    setTimeout(() => {
+        if (gen !== roomGiftBannerGen) return; // ✅ جيل جديد بدأ أثناء الاختفاء (مثلاً أُحيي أو صُفِّر) — تجاهل هذا التنظيف القديم
+        el.remove();
+        if (roomGiftBannerState?.key === key) roomGiftBannerState = null;
+        roomGiftBannerShowing = false;
+        const next = roomGiftBannerQueue.shift();
+        if (next) renderRoomGiftSideBanner(next); // ✅ يعرض العنصر التالي بالطابور فور انتهاء الحالي
+    }, 400);
 }
 
 

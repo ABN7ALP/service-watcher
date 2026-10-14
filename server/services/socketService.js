@@ -2370,7 +2370,9 @@ socket.on('refreshBlockData', async () => {
 
         // ✅ إيموجي تفاعل متحرك فوق صورة مقعد — بث لحظي بدون تخزين بقاعدة البيانات (مجرد تأثير بصري عابر)
         socket.on('send-seat-reaction', async ({ roomId, seatNumber, emoji }) => {
-            const allowedEmojis = ['❤️', '😂', '👏', '🔥', '😍', '👍', '🎉', '😮'];
+            // ✅ طلب صريح: إيموجي التفاعل أصبحت Fluent 3D من public/assets/pk/emoji (مفاتيح
+            // أسماء ملفات لا رموز يونيكود) — نفس القائمة بالعميل (ROOM_REACTION_EMOJIS بـapp.js)
+            const allowedEmojis = ['fire', 'party_popper', 'trophy', 'sparkles', 'smiling_face_with_sunglasses', 'handshake', 'flexed_biceps', 'face_screaming_in_fear'];
             if (!roomId || !allowedEmojis.includes(emoji)) return;
 
             // 🛡️ تحقق فعلي إن هذا المستخدم جالس بالضبط على هذا المقعد بهذي الغرفة —

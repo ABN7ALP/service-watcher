@@ -1467,6 +1467,10 @@ video {
   resize: none;
 }
 
+.resize{
+  resize: both;
+}
+
 .grid-cols-1{
   grid-template-columns: repeat(1, minmax(0, 1fr));
 }
@@ -1855,6 +1859,11 @@ video {
 
 .border-t-transparent{
   border-top-color: transparent;
+}
+
+.bg-\[\#0b0810\]{
+  --tw-bg-opacity: 1;
+  background-color: rgb(11 8 16 / var(--tw-bg-opacity, 1));
 }
 
 .bg-\[\#15181f\]{
@@ -4344,171 +4353,110 @@ button, input, select, textarea {
   transform: translateY(-2px);
 }
 
-/* ✅ غرفة صوت (8 حتى 80 مقعداً) — تصميم مضغوط وواضح على كل الأحجام */
-
-/* ✅ حاوية المقاعد المرنة: توسيط تلقائي لكل صف (يشمل آخر صف ناقص) — يحل مشكلة "مقاعد كبيرة
-   بالكمبيوتر وصغيرة بالهاتف" ويملأ فراغات أي عدد مقاعد (9/13/19/80) بأناقة دون تخطيط مخصص.
-   labeled: تُفعَّل فقط لغرف المستخدمين (9/13/19 مقعداً) — مساحة أوسع كافية لإظهار الاسم
-   تحت كل مقعد (مو فقط بالـ tooltip)، بعكس الغرفة الرسمية المزدحمة بـ80 مقعداً */
+/* =====================================================================
+   ✅ شبكة مقاعد الغرفة — منفَّذة حرفياً من نموذج التصميم الإلزامي (docs/design/
+   voice-room-prototype.html § seats): عدد أعمدة ثابت لكل سعة غرفة، وحجم كل مقعد محدود
+   بالعرض المتاح AND بالارتفاع المتاح معاً (cqh) — فلا يتصادم مع الدردشة أسفله مهما كان
+   الهاتف قصيراً، بعكس النظام السابق الذي اعتمد على عرض الشاشة (vw) فقط وأمِل أن يكفي
+   الارتفاع المتبقي صدفة. مقعد المضيف (دائماً #1 بغرف المستخدمين) وحده بصف أعلى الشبكة
+   عبر grid-column:1/-1 بلا أي حاوية DOM منفصلة — فتبقى كل استعلامات data-seat/data-user-id
+   المسطّحة الحالية تعمل بلا أي تغيير. labeled: الاسم/عداد الدعم يظهران فقط بغرف المستخدمين
+   (9/13/19 مقعداً)، لا الرسمية المزدحمة بـ80 (tooltip فقط هناك، كالسابق).
+   🛡️ gap أسخى قليلاً من حرفية النموذج (6px) عمداً: إطارات الزينة المشتراة (الجمشت الملكي/
+   تنانين النار) تتجاوز حدود دائرة الصورة فعلياً، وتباعد أضيق قد يُعيد تصادمها التاريخي الذي
+   أُصلح سابقاً بصعوبة — موازنة متعمَّدة بين "مطابقة النموذج" و"عدم كسر إصلاح سابق حقيقي" */
 
 .voice-seats-flex {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-content: flex-start;
-  gap: clamp(10px, 3vw, 20px) clamp(12px, 3.2vw, 22px);
-  /* ✅ مساحة تمرير حقيقية أسفل الشبكة تساوي تقريباً ارتفاع منطقة الدردشة العائمة (fixed)
-       + الشريط السفلي — بدونها كانت آخر صفوف المقاعد بغرف كثيرة المقاعد (15/24) تبقى
-       عالقة خلف الدردشة على الشاشات الصغيرة بلا أي طريقة لتمريرها للأعلى وكشفها، لأن
-       الدردشة fixed بحدود الشاشة نفسها وليست جزءاً من التدفّق العادي للصفحة */
-  padding-bottom: calc(42vh + 90px);
-}
-
-@media (min-width: 768px) {
-  .voice-seats-flex {
-    padding-bottom: calc(48vh + 110px);
-  }
-}
-
-.voice-seats-flex.labeled {
-  /* ✅ فراغ رأسي كبير كفاية يستوعب اسم المقعد (وشارة الدعم إن وُجدت) دون تلامس الصف التالي —
-       الاسم/الشارة موضوعان بـ position:absolute فلا يدخلان بحساب ارتفاع الصف تلقائياً */
-  gap: clamp(38px, 7vw, 46px) clamp(14px, 3.5vw, 24px);
-}
-
-/* ✅ شبكة أعمدة ثابتة العدد (بالضبط أسلوب التطبيقات المشهورة) — عدد الأعمدة لا يتغيّر أبداً
-   بتغيّر عرض الشاشة (يضمن دائماً "مربّع 3×3 لـ9 مقاعد كبيرة" أو "~3 صفوف لـ13" أو "~3-4 صفوف
-   لـ19")، وحجم كل مقعد وحده يتمدد تلقائياً مع العرض المتاح (aspect-ratio:1 يحافظ على الدائرية) */
-
-.voice-seats-flex.cols-3,
-.voice-seats-flex.cols-5,
-.voice-seats-flex.cols-6 {
+  flex: none;
   display: grid;
+  grid-template-columns: repeat(var(--cols, 4), 1fr);
   align-content: start;
   justify-items: center;
+  gap: calc(var(--u) * .7) calc(var(--u) * .9);
+  padding: calc(var(--u) * .6) calc(var(--u) * .6) calc(var(--u) * .5);
+  --av: min(calc((100cqw - 2 * var(--u) - (var(--cols, 4) - 1) * 6px) / var(--cols, 4) * .64), 7.6cqh, 64px);
+  --hostAv: min(calc(var(--av) * 1.32), 10cqh, 84px);
 }
 
-/* ✅ فئتا 13/19 مقعداً (كانت 15/24) — تباعد أكبر من السابق + سقف حجم مقعد أصغر قليلاً (أدناه)
-   بطلب صريح: تفادي تصادم الإطارات الزخرفية الكبيرة (الجمشت الملكي خصوصاً، وتنانين النار
-   بدرجة أقل) بإطار المقعد المجاور */
-
-/* 🐛 إصلاح جوهري (طلب صريح: "تنانين النار/الجمشت الملكي صغير بعض الشيء ع مقاعد الغرفة" رغم
-   جولة سابقة رفعت التباعد): computeOverlayArtScaleCap بـapp.js يحسب الفجوة الآمنة كأصغر
-   قيمتين (عمودية↔أفقية)، وكان التباعد الأفقي (column-gap) هنا أضيق كثيراً من الرأسي (14px/
-   11px فقط) فيبقى هو "الحلقة الأضعف" التي تُسقط السقف الديناميكي دوماً تحت 140% الثابتة —
-   فيُلغي عملياً استثناء exemptFromTightCap لهذين الإطارين بالكامل على المقاعد (يُطبَّق عليهما
-   نفس سقف 140% كبقية الإطارات رغم الاستثناء). الحل: تقريب التباعدين الأفقي/الرأسي من بعضهما
-   (كلاهما كبير كفاية الآن) كي يرتفع السقف الديناميكي الفعلي فوق 140% فعلياً ويستفيد الاستثناء */
-
-.voice-seats-flex.cols-5 {
-  grid-template-columns: repeat(5, 1fr);
-  gap: clamp(40px, 9vw, 50px) clamp(38px, 8.5vw, 48px);
+.voice-seats-flex[data-seat-count="19"] {
+  --cols: 6;
 }
 
-/* 🐛 نفس خلل cols-5/6 بالضبط كان موجوداً هنا أيضاً (column-gap أضيق بكثير من row-gap) —
-   يصيب غرف 9 مقاعد الرسمية وأيضاً نافذة معاينة الإطار بالمتجر (تستخدم نفس .cols-3 لصفّها
-   المصغَّر) — طلب صريح لاحق أثبت الإطارين لا يزالان صغيرين بالمعاينة لنفس السبب. تقريب
-   التباعدين هنا أيضاً بنفس منطق cols-5/6 */
+/* ✅ الغرفة الرسمية (80 مقعداً): 8 أعمدة، صيغة حجم أصغر مستقلة، وتمرير داخلي خاص بالشبكة
+   نفسها (لا الصفحة كلها) محدود بـ30cqh كحد أقصى — يبقى شريط الأدوات ظاهراً دائماً تحتها */
 
-.voice-seats-flex.cols-3 {
-  grid-template-columns: repeat(3, 1fr);
-  gap: clamp(46px, 9.5vw, 58px) clamp(40px, 9vw, 50px);
+.voice-seats-flex[data-seat-count="80"] {
+  --cols: 8;
+  --av: min(calc((100cqw - 2 * var(--u) - 7 * 4px) / 8 * .72), 5.2cqh, 40px);
+  max-height: 30cqh;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(#000 85%, transparent);
+  mask-image: linear-gradient(#000 85%, transparent);
 }
 
-.voice-seats-flex.cols-6 {
-  grid-template-columns: repeat(6, 1fr);
-  gap: clamp(36px, 8vw, 44px) clamp(34px, 7.5vw, 40px);
+.voice-seats-flex[data-seat-count="80"]::-webkit-scrollbar {
+  display: none;
 }
 
-.voice-seats-flex.cols-3 .voice-seat,
-.voice-seats-flex.cols-5 .voice-seat,
-.voice-seats-flex.cols-6 .voice-seat {
-  width: 100%;
-  height: auto;
-  aspect-ratio: 1;
-  /* ✅ يملأ عرض عموده كاملاً ويبقى دائرياً دوماً */
-}
+/* 🐛 إصلاح: أرقام الدعم المضغوطة (formatCompactPoints، مثلاً "1.5K") قد تبقى أعرض من مقعد
+   الـ80 الصغير جداً (--av قد يصل لـ~30px) فتتلامس شارتا مقعدين متجاورين — خط/حشو أصغر هنا
+   تحديداً يمنح هامشاً إضافياً بالشبكة المزدحمة دون المساس بحجمها بغرف المستخدمين الأكبر */
 
-/* ✅ سقف حجم أقصى للمقعد نفسه (وليس بس للحاوية) — يمنعه من ملء العمود كاملاً على الهواتف
-   العريضة، ويعطي مسافة بصرية طبيعية بين المقاعد حتى ضمن نفس الصف */
-
-.voice-seats-flex.cols-3 .voice-seat {
-  max-width: 80px;
-  font-size: clamp(0.95rem, 3.8vw, 1.2rem);
-}
-
-.voice-seats-flex.cols-5 .voice-seat {
-  max-width: 54px;
-  font-size: clamp(0.7rem, 2.8vw, 0.88rem);
-}
-
-.voice-seats-flex.cols-6 .voice-seat {
-  max-width: 46px;
-  font-size: clamp(0.62rem, 2.3vw, 0.76rem);
-}
-
-/* ✅ تصغير شبكة الـ9 مقاعد تحديداً على الهواتف الصغيرة (بطلب صريح — كانت كبيرة عليها) —
-   يقلّص السقف الأقصى لحجم المقعد والفراغات المرافقة له بدون التأثير على الهواتف العادية/الأجهزة اللوحية */
-
-@media (max-width: 420px) {
-  /* 🐛 نفس إصلاح التباعد أعلاه لازم أيضاً هنا — كانت النسخة المصغَّرة لهذي الفئة (الهواتف
-       الصغيرة) تعيد نفس الخلل بتباعد أفقي أضيق بكثير من الرأسي */
-
-  .voice-seats-flex.cols-3 {
-    gap: clamp(34px, 7.5vw, 44px) clamp(30px, 7vw, 40px);
-  }
-
-  .voice-seats-flex.cols-3 .voice-seat {
-    max-width: 60px;
-    font-size: clamp(0.78rem, 3.2vw, 0.95rem);
-  }
-}
-
-@media (min-width: 768px) {
-  .voice-seats-flex.cols-3 {
-    max-width: 380px;
-    margin: 0 auto;
-  }
-
-  /* ✅ أضيق من البقية — 3 أعمدة فقط تكبر بسرعة */
-
-  .voice-seats-flex.cols-5,
-    .voice-seats-flex.cols-6 {
-    max-width: 460px;
-    margin: 0 auto;
-  }
+.voice-seats-flex[data-seat-count="80"] .seat-support-badge {
+  font-size: 7.5px;
+  padding: 0.5px 3px;
+  bottom: -7px;
 }
 
 .voice-seat {
-  /* ✅ حجم مرن (clamp) يتدرّج فعلياً مع عرض الشاشة بدل القفز بين 3 مقاسات ثابتة فقط —
-       مُصغَّر عموماً عن السابق بطلب صريح (كانت الدوائر كبيرة أكثر من اللازم) */
-  width: clamp(42px, 11vw, 58px);
-  height: clamp(42px, 11vw, 58px);
-  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.voice-seat.host-seat {
+  grid-column: 1 / -1;
+  margin-bottom: calc(var(--u) * .3);
+}
+
+/* ✅ الصندوق الدائري الفعلي (الصورة/الحلقات/الشارات) — حجمه وحده محدود بـ--av/--hostAv،
+   منفصل عن .voice-seat نفسه (الذي يحوي الاسم/عداد الدعم أسفله بتدفّق عادي الآن، بدل
+   position:absolute قديم لم يعد ضرورياً مع Grid الذي يحسب ارتفاع كل صف بمحتواه تلقائياً) */
+
+.voice-seat-av-wrap {
+  position: relative;
+  width: var(--av);
+  height: var(--av);
+  flex: none;
   border-radius: 50%;
-  /* ✅ دائري بالكامل */
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(0.6rem, 2.8vw, 0.78rem);
+  font-size: max(10px, calc(var(--av) * .36));
   font-weight: bold;
   background: transparent;
   /* ✅ لا خلفية للمقعد الفاضي — شفاف بالكامل */
-  /* ✅ حلقة خفيفة جداً تكاد لا تُرى — تحدّد موضع المقعد الفاضي بالكاد بلا أي إبراز بصري،
-       بطلب صريح ("خليه خفيف كثير وشفاف يعني بالكاد يبين") */
+  /* ✅ حلقة خفيفة جداً تكاد لا تُرى — تحدّد موضع المقعد الفاضي بالكاد بلا أي إبراز بصري */
   border: 1px solid rgba(255,255,255,0.08);
-  cursor: pointer;
   transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-  position: relative;
 }
 
-.voice-seat.user-seat:hover {
+.voice-seat.host-seat .voice-seat-av-wrap {
+  width: var(--hostAv);
+  height: var(--hostAv);
+}
+
+.voice-seat.user-seat:hover .voice-seat-av-wrap {
   background: rgba(139,92,246,0.16);
   border-color: rgba(168,85,247,0.4);
   transform: scale(1.05);
 }
 
-.voice-seat.admin-seat {
+.voice-seat.admin-seat .voice-seat-av-wrap {
   background: linear-gradient(135deg,#7c2d12,#450a0a);
   border-color: rgba(245,158,11,0.5);
   color: #fbbf24;
@@ -4518,25 +4466,63 @@ button, input, select, textarea {
   cursor: not-allowed;
 }
 
-.voice-seat.occupied {
+.voice-seat.occupied .voice-seat-av-wrap {
   background: rgba(139,92,246,0.35);
   border-color: #a855f7;
 }
 
 /* ✅ مقعد فيه مستخدم فعلي حالياً — حلقة توهّج ناعمة مزدوجة الطبقة عبر box-shadow بدل إطار
-   صلب خام (أسلوب "avatar glow ring" الشائع بتطبيقات البث الصوتي المعروفة): طبقة داخلية
-   حادة رفيعة + هالة خارجية ناعمة منخفضة الشفافية، مع ظل عمق خفيف — أكثر أناقة وحيوية
-   من حد لوني بسيط، وبلا حاجة لأي مكتبة خارجية (CSS خالص، خفيف الأداء لأنه ثابت غير متحرك) */
+   صلب خام (أسلوب "avatar glow ring" الشائع بتطبيقات البث الصوتي المعروفة) */
 
-.voice-seat.occupied-seat {
+.voice-seat.occupied-seat .voice-seat-av-wrap {
   background: transparent;
   border: none;
-  padding: 0;
   overflow: visible;
   box-shadow:
         0 0 0 1.5px rgba(168,85,247,0.65),
         0 0 0 4px rgba(168,85,247,0.12),
         0 2px 10px rgba(139,92,246,0.22);
+}
+
+/* ✅ حلقة ذهبية ثابتة لأعلى داعمَين بالغرفة (طلب صريح) — تستبدل حلقة التوهّج الأرجوانية
+   الافتراضية؛ راجع syncSeatVipRings بالعميل لمعيار من يحمل هذا الصنف بالضبط */
+
+.voice-seat.occupied-seat.vip .voice-seat-av-wrap {
+  box-shadow:
+        0 0 0 2px #ffd45a,
+        0 0 0 5px rgba(255,212,90,.3),
+        0 2px 10px rgba(255,212,90,.35);
+}
+
+/* ✅ حلقة متدرّجة دوّارة مستمرة حول مقعد المضيف فقط (طلب صريح) — طبقة خلف الصورة عبر قناع
+   padding-box/border-box (نفس أسلوب .pk-invite::before)، بلا مساس بحلقة التوهّج فوقها */
+
+.voice-seat.host-seat.occupied-seat .voice-seat-av-wrap::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  z-index: 0;
+  padding: 2.5px;
+  background: conic-gradient(from var(--r, 0deg), #ffd45a, #ff4f8b, #7a2bd8, #3d7bff, #ffd45a);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: voiceSeatHostRing 5s linear infinite;
+}
+
+@property --r {
+  syntax: '<angle>';
+
+  inherits: false;
+
+  initial-value: 0deg;
+}
+
+@keyframes voiceSeatHostRing {
+  to {
+    --r: 360deg;
+  }
 }
 
 .voice-seat-avatar {
@@ -4545,13 +4531,45 @@ button, input, select, textarea {
   border-radius: 50%;
   -o-object-fit: cover;
      object-fit: cover;
+  position: relative;
+  z-index: 2;
 }
 
-/* ✅ حلقة خضراء نابضة حول أي مقعد يتحدث فعلياً الآن (كشف حي لمستوى الصوت عبر Web Audio API
-   — انظر attachSpeakingDetector بالعميل) — بديل بصري فوري "من يتكلم الآن" بدون أي إشارة
-   سيرفر إضافية (كل عميل يحلّل الصوت الذي يستقبله بنفسه، بلا أي حمل إضافي على الخادم) */
+/* ✅ موجتا ترقرق خلف الصورة عند التحدّث الفعلي — مربوطتان بنفس كاشف الصوت الحقيقي الحالي
+   (attachSpeakingDetector، Web Audio API) لا عشوائية؛ الصنف الذي يُفعِّلهما هو .talk نفسه
+   (كان اسمه voice-seat-speaking، استُبدل بـtalk ليطابق النموذج الإلزامي) */
 
-.voice-seat.occupied-seat.voice-seat-speaking {
+.voice-seat-wave {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.voice-seat.talk .voice-seat-wave {
+  animation: voiceSeatWave 1.4s ease-out infinite;
+  background: radial-gradient(circle, transparent 58%, rgba(52,211,153,.6) 62%, transparent 72%);
+}
+
+.voice-seat.talk .voice-seat-wave + .voice-seat-wave {
+  animation-delay: .7s;
+}
+
+@keyframes voiceSeatWave {
+  0% {
+    transform: scale(1);
+    opacity: .9;
+  }
+
+  100% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+
+.voice-seat.occupied-seat.talk .voice-seat-av-wrap {
   box-shadow:
         0 0 0 2px rgba(52,211,153,0.9),
         0 0 0 5px rgba(52,211,153,0.25),
@@ -4569,24 +4587,20 @@ button, input, select, textarea {
   }
 }
 
-/* ✅ اسم صاحب المقعد أسفله — يظهر فقط بغرف المستخدمين (9/15/24 مقعداً، حاوية .labeled)
-   حيث المساحة تسمح؛ الغرفة الرسمية المزدحمة بـ80 مقعداً تبقى بالـ tooltip فقط لتفادي الازدحام */
+/* ✅ اسم صاحب المقعد أسفله — تدفّق عادي الآن أسفل .voice-seat-av-wrap (بدل position:absolute
+   قديم)، يظهر فقط بغرف المستخدمين (9/15/24 مقعداً، حاوية .labeled)؛ الغرفة الرسمية المزدحمة
+   بـ80 مقعداً تبقى بالـ tooltip فقط لتفادي الازدحام */
 
 .voice-seat-name {
   display: none;
-  position: absolute;
-  bottom: -1.75rem;
-  /* ✅ أسفل شارة عداد الدعم (bottom:-9px) بمسافة كافية تمنع تداخلهما */
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 0.58rem;
+  margin-top: calc(var(--u) * .35);
+  max-width: 100%;
+  font-size: max(10px, calc(var(--u) * .85));
   font-weight: 600;
   color: #d1d5db;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 4rem;
-  pointer-events: none;
   text-shadow: 0 1px 2px rgba(0,0,0,0.8);
 }
 
@@ -4617,12 +4631,13 @@ button, input, select, textarea {
   color: #c4b5fd;
 }
 
-/* ✅ شارة صغيرة تطفو خارج حافة الصورة الدائرية (زاوية سفلية) بدل تعتيم الوجه بالكامل —
+/* ✅ شارة صغيرة تطفو خارج حافة .voice-seat-av-wrap (زاوية سفلية) بدل تعتيم الوجه بالكامل —
    لا تحجب هوية الجالس، وتبقى واضحة تماماً لصاحب المقعد ولبقية المستخدمين على حد سواء.
-   الحجم بوحدة em نسبية لخط المقعد، فيتحجّم تلقائياً مع الـ clamp() أعلاه بدون قاعدة إضافية. */
+   الحجم بوحدة em نسبية لخط المقعد، فيتحجّم تلقائياً مع --av أعلاه بدون قاعدة إضافية. */
 
 .voice-seat-mute-overlay {
   position: absolute;
+  z-index: 3;
   bottom: -0.15em;
   left: -0.15em;
   width: 1.35em;
@@ -4640,14 +4655,39 @@ button, input, select, textarea {
   box-shadow: 0 2px 6px rgba(0,0,0,0.4);
 }
 
+/* ✅ رقم المقعد — شارة صغيرة بالزاوية العلوية المقابلة (طلب صريح: "رقم المقعد") */
+
+.voice-seat-no {
+  position: absolute;
+  z-index: 3;
+  top: -0.15em;
+  right: -0.15em;
+  min-width: 1.4em;
+  height: 1.4em;
+  border-radius: 99px;
+  background: rgba(0,0,0,0.65);
+  border: 1px solid rgba(255,255,255,0.33);
+  font-size: 0.6em;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  pointer-events: none;
+  color: #e5e7eb;
+}
+
 /* ✅ لا إطار مميَّز لمقعدي أنا بالذات — بطلب صريح: يبقى بلا تأثير بصري إضافي عن بقية المقاعد */
 
 /* ✅ مقعد مقفل من الإدارة/المضيف — لا يُمكن الجلوس عليه */
 
-.voice-seat.locked-seat {
+.voice-seat.locked-seat .voice-seat-av-wrap {
   background: rgba(255,255,255,0.03);
   border-color: rgba(255,255,255,0.08);
   color: #4b5563;
+}
+
+.voice-seat.locked-seat {
   cursor: not-allowed;
 }
 
@@ -4672,33 +4712,34 @@ button, input, select, textarea {
 
 /* ✅ دردشة الغرفة الصوتية — بآلية التطبيقات المشهورة (Bigo/Yalla/TikTok Live): حقل كتابة
    واحد ظاهر دائماً + زرّي هدية/المزيد بجانبه (بدل صف أيقونات منفصل يحتاج فتحه أولاً).
-   كله fixed بالضبط داخل إطار الغرفة نفسه (وليس الصفحة كاملة) — لأن #main-content يحمل
-   backdrop-blur، فهذا يجعل أي fixed بداخله نسبياً لحدود الغرفة تلقائياً، ويضمن ثباتاً
-   حقيقياً بغض النظر عن طول محتوى الغرفة (بعكس sticky الذي يفشل بالغرف القصيرة). */
+   🐛 إصلاح جوهري (طلب صريح: "أزل كل position:fixed/absolute من عناصر الغرفة الأساسية"):
+   كان هذا الشريط + منطقة الرسائل position:fixed نسبةً لحدود #main-content (بفعل backdrop-
+   filter الذي يجعله containing block لأي fixed بداخله) — الآن عنصر تدفّق عادي (flex:none)
+   بآخر عمود flex الغرفة نفسه، فلا حاجة لحيلة الـcontaining-block تلك إطلاقاً بعد الآن */
 
-/* 1) الشريط السفلي الموحّد — حقل الكتابة يأخذ معظم العرض + زرّان مدمجان بجانبه */
-
-.room-chat-dock-fixed {
-  position: fixed;
-  bottom: 10px;
-  left: 12px;
-  right: 12px;
-  z-index: 11;
+.room-chat-dock {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: calc(var(--u) * .6) calc(var(--u) * .9) 0;
 }
+
+/* ✅ أهداف لمس 38px كحد أدنى (طلب صريح) — min-width/min-height صريحان فوق الحجم المرن
+   (--u*3.4) كي لا يهبطا دونه أبداً حتى على أضيق هاتف تُسحَق فيه --u لحدّها الأدنى (9px) */
 
 .room-chat-input-pill {
   flex: 1;
   min-width: 0;
+  height: calc(var(--u) * 3.4);
+  min-height: 38px;
   display: flex;
   align-items: center;
   gap: 6px;
   background: rgba(17,24,39,0.92);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 9999px;
-  padding: 6px 16px 6px 6px;
+  padding: 0 calc(var(--u) * 1.1) 0 4px;
   /* ✅ فراغ أكبر بجهة اليمين (بداية الكتابة بالعربي)، أضيق قرب زر الإرسال باليسار */
   -webkit-backdrop-filter: blur(4px);
           backdrop-filter: blur(4px);
@@ -4712,7 +4753,7 @@ button, input, select, textarea {
   border: none;
   outline: none;
   color: #fff;
-  font-size: 13px;
+  font-size: max(10px, calc(var(--u) * 1));
 }
 
 .room-chat-input-pill input::-moz-placeholder {
@@ -4724,8 +4765,10 @@ button, input, select, textarea {
 }
 
 .room-chat-input-pill button {
-  width: 30px;
-  height: 30px;
+  width: calc(var(--u) * 3);
+  height: calc(var(--u) * 3);
+  min-width: 38px;
+  min-height: 38px;
   flex-shrink: 0;
   border-radius: 50%;
   display: flex;
@@ -4744,8 +4787,10 @@ button, input, select, textarea {
 
 .room-chat-dock-icon {
   position: relative;
-  width: 42px;
-  height: 42px;
+  width: calc(var(--u) * 3.4);
+  height: calc(var(--u) * 3.4);
+  min-width: 38px;
+  min-height: 38px;
   flex-shrink: 0;
   border-radius: 50%;
   display: flex;
@@ -4774,6 +4819,20 @@ button, input, select, textarea {
 
 .room-chat-dock-icon.room-chat-leave-icon {
   color: #f87171;
+}
+
+/* ✅ زرّا المايك/التفاعل المستقلّان الجديدان (نموذج التصميم الإلزامي) — أخضر فعّال/أحمر مكتوم */
+
+.room-chat-dock-icon#room-mic-toggle-btn {
+  color: #34d399;
+}
+
+.room-chat-dock-icon#room-mic-toggle-btn.room-chat-mic-muted {
+  color: #f87171;
+}
+
+.room-chat-dock-icon#room-reaction-btn {
+  color: #fbbf24;
 }
 
 /* ✅ نبضة خفيفة حول زر "المزيد" وقت تشغيل موسيقى الغرفة — مؤشر مستمر رغم انتقال أيقونة القرص لداخل القائمة */
@@ -5178,6 +5237,30 @@ button, input, select, textarea {
 }
 
 .room-info-session-support.hidden {
+  display: none;
+}
+
+/* ✅ شارة ترتيب الدوري الأسبوعي بالسطر الثاني (طلب صريح) — نفس طراز شارة دعم الجلسة بجانبها
+   تماماً، بلمسة ذهبية مميِّزة عن البرتقالي (تحاكي لون الكأس بدل البرق) */
+
+.room-info-league-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #ffd45a;
+  background: rgba(255,212,90,0.14);
+  border-radius: 999px;
+  padding: 1.5px 6px;
+  cursor: pointer;
+}
+
+.room-info-league-chip i {
+  font-size: 7.5px;
+}
+
+.room-info-league-chip.hidden {
   display: none;
 }
 
@@ -8584,17 +8667,18 @@ button, input, select, textarea {
 
 /* 2) منطقة الرسائل — تعلو الشريط، تنمو للأعلى نحو المقاعد، وقابلة للتمرير لعرض السجل بالكامل */
 
-.room-chat-messages-fixed {
-  position: fixed;
-  bottom: 62px;
-  left: 12px;
-  right: 12px;
-  z-index: 9;
-  max-height: 42vh;
+.room-chat-messages {
+  /* 🐛 إصلاح جوهري (طلب صريح — راجع التعليق أعلى .room-chat-dock): عنصر تدفّق عادي الآن،
+       flex:1 1 auto يأخذ كل المساحة المتبقية بعمود الغرفة بعد كل الأقسام الأخرى flex:none،
+       وينكمش حتى min-height عند ضيق الشاشة بدل التراكب فوق المقاعد أو شريط الأدوات أبداً */
+  flex: 1 1 auto;
+  min-height: calc(var(--u) * 8);
+  position: relative;
+  margin-top: calc(var(--u) * .6);
   overflow-y: auto;
-  background: linear-gradient(to top, rgba(17,24,39,0.85), rgba(17,24,39,0.5) 70%, transparent);
-  border-radius: 0.75rem;
-  padding: 1.5rem 0.5rem 0.25rem;
+  -webkit-mask: linear-gradient(transparent, #000 10%);
+  mask: linear-gradient(transparent, #000 10%);
+  padding: 0 calc(var(--u) * .9);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -8607,43 +8691,19 @@ button, input, select, textarea {
        يعطي نفس الالتصاق بالأسفل عند قصر المحتوى، لكن بتمرير سليم 100% عند الفيضان لأعلى */
   text-shadow: 0 1px 3px rgba(0,0,0,0.9);
   scrollbar-width: thin;
-  transition: bottom 0.15s ease;
 }
 
-.room-chat-messages-fixed > *:first-child {
+.room-chat-messages > *:first-child {
   margin-top: auto;
 }
 
-.room-chat-messages-fixed:empty {
-  display: none;
-}
-
-.room-chat-messages-fixed::-webkit-scrollbar {
+.room-chat-messages::-webkit-scrollbar {
   width: 4px;
 }
 
-.room-chat-messages-fixed::-webkit-scrollbar-thumb {
+.room-chat-messages::-webkit-scrollbar-thumb {
   background: rgba(255,255,255,0.25);
   border-radius: 4px;
-}
-
-@media (min-width: 768px) {
-  .room-chat-dock-fixed {
-    bottom: 16px;
-    max-width: 480px;
-    margin: 0 auto;
-    left: 12px;
-    right: 12px;
-  }
-
-  .room-chat-messages-fixed {
-    bottom: 70px;
-    max-width: 480px;
-    margin: 0 auto;
-    left: 12px;
-    right: 12px;
-    max-height: 48vh;
-  }
 }
 
 /* ✅ فقاعة رسالة تحتضن محتواها (width: fit-content) بدل تمددها بعرض شبه كامل، وسطر واحد
@@ -8802,15 +8862,25 @@ button, input, select, textarea {
   vertical-align: -3px;
 }
 
-/* ✅ شريط إعلان الهدية الجانبي العائم — أسلوب TikTok Live، ينزلق من الجانب لكن من منتصف
-   الشاشة رأسياً (وليس أعلاها) ويختفي تلقائياً؛ عند تكرار نفس الهدية من نفس المُرسل بفارق
-   قصير يُزاد عداد ×N بدل إنشاء شريط جديد فوق القديم */
+/* 🐛 مراجعة PR #99: كان الشريط position:fixed;top:50% بمنتصف الشاشة رأسياً — يغطي المقاعد
+   مباشرة على الشاشات القصيرة (320×568). الآن مسار تدفّق بلا ارتفاع (.room-gift-lane، مطابق
+   لـ.lane بالنموذج الإلزامي) بين المقاعد/PK والدردشة، والشريط نفسه position:absolute
+   بداخله فقط قرب أعلى المسار — بلا أي تأثير على التدفّق، وبلا تغطية أي مقعد مهما كان الحجم */
+
+.room-gift-lane {
+  position: relative;
+  flex: none;
+  height: 0;
+  z-index: 20;
+}
+
+/* ✅ شريط إعلان الهدية — أسلوب TikTok Live، ينزلق من الجانب أعلى مساره ويختفي تلقائياً؛
+   عند تكرار نفس الهدية من نفس المُرسل بفارق قصير يُزاد عداد ×N بدل إنشاء شريط جديد فوق القديم */
 
 .room-gift-side-banner {
-  position: fixed;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
+  position: absolute;
+  top: calc(var(--u, 9px) * .8);
+  right: calc(var(--u, 9px) * .9);
   z-index: 60;
   display: flex;
   align-items: center;
@@ -8819,7 +8889,7 @@ button, input, select, textarea {
   border: 1px solid rgba(251,191,36,0.3);
   border-radius: 9999px;
   padding: 5px 12px 5px 5px;
-  max-width: 78vw;
+  max-width: 78cqw;
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   animation: giftBannerIn 0.3s ease-out;
 }
@@ -8830,24 +8900,24 @@ button, input, select, textarea {
 
 @keyframes giftBannerIn {
   from {
-    transform: translate(110%, -50%);
+    transform: translateX(120%);
     opacity: 0;
   }
 
   to   {
-    transform: translate(0, -50%);
+    transform: translateX(0);
     opacity: 1;
   }
 }
 
 @keyframes giftBannerOut {
   from {
-    transform: translate(0, -50%);
+    transform: translateX(0);
     opacity: 1;
   }
 
   to   {
-    transform: translate(110%, -50%);
+    transform: translateX(120%);
     opacity: 0;
   }
 }
@@ -9542,10 +9612,12 @@ button, input, select, textarea {
   position: absolute;
   top: -4px;
   left: 50%;
-  font-size: 1.3rem;
+  width: max(20px, calc(var(--av, 48px) * .42));
+  height: max(20px, calc(var(--av, 48px) * .42));
   pointer-events: none;
   animation: seatReactionFloat 1.5s ease-out forwards;
   z-index: 6;
+  filter: drop-shadow(0 3px 5px rgba(0,0,0,0.5));
 }
 
 /* ✅ وضع "الغرفة ملء الشاشة" — يخفي هيدر المنصة/الرصيد والتنقّل بالكامل بمجرد فتح أي غرفة،
@@ -9562,43 +9634,63 @@ body.in-voice-room .container {
   max-width: 100% !important;
 }
 
-/* 🐛 إصلاح جوهري: كان min-height فقط (بلا تثبيت فعلي) — لو تجاوز محتوى الغرفة (هيدر +
-   شبكة مقاعد + منطقة دردشة) ارتفاع شاشة واحدة، ينمو #main-content أطول من الشاشة وتصير
-   الصفحة كاملة قابلة للتمرير، فيضطر المستخدم للتمرير للأسفل قليلاً للوصول لشريط الدردشة/
-   الهدية/المزيد (fixed بالأصل نسبةً لحدود #main-content نفسه بفعل backdrop-filter، لا
-   للشاشة مباشرة — فينزل معه خارج حدود الرؤية). التثبيت الصريح هنا (position:fixed +
-   inset:0 + ارتفاع شاشة واحدة فعلي) يضمن أن الغرفة بأكملها دائماً شاشة واحدة كاملة بلا
-   تمرير صفحة إطلاقاً — تماماً كتطبيقات الجوال المرجعية */
+/* =====================================================================
+   ✅ إعادة بناء كاملة لتخطيط الغرفة — منفَّذة حرفياً من نموذج التصميم الإلزامي
+   (docs/design/voice-room-prototype.html): عمود flex واحد (رأس → سطر ثانٍ → مقاعد → PK →
+   مسار شريط الهدايا → دردشة flex:1 → شريط أدوات)، بلا أي position:fixed/absolute على
+   عناصر التخطيط الأساسية (المطلق مسموح فقط للطبقات العائمة: الفقاعة المصغَّرة، مشغّل
+   الموسيقى، إيموجي التفاعل، شريط إعلان الهدية الجانبي القديم الذي لم يعد مستخدَماً هنا).
+   🛡️ "لا تداخل على أي هاتف" بالتصميم لا بالصدفة: القسم الوحيد المرن هو .room-chat-messages
+   (flex:1 1 auto، ينكمش حتى حده الأدنى)؛ كل الأقسام الأخرى (رأس/سطر ثانٍ/مقاعد/PK/شريط
+   أدوات) flex:none بحجم محسوب من container query units (cqw/cqh) لحاوية الغرفة نفسها
+   (container-type:size) — فمجموعها بالضبط ارتفاع الحاوية دائماً، مهما كان حجم الشاشة.
+   ===================================================================== */
 
 body.in-voice-room #main-content {
   grid-column: span 12 / span 12 !important;
   border-radius: 0 !important;
-  position: fixed !important;
-  inset: 0 !important;
   height: 100vh !important;
   height: 100dvh !important;
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;
+  /* ✅ حاوية استعلام الحجم (container queries) للغرفة بأكملها — كل مقاس بالأسفل مُشتَقّ من
+       عرض/ارتفاع هذا الصندوق نفسه (cqw/cqh)، لا من نافذة المتصفح، فيتكيّف تلقائياً على أي هاتف */
+  container-type: size;
+  container-name: room;
+  /* ✅ وحدة مرنة واحدة يتفرّع منها كل حجم بالغرفة (نفس --u بالنموذج بالضبط) */
+  --u: clamp(9px, 2.75cqw, 12px);
+  padding: max(env(safe-area-inset-top), 6px) 0 max(env(safe-area-inset-bottom), 6px);
 }
 
-/* 🐛 إصلاح جوهري لاحق: overflow-y:auto هنا كان يقصّ زخرفة الإطارات الزخرفية المتعمَّد
-   تجاوزها حدود دائرة الصورة (نظام exemptFromTightCap/computeOverlayArtScaleCap) عند
-   المقاعد القريبة من حافة الشبكة — طلب صريح: "الإطار والمستخدم الجالس يتداخلون بعض الشيء
-   بالزاوية وكأنه مقصوص". overflow:hidden على #main-content بالأعلى كافٍ وحده لمنع تمرير
-   الصفحة (الهدف الأصلي لهذا الإصلاح)؛ ترك تجاوز هذي الشبكة نفسها ظاهراً (visible) يسمح
-   لزخرفة الإطار بالتوغّل خارج حدود المقعد كما صُمِّمت دون أي قصّ، بلا عودة لمشكلة التمرير
-   (تحجيم المقاعد المرن (clamp) مصمَّم أصلاً ليلائم شاشة واحدة دوماً) */
+/* 🐛 مراجعة PR #99: --room-kb-inset كانت تُضاف سابقاً داخل padding-bottom لـ#main-content
+   نفسه — لكن #main-content هو أيضاً جذر container-type:size، ووحدات cqw/cqh تُحسَب من
+   content-box الحاوية (بعد طرح حشوتها هي)، فزيادة حشوتها السفلية كانت تُصغّر cqh فعلياً
+   وتُصغّر معها حجم كل مقعد (--av/--hostAv) لحظة فتح الكيبورد — عكس المطلوب تماماً ("لا
+   تقفز المقاعد"). الحل: عنصر فاصل مرن مستقل بآخر العمود (بعد شريط الأدوات) يأخذ المساحة
+   بدلاً من ذلك — ارتفاع #main-content وحشوته وcqh تبقى ثابتة بالكامل بغض النظر عن الكيبورد،
+   فقط الدردشة (flex:1 المرنة) تنكمش لتفسح له كما تنكمش لأي تغيّر مساحة آخر */
+
+.room-kb-spacer {
+  flex: none;
+  height: var(--room-kb-inset, 0px);
+}
+
+/* ✅ على الشاشات العريضة (كمبيوتر مكتبي) تبقى الغرفة بنسب هاتف واحدة متمركزة بدل التمدّد
+   الأفقي الكامل — نفس فلسفة النظام القديم (max-width:480px) المُطبَّقة الآن على الحاوية كلها */
+
+@media (min-width: 768px) {
+  body.in-voice-room #main-content {
+    max-width: 480px !important;
+    margin: 0 auto !important;
+  }
+}
+
+/* ✅ حجم القسم نفسه (طي/هامش/أعمدة) معرَّف بكامله أسفل §voice-seats-stage — هنا فقط flex:none
+   يضمن أنه لا يأخذ أكثر من محتواه الفعلي، تاركاً كل المساحة الباقية لـ.room-chat-messages */
 
 body.in-voice-room #main-content > #voice-chat-grid {
-  flex: 1 1 auto;
-  min-height: 0;
-  /* ✅ هامش إضافي حول الشبكة نفسها (غير تباعد #main-content العام الذي يبقى كما هو لبقية
-       عناصره) — زخرفة الإطارات بمقاعد الحافة (أول/آخر عمود وصف) تتوغّل خارج حدود المقعد
-       بمقدار يفوق غالباً padding الحاوية الأب الافتراضي (12-16px)، فتُقصّ من overflow:hidden
-       بـ#main-content رغم عدم وجود مقعد مجاور يتصادم معها أصلاً على تلك الجهة — هامش أكبر هنا
-       يمنحها نفس مساحة التوغّل التي تحصل عليها المقاعد الداخلية عبر الفجوة بينها وبين جاراتها */
-  padding: 22px;
+  flex: none;
 }
 
 /* =====================================================
@@ -9639,6 +9731,22 @@ body.in-voice-room #main-content > #voice-chat-grid {
   height: 240px;
   background: repeating-radial-gradient(circle at 50% 120%, #ffffff07 0 2px, transparent 2px 22px);
   pointer-events: none;
+}
+
+/* ✅ طلب صريح: شريط PK "مضغوط" داخل الغرفة (نفس مكوّن feat/pk-live-bar دون تكراره) — يظهر
+   بين المقاعد والدردشة ضمن تدفّق الغرفة الآن (لا كعنصر مستقل ضخم)، فلا يملك ترف ارتفاع
+   290px الأصلي بجانب مقاعد وشات ودردشة بشاشة 320×568 القصيرة. صف "أعلى الداعمين بالمعركة"
+   السفلي (.fans) يُخفى هنا تحديداً — مكرَّر بصرياً مع ودجت "أعلى 3 داعمين" الموجود بالفعل
+   برأس الغرفة — لا أي تعديل على منطق شريط التقدّم/الفارس/الانفجار (.bar-wrap/.knot/.rider)
+   الذي يبقى كما هو بالضبط لتفادي كسر حساباته الداخلية المرتبطة بقيم px ثابتة */
+
+.pk-live-bar.room {
+  min-height: 0;
+  margin-bottom: calc(var(--u, 9px) * .7);
+}
+
+.pk-live-bar.room .fans {
+  display: none;
 }
 
 .pk-live-bar .pk {

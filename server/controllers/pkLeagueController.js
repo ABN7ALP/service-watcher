@@ -7,6 +7,7 @@
 // عادية، لا رقم دوري يُعاد اشتقاقه)
 // =====================================================
 
+const mongoose = require('mongoose');
 const PkSeason = require('../models/PkSeason');
 const PkStanding = require('../models/PkStanding');
 const PkHeadToHead = require('../models/PkHeadToHead');
@@ -127,7 +128,8 @@ exports.getStandings = async (req, res) => {
 
         res.json({ status: 'success', season: seasonMeta(season), podium, rows, nextCursor, myRoom });
     } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
+        console.error('[PK LEAGUE] getStandings error:', error);
+        res.status(500).json({ status: 'error', message: 'تعذر تحميل ترتيب الدوري' });
     }
 };
 
@@ -150,7 +152,8 @@ exports.getMyStanding = async (req, res) => {
         const myRank = await PkStanding.getRank(season._id, myStanding);
         res.json({ status: 'success', season: seasonMeta(season), myRoom: standingRow(myStanding, myRank) });
     } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
+        console.error('[PK LEAGUE] getMyStanding error:', error);
+        res.status(500).json({ status: 'error', message: 'تعذر تحميل ترتيب غرفتك' });
     }
 };
 
@@ -160,6 +163,12 @@ exports.getMyStanding = async (req, res) => {
 // =====================================================
 exports.getRoomStanding = async (req, res) => {
     try {
+        // 🐛 مراجعة: roomId يصل مباشرة من مسار الرابط بلا أي تحقق — قيمة غير صالحة (ليست
+        // ObjectId حقيقياً) كانت تُسقِط استثناء Mongoose (CastError) يُمسَك بالأسفل ويُرجَع
+        // كخطأ 500 عام بدل 400 واضح لخطأ مُدخَل من العميل نفسه
+        if (!mongoose.isValidObjectId(req.params.roomId)) {
+            return res.status(400).json({ status: 'error', message: 'معرّف غرفة غير صالح' });
+        }
         const weekParam = req.query.week === 'previous' ? 'previous' : 'current';
         const season = await resolveSeason(weekParam);
         if (!season) return res.json({ status: 'success', season: null, room: null, headToHead: null });
@@ -177,6 +186,7 @@ exports.getRoomStanding = async (req, res) => {
 
         res.json({ status: 'success', season: seasonMeta(season), room: standingRow(standing, rank), headToHead });
     } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
+        console.error('[PK LEAGUE] getRoomStanding error:', error);
+        res.status(500).json({ status: 'error', message: 'تعذر تحميل تفاصيل الغرفة' });
     }
 };
