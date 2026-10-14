@@ -2513,6 +2513,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         roomHandQueue = [];
         currentPkBattle = null;
         // ✅ لا يبقى شريط هدية (أو طابوره) من الغرفة السابقة عالقاً فوق غرفة جديدة دخلتها للتو
+        // 🐛 مراجعة: clearTimeout + زيادة الجيل قبل التصفير — يُبطل أي مؤقّت فادي/تنظيف معلّق
+        // (render أو dismiss) من الغرفة السابقة كان سيُنفَّذ لاحقاً على حالة غرفة لم تعد قائمة
+        clearTimeout(roomGiftBannerState?.timer);
+        roomGiftBannerGen++;
         document.getElementById('room-gift-side-banner')?.remove();
         roomGiftBannerQueue = [];
         roomGiftBannerShowing = false;
@@ -2554,7 +2558,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </div>
             </div>
             <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
+            <div id="room-gift-lane" class="room-gift-lane"></div>
             ${renderRoomChatMarkup()}
+            <div id="room-kb-spacer" class="room-kb-spacer"></div>
         `;
         // ✅ إعادة تعيين أي فقاعة "غرفة مُصغَّرة" سابقة — الدخول لواجهة الغرفة (نفسها أو غرفة
         // أخرى) يعني أننا لم نعد بوضع التصغير بعد الآن
@@ -5708,6 +5714,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         myHandRaised = false;
         roomHandQueue = [];
         currentPkBattle = null;
+        clearTimeout(roomGiftBannerState?.timer);
+        roomGiftBannerGen++;
         document.getElementById('room-gift-side-banner')?.remove();
         roomGiftBannerQueue = [];
         roomGiftBannerShowing = false;
@@ -5724,7 +5732,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <span class="text-xs text-gray-400">80 مقعد</span>
             </div>
             <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
+            <div id="room-gift-lane" class="room-gift-lane"></div>
             ${renderRoomChatMarkup()}
+            <div id="room-kb-spacer" class="room-kb-spacer"></div>
         `;
         document.getElementById('back-to-rooms-btn').addEventListener('click', showRoomBrowserView);
         wireRoomChatUI();
@@ -14817,18 +14827,32 @@ function appendRoomGiftChatMessage({ fromUsername, toUsername, giftName, giftIco
 
 // ✅ حالة الشريط الحالي — يسمح بجمع الإرسالات المتكررة (نفس المُرسل/نفس الهدية) بعدّاد
 // ×N واحد بدل إعادة إنشاء الشريط من الصفر في كل مرة (كانت تبدو كومضات متلاحقة مزعجة)
-let roomGiftBannerState = null; // { key, count, timer }
+let roomGiftBannerState = null; // { key, count, timer, leaving }
 // ✅ طابور حقيقي (طلب صريح: "بطابور حتى لا تتراكب الإعلانات") — هدية من مُرسل/نوع مختلف
 // بينما شريط آخر معروض لا تُدمَّره فوراً بعد الآن، بل تنتظر دورها؛ هدية مطابقة لآخر عنصر
 // بالطابور (لا للمعروض حالياً) تُدمَج بعدّاده بدل فتح عنصر طابور جديد لكل هدية متكررة.
 // سقف صغير يمنع تراكماً بلا حدود بغرفة نشطة جداً — الأحدث يبقى أهم من استعراض كل حدث قديم
 let roomGiftBannerQueue = [];
 let roomGiftBannerShowing = false;
+// 🐛 مراجعة PR #99: مؤقّت التنظيف الداخلي بـdismissRoomGiftSideBanner (400ms بعد بدء الاختفاء)
+// لا تملك mergeIntoShowingGiftBanner مرجعاً له لتُلغيه (معرّف محلياً هناك فقط) — فهدية
+// بنفس المُرسل/الهدية تصل أثناء نافذة الاختفاء تلك كانت "تُحيي" الشريط (تُلغي صنف الاختفاء
+// وتُجدول مؤقّت 3 ثوانٍ جديداً) بينما المؤقّت الداخلي القديم يبقى شغّالاً ويُزيل الشريط ويُصفّر
+// الحالة/الطابور تحت أقدام الشريط "المُحيا" حديثاً. عدّاد جيل بسيط يُبطل أي مؤقّت معلّق من قبل
+// آخر render/تصفير تلقائياً — يزيد عند كل عرض جديد وعند كل تصفير (دخول غرفة)؛ كل setTimeout
+// يلتقط قيمته وقت الجدولة ويتحقق أنها لم تتغيّر قبل تنفيذ أي شيء
+let roomGiftBannerGen = 0;
 const ROOM_GIFT_BANNER_QUEUE_CAP = 6;
+
+function isHttpsImageUrl(url) {
+    return typeof url === 'string' && url.startsWith('https://');
+}
 
 function showRoomGiftSideBanner(payload) {
     const key = `${payload.fromUsername}::${payload.giftName}`;
-    const isSameAsShowing = roomGiftBannerShowing && roomGiftBannerState && roomGiftBannerState.key === key;
+    // 🐛 مراجعة: شريط "بصدد الاختفاء" (leaving) لا يُدمَج فيه أبداً حتى لو كان بنفس المفتاح —
+    // الهدية تذهب للطابور لتُعرض بشريط جديد نظيف بدل محاولة إحياء شريط يُزال فعلياً
+    const isSameAsShowing = roomGiftBannerShowing && roomGiftBannerState && roomGiftBannerState.key === key && !roomGiftBannerState.leaving;
     if (isSameAsShowing) {
         mergeIntoShowingGiftBanner(payload);
         return;
@@ -14855,7 +14879,12 @@ function mergeIntoShowingGiftBanner({ quantity }) {
     countEl?.classList.remove('room-gift-banner-count'); void countEl?.offsetWidth; countEl?.classList.add('room-gift-banner-count');
     el.classList.remove('room-gift-banner-out');
     clearTimeout(roomGiftBannerState.timer);
-    roomGiftBannerState.timer = setTimeout(() => dismissRoomGiftSideBanner(el, roomGiftBannerState.key), 3000);
+    const key = roomGiftBannerState.key;
+    const gen = roomGiftBannerGen;
+    roomGiftBannerState.timer = setTimeout(() => {
+        if (gen !== roomGiftBannerGen) return;
+        dismissRoomGiftSideBanner(el, key);
+    }, 3000);
 }
 
 function renderRoomGiftSideBanner({ fromUsername, fromProfileImage, toUsername, giftName, giftImage, giftIcon, quantity }) {
@@ -14864,24 +14893,51 @@ function renderRoomGiftSideBanner({ fromUsername, fromProfileImage, toUsername, 
     const el = document.createElement('div');
     el.id = 'room-gift-side-banner';
     el.className = 'room-gift-side-banner';
+    // 🐛 مراجعة: fromProfileImage/giftImage لم تكونا تُفحَصان قبل الحقن بـsrc عبر innerHTML —
+    // أي قيمة تحمل علامة اقتباس تخرج من سياق الخاصية وتحقن HTML/سمات عشوائية (مثال:
+    // fromProfileImage = '" onerror="...'). الآن: تُقبل فقط لو بدأت بـhttps:// فعلياً، وإلا
+    // صورة افتراضية (أو أيقونة الإيموجي الاحتياطية للهدية كما كانت أصلاً)؛ والصور تُبنى
+    // بـcreateElement+src (خاصية DOM، لا تحليل HTML) لا بتضمينها نصاً داخل innerHTML إطلاقاً
+    const avatarUrl = isHttpsImageUrl(fromProfileImage) ? fromProfileImage : '/images/default-avatar.png';
+    const giftImgUrl = isHttpsImageUrl(giftImage) ? giftImage : null;
     el.innerHTML = `
-        <img src="${fromProfileImage}" class="room-gift-banner-avatar">
         <div class="room-gift-banner-text">
             <b>${escapeHtml(fromUsername)}</b>
             <span>أرسل ${escapeHtml(giftName)} إلى ${escapeHtml(toUsername)}</span>
         </div>
-        ${giftImage ? `<img src="${giftImage}" class="room-gift-banner-icon">` : `<span class="room-gift-banner-icon-emoji">${giftIcon || '🎁'}</span>`}
+        ${giftImgUrl ? '' : `<span class="room-gift-banner-icon-emoji">${giftIcon || '🎁'}</span>`}
         <span class="room-gift-banner-count">×${quantity || 1}</span>
     `;
-    document.body.appendChild(el);
+    const avatarImg = document.createElement('img');
+    avatarImg.className = 'room-gift-banner-avatar';
+    avatarImg.src = avatarUrl;
+    el.insertBefore(avatarImg, el.firstChild);
+    if (giftImgUrl) {
+        const giftImg = document.createElement('img');
+        giftImg.className = 'room-gift-banner-icon';
+        giftImg.src = giftImgUrl;
+        el.querySelector('.room-gift-banner-count').insertAdjacentElement('beforebegin', giftImg);
+    }
+    // 🐛 مراجعة: كان يُضاف لـdocument.body بـposition:fixed;top:50% فيغطي المقاعد على الشاشات
+    // القصيرة — الآن يُضاف داخل مسار .room-gift-lane (height:0) بتدفّق الغرفة نفسه بين PK
+    // والدردشة (طابق النموذج الإلزامي)، فموضعه مضمون بلا تغطية أي مقعد مهما كان حجم الشاشة
+    (document.getElementById('room-gift-lane') || document.body).appendChild(el);
     roomGiftBannerShowing = true;
-    roomGiftBannerState = { key, count: quantity || 1, timer: null };
-    roomGiftBannerState.timer = setTimeout(() => dismissRoomGiftSideBanner(el, key), 3000);
+    roomGiftBannerGen++; // ✅ جيل جديد لكل عرض — يُبطل تلقائياً أي مؤقّت معلّق من عرض سابق
+    const gen = roomGiftBannerGen;
+    roomGiftBannerState = { key, count: quantity || 1, timer: null, leaving: false };
+    roomGiftBannerState.timer = setTimeout(() => {
+        if (gen !== roomGiftBannerGen) return;
+        dismissRoomGiftSideBanner(el, key);
+    }, 3000);
 }
 
 function dismissRoomGiftSideBanner(el, key) {
+    if (roomGiftBannerState?.key === key) roomGiftBannerState.leaving = true;
     el.classList.add('room-gift-banner-out');
+    const gen = roomGiftBannerGen;
     setTimeout(() => {
+        if (gen !== roomGiftBannerGen) return; // ✅ جيل جديد بدأ أثناء الاختفاء (مثلاً أُحيي أو صُفِّر) — تجاهل هذا التنظيف القديم
         el.remove();
         if (roomGiftBannerState?.key === key) roomGiftBannerState = null;
         roomGiftBannerShowing = false;
