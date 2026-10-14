@@ -4151,8 +4151,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         <div class="alert alert--us" id="pk-live-alert-us"><img src="/assets/pk/emoji/anxious_face_with_sweat_3d.webp"><span>الخصم يقترب!</span></div>
                         <div class="alert alert--them" id="pk-live-alert-them"><img src="/assets/pk/emoji/anxious_face_with_sweat_3d.webp"><span>الخصم يقترب!</span></div>
                         <div class="bar"><div class="bar__us" id="pk-live-bar-us"></div><div class="bar__them"></div></div>
-                        <div class="pts pts--us" id="pk-live-pts-us" style="top:76px;height:26px">0</div>
-                        <div class="pts pts--them" id="pk-live-pts-them" style="top:76px;height:26px">0</div>
+                        <div class="pts pts--us" id="pk-live-pts-us" style="top:76px;height:34px">0</div>
+                        <div class="pts pts--them" id="pk-live-pts-them" style="top:76px;height:34px">0</div>
                         <div class="knot" id="pk-live-knot" style="right:50%">
                             <div class="knot__spark"></div>
                             <div class="rider" id="pk-live-rider"><div class="rider__label" id="pk-live-rider-lbl"></div><img id="pk-live-rider-img" src="/assets/pk/emoji/crossed_swords_3d.webp"></div>

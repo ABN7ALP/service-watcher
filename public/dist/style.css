@@ -9748,9 +9748,11 @@ body.in-voice-room #main-content > #voice-chat-grid {
   padding-top: 76px;
 }
 
+/* ✅ طلب صريح: كان الشريط رفيعاً (26px) — ارتفاع أكبر (34px) يمنحه حضوراً بصرياً أوضح */
+
 .pk-live-bar .bar {
   position: relative;
-  height: 26px;
+  height: 34px;
   border-radius: 999px;
   overflow: hidden;
   display: flex;
@@ -9805,7 +9807,7 @@ body.in-voice-room #main-content > #voice-chat-grid {
   display: flex;
   align-items: center;
   z-index: 3;
-  font: 900 13px Cairo, sans-serif;
+  font: 900 14px Cairo, sans-serif;
   color: #fff;
   text-shadow: 0 1px 2px #0009;
   font-variant-numeric: tabular-nums;
@@ -9839,7 +9841,7 @@ body.in-voice-room #main-content > #voice-chat-grid {
 .pk-live-bar .knot {
   position: absolute;
   top: 76px;
-  height: 26px;
+  height: 34px;
   width: 0;
   z-index: 4;
   transition: right .5s cubic-bezier(.2,.9,.2,1);
