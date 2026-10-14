@@ -1467,6 +1467,10 @@ video {
   resize: none;
 }
 
+.resize{
+  resize: both;
+}
+
 .grid-cols-1{
   grid-template-columns: repeat(1, minmax(0, 1fr));
 }
@@ -9632,7 +9636,10 @@ body.in-voice-room #main-content {
   container-name: room;
   /* ✅ وحدة مرنة واحدة يتفرّع منها كل حجم بالغرفة (نفس --u بالنموذج بالضبط) */
   --u: clamp(9px, 2.75cqw, 12px);
-  padding: max(env(safe-area-inset-top), 6px) 0 max(env(safe-area-inset-bottom), 6px);
+  /* ✅ --room-kb-inset (طلب صريح: احترام visualViewport) تضبطها JS فور فتح/إغلاق لوحة
+       المفاتيح — ترتفع حشوة الأسفل بمقدار ارتفاعها تقريباً فيُدفَع شريط الأدوات/الكتابة
+       للأعلى فوقها، بينما ارتفاع الحاوية ذاته (ومنه cqh مقاسات المقاعد) يبقى ثابتاً تماماً */
+  padding: max(env(safe-area-inset-top), 6px) 0 max(env(safe-area-inset-bottom), 6px, var(--room-kb-inset, 0px));
 }
 
 /* ✅ على الشاشات العريضة (كمبيوتر مكتبي) تبقى الغرفة بنسب هاتف واحدة متمركزة بدل التمدّد

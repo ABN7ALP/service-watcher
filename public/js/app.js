@@ -2035,6 +2035,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const wasNearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 80;
         box.appendChild(el);
         if (wasNearBottom) box.scrollTop = box.scrollHeight;
+        // ✅ طلب صريح: تحتفظ بآخر 60 رسالة بالـDOM فقط — لا سجل قابل للتمرير لأعلى بدردشة الغرفة
+        // (بعكس الدردشة العامة)، فحذف الأقدم هنا آمن تماماً وبلا أي تأثير على قراءة سجل سابق
+        while (box.children.length > 60) box.firstElementChild.remove();
     }
 
     // ✅ إعلان انضمام — سطر مختصر بدردشة الغرفة "فلان انضم"، وللمضيف/المسؤول زر يد صغير
@@ -2137,6 +2140,36 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ وضع "الغرفة ملء الشاشة" — يخفي هيدر المنصة والتنقّل بالكامل، بالضبط زي التطبيقات المشهورة
     function enterFullscreenRoomMode() {
         document.body.classList.add('in-voice-room');
+        setupVoiceRoomKeyboardInset();
+    }
+
+    // ✅ طلب صريح: احترام visualViewport عند فتح لوحة المفاتيح — حقل الكتابة يبقى ظاهراً
+    // ولا تقفز المقاعد. الحيلة: ارتفاع #main-content نفسه (ومنه cqh التي تحسب عليها مقاسات
+    // المقاعد) يبقى ثابتاً دوماً (100dvh الحقيقي الكامل، غير مرتبط بالكيبورد) — فقط حشو
+    // أسفله (padding-bottom) يكبر بمقدار ارتفاع الكيبورد تقريباً (الفارق بين innerHeight
+    // الثابت وvisualViewport.height المتقلّص فعلياً فور ظهوره)، فينكمش فقط .room-chat-messages
+    // المرن لاستيعاب الفرق، تماماً كما تنكمش الدردشة عند أي تغيّر آخر بالمساحة المتاحة —
+    // دون أي تأثير على حجم المقاعد المحسوب من عرض/ارتفاع الحاوية الثابتين
+    let voiceRoomVvHandler = null;
+    function setupVoiceRoomKeyboardInset() {
+        if (!window.visualViewport || voiceRoomVvHandler) return;
+        voiceRoomVvHandler = () => {
+            if (!document.body.classList.contains('in-voice-room')) return;
+            const vv = window.visualViewport;
+            const inset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+            document.documentElement.style.setProperty('--room-kb-inset', `${inset}px`);
+        };
+        window.visualViewport.addEventListener('resize', voiceRoomVvHandler);
+        window.visualViewport.addEventListener('scroll', voiceRoomVvHandler);
+        voiceRoomVvHandler();
+    }
+    function teardownVoiceRoomKeyboardInset() {
+        if (voiceRoomVvHandler && window.visualViewport) {
+            window.visualViewport.removeEventListener('resize', voiceRoomVvHandler);
+            window.visualViewport.removeEventListener('scroll', voiceRoomVvHandler);
+        }
+        voiceRoomVvHandler = null;
+        document.documentElement.style.removeProperty('--room-kb-inset');
     }
 
     // ✅ زر متابعة رأس الغرفة المصغّر — أيقونة فقط (لا نص) كي لا يتصادم أبداً مع عدّاد دعم
@@ -2170,6 +2203,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         document.body.classList.remove('in-voice-room');
         document.getElementById('dm-floating-bubble')?.remove();
         clearRoomBackground();
+        teardownVoiceRoomKeyboardInset();
     }
 
     // ✅ تبديل/شراء/إزالة إطار من المتجر يصل هنا فورياً عبر user-frame-changed (socket، الآن
@@ -14778,6 +14812,7 @@ function appendRoomGiftChatMessage({ fromUsername, toUsername, giftName, giftIco
     `;
     box.appendChild(el);
     box.scrollTop = box.scrollHeight;
+    while (box.children.length > 60) box.firstElementChild.remove(); // ✅ نفس سقف 60 رسالة بالـDOM لدردشة الغرفة
 }
 
 // ✅ حالة الشريط الحالي — يسمح بجمع الإرسالات المتكررة (نفس المُرسل/نفس الهدية) بعدّاد
