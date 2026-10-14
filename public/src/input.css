@@ -3308,8 +3308,9 @@ body.in-voice-room #main-content > #voice-chat-grid {
 @keyframes pkLiveClockPulse { to { box-shadow: 0 0 14px #ff5a6b; } }
 
 .pk-live-bar .bar-wrap { position: relative; padding-top: 76px; }
+/* ✅ طلب صريح: كان الشريط رفيعاً (26px) — ارتفاع أكبر (34px) يمنحه حضوراً بصرياً أوضح */
 .pk-live-bar .bar {
-    position: relative; height: 26px; border-radius: 999px; overflow: hidden; display: flex; direction: rtl;
+    position: relative; height: 34px; border-radius: 999px; overflow: hidden; display: flex; direction: rtl;
     box-shadow: 0 0 0 2px #ffffff22, 0 6px 18px #0008, inset 0 2px 0 #ffffff33;
 }
 .pk-live-bar .bar__us, .pk-live-bar .bar__them { position: relative; height: 100%; transition: width .5s cubic-bezier(.2,.9,.2,1); overflow: hidden; }
@@ -3324,7 +3325,7 @@ body.in-voice-room #main-content > #voice-chat-grid {
 .pk-live-bar .bar__us::after, .pk-live-bar .bar__them::after { content: ""; position: absolute; inset: 0 0 50%; background: linear-gradient(#ffffff55,#ffffff00); border-radius: 999px; }
 
 .pk-live-bar .pts {
-    position: absolute; display: flex; align-items: center; z-index: 3; font: 900 13px Cairo, sans-serif; color: #fff;
+    position: absolute; display: flex; align-items: center; z-index: 3; font: 900 14px Cairo, sans-serif; color: #fff;
     text-shadow: 0 1px 2px #0009; font-variant-numeric: tabular-nums; padding: 0 10px; pointer-events: none;
 }
 .pk-live-bar .pts--us { right: 0; } .pk-live-bar .pts--them { left: 0; }
@@ -3332,7 +3333,7 @@ body.in-voice-room #main-content > #voice-chat-grid {
 @keyframes pkLiveBump { 40% { transform: scale(1.25); } }
 .pk-live-bar .pts.pk-live-fogged { opacity: .5; filter: blur(1px); }
 
-.pk-live-bar .knot { position: absolute; top: 76px; height: 26px; width: 0; z-index: 4; transition: right .5s cubic-bezier(.2,.9,.2,1); }
+.pk-live-bar .knot { position: absolute; top: 76px; height: 34px; width: 0; z-index: 4; transition: right .5s cubic-bezier(.2,.9,.2,1); }
 .pk-live-bar .knot::before {
     content: ""; position: absolute; top: -3px; bottom: -3px; left: -2px; width: 4px; border-radius: 4px; background: #fff;
     box-shadow: 0 0 10px #fff, 0 0 22px #ffd45a;
