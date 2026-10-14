@@ -1190,6 +1190,22 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-info-session-support i { font-size: 7.5px; }
 .room-info-session-support.hidden { display: none; }
+/* ✅ شارة ترتيب الدوري الأسبوعي بالسطر الثاني (طلب صريح) — نفس طراز شارة دعم الجلسة بجانبها
+   تماماً، بلمسة ذهبية مميِّزة عن البرتقالي (تحاكي لون الكأس بدل البرق) */
+.room-info-league-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 9.5px;
+    font-weight: 800;
+    color: #ffd45a;
+    background: rgba(255,212,90,0.14);
+    border-radius: 999px;
+    padding: 1.5px 6px;
+    cursor: pointer;
+}
+.room-info-league-chip i { font-size: 7.5px; }
+.room-info-league-chip.hidden { display: none; }
 /* ✅ زر متابعة الرأس — حالتان مختلفتان تماماً بالتصميم (طلب صريح): قبل المتابعة دائرة أيقونة
    صغيرة بتدرّج "+" القياسي (.room-header-follow-circle)، وبعدها — بما أن الضغط يفتح نادي
    معجبي المضيف مباشرة لا "متابعة" بعد الآن — تختفي الدائرة الثقيلة كلياً وتظهر بدلاً منها
@@ -3294,6 +3310,14 @@ body.in-voice-room #main-content > #voice-chat-grid { flex: none; }
     background: repeating-radial-gradient(circle at 50% 120%, #ffffff07 0 2px, transparent 2px 22px);
     pointer-events: none;
 }
+/* ✅ طلب صريح: شريط PK "مضغوط" داخل الغرفة (نفس مكوّن feat/pk-live-bar دون تكراره) — يظهر
+   بين المقاعد والدردشة ضمن تدفّق الغرفة الآن (لا كعنصر مستقل ضخم)، فلا يملك ترف ارتفاع
+   290px الأصلي بجانب مقاعد وشات ودردشة بشاشة 320×568 القصيرة. صف "أعلى الداعمين بالمعركة"
+   السفلي (.fans) يُخفى هنا تحديداً — مكرَّر بصرياً مع ودجت "أعلى 3 داعمين" الموجود بالفعل
+   برأس الغرفة — لا أي تعديل على منطق شريط التقدّم/الفارس/الانفجار (.bar-wrap/.knot/.rider)
+   الذي يبقى كما هو بالضبط لتفادي كسر حساباته الداخلية المرتبطة بقيم px ثابتة */
+.pk-live-bar.room { min-height: 0; margin-bottom: calc(var(--u, 9px) * .7); }
+.pk-live-bar.room .fans { display: none; }
 .pk-live-bar .pk { position: relative; z-index: 2; }
 .pk-live-bar .pk__head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; margin-bottom: 6px; }
 .pk-live-bar .side { display: flex; align-items: center; gap: 6px; min-width: 0; }

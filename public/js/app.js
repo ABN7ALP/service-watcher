@@ -1590,6 +1590,28 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         numEl.textContent = currentRoomSessionSupportPoints.toLocaleString('en-US');
     }
 
+    // ✅ شارة ترتيب الغرفة بدوري المواجهات الأسبوعي (نظام pkLeagueEngine الحالي، طلب صريح
+    // بالسطر الثاني) — لا بوديوم جديد، فقط ترتيب هذي الغرفة الحالي؛ تُخفى تماماً لو لم تُسجّل
+    // الغرفة نتيجة بعد هذا الأسبوع (لا ترتيب فارغاً بلا فائدة)، والضغط عليها يفتح نفس تفاصيل
+    // الغرفة الكاملة (LP/سجلها/سلسلتها) المستخدَمة أصلاً بقائمة الدوري
+    async function loadRoomLeagueChip(roomId) {
+        const chip = document.getElementById('room-info-league-chip');
+        if (!chip) return;
+        chip.classList.add('hidden');
+        if (roomId === 'main') return; // ✅ لا دوري للغرفة الرسمية
+        try {
+            const response = await fetch(`/api/pk-league/room/${roomId}?week=current`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await response.json();
+            // 🐛 إصلاح: الغرفة قد تتغيّر (المستخدم خرج ودخل غرفة أخرى) بينما هذا الطلب لا يزال
+            // معلّقاً — بدون هذا التحقق تظهر شارة ترتيب غرفة سابقة فوق غرفة حالية مختلفة تماماً
+            if (currentVoiceRoomId !== roomId) return;
+            if (!response.ok || result.status !== 'success' || !result.room) return;
+            chip.querySelector('#room-info-league-chip-rank').textContent = `#${result.room.rank}`;
+            chip.classList.remove('hidden');
+            chip.onclick = (e) => { e.stopPropagation(); showPkRoomDetailSheet(roomId); };
+        } catch (_) { /* ✅ فشل الجلب يبقي الشارة مخفية بصمت — ليست معلومة أساسية تستدعي رسالة خطأ */ }
+    }
+
     // ✅ تنسيق مُصغَّر لرقم الدعم أسفل كل صورة بالودجت أدناه — المساحة ضيقة جداً (شارة ~27px)
     // فلا تتسع لأرقام كاملة بالفواصل؛ 12500 → "12.5K"، نفس اصطلاح تطبيقات البث المعروفة
     function formatCompactPoints(n) {
@@ -2456,6 +2478,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         myHandRaised = false;
         roomHandQueue = [];
         currentPkBattle = null;
+        // ✅ لا يبقى شريط هدية (أو طابوره) من الغرفة السابقة عالقاً فوق غرفة جديدة دخلتها للتو
+        document.getElementById('room-gift-side-banner')?.remove();
+        roomGiftBannerQueue = [];
+        roomGiftBannerShowing = false;
+        roomGiftBannerState = null;
         enterFullscreenRoomMode();
         mainContent.innerHTML = `
             <div id="room-header-bar" class="flex justify-between items-center mb-3 gap-2">
@@ -2468,6 +2495,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                                 <span id="room-info-level-badge" class="room-level-badge hidden"></span>
                                 <span id="room-info-session-support" class="room-info-session-support hidden">
                                     <i class="fas fa-bolt"></i><span id="room-info-session-support-num">0</span>
+                                </span>
+                                <span id="room-info-league-chip" class="room-info-league-chip hidden">
+                                    <i class="fas fa-trophy"></i><span id="room-info-league-chip-rank"></span>
                                 </span>
                             </span>
                         </span>
@@ -2521,6 +2551,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // البث المباشر المعروفة) هو آلية الخروج البديلة على الهاتف؛ زر ✕ يبقى للمضيف صراحة
         wireRoomHeaderSwipeToExit(document.getElementById('room-header-bar'), room);
         wireRoomChatUI();
+        loadRoomLeagueChip(room.id);
 
         renderVoiceRoomSeats(room.id, room.seatCount, 0, room.isPrivate);
         // 🐛 إصلاح: لو رُفض الدخول (مطرود/كلمة مرور خطأ/بث منتهٍ) — الدالة نفسها تنقل الشاشة
@@ -4203,8 +4234,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     </div>
                 </div>
             `;
-            const header = mainContent.querySelector('.flex.justify-between.items-center');
-            if (header) header.insertAdjacentElement('afterend', bar);
+            // ✅ طلب صريح: شريط PK يأتي بعد المقاعد مباشرة بتسلسل التدفّق (قبل مسار الهدايا/الدردشة)
+            // — لا بعد الرأس كما كان سابقاً، كي يطابق ترتيب النموذج الإلزامي بالضبط
+            const seatsGrid = document.getElementById('voice-chat-grid');
+            if (seatsGrid) seatsGrid.insertAdjacentElement('afterend', bar);
             else mainContent.prepend(bar);
 
             currentPkBattle.pkRider = 'crossed_swords';
@@ -5236,7 +5269,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </div>
             </div>
         `;
-        const insertAfter = document.getElementById('pk-battle-bar') || mainContent.querySelector('.flex.justify-between.items-center');
+        const insertAfter = document.getElementById('pk-battle-bar') || document.getElementById('voice-chat-grid');
         if (insertAfter) insertAfter.insertAdjacentElement('afterend', bar);
         else mainContent.prepend(bar);
 
@@ -5631,6 +5664,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         myHandRaised = false;
         roomHandQueue = [];
         currentPkBattle = null;
+        document.getElementById('room-gift-side-banner')?.remove();
+        roomGiftBannerQueue = [];
+        roomGiftBannerShowing = false;
+        roomGiftBannerState = null;
         enterFullscreenRoomMode();
         mainContent.innerHTML = `
             <div class="flex justify-between items-center mb-4">
@@ -14736,44 +14773,76 @@ function appendRoomGiftChatMessage({ fromUsername, toUsername, giftName, giftIco
 // ✅ حالة الشريط الحالي — يسمح بجمع الإرسالات المتكررة (نفس المُرسل/نفس الهدية) بعدّاد
 // ×N واحد بدل إعادة إنشاء الشريط من الصفر في كل مرة (كانت تبدو كومضات متلاحقة مزعجة)
 let roomGiftBannerState = null; // { key, count, timer }
-function showRoomGiftSideBanner({ fromUsername, fromProfileImage, toUsername, giftName, giftImage, giftIcon, quantity }) {
-    const key = `${fromUsername}::${giftName}`;
-    let el = document.getElementById('room-gift-side-banner');
-    const isSameStreak = el && roomGiftBannerState && roomGiftBannerState.key === key;
+// ✅ طابور حقيقي (طلب صريح: "بطابور حتى لا تتراكب الإعلانات") — هدية من مُرسل/نوع مختلف
+// بينما شريط آخر معروض لا تُدمَّره فوراً بعد الآن، بل تنتظر دورها؛ هدية مطابقة لآخر عنصر
+// بالطابور (لا للمعروض حالياً) تُدمَج بعدّاده بدل فتح عنصر طابور جديد لكل هدية متكررة.
+// سقف صغير يمنع تراكماً بلا حدود بغرفة نشطة جداً — الأحدث يبقى أهم من استعراض كل حدث قديم
+let roomGiftBannerQueue = [];
+let roomGiftBannerShowing = false;
+const ROOM_GIFT_BANNER_QUEUE_CAP = 6;
 
-    if (isSameStreak) {
-        roomGiftBannerState.count += (quantity || 1);
-        const countEl = el.querySelector('.room-gift-banner-count');
-        if (countEl) countEl.textContent = `×${roomGiftBannerState.count}`;
-        // ✅ نبضة صغيرة تلفت الانتباه للعدّاد المتزايد
-        countEl?.classList.remove('room-gift-banner-count'); void countEl?.offsetWidth; countEl?.classList.add('room-gift-banner-count');
-        el.classList.remove('room-gift-banner-out');
-    } else {
-        el?.remove();
-        el = document.createElement('div');
-        el.id = 'room-gift-side-banner';
-        el.className = 'room-gift-side-banner';
-        el.innerHTML = `
-            <img src="${fromProfileImage}" class="room-gift-banner-avatar">
-            <div class="room-gift-banner-text">
-                <b>${escapeHtml(fromUsername)}</b>
-                <span>أرسل ${escapeHtml(giftName)} إلى ${escapeHtml(toUsername)}</span>
-            </div>
-            ${giftImage ? `<img src="${giftImage}" class="room-gift-banner-icon">` : `<span class="room-gift-banner-icon-emoji">${giftIcon || '🎁'}</span>`}
-            <span class="room-gift-banner-count">×${quantity || 1}</span>
-        `;
-        document.body.appendChild(el);
-        roomGiftBannerState = { key, count: quantity || 1, timer: null };
+function showRoomGiftSideBanner(payload) {
+    const key = `${payload.fromUsername}::${payload.giftName}`;
+    const isSameAsShowing = roomGiftBannerShowing && roomGiftBannerState && roomGiftBannerState.key === key;
+    if (isSameAsShowing) {
+        mergeIntoShowingGiftBanner(payload);
+        return;
     }
+    if (roomGiftBannerShowing) {
+        const lastQueued = roomGiftBannerQueue[roomGiftBannerQueue.length - 1];
+        if (lastQueued && `${lastQueued.fromUsername}::${lastQueued.giftName}` === key) {
+            lastQueued.quantity = (lastQueued.quantity || 1) + (payload.quantity || 1);
+        } else if (roomGiftBannerQueue.length < ROOM_GIFT_BANNER_QUEUE_CAP) {
+            roomGiftBannerQueue.push(payload);
+        }
+        return;
+    }
+    renderRoomGiftSideBanner(payload);
+}
 
+function mergeIntoShowingGiftBanner({ quantity }) {
+    const el = document.getElementById('room-gift-side-banner');
+    if (!el || !roomGiftBannerState) return;
+    roomGiftBannerState.count += (quantity || 1);
+    const countEl = el.querySelector('.room-gift-banner-count');
+    if (countEl) countEl.textContent = `×${roomGiftBannerState.count}`;
+    // ✅ نبضة صغيرة تلفت الانتباه للعدّاد المتزايد
+    countEl?.classList.remove('room-gift-banner-count'); void countEl?.offsetWidth; countEl?.classList.add('room-gift-banner-count');
+    el.classList.remove('room-gift-banner-out');
     clearTimeout(roomGiftBannerState.timer);
-    roomGiftBannerState.timer = setTimeout(() => {
-        el.classList.add('room-gift-banner-out');
-        setTimeout(() => {
-            el.remove();
-            if (roomGiftBannerState?.key === key) roomGiftBannerState = null;
-        }, 400);
-    }, 3000);
+    roomGiftBannerState.timer = setTimeout(() => dismissRoomGiftSideBanner(el, roomGiftBannerState.key), 3000);
+}
+
+function renderRoomGiftSideBanner({ fromUsername, fromProfileImage, toUsername, giftName, giftImage, giftIcon, quantity }) {
+    const key = `${fromUsername}::${giftName}`;
+    document.getElementById('room-gift-side-banner')?.remove();
+    const el = document.createElement('div');
+    el.id = 'room-gift-side-banner';
+    el.className = 'room-gift-side-banner';
+    el.innerHTML = `
+        <img src="${fromProfileImage}" class="room-gift-banner-avatar">
+        <div class="room-gift-banner-text">
+            <b>${escapeHtml(fromUsername)}</b>
+            <span>أرسل ${escapeHtml(giftName)} إلى ${escapeHtml(toUsername)}</span>
+        </div>
+        ${giftImage ? `<img src="${giftImage}" class="room-gift-banner-icon">` : `<span class="room-gift-banner-icon-emoji">${giftIcon || '🎁'}</span>`}
+        <span class="room-gift-banner-count">×${quantity || 1}</span>
+    `;
+    document.body.appendChild(el);
+    roomGiftBannerShowing = true;
+    roomGiftBannerState = { key, count: quantity || 1, timer: null };
+    roomGiftBannerState.timer = setTimeout(() => dismissRoomGiftSideBanner(el, key), 3000);
+}
+
+function dismissRoomGiftSideBanner(el, key) {
+    el.classList.add('room-gift-banner-out');
+    setTimeout(() => {
+        el.remove();
+        if (roomGiftBannerState?.key === key) roomGiftBannerState = null;
+        roomGiftBannerShowing = false;
+        const next = roomGiftBannerQueue.shift();
+        if (next) renderRoomGiftSideBanner(next); // ✅ يعرض العنصر التالي بالطابور فور انتهاء الحالي
+    }, 400);
 }
 
 
