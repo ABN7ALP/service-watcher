@@ -10667,8 +10667,12 @@ body.in-voice-room #main-content > #voice-chat-grid {
   --blue:#7fb2ff;
   --panel:rgba(255,214,120,.07);
   --line:rgba(255,214,120,.18);
+  /* ✅ طلب صريح: تصغير النافذة عموماً + مراعاة الشاشات الكبيرة والصغيرة معاً — clamp() بدل
+       min() يضمن حداً أدنى (330px، يكفي لعرض قسم الدوري كاملاً بلا انضغاط حتى بأضيق هاتف
+       حقيقي شائع) لا تهبط دونه، وحداً أقصى (360px، بدل 400px سابقاً) لا تتضخّم فوقه بالهواتف
+       الكبيرة/الأجهزة اللوحية، وبينهما تتبع عرض الشاشة فعلياً (88vw) */
   position: relative;
-  width: min(400px, 96vw);
+  width: clamp(330px, 88vw, 360px);
   color: var(--ink);
 }
 
@@ -10738,11 +10742,15 @@ body.in-voice-room #main-content > #voice-chat-grid {
 }
 
 .pk__hero {
+  /* 🐛 إصلاح: كان حجمه (46%) وموضعه (top:-9%) يجعلان حافته السفلى تلامس بداية عنوان "فوز
+       ساحق!" حرفياً (20% padding-top لـ.pk__content) بلا أي هامش — يُغطّيه فعلياً على بعض
+       الشاشات (طلب صريح). الحجم الأصغر (38%) + الرفع الأقل (-7%) يُبقيانه بموضعه المصمَّم
+       نفسه (منظور الإطار الزخرفي لم يتغيّر) لكن بهامش واضح أعلى العنوان دائماً */
   position: absolute;
   z-index: 5;
   left: 50%;
-  top: -9%;
-  width: 46%;
+  top: -7%;
+  width: 38%;
   aspect-ratio: 1;
   transform: translateX(-50%);
   animation: pk-hero-in .75s cubic-bezier(.2,1.5,.4,1) .15s both;
@@ -10787,10 +10795,18 @@ body.in-voice-room #main-content > #voice-chat-grid {
   filter: drop-shadow(0 2px 0 #5a2c00);
 }
 
+/* 🐛 إصلاح: بلا هذا كان نص العنوان الفرعي (اسم الغرفتين + فعل النتيجة) يلتفّ لسطرين على
+   البطاقة الأصغر الجديدة، فيسرق ارتفاعاً إضافياً من توزيع flex العمودي، فيضغط قسم ".league"
+   (flex:1) حتى الاختفاء فعلياً على الشاشات الضيّقة (طلب صريح: "راعِ الشاشات الصغيرة") —
+   سطر واحد بحذف الزائد بثلاث نقاط أسلم من فقدان القسم كله */
+
 .pk .head p {
   margin: 0;
   font-size: 11.5px;
   color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pk .head p b {
