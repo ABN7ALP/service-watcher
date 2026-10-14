@@ -528,6 +528,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     function renderVoiceSeatContent(seatEl, seatData) {
         const isAdminSeat = seatEl.dataset.isAdminSeat === '1';
+        const seatNo = seatEl.dataset.seat;
         seatEl.classList.remove('occupied-seat', 'my-seat', 'locked-seat');
         seatEl.dataset.isLocked = '0';
         delete seatEl.dataset.userId;
@@ -536,7 +537,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (seatData && seatData.isLocked) {
             seatEl.classList.add('locked-seat');
             seatEl.dataset.isLocked = '1';
-            seatEl.innerHTML = '<i class="fas fa-lock"></i>';
+            // ✅ رقم المقعد يبقى ظاهراً حتى مقفلاً (يساعد المضيف/المسؤول على تمييز أي مقعد يفتح)
+            seatEl.innerHTML = `<div class="voice-seat-av-wrap"><i class="fas fa-lock"></i><span class="voice-seat-no">${seatNo}</span></div>`;
             seatEl.title = 'مقعد مقفل';
             return;
         }
@@ -556,32 +558,49 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             // القيمة تظهر دوماً (حتى 0) بمجرد الجلوس — لا تختفي إلا مع فراغ المقعد كلياً أدناه
             const supportTotal = Number(seatData.user.supportTotal) || 0;
             seatEl.dataset.supportTotal = supportTotal;
+            // ✅ .voice-seat-av-wrap يحوي الآن كل ما يرتبط بصرياً بالصورة الدائرية (موجتا التحدّث
+            // الحقيقي خلف الصورة، الصورة نفسها، شارة الكتم، رقم المقعد) — الاسم وعداد الدعم
+            // تدفّق عادي أسفله كإخوة بنفس .voice-seat (بدل position:absolute قديم بالكامل)
             seatEl.innerHTML = `
-                <img src="${seatData.user.profileImage}" class="voice-seat-avatar ${seatData.user.activeFrameClass || ''}" alt="${safeName}" loading="lazy" decoding="async">
-                ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
+                <div class="voice-seat-av-wrap">
+                    <span class="voice-seat-wave"></span>
+                    <span class="voice-seat-wave"></span>
+                    <img src="${seatData.user.profileImage}" class="voice-seat-avatar ${seatData.user.activeFrameClass || ''}" alt="${safeName}" loading="lazy" decoding="async">
+                    ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
+                    <span class="voice-seat-no">${seatNo}</span>
+                    <span class="seat-support-badge">${supportTotal > 9999 ? '9999+' : supportTotal}</span>
+                </div>
                 <span class="voice-seat-name">${safeName}</span>
-                <span class="seat-support-badge">${supportTotal > 9999 ? '9999+' : supportTotal}</span>
             `;
         } else {
             delete seatEl.dataset.userId;
             delete seatEl.dataset.supportTotal; // ✅ يصفّر عداد الدعم بمجرد مغادرة المقعد
-            // 🛡️ إزالة صريحة إضافية للشارة (وليس الاعتماد فقط على استبدال innerHTML أدناه) —
-            // حماية إضافية حتى لو فات حدث user-left-seat سابقاً بسبب انقطاع اتصال مؤقت (نادر
-            // بعد إصلاح إعادة الانضمام التلقائي لقناة الغرفة)، فيبقى previousUserId قديماً عالقاً
-            seatEl.querySelector('.seat-support-badge')?.remove();
             // ✅ بغرف المستخدمين (وليس الرسمية) المقعد الفاضي يعرض "+" بالدائرة، والنص تحتها
             // "دعوة" للمضيف (يدعو أحد الحاضرين لهذا المقعد تحديداً) أو "انضمام" لبقية
             // المستخدمين (يرسل طلب صعود) — إلا لمقعد الإدارة بالغرفة الرسمية فقط
             if (isAdminSeat) {
-                seatEl.innerHTML = '<i class="fas fa-crown"></i>';
+                seatEl.innerHTML = '<div class="voice-seat-av-wrap"><i class="fas fa-crown"></i></div>';
                 seatEl.title = 'مقعد محجوز للإدارة';
             } else if (currentVoiceRoomId !== 'main') {
                 const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'انضمام';
-                seatEl.innerHTML = `<i class="fas fa-plus voice-seat-plus"></i><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
+                seatEl.innerHTML = `<div class="voice-seat-av-wrap"><i class="fas fa-plus voice-seat-plus"></i></div><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
             } else {
-                seatEl.innerHTML = seatEl.dataset.seat;
+                seatEl.innerHTML = `<div class="voice-seat-av-wrap">${seatNo}</div>`;
             }
         }
+        syncSeatVipRings(); // ✅ شاغل المقعد تغيّر — لو كان أحد أعلى داعمَين، تتبعه حلقته الذهبية لمقعده الجديد فوراً
+    }
+
+    // ✅ حلقة ذهبية لأعلى داعمَين بالغرفة (طلب صريح) — تُطابق مقاعدهما الحاليَين بـcurrentRoomTopSupporters
+    // (نفس مصدر بيانات ودجت البوديوم أعلاه، مُرتَّب تنازلياً من السيرفر) بواسطة data-user-id الذي
+    // renderVoiceSeatContent يضبطه على كل مقعد مشغول؛ تُستدعى بعد أي تغيير بإشغال مقعد أو بترتيب الداعمين
+    function syncSeatVipRings() {
+        const voiceGrid = document.getElementById('voice-chat-grid');
+        if (!voiceGrid) return;
+        const topTwoIds = new Set(currentRoomTopSupporters.slice(0, 2).map(s => s.userId));
+        voiceGrid.querySelectorAll('.voice-seat').forEach(seatEl => {
+            seatEl.classList.toggle('vip', !!seatEl.dataset.userId && topTwoIds.has(seatEl.dataset.userId));
+        });
     }
 
     // ✅ الكتم والمغادرة صارا أيقونتين بشريط الغرفة نفسه (وقائمة "المزيد") — هذي الدالة الآن
@@ -1237,10 +1256,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ شريط دردشة واحد ثابت الظهور دائماً (بدل حقل يُخفى خلف زر) + قائمة "المزيد" المنسدلة
     // للإجراءات الثانوية — بالضبط آلية التطبيقات المشهورة (Bigo/Yalla/TikTok Live): حقل كتابة
     // جاهز فوراً، وزرّان فقط بجانبه (هدية + المزيد) بدل صف مزدحم بالأيقونات
+    // ✅ طلب صريح (نموذج التصميم الإلزامي): المايك والتفاعل أزرار مستقلة بشريط الأدوات —
+    // لا داخل قائمة "المزيد" كما كانت. 🛡️ "طلب الصعود"/"مغادرة المقعد" بقيا بمكانهما الأصلي
+    // بلا أي تغيير بالمعرّف أو السلوك (طلب صريح آخر: "حافظ على كل الوظائف دون استثناء") —
+    // زران جديدان فقط أُضيفا بجانبهما، لا نقل/حذف لأي زر موجود
     function renderRoomChatMarkup() {
         return `
-            <div id="room-chat-messages" class="room-chat-messages-fixed"></div>
-            <div class="room-chat-dock-fixed">
+            <div id="room-chat-messages" class="room-chat-messages"></div>
+            <div class="room-chat-dock">
                 <div class="room-chat-input-pill">
                     <input id="room-chat-input" type="text" maxlength="300" placeholder="قل شيئاً..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="room-chat-message-field">
                     <button id="room-chat-send-btn" title="إرسال"><i class="fas fa-paper-plane"></i></button>
@@ -1250,6 +1273,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 </button>
                 <button id="room-leave-seat-btn" class="hidden room-chat-dock-icon room-chat-leave-icon" title="مغادرة المقعد">
                     <i class="fas fa-door-open"></i>
+                </button>
+                <button id="room-mic-toggle-btn" class="hidden room-chat-dock-icon" title="المايك">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <button id="room-reaction-btn" class="hidden room-chat-dock-icon" title="تفاعل">
+                    <i class="fas fa-face-smile"></i>
                 </button>
                 <button id="room-gift-icon-btn" class="room-chat-dock-icon room-chat-gift-icon" title="الهدايا">
                     <i class="fas fa-gift"></i>
@@ -1299,6 +1328,17 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // ✅ زر مغادرة المقعد — انتقل من الشريط العائم القديم لهنا (السيرفر يرفضه للمضيف أصلاً)
         document.getElementById('room-leave-seat-btn')?.addEventListener('click', leaveVoiceSeat);
 
+        // ✅ زرّا المايك/التفاعل المستقلّان الجديدان (نموذج التصميم الإلزامي) — نفس الدالتين
+        // الحقيقيتين بالضبط التي كانت تُستدعى من قائمة "المزيد" سابقاً، بلا أي منطق موازٍ
+        document.getElementById('room-mic-toggle-btn')?.addEventListener('click', toggleVoiceMute);
+        document.getElementById('room-reaction-btn')?.addEventListener('click', () => {
+            if (!myVoiceSeatNumber || myVoiceRoomId !== currentVoiceRoomId) {
+                showNotification('اجلس على مقعد أولاً حتى تقدر تتفاعل', 'info');
+                return;
+            }
+            showReactionPicker(currentVoiceRoomId, myVoiceSeatNumber);
+        });
+
         updateChatLockUI();
     }
 
@@ -1306,11 +1346,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function showRoomChatMoreSheet() {
         document.getElementById('room-chat-more-sheet')?.remove();
         const isManager = currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator';
-        const isSeatedHere = myVoiceSeatNumber && myVoiceRoomId === currentVoiceRoomId;
 
+        // ✅ المايك والتفاعل انتقلا لزرّين مستقلّين بشريط الأدوات (طلب صريح: نموذج التصميم
+        // الإلزامي) — لم يعودا هنا كي لا يتكرّر نفس الإجراء بمدخلين مختلفين
         const items = [
             { action: 'messages', icon: 'fa-envelope', label: 'رسائلي', color: 'text-blue-400', badge: roomUnreadDMCount },
-            { action: 'reaction', icon: 'fa-face-laugh-beam', label: 'تفاعل', color: 'text-amber-400' },
             { action: 'suggest', icon: 'fa-lightbulb', label: 'اقتراح', color: 'text-yellow-300' },
             // ✅ كتم شخصي محلي بحت (لا يؤثر على أحد غيري) — يشمل الموسيقى وصوت المتحدثين معاً
             {
@@ -1320,15 +1360,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 color: roomAudioMuted ? 'text-red-400' : 'text-gray-300'
             }
         ];
-        // ✅ الكتم انتقل من الشريط العائم القديم لهنا — يظهر فقط وأنت فعلياً قاعد على مقعد
-        if (isSeatedHere) {
-            items.push({
-                action: 'mute',
-                icon: myIsMuted ? 'fa-microphone-slash' : 'fa-microphone',
-                label: myIsMuted ? 'إلغاء الكتم' : 'كتم صوتي',
-                color: myIsMuted ? 'text-red-400' : 'text-gray-300'
-            });
-        }
         if (isManager) {
             items.push({ action: 'hand-queue', icon: 'fa-infinity', label: 'طلبات الصعود', color: 'text-purple-400', badge: roomHandQueue.length });
         }
@@ -1408,18 +1439,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         document.querySelectorAll('.mobile-nav-item').forEach(i => i.classList.remove('active'));
                         document.querySelector('.mobile-nav-item[data-target="messages"]')?.classList.add('active');
                     }
-                } else if (action === 'reaction') {
-                    if (!myVoiceSeatNumber || myVoiceRoomId !== currentVoiceRoomId) {
-                        showNotification('اجلس على مقعد أولاً حتى تقدر تتفاعل', 'info');
-                        return;
-                    }
-                    showReactionPicker(currentVoiceRoomId, myVoiceSeatNumber);
                 } else if (action === 'suggest') {
                     showGeneralSuggestionModal();
                 } else if (action === 'toggle-room-mute') {
                     toggleRoomAudioMute();
-                } else if (action === 'mute') {
-                    toggleVoiceMute();
                 } else if (action === 'hand-queue') {
                     if (currentVoiceRoomId) showHandQueueSheet(currentVoiceRoomId);
                 } else if (action === 'pk-challenge') {
@@ -1511,6 +1534,21 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const isHostHere = isSeatedHere && currentRoomMyRole === 'host';
             leaveBtn.classList.toggle('hidden', !isSeatedHere || isHostHere);
         }
+        // ✅ المايك والتفاعل — زران مستقلّان يظهران فقط وأنت فعلياً جالس على مقعد بهذي الغرفة
+        // (نفس شرط ظهورهما سابقاً داخل قائمة "المزيد" بالضبط، راجع updateMicToggleButtonUI للون)
+        document.getElementById('room-reaction-btn')?.classList.toggle('hidden', !isSeatedHere);
+        document.getElementById('room-mic-toggle-btn')?.classList.toggle('hidden', !isSeatedHere);
+        updateMicToggleButtonUI();
+    }
+
+    // ✅ يلوّن زر المايك المستقل حسب myIsMuted الحقيقية — يُستدعى من updateHandRaiseUI أعلاه
+    // (كل تغيّر بحالة المقعد) ومن syncMuteButtonUI (كل تغيّر بحالة الكتم نفسها) معاً
+    function updateMicToggleButtonUI() {
+        const btn = document.getElementById('room-mic-toggle-btn');
+        if (!btn) return;
+        btn.classList.toggle('room-chat-mic-muted', myIsMuted);
+        btn.title = myIsMuted ? 'إلغاء الكتم' : 'كتم صوتي';
+        btn.querySelector('i').className = `fas ${myIsMuted ? 'fa-microphone-slash' : 'fa-microphone'}`;
     }
 
     // ✅ يعكس حالة قفل الدردشة على حقل الكتابة — المضيف/المسؤولون يكتبون رغم القفل، الباقي يُمنع بصرياً
@@ -1571,6 +1609,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (currentRoomLevel === null || !currentRoomTopSupporters.length) {
             wrap.classList.add('hidden');
             wrap.innerHTML = '';
+            syncSeatVipRings(); // ✅ لا داعمين الآن (مثلاً غرفة جديدة) — يُزيل أي حلقة ذهبية باقية من جلسة سابقة
             return;
         }
         wrap.classList.remove('hidden');
@@ -1594,6 +1633,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const s = currentRoomTopSupporters[order[idx]];
             btn.addEventListener('click', () => showUserProfileSheet(currentVoiceRoomId, null, btn.dataset.userId, s?.username || ''));
         });
+        syncSeatVipRings(); // ✅ ترتيب الداعمين قد تغيّر بلا تغيير بإشغال المقاعد نفسها (هدية فقط) — يُعيد مطابقة الحلقة الذهبية
     }
 
     // ✅ زر "اطلب الصعود" (∞) — أول ضغطة ترسل الطلب، وثاني ضغطة (والطلب لسا قائم) تفتح
@@ -2923,34 +2963,31 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // ✅ الاسم يظهر تحت المقعد فقط بغرف المستخدمين (9/13/19) — مساحة كافية، بعكس الرسمية
         // المزدحمة بـ80 مقعداً حيث الـ tooltip يبقى وحده كافياً وأوضح بصرياً
         voiceGrid.classList.toggle('labeled', seatCount <= 24);
-        // ✅ شبكة أعمدة ثابتة العدد حسب سعة الغرفة (بالضبط أسلوب التطبيقات المشهورة): 9 مقاعد
-        // = 3 أعمدة (مربّع 3×3 كبير ومتناسق)، 13 = 5 أعمدة، 19 = 6 أعمدة — عُدِّل العددان من
-        // 15/24 لـ13/19 (طلب صريح) مع تكبير التباعد وتصغير المقعد قليلاً بهاتين الفئتين تحديداً
-        // كي تتسع الإطارات الزخرفية (خصوصاً الجمشت الملكي/تنانين النار) بلا تصادم مع المقعد المجاور.
-        // العدد ثابت دائماً بغض النظر عن عرض الشاشة، وحجم المقعد وحده يتمدد مع العرض المتاح
-        // (بعكس الغرفة الرسمية الـ80 مقعداً التي تبقى بتخطيطها المضغوط المرن القديم)
-        voiceGrid.classList.remove('cols-3', 'cols-5', 'cols-6');
-        if (seatCount === 9) voiceGrid.classList.add('cols-3');
-        else if (seatCount === 13) voiceGrid.classList.add('cols-5');
-        else if (seatCount === 19) voiceGrid.classList.add('cols-6');
+        // ✅ عدد الأعمدة الآن متغيّر --cols تقوده data-seat-count بـinput.css (يطابق النموذج
+        // الإلزامي docs/design/voice-room-prototype.html بالضبط: 9→4، 13→4، 19→6، 80→8) —
+        // استبدل نظام كلاسات cols-3/cols-5/cols-6 الثابت القديم بالكامل
+        voiceGrid.dataset.seatCount = seatCount;
         for (let i = 1; i <= seatCount; i++) {
             const seat = document.createElement('div');
             const isAdminSeat = i <= adminSeatCount;
             const canSitHere = !isAdminSeat || (user && user.isAdmin);
-            seat.className = `voice-seat ${isAdminSeat ? 'admin-seat' : 'user-seat'} ${canSitHere ? '' : 'seat-forbidden'}`;
+            // ✅ مقعد المضيف (دائماً رقم 1 بغرفة مستخدم) يأخذ صنف host-seat — يمنحه النموذج صفّاً
+            // كاملاً لوحده أعلى الشبكة وحلقة متدرّجة دوّارة عند الإشغال (راجع .host-seat بـCSS)
+            const isHostSeat = isCustomRoom && i === 1;
+            seat.className = `voice-seat ${isAdminSeat ? 'admin-seat' : 'user-seat'} ${canSitHere ? '' : 'seat-forbidden'} ${isHostSeat ? 'host-seat' : ''}`;
             seat.dataset.seat = i;
             seat.dataset.isAdminSeat = isAdminSeat ? '1' : '0';
             if (isAdminSeat) {
-                seat.innerHTML = '<i class="fas fa-crown"></i>';
+                seat.innerHTML = '<div class="voice-seat-av-wrap"><i class="fas fa-crown"></i></div>';
                 seat.title = canSitHere ? 'مقعد إدارة' : 'مقعد محجوز للإدارة';
             } else if (isCustomRoom) {
                 // ✅ بغرف المستخدمين: مقعد فاضٍ = "+" بالدائرة، والنص تحتها يختلف حسب من يشاهد —
                 // "دعوة" للمضيف (يفتح قائمة الحاضرين ليدعو أحدهم لهذا المقعد تحديداً)، و"انضمام"
                 // لبقية المستخدمين (يرسل طلب صعود ينتظر موافقة المضيف)
                 const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'انضمام';
-                seat.innerHTML = `<i class="fas fa-plus voice-seat-plus"></i><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
+                seat.innerHTML = `<div class="voice-seat-av-wrap"><i class="fas fa-plus voice-seat-plus"></i></div><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
             } else {
-                seat.innerHTML = i;
+                seat.innerHTML = `<div class="voice-seat-av-wrap">${i}</div>`;
             }
             seat.addEventListener('click', () => {
                 const occupantId = seat.dataset.userId;
@@ -5827,7 +5864,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 const isSpeaking = avg > SPEAKING_VOLUME_THRESHOLD && !(forUserId === myUserId && myIsMuted);
                 if (isSpeaking !== speaking) {
                     speaking = isSpeaking;
-                    document.querySelector(`#voice-chat-grid [data-user-id="${forUserId}"]`)?.classList.toggle('voice-seat-speaking', isSpeaking);
+                    document.querySelector(`#voice-chat-grid [data-user-id="${forUserId}"]`)?.classList.toggle('talk', isSpeaking);
                 }
             }, 150);
             voiceSpeakingDetectors.set(forUserId, { audioCtx, intervalId });
@@ -5843,7 +5880,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             d.audioCtx.close().catch(() => {});
             voiceSpeakingDetectors.delete(forUserId);
         }
-        document.querySelector(`#voice-chat-grid [data-user-id="${forUserId}"]`)?.classList.remove('voice-seat-speaking');
+        document.querySelector(`#voice-chat-grid [data-user-id="${forUserId}"]`)?.classList.remove('talk');
     }
 
     async function ensureLocalMicStream() {
@@ -8312,6 +8349,7 @@ function showXpGainAnimation(amount) {
         // ✅ الكتم الحقيقي الآن: تعطيل مسار الصوت المحلي فعلياً (لا مجرد أيقونة) — الجميع
         // بالشبكة يتوقفون عن سماعي فوراً بلا أي إعادة تفاوض بالاتصال (المسار يبقى متصلاً)
         if (localMicStream) localMicStream.getAudioTracks().forEach(t => { t.enabled = !myIsMuted; });
+        updateMicToggleButtonUI();
     }
 
     // ✅ تحديث حي لمقاعد الغرفة الصوتية (تتحقق من وجود الشبكة بالصفحة أولاً لأن المستخدم قد يكون بقسم آخر)
