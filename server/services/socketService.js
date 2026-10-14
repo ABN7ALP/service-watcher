@@ -6,10 +6,16 @@ const VoiceRoom = require('../models/VoiceRoom');
 const RoomBattle = require('../models/RoomBattle');
 const SeatChallenge = require('../models/SeatChallenge');
 const pkLeagueEngine = require('../utils/pkLeagueEngine');
+// ✅ تُستخدَم فقط لإغناء حمولة دعوة PK (رتبة أسبوعية + سجل مواجهات + نقاط الفائز) — التسوية
+// الحقيقية لنقاط الدوري نفسها تبقى حصراً بـpkLeagueEngine.settleBattle عند الحسم، لا هنا
+const PkSeason = require('../models/PkSeason');
+const PkStanding = require('../models/PkStanding');
+const PkHeadToHead = require('../models/PkHeadToHead');
+const SystemSettings = require('../models/SystemSettings');
 // ✅ متجر أدوات معركة PK (قفاز/ضباب) يُعامِل القفاز "مثل الهدية حرفياً" (طلب صريح) — يستدعي
 // نفس خطّافات الهدية الحقيقية بدل تكرار منطق خصم/بث موازٍ؛ لا استدعاء عكسي من giftController
 // لهذا الملف فلا تسابق دائري بالتحميل (require)
-const { applyGiftToActiveBattle, applyGiftToRoomSupport, broadcastPkScoreUpdate } = require('../controllers/giftController');
+const { applyGiftToActiveBattle, applyGiftToRoomSupport, schedulePkScoreEmit } = require('../controllers/giftController');
 const { addExperience } = require('../utils/experienceManager'); // ✅✅✅ أضف هذا السطر هنا
 
 // =================================================
@@ -275,36 +281,44 @@ async function finalizeActiveBattle(io, battleId) {
 }
 
 // ✅ يبدأ معركة فعالة بعد قبول التحدي: يحدد وقت البداية/النهاية ويجدول الإنهاء التلقائي
+// 🛡️ ادّعاء ذرّي أولاً (status:'pending'→'active' بشرط واحد) — يمنع القبول المزدوج لو ضغط
+// مشرفان قبول/رفض بنفس اللحظة تماماً (طلب صريح)؛ يُعيد null بأمان لو فاز طرف آخر بالادّعاء
+// أولاً فلا يُكمِل هذا النداء أي عمل تالٍ (جدولة مؤقّت/بثّ) لمعركة سبق أن حُسم أمرها
 async function activateBattle(io, battle) {
     const now = new Date();
-    battle.status = 'active';
-    battle.startedAt = now;
-    battle.endsAt = new Date(now.getTime() + battle.durationSeconds * 1000);
-    await battle.save();
+    const endsAt = new Date(now.getTime() + battle.durationSeconds * 1000);
+    const claimed = await RoomBattle.findOneAndUpdate(
+        { _id: battle._id, status: 'pending' },
+        { $set: { status: 'active', startedAt: now, endsAt } },
+        { new: true }
+    );
+    if (!claimed) return null;
 
-    const timer = setTimeout(() => finalizeActiveBattle(io, battle._id), battle.durationSeconds * 1000);
-    activeBattleTimers.set(battle._id.toString(), timer);
+    const timer = setTimeout(() => finalizeActiveBattle(io, claimed._id), claimed.durationSeconds * 1000);
+    activeBattleTimers.set(claimed._id.toString(), timer);
 
     const [roomA, roomB, recordA, recordB] = await Promise.all([
-        VoiceRoom.findById(battle.roomA).select('name coverImage'),
-        VoiceRoom.findById(battle.roomB).select('name coverImage'),
-        VoiceRoom.getPkRecord(battle.roomA),
-        VoiceRoom.getPkRecord(battle.roomB)
+        VoiceRoom.findById(claimed.roomA).select('name coverImage'),
+        VoiceRoom.findById(claimed.roomB).select('name coverImage'),
+        VoiceRoom.getPkRecord(claimed.roomA),
+        VoiceRoom.getPkRecord(claimed.roomB)
     ]);
 
-    await emitToBothRooms(io, battle.roomA, battle.roomB, 'pk-battle-started', {
-        battleId: battle._id.toString(),
-        roomA: { id: battle.roomA.toString(), name: roomA?.name || '', coverImage: roomA?.coverImage || null },
-        roomB: { id: battle.roomB.toString(), name: roomB?.name || '', coverImage: roomB?.coverImage || null },
-        scoreA: battle.scoreA,
-        scoreB: battle.scoreB,
-        durationSeconds: battle.durationSeconds,
-        endsAt: battle.endsAt,
+    await emitToBothRooms(io, claimed.roomA, claimed.roomB, 'pk-battle-started', {
+        battleId: claimed._id.toString(),
+        roomA: { id: claimed.roomA.toString(), name: roomA?.name || '', coverImage: roomA?.coverImage || null },
+        roomB: { id: claimed.roomB.toString(), name: roomB?.name || '', coverImage: roomB?.coverImage || null },
+        scoreA: claimed.scoreA,
+        scoreB: claimed.scoreB,
+        durationSeconds: claimed.durationSeconds,
+        endsAt: claimed.endsAt,
         recordA, recordB
     });
+    return claimed;
 }
 
-// ✅ ينهي طلب تحدٍ معلّق لم يُرَد عليه خلال المهلة (رفض ضمني)
+// ✅ ينهي طلب تحدٍ معلّق لم يُرَد عليه خلال المهلة (رفض ضمني) — pk-challenge-closed يصل الطرفين
+// معاً (راجع التعليق أعلى pk-challenge-closed بالأسفل) فتُغلَق نافذتا الدعوة الواردة والمرسلة فوراً
 async function expirePendingChallenge(io, battleId) {
     try {
         clearBattleTimer(pendingChallengeTimers, battleId);
@@ -314,10 +328,72 @@ async function expirePendingChallenge(io, battleId) {
             { new: true }
         );
         if (!battle) return;
-        io.to(`room-chat-${battle.roomA}`).emit('pk-challenge-expired', { battleId: battle._id.toString(), roomB: battle.roomB.toString() });
+        await emitToBothRooms(io, battle.roomA, battle.roomB, 'pk-challenge-closed', { battleId: battle._id.toString(), reason: 'expired' });
     } catch (error) {
         console.error('[PK BATTLE] Expire error:', error);
     }
+}
+
+// ✅ هل هذا المستخدم مضيف هذي الغرفة أو أحد مسؤوليها؟ — معيار الصلاحية الموحَّد لكل عمليات
+// دعوة PK (إرسال/قبول/رفض/إلغاء) بعد توسيعها من "المضيف فقط" (طلب صريح هذا الجولة)
+function isRoomHostOrModerator(room, userId) {
+    if (!room) return false;
+    const uid = userId.toString();
+    if (room.host && room.host.toString() === uid) return true;
+    return (room.moderators || []).some(m => m.toString() === uid);
+}
+
+// ✅ إغناء حمولة دعوة PK: رتبة كل غرفة بالدوري الأسبوعي الحالي + نقاط فوز الموسم (من الإعدادات)
+// + عدد المتصلين الآن بكل غرفة (مُشتَق من getRoomViewers الحيّة، لا استعلام منفصل) + سجل
+// مواجهات الموسم بينهما (PkHeadToHead) — كل ما يحتاجه نموذج التصميم الإلزامي لنافذة الدعوة
+async function buildPkInviteEnrichment(io, roomA, roomB) {
+    const [settings, season] = await Promise.all([SystemSettings.getSettings(), PkSeason.ensureActiveSeason()]);
+    const [standingA, standingB, h2h, recordA, recordB] = await Promise.all([
+        PkStanding.findOne({ season: season._id, room: roomA._id }),
+        PkStanding.findOne({ season: season._id, room: roomB._id }),
+        PkHeadToHead.getForRoomPair(season._id, roomA._id, roomB._id),
+        VoiceRoom.getPkRecord(roomA._id),
+        VoiceRoom.getPkRecord(roomB._id)
+    ]);
+    const [rankA, rankB] = await Promise.all([
+        PkStanding.getRank(season._id, standingA),
+        PkStanding.getRank(season._id, standingB)
+    ]);
+    return {
+        winLp: settings.pkWinLp,
+        roomA: { rank: rankA, record: recordA, occupantCount: getRoomViewers(io, roomA._id).length },
+        roomB: { rank: rankB, record: recordB, occupantCount: getRoomViewers(io, roomB._id).length },
+        headToHead: { aWins: h2h.myWins, bWins: h2h.opponentWins, draws: h2h.draws }
+    };
+}
+
+// ✅ يبني حمولة نافذة الدعوة بمنظور غرفة واحدة بعينها (us/them) من نفس الإغناء المحسوب مرّة
+// واحدة لكلا الطرفين — نفس أسلوب إعادة التوجيه بمنظور كل غرفة المستخدَم بكل أحداث PK الحيّة
+function buildPkInviteViewPayload(battle, expiresAt, enrichment, roomADoc, roomBDoc, perspective) {
+    const usIsA = perspective === 'A';
+    const usRoom = usIsA ? roomADoc : roomBDoc;
+    const themRoom = usIsA ? roomBDoc : roomADoc;
+    const usEnrich = usIsA ? enrichment.roomA : enrichment.roomB;
+    const themEnrich = usIsA ? enrichment.roomB : enrichment.roomA;
+    return {
+        battleId: battle._id.toString(),
+        expiresAt,
+        durationSeconds: battle.durationSeconds,
+        winLp: enrichment.winLp,
+        headToHead: {
+            usWins: usIsA ? enrichment.headToHead.aWins : enrichment.headToHead.bWins,
+            themWins: usIsA ? enrichment.headToHead.bWins : enrichment.headToHead.aWins,
+            draws: enrichment.headToHead.draws
+        },
+        us: {
+            id: usRoom._id.toString(), name: usRoom.name, coverImage: usRoom.coverImage,
+            rank: usEnrich.rank, record: usEnrich.record
+        },
+        them: {
+            id: themRoom._id.toString(), name: themRoom.name, coverImage: themRoom.coverImage,
+            rank: themEnrich.rank, record: themEnrich.record, occupantCount: themEnrich.occupantCount
+        }
+    };
 }
 
 // =================================================
@@ -1774,11 +1850,12 @@ socket.on('refreshBlockData', async () => {
 
                 const [myRoom, targetRoom] = await Promise.all([
                     VoiceRoom.findOne({ _id: roomId, status: 'active' }),
-                    VoiceRoom.findOne({ _id: targetRoomId, status: 'active' }).populate('host', 'username socketId')
+                    VoiceRoom.findOne({ _id: targetRoomId, status: 'active' }).populate('host', 'username socketId').populate('moderators', 'socketId')
                 ]);
 
-                if (!myRoom || !myRoom.host || myRoom.host.toString() !== socket.user._id.toString()) {
-                    return socket.emit('seat-error', 'المضيف فقط يقدر يبدأ معركة PK');
+                // ✅ طلب صريح هذي الجولة: المضيف أو أحد المسؤولين (لا المضيف فقط كسابقاً)
+                if (!myRoom || !isRoomHostOrModerator(myRoom, socket.user._id)) {
+                    return socket.emit('seat-error', 'المضيف أو أحد المسؤولين فقط يقدر يبدأ معركة PK');
                 }
                 if (!targetRoom || !targetRoom.host) {
                     return socket.emit('seat-error', 'الغرفة المستهدفة غير متاحة للتحدي');
@@ -1808,27 +1885,16 @@ socket.on('refreshBlockData', async () => {
                 const timer = setTimeout(() => expirePendingChallenge(io, battle._id), RoomBattle.CHALLENGE_EXPIRY_SECONDS * 1000);
                 pendingChallengeTimers.set(battle._id.toString(), timer);
 
-                // ✅ "سجل العقد" لكل غرفة يُرفَق بعرض/استقبال التحدي — يعطي عملية الاتفاق طابع
-                // تعاقد رسمي بين طرفين لهما تاريخ، بدل تحدٍ عابر بلا سياق (طلب صريح: شبه عقود الشركات الكبرى)
-                const [challengerRecord, targetRecord] = await Promise.all([
-                    VoiceRoom.getPkRecord(myRoom._id),
-                    VoiceRoom.getPkRecord(targetRoom._id)
-                ]);
+                // ✅ مهلة صلاحية حقيقية مُشتقّة من وقت إنشاء المستند فعلياً (createdAt) — لا مدة
+                // تقديرية منفصلة قد تنحرف عن مؤقّت expirePendingChallenge أعلاه (طلب صريح: expiresAt حقيقي)
+                const expiresAt = new Date(battle.createdAt.getTime() + RoomBattle.CHALLENGE_EXPIRY_SECONDS * 1000);
+                const enrichment = await buildPkInviteEnrichment(io, myRoom, targetRoom);
 
-                socket.emit('pk-challenge-sent', { battleId: battle._id.toString(), targetRoomName: targetRoom.name, challengerRecord, targetRecord });
+                socket.emit('pk-challenge-sent', buildPkInviteViewPayload(battle, expiresAt, enrichment, myRoom, targetRoom, 'A'));
 
-                if (targetRoom.host.socketId) {
-                    io.to(targetRoom.host.socketId).emit('pk-challenge-received', {
-                        battleId: battle._id.toString(),
-                        challengerRoomId: myRoom._id.toString(),
-                        challengerRoomName: myRoom.name,
-                        challengerRoomCover: myRoom.coverImage,
-                        durationSeconds: duration,
-                        expiresInSeconds: RoomBattle.CHALLENGE_EXPIRY_SECONDS,
-                        challengerRecord,
-                        targetRecord
-                    });
-                }
+                const recipientPayload = buildPkInviteViewPayload(battle, expiresAt, enrichment, myRoom, targetRoom, 'B');
+                const staffSocketIds = [targetRoom.host?.socketId, ...targetRoom.moderators.map(m => m.socketId)].filter(Boolean);
+                staffSocketIds.forEach(sid => io.to(sid).emit('pk-challenge-received', recipientPayload));
             } catch (error) {
                 console.error('[PK BATTLE] Challenge error:', error);
             }
@@ -1839,36 +1905,50 @@ socket.on('refreshBlockData', async () => {
                 const battle = await RoomBattle.findOne({ _id: battleId, status: 'pending' });
                 if (!battle) return;
 
-                // 🛡️ الرد لا يصح إلا من مضيف الغرفة المتحدّاة (roomB) تحديداً
-                const roomB = await VoiceRoom.findById(battle.roomB).select('host');
-                if (!roomB || !roomB.host || roomB.host.toString() !== socket.user._id.toString()) {
+                // 🛡️ الرد لا يصح إلا من مضيف الغرفة المتحدّاة (roomB) أو أحد مسؤوليها (طلب صريح)
+                const roomB = await VoiceRoom.findById(battle.roomB).select('host moderators');
+                if (!isRoomHostOrModerator(roomB, socket.user._id)) {
                     return socket.emit('seat-error', 'ليس لديك تحدٍ بانتظار ردك');
                 }
 
-                clearBattleTimer(pendingChallengeTimers, battle._id);
-
                 if (!accept) {
-                    battle.status = 'declined';
-                    await battle.save();
-                    io.to(`room-chat-${battle.roomA}`).emit('pk-challenge-declined', { battleId: battle._id.toString(), roomB: battle.roomB.toString() });
+                    // 🛡️ ادّعاء ذرّي (status:'pending'→'declined') — لو ردّ مشرف آخر بالتزامن تماماً
+                    // (قبولاً أو رفضاً) أو انتهت المهلة للتو، null يعني حُسم الأمر فعلاً فلا نُكرِّر البثّ
+                    const claimed = await RoomBattle.findOneAndUpdate(
+                        { _id: battleId, status: 'pending' },
+                        { $set: { status: 'declined' } },
+                        { new: true }
+                    );
+                    if (!claimed) return;
+                    clearBattleTimer(pendingChallengeTimers, claimed._id);
+                    await emitToBothRooms(io, claimed.roomA, claimed.roomB, 'pk-challenge-closed', { battleId: claimed._id.toString(), reason: 'declined' });
                     return;
                 }
 
-                await activateBattle(io, battle);
+                const activated = await activateBattle(io, battle); // ✅ ادّعاء ذرّي داخلي (راجع تعليق الدالة)
+                if (activated) clearBattleTimer(pendingChallengeTimers, activated._id);
             } catch (error) {
                 console.error('[PK BATTLE] Response error:', error);
             }
         });
 
-        // ✅ إلغاء تحدٍ معلّق أرسله المضيف نفسه قبل أي رد
+        // ✅ إلغاء تحدٍ معلّق — المضيف أو أحد مسؤولي الغرفة المُرسِلة (roomA)، لا شرط "نفس من
+        // أرسله حرفياً" بعد الآن (طلب صريح: نفس معيار الصلاحية الموحَّد لكل عمليات دعوة PK)
         socket.on('pk-cancel-challenge', async ({ battleId }) => {
             try {
-                const battle = await RoomBattle.findOne({ _id: battleId, status: 'pending', challengedBy: socket.user._id });
+                const battle = await RoomBattle.findOne({ _id: battleId, status: 'pending' });
                 if (!battle) return;
-                clearBattleTimer(pendingChallengeTimers, battle._id);
-                battle.status = 'cancelled';
-                await battle.save();
-                io.to(`room-chat-${battle.roomB}`).emit('pk-challenge-expired', { battleId: battle._id.toString(), roomB: battle.roomB.toString() });
+                const roomA = await VoiceRoom.findById(battle.roomA).select('host moderators');
+                if (!isRoomHostOrModerator(roomA, socket.user._id)) return;
+
+                const claimed = await RoomBattle.findOneAndUpdate(
+                    { _id: battleId, status: 'pending' },
+                    { $set: { status: 'cancelled' } },
+                    { new: true }
+                );
+                if (!claimed) return;
+                clearBattleTimer(pendingChallengeTimers, claimed._id);
+                await emitToBothRooms(io, claimed.roomA, claimed.roomB, 'pk-challenge-closed', { battleId: claimed._id.toString(), reason: 'cancelled' });
             } catch (error) {
                 console.error('[PK BATTLE] Cancel error:', error);
             }
@@ -1956,7 +2036,7 @@ socket.on('refreshBlockData', async () => {
                 } else {
                     // ✅ ضباب: لا مستلم له — فقط يُفعِّل تعتيم رقم صفّه عن الجمهور المنافس؛ يكفي إعادة
                     // بثّ لقطة النقاط الحالية (ستُعتِّم تلقائياً الآن لأن التأثير الفعّال موجود بالمستند)
-                    broadcastPkScoreUpdate(io, updatedBattle);
+                    schedulePkScoreEmit(io, updatedBattle);
                 }
 
                 const activatedPayload = {

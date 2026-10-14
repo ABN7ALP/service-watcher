@@ -58,21 +58,99 @@ async function applyGiftToActiveBattle(io, roomId, totalPrice, sender, giftUnits
     );
     if (!updated || !io) return;
 
-    broadcastPkScoreUpdate(io, updated);
+    // ✅ قلب النتيجة يُكتشَف من الخادم فوراً هنا (لا يُستنتج من العميل أبداً) — نطرح الدلتا التي
+    // طبّقناها بالتحديث الذرّي أعلى من الرقم الجديد لنعرف مَن كان متقدّماً *قبل* هذي الهدية
+    // بالضبط، بلا أي قراءة إضافية أو حالة بالذاكرة قد تتسابق مع هدية أخرى متزامنة بنفس اللحظة
+    const prevScoreA = isRoomA ? updated.scoreA - scoreDelta : updated.scoreA;
+    const prevScoreB = isRoomA ? updated.scoreB : updated.scoreB - scoreDelta;
+    const prevLeader = prevScoreA === prevScoreB ? null : (prevScoreA > prevScoreB ? 'A' : 'B');
+    const newLeader = updated.scoreA === updated.scoreB ? null : (updated.scoreA > updated.scoreB ? 'A' : 'B');
+    if (newLeader && prevLeader && newLeader !== prevLeader) {
+        emitPkLeadChange(io, updated, newLeader);
+    }
+
+    schedulePkScoreEmit(io, updated);
 }
 
-// ✅ يبثّ لقطة النقاط لكل غرفة بحمولتها الخاصة — إن كان أحد الصفّين قد رمى "ضباباً" فعّالاً الآن،
-// يرى جمهور الغرفة الأخرى رقمه كـnull (محجوب من الخادم نفسه، لا مجرد إخفاء بالواجهة فقط) بينما
-// يبقى صفّه هو حقيقياً له؛ راجع RoomBattle.buildAudiencePayload. يُستخدم هنا وبنداء المتجر
-// (pk-item-throw بـsocketService.js) معاً حتى تتوحّد لحظة الحجب في كل مسارات تحديث النقاط
-function broadcastPkScoreUpdate(io, battle) {
-    const base = {
+// ✅ حالتا الدفعة لكل معركة بذاكرة العملية — تكفي بلا قاعدة بيانات لأن كلتيهما مجرد تحكّم بمعدّل
+// البثّ (throttle/rate-limit)، والقيمة الحقيقية (RoomBattle بقاعدة البيانات) محدَّثة ذرّياً بالفعل
+// أعلى بصرف النظر عنهما تماماً؛ مرجع معركة منتهية يبقى هنا بأثر تافه حتى إعادة تشغيل الخادم
+const pkScoreThrottle = new Map(); // battleId -> { timer, lastEmitAt, latestBattle }
+const pkLeadChangeGuard = new Map(); // battleId -> lastEmitAt (ms)
+
+const PK_SCORE_THROTTLE_MS = 300; // ✅ طلب صريح: "كل 300ms كحد أقصى"
+const PK_LEAD_CHANGE_MIN_GAP_MS = 3000; // ✅ طلب صريح: "امنع تكرار الانفجار أكثر من مرة كل 3 ثوانٍ"
+
+// ✅ حافة أمامية+خلفية (leading+trailing): أول هدية بعد فترة هدوء تُبثّ فوراً، وأي هدية تالية
+// خلال نافذة الـ300ms تُحدِّث فقط "أحدث حالة" دون تمديد المؤقّت، فتُبثّ لحظة انتهاء النافذة
+// بأحدث رقم فعلي حتى لو تغيّر عدة مرات أثناءها — لا بثّ منفصل لكل هدية مهما كانت سرعتها
+function schedulePkScoreEmit(io, battle) {
+    const battleId = battle._id.toString();
+    let state = pkScoreThrottle.get(battleId);
+    if (!state) {
+        state = { timer: null, lastEmitAt: 0, latestBattle: null };
+        pkScoreThrottle.set(battleId, state);
+    }
+    state.latestBattle = battle;
+    if (state.timer) return; // ✅ الحافة الخلفية مجدولة بالفعل — ستُبثّ أحدث حالة عند حلولها
+
+    const elapsed = Date.now() - state.lastEmitAt;
+    if (elapsed >= PK_SCORE_THROTTLE_MS) {
+        state.lastEmitAt = Date.now();
+        emitPkScoreNow(io, state.latestBattle);
+        return;
+    }
+    state.timer = setTimeout(() => {
+        state.timer = null;
+        state.lastEmitAt = Date.now();
+        const latest = state.latestBattle;
+        if (latest) emitPkScoreNow(io, latest);
+    }, PK_SCORE_THROTTLE_MS - elapsed);
+}
+
+// ✅ حدث قلب النتيجة — مرّة واحدة كحد أقصى كل 3 ثوانٍ لكل معركة (راجع PK_LEAD_CHANGE_MIN_GAP_MS)
+// كي لا يتكرّر الانفجار البصري بجنون لو تبادل الصفّان التقدّم عدة مرات بثوانٍ متقاربة. leader
+// يُرسَل بمنظور كل غرفة (us/them) بنفس أسلوب pk:score تماماً، لا A/B خام
+function emitPkLeadChange(io, battle, newLeaderSide) {
+    const battleId = battle._id.toString();
+    const now = Date.now();
+    const lastEmit = pkLeadChangeGuard.get(battleId) || 0;
+    if (now - lastEmit < PK_LEAD_CHANGE_MIN_GAP_MS) return;
+    pkLeadChangeGuard.set(battleId, now);
+
+    io.to(`room-chat-${battle.roomA}`).emit('pk:leadChange', { battleId, leader: newLeaderSide === 'A' ? 'us' : 'them' });
+    io.to(`room-chat-${battle.roomB}`).emit('pk:leadChange', { battleId, leader: newLeaderSide === 'B' ? 'us' : 'them' });
+}
+
+// ✅ يبثّ لقطة النقاط لكل غرفة بحمولتها الخاصة بمنظورها (us/them) — إن كان أحد الصفّين قد رمى
+// "ضباباً" فعّالاً الآن، يرى جمهور الغرفة الأخرى رقمه كـnull (محجوب من الخادم نفسه، لا مجرد
+// إخفاء بالواجهة فقط) بينما يبقى صفّه هو حقيقياً له؛ راجع RoomBattle.buildAudiencePayload.
+// leader لا يُعتَّم عمداً (قرار مصمَّم): يبقى التشويق اللحظي لمن يتقدّم ظاهراً حتى أثناء نافذة
+// الضباب، بينما الرقم الحقيقي وحده محجوب — العميل يُجمِّد تقييم الإيموجي أصلاً حين them=null
+async function emitPkScoreNow(io, battle) {
+    const [payloadA, payloadB] = await Promise.all([
+        buildPkScorePayload(battle, 'A'),
+        buildPkScorePayload(battle, 'B')
+    ]);
+    io.to(`room-chat-${battle.roomA}`).emit('pk:score', payloadA);
+    io.to(`room-chat-${battle.roomB}`).emit('pk:score', payloadB);
+}
+
+async function buildPkScorePayload(battle, side) {
+    const other = side === 'A' ? 'B' : 'A';
+    const audience = battle.buildAudiencePayload(side);
+    const us = side === 'A' ? audience.scoreA : audience.scoreB;
+    const them = side === 'A' ? audience.scoreB : audience.scoreA;
+    const [topUs, topThem] = await Promise.all([battle.topSupporters(side, 3), battle.topSupporters(other, 3)]);
+    const leader = battle.scoreA === battle.scoreB ? null : (battle.scoreA > battle.scoreB ? 'A' : 'B');
+    return {
         battleId: battle._id.toString(),
         roomA: battle.roomA.toString(),
-        roomB: battle.roomB.toString()
+        roomB: battle.roomB.toString(),
+        us, them,
+        topFans: { us: topUs, them: topThem },
+        leader: leader === null ? null : (leader === side ? 'us' : 'them')
     };
-    io.to(`room-chat-${battle.roomA}`).emit('pk-score-update', { ...base, ...battle.buildAudiencePayload('A') });
-    io.to(`room-chat-${battle.roomB}`).emit('pk-score-update', { ...base, ...battle.buildAudiencePayload('B') });
 }
 
 // ✅ يضيف قيمة أي هدية أُرسلت داخل غرفة (بغض النظر عن وجود معركة PK نشطة أم لا) كـ"نقاط دعم"
@@ -937,4 +1015,6 @@ exports.sendPublicGift = async (req, res) => {
 module.exports.applyGiftToActiveBattle = applyGiftToActiveBattle;
 module.exports.applyGiftToRoomSupport = applyGiftToRoomSupport;
 module.exports.applyGiftToActiveSeatChallenge = applyGiftToActiveSeatChallenge;
-module.exports.broadcastPkScoreUpdate = broadcastPkScoreUpdate;
+// ✅ تُستدعى مباشرة من pk-item-throw (ضباب) لإعادة بثّ لقطة النقاط فوراً فتُعتِّم رقم الخصم
+// بلا انتظار الدفعة التالية — نفس المسار الحقيقي بالضبط (pk:score)، لا بثّ موازٍ منفصل
+module.exports.schedulePkScoreEmit = schedulePkScoreEmit;

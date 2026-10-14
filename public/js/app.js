@@ -1332,8 +1332,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (isManager) {
             items.push({ action: 'hand-queue', icon: 'fa-infinity', label: 'طلبات الصعود', color: 'text-purple-400', badge: roomHandQueue.length });
         }
-        // ✅ تحدي PK — انتقل هنا من نافذة الإعدادات (المضيف فقط، وليس المسؤولين — قرار مصيري للغرفة)
-        if (currentRoomMyRole === 'host' && currentVoiceRoomId !== 'main') {
+        // ✅ تحدي PK — المضيف أو أحد المسؤولين (طلب صريح هذي الجولة: وسّع الصلاحية من "المضيف
+        // فقط" لنظام الدعوات الجديد بالكامل، فتُطابق صلاحية الخادم تماماً لإرسال/قبول/رفض/إلغاء)
+        if ((currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator') && currentVoiceRoomId !== 'main') {
             items.push({ action: 'pk-challenge', icon: 'fa-bolt', label: 'تحدي PK', color: 'text-orange-400' });
         }
         // ✅ متجر أدوات المعركة (قفاز/ضباب) — يظهر للجميع (ليس المضيف فقط، كإرسال أي هدية) فقط
@@ -3886,9 +3887,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // داعمين لكل صفّ، ومتجر أدوات معركة (قفاز يضاعف العرض على الشريط فقط/ضباب يُعتِّم الرقم
     // عن الجمهور المنافس)، ونافذة نتيجة بصور ومؤثرات ضباب/دخان متحركة
     // =====================================================
-    let currentPkBattle = null; // { battleId, roomA, roomB, scoreA, scoreB, lastKnownScoreA/B, effects:{A,B}, recordA, recordB, durationSeconds, endsAt, status }
+    // { battleId, roomUs, roomThem, us, them, lastKnownScore:{us,them}, fogged:{us,them}, effects:{us,them},
+    //   topFans:{us,them}, recordUs, recordThem, durationSeconds, endsAt, status, pkFinal, pkRider, pkLastShare }
+    let currentPkBattle = null;
     let pkCountdownInterval = null;
     let pkEffectTickInterval = null;
+    let pkLeadChangeFlashGuard = 0; // ✅ حماية عميل إضافية (طبقة ثانية فوق حماية الخادم) من تكرار الانفجار البصري
     // ✅ آخر أداة رميتها أنا بهذي المعركة (لعرض حالة "آخر استخدام" بالمتجر محلياً دون انتظار
     // خطأ من السيرفر لو ضغطت زراً معطَّلاً) — يُصفَّر تلقائياً عند انتهاء مدتها بعدّاد المتجر نفسه
     let myPkThrowCooldown = null; // { item, expiresAt }
@@ -3968,9 +3972,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 `).join('');
                 listEl.querySelectorAll('.pk-target-room-btn').forEach(btn => {
                     btn.addEventListener('click', () => {
+                        // ✅ نافذة "بانتظار الرد" الجديدة (showPkInviteOutgoingModal) تظهر تلقائياً عند
+                        // استقبال pk-challenge-sent من الخادم — لا حاجة لإشعار toast منفصل هنا بعد الآن
                         socket.emit('pk-challenge-room', { roomId: room.id, targetRoomId: btn.dataset.roomId, durationSeconds: selectedDuration });
                         modal.remove();
-                        showNotification(`تم إرسال عقد تحدٍ لغرفة "${btn.dataset.roomName}" — بانتظار الرد`, 'info');
                     });
                 });
             } catch (error) {
@@ -3985,70 +3990,107 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
     }
 
-    // ✅ شريحة صغيرة لعرض سجل W-L-D + سلسلة الانتصارات الحالية — تُستخدم بنافذتي العرض/الاستقبال والنتيجة
-    function pkRecordChipHTML(record) {
-        if (!record) return '';
-        const streak = record.streak || 0;
-        const streakHTML = streak > 0
-            ? `<span class="pk-record-streak pk-record-streak-win"><i class="fas fa-fire"></i> ${streak}</span>`
-            : (streak < 0 ? `<span class="pk-record-streak pk-record-streak-loss">${Math.abs(streak)}</span>` : '');
+    // ✅ وجه غرفة واحدة بنافذة الدعوة (وجهاً لوجه) — رتبتها الأسبوعية بالدوري الحالي + سجلّها الدائم
+    function pkInviteFaceHTML(room, isUs) {
+        const rankText = room.rank ? `#${room.rank}` : '—';
+        const recText = room.record ? `${room.record.wins}ف ${room.record.losses}خ` : '';
         return `
-            <div class="pk-record-chip">
-                <span class="pk-record-w">${record.wins || 0}ف</span>
-                <span class="pk-record-sep">-</span>
-                <span class="pk-record-l">${record.losses || 0}خ</span>
-                ${record.draws ? `<span class="pk-record-sep">-</span><span class="pk-record-d">${record.draws}ت</span>` : ''}
-                ${streakHTML}
+            <div class="face__r face__r--${isUs ? 'us' : 'them'}">
+                <img src="${room.coverImage || '/images/default-avatar.png'}" alt="">
+                <div class="n">${escapeHtml(room.name)}</div>
+                <div class="t">${rankText}${recText ? ' · ' + recText : ''}</div>
             </div>
         `;
     }
 
-    // ✅ نافذة تلقّي "عقد تحدٍ" — تظهر لمضيف الغرفة المستهدفة فقط، بسجلّي الغرفتين معاً
-    // (طابع عرض تعاقد رسمي بين طرفين لهما تاريخ، بدل تحدٍ عابر بلا سياق)
-    function showPkChallengeReceivedModal({ battleId, challengerRoomName, challengerRoomCover, expiresInSeconds, challengerRecord, targetRecord }) {
+    // ✅ بطاقة الدعوة الموحَّدة (واردة/مرسلة) — منفَّذة حرفياً من نموذج التصميم الإلزامي
+    // (docs/design/pk-live-bar-prototype.html § نافذة الدعوة): الغرفتان وجهاً لوجه بترتيبهما
+    // الأسبوعي وسجلهما، مدة الجولة، نقاط الفائز (من إعدادات النظام)، عدد المتصلين بغرفة
+    // الخصم الآن، وسجل المواجهات هذا الأسبوع — كل رقم هنا من الخادم حصراً (us/them من منظور
+    // المشاهِد نفسه دوماً، راجع socketService.buildPkInviteViewPayload)
+    function pkInviteCardHTML(data, mode) {
+        const minutes = Math.round((data.durationSeconds || 0) / 60);
+        const h2h = data.headToHead || { usWins: 0, themWins: 0, draws: 0 };
+        const h2hHint = h2h.usWins === h2h.themWins ? '' : (h2h.usWins > h2h.themWins ? ' لصالحكم' : ' لصالحهم');
+        const isReceived = mode === 'received';
+        return `
+            <div class="inv__icon"><img src="/assets/pk/emoji/crossed_swords_3d.webp" alt=""></div>
+            <h2>${isReceived ? 'تحدّي PK!' : 'أُرسلت الدعوة'}</h2>
+            <p class="sub">${isReceived ? `غرفة ${escapeHtml(data.them.name)} تتحداكم الآن` : 'سيبدأ التحدي فور قبولهم'}</p>
+            <div class="face">
+                ${pkInviteFaceHTML(data.us, true)}
+                <div class="vsb">VS</div>
+                ${pkInviteFaceHTML(data.them, false)}
+            </div>
+            <div class="chips">
+                <div class="chip"><b>${minutes} د</b><span>مدة الجولة</span></div>
+                <div class="chip"><b>+${data.winLp ?? 0}</b><span>نقاط الفائز</span></div>
+                <div class="chip"><b>${data.them.occupantCount ?? 0}</b><span>متصل عندهم</span></div>
+            </div>
+            <div class="h2h">المواجهات بينكما هذا الأسبوع: <b>${h2h.usWins} – ${h2h.themWins}</b>${h2hHint}</div>
+            ${isReceived ? `
+                <div class="inv__btns">
+                    <button type="button" class="btn btn--ghost" id="pk-invite-decline-btn">رفض</button>
+                    <button type="button" class="btn btn--gold accept" id="pk-invite-accept-btn"><i id="pk-invite-drain"></i><span>قبول التحدي · <span id="pk-invite-countdown">0</span></span></button>
+                </div>
+            ` : `
+                <div class="wait" style="display:block">
+                    <p class="sub" style="margin:0 0 10px">بانتظار رد ${escapeHtml(data.them.name)}<span class="dots"></span></p>
+                    <button type="button" class="btn btn--ghost" id="pk-invite-cancel-btn">إلغاء الدعوة</button>
+                </div>
+            `}
+        `;
+    }
+
+    // ✅ نافذة الدعوة الواردة — تظهر لمضيف الغرفة المستهدفة أو أحد مسؤوليها (كل من يستلم الحدث
+    // من الخادم). زر القبول يفرغ تدريجياً خلال مدة صلاحية الدعوة الحقيقية (expiresAt من الخادم،
+    // لا عدّاد عميل منفصل)، ثم رفض تلقائي من الخادم نفسه (راجع socket.on('pk-challenge-closed'))
+    function showPkChallengeReceivedModal(data) {
         document.getElementById('pk-challenge-received-modal')?.remove();
         const modal = document.createElement('div');
         modal.id = 'pk-challenge-received-modal';
         modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4';
-        modal.innerHTML = `
-            <div class="pk-contract-offer-sheet w-full max-w-xs">
-                <div class="pk-contract-offer-seal"><i class="fas fa-file-contract"></i></div>
-                <img src="${challengerRoomCover}" class="pk-contract-offer-avatar">
-                <p class="text-sm text-gray-300 mb-1">غرفة</p>
-                <p class="font-bold text-base mb-2 truncate">${escapeHtml(challengerRoomName)}</p>
-                ${pkRecordChipHTML(challengerRecord)}
-                <p class="text-sm text-orange-300 mt-3 mb-1"><i class="fas fa-bolt"></i> تعرض عليك عقد تحدٍ بمعركة PK!</p>
-                ${targetRecord ? `<div class="text-[10px] text-gray-500 mb-2">سجل غرفتك: ${pkRecordChipHTML(targetRecord)}</div>` : ''}
-                <div class="pk-contract-offer-countdown-ring" id="pk-challenge-countdown-ring">
-                    <span id="pk-challenge-countdown">${expiresInSeconds}</span>
-                </div>
-                <div class="flex gap-3 mt-3">
-                    <button id="pk-decline-btn" class="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 py-2 rounded-lg font-bold text-sm">رفض العقد</button>
-                    <button id="pk-accept-btn" class="flex-1 pk-contract-accept-btn py-2 rounded-lg font-bold text-sm">قبول العقد</button>
-                </div>
-            </div>
-        `;
+        modal.innerHTML = `<div class="pk-invite inv">${pkInviteCardHTML(data, 'received')}</div>`;
         document.body.appendChild(modal);
 
-        let remaining = expiresInSeconds;
-        const countdownEl = document.getElementById('pk-challenge-countdown');
-        const interval = setInterval(() => {
-            remaining--;
-            if (countdownEl) countdownEl.textContent = Math.max(remaining, 0);
-            if (remaining <= 0) {
-                clearInterval(interval);
-                modal.remove();
-            }
-        }, 1000);
+        const drainEl = modal.querySelector('#pk-invite-drain');
+        const countdownEl = modal.querySelector('#pk-invite-countdown');
+        const expiresAtMs = new Date(data.expiresAt).getTime();
+        const totalMs = Math.max(1, expiresAtMs - Date.now());
+        if (drainEl && !pkPrefersReducedMotion()) drainEl.style.animationDuration = totalMs + 'ms';
+        const tick = () => {
+            const remaining = Math.max(0, Math.ceil((expiresAtMs - Date.now()) / 1000));
+            if (countdownEl) countdownEl.textContent = remaining;
+            if (remaining <= 0) { clearInterval(interval); modal.remove(); }
+        };
+        tick();
+        const interval = setInterval(tick, 1000);
 
-        document.getElementById('pk-accept-btn').addEventListener('click', () => {
+        modal.querySelector('#pk-invite-accept-btn').addEventListener('click', () => {
             clearInterval(interval);
-            socket.emit('pk-challenge-response', { battleId, accept: true });
+            socket.emit('pk-challenge-response', { battleId: data.battleId, accept: true });
             modal.remove();
         });
-        document.getElementById('pk-decline-btn').addEventListener('click', () => {
+        modal.querySelector('#pk-invite-decline-btn').addEventListener('click', () => {
             clearInterval(interval);
-            socket.emit('pk-challenge-response', { battleId, accept: false });
+            socket.emit('pk-challenge-response', { battleId: data.battleId, accept: false });
+            modal.remove();
+        });
+    }
+
+    // ✅ نافذة الدعوة المرسلة — تظهر لمن أرسل التحدي نفسه فور تأكيد الخادم، تبقى مفتوحة "بانتظار
+    // الرد…" حتى يصل أي حدث حاسم (pk-battle-started إن قُبل، أو pk-challenge-closed إن رُفض/
+    // انتهت مهلته/أُلغي)؛ زر الإلغاء يرسل pk-cancel-challenge (الخادم يتحقق من الصلاحية ذرّياً)
+    function showPkInviteOutgoingModal(data) {
+        document.getElementById('pk-invite-outgoing-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'pk-invite-outgoing-modal';
+        modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4';
+        modal.innerHTML = `<div class="pk-invite inv">${pkInviteCardHTML(data, 'sent')}</div>`;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+        modal.querySelector('#pk-invite-cancel-btn').addEventListener('click', () => {
+            socket.emit('pk-cancel-challenge', { battleId: data.battleId });
             modal.remove();
         });
     }
@@ -4068,160 +4110,264 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         requestAnimationFrame(tick);
     }
 
-    // ✅ يبني صفوف "أفضل 3 داعمين" أسفل الشريط — مكان خاص مدروس لكل صفّ، بميدالية ذهبية/فضية/برونزية
-    // 🐛 إصلاح: كانت الهوية تُستكمَل فقط من ذاكرة العميل المحلية (pkUserDisplayCache) — تختلف
-    // محتوياتها من متصفح لآخر حسب ما صادف أن رآه هذا المشاهِد بعينه (قائمة مشاهدين فتحها، هدية
-    // رآها)، فيظهر الداعم بصورته الحقيقية فقط لمن تصادف أن لديه بياناته، وبصورة افتراضية للبقية.
-    // الآن الخادم يُرسل username/profileImage مباشرة ضمن كل عنصر (راجع RoomBattle.topSupporters)
-    // فتُفضَّل هذي القيم دوماً، والذاكرة المحلية احتياط فقط لو غاب أحد الحقلين لأي سبب
-    function pkRenderSupportersCol(list) {
-        if (!list || list.length === 0) {
-            return `<div class="pk-contract-supporters-empty">كن أول الداعمين</div>`;
-        }
-        const medals = ['🥇', '🥈', '🥉'];
-        return list.map((s, i) => {
-            const cached = pkResolveUserDisplay(s.userId);
-            const username = s.username || cached.username;
-            const profileImage = s.profileImage || cached.profileImage;
-            const activeFrameClass = s.activeFrameClass !== undefined ? s.activeFrameClass : cached.activeFrameClass;
-            return `
-                <div class="pk-contract-supporter" title="${escapeHtml(username)} • ${s.points}">
-                    <span class="pk-contract-supporter-medal">${medals[i] || ''}</span>
-                    <img class="pk-contract-supporter-avatar ${activeFrameClass || ''}" src="${profileImage}">
-                    <span class="pk-contract-supporter-points">${s.points > 9999 ? '9999+' : s.points}</span>
-                </div>
-            `;
-        }).join('');
-    }
-
-    // ✅ يبني/يحدّث "شريط العقد" أعلى شاشة الغرفة — هيكلة هندسية جديدة كاملة (شارات سداسية
-    // مائلة بدل شريط تقدّم مسطّح تقليدي)، مع مؤثرات: عدّاد أرقام سلس، شارات مواقتة للقفاز
-    // (×2 متوهّج) والضباب (تعتيم حقيقي من الخادم، لا عرضي فقط)، وصف "أفضل 3 داعمين" أسفله
+    // ✅ يبني/يحدّث "شريط خط التحدي المباشر" — منفَّذ حرفياً من نموذج التصميم الإلزامي
+    // (docs/design/pk-live-bar-prototype.html): غرفتنا دائماً باليمين بالوردي والخصم باليسار
+    // بالأزرق (dir=rtl)، نقطة التقاء (شرارة + راكب إيموجي) تتغيّر حسب حالة المنافسة، وساعة
+    // مركزية من endsAt الحقيقي القادم من الخادم (راجع pkTickClock) لا مؤقت عميل مستقل.
+    // 🛡️ يُحدِّث عناصر DOM الموجودة فقط (لا innerHTML لكل تحديث) — الحركات بـtransform/opacity
+    // فقط، فيتحمّل عاصفة هدايا (200/10 ثوانٍ) بلا تقطّع لأن pk:score نفسه مُجمَّع من الخادم
+    // كل 300ms كحد أقصى (راجع giftController.schedulePkScoreEmit)
     function renderPkBar() {
-        if (!currentPkBattle || currentPkBattle.status === 'pending') { document.getElementById('pk-battle-bar')?.remove(); return; }
-        const isMineA = currentPkBattle.roomA.id === currentVoiceRoomId;
-        const isMineB = currentPkBattle.roomB.id === currentVoiceRoomId;
-        if (!isMineA && !isMineB) { document.getElementById('pk-battle-bar')?.remove(); return; }
-
-        const mySide = isMineA ? 'A' : 'B';
-        const oppSide = isMineA ? 'B' : 'A';
-        const left = currentPkBattle[isMineA ? 'roomA' : 'roomB'];
-        const right = currentPkBattle[isMineA ? 'roomB' : 'roomA'];
-        const leftFogged = !!(currentPkBattle.fogged && currentPkBattle.fogged[mySide]);
-        const rightFogged = !!(currentPkBattle.fogged && currentPkBattle.fogged[oppSide]);
-        const leftScore = currentPkBattle.lastKnownScore?.[mySide] ?? 0;
-        const rightScore = currentPkBattle.lastKnownScore?.[oppSide] ?? 0;
-        const total = leftScore + rightScore;
-        const leftPct = total > 0 ? Math.round((leftScore / total) * 100) : 50;
+        if (!currentPkBattle || currentPkBattle.status === 'pending') { removePkBar(); return; }
+        if (currentPkBattle.roomUs.id !== currentVoiceRoomId && currentPkBattle.roomThem.id !== currentVoiceRoomId) { removePkBar(); return; }
 
         let bar = document.getElementById('pk-battle-bar');
-        const isNew = !bar;
-        if (isNew) {
+        if (!bar) {
             bar = document.createElement('div');
             bar.id = 'pk-battle-bar';
-            bar.className = 'pk-contract-bar';
+            bar.className = 'pk-live-bar room';
+            const usTag = currentPkBattle.recordUs ? `غرفتكم · ${currentPkBattle.recordUs.wins}ف ${currentPkBattle.recordUs.losses}خ` : 'غرفتكم';
+            const themTag = currentPkBattle.recordThem ? `الخصم · ${currentPkBattle.recordThem.wins}ف ${currentPkBattle.recordThem.losses}خ` : 'الخصم';
             bar.innerHTML = `
-                <div class="pk-contract-top">
-                    <div class="pk-contract-side" data-side-slot="left">
-                        <div class="pk-contract-avatar-wrap">
-                            <img class="pk-contract-avatar" data-avatar>
-                            <div class="pk-contract-effect-ring" data-effect-badge hidden><i data-effect-icon></i><svg class="pk-contract-effect-svg" viewBox="0 0 36 36"><circle class="pk-contract-effect-track" cx="18" cy="18" r="15.5"></circle><circle class="pk-contract-effect-progress" data-effect-progress cx="18" cy="18" r="15.5"></circle></svg></div>
+                <div class="pk">
+                    <div class="pk__head">
+                        <div class="side side--us">
+                            <div class="pk-live-avatar-wrap">
+                                <img class="av" id="pk-live-us-av" src="${currentPkBattle.roomUs.coverImage || '/images/default-avatar.png'}">
+                                <div class="pk-live-effect-ring" id="pk-live-effect-us" data-side="us" hidden><i></i><svg class="pk-live-effect-svg" viewBox="0 0 36 36"><circle class="pk-live-effect-track" cx="18" cy="18" r="15.5"></circle><circle class="pk-live-effect-progress" data-effect-progress cx="18" cy="18" r="15.5"></circle></svg></div>
+                            </div>
+                            <div><div class="nm">${escapeHtml(currentPkBattle.roomUs.name || '')}</div><div class="tag">${escapeHtml(usTag)}</div></div>
                         </div>
-                        <div class="pk-contract-hex" data-hex="left">
-                            <span class="pk-contract-score-num" data-score-num>0</span>
-                            <div class="pk-contract-fog" data-fog hidden><i class="fas fa-smog"></i><span>محجوب</span></div>
-                        </div>
-                    </div>
-                    <div class="pk-contract-core">
-                        <div class="pk-contract-seal"><i class="fas fa-bolt"></i></div>
-                        <div id="pk-battle-timer" class="pk-contract-timer">00:00</div>
-                    </div>
-                    <div class="pk-contract-side pk-contract-side-right" data-side-slot="right">
-                        <div class="pk-contract-avatar-wrap">
-                            <img class="pk-contract-avatar" data-avatar>
-                            <div class="pk-contract-effect-ring" data-effect-badge hidden><i data-effect-icon></i><svg class="pk-contract-effect-svg" viewBox="0 0 36 36"><circle class="pk-contract-effect-track" cx="18" cy="18" r="15.5"></circle><circle class="pk-contract-effect-progress" data-effect-progress cx="18" cy="18" r="15.5"></circle></svg></div>
-                        </div>
-                        <div class="pk-contract-hex" data-hex="right">
-                            <span class="pk-contract-score-num" data-score-num>0</span>
-                            <div class="pk-contract-fog" data-fog hidden><i class="fas fa-smog"></i><span>محجوب</span></div>
+                        <div class="clock" id="pk-live-clock"><b>PK</b><span id="pk-live-time">00:00</span></div>
+                        <div class="side side--them">
+                            <div class="pk-live-avatar-wrap">
+                                <img class="av" id="pk-live-them-av" src="${currentPkBattle.roomThem.coverImage || '/images/default-avatar.png'}">
+                                <div class="pk-live-effect-ring" id="pk-live-effect-them" data-side="them" hidden><i></i><svg class="pk-live-effect-svg" viewBox="0 0 36 36"><circle class="pk-live-effect-track" cx="18" cy="18" r="15.5"></circle><circle class="pk-live-effect-progress" data-effect-progress cx="18" cy="18" r="15.5"></circle></svg></div>
+                            </div>
+                            <div><div class="nm">${escapeHtml(currentPkBattle.roomThem.name || '')}</div><div class="tag">${escapeHtml(themTag)}</div></div>
                         </div>
                     </div>
-                </div>
-                <div class="pk-contract-track">
-                    <div class="pk-contract-track-fill-left" data-fill-left></div>
-                    <div class="pk-contract-track-fill-right" data-fill-right></div>
-                    <div class="pk-contract-track-divider"></div>
-                </div>
-                <div class="pk-contract-supporters">
-                    <div class="pk-contract-supporters-col" data-supporters="left"></div>
-                    <div class="pk-contract-supporters-label"><i class="fas fa-ranking-star"></i> أفضل الداعمين</div>
-                    <div class="pk-contract-supporters-col" data-supporters="right"></div>
+                    <div class="bar-wrap" id="pk-live-bar-wrap">
+                        <div class="alert alert--us" id="pk-live-alert-us"><img src="/assets/pk/emoji/anxious_face_with_sweat_3d.webp"><span>الخصم يقترب!</span></div>
+                        <div class="alert alert--them" id="pk-live-alert-them"><img src="/assets/pk/emoji/anxious_face_with_sweat_3d.webp"><span>الخصم يقترب!</span></div>
+                        <div class="bar"><div class="bar__us" id="pk-live-bar-us"></div><div class="bar__them"></div></div>
+                        <div class="pts pts--us" id="pk-live-pts-us" style="top:76px;height:26px">0</div>
+                        <div class="pts pts--them" id="pk-live-pts-them" style="top:76px;height:26px">0</div>
+                        <div class="knot" id="pk-live-knot" style="right:50%">
+                            <div class="knot__spark"></div>
+                            <div class="rider" id="pk-live-rider"><div class="rider__label" id="pk-live-rider-lbl"></div><img id="pk-live-rider-img" src="/assets/pk/emoji/crossed_swords_3d.webp"></div>
+                        </div>
+                        <div class="flash" id="pk-live-flash"></div>
+                        <div class="fx" id="pk-live-fx"></div>
+                    </div>
+                    <div class="fans">
+                        <div class="fans__col fans__col--us" id="pk-live-fans-us"></div>
+                        <div class="fans__col fans__col--them" id="pk-live-fans-them"></div>
+                    </div>
                 </div>
             `;
             const header = mainContent.querySelector('.flex.justify-between.items-center');
             if (header) header.insertAdjacentElement('afterend', bar);
             else mainContent.prepend(bar);
+
+            currentPkBattle.pkRider = 'crossed_swords';
+            currentPkBattle.pkFinal = false;
+            clearInterval(pkCountdownInterval);
+            pkTickClock();
+            pkCountdownInterval = setInterval(pkTickClock, 500);
         }
 
-        const leftSlot = bar.querySelector('[data-side-slot="left"]');
-        const rightSlot = bar.querySelector('[data-side-slot="right"]');
-        leftSlot.querySelector('[data-avatar]').src = left.coverImage;
-        rightSlot.querySelector('[data-avatar]').src = right.coverImage;
+        pkRenderScore();
+        pkDrawFans('us');
+        pkDrawFans('them');
+        pkRenderEffectBadges();
+    }
 
-        const leftNumEl = leftSlot.querySelector('[data-score-num]');
-        const rightNumEl = rightSlot.querySelector('[data-score-num]');
-        const prevLeft = parseInt(leftNumEl.dataset.rendered || '0');
-        const prevRight = parseInt(rightNumEl.dataset.rendered || '0');
-        if (!leftFogged) { pkAnimateNumber(leftNumEl, prevLeft, leftScore); leftNumEl.dataset.rendered = leftScore; }
-        if (!rightFogged) { pkAnimateNumber(rightNumEl, prevRight, rightScore); rightNumEl.dataset.rendered = rightScore; }
-        if (prevLeft !== leftScore && leftScore > prevLeft) { leftSlot.querySelector('[data-hex]').classList.add('pk-score-bump'); setTimeout(() => leftSlot.querySelector('[data-hex]')?.classList.remove('pk-score-bump'), 350); }
-        if (prevRight !== rightScore && rightScore > prevRight) { rightSlot.querySelector('[data-hex]').classList.add('pk-score-bump'); setTimeout(() => rightSlot.querySelector('[data-hex]')?.classList.remove('pk-score-bump'), 350); }
+    // ✅ النقاط + الشريط + نقطة الالتقاء — من lastKnownScore المجمَّد (لا من us/them الخام التي
+    // قد تكون null وقت ضباب فعّال لدى الخصم، راجع تعليق socket.on('pk:score') بالأسفل)
+    function pkRenderScore() {
+        const bar = document.getElementById('pk-battle-bar');
+        if (!bar || !currentPkBattle) return;
+        const us = currentPkBattle.lastKnownScore.us, them = currentPkBattle.lastKnownScore.them;
+        const tot = us + them, share = tot ? us / tot : 0.5;
+        bar.querySelector('#pk-live-bar-us').style.width = (share * 100) + '%';
+        bar.querySelector('#pk-live-knot').style.right = (share * 100) + '%';
 
-        leftSlot.querySelector('[data-hex]').classList.toggle('pk-fogged', leftFogged);
-        leftSlot.querySelector('[data-fog]').hidden = !leftFogged;
-        rightSlot.querySelector('[data-hex]').classList.toggle('pk-fogged', rightFogged);
-        rightSlot.querySelector('[data-fog]').hidden = !rightFogged;
+        const ptsUs = bar.querySelector('#pk-live-pts-us'), ptsThem = bar.querySelector('#pk-live-pts-them');
+        const prevUs = parseInt(ptsUs.dataset.rendered || '0', 10);
+        const prevThem = parseInt(ptsThem.dataset.rendered || '0', 10);
+        pkAnimateNumber(ptsUs, prevUs, us); ptsUs.dataset.rendered = us;
+        pkAnimateNumber(ptsThem, prevThem, them); ptsThem.dataset.rendered = them;
+        if (us > prevUs) { ptsUs.classList.remove('bump'); void ptsUs.offsetWidth; ptsUs.classList.add('bump'); }
+        if (them > prevThem) { ptsThem.classList.remove('bump'); void ptsThem.offsetWidth; ptsThem.classList.add('bump'); }
+        ptsThem.classList.toggle('pk-live-fogged', currentPkBattle.them === null);
+    }
 
-        bar.querySelector('[data-fill-left]').style.width = `${leftPct}%`;
-        bar.querySelector('[data-fill-right]').style.width = `${100 - leftPct}%`;
+    function pkToggleAlert(side, on) {
+        document.getElementById('pk-battle-bar')?.querySelector(side === 'us' ? '#pk-live-alert-us' : '#pk-live-alert-them')?.classList.toggle('on', !!on);
+    }
 
-        bar.querySelector('[data-supporters="left"]').innerHTML = pkRenderSupportersCol(currentPkBattle.topSupporters?.[mySide]);
-        bar.querySelector('[data-supporters="right"]').innerHTML = pkRenderSupportersCol(currentPkBattle.topSupporters?.[oppSide]);
+    // ✅ يُحرّك الراكب (الإيموجي عند نقطة الالتقاء) — نفس setRider() بالنموذج الإلزامي حرفياً:
+    // صورة جديدة + حركة "دخول" فقط عند تغيّر الإيموجي نفسه، لا بكل نداء (تمنع رمشاً بلا داعٍ)
+    function pkSetRider(name, label, shake) {
+        const bar = document.getElementById('pk-battle-bar');
+        if (!bar || !currentPkBattle) return;
+        const riderEl = bar.querySelector('#pk-live-rider'), img = bar.querySelector('#pk-live-rider-img'), lbl = bar.querySelector('#pk-live-rider-lbl');
+        if (name !== currentPkBattle.pkRider) {
+            currentPkBattle.pkRider = name;
+            img.src = `/assets/pk/emoji/${name}_3d.webp`;
+            if (!pkPrefersReducedMotion()) { riderEl.classList.remove('swap'); void riderEl.offsetWidth; riderEl.classList.add('swap'); }
+        }
+        riderEl.classList.toggle('shake', !!shake && !pkPrefersReducedMotion());
+        lbl.textContent = label || '';
+        lbl.classList.toggle('on', !!label);
+    }
 
-        pkRenderEffectBadges(bar, leftSlot, rightSlot, mySide, oppSide);
+    // ✅ انفجار 9 إيموجيات + وميض نحو الغرفة المتقدمة — منفَّذ حرفياً من burst() بالنموذج
+    // الإلزامي (نفس المسارات/التوقيتات/Web Animations API)، يُستدعى فقط من pk:leadChange
+    // (حدث خادم مكتشَف ومحدود المعدّل هناك — راجع giftController.emitPkLeadChange)، لا يُستنتج هنا أبداً
+    function pkBurst(toward) {
+        if (pkPrefersReducedMotion()) return;
+        const bar = document.getElementById('pk-battle-bar');
+        if (!bar) return;
+        const fx = bar.querySelector('#pk-live-fx'), knot = bar.querySelector('#pk-live-knot'), wrap = bar.querySelector('#pk-live-bar-wrap');
+        const knotRightPct = parseFloat(knot.style.right || '50');
+        const x0 = wrap.clientWidth * (1 - knotRightPct / 100), y0 = 88;
+        const set = toward === 'us'
+            ? ['collision', 'rocket', 'fire', 'face_with_steam_from_nose', 'hot_face', 'flexed_biceps']
+            : ['collision', 'rocket', 'fire', 'face_screaming_in_fear', 'hot_face', 'flexed_biceps'];
+        const flash = bar.querySelector('#pk-live-flash');
+        flash.style.setProperty('--x', x0 + 'px');
+        flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on');
+        for (let i = 0; i < 9; i++) {
+            const name = set[i % set.length];
+            const img = document.createElement('img');
+            img.src = `/assets/pk/emoji/${name}${name === 'flexed_biceps' ? '_3d_default' : '_3d'}.webp`;
+            img.style.left = (x0 - 23) + 'px';
+            img.style.top = (y0 - 23) + 'px';
+            fx.appendChild(img);
+            const dir = toward === 'us' ? 1 : -1;
+            const dx = dir * (40 + Math.random() * 130), dy = -(40 + Math.random() * 120), rot = (Math.random() - 0.5) * 120, s = 0.7 + Math.random() * 0.8;
+            const anim = img.animate([
+                { transform: 'translate(0,0) scale(.2) rotate(0)', opacity: 0 },
+                { transform: `translate(${dx * .5}px,${dy * .7}px) scale(${s}) rotate(${rot / 2}deg)`, opacity: 1, offset: .35 },
+                { transform: `translate(${dx}px,${dy + 60}px) scale(${s * .8}) rotate(${rot}deg)`, opacity: 0 }
+            ], { duration: 1400 + Math.random() * 400, easing: 'cubic-bezier(.2,.8,.3,1)' });
+            anim.onfinish = () => img.remove();
+        }
+    }
 
-        clearInterval(pkCountdownInterval);
-        if (currentPkBattle.endsAt) {
-            const updateTimer = () => {
-                const timerEl = document.getElementById('pk-battle-timer');
-                if (!timerEl) { clearInterval(pkCountdownInterval); return; }
-                const remainingMs = new Date(currentPkBattle.endsAt).getTime() - Date.now();
-                if (remainingMs <= 0) { timerEl.textContent = '00:00'; clearInterval(pkCountdownInterval); return; }
-                const m = Math.floor(remainingMs / 60000);
-                const s = Math.floor((remainingMs % 60000) / 1000);
-                timerEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-            };
-            updateTimer();
-            pkCountdownInterval = setInterval(updateTimer, 1000);
+    // ✅ يحدّد إيموجي/تنبيه الحالة الحالية — منفَّذ حرفياً من evaluate() بالنموذج الإلزامي
+    // (الحدود: تعادل/بداية=crossed_swords، فارق>30%=fire، فارق<12%=grimacing_face، الخاسر
+    // يقلّص الفارق والفارق<8%=face_with_steam_from_nose+تنبيه، تقدّم عادي=smiling_face_with_sunglasses،
+    // آخر 10 ثوانٍ=alarm_clock يهتز). 🛡️ قلب النتيجة نفسه لا يُستنتج هنا أبداً (راجع pkBurst)
+    function pkEvaluate(prevShare) {
+        if (!currentPkBattle) return;
+        // 🛡️ مجمَّد أثناء ضباب فعّال لدى الخصم (them === null): لا تقييم جديد حتى يرتفع التعتيم —
+        // الراكب/التنبيهات تبقى على آخر حالة حقيقية رآها هذا الجمهور بالضبط (قرار مصمَّم)
+        if (currentPkBattle.them === null) return;
+        const us = currentPkBattle.lastKnownScore.us, them = currentPkBattle.lastKnownScore.them;
+        const tot = us + them, share = tot ? us / tot : 0.5, gap = Math.abs(share - 0.5) * 2;
+        const leader = share > 0.5 ? 'us' : (share < 0.5 ? 'them' : null);
+        const closing = prevShare != null && leader && ((leader === 'us' && share < prevShare) || (leader === 'them' && share > prevShare));
+        pkToggleAlert('us', leader === 'us' && gap < 0.08 && closing);
+        pkToggleAlert('them', leader === 'them' && gap < 0.08 && closing);
+        if (currentPkBattle.pkFinal) return pkSetRider('alarm_clock', 'آخر 10 ثوانٍ!', true);
+        if (tot < 1 || gap < 0.01) return pkSetRider('crossed_swords');
+        if (gap < 0.08 && closing) return pkSetRider('face_with_steam_from_nose', 'الخصم يقترب!');
+        if (gap < 0.12) return pkSetRider('grimacing_face');
+        if (gap > 0.3) return pkSetRider('fire', leader === 'us' ? 'تقدّم كاسح!' : '');
+        return pkSetRider('smiling_face_with_sunglasses');
+    }
+
+    // ✅ أفضل 3 داعمين لصفّ معيّن — منفَّذ من drawFans() بالنموذج الإلزامي: تاج على الأول،
+    // ترقيم حيّ، وعلامة "+المبلغ" + قفزة (pop) عند أي ارتفاع بنقاط الداعم. يُحدِّث عناصر DOM
+    // الموجودة بمعرّف الداعم (لا يعيد الرسم) ويُزيل من خرج عن أفضل 3 فقط
+    function pkDrawFans(side) {
+        const bar = document.getElementById('pk-battle-bar');
+        if (!bar || !currentPkBattle) return;
+        const col = bar.querySelector(side === 'us' ? '#pk-live-fans-us' : '#pk-live-fans-them');
+        if (!col) return;
+        const list = [...(currentPkBattle.topFans?.[side] || [])].sort((a, b) => (b.points || 0) - (a.points || 0));
+        const seenIds = new Set();
+        list.forEach((f, i) => {
+            const uid = String(f.userId);
+            seenIds.add(uid);
+            let el = col.querySelector(`[data-uid="${uid}"]`);
+            const prevPoints = el ? parseInt(el.dataset.points || '0', 10) : 0;
+            if (!el) {
+                el = document.createElement('div');
+                el.className = 'fan';
+                el.dataset.uid = uid;
+                el.innerHTML = `<img class="fan__crown" src="/assets/pk/emoji/crown_3d.webp"><div class="fan__av"><img><span class="fan__rk"></span></div><div class="fan__v"></div>`;
+                col.appendChild(el);
+            }
+            el.style.order = i;
+            el.dataset.rank = i + 1;
+            const cached = pkResolveUserDisplay(uid);
+            const avImg = el.querySelector('.fan__av img');
+            avImg.src = f.profileImage || cached.profileImage;
+            avImg.className = f.activeFrameClass || cached.activeFrameClass || '';
+            el.querySelector('.fan__rk').textContent = i + 1;
+            el.querySelector('.fan__v').textContent = (f.points || 0).toLocaleString('en-US');
+            el.dataset.points = f.points || 0;
+            if ((f.points || 0) > prevPoints) {
+                const avEl = el.querySelector('.fan__av');
+                avEl.classList.remove('pop'); void avEl.offsetWidth; avEl.classList.add('pop');
+                if (!pkPrefersReducedMotion()) {
+                    const plus = document.createElement('span');
+                    plus.className = 'plus';
+                    plus.textContent = '+' + ((f.points || 0) - prevPoints).toLocaleString('en-US');
+                    el.appendChild(plus);
+                    setTimeout(() => plus.remove(), 1000);
+                }
+            }
+        });
+        col.querySelectorAll('.fan').forEach(el => { if (!seenIds.has(el.dataset.uid)) el.remove(); });
+    }
+
+    // ✅ ساعة الشريط — من endsAt الحقيقي القادم من الخادم حصراً (طلب صريح)، لا مؤقت عميل
+    // يبدأ عدّه من لحظة الاستقبال؛ آخر 10 ثوانٍ: نبض أحمر للشريط والساعة + راكب alarm_clock يهتز
+    function pkTickClock() {
+        const bar = document.getElementById('pk-battle-bar');
+        if (!bar || !currentPkBattle || !currentPkBattle.endsAt) { clearInterval(pkCountdownInterval); return; }
+        const remainingMs = new Date(currentPkBattle.endsAt).getTime() - Date.now();
+        const timeEl = bar.querySelector('#pk-live-time');
+        if (remainingMs <= 0) {
+            if (timeEl) timeEl.textContent = '00:00';
+            clearInterval(pkCountdownInterval);
+            return;
+        }
+        const totalSec = Math.ceil(remainingMs / 1000);
+        if (timeEl) timeEl.textContent = `${String(Math.floor(totalSec / 60)).padStart(2, '0')}:${String(totalSec % 60).padStart(2, '0')}`;
+
+        const final = remainingMs <= 10000;
+        if (final !== currentPkBattle.pkFinal) {
+            currentPkBattle.pkFinal = final;
+            bar.classList.toggle('final', final);
+            bar.querySelector('#pk-live-clock')?.classList.toggle('hot', final);
+            if (final) pkSetRider('alarm_clock', 'آخر 10 ثوانٍ!', true);
         }
     }
 
     // ✅ شارات مواقتة القفاز (×2 متوهّج)/الضباب (سحابة) لكل صفّ — حلقة SVG تُفرَّغ تدريجياً
     // حسب الوقت المتبقي الحقيقي (expiresAt من الخادم)، لا عدّاد تقديري منفصل قد ينحرف عنه
-    function pkRenderEffectBadges(bar, leftSlot, rightSlot, mySide, oppSide) {
+    function pkRenderEffectBadges() {
+        const bar = document.getElementById('pk-battle-bar');
+        if (!bar || !currentPkBattle) return;
         const effects = currentPkBattle.effects || {};
-        [['left', mySide, leftSlot], ['right', oppSide, rightSlot]].forEach(([, side, slot]) => {
-            const badge = slot.querySelector('[data-effect-badge]');
+        ['us', 'them'].forEach(side => {
+            const badge = bar.querySelector(side === 'us' ? '#pk-live-effect-us' : '#pk-live-effect-them');
+            if (!badge) return;
             const sideEffects = effects[side] || {};
-            // ✅ لو كلا الأداتين فعّالتين بآن واحد (ليس ممكناً حالياً بقاعدة منع إعادة الرمي لنفس
-            // المستخدم، لكن مستخدمون مختلفون بنفس الصفّ قد يرميان أدوات مختلفة) يُعرَض القفاز أولاً (أهم بصرياً)
+            // ✅ لو كلا الأداتين فعّالتين بآن واحد (مستخدمون مختلفون بنفس الصفّ) يُعرَض القفاز أولاً (أهم بصرياً)
             const active = sideEffects.glove ? { type: 'glove', expiresAt: sideEffects.glove }
                 : (sideEffects.fog ? { type: 'fog', expiresAt: sideEffects.fog } : null);
             if (!active) { badge.hidden = true; badge.removeAttribute('data-active-type'); return; }
             badge.hidden = false;
             badge.dataset.activeType = active.type;
             badge.dataset.expiresAt = active.expiresAt;
-            const icon = badge.querySelector('[data-effect-icon]');
+            const icon = badge.querySelector('i');
             icon.className = active.type === 'glove' ? 'fas fa-hand-fist' : 'fas fa-smog';
             badge.classList.toggle('pk-effect-glove', active.type === 'glove');
             badge.classList.toggle('pk-effect-fog', active.type === 'fog');
@@ -4237,19 +4383,17 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const bar = document.getElementById('pk-battle-bar');
         if (!bar || !currentPkBattle) { clearInterval(pkEffectTickInterval); return; }
         const CIRC = 2 * Math.PI * 15.5;
-        bar.querySelectorAll('[data-effect-badge]:not([hidden])').forEach(badge => {
+        bar.querySelectorAll('.pk-live-effect-ring:not([hidden])').forEach(badge => {
             const type = badge.dataset.activeType;
-            const expiresAt = parseInt(badge.dataset.expiresAt);
+            const expiresAt = parseInt(badge.dataset.expiresAt, 10);
             const total = type === 'glove' ? 15000 : 12000;
             const remaining = expiresAt - Date.now();
             const progressEl = badge.querySelector('[data-effect-progress]');
             if (remaining <= 0) {
                 badge.hidden = true;
-                const slot = badge.closest('.pk-contract-side');
-                const mySide = currentPkBattle.roomA.id === currentVoiceRoomId ? 'A' : 'B';
-                const actualSide = slot?.dataset.sideSlot === 'left' ? mySide : (mySide === 'A' ? 'B' : 'A');
-                if (currentPkBattle.effects?.[actualSide]) currentPkBattle.effects[actualSide][type] = null;
-                if (type === 'fog' && currentPkBattle.fogged) currentPkBattle.fogged[actualSide] = false;
+                const side = badge.dataset.side;
+                if (currentPkBattle.effects?.[side]) currentPkBattle.effects[side][type] = null;
+                if (type === 'fog' && currentPkBattle.fogged) currentPkBattle.fogged[side] = false;
                 renderPkBar();
                 return;
             }
@@ -4297,6 +4441,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         return `<b>${escapeHtml(d.mvpLabel)}</b> · ${escapeHtml(d.mvp.name)}<br><small>🪙 ${d.mvp.coins.toLocaleString('en-US')} خلال التحدي</small>`;
     }
 
+    // ✅ سجل المواجهات هذا الأسبوع — الخادم يحسبه ويرسله دوماً (pkLeagueEngine.settleBattle)
+    // لكل النتائج، لم يكن له عرض سابقاً؛ طلب صريح هذي الجولة لنافذة التعادل، ويظيف قيمة حقيقية
+    // بأي نتيجة فلا سبب لحصره بالتعادل فقط
+    function pkHeadToHeadHTML(lg) {
+        if (!lg.headToHead) return '';
+        const h = lg.headToHead;
+        return `<div class="h2h">سجلّكم معهم هذا الأسبوع: <b>${h.myWins} فوز · ${h.opponentWins} خسارة · ${h.draws} تعادل</b></div>`;
+    }
+
     function pkLeagueSectionHTML(d) {
         const lg = d.league;
         const initialRank = lg.rankBefore ?? lg.rankAfter; // ✅ دخول جديد بلا رتبة سابقة: لا عدّاد، الرقم النهائي مباشرة
@@ -4306,6 +4459,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <div class="rank"><span class="rank__old" data-pk="oldRank">#${initialRank}</span><span class="rank__now" data-pk="rank">#${initialRank}</span><span class="delta" data-pk="delta"></span></div>
                 <div class="lp">${pkLpLineHTML(lg)}</div>
                 <div class="hint">${pkHintText(d)}</div>
+                ${pkHeadToHeadHTML(lg)}
                 <div class="ladder" data-pk="ladder"></div>
             </div>
         `;
@@ -4319,14 +4473,17 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         document.getElementById('pk-result-overlay')?.remove();
         const isWin = d.outcome === 'win';
         const isLose = d.outcome === 'loss';
-        const heroSrc = isWin ? PK_RESULT_ASSET_URLS.trophy : (isLose ? PK_RESULT_ASSET_URLS.loseIcon : null);
+        const isDraw = d.outcome === 'draw';
+        // ✅ تعادل: نفس نظام نافذة الفوز/الخسارة تماماً (طلب صريح) — نفس الإطار بفلتر فضي
+        // (stage.draw بالـCSS) والمصافحة مكان الكأس/أيقونة الحزن، لا إطار/أصول منفصلة
+        const heroSrc = isWin ? PK_RESULT_ASSET_URLS.trophy : (isLose ? PK_RESULT_ASSET_URLS.loseIcon : (isDraw ? PK_RESULT_ASSET_URLS.handshake : null));
         const defaultAvatar = '/images/default-avatar.png';
 
         const overlay = document.createElement('div');
         overlay.id = 'pk-result-overlay';
         overlay.className = 'pk-result-overlay';
         overlay.innerHTML = `
-            <div class="stage ${isLose ? 'lose' : ''}">
+            <div class="stage ${isLose ? 'lose' : (isDraw ? 'draw' : '')}">
                 <div class="pk">
                     <div class="pk__body">
                         <div class="pk__confetti"></div><div class="pk__rain"></div>
@@ -4354,6 +4511,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <div class="actions">
                     ${isWin ? '<button class="btn btn--gold" data-pk-action="standings">عرض ترتيب الدوري</button>' : ''}
                     ${isLose ? '<button class="btn btn--red" data-pk-action="revenge">⚔️ اطلب ثأراً</button>' : ''}
+                    ${isDraw ? '<button class="btn btn--gold" data-pk-action="revenge">⚔️ جولة حاسمة</button>' : ''}
                     <button class="btn btn--ghost" data-pk-action="close">إغلاق</button>
                 </div>
             </div>
@@ -4466,13 +4624,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         setTimeout(() => leagueEl?.classList.add('done'), 2600);
     }
 
-    // ✅ "اطلب ثأراً" — يرسل دعوة تحدٍّ جديدة للغرفة الفائزة عبر نظام دعوات PK الموجود بالضبط
-    // (نفس socket.emit('pk-challenge-room', ...) الذي تستخدمه showPkChallengeModal)، فيحترم
-    // كل قيوده تلقائياً (لا تحدٍّ مزدوج، رد مضيف الغرفة الأخرى، مهلة 30 ثانية...) بلا مسار موازٍ
+    // ✅ "اطلب ثأراً" (خسارة) / "جولة حاسمة" (تعادل) — يرسل دعوة تحدٍّ جديدة للغرفة نفسها عبر
+    // نظام دعوات PK الموجود بالضبط (نفس socket.emit('pk-challenge-room', ...) الذي تستخدمه
+    // showPkChallengeModal)، فيحترم كل قيوده تلقائياً (لا تحدٍّ مزدوج، رد مضيف الغرفة الأخرى أو
+    // أحد مسؤوليها، مهلة حقيقية...) بلا مسار موازٍ. نافذة "بانتظار الرد" الجديدة تظهر تلقائياً
+    // فور تأكيد الخادم (pk-challenge-sent) — لا حاجة لإشعار toast منفصل هنا
     function requestPkRevenge(d) {
         if (!currentVoiceRoomId || !d.b?.id) return;
         socket.emit('pk-challenge-room', { roomId: currentVoiceRoomId, targetRoomId: d.b.id, durationSeconds: 180 });
-        showNotification(`تم إرسال طلب الثأر لغرفة "${d.b.name}" — بانتظار الرد`, 'info');
     }
 
     // =====================================================
@@ -8627,15 +8786,15 @@ function showXpGainAnimation(amount) {
     // =====================================================
     // ✅ "عقد التحدي" بين غرفتين — تحديثات حية للعرض/الشريط الهندسي/أدوات المعركة/النتيجة
     // =====================================================
-    // ✅ أصول نافذة النتيجة (Cloudinary) — ثابتة بمكان واحد يستهلكه المُحمِّل المسبق هنا
-    // ونافذة النتيجة نفسها لاحقاً، فلا يتكرر الرابط الحرفي بمكانين قد ينحرفا عن بعضهما.
-    // 🛡️ الكأس لم يُرفَع بعد (رابطه فارغ عمداً بالمواصفة) — null يُستثنى تلقائياً من التحميل
-    // المسبق والعرض لاحقاً بدل صورة مكسورة، بلا توقف أي شيء آخر بانتظاره
+    // ✅ أصول نافذة النتيجة — ثابتة بمكان واحد يستهلكه المُحمِّل المسبق هنا ونافذة النتيجة نفسها
+    // لاحقاً، فلا يتكرر الرابط الحرفي بمكانين قد ينحرفا عن بعضهما. trophy/handshake من إيموجي
+    // Microsoft Fluent المحلية (public/assets/pk/emoji، نفس أصول شريط التحدي المباشر)
     const PK_RESULT_ASSET_URLS = {
         winnerFrame: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791839333/pk-winner-frame-animated-680.webp',
         confetti: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791840194/confetti-gold-1080.webp',
         loseIcon: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791841726/lose-icon-animated-512.webp',
-        trophy: null
+        trophy: '/assets/pk/emoji/trophy_3d.webp',
+        handshake: '/assets/pk/emoji/handshake_3d.webp'
     };
     let pkResultAssetsPreloaded = false;
 
@@ -8652,77 +8811,112 @@ function showXpGainAnimation(amount) {
         });
     }
 
-    // ✅ يبني حالة currentPkBattle الموحَّدة من لقطة "pk-battle-started" أو لقطة استرجاع
-    // الصفحة (activeBattle) — نفس الشكل كلا المصدرين، يُعاد استخدامها بالمكانين معاً
+    // ✅ يبني حالة currentPkBattle الموحَّدة (بمنظور us/them دائماً) من لقطة "pk-battle-started"
+    // أو لقطة استرجاع الصفحة (activeBattle) — كلا المصدرين بشكل A/B خام مشترك واحد (roomA/
+    // roomB/scoreA/scoreB/recordA/recordB/topSupportersA/B/activeEffects)، يُعاد توجيهه هنا
+    // مرّة واحدة فقط بمعرفة أي صفّ هو "نحن" (مقارنةً بـcurrentVoiceRoomId)
     function pkBuildBattleState(data) {
-        const activeEffects = data.activeEffects || [];
-        const effects = { A: { glove: null, fog: null }, B: { glove: null, fog: null } };
-        const fogged = { A: false, B: false };
-        activeEffects.forEach(e => {
-            effects[e.side][e.type] = new Date(e.expiresAt).getTime();
-            if (e.type === 'fog') fogged[e.side] = true;
+        const mySide = data.roomA.id === currentVoiceRoomId ? 'A' : 'B';
+        const oppSide = mySide === 'A' ? 'B' : 'A';
+        const roomUs = mySide === 'A' ? data.roomA : data.roomB;
+        const roomThem = mySide === 'A' ? data.roomB : data.roomA;
+        const scoreUs = mySide === 'A' ? data.scoreA : data.scoreB;
+        const scoreThem = mySide === 'A' ? data.scoreB : data.scoreA;
+
+        const effects = { us: { glove: null, fog: null }, them: { glove: null, fog: null } };
+        let foggedUs = false, foggedThem = false;
+        (data.activeEffects || []).forEach(e => {
+            const which = e.side === mySide ? 'us' : 'them';
+            effects[which][e.type] = new Date(e.expiresAt).getTime();
+            if (e.type === 'fog') { if (which === 'us') foggedUs = true; else foggedThem = true; }
             if (e.thrownBy) pkCacheUserDisplay(e.thrownBy.id, e.thrownBy.username);
         });
+        if (data.fogged) { foggedUs = !!data.fogged[mySide]; foggedThem = !!data.fogged[oppSide]; }
+
         return {
-            ...data,
+            battleId: (data.battleId || '').toString(),
             status: data.status || 'active',
-            fogged: data.fogged || fogged,
-            lastKnownScore: { A: data.scoreA ?? 0, B: data.scoreB ?? 0 },
+            durationSeconds: data.durationSeconds,
+            endsAt: data.endsAt,
+            roomUs: { id: roomUs.id.toString(), name: roomUs.name, coverImage: roomUs.coverImage },
+            roomThem: { id: roomThem.id.toString(), name: roomThem.name, coverImage: roomThem.coverImage },
+            recordUs: (mySide === 'A' ? data.recordA : data.recordB) || null,
+            recordThem: (mySide === 'A' ? data.recordB : data.recordA) || null,
+            us: scoreUs, them: scoreThem,
+            lastKnownScore: { us: scoreUs ?? 0, them: scoreThem ?? 0 },
+            fogged: { us: foggedUs, them: foggedThem },
             effects,
-            topSupporters: { A: data.topSupportersA || [], B: data.topSupportersB || [] },
-            recordA: data.recordA || null,
-            recordB: data.recordB || null
+            topFans: {
+                us: (mySide === 'A' ? data.topSupportersA : data.topSupportersB) || [],
+                them: (mySide === 'A' ? data.topSupportersB : data.topSupportersA) || []
+            }
         };
     }
 
-    socket.on('pk-challenge-sent', () => {
-        // ✅ تأكيد بسيط — الإشعار الرئيسي يظهر فوراً عند الإرسال بالواجهة نفسها
+    socket.on('pk-challenge-sent', (payload) => {
+        showPkInviteOutgoingModal(payload);
     });
 
     socket.on('pk-challenge-received', (payload) => {
         showPkChallengeReceivedModal(payload);
     });
 
-    socket.on('pk-challenge-declined', ({ roomB }) => {
-        showNotification('تم رفض عقد التحدي', 'info');
-    });
-
-    socket.on('pk-challenge-expired', () => {
+    // ✅ حدث موحَّد لكل أطراف الدعوة (رفض/انتهاء/إلغاء) — الخادم مصدر الحقيقة الوحيد (طلب صريح:
+    // "أغلق النافذة عند الطرفين فوراً عند أي تغيير")، يصل الغرفتين معاً فتُغلَق الواردة والمرسلة فوراً
+    socket.on('pk-challenge-closed', ({ reason }) => {
         document.getElementById('pk-challenge-received-modal')?.remove();
-        showNotification('انتهت مهلة الرد على عقد التحدي', 'info');
+        document.getElementById('pk-invite-outgoing-modal')?.remove();
+        const messages = { declined: 'تم رفض عقد التحدي', expired: 'انتهت مهلة الرد على عقد التحدي', cancelled: 'أُلغيت الدعوة' };
+        showNotification(messages[reason] || 'أُغلقت الدعوة', 'info');
     });
 
     socket.on('pk-battle-started', (data) => {
         if (data.roomA.id !== currentVoiceRoomId && data.roomB.id !== currentVoiceRoomId) return;
+        document.getElementById('pk-challenge-received-modal')?.remove();
+        document.getElementById('pk-invite-outgoing-modal')?.remove();
         currentPkBattle = pkBuildBattleState(data);
         renderPkBar();
         preloadPkResultAssets(); // ✅ لحظة بدء التحدي بالضبط، لا لحظة نهايته (طلب صريح)
         showNotification('بدأ عقد التحدي! 🔥', 'success');
     });
 
-    socket.on('pk-score-update', (data) => {
+    // ✅ لقطة نقاط مُجمَّعة من الخادم كل 300ms كحد أقصى (راجع giftController.schedulePkScoreEmit)
+    // تصل بمنظورنا جاهزاً (us/them/topFans/leader) — لا حساب A/B هنا أبداً
+    socket.on('pk:score', (data) => {
         if (!currentPkBattle || currentPkBattle.battleId !== data.battleId) return;
-        currentPkBattle.scoreA = data.scoreA;
-        currentPkBattle.scoreB = data.scoreB;
-        currentPkBattle.fogged = data.fogged || { A: false, B: false };
-        // 🛡️ null = مُعتَّم من الخادم نفسه (ضباب فعّال على هذا الصفّ) — لا نحدّث آخر قيمة معروفة
-        // حتى يرتفع التعتيم، فيبقى الشريط معروضاً عند آخر رقم حقيقي رآه هذا الجمهور بالضبط
-        if (data.scoreA !== null) currentPkBattle.lastKnownScore.A = data.scoreA;
-        if (data.scoreB !== null) currentPkBattle.lastKnownScore.B = data.scoreB;
+        const prevUs = currentPkBattle.lastKnownScore.us, prevThem = currentPkBattle.lastKnownScore.them;
+        const prevTot = prevUs + prevThem, prevShare = prevTot ? prevUs / prevTot : null;
+        currentPkBattle.us = data.us;
+        currentPkBattle.them = data.them;
+        // 🛡️ null = مُعتَّم من الخادم نفسه (ضباب فعّال لدى الخصم) — لا نحدّث آخر قيمة معروفة حتى
+        // يرتفع التعتيم، فيبقى الشريط معروضاً عند آخر رقم حقيقي رآه هذا الجمهور بالضبط
+        if (data.us !== null) currentPkBattle.lastKnownScore.us = data.us;
+        if (data.them !== null) currentPkBattle.lastKnownScore.them = data.them;
+        currentPkBattle.topFans = data.topFans || { us: [], them: [] };
         renderPkBar();
+        pkEvaluate(prevShare);
+    });
+
+    // ✅ قلب النتيجة — مكتشَف ومحدود المعدّل (مرّة كل 3 ثوانٍ كحد أقصى) بالخادم حصراً، لا يُستنتج
+    // هنا أبداً (راجع giftController.emitPkLeadChange)؛ وميض + انفجار 9 إيموجيات نحو المتقدم
+    socket.on('pk:leadChange', (data) => {
+        if (!currentPkBattle || currentPkBattle.battleId !== data.battleId) return;
+        pkSetRider('collision', data.leader === 'us' ? 'قلبتم النتيجة!' : 'قلبوا النتيجة!');
+        pkBurst(data.leader);
     });
 
     socket.on('pk-battle-item-activated', (data) => {
         if (!currentPkBattle || currentPkBattle.battleId !== data.battleId) return;
         pkCacheUserDisplay(data.thrownBy?.id, data.thrownBy?.username);
-        currentPkBattle.effects[data.side][data.item] = new Date(data.expiresAt).getTime();
-        if (data.item === 'fog') currentPkBattle.fogged[data.side] = true;
+        const mySide = data.roomA === currentVoiceRoomId ? 'A' : 'B';
+        const which = data.side === mySide ? 'us' : 'them';
+        currentPkBattle.effects[which][data.item] = new Date(data.expiresAt).getTime();
+        if (data.item === 'fog') currentPkBattle.fogged[which] = true;
         const myId = JSON.parse(localStorage.getItem('user') || '{}')._id;
         if (data.thrownBy?.id === myId) myPkThrowCooldown = { item: data.item, expiresAt: new Date(data.expiresAt).getTime() };
         renderPkBar();
-        const mySide = currentPkBattle.roomA.id === currentVoiceRoomId ? 'A' : 'B';
         const label = data.item === 'glove' ? 'قفاز حماس ×2 لمدة 15 ثانية! 🥊' : 'ضباب تكتيكي يُخفي الدعم لمدة 12 ثانية 🌫️';
-        showNotification(`${data.side === mySide ? 'صفّك' : 'الخصم'}: ${label}`, 'info');
+        showNotification(`${which === 'us' ? 'صفّك' : 'الخصم'}: ${label}`, 'info');
     });
 
     socket.on('pk-item-error', (payload) => {
