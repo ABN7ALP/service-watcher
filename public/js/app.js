@@ -568,7 +568,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <img src="${seatData.user.profileImage}" class="voice-seat-avatar ${seatData.user.activeFrameClass || ''}" alt="${safeName}" loading="lazy" decoding="async">
                     ${seatData.isMuted ? '<div class="voice-seat-mute-overlay"><i class="fas fa-microphone-slash"></i></div>' : ''}
                     <span class="voice-seat-no">${seatNo}</span>
-                    <span class="seat-support-badge">${supportTotal > 9999 ? '9999+' : supportTotal}</span>
+                    <span class="seat-support-badge">${formatCompactPoints(supportTotal)}</span>
                 </div>
                 <span class="voice-seat-name">${safeName}</span>
             `;

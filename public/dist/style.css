@@ -1861,6 +1861,11 @@ video {
   border-top-color: transparent;
 }
 
+.bg-\[\#0b0810\]{
+  --tw-bg-opacity: 1;
+  background-color: rgb(11 8 16 / var(--tw-bg-opacity, 1));
+}
+
 .bg-\[\#15181f\]{
   --tw-bg-opacity: 1;
   background-color: rgb(21 24 31 / var(--tw-bg-opacity, 1));
@@ -4392,6 +4397,16 @@ button, input, select, textarea {
 
 .voice-seats-flex[data-seat-count="80"]::-webkit-scrollbar {
   display: none;
+}
+
+/* 🐛 إصلاح: أرقام الدعم المضغوطة (formatCompactPoints، مثلاً "1.5K") قد تبقى أعرض من مقعد
+   الـ80 الصغير جداً (--av قد يصل لـ~30px) فتتلامس شارتا مقعدين متجاورين — خط/حشو أصغر هنا
+   تحديداً يمنح هامشاً إضافياً بالشبكة المزدحمة دون المساس بحجمها بغرف المستخدمين الأكبر */
+
+.voice-seats-flex[data-seat-count="80"] .seat-support-badge {
+  font-size: 7.5px;
+  padding: 0.5px 3px;
+  bottom: -7px;
 }
 
 .voice-seat {

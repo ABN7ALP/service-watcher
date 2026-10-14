@@ -700,6 +700,10 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     mask-image: linear-gradient(#000 85%, transparent);
 }
 .voice-seats-flex[data-seat-count="80"]::-webkit-scrollbar { display: none; }
+/* 🐛 إصلاح: أرقام الدعم المضغوطة (formatCompactPoints، مثلاً "1.5K") قد تبقى أعرض من مقعد
+   الـ80 الصغير جداً (--av قد يصل لـ~30px) فتتلامس شارتا مقعدين متجاورين — خط/حشو أصغر هنا
+   تحديداً يمنح هامشاً إضافياً بالشبكة المزدحمة دون المساس بحجمها بغرف المستخدمين الأكبر */
+.voice-seats-flex[data-seat-count="80"] .seat-support-badge { font-size: 7.5px; padding: 0.5px 3px; bottom: -7px; }
 .voice-seat {
     display: flex; flex-direction: column; align-items: center; min-width: 0;
     cursor: pointer;
