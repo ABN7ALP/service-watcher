@@ -3233,10 +3233,12 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     position: absolute;
     top: -4px;
     left: 50%;
-    font-size: 1.3rem;
+    width: max(20px, calc(var(--av, 48px) * .42));
+    height: max(20px, calc(var(--av, 48px) * .42));
     pointer-events: none;
     animation: seatReactionFloat 1.5s ease-out forwards;
     z-index: 6;
+    filter: drop-shadow(0 3px 5px rgba(0,0,0,0.5));
 }
 
 /* ✅ وضع "الغرفة ملء الشاشة" — يخفي هيدر المنصة/الرصيد والتنقّل بالكامل بمجرد فتح أي غرفة،

@@ -3262,16 +3262,23 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
     }
 
+    // ✅ Fluent 3D من public/assets/pk/emoji فقط (طلب صريح) — نفس مجلّد أيقونات معركة PK، بلا
+    // أي إيموجي نصي يونيكود بعد الآن. المجلّد مُصمَّم لسياق المعركة، فاختيار الثمانية هنا هو
+    // أقرب مجموعة عامة الطابع منه تصلح كـ"تفاعلات غرفة" (حماس/احتفال/تقدير/إعجاب/برود/احترام/قوة/صدمة)
+    const ROOM_REACTION_EMOJIS = ['fire', 'party_popper', 'trophy', 'sparkles', 'smiling_face_with_sunglasses', 'handshake', 'flexed_biceps', 'face_screaming_in_fear'];
+    function reactionEmojiUrl(name) {
+        return `/assets/pk/emoji/${name}${name === 'flexed_biceps' ? '_3d_default' : '_3d'}.webp`;
+    }
+
     // ✅ منتقي الإيموجي المتحرك — يظهر التفاعل فوق صورة المستخدم عند الجميع بالغرفة لحظياً
     function showReactionPicker(roomId, seatNumber) {
-        const emojis = ['❤️', '😂', '👏', '🔥', '😍', '👍', '🎉', '😮'];
         const modal = document.createElement('div');
         modal.id = 'reaction-picker-modal';
         modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50';
         modal.innerHTML = `
             <div class="bg-gray-800 rounded-t-2xl md:rounded-2xl shadow-xl p-4 w-full md:w-auto">
                 <div class="grid grid-cols-4 gap-3">
-                    ${emojis.map(e => `<button data-emoji="${e}" class="reaction-emoji-btn text-3xl p-2 rounded-lg hover:bg-gray-700">${e}</button>`).join('')}
+                    ${ROOM_REACTION_EMOJIS.map(e => `<button data-emoji="${e}" class="reaction-emoji-btn p-2 rounded-lg hover:bg-gray-700"><img src="${reactionEmojiUrl(e)}" class="w-9 h-9" alt=""></button>`).join('')}
                 </div>
             </div>
         `;
@@ -3285,16 +3292,19 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
     }
 
-    // ✅ يعرض الإيموجي المتحرك فوق صورة المقعد لثوانٍ قليلة ثم يختفي تلقائياً
+    // ✅ يعرض الإيموجي المتحرك فوق صورة المقعد لثوانٍ قليلة ثم يختفي تلقائياً — داخل
+    // .voice-seat-av-wrap نفسه (الصندوق الدائري position:relative) لا .voice-seat العام،
+    // كي يبقى مرتكزاً بصرياً فوق الصورة بالضبط بغض النظر عن موضع اسم الشاغل أسفلها
     function playSeatReaction(seatNumber, emoji) {
         const voiceGrid = document.getElementById('voice-chat-grid');
         if (!voiceGrid) return;
-        const seatEl = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"]`);
-        if (!seatEl) return;
-        const el = document.createElement('div');
+        const wrap = voiceGrid.querySelector(`.voice-seat[data-seat="${seatNumber}"] .voice-seat-av-wrap`);
+        if (!wrap) return;
+        const el = document.createElement('img');
         el.className = 'voice-seat-reaction';
-        el.textContent = emoji;
-        seatEl.appendChild(el);
+        el.src = reactionEmojiUrl(emoji);
+        el.alt = '';
+        wrap.appendChild(el);
         setTimeout(() => el.remove(), 1500);
     }
 
