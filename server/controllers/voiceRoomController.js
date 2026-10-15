@@ -580,6 +580,16 @@ exports.updateRoom = async (req, res) => {
             });
         }
 
+        // ✅ طلب صريح: يُبث تحديث الإعلان (description) بالسوكيت — بدونه لا يرى المشاهدون
+        // الحاليون الإعلان الجديد إلا بعد إعادة فتح الغرفة (كانت تصل للمضيف نفسه محلياً فقط
+        // عبر استجابة هذا الطلب، بلا أي بثّ لبقية من يشاهد الغرفة بنفس اللحظة)
+        if (io && description !== undefined) {
+            io.to(`room-chat-${room._id}`).emit('room-description-updated', {
+                roomId: room._id.toString(),
+                description: room.description
+            });
+        }
+
         res.json({
             status: 'success',
             room: {
@@ -682,7 +692,7 @@ exports.getRoomMessages = async (req, res) => {
         const messages = await Message.find({ room: channel })
             .sort({ createdAt: -1 })
             .limit(50)
-            .populate('sender', 'username profileImage activeFrameClass activeBubbleSkinClass')
+            .populate('sender', 'username profileImage activeFrameClass activeBubbleSkinClass level')
             .lean();
         res.json({ status: 'success', messages: messages.reverse() });
     } catch (error) {

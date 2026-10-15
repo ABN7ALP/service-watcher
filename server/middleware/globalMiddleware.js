@@ -161,11 +161,12 @@ const setupMiddleware = (app) => {
                 ...helmet.contentSecurityPolicy.getDefaultDirectives(),
                 // ✅ مصادر السكربتات: الموقع نفسه + مكتبة Socket.IO + مكتبات لوحة التحكم (Bootstrap/Chart.js عبر jsdelivr)
                 "script-src": ["'self'", "https://cdn.socket.io", "https://cdn.jsdelivr.net"],
-                // ✅ مصادر الأنماط: الموقع نفسه + Font Awesome + خطوط جوجل + Bootstrap (لوحة التحكم)
+                // ✅ مصادر الأنماط: الموقع نفسه (Font Awesome أصبحت مُستضافة محلياً — راجع
+                // public/vendor/fontawesome، طلب صريح) + خطوط جوجل + Bootstrap (لوحة التحكم)
                 // 'unsafe-inline' ضروري هنا لأن الواجهة تستخدم بكثرة style="..." مُولَّدة ديناميكياً عبر JS
-                "style-src": ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
-                // ✅ مصادر ملفات الخطوط الفعلية (Font Awesome وGoogle Fonts يجلبان ملفات خط من نطاقات منفصلة)
-                "font-src": ["'self'", "data:", "https://cdnjs.cloudflare.com", "https://fonts.gstatic.com"],
+                "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
+                // ✅ مصادر ملفات الخطوط الفعلية — Font Awesome أصبحت من 'self' (محلية)، Google Fonts تبقى من نطاقها
+                "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
                 // ✅ الإصلاح: إضافة blob: لمعاينة الصور/الفيديو محلياً قبل رفعها (createObjectURL)
                 // ✅ أُضيف jsdelivr لعرض رسوم إطارات OpenMoji الجاهزة (تاج/جوهرة/ريشة) — نفس
                 // النطاق الموثوق أصلاً بـscript-src/style-src أعلاه لمكتبات لوحة التحكم
