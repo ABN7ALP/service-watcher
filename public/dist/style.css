@@ -4399,16 +4399,6 @@ button, input, select, textarea {
   display: none;
 }
 
-/* 🐛 إصلاح: أرقام الدعم المضغوطة (formatCompactPoints، مثلاً "1.5K") قد تبقى أعرض من مقعد
-   الـ80 الصغير جداً (--av قد يصل لـ~30px) فتتلامس شارتا مقعدين متجاورين — خط/حشو أصغر هنا
-   تحديداً يمنح هامشاً إضافياً بالشبكة المزدحمة دون المساس بحجمها بغرف المستخدمين الأكبر */
-
-.voice-seats-flex[data-seat-count="80"] .seat-support-badge {
-  font-size: 7.5px;
-  padding: 0.5px 3px;
-  bottom: -7px;
-}
-
 .voice-seat {
   display: flex;
   flex-direction: column;
@@ -4631,11 +4621,12 @@ button, input, select, textarea {
   color: #c4b5fd;
 }
 
-/* ✅ شارة صغيرة تطفو خارج حافة .voice-seat-av-wrap (زاوية سفلية) بدل تعتيم الوجه بالكامل —
-   لا تحجب هوية الجالس، وتبقى واضحة تماماً لصاحب المقعد ولبقية المستخدمين على حد سواء.
-   الحجم بوحدة em نسبية لخط المقعد، فيتحجّم تلقائياً مع --av أعلاه بدون قاعدة إضافية. */
+/* 🐛 مراجعة بصرية (طلب صريح، بند 5 — مطابقة §.seat__mic بالنموذج الإلزامي): كانت شارة
+   حمراء تظهر فقط عند الكتم — الآن شارة دائرية داكنة ثابتة الحضور على كل مقعد مشغول دوماً
+   (مطابقة النموذج: خلفية #1b1426 ثابتة)، والأيقونة فقط تتبدّل بين مايك/مكتوم (لون الأيقونة
+   يتحوّل أحمر عند الكتم كلمسة وضوح إضافية لا يمنعها النموذج، بلا تغيير بالخلفية الداكنة) */
 
-.voice-seat-mute-overlay {
+.voice-seat-mic-badge {
   position: absolute;
   z-index: 3;
   bottom: -0.15em;
@@ -4643,8 +4634,8 @@ button, input, select, textarea {
   width: 1.35em;
   height: 1.35em;
   border-radius: 50%;
-  background: #ef4444;
-  border: 2px solid #111827;
+  background: #1b1426;
+  border: 1.5px solid rgba(255,255,255,0.27);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4653,6 +4644,25 @@ button, input, select, textarea {
   pointer-events: none;
   /* لا يمنع الضغط على المقعد نفسه (مغادرة/تبديل) */
   box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+.voice-seat-mic-badge.muted {
+  color: #f87171;
+}
+
+/* ✅ شارة تاج فوق مقعد المضيف (طلب صريح — النموذج: .seat__badge)، تظهر فقط حين يكون
+   مقعد المضيف مشغولاً فعلياً */
+
+.voice-seat-host-badge {
+  position: absolute;
+  z-index: 4;
+  top: calc(var(--hostAv, var(--av)) * -.3);
+  left: 50%;
+  transform: translateX(-50%) rotate(-8deg);
+  font-size: calc(var(--hostAv, var(--av)) * .34);
+  color: var(--gold, #ffd45a);
+  text-shadow: 0 2px 4px rgba(0,0,0,.6);
+  pointer-events: none;
 }
 
 /* ✅ رقم المقعد — شارة صغيرة بالزاوية العلوية المقابلة (طلب صريح: "رقم المقعد") */
@@ -4728,6 +4738,9 @@ button, input, select, textarea {
 /* ✅ أهداف لمس 38px كحد أدنى (طلب صريح) — min-width/min-height صريحان فوق الحجم المرن
    (--u*3.4) كي لا يهبطا دونه أبداً حتى على أضيق هاتف تُسحَق فيه --u لحدّها الأدنى (9px) */
 
+/* 🐛 مراجعة بصرية (طلب صريح، بند 10 — مطابقة §.input/.dbtn بالنموذج الإلزامي): خلفية زجاجية
+   موحّدة (--glass/--glass-line) بدل رمادي داكن شبه معتم محلي */
+
 .room-chat-input-pill {
   flex: 1;
   min-width: 0;
@@ -4736,13 +4749,13 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(17,24,39,0.92);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--glass, rgba(20,12,34,.46));
+  border: 1px solid var(--glass-line, rgba(255,255,255,.12));
   border-radius: 9999px;
   padding: 0 calc(var(--u) * 1.1) 0 4px;
   /* ✅ فراغ أكبر بجهة اليمين (بداية الكتابة بالعربي)، أضيق قرب زر الإرسال باليسار */
-  -webkit-backdrop-filter: blur(4px);
-          backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 4px 14px rgba(0,0,0,0.35);
 }
 
@@ -4796,12 +4809,12 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(17,24,39,0.92);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--glass, rgba(20,12,34,.46));
+  border: 1px solid var(--glass-line, rgba(255,255,255,.12));
   color: #d1d5db;
   font-size: 17px;
-  -webkit-backdrop-filter: blur(4px);
-          backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 4px 14px rgba(0,0,0,0.35);
 }
 
@@ -4813,21 +4826,47 @@ button, input, select, textarea {
   display: none;
 }
 
+/* 🐛 مراجعة بصرية (طلب صريح، بند 10 — مطابقة §.dbtn.gift/.dbtn.mic.on بالنموذج): كانا
+   تلويناً للأيقونة فقط فوق نفس الخلفية الزجاجية — الآن تعبئة كاملة بالتدرّج (وردي-ذهبي-بنفسجي
+   نابض للهدايا، أخضر صريح للمايك المفعَّل) مطابقة للنموذج حرفياً */
+
 .room-chat-dock-icon.room-chat-gift-icon {
-  color: #f472b6;
+  background: linear-gradient(135deg, #ffb020, #ff4f8b 60%, #7a2bd8);
+  border: 0;
+  color: #fff;
+  box-shadow: 0 0 14px rgba(255,79,139,.53);
+  animation: roomChatGiftPulse 2.2s ease-in-out infinite;
+}
+
+@keyframes roomChatGiftPulse {
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 22px rgba(255,79,139,.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-chat-dock-icon.room-chat-gift-icon {
+    animation: none;
+  }
 }
 
 .room-chat-dock-icon.room-chat-leave-icon {
   color: #f87171;
 }
 
-/* ✅ زرّا المايك/التفاعل المستقلّان الجديدان (نموذج التصميم الإلزامي) — أخضر فعّال/أحمر مكتوم */
+/* ✅ زرّا المايك/التفاعل المستقلّان الجديدان (نموذج التصميم الإلزامي) — تعبئة خضراء كاملة
+   عند التشغيل، أحمر فقط عند الكتم */
 
 .room-chat-dock-icon#room-mic-toggle-btn {
-  color: #34d399;
+  background: linear-gradient(#3ee08f, #11a865);
+  border-color: transparent;
+  color: #fff;
 }
 
 .room-chat-dock-icon#room-mic-toggle-btn.room-chat-mic-muted {
+  background: var(--glass, rgba(20,12,34,.46));
+  border: 1px solid var(--glass-line, rgba(255,255,255,.12));
   color: #f87171;
 }
 
@@ -4972,8 +5011,15 @@ button, input, select, textarea {
    بنفس ارتفاع كبسولة المشاهدين المجاورة تقريباً — مساحة الرأس هنا ضيقة فلا بوديوم كامل كنادي
    المعجبين، فقط إشارة مُصغَّرة كافية لمعرفة "من يدعم الآن" بنظرة سريعة */
 
+/* 🐛 مراجعة بصرية (طلب صريح، بند 4 — مطابقة §.tops بالنموذج الإلزامي): كانت ثلاث شرائح
+   منفصلة بتباعد موجب + شارة ترتيب + رقم نقاط ظاهر دائماً (قرار سابق صريح) — الآن دوائر
+   متراكبة فعلياً (تراكب سالب حقيقي، لا تباعد) بإطارات ذهبي/فضي/برونزي فقط، بلا رقم ظاهر —
+   رقم النقاط ينتقل لـtitle (يظهر بالتحويم/الضغط المطوَّل)، والضغط العادي يفتح الملف الشخصي
+   كما كان تماماً، فلا فقدان وظيفي حقيقي */
+
 .room-top-supporters-widget {
   display: flex;
+  flex-direction: row-reverse;
   align-items: center;
   flex-shrink: 0;
 }
@@ -4982,28 +5028,18 @@ button, input, select, textarea {
   display: none;
 }
 
-/* 🎨 إعادة تنسيق لاحقة (طلب صريح): نفس حجم .room-viewer-avatar المجاورة بالضبط (21px) بدل
-   أحجام متفرّقة أصغر/أكبر منها سابقاً (19/23px)، تباعد حقيقي موجب بين الشرائح الثلاث (بدل
-   تراكب سالب كثيف)، ورقم القيمة أكبر وأوضح بخط أثقل ولون ذهبي مطفي متسق مع هوية التطبيق */
-
 .room-top-supporter-slot {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  display: block;
   background: none;
   border: none;
   padding: 0;
-  margin-inline-start: 4px;
+  margin-inline-start: -8px;
   cursor: pointer;
 }
 
 .room-top-supporter-slot:first-child {
   margin-inline-start: 0;
-}
-
-.room-top-supporter-slot.empty {
-  visibility: hidden;
 }
 
 .room-top-supporter-avatar {
@@ -5012,62 +5048,26 @@ button, input, select, textarea {
   border-radius: 50%;
   -o-object-fit: cover;
      object-fit: cover;
-  border: 2px solid #94a3b8;
+  border: 1.5px solid #cfd8e6;
   /* فضي (المركز الثاني) — افتراضي، يُستبدَل بالتعديلين أدناه */
+  background: #222;
   box-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
 .room-top-supporter-rank-1 {
-  z-index: 2;
+  z-index: 3;
 }
 
 .room-top-supporter-rank-1 .room-top-supporter-avatar {
-  border-color: #fbbf24;
+  border-color: var(--gold, #ffd45a);
+}
+
+.room-top-supporter-rank-2 {
+  z-index: 2;
 }
 
 .room-top-supporter-rank-3 .room-top-supporter-avatar {
-  border-color: #d97706;
-}
-
-.room-top-supporter-rank-badge {
-  position: absolute;
-  top: -3px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 7px;
-  font-weight: 900;
-  color: #100d12;
-  background: #fde68a;
-  border: 1px solid #100d12;
-  border-radius: 999px;
-  width: 10px;
-  height: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.room-top-supporter-rank-2 .room-top-supporter-rank-badge {
-  background: #e2e8f0;
-}
-
-.room-top-supporter-rank-3 .room-top-supporter-rank-badge {
-  background: #fdba74;
-}
-
-/* ✅ رقم قيمة الدعم أسفل كل صورة (طلب صريح: "يجلسون بهن مع رقم الذي دعموا به") — أكبر وأوضح
-   من السابق (7px) + خط أثقل ولون ذهبي مطفي بدل الرمادي العادي، يرتفع هذا العنصر بالصف أعلى
-   من الأزرار المجاورة قليلاً وهذا طبيعي (items-center بالصف الأب يمركزه رأسياً بلا أي قصّ) */
-
-.room-top-supporter-points {
-  display: block;
-  font-size: 9px;
-  font-weight: 800;
-  color: #d4c593;
-  letter-spacing: 0.2px;
-  margin-top: 1.5px;
-  line-height: 1;
-  white-space: nowrap;
+  border-color: #d58a4a;
 }
 
 /* ✅ نافذة قائمة المشاهدين — بطاقة صلبة أنيقة بدل خلفية شفافة باهتة */
@@ -5185,10 +5185,14 @@ button, input, select, textarea {
   background: rgba(255,255,255,0.06);
 }
 
+/* 🐛 مراجعة بصرية (طلب صريح — مطابقة voice-room-prototype.html §.rinfo): كان الغلاف مربّعاً
+   مدوّر الزوايا (8px) بحجم ثابت 27px — الآن دائري بحجم مشتق من --u (--u*3.1 بالنموذج)
+   فيتدرّج مع حاوية الغرفة نفسها بدل ثابت على كل المقاسات */
+
 .room-info-cover-img {
-  width: 27px;
-  height: 27px;
-  border-radius: 8px;
+  width: calc(var(--u, 10px) * 3.1);
+  height: calc(var(--u, 10px) * 3.1);
+  border-radius: 50%;
   -o-object-fit: cover;
      object-fit: cover;
   flex-shrink: 0;
@@ -5196,7 +5200,7 @@ button, input, select, textarea {
 }
 
 .room-info-name {
-  font-size: 12px;
+  font-size: calc(var(--u, 10px) * 1.1);
   font-weight: 800;
   color: #f3f4f6;
   max-width: 28vw;
@@ -5218,50 +5222,138 @@ button, input, select, textarea {
   min-height: 13px;
 }
 
-/* ✅ عدّاد دعم جلسة البث الحالية — محل آيدي الغرفة الثابت الذي أُزيل من هنا (بطلب صريح) */
+/* ✅ آيدي الغرفة بجانب شارة المستوى بسطر meta (طلب صريح — مطابقة النموذج: "ID 482915") —
+   أُعيد هنا بعد إزالته بجولة سابقة؛ الوضوح البصري المطلوب الآن يفوق اعتبار الازدحام القديم */
+
+.room-info-id {
+  font-size: calc(var(--u, 10px) * .78);
+  color: var(--ink-3, #9a91b8);
+  white-space: nowrap;
+}
+
+.room-info-id.hidden {
+  display: none;
+}
+
+/* =====================================================================
+   🐛 مراجعة بصرية (طلب صريح، بند 2+3 — مطابقة §.sub/.chip/.notice بالنموذج الإلزامي):
+   سطر ثانٍ مستقل تحت الرأس يحوي شريحة ترتيب الدوري (ذهبية، نُقلت من داخل بطاقة الغرفة)،
+   شريحة دعم الجلسة (زجاجية)، وشريط الإعلان المتحرك — بدل كونهما شارتين صغيرتين مزدحمتين
+   داخل سطر meta الضيق بالبطاقة كما كانا سابقاً
+   ===================================================================== */
+
+.room-sub-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u, 10px) * .5);
+  padding: 0 calc(var(--u, 10px) * .9);
+  flex: none;
+  margin: 2px 0 calc(var(--u, 10px) * .5);
+}
+
+@container room (max-height: 640px) {
+  .room-sub-row .room-notice {
+    display: none;
+  }
+}
+
+@container room (max-width: 340px) {
+  .room-sub-row .room-info-session-support {
+    display: none;
+  }
+}
 
 .room-info-session-support {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 3px;
-  font-size: 9.5px;
-  font-weight: 800;
-  color: #fbbf24;
-  background: rgba(251,191,36,0.12);
+  gap: 4px;
+  height: calc(var(--u, 10px) * 2.1);
+  padding: 0 calc(var(--u, 10px) * .65);
   border-radius: 999px;
-  padding: 1.5px 6px;
+  font-size: calc(var(--u, 10px) * .85);
+  font-weight: 800;
+  white-space: nowrap;
+  flex: none;
+  background: var(--glass, rgba(20,12,34,.46));
+  border: 1px solid var(--glass-line, rgba(255,255,255,.12));
+  color: var(--ink-2, #d9d2ee);
 }
 
 .room-info-session-support i {
-  font-size: 7.5px;
+  font-size: calc(var(--u, 10px) * .78);
+  color: #fbbf24;
 }
 
 .room-info-session-support.hidden {
   display: none;
 }
 
-/* ✅ شارة ترتيب الدوري الأسبوعي بالسطر الثاني (طلب صريح) — نفس طراز شارة دعم الجلسة بجانبها
-   تماماً، بلمسة ذهبية مميِّزة عن البرتقالي (تحاكي لون الكأس بدل البرق) */
+/* ✅ شريحة ترتيب الدوري الأسبوعي — ذهبية (.chip--gold بالنموذج)، انتقلت من بطاقة الغرفة
+   لهذا السطر المستقل */
 
 .room-info-league-chip {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 3px;
-  font-size: 9.5px;
-  font-weight: 800;
-  color: #ffd45a;
-  background: rgba(255,212,90,0.14);
+  gap: 4px;
+  height: calc(var(--u, 10px) * 2.1);
+  padding: 0 calc(var(--u, 10px) * .65);
   border-radius: 999px;
-  padding: 1.5px 6px;
+  font-size: calc(var(--u, 10px) * .85);
+  font-weight: 800;
+  white-space: nowrap;
+  flex: none;
+  background: linear-gradient(90deg, rgba(255,212,90,.18), rgba(240,168,28,.08));
+  border: 1px solid rgba(255,212,90,.4);
+  color: #ffe9a8;
   cursor: pointer;
 }
 
 .room-info-league-chip i {
-  font-size: 7.5px;
+  font-size: calc(var(--u, 10px) * .78);
+  color: var(--gold, #ffd45a);
 }
 
 .room-info-league-chip.hidden {
   display: none;
+}
+
+/* ✅ شريط الإعلان المتحرك (.notice بالنموذج) — نص الغرفة (room.announcement) يتمرّر أفقياً
+   بحركة marquee مستمرة، مع تلاشٍ زجاجي على طرفيه (mask-image) كي لا يبدو النص "مقطوعاً" فجأة
+   عند حافتي الشريط */
+
+.room-notice {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  height: calc(var(--u, 10px) * 2.1);
+  border-radius: 999px;
+  background: var(--glass, rgba(20,12,34,.46));
+  border: 1px solid var(--glass-line, rgba(255,255,255,.12));
+  display: flex;
+  align-items: center;
+  font-size: calc(var(--u, 10px) * .85);
+  color: var(--ink-2, #d9d2ee);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+
+.room-notice span {
+  white-space: nowrap;
+  padding-inline-start: 100%;
+  animation: roomNoticeMarquee 14s linear infinite;
+}
+
+@keyframes roomNoticeMarquee {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-notice span {
+    animation: none;
+    padding-inline-start: calc(var(--u, 10px) * .9);
+  }
 }
 
 /* ✅ زر متابعة الرأس — حالتان مختلفتان تماماً بالتصميم (طلب صريح): قبل المتابعة دائرة أيقونة
@@ -5276,29 +5368,33 @@ button, input, select, textarea {
    ملوَّن دائم — ومواثرات حسّية فعلية: نبضة+دوران أيقونة عند الضغط، وحلقة متوهّجة تتّسع
    وتخفت (room-follow-pop) تُفعَّل لحظة نجاح المتابعة فعلياً فقط (راجع updateRoomHeaderFollowIcon) */
 
+/* 🐛 مراجعة بصرية (طلب صريح — مطابقة النموذج §.follow): كان الزر مطفياً بلا تدرّج (قرار
+   سابق صريح) — الطلب الحالي صريح أيضاً وأحدث: تدرّج وردي حيّ مطابق لـ.follow بالنموذج
+   (linear-gradient(#ff6fa6,#e0306f))، يعلو جدول المطابقة ببند 1 */
+
 .room-header-follow-circle {
   flex-shrink: 0;
   box-sizing: content-box;
-  width: 27px;
-  height: 27px;
+  width: calc(var(--u, 10px) * 2.6);
+  height: calc(var(--u, 10px) * 2.6);
   aspect-ratio: 1 / 1;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid rgba(255,255,255,0.14);
+  border: 0;
   margin: 0;
   overflow: visible;
   position: relative;
-  background: rgba(255,255,255,0.06);
-  color: #d1d5db;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  background: linear-gradient(#ff6fa6, #e0306f);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(255,79,139,0.53);
   transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s ease, border-color 0.15s ease;
 }
 
 .room-header-follow-circle i {
-  font-size: 10.5px;
+  font-size: calc(var(--u, 10px) * .95);
   line-height: 1;
   display: block;
   transition: transform 0.2s ease;
@@ -5306,8 +5402,6 @@ button, input, select, textarea {
 
 .room-header-follow-circle:active {
   transform: scale(0.82);
-  background: rgba(212,197,147,0.16);
-  border-color: rgba(212,197,147,0.45);
 }
 
 .room-header-follow-circle:active i {
@@ -5327,7 +5421,7 @@ button, input, select, textarea {
   position: absolute;
   inset: -3px;
   border-radius: 50%;
-  border: 1.5px solid rgba(212,197,147,0.65);
+  border: 1.5px solid rgba(255,111,166,0.65);
   animation: roomFollowRing 0.5s ease-out forwards;
 }
 
@@ -8377,8 +8471,12 @@ button, input, select, textarea {
   background: linear-gradient(90deg, #6b7280, #9ca3af);
 }
 
+/* ✅ طابق لون النموذج الإلزامي حرفياً (.lv: linear-gradient(90deg,#7b5cff,#c04cff)) لمستويات
+   المنتصف تحديداً — طبقات اللون المنخفضة/العالية إضافة مقصودة تبقى خارج نطاق النموذج (راجع
+   جدول المطابقة بوصف الـPR، بند 1) */
+
 .room-level-badge-3, .room-level-badge-4 {
-  background: linear-gradient(90deg, #8b5cf6, #a855f7);
+  background: linear-gradient(90deg, #7b5cff, #c04cff);
 }
 
 .room-level-badge-5 {
@@ -8676,8 +8774,8 @@ button, input, select, textarea {
   position: relative;
   margin-top: calc(var(--u) * .6);
   overflow-y: auto;
-  -webkit-mask: linear-gradient(transparent, #000 10%);
-  mask: linear-gradient(transparent, #000 10%);
+  -webkit-mask: linear-gradient(transparent, #000 22%);
+  mask: linear-gradient(transparent, #000 22%);
   padding: 0 calc(var(--u) * .9);
   display: flex;
   flex-direction: column;
@@ -8724,8 +8822,13 @@ button, input, select, textarea {
   pointer-events: auto;
 }
 
+/* 🐛 مراجعة بصرية (طلب صريح، بند 6 — مطابقة §.msg بالنموذج الإلزامي): فقاعة زجاجية داكنة
+   حقيقية (backdrop-filter:blur) بدل خلفية شبه معتمة مسطّحة فقط */
+
 .room-chat-bubble-default {
-  background: rgba(17,24,39,0.7);
+  background: rgba(0,0,0,0.33);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .room-chat-msg-avatar {
@@ -8756,6 +8859,11 @@ button, input, select, textarea {
 .room-chat-msg-name {
   font-weight: 800;
   font-size: 12px;
+  color: #9fd0ff;
+}
+
+.room-chat-msg-name.vip {
+  color: var(--gold, #ffd45a);
 }
 
 .room-chat-msg-name::after {
@@ -8775,6 +8883,34 @@ button, input, select, textarea {
   font-size: 10px;
   margin-inline-end: 3px;
   vertical-align: 1px;
+}
+
+/* ✅ شارة مستوى المرسل (.lvb بالنموذج) — أزرق-بنفسجي للمستويات العادية، ذهبي-وردي
+   للمستويات العالية (hi، طلب صريح) */
+
+.room-chat-msg-lvb {
+  display: inline-block;
+  font-weight: 900;
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 4px;
+  margin-inline-end: 3px;
+  vertical-align: 1px;
+  color: #fff;
+  background: linear-gradient(90deg, #3d7bff, #7b5cff);
+}
+
+.room-chat-msg-lvb.hi {
+  background: linear-gradient(90deg, #f0a81c, #ff4f8b);
+}
+
+/* ✅ رسائل النظام (.msg.sys بالنموذج) — فقاعة ذهبية شفافة بدل الزجاجية الموحّدة */
+
+.room-chat-message.room-chat-bubble-sys {
+  background: rgba(255,212,90,0.1);
+  border: 1px solid rgba(255,212,90,0.2);
+  color: #ffe9a8;
+  font-size: calc(var(--u, 10px) * .85);
 }
 
 @keyframes chatMsgIn {
@@ -8840,11 +8976,12 @@ button, input, select, textarea {
   opacity: 0.5;
 }
 
-/* ✅ فقاعة إعلان الهدية بالدردشة — ذهبية مميّزة عن رسائل الدردشة العادية */
+/* 🐛 مراجعة بصرية (طلب صريح، بند 7 — مطابقة §.msg.gift بالنموذج الإلزامي): تدرّج وردي-بنفسجي
+   بدل الذهبي/البرتقالي السابق */
 
 .room-chat-gift-bubble {
-  background: linear-gradient(135deg, rgba(217,119,6,0.35), rgba(180,83,9,0.35));
-  border: 1px solid rgba(251,191,36,0.35);
+  background: linear-gradient(90deg, rgba(255,79,139,0.25), rgba(122,43,216,0.19));
+  border: 1px solid rgba(255,138,184,0.33);
 }
 
 .room-chat-gift-bubble-icon {
@@ -8860,6 +8997,48 @@ button, input, select, textarea {
      object-fit: contain;
   display: inline-block;
   vertical-align: -3px;
+}
+
+/* ✅ طلب صريح (بند 8 — مطابقة §.join بالنموذج الإلزامي): مسار بلا ارتفاع أعلى الدردشة
+   مباشرة، نفس أسلوب .room-gift-lane — سطر «دخل الغرفة» ينزلق بداخله بإطلاق مطلق لا يزاحم
+   تمرير الرسائل أبداً */
+
+.room-join-lane {
+  position: relative;
+  flex: none;
+  height: 0;
+  z-index: 15;
+}
+
+.room-join-notice {
+  position: absolute;
+  top: 0;
+  right: calc(var(--u, 9px) * .9);
+  max-width: 70cqw;
+  padding: 2px calc(var(--u, 9px) * .8);
+  border-radius: 999px;
+  font-size: calc(var(--u, 9px) * .85);
+  background: linear-gradient(90deg, rgba(61,123,255,.33), transparent);
+  color: #d6e6ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transform: translateX(30px);
+  transition: .4s;
+  pointer-events: none;
+}
+
+.room-join-notice.on {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-join-notice {
+    transition: opacity .2s;
+    transform: none;
+  }
 }
 
 /* 🐛 مراجعة PR #99: كان الشريط position:fixed;top:50% بمنتصف الشاشة رأسياً — يغطي المقاعد
@@ -9647,6 +9826,8 @@ body.in-voice-room .container {
    ===================================================================== */
 
 body.in-voice-room #main-content {
+  position: relative;
+  /* ✅ مرتكز .room-bg المطلقة أدناه */
   grid-column: span 12 / span 12 !important;
   border-radius: 0 !important;
   height: 100vh !important;
@@ -9660,7 +9841,66 @@ body.in-voice-room #main-content {
   container-name: room;
   /* ✅ وحدة مرنة واحدة يتفرّع منها كل حجم بالغرفة (نفس --u بالنموذج بالضبط) */
   --u: clamp(9px, 2.75cqw, 12px);
+  /* 🐛 مراجعة بصرية (طلب صريح — مطابقة كاملة لـvoice-room-prototype.html): رموز التصميم
+       (:root بالنموذج) مُعرَّفة الآن على جذر الغرفة نفسه، يرثها كل شيء بداخلها (رأس/مقاعد/
+       دردشة) — بنفس القيم الحرفية، بدل تكرارها محلياً داخل كل قسم كما كان يحدث سابقاً */
+  --gold: #ffd45a;
+  --gold-2: #f0a81c;
+  --ink: #fff;
+  --ink-2: #d9d2ee;
+  --ink-3: #9a91b8;
+  --glass: rgba(20,12,34,.46);
+  --glass-line: rgba(255,255,255,.12);
   padding: max(env(safe-area-inset-top), 6px) 0 max(env(safe-area-inset-bottom), 6px);
+}
+
+/* =====================================================================
+   🐛 مراجعة بصرية (طلب صريح، بند 11 — مطابقة §.bg بالنموذج الإلزامي): كانت الخلفية
+   الافتراضية صورة Cloudinary ثابتة + تعتيم رمادي موحّد 65% فوقها — الآن تدرّجات/نجوم CSS
+   خالصة مطابقة للنموذج حرفياً (أول طبقة = التدرّجات، ::before = نقاط النجوم، ::after =
+   تعتيم أعلى/أسفل). لو اختار المضيف خلفية مخصّصة من المتجر، تحل محل التدرّجات فقط
+   (.has-custom-image)، بينما طبقة التعتيم نفسها (::after) تبقى فوقها كما هي بلا تغيير —
+   أول طفل فعلي لـ#main-content، مطلقة خلف كل شيء (z-index:-1) تماماً كـ.bg بالنموذج */
+
+.room-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+        radial-gradient(60cqw 40cqh at 80% 8%, #7a2bd855, transparent 70%),
+        radial-gradient(70cqw 45cqh at 10% 40%, #d0287a40, transparent 70%),
+        radial-gradient(80cqw 50cqh at 60% 100%, #2b5bd844, transparent 70%),
+        linear-gradient(180deg, #1b0f2e, #0e0918 55%, #08060d);
+}
+
+.room-bg.has-custom-image {
+  background-image: var(--room-bg-custom-url);
+  background-size: cover;
+  background-position: center;
+}
+
+.room-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: .55;
+  background-image:
+        radial-gradient(circle at 20% 30%, #fff3 0 1px, transparent 2px),
+        radial-gradient(circle at 70% 20%, #fff2 0 1px, transparent 2px),
+        radial-gradient(circle at 40% 70%, #fff2 0 1px, transparent 2px),
+        radial-gradient(circle at 85% 60%, #fff3 0 1px, transparent 2px);
+  background-size: 120px 140px, 160px 120px, 140px 180px, 110px 130px;
+}
+
+.room-bg.has-custom-image::before {
+  display: none;
+}
+
+.room-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #0006, transparent 18%, transparent 60%, #000a);
 }
 
 /* 🐛 مراجعة PR #99: --room-kb-inset كانت تُضاف سابقاً داخل padding-bottom لـ#main-content
@@ -12981,26 +13221,34 @@ body.in-voice-room #main-content > #voice-chat-grid {
   }
 }
 
-/* ✅ عداد الدعم أسفل كل مقعد — بحث معمّق + طلب صريح (أسلوب Bigo/Likee/TikTok Live): مربوط
-   بالمستخدم داخل جلسة الغرفة (لا برقم المقعد)، يظهر بمجرد الجلوس (حتى 0) ويختفي فقط مع
-   فراغ المقعد كلياً. 🐛 إصلاح: كان بلا z-index فيختفي خلف زخارف الإطار (.frame-overlay-art
-   بـz-index:2، .frame-icon-overlay بـz-index:3) — أعلى منهما الآن ليبقى ظاهراً دوماً فوقها */
+/* 🐛 مراجعة بصرية (طلب صريح، بند 5 — مطابقة §.seat__sup بالنموذج الإلزامي): كان عداد الدعم
+   شارة بيضاوية مطلقة فوق الصورة — الآن صف تدفّق عادي أسفل الاسم بعملة ذهبية صغيرة (::before)
+   + رقم، بلا خلفية/حدّ. مربوط بالمستخدم داخل جلسة الغرفة (لا برقم المقعد)، يظهر بمجرد الجلوس
+   (حتى 0) ويختفي فقط مع فراغ المقعد كلياً. يتبع .labeled كالاسم تماماً — مخفي بالغرفة
+   الرسمية المزدحمة (80 مقعداً) تطابقاً مع .room[data-seats="80"] .seat__sup بالنموذج */
 
-.seat-support-badge {
-  position: absolute;
-  bottom: -9px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 5;
-  background: linear-gradient(135deg, #fbbf24, #f59e0b);
-  color: #1f2937;
-  font-size: 9px;
+.seat-support-row {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  font-size: max(9px, calc(var(--u, 10px) * .72));
   font-weight: 800;
-  padding: 1px 5px;
-  border-radius: 9999px;
-  white-space: nowrap;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.5);
-  border: 1.5px solid #111827;
+  color: #ffe08a;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.seat-support-row::before {
+  content: "";
+  width: max(7px, calc(var(--u, 10px) * .8));
+  height: max(7px, calc(var(--u, 10px) * .8));
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff6c8, #ffc531 50%, #a86a00);
+  flex: none;
+}
+
+.voice-seats-flex.labeled .seat-support-row {
+  display: flex;
 }
 
 /* ✅ حركة طيران الهدية الحقيقية من المنتصف نحو مقعد المستلم بالضبط */
