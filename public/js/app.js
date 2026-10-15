@@ -8524,12 +8524,18 @@ function showXpGainAnimation(amount) {
         if (!voiceGrid) return;
         const seatEl = voiceGrid.querySelector(`[data-user-id="${userId}"]`);
         if (!seatEl) return;
-        let overlay = seatEl.querySelector('.voice-seat-mute-overlay');
+        // 🐛 إصلاح: كانت الشارة تُضاف كابن مباشر لـ.voice-seat نفسه — منذ إعادة بناء المقاعد
+        // (.voice-seat-av-wrap هو الصندوق position:relative الآن، لا .voice-seat) تنتهي الشارة
+        // بالتموضع نسبةً لأقرب جدّ آخر مُموضَع بالصفحة (بعيداً تماماً عن الصورة فعلياً)، فتظهر
+        // "مفقودة" رغم وجودها بالـDOM. يجب أن تكون داخل .voice-seat-av-wrap كبقية شارات المقعد
+        const wrap = seatEl.querySelector('.voice-seat-av-wrap');
+        if (!wrap) return;
+        let overlay = wrap.querySelector('.voice-seat-mute-overlay');
         if (isMuted && !overlay) {
             overlay = document.createElement('div');
             overlay.className = 'voice-seat-mute-overlay';
             overlay.innerHTML = '<i class="fas fa-microphone-slash"></i>';
-            seatEl.appendChild(overlay);
+            wrap.appendChild(overlay);
         } else if (!isMuted && overlay) {
             overlay.remove();
         }
