@@ -529,16 +529,18 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function renderVoiceSeatContent(seatEl, seatData) {
         const isAdminSeat = seatEl.dataset.isAdminSeat === '1';
         const seatNo = seatEl.dataset.seat;
-        seatEl.classList.remove('occupied-seat', 'my-seat', 'locked-seat');
+        seatEl.classList.remove('occupied-seat', 'my-seat', 'locked-seat', 'empty-seat');
         seatEl.dataset.isLocked = '0';
         delete seatEl.dataset.userId;
         seatEl.title = '';
+        const isHostSeat = seatEl.classList.contains('host-seat');
 
         if (seatData && seatData.isLocked) {
             seatEl.classList.add('locked-seat');
             seatEl.dataset.isLocked = '1';
             // ✅ رقم المقعد يبقى ظاهراً حتى مقفلاً (يساعد المضيف/المسؤول على تمييز أي مقعد يفتح)
-            seatEl.innerHTML = `<div class="voice-seat-av-wrap"><i class="fas fa-lock"></i><span class="voice-seat-no">${seatNo}</span></div>`;
+            // — إلا مقعد المضيف نفسه (طلب صريح، بند 4: "مقعد المضيف بلا رقم" مطلقاً)
+            seatEl.innerHTML = `<div class="voice-seat-av-wrap"><i class="fas fa-lock"></i>${isHostSeat ? '' : `<span class="voice-seat-no">${seatNo}</span>`}</div>`;
             seatEl.title = 'مقعد مقفل';
             return;
         }
@@ -562,7 +564,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             // الحقيقي خلف الصورة، تاج المضيف إن وُجد، الصورة نفسها، شارة المايك الدائمة، رقم
             // المقعد) — الاسم وعداد الدعم تدفّق عادي أسفله كإخوة بنفس .voice-seat (مطابقة
             // النموذج الإلزامي: .seat__badge فوق المضيف، .seat__mic دائمة الحضور، .seat__sup صف أسفل الاسم)
-            const isHostSeat = seatEl.classList.contains('host-seat');
+            // 🐛 مراجعة بصرية (طلب صريح، بند 4): رقم المقعد لا يُعرَض إطلاقاً لمقعد المضيف —
+            // شارة التاج/الأدمن فوقه (.voice-seat-host-badge) تكفي لتمييزه
             seatEl.innerHTML = `
                 <div class="voice-seat-av-wrap">
                     <span class="voice-seat-wave"></span>
@@ -570,7 +573,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     ${isHostSeat ? '<i class="fas fa-crown voice-seat-host-badge"></i>' : ''}
                     <img src="${seatData.user.profileImage}" class="voice-seat-avatar ${seatData.user.activeFrameClass || ''}" alt="${safeName}" loading="lazy" decoding="async">
                     <span class="voice-seat-mic-badge ${seatData.isMuted ? 'muted' : ''}"><i class="fas ${seatData.isMuted ? 'fa-microphone-slash' : 'fa-microphone'}"></i></span>
-                    <span class="voice-seat-no">${seatNo}</span>
+                    ${isHostSeat ? '' : `<span class="voice-seat-no">${seatNo}</span>`}
                 </div>
                 <span class="voice-seat-name">${safeName}</span>
                 <span class="seat-support-row">${formatCompactPoints(supportTotal)}</span>
@@ -578,6 +581,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         } else {
             delete seatEl.dataset.userId;
             delete seatEl.dataset.supportTotal; // ✅ يصفّر عداد الدعم بمجرد مغادرة المقعد
+            // 🐛 مراجعة بصرية (طلب صريح، بند 4 — مطابقة §.seat__empty بالنموذج): كل مقعد فاضٍ
+            // (بما فيها مقعد الإدارة المحجوز) يحمل .empty-seat كي تظهر حدوده المتقطعة بوضوح
+            seatEl.classList.add('empty-seat');
             // ✅ بغرف المستخدمين (وليس الرسمية) المقعد الفاضي يعرض "+" بالدائرة، والنص تحتها
             // "دعوة" للمضيف (يدعو أحد الحاضرين لهذا المقعد تحديداً) أو "انضمام" لبقية
             // المستخدمين (يرسل طلب صعود) — إلا لمقعد الإدارة بالغرفة الرسمية فقط
@@ -2013,8 +2019,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         el.className = `room-chat-message ${bubbleClass}`;
         const safeName = escapeHtml(msg.sender?.username || '');
         const safeContent = escapeHtml(msg.content || '');
-        const avatar = msg.sender?.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
-        const frameClass = msg.sender?.activeFrameClass || '';
         // ✅ طلب صريح (بند 6 — مطابقة §.lvb بالنموذج): شارة مستوى المرسل — ذهبي-وردي
         // للمستويات العالية (hi)، أزرق-بنفسجي لبقية المستويات
         const senderLevel = Number(msg.sender?.level) || 1;
@@ -2023,20 +2027,23 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // (مطابقة §.who.vip بالنموذج)، بدل لون hash الثابت للمستخدمين العاديين
         const isTopSupporterSender = currentRoomTopSupporters.slice(0, 2).some(s => s.userId === senderId);
         const nameStyle = isTopSupporterSender ? '' : ` style="color:${getChatNameColor(senderId)}"`;
+        // 🐛 مراجعة بصرية (طلب صريح، بند 5 — مطابقة §.msg بالنموذج حرفياً): بلا صورة للمرسل
+        // إطلاقاً (كانت <img class="room-chat-msg-avatar"> هنا) — فقاعة مدمجة بعرض محتواها فقط
         el.innerHTML = `
-            <img src="${avatar}" class="room-chat-msg-avatar ${frameClass}" alt="">
             <p class="room-chat-msg-line">
                 ${levelBadge}${isHostMsg ? '<i class="fas fa-crown room-chat-host-badge" title="المضيف"></i>' : ''}<span class="room-chat-msg-name ${isTopSupporterSender ? 'vip' : ''}"${nameStyle}>${safeName}</span><span class="room-chat-msg-text">${safeContent}</span>
             </p>
         `;
-        // ✅ النقر على صورة المُعلِّق بالدردشة يفتح ملفه الشخصي (سياق الغرفة) — نفس مصدر النافذة
-        // المستخدَم للمقاعد والمشاهدين، لتجربة موحّدة أينما نقرت على صورة أحد داخل الغرفة
         if (senderId) {
-            el.querySelector('.room-chat-msg-avatar').addEventListener('click', () => {
+            // ✅ الضغط على الاسم يفتح الملف الشخصي الآن (بدل الضغط على الصورة المحذوفة) — نفس
+            // نافذة الملف الشخصي المستخدَمة للمقاعد والمشاهدين لتجربة موحّدة. stopPropagation
+            // يمنع تفعيل منشن الرد السريع لسطر الرسالة بالأسفل بنفس الضغطة
+            el.querySelector('.room-chat-msg-name').addEventListener('click', (e) => {
+                e.stopPropagation();
                 showUserProfileSheet(currentVoiceRoomId, null, senderId, msg.sender?.username || '');
             });
-            // ✅ النقر على نص الرسالة نفسها (وليس الصورة فقط) يجهّز منشن رد سريع فوراً بحقل
-            // الكتابة ويفتح الكيبورد — بلا حاجة للمرور عبر نافذة الملف الشخصي لمجرد الرد
+            // ✅ النقر على نص الرسالة نفسها يجهّز منشن رد سريع فوراً بحقل الكتابة ويفتح الكيبورد
+            // — بلا حاجة للمرور عبر نافذة الملف الشخصي لمجرد الرد
             if (senderId !== myUserId) {
                 el.querySelector('.room-chat-msg-line').addEventListener('click', () => {
                     const input = document.getElementById('room-chat-input');
@@ -4102,6 +4109,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ آخر أداة رميتها أنا بهذي المعركة (لعرض حالة "آخر استخدام" بالمتجر محلياً دون انتظار
     // خطأ من السيرفر لو ضغطت زراً معطَّلاً) — يُصفَّر تلقائياً عند انتهاء مدتها بعدّاد المتجر نفسه
     let myPkThrowCooldown = null; // { item, expiresAt }
+    // 🐛 مراجعة بصرية (طلب صريح): أفضل الداعمين انتقلوا من صف دائم الظهور إلى ورقة سفلية
+    // تُفتح بالضغط على شريط PK المضغوط — هذا المفتاح يتتبّع إن كانت مفتوحة حالياً كي تُحدَّث
+    // حيّةً مع كل هدية جديدة بدل إعادة بنائها من الصفر في كل تحديث نقاط
+    let pkFansSheetOpen = false;
     // ✅ ذاكرة خفيفة محلية (id → {username, profileImage, activeFrameClass}) لاستكمال هوية
     // "أفضل 3 داعمين" بلا أي استعلام إضافي — تُغذَّى تلقائياً من أي بيانات هوية تعبر هذي الجلسة
     // بالفعل (قائمة المشاهدين، إعلانات الهدايا، الجالسين بالمقاعد)، وتتدهور بأناقة لمن لم تُرَ هويته بعد
@@ -4329,49 +4340,35 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
         let bar = document.getElementById('pk-battle-bar');
         if (!bar) {
-            bar = document.createElement('div');
+            bar = document.createElement('section');
             bar.id = 'pk-battle-bar';
-            bar.className = 'pk-live-bar room';
-            const usTag = currentPkBattle.recordUs ? `غرفتكم · ${currentPkBattle.recordUs.wins}ف ${currentPkBattle.recordUs.losses}خ` : 'غرفتكم';
-            const themTag = currentPkBattle.recordThem ? `الخصم · ${currentPkBattle.recordThem.wins}ف ${currentPkBattle.recordThem.losses}خ` : 'الخصم';
+            // 🐛 إصلاح جوهري: ".pk" حرفياً يتصادم مع صنف بطاقة نتيجة المعركة (أسفل CSS)
+            // ويضخّم ارتفاع الشريط لـ600px+ (راجع تعليق .pk-mini بـinput.css) — ".pk-mini" فريد
+            bar.className = 'pk-mini';
             bar.innerHTML = `
-                <div class="pk">
-                    <div class="pk__head">
-                        <div class="side side--us">
-                            <div class="pk-live-avatar-wrap">
-                                <img class="av" id="pk-live-us-av" src="${currentPkBattle.roomUs.coverImage || '/images/default-avatar.png'}">
-                                <div class="pk-live-effect-ring" id="pk-live-effect-us" data-side="us" hidden><i></i><svg class="pk-live-effect-svg" viewBox="0 0 36 36"><circle class="pk-live-effect-track" cx="18" cy="18" r="15.5"></circle><circle class="pk-live-effect-progress" data-effect-progress cx="18" cy="18" r="15.5"></circle></svg></div>
-                            </div>
-                            <div><div class="nm">${escapeHtml(currentPkBattle.roomUs.name || '')}</div><div class="tag">${escapeHtml(usTag)}</div></div>
-                        </div>
-                        <div class="clock" id="pk-live-clock"><b>PK</b><span id="pk-live-time">00:00</span></div>
-                        <div class="side side--them">
-                            <div class="pk-live-avatar-wrap">
-                                <img class="av" id="pk-live-them-av" src="${currentPkBattle.roomThem.coverImage || '/images/default-avatar.png'}">
-                                <div class="pk-live-effect-ring" id="pk-live-effect-them" data-side="them" hidden><i></i><svg class="pk-live-effect-svg" viewBox="0 0 36 36"><circle class="pk-live-effect-track" cx="18" cy="18" r="15.5"></circle><circle class="pk-live-effect-progress" data-effect-progress cx="18" cy="18" r="15.5"></circle></svg></div>
-                            </div>
-                            <div><div class="nm">${escapeHtml(currentPkBattle.roomThem.name || '')}</div><div class="tag">${escapeHtml(themTag)}</div></div>
-                        </div>
+                <div class="pk__row">
+                    <span>${escapeHtml(currentPkBattle.roomUs.name || '')}</span>
+                    <span class="pk__clock" id="pk-live-clock"><span id="pk-live-time">00:00</span></span>
+                    <span>${escapeHtml(currentPkBattle.roomThem.name || '')}</span>
+                </div>
+                <div class="pk__track" id="pk-live-bar-wrap">
+                    <div class="pk__bar">
+                        <div class="pk__us" id="pk-live-bar-us"></div>
+                        <div class="pk__them"></div>
+                        <span class="a" id="pk-live-pts-us">0</span>
+                        <span class="b" id="pk-live-pts-them">0</span>
+                        <i class="pk__knot" id="pk-live-knot" style="right:50%"></i>
                     </div>
-                    <div class="bar-wrap" id="pk-live-bar-wrap">
-                        <div class="alert alert--us" id="pk-live-alert-us"><img src="/assets/pk/emoji/anxious_face_with_sweat_3d.webp"><span>الخصم يقترب!</span></div>
-                        <div class="alert alert--them" id="pk-live-alert-them"><img src="/assets/pk/emoji/anxious_face_with_sweat_3d.webp"><span>الخصم يقترب!</span></div>
-                        <div class="bar"><div class="bar__us" id="pk-live-bar-us"></div><div class="bar__them"></div></div>
-                        <div class="pts pts--us" id="pk-live-pts-us" style="top:76px;height:34px">0</div>
-                        <div class="pts pts--them" id="pk-live-pts-them" style="top:76px;height:34px">0</div>
-                        <div class="knot" id="pk-live-knot" style="right:50%">
-                            <div class="knot__spark"></div>
-                            <div class="rider" id="pk-live-rider"><div class="rider__label" id="pk-live-rider-lbl"></div><img id="pk-live-rider-img" src="/assets/pk/emoji/crossed_swords_3d.webp"></div>
-                        </div>
-                        <div class="flash" id="pk-live-flash"></div>
-                        <div class="fx" id="pk-live-fx"></div>
-                    </div>
-                    <div class="fans">
-                        <div class="fans__col fans__col--us" id="pk-live-fans-us"></div>
-                        <div class="fans__col fans__col--them" id="pk-live-fans-them"></div>
-                    </div>
+                    <span class="pk__rider" id="pk-live-rider" style="right:50%">
+                        <span class="pk__rider-lbl" id="pk-live-rider-lbl"></span>
+                        <img id="pk-live-rider-img" src="/assets/pk/emoji/crossed_swords_3d.webp">
+                    </span>
+                    <div class="pk__fx" id="pk-live-fx"></div>
+                    <div class="pk__flash" id="pk-live-flash"></div>
                 </div>
             `;
+            // ✅ طلب صريح: أفضل الداعمين يظهرون عند الضغط على الشريط (ورقة سفلية)، لا دائماً
+            bar.querySelector('#pk-live-bar-wrap').addEventListener('click', openPkFansSheet);
             // ✅ طلب صريح: شريط PK يأتي بعد المقاعد مباشرة بتسلسل التدفّق (قبل مسار الهدايا/الدردشة)
             // — لا بعد الرأس كما كان سابقاً، كي يطابق ترتيب النموذج الإلزامي بالضبط
             const seatsGrid = document.getElementById('voice-chat-grid');
@@ -4386,9 +4383,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         }
 
         pkRenderScore();
-        pkDrawFans('us');
-        pkDrawFans('them');
         pkRenderEffectBadges();
+        pkRenderFansSheetIfOpen();
     }
 
     // ✅ النقاط + الشريط + نقطة الالتقاء — من lastKnownScore المجمَّد (لا من us/them الخام التي
@@ -4400,6 +4396,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const tot = us + them, share = tot ? us / tot : 0.5;
         bar.querySelector('#pk-live-bar-us').style.width = (share * 100) + '%';
         bar.querySelector('#pk-live-knot').style.right = (share * 100) + '%';
+        // ✅ .pk__rider شقيق لـ.pk__bar لا طفل بداخله (كي لا يقصّه overflow:hidden الخاص
+        // بالشريط)، لذا يُحاذى يدوياً لنفس نسبة العقدة بدل الاعتماد على التموضع المتداخل
+        bar.querySelector('#pk-live-rider').style.right = (share * 100) + '%';
 
         const ptsUs = bar.querySelector('#pk-live-pts-us'), ptsThem = bar.querySelector('#pk-live-pts-them');
         const prevUs = parseInt(ptsUs.dataset.rendered || '0', 10);
@@ -4409,10 +4408,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (us > prevUs) { ptsUs.classList.remove('bump'); void ptsUs.offsetWidth; ptsUs.classList.add('bump'); }
         if (them > prevThem) { ptsThem.classList.remove('bump'); void ptsThem.offsetWidth; ptsThem.classList.add('bump'); }
         ptsThem.classList.toggle('pk-live-fogged', currentPkBattle.them === null);
-    }
-
-    function pkToggleAlert(side, on) {
-        document.getElementById('pk-battle-bar')?.querySelector(side === 'us' ? '#pk-live-alert-us' : '#pk-live-alert-them')?.classList.toggle('on', !!on);
     }
 
     // ✅ يُحرّك الراكب (الإيموجي عند نقطة الالتقاء) — نفس setRider() بالنموذج الإلزامي حرفياً:
@@ -4440,26 +4435,33 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (!bar) return;
         const fx = bar.querySelector('#pk-live-fx'), knot = bar.querySelector('#pk-live-knot'), wrap = bar.querySelector('#pk-live-bar-wrap');
         const knotRightPct = parseFloat(knot.style.right || '50');
-        const x0 = wrap.clientWidth * (1 - knotRightPct / 100), y0 = 88;
+        // ✅ .pk__fx/.pk__flash الآن طفلا .pk نفسه (لا .pk__bar المقصوص بـoverflow:hidden) كي
+        // لا يُقصّ انفجار الإيموجيات وهو يطير للأعلى فوق الشريط الرفيع — إحداثيات نقطة الانطلاق
+        // تُحسَب نسبةً لصندوق .pk الفعلي (clientWidth لعرض X، فرق top لارتفاع Y) بدل قيم px
+        // ثابتة كانت مصمَّمة للوحة الكبيرة الأصلية (ارتفاع 290px)
+        const pkRect = bar.getBoundingClientRect(), wrapRect = wrap.getBoundingClientRect();
+        const x0 = wrap.clientWidth * (1 - knotRightPct / 100);
+        const y0 = (wrapRect.top - pkRect.top) + wrapRect.height / 2;
         const set = toward === 'us'
             ? ['collision', 'rocket', 'fire', 'face_with_steam_from_nose', 'hot_face', 'flexed_biceps']
             : ['collision', 'rocket', 'fire', 'face_screaming_in_fear', 'hot_face', 'flexed_biceps'];
         const flash = bar.querySelector('#pk-live-flash');
         flash.style.setProperty('--x', x0 + 'px');
+        flash.style.setProperty('--y', y0 + 'px');
         flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on');
         for (let i = 0; i < 9; i++) {
             const name = set[i % set.length];
             const img = document.createElement('img');
             img.src = `/assets/pk/emoji/${name}${name === 'flexed_biceps' ? '_3d_default' : '_3d'}.webp`;
-            img.style.left = (x0 - 23) + 'px';
-            img.style.top = (y0 - 23) + 'px';
+            img.style.left = (x0 - 14) + 'px';
+            img.style.top = (y0 - 14) + 'px';
             fx.appendChild(img);
             const dir = toward === 'us' ? 1 : -1;
-            const dx = dir * (40 + Math.random() * 130), dy = -(40 + Math.random() * 120), rot = (Math.random() - 0.5) * 120, s = 0.7 + Math.random() * 0.8;
+            const dx = dir * (30 + Math.random() * 90), dy = -(30 + Math.random() * 90), rot = (Math.random() - 0.5) * 120, s = 0.6 + Math.random() * 0.6;
             const anim = img.animate([
                 { transform: 'translate(0,0) scale(.2) rotate(0)', opacity: 0 },
                 { transform: `translate(${dx * .5}px,${dy * .7}px) scale(${s}) rotate(${rot / 2}deg)`, opacity: 1, offset: .35 },
-                { transform: `translate(${dx}px,${dy + 60}px) scale(${s * .8}) rotate(${rot}deg)`, opacity: 0 }
+                { transform: `translate(${dx}px,${dy + 40}px) scale(${s * .8}) rotate(${rot}deg)`, opacity: 0 }
             ], { duration: 1400 + Math.random() * 400, easing: 'cubic-bezier(.2,.8,.3,1)' });
             anim.onfinish = () => img.remove();
         }
@@ -4478,8 +4480,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const tot = us + them, share = tot ? us / tot : 0.5, gap = Math.abs(share - 0.5) * 2;
         const leader = share > 0.5 ? 'us' : (share < 0.5 ? 'them' : null);
         const closing = prevShare != null && leader && ((leader === 'us' && share < prevShare) || (leader === 'them' && share > prevShare));
-        pkToggleAlert('us', leader === 'us' && gap < 0.08 && closing);
-        pkToggleAlert('them', leader === 'them' && gap < 0.08 && closing);
         if (currentPkBattle.pkFinal) return pkSetRider('alarm_clock', 'آخر 10 ثوانٍ!', true);
         if (tot < 1 || gap < 0.01) return pkSetRider('crossed_swords');
         if (gap < 0.08 && closing) return pkSetRider('face_with_steam_from_nose', 'الخصم يقترب!');
@@ -4488,15 +4488,18 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         return pkSetRider('smiling_face_with_sunglasses');
     }
 
-    // ✅ أفضل 3 داعمين لصفّ معيّن — منفَّذ من drawFans() بالنموذج الإلزامي: تاج على الأول،
-    // ترقيم حيّ، وعلامة "+المبلغ" + قفزة (pop) عند أي ارتفاع بنقاط الداعم. يُحدِّث عناصر DOM
-    // الموجودة بمعرّف الداعم (لا يعيد الرسم) ويُزيل من خرج عن أفضل 3 فقط
-    function pkDrawFans(side) {
-        const bar = document.getElementById('pk-battle-bar');
-        if (!bar || !currentPkBattle) return;
-        const col = bar.querySelector(side === 'us' ? '#pk-live-fans-us' : '#pk-live-fans-them');
-        if (!col) return;
+    // 🐛 مراجعة بصرية (طلب صريح): أفضل 3 داعمين لصفّ معيّن — نفس منطق drawFans() بالنموذج
+    // الإلزامي حرفياً (تاج على الأول، ترقيم حيّ، علامة "+المبلغ" + قفزة pop عند أي ارتفاع
+    // بالنقاط، تحديث عناصر DOM الموجودة بمعرّف الداعم لا إعادة رسم كاملة) لكن داخل ورقة
+    // سفلية تُفتح بالضغط (راجع openPkFansSheet) بدل صف دائم الظهور يهدر مساحة الشاشة
+    function pkRenderFansColumn(side, col) {
+        if (!col || !currentPkBattle) return;
         const list = [...(currentPkBattle.topFans?.[side] || [])].sort((a, b) => (b.points || 0) - (a.points || 0));
+        if (!list.length) {
+            col.innerHTML = '<div class="pk-fans-sheet-empty">لا يوجد داعمون بعد</div>';
+            return;
+        }
+        if (col.querySelector('.pk-fans-sheet-empty')) col.innerHTML = '';
         const seenIds = new Set();
         list.forEach((f, i) => {
             const uid = String(f.userId);
@@ -4505,22 +4508,23 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const prevPoints = el ? parseInt(el.dataset.points || '0', 10) : 0;
             if (!el) {
                 el = document.createElement('div');
-                el.className = 'fan';
+                el.className = 'pk-fans-sheet-fan';
                 el.dataset.uid = uid;
-                el.innerHTML = `<img class="fan__crown" src="/assets/pk/emoji/crown_3d.webp"><div class="fan__av"><img><span class="fan__rk"></span></div><div class="fan__v"></div>`;
+                el.innerHTML = `<img class="pk-fans-sheet-fan__crown" src="/assets/pk/emoji/crown_3d.webp"><div class="pk-fans-sheet-fan__av"><img><span class="pk-fans-sheet-fan__rk"></span></div><div class="pk-fans-sheet-fan__meta"><div class="pk-fans-sheet-fan__name"></div><div class="pk-fans-sheet-fan__pts"></div></div>`;
                 col.appendChild(el);
             }
             el.style.order = i;
             el.dataset.rank = i + 1;
             const cached = pkResolveUserDisplay(uid);
-            const avImg = el.querySelector('.fan__av img');
+            const avImg = el.querySelector('.pk-fans-sheet-fan__av img');
             avImg.src = f.profileImage || cached.profileImage;
             avImg.className = f.activeFrameClass || cached.activeFrameClass || '';
-            el.querySelector('.fan__rk').textContent = i + 1;
-            el.querySelector('.fan__v').textContent = (f.points || 0).toLocaleString('en-US');
+            el.querySelector('.pk-fans-sheet-fan__rk').textContent = i + 1;
+            el.querySelector('.pk-fans-sheet-fan__name').textContent = f.username || cached.username || 'داعم';
+            el.querySelector('.pk-fans-sheet-fan__pts').textContent = (f.points || 0).toLocaleString('en-US');
             el.dataset.points = f.points || 0;
             if ((f.points || 0) > prevPoints) {
-                const avEl = el.querySelector('.fan__av');
+                const avEl = el.querySelector('.pk-fans-sheet-fan__av');
                 avEl.classList.remove('pop'); void avEl.offsetWidth; avEl.classList.add('pop');
                 if (!pkPrefersReducedMotion()) {
                     const plus = document.createElement('span');
@@ -4531,7 +4535,52 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 }
             }
         });
-        col.querySelectorAll('.fan').forEach(el => { if (!seenIds.has(el.dataset.uid)) el.remove(); });
+        col.querySelectorAll('.pk-fans-sheet-fan').forEach(el => { if (!seenIds.has(el.dataset.uid)) el.remove(); });
+    }
+
+    // ✅ تُحدَّث الورقة حيّةً مع كل هدية جديدة فقط إن كانت مفتوحة بالفعل — لا تُبنى أبداً من
+    // renderPkBar() نفسها كي لا "تظهر دائماً" خلافاً للطلب الصريح
+    function pkRenderFansSheetIfOpen() {
+        if (!pkFansSheetOpen) return;
+        pkRenderFansColumn('us', document.getElementById('pk-fans-sheet-us'));
+        pkRenderFansColumn('them', document.getElementById('pk-fans-sheet-them'));
+    }
+
+    // ✅ ورقة سفلية بنفس نمط أوراق PK الأخرى الموجودة بالفعل (.pk-contract-sheet) — تُفتح
+    // بالضغط على شريط التقدّم المضغوط
+    function openPkFansSheet() {
+        if (!currentPkBattle) return;
+        document.getElementById('pk-fans-sheet-overlay')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = 'pk-fans-sheet-overlay';
+        overlay.innerHTML = `
+            <div class="pk-contract-sheet w-full max-w-sm max-h-[80vh] overflow-y-auto">
+                <div class="pk-contract-sheet-header">
+                    <h3 class="pk-contract-sheet-title"><i class="fas fa-trophy"></i> أفضل الداعمين بالمعركة</h3>
+                    <p class="pk-contract-sheet-sub">يتحدّث تلقائياً مع كل هدية</p>
+                </div>
+                <div class="pk-fans-sheet-grid">
+                    <div class="pk-fans-sheet-col pk-fans-sheet-col--us">
+                        <div class="pk-fans-sheet-col-title">${escapeHtml(currentPkBattle.roomUs.name || 'غرفتكم')}</div>
+                        <div id="pk-fans-sheet-us"></div>
+                    </div>
+                    <div class="pk-fans-sheet-col pk-fans-sheet-col--them">
+                        <div class="pk-fans-sheet-col-title">${escapeHtml(currentPkBattle.roomThem.name || 'الخصم')}</div>
+                        <div id="pk-fans-sheet-them"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+        overlay.addEventListener('click', (e) => { if (e.target.id === 'pk-fans-sheet-overlay') closePkFansSheet(); });
+        document.body.appendChild(overlay);
+        pkFansSheetOpen = true;
+        pkRenderFansColumn('us', document.getElementById('pk-fans-sheet-us'));
+        pkRenderFansColumn('them', document.getElementById('pk-fans-sheet-them'));
+    }
+
+    function closePkFansSheet() {
+        pkFansSheetOpen = false;
+        document.getElementById('pk-fans-sheet-overlay')?.remove();
     }
 
     // ✅ ساعة الشريط — من endsAt الحقيقي القادم من الخادم حصراً (طلب صريح)، لا مؤقت عميل
@@ -4617,6 +4666,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         myPkThrowCooldown = null;
         document.getElementById('pk-battle-bar')?.remove();
         document.getElementById('pk-item-store-modal')?.remove();
+        closePkFansSheet();
     }
 
     // ✅ نافذة نتيجة دوري PK الأسبوعي — منفَّذة حرفياً من نموذج التصميم الإلزامي
