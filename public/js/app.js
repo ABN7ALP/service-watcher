@@ -2129,9 +2129,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     function renderRoomJoinNotice({ username }) {
-        // 🐛 مراجعة بصرية (طلب صريح، الجولة 3 — بند 2): .room-join-lane المنفصل سابقاً أُزيل —
-        // سطر الدخول الآن طفل لنفس المسار المشترك .room-gift-lane (أسفل شريط الهدية إن ظهر
-        // بنفس اللحظة)، فلا يغطيه شريط الهدية الأعلى z-index منه بعد الآن
+        // ✅ إصلاح "الصفحة تنزل مع إشعار الهدية" (طلب صريح): سطر الدخول طفل عمود flex عادي
+        // بداخل .room-gift-lane (height:0 ثابت بلا أي JS يغيّره — راجع تعليق .room-gift-lane
+        // بـinput.css)، فظهوره/اختفاؤه لا يُحرّك الدردشة بكسل واحد أبداً
         const lane = document.getElementById('room-gift-lane');
         if (!lane) { roomJoinNoticeShowing = false; return; }
         let el = document.getElementById('room-join-notice');
@@ -2144,44 +2144,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         roomJoinNoticeLastShownAt = Date.now();
         el.classList.remove('on');
         el.innerHTML = `🚪 <b>${escapeHtml(username || '')}</b> دخلت الغرفة`;
-        requestAnimationFrame(() => { el.classList.add('on'); syncRoomNoticeLane(); });
+        requestAnimationFrame(() => { el.classList.add('on'); });
         setTimeout(() => {
             el.classList.remove('on');
-            syncRoomNoticeLane();
             setTimeout(() => {
                 roomJoinNoticeShowing = false;
                 processRoomJoinNoticeQueue();
             }, 400); // ✅ يطابق مدة انتقال الاختفاء بـCSS (.room-join-notice{transition:.4s})
         }, 2400);
-    }
-
-    // ✅ طلب صريح (الجولة 3 — بند 2): مصدر الحقيقة الوحيد لموضع/ارتفاع مسار الإشعارات
-    // المشترك (.room-gift-lane يحتضن شريط الهدية + سطر الدخول معاً). يُستدعى من كلا المسارين
-    // (ظهور/اختفاء شريط الهدية، ظهور/اختفاء سطر الدخول) — الشريط دائماً أعلى (top:0 من CSS)،
-    // وسطر الدخول يُموضَع أسفله تحديداً فقط إن كان الشريط ظاهراً فعلياً وقتها (قياس حقيقي
-    // بـoffsetHeight، لا قيمة مخمَّنة)؛ ارتفاع المسار نفسه يتّسع ليغطي أطول الاثنين الظاهرين
-    // حالياً فقط، فلا يُغطَّى أيٌّ منهما الآخر ولا أول رسالة بالدردشة أسفلهما
-    // 🐛 إصلاح: لا نقرأ notice.offsetTop بعد تغيير notice.style.top بنفس الاستدعاء — .room-join-notice
-    // يملك transition:.4s يشمل top (transition:.4s بلا تحديد خاصية = all)، فالقراءة الفورية
-    // بعد التغيير تعيد القيمة المتحرّكة لحظتها (لا تزال قريبة من القديمة، الانتقال لم يتقدّم
-    // زمنياً بعد) لا القيمة الهدف — نستخدم القيمة المقصودة (intendedNoticeTop) مباشرة بدل
-    // قراءتها من DOM؛ offsetHeight يبقى آمناً (الارتفاع نفسه بلا transition)
-    function syncRoomNoticeLane() {
-        const lane = document.getElementById('room-gift-lane');
-        if (!lane) return;
-        const banner = document.getElementById('room-gift-side-banner');
-        const notice = document.getElementById('room-join-notice');
-        const bannerVisible = !!banner && !banner.classList.contains('room-gift-banner-out');
-        let maxBottom = 0;
-        if (bannerVisible) maxBottom = banner.offsetTop + banner.offsetHeight;
-        if (notice) {
-            const intendedNoticeTop = bannerVisible ? maxBottom + 4 : 0;
-            notice.style.top = bannerVisible ? `${intendedNoticeTop}px` : '';
-            if (notice.classList.contains('on')) {
-                maxBottom = Math.max(maxBottom, intendedNoticeTop + notice.offsetHeight);
-            }
-        }
-        lane.style.height = maxBottom ? `${maxBottom + 4}px` : '0px';
     }
 
     // ✅ يُستدعى عند فتح أي غرفة — ينضم لقناة دردشتها ويحمّل آخر رسائلها
@@ -15132,7 +15102,6 @@ function mergeIntoShowingGiftBanner({ quantity }) {
     // ✅ نبضة صغيرة تلفت الانتباه للعدّاد المتزايد
     countEl?.classList.remove('room-gift-banner-count'); void countEl?.offsetWidth; countEl?.classList.add('room-gift-banner-count');
     el.classList.remove('room-gift-banner-out');
-    syncRoomNoticeLane();
     clearTimeout(roomGiftBannerState.timer);
     const key = roomGiftBannerState.key;
     const gen = roomGiftBannerGen;
@@ -15173,13 +15142,9 @@ function renderRoomGiftSideBanner({ fromUsername, fromProfileImage, toUsername, 
         giftImg.src = giftImgUrl;
         el.querySelector('.room-gift-banner-count').insertAdjacentElement('beforebegin', giftImg);
     }
-    // 🐛 مراجعة: كان يُضاف لـdocument.body بـposition:fixed;top:50% فيغطي المقاعد على الشاشات
-    // القصيرة — الآن يُضاف داخل مسار .room-gift-lane (height:0) بتدفّق الغرفة نفسه بين PK
-    // والدردشة (طابق النموذج الإلزامي)، فموضعه مضمون بلا تغطية أي مقعد مهما كان حجم الشاشة
+    // ✅ يُضاف داخل .room-gift-lane (height:0 ثابت — لا يُحرّك الدردشة أبداً، راجع تعليق
+    // .room-gift-lane بـinput.css)، فموضعه مضمون بلا تغطية أي مقعد ولا دفع الدردشة لأسفل
     (document.getElementById('room-gift-lane') || document.body).appendChild(el);
-    // ✅ طلب صريح (الجولة 3 — بند 2): يعيد ضبط موضع سطر «دخل الغرفة» أسفل الشريط إن كان
-    // ظاهراً بنفس اللحظة، وارتفاع المسار المشترك ليتّسع لهما معاً
-    syncRoomNoticeLane();
     roomGiftBannerShowing = true;
     roomGiftBannerGen++; // ✅ جيل جديد لكل عرض — يُبطل تلقائياً أي مؤقّت معلّق من عرض سابق
     const gen = roomGiftBannerGen;
@@ -15193,17 +15158,12 @@ function renderRoomGiftSideBanner({ fromUsername, fromProfileImage, toUsername, 
 function dismissRoomGiftSideBanner(el, key) {
     if (roomGiftBannerState?.key === key) roomGiftBannerState.leaving = true;
     el.classList.add('room-gift-banner-out');
-    // ✅ طلب صريح (الجولة 3 — بند 2): فور بدء خروج الشريط (قبل اكتمال حركة الانزلاق)، سطر
-    // الدخول يرتفع لمكان الشريط فوراً (الشريط صار بصنف room-gift-banner-out فلا يُحتسَب
-    // "ظاهراً" بعد الآن بمنطق syncRoomNoticeLane)
-    syncRoomNoticeLane();
     const gen = roomGiftBannerGen;
     setTimeout(() => {
         if (gen !== roomGiftBannerGen) return; // ✅ جيل جديد بدأ أثناء الاختفاء (مثلاً أُحيي أو صُفِّر) — تجاهل هذا التنظيف القديم
         el.remove();
         if (roomGiftBannerState?.key === key) roomGiftBannerState = null;
         roomGiftBannerShowing = false;
-        syncRoomNoticeLane();
         const next = roomGiftBannerQueue.shift();
         if (next) renderRoomGiftSideBanner(next); // ✅ يعرض العنصر التالي بالطابور فور انتهاء الحالي
     }, 400);

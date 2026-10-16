@@ -2862,18 +2862,19 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     vertical-align: -3px;
 }
 
-/* 🐛 مراجعة بصرية (طلب صريح، الجولة 3 — بند 2): سطر «دخل الغرفة» كان بمسار .room-join-lane
-   منفصل تماماً عن .room-gift-lane، وكلاهما height:0 متجاوران بالتدفّق — فنقطة ارتكازهما
-   (top:0 لكل منهما) كانت فعلياً نفس الإحداثي Y تماماً (ارتفاع صفري لا يُزيح أي شيء)، فشريط
-   الهدية (z-index:60) كان يغطي سطر الدخول (z-index:15) كلما ظهرا معاً، وكلاهما قد يمتدّ فوق
-   أول رسالة بالدردشة على الشاشات القصيرة. الحل: مسار واحد مشترك (.room-gift-lane نفسه يحتضن
-   الاثنين الآن) — سطر الدخول يُموضَع ديناميكياً (syncRoomNoticeLane بـapp.js) أسفل الشريط
-   تحديداً إن كان ظاهراً وقتها، وارتفاع المسار نفسه يُحسَب ليغطي أطولهما فيدفع الدردشة عملياً
-   تحتهما دائماً — بلا أي مساحة محجوزة دائمة حين لا يظهر أي منهما (يبقيان height:0 حينها) */
+/* 🐛 إصلاح "الصفحة تنزل مع إشعار الهدية" (طلب صريح، أولوية معيار قبول): الجولة السابقة كانت
+   تُغيّر ارتفاع .room-gift-lane ديناميكياً (JS) ليتّسع لشريط الهدية + سطر الدخول معاً، فيدفع
+   ذلك الدردشة فعلياً لأسفل بكل إشعار — هذا هو عطل "الصفحة تنزل". الحل الصحيح (مطابق
+   لـ.overlay بالنموذج الإلزامي docs/design/seat-duel-prototype.html): .room-gift-lane
+   يبقى height:0 **دائماً وبلا أي استثناء** (لا JS يلمس ارتفاعه بعد الآن — بُنية التدفّق لا
+   تتأثر إطلاقاً بأي عدد من العناصر بداخله). طفلاه (الشريط + سطر الدخول) عمود flex عادي
+   (لا position:absolute فردي لكل منهما بعد الآن) فيتراصّان تلقائياً بلا تداخل بينهما — لكن
+   لأن طول العمود صفر (height:0) مع overflow:visible (الافتراضي)، يفيضان بصرياً فوق أعلى
+   الدردشة بالضبط (الحدّ الأدنى اللازم لمنع تغطية أول رسالة: منطقة تلاشي الدردشة العلوية
+   -webkit-mask أصلاً تُلطّف هذا التراكب البصري) بلا احتساب أي ارتفاع لهما بتدفّق الصفحة
+   إطلاقاً — صندوق بارتفاع محدَّد صريح (0) لا يتأثر بفيضان محتواه مهما كبر، هذا أساس اللعبة.
+   pointer-events:none يضمن عدم حجب الضغط على أول رسالة دردشة تحتهما لحظة التراكب العابر */
 .room-join-notice {
-    position: absolute;
-    top: 0;
-    right: calc(var(--u, 9px) * .9);
     max-width: 70cqw;
     padding: 2px calc(var(--u, 9px) * .8);
     border-radius: 999px;
@@ -2886,26 +2887,30 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     opacity: 0;
     transform: translateX(30px);
     transition: .4s;
-    pointer-events: none;
 }
 .room-join-notice.on { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) { .room-join-notice { transition: opacity .2s; transform: none; } }
 
-/* 🐛 مراجعة PR #99: كان الشريط position:fixed;top:50% بمنتصف الشاشة رأسياً — يغطي المقاعد
-   مباشرة على الشاشات القصيرة (320×568). الآن مسار تدفّق بلا ارتفاع افتراضياً (.room-gift-lane،
-   مطابق لـ.lane بالنموذج الإلزامي) بين المقاعد/PK والدردشة، والشريط نفسه position:absolute
-   بداخله فقط قرب أعلى المسار. 🐛 مراجعة بصرية (الجولة 3، بند 2): يحتضن الآن أيضاً سطر «دخل
-   الغرفة» (كان بمسار .room-join-lane منفصل يتسبّب بتغطية الشريط له) — ارتفاع المسار نفسه
-   يُضبَط ديناميكياً (JS) ليتّسع لأطول العنصرين الظاهرين حالياً فقط، فلا يُغطّى أيٌّ منهما
-   الآخر ولا الدردشة، وبلا أي مساحة محجوزة حين لا يظهر أي منهما */
-.room-gift-lane { position: relative; flex: none; height: 0; z-index: 20; transition: height .2s ease; }
+.room-gift-lane {
+    position: relative;
+    flex: none;
+    height: 0;
+    overflow: visible;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start; /* ✅ dir=rtl بالصفحة (html) — flex-start يطابق فعلياً الحافة اليمنى بصرياً، نفس right: السابقة */
+    gap: 4px;
+    pointer-events: none; /* ✅ لا يحجب الضغط على أول رسالة دردشة تحته لحظة التراكب العابر */
+    /* 🐛 إصلاح دقيق: padding (بعكس margin) تُحسَب ضمن صندوق العنصر نفسه فتُضيف ارتفاعاً
+       فعلياً فوق height:0 الصريح (~7px كانت تُقاس بالاختبار الآلي) — margin على الأطفال
+       بالأسفل بدلاً منها يحقق نفس الإزاحة البصرية بلا إضافة أي ارتفاع لصندوق المسار نفسه */
+}
+.room-gift-lane > * { margin-top: calc(var(--u, 9px) * .8); margin-inline-end: calc(var(--u, 9px) * .9); }
 
 /* ✅ شريط إعلان الهدية — أسلوب TikTok Live، ينزلق من الجانب أعلى مساره ويختفي تلقائياً؛
    عند تكرار نفس الهدية من نفس المُرسل بفارق قصير يُزاد عداد ×N بدل إنشاء شريط جديد فوق القديم */
 .room-gift-side-banner {
-    position: absolute;
-    top: calc(var(--u, 9px) * .8);
-    right: calc(var(--u, 9px) * .9);
     z-index: 60;
     display: flex;
     align-items: center;
