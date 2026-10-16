@@ -9,8 +9,22 @@
 // (mock) قبل استيراد socketService لأن الملف يُسجِّل مُنظِّفَي ذاكرة مؤقّتين عند تحميله (غير
 // متعلقين بهذا الاختبار إطلاقاً) كان سيُبقيان عملية jest حيّة للأبد بلا --forceExit
 
+// 🛡️ طلب صريح بمراجعة PR (بند 2): finalizeActiveBattle/finalizeActiveSeatChallenge يجب أن
+// يستدعيا clearPkScoreThrottle/clearSeatDuelScoreThrottle من giftController — الدوال الأخرى
+// المُصدَّرة من هذا الملف (applyGiftToActiveBattle/applyGiftToRoomSupport/schedulePkScoreEmit)
+// غير مُستخدَمة إطلاقاً بمسارات finalize/sweep/retry المُختبَرة هنا (راجع معالج هدايا PK
+// بسطر socketService.js البعيد عنها)، فتمويه الوحدة كلها هنا آمن تماماً
+jest.mock('../../controllers/giftController', () => ({
+    applyGiftToActiveBattle: jest.fn(),
+    applyGiftToRoomSupport: jest.fn(),
+    applyGiftToActiveSeatChallenge: jest.fn(),
+    schedulePkScoreEmit: jest.fn(),
+    clearPkScoreThrottle: jest.fn(),
+    clearSeatDuelScoreThrottle: jest.fn()
+}));
+
 let socketService;
-let RoomBattle, SeatChallenge, VoiceRoom, pkLeagueEngine;
+let RoomBattle, SeatChallenge, VoiceRoom, pkLeagueEngine, giftController;
 
 beforeAll(() => {
     jest.spyOn(global, 'setInterval').mockImplementation(() => ({ unref: () => {} }));
@@ -19,11 +33,16 @@ beforeAll(() => {
     SeatChallenge = require('../../models/SeatChallenge');
     VoiceRoom = require('../../models/VoiceRoom');
     pkLeagueEngine = require('../../utils/pkLeagueEngine');
+    giftController = require('../../controllers/giftController');
 });
 
 // ✅ لا afterAll منفصل لاستعادة setInterval — jest.restoreAllMocks() بـafterEach أدناه
 // يستعيده تلقائياً فور نهاية أول اختبار (هو جاسوس (spy) كبقية الجواسيس بهذا الملف)
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+    jest.restoreAllMocks();
+    giftController.clearPkScoreThrottle.mockClear();
+    giftController.clearSeatDuelScoreThrottle.mockClear();
+});
 
 function fakeIo() {
     const emit = jest.fn();
@@ -74,6 +93,8 @@ describe('finalizeActiveBattle — استثناء داخل settleBattle', () => 
         expect(payloadA.league).toBeNull();
         expect(payloadB.league).toBeNull();
         expect(payloadA.outcome).toBe('win'); // scoreA(500) > scoreB(300)
+        // 🛡️ طلب صريح بمراجعة PR: finalizeActiveBattle يُلغي مؤقّت بثّ pk:score المؤجَّل فوراً
+        expect(giftController.clearPkScoreThrottle).toHaveBeenCalledWith('battle_1');
     });
 });
 
@@ -147,6 +168,8 @@ describe('finalizeActiveSeatChallenge — نفس الإصلاح الثلاثي �
 
         expect(io._emit).toHaveBeenCalledTimes(1);
         expect(io._emit).toHaveBeenCalledWith('seat-challenge-ended', expect.objectContaining({ challengeId: 'challenge_1' }));
+        // 🛡️ طلب صريح بمراجعة PR: finalizeActiveSeatChallenge يُلغي مؤقّت بثّ seat-duel:score المؤجَّل فوراً
+        expect(giftController.clearSeatDuelScoreThrottle).toHaveBeenCalledWith('challenge_1');
     });
 
     test('إنهاء مزدوج متزامن لنفس التحدي — بثّ واحد فقط', async () => {

@@ -15,7 +15,7 @@ const SystemSettings = require('../models/SystemSettings');
 // ✅ متجر أدوات معركة PK (قفاز/ضباب) يُعامِل القفاز "مثل الهدية حرفياً" (طلب صريح) — يستدعي
 // نفس خطّافات الهدية الحقيقية بدل تكرار منطق خصم/بث موازٍ؛ لا استدعاء عكسي من giftController
 // لهذا الملف فلا تسابق دائري بالتحميل (require)
-const { applyGiftToActiveBattle, applyGiftToRoomSupport, schedulePkScoreEmit } = require('../controllers/giftController');
+const { applyGiftToActiveBattle, applyGiftToRoomSupport, schedulePkScoreEmit, clearPkScoreThrottle, clearSeatDuelScoreThrottle } = require('../controllers/giftController');
 const { addExperience } = require('../utils/experienceManager'); // ✅✅✅ أضف هذا السطر هنا
 
 // =================================================
@@ -271,6 +271,7 @@ async function claimBattleForFinalize(battleId) {
 async function finalizeActiveBattle(io, battleId) {
     try {
         clearBattleTimer(activeBattleTimers, battleId);
+        clearPkScoreThrottle(battleId); // 🛡️ طلب صريح بمراجعة PR: لا بثّ pk:score متأخر بعد pk:result
         const battle = await claimBattleForFinalize(battleId);
         if (!battle) return;
 
@@ -607,6 +608,7 @@ async function claimSeatChallengeForFinalize(challengeId) {
 async function finalizeActiveSeatChallenge(io, challengeId) {
     try {
         clearSeatChallengeTimer(activeSeatChallengeTimers, challengeId);
+        clearSeatDuelScoreThrottle(challengeId); // 🛡️ طلب صريح بمراجعة PR: لا بثّ seat-duel:score متأخر بعد النتيجة
         let challenge = await claimSeatChallengeForFinalize(challengeId);
         if (!challenge) return;
         await challenge.populate('participants.user', 'username profileImage activeFrameClass');

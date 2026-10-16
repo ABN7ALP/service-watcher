@@ -13,7 +13,7 @@
 jest.useFakeTimers();
 
 const RoomBattle = require('../../models/RoomBattle');
-const { applyGiftToActiveBattle } = require('../giftController');
+const { applyGiftToActiveBattle, clearPkScoreThrottle } = require('../giftController');
 
 function makeIo() {
     const emitted = [];
@@ -34,6 +34,7 @@ function makeBattleDoc(state) {
         roomB: state.roomB,
         scoreA: state.scoreA,
         scoreB: state.scoreB,
+        status: state.status,
         battleMultiplier: () => 1,
         buildAudiencePayload() {
             return { scoreA: state.scoreA, scoreB: state.scoreB, fogged: { A: false, B: false } };
@@ -43,7 +44,7 @@ function makeBattleDoc(state) {
 }
 
 function mockBattle(battleId, roomA, roomB) {
-    const state = { _id: battleId, roomA, roomB, scoreA: 0, scoreB: 0 };
+    const state = { _id: battleId, roomA, roomB, scoreA: 0, scoreB: 0, status: 'active' };
     jest.spyOn(RoomBattle, 'findOne').mockImplementation(({ $or }) => {
         const roomId = $or[0].roomA || $or[1].roomB;
         if (roomId !== roomA && roomId !== roomB) return Promise.resolve(null);
@@ -53,6 +54,13 @@ function mockBattle(battleId, roomA, roomB) {
         if (filter._id !== battleId || filter.status !== 'active') return Promise.resolve(null);
         state.scoreA += update.$inc.scoreA || 0;
         state.scoreB += update.$inc.scoreB || 0;
+        return Promise.resolve(makeBattleDoc(state));
+    });
+    // 🛡️ طلب صريح بمراجعة PR: emitPkScoreNow يعيد قراءة الحالة الحقيقية عبر findById قبل أي
+    // بثّ (لا يثق باللقطة المحفوظة) — المحاكاة هنا تعكس نفس الحالة (state.status) المُستخدَمة
+    // بباقي الدوال، فتختبر اختبارات الحافة الأمامية/الخلفية المسار الطبيعي (معركة لا تزال active)
+    jest.spyOn(RoomBattle, 'findById').mockImplementation((id) => {
+        if (id !== battleId) return Promise.resolve(null);
         return Promise.resolve(makeBattleDoc(state));
     });
     return state;
@@ -101,6 +109,48 @@ describe('giftController: pk:score throttled batching', () => {
         expect(scoreEvents).toHaveLength(2); // بثّ واحد فقط لكل غرفة طوال النافذة كلها
         const forA = scoreEvents.find(e => e.room === 'room-chat-roomA_2');
         expect(forA.payload.us).toBe(180); // 100 (قبل النافذة) + 50 + 30، أحدث رقم لا أول رقم بالنافذة
+    });
+});
+
+describe('giftController: clearPkScoreThrottle + حماية الحالة — مراجعة PR بند 2', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('clearPkScoreThrottle تُلغي المؤقّت المؤجَّل — لا بثّ pk:score متأخر بعد إنهاء المعركة', async () => {
+        const io = makeIo();
+        mockBattle('battle_cleared', 'roomA_6', 'roomB_6');
+
+        await applyGiftToActiveBattle(io, 'roomA_6', 100, null); // حافة أمامية — تُبثّ فوراً
+        await flushMicrotasks();
+        io.emitted.length = 0;
+
+        await applyGiftToActiveBattle(io, 'roomA_6', 50, null); // يفتح نافذة 300ms (مؤقّت مؤجَّل)
+        await flushMicrotasks();
+
+        clearPkScoreThrottle('battle_cleared'); // ✅ محاكاة finalizeActiveBattle يُنهي المعركة الآن
+
+        await jest.advanceTimersByTimeAsync(300);
+        await flushMicrotasks();
+
+        expect(io.emitted.filter(e => e.event === 'pk:score')).toHaveLength(0);
+    });
+
+    test('فحص دفاعي مستقل: معركة لم تعد active وقت تنفيذ المؤقّت المؤجَّل — لا بثّ حتى بلا clearPkScoreThrottle', async () => {
+        const io = makeIo();
+        const state = mockBattle('battle_stale', 'roomA_7', 'roomB_7');
+
+        await applyGiftToActiveBattle(io, 'roomA_7', 100, null); // حافة أمامية
+        await flushMicrotasks();
+        io.emitted.length = 0;
+
+        await applyGiftToActiveBattle(io, 'roomA_7', 50, null); // يفتح نافذة 300ms
+        await flushMicrotasks();
+
+        state.status = 'ended'; // ✅ المعركة انتهت فعلياً قبل إطلاق المؤقّت المؤجَّل (بلا إلغاء)
+
+        await jest.advanceTimersByTimeAsync(300);
+        await flushMicrotasks();
+
+        expect(io.emitted.filter(e => e.event === 'pk:score')).toHaveLength(0);
     });
 });
 

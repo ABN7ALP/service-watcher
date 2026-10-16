@@ -4137,6 +4137,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let currentPkBattle = null;
     let pkCountdownInterval = null;
     let pkEffectTickInterval = null;
+    // 🛡️ طلب صريح بمراجعة PR (بند 3): الخادم يُعيد بثّ pk:result لمن ينضم/يعيد الاتصال خلال
+    // 60 ثانية من انتهاء معركته (راجع join-room-chat بـsocketService.js) — لو كان هذا العميل
+    // بعينه قد رأى هذي النتيجة بعينها فعلاً (مباشرة عبر socket أو عبر startPkResultPollFallback)،
+    // لا نعرضها مجدداً عند استقبال نفس battleId مرة أخرى؛ معركة جديدة بمعرّف مختلف تُعرض كالعادة
+    let lastShownPkResultBattleId = null;
     let pkLeadChangeFlashGuard = 0; // ✅ حماية عميل إضافية (طبقة ثانية فوق حماية الخادم) من تكرار الانفجار البصري
     // ✅ آخر أداة رميتها أنا بهذي المعركة (لعرض حالة "آخر استخدام" بالمتجر محلياً دون انتظار
     // خطأ من السيرفر لو ضغطت زراً معطَّلاً) — يُصفَّر تلقائياً عند انتهاء مدتها بعدّاد المتجر نفسه
@@ -4873,6 +4878,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     function showPkResultWindow(d) {
+        // 🛡️ طلب صريح بمراجعة PR (بند 3): نفس هذي النتيجة بعينها (battleId) سبق أن عُرضت —
+        // تتجنّب ازدواجاً لو وصلت مرتين (مثلاً: socket مباشر ثم إعادة بثّ الخادم عند انضمام/
+        // إعادة اتصال خلال نافذة الـ60 ثانية بـjoin-room-chat، أو كلا المسارين المباشر
+        // وشبكة أمان الاستطلاع تسابقا بلا تنسيق)
+        if (d.battleId && lastShownPkResultBattleId === d.battleId) return;
+        lastShownPkResultBattleId = d.battleId || lastShownPkResultBattleId;
         document.getElementById('pk-result-overlay')?.remove();
         const isWin = d.outcome === 'win';
         const isLose = d.outcome === 'loss';
@@ -5392,6 +5403,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let seatDuelBarCountdownInterval = null;
     let seatDuelResultCloseTimer = null;
     let seatDuelResultPollTimer = null;
+    // 🛡️ طلب صريح بمراجعة PR (بند 3): نفس فلسفة lastShownPkResultBattleId أعلى حرفياً، لكن
+    // لتحدي المقاعد — الخادم يُعيد بثّ seat-challenge-ended لمن ينضم/يعيد الاتصال خلال 60
+    // ثانية من انتهاء تحديه (راجع join-room-chat بـsocketService.js)
+    let lastShownSeatDuelResultChallengeId = null;
     let seatDuelRider = null;
     let seatDuelFinal = false;
 
@@ -5862,6 +5877,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // للخاسرين، أكبر داعم، العقاب، "ثأر فوري" (يفتح الإنشاء بنفس الفرق)، ورسالة نظام بالدردشة
     // =====================================================
     function showSeatDuelResultCard(data) {
+        // 🛡️ طلب صريح بمراجعة PR (بند 3): نفس حماية showPkResultWindow حرفياً — نتيجة التحدي
+        // بعينه (challengeId) سبق أن عُرضت فلا تتكرّر (socket مباشر + إعادة بثّ الخادم عند
+        // الانضمام/إعادة الاتصال خلال نافذة الـ60 ثانية، أو تسابق مع شبكة أمان الاستطلاع)
+        if (data.challengeId && lastShownSeatDuelResultChallengeId === data.challengeId) return;
+        lastShownSeatDuelResultChallengeId = data.challengeId || lastShownSeatDuelResultChallengeId;
         clearSeatDuelResultPoll();
         clearTimeout(seatDuelResultCloseTimer);
         removeDuelBar();

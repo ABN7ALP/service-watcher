@@ -108,6 +108,19 @@ function schedulePkScoreEmit(io, battle) {
     }, PK_SCORE_THROTTLE_MS - elapsed);
 }
 
+// ✅ 🛡️ طلب صريح بمراجعة PR: تُستدعى من finalizeActiveBattle (socketService.js) فور إنهاء
+// المعركة — تُلغي أي مؤقّت بثّ مؤجَّل (الحافة الخلفية) لم يُطلَق بعد وتحذف مدخل المعركة من
+// الخريطة، فلا يبثّ pk:score متأخراً بعد وصول pk:result أصلاً (كان سيُربك العميل: نقاط
+// "حيّة" تصل بعد عرض النافذة النهائية). راجع أيضاً فحص الحالة الدفاعي بـemitPkScoreNow أدناه
+// (الحماية الثانية المستقلة — تمنع البثّ حتى لو فات أوان هذا الإلغاء لأي سبب)
+function clearPkScoreThrottle(battleId) {
+    const key = battleId.toString();
+    const state = pkScoreThrottle.get(key);
+    if (state?.timer) clearTimeout(state.timer);
+    pkScoreThrottle.delete(key);
+}
+exports.clearPkScoreThrottle = clearPkScoreThrottle;
+
 // ✅ حدث قلب النتيجة — مرّة واحدة كحد أقصى كل 3 ثوانٍ لكل معركة (راجع PK_LEAD_CHANGE_MIN_GAP_MS)
 // كي لا يتكرّر الانفجار البصري بجنون لو تبادل الصفّان التقدّم عدة مرات بثوانٍ متقاربة. leader
 // يُرسَل بمنظور كل غرفة (us/them) بنفس أسلوب pk:score تماماً، لا A/B خام
@@ -128,12 +141,19 @@ function emitPkLeadChange(io, battle, newLeaderSide) {
 // leader لا يُعتَّم عمداً (قرار مصمَّم): يبقى التشويق اللحظي لمن يتقدّم ظاهراً حتى أثناء نافذة
 // الضباب، بينما الرقم الحقيقي وحده محجوب — العميل يُجمِّد تقييم الإيموجي أصلاً حين them=null
 async function emitPkScoreNow(io, battle) {
+    // 🛡️ طلب صريح بمراجعة PR: لا نثق باللقطة المحفوظة بنافذة التحكّم بالمعدّل (قد التُقطت
+    // قبل انتهاء المعركة فعلياً، والمؤقّت المؤجَّل يبثّ لاحقاً بعد الانتهاء لو فات أوان
+    // clearPkScoreThrottle لأي سبب) — نقرأ الحالة الحقيقية الآن مباشرة قبل أي بثّ؛ معركة
+    // لم تعد active (انتهت/أُلغيت) لا تبثّ pk:score إطلاقاً بعد وصول pk:result أصلاً
+    const RoomBattle = require('../models/RoomBattle');
+    const fresh = await RoomBattle.findById(battle._id);
+    if (!fresh || fresh.status !== 'active') return;
     const [payloadA, payloadB] = await Promise.all([
-        buildPkScorePayload(battle, 'A'),
-        buildPkScorePayload(battle, 'B')
+        buildPkScorePayload(fresh, 'A'),
+        buildPkScorePayload(fresh, 'B')
     ]);
-    io.to(`room-chat-${battle.roomA}`).emit('pk:score', payloadA);
-    io.to(`room-chat-${battle.roomB}`).emit('pk:score', payloadB);
+    io.to(`room-chat-${fresh.roomA}`).emit('pk:score', payloadA);
+    io.to(`room-chat-${fresh.roomB}`).emit('pk:score', payloadB);
 }
 
 async function buildPkScorePayload(battle, side) {
@@ -260,13 +280,32 @@ function scheduleSeatDuelScoreEmit(io, challenge) {
     }, PK_SCORE_THROTTLE_MS - elapsed);
 }
 
+// ✅ 🛡️ طلب صريح بمراجعة PR: تُستدعى من finalizeActiveSeatChallenge (socketService.js) فور
+// إنهاء التحدي — تُلغي أي مؤقّت بثّ مؤجَّل (الحافة الخلفية) لم يُطلَق بعد وتحذف مدخل التحدي
+// من الخريطة، فلا يبثّ seat-duel:score متأخراً بعد وصول النتيجة النهائية أصلاً. راجع أيضاً
+// فحص الحالة الدفاعي بـemitSeatDuelScoreNow أدناه (الحماية الثانية المستقلة)
+function clearSeatDuelScoreThrottle(challengeId) {
+    const key = challengeId.toString();
+    const state = seatDuelScoreThrottle.get(key);
+    if (state?.timer) clearTimeout(state.timer);
+    seatDuelScoreThrottle.delete(key);
+}
+exports.clearSeatDuelScoreThrottle = clearSeatDuelScoreThrottle;
+
 async function emitSeatDuelScoreNow(io, challenge) {
-    const [topA, topB] = await Promise.all([challenge.topSupporters('A', 3), challenge.topSupporters('B', 3)]);
-    io.to(`room-chat-${challenge.room}`).emit('seat-duel:score', {
-        challengeId: challenge._id.toString(),
-        scoreA: challenge.scoreA,
-        scoreB: challenge.scoreB,
-        participants: challenge.participants.map(p => ({ userId: p.user.toString(), score: p.score })),
+    // 🛡️ طلب صريح بمراجعة PR: لا نثق باللقطة المحفوظة (قد التُقطت قبل انتهاء التحدي فعلياً،
+    // والمؤقّت المؤجَّل يبثّ لاحقاً بعد الانتهاء لو فات أوان clearSeatDuelScoreThrottle لأي
+    // سبب) — نقرأ الحالة الحقيقية الآن مباشرة قبل أي بثّ؛ تحدٍ لم يعد active لا يبثّ
+    // seat-duel:score إطلاقاً بعد إعلان النتيجة أصلاً
+    const SeatChallenge = require('../models/SeatChallenge');
+    const fresh = await SeatChallenge.findById(challenge._id);
+    if (!fresh || fresh.status !== 'active') return;
+    const [topA, topB] = await Promise.all([fresh.topSupporters('A', 3), fresh.topSupporters('B', 3)]);
+    io.to(`room-chat-${fresh.room}`).emit('seat-duel:score', {
+        challengeId: fresh._id.toString(),
+        scoreA: fresh.scoreA,
+        scoreB: fresh.scoreB,
+        participants: fresh.participants.map(p => ({ userId: p.user.toString(), score: p.score })),
         topFans: { A: topA, B: topB }
     });
 }

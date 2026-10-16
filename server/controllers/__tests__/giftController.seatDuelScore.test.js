@@ -6,7 +6,7 @@
 jest.useFakeTimers();
 
 const SeatChallenge = require('../../models/SeatChallenge');
-const { applyGiftToActiveSeatChallenge } = require('../giftController');
+const { applyGiftToActiveSeatChallenge, clearSeatDuelScoreThrottle } = require('../giftController');
 
 function makeIo() {
     const emitted = [];
@@ -22,6 +22,7 @@ function makeChallengeDoc(state) {
         room: state.room,
         scoreA: state.scoreA,
         scoreB: state.scoreB,
+        status: state.status,
         participants: state.participants,
         topSupporters: async (team) => {
             const map = team === 'A' ? state.supportersA : state.supportersB;
@@ -74,7 +75,7 @@ function setPath(obj, path, value) {
 
 function mockChallenge(challengeId, roomId, participants) {
     const state = {
-        _id: challengeId, room: roomId, scoreA: 0, scoreB: 0,
+        _id: challengeId, room: roomId, scoreA: 0, scoreB: 0, status: 'active',
         participants: participants.map(p => ({ ...p, score: 0 })),
         supportersA: new Map(), supportersB: new Map()
     };
@@ -86,6 +87,12 @@ function mockChallenge(challengeId, roomId, participants) {
     jest.spyOn(SeatChallenge, 'findOneAndUpdate').mockImplementation((filter, update) => {
         if (filter._id !== challengeId || filter.status !== 'active') return Promise.resolve(null);
         applyPathIncSet(state, update);
+        return Promise.resolve(makeChallengeDoc(state));
+    });
+    // 🛡️ طلب صريح بمراجعة PR: emitSeatDuelScoreNow يعيد قراءة الحالة الحقيقية عبر findById
+    // قبل أي بثّ (لا يثق باللقطة المحفوظة) — تعكس نفس state.status المُستخدَمة بباقي الدوال
+    jest.spyOn(SeatChallenge, 'findById').mockImplementation((id) => {
+        if (id !== challengeId) return Promise.resolve(null);
         return Promise.resolve(makeChallengeDoc(state));
     });
     return state;
@@ -173,5 +180,47 @@ describe('giftController.applyGiftToActiveSeatChallenge', () => {
         expect(events).toHaveLength(1);
         expect(events[0].payload.scoreA).toBe(180);
         expect(state.scoreA).toBe(180);
+    });
+});
+
+describe('giftController: clearSeatDuelScoreThrottle + حماية الحالة — مراجعة PR بند 2', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('clearSeatDuelScoreThrottle تُلغي المؤقّت المؤجَّل — لا بثّ seat-duel:score متأخر بعد إنهاء التحدي', async () => {
+        const io = makeIo();
+        mockChallenge('dc_cleared', 'room_6', [{ user: 'p1', team: 'A' }]);
+
+        await applyGiftToActiveSeatChallenge(io, 'room_6', 'p1', 100, null); // حافة أمامية
+        await flushMicrotasks();
+        io.emitted.length = 0;
+
+        await applyGiftToActiveSeatChallenge(io, 'room_6', 'p1', 50, null); // يفتح نافذة 300ms
+        await flushMicrotasks();
+
+        clearSeatDuelScoreThrottle('dc_cleared'); // ✅ محاكاة finalizeActiveSeatChallenge الآن
+
+        await jest.advanceTimersByTimeAsync(300);
+        await flushMicrotasks();
+
+        expect(io.emitted.filter(e => e.event === 'seat-duel:score')).toHaveLength(0);
+    });
+
+    test('فحص دفاعي مستقل: تحدٍ لم يعد active وقت تنفيذ المؤقّت المؤجَّل — لا بثّ حتى بلا clearSeatDuelScoreThrottle', async () => {
+        const io = makeIo();
+        const state = mockChallenge('dc_stale', 'room_7', [{ user: 'p1', team: 'A' }]);
+
+        await applyGiftToActiveSeatChallenge(io, 'room_7', 'p1', 100, null); // حافة أمامية
+        await flushMicrotasks();
+        io.emitted.length = 0;
+
+        await applyGiftToActiveSeatChallenge(io, 'room_7', 'p1', 50, null); // يفتح نافذة 300ms
+        await flushMicrotasks();
+
+        state.status = 'ended'; // ✅ التحدي انتهى فعلياً قبل إطلاق المؤقّت المؤجَّل (بلا إلغاء)
+
+        await jest.advanceTimersByTimeAsync(300);
+        await flushMicrotasks();
+
+        expect(io.emitted.filter(e => e.event === 'seat-duel:score')).toHaveLength(0);
     });
 });
