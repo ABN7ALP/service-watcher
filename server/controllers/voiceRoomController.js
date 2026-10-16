@@ -806,5 +806,87 @@ exports.purchaseBackground = async (req, res) => {
     }
 };
 
+// ✅ هل يملك هذا المستخدم صلاحية الوصول الحالية لهذي الغرفة؟ — نفس معيار الدخول بـgetRoomById
+// بالضبط (مضيف/مسؤول يتجاوزان أي قيد، غرفة عامة مسموحة للجميع، خاصة تتطلب كلمة المرور
+// الصحيحة) — يُستخدم هنا لتقييد مسارات نتيجة PK/تحدي المقاعد "للأطراف فقط" (طلب صريح)
+function userCanAccessRoom(room, userId, suppliedPassword) {
+    if (!room) return false;
+    const isHost = room.host && room.host.toString() === userId;
+    const isModerator = (room.moderators || []).some(m => m.toString() === userId);
+    if (isHost || isModerator) return true;
+    if (!room.isPrivate) return true;
+    return !!suppliedPassword && suppliedPassword === room.password;
+}
+
+// =====================================================
+// ✅ GET /api/voice-room/pk/:battleId/result?roomId=... — نتيجة معركة PK محفوظة بالمستند
+// نفسه (resultA/resultB، راجع finalizeActiveBattle بـsocketService.js) — شبكة أمان لمن فاته
+// بثّ pk:result اللحظي (أغلق التطبيق/انقطع اتصاله لحظة الحسم بالضبط). roomId يحدد منظور أي
+// غرفة يطلبها العميل (يعرف غرفته الحالية فقط، لا الطرف الآخر) — "للأطراف فقط" (طلب صريح):
+// يُرفض الطلب لو roomId ليست إحدى طرفَي هذي المعركة، أو كانت غرفة خاصة بلا صلاحية وصول حقيقية
+// =====================================================
+exports.getPkBattleResult = async (req, res) => {
+    try {
+        const { battleId } = req.params;
+        const { roomId } = req.query;
+        if (!mongoose.Types.ObjectId.isValid(battleId) || !roomId || !mongoose.Types.ObjectId.isValid(roomId)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
+        }
+        const battle = await RoomBattle.findById(battleId).select('roomA roomB status resultA resultB');
+        if (!battle) {
+            return res.status(404).json({ status: 'fail', message: 'المعركة غير موجودة' });
+        }
+        const isA = battle.roomA.toString() === roomId;
+        const isB = battle.roomB.toString() === roomId;
+        if (!isA && !isB) {
+            return res.status(403).json({ status: 'fail', message: 'هذي الغرفة ليست طرفاً بهذي المعركة' });
+        }
+
+        const room = await VoiceRoom.findById(roomId).select('host moderators isPrivate password');
+        if (!userCanAccessRoom(room, req.user.id, req.query.password)) {
+            return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية الوصول لهذي الغرفة' });
+        }
+
+        const result = isA ? battle.resultA : battle.resultB;
+        if (battle.status === 'ended' && result) {
+            return res.json({ status: 'success', ready: true, result });
+        }
+        // ✅ لا تزال قيد الحساب (active/finalizing) — العميل يستمر بالاستطلاع كما يُتوقَّع منه
+        return res.json({ status: 'success', ready: false });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// =====================================================
+// ✅ GET /api/voice-room/seat-challenge/:challengeId/result — نتيجة تحدي مقاعد محفوظة
+// بالمستند نفسه (result، راجع finalizeActiveSeatChallenge بـsocketService.js) — نفس فلسفة
+// مسار نتيجة PK أعلى بالضبط، لكن غرفة واحدة فقط (لا منظور A/B بين غرفتين)
+// =====================================================
+exports.getSeatChallengeResult = async (req, res) => {
+    try {
+        const { challengeId } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(challengeId)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف تحدٍ غير صالح' });
+        }
+        const challenge = await SeatChallenge.findById(challengeId).select('room status result');
+        if (!challenge) {
+            return res.status(404).json({ status: 'fail', message: 'التحدي غير موجود' });
+        }
+
+        const room = await VoiceRoom.findById(challenge.room).select('host moderators isPrivate password');
+        if (!userCanAccessRoom(room, req.user.id, req.query.password)) {
+            return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية الوصول لهذي الغرفة' });
+        }
+
+        if (challenge.status === 'ended' && challenge.result) {
+            return res.json({ status: 'success', ready: true, result: challenge.result });
+        }
+        return res.json({ status: 'success', ready: false });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
 // ✅ مكتبة أغاني الغرفة الخاصة (رفع/تخزين لكل غرفة على حدة) أُزيلت — استُبدلت بمكتبة موسيقى
 // مشتركة منسَّقة من لوحة التحكم فقط (راجع server/routes/musicRoutes.js و server/controllers/musicController.js)

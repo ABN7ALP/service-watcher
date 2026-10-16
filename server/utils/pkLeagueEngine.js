@@ -125,6 +125,18 @@ async function settleBattle(battle, winner) {
     );
     if (!claimed) return null; // ✅ سُوِّيت من قبل بالفعل — لا شيء جديد لفعله
 
+    // 🛡️ أي استثناء من هنا فصاعداً (طلب معيار صريح من finalizeActiveBattle: "أعد محاولة
+    // التسوية لاحقاً") يجب أن يُفرِج عن الادّعاء أعلاه بدل تركه مُثبَّتاً true للأبد — وإلا
+    // تمنع المكنسة نفسها من إعادة المحاولة فعلياً رغم أن التسوية الحقيقية لم تكتمل أبداً
+    try {
+        return await settleBattleBody(battle, winner);
+    } catch (error) {
+        await mongoose.model('RoomBattle').updateOne({ _id: battle._id }, { $set: { lpSettled: false } });
+        throw error;
+    }
+}
+
+async function settleBattleBody(battle, winner) {
     const settings = await SystemSettings.getSettings();
     const season = await PkSeason.ensureActiveSeason();
     const { eligible, reason } = await checkEligibility(battle, settings);

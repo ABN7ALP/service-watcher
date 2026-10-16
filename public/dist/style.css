@@ -10257,6 +10257,41 @@ body.in-voice-room .pk__flash.on {
   animation: pkLiveFlash .5s ease-out;
 }
 
+/* ✅ إصلاح "تعلّق نهاية PK" (طلب صريح): حالة "جاري حساب النتيجة…" تُغطّي الشريط فقط عند
+   00:00 بانتظار pk:result (راجع pkTickClock/startPkResultPollFallback بـapp.js) — منفَّذة
+   من .computing بالنموذج الإلزامي (seat-duel-prototype.html) بنفس الروح: طبقة مطلقة فوق
+   الشريط لا تغيّر طوله، بلا أي محتوى مستخدم (نص ثابت بالكامل فلا خطر حقن) */
+
+body.in-voice-room .pk__computing {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  border-radius: 999px;
+  background: rgba(11, 7, 18, .88);
+  -webkit-backdrop-filter: blur(3px);
+          backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font: 800 calc(var(--u) * .8) Cairo, sans-serif;
+  color: var(--gold, #ffd45a);
+}
+
+body.in-voice-room .pk__computing[hidden] {
+  display: none;
+}
+
+body.in-voice-room .pk__computing i {
+  animation: spin 1.4s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   body.in-voice-room .pk-mini, body.in-voice-room .pk-mini * {
     animation: none !important;

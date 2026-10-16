@@ -30,6 +30,8 @@ router.get('/rooms/:id/messages', voiceRoomController.getRoomMessages);
 router.patch('/rooms/:id', voiceRoomController.updateRoom);
 router.patch('/rooms/:id/cover', roomCoverUpload, voiceRoomController.uploadRoomCover);
 router.post('/rooms/:id/background', voiceRoomController.purchaseBackground);
+router.get('/pk/:battleId/result', voiceRoomController.getPkBattleResult);
+router.get('/seat-challenge/:challengeId/result', voiceRoomController.getSeatChallengeResult);
 
 router.get('/', voiceRoomController.getVoiceRoomState);
 

@@ -228,25 +228,46 @@ function buildPkResultPayload(battle, mySide, outcome, roomInfo, settlement, dur
     };
 }
 
-// ✅ ينهي معركة نشطة (تلقائياً عند انتهاء الوقت، أو دفاعياً لو استُدعيت الحالة بعد انتهاء الوقت فعلياً)
-// 🛡️ النتيجة النهائية تُكشَف حقيقية بالكامل للجميع بلا أي تعتيم ضباب — الضباب يخفي أثناء
-// المعركة فقط (تشويق لحظي)، لا نتيجة الحسم ذاتها. تُسجَّل النتيجة أيضاً بـ"سجل العقد" الدائم
-// لكل غرفة (VoiceRoom.recordBattleOutcome، ميزة قديمة منفصلة تماماً عن دوري PK الأسبوعي) ثم
-// تُسوَّى عبر pkLeagueEngine.settleBattle (مكافحة تلاعب + LP + ترتيب/جيران) وتُبثّ كل غرفة
-// حدث pk:result بمنظورها الخاص تماماً كما يتوقّع نموذج التصميم الإلزامي
+// ✅ 🛡️ ادّعاء ذرّي لمرحلة finalizing — نقطة التزامن الوحيدة التي تمنع تكرار إنهاء نفس
+// المعركة (نداءان متزامنان، أو نسختا خادم مختلفتان تحاولان إنهاءها بنفس اللحظة). الفرع
+// الثاني يُعيد ادّعاء finalizing "عالقة" (تعطّل الخادم بمنتصف الحساب قبل الوصول لـ'ended')
+// بعد مهلة قصيرة فقط — فلا تبقى معلّقة للأبد لمجرد أن حالتها لم تعد 'active'
+const FINALIZE_STUCK_MS = 30 * 1000;
+async function claimBattleForFinalize(battleId) {
+    const now = new Date();
+    let claimed = await RoomBattle.findOneAndUpdate(
+        { _id: battleId, status: 'active' },
+        { $set: { status: 'finalizing', finalizingAt: now } },
+        { new: true }
+    );
+    if (claimed) return claimed;
+    return RoomBattle.findOneAndUpdate(
+        { _id: battleId, status: 'finalizing', finalizingAt: { $lte: new Date(Date.now() - FINALIZE_STUCK_MS) } },
+        { $set: { finalizingAt: now } },
+        { new: true }
+    );
+}
+
+// ✅ ينهي معركة نشطة بمرحلتين idempotent (طلب صريح: حسم المعركة لا يجب أن "يعلق" للأبد إن
+// فشلت تسوية الدوري أو تعطّل الخادم منتصف الحساب):
+// 1) ادّعاء ذرّي active→finalizing (claimBattleForFinalize أعلاه) — من فشل ادّعاءه يتوقف هنا
+//    فوراً (معركة أنهاها غيره بالفعل أو لا تزال finalizing طازجة بيد نسخة أخرى).
+// 2) حساب النتيجة واللاعبين (لا حالة متغيّرة تالفة — كل القيم مُشتقّة من حقول المستند نفسها،
+//    فإعادة حسابها بمحاولة تالية آمنة ومطابقة تماماً).
+// 3) تسوية دوري PK بـtry/catch مستقل تماماً: فشلها لا يمنع pk:result من الوصول أبداً — تصل
+//    بـleague:null والخطأ يُسجَّل، وpkLeagueEngine.settleBattle نفسه يُفرِج عن ادّعاء lpSettled
+//    عند الفشل (راجع تعليقه هناك) فتُعاد محاولة التسوية تلقائياً بالمكنسة لاحقاً.
+// 4) حمولتا النتيجة (resultA/resultB) تُخزَّن بالمستند نفسه قبل status:'ended' — مصدر الحقيقة
+//    لمسار GET /api/voice-room/pk/:battleId/result لمن فاته بثّ socket اللحظي.
 async function finalizeActiveBattle(io, battleId) {
     try {
         clearBattleTimer(activeBattleTimers, battleId);
-        const battle = await RoomBattle.findOne({ _id: battleId, status: 'active' });
+        const battle = await claimBattleForFinalize(battleId);
         if (!battle) return;
 
         let winner = 'draw';
         if (battle.scoreA > battle.scoreB) winner = 'A';
         else if (battle.scoreB > battle.scoreA) winner = 'B';
-
-        battle.status = 'ended';
-        battle.winner = winner;
-        await battle.save();
 
         const outcomeA = winner === 'A' ? 'win' : (winner === 'B' ? 'loss' : 'draw');
         const outcomeB = winner === 'B' ? 'win' : (winner === 'A' ? 'loss' : 'draw');
@@ -254,13 +275,19 @@ async function finalizeActiveBattle(io, battleId) {
             ? (new Date(battle.endsAt).getTime() - new Date(battle.startedAt).getTime()) / 1000
             : battle.durationSeconds;
 
-        const [recordA, recordB, roomA, roomB, settlement] = await Promise.all([
+        const [recordA, recordB, roomA, roomB] = await Promise.all([
             VoiceRoom.recordBattleOutcome(battle.roomA, outcomeA),
             VoiceRoom.recordBattleOutcome(battle.roomB, outcomeB),
             VoiceRoom.findById(battle.roomA).select('name coverImage').lean(),
-            VoiceRoom.findById(battle.roomB).select('name coverImage').lean(),
-            pkLeagueEngine.settleBattle(battle, winner)
+            VoiceRoom.findById(battle.roomB).select('name coverImage').lean()
         ]);
+
+        let settlement = null;
+        try {
+            settlement = await pkLeagueEngine.settleBattle(battle, winner);
+        } catch (settleError) {
+            console.error(`[PK LEAGUE] تعذّرت تسوية الدوري للمعركة ${battleId} — النتيجة تصل بلا بيانات دوري، وستُعاد محاولة التسوية تلقائياً:`, settleError);
+        }
 
         const roomInfo = {
             A: { name: roomA?.name || '', coverImage: roomA?.coverImage || null },
@@ -268,15 +295,43 @@ async function finalizeActiveBattle(io, battleId) {
         };
 
         // ✅ "سجل العقد" الدائم (ميزة سابقة منفصلة عن دوري PK الأسبوعي) محفوظ أعلى بالفعل عبر
-        // VoiceRoom.recordBattleOutcome ويُقرأ عند بدء كل معركة تالية (pk-battle-started) —
-        // لا مستهلك للبثّ اللحظي فور الحسم، فلا بثّ منفصل له هنا (recordA/recordB محسوبتان
-        // فقط ليستمر توازي الاستدعاءات أعلى، لا لأي استخدام آخر)
-        io.to(`room-chat-${battle.roomA}`).emit('pk:result',
-            buildPkResultPayload(battle, 'A', outcomeA, roomInfo, settlement, durationSeconds));
-        io.to(`room-chat-${battle.roomB}`).emit('pk:result',
-            buildPkResultPayload(battle, 'B', outcomeB, roomInfo, settlement, durationSeconds));
+        // VoiceRoom.recordBattleOutcome (recordA/recordB محسوبتان فقط ليستمر توازي الاستدعاءات،
+        // لا مستهلك لبثّها اللحظي)
+        const resultA = buildPkResultPayload(battle, 'A', outcomeA, roomInfo, settlement, durationSeconds);
+        const resultB = buildPkResultPayload(battle, 'B', outcomeB, roomInfo, settlement, durationSeconds);
+
+        battle.winner = winner;
+        battle.resultA = resultA;
+        battle.resultB = resultB;
+        battle.finalizedAt = new Date();
+        battle.status = 'ended';
+        await battle.save();
+
+        io.to(`room-chat-${battle.roomA}`).emit('pk:result', resultA);
+        io.to(`room-chat-${battle.roomB}`).emit('pk:result', resultB);
     } catch (error) {
         console.error('[PK BATTLE] Finalize error:', error);
+    }
+}
+
+// ✅ مُكنسة PK: كل 10 ثوانٍ (وعند إقلاع الخادم) تفحص أي معركة active/finalizing تجاوز وقت
+// نهايتها المفترض (endsAt) بـ5 ثوانٍ فأكثر، وتُنهيها بنفس finalizeActiveBattle بالضبط —
+// هذا هو الشبكة الحقيقية التي تضمن الإنهاء حتى لو ضاع مؤقّت setTimeout بالذاكرة بالكامل
+// (إعادة تشغيل/نشر الخادم أثناء المعركة) أو تعطّل نداء الإنهاء الفوري لأي سبب آخر؛ الادّعاء
+// الذرّي أعلى يمنع أي تكرار حتى لو مسحت أكثر من نسخة خادم بنفس اللحظة بالضبط
+const PK_SWEEP_INTERVAL_MS = 10 * 1000;
+const PK_SWEEP_GRACE_MS = 5 * 1000;
+async function sweepOverdueBattles(io) {
+    try {
+        const overdue = await RoomBattle.find({
+            status: { $in: ['active', 'finalizing'] },
+            endsAt: { $lte: new Date(Date.now() - PK_SWEEP_GRACE_MS) }
+        }).select('_id').lean();
+        for (const b of overdue) {
+            await finalizeActiveBattle(io, b._id);
+        }
+    } catch (error) {
+        console.error('[PK BATTLE] Sweep error:', error);
     }
 }
 
@@ -431,23 +486,64 @@ function buildSeatChallengeSnapshot(challenge) {
     };
 }
 
+// ✅ نفس claimBattleForFinalize بالضبط لكن لـSeatChallenge (راجع تعليقها أعلى الملف) —
+// ادّعاء ذرّي active→finalizing، مع إعادة ادّعاء finalizing "عالقة" بعد مهلة قصيرة
+async function claimSeatChallengeForFinalize(challengeId) {
+    const now = new Date();
+    let claimed = await SeatChallenge.findOneAndUpdate(
+        { _id: challengeId, status: 'active' },
+        { $set: { status: 'finalizing', finalizingAt: now } },
+        { new: true }
+    );
+    if (claimed) return claimed;
+    return SeatChallenge.findOneAndUpdate(
+        { _id: challengeId, status: 'finalizing', finalizingAt: { $lte: new Date(Date.now() - FINALIZE_STUCK_MS) } },
+        { $set: { finalizingAt: now } },
+        { new: true }
+    );
+}
+
+// ✅ نفس فلسفة finalizeActiveBattle بمرحلتين idempotent بالضبط (راجع تعليقها أعلى الملف)
+// — لا خطوة تسوية خارجية فعلياً هنا (لا دوري أسبوعي لتحدي المقاعد)، لكن نفس الادّعاء الذرّي
+// وتخزين النتيجة بالمستند قبل status:'ended' يبقيان ضروريين لصمود الإنهاء أمام تعطّل الخادم
+// أو نداءين متزامنين بالضبط كما عند معارك PK
 async function finalizeActiveSeatChallenge(io, challengeId) {
     try {
         clearSeatChallengeTimer(activeSeatChallengeTimers, challengeId);
-        const challenge = await SeatChallenge.findOne({ _id: challengeId, status: 'active' }).populate('participants.user', 'username profileImage activeFrameClass');
+        let challenge = await claimSeatChallengeForFinalize(challengeId);
         if (!challenge) return;
+        await challenge.populate('participants.user', 'username profileImage activeFrameClass');
 
         let winner = 'draw';
         if (challenge.scoreA > challenge.scoreB) winner = 'A';
         else if (challenge.scoreB > challenge.scoreA) winner = 'B';
 
-        challenge.status = 'ended';
         challenge.winner = winner;
+        const result = buildSeatChallengeSnapshot(challenge);
+        challenge.result = result;
+        challenge.finalizedAt = new Date();
+        challenge.status = 'ended';
         await challenge.save();
 
-        io.to(`room-chat-${challenge.room}`).emit('seat-challenge-ended', buildSeatChallengeSnapshot(challenge));
+        io.to(`room-chat-${challenge.room}`).emit('seat-challenge-ended', result);
     } catch (error) {
         console.error('[SEAT CHALLENGE] Finalize error:', error);
+    }
+}
+
+// ✅ مُكنسة تحدي المقاعد: نفس فلسفة sweepOverdueBattles بالضبط (كل 10 ثوانٍ + عند الإقلاع)
+const SEAT_CHALLENGE_SWEEP_INTERVAL_MS = 10 * 1000;
+async function sweepOverdueSeatChallenges(io) {
+    try {
+        const overdue = await SeatChallenge.find({
+            status: { $in: ['active', 'finalizing'] },
+            endsAt: { $lte: new Date(Date.now() - PK_SWEEP_GRACE_MS) }
+        }).select('_id').lean();
+        for (const c of overdue) {
+            await finalizeActiveSeatChallenge(io, c._id);
+        }
+    } catch (error) {
+        console.error('[SEAT CHALLENGE] Sweep error:', error);
     }
 }
 
@@ -2209,6 +2305,29 @@ socket.on('refreshBlockData', async () => {
             if (musicState) socket.emit('room-music-state', musicState); // ✅ مزامنة فورية لمن ينضم متأخراً
             broadcastRoomViewerCount(io, roomId);
 
+            // ✅ طلب صريح (معيار قبول الإصلاح الثلاثي لتعلّق إنهاء PK): من دخل الغرفة أو
+            // أعاد الاتصال وفاته بثّ pk:result/seat-challenge-ended اللحظي (أُنهيت المعركة
+            // بينما كان غير متصل تماماً) يستلم نتيجتها المحفوظة فوراً لو انتهت خلال آخر 60
+            // ثانية فقط — نافذة قصيرة عمداً كي لا يُفاجَأ بنتيجة قديمة بعد غياب طويل
+            if (roomId !== 'main' && require('mongoose').Types.ObjectId.isValid(roomId)) {
+                try {
+                    const [recentBattle, recentChallenge] = await Promise.all([
+                        RoomBattle.findRecentlyEndedForRoom(roomId),
+                        SeatChallenge.findRecentlyEndedForRoom(roomId)
+                    ]);
+                    if (recentBattle) {
+                        const isA = recentBattle.roomA.toString() === roomId;
+                        const result = isA ? recentBattle.resultA : recentBattle.resultB;
+                        if (result) socket.emit('pk:result', result);
+                    }
+                    if (recentChallenge && recentChallenge.result) {
+                        socket.emit('seat-challenge-ended', recentChallenge.result);
+                    }
+                } catch (error) {
+                    console.error('[ROOM CHAT] Recent result resend error:', error);
+                }
+            }
+
             if (roomId !== 'main' && !alreadyViewing) {
                 try {
                     const room = await VoiceRoom.resolveRoom(roomId);
@@ -2595,6 +2714,14 @@ socket.on('refreshBlockData', async () => {
         });
     });
 
+    // ✅ مكنستا الشبكة الحقيقية لإنهاء المعارك/التحديات المعلّقة بالذاكرة (راجع تعليقي
+    // sweepOverdueBattles وsweepOverdueSeatChallenges أعلى الملف) — تُشغَّلان فوراً عند
+    // إقلاع الخادم (تلتقط أي معركة/تحدٍ تجاوز وقته أثناء إعادة التشغيل نفسها) ثم كل 10 ثوانٍ
+    sweepOverdueBattles(io);
+    sweepOverdueSeatChallenges(io);
+    setInterval(() => sweepOverdueBattles(io), PK_SWEEP_INTERVAL_MS);
+    setInterval(() => sweepOverdueSeatChallenges(io), SEAT_CHALLENGE_SWEEP_INTERVAL_MS);
+
     return io;
 };
 
@@ -2605,3 +2732,11 @@ module.exports.broadcastUserFrameChange = broadcastUserFrameChange;
 // ✅ تُستخدَم من واجهات REST (voiceRoomController) لتضمين المجموع التراكمي الحالي لكل
 // مستخدم جالس ضمن لقطة حالة الغرفة الأولى (قبل أي حدث Socket حي) — راجع roomSupportTally أعلاه
 module.exports.getRoomSupportTotal = getRoomSupportTotal;
+// ✅ تُصدَّر فقط لاختبارات Part 1.5 (إصلاح تعلّق إنهاء PK/تحدي المقاعد) — راجع
+// __tests__/socketService.finalizeReliability.test.js؛ لا مستهلك إنتاجي خارج هذا الملف نفسه
+module.exports.finalizeActiveBattle = finalizeActiveBattle;
+module.exports.claimBattleForFinalize = claimBattleForFinalize;
+module.exports.sweepOverdueBattles = sweepOverdueBattles;
+module.exports.finalizeActiveSeatChallenge = finalizeActiveSeatChallenge;
+module.exports.claimSeatChallengeForFinalize = claimSeatChallengeForFinalize;
+module.exports.sweepOverdueSeatChallenges = sweepOverdueSeatChallenges;

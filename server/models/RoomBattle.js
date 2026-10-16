@@ -38,12 +38,26 @@ const roomBattleSchema = new mongoose.Schema({
     roomB: { type: mongoose.Schema.Types.ObjectId, ref: 'VoiceRoom', required: true, index: true },
     challengedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // مضيف roomA دائماً
     durationSeconds: { type: Number, enum: DURATION_PRESETS_SECONDS, required: true },
+    // ✅ 'finalizing' حالة انتقالية ذرّية بين active وended — مرحلة أولى من إنهاء بمرحلتين
+    // idempotent (راجع finalizeActiveBattle بـsocketService.js): الادّعاء الذرّي لهذي الحالة
+    // بعينها هو ما يمنع تكرار الإنهاء حتى مع عدة نسخ خادم أو نداءات متزامنة لنفس المعركة
     status: {
         type: String,
-        enum: ['pending', 'active', 'ended', 'declined', 'expired', 'cancelled'],
+        enum: ['pending', 'active', 'finalizing', 'ended', 'declined', 'expired', 'cancelled'],
         default: 'pending',
         index: true
     },
+    // ✅ وقت آخر ادّعاء لمرحلة finalizing — تُستخدَم فقط لاكتشاف ادّعاء "علق" (تعطّل الخادم
+    // أثناء الحساب قبل الوصول لـstatus:'ended') فتُعاد المحاولة له بعد مهلة قصيرة، بدل أن
+    // يبقى معلّقاً للأبد لمجرد أن حالته ليست 'active' فتتخطّاه المكنسة
+    finalizingAt: { type: Date, default: null },
+    // ✅ 🛡️ حمولتا pk:result الجاهزتان (بمنظور كل غرفة) محفوظتان دائماً بالمستند نفسه فور
+    // الحسم — مصدر الحقيقة لمسار GET /api/voice-room/pk/:battleId/result (من فاته بثّ
+    // socket لحظة انتهاء المعركة يسترجعها هنا بلا أي إعادة حساب، فلا تضارب بين ما استُقبِل
+    // لحظياً وما يُسترجَع لاحقاً أبداً)
+    resultA: { type: mongoose.Schema.Types.Mixed, default: null },
+    resultB: { type: mongoose.Schema.Types.Mixed, default: null },
+    finalizedAt: { type: Date, default: null },
     scoreA: { type: Number, default: 0, min: 0 },
     scoreB: { type: Number, default: 0, min: 0 },
     // ✅ 🛡️ الدعم الحقيقي البحت (قبل أي مضاعفة قفاز) لكل صفّ — مصدر الحقيقة الوحيد لأي نظام
@@ -81,6 +95,16 @@ roomBattleSchema.statics.findOpenForRoom = async function (roomId) {
         $or: [{ roomA: roomId }, { roomB: roomId }],
         status: { $in: ['pending', 'active'] }
     });
+};
+
+// ✅ آخر معركة انتهت لهذي الغرفة خلال نافذة زمنية قصيرة (افتراضياً 60 ثانية) — يستخدمها
+// join-room-chat/إعادة الاتصال لإرسال النتيجة لمن فاته بثّ pk:result اللحظي (طلب صريح)
+roomBattleSchema.statics.findRecentlyEndedForRoom = async function (roomId, windowMs = 60000) {
+    return this.findOne({
+        $or: [{ roomA: roomId }, { roomB: roomId }],
+        status: 'ended',
+        finalizedAt: { $gte: new Date(Date.now() - windowMs) }
+    }).sort({ finalizedAt: -1 });
 };
 
 // ✅ يجلب المعركة النشطة/المعلّقة الحالية لغرفة معينة، مع بيانات الغرفتين لعرضها بالواجهة

@@ -4149,6 +4149,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ آخر أداة رميتها أنا بهذي المعركة (لعرض حالة "آخر استخدام" بالمتجر محلياً دون انتظار
     // خطأ من السيرفر لو ضغطت زراً معطَّلاً) — يُصفَّر تلقائياً عند انتهاء مدتها بعدّاد المتجر نفسه
     let myPkThrowCooldown = null; // { item, expiresAt }
+    // ✅ إصلاح "تعلّق نهاية PK" (طلب صريح، أولوية قصوى): عند 00:00 قد يتأخر/يضيع بثّ pk:result
+    // اللحظي (انقطاع شبكة، أو الخادم لا يزال يحسم بمرحلتيه). pkResultPollTimer يحمل كلا
+    // المؤقتين (مهلة السماح 4 ثوانٍ، ثم استطلاع كل ثانيتين حتى 20 ثانية) فيُلغيهما removePkBar
+    // لو وصلت النتيجة فعلياً بأي لحظة أثناءهما، فلا يتظاهر الاستطلاع بنتيجة بعد عرضها فعلاً
+    let pkResultPollTimer = null;
+    let pkResultPollDeadline = 0;
     // 🐛 مراجعة بصرية (طلب صريح): أفضل الداعمين انتقلوا من صف دائم الظهور إلى ورقة سفلية
     // تُفتح بالضغط على شريط PK المضغوط — هذا المفتاح يتتبّع إن كانت مفتوحة حالياً كي تُحدَّث
     // حيّةً مع كل هدية جديدة بدل إعادة بنائها من الصفر في كل تحديث نقاط
@@ -4405,6 +4411,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     </span>
                     <div class="pk__fx" id="pk-live-fx"></div>
                     <div class="pk__flash" id="pk-live-flash"></div>
+                    <div class="pk__computing" id="pk-live-computing" hidden>
+                        <i class="fas fa-circle-notch fa-spin"></i>
+                        <span>جاري حساب النتيجة…</span>
+                    </div>
                 </div>
             `;
             // ✅ طلب صريح: أفضل الداعمين يظهرون عند الضغط على الشريط (ورقة سفلية)، لا دائماً
@@ -4633,6 +4643,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (remainingMs <= 0) {
             if (timeEl) timeEl.textContent = '00:00';
             clearInterval(pkCountdownInterval);
+            // ✅ إصلاح "تعلّق نهاية PK" (طلب صريح): 00:00 لا يعني أن pk:result سيصل فوراً (لا
+            // يزال الخادم يحسم بمرحلتيه) — نعرض "جاري حساب النتيجة…" بدل تجمّد الشريط، ونبدأ
+            // شبكة أمان الاستطلاع لو تأخر البثّ اللحظي أكثر من المتوقع (راجع startPkResultPollFallback)
+            bar.classList.add('is-computing');
+            bar.querySelector('#pk-live-computing')?.removeAttribute('hidden');
+            startPkResultPollFallback(currentPkBattle.battleId, currentVoiceRoomId);
             return;
         }
         const totalSec = Math.ceil(remainingMs / 1000);
@@ -4702,11 +4718,54 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     function removePkBar() {
         clearInterval(pkCountdownInterval);
         clearInterval(pkEffectTickInterval);
+        clearPkResultPoll();
         currentPkBattle = null;
         myPkThrowCooldown = null;
         document.getElementById('pk-battle-bar')?.remove();
         document.getElementById('pk-item-store-modal')?.remove();
         closePkFansSheet();
+    }
+
+    // ✅ يُلغي شبكة أمان استطلاع نتيجة PK (راجع startPkResultPollFallback) — يُستدعى من
+    // removePkBar نفسها (أياً كان سبب إزالة الشريط: نتيجة وصلت فعلاً، أو مغادرة الغرفة)
+    function clearPkResultPoll() {
+        if (pkResultPollTimer) { clearTimeout(pkResultPollTimer); pkResultPollTimer = null; }
+    }
+
+    // ✅ شبكة أمان "تعلّق نهاية PK" (طلب صريح، أولوية قصوى): إن لم يصل بثّ pk:result اللحظي
+    // خلال 4 ثوانٍ من بلوغ الساعة 00:00، نسأل مسار GET /api/voice-room/pk/:id/result مباشرة
+    // (نتيجة محفوظة بالمستند نفسه فور الحسم — راجع finalizeActiveBattle/getPkBattleResult)
+    // مرة كل ثانيتين حتى 20 ثانية إجمالاً، ثم نُزيل الشريط بأناقة لو لم تصل نتيجة إطلاقاً
+    // (خلل حقيقي نادر) بدل تركه معلّقاً للأبد
+    function startPkResultPollFallback(battleId, roomId) {
+        clearPkResultPoll();
+        if (!battleId || !roomId) return;
+        const startedAt = Date.now();
+        const POLL_TOTAL_MS = 20000, POLL_INITIAL_DELAY_MS = 4000, POLL_INTERVAL_MS = 2000;
+
+        async function attempt() {
+            // ✅ وصلت النتيجة فعلاً عبر socket أثناء الانتظار (هذا هو المسار الطبيعي الشائع) —
+            // removePkBar استدعت clearPkResultPoll بالفعل، فهذا تحقّق دفاعي إضافي فقط
+            if (!currentPkBattle || currentPkBattle.battleId !== battleId) return;
+            try {
+                const res = await fetch(`/api/voice-room/pk/${battleId}/result?roomId=${encodeURIComponent(roomId)}`,
+                    { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                if (data?.ready && data.result) {
+                    removePkBar();
+                    showPkResultWindow(data.result);
+                    return;
+                }
+            } catch (error) { /* شبكة متقطّعة — نحاول مرة أخرى بالدورة التالية بصمت */ }
+
+            if (Date.now() - startedAt >= POLL_TOTAL_MS) {
+                removePkBar();
+                showNotification('تعذّر عرض نتيجة المعركة الآن — حاول إعادة الدخول للغرفة بعد قليل', 'info');
+                return;
+            }
+            pkResultPollTimer = setTimeout(attempt, POLL_INTERVAL_MS);
+        }
+        pkResultPollTimer = setTimeout(attempt, POLL_INITIAL_DELAY_MS);
     }
 
     // ✅ نافذة نتيجة دوري PK الأسبوعي — منفَّذة حرفياً من نموذج التصميم الإلزامي
