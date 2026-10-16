@@ -4125,9 +4125,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // لو وصلت النتيجة فعلياً بأي لحظة أثناءهما، فلا يتظاهر الاستطلاع بنتيجة بعد عرضها فعلاً
     let pkResultPollTimer = null;
     let pkResultPollDeadline = 0;
-    // 🐛 مراجعة بصرية (طلب صريح): أفضل الداعمين انتقلوا من صف دائم الظهور إلى ورقة سفلية
-    // تُفتح بالضغط على شريط PK المضغوط — هذا المفتاح يتتبّع إن كانت مفتوحة حالياً كي تُحدَّث
-    // حيّةً مع كل هدية جديدة بدل إعادة بنائها من الصفر في كل تحديث نقاط
+    // ✅ أفضل 3 داعمين لكل صفّ ظاهرون دائماً تحت الشريط الآن (pkRenderCompactFans) — هذا
+    // المفتاح خاص فقط بالورقة السفلية الإضافية (تفاصيل أكبر عند الضغط)، يتتبّع إن كانت
+    // مفتوحة حالياً كي تُحدَّث حيّةً مع كل هدية جديدة بدل إعادة بنائها من الصفر في كل تحديث
     let pkFansSheetOpen = false;
     // ✅ ذاكرة خفيفة محلية (id → {username, profileImage, activeFrameClass}) لاستكمال هوية
     // "أفضل 3 داعمين" بلا أي استعلام إضافي — تُغذَّى تلقائياً من أي بيانات هوية تعبر هذي الجلسة
@@ -4386,8 +4386,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         <span>جاري حساب النتيجة…</span>
                     </div>
                 </div>
+                <div class="pk__fans" id="pk-live-fans">
+                    <div class="pk__fans-col pk__fans-col--us" id="pk-live-fans-us"></div>
+                    <div class="pk__fans-col pk__fans-col--them" id="pk-live-fans-them"></div>
+                </div>
             `;
-            // ✅ طلب صريح: أفضل الداعمين يظهرون عند الضغط على الشريط (ورقة سفلية)، لا دائماً
+            // ✅ طلب صريح (يلغي قرار الجولة السابقة): أفضل 3 داعمين لكل صفّ ظاهرون دائماً تحت
+            // الشريط الآن (pkRenderCompactFans أدناه، يُستدعى من renderPkBar مع كل تحديث نقاط)
+            // — الضغط على الشريط نفسه يبقى يفتح الورقة السفلية الكاملة (كل الداعمين، لا 3 فقط)
             bar.querySelector('#pk-live-bar-wrap').addEventListener('click', openPkFansSheet);
             // ✅ طلب صريح: شريط PK يأتي بعد المقاعد مباشرة بتسلسل التدفّق (قبل مسار الهدايا/الدردشة)
             // — لا بعد الرأس كما كان سابقاً، كي يطابق ترتيب النموذج الإلزامي بالضبط
@@ -4404,6 +4410,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
         pkRenderScore();
         pkRenderEffectBadges();
+        pkRenderCompactFans();
         pkRenderFansSheetIfOpen();
     }
 
@@ -4508,10 +4515,57 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         return pkSetRider('smiling_face_with_sunglasses');
     }
 
-    // 🐛 مراجعة بصرية (طلب صريح): أفضل 3 داعمين لصفّ معيّن — نفس منطق drawFans() بالنموذج
-    // الإلزامي حرفياً (تاج على الأول، ترقيم حيّ، علامة "+المبلغ" + قفزة pop عند أي ارتفاع
-    // بالنقاط، تحديث عناصر DOM الموجودة بمعرّف الداعم لا إعادة رسم كاملة) لكن داخل ورقة
-    // سفلية تُفتح بالضغط (راجع openPkFansSheet) بدل صف دائم الظهور يهدر مساحة الشاشة
+    // ✅ طلب صريح (يلغي قرار الجولة السابقة): أفضل 3 داعمين لكل صفّ ظاهرون دائماً تحت الشريط
+    // المضغوط — صور 26px بحلقة بلون الصفّ + رقم مركز حيّ، قفزة pop + "+المبلغ" عابر عند أي
+    // ارتفاع بالنقاط (نفس منطق drawFans() بالنموذج الإلزامي seat-duel-prototype.html تماماً،
+    // تبويب "PK الغرف: الإصلاحات"). غير متعلقة بـpkRenderFansColumn/الورقة السفلية (تلك تبقى
+    // تعرض نفس بيانات أفضل 3 داعمين بتفاصيل أكبر عند الضغط — تاج، صور أوضح، نقاط كاملة)
+    function pkRenderCompactFans() {
+        if (!currentPkBattle) return;
+        ['us', 'them'].forEach(side => {
+            const col = document.getElementById(side === 'us' ? 'pk-live-fans-us' : 'pk-live-fans-them');
+            if (!col) return;
+            const list = [...(currentPkBattle.topFans?.[side] || [])].sort((a, b) => (b.points || 0) - (a.points || 0)).slice(0, 3);
+            const seenIds = new Set();
+            list.forEach((f, i) => {
+                const uid = String(f.userId);
+                seenIds.add(uid);
+                let el = col.querySelector(`[data-uid="${uid}"]`);
+                const prevPoints = el ? parseInt(el.dataset.points || '0', 10) : 0;
+                if (!el) {
+                    el = document.createElement('div');
+                    el.className = 'pk__fan';
+                    el.dataset.uid = uid;
+                    el.innerHTML = `<img><i></i>`;
+                    col.appendChild(el);
+                }
+                el.style.order = i;
+                el.classList.toggle('pk__fan--top', i === 0);
+                const cached = pkResolveUserDisplay(uid);
+                const img = el.querySelector('img');
+                img.src = f.profileImage || cached.profileImage;
+                img.className = f.activeFrameClass || cached.activeFrameClass || '';
+                el.querySelector('i').textContent = i + 1;
+                el.title = f.username || cached.username || 'داعم';
+                el.dataset.points = f.points || 0;
+                if ((f.points || 0) > prevPoints) {
+                    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+                    if (!pkPrefersReducedMotion()) {
+                        const plus = document.createElement('span');
+                        plus.className = 'plus';
+                        plus.textContent = '+' + ((f.points || 0) - prevPoints).toLocaleString('en-US');
+                        el.appendChild(plus);
+                        setTimeout(() => plus.remove(), 1000);
+                    }
+                }
+            });
+            col.querySelectorAll('.pk__fan').forEach(el => { if (!seenIds.has(el.dataset.uid)) el.remove(); });
+        });
+    }
+
+    // ✅ أفضل داعمين لصفّ معيّن بالورقة السفلية الكاملة (كل الداعمين، لا 3 فقط) — نفس منطق
+    // drawFans() بالنموذج الإلزامي حرفياً (تاج على الأول، ترقيم حيّ، علامة "+المبلغ" + قفزة
+    // pop عند أي ارتفاع بالنقاط، تحديث عناصر DOM الموجودة بمعرّف الداعم لا إعادة رسم كاملة)
     function pkRenderFansColumn(side, col) {
         if (!col || !currentPkBattle) return;
         const list = [...(currentPkBattle.topFans?.[side] || [])].sort((a, b) => (b.points || 0) - (a.points || 0));
