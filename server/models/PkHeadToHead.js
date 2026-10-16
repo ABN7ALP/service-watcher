@@ -13,7 +13,11 @@ const pkHeadToHeadSchema = new mongoose.Schema({
     aWins: { type: Number, default: 0 },
     bWins: { type: Number, default: 0 },
     draws: { type: Number, default: 0 },
-    matches: { type: Number, default: 0 }
+    matches: { type: Number, default: 0 },
+    // ✅ 🛡️ نفس فلسفة PkStanding.appliedBattleIds بالضبط — recordMatch كانت $inc صرفاً بلا أي
+    // حارس، فتُعيد احتساب نفس المعركة مرتين لو أُعيد استدعاء settleBattleBody كاملاً بعد فشل
+    // جزئي سابق (طلب صريح: idempotent حقيقي لكل أثر جانبي بالتسوية، لا نقاط الغرفتين فقط)
+    appliedBattleIds: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'RoomBattle' }], default: () => [] }
 }, { timestamps: true });
 
 pkHeadToHeadSchema.index({ season: 1, roomA: 1, roomB: 1 }, { unique: true });
@@ -25,7 +29,9 @@ function orderPair(roomIdX, roomIdY) {
     return x < y ? { roomA: roomIdX, roomB: roomIdY, xIsA: true } : { roomA: roomIdY, roomB: roomIdX, xIsA: false };
 }
 
-pkHeadToHeadSchema.statics.recordMatch = async function (seasonId, roomXId, roomYId, outcomeForX) {
+// ✅ battleId مطلوب الآن (طلب صريح): يحرس السجل من الاحتساب المضاعف لو استُدعيت settleBattleBody
+// كاملة مرتين لنفس المعركة (فشل جزئي ثم إعادة محاولة) — راجع appliedBattleIds أعلى الملف
+pkHeadToHeadSchema.statics.recordMatch = async function (seasonId, roomXId, roomYId, outcomeForX, battleId) {
     // outcomeForX: 'win' | 'loss' | 'draw' من منظور roomX تحديداً
     const { roomA, roomB, xIsA } = orderPair(roomXId, roomYId);
     const inc = { matches: 1 };
@@ -33,11 +39,18 @@ pkHeadToHeadSchema.statics.recordMatch = async function (seasonId, roomXId, room
     else if ((outcomeForX === 'win') === xIsA) inc.aWins = 1;
     else inc.bWins = 1;
 
-    return this.findOneAndUpdate(
+    // ✅ يضمن وجود المستند أولاً (بلا أي $inc) — آمن للتكرار دوماً
+    await this.findOneAndUpdate(
         { season: seasonId, roomA, roomB },
-        { $inc: inc },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
+        { $setOnInsert: {} },
+        { upsert: true, setDefaultsOnInsert: true }
     );
+    // 🛡️ الزيادة الفعلية مشروطة بعدم تطبيق هذي المعركة من قبل — idempotent حقيقي
+    await this.updateOne(
+        { season: seasonId, roomA, roomB, appliedBattleIds: { $ne: battleId } },
+        { $inc: inc, $push: { appliedBattleIds: battleId } }
+    );
+    return this.findOne({ season: seasonId, roomA, roomB });
 };
 
 // ✅ لقطة جاهزة للعرض من منظور غرفة معيّنة ("أنا") ضد خصم معيّن

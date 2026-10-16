@@ -86,7 +86,11 @@ const roomBattleSchema = new mongoose.Schema({
     // ✅ هل احتُسبت نقاط الدوري فعلياً لهذي المعركة بعد اجتياز مكافحة التلاعب؟ + السبب لو لا،
     // ليُراجعها فريق الإدارة لاحقاً (طلب صريح: "سجّل حالات الاشتباه للإدارة")
     lpCounted: { type: Boolean, default: null },
-    lpSkippedReason: { type: String, default: null }
+    lpSkippedReason: { type: String, default: null },
+    // ✅ 🛡️ عدد محاولات إعادة تسوية الدوري بعد فشل أول محاولة (طلب صريح بمراجعة PR) — تزيد
+    // بمهمة retryFailedLeagueSettlements الدورية بـsocketService.js فقط (كل دقيقة)، بسقف 5
+    // محاولات إجمالاً كي لا تُحاوَل معركة فاشلة بشكل دائم (مثلاً: غرفة محذوفة) للأبد
+    settleAttempts: { type: Number, default: 0 }
 }, { timestamps: true });
 
 // ✅ يمنع أي غرفة (سواء طرفها A أو B) من الدخول بأكثر من معركة معلّقة/فعلية بنفس الوقت

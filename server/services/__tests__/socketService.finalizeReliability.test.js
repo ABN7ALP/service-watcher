@@ -164,3 +164,68 @@ describe('finalizeActiveSeatChallenge — نفس الإصلاح الثلاثي �
         expect(io._emit).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('retryFailedLeagueSettlements — إعادة محاولة تسوية الدوري الدورية (مراجعة PR)', () => {
+    test('معركة ended بـlpSettled:false ضمن النافذة الزمنية — تُعاد محاولتها وتبثّ pk:league-update لكلا الغرفتين', async () => {
+        jest.spyOn(RoomBattle, 'find').mockReturnValue({
+            select: () => ({ lean: () => Promise.resolve([{ _id: 'battle_retry' }]) })
+        });
+        const claimedBattle = {
+            _id: 'battle_retry', roomA: 'room_a', roomB: 'room_b', winner: 'A', settleAttempts: 1
+        };
+        jest.spyOn(RoomBattle, 'findOneAndUpdate').mockResolvedValue(claimedBattle);
+        jest.spyOn(RoomBattle, 'updateOne').mockResolvedValue({ matchedCount: 1 });
+        jest.spyOn(pkLeagueEngine, 'settleBattle').mockResolvedValue({
+            eligible: true,
+            season: { weekKey: '2026-W01', endsAt: new Date(Date.now() + 1000) },
+            A: { rankBefore: 5, rankAfter: 3, lpBefore: 1000, lpAfter: 1305, record: { wins: 1, losses: 0, draws: 0 }, neighbours: [], hint: null, headToHead: {} },
+            B: { rankBefore: 2, rankAfter: 2, lpBefore: 800, lpAfter: 853, record: { wins: 0, losses: 1, draws: 0 }, neighbours: [], hint: null, headToHead: {} }
+        });
+        const io = fakeIo();
+
+        await socketService.retryFailedLeagueSettlements(io);
+
+        // ✅ الادّعاء الذرّي (settleAttempts++) حدث قبل أي شيء آخر
+        expect(RoomBattle.findOneAndUpdate).toHaveBeenCalledWith(
+            { _id: 'battle_retry', status: 'ended', lpSettled: false, settleAttempts: { $lt: 5 } },
+            { $inc: { settleAttempts: 1 } },
+            { new: true }
+        );
+        expect(pkLeagueEngine.settleBattle).toHaveBeenCalledWith(claimedBattle, 'A');
+        // ✅ اللقطة المخزَّنة (GET .../result) تُحدَّث أيضاً بقسم الدوري، لا تبقى league:null للأبد
+        expect(RoomBattle.updateOne).toHaveBeenCalledWith(
+            { _id: 'battle_retry' },
+            { $set: { 'resultA.league': expect.objectContaining({ lpAfter: 1305 }), 'resultB.league': expect.objectContaining({ lpAfter: 853 }) } }
+        );
+        expect(io._emit).toHaveBeenCalledTimes(2);
+        expect(io._emit).toHaveBeenCalledWith('pk:league-update', expect.objectContaining({ battleId: 'battle_retry', league: expect.objectContaining({ lpAfter: 1305 }) }));
+        expect(io._emit).toHaveBeenCalledWith('pk:league-update', expect.objectContaining({ battleId: 'battle_retry', league: expect.objectContaining({ lpAfter: 853 }) }));
+    });
+
+    test('settleBattle يُرجع null (سُوِّيت من قبل فعلياً) — لا بثّ ولا تحديث للقطة المخزَّنة', async () => {
+        jest.spyOn(RoomBattle, 'find').mockReturnValue({
+            select: () => ({ lean: () => Promise.resolve([{ _id: 'battle_already' }]) })
+        });
+        jest.spyOn(RoomBattle, 'findOneAndUpdate').mockResolvedValue({ _id: 'battle_already', roomA: 'room_a', roomB: 'room_b', winner: 'A', settleAttempts: 1 });
+        const updateOneSpy = jest.spyOn(RoomBattle, 'updateOne').mockResolvedValue({ matchedCount: 1 });
+        jest.spyOn(pkLeagueEngine, 'settleBattle').mockResolvedValue(null);
+        const io = fakeIo();
+
+        await socketService.retryFailedLeagueSettlements(io);
+
+        expect(io._emit).not.toHaveBeenCalled();
+        expect(updateOneSpy).not.toHaveBeenCalled();
+    });
+
+    test('استثناء من settleBattle أثناء إعادة المحاولة لا يرمي للمستدعي (يُسجَّل ويُكمِل بصمت)', async () => {
+        jest.spyOn(RoomBattle, 'find').mockReturnValue({
+            select: () => ({ lean: () => Promise.resolve([{ _id: 'battle_fail_again' }]) })
+        });
+        jest.spyOn(RoomBattle, 'findOneAndUpdate').mockResolvedValue({ _id: 'battle_fail_again', roomA: 'room_a', roomB: 'room_b', winner: 'A', settleAttempts: 2 });
+        jest.spyOn(pkLeagueEngine, 'settleBattle').mockRejectedValue(new Error('انقطاع شبكة محاكى'));
+        const io = fakeIo();
+
+        await expect(socketService.retryFailedLeagueSettlements(io)).resolves.toBeUndefined();
+        expect(io._emit).not.toHaveBeenCalled();
+    });
+});

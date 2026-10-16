@@ -193,11 +193,30 @@ function pickMvp(battle, side) {
 // تستقبل نسختها الخاصة بنداء مستقل (راجع finalizeActiveBattle بالأسفل)، بنفس شكل DATA الذي
 // يفرضه نموذج التصميم الإلزامي بالضبط. 🛡️ sub/title لا تحمل أي HTML أو اسم غرفة خام هنا عمداً
 // (اسم الغرفة مُدخَل مستخدم) — العميل يبنيها بأمان عبر escapeHtml من حقلي a.name/b.name
+// ✅ قسم "الدوري" بمنظور صفّ واحد من نتيجة تسوية settleBattle — مُستخرَج لدالة مستقلة كي
+// تُعيد retryFailedLeagueSettlements استخدامه حرفياً عند بثّ pk:league-update بعد نجاح
+// إعادة محاولة متأخرة، لا بناء نسخة موازية قد تنحرف عن شكل pk:result الأصلي
+function buildPkLeagueSection(settlement, side) {
+    const sideSettlement = settlement && settlement.eligible ? settlement[side] : null;
+    if (!sideSettlement) return null;
+    return {
+        week: formatWeekLabel(settlement.season),
+        rankBefore: sideSettlement.rankBefore,
+        rankAfter: sideSettlement.rankAfter,
+        lpBefore: sideSettlement.lpBefore,
+        lpAfter: sideSettlement.lpAfter,
+        record: sideSettlement.record,
+        neighbours: sideSettlement.neighbours,
+        passedBy: sideSettlement.hint ? sideSettlement.hint.passedBy : null,
+        gapToOld: sideSettlement.hint ? sideSettlement.hint.gapToOld : null,
+        headToHead: sideSettlement.headToHead
+    };
+}
+
 function buildPkResultPayload(battle, mySide, outcome, roomInfo, settlement, durationSeconds) {
     const oppSide = mySide === 'A' ? 'B' : 'A';
     const myRoom = roomInfo[mySide];
     const oppRoom = roomInfo[oppSide];
-    const mySettlement = settlement && settlement.eligible ? settlement[mySide] : null;
 
     return {
         battleId: battle._id.toString(),
@@ -211,20 +230,10 @@ function buildPkResultPayload(battle, mySide, outcome, roomInfo, settlement, dur
         combo: `x${battle.highestCombo}`,
         mvp: pickMvp(battle, mySide),
         mvpLabel: outcome === 'loss' ? 'صمد حتى النهاية' : 'أكبر داعم',
-        // ✅ null لو لم تُحتسَب نقاط الدوري لهذي المعركة (مكافحة التلاعب رفضتها) — العميل يُخفي
-        // قسم الدوري بأناقة بدل عرض أرقام فارغة أو مزيَّفة
-        league: mySettlement ? {
-            week: formatWeekLabel(settlement.season),
-            rankBefore: mySettlement.rankBefore,
-            rankAfter: mySettlement.rankAfter,
-            lpBefore: mySettlement.lpBefore,
-            lpAfter: mySettlement.lpAfter,
-            record: mySettlement.record,
-            neighbours: mySettlement.neighbours,
-            passedBy: mySettlement.hint ? mySettlement.hint.passedBy : null,
-            gapToOld: mySettlement.hint ? mySettlement.hint.gapToOld : null,
-            headToHead: mySettlement.headToHead
-        } : null
+        // ✅ null لو لم تُحتسَب نقاط الدوري لهذي المعركة بعد (مكافحة التلاعب رفضتها، أو فشلت
+        // التسوية وستُعاد محاولتها — راجع retryFailedLeagueSettlements) — العميل يُخفي قسم
+        // الدوري بأناقة بدل عرض أرقام فارغة أو مزيَّفة، وقد يصله لاحقاً عبر pk:league-update
+        league: buildPkLeagueSection(settlement, mySide)
     };
 }
 
@@ -332,6 +341,71 @@ async function sweepOverdueBattles(io) {
         }
     } catch (error) {
         console.error('[PK BATTLE] Sweep error:', error);
+    }
+}
+
+// ✅ مهمة دورية (كل دقيقة — طلب صريح) تعيد محاولة تسوية دوري PK لمعارك انتهت (status:'ended')
+// لكن فشلت تسويتها أول مرة (lpSettled:false) — تُغطّي الفجوة التي لم تكن موجودة فعلياً
+// بالإصلاح السابق: finalizeActiveBattle يُرسل pk:result بـleague:null عند فشل settleBattle
+// ويُسجِّل الخطأ، لكن لا شيء كان يعيد المحاولة لاحقاً. تبحث فقط ضمن آخر 24 ساعة وبسقف 5
+// محاولات لكل معركة (settleAttempts) كي لا تُحاوَل معركة ميؤوس منها (مثلاً غرفة محذوفة) للأبد.
+// 🛡️ settleBattle نفسه idempotent حقيقياً لكل غرفة على حدة الآن (راجع appliedBattleIds
+// بـpkLeagueEngine.js) فلا خطر مضاعفة نقاط غرفة سبق أن نجحت تسويتها بمحاولة سابقة فاشلة جزئياً
+const PK_LEAGUE_RETRY_INTERVAL_MS = 60 * 1000;
+const PK_LEAGUE_RETRY_MAX_ATTEMPTS = 5;
+const PK_LEAGUE_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+async function retryFailedLeagueSettlements(io) {
+    try {
+        const candidates = await RoomBattle.find({
+            status: 'ended',
+            lpSettled: false,
+            settleAttempts: { $lt: PK_LEAGUE_RETRY_MAX_ATTEMPTS },
+            finalizedAt: { $gte: new Date(Date.now() - PK_LEAGUE_RETRY_WINDOW_MS) }
+        }).select('_id').lean();
+        for (const b of candidates) {
+            await retryOneLeagueSettlement(io, b._id);
+        }
+    } catch (error) {
+        console.error('[PK LEAGUE] Retry sweep error:', error);
+    }
+}
+
+async function retryOneLeagueSettlement(io, battleId) {
+    try {
+        // 🛡️ ادّعاء ذرّي لمحاولة إعادة التسوية (يزيد settleAttempts فوراً قبل أي عمل) — لا
+        // يمنع ادّعاءً متزامناً ثانياً من نسخة خادم أخرى بالضبط (لا شرط تساوٍ على القيمة
+        // الحالية)، لكن ذلك آمن تماماً: settleBattle نفسه يملك ادّعاءه الذرّي المستقل
+        // (lpSettled) الذي يضمن تنفيذ التسوية الحقيقية مرّة واحدة فقط مهما تكرّر هذا الادّعاء
+        const battle = await RoomBattle.findOneAndUpdate(
+            { _id: battleId, status: 'ended', lpSettled: false, settleAttempts: { $lt: PK_LEAGUE_RETRY_MAX_ATTEMPTS } },
+            { $inc: { settleAttempts: 1 } },
+            { new: true }
+        );
+        if (!battle) return;
+
+        let settlement;
+        try {
+            settlement = await pkLeagueEngine.settleBattle(battle, battle.winner);
+        } catch (settleError) {
+            console.error(`[PK LEAGUE] إعادة محاولة التسوية فشلت للمعركة ${battleId} (محاولة ${battle.settleAttempts}/${PK_LEAGUE_RETRY_MAX_ATTEMPTS}):`, settleError);
+            return;
+        }
+        if (!settlement || !settlement.eligible) return; // ✅ سُوِّيت من قبل فعلاً (null) أو غير مؤهَّلة — لا بثّ جديد
+
+        const leagueA = buildPkLeagueSection(settlement, 'A');
+        const leagueB = buildPkLeagueSection(settlement, 'B');
+
+        // ✅ يحدّث اللقطة المخزَّنة (resultA/resultB) كي يرى من يفتح GET
+        // /api/voice-room/pk/:battleId/result لاحقاً قسم الدوري أيضاً، لا league:null دائماً
+        await RoomBattle.updateOne(
+            { _id: battleId },
+            { $set: { 'resultA.league': leagueA, 'resultB.league': leagueB } }
+        );
+
+        io.to(`room-chat-${battle.roomA}`).emit('pk:league-update', { battleId: battleId.toString(), league: leagueA });
+        io.to(`room-chat-${battle.roomB}`).emit('pk:league-update', { battleId: battleId.toString(), league: leagueB });
+    } catch (error) {
+        console.error(`[PK LEAGUE] Retry error for battle ${battleId}:`, error);
     }
 }
 
@@ -2756,8 +2830,10 @@ socket.on('refreshBlockData', async () => {
     // إقلاع الخادم (تلتقط أي معركة/تحدٍ تجاوز وقته أثناء إعادة التشغيل نفسها) ثم كل 10 ثوانٍ
     sweepOverdueBattles(io);
     sweepOverdueSeatChallenges(io);
+    retryFailedLeagueSettlements(io);
     setInterval(() => sweepOverdueBattles(io), PK_SWEEP_INTERVAL_MS);
     setInterval(() => sweepOverdueSeatChallenges(io), SEAT_CHALLENGE_SWEEP_INTERVAL_MS);
+    setInterval(() => retryFailedLeagueSettlements(io), PK_LEAGUE_RETRY_INTERVAL_MS);
 
     return io;
 };
@@ -2781,3 +2857,6 @@ module.exports.sweepOverdueBattles = sweepOverdueBattles;
 module.exports.finalizeActiveSeatChallenge = finalizeActiveSeatChallenge;
 module.exports.claimSeatChallengeForFinalize = claimSeatChallengeForFinalize;
 module.exports.sweepOverdueSeatChallenges = sweepOverdueSeatChallenges;
+// ✅ تُصدَّر فقط لاختبارات مراجعة PR (إعادة محاولة تسوية الدوري الدورية)
+module.exports.retryFailedLeagueSettlements = retryFailedLeagueSettlements;
+module.exports.retryOneLeagueSettlement = retryOneLeagueSettlement;

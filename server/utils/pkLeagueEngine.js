@@ -157,9 +157,26 @@ async function settleBattleBody(battle, winner) {
 
     const applyUpdates = async (session) => {
         const opts = session ? { session } : {};
+        // ✅ لقطة "قبل" حقيقية أولاً — بلا أي upsert بعد (تبقى null لو هذي أول معركة محتسَبة
+        // لهذي الغرفة إطلاقاً، بالضبط كالسابق؛ raBefore==null يعني "داخل جديد للدوري" بمنطق
+        // improved/getNeighbours بالأسفل — upsert قبل هذي القراءة كان سيُفسِد هذا المعنى)
         const [beforeA, beforeB] = await Promise.all([
             PkStanding.findOne({ season: season._id, room: battle.roomA }, null, opts),
             PkStanding.findOne({ season: season._id, room: battle.roomB }, null, opts)
+        ]);
+        // ✅ يضمن وجود المستند الآن (بلا أي $inc) — آمن للتكرار دوماً، ولازم كي لا يفشل
+        // التحديث المشروط التالي بـappliedBattleIds بصمت لمجرد عدم وجود مستند بعد لمطابقته
+        await Promise.all([
+            PkStanding.findOneAndUpdate(
+                { season: season._id, room: battle.roomA },
+                { $setOnInsert: { weekKey: season.weekKey } },
+                { upsert: true, setDefaultsOnInsert: true, ...opts }
+            ),
+            PkStanding.findOneAndUpdate(
+                { season: season._id, room: battle.roomB },
+                { $setOnInsert: { weekKey: season.weekKey } },
+                { upsert: true, setDefaultsOnInsert: true, ...opts }
+            )
         ]);
         const nextStreak = (prevStreak, outcome) => {
             if (outcome === 'draw') return 0;
@@ -170,6 +187,10 @@ async function settleBattleBody(battle, winner) {
         const streakB = nextStreak(beforeB?.streak || 0, outcomeB);
         const now = new Date();
 
+        // 🛡️ idempotent حقيقي لكل غرفة على حدة (طلب صريح بمراجعة PR): $inc مشروط بعدم وجود
+        // battle._id بـappliedBattleIds — لو فشلت التحديثات بمنتصف تسلسل غير مدعوم بمعاملات
+        // (لا replica set) بعد أن نجحت غرفة A فعلاً، إعادة استدعاء settleBattleBody كاملة
+        // لاحقاً (المكنسة/مهمة إعادة المحاولة) لن تُضاعِف نقاط A — الشرط هنا يتجاهلها بصمت
         const buildUpdate = (outcome, lpDelta, realSupport, streak, prevBest) => ({
             $inc: {
                 lp: lpDelta,
@@ -178,21 +199,27 @@ async function settleBattleBody(battle, winner) {
                 draws: outcome === 'draw' ? 1 : 0,
                 supportCoins: realSupport || 0
             },
+            $push: { appliedBattleIds: battle._id },
             $set: { streak, lastLpAt: now, bestStreak: Math.max(prevBest || 0, streak) }
         });
 
+        await Promise.all([
+            PkStanding.updateOne(
+                { season: season._id, room: battle.roomA, appliedBattleIds: { $ne: battle._id } },
+                buildUpdate(outcomeA, lpDeltaA, battle.realSupportA, streakA, beforeA?.bestStreak),
+                opts
+            ),
+            PkStanding.updateOne(
+                { season: season._id, room: battle.roomB, appliedBattleIds: { $ne: battle._id } },
+                buildUpdate(outcomeB, lpDeltaB, battle.realSupportB, streakB, beforeB?.bestStreak),
+                opts
+            ),
+            PkHeadToHead.recordMatch(season._id, battle.roomA, battle.roomB, outcomeA, battle._id)
+        ]);
+
         const [afterA, afterB] = await Promise.all([
-            PkStanding.findOneAndUpdate(
-                { season: season._id, room: battle.roomA },
-                { ...buildUpdate(outcomeA, lpDeltaA, battle.realSupportA, streakA, beforeA?.bestStreak), $setOnInsert: { weekKey: season.weekKey } },
-                { upsert: true, new: true, setDefaultsOnInsert: true, ...opts }
-            ),
-            PkStanding.findOneAndUpdate(
-                { season: season._id, room: battle.roomB },
-                { ...buildUpdate(outcomeB, lpDeltaB, battle.realSupportB, streakB, beforeB?.bestStreak), $setOnInsert: { weekKey: season.weekKey } },
-                { upsert: true, new: true, setDefaultsOnInsert: true, ...opts }
-            ),
-            PkHeadToHead.recordMatch(season._id, battle.roomA, battle.roomB, outcomeA)
+            PkStanding.findOne({ season: season._id, room: battle.roomA }, null, opts),
+            PkStanding.findOne({ season: season._id, room: battle.roomB }, null, opts)
         ]);
         return { beforeA, beforeB, afterA, afterB };
     };
@@ -245,7 +272,11 @@ async function settleBattleBody(battle, winner) {
         A: {
             outcome: outcomeA, standing: afterA,
             rankBefore: rankBeforeA, rankAfter: rankAfterA,
-            lpBefore: afterA.lp - lpDeltaA, lpAfter: afterA.lp,
+            // 🐛 لقطة beforeA.lp الحقيقية (قبل أي تحديث بهذي المحاولة) بدل afterA.lp-lpDeltaA:
+            // لو كانت نقاط هذي الغرفة قد طُبِّقت بالفعل بمحاولة سابقة فاشلة جزئياً (راجع
+            // appliedBattleIds أعلى الملف)، لا يُطبَّق أي $inc جديد هذي المرة، فطرح lpDeltaA
+            // من afterA.lp كان سيُنتج رقماً مطروحاً مرتين وخاطئاً تماماً
+            lpBefore: beforeA?.lp || 0, lpAfter: afterA.lp,
             record: { wins: afterA.wins, losses: afterA.losses, draws: afterA.draws },
             neighbours: neighboursA, hint: hintA,
             headToHead: { myWins: h2h.myWins, opponentWins: h2h.opponentWins, draws: h2h.draws }
@@ -253,7 +284,7 @@ async function settleBattleBody(battle, winner) {
         B: {
             outcome: outcomeB, standing: afterB,
             rankBefore: rankBeforeB, rankAfter: rankAfterB,
-            lpBefore: afterB.lp - lpDeltaB, lpAfter: afterB.lp,
+            lpBefore: beforeB?.lp || 0, lpAfter: afterB.lp,
             record: { wins: afterB.wins, losses: afterB.losses, draws: afterB.draws },
             neighbours: neighboursB, hint: hintB,
             headToHead: { myWins: h2h.opponentWins, opponentWins: h2h.myWins, draws: h2h.draws }
