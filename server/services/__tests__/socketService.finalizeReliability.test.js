@@ -126,9 +126,11 @@ describe('finalizeActiveSeatChallenge — نفس الإصلاح الثلاثي �
             scoreB: 10,
             participants: [],
             durationSeconds: 180,
+            punishmentKey: 'none',
             endsAt: new Date(Date.now() - 15000),
             save: jest.fn().mockResolvedValue(undefined),
             populate: jest.fn().mockResolvedValue(undefined),
+            topSupporters: jest.fn().mockResolvedValue([]),
             ...overrides
         };
     }

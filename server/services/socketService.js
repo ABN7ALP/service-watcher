@@ -465,24 +465,47 @@ function clearSeatChallengeTimer(map, challengeId) {
     if (t) { clearTimeout(t); map.delete(key); }
 }
 
-// ✅ ملخص مبسّط لبثّه للعميل — نفس الشكل يُستخدم بكل أحداث الدورة (بدء/تحديث نتيجة/انتهاء)
+// ✅ ملخص مبسّط لبثّه للعميل — نفس الشكل يُستخدم بكل أحداث الدورة (إنشاء/انتظار/حالة مشارك/
+// بدء/انتهاء). لا يحتسب أفضل الداعمين هنا (غير متزامن، وغير ذي معنى قبل بدء التحدي فعلياً) —
+// تلك تصل فقط عبر seat-duel:score الحيّ (giftController.emitSeatDuelScoreNow) أو حمولة
+// النتيجة النهائية (buildSeatChallengeResultPayload أدناه)
 function buildSeatChallengeSnapshot(challenge) {
+    const punishment = SeatChallenge.PUNISHMENTS[challenge.punishmentKey] || SeatChallenge.PUNISHMENTS.none;
     return {
         challengeId: challenge._id.toString(),
         roomId: challenge.room.toString(),
+        mode: challenge.mode,
         participants: challenge.participants.map(p => ({
             userId: p.user._id ? p.user._id.toString() : p.user.toString(),
             username: p.user.username || undefined,
             profileImage: p.user.profileImage || undefined,
             activeFrameClass: p.user.activeFrameClass || undefined,
             seatNumber: p.seatNumber,
-            team: p.team
+            team: p.team,
+            accepted: p.accepted,
+            declined: p.declined,
+            score: p.score || 0
         })),
         scoreA: challenge.scoreA,
         scoreB: challenge.scoreB,
         durationSeconds: challenge.durationSeconds,
+        startedAt: challenge.startedAt,
         endsAt: challenge.endsAt,
-        winner: challenge.winner
+        expiresAt: challenge.expiresAt,
+        winner: challenge.winner,
+        punishmentKey: challenge.punishmentKey,
+        punishment
+    };
+}
+
+// ✅ حمولة النتيجة النهائية (seat-challenge-ended) — نفس اللقطة أعلى + أفضل 3 داعمين لكل
+// فريق (طلب صريح للنتيجة: "أكبر داعم") وأكبر داعم فريد لكل فريق، محسوبان مرّة واحدة فقط هنا
+async function buildSeatChallengeResultPayload(challenge) {
+    const [topA, topB] = await Promise.all([challenge.topSupporters('A', 3), challenge.topSupporters('B', 3)]);
+    return {
+        ...buildSeatChallengeSnapshot(challenge),
+        topFans: { A: topA, B: topB },
+        mvp: { A: topA[0] || null, B: topB[0] || null }
     };
 }
 
@@ -519,7 +542,7 @@ async function finalizeActiveSeatChallenge(io, challengeId) {
         else if (challenge.scoreB > challenge.scoreA) winner = 'B';
 
         challenge.winner = winner;
-        const result = buildSeatChallengeSnapshot(challenge);
+        const result = await buildSeatChallengeResultPayload(challenge);
         challenge.result = result;
         challenge.finalizedAt = new Date();
         challenge.status = 'ended';
@@ -2152,16 +2175,27 @@ socket.on('refreshBlockData', async () => {
         });
 
         // =====================================================
-        // ✅ تحدٍ بين أعضاء داخل نفس الغرفة — المضيف أو أحد المسؤولين ينشئه، يختار 2 أو 4
-        // من الجالسين حالياً ويوزّعهم فريقين متساويين، ولا يبدأ إلا بموافقة الجميع صراحة
+        // ✅ تحدٍ بين أعضاء داخل نفس الغرفة — المضيف أو أحد المسؤولين ينشئه (1 ضد 1 / 2 ضد 2 /
+        // 3 ضد 3)، يوزّع فريقين متساويين، عقاب اختياري من قائمة ثابتة، ولا يبدأ إلا بموافقة
+        // الجميع صراحة
         // =====================================================
-        socket.on('create-seat-challenge', async ({ roomId, participants, durationSeconds }) => {
+        socket.on('create-seat-challenge', async ({ roomId, mode, participants, durationSeconds, punishmentKey }) => {
             try {
-                if (!roomId || !Array.isArray(participants) || ![2, 4].includes(participants.length)) {
-                    return socket.emit('seat-error', 'اختر شخصين أو أربعة بالضبط لبدء التحدي');
+                const normalizedMode = parseInt(mode, 10);
+                if (!roomId || !SeatChallenge.MODES.includes(normalizedMode)) {
+                    return socket.emit('seat-error', 'اختر نظام التحدي: 1 ضد 1 أو 2 ضد 2 أو 3 ضد 3');
+                }
+                if (!Array.isArray(participants) || participants.length !== normalizedMode * 2) {
+                    return socket.emit('seat-error', 'عدد المشاركين لا يطابق النظام المختار');
                 }
                 const duration = SeatChallenge.DURATION_PRESETS_SECONDS.includes(parseInt(durationSeconds))
                     ? parseInt(durationSeconds) : SeatChallenge.DURATION_PRESETS_SECONDS[0];
+                // 🛡️ مفتاح العقاب فقط (لا نص حر) — أي قيمة غير موجودة بالقائمة الثابتة تُرفَض
+                // صراحة بدل تجاهلها بصمت، فلا يمرّ عميل مُعدَّل بمفتاح وهمي دون تنبيه
+                const safePunishmentKey = punishmentKey || 'none';
+                if (!Object.prototype.hasOwnProperty.call(SeatChallenge.PUNISHMENTS, safePunishmentKey)) {
+                    return socket.emit('seat-error', 'عقاب غير صالح');
+                }
 
                 const room = await VoiceRoom.resolveRoom(roomId);
                 if (!room || !room.canModerate(socket.user._id)) {
@@ -2196,17 +2230,19 @@ socket.on('refreshBlockData', async () => {
                     teamCounts[p.team]++;
                     finalParticipants.push({ user: p.userId, seatNumber: seat.seatNumber, team: p.team, accepted: p.userId === myId });
                 }
-                const expectedPerTeam = participants.length / 2;
-                if (teamCounts.A !== expectedPerTeam || teamCounts.B !== expectedPerTeam) {
+                if (teamCounts.A !== normalizedMode || teamCounts.B !== normalizedMode) {
                     return socket.emit('seat-error', 'يجب أن يتساوى عدد أفراد الفريقين');
                 }
 
                 const challenge = await SeatChallenge.create({
                     room: room._id,
                     createdBy: socket.user._id,
+                    mode: normalizedMode,
                     participants: finalParticipants,
                     durationSeconds: duration,
-                    status: 'pending'
+                    punishmentKey: safePunishmentKey,
+                    status: 'pending',
+                    expiresAt: new Date(Date.now() + SeatChallenge.CHALLENGE_EXPIRY_SECONDS * 1000)
                 });
                 await challenge.populate('participants.user', 'username profileImage activeFrameClass');
 
@@ -2223,8 +2259,7 @@ socket.on('refreshBlockData', async () => {
                     if (targetSocketId) {
                         io.to(targetSocketId).emit('seat-challenge-invite', {
                             ...snapshot,
-                            invitedBy: socket.user.username,
-                            expiresInSeconds: SeatChallenge.CHALLENGE_EXPIRY_SECONDS
+                            invitedBy: socket.user.username
                         });
                     }
                 });
@@ -2244,9 +2279,12 @@ socket.on('refreshBlockData', async () => {
                 if (!participant) return socket.emit('seat-error', 'ليس لديك دعوة بانتظار ردك بهذا التحدي');
 
                 if (!accept) {
+                    participant.declined = true;
                     clearSeatChallengeTimer(pendingSeatChallengeTimers, challenge._id);
                     challenge.status = 'declined';
                     await challenge.save();
+                    // ✅ الرفض يُغلق البطاقة عند الجميع فوراً (طلب صريح — بند 9) — حدث مخصّص
+                    // منفصل عن البثّ الحيّ العام أدناه كي تتعامل الواجهة مع الإغلاق بوضوح
                     io.to(`room-chat-${challenge.room}`).emit('seat-challenge-declined', {
                         challengeId: challenge._id.toString(),
                         roomId: challenge.room.toString(),
@@ -2262,10 +2300,9 @@ socket.on('refreshBlockData', async () => {
                     clearSeatChallengeTimer(pendingSeatChallengeTimers, challenge._id);
                     await activateSeatChallenge(io, challenge);
                 } else {
-                    io.to(`room-chat-${challenge.room}`).emit('seat-challenge-participant-accepted', {
-                        challengeId: challenge._id.toString(),
-                        userId: myId
-                    });
+                    // ✅ حالة كل مشارك تُبث حياً (طلب صريح — بند 9): اللقطة الكاملة بعد كل ردّ،
+                    // لا حدث جزئي بحقل واحد — العميل يُحدِّث بطاقة الانتظار كاملة من مصدر واحد
+                    io.to(`room-chat-${challenge.room}`).emit('seat-challenge-participant-status', buildSeatChallengeSnapshot(challenge));
                 }
             } catch (error) {
                 console.error('[SEAT CHALLENGE] Response error:', error);
