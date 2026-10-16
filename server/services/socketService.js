@@ -2772,6 +2772,10 @@ module.exports.getRoomSupportTotal = getRoomSupportTotal;
 // ✅ تُصدَّر فقط لاختبارات Part 1.5 (إصلاح تعلّق إنهاء PK/تحدي المقاعد) — راجع
 // __tests__/socketService.finalizeReliability.test.js؛ لا مستهلك إنتاجي خارج هذا الملف نفسه
 module.exports.finalizeActiveBattle = finalizeActiveBattle;
+// ✅ تُستخدَم من voiceRoomController (getRoomById) لبناء activeSeatChallenge بنفس الشكل
+// الغني المبثوث لحظياً بالضبط (mode/punishment/participants.score/accepted...) — مصدر واحد
+// للشكل بدل تكراره محلياً بالمتحكّم
+module.exports.buildSeatChallengeSnapshot = buildSeatChallengeSnapshot;
 module.exports.claimBattleForFinalize = claimBattleForFinalize;
 module.exports.sweepOverdueBattles = sweepOverdueBattles;
 module.exports.finalizeActiveSeatChallenge = finalizeActiveSeatChallenge;

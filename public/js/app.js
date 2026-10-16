@@ -598,6 +598,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             }
         }
         syncSeatVipRings(); // ✅ شاغل المقعد تغيّر — لو كان أحد أعلى داعمَين، تتبعه حلقته الذهبية لمقعده الجديد فوراً
+        applyDuelSeatStates(); // ✅ شاغل المقعد تغيّر — لو تحدي مقاعد نشط، تتبعه حلقة/شارة فريقه لمقعده الجديد فوراً
     }
 
     // ✅ حلقة ذهبية لأعلى داعمَين بالغرفة (طلب صريح) — تُطابق مقاعدهما الحاليَين بـcurrentRoomTopSupporters
@@ -1277,6 +1278,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <input id="room-chat-input" type="text" maxlength="300" placeholder="قل شيئاً..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="room-chat-message-field">
                     <button id="room-chat-send-btn" title="إرسال"><i class="fas fa-paper-plane"></i></button>
                 </div>
+                <button id="room-seat-duel-btn" class="hidden room-chat-dock-icon room-chat-duel-icon" title="تحدٍ بين أعضاء">⚔️</button>
                 <button id="room-join-request-btn" class="hidden room-chat-dock-icon" title="اطلب الصعود للمايك">
                     <i class="fas fa-infinity"></i>
                 </button>
@@ -1322,6 +1324,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
         // ✅ زر "المزيد" — يجمّع الموسيقى/الرسائل/التفاعل بقائمة واحدة بدل صف أيقونات مزدحم
         document.getElementById('room-chat-more-btn')?.addEventListener('click', showRoomChatMoreSheet);
+
+        // ✅ زر ⚔️ تحدي المقاعد (طلب صريح — بند 8): يفتح ورقة الإنشاء مباشرة (لا قائمة "المزيد"
+        // بعد الآن) — ظاهر فقط للمضيف/المسؤول (راجع updateHandRaiseUI)
+        document.getElementById('room-seat-duel-btn')?.addEventListener('click', () => {
+            if (currentVoiceRoomId) showSeatDuelCreateSheet({ id: currentVoiceRoomId });
+        });
 
         // ✅ زر (∞): للمضيف/المسؤول يفتح قائمة طلبات الصعود المعلّقة (لا يرسل طلباً لنفسه أبداً)،
         // ولبقية المستخدمين يرسل طلب صعود — وإن كان طلب مُرسَل أصلاً يعرض نافذة إلغائه
@@ -1382,11 +1390,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (currentPkBattle && currentPkBattle.status === 'active' && currentVoiceRoomId !== 'main') {
             items.push({ action: 'pk-item-store', icon: 'fa-hand-fist', label: 'متجر المعركة', color: 'text-amber-300' });
         }
-        // ✅ تحدٍ بين أعضاء الغرفة نفسها — المضيف والمسؤولون معاً (بعكس تحدي PK بين الغرف،
-        // قرار داخلي بسيط بالغرفة نفسها لا يحتاج صلاحية المضيف حصراً)
-        if (isManager && currentVoiceRoomId !== 'main') {
-            items.push({ action: 'seat-challenge', icon: 'fa-fire', label: 'تحدٍ بين أعضاء', color: 'text-red-400' });
-        }
+        // ✅ تحدي المقاعد انتقل لزر ⚔️ مخصّص بالشريط نفسه (راجع #room-seat-duel-btn) — لا
+        // يظهر بقائمة "المزيد" بعد الآن (طلب صريح: فتح مباشر لا عبر قائمة)
         // ✅ تنظيف/قفل الدردشة — للمضيف/المسؤولين بغرف المستخدمين فقط (لا الرسمية)
         if (isManager && currentVoiceRoomId !== 'main') {
             items.push({ action: 'clear-chat', icon: 'fa-broom', label: 'تنظيف الدردشة', color: 'text-gray-300' });
@@ -1458,8 +1463,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     if (currentVoiceRoomId) showPkChallengeModal({ id: currentVoiceRoomId });
                 } else if (action === 'pk-item-store') {
                     showPkItemStoreModal();
-                } else if (action === 'seat-challenge') {
-                    if (currentVoiceRoomId) showSeatChallengeCreateModal({ id: currentVoiceRoomId });
                 } else if (action === 'clear-chat') {
                     showClearChatConfirm();
                 } else if (action === 'toggle-chat-lock') {
@@ -1547,6 +1550,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // (نفس شرط ظهورهما سابقاً داخل قائمة "المزيد" بالضبط، راجع updateMicToggleButtonUI للون)
         document.getElementById('room-reaction-btn')?.classList.toggle('hidden', !isSeatedHere);
         document.getElementById('room-mic-toggle-btn')?.classList.toggle('hidden', !isSeatedHere);
+        // ✅ زر ⚔️ تحدي المقاعد — المضيف/المسؤول فقط، ولا بالغرفة الرسمية (نفس شرط الطلب الصريح)
+        document.getElementById('room-seat-duel-btn')?.classList.toggle('hidden', !isManager || isMainRoom);
         updateMicToggleButtonUI();
     }
 
@@ -2061,6 +2066,21 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         if (wasNearBottom) box.scrollTop = box.scrollHeight;
         // ✅ طلب صريح: تحتفظ بآخر 60 رسالة بالـDOM فقط — لا سجل قابل للتمرير لأعلى بدردشة الغرفة
         // (بعكس الدردشة العامة)، فحذف الأقدم هنا آمن تماماً وبلا أي تأثير على قراءة سجل سابق
+        while (box.children.length > 60) box.firstElementChild.remove();
+    }
+
+    // ✅ سطر نظام محلي بالدردشة (مطابقة §.msg.duelmsg بالنموذج الإلزامي) — كل عميل بالغرفة
+    // يستقبل نفس حدث النتيجة (seat-challenge-ended) ويُدرج نفس النص محلياً بنفس اللحظة، فيراه
+    // الجميع فعلياً دون حاجة لحفظ رسالة خادمية منفصلة بقاعدة البيانات لمجرد زينة نصية ثابتة
+    function appendSystemChatMessage(text) {
+        const box = document.getElementById('room-chat-messages');
+        if (!box) return;
+        const el = document.createElement('div');
+        el.className = 'room-chat-message room-chat-bubble-sys'; // ✅ نفس فقاعة النظام الذهبية الموجودة بالفعل (§.msg.sys بالنموذج)
+        el.innerHTML = `<p class="room-chat-msg-line"><span class="room-chat-msg-text">${escapeHtml(text)}</span></p>`;
+        const wasNearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 80;
+        box.appendChild(el);
+        if (wasNearBottom) box.scrollTop = box.scrollHeight;
         while (box.children.length > 60) box.firstElementChild.remove();
     }
 
@@ -3592,9 +3612,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 removePkBar();
             }
             if (result.activeSeatChallenge) {
-                renderSeatChallengeBar(result.activeSeatChallenge);
+                currentSeatDuel = { ...result.activeSeatChallenge, status: 'active' };
+                renderDuelBar();
             } else {
-                removeSeatChallengeBar();
+                currentSeatDuel = null;
+                removeDuelBar();
             }
             if (typeof result.isLocked === 'boolean') currentRoomIsLocked = result.isLocked;
             if (typeof result.chatLocked === 'boolean') currentRoomChatLocked = result.chatLocked;
@@ -5360,361 +5382,566 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     // =====================================================
-    // ✅ تحدٍ بين أعضاء داخل نفس الغرفة (بعكس معركة PK أعلاه: بين شخصين/فريقين من نفس
-    // الغرفة، وليس بين غرفتين) — إنشاء (المضيف/المسؤول فقط)، دعوات فردية، شريط حي بتأثيرات
-    // "اقتراب من الحسم"، ونافذة نتيجة قوية بصرياً للفائز/الخاسر
+    // ✅ تحدي المقاعد (duel) — إعادة بناء كاملة (طلب صريح — الجزء 4): 1 ضد 1 / 2 ضد 2 /
+    // 3 ضد 3، توزيع بالضغط بالتناوب، عقاب من قائمة ثابتة، دعوة ببطاقة حية، شريط من نفس
+    // عائلة .pk-mini (لا تكرار CSS)، ونتيجة داخل الغرفة. منفَّذة حرفياً من
+    // docs/design/seat-duel-prototype.html — كل الأصناف المرئية duel-* مطابقة لها.
     // =====================================================
-    let currentSeatChallenge = null;
-    let seatChallengeCountdownInterval = null;
-    let seatChallengeFireShownFor = null; // 'A' | 'B' | null — يمنع تكرار تنبيه نفس التصدّر كل تحديث نقاط
+    let currentSeatDuel = null; // لقطة التحدي الكاملة من الخادم (راجع buildSeatChallengeSnapshot)
+    let seatDuelCardCountdownInterval = null; // عدّاد الدعوة/الانتظار (من expiresAt الخادم)
+    let seatDuelBarCountdownInterval = null;
+    let seatDuelResultCloseTimer = null;
+    let seatDuelResultPollTimer = null;
+    let seatDuelRider = null;
+    let seatDuelFinal = false;
 
-    // ✅ نافذة إنشاء التحدي — يختار المضيف/المسؤول 2 أو 4 من الجالسين حالياً (تُقرأ مباشرة من
-    // شبكة المقاعد بالشاشة، بلا طلب شبكة إضافي)، يُوزَّعون فريقين تلقائياً بالترتيب (أول
-    // نصف 🔵، والباقي 🔴)، ثم مدة التحدي — كل هذا محلي فقط، السيرفر يتحقق من كل شيء مجدداً
-    function showSeatChallengeCreateModal(room) {
-        document.getElementById('seat-challenge-create-modal')?.remove();
+    const SEAT_DUEL_TEAM_NAME = { A: 'الأحمر', B: 'الأزرق' };
+    const SEAT_DUEL_TEAM_EMOJI = { A: '🔴', B: '🔵' };
+
+    function seatDuelFmtClock(ms) {
+        const total = Math.max(0, Math.ceil(ms / 1000));
+        return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+    }
+
+    // =====================================================
+    // ✅ ورقة الإنشاء — ⚔️ بالشريط (المضيف/المسؤول فقط). نظام 1/2/3، توزيع بالضغط بالتناوب
+    // بين الفريقين (balanced fill — نفس خوارزمية drawBoard بالنموذج الإلزامي حرفياً)، مدة
+    // 1/3/5 دقائق، وعقاب من قائمة ثابتة بالخادم (مفاتيح لا نص حر — راجع SeatChallenge.PUNISHMENTS)
+    // =====================================================
+    const SEAT_DUEL_PUNISHMENT_OPTIONS = [
+        { key: 'sing', icon: '🎤', label: 'يغني مقطعاً' },
+        { key: 'truth', icon: '🙊', label: 'سؤال صراحة' },
+        { key: 'impersonate', icon: '🎭', label: 'يقلّد شخصاً' },
+        { key: 'photo', icon: '🖼️', label: 'يغيّر صورته ساعة' },
+        { key: 'none', icon: '', label: 'بلا عقاب' }
+    ];
+
+    function showSeatDuelCreateSheet(room, prefill) {
+        if (currentSeatDuel) { showNotification('يوجد تحدٍ قائم بالفعل بهذي الغرفة', 'info'); return; }
+        document.getElementById('seat-duel-create-scrim')?.remove();
+
         const candidates = Array.from(document.querySelectorAll('#voice-chat-grid .occupied-seat'))
             .map(el => ({
                 userId: el.dataset.userId,
                 username: el.title || '',
-                profileImage: el.querySelector('img')?.src || '',
-                seatNumber: parseInt(el.dataset.seat)
+                profileImage: el.querySelector('img')?.src || '/images/default-avatar.png'
             }))
             .filter(c => !!c.userId);
 
-        if (candidates.length < 2) {
-            showNotification('يحتاج التحدي شخصين جالسين على الأقل', 'info');
-            return;
+        let mode = prefill?.mode && SEAT_DUEL_MODES.includes(prefill.mode) ? prefill.mode : 1;
+        let teamA = []; // [{userId, username, profileImage}]
+        let teamB = [];
+        if (prefill?.participants) {
+            prefill.participants.forEach(p => {
+                const found = candidates.find(c => c.userId === p.userId);
+                if (!found) return;
+                (p.team === 'A' ? teamA : teamB).push(found);
+            });
         }
+        let durationSeconds = 60;
+        let punishmentKey = 'none';
 
-        const modal = document.createElement('div');
-        modal.id = 'seat-challenge-create-modal';
-        modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4';
-        modal.innerHTML = `
-            <div class="bg-gray-800 rounded-xl shadow-xl p-5 w-full max-w-sm text-white max-h-[85vh] overflow-y-auto">
-                <h3 class="text-lg font-bold mb-3"><i class="fas fa-fire text-red-400"></i> تحدٍ بين أعضاء</h3>
-                <div class="mb-3">
-                    <label class="text-xs text-gray-400 block mb-1.5">حجم التحدي</label>
-                    <div class="grid grid-cols-2 gap-2">
-                        <button type="button" data-size="2" class="challenge-size-btn bg-purple-600 text-xs py-2 rounded-lg font-bold">1 ضد 1</button>
-                        <button type="button" data-size="4" class="challenge-size-btn bg-gray-700 text-xs py-2 rounded-lg font-bold">2 ضد 2</button>
-                    </div>
+        const scrim = document.createElement('div');
+        scrim.id = 'seat-duel-create-scrim';
+        scrim.className = 'duel-scrim';
+        scrim.innerHTML = `
+            <div class="duel-sheet">
+                <button type="button" class="duel-close-x" id="seat-duel-create-close"><i class="fas fa-xmark"></i></button>
+                <div class="duel-grab"></div>
+                <div class="duel-sh-title">⚔️ تحدي المقاعد</div>
+                <p class="duel-sh-sub">اختر النظام، ثم اضغط على الجالسين لتوزيعهم على الفريقين</p>
+                <div class="duel-lbl">النظام</div>
+                <div class="duel-seg" id="seat-duel-mode-seg">
+                    <button type="button" data-mode="1">1 ضد 1<small>فردي</small></button>
+                    <button type="button" data-mode="2">2 ضد 2<small>ثنائي</small></button>
+                    <button type="button" data-mode="3">3 ضد 3<small>فرق</small></button>
                 </div>
-                <div class="mb-3">
-                    <label class="text-xs text-gray-400 block mb-1.5">مدة التحدي</label>
-                    <div class="grid grid-cols-3 gap-2">
-                        <button type="button" data-sec="60" class="challenge-duration-btn bg-purple-600 text-xs py-2 rounded-lg font-bold">دقيقة</button>
-                        <button type="button" data-sec="120" class="challenge-duration-btn bg-gray-700 text-xs py-2 rounded-lg font-bold">دقيقتان</button>
-                        <button type="button" data-sec="180" class="challenge-duration-btn bg-gray-700 text-xs py-2 rounded-lg font-bold">3 دقائق</button>
-                    </div>
+                <div class="duel-lbl">الفريقان <small id="seat-duel-fill-hint">اضغط على مستخدم لإضافته</small></div>
+                <div class="duel-board">
+                    <div class="duel-team duel-team--us" id="seat-duel-team-a"></div>
+                    <div class="duel-vsx">VS</div>
+                    <div class="duel-team duel-team--them" id="seat-duel-team-b"></div>
                 </div>
-                <p id="challenge-pick-label" class="text-xs text-gray-400 mb-1.5">اخترت 0 من 2 — 🔵 مقابل 🔴</p>
-                <div id="challenge-candidates-list" class="space-y-1.5 max-h-52 overflow-y-auto mb-3"></div>
-                <button type="button" id="confirm-seat-challenge" disabled class="w-full bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed py-2.5 rounded-lg font-bold text-sm mb-2">إرسال الدعوات</button>
-                <button type="button" id="cancel-seat-challenge-create" class="w-full text-center py-2 rounded-lg bg-gray-700 text-gray-300 text-sm">إلغاء</button>
+                <div class="duel-pool" id="seat-duel-pool"></div>
+                <div class="duel-lbl">المدة</div>
+                <div class="duel-seg" id="seat-duel-duration-seg">
+                    <button type="button" data-sec="60">1 دقيقة</button>
+                    <button type="button" data-sec="180">3 دقائق</button>
+                    <button type="button" data-sec="300">5 دقائق</button>
+                </div>
+                <div class="duel-lbl">عقاب الخاسر <small>اختياري</small></div>
+                <div class="duel-chips" id="seat-duel-punish-chips"></div>
+                <button type="button" id="seat-duel-submit" class="duel-cta" disabled>أرسل الدعوات</button>
+                <p class="duel-hint">يُدعى كل مشارك على حدة، ولديه 30 ثانية للردّ</p>
             </div>
         `;
-        document.body.appendChild(modal);
-        modal.addEventListener('click', (e) => { if (e.target.id === 'seat-challenge-create-modal') modal.remove(); });
-        modal.querySelector('#cancel-seat-challenge-create').addEventListener('click', () => modal.remove());
+        document.body.appendChild(scrim);
+        scrim.addEventListener('click', (e) => { if (e.target === scrim) scrim.remove(); });
+        scrim.querySelector('#seat-duel-create-close').addEventListener('click', () => scrim.remove());
 
-        let size = 2;
-        let selectedDuration = 60;
-        let selected = []; // [{ userId, team }]
+        function teamSlotHTML(member) {
+            if (!member) return `<div class="duel-slot"><div class="e"><i class="fas fa-user"></i></div>—</div>`;
+            return `<div class="duel-slot" data-user-id="${member.userId}"><img src="${member.profileImage}">${escapeHtml((member.username || '').slice(0, 8))}</div>`;
+        }
 
-        function renderCandidates() {
-            const list = modal.querySelector('#challenge-candidates-list');
-            list.innerHTML = candidates.map(c => {
-                const sel = selected.find(s => s.userId === c.userId);
-                const teamBadge = sel ? (sel.team === 'A' ? '🔵' : '🔴') : '';
-                return `
-                    <button type="button" class="challenge-candidate-btn ${sel ? 'challenge-candidate-selected' : ''}" data-user-id="${c.userId}">
-                        <img src="${c.profileImage}" class="w-8 h-8 rounded-full flex-shrink-0">
-                        <span class="text-xs flex-1 text-right truncate">${escapeHtml(c.username)}</span>
-                        ${teamBadge ? `<span class="text-sm">${teamBadge}</span>` : ''}
-                    </button>
-                `;
+        function renderBoard() {
+            const teamAEl = scrim.querySelector('#seat-duel-team-a');
+            const teamBEl = scrim.querySelector('#seat-duel-team-b');
+            teamAEl.innerHTML = `<h4>${SEAT_DUEL_TEAM_EMOJI.A} ${SEAT_DUEL_TEAM_NAME.A}</h4>` + Array.from({ length: mode }, (_, i) => teamSlotHTML(teamA[i])).join('');
+            teamBEl.innerHTML = `<h4>${SEAT_DUEL_TEAM_EMOJI.B} ${SEAT_DUEL_TEAM_NAME.B}</h4>` + Array.from({ length: mode }, (_, i) => teamSlotHTML(teamB[i])).join('');
+            teamAEl.querySelectorAll('.duel-slot[data-user-id]').forEach(el => {
+                el.addEventListener('click', () => { teamA = teamA.filter(u => u.userId !== el.dataset.userId); renderAll(); });
+            });
+            teamBEl.querySelectorAll('.duel-slot[data-user-id]').forEach(el => {
+                el.addEventListener('click', () => { teamB = teamB.filter(u => u.userId !== el.dataset.userId); renderAll(); });
+            });
+
+            const poolEl = scrim.querySelector('#seat-duel-pool');
+            poolEl.innerHTML = candidates.map(c => {
+                const used = teamA.some(u => u.userId === c.userId) || teamB.some(u => u.userId === c.userId);
+                return `<button type="button" class="duel-cand ${used ? 'used' : ''}" data-user-id="${c.userId}"><img src="${c.profileImage}">${escapeHtml((c.username || '').slice(0, 7))}</button>`;
             }).join('');
-            list.querySelectorAll('.challenge-candidate-btn').forEach(btn => {
+            poolEl.querySelectorAll('.duel-cand').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    const userId = btn.dataset.userId;
-                    const existingIdx = selected.findIndex(s => s.userId === userId);
-                    if (existingIdx !== -1) {
-                        selected.splice(existingIdx, 1);
-                    } else {
-                        if (selected.length >= size) return;
-                        selected.push({ userId, team: null }); // الفريق يُحسَب أدناه دائماً، لا هنا
-                    }
-                    // 🐛 إصلاح: تعيين الفريق وقت الإضافة فقط كان يُنتج فريقين غير متكافئين لو أُلغي
-                    // اختيار شخص بمنتصف القائمة ثم اختير آخر بدلاً عنه (مثال: أختار 4، أُلغي
-                    // الثاني، أختار خامساً — كان يصبح 1 مقابل 3 دون أي تنبيه، ويرفضه السيرفر
-                    // لاحقاً بلا توضيح). إعادة حساب الفريقين كاملة حسب الترتيب الحالي تضمن توازناً
-                    // تاماً دائماً (نصف الأول 🔵، نصف الثاني 🔴) بغض النظر عن أي تعديل سابق
-                    selected.forEach((s, i) => { s.team = i < size / 2 ? 'A' : 'B'; });
-                    renderCandidates();
-                    updateConfirmState();
+                    const c = candidates.find(x => x.userId === btn.dataset.userId);
+                    if (!c) return;
+                    // ✅ توزيع بالتناوب متوازن (نفس خوارزمية drawBoard بالنموذج الإلزامي حرفياً):
+                    // الفريق الأقل عدداً يستلم التالي، والتعادل يذهب للأحمر أولاً
+                    if (teamA.length <= teamB.length && teamA.length < mode) teamA.push(c);
+                    else if (teamB.length < mode) teamB.push(c);
+                    else if (teamA.length < mode) teamA.push(c);
+                    renderAll();
                 });
             });
+
+            scrim.querySelector('#seat-duel-fill-hint').textContent = `اخترت ${teamA.length + teamB.length} من ${mode * 2}`;
+            scrim.querySelector('#seat-duel-submit').disabled = teamA.length !== mode || teamB.length !== mode;
         }
 
-        function updateConfirmState() {
-            modal.querySelector('#confirm-seat-challenge').disabled = selected.length !== size;
-            modal.querySelector('#challenge-pick-label').textContent = `اخترت ${selected.length} من ${size} — 🔵 مقابل 🔴`;
-        }
+        function renderAll() { renderBoard(); }
 
-        modal.querySelectorAll('.challenge-size-btn').forEach(btn => {
+        scrim.querySelectorAll('#seat-duel-mode-seg button').forEach(btn => {
+            btn.classList.toggle('on', parseInt(btn.dataset.mode, 10) === mode);
             btn.addEventListener('click', () => {
-                size = parseInt(btn.dataset.size);
-                selected = [];
-                modal.querySelectorAll('.challenge-size-btn').forEach(b => b.classList.remove('bg-purple-600'));
-                modal.querySelectorAll('.challenge-size-btn').forEach(b => b.classList.add('bg-gray-700'));
-                btn.classList.remove('bg-gray-700');
-                btn.classList.add('bg-purple-600');
-                renderCandidates();
-                updateConfirmState();
+                mode = parseInt(btn.dataset.mode, 10);
+                teamA = teamA.slice(0, mode);
+                teamB = teamB.slice(0, mode);
+                scrim.querySelectorAll('#seat-duel-mode-seg button').forEach(b => b.classList.toggle('on', b === btn));
+                renderAll();
             });
         });
-        modal.querySelectorAll('.challenge-duration-btn').forEach(btn => {
+        scrim.querySelectorAll('#seat-duel-duration-seg button').forEach(btn => {
+            btn.classList.toggle('on', parseInt(btn.dataset.sec, 10) === durationSeconds);
             btn.addEventListener('click', () => {
-                selectedDuration = parseInt(btn.dataset.sec);
-                modal.querySelectorAll('.challenge-duration-btn').forEach(b => b.classList.remove('bg-purple-600'));
-                modal.querySelectorAll('.challenge-duration-btn').forEach(b => b.classList.add('bg-gray-700'));
-                btn.classList.remove('bg-gray-700');
-                btn.classList.add('bg-purple-600');
+                durationSeconds = parseInt(btn.dataset.sec, 10);
+                scrim.querySelectorAll('#seat-duel-duration-seg button').forEach(b => b.classList.toggle('on', b === btn));
+            });
+        });
+        const chipsEl = scrim.querySelector('#seat-duel-punish-chips');
+        chipsEl.innerHTML = SEAT_DUEL_PUNISHMENT_OPTIONS.map(p => `<button type="button" class="duel-chip ${p.key === punishmentKey ? 'on' : ''}" data-key="${p.key}">${p.icon} ${escapeHtml(p.label)}</button>`).join('');
+        chipsEl.querySelectorAll('.duel-chip').forEach(btn => {
+            btn.addEventListener('click', () => {
+                punishmentKey = btn.dataset.key;
+                chipsEl.querySelectorAll('.duel-chip').forEach(b => b.classList.toggle('on', b === btn));
             });
         });
 
-        renderCandidates();
-        updateConfirmState();
-
-        modal.querySelector('#confirm-seat-challenge').addEventListener('click', () => {
-            if (selected.length !== size) return;
-            socket.emit('create-seat-challenge', { roomId: room.id, participants: selected, durationSeconds: selectedDuration });
+        scrim.querySelector('#seat-duel-submit').addEventListener('click', () => {
+            if (teamA.length !== mode || teamB.length !== mode) return;
+            const participants = [
+                ...teamA.map(u => ({ userId: u.userId, team: 'A' })),
+                ...teamB.map(u => ({ userId: u.userId, team: 'B' }))
+            ];
+            socket.emit('create-seat-challenge', { roomId: room.id, mode, participants, durationSeconds, punishmentKey });
             showNotification('تم إرسال الدعوات ⏳', 'info');
-            modal.remove();
+            scrim.remove();
         });
+
+        renderAll();
+    }
+    const SEAT_DUEL_MODES = [1, 2, 3];
+
+    // =====================================================
+    // ✅ بطاقة الدعوة الواردة + حالة الانتظار — نفس البطاقة بالضبط (طلب صريح: "نفس البطاقة
+    // بلا أزرار")، الفرق فقط أزرار القبول/الرفض تُستبدَل بصفّ "وافق N من M". المهلة 30 ثانية
+    // تُحسَب من expiresAt الخادم دوماً (لا عدّاد نسبي محلي)
+    // =====================================================
+    function closeSeatDuelCard() {
+        clearInterval(seatDuelCardCountdownInterval);
+        document.getElementById('seat-duel-card-scrim')?.remove();
     }
 
-    // ✅ نافذة استقبال دعوة تحدٍ — تظهر فقط لمن دعاه المضيف/المسؤول صراحة، بعدّاد تنازلي
-    // يطابق مهلة السيرفر (30 ثانية) — إغلاق تلقائي عند انتهائها (رفض ضمني من طرف السيرفر)
-    function showSeatChallengeInviteModal(data) {
-        document.getElementById('seat-challenge-invite-modal')?.remove();
-        const myTeam = data.participants.find(p => p.userId === myUserId)?.team;
-        const teamEmoji = myTeam === 'A' ? '🔵' : '🔴';
-
-        const modal = document.createElement('div');
-        modal.id = 'seat-challenge-invite-modal';
-        modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[65] p-4';
-        modal.innerHTML = `
-            <div class="bg-gray-800 rounded-xl shadow-xl p-5 w-full max-w-xs text-white text-center">
-                <i class="fas fa-fire text-3xl text-red-400 mb-3"></i>
-                <p class="font-bold text-base mb-1">تحدٍ من ${escapeHtml(data.invitedBy)}!</p>
-                <p class="text-xs text-gray-400 mb-4">أنت بالفريق ${teamEmoji} — هل تقبل؟</p>
-                <div class="flex gap-2">
-                    <button id="decline-seat-challenge" class="flex-1 bg-gray-700 hover:bg-gray-600 py-2 rounded-lg text-sm font-bold">رفض</button>
-                    <button id="accept-seat-challenge" class="flex-1 bg-red-600 hover:bg-red-700 py-2 rounded-lg text-sm font-bold">قبول</button>
-                </div>
-                <p id="seat-challenge-invite-countdown" class="text-[10px] text-gray-500 mt-3"></p>
-            </div>
-        `;
-        document.body.appendChild(modal);
-        modal.querySelector('#accept-seat-challenge').addEventListener('click', () => {
-            socket.emit('seat-challenge-response', { challengeId: data.challengeId, accept: true });
-            modal.remove();
-        });
-        modal.querySelector('#decline-seat-challenge').addEventListener('click', () => {
-            socket.emit('seat-challenge-response', { challengeId: data.challengeId, accept: false });
-            modal.remove();
-        });
-
-        let remaining = data.expiresInSeconds || 30;
-        const countdownEl = modal.querySelector('#seat-challenge-invite-countdown');
-        const tick = () => {
-            if (!document.body.contains(modal)) return;
-            countdownEl.textContent = `${remaining} ثانية للرد`;
-            remaining--;
-            if (remaining < 0) { modal.remove(); return; }
-            setTimeout(tick, 1000);
-        };
-        tick();
-    }
-
-    // ✅ شريط التحدي الحي — نفس فكرة شريط PK لكن بفريقين 🔵/🔴 بدل غرفتين، وخط فاصل رفيع
-    // بالمنتصف، ويُدرَج مباشرة بعد شريط PK لو كان موجوداً (نادراً ما يتزامنان، لكن احتياطاً)
-    function renderSeatChallengeBar(data) {
-        document.getElementById('seat-challenge-bar')?.remove();
-        currentSeatChallenge = data;
-        seatChallengeFireShownFor = null;
-
+    function seatDuelCardHTML(data, mine, isWaitingOnly) {
         const teamA = data.participants.filter(p => p.team === 'A');
         const teamB = data.participants.filter(p => p.team === 'B');
-
-        const bar = document.createElement('div');
-        bar.id = 'seat-challenge-bar';
-        bar.className = 'seat-challenge-bar';
-        bar.innerHTML = `
-            <div class="seat-challenge-header">
-                <span class="seat-challenge-live-badge"><span class="seat-challenge-live-dot"></span> تحدي مباشر</span>
-                <span id="seat-challenge-timer" class="seat-challenge-timer-pill"></span>
-            </div>
-            <div class="seat-challenge-row">
-                <div class="seat-challenge-side seat-challenge-side-a">
-                    <div class="seat-challenge-team seat-challenge-team-a">
-                        ${teamA.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar ${p.activeFrameClass || ''}" title="${escapeHtml(p.username || '')}">`).join('')}
-                    </div>
-                    <span id="seat-challenge-score-a" class="seat-challenge-score seat-challenge-score-a">0</span>
-                </div>
-                <div class="seat-challenge-progress-wrap">
-                    <div class="seat-challenge-progress">
-                        <div id="seat-challenge-fill-a" class="seat-challenge-fill-a"></div>
-                        <div id="seat-challenge-fill-b" class="seat-challenge-fill-b"></div>
-                        <div class="seat-challenge-divider"></div>
-                    </div>
-                    <span class="seat-challenge-vs-badge">VS</span>
-                </div>
-                <div class="seat-challenge-side seat-challenge-side-b">
-                    <span id="seat-challenge-score-b" class="seat-challenge-score seat-challenge-score-b">0</span>
-                    <div class="seat-challenge-team seat-challenge-team-b">
-                        ${teamB.map(p => `<img src="${p.profileImage}" class="seat-challenge-avatar ${p.activeFrameClass || ''}" title="${escapeHtml(p.username || '')}">`).join('')}
-                    </div>
-                </div>
-            </div>
-        `;
-        const insertAfter = document.getElementById('pk-battle-bar') || document.getElementById('voice-chat-grid');
-        if (insertAfter) insertAfter.insertAdjacentElement('afterend', bar);
-        else mainContent.prepend(bar);
-
-        updateSeatChallengeScores(data.scoreA, data.scoreB);
-
-        clearInterval(seatChallengeCountdownInterval);
-        if (data.endsAt) {
-            const updateTimer = () => {
-                const timerEl = document.getElementById('seat-challenge-timer');
-                if (!timerEl) { clearInterval(seatChallengeCountdownInterval); return; }
-                const remainingMs = new Date(data.endsAt).getTime() - Date.now();
-                if (remainingMs <= 0) { timerEl.textContent = '00:00'; clearInterval(seatChallengeCountdownInterval); return; }
-                const m = Math.floor(remainingMs / 60000);
-                const s = Math.floor((remainingMs % 60000) / 1000);
-                timerEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-            };
-            updateTimer();
-            seatChallengeCountdownInterval = setInterval(updateTimer, 1000);
-        }
-    }
-
-    let seatChallengeFireInterval = null;
-
-    // ✅ تحديث النقاط + تأثيرات "اقتراب من الحسم" — نار DOM حقيقية متصاعدة (وليست تدرّج CSS
-    // فقط) فوق تعبئة الفريق المتصدّر بوضوح (68%+ من مجموع النقاط)، وخوف مرتجف قوي على الفريق
-    // المتأخر — لا يتكرر التنبيه لنفس التصدّر كل تحديث نقاط، فقط عند تغيّر من هو المتصدّر
-    function updateSeatChallengeScores(scoreA, scoreB) {
-        if (currentSeatChallenge) { currentSeatChallenge.scoreA = scoreA; currentSeatChallenge.scoreB = scoreB; }
-        const total = scoreA + scoreB;
-        const pctA = total > 0 ? Math.round((scoreA / total) * 100) : 50;
-        document.getElementById('seat-challenge-fill-a')?.style.setProperty('width', `${pctA}%`);
-        document.getElementById('seat-challenge-fill-b')?.style.setProperty('width', `${100 - pctA}%`);
-        const scoreAEl = document.getElementById('seat-challenge-score-a');
-        const scoreBEl = document.getElementById('seat-challenge-score-b');
-        if (scoreAEl) scoreAEl.textContent = scoreA;
-        if (scoreBEl) scoreBEl.textContent = scoreB;
-
-        const bar = document.getElementById('seat-challenge-bar');
-        if (!bar || total < 40) { stopSeatChallengeFireEffect(); return; } // ✅ لا تأثيرات قبل فارق نقاط ذو معنى فعلياً
-        const leadingTeam = pctA >= 68 ? 'A' : (pctA <= 32 ? 'B' : null);
-        if (leadingTeam && leadingTeam !== seatChallengeFireShownFor) {
-            seatChallengeFireShownFor = leadingTeam;
-            bar.classList.remove('seat-challenge-lead-a', 'seat-challenge-lead-b');
-            bar.classList.add(leadingTeam === 'A' ? 'seat-challenge-lead-a' : 'seat-challenge-lead-b');
-            showBottomToast(leadingTeam === 'A' ? '🔥 الفريق الأزرق يقترب من الحسم!' : '🔥 الفريق الأحمر يقترب من الحسم!', 'fa-fire');
-            startSeatChallengeFireEffect(leadingTeam);
-        } else if (!leadingTeam && seatChallengeFireShownFor) {
-            seatChallengeFireShownFor = null;
-            bar.classList.remove('seat-challenge-lead-a', 'seat-challenge-lead-b');
-            stopSeatChallengeFireEffect();
-        }
-    }
-
-    // ✅ يولّد شعلات نار DOM حقيقية (🔥/✨) تتصاعد فوق تعبئة الفريق المتصدّر باستمرار طالما
-    // بقي متصدّراً — كل شعلة بموضع أفقي عشوائي فوق التعبئة فعلياً (لا داخل الشريط المقصوص
-    // overflow:hidden، بل فوقه مباشرة كطبقة منفصلة) فتبدو "تشتعل" وتهرب للأعلى بشكل طبيعي
-    function startSeatChallengeFireEffect(leadingTeam) {
-        stopSeatChallengeFireEffect();
-        const fillId = leadingTeam === 'A' ? 'seat-challenge-fill-a' : 'seat-challenge-fill-b';
-        const spawnFlame = () => {
-            const bar = document.getElementById('seat-challenge-bar');
-            const fillEl = document.getElementById(fillId);
-            if (!bar || !fillEl) { stopSeatChallengeFireEffect(); return; }
-            const barRect = bar.getBoundingClientRect();
-            const fillRect = fillEl.getBoundingClientRect();
-            const flame = document.createElement('span');
-            flame.className = 'seat-challenge-flame';
-            flame.textContent = Math.random() > 0.75 ? '✨' : '🔥';
-            flame.style.left = `${fillRect.left - barRect.left + Math.random() * fillRect.width}px`;
-            flame.style.top = `${fillRect.top - barRect.top}px`;
-            flame.style.animationDuration = `${0.7 + Math.random() * 0.5}s`;
-            bar.appendChild(flame);
-            setTimeout(() => flame.remove(), 1300);
+        const faceHTML = (p) => {
+            const statusClass = p.accepted ? 'ok' : (p.declined ? 'no' : 'wait');
+            const statusIcon = p.accepted ? '✓' : (p.declined ? '✕' : '…');
+            const isMe = p.userId === myUserId;
+            return `
+                <div class="duel-face__p team-${p.team === 'A' ? 'us' : 'them'} ${isMe ? 'me' : ''}">
+                    <img src="${p.profileImage || '/images/default-avatar.png'}">
+                    <span class="duel-face__st ${statusClass}">${statusIcon}</span>
+                    <span class="nm">${escapeHtml((p.username || '').slice(0, 9))}</span>
+                </div>`;
         };
-        spawnFlame();
-        seatChallengeFireInterval = setInterval(spawnFlame, 180);
-    }
+        const punishment = data.punishment || { icon: '', label: 'بلا عقاب' };
+        const acceptedCount = data.participants.filter(p => p.accepted).length;
 
-    function stopSeatChallengeFireEffect() {
-        clearInterval(seatChallengeFireInterval);
-        seatChallengeFireInterval = null;
-        document.querySelectorAll('.seat-challenge-flame').forEach(el => el.remove());
-    }
+        const actionsHTML = isWaitingOnly ? `
+            <p class="duel-waitrow">✓ وافق ${acceptedCount} من ${data.participants.length} · بانتظار الباقين…</p>
+        ` : `
+            <div class="duel-btns">
+                <button class="duel-btn duel-btn--ghost" id="seat-duel-decline">رفض</button>
+                <button class="duel-btn duel-btn--go" id="seat-duel-accept"><i></i><span>قبول</span></button>
+            </div>
+            <p class="duel-waitrow" id="seat-duel-card-countdown"></p>
+        `;
 
-    function removeSeatChallengeBar() {
-        clearInterval(seatChallengeCountdownInterval);
-        stopSeatChallengeFireEffect();
-        currentSeatChallenge = null;
-        seatChallengeFireShownFor = null;
-        document.getElementById('seat-challenge-bar')?.remove();
-    }
-
-    // ✅ نافذة نتيجة التحدي — قوية بصرياً وتختلف باختلاف من يشاهدها: شرر ذهبي متطاير للفائز
-    // المشارك، بطاقة مهتزة داكنة للخاسر المشارك، وملخص محايد لمن كان مجرد مشاهد (يُغلق تلقائياً)
-    function showSeatChallengeResultModal(data) {
-        removeSeatChallengeBar();
-        document.getElementById('seat-challenge-result-modal')?.remove();
-
-        const myParticipant = data.participants.find(p => p.userId === myUserId);
-        const isDraw = data.winner === 'draw';
-        const iWon = !!myParticipant && !isDraw && myParticipant.team === data.winner;
-        const iLost = !!myParticipant && !isDraw && !iWon;
-
-        let title, icon, cardClass;
-        if (isDraw) { title = 'تعادل!'; icon = 'fa-handshake'; cardClass = ''; }
-        else if (iWon) { title = 'فزت! 🏆'; icon = 'fa-trophy'; cardClass = 'seat-challenge-result-card-win'; }
-        else if (iLost) { title = 'خسرت الجولة'; icon = 'fa-face-frown'; cardClass = 'seat-challenge-result-card-lose'; }
-        else { title = data.winner === 'A' ? 'فاز الفريق 🔵' : 'فاز الفريق 🔴'; icon = 'fa-trophy'; cardClass = ''; }
-
-        if (iWon) fireConfettiBurst(['#3b82f6', '#06b6d4', '#fbbf24']);
-
-        const particles = iWon ? Array.from({ length: 16 }, (_, i) => {
-            const angle = Math.round((360 / 16) * i);
-            const delay = (Math.random() * 0.2).toFixed(2);
-            return `<span class="seat-challenge-confetti" style="--angle:${angle}deg; --delay:${delay}s"></span>`;
-        }).join('') : '';
-
-        const modal = document.createElement('div');
-        modal.id = 'seat-challenge-result-modal';
-        modal.className = 'fixed inset-0 bg-black/75 flex items-center justify-center z-[65] p-4';
-        modal.innerHTML = `
-            <div class="seat-challenge-result-card ${cardClass}">
-                ${particles}
-                <i class="fas ${icon} seat-challenge-result-icon"></i>
-                <p class="seat-challenge-result-title">${title}</p>
-                <p class="seat-challenge-result-score">${data.scoreA} 🔵 — 🔴 ${data.scoreB}</p>
-                <button id="close-seat-challenge-result" class="seat-challenge-result-close-btn">إغلاق</button>
+        return `
+            <div class="duel-inv-card">
+                <div class="duel-inv-icon">⚔️</div>
+                <h2>${isWaitingOnly ? 'بانتظار الردود…' : 'دعوة تحدٍ!'}</h2>
+                <p class="duel-by">${data.invitedBy ? `من <b>${escapeHtml(data.invitedBy)}</b> — ` : ''}${SEAT_DUEL_TEAM_EMOJI.A} ${data.participants.length / 2 === 1 ? '1 ضد 1' : `${data.participants.length / 2} ضد ${data.participants.length / 2}`} ${SEAT_DUEL_TEAM_EMOJI.B}</p>
+                <div class="duel-face">${teamA.map(faceHTML).join('')}${teamB.map(faceHTML).join('')}</div>
+                <div class="duel-terms">
+                    <div class="duel-term"><b>${Math.round(data.durationSeconds / 60)}د</b><span>مدة التحدي</span></div>
+                    <div class="duel-term"><b>${SEAT_DUEL_TEAM_EMOJI.A}/${SEAT_DUEL_TEAM_EMOJI.B}</b><span>الفائز يتوّج</span></div>
+                    <div class="duel-term"><b>مباشر</b><span>نقاط حية</span></div>
+                    ${punishment.label !== 'بلا عقاب' ? `<div class="duel-term pun">${punishment.icon} عقاب الخاسر: <b>${escapeHtml(punishment.label)}</b></div>` : ''}
+                </div>
+                ${actionsHTML}
             </div>
         `;
-        document.body.appendChild(modal);
-        modal.querySelector('#close-seat-challenge-result').addEventListener('click', () => modal.remove());
-        modal.addEventListener('click', (e) => { if (e.target.id === 'seat-challenge-result-modal') modal.remove(); });
-        if (!myParticipant) setTimeout(() => modal.remove(), 4000); // ✅ مجرد مشاهد غير مشارك — لا حاجة لإغلاق يدوي
     }
+
+    function showSeatDuelCard(data, isWaitingOnly) {
+        closeSeatDuelCard();
+        const scrim = document.createElement('div');
+        scrim.id = 'seat-duel-card-scrim';
+        scrim.className = 'duel-inv-scrim';
+        scrim.innerHTML = seatDuelCardHTML(data, myUserId, isWaitingOnly);
+        document.body.appendChild(scrim);
+
+        if (!isWaitingOnly) {
+            scrim.querySelector('#seat-duel-accept')?.addEventListener('click', () => {
+                socket.emit('seat-challenge-response', { challengeId: data.challengeId, accept: true });
+                showSeatDuelCard(data, true); // ✅ ينتقل فوراً لحالة الانتظار بلا أزرار
+            });
+            scrim.querySelector('#seat-duel-decline')?.addEventListener('click', () => {
+                socket.emit('seat-challenge-response', { challengeId: data.challengeId, accept: false });
+                closeSeatDuelCard();
+            });
+
+            const tick = () => {
+                const el = document.getElementById('seat-duel-card-countdown');
+                if (!el || !data.expiresAt) { clearInterval(seatDuelCardCountdownInterval); return; }
+                const remaining = Math.max(0, Math.round((new Date(data.expiresAt).getTime() - Date.now()) / 1000));
+                el.textContent = `${remaining} ثانية للرد`;
+                if (remaining <= 0) clearInterval(seatDuelCardCountdownInterval);
+            };
+            clearInterval(seatDuelCardCountdownInterval);
+            tick();
+            seatDuelCardCountdownInterval = setInterval(tick, 1000);
+        }
+    }
+
+    // =====================================================
+    // ✅ الشريط الحي — "نفس مكوّن .pk-mini (لا تكرار)" (طلب صريح): يستخدم صنف .pk-mini نفسه
+    // وكل أصناف .pk__* الداخلية (track/bar/knot/rider/fans/computing) حرفياً بلا أي CSS
+    // جديد لجسم الشريط — فقط عناصر duel-* إضافية (سطر العقاب) تُلحَق تحته. المعرّفات (ids)
+    // مستقلة تماماً عن شريط PK (seat-duel-* بدل pk-live-*) كي يتعايش الاثنان بأمان لو تزامنا
+    // =====================================================
+    function renderDuelBar() {
+        if (!currentSeatDuel || currentSeatDuel.status !== 'active') { removeDuelBar(); return; }
+        let bar = document.getElementById('seat-duel-bar');
+        if (!bar) {
+            bar = document.createElement('section');
+            bar.id = 'seat-duel-bar';
+            bar.className = 'pk-mini duel-mini';
+            const teamA = currentSeatDuel.participants.filter(p => p.team === 'A');
+            const teamB = currentSeatDuel.participants.filter(p => p.team === 'B');
+            const avatarsHTML = (team) => team.map(p => `<img src="${p.profileImage || '/images/default-avatar.png'}">`).join('');
+            bar.innerHTML = `
+                <div class="pk__row">
+                    <span>${SEAT_DUEL_TEAM_EMOJI.A} ${SEAT_DUEL_TEAM_NAME.A}</span>
+                    <span class="pk__clock" id="seat-duel-clock"><span id="seat-duel-time">00:00</span></span>
+                    <span>${SEAT_DUEL_TEAM_EMOJI.B} ${SEAT_DUEL_TEAM_NAME.B}</span>
+                </div>
+                <div class="pk__track" id="seat-duel-track">
+                    <div class="pk__bar">
+                        <div class="pk__us" id="seat-duel-bar-a"></div>
+                        <div class="pk__them"></div>
+                        <span class="a" id="seat-duel-pts-a">0</span>
+                        <span class="b" id="seat-duel-pts-b">0</span>
+                        <i class="pk__knot" id="seat-duel-knot" style="right:50%"></i>
+                    </div>
+                    <span class="pk__rider" id="seat-duel-rider" style="right:50%">
+                        <img id="seat-duel-rider-img" src="/assets/pk/emoji/crossed_swords_3d.webp">
+                    </span>
+                </div>
+                <div class="pk__fans" id="seat-duel-fans">
+                    <div class="pk__fans-col pk__fans-col--us" id="seat-duel-fans-a"></div>
+                    <div class="pk__fans-col pk__fans-col--them" id="seat-duel-fans-b"></div>
+                </div>
+                ${currentSeatDuel.punishment && currentSeatDuel.punishmentKey !== 'none' ? `<div class="duel-punish">${currentSeatDuel.punishment.icon} عقاب الخاسر: <b>${escapeHtml(currentSeatDuel.punishment.label)}</b></div>` : ''}
+            `;
+            const seatsGrid = document.getElementById('voice-chat-grid');
+            const insertAfter = document.getElementById('pk-battle-bar') || seatsGrid;
+            if (insertAfter) insertAfter.insertAdjacentElement('afterend', bar);
+            else mainContent.prepend(bar);
+
+            seatDuelRider = 'crossed_swords';
+            seatDuelFinal = false;
+            clearInterval(seatDuelBarCountdownInterval);
+            duelTickClock();
+            seatDuelBarCountdownInterval = setInterval(duelTickClock, 500);
+        }
+        duelRenderScore();
+        duelRenderCompactFans();
+        applyDuelSeatStates();
+    }
+
+    function duelRenderScore() {
+        const bar = document.getElementById('seat-duel-bar');
+        if (!bar || !currentSeatDuel) return;
+        const a = currentSeatDuel.scoreA || 0, b = currentSeatDuel.scoreB || 0;
+        const tot = a + b, share = tot ? a / tot : 0.5;
+        bar.querySelector('#seat-duel-bar-a').style.width = (share * 100) + '%';
+        bar.querySelector('#seat-duel-knot').style.right = (share * 100) + '%';
+        bar.querySelector('#seat-duel-rider').style.right = (share * 100) + '%';
+        bar.querySelector('#seat-duel-pts-a').textContent = a.toLocaleString('en-US');
+        bar.querySelector('#seat-duel-pts-b').textContent = b.toLocaleString('en-US');
+
+        if (seatDuelFinal) { duelSetRider('alarm_clock'); return; }
+        const gap = Math.abs(share - 0.5) * 2;
+        if (tot < 1 || gap < 0.01) duelSetRider('crossed_swords');
+        else if (gap < 0.12) duelSetRider('grimacing_face');
+        else if (gap > 0.3) duelSetRider('fire');
+        else duelSetRider('smiling_face_with_sunglasses');
+    }
+
+    function duelSetRider(name) {
+        if (name === seatDuelRider) return;
+        seatDuelRider = name;
+        const img = document.getElementById('seat-duel-rider-img');
+        if (img) img.src = `/assets/pk/emoji/${name}_3d.webp`;
+    }
+
+    // ✅ نفس pkRenderCompactFans منطقياً (طلب صريح — أفضل 3 داعمين لكل فريق دائماً تحت
+    // الشريط)، لكن يقرأ currentSeatDuel.topFans بدل currentPkBattle.topFans — حالتان
+    // مستقلتان فعلياً (قد يتزامن تحدي مقاعد مع معركة PK بنفس الغرفة نادراً) فلا يصح مشاركة
+    // نفس متغيّر الحالة بينهما
+    function duelRenderCompactFans() {
+        if (!currentSeatDuel) return;
+        ['A', 'B'].forEach(side => {
+            const col = document.getElementById(side === 'A' ? 'seat-duel-fans-a' : 'seat-duel-fans-b');
+            if (!col) return;
+            const list = [...(currentSeatDuel.topFans?.[side] || [])].sort((a, b) => (b.points || 0) - (a.points || 0)).slice(0, 3);
+            const seenIds = new Set();
+            list.forEach((f, i) => {
+                const uid = String(f.userId);
+                seenIds.add(uid);
+                let el = col.querySelector(`[data-uid="${uid}"]`);
+                const prevPoints = el ? parseInt(el.dataset.points || '0', 10) : 0;
+                if (!el) {
+                    el = document.createElement('div');
+                    el.className = 'pk__fan';
+                    el.dataset.uid = uid;
+                    el.innerHTML = `<img><i></i>`;
+                    col.appendChild(el);
+                }
+                el.style.order = i;
+                el.classList.toggle('pk__fan--top', i === 0);
+                const img = el.querySelector('img');
+                img.src = f.profileImage || '/images/default-avatar.png';
+                el.querySelector('i').textContent = i + 1;
+                el.title = f.username || 'داعم';
+                el.dataset.points = f.points || 0;
+                if ((f.points || 0) > prevPoints) {
+                    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+                }
+            });
+            col.querySelectorAll('.pk__fan').forEach(el => { if (!seenIds.has(el.dataset.uid)) el.remove(); });
+        });
+    }
+
+    // ✅ نفس pkTickClock منطقياً: ساعة من endsAt الحقيقي، آخر 10 ثوانٍ نبض أحمر + راكب ساعة،
+    // و00:00 يُطلِق شبكة أمان الاستطلاع (نفس إصلاح الجزء 1 بالضبط، لا تجمّد أبداً لو تأخر البثّ)
+    function duelTickClock() {
+        const bar = document.getElementById('seat-duel-bar');
+        if (!bar || !currentSeatDuel || !currentSeatDuel.endsAt) { clearInterval(seatDuelBarCountdownInterval); return; }
+        const remainingMs = new Date(currentSeatDuel.endsAt).getTime() - Date.now();
+        const timeEl = bar.querySelector('#seat-duel-time');
+        if (remainingMs <= 0) {
+            if (timeEl) timeEl.textContent = '00:00';
+            clearInterval(seatDuelBarCountdownInterval);
+            bar.classList.add('is-computing');
+            bar.querySelector('#seat-duel-track')?.insertAdjacentHTML('beforeend', '<div class="pk__computing" id="seat-duel-computing"><i class="fas fa-circle-notch fa-spin"></i><span>جاري حساب النتيجة…</span></div>');
+            startSeatDuelResultPollFallback(currentSeatDuel.challengeId, currentSeatDuel.roomId);
+            return;
+        }
+        if (timeEl) timeEl.textContent = seatDuelFmtClock(remainingMs);
+        const final = remainingMs <= 10000;
+        if (final !== seatDuelFinal) {
+            seatDuelFinal = final;
+            bar.classList.toggle('final', final);
+            bar.querySelector('#seat-duel-clock')?.classList.toggle('hot', final);
+            if (final) duelSetRider('alarm_clock');
+        }
+    }
+
+    function removeDuelBar() {
+        clearInterval(seatDuelBarCountdownInterval);
+        clearSeatDuelResultPoll();
+        document.getElementById('seat-duel-bar')?.remove();
+        applyDuelSeatStates();
+    }
+
+    function clearSeatDuelResultPoll() {
+        if (seatDuelResultPollTimer) { clearTimeout(seatDuelResultPollTimer); seatDuelResultPollTimer = null; }
+    }
+
+    // ✅ نفس startPkResultPollFallback حرفياً (راجع تعليقها): مهلة 4 ثوانٍ ثم استطلاع كل
+    // ثانيتين حتى 20 ثانية — شبكة الأمان ذاتها بالضبط لتحدي المقاعد
+    function startSeatDuelResultPollFallback(challengeId, roomId) {
+        clearSeatDuelResultPoll();
+        if (!challengeId || !roomId) return;
+        const startedAt = Date.now();
+        const POLL_TOTAL_MS = 20000, POLL_INITIAL_DELAY_MS = 4000, POLL_INTERVAL_MS = 2000;
+        async function attempt() {
+            if (!currentSeatDuel || currentSeatDuel.challengeId !== challengeId) return;
+            try {
+                const res = await fetch(`/api/voice-room/seat-challenge/${challengeId}/result`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                if (data?.ready && data.result) {
+                    showSeatDuelResultCard(data.result);
+                    return;
+                }
+            } catch (error) { /* شبكة متقطّعة — نحاول مرة أخرى بالدورة التالية بصمت */ }
+            if (Date.now() - startedAt >= POLL_TOTAL_MS) {
+                removeDuelBar();
+                currentSeatDuel = null;
+                showNotification('تعذّر عرض نتيجة التحدي الآن — حاول إعادة الدخول للغرفة بعد قليل', 'info');
+                return;
+            }
+            seatDuelResultPollTimer = setTimeout(attempt, POLL_INTERVAL_MS);
+        }
+        seatDuelResultPollTimer = setTimeout(attempt, POLL_INITIAL_DELAY_MS);
+    }
+
+    // ✅ يُحلّي مقاعد المشاركين بحلقة لون فريقهم + شارة نقاطهم الحية، ويُبهت بقية المقاعد —
+    // يُستدعى من renderVoiceSeatContent (كل تغيّر إشغال) ومن كل تحديث لحالة التحدي نفسها
+    function applyDuelSeatStates() {
+        const voiceGrid = document.getElementById('voice-chat-grid');
+        if (!voiceGrid) return;
+        const active = currentSeatDuel && currentSeatDuel.status === 'active';
+        const byUserId = new Map();
+        if (active) currentSeatDuel.participants.forEach(p => byUserId.set(p.userId, p));
+
+        voiceGrid.querySelectorAll('.voice-seat').forEach(seatEl => {
+            seatEl.classList.remove('duel-dim', 'duel-team-us', 'duel-team-them');
+            seatEl.querySelector('.voice-seat-duel-score')?.remove();
+            if (!active) return;
+            const uid = seatEl.dataset.userId;
+            const participant = uid ? byUserId.get(uid) : null;
+            if (!participant) { seatEl.classList.add('duel-dim'); return; }
+            seatEl.classList.add(participant.team === 'A' ? 'duel-team-us' : 'duel-team-them');
+            const avWrap = seatEl.querySelector('.voice-seat-av-wrap');
+            if (avWrap) {
+                const badge = document.createElement('span');
+                badge.className = 'voice-seat-duel-score';
+                badge.textContent = (participant.score || 0).toLocaleString('en-US');
+                avWrap.appendChild(badge);
+            }
+        });
+    }
+
+    // =====================================================
+    // ✅ بطاقة النتيجة داخل الغرفة — 8 ثوانٍ (طلب صريح)، تاج على مقاعد الفائزين، رمادي
+    // للخاسرين، أكبر داعم، العقاب، "ثأر فوري" (يفتح الإنشاء بنفس الفرق)، ورسالة نظام بالدردشة
+    // =====================================================
+    function showSeatDuelResultCard(data) {
+        clearSeatDuelResultPoll();
+        clearTimeout(seatDuelResultCloseTimer);
+        removeDuelBar();
+        currentSeatDuel = null;
+        document.getElementById('seat-duel-result-card')?.remove();
+
+        const isDraw = data.winner === 'draw';
+        const teamA = data.participants.filter(p => p.team === 'A');
+        const teamB = data.participants.filter(p => p.team === 'B');
+        const winningTeam = isDraw ? [] : (data.winner === 'A' ? teamA : teamB);
+        const myParticipant = data.participants.find(p => p.userId === myUserId);
+        const iWon = !!myParticipant && !isDraw && myParticipant.team === data.winner;
+
+        if (iWon) fireConfettiBurst(['#ff4f8b', '#ffd45a', '#3d7bff']);
+
+        // ✅ تاج فوق مقاعد الفائزين + رمادي للخاسرين — يلحق بالمقاعد الحقيقية بالشبكة مباشرة
+        document.querySelectorAll('#voice-chat-grid .voice-seat').forEach(seatEl => {
+            seatEl.classList.remove('duel-dim', 'duel-team-us', 'duel-team-them', 'duel-win', 'duel-lose');
+            seatEl.querySelector('.voice-seat-duel-score')?.remove();
+            seatEl.querySelector('.voice-seat-duel-crown')?.remove();
+            const uid = seatEl.dataset.userId;
+            const participant = uid ? data.participants.find(p => p.userId === uid) : null;
+            if (!participant) return;
+            if (isDraw) return;
+            if (participant.team === data.winner) {
+                seatEl.classList.add('duel-win');
+                const crown = document.createElement('i');
+                crown.className = 'fas fa-crown voice-seat-duel-crown';
+                seatEl.querySelector('.voice-seat-av-wrap')?.appendChild(crown);
+            } else {
+                seatEl.classList.add('duel-lose');
+            }
+        });
+
+        const mvp = isDraw ? null : (data.mvp ? data.mvp[data.winner] : null);
+        const punishment = data.punishment || { icon: '', label: 'بلا عقاب' };
+        const titleHTML = isDraw ? '🤝 تعادل!' : `${SEAT_DUEL_TEAM_EMOJI[data.winner]} فاز الفريق ${escapeHtml(SEAT_DUEL_TEAM_NAME[data.winner])}!`;
+
+        const card = document.createElement('div');
+        card.id = 'seat-duel-result-card';
+        card.className = 'duel-res';
+        card.innerHTML = `
+            <div class="duel-res__icon">${isDraw ? '🤝' : '🏆'}</div>
+            <h3>${titleHTML}</h3>
+            <div class="duel-who">${winningTeam.map(p => `<img src="${p.profileImage || '/images/default-avatar.png'}">`).join('')}</div>
+            <div class="duel-sc"><b>${(data.scoreA || 0).toLocaleString('en-US')}</b> ${SEAT_DUEL_TEAM_EMOJI.A} — ${SEAT_DUEL_TEAM_EMOJI.B} <b>${(data.scoreB || 0).toLocaleString('en-US')}</b></div>
+            ${mvp ? `<div class="duel-mvp"><img src="${mvp.profileImage || '/images/default-avatar.png'}"><span>أكبر داعم: ${escapeHtml(mvp.username || '')}</span></div>` : ''}
+            ${!isDraw && punishment.label !== 'بلا عقاب' ? `<div class="duel-pun">${punishment.icon} عقاب الخاسر: <b>${escapeHtml(punishment.label)}</b></div>` : ''}
+            <div class="duel-acts">
+                <button class="duel-again" id="seat-duel-rematch">⚔️ ثأر فوري</button>
+                <button class="duel-close" id="seat-duel-close-result">إغلاق</button>
+            </div>
+            <div class="duel-prog"></div>
+        `;
+        const seatsGrid = document.getElementById('voice-chat-grid');
+        const insertAfter = document.getElementById('pk-battle-bar') || seatsGrid;
+        if (insertAfter) insertAfter.insertAdjacentElement('afterend', card);
+        else mainContent.prepend(card);
+
+        // ✅ رسالة نظام بالدردشة (طلب صريح)
+        appendSystemChatMessage(isDraw
+            ? `🤝 تحدي المقاعد انتهى بالتعادل — بلا عقاب`
+            : `${SEAT_DUEL_TEAM_EMOJI[data.winner]} الفريق ${SEAT_DUEL_TEAM_NAME[data.winner]} فاز بتحدي المقاعد ${data.scoreA} — ${data.scoreB}`);
+
+        const closeNow = () => {
+            clearTimeout(seatDuelResultCloseTimer);
+            card.remove();
+            document.querySelectorAll('#voice-chat-grid .voice-seat').forEach(seatEl => {
+                seatEl.classList.remove('duel-win', 'duel-lose');
+                seatEl.querySelector('.voice-seat-duel-crown')?.remove();
+            });
+        };
+        card.querySelector('#seat-duel-close-result').addEventListener('click', closeNow);
+        card.querySelector('#seat-duel-rematch').addEventListener('click', () => {
+            closeNow();
+            if (currentVoiceRoomId) showSeatDuelCreateSheet({ id: currentVoiceRoomId }, { mode: data.mode, participants: data.participants });
+        });
+        seatDuelResultCloseTimer = setTimeout(closeNow, 8000);
+    }
+
 
     // ✅ متجر خلفيات الغرفة — تبويبان: "خاصتي" (المجانية الدائمة) و"المظهر" (مدفوعة، 5 أيام لكل واحدة)
     async function showRoomBackgroundShopModal(room) {
@@ -9326,15 +9553,18 @@ function showXpGainAnimation(amount) {
     });
 
     // =====================================================
-    // ✅ تحدٍ بين أعضاء داخل نفس الغرفة — تحديثات حية للدعوة/الشريط/النتيجة
+    // ✅ تحدي المقاعد — تحديثات حية للدعوة/الشريط/النتيجة (راجع القسم الكامل أعلى الملف:
+    // showSeatDuelCreateSheet/showSeatDuelCard/renderDuelBar/showSeatDuelResultCard)
     // =====================================================
-    socket.on('seat-challenge-created', () => {
-        // ✅ تأكيد بسيط — الإشعار الرئيسي ظهر فوراً عند الإرسال بالواجهة نفسها
+    socket.on('seat-challenge-created', (data) => {
+        // ✅ المنشئ مقبول تلقائياً — يرى فوراً حالة الانتظار بلا أزرار
+        if (data.roomId !== currentVoiceRoomId) return;
+        showSeatDuelCard(data, true);
     });
 
     socket.on('seat-challenge-invite', (data) => {
         if (data.roomId !== currentVoiceRoomId) return;
-        showSeatChallengeInviteModal(data);
+        showSeatDuelCard(data, false);
     });
 
     socket.on('seat-challenge-pending', (data) => {
@@ -9342,33 +9572,50 @@ function showXpGainAnimation(amount) {
         showBottomToast('⏳ تحدٍ جديد بانتظار موافقة المدعوين', 'fa-fire');
     });
 
+    // ✅ حالة كل مشارك تُبث حياً (طلب صريح) — نحدّث البطاقة المفتوحة فقط لو كانت لنفس التحدي
+    socket.on('seat-challenge-participant-status', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        const openCard = document.getElementById('seat-duel-card-scrim');
+        if (!openCard) return;
+        const mine = data.participants.find(p => p.userId === myUserId);
+        if (!mine) return; // ✅ لست طرفاً بهذا التحدي — لا بطاقة لي لتحديثها
+        showSeatDuelCard(data, !!mine.accepted);
+    });
+
     socket.on('seat-challenge-declined', (data) => {
         if (data.roomId !== currentVoiceRoomId) return;
-        document.getElementById('seat-challenge-invite-modal')?.remove();
+        closeSeatDuelCard();
         showNotification(`تم رفض التحدي${data.declinedBy ? ' من ' + data.declinedBy : ''}`, 'info');
     });
 
     socket.on('seat-challenge-expired', (data) => {
         if (data.roomId !== currentVoiceRoomId) return;
-        document.getElementById('seat-challenge-invite-modal')?.remove();
+        closeSeatDuelCard();
         showNotification('انتهت مهلة الرد على التحدي', 'info');
     });
 
     socket.on('seat-challenge-started', (data) => {
         if (data.roomId !== currentVoiceRoomId) return;
-        document.getElementById('seat-challenge-invite-modal')?.remove();
-        renderSeatChallengeBar(data);
-        showNotification('بدأ التحدي! 🔥', 'success');
+        closeSeatDuelCard();
+        currentSeatDuel = { ...data, status: 'active', topFans: { A: [], B: [] } };
+        renderDuelBar();
+        showNotification('بدأ التحدي! ⚔️', 'success');
     });
 
-    socket.on('seat-challenge-score-update', (data) => {
-        if (!currentSeatChallenge || currentSeatChallenge.challengeId !== data.challengeId) return;
-        updateSeatChallengeScores(data.scoreA, data.scoreB);
+    // ✅ نقاط كل مشارك + أفضل 3 داعمين لكل فريق معاً (راجع giftController.emitSeatDuelScoreNow)
+    socket.on('seat-duel:score', (data) => {
+        if (!currentSeatDuel || currentSeatDuel.challengeId !== data.challengeId) return;
+        currentSeatDuel.scoreA = data.scoreA;
+        currentSeatDuel.scoreB = data.scoreB;
+        currentSeatDuel.topFans = data.topFans || { A: [], B: [] };
+        const scoreByUserId = new Map(data.participants.map(p => [p.userId, p.score]));
+        currentSeatDuel.participants.forEach(p => { if (scoreByUserId.has(p.userId)) p.score = scoreByUserId.get(p.userId); });
+        renderDuelBar();
     });
 
     socket.on('seat-challenge-ended', (data) => {
         if (data.roomId !== currentVoiceRoomId) return;
-        showSeatChallengeResultModal(data);
+        showSeatDuelResultCard(data);
     });
 
     socket.on('new-room-message', ({ roomId, message }) => {

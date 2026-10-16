@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { getRoomSupportTotal } = require('../services/socketService');
+const { getRoomSupportTotal, buildSeatChallengeSnapshot } = require('../services/socketService');
 const VoiceRoom = require('../models/VoiceRoom');
 const Message = require('../models/Message');
 const User = require('../models/User');
@@ -111,21 +111,9 @@ async function getActiveBattleSnapshot(roomId) {
 async function getActiveSeatChallengeSnapshot(roomId) {
     const challenge = await SeatChallenge.getActiveForRoomPopulated(roomId);
     if (!challenge) return null;
-    return {
-        challengeId: challenge._id,
-        participants: challenge.participants.map(p => ({
-            userId: p.user._id,
-            username: p.user.username,
-            profileImage: p.user.profileImage,
-            activeFrameClass: p.user.activeFrameClass,
-            seatNumber: p.seatNumber,
-            team: p.team
-        })),
-        scoreA: challenge.scoreA,
-        scoreB: challenge.scoreB,
-        durationSeconds: challenge.durationSeconds,
-        endsAt: challenge.endsAt
-    };
+    // ✅ نفس الشكل الغني المبثوث لحظياً بالضبط (mode/punishment/participants.score...) —
+    // مصدر واحد للشكل (راجع buildSeatChallengeSnapshot بـsocketService.js)
+    return buildSeatChallengeSnapshot(challenge);
 }
 
 // ✅ قائمة المطرودين من الغرفة بأسماء/صور واضحة (للمضيف/المسؤولين فقط) — تسمح بمراجعتهم
