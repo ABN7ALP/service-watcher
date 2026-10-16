@@ -12971,22 +12971,34 @@ body.in-voice-room .voice-seat.duel-team-them .voice-seat-duel-score {
   background: linear-gradient(90deg, var(--them-1, #3d7bff), var(--them-2, #5fd4ff));
 }
 
+/* 🛡️ طلب صريح بمراجعة PR (بند 4): شارة النقاط (بـbottom:-6px، مرتفعة أسفل الحلقة) لا تغطي
+   اسم المشارك — الاسم تحت الشارة بمسافة كافية كما بالنموذج، بدل margin-top الافتراضي
+   الضيق جداً (.voice-seat-name) الذي تتداخل الشارة مع أول سطر النص فيه */
+
+body.in-voice-room .voice-seat.duel-team-us .voice-seat-name,
+body.in-voice-room .voice-seat.duel-team-them .voice-seat-name {
+  margin-top: calc(var(--u, 10px) * .35 + 11px);
+}
+
 body.in-voice-room .voice-seat.duel-team-us .voice-seat-host-badge,
 body.in-voice-room .voice-seat.duel-team-them .voice-seat-host-badge {
   display: none;
 }
 
-/* ✅ تاج الفائز (طلب صريح — بند 11: "تاج يهبط فوق مقاعد الفائزين") — نفس روح .seat__crown
-   بالنموذج الإلزامي: يهبط برشاقة ثم يطفو باستمرار؛ الخاسرون يرماديّون فقط (.duel-lose) */
+/* ✅ تاج الفائز (طلب صريح — مراجعة PR، بند 4: "تاج crown_3d يهبط فوق مقاعد الفائزين كما
+   بالنموذج") — صورة crown_3d الحقيقية نفسها المُستخدَمة بالفعل بشريط PK/قائمة المعجبين
+   (public/assets/pk/emoji/crown_3d.webp)، لا أيقونة FontAwesome مسطّحة؛ نفس أبعاد/نسب
+   .seat__crown بالنموذج الإلزامي بالضبط (width بدل font-size لأنها <img> الآن)، يهبط
+   برشاقة ثم يطفو باستمرار؛ الخاسرون يرماديّون فقط (.duel-lose) */
 
 body.in-voice-room .voice-seat-duel-crown {
   position: absolute;
   z-index: 5;
-  top: calc(var(--av, 50px) * -.4);
+  top: calc(var(--av, 50px) * -.55);
   left: 50%;
-  font-size: calc(var(--av, 50px) * .32);
-  color: var(--gold, #ffd45a);
-  text-shadow: 0 2px 4px rgba(0,0,0,.6);
+  width: calc(var(--av, 50px) * .62);
+  height: auto;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,.6));
   pointer-events: none;
   animation: duelCrownIn .6s cubic-bezier(.2,1.6,.4,1) both, duelCrownFloat 1.6s ease-in-out .6s infinite;
 }

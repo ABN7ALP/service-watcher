@@ -5908,8 +5908,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             if (isDraw) return;
             if (participant.team === data.winner) {
                 seatEl.classList.add('duel-win');
-                const crown = document.createElement('i');
-                crown.className = 'fas fa-crown voice-seat-duel-crown';
+                // 🛡️ طلب صريح بمراجعة PR (بند 4): تاج crown_3d الحقيقي (نفس الأصل المُستخدَم
+                // بشريط PK/قائمة المعجبين) لا أيقونة FontAwesome مسطّحة
+                const crown = document.createElement('img');
+                crown.className = 'voice-seat-duel-crown';
+                crown.src = '/assets/pk/emoji/crown_3d.webp';
+                crown.alt = '';
                 seatEl.querySelector('.voice-seat-av-wrap')?.appendChild(crown);
             } else {
                 seatEl.classList.add('duel-lose');
@@ -5928,7 +5932,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             <h3>${titleHTML}</h3>
             <div class="duel-who">${winningTeam.map(p => `<img src="${p.profileImage || '/images/default-avatar.png'}">`).join('')}</div>
             <div class="duel-sc"><b>${(data.scoreA || 0).toLocaleString('en-US')}</b> ${SEAT_DUEL_TEAM_EMOJI.A} — ${SEAT_DUEL_TEAM_EMOJI.B} <b>${(data.scoreB || 0).toLocaleString('en-US')}</b></div>
-            ${mvp ? `<div class="duel-mvp"><img src="${mvp.profileImage || '/images/default-avatar.png'}"><span>أكبر داعم: ${escapeHtml(mvp.username || '')}</span></div>` : ''}
+            ${mvp ? `<div class="duel-mvp"><img src="${mvp.profileImage || '/images/default-avatar.png'}"><span>أكبر داعم: ${escapeHtml(mvp.username || '')} · 🪙 ${(mvp.points || 0).toLocaleString('en-US')}</span></div>` : ''}
             ${!isDraw && punishment.label !== 'بلا عقاب' ? `<div class="duel-pun">${punishment.icon} عقاب الخاسر: <b>${escapeHtml(punishment.label)}</b></div>` : ''}
             <div class="duel-acts">
                 <button class="duel-again" id="seat-duel-rematch">⚔️ ثأر فوري</button>
