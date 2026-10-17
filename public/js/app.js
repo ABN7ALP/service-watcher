@@ -100,6 +100,100 @@ const calculateRequiredXp = (level) => {
     const loadingScreen = document.getElementById('loading-screen');
     const appContainer = document.getElementById('app-container');
 
+// 🛡️ طلب صريح بمراجعة PR (بند 8/9/10): استُبدل نظام IMAGE_OVERLAY_FRAMES بالكامل — المراقب
+// العام (MutationObserver يفحص كل الصفحة عند أي تغيير DOM/صنف)، wrapImageOverlayFrames،
+// computeOverlayArtScaleCap (حساب سقف تصادم ديناميكي)، وقيم photoScale/artScale/exemptFromTightCap
+// منفصلة لكل إطار — بمكوّن واحد موحَّد يُستخدَم مباشرة بكل قالب عبر avatarHTML() بدل حقن DOM
+// بعد الرسم: <span class="avatar"><img class="avatar__photo"><img class="avatar__frame"></span>
+// الإطار دائماً 160% من حجم الصورة (= 1 ÷ 62.5%)، متمركز، pointer-events:none — بلا أي قيمة
+// خاصة لأي إطار بمفرده. هذا ممكن الآن فقط لأن scripts/normalize-frames.js يُعيد تصدير كل
+// أصل على قالب موحَّد: فتحة دائرية شفافة قطرها 62.5% من لوحة 512px مركّزة تماماً، فتتطابق
+// فتحة كل إطار مع حافة الصورة حرفياً بلا استثناء — لا حاجة لحلقة "احتياط" تعويضية ولا لسقف
+// تصادم محسوب، ولا لتخمين قيم أولية لإطار لم يُقَس (مشكلة كانت موجودة بالكامل بالنظام القديم)
+const FRAME_ASSET_URLS = {
+    'profile-frame-contributor': '/assets/frames/profile-frame-contributor.webp',
+    'profile-frame-admin': '/assets/frames/profile-frame-admin.webp',
+    'profile-frame-luxury-01': '/assets/frames/profile-frame-luxury-01.webp',
+    'profile-frame-royal-01': '/assets/frames/profile-frame-royal-01.webp',
+    'profile-frame-crown-01': '/assets/frames/profile-frame-crown-01.webp',
+    'profile-frame-black-gold-crown': '/assets/frames/profile-frame-black-gold-crown.webp',
+    'profile-frame-gothic-royal': '/assets/frames/profile-frame-gothic-royal.webp',
+    'profile-frame-amethyst-royal': '/assets/frames/profile-frame-amethyst-royal.webp',
+    'profile-frame-fire-dragons': '/assets/frames/profile-frame-fire-dragons.webp',
+    'profile-frame-lion-bee-sapphire': '/assets/frames/profile-frame-lion-bee-sapphire.webp',
+    'profile-frame-pegasus-warrior': '/assets/frames/profile-frame-pegasus-warrior.webp'
+};
+
+// ✅ المكوّن الموحَّد الوحيد لعرض صورة شخصية + إطارها بكل مكان بالتطبيق (مقعد/دردشة/ملف
+// شخصي/متجر/قوائم...) — يستبدل كل <img class="SIZE ${activeFrameClass}"> مباشر سابقاً.
+// sizeClass يحمل نفس أصناف الحجم التي كانت على <img> سابقاً (تنتقل الآن للـ<span> الخارجي
+// كاملة بلا تغيير — تبقى تتحكّم بحجم الصندوق تماماً كما كانت)؛ extraPhotoClass لأي صنف ديناميكي
+// آخر كان على <img> نفسها (حدود/تظليل حالة...، راجع رسائل الدردشة الخاصة مثالاً)؛ photoAttrs
+// لأي خاصية غير class (title/id/data-*)؛ wrapAttrs لأي خاصية على الحاوية الخارجية.
+// frameClass إطار-صورة حقيقي (بـFRAME_ASSET_URLS) → طبقة <img class="avatar__frame"> فعلية؛
+// أي صنف آخر (إطارات CSS القديمة المتقاعدة كـprofile-frame-silver-elegant) يبقى على
+// avatar__photo نفسها فتُطبَّق حدودها/توهّجها المرسومة بـCSS مباشرة كما كانت دوماً — لا تغيير
+function avatarHTML({ src, frameClass, sizeClass = '', extraPhotoClass = '', photoAttrs = '', wrapAttrs = '' }) {
+    const frameUrl = frameClass ? FRAME_ASSET_URLS[frameClass] : null;
+    const photoClass = `avatar__photo${frameUrl ? '' : (frameClass ? ' ' + frameClass : '')}${extraPhotoClass ? ' ' + extraPhotoClass : ''}`;
+    const frameImg = frameUrl ? `<img class="avatar__frame" src="${frameUrl}" alt="" aria-hidden="true">` : '';
+    return `<span class="avatar ${sizeClass}"${wrapAttrs}><img class="${photoClass}" src="${src || ''}"${photoAttrs}>${frameImg}</span>`;
+}
+
+// ✅ المنطق المشترك الفعلي — يُطبَّق على حاوية .avatar واحدة بعينها بالضبط (لمسة واحدة لكل
+// استدعاء، لا بحث). يستخدمها applyFrameToAvatarsByUserId (بحث بـuserId) وapplyFrameToAvatar
+// (عنصر <img> معروف مباشرة سلفاً) معاً — مصدر منطق واحد لا نسختان منفصلتان قد تنحرفان
+function applyFrameToAvatarWrap(wrap, activeFrameClass) {
+    if (!wrap) return;
+    const photo = wrap.querySelector('.avatar__photo');
+    let frameImg = wrap.querySelector('.avatar__frame');
+    const frameUrl = activeFrameClass ? FRAME_ASSET_URLS[activeFrameClass] : null;
+
+    // ✅ إطارات CSS القديمة المتقاعدة (لا صورة تراكب حقيقية) — صنف مباشر على الصورة نفسها.
+    // Array.from لتفادي تعديل classList الحيّة أثناء المرور عليها (forEach مباشر عليها قد
+    // يُخطئ عناصر لاحقة بسبب إزاحة الفهرس عند كل remove متزامن)
+    if (photo) {
+        Array.from(photo.classList).forEach(c => { if (c.startsWith('profile-frame-')) photo.classList.remove(c); });
+        if (activeFrameClass && !frameUrl) photo.classList.add(activeFrameClass);
+    }
+
+    if (frameUrl) {
+        if (!frameImg) {
+            frameImg = document.createElement('img');
+            frameImg.className = 'avatar__frame';
+            frameImg.alt = '';
+            frameImg.setAttribute('aria-hidden', 'true');
+            wrap.appendChild(frameImg);
+        }
+        if (frameImg.getAttribute('src') !== frameUrl) frameImg.src = frameUrl;
+    } else if (frameImg) {
+        frameImg.remove();
+    }
+}
+
+// ✅ يُحدِّث إطار مستخدم بعينه أينما ظهر بالصفحة الآن (طلب صريح بند 10) — يلمس .avatar__frame
+// فقط داخل .avatar المحيطة بكل صورة لهذا المستخدم (إضافة/تبديل/إزالة)، لا يمسّ .avatar__photo
+// ولا أي عنصر آخر إطلاقاً. يستبدل wrapImageOverlayFrames القديمة.
+// نفس مطابقة applyFrameChangeByUserId المزدوجة تماماً (data-user-id إما على حاوية خارجية
+// كالمعتاد بمعظم القوالب، أو على الصورة نفسها مباشرة ببعض القوالب) — لا تغيير بمكان الخاصية
+// بأي قالب، فقط إيجاد .avatar المحيطة بالصورة المطابقة أياً كان مكان الخاصية
+function applyFrameToAvatarsByUserId(userId, activeFrameClass) {
+    const photos = document.querySelectorAll(
+        `[data-user-id="${userId}"] img.avatar__photo, img.avatar__photo[data-user-id="${userId}"]`
+    );
+    const wraps = new Set();
+    photos.forEach(photo => { const wrap = photo.closest('.avatar'); if (wrap) wraps.add(wrap); });
+    wraps.forEach(wrap => applyFrameToAvatarWrap(wrap, activeFrameClass));
+}
+
+// ✅ نسخة "عنصر معروف مباشرة" — لحالات نادرة لم تُرسَم بعد عبر avatarHTML() وقت الإنشاء (مثال:
+// #profileImage الثابتة بـindex.html تُملأ لاحقاً من بيانات المستخدم بعد تسجيل الدخول)؛ imgEl
+// يجب أن يكون عنصر .avatar__photo نفسه (أو أي عنصر داخل .avatar)، تُستنتَج الحاوية بـclosest
+function applyFrameToAvatar(imgEl, activeFrameClass) {
+    if (!imgEl) return;
+    applyFrameToAvatarWrap(imgEl.closest('.avatar'), activeFrameClass);
+}
+
 
 // ============================================
 // CSS ديناميكي للدردشة الخاصة
@@ -571,7 +665,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <span class="voice-seat-wave"></span>
                     <span class="voice-seat-wave"></span>
                     ${isHostSeat ? '<i class="fas fa-crown voice-seat-host-badge"></i>' : ''}
-                    <img src="${seatData.user.profileImage}" class="voice-seat-avatar ${seatData.user.activeFrameClass || ''}" alt="${safeName}" loading="lazy" decoding="async">
+                    ${avatarHTML({ src: seatData.user.profileImage, frameClass: seatData.user.activeFrameClass, sizeClass: 'voice-seat-avatar', photoAttrs: ` alt="${safeName}" loading="lazy" decoding="async"` })}
                     <span class="voice-seat-mic-badge ${seatData.isMuted ? 'muted' : ''}"><i class="fas ${seatData.isMuted ? 'fa-microphone-slash' : 'fa-microphone'}"></i></span>
                     ${isHostSeat ? '' : `<span class="voice-seat-no">${seatNo}</span>`}
                 </div>
@@ -1663,9 +1757,8 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         wrap.classList.remove('hidden');
         const top3 = currentRoomTopSupporters.slice(0, 3);
         // 🐛 طلب صريح: إطار الملف الشخصي المفعَّل لا يُعرَض على صور هذا الودجت تحديداً (مساحته
-        // الضيقة 19-23px لا تحتمل زخرفة إطار إضافية بلا ازدحام بصري) — نتجنّب وضع صنف الإطار
-        // على الـ<img> من أساسه (بعكس كل مكان آخر) كي لا يلتقطها كاشف الإطارات العام
-        // (wrapImageOverlayFrames) الذي يعمل تلقائياً على أي <img> يحمل صنف إطار بأي مكان بالصفحة
+        // الضيقة 19-23px لا تحتمل زخرفة إطار إضافية بلا ازدحام بصري) — <img> خام هنا عمداً
+        // بلا المرور عبر avatarHTML()، بعكس كل مكان آخر بالتطبيق
         wrap.innerHTML = top3.map((s, i) => `
             <button type="button" class="room-top-supporter-slot room-top-supporter-rank-${i + 1}" data-user-id="${s.userId}" title="${escapeHtml(s.username)} • ${s.points.toLocaleString('en-US')}">
                 <img src="${s.profileImage}" class="room-top-supporter-avatar">
@@ -1728,7 +1821,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             }
             return roomHandQueue.map(h => `
                 <div class="flex items-center gap-2.5 p-2 rounded-lg bg-gray-700/40" data-user-id="${h.userId}">
-                    <img src="${h.profileImage}" class="w-9 h-9 rounded-full object-cover flex-shrink-0 ${h.activeFrameClass || ''}">
+                    ${avatarHTML({ src: h.profileImage, frameClass: h.activeFrameClass, sizeClass: 'w-9 h-9 flex-shrink-0' })}
                     <span class="flex-1 text-sm truncate">${escapeHtml(h.username)}</span>
                     <button data-action="invite" class="w-8 h-8 rounded-full bg-emerald-600 hover:bg-emerald-700 flex items-center justify-center flex-shrink-0" title="دعوة لمقعد"><i class="fas fa-check text-xs"></i></button>
                     <button data-action="dismiss" class="w-8 h-8 rounded-full bg-gray-600 hover:bg-gray-500 flex items-center justify-center flex-shrink-0" title="رفض"><i class="fas fa-times text-xs"></i></button>
@@ -1851,7 +1944,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
         pickerList.innerHTML = invitable.map(v => `
             <div class="seat-invite-picker-row" data-user-id="${v.id}">
-                <img src="${v.profileImage}" class="seat-invite-picker-avatar ${v.activeFrameClass || ''}">
+                ${avatarHTML({ src: v.profileImage, frameClass: v.activeFrameClass, sizeClass: 'seat-invite-picker-avatar' })}
                 <span class="seat-invite-picker-name">${escapeHtml(v.username)}</span>
                 <button type="button" class="seat-invite-picker-btn" data-user-id="${v.id}" data-username="${escapeHtml(v.username)}">
                     <i class="fas fa-paper-plane"></i> دعوة
@@ -2324,11 +2417,10 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // مكان حالي أو مستقبلي تلقائياً بلا الحاجة لإضافة كل مكان جديد هنا يدوياً كما كان يحدث
     function applyFrameChangeByUserId(userId, activeFrameClass) {
         if (!userId) return;
-        const targets = document.querySelectorAll(`[data-user-id="${userId}"] img, img[data-user-id="${userId}"]`);
         if (currentRoomHostId === userId) {
             currentRoomHostActiveFrameClass = activeFrameClass || '';
         }
-        targets.forEach(img => applyFrameToAvatar(img, activeFrameClass));
+        applyFrameToAvatarsByUserId(userId, activeFrameClass);
         if (userId === myUserId) {
             try {
                 const cached = JSON.parse(localStorage.getItem('user') || 'null');
@@ -3262,7 +3354,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 ${!isMe ? `<button type="button" id="room-profile-report-btn" class="room-profile-report-btn" title="إبلاغ"><i class="fas fa-flag"></i></button>` : ''}
                 <div class="room-profile-header">
                     <div class="room-profile-avatar-wrap">
-                        <img id="room-profile-avatar-img" src="${p.profileImage}" class="room-profile-avatar ${p.activeFrameClass || ''}" title="${allowFullProfileNav ? 'عرض الملف الكامل' : ''}">
+                        ${avatarHTML({ src: p.profileImage, frameClass: p.activeFrameClass, sizeClass: 'room-profile-avatar', photoAttrs: ` id="room-profile-avatar-img" title="${allowFullProfileNav ? 'عرض الملف الكامل' : ''}"` })}
                     </div>
                     <div class="room-profile-name-id-row">
                         <p class="room-profile-name">${escapeHtml(p.username)} ${getAgentBadgeHTML(p.isAgent)}</p>
@@ -4563,15 +4655,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     el = document.createElement('div');
                     el.className = 'pk__fan';
                     el.dataset.uid = uid;
-                    el.innerHTML = `<img><i></i>`;
+                    el.innerHTML = `${avatarHTML({})}<i></i>`;
                     col.appendChild(el);
                 }
                 el.style.order = i;
                 el.classList.toggle('pk__fan--top', i === 0);
                 const cached = pkResolveUserDisplay(uid);
-                const img = el.querySelector('img');
+                const img = el.querySelector('.avatar__photo');
                 img.src = f.profileImage || cached.profileImage;
-                img.className = f.activeFrameClass || cached.activeFrameClass || '';
+                applyFrameToAvatarWrap(el.querySelector('.avatar'), f.activeFrameClass || cached.activeFrameClass || '');
                 el.querySelector('i').textContent = i + 1;
                 el.title = f.username || cached.username || 'داعم';
                 el.dataset.points = f.points || 0;
@@ -4611,15 +4703,15 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 el = document.createElement('div');
                 el.className = 'pk-fans-sheet-fan';
                 el.dataset.uid = uid;
-                el.innerHTML = `<img class="pk-fans-sheet-fan__crown" src="/assets/pk/emoji/crown_3d.webp"><div class="pk-fans-sheet-fan__av"><img><span class="pk-fans-sheet-fan__rk"></span></div><div class="pk-fans-sheet-fan__meta"><div class="pk-fans-sheet-fan__name"></div><div class="pk-fans-sheet-fan__pts"></div></div>`;
+                el.innerHTML = `<img class="pk-fans-sheet-fan__crown" src="/assets/pk/emoji/crown_3d.webp"><div class="pk-fans-sheet-fan__av">${avatarHTML({})}<span class="pk-fans-sheet-fan__rk"></span></div><div class="pk-fans-sheet-fan__meta"><div class="pk-fans-sheet-fan__name"></div><div class="pk-fans-sheet-fan__pts"></div></div>`;
                 col.appendChild(el);
             }
             el.style.order = i;
             el.dataset.rank = i + 1;
             const cached = pkResolveUserDisplay(uid);
-            const avImg = el.querySelector('.pk-fans-sheet-fan__av img');
+            const avImg = el.querySelector('.pk-fans-sheet-fan__av .avatar__photo');
             avImg.src = f.profileImage || cached.profileImage;
-            avImg.className = f.activeFrameClass || cached.activeFrameClass || '';
+            applyFrameToAvatarWrap(el.querySelector('.pk-fans-sheet-fan__av .avatar'), f.activeFrameClass || cached.activeFrameClass || '');
             el.querySelector('.pk-fans-sheet-fan__rk').textContent = i + 1;
             el.querySelector('.pk-fans-sheet-fan__name').textContent = f.username || cached.username || 'داعم';
             el.querySelector('.pk-fans-sheet-fan__pts').textContent = (f.points || 0).toLocaleString('en-US');
@@ -5763,12 +5855,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     el = document.createElement('div');
                     el.className = 'pk__fan';
                     el.dataset.uid = uid;
-                    el.innerHTML = `<img><i></i>`;
+                    el.innerHTML = `${avatarHTML({})}<i></i>`;
                     col.appendChild(el);
                 }
                 el.style.order = i;
                 el.classList.toggle('pk__fan--top', i === 0);
-                const img = el.querySelector('img');
+                const img = el.querySelector('.avatar__photo');
                 img.src = f.profileImage || '/images/default-avatar.png';
                 el.querySelector('i').textContent = i + 1;
                 el.title = f.username || 'داعم';
@@ -6745,7 +6837,19 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // اكتشاف السوكيت للانقطاع بنفسه (قد يتأخر ثوانٍ أو أكثر)؛ نُصلح استباقياً فور ظهور الصفحة
     // مجدداً، بصمت (بلا إشعارات) طالما كنت أصلاً داخل غرفة
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && currentVoiceRoomId) {
+        if (document.visibilityState !== 'visible') return;
+        // 🛡️ طلب صريح بمراجعة PR (بند 5): نبضة خفيفة فور عودة التبويب للمقدّمة — بصرف النظر
+        // هل أنا داخل شاشة غرفة حالياً أم لا (مضيف غرفة مباشرة قد يكون بشاشة أخرى مؤقتاً).
+        // لا تنتظر socket.io يكتشف الانقطاع/يعيد الاتصال بمفرده (قد يتأخر بالخلفية بسبب
+        // تقييد المتصفح لمؤقّتات التبويبات غير الظاهرة) — لو السوكيت انقطع فعلياً نطلب اتصالاً
+        // فورياً الآن، ولو ما زال متصلاً نُرسل نبضة فورية يُصفِّر بها الخادم أي علامة انقطاع
+        // مسجَّلة لبثّي المباشر (راجع socket.on('client-heartbeat') بـsocketService.js)
+        if (socket.connected) {
+            socket.emit('client-heartbeat');
+        } else {
+            socket.connect();
+        }
+        if (currentVoiceRoomId) {
             fixVoiceConnectionNow(true);
         }
     });
@@ -6987,7 +7091,7 @@ function renderMessagesList(chats) {
             <div class="message-item flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all hover:bg-gray-700/40 ${hasUnread ? 'bg-purple-900/20 border border-purple-500/20' : 'bg-gray-800/20'} ${isBlocked ? 'opacity-70' : ''}" 
                  data-user-id="${other._id}" data-username="${escapeHtml(other.username)}">
                                 <div class="relative flex-shrink-0">
-                    <img src="${other.profileImage}" class="w-12 h-12 rounded-full object-cover border-2 ${isBlocked ? 'border-red-500 grayscale' : hasUnread ? 'border-purple-500' : 'border-gray-600'} ${other.activeFrameClass || ''}">
+                    ${avatarHTML({ src: other.profileImage, frameClass: other.activeFrameClass, sizeClass: 'w-12 h-12', extraPhotoClass: `border-2 ${isBlocked ? 'border-red-500 grayscale' : hasUnread ? 'border-purple-500' : 'border-gray-600'}` })}
                     ${hasUnread ? `<span class="absolute -top-1 -right-1 bg-purple-600 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">${chat.unreadCount > 9 ? '9+' : chat.unreadCount}</span>` : ''}
                 </div>
                 <div class="flex-1 min-w-0">
@@ -7349,9 +7453,7 @@ function frameShopCardHTML(f, userPhoto) {
     return `
         <div class="frame-shop-card">
             <button type="button" class="frame-shop-card-preview-btn" data-frame-id="${f._id}" title="معاينة">
-                <div class="frame-shop-card-avatar-wrap">
-                    <img src="${userPhoto}" class="frame-shop-card-avatar ${f.cssClass}" decoding="async">
-                </div>
+                <div class="frame-shop-card-avatar-wrap">${avatarHTML({ src: userPhoto, frameClass: f.cssClass, wrapAttrs: ' style="--size:100%"', photoAttrs: ' decoding="async"' })}</div>
             </button>
             <div class="frame-shop-duration-pills" data-frame-id="${f._id}">
                 <button type="button" class="frame-shop-duration-pill active" data-duration="1">يوم<span>${f.prices.day1}</span></button>
@@ -7408,7 +7510,7 @@ function frameBoxItemHTML(meta, userPhoto, isActive) {
     return `
         <div class="frame-box-item">
             <div class="frame-box-item-avatar-wrap ${autoRenewOn ? 'frame-box-item-autorenew' : ''}">
-                <img src="${userPhoto}" class="frame-box-item-avatar ${meta.cssClass}" decoding="async">
+                ${avatarHTML({ src: userPhoto, frameClass: meta.cssClass, wrapAttrs: ' style="--size:100%"', photoAttrs: ' decoding="async"' })}
                 ${autoRenewOn ? `<span class="frame-box-item-autorenew-tag">تجديد تلقائي</span>` : ''}
             </div>
             <div class="frame-box-item-text">
@@ -7475,9 +7577,7 @@ async function showFrameShopModal() {
         const activeMeta = data.activeFrame ? data.frames.find(f => f._id.toString() === data.activeFrame.toString()) : null;
         const preview = modal.querySelector('#frame-shop-current-preview');
         preview.innerHTML = `
-            <div class="frame-shop-current-avatar-wrap">
-                <img src="${userPhoto}" class="frame-shop-current-avatar ${activeMeta ? activeMeta.cssClass : ''}" decoding="async">
-            </div>
+            <div class="frame-shop-current-avatar-wrap">${avatarHTML({ src: userPhoto, frameClass: activeMeta ? activeMeta.cssClass : null, wrapAttrs: ' style="--size:100%"', photoAttrs: ' decoding="async"' })}</div>
             <p class="frame-shop-current-label">${activeMeta ? escapeHtml(activeMeta.name) : 'بلا إطار مفعّل حالياً'}</p>
             ${activeMeta ? `<button type="button" id="frame-shop-remove-btn" class="frame-shop-remove-btn">إزالة الإطار</button>` : ''}
         `;
@@ -7551,9 +7651,7 @@ async function showFrameShopModal() {
                     const preview = modal.querySelector('#frame-shop-current-preview');
                     if (preview) {
                         preview.innerHTML = `
-                            <div class="frame-shop-current-avatar-wrap">
-                                <img src="${userPhoto}" class="frame-shop-current-avatar ${activeMeta ? activeMeta.cssClass : ''}" decoding="async">
-                            </div>
+                            <div class="frame-shop-current-avatar-wrap">${avatarHTML({ src: userPhoto, frameClass: activeMeta ? activeMeta.cssClass : null, wrapAttrs: ' style="--size:100%"', photoAttrs: ' decoding="async"' })}</div>
                             <p class="frame-shop-current-label">${activeMeta ? escapeHtml(activeMeta.name) : 'بلا إطار مفعّل حالياً'}</p>
                             ${activeMeta ? `<button type="button" id="frame-shop-remove-btn" class="frame-shop-remove-btn">إزالة الإطار</button>` : ''}
                         `;
@@ -7643,9 +7741,9 @@ async function showFrameShopModal() {
 
     // ✅ نافذة "معاينة الإطار" — واقعية فعلاً: 3 مقاعد حقيقية (نفس أصناف/أحجام المقعد الفعلي
     // بالغرفة .voice-seat/.voice-seats-flex.cols-3) بجانب بعضها، الوسط بصورة المستخدم مع الإطار
-    // المرشَّح، والجانبان بصورته بلا إطار للمقارنة. المراقب العام wrapImageOverlayFrames (يعمل
-    // تلقائياً على أي <img> بصنف إطار بأي مكان بالصفحة) يُضيف التراكب الزخرفي هنا تلقائياً بلا
-    // أي كود خاص — فتُطابق المعاينة الحقيقة 100% (نفس سقف الحجم/منطق التصادم الفعلي بالمقعد).
+    // المرشَّح، والجانبان بصورته بلا إطار للمقارنة. avatarHTML({frameClass: frame.cssClass})
+    // يبني الوسط مباشرة بنفس مكوّن .avatar الحقيقي — فتُطابق المعاينة الحقيقة 100% (نفس الحجم
+    // الثابت 160%/62.5% بالضبط المستخدَم بكل مكان آخر).
     // ✅ طلب صريح: انتقلت داخل إغلاق showFrameShopModal (بدل دالة منفصلة بالأعلى) كي تصل مباشرة
     // لـpurchaseFrame/lastShopData/renderBoxList الموجودة هنا — فالشراء وتبديل التجديد التلقائي
     // من نافذة المعاينة نفسها يستخدمان نفس مسار الحقيقة الواحدة بلا تكرار منطق
@@ -7750,13 +7848,13 @@ async function showFrameShopModal() {
                 <!-- 🐛 إصلاح جوهري لاحق: كانت تستعير .voice-seats-flex.cols-3/.voice-seat الحقيقية —
                      نظام أحجامها مصمَّم لشبكة غرفة كاملة (قيم vw متغيّرة بعرض الشاشة)، فتبقى
                      النافذة طويلة تتفاوت حسب عرض الجهاز رغم كل ضبط سابق. صنف مخصّص بحجم ثابت
-                     صغير (frame-preview-mini-seat) هنا بدل ذلك — نفس آلية الإطار التزيينية تعمل
-                     تلقائياً (wrapImageOverlayFrames تطابق أي img بصنف إطار بأي مكان، لا تحتاج
-                     .voice-seat تحديداً) لكن بارتفاع صغير متوقّع دوماً بغض النظر عن عرض الشاشة -->
+                     صغير (frame-preview-mini-seat) هنا بدل ذلك — مكوّن .avatar الموحَّد (راجع
+                     avatarHTML بمراجعة PR، بند 8) بلا حاجة لأي كود خاص، بارتفاع صغير متوقّع
+                     دوماً بغض النظر عن عرض الشاشة -->
                 <div class="frame-preview-seats-row">
-                    <div class="frame-preview-mini-seat"><img src="${userPhoto}" class="voice-seat-avatar" alt=""></div>
-                    <div class="frame-preview-mini-seat"><img src="${userPhoto}" class="voice-seat-avatar ${frame.cssClass}" alt=""></div>
-                    <div class="frame-preview-mini-seat"><img src="${userPhoto}" class="voice-seat-avatar" alt=""></div>
+                    <div class="frame-preview-mini-seat">${avatarHTML({ src: userPhoto, sizeClass: 'voice-seat-avatar', photoAttrs: ' alt=""' })}</div>
+                    <div class="frame-preview-mini-seat">${avatarHTML({ src: userPhoto, frameClass: frame.cssClass, sizeClass: 'voice-seat-avatar', photoAttrs: ' alt=""' })}</div>
+                    <div class="frame-preview-mini-seat">${avatarHTML({ src: userPhoto, sizeClass: 'voice-seat-avatar', photoAttrs: ' alt=""' })}</div>
                 </div>
                 <p class="frame-preview-name">${escapeHtml(frame.name)}</p>
                 <div id="frame-preview-dynamic" class="frame-preview-dynamic"></div>
@@ -9310,7 +9408,7 @@ function showXpGainAnimation(amount) {
         }
         listEl.innerHTML = viewers.map(v => `
             <button data-user-id="${v.id}" data-username="${escapeHtml(v.username)}" class="room-viewer-row w-full flex items-center gap-4 rounded-xl p-2 text-right">
-                <img src="${v.profileImage}" class="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-1 ring-white/10 ${v.activeFrameClass || ''}">
+                ${avatarHTML({ src: v.profileImage, frameClass: v.activeFrameClass, sizeClass: 'w-10 h-10 flex-shrink-0', extraPhotoClass: 'ring-1 ring-white/10' })}
                 <span class="text-sm font-medium truncate flex-1">${escapeHtml(v.username)}</span>
                 ${v.supportTotal > 0 ? `<span class="room-viewer-support" data-support-total><i class="fas fa-bolt"></i>${v.supportTotal > 9999 ? '9999+' : v.supportTotal}</span>` : ''}
                 <i class="fas fa-chevron-left text-[10px] text-gray-500"></i>
@@ -9425,8 +9523,10 @@ function showXpGainAnimation(amount) {
         appendRoomGiftChatMessage(data);
         showRoomGiftSideBanner(data);
         // ✅ مصدر الحقيقة الوحيد للمؤثر البصري لكل من بالغرفة (المرسل والمستلم والمشاهدون) —
-        // صورة الهدية تطفو كبيرة بمنتصف الشاشة ثم تطير بأناقة نحو مقعد المدعوم بالضبط
-        showGiftFloatingAnimation(data.giftImage, data.giftName, data.fromUsername, data.quantity, data.toUserId);
+        // صورة الهدية تطفو كبيرة بمنتصف الشاشة ثم تطير بأناقة نحو مقعد المدعوم بالضبط. عبر
+        // الطابور (راجع تعليقه أعلى showGiftFloatingAnimation) — هذا تحديداً مصدر سيل الهدايا
+        // الحقيقي (من مستخدمين آخرين)، بعكس استدعاءات "هديتي أنا" المباشرة بمكان آخر بالملف
+        queueRoomGiftFloatAnimation(data.giftImage, data.giftName, data.fromUsername, data.quantity, data.toUserId);
     });
 
     // =====================================================
@@ -9688,6 +9788,17 @@ function showXpGainAnimation(amount) {
 
     // ✅ نقاط دعم الغرفة تحدّثت (هدية أُرسلت بداخلها) — تحديث صامت للشارة، بلا إشعار مزعج
     // على كل هدية (سيصل غالباً بمعدل عالٍ بغرفة نشطة). المستوى نفسه له حدث احتفالي منفصل أدناه
+    // 🛡️ طلب صريح بمراجعة PR (بند 1): الخادم مُجمَّع أصلاً لحد 500ms/غرفة، لكن تحديث الودجت
+    // الأربعة يبقى داخل requestAnimationFrame واحد لكل إطار رسم (لا كتابة DOM متزامنة فورية
+    // بمعزل عن دورة الرسم) — دفاع إضافي لو تراكمت أكثر من رسالة بنفس الإطار لأي سبب
+    let roomSupportWidgetsFlushScheduled = false;
+    function flushRoomSupportWidgets() {
+        roomSupportWidgetsFlushScheduled = false;
+        updateRoomLevelBadgeUI();
+        updateRoomLevelProgressUI();
+        updateRoomSessionSupportUI();
+        updateRoomTopSupportersUI();
+    }
     socket.on('room-support-points-updated', ({ roomId, supportPoints, sessionSupportPoints, level, pointsToNextLevel, levelProgressPercent, topSupporters }) => {
         if (roomId !== currentVoiceRoomId) return;
         currentRoomSupportPoints = supportPoints;
@@ -9696,10 +9807,10 @@ function showXpGainAnimation(amount) {
         currentRoomLevel = level;
         currentRoomPointsToNextLevel = pointsToNextLevel;
         currentRoomLevelProgressPercent = levelProgressPercent;
-        updateRoomLevelBadgeUI();
-        updateRoomLevelProgressUI();
-        updateRoomSessionSupportUI();
-        updateRoomTopSupportersUI();
+        if (!roomSupportWidgetsFlushScheduled) {
+            roomSupportWidgetsFlushScheduled = true;
+            requestAnimationFrame(flushRoomSupportWidgets);
+        }
     });
 
     // ✅ ارتفع مستوى الغرفة فعلياً — احتفال بصري للجميع بالغرفة + تحديث فوري لخيارات توسيع
@@ -9785,26 +9896,36 @@ function showXpGainAnimation(amount) {
     });
 
     // ✅ بحث معمّق + طلب صريح (أسلوب Bigo/Likee/TikTok Live): value الآن المجموع الكلي
-    // النهائي من السيرفر مباشرة (مصدر الحقيقة الوحيد — راجع roomSupportTally بـsocketService)
+    // النهائي من السيرفر مباشرة (مصدر الحقيقة الوحيد — راجع roomSupportTally بـserver/utils)
     // لا دلتا (Δ) تُضاف محلياً، فيبقى متطابقاً بالضبط بين كل من يشاهد الغرفة مهما دخل متأخراً.
-    // التحقق من userId يحمي من تحديث عابر وصل بعد تغيّر شاغل المقعد فعلياً (نادر لكن ممكن)
-    socket.on('room-support-updated', ({ roomId, seatNumber, userId, value }) => {
-        if (roomId !== currentVoiceRoomId) return;
+    // 🛡️ طلب صريح بمراجعة PR (بند 6): البحث عن المقعد أصبح بـdata-user-id حصراً (لا seatNumber
+    // قادم من السيرفر بعد الآن — المصدر الوحيد لهذا الحدث الآن مسار الهدية الفعلي، الذي يعرف
+    // المستخدم المستلِم لا رقم مقعده) — أدق فعلياً (يجد المقعد بصرف النظر هل تغيّر رقمه)
+    // 🛡️ طلب صريح بمراجعة PR (بند 1): عداد دعم المقعد يصل بلا تجميع من الخادم (كل هدية على
+    // حدة، عمداً — رقمه الفردي صغير ومتوقَّع لحظياً) لكن خلال سيل حقيقي (300/10 ثوانٍ) قد يصل
+    // عدة تحديثات لمقاعد مختلفة خلال نفس الإطار — تُجمَّع هنا بخريطة (آخر قيمة فقط لكل مستخدم)
+    // وتُكتب للـDOM دفعة واحدة بـrequestAnimationFrame واحد لكل إطار رسم، لا كتابة متزامنة
+    // فورية لكل حدث على حدة. الكتابة نفسها نصوص فقط (textContent/dataset) لا innerHTML
+    const pendingSeatSupportUpdates = new Map(); // userId → value
+    let seatSupportFlushScheduled = false;
+
+    function flushSeatSupportUpdates() {
+        seatSupportFlushScheduled = false;
         const voiceGrid = document.getElementById('voice-chat-grid');
-        const seatEl = seatNumber ? voiceGrid?.querySelector(`.voice-seat[data-seat="${seatNumber}"]`) : null;
-        if (seatEl && (!userId || seatEl.dataset.userId === userId)) {
-            seatEl.dataset.supportTotal = value;
-            let row = seatEl.querySelector('.seat-support-row');
-            if (!row) {
-                row = document.createElement('span');
-                row.className = 'seat-support-row';
-                seatEl.appendChild(row);
+        pendingSeatSupportUpdates.forEach((value, userId) => {
+            const seatEl = voiceGrid?.querySelector(`.voice-seat[data-user-id="${userId}"]`);
+            if (seatEl) {
+                seatEl.dataset.supportTotal = value;
+                let row = seatEl.querySelector('.seat-support-row');
+                if (!row) {
+                    row = document.createElement('span');
+                    row.className = 'seat-support-row';
+                    seatEl.appendChild(row);
+                }
+                row.textContent = formatCompactPoints(value);
             }
-            row.textContent = formatCompactPoints(value);
-        }
-        // ✅ طلب صريح: نفس الرقم يتحدّث فورياً بنافذة المشاهدين (لو كانت مفتوحة) لهذا المستخدم
-        // بعينه، بصرف النظر هل هو جالس على مقعد أصلاً أم مجرد مشاهد — لا يُشترَط seatEl إطلاقاً
-        if (userId) {
+            // ✅ نفس الرقم يتحدّث بنافذة المشاهدين (لو كانت مفتوحة) لهذا المستخدم بعينه، بصرف
+            // النظر هل هو جالس على مقعد أصلاً أم مجرد مشاهد — لا يُشترَط seatEl إطلاقاً
             const viewerRow = document.querySelector(`#room-viewers-list .room-viewer-row[data-user-id="${userId}"]`);
             if (viewerRow) {
                 let supportBadge = viewerRow.querySelector('[data-support-total]');
@@ -9813,13 +9934,25 @@ function showXpGainAnimation(amount) {
                         supportBadge = document.createElement('span');
                         supportBadge.className = 'room-viewer-support';
                         supportBadge.dataset.supportTotal = '';
+                        supportBadge.innerHTML = '<i class="fas fa-bolt"></i><span class="room-viewer-support-num"></span>'; // ✅ هيكل ثابت يُبنى مرة واحدة فقط
                         viewerRow.querySelector('i.fa-chevron-left')?.insertAdjacentElement('beforebegin', supportBadge);
                     }
-                    supportBadge.innerHTML = `<i class="fas fa-bolt"></i>${value > 9999 ? '9999+' : value}`;
+                    const numEl = supportBadge.querySelector('.room-viewer-support-num');
+                    if (numEl) numEl.textContent = value > 9999 ? '9999+' : value;
                 } else {
                     supportBadge?.remove();
                 }
             }
+        });
+        pendingSeatSupportUpdates.clear();
+    }
+
+    socket.on('room-support-updated', ({ roomId, userId, value }) => {
+        if (roomId !== currentVoiceRoomId || !userId) return;
+        pendingSeatSupportUpdates.set(userId, value); // ✅ تكرار لنفس المستخدم بذات الإطار = آخر قيمة فقط
+        if (!seatSupportFlushScheduled) {
+            seatSupportFlushScheduled = true;
+            requestAnimationFrame(flushSeatSupportUpdates);
         }
     });
 
@@ -10426,7 +10559,7 @@ function renderProfileHubBody(u) {
     body.innerHTML = `
         <div class="profile-hub-cover" style="${u.coverImage ? `background-image:url('${u.coverImage}')` : ''}">
             <div class="profile-hub-avatar-wrap">
-                <img src="${u.profileImage}" class="profile-hub-avatar ${u.activeFrameClass || ''}">
+                ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'profile-hub-avatar' })}
             </div>
         </div>
         <div class="profile-hub-identity">
@@ -10789,7 +10922,7 @@ async function showHostCenterSheet() {
                 </div>` : ''}
                 ${ts ? `
                 <div class="host-analytics-top-supporter">
-                    <img src="${ts.profileImage}" class="host-analytics-top-avatar ${ts.activeFrameClass || ''}">
+                    ${avatarHTML({ src: ts.profileImage, frameClass: ts.activeFrameClass, sizeClass: 'host-analytics-top-avatar' })}
                     <div class="min-w-0 flex-1">
                         <p class="host-analytics-label" style="margin:0;">أكبر داعم</p>
                         <p class="host-analytics-top-name">${escapeHtml(ts.username)}</p>
@@ -10906,7 +11039,7 @@ async function showProfileVisitorsSheet() {
             ? '<p class="text-xs text-gray-500 text-center py-6">لا توجد زيارات بعد</p>'
             : `<div class="profile-hub-visitors-list">${d.recentVisitors.map(v => `
                 <div class="profile-hub-visitor-row">
-                    <img src="${v.profileImage}" class="profile-hub-visitor-avatar ${v.activeFrameClass || ''} ${d.identityRevealed ? '' : 'blurred'}">
+                    ${avatarHTML({ src: v.profileImage, frameClass: v.activeFrameClass, sizeClass: 'profile-hub-visitor-avatar', extraPhotoClass: d.identityRevealed ? '' : 'blurred' })}
                     <span class="profile-hub-visitor-name ${d.identityRevealed ? '' : 'blurred-text'}">${d.identityRevealed ? escapeHtml(v.username || '') : 'زائر'}</span>
                 </div>
             `).join('')}</div>`;
@@ -10956,7 +11089,7 @@ function wireFollowConnectionButton(btn) {
 function renderFollowPersonRowHTML(u, extraClass = '') {
     return `
         <div class="follow-connection-row ${extraClass}" data-user-id="${u._id}">
-            <img src="${u.profileImage}" class="follow-connection-avatar ${u.activeFrameClass || ''}">
+            ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'follow-connection-avatar' })}
             <div class="min-w-0 flex-1">
                 <p class="follow-connection-name">${escapeHtml(u.username)}</p>
             </div>
@@ -11113,7 +11246,7 @@ async function showDiscoverPeopleSheet() {
         }
         bodyEl.innerHTML = `<div class="grid grid-cols-3 gap-2 fade-in-content">${users.map(u => `
             <button class="discover-person-card" data-user-id="${u._id}">
-                <img src="${u.profileImage}" class="discover-person-avatar ${u.activeFrameClass || ''}">
+                ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'discover-person-avatar' })}
                 <span class="discover-person-name">${escapeHtml(u.username)}</span>
                 <span class="discover-person-level">Lv.${u.level || 1}</span>
             </button>
@@ -11491,8 +11624,7 @@ async function showMiniProfileModal(userId) {
                 <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-t-2xl shadow-2xl w-full max-w-md text-white border-t border-x border-purple-500/25 overflow-hidden animate-[slideUp_0.25s_ease-out]" style="max-height:80vh; overflow-y:auto;">
 
                     <div class="relative bg-gradient-to-r from-purple-700/30 to-pink-700/25 pt-5 pb-3 px-4 text-center">
-                        <img id="mini-profile-avatar-img" data-user-id="${profileUser._id}" src="${profileUser.profileImage}"
-                             class="w-16 h-16 rounded-full mx-auto border-4 border-gray-900 object-cover shadow-lg cursor-pointer hover:opacity-90 transition ${profileUser.activeFrameClass || ''}" title="عرض الملف الكامل">
+                        ${avatarHTML({ src: profileUser.profileImage, frameClass: profileUser.activeFrameClass, sizeClass: 'w-16 h-16 mx-auto', extraPhotoClass: 'border-4 border-gray-900 shadow-lg cursor-pointer hover:opacity-90 transition', photoAttrs: ` id="mini-profile-avatar-img" data-user-id="${profileUser._id}" title="عرض الملف الكامل"` })}
                         <h2 class="text-sm font-bold mt-2 flex items-center justify-center gap-1">${escapeHtml(profileUser.username)} ${getAgentBadgeHTML(profileUser.isAgent)} ${renderAdminBadgeHTML(profileUser)}</h2>
                         <div class="text-[10px] text-gray-300 mt-1 cursor-pointer inline-flex items-center gap-1.5 copy-id-btn bg-black/25 px-2 py-0.5 rounded-full">
                            <i class="fas fa-id-card"></i>
@@ -12019,7 +12151,7 @@ function spawnAdminCelebrationConfetti(container) {
 // أدناه. لا يشمل هذا السجلّ شارة نادي المعجبين (نظامها الخاص بنافذة النادي نفسها) ولا
 // المعلومات الشخصية/الموقع (قسم مستقل تحته بشرط مستوى 7، راجع renderPersonalInfoGateHTML)
 // 🐛 إصلاح: img كانت قيمة مباشرة (ADMIN_BADGE_IMG) تُقرَأ فور تنفيذ هذا السطر أثناء تحميل
-// الملف — لكن ADMIN_BADGE_IMG نفسها تُعرَّف لاحقاً أسفل الملف (قرب IMAGE_OVERLAY_FRAMES)، فكان
+// الملف — لكن ADMIN_BADGE_IMG نفسها تُعرَّف لاحقاً أسفل الملف، فكان
 // الوصول لها هنا يقع ضمن "منطقة الموت المؤقتة" (TDZ) لمتغيّر const لم يُهيَّأ بعد، فيوقف تنفيذ
 // الملف كاملاً بخطأ "Cannot access before initialization" — انهيار صامت أسقط كل شيء بعده
 // (COIN_ICON_URL وغيرها لم تُعرَّف أبداً تبعاً لذلك). دالة getter كسولة (لا تُنفَّذ إلا عند
@@ -12388,8 +12520,9 @@ const FAN_CLUB_COLORS = {
 };
 // ✅ صورة "إطار المساهم" — نفس الإطار الحصري الحقيقي الذي يُمنح دائماً لمن يفوز بالمركز الأول
 // بنادٍ لأسبوع كامل (server/utils/fanClubWeeklyFrameJob.js)؛ نفس الرابط بالضبط المضروب
-// بالخادم (autoSeed.js) — تُستخدم هنا لمعاينته بشاشات النادي وكذلك كتراكب حقيقي فوق صورة
-// أي فائز حالياً يرتديه (راجع IMAGE_OVERLAY_FRAMES/wrapImageOverlayFrames أسفله)
+// بالخادم (autoSeed.js) — معاينة مستقلة فقط بشاشات النادي (صورة الإطار بمفرده، لا كتراكب
+// فوق صورة أي مستخدم) — التراكب الفعلي فوق صورة أي فائز يرتديه يمرّ عبر avatarHTML()/
+// FRAME_ASSET_URLS['profile-frame-contributor'] (أعلى الملف) كأي إطار آخر، لا هذا الرابط
 const FAN_CLUB_CONTRIBUTOR_FRAME_IMG = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png';
 // ✅ صورة شعار نادي المعجبين الجديدة (طلب صريح) — تستبدل تركيبة قلب+جناحين بخط Font Awesome
 // بزر رأس الغرفة بعد المتابعة فقط (راجع updateRoomHeaderFollowIcon)؛ بقية الأماكن (لوحة
@@ -12482,231 +12615,7 @@ function setHeaderCoinsSilent(newValue) {
 function setHeaderCoins(newValue) {
     setCoinText(document.getElementById('coins'), newValue);
 }
-// ✅ خريطة عامة: أي صنف إطار يحتاج صورة تراكب حقيقية فوق الصورة الشخصية (بدل حدّ CSS بسيط)
-// تُضاف هنا — صنف واحد لكل إطار صورة جديد يُشترى من المتجر (راجع autoSeed.js لنفس الروابط).
-//
-// 🐛 إصلاح جوهري بعد ملاحظة صريحة: تكبير الحاوية كاملة (transform:scale) يُكبّر الصورة
-// والإطار معاً بنفس النسبة — لا يُغيّر إطلاقاً أياً منهما "يتجاوز" الآخر أكثر، فقط يُكبّر
-// الوحدة بأكملها ظاهرياً (وهذا بالضبط ما لوحظ: "كبّرت الصورة والهامش، لا الإطار"). التحكّم
-// الحقيقي بمدى تجاوز حلقة الإطار لحافة الصورة هو حصراً نسبتا photoScale/artScale أدناه —
-// كل إطار-صورة مُقاس بدقة (كإطار المساهم: فتحته الشفافة محسوبة فعلياً عبر Python/PIL سابقاً)
-// يحتفظ بنسبته الخاصة المضبوطة؛ أي إطار جديد لم يُقَس بعد (شبكة هذي البيئة تمنع تحميل الصور
-// الخارجية للقياس) يأخذ قيماً افتراضية متحفّظة جداً (صورة أصغر نسبياً + تراكب أكبر بكثير)
-// تضمن تجاوز الإطار لحافة الصورة حتى لو كانت حلقته الفعلية رفيعة نسبة لمساحة قماشته الشفافة
-// 🐛 تصحيح جوهري (الجولة السابقة أخطأت هنا): حاوية الالتفاف (wrap) تُقاس بالضبط على حجم
-// <img> الأصلي قبل التغليف — وهذا الحجم هو نفسه دائرة المقعد/الملف الشخصي (كل الاستخدامات
-// تضع width:100%; height:100% على الصورة داخل حاويتها الدائرية). فتصغير الصورة هنا لنسبة
-// أقل من 100% (كـ62% سابقاً) لا "يفسح مكاناً للإطار" كما افتُرض، بل يترك فجوة فعلية بين
-// حافة الصورة وحافة دائرة المقعد نفسها — وهذا ما لاحظه المستخدم بالضبط ("الصورة والإطار
-// أصغر من دائرة المقعد"). الصورة يجب أن تبقى 100% (تماماً كحافة المقعد)، والإطار يتجاوز
-// تلك الحافة فقط عبر نسبته الأكبر (artScale) بما أنه عنصر منفصل بلا overflow:hidden عليه
-const DEFAULT_OVERLAY_PHOTO_SCALE = 100; // % من الحاوية — الصورة الشخصية تماماً كحافة المقعد/الملف (مثالية، لا تُلمَس)
-// 🐛 الجولة السابقة رفعت هذي النسبة (300%→420%) ظناً أن الإطار لا يتأثر بها — لكن السبب
-// الحقيقي كان قصّ خفي (max-width:100% من Tailwind Preflight) يُبطل أي قيمة هنا تماماً مهما
-// كبرت. بعد رفع ذاك القصّ، تبيّن أن القيمة الفعلية كانت تُطبَّق أخيراً وبقوة كاملة — فبدت
-// الإطارات ضخمة جداً (380:screenshot). رجعتها لقيمة واقعية قريبة من نسبة "إطار المساهم"
-// المُثبَتة فعلياً (87%/195% ≈ 2.24×) بما أن الصورة هنا ثابتة 100% بدل 87%
-const DEFAULT_OVERLAY_ART_SCALE = 180;   // % من الحاوية — صورة الإطار الزخرفية تتجاوز الحافة بوضوح دون تضخّم
-// ✅ ملاحظات دقيقة جداً لكل إطار على حدة بكل سياق (مقعد/ملف مصغّر/ملف كامل/متجر/مشاهدات)
-// كشفت أن قيمة واحدة لا تناسب كل السياقات (مقاس الحاوية يختلف جذرياً: مقعد 42-80px مقابل
-// ملف كامل 108px بنفس بطاقة ضيقة)، وأن بعض الإطارات (العقيق الجمشتي/تنانين النار) تحتاج
-// قيمة أساس أعلى من البقية خصيصاً على المقعد. القيم هنا هي "أساس المقعد" لكل إطار؛ باقي
-// السياقات تُقيَّد لاحقاً بسقف ثابت (OVERLAY_TIGHT_CONTEXT_CAP) بدل تكرار قيم يدوية لكل مكان
-const IMAGE_OVERLAY_FRAMES = {
-    // 🐛 إصلاح: photoScale:87 (مع artScale:195) كان يُعطي نسبة إطار-إلى-صورة ~1.61× (140/87)
-    // حتى بعد توحيد سقف الفنّ عند 140% — أعلى بوضوح من نسبة 1.4× (140/100) لكل الإطارات
-    // الأخرى، وهذا تحديداً ما جعل إطار المساهم "يبدو أكبر من البقية" رغم خضوعه لنفس السقف.
-    // لا مبرر لمعاملته مختلفاً بعد الآن — artScale يُقيَّد دوماً لـ140% كبقيتها، فلا حاجة
-    // لتصغير الصورة مسبقاً لحجز مساحة له (كانت ضرورية فقط حين كان artScale يصل فعلياً حتى 195%)
-    'profile-frame-contributor': { url: FAN_CLUB_CONTRIBUTOR_FRAME_IMG, artScale: 195 },
-    // ✅ إطار الأدمن الخاص — نفس نمط بقية الإطارات (photoScale/artScale افتراضي 100%/180%)
-    'profile-frame-admin': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791240482/admin-frame-animated-512.webp' },
-    'profile-frame-luxury-01': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif' },
-    // ✅ "صغّر الصورة مع الإطار قليلاً" — طلب صريح لهذا الإطار تحديداً (كان الأكثر شكوى: يغطي
-    // الاسم بالملف الكامل والمتجر معاً، لا الملف الكامل فقط كبقية الإطارات)
-    'profile-frame-royal-01': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790892729/royal_frame_600px.gif', photoScale: 95 },
-    'profile-frame-crown-01': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790894895/crown_frame_600px.gif' },
-    // ✅ طلب صريح: هذا الإطار "جميل لكن يبدو قبيحاً دوماً عند الحجم الكبير" — يُصغَّر تلقائياً
-    // (صورة + إطار معاً) بكل سياق بلا استثناء، بعكس بقية الإطارات التي تحتفظ بحجمها الكامل
-    // على المقعد تحديداً وتُقيَّد فقط بالسياقات الضيقة
-    'profile-frame-black-gold-crown': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790895602/black_gold_crown_frame_600px.webp', photoScale: 92, artScale: 140 },
-    'profile-frame-gothic-royal': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896169/gothic_royal_frame.webp' },
-    // 🐛 طلب صريح لاحق: "صغير في كل مكان" — فنّ هذا الإطار نفسه (حافة رفيعة بهامش شفاف واسع
-    // حول محيط الصورة) يحتاج فعلياً مساحة أكبر من سقف 140% الموحَّد ليبدو متناسقاً، لا كمشكلة
-    // اتساق كإطار المساهم سابقاً (ذاك كان photoScale غير متسق مع البقية، لا حاجة فنّية حقيقية
-    // لحجم أكبر). exemptFromTightCap يسمح لـartScale بتجاوز الـ140% الموحَّد (مع بقاء
-    // computeOverlayArtScaleCap نفسه — الحارس الديناميكي الحقيقي لمنع تصادم إطارين متجاورين
-    // بالشبكات المزدحمة — فعّالاً دوماً بلا استثناء، فلا رجوع لمخاطر التصادم القديمة)
-    'profile-frame-amethyst-royal': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896497/amethyst_royal_frame.webp', artScale: 210, exemptFromTightCap: true },
-    // ✅ نفس حالة الجمشت الملكي أعلاه بالضبط لكن بدرجة أخف ("صغيرة قليلاً" لا "صغيرة بكل مكان")
-    'profile-frame-fire-dragons': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897430/fire_dragons_frame.webp', artScale: 185, exemptFromTightCap: true },
-    'profile-frame-lion-bee-sapphire': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897852/lion_bee_sapphire_frame.webp' },
-    'profile-frame-pegasus-warrior': { url: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790898291/pegasus_warrior_frame.webp' }
-};
-const IMAGE_OVERLAY_FRAME_CLASSES = Object.keys(IMAGE_OVERLAY_FRAMES);
-// ✅ سقف صارم لحجم الإطار بكل سياق بلا استثناء (المقعد ضمناً بعد اليوم — راجع تعليق
-// computeOverlayArtScaleCap/wrapImageOverlayFrames) — بحث معمّق سابق أثبت أن الإطار لا
-// يجوز أن ينزل عن 140% (الحد الأدنى الذي يضمن أن فتحة الإطار تبقى أكبر من الصورة الثابتة
-// عند 100% فلا تظهر حوافها)، فهذا السقف تحديداً (وليس أقل) هو كل ما يمكن خفضه بأمان
-const OVERLAY_TIGHT_CONTEXT_CAP = 140;
-// ✅ تقليص وزن تحميل الإطار بصيغة Cloudinary — المصدر الفعلي للأصل "الثقل" الذي اشتكى منه
-// المستخدم بالمتجر: كل الإطارات الثمانية مرفوعة بدقة خام 512-600px (GIF متحرك أحياناً)
-// بينما تُعرض فعلياً بـ56-150px فقط حسب السياق؛ المتصفح كان يحمّل ويفكّ تشفير الدقة الكاملة
-// 9 مرات دفعة واحدة عند فتح المتجر بغضّ النظر عن حجم العرض الفعلي. Cloudinary يدعم تصغير
-// الصورة فعلياً (لا فقط بصرياً عبر CSS) بإضافة w_<عرض> لمسار الرابط — نطلب ضعف حجم العرض
-// الفعلي تقريباً (وضوح كافٍ للشاشات عالية الكثافة) بدل الدقة الخام الكاملة دوماً
-function cloudinarySized(url, targetWidthPx) {
-    if (!url || !url.includes('res.cloudinary.com') || !url.includes('/upload/')) return url;
-    const w = Math.max(80, Math.min(640, Math.round(targetWidthPx)));
-    return url.replace('/upload/', `/upload/w_${w},c_limit,q_auto,f_auto/`);
-}
 
-// 🐛 إصلاح جوهري: زخارف هذي الإطارات (تاج، جواهر، أجنحة...) تتوغّل داخل الصورة نفسها بدل
-// حدّ رفيع حولها فقط — فتقنية border-image المستخدمة سابقاً كانت خاطئة جذرياً: بكسلات
-// <img> الفعلية تُرسَم دوماً فوق خلفية/حدّ نفس العنصر (ترتيب الرسم بمعيار CSS)، فتُغطّي أي
-// جزء من الإطار يُفترض أن يظهر فوقها بدل خلفها. البديل الصحيح الوحيد تقنياً: عنصر <img>
-// منفصل يُرسم فوق صورة المستخدم مباشرة. بما أن أصناف هذي الإطارات تُدرَج بعشرات القوالب
-// بالتطبيق (مقاعد الغرفة، الدردشة، الرسائل، الملف الكامل...) كصنف مباشر على <img> خام بلا
-// أي حاوية، تعديل كل موقع يدوياً كان سيكون مخاطرة كبيرة ببنية Flex/Grid لكل سياق — الحل
-// بدلاً من ذلك: مراقب DOM عام يكتشف أي <img> جديد يحمل أياً من هذي الأصناف ويُحيطه بحاوية
-// بحجم مُقاس فعلياً (لا نسبة مئوية تعتمد على أب مُعرَّف مسبقاً، يعمل بكل سياق) + طبقة تراكب
-// حقيقية فوقه — بلا أي تعديل لعشرات دوال العرض القائمة
-// ✅ بحث مُتعمَّق (بطلب صريح): عند توسّع الغرفة لـ15/24 مقعداً، تتقلّص الفجوة الحقيقية بين
-// المقاعد بسرعة أكبر من تقلّص حجم المقعد نفسه (من gap:16-30px بـ3 أعمدة إلى 6-14px بـ6
-// أعمدة — راجع .voice-seats-flex.cols-3/5/6 بـinput.css) بينما artScale تبقى نسبة مئوية
-// ثابتة من حجم المقعد ذاته بغضّ النظر عن المساحة المتبقية فعلياً حوله. بحساب رياضي: مقعد
-// 53px بشبكة الـ24 (cols-6) مع artScale=180% يمتد ~21px خارج كل حافة، بينما الفجوة الفعلية
-// هناك ~7-8px فقط — أي امتداد كهذا يتجاوز نصف الفجوة أضعافاً ويُلامس/يتداخل مع إطار المقعد
-// المجاور حتماً. الحل الهندسي الصحيح: حساب الفجوة الحقيقية من CSS نفسه ديناميكياً عند كل
-// تغليف (لا قيم مُصمَّمة يدوياً لكل كثافة تنكسر لاحقاً لو تغيّرت gap بالتصميم)، وتحديد سقف
-// امتداد لا يتجاوز 40% من تلك الفجوة لكل جانب — يضمن فاصلاً بصرياً واضحاً (٪60 الباقية)
-// يمنع تلامس إطارَي مقعدين متجاورين إطلاقاً مهما كانت كثافة الشبكة (9/15/24/80 مقعداً)،
-// تلقائياً وبلا تدخّل يدوي. خارج شبكة المقاعد (ملف شخصي/متجر/قوائم مشاهدين) لا "جار" حقيقي
-// مجاور، فلا سقف إضافي يُفرض هناك — الإعداد الكامل (configuredArtScale) يُطبَّق كما هو
-function computeOverlayArtScaleCap(img, seatSizePx) {
-    const seatBox = img.closest('.voice-seat');
-    if (!seatBox) return Infinity;
-    const gridEl = seatBox.closest('.voice-seats-flex');
-    if (!gridEl) return Infinity;
-    const cs = getComputedStyle(gridEl);
-    const gaps = [parseFloat(cs.columnGap), parseFloat(cs.rowGap)].filter(g => Number.isFinite(g) && g > 0);
-    if (gaps.length === 0) return Infinity;
-    const safeGap = Math.min(...gaps);
-    const maxOverflowEachSide = safeGap * 0.4;
-    // 🐛 بحث خارجي مُتعمَّق (طلب صريح) كشف أن فتحة إطار-الصورة الشفافة نفسها دائرية عادة
-    // بكل أطقم الإطارات الجاهزة (التاج/الأجنحة غير المنتظمة تقتصر على المحيط الخارجي فقط)،
-    // وأن artScale يجب أن يبقى أكبر من قيمة دنيا معيّنة وإلا "تنكمش" الفتحة الفعلية لتصبح
-    // أصغر من الصورة نفسها (الثابتة عند 100%) فتظهر حوافها خارج الإطار — بالضبط ما لاحظه
-    // المستخدم ("الإطار صغير ويترك أجزاء من الصورة ظاهرة") بعد تفعيل سقف منع التصادم بالجولة
-    // السابقة بشبكات 15/24 مقعداً المزدحمة. لذا لا نسمح للسقف أبداً بالنزول دون 140% — تحمي
-    // محاذاة الإطار مع الصورة بالحد الأدنى، حتى لو تطلّب ذلك تقارباً طفيفاً بين حلقتَي إطارين
-    // متجاورين بأضيق الشبكات (أهون بصرياً من إطار "مكسور" يُظهر حواف الصورة الخام)
-    return Math.max(140, 100 + (2 * maxOverflowEachSide / seatSizePx) * 100);
-}
-
-function wrapImageOverlayFrames(root = document) {
-    // إضافة تراكب لأي صورة جديدة تحمل أحد هذي الإطارات
-    const selector = IMAGE_OVERLAY_FRAME_CLASSES.map(c => `img.${c}:not(.frame-overlay-wrapped)`).join(',');
-    root.querySelectorAll(selector).forEach(img => {
-        const matchedClass = IMAGE_OVERLAY_FRAME_CLASSES.find(c => img.classList.contains(c));
-        // 🐛 إصلاح: getBoundingClientRect() يعكس أي transform:scale() من عنصر أب يتحرّك حالياً
-        // (مثلاً حاوية تدخل بأنيميشن "pop" من 0.6 إلى 1) — لو رُصدت الصورة هنا مبكراً أثناء
-        // الأنيميشن، يُحفَظ حجم التراكب أصغر من الحقيقي بشكل دائم (px ثابتة لا تكبر لاحقاً مع
-        // اكتمال الأنيميشن)، فيبدو الإطار غير متناسق مع الصورة. offsetWidth/offsetHeight يقرآن
-        // صندوق التخطيط الفعلي فقط (بلا أي تأثير من transform البصري)، فيُعطيان القياس الحقيقي
-        // دوماً بغض النظر عن أي أنيميشن تكبير/تصغير جارٍ بأي عنصر أب وقت الرصد
-        const w = img.offsetWidth, h = img.offsetHeight;
-        if (!w || !h) return; // لم يُرسَم بعد (مثلاً display:none) — تُعاد المحاولة بالدفعة التالية
-        img.classList.add('frame-overlay-wrapped');
-        img.dataset.frameClass = matchedClass; // ✅ يسمح لمسار "تبديل الإطار فورياً" أدناه باكتشاف التغيير
-        const config = IMAGE_OVERLAY_FRAMES[matchedClass];
-        const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
-        // ✅ السقف الموحَّد 140% يُطبَّق على الجميع إلا الإطارات المعلَّمة exemptFromTightCap
-        // (الجمشت الملكي/تنانين النار — فنّها نفسه يحتاج مساحة أكبر فعلياً، راجع التعليق أعلى
-        // IMAGE_OVERLAY_FRAMES)؛ computeOverlayArtScaleCap يبقى فعّالاً دوماً بلا استثناء — هو
-        // الحارس الحقيقي لمنع تصادم إطارَي مقعدين متجاورين، لا الـ140% الثابت
-        let artScale = Math.min(
-            config.artScale ?? DEFAULT_OVERLAY_ART_SCALE,
-            computeOverlayArtScaleCap(img, w),
-            config.exemptFromTightCap ? Infinity : OVERLAY_TIGHT_CONTEXT_CAP
-        );
-        const wrap = document.createElement('span');
-        wrap.className = 'frame-overlay-wrap';
-        wrap.style.width = `${w}px`;
-        wrap.style.height = `${h}px`;
-        img.parentNode.insertBefore(wrap, img);
-        wrap.appendChild(img);
-        // 🎯 النسبة الحقيقية التي تتحكم بتجاوز الإطار لحواف الصورة هي نسبة عرض/ارتفاع
-        // صورة الملف الشخصي إلى صورة الإطار الزخرفية (كلتاهما كنسبة % من نفس الصندوق) —
-        // وليس transform:scale() على الحاوية، لأنه يكبّر الاثنين بنفس المعامل فلا يغيّر
-        // نسبتهما لبعضهما. لذا نضبطهما هنا Inline لكل إطار حسب قياسه الفعلي، بدل نسبة
-        // عامة ثابتة في CSS لا تناسب كل الإطارات.
-        img.style.width = `${photoScale}%`;
-        img.style.height = `${photoScale}%`;
-        // ✅ حلقة احتياط (راجع .frame-overlay-ring بـinput.css) — تُدرَج بين الصورة والزخرفة
-        // لتمتص أي خلل محاذاة طفيف بين حافة الصورة الدائرية وفتحة الإطار غير المقاسة فعلياً
-        const ring = document.createElement('span');
-        ring.className = 'frame-overlay-ring';
-        wrap.appendChild(ring);
-        const overlay = document.createElement('img');
-        // ✅ تقليص وزن التحميل: نطلب من Cloudinary حجماً فعلياً أقرب لحجم العرض الحقيقي
-        // (بدل الدقة الخام 512-600px دوماً) — أهم إصلاح لثقل فتح متجر الإطارات تحديداً
-        overlay.src = cloudinarySized(config.url, w * (artScale / 100) * 2);
-        overlay.className = 'frame-overlay-art';
-        overlay.alt = '';
-        overlay.loading = 'lazy';
-        overlay.decoding = 'async';
-        overlay.style.width = `${artScale}%`;
-        overlay.style.height = `${artScale}%`;
-        wrap.appendChild(overlay);
-    });
-    // 🛡️ إزالة التراكب لو المستخدم بدّل لإطار آخر لاحقاً — applyFrameToAvatar (نفس عنصر <img>
-    // الحي) يُزيل صنف الإطار القديم دون إزالة الحاوية/التراكب اللذين أضفناهما، فيبقى الإطار
-    // "شبحاً" فوق صورة لم تعد ترتديه فعلياً لولا هذا التنظيف العكسي
-    root.querySelectorAll('.frame-overlay-wrap > img.frame-overlay-wrapped').forEach(img => {
-        const stillHasOverlayFrame = IMAGE_OVERLAY_FRAME_CLASSES.some(c => img.classList.contains(c));
-        if (!stillHasOverlayFrame) {
-            const wrap = img.parentNode;
-            img.classList.remove('frame-overlay-wrapped');
-            delete img.dataset.frameClass;
-            wrap.parentNode.insertBefore(img, wrap);
-            wrap.remove();
-            return;
-        }
-        // ✅ تبديل فوري بين إطارَين مختلفَين (مثلاً بعد شراء/تفعيل إطار جديد بالمتجر بينما
-        // صورة المستخدم ظاهرة حالياً بغرفة/قائمة مفتوحة) — الصورة تبقى "مُغلَّفة" أصلاً فيتجاوزها
-        // مسار الإضافة أعلاه (يستثني img.frame-overlay-wrapped)، فتبقى صورة الإطار القديمة
-        // عالقة بلا تحديث لولا هذي المزامنة الصريحة لـsrc/النسب كل مرة يختلف الصنف الفعلي
-        const matchedClass = IMAGE_OVERLAY_FRAME_CLASSES.find(c => img.classList.contains(c));
-        if (matchedClass === img.dataset.frameClass) return; // لم يتغيّر — لا حاجة لإعادة الضبط
-        img.dataset.frameClass = matchedClass;
-        const config = IMAGE_OVERLAY_FRAMES[matchedClass];
-        const photoScale = config.photoScale ?? DEFAULT_OVERLAY_PHOTO_SCALE;
-        const w2 = img.offsetWidth;
-        // ✅ نفس سقف 140% بلا استثناء للمقعد — راجع التعليق بمسار الإضافة الأولى أعلاه
-        let artScale = Math.min(
-            config.artScale ?? DEFAULT_OVERLAY_ART_SCALE,
-            computeOverlayArtScaleCap(img, w2),
-            config.exemptFromTightCap ? Infinity : OVERLAY_TIGHT_CONTEXT_CAP
-        );
-        img.style.width = `${photoScale}%`;
-        img.style.height = `${photoScale}%`;
-        const overlay = img.parentNode.querySelector('.frame-overlay-art');
-        if (overlay) {
-            overlay.src = cloudinarySized(config.url, w2 * (artScale / 100) * 2);
-            overlay.style.width = `${artScale}%`;
-            overlay.style.height = `${artScale}%`;
-        }
-    });
-}
-let frameOverlaySweepScheduled = false;
-const frameOverlayObserver = new MutationObserver(() => {
-    if (frameOverlaySweepScheduled) return;
-    frameOverlaySweepScheduled = true;
-    requestAnimationFrame(() => { frameOverlaySweepScheduled = false; wrapImageOverlayFrames(); });
-});
-frameOverlayObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-wrapImageOverlayFrames();
 
 // ✅ شعار النادي (تاج + جناحان + قاعدة داكنة بقلب مركزي) — يُستخدم فقط بنافذة "تخصيص شعار
 // المجموعة" (معاينة + منتقي الألوان)؛ sizeClass يتيح حجماً صغيراً بشبكة المنتقي وكبيراً بالمعاينة
@@ -13078,7 +12987,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                     <div class="fanclub-vip-podium-slot" data-user-id="${m.userId}">
                         <span class="fanclub-vip-podium-crown fanclub-vip-podium-crown-${rank}"><i class="fas fa-crown"></i></span>
                         <div class="fanclub-vip-podium-frame fanclub-vip-podium-frame-${rank}" style="background:linear-gradient(145deg,${c1},${c2})">
-                            <img src="${m.profileImage}" class="fanclub-vip-podium-avatar ${m.activeFrameClass || ''}">
+                            ${avatarHTML({ src: m.profileImage, frameClass: m.activeFrameClass, sizeClass: 'fanclub-vip-podium-avatar' })}
                             <span class="fanclub-vip-podium-rankbadge fanclub-vip-podium-rankbadge-${rank}">${rank}</span>
                         </div>
                         <p class="fanclub-vip-podium-name">${escapeHtml(m.username)}</p>
@@ -13108,7 +13017,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                         <div class="fanclub-member-row" data-user-id="${m.userId}">
                             <span class="fanclub-member-row-rank">${i + 4}</span>
                             <span class="fanclub-member-row-identity">
-                                <img src="${m.profileImage}" class="fanclub-member-row-avatar ${m.activeFrameClass || ''}">
+                                ${avatarHTML({ src: m.profileImage, frameClass: m.activeFrameClass, sizeClass: 'fanclub-member-row-avatar' })}
                                 <span class="fanclub-member-row-name">${escapeHtml(m.username)}</span>
                             </span>
                             <span class="fanclub-member-row-level"><i class="fas ${m.tierIcon}"></i> Lv.${m.level}</span>
@@ -13477,7 +13386,7 @@ async function showFullProfilePage(userId) {
         body.innerHTML = `
             <div class="full-profile-cover" style="${u.coverImage ? `background-image:url('${u.coverImage}')` : ''}">
                 <div class="full-profile-avatar-wrap">
-                    <img data-user-id="${u._id}" src="${u.profileImage}" class="full-profile-avatar ${u.activeFrameClass || ''}">
+                    ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'full-profile-avatar', photoAttrs: ` data-user-id="${u._id}"` })}
                 </div>
             </div>
             <div class="full-profile-identity">
@@ -13904,7 +13813,7 @@ async function showQuickGiftContributorsSheet(targetUserId, targetUsername) {
 
         body.innerHTML = `
             <div class="qgc-header">
-                <img src="${u.profileImage}" class="qgc-avatar ${u.activeFrameClass || ''}">
+                ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'qgc-avatar' })}
                 <p class="qgc-name">${escapeHtml(u.username)}</p>
             </div>
             <div class="qgc-arch">
@@ -13922,7 +13831,7 @@ async function showQuickGiftContributorsSheet(targetUserId, targetUsername) {
             <div id="qgc-tab-contributors" class="qgc-tab-panel">
                 ${(d.contributors && d.contributors.length) ? `<div class="qgc-contributors-grid">${d.contributors.map(c => `
                     <button type="button" class="qgc-contributor" data-user-id="${c.userId}">
-                        <img src="${c.profileImage}" class="qgc-contributor-avatar ${c.activeFrameClass || ''}">
+                        ${avatarHTML({ src: c.profileImage, frameClass: c.activeFrameClass, sizeClass: 'qgc-contributor-avatar' })}
                         <span class="qgc-contributor-name">${escapeHtml(c.username)}</span>
                     </button>
                 `).join('')}</div>` : '<p class="qgc-empty">لا يوجد مساهمون بعد</p>'}
@@ -14081,8 +13990,9 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                         <button id="close-private-chat" class="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700">
                             <i class="fas fa-arrow-right text-lg"></i>
                         </button>
-                        <img id="chat-user-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%234b5563'/%3E%3C/svg%3E" alt="${escapeHtml(targetUsername)}" 
-                             class="w-10 h-10 rounded-full border-2 border-purple-500 object-cover">
+                        <span class="avatar w-10 h-10">
+                            <img id="chat-user-avatar" class="avatar__photo border-2 border-purple-500" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%234b5563'/%3E%3C/svg%3E" alt="${escapeHtml(targetUsername)}">
+                        </span>
                         <div>
                             <h3 id="chat-user-name" class="font-bold text-white">${escapeHtml(targetUsername)}</h3>
                             <p id="chat-user-status" class="text-xs text-gray-400">
@@ -14201,18 +14111,6 @@ function getAgentBadgeIconHTML(isAgent) {
     return `<i class="fas fa-shield-halved text-green-400 text-xs" title="وكيل شحن معتمد"></i>`;
 }
 
-// تطبيق إطار الصورة الشخصية (كلاس CSS ثابت، وليس Tailwind ديناميكي)
-function applyFrameToAvatar(imgEl, activeFrameClass) {
-    if (!imgEl) return;
-    imgEl.classList.forEach(cls => {
-        if (cls.startsWith('profile-frame-')) imgEl.classList.remove(cls);
-    });
-    if (activeFrameClass) {
-        imgEl.classList.add(activeFrameClass);
-    }
-}
-
-
 // =================================================
 // ============ نظام الهدايا (Gifts) ================
 // =================================================
@@ -14306,9 +14204,10 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                 // ✅ صدى فقاعة الهدية بنافذة المحادثة المفتوحة نفسها — نفس ما كان يحدث سابقاً
                 // عبر استجابة HTTP المباشرة، الآن عبر ack دفعة الكومبو (راجع processGiftCombo)
                 if (res?.message) displayPrivateMessage(res.message, true);
-                // ✅ عداد الدعم أسفل المقعد يُطلَق فقط بعد تأكيد نجاح السيرفر صراحة (لا بالتفاؤل)
-                // — بـcost المؤكَّد فعلياً بهذي الدفعة تحديداً، لا تقدير متفائل قد يفشل لاحقاً
-                notifyRoomGiftSupport(targetUserId, cost);
+                // 🛡️ طلب صريح بمراجعة PR (بند 6): عداد الدعم أسفل المقعد لم يعد العميل يُطلقه
+                // إطلاقاً — كان ذلك الثغرة (socket.emit('room-gift-support', {value}) يثق بقيمة
+                // من العميل مباشرة). الخادم يبثّ room-support-updated تلقائياً بنفسه الآن، داخل
+                // مسار الهدية الفعلي، فور تأكيد الخصم الذري (راجع applyGiftToRoomSupport)
             },
             onFail: (cost, code) => {
                 const revertUser = JSON.parse(localStorage.getItem('user'));
@@ -14534,14 +14433,9 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 // يستدعي أيضاً مؤثراً مختلفاً تماماً — يتعارضان بصرياً. الحل: مصدر حقيقة واحد فقط —
                 // صدى السيرفر (بث لكل مستلم فوراً) يشغّل المؤثر الكبير الوحيد لكل الحاضرين بنفس اللحظة
                 //
-                // ✅ عداد الدعم أسفل المقعد يُطلَق فقط بعد تأكيد نجاح السيرفر صراحة (لا بالتفاؤل) —
-                // أي فشل لاحق كان يُبقي شارة "الدعم" ظاهرة رغم عدم وصول الهدية فعلياً، ولا تراجع
-                // عنها. cost هنا = تكلفة هذي الدفعة المؤكَّدة فعلاً مقسومة بالتساوي على مستلميها
-                const recipients = getRecipients();
-                if (recipients.length > 0) {
-                    const perRecipientCost = cost / recipients.length;
-                    recipients.forEach(receiverId => notifyRoomGiftSupport(receiverId, perRecipientCost));
-                }
+                // 🛡️ طلب صريح بمراجعة PR (بند 6): عداد الدعم أسفل المقعد لم يعد العميل يُطلقه —
+                // الخادم يبثّ room-support-updated تلقائياً بنفسه لكل مستلم على حدة (راجع
+                // applyGiftToActiveSeatChallenge/المسار الجماعي بـgiftController.js)
             },
             onFail: (cost, code) => {
                 const revertUser = JSON.parse(localStorage.getItem('user'));
@@ -15284,8 +15178,42 @@ function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) 
     btn.addEventListener('touchend', stopRapidSending);
 }
 
-// --- 🎊 تأثير عائم احترافي عند استقبال/إرسال هدية ---
-function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity = 1, targetUserId = null) {
+// 🛡️ طلب صريح بمراجعة PR (بند 1): طابور الأنيميشن الطائر الوارد من إعلانات الغرفة (هدايا
+// غيري — سيناريو السيل الحقيقي: 300 هدية/10 ثوانٍ من عدة مرسلين). لا يلمس استدعاءات هديتي
+// أنا نفسي (feedback فوري بالتفاؤل، ليست مصدر السيل أصلاً) — تلك تستدعي showGiftFloatingAnimation
+// مباشرة كما كانت دوماً. حد أقصى 3 أنيميشن متزامنة، ومكرر نفس (مرسل+هدية+مستلم) أثناء الانتظار
+// أو أثناء العرض الفعلي يُدمَج بعدّاد ×N حيّ بدل أنيميشن منفصلة، وما تجاوز 10 بالطابور يُسقط
+const GIFT_FLOAT_MAX_CONCURRENT = 3;
+const GIFT_FLOAT_QUEUE_CAP = 10;
+let giftFloatActiveCount = 0;
+const giftFloatQueue = []; // [{ key, giftImage, giftName, fromUsername, quantity, targetUserId }]
+const giftFloatActiveByKey = new Map(); // key → { quantity, bump(n) }
+
+function queueRoomGiftFloatAnimation(giftImage, giftName, fromUsername, quantity, targetUserId) {
+    const key = `${fromUsername}::${giftName}::${targetUserId || ''}`;
+    const active = giftFloatActiveByKey.get(key);
+    if (active) { active.bump(quantity); return; } // ✅ تطير بالفعل — تُحدَّث كميتها حيّاً فقط
+    const queued = giftFloatQueue.find(item => item.key === key);
+    if (queued) { queued.quantity += quantity; return; } // ✅ بانتظار دورها — تُدمَج بلا عنصر جديد
+    if (giftFloatQueue.length >= GIFT_FLOAT_QUEUE_CAP) return; // 🛡️ سيل كثيف جداً — تُسقَط بأمان
+    giftFloatQueue.push({ key, giftImage, giftName, fromUsername, quantity, targetUserId });
+    drainGiftFloatQueue();
+}
+
+function drainGiftFloatQueue() {
+    while (giftFloatActiveCount < GIFT_FLOAT_MAX_CONCURRENT && giftFloatQueue.length > 0) {
+        const item = giftFloatQueue.shift();
+        giftFloatActiveCount++;
+        showGiftFloatingAnimation(item.giftImage, item.giftName, item.fromUsername, item.quantity, item.targetUserId, item.key, () => {
+            giftFloatActiveCount--;
+            drainGiftFloatQueue();
+        });
+    }
+}
+
+// --- 🎊 تأثير عائم احترافي عند استقبال/إرسال هدية --- queueKey/onDone اختياريان: يُمرَّران
+// فقط من drainGiftFloatQueue أعلاه (مسار السيل)؛ استدعاءات "هديتي أنا" المباشرة لا تحتاجهما
+function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity = 1, targetUserId = null, queueKey = null, onDone = null) {
     const container = document.createElement('div');
     container.className = 'gift-float-container';
     container.innerHTML = `
@@ -15293,7 +15221,7 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
             <img src="${giftImage || ''}" class="gift-float-image">
             <div class="gift-float-text">
                 <span class="gift-float-sender">${escapeHtml(fromUsername)}</span>
-                <span class="gift-float-name">أرسل ${giftName}${quantity > 1 ? ' × ' + quantity : ''} 🎁</span>
+                <span class="gift-float-name">أرسل <span class="gift-float-qty">${giftName}${quantity > 1 ? ' × ' + quantity : ''}</span> 🎁</span>
             </div>
         </div>
         <div class="gift-float-sparkles">
@@ -15301,6 +15229,22 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
         </div>
     `;
     document.body.appendChild(container);
+
+    if (queueKey) {
+        let liveQuantity = quantity;
+        const qtyEl = container.querySelector('.gift-float-qty');
+        giftFloatActiveByKey.set(queueKey, {
+            quantity: liveQuantity,
+            bump(n) {
+                liveQuantity += n;
+                if (qtyEl) qtyEl.textContent = `${giftName}${liveQuantity > 1 ? ' × ' + liveQuantity : ''}`;
+            }
+        });
+    }
+    const finish = () => {
+        if (queueKey) giftFloatActiveByKey.delete(queueKey);
+        if (onDone) onDone();
+    };
 
     // ✅ ربط احتياطي عبر JS بدل onerror الممنوع بسياسة CSP
     const imgEl = container.querySelector('.gift-float-image');
@@ -15335,38 +15279,49 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
                 setTimeout(() => targetSeatEl.classList.remove('seat-gift-impact'), 500);
             }, 850);
         }, FLOAT_BEFORE_FLY_MS);
-        setTimeout(() => container.remove(), FLOAT_BEFORE_FLY_MS + 1250);
+        setTimeout(() => { container.remove(); finish(); }, FLOAT_BEFORE_FLY_MS + 1250);
         return;
     }
 
-    setTimeout(() => container.remove(), 1800);
+    setTimeout(() => { container.remove(); finish(); }, 1800);
 }
 
-// ✅ يبلّغ الغرفة المعروضة حالياً (إن كان المستلم قاعداً فيها) بتحديث عداد الدعم أسفل مقعده
-function notifyRoomGiftSupport(targetUserId, value) {
-    if (!currentVoiceRoomId) return;
-    const seatEl = document.querySelector(`#voice-chat-grid [data-user-id="${targetUserId}"]`);
-    if (!seatEl) return; // المستلم غير قاعد بالغرفة المعروضة حالياً — لا شيء لتحديثه
-    // ✅ targetUserId صريح الآن — السيرفر يربط التراكم بالمستخدم نفسه (راجع roomSupportTally)
-    // لا برقم المقعد، كي يبقى تراكمه معه لو وقف وعاد وجلس بنفس الغرفة
-    socket.emit('room-gift-support', { roomId: currentVoiceRoomId, seatNumber: parseInt(seatEl.dataset.seat), targetUserId, value });
-}
+// 🛡️ طلب صريح بمراجعة PR (بند 6): notifyRoomGiftSupport حُذفت بالكامل — كانت تُرسل
+// socket.emit('room-gift-support', {value}) بقيمة يحدّدها العميل نفسه، والخادم كان يثق بها
+// مباشرة (ثغرة أمنية حقيقية: عميل معدَّل يقدر يُضخِّم عداد أي مستخدم بلا إرسال هدية حقيقية
+// إطلاقاً). الخادم يبثّ room-support-updated تلقائياً الآن بنفسه داخل مسار الهدية الفعلي
+// (راجع applyGiftToRoomSupport/التحديث داخل processGiftCombo بـgiftController.js)
 
 // =====================================================
 // ✅ إعلان هدية داخل الغرفة — فقاعة ذهبية بالدردشة + شريط جانبي عائم (أسلوب TikTok Live) +
 // أيقونة تطير من منتصف الغرفة نحو مقعد المستلم. يستبدل الرسالة الخاصة/الفقاعة العائمة السابقتين
 // =====================================================
+// 🛡️ طلب صريح بمراجعة PR (بند 1): نفس (مرسل+هدية+مستلم) متكرر بآخر رسالة بالدردشة يُدمَج
+// بعدّاد ×N حيّ (تحديث نص فقط) بدل رسالة DOM جديدة لكل هدية — سيل 300 هدية/10 ثوانٍ كان
+// يُضيف حتى 300 عنصر DOM منفصل بدردشة واحدة
 function appendRoomGiftChatMessage({ fromUsername, toUsername, giftName, giftIcon, giftImage, quantity }) {
     const box = document.getElementById('room-chat-messages');
     if (!box) return;
+    const mergeKey = `${fromUsername}::${toUsername}::${giftName}`;
+    const last = box.lastElementChild;
+    if (last && last.classList.contains('room-chat-gift-bubble') && last.dataset.mergeKey === mergeKey) {
+        const nextQty = (parseInt(last.dataset.quantity, 10) || 1) + quantity;
+        last.dataset.quantity = nextQty;
+        const qtyEl = last.querySelector('.room-chat-gift-qty');
+        if (qtyEl) qtyEl.textContent = nextQty > 1 ? `×${nextQty} ` : '';
+        box.scrollTop = box.scrollHeight;
+        return;
+    }
     const el = document.createElement('div');
     el.className = 'room-chat-message room-chat-gift-bubble';
+    el.dataset.mergeKey = mergeKey;
+    el.dataset.quantity = quantity;
     const qtyText = quantity > 1 ? `×${quantity} ` : '';
     const iconHtml = giftImage ? `<img src="${giftImage}" class="room-chat-gift-inline-img" alt="">` : `<span>${giftIcon || '🎁'}</span>`;
     el.innerHTML = `
         <i class="fas fa-gift room-chat-gift-bubble-icon"></i>
         <p class="room-chat-msg-line">
-            <b>${escapeHtml(fromUsername)}</b> أرسل ${qtyText}${escapeHtml(giftName)} ${iconHtml} إلى <b>${escapeHtml(toUsername)}</b>
+            <b>${escapeHtml(fromUsername)}</b> أرسل <span class="room-chat-gift-qty">${qtyText}</span>${escapeHtml(giftName)} ${iconHtml} إلى <b>${escapeHtml(toUsername)}</b>
         </p>
     `;
     box.appendChild(el);
@@ -16763,7 +16718,7 @@ function confirmRedeem(redeemTo) {
             ${onlineUsers.length === 0 ? '<p class="text-[11px] text-gray-500 py-1.5">لا يوجد أشخاص متصلون حالياً</p>' : onlineUsers.map(u => `
                 <button class="public-gift-avatar-btn relative flex flex-col items-center gap-1 flex-shrink-0" data-user-id="${u._id}" data-username="${escapeHtml(u.username)}" title="${escapeHtml(u.username)}">
                     <span class="relative inline-block">
-                        <img src="${u.profileImage}" class="rg-avatar-img ${u.activeFrameClass || ''}">
+                        ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'rg-avatar-img' })}
                         <span class="rg-selected-badge hidden absolute -top-1 -left-1 w-3.5 h-3.5 bg-[#8b7a4d] rounded-full border-2 border-gray-900 items-center justify-center">
                             <i class="fas fa-check text-white" style="font-size:6px"></i>
                         </span>
@@ -17137,7 +17092,7 @@ async function loadLeaderboard(type, range = 'week') {
         container.innerHTML = leaders.map((leader, index) => `
             <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-800/40 hover:bg-gray-700/40 transition">
                 <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${index < 3 ? `bg-gradient-to-br ${rankColors[index]} text-white` : 'bg-gray-700 text-gray-300'}">${index + 1}</div>
-                <img src="${leader.profileImage}" class="w-11 h-11 rounded-full object-cover border-2 border-gray-600 ${leader.activeFrameClass || ''}">
+                ${avatarHTML({ src: leader.profileImage, frameClass: leader.activeFrameClass, sizeClass: 'w-11 h-11', extraPhotoClass: 'border-2 border-gray-600' })}
                 <div class="flex-1 min-w-0">
                     <p class="font-bold text-sm truncate">${escapeHtml(leader.username)}</p>
                     <p class="text-xs text-gray-400">${leader.giftsCount} هدية</p>
@@ -19916,8 +19871,7 @@ function displayMessage(message) {
     }
 
                 messageElement.innerHTML = `
-        <img src="${message.sender.profileImage}" alt="${escapeHtml(message.sender.username)}" 
-             class="w-7 h-7 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-400 flex-shrink-0 ${message.sender.activeFrameClass || ''}" data-user-id="${message.sender._id}">
+        ${avatarHTML({ src: message.sender.profileImage, frameClass: message.sender.activeFrameClass, sizeClass: 'w-7 h-7 flex-shrink-0', extraPhotoClass: 'cursor-pointer hover:ring-2 hover:ring-purple-400', photoAttrs: ` alt="${escapeHtml(message.sender.username)}" data-user-id="${message.sender._id}"` })}
         <div class="min-w-0 flex-1">
             ${replyHTML}
             <p class="font-bold text-[11px] leading-tight ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${escapeHtml(message.sender.username)}</p>
