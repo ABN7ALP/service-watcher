@@ -84,7 +84,9 @@ exports.blockUser = async (req, res) => {
                 console.log(`[BLOCK] Blocked user level ${blockedUser.level} < 3, notification suppressed`);
             }
 
-            io.emit('clearBlockCache', { userId: blockerId, targetUserId: blockedUserId });
+            // 🛡️ طلب صريح بمراجعة PR (بند 7): يخصّ طرفَي الحظر فقط — لا داعي لوصوله لكل متصل
+            // بالمنصة (كان io.emit عاماً، يكشف لكل مستخدم أن علاقة حظر تغيّرت بين هويتين بعينهما)
+            io.to(`user:${blockerId}`).to(`user:${blockedUserId}`).emit('clearBlockCache', { userId: blockerId, targetUserId: blockedUserId });
         }
 
         res.status(200).json({
@@ -148,8 +150,8 @@ exports.unblockUser = async (req, res) => {
 if (req.app.get('socketio')) {
     const io = req.app.get('socketio');
     
-    // أ. تنظيف cache للطرفين
-    io.emit('clearBlockCache', {
+    // أ. تنظيف cache للطرفين — 🛡️ طلب صريح بمراجعة PR (بند 7): يخصّهما فقط، لا كل متصل بالمنصة
+    io.to(`user:${unblockerId}`).to(`user:${blockedUserId}`).emit('clearBlockCache', {
         userId: unblockerId,
         targetUserId: blockedUserId
     });
@@ -232,8 +234,8 @@ if (req.app.get('socketio')) {
         
         console.log(`[UNBLOCK] Sent notification to unblocked user: ${blockedUserId}`);
     }
-            // ﻫ. إرسال حدث عام لتحديث cache للجميع
-        io.emit('blockCacheRefreshed', {
+            // ﻫ. تحديث cache الطرفين فقط — 🛡️ طلب صريح بمراجعة PR (بند 7): لا حدث عام لكل متصل بالمنصة
+        io.to(`user:${unblockerId}`).to(`user:${blockedUserId}`).emit('blockCacheRefreshed', {
             userId1: unblockerId,
             userId2: blockedUserId,
             action: 'unblock',

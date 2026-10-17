@@ -1,0 +1,33 @@
+{
+  "timeline": [
+    "[t+12.7s] seeded. room=PR103HostDiscon host=pr103hostdisconnect",
+    "[t+16.5s] host entered live broadcast",
+    "[t+20.9s] viewer entered same room",
+    "[t+21.0s] host browser context closed (real disconnect)",
+    "[t+22.0s] hostDisconnectedAt confirmed in DB: Sat Oct 17 2026 15:47:17 GMT+0000 (Coordinated Universal Time)",
+    "[t+40.2s] BEFORE KILL: isLive=true hostDisconnectedAt=Sat Oct 17 2026 15:47:17 GMT+0000 (Coordinated Universal Time)",
+    "[t+40.3s] 💥 server process KILLED (SIGKILL) — simulating crash/redeploy",
+    "[t+52.7s] 🚀 server process RESTARTED (brand new process, no in-memory timers survived)",
+    "[t+154.4s] ✅ BROADCAST ENDED BY SWEEP: isLive=false hostDisconnectedAt=null (عند t+154.4s)",
+    "[t+174.9s] viewer broadcast-ended-screen appeared: false",
+    "[t+174.9s] viewer final state — still shows room UI: true"
+  ],
+  "killAtMs": 40000,
+  "restartAtMs": 50000,
+  "hostDisconnectConfirmed": true,
+  "endedBySweep": true,
+  "endedAtMs": 154443,
+  "finalSnapshot": {
+    "_id": "6ad3987ce5326774ec195b37",
+    "isLive": false,
+    "hostDisconnectedAt": null
+  },
+  "viewerStillShowsRoom": true,
+  "broadcastEndedScreenSeen": false,
+  "pass": {
+    "hostDisconnectRecorded": true,
+    "survivedRestart": true,
+    "hostDisconnectedAtClearedAfterEnd": true,
+    "viewerReceivedBroadcastEndedEvent": false
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "totalGiftsSent": 300,
+  "senders": 3,
+  "windowMs": 10000,
+  "actualSendDurationMs": 9663,
+  "sendErrors": 3,
+  "longTasksOver50msAfterFirstSecond": [
+    {
+      "start": 6605.799999999814,
+      "duration": 87,
+      "attribution": [
+        {
+          "name": "unknown",
+          "containerType": "window",
+          "containerSrc": ""
+        }
+      ]
+    },
+    {
+      "start": 9596.200000000186,
+      "duration": 59,
+      "attribution": [
+        {
+          "name": "unknown",
+          "containerType": "window",
+          "containerSrc": ""
+        }
+      ]
+    }
+  ],
+  "longTasksOver50msAfterFirstSecondCount": 2,
+  "allLongTasksCount": 2,
+  "fpsPerSecond": [
+    {
+      "second": 0,
+      "fps": 60
+    },
+    {
+      "second": 1,
+      "fps": 60
+    },
+    {
+      "second": 2,
+      "fps": 60
+    },
+    {
+      "second": 3,
+      "fps": 60
+    },
+    {
+      "second": 4,
+      "fps": 60
+    },
+    {
+      "second": 5,
+      "fps": 60
+    },
+    {
+      "second": 6,
+      "fps": 51
+    },
+    {
+      "second": 7,
+      "fps": 55
+    },
+    {
+      "second": 8,
+      "fps": 52
+    },
+    {
+      "second": 9,
+      "fps": 53
+    }
+  ],
+  "minFps": 51,
+  "hostSocketConnected": true,
+  "giftChatMessageCount": 25,
+  "giftChatMaxQty": 20,
+  "supportBadgeText": null,
+  "pass": {
+    "noLongTaskAfterFirstSecond": false,
+    "fpsAtLeast50": true,
+    "hostNotDisconnected": true
+  }
+}

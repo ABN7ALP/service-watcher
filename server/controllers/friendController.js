@@ -238,8 +238,9 @@ exports.acceptFriendRequest = async (req, res) => {
             console.log(`[SOCKET] Sent request_accepted notification to sender ${senderId}`);
         }
 
-        // 7. إشعار للبث العام عن صداقة جديدة (اختياري)
-        io.emit('newFriendship', {
+        // 7. إشعار صداقة جديدة — 🛡️ طلب صريح بمراجعة PR (بند 7): يخصّ الطرفين فقط، لا بثّ عام
+        // لكل متصل بالمنصة (الطرفان أصلاً استلما إشعاريهما الحقيقيين أعلاه عبر socketId)
+        io.to(`user:${accepterId}`).to(`user:${senderId}`).emit('newFriendship', {
             users: [accepterId, senderId],
             timestamp: new Date().toISOString()
         });

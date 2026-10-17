@@ -1,0 +1,235 @@
+{
+  "seatSizeConsistency": {
+    "allSame": true,
+    "sizeBefore": {
+      "w": 36,
+      "h": 36,
+      "hasFrame": true
+    },
+    "sizeNoFrame": {
+      "w": 36,
+      "h": 36,
+      "hasFrame": false
+    },
+    "sizeAdded": {
+      "w": 36,
+      "h": 36,
+      "hasFrame": true
+    },
+    "sizeSwitched": {
+      "w": 36,
+      "h": 36,
+      "hasFrame": true
+    }
+  },
+  "screenshots": [
+    {
+      "name": "room9-seats-320x568",
+      "path": "/tmp/claude-0/-home-user-service-watcher/e6693bac-a554-576a-9926-4e8f9b8ffcab/scratchpad/pr103-harness/out/frames/room9-seats-320x568.png",
+      "seatAvatarSizes": [
+        {
+          "w": 56,
+          "h": 56
+        },
+        {
+          "w": 42,
+          "h": 42
+        },
+        {
+          "w": 42,
+          "h": 42
+        },
+        {
+          "w": 42,
+          "h": 42
+        },
+        {
+          "w": 42,
+          "h": 42
+        },
+        {
+          "w": 42,
+          "h": 42
+        },
+        {
+          "w": 42,
+          "h": 42
+        },
+        {
+          "w": 42,
+          "h": 42
+        },
+        {
+          "w": 42,
+          "h": 42
+        }
+      ]
+    },
+    {
+      "name": "room19-seats-320x568",
+      "path": "/tmp/claude-0/-home-user-service-watcher/e6693bac-a554-576a-9926-4e8f9b8ffcab/scratchpad/pr103-harness/out/frames/room19-seats-320x568.png",
+      "seatAvatarSizes": [
+        {
+          "w": 38,
+          "h": 38
+        },
+        {
+          "w": 29,
+          "h": 29
+        },
+        {
+          "w": 29,
+          "h": 29
+        },
+        {
+          "w": 29,
+          "h": 29
+        },
+        {
+          "w": 29,
+          "h": 29
+        },
+        {
+          "w": 29,
+          "h": 29
+        },
+        {
+          "w": 29,
+          "h": 29
+        },
+        {
+          "w": 29,
+          "h": 29
+        },
+        {
+          "w": 29,
+          "h": 29
+        },
+        {
+          "w": 29,
+          "h": 29
+        },
+        {
+          "w": 29,
+          "h": 29
+        }
+      ]
+    },
+    {
+      "name": "profile-hub-320x568",
+      "path": "/tmp/claude-0/-home-user-service-watcher/e6693bac-a554-576a-9926-4e8f9b8ffcab/scratchpad/pr103-harness/out/frames/profile-hub-320x568.png"
+    },
+    {
+      "name": "frame-shop-grid-320x568",
+      "path": "/tmp/claude-0/-home-user-service-watcher/e6693bac-a554-576a-9926-4e8f9b8ffcab/scratchpad/pr103-harness/out/frames/frame-shop-grid-320x568.png"
+    },
+    {
+      "name": "frame-shop-box-320x568",
+      "path": "/tmp/claude-0/-home-user-service-watcher/e6693bac-a554-576a-9926-4e8f9b8ffcab/scratchpad/pr103-harness/out/frames/frame-shop-box-320x568.png"
+    },
+    {
+      "name": "room9-seats-390x844",
+      "path": "/tmp/claude-0/-home-user-service-watcher/e6693bac-a554-576a-9926-4e8f9b8ffcab/scratchpad/pr103-harness/out/frames/room9-seats-390x844.png",
+      "seatAvatarSizes": [
+        {
+          "w": 74,
+          "h": 74
+        },
+        {
+          "w": 56,
+          "h": 56
+        },
+        {
+          "w": 56,
+          "h": 56
+        },
+        {
+          "w": 56,
+          "h": 56
+        },
+        {
+          "w": 56,
+          "h": 56
+        },
+        {
+          "w": 56,
+          "h": 56
+        },
+        {
+          "w": 56,
+          "h": 56
+        },
+        {
+          "w": 56,
+          "h": 56
+        },
+        {
+          "w": 56,
+          "h": 56
+        }
+      ]
+    },
+    {
+      "name": "room19-seats-390x844",
+      "path": "/tmp/claude-0/-home-user-service-watcher/e6693bac-a554-576a-9926-4e8f9b8ffcab/scratchpad/pr103-harness/out/frames/room19-seats-390x844.png",
+      "seatAvatarSizes": [
+        {
+          "w": 48,
+          "h": 48
+        },
+        {
+          "w": 36,
+          "h": 36
+        },
+        {
+          "w": 36,
+          "h": 36
+        },
+        {
+          "w": 36,
+          "h": 36
+        },
+        {
+          "w": 36,
+          "h": 36
+        },
+        {
+          "w": 36,
+          "h": 36
+        },
+        {
+          "w": 36,
+          "h": 36
+        },
+        {
+          "w": 36,
+          "h": 36
+        },
+        {
+          "w": 38,
+          "h": 38
+        },
+        {
+          "w": 36,
+          "h": 36
+        },
+        {
+          "w": 36,
+          "h": 36
+        }
+      ]
+    },
+    {
+      "name": "profile-hub-390x844",
+      "path": "/tmp/claude-0/-home-user-service-watcher/e6693bac-a554-576a-9926-4e8f9b8ffcab/scratchpad/pr103-harness/out/frames/profile-hub-390x844.png"
+    },
+    {
+      "name": "frame-shop-grid-390x844",
+      "path": "/tmp/claude-0/-home-user-service-watcher/e6693bac-a554-576a-9926-4e8f9b8ffcab/scratchpad/pr103-harness/out/frames/frame-shop-grid-390x844.png"
+    },
+    {
+      "name": "frame-shop-box-390x844",
+      "path": "/tmp/claude-0/-home-user-service-watcher/e6693bac-a554-576a-9926-4e8f9b8ffcab/scratchpad/pr103-harness/out/frames/frame-shop-box-390x844.png"
+    }
+  ]
+}

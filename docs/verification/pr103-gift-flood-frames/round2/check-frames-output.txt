@@ -1,0 +1,15 @@
+[check-frames] فحص 11 ملفاً (حدّ 2px من الحافة، alpha>16 = انتهاك)...
+
+✅ profile-frame-admin.webp                   10 لقطة، 512×5120، أقصى alpha حافة=0، أقصى alpha مركز=0
+✅ profile-frame-amethyst-royal.webp          10 لقطة، 512×5120، أقصى alpha حافة=0، أقصى alpha مركز=0
+✅ profile-frame-black-gold-crown.webp        10 لقطة، 512×5120، أقصى alpha حافة=0، أقصى alpha مركز=0
+✅ profile-frame-contributor.webp             1 لقطة، 512×512، أقصى alpha حافة=0، أقصى alpha مركز=0
+✅ profile-frame-crown-01.webp                10 لقطة، 512×5120، أقصى alpha حافة=0، أقصى alpha مركز=0
+✅ profile-frame-fire-dragons.webp            10 لقطة، 512×5120، أقصى alpha حافة=0، أقصى alpha مركز=0
+✅ profile-frame-gothic-royal.webp            10 لقطة، 512×5120، أقصى alpha حافة=0، أقصى alpha مركز=0
+✅ profile-frame-lion-bee-sapphire.webp       10 لقطة، 512×5120، أقصى alpha حافة=0، أقصى alpha مركز=0
+✅ profile-frame-luxury-01.webp               10 لقطة، 512×5120، أقصى alpha حافة=0، أقصى alpha مركز=0
+✅ profile-frame-pegasus-warrior.webp         10 لقطة، 512×5120، أقصى alpha حافة=0، أقصى alpha مركز=0
+✅ profile-frame-royal-01.webp                10 لقطة، 512×5120، أقصى alpha حافة=0، أقصى alpha مركز=0
+
+[check-frames] كل الملفات نظيفة — لا قصّ حافة، كل الفتحات شفافة فعلاً.
