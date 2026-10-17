@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { getRoomSupportTotal } = require('../services/socketService');
+const { getRoomSupportTotal, buildSeatChallengeSnapshot } = require('../services/socketService');
 const VoiceRoom = require('../models/VoiceRoom');
 const Message = require('../models/Message');
 const User = require('../models/User');
@@ -111,21 +111,9 @@ async function getActiveBattleSnapshot(roomId) {
 async function getActiveSeatChallengeSnapshot(roomId) {
     const challenge = await SeatChallenge.getActiveForRoomPopulated(roomId);
     if (!challenge) return null;
-    return {
-        challengeId: challenge._id,
-        participants: challenge.participants.map(p => ({
-            userId: p.user._id,
-            username: p.user.username,
-            profileImage: p.user.profileImage,
-            activeFrameClass: p.user.activeFrameClass,
-            seatNumber: p.seatNumber,
-            team: p.team
-        })),
-        scoreA: challenge.scoreA,
-        scoreB: challenge.scoreB,
-        durationSeconds: challenge.durationSeconds,
-        endsAt: challenge.endsAt
-    };
+    // ✅ نفس الشكل الغني المبثوث لحظياً بالضبط (mode/punishment/participants.score...) —
+    // مصدر واحد للشكل (راجع buildSeatChallengeSnapshot بـsocketService.js)
+    return buildSeatChallengeSnapshot(challenge);
 }
 
 // ✅ قائمة المطرودين من الغرفة بأسماء/صور واضحة (للمضيف/المسؤولين فقط) — تسمح بمراجعتهم
@@ -801,6 +789,88 @@ exports.purchaseBackground = async (req, res) => {
             backgroundExpiresAt: room.backgroundExpiresAt,
             newBalance: user.coins
         });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// ✅ هل يملك هذا المستخدم صلاحية الوصول الحالية لهذي الغرفة؟ — نفس معيار الدخول بـgetRoomById
+// بالضبط (مضيف/مسؤول يتجاوزان أي قيد، غرفة عامة مسموحة للجميع، خاصة تتطلب كلمة المرور
+// الصحيحة) — يُستخدم هنا لتقييد مسارات نتيجة PK/تحدي المقاعد "للأطراف فقط" (طلب صريح)
+function userCanAccessRoom(room, userId, suppliedPassword) {
+    if (!room) return false;
+    const isHost = room.host && room.host.toString() === userId;
+    const isModerator = (room.moderators || []).some(m => m.toString() === userId);
+    if (isHost || isModerator) return true;
+    if (!room.isPrivate) return true;
+    return !!suppliedPassword && suppliedPassword === room.password;
+}
+
+// =====================================================
+// ✅ GET /api/voice-room/pk/:battleId/result?roomId=... — نتيجة معركة PK محفوظة بالمستند
+// نفسه (resultA/resultB، راجع finalizeActiveBattle بـsocketService.js) — شبكة أمان لمن فاته
+// بثّ pk:result اللحظي (أغلق التطبيق/انقطع اتصاله لحظة الحسم بالضبط). roomId يحدد منظور أي
+// غرفة يطلبها العميل (يعرف غرفته الحالية فقط، لا الطرف الآخر) — "للأطراف فقط" (طلب صريح):
+// يُرفض الطلب لو roomId ليست إحدى طرفَي هذي المعركة، أو كانت غرفة خاصة بلا صلاحية وصول حقيقية
+// =====================================================
+exports.getPkBattleResult = async (req, res) => {
+    try {
+        const { battleId } = req.params;
+        const { roomId } = req.query;
+        if (!mongoose.Types.ObjectId.isValid(battleId) || !roomId || !mongoose.Types.ObjectId.isValid(roomId)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
+        }
+        const battle = await RoomBattle.findById(battleId).select('roomA roomB status resultA resultB');
+        if (!battle) {
+            return res.status(404).json({ status: 'fail', message: 'المعركة غير موجودة' });
+        }
+        const isA = battle.roomA.toString() === roomId;
+        const isB = battle.roomB.toString() === roomId;
+        if (!isA && !isB) {
+            return res.status(403).json({ status: 'fail', message: 'هذي الغرفة ليست طرفاً بهذي المعركة' });
+        }
+
+        const room = await VoiceRoom.findById(roomId).select('host moderators isPrivate password');
+        if (!userCanAccessRoom(room, req.user.id, req.query.password)) {
+            return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية الوصول لهذي الغرفة' });
+        }
+
+        const result = isA ? battle.resultA : battle.resultB;
+        if (battle.status === 'ended' && result) {
+            return res.json({ status: 'success', ready: true, result });
+        }
+        // ✅ لا تزال قيد الحساب (active/finalizing) — العميل يستمر بالاستطلاع كما يُتوقَّع منه
+        return res.json({ status: 'success', ready: false });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+};
+
+// =====================================================
+// ✅ GET /api/voice-room/seat-challenge/:challengeId/result — نتيجة تحدي مقاعد محفوظة
+// بالمستند نفسه (result، راجع finalizeActiveSeatChallenge بـsocketService.js) — نفس فلسفة
+// مسار نتيجة PK أعلى بالضبط، لكن غرفة واحدة فقط (لا منظور A/B بين غرفتين)
+// =====================================================
+exports.getSeatChallengeResult = async (req, res) => {
+    try {
+        const { challengeId } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(challengeId)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف تحدٍ غير صالح' });
+        }
+        const challenge = await SeatChallenge.findById(challengeId).select('room status result');
+        if (!challenge) {
+            return res.status(404).json({ status: 'fail', message: 'التحدي غير موجود' });
+        }
+
+        const room = await VoiceRoom.findById(challenge.room).select('host moderators isPrivate password');
+        if (!userCanAccessRoom(room, req.user.id, req.query.password)) {
+            return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية الوصول لهذي الغرفة' });
+        }
+
+        if (challenge.status === 'ended' && challenge.result) {
+            return res.json({ status: 'success', ready: true, result: challenge.result });
+        }
+        return res.json({ status: 'success', ready: false });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
     }

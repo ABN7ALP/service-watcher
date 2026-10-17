@@ -20,7 +20,14 @@ const pkStandingSchema = new mongoose.Schema({
     // ✅ 🛡️ علم منح مكافأة إغلاق الموسم — ذرّي ومستقل لكل صفّ (غرفة+موسم) بعينه، بنفس فلسفة
     // RoomBattle.lpSettled تماماً: يضمن استحالة منح كوينز مكافأة هذا الصف مرتين حتى لو تعطّلت
     // مهمة إغلاق الموسم بمنتصف منح 100 مركز وأُعيدت المحاولة من الصفر (راجع pkSeasonCloseJob.js)
-    rewardGranted: { type: Boolean, default: false }
+    rewardGranted: { type: Boolean, default: false },
+    // ✅ 🛡️ idempotent حقيقي لكل غرفة على حدة (طلب صريح بمراجعة PR): معرّفات المعارك التي
+    // طُبِّق أثرها على نقاط *هذا الصف تحديداً* بالفعل. lpSettled بـRoomBattle يحمي من إعادة
+    // التسوية الكاملة، لكن لو فشلت الغرفة الأخرى فقط بمحاولة سابقة (بلا دعم معاملات حقيقية)،
+    // كانت نقاط هذي الغرفة (التي نجحت) ستُضاف مجدداً عند إعادة المحاولة الكاملة — المصفوفة
+    // هنا تمنع ذلك تحديداً: كل $inc لنقاط معركة مشروط بعدم وجود معرّفها هنا مسبقاً (راجع
+    // pkLeagueEngine.settleBattleBody)
+    appliedBattleIds: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'RoomBattle' }], default: () => [] }
 }, { timestamps: true });
 
 pkStandingSchema.index({ season: 1, room: 1 }, { unique: true });

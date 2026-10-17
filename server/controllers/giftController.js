@@ -108,6 +108,19 @@ function schedulePkScoreEmit(io, battle) {
     }, PK_SCORE_THROTTLE_MS - elapsed);
 }
 
+// ✅ 🛡️ طلب صريح بمراجعة PR: تُستدعى من finalizeActiveBattle (socketService.js) فور إنهاء
+// المعركة — تُلغي أي مؤقّت بثّ مؤجَّل (الحافة الخلفية) لم يُطلَق بعد وتحذف مدخل المعركة من
+// الخريطة، فلا يبثّ pk:score متأخراً بعد وصول pk:result أصلاً (كان سيُربك العميل: نقاط
+// "حيّة" تصل بعد عرض النافذة النهائية). راجع أيضاً فحص الحالة الدفاعي بـemitPkScoreNow أدناه
+// (الحماية الثانية المستقلة — تمنع البثّ حتى لو فات أوان هذا الإلغاء لأي سبب)
+function clearPkScoreThrottle(battleId) {
+    const key = battleId.toString();
+    const state = pkScoreThrottle.get(key);
+    if (state?.timer) clearTimeout(state.timer);
+    pkScoreThrottle.delete(key);
+}
+exports.clearPkScoreThrottle = clearPkScoreThrottle;
+
 // ✅ حدث قلب النتيجة — مرّة واحدة كحد أقصى كل 3 ثوانٍ لكل معركة (راجع PK_LEAD_CHANGE_MIN_GAP_MS)
 // كي لا يتكرّر الانفجار البصري بجنون لو تبادل الصفّان التقدّم عدة مرات بثوانٍ متقاربة. leader
 // يُرسَل بمنظور كل غرفة (us/them) بنفس أسلوب pk:score تماماً، لا A/B خام
@@ -128,12 +141,19 @@ function emitPkLeadChange(io, battle, newLeaderSide) {
 // leader لا يُعتَّم عمداً (قرار مصمَّم): يبقى التشويق اللحظي لمن يتقدّم ظاهراً حتى أثناء نافذة
 // الضباب، بينما الرقم الحقيقي وحده محجوب — العميل يُجمِّد تقييم الإيموجي أصلاً حين them=null
 async function emitPkScoreNow(io, battle) {
+    // 🛡️ طلب صريح بمراجعة PR: لا نثق باللقطة المحفوظة بنافذة التحكّم بالمعدّل (قد التُقطت
+    // قبل انتهاء المعركة فعلياً، والمؤقّت المؤجَّل يبثّ لاحقاً بعد الانتهاء لو فات أوان
+    // clearPkScoreThrottle لأي سبب) — نقرأ الحالة الحقيقية الآن مباشرة قبل أي بثّ؛ معركة
+    // لم تعد active (انتهت/أُلغيت) لا تبثّ pk:score إطلاقاً بعد وصول pk:result أصلاً
+    const RoomBattle = require('../models/RoomBattle');
+    const fresh = await RoomBattle.findById(battle._id);
+    if (!fresh || fresh.status !== 'active') return;
     const [payloadA, payloadB] = await Promise.all([
-        buildPkScorePayload(battle, 'A'),
-        buildPkScorePayload(battle, 'B')
+        buildPkScorePayload(fresh, 'A'),
+        buildPkScorePayload(fresh, 'B')
     ]);
-    io.to(`room-chat-${battle.roomA}`).emit('pk:score', payloadA);
-    io.to(`room-chat-${battle.roomB}`).emit('pk:score', payloadB);
+    io.to(`room-chat-${fresh.roomA}`).emit('pk:score', payloadA);
+    io.to(`room-chat-${fresh.roomB}`).emit('pk:score', payloadB);
 }
 
 async function buildPkScorePayload(battle, side) {
@@ -192,29 +212,101 @@ async function applyGiftToRoomSupport(io, roomId, totalPrice, sender) {
     }
 }
 
-// ✅ يضيف قيمة هدية كنقاط لفريق المستلِم لو كان طرفاً بتحدٍ نشط الآن داخل نفس الغرفة (تحدٍ
-// بين أعضاء، وليس معركة PK بين غرفتين — راجع applyGiftToActiveBattle أعلاه لتلك). مثل بقية
-// خطّافات الهدايا: لا يُوقف إرسالها أبداً حتى لو فشل (لا تحدٍ نشط غالباً — يُتجاهل بصمت)
-async function applyGiftToActiveSeatChallenge(io, roomId, receiverId, totalPrice) {
+// ✅ يضيف قيمة هدية كنقاط لفريق المستلِم ولنقاطه الشخصية لو كان طرفاً بتحدٍ نشط الآن داخل
+// نفس الغرفة (تحدٍ بين أعضاء، وليس معركة PK بين غرفتين — راجع applyGiftToActiveBattle أعلاه
+// لتلك). 🛡️ نقاط كل مشارك (participants.$.score) تُحسَب هنا حصراً من الهدايا الحقيقية
+// المُرسلة إليه هو بعينه (طلب صريح — بند 10)، ونفس المُرسِل يُسجَّل داعماً لفريق مستلِمه
+// (supportersA/B، نفس شكل RoomBattle.supportersA/B بالضبط). مثل بقية خطّافات الهدايا: لا
+// يُوقف إرسالها أبداً حتى لو فشل (لا تحدٍ نشط غالباً — يُتجاهل بصمت)
+async function applyGiftToActiveSeatChallenge(io, roomId, receiverId, totalPrice, sender) {
     const SeatChallenge = require('../models/SeatChallenge');
     const challenge = await SeatChallenge.findOne({ room: roomId, status: 'active', 'participants.user': receiverId });
     if (!challenge) return;
 
-    const participant = challenge.participants.find(p => p.user.toString() === receiverId.toString());
-    if (!participant) return;
-    const isTeamA = participant.team === 'A';
+    const participantIdx = challenge.participants.findIndex(p => p.user.toString() === receiverId.toString());
+    if (participantIdx === -1) return;
+    const team = challenge.participants[participantIdx].team;
+    const isTeamA = team === 'A';
+
+    const inc = {
+        [isTeamA ? 'scoreA' : 'scoreB']: totalPrice,
+        [`participants.${participantIdx}.score`]: totalPrice
+    };
+    const update = { $inc: inc };
+    if (sender) {
+        const uid = sender._id.toString();
+        const side = isTeamA ? 'A' : 'B';
+        inc[`supporters${side}.${uid}.points`] = totalPrice;
+        update.$set = {
+            [`supporters${side}.${uid}.username`]: sender.username,
+            [`supporters${side}.${uid}.profileImage`]: sender.profileImage
+        };
+    }
 
     const updated = await SeatChallenge.findOneAndUpdate(
         { _id: challenge._id, status: 'active' },
-        { $inc: isTeamA ? { scoreA: totalPrice } : { scoreB: totalPrice } },
+        update,
         { new: true }
     );
     if (!updated || !io) return;
 
-    io.to(`room-chat-${roomId}`).emit('seat-challenge-score-update', {
-        challengeId: updated._id.toString(),
-        scoreA: updated.scoreA,
-        scoreB: updated.scoreB
+    scheduleSeatDuelScoreEmit(io, updated);
+}
+
+// ✅ نفس فلسفة pkScoreThrottle/schedulePkScoreEmit أعلى حرفياً (حافة أمامية+خلفية، 300ms
+// كحد أقصى) لكن لتحدي المقاعد — يبثّ نقاط كل مشارك + أفضل 3 داعمين لكل فريق معاً دفعة واحدة
+const seatDuelScoreThrottle = new Map(); // challengeId -> { timer, lastEmitAt, latest }
+function scheduleSeatDuelScoreEmit(io, challenge) {
+    const challengeId = challenge._id.toString();
+    let state = seatDuelScoreThrottle.get(challengeId);
+    if (!state) {
+        state = { timer: null, lastEmitAt: 0, latest: null };
+        seatDuelScoreThrottle.set(challengeId, state);
+    }
+    state.latest = challenge;
+    if (state.timer) return;
+
+    const elapsed = Date.now() - state.lastEmitAt;
+    if (elapsed >= PK_SCORE_THROTTLE_MS) {
+        state.lastEmitAt = Date.now();
+        emitSeatDuelScoreNow(io, state.latest);
+        return;
+    }
+    state.timer = setTimeout(() => {
+        state.timer = null;
+        state.lastEmitAt = Date.now();
+        const latest = state.latest;
+        if (latest) emitSeatDuelScoreNow(io, latest);
+    }, PK_SCORE_THROTTLE_MS - elapsed);
+}
+
+// ✅ 🛡️ طلب صريح بمراجعة PR: تُستدعى من finalizeActiveSeatChallenge (socketService.js) فور
+// إنهاء التحدي — تُلغي أي مؤقّت بثّ مؤجَّل (الحافة الخلفية) لم يُطلَق بعد وتحذف مدخل التحدي
+// من الخريطة، فلا يبثّ seat-duel:score متأخراً بعد وصول النتيجة النهائية أصلاً. راجع أيضاً
+// فحص الحالة الدفاعي بـemitSeatDuelScoreNow أدناه (الحماية الثانية المستقلة)
+function clearSeatDuelScoreThrottle(challengeId) {
+    const key = challengeId.toString();
+    const state = seatDuelScoreThrottle.get(key);
+    if (state?.timer) clearTimeout(state.timer);
+    seatDuelScoreThrottle.delete(key);
+}
+exports.clearSeatDuelScoreThrottle = clearSeatDuelScoreThrottle;
+
+async function emitSeatDuelScoreNow(io, challenge) {
+    // 🛡️ طلب صريح بمراجعة PR: لا نثق باللقطة المحفوظة (قد التُقطت قبل انتهاء التحدي فعلياً،
+    // والمؤقّت المؤجَّل يبثّ لاحقاً بعد الانتهاء لو فات أوان clearSeatDuelScoreThrottle لأي
+    // سبب) — نقرأ الحالة الحقيقية الآن مباشرة قبل أي بثّ؛ تحدٍ لم يعد active لا يبثّ
+    // seat-duel:score إطلاقاً بعد إعلان النتيجة أصلاً
+    const SeatChallenge = require('../models/SeatChallenge');
+    const fresh = await SeatChallenge.findById(challenge._id);
+    if (!fresh || fresh.status !== 'active') return;
+    const [topA, topB] = await Promise.all([fresh.topSupporters('A', 3), fresh.topSupporters('B', 3)]);
+    io.to(`room-chat-${fresh.room}`).emit('seat-duel:score', {
+        challengeId: fresh._id.toString(),
+        scoreA: fresh.scoreA,
+        scoreB: fresh.scoreB,
+        participants: fresh.participants.map(p => ({ userId: p.user.toString(), score: p.score })),
+        topFans: { A: topA, B: topB }
     });
 }
 
@@ -380,7 +472,7 @@ exports.sendGift = async (req, res) => {
                 console.error('[ROOM LEVEL] Failed to apply support points:', supportError);
             }
             try {
-                await applyGiftToActiveSeatChallenge(ioForRoom, cleanRoomId, receiverId, totalPrice);
+                await applyGiftToActiveSeatChallenge(ioForRoom, cleanRoomId, receiverId, totalPrice, sender);
             } catch (challengeError) {
                 console.error('[SEAT CHALLENGE] Failed to apply gift score:', challengeError);
             }
@@ -640,7 +732,7 @@ async function processGiftCombo({ io, senderId, giftId, quantity, taps = 1, reci
             // ✅ تحدي الأعضاء يُحسَب لكل مستلم على حدة (بعكس PK/مستوى الغرفة أعلاه، المحسوبين
             // إجمالاً) — مستلمو الإرسال الجماعي قد يكونون بفريقين مختلفين، فلا يصح تجميعهم
             try {
-                await applyGiftToActiveSeatChallenge(io, cleanRoomId, receiverId, totalPrice);
+                await applyGiftToActiveSeatChallenge(io, cleanRoomId, receiverId, totalPrice, sender);
             } catch (challengeError) {
                 console.error('[SEAT CHALLENGE] Failed to apply gift score:', challengeError);
             }
