@@ -207,6 +207,41 @@ function emitRoomSupportPointsUpdated(io, roomId, payload) {
     }, ROOM_SUPPORT_POINTS_THROTTLE_MS - elapsed);
 }
 
+// ✅ نفس فلسفة emitRoomSupportPointsUpdated أعلاه بالضبط (حافة أمامية+خلفية، 500ms كحد أقصى)
+// لكن لعداد الدعم الفردي أسفل كل مقعد (room-support-updated) — طلب صريح بمراجعة PR: كان هذا
+// الحدث يُبثّ مع كل هدية بلا أي تجميع (بعكس room-support-points-updated أعلاه المُجمَّع فعلاً)،
+// فسيل هدايا سريع لنفس المستلِم يُغرِق المستمعين بعشرات البثّات/ثانية لمجرد تحديث رقم واحد.
+// المفتاح `roomId:userId` (لا roomId فقط) لأن كل مستلِم بالغرفة له عدّاده المستقل أسفل مقعده؛
+// القيمة المبثوثة هي المجموع التراكمي الحالي دوماً (لا دلتا)، فبثّ "أحدث حالة" فقط عند حلول
+// النافذة صحيح بطبيعته بلا فقدان أي تحديث فعلي للرقم المعروض
+const roomSupportUpdatedThrottle = new Map(); // "roomId:userId" → { timer, lastEmitAt, latestPayload }
+const ROOM_SUPPORT_UPDATED_THROTTLE_MS = 500;
+
+function emitRoomSupportUpdated(io, roomId, userId, value) {
+    if (!io) return;
+    const roomKey = roomId.toString();
+    const key = `${roomKey}:${userId.toString()}`;
+    let state = roomSupportUpdatedThrottle.get(key);
+    if (!state) {
+        state = { timer: null, lastEmitAt: 0, latestPayload: null };
+        roomSupportUpdatedThrottle.set(key, state);
+    }
+    state.latestPayload = { roomId: roomKey, userId: userId.toString(), value };
+    if (state.timer) return; // ✅ الحافة الخلفية مجدولة بالفعل — ستُبثّ أحدث حالة عند حلولها
+
+    const elapsed = Date.now() - state.lastEmitAt;
+    if (elapsed >= ROOM_SUPPORT_UPDATED_THROTTLE_MS) {
+        state.lastEmitAt = Date.now();
+        io.to(`room-chat-${roomKey}`).emit('room-support-updated', state.latestPayload);
+        return;
+    }
+    state.timer = setTimeout(() => {
+        state.timer = null;
+        state.lastEmitAt = Date.now();
+        io.to(`room-chat-${roomKey}`).emit('room-support-updated', state.latestPayload);
+    }, ROOM_SUPPORT_UPDATED_THROTTLE_MS - elapsed);
+}
+
 // ✅ طلب صريح بمراجعة PR (بند 1): "اجمع إعلانات الهدايا لكل غرفة في نافذة 250ms: نفس
 // المرسل+الهدية+المستلم تُدمج في حدث واحد بالكمية الكلية" — سيل هدايا (300/10 ثوانٍ من عدة
 // مرسلين) كان يُشغِّل appendRoomGiftChatMessage/showRoomGiftSideBanner/showGiftFloatingAnimation
@@ -272,15 +307,11 @@ async function applyGiftToRoomSupport(io, roomId, totalPrice, sender, receiverId
         ...(topSupporters ? { topSupporters } : {})
     });
 
-    // ✅ مستوى الغرفة ونقاط الدعم أعلاه مُجمَّعة (throttled)، لكن عداد المقعد الفردي نفسه يبقى
-    // لحظياً بلا تجميع — رقمه صغير نسبياً وتحديثه فوري متوقَّع تماماً كالهدية نفسها
+    // ✅ عداد المقعد الفردي أسفله مُجمَّع الآن أيضاً (500ms، نفس نافذة room-support-points-updated
+    // أعلاه) — راجع emitRoomSupportUpdated لتفاصيل سبب التجميع (سيل هدايا سريع لنفس المستلِم)
     if (receiverId) {
         const total = addRoomSupportTotal(roomId.toString(), receiverId.toString(), totalPrice);
-        io.to(`room-chat-${roomId}`).emit('room-support-updated', {
-            roomId: roomId.toString(),
-            userId: receiverId.toString(),
-            value: total
-        });
+        emitRoomSupportUpdated(io, roomId, receiverId, total);
     }
 
     if (result.leveledUp) {
@@ -818,14 +849,11 @@ async function processGiftCombo({ io, senderId, giftId, quantity, taps = 1, reci
                 console.error('[SEAT CHALLENGE] Failed to apply gift score:', challengeError);
             }
             // 🛡️ طلب صريح بمراجعة PR (بند 6): عداد دعم مقعد كل مستلم على حدة — بنفس قيمته
-            // الحقيقية بهذي الدفعة (totalPrice لكل مستلم، لا totalCost الإجمالي أعلاه)
+            // الحقيقية بهذي الدفعة (totalPrice لكل مستلم، لا totalCost الإجمالي أعلاه)، ومُجمَّع
+            // الآن بنفس نافذة 500ms (راجع emitRoomSupportUpdated)
             if (io) {
                 const total = addRoomSupportTotal(cleanRoomId.toString(), receiverId, totalPrice);
-                io.to(`room-chat-${cleanRoomId}`).emit('room-support-updated', {
-                    roomId: cleanRoomId.toString(),
-                    userId: receiverId,
-                    value: total
-                });
+                emitRoomSupportUpdated(io, cleanRoomId, receiverId, total);
             }
             if (io) {
                 queueRoomGiftAnnouncement(io, {
@@ -1205,3 +1233,4 @@ module.exports.schedulePkScoreEmit = schedulePkScoreEmit;
 // __tests__/giftController.giftFloodBatching.test.js؛ لا مستهلك إنتاجي خارج هذا الملف نفسه
 module.exports.queueRoomGiftAnnouncement = queueRoomGiftAnnouncement;
 module.exports.emitRoomSupportPointsUpdated = emitRoomSupportPointsUpdated;
+module.exports.emitRoomSupportUpdated = emitRoomSupportUpdated;

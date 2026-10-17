@@ -18,11 +18,11 @@
 //   node scripts/normalize-frames.js --class=KEY --src=PATH_OR_URL   → أصل واحد مخصَّص
 //   node scripts/normalize-frames.js --selftest       → يبني ويطبّع أصولاً اصطناعية للتحقق
 //
-// 🛡️ ملاحظة شبكة: مصادر الإطارات الحقيقية (res.cloudinary.com) محجوبة بسياسة شبكة جلسة
-// التطوير الحالية هذي تحديداً (ليست قيداً بالسكربت نفسه) — راجع docs/verification/pr10x-frames
-// لتفاصيل كاملة. السكربت يعمل بشكل صحيح ومُتحقَّق منه (راجع --selftest) على أي مصدر صورة
-// فعلي (رابط أو ملف محلي)؛ إعادة تشغيله بعد توسعة الشبكة أو برفع الملفات الأصلية محلياً
-// يُنتج أصولاً نهائية مطابقة بلا أي تعديل على الكود.
+// 🛡️ تصحيح يدوي اختياري: بعض الإطارات الحقيقية (مثلاً lion-bee-sapphire) فيها زخارف تبرز
+// داخل حدود الفتحة فعلاً (وجه/جناح لا مجرد حافة خارجية)، فيلتقط المسح الشعاعي الآلي نصف قطر
+// أكبر من اللازم ويقصّها عند التحجيم. scripts/frames-manifest.json يحمل تصحيحاً يدوياً لنصف
+// القطر/المركز (كنسبة من أبعاد المصدر) لمثل هذي الحالات تحديداً — راجع loadFramesManifest
+// أدناه. إطار غير مذكور بالملف يعتمد بالكامل على detectOpeningRadius الآلية.
 
 const fs = require('fs');
 const path = require('path');
@@ -33,7 +33,30 @@ const TARGET_OPENING_RATIO = 0.625; // ✅ طلب صريح: فتحة قطرها 
 const TARGET_RADIUS = (CANVAS_SIZE * TARGET_OPENING_RATIO) / 2;
 const ALPHA_THRESHOLD = 24; // ✅ أي بكسل alpha أقل من هذا يُعدّ "شفافاً" (فتحة)، لا عتبة 0 الصارمة (ضغط WebP/GIF يترك قيماً قريبة من الصفر لا صفراً تماماً أحياناً)
 
+// 🛡️ طلب صريح بمراجعة PR: كل ملف < 400KB. أصول Cloudinary الحقيقية المتحركة (حتى 100 لقطة
+// 512×512 لكل أصل) كانت تُعيد تصديرها بجودة 88 بكل لقطاتها فتنتج 3-10MB/ملف — أبعد ما يكون عن
+// الميزانية. الحل: أخذ عيّنة من اللقطات (حد أقصى MAX_ANIMATED_FRAMES، لا كل اللقطات — تأثيرات
+// البريق/التوهج بهذي الإطارات بطيئة بطبيعتها، فعشر لقطات كافية بصرياً للعين البشرية) + جودة
+// أخفض للمتحرك تحديداً (الثابت وحيد اللقطة يبقى 88 — ميزانيته أصلاً بعيدة جداً عن 400KB)
+const MAX_ANIMATED_FRAMES = 10;
+const ANIMATED_WEBP_QUALITY = 28;
+const ANIMATED_ALPHA_QUALITY = 32;
+const ANIMATED_FRAME_DELAY_MS = 90;
+const STATIC_WEBP_QUALITY = 88;
+const WEBP_ENCODE_EFFORT = 6; // ✅ 6 = الحد الأقصى لجهد ضغط libwebp (كان 5) — نفس الجودة بحجم أقل
+const MAX_OUTPUT_BYTES = 400 * 1024;
+
 const OUT_DIR = path.join(__dirname, '..', 'public', 'assets', 'frames');
+const MANIFEST_PATH = path.join(__dirname, 'frames-manifest.json');
+
+// ✅ يحمّل scripts/frames-manifest.json إن وُجد — تصحيح يدوي اختياري فقط، لا يفشل السكربت
+// لو الملف غائب (الاكتشاف الآلي يبقى المسار الافتراضي لكل الإطارات بلا استثناء)
+function loadFramesManifest() {
+    if (!fs.existsSync(MANIFEST_PATH)) return {};
+    const parsed = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
+    const { _description, _fields, ...overrides } = parsed;
+    return overrides;
+}
 
 // ✅ قائمة الإطارات الحقيقية الـ11 (نفس مفاتيح/روابط IMAGE_OVERLAY_FRAMES السابقة بـapp.js
 // حرفياً) — مصدر الحقيقة الوحيد لما يحتاج تطبيعاً فعلياً عند توفر وصول شبكة لهذي الروابط
@@ -88,7 +111,7 @@ function detectOpeningRadius(raw, width, height, channels) {
     return { radius: median, cx, cy, samples: radii };
 }
 
-async function normalizeOne(key, src, { outDir = OUT_DIR, verbose = true } = {}) {
+async function normalizeOne(key, src, { outDir = OUT_DIR, verbose = true, manifestOverrides } = {}) {
     const inputBuffer = await loadSourceBuffer(src);
     const meta = await sharp(inputBuffer, { animated: true }).metadata();
     const isAnimated = !!(meta.pages && meta.pages > 1);
@@ -99,7 +122,22 @@ async function normalizeOne(key, src, { outDir = OUT_DIR, verbose = true } = {})
         .ensureAlpha()
         .raw()
         .toBuffer({ resolveWithObject: true });
-    const { radius, cx, cy } = detectOpeningRadius(raw, info.width, info.height, info.channels);
+
+    // ✅ manifestOverrides قابل للحقن (اختبارات Jest) — افتراضياً يُحمَّل من الملف الحقيقي
+    const manifest = manifestOverrides || loadFramesManifest();
+    const override = manifest[key];
+    let radius, cx, cy;
+    if (override && typeof override.radiusRatio === 'number') {
+        const baseDim = Math.min(info.width, info.height);
+        radius = override.radiusRatio * baseDim;
+        cx = (typeof override.cxRatio === 'number' ? override.cxRatio : 0.5) * info.width;
+        cy = (typeof override.cyRatio === 'number' ? override.cyRatio : 0.5) * info.height;
+        if (verbose) {
+            console.log(`[normalize-frames] ${key}: تصحيح يدوي من frames-manifest.json (radiusRatio=${override.radiusRatio}) — ${override.reason || 'بلا سبب موثَّق'}`);
+        }
+    } else {
+        ({ radius, cx, cy } = detectOpeningRadius(raw, info.width, info.height, info.channels));
+    }
 
     if (!radius || radius < 2) {
         throw new Error(`[${key}] تعذّر اكتشاف فتحة شفافة حقيقية بالمصدر — تحقّق يدوي مطلوب`);
@@ -158,30 +196,52 @@ async function normalizeOne(key, src, { outDir = OUT_DIR, verbose = true } = {})
 
     fs.mkdirSync(outDir, { recursive: true });
     const outPath = path.join(outDir, `${key}.webp`);
-    const pageCount = isAnimated ? meta.pages : 1;
+    const sourcePageCount = isAnimated ? meta.pages : 1;
+
+    // ✅ عيّنة من اللقطات لا كلها (راجع تعليق MAX_ANIMATED_FRAMES أعلى الملف) — مسافة ثابتة
+    // عبر كامل مدة الحركة الأصلية (لا أول N لقطة فقط) كي تبقى الحركة الكاملة (دورة كاملة من
+    // البريق/التوهج) ممثَّلة، لا جزء منها فقط
+    const frameStride = isAnimated ? Math.max(1, Math.ceil(sourcePageCount / MAX_ANIMATED_FRAMES)) : 1;
+    const pageIndices = [];
+    for (let p = 0; p < sourcePageCount; p += frameStride) pageIndices.push(p);
+    const pageCount = pageIndices.length;
 
     if (!isAnimated) {
         const rawFrame = await composeFramePage(inputBuffer);
         await sharp(rawFrame, { raw: { width: CANVAS_SIZE, height: CANVAS_SIZE, channels: 4 } })
-            .webp({ quality: 88, effort: 5 })
+            .webp({ quality: STATIC_WEBP_QUALITY, effort: WEBP_ENCODE_EFFORT })
             .toFile(outPath);
     } else {
         const rawPages = [];
-        for (let p = 0; p < pageCount; p++) {
+        for (const p of pageIndices) {
             const pageBuffer = await sharp(inputBuffer, { page: p }).png().toBuffer();
             rawPages.push(await composeFramePage(pageBuffer));
         }
         await sharp(Buffer.concat(rawPages), {
             raw: { width: CANVAS_SIZE, height: CANVAS_SIZE * pageCount, channels: 4, pageHeight: CANVAS_SIZE }
         })
-            .webp({ quality: 88, effort: 5, loop: 0 })
+            .webp({
+                quality: ANIMATED_WEBP_QUALITY,
+                alphaQuality: ANIMATED_ALPHA_QUALITY,
+                effort: WEBP_ENCODE_EFFORT,
+                loop: 0,
+                delay: new Array(pageCount).fill(ANIMATED_FRAME_DELAY_MS)
+            })
             .toFile(outPath);
     }
 
-    if (verbose) {
-        console.log(`[normalize-frames] ${key}: نصف قطر مُكتشَف=${radius.toFixed(1)}px (من ${info.width}×${info.height}) → تحجيم×${scale.toFixed(3)} → ${outPath}${isAnimated ? ` (متحرك، ${pageCount} لقطة)` : ''}`);
+    // ✅ طلب صريح بمراجعة PR: كل ملف < 400KB — فحص صارم بدل أمل صامت أن الإعدادات أعلاه
+    // كافية؛ أصل مستقبلي أكثف فنياً من كل ما اختُبِر عليه الإعدادات يُفشِل السكربت بوضوح
+    // بدل شحن أصل يتجاوز الميزانية بصمت
+    const outputBytes = fs.statSync(outPath).size;
+    if (outputBytes > MAX_OUTPUT_BYTES) {
+        throw new Error(`[${key}] الناتج ${(outputBytes / 1024).toFixed(0)}KB يتجاوز ميزانية 400KB (quality=${isAnimated ? ANIMATED_WEBP_QUALITY : STATIC_WEBP_QUALITY}, frames=${pageCount}) — خفّض MAX_ANIMATED_FRAMES/ANIMATED_WEBP_QUALITY لهذا الأصل تحديداً`);
     }
-    return { key, outPath, radius, scale, isAnimated };
+
+    if (verbose) {
+        console.log(`[normalize-frames] ${key}: نصف قطر مُكتشَف=${radius.toFixed(1)}px (من ${info.width}×${info.height}) → تحجيم×${scale.toFixed(3)} → ${outPath} (${(outputBytes / 1024).toFixed(0)}KB)${isAnimated ? ` (متحرك، ${pageCount}/${sourcePageCount} لقطة)` : ''}`);
+    }
+    return { key, outPath, radius, scale, isAnimated, outputBytes, pageCount };
 }
 
 // =====================================================
@@ -325,4 +385,4 @@ if (require.main === module) {
     main().catch(err => { console.error(err); process.exit(1); });
 }
 
-module.exports = { normalizeOne, detectOpeningRadius, KNOWN_FRAMES, CANVAS_SIZE, TARGET_RADIUS };
+module.exports = { normalizeOne, detectOpeningRadius, loadFramesManifest, KNOWN_FRAMES, CANVAS_SIZE, TARGET_RADIUS };

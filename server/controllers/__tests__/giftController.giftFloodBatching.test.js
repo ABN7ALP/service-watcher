@@ -7,7 +7,7 @@
 // المجاور (الملف يحمّل setInterval حقيقي غير مرتبط بهذا الاختبار عند الاستيراد)
 jest.useFakeTimers();
 
-const { queueRoomGiftAnnouncement, emitRoomSupportPointsUpdated } = require('../giftController');
+const { queueRoomGiftAnnouncement, emitRoomSupportPointsUpdated, emitRoomSupportUpdated } = require('../giftController');
 
 function makeIo() {
     const emitted = [];
@@ -111,5 +111,59 @@ describe('emitRoomSupportPointsUpdated — حافة أمامية+خلفية، 50
 
         expect(io.emitted.length).toBeLessThanOrEqual(4);
         expect(io.emitted[io.emitted.length - 1].payload.total).toBe(299); // آخر بثّ يحمل أحدث قيمة فعلية
+    });
+});
+
+describe('emitRoomSupportUpdated — عداد دعم المقعد الفردي، حافة أمامية+خلفية، 500ms كحد أقصى لكل (غرفة+مستخدم)', () => {
+    test('أول نداء يُبثّ فوراً (الحافة الأمامية)', () => {
+        const io = makeIo();
+        emitRoomSupportUpdated(io, 'room_1', 'seatUser1', 100);
+
+        expect(io.emitted).toHaveLength(1);
+        expect(io.emitted[0]).toMatchObject({
+            room: 'room-chat-room_1',
+            event: 'room-support-updated',
+            payload: { roomId: 'room_1', userId: 'seatUser1', value: 100 }
+        });
+    });
+
+    test('سيل هدايا سريع لنفس المستلِم خلال نافذة 500ms → بثّ واحد إضافي فقط بأحدث مجموع (الحافة الخلفية)', async () => {
+        const io = makeIo();
+        emitRoomSupportUpdated(io, 'room_2', 'seatUser2', 100); // فوري
+        emitRoomSupportUpdated(io, 'room_2', 'seatUser2', 250); // يُجدوَل فقط
+        emitRoomSupportUpdated(io, 'room_2', 'seatUser2', 400); // يُحدِّث "أحدث حالة" بلا مؤقّت جديد
+
+        expect(io.emitted).toHaveLength(1);
+
+        await jest.advanceTimersByTimeAsync(500);
+
+        expect(io.emitted).toHaveLength(2);
+        expect(io.emitted[1].payload).toEqual({ roomId: 'room_2', userId: 'seatUser2', value: 400 });
+    });
+
+    test('مستلمان مختلفان بنفس الغرفة لا يتدخّلان ببعضهما (مفتاح roomId:userId مستقل لكل مقعد)', async () => {
+        const io = makeIo();
+        emitRoomSupportUpdated(io, 'room_3', 'seatA', 10); // فوري
+        emitRoomSupportUpdated(io, 'room_3', 'seatB', 20); // فوري أيضاً — مفتاح مختلف تماماً
+        emitRoomSupportUpdated(io, 'room_3', 'seatA', 15); // يُجدوَل لمقعد A فقط
+
+        expect(io.emitted).toHaveLength(2); // بثّان فوريان مستقلان لمقعدين مختلفين
+
+        await jest.advanceTimersByTimeAsync(500);
+
+        expect(io.emitted).toHaveLength(3);
+        expect(io.emitted[2]).toMatchObject({ payload: { userId: 'seatA', value: 15 } });
+    });
+
+    test('سيل كبير (300 هدية لنفس المقعد) خلال ~1 ثانية ينتج ≤4 بثّات لا 300', async () => {
+        const io = makeIo();
+        for (let i = 0; i < 300; i++) {
+            emitRoomSupportUpdated(io, 'room_flood', 'seatFlood', i);
+            await jest.advanceTimersByTimeAsync(3);
+        }
+        await jest.advanceTimersByTimeAsync(500);
+
+        expect(io.emitted.length).toBeLessThanOrEqual(4);
+        expect(io.emitted[io.emitted.length - 1].payload.value).toBe(299);
     });
 });

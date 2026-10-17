@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const sharp = require('sharp');
-const { normalizeOne, detectOpeningRadius, CANVAS_SIZE, TARGET_RADIUS } = require('../normalize-frames');
+const { normalizeOne, detectOpeningRadius, loadFramesManifest, CANVAS_SIZE, TARGET_RADIUS } = require('../normalize-frames');
 
 async function buildSource({ size, radius, color = { r: 212, g: 175, b: 55 } }) {
     const baseSvg = `<svg width="${size}" height="${size}">
@@ -90,5 +90,66 @@ describe('normalizeOne — يُعيد أي فتحة مصدر (نصف قطر/دق
 
         await expect(normalizeOne('solid-no-opening', srcPath, { outDir: path.join(tmpDir, 'out'), verbose: false }))
             .rejects.toThrow(/تعذّر اكتشاف فتحة/);
+    });
+});
+
+describe('frames-manifest.json — تصحيح يدوي اختياري يتجاوز الاكتشاف الآلي', () => {
+    test('scripts/frames-manifest.json الحقيقي صالح للقراءة ومفاتيحه بصيغة صحيحة', () => {
+        const manifest = loadFramesManifest();
+        expect(typeof manifest).toBe('object');
+        // ✅ لا تسرّب حقول التوثيق (_description/_fields) كمفاتيح إطارات
+        expect(manifest._description).toBeUndefined();
+        expect(manifest._fields).toBeUndefined();
+        for (const [key, entry] of Object.entries(manifest)) {
+            expect(typeof entry.radiusRatio).toBe('number');
+            expect(entry.radiusRatio).toBeGreaterThan(0);
+            expect(entry.radiusRatio).toBeLessThan(0.5);
+            expect(typeof entry.reason).toBe('string');
+            expect(entry.reason.length).toBeGreaterThan(0);
+        }
+    });
+
+    test('مصدر بلا فتحة شفافة قابلة للاكتشاف آلياً (يرمي خطأً افتراضياً) ينجح عبر تصحيح يدوي محقون', async () => {
+        // ✅ نفس مصدر حالة "تعذّر اكتشاف فتحة" أعلاه بالضبط — يثبت أن منطق التصحيح اليدوي
+        // يتجاوز detectOpeningRadius كلياً، لا يُستخدَم كتلميح إضافي لها فقط
+        const solid = await sharp({ create: { width: 200, height: 200, channels: 4, background: { r: 10, g: 10, b: 10, alpha: 1 } } }).png().toBuffer();
+        const srcPath = path.join(tmpDir, 'solid-with-override.png');
+        fs.writeFileSync(srcPath, solid);
+
+        const result = await normalizeOne('solid-with-override', srcPath, {
+            outDir: path.join(tmpDir, 'out'),
+            verbose: false,
+            manifestOverrides: { 'solid-with-override': { radiusRatio: 0.2, reason: 'اختبار' } }
+        });
+
+        const { data, info } = await sharp(result.outPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        // ✅ الناتج يُعاد تحجيمه دوماً لـ62.5% بغضّ النظر عن نصف القطر الأصلي (مُكتشَفاً أو
+        // مُصحَّحاً يدوياً) — لذا الإثبات الحقيقي هنا هو النجاح نفسه (لا رمي الخطأ المتوقَّع
+        // بلا تصحيح) زائد لوحة 512×512 صحيحة
+        expect(info.width).toBe(CANVAS_SIZE);
+        expect(info.height).toBe(CANVAS_SIZE);
+    });
+
+    test('تصحيح يدوي محقون يُستخدَم بدل الاكتشاف الآلي حتى لو الاكتشاف الآلي كان سينجح أيضاً', async () => {
+        // ✅ مصدر بفتحة حقيقية قابلة للاكتشاف عند نصف قطر 60px من لوحة 400px (نسبة 0.15)،
+        // لكن التصحيح اليدوي المحقون يفرض نسبة مختلفة تماماً (0.22) — الناتج يجب أن يعكس
+        // استخدام الحجم الأصلي قبل إعادة التحجيم بما يطابق نسبة التصحيح لا نصف القطر المُكتشَف
+        const buf = await buildSource({ size: 400, radius: 60 });
+        const srcPath = path.join(tmpDir, 'detectable-but-overridden.png');
+        fs.writeFileSync(srcPath, buf);
+
+        const autoResult = await normalizeOne('detectable-but-overridden-auto', srcPath, { outDir: path.join(tmpDir, 'out'), verbose: false });
+        const overriddenResult = await normalizeOne('detectable-but-overridden', srcPath, {
+            outDir: path.join(tmpDir, 'out'),
+            verbose: false,
+            manifestOverrides: { 'detectable-but-overridden': { radiusRatio: 0.22, reason: 'اختبار' } }
+        });
+
+        // ✅ نسبة تحجيم مختلفة (الهدف الثابت 62.5% ÷ نصف قطر مصدر مختلف) تعني تحجيماً نهائياً
+        // مختلفاً فعلياً للفن المُركَّب — نقيسه عبر نصف قطر الكشف على الناتج (يبقى 62.5% بكلتا
+        // الحالتين بالتصميم)، فالدليل الحقيقي هو اختلاف معامل scale المُرجَع من normalizeOne
+        expect(overriddenResult.radius).toBeCloseTo(0.22 * 400, 5);
+        expect(Math.abs(autoResult.radius - 60)).toBeLessThanOrEqual(1.5); // تسامح خطوة المسح الشعاعي
+        expect(overriddenResult.scale).not.toBeCloseTo(autoResult.scale, 2);
     });
 });

@@ -7,5 +7,9 @@
 module.exports = {
     testEnvironment: 'node',
     testPathIgnorePatterns: ['/node_modules/'],
-    testMatch: ['**/__tests__/**/*.test.js']
+    testMatch: ['**/__tests__/**/*.test.js'],
+    // ✅ normalize-frames.test.js يستدعي sharp .webp({effort:6}) الحقيقي (أقصى جهد ضغط
+    // libwebp — طلب صريح بمراجعة PR لميزانية 400KB) عدة مرات متتالية؛ أبطأ محسوساً من effort:5
+    // السابق على مصادر اختبار مكبَّرة (huge-source) — المهلة الافتراضية 5000ms تصبح ضيقة
+    testTimeout: 20000
 };
