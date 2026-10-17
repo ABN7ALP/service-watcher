@@ -2895,12 +2895,6 @@ video {
   box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
-.ring{
-  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
-  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color);
-  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
-}
-
 .ring-1{
   --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
   --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);
@@ -3809,10 +3803,8 @@ input[type="checkbox"] {
 /* 🐛 إصلاح جوهري لاحق: صفّ مقاعد مصغَّر مستقل تماماً عن .voice-seats-flex/.voice-seat الحقيقية
    (أحجامها بالـvw تتغيّر بعرض الشاشة — كانت سبب تفاوت طول النافذة وبقائها كبيرة على
    شاشات معيّنة رغم الضبط). حجم مقعد ثابت صغير دوماً (42px)، بلا أي تبعية لعرض الجهاز.
-   نظام التراكب الزخرفي (wrapImageOverlayFrames) يطابق أي <img> بصنف إطار تلقائياً بأي مكان —
-   لا تبعية لـ.voice-seat اسماً — فيعمل هنا بلا أي كود خاص، وبلا سقف تصادم (لا يوجد .voice-seats-flex
-   أب هنا فيُرجع computeOverlayArtScaleCap دوماً Infinity)، وهذا مقصود: مقعد واحد فقط مُزخرَف
-   من ثلاثة فلا تصادم حقيقي محتمل مع جار، فتظهر نسبة الإطار الحقيقية المُعدَّة له كاملة */
+   avatarHTML() يبني كل مقعد بنفس مكوّن .avatar الموحَّد بالضبط (160%/62.5% ثابتة دوماً، بلا
+   أي سقف تصادم أو استثناء) — فتظهر نسبة الإطار الحقيقية هنا مطابقة تماماً لأي مكان آخر */
 
 .frame-preview-seats-row {
   display: flex;
@@ -3876,85 +3868,68 @@ input[type="checkbox"] {
 }
 
 /* ✅ إطارات-صورة (overlay حقيقي فوق الصورة الشخصية، لا حدّ CSS) — "إطار المساهم" الحصري
-   (fanClubWeeklyFrameJob.js) و"الإطار الفاخر" المُشترى من المتجر الآن. زخارفها تتوغّل داخل
+   (fanClubWeeklyFrameJob.js) و"الإطار الفاخر" المُشترى من المتجر وغيرها. زخارفها تتوغّل داخل
    الصورة نفسها، فلا يمكن رسمها كحدّ رفيع حولها (border-image) — بكسلات <img> الفعلية تُرسَم
-   دوماً فوق أي خلفية/حدّ لنفس العنصر مهما كانت طريقة الرسم، فتُغطّي أي زخرفة يُفترض أن
-   تتراكب فوقها. البديل الصحيح تقنياً الوحيد: عنصر منفصل يُرسم فوق الصورة مباشرة — راجع
-   IMAGE_OVERLAY_FRAMES/wrapImageOverlayFrames()/public/js/app.js التي تُطبّق هذا تلقائياً
-   بأي مكان بالتطبيق (بلا تعديل عشرات دوال عرض الصور القائمة) */
+   دوماً فوق أي خلفية/حدّ لنفس العنصر مهما كانت طريقة الرسم. البديل الصحيح تقنياً الوحيد:
+   عنصر <img> منفصل يُرسم فوق الصورة مباشرة (.avatar__frame، راجع avatarHTML() أعلى app.js) */
 
-/* 🐛 تصحيح جذري (نهائي): transform:scale() على الحاوية يكبّر الصورة الشخصية وصورة الإطار
-   معاً بنفس المعامل (كلتاهما نسبة % من نفس الصندوق) — فلا يغيّر أبداً مدى تجاوز حلقة
-   الإطار لحافة الصورة؛ هذا فقط "يقرّب الكاميرا" من المجموعة ككل، فيكبّر الصورة نفسها
-   بصرياً فوق حجم دائرة المقعد (هذا بالضبط ما رفضه المستخدم: "كبّرت الصورة والهامش
-   لا الإطار"). أُزيل هذا الـtransform نهائياً. الرافعة الصحيحة الوحيدة الآن: نسبة
-   عرض/ارتفاع img الداخلية (=100% دوماً، تماماً كحافة المقعد) إلى overlay الخارجية
-   (أكبر من 100%) — تضبطها wrapImageOverlayFrames() Inline لكل إطار (photoScale/artScale
-   في IMAGE_OVERLAY_FRAMES)، فتتجاوز حلقة الإطار حافة الصورة دون تغيير حجم الصورة نفسها،
-   ودون عنصر overflow:hidden على الحاوية يقصّ هذا التجاوز */
+/* 🐛 تصحيح جذري مُستفاد منه بالتصميم الحالي: max-width:none ضروري هنا تحديداً — قاعدة
+   Tailwind Preflight العامة `img, video { max-width:100% }` (public/dist/style.css) تُطبَّق
+   على كل <img> بالصفحة بلا استثناء، فتقصّ عرض صورة الإطار الفعلي لـ100% من حاويتها (=نفس
+   حجم الصورة الشخصية تماماً) بصرف النظر عن width:160% المضبوطة — فيبدو الإطار دوماً "صغيراً"
+   مطابقاً حجم الصورة لا أكبر منها. max-width:none هنا يرفع هذا السقف الخفي عن عنصرَي
+   الالتفاف والتراكب فقط، بلا أي أثر على باقي صور الموقع (تبقى قاعدة Tailwind سارية عليها) */
 
-/* 🐛 السبب الجذري الحقيقي وراء "الإطار لم يتغير حجمه إطلاقاً" عبر كل الجولات السابقة
-   (160%→195%→260%→300%→420%): قاعدة Tailwind Preflight العامة `img, video { max-width:100% }`
-   (public/dist/style.css) تُطبَّق على كل <img> بالصفحة بلا استثناء، وmax-width يقصّ العرض
-   الفعلي النهائي دوماً بغض النظر عن قيمة width المضبوطة (Inline أو غيرها) — فكانت صورة
-   الإطار تُجبَر فعلياً على 100% من عرض الحاوية (=نفس حجم الصورة الشخصية تماماً) أياً كانت
-   artScale المطلوبة، وهذا ما جعلها تبدو دوماً "صغيرة" ومطابقة لحجم الصورة لا أكبر منها.
-   الصورة الشخصية نفسها لم تتأثر فقط لأن قيمتها (100%) تساوي السقف بالضبط (تطابق محض).
-   max-width: none هنا يرفع هذا السقف الخفي عن عنصرَي الالتفاف والتراكب فقط، بلا أي أثر
-   على باقي صور الموقع الأخرى (قاعدة Tailwind تبقى سارية عليها كالمعتاد) */
+/* 🛡️ طلب صريح بمراجعة PR (بند 8/9): استُبدل نظام IMAGE_OVERLAY_FRAMES بالكامل (المراقب العام
+   MutationObserver + wrapImageOverlayFrames + computeOverlayArtScaleCap + قيم photoScale/artScale
+   منفصلة لكل إطار + حلقة "احتياط" تعويضية) بمكوّن واحد موحَّد بلا أي استثناء لكل الإطارات:
+   <span class="avatar"><img class="avatar__photo"><img class="avatar__frame"></span>
+   الإطار دائماً 160% من حجم الصورة، متمركز تماماً، pointer-events:none — بلا قيم لكل إطار
+   ولا سقف تصادم محسوب ديناميكياً. هذا ممكن الآن فقط لأن scripts/normalize-frames.js يُعيد
+   تصدير كل أصول الإطارات على قالب موحَّد: فتحة دائرية شفافة قطرها 62.5% من لوحة 512px مركّزة
+   تماماً — و160% = 1 ÷ 62.5% بالضبط، فتتطابق فتحة الإطار مع حافة الصورة حرفياً بكل إطار دون
+   أي حاجة لحلقة "احتياط" تعويضية كانت ضرورية سابقاً لعدم معرفة نسبة كل إطار الحقيقية */
 
-.frame-overlay-wrap {
+/* 🐛 width/height بلا قيمة احتياطية عمداً: لو لم تُضبط --size صريحة (غالب الاستخدامات —
+   صنف حجم جاهز كـ"w-10 h-10"/".voice-seat-avatar" يُمرَّر على نفس <span> بدلاً) يُصبح var()
+   هنا "قيمة مضمونة اللاصحة" فتسقط الخاصية لقيمتها الابتدائية (auto)، فلا تتصادم إطلاقاً مع
+   أي صنف حجم آخر على نفس العنصر بصرف النظر عن ترتيب المصدر بالملف — لو كُتبت بقيمة احتياطية
+   (مثل 100%) كانت ستهزم أي صنف Tailwind لاحق بنفس الخصوصية (كليهما صنف واحد) يسبقها بالملف */
+
+.avatar {
   position: relative;
   display: inline-block;
   line-height: 0;
   vertical-align: middle;
+  width: var(--size);
+  height: var(--size);
 }
 
-.frame-overlay-wrap > img {
+.avatar__photo {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
+  -o-object-fit: cover;
+     object-fit: cover;
+  /* 🐛 نفس سبب الإصلاح القديم بالضبط: Tailwind Preflight (public/dist/style.css) يضبط
+       max-width:100% على كل <img> بالصفحة بلا استثناء — يقصّ عرض الصورة الفعلي لولا هذا */
   max-width: none;
-  height: auto;
-  /* width/height تُضبط Inline حسب photoScale الخاص بكل إطار — راجع wrapImageOverlayFrames() */
 }
 
-.frame-overlay-art {
+.avatar__frame {
   position: absolute;
   top: 50%;
   left: 50%;
+  width: 160%;
+  height: 160%;
+  transform: translate(-50%, -50%);
   -o-object-fit: contain;
      object-fit: contain;
-  transform: translate(-50%, -50%);
   pointer-events: none;
-  z-index: 2;
   max-width: none;
-  height: auto;
-  /* width/height تُضبط Inline حسب artScale الخاص بكل إطار — راجع wrapImageOverlayFrames() */
-}
-
-/* ✅ "حلقة احتياط" (backing/glow ring) — بحث مُتعمَّق أكّد أن هذا هو الأسلوب القياسي المتّبع
-   بكل أطقم إطارات الصور الشخصية الجاهزة (Bigo/TikTok/Discord وغيرها) لحل بالضبط مشكلة
-   "حافة الصورة الدائرية الكاملة تُطابق/تتجاوز فتحة الإطار الزخرفية عند بعض الزوايا فتظهر
-   جزئياً من خلفه" — فتحة PNG الإطار غالباً دائرية فعلاً (الجزء غير المنتظم هو المحيط
-   الخارجي فقط: التاج/الأجنحة)، لكن بما أننا لا نستطيع قياس نسبة الفتحة الحقيقية لكل إطار
-   من الثماني الجديدة (الشبكة تمنع تحميل الصور الخارجية للقياس)، فحلقة رفيعة متوهّجة بلون
-   ذهبي دافئ مموضعة بين الصورة والزخرفة تمتص أي خلل محاذاة طفيف (تسريب أو فجوة) عند أي زاوية
-   دون الحاجة لمعرفة تلك النسبة بالضبط — تبدو كظل/عمق طبيعي للإطار لا كخطأ تصميم */
-
-.frame-overlay-ring {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 108%;
-  height: 108%;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  z-index: 1;
-  pointer-events: none;
-  box-shadow: 0 0 0 3px rgba(217,160,60,0.55), 0 0 7px 2px rgba(217,160,60,0.45);
+  z-index: 2;
 }
 
 /* ===== تأثير الهدية العائم — صورة كبيرة بمنتصف الشاشة تماماً، تطفو مكانها ثم تطير نحو
@@ -10334,21 +10309,24 @@ body.in-voice-room .pk__fan {
   transition: transform .35s cubic-bezier(.2,1.6,.4,1);
 }
 
-body.in-voice-room .pk__fan img {
+/* 🛡️ طلب صريح بمراجعة PR (بند 8): .avatar الموحَّدة بدل <img> خام — الحجم يأتي من .pk__fan
+   الأب نفسه (كان مضبوطاً مسبقاً بالضبط لهذا الغرض) */
+
+body.in-voice-room .pk__fan .avatar {
+  display: block;
   width: 100%;
   height: 100%;
-  border-radius: 50%;
-  -o-object-fit: cover;
-     object-fit: cover;
-  display: block;
+}
+
+body.in-voice-room .pk__fan .avatar__photo {
   border: 1.5px solid;
 }
 
-body.in-voice-room .pk__fans-col--us .pk__fan img {
+body.in-voice-room .pk__fans-col--us .pk__fan .avatar__photo {
   border-color: var(--us-1, #ff4f8b);
 }
 
-body.in-voice-room .pk__fans-col--them .pk__fan img {
+body.in-voice-room .pk__fans-col--them .pk__fan .avatar__photo {
   border-color: var(--them-1, #3d7bff);
 }
 
@@ -10373,7 +10351,7 @@ body.in-voice-room .pk__fan.pk__fan--top i {
   border: 0;
 }
 
-body.in-voice-room .pk__fan.pop img {
+body.in-voice-room .pk__fan.pop .avatar__photo {
   animation: pkLiveFanPop .45s cubic-bezier(.2,1.8,.4,1);
 }
 
@@ -10466,12 +10444,9 @@ body.in-voice-room .pk__fans-col--them .plus {
   flex: none;
 }
 
-.pk-fans-sheet-fan__av img {
+.pk-fans-sheet-fan__av .avatar {
   width: 100%;
   height: 100%;
-  border-radius: 50%;
-  -o-object-fit: cover;
-     object-fit: cover;
   display: block;
 }
 
@@ -15659,7 +15634,7 @@ body.in-voice-room .voice-seat.duel-lose {
   flex-shrink: 0;
 }
 
-.profile-hub-visitor-avatar.blurred {
+.avatar__photo.blurred {
   filter: blur(6px);
 }
 
