@@ -554,7 +554,7 @@ exports.updateRoom = async (req, res) => {
         if (io && kickedSeats.length > 0) {
             const roomIdStr = room._id.toString();
             kickedSeats.forEach(({ seatNumber, userId }) => {
-                io.emit('user-left-seat', { roomId: roomIdStr, seatNumber, userId });
+                io.to(`room-chat-${roomIdStr}`).emit('user-left-seat', { roomId: roomIdStr, seatNumber, userId });
             });
             io.to(`room-chat-${roomIdStr}`).emit('room-force-closed', { roomId: roomIdStr, reason: 'locked' });
         }

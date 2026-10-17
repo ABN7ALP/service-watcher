@@ -83,6 +83,13 @@ const voiceRoomSchema = new mongoose.Schema({
     // فعلياً "مباشر" (isLive)؛ تختفي تلقائياً عند خروجه، وتُستأنف بجلسة بث جديدة عند رجوعه
     isLive: { type: Boolean, default: true, index: true },
     liveSince: { type: Date, default: Date.now }, // ✅ بداية جلسة البث الحالية — يُحسب منها "مدة البث" عند انتهائها
+    // ✅ 🛡️ طلب صريح: إنهاء البث عند انقطاع المضيف لم يعد يعتمد على مؤقّت ذاكرة (setTimeout) —
+    // يُفقَد بالكامل لو أعيد تشغيل الخادم أثناء الانتظار (نفس فئة علّة تعلّق PK قبل إصلاحها).
+    // بدلاً من ذلك: وقت آخر انقطاع حقيقي لآخر سوكيت متصل للمضيف يُحفَظ هنا (مستند = مصدر
+    // الحقيقة)، ويُصفَّر فور أي اتصال جديد منه. مهمة دورية (sweepDisconnectedHostBroadcasts
+    // بـsocketService.js) تفحص كل الغرف وتُنهي فقط من تجاوز انقطاعه 120 ثانية — تصمد أمام
+    // إعادة تشغيل الخادم لأنها تُعاد من القاعدة لا من ذاكرة عملية سابقة انتهت
+    hostDisconnectedAt: { type: Date, default: null, index: true },
     // ✅ متابعو الغرفة تحديداً (مستقل تماماً عن نظام الأصدقاء) — يظهر لهم زر "متابع" بدل "متابعة"
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     // ✅ قفل الدردشة — المضيف/المسؤولون فقط يقدرون يكتبون؛ الباقي يبقى يشاهد فقط
@@ -663,18 +670,33 @@ voiceRoomSchema.statics.startBroadcast = async function (roomId, hostId) {
 
 // ✅ إنهاء البث (المضيف أنهاه صراحة، أو انقطع اتصاله) — يُفرغ كل المقاعد ويُخفي الغرفة عن
 // التصفح، ويُرجع من كان حاضراً (لإشعارهم بانتهاء البث) ومدته (لعرضها على شاشة الانتهاء)
+// 🛡️ ادّعاء ذرّي (findOneAndUpdate بشرط isLive:true + new:false يُعيد المستند *قبل* التحديث) —
+// يمنع إنهاءً مزدوجاً لو تصادف إنهاء يدوي (host-end-broadcast) مع المكنسة الدورية
+// (sweepDisconnectedHostBroadcasts) بنفس اللحظة تقريباً: الخاسر يجد isLive:false فلا يطابق
+// الشرط فيعود null بأمان بدل إعادة حساب/بثّ النتيجة مرتين. occupantIds/liveSince محسوبان من
+// اللقطة "قبل" التحديث مباشرة، وتفريغ المقاعد جزء من نفس التحديث الذرّي الواحد (positional-all
+// $[] بدل قراءة-ثم-حفظ) — لا نافذة تسابق فعلية بين القراءة والكتابة إطلاقاً
 voiceRoomSchema.statics.endBroadcast = async function (roomId) {
+    const before = await this.findOneAndUpdate(
+        { _id: roomId, isOfficial: false, isLive: true },
+        {
+            $set: {
+                isLive: false,
+                hostDisconnectedAt: null,
+                handRaises: [],
+                'seats.$[].user': null,
+                'seats.$[].joinedAt': null,
+                'seats.$[].isMuted': false
+            }
+        },
+        { new: false }
+    );
+    if (!before) return null;
+
+    const occupantIds = before.seats.filter(s => s.user).map(s => s.user.toString());
+    const durationSeconds = before.liveSince ? Math.max(0, Math.round((Date.now() - before.liveSince.getTime()) / 1000)) : 0;
+
     const room = await this.findById(roomId);
-    if (!room || room.isOfficial || !room.isLive) return null;
-
-    const occupantIds = room.seats.filter(s => s.user).map(s => s.user.toString());
-    const durationSeconds = room.liveSince ? Math.max(0, Math.round((Date.now() - room.liveSince.getTime()) / 1000)) : 0;
-
-    room.isLive = false;
-    room.seats.forEach(s => { s.user = null; s.joinedAt = null; s.isMuted = false; });
-    room.handRaises = [];
-    await room.save();
-
     return { room, occupantIds, durationSeconds };
 };
 

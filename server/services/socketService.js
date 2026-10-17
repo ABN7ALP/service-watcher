@@ -56,26 +56,10 @@ function isVoiceSignalRateLimited(userId) {
 // roomId → { url, title, startedAt(ms), isPlaying, pausedAt(seconds) }
 const roomMusicState = new Map();
 
-// ✅ تراكم "عداد الدعم" أسفل مقعد كل مستخدم — بطلب صريح + بحث معمّق عن سلوك Bigo/Likee/TikTok
-// Live: القيمة مرتبطة بالشخص داخل هذي الجلسة بالغرفة تحديداً، لا برقم المقعد نفسه — تبقى
-// كما هي لو وقف ثم عاد وجلس (بنفس المقعد أو غيره)، ولا تُصفَّر إلا لو غادر الغرفة فعلياً
-// (وليس مجرد وقوفه عن مقعده) ثم عاد. بالذاكرة فقط (ephemeral) — ليست قيمة دائمة بقاعدة
-// البيانات، تماماً كحالة الموسيقى أعلاه؛ تُمسَح تلقائياً مع مسح الغرفة نفسها من الذاكرة
-// roomId(string) → Map(userId(string) → total(number))
-const roomSupportTally = new Map();
-function getRoomSupportTotal(roomId, userId) {
-    return roomSupportTally.get(roomId)?.get(userId) || 0;
-}
-function addRoomSupportTotal(roomId, userId, value) {
-    if (!roomSupportTally.has(roomId)) roomSupportTally.set(roomId, new Map());
-    const roomMap = roomSupportTally.get(roomId);
-    const updated = (roomMap.get(userId) || 0) + value;
-    roomMap.set(userId, updated);
-    return updated;
-}
-function clearRoomSupportTotal(roomId, userId) {
-    roomSupportTally.get(roomId)?.delete(userId);
-}
+// ✅ تراكم "عداد الدعم" أسفل مقعد كل مستخدم — مستخرج لملف مشترك (server/utils/roomSupportTally.js)
+// كي يحدّثه giftController مباشرة داخل مسار الهدية الفعلي (راجع تعليقه هناك — طلب صريح
+// بمراجعة PR: إصلاح ثغرة أمنية. لا socket.on('room-gift-support') بعد الآن)
+const { getRoomSupportTotal, addRoomSupportTotal, clearRoomSupportTotal } = require('../utils/roomSupportTally');
 
 // ✅ دعوات المضيف لمقعد محدد — بانتظار قبول/رفض صاحب الدعوة قبل إجلاسه فعلياً (لم يعد
 // إجلاساً فورياً كما سابقاً). المفتاح: `${roomId}:${targetUserId}`
@@ -882,35 +866,20 @@ async function endRoomBroadcastForHost(io, hostUser) {
     }
 }
 
-// ✅ مهلة سماح قبل إنهاء البث تلقائياً عند انقطاع اتصال المضيف — بدونها: أي انقطاع عابر
-// (الهاتف يقفل الشاشة، تبديل شبكة، تحميل الصفحة من جديد) كان يُنهي البث فوراً بلا داعٍ،
-// رغم أن المضيف يعود بعد ثوانٍ قليلة فعلياً. الاتصال الجديد بنفس الهوية يُلغي المهلة تلقائياً.
-// 🐛 رُفعت من 25 إلى 90 ثانية: Socket.IO نفسه قد يستغرق حتى ~45 ثانية (pingInterval+
-// pingTimeout الافتراضيان) ليكتشف أصلاً أن الاتصال انقطع (خصوصاً مع تعليق تبويب الهاتف
-// بالخلفية عند قفل الشاشة، وهو السيناريو الأكثر شيوعاً) — 25 ثانية إضافية فوق ذلك كانت
-// غير كافية عملياً لأبسط الحالات (قفل شاشة عادي، مكالمة واردة، نفق/مصعد قصير)
-const DISCONNECT_GRACE_MS = 90 * 1000;
-const pendingBroadcastEndTimers = new Map(); // hostId(string) → Timeout
+// 🛡️ طلب صريح بمراجعة PR: إنهاء البث عند انقطاع المضيف لم يعد يعتمد على مؤقّت ذاكرة
+// (setTimeout) إطلاقاً — كان السبب الحقيقي وراء "أحياناً ينتهي البث تلقائياً رغم أن المضيف
+// شغّال فعلياً": تجمّد تبويب المضيف (لا انقطاع شبكة حقيقي) كان يترك مؤقّتاً معلّقاً بذاكرة
+// عملية قد تُعاد تشغيلها (نشر/إعادة تشغيل الخادم) قبل حلوله — فيُفقَد المؤقّت بالكامل ولا
+// يُنهي البث أبداً، أو العكس: يُفقَد إلغاؤه لو عاد المضيف فعلياً قبل انتهاء المهلة على نسخة
+// خادم أخرى. الحل الآن مطابق تماماً لإصلاح تعلّق PK بالجولة السابقة (نفس الفلسفة): وقت آخر
+// انقطاع حقيقي يُحفَظ بالمستند نفسه (VoiceRoom.hostDisconnectedAt)، لا بذاكرة العملية —
+// فيصمد أمام أي إعادة تشغيل، ومهمة دورية (sweepDisconnectedHostBroadcasts أدناه) هي ما
+// يُنهي البث فعلياً بعد 120 ثانية، لا مؤقّت فردي لكل مضيف
+const HOST_DISCONNECT_END_MS = 120 * 1000;
+const HOST_DISCONNECT_SWEEP_INTERVAL_MS = 20 * 1000;
 
-function cancelPendingBroadcastEnd(userId) {
-    const key = userId.toString();
-    const timer = pendingBroadcastEndTimers.get(key);
-    if (timer) {
-        clearTimeout(timer);
-        pendingBroadcastEndTimers.delete(key);
-    }
-}
-
-// 🐛 بحث معمّق (طلب صريح: "أحياناً ينتهي البث تلقائياً رغم أنه شغّال فعلياً عند المضيف") —
-// السبب: pendingBroadcastEndTimers مفتاحها hostId فقط، وscheduleBroadcastEndAfterDisconnect
-// كانت تُستدعى من كل disconnect لذاك المستخدم بلا استثناء، حتى لو كان له اتصال آخر فعّال
-// بالفعل (تبويب/جهاز ثانٍ لم ينقطع، أو تبويب خلفي قديم لم يُغلَق تماماً). الاتصال الثاني لا
-// يُطلق 'connection' جديداً فلا يُلغي المؤقّت (cancelPendingBroadcastEnd يُستدعى فقط هناك)،
-// فيَنتهي البث فعلياً بعد 90 ثانية رغم أن المضيف ما يزال مبثّاً حياً من اتصاله الآخر —
-// بالضبط "الإنهاء الشبحي" الذي وُصف. الإصلاح: لا نُجدول المؤقّت أصلاً لو وُجد اتصال آخر فعّال
-// لنفس المستخدم وقت الانقطاع؛ فحص متكرر لاحقاً غير ممكن هنا لأن المؤقّت نفسه لا يُعاد فحصه
-// أثناء الانتظار، لكن حين ينقطع ذاك الاتصال الآخر بدوره، معالجه الخاص يُعيد هذا الفحص فيُجدول
-// المؤقّت وقتها بأمان (لا اتصال آخر متبقٍ) — فالإنهاء الحقيقي يحدث فقط بعد انقطاع كل الاتصالات
+// ✅ "اتصال آخر فعّال لنفس المضيف؟" — يبقى ضرورياً بالتصميم الجديد أيضاً: تبويب/جهاز ثانٍ
+// للمضيف نفسه لم ينقطع يعني لا داعي لتسجيل وقت انقطاع إطلاقاً (البث مستمر فعلياً من هناك)
 function hasAnotherLiveSocket(io, userId, excludeSocketId) {
     const target = userId.toString();
     for (const [id, s] of io.sockets.sockets) {
@@ -920,15 +889,53 @@ function hasAnotherLiveSocket(io, userId, excludeSocketId) {
     return false;
 }
 
-function scheduleBroadcastEndAfterDisconnect(io, hostUser, disconnectingSocketId) {
-    const key = hostUser._id.toString();
-    cancelPendingBroadcastEnd(key); // ✅ يمنع تراكم أكثر من مؤقّت لنفس المضيف
-    if (hasAnotherLiveSocket(io, hostUser._id, disconnectingSocketId)) return; // ما زال متصلاً من مكان آخر — لا داعي لمهلة إطلاقاً
-    const timer = setTimeout(() => {
-        pendingBroadcastEndTimers.delete(key);
-        endRoomBroadcastForHost(io, hostUser);
-    }, DISCONNECT_GRACE_MS);
-    pendingBroadcastEndTimers.set(key, timer);
+// ✅ يُسجَّل بالمستند مباشرة عند انقطاع آخر سوكيت فعّال لمضيف غرفة مباشرة — ادّعاء ذرّي بسيط
+// (updateOne بشرط isLive:true) لا يحتاج قراءة سابقة؛ لا يفعل شيئاً لو لم يكن مضيف غرفة مباشرة
+// أصلاً (الشرط بالاستعلام نفسه، لا فحص منفصل)
+async function markHostDisconnected(io, hostUser, disconnectingSocketId) {
+    if (hasAnotherLiveSocket(io, hostUser._id, disconnectingSocketId)) return; // ما زال متصلاً من مكان آخر
+    try {
+        await VoiceRoom.updateOne(
+            { host: hostUser._id, isOfficial: false, isLive: true },
+            { $set: { hostDisconnectedAt: new Date() } }
+        );
+    } catch (error) {
+        console.error('[BROADCAST] markHostDisconnected error:', error);
+    }
+}
+
+// ✅ يُستدعى عند أي اتصال جديد لهذا المستخدم (أول تبويب أو إعادة اتصال بعد انقطاع) — يُصفِّر
+// حقل الانقطاع فوراً لو كان مضيف غرفة مباشرة مسجَّلاً عليها انقطاع سابق؛ لا يفعل شيئاً غير
+// ذلك (الشرط hostDisconnectedAt:{$ne:null} يمنع كتابة غير لازمة بكل اتصال عادي)
+async function clearHostDisconnected(userId) {
+    try {
+        await VoiceRoom.updateOne(
+            { host: userId, isOfficial: false, hostDisconnectedAt: { $ne: null } },
+            { $set: { hostDisconnectedAt: null } }
+        );
+    } catch (error) {
+        console.error('[BROADCAST] clearHostDisconnected error:', error);
+    }
+}
+
+// ✅ المهمة الدورية الحقيقية التي تُنهي البث فعلياً — تُشغَّل فوراً عند إقلاع الخادم (تلتقط
+// فوراً أي غرفة بقيت معلّقة من قبل إعادة التشغيل نفسها) ثم كل 20 ثانية. endBroadcast نفسه
+// أصبح ادّعاءً ذرّياً (راجع تعليقه بـVoiceRoom.js) فلا خطر إنهاء مزدوج حتى لو تصادفت هذي
+// المكنسة مع إنهاء يدوي (host-end-broadcast) بنفس اللحظة تقريباً
+async function sweepDisconnectedHostBroadcasts(io) {
+    try {
+        const overdue = await VoiceRoom.find({
+            isOfficial: false,
+            isLive: true,
+            hostDisconnectedAt: { $ne: null, $lte: new Date(Date.now() - HOST_DISCONNECT_END_MS) }
+        }).select('_id host').populate('host', 'username profileImage').lean();
+        for (const r of overdue) {
+            if (!r.host) continue; // مضيف محذوف — لا شيء منطقي لإنهائه باسمه
+            await endRoomBroadcastForHost(io, r.host);
+        }
+    } catch (error) {
+        console.error('[BROADCAST] Disconnect sweep error:', error);
+    }
 }
 
 // 🐛 إصلاح جوهري: كان أي جالس عادي (غير مضيف) يُنزَل عن مقعده فوراً بمجرد أي انقطاع اتصال،
@@ -959,7 +966,7 @@ function scheduleSeatReleaseAfterDisconnect(io, user) {
             await withUserSeatLock(key, async () => {
                 const released = await VoiceRoom.releaseUserSeatEverywhere(user._id) || [];
                 released.forEach(r => {
-                    io.emit('user-left-seat', { roomId: r.roomId, seatNumber: r.seatNumber, userId: key });
+                    io.to(`room-chat-${r.roomId}`).emit('user-left-seat', { roomId: r.roomId, seatNumber: r.seatNumber, userId: key });
                 });
             });
         } catch (error) {
@@ -991,7 +998,14 @@ const initializeSocket = (server) => {
         // يفشل أحياناً (انقطاع أطول من المهلة، إعادة تشغيل السيرفر...)
         connectionStateRecovery: {
             maxDisconnectionDuration: 2 * 60 * 1000
-        }
+        },
+        // 🛡️ طلب صريح بمراجعة PR: قيم صريحة بدل الاعتماد على افتراضيات المكتبة (قد تتغيّر بين
+        // إصدارات مستقبلية بصمت) — هذي بالضبط قيم Socket.IO v4 الافتراضية فعلياً (25s/20s)، فلا
+        // تغيير سلوك حقيقي هنا، فقط توثيق صريح لا يعتمد على افتراض ضمني. مجموعهما (~45 ثانية) هو
+        // الحد الأقصى الذي قد يستغرقه الخادم ليكتشف أصلاً أن اتصالاً انقطع (قبل أي مهلة سماح إضافية
+        // فوقه بمنطق التطبيق — راجع HOST_DISCONNECT_END_MS أدناه)
+        pingInterval: 25000,
+        pingTimeout: 20000
     });
 
     io.use(verifySocketToken);
@@ -1001,11 +1015,11 @@ const initializeSocket = (server) => {
         
                 // 🐛 إصلاح "إنهاء بث شبحي": كان إلغاء مهلة إنهاء البث/تحرير المقعد يحدث بعد await
                 // لقاعدة البيانات ضمن نفس try — أي عطل/تأخير مؤقّت بذاك الاستعلام (شائع كسبب
-                // "متقطّع") يُسقط التنفيذ مباشرة لـcatch فلا يُنفَّذ الإلغاء إطلاقاً، فيبقى مؤقّت
-                // قديم من انقطاع سابق يعمل ويُنهي البث فعلياً رغم أن المضيف عاد للاتصال بنجاح
-                // فعلاً على مستوى النقل (socket.io). الإلغاء نفسه محلي وتزامني بالكامل (Map فقط)
-                // ولا يعتمد على أي استعلام قاعدة بيانات — ننفّذه أولاً دوماً، بلا أي اعتماد على try/catch
-                cancelPendingBroadcastEnd(socket.user._id); // ✅ عاد بسرعة — يلغي مهلة إنهاء البث المجدولة إن وُجدت
+                // "متقطّع") يُسقط التنفيذ مباشرة لـcatch فلا يُنفَّذ الإلغاء إطلاقاً. ننفّذه أولاً
+                // دوماً، بلا أي اعتماد على try/catch التالي — clearHostDisconnected أصبح استعلام
+                // قاعدة بيانات بالتصميم الجديد (راجع تعليقها)، لكن try/catch الخاص بها داخلياً
+                // يحميها من رمي استثناء يُسقط بقية المعالج، وbody التالي لا ينتظرها (fire-and-forget آمن)
+                clearHostDisconnected(socket.user._id);
                 cancelPendingSeatRelease(socket.user._id); // ✅ عاد بسرعة — يلغي مهلة تحرير مقعده المجدولة إن وُجدت (لم يفقد مقعده أصلاً)
                 try {
             await User.findByIdAndUpdate(socket.user.id, { socketId: socket.id, isOnline: true });
@@ -1033,6 +1047,19 @@ const initializeSocket = (server) => {
         }
 
         socket.join('public-room');
+        // 🛡️ طلب صريح بمراجعة PR (بند 7): قناة خاصة بهذا المستخدم بعينه — كل أحداثه الخاصة
+        // (you-were-kicked وأخواتها) تُبثّ هنا بدل io.emit العام (يصل كل متصل بالمنصة بأكملها
+        // بلا داعٍ). كل سوكيت/تبويب/جهاز لنفس المستخدم ينضم لها على حدة، فتصل الأحداث الحسّاسة
+        // لكل جلساته المفتوحة معاً — أوثق من الاعتماد على socketId الأخير المحفوظ فقط
+        socket.join(`user:${socket.user.id}`);
+
+        // 🛡️ طلب صريح بمراجعة PR (بند 5): نبضة خفيفة يُرسلها العميل فور عودة تبويبه للمقدّمة
+        // (visibilitychange بـapp.js) بينما السوكيت ما زال متصلاً فعلياً (لم ينقطع نقلياً إطلاقاً،
+        // فلا 'connection' جديد يصل ليُصفِّر hostDisconnectedAt تلقائياً) — حماية إضافية مكمّلة
+        // لإعادة الاتصال التلقائية، لا بديلاً عنها
+        socket.on('client-heartbeat', () => {
+            clearHostDisconnected(socket.user._id);
+        });
 
         // ✅ مؤشر الكتابة (خاص وعام)
         socket.on('typing-start', ({ targetUserId, roomId }) => {
@@ -1397,7 +1424,7 @@ socket.on('refreshBlockData', async () => {
                 //    بنفس الوقت) بقاعدة البيانات وحدها — وليس بذاكرة هذا الاتصال تحديداً
                 const released = await VoiceRoom.releaseUserSeatEverywhere(socket.user._id) || [];
                 released.forEach(r => {
-                    io.emit('user-left-seat', { roomId: r.roomId, seatNumber: r.seatNumber, userId: socket.user.id.toString() });
+                    io.to(`room-chat-${r.roomId}`).emit('user-left-seat', { roomId: r.roomId, seatNumber: r.seatNumber, userId: socket.user.id.toString() });
                 });
                 // ✅ ترحيل حالة الكتم: لو كان مكتوماً بمقعده القديم (أي غرفة كانت)، يبقى مكتوماً بالجديد
                 const carryMuted = released.some(r => r.wasMuted);
@@ -1418,8 +1445,8 @@ socket.on('refreshBlockData', async () => {
                     return;
                 }
 
-                io.emit('hand-raise-removed', { roomId: targetRoomId, userId: socket.user.id.toString() });
-                io.emit('user-joined-seat', {
+                io.to(`room-chat-${targetRoomId}`).emit('hand-raise-removed', { roomId: targetRoomId, userId: socket.user.id.toString() });
+                io.to(`room-chat-${targetRoomId}`).emit('user-joined-seat', {
                     roomId: targetRoomId,
                     seatNumber: seatNum,
                     userId: socket.user.id.toString(),
@@ -1448,7 +1475,7 @@ socket.on('refreshBlockData', async () => {
 
                 const released = await VoiceRoom.releaseUserSeatEverywhere(socket.user._id) || [];
                 released.forEach(r => {
-                    io.emit('user-left-seat', { roomId: r.roomId, seatNumber: r.seatNumber, userId: socket.user.id.toString() });
+                    io.to(`room-chat-${r.roomId}`).emit('user-left-seat', { roomId: r.roomId, seatNumber: r.seatNumber, userId: socket.user.id.toString() });
                 });
             } catch (error) {
                 console.error('[VOICE SEAT] Leave seat error:', error);
@@ -1491,7 +1518,7 @@ socket.on('refreshBlockData', async () => {
                 );
                 if (!updatedRoom) return; // المستخدم غير قاعد على أي مقعد حالياً — لا شيء لتحديثه
                 const roomId = updatedRoom.slug === 'main' ? 'main' : updatedRoom._id.toString();
-                io.emit('user-toggled-mute', { roomId, userId: socket.user.id.toString(), isMuted: !!isMuted });
+                io.to(`room-chat-${roomId}`).emit('user-toggled-mute', { roomId, userId: socket.user.id.toString(), isMuted: !!isMuted });
             } catch (error) {
                 console.error('[VOICE SEAT] Toggle mute error:', error);
             }
@@ -1521,8 +1548,8 @@ socket.on('refreshBlockData', async () => {
                     { $set: { 'seats.$.user': null, 'seats.$.joinedAt': null, 'seats.$.isMuted': false } }
                 );
 
-                io.emit('user-left-seat', { roomId, seatNumber: parseInt(seatNumber), userId: kickedUserId });
-                io.emit('you-were-kicked', { roomId, userId: kickedUserId }); // ✅ إشعار خاص للمطرود نفسه
+                io.to(`room-chat-${roomId}`).emit('user-left-seat', { roomId, seatNumber: parseInt(seatNumber), userId: kickedUserId });
+                io.to(`user:${kickedUserId}`).emit('you-were-kicked', { roomId, userId: kickedUserId }); // ✅ إشعار خاص للمطرود نفسه فقط — لا داعي لوصوله لكل متصل بالمنصة
             } catch (error) {
                 console.error('[HOST ACTION] Kick error:', error);
             }
@@ -1543,7 +1570,7 @@ socket.on('refreshBlockData', async () => {
                     { $set: { 'seats.$.isMuted': !!isMuted } }
                 );
 
-                io.emit('user-toggled-mute', { roomId, userId: seat.user.toString(), isMuted: !!isMuted });
+                io.to(`room-chat-${roomId}`).emit('user-toggled-mute', { roomId, userId: seat.user.toString(), isMuted: !!isMuted });
             } catch (error) {
                 console.error('[HOST ACTION] Mute error:', error);
             }
@@ -1583,10 +1610,10 @@ socket.on('refreshBlockData', async () => {
                 }
 
                 if (kickedUserId) {
-                    io.emit('user-left-seat', { roomId, seatNumber: parseInt(seatNumber), userId: kickedUserId });
-                    io.emit('you-were-kicked', { roomId, userId: kickedUserId });
+                    io.to(`room-chat-${roomId}`).emit('user-left-seat', { roomId, seatNumber: parseInt(seatNumber), userId: kickedUserId });
+                    io.to(`user:${kickedUserId}`).emit('you-were-kicked', { roomId, userId: kickedUserId });
                 }
-                io.emit('seat-lock-changed', { roomId, seatNumber: parseInt(seatNumber), isLocked: newLockState });
+                io.to(`room-chat-${roomId}`).emit('seat-lock-changed', { roomId, seatNumber: parseInt(seatNumber), isLocked: newLockState });
             } catch (error) {
                 console.error('[HOST ACTION] Lock toggle error:', error);
             }
@@ -1634,7 +1661,7 @@ socket.on('refreshBlockData', async () => {
                         { _id: room._id, 'seats.seatNumber': seat.seatNumber },
                         { $set: { 'seats.$.user': null, 'seats.$.joinedAt': null, 'seats.$.isMuted': false } }
                     );
-                    io.emit('user-left-seat', { roomId, seatNumber: seat.seatNumber, userId: targetUserId });
+                    io.to(`room-chat-${roomId}`).emit('user-left-seat', { roomId, seatNumber: seat.seatNumber, userId: targetUserId });
                 }
 
                 // ✅ نُخرجه فعلياً من قناة دردشة الغرفة (Socket.IO) حتى لا يبقى "مشاهداً" ظاهراً
@@ -1642,7 +1669,7 @@ socket.on('refreshBlockData', async () => {
                 if (targetSocketId) {
                     io.sockets.sockets.get(targetSocketId)?.leave(`room-chat-${roomId}`);
                 }
-                io.emit('you-were-kicked-from-room', { roomId, userId: targetUserId });
+                io.to(`user:${targetUserId}`).emit('you-were-kicked-from-room', { roomId, userId: targetUserId });
                 broadcastRoomViewerCount(io, roomId);
             } catch (error) {
                 console.error('[HOST ACTION] Kick from room error:', error);
@@ -1687,7 +1714,7 @@ socket.on('refreshBlockData', async () => {
                 }
 
                 const finalRoomId = room.slug === 'main' ? 'main' : room._id.toString();
-                io.emit('moderator-status-changed', { roomId: finalRoomId, userId: targetUserId, isModerator: !!makeMod });
+                io.to(`room-chat-${finalRoomId}`).emit('moderator-status-changed', { roomId: finalRoomId, userId: targetUserId, isModerator: !!makeMod });
             } catch (error) {
                 console.error('[HOST ACTION] Set moderator error:', error);
             }
@@ -1700,7 +1727,7 @@ socket.on('refreshBlockData', async () => {
             try {
                 const room = await VoiceRoom.startBroadcast(roomId, socket.user._id);
                 if (!room) return; // ✅ ليس مضيف هذي الغرفة، أو الغرفة الرسمية — تجاهل صامت وآمن
-                io.emit('user-joined-seat', {
+                io.to(`room-chat-${room._id}`).emit('user-joined-seat', {
                     roomId: room._id.toString(),
                     seatNumber: 1,
                     userId: socket.user.id.toString(),
@@ -1737,7 +1764,8 @@ socket.on('refreshBlockData', async () => {
             try {
                 const room = await VoiceRoom.findOne({ _id: roomId, host: socket.user._id, isOfficial: false });
                 if (!room) return socket.emit('seat-error', 'لست مضيف هذي الغرفة');
-                cancelPendingBroadcastEnd(socket.user._id); // ✅ إنهاء صريح — لا داعي لمؤقّت مهلة قد يكون مجدولاً
+                // ✅ إنهاء صريح — VoiceRoom.endBroadcast الذرّي يُصفِّر hostDisconnectedAt ضمن
+                // نفس التحديث، لا حاجة لأي إلغاء منفصل هنا بعد الآن
                 await endRoomBroadcastForHost(io, socket.user);
             } catch (error) {
                 console.error('[BROADCAST] Explicit end error:', error);
@@ -1892,7 +1920,7 @@ socket.on('refreshBlockData', async () => {
                     if (!updatedRoom) {
                         return socket.emit('seat-error', 'هذا المقعد محجوز بالفعل أو مقفل');
                     }
-                    io.emit('user-joined-seat', {
+                    io.to(`room-chat-${finalRoomId}`).emit('user-joined-seat', {
                         roomId: finalRoomId,
                         seatNumber: seatNum,
                         userId: targetUserId,
@@ -1995,7 +2023,7 @@ socket.on('refreshBlockData', async () => {
                     return socket.emit('seat-error', 'هذا المقعد لم يعد متاحاً — شغله أحد قبلك');
                 }
 
-                io.emit('user-joined-seat', {
+                io.to(`room-chat-${finalRoomId}`).emit('user-joined-seat', {
                     roomId: finalRoomId,
                     seatNumber: invite.seatNumber,
                     userId: socket.user.id.toString(),
@@ -2622,20 +2650,15 @@ socket.on('refreshBlockData', async () => {
             if (now - lastSent < 1000) return;
             roomChatRateLimit.set(rlKey, now);
 
-            io.emit('seat-reaction-played', { roomId, seatNumber: parseInt(seatNumber), emoji });
+            io.to(`room-chat-${roomId}`).emit('seat-reaction-played', { roomId, seatNumber: parseInt(seatNumber), emoji });
         });
 
-        // ✅ عداد الدعم أسفل المقعد — إشارة عرض بصري فقط (الدفع الفعلي تم أصلاً عبر REST
-        // /api/gifts/send). السيرفر الآن مصدر الحقيقة الوحيد للمجموع التراكمي لكل (مستخدم +
-        // غرفة) — راجع roomSupportTally أعلى الملف — فيُرسِل الرقم الكلي النهائي مباشرة بدل
-        // دلتا (Δ) يُضاف محلياً بكل عميل على حدة، فلا يختلف ما يراه عميلان دخلا بلحظات مختلفة
-        socket.on('room-gift-support', ({ roomId, seatNumber, targetUserId, value }) => {
-            const numValue = Number(value);
-            if (!roomId || !targetUserId || !Number.isFinite(numValue) || numValue <= 0) return;
-            const safeValue = Math.min(numValue, 100000); // 🛡️ سقف معقول يمنع تضخيم العداد بقيم وهمية
-            const total = addRoomSupportTotal(roomId, targetUserId, safeValue);
-            io.emit('room-support-updated', { roomId, seatNumber: parseInt(seatNumber), userId: targetUserId, value: total });
-        });
+        // 🛡️ طلب صريح بمراجعة PR — ثغرة أمنية حُذفت: socket.on('room-gift-support', ...) كان
+        // يثق بقيمة value قادمة من العميل مباشرة (حتى مع سقف 100000) ويحدّث بها عداد دعم أي
+        // مقعد — أي عميل معدَّل يقدر يُرسل هذا الحدث مباشرة (بلا إرسال أي هدية حقيقية ولا أي
+        // خصم فعلي) ويُضخِّم عداد أي مستخدم كيفما شاء. عداد الدعم أسفل المقعد يُحدَّث الآن من
+        // الخادم فقط، داخل مسار الهدية الفعلي (applyGiftToRoomSupport بـgiftController.js) —
+        // بعد الخصم الذري الحقيقي مباشرة، لا من أي حدث socket منفصل يمكن استدعاؤه بمعزل عنه
 
         // =====================================================
         // ✅ محرّك الكومبو المُجمَّع للهدايا (gift:combo) — بديل الإرسال عبر HTTP لكل "ضغطة"
@@ -2803,9 +2826,10 @@ socket.on('refreshBlockData', async () => {
                 await User.findByIdAndUpdate(socket.user.id, { isOnline: false, lastActive: new Date() });
                 io.emit('userOnlineStatus', { userId: socket.user.id.toString(), isOnline: false, lastActive: new Date() });
 
-                // ✅ لو كان مضيف غرفة مباشرة حالياً، لا نُنهي بثّه فوراً — مهلة سماح قصيرة تحسّباً
-                // لانقطاع عابر (قفل شاشة الهاتف، تبديل شبكة) يعود بعدها المضيف خلال ثوانٍ فعلياً
-                scheduleBroadcastEndAfterDisconnect(io, socket.user, socket.id);
+                // ✅ لو كان مضيف غرفة مباشرة حالياً، لا نُنهي بثّه فوراً — نُسجِّل وقت الانقطاع فقط
+                // بالمستند (راجع markHostDisconnected)؛ مهلة السماح الفعلية (120 ثانية) تُنفَّذها
+                // المكنسة الدورية sweepDisconnectedHostBroadcasts، لا مؤقّت ذاكرة هنا بعد الآن
+                await markHostDisconnected(io, socket.user, socket.id);
 
                 // 🐛 إصلاح: نفس مهلة السماح تُمنح الآن لأي جالس عادي أيضاً (وليس المضيف فقط) —
                 // لا نُنزله عن مقعده فوراً لمجرد انقطاع عابر، بل بعد مهلة قصيرة يُلغيها فوراً لو
@@ -2837,6 +2861,11 @@ socket.on('refreshBlockData', async () => {
     setInterval(() => sweepOverdueSeatChallenges(io), SEAT_CHALLENGE_SWEEP_INTERVAL_MS);
     setInterval(() => retryFailedLeagueSettlements(io), PK_LEAGUE_RETRY_INTERVAL_MS);
 
+    // ✅ 🛡️ طلب صريح بمراجعة PR: نفس فلسفة مكنستَي PK أعلاه بالضبط — تُشغَّل فوراً عند الإقلاع
+    // (تلتقط أي غرفة بقي مضيفها منقطعاً من قبل إعادة التشغيل نفسها) ثم كل 20 ثانية
+    sweepDisconnectedHostBroadcasts(io);
+    setInterval(() => sweepDisconnectedHostBroadcasts(io), HOST_DISCONNECT_SWEEP_INTERVAL_MS);
+
     return io;
 };
 
@@ -2862,3 +2891,8 @@ module.exports.sweepOverdueSeatChallenges = sweepOverdueSeatChallenges;
 // ✅ تُصدَّر فقط لاختبارات مراجعة PR (إعادة محاولة تسوية الدوري الدورية)
 module.exports.retryFailedLeagueSettlements = retryFailedLeagueSettlements;
 module.exports.retryOneLeagueSettlement = retryOneLeagueSettlement;
+// ✅ تُصدَّر فقط لاختبارات مراجعة PR (موثوقية إنهاء البث التلقائي، البند 4-5) — راجع
+// __tests__/socketService.hostDisconnectSweep.test.js؛ لا مستهلك إنتاجي خارج هذا الملف نفسه
+module.exports.markHostDisconnected = markHostDisconnected;
+module.exports.clearHostDisconnected = clearHostDisconnected;
+module.exports.sweepDisconnectedHostBroadcasts = sweepDisconnectedHostBroadcasts;

@@ -1,0 +1,20 @@
+{
+  "staticCheck": {
+    "hasVulnerableHandler": false,
+    "pass": true
+  },
+  "dynamicCheck": {
+    "attackAckReceived": null,
+    "badgeBefore": {
+      "text": "0",
+      "datasetTotal": "0"
+    },
+    "badgeAfter": {
+      "text": "0",
+      "datasetTotal": "0"
+    },
+    "badgeUnchanged": true,
+    "spoofedValuePresentInDom": false,
+    "pass": true
+  }
+}
