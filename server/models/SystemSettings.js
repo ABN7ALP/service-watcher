@@ -40,10 +40,19 @@ const systemSettingsSchema = new mongoose.Schema({
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 
+// 🛡️ طلب صريح بمراجعة PR (سيل الهدايا، البند 1-3): "find-then-create" السابقة لم تكن ذرّية —
+// عدة طلبات متزامنة (كعدة مرسلين يسجّلون الدخول بنفس اللحظة تقريباً، أو عدة هدايا متزامنة
+// تصل هنا عبر مسارات أخرى تستدعي getSettings) على قاعدة بيانات لم تُنشأ بها الوثيقة الوحيدة
+// بعد، تجد جميعها null فتحاول الإنشاء معاً — فيصطدم كل طلب لاحق بفهرس unique على singletonKey
+// (E11000)، بنفس فئة علّة "سباق find-then-create" المُصلَحة سابقاً بمسارات أخرى بهذا المشروع
+// (راجع PrivateChat.findOneAndUpdate بـgiftController.js). upsert ذرّي على مستوى القاعدة
+// يغلق هذا تماماً: إما يجد الوثيقة الموجودة، أو يُنشئها، دون نافذة سباق بينهما إطلاقاً
 systemSettingsSchema.statics.getSettings = async function () {
-    let settings = await this.findOne({ singletonKey: 'main' });
-    if (!settings) settings = await this.create({ singletonKey: 'main' });
-    return settings;
+    return this.findOneAndUpdate(
+        { singletonKey: 'main' },
+        { $setOnInsert: { singletonKey: 'main' } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 };
 
 module.exports = mongoose.model('SystemSettings', systemSettingsSchema);
