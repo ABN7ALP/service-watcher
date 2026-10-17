@@ -1,0 +1,88 @@
+{
+  "seatCount": 9,
+  "overlaps": 0,
+  "overlapPairs": [],
+  "rects": [
+    {
+      "text": "عبدالرحمن محمد العبدالله السعيد الطويل",
+      "x": 129.84375,
+      "y": 190.625,
+      "right": 300.171875,
+      "bottom": 205.6875,
+      "scrollW": 170,
+      "clientW": 170
+    },
+    {
+      "text": "Alexander Christopherson Montgomery III",
+      "x": 326.9375,
+      "y": 293.640625,
+      "right": 422.90625,
+      "bottom": 308.703125,
+      "scrollW": 181,
+      "clientW": 96
+    },
+    {
+      "text": "فاطمة الزهراء بنت محمد الأمين القرشي",
+      "x": 220.328125,
+      "y": 293.640625,
+      "right": 316.296875,
+      "bottom": 308.703125,
+      "scrollW": 166,
+      "clientW": 96
+    },
+    {
+      "text": "Jonathan Wolfeschlegelsteinhausen",
+      "x": 113.71875,
+      "y": 293.640625,
+      "right": 209.6875,
+      "bottom": 308.703125,
+      "scrollW": 156,
+      "clientW": 96
+    },
+    {
+      "text": "محمد عبدالعزيز آل سعود الكبير النجدي",
+      "x": 7.09375,
+      "y": 293.640625,
+      "right": 103.078125,
+      "bottom": 308.703125,
+      "scrollW": 159,
+      "clientW": 96
+    },
+    {
+      "text": "Elizabeth Alexandra Windsor-Mountbatten",
+      "x": 326.9375,
+      "y": 393.109375,
+      "right": 422.90625,
+      "bottom": 408.171875,
+      "scrollW": 186,
+      "clientW": 96
+    },
+    {
+      "text": "نورة بنت سلطان آل خليفة الطويلة جداً",
+      "x": 220.328125,
+      "y": 393.109375,
+      "right": 316.296875,
+      "bottom": 408.171875,
+      "scrollW": 154,
+      "clientW": 96
+    },
+    {
+      "text": "Maximilian Von Habsburg-Lothringen",
+      "x": 113.71875,
+      "y": 393.109375,
+      "right": 209.6875,
+      "bottom": 408.171875,
+      "scrollW": 162,
+      "clientW": 96
+    },
+    {
+      "text": "سارة أحمد الفارسي المصري القديم جداً",
+      "x": 7.09375,
+      "y": 393.109375,
+      "right": 103.078125,
+      "bottom": 408.171875,
+      "scrollW": 161,
+      "clientW": 96
+    }
+  ]
+}

@@ -1,0 +1,88 @@
+{
+  "seatCount": 9,
+  "overlaps": 0,
+  "overlapPairs": [],
+  "rects": [
+    {
+      "text": "عبدالرحمن محمد العبدالله السعيد الطويل",
+      "x": 75.234375,
+      "y": 129.234375,
+      "right": 244.765625,
+      "bottom": 144.234375,
+      "scrollW": 170,
+      "clientW": 170
+    },
+    {
+      "text": "Alexander Christopherson Montgomery III",
+      "x": 243.375,
+      "y": 208.5,
+      "right": 314.609375,
+      "bottom": 223.5,
+      "scrollW": 180,
+      "clientW": 71
+    },
+    {
+      "text": "فاطمة الزهراء بنت محمد الأمين القرشي",
+      "x": 164.046875,
+      "y": 208.5,
+      "right": 235.28125,
+      "bottom": 223.5,
+      "scrollW": 166,
+      "clientW": 71
+    },
+    {
+      "text": "Jonathan Wolfeschlegelsteinhausen",
+      "x": 84.71875,
+      "y": 208.5,
+      "right": 155.953125,
+      "bottom": 223.5,
+      "scrollW": 155,
+      "clientW": 71
+    },
+    {
+      "text": "محمد عبدالعزيز آل سعود الكبير النجدي",
+      "x": 5.390625,
+      "y": 208.5,
+      "right": 76.625,
+      "bottom": 223.5,
+      "scrollW": 159,
+      "clientW": 71
+    },
+    {
+      "text": "Elizabeth Alexandra Windsor-Mountbatten",
+      "x": 243.375,
+      "y": 285.078125,
+      "right": 314.609375,
+      "bottom": 300.078125,
+      "scrollW": 185,
+      "clientW": 71
+    },
+    {
+      "text": "نورة بنت سلطان آل خليفة الطويلة جداً",
+      "x": 164.046875,
+      "y": 285.078125,
+      "right": 235.28125,
+      "bottom": 300.078125,
+      "scrollW": 153,
+      "clientW": 71
+    },
+    {
+      "text": "Maximilian Von Habsburg-Lothringen",
+      "x": 84.71875,
+      "y": 285.078125,
+      "right": 155.953125,
+      "bottom": 300.078125,
+      "scrollW": 161,
+      "clientW": 71
+    },
+    {
+      "text": "سارة أحمد الفارسي المصري القديم جداً",
+      "x": 5.390625,
+      "y": 285.078125,
+      "right": 76.625,
+      "bottom": 300.078125,
+      "scrollW": 160,
+      "clientW": 71
+    }
+  ]
+}

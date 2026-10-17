@@ -1,0 +1,178 @@
+{
+  "seatCount": 19,
+  "overlaps": 0,
+  "overlapPairs": [],
+  "rects": [
+    {
+      "text": "William FitzGerald O'Sullivan-Byrne",
+      "x": 110.484375,
+      "y": 145.046875,
+      "right": 264.53125,
+      "bottom": 160.046875,
+      "scrollW": 154,
+      "clientW": 154
+    },
+    {
+      "text": "خالد بن الوليد المخزومي القرشي العظيم",
+      "x": 316.109375,
+      "y": 218.453125,
+      "right": 368.8125,
+      "bottom": 233.453125,
+      "scrollW": 165,
+      "clientW": 53
+    },
+    {
+      "text": "Francesca Castellanos-Rodriguez",
+      "x": 254.125,
+      "y": 218.453125,
+      "right": 306.828125,
+      "bottom": 233.453125,
+      "scrollW": 144,
+      "clientW": 53
+    },
+    {
+      "text": "ريم عبدالله الشمري النجدي الأصيل جداً",
+      "x": 192.140625,
+      "y": 218.453125,
+      "right": 244.84375,
+      "bottom": 233.453125,
+      "scrollW": 157,
+      "clientW": 53
+    },
+    {
+      "text": "Christopher Alessandro Bianchi-Rossi",
+      "x": 130.15625,
+      "y": 218.453125,
+      "right": 182.859375,
+      "bottom": 233.453125,
+      "scrollW": 163,
+      "clientW": 53
+    },
+    {
+      "text": "عبدالعزيز الفيصل آل سعود نجد الحبيبة",
+      "x": 68.171875,
+      "y": 218.453125,
+      "right": 120.875,
+      "bottom": 233.453125,
+      "scrollW": 155,
+      "clientW": 53
+    },
+    {
+      "text": "Katarzyna Wojciechowska-Nowakowski",
+      "x": 6.1875,
+      "y": 218.453125,
+      "right": 58.890625,
+      "bottom": 233.453125,
+      "scrollW": 172,
+      "clientW": 53
+    },
+    {
+      "text": "هند بنت خالد العتيبي الحجازي الأصيلة",
+      "x": 316.109375,
+      "y": 288.765625,
+      "right": 368.8125,
+      "bottom": 303.765625,
+      "scrollW": 152,
+      "clientW": 53
+    },
+    {
+      "text": "Siddharth Venkataraman Iyer-Subramaniam",
+      "x": 254.125,
+      "y": 288.765625,
+      "right": 306.828125,
+      "bottom": 303.765625,
+      "scrollW": 190,
+      "clientW": 53
+    },
+    {
+      "text": "ليلى عبدالكريم الزهراني القحطاني الكبرى",
+      "x": 192.140625,
+      "y": 288.765625,
+      "right": 244.84375,
+      "bottom": 303.765625,
+      "scrollW": 169,
+      "clientW": 53
+    },
+    {
+      "text": "عبدالرحمن محمد العبدالله السعيد الطويل 20",
+      "x": 130.15625,
+      "y": 288.765625,
+      "right": 182.859375,
+      "bottom": 303.765625,
+      "scrollW": 183,
+      "clientW": 53
+    },
+    {
+      "text": "Alexander Christopherson Montgomery III 21",
+      "x": 68.171875,
+      "y": 288.765625,
+      "right": 120.875,
+      "bottom": 303.765625,
+      "scrollW": 194,
+      "clientW": 53
+    },
+    {
+      "text": "فاطمة الزهراء بنت محمد الأمين القرشي 22",
+      "x": 6.1875,
+      "y": 288.765625,
+      "right": 58.890625,
+      "bottom": 303.765625,
+      "scrollW": 179,
+      "clientW": 53
+    },
+    {
+      "text": "Jonathan Wolfeschlegelsteinhausen 23",
+      "x": 316.109375,
+      "y": 359.078125,
+      "right": 368.8125,
+      "bottom": 374.078125,
+      "scrollW": 169,
+      "clientW": 53
+    },
+    {
+      "text": "محمد عبدالعزيز آل سعود الكبير النجدي 24",
+      "x": 254.125,
+      "y": 359.078125,
+      "right": 306.828125,
+      "bottom": 374.078125,
+      "scrollW": 172,
+      "clientW": 53
+    },
+    {
+      "text": "Elizabeth Alexandra Windsor-Mountbatten 25",
+      "x": 192.140625,
+      "y": 359.078125,
+      "right": 244.84375,
+      "bottom": 374.078125,
+      "scrollW": 199,
+      "clientW": 53
+    },
+    {
+      "text": "نورة بنت سلطان آل خليفة الطويلة جداً 26",
+      "x": 130.15625,
+      "y": 359.078125,
+      "right": 182.859375,
+      "bottom": 374.078125,
+      "scrollW": 166,
+      "clientW": 53
+    },
+    {
+      "text": "Maximilian Von Habsburg-Lothringen 27",
+      "x": 68.171875,
+      "y": 359.078125,
+      "right": 120.875,
+      "bottom": 374.078125,
+      "scrollW": 175,
+      "clientW": 53
+    },
+    {
+      "text": "سارة أحمد الفارسي المصري القديم جداً 28",
+      "x": 6.1875,
+      "y": 359.078125,
+      "right": 58.890625,
+      "bottom": 374.078125,
+      "scrollW": 174,
+      "clientW": 53
+    }
+  ]
+}
