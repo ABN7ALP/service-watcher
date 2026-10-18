@@ -121,6 +121,11 @@ const calculateRequiredXp = (level) => {
 // مولَّدة بـnormalize-frames.js) — تُنشآن معاً دوماً، والتبديل بينهما بصريّ بحتاً عبر
 // @media(prefers-reduced-motion:reduce) بـinput.css (.avatar__frame--animated/--static)،
 // بلا أي فرع هنا يفحص تفضيل الحركة بنفسه
+// 🛡️ طلب صريح بمراجعة PR (جولة 4): أصل محلي محايد (ظلّ شخص، ≤20KB webp — راجع
+// scripts/__verification__ لا يوجد؛ وُلِّد مباشرة بـsharp، لا صورة خارجية) — احتياطي وحيد
+// لكل صورة أفاتار بالتطبيق بلا استثناء (avatarHTML أدناه + كل مكان آخر يُستخدَم فيه صراحة)
+const DEFAULT_AVATAR_URL = '/images/default-avatar.webp';
+
 const FRAME_ASSET_URLS = {
     'profile-frame-contributor': '/assets/frames/profile-frame-contributor.webp',
     'profile-frame-admin': '/assets/frames/profile-frame-admin.webp',
@@ -185,8 +190,33 @@ function avatarHTML({ src, frameClass, sizeClass = '', extraPhotoClass = '', pho
         ? `<img class="avatar__frame avatar__frame--animated" src="${frameUrl}" alt="" aria-hidden="true">`
         + `<img class="avatar__frame avatar__frame--static" src="${staticFrameUrl(frameUrl)}" alt="" aria-hidden="true">`
         : '';
-    return `<span class="avatar ${sizeClass}"${wrapAttrs}><img class="${photoClass}" src="${src || ''}"${photoAttrs}${frameOpeningRatioAttr(frameClass)}>${frameImgs}</span>`;
+    // 🛡️ طلب صريح بمراجعة PR (جولة 4): src فارغة (لا profileImage إطلاقاً) كانت تُنتج
+    // <img src=""> — أيقونة صورة مكسورة + نصّ alt يفيض من تحت الإطار. DEFAULT_AVATAR_URL
+    // الآن احتياطي دائم هنا؛ فشل تحميل src حقيقية لكن ميتة (رابط 404) يلتقطه مستمع onerror
+    // العام (راجع أسفل الملف) — لا حاجة لمعالجة مزدوجة هنا
+    return `<span class="avatar ${sizeClass}"${wrapAttrs}><img class="${photoClass}" src="${src || DEFAULT_AVATAR_URL}"${photoAttrs}${frameOpeningRatioAttr(frameClass)}>${frameImgs}</span>`;
 }
+
+// 🛡️ طلب صريح بمراجعة PR (جولة 4): مستمع onerror عام وحيد (لا onerror مكرَّر على كل <img>
+// يدوياً) — يلتقط فشل تحميل أي صورة أفاتار حقيقية (رابط ميت/404، لا فقط src فارغة أصلاً —
+// تلك تُعالَج بالاحتياطي أعلى avatarHTML نفسها) ويستبدلها بـDEFAULT_AVATAR_URL **مرة واحدة
+// بلا حلقة**. أحداث 'error' لعناصر <img> لا تصعد (bubble) بمعيار DOM، فقط تنزل بمرحلة
+// الالتقاط (capture) — capture:true هنا إلزامي، لا اختياري، وإلا لن يصل الحدث لهذا المستمع
+// المُسجَّل على document إطلاقاً. النطاق: أي <img> يحمل صنف avatar__photo (كل صور avatarHTML
+// بأي مكان بالتطبيق) أو سمة data-avatar-fallback="1" (صور أفاتار خام خارج avatarHTML — فرق/
+// مباريات PK، لوحة المتصدرين...، راجع كل موضع أُضيفت له الصفة). لا يشمل <img class="avatar__frame">
+// (زخرفة لا صورة مستخدم — alt="" aria-hidden="true" أصلاً فلا نص يفيض لو فشل تحميلها، وفشلها
+// نادر جداً لأنها أصل محلي بالتطبيق نفسه /assets/frames/ لا رابط خارجي قد يموت)
+document.addEventListener('error', (event) => {
+    const img = event.target;
+    if (!(img instanceof HTMLImageElement)) return;
+    if (!(img.classList.contains('avatar__photo') || img.hasAttribute('data-avatar-fallback'))) return;
+    // ✅ حارس منع الحلقة: لو كانت src الحالية تساوي الاحتياطي الافتراضي فعلاً (إمّا كانت كذلك
+    // أصلاً أو استُبدلت هنا سابقاً) لا نعيد التعيين مجدداً — يقطع أي حلقة نظرياً حتى لو فشل
+    // تحميل الاحتياطي نفسه لأي سبب غير متوقَّع (أصل محلي بالتطبيق، فشله عملياً مستبعَد)
+    if (img.src === new URL(DEFAULT_AVATAR_URL, window.location.href).href) return;
+    img.src = DEFAULT_AVATAR_URL;
+}, true);
 
 // ✅ المنطق المشترك الفعلي — يُطبَّق على حاوية .avatar واحدة بعينها بالضبط (لمسة واحدة لكل
 // استدعاء، لا بحث). يستخدمها applyFrameToAvatarsByUserId (بحث بـuserId) وapplyFrameToAvatar
@@ -858,7 +888,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         bubble.style.right = '10px';
         bubble.innerHTML = `
             <span class="room-minimized-bubble-pulse"></span>
-            <img src="${minimizedRoomInfo.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-minimized-bubble-img">
+            <img src="${minimizedRoomInfo.coverImage || DEFAULT_AVATAR_URL}" class="room-minimized-bubble-img" data-avatar-fallback="1">
             <button type="button" class="room-minimized-bubble-close" title="إنهاء"><i class="fas fa-times"></i></button>
         `;
         document.body.appendChild(bubble);
@@ -2508,7 +2538,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // =====================================================
     function renderRoomCard(room) {
         const hostName = room.host ? room.host.username : 'الإدارة';
-        const hostImg = room.host ? room.host.profileImage : 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+        const hostImg = room.host ? room.host.profileImage : DEFAULT_AVATAR_URL;
         const badge = room.isOfficial
             ? '<span class="arena-card-tag arena-card-tag-official"><i class="fas fa-crown"></i> رسمية</span>'
             : (room.isPrivate ? '<span class="arena-card-tag arena-card-tag-private"><i class="fas fa-lock"></i></span>' : '');
@@ -2811,7 +2841,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             <div id="room-header-bar" class="flex justify-between items-center mb-3 gap-2">
                 <div id="room-info-card-widget" class="room-info-card-widget">
                     <button id="room-info-trigger-btn" class="room-info-trigger" title="معلومات الغرفة">
-                        <img id="room-info-cover-img" src="${room.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-cover-img">
+                        <img id="room-info-cover-img" src="${room.coverImage || DEFAULT_AVATAR_URL}" class="room-info-cover-img" data-avatar-fallback="1">
                         <span class="min-w-0 flex flex-col items-start">
                             <span id="room-info-name" class="room-info-name">${room.isPrivate ? '<i class="fas fa-lock text-amber-400 text-[10px]"></i> ' : ''}${escapeHtml(room.name)}</span>
                             <span class="room-info-meta-row">
@@ -3078,7 +3108,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-3 md:hidden flex-shrink-0"></div>
                 <div class="px-4 pb-5">
                     <div class="flex items-center gap-3 mb-4">
-                        <img src="${currentRoomCoverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-card-cover">
+                        <img src="${currentRoomCoverImage || DEFAULT_AVATAR_URL}" class="room-info-card-cover" data-avatar-fallback="1">
                         <div class="min-w-0 flex-1">
                             <p class="font-bold text-base truncate">${escapeHtml(room.name)}</p>
                             ${currentRoomCode ? `
@@ -3099,7 +3129,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         </div>
                     </div>
                     <div id="room-info-card-owner-row" class="room-info-card-owner-row" role="button" title="عرض الملف الشخصي للمضيف">
-                        <img data-user-id="${currentRoomHostId || ''}" src="${currentRoomHostProfileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-card-owner-img ${currentRoomHostActiveFrameClass || ''}">
+                        <img data-user-id="${currentRoomHostId || ''}" src="${currentRoomHostProfileImage || DEFAULT_AVATAR_URL}" class="room-info-card-owner-img ${currentRoomHostActiveFrameClass || ''}" data-avatar-fallback="1">
                         <div class="min-w-0 flex-1">
                             <p class="text-[10px] text-gray-500">مالك الغرفة</p>
                             <p class="text-sm font-bold truncate">${escapeHtml(currentRoomHostUsername || '—')}</p>
@@ -3165,7 +3195,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const podiumCard = (r, rank) => r ? `
             <div class="rankings-podium-card rankings-podium-rank-${rank}" data-room-id="${r.id}">
                 <div class="rankings-podium-crown">${rank === 1 ? '👑' : rank === 2 ? '🥈' : '🥉'}</div>
-                <img src="${r.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="rankings-podium-cover">
+                <img src="${r.coverImage || DEFAULT_AVATAR_URL}" class="rankings-podium-cover" data-avatar-fallback="1">
                 <p class="rankings-podium-name">${escapeHtml(r.name)}</p>
                 <p class="rankings-podium-host">${escapeHtml(r.host?.username || '—')}</p>
                 <div class="rankings-podium-stats">
@@ -3187,7 +3217,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     ${rest.map((r, i) => `
                         <div class="rankings-list-row" data-room-id="${r.id}">
                             <span class="rankings-list-rank">${i + 4}</span>
-                            <img src="${r.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="rankings-list-cover">
+                            <img src="${r.coverImage || DEFAULT_AVATAR_URL}" class="rankings-list-cover" data-avatar-fallback="1">
                             <div class="min-w-0 flex-1">
                                 <p class="rankings-list-name">${escapeHtml(r.name)}</p>
                                 <p class="rankings-list-host">${escapeHtml(r.host?.username || '—')}</p>
@@ -4331,12 +4361,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const existing = pkUserDisplayCache.get(id) || {};
         pkUserDisplayCache.set(id, {
             username: username || existing.username || 'مستخدم',
-            profileImage: profileImage || existing.profileImage || '/images/default-avatar.png',
+            profileImage: profileImage || existing.profileImage || DEFAULT_AVATAR_URL,
             activeFrameClass: (activeFrameClass !== undefined ? activeFrameClass : existing.activeFrameClass) || ''
         });
     }
     function pkResolveUserDisplay(id) {
-        return pkUserDisplayCache.get(id) || { username: 'داعم', profileImage: '/images/default-avatar.png', activeFrameClass: '' };
+        return pkUserDisplayCache.get(id) || { username: 'داعم', profileImage: DEFAULT_AVATAR_URL, activeFrameClass: '' };
     }
 
     // ✅ نافذة اختيار غرفة للتحدي — بحث + قائمة + "سجل العقد" الحالي لغرفتك (طابع تعاقد رسمي)
@@ -4422,7 +4452,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const recText = room.record ? `${room.record.wins}ف ${room.record.losses}خ` : '';
         return `
             <div class="face__r face__r--${isUs ? 'us' : 'them'}">
-                <img src="${room.coverImage || '/images/default-avatar.png'}" alt="">
+                <img src="${room.coverImage || DEFAULT_AVATAR_URL}" alt="" data-avatar-fallback="1">
                 <div class="n">${escapeHtml(room.name)}</div>
                 <div class="t">${rankText}${recText ? ' · ' + recText : ''}</div>
             </div>
@@ -5057,7 +5087,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // ✅ تعادل: نفس نظام نافذة الفوز/الخسارة تماماً (طلب صريح) — نفس الإطار بفلتر فضي
         // (stage.draw بالـCSS) والمصافحة مكان الكأس/أيقونة الحزن، لا إطار/أصول منفصلة
         const heroSrc = isWin ? PK_RESULT_ASSET_URLS.trophy : (isLose ? PK_RESULT_ASSET_URLS.loseIcon : (isDraw ? PK_RESULT_ASSET_URLS.handshake : null));
-        const defaultAvatar = '/images/default-avatar.png';
+        const defaultAvatar = DEFAULT_AVATAR_URL;
 
         const overlay = document.createElement('div');
         overlay.id = 'pk-result-overlay';
@@ -5070,9 +5100,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         <div class="pk__content">
                             <div class="head shake"><h1>${escapeHtml(d.title)}</h1><p>${pkResultSubHTML(d)}</p></div>
                             <div class="score">
-                                <div class="team team--a"><img src="${d.a.img || defaultAvatar}"><div><div class="nm">${escapeHtml(d.a.name)}</div><div class="pt">${d.a.pts.toLocaleString('en-US')}</div></div></div>
+                                <div class="team team--a"><img src="${d.a.img || defaultAvatar}" data-avatar-fallback="1"><div><div class="nm">${escapeHtml(d.a.name)}</div><div class="pt">${d.a.pts.toLocaleString('en-US')}</div></div></div>
                                 <div class="vs">VS</div>
-                                <div class="team team--b"><img src="${d.b.img || defaultAvatar}"><div><div class="nm">${escapeHtml(d.b.name)}</div><div class="pt">${d.b.pts.toLocaleString('en-US')}</div></div></div>
+                                <div class="team team--b"><img src="${d.b.img || defaultAvatar}" data-avatar-fallback="1"><div><div class="nm">${escapeHtml(d.b.name)}</div><div class="pt">${d.b.pts.toLocaleString('en-US')}</div></div></div>
                                 <div class="bar"><i data-pk="bar"></i></div>
                             </div>
                             <div class="stats">
@@ -5086,7 +5116,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     </div>
                     <img class="pk__frame" src="${PK_RESULT_ASSET_URLS.winnerFrame}" alt="">
                     ${heroSrc ? `<img class="pk__hero" src="${heroSrc}" alt="">` : ''}
-                    ${d.mvp ? `<div class="mvp"><img src="${d.mvp.img || defaultAvatar}"></div><div class="mvp-cap">${pkMvpCapHTML(d)}</div>` : ''}
+                    ${d.mvp ? `<div class="mvp"><img src="${d.mvp.img || defaultAvatar}" data-avatar-fallback="1"></div><div class="mvp-cap">${pkMvpCapHTML(d)}</div>` : ''}
                 </div>
                 <div class="actions">
                     ${isWin ? '<button class="btn btn--gold" data-pk-action="standings">عرض ترتيب الدوري</button>' : ''}
@@ -5133,11 +5163,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const improved = lg.rankBefore == null || lg.rankAfter < lg.rankBefore;
         const H = 29;
         const rows = [];
-        const defaultAvatar = '/images/default-avatar.png';
+        const defaultAvatar = DEFAULT_AVATAR_URL;
         const mk = (r, n, s, img, isMe) => {
             const el = document.createElement('div');
             el.className = 'row' + (isMe ? ' me' : '');
-            el.innerHTML = `<span class="r">#${r}</span><img src="${img || defaultAvatar}"><span class="n">${escapeHtml(n)}</span><span class="s">${s.toLocaleString('en-US')}</span>`;
+            el.innerHTML = `<span class="r">#${r}</span><img src="${img || defaultAvatar}" data-avatar-fallback="1"><span class="n">${escapeHtml(n)}</span><span class="s">${s.toLocaleString('en-US')}</span>`;
             ladder.appendChild(el);
             return el;
         };
@@ -5316,11 +5346,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     function pkLeaguePodiumHTML(podium) {
-        const defaultCover = 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+        const defaultCover = DEFAULT_AVATAR_URL;
         const card = (r, rank) => r && r.room ? `
             <div class="rankings-podium-card rankings-podium-rank-${rank}" data-pk-room-id="${r.room.id}">
                 <div class="rankings-podium-crown">${rank === 1 ? '👑' : rank === 2 ? '🥈' : '🥉'}</div>
-                <img src="${r.room.coverImage || defaultCover}" class="rankings-podium-cover">
+                <img src="${r.room.coverImage || defaultCover}" class="rankings-podium-cover" data-avatar-fallback="1">
                 <p class="rankings-podium-name">${escapeHtml(r.room.name)}</p>
                 <div class="rankings-podium-stats"><span><i class="fas fa-bolt"></i> ${r.lp.toLocaleString('en-US')}</span></div>
                 <div class="rankings-podium-pedestal">${rank}</div>
@@ -5331,11 +5361,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     function pkLeagueRowHTML(r, isMine) {
         if (!r || !r.room) return '';
-        const defaultCover = 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+        const defaultCover = DEFAULT_AVATAR_URL;
         return `
             <div class="rankings-list-row ${isMine ? 'border border-yellow-500/40 bg-yellow-500/5' : ''}" data-pk-room-id="${r.room.id}">
                 <span class="rankings-list-rank">#${r.rank}</span>
-                <img src="${r.room.coverImage || defaultCover}" class="rankings-list-cover">
+                <img src="${r.room.coverImage || defaultCover}" class="rankings-list-cover" data-avatar-fallback="1">
                 <div class="min-w-0 flex-1">
                     <p class="rankings-list-name">${escapeHtml(r.room.name)}</p>
                     <p class="text-[9px] text-gray-500">${r.wins} فوز · ${r.losses} خسارة${r.streak > 0 ? ` · 🔥${r.streak}` : ''}</p>
@@ -5398,7 +5428,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 const r = result.room, h2h = result.headToHead;
                 bodyEl.innerHTML = `
                     <div class="flex items-center gap-3 mb-4">
-                        <img src="${r.room.coverImage || '/images/default-avatar.png'}" class="w-12 h-12 rounded-xl object-cover">
+                        <img src="${r.room.coverImage || DEFAULT_AVATAR_URL}" class="w-12 h-12 rounded-xl object-cover" data-avatar-fallback="1">
                         <div class="flex-1 min-w-0">
                             <p class="font-bold truncate">${escapeHtml(r.room.name)}</p>
                             <p class="text-xs text-gray-400">المرتبة #${r.rank} · ${r.lp.toLocaleString('en-US')} نقطة دوري</p>
@@ -5605,7 +5635,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             .map(el => ({
                 userId: el.dataset.userId,
                 username: el.title || '',
-                profileImage: el.querySelector('img')?.src || '/images/default-avatar.png'
+                profileImage: el.querySelector('img')?.src || DEFAULT_AVATAR_URL
             }))
             .filter(c => !!c.userId);
 
@@ -5761,7 +5791,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const isMe = p.userId === myUserId;
             return `
                 <div class="duel-face__p team-${p.team === 'A' ? 'us' : 'them'} ${isMe ? 'me' : ''}">
-                    <img src="${p.profileImage || '/images/default-avatar.png'}">
+                    <img src="${p.profileImage || DEFAULT_AVATAR_URL}" data-avatar-fallback="1">
                     <span class="duel-face__st ${statusClass}">${statusIcon}</span>
                     <span class="nm">${escapeHtml((p.username || '').slice(0, 9))}</span>
                 </div>`;
@@ -5842,7 +5872,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             bar.className = 'pk-mini duel-mini';
             const teamA = currentSeatDuel.participants.filter(p => p.team === 'A');
             const teamB = currentSeatDuel.participants.filter(p => p.team === 'B');
-            const avatarsHTML = (team) => team.map(p => `<img src="${p.profileImage || '/images/default-avatar.png'}">`).join('');
+            const avatarsHTML = (team) => team.map(p => `<img src="${p.profileImage || DEFAULT_AVATAR_URL}" data-avatar-fallback="1">`).join('');
             bar.innerHTML = `
                 <div class="pk__row">
                     <span>${SEAT_DUEL_TEAM_EMOJI.A} ${SEAT_DUEL_TEAM_NAME.A}</span>
@@ -5935,7 +5965,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 el.style.order = i;
                 el.classList.toggle('pk__fan--top', i === 0);
                 const img = el.querySelector('.avatar__photo');
-                img.src = f.profileImage || '/images/default-avatar.png';
+                img.src = f.profileImage || DEFAULT_AVATAR_URL;
                 el.querySelector('i').textContent = i + 1;
                 el.title = f.username || 'داعم';
                 el.dataset.points = f.points || 0;
@@ -6096,9 +6126,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         card.innerHTML = `
             <div class="duel-res__icon">${isDraw ? '🤝' : '🏆'}</div>
             <h3>${titleHTML}</h3>
-            <div class="duel-who">${winningTeam.map(p => `<img src="${p.profileImage || '/images/default-avatar.png'}">`).join('')}</div>
+            <div class="duel-who">${winningTeam.map(p => `<img src="${p.profileImage || DEFAULT_AVATAR_URL}" data-avatar-fallback="1">`).join('')}</div>
             <div class="duel-sc"><b>${(data.scoreA || 0).toLocaleString('en-US')}</b> ${SEAT_DUEL_TEAM_EMOJI.A} — ${SEAT_DUEL_TEAM_EMOJI.B} <b>${(data.scoreB || 0).toLocaleString('en-US')}</b></div>
-            ${mvp ? `<div class="duel-mvp"><img src="${mvp.profileImage || '/images/default-avatar.png'}"><span>أكبر داعم: ${escapeHtml(mvp.username || '')} · 🪙 ${(mvp.points || 0).toLocaleString('en-US')}</span></div>` : ''}
+            ${mvp ? `<div class="duel-mvp"><img src="${mvp.profileImage || DEFAULT_AVATAR_URL}" data-avatar-fallback="1"><span>أكبر داعم: ${escapeHtml(mvp.username || '')} · 🪙 ${(mvp.points || 0).toLocaleString('en-US')}</span></div>` : ''}
             ${!isDraw && punishment.label !== 'بلا عقاب' ? `<div class="duel-pun">${punishment.icon} عقاب الخاسر: <b>${escapeHtml(punishment.label)}</b></div>` : ''}
             <div class="duel-acts">
                 <button class="duel-again" id="seat-duel-rematch">⚔️ ثأر فوري</button>
@@ -7615,7 +7645,7 @@ async function showFrameShopModal() {
     modal.id = 'frame-shop-modal';
     modal.className = 'fixed inset-0 bg-black/70 flex items-end justify-center z-[340]';
     const localUser = JSON.parse(localStorage.getItem('user') || '{}');
-    const userPhoto = localUser.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+    const userPhoto = localUser.profileImage || DEFAULT_AVATAR_URL;
     modal.innerHTML = `
         <div class="frame-shop-sheet">
             <div class="w-10 h-1 bg-white/15 rounded-full mx-auto mt-2.5 mb-1 flex-shrink-0"></div>
@@ -12416,7 +12446,7 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
                     </div>
                     <div class="support-hero-mid">
                         <div class="support-hero-avatar-frame">
-                            <img src="${profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="support-hero-avatar">
+                            <img src="${profileImage || DEFAULT_AVATAR_URL}" class="support-hero-avatar" data-avatar-fallback="1">
                             <span class="support-hero-badge-corner"><img src="${badgeImg}" alt=""></span>
                         </div>
                         <div class="support-hero-identity">
@@ -15477,7 +15507,7 @@ function renderRoomGiftSideBanner({ fromUsername, fromProfileImage, toUsername, 
     // fromProfileImage = '" onerror="...'). الآن: تُقبل فقط لو بدأت بـhttps:// فعلياً، وإلا
     // صورة افتراضية (أو أيقونة الإيموجي الاحتياطية للهدية كما كانت أصلاً)؛ والصور تُبنى
     // بـcreateElement+src (خاصية DOM، لا تحليل HTML) لا بتضمينها نصاً داخل innerHTML إطلاقاً
-    const avatarUrl = isHttpsImageUrl(fromProfileImage) ? fromProfileImage : '/images/default-avatar.png';
+    const avatarUrl = isHttpsImageUrl(fromProfileImage) ? fromProfileImage : DEFAULT_AVATAR_URL;
     const giftImgUrl = isHttpsImageUrl(giftImage) ? giftImage : null;
     el.innerHTML = `
         <div class="room-gift-banner-text">
@@ -20272,7 +20302,7 @@ socket.on('privateMessageReceived', async (data) => {
             lastRoomDMSender = {
                 id: data.senderId,
                 username: data.senderName,
-                profileImage: data.message?.sender?.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'
+                profileImage: data.message?.sender?.profileImage || DEFAULT_AVATAR_URL
             };
             roomUnreadDMCount++;
             updateRoomMessagesBadge();

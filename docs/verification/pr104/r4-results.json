@@ -1,0 +1,19 @@
+{
+  "room9": {
+    "seatCount": 9,
+    "total": 29,
+    "broken": 0,
+    "brokenSrcs": []
+  },
+  "room19": {
+    "seatCount": 19,
+    "total": 63,
+    "broken": 0,
+    "brokenSrcs": []
+  },
+  "deadUrlSeat": {
+    "src": "http://127.0.0.1:5062/images/default-avatar.webp",
+    "naturalWidth": 256,
+    "complete": true
+  }
+}
