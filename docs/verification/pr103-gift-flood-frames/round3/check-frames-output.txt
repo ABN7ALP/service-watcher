@@ -1,0 +1,26 @@
+[check-frames] فحص 22 ملفاً (حدّ 2px من الحافة، alpha>16 = انتهاك؛ سرعة حلقة الحركة ±5% من المصدر)...
+
+✅ profile-frame-admin-static.webp                  لقطة ثابتة واحدة، 384×384
+✅ profile-frame-admin.webp                         20 لقطة، 384×7680، أقصى alpha حافة=0، أقصى alpha مركز=0 حلقة=2000ms/مصدر=2000ms
+✅ profile-frame-amethyst-royal-static.webp         لقطة ثابتة واحدة، 384×384
+✅ profile-frame-amethyst-royal.webp                20 لقطة، 384×7680، أقصى alpha حافة=0، أقصى alpha مركز=0 حلقة=4000ms/مصدر=4000ms
+✅ profile-frame-black-gold-crown-static.webp       لقطة ثابتة واحدة، 384×384
+✅ profile-frame-black-gold-crown.webp              20 لقطة، 384×7680، أقصى alpha حافة=0، أقصى alpha مركز=0 حلقة=4000ms/مصدر=4000ms
+✅ profile-frame-contributor-static.webp            لقطة ثابتة واحدة، 384×384
+✅ profile-frame-contributor.webp                   1 لقطة، 384×384، أقصى alpha حافة=0، أقصى alpha مركز=0
+✅ profile-frame-crown-01-static.webp               لقطة ثابتة واحدة، 384×384
+✅ profile-frame-crown-01.webp                      20 لقطة، 384×7680، أقصى alpha حافة=0، أقصى alpha مركز=0 حلقة=4000ms/مصدر=4000ms
+✅ profile-frame-fire-dragons-static.webp           لقطة ثابتة واحدة، 384×384
+✅ profile-frame-fire-dragons.webp                  20 لقطة، 384×7680، أقصى alpha حافة=0، أقصى alpha مركز=0 حلقة=4000ms/مصدر=4000ms
+✅ profile-frame-gothic-royal-static.webp           لقطة ثابتة واحدة، 384×384
+✅ profile-frame-gothic-royal.webp                  20 لقطة، 384×7680، أقصى alpha حافة=0، أقصى alpha مركز=0 حلقة=4000ms/مصدر=4000ms
+✅ profile-frame-lion-bee-sapphire-static.webp      لقطة ثابتة واحدة، 384×384
+✅ profile-frame-lion-bee-sapphire.webp             20 لقطة، 384×7680، أقصى alpha حافة=0، أقصى alpha مركز=0 حلقة=4000ms/مصدر=4000ms
+✅ profile-frame-luxury-01-static.webp              لقطة ثابتة واحدة، 384×384
+✅ profile-frame-luxury-01.webp                     19 لقطة، 384×7296، أقصى alpha حافة=0، أقصى alpha مركز=0 حلقة=3000ms/مصدر=3000ms
+✅ profile-frame-pegasus-warrior-static.webp        لقطة ثابتة واحدة، 384×384
+✅ profile-frame-pegasus-warrior.webp               20 لقطة، 384×7680، أقصى alpha حافة=0، أقصى alpha مركز=0 حلقة=4000ms/مصدر=4000ms
+✅ profile-frame-royal-01-static.webp               لقطة ثابتة واحدة، 384×384
+✅ profile-frame-royal-01.webp                      20 لقطة، 384×7680، أقصى alpha حافة=0، أقصى alpha مركز=0 حلقة=4000ms/مصدر=4000ms
+
+[check-frames] كل الملفات نظيفة — لا قصّ حافة، كل الفتحات شفافة فعلاً، وسرعة الحركة مطابقة لمصدرها.

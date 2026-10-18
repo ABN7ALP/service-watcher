@@ -1,16 +1,23 @@
 #!/usr/bin/env node
 // 🛡️ طلب صريح بمراجعة PR (جولة 2): فحص آلي صارم يمنع تكرار علّة "قصّ الفنّ بحافة اللوحة"
 // بصمت مستقبلاً — يفحص كل ملف بـpublic/assets/frames (كل لقطة متحركة، لا الأولى فقط) بكسلياً:
-//   1) لا بكسل alpha>16 ضمن 2px من حافة لوحة 512×512 — أي قصّ حقيقي للفنّ الخارجي.
+//   1) لا بكسل alpha>16 ضمن 2px من حافة اللوحة — أي قصّ حقيقي للفنّ الخارجي.
 //   2) الفتحة المركزية شفافة فعلاً (ليست مربّعاً صلباً خطأً أو فتحة ضاعت بخلل بالترميز).
-// مستقلّ تماماً عن scripts/normalize-frames.js (لا يستورد منه شيئاً) — أداة تحقّق يجب أن
+// مستقلّ تماماً عن منطق توليد normalize-frames.js (لا يستورد كودها) — أداة تحقّق يجب أن
 // تعمل بصحة حتى لو كان خلل بمنطق التوليد نفسه، لا تشارك كوده المحتمل أن يحمل نفس الخلل.
+//
+// 🛡️ تحديث جولة 3 — فحص سرعة الحركة (checkFrameTiming): مراجعة لاحقة كشفت أن حركة الإطارات
+// كانت أسرع من مصدرها الحقيقي بـ2-4.4× (راجع رأس normalize-frames.js لتفاصيل السبب/الإصلاح)
+// — لمنع تكرارها بصمت مستقبلاً، يُقرَأ `sourcePageCount`/`sourceLoopDurationMs` (مسجَّلان
+// فعلياً بـframes-manifest.json المجاورة لكل تشغيل حقيقي لـnormalize-frames.js؛ بيانات
+// مسجَّلة سلفاً لا كود مُستورَد، فلا ينتقض حدّ "لا استيراد من normalize-frames.js" أعلاه)
+// ويُقارَن بعدد لقطات/مدة حلقة الناتج الفعلي المقروءة من الملف نفسه مباشرة — لا افتراض.
 //
 // الاستخدام:
 //   node scripts/check-frames.js                → يفحص كل public/assets/frames/*.webp، تقرير لكل ملف
 //   node scripts/check-frames.js path/to/one.webp → ملف واحد مخصَّص
-// مُستخدَم أيضاً كوحدة (checkFrameFile) من scripts/__tests__/check-frames.test.js (npm test)
-// ومن normalize-frames.js --selftest (يتحقق أن أصولاً اصطناعية جديدة لا تنتهك الهامش فوراً)
+// مُستخدَم أيضاً كوحدة (checkFrameFile/checkFrameTiming) من scripts/__tests__/check-frames.test.js
+// (npm test) ومن normalize-frames.js --selftest (يتحقق أن أصولاً اصطناعية جديدة لا تنتهك الهامش فوراً)
 
 const fs = require('fs');
 const path = require('path');
@@ -22,6 +29,30 @@ const BORDER_ALPHA_THRESHOLD = 16; // ✅ طلب صريح: alpha>16
 const MIN_PLAUSIBLE_OPENING_RATIO = 0.30; // ✅ أقل نسبة فتحة معقولة فعلياً — أي إطار حقيقي
 // (حتى أشدّها احتواءً) لن تنزل فتحته عملياً عن هذي النسبة؛ انخفاض أكبر يعني فتحة مفقودة/تالفة
 // لا احتواءً شرعياً فقط (قيد الاحتواء بـnormalize-frames.js له حد أدنى منطقي طبيعي أعلى بكثير)
+
+// 🛡️ طلب صريح جولة 3: عدد لقطات الناتج ≥ min(لقطات المصدر, 16) — نعومة حركة حقيقية دنيا،
+// حتى لمصدر بعدد لقطات أكبر بكثير من هذا الحدّ (24=MAX_ANIMATED_FRAMES بـnormalize-frames.js
+// تمنح هامشاً فوق 16 لتفادي تصادم مع حدّ التقريب بالتوزيع، لا مطابقة حرفية صفرية)
+const MIN_PAGE_COUNT_FLOOR = 16;
+// 🛡️ طلب صريح جولة 3: مدة حلقة الناتج الكاملة تطابق مدة حلقة المصدر الحقيقية ±5%
+const MAX_DURATION_DEVIATION_RATIO = 0.05;
+// ✅ نفس نسخة public/ المخدومة فعلياً (لا scripts/ المصدرية) — بيانات frames-manifest.json
+// مسجَّلة سلفاً بكل تشغيل حقيقي لـnormalize-frames.js (sourcePageCount/sourceLoopDurationMs)
+const FRAMES_MANIFEST_PATH = path.join(FRAMES_DIR, 'frames-manifest.json');
+// ✅ لاحقة اسم الملف للنسخة الثابتة (لقطة واحدة، مُستخدَمة بـ@media(prefers-reduced-motion))
+// — لا تخضع لفحص السرعة/عدد اللقطات (مصمَّمة عمداً لتكون لقطة واحدة ثابتة دوماً)
+const STATIC_VARIANT_SUFFIX = '-static.webp';
+
+function loadFramesManifestData() {
+    if (!fs.existsSync(FRAMES_MANIFEST_PATH)) return {};
+    try {
+        const parsed = JSON.parse(fs.readFileSync(FRAMES_MANIFEST_PATH, 'utf8'));
+        const { _description, _fields, ...rest } = parsed;
+        return rest;
+    } catch {
+        return {};
+    }
+}
 
 // ✅ يفحص لقطة واحدة (raw RGBA مُسطَّح) بكسلياً بالكامل — حدود اللوحة فقط (بنية ثنائية
 // الأبعاد x/y مباشرة، لا مسح شعاعي تقريبي)
@@ -108,6 +139,45 @@ async function checkFrameFile(filePath) {
     };
 }
 
+// 🛡️ طلب صريح جولة 3: يقرأ عدد لقطات/مدة حلقة الناتج الفعلي من الملف نفسه مباشرة (sharp
+// metadata.pages/delay — لا افتراض)، ويقارنهما بـsourcePageCount/sourceLoopDurationMs
+// المسجَّلين بـframes-manifest.json (كتبهما normalize-frames.js وقت التوليد الحقيقي) —
+// manifestData تُمرَّر كوسيط (لا تُقرَأ هنا مجدداً لكل ملف) لتفادي قراءة الملف 11 مرة متتالية.
+// ملف غير مذكور بالمانيفست (مفتاح غير معروف) أو مصدره ثابت أصلاً (sourcePageCount<=1) يتجاوز
+// فحص السرعة بأمان (result.skipped=true) — لا معنى لـ"سرعة حلقة" لمصدر بلا حركة أصلاً
+async function checkFrameTiming(filePath, manifestData) {
+    const key = path.basename(filePath, '.webp');
+    const entry = manifestData ? manifestData[key] : null;
+    const meta = await sharp(filePath, { animated: true }).metadata();
+    const outputPages = meta.pages || 1;
+    const outputDelays = Array.isArray(meta.delay) ? meta.delay : [];
+    const outputLoopDurationMs = outputDelays.reduce((a, b) => a + b, 0);
+
+    const result = { key, outputPages, outputLoopDurationMs, ok: true, violations: [], skipped: false };
+    if (!entry || typeof entry.sourcePageCount !== 'number' || entry.sourcePageCount <= 1) {
+        result.skipped = true;
+        return result;
+    }
+    result.sourcePageCount = entry.sourcePageCount;
+    result.sourceLoopDurationMs = entry.sourceLoopDurationMs;
+
+    const requiredPages = Math.min(entry.sourcePageCount, MIN_PAGE_COUNT_FLOOR);
+    if (outputPages < requiredPages) {
+        result.ok = false;
+        result.violations.push(`عدد لقطات الناتج ${outputPages} أقل من الحدّ الأدنى ${requiredPages} (=min(لقطات المصدر=${entry.sourcePageCount}, ${MIN_PAGE_COUNT_FLOOR}))`);
+    }
+
+    if (typeof entry.sourceLoopDurationMs === 'number' && entry.sourceLoopDurationMs > 0) {
+        const deviation = Math.abs(outputLoopDurationMs - entry.sourceLoopDurationMs) / entry.sourceLoopDurationMs;
+        if (deviation > MAX_DURATION_DEVIATION_RATIO) {
+            result.ok = false;
+            result.violations.push(`مدة حلقة الناتج ${outputLoopDurationMs}ms تنحرف ${(deviation * 100).toFixed(1)}% عن مصدرها ${entry.sourceLoopDurationMs}ms (الحدّ المسموح ±${(MAX_DURATION_DEVIATION_RATIO * 100).toFixed(0)}%)`);
+        }
+    }
+
+    return result;
+}
+
 async function main() {
     const argPath = process.argv[2];
     const files = argPath
@@ -119,34 +189,58 @@ async function main() {
         process.exit(1);
     }
 
-    console.log(`[check-frames] فحص ${files.length} ملفاً (حدّ ${BORDER_PX}px من الحافة، alpha>${BORDER_ALPHA_THRESHOLD} = انتهاك)...\n`);
+    const manifestData = loadFramesManifestData();
+    console.log(`[check-frames] فحص ${files.length} ملفاً (حدّ ${BORDER_PX}px من الحافة، alpha>${BORDER_ALPHA_THRESHOLD} = انتهاك؛ سرعة حلقة الحركة ±${(MAX_DURATION_DEVIATION_RATIO * 100).toFixed(0)}% من المصدر)...\n`);
     let anyFailed = false;
     for (const filePath of files) {
         const name = path.basename(filePath);
+        const isStaticVariant = name.endsWith(STATIC_VARIANT_SUFFIX);
         try {
             const r = await checkFrameFile(filePath);
-            if (r.ok) {
-                console.log(`✅ ${name.padEnd(42)} ${r.pages} لقطة، ${r.width}×${r.height}، أقصى alpha حافة=${r.maxBorderAlpha}، أقصى alpha مركز=${r.worstCenterAlpha}`);
+            if (isStaticVariant) {
+                // ✅ النسخة الثابتة: فحص الحافة/الفتحة نفسه + تأكيد لقطة واحدة فقط (لا فحص سرعة)
+                const staticOk = r.ok && r.pages === 1;
+                if (staticOk) {
+                    console.log(`✅ ${name.padEnd(48)} لقطة ثابتة واحدة، ${r.width}×${r.height}`);
+                } else {
+                    anyFailed = true;
+                    console.log(`❌ ${name.padEnd(48)} ${r.pages} لقطة (متوقَّع 1 بالضبط)`);
+                    for (const v of r.violations) console.log(`   - ${v}`);
+                }
+                continue;
+            }
+
+            const t = await checkFrameTiming(filePath, manifestData);
+            const timingLabel = t.skipped
+                ? ''
+                : ` حلقة=${t.outputLoopDurationMs}ms/مصدر=${t.sourceLoopDurationMs}ms`;
+            if (r.ok && t.ok) {
+                console.log(`✅ ${name.padEnd(48)} ${r.pages} لقطة، ${r.width}×${r.height}، أقصى alpha حافة=${r.maxBorderAlpha}، أقصى alpha مركز=${r.worstCenterAlpha}${timingLabel}`);
             } else {
                 anyFailed = true;
-                console.log(`❌ ${name.padEnd(42)} ${r.pages} لقطة`);
+                console.log(`❌ ${name.padEnd(48)} ${r.pages} لقطة${timingLabel}`);
                 for (const v of r.violations) console.log(`   - ${v}`);
+                for (const v of t.violations) console.log(`   - ${v}`);
             }
         } catch (e) {
             anyFailed = true;
-            console.log(`❌ ${name.padEnd(42)} خطأ أثناء الفحص: ${e.message}`);
+            console.log(`❌ ${name.padEnd(48)} خطأ أثناء الفحص: ${e.message}`);
         }
     }
     console.log('');
     if (anyFailed) {
-        console.error('[check-frames] فشل — إطار واحد أو أكثر ينتهك هامش الحافة أو فقد فتحته الشفافة. راجع التفاصيل أعلاه.');
+        console.error('[check-frames] فشل — إطار واحد أو أكثر ينتهك هامش الحافة/الفتحة الشفافة أو سرعة الحركة. راجع التفاصيل أعلاه.');
         process.exit(1);
     }
-    console.log('[check-frames] كل الملفات نظيفة — لا قصّ حافة، كل الفتحات شفافة فعلاً.');
+    console.log('[check-frames] كل الملفات نظيفة — لا قصّ حافة، كل الفتحات شفافة فعلاً، وسرعة الحركة مطابقة لمصدرها.');
 }
 
 if (require.main === module) {
     main().catch(err => { console.error(err); process.exit(1); });
 }
 
-module.exports = { checkFrameFile, BORDER_PX, BORDER_ALPHA_THRESHOLD, MIN_PLAUSIBLE_OPENING_RATIO, FRAMES_DIR };
+module.exports = {
+    checkFrameFile, checkFrameTiming, loadFramesManifestData,
+    BORDER_PX, BORDER_ALPHA_THRESHOLD, MIN_PLAUSIBLE_OPENING_RATIO,
+    MIN_PAGE_COUNT_FLOOR, MAX_DURATION_DEVIATION_RATIO, STATIC_VARIANT_SUFFIX, FRAMES_DIR
+};

@@ -1,39 +1,83 @@
 {
-  "_description": "تصحيح يدوي اختياري لفتحة إطار بعينه (radiusRatio/cxRatio/cyRatio/reason) — يُستخدم فقط داخل scripts/normalize-frames.js وقت اكتشاف الفتحة، قبل قيد الاحتواء التلقائي (الذي يحمي الفنّ الخارجي من القصّ بصرف النظر عن أي تصحيح هنا — لا علاقة للحقلين ببعضهما). effectiveOpeningRatio تُكتَب آلياً بعد كل تشغيل حقيقي (persistManifest:true) — لا تُحرَّر يدوياً. إطار غير مذكور هنا يعتمد بالكامل على الاكتشاف الآلي (detectOpeningRadius، مسح شعاعي 8 اتجاهات + وسيط). أضف radiusRatio فقط حين يُثبت الفحص البصري أن المتوسط الآلي يقصّ زخرفة معتمة حقيقية (كوجه/جناح يبرز داخل الفتحة لا على محيطها فقط).",
-  "_fields": "radiusRatio (اختياري): نصف قطر الفتحة ÷ أصغر بُعدي الصورة المصدر — تصحيح يدوي لاكتشاف الفتحة فقط. cxRatio/cyRatio (اختياريان، افتراضي 0.5): مركز الفتحة كنسبة من الأبعاد. reason (إلزامي مع radiusRatio): توثيق سبب التصحيح. effectiveOpeningRatio (مكتوبة آلياً): نصف قطر الفتحة الفعلي بعد تطبيق قيد الاحتواء ÷ (512/2) — يستخدمه العميل لتصحيح --frame-scale لهذا الإطار تحديداً.",
+  "_description": "تصحيح يدوي اختياري لفتحة إطار بعينه + بيانات محسوبة آلياً بعد كل تشغيل — راجع رأس scripts/normalize-frames.js.",
+  "_fields": "radiusRatio/cxRatio/cyRatio/reason: تصحيح يدوي اختياري وقت الاكتشاف. effectiveOpeningRatio: نسبة فتحة الإطار الفعلية بعد قيد الاحتواء — app.js يستخدمها لتصغير الصورة الشخصية داخل --frame-box الثابت (لا لتكبير الإطار نفسه، منذ جولة 3). sourcePageCount/sourceLoopDurationMs: عدد لقطات المصدر الحقيقي ومدة حلقته الكاملة (ms) كما قُرئت من ميتاداتا المصدر — يستخدمها scripts/check-frames.js كمرجع \"حقيقة أرضية\" لمطابقة سرعة الحركة (جولة 3). outputPageCount/outputLoopDurationMs: نفس القياسين على الناتج النهائي المحفوظ فعلياً.",
   "profile-frame-lion-bee-sapphire": {
     "radiusRatio": 0.1724,
     "reason": "وجه الأسد (يسار) وجناح النحلة (يمين) يبرزان داخل حدود الفتحة، لا على محيطها فقط كبقية الإطارات — متوسط المسح الشعاعي الآلي (8 اتجاهات) يلتقط نصف قطر أكبر من اللازم (~115.5px من مصدر 580px) فيقصّ وجه الأسد وطرف جناح النحلة عند التحجيم. 100px (٪17.24 من 580px) هو أفضل قياس يدوي لتفادي اللبدة/الجناح. بجولة المراجعة الأولى كان لهذا الرقم تحديداً أثر جانبي سيّئ (تحجيم×1.6 يقصّ تاج/حلقة الإطار الخارجية بحافة لوحة 512×512 — لا قيد احتواء وقتها)، فاستُبدل مؤقّتاً بـ108px كحل وسط. بعد إضافة قيد الاحتواء التلقائي (MAX_ART_RADIUS بالسكربت) أصبح هذا غير لازم: الاحتواء يحمي التاج تلقائياً بصرف النظر عن radiusRatio هنا (يُصغِّر معامل التحجيم تلقائياً لو احتاج الأمر، بـeffectiveOpeningRatio المسجَّلة أدناه)، فعاد الرقم لقيمته المثلى الأصلية لتفادي الأسد/النحلة تحديداً.",
-    "effectiveOpeningRatio": 0.2824
+    "effectiveOpeningRatio": 0.2794,
+    "sourcePageCount": 100,
+    "sourceLoopDurationMs": 4000,
+    "outputPageCount": 20,
+    "outputLoopDurationMs": 4000
   },
   "profile-frame-contributor": {
-    "effectiveOpeningRatio": 0.5
+    "effectiveOpeningRatio": 0.5,
+    "sourcePageCount": 1,
+    "sourceLoopDurationMs": null,
+    "outputPageCount": 1,
+    "outputLoopDurationMs": null
   },
   "profile-frame-admin": {
-    "effectiveOpeningRatio": 0.3999
+    "effectiveOpeningRatio": 0.3956,
+    "sourcePageCount": 40,
+    "sourceLoopDurationMs": 2000,
+    "outputPageCount": 20,
+    "outputLoopDurationMs": 2000
   },
   "profile-frame-luxury-01": {
-    "effectiveOpeningRatio": 0.3997
+    "effectiveOpeningRatio": 0.3939,
+    "sourcePageCount": 75,
+    "sourceLoopDurationMs": 3000,
+    "outputPageCount": 19,
+    "outputLoopDurationMs": 3000
   },
   "profile-frame-royal-01": {
-    "effectiveOpeningRatio": 0.4869
+    "effectiveOpeningRatio": 0.4768,
+    "sourcePageCount": 100,
+    "sourceLoopDurationMs": 4000,
+    "outputPageCount": 20,
+    "outputLoopDurationMs": 4000
   },
   "profile-frame-crown-01": {
-    "effectiveOpeningRatio": 0.4733
+    "effectiveOpeningRatio": 0.4641,
+    "sourcePageCount": 100,
+    "sourceLoopDurationMs": 4000,
+    "outputPageCount": 20,
+    "outputLoopDurationMs": 4000
   },
   "profile-frame-black-gold-crown": {
-    "effectiveOpeningRatio": 0.3444
+    "effectiveOpeningRatio": 0.3407,
+    "sourcePageCount": 100,
+    "sourceLoopDurationMs": 4000,
+    "outputPageCount": 20,
+    "outputLoopDurationMs": 4000
   },
   "profile-frame-gothic-royal": {
-    "effectiveOpeningRatio": 0.3834
+    "effectiveOpeningRatio": 0.3393,
+    "sourcePageCount": 100,
+    "sourceLoopDurationMs": 4000,
+    "outputPageCount": 20,
+    "outputLoopDurationMs": 4000
   },
   "profile-frame-amethyst-royal": {
-    "effectiveOpeningRatio": 0.3093
+    "effectiveOpeningRatio": 0.306,
+    "sourcePageCount": 100,
+    "sourceLoopDurationMs": 4000,
+    "outputPageCount": 20,
+    "outputLoopDurationMs": 4000
   },
   "profile-frame-fire-dragons": {
-    "effectiveOpeningRatio": 0.3338
+    "effectiveOpeningRatio": 0.3121,
+    "sourcePageCount": 100,
+    "sourceLoopDurationMs": 4000,
+    "outputPageCount": 20,
+    "outputLoopDurationMs": 4000
   },
   "profile-frame-pegasus-warrior": {
-    "effectiveOpeningRatio": 0.3496
+    "effectiveOpeningRatio": 0.3352,
+    "sourcePageCount": 100,
+    "sourceLoopDurationMs": 4000,
+    "outputPageCount": 20,
+    "outputLoopDurationMs": 4000
   }
 }

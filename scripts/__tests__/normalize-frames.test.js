@@ -12,8 +12,8 @@ const path = require('path');
 const os = require('os');
 const sharp = require('sharp');
 const {
-    normalizeOne, detectOpeningRadius, loadFramesManifest,
-    CANVAS_SIZE, TARGET_RADIUS, TARGET_OPENING_RATIO, MAX_ART_RADIUS
+    normalizeOne, detectOpeningRadius, distributeDelays, loadFramesManifest,
+    CANVAS_SIZE, TARGET_RADIUS, TARGET_OPENING_RATIO, MAX_ART_RADIUS, MAX_ANIMATED_FRAMES
 } = require('../normalize-frames');
 const { checkFrameFile } = require('../check-frames');
 
@@ -58,7 +58,7 @@ describe('normalizeOne — هامش كافٍ حول الفنّ: فتحة 50% م�
         ['large-radius-ratio', { size: 300, radius: 90 }],
         ['tiny-source', { size: 128, radius: 24 }],
         ['huge-source', { size: 900, radius: 220 }]
-    ])('%s: لوحة نهائية 512×512 بفتحة 50%% مركّزة، بلا أي قصّ حافة', async (name, spec) => {
+    ])('%s: لوحة نهائية مربّعة (CANVAS_SIZE) بفتحة 50%% مركّزة، بلا أي قصّ حافة', async (name, spec) => {
         const { result, info, measured } = await normalizeAndMeasure(name, spec);
 
         expect(info.width).toBe(CANVAS_SIZE);
@@ -98,6 +98,13 @@ describe('normalizeOne — هامش كافٍ حول الفنّ: فتحة 50% م�
         expect(outMeta.width).toBe(CANVAS_SIZE);
         const check = await checkFrameFile(result.outPath);
         expect(check.ok).toBe(true);
+
+        // 🛡️ طلب صريح جولة 3: نسخة ثابتة (لقطة واحدة) تُولَّد دوماً، حتى لمصدر متحرك
+        const staticMeta = await sharp(result.staticOutPath, { animated: true }).metadata();
+        expect(staticMeta.pages || 1).toBe(1);
+        expect(staticMeta.width).toBe(CANVAS_SIZE);
+        const staticCheck = await checkFrameFile(result.staticOutPath);
+        expect(staticCheck.ok).toBe(true);
     });
 
     test('فتحة غير قابلة للاكتشاف (مصدر صلب بلا شفافية) يرمي خطأً واضحاً بدل ناتج فاسد صامت', async () => {
@@ -159,6 +166,74 @@ describe('normalizeOne — قيد الاحتواء: فنّ يصل حافة لو�
         const check = await checkFrameFile(result.outPath);
         expect(check.ok).toBe(true); // ✅ كل اللقطات الثلاث فُحصت، لا الأولى فقط
     });
+});
+
+// 🛡️ طلب صريح بمراجعة PR (جولة 3): الحركة كانت أسرع من مصدرها الحقيقي بـ2-4.4× (تأخير ثابت
+// 90ms/لقطة بصرف النظر عن توقيت المصدر) — راجع رأس normalize-frames.js لتفاصيل كاملة. هذي
+// المجموعة تثبت: (1) distributeDelays (دالة التوزيع المصدرة) تطابق مجموع المصدر بالضبط لأي
+// تأخيرات (منتظمة أو غير منتظمة)، (2) normalizeOne الحقيقية تحافظ على هذي المطابقة من البداية
+// للنهاية حتى لمصدر بعدد لقطات أكبر بكثير من MAX_ANIMATED_FRAMES (يفرض تجميع حقيقي متعدد
+// اللقطات لكل لقطة محفوظة، لا مجرد لقطة-لواحد)
+describe('distributeDelays — توزيع تأخيرات المصدر على اللقطات المحفوظة (جولة 3)', () => {
+    test('مجموع تأخيرات الناتج يطابق مجموع تأخيرات المصدر بالضبط — تأخيرات منتظمة', () => {
+        const sourceDelays = new Array(10).fill(40); // ✅ يحاكي مصادر Cloudinary الحقيقية (40ms/لقطة)
+        const pageIndices = [0, 3, 6]; // ✅ مجموعات: [0-2]=3 لقطات، [3-5]=3 لقطات، [6-9]=4 لقطات
+        const delays = distributeDelays(sourceDelays, pageIndices, 10);
+        expect(delays).toEqual([120, 120, 160]);
+        expect(delays.reduce((a, b) => a + b, 0)).toBe(sourceDelays.reduce((a, b) => a + b, 0));
+    });
+
+    test('مجموع تأخيرات الناتج يطابق مجموع تأخيرات المصدر بالضبط — تأخيرات غير منتظمة عمداً', () => {
+        const sourceDelays = [50, 30, 70, 20, 90, 10, 40, 60];
+        const pageIndices = [0, 2, 5]; // مجموعات: [0-1], [2-4], [5-7]
+        const delays = distributeDelays(sourceDelays, pageIndices, 8);
+        expect(delays).toEqual([80, 180, 110]);
+        expect(delays.reduce((a, b) => a + b, 0)).toBe(sourceDelays.reduce((a, b) => a + b, 0));
+    });
+
+    test('لقطة محفوظة واحدة لكل لقطة مصدر (بلا تجميع) تُعيد نفس التأخيرات بلا تغيير', () => {
+        const sourceDelays = [40, 40, 40];
+        const delays = distributeDelays(sourceDelays, [0, 1, 2], 3);
+        expect(delays).toEqual([40, 40, 40]);
+    });
+
+    async function buildAnimatedSourceWithDelays({ frames, delaysMs, size = 300, radius = 70 }) {
+        const pages = [];
+        for (let i = 0; i < frames; i++) {
+            const color = { r: (i * 37) % 255, g: (i * 61) % 255, b: (i * 89) % 255 };
+            const baseSvg = `<svg width="${size}" height="${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${radius * 1.4}" fill="rgba(${color.r},${color.g},${color.b},1)"/></svg>`;
+            const holeSvg = `<svg width="${size}" height="${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${radius}" fill="black"/></svg>`;
+            const base = await sharp(Buffer.from(baseSvg)).png().toBuffer();
+            const hole = await sharp(Buffer.from(holeSvg)).png().toBuffer();
+            const frameBuf = await sharp(base).composite([{ input: hole, blend: 'dest-out' }]).png().toBuffer();
+            pages.push(await sharp(frameBuf).ensureAlpha().raw().toBuffer());
+        }
+        return sharp(Buffer.concat(pages), {
+            raw: { width: size, height: size * frames, channels: 4, pageHeight: size }
+        }).webp({ loop: 0, delay: delaysMs }).toBuffer();
+    }
+
+    test('مصدر بعدد لقطات أكبر بكثير من MAX_ANIMATED_FRAMES: الناتج محدود بالحدّ الأقصى، ومدة حلقته تطابق مدة حلقة المصدر الكاملة بالضبط', async () => {
+        const frames = MAX_ANIMATED_FRAMES * 2 + 3; // ✅ يفرض تجميعاً حقيقياً (أكثر من لقطة مصدر لكل لقطة محفوظة)
+        const delaysMs = Array.from({ length: frames }, (_, i) => 30 + (i % 5) * 10); // غير منتظمة عمداً
+        const srcBuf = await buildAnimatedSourceWithDelays({ frames, delaysMs });
+        const srcPath = path.join(tmpDir, 'many-frames.webp');
+        fs.writeFileSync(srcPath, srcBuf);
+
+        const result = await normalizeOne('many-frames-source', srcPath, { outDir: path.join(tmpDir, 'out'), verbose: false, manifestOverrides: {} });
+
+        expect(result.sourcePageCount).toBe(frames);
+        expect(result.pageCount).toBeLessThanOrEqual(MAX_ANIMATED_FRAMES);
+        expect(result.pageCount).toBeGreaterThanOrEqual(Math.min(frames, 16)); // ✅ نفس حدّ check-frames.js الأدنى
+        expect(result.outputLoopDurationMs).toBe(delaysMs.reduce((a, b) => a + b, 0)); // ✅ 0% انحراف، لا فقط ±5%
+
+        const outMeta = await sharp(result.outPath, { animated: true }).metadata();
+        expect(outMeta.pages).toBe(result.pageCount);
+        expect(outMeta.delay.reduce((a, b) => a + b, 0)).toBe(result.outputLoopDurationMs);
+
+        const check = await checkFrameFile(result.outPath);
+        expect(check.ok).toBe(true);
+    }, 30000);
 });
 
 describe('frames-manifest.json — تصحيح يدوي اختياري يتجاوز الاكتشاف الآلي + effectiveOpeningRatio محسوبة', () => {
@@ -241,6 +316,13 @@ describe('frames-manifest.json — تصحيح يدوي اختياري يتجاو
             const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'frames-manifest.json'), 'utf8'));
             expect(manifest.__jest_persist_test__).toBeDefined();
             expect(typeof manifest.__jest_persist_test__.effectiveOpeningRatio).toBe('number');
+            // 🛡️ طلب صريح جولة 3: sourcePageCount/sourceLoopDurationMs/outputPageCount/
+            // outputLoopDurationMs تُكتَب أيضاً — مصدر هذا الاختبار PNG ثابت (لقطة واحدة)
+            // فمدة الحلقة null بلا معنى (لا حركة أصلاً)، لا 0 مُضلِّلة
+            expect(manifest.__jest_persist_test__.sourcePageCount).toBe(1);
+            expect(manifest.__jest_persist_test__.outputPageCount).toBe(1);
+            expect(manifest.__jest_persist_test__.sourceLoopDurationMs).toBeNull();
+            expect(manifest.__jest_persist_test__.outputLoopDurationMs).toBeNull();
 
             const publicManifestPath = path.join(__dirname, '..', '..', 'public', 'assets', 'frames', 'frames-manifest.json');
             expect(fs.existsSync(publicManifestPath)).toBe(true);

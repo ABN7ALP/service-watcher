@@ -104,18 +104,23 @@ const calculateRequiredXp = (level) => {
 // العام (MutationObserver يفحص كل الصفحة عند أي تغيير DOM/صنف)، wrapImageOverlayFrames،
 // computeOverlayArtScaleCap (حساب سقف تصادم ديناميكي)، وقيم photoScale/artScale/exemptFromTightCap
 // منفصلة لكل إطار — بمكوّن واحد موحَّد يُستخدَم مباشرة بكل قالب عبر avatarHTML() بدل حقن DOM
-// بعد الرسم: <span class="avatar"><img class="avatar__photo"><img class="avatar__frame"></span>
-// 🛡️ تحديث جولة 2 (إصلاح جوهري): القياس الموحَّد تغيّر من 160%/62.5% إلى متغيّر CSS وحيد
-// --frame-scale (راجع .avatar__frame بـinput.css) — قيمته الافتراضية 200% بسياقات عادية
-// (62.5%→50% بـnormalize-frames.js: هامش أوسع للفنّ الخارجي قبل حافة لوحة 512px)، وتُخفَّض
-// سياقياً بشبكات المقاعد المزدحمة (170% بـ13/19 مقعداً، 150% بـ80 — عبر [data-seat-count]
-// بـinput.css، لا هنا). لا قيمة خاصة لأي إطار بمفرده بـCSS أبداً — لكن بعض الإطارات (فنّها
-// يمتدّ قريباً من حافة لوحة مصدرها الأصلي) تُجبَر على فتحة فعلية أصغر من 50% وقت التوحيد
-// (قيد الاحتواء بـnormalize-frames.js يحمي الفنّ الخارجي من القصّ بتصغير الفتحة بدلاً من
-// قصّها) — FRAME_OPENING_RATIOS أدناه (مجلوبة من frames-manifest.json المنسوخة إلى public/
-// وقت التوحيد) تحمل هذي النسبة الفعلية لكل إطار، وframeScaleCorrectionAttr تحسب معامل تصحيح
-// --frame-correction (لا --frame-scale نفسه) من بياناتها مباشرة فقط لمن يحتاجه (البقية تبقى
-// 1 الافتراضية بلا أي أثر) — تصحيح محسوب من بيانات حقيقية، لا قيمة مكتوبة يدوياً بأي ملف CSS
+// بعد الرسم: <span class="avatar"><img class="avatar__photo"><img class="avatar__frame">×2</span>
+// (نسختا الإطار: متحركة + ثابتة — راجع فقرة جولة 3 أدناه)
+// 🛡️ تحديث جولة 2: القياس الموحَّد تغيّر من 160%/62.5% إلى متغيّر CSS --frame-scale (راجع
+// .avatar__frame بـinput.css وقتها)، وFRAME_OPENING_RATIOS (effectiveOpeningRatio من
+// frames-manifest.json) كانت تُكبِّر إطار الزخرفة نفسه لإطارات فتحتها أضيق من 50%.
+// 🛡️ تحديث جولة 3 (تغيير جوهري بنموذج العرض — طلب صريح، أسلوب Bigo/Likee "بصمة ثابتة"):
+// تكبير إطار الزخرفة نفسه (الجولة الثانية) أنتج إطارات ضخمة غير متّسقة بصرياً بين المقاعد —
+// بالضبط ما وصفته المراجعة. النموذج الآن معكوس: .avatar__frame ثابت الحجم بكل الإطارات بلا
+// استثناء (--frame-box وحدها بـinput.css — لا --frame-correction، حُذفت كلياً)، وFRAME_OPENING_RATIOS
+// تُستخدَم الآن لتصغير .avatar__photo (الصورة الشخصية) نفسها عبر frameOpeningRatioAttr/
+// --frame-opening-ratio، لا لتكبير الإطار — راجع .avatar__photo بـinput.css لصيغة الحساب
+// الكاملة (avatarSize = clamp(55%, frameBox×ratio×1.04, 100%)). بصمة كل المقعد/الصندوق
+// (--size الخارجية) لا تتغيّر حجماً بإضافة/إزالة/تبديل إطار إطلاقاً — طلب صريح، لا قفزة تخطيط.
+// 🛡️ جولة 3 أيضاً: كل frameClass حقيقي الآن له نسختان — متحركة (الأصلية) وثابتة (لقطة واحدة،
+// مولَّدة بـnormalize-frames.js) — تُنشآن معاً دوماً، والتبديل بينهما بصريّ بحتاً عبر
+// @media(prefers-reduced-motion:reduce) بـinput.css (.avatar__frame--animated/--static)،
+// بلا أي فرع هنا يفحص تفضيل الحركة بنفسه
 const FRAME_ASSET_URLS = {
     'profile-frame-contributor': '/assets/frames/profile-frame-contributor.webp',
     'profile-frame-admin': '/assets/frames/profile-frame-admin.webp',
@@ -130,11 +135,18 @@ const FRAME_ASSET_URLS = {
     'profile-frame-pegasus-warrior': '/assets/frames/profile-frame-pegasus-warrior.webp'
 };
 
+// ✅ نسخة "-static.webp" (لقطة واحدة، @media(prefers-reduced-motion)) — نفس اسم الملف الأساسي
+// بلاحقة مختلفة فقط (مولَّدة بالضبط بهذا الاسم من normalize-frames.js لكل إطار بلا استثناء)،
+// فتُحسَب من FRAME_ASSET_URLS مباشرة بدل خريطة ثانية قد تنحرف عنها لو حُرِّرت يدوياً
+function staticFrameUrl(frameUrl) {
+    return frameUrl.replace(/\.webp$/, '-static.webp');
+}
+
 // ✅ frameClass → نسبة فتحة فعلية (effectiveOpeningRatio من scripts/frames-manifest.json،
 // منسوخة حرفياً وقت التوحيد لـpublic/assets/frames/frames-manifest.json المخدومة هنا) —
 // جلب واحد فقط عند تحميل التطبيق (ملف صغير، 11 مدخلاً)، لا جلب لكل عنصر .avatar. يبقى {}
-// لو الجلب لم يكتمل بعد/فشل — frameScaleCorrectionAttr تتجاهل بأمان فتُعرَض كل الإطارات
-// بمعامل تصحيح 1 (أي بلا تصحيح، كحالها قبل هذا التحسين) حتى يكتمل الجلب لاحقاً
+// لو الجلب لم يكتمل بعد/فشل — frameOpeningRatioAttr تتجاهل بأمان فتظهر الصورة بحجمها الكامل
+// (100%) حتى يكتمل الجلب لاحقاً، لا بحجم خاطئ
 let FRAME_OPENING_RATIOS = {};
 fetch('/assets/frames/frames-manifest.json')
     .then(r => r.ok ? r.json() : {})
@@ -147,16 +159,13 @@ fetch('/assets/frames/frames-manifest.json')
     })
     .catch(() => {});
 
-// ✅ يحسب سمة style جاهزة للحقن المباشر بقالب avatarHTML() — فارغة تماماً (لا أثر) لإطار
-// نسبته الفعلية 50% (الهدف الافتراضي، الحالة الشائعة)؛ لإطار نسبته أقل (قيد الاحتواء فعّال
-// وقت التوحيد) تحمل --frame-correction (مضروبة بـ--frame-scale السياقية عبر calc() بـCSS —
-// راجع .avatar__frame بـinput.css) كي يبقى حجم الصورة الظاهر عبر فتحته مطابقاً لبقية الإطارات
-// رغم اختلاف نسبة فتحته الفعلية عن 50% القياسية
-function frameScaleCorrectionAttr(frameClass) {
+// ✅ يحسب سمة style جاهزة للحقن المباشر على .avatar__photo بقالب avatarHTML() — --frame-opening-ratio
+// هي effectiveOpeningRatio الحقيقية (لا معامل تصحيح/قسمة) — صيغة الحساب الكاملة (clamp+frameBox)
+// بـinput.css، لا هنا؛ القيمة فارغة تماماً (لا أثر، الصورة 100%) لإطار غير معروف/بلا بيانات بعد
+function frameOpeningRatioAttr(frameClass) {
     const ratio = frameClass ? FRAME_OPENING_RATIOS[frameClass] : null;
-    if (!ratio || Math.abs(ratio - 0.5) <= 0.001) return '';
-    const correction = (0.5 / ratio).toFixed(4);
-    return ` style="--frame-correction:${correction}"`;
+    if (typeof ratio !== 'number') return '';
+    return ` style="--frame-opening-ratio:${ratio}"`;
 }
 
 // ✅ المكوّن الموحَّد الوحيد لعرض صورة شخصية + إطارها بكل مكان بالتطبيق (مقعد/دردشة/ملف
@@ -165,14 +174,18 @@ function frameScaleCorrectionAttr(frameClass) {
 // كاملة بلا تغيير — تبقى تتحكّم بحجم الصندوق تماماً كما كانت)؛ extraPhotoClass لأي صنف ديناميكي
 // آخر كان على <img> نفسها (حدود/تظليل حالة...، راجع رسائل الدردشة الخاصة مثالاً)؛ photoAttrs
 // لأي خاصية غير class (title/id/data-*)؛ wrapAttrs لأي خاصية على الحاوية الخارجية.
-// frameClass إطار-صورة حقيقي (بـFRAME_ASSET_URLS) → طبقة <img class="avatar__frame"> فعلية؛
-// أي صنف آخر (إطارات CSS القديمة المتقاعدة كـprofile-frame-silver-elegant) يبقى على
-// avatar__photo نفسها فتُطبَّق حدودها/توهّجها المرسومة بـCSS مباشرة كما كانت دوماً — لا تغيير
+// frameClass إطار-صورة حقيقي (بـFRAME_ASSET_URLS) → طبقتا <img class="avatar__frame"> فعليتان
+// (متحركة+ثابتة، راجع فقرة جولة 3 أعلى الملف)؛ أي صنف آخر (إطارات CSS القديمة المتقاعدة
+// كـprofile-frame-silver-elegant) يبقى على avatar__photo نفسها فتُطبَّق حدودها/توهّجها
+// المرسومة بـCSS مباشرة كما كانت دوماً — لا تغيير
 function avatarHTML({ src, frameClass, sizeClass = '', extraPhotoClass = '', photoAttrs = '', wrapAttrs = '' }) {
     const frameUrl = frameClass ? FRAME_ASSET_URLS[frameClass] : null;
     const photoClass = `avatar__photo${frameUrl ? '' : (frameClass ? ' ' + frameClass : '')}${extraPhotoClass ? ' ' + extraPhotoClass : ''}`;
-    const frameImg = frameUrl ? `<img class="avatar__frame" src="${frameUrl}"${frameScaleCorrectionAttr(frameClass)} alt="" aria-hidden="true">` : '';
-    return `<span class="avatar ${sizeClass}"${wrapAttrs}><img class="${photoClass}" src="${src || ''}"${photoAttrs}>${frameImg}</span>`;
+    const frameImgs = frameUrl
+        ? `<img class="avatar__frame avatar__frame--animated" src="${frameUrl}" alt="" aria-hidden="true">`
+        + `<img class="avatar__frame avatar__frame--static" src="${staticFrameUrl(frameUrl)}" alt="" aria-hidden="true">`
+        : '';
+    return `<span class="avatar ${sizeClass}"${wrapAttrs}><img class="${photoClass}" src="${src || ''}"${photoAttrs}${frameOpeningRatioAttr(frameClass)}>${frameImgs}</span>`;
 }
 
 // ✅ المنطق المشترك الفعلي — يُطبَّق على حاوية .avatar واحدة بعينها بالضبط (لمسة واحدة لكل
@@ -181,7 +194,8 @@ function avatarHTML({ src, frameClass, sizeClass = '', extraPhotoClass = '', pho
 function applyFrameToAvatarWrap(wrap, activeFrameClass) {
     if (!wrap) return;
     const photo = wrap.querySelector('.avatar__photo');
-    let frameImg = wrap.querySelector('.avatar__frame');
+    let frameImgAnimated = wrap.querySelector('.avatar__frame--animated');
+    let frameImgStatic = wrap.querySelector('.avatar__frame--static');
     const frameUrl = activeFrameClass ? FRAME_ASSET_URLS[activeFrameClass] : null;
 
     // ✅ إطارات CSS القديمة المتقاعدة (لا صورة تراكب حقيقية) — صنف مباشر على الصورة نفسها.
@@ -193,25 +207,41 @@ function applyFrameToAvatarWrap(wrap, activeFrameClass) {
     }
 
     if (frameUrl) {
-        if (!frameImg) {
-            frameImg = document.createElement('img');
-            frameImg.className = 'avatar__frame';
-            frameImg.alt = '';
-            frameImg.setAttribute('aria-hidden', 'true');
-            wrap.appendChild(frameImg);
+        if (!frameImgAnimated) {
+            frameImgAnimated = document.createElement('img');
+            frameImgAnimated.className = 'avatar__frame avatar__frame--animated';
+            frameImgAnimated.alt = '';
+            frameImgAnimated.setAttribute('aria-hidden', 'true');
+            wrap.appendChild(frameImgAnimated);
         }
-        if (frameImg.getAttribute('src') !== frameUrl) frameImg.src = frameUrl;
-        // ✅ تصحيح --frame-correction محسوب من FRAME_OPENING_RATIOS (راجع frameScaleCorrectionAttr
-        // أعلى الملف) — removeProperty لا 1 صريحة كي يرث --frame-scale السياقية مباشرة بلا أي
-        // عملية ضرب زائدة لإطار نسبته الفعلية 50% أصلاً (الحالة الشائعة)
-        const ratio = activeFrameClass ? FRAME_OPENING_RATIOS[activeFrameClass] : null;
-        if (ratio && Math.abs(ratio - 0.5) > 0.001) {
-            frameImg.style.setProperty('--frame-correction', (0.5 / ratio).toFixed(4));
-        } else {
-            frameImg.style.removeProperty('--frame-correction');
+        if (frameImgAnimated.getAttribute('src') !== frameUrl) frameImgAnimated.src = frameUrl;
+
+        const staticUrl = staticFrameUrl(frameUrl);
+        if (!frameImgStatic) {
+            frameImgStatic = document.createElement('img');
+            frameImgStatic.className = 'avatar__frame avatar__frame--static';
+            frameImgStatic.alt = '';
+            frameImgStatic.setAttribute('aria-hidden', 'true');
+            wrap.appendChild(frameImgStatic);
         }
-    } else if (frameImg) {
-        frameImg.remove();
+        if (frameImgStatic.getAttribute('src') !== staticUrl) frameImgStatic.src = staticUrl;
+
+        // 🛡️ جولة 3: --frame-opening-ratio على .avatar__photo (الصورة الشخصية)، لا على
+        // .avatar__frame — راجع frameOpeningRatioAttr/شرح جولة 3 أعلى الملف. removeProperty
+        // لا رقم احتياطي صريح كي ترث القيمة الاحتياطية الحقيقية بـCSS (2 — تُثبِّت القياس
+        // على 100% تلقائياً) لو لم تتوفر بيانات هذا الإطار بالمانيفست بعد لأي سبب
+        const ratio = FRAME_OPENING_RATIOS[activeFrameClass];
+        if (photo) {
+            if (typeof ratio === 'number') {
+                photo.style.setProperty('--frame-opening-ratio', String(ratio));
+            } else {
+                photo.style.removeProperty('--frame-opening-ratio');
+            }
+        }
+    } else {
+        if (frameImgAnimated) frameImgAnimated.remove();
+        if (frameImgStatic) frameImgStatic.remove();
+        if (photo) photo.style.removeProperty('--frame-opening-ratio');
     }
 }
 
@@ -7787,7 +7817,7 @@ async function showFrameShopModal() {
     // بالغرفة .voice-seat/.voice-seats-flex.cols-3) بجانب بعضها، الوسط بصورة المستخدم مع الإطار
     // المرشَّح، والجانبان بصورته بلا إطار للمقارنة. avatarHTML({frameClass: frame.cssClass})
     // يبني الوسط مباشرة بنفس مكوّن .avatar الحقيقي — فتُطابق المعاينة الحقيقة 100% (نفس
-    // --frame-scale الافتراضية 200% المستخدَمة بكل سياق عادي؛ .frame-preview-mini-seat ليست
+    // --frame-box الافتراضية 170% المستخدَمة بكل سياق عادي؛ .frame-preview-mini-seat ليست
     // داخل [data-seat-count] فلا تُخفَّض هنا، مطابقةً للملف الشخصي/الدردشة لا شبكات المقاعد).
     // ✅ طلب صريح: انتقلت داخل إغلاق showFrameShopModal (بدل دالة منفصلة بالأعلى) كي تصل مباشرة
     // لـpurchaseFrame/lastShopData/renderBoxList الموجودة هنا — فالشراء وتبديل التجديد التلقائي
@@ -11669,8 +11699,8 @@ async function showMiniProfileModal(userId) {
                 <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-t-2xl shadow-2xl w-full max-w-md text-white border-t border-x border-purple-500/25 overflow-hidden animate-[slideUp_0.25s_ease-out]" style="max-height:80vh; overflow-y:auto;">
 
                     <div class="relative bg-gradient-to-r from-purple-700/30 to-pink-700/25 pt-5 pb-3 px-4 text-center">
-                        ${avatarHTML({ src: profileUser.profileImage, frameClass: profileUser.activeFrameClass, sizeClass: 'w-16 h-16 mx-auto', extraPhotoClass: 'border-4 border-gray-900 shadow-lg cursor-pointer hover:opacity-90 transition', photoAttrs: ` id="mini-profile-avatar-img" data-user-id="${profileUser._id}" title="عرض الملف الكامل"` })}
-                        <h2 class="text-sm font-bold mt-2 flex items-center justify-center gap-1">${escapeHtml(profileUser.username)} ${getAgentBadgeHTML(profileUser.isAgent)} ${renderAdminBadgeHTML(profileUser)}</h2>
+                        ${avatarHTML({ src: profileUser.profileImage, frameClass: profileUser.activeFrameClass, sizeClass: 'w-16 h-16 mx-auto mini-profile-modal-avatar', extraPhotoClass: 'border-4 border-gray-900 shadow-lg cursor-pointer hover:opacity-90 transition', photoAttrs: ` id="mini-profile-avatar-img" data-user-id="${profileUser._id}" title="عرض الملف الكامل"` })}
+                        <h2 class="text-sm font-bold mt-4 flex items-center justify-center gap-1">${escapeHtml(profileUser.username)} ${getAgentBadgeHTML(profileUser.isAgent)} ${renderAdminBadgeHTML(profileUser)}</h2>
                         <div class="text-[10px] text-gray-300 mt-1 cursor-pointer inline-flex items-center gap-1.5 copy-id-btn bg-black/25 px-2 py-0.5 rounded-full">
                            <i class="fas fa-id-card"></i>
                            <span>${profileUser.customId}</span>

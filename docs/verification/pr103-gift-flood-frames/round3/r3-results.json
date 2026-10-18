@@ -1,0 +1,226 @@
+{
+  "room9": {
+    "seatCount": 9,
+    "frameAudit": [
+      {
+        "name": "no-frame-r9",
+        "hasFrame": false,
+        "frameSrc": null
+      },
+      {
+        "name": "luxury-01",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-luxury-01.webp"
+      },
+      {
+        "name": "royal-01",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-royal-01.webp"
+      },
+      {
+        "name": "crown-01",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-crown-01.webp"
+      },
+      {
+        "name": "black-gold-crown",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-black-gold-crown.webp"
+      },
+      {
+        "name": "gothic-royal",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-gothic-royal.webp"
+      },
+      {
+        "name": "amethyst-royal",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-amethyst-royal.webp"
+      },
+      {
+        "name": "fire-dragons",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-fire-dragons.webp"
+      },
+      {
+        "name": "lion-bee-sapphire",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-lion-bee-sapphire.webp"
+      }
+    ]
+  },
+  "room19": {
+    "seatCount": 19,
+    "frameAudit": [
+      {
+        "name": "no-frame-r19",
+        "hasFrame": false,
+        "frameSrc": null
+      },
+      {
+        "name": "luxury-01-0",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-luxury-01.webp"
+      },
+      {
+        "name": "royal-01-1",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-royal-01.webp"
+      },
+      {
+        "name": "crown-01-2",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-crown-01.webp"
+      },
+      {
+        "name": "black-gold-crown-3",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-black-gold-crown.webp"
+      },
+      {
+        "name": "gothic-royal-4",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-gothic-royal.webp"
+      },
+      {
+        "name": "amethyst-royal-5",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-amethyst-royal.webp"
+      },
+      {
+        "name": "fire-dragons-6",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-fire-dragons.webp"
+      },
+      {
+        "name": "lion-bee-sapphire-7",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-lion-bee-sapphire.webp"
+      },
+      {
+        "name": "pegasus-warrior-8",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-pegasus-warrior.webp"
+      },
+      {
+        "name": "contributor-9",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-contributor.webp"
+      },
+      {
+        "name": "admin-10",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-admin.webp"
+      },
+      {
+        "name": "luxury-01-11",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-luxury-01.webp"
+      },
+      {
+        "name": "royal-01-12",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-royal-01.webp"
+      },
+      {
+        "name": "crown-01-13",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-crown-01.webp"
+      },
+      {
+        "name": "black-gold-crown-14",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-black-gold-crown.webp"
+      },
+      {
+        "name": "gothic-royal-15",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-gothic-royal.webp"
+      },
+      {
+        "name": "amethyst-royal-16",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-amethyst-royal.webp"
+      },
+      {
+        "name": "fire-dragons-17",
+        "hasFrame": true,
+        "frameSrc": "/assets/frames/profile-frame-fire-dragons.webp"
+      }
+    ]
+  },
+  "animationSpeedProof": {
+    "shots": [
+      "/tmp/claude-0/-home-user-service-watcher/ac0a8895-8fe7-5be7-98bd-fa3a6aa1378e/scratchpad/pr103-review/round3/r3-anim-speed-admin-0.png",
+      "/tmp/claude-0/-home-user-service-watcher/ac0a8895-8fe7-5be7-98bd-fa3a6aa1378e/scratchpad/pr103-review/round3/r3-anim-speed-admin-1.png",
+      "/tmp/claude-0/-home-user-service-watcher/ac0a8895-8fe7-5be7-98bd-fa3a6aa1378e/scratchpad/pr103-review/round3/r3-anim-speed-admin-2.png"
+    ],
+    "framesDifferIdentical01": false,
+    "framesDifferIdentical12": false
+  },
+  "layoutShift": {
+    "before": {
+      "seat": {
+        "x": 6.1875,
+        "y": 95.765625,
+        "width": 362.625,
+        "height": 99.53125
+      },
+      "wrap": {
+        "x": 151.984375,
+        "y": 95.765625,
+        "width": 71.03125,
+        "height": 71.03125
+      },
+      "name": {
+        "x": 147.796875,
+        "y": 170.40625,
+        "width": 79.40625,
+        "height": 15
+      },
+      "hasFrame": true
+    },
+    "after": {
+      "seat": {
+        "x": 6.1875,
+        "y": 95.765625,
+        "width": 362.625,
+        "height": 99.53125
+      },
+      "wrap": {
+        "x": 151.984375,
+        "y": 95.765625,
+        "width": 71.03125,
+        "height": 71.03125
+      },
+      "name": {
+        "x": 147.796875,
+        "y": 170.40625,
+        "width": 79.40625,
+        "height": 15
+      },
+      "hasFrame": false
+    },
+    "delta": {
+      "seat": {
+        "dx": 0,
+        "dy": 0,
+        "dwidth": 0,
+        "dheight": 0
+      },
+      "wrap": {
+        "dx": 0,
+        "dy": 0,
+        "dwidth": 0,
+        "dheight": 0
+      },
+      "name": {
+        "dx": 0,
+        "dy": 0,
+        "dwidth": 0,
+        "dheight": 0
+      }
+    },
+    "frameRemoved": true
+  }
+}
