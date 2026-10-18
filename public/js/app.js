@@ -104,18 +104,28 @@ const calculateRequiredXp = (level) => {
 // العام (MutationObserver يفحص كل الصفحة عند أي تغيير DOM/صنف)، wrapImageOverlayFrames،
 // computeOverlayArtScaleCap (حساب سقف تصادم ديناميكي)، وقيم photoScale/artScale/exemptFromTightCap
 // منفصلة لكل إطار — بمكوّن واحد موحَّد يُستخدَم مباشرة بكل قالب عبر avatarHTML() بدل حقن DOM
-// بعد الرسم: <span class="avatar"><img class="avatar__photo"><img class="avatar__frame"></span>
-// 🛡️ تحديث جولة 2 (إصلاح جوهري): القياس الموحَّد تغيّر من 160%/62.5% إلى متغيّر CSS وحيد
-// --frame-scale (راجع .avatar__frame بـinput.css) — قيمته الافتراضية 200% بسياقات عادية
-// (62.5%→50% بـnormalize-frames.js: هامش أوسع للفنّ الخارجي قبل حافة لوحة 512px)، وتُخفَّض
-// سياقياً بشبكات المقاعد المزدحمة (170% بـ13/19 مقعداً، 150% بـ80 — عبر [data-seat-count]
-// بـinput.css، لا هنا). لا قيمة خاصة لأي إطار بمفرده بـCSS أبداً — لكن بعض الإطارات (فنّها
-// يمتدّ قريباً من حافة لوحة مصدرها الأصلي) تُجبَر على فتحة فعلية أصغر من 50% وقت التوحيد
-// (قيد الاحتواء بـnormalize-frames.js يحمي الفنّ الخارجي من القصّ بتصغير الفتحة بدلاً من
-// قصّها) — FRAME_OPENING_RATIOS أدناه (مجلوبة من frames-manifest.json المنسوخة إلى public/
-// وقت التوحيد) تحمل هذي النسبة الفعلية لكل إطار، وframeScaleCorrectionAttr تحسب معامل تصحيح
-// --frame-correction (لا --frame-scale نفسه) من بياناتها مباشرة فقط لمن يحتاجه (البقية تبقى
-// 1 الافتراضية بلا أي أثر) — تصحيح محسوب من بيانات حقيقية، لا قيمة مكتوبة يدوياً بأي ملف CSS
+// بعد الرسم: <span class="avatar"><img class="avatar__photo"><img class="avatar__frame">×2</span>
+// (نسختا الإطار: متحركة + ثابتة — راجع فقرة جولة 3 أدناه)
+// 🛡️ تحديث جولة 2: القياس الموحَّد تغيّر من 160%/62.5% إلى متغيّر CSS --frame-scale (راجع
+// .avatar__frame بـinput.css وقتها)، وFRAME_OPENING_RATIOS (effectiveOpeningRatio من
+// frames-manifest.json) كانت تُكبِّر إطار الزخرفة نفسه لإطارات فتحتها أضيق من 50%.
+// 🛡️ تحديث جولة 3 (تغيير جوهري بنموذج العرض — طلب صريح، أسلوب Bigo/Likee "بصمة ثابتة"):
+// تكبير إطار الزخرفة نفسه (الجولة الثانية) أنتج إطارات ضخمة غير متّسقة بصرياً بين المقاعد —
+// بالضبط ما وصفته المراجعة. النموذج الآن معكوس: .avatar__frame ثابت الحجم بكل الإطارات بلا
+// استثناء (--frame-box وحدها بـinput.css — لا --frame-correction، حُذفت كلياً)، وFRAME_OPENING_RATIOS
+// تُستخدَم الآن لتصغير .avatar__photo (الصورة الشخصية) نفسها عبر frameOpeningRatioAttr/
+// --frame-opening-ratio، لا لتكبير الإطار — راجع .avatar__photo بـinput.css لصيغة الحساب
+// الكاملة (avatarSize = clamp(55%, frameBox×ratio×1.04, 100%)). بصمة كل المقعد/الصندوق
+// (--size الخارجية) لا تتغيّر حجماً بإضافة/إزالة/تبديل إطار إطلاقاً — طلب صريح، لا قفزة تخطيط.
+// 🛡️ جولة 3 أيضاً: كل frameClass حقيقي الآن له نسختان — متحركة (الأصلية) وثابتة (لقطة واحدة،
+// مولَّدة بـnormalize-frames.js) — تُنشآن معاً دوماً، والتبديل بينهما بصريّ بحتاً عبر
+// @media(prefers-reduced-motion:reduce) بـinput.css (.avatar__frame--animated/--static)،
+// بلا أي فرع هنا يفحص تفضيل الحركة بنفسه
+// 🛡️ طلب صريح بمراجعة PR (جولة 4): أصل محلي محايد (ظلّ شخص، ≤20KB webp — راجع
+// scripts/__verification__ لا يوجد؛ وُلِّد مباشرة بـsharp، لا صورة خارجية) — احتياطي وحيد
+// لكل صورة أفاتار بالتطبيق بلا استثناء (avatarHTML أدناه + كل مكان آخر يُستخدَم فيه صراحة)
+const DEFAULT_AVATAR_URL = '/images/default-avatar.webp';
+
 const FRAME_ASSET_URLS = {
     'profile-frame-contributor': '/assets/frames/profile-frame-contributor.webp',
     'profile-frame-admin': '/assets/frames/profile-frame-admin.webp',
@@ -130,11 +140,18 @@ const FRAME_ASSET_URLS = {
     'profile-frame-pegasus-warrior': '/assets/frames/profile-frame-pegasus-warrior.webp'
 };
 
+// ✅ نسخة "-static.webp" (لقطة واحدة، @media(prefers-reduced-motion)) — نفس اسم الملف الأساسي
+// بلاحقة مختلفة فقط (مولَّدة بالضبط بهذا الاسم من normalize-frames.js لكل إطار بلا استثناء)،
+// فتُحسَب من FRAME_ASSET_URLS مباشرة بدل خريطة ثانية قد تنحرف عنها لو حُرِّرت يدوياً
+function staticFrameUrl(frameUrl) {
+    return frameUrl.replace(/\.webp$/, '-static.webp');
+}
+
 // ✅ frameClass → نسبة فتحة فعلية (effectiveOpeningRatio من scripts/frames-manifest.json،
 // منسوخة حرفياً وقت التوحيد لـpublic/assets/frames/frames-manifest.json المخدومة هنا) —
 // جلب واحد فقط عند تحميل التطبيق (ملف صغير، 11 مدخلاً)، لا جلب لكل عنصر .avatar. يبقى {}
-// لو الجلب لم يكتمل بعد/فشل — frameScaleCorrectionAttr تتجاهل بأمان فتُعرَض كل الإطارات
-// بمعامل تصحيح 1 (أي بلا تصحيح، كحالها قبل هذا التحسين) حتى يكتمل الجلب لاحقاً
+// لو الجلب لم يكتمل بعد/فشل — frameOpeningRatioAttr تتجاهل بأمان فتظهر الصورة بحجمها الكامل
+// (100%) حتى يكتمل الجلب لاحقاً، لا بحجم خاطئ
 let FRAME_OPENING_RATIOS = {};
 fetch('/assets/frames/frames-manifest.json')
     .then(r => r.ok ? r.json() : {})
@@ -147,16 +164,29 @@ fetch('/assets/frames/frames-manifest.json')
     })
     .catch(() => {});
 
-// ✅ يحسب سمة style جاهزة للحقن المباشر بقالب avatarHTML() — فارغة تماماً (لا أثر) لإطار
-// نسبته الفعلية 50% (الهدف الافتراضي، الحالة الشائعة)؛ لإطار نسبته أقل (قيد الاحتواء فعّال
-// وقت التوحيد) تحمل --frame-correction (مضروبة بـ--frame-scale السياقية عبر calc() بـCSS —
-// راجع .avatar__frame بـinput.css) كي يبقى حجم الصورة الظاهر عبر فتحته مطابقاً لبقية الإطارات
-// رغم اختلاف نسبة فتحته الفعلية عن 50% القياسية
-function frameScaleCorrectionAttr(frameClass) {
+// ✅ يحسب سمة style جاهزة للحقن المباشر على .avatar__photo بقالب avatarHTML() — --frame-opening-ratio
+// هي effectiveOpeningRatio الحقيقية (لا معامل تصحيح/قسمة) — صيغة الحساب الكاملة (clamp+frameBox)
+// بـinput.css، لا هنا؛ القيمة فارغة تماماً (لا أثر، الصورة 100%) لإطار غير معروف/بلا بيانات بعد
+function frameOpeningRatioAttr(frameClass) {
     const ratio = frameClass ? FRAME_OPENING_RATIOS[frameClass] : null;
-    if (!ratio || Math.abs(ratio - 0.5) <= 0.001) return '';
-    const correction = (0.5 / ratio).toFixed(4);
-    return ` style="--frame-correction:${correction}"`;
+    if (typeof ratio !== 'number') return '';
+    return ` style="--frame-opening-ratio:${ratio}"`;
+}
+
+// 🛡️ طلب صريح بمراجعة PR (جولة 5): تاج شارة المضيف (.voice-seat-host-badge) يرتكز على نقطة
+// محسوبة من --frame-box (راجع input.css)، صحيحة لكل الإطارات الـ11 بصيغة واحدة — إلا إطارين
+// بالذات بزخرفة كثيفة قرب قمة الصندوق نفسها (admin: أسدان متقابلان، black-gold-crown: تاج/
+// أسود بارزان) حيث تجلس شارة التاج فوق "تاج" الإطار نفسه بصرياً بنفس النقطة القياسية — استثناء
+// صغير موثَّق صراحة (لا قاعدة عامة) يرفع نقطة الالتصاق قليلاً لهذين تحديداً عبر
+// --crown-extra-lift (0 افتراضياً لبقية الإطارات، بلا أي أثر)
+const HOST_CROWN_EXTRA_LIFT = {
+    'profile-frame-admin': 0.08,
+    'profile-frame-black-gold-crown': 0.08
+};
+function hostCrownLiftAttr(frameClass) {
+    const lift = frameClass ? HOST_CROWN_EXTRA_LIFT[frameClass] : null;
+    if (!lift) return '';
+    return ` style="--crown-extra-lift:${lift}"`;
 }
 
 // ✅ المكوّن الموحَّد الوحيد لعرض صورة شخصية + إطارها بكل مكان بالتطبيق (مقعد/دردشة/ملف
@@ -165,15 +195,44 @@ function frameScaleCorrectionAttr(frameClass) {
 // كاملة بلا تغيير — تبقى تتحكّم بحجم الصندوق تماماً كما كانت)؛ extraPhotoClass لأي صنف ديناميكي
 // آخر كان على <img> نفسها (حدود/تظليل حالة...، راجع رسائل الدردشة الخاصة مثالاً)؛ photoAttrs
 // لأي خاصية غير class (title/id/data-*)؛ wrapAttrs لأي خاصية على الحاوية الخارجية.
-// frameClass إطار-صورة حقيقي (بـFRAME_ASSET_URLS) → طبقة <img class="avatar__frame"> فعلية؛
-// أي صنف آخر (إطارات CSS القديمة المتقاعدة كـprofile-frame-silver-elegant) يبقى على
-// avatar__photo نفسها فتُطبَّق حدودها/توهّجها المرسومة بـCSS مباشرة كما كانت دوماً — لا تغيير
+// frameClass إطار-صورة حقيقي (بـFRAME_ASSET_URLS) → طبقتا <img class="avatar__frame"> فعليتان
+// (متحركة+ثابتة، راجع فقرة جولة 3 أعلى الملف)؛ أي صنف آخر (إطارات CSS القديمة المتقاعدة
+// كـprofile-frame-silver-elegant) يبقى على avatar__photo نفسها فتُطبَّق حدودها/توهّجها
+// المرسومة بـCSS مباشرة كما كانت دوماً — لا تغيير
 function avatarHTML({ src, frameClass, sizeClass = '', extraPhotoClass = '', photoAttrs = '', wrapAttrs = '' }) {
     const frameUrl = frameClass ? FRAME_ASSET_URLS[frameClass] : null;
     const photoClass = `avatar__photo${frameUrl ? '' : (frameClass ? ' ' + frameClass : '')}${extraPhotoClass ? ' ' + extraPhotoClass : ''}`;
-    const frameImg = frameUrl ? `<img class="avatar__frame" src="${frameUrl}"${frameScaleCorrectionAttr(frameClass)} alt="" aria-hidden="true">` : '';
-    return `<span class="avatar ${sizeClass}"${wrapAttrs}><img class="${photoClass}" src="${src || ''}"${photoAttrs}>${frameImg}</span>`;
+    const frameImgs = frameUrl
+        ? `<img class="avatar__frame avatar__frame--animated" src="${frameUrl}" alt="" aria-hidden="true">`
+        + `<img class="avatar__frame avatar__frame--static" src="${staticFrameUrl(frameUrl)}" alt="" aria-hidden="true">`
+        : '';
+    // 🛡️ طلب صريح بمراجعة PR (جولة 4): src فارغة (لا profileImage إطلاقاً) كانت تُنتج
+    // <img src=""> — أيقونة صورة مكسورة + نصّ alt يفيض من تحت الإطار. DEFAULT_AVATAR_URL
+    // الآن احتياطي دائم هنا؛ فشل تحميل src حقيقية لكن ميتة (رابط 404) يلتقطه مستمع onerror
+    // العام (راجع أسفل الملف) — لا حاجة لمعالجة مزدوجة هنا
+    return `<span class="avatar ${sizeClass}"${wrapAttrs}><img class="${photoClass}" src="${src || DEFAULT_AVATAR_URL}"${photoAttrs}${frameOpeningRatioAttr(frameClass)}>${frameImgs}</span>`;
 }
+
+// 🛡️ طلب صريح بمراجعة PR (جولة 4): مستمع onerror عام وحيد (لا onerror مكرَّر على كل <img>
+// يدوياً) — يلتقط فشل تحميل أي صورة أفاتار حقيقية (رابط ميت/404، لا فقط src فارغة أصلاً —
+// تلك تُعالَج بالاحتياطي أعلى avatarHTML نفسها) ويستبدلها بـDEFAULT_AVATAR_URL **مرة واحدة
+// بلا حلقة**. أحداث 'error' لعناصر <img> لا تصعد (bubble) بمعيار DOM، فقط تنزل بمرحلة
+// الالتقاط (capture) — capture:true هنا إلزامي، لا اختياري، وإلا لن يصل الحدث لهذا المستمع
+// المُسجَّل على document إطلاقاً. النطاق: أي <img> يحمل صنف avatar__photo (كل صور avatarHTML
+// بأي مكان بالتطبيق) أو سمة data-avatar-fallback="1" (صور أفاتار خام خارج avatarHTML — فرق/
+// مباريات PK، لوحة المتصدرين...، راجع كل موضع أُضيفت له الصفة). لا يشمل <img class="avatar__frame">
+// (زخرفة لا صورة مستخدم — alt="" aria-hidden="true" أصلاً فلا نص يفيض لو فشل تحميلها، وفشلها
+// نادر جداً لأنها أصل محلي بالتطبيق نفسه /assets/frames/ لا رابط خارجي قد يموت)
+document.addEventListener('error', (event) => {
+    const img = event.target;
+    if (!(img instanceof HTMLImageElement)) return;
+    if (!(img.classList.contains('avatar__photo') || img.hasAttribute('data-avatar-fallback'))) return;
+    // ✅ حارس منع الحلقة: لو كانت src الحالية تساوي الاحتياطي الافتراضي فعلاً (إمّا كانت كذلك
+    // أصلاً أو استُبدلت هنا سابقاً) لا نعيد التعيين مجدداً — يقطع أي حلقة نظرياً حتى لو فشل
+    // تحميل الاحتياطي نفسه لأي سبب غير متوقَّع (أصل محلي بالتطبيق، فشله عملياً مستبعَد)
+    if (img.src === new URL(DEFAULT_AVATAR_URL, window.location.href).href) return;
+    img.src = DEFAULT_AVATAR_URL;
+}, true);
 
 // ✅ المنطق المشترك الفعلي — يُطبَّق على حاوية .avatar واحدة بعينها بالضبط (لمسة واحدة لكل
 // استدعاء، لا بحث). يستخدمها applyFrameToAvatarsByUserId (بحث بـuserId) وapplyFrameToAvatar
@@ -181,7 +240,8 @@ function avatarHTML({ src, frameClass, sizeClass = '', extraPhotoClass = '', pho
 function applyFrameToAvatarWrap(wrap, activeFrameClass) {
     if (!wrap) return;
     const photo = wrap.querySelector('.avatar__photo');
-    let frameImg = wrap.querySelector('.avatar__frame');
+    let frameImgAnimated = wrap.querySelector('.avatar__frame--animated');
+    let frameImgStatic = wrap.querySelector('.avatar__frame--static');
     const frameUrl = activeFrameClass ? FRAME_ASSET_URLS[activeFrameClass] : null;
 
     // ✅ إطارات CSS القديمة المتقاعدة (لا صورة تراكب حقيقية) — صنف مباشر على الصورة نفسها.
@@ -193,25 +253,41 @@ function applyFrameToAvatarWrap(wrap, activeFrameClass) {
     }
 
     if (frameUrl) {
-        if (!frameImg) {
-            frameImg = document.createElement('img');
-            frameImg.className = 'avatar__frame';
-            frameImg.alt = '';
-            frameImg.setAttribute('aria-hidden', 'true');
-            wrap.appendChild(frameImg);
+        if (!frameImgAnimated) {
+            frameImgAnimated = document.createElement('img');
+            frameImgAnimated.className = 'avatar__frame avatar__frame--animated';
+            frameImgAnimated.alt = '';
+            frameImgAnimated.setAttribute('aria-hidden', 'true');
+            wrap.appendChild(frameImgAnimated);
         }
-        if (frameImg.getAttribute('src') !== frameUrl) frameImg.src = frameUrl;
-        // ✅ تصحيح --frame-correction محسوب من FRAME_OPENING_RATIOS (راجع frameScaleCorrectionAttr
-        // أعلى الملف) — removeProperty لا 1 صريحة كي يرث --frame-scale السياقية مباشرة بلا أي
-        // عملية ضرب زائدة لإطار نسبته الفعلية 50% أصلاً (الحالة الشائعة)
-        const ratio = activeFrameClass ? FRAME_OPENING_RATIOS[activeFrameClass] : null;
-        if (ratio && Math.abs(ratio - 0.5) > 0.001) {
-            frameImg.style.setProperty('--frame-correction', (0.5 / ratio).toFixed(4));
-        } else {
-            frameImg.style.removeProperty('--frame-correction');
+        if (frameImgAnimated.getAttribute('src') !== frameUrl) frameImgAnimated.src = frameUrl;
+
+        const staticUrl = staticFrameUrl(frameUrl);
+        if (!frameImgStatic) {
+            frameImgStatic = document.createElement('img');
+            frameImgStatic.className = 'avatar__frame avatar__frame--static';
+            frameImgStatic.alt = '';
+            frameImgStatic.setAttribute('aria-hidden', 'true');
+            wrap.appendChild(frameImgStatic);
         }
-    } else if (frameImg) {
-        frameImg.remove();
+        if (frameImgStatic.getAttribute('src') !== staticUrl) frameImgStatic.src = staticUrl;
+
+        // 🛡️ جولة 3: --frame-opening-ratio على .avatar__photo (الصورة الشخصية)، لا على
+        // .avatar__frame — راجع frameOpeningRatioAttr/شرح جولة 3 أعلى الملف. removeProperty
+        // لا رقم احتياطي صريح كي ترث القيمة الاحتياطية الحقيقية بـCSS (2 — تُثبِّت القياس
+        // على 100% تلقائياً) لو لم تتوفر بيانات هذا الإطار بالمانيفست بعد لأي سبب
+        const ratio = FRAME_OPENING_RATIOS[activeFrameClass];
+        if (photo) {
+            if (typeof ratio === 'number') {
+                photo.style.setProperty('--frame-opening-ratio', String(ratio));
+            } else {
+                photo.style.removeProperty('--frame-opening-ratio');
+            }
+        }
+    } else {
+        if (frameImgAnimated) frameImgAnimated.remove();
+        if (frameImgStatic) frameImgStatic.remove();
+        if (photo) photo.style.removeProperty('--frame-opening-ratio');
     }
 }
 
@@ -708,7 +784,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <div class="voice-seat-av-wrap">
                     <span class="voice-seat-wave"></span>
                     <span class="voice-seat-wave"></span>
-                    ${isHostSeat ? '<i class="fas fa-crown voice-seat-host-badge"></i>' : ''}
+                    ${isHostSeat ? `<i class="fas fa-crown voice-seat-host-badge"${hostCrownLiftAttr(seatData.user.activeFrameClass)}></i>` : ''}
                     ${avatarHTML({ src: seatData.user.profileImage, frameClass: seatData.user.activeFrameClass, sizeClass: 'voice-seat-avatar', photoAttrs: ` alt="${safeName}" loading="lazy" decoding="async"` })}
                     <span class="voice-seat-mic-badge ${seatData.isMuted ? 'muted' : ''}"><i class="fas ${seatData.isMuted ? 'fa-microphone-slash' : 'fa-microphone'}"></i></span>
                     ${isHostSeat ? '' : `<span class="voice-seat-no">${seatNo}</span>`}
@@ -828,7 +904,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         bubble.style.right = '10px';
         bubble.innerHTML = `
             <span class="room-minimized-bubble-pulse"></span>
-            <img src="${minimizedRoomInfo.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-minimized-bubble-img">
+            <img src="${minimizedRoomInfo.coverImage || DEFAULT_AVATAR_URL}" class="room-minimized-bubble-img" data-avatar-fallback="1">
             <button type="button" class="room-minimized-bubble-close" title="إنهاء"><i class="fas fa-times"></i></button>
         `;
         document.body.appendChild(bubble);
@@ -2478,7 +2554,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // =====================================================
     function renderRoomCard(room) {
         const hostName = room.host ? room.host.username : 'الإدارة';
-        const hostImg = room.host ? room.host.profileImage : 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+        const hostImg = room.host ? room.host.profileImage : DEFAULT_AVATAR_URL;
         const badge = room.isOfficial
             ? '<span class="arena-card-tag arena-card-tag-official"><i class="fas fa-crown"></i> رسمية</span>'
             : (room.isPrivate ? '<span class="arena-card-tag arena-card-tag-private"><i class="fas fa-lock"></i></span>' : '');
@@ -2781,7 +2857,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             <div id="room-header-bar" class="flex justify-between items-center mb-3 gap-2">
                 <div id="room-info-card-widget" class="room-info-card-widget">
                     <button id="room-info-trigger-btn" class="room-info-trigger" title="معلومات الغرفة">
-                        <img id="room-info-cover-img" src="${room.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-cover-img">
+                        <img id="room-info-cover-img" src="${room.coverImage || DEFAULT_AVATAR_URL}" class="room-info-cover-img" data-avatar-fallback="1">
                         <span class="min-w-0 flex flex-col items-start">
                             <span id="room-info-name" class="room-info-name">${room.isPrivate ? '<i class="fas fa-lock text-amber-400 text-[10px]"></i> ' : ''}${escapeHtml(room.name)}</span>
                             <span class="room-info-meta-row">
@@ -3048,7 +3124,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-3 md:hidden flex-shrink-0"></div>
                 <div class="px-4 pb-5">
                     <div class="flex items-center gap-3 mb-4">
-                        <img src="${currentRoomCoverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-card-cover">
+                        <img src="${currentRoomCoverImage || DEFAULT_AVATAR_URL}" class="room-info-card-cover" data-avatar-fallback="1">
                         <div class="min-w-0 flex-1">
                             <p class="font-bold text-base truncate">${escapeHtml(room.name)}</p>
                             ${currentRoomCode ? `
@@ -3069,7 +3145,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         </div>
                     </div>
                     <div id="room-info-card-owner-row" class="room-info-card-owner-row" role="button" title="عرض الملف الشخصي للمضيف">
-                        <img data-user-id="${currentRoomHostId || ''}" src="${currentRoomHostProfileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="room-info-card-owner-img ${currentRoomHostActiveFrameClass || ''}">
+                        <img data-user-id="${currentRoomHostId || ''}" src="${currentRoomHostProfileImage || DEFAULT_AVATAR_URL}" class="room-info-card-owner-img ${currentRoomHostActiveFrameClass || ''}" data-avatar-fallback="1">
                         <div class="min-w-0 flex-1">
                             <p class="text-[10px] text-gray-500">مالك الغرفة</p>
                             <p class="text-sm font-bold truncate">${escapeHtml(currentRoomHostUsername || '—')}</p>
@@ -3135,7 +3211,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const podiumCard = (r, rank) => r ? `
             <div class="rankings-podium-card rankings-podium-rank-${rank}" data-room-id="${r.id}">
                 <div class="rankings-podium-crown">${rank === 1 ? '👑' : rank === 2 ? '🥈' : '🥉'}</div>
-                <img src="${r.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="rankings-podium-cover">
+                <img src="${r.coverImage || DEFAULT_AVATAR_URL}" class="rankings-podium-cover" data-avatar-fallback="1">
                 <p class="rankings-podium-name">${escapeHtml(r.name)}</p>
                 <p class="rankings-podium-host">${escapeHtml(r.host?.username || '—')}</p>
                 <div class="rankings-podium-stats">
@@ -3157,7 +3233,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     ${rest.map((r, i) => `
                         <div class="rankings-list-row" data-room-id="${r.id}">
                             <span class="rankings-list-rank">${i + 4}</span>
-                            <img src="${r.coverImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="rankings-list-cover">
+                            <img src="${r.coverImage || DEFAULT_AVATAR_URL}" class="rankings-list-cover" data-avatar-fallback="1">
                             <div class="min-w-0 flex-1">
                                 <p class="rankings-list-name">${escapeHtml(r.name)}</p>
                                 <p class="rankings-list-host">${escapeHtml(r.host?.username || '—')}</p>
@@ -4301,12 +4377,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const existing = pkUserDisplayCache.get(id) || {};
         pkUserDisplayCache.set(id, {
             username: username || existing.username || 'مستخدم',
-            profileImage: profileImage || existing.profileImage || '/images/default-avatar.png',
+            profileImage: profileImage || existing.profileImage || DEFAULT_AVATAR_URL,
             activeFrameClass: (activeFrameClass !== undefined ? activeFrameClass : existing.activeFrameClass) || ''
         });
     }
     function pkResolveUserDisplay(id) {
-        return pkUserDisplayCache.get(id) || { username: 'داعم', profileImage: '/images/default-avatar.png', activeFrameClass: '' };
+        return pkUserDisplayCache.get(id) || { username: 'داعم', profileImage: DEFAULT_AVATAR_URL, activeFrameClass: '' };
     }
 
     // ✅ نافذة اختيار غرفة للتحدي — بحث + قائمة + "سجل العقد" الحالي لغرفتك (طابع تعاقد رسمي)
@@ -4392,7 +4468,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const recText = room.record ? `${room.record.wins}ف ${room.record.losses}خ` : '';
         return `
             <div class="face__r face__r--${isUs ? 'us' : 'them'}">
-                <img src="${room.coverImage || '/images/default-avatar.png'}" alt="">
+                <img src="${room.coverImage || DEFAULT_AVATAR_URL}" alt="" data-avatar-fallback="1">
                 <div class="n">${escapeHtml(room.name)}</div>
                 <div class="t">${rankText}${recText ? ' · ' + recText : ''}</div>
             </div>
@@ -5027,7 +5103,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // ✅ تعادل: نفس نظام نافذة الفوز/الخسارة تماماً (طلب صريح) — نفس الإطار بفلتر فضي
         // (stage.draw بالـCSS) والمصافحة مكان الكأس/أيقونة الحزن، لا إطار/أصول منفصلة
         const heroSrc = isWin ? PK_RESULT_ASSET_URLS.trophy : (isLose ? PK_RESULT_ASSET_URLS.loseIcon : (isDraw ? PK_RESULT_ASSET_URLS.handshake : null));
-        const defaultAvatar = '/images/default-avatar.png';
+        const defaultAvatar = DEFAULT_AVATAR_URL;
 
         const overlay = document.createElement('div');
         overlay.id = 'pk-result-overlay';
@@ -5040,9 +5116,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                         <div class="pk__content">
                             <div class="head shake"><h1>${escapeHtml(d.title)}</h1><p>${pkResultSubHTML(d)}</p></div>
                             <div class="score">
-                                <div class="team team--a"><img src="${d.a.img || defaultAvatar}"><div><div class="nm">${escapeHtml(d.a.name)}</div><div class="pt">${d.a.pts.toLocaleString('en-US')}</div></div></div>
+                                <div class="team team--a"><img src="${d.a.img || defaultAvatar}" data-avatar-fallback="1"><div><div class="nm">${escapeHtml(d.a.name)}</div><div class="pt">${d.a.pts.toLocaleString('en-US')}</div></div></div>
                                 <div class="vs">VS</div>
-                                <div class="team team--b"><img src="${d.b.img || defaultAvatar}"><div><div class="nm">${escapeHtml(d.b.name)}</div><div class="pt">${d.b.pts.toLocaleString('en-US')}</div></div></div>
+                                <div class="team team--b"><img src="${d.b.img || defaultAvatar}" data-avatar-fallback="1"><div><div class="nm">${escapeHtml(d.b.name)}</div><div class="pt">${d.b.pts.toLocaleString('en-US')}</div></div></div>
                                 <div class="bar"><i data-pk="bar"></i></div>
                             </div>
                             <div class="stats">
@@ -5056,7 +5132,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     </div>
                     <img class="pk__frame" src="${PK_RESULT_ASSET_URLS.winnerFrame}" alt="">
                     ${heroSrc ? `<img class="pk__hero" src="${heroSrc}" alt="">` : ''}
-                    ${d.mvp ? `<div class="mvp"><img src="${d.mvp.img || defaultAvatar}"></div><div class="mvp-cap">${pkMvpCapHTML(d)}</div>` : ''}
+                    ${d.mvp ? `<div class="mvp"><img src="${d.mvp.img || defaultAvatar}" data-avatar-fallback="1"></div><div class="mvp-cap">${pkMvpCapHTML(d)}</div>` : ''}
                 </div>
                 <div class="actions">
                     ${isWin ? '<button class="btn btn--gold" data-pk-action="standings">عرض ترتيب الدوري</button>' : ''}
@@ -5103,11 +5179,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         const improved = lg.rankBefore == null || lg.rankAfter < lg.rankBefore;
         const H = 29;
         const rows = [];
-        const defaultAvatar = '/images/default-avatar.png';
+        const defaultAvatar = DEFAULT_AVATAR_URL;
         const mk = (r, n, s, img, isMe) => {
             const el = document.createElement('div');
             el.className = 'row' + (isMe ? ' me' : '');
-            el.innerHTML = `<span class="r">#${r}</span><img src="${img || defaultAvatar}"><span class="n">${escapeHtml(n)}</span><span class="s">${s.toLocaleString('en-US')}</span>`;
+            el.innerHTML = `<span class="r">#${r}</span><img src="${img || defaultAvatar}" data-avatar-fallback="1"><span class="n">${escapeHtml(n)}</span><span class="s">${s.toLocaleString('en-US')}</span>`;
             ladder.appendChild(el);
             return el;
         };
@@ -5286,11 +5362,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     function pkLeaguePodiumHTML(podium) {
-        const defaultCover = 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+        const defaultCover = DEFAULT_AVATAR_URL;
         const card = (r, rank) => r && r.room ? `
             <div class="rankings-podium-card rankings-podium-rank-${rank}" data-pk-room-id="${r.room.id}">
                 <div class="rankings-podium-crown">${rank === 1 ? '👑' : rank === 2 ? '🥈' : '🥉'}</div>
-                <img src="${r.room.coverImage || defaultCover}" class="rankings-podium-cover">
+                <img src="${r.room.coverImage || defaultCover}" class="rankings-podium-cover" data-avatar-fallback="1">
                 <p class="rankings-podium-name">${escapeHtml(r.room.name)}</p>
                 <div class="rankings-podium-stats"><span><i class="fas fa-bolt"></i> ${r.lp.toLocaleString('en-US')}</span></div>
                 <div class="rankings-podium-pedestal">${rank}</div>
@@ -5301,11 +5377,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
 
     function pkLeagueRowHTML(r, isMine) {
         if (!r || !r.room) return '';
-        const defaultCover = 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+        const defaultCover = DEFAULT_AVATAR_URL;
         return `
             <div class="rankings-list-row ${isMine ? 'border border-yellow-500/40 bg-yellow-500/5' : ''}" data-pk-room-id="${r.room.id}">
                 <span class="rankings-list-rank">#${r.rank}</span>
-                <img src="${r.room.coverImage || defaultCover}" class="rankings-list-cover">
+                <img src="${r.room.coverImage || defaultCover}" class="rankings-list-cover" data-avatar-fallback="1">
                 <div class="min-w-0 flex-1">
                     <p class="rankings-list-name">${escapeHtml(r.room.name)}</p>
                     <p class="text-[9px] text-gray-500">${r.wins} فوز · ${r.losses} خسارة${r.streak > 0 ? ` · 🔥${r.streak}` : ''}</p>
@@ -5368,7 +5444,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 const r = result.room, h2h = result.headToHead;
                 bodyEl.innerHTML = `
                     <div class="flex items-center gap-3 mb-4">
-                        <img src="${r.room.coverImage || '/images/default-avatar.png'}" class="w-12 h-12 rounded-xl object-cover">
+                        <img src="${r.room.coverImage || DEFAULT_AVATAR_URL}" class="w-12 h-12 rounded-xl object-cover" data-avatar-fallback="1">
                         <div class="flex-1 min-w-0">
                             <p class="font-bold truncate">${escapeHtml(r.room.name)}</p>
                             <p class="text-xs text-gray-400">المرتبة #${r.rank} · ${r.lp.toLocaleString('en-US')} نقطة دوري</p>
@@ -5575,7 +5651,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             .map(el => ({
                 userId: el.dataset.userId,
                 username: el.title || '',
-                profileImage: el.querySelector('img')?.src || '/images/default-avatar.png'
+                profileImage: el.querySelector('img')?.src || DEFAULT_AVATAR_URL
             }))
             .filter(c => !!c.userId);
 
@@ -5731,7 +5807,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             const isMe = p.userId === myUserId;
             return `
                 <div class="duel-face__p team-${p.team === 'A' ? 'us' : 'them'} ${isMe ? 'me' : ''}">
-                    <img src="${p.profileImage || '/images/default-avatar.png'}">
+                    <img src="${p.profileImage || DEFAULT_AVATAR_URL}" data-avatar-fallback="1">
                     <span class="duel-face__st ${statusClass}">${statusIcon}</span>
                     <span class="nm">${escapeHtml((p.username || '').slice(0, 9))}</span>
                 </div>`;
@@ -5812,7 +5888,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             bar.className = 'pk-mini duel-mini';
             const teamA = currentSeatDuel.participants.filter(p => p.team === 'A');
             const teamB = currentSeatDuel.participants.filter(p => p.team === 'B');
-            const avatarsHTML = (team) => team.map(p => `<img src="${p.profileImage || '/images/default-avatar.png'}">`).join('');
+            const avatarsHTML = (team) => team.map(p => `<img src="${p.profileImage || DEFAULT_AVATAR_URL}" data-avatar-fallback="1">`).join('');
             bar.innerHTML = `
                 <div class="pk__row">
                     <span>${SEAT_DUEL_TEAM_EMOJI.A} ${SEAT_DUEL_TEAM_NAME.A}</span>
@@ -5905,7 +5981,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 el.style.order = i;
                 el.classList.toggle('pk__fan--top', i === 0);
                 const img = el.querySelector('.avatar__photo');
-                img.src = f.profileImage || '/images/default-avatar.png';
+                img.src = f.profileImage || DEFAULT_AVATAR_URL;
                 el.querySelector('i').textContent = i + 1;
                 el.title = f.username || 'داعم';
                 el.dataset.points = f.points || 0;
@@ -6066,9 +6142,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         card.innerHTML = `
             <div class="duel-res__icon">${isDraw ? '🤝' : '🏆'}</div>
             <h3>${titleHTML}</h3>
-            <div class="duel-who">${winningTeam.map(p => `<img src="${p.profileImage || '/images/default-avatar.png'}">`).join('')}</div>
+            <div class="duel-who">${winningTeam.map(p => `<img src="${p.profileImage || DEFAULT_AVATAR_URL}" data-avatar-fallback="1">`).join('')}</div>
             <div class="duel-sc"><b>${(data.scoreA || 0).toLocaleString('en-US')}</b> ${SEAT_DUEL_TEAM_EMOJI.A} — ${SEAT_DUEL_TEAM_EMOJI.B} <b>${(data.scoreB || 0).toLocaleString('en-US')}</b></div>
-            ${mvp ? `<div class="duel-mvp"><img src="${mvp.profileImage || '/images/default-avatar.png'}"><span>أكبر داعم: ${escapeHtml(mvp.username || '')} · 🪙 ${(mvp.points || 0).toLocaleString('en-US')}</span></div>` : ''}
+            ${mvp ? `<div class="duel-mvp"><img src="${mvp.profileImage || DEFAULT_AVATAR_URL}" data-avatar-fallback="1"><span>أكبر داعم: ${escapeHtml(mvp.username || '')} · 🪙 ${(mvp.points || 0).toLocaleString('en-US')}</span></div>` : ''}
             ${!isDraw && punishment.label !== 'بلا عقاب' ? `<div class="duel-pun">${punishment.icon} عقاب الخاسر: <b>${escapeHtml(punishment.label)}</b></div>` : ''}
             <div class="duel-acts">
                 <button class="duel-again" id="seat-duel-rematch">⚔️ ثأر فوري</button>
@@ -7585,7 +7661,7 @@ async function showFrameShopModal() {
     modal.id = 'frame-shop-modal';
     modal.className = 'fixed inset-0 bg-black/70 flex items-end justify-center z-[340]';
     const localUser = JSON.parse(localStorage.getItem('user') || '{}');
-    const userPhoto = localUser.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+    const userPhoto = localUser.profileImage || DEFAULT_AVATAR_URL;
     modal.innerHTML = `
         <div class="frame-shop-sheet">
             <div class="w-10 h-1 bg-white/15 rounded-full mx-auto mt-2.5 mb-1 flex-shrink-0"></div>
@@ -7787,7 +7863,7 @@ async function showFrameShopModal() {
     // بالغرفة .voice-seat/.voice-seats-flex.cols-3) بجانب بعضها، الوسط بصورة المستخدم مع الإطار
     // المرشَّح، والجانبان بصورته بلا إطار للمقارنة. avatarHTML({frameClass: frame.cssClass})
     // يبني الوسط مباشرة بنفس مكوّن .avatar الحقيقي — فتُطابق المعاينة الحقيقة 100% (نفس
-    // --frame-scale الافتراضية 200% المستخدَمة بكل سياق عادي؛ .frame-preview-mini-seat ليست
+    // --frame-box الافتراضية 170% المستخدَمة بكل سياق عادي؛ .frame-preview-mini-seat ليست
     // داخل [data-seat-count] فلا تُخفَّض هنا، مطابقةً للملف الشخصي/الدردشة لا شبكات المقاعد).
     // ✅ طلب صريح: انتقلت داخل إغلاق showFrameShopModal (بدل دالة منفصلة بالأعلى) كي تصل مباشرة
     // لـpurchaseFrame/lastShopData/renderBoxList الموجودة هنا — فالشراء وتبديل التجديد التلقائي
@@ -11669,8 +11745,8 @@ async function showMiniProfileModal(userId) {
                 <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-t-2xl shadow-2xl w-full max-w-md text-white border-t border-x border-purple-500/25 overflow-hidden animate-[slideUp_0.25s_ease-out]" style="max-height:80vh; overflow-y:auto;">
 
                     <div class="relative bg-gradient-to-r from-purple-700/30 to-pink-700/25 pt-5 pb-3 px-4 text-center">
-                        ${avatarHTML({ src: profileUser.profileImage, frameClass: profileUser.activeFrameClass, sizeClass: 'w-16 h-16 mx-auto', extraPhotoClass: 'border-4 border-gray-900 shadow-lg cursor-pointer hover:opacity-90 transition', photoAttrs: ` id="mini-profile-avatar-img" data-user-id="${profileUser._id}" title="عرض الملف الكامل"` })}
-                        <h2 class="text-sm font-bold mt-2 flex items-center justify-center gap-1">${escapeHtml(profileUser.username)} ${getAgentBadgeHTML(profileUser.isAgent)} ${renderAdminBadgeHTML(profileUser)}</h2>
+                        ${avatarHTML({ src: profileUser.profileImage, frameClass: profileUser.activeFrameClass, sizeClass: 'w-16 h-16 mx-auto mini-profile-modal-avatar', extraPhotoClass: 'border-4 border-gray-900 shadow-lg cursor-pointer hover:opacity-90 transition', photoAttrs: ` id="mini-profile-avatar-img" data-user-id="${profileUser._id}" title="عرض الملف الكامل"` })}
+                        <h2 class="text-sm font-bold mt-4 flex items-center justify-center gap-1">${escapeHtml(profileUser.username)} ${getAgentBadgeHTML(profileUser.isAgent)} ${renderAdminBadgeHTML(profileUser)}</h2>
                         <div class="text-[10px] text-gray-300 mt-1 cursor-pointer inline-flex items-center gap-1.5 copy-id-btn bg-black/25 px-2 py-0.5 rounded-full">
                            <i class="fas fa-id-card"></i>
                            <span>${profileUser.customId}</span>
@@ -12386,7 +12462,7 @@ function showSupportLevelInfoModal(kind, info, profileImage, username) {
                     </div>
                     <div class="support-hero-mid">
                         <div class="support-hero-avatar-frame">
-                            <img src="${profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="support-hero-avatar">
+                            <img src="${profileImage || DEFAULT_AVATAR_URL}" class="support-hero-avatar" data-avatar-fallback="1">
                             <span class="support-hero-badge-corner"><img src="${badgeImg}" alt=""></span>
                         </div>
                         <div class="support-hero-identity">
@@ -15447,7 +15523,7 @@ function renderRoomGiftSideBanner({ fromUsername, fromProfileImage, toUsername, 
     // fromProfileImage = '" onerror="...'). الآن: تُقبل فقط لو بدأت بـhttps:// فعلياً، وإلا
     // صورة افتراضية (أو أيقونة الإيموجي الاحتياطية للهدية كما كانت أصلاً)؛ والصور تُبنى
     // بـcreateElement+src (خاصية DOM، لا تحليل HTML) لا بتضمينها نصاً داخل innerHTML إطلاقاً
-    const avatarUrl = isHttpsImageUrl(fromProfileImage) ? fromProfileImage : '/images/default-avatar.png';
+    const avatarUrl = isHttpsImageUrl(fromProfileImage) ? fromProfileImage : DEFAULT_AVATAR_URL;
     const giftImgUrl = isHttpsImageUrl(giftImage) ? giftImage : null;
     el.innerHTML = `
         <div class="room-gift-banner-text">
@@ -20242,7 +20318,7 @@ socket.on('privateMessageReceived', async (data) => {
             lastRoomDMSender = {
                 id: data.senderId,
                 username: data.senderName,
-                profileImage: data.message?.sender?.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'
+                profileImage: data.message?.sender?.profileImage || DEFAULT_AVATAR_URL
             };
             roomUnreadDMCount++;
             updateRoomMessagesBadge();
