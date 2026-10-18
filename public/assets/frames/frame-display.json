@@ -1,0 +1,15 @@
+{
+ "_default": {"frameScale":1.45,"avatarScale":0.8,"offsetX":0,"offsetY":0,"crownTop":0.45},
+ "_noFrame": {"crownTop":0.62},
+ "profile-frame-admin": {"frameScale":1.33,"avatarScale":0.71,"offsetX":0.02,"offsetY":0.005,"crownTop":0.4},
+ "profile-frame-amethyst-royal": {"frameScale":1.71,"avatarScale":0.6,"offsetX":0.02,"offsetY":0.015,"crownTop":0.4},
+ "profile-frame-black-gold-crown": {"frameScale":1.32,"avatarScale":0.7,"offsetX":0,"offsetY":-0.055,"crownTop":0.4},
+ "profile-frame-contributor": {"frameScale":1.5,"avatarScale":0.86,"offsetX":0,"offsetY":0.01,"crownTop":0.4},
+ "profile-frame-crown-01": {"frameScale":1.33,"avatarScale":0.72,"offsetX":0.015,"offsetY":-0.005,"crownTop":0.4},
+ "profile-frame-fire-dragons": {"frameScale":1.6,"avatarScale":0.7,"offsetX":0,"offsetY":0,"crownTop":0.4},
+ "profile-frame-gothic-royal": {"frameScale":1.43,"avatarScale":0.8,"offsetX":0,"offsetY":0,"crownTop":0.4},
+ "profile-frame-lion-bee-sapphire": {"frameScale":1.54,"avatarScale":0.75,"offsetX":0,"offsetY":0,"crownTop":0.4},
+ "profile-frame-luxury-01": {"frameScale":1.58,"avatarScale":0.73,"offsetX":0,"offsetY":0,"crownTop":0.72},
+ "profile-frame-pegasus-warrior": {"frameScale":1.54,"avatarScale":0.76,"offsetX":0,"offsetY":0,"crownTop":0.4},
+ "profile-frame-royal-01": {"frameScale":1.42,"avatarScale":0.67,"offsetX":0,"offsetY":0,"crownTop":0.4}
+}

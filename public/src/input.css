@@ -395,27 +395,19 @@ input[type="checkbox"] {
    MutationObserver + wrapImageOverlayFrames + computeOverlayArtScaleCap + قيم photoScale/artScale
    منفصلة لكل إطار + حلقة "احتياط" تعويضية) بمكوّن واحد موحَّد بلا أي استثناء لكل الإطارات:
    <span class="avatar"><img class="avatar__photo"><img class="avatar__frame">[×2]</span>
-   متمركز تماماً، pointer-events:none — بلا أي قيمة مكتوبة لإطار بعينه بهذا الملف إطلاقاً،
-   ولا سقف تصادم محسوب ديناميكياً.
-   🛡️ تحديث جولة 2: الجولة الأولى كانت تفرض فتحة 62.5% ثابتة دوماً، فتدفع فنّ بعض الإطارات
-   خارج لوحة المصدر عند التحجيم (مؤكَّد بفحص بكسلي صارم — راجع scripts/check-frames.js).
-   normalize-frames.js أصبح يهدف لفتحة 50% مع قيد احتواء تلقائي (لا يُقصّ الفنّ الخارجي أبداً)،
-   فتختلف effectiveOpeningRatio الفعلية بين الإطارات حسب مدى امتداد فنّها قرب حافة مصدرها.
-   🛡️ تحديث جولة 3 (تغيير جوهري بنموذج العرض — طلب صريح، أسلوب Bigo/Likee): الجولة الثانية
-   كانت تُكبِّر إطار الزخرفة نفسه (--frame-correction = 0.5÷effectiveOpeningRatio) لإطارات
-   فتحتها الفعلية أضيق من 50%، فتضخَّم حجم الإطار الظاهر بمعامل قد يتجاوز 3.5× — "إطارات كبيرة
-   وغير متّسقة بصرياً بين المقاعد" بالضبط كما وصفت المراجعة. النموذج الآن معكوس تماماً:
-   .avatar__frame ثابت الحجم بكل الإطارات بلا استثناء (--frame-box وحدها، بلا أي تصحيح لإطار
-   بعينه)، وعُرضه كاملاً دوماً (object-fit:contain، لا قصّ/تجاوز) — أمّا .avatar__photo
-   (الصورة الشخصية نفسها) فهي التي تصغر لتلائم فتحة الإطار الفعلية: --frame-opening-ratio
-   (مضبوطة inline على .avatar__photo من بيانات frames-manifest.json الحقيقية عبر
-   frameOpeningRatioAttr/applyFrameToAvatarWrap بـapp.js — لا رقم مكتوب يدوياً هنا لأي إطار)
-   تُحسَب بصيغة avatarSize = clamp(55%, frameBox×ratio×1.04, 100%) — فتبقى بصمة كل الإطارات
-   الظاهرة (--frame-box) متطابقة الحجم بصرف النظر عن فتحتها الفعلية، والصورة الشخصية فقط هي
-   ما يتفاوت حجمها (أصغر لإطار بفتحة أضيق، لكن أبداً أصغر من 55% ولا أكبر من 100% من المقعد).
-   بلا إطار مُفعَّل، --frame-opening-ratio غير مضبوطة فيعود القياس لقيمته الاحتياطية (2 —
-   يضمن الناتج يتجاوز سقف clamp فيُثبَّت على 100% تماماً) = الصورة بحجمها الكامل كالمعتاد،
-   وبصمة المقعد/الصندوق لا تتغيّر حجماً إطلاقاً بإضافة/إزالة إطار (طلب صريح — لا قفزة تخطيط). */
+   متمركز تماماً، pointer-events:none.
+   🛡️ طلب صريح لاحق (يستبدل كل نظام تحجيم آلي سابق مبني على نسبة فتحة الإطار الحقيقية —
+   الجولات 2-5 مرّت بأنظمة كهذي: FRAME_OPENING_RATIOS/effectiveOpeningRatio، --frame-correction،
+   صيغ clamp محسوبة): **قيم ثابتة ضبطها صاحب المشروع يدوياً لكل إطار**
+   (public/assets/frames/frame-display.json) — S = حجم الصندوق نفسه (.avatar، أي .voice-seat-av-wrap
+   بسياق المقاعد)، تُطبَّق حرفياً بلا أي حساب مشتق من نسبة الفتحة إطلاقاً:
+   - .avatar__photo: مربّع S×avatarScale، دائري (بلا إطار: avatarScale=1 — الصورة بحجمها الكامل).
+   - .avatar__frame: مربّع S×frameScale (width=height، object-fit:contain، max-width:none — لا
+     تمدّد إطلاقاً)، مُزاح بمقدار (offsetX×S, offsetY×S) عن منتصف الصندوق.
+   القيم الأربع (--frame-scale/--avatar-scale/--frame-x/--frame-y) تُحقَن inline على .avatar
+   نفسها (frameDisplayStyle/resolveFrameDisplay بـapp.js) فتُورَث لـ.avatar__photo/.avatar__frame
+   تلقائياً عبر CSS. إطار غير معروف بالملف يأخذ قيم _default؛ بصمة الصندوق الخارجي (--size) لا
+   تتغيّر حجماً إطلاقاً بإضافة/إزالة/تبديل إطار (طلب صريح — لا قفزة تخطيط). */
 /* 🐛 width/height بلا قيمة احتياطية عمداً: لو لم تُضبط --size صريحة (غالب الاستخدامات —
    صنف حجم جاهز كـ"w-10 h-10"/".voice-seat-avatar" يُمرَّر على نفس <span> بدلاً) يُصبح var()
    هنا "قيمة مضمونة اللاصحة" فتسقط الخاصية لقيمتها الابتدائية (auto)، فلا تتصادم إطلاقاً مع
@@ -429,20 +421,15 @@ input[type="checkbox"] {
     width: var(--size);
     height: var(--size);
 }
-/* 🛡️ جولة 3: top/left:50%+translate بدل inset:0 القديمة — لازم الآن لأن العرض/الارتفاع لم
-   يعودا ثابتَين عند 100% (ينكمشان حسب --frame-opening-ratio)، وinset:0 مع عرض/ارتفاع أصغر
-   من 100% كان سيُنتج تمركزاً غير متوقَّع (الحسابان المتعارضان لصندوق موضَّع مطلقاً). النتيجة
-   البصرية بحالة "بلا إطار" (100%×100%) مطابقة تماماً لـinset:0 القديمة — لا فرق هناك */
+/* ✅ top/left:50%+translate(-50%,-50%) — يتمركز الصندوق دوماً بصرف النظر عن حجمه الفعلي
+   (أصغر من 100% بإطار مُفعَّل؛ 100% بلا إطار). القياس = avatarScale (طلب صريح، احتياطي 1 —
+   الصورة بحجمها الكامل — بلا إطار مُفعَّل أو قبل اكتمال جلب frame-display.json) */
 .avatar__photo {
     position: absolute;
     top: 50%;
     left: 50%;
-    /* ✅ clamp(الحدّ الأدنى 55%, القيمة المحسوبة, الحدّ الأقصى 100%) — طلب صريح بالضبط:
-       avatarSize = min(100%, frameBox×ratio×1.04) بهامش أدنى 55%. الاحتياطي (2) لـ
-       --frame-opening-ratio يضمن تجاوز الحدّ الأقصى فيُثبَّت القياس على 100% بلا إطار مُفعَّل
-       أو قبل اكتمال جلب frames-manifest.json (سباق تحميل مؤقّت — raجع app.js) */
-    width: clamp(55%, calc(var(--frame-box, 170%) * var(--frame-opening-ratio, 2) * 1.04), 100%);
-    height: clamp(55%, calc(var(--frame-box, 170%) * var(--frame-opening-ratio, 2) * 1.04), 100%);
+    width: calc(var(--avatar-scale, 1) * 100%);
+    height: calc(var(--avatar-scale, 1) * 100%);
     transform: translate(-50%, -50%);
     border-radius: 50%;
     object-fit: cover;
@@ -453,13 +440,16 @@ input[type="checkbox"] {
 }
 .avatar__frame {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    /* 🛡️ جولة 3: --frame-box وحدها — لا --frame-correction بعد اليوم (حُذفت كلياً). بصمة
-       إطار الزخرفة الظاهرة ثابتة بكل الإطارات بلا استثناء، بصرف النظر عن فتحتها الفعلية —
-       راجع الشرح المطوَّل أعلى هذا القسم */
-    width: var(--frame-box, 170%);
-    height: var(--frame-box, 170%);
+    /* ✅ left/top بنسبة مئوية من الحاوية (.avatar، الصندوق S) — تضيف الإزاحة اليدوية
+       (offsetX/offsetY × S) لنقطة المنتصف قبل التمركز؛ transform:translate(-50%,-50%) يُمركِز
+       الصندوق حول تلك النقطة بنسبة من حجمه هو (S×frameScale)، مستقلة تماماً عن نسبة left/top
+       أعلاه — فتُصبح الإزاحة الفعلية بالبكسل = offsetX×S بالضبط كما هو مطلوب، لا offsetX×frameScale */
+    left: calc(50% + var(--frame-x, 0) * 100%);
+    top: calc(50% + var(--frame-y, 0) * 100%);
+    /* ✅ مربّع S×frameScale — width=height دوماً (طلب صريح: لا تمدّد إطلاقاً)، ثابت بكل
+       الإطارات حسب قيمته الخاصة من frame-display.json فقط، بلا أي سياق آخر يُعدِّله */
+    width: calc(var(--frame-scale, 1.45) * 100%);
+    height: calc(var(--frame-scale, 1.45) * 100%);
     transform: translate(-50%, -50%);
     object-fit: contain;
     pointer-events: none;
@@ -475,12 +465,10 @@ input[type="checkbox"] {
     .avatar__frame--animated { display: none; }
     .avatar__frame--static { display: block; }
 }
-/* 🛡️ طلب صريح جولة 3: "الملف الشخصي/المعاينة المصغَّرة... بـ--frame-box خاص بها" — نافذة
-   "الملف الشخصي المصغَّر" (نقر مستخدم بقائمة متابعين/دردشة/اكتشاف، showMiniProfileModal
-   بـapp.js) هي "المعاينة المصغَّرة" الثانية بالتطبيق (الأولى room-profile — نقر مقعد بالغرفة،
-   راجع .room-profile-avatar-wrap). 64px فقط (w-16)، فنفس 140% تمنح تجاوزاً ~12.8px محتملاً —
-   mt-4 (16px) بدل mt-2 القديمة على اسم المستخدم أسفلها (app.js) يستوعب ذلك بهامش كافٍ */
-.mini-profile-modal-avatar { --frame-box: 140%; }
+/* 🛡️ طلب صريح: لا قيمة --frame-box خاصة بهذا السياق بعد اليوم — frameScale ثابت بالقيمة
+   نفسها بكل سياق (frame-display.json)، بلا تصغير سياقي للنوافذ الضيقة. نافذة "الملف الشخصي
+   المصغَّر" (نقر مستخدم بقائمة متابعين/دردشة/اكتشاف) 64px فقط (w-16) — راجع mt-4 على اسم
+   المستخدم أسفلها (app.js) كهامش استيعاب موجود مسبقاً */
 
 
 /* ===== تأثير الهدية العائم — صورة كبيرة بمنتصف الشاشة تماماً، تطفو مكانها ثم تطير نحو
@@ -738,23 +726,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     --hostAv: min(calc(var(--av) * 1.32), 10cqh, 84px);
 }
 .voice-seats-flex[data-seat-count="19"] { --cols: 6; }
-/* ✅ طلب صريح بمراجعة PR (جولة 2، أرقام مُحدَّثة جولة 3): --frame-box أخفض سياقياً بالشبكات
-   المزدحمة (13/19 مقعداً بـ6 أعمدة) من الافتراضي 170% (راجع .avatar__frame أعلى الملف) —
-   يقلّل فرصة تصادم إطارات الزينة الثابتة الحجم بين مقاعد متجاورة فعلياً بدل الاعتماد فقط على
-   توسيع gap (الحل القديم أعلى .voice-seats-flex). متغيّر سياقي وحيد — لا قيمة خاصة لأي
-   إطار بعينه هنا؛ منذ جولة 3 بصمة الإطار الظاهرة (--frame-box) ثابتة بكل الإطارات بلا
-   استثناء — بيانات frames-manifest.json (effectiveOpeningRatio) تُصغِّر الصورة الشخصية
-   نفسها عبر --frame-opening-ratio، لا تُكبِّر الإطار، فلا حاجة لقيمة --frame-box خاصة بأي
-   إطار بعينه بأي سياق */
-.voice-seats-flex[data-seat-count="13"],
-.voice-seats-flex[data-seat-count="19"] { --frame-box: 155%; }
+/* 🛡️ طلب صريح: لا متغيّر --frame-box سياقي بعد اليوم — frameScale يأتي حصراً من
+   frame-display.json (قيمة ثابتة واحدة لكل إطار بكل سياق، بلا تصغير إضافي بالشبكات المزدحمة) */
 /* ✅ الغرفة الرسمية (80 مقعداً): 8 أعمدة، صيغة حجم أصغر مستقلة، وتمرير داخلي خاص بالشبكة
-   نفسها (لا الصفحة كلها) محدود بـ30cqh كحد أقصى — يبقى شريط الأدوات ظاهراً دائماً تحتها.
-   --frame-box أخفض أيضاً (140%) — أصغر مقاعد بالتطبيق (8 أعمدة)، الأحوج لتصغير بصري إضافي */
+   نفسها (لا الصفحة كلها) محدود بـ30cqh كحد أقصى — يبقى شريط الأدوات ظاهراً دائماً تحتها */
 .voice-seats-flex[data-seat-count="80"] {
     --cols: 8;
     --av: min(calc((100cqw - 2 * var(--u) - 7 * 4px) / 8 * .72), 5.2cqh, 40px);
-    --frame-box: 140%;
     max-height: 30cqh;
     overflow-y: auto;
     scrollbar-width: none;
@@ -767,18 +745,16 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
 }
-/* 🛡️ طلب صريح جولة 5: هامش إضافي صريح بين صفّ المضيف والصفّ الأول (دفاعي، فوق إصلاح تموضع
-   الشارات نفسه أعلاه — لا اعتماد على إصلاح واحد فقط) كي لا تلامس شارات الصفّ الأول اسم/رصيد
-   المضيف أبداً مهما كان حجم الخط أو طول الاسم. كان 0.3u، رُفع إلى 1.1u.
-   🛡️ طلب صريح جولة 5 أيضاً: التاج (.voice-seat-host-badge) يرتفع فوق .voice-seat-av-wrap
-   بتصميمه (يتراكب مع أعلى 15-20% من الحلقة/الصندوق فقط، 80-85% منه خارجها فوقها) — بلا أي
-   هامش علوي محجوز، كان هذا الارتفاع يخرج من صندوق .voice-seat.host-seat نفسه مباشرة (لا
-   مساحة فوق .voice-seat-av-wrap أصلاً بالتصميم السابق، المضيف أول عنصر بالعمود) فيَصطدم أحياناً
-   بشريط إعلان الغرفة فوق الشبكة بالكامل — مؤكَّد آلياً (7 انتهاكات outside-cell + 7
-   overlaps-announcement بالفحص الهندسي، أسوأها الإطارات ذات --crown-extra-lift بالسياق
-   الافتراضي 170%). padding-top هنا يحجز المساحة فعلياً ضمن صندوق خلية المضيف نفسها — أقصى
-   ارتفاع فعلي للتاج محسوب من صيغته بـ.voice-seat-host-badge (أسوأ حالة: فتحة+رفع إضافي
-   بسياق --frame-box=170% ⇒ ~0.53×hostAv فوق حافة الحلقة) + هامش أمان سخي */
+/* ✅ هامش إضافي صريح بين صفّ المضيف والصفّ الأول (دفاعي، فوق إصلاح تموضع الشارات نفسه أعلاه —
+   لا اعتماد على إصلاح واحد فقط) كي لا تلامس شارات الصفّ الأول اسم/رصيد المضيف أبداً مهما كان
+   حجم الخط أو طول الاسم.
+   ✅ التاج (.voice-seat-host-badge) يرتفع فوق .voice-seat-av-wrap بتصميمه (حافته السفلية عند
+   crownTop×S فوق منتصف الصندوق — راجع frame-display.json/hostCrownTopAttr بـapp.js) — بلا أي
+   هامش علوي محجوز هنا كان سيخرج من صندوق .voice-seat.host-seat نفسه مباشرة (المضيف أول عنصر
+   بالعمود) فيَصطدم بشريط إعلان الغرفة فوق الشبكة. padding-top يحجز المساحة فعلياً ضمن صندوق
+   خلية المضيف نفسها — أقصى crownTop حالياً 0.72 (luxury-01) ⇒ أقصى ارتفاع فعلي للتاج فوق حافة
+   .voice-seat-av-wrap ≈ (0.72−0.5)×hostAv + ارتفاع أيقونة التاج نفسها (~0.34×hostAv) ≈ 0.56×hostAv
+   — ضمن هامش الأمان أدناه (0.6×hostAv) */
 .voice-seat.host-seat {
     grid-column: 1 / -1;
     margin-bottom: calc(var(--u) * 1.1);
@@ -960,25 +936,18 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 /* ✅ شارة تاج فوق مقعد المضيف (طلب صريح — النموذج: .seat__badge)، تظهر فقط حين يكون
    مقعد المضيف مشغولاً فعلياً.
-   🛡️ جولة 5 — إصلاح انحدار: الجولة 4 أرست التاج عند حافة --frame-box دوماً (حتى بلا إطار
-   إطلاقاً)، فطفا ~30px فوق الصورة وصدم شريط إعلان الغرفة. طلب صريح جديد: التاج يتراكب مع
-   أعلى 15-20% من "الحلقة ذات الصلة" تحديداً — الصورة البسيطة بلا إطار، أو صندوق الإطار نفسه
-   حين يوجد — لا صيغة واحدة ثابتة بصرف النظر عن وجود إطار كالجولة السابقة. --crown-ref-h
-   تحمل القيمة الصحيحة سياقياً (100% افتراضياً = الصورة، أو --frame-box فعلياً حين توجد
-   .avatar__frame عبر :has() أدناه) فتُصبح صيغة واحدة تخدم الحالتين معاً بلا تفرّع CSS مكرَّر:
-   (100% - crownRefH)/2 = حافة الحلقة العلوية (صفر بلا إطار، سالبة مع إطار)، + 17.5% من
-   crownRefH (منتصف نطاق 15-20% المطلوب) = نقطة التراكب. translateY(-100%) يرفع التاج كاملاً
-   فوق هذي النقطة فتصبح حافته السفلية بالضبط هناك — "متصل دوماً، لا طوفان أبداً" */
-.voice-seat-av-wrap { --crown-ref-h: 100%; }
-.voice-seat-av-wrap:has(.avatar__frame) { --crown-ref-h: var(--frame-box, 170%); }
+   🛡️ طلب صريح (يستبدل صيغة --crown-ref-h/--frame-box/--crown-extra-lift المحسوبة سابقاً):
+   حافة التاج السفلية تسقط عند (منتصف الصندوق − crownTop×S) بالضبط — crownTop قيمة ثابتة
+   واحدة لكل إطار من frame-display.json (بلا إطار: _noFrame.crownTop)، تُحقَن inline على
+   .voice-seat-host-badge نفسها (hostCrownTopAttr بـapp.js)، لا صيغة محسوبة من حجم الإطار
+   الفعلي إطلاقاً. top:50% + translateY(-crownTop×100% بالإضافة لـ-100% الرافعة للتاج كاملاً
+   فوق نقطة الالتصاق) — بصيغة calc() واحدة: 50% (منتصف الصندوق) ناقص crownTop×100% (من حجم
+   الصندوق نفسه، S) = نقطة الالتصاق؛ transform:translateY(-100%) يرفع التاج كاملاً فوقها
+   فتصبح حافته السفلية هناك بالضبط */
 .voice-seat-host-badge {
     position: absolute;
     z-index: 6; /* فوق .avatar__frame (2) وبقية شارات المقعد (5) — التاج يبقى الأعلى دوماً */
-    /* 🛡️ جولة 5: --crown-extra-lift (مضبوطة JS فقط لإطارَي admin/black-gold-crown — راجع
-       hostCrownLiftAttr بـapp.js) ترفع نقطة الالتصاق أعلى قليلاً لإطارات زخرفتها كثيفة أعلى
-       الصندوق نفسها (تاج/أسود الإطار يبرزان قرب القمة)، كي لا يجلس تاج الشارة فوق زخرفة الإطار
-       مباشرة — بلا تأثير على بقية الإطارات (تبقى 0 افتراضياً) */
-    top: calc((100% - var(--crown-ref-h)) / 2 + var(--crown-ref-h) * (0.175 - var(--crown-extra-lift, 0)));
+    top: calc(50% - var(--crown-top, 0.45) * 100%);
     left: 50%;
     transform: translate(-50%, -100%) rotate(-8deg);
     font-size: calc(var(--hostAv, var(--av)) * .34);
@@ -1582,10 +1551,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 @media (min-width: 768px) { .room-profile-sheet-card { border-radius: 20px; margin-bottom: 16px; } }
 .room-profile-body { padding-bottom: 4px; position: relative; }
-/* ✅ padding-top: 70px = نصف ارتفاع الصورة (42px) + أقصى تجاوز آمن للإطار فوق هذا السياق
-   الضيق (--frame-box:140% أدناه ⇒ ~16.8px) + هامش فاصل (10px) — يمنع تغطية الاسم أسفله مهما
-   كان الإطار المُفعَّل، بدل خنق حجم الإطار نفسه أكثر من اللازم (ملاحظات دقيقة لكل إطار على
-   حدة أثبتت أن هذا السياق تحديداً كان يُغطّي الاسم) */
+/* ✅ padding-top: 70px = نصف ارتفاع الصورة (42px) + هامش فاصل (28px) يمنع تغطية الاسم أسفله.
+   🛡️ طلب صريح: frameScale ثابت بقيمته من frame-display.json بهذا السياق أيضاً (لا --frame-box
+   خاص به بعد اليوم — راجع أعلى الملف) */
 .room-profile-header { text-align: center; padding: 70px 16px 4px; position: relative; }
 .room-profile-avatar-wrap {
     position: absolute;
@@ -1595,12 +1563,6 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     width: 84px;
     height: 84px;
     z-index: 2;
-    /* 🛡️ طلب صريح جولة 3: "نفس النموذج ينطبق على الملف الشخصي/المعاينة المصغَّرة، بـ--frame-box
-       خاص بها" — هذي "المعاينة المصغَّرة" الحقيقية بالتطبيق (نقر مقعد بالغرفة). 🐛 إصلاح
-       جانبي: كانت بلا أي قيمة --frame-box مضبوطة فعلياً (رغم أن التعليق أعلى .room-profile-header
-       افترض 140% منذ البداية) — تعتمد الافتراضي 170% عملياً، تجاوز أكبر من المفترَض بتعليق
-       padding-top (قد يُغطّي الاسم فعلياً بإطار كبير). تثبيتها الآن يطابق التعليق القديم تماماً */
-    --frame-box: 140%;
 }
 .room-profile-avatar {
     width: 100%; height: 100%;
@@ -5447,11 +5409,6 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
     left: 50%; top: 118px;
     transform: translate(-50%, -50%);
     width: 108px; height: 108px;
-    /* 🛡️ طلب صريح جولة 3: "الملف الشخصي... بـ--frame-box خاص بها". 🐛 إصلاح جانبي: كانت
-       بلا أي قيمة --frame-box فعلية (تعليق padding-top أسفل .full-profile-identity افترض
-       140% منذ البداية، لكنها لم تُضبط هنا فعلياً فاعتمدت الافتراضي 170% عملياً) — تثبيتها
-       الآن يطابق حساب padding-top القديم تماماً، ويضمن عدم تغطية الاسم */
-    --frame-box: 140%;
 }
 .full-profile-avatar {
     display: block;
@@ -5464,10 +5421,9 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
         0 0 0 5px rgba(219,39,119,0.18),
         0 6px 18px rgba(0,0,0,0.5);
 }
-/* ✅ padding-top: 84px = نصف ارتفاع الصورة (54px) + أقصى تجاوز آمن للإطار (--frame-box:140%
-   أعلى .full-profile-avatar-wrap ⇒ ~21.6px) + هامش فاصل (8px) — أكثر شكوى متكررة بملاحظات
-   المستخدم الدقيقة لكل إطار كانت "الملف الكامل كبير يغطي الاسم"؛ الحل هنا توسيع المسافة
-   المتاحة تحت الصورة بدل تصغير الإطار نفسه أكثر من سقفه الآمن (140%) */
+/* ✅ padding-top: 84px = نصف ارتفاع الصورة (54px) + هامش فاصل (30px) يمنع تغطية الاسم.
+   🛡️ طلب صريح: frameScale ثابت بقيمته من frame-display.json بهذا السياق أيضاً (لا --frame-box
+   خاص به بعد اليوم — راجع أعلى الملف) */
 .full-profile-identity {
     text-align: center;
     padding: 84px 16px 10px;
@@ -5748,10 +5704,6 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
     width: 96px;
     height: 96px;
     z-index: 2;
-    /* 🛡️ طلب صريح جولة 3: نفس إصلاح .full-profile-avatar-wrap أعلى الملف — كانت بلا
-       --frame-box فعلية رغم أن تعليق padding-top أسفل .profile-hub-identity افترض 140%
-       منذ البداية */
-    --frame-box: 140%;
 }
 .profile-hub-avatar-wrap::before {
     content: '';
@@ -5770,9 +5722,10 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
     border: 3px solid #111827;
     box-shadow: 0 6px 18px rgba(0,0,0,0.5);
 }
-/* ✅ padding-top: 54px = التداخل الثابت أسفل الغلاف (28px) + أقصى تجاوز آمن للإطار
-   (--frame-box:140% أعلى .profile-hub-avatar-wrap ⇒ ~19px) + هامش فاصل (7px) — نفس مبدأ
-   full-profile-identity أعلاه، يحمي اسم المستخدم من تغطية أي إطار مُفعَّل بصفحة حسابي الشخصية */
+/* ✅ padding-top: 54px = التداخل الثابت أسفل الغلاف (28px) + هامش فاصل (26px) يحمي اسم
+   المستخدم من تغطية أي إطار مُفعَّل بصفحة حسابي الشخصية.
+   🛡️ طلب صريح: frameScale ثابت بقيمته من frame-display.json بهذا السياق أيضاً (لا --frame-box
+   خاص به بعد اليوم — راجع أعلى الملف) */
 .profile-hub-identity { text-align: center; padding: 54px 16px 6px; }
 .profile-hub-name { font-size: 17px; font-weight: 800; color: #fff; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .profile-hub-id { font-size: 11px; color: #9ca3af; margin-top: 2px; }

@@ -105,22 +105,18 @@ const calculateRequiredXp = (level) => {
 // computeOverlayArtScaleCap (حساب سقف تصادم ديناميكي)، وقيم photoScale/artScale/exemptFromTightCap
 // منفصلة لكل إطار — بمكوّن واحد موحَّد يُستخدَم مباشرة بكل قالب عبر avatarHTML() بدل حقن DOM
 // بعد الرسم: <span class="avatar"><img class="avatar__photo"><img class="avatar__frame">×2</span>
-// (نسختا الإطار: متحركة + ثابتة — راجع فقرة جولة 3 أدناه)
-// 🛡️ تحديث جولة 2: القياس الموحَّد تغيّر من 160%/62.5% إلى متغيّر CSS --frame-scale (راجع
-// .avatar__frame بـinput.css وقتها)، وFRAME_OPENING_RATIOS (effectiveOpeningRatio من
-// frames-manifest.json) كانت تُكبِّر إطار الزخرفة نفسه لإطارات فتحتها أضيق من 50%.
-// 🛡️ تحديث جولة 3 (تغيير جوهري بنموذج العرض — طلب صريح، أسلوب Bigo/Likee "بصمة ثابتة"):
-// تكبير إطار الزخرفة نفسه (الجولة الثانية) أنتج إطارات ضخمة غير متّسقة بصرياً بين المقاعد —
-// بالضبط ما وصفته المراجعة. النموذج الآن معكوس: .avatar__frame ثابت الحجم بكل الإطارات بلا
-// استثناء (--frame-box وحدها بـinput.css — لا --frame-correction، حُذفت كلياً)، وFRAME_OPENING_RATIOS
-// تُستخدَم الآن لتصغير .avatar__photo (الصورة الشخصية) نفسها عبر frameOpeningRatioAttr/
-// --frame-opening-ratio، لا لتكبير الإطار — راجع .avatar__photo بـinput.css لصيغة الحساب
-// الكاملة (avatarSize = clamp(55%, frameBox×ratio×1.04, 100%)). بصمة كل المقعد/الصندوق
-// (--size الخارجية) لا تتغيّر حجماً بإضافة/إزالة/تبديل إطار إطلاقاً — طلب صريح، لا قفزة تخطيط.
-// 🛡️ جولة 3 أيضاً: كل frameClass حقيقي الآن له نسختان — متحركة (الأصلية) وثابتة (لقطة واحدة،
-// مولَّدة بـnormalize-frames.js) — تُنشآن معاً دوماً، والتبديل بينهما بصريّ بحتاً عبر
-// @media(prefers-reduced-motion:reduce) بـinput.css (.avatar__frame--animated/--static)،
-// بلا أي فرع هنا يفحص تفضيل الحركة بنفسه
+// (نسختا الإطار: متحركة + ثابتة — كل frameClass حقيقي له نسختان، متحركة وثابتة (لقطة واحدة،
+// مولَّدة بـnormalize-frames.js)، تُنشآن معاً دوماً والتبديل بينهما بصريّ بحتاً عبر
+// @media(prefers-reduced-motion:reduce) بـinput.css (.avatar__frame--animated/--static)، بلا
+// أي فرع هنا يفحص تفضيل الحركة بنفسه.
+// 🛡️ تحديث لاحق (طلب صريح — يستبدل كل تحجيم آلي سابق): الجولات 2-5 مرّت بأنظمة تحجيم آلية
+// متتالية مبنية على نسبة فتحة الإطار الفعلية (FRAME_OPENING_RATIOS من frames-manifest.json،
+// --frame-box/--frame-correction/--crown-extra-lift بـinput.css) — كلها حُذفت كلياً الآن.
+// النظام الحالي: قيم ثابتة (frameScale/avatarScale/offsetX/offsetY/crownTop) ضبطها صاحب
+// المشروع يدوياً لكل إطار بـpublic/assets/frames/frame-display.json، تُطبَّق حرفياً بلا أي
+// حساب مشتق من نسبة الفتحة — راجع resolveFrameDisplay/frameDisplayStyle/hostCrownTopAttr
+// أدناه. بصمة كل المقعد/الصندوق (--size الخارجية) لا تتغيّر حجماً بإضافة/إزالة/تبديل إطار
+// إطلاقاً — طلب صريح، لا قفزة تخطيط.
 // 🛡️ طلب صريح بمراجعة PR (جولة 4): أصل محلي محايد (ظلّ شخص، ≤20KB webp — راجع
 // scripts/__verification__ لا يوجد؛ وُلِّد مباشرة بـsharp، لا صورة خارجية) — احتياطي وحيد
 // لكل صورة أفاتار بالتطبيق بلا استثناء (avatarHTML أدناه + كل مكان آخر يُستخدَم فيه صراحة)
@@ -147,46 +143,61 @@ function staticFrameUrl(frameUrl) {
     return frameUrl.replace(/\.webp$/, '-static.webp');
 }
 
-// ✅ frameClass → نسبة فتحة فعلية (effectiveOpeningRatio من scripts/frames-manifest.json،
-// منسوخة حرفياً وقت التوحيد لـpublic/assets/frames/frames-manifest.json المخدومة هنا) —
-// جلب واحد فقط عند تحميل التطبيق (ملف صغير، 11 مدخلاً)، لا جلب لكل عنصر .avatar. يبقى {}
-// لو الجلب لم يكتمل بعد/فشل — frameOpeningRatioAttr تتجاهل بأمان فتظهر الصورة بحجمها الكامل
-// (100%) حتى يكتمل الجلب لاحقاً، لا بحجم خاطئ
-let FRAME_OPENING_RATIOS = {};
-fetch('/assets/frames/frames-manifest.json')
+// 🛡️ طلب صريح: استُبدل نظام التحجيم الآلي بالكامل (effectiveOpeningRatio من
+// frames-manifest.json، --frame-correction، --crown-extra-lift) بقيم ثابتة ضبطها صاحب
+// المشروع يدوياً لكل إطار — public/assets/frames/frame-display.json، تُطبَّق حرفياً بلا أي
+// حساب مشتق من نسبة الفتحة. جلب واحد فقط عند تحميل التطبيق (ملف صغير، 11 إطاراً + مدخلان
+// احتياطيان)، لا جلب لكل عنصر .avatar. يبقى {} لو الجلب لم يكتمل بعد/فشل — resolveFrameDisplay
+// تتجاهل بأمان فتستخدم احتياطيات CSS نفسها (مطابقة لـ_default/_noFrame بالملف) حتى يكتمل الجلب
+let FRAME_DISPLAY_CONFIG = {};
+fetch('/assets/frames/frame-display.json')
     .then(r => r.ok ? r.json() : {})
-    .then(data => {
-        const ratios = {};
-        for (const [k, v] of Object.entries(data || {})) {
-            if (!k.startsWith('_') && v && typeof v.effectiveOpeningRatio === 'number') ratios[k] = v.effectiveOpeningRatio;
-        }
-        FRAME_OPENING_RATIOS = ratios;
-    })
+    .then(data => { FRAME_DISPLAY_CONFIG = data || {}; })
     .catch(() => {});
 
-// ✅ يحسب سمة style جاهزة للحقن المباشر على .avatar__photo بقالب avatarHTML() — --frame-opening-ratio
-// هي effectiveOpeningRatio الحقيقية (لا معامل تصحيح/قسمة) — صيغة الحساب الكاملة (clamp+frameBox)
-// بـinput.css، لا هنا؛ القيمة فارغة تماماً (لا أثر، الصورة 100%) لإطار غير معروف/بلا بيانات بعد
-function frameOpeningRatioAttr(frameClass) {
-    const ratio = frameClass ? FRAME_OPENING_RATIOS[frameClass] : null;
-    if (typeof ratio !== 'number') return '';
-    return ` style="--frame-opening-ratio:${ratio}"`;
+// ✅ يحسب القيم الأربع (frameScale/avatarScale/offsetX/offsetY) الفعلية لإطار بعينه — إطار
+// معروف بالملف يأخذ قيمه حرفياً؛ إطار غير معروف (أو الملف لم يكتمل جلبه بعد) يأخذ _default.
+// لا حساب أو تصحيح إطلاقاً هنا — القيم تُطبَّق كما هي بالضبط
+function resolveFrameDisplay(frameClass) {
+    const def = FRAME_DISPLAY_CONFIG._default || {};
+    const entry = (frameClass && FRAME_DISPLAY_CONFIG[frameClass]) || {};
+    return {
+        frameScale: typeof entry.frameScale === 'number' ? entry.frameScale : def.frameScale,
+        avatarScale: typeof entry.avatarScale === 'number' ? entry.avatarScale : def.avatarScale,
+        offsetX: typeof entry.offsetX === 'number' ? entry.offsetX : def.offsetX,
+        offsetY: typeof entry.offsetY === 'number' ? entry.offsetY : def.offsetY
+    };
 }
 
-// 🛡️ طلب صريح بمراجعة PR (جولة 5): تاج شارة المضيف (.voice-seat-host-badge) يرتكز على نقطة
-// محسوبة من --frame-box (راجع input.css)، صحيحة لكل الإطارات الـ11 بصيغة واحدة — إلا إطارين
-// بالذات بزخرفة كثيفة قرب قمة الصندوق نفسها (admin: أسدان متقابلان، black-gold-crown: تاج/
-// أسود بارزان) حيث تجلس شارة التاج فوق "تاج" الإطار نفسه بصرياً بنفس النقطة القياسية — استثناء
-// صغير موثَّق صراحة (لا قاعدة عامة) يرفع نقطة الالتصاق قليلاً لهذين تحديداً عبر
-// --crown-extra-lift (0 افتراضياً لبقية الإطارات، بلا أي أثر)
-const HOST_CROWN_EXTRA_LIFT = {
-    'profile-frame-admin': 0.08,
-    'profile-frame-black-gold-crown': 0.08
-};
-function hostCrownLiftAttr(frameClass) {
-    const lift = frameClass ? HOST_CROWN_EXTRA_LIFT[frameClass] : null;
-    if (!lift) return '';
-    return ` style="--crown-extra-lift:${lift}"`;
+// ✅ يحسب سمة style جاهزة للحقن على <span class="avatar"> بقالب avatarHTML() — القيم الأربع
+// أعلاه كمتغيّرات CSS (--frame-scale/--avatar-scale/--frame-x/--frame-y) يقرأها .avatar__frame/
+// .avatar__photo بـinput.css مباشرة. بلا إطار: avatarScale يبقى 1 (الصورة بحجمها الكامل،
+// لا إطار يُرسَم أصلاً فـframeScale غير ذات أثر عملياً) — قيمة فارغة تماماً (لا أثر) هنا
+function frameDisplayStyle(frameClass) {
+    if (!frameClass) return '';
+    const { frameScale, avatarScale, offsetX, offsetY } = resolveFrameDisplay(frameClass);
+    const parts = [];
+    if (typeof frameScale === 'number') parts.push(`--frame-scale:${frameScale}`);
+    if (typeof avatarScale === 'number') parts.push(`--avatar-scale:${avatarScale}`);
+    if (typeof offsetX === 'number') parts.push(`--frame-x:${offsetX}`);
+    if (typeof offsetY === 'number') parts.push(`--frame-y:${offsetY}`);
+    return parts.length ? `${parts.join(';')}` : '';
+}
+
+// 🛡️ طلب صريح: تاج شارة المضيف (.voice-seat-host-badge) يرتكز الآن على crownTop الثابت —
+// حافته السفلية عند (منتصف المقعد − crownTop×S)، بلا إطار تُستخدَم قيمة _noFrame.crownTop —
+// قيمة واحدة لكل إطار من frame-display.json، لا صيغة محسوبة من --frame-box أو أي شيء آخر
+function hostCrownTopAttr(frameClass) {
+    const def = FRAME_DISPLAY_CONFIG._default || {};
+    let crownTop;
+    if (frameClass) {
+        const entry = FRAME_DISPLAY_CONFIG[frameClass] || {};
+        crownTop = typeof entry.crownTop === 'number' ? entry.crownTop : def.crownTop;
+    } else {
+        const noFrame = FRAME_DISPLAY_CONFIG._noFrame || {};
+        crownTop = typeof noFrame.crownTop === 'number' ? noFrame.crownTop : def.crownTop;
+    }
+    return typeof crownTop === 'number' ? ` style="--crown-top:${crownTop}"` : '';
 }
 
 // ✅ المكوّن الموحَّد الوحيد لعرض صورة شخصية + إطارها بكل مكان بالتطبيق (مقعد/دردشة/ملف
@@ -194,23 +205,28 @@ function hostCrownLiftAttr(frameClass) {
 // sizeClass يحمل نفس أصناف الحجم التي كانت على <img> سابقاً (تنتقل الآن للـ<span> الخارجي
 // كاملة بلا تغيير — تبقى تتحكّم بحجم الصندوق تماماً كما كانت)؛ extraPhotoClass لأي صنف ديناميكي
 // آخر كان على <img> نفسها (حدود/تظليل حالة...، راجع رسائل الدردشة الخاصة مثالاً)؛ photoAttrs
-// لأي خاصية غير class (title/id/data-*)؛ wrapAttrs لأي خاصية على الحاوية الخارجية.
+// لأي خاصية غير class (title/id/data-*)؛ wrapAttrs لأي خاصية غير style على الحاوية الخارجية؛
+// wrapStyle لأي تصريح CSS inline إضافي عليها (مثال: --size:100% بنوافذ المتجر) — يُدمَج مع
+// --frame-scale/--avatar-scale/--frame-x/--frame-y (frameDisplayStyle) بسمة style واحدة، لا
+// سمتان متكرّرتان (المتصفح يتجاهل صامتاً أي style= ثانية لنفس العنصر)
 // frameClass إطار-صورة حقيقي (بـFRAME_ASSET_URLS) → طبقتا <img class="avatar__frame"> فعليتان
 // (متحركة+ثابتة، راجع فقرة جولة 3 أعلى الملف)؛ أي صنف آخر (إطارات CSS القديمة المتقاعدة
 // كـprofile-frame-silver-elegant) يبقى على avatar__photo نفسها فتُطبَّق حدودها/توهّجها
 // المرسومة بـCSS مباشرة كما كانت دوماً — لا تغيير
-function avatarHTML({ src, frameClass, sizeClass = '', extraPhotoClass = '', photoAttrs = '', wrapAttrs = '' }) {
+function avatarHTML({ src, frameClass, sizeClass = '', extraPhotoClass = '', photoAttrs = '', wrapAttrs = '', wrapStyle = '' }) {
     const frameUrl = frameClass ? FRAME_ASSET_URLS[frameClass] : null;
     const photoClass = `avatar__photo${frameUrl ? '' : (frameClass ? ' ' + frameClass : '')}${extraPhotoClass ? ' ' + extraPhotoClass : ''}`;
     const frameImgs = frameUrl
         ? `<img class="avatar__frame avatar__frame--animated" src="${frameUrl}" alt="" aria-hidden="true">`
         + `<img class="avatar__frame avatar__frame--static" src="${staticFrameUrl(frameUrl)}" alt="" aria-hidden="true">`
         : '';
+    const styleParts = [wrapStyle, frameDisplayStyle(frameClass)].filter(Boolean);
+    const styleAttr = styleParts.length ? ` style="${styleParts.join(';')}"` : '';
     // 🛡️ طلب صريح بمراجعة PR (جولة 4): src فارغة (لا profileImage إطلاقاً) كانت تُنتج
     // <img src=""> — أيقونة صورة مكسورة + نصّ alt يفيض من تحت الإطار. DEFAULT_AVATAR_URL
     // الآن احتياطي دائم هنا؛ فشل تحميل src حقيقية لكن ميتة (رابط 404) يلتقطه مستمع onerror
     // العام (راجع أسفل الملف) — لا حاجة لمعالجة مزدوجة هنا
-    return `<span class="avatar ${sizeClass}"${wrapAttrs}><img class="${photoClass}" src="${src || DEFAULT_AVATAR_URL}"${photoAttrs}${frameOpeningRatioAttr(frameClass)}>${frameImgs}</span>`;
+    return `<span class="avatar ${sizeClass}"${styleAttr}${wrapAttrs}><img class="${photoClass}" src="${src || DEFAULT_AVATAR_URL}"${photoAttrs}>${frameImgs}</span>`;
 }
 
 // 🛡️ طلب صريح بمراجعة PR (جولة 4): مستمع onerror عام وحيد (لا onerror مكرَّر على كل <img>
@@ -272,22 +288,41 @@ function applyFrameToAvatarWrap(wrap, activeFrameClass) {
         }
         if (frameImgStatic.getAttribute('src') !== staticUrl) frameImgStatic.src = staticUrl;
 
-        // 🛡️ جولة 3: --frame-opening-ratio على .avatar__photo (الصورة الشخصية)، لا على
-        // .avatar__frame — راجع frameOpeningRatioAttr/شرح جولة 3 أعلى الملف. removeProperty
-        // لا رقم احتياطي صريح كي ترث القيمة الاحتياطية الحقيقية بـCSS (2 — تُثبِّت القياس
-        // على 100% تلقائياً) لو لم تتوفر بيانات هذا الإطار بالمانيفست بعد لأي سبب
-        const ratio = FRAME_OPENING_RATIOS[activeFrameClass];
-        if (photo) {
-            if (typeof ratio === 'number') {
-                photo.style.setProperty('--frame-opening-ratio', String(ratio));
-            } else {
-                photo.style.removeProperty('--frame-opening-ratio');
-            }
-        }
+        // 🛡️ طلب صريح: القيم الأربع الثابتة (frame-display.json) على wrap (<span class="avatar">
+        // نفسها) — لا على .avatar__photo كالنظام القديم — راجع frameDisplayStyle/resolveFrameDisplay
+        // أعلى الملف. removeProperty بلا قيمة احتياطية صريحة كي يرث العنصر الاحتياطي الحقيقي
+        // بـCSS (مطابق لـ_default) لو تعذّر الحصول على قيمة لأي سبب
+        const { frameScale, avatarScale, offsetX, offsetY } = resolveFrameDisplay(activeFrameClass);
+        [['--frame-scale', frameScale], ['--avatar-scale', avatarScale], ['--frame-x', offsetX], ['--frame-y', offsetY]]
+            .forEach(([prop, val]) => {
+                if (typeof val === 'number') wrap.style.setProperty(prop, String(val));
+                else wrap.style.removeProperty(prop);
+            });
     } else {
         if (frameImgAnimated) frameImgAnimated.remove();
         if (frameImgStatic) frameImgStatic.remove();
-        if (photo) photo.style.removeProperty('--frame-opening-ratio');
+        wrap.style.removeProperty('--frame-scale');
+        wrap.style.removeProperty('--avatar-scale');
+        wrap.style.removeProperty('--frame-x');
+        wrap.style.removeProperty('--frame-y');
+    }
+
+    // ✅ تحديث تاج المضيف (.voice-seat-host-badge) لو هذا الصندوق فعلياً مقعد مضيف بغرفة صوتية
+    // — أخ شقيق لـwrap (<span class="avatar">) داخل .voice-seat-av-wrap نفسها، لا ابن لها —
+    // يُحدَّث هنا كي لا يبقى التاج بموضعه القديم لو بدَّل المضيف إطاره أثناء جلوسه فعلياً
+    const hostBadge = wrap.closest('.voice-seat-av-wrap')?.querySelector('.voice-seat-host-badge');
+    if (hostBadge) {
+        const def = FRAME_DISPLAY_CONFIG._default || {};
+        let crownTop;
+        if (activeFrameClass) {
+            const entry = FRAME_DISPLAY_CONFIG[activeFrameClass] || {};
+            crownTop = typeof entry.crownTop === 'number' ? entry.crownTop : def.crownTop;
+        } else {
+            const noFrame = FRAME_DISPLAY_CONFIG._noFrame || {};
+            crownTop = typeof noFrame.crownTop === 'number' ? noFrame.crownTop : def.crownTop;
+        }
+        if (typeof crownTop === 'number') hostBadge.style.setProperty('--crown-top', String(crownTop));
+        else hostBadge.style.removeProperty('--crown-top');
     }
 }
 
@@ -784,7 +819,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <div class="voice-seat-av-wrap">
                     <span class="voice-seat-wave"></span>
                     <span class="voice-seat-wave"></span>
-                    ${isHostSeat ? `<i class="fas fa-crown voice-seat-host-badge"${hostCrownLiftAttr(seatData.user.activeFrameClass)}></i>` : ''}
+                    ${isHostSeat ? `<i class="fas fa-crown voice-seat-host-badge"${hostCrownTopAttr(seatData.user.activeFrameClass)}></i>` : ''}
                     ${avatarHTML({ src: seatData.user.profileImage, frameClass: seatData.user.activeFrameClass, sizeClass: 'voice-seat-avatar', photoAttrs: ` alt="${safeName}" loading="lazy" decoding="async"` })}
                     <span class="voice-seat-mic-badge ${seatData.isMuted ? 'muted' : ''}"><i class="fas ${seatData.isMuted ? 'fa-microphone-slash' : 'fa-microphone'}"></i></span>
                     ${isHostSeat ? '' : `<span class="voice-seat-no">${seatNo}</span>`}
@@ -7573,7 +7608,7 @@ function frameShopCardHTML(f, userPhoto) {
     return `
         <div class="frame-shop-card">
             <button type="button" class="frame-shop-card-preview-btn" data-frame-id="${f._id}" title="معاينة">
-                <div class="frame-shop-card-avatar-wrap">${avatarHTML({ src: userPhoto, frameClass: f.cssClass, wrapAttrs: ' style="--size:100%"', photoAttrs: ' decoding="async"' })}</div>
+                <div class="frame-shop-card-avatar-wrap">${avatarHTML({ src: userPhoto, frameClass: f.cssClass, wrapStyle: '--size:100%', photoAttrs: ' decoding="async"' })}</div>
             </button>
             <div class="frame-shop-duration-pills" data-frame-id="${f._id}">
                 <button type="button" class="frame-shop-duration-pill active" data-duration="1">يوم<span>${f.prices.day1}</span></button>
@@ -7630,7 +7665,7 @@ function frameBoxItemHTML(meta, userPhoto, isActive) {
     return `
         <div class="frame-box-item">
             <div class="frame-box-item-avatar-wrap ${autoRenewOn ? 'frame-box-item-autorenew' : ''}">
-                ${avatarHTML({ src: userPhoto, frameClass: meta.cssClass, wrapAttrs: ' style="--size:100%"', photoAttrs: ' decoding="async"' })}
+                ${avatarHTML({ src: userPhoto, frameClass: meta.cssClass, wrapStyle: '--size:100%', photoAttrs: ' decoding="async"' })}
                 ${autoRenewOn ? `<span class="frame-box-item-autorenew-tag">تجديد تلقائي</span>` : ''}
             </div>
             <div class="frame-box-item-text">
@@ -7697,7 +7732,7 @@ async function showFrameShopModal() {
         const activeMeta = data.activeFrame ? data.frames.find(f => f._id.toString() === data.activeFrame.toString()) : null;
         const preview = modal.querySelector('#frame-shop-current-preview');
         preview.innerHTML = `
-            <div class="frame-shop-current-avatar-wrap">${avatarHTML({ src: userPhoto, frameClass: activeMeta ? activeMeta.cssClass : null, wrapAttrs: ' style="--size:100%"', photoAttrs: ' decoding="async"' })}</div>
+            <div class="frame-shop-current-avatar-wrap">${avatarHTML({ src: userPhoto, frameClass: activeMeta ? activeMeta.cssClass : null, wrapStyle: '--size:100%', photoAttrs: ' decoding="async"' })}</div>
             <p class="frame-shop-current-label">${activeMeta ? escapeHtml(activeMeta.name) : 'بلا إطار مفعّل حالياً'}</p>
             ${activeMeta ? `<button type="button" id="frame-shop-remove-btn" class="frame-shop-remove-btn">إزالة الإطار</button>` : ''}
         `;
@@ -7771,7 +7806,7 @@ async function showFrameShopModal() {
                     const preview = modal.querySelector('#frame-shop-current-preview');
                     if (preview) {
                         preview.innerHTML = `
-                            <div class="frame-shop-current-avatar-wrap">${avatarHTML({ src: userPhoto, frameClass: activeMeta ? activeMeta.cssClass : null, wrapAttrs: ' style="--size:100%"', photoAttrs: ' decoding="async"' })}</div>
+                            <div class="frame-shop-current-avatar-wrap">${avatarHTML({ src: userPhoto, frameClass: activeMeta ? activeMeta.cssClass : null, wrapStyle: '--size:100%', photoAttrs: ' decoding="async"' })}</div>
                             <p class="frame-shop-current-label">${activeMeta ? escapeHtml(activeMeta.name) : 'بلا إطار مفعّل حالياً'}</p>
                             ${activeMeta ? `<button type="button" id="frame-shop-remove-btn" class="frame-shop-remove-btn">إزالة الإطار</button>` : ''}
                         `;
@@ -7862,9 +7897,9 @@ async function showFrameShopModal() {
     // ✅ نافذة "معاينة الإطار" — واقعية فعلاً: 3 مقاعد حقيقية (نفس أصناف/أحجام المقعد الفعلي
     // بالغرفة .voice-seat/.voice-seats-flex.cols-3) بجانب بعضها، الوسط بصورة المستخدم مع الإطار
     // المرشَّح، والجانبان بصورته بلا إطار للمقارنة. avatarHTML({frameClass: frame.cssClass})
-    // يبني الوسط مباشرة بنفس مكوّن .avatar الحقيقي — فتُطابق المعاينة الحقيقة 100% (نفس
-    // --frame-box الافتراضية 170% المستخدَمة بكل سياق عادي؛ .frame-preview-mini-seat ليست
-    // داخل [data-seat-count] فلا تُخفَّض هنا، مطابقةً للملف الشخصي/الدردشة لا شبكات المقاعد).
+    // يبني الوسط مباشرة بنفس مكوّن .avatar الحقيقي — فتُطابق المعاينة الحقيقة 100% (frameScale
+    // ثابت بقيمته من frame-display.json بكل سياق بلا استثناء الآن، فلا فرق بين هذي المعاينة
+    // وأي مقعد حقيقي بأي غرفة إطلاقاً).
     // ✅ طلب صريح: انتقلت داخل إغلاق showFrameShopModal (بدل دالة منفصلة بالأعلى) كي تصل مباشرة
     // لـpurchaseFrame/lastShopData/renderBoxList الموجودة هنا — فالشراء وتبديل التجديد التلقائي
     // من نافذة المعاينة نفسها يستخدمان نفس مسار الحقيقة الواحدة بلا تكرار منطق
