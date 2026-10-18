@@ -1,0 +1,86 @@
+{
+  "room9-noframe@320": {
+    "320": {
+      "seatCount": 9,
+      "decorationCount": 18,
+      "violations": []
+    }
+  },
+  "room9-noframe@375": {
+    "375": {
+      "seatCount": 9,
+      "decorationCount": 18,
+      "violations": []
+    }
+  },
+  "room9-noframe@430": {
+    "430": {
+      "seatCount": 9,
+      "decorationCount": 18,
+      "violations": []
+    }
+  },
+  "room13-blackgoldcrown@320": {
+    "320": {
+      "seatCount": 13,
+      "decorationCount": 26,
+      "violations": []
+    }
+  },
+  "room13-blackgoldcrown@375": {
+    "375": {
+      "seatCount": 13,
+      "decorationCount": 26,
+      "violations": []
+    }
+  },
+  "room13-blackgoldcrown@430": {
+    "430": {
+      "seatCount": 13,
+      "decorationCount": 26,
+      "violations": []
+    }
+  },
+  "room19-admin@320": {
+    "320": {
+      "seatCount": 19,
+      "decorationCount": 38,
+      "violations": []
+    }
+  },
+  "room19-admin@375": {
+    "375": {
+      "seatCount": 19,
+      "decorationCount": 38,
+      "violations": []
+    }
+  },
+  "room19-admin@430": {
+    "430": {
+      "seatCount": 19,
+      "decorationCount": 38,
+      "violations": []
+    }
+  },
+  "room80-lionbee@320": {
+    "320": {
+      "seatCount": 80,
+      "decorationCount": 160,
+      "violations": []
+    }
+  },
+  "room80-lionbee@375": {
+    "375": {
+      "seatCount": 80,
+      "decorationCount": 160,
+      "violations": []
+    }
+  },
+  "room80-lionbee@430": {
+    "430": {
+      "seatCount": 80,
+      "decorationCount": 160,
+      "violations": []
+    }
+  }
+}

@@ -173,6 +173,22 @@ function frameOpeningRatioAttr(frameClass) {
     return ` style="--frame-opening-ratio:${ratio}"`;
 }
 
+// 🛡️ طلب صريح بمراجعة PR (جولة 5): تاج شارة المضيف (.voice-seat-host-badge) يرتكز على نقطة
+// محسوبة من --frame-box (راجع input.css)، صحيحة لكل الإطارات الـ11 بصيغة واحدة — إلا إطارين
+// بالذات بزخرفة كثيفة قرب قمة الصندوق نفسها (admin: أسدان متقابلان، black-gold-crown: تاج/
+// أسود بارزان) حيث تجلس شارة التاج فوق "تاج" الإطار نفسه بصرياً بنفس النقطة القياسية — استثناء
+// صغير موثَّق صراحة (لا قاعدة عامة) يرفع نقطة الالتصاق قليلاً لهذين تحديداً عبر
+// --crown-extra-lift (0 افتراضياً لبقية الإطارات، بلا أي أثر)
+const HOST_CROWN_EXTRA_LIFT = {
+    'profile-frame-admin': 0.08,
+    'profile-frame-black-gold-crown': 0.08
+};
+function hostCrownLiftAttr(frameClass) {
+    const lift = frameClass ? HOST_CROWN_EXTRA_LIFT[frameClass] : null;
+    if (!lift) return '';
+    return ` style="--crown-extra-lift:${lift}"`;
+}
+
 // ✅ المكوّن الموحَّد الوحيد لعرض صورة شخصية + إطارها بكل مكان بالتطبيق (مقعد/دردشة/ملف
 // شخصي/متجر/قوائم...) — يستبدل كل <img class="SIZE ${activeFrameClass}"> مباشر سابقاً.
 // sizeClass يحمل نفس أصناف الحجم التي كانت على <img> سابقاً (تنتقل الآن للـ<span> الخارجي
@@ -768,7 +784,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 <div class="voice-seat-av-wrap">
                     <span class="voice-seat-wave"></span>
                     <span class="voice-seat-wave"></span>
-                    ${isHostSeat ? '<i class="fas fa-crown voice-seat-host-badge"></i>' : ''}
+                    ${isHostSeat ? `<i class="fas fa-crown voice-seat-host-badge"${hostCrownLiftAttr(seatData.user.activeFrameClass)}></i>` : ''}
                     ${avatarHTML({ src: seatData.user.profileImage, frameClass: seatData.user.activeFrameClass, sizeClass: 'voice-seat-avatar', photoAttrs: ` alt="${safeName}" loading="lazy" decoding="async"` })}
                     <span class="voice-seat-mic-badge ${seatData.isMuted ? 'muted' : ''}"><i class="fas ${seatData.isMuted ? 'fa-microphone-slash' : 'fa-microphone'}"></i></span>
                     ${isHostSeat ? '' : `<span class="voice-seat-no">${seatNo}</span>`}
