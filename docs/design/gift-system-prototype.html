@@ -1,0 +1,665 @@
+<title>نظام الهدايا الجديد</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;800;900&family=Baloo+Bhaijaan+2:wght@700;800&display=swap">
+<style>
+/* Layout: phone stage (the real product) + spec rail on wide screens. Single dark look by design, like the app. */
+:root{
+  --bg:#07050c; --room-a:#341449; --room-b:#140c24; --sheet:#15101f; --sheet-2:#1d1629; --line:#2c2340;
+  --fg:#f3eefb; --muted:#9a8fb0; --gold:#ffcf5a; --gold-2:#ff9f1c; --pink:#ff4fa3; --violet:#9b6bff; --cyan:#43d9ff;
+  --common:#5fb3ff; --rare:#b06bff; --epic:#ff5fa8; --legend:#ffb648; --custom:#3be0b0;
+  --f-ui:"Cairo",system-ui,sans-serif; --f-num:"Baloo Bhaijaan 2","Cairo",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+.phone img{max-width:none}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);margin:0}
+.page{display:flex;gap:28px;justify-content:center;align-items:flex-start;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+@media (max-width:860px){.page{flex-direction:column;align-items:center;padding-block:8px 24px}}
+
+/* ---------- phone ---------- */
+.phone{position:relative;width:min(390px,100%);aspect-ratio:390/844;max-height:calc(100vh - 40px);border-radius:34px;overflow:hidden;background:radial-gradient(120% 80% at 30% 0%,var(--room-a),var(--room-b) 55%,#0a0712);box-shadow:0 0 0 8px #1a1424,0 30px 80px #000a;container-type:size;user-select:none}
+@media (max-width:860px){.phone{max-height:none}}
+.topbar{position:absolute;inset:3.2% 4% auto;display:flex;justify-content:space-between;align-items:center;font-size:12px}
+.pill{background:#0006;border:1px solid #ffffff1a;border-radius:999px;padding:4px 10px;display:flex;gap:6px;align-items:center}
+.seats{position:absolute;top:11%;inset-inline:0;display:flex;flex-direction:column;align-items:center;gap:2.2cqh}
+.host{display:flex;flex-direction:column;align-items:center}
+.row{display:grid;grid-template-columns:repeat(4,1fr);width:92%;row-gap:2cqh}
+.seat{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;position:relative}
+.av{width:15cqw;height:15cqw;border-radius:50%;display:grid;place-items:center;font-size:7cqw;background:linear-gradient(145deg,#3a2c52,#221935);border:2px solid #ffffff22;position:relative;transition:transform .15s}
+.host .av{width:21cqw;height:21cqw;font-size:10cqw;border-color:var(--gold)}
+.seat .nm{font-size:10.5px;color:#e9e2f7;max-width:22cqw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seat .pts{font-size:10px;color:var(--gold);font-family:var(--f-num)}
+.av.hit{animation:hit .5s}
+@keyframes hit{30%{transform:scale(1.18)}60%{transform:scale(.96)}}
+.giftbtn{position:absolute;bottom:3%;inset-inline-start:4%;width:48px;height:48px;border-radius:50%;border:0;background:conic-gradient(from 200deg,#ff4fa3,#ff9f1c,#ff4fa3);display:grid;place-items:center;font-size:24px;cursor:pointer;box-shadow:0 6px 20px #ff4fa366}
+.chatbar{position:absolute;bottom:3%;inset-inline-end:4%;inset-inline-start:calc(4% + 60px);height:48px;border-radius:999px;background:#0007;border:1px solid #ffffff14;display:flex;align-items:center;padding:0 16px;color:var(--muted);font-size:13px}
+
+/* combo banners (left side of room, like the big apps) */
+.banners{position:absolute;inset-inline-start:0;top:52%;display:flex;flex-direction:column;gap:8px;z-index:6;pointer-events:none}
+.banner{display:flex;align-items:center;gap:8px;padding:4px 14px 4px 4px;border-radius:0 999px 999px 0;background:linear-gradient(90deg,#00000000,#ff4fa355 20%,#9b6bff55);backdrop-filter:blur(4px);animation:bin .35s cubic-bezier(.2,1.4,.4,1) both;direction:rtl;border-start-start-radius:999px;border-end-start-radius:999px;border-start-end-radius:0;border-end-end-radius:0;background:linear-gradient(270deg,#00000000,#ff4fa366 25%,#9b6bff77)}
+.banner .ba{width:34px;height:34px;border-radius:50%;background:#2a2040;display:grid;place-items:center;font-size:18px;border:2px solid #fff3}
+.banner .bt{font-size:11px;line-height:1.3}
+.banner .bt b{display:block;font-size:12px}
+.banner .bg{font-size:30px;filter:drop-shadow(0 2px 6px #0008)}
+.banner .bx{font-family:var(--f-num);font-weight:800;font-size:28px;color:var(--gold);text-shadow:0 2px 0 #b5560a,0 0 14px #ffb64888;min-width:58px;direction:ltr}
+.banner .bx.bump{animation:bump .22s}
+@keyframes bump{40%{transform:scale(1.45) rotate(-6deg)}}
+@keyframes bin{from{transform:translateX(60%);opacity:0}}
+.banner.out{animation:bout .4s forwards}
+@keyframes bout{to{transform:translateX(70%);opacity:0}}
+
+/* ---------- sheet ---------- */
+.scrim{position:absolute;inset:0;background:#0005;opacity:0;pointer-events:none;transition:opacity .2s;z-index:8}
+.open .scrim{opacity:1;pointer-events:auto}
+.sheet{position:absolute;inset-inline:0;bottom:0;background:linear-gradient(180deg,var(--sheet-2),var(--sheet) 30%);border-radius:22px 22px 0 0;transform:translateY(102%);transition:transform .28s cubic-bezier(.2,.9,.25,1);z-index:9;padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid #ffffff14}
+.open .sheet{transform:none}
+.grab{width:36px;height:4px;border-radius:4px;background:#ffffff2a;margin:0 auto 8px}
+.to{display:flex;align-items:center;gap:8px;height:40px}
+.to .lbl{font-size:12px;color:var(--muted);flex:none}
+.recips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1}
+.rc{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:16px;background:#2a2040;border:2px solid transparent;cursor:pointer;position:relative;padding:0;color:inherit}
+.rc[aria-pressed="true"]{border-color:var(--gold)}
+.rc[aria-pressed="true"]::after{content:"✓";position:absolute;bottom:-3px;inset-inline-end:-3px;width:13px;height:13px;border-radius:50%;background:var(--gold);color:#3a2300;font-size:9px;font-weight:900;display:grid;place-items:center}
+.allbtn{flex:none;height:28px;border-radius:999px;border:1px solid var(--line);background:#ffffff0d;color:var(--fg);font:inherit;font-size:11.5px;font-weight:700;padding:0 10px;cursor:pointer}
+.allbtn[aria-pressed="true"]{background:var(--gold);color:#3a2300;border-color:var(--gold)}
+
+/* wealth bar */
+.wealth{margin:6px 0 8px;padding:8px 10px;border-radius:14px;background:#0000002e;border:1px solid #ffffff10}
+.wtop{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;margin-bottom:6px}
+.lv{display:inline-flex;align-items:center;gap:4px;font-family:var(--f-num);font-weight:800;font-size:12px;padding:1px 8px;border-radius:999px;background:linear-gradient(90deg,#ffcf5a,#ff9f1c);color:#3a2300}
+.lv.next{background:#ffffff14;color:var(--fg)}
+.wgain{color:var(--gold);font-weight:800;font-family:var(--f-num);font-size:13px;direction:ltr}
+.track{position:relative;height:10px;border-radius:10px;background:#ffffff12;overflow:hidden}
+.fill{position:absolute;inset-block:0;inset-inline-start:0;border-radius:10px;background:linear-gradient(90deg,#ff9f1c,#ffcf5a);transition:width .35s}
+.prev{position:absolute;inset-block:0;border-radius:0 10px 10px 0;background:repeating-linear-gradient(-45deg,#fff6d0,#fff6d0 5px,#ffcf5a 5px,#ffcf5a 10px);opacity:.85;transition:width .3s, inset-inline-start .35s;animation:shimmer 1s linear infinite;background-size:28px 28px}
+@keyframes shimmer{to{background-position:28px 0}}
+.wfoot{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-top:5px;font-family:var(--f-num);direction:rtl}
+.lvup{color:#7dffb5;font-weight:800}
+
+/* tabs */
+.tabs{display:flex;gap:4px;height:36px;align-items:center;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid #ffffff10;margin:0 -12px;padding:0 12px}
+.tab{flex:none;font:inherit;font-size:13px;font-weight:700;color:var(--muted);background:none;border:0;padding:6px 8px;cursor:pointer;position:relative}
+.tab[aria-selected="true"]{color:var(--fg)}
+.tab[aria-selected="true"]::after{content:"";position:absolute;inset-inline:25%;bottom:-1px;height:3px;border-radius:3px;background:var(--tc,var(--gold))}
+
+/* grid: 4 cols x 2 rows per page, pages swipe */
+.pages{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;margin:8px -12px 0;direction:rtl}
+.pg{flex:0 0 100%;scroll-snap-align:start;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(2,auto);gap:6px;padding:0 12px}
+.cell{aspect-ratio:1/1.16;border-radius:14px;border:1.5px solid transparent;background:none;color:inherit;font:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;position:relative;padding:4px}
+.cell .gi{font-size:clamp(26px,9cqw,38px);line-height:1.15;transition:transform .2s}
+.cell .gn{font-size:11px;font-weight:700;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cell .gp{font-size:10.5px;color:var(--gold);font-family:var(--f-num);display:flex;align-items:center;gap:2px}
+.cell[aria-pressed="true"]{border-color:var(--tc);background:radial-gradient(80% 70% at 50% 35%,color-mix(in srgb,var(--tc) 28%,transparent),transparent)}
+.cell[aria-pressed="true"] .gi{transform:scale(1.14) translateY(-2px);animation:bob 1.2s ease-in-out infinite}
+@keyframes bob{50%{transform:scale(1.14) translateY(-5px)}}
+.tag{position:absolute;top:3px;inset-inline-start:3px;font-size:8.5px;font-weight:800;padding:0 5px;border-radius:6px;background:var(--tc);color:#160b20}
+.cell.add{border:1.5px dashed #3be0b088;color:var(--custom)}
+.cell.add .gi{font-size:28px}
+.pend{position:absolute;inset:0;border-radius:14px;background:#0b0812cc;display:grid;place-items:center;font-size:10px;font-weight:800;color:var(--muted)}
+.dots{display:flex;justify-content:center;gap:5px;height:14px;align-items:center}
+.dots i{width:5px;height:5px;border-radius:50%;background:#ffffff2a}
+.dots i.on{background:var(--fg);width:12px;border-radius:3px}
+
+/* bottom bar */
+.bar{display:flex;align-items:center;gap:8px;height:48px;margin-top:4px}
+.bal{display:flex;align-items:center;gap:4px;font-family:var(--f-num);font-weight:800;font-size:14px;flex:1;min-width:0}
+.coin{width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3b0,#ffcf5a 45%,#d48a12);box-shadow:inset 0 -1px 0 #9a5a00;flex:none;display:inline-block}
+.coin.sm{width:11px;height:11px}
+.recharge{font:inherit;font-size:11.5px;font-weight:800;color:var(--gold);background:#ffcf5a1a;border:0;border-radius:999px;padding:3px 9px;cursor:pointer;margin-inline-start:4px}
+.qty{position:relative}
+.qbtn{height:38px;min-width:64px;border-radius:999px 0 0 999px;border:1px solid #ff4fa366;border-inline-end:0;background:#ff4fa31a;color:var(--fg);font-family:var(--f-num);font-weight:800;font-size:14px;cursor:pointer;padding:0 10px;direction:ltr}
+.send{height:38px;min-width:84px;border-radius:0 999px 999px 0;border:0;background:linear-gradient(90deg,#ff4fa3,#ff7a59);color:#fff;font:inherit;font-weight:900;font-size:14px;cursor:pointer;box-shadow:0 4px 16px #ff4fa355}
+[dir=rtl] .qbtn{border-radius:0 999px 999px 0;border-inline-end:1px solid #ff4fa366;border-inline-start:0}
+[dir=rtl] .send{border-radius:999px 0 0 999px}
+.qmenu{position:absolute;bottom:46px;inset-inline-end:0;background:#221a31;border:1px solid var(--line);border-radius:14px;padding:6px;display:grid;grid-template-columns:repeat(2,1fr);gap:4px;width:170px;z-index:3;box-shadow:0 12px 30px #000a}
+.qmenu button{font-family:var(--f-num);font-weight:800;font-size:14px;color:var(--fg);background:#ffffff0a;border:0;border-radius:10px;padding:7px 4px;cursor:pointer;direction:ltr}
+.qmenu button span{display:block;font-family:var(--f-ui);font-size:9.5px;color:var(--muted);font-weight:700}
+.qmenu button[aria-pressed="true"]{background:var(--pink);color:#fff}
+.qmenu button[aria-pressed="true"] span{color:#fff}
+
+/* ---------- combo button + fire ---------- */
+.combo{position:absolute;z-index:12;inset-inline-end:6%;bottom:5.5%;width:23cqw;height:23cqw;max-width:92px;max-height:92px;display:none}
+.combo.on{display:block}
+.cbtn{position:absolute;inset:0;border-radius:50%;border:0;cursor:pointer;background:radial-gradient(circle at 50% 38%,#ffd36b,#ff7a1a 55%,#c2290f);color:#fff;font:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 0 0 3px #ffffff22, 0 10px 30px #ff4f1a66;touch-action:none;transition:filter .2s}
+.cbtn .cg{line-height:1;font-size:24px}
+.cbtn .cn{font-family:var(--f-num);font-weight:800;font-size:17px;line-height:1;text-shadow:0 2px 0 #8a2200;direction:ltr}
+.cbtn .cl{font-size:8.5px;font-weight:800;opacity:.9;white-space:nowrap}
+.ring{position:absolute;inset:-7px;pointer-events:none}
+.ring circle{fill:none;stroke-width:5;stroke-linecap:round}
+.combo.hot .cbtn{animation:jit .08s infinite}
+@keyframes jit{25%{transform:translate(1px,-1px)}50%{transform:translate(-1px,1px)}75%{transform:translate(1px,1px)}}
+.combo .press{transform:scale(.92)}
+.mile{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;z-index:14}
+.mile b{font-family:var(--f-num);font-weight:800;font-size:22cqw;color:#fff;-webkit-text-stroke:3px #ff6a00;text-shadow:0 0 30px #ffb648,0 0 60px #ff4f1a;animation:mile 1s cubic-bezier(.2,1.6,.4,1) forwards;direction:ltr}
+@keyframes mile{0%{transform:scale(.2);opacity:0}25%{transform:scale(1.15);opacity:1}70%{transform:scale(1);opacity:1}100%{transform:scale(1.4);opacity:0}}
+.fx{position:absolute;inset:0;pointer-events:none;z-index:13;width:100%;height:100%}
+.fly{position:absolute;z-index:11;font-size:30px;pointer-events:none;will-change:transform}
+
+/* legendary fullscreen */
+.legend{position:absolute;inset:0;z-index:15;display:grid;place-items:center;pointer-events:none;background:radial-gradient(circle,#0000 20%,#000c 80%);animation:lgbg 3.2s forwards}
+@keyframes lgbg{0%{opacity:0}10%{opacity:1}85%{opacity:1}100%{opacity:0}}
+.rays{position:absolute;width:160cqw;height:160cqw;background:repeating-conic-gradient(from 0deg,#ffcf5a33 0 6deg,#0000 6deg 18deg);border-radius:50%;animation:spin 6s linear infinite;-webkit-mask:radial-gradient(circle,#000 10%,#0000 62%);mask:radial-gradient(circle,#000 10%,#0000 62%)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.lg-g{font-size:46cqw;animation:lgin 3.2s cubic-bezier(.2,1.3,.4,1) forwards;filter:drop-shadow(0 0 40px #ffb648)}
+@keyframes lgin{0%{transform:scale(0) rotate(-30deg);opacity:1}20%{transform:scale(1.1) rotate(4deg)}30%{transform:scale(1)}85%{transform:scale(1.03);opacity:1}100%{transform:scale(2.2);opacity:0}}
+.lg-t{position:absolute;bottom:24%;text-align:center;animation:lgt 3.2s forwards}
+.lg-t b{display:block;font-size:20px;font-weight:900;background:linear-gradient(90deg,#fff3b0,#ffcf5a,#ff9f1c);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lg-t span{font-size:13px;color:#fff}
+@keyframes lgt{0%,15%{opacity:0;transform:translateY(20px)}25%,85%{opacity:1;transform:none}100%{opacity:0}}
+
+/* custom gift modal */
+.modal{position:absolute;inset:0;z-index:20;background:#000a;display:grid;place-items:end center}
+.mbox{width:100%;background:var(--sheet-2);border-radius:22px 22px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));border-top:1px solid #ffffff18}
+.mbox h3{margin:0 0 4px;font-size:16px}
+.mbox p{margin:0 0 12px;font-size:12px;color:var(--muted);line-height:1.6}
+.up{display:flex;gap:14px;align-items:center;margin-bottom:12px}
+.upv{width:84px;height:84px;border-radius:18px;border:2px dashed #3be0b088;display:grid;place-items:center;overflow:hidden;background:#0003;font-size:26px;color:var(--custom);flex:none;position:relative;cursor:pointer}
+.upv img{width:100%;height:100%;object-fit:cover}
+.fields{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0}
+.fields input[type=text]{width:100%;background:#0005;border:1px solid var(--line);border-radius:10px;color:var(--fg);font:inherit;font-size:13px;padding:8px 10px}
+.price-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.pbox{border-radius:12px;background:#0003;border:1px solid var(--line);padding:8px 10px}
+.pbox small{display:block;font-size:10.5px;color:var(--muted)}
+.pbox b{font-family:var(--f-num);font-size:17px;display:flex;align-items:center;gap:4px}
+.mrow{display:flex;gap:8px}
+.mrow button{flex:1;height:42px;border-radius:12px;font:inherit;font-weight:800;font-size:13.5px;cursor:pointer;border:1px solid var(--line);background:#ffffff0d;color:var(--fg)}
+.mrow .go{background:linear-gradient(90deg,#3be0b0,#43d9ff);color:#062a22;border:0}
+.mrow .go:disabled{opacity:.4;cursor:not-allowed}
+.toast{position:absolute;top:9%;left:50%;transform:translateX(-50%);z-index:30;background:#000c;border:1px solid #ffffff22;padding:7px 14px;border-radius:999px;font-size:12.5px;font-weight:700;white-space:nowrap}
+
+
+/* low balance sheet */
+.lb{position:absolute;inset:0;z-index:22;background:#000a;display:grid;place-items:end center;animation:fade .2s}
+@keyframes fade{from{opacity:0}}
+.lbbox{width:100%;background:linear-gradient(180deg,#2a1d12,var(--sheet) 45%);border-radius:22px 22px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px));border-top:1px solid #ffcf5a33;animation:up .28s cubic-bezier(.2,.9,.25,1)}
+@keyframes up{from{transform:translateY(100%)}}
+.lbhead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.lbhead .big{font-size:34px}
+.lbhead h3{margin:0;font-size:16px}
+.lbhead p{margin:2px 0 0;font-size:12px;color:var(--muted)}
+.lbhead p b{color:var(--gold);font-family:var(--f-num)}
+.pk{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px}
+.pkb{position:relative;border-radius:14px;border:1.5px solid var(--line);background:#ffffff08;color:var(--fg);font:inherit;padding:12px 8px 10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+.pkb.hot{border-color:var(--gold);background:radial-gradient(90% 80% at 50% 0%,#ffcf5a26,transparent)}
+.pkb .amt{font-family:var(--f-num);font-weight:800;font-size:18px;display:flex;align-items:center;gap:4px}
+.pkb .bonus{font-size:10.5px;color:#7dffb5;font-weight:800}
+.pkb .usd{margin-top:4px;font-size:12.5px;font-weight:900;background:linear-gradient(90deg,#ff4fa3,#ff7a59);border-radius:999px;padding:3px 14px;color:#fff}
+.pkb .rib{position:absolute;top:-8px;inset-inline-start:8px;font-size:9.5px;font-weight:900;background:var(--gold);color:#3a2300;border-radius:6px;padding:1px 6px}
+.lbmore{display:flex;justify-content:space-between;align-items:center}
+.lbmore button{font:inherit;font-size:12.5px;font-weight:800;background:none;border:0;color:var(--gold);cursor:pointer;padding:6px 0}
+.lbmore .x{color:var(--muted)}
+button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+/* ---------- spec rail ---------- */
+.spec{width:380px;max-width:100%;font-size:13px;line-height:1.75;color:#d8d0e8}
+.spec h1{font-size:24px;margin:4px 0 2px;font-weight:900;color:var(--fg)}
+.spec .lead{color:var(--muted);margin:0 0 14px}
+.spec section{border-top:1px solid var(--line);padding:12px 0}
+.spec h2{font-size:14px;margin:0 0 6px;color:var(--gold);font-weight:800}
+.spec ul{margin:0;padding-inline-start:18px}
+.spec code{font-family:ui-monospace,monospace;font-size:11.5px;background:#ffffff0f;padding:1px 5px;border-radius:5px;direction:ltr;unicode-bidi:isolate}
+.log{font-family:ui-monospace,monospace;font-size:11px;background:#0b0811;border:1px solid var(--line);border-radius:10px;padding:8px;height:120px;overflow:auto;direction:ltr;color:#b9f5d4;white-space:pre}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important}}
+</style>
+
+<div class="page" dir="rtl">
+  <div class="phone" id="phone">
+    <div class="topbar"><span class="pill">✕</span><span class="pill">🏠 غرفة السهرة · <b style="font-family:var(--f-num)">ID 99643</b></span></div>
+    <div class="seats" id="seats"></div>
+    <div class="banners" id="banners"></div>
+    <button class="giftbtn" id="openGifts" type="button" aria-label="الهدايا">🎁</button>
+    <div class="chatbar">قل شيئاً...</div>
+
+    <div class="scrim" id="scrim"></div>
+    <div class="sheet" id="sheet" role="dialog" aria-label="الهدايا">
+      <div class="grab"></div>
+      <div class="to"><span class="lbl">إلى</span><div class="recips" id="recips"></div><button class="allbtn" id="allBtn" type="button" aria-pressed="false">كل المقاعد</button></div>
+      <div class="wealth" id="wealth">
+        <div class="wtop"><span>مستوى الثروة <span class="lv" id="lvNow">Lv.12</span></span><span class="wgain" id="wGain">+0 XP</span></div>
+        <div class="track"><div class="fill" id="wFill"></div><div class="prev" id="wPrev"></div></div>
+        <div class="wfoot"><span id="wNow"></span><span id="wTo"></span></div>
+      </div>
+      <div class="tabs" id="tabs" role="tablist"></div>
+      <div class="pages" id="pages"></div>
+      <div class="dots" id="dots"></div>
+      <div class="bar">
+        <div class="bal"><span class="coin"></span><span id="bal"></span><button class="recharge" type="button">شحن ›</button></div>
+        <div class="qty"><button class="qbtn" id="qbtn" type="button">×1 ▾</button><div class="qmenu" id="qmenu" hidden></div></div>
+        <button class="send" id="send" type="button">إرسال</button>
+      </div>
+    </div>
+
+    <div class="combo" id="combo">
+      <svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" stroke="#ffffff22"></circle><circle id="ringC" cx="50" cy="50" r="46" stroke="#fff" stroke-dasharray="289" stroke-dashoffset="0" transform="rotate(-90 50 50)"></circle></svg>
+      <button class="cbtn" id="cbtn" type="button" aria-label="إرسال متتالي"><span class="cg" id="cg">🌹</span><span class="cn" id="cn">×1</span><span class="cl">اضغط مطولاً</span></button>
+    </div>
+    <canvas class="fx" id="fx"></canvas>
+  </div>
+
+  <aside class="spec">
+    <h1>نظام الهدايا الجديد</h1>
+    <p class="lead">النموذج تفاعلي بالكامل: افتح الهدايا 🎁، اختر هدية، اضغط إرسال، ثم اضغط على الدائرة بسرعة أو اضغط مطولاً. جرّب تبويب "أسطورية" و"مخصصة".</p>
+    <section><h2>1. النافذة (مقاسات محسوبة)</h2><ul>
+      <li>من الأعلى: صف المستلمين 40px، شريط الثروة 52px، التبويبات 36px، شبكة 4×2 لكل صفحة، النقاط 14px، الشريط السفلي 48px.</li>
+      <li>الخلية: 4 أعمدة بمسافة 6px، نسبتها 1:1.16، فتبقى النافذة بنفس الارتفاع على كل الجوالات (حوالي 52% من الشاشة).</li>
+      <li>تمرير أفقي بين الصفحات (scroll-snap) بدل التمرير العمودي، فالنافذة لا تقفز.</li>
+    </ul></section>
+    <section><h2>2. شريط الثروة</h2><ul>
+      <li>اختيار هدية أو كمية يرسم جزءاً مخططاً لامعاً يبين أين سيصل الخط، مع <code>+XP</code> والنسبة الجديدة.</li>
+      <li>إذا تجاوز المستوى يظهر "⬆ ترقية إلى Lv.13". الصيغة من السيرفر فقط: <code>XP = السعر × الكمية ÷ 3</code> و<code>المطلوب = المستوى × 1500</code>.</li>
+    </ul></section>
+    <section><h2>3. الإرسال السريع</h2><ul>
+      <li>بعد أول إرسال يتحول الزر إلى دائرة كومبو. كل ضغطة تُحسب فوراً على الشاشة بدون انتظار السيرفر.</li>
+      <li>الضغط المطوّل يرسل تلقائياً ويتسارع تدريجياً: من 5 إلى 20 ضغطة في الثانية خلال ثانيتين.</li>
+      <li>العميل يجمع الضغطات ويرسل دفعة كل 250ms عبر <code>gift:combo</code> (comboId + seq + taps). السيرفر يخصم ذرّياً ويرد بالرصيد الحقيقي.</li>
+      <li>الدائرة تنتظر 3 ثوانٍ بعد آخر ضغطة ثم تنتهي الجلسة.</li>
+    </ul></section>
+    <section><h2>4. النار والانفجار</h2><ul>
+      <li>"الحرارة" من سرعة الضغط: برتقالي ← أحمر ناري ← ذهبي متوهج. لهب يتصاعد من محيط الدائرة ويزيد مع الحرارة.</li>
+      <li>فوق 85% حرارة: الدائرة ترتجف وتتوهج وكأنها ستنفجر.</li>
+      <li>عند 10، 66، 99، 188، 520، 1314: انفجار بموجة صدمة ورقم كبير.</li>
+    </ul></section>
+    <section><h2>5. الأقسام</h2><ul>
+      <li>شائعة، مميزة، ملحمية، أسطورية (عرض بملء الشاشة)، مخصصة.</li>
+      <li>المخصصة: زر "صمّم هديتك" يرفع صورة. التصميم بـ<b>500 كوينز</b>، والإرسال بـ<b>100 كوينز</b> يحدده السيرفر. الصورة تُراجع من الأدمن، والمبلغ يُسترد إن رُفضت.</li>
+    </ul></section>
+    <section><h2>سجل الدفعات (محاكاة السيرفر)</h2><div class="log" id="log">—</div></section>
+  </aside>
+</div>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const phone = $('phone');
+const fmt = n => n.toLocaleString('en-US');
+
+/* ---------- data ---------- */
+const CATS = [
+  {k:'common', name:'شائعة', c:'var(--common)'},
+  {k:'rare', name:'مميزة', c:'var(--rare)'},
+  {k:'epic', name:'ملحمية', c:'var(--epic)'},
+  {k:'legend', name:'أسطورية', c:'var(--legend)'},
+  {k:'custom', name:'مخصصة', c:'var(--custom)'},
+];
+const GIFTS = {
+  common:[['🌹','وردة',1],['🍭','مصاصة',5],['❤️','قلب',10],['🍩','دونات',20],['🎈','بالون',30],['☕','قهوة',50],['🍰','كيك',66],['💐','باقة',99],['🍫','شوكولا',120],['🧁','كب كيك',150],['🌻','دوار الشمس',180],['🎵','نغمة',199]],
+  rare:[['💍','خاتم',299],['🧸','دبدوب',399],['🌟','نجمة',520],['🎀','هدية',666],['👑','تاج',888],['🦄','يونيكورن',999],['🎂','تورتة',1314],['💎','ألماس',1999]],
+  epic:[['🏎️','سيارة',2999],['🛥️','يخت',5200],['🏰','قلعة',9999],['🚀','صاروخ',13140],['🛩️','طائرة',19999],['🎡','ملاهي',23000]],
+  legend:[['🐉','التنين',29999],['🦁','ملك الغابة',52000],['🪐','الكوكب',99999],['🦅','العنقاء',131400]],
+  custom:[]
+};
+const QTY = [[1,''],[10,'عشرة'],[66,'سلامة'],[99,'دوام'],[188,'حظ'],[520,'أحبك'],[1314,'للأبد']];
+const MILES = [10,66,99,188,520,1314];
+const PEOPLE = [['🧔🏻','ABN-7ALP',true],['👩🏻','ريم'],['🧑🏽','خالد'],['👨🏻‍🦱','سامر'],['👩🏼‍🦰','لين'],['🧑🏻‍🦲','عمر'],['👱🏻‍♀️','نور'],['🧕🏻','هبة'],['🧑🏾','زياد']];
+
+let balance = 1500000, level = 12, xp = 9200;
+const req = l => l*1500;
+let tab = 'common', sel = GIFTS.common[0], qty = 1;
+let recips = new Set([0]);
+
+/* ---------- room ---------- */
+const seatsEl = $('seats');
+const host = document.createElement('div'); host.className='host';
+const row = document.createElement('div'); row.className='row';
+PEOPLE.forEach((p,i) => {
+  const s = document.createElement('div'); s.className='seat'; s.dataset.i=i;
+  s.innerHTML = `<div class="av">${p[0]}</div><div class="nm">${p[1]}</div><div class="pts" data-pts="0">0</div>`;
+  s.onclick = () => { recips = new Set([i]); openSheet(); };
+  (i===0?host:row).appendChild(s);
+});
+seatsEl.append(host,row);
+const seatEl = i => seatsEl.querySelector(`.seat[data-i="${i}"]`);
+
+/* ---------- sheet ---------- */
+function openSheet(){ phone.classList.add('open'); renderAll(); }
+function closeSheet(){ phone.classList.remove('open'); $('qmenu').hidden=true; }
+$('openGifts').onclick = openSheet; $('scrim').onclick = closeSheet;
+
+function renderRecips(){
+  const box = $('recips'); box.replaceChildren();
+  PEOPLE.forEach((p,i) => {
+    const b = document.createElement('button'); b.type='button'; b.className='rc'; b.textContent=p[0]; b.title=p[1];
+    b.setAttribute('aria-pressed', recips.has(i));
+    b.onclick = () => { recips.has(i) && recips.size>1 ? recips.delete(i) : recips.add(i); renderRecips(); renderWealth(); };
+    box.appendChild(b);
+  });
+  $('allBtn').setAttribute('aria-pressed', recips.size===PEOPLE.length);
+}
+$('allBtn').onclick = () => { recips = recips.size===PEOPLE.length ? new Set([0]) : new Set(PEOPLE.map((_,i)=>i)); renderRecips(); renderWealth(); };
+
+function renderTabs(){
+  const t = $('tabs'); t.replaceChildren();
+  CATS.forEach(c => {
+    const b = document.createElement('button'); b.type='button'; b.className='tab'; b.role='tab'; b.textContent=c.name;
+    b.style.setProperty('--tc', c.c); b.setAttribute('aria-selected', c.k===tab);
+    b.onclick = () => { tab=c.k; if (GIFTS[tab][0]) sel = GIFTS[tab][0]; if (tab==='epic'||tab==='legend') qty = 1; renderTabs(); renderGrid(); renderWealth(); };
+    t.appendChild(b);
+  });
+}
+function cellHTML(g, c){ return `${c.k==='legend'?'<span class="tag">أسطوري</span>':''}<span class="gi">${g[0]}</span><span class="gn">${g[1]}</span><span class="gp"><i class="coin sm"></i>${fmt(g[2])}</span>`; }
+function renderGrid(){
+  const c = CATS.find(x=>x.k===tab), list = GIFTS[tab].slice();
+  const pages = $('pages'); pages.replaceChildren(); pages.style.setProperty('--tc', c.c);
+  const items = tab==='custom' ? [{add:true}, ...list] : list;
+  const n = Math.max(1, Math.ceil(items.length/8));
+  for (let p=0;p<n;p++){
+    const pg = document.createElement('div'); pg.className='pg';
+    items.slice(p*8,p*8+8).forEach(g => {
+      const b = document.createElement('button'); b.type='button'; b.className='cell'; b.style.setProperty('--tc', c.c);
+      if (g.add){ b.classList.add('add'); b.innerHTML = '<span class="gi">＋</span><span class="gn">صمّم هديتك</span><span class="gp" style="color:var(--custom)">500 للتصميم</span>'; b.onclick = openCustom; }
+      else {
+        b.innerHTML = cellHTML(g.img ? [`<img src="${g.img}" alt="" style="width:1.2em;height:1.2em;border-radius:10px;object-fit:cover">`, g[1], g[2]] : g, c);
+        if (g.pending) b.insertAdjacentHTML('beforeend','<span class="pend">قيد المراجعة…</span>');
+        b.setAttribute('aria-pressed', g===sel);
+        b.onclick = () => { if (g.pending) return toast('الهدية قيد مراجعة الأدمن'); sel = g; renderGrid(); renderWealth(); };
+      }
+      pg.appendChild(b);
+    });
+    pages.appendChild(pg);
+  }
+  const dots = $('dots'); dots.innerHTML = n>1 ? Array.from({length:n},(_,i)=>`<i class="${i===0?'on':''}"></i>`).join('') : '';
+  pages.onscroll = () => { const i = Math.round(Math.abs(pages.scrollLeft)/pages.clientWidth); dots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',i===j)); };
+}
+function renderQty(){
+  $('qbtn').textContent = `×${qty} ▾`;
+  const m = $('qmenu'); m.replaceChildren();
+  QTY.forEach(([n,l]) => { const b=document.createElement('button'); b.type='button'; b.innerHTML=`×${n}${l?`<span>${l}</span>`:''}`; b.setAttribute('aria-pressed',n===qty); b.onclick=()=>{qty=n;m.hidden=true;renderQty();renderWealth();}; m.appendChild(b); });
+}
+$('qbtn').onclick = () => { $('qmenu').hidden = !$('qmenu').hidden; };
+
+function giftCost(units){ return sel ? sel[2]*units*recips.size : 0; }
+function xpFor(coins){ return Math.floor(coins/3); }
+function renderWealth(){
+  const r = req(level), gain = xpFor(giftCost(qty));
+  let L = level, X = xp + gain; while (X >= req(L)) { X -= req(L); L++; }
+  $('lvNow').textContent = 'Lv.'+level;
+  $('wFill').style.width = (xp/r*100)+'%';
+  const prevEnd = L>level ? 100 : (xp+gain)/r*100;
+  $('wPrev').style.insetInlineStart = (xp/r*100)+'%';
+  $('wPrev').style.width = Math.max(0, prevEnd - xp/r*100)+'%';
+  $('wGain').textContent = '+'+fmt(gain)+' XP';
+  $('wNow').textContent = `${fmt(xp)} / ${fmt(r)}`;
+  $('wTo').innerHTML = gain===0 ? `باقي ${fmt(r-xp)} للمستوى ${level+1}` : (L>level ? `<span class="lvup">⬆ ترقية إلى Lv.${L} (${Math.round(X/req(L)*100)}%)</span>` : `ستصل إلى ${Math.round((xp+gain)/r*100)}%`);
+  $('bal').textContent = fmt(balance);
+}
+function renderAll(){ renderRecips(); renderTabs(); renderGrid(); renderQty(); renderWealth(); }
+
+/* ---------- server simulation: batched combo ---------- */
+const logEl = $('log'); let logLines = [];
+function log(s){ logLines.push(s); logLines = logLines.slice(-40); logEl.textContent = logLines.join('\n'); logEl.scrollTop = 1e9; }
+let comboId = null, seq = 0, pendingTaps = 0, flushT = null, serverUnits = 0;
+function queueTaps(n){ pendingTaps += n; if (!flushT) flushT = setTimeout(flush, 250); }
+function flush(){
+  flushT = null; if (!pendingTaps) return;
+  const taps = pendingTaps; pendingTaps = 0; seq++;
+  const s = seq, g = sel;
+  setTimeout(() => { serverUnits += taps; log(`gift:combo {comboId:${comboId}, seq:${s}, gift:"${g[1]}", taps:${taps}, recips:${recips.size}} → ok · balanceAfter:${fmt(balance)}`); }, 60 + Math.random()*90);
+}
+
+/* ---------- sending ---------- */
+let count = 0, lastTap = 0, taps = [], heat = 0, comboTimer = 0, holding = false, holdStart = 0, holdT = null, banner = null;
+const COMBO_MS = 3000;
+function startSend(){
+  if (!sel) return;
+  const cost = giftCost(qty);
+  if (cost > balance) return lowBalance(cost);
+  closeSheet();
+  comboId = Math.random().toString(36).slice(2,8); seq = 0; count = 0; serverUnits = 0;
+  log(`— جلسة كومبو جديدة ${comboId} —`);
+  $('cg').textContent = sel.img ? '🎁' : sel[0];
+  $('combo').classList.add('on');
+  if (tab==='legend' && GIFTS.legend.includes(sel)) legendary(sel);
+  tap(qty);
+}
+$('send').onclick = startSend;
+
+function tap(units = 1){
+  const cost = giftCost(units);
+  if (cost > balance){ holding = false; clearTimeout(holdT); lowBalance(cost); return; }
+  balance -= cost; count += units;
+  const now = performance.now(); taps.push(now); taps = taps.filter(t => now - t < 1000);
+  lastTap = now; comboTimer = now;
+  addXp(xpFor(cost));
+  queueTaps(units);
+  $('cn').textContent = '×'+fmt(count);
+  flyGifts();
+  updateBanner();
+  const crossed = MILES.filter(m => count - units < m && count >= m).pop();
+  if (crossed) milestone(crossed);
+}
+function addXp(g){ xp += g; while (xp >= req(level)) { xp -= req(level); level++; toast(`⬆ مستوى الثروة ${level}`); } }
+
+const cbtn = $('cbtn');
+cbtn.addEventListener('pointerdown', e => {
+  e.preventDefault(); cbtn.classList.add('press'); tap(1);
+  holding = true; holdStart = performance.now();
+  const loop = () => { if (!holding) return; const t = (performance.now()-holdStart)/2000; const rate = 5 + 15*Math.min(1,t*t); tap(1); holdT = setTimeout(loop, 1000/rate); };
+  holdT = setTimeout(loop, 280);
+});
+const release = () => { holding = false; clearTimeout(holdT); cbtn.classList.remove('press'); };
+cbtn.addEventListener('pointerup', release); cbtn.addEventListener('pointerleave', release); cbtn.addEventListener('pointercancel', release);
+
+function endCombo(){
+  flush(); cbtn.style.filter=''; cbtn.style.boxShadow=''; $('combo').classList.remove('on','hot'); taps = []; heat = 0;
+  if (banner){ const b = banner; banner = null; setTimeout(()=>{ b.classList.add('out'); setTimeout(()=>b.remove(),400); }, 900); }
+  setTimeout(()=>log(`— انتهت الجلسة: ${fmt(count)} هدية، تأكيد السيرفر ${fmt(serverUnits)} —`), 300);
+}
+
+function updateBanner(){
+  const box = $('banners');
+  if (!banner){
+    banner = document.createElement('div'); banner.className='banner';
+    const to = recips.size>1 ? `${recips.size} مقاعد` : PEOPLE[[...recips][0]][1];
+    banner.innerHTML = `<span class="ba">🙂</span><span class="bt"><b>أنت</b>إلى ${to}</span><span class="bg">${sel.img?`<img src="${sel.img}" alt="" style="width:30px;height:30px;border-radius:8px;object-fit:cover">`:sel[0]}</span><span class="bx">×1</span>`;
+    box.prepend(banner);
+  }
+  const x = banner.querySelector('.bx'); x.textContent = '×'+fmt(count); x.classList.remove('bump'); void x.offsetWidth; x.classList.add('bump');
+}
+
+/* gift flies from the combo button to each recipient seat */
+let flyBudget = 0;
+function flyGifts(){
+  const pr = phone.getBoundingClientRect(), cr = cbtn.getBoundingClientRect();
+  const list = [...recips].slice(0, 9);
+  if (++flyBudget % (heat>0.6?2:1)) return;
+  list.forEach((i, k) => {
+    const s = seatEl(i).querySelector('.av'), sr = s.getBoundingClientRect();
+    const f = document.createElement('div'); f.className='fly'; f.textContent = sel.img ? '🎁' : sel[0];
+    const x0 = cr.left-pr.left+cr.width/2-15, y0 = cr.top-pr.top+cr.height/2-18;
+    const x1 = sr.left-pr.left+sr.width/2-15, y1 = sr.top-pr.top+sr.height/2-18;
+    f.style.left = x0+'px'; f.style.top = y0+'px'; phone.appendChild(f);
+    const midX = (x1-x0)/2 + (Math.random()*60-30), midY = Math.min(0,(y1-y0)/2) - 60;
+    f.animate([
+      {transform:'translate(0,0) scale(.6)', opacity:1},
+      {transform:`translate(${midX}px,${midY}px) scale(1.25)`, opacity:1, offset:.45},
+      {transform:`translate(${x1-x0}px,${y1-y0}px) scale(.7)`, opacity:.9}
+    ], {duration:620 + k*40, easing:'cubic-bezier(.3,.7,.4,1)'}).onfinish = () => {
+      f.remove(); s.classList.remove('hit'); void s.offsetWidth; s.classList.add('hit');
+      const p = seatEl(i).querySelector('.pts'); const v = +p.dataset.pts + sel[2]; p.dataset.pts = v; p.textContent = fmt(v);
+    };
+  });
+}
+
+/* ---------- one full-screen fx canvas: flames, embers, bursts ---------- */
+const fx = $('fx'), xctx = fx.getContext('2d');
+let parts = [], bursts = [], dpr = 1, PW = 0, PH = 0;
+const MAX_PARTS = 900;
+function sizeFx(){ const r = phone.getBoundingClientRect(); dpr = Math.min(2, devicePixelRatio || 1); PW = r.width; PH = r.height; fx.width = Math.round(PW*dpr); fx.height = Math.round(PH*dpr); }
+sizeFx(); addEventListener('resize', sizeFx);
+if (window.ResizeObserver) new ResizeObserver(sizeFx).observe(phone);
+function heatRGB(h){
+  const stops = [[255,170,60],[255,105,25],[240,50,15],[255,214,120]];
+  h = Math.max(0, Math.min(.999, h || 0));
+  const t = h*3, i = Math.floor(t), f = t-i, A = stops[i], B = stops[i+1];
+  return A.map((v,j)=>Math.round(v+(B[j]-v)*f));
+}
+const heatColor = (h,a) => `rgba(${heatRGB(h).join(',')},${a})`;
+// soft glow sprite, tinted per draw via globalAlpha + a small cache of colors
+const spriteCache = new Map();
+function sprite(rgb){
+  const key = rgb.join(','); if (spriteCache.has(key)) return spriteCache.get(key);
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  const gr = g.createRadialGradient(32,32,0,32,32,32);
+  gr.addColorStop(0,`rgba(255,250,235,1)`); gr.addColorStop(.25,`rgba(${key},.9)`); gr.addColorStop(1,`rgba(${key},0)`);
+  g.fillStyle = gr; g.fillRect(0,0,64,64);
+  if (spriteCache.size > 40) spriteCache.clear();
+  spriteCache.set(key, c); return c;
+}
+function q(rgb){ return rgb.map(v => Math.round(v/16)*16); }
+const FIRE_RAMP = [[0,[255,250,215]],[.15,[255,214,110]],[.35,[255,140,35]],[.6,[228,62,12]],[.85,[120,22,6]],[1,[40,10,6]]];
+function rampAt(t){ for (let i=1;i<FIRE_RAMP.length;i++){ const [t1,c1]=FIRE_RAMP[i], [t0,c0]=FIRE_RAMP[i-1]; if (t<=t1){ const f=(t-t0)/(t1-t0); return c0.map((v,j)=>Math.round(v+(c1[j]-v)*f)); } } return FIRE_RAMP[FIRE_RAMP.length-1][1]; }
+function softSprite(rgb, core){ const c=document.createElement('canvas'); c.width=c.height=64; const g=c.getContext('2d'); const gr=g.createRadialGradient(32,32,0,32,32,32); gr.addColorStop(0,`rgba(${rgb},1)`); gr.addColorStop(core,`rgba(${rgb},.55)`); gr.addColorStop(1,`rgba(${rgb},0)`); g.fillStyle=gr; g.fillRect(0,0,64,64); return c; }
+const FIRE = Array.from({length:14}, (_,i) => softSprite(rampAt(i/13).join(','), .35));
+const SMOKE = softSprite('34,26,30', .4);
+let smokes = [];
+function frame(now){
+  requestAnimationFrame(frame);
+  const on = $('combo').classList.contains('on');
+  let bx = 0, by = 0, R = 0;
+  if (on){
+    const rate = taps.filter(t => now - t < 1000).length;
+    const target = Math.min(1, rate/14);
+    heat += (target - heat) * (target > heat ? .12 : .03);
+    const left = Math.max(0, 1 - (now - comboTimer)/COMBO_MS);
+    $('ringC').style.strokeDashoffset = 289*(1-left);
+    $('ringC').style.stroke = heatColor(heat, 1);
+    $('combo').classList.toggle('hot', heat > .85);
+    cbtn.style.filter = `saturate(${1+heat*.6}) brightness(${1+heat*.25})`;
+    cbtn.style.boxShadow = `0 0 0 3px #ffffff22, 0 0 ${18+heat*40}px ${heatColor(heat,.8)}`;
+    if (left <= 0 && !holding) endCombo();
+    const pr = phone.getBoundingClientRect(), cr = cbtn.getBoundingClientRect();
+    bx = cr.left - pr.left + cr.width/2; by = cr.top - pr.top + cr.height/2; R = cr.width/2;
+    const span = Math.PI*(.45 + heat*1.1);                       // flames cover more of the ring as heat rises
+    const flames = Math.round(4 + heat*16), embers = heat > .3 ? (Math.random() < heat ? 2 : 0) : 0;
+    for (let k=0;k<flames && parts.length<MAX_PARTS;k++){
+      const a = -Math.PI/2 + (Math.random()-.5)*span;
+      const up = (1.1 + Math.random()*1.3) * (.7 + heat*1.4);
+      parts.push({x:bx+Math.cos(a)*R*.96, y:by+Math.sin(a)*R*.96, vx:Math.cos(a)*.35, vy:-up, life:1, decay:.028+Math.random()*.03, s:(6+Math.random()*7)*(.8+heat*.7), seed:Math.random()*99});
+    }
+    for (let k=0;k<embers && parts.length<MAX_PARTS;k++){
+      const a = -Math.PI/2 + (Math.random()-.5)*Math.PI;
+      parts.push({x:bx+Math.cos(a)*R*.9, y:by+Math.sin(a)*R*.9, vx:(Math.random()-.5)*1.4, vy:-(2.2+Math.random()*(2+heat*4)), life:1, decay:.007+Math.random()*.01, s:1.6+Math.random()*1.8, ember:true, seed:Math.random()*99});
+    }
+    if (heat > .4 && smokes.length < 70 && Math.random() < heat*.9){
+      smokes.push({x:bx+(Math.random()-.5)*R*1.2, y:by-R*(1.2+Math.random()*.6), vx:(Math.random()-.5)*.4, vy:-(.6+Math.random()*.7), life:1, decay:.01+Math.random()*.008, s:10+Math.random()*8});
+    }
+  }
+  // always clear the whole canvas in device pixels first
+  xctx.setTransform(1,0,0,1,0,0);
+  xctx.globalCompositeOperation = 'source-over';
+  xctx.globalAlpha = 1;
+  xctx.clearRect(0,0,fx.width,fx.height);
+  if (!parts.length && !bursts.length && !smokes.length) return;
+  xctx.setTransform(dpr,0,0,dpr,0,0);
+  smokes = smokes.filter(s => (s.life -= s.decay) > 0);
+  for (const s of smokes){
+    s.x += s.vx + Math.sin(now/700 + s.y*.02)*.25; s.y += s.vy; s.s += .45;
+    xctx.globalAlpha = .16 * s.life * Math.min(1, (1-s.life)*6);
+    xctx.drawImage(SMOKE, s.x - s.s, s.y - s.s, s.s*2, s.s*2);
+  }
+  xctx.globalCompositeOperation = 'lighter';
+  parts = parts.filter(p => (p.life -= p.decay) > 0 && p.y > -40);
+  for (const p of parts){
+    const t = 1 - p.life;
+    if (p.ember){
+      p.vx += Math.sin(now/110 + p.seed)*.06; p.x += p.vx; p.y += p.vy; p.vy *= .993;
+      xctx.globalAlpha = p.life * (.55 + .45*Math.sin(now/35 + p.seed));
+      const sz = p.s*3; xctx.drawImage(FIRE[2], p.x - sz/2, p.y - sz/2, sz, sz);
+      continue;
+    }
+    p.vx += Math.sin(p.y*.06 + now*.008 + p.seed)*.12;
+    p.vx *= .92; p.x += p.vx; p.y += p.vy; p.vy *= .985;
+    const grow = t < .18 ? .45 + t/.18*.55 : 1 - (t-.18)*.85;
+    const sz = Math.max(1, p.s * grow * 2.2);
+    xctx.globalAlpha = Math.pow(p.life, 1.3) * (.42 + heat*.18);
+    xctx.drawImage(FIRE[Math.min(FIRE.length-1, Math.floor(t*FIRE.length))], p.x - sz/2, p.y - sz*.62, sz, sz*1.25);
+  }
+  bursts = bursts.filter(b => (b.t += 1) < b.T);
+  for (const b of bursts){
+    const k = b.t/b.T;
+    xctx.globalAlpha = (1-k)*.9;
+    xctx.strokeStyle = 'rgb(255,190,90)'; xctx.lineWidth = 6*(1-k)+1;
+    xctx.beginPath(); xctx.arc(b.x,b.y, Math.max(1,k*b.R), 0, 7); xctx.stroke();
+    for (const sp of b.sp){
+      sp.x+=sp.vx; sp.y+=sp.vy; sp.vy+=.12; sp.vx*=.985;
+      xctx.globalAlpha = Math.max(0,(1-k));
+      const sz = sp.r*(1-k*.5)*3;
+      xctx.drawImage(sprite(sp.rgb), sp.x-sz/2, sp.y-sz/2, sz, sz);
+    }
+  }
+  xctx.globalAlpha = 1;
+}
+requestAnimationFrame(frame);
+
+function milestone(m){
+  const pr = phone.getBoundingClientRect(), cr = cbtn.getBoundingClientRect();
+  const x = cr.left-pr.left+cr.width/2, y = cr.top-pr.top+cr.height/2;
+  const big = m >= 188;
+  const sp = Array.from({length: big?110:70}, () => { const a = Math.random()*7, v = 2+Math.random()*(big?11:7); const rgb = [[255,207,90],[255,79,163],[255,120,30],[255,240,200]][Math.random()*4|0]; return {x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-2,r:2+Math.random()*3,rgb}; });
+  bursts.push({x,y,R:pr.width*(big?1.1:.7),t:0,T:big?75:55,sp});
+  const d = document.createElement('div'); d.className='mile'; d.innerHTML = `<b>×${fmt(m)}</b>`; phone.appendChild(d); setTimeout(()=>d.remove(),1000);
+  phone.animate([{transform:'translate(0,0)'},{transform:'translate(-4px,3px)'},{transform:'translate(4px,-3px)'},{transform:'translate(0,0)'}],{duration:220,iterations:big?3:1});
+}
+
+function legendary(g){
+  const d = document.createElement('div'); d.className='legend';
+  d.innerHTML = `<div class="rays"></div><div class="lg-g">${g[0]}</div><div class="lg-t"><b>${g[1]}</b><span>أنت أرسلت ${g[1]} إلى ${recips.size>1?recips.size+' مقاعد':PEOPLE[[...recips][0]][1]}</span></div>`;
+  phone.appendChild(d); setTimeout(()=>d.remove(), 3200);
+  setTimeout(()=>{ const pr = phone.getBoundingClientRect(); const x=pr.width/2,y=pr.height*.45; bursts.push({x,y,R:pr.width*1.3,t:0,T:90,sp:Array.from({length:140},()=>{const a=Math.random()*7,v=3+Math.random()*12;return{x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-3,r:2+Math.random()*4,rgb:[255,207,90]}})}); }, 550);
+}
+
+/* ---------- custom gift ---------- */
+function openCustom(){
+  const m = document.createElement('div'); m.className='modal';
+  m.innerHTML = `<div class="mbox" role="dialog" aria-label="صمّم هديتك">
+    <h3>صمّم هديتك الخاصة</h3>
+    <p>ارفع صورة مربعة واضحة (PNG أو WebP، حتى 2MB). تظهر الهدية في تبويب "مخصصة" عندك فقط، وتُراجع من الإدارة قبل التفعيل. إذا رُفضت يُعاد لك المبلغ كاملاً.</p>
+    <div class="up"><label class="upv" for="cgFile" id="cgPrev">＋</label><div class="fields"><input type="file" id="cgFile" accept="image/png,image/webp,image/jpeg" hidden><input type="text" id="cgName" maxlength="12" placeholder="اسم الهدية (12 حرف)"></div></div>
+    <div class="price-row"><div class="pbox"><small>تكلفة التصميم (مرة واحدة)</small><b><i class="coin"></i>500</b></div><div class="pbox"><small>سعر كل إرسال (من السيرفر)</small><b><i class="coin"></i>100</b></div></div>
+    <div class="mrow"><button type="button" id="cgCancel">إلغاء</button><button type="button" class="go" id="cgGo" disabled>ادفع 500 وأرسل للمراجعة</button></div></div>`;
+  phone.appendChild(m);
+  let img = null;
+  const check = () => { m.querySelector('#cgGo').disabled = !(img && m.querySelector('#cgName').value.trim()); };
+  m.querySelector('#cgFile').onchange = e => { const f = e.target.files[0]; if(!f) return; const r = new FileReader(); r.onload = () => { img = r.result; m.querySelector('#cgPrev').innerHTML = `<img src="${img}" alt="">`; check(); }; r.readAsDataURL(f); };
+  m.querySelector('#cgName').oninput = check;
+  m.querySelector('#cgCancel').onclick = () => m.remove();
+  m.onclick = e => { if (e.target === m) m.remove(); };
+  m.querySelector('#cgGo').onclick = () => {
+    if (balance < 500) { m.remove(); return lowBalance(500); }
+    balance -= 500; const g = ['🎁', m.querySelector('#cgName').value.trim(), 100]; g.img = img; g.pending = true;
+    GIFTS.custom.unshift(g); m.remove(); tab='custom'; renderAll(); toast('تم الدفع — الهدية قيد المراجعة');
+    setTimeout(()=>{ g.pending = false; if (phone.classList.contains('open') && tab==='custom') renderGrid(); toast('✅ تمت الموافقة على هديتك (محاكاة)'); }, 3500);
+  };
+}
+
+
+/* ---------- low balance: quick recharge sheet ---------- */
+const PACKS = [[6000,0.99,'+100% أول شحن','عرض أول شحن'],[33000,4.99,'+15% هدية',''],[70000,9.99,'+20% هدية','الأكثر شراءً'],[360000,49.99,'+25% + بوكس ذهبي','']];
+function lowBalance(need){
+  if (phone.querySelector('.lb')) return;
+  const m = document.createElement('div'); m.className = 'lb';
+  m.innerHTML = `<div class="lbbox" role="dialog" aria-label="رصيد غير كافٍ">
+    <div class="lbhead"><span class="big">🪙</span><div><h3>رصيدك لا يكفي</h3><p>تحتاج <b>${fmt(Math.max(0, need - balance))}</b> كوينز إضافية لإكمال الإرسال</p></div></div>
+    <div class="pk">${PACKS.map(([c,u,b,r],i)=>`<button type="button" class="pkb ${i===2?'hot':''}" data-c="${c}">${r?`<span class="rib">${r}</span>`:''}<span class="amt"><i class="coin"></i>${fmt(c)}</span><span class="bonus">${b}</span><span class="usd">$${u}</span></button>`).join('')}</div>
+    <div class="lbmore"><button type="button" class="x">لاحقاً</button><button type="button" class="all">كل العروض والبوكسات ›</button></div></div>`;
+  phone.appendChild(m);
+  const close = () => m.remove();
+  m.onclick = e => { if (e.target === m) close(); };
+  m.querySelector('.x').onclick = close;
+  m.querySelector('.all').onclick = () => toast('صفحة الشحن الكاملة — المرحلة القادمة');
+  m.querySelectorAll('.pkb').forEach(b => b.onclick = () => {
+    const c = +b.dataset.c; balance += c; close(); renderWealth(); toast(`✅ تم شحن ${fmt(c)} كوينز (محاكاة)`);
+    if ($('combo').classList.contains('on')) comboTimer = performance.now();
+  });
+}
+
+function toast(t){ const d = document.createElement('div'); d.className='toast'; d.textContent = t; phone.appendChild(d); setTimeout(()=>d.remove(), 1800); }
+
+renderAll();
+// realistic first frame: sheet open with a gift selected
+sel = GIFTS.common[7]; qty = 10; openSheet();
+})();
+</script>

@@ -166,6 +166,22 @@ async function migrateGiftImageUrls() {
     console.log('🔧 [MIGRATION] تم تحديث روابط صور الهدايا للتطابق مع الكود الحالي');
 }
 
+// ✅ طلب صريح (هدايا v2): category enum تضمّن "custom" الآن — لا ترحيل بيانات لازم لأي قيمة
+// حالية (common/rare/epic/legendary تبقى كما هي حرفياً، لم تتغيّر أسماؤها). الحقل الوحيد
+// المحتاج ترحيلاً فعلياً isFullscreen: الافتراضي بالـschema (دالة تعتمد على category) يُطبَّق
+// تلقائياً فقط حين يُحمَّل المستند عبر Mongoose العادي (لا .lean()) ولا يوجد الحقل أصلاً
+// بالتخزين — توثيقه صراحة هنا بالقاعدة نفسها أكثر أماناً من الاعتماد على ذلك الاستنتاج
+// الضمني بأي استعلام مستقبلي قد يستخدم .lean() (يتجاهل الافتراضيات تماماً)
+async function migrateGiftFullscreenFlag() {
+    const result = await Gift.updateMany(
+        { category: 'legendary', isFullscreen: { $exists: false } },
+        { $set: { isFullscreen: true } }
+    );
+    if (result.modifiedCount > 0) {
+        console.log(`🔧 [MIGRATION] ضُبطت isFullscreen:true لـ${result.modifiedCount} هدية أسطورية قديمة`);
+    }
+}
+
 // ✅ إصلاح موحَّد للأسعار: (أ) يضيف "prices" لأي إطار قديم جداً بقاعدة البيانات لا يملكها بعد
 // إطلاقاً (كانت موجودة من قبل إضافة نظام الأسعار)، و(ب) يحوّل أي إطار لا يزال بصيغة المدد
 // الطويلة القديمة (days7/days30/days365) إلى الصيغة الجديدة القصيرة (day1/day3/day7 — طلب
@@ -253,6 +269,7 @@ module.exports = async function autoSeed() {
         await migrateLegacyOwnedFrames();
         await migrateFramePricesToShortDurations();
         await migrateGiftImageUrls(); // ✅ جديد
+        await migrateGiftFullscreenFlag(); // ✅ هدايا v2
         await seedGiftsIfMissing();
         await seedFramesIfMissing();
         await migrateRetireOldFrames(); // ✅ بعد seedFramesIfMissing كي توجد الإطارات الجديدة أولاً كبديل

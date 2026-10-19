@@ -17,11 +17,25 @@ const giftSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    enum: ['common', 'rare', 'epic', 'legendary'],
+    enum: ['common', 'rare', 'epic', 'legendary', 'custom'],
     default: 'common'
   },
   animation: String,
   sound: String,
+  // ✅ طلب صريح (هدايا v2): أصل ملء الشاشة الاختياري (فيديو/لوتي/صورة متحركة) للهدايا
+  // الأسطورية — null لأي هدية بلا تأثير ملء شاشة مخصّص (الاحتفال الافتراضي يكفيها)
+  animationUrl: {
+    type: String,
+    default: null
+  },
+  // ✅ طلب صريح: افتراضياً true للهدايا الأسطورية فقط (تأثير ملء الشاشة)، false لبقية
+  // الفئات — دالة افتراضية (لا قيمة ثابتة) كي تعتمد على category وقت الإنشاء نفسه
+  isFullscreen: {
+    type: Boolean,
+    default: function () {
+      return this.category === 'legendary';
+    }
+  },
   isActive: {
     type: Boolean,
     default: true
