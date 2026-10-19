@@ -17696,24 +17696,37 @@ body.in-voice-room .voice-seat.duel-lose {
   color: #160b20;
 }
 
+/* 🐛 مراجعة المرحلة 4: البلاطة فُعِّلت فعلياً الآن (تفتح مودال "صمّم هديتك") — cursor:pointer
+   بدل not-allowed، الشارة "قريباً" اختفت (راجع .gsheet-pending-badge أدناه لحالة المراجعة) */
+
 .gsheet-cell.gsheet-add {
   border: 1.5px dashed rgba(59, 224, 176, 0.5);
   color: var(--g-custom);
-  cursor: not-allowed;
+  cursor: pointer;
 }
 
 .gsheet-cell.gsheet-add .gsheet-gi {
   font-size: 26px;
 }
 
-.gsheet-soon {
-  font-size: 9px;
+/* ✅ طلب صريح (هدايا v2 — المرحلة 4): هدية مخصّصة قيد المراجعة — رمادية/معطَّلة بوضوح، غير
+   قابلة للتحديد، مع شارة توضيحية أسفلها */
+
+.gsheet-cell.gsheet-pending {
+  cursor: not-allowed;
+  filter: grayscale(0.8);
+  opacity: 0.55;
+}
+
+.gsheet-pending-badge {
+  font-size: 8px;
   font-weight: 800;
   color: var(--g-muted);
   background: rgba(255, 255, 255, 0.06);
   border-radius: 6px;
   padding: 1px 6px;
   margin-top: 2px;
+  white-space: nowrap;
 }
 
 .gsheet-dots {
@@ -18005,6 +18018,163 @@ body.in-voice-room .voice-seat.duel-lose {
   text-align: center;
   line-height: 1.4;
   margin-top: 2px;
+}
+
+/* =====================================================================
+   🎨 هدايا v2 — المرحلة 4: مودال "صمّم هديتك" — مطابق قدر الإمكان لـ
+   docs/design/gift-system-prototype.html (معاينة رفع، اسم، كبسولتا سعر، زر دفع).
+   نافذة منفصلة طوبولوجياً (مُلحَقة بـ#game-container مثل gsheet-lbbox)، لا متداخلة
+   داخل .gsheet — var(--g-*, احتياطي) تحسُباً لعدم توفّر نطاق .gsheet هنا
+   ===================================================================== */
+
+.gsheet-custom-mbox {
+  width: 100%;
+  background: linear-gradient(180deg, #16231e, var(--g-bg, #15101f) 45%);
+  border-radius: 22px 22px 0 0;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(59, 224, 176, 0.25);
+  color: var(--g-fg, #f3eefb);
+}
+
+@media (min-width: 768px) {
+  .gsheet-custom-mbox {
+    border-radius: 22px;
+    max-width: 420px;
+  }
+}
+
+.gsheet-custom-mbox h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.gsheet-custom-mbox p {
+  margin: 0 0 14px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--g-muted, #9a8fb0);
+}
+
+.gsheet-custom-up {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.gsheet-custom-upv {
+  flex: none;
+  width: 84px;
+  height: 84px;
+  border-radius: 18px;
+  border: 2px dashed rgba(59, 224, 176, 0.5);
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  color: var(--g-custom, #3be0b0);
+  cursor: pointer;
+  overflow: hidden;
+  background: rgba(59, 224, 176, 0.06);
+}
+
+.gsheet-custom-upv img {
+  width: 100%;
+  height: 100%;
+  -o-object-fit: cover;
+     object-fit: cover;
+}
+
+.gsheet-custom-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gsheet-custom-fields input[type="text"] {
+  width: 100%;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--g-line, #2c2340);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--g-fg, #f3eefb);
+  padding: 0 12px;
+  font-size: 13px;
+  font: inherit;
+}
+
+.gsheet-custom-pricerow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.gsheet-custom-pbox {
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--g-line, #2c2340);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gsheet-custom-pbox small {
+  font-size: 10.5px;
+  color: var(--g-muted, #9a8fb0);
+}
+
+.gsheet-custom-pbox b {
+  font-family: var(--f-num, 'Baloo Bhaijaan 2', 'Cairo', sans-serif);
+  font-size: 17px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  direction: ltr;
+  justify-content: flex-end;
+}
+
+.gsheet-custom-row {
+  display: flex;
+  gap: 8px;
+}
+
+.gsheet-custom-row button {
+  flex: 1;
+  height: 42px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 13.5px;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.gsheet-custom-row #cg-cancel {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--g-fg, #f3eefb);
+}
+
+.gsheet-custom-go {
+  background: linear-gradient(90deg, #3be0b0, #43d9ff);
+  color: #062a22;
+}
+
+.gsheet-custom-go:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 🐛 إصلاح (مراجعة PR #109 — بند 4): نص الزر يجب ألا يلتف لسطرين أبداً — نص أقصر بالجافاسكريبت
+   (راجع goLabel بـshowCustomGiftDesignModal) + white-space:nowrap وحجم خط متجاوب كضمان مزدوج
+   بأضيق العروض (مثال: أرقام رسم تصميم كبيرة جداً بمنصّة بأسعار مختلفة) */
+
+.gsheet-custom-go {
+  white-space: nowrap;
+  font-size: clamp(11.5px, 3.6vw, 13.5px);
+  padding: 0 4px;
 }
 
 /* =====================================================================
@@ -18471,9 +18641,14 @@ body.in-voice-room .voice-seat.duel-lose {
 /* ✅ طلب صريح (بند 4): توست علوي صغير غير مُحجِّب — "⬆ مستوى الثروة Lv.N" أثناء كومبو حيّ،
    بدل بطاقة الاحتفال الكاملة المُحجِّبة لمنتصف الغرفة */
 
+/* 🐛 إصلاح (مراجعة المرحلة 3): top الثابت (safe-area فقط) كان يُغطّي عنوان الغرفة بشريط
+   الرأس الحقيقي (الذي يشمل شارة المستوى/التاج/زر المتابعة أيضاً لا السطر الأول فقط) — top
+   الآن يُحسَب ديناميكياً بالـJS من أسفل #room-header-bar الفعلي + 8px (راجع gfxShowTopLevelToast)،
+   وهذا هنا احتياطي فقط لو تعذَّر إيجاد شريط الرأس لأي سبب */
+
 .gfx-top-toast {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  top: calc(env(safe-area-inset-top, 0px) + 54px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 616;

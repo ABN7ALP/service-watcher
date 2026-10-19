@@ -493,9 +493,15 @@ const GIFT_CATEGORY_ORDER = ['common', 'rare', 'epic', 'legendary', 'custom'];
 // GIFT_XP_SENDER_DIVISOR/REQUIRED_XP_PER_LEVEL من experienceManager، ALLOWED_COMBO_QTY أدناه
 exports.getGiftShop = async (req, res) => {
     try {
-        const [gifts, me] = await Promise.all([
+        const CustomGift = require('../models/CustomGift');
+        const SystemSettings = require('../models/SystemSettings');
+        const [gifts, me, myCustomGifts, settings] = await Promise.all([
             Gift.find({ isActive: true }).sort('sortOrder price'),
-            User.findById(req.user.id).select('coins level experience')
+            User.findById(req.user.id).select('coins level experience'),
+            // ✅ طلب صريح (هدايا v2 — المرحلة 4): هداياي المخصّصة فقط (قيد المراجعة/مقبولة —
+            // المرفوضة استُرد رسمها بالفعل ولا تظهر بتبويب "مخصصة" بعد الآن)، لا هدايا أي مستخدم آخر
+            CustomGift.find({ owner: req.user.id, status: { $in: ['pending', 'approved'] } }).sort('-createdAt'),
+            SystemSettings.getSettings()
         ]);
 
         const grouped = {};
@@ -530,7 +536,13 @@ exports.getGiftShop = async (req, res) => {
                     balance: me ? me.coins : 0,
                     wealthLevel,
                     wealthXp: me ? me.experience : 0,
-                    requiredXp: calculateRequiredXp(wealthLevel)
+                    requiredXp: calculateRequiredXp(wealthLevel),
+                    // ✅ طلب صريح (هدايا v2 — المرحلة 4): هدايا المستخدم المخصّصة الخاصة به فقط —
+                    // التبويب الجديد بشيت الهدايا يعرضها مباشرة بلا نداء شبكة إضافي منفصل
+                    customGifts: myCustomGifts.map(cg => ({
+                        id: cg._id, name: cg.name, imageUrl: cg.imageUrl, status: cg.status,
+                        createCost: cg.createCost, sendPrice: cg.sendPrice
+                    }))
                 },
                 // ✅ طلب صريح بالحرف: "The client must compute the wealth-bar preview ONLY from
                 // these server values" — لا رقم ثابت مكتوب بالعميل، كل شيء من هنا
@@ -539,7 +551,10 @@ exports.getGiftShop = async (req, res) => {
                     requiredXpPerLevel: REQUIRED_XP_PER_LEVEL,
                     quantities: [...COMBO_QUANTITIES],
                     comboWindowMs: COMBO_WINDOW_MS,
-                    flushMs: GIFT_ANNOUNCE_BATCH_MS
+                    flushMs: GIFT_ANNOUNCE_BATCH_MS,
+                    // ✅ طلب صريح: "values from the server" لمودال "صمّم هديتك" — لا رقم ثابت بالعميل
+                    customGiftDesignFee: settings.customGiftDesignFeeCoins,
+                    customGiftSendPrice: settings.customGiftSendPriceCoins
                 }
             }
         });
@@ -883,7 +898,7 @@ async function reserveGiftCombo({ session, senderId, giftId, quantity, taps = 1,
         throw Object.assign(new Error('يجب اختيار مستلم واحد على الأقل'), { code: 'NO_RECIPIENTS' });
     }
 
-    const [sender, gift, receivers] = await Promise.all([
+    const [sender, catalogGift, receivers] = await Promise.all([
         User.findById(senderId).session(session),
         Gift.findById(giftId).session(session),
         User.find({ _id: { $in: seatFilteredRecipientIds } }).select('username profileImage socketId blockedUsers isBot').session(session)
@@ -891,6 +906,30 @@ async function reserveGiftCombo({ session, senderId, giftId, quantity, taps = 1,
 
     if (!sender) {
         throw Object.assign(new Error('يرجى تسجيل الدخول من جديد'), { code: 'NO_SENDER' });
+    }
+
+    // ✅ طلب صريح (هدايا v2 — المرحلة 4): giftId قد يكون هدية مخصّصة (CustomGift) لا هدية
+    // كتالوج عادية — يُحاوَل أولاً كـGift عادية (الحالة الأشيع بفارق كبير)، وفقط لو لم توجد
+    // تُفحَص كـCustomGift. مملوكة لي + "approved" فقط قابلة للإرسال. تُطبَّع هنا لنفس الشكل
+    // الذي يتوقعه بقية هذي الدالة (و runGiftComboSideEffects بعدها) — فلا يحتاج أي كود لاحق
+    // معرفة مصدرها إطلاقاً (name/imageUrl/price بدل name/imageUrl/discountedPrice+sendPrice)
+    let gift = catalogGift;
+    if (!gift) {
+        const CustomGift = require('../models/CustomGift');
+        const customGift = await CustomGift.findById(giftId).session(session);
+        if (customGift) {
+            if (customGift.owner.toString() !== senderId.toString()) {
+                throw Object.assign(new Error('لا يمكنك إرسال هدية مخصّصة ليست لك'), { code: 'NO_GIFT' });
+            }
+            if (customGift.status !== 'approved') {
+                throw Object.assign(new Error('هذي الهدية المخصّصة ما زالت قيد المراجعة أو مرفوضة'), { code: 'NO_GIFT' });
+            }
+            gift = {
+                _id: customGift._id, name: customGift.name, imageUrl: customGift.imageUrl,
+                category: 'custom', isActive: true, discountedPrice: null, price: customGift.sendPrice,
+                animation: null
+            };
+        }
     }
     if (!gift || !gift.isActive) {
         throw Object.assign(new Error('الهدية غير متوفرة حالياً'), { code: 'NO_GIFT' });

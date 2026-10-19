@@ -1,4 +1,5 @@
 const withdrawalController = require('../controllers/withdrawalController');
+const customGiftController = require('../controllers/customGiftController');
 const express = require('express');
 const router = express.Router();
 const adminAuth = require('../middleware/adminAuth');
@@ -25,6 +26,9 @@ router.post('/coin-purchases/:purchaseId/reject', adminController.rejectCoinPurc
 
 router.get('/withdrawals', withdrawalController.getAllWithdrawals);
 router.post('/withdrawals/:withdrawalId/review', withdrawalController.reviewWithdrawal);
+
+router.get('/custom-gifts', customGiftController.adminListCustomGifts);
+router.post('/custom-gifts/:id/review', customGiftController.adminReviewCustomGift);
 
 router.get('/transactions', adminController.getAllTransactions);
 
