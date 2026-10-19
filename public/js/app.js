@@ -14703,7 +14703,10 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             pagesEl.innerHTML = '';
             // ✅ طلب صريح (هدايا v2 — المرحلة 4): تبويب "مخصصة" يعرض هدايا المستخدم الحقيقية
             // (معلّقة مُعطَّلة + مُعتمَدة قابلة للإرسال) ثم بلاطة "صمّم هديتك" الفعّالة أخيراً
-            const items = tab === 'custom' ? [...getMyCustomTiles(), { addTile: true }] : (shopData.gifts[tab] || []).slice();
+            // 🐛 إصلاح (مراجعة PR #109 — بند 4): بلاطة "صمّم هديتك" يجب أن تكون أول خلية (أعلى
+            // اليمين بالـRTL، مطابقةً للنموذج الأولي) — .gsheet-pages بـdirection:rtl تملأ
+            // الشبكة من اليمين لليسار بترتيب DOM نفسه، فأول عنصر بالمصفوفة = أول خلية مرئية
+            const items = tab === 'custom' ? [{ addTile: true }, ...getMyCustomTiles()] : (shopData.gifts[tab] || []).slice();
             const n = Math.max(1, Math.ceil(items.length / 8));
             for (let p = 0; p < n; p++) {
                 const pg = document.createElement('div');
@@ -14918,7 +14921,10 @@ function showCustomGiftDesignModal(rules, onCreated) {
     document.getElementById('custom-gift-design-modal')?.remove();
     const designFee = rules.customGiftDesignFee;
     const sendPrice = rules.customGiftSendPrice;
-    const goLabel = (busy) => busy ? 'جارٍ الإرسال...' : `ادفع ${designFee.toLocaleString('en-US')} وأرسل للمراجعة`;
+    // 🐛 إصلاح (مراجعة PR #109 — بند 4): النص الأطول "...وأرسل للمراجعة" كان يلتف لسطرين
+    // بعرض زر ضيّق — نص أقصر (السياق التوضيحي "تُراجَع من الإدارة" موجود أصلاً بالفقرة أعلاه)
+    // + white-space:nowrap بالـCSS (راجع .gsheet-custom-go) كضمان إضافي
+    const goLabel = (busy) => busy ? 'جارٍ الإرسال...' : `ادفع ${designFee.toLocaleString('en-US')} وأرسل`;
 
     const overlay = document.createElement('div');
     overlay.id = 'custom-gift-design-modal';

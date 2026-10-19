@@ -71,11 +71,26 @@ const roomCoverUpload = multer({
 
 // 5ج. Multer لصورة الهدية المخصّصة (هدايا v2 — المرحلة 4) — سقف أصغر (2MB) صريح بالطلب،
 // نفس الفلتر المبدئي (الفحص الحاسم assertRealType يبقى بعد الرفع كالعادة، قبل Cloudinary)
-const customGiftUpload = multer({
+const customGiftUploadRaw = multer({
     storage: storage,
     fileFilter: profileImageFilter,
     limits: { fileSize: 2 * 1024 * 1024 } // 2MB
 }).single('giftImage');
+
+// 🐛 إصلاح (مراجعة PR #109 — بند 3): multer يمرّر أخطاءه (كتجاوز 2MB) عبر next(err) الافتراضي —
+// تصل للمعالج العام (globalErrorHandler بـserver/middleware/errorHandlers.js) الذي يُرجعها 500
+// برسالة MulterError الإنجليزية الخام ("File too large") لا 400 عربي واضح قبل أي معالجة فعلية.
+// يُلتقَط هنا صراحةً (نمط multer الموثَّق لتخصيص رسائل الخطأ) ويُترجَم لرسالة عربية بـ400 —
+// قبل الوصول لـcreateCustomGift بالكامل (لا أي قراءة/معالجة لاحقة لملف مرفوض الحجم)
+function customGiftUpload(req, res, next) {
+    customGiftUploadRaw(req, res, (err) => {
+        if (!err) return next();
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ status: 'fail', message: 'حجم الصورة يجب ألا يتجاوز 2 ميجابايت' });
+        }
+        return res.status(400).json({ status: 'fail', message: err.message || 'تعذّر رفع الصورة' });
+    });
+}
 
 // 6. Multer للدردشات
 const chatUpload = multer({

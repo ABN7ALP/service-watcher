@@ -9,7 +9,8 @@ jest.mock('../fanClubController', () => ({ awardFanPoints: jest.fn() }));
 jest.mock('../../utils/cloudinary', () => ({
     cloudinary: { uploader: { upload_stream: jest.fn() } },
     assertRealType: jest.fn(() => 'image/png'),
-    deleteFromCloudinary: jest.fn().mockResolvedValue(undefined)
+    deleteFromCloudinary: jest.fn().mockResolvedValue(undefined),
+    getPublicIdFromUrl: jest.fn((url) => (url ? 'fakePublicId' : null))
 }));
 
 const mongoose = require('mongoose');
@@ -198,43 +199,51 @@ describe('customGiftController.createCustomGift', () => {
 // adminReviewCustomGift — موافقة/رفض الإدارة
 // =====================================================
 describe('customGiftController.adminReviewCustomGift', () => {
+    // 🐛 نفس سبب mockClear بوصف createCustomGift أعلاه — deleteFromCloudinary جاء من
+    // jest.mock(factory) لا jest.spyOn، فلا يُصفِّره restoreAllMocks بين الاختبارات
+    beforeEach(() => deleteFromCloudinary.mockClear());
     afterEach(() => jest.restoreAllMocks());
 
-    function makeCustomGiftDoc(overrides = {}) {
-        const doc = {
-            _id: 'cg1', owner: 'u1', name: 'هدية', status: 'pending', createCost: 500,
-            rejectReason: null, reviewedBy: null, reviewedAt: null,
-            save: jest.fn().mockResolvedValue(undefined),
-            ...overrides
-        };
-        return doc;
+    // 🛡️ مراجعة PR #109 (بند 1 BLOCKER): يحاكي الادّعاء الذرّي الحقيقي —
+    // findOneAndUpdate({_id, status:'pending'}, ...) ينجح فقط لو status الحالية بالـdb لا تزال
+    // مطابقة لما بالفلتر، ويكتب التحديث بنفس اللحظة (محاكاة ذرّية حقيقية — لا نافذة سباق بين
+    // القراءة والكتابة، تماماً كما تضمنه findOneAndUpdate الحقيقية بـMongo)
+    function wireReviewMocks(db, owner) {
+        jest.spyOn(mongoose, 'startSession').mockResolvedValue(makeFakeSession());
+        jest.spyOn(CustomGift, 'findOneAndUpdate').mockImplementation((filter, update) => {
+            if (db.cg._id !== filter._id || db.cg.status !== filter.status) return chainable(null);
+            Object.assign(db.cg, update.$set);
+            return chainable({ ...db.cg });
+        });
+        jest.spyOn(User, 'findByIdAndUpdate').mockImplementation((id, update) => {
+            if (id !== owner._id) return chainable(null);
+            owner.coins += update.$inc.coins;
+            return chainable({ ...owner });
+        });
+        jest.spyOn(User, 'findById').mockImplementation(() => chainable({ ...owner }));
+        jest.spyOn(Transaction, 'create').mockResolvedValue([{}]);
+        jest.spyOn(AdminLog, 'logAction').mockResolvedValue(undefined);
     }
 
-    test('موافقة: الحالة تصبح approved، بلا أي استرداد كوينز', async () => {
-        const doc = makeCustomGiftDoc();
-        jest.spyOn(CustomGift, 'findById').mockResolvedValue(doc);
+    test('موافقة: الحالة تصبح approved عبر ادّعاء ذرّي واحد، بلا أي استرداد كوينز', async () => {
         const owner = { _id: 'u1', coins: 0, socketId: null };
-        jest.spyOn(User, 'findById').mockResolvedValue(owner);
-        const incSpy = jest.spyOn(User, 'findByIdAndUpdate');
-        jest.spyOn(AdminLog, 'logAction').mockResolvedValue(undefined);
+        const db = { cg: { _id: 'cg1', owner: 'u1', name: 'هدية', status: 'pending', createCost: 500, imageUrl: 'https://x/cg1.webp' } };
+        wireReviewMocks(db, owner);
 
         const req = { params: { id: 'cg1' }, body: { action: 'approve' }, admin: { _id: 'admin1' }, ip: '1.2.3.4', app: { get: () => null } };
         const res = mockRes();
         await customGiftController.adminReviewCustomGift(req, res);
 
-        expect(doc.status).toBe('approved');
-        expect(incSpy).not.toHaveBeenCalled();
+        expect(db.cg.status).toBe('approved');
+        expect(owner.coins).toBe(0); // ✅ لا استرداد إطلاقاً عند الموافقة
         expect(res.status).toHaveBeenCalledWith(200);
+        expect(deleteFromCloudinary).not.toHaveBeenCalled(); // ✅ الصورة تبقى — الهدية مُعتمَدة
     });
 
-    test('رفض: الحالة تصبح rejected، createCost يُرَد للمالك ذرّياً، وقيد Transaction يُسجَّل', async () => {
-        const doc = makeCustomGiftDoc({ createCost: 500 });
-        jest.spyOn(CustomGift, 'findById').mockResolvedValue(doc);
+    test('رفض: الحالة تصبح rejected، createCost يُرَد للمالك ذرّياً، قيد Transaction يُسجَّل، والصورة تُحذَف', async () => {
         const owner = { _id: 'u1', coins: 100, socketId: 'sock1' };
-        jest.spyOn(User, 'findById').mockResolvedValue(owner);
-        jest.spyOn(User, 'findByIdAndUpdate').mockResolvedValue({ ...owner, coins: 600 });
-        const txSpy = jest.spyOn(Transaction, 'create').mockResolvedValue({});
-        jest.spyOn(AdminLog, 'logAction').mockResolvedValue(undefined);
+        const db = { cg: { _id: 'cg1', owner: 'u1', name: 'هدية', status: 'pending', createCost: 500, imageUrl: 'https://res.cloudinary.com/x/image/upload/v1/custom_gifts/u1_1.webp' } };
+        wireReviewMocks(db, owner);
         const emit = jest.fn();
         const io = { to: jest.fn(() => ({ emit })) };
 
@@ -242,22 +251,55 @@ describe('customGiftController.adminReviewCustomGift', () => {
         const res = mockRes();
         await customGiftController.adminReviewCustomGift(req, res);
 
-        expect(doc.status).toBe('rejected');
-        expect(doc.rejectReason).toBe('غير لائقة');
-        expect(txSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'custom_gift_refund', amount: 500, user: 'u1' }));
+        expect(db.cg.status).toBe('rejected');
+        expect(db.cg.rejectReason).toBe('غير لائقة');
+        expect(owner.coins).toBe(600);
+        expect(Transaction.create).toHaveBeenCalledWith(
+            [expect.objectContaining({ type: 'custom_gift_refund', amount: 500, user: 'u1' })],
+            expect.anything()
+        );
+        expect(deleteFromCloudinary).toHaveBeenCalledWith('fakePublicId');
         expect(io.to).toHaveBeenCalledWith('sock1');
         expect(emit).toHaveBeenCalledWith('coinsUpdated', { newCoins: 600 });
     });
 
-    test('هدية غير معلّقة بالفعل (روجعت سابقاً): تُرفَض 400 بلا أي تغيير إضافي', async () => {
-        const doc = makeCustomGiftDoc({ status: 'approved' });
-        jest.spyOn(CustomGift, 'findById').mockResolvedValue(doc);
+    test('هدية غير معلّقة بالفعل (روجعت سابقاً): تُرفَض 409 بلا أي تغيير إضافي', async () => {
+        const owner = { _id: 'u1', coins: 100 };
+        const db = { cg: { _id: 'cg1', owner: 'u1', name: 'هدية', status: 'approved', createCost: 500 } };
+        wireReviewMocks(db, owner);
 
         const req = { params: { id: 'cg1' }, body: { action: 'approve' }, admin: { _id: 'admin1' }, ip: '1.2.3.4', app: { get: () => null } };
         const res = mockRes();
         await customGiftController.adminReviewCustomGift(req, res);
 
-        expect(res.status).toHaveBeenCalledWith(400);
-        expect(doc.save).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(409);
+        expect(owner.coins).toBe(100);
+    });
+
+    // 🛡️ طلب صريح (مراجعة PR #109 — بند 1 BLOCKER): نقرة مزدوجة/مديران يرفضان نفس الهدية
+    // بنفس اللحظة تقريباً — يجب أن ينجح واحد فقط (200) ويُرفَض الآخر (409)، واسترداد واحد
+    // فقط بالضبط (لا رصيد مُضاعَف)
+    test('رفضان متزامنان لنفس الهدية: استرداد واحد فقط — لا استرداد مزدوج', async () => {
+        const owner = { _id: 'u1', coins: 0, socketId: 'sock1' };
+        const db = { cg: { _id: 'cg1', owner: 'u1', name: 'هدية', status: 'pending', createCost: 500, imageUrl: 'https://x/cg1.webp' } };
+        wireReviewMocks(db, owner);
+        const io = { to: jest.fn(() => ({ emit: jest.fn() })) };
+
+        const makeReq = () => ({
+            params: { id: 'cg1' }, body: { action: 'reject', reason: 'سبب' },
+            admin: { _id: 'admin1' }, ip: '1.2.3.4', app: { get: () => io }
+        });
+        const res1 = mockRes();
+        const res2 = mockRes();
+
+        await Promise.all([
+            customGiftController.adminReviewCustomGift(makeReq(), res1),
+            customGiftController.adminReviewCustomGift(makeReq(), res2)
+        ]);
+
+        const statuses = [res1.status.mock.calls[0][0], res2.status.mock.calls[0][0]].sort();
+        expect(statuses).toEqual([200, 409]);
+        expect(owner.coins).toBe(500); // ✅ استرداد واحد فقط بالضبط (500)، لا 1000
+        expect(Transaction.create).toHaveBeenCalledTimes(1);
     });
 });

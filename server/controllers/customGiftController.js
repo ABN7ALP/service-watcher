@@ -4,7 +4,7 @@ const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const SystemSettings = require('../models/SystemSettings');
 const AdminLog = require('../models/AdminLog');
-const { cloudinary, assertRealType, deleteFromCloudinary } = require('../utils/cloudinary');
+const { cloudinary, assertRealType, deleteFromCloudinary, getPublicIdFromUrl } = require('../utils/cloudinary');
 const { sendBotMessage } = require('../utils/botMessenger');
 
 const MAX_PENDING_PER_USER = 3;
@@ -145,74 +145,100 @@ exports.adminListCustomGifts = async (req, res) => {
     }
 };
 
+// 🛡️ إصلاح جذري (مراجعة PR #109 — بند 1 BLOCKER): النسخة السابقة كانت تقرأ status، تسترد
+// الرصيد، ثم تحفظ status لاحقاً — نافذة سباق حقيقية بين القراءة والحفظ. نقرة مزدوجة، أو مديران
+// يرفضان بنفس اللحظة تقريباً، كلاهما يجد status='pending' فيسترد كلاهما الرسم (استرداد مزدوج
+// فعلي). الآن: findOneAndUpdate({_id, status:'pending'}, {$set:{status,...}}) ذرّية واحدة داخل
+// معاملة Mongo — "ادّعاء" الوثيقة والاسترداد (لو رفض) بنفس المعاملة، فيستحيل نجاح طلبين معاً.
+// فشل الادّعاء (null — روجعت مسبقاً) يُرجع 409 فوراً بلا أي كتابة إطلاقاً. الإشعارات
+// (socket/bot/AdminLog) تعمل بعد الالتزام (commit) فقط — best-effort، لا تُسقِط المراجعة نفسها
 exports.adminReviewCustomGift = async (req, res) => {
     try {
         const { id } = req.params;
         const { action, reason } = req.body; // action: 'approve' | 'reject'
-
-        const customGift = await CustomGift.findById(id);
-        if (!customGift) return res.status(404).json({ status: 'fail', message: 'الهدية غير موجودة' });
-        if (customGift.status !== 'pending') {
-            return res.status(400).json({ status: 'fail', message: 'تمت مراجعة هذي الهدية مسبقاً' });
-        }
-
-        const io = req.app.get('socketio');
-        const owner = await User.findById(customGift.owner);
-
-        if (action === 'approve') {
-            customGift.status = 'approved';
-        } else if (action === 'reject') {
-            customGift.status = 'rejected';
-            customGift.rejectReason = reason || 'لم يُحدد سبب';
-            // ✅ استرداد رسم التصميم فوراً عند الرفض — نفس نمط reviewWithdrawal بالضبط
-            if (owner) {
-                const updatedOwner = await User.findByIdAndUpdate(
-                    owner._id, { $inc: { coins: customGift.createCost } }, { new: true }
-                );
-                await Transaction.create({
-                    user: owner._id, type: 'custom_gift_refund', amount: customGift.createCost, currency: 'coins',
-                    status: 'completed', description: `استرداد رسم تصميم هدية مرفوضة: ${customGift.name}`,
-                    processedBy: req.admin._id, processedAt: new Date()
-                });
-                if (io && updatedOwner.socketId) {
-                    io.to(updatedOwner.socketId).emit('coinsUpdated', { newCoins: updatedOwner.coins });
-                }
-            }
-        } else {
+        if (action !== 'approve' && action !== 'reject') {
             return res.status(400).json({ status: 'fail', message: 'إجراء غير صالح' });
         }
+        const rejectReason = action === 'reject' ? (reason || 'لم يُحدد سبب') : null;
 
-        customGift.reviewedBy = req.admin._id;
-        customGift.reviewedAt = new Date();
-        await customGift.save();
+        const session = await mongoose.startSession();
+        let claim = null;
+        let updatedOwner = null;
+        try {
+            await session.withTransaction(async () => {
+                claim = await CustomGift.findOneAndUpdate(
+                    { _id: id, status: 'pending' },
+                    {
+                        $set: {
+                            status: action === 'approve' ? 'approved' : 'rejected',
+                            rejectReason,
+                            reviewedBy: req.admin._id,
+                            reviewedAt: new Date()
+                        }
+                    },
+                    { new: true, session }
+                );
+                if (!claim) {
+                    throw Object.assign(new Error('تمت مراجعة هذي الهدية مسبقاً'), { code: 'ALREADY_REVIEWED' });
+                }
+
+                if (action === 'reject') {
+                    // ✅ استرداد رسم التصميم ذرّياً بنفس المعاملة — نفس نمط reviewWithdrawal
+                    updatedOwner = await User.findByIdAndUpdate(
+                        claim.owner, { $inc: { coins: claim.createCost } }, { new: true, session }
+                    );
+                    await Transaction.create([{
+                        user: claim.owner, type: 'custom_gift_refund', amount: claim.createCost, currency: 'coins',
+                        status: 'completed', description: `استرداد رسم تصميم هدية مرفوضة: ${claim.name}`,
+                        processedBy: req.admin._id, processedAt: new Date()
+                    }], { session });
+                }
+            });
+        } catch (txError) {
+            if (txError.code === 'ALREADY_REVIEWED') {
+                return res.status(409).json({ status: 'fail', message: txError.message });
+            }
+            throw txError;
+        } finally {
+            await session.endSession();
+        }
 
         await AdminLog.logAction({
             admin: req.admin._id,
             action: action === 'approve' ? 'approve_custom_gift' : 'reject_custom_gift',
-            targetUser: customGift.owner,
+            targetUser: claim.owner,
             targetEntity: 'gift',
-            entityId: customGift._id,
-            details: { name: customGift.name, reason: customGift.rejectReason || null },
+            entityId: claim._id,
+            details: { name: claim.name, reason: claim.rejectReason || null },
             severity: action === 'reject' ? 'warning' : 'info',
             ipAddress: req.ip
         });
 
-        if (io && owner?.socketId) {
-            io.to(owner.socketId).emit('customGiftStatusUpdated', {
-                customGiftId: customGift._id,
-                status: customGift.status,
-                reason: customGift.rejectReason || null
-            });
-        }
-        if (owner) {
-            await sendBotMessage(io, owner._id,
-                action === 'approve'
-                    ? `✅ تمت الموافقة على هديتك المخصّصة "${customGift.name}" — أصبحت قابلة للإرسال الآن!`
-                    : `❌ تم رفض هديتك المخصّصة "${customGift.name}". السبب: ${customGift.rejectReason}\nتم إرجاع رسم التصميم (${customGift.createCost} كوينز) لرصيدك.`
-            );
+        // ✅ بند 2: حذف صورة Cloudinary اليتيمة بعد الالتزام مباشرة — best effort صراحةً
+        // (الهدية رُفضت واسُترد رسمها بالفعل، فشل الحذف هنا لا يستحق إفشال الاستجابة كلها)
+        if (action === 'reject') {
+            const publicId = getPublicIdFromUrl(claim.imageUrl);
+            if (publicId) await deleteFromCloudinary(publicId);
         }
 
-        res.status(200).json({ status: 'success', message: 'تم تحديث حالة الهدية', data: { customGift } });
+        const io = req.app.get('socketio');
+        // ✅ لـreject: نفس وثيقة المالك المُحدَّثة بالفعل بالمعاملة (رصيد صحيح جاهز) — لا قراءة
+        // إضافية. لـapprove: قراءة خفيفة فقط لـsocketId (لا تغيير رصيد إطلاقاً هنا)
+        const owner = action === 'reject' ? updatedOwner : await User.findById(claim.owner).select('socketId');
+
+        if (io && owner?.socketId) {
+            if (action === 'reject') io.to(owner.socketId).emit('coinsUpdated', { newCoins: owner.coins });
+            io.to(owner.socketId).emit('customGiftStatusUpdated', {
+                customGiftId: claim._id, status: claim.status, reason: claim.rejectReason || null
+            });
+        }
+        await sendBotMessage(io, claim.owner,
+            action === 'approve'
+                ? `✅ تمت الموافقة على هديتك المخصّصة "${claim.name}" — أصبحت قابلة للإرسال الآن!`
+                : `❌ تم رفض هديتك المخصّصة "${claim.name}". السبب: ${claim.rejectReason}\nتم إرجاع رسم التصميم (${claim.createCost} كوينز) لرصيدك.`
+        );
+
+        res.status(200).json({ status: 'success', message: 'تم تحديث حالة الهدية', data: { customGift: claim } });
     } catch (error) {
         console.error('[ERROR] in adminReviewCustomGift:', error);
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
