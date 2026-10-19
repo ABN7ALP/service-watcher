@@ -93,12 +93,41 @@ function withUserSeatLock(userId, fn) {
 // (idempotency عبر "حجز الفتحة" أولاً، لا فحص-ثم-تنفيذ) الذي يُغلق التسابق النظري الوحيد
 // المتبقي (طلبان بنفس comboId+seq بالضبط) دون أي قفل تطبيقي
 
-// ✅ محدد معدّل مستقل لرسائل gift:combo — تتجاوز Express rate limiter بالكامل (Socket.IO لا
-// REST)، فتحتاج حمايتها الخاصة. سخي بما يكفي لتسارع حقيقي كامل (دفعة كل 250ms من العميل
-// السليم) + هامش أمان، لكن يمنع عميلاً مُعدَّلاً من إغراق الخادم برسائل غير مُجمَّعة فعلياً
+// 🛡️ إصلاح جذري (الموثوقية والسرعة — "يجب أن يسمح محدّد المعدّل بهذا النمط"): العميل الجديد
+// بعمق أنبوب 1 (pipeline depth 1) يُرسل دفعة جديدة فور استلام ack الدفعة السابقة مباشرة — لا
+// فاصل 250ms ثابت بعد الآن. مع ack سريع (<300ms مستهدف)، هذا يعني رسالة gift:combo واحدة
+// تقريباً كل جولة ذهاب-إياب شبكة، قد تصل لـ15-20 رسالة/ثانية فعلياً بشبكة سريعة (نفس تردد
+// اختبار الحمل: 20 ضغطة/ثانية). السقف القديم (16 لكل 2 ثانية = 8/ث) كان سيُحجِّم هذا النمط
+// الطبيعي الجديد خطأً كأنه إغراق. سقف أسخى الآن (60 لكل 2 ثانية = 30/ث) يتسع لهذا الاستخدام
+// الحقيقي بهامش واضح، ويبقى يمنع عميلاً مُعدَّلاً من إرسال غير مُجمَّع إطلاقاً (مئات/ثانية)
 const giftComboRateMap = new Map();
 const GIFT_COMBO_RATE_WINDOW_MS = 2000;
-const GIFT_COMBO_RATE_MAX = 16;
+const GIFT_COMBO_RATE_MAX = 60;
+
+// ✅ طلب صريح (الموثوقية والسرعة): قياسات زمن الـack (من استلام الرسالة حتى إرسال ack الناجح)
+// خلف علم DEBUG_GIFTS فقط — صفر تكلفة إضافية إنتاجياً إن لم يُفعَّل. نافذة متدحرجة بالذاكرة
+// (آخر 500 قياس)، تُطبَع ملخّصاً (p50/p95) كل 10 ثوانٍ لو وصلت قياسات جديدة فعلاً
+const DEBUG_GIFTS = process.env.DEBUG_GIFTS === '1' || process.env.DEBUG_GIFTS === 'true';
+const giftAckTimings = [];
+const GIFT_ACK_TIMINGS_MAX = 500;
+function recordGiftAckTiming(ms) {
+    giftAckTimings.push(ms);
+    if (giftAckTimings.length > GIFT_ACK_TIMINGS_MAX) giftAckTimings.shift();
+}
+function percentile(arr, p) {
+    if (arr.length === 0) return 0;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+    return sorted[idx];
+}
+if (DEBUG_GIFTS) {
+    let lastReportedCount = 0;
+    setInterval(() => {
+        if (giftAckTimings.length === 0 || giftAckTimings.length === lastReportedCount) return;
+        lastReportedCount = giftAckTimings.length;
+        console.log(`[DEBUG_GIFTS] gift:combo ack latency — p50=${percentile(giftAckTimings, 50).toFixed(1)}ms p95=${percentile(giftAckTimings, 95).toFixed(1)}ms (n=${giftAckTimings.length})`);
+    }, 10000);
+}
 function isGiftComboRateLimited(userId) {
     const now = Date.now();
     const key = userId.toString();
@@ -2691,8 +2720,9 @@ socket.on('refreshBlockData', async () => {
             if (isGiftComboRateLimited(socket.user._id)) {
                 return ack({ ok: false, code: 'RATE_LIMITED', message: 'إرسال سريع جداً، انتظر لحظة' });
             }
+            const t0 = DEBUG_GIFTS ? process.hrtime.bigint() : 0;
             try {
-                const { comboId, seq, taps, giftId, quantity, recipientIds, roomId } = payload || {};
+                const { comboId, seq, taps, giftId, quantity, recipientIds, roomId, audience } = payload || {};
                 if (typeof comboId !== 'string' || !comboId || comboId.length > 80) {
                     return ack({ ok: false, code: 'BAD_COMBO_ID' });
                 }
@@ -2706,17 +2736,27 @@ socket.on('refreshBlockData', async () => {
                 const { settleGiftComboClaim, runGiftComboSideEffects } = require('../controllers/giftController');
                 const key = `${socket.user._id}:${comboId}:${seq}`;
                 const outcome = await settleGiftComboClaim({
-                    key, senderId: socket.user._id, comboId, seq, giftId, quantity, taps, recipientIds, roomId, io
+                    key, senderId: socket.user._id, comboId, seq, giftId, quantity, taps, recipientIds, roomId, audience, io
                 });
 
                 if (outcome.duplicate) {
                     return ack({ ok: true, seq, balanceAfter: outcome.balanceAfter });
                 }
 
-                const result = await runGiftComboSideEffects({ io, comboId, ...outcome.reserved });
-                ack({
-                    ok: true, seq, balanceAfter: result.balance,
-                    wealthLevel: result.wealthLevel, wealthXp: result.wealthXp, requiredXp: result.requiredXp
+                // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري ب): الـack كان يصل بعد تشغيل
+                // runGiftComboSideEffects كاملاً (بثّ الغرفة/الدردشة الخاصة، الخبرة، نقاط PK/الدعم،
+                // نقاط نادي المعجبين) — فزمن الـack كان يكبر مع حمل الغرفة (عدد المستلمين/الأحداث
+                // النشطة بها). الآن: ack فوراً بمجرّد التزام الخصم الذرّي بنجاح — العميل يستلم
+                // رصيده الحقيقي المحدَّث خلال جزء من الثانية بصرف النظر عن أي حمل. الأثر الجانبي
+                // يبدأ فوراً بعدها (setImmediate، لا ينتظره أحد) — موثَّق بـtry/catch داخلياً
+                // (راجع runGiftComboSideEffects) فلا يُسقِط شيئاً وصل العميل أصلاً بنجاح
+                ack({ ok: true, seq, balanceAfter: outcome.reserved.sender.coins });
+                if (DEBUG_GIFTS) recordGiftAckTiming(Number(process.hrtime.bigint() - t0) / 1e6);
+
+                setImmediate(() => {
+                    runGiftComboSideEffects({ io, comboId, ...outcome.reserved }).catch(sideEffectError => {
+                        console.error('[GIFT COMBO] side effects failed (ack already sent, deduct already committed):', sideEffectError);
+                    });
                 });
             } catch (error) {
                 if (error && error.code === 'INSUFFICIENT') {

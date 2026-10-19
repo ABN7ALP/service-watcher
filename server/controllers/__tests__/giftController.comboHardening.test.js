@@ -300,7 +300,11 @@ describe('settleGiftComboClaim — idempotency عبر GiftComboTx بمعاملة
         expect(second.balanceAfter).toBe(first.reserved.sender.coins); // نفس القيمة المخزَّنة، لا إعادة حساب
 
         expect(sender.coins).toBe(10000 - 100); // ✅ لم يتغيّر إطلاقاً بالمحاولة الثانية — لا خصم مزدوج
-        expect(db.giftLogs).toHaveLength(1); // ✅ سجلّ هدية واحد فقط، لا سجلّان
+        // 🛡️ إصلاح جذري (الموثوقية والسرعة): سجلّ الهدية (GiftLog) لم يعد جزءاً من
+        // settleGiftComboClaim إطلاقاً — انتقل لـrunGiftComboSideEffects كأثر جانبي best-effort
+        // بعد الـack. الحماية من ازدواجه عند إعادة إرسال نفس comboId+seq مضمونة بنائياً الآن
+        // (لا بفحص مباشر هنا): معالج gift:combo لا يستدعي runGiftComboSideEffects إطلاقاً عند
+        // outcome.duplicate===true (راجع socketService.js) — فلا فرصة لتكراره أصلاً
     });
 
     test('seq مختلف بنفس comboId يُعامَل كدفعة جديدة مستقلة تماماً (لا يُعتبَر تكراراً)', async () => {
@@ -346,5 +350,31 @@ describe('settleGiftComboClaim — idempotency عبر GiftComboTx بمعاملة
         const retry = await settleGiftComboClaim(args);
         expect(retry.duplicate).toBe(false);
         expect(db.users.get('s1').coins).toBe(1000 - 100);
+    });
+
+    // 🛡️ طلب صريح (إصلاح جذري — الموثوقية والسرعة، السبب الجذري أ): طابور داخل العملية لكل
+    // مُرسِل (enqueueGiftCombo) يُسلسِل أي دفعتين متزامنتين فعلياً لنفس المُرسِل — حتى لو وصلتا
+    // بنفس اللحظة (تبويبان مفتوحان، أو عميل مُعدَّل)، كلاهما تُطبَّق بدقّة تامة بلا تضارب كتابة
+    test('دفعتان متزامنتان فعلياً لنفس المُرسِل (seq مختلف): طابور العملية الواحدة يُسلسِلهما — كلاهما ينجح والرصيد النهائي صحيح تماماً (لا خصم ضائع أو مزدوج)', async () => {
+        const db = makeDb();
+        const sender = seedUser(db, { _id: 's1', coins: 10000 });
+        seedGift(db, { _id: 'g1', price: 100 });
+        seedUser(db, { _id: 'r1' });
+        wireMocks(db);
+
+        const [first, second] = await Promise.all([
+            settleGiftComboClaim({
+                key: 's1:combo-conc:1', senderId: 's1', comboId: 'combo-conc', seq: 1,
+                giftId: 'g1', quantity: 1, taps: 1, recipientIds: ['r1'], roomId: null
+            }),
+            settleGiftComboClaim({
+                key: 's1:combo-conc:2', senderId: 's1', comboId: 'combo-conc', seq: 2,
+                giftId: 'g1', quantity: 1, taps: 1, recipientIds: ['r1'], roomId: null
+            })
+        ]);
+
+        expect(first.duplicate).toBe(false);
+        expect(second.duplicate).toBe(false);
+        expect(sender.coins).toBe(10000 - 100 - 100); // ✅ كلا الخصمين طُبِّقا بدقّة، بصرف النظر عن التزامن
     });
 });

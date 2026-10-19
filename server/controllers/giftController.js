@@ -491,16 +491,21 @@ const GIFT_CATEGORY_ORDER = ['common', 'rare', 'epic', 'legendary', 'custom'];
 // نفسه)، مع me (رصيد المستخدم الحالي + مستوى/خبرة الثروة) وrules (كل القيم الثابتة التي يحتاجها
 // العميل ليحسب معاينة شريط الثروة بنفسه — بلا أي رقم مكتوب يدوياً بالواجهة). مصدر حقيقة واحد:
 // GIFT_XP_SENDER_DIVISOR/REQUIRED_XP_PER_LEVEL من experienceManager، ALLOWED_COMBO_QTY أدناه
+// 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري هـ): الكتالوج (أسماء/صور/أسعار/فئات
+// الهدايا + rules الإدارية) شبه ثابت فعلياً — لا يتغيّر إلا بتدخّل إداري نادر جداً، بعكس me
+// (الرصيد/الخبرة/هدايا المستخدم المخصّصة) الذي يجب أن يبقى حيّاً دوماً. يُحسَب الكتالوج أولاً
+// وحده (بلا انتظار me/customGifts الخاصين بالمستخدم) فيمكن حساب بصمته (ETag) ومقارنتها بـ
+// If-None-Match قبل أي استعلام آخر إطلاقاً — تطابق تام = 304 فوري بلا حتى استعلام me/customGifts
+// (العميل أصلاً لا يحتاج تحديثهما من هنا تحديداً — يصلانه حيّين عبر أحداث socket منفصلة بالفعل:
+// coinsUpdated/experienceUpdate/customGiftStatusUpdated، راجع مستمعاتها بالعميل)
 exports.getGiftShop = async (req, res) => {
     try {
         const CustomGift = require('../models/CustomGift');
         const SystemSettings = require('../models/SystemSettings');
-        const [gifts, me, myCustomGifts, settings] = await Promise.all([
+        const crypto = require('crypto');
+
+        const [gifts, settings] = await Promise.all([
             Gift.find({ isActive: true }).sort('sortOrder price'),
-            User.findById(req.user.id).select('coins level experience'),
-            // ✅ طلب صريح (هدايا v2 — المرحلة 4): هداياي المخصّصة فقط (قيد المراجعة/مقبولة —
-            // المرفوضة استُرد رسمها بالفعل ولا تظهر بتبويب "مخصصة" بعد الآن)، لا هدايا أي مستخدم آخر
-            CustomGift.find({ owner: req.user.id, status: { $in: ['pending', 'approved'] } }).sort('-createdAt'),
             SystemSettings.getSettings()
         ]);
 
@@ -526,6 +531,32 @@ exports.getGiftShop = async (req, res) => {
                 sortOrder: g.sortOrder
             });
         }
+        // ✅ طلب صريح بالحرف: "The client must compute the wealth-bar preview ONLY from
+        // these server values" — لا رقم ثابت مكتوب بالعميل، كل شيء من هنا
+        const rules = {
+            senderXpDivisor: GIFT_XP_SENDER_DIVISOR,
+            requiredXpPerLevel: REQUIRED_XP_PER_LEVEL,
+            quantities: [...COMBO_QUANTITIES],
+            comboWindowMs: COMBO_WINDOW_MS,
+            flushMs: GIFT_ANNOUNCE_BATCH_MS,
+            // ✅ طلب صريح: "values from the server" لمودال "صمّم هديتك" — لا رقم ثابت بالعميل
+            customGiftDesignFee: settings.customGiftDesignFeeCoins,
+            customGiftSendPrice: settings.customGiftSendPriceCoins
+        };
+
+        const catalogEtag = '"' + crypto.createHash('sha1').update(JSON.stringify({ gifts: grouped, rules })).digest('hex') + '"';
+        res.set('Cache-Control', 'private, max-age=0, must-revalidate');
+        res.set('ETag', catalogEtag);
+        if (req.headers['if-none-match'] === catalogEtag) {
+            return res.status(304).end();
+        }
+
+        const [me, myCustomGifts] = await Promise.all([
+            User.findById(req.user.id).select('coins level experience'),
+            // ✅ طلب صريح (هدايا v2 — المرحلة 4): هداياي المخصّصة فقط (قيد المراجعة/مقبولة —
+            // المرفوضة استُرد رسمها بالفعل ولا تظهر بتبويب "مخصصة" بعد الآن)، لا هدايا أي مستخدم آخر
+            CustomGift.find({ owner: req.user.id, status: { $in: ['pending', 'approved'] } }).sort('-createdAt')
+        ]);
 
         const wealthLevel = me ? me.level : 1;
         res.status(200).json({
@@ -544,18 +575,7 @@ exports.getGiftShop = async (req, res) => {
                         createCost: cg.createCost, sendPrice: cg.sendPrice
                     }))
                 },
-                // ✅ طلب صريح بالحرف: "The client must compute the wealth-bar preview ONLY from
-                // these server values" — لا رقم ثابت مكتوب بالعميل، كل شيء من هنا
-                rules: {
-                    senderXpDivisor: GIFT_XP_SENDER_DIVISOR,
-                    requiredXpPerLevel: REQUIRED_XP_PER_LEVEL,
-                    quantities: [...COMBO_QUANTITIES],
-                    comboWindowMs: COMBO_WINDOW_MS,
-                    flushMs: GIFT_ANNOUNCE_BATCH_MS,
-                    // ✅ طلب صريح: "values from the server" لمودال "صمّم هديتك" — لا رقم ثابت بالعميل
-                    customGiftDesignFee: settings.customGiftDesignFeeCoins,
-                    customGiftSendPrice: settings.customGiftSendPriceCoins
-                }
+                rules
             }
         });
     } catch (error) {
@@ -846,62 +866,94 @@ function getConnectedRoomUserIds(io, roomId) {
     return ids;
 }
 
-// ✅ طلب صريح (هدايا v2): "النواة المعاملاتية" — فحص الكمية/المستلمين (بما فيه الآن فحص
-// "مقعد مشغول فعلياً" حين تُرسَل من داخل غرفة — راجع أدناه) والخصم الذري وسجلّات الهدايا، كل
-// هذا بمعاملة Mongo واحدة حقيقية (session إلزامية من المستدعي — إمّا معاملة processGiftCombo
-// الخاصة بها لمسار REST، أو نفس معاملة حجز GiftComboTx بمعالج gift:combo — راجع
-// socketService.js). بلا أي لمسة لـio/بث/خبرة/نقاط معجب هنا إطلاقاً — تلك كلها "أثر جانبي"
-// غير حرج مالياً، تُنفَّذ بعد نجاح الالتزام (commit) فقط عبر runGiftComboSideEffects أدناه.
-// ترمي أخطاء مُصنَّفة ({code}) كالسابق تماماً — فشل أي خطوة هنا (رصيد غير كافٍ تحديداً) يُسقِط
-// المعاملة بالكامل تلقائياً (لا خصم جزئي أبداً، ولا حتى حجز GiftComboTx يبقى لو كان بنفس المعاملة)
-// 🛡️ طلب صريح بمراجعة PR #106: io مطلوب الآن أيضاً (للقراءة فقط — فحص عضوية قناة الغرفة
-// الحيّة، لا أي بث/أثر جانبي هنا، يبقى المبدأ أعلاه سارياً) — راجع getConnectedRoomUserIds
-async function reserveGiftCombo({ session, senderId, giftId, quantity, taps = 1, recipientIds, roomId, io }) {
+// 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري أ): كانت كل هذي القراءات/التحقّقات (الغرفة،
+// المستلمون، المُرسِل، الهدية، المستلمون الصالحون) + سجلّ الهدايا تُنفَّذ كلها داخل نفس معاملة
+// Mongo التي تحمل الخصم الذري — فتطول مدة المعاملة الفعلية كثيراً، وأي دفعتين متزامنتين لنفس
+// المُرسِل (كانتا ممكنتين فعلياً قبل هذا الإصلاح — راجع تعليق createComboSender بالعميل)
+// تتضاربان على القراءة قبل الكتابة فتتسبّبان بإعادة محاولات Mongo (write conflict retries)
+// تتجاوز أحياناً مهلة الـ6 ثوانٍ بالعميل. الآن: كل هذا التحضير (prepareGiftComboSend) قراءات
+// بحتة بلا أي معاملة إطلاقاً — تُنفَّذ قبل بدء أي معاملة، ونتيجتها (التكلفة الإجمالية فقط)
+// تُمرَّر لاحقاً لعملية الخصم الذرّية الوحيدة الحرجة مالياً (applyGiftComboDeduct). سجلّ الهدايا
+// (GiftLog) لم يعد جزءاً من أي معاملة أيضاً — انتقل لـrunGiftComboSideEffects كأثر جانبي
+// best-effort (راجع تعليقها) — فمعاملة مسار gift:combo الآن لا تحمل إطلاقاً أي شيء عدا حجز
+// GiftComboTx + الخصم الذرّي نفسه (راجع settleGiftComboClaim بـsocketService.js الجديد)
+// 🛡️ طلب صريح بمراجعة PR #106: io مطلوب (للقراءة فقط — فحص عضوية قناة الغرفة الحيّة)
+// ✅ audience اختياري ('all'|'selected') — فقط لمسار البث العام (الدردشة العامة، بلا roomId):
+// 'all' يُحِل المستلمين من عضوية قناة 'public-room' الحيّة بالسيرفر نفسه (لا يُوثَق بأي قائمة
+// من العميل، تماماً كمسار REST القديم sendPublicGift)، 'selected'/افتراضي يستخدم recipientIds
+// من العميل بحدّ 20 (نفس حدّ sendPublicGift). بلا audience: السلوك الأصلي (غرفة صوت أو دردشة
+// خاصة مباشرة) بلا أي تغيير
+async function prepareGiftComboSend({ senderId, giftId, quantity, taps = 1, recipientIds, roomId, audience, io }) {
     const qty = Number(quantity);
     if (!ALLOWED_COMBO_QTY.has(qty)) {
         throw Object.assign(new Error('كمية غير صالحة'), { code: 'BAD_QTY' });
     }
     const tapCount = Math.max(1, Math.min(parseInt(taps) || 1, 60));
 
-    // 🛡️ طلب صريح (هدايا v2): roomId مُرسَل يجب أن يحل لغرفة نشطة حقيقية فعلاً — بخلاف
-    // السابق (أي ObjectId غير صالح كان يُعامَل بصمت كـ"بلا غرفة")، رفض صريح NO_ROOM الآن.
-    // يمنع عميلاً مُعدَّلاً من إرسال roomId وهمي لتفادي فحص "المقعد الحقيقي" أدناه بالكامل
-    let room = null;
-    const cleanRoomId = (roomId && mongoose.Types.ObjectId.isValid(roomId)) ? roomId : null;
-    if (roomId && !cleanRoomId) {
-        throw Object.assign(new Error('معرّف غرفة غير صالح'), { code: 'NO_ROOM' });
-    }
-    if (cleanRoomId) {
-        room = await VoiceRoom.findOne({ _id: cleanRoomId, status: 'active' }).select('seats.user').session(session);
-        if (!room) {
-            throw Object.assign(new Error('الغرفة غير موجودة أو أُغلقت'), { code: 'NO_ROOM' });
+    let seatFilteredRecipientIds;
+    let cleanRoomId = null;
+
+    if (audience) {
+        // ✅ مسار البث العام (دردشة عامة، بلا غرفة صوت) — نفس منطق/حماية sendPublicGift تماماً
+        if (audience === 'all') {
+            const ids = [];
+            const room = io ? io.sockets.adapter.rooms.get('public-room') : null;
+            if (room) {
+                for (const socketId of room) {
+                    const s = io.sockets.sockets.get(socketId);
+                    if (s?.user?.id && s.user.id.toString() !== senderId.toString()) ids.push(s.user.id.toString());
+                }
+            }
+            seatFilteredRecipientIds = [...new Set(ids)];
+        } else {
+            seatFilteredRecipientIds = Array.isArray(recipientIds)
+                ? [...new Set(recipientIds.map(String))].filter(id => id !== senderId.toString()).slice(0, 20)
+                : [];
+        }
+        if (seatFilteredRecipientIds.length === 0) {
+            throw Object.assign(new Error('لا يوجد مستلمون متاحون حالياً'), { code: 'NO_RECIPIENTS' });
+        }
+    } else {
+        // 🛡️ طلب صريح (هدايا v2): roomId مُرسَل يجب أن يحل لغرفة نشطة حقيقية فعلاً — بخلاف
+        // السابق (أي ObjectId غير صالح كان يُعامَل بصمت كـ"بلا غرفة")، رفض صريح NO_ROOM الآن.
+        // يمنع عميلاً مُعدَّلاً من إرسال roomId وهمي لتفادي فحص "المقعد الحقيقي" أدناه بالكامل
+        let room = null;
+        cleanRoomId = (roomId && mongoose.Types.ObjectId.isValid(roomId)) ? roomId : null;
+        if (roomId && !cleanRoomId) {
+            throw Object.assign(new Error('معرّف غرفة غير صالح'), { code: 'NO_ROOM' });
+        }
+        if (cleanRoomId) {
+            room = await VoiceRoom.findOne({ _id: cleanRoomId, status: 'active' }).select('seats.user');
+            if (!room) {
+                throw Object.assign(new Error('الغرفة غير موجودة أو أُغلقت'), { code: 'NO_ROOM' });
+            }
+        }
+
+        // 🛡️ طلب صريح: recipientIds تُقبَل فقط لمن هو فعلياً بهذي الغرفة تحديداً الآن (لا أي معرّف
+        // مستخدم اعتباطي كالسابق) حين تُرسَل من داخل غرفة — من هو خارج الغرفة كلياً يُستبعَد بصمت
+        // (نفس فلسفة استبعاد المحظورين/الحسابات الآلية أدناه، لا رفض الطلب كاملاً لمجرد مستلم
+        // واحد غير صالح بينهم). بلا roomId (دردشة خاصة): السلوك القديم كما هو، بلا فحص عضوية
+        // 🛡️ طلب صريح بمراجعة PR #106: "مشغول مقعد فعلياً" كان صارماً أكثر من اللازم — إهداء
+        // مستمع من ملفه الشخصي (لم يجلس على مقعد بعد) كان يُرفَض خطأً. مقبول الآن أيضاً من هو
+        // متصل حالياً بقناة دردشة الغرفة (مستمع)، لا الجالسين فقط — لا يزال مَن هو خارج الغرفة
+        // كلياً (لا جالس ولا متصل بقناتها) مرفوضاً تماماً كالسابق
+        const seatedUserIds = room ? new Set(room.seats.filter(s => s.user).map(s => s.user.toString())) : null;
+        const connectedUserIds = room ? getConnectedRoomUserIds(io, cleanRoomId) : null;
+        const cleanRecipientIds = Array.isArray(recipientIds)
+            ? [...new Set(recipientIds.map(String))].filter(id => id !== senderId.toString()).slice(0, 80)
+            : [];
+        seatFilteredRecipientIds = seatedUserIds
+            ? cleanRecipientIds.filter(id => seatedUserIds.has(id) || connectedUserIds.has(id))
+            : cleanRecipientIds;
+        if (seatFilteredRecipientIds.length === 0) {
+            throw Object.assign(new Error('يجب اختيار مستلم واحد على الأقل'), { code: 'NO_RECIPIENTS' });
         }
     }
 
-    // 🛡️ طلب صريح: recipientIds تُقبَل فقط لمن هو فعلياً بهذي الغرفة تحديداً الآن (لا أي معرّف
-    // مستخدم اعتباطي كالسابق) حين تُرسَل من داخل غرفة — من هو خارج الغرفة كلياً يُستبعَد بصمت
-    // (نفس فلسفة استبعاد المحظورين/الحسابات الآلية أدناه، لا رفض الطلب كاملاً لمجرد مستلم
-    // واحد غير صالح بينهم). بلا roomId (دردشة خاصة): السلوك القديم كما هو، بلا فحص عضوية
-    // 🛡️ طلب صريح بمراجعة PR #106: "مشغول مقعد فعلياً" كان صارماً أكثر من اللازم — إهداء
-    // مستمع من ملفه الشخصي (لم يجلس على مقعد بعد) كان يُرفَض خطأً. مقبول الآن أيضاً من هو
-    // متصل حالياً بقناة دردشة الغرفة (مستمع)، لا الجالسين فقط — لا يزال مَن هو خارج الغرفة
-    // كلياً (لا جالس ولا متصل بقناتها) مرفوضاً تماماً كالسابق
-    const seatedUserIds = room ? new Set(room.seats.filter(s => s.user).map(s => s.user.toString())) : null;
-    const connectedUserIds = room ? getConnectedRoomUserIds(io, cleanRoomId) : null;
-    const cleanRecipientIds = Array.isArray(recipientIds)
-        ? [...new Set(recipientIds.map(String))].filter(id => id !== senderId.toString()).slice(0, 80)
-        : [];
-    const seatFilteredRecipientIds = seatedUserIds
-        ? cleanRecipientIds.filter(id => seatedUserIds.has(id) || connectedUserIds.has(id))
-        : cleanRecipientIds;
-    if (seatFilteredRecipientIds.length === 0) {
-        throw Object.assign(new Error('يجب اختيار مستلم واحد على الأقل'), { code: 'NO_RECIPIENTS' });
-    }
-
     const [sender, catalogGift, receivers] = await Promise.all([
-        User.findById(senderId).session(session),
-        Gift.findById(giftId).session(session),
-        User.find({ _id: { $in: seatFilteredRecipientIds } }).select('username profileImage socketId blockedUsers isBot').session(session)
+        User.findById(senderId),
+        Gift.findById(giftId),
+        User.find({ _id: { $in: seatFilteredRecipientIds } }).select('username profileImage socketId blockedUsers isBot')
     ]);
 
     if (!sender) {
@@ -916,7 +968,7 @@ async function reserveGiftCombo({ session, senderId, giftId, quantity, taps = 1,
     let gift = catalogGift;
     if (!gift) {
         const CustomGift = require('../models/CustomGift');
-        const customGift = await CustomGift.findById(giftId).session(session);
+        const customGift = await CustomGift.findById(giftId);
         if (customGift) {
             if (customGift.owner.toString() !== senderId.toString()) {
                 throw Object.assign(new Error('لا يمكنك إرسال هدية مخصّصة ليست لك'), { code: 'NO_GIFT' });
@@ -950,10 +1002,17 @@ async function reserveGiftCombo({ session, senderId, giftId, quantity, taps = 1,
     const effectiveQty = qty * tapCount;
     const totalPrice = unitPrice * effectiveQty; // لكل مستلم (تشمل كل الضغطات المُجمَّعة بهذي الدفعة)
     const totalCost = totalPrice * validReceivers.length; // الإجمالي الحقيقي المخصوم فعلياً = price × taps × quantity × recipients.length
+    const safeGiftImage = gift.imageUrl || '';
 
-    // ✅ طلب صريح: خصم ذري واحد بكامل التكلفة الحقيقية، بنفس معاملة Mongo الممرَّرة — رصيد
-    // غير كافٍ هنا يُسقِط كل كتابة سبقته بهذي المعاملة (لا خصم جزئي أبداً)، و{code,balance,needed}
-    // تُترجَم مباشرة لصيغة ack({ok:false,...}) المطلوبة بمعالج Socket.IO
+    return { sender, gift, validReceivers, unitPrice, totalPrice, totalCost, effectiveQty, cleanRoomId, safeGiftImage };
+}
+exports.prepareGiftComboSend = prepareGiftComboSend;
+
+// ✅ العملية الذرّية الوحيدة الحرجة مالياً — خصم شرطي واحد بكامل التكلفة الحقيقية المُحضَّرة
+// مسبقاً (prepareGiftComboSend)، بمعاملة Mongo الممرَّرة. رصيد غير كافٍ يُسقِط كل كتابة سبقته
+// بهذي المعاملة تلقائياً (لا خصم جزئي أبداً) — {code,balance,needed} تُترجَم مباشرة لصيغة
+// ack({ok:false,...}) المطلوبة بمعالج Socket.IO
+async function applyGiftComboDeduct({ session, senderId, totalCost, preReadCoins }) {
     const updatedSender = await User.findOneAndUpdate(
         { _id: senderId, coins: { $gte: totalCost } },
         { $inc: { coins: -totalCost } },
@@ -961,20 +1020,22 @@ async function reserveGiftCombo({ session, senderId, giftId, quantity, taps = 1,
     );
     if (!updatedSender) {
         throw Object.assign(new Error(`رصيد الكوينز غير كافٍ (تحتاج ${totalCost} كوينز لهذا العدد)`), {
-            code: 'INSUFFICIENT', balance: sender.coins, needed: totalCost
+            code: 'INSUFFICIENT', balance: preReadCoins, needed: totalCost
         });
     }
-    sender.coins = updatedSender.coins;
+    return updatedSender;
+}
+exports.applyGiftComboDeduct = applyGiftComboDeduct;
 
-    const safeGiftImage = gift.imageUrl || '';
-
-    await GiftLog.insertMany(validReceivers.map(r => ({
-        sender: senderId, receiver: r._id, gift: gift._id,
-        giftName: gift.name, giftImage: gift.imageUrl,
-        quantity: effectiveQty, unitPrice, totalPrice, context: 'private_chat', room: cleanRoomId
-    })), { session });
-
-    return { sender, gift, validReceivers, totalCost, totalPrice, effectiveQty, cleanRoomId, safeGiftImage };
+// ✅ غلاف رقيق يحافظ على نفس السلوك الخارجي القديم بالضبط (تحضير + خصم، كله بنفس المعاملة
+// المُمرَّرة) — تستخدمه processGiftCombo (مسار REST/sendGiftBatch) فقط الآن؛ مسار gift:combo
+// الحيّ (settleGiftComboClaim) يستدعي prepareGiftComboSend وapplyGiftComboDeduct منفصلتين
+// (التحضير خارج أي معاملة، الخصم وحده داخلها) — راجع التعليق أعلى prepareGiftComboSend
+async function reserveGiftCombo({ session, senderId, giftId, quantity, taps = 1, recipientIds, roomId, audience, io }) {
+    const prepared = await prepareGiftComboSend({ senderId, giftId, quantity, taps, recipientIds, roomId, audience, io });
+    const updatedSender = await applyGiftComboDeduct({ session, senderId, totalCost: prepared.totalCost, preReadCoins: prepared.sender.coins });
+    prepared.sender.coins = updatedSender.coins;
+    return prepared;
 }
 exports.reserveGiftCombo = reserveGiftCombo;
 
@@ -986,8 +1047,21 @@ exports.reserveGiftCombo = reserveGiftCombo;
 // Socket.IO — راجع socketService.js؛ REST/processGiftCombo بلا مفهوم جلسة كومبو أصلاً) —
 // يُضاف لحمولة room-gift-announcement كي يُجمِّع العميل كل إعلانات نفس الجلسة (حتى لو كانت
 // لعدّة مستلمين، كل واحد بحدث منفصل) بشريط/سطر دردشة واحد متحدِّث بدل عنصر جديد لكل حدث
-async function runGiftComboSideEffects({ io, sender, gift, validReceivers, totalCost, totalPrice, effectiveQty, cleanRoomId, safeGiftImage, comboId }) {
+async function runGiftComboSideEffects({ io, sender, gift, validReceivers, unitPrice, totalCost, totalPrice, effectiveQty, cleanRoomId, safeGiftImage, comboId }) {
     const senderId = sender._id;
+
+    // 🛡️ إصلاح جذري (الموثوقية والسرعة): سجلّ الهدية (GiftLog) لم يعد جزءاً من معاملة الخصم
+    // الذرّية — الخصم التزم بالفعل بنجاح قبل وصولنا هنا (ack وصل العميل أصلاً بمسار gift:combo
+    // الحيّ)، فتسجيله هنا best-effort فقط. فشله لا يُسقِط شيئاً، فقط يُسجَّل بالخطأ للمراجعة
+    try {
+        await GiftLog.insertMany(validReceivers.map(r => ({
+            sender: senderId, receiver: r._id, gift: gift._id,
+            giftName: gift.name, giftImage: gift.imageUrl,
+            quantity: effectiveQty, unitPrice, totalPrice, context: 'private_chat', room: cleanRoomId
+        })));
+    } catch (logError) {
+        console.error('[GIFT LOG] Failed to insert gift log (deduct already committed):', logError);
+    }
 
     if (cleanRoomId) {
         try {
@@ -999,6 +1073,19 @@ async function runGiftComboSideEffects({ io, sender, gift, validReceivers, total
             await applyGiftToRoomSupport(io, cleanRoomId, totalCost, sender);
         } catch (supportError) {
             console.error('[ROOM LEVEL] Failed to apply support points:', supportError);
+        }
+        // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري د): الأسطورية كانت تصل للآخرين فقط
+        // عبر room-gift-announcement المُجمَّع (نافذة 250ms) — تأخير حقيقي قبل أن يرى أي
+        // مشاهد آخر مؤثر ملء الشاشة. حدث مخصَّص الآن (gift:legendary)، يصل فوراً بلا انتظار أي
+        // تجميع — مرة واحدة للغرفة كلها (لا لكل مستلم)، لا علاقة له بـroom-gift-announcement
+        // (الذي يبقى كما هو للشريط الجانبي/سطر الدردشة فقط). راجع gfxUpdateSideBanner/
+        // المستمع الجديد socket.on('gift:legendary') بالعميل
+        if (io && gift.category === 'legendary') {
+            io.to(`room-chat-${cleanRoomId}`).emit('gift:legendary', {
+                roomId: cleanRoomId, comboId, fromUserId: senderId, fromUsername: sender.username,
+                giftImage: safeGiftImage, giftIcon: gift.icon || '🎁', giftName: gift.name,
+                toLabel: validReceivers.length > 1 ? `${validReceivers.length} مقاعد` : (validReceivers[0]?.username || '')
+            });
         }
     }
 
@@ -1081,6 +1168,16 @@ async function runGiftComboSideEffects({ io, sender, gift, validReceivers, total
                     message: populatedMessage, chatId: chat.chatId, senderId, senderName: sender.username
                 });
             }
+            // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري ب): صدى فقاعة هديتي بنافذة
+            // محادثتي المفتوحة كان يصل فقط عبر res.message بالـack — الذي أصبح يُرسَل فوراً
+            // الآن قبل وصولنا هنا (راجع معالج gift:combo بـsocketService.js). حدث مخصَّص جديد
+            // لصدى المُرسِل نفسه (لا privateMessageReceived — ذاك للمستلم الحقيقي فقط ومبني
+            // على افتراض "رسالة من شخص آخر")، يصل خلال الأثر الجانبي بلا حاجة لانتظار الـack
+            if (sender.socketId && io) {
+                io.to(sender.socketId).emit('privateMessageSentEcho', {
+                    message: populatedMessage, chatId: chat.chatId, receiverId
+                });
+            }
         }
 
         if (receiver.socketId && io) {
@@ -1140,23 +1237,54 @@ async function processGiftCombo({ io, senderId, giftId, quantity, taps = 1, reci
 }
 exports.processGiftCombo = processGiftCombo;
 
-// ✅ طلب صريح (هدايا v2): يُغلِّف حجز GiftComboTx (idempotency) + reserveGiftCombo معاً بمعاملة
+// 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري أ): طابور داخل العملية لكل مُرسِل — يُسلسِل
+// محاولات settleGiftComboClaim لنفس المستخدم (يغطي حتى عدّة تبويبات مفتوحة بنفس الحساب) كي لا
+// تتنافس معاملتان على نفس وثيقة المستخدم بنفس اللحظة. بخلاف محاولة سابقة بهذا المشروع استخدمت
+// قفلاً مشابهاً (راجع تعليقها المحذوف أعلى isGiftComboRateLimited) وتسبّبت بتراكم تأخير حقيقي:
+// تلك كانت تُسلسِل "دفعة ثقيلة" (قراءات الغرفة/الهدية/المستلمين + الخصم + سجلّ الهدايا كلها
+// معاً) — الآن "القسم الحرج" المُسلسَل هنا صغير جداً (تحضير سريع + خصم ذرّي واحد فقط، لا سجلّ
+// هدايا ولا أي أثر جانبي)، فإضافته هنا لا تُراكم تأخيراً محسوساً حتى مع ضغط مستمر سريع. أيضاً
+// مع العميل الجديد بعمق أنبوب 1 (pipeline depth 1 — دفعة واحدة فقط معلّقة بأي لحظة لكل جلسة
+// كومبو)، هذا الطابور نادراً ما يُسلسِل أي شيء فعلياً بالاستخدام العادي (تبويب واحد) — يبقى فقط
+// كحارس ضد تبويبات متعددة/أي عميل مُعدَّل يحاول إرسال دفعات متوازية فعلياً
+const giftComboUserQueues = new Map(); // senderId(string) → Promise (ذيل آخر مهمة مجدولة)
+function enqueueGiftCombo(senderId, taskFn) {
+    const key = senderId.toString();
+    const prev = giftComboUserQueues.get(key) || Promise.resolve();
+    const result = prev.then(taskFn, taskFn); // ✅ تُنفَّذ المهمة بصرف النظر عن نجاح/فشل سابقتها
+    const tracked = result.catch(() => {}).finally(() => {
+        if (giftComboUserQueues.get(key) === tracked) giftComboUserQueues.delete(key); // ✅ لا تسرّب ذاكرة لمستخدمين غير نشطين
+    });
+    giftComboUserQueues.set(key, tracked);
+    return result;
+}
+
+// ✅ طلب صريح (هدايا v2): يُغلِّف حجز GiftComboTx (idempotency) + الخصم الذرّي معاً بمعاملة
 // Mongo حقيقية واحدة — يستخدمها معالج gift:combo بـsocketService.js حصراً (REST/sendGiftBatch
-// لا idempotency-key له، يستخدم processGiftCombo أعلاه مباشرة). مُصدَّرة منفصلة عن المعالج
-// نفسه (بدل بقائها مضمَّنة داخله) كي تُختبَر مباشرة بلا أي حاجة لمحاكاة طبقة Socket.IO كاملة —
-// راجع __tests__/giftController.comboHardening.test.js. لا تلمس io/البث إطلاقاً (المستدعي
-// يُشغِّل runGiftComboSideEffects بنفسه بعد نجاح الاستدعاء، تماماً كما كان بالمعالج قبل الفصل)
-async function settleGiftComboClaim({ key, senderId, comboId, seq, giftId, quantity, taps, recipientIds, roomId, io }) {
+// لا idempotency-key له، يستخدم processGiftCombo أعلاه مباشرة). لا تلمس io/البث إطلاقاً
+// (المستدعي يُشغِّل runGiftComboSideEffects بنفسه بعد نجاح الاستدعاء وبعد إرسال الـack فوراً —
+// راجع socketService.js). مُصدَّرة منفصلة كي تُختبَر مباشرة بلا أي حاجة لمحاكاة Socket.IO كاملة
+async function settleGiftComboClaim({ key, senderId, comboId, seq, giftId, quantity, taps, recipientIds, roomId, audience, io }) {
+    return enqueueGiftCombo(senderId, () => settleGiftComboClaimInner({ key, senderId, comboId, seq, giftId, quantity, taps, recipientIds, roomId, audience, io }));
+}
+exports.settleGiftComboClaim = settleGiftComboClaim;
+
+async function settleGiftComboClaimInner({ key, senderId, comboId, seq, giftId, quantity, taps, recipientIds, roomId, audience, io }) {
     const GiftComboTx = require('../models/GiftComboTx');
+
+    // 🛡️ إصلاح جذري: التحضير (فحص الغرفة/المستلمين/الهدية، حساب التكلفة) قراءات بحتة الآن —
+    // تُنفَّذ قبل بدء أي معاملة إطلاقاً (راجع تعليق prepareGiftComboSend الكامل)
+    const prepared = await prepareGiftComboSend({ senderId, giftId, quantity, taps, recipientIds, roomId, audience, io });
+
     const session = await mongoose.startSession();
-    let reserved = null;
+    let updatedSender = null;
     let txError = null;
     try {
         await session.withTransaction(async () => {
             // ✅ حجز "ذرّي" لمفتاح هذي الدفعة أولاً، بنفس المعاملة — فهرس unique على key يضمن
             // أن إدراجين لنفس المفتاح بالتوازي، أحدهما فقط ينجح دائماً بغض النظر عن ترتيب
             // التنفيذ، فيُغلق تسابق "فحص ثم تنفيذ" بلا أي قفل تطبيقي. تضارب المفتاح يُسقِط
-            // المعاملة بالكامل (لا حجز "شبحي" متبقٍ لو فشلت reserveGiftCombo لاحقاً بنفسها أيضاً)
+            // المعاملة بالكامل (لا حجز "شبحي" متبقٍ لو فشل الخصم لاحقاً بنفسه أيضاً)
             let claim;
             try {
                 const created = await GiftComboTx.create([{ key, sender: senderId, comboId, seq, balanceAfter: 0 }], { session });
@@ -1168,8 +1296,11 @@ async function settleGiftComboClaim({ key, senderId, comboId, seq, giftId, quant
                 throw claimError;
             }
 
-            reserved = await reserveGiftCombo({ session, senderId, giftId, quantity, taps, recipientIds, roomId, io });
-            claim.balanceAfter = reserved.sender.coins;
+            // 🛡️ إصلاح جذري: هذي المعاملة الآن لا تحمل عدا حجز GiftComboTx أعلاه + الخصم الذرّي
+            // التالي مباشرة — لا قراءات غرفة/مستلمين/هدية هنا (سبقتها خارج المعاملة)، ولا سجلّ
+            // هدايا (انتقل لـrunGiftComboSideEffects كأثر جانبي بعد الـack). أقصر معاملة ممكنة
+            updatedSender = await applyGiftComboDeduct({ session, senderId, totalCost: prepared.totalCost, preReadCoins: prepared.sender.coins });
+            claim.balanceAfter = updatedSender.coins;
             await claim.save({ session });
         });
     } catch (e) {
@@ -1180,7 +1311,8 @@ async function settleGiftComboClaim({ key, senderId, comboId, seq, giftId, quant
 
     if (txError) {
         if (txError.code === 'DUPLICATE_SEQ') {
-            // ✅ إعادة محاولة حقيقية بنفس comboId+seq (بعد انقطاع شبكة قبل استلام ack مثلاً) —
+            // ✅ إعادة محاولة حقيقية بنفس comboId+seq (بعد انقطاع شبكة قبل استلام ack مثلاً، أو
+            // إعادة محاولة العميل التلقائية بعد مهلة — راجع createComboSender بالعميل) —
             // المعاملة الأصلية التزمت فعلاً، نُرجع نفس balanceAfter المخزَّن بدل تنفيذ الخصم
             // ثانية. تُقرَأ بعد إغلاق الجلسة تماماً — لا علاقة لها بالمعاملة المُجهَضة أعلاه
             const existing = await GiftComboTx.findOne({ key }).select('balanceAfter').lean();
@@ -1188,9 +1320,9 @@ async function settleGiftComboClaim({ key, senderId, comboId, seq, giftId, quant
         }
         throw txError;
     }
-    return { duplicate: false, reserved };
+    prepared.sender.coins = updatedSender.coins;
+    return { duplicate: false, reserved: prepared };
 }
-exports.settleGiftComboClaim = settleGiftComboClaim;
 
 // =====================================================
 // ✅ إرسال هدية لعدّة مستلمين دفعة واحدة (غرفة/دردشة خاصة) — الآن غلاف HTTP رقيق فقط حول
