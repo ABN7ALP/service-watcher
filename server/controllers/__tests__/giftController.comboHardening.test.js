@@ -100,6 +100,21 @@ function seedRoom(db, roomId, seatedUserIds) {
     return room;
 }
 
+// 🛡️ طلب صريح بمراجعة PR #106: محاكاة بسيطة لشكل io الذي يحتاجه getConnectedRoomUserIds —
+// فقط io.sockets.adapter.rooms (قناة room-chat-<roomId> ← مجموعة socketId) وio.sockets.sockets
+// (socketId ← {user:{id}})، بلا أي محرّك Socket.IO حقيقي. connections: [{roomId, userId, socketId}]
+function makeFakeIo(connections = []) {
+    const rooms = new Map();
+    const sockets = new Map();
+    connections.forEach(({ roomId, userId, socketId }) => {
+        const channel = `room-chat-${roomId}`;
+        if (!rooms.has(channel)) rooms.set(channel, new Set());
+        rooms.get(channel).add(socketId);
+        sockets.set(socketId, { user: { id: userId } });
+    });
+    return { sockets: { adapter: { rooms }, sockets } };
+}
+
 // ✅ يُركِّب كل محاكاة النماذج فوق db مشتركة واحدة — كل استدعاء جديد يُعيد تثبيت نفس المنطق
 // بنفس db (حالة مستمرة عبر استدعاءات متعدّدة بنفس الاختبار، كاختباري "دفعتان متتاليتان")
 function wireMocks(db) {
@@ -194,6 +209,50 @@ describe('reserveGiftCombo — النواة المعاملاتية', () => {
             session, senderId: 's1', giftId: 'g1', quantity: 1, taps: 1,
             recipientIds: ['r1'], roomId: new mongoose.Types.ObjectId().toString()
         })).rejects.toMatchObject({ code: 'NO_ROOM' });
+    });
+
+    test('مستلم متصل بقناة الغرفة (مستمع لم يجلس على مقعد) يُقبَل أيضاً كمستلم صالح — لا الجالسين فقط', async () => {
+        const db = makeDb();
+        const sender = seedUser(db, { _id: 's1', coins: 1000000 });
+        seedGift(db, { _id: 'g1', price: 50 });
+        const roomId = new mongoose.Types.ObjectId().toString();
+        seedUser(db, { _id: 'seated1' });
+        seedUser(db, { _id: 'listener1' }); // ✅ لم يجلس على مقعد — فقط متصل بقناة دردشة الغرفة
+        seedRoom(db, roomId, ['seated1']);
+        wireMocks(db);
+        const io = makeFakeIo([{ roomId, userId: 'listener1', socketId: 'sock-listener1' }]);
+
+        const session = makeFakeSession();
+        const result = await reserveGiftCombo({
+            session, senderId: 's1', giftId: 'g1', quantity: 1, taps: 1,
+            recipientIds: ['seated1', 'listener1'], roomId, io
+        });
+
+        expect(result.validReceivers.map(r => r._id).sort()).toEqual(['listener1', 'seated1']);
+        expect(result.totalCost).toBe(50 * 2);
+        expect(sender.coins).toBe(1000000 - 50 * 2);
+    });
+
+    test('مستخدم خارج الغرفة كلياً (لا جالس ولا متصل بقناتها) يُرفَض — بلا أي خصم', async () => {
+        const db = makeDb();
+        const sender = seedUser(db, { _id: 's1', coins: 1000000 });
+        seedGift(db, { _id: 'g1', price: 50 });
+        const roomId = new mongoose.Types.ObjectId().toString();
+        seedUser(db, { _id: 'seated1' });
+        seedUser(db, { _id: 'outsider' }); // ✅ مستخدم حقيقي، لكن ليس جالساً ولا متصلاً بهذي الغرفة
+        seedRoom(db, roomId, ['seated1']);
+        wireMocks(db);
+        // io بلا أي اتصال لـoutsider بقناة هذي الغرفة إطلاقاً
+        const io = makeFakeIo([{ roomId, userId: 'someoneElse', socketId: 'sock-other' }]);
+
+        const session = makeFakeSession();
+        await expect(reserveGiftCombo({
+            session, senderId: 's1', giftId: 'g1', quantity: 1, taps: 1,
+            recipientIds: ['outsider'], roomId, io
+        })).rejects.toMatchObject({ code: 'NO_RECIPIENTS' });
+
+        expect(sender.coins).toBe(1000000); // ✅ بلا أي خصم
+        expect(db.giftLogs).toHaveLength(0);
     });
 
     test('رصيد غير كافٍ: لا خصم جزئي إطلاقاً — رصيد المُرسِل يبقى بلا أي تغيير، والخطأ يحمل balance/needed الصحيحين', async () => {

@@ -2706,7 +2706,7 @@ socket.on('refreshBlockData', async () => {
                 const { settleGiftComboClaim, runGiftComboSideEffects } = require('../controllers/giftController');
                 const key = `${socket.user._id}:${comboId}:${seq}`;
                 const outcome = await settleGiftComboClaim({
-                    key, senderId: socket.user._id, comboId, seq, giftId, quantity, taps, recipientIds, roomId
+                    key, senderId: socket.user._id, comboId, seq, giftId, quantity, taps, recipientIds, roomId, io
                 });
 
                 if (outcome.duplicate) {
