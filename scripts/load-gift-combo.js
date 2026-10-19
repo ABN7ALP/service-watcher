@@ -212,6 +212,16 @@ async function main() {
     const balanceOkA = freshA.coins === expectedA;
     const balanceOkB = freshB.coins === expectedB;
 
+    // 🛡️ تحقّق صريح (مراجعة أمنية — سجلّ GiftLog هو قيمة المُستلِم الحقيقية القابلة للاستبدال
+    // نقداً عبر giftRedemptionController، لا أثراً جانبياً فقط): تحت حمل حقيقي متزامن فعلياً،
+    // مجموع GiftLog.totalPrice للمُستلِم يجب أن يُطابق تماماً إجمالي ما خُصم من كلا المُرسِلين —
+    // لا سجلّ ناقص (قيمة مفقودة للمُستلِم) ولا زائد (سجلّ مزدوج) تحت أي تزامن/إعادة محاولة فعلية
+    const GiftLog = require(path.join(ROOT, 'server/models/GiftLog'));
+    const receiverLogs = await GiftLog.find({ receiver: recipientC._id });
+    const loggedTotal = receiverLogs.reduce((sum, l) => sum + l.totalPrice, 0);
+    const expectedLoggedTotal = unitPrice * (statsA.totalTapsSettledOk + statsB.totalTapsSettledOk);
+    const giftLogOk = loggedTotal === expectedLoggedTotal;
+
     const allLatencies = [...statsA.ackLatencies, ...statsB.ackLatencies];
     const p50 = percentile(allLatencies, 50);
     const p95 = percentile(allLatencies, 95);
@@ -224,10 +234,11 @@ async function main() {
     console.log(`إجمالي الدفعات الفاشلة: ${totalFailedBatches} (الهدف: 0)`);
     console.log(`رصيد A — المتوقع: ${expectedA}, الفعلي: ${freshA.coins} -> ${balanceOkA ? 'مطابق ✅' : 'غير مطابق ❌'}`);
     console.log(`رصيد B — المتوقع: ${expectedB}, الفعلي: ${freshB.coins} -> ${balanceOkB ? 'مطابق ✅' : 'غير مطابق ❌'}`);
+    console.log(`سجلّ GiftLog للمُستلِم (عدد: ${receiverLogs.length}) — المتوقع: ${expectedLoggedTotal}, الفعلي: ${loggedTotal} -> ${giftLogOk ? 'مطابق ✅' : 'غير مطابق ❌'}`);
     console.log(`زمن الـack (ذهاب-إياب من منظور العميل) — p50: ${p50}ms, p95: ${p95}ms, n=${allLatencies.length} (الهدف: p95 < 300ms)`);
     console.log('======================================================\n');
 
-    const pass = drained && totalFailedBatches === 0 && balanceOkA && balanceOkB && p95 < 300;
+    const pass = drained && totalFailedBatches === 0 && balanceOkA && balanceOkB && giftLogOk && p95 < 300;
     console.log(pass ? '✅ PASS — كل الأهداف تحقّقت (0 دفعات فاشلة، رصيد مطابق تماماً، p95 < 300ms)' : '❌ FAIL — راجع التفاصيل أعلاه');
 
     await mongoose.disconnect();

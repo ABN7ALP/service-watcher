@@ -1027,41 +1027,51 @@ async function applyGiftComboDeduct({ session, senderId, totalCost, preReadCoins
 }
 exports.applyGiftComboDeduct = applyGiftComboDeduct;
 
-// ✅ غلاف رقيق يحافظ على نفس السلوك الخارجي القديم بالضبط (تحضير + خصم، كله بنفس المعاملة
-// المُمرَّرة) — تستخدمه processGiftCombo (مسار REST/sendGiftBatch) فقط الآن؛ مسار gift:combo
-// الحيّ (settleGiftComboClaim) يستدعي prepareGiftComboSend وapplyGiftComboDeduct منفصلتين
-// (التحضير خارج أي معاملة، الخصم وحده داخلها) — راجع التعليق أعلى prepareGiftComboSend
+// 🛡️ إصلاح جذري (مراجعة أمنية — سجلّ الهدايا هو سجل القيمة المالية الحقيقي للمُستلِم، لا
+// مجرّد أثر عرض): GiftLog هو ما يقرأه giftRedemptionController لحساب المبلغ القابل للاستبدال
+// فعلياً (راجع GiftLog.find({receiver, redeemed:false}) هناك) — أي عملية إهداء ناجحة (خصم
+// المُرسِل التزم بالفعل) يجب أن تُنتج سجلّ GiftLog مطابقاً لها ذرّياً بنفس المعاملة، لا كأثر
+// جانبي best-effort بعد الـack كبقية الآثار (دردشة/PK/دعم/خبرة/نادي معجبين — تلك عروض/تنافس
+// قابلة لإعادة الحساب، بلا مسار استبدال نقدي مباشر، فيبقى تأجيلها آمناً تماماً). لو انهار
+// السيرفر أو أُعيد تشغيله بين التزام الخصم وتشغيل الأثر الجانبي، المُرسِل كان سيُخصَم فعلياً
+// بينما المُستلِم لا يحصل على سجلّه أبداً — فقدان قيمة حقيقي بلا أي أثر يسمح بالتعافي
+function buildGiftLogEntries({ senderId, gift, validReceivers, effectiveQty, unitPrice, totalPrice, cleanRoomId }) {
+    return validReceivers.map(r => ({
+        sender: senderId, receiver: r._id, gift: gift._id,
+        giftName: gift.name, giftImage: gift.imageUrl,
+        quantity: effectiveQty, unitPrice, totalPrice, context: 'private_chat', room: cleanRoomId
+    }));
+}
+
+// ✅ غلاف رقيق يحافظ على نفس السلوك الخارجي القديم بالضبط (تحضير + خصم + سجلّ الهدايا، كله
+// بنفس المعاملة المُمرَّرة) — تستخدمه processGiftCombo (مسار REST/sendGiftBatch) فقط الآن؛
+// مسار gift:combo الحيّ (settleGiftComboClaim) يستدعي prepareGiftComboSend وapplyGiftComboDeduct
+// منفصلتين (التحضير خارج أي معاملة، الخصم + سجلّ الهدايا معاً داخلها) — راجع التعليق أعلى
+// prepareGiftComboSend
 async function reserveGiftCombo({ session, senderId, giftId, quantity, taps = 1, recipientIds, roomId, audience, io }) {
     const prepared = await prepareGiftComboSend({ senderId, giftId, quantity, taps, recipientIds, roomId, audience, io });
     const updatedSender = await applyGiftComboDeduct({ session, senderId, totalCost: prepared.totalCost, preReadCoins: prepared.sender.coins });
     prepared.sender.coins = updatedSender.coins;
+    await GiftLog.insertMany(buildGiftLogEntries({
+        senderId, gift: prepared.gift, validReceivers: prepared.validReceivers, effectiveQty: prepared.effectiveQty,
+        unitPrice: prepared.unitPrice, totalPrice: prepared.totalPrice, cleanRoomId: prepared.cleanRoomId
+    }), { session });
     return prepared;
 }
 exports.reserveGiftCombo = reserveGiftCombo;
 
 // ✅ طلب صريح (هدايا v2): كل "الأثر الجانبي" غير الحرج مالياً — بثّ الغرفة/الدردشة الخاصة،
 // نقاط PK/مستوى الغرفة/التحدي، الخبرة (wealthLevel/wealthXp)، نقاط نادي المعجبين — يُنفَّذ
-// هنا فقط بعد نجاح التزام معاملة reserveGiftCombo فعلياً، لا قبله ولا ضمن نفس المعاملة (لا
-// حاجة لضمانها ذرّياً مع الخصم نفسه — fire-and-forget/best-effort كما كانت دوماً بهذا المشروع)
+// هنا فقط بعد نجاح التزام معاملة reserveGiftCombo/settleGiftComboClaimInner فعلياً، لا قبله
+// ولا ضمن نفس المعاملة (لا حاجة لضمانها ذرّياً مع الخصم نفسه — fire-and-forget/best-effort
+// كما كانت دوماً بهذا المشروع؛ كلها قابلة لإعادة الحساب وبلا مسار استبدال نقدي مباشر، بعكس
+// سجلّ الهدايا GiftLog الذي التزم بالفعل داخل المعاملة نفسها — راجع buildGiftLogEntries)
 // 🛡️ طلب صريح بمراجعة واجهات الكومبو: comboId اختياري (موجود فقط لمسار gift:combo عبر
 // Socket.IO — راجع socketService.js؛ REST/processGiftCombo بلا مفهوم جلسة كومبو أصلاً) —
 // يُضاف لحمولة room-gift-announcement كي يُجمِّع العميل كل إعلانات نفس الجلسة (حتى لو كانت
 // لعدّة مستلمين، كل واحد بحدث منفصل) بشريط/سطر دردشة واحد متحدِّث بدل عنصر جديد لكل حدث
 async function runGiftComboSideEffects({ io, sender, gift, validReceivers, unitPrice, totalCost, totalPrice, effectiveQty, cleanRoomId, safeGiftImage, comboId }) {
     const senderId = sender._id;
-
-    // 🛡️ إصلاح جذري (الموثوقية والسرعة): سجلّ الهدية (GiftLog) لم يعد جزءاً من معاملة الخصم
-    // الذرّية — الخصم التزم بالفعل بنجاح قبل وصولنا هنا (ack وصل العميل أصلاً بمسار gift:combo
-    // الحيّ)، فتسجيله هنا best-effort فقط. فشله لا يُسقِط شيئاً، فقط يُسجَّل بالخطأ للمراجعة
-    try {
-        await GiftLog.insertMany(validReceivers.map(r => ({
-            sender: senderId, receiver: r._id, gift: gift._id,
-            giftName: gift.name, giftImage: gift.imageUrl,
-            quantity: effectiveQty, unitPrice, totalPrice, context: 'private_chat', room: cleanRoomId
-        })));
-    } catch (logError) {
-        console.error('[GIFT LOG] Failed to insert gift log (deduct already committed):', logError);
-    }
 
     if (cleanRoomId) {
         try {
@@ -1296,12 +1306,18 @@ async function settleGiftComboClaimInner({ key, senderId, comboId, seq, giftId, 
                 throw claimError;
             }
 
-            // 🛡️ إصلاح جذري: هذي المعاملة الآن لا تحمل عدا حجز GiftComboTx أعلاه + الخصم الذرّي
-            // التالي مباشرة — لا قراءات غرفة/مستلمين/هدية هنا (سبقتها خارج المعاملة)، ولا سجلّ
-            // هدايا (انتقل لـrunGiftComboSideEffects كأثر جانبي بعد الـack). أقصر معاملة ممكنة
+            // 🛡️ إصلاح جذري: هذي المعاملة لا تحمل عدا حجز GiftComboTx أعلاه + الخصم الذرّي +
+            // سجلّ الهدايا (GiftLog — قيمة المُستلِم الحقيقية، راجع تعليق buildGiftLogEntries
+            // لسبب عودته لداخل المعاملة) — لا قراءات غرفة/مستلمين/هدية هنا (سبقتها خارج
+            // المعاملة بـprepareGiftComboSend). إدراج واحد فقط (insertMany) فلا يُثقِل زمن
+            // الالتزام محسوساً؛ بقية الآثار (دردشة/PK/دعم/خبرة/نادي معجبين) تبقى بعد الـack
             updatedSender = await applyGiftComboDeduct({ session, senderId, totalCost: prepared.totalCost, preReadCoins: prepared.sender.coins });
             claim.balanceAfter = updatedSender.coins;
             await claim.save({ session });
+            await GiftLog.insertMany(buildGiftLogEntries({
+                senderId, gift: prepared.gift, validReceivers: prepared.validReceivers, effectiveQty: prepared.effectiveQty,
+                unitPrice: prepared.unitPrice, totalPrice: prepared.totalPrice, cleanRoomId: prepared.cleanRoomId
+            }), { session });
         });
     } catch (e) {
         txError = e;

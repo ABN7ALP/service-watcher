@@ -300,11 +300,12 @@ describe('settleGiftComboClaim — idempotency عبر GiftComboTx بمعاملة
         expect(second.balanceAfter).toBe(first.reserved.sender.coins); // نفس القيمة المخزَّنة، لا إعادة حساب
 
         expect(sender.coins).toBe(10000 - 100); // ✅ لم يتغيّر إطلاقاً بالمحاولة الثانية — لا خصم مزدوج
-        // 🛡️ إصلاح جذري (الموثوقية والسرعة): سجلّ الهدية (GiftLog) لم يعد جزءاً من
-        // settleGiftComboClaim إطلاقاً — انتقل لـrunGiftComboSideEffects كأثر جانبي best-effort
-        // بعد الـack. الحماية من ازدواجه عند إعادة إرسال نفس comboId+seq مضمونة بنائياً الآن
-        // (لا بفحص مباشر هنا): معالج gift:combo لا يستدعي runGiftComboSideEffects إطلاقاً عند
-        // outcome.duplicate===true (راجع socketService.js) — فلا فرصة لتكراره أصلاً
+        // 🛡️ إصلاح جذري (مراجعة أمنية): سجلّ الهدية (GiftLog — قيمة المُستلِم الحقيقية) عاد
+        // ليُكتب داخل نفس معاملة settleGiftComboClaim الذرّية (راجع buildGiftLogEntries) — سجلّ
+        // واحد بالضبط من المحاولة الأولى الناجحة، ولا سجلّ إضافي من إعادة الإرسال (المعاملة
+        // الثانية تُسقَط بالكامل عند تضارب مفتاح GiftComboTx قبل أي كتابة GiftLog إطلاقاً)
+        expect(db.giftLogs).toHaveLength(1);
+        expect(db.giftLogs[0]).toMatchObject({ sender: 's1', receiver: 'r1', unitPrice: 100 });
     });
 
     test('seq مختلف بنفس comboId يُعامَل كدفعة جديدة مستقلة تماماً (لا يُعتبَر تكراراً)', async () => {
@@ -326,6 +327,7 @@ describe('settleGiftComboClaim — idempotency عبر GiftComboTx بمعاملة
         expect(first.duplicate).toBe(false);
         expect(second.duplicate).toBe(false);
         expect(sender.coins).toBe(10000 - 100 - 100); // ✅ خُصمت مرتين فعلاً — دفعتان حقيقيتان مختلفتان
+        expect(db.giftLogs).toHaveLength(2); // ✅ سجلّ هدية حقيقي واحد لكل دفعة ناجحة فعلاً، لا أقل ولا أكثر
     });
 
     test('رصيد غير كافٍ أثناء الحجز: حجز GiftComboTx نفسه يُسقَط أيضاً (لا يبقى "شبحياً") — إعادة المحاولة بنفس seq لاحقاً (بعد شحن الرصيد) ممكنة', async () => {
@@ -376,5 +378,67 @@ describe('settleGiftComboClaim — idempotency عبر GiftComboTx بمعاملة
         expect(first.duplicate).toBe(false);
         expect(second.duplicate).toBe(false);
         expect(sender.coins).toBe(10000 - 100 - 100); // ✅ كلا الخصمين طُبِّقا بدقّة، بصرف النظر عن التزامن
+    });
+});
+
+// 🛡️ طلب صريح (مراجعة أمنية — البند 5): محاكاة "انهيار/إعادة تشغيل السيرفر فوراً بعد التزام
+// المعاملة، قبل أي فرصة لتشغيل runGiftComboSideEffects إطلاقاً" — لا تُستورَد ولا تُستدعى هذي
+// الدالة بهذا الملف بتاتاً. الهدف إثبات أن سجلّ الهدايا (GiftLog — قيمة المُستلِم الحقيقية
+// القابلة للاستبدال نقداً عبر giftRedemptionController) موجود ومطابق تماماً للخصم بمجرّد
+// التزام المعاملة وحدها، فوراً، بلا أي اعتماد على نجاح أثر جانبي لاحق قد لا يُشغَّل أصلاً
+describe('GiftLog — سلامة سجل المُستلِم عند "انهيار" فوري بعد الالتزام (بلا أي أثر جانبي لاحق)', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('settleGiftComboClaim (مسار gift:combo الحيّ): سجلّ GiftLog موجود ومطابق للخصم فوراً بعد التزام المعاملة وحدها', async () => {
+        const db = makeDb();
+        const sender = seedUser(db, { _id: 's1', coins: 10000 });
+        seedGift(db, { _id: 'g1', price: 100 });
+        seedUser(db, { _id: 'r1' });
+        seedUser(db, { _id: 'r2' });
+        wireMocks(db);
+
+        // ⚠️ لا أي استدعاء لـrunGiftComboSideEffects هنا إطلاقاً — يحاكي توقّف العملية فوراً
+        // بعد وصول هذا الاستدعاء لنتيجته (بالضبط كما يحدث فعلياً: الـack يصل العميل، ثم
+        // تُنفَّذ الآثار الجانبية بـsetImmediate — "الانهيار" هنا قبل تنفيذه تماماً)
+        const outcome = await settleGiftComboClaim({
+            key: 's1:combo-crash:1', senderId: 's1', comboId: 'combo-crash', seq: 1,
+            giftId: 'g1', quantity: 1, taps: 1, recipientIds: ['r1', 'r2'], roomId: null
+        });
+
+        expect(outcome.duplicate).toBe(false);
+        const expectedUnitPrice = 100;
+        const expectedTotalPricePerReceiver = expectedUnitPrice * 1; // qty=1 × taps=1
+        const expectedTotalCost = expectedTotalPricePerReceiver * 2; // × مستلمَين
+        expect(sender.coins).toBe(10000 - expectedTotalCost);
+
+        // ✅ جوهر البند: سجلّا GiftLog (واحد لكل مستلم) موجودان فعلاً بمجرّد التزام المعاملة
+        // وحدها، بقيم مطابقة تماماً للخصم — لا نقص ولا زيادة، بلا استدعاء runGiftComboSideEffects
+        expect(db.giftLogs).toHaveLength(2);
+        const byReceiver = Object.fromEntries(db.giftLogs.map(l => [l.receiver, l]));
+        expect(byReceiver.r1).toMatchObject({ sender: 's1', gift: 'g1', unitPrice: expectedUnitPrice, totalPrice: expectedTotalPricePerReceiver, quantity: 1 });
+        expect(byReceiver.r2).toMatchObject({ sender: 's1', gift: 'g1', unitPrice: expectedUnitPrice, totalPrice: expectedTotalPricePerReceiver, quantity: 1 });
+        const loggedTotal = db.giftLogs.reduce((sum, l) => sum + l.totalPrice, 0);
+        expect(loggedTotal).toBe(expectedTotalCost); // ✅ مجموع سجلّات المستلمين = كامل ما خُصم من المُرسِل تماماً
+    });
+
+    test('reserveGiftCombo (مسار REST/sendGiftBatch): نفس الضمان داخل معاملة حقيقية (محاكاة withTransaction)، بلا استدعاء runGiftComboSideEffects', async () => {
+        const db = makeDb();
+        const sender = seedUser(db, { _id: 's1', coins: 5000 });
+        seedGift(db, { _id: 'g1', price: 50 });
+        seedUser(db, { _id: 'r1' });
+        wireMocks(db);
+
+        const session = makeFakeSession(db);
+        let reserved;
+        await session.withTransaction(async () => {
+            reserved = await reserveGiftCombo({
+                session, senderId: 's1', giftId: 'g1', quantity: 6, taps: 1, recipientIds: ['r1'], roomId: null
+            });
+        });
+
+        expect(sender.coins).toBe(5000 - 50 * 6);
+        expect(db.giftLogs).toHaveLength(1);
+        expect(db.giftLogs[0]).toMatchObject({ sender: 's1', receiver: 'r1', gift: 'g1', unitPrice: 50, totalPrice: 300, quantity: 6 });
+        expect(reserved.totalCost).toBe(300);
     });
 });

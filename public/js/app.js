@@ -15724,12 +15724,14 @@ function startGiftComboSession(ctx) {
             const syncedUser = JSON.parse(localStorage.getItem('user'));
             if (syncedUser) {
                 syncedUser.coins = balance;
-                // ✅ طلب صريح: تسوية شريط الثروة مع كل ack — نفس ما يصل لاحقاً عبر experienceUpdate،
-                // لكن هنا فوراً من رد الكومبو نفسه (مصدر إضافي لنفس الحقيقة، لا يتعارض)
-                if (res && typeof res.wealthLevel === 'number') syncedUser.level = res.wealthLevel;
-                if (res && typeof res.wealthXp === 'number') syncedUser.experience = res.wealthXp;
                 localStorage.setItem('user', JSON.stringify(syncedUser));
             }
+            // 🛡️ إصلاح جذري (الموثوقية والسرعة — مراجعة أمنية): الـack الفوري الجديد لم يعد يحمل
+            // wealthLevel/wealthXp/requiredXp إطلاقاً (راجع socket.on('gift:combo') بـ
+            // socketService.js — ack({ok,seq,balanceAfter} فقط، كي لا ينتظر منح الخبرة قبل
+            // إرساله). مستوى/خبرة المستخدم يبقيان مُزامَنين بـlocalStorage حصرياً عبر الحدث
+            // المستقل experienceUpdate أعلى الملف (يصل خلال الأثر الجانبي بعد الـack مباشرة،
+            // فارق غير محسوس) — لا حاجة لقراءتهما من res هنا إطلاقاً بعد الآن
             setHeaderCoinsSilent(balance);
         },
         onFail: (cost, code, message, taps, res) => {
