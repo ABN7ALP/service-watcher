@@ -2446,6 +2446,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         socket.emit('join-room-chat', { roomId });
         socket.emit('get-room-viewers', { roomId }); // ✅ يملأ شريط صور المشاهدين فوراً عند الدخول
 
+        // 🚀 إصلاح جذري (الموثوقية والسرعة — السبب الجذري هـ + د): تحميل كتالوج الهدايا مسبقاً
+        // هنا (لا الانتظار لحظة فتح شيت الهدايا فعلياً) + تحميل صور الأسطورية مسبقاً بذاكرة
+        // المتصفح فوراً بعدها — بلا انتظار (fire-and-forget)، لا يُؤخِّر دخول الغرفة نفسه إطلاقاً.
+        // راجع getGiftShopData (كاش بالذاكرة + ETag لاحقاً) وpreloadLegendaryGiftAssets أعلاه
+        getGiftShopData().then(preloadLegendaryGiftAssets).catch(() => {});
+
         try {
             const response = await fetch(`/api/voice-room/rooms/${roomId}/messages`, { headers: { 'Authorization': `Bearer ${token}` } });
             const result = await response.json();
@@ -9732,14 +9738,27 @@ function showXpGainAnimation(amount) {
         appendRoomGiftChatMessage(data);
         gfxUpdateSideBanner(data);
 
-        const catalogGift = findCachedGiftById(data.giftId);
-        const isLegendary = catalogGift ? catalogGift.category === 'legendary' : false;
-        if (isLegendary && gfxShouldTriggerLegendary(data)) {
-            gfxQueueLegendary({
-                giftImage: data.giftImage, giftIcon: data.giftIcon, giftName: data.giftName,
-                fromUsername: data.fromUsername, toLabel: escapeHtml(data.toUsername || ''), isSelf: false
-            });
-        }
+        // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري د): تحفيز الأسطورية هنا — داخل دفعة
+        // room-gift-announcement المُجمَّعة (نافذة 250ms) — حُذف نهائياً. حدث gift:legendary
+        // المخصَّص (راجع مستمعه أسفل) يصل فوراً فور التزام الخصم مباشرة بالسيرفر بلا أي انتظار
+        // تجميع دفعي إطلاقاً — تفعيلها هنا أيضاً كان يُسبِّب ظهورها مرتين لكل هدية أسطورية واحدة
+    });
+
+    // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري د): حدث فوري مخصَّص (يصل مباشرة بعد
+    // runGiftComboSideEffects لا بانتظار دفعة room-gift-announcement البطيئة نسبياً) — راجع
+    // الشرح الكامل وgfxShouldTriggerLegendary (يمنع الازدواج بمفتاح comboId، بما في ذلك أي
+    // تطابق محتمل لاحقاً مع مسارات أخرى) أعلى الملف
+    socket.on('gift:legendary', (data) => {
+        if (data.roomId !== currentVoiceRoomId) return;
+        // ✅ أنا المُرسِل: رأيت أسطوريتي محلياً بتفاؤل بالفعل (راجع startGiftComboSession) — صدى
+        // السيرفر لهديتي نفسها يُتجاهَل هنا بالكامل، بما فيها الأسطورية، كبقية أحداث الهدية
+        if (data.fromUserId === myUserId) return;
+        if (!gfxShouldTriggerLegendary(data)) return;
+        pkCacheUserDisplay(data.fromUserId, data.fromUsername, null);
+        gfxQueueLegendary({
+            giftImage: data.giftImage, giftIcon: data.giftIcon, giftName: data.giftName,
+            fromUsername: data.fromUsername, toLabel: escapeHtml(data.toLabel || ''), isSelf: false
+        });
     });
 
     // =====================================================
@@ -14388,6 +14407,27 @@ async function getGiftShopCatalog() {
     return Object.values(data.gifts).flat();
 }
 
+// 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري د، النصف الثاني): صورة الأسطورية
+// (gfx-legend) كانت تُجلَب لحظة ظهورها فعلياً فقط (<img src> مُدرَجة بالـDOM للمرة الأولى عند
+// الحدث) — فمن لم تُحمَّل صورتها مسبقاً بذاكرة المتصفح يرى وميض/تأخير تحميل شبكة حقيقي بالضبط
+// لحظة اللقطة الأهم بصرياً. تُحمَّل الآن مسبقاً (imageUrl + animationUrl الاحتياطي) لكل
+// هدايا فئة legendary فور دخول أي غرفة (راجع enterRoomChat) — new Image()+decode() الحقيقي
+// (لا مجرّد تعيين src) يضمن أن المتصفح أنهى فعلياً فك تشفير البكسلات قبل أي استخدام لاحق
+let legendaryAssetsPreloaded = false;
+function preloadLegendaryGiftAssets(data) {
+    if (legendaryAssetsPreloaded) return; // ✅ كتالوج شبه ثابت — تكفي مرة واحدة لكل تحميل صفحة
+    const legendaryGifts = data?.gifts?.legendary || [];
+    if (legendaryGifts.length === 0) return;
+    legendaryAssetsPreloaded = true;
+    const urls = new Set();
+    legendaryGifts.forEach(g => { if (g.imageUrl) urls.add(g.imageUrl); if (g.animationUrl) urls.add(g.animationUrl); });
+    urls.forEach(url => {
+        const img = new Image();
+        img.src = url;
+        img.decode?.().catch(() => {}); // ✅ فشل فك تشفير صورة واحدة لا يُسقِط الباقي ولا يُعطّل أي شيء
+    });
+}
+
 async function showGiftStoreModal(targetUserId, targetUsername) {
     const existing = document.getElementById('gift-store-modal');
     if (existing) existing.remove();
@@ -15130,22 +15170,11 @@ function teardownGiftComboFx() {
     document.getElementById('room-gift-lane')?.classList.remove('gfx-hidden-for-legend');
     // 🧹 مراجعة PR #108: مغادرة الغرفة فعلياً يجب أن تُطهِّر كل حالة النظام الموحَّد الجديد أيضاً
     // (شريط إعلانات الآخرين + طابور الأسطورية + التوست العلوي) — لا بقايا من غرفة سابقة
-    gfxOtherBanners.forEach(b => b.el.remove());
+    gfxOtherBanners.forEach(b => { clearTimeout(b.timer); b.el.remove(); });
     gfxOtherBanners = [];
     gfxLegendaryQueue = [];
     gfxLegendaryPlaying = false;
     document.getElementById('gfx-top-toast')?.remove();
-}
-
-// ✅ يبحث عن الهدية ضمن كتالوج المتجر المخزَّن مؤقتاً (getGiftShopData) للتحقق إن كانت أسطورية
-// وملء الشاشة — لا نداء شبكة إضافي، الكتالوج محمَّل أصلاً دوماً قبل فتح أي شيت هدايا
-function findCachedGiftById(giftId) {
-    if (!giftShopDataCache || !giftId) return null;
-    for (const cat of Object.keys(giftShopDataCache.gifts || {})) {
-        const found = (giftShopDataCache.gifts[cat] || []).find(g => String(g.id) === String(giftId));
-        if (found) return found;
-    }
-    return null;
 }
 
 function giftEmojiOrImgHTML(gift, px) {
@@ -16426,7 +16455,21 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
 // لو وصلت رسائل دردشة أخرى بينها)، ويُنهيه طبيعياً انتهاء الجلسة نفسها (لا مزيد من التحديثات
 // تصل بعدها). comboId غائب (مسار REST القديم sendGiftBatch بلا مفهوم جلسة) ⇐ سطر جديد دوماً،
 // تماماً كالسلوك القديم
-let gfxChatLineByCombo = new Map(); // comboId → {el, quantity, recipients:Set}
+let gfxChatLineByCombo = new Map(); // comboId → {el, quantity, recipients:Set, timer}
+// 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري ج): كان الدمج بمفتاح comboId بلا أي صلاحية
+// زمنية — إن ضاع "إشعار نهاية" الجلسة (انقطاع شبكة، تبويب أُغلق مبكراً...) يبقى المدخل بالخريطة
+// للأبد فعلياً، فتُدمَج فيه بضغطة متأخرة جداً (نادرة: إعادة محاولة seq بعد تأخير شديد) رغم مرور
+// دقائق — يبدو كأنها نفس الجلسة القديمة. 3 ثوانٍ من الخمول (آخر تحديث) تكفي لإنهاء الدمج —
+// السطر نفسه يبقى بسجل الدردشة كعنصر تاريخي عادي، فقط مفتاحه يُزال من الخريطة
+const GFX_CHAT_LINE_IDLE_MS = 3000;
+function scheduleChatLineIdleFinalize(comboId) {
+    const entry = gfxChatLineByCombo.get(comboId);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => {
+        if (gfxChatLineByCombo.get(comboId) === entry) gfxChatLineByCombo.delete(comboId);
+    }, GFX_CHAT_LINE_IDLE_MS);
+}
 function appendRoomGiftChatMessage({ fromUsername, toUsername, giftName, giftIcon, giftImage, quantity, comboId }) {
     const box = document.getElementById('room-chat-messages');
     if (!box) return;
@@ -16442,6 +16485,7 @@ function appendRoomGiftChatMessage({ fromUsername, toUsername, giftName, giftIco
             const toEl = existing.el.querySelector('.room-chat-gift-to');
             if (toEl && existing.recipients.size > 1) toEl.textContent = `${existing.recipients.size} مستلمين`;
             box.scrollTop = box.scrollHeight;
+            scheduleChatLineIdleFinalize(comboId);
             return;
         }
     }
@@ -16464,6 +16508,7 @@ function appendRoomGiftChatMessage({ fromUsername, toUsername, giftName, giftIco
     if (comboId) {
         gfxChatLineByCombo.set(comboId, { el, quantity: qtyNum, recipients: new Set([toUsername]) });
         if (gfxChatLineByCombo.size > 24) gfxChatLineByCombo.delete(gfxChatLineByCombo.keys().next().value);
+        scheduleChatLineIdleFinalize(comboId);
     }
 }
 
@@ -16475,6 +16520,7 @@ function gfxSetChatLineQuantity(comboId, qty) {
     entry.quantity = qty;
     const qtyEl = entry.el.querySelector('.room-chat-gift-qty');
     if (qtyEl) qtyEl.textContent = qty > 1 ? `×${qty.toLocaleString('en-US')} ` : '';
+    scheduleChatLineIdleFinalize(comboId);
 }
 
 // ✅ طلب صريح (بند 1 بمراجعة PR #108): شريط إعلان هدايا الآخرين — نفس تصميم .gfx-banner
@@ -16483,6 +16529,22 @@ function gfxSetChatLineQuantity(comboId, qty) {
 // fromProfileImage/giftImage قيم غير موثوقة قادمة من صدى بثّ عام (مستخدم آخر) — تُفحَص بـ
 // isHttpsImageUrl وتُبنى كصورة DOM بخاصية src (لا تضمين نصي بـinnerHTML) تماماً كـ
 // renderRoomGiftSideBanner القديمة أعلى الملف (نفس التصلّب الأمني الموثَّق هناك)
+// 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري ج): الشريط لم يكن له أي صلاحية زمنية —
+// فقط يُزاح عند تجاوز GFX_BANNER_MAX (3) بشرائط أحدث. بغرفة هادئة نسبياً (أقل من 3 هدايا
+// لاحقة)، شريط هدية واحدة قديمة يبقى معلَّقاً للأبد فعلياً إن لم يصل أي "إشعار نهاية" (الذي
+// لا وجود له أصلاً بهذا المسار — صدى بثّ للآخرين فقط). 3 ثوانٍ من الخمول (آخر تحديث) تكفي
+// لإخفائه تلقائياً بنفس أنيميشن الخروج المستخدَم أصلاً عند الإزاحة بالتجاوز
+const GFX_BANNER_IDLE_MS = 3000;
+function scheduleBannerIdleRemoval(entry) {
+    clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => {
+        const idx = gfxOtherBanners.indexOf(entry);
+        if (idx === -1) return;
+        gfxOtherBanners.splice(idx, 1);
+        entry.el.classList.add('out');
+        setTimeout(() => entry.el.remove(), 420);
+    }, GFX_BANNER_IDLE_MS);
+}
 function gfxUpdateSideBanner(data) {
     const comboKey = data.comboId || `solo:${data.fromUserId}:${data.giftId}:${data.toUserId}:${Date.now()}`;
     const existing = gfxOtherBanners.find(b => b.comboId === comboKey);
@@ -16496,11 +16558,13 @@ function gfxUpdateSideBanner(data) {
         }
         const toEl = existing.el.querySelector('.gfx-banner-to');
         if (toEl && existing.recipients.size > 1) toEl.textContent = `إلى ${existing.recipients.size} مستلمين`;
+        scheduleBannerIdleRemoval(existing);
         return;
     }
 
     if (gfxOtherBanners.length >= GFX_BANNER_MAX) {
         const oldest = gfxOtherBanners.pop();
+        clearTimeout(oldest.timer);
         oldest.el.classList.add('out');
         setTimeout(() => oldest.el.remove(), 420);
     }
@@ -16524,7 +16588,9 @@ function gfxUpdateSideBanner(data) {
         el.querySelector('.gfx-banner-gift').appendChild(giftImg);
     }
     (document.getElementById('room-gift-lane') || document.body).prepend(el);
-    gfxOtherBanners.unshift({ comboId: comboKey, el, count: data.quantity || 1, recipients: new Set([data.toUserId]) });
+    const newEntry = { comboId: comboKey, el, count: data.quantity || 1, recipients: new Set([data.toUserId]) };
+    gfxOtherBanners.unshift(newEntry);
+    scheduleBannerIdleRemoval(newEntry);
 }
 
 // ✅ حالة الشريط الحالي — يسمح بجمع الإرسالات المتكررة (نفس المُرسل/نفس الهدية) بعدّاد
