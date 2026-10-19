@@ -2447,10 +2447,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         socket.emit('get-room-viewers', { roomId }); // ✅ يملأ شريط صور المشاهدين فوراً عند الدخول
 
         // 🚀 إصلاح جذري (الموثوقية والسرعة — السبب الجذري هـ + د): تحميل كتالوج الهدايا مسبقاً
-        // هنا (لا الانتظار لحظة فتح شيت الهدايا فعلياً) + تحميل صور الأسطورية مسبقاً بذاكرة
-        // المتصفح فوراً بعدها — بلا انتظار (fire-and-forget)، لا يُؤخِّر دخول الغرفة نفسه إطلاقاً.
-        // راجع getGiftShopData (كاش بالذاكرة + ETag لاحقاً) وpreloadLegendaryGiftAssets أعلاه
-        getGiftShopData().then(preloadLegendaryGiftAssets).catch(() => {});
+        // هنا (لا الانتظار لحظة فتح شيت الهدايا فعلياً) + تحميل صور كل الهدايا (وتشديد خاص
+        // للأسطورية) مسبقاً بذاكرة المتصفح فوراً بعدها — بلا انتظار (fire-and-forget)، لا يُؤخِّر
+        // دخول الغرفة نفسه إطلاقاً. راجع getGiftShopData (كاش بالذاكرة+localStorage+ETag)
+        // وpreloadGiftThumbnails/preloadLegendaryGiftAssets أعلاه
+        getGiftShopData().then(data => { preloadGiftThumbnails(data); preloadLegendaryGiftAssets(data); }).catch(() => {});
 
         try {
             const response = await fetch(`/api/voice-room/rooms/${roomId}/messages`, { headers: { 'Authorization': `Bearer ${token}` } });
@@ -14383,7 +14384,42 @@ function getAgentBadgeIconHTML(isAgent) {
 // غالباً حتى عند أول فتح فعلي لأي نافذة هدية بالجلسة
 let giftShopDataCache = null;
 let giftShopDataFetchedAt = 0;
+let giftShopDataEtag = null; // ✅ من رد شبكة حقيقي فقط (راجع التعليق أسفل getGiftShopData لسبب
+                              // عدم تهيئته أبداً من localStorage مباشرة)
 const GIFT_CATALOG_REFRESH_MS = 5 * 60 * 1000;
+const GIFT_SHOP_LS_KEY = 'giftShopCacheV1';
+
+// 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري هـ): نسخة كتالوج+rules فقط (بلا me — خاصة
+// بالمستخدم، ولا تُخزَّن محلياً أبداً) تُحفَظ بـlocalStorage بعد كل جلب حقيقي ناجح، فتنجو من
+// إعادة تحميل الصفحة كاملة (لا فقط الجلسة الحالية). فشل القراءة/الكتابة (وضع خاص، تخزين ممتلئ)
+// يُتجاهَل بصمت — ميزة تسريع اختيارية، لا يجوز أن تُسقِط الميزة الأساسية (فتح شيت الهدايا)
+function loadGiftShopCacheFromLocalStorage() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(GIFT_SHOP_LS_KEY));
+        if (!parsed || !parsed.gifts || !parsed.rules) return null;
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+function saveGiftShopCacheToLocalStorage(etag, data) {
+    try {
+        localStorage.setItem(GIFT_SHOP_LS_KEY, JSON.stringify({ etag, gifts: data.gifts, rules: data.rules }));
+    } catch { /* ✅ تجاهل صامت — راجع التعليق أعلاه */ }
+}
+
+// ✅ طلب صريح: "فتح شيت الهدايا يجب ألا ينتظر الشبكة إطلاقاً لو توفّر كاش جاهز" — نسخة
+// مُتزامِنة بلا await على الإطلاق، تُستخدَم فقط للرسم الفوري (تبويبات/شبكة/صور)، لا كمصدر
+// حقيقي يُعتمَد عليه لـme.customGifts (دوماً [] احتياطي بمصدر localStorage — راجع التعليق
+// بـgetGiftShopData لسبب عدم الوثوق بها قبل أول جلب حقيقي فعلي بهذي الجلسة). الكاش الحقيقي
+// بالذاكرة (giftShopDataCache، بعد أول جلب فعلي) له الأولوية دوماً ويُعاد كما هو تماماً
+function getGiftShopDataCachedSync() {
+    if (giftShopDataCache) return giftShopDataCache;
+    const persisted = loadGiftShopCacheFromLocalStorage();
+    if (!persisted) return null;
+    return { gifts: persisted.gifts, rules: persisted.rules, me: { customGifts: [] } };
+}
+
 // ✅ هدايا v2: /api/gifts/shop يُعيد الآن data كاملة {gifts (مُجمَّعة حسب الفئة)، me، rules} —
 // نخزّن الرد الكامل بدل gifts فقط كي تصل rules (القيم الثابتة لمعاينة شريط الثروة بشيت
 // الهدايا الجديد) وme بلا أي طلب شبكة إضافي. balance الحيّة لا تُقرأ من هنا أبداً (قد تُصبح
@@ -14392,11 +14428,27 @@ async function getGiftShopData() {
     if (giftShopDataCache && (Date.now() - giftShopDataFetchedAt < GIFT_CATALOG_REFRESH_MS)) {
         return giftShopDataCache;
     }
-    const response = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } });
+    const headers = { 'Authorization': `Bearer ${token}` };
+    // 🛡️ giftShopDataEtag لا يُملأ أبداً إلا من رد شبكة 200 حقيقي بهذي الجلسة بالضبط (لا من
+    // localStorage) — فأول نداء حقيقي كل جلسة صفحة يبقى طلباً كاملاً عادياً دوماً (me.customGifts
+    // حقيقية مضمونة)، ولا يُخاطر بتصديق 304 فوق قيمة me لم تُجلَب بنجاح ولو مرة واحدة بهذي الجلسة
+    if (giftShopDataEtag) headers['If-None-Match'] = giftShopDataEtag;
+    const response = await fetch('/api/gifts/shop', { headers });
+    if (response.status === 304 && giftShopDataCache) {
+        // ✅ الكتالوج لم يتغيّر — me.customGifts تبقى كما هي (مُزامَنة حياً بأحداث socket مستقلة،
+        // راجع customGiftStatusUpdated)؛ فقط تجديد صلاحية النافذة الزمنية لتأجيل أي تحقق تالٍ
+        giftShopDataFetchedAt = Date.now();
+        return giftShopDataCache;
+    }
     const result = await response.json();
     if (!response.ok || result.status !== 'success') throw new Error('فشل تحميل المتجر');
     giftShopDataCache = result.data;
     giftShopDataFetchedAt = Date.now();
+    const freshEtag = response.headers.get('ETag');
+    if (freshEtag) {
+        giftShopDataEtag = freshEtag;
+        saveGiftShopCacheToLocalStorage(freshEtag, result.data);
+    }
     return giftShopDataCache;
 }
 // 🐛 توافق خلفي: نوافذ الهدايا القديمة (الخاصة/العامة) لم تُعدَّل بهذي المرحلة وتتوقع مصفوفة
@@ -14405,6 +14457,26 @@ async function getGiftShopData() {
 async function getGiftShopCatalog() {
     const data = await getGiftShopData();
     return Object.values(data.gifts).flat();
+}
+
+// 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري هـ): صور كروت الهدايا (كل الفئات، لا
+// الأسطورية فقط — راجع preloadLegendaryGiftAssets لتلك) كانت تُجلَب لحظة إدراجها الفعلي بالـDOM
+// (أول رسم لأي شيت هدايا) — فحتى مع كتالوج مُحمَّل مسبقاً، الصور نفسها قد تُحمَّل بوميض تدريجي
+// واضح. تُحمَّل وتُفكَّك (decode) مسبقاً هنا بذاكرة المتصفح فور توفّر الكتالوج (بعد أي جلب أو
+// prefetch فعلي)، فتكون جاهزة فوراً لحظة الرسم الفعلي بأي شيت لاحقاً. Set يمنع إعادة تحميل نفس
+// الرابط مرتين (هدية مكرّرة بفئتين، أو استدعاء متكرر لنفس الكتالوج بلا تغيير)
+const giftThumbnailsPreloaded = new Set();
+function preloadGiftThumbnails(data) {
+    const urls = new Set();
+    Object.values(data?.gifts || {}).forEach(list => (list || []).forEach(g => { if (g.imageUrl) urls.add(g.imageUrl); }));
+    (data?.me?.customGifts || []).forEach(cg => { if (cg.imageUrl) urls.add(cg.imageUrl); });
+    urls.forEach(url => {
+        if (giftThumbnailsPreloaded.has(url)) return;
+        giftThumbnailsPreloaded.add(url);
+        const img = new Image();
+        img.src = url;
+        img.decode?.().catch(() => {});
+    });
 }
 
 // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري د، النصف الثاني): صورة الأسطورية
@@ -14602,7 +14674,16 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                     <div class="gsheet-wfoot"><span id="gsheet-wnow"></span><span id="gsheet-wto"></span></div>
                 </div>
                 <div class="gsheet-tabs" id="gsheet-tabs" role="tablist"></div>
-                <div class="gsheet-pages" id="gsheet-pages"></div>
+                <div class="gsheet-pages" id="gsheet-pages">
+                    <div class="gsheet-pg">
+                        ${Array.from({ length: 8 }).map(() => `
+                            <span class="gsheet-cell" style="pointer-events:none">
+                                <span class="skeleton-shimmer" style="width:1.6em;height:1.6em;border-radius:50%;display:block;margin:0 auto;"></span>
+                                <span class="skeleton-shimmer" style="width:80%;height:9px;border-radius:999px;display:block;margin:6px auto 0;"></span>
+                            </span>
+                        `).join('')}
+                    </div>
+                </div>
                 <div class="gsheet-dots" id="gsheet-dots"></div>
                 <div class="gsheet-bar">
                     <div class="gsheet-bal"><span id="gsheet-bal-coin"></span><span id="gsheet-bal">0</span><button type="button" class="gsheet-recharge" id="gsheet-recharge-btn">شحن ›</button></div>
@@ -14620,24 +14701,25 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
 
     try {
         const url = roomId === 'main' ? '/api/voice-room' : `/api/voice-room/rooms/${roomId}`;
-        const [roomRes, shopData] = await Promise.all([
-            fetch(url, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            getGiftShopData()
-        ]);
+        const roomPromise = fetch(url, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+
+        // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري هـ): لم تعد شبكة الهدايا تنتظر مقاعد
+        // الغرفة إطلاقاً — الكتالوج (شبه ثابت) يُرسَم فوراً من كاش جاهز (بالذاكرة من enterRoomChat،
+        // أو localStorage من جلسة سابقة — راجع getGiftShopDataCachedSync) بلا أي await، فيما تُجلَب
+        // المقاعد بالتوازي بالخلفية. shopDataPromise تضمن جلباً حقيقياً فعلياً دوماً (فوري من
+        // الذاكرة لو جاهز، أو شبكة حقيقية لو كان المتوفر فقط نسخة localStorage الاحتياطية بـ
+        // me.customGifts فارغة مؤقتاً) — يُستبدَل shopData بنتيجتها الحقيقية أدناه عند الاختلاف
+        let recipientsLoaded = false;
+        const cachedShopData = getGiftShopDataCachedSync();
+        const shopDataPromise = getGiftShopData();
+        let shopData = cachedShopData || await shopDataPromise;
         const rules = shopData.rules;
 
         // 🐛 إصلاح: نفسي لا أظهر ضمن قائمة "من أهدي؟" لو كنت جالساً على مقعد — تحديد هدية
         // لنفسي يُرفَض بالسيرفر بالفعل، لكن استبعادي من القائمة هنا يمنع حتى إمكانية المحاولة
         const myIdStr = currentUser._id ? currentUser._id.toString() : null;
-        let seatedUsers = (roomRes.seats || []).filter(s => s.user && s.user.id !== myIdStr).map(s => s.user);
-        const hostId = roomRes.host ? (roomRes.host._id || roomRes.host).toString() : null;
-        // ✅ presetTarget قد يكون مستمعاً لم يجلس على مقعد بعد (أُهدي من ملفه الشخصي) — يُضاف
-        // لصف المستلمين هنا حتى لو لم يكن بقائمة الجالسين، كي يبقى ظاهراً/قابلاً للتبديل
-        if (presetTarget && !seatedUsers.some(u => u.id === presetTarget.id)) {
-            seatedUsers = [presetTarget, ...seatedUsers];
-        }
-        const hostIsSeated = !!hostId && seatedUsers.some(u => u.id === hostId);
-        const defaultRecipientIds = presetTarget ? [presetTarget.id] : (hostIsSeated ? [hostId] : (seatedUsers[0] ? [seatedUsers[0].id] : []));
+        let seatedUsers = [];
+        let defaultRecipientIds = presetTarget ? [presetTarget.id] : [];
         let selectedUserIds = new Set(defaultRecipientIds);
 
         const firstNonEmptyCat = GSHEET_CATS.find(c => (shopData.gifts[c.k] || []).length > 0) || GSHEET_CATS[0];
@@ -14650,6 +14732,12 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         function renderRecips() {
             const box = document.getElementById('gsheet-recips');
             if (!box) return;
+            // ✅ هيكل تحميل مؤقت لصف المستلمين فقط حتى تصل مقاعد الغرفة (لا علاقة له بكاش
+            // الكتالوج أعلاه) — يمنع ظهور رسالة "لا يوجد أحد قاعد" خاطئة قبل أن نعرف فعلياً
+            if (!recipientsLoaded) {
+                box.innerHTML = Array.from({ length: 4 }).map(() => '<span class="skeleton-shimmer" style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:inline-block;"></span>').join('');
+                return;
+            }
             // 🐛 إصلاح (مراجعة المرحلة 2): <img src=""> مباشرة تُنتج أيقونة صورة مكسورة — نفس
             // مكوّن avatarHTML الموحَّد المُستخدَم بالمقاعد نفسها (DEFAULT_AVATAR_URL احتياطي +
             // إطار المستخدم الفعلي إن وُجد)، بحجم 32px عبر --size بدل أي سمة حجم جاهزة
@@ -14940,10 +15028,42 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         }
         document.getElementById('gsheet-send').addEventListener('click', handleSend);
 
-        renderRecips();
+        // ✅ عرض فوري: التبويبات/الشبكة/الكمية لا تعتمد على مقاعد الغرفة إطلاقاً — تُرسَم
+        // بمجرّد توفّر shopData (من الكاش أعلاه عادةً، بلا أي انتظار شبكة). صف المستلمين/شريط
+        // الثروة يُعرضان بحالة تحميل مؤقتة (recipientsLoaded=false) حتى تصل المقاعد أدناه
         renderTabs();
         renderGrid();
         renderQty();
+        renderRecips();
+        renderWealth();
+
+        // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري هـ): لو كان shopData المعروض أعلاه
+        // نسخة localStorage الاحتياطية (me.customGifts فارغة مؤقتاً — راجع
+        // getGiftShopDataCachedSync)، نستبدلها بصمت بالنتيجة الحقيقية فور اكتمال أول جلب فعلي
+        // بهذي الجلسة، ونُعيد رسم الشبكة فقط لو كان تبويب "مخصصة" هو المعروض حالياً (الوحيد
+        // المتأثر فعلياً بـme) — نفس المرجع تماماً = كان أصلاً بالذاكرة الحقيقية، لا عمل إضافي
+        if (cachedShopData) {
+            shopDataPromise.then(freshData => {
+                if (freshData === shopData) return;
+                shopData = freshData;
+                if (tab === 'custom') renderGrid();
+            }).catch(() => {});
+        }
+        preloadGiftThumbnails(shopData);
+
+        const roomRes = await roomPromise;
+        seatedUsers = (roomRes.seats || []).filter(s => s.user && s.user.id !== myIdStr).map(s => s.user);
+        const hostId = roomRes.host ? (roomRes.host._id || roomRes.host).toString() : null;
+        // ✅ presetTarget قد يكون مستمعاً لم يجلس على مقعد بعد (أُهدي من ملفه الشخصي) — يُضاف
+        // لصف المستلمين هنا حتى لو لم يكن بقائمة الجالسين، كي يبقى ظاهراً/قابلاً للتبديل
+        if (presetTarget && !seatedUsers.some(u => u.id === presetTarget.id)) {
+            seatedUsers = [presetTarget, ...seatedUsers];
+        }
+        const hostIsSeated = !!hostId && seatedUsers.some(u => u.id === hostId);
+        defaultRecipientIds = presetTarget ? [presetTarget.id] : (hostIsSeated ? [hostId] : (seatedUsers[0] ? [seatedUsers[0].id] : []));
+        selectedUserIds = new Set(defaultRecipientIds);
+        recipientsLoaded = true;
+        renderRecips();
         renderWealth();
 
     } catch (error) {
