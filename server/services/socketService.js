@@ -2678,6 +2678,13 @@ socket.on('refreshBlockData', async () => {
         // الخصم نفسه يبقى بالضبط نفس العملية الذرية القديمة (findOneAndUpdate + $inc بشرط
         // توفر الرصيد) داخل processGiftCombo — لم نغيّر جوهر الحماية المالية، فقط النقل.
         // =====================================================
+        // 🛡️ طلب صريح (هدايا v2 — تصليب المعالج): حجز GiftComboTx + reserveGiftCombo (فحص
+        // المقاعد الحقيقية + الخصم الذري + سجلّات الهدايا) ينفّذان الآن معاً بمعاملة Mongo
+        // حقيقية واحدة — راجع settleGiftComboClaim بـgiftController.js (مُختبَرة مباشرة هناك،
+        // بلا حاجة لمحاكاة طبقة Socket.IO). تضارب مفتاح GiftComboTx (إعادة إرسال نفس
+        // comboId+seq) أو رصيد غير كافٍ يُسقِطان المعاملة بالكامل تلقائياً (لا حجز "شبحي"
+        // متبقٍ أبداً، ولا خصم جزئي). الأثر الجانبي (بثّ/خبرة/نقاط معجب) يبقى بعد الالتزام
+        // فقط، كما كان — راجع runGiftComboSideEffects
         socket.on('gift:combo', async (payload, ack) => {
             // ✅ بلا ack لا يمكن تأكيد نجاح/فشل العملية بأمان للعميل — نتجاهل أي نداء بلا دالة رد
             if (typeof ack !== 'function') return;
@@ -2696,39 +2703,25 @@ socket.on('refreshBlockData', async () => {
                     return ack({ ok: false, code: 'BAD_TAPS' });
                 }
 
-                const GiftComboTx = require('../models/GiftComboTx');
+                const { settleGiftComboClaim, runGiftComboSideEffects } = require('../controllers/giftController');
                 const key = `${socket.user._id}:${comboId}:${seq}`;
+                const outcome = await settleGiftComboClaim({
+                    key, senderId: socket.user._id, comboId, seq, giftId, quantity, taps, recipientIds, roomId, io
+                });
 
-                // ✅ حجز "ذرّي" لمفتاح هذي الدفعة أولاً (قبل أي خصم فعلي) — فهرس unique على
-                // key يضمن أن إدراجين لنفس المفتاح بالتوازي، أحدهما فقط ينجح دائماً بغض النظر
-                // عن ترتيب التنفيذ، فيُغلق تسابق "فحص ثم تنفيذ" الذي كان يحتاج قفلاً لمنعه
-                let claim;
-                try {
-                    claim = await GiftComboTx.create({ key, sender: socket.user._id, comboId, seq, balanceAfter: 0 });
-                } catch (claimError) {
-                    if (claimError && claimError.code === 11000) {
-                        const existing = await GiftComboTx.findOne({ key }).select('balanceAfter').lean();
-                        return ack({ ok: true, balance: existing ? existing.balanceAfter : 0 });
-                    }
-                    throw claimError;
+                if (outcome.duplicate) {
+                    return ack({ ok: true, seq, balanceAfter: outcome.balanceAfter });
                 }
 
-                try {
-                    const { processGiftCombo } = require('../controllers/giftController');
-                    const result = await processGiftCombo({
-                        io, senderId: socket.user._id, giftId, quantity, taps, recipientIds, roomId
-                    });
-                    claim.balanceAfter = result.balance;
-                    await claim.save();
-                    ack({ ok: true, balance: result.balance, message: result.message });
-                } catch (processError) {
-                    // ✅ فشلت العملية فعلياً بعد حجز المفتاح (رصيد غير كافٍ، هدية غير موجودة...) —
-                    // نحذف الحجز كي لا يبقى سجلاً "صفرياً" زائفاً للأبد لو احتاج عميل مستقبلي
-                    // إعادة محاولة بنفس comboId+seq (العميل الحالي لا يعيد المحاولة إطلاقاً)
-                    await GiftComboTx.deleteOne({ _id: claim._id }).catch(() => {});
-                    throw processError;
-                }
+                const result = await runGiftComboSideEffects({ io, ...outcome.reserved });
+                ack({
+                    ok: true, seq, balanceAfter: result.balance,
+                    wealthLevel: result.wealthLevel, wealthXp: result.wealthXp, requiredXp: result.requiredXp
+                });
             } catch (error) {
+                if (error && error.code === 'INSUFFICIENT') {
+                    return ack({ ok: false, code: 'INSUFFICIENT', balance: error.balance, needed: error.needed });
+                }
                 console.error('[GIFT COMBO] error:', error);
                 ack({ ok: false, code: (error && error.code) || 'ERR', message: error && error.message });
             }
