@@ -10608,6 +10608,27 @@ socket.on('chatCleanup', ({ idsToDelete }) => {
     }
 });
 
+// ✅ هدايا v2 — المرحلة 4: صدى مراجعة الإدارة لهدية مخصّصة — يُحدِّث كاش المتجر (giftShopDataCache)
+// مباشرة فلا يحتاج أي نداء شبكة إضافي، بلا انتظار إعادة فتح شيت الهدايا. استرداد الرصيد نفسه
+// (رفض) يصل بحدث coinsUpdated منفصل من نفس استدعاء السيرفر — مُعالَج أصلاً بمستمعه الخاص أعلاه
+socket.on('customGiftStatusUpdated', ({ customGiftId, status, reason }) => {
+    if (giftShopDataCache?.me?.customGifts) {
+        if (status === 'rejected') {
+            // ✅ مرفوضة = اسُترد رسمها بالفعل — لا تظهر بتبويب "مخصصة" بعد الآن (نفس ما يُعيده
+            // getGiftShop لأي طلب لاحق — راجعه بـgiftController.js)
+            giftShopDataCache.me.customGifts = giftShopDataCache.me.customGifts.filter(cg => String(cg.id) !== String(customGiftId));
+        } else {
+            const entry = giftShopDataCache.me.customGifts.find(cg => String(cg.id) === String(customGiftId));
+            if (entry) entry.status = status;
+        }
+    }
+    if (status === 'approved') {
+        showNotification('✅ تمت الموافقة على هديتك المخصّصة — أصبحت قابلة للإرسال الآن!', 'success');
+    } else if (status === 'rejected') {
+        showNotification(`❌ تم رفض هديتك المخصّصة. السبب: ${reason || 'غير محدد'}. تم إرجاع رسم التصميم.`, 'error');
+    }
+});
+
 
    // --- ✅ دالة جديدة لنافذة التأكيد ---
 function showConfirmationModal(message, onConfirm) {
@@ -14619,6 +14640,18 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             renderWealth();
         });
 
+        // ✅ طلب صريح (هدايا v2 — المرحلة 4): هدايا المستخدم المخصّصة مُطبَّعة لنفس شكل كروت
+        // الكتالوج العادية (id/name/icon/imageUrl/price/discountedPrice/category) كي يعمل
+        // معها بقية الشيت (التحديد/الإرسال/معاينة شريط الثروة) بلا أي تمييز خاص إطلاقاً —
+        // pending فقط علامة إضافية تمنع تحديدها وتُظهر شارة "قيد المراجعة"
+        function getMyCustomTiles() {
+            return (shopData.me.customGifts || []).map(cg => ({
+                id: cg.id, name: cg.name, icon: '🎁', imageUrl: cg.imageUrl,
+                price: cg.sendPrice, discountedPrice: cg.sendPrice, category: 'custom',
+                pending: cg.status === 'pending'
+            }));
+        }
+
         function renderTabs() {
             const t = document.getElementById('gsheet-tabs');
             if (!t) return;
@@ -14628,8 +14661,10 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             t.querySelectorAll('.gsheet-tab').forEach(btn => {
                 btn.addEventListener('click', () => {
                     tab = btn.dataset.cat;
+                    // ✅ طلب صريح: تبويب "مخصصة" يُحدِّد أول هدية مُعتمَدة (approved) تلقائياً —
+                    // لا شيء لو لم تكن هناك أي هدية مُعتمَدة بعد (فقط معلّقة/لا شيء إطلاقاً)
                     const list = shopData.gifts[tab] || [];
-                    sel = tab === 'custom' ? null : (list[0] || null);
+                    sel = tab === 'custom' ? (getMyCustomTiles().find(g => !g.pending) || null) : (list[0] || null);
                     // ✅ طلب صريح: التبديل لتبويب ملحمية/أسطورية يُعيد الكمية لـ×1
                     if (tab === 'epic' || tab === 'legendary') qty = rules.quantities[0] || 1;
                     renderTabs();
@@ -14666,9 +14701,9 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             if (!pagesEl) return;
             pagesEl.style.setProperty('--tc', `var(${cat.v})`);
             pagesEl.innerHTML = '';
-            // ✅ طلب صريح: تبويب "مخصصة" بهذي المرحلة يعرض فقط بلاطة "صمّم هديتك" معطَّلة
-            // بشارة "قريباً" — المرحلة 4 هي التي تُفعِّلها فعلياً
-            const items = tab === 'custom' ? [{ addTile: true }] : (shopData.gifts[tab] || []).slice();
+            // ✅ طلب صريح (هدايا v2 — المرحلة 4): تبويب "مخصصة" يعرض هدايا المستخدم الحقيقية
+            // (معلّقة مُعطَّلة + مُعتمَدة قابلة للإرسال) ثم بلاطة "صمّم هديتك" الفعّالة أخيراً
+            const items = tab === 'custom' ? [...getMyCustomTiles(), { addTile: true }] : (shopData.gifts[tab] || []).slice();
             const n = Math.max(1, Math.ceil(items.length / 8));
             for (let p = 0; p < n; p++) {
                 const pg = document.createElement('div');
@@ -14680,8 +14715,22 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                     b.style.setProperty('--tc', `var(${cat.v})`);
                     if (g.addTile) {
                         b.classList.add('gsheet-add');
+                        b.innerHTML = '<span class="gsheet-gi">＋</span><span class="gsheet-gn">صمّم هديتك</span>';
+                        b.addEventListener('click', () => {
+                            showCustomGiftDesignModal(rules, (newCustomGift) => {
+                                // ✅ shopData هو الكاش المشترك نفسه (getGiftShopData) — التعديل هنا
+                                // يبقى متزامناً لبقية الجلسة بلا أي نداء شبكة إضافي
+                                shopData.me.customGifts.unshift({
+                                    id: newCustomGift._id, name: newCustomGift.name, imageUrl: newCustomGift.imageUrl,
+                                    status: newCustomGift.status, createCost: newCustomGift.createCost, sendPrice: newCustomGift.sendPrice
+                                });
+                                renderGrid();
+                            });
+                        });
+                    } else if (g.pending) {
+                        b.classList.add('gsheet-pending');
                         b.disabled = true;
-                        b.innerHTML = '<span class="gsheet-gi">＋</span><span class="gsheet-gn">صمّم هديتك</span><span class="gsheet-soon">قريباً</span>';
+                        b.innerHTML = `${gsheetCellInner(g, cat)}<span class="gsheet-pending-badge">قيد المراجعة</span>`;
                     } else {
                         b.innerHTML = gsheetCellInner(g, cat);
                         b.setAttribute('aria-pressed', String(!!sel && sel.id === g.id));
@@ -14857,6 +14906,112 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         modal.remove();
         showNotification('فشل تحميل بيانات الهدايا', 'error');
     }
+}
+
+// ✅ هدايا v2 — المرحلة 4: مودال "صمّم هديتك" — مطابق قدر الإمكان لـ
+// docs/design/gift-system-prototype.html (معاينة رفع، اسم ≤12 حرفاً، كبسولتا سعر من السيرفر،
+// "ادفع X وأرسل للمراجعة"). نافذة منفصلة فوق شيت الهدايا (لا داخل .gsheet — راجع تعليق CSS
+// .gsheet-custom-mbox لسبب الاحتياطات var(--g-*, ...)). rules تأتي من shopData.rules الحقيقية
+// (لا رقم مكتوب يدوياً بالواجهة)؛ onCreated اختياري — يُستدعى بالوثيقة الجديدة (pending) بعد
+// نجاح الإنشاء فقط، كي يحدّث المستدعي تبويب "مخصصة" مكانه بلا إعادة جلب كاملة
+function showCustomGiftDesignModal(rules, onCreated) {
+    document.getElementById('custom-gift-design-modal')?.remove();
+    const designFee = rules.customGiftDesignFee;
+    const sendPrice = rules.customGiftSendPrice;
+    const goLabel = (busy) => busy ? 'جارٍ الإرسال...' : `ادفع ${designFee.toLocaleString('en-US')} وأرسل للمراجعة`;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'custom-gift-design-modal';
+    overlay.className = 'fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-[330] p-0 md:p-2';
+    overlay.innerHTML = `
+        <div class="gsheet-custom-mbox animate-[slideUp_0.25s_ease-out]" role="dialog" aria-label="صمّم هديتك">
+            <h3>صمّم هديتك الخاصة</h3>
+            <p>ارفع صورة مربعة واضحة (PNG أو WebP أو JPEG، حتى 2MB). تظهر الهدية بتبويب "مخصصة" عندك فقط، وتُراجَع من الإدارة قبل التفعيل. إذا رُفضت يُعاد لك المبلغ كاملاً.</p>
+            <div class="gsheet-custom-up">
+                <label class="gsheet-custom-upv" for="cg-file" id="cg-preview">＋</label>
+                <div class="gsheet-custom-fields">
+                    <input type="file" id="cg-file" accept="image/png,image/webp,image/jpeg" hidden>
+                    <input type="text" id="cg-name" maxlength="12" placeholder="اسم الهدية (حتى 12 حرف)">
+                </div>
+            </div>
+            <div class="gsheet-custom-pricerow">
+                <div class="gsheet-custom-pbox"><small>تكلفة التصميم (مرة واحدة)</small><b>${coinIconHTML(12)}${designFee.toLocaleString('en-US')}</b></div>
+                <div class="gsheet-custom-pbox"><small>سعر كل إرسال</small><b>${coinIconHTML(12)}${sendPrice.toLocaleString('en-US')}</b></div>
+            </div>
+            <div class="gsheet-custom-row">
+                <button type="button" id="cg-cancel">إلغاء</button>
+                <button type="button" class="gsheet-custom-go" id="cg-go" disabled>${goLabel(false)}</button>
+            </div>
+        </div>
+    `;
+    document.getElementById('game-container').appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.getElementById('cg-cancel').addEventListener('click', () => overlay.remove());
+
+    let selectedFile = null;
+    const fileInput = document.getElementById('cg-file');
+    const preview = document.getElementById('cg-preview');
+    const nameInput = document.getElementById('cg-name');
+    const goBtn = document.getElementById('cg-go');
+
+    function checkReady() { goBtn.disabled = !selectedFile || !nameInput.value.trim(); }
+
+    fileInput.addEventListener('change', () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        if (file.size > 2 * 1024 * 1024) {
+            showNotification('حجم الصورة يجب ألا يتجاوز 2 ميجابايت', 'error');
+            fileInput.value = '';
+            return;
+        }
+        selectedFile = file;
+        const reader = new FileReader();
+        // ✅ FileReader.readAsDataURL — معاينة محلية بحتة (لا رفع شبكة بعد)، آمنة بـsrc مباشرة
+        // (data: من الجهاز نفسه، لا أي محتوى قادم من مستخدم آخر)
+        reader.onload = () => { preview.innerHTML = `<img src="${reader.result}" alt="">`; };
+        reader.readAsDataURL(file);
+        checkReady();
+    });
+    nameInput.addEventListener('input', checkReady);
+
+    goBtn.addEventListener('click', async () => {
+        if (!selectedFile || !nameInput.value.trim()) return;
+        goBtn.disabled = true;
+        goBtn.textContent = goLabel(true);
+        try {
+            const formData = new FormData();
+            formData.append('giftImage', selectedFile);
+            formData.append('name', nameInput.value.trim());
+            const response = await fetch('/api/gifts/custom', {
+                method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData
+            });
+            const result = await response.json();
+            if (!response.ok || result.status !== 'success') {
+                if (result.code === 'INSUFFICIENT') {
+                    overlay.remove();
+                    openGiftLowBalanceSheet(Math.max(0, (result.needed || designFee) - (result.balance || 0)));
+                    return;
+                }
+                showNotification(result.message || 'تعذّر إنشاء الهدية', 'error');
+                goBtn.disabled = false;
+                goBtn.textContent = goLabel(false);
+                return;
+            }
+            if (typeof result.data.newCoins === 'number') {
+                const localUser = JSON.parse(localStorage.getItem('user'));
+                if (localUser) { localUser.coins = result.data.newCoins; localStorage.setItem('user', JSON.stringify(localUser)); }
+                setHeaderCoinsSilent(result.data.newCoins);
+            }
+            showNotification('تم الدفع — الهدية قيد المراجعة', 'success');
+            overlay.remove();
+            onCreated?.(result.data.customGift);
+        } catch (error) {
+            console.error('[CUSTOM GIFT] create error:', error);
+            showNotification('تعذّر الاتصال بالخادم', 'error');
+            goBtn.disabled = false;
+            goBtn.textContent = goLabel(false);
+        }
+    });
 }
 
 // ✅ هدايا v2 — شيت "رصيدك لا يكفي": يُفتَح من فحص محلي قبل الإرسال أو من ack السيرفر
