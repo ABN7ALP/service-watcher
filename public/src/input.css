@@ -7005,8 +7005,12 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 
 /* ✅ طلب صريح (بند 4): توست علوي صغير غير مُحجِّب — "⬆ مستوى الثروة Lv.N" أثناء كومبو حيّ،
    بدل بطاقة الاحتفال الكاملة المُحجِّبة لمنتصف الغرفة */
+/* 🐛 إصلاح (مراجعة المرحلة 3): top الثابت (safe-area فقط) كان يُغطّي عنوان الغرفة بشريط
+   الرأس الحقيقي (الذي يشمل شارة المستوى/التاج/زر المتابعة أيضاً لا السطر الأول فقط) — top
+   الآن يُحسَب ديناميكياً بالـJS من أسفل #room-header-bar الفعلي + 8px (راجع gfxShowTopLevelToast)،
+   وهذا هنا احتياطي فقط لو تعذَّر إيجاد شريط الرأس لأي سبب */
 .gfx-top-toast {
-    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 10px); left: 50%; transform: translateX(-50%);
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 54px); left: 50%; transform: translateX(-50%);
     z-index: 616; display: flex; align-items: center; gap: 6px; padding: 6px 16px; border-radius: 999px;
     background: rgba(18, 8, 28, 0.78); backdrop-filter: blur(6px); color: #ffcf5a; font-size: 12.5px; font-weight: 800;
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4); pointer-events: none; animation: gfxTopToastIn 0.25s ease-out both;

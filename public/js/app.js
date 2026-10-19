@@ -15028,6 +15028,10 @@ function gfxShowTopLevelToast(newLevel) {
     el.id = 'gfx-top-toast';
     el.className = 'gfx-top-toast';
     el.innerHTML = `<i class="fas fa-arrow-up"></i><span>مستوى الثروة Lv.${Number(newLevel) || 0}</span>`;
+    // 🐛 إصلاح (مراجعة المرحلة 3): كان يتموضع بـsafe-area ثابت فقط فيُغطّي عنوان الغرفة —
+    // الآن أسفل شريط الرأس الحقيقي #room-header-bar مباشرة (+8px)، لا فوقه أبداً
+    const header = document.getElementById('room-header-bar');
+    if (header) el.style.top = `${header.getBoundingClientRect().bottom + 8}px`;
     document.body.appendChild(el);
     setTimeout(() => {
         el.classList.add('out');
