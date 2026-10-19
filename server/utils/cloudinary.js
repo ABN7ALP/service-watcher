@@ -69,6 +69,14 @@ const roomCoverUpload = multer({
     limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 }).single('coverImage');
 
+// 5ج. Multer لصورة الهدية المخصّصة (هدايا v2 — المرحلة 4) — سقف أصغر (2MB) صريح بالطلب،
+// نفس الفلتر المبدئي (الفحص الحاسم assertRealType يبقى بعد الرفع كالعادة، قبل Cloudinary)
+const customGiftUpload = multer({
+    storage: storage,
+    fileFilter: profileImageFilter,
+    limits: { fileSize: 2 * 1024 * 1024 } // 2MB
+}).single('giftImage');
+
 // 6. Multer للدردشات
 const chatUpload = multer({
     storage: storage,
@@ -333,6 +341,7 @@ module.exports = {
     cloudinary,
     upload,                    // للملفات الشخصية (middleware)
     roomCoverUpload,          // لصورة غلاف الغرفة (middleware)
+    customGiftUpload,         // لصورة الهدية المخصّصة (middleware)
     chatUpload,               // للدردشات (middleware)
     uploadChatImage,          // دالة رفع صور الدردشة
     uploadChatVoice,          // دالة رفع صوت الدردشة

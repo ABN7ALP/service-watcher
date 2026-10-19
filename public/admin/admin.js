@@ -130,6 +130,7 @@ class AdminDashboard {
         document.getElementById('depositsStatusFilter')?.addEventListener('change', () => this.loadDeposits(1));
         document.getElementById('coinPurchasesStatusFilter')?.addEventListener('change', () => this.loadCoinPurchases(1));
         document.getElementById('withdrawalStatusFilter')?.addEventListener('change', () => this.loadWithdrawals());
+        document.getElementById('customGiftsStatusFilter')?.addEventListener('change', () => this.loadCustomGifts());
         document.getElementById('reportsStatusFilter')?.addEventListener('change', () => this.loadReports());
                 document.getElementById('supportStatusFilter')?.addEventListener('change', () => this.loadSupportTickets());
         document.getElementById('supportTypeFilter')?.addEventListener('change', () => this.loadSupportTickets());
@@ -198,6 +199,7 @@ class AdminDashboard {
             withdrawals: () => this.loadWithdrawals(),
             transactions: () => this.loadTransactions(1),
             gifts: () => this.loadGifts(),
+            customgifts: () => this.loadCustomGifts(),
             music: () => this.loadMusicTracks(1),
             suggestions: () => this.loadSuggestions(),
             reports: () => this.loadReports(),
@@ -619,6 +621,56 @@ class AdminDashboard {
                 this.promptModal('رفض طلب السحب', 'سبب الرفض...', (reason) => {
                     this.api('POST', `/withdrawals/${btn.dataset.reject}/review`, { action: 'reject', reason })
                         .then(() => { this.showToast('تم الرفض واسترداد الرصيد', 'success'); this.loadWithdrawals(); })
+                        .catch(e => this.showToast(e.message, 'error'));
+                }, { confirmText: 'رفض', danger: true });
+            }));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    // ================= Custom Gifts (هدايا v2 — المرحلة 4) =================
+    async loadCustomGifts() {
+        const status = document.getElementById('customGiftsStatusFilter')?.value || 'pending';
+        try {
+            const data = await this.api('GET', `/custom-gifts?status=${status}`);
+            const c = document.getElementById('customGiftsListContainer');
+            if (!data.data.customGifts.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-inbox fa-2x"></i><p>لا توجد هدايا</p></div>'; return; }
+
+            const statusBadge = (g) => g.status === 'pending'
+                ? ''
+                : g.status === 'approved'
+                    ? '<span class="status-badge status-completed">مقبولة</span>'
+                    : `<span class="status-badge status-banned" title="${escapeHtml(g.rejectReason || '')}">مرفوضة</span>`;
+
+            c.innerHTML = data.data.customGifts.map(g => `
+                <div class="top-user-item" style="align-items:flex-start;">
+                    <img src="${g.imageUrl}" class="top-user-avatar" style="border-radius:10px;object-fit:cover;">
+                    <div class="top-user-info" style="flex:2">
+                        <div class="username">${escapeHtml(g.name)}</div>
+                        <div style="font-size:0.85rem;color:#7f8c8d;">
+                            المالك: ${escapeHtml(g.owner?.username || 'مستخدم محذوف')} |
+                            رسم التصميم: <strong>${g.createCost}</strong> | سعر الإرسال: <strong>${g.sendPrice}</strong>
+                            ${g.status === 'rejected' && g.rejectReason ? `<br>سبب الرفض: ${escapeHtml(g.rejectReason)}` : ''}
+                        </div>
+                    </div>
+                    ${g.status === 'pending' ? `
+                        <div style="display:flex; gap:6px;">
+                            <button class="btn-action btn-view" data-approve="${g._id}" title="قبول"><i class="fas fa-check"></i></button>
+                            <button class="btn-action btn-delete" data-reject="${g._id}" title="رفض"><i class="fas fa-times"></i></button>
+                        </div>
+                    ` : statusBadge(g)}
+                </div>
+            `).join('');
+
+            c.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', () =>
+                this.confirmAction('تأكيد الموافقة على هذي الهدية المخصّصة؟', async () => {
+                    await this.api('POST', `/custom-gifts/${btn.dataset.approve}/review`, { action: 'approve' });
+                    this.showToast('تمت الموافقة', 'success'); this.loadCustomGifts();
+                }, false)
+            ));
+            c.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', () => {
+                this.promptModal('رفض الهدية المخصّصة', 'سبب الرفض...', (reason) => {
+                    this.api('POST', `/custom-gifts/${btn.dataset.reject}/review`, { action: 'reject', reason })
+                        .then(() => { this.showToast('تم الرفض واسترداد رسم التصميم', 'success'); this.loadCustomGifts(); })
                         .catch(e => this.showToast(e.message, 'error'));
                 }, { confirmText: 'رفض', danger: true });
             }));
@@ -1243,6 +1295,16 @@ class AdminDashboard {
                     </div>
                 </div>
                 <hr>
+                <h6 class="mb-3"><i class="fas fa-palette" style="color:#3be0b0"></i> الهدايا المخصّصة</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group"><label>رسم التصميم (كوينز، لمرة واحدة)</label><input type="number" class="form-control" id="s-customGiftFee" value="${s.customGiftDesignFeeCoins}"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group"><label>سعر كل إرسال (كوينز)</label><input type="number" class="form-control" id="s-customGiftSendPrice" value="${s.customGiftSendPriceCoins}"></div>
+                    </div>
+                </div>
+                <hr>
                 <div class="row">
                     <div class="col-md-6">
                         <h6 class="mb-3"><i class="fas fa-wallet text-info"></i> محفظة شام كاش</h6>
@@ -1275,6 +1337,8 @@ class AdminDashboard {
                     maxDailyWithdrawalUSD: parseFloat(document.getElementById('s-maxDailyWithdraw').value),
                     coinsToUsdRedemptionRate: parseFloat(document.getElementById('s-redeemCoinRate').value),
                     giftRedemptionHaircutPercent: parseFloat(document.getElementById('s-redeemHaircut').value),
+                    customGiftDesignFeeCoins: parseFloat(document.getElementById('s-customGiftFee').value),
+                    customGiftSendPriceCoins: parseFloat(document.getElementById('s-customGiftSendPrice').value),
                     shamCashWallet: document.getElementById('s-shamWallet').value.trim(),
                     shamCashHolderName: document.getElementById('s-shamHolder').value.trim(),
                     shamCashQrUrl: document.getElementById('s-shamQr').value.trim(),

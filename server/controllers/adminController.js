@@ -665,7 +665,8 @@ exports.updateSystemSettings = async (req, res) => {
       'battleCommissionRate', 'maintenanceMode', 'maintenanceMessage',
       'coinsToUsdRedemptionRate', 'giftRedemptionHaircutPercent', 'maxDailyWithdrawalUSD',
       'pkWinLp', 'pkLossLp', 'pkDrawLp', 'pkSupportLpDivisor', 'pkLpCapPerBattle',
-      'pkMinDurationSeconds', 'pkMinSupportCoins', 'pkMaxDailyMatchesPerPair'
+      'pkMinDurationSeconds', 'pkMinSupportCoins', 'pkMaxDailyMatchesPerPair',
+      'customGiftDesignFeeCoins', 'customGiftSendPriceCoins'
     ];
     const updates = {};
     for (const field of allowedFields) {

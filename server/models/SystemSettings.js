@@ -37,6 +37,12 @@ const systemSettingsSchema = new mongoose.Schema({
     pkMinSupportCoins: { type: Number, default: 50 },
     pkMaxDailyMatchesPerPair: { type: Number, default: 3 },
 
+    // ✅ هدايا v2 — المرحلة 4: "صمّم هديتك" — رسم تصميم لمرة واحدة (createCost) وسعر كل
+    // إرسال لاحق (sendPrice) للهدايا المخصّصة. يُقرآن هنا فقط عند إنشاء CustomGift جديدة
+    // (تُجمَّدان بالوثيقة نفسها بعدها) — أبداً من قيمة يرسلها العميل مباشرة
+    customGiftDesignFeeCoins: { type: Number, default: 500 },
+    customGiftSendPriceCoins: { type: Number, default: 100 },
+
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 
