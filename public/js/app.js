@@ -12759,7 +12759,7 @@ function spawnFallingCoinsEffect(anchorEl) {
 // أي مسار إنفاق محلي، فالزيادة هنا حقيقية دائماً ويحق لها الاحتفال البصري
 function setAllVisibleCoinDisplays(newValue) {
     setHeaderCoins(newValue);
-    document.querySelectorAll('.gift-footer-balance, #frame-shop-coins-value, #gift-store-balance, #pg-balance')
+    document.querySelectorAll('.gift-footer-balance, #frame-shop-coins-value, #gift-store-balance, #pg-balance, #gsheet-bal')
         .forEach(el => setCoinText(el, newValue));
 }
 // ✅ نسخة صامتة من الهيدر (بلا أي مؤثر) — للاستخدام بكل مسارات الإنفاق/الشراء المحلية.
@@ -14278,19 +14278,30 @@ function getAgentBadgeIconHTML(isAgent) {
 // الكاش)، مع تجديد صامت بالخلفية كل 5 دقائق احتياطاً لتغيير إداري بلا إلزام المستخدم بالانتظار.
 // تُستدعى أيضاً مسبقاً (prefetch) فور إقلاع التطبيق — راجع نهاية الملف — فيكون الكتالوج جاهزاً
 // غالباً حتى عند أول فتح فعلي لأي نافذة هدية بالجلسة
-let giftShopCatalogCache = null;
-let giftShopCatalogFetchedAt = 0;
+let giftShopDataCache = null;
+let giftShopDataFetchedAt = 0;
 const GIFT_CATALOG_REFRESH_MS = 5 * 60 * 1000;
-async function getGiftShopCatalog() {
-    if (giftShopCatalogCache && (Date.now() - giftShopCatalogFetchedAt < GIFT_CATALOG_REFRESH_MS)) {
-        return giftShopCatalogCache;
+// ✅ هدايا v2: /api/gifts/shop يُعيد الآن data كاملة {gifts (مُجمَّعة حسب الفئة)، me، rules} —
+// نخزّن الرد الكامل بدل gifts فقط كي تصل rules (القيم الثابتة لمعاينة شريط الثروة بشيت
+// الهدايا الجديد) وme بلا أي طلب شبكة إضافي. balance الحيّة لا تُقرأ من هنا أبداً (قد تُصبح
+// قديمة خلال نافذة التخزين المؤقت 5 دقائق) — دوماً من localStorage('user') المُزامَن حياً
+async function getGiftShopData() {
+    if (giftShopDataCache && (Date.now() - giftShopDataFetchedAt < GIFT_CATALOG_REFRESH_MS)) {
+        return giftShopDataCache;
     }
     const response = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } });
     const result = await response.json();
     if (!response.ok || result.status !== 'success') throw new Error('فشل تحميل المتجر');
-    giftShopCatalogCache = result.data.gifts;
-    giftShopCatalogFetchedAt = Date.now();
-    return giftShopCatalogCache;
+    giftShopDataCache = result.data;
+    giftShopDataFetchedAt = Date.now();
+    return giftShopDataCache;
+}
+// 🐛 توافق خلفي: نوافذ الهدايا القديمة (الخاصة/العامة) لم تُعدَّل بهذي المرحلة وتتوقع مصفوفة
+// هدايا مسطّحة كما كانت قبل هدايا v2 — لا الشكل المُجمَّع حسب الفئة الجديد. بلا هذا التسطيح
+// كانت ستكسر فوراً (gifts.map/.some على object لا array)
+async function getGiftShopCatalog() {
+    const data = await getGiftShopData();
+    return Object.values(data.gifts).flat();
 }
 
 async function showGiftStoreModal(targetUserId, targetUsername) {
@@ -14423,37 +14434,55 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
     }
 }
 
-// ✅ نافذة هدايا الغرفة — تحديد مستلم واحد أو عدة مستلمين من المقاعد الفعلية الجالسين حالياً، أو "الجميع"
-// ✅ نافذة هدايا الغرفة — مسندلة من الأسفل بالهاتف (نافذة صغيرة مركزية بالكمبيوتر)، خلفية
-// معتمة كباقي نوافذ المشروع، والضغط خارجها يغلقها — بلا هيدر/عنوان (أيقونة الهدية بشريط
-// الغرفة أصلاً كافية كسياق)، بأسلوب نوافذ تطبيقات الهواتف المصغّرة.
-// ✅ presetTarget اختياري ({id, username, profileImage}) — يُستخدَم عند فتح هذي النافذة من
-// ملف شخص محدَّد (نافذة ملف الغرفة) بدل اختيار مستلم من قائمة الجالسين على المقاعد؛ يعرض
-// صورته الوحيدة مقفلة بدل صف الاختيار المتعدد، وبقية الواجهة (شبكة الهدايا، التبويبات،
-// التذييل) هي نفسها بالضبط — نافذة واحدة موحّدة بكل مكان بدل تصميمين مختلفين للهدايا
+// ✅ هدايا v2 — ترتيب الفئات الثابت + لون كل فئة (متغيّر CSS على .gsheet) + خريطة تسميات
+// الكمية العربية، مطابقة حرفية لـdocs/design/gift-system-prototype.html
+const GSHEET_CATS = [
+    { k: 'common', name: 'شائعة', v: '--g-common' },
+    { k: 'rare', name: 'مميزة', v: '--g-rare' },
+    { k: 'epic', name: 'ملحمية', v: '--g-epic' },
+    { k: 'legendary', name: 'أسطورية', v: '--g-legend' },
+    { k: 'custom', name: 'مخصصة', v: '--g-custom' }
+];
+const GSHEET_QTY_LABELS = { 1: '', 10: 'عشرة', 66: 'سلامة', 99: 'دوام', 188: 'حظ', 520: 'أحبك', 1314: 'للأبد' };
+
+// ✅ هدايا v2 — شيت الهدايا الجديد (يستبدل showRoomGiftModal القديمة بالكامل، غرفة الصوت
+// فقط). بنود التصميم بالترتيب: 1) صف المستلمين (مقاعد الغرفة فعلياً، تبديل/تحديد، "كل
+// المقاعد")، 2) شريط الثروة (معاينة XP من قواعد السيرفر فقط — rules)، 3) تبويبات الفئات،
+// 4) شبكة 4×2/صفحة بتمرير أفقي snap، 5) شريط سفلي (رصيد+شحن، كمية، إرسال). presetTarget
+// اختياري ({id, username, profileImage}) — المستلم الافتراضي عند الفتح من ملف شخص محدَّد
+// (المقعد المنقور)؛ يُدمَج بصف المستلمين نفسه (لا يُقفَل على مستلم واحد كالتصميم القديم)،
+// فيبقى بإمكان المستخدم توسيع التحديد لمقاعد أخرى من نفس الشيت
 async function showRoomGiftModal(roomId, presetTarget = null) {
     const existing = document.getElementById('room-gift-modal');
     if (existing) existing.remove();
 
-    // 🐛 إصلاح: كان يُعلَّن داخل else فقط (فرع الاختيار المتعدد) بينما يُستخدَم لاحقاً بلا
-    // شرط لبناء التذييل — أي فتح لهذي النافذة بمستلم محدَّد سلفاً (presetTarget، من زر
-    // الهدية بنافذة ملف الغرفة) كان يرمي ReferenceError صامتاً يظهر للمستخدم كـ"فشل تحميل
-    // البيانات" رغم نجاح كل الطلبات الشبكية فعلياً. رُفع هنا أيضاً ليُستخدَم مباشرة بمعاينة
-    // مستوى الدعم أسفله (تحتاج supportGiving المخزَّن محلياً قبل أي طلب شبكة)
     const currentUser = JSON.parse(localStorage.getItem('user')) || {};
 
     const shellHTML = `
         <div id="room-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-0 md:p-2">
-            <div class="room-gift-sheet w-full md:max-w-md text-white flex flex-col animate-[slideUp_0.25s_ease-out]">
-                <div class="w-9 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-1 md:hidden flex-shrink-0"></div>
-                <div id="room-gift-support-preview">${giftModalSupportPreviewHTML(currentUser.supportGiving)}</div>
-                <div class="gift-sheet-header flex-shrink-0">
-                    <div id="room-gift-avatars" class="room-gift-avatar-row flex-1"></div>
+            <div class="gsheet flex flex-col animate-[slideUp_0.25s_ease-out]">
+                <div class="gsheet-grab"></div>
+                <div class="gsheet-to">
+                    <span class="gsheet-to-label">إلى</span>
+                    <div class="gsheet-recips" id="gsheet-recips"></div>
+                    <button type="button" class="gsheet-allbtn" id="gsheet-allbtn">كل المقاعد</button>
                 </div>
-                <div id="room-gift-body" class="px-3 pb-2 overflow-y-auto flex-1">
-                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
+                <div class="gsheet-wealth" id="gsheet-wealth">
+                    <div class="gsheet-wtop">
+                        <span>مستوى الثروة <span class="gsheet-lv" id="gsheet-lv">Lv.1</span></span>
+                        <span class="gsheet-wgain" id="gsheet-wgain">+0 XP</span>
+                    </div>
+                    <div class="gsheet-track"><div class="gsheet-fill" id="gsheet-fill"></div><div class="gsheet-prev" id="gsheet-prev"></div></div>
+                    <div class="gsheet-wfoot"><span id="gsheet-wnow"></span><span id="gsheet-wto"></span></div>
                 </div>
-                <div id="room-gift-footer"></div>
+                <div class="gsheet-tabs" id="gsheet-tabs" role="tablist"></div>
+                <div class="gsheet-pages" id="gsheet-pages"></div>
+                <div class="gsheet-dots" id="gsheet-dots"></div>
+                <div class="gsheet-bar">
+                    <div class="gsheet-bal"><span id="gsheet-bal-coin"></span><span id="gsheet-bal">0</span><button type="button" class="gsheet-recharge" id="gsheet-recharge-btn">شحن ›</button></div>
+                    <div class="gsheet-qty"><button type="button" class="gsheet-qbtn" id="gsheet-qbtn">×1 ▾</button><div class="gsheet-qmenu" id="gsheet-qmenu" hidden></div></div>
+                    <button type="button" class="gsheet-send" id="gsheet-send">إرسال</button>
+                </div>
             </div>
         </div>
     `;
@@ -14461,195 +14490,349 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const modal = document.getElementById('room-gift-modal');
     modal.addEventListener('click', (e) => { if (e.target.id === 'room-gift-modal') modal.remove(); });
+    document.getElementById('gsheet-bal-coin').innerHTML = coinIconHTML(14);
 
     try {
-        let gifts, seatedUsers;
-        let hostId = null;
-        if (presetTarget) {
-            gifts = await getGiftShopCatalog();
-            seatedUsers = [];
-        } else {
-            const url = roomId === 'main' ? '/api/voice-room' : `/api/voice-room/rooms/${roomId}`;
-            const [roomRes, catalogGifts] = await Promise.all([
-                fetch(url, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-                getGiftShopCatalog()
-            ]);
+        const url = roomId === 'main' ? '/api/voice-room' : `/api/voice-room/rooms/${roomId}`;
+        const [roomRes, shopData] = await Promise.all([
+            fetch(url, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            getGiftShopData()
+        ]);
+        const rules = shopData.rules;
 
-            gifts = catalogGifts;
-            // 🐛 إصلاح: نفسي كنت أظهر ضمن قائمة "من أهدي؟" لو كنت جالساً على مقعد — تحديد هدية
-            // لنفسي يُرفَض بالسيرفر بالفعل، لكن الواجهة كانت تخصم الرصيد وتُظهر شارة "دعمت نفسي"
-            // على مقعدي بشكل متفائل قبل تأكيد السيرفر أصلاً؛ استبعادي من القائمة هنا يمنع المشكلة
-            // من جذرها (لا خيار لاختيار نفسي إطلاقاً)، لا مجرد رفض الطلب لاحقاً بعد فوات الأوان
-            const myIdStr = currentUser._id ? currentUser._id.toString() : null;
-            seatedUsers = (roomRes.seats || []).filter(s => s.user && s.user.id !== myIdStr).map(s => s.user);
-            // ✅ طلب صريح: مالك الغرفة محدَّد تلقائياً كمستلم افتراضي لو كان جالساً على مقعد
-            if (roomRes.host) hostId = (roomRes.host._id || roomRes.host).toString();
+        // 🐛 إصلاح: نفسي لا أظهر ضمن قائمة "من أهدي؟" لو كنت جالساً على مقعد — تحديد هدية
+        // لنفسي يُرفَض بالسيرفر بالفعل، لكن استبعادي من القائمة هنا يمنع حتى إمكانية المحاولة
+        const myIdStr = currentUser._id ? currentUser._id.toString() : null;
+        let seatedUsers = (roomRes.seats || []).filter(s => s.user && s.user.id !== myIdStr).map(s => s.user);
+        const hostId = roomRes.host ? (roomRes.host._id || roomRes.host).toString() : null;
+        // ✅ presetTarget قد يكون مستمعاً لم يجلس على مقعد بعد (أُهدي من ملفه الشخصي) — يُضاف
+        // لصف المستلمين هنا حتى لو لم يكن بقائمة الجالسين، كي يبقى ظاهراً/قابلاً للتبديل
+        if (presetTarget && !seatedUsers.some(u => u.id === presetTarget.id)) {
+            seatedUsers = [presetTarget, ...seatedUsers];
         }
-
         const hostIsSeated = !!hostId && seatedUsers.some(u => u.id === hostId);
-        let selectedUserIds = new Set(presetTarget ? [presetTarget.id] : (hostIsSeated ? [hostId] : []));
-        let audienceMode = 'selected';
+        const defaultRecipientIds = presetTarget ? [presetTarget.id] : (hostIsSeated ? [hostId] : (seatedUsers[0] ? [seatedUsers[0].id] : []));
+        let selectedUserIds = new Set(defaultRecipientIds);
 
-        const body = document.getElementById('room-gift-body');
-        const footer = document.getElementById('room-gift-footer');
-        if (!body || !footer) return;
+        const firstNonEmptyCat = GSHEET_CATS.find(c => (shopData.gifts[c.k] || []).length > 0) || GSHEET_CATS[0];
+        let tab = firstNonEmptyCat.k;
+        let sel = (shopData.gifts[tab] || [])[0] || null;
+        let qty = rules.quantities[0] || 1;
 
-        document.getElementById('room-gift-avatars').innerHTML = presetTarget ? `
-            <span class="relative flex flex-col items-center gap-1 flex-shrink-0" title="${escapeHtml(presetTarget.username)}">
-                <span class="relative inline-block">
-                    <img src="${presetTarget.profileImage}" class="rg-avatar-img">
-                    <span class="absolute -top-1 -left-1 w-3.5 h-3.5 bg-[#8b7a4d] rounded-full border-2 border-gray-900 flex items-center justify-center">
-                        <i class="fas fa-check text-white" style="font-size:6px"></i>
-                    </span>
-                </span>
-                <span class="text-[8px] leading-tight truncate w-10 text-center">${escapeHtml(presetTarget.username)}</span>
-            </span>
-        ` : `
-            ${seatedUsers.length === 0 ? '<p class="text-[11px] text-gray-500 py-1.5">لا يوجد أحد قاعد على مقعد حالياً</p>' : `
-                <button id="select-all-seated-btn" class="room-gift-all-btn relative flex flex-col items-center gap-1 flex-shrink-0" title="إرسال للجميع">
-                    <span class="room-gift-all-circle rg-avatar-img">All</span>
-                    <span class="text-[8px] leading-tight text-gray-400">${seatedUsers.length}</span>
-                </button>
-                ${seatedUsers.map(u => `
-                    <button class="room-gift-avatar-btn relative flex flex-col items-center gap-1 flex-shrink-0" data-user-id="${u.id}" data-username="${escapeHtml(u.username)}" title="${escapeHtml(u.username)}">
-                        <span class="relative inline-block">
-                            <img src="${u.profileImage}" class="rg-avatar-img">
-                            <span class="rg-selected-badge ${u.id === hostId ? 'flex' : 'hidden'} absolute -top-1 -left-1 w-3.5 h-3.5 bg-[#8b7a4d] rounded-full border-2 border-gray-900 items-center justify-center">
-                                <i class="fas fa-check text-white" style="font-size:6px"></i>
-                            </span>
-                        </span>
-                        <span class="text-[8px] leading-tight truncate w-10 text-center">${escapeHtml(u.username)}</span>
+        const getRecipients = () => [...selectedUserIds];
+
+        function renderRecips() {
+            const box = document.getElementById('gsheet-recips');
+            if (!box) return;
+            box.innerHTML = seatedUsers.length === 0
+                ? '<span class="text-[11px] text-gray-500">لا يوجد أحد قاعد على مقعد حالياً</span>'
+                : seatedUsers.map(u => `
+                    <button type="button" class="gsheet-rc" data-user-id="${u.id}" title="${escapeHtml(u.username)}" aria-pressed="${selectedUserIds.has(u.id)}">
+                        <img src="${u.profileImage || ''}" alt="">
                     </button>
-                `).join('')}
-            `}
-        `;
-        body.innerHTML = `
-            <div class="gift-category-tabs mb-2"></div>
-            <div id="room-gift-cards-grid" class="room-gift-cards-grid grid grid-cols-3 gap-2">
-                ${gifts.map(g => renderGiftCardHTML(g)).join('')}
-            </div>
-        `;
-        footer.innerHTML = renderGiftFooterHTML(currentUser.coins || 0);
-
-        wireGiftImageFallbacks(body);
-        wireGiftCategoryTabs(body, gifts, '#room-gift-cards-grid');
-
-        function markAllSelectedVisual(isAll) {
-            document.getElementById('select-all-seated-btn')?.querySelector('.rg-avatar-img')?.classList.toggle('room-gift-all-active', isAll);
+                `).join('');
+            box.querySelectorAll('.gsheet-rc').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const uid = btn.dataset.userId;
+                    // ✅ لا يُسمَح بالنزول لصفر مستلمين إطلاقاً — نقرة على آخر مستلم محدَّد تبقيه كما هو
+                    if (selectedUserIds.has(uid) && selectedUserIds.size > 1) selectedUserIds.delete(uid);
+                    else selectedUserIds.add(uid);
+                    renderRecips();
+                    renderWealth();
+                });
+            });
+            const allBtn = document.getElementById('gsheet-allbtn');
+            if (allBtn) allBtn.setAttribute('aria-pressed', seatedUsers.length > 0 && selectedUserIds.size === seatedUsers.length);
         }
-        function clearIndividualSelectionVisuals() {
-            modal.querySelectorAll('.room-gift-avatar-btn').forEach(b => {
-                b.querySelector('.rg-selected-badge')?.classList.add('hidden');
+        document.getElementById('gsheet-allbtn').addEventListener('click', () => {
+            if (seatedUsers.length === 0) return;
+            selectedUserIds = selectedUserIds.size === seatedUsers.length
+                ? new Set(defaultRecipientIds.length ? defaultRecipientIds : [seatedUsers[0].id])
+                : new Set(seatedUsers.map(u => u.id));
+            renderRecips();
+            renderWealth();
+        });
+
+        function renderTabs() {
+            const t = document.getElementById('gsheet-tabs');
+            if (!t) return;
+            t.innerHTML = GSHEET_CATS.map(c => `
+                <button type="button" class="gsheet-tab" role="tab" data-cat="${c.k}" style="--tc:var(${c.v})" aria-selected="${c.k === tab}">${c.name}</button>
+            `).join('');
+            t.querySelectorAll('.gsheet-tab').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    tab = btn.dataset.cat;
+                    const list = shopData.gifts[tab] || [];
+                    sel = tab === 'custom' ? null : (list[0] || null);
+                    // ✅ طلب صريح: التبديل لتبويب ملحمية/أسطورية يُعيد الكمية لـ×1
+                    if (tab === 'epic' || tab === 'legendary') qty = rules.quantities[0] || 1;
+                    renderTabs();
+                    renderGrid();
+                    renderQty();
+                    renderWealth();
+                });
             });
         }
 
-        document.getElementById('select-all-seated-btn')?.addEventListener('click', () => {
-            audienceMode = 'all';
-            selectedUserIds.clear();
-            clearIndividualSelectionVisuals();
-            markAllSelectedVisual(true);
+        function gsheetCellInner(g, cat) {
+            const fallbackIcon = escapeHtml(g.icon || '🎁');
+            const img = g.imageUrl
+                ? `<img src="${g.imageUrl}" alt="" data-fallback-icon="${fallbackIcon}" style="width:1.3em;height:1.3em;object-fit:contain">`
+                : `<span>${fallbackIcon}</span>`;
+            return `
+                ${cat.k === 'legendary' ? '<span class="gsheet-tag">أسطوري</span>' : ''}
+                <span class="gsheet-gi">${img}</span>
+                <span class="gsheet-gn">${escapeHtml(g.name)}</span>
+                <span class="gsheet-gp">${coinIconHTML(11)}${(g.discountedPrice || g.price).toLocaleString('en-US')}</span>
+            `;
+        }
+        function wireGsheetImgFallback(container) {
+            container.querySelectorAll('.gsheet-gi img[data-fallback-icon]').forEach(img => {
+                img.addEventListener('error', function () {
+                    const span = this.closest('.gsheet-gi');
+                    if (span) span.innerHTML = `<span>${this.dataset.fallbackIcon}</span>`;
+                }, { once: true });
+            });
+        }
+        function renderGrid() {
+            const cat = GSHEET_CATS.find(c => c.k === tab);
+            const pagesEl = document.getElementById('gsheet-pages');
+            if (!pagesEl) return;
+            pagesEl.style.setProperty('--tc', `var(${cat.v})`);
+            pagesEl.innerHTML = '';
+            // ✅ طلب صريح: تبويب "مخصصة" بهذي المرحلة يعرض فقط بلاطة "صمّم هديتك" معطَّلة
+            // بشارة "قريباً" — المرحلة 4 هي التي تُفعِّلها فعلياً
+            const items = tab === 'custom' ? [{ addTile: true }] : (shopData.gifts[tab] || []).slice();
+            const n = Math.max(1, Math.ceil(items.length / 8));
+            for (let p = 0; p < n; p++) {
+                const pg = document.createElement('div');
+                pg.className = 'gsheet-pg';
+                items.slice(p * 8, p * 8 + 8).forEach(g => {
+                    const b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'gsheet-cell';
+                    b.style.setProperty('--tc', `var(${cat.v})`);
+                    if (g.addTile) {
+                        b.classList.add('gsheet-add');
+                        b.disabled = true;
+                        b.innerHTML = '<span class="gsheet-gi">＋</span><span class="gsheet-gn">صمّم هديتك</span><span class="gsheet-soon">قريباً</span>';
+                    } else {
+                        b.innerHTML = gsheetCellInner(g, cat);
+                        b.setAttribute('aria-pressed', String(!!sel && sel.id === g.id));
+                        b.addEventListener('click', () => { sel = g; renderGrid(); renderWealth(); });
+                    }
+                    pg.appendChild(b);
+                });
+                pagesEl.appendChild(pg);
+            }
+            wireGsheetImgFallback(pagesEl);
+            const dotsEl = document.getElementById('gsheet-dots');
+            if (dotsEl) {
+                dotsEl.innerHTML = n > 1 ? Array.from({ length: n }, (_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('') : '';
+            }
+            pagesEl.onscroll = () => {
+                const i = Math.round(Math.abs(pagesEl.scrollLeft) / pagesEl.clientWidth);
+                dotsEl?.querySelectorAll('i').forEach((d, j) => d.classList.toggle('on', i === j));
+            };
+        }
+
+        function renderQty() {
+            const qbtn = document.getElementById('gsheet-qbtn');
+            if (qbtn) qbtn.textContent = `×${qty.toLocaleString('en-US')} ▾`;
+            const menu = document.getElementById('gsheet-qmenu');
+            if (!menu) return;
+            menu.innerHTML = rules.quantities.map(n => `
+                <button type="button" data-qty="${n}" aria-pressed="${n === qty}">×${n}${GSHEET_QTY_LABELS[n] ? `<span>${GSHEET_QTY_LABELS[n]}</span>` : ''}</button>
+            `).join('');
+            menu.querySelectorAll('button').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    qty = parseInt(btn.dataset.qty, 10);
+                    menu.hidden = true;
+                    renderQty();
+                    renderWealth();
+                });
+            });
+        }
+        document.getElementById('gsheet-qbtn').addEventListener('click', () => {
+            const menu = document.getElementById('gsheet-qmenu');
+            if (menu) menu.hidden = !menu.hidden;
         });
 
-        modal.querySelectorAll('.room-gift-avatar-btn').forEach(avatarBtn => {
-            avatarBtn.addEventListener('click', () => {
-                audienceMode = 'selected';
-                markAllSelectedVisual(false);
-                const uid = avatarBtn.dataset.userId;
-                const badge = avatarBtn.querySelector('.rg-selected-badge');
-                if (selectedUserIds.has(uid)) {
-                    selectedUserIds.delete(uid);
-                    badge.classList.add('hidden');
+        // ✅ طلب صريح: معاينة شريط الثروة تُحسَب فقط من rules القادمة من السيرفر
+        // (senderXpDivisor/requiredXpPerLevel) — لا أي رقم مكتوب يدوياً بالواجهة
+        function xpFor(coins) { return Math.floor(coins / rules.senderXpDivisor); }
+        function reqXp(level) { return level * rules.requiredXpPerLevel; }
+        function renderWealth() {
+            const u = JSON.parse(localStorage.getItem('user')) || {};
+            const level = u.level || 1;
+            const xp = u.experience || 0;
+            const recipients = getRecipients();
+            const unitPrice = sel ? (sel.discountedPrice || sel.price) : 0;
+            const totalCost = unitPrice * qty * recipients.length;
+            const gain = sel ? xpFor(totalCost) : 0;
+            const r = reqXp(level);
+            let L = level, X = xp + gain;
+            while (X >= reqXp(L)) { X -= reqXp(L); L++; }
+
+            const lvEl = document.getElementById('gsheet-lv');
+            if (lvEl) lvEl.textContent = `Lv.${level}`;
+            const fillPct = r > 0 ? Math.min(100, (xp / r) * 100) : 0;
+            const fillEl = document.getElementById('gsheet-fill');
+            if (fillEl) fillEl.style.width = fillPct + '%';
+            const prevEndPct = L > level ? 100 : (r > 0 ? Math.min(100, ((xp + gain) / r) * 100) : 0);
+            const prevEl = document.getElementById('gsheet-prev');
+            if (prevEl) {
+                prevEl.style.insetInlineStart = fillPct + '%';
+                prevEl.style.width = Math.max(0, prevEndPct - fillPct) + '%';
+            }
+            const wGainEl = document.getElementById('gsheet-wgain');
+            if (wGainEl) wGainEl.textContent = `+${gain.toLocaleString('en-US')} XP`;
+            const wNowEl = document.getElementById('gsheet-wnow');
+            if (wNowEl) wNowEl.textContent = `${xp.toLocaleString('en-US')} / ${r.toLocaleString('en-US')}`;
+            const wToEl = document.getElementById('gsheet-wto');
+            if (wToEl) {
+                if (gain === 0) {
+                    wToEl.innerHTML = `باقي ${Math.max(0, r - xp).toLocaleString('en-US')} للمستوى ${level + 1}`;
+                } else if (L > level) {
+                    wToEl.innerHTML = `<span class="gsheet-lvup">⬆ ترقية إلى Lv.${L} (${Math.round(X / reqXp(L) * 100)}%)</span>`;
                 } else {
-                    selectedUserIds.add(uid);
-                    badge.classList.remove('hidden');
-                    badge.classList.add('flex');
+                    wToEl.innerHTML = `ستصل إلى ${Math.round((xp + gain) / r * 100)}%`;
                 }
-            });
-        });
+            }
+            const balEl = document.getElementById('gsheet-bal');
+            if (balEl) setCoinTextSilent(balEl, u.coins || 0);
+            const sendBtn = document.getElementById('gsheet-send');
+            if (sendBtn) sendBtn.disabled = !sel || recipients.length === 0;
+        }
 
-        // 🚀 إصلاح جذري نهائي لـ"الرصيد يرقص" + تقليل حمل الشبكة فعلياً — نفس المبدأ المُطبَّق
-        // بـfireOnce أعلى الملف (المتجر الخاص): بدل نداء HTTP مستقل لكل ضغطة، تُجمَّع الضغطات
-        // المتتالية خلال 250ms برسالة Socket.IO واحدة فقط. راجع createComboSender وgift:combo
-        // بالسيرفر لكل التفاصيل
-        const getRecipients = () => (audienceMode === 'all' ? seatedUsers.map(u => u.id) : [...selectedUserIds]);
+        // 🚀 نفس محرّك الكومبو المُجمَّع المشترك (راجع createComboSender أعلى الملف) — هذي
+        // المرحلة تُرسل ضغطة واحدة فقط لكل نقرة "إرسال" (بلا ضغط مطوّل/تسارع بصري — ذاك جزء
+        // من مرحلة لاحقة)، لكنها تستخدم نفس نقل gift:combo الحقيقي المُصلَّب بالمرحلة الأولى
         const comboSender = createComboSender({
             buildPayload: () => ({
-                giftId: getSelectedGift()?.id,
-                quantity: getQuantity(),
+                giftId: sel?.id,
+                quantity: qty,
                 recipientIds: getRecipients(),
                 roomId: roomId === 'main' ? undefined : roomId
             }),
-            onBalance: (balance, res, cost) => {
+            onBalance: (balance) => {
                 const syncedUser = JSON.parse(localStorage.getItem('user'));
                 if (syncedUser) { syncedUser.coins = balance; localStorage.setItem('user', JSON.stringify(syncedUser)); }
                 setHeaderCoinsSilent(balance);
-                footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, balance));
-                checkLowBalance();
-                // 🐛 إصلاح: كان يُستدعى هنا محلياً بالتفاؤل (نسخة) بينما صدى السيرفر room-gift-announcement
-                // يستدعي أيضاً مؤثراً مختلفاً تماماً — يتعارضان بصرياً. الحل: مصدر حقيقة واحد فقط —
-                // صدى السيرفر (بث لكل مستلم فوراً) يشغّل المؤثر الكبير الوحيد لكل الحاضرين بنفس اللحظة
-                //
-                // 🛡️ طلب صريح بمراجعة PR (بند 6): عداد الدعم أسفل المقعد لم يعد العميل يُطلقه —
-                // الخادم يبثّ room-support-updated تلقائياً بنفسه لكل مستلم على حدة (راجع
-                // applyGiftToActiveSeatChallenge/المسار الجماعي بـgiftController.js)
             },
-            onFail: (cost, code) => {
+            onFail: (cost, code, message, taps, res) => {
                 const revertUser = JSON.parse(localStorage.getItem('user'));
                 if (revertUser) {
                     revertUser.coins += cost;
                     localStorage.setItem('user', JSON.stringify(revertUser));
                     setHeaderCoinsSilent(revertUser.coins);
-                    footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, revertUser.coins));
-                    checkLowBalance();
                 }
-                // ✅ حد معدّل الإرسال أثناء ضغط مستمر سريع: لا نزعج المستخدم بتنبيه — فقط نتراجع
-                // عن خصم هذي الدفعة ونكمل بهدوء بالتكرار التالي تلقائياً (نفس فلسفة 429 القديمة)
-                if (code !== 'RATE_LIMITED') {
+                if (code === 'INSUFFICIENT') {
+                    // ✅ طلب صريح: شيت "رصيدك لا يكفي" يُفتَح أيضاً من ack السيرفر نفسه (لا الفحص
+                    // المحلي فقط) — رصيد تغيّر فعلياً بين الفحص المحلي ولحظة رد السيرفر مثلاً
+                    const needed = (res && typeof res.needed === 'number') ? res.needed : cost;
+                    const balanceNow = (res && typeof res.balance === 'number') ? res.balance : 0;
+                    openGiftLowBalanceSheet(Math.max(0, needed - balanceNow));
+                } else if (code !== 'RATE_LIMITED') {
                     showNotification('تعذر إرسال الهدية', 'error');
                 }
             }
         });
 
-        async function fireOnce() {
-            const gift = getSelectedGift();
-            const quantity = getQuantity();
-            if (!gift) return false;
-
+        function handleSend() {
+            if (!sel) return;
             const recipients = getRecipients();
             if (recipients.length === 0) {
                 showNotification('اختر مستلماً واحداً على الأقل', 'warning', 'fa-user');
-                return false;
+                return;
             }
-
-            const totalCost = gift.price * quantity * recipients.length;
-            const localUser = JSON.parse(localStorage.getItem('user'));
-            if (!localUser || localUser.coins < totalCost) {
-                showNotification('رصيد الكوينز غير كافٍ للإرسال', 'error', 'fa-coins');
-                return false;
+            const unitPrice = sel.discountedPrice || sel.price;
+            const totalCost = unitPrice * qty * recipients.length;
+            const localUser = JSON.parse(localStorage.getItem('user')) || {};
+            if (totalCost > (localUser.coins || 0)) {
+                openGiftLowBalanceSheet(totalCost - (localUser.coins || 0));
+                return;
             }
-
-            // ✅ تحديث متفائل فوري
+            // ✅ تحديث متفائل فوري + إغلاق الشيت (نفس سلوك النموذج الأولي المرجعي: الإرسال يُغلق
+            // الشيت فوراً، لا ينتظر تأكيد السيرفر)
             localUser.coins -= totalCost;
             localStorage.setItem('user', JSON.stringify(localUser));
             setHeaderCoinsSilent(localUser.coins);
-            footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, localUser.coins));
-            checkLowBalance();
-
+            modal.remove();
             comboSender.tap(totalCost);
-            return true;
+            comboSender.end();
         }
+        document.getElementById('gsheet-send').addEventListener('click', handleSend);
 
-        const { getSelectedGift, getQuantity, deselectAll, registerComboTeardown, checkLowBalance } = wireGiftSelectionAndQty(modal, (gift, quantity, sendBtnEl) => {
-            if (sendBtnEl) {
-                const { forceEnd } = setupGiftComboSend(sendBtnEl, fireOnce, deselectAll);
-                registerComboTeardown(() => { comboSender.end(); forceEnd(); }, sendBtnEl);
-            }
-        });
+        renderRecips();
+        renderTabs();
+        renderGrid();
+        renderQty();
+        renderWealth();
 
     } catch (error) {
         console.error('[ROOM GIFT] Error:', error);
-        const body = document.getElementById('room-gift-body');
-        if (body) body.innerHTML = `<div class="text-center text-red-400 py-10">فشل تحميل البيانات</div>`;
+        modal.remove();
+        showNotification('فشل تحميل بيانات الهدايا', 'error');
+    }
+}
+
+// ✅ هدايا v2 — شيت "رصيدك لا يكفي": يُفتَح من فحص محلي قبل الإرسال أو من ack السيرفر
+// {code:'INSUFFICIENT'}. البطاقات 4 مستويات شراء مُشتقّة من rate تحويل العملة الحقيقي
+// (/api/coin-purchase/info — coinRate × 4 عتبات دولار ثابتة)، لا أرقام/نسب هدية مكتوبة
+// يدوياً (لا يوجد كتالوج "باقات" فعلي بالمشروع بعد — راجع وصف الـPR)
+async function openGiftLowBalanceSheet(missingAmount) {
+    if (document.getElementById('gift-low-balance-sheet')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'gift-low-balance-sheet';
+    overlay.className = 'fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-[325] p-0 md:p-2';
+    overlay.innerHTML = `
+        <div class="gsheet-lbbox animate-[slideUp_0.25s_ease-out]">
+            <div class="gsheet-lbhead">
+                <span class="gsheet-lb-big">🪙</span>
+                <div><h3>رصيدك لا يكفي</h3><p>تحتاج <b>${Math.max(0, Math.round(missingAmount)).toLocaleString('en-US')}</b> كوينز إضافية لإكمال الإرسال</p></div>
+            </div>
+            <div class="gsheet-pk" id="gift-lb-packages">
+                <div class="text-center text-gray-400 py-6" style="grid-column:1/-1"><i class="fas fa-spinner fa-spin"></i></div>
+            </div>
+            <div class="gsheet-lbmore">
+                <button type="button" class="gsheet-lb-dismiss" id="gift-lb-dismiss">لاحقاً</button>
+                <button type="button" id="gift-lb-all">كل العروض والبوكسات ›</button>
+            </div>
+        </div>
+    `;
+    document.getElementById('game-container').appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.getElementById('gift-lb-dismiss').addEventListener('click', () => overlay.remove());
+    document.getElementById('gift-lb-all').addEventListener('click', () => { overlay.remove(); showBuyCoinsModal(); });
+
+    try {
+        const infoRes = await fetch('/api/coin-purchase/info', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+        if (infoRes.status !== 'success') throw new Error('فشل تحميل بيانات الشحن');
+        const { coinRate, minUSD, maxUSD } = infoRes.data;
+        const clamp = (v) => Math.min(maxUSD, Math.max(minUSD, v));
+        const tiers = [...new Set([1, 5, 10, 50].map(clamp))];
+        const box = document.getElementById('gift-lb-packages');
+        if (!box) return;
+        const hotIndex = Math.min(2, tiers.length - 1);
+        box.innerHTML = tiers.map((usd, i) => `
+            <button type="button" class="gsheet-pkb ${i === hotIndex ? 'hot' : ''}" data-usd="${usd}">
+                ${i === hotIndex ? '<span class="gsheet-pkb-rib">الأكثر شراءً</span>' : ''}
+                <span class="gsheet-pkb-amt">${coinIconHTML(16)}${Math.round(usd * coinRate).toLocaleString('en-US')}</span>
+                <span class="gsheet-pkb-usd">$${usd}</span>
+            </button>
+        `).join('');
+        box.querySelectorAll('.gsheet-pkb').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const usd = parseFloat(btn.dataset.usd);
+                overlay.remove();
+                showBuyCoinsModal(usd);
+            });
+        });
+    } catch (error) {
+        console.error('[GIFT LOW BALANCE] Error:', error);
+        const box = document.getElementById('gift-lb-packages');
+        if (box) box.innerHTML = `<div class="text-center text-red-400 py-6" style="grid-column:1/-1">فشل تحميل عروض الشحن</div>`;
     }
 }
 
@@ -14903,7 +15086,10 @@ function createComboSender({ buildPayload, onBalance, onFail, flushMs = 250 }) {
         socket.timeout(6000).emit('gift:combo', payload, (err, res) => {
             inflight.delete(mySeq);
             if (err || !res?.ok) {
-                onFail(cost, res?.code, res?.message, taps);
+                // ✅ هدايا v2: res الكامل يُمرَّر أيضاً كوسيط خامس (إضافي، لا يكسر المستدعين
+                // الحاليين الذين يتجاهلونه) — يحمل balance/needed الحقيقيين من ack السيرفر
+                // {code:'INSUFFICIENT'}، يحتاجهما شيت "رصيدك لا يكفي" الجديد (راجع showRoomGiftModal)
+                onFail(cost, res?.code, res?.message, taps, res);
                 return;
             }
             let ahead = 0;
@@ -15613,8 +15799,13 @@ function dismissRoomGiftSideBanner(el, key) {
 // =================================================
 
 let buyCoinsInfoCache = null;
+// ✅ هدايا v2: مبلغ دولار مُقترَح اختياري (من بطاقة باقة بشيت "رصيدك لا يكفي") — يُضبط كقيمة
+// افتراضية لحقل إدخال المبلغ بدل info.minUSD، بلا أي تغيير بمستخدمي showBuyCoinsModal() الحاليين
+// (الاستدعاء بلا وسيط يُصفِّره كالسابق تماماً). راجع renderAmountEntry أدناه لاستخدامه
+let buyCoinsPresetUSD = null;
 
-async function showBuyCoinsModal() {
+async function showBuyCoinsModal(presetUSD = null) {
+    buyCoinsPresetUSD = presetUSD;
     const existing = document.getElementById('buy-coins-modal');
     if (existing) existing.remove();
 
@@ -15749,6 +15940,10 @@ function renderAmountEntry(method) {
 
     const info = buyCoinsInfoCache;
     const methodLabel = method === 'sham_cash' ? 'شام كاش' : 'فيزا / بطاقة بنكية';
+    // ✅ هدايا v2: مبلغ مُقترَح من بطاقة باقة بشيت "رصيدك لا يكفي" (إن وُجد) بدل الحد الأدنى
+    // الافتراضي دوماً — يُقرَأ مرة واحدة فقط هنا (لا يبقى عالقاً لفتحات لاحقة بلا وسيط صريح)
+    const startAmount = Math.min(info.maxUSD, Math.max(info.minUSD, buyCoinsPresetUSD || info.minUSD));
+    buyCoinsPresetUSD = null;
 
     body.innerHTML = `
         <button id="back-to-methods" class="text-sm text-gray-400 hover:text-white mb-4 flex items-center gap-1">
@@ -15757,13 +15952,13 @@ function renderAmountEntry(method) {
         <h4 class="font-bold mb-3">${methodLabel} - حدد المبلغ</h4>
         <div class="mb-4">
             <label class="text-xs text-gray-400 mb-1 block">المبلغ بالدولار ($)</label>
-            <input type="number" id="purchase-amount-input" min="${info.minUSD}" max="${info.maxUSD}" value="${info.minUSD}"
+            <input type="number" id="purchase-amount-input" min="${info.minUSD}" max="${info.maxUSD}" value="${startAmount}"
                    class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white">
             <p class="text-xs text-gray-500 mt-1">الحد الأدنى ${info.minUSD}$ - الحد الأقصى ${info.maxUSD}$</p>
         </div>
         <div class="bg-gray-900/50 rounded-xl p-3 mb-4 flex justify-between items-center">
             <span class="text-sm text-gray-400">ستحصل على</span>
-            <span id="calculated-coins" class="font-bold text-yellow-400">${info.minUSD * info.coinRate} ${coinIconHTML(15)}</span>
+            <span id="calculated-coins" class="font-bold text-yellow-400">${startAmount * info.coinRate} ${coinIconHTML(15)}</span>
         </div>
         <button id="continue-purchase-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2.5 rounded-lg font-bold">
             متابعة
