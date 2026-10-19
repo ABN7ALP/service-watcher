@@ -1402,6 +1402,10 @@ video {
   flex-grow: 1;
 }
 
+.grow{
+  flex-grow: 1;
+}
+
 .-translate-x-1\/2{
   --tw-translate-x: -50%;
   transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
@@ -18001,6 +18005,456 @@ body.in-voice-room .voice-seat.duel-lose {
   text-align: center;
   line-height: 1.4;
   margin-top: 2px;
+}
+
+/* =====================================================================
+   🔥 هدايا v2 — المرحلة 3: زر الكومبو العائم + النار + الانفجارات + الشريط
+   الجانبي + الطيران + الأسطورية بملء الشاشة. منفصلة تماماً عن .gsheet (الشيت
+   يُغلَق قبل ظهور أي من هذا) — طبقة ثابتة فوق شاشة الغرفة كاملة، منسوخة
+   منطقياً من docs/design/gift-system-prototype.html قدر الإمكان.
+   ===================================================================== */
+
+.gfx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 610;
+  pointer-events: none;
+}
+
+.gfx-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* زر الكومبو — 23vw بحد أقصى 92px (أقرب مكافئ حقيقي لـ23cqw النموذج الأولي بلا حاوية
+   container-query بالتطبيق الفعلي)، أسفل-نهاية شاشة الغرفة */
+
+.gfx-combo {
+  position: fixed;
+  z-index: 611;
+  inset-inline-end: 6%;
+  bottom: calc(13% + env(safe-area-inset-bottom, 0px));
+  width: 23vw;
+  height: 23vw;
+  max-width: 92px;
+  max-height: 92px;
+  pointer-events: auto;
+}
+
+.gfx-cbtn {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 0;
+  cursor: pointer;
+  background: radial-gradient(circle at 50% 38%, #ffd36b, #ff7a1a 55%, #c2290f);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.13), 0 10px 30px rgba(255, 79, 26, 0.4);
+  touch-action: none;
+  transition: filter 0.2s;
+  font: inherit;
+  padding: 0;
+}
+
+.gfx-cg {
+  line-height: 1;
+  font-size: clamp(18px, 7vw, 24px);
+}
+
+.gfx-cn {
+  font-family: 'Baloo Bhaijaan 2', 'Cairo', sans-serif;
+  font-weight: 800;
+  font-size: clamp(13px, 5vw, 17px);
+  line-height: 1;
+  text-shadow: 0 2px 0 #8a2200;
+  direction: ltr;
+}
+
+.gfx-cl {
+  font-size: 8px;
+  font-weight: 800;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.gfx-ring {
+  position: absolute;
+  inset: -7px;
+  pointer-events: none;
+}
+
+.gfx-ring circle {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.gfx-combo.hot .gfx-cbtn {
+  animation: gfxJitter 0.08s infinite;
+}
+
+@keyframes gfxJitter {
+  25% {
+    transform: translate(1px, -1px);
+  }
+
+  50% {
+    transform: translate(-1px, 1px);
+  }
+
+  75% {
+    transform: translate(1px, 1px);
+  }
+}
+
+.gfx-press {
+  transform: scale(0.92);
+}
+
+/* شارة الرقم الكبير عند الأهداف (×10/66/99/188/520/1314) */
+
+.gfx-mile {
+  position: fixed;
+  inset: 0;
+  z-index: 613;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.gfx-mile b {
+  font-family: 'Baloo Bhaijaan 2', 'Cairo', sans-serif;
+  font-weight: 800;
+  font-size: min(22vw, 120px);
+  color: #fff;
+  -webkit-text-stroke: 3px #ff6a00;
+  text-shadow: 0 0 30px #ffb648, 0 0 60px #ff4f1a;
+  animation: gfxMile 1s cubic-bezier(.2, 1.6, .4, 1) forwards;
+  direction: ltr;
+}
+
+@keyframes gfxMile {
+  0% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+
+  25% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+
+  70% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+@keyframes gfxShake {
+  0% {
+    transform: translate(0, 0);
+  }
+
+  25% {
+    transform: translate(-4px, 3px);
+  }
+
+  50% {
+    transform: translate(4px, -3px);
+  }
+
+  75% {
+    transform: translate(-3px, 2px);
+  }
+
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+.gfx-shaking {
+  animation: gfxShake 0.22s linear 2;
+}
+
+/* هدية طائرة من الزر إلى مقعد المستلم */
+
+.gfx-fly {
+  position: fixed;
+  z-index: 612;
+  font-size: 26px;
+  pointer-events: none;
+  will-change: transform;
+  line-height: 1;
+}
+
+.gfx-fly img {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  -o-object-fit: cover;
+     object-fit: cover;
+  display: block;
+}
+
+/* ✅ طلب صريح (بند 5): "المقعد يرتد" عند وصول الهدية إليه */
+
+.voice-seat-av-wrap.gfx-seat-hit {
+  animation: gfxSeatHit 0.5s;
+}
+
+@keyframes gfxSeatHit {
+  30% {
+    transform: scale(1.14);
+  }
+
+  60% {
+    transform: scale(0.96);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* شريط إعلان الكومبو الخاص بي — بدل .room-gift-side-banner (تلك مخصَّصة لإعلانات غيري القادمة
+   من room-gift-announcement كل 250ms، هذا مرتبط بجلسة كومبوي الحيّة الخاصة ويتحدّث بكل ضغطة) */
+
+.gfx-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px 4px 4px;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(270deg, rgba(0, 0, 0, 0), rgba(255, 79, 163, 0.4) 25%, rgba(155, 107, 255, 0.47));
+  -webkit-backdrop-filter: blur(4px);
+          backdrop-filter: blur(4px);
+  animation: gfxBannerIn 0.35s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+
+.gfx-banner.out {
+  animation: gfxBannerOut 0.4s forwards;
+}
+
+@keyframes gfxBannerIn {
+  from {
+    transform: translateX(60%);
+    opacity: 0;
+  }
+}
+
+@keyframes gfxBannerOut {
+  to {
+    transform: translateX(70%);
+    opacity: 0;
+  }
+}
+
+.gfx-banner-av {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex: none;
+  background: #2a2040;
+}
+
+.gfx-banner-av img {
+  width: 100%;
+  height: 100%;
+  -o-object-fit: cover;
+     object-fit: cover;
+}
+
+.gfx-banner-txt {
+  font-size: 11px;
+  line-height: 1.3;
+  color: #fff;
+}
+
+.gfx-banner-txt b {
+  display: block;
+  font-size: 12px;
+}
+
+.gfx-banner-gift {
+  font-size: 26px;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+}
+
+.gfx-banner-gift img {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  -o-object-fit: cover;
+     object-fit: cover;
+}
+
+.gfx-banner-x {
+  font-family: 'Baloo Bhaijaan 2', 'Cairo', sans-serif;
+  font-weight: 800;
+  font-size: 24px;
+  color: #ffcf5a;
+  text-shadow: 0 2px 0 #b5560a, 0 0 14px rgba(255, 182, 72, 0.5);
+  min-width: 46px;
+  direction: ltr;
+}
+
+.gfx-banner-x.bump {
+  animation: gfxBump 0.22s;
+}
+
+@keyframes gfxBump {
+  40% {
+    transform: scale(1.45) rotate(-6deg);
+  }
+}
+
+/* هدية أسطورية بملء الشاشة — تظهر للكل بالغرفة (المُرسِل والمستلمون والمشاهدون) */
+
+.gfx-legend {
+  position: fixed;
+  inset: 0;
+  z-index: 615;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0) 20%, rgba(0, 0, 0, 0.8) 80%);
+  animation: gfxLegendBg 3.2s forwards;
+}
+
+@keyframes gfxLegendBg {
+  0% {
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  85% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.gfx-legend-rays {
+  position: absolute;
+  width: 220vw;
+  height: 220vw;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 207, 90, 0.2) 0 6deg, rgba(0, 0, 0, 0) 6deg 18deg);
+  border-radius: 50%;
+  animation: gfxSpin 6s linear infinite;
+  -webkit-mask: radial-gradient(circle, #000 10%, rgba(0, 0, 0, 0) 62%);
+  mask: radial-gradient(circle, #000 10%, rgba(0, 0, 0, 0) 62%);
+}
+
+@keyframes gfxSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.gfx-legend-g {
+  font-size: min(46vw, 220px);
+  animation: gfxLegendIn 3.2s cubic-bezier(.2, 1.3, .4, 1) forwards;
+  filter: drop-shadow(0 0 40px #ffb648);
+}
+
+.gfx-legend-g img {
+  width: min(46vw, 220px);
+  height: min(46vw, 220px);
+  -o-object-fit: contain;
+     object-fit: contain;
+}
+
+@keyframes gfxLegendIn {
+  0% {
+    transform: scale(0) rotate(-30deg);
+    opacity: 1;
+  }
+
+  20% {
+    transform: scale(1.1) rotate(4deg);
+  }
+
+  30% {
+    transform: scale(1);
+  }
+
+  85% {
+    transform: scale(1.03);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.gfx-legend-t {
+  position: absolute;
+  bottom: 24%;
+  text-align: center;
+  animation: gfxLegendT 3.2s forwards;
+  padding: 0 16px;
+}
+
+.gfx-legend-t b {
+  display: block;
+  font-size: 22px;
+  font-weight: 900;
+  background: linear-gradient(90deg, #fff3b0, #ffcf5a, #ff9f1c);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.gfx-legend-t span {
+  font-size: 14px;
+  color: #fff;
+}
+
+@keyframes gfxLegendT {
+  0%, 15% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  25%, 85% {
+    opacity: 1;
+    transform: none;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gfx-layer, .gfx-layer *, .gfx-mile b, .gfx-legend, .gfx-legend *, .gfx-banner, .gfx-banner.out, .gfx-fly {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .gfx-shaking {
+    animation: none !important;
+  }
 }
 
 .hover\:scale-110:hover{

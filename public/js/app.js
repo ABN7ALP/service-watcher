@@ -734,6 +734,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     let myVoiceSeatNumber = null;
     let myVoiceRoomId = null;      // ✅ أي غرفة أنا قاعد فيها فعلياً حالياً ('main' أو معرّف غرفة مستخدم)، أو null
     let currentVoiceRoomId = null; // ✅ أي غرفة معروضة بالشاشة الآن (قد تختلف عن مكان جلوسي لو كنت أتصفح فقط)
+    // 🐛 إصلاح (هدايا v2 — المرحلة 3): يجب الإعلان هنا مبكراً لا عند تعريف startGiftComboSession
+    // أسفل الملف — showRoomBrowserView (تحت مباشرة) تستدعي teardownGiftComboFx التي تقرأ هذا
+    // المتغيّر، وهي تُستدعى فعلياً أثناء إقلاع التطبيق (التنقّل الأولي لشاشة "الرئيسية") قبل أن
+    // يصل التنفيذ التسلسلي للسكربت لسطر إعلانه القديم أسفل الملف أصلاً — ReferenceError
+    // "Cannot access before initialization" (منطقة ميتة زمنية لـlet) كانت تحدث فوراً عند كل تحميل صفحة
+    let activeGiftComboSession = null;
     let myIsMuted = false;         // ✅ حالة كتمي الحقيقية (زر الكتم انتقل لقائمة "المزيد")
     let roomAudioMuted = false;    // ✅ كتم شخصي محلي بحت لكل صوت الغرفة (موسيقى + متحدثون) — لا يؤثر على أحد غيري
     // 🐛 إصلاح جوهري: الكتم (سواء الذاتي أو كتم المضيف لأحد) كان يعتمد بالكامل على أن جهاز
@@ -2643,6 +2649,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ التصفح الكامل: يغادر أي غرفة كنت بها فعلياً (يُلغي الاشتراك بقناتها، يوقف موسيقاها)
     // قبل رسم قائمة الغرف — هذا هو مسار "مغادرة حقيقية"، وليس المسار المستخدم عند التصغير
     async function showRoomBrowserView() {
+        teardownGiftComboFx(); // 🔥 هدايا v2 (المرحلة 3): لا يبقى زر كومبو/كنفاس نار معلَّقاً عند مغادرة الغرفة فعلياً
         currentVoiceRoomId = null;
         leaveRoomChatUI();
         exitFullscreenRoomMode();
@@ -9671,6 +9678,19 @@ function showXpGainAnimation(amount) {
         if (countEl && typeof followersCount === 'number') countEl.textContent = followersCount;
     });
 
+    // 🔥 هدايا v2 (المرحلة 3): نافذة إزالة ازدواج تفعيل الأسطورية بملء الشاشة — دفعة كومبو
+    // واحدة بعدّة مستلمين تُصدِر room-gift-announcement منفصلة لكل مستلم (راجع
+    // queueGiftRoomAnnouncement بالسيرفر)، فبلا هذي النافذة كانت الشاشة الكاملة ستتكرر مرة
+    // لكل مستلم بنفس الدفعة. تكرار (نفس fromUserId+giftId) خلال 600ms يُعتبَر نفس الدفعة
+    let gfxLegendaryDedup = { key: null, at: 0 };
+    function gfxShouldTriggerLegendary(fromUserId, giftId) {
+        const key = `${fromUserId}:${giftId}`;
+        const now = Date.now();
+        if (gfxLegendaryDedup.key === key && now - gfxLegendaryDedup.at < 600) return false;
+        gfxLegendaryDedup = { key, at: now };
+        return true;
+    }
+
     // ✅ إعلان هدية بالغرفة — فقاعة ذهبية بالدردشة + شريط جانبي + أيقونة طائرة نحو المستلم
     socket.on('room-gift-announcement', (data) => {
         if (data.roomId !== currentVoiceRoomId) return;
@@ -9683,6 +9703,19 @@ function showXpGainAnimation(amount) {
         // الطابور (راجع تعليقه أعلى showGiftFloatingAnimation) — هذا تحديداً مصدر سيل الهدايا
         // الحقيقي (من مستخدمين آخرين)، بعكس استدعاءات "هديتي أنا" المباشرة بمكان آخر بالملف
         queueRoomGiftFloatAnimation(data.giftImage, data.giftName, data.fromUsername, data.quantity, data.toUserId);
+
+        // 🔥 طلب صريح (المرحلة 3، بند 5): هدية أسطورية بملء الشاشة "للجميع بالغرفة" — هنا فقط
+        // لبقية الحاضرين (ليسوا المُرسِل؛ المُرسِل رآها فوراً بتفاؤل عبر startGiftComboSession)
+        if (data.fromUserId !== myUserId) {
+            const catalogGift = findCachedGiftById(data.giftId);
+            const isLegendary = catalogGift ? catalogGift.category === 'legendary' : false;
+            if (isLegendary && gfxShouldTriggerLegendary(data.fromUserId, data.giftId)) {
+                showLegendaryFullscreenFx({
+                    giftImage: data.giftImage, giftIcon: data.giftIcon, giftName: data.giftName,
+                    fromUsername: data.fromUsername
+                }, false);
+            }
+        }
     });
 
     // =====================================================
@@ -14712,22 +14745,27 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             if (sendBtn) sendBtn.disabled = !sel || recipients.length === 0;
         }
 
-        // 🚀 نفس محرّك الكومبو المُجمَّع المشترك (راجع createComboSender أعلى الملف) — هذي
-        // المرحلة تُرسل ضغطة واحدة فقط لكل نقرة "إرسال" (بلا ضغط مطوّل/تسارع بصري — ذاك جزء
-        // من مرحلة لاحقة)، لكنها تستخدم نفس نقل gift:combo الحقيقي المُصلَّب بالمرحلة الأولى
+        // 🚀 نفس محرّك الكومبو المُجمَّع المشترك (راجع createComboSender أعلى الملف). بعد إغلاق
+        // الشيت، جلسة الكومبو الحيّة (راجع startGiftComboSession بالمرحلة 3) تُسجِّل نفسها
+        // كمُفوَّض (comboFxDelegate) لتستقبل كل ack لاحق بنفسها — قبل ذلك (الضغطة الأولى فقط
+        // داخل الشيت) تُعالَج هنا مباشرة كالسابق تماماً
+        let comboQuantityOverride = null; // ✅ null = استخدم qty المختارة بالشيت (الضغطة الأولى فقط)، 1 لكل ما بعدها
+        let comboFxDelegate = null;
         const comboSender = createComboSender({
             buildPayload: () => ({
                 giftId: sel?.id,
-                quantity: qty,
+                quantity: comboQuantityOverride ?? qty,
                 recipientIds: getRecipients(),
                 roomId: roomId === 'main' ? undefined : roomId
             }),
-            onBalance: (balance) => {
+            onBalance: (balance, res, cost, taps) => {
+                if (comboFxDelegate) { comboFxDelegate.onBalance(balance, res, cost, taps); return; }
                 const syncedUser = JSON.parse(localStorage.getItem('user'));
                 if (syncedUser) { syncedUser.coins = balance; localStorage.setItem('user', JSON.stringify(syncedUser)); }
                 setHeaderCoinsSilent(balance);
             },
             onFail: (cost, code, message, taps, res) => {
+                if (comboFxDelegate) { comboFxDelegate.onFail(cost, code, message, taps, res); return; }
                 const revertUser = JSON.parse(localStorage.getItem('user'));
                 if (revertUser) {
                     revertUser.coins += cost;
@@ -14746,6 +14784,9 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             }
         });
 
+        // ✅ طلب صريح (المرحلة 3): بعد أول إرسال، الشيت يُغلَق وتبدأ جلسة كومبو حيّة (زر عائم
+        // دائري + نار/شرر/دخان + أهداف كبرى + شريط جانبي + طيران للمقاعد) تتولى كل الضغطات
+        // اللاحقة — راجع startGiftComboSession أسفل الملف لكل التفاصيل
         function handleSend() {
             if (!sel) return;
             const recipients = getRecipients();
@@ -14754,20 +14795,24 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 return;
             }
             const unitPrice = sel.discountedPrice || sel.price;
-            const totalCost = unitPrice * qty * recipients.length;
+            const firstTapCost = unitPrice * qty * recipients.length;
             const localUser = JSON.parse(localStorage.getItem('user')) || {};
-            if (totalCost > (localUser.coins || 0)) {
-                openGiftLowBalanceSheet(totalCost - (localUser.coins || 0));
+            if (firstTapCost > (localUser.coins || 0)) {
+                openGiftLowBalanceSheet(firstTapCost - (localUser.coins || 0));
                 return;
             }
-            // ✅ تحديث متفائل فوري + إغلاق الشيت (نفس سلوك النموذج الأولي المرجعي: الإرسال يُغلق
-            // الشيت فوراً، لا ينتظر تأكيد السيرفر)
-            localUser.coins -= totalCost;
-            localStorage.setItem('user', JSON.stringify(localUser));
-            setHeaderCoinsSilent(localUser.coins);
             modal.remove();
-            comboSender.tap(totalCost);
-            comboSender.end();
+            startGiftComboSession({
+                comboSender,
+                setFxDelegate: (delegate) => { comboFxDelegate = delegate; },
+                setQuantityOverride: (v) => { comboQuantityOverride = v; },
+                gift: sel,
+                unitPrice,
+                initialUnits: qty,
+                recipientUsers: seatedUsers.filter(u => recipients.includes(u.id)),
+                roomId,
+                rules
+            });
         }
         document.getElementById('gsheet-send').addEventListener('click', handleSend);
 
@@ -14788,7 +14833,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
 // {code:'INSUFFICIENT'}. البطاقات 4 مستويات شراء مُشتقّة من rate تحويل العملة الحقيقي
 // (/api/coin-purchase/info — coinRate × 4 عتبات دولار ثابتة)، لا أرقام/نسب هدية مكتوبة
 // يدوياً (لا يوجد كتالوج "باقات" فعلي بالمشروع بعد — راجع وصف الـPR)
-async function openGiftLowBalanceSheet(missingAmount) {
+async function openGiftLowBalanceSheet(missingAmount, onClose = null) {
     if (document.getElementById('gift-low-balance-sheet')) return;
     const overlay = document.createElement('div');
     overlay.id = 'gift-low-balance-sheet';
@@ -14809,9 +14854,14 @@ async function openGiftLowBalanceSheet(missingAmount) {
         </div>
     `;
     document.getElementById('game-container').appendChild(overlay);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-    document.getElementById('gift-lb-dismiss').addEventListener('click', () => overlay.remove());
-    document.getElementById('gift-lb-all').addEventListener('click', () => { overlay.remove(); showBuyCoinsModal(); });
+    // ✅ طلب صريح (هدايا v2 — المرحلة 3): onClose اختياري — جلسة الكومبو الحيّة (راجع
+    // startGiftComboSession) تمرره كي تستأنف عدّادها التنازلي فور إغلاق هذي النافذة بأي طريقة
+    // (تجاهل/الخلفية/بعد اختيار باقة) — بلا كسر أي مستدعٍ حالي لا يمرره إطلاقاً
+    let closed = false;
+    const closeOverlay = () => { if (closed) return; closed = true; overlay.remove(); onClose?.(); };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeOverlay(); });
+    document.getElementById('gift-lb-dismiss').addEventListener('click', closeOverlay);
+    document.getElementById('gift-lb-all').addEventListener('click', () => { closeOverlay(); showBuyCoinsModal(); });
 
     try {
         const infoRes = await fetch('/api/coin-purchase/info', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
@@ -14865,6 +14915,503 @@ async function openGiftLowBalanceSheet(missingAmount) {
         const box = document.getElementById('gift-lb-packages');
         if (box) box.innerHTML = `<div class="text-center text-red-400 py-6" style="grid-column:1/-1">فشل تحميل عروض الشحن</div>`;
     }
+}
+
+// =====================================================
+// 🔥 هدايا v2 — المرحلة 3: زر الكومبو العائم + النار/الشرر/الدخان + الأهداف الكبرى + الشريط
+// الجانبي الحيّ + الطيران للمقاعد + الأسطورية بملء الشاشة. منسوخة منطقياً عن
+// docs/design/gift-system-prototype.html قدر الإمكان. تبدأ بعد إغلاق شيت الهدايا مباشرة
+// (راجع handleSend بـshowRoomGiftModal) وتستمر حتى 3 ثوانٍ بعد آخر ضغطة.
+// =====================================================
+const GFX_MILES = [10, 66, 99, 188, 520, 1314];
+// activeGiftComboSession مُعلَنة مبكراً أعلى الملف (راجع تعليقها هناك) — لا تُعاد هنا
+
+// ✅ طلب صريح: تُستدعى عند مغادرة الغرفة فعلياً (showRoomBrowserView) كي لا تبقى حلقة rAF/كنفاس
+// بملء الشاشة تعمل بالخلفية بلا داعٍ بعد خروج المستخدم من الغرفة تماماً
+function teardownGiftComboFx() {
+    activeGiftComboSession?.forceEnd();
+    activeGiftComboSession = null;
+    document.getElementById('gfx-legend')?.remove();
+}
+
+// ✅ يبحث عن الهدية ضمن كتالوج المتجر المخزَّن مؤقتاً (getGiftShopData) للتحقق إن كانت أسطورية
+// وملء الشاشة — لا نداء شبكة إضافي، الكتالوج محمَّل أصلاً دوماً قبل فتح أي شيت هدايا
+function findCachedGiftById(giftId) {
+    if (!giftShopDataCache || !giftId) return null;
+    for (const cat of Object.keys(giftShopDataCache.gifts || {})) {
+        const found = (giftShopDataCache.gifts[cat] || []).find(g => String(g.id) === String(giftId));
+        if (found) return found;
+    }
+    return null;
+}
+
+function giftEmojiOrImgHTML(gift, px) {
+    if (gift && gift.imageUrl) return `<img src="${gift.imageUrl}" alt="" style="width:${px}px;height:${px}px;object-fit:contain;display:block">`;
+    return `<span>${escapeHtml((gift && gift.icon) || '🎁')}</span>`;
+}
+
+// ✅ طلب صريح (بند 6 بالمواصفة): يحترم تفضيل تقليل الحركة — نفس اسم/منطق pkPrefersReducedMotion
+// الموجودة أصلاً بميزة PK (أعيد استخدام الاسم نفسه إن وُجد لتجنّب دالتين متطابقتين)
+function gfxPrefersReducedMotion() {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; }
+}
+
+// ✅ جلسة كومبو هدايا حيّة واحدة — تُنشئ كل عناصرها (زر/كنفاس/شريط) وتُفكِّكها بالكامل عند
+// الانتهاء (لا كنفاس/حلقة rAF تبقى معلَّقة بالخلفية أبداً — "Stop drawing when nothing is alive")
+function startGiftComboSession(ctx) {
+    activeGiftComboSession?.forceEnd();
+
+    const { comboSender, setFxDelegate, setQuantityOverride, gift, unitPrice, initialUnits, recipientUsers, roomId, rules } = ctx;
+    const comboWindowMs = (rules && rules.comboWindowMs) || 3000;
+    const reduced = gfxPrefersReducedMotion();
+    const myUser = JSON.parse(localStorage.getItem('user')) || {};
+
+    let count = 0;
+    let pendingLog = []; // FIFO: {units, cost} لكل ضغطة متفائلة لم يُؤكَّد ردّها بعد — يُسحَب منها بترتيب الوصول عند كل onBalance/onFail
+    let tapTimes = [];   // طوابع زمنية لآخر ثانية — لحساب "الحرارة"
+    let heat = 0;
+    let comboTimer = performance.now();
+    let insufficientPause = false;
+    let holding = false;
+    let holdTimer = null;
+    let ended = false;
+    let legendaryTriggered = false;
+
+    // ---------- DOM ----------
+    const layer = document.createElement('div');
+    layer.className = 'gfx-layer';
+    layer.id = 'gfx-layer';
+    const giftHTML = giftEmojiOrImgHTML(gift, 22);
+    layer.innerHTML = `
+        <canvas class="gfx-canvas" id="gfx-canvas"></canvas>
+        <div class="gfx-combo" id="gfx-combo">
+            <svg class="gfx-ring" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="46" stroke="#ffffff22"></circle>
+                <circle id="gfx-ring-fg" cx="50" cy="50" r="46" stroke="#fff" stroke-dasharray="289" stroke-dashoffset="0" transform="rotate(-90 50 50)"></circle>
+            </svg>
+            <button class="gfx-cbtn" id="gfx-cbtn" type="button" aria-label="إرسال متتالي">
+                <span class="gfx-cg" id="gfx-cg">${giftHTML}</span>
+                <span class="gfx-cn" id="gfx-cn">×0</span>
+                <span class="gfx-cl">اضغط مطولاً</span>
+            </button>
+        </div>
+    `;
+    document.body.appendChild(layer);
+    const canvas = layer.querySelector('#gfx-canvas');
+    const xctx = canvas.getContext('2d');
+    const comboEl = layer.querySelector('#gfx-combo');
+    const cbtn = layer.querySelector('#gfx-cbtn');
+    const cnEl = layer.querySelector('#gfx-cn');
+    const ringFg = layer.querySelector('#gfx-ring-fg');
+    const RING_C = 2 * Math.PI * 46;
+
+    const toLabel = recipientUsers.length > 1 ? `${recipientUsers.length} مقاعد` : escapeHtml((recipientUsers[0] && recipientUsers[0].username) || '');
+    const bannerEl = document.createElement('div');
+    bannerEl.className = 'gfx-banner';
+    bannerEl.id = 'gfx-banner';
+    bannerEl.innerHTML = `
+        <span class="gfx-banner-av">${avatarHTML({ src: myUser.profileImage, wrapStyle: '--size:32px' })}</span>
+        <span class="gfx-banner-txt"><b>أنت</b>إلى ${toLabel}</span>
+        <span class="gfx-banner-gift">${giftEmojiOrImgHTML(gift, 28)}</span>
+        <span class="gfx-banner-x" id="gfx-banner-x">×0</span>
+    `;
+    (document.getElementById('room-gift-lane') || document.body).prepend(bannerEl);
+
+    // ---------- حجم الكنفاس (ResizeObserver، dpr بحد أقصى 2) ----------
+    let dpr = 1, VW = 0, VH = 0;
+    function sizeCanvas() {
+        const r = document.documentElement.getBoundingClientRect();
+        dpr = Math.min(2, window.devicePixelRatio || 1);
+        VW = r.width; VH = r.height;
+        canvas.width = Math.round(VW * dpr);
+        canvas.height = Math.round(VH * dpr);
+    }
+    sizeCanvas();
+    const resizeObserver = new ResizeObserver(sizeCanvas);
+    resizeObserver.observe(document.documentElement);
+
+    // ---------- نظام النار/الشرر/الدخان (منسوخ منطقياً عن النموذج الأولي) ----------
+    let parts = [], bursts = [], smokes = [];
+    const MAX_PARTS = 900;
+    function heatRGB(h) {
+        const stops = [[255, 170, 60], [255, 105, 25], [240, 50, 15], [255, 214, 120]];
+        h = Math.max(0, Math.min(0.999, h || 0));
+        const t = h * 3, i = Math.floor(t), f = t - i, A = stops[i], B = stops[i + 1];
+        return A.map((v, j) => Math.round(v + (B[j] - v) * f));
+    }
+    const heatColor = (h, a) => `rgba(${heatRGB(h).join(',')},${a})`;
+    const spriteCache = new Map();
+    function sprite(rgb) {
+        const key = rgb.join(',');
+        if (spriteCache.has(key)) return spriteCache.get(key);
+        const c = document.createElement('canvas'); c.width = c.height = 64;
+        const g = c.getContext('2d');
+        const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gr.addColorStop(0, 'rgba(255,250,235,1)'); gr.addColorStop(0.25, `rgba(${key},.9)`); gr.addColorStop(1, `rgba(${key},0)`);
+        g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+        if (spriteCache.size > 40) spriteCache.clear();
+        spriteCache.set(key, c);
+        return c;
+    }
+    const FIRE_RAMP = [[0, [255, 250, 215]], [0.15, [255, 214, 110]], [0.35, [255, 140, 35]], [0.6, [228, 62, 12]], [0.85, [120, 22, 6]], [1, [40, 10, 6]]];
+    function rampAt(t) {
+        for (let i = 1; i < FIRE_RAMP.length; i++) {
+            const [t1, c1] = FIRE_RAMP[i], [t0, c0] = FIRE_RAMP[i - 1];
+            if (t <= t1) { const f = (t - t0) / (t1 - t0); return c0.map((v, j) => Math.round(v + (c1[j] - v) * f)); }
+        }
+        return FIRE_RAMP[FIRE_RAMP.length - 1][1];
+    }
+    function softSprite(rgb, core) {
+        const c = document.createElement('canvas'); c.width = c.height = 64;
+        const g = c.getContext('2d');
+        const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gr.addColorStop(0, `rgba(${rgb},1)`); gr.addColorStop(core, `rgba(${rgb},.55)`); gr.addColorStop(1, `rgba(${rgb},0)`);
+        g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+        return c;
+    }
+    const FIRE = Array.from({ length: 14 }, (_, i) => softSprite(rampAt(i / 13).join(','), 0.35));
+    const SMOKE = softSprite('34,26,30', 0.4);
+
+    function updateComboDisplay() {
+        if (cnEl) cnEl.textContent = '×' + count.toLocaleString('en-US');
+        const xEl = document.getElementById('gfx-banner-x');
+        if (xEl) {
+            xEl.textContent = '×' + count.toLocaleString('en-US');
+            xEl.classList.remove('bump'); void xEl.offsetWidth; xEl.classList.add('bump');
+        }
+    }
+
+    // ---------- طيران الهدية للمقعد (مقتبس من flyGifts بالنموذج الأولي) ----------
+    let flyBudget = 0;
+    function flyToRecipients() {
+        if (reduced) return;
+        // 🛡️ طلب صريح (بند 5): تقليل تواتر الأيقونات الطائرة عند الحرارة العالية
+        if (++flyBudget % (heat > 0.6 ? 2 : 1)) return;
+        const cr = cbtn.getBoundingClientRect();
+        recipientUsers.slice(0, 9).forEach((u, k) => {
+            const seatWrap = document.querySelector(`#voice-chat-grid [data-user-id="${u.id}"] .voice-seat-av-wrap`);
+            const x0 = cr.left + cr.width / 2 - 13, y0 = cr.top + cr.height / 2 - 13;
+            let x1 = x0, y1 = y0 - 40;
+            if (seatWrap) {
+                const sr = seatWrap.getBoundingClientRect();
+                x1 = sr.left + sr.width / 2 - 13; y1 = sr.top + sr.height / 2 - 13;
+            }
+            const f = document.createElement('div');
+            f.className = 'gfx-fly';
+            f.innerHTML = giftEmojiOrImgHTML(gift, 26);
+            f.style.left = x0 + 'px'; f.style.top = y0 + 'px';
+            document.body.appendChild(f);
+            const midX = (x1 - x0) / 2 + (Math.random() * 60 - 30), midY = Math.min(0, (y1 - y0) / 2) - 60;
+            f.animate([
+                { transform: 'translate(0,0) scale(.6)', opacity: 1 },
+                { transform: `translate(${midX}px,${midY}px) scale(1.25)`, opacity: 1, offset: 0.45 },
+                { transform: `translate(${x1 - x0}px,${y1 - y0}px) scale(.7)`, opacity: 0.9 }
+            ], { duration: 620 + k * 40, easing: 'cubic-bezier(.3,.7,.4,1)' }).onfinish = () => {
+                f.remove();
+                if (seatWrap) { seatWrap.classList.remove('gfx-seat-hit'); void seatWrap.offsetWidth; seatWrap.classList.add('gfx-seat-hit'); }
+            };
+        });
+    }
+
+    // ---------- الأهداف الكبرى (×10/66/99/188/520/1314) ----------
+    function milestone(m) {
+        if (reduced) return;
+        const cr = cbtn.getBoundingClientRect();
+        const x = cr.left + cr.width / 2, y = cr.top + cr.height / 2;
+        const big = m >= 188; // ✅ طلب صريح: أكبر انفجار من 188 فما فوق
+        const sp = Array.from({ length: big ? 110 : 70 }, () => {
+            const a = Math.random() * Math.PI * 2, v = 2 + Math.random() * (big ? 11 : 7);
+            const rgb = [[255, 207, 90], [255, 79, 163], [255, 120, 30], [255, 240, 200]][Math.random() * 4 | 0];
+            return { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 2, r: 2 + Math.random() * 3, rgb };
+        });
+        bursts.push({ x, y, R: VW * (big ? 0.5 : 0.32), t: 0, T: big ? 75 : 55, sp });
+        const d = document.createElement('div'); d.className = 'gfx-mile'; d.innerHTML = `<b>×${m.toLocaleString('en-US')}</b>`;
+        layer.appendChild(d); setTimeout(() => d.remove(), 1000);
+        document.body.classList.remove('gfx-shaking'); void document.body.offsetWidth; document.body.classList.add('gfx-shaking');
+        setTimeout(() => document.body.classList.remove('gfx-shaking'), big ? 700 : 300);
+    }
+    function checkMilestones(units) {
+        const crossed = GFX_MILES.filter(m => count - units < m && count >= m).pop();
+        if (crossed) milestone(crossed);
+    }
+
+    // ---------- حلقة الرسم الرئيسية ----------
+    let rafId = null;
+    function frame(now) {
+        rafId = requestAnimationFrame(frame);
+        let bx = 0, by = 0, R = 0;
+        if (!reduced) {
+            const rate = tapTimes.filter(t => now - t < 1000).length;
+            const target = Math.min(1, rate / 14);
+            heat += (target - heat) * (target > heat ? 0.12 : 0.03);
+            ringFg.style.stroke = heatColor(heat, 1);
+            comboEl.classList.toggle('hot', heat > 0.85);
+            cbtn.style.filter = `saturate(${1 + heat * 0.6}) brightness(${1 + heat * 0.25})`;
+            cbtn.style.boxShadow = `0 0 0 3px #ffffff22, 0 0 ${18 + heat * 40}px ${heatColor(heat, 0.8)}`;
+
+            const cr = cbtn.getBoundingClientRect();
+            bx = cr.left + cr.width / 2; by = cr.top + cr.height / 2; R = cr.width / 2;
+            const span = Math.PI * (0.45 + heat * 1.1);
+            const flames = Math.round(4 + heat * 16), embers = heat > 0.3 ? (Math.random() < heat ? 2 : 0) : 0;
+            for (let k = 0; k < flames && parts.length < MAX_PARTS; k++) {
+                const a = -Math.PI / 2 + (Math.random() - 0.5) * span;
+                const up = (1.1 + Math.random() * 1.3) * (0.7 + heat * 1.4);
+                parts.push({ x: bx + Math.cos(a) * R * 0.96, y: by + Math.sin(a) * R * 0.96, vx: Math.cos(a) * 0.35, vy: -up, life: 1, decay: 0.028 + Math.random() * 0.03, s: (6 + Math.random() * 7) * (0.8 + heat * 0.7), seed: Math.random() * 99 });
+            }
+            // ✅ طلب صريح: الشرر يرتجف ويتصاعد لأعلى الشاشة
+            for (let k = 0; k < embers && parts.length < MAX_PARTS; k++) {
+                const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+                parts.push({ x: bx + Math.cos(a) * R * 0.9, y: by + Math.sin(a) * R * 0.9, vx: (Math.random() - 0.5) * 1.4, vy: -(2.2 + Math.random() * (2 + heat * 4)), life: 1, decay: 0.006 + Math.random() * 0.008, s: 1.6 + Math.random() * 1.8, ember: true, seed: Math.random() * 99, targetY: -40 });
+            }
+            // ✅ طلب صريح: دخان داكن خفيف فوق 40% حرارة
+            if (heat > 0.4 && smokes.length < 70 && Math.random() < heat * 0.9) {
+                smokes.push({ x: bx + (Math.random() - 0.5) * R * 1.2, y: by - R * (1.2 + Math.random() * 0.6), vx: (Math.random() - 0.5) * 0.4, vy: -(0.6 + Math.random() * 0.7), life: 1, decay: 0.01 + Math.random() * 0.008, s: 10 + Math.random() * 8 });
+            }
+        }
+
+        // 🐛 إصلاح: عدّاد انتهاء الجلسة (3 ثوانٍ بعد آخر ضغطة) يجب أن يعمل دوماً بصرف النظر عن
+        // reduced-motion — بند 6 بالمواصفة "keep the counters" يعني العدّادات/إدارة الجلسة
+        // تبقى، فقط الاهتزاز/الجسيمات تُعطَّل. كان هذا محصوراً داخل !reduced سابقاً فتبقى
+        // الجلسة (الزر/الكنفاس المعلَّقان) بلا نهاية أبداً مع reduced-motion — تسريب فعلي
+        if (!insufficientPause) {
+            const left = Math.max(0, 1 - (now - comboTimer) / comboWindowMs);
+            if (!reduced) ringFg.style.strokeDashoffset = RING_C * (1 - left);
+            if (left <= 0 && !holding) { endSession(); return; }
+        }
+
+        xctx.setTransform(1, 0, 0, 1, 0, 0);
+        xctx.globalCompositeOperation = 'source-over';
+        xctx.globalAlpha = 1;
+        xctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (reduced || (!parts.length && !bursts.length && !smokes.length)) return;
+        xctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        smokes = smokes.filter(s => (s.life -= s.decay) > 0);
+        for (const s of smokes) {
+            s.x += s.vx + Math.sin(now / 700 + s.y * 0.02) * 0.25; s.y += s.vy; s.s += 0.45;
+            xctx.globalAlpha = 0.16 * s.life * Math.min(1, (1 - s.life) * 6);
+            xctx.drawImage(SMOKE, s.x - s.s, s.y - s.s, s.s * 2, s.s * 2);
+        }
+
+        xctx.globalCompositeOperation = 'lighter';
+        parts = parts.filter(p => (p.life -= p.decay) > 0 && p.y > -40);
+        for (const p of parts) {
+            const t = 1 - p.life;
+            if (p.ember) {
+                p.vx += Math.sin(now / 110 + p.seed) * 0.06; p.x += p.vx; p.y += p.vy; p.vy *= 0.993;
+                xctx.globalAlpha = p.life * (0.55 + 0.45 * Math.sin(now / 35 + p.seed));
+                const sz = p.s * 3; xctx.drawImage(FIRE[2], p.x - sz / 2, p.y - sz / 2, sz, sz);
+                continue;
+            }
+            p.vx += Math.sin(p.y * 0.06 + now * 0.008 + p.seed) * 0.12;
+            p.vx *= 0.92; p.x += p.vx; p.y += p.vy; p.vy *= 0.985;
+            const grow = t < 0.18 ? 0.45 + t / 0.18 * 0.55 : 1 - (t - 0.18) * 0.85;
+            const sz = Math.max(1, p.s * grow * 2.2);
+            xctx.globalAlpha = Math.pow(p.life, 1.3) * (0.42 + heat * 0.18);
+            xctx.drawImage(FIRE[Math.min(FIRE.length - 1, Math.floor(t * FIRE.length))], p.x - sz / 2, p.y - sz * 0.62, sz, sz * 1.25);
+        }
+
+        bursts = bursts.filter(b => (b.t += 1) < b.T);
+        for (const b of bursts) {
+            const k = b.t / b.T;
+            xctx.globalAlpha = (1 - k) * 0.9;
+            xctx.strokeStyle = 'rgb(255,190,90)'; xctx.lineWidth = 6 * (1 - k) + 1;
+            xctx.beginPath(); xctx.arc(b.x, b.y, Math.max(1, k * b.R), 0, 7); xctx.stroke();
+            for (const sp of b.sp) {
+                sp.x += sp.vx; sp.y += sp.vy; sp.vy += 0.12; sp.vx *= 0.985;
+                xctx.globalAlpha = Math.max(0, 1 - k);
+                const sz = sp.r * (1 - k * 0.5) * 3;
+                xctx.drawImage(sprite(sp.rgb), sp.x - sz / 2, sp.y - sz / 2, sz, sz);
+            }
+        }
+        xctx.globalAlpha = 1;
+    }
+    rafId = requestAnimationFrame(frame);
+
+    // ---------- ضغط/تسارع ----------
+    function fireTap(units) {
+        if (ended || insufficientPause) return false;
+        const cost = unitPrice * units * recipientUsers.length;
+        const localUser = JSON.parse(localStorage.getItem('user')) || {};
+        if (cost > (localUser.coins || 0)) {
+            stopHold();
+            insufficientPause = true;
+            openGiftLowBalanceSheet(Math.max(0, cost - (localUser.coins || 0)), () => {
+                // ✅ طلب صريح: لو شحن المستخدم رصيده، الكومبو يستمر — لا ننهي الجلسة هنا، فقط نستأنف عدّادها
+                insufficientPause = false;
+                comboTimer = performance.now();
+            });
+            return false;
+        }
+        localUser.coins -= cost;
+        localStorage.setItem('user', JSON.stringify(localUser));
+        setHeaderCoinsSilent(localUser.coins);
+        count += units;
+        pendingLog.push({ units, cost });
+        comboSender.tap(cost);
+        const now = performance.now();
+        tapTimes.push(now); tapTimes = tapTimes.filter(t => now - t < 1000);
+        comboTimer = now;
+        updateComboDisplay();
+        flyToRecipients();
+        checkMilestones(units);
+        return true;
+    }
+
+    let holdStart = 0;
+    function startHold() {
+        if (holding) return;
+        holding = true; holdStart = performance.now();
+        const loop = () => {
+            if (!holding) return;
+            const t = (performance.now() - holdStart) / 2000;
+            const rate = 5 + 15 * Math.min(1, t * t); // ✅ طلب صريح: تسارع من 5 إلى 20 ضغطة/ثانية خلال ثانيتين
+            fireTap(1);
+            holdTimer = setTimeout(loop, 1000 / rate);
+        };
+        holdTimer = setTimeout(loop, 280);
+    }
+    function stopHold() { holding = false; clearTimeout(holdTimer); holdTimer = null; cbtn.classList.remove('gfx-press'); releaseCleanup?.(); }
+
+    // 🐛 إصلاح (نفس السبب الجذري الموثَّق بـsetupGiftComboSend القديمة أعلى الملف): الزر
+    // ينكمش بصرياً عند الضغط (.gfx-press{transform:scale(.92)}) — إصبع/مؤشر ثابت قد يجد نفسه
+    // خارج حدود الزر بعد الانكماش، فيُطلِق المتصفح pointerleave طبيعياً خلال أجزاء من الثانية
+    // رغم استمرار الضغط فعلياً، فيُنهي الضغط المطوّل فوراً بعد أول ضغطة فقط. setPointerCapture
+    // + الاستماع على document (لا الزر نفسه فقط) يضمنان استمرار استقبال pointerup/cancel
+    // لنفس الضغطة بصرف النظر عن أي تغيّر بصري/موضعي للزر أثناءها
+    let activePointerId = null;
+    let releaseCleanup = null;
+    cbtn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        cbtn.classList.add('gfx-press');
+        activePointerId = e.pointerId;
+        try { cbtn.setPointerCapture(e.pointerId); } catch (_) { /* متصفحات قديمة — نتابع بأمان */ }
+        fireTap(1);
+        startHold();
+        releaseCleanup?.();
+        const onDocRelease = (ev) => { if (ev.pointerId !== activePointerId) return; stopHold(); };
+        document.addEventListener('pointerup', onDocRelease, true);
+        document.addEventListener('pointercancel', onDocRelease, true);
+        releaseCleanup = () => {
+            document.removeEventListener('pointerup', onDocRelease, true);
+            document.removeEventListener('pointercancel', onDocRelease, true);
+            releaseCleanup = null;
+        };
+    });
+    // ✅ تبقى كطبقة دفاع إضافية — لا ضرر من استدعاء stopHold أكثر من مرة. عمداً بلا
+    // pointerleave هنا: هذا الحدث غير مضمون بالالتقاط (pointer capture) — قد يُطلَق بصرياً
+    // بمجرّد خروج المؤشر من حدود الزر (مثلاً بسبب انكماش .gfx-press نفسه) رغم استمرار
+    // الضغط فعلياً، فيُنهي الكومبو قبل أوانه. pointerup/pointercancel فقط آمنان مع الالتقاط
+    cbtn.addEventListener('pointerup', stopHold);
+    cbtn.addEventListener('pointercancel', stopHold);
+
+    // ---------- ack السيرفر (مُفوَّض من comboSender المشترك — راجع setFxDelegate) ----------
+    setFxDelegate({
+        onBalance: (balance, res, cost, taps) => {
+            // ✅ يُسحَب من pendingLog بترتيب الوصول (FIFO) — نفس ترتيب دفعات الفلاش فعلياً
+            for (let i = 0; i < taps && pendingLog.length; i++) pendingLog.shift();
+            const syncedUser = JSON.parse(localStorage.getItem('user'));
+            if (syncedUser) {
+                syncedUser.coins = balance;
+                // ✅ طلب صريح: تسوية شريط الثروة مع كل ack — نفس ما يصل لاحقاً عبر experienceUpdate،
+                // لكن هنا فوراً من رد الكومبو نفسه (مصدر إضافي لنفس الحقيقة، لا يتعارض)
+                if (res && typeof res.wealthLevel === 'number') syncedUser.level = res.wealthLevel;
+                if (res && typeof res.wealthXp === 'number') syncedUser.experience = res.wealthXp;
+                localStorage.setItem('user', JSON.stringify(syncedUser));
+            }
+            setHeaderCoinsSilent(balance);
+        },
+        onFail: (cost, code, message, taps, res) => {
+            // ✅ طلب صريح: فشل حقيقي من السيرفر (بعد نجاح الفحص المحلي المتفائل) — نتراجع عن
+            // الرصيد وعن عدّاد الضغطات المعروض بدقة (نفس عدد الوحدات التي كانت بهذي الدفعة فعلاً)
+            let revertedUnits = 0;
+            for (let i = 0; i < taps && pendingLog.length; i++) revertedUnits += pendingLog.shift().units;
+            const revertUser = JSON.parse(localStorage.getItem('user'));
+            if (revertUser) {
+                revertUser.coins += cost;
+                localStorage.setItem('user', JSON.stringify(revertUser));
+                setHeaderCoinsSilent(revertUser.coins);
+            }
+            if (revertedUnits > 0) { count = Math.max(0, count - revertedUnits); updateComboDisplay(); }
+            if (code === 'INSUFFICIENT') {
+                stopHold();
+                insufficientPause = true;
+                const needed = (res && typeof res.needed === 'number') ? res.needed : cost;
+                const balanceNow = (res && typeof res.balance === 'number') ? res.balance : 0;
+                openGiftLowBalanceSheet(Math.max(0, needed - balanceNow), () => {
+                    insufficientPause = false;
+                    comboTimer = performance.now();
+                });
+            } else if (code !== 'RATE_LIMITED') {
+                showNotification('تعذّر إرسال بعض ضغطات الكومبو', 'error');
+            }
+        }
+    });
+
+    // ---------- أسطورية بملء الشاشة — فورية للمُرسِل نفسه (لا تنتظر صدى السيرفر) ----------
+    if (gift.category === 'legendary' && !legendaryTriggered) {
+        legendaryTriggered = true;
+        showLegendaryFullscreenFx({ giftImage: gift.imageUrl, giftIcon: gift.icon, giftName: gift.name, fromUsername: 'أنت', toLabel }, true);
+    }
+
+    // ---------- بدء الجلسة بالضغطة الأولى (الكمية الكاملة المختارة بالشيت) ----------
+    fireTap(initialUnits);
+    setQuantityOverride(1); // ✅ كل الضغطات اللاحقة بهذي الجلسة ×1 فقط — لا تكرار الكمية المختارة
+
+    // ---------- الإنهاء ----------
+    function endSession() {
+        if (ended) return;
+        ended = true;
+        comboSender.end();
+        setFxDelegate(null);
+        cancelAnimationFrame(rafId);
+        resizeObserver.disconnect();
+        layer.remove();
+        bannerEl.classList.add('out');
+        setTimeout(() => bannerEl.remove(), 420);
+        if (activeGiftComboSession === session) activeGiftComboSession = null;
+    }
+    // ✅ إنهاء قسري (جلسة جديدة بدأت، أو مغادرة الغرفة) — بلا أنيميشن خروج، إزالة فورية
+    function forceEnd() {
+        if (ended) return;
+        stopHold();
+        ended = true;
+        comboSender.end();
+        setFxDelegate(null);
+        cancelAnimationFrame(rafId);
+        resizeObserver.disconnect();
+        layer.remove();
+        bannerEl.remove();
+    }
+
+    const session = { endSession, forceEnd };
+    activeGiftComboSession = session;
+    return session;
+}
+
+// ✅ هدية أسطورية بملء الشاشة — طلب صريح: تظهر "للجميع بالغرفة" (المُرسِل + المستلمون +
+// المشاهدون). isSelf=true فقط لاستدعاء المُرسِل الفوري المتفائل لنفسه (راجع startGiftComboSession)؛
+// بقية الحاضرين يستقبلونها عبر صدى السيرفر room-gift-announcement (راجع معالجه أسفل الملف)
+function showLegendaryFullscreenFx(data, isSelf = false) {
+    if (gfxPrefersReducedMotion()) return;
+    const existing = document.getElementById('gfx-legend');
+    if (existing) existing.remove();
+    const d = document.createElement('div');
+    d.id = 'gfx-legend';
+    d.className = 'gfx-legend';
+    const giftVisual = data.giftImage
+        ? `<img src="${data.giftImage}" alt="">`
+        : escapeHtml(data.giftIcon || '🎁');
+    const subtitle = isSelf
+        ? `أنت أرسلت ${escapeHtml(data.giftName)} إلى ${data.toLabel}`
+        : `${escapeHtml(data.fromUsername)} أرسل ${escapeHtml(data.giftName)}`;
+    d.innerHTML = `
+        <div class="gfx-legend-rays"></div>
+        <div class="gfx-legend-g">${giftVisual}</div>
+        <div class="gfx-legend-t"><b>${escapeHtml(data.giftName)}</b><span>${subtitle}</span></div>
+    `;
+    document.body.appendChild(d);
+    setTimeout(() => d.remove(), 3200);
 }
 
 // ✅ دالة موحّدة لبناء كارد الهدية (تُستخدم بالخاصة والعامة)
@@ -15128,7 +15675,13 @@ function createComboSender({ buildPayload, onBalance, onFail, flushMs = 250 }) {
             // ✅ taps/cost المُمرَّران هنا هما فقط ما أكّد السيرفر إرساله فعلياً بهذي الدفعة
             // تحديداً — يُستخدَمان لأي أثر جانبي يجب أن يُطلَق فقط بعد تأكيد نجاح حقيقي
             // (كعداد الدعم أسفل المقعد)، لا بالتفاؤل قبل معرفة النتيجة الفعلية
-            onBalance(res.balance - ahead, res, cost, taps);
+            // 🐛 إصلاح جذري (هدايا v2 — المرحلة 3): حقل ack النجاح الحقيقي اسمه balanceAfter
+            // (راجع socketService.js) لا balance — كان res.balance دوماً undefined فيُصبح
+            // الناتج NaN، يُخزَّن بـlocalStorage (JSON.stringify يحوّل NaN لـnull حرفياً)،
+            // فيُصبح رصيد المستخدم المحلي المخزَّن null/0 بعد أول ack ناجح من أي نافذة هدية —
+            // باگ موجود مسبقاً بثلاث واجهات الهدايا كلها (الخاصة/العامة/الغرفة)، لا بالكومبو
+            // الجديد وحده؛ اكتُشِف هنا أثناء اختبار الضغط المطوّل الحقيقي (تكرار يكشفه بسرعة)
+            onBalance(res.balanceAfter - ahead, res, cost, taps);
         });
     }
 
