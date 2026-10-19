@@ -740,6 +740,16 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // يصل التنفيذ التسلسلي للسكربت لسطر إعلانه القديم أسفل الملف أصلاً — ReferenceError
     // "Cannot access before initialization" (منطقة ميتة زمنية لـlet) كانت تحدث فوراً عند كل تحميل صفحة
     let activeGiftComboSession = null;
+    // 🐛 إصلاح (مراجعة PR #108): نفس سبب TDZ أعلاه بالضبط — teardownGiftComboFx تقرأ أيضاً
+    // gfxOtherBanners/gfxLegendaryQueue/gfxLegendaryPlaying، فيجب إعلانها هنا مبكراً معاً لا
+    // عند تعريف باقي نظام الكومبو/الأسطورية أسفل الملف
+    let gfxLegendarySeenCombos = new Set();
+    let gfxLegendaryDedup = { key: null, at: 0 }; // ✅ احتياط زمني فقط لمسار REST القديم (sendGiftBatch) بلا comboId
+    let gfxOtherBanners = []; // [{comboId, el, count, recipients:Set}] — الأحدث أولاً (unshift)
+    const GFX_BANNER_MAX = 3;
+    let gfxLegendaryQueue = [];
+    let gfxLegendaryPlaying = false;
+    let gfxComboAggregate = null; // {xpGained, pendingSupportLevelUp} — راجع gfxResetComboAggregate/gfxFlushComboAggregate
     let myIsMuted = false;         // ✅ حالة كتمي الحقيقية (زر الكتم انتقل لقائمة "المزيد")
     let roomAudioMuted = false;    // ✅ كتم شخصي محلي بحت لكل صوت الغرفة (موسيقى + متحدثون) — لا يؤثر على أحد غيري
     // 🐛 إصلاح جوهري: الكتم (سواء الذاتي أو كتم المضيف لأحد) كان يعتمد بالكامل على أن جهاز
@@ -9437,6 +9447,14 @@ function showXpGainAnimation(amount) {
     // ✅ احتفال ارتقاء مستوى دعم/تلقي حقيقي — يصل فقط لصاحب الحدث شخصياً (io.to(socketId) من
     // الخادم)، أياً كان مصدر الارتقاء (هدية أُرسلت/استُلمت، مكافأة حضور، أو مكافأة دردشة يومية)
     socket.on('support-level-up', ({ kind, newLevel, tierName, tierIcon, tierGradient }) => {
+        // ✅ طلب صريح (بند 4 بمراجعة PR #108): أثناء كومبو حيّ، بطاقة الاحتفال الكاملة ("الـmodal")
+        // تُكبَت وتُستبدَل بتوست علوي صغير غير مُحجِّب فوراً؛ البطاقة الكاملة تُؤجَّل وتُعرَض
+        // مرة واحدة فقط (1 ثانية) بعد انتهاء الجلسة — راجع gfxFlushComboAggregate
+        if (gfxIsComboActive() && gfxComboAggregate) {
+            gfxComboAggregate.pendingSupportLevelUp = { kind, newLevel, tierName, tierIcon, tierGradient };
+            gfxShowTopLevelToast(newLevel);
+            return;
+        }
         celebrateSupportLevelUp(kind, newLevel, tierName, tierIcon, tierGradient);
     });
 
@@ -9678,43 +9696,49 @@ function showXpGainAnimation(amount) {
         if (countEl && typeof followersCount === 'number') countEl.textContent = followersCount;
     });
 
-    // 🔥 هدايا v2 (المرحلة 3): نافذة إزالة ازدواج تفعيل الأسطورية بملء الشاشة — دفعة كومبو
-    // واحدة بعدّة مستلمين تُصدِر room-gift-announcement منفصلة لكل مستلم (راجع
-    // queueGiftRoomAnnouncement بالسيرفر)، فبلا هذي النافذة كانت الشاشة الكاملة ستتكرر مرة
-    // لكل مستلم بنفس الدفعة. تكرار (نفس fromUserId+giftId) خلال 600ms يُعتبَر نفس الدفعة
-    let gfxLegendaryDedup = { key: null, at: 0 };
-    function gfxShouldTriggerLegendary(fromUserId, giftId) {
-        const key = `${fromUserId}:${giftId}`;
+    // 🔥 طلب صريح (مراجعة المرحلة 3 — إزالة ازدحام الإعلانات المتكررة): نظام إعلان واحد فقط
+    // لهدايا الغرفة. "الأسطورية" بملء الشاشة تُجمَّع عبر comboId (دقيق تماماً الآن — السيرفر
+    // يُرفقه بكل إعلان، راجع runGiftComboSideEffects/queueRoomGiftAnnouncement)؛ احتياط زمني
+    // (600ms) يبقى فقط لمسار REST القديم (sendGiftBatch) الذي لا مفهوم جلسة/comboId له إطلاقاً
+    function gfxShouldTriggerLegendary(data) {
+        if (data.comboId) {
+            if (gfxLegendarySeenCombos.has(data.comboId)) return false;
+            gfxLegendarySeenCombos.add(data.comboId);
+            if (gfxLegendarySeenCombos.size > 50) gfxLegendarySeenCombos.delete(gfxLegendarySeenCombos.values().next().value);
+            return true;
+        }
+        const key = `${data.fromUserId}:${data.giftId}`;
         const now = Date.now();
         if (gfxLegendaryDedup.key === key && now - gfxLegendaryDedup.at < 600) return false;
         gfxLegendaryDedup = { key, at: now };
         return true;
     }
 
-    // ✅ إعلان هدية بالغرفة — فقاعة ذهبية بالدردشة + شريط جانبي + أيقونة طائرة نحو المستلم
+    // ✅ طلب صريح: إعلان هدية بالغرفة — نظام واحد فقط للجميع (الشريط الجانبي gfx الجديد + سطر
+    // دردشة واحد لكل جلسة). الأنظمة القديمة المتزاحمة (البطاقة الوسطى العائمة
+    // showGiftFloatingAnimation/queueRoomGiftFloatAnimation، وكبسولة showRoomGiftSideBanner)
+    // لم تعد تُستدعى هنا إطلاقاً — بلا مستدعٍ آخر لهما بالملف فتبقيان معطَّلتين فعلياً لهدايا
+    // الغرفة (لم تُحذفا لتقليل مساحة هذا التغيير — غير مُستخدَمتين بأي مكان آخر الآن)
     socket.on('room-gift-announcement', (data) => {
         if (data.roomId !== currentVoiceRoomId) return;
         pkCacheUserDisplay(data.fromUserId, data.fromUsername, data.fromProfileImage);
         pkCacheUserDisplay(data.toUserId, data.toUsername, data.toProfileImage);
-        appendRoomGiftChatMessage(data);
-        showRoomGiftSideBanner(data);
-        // ✅ مصدر الحقيقة الوحيد للمؤثر البصري لكل من بالغرفة (المرسل والمستلم والمشاهدون) —
-        // صورة الهدية تطفو كبيرة بمنتصف الشاشة ثم تطير بأناقة نحو مقعد المدعوم بالضبط. عبر
-        // الطابور (راجع تعليقه أعلى showGiftFloatingAnimation) — هذا تحديداً مصدر سيل الهدايا
-        // الحقيقي (من مستخدمين آخرين)، بعكس استدعاءات "هديتي أنا" المباشرة بمكان آخر بالملف
-        queueRoomGiftFloatAnimation(data.giftImage, data.giftName, data.fromUsername, data.quantity, data.toUserId);
 
-        // 🔥 طلب صريح (المرحلة 3، بند 5): هدية أسطورية بملء الشاشة "للجميع بالغرفة" — هنا فقط
-        // لبقية الحاضرين (ليسوا المُرسِل؛ المُرسِل رآها فوراً بتفاؤل عبر startGiftComboSession)
-        if (data.fromUserId !== myUserId) {
-            const catalogGift = findCachedGiftById(data.giftId);
-            const isLegendary = catalogGift ? catalogGift.category === 'legendary' : false;
-            if (isLegendary && gfxShouldTriggerLegendary(data.fromUserId, data.giftId)) {
-                showLegendaryFullscreenFx({
-                    giftImage: data.giftImage, giftIcon: data.giftIcon, giftName: data.giftName,
-                    fromUsername: data.fromUsername
-                }, false);
-            }
+        // ✅ أنا المُرسِل: رأيت شريطي وسطر دردشتي محلياً بالفعل أثناء جلستي الحيّة (راجع
+        // startGiftComboSession) — صدى السيرفر لهديتي أنا نفسها يُتجاهَل بالكامل هنا (لا
+        // ازدواج بصري)، بما في ذلك الأسطورية (رآها فوراً بتفاؤل بالفعل)
+        if (data.fromUserId === myUserId) return;
+
+        appendRoomGiftChatMessage(data);
+        gfxUpdateSideBanner(data);
+
+        const catalogGift = findCachedGiftById(data.giftId);
+        const isLegendary = catalogGift ? catalogGift.category === 'legendary' : false;
+        if (isLegendary && gfxShouldTriggerLegendary(data)) {
+            gfxQueueLegendary({
+                giftImage: data.giftImage, giftIcon: data.giftIcon, giftName: data.giftName,
+                fromUsername: data.fromUsername, toLabel: escapeHtml(data.toUsername || ''), isSelf: false
+            });
         }
     });
 
@@ -10304,9 +10328,6 @@ socket.on('unblockedFromSettings', (data) => {
 
 // --- استبدل مستمع experienceUpdate بهذا ---
 socket.on('experienceUpdate', ({ level, experience, requiredXp, xpGained }) => {
-    // عرض أنيميشن اكتساب الخبرة
-    showXpGainAnimation(xpGained);
-
     // 🗑️ طلب صريح: واجهة المستوى القديمة أُزيلت من كل مكان (الشريط الجانبي/الملف الشخصي) —
     // تبقى هذه المزامنة لتحديث level/experience بـlocalStorage فقط (تُستخدم بمكان آخر لفحوصات
     // مثل بوابة ميزة الرسالة الواحدة)، بلا أي لمس DOM بعد الآن
@@ -10318,6 +10339,15 @@ socket.on('experienceUpdate', ({ level, experience, requiredXp, xpGained }) => {
         localUser.experience = experience;
         localStorage.setItem('user', JSON.stringify(localUser));
     }
+
+    // ✅ طلب صريح (بند 4 بمراجعة PR #108): أثناء كومبو حيّ، فقاعة "+XP" العائمة تتكرر بكل
+    // ack (كل 250ms أثناء الضغط السريع) وتُغطي منتصف الغرفة — تُكبَت وتُجمَّع بدل ذلك، تُعرَض
+    // مرة واحدة فقط بعد انتهاء الجلسة (راجع gfxFlushComboAggregate بـendSession/forceEnd)
+    if (gfxIsComboActive() && gfxComboAggregate) {
+        gfxComboAggregate.xpGained += (xpGained || 0);
+        return;
+    }
+    showXpGainAnimation(xpGained);
 });
 
 socket.on('levelUp', ({ newLevel }) => {
@@ -14924,7 +14954,9 @@ async function openGiftLowBalanceSheet(missingAmount, onClose = null) {
 // (راجع handleSend بـshowRoomGiftModal) وتستمر حتى 3 ثوانٍ بعد آخر ضغطة.
 // =====================================================
 const GFX_MILES = [10, 66, 99, 188, 520, 1314];
-// activeGiftComboSession مُعلَنة مبكراً أعلى الملف (راجع تعليقها هناك) — لا تُعاد هنا
+// activeGiftComboSession وكل حالة نظام الإعلان الموحَّد الجديد (gfxLegendarySeenCombos/
+// gfxOtherBanners/gfxLegendaryQueue/...) مُعلَنة مبكراً أعلى الملف (راجع تعليقها هناك،
+// نفس سبب تفادي TDZ بالضبط) — لا تُعاد هنا
 
 // ✅ طلب صريح: تُستدعى عند مغادرة الغرفة فعلياً (showRoomBrowserView) كي لا تبقى حلقة rAF/كنفاس
 // بملء الشاشة تعمل بالخلفية بلا داعٍ بعد خروج المستخدم من الغرفة تماماً
@@ -14932,6 +14964,14 @@ function teardownGiftComboFx() {
     activeGiftComboSession?.forceEnd();
     activeGiftComboSession = null;
     document.getElementById('gfx-legend')?.remove();
+    document.getElementById('room-gift-lane')?.classList.remove('gfx-hidden-for-legend');
+    // 🧹 مراجعة PR #108: مغادرة الغرفة فعلياً يجب أن تُطهِّر كل حالة النظام الموحَّد الجديد أيضاً
+    // (شريط إعلانات الآخرين + طابور الأسطورية + التوست العلوي) — لا بقايا من غرفة سابقة
+    gfxOtherBanners.forEach(b => b.el.remove());
+    gfxOtherBanners = [];
+    gfxLegendaryQueue = [];
+    gfxLegendaryPlaying = false;
+    document.getElementById('gfx-top-toast')?.remove();
 }
 
 // ✅ يبحث عن الهدية ضمن كتالوج المتجر المخزَّن مؤقتاً (getGiftShopData) للتحقق إن كانت أسطورية
@@ -14956,10 +14996,50 @@ function gfxPrefersReducedMotion() {
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; }
 }
 
+// ✅ طلب صريح (مراجعة PR #108 — بند 4): أثناء كومبو حيّ، تُكبَت فقاعة "+XP" العائمة وبطاقة
+// ارتقاء "مستوى الثروة" الكاملة (كانت تتكرر بكل ack/كل مستلم وتُغطي منتصف الغرفة)، ويُجمَّع
+// أثرهما بدل ذلك ليُعرض مرة واحدة فقط بعد انتهاء الجلسة
+function gfxIsComboActive() { return !!activeGiftComboSession; }
+function gfxResetComboAggregate() { gfxComboAggregate = { xpGained: 0, pendingSupportLevelUp: null }; }
+function gfxFlushComboAggregate() {
+    const agg = gfxComboAggregate;
+    gfxComboAggregate = null;
+    if (!agg) return;
+    if (agg.xpGained > 0) showXpGainAnimation(agg.xpGained);
+    if (agg.pendingSupportLevelUp) {
+        const p = agg.pendingSupportLevelUp;
+        setTimeout(() => {
+            // 🐛 إصلاح (مُكتشَف بلقطة التحقق الفعلية): إرسال سريع متتالٍ قد يبدأ جلسة كومبو
+            // جديدة (مثلاً أسطورية) خلال ثانية الانتظار هذي بالضبط — عرض البطاقة الكاملة
+            // حينها يُقحمها فوق الجلسة الجديدة (نفس ازدحام الإعلانات الذي طُلب إزالته أساساً).
+            // لو جلسة جديدة فعلاً نشطة الآن: نُعيد تأجيل البطاقة لتُعرَض بعد انتهائها هي، لا نُسقطها
+            if (gfxIsComboActive() && gfxComboAggregate) {
+                gfxComboAggregate.pendingSupportLevelUp = p;
+                return;
+            }
+            celebrateSupportLevelUp(p.kind, p.newLevel, p.tierName, p.tierIcon, p.tierGradient);
+        }, 1000);
+    }
+}
+// ✅ توست علوي صغير غير مُحجِّب — يظهر فوراً بدل بطاقة الاحتفال الكاملة أثناء الكومبو
+function gfxShowTopLevelToast(newLevel) {
+    document.getElementById('gfx-top-toast')?.remove();
+    const el = document.createElement('div');
+    el.id = 'gfx-top-toast';
+    el.className = 'gfx-top-toast';
+    el.innerHTML = `<i class="fas fa-arrow-up"></i><span>مستوى الثروة Lv.${Number(newLevel) || 0}</span>`;
+    document.body.appendChild(el);
+    setTimeout(() => {
+        el.classList.add('out');
+        setTimeout(() => el.remove(), 300);
+    }, 1800);
+}
+
 // ✅ جلسة كومبو هدايا حيّة واحدة — تُنشئ كل عناصرها (زر/كنفاس/شريط) وتُفكِّكها بالكامل عند
 // الانتهاء (لا كنفاس/حلقة rAF تبقى معلَّقة بالخلفية أبداً — "Stop drawing when nothing is alive")
 function startGiftComboSession(ctx) {
     activeGiftComboSession?.forceEnd();
+    gfxResetComboAggregate(); // ✅ بند 4: جلسة جديدة = تجميع خبرة/ارتقاء جديد، بلا بقايا من جلسة سابقة
 
     const { comboSender, setFxDelegate, setQuantityOverride, gift, unitPrice, initialUnits, recipientUsers, roomId, rules } = ctx;
     const comboWindowMs = (rules && rules.comboWindowMs) || 3000;
@@ -15006,6 +15086,9 @@ function startGiftComboSession(ctx) {
     const RING_C = 2 * Math.PI * 46;
 
     const toLabel = recipientUsers.length > 1 ? `${recipientUsers.length} مقاعد` : escapeHtml((recipientUsers[0] && recipientUsers[0].username) || '');
+    // ✅ نص خام (غير مُهرَّب مسبقاً) لسطر دردشة هدايتي — appendRoomGiftChatMessage تُهرِّبه هي
+    // نفسها مرة واحدة فقط؛ toLabel أعلاه مُهرَّب مسبقاً للاستخدام المباشر بـinnerHTML بالشريط
+    const toRawLabel = recipientUsers.length > 1 ? `${recipientUsers.length} مقاعد` : ((recipientUsers[0] && recipientUsers[0].username) || '');
     const bannerEl = document.createElement('div');
     bannerEl.className = 'gfx-banner';
     bannerEl.id = 'gfx-banner';
@@ -15016,6 +15099,15 @@ function startGiftComboSession(ctx) {
         <span class="gfx-banner-x" id="gfx-banner-x">×0</span>
     `;
     (document.getElementById('room-gift-lane') || document.body).prepend(bannerEl);
+
+    // ✅ طلب صريح (بند 2 بمراجعة PR #108): سطر دردشة واحد لجلستي الحيّة بأكملها (محلي بالتفاؤل،
+    // بلا انتظار صدى السيرفر — الصدى يُتجاهَل بالكامل للمُرسِل نفسه، راجع room-gift-announcement
+    // أسفل الملف) — مفتاح دمج محلي بحت (local:) لا يصطدم أبداً بـcomboId الحقيقي القادم من السيرفر
+    const localChatComboId = `local:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    appendRoomGiftChatMessage({
+        fromUsername: 'أنت', toUsername: toRawLabel, giftName: gift.name, giftIcon: gift.icon,
+        giftImage: gift.imageUrl, quantity: 0, comboId: localChatComboId
+    });
 
     // ---------- حجم الكنفاس (ResizeObserver، dpr بحد أقصى 2) ----------
     let dpr = 1, VW = 0, VH = 0;
@@ -15079,6 +15171,9 @@ function startGiftComboSession(ctx) {
             xEl.textContent = '×' + count.toLocaleString('en-US');
             xEl.classList.remove('bump'); void xEl.offsetWidth; xEl.classList.add('bump');
         }
+        // ✅ بند 2: سطر دردشتي الوحيد لهذي الجلسة يُحدَّث بنفس العدّاد الإجمالي الحقيقي (count) —
+        // لا تراكم إضافي هنا، فـcount نفسه يُصحَّح تلقائياً عند أي تراجع (onFail) أيضاً
+        gfxSetChatLineQuantity(localChatComboId, count);
     }
 
     // ---------- طيران الهدية للمقعد (مقتبس من flyGifts بالنموذج الأولي) ----------
@@ -15351,7 +15446,9 @@ function startGiftComboSession(ctx) {
     // ---------- أسطورية بملء الشاشة — فورية للمُرسِل نفسه (لا تنتظر صدى السيرفر) ----------
     if (gift.category === 'legendary' && !legendaryTriggered) {
         legendaryTriggered = true;
-        showLegendaryFullscreenFx({ giftImage: gift.imageUrl, giftIcon: gift.icon, giftName: gift.name, fromUsername: 'أنت', toLabel }, true);
+        // ✅ بند 3 بمراجعة PR #108: طابور تشغيل تسلسلي — لو جلستي تتزامن مع صدى أسطورية
+        // أخرى من مستخدم آخر، كلاهما يُعرَض بدوره لا متراكبَين
+        gfxQueueLegendary({ giftImage: gift.imageUrl, giftIcon: gift.icon, giftName: gift.name, fromUsername: 'أنت', toLabel, isSelf: true });
     }
 
     // ---------- بدء الجلسة بالضغطة الأولى (الكمية الكاملة المختارة بالشيت) ----------
@@ -15370,6 +15467,7 @@ function startGiftComboSession(ctx) {
         bannerEl.classList.add('out');
         setTimeout(() => bannerEl.remove(), 420);
         if (activeGiftComboSession === session) activeGiftComboSession = null;
+        gfxFlushComboAggregate(); // ✅ بند 4: الجلسة انتهت — عرض "+N XP" المُجمَّعة الآن (وبطاقة الارتقاء المؤجَّلة لو وُجدت)
     }
     // ✅ إنهاء قسري (جلسة جديدة بدأت، أو مغادرة الغرفة) — بلا أنيميشن خروج، إزالة فورية
     function forceEnd() {
@@ -15382,6 +15480,7 @@ function startGiftComboSession(ctx) {
         resizeObserver.disconnect();
         layer.remove();
         bannerEl.remove();
+        gfxFlushComboAggregate(); // ✅ بند 4: حتى الإنهاء القسري لا يُفقِد أي أثر خبرة/ارتقاء مُجمَّع بصمت
     }
 
     const session = { endSession, forceEnd };
@@ -15389,29 +15488,63 @@ function startGiftComboSession(ctx) {
     return session;
 }
 
+// ✅ طلب صريح (بند 3 بمراجعة PR #108): طابور تشغيل تسلسلي — أسطوريتان (حتى لو واحدة محلية
+// متفائلة للمُرسِل والأخرى صدى سيرفر لمُرسِل آخر) لا تتراكبان بصرياً أبداً بعد الآن، كل واحدة
+// تنتظر دورها وتُشغَّل كاملة (3.2 ثانية) قبل التالية
+function gfxQueueLegendary(entry) {
+    gfxLegendaryQueue.push(entry);
+    if (!gfxLegendaryPlaying) gfxPlayNextLegendary();
+}
+function gfxPlayNextLegendary() {
+    const entry = gfxLegendaryQueue.shift();
+    if (!entry) { gfxLegendaryPlaying = false; return; }
+    gfxLegendaryPlaying = true;
+    gfxRenderLegendary(entry, gfxPlayNextLegendary);
+}
+
 // ✅ هدية أسطورية بملء الشاشة — طلب صريح: تظهر "للجميع بالغرفة" (المُرسِل + المستلمون +
-// المشاهدون). isSelf=true فقط لاستدعاء المُرسِل الفوري المتفائل لنفسه (راجع startGiftComboSession)؛
-// بقية الحاضرين يستقبلونها عبر صدى السيرفر room-gift-announcement (راجع معالجه أسفل الملف)
-function showLegendaryFullscreenFx(data, isSelf = false) {
-    if (gfxPrefersReducedMotion()) return;
-    const existing = document.getElementById('gfx-legend');
-    if (existing) existing.remove();
+// المشاهدون). data.isSelf=true فقط لاستدعاء المُرسِل الفوري المتفائل لنفسه (راجع
+// startGiftComboSession)؛ بقية الحاضرين يستقبلونها عبر صدى السيرفر room-gift-announcement
+// (راجع معالجه أسفل الملف). تُستدعى فقط عبر gfxQueueLegendary أعلاه — لا نداء مباشر آخر لها
+// data.toLabel يُفترَض مُهرَّباً مسبقاً من المستدعي (نفس اتفاقية toLabel بـstartGiftComboSession)
+// بعكس data.fromUsername/data.giftName اللتين تُهرَّبان هنا دوماً (قد تكونان خامتين من صدى السيرفر)
+// onDone: طلب صريح — إشارة انتهاء حقيقية (لا setTimeout معزول بلا تتبّع) كي يبدأ الطابور التالي
+function gfxRenderLegendary(data, onDone) {
+    if (gfxPrefersReducedMotion()) { onDone?.(); return; }
+    document.getElementById('gfx-legend')?.remove();
+    // ✅ بند 3: أثناء العرض، الشريط الجانبي (مكاني أو لغيري) يختفي بصرياً — لا ازدحام فوق
+    // مؤثرات الأسطورية؛ يعود بمجرّد الانتهاء (راجع .gfx-hidden-for-legend بـinput.css)
+    const lane = document.getElementById('room-gift-lane');
+    lane?.classList.add('gfx-hidden-for-legend');
+    // 🐛 إصلاح (مُكتشَف بلقطة التحقق الفعلية): بطاقة ارتقاء "مستوى الثروة" المؤجَّلة (أو أي
+    // "كارد" احتفال آخر) قد تكون ظاهرة فعلياً لحظة بدء الأسطورية (توقيت عشوائي، لا علاقة له
+    // بجلسة كومبو نشطة) — "أي كارت هدايا آخر" بالطلب الصريح تشملها، فتُخفى بصرياً طوال العرض
+    const hiddenCards = Array.from(document.querySelectorAll('.room-levelup-celebration'));
+    hiddenCards.forEach(c => c.classList.add('gfx-hidden-for-legend'));
     const d = document.createElement('div');
     d.id = 'gfx-legend';
     d.className = 'gfx-legend';
-    const giftVisual = data.giftImage
-        ? `<img src="${data.giftImage}" alt="">`
-        : escapeHtml(data.giftIcon || '🎁');
-    const subtitle = isSelf
+    const giftImgUrl = isHttpsImageUrl(data.giftImage) ? data.giftImage : null;
+    const subtitle = data.isSelf
         ? `أنت أرسلت ${escapeHtml(data.giftName)} إلى ${data.toLabel}`
-        : `${escapeHtml(data.fromUsername)} أرسل ${escapeHtml(data.giftName)}`;
+        : `${escapeHtml(data.fromUsername)} أرسل ${escapeHtml(data.giftName)} إلى ${data.toLabel}`;
     d.innerHTML = `
         <div class="gfx-legend-rays"></div>
-        <div class="gfx-legend-g">${giftVisual}</div>
+        <div class="gfx-legend-g">${giftImgUrl ? '' : `<span>${escapeHtml(data.giftIcon || '🎁')}</span>`}</div>
         <div class="gfx-legend-t"><b>${escapeHtml(data.giftName)}</b><span>${subtitle}</span></div>
     `;
+    if (giftImgUrl) {
+        const img = document.createElement('img');
+        img.src = giftImgUrl;
+        d.querySelector('.gfx-legend-g').appendChild(img);
+    }
     document.body.appendChild(d);
-    setTimeout(() => d.remove(), 3200);
+    setTimeout(() => {
+        d.remove();
+        lane?.classList.remove('gfx-hidden-for-legend');
+        hiddenCards.forEach(c => c.classList.remove('gfx-hidden-for-legend'));
+        onDone?.();
+    }, 3200);
 }
 
 // ✅ دالة موحّدة لبناء كارد الهدية (تُستخدم بالخاصة والعامة)
@@ -16222,37 +16355,110 @@ function showGiftFloatingAnimation(giftImage, giftName, fromUsername, quantity =
 // ✅ إعلان هدية داخل الغرفة — فقاعة ذهبية بالدردشة + شريط جانبي عائم (أسلوب TikTok Live) +
 // أيقونة تطير من منتصف الغرفة نحو مقعد المستلم. يستبدل الرسالة الخاصة/الفقاعة العائمة السابقتين
 // =====================================================
-// 🛡️ طلب صريح بمراجعة PR (بند 1): نفس (مرسل+هدية+مستلم) متكرر بآخر رسالة بالدردشة يُدمَج
-// بعدّاد ×N حيّ (تحديث نص فقط) بدل رسالة DOM جديدة لكل هدية — سيل 300 هدية/10 ثوانٍ كان
-// يُضيف حتى 300 عنصر DOM منفصل بدردشة واحدة
-function appendRoomGiftChatMessage({ fromUsername, toUsername, giftName, giftIcon, giftImage, quantity }) {
+// 🛡️ طلب صريح بمراجعة PR #108 (بند 2): الدمج أصبح بمفتاح جلسة الكومبو (comboId) لا بآخر عنصر
+// بالدردشة فقط — سطر واحد لكل جلسة كومبو كاملة، يتحدَّث بعدّاده ×N مكانه طوال الجلسة (حتى
+// لو وصلت رسائل دردشة أخرى بينها)، ويُنهيه طبيعياً انتهاء الجلسة نفسها (لا مزيد من التحديثات
+// تصل بعدها). comboId غائب (مسار REST القديم sendGiftBatch بلا مفهوم جلسة) ⇐ سطر جديد دوماً،
+// تماماً كالسلوك القديم
+let gfxChatLineByCombo = new Map(); // comboId → {el, quantity, recipients:Set}
+function appendRoomGiftChatMessage({ fromUsername, toUsername, giftName, giftIcon, giftImage, quantity, comboId }) {
     const box = document.getElementById('room-chat-messages');
     if (!box) return;
-    const mergeKey = `${fromUsername}::${toUsername}::${giftName}`;
-    const last = box.lastElementChild;
-    if (last && last.classList.contains('room-chat-gift-bubble') && last.dataset.mergeKey === mergeKey) {
-        const nextQty = (parseInt(last.dataset.quantity, 10) || 1) + quantity;
-        last.dataset.quantity = nextQty;
-        const qtyEl = last.querySelector('.room-chat-gift-qty');
-        if (qtyEl) qtyEl.textContent = nextQty > 1 ? `×${nextQty} ` : '';
-        box.scrollTop = box.scrollHeight;
-        return;
+
+    if (comboId) {
+        const existing = gfxChatLineByCombo.get(comboId);
+        if (existing && existing.el.isConnected) {
+            existing.quantity += (quantity || 0);
+            existing.recipients.add(toUsername);
+            const qtyEl = existing.el.querySelector('.room-chat-gift-qty');
+            if (qtyEl) qtyEl.textContent = existing.quantity > 1 ? `×${existing.quantity.toLocaleString('en-US')} ` : '';
+            // ✅ كومبو واحد لعدة مستلمين (مقاعد مختلفة) بنفس الجلسة — النص يعكس العدد الحقيقي
+            const toEl = existing.el.querySelector('.room-chat-gift-to');
+            if (toEl && existing.recipients.size > 1) toEl.textContent = `${existing.recipients.size} مستلمين`;
+            box.scrollTop = box.scrollHeight;
+            return;
+        }
     }
+
     const el = document.createElement('div');
     el.className = 'room-chat-message room-chat-gift-bubble';
-    el.dataset.mergeKey = mergeKey;
-    el.dataset.quantity = quantity;
-    const qtyText = quantity > 1 ? `×${quantity} ` : '';
+    const qtyNum = quantity || 0;
+    const qtyText = qtyNum > 1 ? `×${qtyNum.toLocaleString('en-US')} ` : '';
     const iconHtml = giftImage ? `<img src="${giftImage}" class="room-chat-gift-inline-img" alt="">` : `<span>${giftIcon || '🎁'}</span>`;
     el.innerHTML = `
         <i class="fas fa-gift room-chat-gift-bubble-icon"></i>
         <p class="room-chat-msg-line">
-            <b>${escapeHtml(fromUsername)}</b> أرسل <span class="room-chat-gift-qty">${qtyText}</span>${escapeHtml(giftName)} ${iconHtml} إلى <b>${escapeHtml(toUsername)}</b>
+            <b>${escapeHtml(fromUsername)}</b> أرسل <span class="room-chat-gift-qty">${qtyText}</span>${escapeHtml(giftName)} ${iconHtml} إلى <b class="room-chat-gift-to">${escapeHtml(toUsername)}</b>
         </p>
     `;
     box.appendChild(el);
     box.scrollTop = box.scrollHeight;
     while (box.children.length > 60) box.firstElementChild.remove(); // ✅ نفس سقف 60 رسالة بالـDOM لدردشة الغرفة
+
+    if (comboId) {
+        gfxChatLineByCombo.set(comboId, { el, quantity: qtyNum, recipients: new Set([toUsername]) });
+        if (gfxChatLineByCombo.size > 24) gfxChatLineByCombo.delete(gfxChatLineByCombo.keys().next().value);
+    }
+}
+
+// ✅ تحديث مطلق (لا تراكمي) لعدّاد سطر دردشتي الخاص أثناء جلستي الحيّة — راجع updateComboDisplay
+// بـstartGiftComboSession؛ count هناك يُصحِّح نفسه تلقائياً عند أي تراجع فيُطابقه هذا دوماً
+function gfxSetChatLineQuantity(comboId, qty) {
+    const entry = gfxChatLineByCombo.get(comboId);
+    if (!entry || !entry.el.isConnected) return;
+    entry.quantity = qty;
+    const qtyEl = entry.el.querySelector('.room-chat-gift-qty');
+    if (qtyEl) qtyEl.textContent = qty > 1 ? `×${qty.toLocaleString('en-US')} ` : '';
+}
+
+// ✅ طلب صريح (بند 1 بمراجعة PR #108): شريط إعلان هدايا الآخرين — نفس تصميم .gfx-banner
+// الذي يستخدمه شريطي الخاص بالضبط (لا نظام ثانٍ مختلف بصرياً)، مُجمَّع ومُحدَّث مكانه بـ×N
+// حسب comboId (دقيق من السيرفر)، بحدّ GFX_BANNER_MAX وينزلق الأقدم خارجاً عند تجاوزه.
+// fromProfileImage/giftImage قيم غير موثوقة قادمة من صدى بثّ عام (مستخدم آخر) — تُفحَص بـ
+// isHttpsImageUrl وتُبنى كصورة DOM بخاصية src (لا تضمين نصي بـinnerHTML) تماماً كـ
+// renderRoomGiftSideBanner القديمة أعلى الملف (نفس التصلّب الأمني الموثَّق هناك)
+function gfxUpdateSideBanner(data) {
+    const comboKey = data.comboId || `solo:${data.fromUserId}:${data.giftId}:${data.toUserId}:${Date.now()}`;
+    const existing = gfxOtherBanners.find(b => b.comboId === comboKey);
+    if (existing) {
+        existing.count += (data.quantity || 1);
+        existing.recipients.add(data.toUserId);
+        const xEl = existing.el.querySelector('.gfx-banner-x');
+        if (xEl) {
+            xEl.textContent = '×' + existing.count.toLocaleString('en-US');
+            xEl.classList.remove('bump'); void xEl.offsetWidth; xEl.classList.add('bump');
+        }
+        const toEl = existing.el.querySelector('.gfx-banner-to');
+        if (toEl && existing.recipients.size > 1) toEl.textContent = `إلى ${existing.recipients.size} مستلمين`;
+        return;
+    }
+
+    if (gfxOtherBanners.length >= GFX_BANNER_MAX) {
+        const oldest = gfxOtherBanners.pop();
+        oldest.el.classList.add('out');
+        setTimeout(() => oldest.el.remove(), 420);
+    }
+
+    const avatarUrl = isHttpsImageUrl(data.fromProfileImage) ? data.fromProfileImage : DEFAULT_AVATAR_URL;
+    const giftImgUrl = isHttpsImageUrl(data.giftImage) ? data.giftImage : null;
+    const el = document.createElement('div');
+    el.className = 'gfx-banner';
+    el.innerHTML = `
+        <span class="gfx-banner-av"></span>
+        <span class="gfx-banner-txt"><b>${escapeHtml(data.fromUsername)}</b><span class="gfx-banner-to">إلى ${escapeHtml(data.toUsername)}</span></span>
+        <span class="gfx-banner-gift">${giftImgUrl ? '' : escapeHtml(data.giftIcon || '🎁')}</span>
+        <span class="gfx-banner-x">×${(data.quantity || 1).toLocaleString('en-US')}</span>
+    `;
+    const avImg = document.createElement('img');
+    avImg.src = avatarUrl;
+    el.querySelector('.gfx-banner-av').appendChild(avImg);
+    if (giftImgUrl) {
+        const giftImg = document.createElement('img');
+        giftImg.src = giftImgUrl;
+        el.querySelector('.gfx-banner-gift').appendChild(giftImg);
+    }
+    (document.getElementById('room-gift-lane') || document.body).prepend(el);
+    gfxOtherBanners.unshift({ comboId: comboKey, el, count: data.quantity || 1, recipients: new Set([data.toUserId]) });
 }
 
 // ✅ حالة الشريط الحالي — يسمح بجمع الإرسالات المتكررة (نفس المُرسل/نفس الهدية) بعدّاد

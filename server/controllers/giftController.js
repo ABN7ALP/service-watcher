@@ -943,7 +943,11 @@ exports.reserveGiftCombo = reserveGiftCombo;
 // نقاط PK/مستوى الغرفة/التحدي، الخبرة (wealthLevel/wealthXp)، نقاط نادي المعجبين — يُنفَّذ
 // هنا فقط بعد نجاح التزام معاملة reserveGiftCombo فعلياً، لا قبله ولا ضمن نفس المعاملة (لا
 // حاجة لضمانها ذرّياً مع الخصم نفسه — fire-and-forget/best-effort كما كانت دوماً بهذا المشروع)
-async function runGiftComboSideEffects({ io, sender, gift, validReceivers, totalCost, totalPrice, effectiveQty, cleanRoomId, safeGiftImage }) {
+// 🛡️ طلب صريح بمراجعة واجهات الكومبو: comboId اختياري (موجود فقط لمسار gift:combo عبر
+// Socket.IO — راجع socketService.js؛ REST/processGiftCombo بلا مفهوم جلسة كومبو أصلاً) —
+// يُضاف لحمولة room-gift-announcement كي يُجمِّع العميل كل إعلانات نفس الجلسة (حتى لو كانت
+// لعدّة مستلمين، كل واحد بحدث منفصل) بشريط/سطر دردشة واحد متحدِّث بدل عنصر جديد لكل حدث
+async function runGiftComboSideEffects({ io, sender, gift, validReceivers, totalCost, totalPrice, effectiveQty, cleanRoomId, safeGiftImage, comboId }) {
     const senderId = sender._id;
 
     if (cleanRoomId) {
@@ -991,7 +995,7 @@ async function runGiftComboSideEffects({ io, sender, gift, validReceivers, total
                 queueRoomGiftAnnouncement(io, {
                     roomId: cleanRoomId, fromUserId: senderId, fromUsername: sender.username, fromProfileImage: sender.profileImage,
                     toUserId: receiverId, toUsername: receiver.username, giftId: gift._id.toString(), giftName: gift.name,
-                    giftImage: safeGiftImage, giftIcon: gift.icon || '🎁', quantity: effectiveQty
+                    giftImage: safeGiftImage, giftIcon: gift.icon || '🎁', quantity: effectiveQty, comboId
                 });
             }
         } else {

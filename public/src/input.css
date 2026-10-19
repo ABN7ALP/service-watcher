@@ -6991,13 +6991,32 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 .gfx-legend-g { font-size: min(46vw, 220px); animation: gfxLegendIn 3.2s cubic-bezier(.2, 1.3, .4, 1) forwards; filter: drop-shadow(0 0 40px #ffb648); }
 .gfx-legend-g img { width: min(46vw, 220px); height: min(46vw, 220px); object-fit: contain; }
 @keyframes gfxLegendIn { 0% { transform: scale(0) rotate(-30deg); opacity: 1; } 20% { transform: scale(1.1) rotate(4deg); } 30% { transform: scale(1); } 85% { transform: scale(1.03); opacity: 1; } 100% { transform: scale(2.2); opacity: 0; } }
-.gfx-legend-t { position: absolute; bottom: 24%; text-align: center; animation: gfxLegendT 3.2s forwards; padding: 0 16px; }
-.gfx-legend-t b { display: block; font-size: 22px; font-weight: 900; background: linear-gradient(90deg, #fff3b0, #ffcf5a, #ff9f1c); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.gfx-legend-t span { font-size: 14px; color: #fff; }
+/* 🐛 مراجعة PR #108 (بند 3): تباين ضعيف فوق الأشعة الدوّارة — أُضيفت كبسولة داكنة شبه شفافة
+   خلف النص + text-shadow قوي على السطر الفرعي (الاسم العلوي يستخدم background-clip:text فلا
+   يقبل text-shadow عادياً، فالتباين هناك عبر drop-shadow بالفلتر بدلاً منه) */
+.gfx-legend-t { position: absolute; bottom: 24%; text-align: center; animation: gfxLegendT 3.2s forwards; padding: 10px 20px; max-width: 86vw; border-radius: 999px; background: rgba(10, 4, 20, 0.55); backdrop-filter: blur(3px); box-shadow: 0 2px 22px rgba(0, 0, 0, 0.4); }
+.gfx-legend-t b { display: block; font-size: 22px; font-weight: 900; background: linear-gradient(90deg, #fff3b0, #ffcf5a, #ff9f1c); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.7)); }
+.gfx-legend-t span { display: block; margin-top: 3px; font-size: 14px; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95), 0 0 12px rgba(0, 0, 0, 0.7); }
 @keyframes gfxLegendT { 0%, 15% { opacity: 0; transform: translateY(20px); } 25%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 
+/* ✅ طلب صريح (بند 3): الشريط الجانبي + أي بطاقة احتفال أخرى (ارتقاء مستوى ثروة مؤجَّلة مثلاً)
+   تختفي بصرياً طوال عرض الأسطورية بملء الشاشة فلا تزدحم فوقها — عامة لا تقتصر على العنصر الواحد */
+.gfx-hidden-for-legend { opacity: 0; transition: opacity 0.2s; }
+
+/* ✅ طلب صريح (بند 4): توست علوي صغير غير مُحجِّب — "⬆ مستوى الثروة Lv.N" أثناء كومبو حيّ،
+   بدل بطاقة الاحتفال الكاملة المُحجِّبة لمنتصف الغرفة */
+.gfx-top-toast {
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 10px); left: 50%; transform: translateX(-50%);
+    z-index: 616; display: flex; align-items: center; gap: 6px; padding: 6px 16px; border-radius: 999px;
+    background: rgba(18, 8, 28, 0.78); backdrop-filter: blur(6px); color: #ffcf5a; font-size: 12.5px; font-weight: 800;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4); pointer-events: none; animation: gfxTopToastIn 0.25s ease-out both;
+}
+.gfx-top-toast.out { animation: gfxTopToastOut 0.3s forwards; }
+@keyframes gfxTopToastIn { from { opacity: 0; transform: translate(-50%, -14px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes gfxTopToastOut { to { opacity: 0; transform: translate(-50%, -14px); } }
+
 @media (prefers-reduced-motion: reduce) {
-    .gfx-layer, .gfx-layer *, .gfx-mile b, .gfx-legend, .gfx-legend *, .gfx-banner, .gfx-banner.out, .gfx-fly {
+    .gfx-layer, .gfx-layer *, .gfx-mile b, .gfx-legend, .gfx-legend *, .gfx-banner, .gfx-banner.out, .gfx-fly, .gfx-top-toast, .gfx-top-toast.out {
         animation: none !important; transition: none !important;
     }
     .gfx-shaking { animation: none !important; }
