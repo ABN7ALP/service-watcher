@@ -14452,9 +14452,11 @@ async function showGiftStoreModal(targetUserId, targetUsername) {
                 setHeaderCoinsSilent(balance);
                 footer.querySelectorAll('.gift-footer-balance').forEach(el => setCoinTextSilent(el, balance));
                 checkLowBalance();
-                // ✅ صدى فقاعة الهدية بنافذة المحادثة المفتوحة نفسها — نفس ما كان يحدث سابقاً
-                // عبر استجابة HTTP المباشرة، الآن عبر ack دفعة الكومبو (راجع processGiftCombo)
-                if (res?.message) displayPrivateMessage(res.message, true);
+                // ✅ صدى فقاعة الهدية بنافذة المحادثة المفتوحة نفسها: لم يعد ممكناً الاعتماد على
+                // res.message هنا — الـack يصل فوراً بعد الخصم فقط (قبل تشغيل runGiftComboSideEffects
+                // التي تبني فقاعة الرسالة)، تحقيقاً لهدف السرعة (ack فوري لا ينتظر الآثار الجانبية).
+                // الصدى يصل الآن عبر حدث مستقل مخصّص (privateMessageSentEcho) من نفس تلك الآثار
+                // الجانبية — راجع مستمعه أسفل الملف ومصدره بـrunGiftComboSideEffects
                 // 🛡️ طلب صريح بمراجعة PR (بند 6): عداد الدعم أسفل المقعد لم يعد العميل يُطلقه
                 // إطلاقاً — كان ذلك الثغرة (socket.emit('room-gift-support', {value}) يثق بقيمة
                 // من العميل مباشرة). الخادم يبثّ room-support-updated تلقائياً بنفسه الآن، داخل
@@ -15918,87 +15920,103 @@ function wireGiftSelectionAndQty(rootEl, onSelectGift) {
 // =====================================================
 // ✅ محرّك إرسال مُجمَّع (Batched Combo Sender) — بحث معمّق في كيفية تعامل منصات البث الحي
 // الكبرى (Bigo/TikTok Live/Likee) مع "الكومبو" من الخلف: جلسة واحدة (comboId) بعدّاد تسلسلي
-// (seq)، لا هدية HTTP مستقلة لكل ضغطة. هذا استبدال جذري لمحرّك الإرسال القديم بمحرّك الكومبو
-// الدائري (كل ضغطة = fetch منفصل، حتى 4 متزامنة) الذي كان السبب الجذري لمشكلة "الرصيد يرقص"
-// (استجابات HTTP متزامنة قد تصل بترتيب مختلف عن ترتيب إرسالها).
+// (seq)، لا هدية HTTP مستقلة لكل ضغطة.
 //
-// الفكرة: كل ضغطة فعلية تُحدَّث محلياً بالتفاؤل فوراً تماماً كما كانت (راجع fireOnce بكل من
-// نافذتي الهدايا) — فقط الشق الشبكي يتغيّر: بدل نداء مستقل فوراً، تُراكَم الضغطات (tap) محلياً
-// وتُرسَل كدفعة واحدة عبر Socket.IO (مع ack) كل 250ms فقط — فـ20 ضغطة خلال ثانيتين تصبح ~8
-// رسائل فقط بدل 20 نداء HTTP مستقل. أول ضغطة تنطلق فوراً بلا انتظار أول نافذة تجميع كاملة،
-// فيبقى الإحساس فورياً كما كان بالضبط.
+// 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري أ): النسخة السابقة كانت تُطلِق دفعة جديدة
+// كل 250ms بـsetInterval بصرف النظر تماماً عن وصول ردّ الدفعة السابقة أم لا — فعدّة دفعات
+// حقيقية (معاملات Mongo منفصلة لنفس المُرسِل) كانت تُرسَل وتُعالَج بالتوازي فعلياً، متسببةً
+// بتضارب كتابة (write conflict) على السيرفر وإعادة محاولات قد تتجاوز مهلة الـ6 ثوانٍ بالعميل
+// (رسالة "تعذّر إرسال بعض ضغطات الكومبو"). الآن: عمق أنبوب 1 (pipeline depth 1) — دفعة واحدة
+// فقط معلّقة بأي لحظة لكل جلسة كومبو. الضغطات تتراكم محلياً (بالتفاؤل، فوراً بصرياً كما كانت)
+// أثناء انتظار ack الدفعة السابقة؛ فور وصوله تُرسَل أي ضغطات تراكمت بالأثناء كدفعة تالية فوراً
+// — لا فاصل ثابت بعد الآن، السرعة الفعلية محكومة فقط بسرعة رد السيرفر نفسه. بما أن دفعة واحدة
+// فقط معلّقة بأي لحظة، balanceAfter من ack السيرفر هو الرصيد الحقيقي الحالي مباشرة — التعقيد
+// القديم (inflight Map + حساب "ahead" لتعويض دفعات أخرى معلّقة) لم يعد له داعٍ إطلاقاً.
 //
-// حل "الرصيد يرقص" نهائياً: كل دفعة تحمل رقماً تسلسلياً (seq) فريداً ضمن جلسة الكومبو. عند
-// عودة ردّها، الرصيد المُطبَّق = رصيد السيرفر الذي يشمل هذي الدفعة (والسيرفر يُنفِّذ رسائل
-// نفس المستخدم بترتيب وصولها الفعلي — راجع withUserGiftLock بالسيرفر) ناقص أي دفعة لاحقة
-// (seq أكبر) أُرسلت فعلاً لكن لم يصل ردها بعد — فالرصيد المعروض لا يرتد لقيمة قديمة أبداً
-// بغض النظر عن ترتيب وصول الردود الفعلي، بعكس الكتابة المباشرة غير المرتَّبة سابقاً.
-function createComboSender({ buildPayload, onBalance, onFail, flushMs = 250 }) {
+// 🛡️ طلب صريح: فشل عابر (مهلة/عدم وصول ردّ، أو رفض خادم غير نهائي كـRATE_LIMITED) يُعاد إرساله
+// بنفس seq بالضبط حتى 3 محاولات (300/800/1500ms تصاعدياً) — السيرفر يُميّز التكرار بـ
+// (المُرسِل،comboId،seq) أصلاً (GiftComboTx)، فإعادة إرسال نفس seq آمنة تماماً مهما تكررت (لا
+// خصم مزدوج أبداً حتى لو نجحت محاولة سابقة فعلياً ولم يصل ردّها فقط). رفض نهائي/حاسم من
+// السيرفر (رصيد غير كافٍ، هدية غير صالحة...) لا يستحق إعادة محاولة (سيفشل بنفس السبب حتماً) —
+// تراجع فوري. التراجع عن الضغطات المتفائلة (onFail) لا يحدث إلا مرة واحدة بعد الفشل النهائي
+// (استنفاد المحاولات، أو رفض حاسم من أول محاولة) — رسالة خطأ واحدة واضحة، لا عدة رسائل متكررة
+const GFX_COMBO_RETRY_DELAYS_MS = [300, 800, 1500];
+const GFX_COMBO_DEFINITIVE_FAIL_CODES = new Set([
+    'INSUFFICIENT', 'BAD_QTY', 'BAD_SEQ', 'BAD_TAPS', 'BAD_COMBO_ID',
+    'NO_GIFT', 'NO_ROOM', 'NO_RECIPIENTS', 'NO_VALID_RECIPIENTS', 'NO_SENDER'
+]);
+function createComboSender({ buildPayload, onBalance, onFail }) {
     let comboId = null;
     let seq = 0;
     let pendingTaps = 0;
     let pendingCost = 0;
-    let flushTimer = null;
-    const inflight = new Map(); // seq → تكلفة هذي الدفعة، تُحذَف فور تأكيد ردها (نجاحاً أو فشلاً)
+    let inFlight = false;
+    let ended = false;
 
-    function flush() {
-        if (pendingTaps === 0) return;
-        const taps = pendingTaps;
-        const cost = pendingCost;
-        pendingTaps = 0;
-        pendingCost = 0;
-        const mySeq = ++seq;
-        inflight.set(mySeq, cost);
-
-        const payload = { comboId, seq: mySeq, taps, ...buildPayload(taps) };
-        // 🐛 إصلاح جذري: جرّبت volatile هنا بجولة سابقة بنيّة تجنّب إعادة إرسال رسالة قديمة
-        // بعد انقطاع اتصال لحظي (تُخصَم بعد أن تكون الواجهة أظهرت "فشل وأُعيد رصيدها") — لكن
-        // توثيق Socket.IO نفسه صريح: رسائل volatile قد تُفقَد أيضاً لو "أُرسلت عدة أحداث بنفس
-        // اللحظة تقريباً" (ليس فقط عند انقطاع الاتصال!) — وهذا تحديداً ما يحدث أثناء الضغط
-        // المستمر/الضغطات السريعة (محرّك التسارع يُطلق دفعة كل 250ms تباعاً)، فكانت رسائل
-        // تُهمَل بصمت قبل الوصول للسيرفر إطلاقاً دون أي خطأ شبكة حقيقي، فيصل العميل لمهلة 6
-        // ثوانٍ (res لا يصل أبداً) ويُعامِلها كفشل ويتراجع عن الخصم — هذا تحديداً سبب "تعذر
-        // إرسال الهدية" المتكرر أثناء الإرسال السريع/المستمر. حذفتها: نداء عادي بلا volatile
-        socket.timeout(6000).emit('gift:combo', payload, (err, res) => {
-            inflight.delete(mySeq);
-            if (err || !res?.ok) {
-                // ✅ هدايا v2: res الكامل يُمرَّر أيضاً كوسيط خامس (إضافي، لا يكسر المستدعين
-                // الحاليين الذين يتجاهلونه) — يحمل balance/needed الحقيقيين من ack السيرفر
-                // {code:'INSUFFICIENT'}، يحتاجهما شيت "رصيدك لا يكفي" الجديد (راجع showRoomGiftModal)
-                onFail(cost, res?.code, res?.message, taps, res);
-                return;
-            }
-            let ahead = 0;
-            inflight.forEach((c, s) => { if (s > mySeq) ahead += c; });
-            // ✅ taps/cost المُمرَّران هنا هما فقط ما أكّد السيرفر إرساله فعلياً بهذي الدفعة
-            // تحديداً — يُستخدَمان لأي أثر جانبي يجب أن يُطلَق فقط بعد تأكيد نجاح حقيقي
-            // (كعداد الدعم أسفل المقعد)، لا بالتفاؤل قبل معرفة النتيجة الفعلية
+    function settle(taps, cost, err, res) {
+        inFlight = false;
+        if (err || !res?.ok) {
+            // ✅ res الكامل يُمرَّر أيضاً كوسيط خامس (إضافي، لا يكسر المستدعين الحاليين الذين
+            // يتجاهلونه) — يحمل balance/needed الحقيقيين من ack السيرفر {code:'INSUFFICIENT'}،
+            // يحتاجهما شيت "رصيدك لا يكفي" الجديد (راجع showRoomGiftModal)
+            onFail(cost, res?.code, res?.message, taps, res);
+        } else {
             // 🐛 إصلاح جذري (هدايا v2 — المرحلة 3): حقل ack النجاح الحقيقي اسمه balanceAfter
             // (راجع socketService.js) لا balance — كان res.balance دوماً undefined فيُصبح
-            // الناتج NaN، يُخزَّن بـlocalStorage (JSON.stringify يحوّل NaN لـnull حرفياً)،
-            // فيُصبح رصيد المستخدم المحلي المخزَّن null/0 بعد أول ack ناجح من أي نافذة هدية —
-            // باگ موجود مسبقاً بثلاث واجهات الهدايا كلها (الخاصة/العامة/الغرفة)، لا بالكومبو
-            // الجديد وحده؛ اكتُشِف هنا أثناء اختبار الضغط المطوّل الحقيقي (تكرار يكشفه بسرعة)
-            onBalance(res.balanceAfter - ahead, res, cost, taps);
+            // الناتج NaN، يُخزَّن بـlocalStorage (JSON.stringify يحوّل NaN لـnull حرفياً)
+            onBalance(res.balanceAfter, res, cost, taps);
+        }
+        maybeSendNext();
+    }
+
+    function sendBatch(mySeq, taps, cost, attempt) {
+        const payload = { comboId, seq: mySeq, taps, ...buildPayload(taps) };
+        socket.timeout(6000).emit('gift:combo', payload, (err, res) => {
+            if (ended) return; // ✅ جلسة انتهت أثناء انتظار الردّ — لا نلمس حالة بعد end()
+            const failed = !!err || !res?.ok;
+            const isDefinitive = !err && res && GFX_COMBO_DEFINITIVE_FAIL_CODES.has(res.code);
+            if (failed && !isDefinitive && attempt < GFX_COMBO_RETRY_DELAYS_MS.length) {
+                setTimeout(() => sendBatch(mySeq, taps, cost, attempt + 1), GFX_COMBO_RETRY_DELAYS_MS[attempt]);
+                return;
+            }
+            settle(taps, cost, err, res);
         });
     }
 
+    function maybeSendNext() {
+        if (ended || inFlight || pendingTaps === 0) return;
+        inFlight = true;
+        const taps = pendingTaps, cost = pendingCost;
+        pendingTaps = 0;
+        pendingCost = 0;
+        const mySeq = ++seq;
+        sendBatch(mySeq, taps, cost, 0);
+    }
+
     function tap(cost) {
+        if (ended) return;
         if (!comboId) comboId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
         pendingTaps++;
         pendingCost += cost;
-        if (!flushTimer) {
-            flush(); // ✅ أول ضغطة تنطلق فوراً — لا تنتظر أول نافذة تجميع كاملة (250ms)
-            flushTimer = setInterval(flush, flushMs);
-        }
+        maybeSendNext(); // ✅ أول ضغطة (أو أي ضغطة والأنبوب فارغ) تنطلق فوراً بلا انتظار إطلاقاً
     }
 
     function end() {
-        flush();
-        clearInterval(flushTimer);
-        flushTimer = null;
+        // ✅ نادر فعلياً (الأنبوب عادة فارغ قبل وصولنا هنا — الجلسة تنتهي طبيعياً بعد 3 ثوانٍ
+        // خمول، لا أثناء ضغط فعلي): أي ضغطات تراكمت ولم تُرسَل بعد عند إنهاء قسري (مغادرة
+        // الغرفة أثناء الضغط مثلاً) تُرسَل مرة أخيرة best-effort — الواجهة البصرية للجلسة
+        // تُزال بصرف النظر، فلا ننتظر ردّها ولا نهتم بنتيجتها هنا (فقط مزامنة أمانة مع السيرفر)
+        if (pendingTaps > 0 && !ended) {
+            const taps = pendingTaps, cost = pendingCost;
+            const mySeq = ++seq;
+            const payload = { comboId, seq: mySeq, taps, ...buildPayload(taps) };
+            socket.timeout(6000).emit('gift:combo', payload, () => {});
+        }
+        ended = true;
         comboId = null;
         seq = 0;
+        pendingTaps = 0;
+        pendingCost = 0;
     }
 
     return { tap, end };
@@ -16038,8 +16056,11 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
     let inCombo = false;
     let missionTier = 0;
     let missionProgress = 0;
-    let inFlight = 0;
-    const MAX_CONCURRENT = 4; // ✅ نفس سقف المحرك القديم المُثبَت — يمنع إغراق الخادم أثناء التسارع
+    // 🗑️ إصلاح جذري (الموثوقية والسرعة — بند 1): inFlight/MAX_CONCURRENT (سقف نداءات متزامنة)
+    // حُذفا — كانا من عصر الإرسال الخام (fetch منفصل لكل ضغطة). fireOnce هنا تستدعي
+    // comboSender.tap() فقط (راجع createComboSender) — تراكم محلي فوري بلا أي نداء شبكة مباشر،
+    // فلا "تزامن" حقيقي يستحق تحديداً هنا؛ عمق الأنبوب الفعلي (دفعة واحدة معلّقة) مضمون داخل
+    // comboSender نفسه الآن، لا بعدّ استدعاءات fireOnce هنا إطلاقاً
 
     function updateRing() {
         const fg = btn.querySelector('.gift-combo-ring-fg');
@@ -16106,10 +16127,9 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
         clearInterval(tickTimer);
         tickTimer = setInterval(tick, TICK_MS);
 
-        inFlight++;
         fireOnce().then(ok => {
             if (ok === false) endCombo();
-        }).finally(() => { inFlight--; });
+        });
     }
 
     let holdActive = false;
@@ -16122,7 +16142,7 @@ function setupGiftComboSend(btn, fireOnce, onComboEnd) {
         if (!holdActive) return;
         holdTimeout = setTimeout(() => {
             if (!holdActive) return;
-            if (inFlight < MAX_CONCURRENT) fireOnceAndReset();
+            fireOnceAndReset();
             holdIntervalMs = Math.max(HOLD_MIN_INTERVAL, Math.round(holdIntervalMs * HOLD_ACCEL_FACTOR));
             scheduleHoldNext();
         }, holdIntervalMs);
@@ -16277,130 +16297,11 @@ function wireGiftCategoryTabs(rootEl, gifts, gridSelector) {
         });
     });
 }
-// --- ⚡ محرك الإرسال المتسارع (نسخة سريعة وآمنة): إرسال متراكب بدون انتظار كل رد، مع تحديث متفائل فوري ---
-// --- ⚡ محرك الإرسال المتسارع (نسخة ذكية بتسارع مستمر وسلس) ---
-function setupRapidGiftButton(targetUserId, getSelectedGift, btn, counterLabel) {
-    if (!btn) return;
-
-    let sentCount = 0;
-    let inFlight = 0;
-    let requestSeq = 0;        // ✅ رقم تسلسلي لكل طلب إرسال
-    let latestAppliedSeq = 0;  // ✅ آخر رقم تسلسلي طُبِّق رصيده فعلياً
-    const MAX_CONCURRENT = 4; // آمن الآن لأن الخصم في السيرفر أصبح ذرياً (atomic)
-    let active = false;
-    let rampTimeout = null;
-    let intervalMs = 260;      // نقطة الانطلاق
-    const MIN_INTERVAL = 60;   // أقصى سرعة ممكنة (يمنع إغراق الخادم)
-    const ACCEL_FACTOR = 0.88; // كل نبضة أسرع من سابقتها بنسبة 12%
-
-    async function fireOneGift() {
-        const gift = getSelectedGift();
-        if (!gift || !active) return;
-
-        const localUser = JSON.parse(localStorage.getItem('user'));
-        if (!localUser || localUser.coins < gift.price) {
-            stopRapidSending();
-            showNotification('رصيد الكوينز غير كافٍ للإرسال', 'error', 'fa-coins');
-            return;
-        }
-
-        // ✅ تحديث متفائل فوري: نخصم محلياً قبل رد الخادم لإحساس فوري بالسرعة
-        localUser.coins -= gift.price;
-        localStorage.setItem('user', JSON.stringify(localUser));
-        setHeaderCoinsSilent(localUser.coins);
-        const balanceEl = document.getElementById('gift-store-balance');
-        setCoinTextSilent(balanceEl, localUser.coins);
-
-                sentCount++;
-        const mySeq = ++requestSeq; // ✅ كل طلب يأخذ رقماً تسلسلياً فريداً
-        if (counterLabel) {
-            counterLabel.textContent = `أُرسل ×${sentCount}`;
-            counterLabel.classList.remove('hidden');
-        }
-        showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', sentCount);
-
-        inFlight++;
-        try {
-            const response = await fetch('/api/gifts/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ receiverId: targetUserId, giftId: gift.id, quantity: 1, context: 'private_chat' })
-            });
-            const result = await response.json();
-
-            if (response.ok) {
-                // ✅ نطبّق فقط رصيد الرد الأحدث زمنياً — يمنع ارتداد الرقم لقيمة قديمة خاطئة
-                // في حال وصل رد متأخر بعد رد أحدث منه بسبب تسابق الطلبات المتزامنة
-                if (mySeq > latestAppliedSeq) {
-                    latestAppliedSeq = mySeq;
-                    const syncedUser = JSON.parse(localStorage.getItem('user'));
-                    if (syncedUser) {
-                        syncedUser.coins = result.data.newSenderCoins;
-                        localStorage.setItem('user', JSON.stringify(syncedUser));
-                    }
-                    setHeaderCoinsSilent(result.data.newSenderCoins);
-                    setCoinTextSilent(balanceEl, result.data.newSenderCoins);
-                }
-                if (result.data.message) displayPrivateMessage(result.data.message, true);
-            } else {
-                // ✅ فشل: نعيد الرصيد المخصوم تفاؤلياً ونوقف السلسلة
-                const revertUser = JSON.parse(localStorage.getItem('user'));
-                if (revertUser) {
-                    revertUser.coins += gift.price;
-                    localStorage.setItem('user', JSON.stringify(revertUser));
-                    setHeaderCoinsSilent(revertUser.coins);
-                    setCoinTextSilent(balanceEl, revertUser.coins);
-                }
-                stopRapidSending();
-                showNotification(result.message || 'فشل إرسال الهدية', 'error');
-            }
-        } catch (error) {
-            // 🐛 إصلاح: لم يكن هذا الفرع يتراجع عن الخصم المتفائل عند فشل الشبكة — الرصيد
-            // يبقى مخصوماً محلياً بلا مبرر (راجع نفس الإصلاح بـfireOnce الخاصة أعلى الملف)
-            console.error('[RAPID GIFT] Error:', error);
-            const revertUser = JSON.parse(localStorage.getItem('user'));
-            if (revertUser) {
-                revertUser.coins += gift.price;
-                localStorage.setItem('user', JSON.stringify(revertUser));
-                setHeaderCoinsSilent(revertUser.coins);
-                setCoinTextSilent(balanceEl, revertUser.coins);
-            }
-            stopRapidSending();
-        } finally {
-            inFlight--;
-        }
-    }
-
-    function scheduleNext() {
-        if (!active) return;
-        rampTimeout = setTimeout(() => {
-            if (!active) return;
-            if (inFlight < MAX_CONCURRENT) fireOneGift();
-            intervalMs = Math.max(MIN_INTERVAL, Math.round(intervalMs * ACCEL_FACTOR));
-            scheduleNext();
-        }, intervalMs);
-    }
-
-    function startRapidSending() {
-        if (active) return;
-        active = true;
-        intervalMs = 260;
-        fireOneGift(); // إرسال فوري عند أول لمسة
-        scheduleNext();
-    }
-
-    function stopRapidSending() {
-        active = false;
-        clearTimeout(rampTimeout);
-        rampTimeout = null;
-    }
-
-    btn.addEventListener('mousedown', startRapidSending);
-    btn.addEventListener('touchstart', (e) => { e.preventDefault(); startRapidSending(); }, { passive: false });
-    btn.addEventListener('mouseup', stopRapidSending);
-    btn.addEventListener('mouseleave', stopRapidSending);
-    btn.addEventListener('touchend', stopRapidSending);
-}
+// 🗑️ إصلاح جذري (الموثوقية والسرعة — بند 1): setupRapidGiftButton حُذفت بالكامل — كانت
+// المحرّك القديم الحقيقي بذاته (fetch منفصل لكل ضغطة، حتى 4 متزامنة، نداء خام لـ/api/gifts/send
+// خارج مسار gift:combo تماماً) الذي صُمِّم الإصلاح الجذري كله لاستبداله. تأكَّد عبر بحث شامل
+// بالملف أنها كانت بلا أي مستدعٍ إطلاقاً (كود ميت فعلياً، لا نافذة هدايا حيّة تستخدمها) — شيت
+// الهدايا الخاصة (showGiftStoreModal) يستخدم بالفعل fireOnce+createComboSender+setupGiftComboSend
 
 // 🛡️ طلب صريح بمراجعة PR (بند 1): طابور الأنيميشن الطائر الوارد من إعلانات الغرفة (هدايا
 // غيري — سيناريو السيل الحقيقي: 300 هدية/10 ثوانٍ من عدة مرسلين). لا يلمس استدعاءات هديتي
@@ -18137,17 +18038,54 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
     if (!btn) return;
 
     let sentCount = 0;
-    let inFlight = 0;
-    let requestSeq = 0;
-    let latestAppliedSeq = 0;
-    const MAX_CONCURRENT = 3;
     let active = false;
     let rampTimeout = null;
     let intervalMs = 300;
     const MIN_INTERVAL = 90;
     const ACCEL_FACTOR = 0.87;
 
-    async function fireOnePublicGift() {
+    const getBalanceEl = () => document.getElementById('pg-balance');
+
+    // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري أ): هذا كان المحرّك الخام الوحيد المتبقي
+    // (fetch منفصل لكل ضغطة + سقف تزامن MAX_CONCURRENT=3) — نفس نمط السبب الجذري المذكور
+    // بالمهمة بالضبط، فقط لنافذة البث العام. استُبدل بمحرّك الكومبو المشترك الواحد
+    // (createComboSender، عمق أنبوب=1 + إعادة محاولة بالseq) عبر gift:combo، مطابقاً تماماً
+    // لما تستخدمه showGiftStoreModal/showRoomGiftModal. وضع audience (all/selected) مدعوم
+    // بالسيرفر عبر prepareGiftComboSend دون أي تغيير بمنطق تحديد المستلمين الأمني هناك
+    const comboSender = createComboSender({
+        buildPayload: () => {
+            const { audienceMode, selectedUserIds } = getAudience();
+            return {
+                giftId: getSelectedGift()?.id,
+                quantity: 1,
+                audience: audienceMode,
+                recipientIds: audienceMode === 'selected' ? Array.from(selectedUserIds) : []
+            };
+        },
+        onBalance: (balance) => {
+            const syncedUser = JSON.parse(localStorage.getItem('user'));
+            if (syncedUser) { syncedUser.coins = balance; localStorage.setItem('user', JSON.stringify(syncedUser)); }
+            setHeaderCoinsSilent(balance);
+            setCoinTextSilent(getBalanceEl(), balance);
+        },
+        onFail: (cost, code) => {
+            const revertUser = JSON.parse(localStorage.getItem('user'));
+            if (revertUser) {
+                revertUser.coins += cost;
+                localStorage.setItem('user', JSON.stringify(revertUser));
+                setHeaderCoinsSilent(revertUser.coins);
+                setCoinTextSilent(getBalanceEl(), revertUser.coins);
+            }
+            // ✅ حد معدّل الإرسال أثناء ضغط مستمر سريع: لا نقاطع المستخدم ولا نزعجه بتنبيه —
+            // فقط نتراجع عن خصم هذي الدفعة ونكمل بهدوء (نفس فلسفة 429 القديمة بالضبط)
+            if (code !== 'RATE_LIMITED') {
+                stopRapidSending();
+                showNotification(code === 'INSUFFICIENT' ? 'رصيد الكوينز غير كافٍ' : 'تعذّر إرسال الهدية، أُعيد رصيدها', 'error');
+            }
+        }
+    });
+
+    function fireOnePublicGift() {
         const gift = getSelectedGift();
         const { audienceMode, selectedUserIds, onlineCount } = getAudience();
         if (!gift || !active) return;
@@ -18171,78 +18109,23 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
         localUser.coins -= cost;
         localStorage.setItem('user', JSON.stringify(localUser));
         setHeaderCoinsSilent(localUser.coins);
-        const balanceEl = document.getElementById('pg-balance');
-        setCoinTextSilent(balanceEl, localUser.coins);
+        setCoinTextSilent(getBalanceEl(), localUser.coins);
 
-                sentCount++;
-        const mySeq = ++requestSeq;
+        sentCount++;
         if (counterLabel) {
             counterLabel.textContent = `أُرسل ×${sentCount}`;
             counterLabel.classList.remove('hidden');
         }
         showGiftFloatingAnimation(gift.imageUrl, gift.name, 'أنت', sentCount);
 
-        inFlight++;
-        try {
-            const payload = {
-                giftId: gift.id,
-                audience: audienceMode,
-                recipientIds: audienceMode === 'selected' ? Array.from(selectedUserIds) : []
-            };
-            const response = await fetch('/api/gifts/send-public', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify(payload)
-            });
-            const result = await response.json();
-
-            if (response.ok) {
-                if (mySeq > latestAppliedSeq) {
-                    latestAppliedSeq = mySeq;
-                    const syncedUser = JSON.parse(localStorage.getItem('user'));
-                    if (syncedUser) {
-                        syncedUser.coins = result.data.newCoins;
-                        localStorage.setItem('user', JSON.stringify(syncedUser));
-                    }
-                    setHeaderCoinsSilent(result.data.newCoins);
-                    setCoinTextSilent(balanceEl, result.data.newCoins);
-                }
-            } else {
-                const revertUser = JSON.parse(localStorage.getItem('user'));
-                if (revertUser) {
-                    revertUser.coins += cost;
-                    localStorage.setItem('user', JSON.stringify(revertUser));
-                    setHeaderCoinsSilent(revertUser.coins);
-                    setCoinTextSilent(balanceEl, revertUser.coins);
-                }
-                // ✅ حد معدّل الإرسال (429) أثناء ضغط مستمر سريع: لا نقاطع المستخدم ولا نزعجه
-                // بتنبيه — فقط نتراجع عن خصم هذي المحاولة ونكمل بهدوء بالتكرار التالي تلقائياً
-                if (response.status !== 429) {
-                    stopRapidSending();
-                    showNotification(result.message || 'فشل إرسال الهدية', 'error');
-                }
-            }
-        } catch (error) {
-            // 🐛 إصلاح: لم يكن هذا الفرع يتراجع عن الخصم المتفائل عند فشل الشبكة
-            console.error('[RAPID PUBLIC GIFT] Error:', error);
-            const revertUser = JSON.parse(localStorage.getItem('user'));
-            if (revertUser) {
-                revertUser.coins += cost;
-                localStorage.setItem('user', JSON.stringify(revertUser));
-                setHeaderCoinsSilent(revertUser.coins);
-                setCoinTextSilent(balanceEl, revertUser.coins);
-            }
-            stopRapidSending();
-        } finally {
-            inFlight--;
-        }
+        comboSender.tap(cost);
     }
 
     function scheduleNext() {
         if (!active) return;
         rampTimeout = setTimeout(() => {
             if (!active) return;
-            if (inFlight < MAX_CONCURRENT) fireOnePublicGift();
+            fireOnePublicGift();
             intervalMs = Math.max(MIN_INTERVAL, Math.round(intervalMs * ACCEL_FACTOR));
             scheduleNext();
         }, intervalMs);
@@ -18260,6 +18143,7 @@ function setupRapidPublicGiftButton(getSelectedGift, getAudience, btn, counterLa
         active = false;
         clearTimeout(rampTimeout);
         rampTimeout = null;
+        comboSender.end();
     }
 
     btn.addEventListener('mousedown', startRapidSending);
@@ -21514,6 +21398,17 @@ socket.on('privateMessageReceived', async (data) => {
         if (document.getElementById('messages-list-container')) {
             loadMessagesList();
         }
+    }
+});
+
+// 📩 صدى فقاعتي الخاصة بي عند إرسال هدية خاصة عبر gift:combo: الـack الفوري الجديد لا يحمل
+// الرسالة (راجع الشرح بـfireOnce/onBalance أعلى الملف) — تصل هنا بدلاً من ذلك من
+// runGiftComboSideEffects (الآثار الجانبية غير المحظورة بعد تأكيد الخصم مباشرة)
+socket.on('privateMessageSentEcho', (data) => {
+    const chatModal = document.getElementById('private-chat-modal');
+    const targetUserId = chatModal?.dataset?.targetUserId;
+    if (chatModal && targetUserId === data.receiverId && data.message) {
+        displayPrivateMessage(data.message, true);
     }
 });
 
