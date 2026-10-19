@@ -14524,11 +14524,14 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         function renderRecips() {
             const box = document.getElementById('gsheet-recips');
             if (!box) return;
+            // 🐛 إصلاح (مراجعة المرحلة 2): <img src=""> مباشرة تُنتج أيقونة صورة مكسورة — نفس
+            // مكوّن avatarHTML الموحَّد المُستخدَم بالمقاعد نفسها (DEFAULT_AVATAR_URL احتياطي +
+            // إطار المستخدم الفعلي إن وُجد)، بحجم 32px عبر --size بدل أي سمة حجم جاهزة
             box.innerHTML = seatedUsers.length === 0
                 ? '<span class="text-[11px] text-gray-500">لا يوجد أحد قاعد على مقعد حالياً</span>'
                 : seatedUsers.map(u => `
                     <button type="button" class="gsheet-rc" data-user-id="${u.id}" title="${escapeHtml(u.username)}" aria-pressed="${selectedUserIds.has(u.id)}">
-                        <img src="${u.profileImage || ''}" alt="">
+                        ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, wrapStyle: '--size:32px', photoAttrs: ' alt=""' })}
                     </button>
                 `).join('');
             box.querySelectorAll('.gsheet-rc').forEach(btn => {
@@ -14685,10 +14688,14 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 prevEl.style.insetInlineStart = fillPct + '%';
                 prevEl.style.width = Math.max(0, prevEndPct - fillPct) + '%';
             }
+            // 🐛 إصلاح (مراجعة المرحلة 2): بدون عزل اتجاه صريح، الأرقام/الفاصل "/" داخل سياق RTL
+            // (.gsheet-wfoot أصلاً direction:rtl) قد تُعاد ترتيبها بصرياً (كانت تظهر "10,500 /
+            // 4,200" بدل "4,200 / 10,500") — <bdi dir="ltr"> يعزل الرقمين كوحدة LTR واحدة بصرف
+            // النظر عن السياق المحيط، أوثق من الاعتماد على direction بالـCSS وحدها
             const wGainEl = document.getElementById('gsheet-wgain');
-            if (wGainEl) wGainEl.textContent = `+${gain.toLocaleString('en-US')} XP`;
+            if (wGainEl) wGainEl.innerHTML = `<bdi dir="ltr">+${gain.toLocaleString('en-US')} XP</bdi>`;
             const wNowEl = document.getElementById('gsheet-wnow');
-            if (wNowEl) wNowEl.textContent = `${xp.toLocaleString('en-US')} / ${r.toLocaleString('en-US')}`;
+            if (wNowEl) wNowEl.innerHTML = `<bdi dir="ltr">${xp.toLocaleString('en-US')} / ${r.toLocaleString('en-US')}</bdi>`;
             const wToEl = document.getElementById('gsheet-wto');
             if (wToEl) {
                 if (gain === 0) {
@@ -14811,17 +14818,41 @@ async function openGiftLowBalanceSheet(missingAmount) {
         if (infoRes.status !== 'success') throw new Error('فشل تحميل بيانات الشحن');
         const { coinRate, minUSD, maxUSD } = infoRes.data;
         const clamp = (v) => Math.min(maxUSD, Math.max(minUSD, v));
-        const tiers = [...new Set([1, 5, 10, 50].map(clamp))];
         const box = document.getElementById('gift-lb-packages');
         if (!box) return;
-        const hotIndex = Math.min(2, tiers.length - 1);
-        box.innerHTML = tiers.map((usd, i) => `
+
+        // ✅ طلب صريح (مراجعة المرحلة 2، بند c): البطاقة الأولى = "المبلغ الناقص" بالضبط —
+        // الكوينز = المبلغ الناقص مُقرَّباً لأعلى لأقرب "خطوة شراء" (أصغر وحدة نقدية حقيقية،
+        // السنت — لا يمكن شراء كسر سنت)، والدولار مُحتسَب من coinRate الحقيقي بلا أي رقم
+        // ثابت. لو تجاوز المبلغ الناقص الحد الأقصى maxUSD، تُقفل البطاقة على الحد الأقصى نفسه
+        // (أقصى شحنة ممكنة دفعة واحدة) مع ملاحظة صريحة أنها لن تكفي وحدها بالكامل
+        const neededUSD = missingAmount / coinRate;
+        let exactUSD = Math.max(minUSD, Math.ceil(neededUSD * 100) / 100); // خطوة الشراء: السنت
+        const exactCapped = exactUSD > maxUSD;
+        if (exactCapped) exactUSD = maxUSD;
+        const exactCoins = Math.round(exactUSD * coinRate);
+        const fmtUSD = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(2));
+        const exactCardHTML = `
+            <button type="button" class="gsheet-pkb gsheet-pkb-exact" data-usd="${exactUSD}">
+                <span class="gsheet-pkb-rib gsheet-pkb-rib-exact">المبلغ الناقص</span>
+                <span class="gsheet-pkb-amt">${coinIconHTML(16)}${exactCoins.toLocaleString('en-US')}</span>
+                <span class="gsheet-pkb-usd">$${fmtUSD(exactUSD)}</span>
+                ${exactCapped ? '<span class="gsheet-pkb-note">أقصى شحنة بدفعة واحدة — لن تكفي المبلغ كاملاً</span>' : ''}
+            </button>
+        `;
+
+        // ثم 3 مستويات ثابتة (بدل 4 سابقاً — فسح مكان لبطاقة المبلغ الناقص الجديدة)
+        const fixedTiers = [...new Set([5, 10, 50].map(clamp))];
+        const hotIndex = Math.min(1, fixedTiers.length - 1);
+        const fixedCardsHTML = fixedTiers.map((usd, i) => `
             <button type="button" class="gsheet-pkb ${i === hotIndex ? 'hot' : ''}" data-usd="${usd}">
                 ${i === hotIndex ? '<span class="gsheet-pkb-rib">الأكثر شراءً</span>' : ''}
                 <span class="gsheet-pkb-amt">${coinIconHTML(16)}${Math.round(usd * coinRate).toLocaleString('en-US')}</span>
-                <span class="gsheet-pkb-usd">$${usd}</span>
+                <span class="gsheet-pkb-usd">$${fmtUSD(usd)}</span>
             </button>
         `).join('');
+
+        box.innerHTML = exactCardHTML + fixedCardsHTML;
         box.querySelectorAll('.gsheet-pkb').forEach(btn => {
             btn.addEventListener('click', () => {
                 const usd = parseFloat(btn.dataset.usd);

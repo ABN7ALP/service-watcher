@@ -17981,6 +17981,28 @@ body.in-voice-room .voice-seat.duel-lose {
   color: var(--g-muted, #9a8fb0);
 }
 
+/* ✅ مراجعة المرحلة 2 (بند c): بطاقة "المبلغ الناقص" الأولى — أبرز بصرياً من البطاقات
+   الثابتة (حدّ ذهبي مزدوج التوهّج)، مع شارة نصّها مختلف عن "الأكثر شراءً" */
+
+.gsheet-pkb-exact {
+  border-color: var(--g-gold, #ffcf5a);
+  background: radial-gradient(90% 80% at 50% 0%, rgba(255, 207, 90, 0.22), transparent);
+  box-shadow: 0 0 0 1px rgba(255, 207, 90, 0.25) inset;
+}
+
+.gsheet-pkb-rib-exact {
+  background: var(--g-pink, #ff4fa3);
+  color: #fff;
+}
+
+.gsheet-pkb-note {
+  font-size: 9px;
+  color: var(--g-muted, #9a8fb0);
+  text-align: center;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
 .hover\:scale-110:hover{
   --tw-scale-x: 1.1;
   --tw-scale-y: 1.1;

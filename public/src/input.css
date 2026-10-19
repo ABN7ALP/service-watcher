@@ -6919,5 +6919,10 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 .gsheet-lbmore { display: flex; justify-content: space-between; align-items: center; }
 .gsheet-lbmore button { font-size: 12.5px; font-weight: 800; background: none; border: 0; color: var(--g-gold, #ffcf5a); cursor: pointer; padding: 6px 0; }
 .gsheet-lbmore .gsheet-lb-dismiss { color: var(--g-muted, #9a8fb0); }
+/* ✅ مراجعة المرحلة 2 (بند c): بطاقة "المبلغ الناقص" الأولى — أبرز بصرياً من البطاقات
+   الثابتة (حدّ ذهبي مزدوج التوهّج)، مع شارة نصّها مختلف عن "الأكثر شراءً" */
+.gsheet-pkb-exact { border-color: var(--g-gold, #ffcf5a); background: radial-gradient(90% 80% at 50% 0%, rgba(255, 207, 90, 0.22), transparent); box-shadow: 0 0 0 1px rgba(255, 207, 90, 0.25) inset; }
+.gsheet-pkb-rib-exact { background: var(--g-pink, #ff4fa3); color: #fff; }
+.gsheet-pkb-note { font-size: 9px; color: var(--g-muted, #9a8fb0); text-align: center; line-height: 1.4; margin-top: 2px; }
 
 
