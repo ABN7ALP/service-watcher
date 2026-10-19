@@ -2713,7 +2713,7 @@ socket.on('refreshBlockData', async () => {
                     return ack({ ok: true, seq, balanceAfter: outcome.balanceAfter });
                 }
 
-                const result = await runGiftComboSideEffects({ io, ...outcome.reserved });
+                const result = await runGiftComboSideEffects({ io, comboId, ...outcome.reserved });
                 ack({
                     ok: true, seq, balanceAfter: result.balance,
                     wealthLevel: result.wealthLevel, wealthXp: result.wealthXp, requiredXp: result.requiredXp
