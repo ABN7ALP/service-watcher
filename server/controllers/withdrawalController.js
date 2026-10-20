@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Withdrawal = require('../models/Withdrawal');
 const User = require('../models/User');
 
@@ -138,37 +139,60 @@ exports.reviewWithdrawal = async (req, res) => {
     try {
         const { withdrawalId } = req.params;
         const { action, reason } = req.body; // action: 'approve' | 'reject'
-
-        const withdrawal = await Withdrawal.findById(withdrawalId);
-        if (!withdrawal) return res.status(404).json({ status: 'fail', message: 'الطلب غير موجود' });
-        if (withdrawal.status !== 'pending') {
-            return res.status(400).json({ status: 'fail', message: 'تمت معالجة هذا الطلب مسبقاً' });
-        }
-
-        const io = req.app.get('socketio');
-        const user = await User.findById(withdrawal.user);
-
-        if (action === 'approve') {
-            withdrawal.status = 'completed';
-            withdrawal.completedAt = new Date();
-        } else if (action === 'reject') {
-            withdrawal.status = 'rejected';
-            withdrawal.rejectionReason = reason || 'لم يُحدد سبب';
-            // ✅ إعادة المبلغ المحجوز فور الرفض
-            if (user) {
-                user.balance += withdrawal.amount;
-                await user.save();
-                if (io && user.socketId) {
-                    io.to(user.socketId).emit('balanceUpdate', { newBalance: user.balance });
-                }
-            }
-        } else {
+        if (action !== 'approve' && action !== 'reject') {
             return res.status(400).json({ status: 'fail', message: 'إجراء غير صالح' });
         }
 
-                withdrawal.processedBy = req.admin._id;
-        withdrawal.processedAt = new Date();
-        await withdrawal.save();
+        // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #5): كان الفحص (status!=='pending')
+        // وتعديل الرصيد لاحقاً (user.balance += ...; save()) عمليتين منفصلتين تماماً بلا أي قفل —
+        // أُثبِت فعلياً: طلبا "رفض" متزامنان لنفس الطلب أعادا كلاهما المبلغ (استرداد مزدوج). نفس
+        // نمط adminReviewCustomGift (المرجع السليم فعلاً بهذا المشروع): حجز ذرّي واحد
+        // (findOneAndUpdate بشرط status:'pending') يضمن أن محاولة ثانية على نفس الطلب تصطدم
+        // بفشل الحجز نفسه فوراً — لا فرصة لتنفيذ الاسترداد مرتين إطلاقاً
+        const rejectionReason = action === 'reject' ? (reason || 'لم يُحدد سبب') : null;
+        const session = await mongoose.startSession();
+        let withdrawal = null;
+        let user = null;
+        try {
+            await session.withTransaction(async () => {
+                const newStatus = action === 'approve' ? 'completed' : 'rejected';
+                const update = {
+                    status: newStatus, processedBy: req.admin._id, processedAt: new Date()
+                };
+                if (newStatus === 'completed') update.completedAt = new Date();
+                if (newStatus === 'rejected') update.rejectionReason = rejectionReason;
+
+                withdrawal = await Withdrawal.findOneAndUpdate(
+                    { _id: withdrawalId, status: 'pending' },
+                    { $set: update },
+                    { new: true, session }
+                );
+                if (!withdrawal) {
+                    throw Object.assign(new Error('تمت معالجة هذا الطلب مسبقاً'), { code: 'ALREADY_REVIEWED' });
+                }
+
+                if (action === 'reject') {
+                    // ✅ استرداد المبلغ المحجوز ذرّياً بنفس المعاملة — لا فرصة لاسترداد مزدوج
+                    user = await User.findByIdAndUpdate(
+                        withdrawal.user, { $inc: { balance: withdrawal.amount } }, { new: true, session }
+                    );
+                } else {
+                    user = await User.findById(withdrawal.user).session(session);
+                }
+            });
+        } catch (txError) {
+            if (txError.code === 'ALREADY_REVIEWED') {
+                return res.status(409).json({ status: 'fail', message: txError.message });
+            }
+            throw txError;
+        } finally {
+            await session.endSession();
+        }
+
+        const io = req.app.get('socketio');
+        if (action === 'reject' && io && user?.socketId) {
+            io.to(user.socketId).emit('balanceUpdate', { newBalance: user.balance });
+        }
 
         const AdminLog = require('../models/AdminLog');
         await AdminLog.logAction({

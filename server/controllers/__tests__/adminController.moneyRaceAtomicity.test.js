@@ -1,0 +1,313 @@
+// ملف: adminController.moneyRaceAtomicity.test.js
+// 🛡️ مراجعة أمنية (redteam-audit-1 — البند #6، High): approveDeposit وrejectTransaction (وبنفس
+// العلّة فعلياً: approveCoinPurchase وrejectCoinPurchase وadjustUserFunds) كانت كل منها تقرأ
+// المستند، تفحص حالته (status !== 'pending' مثلاً)، ثم تُعدِّل الرصيد/الحالة بعملية save() أو
+// += منفصلة تماماً — طلبا موافقة/رفض متزامنان على نفس الطلب (نافذتان مفتوحتان لنفس المشرف، أو
+// مشرفان مختلفان) يتجاوزان الفحص معاً بالاعتماد على نفس القراءة القديمة، فتُضاف القيمة مرتين
+// (إيداع/كوينز مُضاعَف) أو يُسترَد المبلغ مرتين (سحب مرفوض مرتين). أُصلِحت الدوال الخمس جميعاً
+// بنفس النمط المرجعي بهذا المشروع (adminReviewCustomGift): حجز ذرّي واحد عبر findOneAndUpdate
+// بشرط الحالة الحالية — أي محاولة ثانية على نفس المستند تصطدم بفشل الحجز نفسه فوراً.
+//
+// نفس استراتيجية الاختبار الثابتة بهذا المشروع (راجع giftController.restAtomicity.test.js
+// المجاور): jest.spyOn على نماذج Mongoose الحقيقية بمحاكاة حالة بذاكرة JS (لا قاعدة بيانات
+// حقيقية؛ mongodb-memory-server يُعلِّق Jest بهذا المحيط بالتحديد — راجع ملاحظات الجلسة). محاكاة
+// findOneAndUpdate هنا تُطبِّق شرط الحالة + التعديل بشكل متزامن (synchronous) داخل نفس استدعاء
+// الدالة، قبل أي "await" — وهذا يُحاكي بدقّة الضمان الذري الحقيقي لـMongoDB: أي طلبين متزامنين
+// (Promise.all) ينفَّذ أولهما فعلياً حتى نقطة التعليق الأولى قبل أن يبدأ الثاني، فيرى الثاني
+// الحالة المحدَّثة فعلاً ويفشل حجزه كما يحدث تماماً بخادم Mongo حقيقي.
+
+jest.mock('../../utils/botMessenger', () => ({
+    sendBotMessage: jest.fn().mockResolvedValue(null),
+    getBotUser: jest.fn().mockResolvedValue({ _id: 'bot' })
+}));
+
+const mongoose = require('mongoose');
+const User = require('../../models/User');
+const Transaction = require('../../models/Transaction');
+const CoinPurchase = require('../../models/CoinPurchase');
+const AdminLog = require('../../models/AdminLog');
+const adminController = require('../adminController');
+
+function chainable(value) {
+    const p = Promise.resolve(value);
+    p.select = () => p;
+    p.session = () => p;
+    return p;
+}
+
+function makeDb() {
+    return { users: new Map(), transactions: new Map(), purchases: new Map() };
+}
+function seedUser(db, overrides) {
+    const user = { _id: 'u_default', balance: 0, coins: 0, socketId: null, ...overrides };
+    db.users.set(user._id, user);
+    return user;
+}
+function seedTransaction(db, overrides) {
+    const tx = { _id: 'tx_default', user: 'u_default', type: 'deposit', amount: 100, status: 'pending', ...overrides };
+    db.transactions.set(tx._id, tx);
+    return tx;
+}
+function seedPurchase(db, overrides) {
+    const p = { _id: 'cp_default', user: 'u_default', coinsAmount: 500, amountUSD: 10, status: 'pending_review', ...overrides };
+    db.purchases.set(p._id, p);
+    return p;
+}
+
+// ✅ محاكاة واقعية بما يكفي لـwithTransaction: الالتزام يُطبَّق مباشرة على db، والرفض الداخلي
+// (مثل ALREADY_PROCESSED/NOT_PENDING/CLAIM_FAILED) يُعيد db لحالته قبل المعاملة بالضبط
+function wireMocks(db) {
+    // ✅ تتبّع التراجع (undo) لكل مستند عند لحظة تعديله فعلياً (لا لقطة شاملة لكل المجموعة عند
+    // بداية المعاملة) — ضروري هنا لأن اختباراتنا تُشغِّل معاملتين حقيقيتين بالتزامن (Promise.all)
+    // على نفس الـMaps المشتركة: لقطة شاملة عند البداية تصبح "قديمة" إن عدّلت معاملة أخرى نفس
+    // المجموعة بالمنتصف، فيُرجِع تراجع المعاملة الفاشلة قيماً قديمة فوق تعديل صحيح التزمته
+    // المعاملة الفائزة بالتزامن. AsyncLocalStorage يُميِّز بدقّة أي استدعاء await ينتمي لأي
+    // معاملة حتى مع التشابك الزمني، فيُراكِم كل معاملة سجلّ تراجعها الخاص فقط لما عدّلته هي فعلاً
+    const { AsyncLocalStorage } = require('async_hooks');
+    const txContext = new AsyncLocalStorage();
+    function recordUndo(map, key, beforeValue) {
+        const ctx = txContext.getStore();
+        if (ctx) ctx.undo.push({ map, key, before: beforeValue });
+    }
+
+    jest.spyOn(User, 'findByIdAndUpdate').mockImplementation((id, update) => {
+        const row = db.users.get(String(id));
+        if (!row) return chainable(null);
+        recordUndo(db.users, row._id, { ...row });
+        if (update.$inc) {
+            for (const k of Object.keys(update.$inc)) row[k] = (row[k] || 0) + update.$inc[k];
+        }
+        return chainable({ ...row });
+    });
+    jest.spyOn(User, 'findOneAndUpdate').mockImplementation((filter, update) => {
+        const row = db.users.get(String(filter._id));
+        if (!row) return chainable(null);
+        if (filter.balance && typeof filter.balance.$gte === 'number' && row.balance < filter.balance.$gte) {
+            return chainable(null);
+        }
+        if (filter.coins && typeof filter.coins.$gte === 'number' && row.coins < filter.coins.$gte) {
+            return chainable(null);
+        }
+        recordUndo(db.users, row._id, { ...row });
+        if (update.$inc) {
+            for (const k of Object.keys(update.$inc)) row[k] = (row[k] || 0) + update.$inc[k];
+        }
+        return chainable({ ...row });
+    });
+    jest.spyOn(User, 'exists').mockImplementation((filter) => Promise.resolve(!!db.users.get(String(filter._id))));
+
+    jest.spyOn(Transaction, 'findOneAndUpdate').mockImplementation((filter, update) => {
+        const row = db.transactions.get(String(filter._id));
+        if (!row) return chainable(null);
+        if (filter.status && row.status !== filter.status) return chainable(null);
+        recordUndo(db.transactions, row._id, { ...row });
+        if (update.$set) Object.assign(row, update.$set);
+        return chainable({ ...row });
+    });
+    jest.spyOn(Transaction, 'create').mockImplementation((docs) => {
+        const arr = Array.isArray(docs) ? docs : [docs];
+        const created = arr.map((d, i) => ({ ...d, _id: `tx_new_${db.transactions.size + i}` }));
+        created.forEach(c => { recordUndo(db.transactions, c._id, null); db.transactions.set(c._id, c); });
+        return Promise.resolve(Array.isArray(docs) ? created : created[0]);
+    });
+
+    jest.spyOn(CoinPurchase, 'findOneAndUpdate').mockImplementation((filter, update) => {
+        const row = db.purchases.get(String(filter._id));
+        if (!row) return chainable(null);
+        if (filter.status) {
+            const allowed = filter.status.$in ? filter.status.$in : [filter.status];
+            if (!allowed.includes(row.status)) return chainable(null);
+        }
+        recordUndo(db.purchases, row._id, { ...row });
+        if (update.$set) Object.assign(row, update.$set);
+        return chainable({ ...row });
+    });
+    jest.spyOn(CoinPurchase, 'exists').mockImplementation((filter) => Promise.resolve(!!db.purchases.get(String(filter._id))));
+
+    jest.spyOn(AdminLog, 'create').mockResolvedValue({});
+    jest.spyOn(AdminLog, 'logAction').mockResolvedValue({});
+
+    jest.spyOn(mongoose, 'startSession').mockImplementation(async () => ({
+        withTransaction: async (fn) => {
+            const ctx = { undo: [] };
+            try {
+                await txContext.run(ctx, fn);
+            } catch (error) {
+                for (let i = ctx.undo.length - 1; i >= 0; i--) {
+                    const { map, key, before } = ctx.undo[i];
+                    if (before === null) map.delete(key);
+                    else map.set(key, before);
+                }
+                throw error;
+            }
+        },
+        endSession: async () => {}
+    }));
+}
+
+function mockRes() {
+    return { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
+}
+function makeFakeIo() {
+    return { to: () => ({ emit: () => {} }), emit: () => {} };
+}
+function mockReq(overrides) {
+    return { admin: { _id: 'admin1' }, params: {}, body: {}, ip: '127.0.0.1', app: { get: () => makeFakeIo() }, ...overrides };
+}
+
+describe('approveDeposit — حجز ذرّي يمنع إيداعاً مزدوجاً من موافقتين متزامنتين', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('موافقتان متزامنتان على نفس المعاملة: واحدة فقط تنجح، الرصيد يُضاف مرة واحدة فقط', async () => {
+        const db = makeDb();
+        const user = seedUser(db, { _id: 'u1', balance: 0 });
+        seedTransaction(db, { _id: 'tx1', user: 'u1', amount: 50, status: 'pending' });
+        wireMocks(db);
+
+        const req1 = mockReq({ params: { transactionId: 'tx1' } });
+        const res1 = mockRes();
+        const req2 = mockReq({ params: { transactionId: 'tx1' } });
+        const res2 = mockRes();
+
+        await Promise.all([
+            adminController.approveDeposit(req1, res1),
+            adminController.approveDeposit(req2, res2)
+        ]);
+
+        const bodies = [res1.json.mock.calls[0][0], res2.json.mock.calls[0][0]];
+        const successCount = bodies.filter(b => b.success === true).length;
+        const failCount = bodies.filter(b => b.success === false).length;
+        expect(successCount).toBe(1);
+        expect(failCount).toBe(1);
+        expect(user.balance).toBe(50); // ✅ ليس 100 — جوهر الإصلاح
+    });
+});
+
+describe('rejectTransaction — حجز ذرّي يمنع استرداد سحب مرفوض مرتين', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('رفضان متزامنان لنفس طلب السحب: واحد فقط ينجح، الاسترداد يحدث مرة واحدة فقط', async () => {
+        const db = makeDb();
+        const user = seedUser(db, { _id: 'u1', balance: 0 });
+        seedTransaction(db, { _id: 'tx1', user: 'u1', type: 'withdrawal', amount: -30, status: 'pending' });
+        wireMocks(db);
+
+        const req1 = mockReq({ params: { transactionId: 'tx1' }, body: { reason: 'test' } });
+        const res1 = mockRes();
+        const req2 = mockReq({ params: { transactionId: 'tx1' }, body: { reason: 'test' } });
+        const res2 = mockRes();
+
+        await Promise.all([
+            adminController.rejectTransaction(req1, res1),
+            adminController.rejectTransaction(req2, res2)
+        ]);
+
+        const bodies = [res1.json.mock.calls[0][0], res2.json.mock.calls[0][0]];
+        const successCount = bodies.filter(b => b.success === true).length;
+        const failCount = bodies.filter(b => b.success === false).length;
+        expect(successCount).toBe(1);
+        expect(failCount).toBe(1);
+        expect(user.balance).toBe(30); // ✅ ليس 60 — استرداد واحد فقط
+    });
+});
+
+describe('approveCoinPurchase — حجز ذرّي يمنع إيداع كوينز مزدوج', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('موافقتان متزامنتان على نفس طلب الشراء: واحدة فقط تنجح، الكوينز تُضاف مرة واحدة فقط', async () => {
+        const db = makeDb();
+        const user = seedUser(db, { _id: 'u1', coins: 0 });
+        seedPurchase(db, { _id: 'cp1', user: 'u1', coinsAmount: 1000, status: 'pending_review' });
+        wireMocks(db);
+
+        const req1 = mockReq({ params: { purchaseId: 'cp1' } });
+        const res1 = mockRes();
+        const req2 = mockReq({ params: { purchaseId: 'cp1' } });
+        const res2 = mockRes();
+
+        await Promise.all([
+            adminController.approveCoinPurchase(req1, res1),
+            adminController.approveCoinPurchase(req2, res2)
+        ]);
+
+        const bodies = [res1.json.mock.calls[0][0], res2.json.mock.calls[0][0]];
+        const successCount = bodies.filter(b => b.success === true).length;
+        const failCount = bodies.filter(b => b.success === false).length;
+        expect(successCount).toBe(1);
+        expect(failCount).toBe(1);
+        expect(user.coins).toBe(1000); // ✅ ليس 2000
+    });
+});
+
+describe('rejectCoinPurchase — حجز ذرّي يمنع معالجة الرفض مرتين', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('رفضان متزامنان لنفس طلب الشراء: واحد فقط ينجح، الحالة النهائية rejected مرة واحدة منطقياً', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: 'u1' });
+        seedPurchase(db, { _id: 'cp1', user: 'u1', status: 'pending_review' });
+        wireMocks(db);
+
+        const req1 = mockReq({ params: { purchaseId: 'cp1' }, body: { reason: 'r1' } });
+        const res1 = mockRes();
+        const req2 = mockReq({ params: { purchaseId: 'cp1' }, body: { reason: 'r2' } });
+        const res2 = mockRes();
+
+        await Promise.all([
+            adminController.rejectCoinPurchase(req1, res1),
+            adminController.rejectCoinPurchase(req2, res2)
+        ]);
+
+        const bodies = [res1.json.mock.calls[0][0], res2.json.mock.calls[0][0]];
+        const successCount = bodies.filter(b => b.success === true).length;
+        const failCount = bodies.filter(b => b.success === false).length;
+        expect(successCount).toBe(1);
+        expect(failCount).toBe(1);
+        expect(db.purchases.get('cp1').status).toBe('rejected');
+    });
+});
+
+describe('adjustUserFunds — شرط $gte الذري يمنع رصيداً سالباً من تعديلين متزامنين', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('سحبان يدويان متزامنان يتجاوز مجموعهما الرصيد الحالي: واحد فقط ينجح، الرصيد لا يصبح سالباً', async () => {
+        const db = makeDb();
+        const user = seedUser(db, { _id: 'u1', balance: 60, coins: 0 });
+        wireMocks(db);
+
+        const req1 = mockReq({ params: { userId: 'u1' }, body: { balanceChange: -50, reason: 'تعديل تجريبي 1' } });
+        const res1 = mockRes();
+        const req2 = mockReq({ params: { userId: 'u1' }, body: { balanceChange: -50, reason: 'تعديل تجريبي 2' } });
+        const res2 = mockRes();
+
+        await Promise.all([
+            adminController.adjustUserFunds(req1, res1),
+            adminController.adjustUserFunds(req2, res2)
+        ]);
+
+        // ✅ مسار النجاح يستدعي res.json مباشرة بلا res.status سابق (200 ضمنياً) — نتحقق من
+        // محتوى json مباشرة بدل الاعتماد على status
+        const jsonBodies = [res1.json.mock.calls[0]?.[0], res2.json.mock.calls[0]?.[0]];
+        const successCount = jsonBodies.filter(b => b && b.success === true).length;
+        const failCount = jsonBodies.filter(b => b && b.success === false).length;
+
+        expect(successCount).toBe(1);
+        expect(failCount).toBe(1);
+        expect(user.balance).toBe(10); // ✅ 60 - 50 مرة واحدة فقط، ليس سالباً (60 - 100)
+        expect(user.balance).toBeGreaterThanOrEqual(0);
+    });
+
+    test('تعديل فردي عادي (بلا تزامن) ينجح ويُحدِّث الرصيد والكوينز معاً', async () => {
+        const db = makeDb();
+        const user = seedUser(db, { _id: 'u1', balance: 100, coins: 50 });
+        wireMocks(db);
+
+        const req = mockReq({ params: { userId: 'u1' }, body: { balanceChange: 20, coinsChange: -10, reason: 'تصحيح يدوي' } });
+        const res = mockRes();
+        await adminController.adjustUserFunds(req, res);
+
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+        expect(user.balance).toBe(120);
+        expect(user.coins).toBe(40);
+    });
+});

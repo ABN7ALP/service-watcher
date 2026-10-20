@@ -20295,8 +20295,8 @@ function displayPrivateMessage(message, isMyMessage = false) {
             `;
         } else {
             messageContent = `
-                <button class="view-once-image-btn bg-gray-700 hover:bg-gray-600 rounded-lg px-3 py-1.5 text-sm transition flex items-center gap-2" 
-                        data-image-url="${message.content}" 
+                <button class="view-once-image-btn bg-gray-700 hover:bg-gray-600 rounded-lg px-3 py-1.5 text-sm transition flex items-center gap-2"
+                        data-image-url="${escapeHtml(message.content)}"
                         data-message-id="${message._id}">
                     <i class="fas fa-eye text-yellow-400"></i>
                     <span>مشاهدة مرة واحدة</span>
@@ -20307,7 +20307,7 @@ function displayPrivateMessage(message, isMyMessage = false) {
         const watermarkBadge = meta.hasWatermark ? `<span class="absolute top-2 left-2 bg-black/50 text-xs px-2 py-0.5 rounded-full"><i class="fas fa-copyright"></i> منصة التحديات</span>` : '';
         messageContent = `
             <div class="relative">
-                <img src="${message.content}" class="rounded-lg max-w-[250px] max-h-[250px] object-contain cursor-pointer view-image-btn" data-image-url="${message.content}" alt="صورة">
+                <img src="${escapeHtml(message.content)}" class="rounded-lg max-w-[250px] max-h-[250px] object-contain cursor-pointer view-image-btn" data-image-url="${escapeHtml(message.content)}" alt="صورة">
                 ${watermarkBadge}
                 ${meta.disableSave ? `<span class="absolute bottom-2 left-2 bg-red-500/80 text-xs px-2 py-0.5 rounded-full"><i class="fas fa-download-slash"></i> حفظ معطل</span>` : ''}
             </div>
@@ -20348,7 +20348,7 @@ function displayPrivateMessage(message, isMyMessage = false) {
             } else {
                 messageContent = `
                     <div class="flex items-center gap-3 bg-black/30 p-3 rounded-lg">
-                        <button class="play-voice-btn w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center hover:bg-purple-600" data-voice-url="${message.content}">
+                        <button class="play-voice-btn w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center hover:bg-purple-600" data-voice-url="${escapeHtml(message.content)}">
                             <i class="fas fa-play text-white"></i>
                         </button>
                         <div class="flex-1">
@@ -20388,7 +20388,7 @@ function displayPrivateMessage(message, isMyMessage = false) {
         } else {
             messageContent = `
                 <button class="view-once-video-btn bg-gray-700 hover:bg-gray-600 rounded-lg px-3 py-1.5 text-sm transition flex items-center gap-2"
-                        data-video-url="${message.content}"
+                        data-video-url="${escapeHtml(message.content)}"
                         data-message-id="${message._id}">
                     <i class="fas fa-eye text-yellow-400"></i>
                     <span>مشاهدة فيديو مرة واحدة</span>
@@ -20400,8 +20400,8 @@ function displayPrivateMessage(message, isMyMessage = false) {
         const videoWatermark = meta.hasWatermark ? '<span class="absolute top-2 left-2 bg-black/50 text-xs px-2 py-0.5 rounded-full"><i class="fas fa-copyright"></i> منصة التحديات</span>' : '';
         messageContent = `
             <div class="relative rounded-lg overflow-hidden w-[250px] h-[180px] bg-black">
-                <img src="${meta.thumbnail || 'data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 250 180%27%3E%3Crect width=%27250%27 height=%27180%27 fill=%27%23374151%27/%3E%3C/svg%3E'}" class="w-full h-full object-cover">
-                <button class="absolute inset-0 flex items-center justify-center play-video-btn bg-black/20 hover:bg-black/40 transition-colors" data-video-url="${message.content}">
+                <img src="${meta.thumbnail ? escapeHtml(meta.thumbnail) : 'data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 250 180%27%3E%3Crect width=%27250%27 height=%27180%27 fill=%27%23374151%27/%3E%3C/svg%3E'}" class="w-full h-full object-cover">
+                <button class="absolute inset-0 flex items-center justify-center play-video-btn bg-black/20 hover:bg-black/40 transition-colors" data-video-url="${escapeHtml(message.content)}">
                     <div class="w-14 h-14 bg-purple-600/90 rounded-full flex items-center justify-center shadow-lg">
                         <i class="fas fa-play text-white text-2xl ml-1"></i>
                     </div>

@@ -161,6 +161,15 @@ exports.updatePassword = async (req, res) => {
         user.password = newPassword;
         await user.save();
 
+        // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #1): توكن قديم مسروق يصبح
+        // مرفوضاً عبر HTTP فوراً (changedPasswordAfter)، لكن اتصال سوكيت مفتوح أصلاً بذاك
+        // التوكن كان يبقى يعمل بلا أي إعادة فحص. نقطعه فعلياً هنا — العميل سيعيد الاتصال
+        // بالتوكن الجديد المُرسَل أدناه
+        const io = req.app.get('socketio');
+        if (io && user.socketId) {
+            require('../services/socketService').forceDisconnectUserSocket(io, user.socketId);
+        }
+
         // 5. (اختياري ولكن موصى به) إنشاء توكن جديد وإرساله
         // هذا يضمن أن أي جلسات قديمة تصبح غير صالحة
         // ✅ نستخدم نفس signToken لضمان توحيد الاسم والمدة في كل مكان

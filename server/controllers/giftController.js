@@ -631,35 +631,50 @@ exports.sendGift = async (req, res) => {
         const unitPrice = gift.discountedPrice || gift.price;
         const totalPrice = unitPrice * qty;
 
-        // ✅ خصم ذري (atomic): الشرط والتحديث ينفذان كعملية واحدة غير قابلة للتجزئة على مستوى القاعدة،
-        // فيستحيل خصم أكثر من الرصيد الفعلي حتى لو وصلت طلبات متزامنة بنفس اللحظة تماماً (race condition).
-        const updatedSender = await User.findOneAndUpdate(
-            { _id: senderId, coins: { $gte: totalPrice } },
-            { $inc: { coins: -totalPrice } },
-            { new: true }
-        );
-
-        if (!updatedSender) {
-            return res.status(400).json({ status: 'fail', message: 'رصيد الكوينز غير كافٍ لإرسال هذه الهدية' });
+        // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند المعروف #1): الخصم وGiftLog
+        // (سجلّ قيمة المُستلِم الحقيقية القابلة للاستبدال نقداً عبر giftRedemptionController)
+        // كانا عمليتين منفصلتين تماماً بلا معاملة تجمعهما — انهيار/إعادة تشغيل السيرفر بين
+        // الخصم ونجاح GiftLog.create كان يُخصِم المُرسِل فعلياً بلا أي سجلّ مقابل للمستلِم، بلا
+        // تعافٍ ممكن (نفس فئة الثغرة المُصلَحة بمسار gift:combo — راجع buildGiftLogEntries).
+        // نفس العلاج هنا: معاملة Mongo واحدة تحوي الخصم الذرّي + إنشاء GiftLog معاً فقط —
+        // بقية الآثار (PK/دعم/تحدي/دردشة/خبرة/نادي معجبين) تبقى بعدها best-effort كما كانت
+        const cleanRoomId = (roomId && mongoose.Types.ObjectId.isValid(roomId)) ? roomId : null;
+        const session = await mongoose.startSession();
+        let updatedSender;
+        let giftLog;
+        try {
+            await session.withTransaction(async () => {
+                updatedSender = await User.findOneAndUpdate(
+                    { _id: senderId, coins: { $gte: totalPrice } },
+                    { $inc: { coins: -totalPrice } },
+                    { new: true, session }
+                );
+                if (!updatedSender) {
+                    throw Object.assign(new Error('رصيد الكوينز غير كافٍ لإرسال هذه الهدية'), { code: 'INSUFFICIENT' });
+                }
+                const created = await GiftLog.create([{
+                    sender: senderId,
+                    receiver: receiverId,
+                    gift: gift._id,
+                    giftName: gift.name,
+                    giftImage: gift.imageUrl,
+                    quantity: qty,
+                    unitPrice: unitPrice,
+                    totalPrice: totalPrice,
+                    context: context,
+                    room: cleanRoomId
+                }], { session });
+                giftLog = created[0];
+            });
+        } catch (txError) {
+            if (txError.code === 'INSUFFICIENT') {
+                return res.status(400).json({ status: 'fail', message: txError.message });
+            }
+            throw txError;
+        } finally {
+            await session.endSession();
         }
         sender.coins = updatedSender.coins;
-
-        // 🛡️ roomId اختياري وقادم من العميل — يُتحقق من صحته كـ ObjectId فقط، ولا يُمنح أي ثقة
-        // إضافية (لا صلاحيات، فقط لربط الهدية بمعركة PK نشطة إن وُجدت لهذي الغرفة تحديداً)
-        const cleanRoomId = (roomId && mongoose.Types.ObjectId.isValid(roomId)) ? roomId : null;
-
-        const giftLog = await GiftLog.create({
-            sender: senderId,
-            receiver: receiverId,
-            gift: gift._id,
-            giftName: gift.name,
-            giftImage: gift.imageUrl,
-            quantity: qty,
-            unitPrice: unitPrice,
-            totalPrice: totalPrice,
-            context: context,
-            room: cleanRoomId
-        });
 
         // ✅ لو الهدية أُرسلت من داخل غرفة بها معركة PK نشطة الآن، تُضاف قيمتها لنقاط صفّها فوراً
         if (cleanRoomId) {
@@ -1551,26 +1566,39 @@ exports.sendPublicGift = async (req, res) => {
         const unitPrice = gift.discountedPrice || gift.price;
         const totalCost = unitPrice * finalRecipientIds.length;
 
-         // ✅ نفس الخصم الذري المستخدم بالهدايا الخاصة
-        const updatedSenderPublic = await User.findOneAndUpdate(
-            { _id: senderId, coins: { $gte: totalCost } },
-            { $inc: { coins: -totalCost } },
-            { new: true }
-        );
-
-        if (!updatedSenderPublic) {
-            return res.status(400).json({ status: 'fail', message: `رصيدك غير كافٍ (تحتاج ${totalCost} كوينز لهذا العدد)` });
-        }
-        sender.coins = updatedSenderPublic.coins;
-
         const receivers = await User.find({ _id: { $in: finalRecipientIds } }).select('username socketId');
 
-        const logs = finalRecipientIds.map(rid => ({
-            sender: senderId, receiver: rid, gift: gift._id,
-            giftName: gift.name, giftImage: gift.imageUrl,
-            quantity: 1, unitPrice, totalPrice: unitPrice, context: 'public_chat'
-        }));
-        await GiftLog.insertMany(logs);
+        // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند المعروف #1): نفس علّة sendGift
+        // بالضبط — الخصم وGiftLog كانا عمليتين منفصلتين بلا معاملة تجمعهما. معاملة واحدة الآن
+        // تحوي الخصم الذرّي + إدراج كل سجلّات GiftLog معاً فقط (راجع تعليق sendGift الكامل أعلاه)
+        const session = await mongoose.startSession();
+        let updatedSenderPublic;
+        try {
+            await session.withTransaction(async () => {
+                updatedSenderPublic = await User.findOneAndUpdate(
+                    { _id: senderId, coins: { $gte: totalCost } },
+                    { $inc: { coins: -totalCost } },
+                    { new: true, session }
+                );
+                if (!updatedSenderPublic) {
+                    throw Object.assign(new Error(`رصيدك غير كافٍ (تحتاج ${totalCost} كوينز لهذا العدد)`), { code: 'INSUFFICIENT' });
+                }
+                const logs = finalRecipientIds.map(rid => ({
+                    sender: senderId, receiver: rid, gift: gift._id,
+                    giftName: gift.name, giftImage: gift.imageUrl,
+                    quantity: 1, unitPrice, totalPrice: unitPrice, context: 'public_chat'
+                }));
+                await GiftLog.insertMany(logs, { session });
+            });
+        } catch (txError) {
+            if (txError.code === 'INSUFFICIENT') {
+                return res.status(400).json({ status: 'fail', message: txError.message });
+            }
+            throw txError;
+        } finally {
+            await session.endSession();
+        }
+        sender.coins = updatedSenderPublic.coins;
 
                 receivers.forEach(r => {
             if (r.socketId) {

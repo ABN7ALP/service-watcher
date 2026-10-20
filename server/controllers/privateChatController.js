@@ -6,6 +6,25 @@ const OneTimeMessageLog = require('../models/OneTimeMessageLog');
 const ChatReport = require('../models/ChatReport');
 const { deleteChatMedia } = require('../utils/cloudinary');
 
+// 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #3): sendMediaMessage كانت تثق
+// بـmediaUrl/thumbnail من req.body حرفياً بلا أي تحقّق — راجع التعليق الكامل أسفل الدالة.
+// كل رابط وسائط حقيقي (صورة/صوت/فيديو/صورة مصغّرة) يأتي دوماً من uploadResult.secure_url
+// (راجع chatMediaController.js) أو تحويل مباشر عليه — نمط ثابت: https://res.cloudinary.com/
+// <CLOUDINARY_CLOUD_NAME>/... لا شيء آخر مشروع إطلاقاً هنا
+function isValidMediaUrl(url) {
+    if (typeof url !== 'string' || url.length > 2000) return false;
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    if (!cloudName) return false;
+    try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'https:' &&
+            parsed.hostname === 'res.cloudinary.com' &&
+            parsed.pathname.startsWith(`/${cloudName}/`);
+    } catch {
+        return false;
+    }
+}
+
 // =================================================
 // إنشاء/جلب دردشة خاصة
 // =================================================
@@ -587,6 +606,16 @@ exports.sendMediaMessage = async (req, res) => {
 
         if (!mediaUrl || !mediaType || !receiverId) {
             return res.status(400).json({ status: 'fail', message: 'بيانات الوسائط ناقصة' });
+        }
+
+        // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #3 — XSS مخزَّن حقيقي مُثبَت):
+        // mediaUrl/thumbnail كانا يُقبلان حرفياً من req.body بلا أي تحقّق صيغة/مصدر — هذا
+        // المسار بالذات مستقل تماماً عن مسارات الرفع الحقيقية (/api/chat-media/*)، فمهاجم
+        // يستدعيه مباشرة بأي نص (مثلاً "><svg/onload=...>) يُخزَّن حرفياً ويُدرَج لاحقاً بالعميل
+        // داخل خاصية src/data-* بلا تهريب — راجع أيضاً تشديد العميل بـescapeHtml لنفس المسارات
+        // (طبقة حماية ثانية). القيمة الوحيدة المشروعة هنا دوماً رابط Cloudinary حقيقي حصراً
+        if (!isValidMediaUrl(mediaUrl) || (thumbnail && !isValidMediaUrl(thumbnail))) {
+            return res.status(400).json({ status: 'fail', message: 'رابط وسائط غير صالح' });
         }
 
         const [sender, receiver] = await Promise.all([

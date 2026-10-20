@@ -12,7 +12,28 @@ const app = express();
 const server = http.createServer(app);
 
 // --- إعدادات أساسية ---
-app.set('trust proxy', 1);
+// 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #4): كانت 1 ثابتة دوماً — تجعل
+// Express يثق بآخر قيمة X-Forwarded-For كعنوان العميل الحقيقي حتى بلا أي خادم وكيل حقيقي
+// أمامها فعلياً يُعيد كتابة هذا الرأس. أُثبِت فعلياً: 520 طلباً بقيمة X-Forwarded-For مزوَّرة
+// مختلفة كل مرة لم تُصطَد بمحدد المعدل العام/تسجيل الدخول/التسجيل إطلاقاً (كلها مفاتيحها من
+// req.ip) — تجاوز كامل لحماية مكافحة التخمين/إنشاء حسابات جماعية.
+//
+// 🛡️ تصحيح لاحق (مراجعة PR #111 — BLOCKER حقيقي رصده المُراجِع): الإصلاح الأصلي جعل false
+// الافتراضي دوماً بلا TRUST_PROXY صريح — لكن الإنتاج الفعلي يعمل على Railway خلف وكيلها
+// الحقيقي (edge proxy) دوماً. false هناك يعني req.ip = عنوان Railway الداخلي نفسه لكل
+// المستخدمين جميعاً بلا استثناء — فكل محددات المعدل (العام/الدخول/التسجيل) تتقاسم دلواً واحداً
+// فعلياً: محاولات دخول فاشلة من مستخدم واحد تُقفِل الموقع كاملاً لكل المستخدمين بضع دقائق فقط.
+// resolveTrustProxySetting تكتشف الآن Railway تلقائياً (RAILWAY_ENVIRONMENT/RAILWAY_PROJECT_ID
+// مُضبوطتان تلقائياً بكل بيئة Railway حقيقية) وتفترض 1 (قفزة وكيل حقيقية واحدة تُعيد كتابة
+// X-Forwarded-For بنفسها فعلياً) — TRUST_PROXY الصريح يبقى له الأولوية دوماً فوق هذا الاكتشاف
+const { resolveTrustProxySetting, isRailwayEnvironment } = require('./utils/trustProxy');
+const trustProxySetting = resolveTrustProxySetting(process.env);
+app.set('trust proxy', trustProxySetting);
+console.log(`🔒 trust proxy = ${JSON.stringify(trustProxySetting)}${
+    process.env.TRUST_PROXY ? ' (من متغيّر البيئة TRUST_PROXY)' :
+    isRailwayEnvironment(process.env) ? ' (اكتُشفت بيئة Railway تلقائياً)' :
+    ' (لا TRUST_PROXY ولا بيئة Railway — افتراضي آمن)'
+}`);
 
 // --- تطبيق الـ Middleware العام ---
 setupMiddleware(app);

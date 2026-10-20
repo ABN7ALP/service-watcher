@@ -52,6 +52,33 @@ function isVoiceSignalRateLimited(userId) {
     return timestamps.length > VOICE_SIGNAL_MAX;
 }
 
+// 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #7، High): join-room-chat
+// وget-room-viewers لم يكن عليهما أي محدِّد معدل إطلاقاً (بخلاف gift:combo) — أُثبِت فعلياً:
+// سوكيت واحد مُصادَق عليه أرسل 544.7 get-room-viewers/ثانية و491.0 join-room-chat/ثانية بلا أي
+// رفض. get-room-viewers ينفّذ تجميعاً (aggregate) غير مُخزَّن وغير محدود سعره يتناسب مع عدد كل
+// الغرف النشطة بالمنصة، وjoin-room-chat يبثّ لكل من بالغرفة (تضخيم يصيب سوكيتات أخرى، لا سوكيت
+// المُرسِل فقط). نفس نمط isGiftComboRateLimited تماماً، بسقف سخي كفاية لتبديل غرف حقيقي متكرر
+// وتحديث قائمة مشاهدين، بعيد جداً عن معدل الإغراق المُثبَت فعلياً
+const roomEventRateLimit = new Map(); // `${userId}:${eventName}` → [timestamps]
+const ROOM_EVENT_RATE_WINDOW_MS = 2000;
+const ROOM_EVENT_RATE_MAX = 10;
+function isRoomEventRateLimited(userId, eventName) {
+    const now = Date.now();
+    const key = `${userId}:${eventName}`;
+    const timestamps = (roomEventRateLimit.get(key) || []).filter(t => now - t < ROOM_EVENT_RATE_WINDOW_MS);
+    timestamps.push(now);
+    roomEventRateLimit.set(key, timestamps);
+    return timestamps.length > ROOM_EVENT_RATE_MAX;
+}
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, timestamps] of roomEventRateLimit.entries()) {
+        const filtered = timestamps.filter(t => now - t < ROOM_EVENT_RATE_WINDOW_MS);
+        if (filtered.length === 0) roomEventRateLimit.delete(key);
+        else roomEventRateLimit.set(key, filtered);
+    }
+}, 30 * 1000);
+
 // ✅ حالة تشغيل الموسيقى الحيّة لكل غرفة (بالذاكرة — تكفي، لا تحتاج قاعدة بيانات)
 // roomId → { url, title, startedAt(ms), isPlaying, pausedAt(seconds) }
 const roomMusicState = new Map();
@@ -775,6 +802,14 @@ setInterval(() => {
 
 
 // --- Middleware للتحقق من توكن المستخدم ---
+// 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #1): كانت تتحقق فقط من توقيع التوكن
+// ووجود المستخدم، بخلاف authMiddleware (الحارس الموازي لكل طلب HTTP) الذي يتحقق أيضاً من
+// isBanned/banExpires وchangedPasswordAfter. النتيجة: مستخدم محظور، أو مهاجم يحمل توكناً
+// مسروقاً بعد تغيير الضحية كلمة مرورها عمداً لإنهاء الجلسة، يحتفظ بوظائف السوكيت الحيّة
+// كاملة (بما فيها gift:combo — نقل أموال) بصرف النظر عن الحظر/الإبطال، طالما لا يمر بمسار
+// HTTP أبداً. نفس فحوصات authMiddleware بالضبط هنا الآن — راجع أيضاً إنهاء الاتصال الفوري
+// الصريح عند الحظر/تغيير كلمة المرور (banUser وتوابعها بـadminController.js، updatePassword
+// بـauthController.js) كي لا يبقى اتصال مفتوح فعلاً صالحاً حتى محاولة إعادة اتصال طبيعية
 const verifySocketToken = async (socket, next) => {
     const token = socket.handshake.auth.token;
     if (!token) {
@@ -782,9 +817,22 @@ const verifySocketToken = async (socket, next) => {
     }
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const currentUser = await User.findById(decoded.id);
+        const currentUser = await User.findById(decoded.id).select('+passwordChangedAt');
         if (!currentUser) {
             return next(new Error('Authentication error'));
+        }
+        if (currentUser.changedPasswordAfter(decoded.iat)) {
+            return next(new Error('Authentication error'));
+        }
+        if (currentUser.isBanned) {
+            if (currentUser.banExpires && new Date(currentUser.banExpires) < new Date()) {
+                currentUser.isBanned = false;
+                currentUser.banReason = null;
+                currentUser.banExpires = null;
+                await currentUser.save();
+            } else {
+                return next(new Error('Authentication error'));
+            }
         }
         socket.user = currentUser;
         next();
@@ -792,6 +840,14 @@ const verifySocketToken = async (socket, next) => {
         return next(new Error('Authentication error'));
     }
 };
+
+// ✅ طلب صريح (مراجعة أمنية — البند #1): يقطع اتصال السوكيت الحيّ فوراً (لا يكفي رفض
+// handshake لاحق فقط — اتصال مفتوح أصلاً يبقى يعمل بلا أي إعادة فحص تلقائية من Socket.IO)
+// عند حظر مستخدم أو تغيير كلمة مروره — يُستدعى من كل نقاط الحظر/تغيير كلمة المرور الحقيقية
+function forceDisconnectUserSocket(io, socketId) {
+    if (!io || !socketId) return;
+    io.sockets.sockets.get(socketId)?.disconnect(true);
+}
 
 // 🗑️ أُزيلت لعبة "التحدي" (الرهان الفردي بالدولار + startGame/endBattle/playerClick) بالكامل
 // بطلب صريح — ثغرة أمنية حقيقية (نقر آلي يفوز بمال حقيقي) وتصنيف قماري محتمل. لا علاقة بمعارك
@@ -1034,7 +1090,15 @@ const initializeSocket = (server) => {
         // الحد الأقصى الذي قد يستغرقه الخادم ليكتشف أصلاً أن اتصالاً انقطع (قبل أي مهلة سماح إضافية
         // فوقه بمنطق التطبيق — راجع HOST_DISCONNECT_END_MS أدناه)
         pingInterval: 25000,
-        pingTimeout: 20000
+        pingTimeout: 20000,
+        // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #8، High): بلا هذا الإعداد،
+        // الافتراضي الضمني بمكتبة Socket.IO (1MB) هو الفعلي — بخلاف REST (express.json بحد
+        // 10kb صريح)، لا حدّ صريح إطلاقاً لحجم حمولة اتصال WebSocket. أُثبِت فعلياً: سوكيت واحد
+        // أرسل ~126.3 ميجابايت/ثانية من حمولة مقبولة فعلياً (بالدمج مع غياب محدِّد المعدل —
+        // البند #7 — قبل إصلاحه). 100 كيلوبايت يتجاوز بسخاء أي حمولة مشروعة تُرسَل فعلياً عبر
+        // السوكيت بهذا التطبيق (نص دردشة، JSON هدايا gift:combo؛ كل الملفات الحقيقية تُرفَع عبر
+        // REST multipart إلى Cloudinary، لا عبر طبقة السوكيت إطلاقاً)
+        maxHttpBufferSize: 100 * 1024
     });
 
     io.use(verifySocketToken);
@@ -2464,6 +2528,7 @@ socket.on('refreshBlockData', async () => {
         // =====================================================
         socket.on('join-room-chat', async ({ roomId }) => {
             if (!roomId) return;
+            if (isRoomEventRateLimited(socket.user._id, 'join-room-chat')) return;
 
             // ✅ إعلان "انضم فلان" فور دخول الغرفة (مشاهداً، قبل أي طلب صعود) — نُحدّد هل
             // هذا انضمام حقيقي جديد أم مجرد تبويب/جهاز إضافي لنفس الشخص أصلاً موجود، عبر
@@ -2532,6 +2597,7 @@ socket.on('refreshBlockData', async () => {
         // بلا حاجة لتخزين إضافي بقاعدة البيانات — نفس مصدر عدّاد المشاهدين تماماً)
         socket.on('get-room-viewers', async ({ roomId }) => {
             if (!roomId) return;
+            if (isRoomEventRateLimited(socket.user._id, 'get-room-viewers')) return;
             // ✅ طلب صريح: أضيف رقم دعم كل مشاهد "داخل الروم" بنافذة المشاهدين (نفس الرقم
             // الظاهر أصلاً على شارة مقعده لو كان جالساً — getRoomSupportTotal — الآن يظهر
             // لكل من بالقائمة بصرف النظر هل هو جالس على مقعد أصلاً أم مجرد مشاهد)
@@ -2905,6 +2971,13 @@ socket.on('refreshBlockData', async () => {
 
 
 module.exports = initializeSocket;
+// ✅ تُستخدَم من adminController (حظر) وauthController (تغيير كلمة المرور) لقطع اتصال
+// السوكيت الحيّ فوراً — راجع تعليقها الكامل أعلى verifySocketToken (البند الأمني #1)
+module.exports.forceDisconnectUserSocket = forceDisconnectUserSocket;
+// ✅ تُصدَّر فقط لاختبارات مراجعة أمنية (redteam-audit-1، البند #1) — راجع
+// __tests__/socketAuth.security.test.js؛ لا مستهلك إنتاجي خارج io.use(verifySocketToken) هنا
+module.exports.verifySocketToken = verifySocketToken;
+module.exports.isRoomEventRateLimited = isRoomEventRateLimited; // ✅ تُصدَّر فقط لاختبارات redteam-audit-1 البند #7
 module.exports.broadcastUserFrameChange = broadcastUserFrameChange;
 // ✅ تُستخدَم من واجهات REST (voiceRoomController) لتضمين المجموع التراكمي الحالي لكل
 // مستخدم جالس ضمن لقطة حالة الغرفة الأولى (قبل أي حدث Socket حي) — راجع roomSupportTally أعلاه
