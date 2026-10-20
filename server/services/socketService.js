@@ -1081,8 +1081,20 @@ const initializeSocket = (server) => {
         // بث أي أحداث فاتت السوكيت أثناء الانقطاع — طبقة حماية إضافية أصيلة تكمّل إعادة
         // الانضمام اليدوية بالعميل (rejoinRoomChatChannel)، لا تُغني عنها لأن الاسترداد قد
         // يفشل أحياناً (انقطاع أطول من المهلة، إعادة تشغيل السيرفر...)
+        //
+        // 🛡️ إصلاح جذري (hotfix/fix-socket-recovery-auth — علّة إنتاج حقيقية): الإصدار
+        // الافتراضي من Socket.IO 4.7 لـskipMiddlewares هو true — أي أن اتصال "مُستعاد" (recovered)
+        // يتجاوز io.use(verifySocketToken) بالكامل، فيبقى socket.user غير معرَّف. النتيجة
+        // الحقيقية من سجلّات الإنتاج: "TypeError: Cannot read properties of undefined (reading
+        // 'username') at socketService.js:1107" — أول سطر بمعالج 'connection' يقرأ
+        // socket.user.username فيرمي فوراً، فلا يُسجَّل أي مستمع حدث إطلاقاً لهذا السوكيت (يبدو
+        // متصلاً للمستخدم لكن الهدايا والدردشة تفشل بصمت). الأسوأ: نفس التجاوز يُفوِّت فحص
+        // الحظر/إبطال كلمة المرور (البند الأمني #1 بمراجعة redteam-audit-1) — مستخدم محظور
+        // تماماً يستعيد جلسته الحيّة ببساطة بإعادة اتصال خلال هذي المهلة. الحل: skipMiddlewares
+        // صراحةً false — كل اتصال، بما فيها المُستعادة، يُشغِّل verifySocketToken كاملاً دوماً
         connectionStateRecovery: {
-            maxDisconnectionDuration: 2 * 60 * 1000
+            maxDisconnectionDuration: 2 * 60 * 1000,
+            skipMiddlewares: false
         },
         // 🛡️ طلب صريح بمراجعة PR: قيم صريحة بدل الاعتماد على افتراضيات المكتبة (قد تتغيّر بين
         // إصدارات مستقبلية بصمت) — هذي بالضبط قيم Socket.IO v4 الافتراضية فعلياً (25s/20s)، فلا
@@ -1103,9 +1115,21 @@ const initializeSocket = (server) => {
 
     io.use(verifySocketToken);
     
-        io.on('connection', async (socket) => {
+        io.on('connection', (socket) => {
+        // 🛡️ دفاع إضافي (hotfix/fix-socket-recovery-auth): لا يُفترَض وصول أي اتصال هنا بلا
+        // socket.user إطلاقاً بعد تعيين skipMiddlewares:false أعلى (verifySocketToken يُشغَّل
+        // دوماً، لكل اتصال بما فيها المُستعادة) — هذا الفحص دفاع بالعمق محض ضد أي انحدار مستقبلي
+        // (ترقية مكتبة تُغيّر الافتراضي مجدداً، خطأ تهيئة...). بلا socket.user، كل سطر تالٍ هنا
+        // يرمي فوراً (نفس علّة الإنتاج الحقيقية "Cannot read properties of undefined (reading
+        // 'username')") فلا يُسجَّل أي مستمع حدث — قطع الاتصال فوراً أوضح وأسلم من ترك سوكيت
+        // "متصل" ظاهرياً بلا أي استجابة فعلية لأي شيء
+        if (!socket.user) {
+            socket.disconnect(true);
+            return;
+        }
+
         console.log(`🟢 User connected: ${socket.id} | UserID: ${socket.user.username}`);
-        
+
                 // 🐛 إصلاح "إنهاء بث شبحي": كان إلغاء مهلة إنهاء البث/تحرير المقعد يحدث بعد await
                 // لقاعدة البيانات ضمن نفس try — أي عطل/تأخير مؤقّت بذاك الاستعلام (شائع كسبب
                 // "متقطّع") يُسقط التنفيذ مباشرة لـcatch فلا يُنفَّذ الإلغاء إطلاقاً. ننفّذه أولاً
@@ -1114,30 +1138,6 @@ const initializeSocket = (server) => {
                 // يحميها من رمي استثناء يُسقط بقية المعالج، وbody التالي لا ينتظرها (fire-and-forget آمن)
                 clearHostDisconnected(socket.user._id);
                 cancelPendingSeatRelease(socket.user._id); // ✅ عاد بسرعة — يلغي مهلة تحرير مقعده المجدولة إن وُجدت (لم يفقد مقعده أصلاً)
-                try {
-            await User.findByIdAndUpdate(socket.user.id, { socketId: socket.id, isOnline: true });
-            io.emit('userOnlineStatus', { userId: socket.user.id.toString(), isOnline: true });
-
-            // ✅ تحويل كل الرسائل التي وصلته وهو غير متصل إلى "تم التسليم" فوراً + إعلام كل مُرسِل بذلك
-            const PrivateMessage = require('../models/PrivateMessage');
-            const undelivered = await PrivateMessage.find({ receiver: socket.user.id, 'status.delivered': false });
-            if (undelivered.length > 0) {
-                const ids = undelivered.map(m => m._id);
-                await PrivateMessage.updateMany({ _id: { $in: ids } }, { $set: { 'status.delivered': true, 'status.deliveredAt': new Date() } });
-
-                const senderIds = [...new Set(undelivered.map(m => m.sender.toString()))];
-                const senders = await User.find({ _id: { $in: senderIds } }).select('socketId');
-                const senderSocketMap = {};
-                senders.forEach(s => { senderSocketMap[s._id.toString()] = s.socketId; });
-
-                undelivered.forEach(m => {
-                    const sSocketId = senderSocketMap[m.sender.toString()];
-                    if (sSocketId) io.to(sSocketId).emit('messageStatusUpdated', { messageId: m._id, status: 'delivered', updatedAt: new Date() });
-                });
-            }
-        } catch (error) {
-            console.error("Failed to update socketId:", error);
-        }
 
         socket.join('public-room');
         // 🛡️ طلب صريح بمراجعة PR (بند 7): قناة خاصة بهذا المستخدم بعينه — كل أحداثه الخاصة
@@ -2948,6 +2948,39 @@ socket.on('refreshBlockData', async () => {
                 }
             } catch (error) { console.error('Failed to update offline status:', error); }
         });
+
+        // 🛡️ إصلاح جذري (hotfix/fix-socket-recovery-auth): كانت هذي الاستعلامات (تحديث
+        // socketId + تسليم الرسائل المعلّقة) أول شيء يُنفَّذ بالمعالج — قبل تسجيل أي مستمع حدث
+        // إطلاقاً. أي حدث يُرسله العميل فوراً بعد الاتصال (حتى قبل انتهاء جولة قاعدة البيانات
+        // هذي) كان يُفقَد بصمت فعلياً لعدم وجود مستمع مسجَّل بعد يستقبله. الآن كل المستمعين
+        // أعلاه مُسجَّلون بالتزامن (synchronous) فوراً عند الاتصال؛ هذي التحديثات تُنفَّذ بعدها
+        // best-effort (fire-and-forget) — لا تُعطِّل أو تُؤخِّر تسجيل أي مستمع
+        (async () => {
+            try {
+                await User.findByIdAndUpdate(socket.user.id, { socketId: socket.id, isOnline: true });
+                io.emit('userOnlineStatus', { userId: socket.user.id.toString(), isOnline: true });
+
+                // ✅ تحويل كل الرسائل التي وصلته وهو غير متصل إلى "تم التسليم" فوراً + إعلام كل مُرسِل بذلك
+                const PrivateMessage = require('../models/PrivateMessage');
+                const undelivered = await PrivateMessage.find({ receiver: socket.user.id, 'status.delivered': false });
+                if (undelivered.length > 0) {
+                    const ids = undelivered.map(m => m._id);
+                    await PrivateMessage.updateMany({ _id: { $in: ids } }, { $set: { 'status.delivered': true, 'status.deliveredAt': new Date() } });
+
+                    const senderIds = [...new Set(undelivered.map(m => m.sender.toString()))];
+                    const senders = await User.find({ _id: { $in: senderIds } }).select('socketId');
+                    const senderSocketMap = {};
+                    senders.forEach(s => { senderSocketMap[s._id.toString()] = s.socketId; });
+
+                    undelivered.forEach(m => {
+                        const sSocketId = senderSocketMap[m.sender.toString()];
+                        if (sSocketId) io.to(sSocketId).emit('messageStatusUpdated', { messageId: m._id, status: 'delivered', updatedAt: new Date() });
+                    });
+                }
+            } catch (error) {
+                console.error("Failed to update socketId:", error);
+            }
+        })();
     });
 
     // ✅ مكنستا الشبكة الحقيقية لإنهاء المعارك/التحديات المعلّقة بالذاكرة (راجع تعليقي
