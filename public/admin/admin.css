@@ -1070,13 +1070,29 @@ body {
     text-shadow: 0 2px 4px rgba(0,0,0,.6);
     pointer-events: none;
 }
-.frame-studio-row { display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap; justify-content: center; padding: 16px; background: #1a1d29; border-radius: 10px; }
+/* ✅ الحاوية الأم — تحمل متغيرات CSS الحيّة (--frame-scale...) المُحدَّثة من المنزلقات، وتُورَّث
+   لكل عنصر فرعي بلا تجاوز --frame-scale/إلخ الخاص به (راجع .fs-allframes-item أدناه) */
+.frame-studio-row { display: flex; flex-direction: column; gap: 18px; padding: 16px; background: #1a1d29; border-radius: 10px; }
 .frame-studio-row figure { margin: 0; text-align: center; }
 .frame-studio-row figcaption { color: #9ca3af; font-size: .72rem; margin-top: 6px; }
+.fs-preview-group { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.fs-preview-group-label { width: 64px; flex-shrink: 0; color: #9ca3af; font-size: .78rem; font-weight: 600; }
+/* ✅ طلب صريح: نفس صيغة repeat(var(--cols,4),1fr) المستخدَمة فعلياً بشبكة المقاعد الحقيقية
+   (.voice-seats-flex بـinput.css) — 4 أعمدة افتراضياً لأي غرفة غير 19/80 مقعداً، فصف الـ6
+   مقاعد يلتفّ لصفّين (4+2) تماماً كما بالتطبيق الحقيقي */
+.fs-seats-grid { display: grid; grid-template-columns: repeat(var(--cols, 4), 1fr); gap: 10px; flex: 1; min-width: 200px; }
+.fs-allframes-row { display: flex; gap: 14px; flex-wrap: wrap; flex: 1; }
+.fs-allframes-item--live figcaption { color: #ffd45a; font-weight: 700; }
 .frame-studio-slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .frame-studio-slider-row label { width: 110px; flex-shrink: 0; font-size: .85rem; }
 .frame-studio-slider-row input[type="range"] { flex: 1; }
 .frame-studio-slider-row output { width: 54px; text-align: left; font-size: .8rem; color: #9ca3af; direction: ltr; }
+.frame-studio-slider-row .frame-studio-slider-pct { width: 48px; text-align: left; font-size: .78rem; color: #667eea; font-weight: 700; direction: ltr; }
 .frame-studio-dropzone { border: 2px dashed #3a3f55; border-radius: 10px; padding: 18px; text-align: center; cursor: pointer; color: #9ca3af; transition: border-color .15s ease; }
 .frame-studio-dropzone:hover { border-color: #667eea; }
 .frame-studio-dropzone.has-file { border-color: #22c55e; color: #22c55e; }
+/* ✅ طلب صريح: أزرار تذييل نافذة الاستوديو — ارتفاع كامل، ومرتَّبة RTL (الأساسي لليمين عبر
+   ترتيب DOM نفسه بـadmin.js: الحفظ أولاً فإلغاء ثانياً — أول عنصر DOM بحاوية flex ذات dir:rtl
+   يرتسم أقصى اليمين) */
+.frame-studio-footer { align-items: stretch; }
+.frame-studio-footer .btn { min-height: 46px; display: flex; align-items: center; justify-content: center; font-weight: 700; flex: 1; }

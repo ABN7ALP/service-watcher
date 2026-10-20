@@ -14,10 +14,12 @@ const profileFrameSchema = new mongoose.Schema({
     adminOnly: { type: Boolean, default: false },
     // ✅ أسعار مختلفة حسب المدة — طلب صريح: 3 مدد قصيرة فقط (1/3/7 أيام) بدل المدد الطويلة
     // السابقة (7/30/365 يوماً)، يمكن تعديلها بحرية لكل إطار
+    // ✅ حدود دفاع-بعمق على مستوى المخطط (المصدر الرسمي للتحقق هو parsePricesInput بـ
+    // frameController.js — أرقام صحيحة فقط، راجع التعليق هناك) — نفس سقف 10 ملايين
     prices: {
-        day1: { type: Number, required: true },
-        day3: { type: Number, required: true },
-        day7: { type: Number, required: true }
+        day1: { type: Number, required: true, min: 0, max: 10000000 },
+        day3: { type: Number, required: true, min: 0, max: 10000000 },
+        day7: { type: Number, required: true, min: 0, max: 10000000 }
     },
     // ✅ طلب صريح (استوديو الإطارات بلوحة التحكم): أصل الإطار الفعلي (متحرك webp + نسخة ثابتة
     // لمستخدمي prefers-reduced-motion — راجع .avatar__frame--static بـinput.css) يعيشان الآن
@@ -29,12 +31,14 @@ const profileFrameSchema = new mongoose.Schema({
     // ✅ نفس القيم الخمس المستخدَمة فعلياً بـframeDisplayStyle/hostCrownTopAttr بـapp.js —
     // الآن قابلة للضبط من استوديو الإطارات مباشرة بدل تحرير public/assets/frames/frame-display.json
     // يدوياً. الاحتياطيات هنا تطابق "_default" بذاك الملف حرفياً (راجع seedDisplayDefaults)
+    // ✅ حدود دفاع-بعمق على مستوى المخطط مطابقة تماماً لـDISPLAY_BOUNDS بـframeController.js
+    // (المصدر الرسمي للرفض الواضح بالعربية — هذه فقط سقف أخير لو وصلت قيمة من مسار آخر)
     display: {
-        frameScale: { type: Number, default: 1.45 },
-        avatarScale: { type: Number, default: 0.8 },
-        offsetX: { type: Number, default: 0 },
-        offsetY: { type: Number, default: 0 },
-        crownTop: { type: Number, default: 0.45 }
+        frameScale: { type: Number, default: 1.45, min: 0.8, max: 2.4 },
+        avatarScale: { type: Number, default: 0.8, min: 0.4, max: 1 },
+        offsetX: { type: Number, default: 0, min: -0.3, max: 0.3 },
+        offsetY: { type: Number, default: 0, min: -0.3, max: 0.3 },
+        crownTop: { type: Number, default: 0.45, min: 0.2, max: 1 }
     }
 }, { timestamps: true });
 

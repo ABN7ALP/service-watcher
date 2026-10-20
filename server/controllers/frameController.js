@@ -19,6 +19,16 @@ const DURATION_DAYS_MAP = { '1': 'day1', '3': 'day3', '7': 'day7' };
 const DEFAULT_DISPLAY = { frameScale: 1.45, avatarScale: 0.8, offsetX: 0, offsetY: 0, crownTop: 0.45 };
 const NO_FRAME_CROWN_TOP = 0.62; // ✅ مطابق لـ_noFrame.crownTop بـframe-display.json سابقاً
 const DISPLAY_FIELDS = ['frameScale', 'avatarScale', 'offsetX', 'offsetY', 'crownTop'];
+// ✅ طلب صريح: حدود واضحة لكل قيمة عرض — نفس المدى تماماً المستخدَم بمنزلقات الاستوديو
+// (public/admin/admin.js) كي لا يتمكّن أي طلب مباشر (بتجاوز الواجهة) من دفع قيمة تكسر الرسم
+const DISPLAY_BOUNDS = {
+    frameScale: { min: 0.8, max: 2.4, label: 'مقاس الإطار' },
+    avatarScale: { min: 0.4, max: 1, label: 'مقاس الصورة' },
+    offsetX: { min: -0.3, max: 0.3, label: 'إزاحة X' },
+    offsetY: { min: -0.3, max: 0.3, label: 'إزاحة Y' },
+    crownTop: { min: 0.2, max: 1, label: 'ارتفاع التاج' }
+};
+const PRICE_MAX = 10000000; // ✅ طلب صريح: سقف أرقام صحيحة واقعي، يمنع أخطاء كتابة تتحوّل لأسعار عبثية
 
 exports.getFrameShop = async (req, res) => {
     try {
@@ -406,20 +416,30 @@ function parseDisplayInput(body) {
         const raw = body[key];
         if (raw === undefined || raw === '') continue;
         const num = parseFloat(raw);
-        if (!Number.isFinite(num)) {
-            throw Object.assign(new Error(`قيمة ${key} غير صالحة`), { code: 'BAD_DISPLAY' });
+        const bounds = DISPLAY_BOUNDS[key];
+        if (!Number.isFinite(num) || num < bounds.min || num > bounds.max) {
+            throw Object.assign(
+                new Error(`قيمة "${bounds.label}" يجب أن تكون رقماً بين ${bounds.min} و${bounds.max}`),
+                { code: 'BAD_DISPLAY' }
+            );
         }
         display[key] = num;
     }
     return display;
 }
 
+// ✅ طلب صريح: الأسعار أرقام صحيحة فقط (لا كسور عشرية) غير سالبة، بسقف واقعي — Number.isInteger
+// يرفض أي قيمة مُعشّرة (مثل 50.5) بوضوح، لا مجرد تقريبها صامتاً
 function parsePricesInput(body) {
     const day1 = parseFloat(body.day1);
     const day3 = parseFloat(body.day3);
     const day7 = parseFloat(body.day7);
-    if (![day1, day3, day7].every(Number.isFinite) || [day1, day3, day7].some(n => n < 0)) {
-        throw Object.assign(new Error('أسعار المدد الثلاث (1/3/7 أيام) مطلوبة وبأرقام صحيحة غير سالبة'), { code: 'BAD_PRICES' });
+    const valid = [day1, day3, day7].every(n => Number.isInteger(n) && n >= 0 && n <= PRICE_MAX);
+    if (!valid) {
+        throw Object.assign(
+            new Error(`أسعار المدد الثلاث (1/3/7 أيام) يجب أن تكون أرقاماً صحيحة (بلا كسور) بين 0 و${PRICE_MAX}`),
+            { code: 'BAD_PRICES' }
+        );
     }
     return { day1, day3, day7 };
 }

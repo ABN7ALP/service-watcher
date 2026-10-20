@@ -163,6 +163,132 @@ describe('adminCreateFrame — تحقّق + أنبوب تطبيع/فحص حقي�
         expect(res.status).toHaveBeenCalledWith(400);
         expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
     }, 20000);
+
+    // ✅ طلب صريح: التحقّق من الأسعار/قيم العرض يسبق فحص بايتات الملف فعلياً بالكونترولر (راجع
+    // ترتيب adminCreateFrame)، فملف وهمي بسيط كافٍ هنا — بلا حاجة لصورة حقيقية/أنبوب تطبيع كامل
+    test('سعر كسري (50.5): 400 قبل الوصول لأي رفع، لا إنشاء', async () => {
+        const createSpy = jest.spyOn(ProfileFrame, 'create');
+        const req = mockReq({
+            file: { buffer: Buffer.from('placeholder') },
+            body: { name: 'تجريبي', day1: '50.5', day3: '100', day7: '200' }
+        });
+        const res = mockRes();
+        await frameController.adminCreateFrame(req, res);
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    test('قيمة frameScale خارج المدى المسموح (0.8–2.4): 400 برسالة عربية تسمّي الحقل، لا إنشاء', async () => {
+        const createSpy = jest.spyOn(ProfileFrame, 'create');
+        const req = mockReq({
+            file: { buffer: Buffer.from('placeholder') },
+            body: { name: 'تجريبي', day1: '10', day3: '20', day7: '30', frameScale: '3.0' }
+        });
+        const res = mockRes();
+        await frameController.adminCreateFrame(req, res);
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json.mock.calls[0][0].message).toContain('مقاس الإطار');
+        expect(createSpy).not.toHaveBeenCalled();
+    });
+});
+
+// ✅ طلب صريح — حدود صريحة لكل قيمة عرض (frameScale/avatarScale/offsetX/offsetY/crownTop) +
+// أسعار أرقام صحيحة فقط بسقف واقعي: يثبت أن قيمة خارج المدى تُرفَض برسالة عربية واضحة، وأن
+// المستند المخزَّن فعلياً لا يتغيّر إطلاقاً عند الرفض (لا .save() يُستدعى، والقيم بالذاكرة نفسها
+// على المستند المُحضَّر مسبقاً تبقى كما كانت)
+describe('adminUpdateFrame — حدود قيم العرض + الأسعار (الصحيحة فقط)، الإطار المخزَّن لا يتغيّر عند الرفض', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    function mockExistingFrame() {
+        const display = { frameScale: 1.45, avatarScale: 0.8, offsetX: 0, offsetY: 0, crownTop: 0.45 };
+        return {
+            _id: 'f1',
+            name: 'إطار قائم',
+            cssClass: 'profile-frame-custom-existing',
+            prices: { day1: 10, day3: 20, day7: 30 },
+            display: { ...display, toObject: () => ({ ...display }) },
+            assetUrl: '/old.webp',
+            staticUrl: '/old-static.webp',
+            isActive: true,
+            adminOnly: false,
+            save: jest.fn().mockResolvedValue(true)
+        };
+    }
+
+    test('frameScale خارج المدى (0.8–2.4): 400 برسالة عربية تسمّي الحقل، لا حفظ، القيمة بالذاكرة لم تتغيّر', async () => {
+        const existing = mockExistingFrame();
+        jest.spyOn(ProfileFrame, 'findById').mockResolvedValue(existing);
+        const req = mockReq({ params: { frameId: 'f1' }, body: { frameScale: '3.0' } });
+        const res = mockRes();
+        await frameController.adminUpdateFrame(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json.mock.calls[0][0].message).toContain('مقاس الإطار');
+        expect(existing.save).not.toHaveBeenCalled();
+        expect(existing.display.frameScale).toBe(1.45);
+    });
+
+    test('offsetY خارج المدى (−0.3–0.3): 400، لا حفظ', async () => {
+        const existing = mockExistingFrame();
+        jest.spyOn(ProfileFrame, 'findById').mockResolvedValue(existing);
+        const req = mockReq({ params: { frameId: 'f1' }, body: { offsetY: '0.5' } });
+        const res = mockRes();
+        await frameController.adminUpdateFrame(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(existing.save).not.toHaveBeenCalled();
+    });
+
+    test('سعر كسري (50.5): 400 — الأسعار أرقام صحيحة فقط، لا حفظ', async () => {
+        const existing = mockExistingFrame();
+        jest.spyOn(ProfileFrame, 'findById').mockResolvedValue(existing);
+        const req = mockReq({ params: { frameId: 'f1' }, body: { day1: '50.5', day3: '100', day7: '200' } });
+        const res = mockRes();
+        await frameController.adminUpdateFrame(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(existing.save).not.toHaveBeenCalled();
+        expect(existing.prices).toEqual({ day1: 10, day3: 20, day7: 30 });
+    });
+
+    test('سعر سالب: 400، لا حفظ', async () => {
+        const existing = mockExistingFrame();
+        jest.spyOn(ProfileFrame, 'findById').mockResolvedValue(existing);
+        const req = mockReq({ params: { frameId: 'f1' }, body: { day1: '-5', day3: '100', day7: '200' } });
+        const res = mockRes();
+        await frameController.adminUpdateFrame(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(existing.save).not.toHaveBeenCalled();
+    });
+
+    test('سعر أكبر من السقف (10,000,001): 400، لا حفظ', async () => {
+        const existing = mockExistingFrame();
+        jest.spyOn(ProfileFrame, 'findById').mockResolvedValue(existing);
+        const req = mockReq({ params: { frameId: 'f1' }, body: { day1: '10000001', day3: '100', day7: '200' } });
+        const res = mockRes();
+        await frameController.adminUpdateFrame(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(existing.save).not.toHaveBeenCalled();
+    });
+
+    test('قيم صحيحة ضمن كل المدى: 200، حفظ فعلي بالقيم الجديدة', async () => {
+        const existing = mockExistingFrame();
+        jest.spyOn(ProfileFrame, 'findById').mockResolvedValue(existing);
+        jest.spyOn(AdminLog, 'logAction').mockResolvedValue({});
+        const req = mockReq({
+            params: { frameId: 'f1' },
+            body: { frameScale: '2.0', day1: '15', day3: '30', day7: '60' }
+        });
+        const res = mockRes();
+        await frameController.adminUpdateFrame(req, res);
+
+        expect(existing.save).toHaveBeenCalledTimes(1);
+        expect(existing.display.frameScale).toBe(2.0);
+        expect(existing.prices).toEqual({ day1: 15, day3: 30, day7: 60 });
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+    });
 });
 
 describe('adminDeleteFrame — حذف ناعم فعلي (isActive=false)، لا حذف حقيقي', () => {

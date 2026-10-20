@@ -842,7 +842,7 @@ class AdminDashboard {
         } catch (error) { this.showToast(error.message, 'error'); }
     }
 
-    showFrameStudioModal(frame = null) {
+    async showFrameStudioModal(frame = null) {
         const isEdit = !!frame;
         const d = frame?.display || { frameScale: 1.45, avatarScale: 0.8, offsetX: 0, offsetY: 0, crownTop: 0.45 };
         const PLACEHOLDER_AVATAR = '/images/default-avatar.webp';
@@ -850,42 +850,81 @@ class AdminDashboard {
         // كصورة) لإطار جديد بلا ملف مختار بعد/إطار قائم بلا assetUrl بعد (نادر)
         const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
         const previewFrameUrl = escapeHtml(frame?.assetUrl || TRANSPARENT_PIXEL);
+        // ✅ طلب صريح: نفس المدى تماماً المفروض بـDISPLAY_BOUNDS بـframeController.js —
+        // المنزلقات لا يمكنها إطلاقاً إرسال قيمة سيرفضها الخادم
         const sliders = [
-            { key: 'frameScale', label: 'مقاس الإطار', min: 1, max: 2.2, step: 0.01, value: d.frameScale },
-            { key: 'avatarScale', label: 'مقاس الصورة', min: 0.3, max: 1, step: 0.01, value: d.avatarScale },
-            { key: 'offsetX', label: 'إزاحة X', min: -0.2, max: 0.2, step: 0.005, value: d.offsetX },
-            { key: 'offsetY', label: 'إزاحة Y', min: -0.2, max: 0.2, step: 0.005, value: d.offsetY },
-            { key: 'crownTop', label: 'ارتفاع التاج', min: 0.2, max: 0.9, step: 0.01, value: d.crownTop }
+            { key: 'frameScale', label: 'مقاس الإطار', min: 0.8, max: 2.4, step: 0.01, value: d.frameScale },
+            { key: 'avatarScale', label: 'مقاس الصورة', min: 0.4, max: 1, step: 0.01, value: d.avatarScale },
+            { key: 'offsetX', label: 'إزاحة X', min: -0.3, max: 0.3, step: 0.005, value: d.offsetX },
+            { key: 'offsetY', label: 'إزاحة Y', min: -0.3, max: 0.3, step: 0.005, value: d.offsetY },
+            { key: 'crownTop', label: 'ارتفاع التاج', min: 0.2, max: 1, step: 0.01, value: d.crownTop }
         ];
+        const pct = (v) => `${Math.round(v * 100)}%`;
+
+        // ✅ طلب صريح — صف "كل الإطارات": يحتاج قائمة كل الإطارات النشطة بقيمها المحفوظة قبل
+        // رسم النافذة (كل عنصر يحمل قيمه الخاصة عبر متغيرات CSS على مستوى <figure> نفسه، لا
+        // الحاوية المشتركة — فيبقى ثابتاً بصرياً بصرف النظر عن تحريك منزلقات الإطار قيد التعديل)
+        let otherActiveFrames = [];
+        try {
+            const listRes = await this.api('GET', '/frames');
+            otherActiveFrames = (listRes.frames || []).filter(f => f.isActive && (!isEdit || f._id !== frame._id));
+        } catch { /* فشل الجلب غير قاتل — الصف يُعرض فارغاً بدل تعطيل الاستوديو كله */ }
+
+        const seatsGrid = (count) => `
+            <div class="fs-seats-grid" style="--cols:4;">
+                ${Array.from({ length: count }).map(() => `
+                    <span class="avatar" style="--size:64px;">
+                        <img class="avatar__photo" src="${PLACEHOLDER_AVATAR}">
+                        <img class="avatar__frame fs-live-frame-img" src="${previewFrameUrl}">
+                    </span>
+                `).join('')}
+            </div>`;
 
         const modal = this.openModal(`
             <div class="modal-overlay active">
-                <div class="modal-content" style="max-width:640px;">
+                <div class="modal-content" style="max-width:680px;">
                     <div class="modal-header"><h3>${isEdit ? 'تعديل إطار' : 'إطار جديد'}</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
                     <div class="modal-body">
                         <div class="frame-studio-row" id="frameStudioPreviewRow">
-                            <figure>
-                                <span class="avatar" id="fsPreviewHost" style="--size:84px;">
-                                    <img class="avatar__photo" src="${PLACEHOLDER_AVATAR}">
-                                    <img class="avatar__frame" id="fsPreviewHostFrame" src="${previewFrameUrl}">
-                                    <span class="avatar__crown"><i class="fas fa-crown"></i></span>
-                                </span>
-                                <figcaption>مقعد مضيف</figcaption>
-                            </figure>
-                            <figure>
-                                <span class="avatar" style="--size:52px;">
-                                    <img class="avatar__photo" src="${PLACEHOLDER_AVATAR}">
-                                    <img class="avatar__frame" id="fsPreviewSeatFrame" src="${previewFrameUrl}">
-                                </span>
-                                <figcaption>صف مقاعد</figcaption>
-                            </figure>
-                            <figure>
-                                <span class="avatar" style="--size:36px;">
-                                    <img class="avatar__photo" src="${PLACEHOLDER_AVATAR}">
-                                    <img class="avatar__frame" id="fsPreviewShopFrame" src="${previewFrameUrl}">
-                                </span>
-                                <figcaption>كل الإطارات</figcaption>
-                            </figure>
+                            <div class="fs-preview-group">
+                                <figure>
+                                    <span class="avatar" style="--size:96px;">
+                                        <img class="avatar__photo" src="${PLACEHOLDER_AVATAR}">
+                                        <img class="avatar__frame fs-live-frame-img" src="${previewFrameUrl}">
+                                        <span class="avatar__crown"><i class="fas fa-crown"></i></span>
+                                    </span>
+                                    <figcaption>مقعد مضيف</figcaption>
+                                </figure>
+                            </div>
+                            <div class="fs-preview-group">
+                                <span class="fs-preview-group-label">4 مقاعد</span>
+                                ${seatsGrid(4)}
+                            </div>
+                            <div class="fs-preview-group">
+                                <span class="fs-preview-group-label">6 مقاعد</span>
+                                ${seatsGrid(6)}
+                            </div>
+                            <div class="fs-preview-group">
+                                <span class="fs-preview-group-label">كل الإطارات</span>
+                                <div class="fs-allframes-row">
+                                    <figure class="fs-allframes-item fs-allframes-item--live">
+                                        <span class="avatar" style="--size:44px;">
+                                            <img class="avatar__photo" src="${PLACEHOLDER_AVATAR}">
+                                            <img class="avatar__frame fs-live-frame-img" src="${previewFrameUrl}">
+                                        </span>
+                                        <figcaption>قيد التعديل</figcaption>
+                                    </figure>
+                                    ${otherActiveFrames.map(f => `
+                                        <figure class="fs-allframes-item" style="--frame-scale:${f.display.frameScale};--avatar-scale:${f.display.avatarScale};--frame-x:${f.display.offsetX};--frame-y:${f.display.offsetY};">
+                                            <span class="avatar" style="--size:44px;">
+                                                <img class="avatar__photo" src="${PLACEHOLDER_AVATAR}">
+                                                <img class="avatar__frame" src="${escapeHtml(f.assetUrl || '')}">
+                                            </span>
+                                            <figcaption>${escapeHtml(f.name)}</figcaption>
+                                        </figure>
+                                    `).join('')}
+                                </div>
+                            </div>
                         </div>
 
                         <div class="frame-studio-dropzone" id="fsDropzone" style="margin:14px 0;">
@@ -896,9 +935,9 @@ class AdminDashboard {
 
                         <div class="form-group"><label>الاسم *</label><input type="text" class="form-control" id="fsName" value="${escapeHtml(frame?.name || '')}"></div>
                         <div style="display:flex;gap:10px;">
-                            <div class="form-group" style="flex:1;"><label>سعر يوم</label><input type="number" class="form-control" id="fsDay1" value="${frame?.prices?.day1 ?? 100}" min="0"></div>
-                            <div class="form-group" style="flex:1;"><label>سعر 3 أيام</label><input type="number" class="form-control" id="fsDay3" value="${frame?.prices?.day3 ?? 250}" min="0"></div>
-                            <div class="form-group" style="flex:1;"><label>سعر 7 أيام</label><input type="number" class="form-control" id="fsDay7" value="${frame?.prices?.day7 ?? 500}" min="0"></div>
+                            <div class="form-group" style="flex:1;"><label>سعر يوم</label><input type="number" class="form-control" id="fsDay1" value="${frame?.prices?.day1 ?? 100}" min="0" max="10000000" step="1"></div>
+                            <div class="form-group" style="flex:1;"><label>سعر 3 أيام</label><input type="number" class="form-control" id="fsDay3" value="${frame?.prices?.day3 ?? 250}" min="0" max="10000000" step="1"></div>
+                            <div class="form-group" style="flex:1;"><label>سعر 7 أيام</label><input type="number" class="form-control" id="fsDay7" value="${frame?.prices?.day7 ?? 500}" min="0" max="10000000" step="1"></div>
                         </div>
                         <div class="form-group"><label><input type="checkbox" id="fsAdminOnly" ${frame?.adminOnly ? 'checked' : ''}> خاص بالأدمن فقط</label></div>
                         <div class="form-group"><label><input type="checkbox" id="fsIsActive" ${frame?.isActive !== false ? 'checked' : ''}> نشط (يظهر بالمتجر)</label></div>
@@ -909,28 +948,31 @@ class AdminDashboard {
                                 <label>${s.label}</label>
                                 <input type="range" id="fsSlider_${s.key}" min="${s.min}" max="${s.max}" step="${s.step}" value="${s.value}">
                                 <output id="fsOutput_${s.key}">${s.value}</output>
+                                <span class="frame-studio-slider-pct" id="fsPct_${s.key}">${pct(s.value)}</span>
                             </div>
                         `).join('')}
                     </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" data-dismiss>إلغاء</button>
+                    <div class="modal-footer frame-studio-footer">
                         <button class="btn btn-primary" id="saveFrameBtn">${isEdit ? 'حفظ التعديلات' : 'إنشاء الإطار'}</button>
+                        <button class="btn btn-secondary" data-dismiss>إلغاء</button>
                     </div>
                 </div>
             </div>
         `);
 
-        const previewFrames = ['fsPreviewHostFrame', 'fsPreviewSeatFrame', 'fsPreviewShopFrame'].map(id => modal.querySelector(`#${id}`));
+        const previewFrames = Array.from(modal.querySelectorAll('.fs-live-frame-img'));
         const applyPreviewVar = (prop, value) => {
-            [modal.querySelector('#frameStudioPreviewRow')].forEach(row => row.style.setProperty(prop, value));
+            modal.querySelector('#frameStudioPreviewRow').style.setProperty(prop, value);
         };
         sliders.forEach(s => applyPreviewVar(`--${s.key === 'frameScale' ? 'frame-scale' : s.key === 'avatarScale' ? 'avatar-scale' : s.key === 'offsetX' ? 'frame-x' : s.key === 'offsetY' ? 'frame-y' : 'crown-top'}`, s.value));
         sliders.forEach(s => {
             const input = modal.querySelector(`#fsSlider_${s.key}`);
             const output = modal.querySelector(`#fsOutput_${s.key}`);
+            const pctOutput = modal.querySelector(`#fsPct_${s.key}`);
             const cssVar = { frameScale: '--frame-scale', avatarScale: '--avatar-scale', offsetX: '--frame-x', offsetY: '--frame-y', crownTop: '--crown-top' }[s.key];
             input.addEventListener('input', () => {
                 output.textContent = input.value;
+                pctOutput.textContent = pct(parseFloat(input.value));
                 applyPreviewVar(cssVar, input.value);
             });
         });
