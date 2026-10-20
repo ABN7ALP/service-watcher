@@ -122,38 +122,58 @@ const calculateRequiredXp = (level) => {
 // لكل صورة أفاتار بالتطبيق بلا استثناء (avatarHTML أدناه + كل مكان آخر يُستخدَم فيه صراحة)
 const DEFAULT_AVATAR_URL = '/images/default-avatar.webp';
 
-const FRAME_ASSET_URLS = {
-    'profile-frame-contributor': '/assets/frames/profile-frame-contributor.webp',
-    'profile-frame-admin': '/assets/frames/profile-frame-admin.webp',
-    'profile-frame-luxury-01': '/assets/frames/profile-frame-luxury-01.webp',
-    'profile-frame-royal-01': '/assets/frames/profile-frame-royal-01.webp',
-    'profile-frame-crown-01': '/assets/frames/profile-frame-crown-01.webp',
-    'profile-frame-black-gold-crown': '/assets/frames/profile-frame-black-gold-crown.webp',
-    'profile-frame-gothic-royal': '/assets/frames/profile-frame-gothic-royal.webp',
-    'profile-frame-amethyst-royal': '/assets/frames/profile-frame-amethyst-royal.webp',
-    'profile-frame-fire-dragons': '/assets/frames/profile-frame-fire-dragons.webp',
-    'profile-frame-lion-bee-sapphire': '/assets/frames/profile-frame-lion-bee-sapphire.webp',
-    'profile-frame-pegasus-warrior': '/assets/frames/profile-frame-pegasus-warrior.webp'
-};
+// 🛡️ طلب صريح (استوديو الإطارات بلوحة التحكم): مصدر الحقيقة الآن GET /api/frames/display
+// (قاعدة البيانات — الأدمن يضيف/يعدِّل الإطارات بلا أي تعديل كود)، لا خريطة ثابتة هنا مُضمَّنة
+// بالكود ولا frame-display.json الثابت مباشرة. frame-display.json يبقى احتياطاً أخيراً فقط
+// (استُخدم سابقاً كمصدر وحيد) — لو تعذّر الوصول للـAPI لأي سبب، تُستخدَم قيم العرض منه (بلا
+// أي أصل Cloudinary جديد بالطبع، فقط الإطارات المحلية الـ11 الأصلية تبقى تعمل بالاحتياطي)
+let FRAME_ASSET_URLS = {};
+let FRAME_STATIC_URLS = {};
+let FRAME_DISPLAY_CONFIG = {};
 
-// ✅ نسخة "-static.webp" (لقطة واحدة، @media(prefers-reduced-motion)) — نفس اسم الملف الأساسي
-// بلاحقة مختلفة فقط (مولَّدة بالضبط بهذا الاسم من normalize-frames.js لكل إطار بلا استثناء)،
-// فتُحسَب من FRAME_ASSET_URLS مباشرة بدل خريطة ثانية قد تنحرف عنها لو حُرِّرت يدوياً
-function staticFrameUrl(frameUrl) {
-    return frameUrl.replace(/\.webp$/, '-static.webp');
+// ✅ تُفضَّل خريطة staticUrl الصريحة (من قاعدة البيانات) أولاً؛ احتياطي الاشتقاق بلاحقة
+// "-static" يبقى فقط لمسار frame-display.json الاحتياطي (حيث لا رابط صريح أصلاً)
+function staticFrameUrl(frameClass, frameUrl) {
+    return FRAME_STATIC_URLS[frameClass] || frameUrl.replace(/\.webp$/, '-static.webp');
 }
 
-// 🛡️ طلب صريح: استُبدل نظام التحجيم الآلي بالكامل (effectiveOpeningRatio من
-// frames-manifest.json، --frame-correction، --crown-extra-lift) بقيم ثابتة ضبطها صاحب
-// المشروع يدوياً لكل إطار — public/assets/frames/frame-display.json، تُطبَّق حرفياً بلا أي
-// حساب مشتق من نسبة الفتحة. جلب واحد فقط عند تحميل التطبيق (ملف صغير، 11 إطاراً + مدخلان
-// احتياطيان)، لا جلب لكل عنصر .avatar. يبقى {} لو الجلب لم يكتمل بعد/فشل — resolveFrameDisplay
-// تتجاهل بأمان فتستخدم احتياطيات CSS نفسها (مطابقة لـ_default/_noFrame بالملف) حتى يكتمل الجلب
-let FRAME_DISPLAY_CONFIG = {};
-fetch('/assets/frames/frame-display.json')
-    .then(r => r.ok ? r.json() : {})
-    .then(data => { FRAME_DISPLAY_CONFIG = data || {}; })
-    .catch(() => {});
+async function loadFrameCatalog() {
+    try {
+        const res = await fetch('/api/frames/display');
+        if (!res.ok) throw new Error(`bad status ${res.status}`);
+        const data = await res.json();
+        const assetUrls = {};
+        const staticUrls = {};
+        const displayConfig = { _default: data._default || {}, _noFrame: data._noFrame || {} };
+        Object.entries(data.frames || {}).forEach(([cssClass, f]) => {
+            if (f.assetUrl) assetUrls[cssClass] = f.assetUrl;
+            if (f.staticUrl) staticUrls[cssClass] = f.staticUrl;
+            displayConfig[cssClass] = {
+                frameScale: f.frameScale, avatarScale: f.avatarScale, offsetX: f.offsetX, offsetY: f.offsetY, crownTop: f.crownTop
+            };
+        });
+        FRAME_ASSET_URLS = assetUrls;
+        FRAME_STATIC_URLS = staticUrls;
+        FRAME_DISPLAY_CONFIG = displayConfig;
+    } catch (error) {
+        console.error('[FRAMES] تعذّر جلب /api/frames/display، استخدام frame-display.json الاحتياطي:', error);
+        try {
+            const res2 = await fetch('/assets/frames/frame-display.json');
+            const fallback = res2.ok ? await res2.json() : {};
+            FRAME_DISPLAY_CONFIG = fallback || {};
+            const assetUrls = {};
+            Object.keys(fallback || {}).forEach(k => {
+                if (k === '_default' || k === '_noFrame') return;
+                assetUrls[k] = `/assets/frames/${k}.webp`;
+            });
+            FRAME_ASSET_URLS = assetUrls;
+            FRAME_STATIC_URLS = {}; // ✅ تُشتَق بلاحقة "-static" مباشرة من FRAME_ASSET_URLS بهذا المسار
+        } catch (fallbackError) {
+            console.error('[FRAMES] فشل الاحتياطي أيضاً — لا إطارات مرئية حتى تحديث الصفحة:', fallbackError);
+        }
+    }
+}
+loadFrameCatalog();
 
 // ✅ يحسب القيم الأربع (frameScale/avatarScale/offsetX/offsetY) الفعلية لإطار بعينه — إطار
 // معروف بالملف يأخذ قيمه حرفياً؛ إطار غير معروف (أو الملف لم يكتمل جلبه بعد) يأخذ _default.
@@ -218,7 +238,7 @@ function avatarHTML({ src, frameClass, sizeClass = '', extraPhotoClass = '', pho
     const photoClass = `avatar__photo${frameUrl ? '' : (frameClass ? ' ' + frameClass : '')}${extraPhotoClass ? ' ' + extraPhotoClass : ''}`;
     const frameImgs = frameUrl
         ? `<img class="avatar__frame avatar__frame--animated" src="${frameUrl}" alt="" aria-hidden="true">`
-        + `<img class="avatar__frame avatar__frame--static" src="${staticFrameUrl(frameUrl)}" alt="" aria-hidden="true">`
+        + `<img class="avatar__frame avatar__frame--static" src="${staticFrameUrl(frameClass, frameUrl)}" alt="" aria-hidden="true">`
         : '';
     const styleParts = [wrapStyle, frameDisplayStyle(frameClass)].filter(Boolean);
     const styleAttr = styleParts.length ? ` style="${styleParts.join(';')}"` : '';
@@ -278,7 +298,7 @@ function applyFrameToAvatarWrap(wrap, activeFrameClass) {
         }
         if (frameImgAnimated.getAttribute('src') !== frameUrl) frameImgAnimated.src = frameUrl;
 
-        const staticUrl = staticFrameUrl(frameUrl);
+        const staticUrl = staticFrameUrl(activeFrameClass, frameUrl);
         if (!frameImgStatic) {
             frameImgStatic = document.createElement('img');
             frameImgStatic.className = 'avatar__frame avatar__frame--static';
@@ -9534,6 +9554,13 @@ function showXpGainAnimation(amount) {
     socket.on('user-frame-changed', ({ userId, activeFrameClass }) => {
         applyFrameChangeByUserId(userId, activeFrameClass);
     });
+
+    // 🛡️ طلب صريح (استوديو الإطارات بلوحة التحكم): تغيير عالمي بكتالوج الإطارات نفسه (إنشاء/
+    // تحديث/حذف ناعم من الأدمن) — لا مستخدم بعينه كـuser-frame-changed أعلاه. يُعيد جلب
+    // /api/frames/display فوراً (بلا إعادة تحميل الصفحة) فتنعكس القيم الجديدة على أي عرض لاحق
+    // (مقعد جديد يُرسَم، فتح متجر الإطارات من جديد...)؛ لا إعادة رسم فورية للعناصر المعروضة
+    // حالياً إطلاقاً — تعديل أدمن نادر الحدوث، لا يستدعي مسحاً كاملاً للـDOM لهذا وحده
+    socket.on('frames:updated', () => { loadFrameCatalog(); });
 
     socket.on('hand-raise-added', ({ roomId, userId, username, profileImage, activeFrameClass }) => {
         if (userId === myUserId) { myHandRaised = true; updateHandRaiseUI(); }

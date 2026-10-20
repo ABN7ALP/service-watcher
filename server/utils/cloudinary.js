@@ -92,6 +92,34 @@ function customGiftUpload(req, res, next) {
     });
 }
 
+// 5د. Multer لأصل إطار بروفايل (استوديو الإطارات بلوحة التحكم) — webp/gif/png (وapng، لا
+// توقيع بايتات منفصل عنها — راجع detectRealFileType) فقط؛ لا jpeg (الإطارات تحتاج قناة ألفا
+// شفافة للفتحة المركزية، jpeg لا تدعمها). سقف 8MB صريح بالطلب — أعلى من بقية الرفوعات هنا
+// لأن أصول المصدر الخام (قبل تطبيع normalize-frames.js التي تُصغِّرها لـ≤400KB) قد تصل لعدة
+// ميجابايتات فعلياً (GIF متحركة بجودة عالية تحديداً)
+const frameAssetFilter = (req, file, cb) => {
+    const allowed = { 'image/png': true, 'image/gif': true, 'image/webp': true };
+    if (allowed[file.mimetype]) return cb(null, true);
+    cb(new Error('نوع الملف غير مدعوم. المسموح: webp, gif, png (apng)'));
+};
+const frameAssetUploadRaw = multer({
+    storage: storage,
+    fileFilter: frameAssetFilter,
+    limits: { fileSize: 8 * 1024 * 1024 } // 8MB
+}).single('frameFile');
+
+// 🐛 نفس نمط customGiftUpload أعلاه بالضبط: يلتقط أخطاء multer (تجاوز 8MB، نوع مرفوض) صراحةً
+// ويُترجمها لرسالة عربية 400 واضحة، بدل تركها تصل بصمت لمعالج next(err) العام (500 إنجليزي خام)
+function frameAssetUpload(req, res, next) {
+    frameAssetUploadRaw(req, res, (err) => {
+        if (!err) return next();
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ status: 'fail', message: 'حجم ملف الإطار يجب ألا يتجاوز 8 ميجابايت' });
+        }
+        return res.status(400).json({ status: 'fail', message: err.message || 'تعذّر رفع ملف الإطار' });
+    });
+}
+
 // 6. Multer للدردشات
 const chatUpload = multer({
     storage: storage,
@@ -351,17 +379,32 @@ const uploadRoomMusic = (fileBuffer) => {
     });
 };
 
+// 12.6 دالة رفع أصل إطار بروفايل مُطبَّع محلياً (ملفا webp متحرك+ثابت ناتجا normalize-frames.js
+// مباشرة من مسار على القرص، لا buffer بالذاكرة — الملفان جاهزان فعلياً على القرص بهذي النقطة)
+// — public_id صريح يضمن تطابق لاحقة "-static" بالرابط الناتج (يُستخدَم بالعميل كاحتياطي اشتقاق
+// لو تعذّر وصول حقل staticUrl الصريح من قاعدة البيانات لأي سبب — راجع staticFrameUrl بـapp.js)
+const uploadFrameAsset = (filePath, publicId) => {
+    return cloudinary.uploader.upload(filePath, {
+        folder: 'profile_frames',
+        public_id: publicId,
+        overwrite: true,
+        resource_type: 'image'
+    });
+};
+
 // 13. التصدير
 module.exports = {
     cloudinary,
     upload,                    // للملفات الشخصية (middleware)
     roomCoverUpload,          // لصورة غلاف الغرفة (middleware)
     customGiftUpload,         // لصورة الهدية المخصّصة (middleware)
+    frameAssetUpload,         // لأصل إطار بروفايل (middleware — استوديو الإطارات)
     chatUpload,               // للدردشات (middleware)
     uploadChatImage,          // دالة رفع صور الدردشة
     uploadChatVoice,          // دالة رفع صوت الدردشة
     uploadChatVideo,          // دالة رفع فيديو الدردشة
     uploadRoomMusic,          // دالة رفع أغاني مكتبة الغرفة
+    uploadFrameAsset,         // دالة رفع أصل إطار (من ملف على القرص)
     deleteChatMedia,          // دالة حذف وسائط الدردشة
     uploadReceiptImage,        // دالة رفع صورة إشعار التحويل
     deleteFromCloudinary,     // دالة حذف عامة

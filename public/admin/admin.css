@@ -1024,3 +1024,59 @@ body {
 @media (min-width: 769px) {
     .mobile-menu-toggle { display: none !important; }
 }
+
+/* ================================================= */
+/* ✅ استوديو الإطارات — معاينة حيّة بنفس رياضيات العرض الحقيقية بـinput.css/app.js بالضبط
+   (.avatar/.avatar__photo/.avatar__frame)، مُكرَّرة هنا عمداً داخل .frame-studio-row فقط
+   (لا تحميل كامل لـdist/style.css بلوحة التحكم — يتجنّب أي تصادم أصناف مع admin.css نفسها) */
+/* ================================================= */
+.frame-studio-row .avatar {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+    width: var(--size);
+    height: var(--size);
+}
+.frame-studio-row .avatar__photo {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: calc(var(--avatar-scale, 1) * 100%);
+    height: calc(var(--avatar-scale, 1) * 100%);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    object-fit: cover;
+    max-width: none;
+}
+.frame-studio-row .avatar__frame {
+    position: absolute;
+    left: calc(50% + var(--frame-x, 0) * 100%);
+    top: calc(50% + var(--frame-y, 0) * 100%);
+    width: calc(var(--frame-scale, 1.45) * 100%);
+    height: calc(var(--frame-scale, 1.45) * 100%);
+    transform: translate(-50%, -50%);
+    object-fit: contain;
+    pointer-events: none;
+    max-width: none;
+    z-index: 2;
+}
+.frame-studio-row .avatar__crown {
+    position: absolute;
+    z-index: 6;
+    top: calc(50% - var(--crown-top, 0.45) * 100%);
+    left: 50%;
+    transform: translate(-50%, -100%) rotate(-8deg);
+    font-size: calc(var(--size) * .34);
+    color: #ffd45a;
+    text-shadow: 0 2px 4px rgba(0,0,0,.6);
+    pointer-events: none;
+}
+.frame-studio-row { display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap; justify-content: center; padding: 16px; background: #1a1d29; border-radius: 10px; }
+.frame-studio-row figure { margin: 0; text-align: center; }
+.frame-studio-row figcaption { color: #9ca3af; font-size: .72rem; margin-top: 6px; }
+.frame-studio-slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.frame-studio-slider-row label { width: 110px; flex-shrink: 0; font-size: .85rem; }
+.frame-studio-slider-row input[type="range"] { flex: 1; }
+.frame-studio-slider-row output { width: 54px; text-align: left; font-size: .8rem; color: #9ca3af; direction: ltr; }
+.frame-studio-dropzone { border: 2px dashed #3a3f55; border-radius: 10px; padding: 18px; text-align: center; cursor: pointer; color: #9ca3af; transition: border-color .15s ease; }
+.frame-studio-dropzone:hover { border-color: #667eea; }
+.frame-studio-dropzone.has-file { border-color: #22c55e; color: #22c55e; }

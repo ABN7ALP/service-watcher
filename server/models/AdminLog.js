@@ -31,6 +31,9 @@ const adminLogSchema = new mongoose.Schema({
       'create_gift',
       'update_gift',
       'delete_gift',
+      'create_frame',
+      'update_frame',
+      'delete_frame',
       'add_music_track',
       'delete_music_track',
       'update_settings',
@@ -46,7 +49,7 @@ const adminLogSchema = new mongoose.Schema({
   },
   targetEntity: {
     type: String,
-    enum: ['user', 'transaction', 'withdrawal', 'gift', 'system', 'battle', null],
+    enum: ['user', 'transaction', 'withdrawal', 'gift', 'frame', 'system', 'battle', null],
     default: null
   },
   entityId: mongoose.Schema.Types.ObjectId,
@@ -167,6 +170,9 @@ adminLogSchema.methods.getActionName = function() {
     'create_gift': 'إنشاء هدية',
     'update_gift': 'تحديث هدية',
     'delete_gift': 'حذف هدية',
+    'create_frame': 'إنشاء إطار',
+    'update_frame': 'تحديث إطار',
+    'delete_frame': 'حذف إطار',
     'update_settings': 'تحديث الإعدادات',
     'system_maintenance': 'صيانة النظام',
     'manual_transaction': 'معاملة يدوية',

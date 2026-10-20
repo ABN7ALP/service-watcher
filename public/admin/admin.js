@@ -143,6 +143,7 @@ class AdminDashboard {
         });
         document.getElementById('transactionsTypeFilter')?.addEventListener('change', () => this.loadTransactions(1));
         document.getElementById('addGiftBtn')?.addEventListener('click', () => this.showGiftFormModal());
+        document.getElementById('addFrameBtn')?.addEventListener('click', () => this.showFrameStudioModal());
         document.getElementById('addMusicTrackBtn')?.addEventListener('click', () => this.showMusicTrackFormModal());
         document.getElementById('suggestionsStatusFilter')?.addEventListener('change', () => this.loadSuggestions());
         document.getElementById('suggestionsTypeFilter')?.addEventListener('change', () => this.loadSuggestions());
@@ -199,6 +200,7 @@ class AdminDashboard {
             withdrawals: () => this.loadWithdrawals(),
             transactions: () => this.loadTransactions(1),
             gifts: () => this.loadGifts(),
+            frames: () => this.loadFrames(),
             customgifts: () => this.loadCustomGifts(),
             music: () => this.loadMusicTracks(1),
             suggestions: () => this.loadSuggestions(),
@@ -783,6 +785,191 @@ class AdminDashboard {
                 this.showToast('تم الحفظ بنجاح', 'success');
                 modal.remove();
                 this.loadGifts();
+            } catch (error) { this.showToast(error.message, 'error'); }
+        });
+    }
+
+    // ================= استوديو الإطارات =================
+    // ✅ this.api() أعلاه JSON فقط (Content-Type: application/json ثابت) — رفع الملفات يحتاج
+    // multipart/form-data (المتصفح يضبط الحد الفاصل boundary بنفسه، فلا Content-Type صريح هنا)
+    async apiUpload(method, path, formData) {
+        const response = await fetch(`/api/admin${path}`, {
+            method, headers: { 'Authorization': `Bearer ${this.token}` }, body: formData
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            if (response.status === 401 || response.status === 403) {
+                this.showToast('انتهت صلاحية الجلسة، يرجى تسجيل الدخول من جديد', 'error');
+                setTimeout(() => this.logout(), 1500);
+            }
+            throw new Error(data.message || `خطأ (${response.status})`);
+        }
+        return data;
+    }
+
+    async loadFrames() {
+        try {
+            const data = await this.api('GET', '/frames');
+            const c = document.getElementById('framesGridContainer');
+            if (!data.frames || !data.frames.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-crown fa-2x"></i><p>لا توجد إطارات بعد</p></div>'; return; }
+
+            c.innerHTML = data.frames.map(f => `
+                <div class="stat-card ${f.isActive ? 'success' : 'danger'}" style="flex-direction:column;align-items:flex-start;">
+                    <div style="display:flex;align-items:center;gap:12px;width:100%;">
+                        <img src="${escapeHtml(f.assetUrl || '')}" style="width:50px;height:50px;object-fit:contain;background:#11131d;border-radius:8px;">
+                        <div style="flex:1;min-width:0;">
+                            <strong>${escapeHtml(f.name)}</strong><br>
+                            <span class="text-muted small">${f.prices.day1}/${f.prices.day3}/${f.prices.day7} كوينز (1/3/7 يوم)${f.adminOnly ? ' — أدمن فقط' : ''}</span>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:6px;margin-top:12px;">
+                        <button class="btn-action btn-edit" data-edit="${f._id}"><i class="fas fa-edit"></i></button>
+                        <button class="btn-action btn-delete" data-delete="${f._id}" data-name="${escapeHtml(f.name)}"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            `).join('');
+
+            c.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => {
+                const frame = data.frames.find(f => f._id === btn.dataset.edit);
+                this.showFrameStudioModal(frame);
+            }));
+            c.querySelectorAll('[data-delete]').forEach(btn => btn.addEventListener('click', () =>
+                this.confirmAction(`إلغاء تفعيل إطار "${btn.dataset.name}"؟ (حذف ناعم — يبقى سارياً لمن يرتديه حالياً)`, async () => {
+                    await this.api('DELETE', `/frames/${btn.dataset.delete}`);
+                    this.showToast('تم إلغاء تفعيل الإطار', 'success'); this.loadFrames();
+                })
+            ));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    showFrameStudioModal(frame = null) {
+        const isEdit = !!frame;
+        const d = frame?.display || { frameScale: 1.45, avatarScale: 0.8, offsetX: 0, offsetY: 0, crownTop: 0.45 };
+        const PLACEHOLDER_AVATAR = '/images/default-avatar.webp';
+        // ✅ بكسل شفاف 1×1 — بديل src="" (قد يُفسَّره بعض المتصفحات كإعادة جلب الصفحة الحالية
+        // كصورة) لإطار جديد بلا ملف مختار بعد/إطار قائم بلا assetUrl بعد (نادر)
+        const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+        const previewFrameUrl = escapeHtml(frame?.assetUrl || TRANSPARENT_PIXEL);
+        const sliders = [
+            { key: 'frameScale', label: 'مقاس الإطار', min: 1, max: 2.2, step: 0.01, value: d.frameScale },
+            { key: 'avatarScale', label: 'مقاس الصورة', min: 0.3, max: 1, step: 0.01, value: d.avatarScale },
+            { key: 'offsetX', label: 'إزاحة X', min: -0.2, max: 0.2, step: 0.005, value: d.offsetX },
+            { key: 'offsetY', label: 'إزاحة Y', min: -0.2, max: 0.2, step: 0.005, value: d.offsetY },
+            { key: 'crownTop', label: 'ارتفاع التاج', min: 0.2, max: 0.9, step: 0.01, value: d.crownTop }
+        ];
+
+        const modal = this.openModal(`
+            <div class="modal-overlay active">
+                <div class="modal-content" style="max-width:640px;">
+                    <div class="modal-header"><h3>${isEdit ? 'تعديل إطار' : 'إطار جديد'}</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                    <div class="modal-body">
+                        <div class="frame-studio-row" id="frameStudioPreviewRow">
+                            <figure>
+                                <span class="avatar" id="fsPreviewHost" style="--size:84px;">
+                                    <img class="avatar__photo" src="${PLACEHOLDER_AVATAR}">
+                                    <img class="avatar__frame" id="fsPreviewHostFrame" src="${previewFrameUrl}">
+                                    <span class="avatar__crown"><i class="fas fa-crown"></i></span>
+                                </span>
+                                <figcaption>مقعد مضيف</figcaption>
+                            </figure>
+                            <figure>
+                                <span class="avatar" style="--size:52px;">
+                                    <img class="avatar__photo" src="${PLACEHOLDER_AVATAR}">
+                                    <img class="avatar__frame" id="fsPreviewSeatFrame" src="${previewFrameUrl}">
+                                </span>
+                                <figcaption>صف مقاعد</figcaption>
+                            </figure>
+                            <figure>
+                                <span class="avatar" style="--size:36px;">
+                                    <img class="avatar__photo" src="${PLACEHOLDER_AVATAR}">
+                                    <img class="avatar__frame" id="fsPreviewShopFrame" src="${previewFrameUrl}">
+                                </span>
+                                <figcaption>كل الإطارات</figcaption>
+                            </figure>
+                        </div>
+
+                        <div class="frame-studio-dropzone" id="fsDropzone" style="margin:14px 0;">
+                            <i class="fas fa-cloud-upload-alt fa-2x"></i>
+                            <p style="margin:6px 0 0;">${isEdit ? 'اختر ملفاً لاستبدال أصل الإطار (اختياري)' : 'اختر ملف الإطار (webp/gif/png، ≤8MB)'}</p>
+                            <input type="file" id="fsFileInput" accept="image/webp,image/gif,image/png" style="display:none;">
+                        </div>
+
+                        <div class="form-group"><label>الاسم *</label><input type="text" class="form-control" id="fsName" value="${escapeHtml(frame?.name || '')}"></div>
+                        <div style="display:flex;gap:10px;">
+                            <div class="form-group" style="flex:1;"><label>سعر يوم</label><input type="number" class="form-control" id="fsDay1" value="${frame?.prices?.day1 ?? 100}" min="0"></div>
+                            <div class="form-group" style="flex:1;"><label>سعر 3 أيام</label><input type="number" class="form-control" id="fsDay3" value="${frame?.prices?.day3 ?? 250}" min="0"></div>
+                            <div class="form-group" style="flex:1;"><label>سعر 7 أيام</label><input type="number" class="form-control" id="fsDay7" value="${frame?.prices?.day7 ?? 500}" min="0"></div>
+                        </div>
+                        <div class="form-group"><label><input type="checkbox" id="fsAdminOnly" ${frame?.adminOnly ? 'checked' : ''}> خاص بالأدمن فقط</label></div>
+                        <div class="form-group"><label><input type="checkbox" id="fsIsActive" ${frame?.isActive !== false ? 'checked' : ''}> نشط (يظهر بالمتجر)</label></div>
+
+                        <hr style="border-color:#2a2f45;">
+                        ${sliders.map(s => `
+                            <div class="frame-studio-slider-row">
+                                <label>${s.label}</label>
+                                <input type="range" id="fsSlider_${s.key}" min="${s.min}" max="${s.max}" step="${s.step}" value="${s.value}">
+                                <output id="fsOutput_${s.key}">${s.value}</output>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" data-dismiss>إلغاء</button>
+                        <button class="btn btn-primary" id="saveFrameBtn">${isEdit ? 'حفظ التعديلات' : 'إنشاء الإطار'}</button>
+                    </div>
+                </div>
+            </div>
+        `);
+
+        const previewFrames = ['fsPreviewHostFrame', 'fsPreviewSeatFrame', 'fsPreviewShopFrame'].map(id => modal.querySelector(`#${id}`));
+        const applyPreviewVar = (prop, value) => {
+            [modal.querySelector('#frameStudioPreviewRow')].forEach(row => row.style.setProperty(prop, value));
+        };
+        sliders.forEach(s => applyPreviewVar(`--${s.key === 'frameScale' ? 'frame-scale' : s.key === 'avatarScale' ? 'avatar-scale' : s.key === 'offsetX' ? 'frame-x' : s.key === 'offsetY' ? 'frame-y' : 'crown-top'}`, s.value));
+        sliders.forEach(s => {
+            const input = modal.querySelector(`#fsSlider_${s.key}`);
+            const output = modal.querySelector(`#fsOutput_${s.key}`);
+            const cssVar = { frameScale: '--frame-scale', avatarScale: '--avatar-scale', offsetX: '--frame-x', offsetY: '--frame-y', crownTop: '--crown-top' }[s.key];
+            input.addEventListener('input', () => {
+                output.textContent = input.value;
+                applyPreviewVar(cssVar, input.value);
+            });
+        });
+
+        const dropzone = modal.querySelector('#fsDropzone');
+        const fileInput = modal.querySelector('#fsFileInput');
+        let selectedFile = null;
+        dropzone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+            selectedFile = fileInput.files[0] || null;
+            if (selectedFile) {
+                dropzone.classList.add('has-file');
+                dropzone.querySelector('p').textContent = `✅ ${selectedFile.name}`;
+                const objectUrl = URL.createObjectURL(selectedFile);
+                previewFrames.forEach(img => { img.src = objectUrl; });
+            }
+        });
+
+        modal.querySelector('#saveFrameBtn').addEventListener('click', async () => {
+            const name = modal.querySelector('#fsName').value.trim();
+            if (!name) { this.showToast('يرجى إدخال اسم الإطار', 'error'); return; }
+            if (!isEdit && !selectedFile) { this.showToast('يرجى اختيار ملف الإطار', 'error'); return; }
+
+            const formData = new FormData();
+            if (selectedFile) formData.append('frameFile', selectedFile);
+            formData.append('name', name);
+            formData.append('day1', modal.querySelector('#fsDay1').value);
+            formData.append('day3', modal.querySelector('#fsDay3').value);
+            formData.append('day7', modal.querySelector('#fsDay7').value);
+            formData.append('adminOnly', modal.querySelector('#fsAdminOnly').checked ? 'true' : 'false');
+            formData.append('isActive', modal.querySelector('#fsIsActive').checked ? 'true' : 'false');
+            sliders.forEach(s => formData.append(s.key, modal.querySelector(`#fsSlider_${s.key}`).value));
+
+            try {
+                if (isEdit) await this.apiUpload('PUT', `/frames/${frame._id}`, formData);
+                else await this.apiUpload('POST', '/frames', formData);
+                this.showToast('تم الحفظ بنجاح', 'success');
+                modal.remove();
+                this.loadFrames();
             } catch (error) { this.showToast(error.message, 'error'); }
         });
     }
