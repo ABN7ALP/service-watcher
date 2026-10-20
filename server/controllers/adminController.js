@@ -84,14 +84,19 @@ exports.getDashboardStats = async (req, res) => {
 exports.getUsers = async (req, res) => {
   try {
     const { page = 1, limit = 50, search = '' } = req.query;
-    
+
     const query = {};
-    if (search) {
-      const trimmed = search.trim();
+    // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #11، Low): كان trimmed يُستخدَم
+    // مباشرة بـ$regex بلا أي تعقيم — نفس اتفاقية التعقيم المُستخدَمة أصلاً بـgetClientErrors
+    // بهذا الملف وVoiceRoom.listRooms/MusicTrack.search (الحل الجذري الحقيقي: استخدام الدالة
+    // المشتركة الموجودة فعلاً queryHelpers.safeSearchRegex بدل تكرار تعقيم مختلف بكل موضع)
+    const { safeSearchRegex } = require('../utils/queryHelpers');
+    const searchRegex = safeSearchRegex(search, 100);
+    if (searchRegex) {
       query.$or = [
-        { username: { $regex: trimmed, $options: 'i' } },
-        { email: { $regex: trimmed, $options: 'i' } },
-        { customId: { $regex: trimmed, $options: 'i' } }
+        { username: searchRegex },
+        { email: searchRegex },
+        { customId: searchRegex }
       ];
     }
 
@@ -961,13 +966,19 @@ exports.getAllTransactions = async (req, res) => {
     if (status !== 'all') query.status = status;
 
     if (search) {
-      const matchedUsers = await User.find({
-        $or: [
-          { username: { $regex: search, $options: 'i' } },
-          { customId: { $regex: search, $options: 'i' } }
-        ]
-      }).select('_id');
-      query.user = { $in: matchedUsers.map(u => u._id) };
+      // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #11، Low): نفس العلّة بالضبط
+      // بـgetUsers أعلى بهذا الملف — search كان يُستخدَم مباشرة بـ$regex بلا تعقيم
+      const { safeSearchRegex } = require('../utils/queryHelpers');
+      const searchRegex = safeSearchRegex(search, 100);
+      if (searchRegex) {
+        const matchedUsers = await User.find({
+          $or: [
+            { username: searchRegex },
+            { customId: searchRegex }
+          ]
+        }).select('_id');
+        query.user = { $in: matchedUsers.map(u => u._id) };
+      }
     }
 
     const transactions = await Transaction.find(query)

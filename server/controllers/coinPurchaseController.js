@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const CoinPurchase = require('../models/CoinPurchase');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
@@ -125,29 +126,49 @@ exports.uploadReceipt = async (req, res) => {
 };
 
 // ===== إدارة الطلبات (للمشرفين فقط) =====
+// 🛡️ إصلاح جذري مزدوج (مراجعة أمنية — redteam-audit-1):
+// - البند #12 (Low): كان الفحص هنا if(!req.user.isAdmin) محلياً بدل بوابة adminAuth
+//   المشتركة التي تمر منها كل مسارات الإدارة الأخرى (راجع server/routes/admin.js) — الآن
+//   adminAuth نفسها مُطبَّقة بـcoinPurchaseRoutes.js على هذين المسارين فقط (req.admin بدل
+//   req.user)، والفحص المحلي المكرر أُزيل بالكامل.
+// - اكتُشف أثناء إصلاح البند #12 (مراجعة أثر جانبي شاملة — نفس عائلة البند #6 بالضبط، بملف
+//   مختلف تماماً فاتته الجولة الأولى): approvePurchase كانت تفحص status ثم تُعدِّل status
+//   وcoins.user بعمليتي save() منفصلتين تماماً بلا أي قفل — نفس علّة approveCoinPurchase
+//   بـadminController.js حرفياً، بمسار حيّ فعلياً (/api/coin-purchase/:id/approve). حجز ذرّي
+//   واحد (findOneAndUpdate بشرط status) + إيداع الكوينز بنفس المعاملة يمنع إيداعاً مزدوجاً
+//   من موافقتين متزامنتين على نفس الطلب، بالضبط كما أُصلِح بالبند #6
 exports.approvePurchase = async (req, res) => {
     try {
-        if (!req.user.isAdmin) {
-            return res.status(403).json({ status: 'fail', message: 'صلاحيات غير كافية' });
-        }
-
         const { purchaseId } = req.params;
-        const purchase = await CoinPurchase.findById(purchaseId);
-        if (!purchase) return res.status(404).json({ status: 'fail', message: 'الطلب غير موجود' });
-        if (purchase.status !== 'pending_review') {
-            return res.status(400).json({ status: 'fail', message: 'الطلب ليس قيد المراجعة' });
+        const session = await mongoose.startSession();
+        let purchase = null;
+        let user = null;
+        try {
+            await session.withTransaction(async () => {
+                purchase = await CoinPurchase.findOneAndUpdate(
+                    { _id: purchaseId, status: 'pending_review' },
+                    { $set: { status: 'approved', processedBy: req.admin._id, processedAt: new Date() } },
+                    { new: true, session }
+                );
+                if (!purchase) {
+                    throw Object.assign(new Error('الطلب ليس قيد المراجعة أو تمت معالجته مسبقاً'), { code: 'NOT_PENDING' });
+                }
+                user = await User.findByIdAndUpdate(
+                    purchase.user, { $inc: { coins: purchase.coinsAmount } }, { new: true, session }
+                );
+            });
+        } catch (txError) {
+            if (txError.code === 'NOT_PENDING') {
+                const exists = await CoinPurchase.exists({ _id: purchaseId });
+                if (!exists) return res.status(404).json({ status: 'fail', message: 'الطلب غير موجود' });
+                return res.status(400).json({ status: 'fail', message: txError.message });
+            }
+            throw txError;
+        } finally {
+            await session.endSession();
         }
 
-        purchase.status = 'approved';
-        purchase.processedBy = req.user.id;
-        purchase.processedAt = new Date();
-        await purchase.save();
-
-        const user = await User.findById(purchase.user);
         if (user) {
-            user.coins += purchase.coinsAmount;
-            await user.save();
-
             const io = req.app.get('socketio');
             if (io && user.socketId) {
                 io.to(user.socketId).emit('coinsUpdated', { newCoins: user.coins, purchaseId: purchase._id });
@@ -163,21 +184,21 @@ exports.approvePurchase = async (req, res) => {
 
 exports.rejectPurchase = async (req, res) => {
     try {
-        if (!req.user.isAdmin) {
-            return res.status(403).json({ status: 'fail', message: 'صلاحيات غير كافية' });
-        }
-
         const { purchaseId } = req.params;
         const { reason } = req.body;
 
-        const purchase = await CoinPurchase.findById(purchaseId);
-        if (!purchase) return res.status(404).json({ status: 'fail', message: 'الطلب غير موجود' });
-
-        purchase.status = 'rejected';
-        purchase.adminNotes = reason || '';
-        purchase.processedBy = req.user.id;
-        purchase.processedAt = new Date();
-        await purchase.save();
+        // ✅ لا استرداد مالي هنا (كوينز شراء الكوينز لا تُضاف إلا عند approvePurchase) — حجز
+        // ذرّي واحد يكفي لمنع معالجة الرفض مرتين (سجلّ/إشعار مكرر) دون حاجة لمعاملة Mongo
+        const purchase = await CoinPurchase.findOneAndUpdate(
+            { _id: purchaseId, status: { $in: ['pending_payment', 'pending_review'] } },
+            { $set: { status: 'rejected', adminNotes: reason || '', processedBy: req.admin._id, processedAt: new Date() } },
+            { new: true }
+        );
+        if (!purchase) {
+            const exists = await CoinPurchase.exists({ _id: purchaseId });
+            if (!exists) return res.status(404).json({ status: 'fail', message: 'الطلب غير موجود' });
+            return res.status(400).json({ status: 'fail', message: 'لا يمكن رفض طلب تمت معالجته مسبقاً' });
+        }
 
         res.status(200).json({ status: 'success', message: 'تم رفض الطلب', data: { purchase } });
     } catch (error) {

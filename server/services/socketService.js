@@ -52,6 +52,33 @@ function isVoiceSignalRateLimited(userId) {
     return timestamps.length > VOICE_SIGNAL_MAX;
 }
 
+// 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #7، High): join-room-chat
+// وget-room-viewers لم يكن عليهما أي محدِّد معدل إطلاقاً (بخلاف gift:combo) — أُثبِت فعلياً:
+// سوكيت واحد مُصادَق عليه أرسل 544.7 get-room-viewers/ثانية و491.0 join-room-chat/ثانية بلا أي
+// رفض. get-room-viewers ينفّذ تجميعاً (aggregate) غير مُخزَّن وغير محدود سعره يتناسب مع عدد كل
+// الغرف النشطة بالمنصة، وjoin-room-chat يبثّ لكل من بالغرفة (تضخيم يصيب سوكيتات أخرى، لا سوكيت
+// المُرسِل فقط). نفس نمط isGiftComboRateLimited تماماً، بسقف سخي كفاية لتبديل غرف حقيقي متكرر
+// وتحديث قائمة مشاهدين، بعيد جداً عن معدل الإغراق المُثبَت فعلياً
+const roomEventRateLimit = new Map(); // `${userId}:${eventName}` → [timestamps]
+const ROOM_EVENT_RATE_WINDOW_MS = 2000;
+const ROOM_EVENT_RATE_MAX = 10;
+function isRoomEventRateLimited(userId, eventName) {
+    const now = Date.now();
+    const key = `${userId}:${eventName}`;
+    const timestamps = (roomEventRateLimit.get(key) || []).filter(t => now - t < ROOM_EVENT_RATE_WINDOW_MS);
+    timestamps.push(now);
+    roomEventRateLimit.set(key, timestamps);
+    return timestamps.length > ROOM_EVENT_RATE_MAX;
+}
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, timestamps] of roomEventRateLimit.entries()) {
+        const filtered = timestamps.filter(t => now - t < ROOM_EVENT_RATE_WINDOW_MS);
+        if (filtered.length === 0) roomEventRateLimit.delete(key);
+        else roomEventRateLimit.set(key, filtered);
+    }
+}, 30 * 1000);
+
 // ✅ حالة تشغيل الموسيقى الحيّة لكل غرفة (بالذاكرة — تكفي، لا تحتاج قاعدة بيانات)
 // roomId → { url, title, startedAt(ms), isPlaying, pausedAt(seconds) }
 const roomMusicState = new Map();
@@ -1063,7 +1090,15 @@ const initializeSocket = (server) => {
         // الحد الأقصى الذي قد يستغرقه الخادم ليكتشف أصلاً أن اتصالاً انقطع (قبل أي مهلة سماح إضافية
         // فوقه بمنطق التطبيق — راجع HOST_DISCONNECT_END_MS أدناه)
         pingInterval: 25000,
-        pingTimeout: 20000
+        pingTimeout: 20000,
+        // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #8، High): بلا هذا الإعداد،
+        // الافتراضي الضمني بمكتبة Socket.IO (1MB) هو الفعلي — بخلاف REST (express.json بحد
+        // 10kb صريح)، لا حدّ صريح إطلاقاً لحجم حمولة اتصال WebSocket. أُثبِت فعلياً: سوكيت واحد
+        // أرسل ~126.3 ميجابايت/ثانية من حمولة مقبولة فعلياً (بالدمج مع غياب محدِّد المعدل —
+        // البند #7 — قبل إصلاحه). 100 كيلوبايت يتجاوز بسخاء أي حمولة مشروعة تُرسَل فعلياً عبر
+        // السوكيت بهذا التطبيق (نص دردشة، JSON هدايا gift:combo؛ كل الملفات الحقيقية تُرفَع عبر
+        // REST multipart إلى Cloudinary، لا عبر طبقة السوكيت إطلاقاً)
+        maxHttpBufferSize: 100 * 1024
     });
 
     io.use(verifySocketToken);
@@ -2493,6 +2528,7 @@ socket.on('refreshBlockData', async () => {
         // =====================================================
         socket.on('join-room-chat', async ({ roomId }) => {
             if (!roomId) return;
+            if (isRoomEventRateLimited(socket.user._id, 'join-room-chat')) return;
 
             // ✅ إعلان "انضم فلان" فور دخول الغرفة (مشاهداً، قبل أي طلب صعود) — نُحدّد هل
             // هذا انضمام حقيقي جديد أم مجرد تبويب/جهاز إضافي لنفس الشخص أصلاً موجود، عبر
@@ -2561,6 +2597,7 @@ socket.on('refreshBlockData', async () => {
         // بلا حاجة لتخزين إضافي بقاعدة البيانات — نفس مصدر عدّاد المشاهدين تماماً)
         socket.on('get-room-viewers', async ({ roomId }) => {
             if (!roomId) return;
+            if (isRoomEventRateLimited(socket.user._id, 'get-room-viewers')) return;
             // ✅ طلب صريح: أضيف رقم دعم كل مشاهد "داخل الروم" بنافذة المشاهدين (نفس الرقم
             // الظاهر أصلاً على شارة مقعده لو كان جالساً — getRoomSupportTotal — الآن يظهر
             // لكل من بالقائمة بصرف النظر هل هو جالس على مقعد أصلاً أم مجرد مشاهد)
@@ -2940,6 +2977,7 @@ module.exports.forceDisconnectUserSocket = forceDisconnectUserSocket;
 // ✅ تُصدَّر فقط لاختبارات مراجعة أمنية (redteam-audit-1، البند #1) — راجع
 // __tests__/socketAuth.security.test.js؛ لا مستهلك إنتاجي خارج io.use(verifySocketToken) هنا
 module.exports.verifySocketToken = verifySocketToken;
+module.exports.isRoomEventRateLimited = isRoomEventRateLimited; // ✅ تُصدَّر فقط لاختبارات redteam-audit-1 البند #7
 module.exports.broadcastUserFrameChange = broadcastUserFrameChange;
 // ✅ تُستخدَم من واجهات REST (voiceRoomController) لتضمين المجموع التراكمي الحالي لكل
 // مستخدم جالس ضمن لقطة حالة الغرفة الأولى (قبل أي حدث Socket حي) — راجع roomSupportTally أعلاه
