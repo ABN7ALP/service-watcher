@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const Withdrawal = require('../models/Withdrawal');
@@ -326,33 +327,38 @@ exports.approveDeposit = async (req, res) => {
     const { transactionId } = req.params;
     const { admin } = req;
 
-    const transaction = await Transaction.findById(transactionId);
-    if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: 'المعاملة غير موجودة'
+    // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #6): كان الفحص (status!=='pending')
+    // وإضافة الرصيد لاحقاً (user.balance += ...; save()) عمليتين منفصلتين بلا أي قفل — أُثبِت
+    // فعلياً: 5 طلبات موافقة متزامنة على نفس المعاملة أنتجت رصيداً مُضاعَفاً في 4/5 محاولات.
+    // نفس نمط adminReviewCustomGift: حجز ذرّي واحد (findOneAndUpdate بشرط status:'pending')
+    // يضمن أن أي محاولة ثانية تصطدم بفشل الحجز نفسه فوراً — لا فرصة لإضافة الرصيد مرتين
+    const session = await mongoose.startSession();
+    let transaction = null;
+    let user = null;
+    try {
+      await session.withTransaction(async () => {
+        transaction = await Transaction.findOneAndUpdate(
+          { _id: transactionId, status: 'pending' },
+          { $set: { status: 'completed', processedBy: admin._id, processedAt: new Date() } },
+          { new: true, session }
+        );
+        if (!transaction) {
+          throw Object.assign(new Error('المعاملة غير موجودة أو تمت معالجتها مسبقاً'), { code: 'ALREADY_PROCESSED' });
+        }
+        user = await User.findByIdAndUpdate(
+          transaction.user, { $inc: { balance: transaction.amount } }, { new: true, session }
+        );
       });
+    } catch (txError) {
+      if (txError.code === 'ALREADY_PROCESSED') {
+        return res.status(400).json({ success: false, message: txError.message });
+      }
+      throw txError;
+    } finally {
+      await session.endSession();
     }
 
-    if (transaction.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        message: 'المعاملة غير قابلة للمعالجة'
-      });
-    }
-
-    // Update transaction
-    transaction.status = 'completed';
-    transaction.processedBy = admin._id;
-    transaction.processedAt = new Date();
-    await transaction.save();
-
-      // Add balance to user
-    const user = await User.findById(transaction.user);
     if (user) {
-      user.balance += transaction.amount;
-      await user.save();
-
       const io = req.app.get('socketio');
 
       // ✅ تحديث الرصيد لحظياً في واجهة المستخدم إن كان متصلاً الآن
@@ -458,37 +464,46 @@ exports.rejectTransaction = async (req, res) => {
     const { reason } = req.body;
     const { admin } = req;
 
-    const transaction = await Transaction.findById(transactionId);
-    if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: 'المعاملة غير موجودة'
+    // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #6): نفس علّة approveDeposit
+    // بالضبط، بل أسوأ — هذي الدالة لم تكن تتحقق من status:'pending' إطلاقاً قبل الرفض،
+    // فمعاملة واحدة يمكن رفضها عدة مرات (كل مرة تُضيف استرداداً جديداً للسحب). حجز ذرّي واحد
+    // (findOneAndUpdate بشرط status:'pending') يضمن رفضاً واحداً فعلياً بالضبط، والاسترداد
+    // (لمعاملات السحب فقط) يُنفَّذ بنفس المعاملة الذرّية — لا فرصة لاسترداد مزدوج
+    const session = await mongoose.startSession();
+    let transaction = null;
+    let refundedUser = null;
+    try {
+      await session.withTransaction(async () => {
+        transaction = await Transaction.findOneAndUpdate(
+          { _id: transactionId, status: 'pending' },
+          { $set: { status: 'failed', adminNotes: reason, processedBy: admin._id, processedAt: new Date() } },
+          { new: true, session }
+        );
+        if (!transaction) {
+          throw Object.assign(new Error('المعاملة غير موجودة أو تمت معالجتها مسبقاً'), { code: 'ALREADY_PROCESSED' });
+        }
+        // If deposit was rejected, no need to adjust balance
+        // If withdrawal was rejected, return reserved balance
+        if (transaction.type === 'withdrawal') {
+          refundedUser = await User.findByIdAndUpdate(
+            transaction.user, { $inc: { balance: Math.abs(transaction.amount) } }, { new: true, session }
+          );
+        }
       });
+    } catch (txError) {
+      if (txError.code === 'ALREADY_PROCESSED') {
+        return res.status(400).json({ success: false, message: txError.message });
+      }
+      throw txError;
+    } finally {
+      await session.endSession();
     }
 
-    transaction.status = 'failed';
-    transaction.adminNotes = reason;
-    transaction.processedBy = admin._id;
-    transaction.processedAt = new Date();
-    await transaction.save();
-
-        // If deposit was rejected, no need to adjust balance
-    // If withdrawal was rejected, return reserved balance
     const io = req.app.get('socketio');
     const { sendBotMessage } = require('../utils/botMessenger');
-    let refundedUser = null;
-
-    if (transaction.type === 'withdrawal') {
-      refundedUser = await User.findById(transaction.user);
-      if (refundedUser) {
-        refundedUser.balance += Math.abs(transaction.amount); // Return the reserved amount
-        await refundedUser.save();
-
-        // ✅ تحديث الرصيد لحظياً في واجهة المستخدم إن كان متصلاً الآن
-        if (io && refundedUser.socketId) {
-          io.to(refundedUser.socketId).emit('balanceUpdate', { newBalance: refundedUser.balance });
-        }
-      }
+    if (refundedUser && io && refundedUser.socketId) {
+      // ✅ تحديث الرصيد لحظياً في واجهة المستخدم إن كان متصلاً الآن
+      io.to(refundedUser.socketId).emit('balanceUpdate', { newBalance: refundedUser.balance });
     }
 
     // ✅ بوت الموقع: إشعار المستخدم برفض طلبه والسبب (كان مفقوداً تماماً)
@@ -717,31 +732,52 @@ exports.adjustUserFunds = async (req, res) => {
       return res.status(400).json({ success: false, message: 'يجب كتابة سبب التعديل (3 أحرف على الأقل) لأغراض التوثيق' });
     }
 
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+    // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #6 — نفس عائلة العلّة): كانت
+    // user.balance += ...; user.save() عمليتين منفصلتين بعد قراءة سابقة للمستند — طلبا تعديل
+    // متزامنان (مثلاً سحب يدوي مزدوج من لوحتين مفتوحتين) يمكن أن يتجاوزا فحص "لن يصبح سالباً"
+    // معاً بالاعتماد على نفس القراءة القديمة، فيصل الرصيد/الكوينز لقيمة سالبة فعلياً. الحل:
+    // شرط $gte الذري ضمن findOneAndUpdate نفسه (بالضبط نمط createWithdrawal السليم أصلاً
+    // بهذا المشروع) — يستحيل تجاوز الشرط لطلبين متزامنين لأن القاعدة تُنفّذهما بالتتابع
+    // الذري، + Transaction.create بنفس المعاملة (session) حتى لا يُسجَّل تعديل فعلي بلا سجل
+    // محاسبي مطابق لو تعطّل أي شيء بالمنتصف
+    const matchQuery = { _id: userId };
+    if (balChange < 0) matchQuery.balance = { $gte: -balChange };
+    if (coinChange < 0) matchQuery.coins = { $gte: -coinChange };
 
-    if (balChange < 0 && user.balance + balChange < 0) {
-      return res.status(400).json({ success: false, message: 'العملية سترجع رصيد المستخدم سالباً — غير مسموح' });
-    }
-    if (coinChange < 0 && user.coins + coinChange < 0) {
-      return res.status(400).json({ success: false, message: 'العملية سترجع كوينز المستخدم سالبة — غير مسموح' });
-    }
-
-    user.balance += balChange;
-    user.coins += coinChange;
-    await user.save();
-
-    if (balChange !== 0) {
-      await Transaction.create({
-        user: user._id,
-        type: balChange > 0 ? 'deposit' : 'withdrawal',
-        amount: Math.abs(balChange),
-        currency: 'USD',
-        status: 'completed',
-        description: `تعديل يدوي من الإدارة: ${reason.trim()}`,
-        processedBy: admin._id,
-        processedAt: new Date()
+    const session = await mongoose.startSession();
+    let user = null;
+    try {
+      await session.withTransaction(async () => {
+        user = await User.findOneAndUpdate(
+          matchQuery,
+          { $inc: { balance: balChange, coins: coinChange } },
+          { new: true, session }
+        );
+        if (!user) {
+          throw Object.assign(new Error('تعذّر تنفيذ التعديل'), { code: 'CLAIM_FAILED' });
+        }
+        if (balChange !== 0) {
+          await Transaction.create([{
+            user: user._id,
+            type: balChange > 0 ? 'deposit' : 'withdrawal',
+            amount: Math.abs(balChange),
+            currency: 'USD',
+            status: 'completed',
+            description: `تعديل يدوي من الإدارة: ${reason.trim()}`,
+            processedBy: admin._id,
+            processedAt: new Date()
+          }], { session });
+        }
       });
+    } catch (txError) {
+      if (txError.code === 'CLAIM_FAILED') {
+        const exists = await User.exists({ _id: userId });
+        if (!exists) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        return res.status(400).json({ success: false, message: 'الرصيد/الكوينز الحالي لا يكفي لتنفيذ هذا التعديل (سيصبح سالباً)' });
+      }
+      throw txError;
+    } finally {
+      await session.endSession();
     }
 
     await AdminLog.logAction({
@@ -825,21 +861,36 @@ exports.approveCoinPurchase = async (req, res) => {
     const { purchaseId } = req.params;
     const { admin } = req;
 
-    const purchase = await CoinPurchase.findById(purchaseId);
-    if (!purchase) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
-    if (purchase.status !== 'pending_review') {
-      return res.status(400).json({ success: false, message: 'هذا الطلب ليس قيد المراجعة حالياً' });
+    // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #6 — نفس العلّة بالضبط): حجز ذرّي
+    // واحد (findOneAndUpdate بشرط status:'pending_review') + إيداع الكوينز بنفس المعاملة —
+    // لا فرصة لإيداع مزدوج من موافقتين متزامنتين على نفس الطلب
+    const session = await mongoose.startSession();
+    let purchase = null;
+    let user = null;
+    try {
+      await session.withTransaction(async () => {
+        purchase = await CoinPurchase.findOneAndUpdate(
+          { _id: purchaseId, status: 'pending_review' },
+          { $set: { status: 'approved', processedBy: admin._id, processedAt: new Date() } },
+          { new: true, session }
+        );
+        if (!purchase) {
+          throw Object.assign(new Error('هذا الطلب ليس قيد المراجعة حالياً'), { code: 'NOT_PENDING' });
+        }
+        user = await User.findByIdAndUpdate(
+          purchase.user, { $inc: { coins: purchase.coinsAmount } }, { new: true, session }
+        );
+      });
+    } catch (txError) {
+      if (txError.code === 'NOT_PENDING') {
+        return res.status(400).json({ success: false, message: txError.message });
+      }
+      throw txError;
+    } finally {
+      await session.endSession();
     }
 
-    purchase.status = 'approved';
-    purchase.processedBy = admin._id;
-    purchase.processedAt = new Date();
-    await purchase.save();
-
-    const user = await User.findById(purchase.user);
     if (user) {
-      user.coins += purchase.coinsAmount;
-      await user.save();
       const io = req.app.get('socketio');
       if (io && user.socketId) {
         io.to(user.socketId).emit('coinsUpdated', { newCoins: user.coins, purchaseId: purchase._id });
@@ -867,17 +918,20 @@ exports.rejectCoinPurchase = async (req, res) => {
     const { reason } = req.body;
     const { admin } = req;
 
-    const purchase = await CoinPurchase.findById(purchaseId);
-    if (!purchase) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
-    if (!['pending_payment', 'pending_review'].includes(purchase.status)) {
+    // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #6 — للاتساق): نفس نمط الحجز
+    // الذري المستخدم بباقي مسارات المراجعة بهذا الملف — يمنع معالجة الطلب مرتين من مراجعتين
+    // متزامنتين (رفض مزدوج: سجلّ إداري مكرر + رسالة بوت مكررة للمستخدم)، وإن لم يكن هناك
+    // استرداد مالي هنا أصلاً (لا يُضاف للرصيد إلا عند الموافقة)
+    const purchase = await CoinPurchase.findOneAndUpdate(
+      { _id: purchaseId, status: { $in: ['pending_payment', 'pending_review'] } },
+      { $set: { status: 'rejected', adminNotes: (reason || '').trim(), processedBy: admin._id, processedAt: new Date() } },
+      { new: true }
+    );
+    if (!purchase) {
+      const exists = await CoinPurchase.exists({ _id: purchaseId });
+      if (!exists) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
       return res.status(400).json({ success: false, message: 'لا يمكن رفض طلب تمت معالجته مسبقاً' });
     }
-
-    purchase.status = 'rejected';
-    purchase.adminNotes = (reason || '').trim();
-    purchase.processedBy = admin._id;
-    purchase.processedAt = new Date();
-    await purchase.save();
 
     await AdminLog.logAction({
       admin: admin._id, action: 'reject_deposit', targetUser: purchase.user,

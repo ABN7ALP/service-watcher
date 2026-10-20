@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const ProfileFrame = require('../models/ProfileFrame');
 const User = require('../models/User');
 const { broadcastUserFrameChange } = require('../services/socketService');
@@ -66,65 +67,102 @@ exports.purchaseFrame = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'مدة غير صالحة' });
         }
 
-        const [user, frame] = await Promise.all([User.findById(userId), ProfileFrame.findById(frameId)]);
+        const frame = await ProfileFrame.findById(frameId);
         if (!frame || !frame.isActive) {
             return res.status(404).json({ status: 'fail', message: 'الإطار غير متوفر' });
         }
 
         const price = frame.prices[durationKey];
-        if (user.coins < price) {
-            return res.status(400).json({ status: 'fail', message: 'رصيد الكوينز غير كافٍ' });
-        }
-
         const newDurationDays = parseInt(duration);
-        // ✅ طلب صريح: الإطار يبقى متاحاً للشراء دائماً حتى لو كان مملوكاً فعلاً — الشراء المتكرر
-        // لا يُرفض بعد الآن، بل تُضاف المدة الجديدة فوق المدة المتبقية الحالية (تكديس/تمديد)
-        // بدل رفضه بخطأ "تمتلكه بالفعل"
-        const existing = user.ownedFrames.find(o => o.frame.toString() === frameId.toString());
         // ✅ طلب صريح: خيار "تجديد تلقائي" أصبح متاحاً بنافذة المعاينة قبل الشراء مباشرة (لا فقط
         // لمن يملك الإطار أصلاً) — يُحفَظ كتفضيل هنا لحظة الشراء نفسها بدل انتظار جولة تفعيل/
         // تبديل منفصلة لاحقاً بالصندوق
         const wantsAutoRenew = typeof autoRenew === 'boolean' ? autoRenew : undefined;
-        user.coins -= price;
-        if (!existing) {
-            // ✅ الشراء وحده لا يبدأ عد الصلاحية — activatedAt و expiresAt يبقيان null لحين التفعيل الفعلي
-            user.ownedFrames.push({
-                frame: frame._id,
-                purchasedAt: new Date(),
-                durationDays: newDurationDays,
-                activatedAt: null,
-                expiresAt: null,
-                seenInBox: false,
-                autoRenew: !!wantsAutoRenew
+
+        // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #2): كان فحص الرصيد وتحديث
+        // ownedFrames (مصفوفة فرعية مُتفرِّعة لـ4 حالات) كله على مستند user بالذاكرة مقروء
+        // مسبقاً بلا أي معاملة — إثبات مباشر: 5 طلبات شراء متزامنة بنفس المستخدم أنتجت 5 إطارات
+        // مملوكة بخصم مرة واحدة فقط (Mongoose .push() على مصفوفة تُترجَم لـ$push ذرّي فعلي عند
+        // .save() حتى لو بقي الخصم نفسه غير ذرّي محسوباً من قراءة قديمة مكرَّرة بالتوازي).
+        // المعاملة هنا تقرأ المستخدم من جديد ضمن جلستها (لا القراءة السابقة قبل أي خصم) — أي
+        // تضارب كتابة حقيقي بين معاملتين متزامنتين تعدِّلان نفس المستند يُكتشَف ذاتياً بمستوى
+        // محرّك قاعدة البيانات، وwithTransaction تُعيد المحاولة تلقائياً عند هذا التضارب تحديداً
+        const session = await mongoose.startSession();
+        let txError = null;
+        let finalCoins = null;
+        let hadExisting = false;
+        try {
+            await session.withTransaction(async () => {
+                const user = await User.findById(userId).session(session);
+                if (!user) {
+                    throw Object.assign(new Error('يرجى تسجيل الدخول من جديد'), { code: 'USER_NOT_FOUND' });
+                }
+                if (user.coins < price) {
+                    throw Object.assign(new Error('رصيد الكوينز غير كافٍ'), { code: 'INSUFFICIENT' });
+                }
+
+                // ✅ طلب صريح: الإطار يبقى متاحاً للشراء دائماً حتى لو كان مملوكاً فعلاً — الشراء
+                // المتكرر لا يُرفض بعد الآن، بل تُضاف المدة الجديدة فوق المدة المتبقية الحالية
+                // (تكديس/تمديد) بدل رفضه بخطأ "تمتلكه بالفعل"
+                const existing = user.ownedFrames.find(o => o.frame.toString() === frameId.toString());
+                hadExisting = !!existing;
+                user.coins -= price;
+                if (!existing) {
+                    // ✅ الشراء وحده لا يبدأ عد الصلاحية — activatedAt وexpiresAt يبقيان null لحين التفعيل الفعلي
+                    user.ownedFrames.push({
+                        frame: frame._id,
+                        purchasedAt: new Date(),
+                        durationDays: newDurationDays,
+                        activatedAt: null,
+                        expiresAt: null,
+                        seenInBox: false,
+                        autoRenew: !!wantsAutoRenew
+                    });
+                } else if (!existing.activatedAt) {
+                    // لم يُفعَّل بعد — نضيف المدة الجديدة فوق المدة بانتظار التفعيل، بلا بدء عدّ حتى الآن
+                    existing.durationDays += newDurationDays;
+                    existing.seenInBox = false;
+                    if (wantsAutoRenew !== undefined) existing.autoRenew = wantsAutoRenew;
+                } else if (existing.expiresAt && existing.expiresAt < new Date()) {
+                    // انتهت صلاحيته فعلاً — إعادة الشراء تعني بدايةً جديدة بانتظار تفعيل جديد (لا تكديس
+                    // فوق وقت منتهٍ أصلاً، لا معنى له)
+                    existing.durationDays = newDurationDays;
+                    existing.activatedAt = null;
+                    existing.expiresAt = null;
+                    existing.seenInBox = false;
+                    if (wantsAutoRenew !== undefined) existing.autoRenew = wantsAutoRenew;
+                } else {
+                    // مُفعَّل حالياً وما زال سارياً — تمديد تاريخ الانتهاء الحالي بالمدة الجديدة مباشرة
+                    existing.durationDays += newDurationDays;
+                    existing.expiresAt = new Date(existing.expiresAt.getTime() + newDurationDays * 24 * 60 * 60 * 1000);
+                    existing.seenInBox = false;
+                    if (wantsAutoRenew !== undefined) existing.autoRenew = wantsAutoRenew;
+                }
+                await user.save({ session });
+                finalCoins = user.coins;
             });
-        } else if (!existing.activatedAt) {
-            // لم يُفعَّل بعد — نضيف المدة الجديدة فوق المدة بانتظار التفعيل، بلا بدء عدّ حتى الآن
-            existing.durationDays += newDurationDays;
-            existing.seenInBox = false;
-            if (wantsAutoRenew !== undefined) existing.autoRenew = wantsAutoRenew;
-        } else if (existing.expiresAt && existing.expiresAt < new Date()) {
-            // انتهت صلاحيته فعلاً — إعادة الشراء تعني بدايةً جديدة بانتظار تفعيل جديد (لا تكديس
-            // فوق وقت منتهٍ أصلاً، لا معنى له)
-            existing.durationDays = newDurationDays;
-            existing.activatedAt = null;
-            existing.expiresAt = null;
-            existing.seenInBox = false;
-            if (wantsAutoRenew !== undefined) existing.autoRenew = wantsAutoRenew;
-        } else {
-            // مُفعَّل حالياً وما زال سارياً — تمديد تاريخ الانتهاء الحالي بالمدة الجديدة مباشرة
-            existing.durationDays += newDurationDays;
-            existing.expiresAt = new Date(existing.expiresAt.getTime() + newDurationDays * 24 * 60 * 60 * 1000);
-            existing.seenInBox = false;
-            if (wantsAutoRenew !== undefined) existing.autoRenew = wantsAutoRenew;
+        } catch (e) {
+            txError = e;
+        } finally {
+            await session.endSession();
         }
-        await user.save();
+
+        if (txError) {
+            if (txError.code === 'USER_NOT_FOUND') {
+                return res.status(401).json({ status: 'fail', message: txError.message });
+            }
+            if (txError.code === 'INSUFFICIENT') {
+                return res.status(400).json({ status: 'fail', message: txError.message });
+            }
+            throw txError;
+        }
 
         res.status(200).json({
             status: 'success',
-            message: existing
+            message: hadExisting
                 ? `تم شراء ${frame.name} بنجاح — أُضيفت ${duration} يوم إلى المدة المتبقية بالصندوق`
                 : `تم شراء ${frame.name} بنجاح (صالح ${duration} يوم من لحظة التفعيل) — فعّله من الصندوق`,
-            data: { newCoins: user.coins }
+            data: { newCoins: finalCoins }
         });
     } catch (error) {
         console.error('[ERROR] in purchaseFrame:', error);

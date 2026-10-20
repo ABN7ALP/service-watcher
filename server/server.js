@@ -12,7 +12,16 @@ const app = express();
 const server = http.createServer(app);
 
 // --- إعدادات أساسية ---
-app.set('trust proxy', 1);
+// 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #4): كانت 1 ثابتة دوماً — تجعل
+// Express يثق بآخر قيمة X-Forwarded-For كعنوان العميل الحقيقي حتى بلا أي خادم وكيل حقيقي
+// أمامها فعلياً يُعيد كتابة هذا الرأس. أُثبِت فعلياً: 520 طلباً بقيمة X-Forwarded-For مزوَّرة
+// مختلفة كل مرة لم تُصطَد بمحدد المعدل العام/تسجيل الدخول/التسجيل إطلاقاً (كلها مفاتيحها من
+// req.ip) — تجاوز كامل لحماية مكافحة التخمين/إنشاء حسابات جماعية. الإعداد الآن صريح عبر
+// متغيّر بيئة TRUST_PROXY — لا ثقة بأي خادم وكيل افتراضياً (req.ip = عنوان اتصال TCP الفعلي،
+// محصّن تماماً ضد تزوير أي رأس HTTP) إلا لو أكّد مُشغِّل الخادم فعلياً عدد حقيقي من خوادم
+// الوكيل العكسي أمامه (مثلاً TRUST_PROXY=1 خلف وكيل واحد حقيقي يُعيد كتابة الرأس بنفسه فعلاً)
+const { computeTrustProxySetting } = require('./utils/trustProxy');
+app.set('trust proxy', computeTrustProxySetting(process.env.TRUST_PROXY));
 
 // --- تطبيق الـ Middleware العام ---
 setupMiddleware(app);
