@@ -775,6 +775,14 @@ setInterval(() => {
 
 
 // --- Middleware للتحقق من توكن المستخدم ---
+// 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #1): كانت تتحقق فقط من توقيع التوكن
+// ووجود المستخدم، بخلاف authMiddleware (الحارس الموازي لكل طلب HTTP) الذي يتحقق أيضاً من
+// isBanned/banExpires وchangedPasswordAfter. النتيجة: مستخدم محظور، أو مهاجم يحمل توكناً
+// مسروقاً بعد تغيير الضحية كلمة مرورها عمداً لإنهاء الجلسة، يحتفظ بوظائف السوكيت الحيّة
+// كاملة (بما فيها gift:combo — نقل أموال) بصرف النظر عن الحظر/الإبطال، طالما لا يمر بمسار
+// HTTP أبداً. نفس فحوصات authMiddleware بالضبط هنا الآن — راجع أيضاً إنهاء الاتصال الفوري
+// الصريح عند الحظر/تغيير كلمة المرور (banUser وتوابعها بـadminController.js، updatePassword
+// بـauthController.js) كي لا يبقى اتصال مفتوح فعلاً صالحاً حتى محاولة إعادة اتصال طبيعية
 const verifySocketToken = async (socket, next) => {
     const token = socket.handshake.auth.token;
     if (!token) {
@@ -782,9 +790,22 @@ const verifySocketToken = async (socket, next) => {
     }
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const currentUser = await User.findById(decoded.id);
+        const currentUser = await User.findById(decoded.id).select('+passwordChangedAt');
         if (!currentUser) {
             return next(new Error('Authentication error'));
+        }
+        if (currentUser.changedPasswordAfter(decoded.iat)) {
+            return next(new Error('Authentication error'));
+        }
+        if (currentUser.isBanned) {
+            if (currentUser.banExpires && new Date(currentUser.banExpires) < new Date()) {
+                currentUser.isBanned = false;
+                currentUser.banReason = null;
+                currentUser.banExpires = null;
+                await currentUser.save();
+            } else {
+                return next(new Error('Authentication error'));
+            }
         }
         socket.user = currentUser;
         next();
@@ -792,6 +813,14 @@ const verifySocketToken = async (socket, next) => {
         return next(new Error('Authentication error'));
     }
 };
+
+// ✅ طلب صريح (مراجعة أمنية — البند #1): يقطع اتصال السوكيت الحيّ فوراً (لا يكفي رفض
+// handshake لاحق فقط — اتصال مفتوح أصلاً يبقى يعمل بلا أي إعادة فحص تلقائية من Socket.IO)
+// عند حظر مستخدم أو تغيير كلمة مروره — يُستدعى من كل نقاط الحظر/تغيير كلمة المرور الحقيقية
+function forceDisconnectUserSocket(io, socketId) {
+    if (!io || !socketId) return;
+    io.sockets.sockets.get(socketId)?.disconnect(true);
+}
 
 // 🗑️ أُزيلت لعبة "التحدي" (الرهان الفردي بالدولار + startGame/endBattle/playerClick) بالكامل
 // بطلب صريح — ثغرة أمنية حقيقية (نقر آلي يفوز بمال حقيقي) وتصنيف قماري محتمل. لا علاقة بمعارك
@@ -2905,6 +2934,12 @@ socket.on('refreshBlockData', async () => {
 
 
 module.exports = initializeSocket;
+// ✅ تُستخدَم من adminController (حظر) وauthController (تغيير كلمة المرور) لقطع اتصال
+// السوكيت الحيّ فوراً — راجع تعليقها الكامل أعلى verifySocketToken (البند الأمني #1)
+module.exports.forceDisconnectUserSocket = forceDisconnectUserSocket;
+// ✅ تُصدَّر فقط لاختبارات مراجعة أمنية (redteam-audit-1، البند #1) — راجع
+// __tests__/socketAuth.security.test.js؛ لا مستهلك إنتاجي خارج io.use(verifySocketToken) هنا
+module.exports.verifySocketToken = verifySocketToken;
 module.exports.broadcastUserFrameChange = broadcastUserFrameChange;
 // ✅ تُستخدَم من واجهات REST (voiceRoomController) لتضمين المجموع التراكمي الحالي لكل
 // مستخدم جالس ضمن لقطة حالة الغرفة الأولى (قبل أي حدث Socket حي) — راجع roomSupportTally أعلاه

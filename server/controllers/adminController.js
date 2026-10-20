@@ -212,6 +212,11 @@ exports.banUser = async (req, res) => {
       io.to(user.socketId).emit('account-banned', {
         reason: user.banReason, banExpires: user.banExpires, isPermanent: !user.banExpires
       });
+      // 🛡️ إصلاح جذري (مراجعة أمنية — البند #1): الإشعار وحده لا يكفي — كان يعتمد على التزام
+      // العميل بقطع اتصاله بنفسه (قابل للتجاوز بتجاهل الإشعار/تعديل العميل). نقطع اتصال
+      // السوكيت فعلياً هنا (بعد إرسال الإشعار له مباشرة)، بالإضافة لفحص verifySocketToken
+      // الجديد عند أي محاولة اتصال لاحقة — راجع تعليقه الكامل بـsocketService.js
+      require('../services/socketService').forceDisconnectUserSocket(io, user.socketId);
     }
 
     res.json({
@@ -1000,6 +1005,8 @@ exports.resolveReport = async (req, res) => {
         const io = req.app.get('socketio');
         if (io && user.socketId) {
           io.to(user.socketId).emit('account-banned', { reason: user.banReason, banExpires: user.banExpires, isPermanent: !user.banExpires });
+          // 🛡️ إصلاح جذري (مراجعة أمنية — البند #1) — راجع تعليق banUser أعلاه لنفس السبب بالضبط
+          require('../services/socketService').forceDisconnectUserSocket(io, user.socketId);
         }
         await AdminLog.logAction({
           admin: admin._id, action: 'ban_user', targetUser: user._id,
