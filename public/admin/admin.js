@@ -10,6 +10,32 @@ const escapeHtml = (str) => {
 };
 const formatDate = (d) => new Date(d).toLocaleString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+// ✅ طلب صريح — بطاقات الإطارات بالقائمة: staticUrl أولاً، ثم assetUrl، ثم احتياطي محايد. معالج
+// 'error' عام وحيد (مثل app.js تماماً — أحداث error على <img> لا تصعد بالمعيار، capture:true
+// إلزامي) يقرأ سلسلة المحاولات المتبقية من data-frame-thumb-chain (مفصولة بـ"|") عند فشل أي
+// محاولة، وإن استُنفِدت كلها يُحقَن شارة "بلا ملف" — نفس الشارة تُحقَن مباشرة عند الرسم لإطار
+// بلا assetUrl/staticUrl إطلاقاً من البداية (لا حاجة لانتظار فشل تحميل لا وجود له أصلاً)
+const FRAME_THUMB_PLACEHOLDER = '/images/default-avatar.webp';
+document.addEventListener('error', (event) => {
+    const img = event.target;
+    if (!(img instanceof HTMLImageElement) || !img.dataset.frameThumb) return;
+    const chain = img.dataset.frameThumbChain ? img.dataset.frameThumbChain.split('|').filter(Boolean) : [];
+    const next = chain.shift();
+    if (next) {
+        img.dataset.frameThumbChain = chain.join('|');
+        img.src = next;
+        return;
+    }
+    if (img.src !== new URL(FRAME_THUMB_PLACEHOLDER, window.location.href).href) {
+        img.src = FRAME_THUMB_PLACEHOLDER;
+        console.warn('[FRAME STUDIO] تعذّر تحميل صورة إطار — استُخدم الاحتياطي المحايد:', img.closest('[data-frame-card]')?.dataset.frameCard);
+    }
+    const nameEl = img.closest('[data-frame-card]')?.querySelector('[data-frame-name]');
+    if (nameEl && !nameEl.querySelector('.frame-no-asset-badge')) {
+        nameEl.insertAdjacentHTML('beforeend', ' <span class="frame-no-asset-badge">بلا ملف</span>');
+    }
+}, true);
+
 class AdminDashboard {
     constructor() {
         this.token = localStorage.getItem('token');
@@ -813,12 +839,20 @@ class AdminDashboard {
             const c = document.getElementById('framesGridContainer');
             if (!data.frames || !data.frames.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-crown fa-2x"></i><p>لا توجد إطارات بعد</p></div>'; return; }
 
-            c.innerHTML = data.frames.map(f => `
-                <div class="stat-card ${f.isActive ? 'success' : 'danger'}" style="flex-direction:column;align-items:flex-start;">
+            // ✅ طلب صريح: staticUrl ثم assetUrl ثم احتياطي محايد — بطاقة بلا أي منهما من البداية
+            // تُظهر شارة "بلا ملف" فوراً بلا انتظار فشل تحميل؛ بطاقة لها رابط لكن يفشل تحميله
+            // فعلياً (ملف مفقود فعلاً رغم وجود رابط بالقاعدة) تُحرِّك نفس الشارة عبر معالج
+            // 'error' العام أعلى الملف بعد استنفاد كل المحاولات
+            c.innerHTML = data.frames.map(f => {
+                const candidates = [f.staticUrl, f.assetUrl].filter(Boolean);
+                const primaryUrl = candidates.shift();
+                const chainAttr = candidates.length ? ` data-frame-thumb-chain="${escapeHtml(candidates.join('|'))}"` : '';
+                return `
+                <div class="stat-card ${f.isActive ? 'success' : 'danger'}" style="flex-direction:column;align-items:flex-start;" data-frame-card="${f._id}">
                     <div style="display:flex;align-items:center;gap:12px;width:100%;">
-                        <img src="${escapeHtml(f.assetUrl || '')}" style="width:50px;height:50px;object-fit:contain;background:#11131d;border-radius:8px;">
+                        <img src="${escapeHtml(primaryUrl || FRAME_THUMB_PLACEHOLDER)}" data-frame-thumb="1"${chainAttr} style="width:50px;height:50px;object-fit:contain;background:#11131d;border-radius:8px;">
                         <div style="flex:1;min-width:0;">
-                            <strong>${escapeHtml(f.name)}</strong><br>
+                            <strong data-frame-name="1">${escapeHtml(f.name)}${!primaryUrl ? ' <span class="frame-no-asset-badge">بلا ملف</span>' : ''}</strong><br>
                             <span class="text-muted small">${f.prices.day1}/${f.prices.day3}/${f.prices.day7} كوينز (1/3/7 يوم)${f.adminOnly ? ' — أدمن فقط' : ''}</span>
                         </div>
                     </div>
@@ -826,8 +860,8 @@ class AdminDashboard {
                         <button class="btn-action btn-edit" data-edit="${f._id}"><i class="fas fa-edit"></i></button>
                         <button class="btn-action btn-delete" data-delete="${f._id}" data-name="${escapeHtml(f.name)}"><i class="fas fa-trash"></i></button>
                     </div>
-                </div>
-            `).join('');
+                </div>`;
+            }).join('');
 
             c.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => {
                 const frame = data.frames.find(f => f._id === btn.dataset.edit);
@@ -870,39 +904,23 @@ class AdminDashboard {
             otherActiveFrames = (listRes.frames || []).filter(f => f.isActive && (!isEdit || f._id !== frame._id));
         } catch { /* فشل الجلب غير قاتل — الصف يُعرض فارغاً بدل تعطيل الاستوديو كله */ }
 
-        const seatsGrid = (count) => `
-            <div class="fs-seats-grid" style="--cols:4;">
-                ${Array.from({ length: count }).map(() => `
-                    <span class="avatar" style="--size:64px;">
-                        <img class="avatar__photo" src="${PLACEHOLDER_AVATAR}">
-                        <img class="avatar__frame fs-live-frame-img" src="${previewFrameUrl}">
-                    </span>
-                `).join('')}
-            </div>`;
-
         const modal = this.openModal(`
             <div class="modal-overlay active">
                 <div class="modal-content" style="max-width:680px;">
                     <div class="modal-header"><h3>${isEdit ? 'تعديل إطار' : 'إطار جديد'}</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
                     <div class="modal-body">
                         <div class="frame-studio-row" id="frameStudioPreviewRow">
-                            <div class="fs-preview-group">
-                                <figure>
-                                    <span class="avatar" style="--size:96px;">
-                                        <img class="avatar__photo" src="${PLACEHOLDER_AVATAR}">
-                                        <img class="avatar__frame fs-live-frame-img" src="${previewFrameUrl}">
-                                        <span class="avatar__crown"><i class="fas fa-crown"></i></span>
-                                    </span>
-                                    <figcaption>مقعد مضيف</figcaption>
-                                </figure>
-                            </div>
-                            <div class="fs-preview-group">
-                                <span class="fs-preview-group-label">4 مقاعد</span>
-                                ${seatsGrid(4)}
-                            </div>
-                            <div class="fs-preview-group">
-                                <span class="fs-preview-group-label">6 مقاعد</span>
-                                ${seatsGrid(6)}
+                            <div class="fs-preview-group fs-preview-group--realroom">
+                                <!-- ✅ طلب صريح — "مضلِّلة سابقاً": هذا القسم الآن <iframe> حقيقية تحمّل
+                                     صفحة منفصلة (frame-studio-preview.html) بورقة الأنماط الحقيقية
+                                     للموقع (dist/style.css) وبنفس أصناف المقعد الحقيقية بالضبط
+                                     (.voice-seats-flex/.voice-seat/.voice-seat-host-badge/.avatar) —
+                                     لا رياضيات مُقلَّدة يدوياً هنا بعد اليوم. حاوية 375px ثابتة
+                                     بداخلها (محاكاة هاتف حقيقي) تُحجَّم بصرياً (transform:scale) عبر
+                                     fitFramePreviewFrame أدناه كي تلائم عرض النافذة المتاح -->
+                                <div class="fs-realroom-scale-wrap" id="fsRealRoomWrap">
+                                    <iframe src="/admin/frame-studio-preview.html" id="fsRealRoomFrame" class="fs-realroom-iframe" title="معاينة حقيقية للمقعد" scrolling="no"></iframe>
+                                </div>
                             </div>
                             <div class="fs-preview-group">
                                 <span class="fs-preview-group-label">كل الإطارات</span>
@@ -964,6 +982,48 @@ class AdminDashboard {
         const applyPreviewVar = (prop, value) => {
             modal.querySelector('#frameStudioPreviewRow').style.setProperty(prop, value);
         };
+        let liveObjectUrl = null; // ✅ object URL للملف الجديد المختار (لو وُجد) — يتجاوز previewFrameUrl الأصلي
+        const realRoomFrame = modal.querySelector('#fsRealRoomFrame');
+        let realRoomReady = false;
+        // ✅ يدفع القيم الحيّة الخمس + رابط الإطار الحالي لصفحة المعاينة الحقيقية (iframe من
+        // نفس الأصل — بلا postMessage، نداء دالتها المعروضة على window مباشرة)
+        const pushLiveToRealRoom = () => {
+            if (!realRoomReady || !realRoomFrame.contentWindow?.fsApplyLive) return;
+            const liveUrl = liveObjectUrl || frame?.assetUrl || '';
+            realRoomFrame.contentWindow.fsApplyLive({
+                frameUrl: liveUrl,
+                staticFrameUrl: liveObjectUrl || frame?.staticUrl || liveUrl,
+                display: {
+                    frameScale: parseFloat(modal.querySelector('#fsSlider_frameScale').value),
+                    avatarScale: parseFloat(modal.querySelector('#fsSlider_avatarScale').value),
+                    offsetX: parseFloat(modal.querySelector('#fsSlider_offsetX').value),
+                    offsetY: parseFloat(modal.querySelector('#fsSlider_offsetY').value),
+                    crownTop: parseFloat(modal.querySelector('#fsSlider_crownTop').value)
+                }
+            });
+        };
+        realRoomFrame.addEventListener('load', () => { realRoomReady = true; pushLiveToRealRoom(); });
+
+        // ✅ طلب صريح: حاوية 375px الثابتة تُحجَّم بصرياً (transform:scale) كي تلائم عرض النافذة
+        // المتاح فعلياً — لا تغيير بأي رياضيات حجم داخلياً، فقط تصغير/تكبير العرض النهائي على
+        // الشاشة. يُعاد حسابه أيضاً عند تغيّر حجم النافذة (نادر بنافذة منبثقة، لكن رخيص ومأمون)
+        const REALROOM_W = 375, REALROOM_H = 480;
+        const realRoomWrap = modal.querySelector('#fsRealRoomWrap');
+        const fitRealRoomFrame = () => {
+            const available = realRoomWrap.parentElement.clientWidth;
+            const scale = Math.min(1, available / REALROOM_W);
+            realRoomFrame.style.transform = `scale(${scale})`;
+            realRoomWrap.style.width = `${REALROOM_W * scale}px`;
+            realRoomWrap.style.height = `${REALROOM_H * scale}px`;
+        };
+        fitRealRoomFrame();
+        window.addEventListener('resize', fitRealRoomFrame);
+        // ✅ تنظيف المستمع عند إغلاق النافذة — بلا هذا يبقى مُسجَّلاً على window حتى بعد إزالة
+        // النافذة من DOM (modal.remove() لا يُزيل مستمعي window تلقائياً)، يتراكم مع كل فتح لاحق
+        new MutationObserver((_, obs) => {
+            if (!document.body.contains(modal)) { window.removeEventListener('resize', fitRealRoomFrame); obs.disconnect(); }
+        }).observe(document.body, { childList: true });
+
         sliders.forEach(s => applyPreviewVar(`--${s.key === 'frameScale' ? 'frame-scale' : s.key === 'avatarScale' ? 'avatar-scale' : s.key === 'offsetX' ? 'frame-x' : s.key === 'offsetY' ? 'frame-y' : 'crown-top'}`, s.value));
         sliders.forEach(s => {
             const input = modal.querySelector(`#fsSlider_${s.key}`);
@@ -974,6 +1034,7 @@ class AdminDashboard {
                 output.textContent = input.value;
                 pctOutput.textContent = pct(parseFloat(input.value));
                 applyPreviewVar(cssVar, input.value);
+                pushLiveToRealRoom();
             });
         });
 
@@ -986,8 +1047,9 @@ class AdminDashboard {
             if (selectedFile) {
                 dropzone.classList.add('has-file');
                 dropzone.querySelector('p').textContent = `✅ ${selectedFile.name}`;
-                const objectUrl = URL.createObjectURL(selectedFile);
-                previewFrames.forEach(img => { img.src = objectUrl; });
+                liveObjectUrl = URL.createObjectURL(selectedFile);
+                previewFrames.forEach(img => { img.src = liveObjectUrl; });
+                pushLiveToRealRoom();
             }
         });
 

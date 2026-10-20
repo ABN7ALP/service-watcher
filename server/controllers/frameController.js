@@ -483,6 +483,16 @@ async function runFrameUploadPipeline(buffer, frameKey) {
 exports.adminListFrames = async (req, res) => {
     try {
         const frames = await ProfileFrame.find({}).sort('sortOrder name');
+        // ✅ طلب صريح: تسجيل أي إطار بلا assetUrl ولا staticUrl إطلاقاً (مثال حقيقي اكتُشف أثناء
+        // التحقّق: إطارات بذرة قديمة أُنشئت قبل استوديو الإطارات، بأصناف CSS لم يُطبَّع لها أصل
+        // حقيقي أبداً) — تشخيص عملياتي بسجلات الخادم، لا يمنع عرض القائمة
+        const missing = frames.filter(f => !f.assetUrl && !f.staticUrl);
+        if (missing.length) {
+            console.warn(
+                `[FRAME STUDIO] ${missing.length} إطار بلا أي أصل مرفوع (assetUrl/staticUrl):`,
+                missing.map(f => `${f.name} (${f._id})`).join('، ')
+            );
+        }
         res.json({ success: true, frames });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
