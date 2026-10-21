@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<!--
+  Frame Studio's "real room" preview — loaded in an <iframe> (public/admin/admin.js,
+  showFrameStudioModal) instead of being embedded in admin.html directly, on purpose:
+  this page loads the REAL compiled site stylesheet (dist/style.css) so the seat/crown/frame
+  sizing math is the exact production math (container-query --av/--hostAv/--u formulas,
+  .voice-seat/.voice-seat-av-wrap/.voice-seat-host-badge/.avatar/.avatar__frame — nothing
+  hand-approximated here). dist/style.css is full of generic utility class names (Tailwind)
+  that would collide with admin.css's own classes if loaded globally on admin.html — an
+  iframe keeps the two cascades completely isolated, zero collision risk.
+  window.fsApplyLive(...) below is called directly by the parent (same-origin, no postMessage
+  needed) whenever the admin moves a slider or picks a new file, so every mini seat here
+  updates together, live, exactly like the real room's own avatarHTML() would.
+-->
+<link rel="stylesheet" href="/dist/style.css">
+<link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+<style>
+    html, body { margin: 0; padding: 0; background: #0e0918; }
+    /* ✅ نفس تصريحات body.in-voice-room #main-content الحقيقية بـinput.css بالضبط (container-type/
+       container-name/--u) — لا جذر #main-content فعلي هنا (بلا رأس/دردشة/شريط أدوات)، فنعيد
+       تعريفها على حاوية مخصّصة بحجم صريح ثابت (375×812 — نفس أبعاد الهاتف المرجعي بمقاطع
+       التحقق بهذا المشروع) بدل الاعتماد على ارتفاع الصفحة الفعلي للإطار نفسه، كي تبقى صيغ
+       --av/--hostAv (التي تعتمد على cqw/cqh لهذه الحاوية تحديداً) مطابقة لهاتف حقيقي بعرض
+       375px دوماً بصرف النظر عن حجم نافذة لوحة التحكم المستضيفة
+    */
+    .fs-room-sim {
+        width: 375px;
+        height: 812px;
+        container-type: size;
+        container-name: room;
+        --u: clamp(9px, 2.75cqw, 12px);
+        position: relative;
+        overflow: hidden;
+    }
+    .fs-group { padding: 0 10px; }
+    .fs-group-label { color: #9ca3af; font-size: 12px; font-weight: 700; padding: 0 2px 4px; }
+    /* ✅ طلب صريح: صف مقاعد واحد بلا التفاف — .voice-seats-flex الحقيقية شبكة (repeat(4,1fr))
+       تلتفّ لصفّين فعلياً لأي عدد >4 (تماماً كغرفة حقيقية)؛ هنا فقط display:flex/nowrap يُبدِّل
+       نمط التخطيط لعرضها بصف واحد للمقارنة السريعة — --av/--hostAv/gap/padding تبقى من الصنف
+       الحقيقي نفسه بلا أي تعديل، فحجم كل مقعد يبقى هو الحجم الحقيقي تماماً */
+    .voice-seats-flex.fs-singleline { display: flex; flex-wrap: nowrap; overflow-x: auto; overflow-y: visible; }
+    /* ✅ هامش سفلي سخي بين كل مجموعة (مضيف/4 مقاعد/6 مقاعد) — يكفي لامتداد زخرفة أي إطار
+       (frameScale حتى 2.4 — يمتد ~0.7× حجم المقعد خارج كل حافة) بلا أي تراكب مع المجموعة
+       التالية، حتى عند أقصى قيمة ممكنة لكل القيم الخمس معاً */
+    .fs-group + .fs-group { margin-top: 56px; }
+    /* ✅ هامش علوي إضافي خاص بمجموعة المضيف فقط — فوق padding-top الحقيقي لـ.voice-seat.host-seat
+       نفسه (hostAv×.6، مضبوط أصلاً لأقصى crownTop القديم 0.72) — المدى الجديد لـcrownTop يصل
+       الآن حتى 1.0 (راجع DISPLAY_BOUNDS بـframeController.js)، فنضيف هامشاً إضافياً صريحاً هنا
+       (معاينة الاستوديو فقط — لا تعديل على CSS الغرفة الحقيقية نفسها) يكفي لأقصى قيمة ممكنة
+       بلا أي قصّ للتاج مهما بَعُد ارتفاعه */
+    .fs-group--host { padding-top: 48px; }
+</style>
+</head>
+<body class="in-voice-room">
+    <div class="fs-room-sim" id="fsRoomSim">
+        <div class="fs-group fs-group--host">
+            <div class="fs-group-label">مقعد مضيف</div>
+            <div class="voice-seats-flex fs-singleline" data-seat-count="1">
+                <div class="voice-seat host-seat occupied-seat" id="fsHostSeat">
+                    <div class="voice-seat-av-wrap">
+                        <i class="fas fa-crown voice-seat-host-badge fs-live-crown" style="--crown-top:0.45"></i>
+                        <span class="avatar voice-seat-avatar fs-live-avatar" style="--frame-scale:1.45;--avatar-scale:0.8;--frame-x:0;--frame-y:0;">
+                            <img class="avatar__photo" src="/images/default-avatar.webp" alt="">
+                            <img class="avatar__frame avatar__frame--animated fs-live-frame-img" src="" alt="" aria-hidden="true">
+                            <img class="avatar__frame avatar__frame--static fs-live-frame-img" src="" alt="" aria-hidden="true">
+                        </span>
+                        <span class="voice-seat-mic-badge"><i class="fas fa-microphone"></i></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="fs-group">
+            <div class="fs-group-label">4 مقاعد</div>
+            <div class="voice-seats-flex fs-singleline" data-seat-count="4" data-fs-seats="4"></div>
+        </div>
+        <div class="fs-group">
+            <div class="fs-group-label">6 مقاعد</div>
+            <div class="voice-seats-flex fs-singleline" data-seat-count="6" data-fs-seats="6"></div>
+        </div>
+    </div>
+<!-- ✅ خارجي عمداً — CSP الحقيقية (script-src بلا 'unsafe-inline') تمنع أي <script> مضمَّن هنا،
+     وهذا صحيح أمنياً؛ frame-studio-preview.js يحمل نفس المنطق بلا أي تغيير -->
+<script src="frame-studio-preview.js"></script>
+</body>
+</html>

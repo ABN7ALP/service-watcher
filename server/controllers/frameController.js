@@ -1,10 +1,34 @@
 const mongoose = require('mongoose');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const crypto = require('crypto');
 const ProfileFrame = require('../models/ProfileFrame');
 const User = require('../models/User');
+const AdminLog = require('../models/AdminLog');
 const { broadcastUserFrameChange } = require('../services/socketService');
+const { uploadFrameAsset, assertRealType } = require('../utils/cloudinary');
+const { normalizeOne } = require('../../scripts/normalize-frames');
+const { checkFrameFile } = require('../../scripts/check-frames');
 
 // ✅ طلب صريح: مدد شراء قصيرة فقط (1/3/7 أيام) بدل المدد الطويلة السابقة (7/30/365 يوماً)
 const DURATION_DAYS_MAP = { '1': 'day1', '3': 'day3', '7': 'day7' };
+
+// ✅ نفس القيم الافتراضية بالضبط المضبوطة بمخطط ProfileFrame.display (راجع ProfileFrame.js) —
+// مُكرَّرة هنا فقط كاحتياط صريح لحساب body استجابة getFrameDisplayConfig، لا كمصدر حقيقة ثانٍ
+const DEFAULT_DISPLAY = { frameScale: 1.45, avatarScale: 0.8, offsetX: 0, offsetY: 0, crownTop: 0.45 };
+const NO_FRAME_CROWN_TOP = 0.62; // ✅ مطابق لـ_noFrame.crownTop بـframe-display.json سابقاً
+const DISPLAY_FIELDS = ['frameScale', 'avatarScale', 'offsetX', 'offsetY', 'crownTop'];
+// ✅ طلب صريح: حدود واضحة لكل قيمة عرض — نفس المدى تماماً المستخدَم بمنزلقات الاستوديو
+// (public/admin/admin.js) كي لا يتمكّن أي طلب مباشر (بتجاوز الواجهة) من دفع قيمة تكسر الرسم
+const DISPLAY_BOUNDS = {
+    frameScale: { min: 0.8, max: 2.4, label: 'مقاس الإطار' },
+    avatarScale: { min: 0.4, max: 1, label: 'مقاس الصورة' },
+    offsetX: { min: -0.3, max: 0.3, label: 'إزاحة X' },
+    offsetY: { min: -0.3, max: 0.3, label: 'إزاحة Y' },
+    crownTop: { min: 0.2, max: 1, label: 'ارتفاع التاج' }
+};
+const PRICE_MAX = 10000000; // ✅ طلب صريح: سقف أرقام صحيحة واقعي، يمنع أخطاء كتابة تتحوّل لأسعار عبثية
 
 exports.getFrameShop = async (req, res) => {
     try {
@@ -344,3 +368,289 @@ async function checkAndExpireActiveFrame(user, io = null) {
 }
 
 exports.checkAndExpireActiveFrame = checkAndExpireActiveFrame;
+
+// =====================================================
+// ✅ استوديو الإطارات بلوحة التحكم — الأدمن يضيف/يضبط الإطارات بلا أي تعديل كود
+// =====================================================
+
+// ✅ GET /api/frames/display — عام بلا أي مصادقة (مُثبَّت قبل authMiddleware بـframeRoutes.js
+// صراحةً)، مُخزَّن بـETag (نفس نمط getGiftShop بالضبط). يستبدل frame-display.json الثابت +
+// FRAME_ASSET_URLS المُضمَّنة بـapp.js سابقاً — مصدر الحقيقة الآن قاعدة البيانات. لا فلتر
+// isActive هنا عمداً (بخلاف getFrameShop): مستخدم يرتدي إطاراً أُلغي تفعيله (حذف ناعم) يجب أن
+// يستمر عرضه بشكله الصحيح لمن يشاهده، فقط لا يعود متاحاً للشراء من جديد (ذاك الفلتر بـgetFrameShop فقط)
+exports.getFrameDisplayConfig = async (req, res) => {
+    try {
+        const frames = await ProfileFrame.find({ assetUrl: { $nin: [null, ''] } })
+            .select('cssClass assetUrl staticUrl display')
+            .lean();
+        const frameMap = {};
+        for (const f of frames) {
+            if (!f.assetUrl) continue; // ✅ دفاع إضافي بالعمق — فوق شرط الاستعلام أعلاه مباشرة
+            frameMap[f.cssClass] = {
+                assetUrl: f.assetUrl,
+                staticUrl: f.staticUrl || null,
+                frameScale: f.display?.frameScale ?? DEFAULT_DISPLAY.frameScale,
+                avatarScale: f.display?.avatarScale ?? DEFAULT_DISPLAY.avatarScale,
+                offsetX: f.display?.offsetX ?? DEFAULT_DISPLAY.offsetX,
+                offsetY: f.display?.offsetY ?? DEFAULT_DISPLAY.offsetY,
+                crownTop: f.display?.crownTop ?? DEFAULT_DISPLAY.crownTop
+            };
+        }
+        const body = { _default: DEFAULT_DISPLAY, _noFrame: { crownTop: NO_FRAME_CROWN_TOP }, frames: frameMap };
+        const etag = '"' + crypto.createHash('sha1').update(JSON.stringify(body)).digest('hex') + '"';
+        res.set('Cache-Control', 'public, max-age=0, must-revalidate');
+        res.set('ETag', etag);
+        if (req.headers['if-none-match'] === etag) return res.status(304).end();
+        res.status(200).json(body);
+    } catch (error) {
+        console.error('[ERROR] in getFrameDisplayConfig:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
+// ✅ يقرأ القيم الخمس من req.body (multipart → كل القيم نصوص دوماً) ويتجاهل أي حقل غائب/فارغ —
+// فيُدمَج لاحقاً مع DEFAULT_DISPLAY (إنشاء) أو القيم الحالية (تحديث) لحقول غير مُرسَلة
+function parseDisplayInput(body) {
+    const display = {};
+    for (const key of DISPLAY_FIELDS) {
+        const raw = body[key];
+        if (raw === undefined || raw === '') continue;
+        const num = parseFloat(raw);
+        const bounds = DISPLAY_BOUNDS[key];
+        if (!Number.isFinite(num) || num < bounds.min || num > bounds.max) {
+            throw Object.assign(
+                new Error(`قيمة "${bounds.label}" يجب أن تكون رقماً بين ${bounds.min} و${bounds.max}`),
+                { code: 'BAD_DISPLAY' }
+            );
+        }
+        display[key] = num;
+    }
+    return display;
+}
+
+// ✅ طلب صريح: الأسعار أرقام صحيحة فقط (لا كسور عشرية) غير سالبة، بسقف واقعي — Number.isInteger
+// يرفض أي قيمة مُعشّرة (مثل 50.5) بوضوح، لا مجرد تقريبها صامتاً
+function parsePricesInput(body) {
+    const day1 = parseFloat(body.day1);
+    const day3 = parseFloat(body.day3);
+    const day7 = parseFloat(body.day7);
+    const valid = [day1, day3, day7].every(n => Number.isInteger(n) && n >= 0 && n <= PRICE_MAX);
+    if (!valid) {
+        throw Object.assign(
+            new Error(`أسعار المدد الثلاث (1/3/7 أيام) يجب أن تكون أرقاماً صحيحة (بلا كسور) بين 0 و${PRICE_MAX}`),
+            { code: 'BAD_PRICES' }
+        );
+    }
+    return { day1, day3, day7 };
+}
+
+// ✅ أنبوب الرفع الموحَّد المطلوب صراحةً: يطبِّع (normalizeOne — 384px، توقيت المصدر الحقيقي
+// محفوظ، ≤24 لقطة، نسخة ثابتة، ≤400KB — كل ذلك مُنفَّذ فعلياً داخل normalizeOne نفسها)، ثم
+// يفحص (checkFrameFile) كلا الناتجين (متحرك+ثابت) بقواعد check-frames نفسها (لا قصّ حافة،
+// فتحة مركزية شفافة فعلاً) كتحقّق مستقل إضافي، يرفعهما لـCloudinary، وينظِّف الملفات المؤقتة
+// دوماً (نجاحاً أو فشلاً — finally). نفس public_id (=frameKey) بين الإنشاء والتحديث: رفع لاحق
+// بنفس public_id يستبدل (overwrite:true) الأصل القديم بالضبط بنفس الرابط — رقم الإصدار
+// المُضمَّن تلقائياً برابط Cloudinary (vNNNN) يتغيّر فيكسر أي تخزين مؤقت قديم بالمتصفح تلقائياً،
+// بلا حاجة لتتبّع/حذف الأصل القديم يدوياً
+async function runFrameUploadPipeline(buffer, frameKey) {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'frame-studio-'));
+    try {
+        const tempSrcPath = path.join(tempDir, `source-${frameKey}`);
+        fs.writeFileSync(tempSrcPath, buffer);
+
+        const result = await normalizeOne(frameKey, tempSrcPath, {
+            outDir: tempDir, verbose: false, manifestOverrides: {}, persistManifest: false
+        });
+
+        const animatedCheck = await checkFrameFile(result.outPath);
+        const staticCheck = await checkFrameFile(result.staticOutPath);
+        const violations = [...animatedCheck.violations, ...staticCheck.violations];
+        if (violations.length) {
+            throw Object.assign(new Error(`الأصل المرفوع لا يحقّق شروط الإطار: ${violations.join('؛ ')}`), { code: 'VALIDATION' });
+        }
+
+        const [animatedUpload, staticUpload] = await Promise.all([
+            uploadFrameAsset(result.outPath, frameKey),
+            uploadFrameAsset(result.staticOutPath, `${frameKey}-static`)
+        ]);
+
+        return { assetUrl: animatedUpload.secure_url, staticUrl: staticUpload.secure_url };
+    } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+}
+
+exports.adminListFrames = async (req, res) => {
+    try {
+        const frames = await ProfileFrame.find({}).sort('sortOrder name');
+        // ✅ طلب صريح: تسجيل أي إطار بلا assetUrl ولا staticUrl إطلاقاً (مثال حقيقي اكتُشف أثناء
+        // التحقّق: إطارات بذرة قديمة أُنشئت قبل استوديو الإطارات، بأصناف CSS لم يُطبَّع لها أصل
+        // حقيقي أبداً) — تشخيص عملياتي بسجلات الخادم، لا يمنع عرض القائمة
+        const missing = frames.filter(f => !f.assetUrl && !f.staticUrl);
+        if (missing.length) {
+            console.warn(
+                `[FRAME STUDIO] ${missing.length} إطار بلا أي أصل مرفوع (assetUrl/staticUrl):`,
+                missing.map(f => `${f.name} (${f._id})`).join('، ')
+            );
+        }
+        res.json({ success: true, frames });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.adminCreateFrame = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'يرجى اختيار ملف الإطار' });
+        }
+        const name = (req.body.name || '').trim();
+        if (!name) {
+            return res.status(400).json({ success: false, message: 'اسم الإطار مطلوب' });
+        }
+
+        let prices, display;
+        try {
+            prices = parsePricesInput(req.body);
+            display = { ...DEFAULT_DISPLAY, ...parseDisplayInput(req.body) };
+        } catch (parseErr) {
+            return res.status(400).json({ success: false, message: parseErr.message });
+        }
+
+        try {
+            assertRealType(req.file.buffer, ['image/png', 'image/gif', 'image/webp']);
+        } catch (typeErr) {
+            return res.status(400).json({ success: false, message: typeErr.message });
+        }
+
+        // ✅ cssClass فريد يُولَّد هنا (لا يُسلَّم من العميل إطلاقاً) — نفس بادئة الإطارات
+        // الأصلية (profile-frame-) لتوافق أنماط CSS القديمة المتقاعدة إن وُجدت لأي صنف مطابق
+        const cssClass = `profile-frame-custom-${crypto.randomBytes(6).toString('hex')}`;
+
+        let uploaded;
+        try {
+            uploaded = await runFrameUploadPipeline(req.file.buffer, cssClass);
+        } catch (pipelineErr) {
+            const status = pipelineErr.code === 'VALIDATION' ? 400 : 500;
+            console.error('[ERROR] frame upload pipeline:', pipelineErr);
+            return res.status(status).json({ success: false, message: pipelineErr.message || 'تعذّر معالجة ملف الإطار' });
+        }
+
+        let frame;
+        try {
+            frame = await ProfileFrame.create({
+                name,
+                cssClass,
+                assetUrl: uploaded.assetUrl,
+                staticUrl: uploaded.staticUrl,
+                isActive: req.body.isActive !== 'false',
+                adminOnly: req.body.adminOnly === 'true',
+                sortOrder: parseInt(req.body.sortOrder) || 0,
+                prices,
+                display
+            });
+        } catch (dbErr) {
+            if (dbErr.code === 11000) {
+                return res.status(400).json({ success: false, message: 'يوجد إطار آخر بهذا الاسم بالضبط' });
+            }
+            throw dbErr;
+        }
+
+        await AdminLog.logAction({
+            admin: req.admin._id, action: 'create_frame', targetEntity: 'frame', entityId: frame._id,
+            details: { name: frame.name, cssClass }, ipAddress: req.ip
+        });
+
+        const io = req.app.get('socketio');
+        if (io) io.emit('frames:updated', {});
+
+        res.status(201).json({ success: true, message: 'تم إنشاء الإطار بنجاح', frame });
+    } catch (error) {
+        console.error('[ERROR] in adminCreateFrame:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.adminUpdateFrame = async (req, res) => {
+    try {
+        const frame = await ProfileFrame.findById(req.params.frameId);
+        if (!frame) return res.status(404).json({ success: false, message: 'الإطار غير موجود' });
+
+        let prices, display;
+        try {
+            prices = (req.body.day1 !== undefined) ? parsePricesInput(req.body) : frame.prices;
+            display = { ...frame.display.toObject(), ...parseDisplayInput(req.body) };
+        } catch (parseErr) {
+            return res.status(400).json({ success: false, message: parseErr.message });
+        }
+
+        if (req.body.name) frame.name = String(req.body.name).trim();
+        if (req.body.isActive !== undefined) frame.isActive = (req.body.isActive === 'true' || req.body.isActive === true);
+        if (req.body.adminOnly !== undefined) frame.adminOnly = (req.body.adminOnly === 'true' || req.body.adminOnly === true);
+        if (req.body.sortOrder !== undefined) frame.sortOrder = parseInt(req.body.sortOrder) || 0;
+        frame.prices = prices;
+        frame.display = display;
+
+        if (req.file) {
+            try {
+                assertRealType(req.file.buffer, ['image/png', 'image/gif', 'image/webp']);
+            } catch (typeErr) {
+                return res.status(400).json({ success: false, message: typeErr.message });
+            }
+            let uploaded;
+            try {
+                uploaded = await runFrameUploadPipeline(req.file.buffer, frame.cssClass);
+            } catch (pipelineErr) {
+                const status = pipelineErr.code === 'VALIDATION' ? 400 : 500;
+                console.error('[ERROR] frame upload pipeline (update):', pipelineErr);
+                return res.status(status).json({ success: false, message: pipelineErr.message || 'تعذّر معالجة ملف الإطار' });
+            }
+            frame.assetUrl = uploaded.assetUrl;
+            frame.staticUrl = uploaded.staticUrl;
+        }
+
+        try {
+            await frame.save();
+        } catch (dbErr) {
+            if (dbErr.code === 11000) {
+                return res.status(400).json({ success: false, message: 'يوجد إطار آخر بهذا الاسم بالضبط' });
+            }
+            throw dbErr;
+        }
+
+        await AdminLog.logAction({
+            admin: req.admin._id, action: 'update_frame', targetEntity: 'frame', entityId: frame._id,
+            details: { name: frame.name }, ipAddress: req.ip
+        });
+
+        const io = req.app.get('socketio');
+        if (io) io.emit('frames:updated', {});
+
+        res.json({ success: true, message: 'تم تحديث الإطار بنجاح', frame });
+    } catch (error) {
+        console.error('[ERROR] in adminUpdateFrame:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ✅ حذف ناعم (طلب صريح): isActive=false فقط — لا حذف حقيقي من القاعدة (يحافظ على مرجعية
+// ownedFrames/activeFrame لأي مستخدم يملكه فعلاً بالفعل، تماماً كأي إطار آخر غير نشط بالمتجر)
+exports.adminDeleteFrame = async (req, res) => {
+    try {
+        const frame = await ProfileFrame.findByIdAndUpdate(req.params.frameId, { isActive: false }, { new: true });
+        if (!frame) return res.status(404).json({ success: false, message: 'الإطار غير موجود' });
+
+        await AdminLog.logAction({
+            admin: req.admin._id, action: 'delete_frame', targetEntity: 'frame', entityId: frame._id,
+            details: { name: frame.name }, ipAddress: req.ip
+        });
+
+        const io = req.app.get('socketio');
+        if (io) io.emit('frames:updated', {});
+
+        res.json({ success: true, message: 'تم إلغاء تفعيل الإطار (حذف ناعم)' });
+    } catch (error) {
+        console.error('[ERROR] in adminDeleteFrame:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

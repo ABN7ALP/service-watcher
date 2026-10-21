@@ -1024,3 +1024,77 @@ body {
 @media (min-width: 769px) {
     .mobile-menu-toggle { display: none !important; }
 }
+
+/* ================================================= */
+/* ✅ استوديو الإطارات — معاينة حيّة بنفس رياضيات العرض الحقيقية بـinput.css/app.js بالضبط
+   (.avatar/.avatar__photo/.avatar__frame)، مُكرَّرة هنا عمداً داخل .frame-studio-row فقط
+   (لا تحميل كامل لـdist/style.css بلوحة التحكم — يتجنّب أي تصادم أصناف مع admin.css نفسها) */
+/* ================================================= */
+.frame-studio-row .avatar {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+    width: var(--size);
+    height: var(--size);
+}
+.frame-studio-row .avatar__photo {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: calc(var(--avatar-scale, 1) * 100%);
+    height: calc(var(--avatar-scale, 1) * 100%);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    object-fit: cover;
+    max-width: none;
+}
+.frame-studio-row .avatar__frame {
+    position: absolute;
+    left: calc(50% + var(--frame-x, 0) * 100%);
+    top: calc(50% + var(--frame-y, 0) * 100%);
+    width: calc(var(--frame-scale, 1.45) * 100%);
+    height: calc(var(--frame-scale, 1.45) * 100%);
+    transform: translate(-50%, -50%);
+    object-fit: contain;
+    pointer-events: none;
+    max-width: none;
+    z-index: 2;
+}
+/* ✅ الحاوية الأم — تحمل متغيرات CSS الحيّة (--frame-scale...) المُحدَّثة من المنزلقات، وتُورَّث
+   لكل عنصر فرعي بلا تجاوز --frame-scale/إلخ الخاص به (راجع .fs-allframes-item أدناه) */
+.frame-studio-row { display: flex; flex-direction: column; gap: 18px; padding: 16px; background: #1a1d29; border-radius: 10px; }
+.frame-studio-row figure { margin: 0; text-align: center; }
+.frame-studio-row figcaption { color: #9ca3af; font-size: .72rem; margin-top: 6px; }
+.fs-preview-group { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.fs-preview-group-label { width: 64px; flex-shrink: 0; color: #9ca3af; font-size: .78rem; font-weight: 600; }
+.fs-preview-group--realroom { justify-content: center; }
+/* ✅ طلب صريح — معاينة "المقعد الحقيقي" (مضيف/4/6 مقاعد): <iframe> ثابتة الحجم (375×480، راجع
+   REALROOM_W/REALROOM_H بـadmin.js) تحمّل frame-studio-preview.html بورقة الأنماط الحقيقية —
+   لا أي حجم/موضع محسوب هنا يدوياً. transform:scale يُطبَّق على الـiframe نفسها من JS (يتغيّر
+   حسب عرض النافذة)؛ overflow:hidden + عرض/ارتفاع محسوبان بنفس العامل على الحاوية (JS أيضاً)
+   يمنعان أي فراغ/فيض بعد التصغير؛ transform-origin:top right يطابق تدفّق RTL بالصفحة */
+.fs-realroom-scale-wrap { overflow: hidden; position: relative; border-radius: 10px; }
+.fs-realroom-iframe { width: 375px; height: 480px; border: 0; display: block; transform-origin: top right; background: #0e0918; }
+.fs-allframes-row { display: flex; gap: 14px; flex-wrap: wrap; flex: 1; }
+.fs-allframes-item--live figcaption { color: #ffd45a; font-weight: 700; }
+.frame-studio-slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.frame-studio-slider-row label { width: 110px; flex-shrink: 0; font-size: .85rem; }
+.frame-studio-slider-row input[type="range"] { flex: 1; }
+.frame-studio-slider-row output { width: 54px; text-align: left; font-size: .8rem; color: #9ca3af; direction: ltr; }
+.frame-studio-slider-row .frame-studio-slider-pct { width: 48px; text-align: left; font-size: .78rem; color: #667eea; font-weight: 700; direction: ltr; }
+.frame-studio-dropzone { border: 2px dashed #3a3f55; border-radius: 10px; padding: 18px; text-align: center; cursor: pointer; color: #9ca3af; transition: border-color .15s ease; }
+.frame-studio-dropzone:hover { border-color: #667eea; }
+.frame-studio-dropzone.has-file { border-color: #22c55e; color: #22c55e; }
+/* ✅ طلب صريح: أزرار تذييل نافذة الاستوديو — ارتفاع كامل، ومرتَّبة RTL (الأساسي لليمين عبر
+   ترتيب DOM نفسه بـadmin.js: الحفظ أولاً فإلغاء ثانياً — أول عنصر DOM بحاوية flex ذات dir:rtl
+   يرتسم أقصى اليمين) */
+.frame-studio-footer { align-items: stretch; }
+.frame-studio-footer .btn { min-height: 46px; display: flex; align-items: center; justify-content: center; font-weight: 700; flex: 1; }
+/* ✅ طلب صريح: لون الزر الأساسي/الثانوي الحقيقي للوحة التحكم (--admin-primary/الحدود) —
+   لا أزرق Bootstrap الافتراضي (.btn-primary الخام لا يطابق هوية اللوحة البصرية إطلاقاً) */
+.frame-studio-footer .btn-primary { background: var(--admin-primary); border-color: var(--admin-primary); color: #fff; }
+.frame-studio-footer .btn-primary:hover { background: var(--admin-secondary); border-color: var(--admin-secondary); }
+.frame-studio-footer .btn-secondary { background: transparent; border: 1px solid var(--admin-border); color: var(--admin-primary); }
+.frame-studio-footer .btn-secondary:hover { background: var(--admin-light); }
+/* ✅ طلب صريح: شارة "بلا ملف" لأي إطار بلا assetUrl/staticUrl فعلي (من البداية، أو بعد استنفاد
+   كل محاولات التحميل — راجع معالج 'error' العام أعلى admin.js) — نفس قالب .status-badge نفسه */
+.frame-no-asset-badge { padding: 2px 8px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; background-color: rgba(231, 76, 60, 0.12); color: var(--admin-danger); }

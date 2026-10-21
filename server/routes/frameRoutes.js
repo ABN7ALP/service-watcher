@@ -3,6 +3,12 @@ const frameController = require('../controllers/frameController');
 const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
+
+// ✅ طلب صريح (استوديو الإطارات): عام بلا أي مصادقة — يستبدل frame-display.json الثابت +
+// FRAME_ASSET_URLS المُضمَّنة بـapp.js سابقاً، مُخزَّن بـETag. مُثبَّت صراحةً قبل
+// router.use(authMiddleware) أدناه كي يبقى هذا المسار بعينه بلا مصادقة بصرف النظر عنها
+router.get('/display', frameController.getFrameDisplayConfig);
+
 router.use(authMiddleware);
 
 router.get('/shop', frameController.getFrameShop);

@@ -1,9 +1,11 @@
 const withdrawalController = require('../controllers/withdrawalController');
 const customGiftController = require('../controllers/customGiftController');
+const frameController = require('../controllers/frameController');
 const express = require('express');
 const router = express.Router();
 const adminAuth = require('../middleware/adminAuth');
 const adminController = require('../controllers/adminController');
+const { frameAssetUpload } = require('../utils/cloudinary');
 
 router.use(adminAuth);
 
@@ -36,6 +38,13 @@ router.get('/gifts', adminController.getGifts);
 router.post('/gifts', adminController.saveGift);
 router.put('/gifts/:giftId', adminController.saveGift);
 router.delete('/gifts/:giftId', adminController.deleteGift);
+
+// ✅ استوديو الإطارات — frameAssetUpload (multer) فقط على create/update (الوحيدان اللذان قد
+// يحملان ملفاً مرفوعاً)؛ delete حذف ناعم بلا ملف، list بلا ملف
+router.get('/frames', frameController.adminListFrames);
+router.post('/frames', frameAssetUpload, frameController.adminCreateFrame);
+router.put('/frames/:frameId', frameAssetUpload, frameController.adminUpdateFrame);
+router.delete('/frames/:frameId', frameController.adminDeleteFrame);
 
 router.get('/reports', adminController.getReports);
 router.post('/reports/:reportId/resolve', adminController.resolveReport);
