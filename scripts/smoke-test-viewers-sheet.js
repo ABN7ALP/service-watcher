@@ -94,6 +94,9 @@ async function main() {
             { sender: host._id, receiver: contributor._id, gift: gift._id, giftName: gift.name, giftImage: gift.imageUrl, quantity: 3, unitPrice: gift.price, totalPrice: gift.price * 3, room: room._id }
         ]);
         await FanClubMembership.create({ owner: host._id, member: contributor._id, points: 500 });
+        // ✅ يُجلِس المساهم على المقعد 2 أيضاً — بلا هذا، صف المستلمين بشيت الهدايا (بند 3) يبقى
+        // فاضياً بهذا الفحص (المضيف نفسه، الناظر هنا، يُستبعَد من قائمة "من أهدي؟" دوماً)
+        await VoiceRoom.updateOne({ _id: room._id, 'seats.seatNumber': 2 }, { $set: { 'seats.$.user': contributor._id } });
 
         const tokenHost = jwt.sign({ id: host._id.toString() }, JWT_SECRET);
 
@@ -155,12 +158,28 @@ async function main() {
         const filteredVisible = await page.locator('.rv-item').first().isVisible().catch(() => false);
         console.log(`   نتيجة بحث مطابقة ظاهرة: ${filteredVisible ? '✅' : '❌'}`);
 
+        console.log('🎁 فتح شيت الهدايا (بند 3 — صف المستلمين المُعاد تصميمه)...');
+        await page.locator('#room-viewers-sheet').evaluate(el => el.remove()).catch(() => {});
+        await page.locator('#room-gift-icon-btn').waitFor({ state: 'attached', timeout: 20000 });
+        await page.evaluate(() => document.getElementById('room-gift-icon-btn').click());
+        await page.locator('.gsheet-rc').first().waitFor({ state: 'visible', timeout: 10000 });
+        await page.waitForTimeout(400);
+        // ⚠️ المضيف (الناظر هنا) لا يمكنه إهداء نفسه، فلن يظهر أبداً ضمن قائمة مستلمي غرفته
+        // الخاصة — شارة 👑 (نفس شرط hostId === u.id تماماً، مُتحقَّق بالكود) معلوماتية فقط هنا،
+        // لا تدخل بمعيار النجاح/الفشل؛ شارة رقم المقعد (المساهم الجالس بالمقعد 2) تثبت المسار فعلياً
+        const recipCrownVisible = await page.locator('.gsheet-rc-crown').first().isVisible().catch(() => false);
+        const recipSeatBadgeVisible = await page.locator('.gsheet-rc-sn:not(.gsheet-rc-crown)').first().isVisible().catch(() => false);
+        const recipNameVisible = await page.locator('.gsheet-rc-name').first().isVisible().catch(() => false);
+        console.log(`   شارة 👑 المضيف (معلوماتية فقط — غير متوقَّعة هنا): ${recipCrownVisible ? '✅' : '➖'} | شارة رقم مقعد: ${recipSeatBadgeVisible ? '✅' : '❌'} | اسم تحت الصورة: ${recipNameVisible ? '✅' : '❌'}`);
+        await page.screenshot({ path: path.join(OUT_DIR, '3-gift-sheet-recipients-row.png') });
+        console.log(`📸 حُفِظت: ${path.join(OUT_DIR, '3-gift-sheet-recipients-row.png')}`);
+
         clearTimeout(watchdog);
         if (consoleErrors.length) {
             console.error('\n💥 أخطاء console/pageerror ظهرت خلال الفحص:');
             consoleErrors.forEach(e => console.error('   ' + e));
             process.exitCode = 1;
-        } else if (!podiumVisible || !mineRowVisible || !seatedSectionVisible || !hostTagVisible || !filteredVisible) {
+        } else if (!podiumVisible || !mineRowVisible || !seatedSectionVisible || !hostTagVisible || !filteredVisible || !recipSeatBadgeVisible || !recipNameVisible) {
             console.error('\n💥 فحص بصري فشل (عنصر متوقَّع غير ظاهر) — راجع السطور أعلاه');
             process.exitCode = 1;
         } else {

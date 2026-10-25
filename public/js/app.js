@@ -14953,7 +14953,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 <div class="gsheet-to">
                     <span class="gsheet-to-label">إلى</span>
                     <div class="gsheet-recips" id="gsheet-recips"></div>
-                    <button type="button" class="gsheet-allbtn" id="gsheet-allbtn">كل المقاعد</button>
+                    <button type="button" class="gsheet-allbtn" id="gsheet-allbtn">الكل</button>
                 </div>
                 <div class="gsheet-wealth" id="gsheet-wealth">
                     <div class="gsheet-wtop">
@@ -15031,17 +15031,21 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             // ✅ هيكل تحميل مؤقت لصف المستلمين فقط حتى تصل مقاعد الغرفة (لا علاقة له بكاش
             // الكتالوج أعلاه) — يمنع ظهور رسالة "لا يوجد أحد قاعد" خاطئة قبل أن نعرف فعلياً
             if (!recipientsLoaded) {
-                box.innerHTML = Array.from({ length: 4 }).map(() => '<span class="skeleton-shimmer" style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:inline-block;"></span>').join('');
+                box.innerHTML = Array.from({ length: 4 }).map(() => '<span class="skeleton-shimmer" style="width:38px;height:38px;border-radius:50%;flex-shrink:0;display:inline-block;"></span>').join('');
                 return;
             }
-            // 🐛 إصلاح (مراجعة المرحلة 2): <img src=""> مباشرة تُنتج أيقونة صورة مكسورة — نفس
-            // مكوّن avatarHTML الموحَّد المُستخدَم بالمقاعد نفسها (DEFAULT_AVATAR_URL احتياطي +
-            // إطار المستخدم الفعلي إن وُجد)، بحجم 32px عبر --size بدل أي سمة حجم جاهزة
+            // ✅ بند 3 (room-ux-v2 — تطابق docs/design/room-ux-prototype.html::recipsHTML بالحرف):
+            // 38px ثابتة للجميع (بدل 32px)، شارة رقم المقعد أو 👑 للمضيف فوق الصورة، والاسم تحتها
+            // مقصوصاً بـ"..." — نفس مكوّن avatarHTML الموحَّد (DEFAULT fallback + إطار المستخدم)
             box.innerHTML = seatedUsers.length === 0
                 ? '<span class="text-[11px] text-gray-500">لا يوجد أحد قاعد على مقعد حالياً</span>'
                 : seatedUsers.map(u => `
                     <button type="button" class="gsheet-rc" data-user-id="${u.id}" title="${escapeHtml(u.username)}" aria-pressed="${selectedUserIds.has(u.id)}">
-                        ${avatarHTML({ src: u.profileImage, name: u.username, userId: u.id, fetchSize: 32, frameClass: u.activeFrameClass, wrapStyle: '--size:32px', photoAttrs: ' alt="" loading="lazy" decoding="async"' })}
+                        <span class="gsheet-rc-wrap">
+                            ${avatarHTML({ src: u.profileImage, name: u.username, userId: u.id, fetchSize: 38, frameClass: u.activeFrameClass, wrapStyle: '--size:38px', photoAttrs: ' alt="" loading="lazy" decoding="async"' })}
+                            ${u.id === hostId ? '<span class="gsheet-rc-sn gsheet-rc-crown">👑</span>' : (u.seatNumber ? `<span class="gsheet-rc-sn">${u.seatNumber}</span>` : '')}
+                        </span>
+                        <span class="gsheet-rc-name">${escapeHtml(u.username || '')}</span>
                     </button>
                 `).join('');
             box.querySelectorAll('.gsheet-rc').forEach(btn => {
@@ -15340,7 +15344,9 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         preloadGiftThumbnails(shopData);
 
         const roomRes = await roomPromise;
-        seatedUsers = (roomRes.seats || []).filter(s => s.user && s.user.id !== myIdStr).map(s => s.user);
+        // ✅ بند 3 بمراجعة room-ux-v2: seatNumber يبقى ملتصقاً بكل مستخدم هنا (بدل ...map(s=>s.user)
+        // التي كانت تُسقطه) — صف المستلمين الجديد يعرضه كشارة فوق كل صورة (أو 👑 للمضيف)
+        seatedUsers = (roomRes.seats || []).filter(s => s.user && s.user.id !== myIdStr).map(s => ({ ...s.user, seatNumber: s.seatNumber }));
         const hostId = roomRes.host ? (roomRes.host._id || roomRes.host).toString() : null;
         // ✅ presetTarget قد يكون مستمعاً لم يجلس على مقعد بعد (أُهدي من ملفه الشخصي) — يُضاف
         // لصف المستلمين هنا حتى لو لم يكن بقائمة الجالسين، كي يبقى ظاهراً/قابلاً للتبديل

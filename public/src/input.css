@@ -6895,22 +6895,34 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 @media (min-width: 768px) { .gsheet { border-radius: 22px; } }
 .gsheet-grab { width: 36px; height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.16); margin: 0 auto 8px; }
 
-/* 1) صف المستلمين — 40px */
-.gsheet-to { display: flex; align-items: center; gap: 8px; height: 40px; }
+/* 1) صف المستلمين — room-ux-v2 (تطابق docs/design/room-ux-prototype.html::.rrow/.rc بالحرف):
+   38px ثابتة، شارة رقم المقعد/👑 أعلى الصورة، الاسم تحتها، "الكل" كرقاقة ثابتة بنهاية الصف */
+.gsheet-to { display: flex; align-items: center; gap: 8px; height: 58px; }
 .gsheet-to-label { font-size: 12px; color: var(--g-muted); flex: none; }
-.gsheet-recips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: 1; }
+.gsheet-recips { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; flex: 1; align-items: center; padding: 4px 2px; }
 .gsheet-recips::-webkit-scrollbar { display: none; }
-.gsheet-rc { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: #2a2040; border: 2px solid transparent; cursor: pointer; padding: 0; position: relative; overflow: visible; }
-.gsheet-rc img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.gsheet-rc[aria-pressed="true"] { border-color: var(--g-gold); }
-.gsheet-rc[aria-pressed="true"]::after {
-    content: "✓"; position: absolute; bottom: -3px; inset-inline-end: -3px; width: 13px; height: 13px;
-    border-radius: 50%; background: var(--g-gold); color: #3a2300; font-size: 9px; font-weight: 900;
-    display: grid; place-items: center;
+.gsheet-rc {
+    flex: none; width: 44px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0;
 }
+.gsheet-rc-wrap { position: relative; width: 38px; height: 38px; flex: none; }
+.gsheet-rc-wrap .avatar { box-shadow: 0 0 0 2px rgba(255,255,255,0.12); border-radius: 50%; }
+.gsheet-rc[aria-pressed="true"] .gsheet-rc-wrap .avatar { box-shadow: 0 0 0 2.5px var(--g-gold); }
+.gsheet-rc[aria-pressed="true"] .gsheet-rc-wrap::after {
+    content: "✓"; position: absolute; bottom: -2px; inset-inline-end: -2px; width: 15px; height: 15px;
+    border-radius: 50%; background: var(--g-gold); color: #3a2300; font-size: 9px; font-weight: 900;
+    display: flex; align-items: center; justify-content: center; border: 2px solid #1d1629;
+}
+.gsheet-rc-sn {
+    position: absolute; top: -3px; inset-inline-start: -3px; min-width: 15px; height: 15px; border-radius: 8px;
+    background: rgba(0,0,0,0.85); color: #fff; font-size: 9px; font-weight: 800; display: flex;
+    align-items: center; justify-content: center; padding: 0 3px; border: 1px solid rgba(255,255,255,0.2); z-index: 3;
+}
+.gsheet-rc-crown { background: transparent; border: 0; font-size: 13px; top: -8px; }
+.gsheet-rc-name { font-size: 9.5px; max-width: 44px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #d8d0e8; }
 .gsheet-allbtn {
-    flex: none; height: 28px; border-radius: 999px; border: 1px solid var(--g-line); background: rgba(255, 255, 255, 0.05);
-    color: var(--g-fg); font-size: 11.5px; font-weight: 700; padding: 0 10px; cursor: pointer;
+    flex: none; height: 30px; border-radius: 999px; border: 1px solid var(--g-line); background: rgba(255, 255, 255, 0.05);
+    color: var(--g-fg); font-size: 11.5px; font-weight: 800; padding: 0 12px; cursor: pointer;
 }
 .gsheet-allbtn[aria-pressed="true"] { background: var(--g-gold); color: #3a2300; border-color: var(--g-gold); }
 
