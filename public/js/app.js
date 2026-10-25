@@ -16782,13 +16782,32 @@ function appendRoomGiftChatMessage({ fromUsername, toUsername, giftName, giftIco
     el.className = 'room-chat-message room-chat-gift-bubble';
     const qtyNum = quantity || 0;
     const qtyText = qtyNum > 1 ? `×${qtyNum.toLocaleString('en-US')} ` : '';
-    const iconHtml = giftImage ? `<img src="${giftImage}" class="room-chat-gift-inline-img" alt="">` : `<span>${giftIcon || '🎁'}</span>`;
+    // 🛡️ أمان (توحيد المسار الآمن — راجع wireGiftImgFallback): giftImage/giftIcon هنا قد تصلان
+    // من صدى بثّ عام (مستخدم آخر، قد تكون هدية مخصّصة صمّمها هو) — غير موثوقتين. العنصر يُبنى
+    // بسلك DOM مباشر (src كخاصية، لا كنص HTML) بدل تضمينها خام داخل innerHTML كما كان سابقاً —
+    // لا سياق HTML يُكسَر مهما كانت القيمة، ونفس احتياط giftImg بخطوتين (أصل كامل ثم إيموجي)
     el.innerHTML = `
         <i class="fas fa-gift room-chat-gift-bubble-icon"></i>
         <p class="room-chat-msg-line">
-            <b>${escapeHtml(fromUsername)}</b> أرسل <span class="room-chat-gift-qty">${qtyText}</span>${escapeHtml(giftName)} ${iconHtml} إلى <b class="room-chat-gift-to">${escapeHtml(toUsername)}</b>
+            <b>${escapeHtml(fromUsername)}</b> أرسل <span class="room-chat-gift-qty">${qtyText}</span>${escapeHtml(giftName)} <span class="room-chat-gift-icon-slot"></span> إلى <b class="room-chat-gift-to">${escapeHtml(toUsername)}</b>
         </p>
     `;
+    const iconSlot = el.querySelector('.room-chat-gift-icon-slot');
+    const safeGiftImage = isHttpsImageUrl(giftImage) ? giftImage : null;
+    if (safeGiftImage) {
+        const img = document.createElement('img');
+        img.className = 'room-chat-gift-inline-img';
+        img.src = giftImg(safeGiftImage, 16);
+        img.alt = '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        wireGiftImgFallback(img, safeGiftImage, giftIcon || '🎁');
+        iconSlot.appendChild(img);
+    } else {
+        const span = document.createElement('span');
+        span.textContent = giftIcon || '🎁';
+        iconSlot.appendChild(span);
+    }
     box.appendChild(el);
     box.scrollTop = box.scrollHeight;
     while (box.children.length > 60) box.firstElementChild.remove(); // ✅ نفس سقف 60 رسالة بالـDOM لدردشة الغرفة
