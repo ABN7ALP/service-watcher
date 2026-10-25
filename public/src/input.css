@@ -441,6 +441,29 @@ input[type="checkbox"] {
     max-width: none;
     transition: width .18s ease, height .18s ease; /* ✅ انتقال ناعم عند تفعيل/تبديل/إزالة إطار */
 }
+/* ✅ طلب صريح (توحيد مكوّن الأفاتار — room-ux-v2): احتياط "الحرف الأول على لون ثابت" —
+   يملأ نفس صندوق .avatar__photo بالضبط (نفس التمركز/avatar-scale) خلفها مباشرة؛ ترتيب DOM
+   وحده كافٍ لتكديسها تحت الصورة (كلاهما position:absolute بنفس الحاوية .avatar، العنصر
+   اللاحق بالـDOM يُرسَم فوق) — لا حاجة لـz-index. تُزال .avatar__photo--fallbackable بالكامل
+   عند فشل تحميلها (راجع مستمع onerror العام بـapp.js) فيظهر هذا الحرف تلقائياً بلا أي عمل JS إضافي */
+.avatar__initial {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(var(--avatar-scale, 1) * 100%);
+    height: calc(var(--avatar-scale, 1) * 100%);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: var(--avi-bg, #7a4dff);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: calc(var(--size, 40px) * .42 * var(--avatar-scale, 1));
+    line-height: 1;
+    user-select: none;
+}
 .avatar__frame {
     position: absolute;
     /* ✅ left/top بنسبة مئوية من الحاوية (.avatar، الصندوق S) — تضيف الإزاحة اليدوية
@@ -779,6 +802,11 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 .voice-seat.host-seat .voice-seat-av-wrap { width: var(--hostAv); height: var(--hostAv); }
+/* ✅ room-ux-v2: .avatar__initial هنا يعتمد var(--size,40px) الافتراضي دوماً لأن .voice-seat-avatar
+   (sizeClass) يملأ .avatar بنسبة 100% من .voice-seat-av-wrap مباشرة بلا تمرير --size — فنعيد
+   تعريف حجم الخط هنا من --av/--hostAv الفعليين، بالضبط كما يُحدَّد عرض/ارتفاع الصندوق أعلاه */
+.voice-seat-av-wrap .avatar__initial { font-size: calc(var(--av) * .42); }
+.voice-seat.host-seat .voice-seat-av-wrap .avatar__initial { font-size: calc(var(--hostAv) * .42); }
 /* 🐛 مراجعة بصرية (طلب صريح، بند 4 — مطابقة §.seat__empty بالنموذج حرفياً): حدود متقطعة
    واضحة + توهّج خافت بدل الحلقة شبه الخفية (1px بشفافية 0.08) غير المميَّزة سابقاً */
 .voice-seat.empty-seat .voice-seat-av-wrap {

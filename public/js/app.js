@@ -232,13 +232,44 @@ function hostCrownTopAttr(frameClass) {
 // (متحركة+ثابتة، راجع فقرة جولة 3 أعلى الملف)؛ أي صنف آخر (إطارات CSS القديمة المتقاعدة
 // كـprofile-frame-silver-elegant) يبقى على avatar__photo نفسها فتُطبَّق حدودها/توهّجها
 // المرسومة بـCSS مباشرة كما كانت دوماً — لا تغيير
-function avatarHTML({ src, frameClass, sizeClass = '', extraPhotoClass = '', photoAttrs = '', wrapAttrs = '', wrapStyle = '' }) {
+// ✅ طلب صريح (توحيد مكوّن الأفاتار — مراجعة room-ux-v2): لوحة ألوان ثابتة + تجزئة بسيطة
+// (نفس أسلوب docs/design/room-ux-prototype.html بالحرف) تُحدِّد لوناً ثابتاً لكل مستخدم —
+// الحرف الأول من اسمه فوقه هو احتياط "لا صورة مكسورة أبداً" الجديد. التجزئة على userId (لا
+// الاسم) عمداً — هوية اللون تبقى ثابتة حتى لو غيّر اسمه، بخلاف النموذج الأولي الذي يُجزِّئ
+// بالاسم لعدم توفّر آيدي حقيقي فيه (بيانات وهمية فقط)
+const AVATAR_INITIAL_PALETTE = ['#7a4dff', '#ff4fa3', '#ff9f1c', '#2bb7a8', '#3d8bff', '#e0457b', '#8c5cf6', '#16a34a', '#d97706', '#0ea5e9'];
+function avatarInitialColor(seed) {
+    let h = 0;
+    for (const c of String(seed || '')) h = (h * 31 + c.codePointAt(0)) | 0;
+    return AVATAR_INITIAL_PALETTE[Math.abs(h) % AVATAR_INITIAL_PALETTE.length];
+}
+function avatarInitialChar(name) {
+    const trimmed = (name || '').trim();
+    return [...trimmed][0] || '؟';
+}
+
+// ✅ name (بند 1 بمراجعة PR): يُفعِّل احتياط "الحرف الأول على لون ثابت" بدل DEFAULT_AVATAR_URL
+// القديم — بلا تمرير name يبقى السلوك القديم تماماً (توافق خلفي لبقية مواقع الاستدعاء غير
+// المشمولة بهذي المراجعة). userId اختياري أيضاً (يحدِّد اللون تحديداً؛ بلا تمريره يُستخدَم
+// الاسم نفسه كبديل للتجزئة). --size يجب أن تصل صريحة عبر wrapStyle مع name (حجم الحرف النسبي
+// calc(var(--size)*.42) بالـCSS يعتمد عليها) — كل مواقع الاستدعاء الست المُحدَّثة تمرّرها
+function avatarHTML({ src, name, userId, frameClass, sizeClass = '', extraPhotoClass = '', photoAttrs = '', wrapAttrs = '', wrapStyle = '' }) {
     const frameUrl = frameClass ? FRAME_ASSET_URLS[frameClass] : null;
     const photoClass = `avatar__photo${frameUrl ? '' : (frameClass ? ' ' + frameClass : '')}${extraPhotoClass ? ' ' + extraPhotoClass : ''}`;
     const frameImgs = frameUrl
         ? `<img class="avatar__frame avatar__frame--animated" src="${frameUrl}" alt="" aria-hidden="true">`
         + `<img class="avatar__frame avatar__frame--static" src="${staticFrameUrl(frameClass, frameUrl)}" alt="" aria-hidden="true">`
         : '';
+    if (name !== undefined) {
+        const bg = avatarInitialColor(userId != null ? userId : name);
+        const styleParts = [wrapStyle, frameDisplayStyle(frameClass), `--avi-bg:${bg}`].filter(Boolean);
+        const styleAttr = ` style="${styleParts.join(';')}"`;
+        const initialSpan = `<span class="avatar__initial" aria-hidden="true">${escapeHtml(avatarInitialChar(name))}</span>`;
+        // 🛡️ avatar__photo--fallbackable: يُزال العنصر بالكامل عند فشل تحميله (راجع مستمع
+        // onerror العام أسفله) فيظهر الحرف الملوَّن تحته — لا استبدال src بصورة احتياطية بديلة
+        const imgTag = src ? `<img class="${photoClass} avatar__photo--fallbackable" src="${src}"${photoAttrs}>` : '';
+        return `<span class="avatar ava-init ${sizeClass}"${styleAttr}${wrapAttrs}>${initialSpan}${imgTag}${frameImgs}</span>`;
+    }
     const styleParts = [wrapStyle, frameDisplayStyle(frameClass)].filter(Boolean);
     const styleAttr = styleParts.length ? ` style="${styleParts.join(';')}"` : '';
     // 🛡️ طلب صريح بمراجعة PR (جولة 4): src فارغة (لا profileImage إطلاقاً) كانت تُنتج
@@ -248,19 +279,18 @@ function avatarHTML({ src, frameClass, sizeClass = '', extraPhotoClass = '', pho
     return `<span class="avatar ${sizeClass}"${styleAttr}${wrapAttrs}><img class="${photoClass}" src="${src || DEFAULT_AVATAR_URL}"${photoAttrs}>${frameImgs}</span>`;
 }
 
-// 🛡️ طلب صريح بمراجعة PR (جولة 4): مستمع onerror عام وحيد (لا onerror مكرَّر على كل <img>
-// يدوياً) — يلتقط فشل تحميل أي صورة أفاتار حقيقية (رابط ميت/404، لا فقط src فارغة أصلاً —
-// تلك تُعالَج بالاحتياطي أعلى avatarHTML نفسها) ويستبدلها بـDEFAULT_AVATAR_URL **مرة واحدة
-// بلا حلقة**. أحداث 'error' لعناصر <img> لا تصعد (bubble) بمعيار DOM، فقط تنزل بمرحلة
-// الالتقاط (capture) — capture:true هنا إلزامي، لا اختياري، وإلا لن يصل الحدث لهذا المستمع
-// المُسجَّل على document إطلاقاً. النطاق: أي <img> يحمل صنف avatar__photo (كل صور avatarHTML
-// بأي مكان بالتطبيق) أو سمة data-avatar-fallback="1" (صور أفاتار خام خارج avatarHTML — فرق/
-// مباريات PK، لوحة المتصدرين...، راجع كل موضع أُضيفت له الصفة). لا يشمل <img class="avatar__frame">
-// (زخرفة لا صورة مستخدم — alt="" aria-hidden="true" أصلاً فلا نص يفيض لو فشل تحميلها، وفشلها
-// نادر جداً لأنها أصل محلي بالتطبيق نفسه /assets/frames/ لا رابط خارجي قد يموت)
+// 🛡️ طلب صريح بمراجعة PR (جولة 4؛ مُوسَّع بمراجعة room-ux-v2 — بند 1): مستمع onerror عام
+// وحيد (لا onerror مكرَّر على كل <img> يدوياً، ولا سمة onerror= مضمَّنة إطلاقاً — تحظرها
+// CSP script-src الحالية أصلاً بلا 'unsafe-inline') يلتقط فشل تحميل أي صورة أفاتار حقيقية
+// (رابط ميت/404). فرعان: avatar__photo--fallbackable (الأفاتار الموحَّد الجديد) تُزال نهائياً
+// فيظهر الحرف الملوَّن تحتها مباشرة؛ avatar__photo/data-avatar-fallback القديمتان (مواقع
+// استدعاء avatarHTML بلا name، + صور أفاتار خام خارج avatarHTML كأغلفة الغرف ومباريات PK)
+// تستبدلان src بـDEFAULT_AVATAR_URL كما كان تماماً. أحداث 'error' لعناصر <img> لا تصعد
+// (bubble) بمعيار DOM، فقط تنزل بمرحلة الالتقاط (capture) — capture:true هنا إلزامي
 document.addEventListener('error', (event) => {
     const img = event.target;
     if (!(img instanceof HTMLImageElement)) return;
+    if (img.classList.contains('avatar__photo--fallbackable')) { img.remove(); return; }
     if (!(img.classList.contains('avatar__photo') || img.hasAttribute('data-avatar-fallback'))) return;
     // ✅ حارس منع الحلقة: لو كانت src الحالية تساوي الاحتياطي الافتراضي فعلاً (إمّا كانت كذلك
     // أصلاً أو استُبدلت هنا سابقاً) لا نعيد التعيين مجدداً — يقطع أي حلقة نظرياً حتى لو فشل
@@ -855,7 +885,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <span class="voice-seat-wave"></span>
                     <span class="voice-seat-wave"></span>
                     ${isHostSeat ? `<i class="fas fa-crown voice-seat-host-badge"${hostCrownTopAttr(seatData.user.activeFrameClass)}></i>` : ''}
-                    ${avatarHTML({ src: seatData.user.profileImage, frameClass: seatData.user.activeFrameClass, sizeClass: 'voice-seat-avatar', photoAttrs: ` alt="${safeName}" loading="lazy" decoding="async"` })}
+                    ${avatarHTML({ src: seatData.user.profileImage, name: seatData.user.username, userId: seatData.user.id, frameClass: seatData.user.activeFrameClass, sizeClass: 'voice-seat-avatar', photoAttrs: ` alt="${safeName}" loading="lazy" decoding="async"` })}
                     <span class="voice-seat-mic-badge ${seatData.isMuted ? 'muted' : ''}"><i class="fas ${seatData.isMuted ? 'fa-microphone-slash' : 'fa-microphone'}"></i></span>
                     ${isHostSeat ? '' : `<span class="voice-seat-no">${seatNo}</span>`}
                 </div>
@@ -3554,7 +3584,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 ${!isMe ? `<button type="button" id="room-profile-report-btn" class="room-profile-report-btn" title="إبلاغ"><i class="fas fa-flag"></i></button>` : ''}
                 <div class="room-profile-header">
                     <div class="room-profile-avatar-wrap">
-                        ${avatarHTML({ src: p.profileImage, frameClass: p.activeFrameClass, sizeClass: 'room-profile-avatar', photoAttrs: ` id="room-profile-avatar-img" title="${allowFullProfileNav ? 'عرض الملف الكامل' : ''}"` })}
+                        ${avatarHTML({ src: p.profileImage, name: p.username, userId: userId, frameClass: p.activeFrameClass, sizeClass: 'room-profile-avatar', photoAttrs: ` id="room-profile-avatar-img" title="${allowFullProfileNav ? 'عرض الملف الكامل' : ''}"`, wrapStyle: '--size:84px' })}
                     </div>
                     <div class="room-profile-name-id-row">
                         <p class="room-profile-name">${escapeHtml(p.username)} ${getAgentBadgeHTML(p.isAgent)}</p>
@@ -11926,7 +11956,7 @@ async function showMiniProfileModal(userId) {
                 <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-t-2xl shadow-2xl w-full max-w-md text-white border-t border-x border-purple-500/25 overflow-hidden animate-[slideUp_0.25s_ease-out]" style="max-height:80vh; overflow-y:auto;">
 
                     <div class="relative bg-gradient-to-r from-purple-700/30 to-pink-700/25 pt-5 pb-3 px-4 text-center">
-                        ${avatarHTML({ src: profileUser.profileImage, frameClass: profileUser.activeFrameClass, sizeClass: 'w-16 h-16 mx-auto mini-profile-modal-avatar', extraPhotoClass: 'border-4 border-gray-900 shadow-lg cursor-pointer hover:opacity-90 transition', photoAttrs: ` id="mini-profile-avatar-img" data-user-id="${profileUser._id}" title="عرض الملف الكامل"` })}
+                        ${avatarHTML({ src: profileUser.profileImage, name: profileUser.username, userId: profileUser._id, frameClass: profileUser.activeFrameClass, sizeClass: 'w-16 h-16 mx-auto mini-profile-modal-avatar', extraPhotoClass: 'border-4 border-gray-900 shadow-lg cursor-pointer hover:opacity-90 transition', photoAttrs: ` id="mini-profile-avatar-img" data-user-id="${profileUser._id}" title="عرض الملف الكامل"`, wrapStyle: '--size:64px' })}
                         <h2 class="text-sm font-bold mt-4 flex items-center justify-center gap-1">${escapeHtml(profileUser.username)} ${getAgentBadgeHTML(profileUser.isAgent)} ${renderAdminBadgeHTML(profileUser)}</h2>
                         <div class="text-[10px] text-gray-300 mt-1 cursor-pointer inline-flex items-center gap-1.5 copy-id-btn bg-black/25 px-2 py-0.5 rounded-full">
                            <i class="fas fa-id-card"></i>
@@ -14826,7 +14856,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 ? '<span class="text-[11px] text-gray-500">لا يوجد أحد قاعد على مقعد حالياً</span>'
                 : seatedUsers.map(u => `
                     <button type="button" class="gsheet-rc" data-user-id="${u.id}" title="${escapeHtml(u.username)}" aria-pressed="${selectedUserIds.has(u.id)}">
-                        ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, wrapStyle: '--size:32px', photoAttrs: ' alt=""' })}
+                        ${avatarHTML({ src: u.profileImage, name: u.username, userId: u.id, frameClass: u.activeFrameClass, wrapStyle: '--size:32px', photoAttrs: ' alt=""' })}
                     </button>
                 `).join('');
             box.querySelectorAll('.gsheet-rc').forEach(btn => {
@@ -15571,7 +15601,7 @@ function startGiftComboSession(ctx) {
     bannerEl.className = 'gfx-banner';
     bannerEl.id = 'gfx-banner';
     bannerEl.innerHTML = `
-        <span class="gfx-banner-av">${avatarHTML({ src: myUser.profileImage, wrapStyle: '--size:32px' })}</span>
+        <span class="gfx-banner-av">${avatarHTML({ src: myUser.profileImage, name: myUser.username, userId: myUser._id, wrapStyle: '--size:32px' })}</span>
         <span class="gfx-banner-txt"><b>أنت</b>إلى ${toLabel}</span>
         <span class="gfx-banner-gift">${giftEmojiOrImgHTML(gift, 28, 64)}</span>
         <span class="gfx-banner-x" id="gfx-banner-x">×0</span>
@@ -16956,7 +16986,9 @@ function gfxUpdateSideBanner(data) {
         setTimeout(() => oldest.el.remove(), 420);
     }
 
-    const avatarUrl = isHttpsImageUrl(data.fromProfileImage) ? data.fromProfileImage : DEFAULT_AVATAR_URL;
+    // ✅ بند 1: لا احتياط DEFAULT_AVATAR_URL هنا بعد اليوم — بلا صورة صالحة يبقى الحرف الملوَّن
+    // (أسفله) ظاهراً مباشرة بلا أي <img> فوقه إطلاقاً، كما تفعل avatarHTML({name,...}) تماماً
+    const avatarUrl = isHttpsImageUrl(data.fromProfileImage) ? data.fromProfileImage : null;
     const giftImgUrl = isHttpsImageUrl(data.giftImage) ? data.giftImage : null;
     const el = document.createElement('div');
     el.className = 'gfx-banner';
@@ -16966,14 +16998,28 @@ function gfxUpdateSideBanner(data) {
         <span class="gfx-banner-gift">${giftImgUrl ? '' : escapeHtml(data.giftIcon || '🎁')}</span>
         <span class="gfx-banner-x">×${(data.quantity || 1).toLocaleString('en-US')}</span>
     `;
-    const avImg = document.createElement('img');
-    avImg.src = avatarUrl;
-    // 🛡️ طلب صريح (مراجعة PR — صورة المُرسِل بالشريط مكسورة): data-avatar-fallback="1" يُدخلها
-    // ضمن نطاق مستمع onerror العام الموحَّد (راجع تعليقه أعلى الملف — "صور أفاتار خام خارج
-    // avatarHTML" بالحرف هو هذا المسار بالضبط) — رابط حيّ (https://) لكن ميت (404/تعذّر وصول)
-    // يُستبدَل تلقائياً بـDEFAULT_AVATAR_URL مرة واحدة بلا حلقة، بلا أي مستمع إضافي هنا
-    avImg.setAttribute('data-avatar-fallback', '1');
-    el.querySelector('.gfx-banner-av').appendChild(avImg);
+    // 🛡️ بند 1 (توحيد الأفاتار — room-ux-v2): نفس احتياط "الحرف الأول على لون ثابت" الذي
+    // تولِّده avatarHTML({name,...}) بالضبط، لكن ببناء DOM مباشر (لا innerHTML) — avatarUrl هنا
+    // من بيانات بثّ مستخدم آخر (غير موثوقة)، فتمريرها كسلسلة نصّية داخل قالب HTML (كما تفعل
+    // avatarHTML) يفتح XSS لو احتوت على حرف اقتباس يكسر السمة؛ التعيين بخاصية .src مباشرة هنا
+    // آمن بنيوياً (المتصفح لا يُفسِّرها كـHTML إطلاقاً) — نفس نمط isHttpsImageUrl المستخدم فعلاً
+    // لصور الهدايا من بثّ الآخرين بهذا الملف
+    const avWrap = el.querySelector('.gfx-banner-av');
+    const avatarSpan = document.createElement('span');
+    avatarSpan.className = 'avatar ava-init';
+    avatarSpan.style.cssText = `--size:32px;--avi-bg:${avatarInitialColor(data.fromUserId != null ? data.fromUserId : data.fromUsername)}`;
+    const initialSpan = document.createElement('span');
+    initialSpan.className = 'avatar__initial';
+    initialSpan.setAttribute('aria-hidden', 'true');
+    initialSpan.textContent = avatarInitialChar(data.fromUsername);
+    avatarSpan.appendChild(initialSpan);
+    if (avatarUrl) {
+        const avImg = document.createElement('img');
+        avImg.className = 'avatar__photo avatar__photo--fallbackable';
+        avImg.src = avatarUrl;
+        avatarSpan.appendChild(avImg);
+    }
+    avWrap.appendChild(avatarSpan);
     if (giftImgUrl) {
         // 🛡️ بند 2ج: اسم محلي مختلف عمداً (giftImgEl) — giftImg أصبحت دالة التحويل العامة أعلى
         // الملف، واستخدام الاسم نفسه هنا كان يُظلِّلها (shadowing) داخل نطاق هذي الدالة
@@ -21524,7 +21570,7 @@ function displayMessage(message) {
     }
 
                 messageElement.innerHTML = `
-        ${avatarHTML({ src: message.sender.profileImage, frameClass: message.sender.activeFrameClass, sizeClass: 'w-7 h-7 flex-shrink-0', extraPhotoClass: 'cursor-pointer hover:ring-2 hover:ring-purple-400', photoAttrs: ` alt="${escapeHtml(message.sender.username)}" data-user-id="${message.sender._id}"` })}
+        ${avatarHTML({ src: message.sender.profileImage, name: message.sender.username, userId: message.sender._id, frameClass: message.sender.activeFrameClass, sizeClass: 'w-7 h-7 flex-shrink-0', extraPhotoClass: 'cursor-pointer hover:ring-2 hover:ring-purple-400', photoAttrs: ` alt="${escapeHtml(message.sender.username)}" data-user-id="${message.sender._id}"`, wrapStyle: '--size:28px' })}
         <div class="min-w-0 flex-1">
             ${replyHTML}
             <p class="font-bold text-[11px] leading-tight ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${escapeHtml(message.sender.username)}</p>
