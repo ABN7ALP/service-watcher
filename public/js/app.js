@@ -16829,9 +16829,25 @@ function gfxFlyRemoteGiftToSeat(data) {
 
     const f = document.createElement('div');
     f.className = 'gfx-fly';
-    // ✅ نفس giftEmojiOrImgHTML المستخدَمة لطيران المُرسِل بالضبط (fetchSize=80 — دلو "الطيران")
-    // — imageUrl هنا مُفحوصة أصلاً أعلى (isHttpsImageUrl)، لا رابط خام غير موثوق
-    f.innerHTML = giftEmojiOrImgHTML({ imageUrl: giftImgUrl, icon: data.giftIcon }, 26, 80);
+    // 🛡️ أمان (بند XSS بمراجعة PR): giftImage/giftIcon هنا قيم غير موثوقة (صدى بثّ عام —
+    // قد تصل من هدية مخصّصة صمّمها مستخدم آخر). isHttpsImageUrl يتحقق فقط من بداية الرابط
+    // (https://)، لا يمنع حرف اقتباس يكسر سياق الخاصية لو بُني كنص HTML (كما تفعل
+    // giftEmojiOrImgHTML — آمنة فقط لكائن gift الموثوق بالمتجر). بناء DOM مباشر هنا بدل
+    // innerHTML (نفس نمط gfxUpdateSideBanner الآمن لنفس الحقل غير الموثوق بالضبط) — src
+    // كخاصية DOM لا كنص مُفسَّر، وtextContent للأيقونة الاحتياطية، فلا يوجد أي سياق HTML
+    // يُكسَر مهما كانت القيمة
+    if (giftImgUrl) {
+        const img = document.createElement('img');
+        img.src = giftImg(giftImgUrl, 80);
+        img.alt = '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        f.appendChild(img);
+    } else {
+        const span = document.createElement('span');
+        span.textContent = data.giftIcon || '🎁';
+        f.appendChild(span);
+    }
     f.style.left = from.x + 'px'; f.style.top = from.y + 'px';
     document.body.appendChild(f);
     const midX = (to.x - from.x) / 2 + (Math.random() * 60 - 30), midY = Math.min(0, (to.y - from.y) / 2) - 60;
