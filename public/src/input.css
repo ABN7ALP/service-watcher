@@ -1262,19 +1262,78 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     animation: slideUp 0.25s ease-out;
 }
 @media (min-width: 768px) { .room-viewers-sheet-card { border-radius: 20px; } }
-.room-viewer-row { transition: background 0.12s ease; }
-.room-viewer-row:hover, .room-viewer-row:active { background: rgba(255,255,255,0.06); }
-/* ✅ طلب صريح: رقم الدعم الذي قدّمه هذا المشاهد داخل الروم (نفس رقم شارة مقعده لو كان
-   جالساً) — يظهر هنا فقط لمن له رقم فعلي (>0)، فلا يزدحم الصف بأصفار لا طائل منها */
-.room-viewer-support {
-    flex-shrink: 0;
-    display: inline-flex; align-items: center; gap: 3px;
-    font-size: 10.5px; font-weight: 800; color: #d4c593;
-    background: rgba(212,197,147,0.1);
-    border-radius: 999px;
-    padding: 2px 7px;
+
+/* =====================================================
+   ✅ room-ux-v2 — نافذة "المشاهدون والمساهمون" الجديدة (تطابق docs/design/room-ux-prototype.html):
+   تبويبان (rv-tabs)، منصّة أول 3 (rv-podium، ألوان ذهبي/فضي/برونزي مطابقة لـ.rankings-podium
+   الموجودة فعلاً بالتطبيق لا ألوان جديدة)، صفوف مشتركة (rv-item) بوسوم (rv-tags)، وصف "أنا"
+   مثبّت أسفل القائمة (rv-mine)
+   ===================================================== */
+.rv-tabs { display: flex; gap: 6px; padding: 0 12px 8px; }
+.rv-tab {
+    flex: 1; font: inherit; font-size: 12.5px; font-weight: 800; color: #9ca3af;
+    background: rgba(255,255,255,0.05); border: 0; border-radius: 10px; padding: 7px 4px; cursor: pointer;
 }
-.room-viewer-support i { font-size: 9px; color: #fbbf24; }
+.rv-tab[aria-pressed="true"] { background: rgba(255,255,255,0.12); color: #fff; }
+.rv-period { display: flex; gap: 6px; padding: 0 12px 8px; }
+.rv-period-btn {
+    font: inherit; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 4px 11px; cursor: pointer;
+    background: none; color: #9ca3af; border: 1px solid rgba(255,255,255,0.12);
+}
+.rv-period-btn[aria-pressed="true"] { border-color: #ffd45a; color: #ffd45a; }
+.rv-search { position: relative; margin: 0 12px 8px; }
+.rv-search i { position: absolute; inset-inline-start: 11px; top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: 12px; }
+.rv-search input {
+    width: 100%; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+    color: #fff; font: inherit; font-size: 13px; padding: 7px 32px 7px 10px;
+}
+.rv-list { display: flex; flex-direction: column; }
+.rv-empty { text-align: center; color: #9ca3af; font-size: 12.5px; padding: 30px 10px; }
+.rv-sec { font-size: 11px; color: #9ca3af; padding: 10px 8px 4px; font-weight: 800; }
+
+/* منصّة أول 3 مساهمين — نفس تدرّج ذهبي/فضي/برونزي بالضبط من .rankings-podium-rank-1/2/3 */
+.rv-podium { display: grid; grid-template-columns: 1fr 1.15fr 1fr; align-items: end; gap: 6px; padding: 4px 6px 12px; }
+.rv-pod {
+    display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center;
+    border-radius: 14px; padding: 10px 4px 8px; cursor: pointer;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+}
+.rv-pod-1 { padding-top: 14px; background: linear-gradient(160deg, rgba(251,191,36,0.16), rgba(255,255,255,0.05)); border-color: rgba(251,191,36,0.5); box-shadow: 0 0 20px rgba(251,191,36,0.2); }
+.rv-pod-2 { border-color: rgba(203,213,225,0.4); }
+.rv-pod-3 { border-color: rgba(217,119,6,0.4); }
+.rv-pod-rk {
+    font-size: 12px; font-weight: 800; width: 20px; height: 20px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 2px;
+}
+.rv-pod-1 .rv-pod-rk { background: linear-gradient(#ffe7a0,#e3a52a); color: #3a2300; }
+.rv-pod-2 .rv-pod-rk { background: linear-gradient(#eef2f7,#9aa6b5); color: #1d2430; }
+.rv-pod-3 .rv-pod-rk { background: linear-gradient(#f3c39a,#b26a35); color: #2c1504; }
+.rv-ring-1 { box-shadow: 0 0 0 2.5px #fbbf24, 0 0 16px rgba(251,191,36,0.5); border-radius: 50%; }
+.rv-ring-2 { box-shadow: 0 0 0 2.5px #cbd5e1; border-radius: 50%; }
+.rv-ring-3 { box-shadow: 0 0 0 2.5px #d97706; border-radius: 50%; }
+.rv-pod-nm { font-size: 11.5px; font-weight: 800; color: #fff; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-pod-val { font-size: 11.5px; color: #ffd45a; display: flex; gap: 3px; align-items: center; justify-content: center; }
+
+/* صفوف المساهمين/الحاضرين المشتركة */
+.rv-item { display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-radius: 12px; cursor: pointer; transition: background 0.12s ease; }
+.rv-item:hover, .rv-item:active { background: rgba(255,255,255,0.06); }
+.rv-n { width: 20px; text-align: center; color: #9ca3af; font-size: 12.5px; flex: none; }
+.rv-info { flex: 1; min-width: 0; }
+.rv-info b { display: block; font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-tags { display: flex; gap: 4px; margin-top: 2px; flex-wrap: wrap; }
+.rv-tag { font-size: 9.5px; font-weight: 800; padding: 0 6px; border-radius: 6px; line-height: 16px; }
+.rv-tag-lv { background: linear-gradient(90deg,#ffd45a,#ff9f1c); color: #3a2300; }
+.rv-tag-fc { background: rgba(255,79,163,0.2); color: #ff9ccc; }
+.rv-tag-host { background: rgba(255,212,90,0.15); color: #ffd45a; }
+.rv-tag-seat { background: rgba(67,217,255,0.15); color: #9eeaff; }
+.rv-val { font-size: 12.5px; color: #ffd45a; display: flex; align-items: center; gap: 3px; flex: none; }
+.rv-act {
+    font: inherit; font-size: 11px; font-weight: 800; border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.06); color: #fff; border-radius: 999px; padding: 4px 11px; flex: none; cursor: pointer;
+}
+.rv-act:disabled { opacity: 0.55; cursor: default; }
+.rv-mine { border-radius: 14px; background: rgba(255,212,90,0.07); border: 1px solid rgba(255,212,90,0.2); }
+.rv-item-mine { padding: 8px 10px; }
 
 /* ✅ زر متابعة الغرفة (مستقل عن نظام الأصدقاء) — بشاشة "انتهى البث" */
 .follow-room-btn {
