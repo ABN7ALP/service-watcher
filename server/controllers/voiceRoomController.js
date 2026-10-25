@@ -1,11 +1,15 @@
 const mongoose = require('mongoose');
-const { getRoomSupportTotal, buildSeatChallengeSnapshot } = require('../services/socketService');
+// ✅ room-ux-v2: getRoomViewers (الدالة الحقيقية بـsocketService) تُستورَد بلقب مختلف هنا
+// (getLiveRoomViewers) لتفادي تعارض الاسم مع exports.getRoomViewers بهذا الملف نفسه (واجهة
+// REST الجديدة أدناه — ليست نفس الدالة، بل تستخدمها كمصدر بيانات لحظي)
+const { getRoomSupportTotal, buildSeatChallengeSnapshot, getRoomViewers: getLiveRoomViewers } = require('../services/socketService');
 const VoiceRoom = require('../models/VoiceRoom');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const RoomBattle = require('../models/RoomBattle');
 const SeatChallenge = require('../models/SeatChallenge');
 const GiftLog = require('../models/GiftLog');
+const FanClubMembership = require('../models/FanClubMembership');
 
 // =====================================================
 // ✅ GET /api/voice-room/ice-servers — إعدادات خوادم ICE (STUN/TURN) لاتصالات الصوت الحي
@@ -878,3 +882,170 @@ exports.getSeatChallengeResult = async (req, res) => {
 
 // ✅ مكتبة أغاني الغرفة الخاصة (رفع/تخزين لكل غرفة على حدة) أُزيلت — استُبدلت بمكتبة موسيقى
 // مشتركة منسَّقة من لوحة التحكم فقط (راجع server/routes/musicRoutes.js و server/controllers/musicController.js)
+
+// =====================================================
+// ✅ room-ux-v2 — نافذة "المشاهدون والمساهمون" الجديدة: GET /rooms/:id/contributors
+// وGET /rooms/:id/viewers. كلتاهما تُضيفان "شارة الحالة" (مضيف/على المقعد) وشارة الانتماء
+// لنادي معجبين صاحب الغرفة فوق بياناتهما الأساسية — دالة مشتركة واحدة تجلب الحالة اللحظية
+// لتفادي تكرار منطق seats/host بين المسارين
+// =====================================================
+async function enrichWithRoomStatusAndFanClub(room, rows) {
+    const hostId = room.host ? room.host.toString() : null;
+    const seatedIds = new Set((room.seats || []).filter(s => s.user).map(s => s.user.toString()));
+    const ids = rows.map(r => r.userId.toString());
+    const fanMemberIds = hostId && ids.length
+        ? new Set((await FanClubMembership.find({ owner: hostId, member: { $in: ids } }).select('member').lean()).map(m => m.member.toString()))
+        : new Set();
+    return rows.map(r => {
+        const idStr = r.userId.toString();
+        return {
+            ...r,
+            status: idStr === hostId ? 'host' : (seatedIds.has(idStr) ? 'seat' : null),
+            isFanClubMember: fanMemberIds.has(idStr)
+        };
+    });
+}
+
+// ✅ كاش ذاكرة بسيط (لا Redis — غير مضمون التوفّر بكل البيئات، وهذا المسار الوحيد المطلوب له
+// كاش 30 ثانية صريحاً) لمجموع هدايا كل مرسِل بغرفة بفترة معيّنة فقط — لا الحالة اللحظية
+// (مضيف/مقعد/نادي معجبين) التي تُحسَب حيّة بكل طلب (راجع enrichWithRoomStatusAndFanClub أعلاه)
+// لأنها قد تتغيّر بأي لحظة وليست مادة تستحق تثبيتها 30 ثانية
+const contributorsCache = new Map();
+const CONTRIBUTORS_CACHE_TTL_MS = 30 * 1000;
+function getCachedContributorEntries(key) {
+    const hit = contributorsCache.get(key);
+    if (!hit || hit.expiresAt < Date.now()) return null;
+    return hit.entries;
+}
+function setCachedContributorEntries(key, entries) {
+    contributorsCache.set(key, { entries, expiresAt: Date.now() + CONTRIBUTORS_CACHE_TTL_MS });
+    if (contributorsCache.size > 500) {
+        const now = Date.now();
+        for (const [k, v] of contributorsCache) { if (v.expiresAt < now) contributorsCache.delete(k); }
+    }
+}
+
+// =====================================================
+// ✅ GET /api/voice-room/rooms/:id/contributors?period=day|week|month — أكبر داعمي هذي
+// الغرفة تحديداً (GiftLog.room، مثل getRoomAnalytics) خلال الفترة المطلوبة، 50 الأعلى + ترتيب/
+// مجموع طالب الطلب نفسه مثبّتاً أسفل القائمة حتى لو كان خارج أعلى 50. الغرفة الرسمية ('main')
+// غير مدعومة: GiftLog.room يبقى null لكل هداياها (راجع cleanRoomId بـgiftController) فلا معنى
+// لتجميع بـroom:'main' — تُرفض صريحاً بدل قائمة فاضية مضلِّلة
+// =====================================================
+exports.getRoomContributors = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ status: 'fail', message: 'المساهمون غير متاحين لهذي الغرفة' });
+        }
+        const room = await VoiceRoom.findById(id).select('host seats moderators isPrivate password');
+        if (!room) return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة' });
+        if (!userCanAccessRoom(room, req.user.id, req.query.password)) {
+            return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية الوصول لهذي الغرفة' });
+        }
+
+        const period = ['day', 'week', 'month'].includes(req.query.period) ? req.query.period : 'day';
+        const cacheKey = `${id}:${period}`;
+        let entries = getCachedContributorEntries(cacheKey);
+        if (!entries) {
+            const now = new Date();
+            const startDate = new Date(now);
+            if (period === 'day') startDate.setHours(0, 0, 0, 0);
+            else if (period === 'week') { startDate.setDate(startDate.getDate() - 6); startDate.setHours(0, 0, 0, 0); }
+            else { startDate.setDate(startDate.getDate() - 29); startDate.setHours(0, 0, 0, 0); }
+
+            entries = await GiftLog.aggregate([
+                { $match: { room: room._id, createdAt: { $gte: startDate } } },
+                { $group: { _id: '$sender', total: { $sum: '$totalPrice' } } },
+                { $sort: { total: -1 } },
+                { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+                { $unwind: '$user' },
+                // 🛡️ "لا تُعرَض أبداً حسابات مخفية/محظورة" — تُستبعَد هنا كلياً، لا فقط تُموَّه
+                { $match: { 'user.isHidden': { $ne: true }, 'user.isBanned': { $ne: true } } },
+                { $project: {
+                    userId: '$_id', username: '$user.username', profileImage: '$user.profileImage',
+                    level: '$user.level', activeFrameClass: '$user.activeFrameClass', total: 1
+                } }
+            ]);
+            setCachedContributorEntries(cacheKey, entries);
+        }
+
+        const myIdStr = req.user.id.toString();
+        const myIndex = entries.findIndex(e => e.userId.toString() === myIdStr);
+        const topRaw = entries.slice(0, 50).map((e, i) => ({ ...e, rank: i + 1 }));
+        const meRaw = myIndex >= 0
+            ? { ...entries[myIndex], rank: myIndex + 1 }
+            : { userId: req.user.id, username: req.user.username, profileImage: req.user.profileImage, level: req.user.level, activeFrameClass: req.user.activeFrameClass, rank: null, total: 0 };
+
+        const [top, meList] = await Promise.all([
+            enrichWithRoomStatusAndFanClub(room, topRaw),
+            enrichWithRoomStatusAndFanClub(room, [meRaw])
+        ]);
+
+        res.status(200).json({ status: 'success', data: { period, list: top, me: meList[0] } });
+    } catch (error) {
+        console.error('[ERROR] in getRoomContributors:', error);
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
+    }
+};
+
+// =====================================================
+// ✅ GET /api/voice-room/rooms/:id/viewers?cursor=&q= — تبويب "الحاضرون" بنافذة المشاهدين:
+// مشتقّة حيّاً من عضوية قناة دردشة الغرفة بالسوكيت (getLiveRoomViewers، لا تتبّع DB منفصل)،
+// مُقسَّمة لمن على مقعد (المضيف أولاً، ثم بقية المقاعد) ثم المستمعين، 30 بكل صفحة، بحث اختياري
+// بالاسم (q). تدعم 'main' أيضاً (قناتها الحيّة هي room-chat-main حرفياً — راجع getLiveRoomViewers)
+// =====================================================
+exports.getRoomViewers = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id) && id !== 'main') {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غرفة غير صالح' });
+        }
+        const room = id === 'main' ? await VoiceRoom.getMainRoom() : await VoiceRoom.findById(id).select('host seats moderators isPrivate password');
+        if (!room) return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة' });
+        if (!userCanAccessRoom(room, req.user.id, req.query.password)) {
+            return res.status(403).json({ status: 'fail', message: 'لا تملك صلاحية الوصول لهذي الغرفة' });
+        }
+
+        const io = req.app.get('socketio');
+        const liveViewers = getLiveRoomViewers(io, id);
+        if (!liveViewers.length) {
+            return res.status(200).json({ status: 'success', data: { viewers: [], nextCursor: null, total: 0, seatedCount: 0 } });
+        }
+
+        const viewerIds = liveViewers.map(v => v.id);
+        const users = await User.find({ _id: { $in: viewerIds } }).select('level isHidden isBanned').lean();
+        const userMap = new Map(users.map(u => [u._id.toString(), u]));
+
+        // 🛡️ "لا تُعرَض أبداً حسابات مخفية/محظورة" — نفس الاستبعاد الكلي بمسار المساهمين أعلاه.
+        // u غير موجود أصلاً (حساب حُذف بين فتح السوكيت وهذا الطلب — نادر جداً) يُستبعَد بأمان أيضاً
+        let visible = liveViewers.filter(v => {
+            const u = userMap.get(v.id);
+            return u && !u.isHidden && !u.isBanned;
+        });
+
+        const q = String(req.query.q || '').trim().toLowerCase().slice(0, 40);
+        if (q) visible = visible.filter(v => (v.username || '').toLowerCase().includes(q));
+
+        const rows = visible.map(v => ({
+            userId: v.id, username: v.username, profileImage: v.profileImage,
+            activeFrameClass: v.activeFrameClass, level: userMap.get(v.id).level
+        }));
+        const enriched = await enrichWithRoomStatusAndFanClub(room, rows);
+
+        // ✅ على مقعد (مضيف أولاً ضمنياً — Array.sort مستقرة بمحركات JS الحديثة تحافظ على ترتيب
+        // liveViewers الأصلي بين عنصرين من نفس المجموعة) ثم المستمعون، كما يطلب النموذج الأولي بالحرف
+        enriched.sort((a, b) => (a.status ? 0 : 1) - (b.status ? 0 : 1));
+
+        const cursor = Math.max(0, parseInt(req.query.cursor, 10) || 0);
+        const PAGE_SIZE = 30;
+        const page = enriched.slice(cursor, cursor + PAGE_SIZE);
+        const nextCursor = cursor + PAGE_SIZE < enriched.length ? cursor + PAGE_SIZE : null;
+        const seatedCount = enriched.filter(v => v.status).length;
+
+        res.status(200).json({ status: 'success', data: { viewers: page, nextCursor, total: enriched.length, seatedCount } });
+    } catch (error) {
+        console.error('[ERROR] in getRoomViewers:', error);
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
+    }
+};

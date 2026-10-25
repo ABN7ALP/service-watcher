@@ -5,6 +5,7 @@ const Withdrawal = require('../models/Withdrawal');
 const Gift = require('../models/Gift');
 const AdminLog = require('../models/AdminLog');
 const ClientErrorLog = require('../models/ClientErrorLog');
+const ClientCompatLog = require('../models/ClientCompatLog');
 
 // Admin Dashboard Stats
 exports.getDashboardStats = async (req, res) => {
@@ -628,6 +629,45 @@ exports.getClientErrors = async (req, res) => {
       ClientErrorLog.countDocuments(query)
     ]);
     res.json({ success: true, errors, totalPages: Math.ceil(total / limitNum), currentPage: pageNum });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// ✅ room-ux-v2 (بند 5) — "إجماليات" توافق المتصفحات (آخر 30 يوماً، نفس مدة TTL المستند):
+// أكثر عائلات/إصدارات متصفحات واجهت فحصاً فاشلاً، وأكثر الميزات نقصاً تحديداً — لا سجل خام
+// مُصفَّح (العدد عادة صغير جداً مقارنة بأخطاء الواجهة العامة)، مجموع جاهز مباشرة للوحة التحكم
+// =====================================================
+exports.getClientCompatStats = async (req, res) => {
+  try {
+    const [byBrowser, byFeature, byCategory, total] = await Promise.all([
+      ClientCompatLog.aggregate([
+        { $group: { _id: { uaFamily: '$uaFamily', uaVersion: '$uaVersion' }, count: { $sum: 1 }, lastSeen: { $max: '$createdAt' } } },
+        { $sort: { count: -1 } },
+        { $limit: 100 }
+      ]),
+      ClientCompatLog.aggregate([
+        { $unwind: '$missingFeatures' },
+        { $group: { _id: '$missingFeatures', count: { $sum: 1 } } },
+        { $sort: { count: -1 } }
+      ]),
+      // ✅ مراجعة PR #116: 'in-app' (متصفح تطبيق مدمج/WebRTC وحدها الناقصة) مقابل 'legacy'
+      // (متصفح قديم فعلياً) — يوضّح هل مشكلة التوافق الأكبر فعلياً متصفحات تطبيقات مدمجة
+      // (لا يحلّها "حدّث متصفحك" إطلاقاً) أو متصفحات قديمة حقيقية
+      ClientCompatLog.aggregate([
+        { $group: { _id: '$category', count: { $sum: 1 } } },
+        { $sort: { count: -1 } }
+      ]),
+      ClientCompatLog.countDocuments()
+    ]);
+    res.json({
+      success: true,
+      total,
+      byBrowser: byBrowser.map(b => ({ uaFamily: b._id.uaFamily, uaVersion: b._id.uaVersion, count: b.count, lastSeen: b.lastSeen })),
+      byFeature: byFeature.map(f => ({ feature: f._id, count: f.count })),
+      byCategory: byCategory.map(c => ({ category: c._id || 'legacy', count: c.count }))
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

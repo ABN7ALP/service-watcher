@@ -82,6 +82,7 @@ app.use('/api/support', require('./routes/supportRoutes')); // ✅ نظام ال
 app.use('/api/music', require('./routes/musicRoutes')); // ✅ مكتبة أغاني مشتركة للغرف الصوتية
 app.use('/api/suggestions', require('./routes/suggestionRoutes')); // ✅ صندوق اقتراحات/ملاحظات عام
 app.use('/api/client-errors', require('./routes/clientErrorRoutes')); // ✅ أخطاء الواجهة التي يواجهها المستخدمون -> لوحة التحكم
+app.use('/api/client-compat', require('./routes/clientCompatRoutes')); // ✅ room-ux-v2 بند 5: عدّاد مجهول لمتصفحات لا تدعم الميزات الحرجة -> لوحة التحكم
 
 
 // --- مسار "التقاط الكل" لخدمة الواجهة الأمامية --

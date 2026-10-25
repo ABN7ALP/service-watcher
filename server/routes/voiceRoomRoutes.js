@@ -27,6 +27,8 @@ router.post('/rooms', roomCreationLimiter, voiceRoomController.createRoom);
 router.get('/rooms/:id', voiceRoomController.getRoomById);
 router.get('/rooms/:id/analytics', voiceRoomController.getRoomAnalytics);
 router.get('/rooms/:id/messages', voiceRoomController.getRoomMessages);
+router.get('/rooms/:id/contributors', voiceRoomController.getRoomContributors);
+router.get('/rooms/:id/viewers', voiceRoomController.getRoomViewers);
 router.patch('/rooms/:id', voiceRoomController.updateRoom);
 router.patch('/rooms/:id/cover', roomCoverUpload, voiceRoomController.uploadRoomCover);
 router.post('/rooms/:id/background', voiceRoomController.purchaseBackground);

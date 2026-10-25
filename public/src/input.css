@@ -441,6 +441,29 @@ input[type="checkbox"] {
     max-width: none;
     transition: width .18s ease, height .18s ease; /* ✅ انتقال ناعم عند تفعيل/تبديل/إزالة إطار */
 }
+/* ✅ طلب صريح (توحيد مكوّن الأفاتار — room-ux-v2): احتياط "الحرف الأول على لون ثابت" —
+   يملأ نفس صندوق .avatar__photo بالضبط (نفس التمركز/avatar-scale) خلفها مباشرة؛ ترتيب DOM
+   وحده كافٍ لتكديسها تحت الصورة (كلاهما position:absolute بنفس الحاوية .avatar، العنصر
+   اللاحق بالـDOM يُرسَم فوق) — لا حاجة لـz-index. تُزال .avatar__photo--fallbackable بالكامل
+   عند فشل تحميلها (راجع مستمع onerror العام بـapp.js) فيظهر هذا الحرف تلقائياً بلا أي عمل JS إضافي */
+.avatar__initial {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(var(--avatar-scale, 1) * 100%);
+    height: calc(var(--avatar-scale, 1) * 100%);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: var(--avi-bg, #7a4dff);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: calc(var(--size, 40px) * .42 * var(--avatar-scale, 1));
+    line-height: 1;
+    user-select: none;
+}
 .avatar__frame {
     position: absolute;
     /* ✅ left/top بنسبة مئوية من الحاوية (.avatar، الصندوق S) — تضيف الإزاحة اليدوية
@@ -779,6 +802,11 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 .voice-seat.host-seat .voice-seat-av-wrap { width: var(--hostAv); height: var(--hostAv); }
+/* ✅ room-ux-v2: .avatar__initial هنا يعتمد var(--size,40px) الافتراضي دوماً لأن .voice-seat-avatar
+   (sizeClass) يملأ .avatar بنسبة 100% من .voice-seat-av-wrap مباشرة بلا تمرير --size — فنعيد
+   تعريف حجم الخط هنا من --av/--hostAv الفعليين، بالضبط كما يُحدَّد عرض/ارتفاع الصندوق أعلاه */
+.voice-seat-av-wrap .avatar__initial { font-size: calc(var(--av) * .42); }
+.voice-seat.host-seat .voice-seat-av-wrap .avatar__initial { font-size: calc(var(--hostAv) * .42); }
 /* 🐛 مراجعة بصرية (طلب صريح، بند 4 — مطابقة §.seat__empty بالنموذج حرفياً): حدود متقطعة
    واضحة + توهّج خافت بدل الحلقة شبه الخفية (1px بشفافية 0.08) غير المميَّزة سابقاً */
 .voice-seat.empty-seat .voice-seat-av-wrap {
@@ -1234,19 +1262,78 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     animation: slideUp 0.25s ease-out;
 }
 @media (min-width: 768px) { .room-viewers-sheet-card { border-radius: 20px; } }
-.room-viewer-row { transition: background 0.12s ease; }
-.room-viewer-row:hover, .room-viewer-row:active { background: rgba(255,255,255,0.06); }
-/* ✅ طلب صريح: رقم الدعم الذي قدّمه هذا المشاهد داخل الروم (نفس رقم شارة مقعده لو كان
-   جالساً) — يظهر هنا فقط لمن له رقم فعلي (>0)، فلا يزدحم الصف بأصفار لا طائل منها */
-.room-viewer-support {
-    flex-shrink: 0;
-    display: inline-flex; align-items: center; gap: 3px;
-    font-size: 10.5px; font-weight: 800; color: #d4c593;
-    background: rgba(212,197,147,0.1);
-    border-radius: 999px;
-    padding: 2px 7px;
+
+/* =====================================================
+   ✅ room-ux-v2 — نافذة "المشاهدون والمساهمون" الجديدة (تطابق docs/design/room-ux-prototype.html):
+   تبويبان (rv-tabs)، منصّة أول 3 (rv-podium، ألوان ذهبي/فضي/برونزي مطابقة لـ.rankings-podium
+   الموجودة فعلاً بالتطبيق لا ألوان جديدة)، صفوف مشتركة (rv-item) بوسوم (rv-tags)، وصف "أنا"
+   مثبّت أسفل القائمة (rv-mine)
+   ===================================================== */
+.rv-tabs { display: flex; gap: 6px; padding: 0 12px 8px; }
+.rv-tab {
+    flex: 1; font: inherit; font-size: 12.5px; font-weight: 800; color: #9ca3af;
+    background: rgba(255,255,255,0.05); border: 0; border-radius: 10px; padding: 7px 4px; cursor: pointer;
 }
-.room-viewer-support i { font-size: 9px; color: #fbbf24; }
+.rv-tab[aria-pressed="true"] { background: rgba(255,255,255,0.12); color: #fff; }
+.rv-period { display: flex; gap: 6px; padding: 0 12px 8px; }
+.rv-period-btn {
+    font: inherit; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 4px 11px; cursor: pointer;
+    background: none; color: #9ca3af; border: 1px solid rgba(255,255,255,0.12);
+}
+.rv-period-btn[aria-pressed="true"] { border-color: #ffd45a; color: #ffd45a; }
+.rv-search { position: relative; margin: 0 12px 8px; }
+.rv-search i { position: absolute; inset-inline-start: 11px; top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: 12px; }
+.rv-search input {
+    width: 100%; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+    color: #fff; font: inherit; font-size: 13px; padding: 7px 32px 7px 10px;
+}
+.rv-list { display: flex; flex-direction: column; }
+.rv-empty { text-align: center; color: #9ca3af; font-size: 12.5px; padding: 30px 10px; }
+.rv-sec { font-size: 11px; color: #9ca3af; padding: 10px 8px 4px; font-weight: 800; }
+
+/* منصّة أول 3 مساهمين — نفس تدرّج ذهبي/فضي/برونزي بالضبط من .rankings-podium-rank-1/2/3 */
+.rv-podium { display: grid; grid-template-columns: 1fr 1.15fr 1fr; align-items: end; gap: 6px; padding: 4px 6px 12px; }
+.rv-pod {
+    display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center;
+    border-radius: 14px; padding: 10px 4px 8px; cursor: pointer;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+}
+.rv-pod-1 { padding-top: 14px; background: linear-gradient(160deg, rgba(251,191,36,0.16), rgba(255,255,255,0.05)); border-color: rgba(251,191,36,0.5); box-shadow: 0 0 20px rgba(251,191,36,0.2); }
+.rv-pod-2 { border-color: rgba(203,213,225,0.4); }
+.rv-pod-3 { border-color: rgba(217,119,6,0.4); }
+.rv-pod-rk {
+    font-size: 12px; font-weight: 800; width: 20px; height: 20px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 2px;
+}
+.rv-pod-1 .rv-pod-rk { background: linear-gradient(#ffe7a0,#e3a52a); color: #3a2300; }
+.rv-pod-2 .rv-pod-rk { background: linear-gradient(#eef2f7,#9aa6b5); color: #1d2430; }
+.rv-pod-3 .rv-pod-rk { background: linear-gradient(#f3c39a,#b26a35); color: #2c1504; }
+.rv-ring-1 { box-shadow: 0 0 0 2.5px #fbbf24, 0 0 16px rgba(251,191,36,0.5); border-radius: 50%; }
+.rv-ring-2 { box-shadow: 0 0 0 2.5px #cbd5e1; border-radius: 50%; }
+.rv-ring-3 { box-shadow: 0 0 0 2.5px #d97706; border-radius: 50%; }
+.rv-pod-nm { font-size: 11.5px; font-weight: 800; color: #fff; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-pod-val { font-size: 11.5px; color: #ffd45a; display: flex; gap: 3px; align-items: center; justify-content: center; }
+
+/* صفوف المساهمين/الحاضرين المشتركة */
+.rv-item { display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-radius: 12px; cursor: pointer; transition: background 0.12s ease; }
+.rv-item:hover, .rv-item:active { background: rgba(255,255,255,0.06); }
+.rv-n { width: 20px; text-align: center; color: #9ca3af; font-size: 12.5px; flex: none; }
+.rv-info { flex: 1; min-width: 0; }
+.rv-info b { display: block; font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-tags { display: flex; gap: 4px; margin-top: 2px; flex-wrap: wrap; }
+.rv-tag { font-size: 9.5px; font-weight: 800; padding: 0 6px; border-radius: 6px; line-height: 16px; }
+.rv-tag-lv { background: linear-gradient(90deg,#ffd45a,#ff9f1c); color: #3a2300; }
+.rv-tag-fc { background: rgba(255,79,163,0.2); color: #ff9ccc; }
+.rv-tag-host { background: rgba(255,212,90,0.15); color: #ffd45a; }
+.rv-tag-seat { background: rgba(67,217,255,0.15); color: #9eeaff; }
+.rv-val { font-size: 12.5px; color: #ffd45a; display: flex; align-items: center; gap: 3px; flex: none; }
+.rv-act {
+    font: inherit; font-size: 11px; font-weight: 800; border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.06); color: #fff; border-radius: 999px; padding: 4px 11px; flex: none; cursor: pointer;
+}
+.rv-act:disabled { opacity: 0.55; cursor: default; }
+.rv-mine { border-radius: 14px; background: rgba(255,212,90,0.07); border: 1px solid rgba(255,212,90,0.2); }
+.rv-item-mine { padding: 8px 10px; }
 
 /* ✅ زر متابعة الغرفة (مستقل عن نظام الأصدقاء) — بشاشة "انتهى البث" */
 .follow-room-btn {
@@ -6808,22 +6895,34 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 @media (min-width: 768px) { .gsheet { border-radius: 22px; } }
 .gsheet-grab { width: 36px; height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.16); margin: 0 auto 8px; }
 
-/* 1) صف المستلمين — 40px */
-.gsheet-to { display: flex; align-items: center; gap: 8px; height: 40px; }
+/* 1) صف المستلمين — room-ux-v2 (تطابق docs/design/room-ux-prototype.html::.rrow/.rc بالحرف):
+   38px ثابتة، شارة رقم المقعد/👑 أعلى الصورة، الاسم تحتها، "الكل" كرقاقة ثابتة بنهاية الصف */
+.gsheet-to { display: flex; align-items: center; gap: 8px; height: 58px; }
 .gsheet-to-label { font-size: 12px; color: var(--g-muted); flex: none; }
-.gsheet-recips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: 1; }
+.gsheet-recips { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; flex: 1; align-items: center; padding: 4px 2px; }
 .gsheet-recips::-webkit-scrollbar { display: none; }
-.gsheet-rc { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: #2a2040; border: 2px solid transparent; cursor: pointer; padding: 0; position: relative; overflow: visible; }
-.gsheet-rc img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.gsheet-rc[aria-pressed="true"] { border-color: var(--g-gold); }
-.gsheet-rc[aria-pressed="true"]::after {
-    content: "✓"; position: absolute; bottom: -3px; inset-inline-end: -3px; width: 13px; height: 13px;
-    border-radius: 50%; background: var(--g-gold); color: #3a2300; font-size: 9px; font-weight: 900;
-    display: grid; place-items: center;
+.gsheet-rc {
+    flex: none; width: 44px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0;
 }
+.gsheet-rc-wrap { position: relative; width: 38px; height: 38px; flex: none; }
+.gsheet-rc-wrap .avatar { box-shadow: 0 0 0 2px rgba(255,255,255,0.12); border-radius: 50%; }
+.gsheet-rc[aria-pressed="true"] .gsheet-rc-wrap .avatar { box-shadow: 0 0 0 2.5px var(--g-gold); }
+.gsheet-rc[aria-pressed="true"] .gsheet-rc-wrap::after {
+    content: "✓"; position: absolute; bottom: -2px; inset-inline-end: -2px; width: 15px; height: 15px;
+    border-radius: 50%; background: var(--g-gold); color: #3a2300; font-size: 9px; font-weight: 900;
+    display: flex; align-items: center; justify-content: center; border: 2px solid #1d1629;
+}
+.gsheet-rc-sn {
+    position: absolute; top: -3px; inset-inline-start: -3px; min-width: 15px; height: 15px; border-radius: 8px;
+    background: rgba(0,0,0,0.85); color: #fff; font-size: 9px; font-weight: 800; display: flex;
+    align-items: center; justify-content: center; padding: 0 3px; border: 1px solid rgba(255,255,255,0.2); z-index: 3;
+}
+.gsheet-rc-crown { background: transparent; border: 0; font-size: 13px; top: -8px; }
+.gsheet-rc-name { font-size: 9.5px; max-width: 44px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #d8d0e8; }
 .gsheet-allbtn {
-    flex: none; height: 28px; border-radius: 999px; border: 1px solid var(--g-line); background: rgba(255, 255, 255, 0.05);
-    color: var(--g-fg); font-size: 11.5px; font-weight: 700; padding: 0 10px; cursor: pointer;
+    flex: none; height: 30px; border-radius: 999px; border: 1px solid var(--g-line); background: rgba(255, 255, 255, 0.05);
+    color: var(--g-fg); font-size: 11.5px; font-weight: 800; padding: 0 12px; cursor: pointer;
 }
 .gsheet-allbtn[aria-pressed="true"] { background: var(--g-gold); color: #3a2300; border-color: var(--g-gold); }
 
@@ -7091,5 +7190,105 @@ body.gfx-weak-device.in-voice-room .pk__computing {
 }
 body.gfx-weak-device .gfx-banner { animation: gfxBannerInSimple 0.15s ease-out both; }
 @keyframes gfxBannerInSimple { from { opacity: 0; } }
+
+/* =====================================================
+   ✅ room-ux-v2 (بند 4) — الجولة التعريفية الأولى لغرفة صوتية، تطابق
+   docs/design/room-ux-prototype.html::.welcome/.wbox/.tour/.hole/.tip بالحرف
+   ===================================================== */
+.rtour-welcome {
+    position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,0.8);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.rtour-wbox {
+    background: linear-gradient(180deg, #2a1d40, #16101f);
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 24px;
+    padding: 22px 18px 16px; text-align: center; width: 100%; max-width: 360px;
+}
+.rtour-wbig { font-size: 44px; }
+.rtour-wbox h3 { margin: 6px 0 6px; font-size: 19px; font-weight: 900; color: #fff; }
+.rtour-wbox p { margin: 0 0 14px; color: #cfc6e2; font-size: 13px; line-height: 1.8; }
+.rtour-three { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-bottom: 16px; }
+.rtour-three div { background: rgba(255,255,255,0.06); border-radius: 14px; padding: 10px 4px; font-size: 11.5px; font-weight: 800; color: #e6def5; }
+.rtour-three span { display: block; font-size: 22px; margin-bottom: 2px; }
+.rtour-go {
+    width: 100%; height: 44px; border-radius: 14px; border: 0; font: inherit; font-weight: 900; font-size: 15px;
+    color: #fff; background: linear-gradient(90deg, #7a4dff, #ff4fa3); cursor: pointer;
+}
+.rtour-later { margin-top: 8px; font: inherit; font-size: 12.5px; color: #9a8fb0; background: none; border: 0; cursor: pointer; }
+
+.rtour { position: fixed; inset: 0; z-index: 400; pointer-events: none; }
+.rtour-hole {
+    position: absolute; border-radius: 50%; box-shadow: 0 0 0 9999px rgba(0,0,0,0.76);
+    transition: all .35s cubic-bezier(.2,.9,.25,1); pointer-events: none;
+}
+.rtour-hole::after {
+    content: ""; position: absolute; inset: -6px; border-radius: inherit;
+    border: 2px solid #ffcf5a; animation: rtourPulse 1.4s ease-out infinite;
+}
+@keyframes rtourPulse { 0% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.18); } }
+.rtour-tip {
+    position: fixed; inset-inline: 18px; max-width: 340px; margin: 0 auto;
+    background: #fff; color: #1d1530; border-radius: 18px; padding: 14px 14px 12px;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.5); transition: top .35s, bottom .35s; pointer-events: auto;
+}
+.rtour-st { font-size: 11px; font-weight: 800; color: #8a7aa8; }
+.rtour-tip h4 { margin: 2px 0 4px; font-size: 16px; font-weight: 900; }
+.rtour-tip p { margin: 0 0 10px; font-size: 13px; line-height: 1.7; color: #4a3d62; }
+.rtour-row2 { display: flex; align-items: center; justify-content: space-between; }
+.rtour-dots { display: flex; gap: 4px; }
+.rtour-dots i { width: 6px; height: 6px; border-radius: 50%; background: #d8d0e8; display: block; }
+.rtour-dots i.on { background: #7a4dff; width: 14px; border-radius: 3px; }
+.rtour-btns { display: flex; gap: 6px; }
+.rtour-btns button { font: inherit; font-weight: 800; font-size: 13px; border-radius: 10px; padding: 7px 14px; cursor: pointer; border: 0; }
+.rtour-skip { background: none; color: #8a7aa8; }
+.rtour-next { background: linear-gradient(90deg, #7a4dff, #ff4fa3); color: #fff; }
+@media (prefers-reduced-motion: reduce) { .rtour-hole::after { animation: none; } }
+
+/* ✅ تسميات الشريط السفلي — تظهر 4 ثوانٍ فقط بعد انتهاء/تخطّي الجولة (showBottomBarLabelsTemporarily) */
+.room-dock-label {
+    position: absolute; bottom: -15px; left: 50%; transform: translateX(-50%);
+    font-size: 9px; color: #9ca3af; white-space: nowrap; font-weight: 700;
+    opacity: 0; transition: opacity .2s ease; pointer-events: none;
+}
+.room-chat-dock.show-dock-labels .room-dock-label { opacity: 1; }
+
+/* =====================================================
+   ✅ room-ux-v2 (بند 5) — شاشة "متصفح غير مدعوم" (public/js/browser-gate.js). قواعد قصداً
+   بسيطة/قديمة التوافق فقط (flexbox، لا grid ولا container queries ولا aspect-ratio) — هذي
+   بالذات الشاشة التي يراها متصفح ربما لا يدعم ميزات CSS حديثة أصلاً، فلا تعتمد عليها بنفسها
+   ===================================================== */
+.unsup-gate {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;
+    background: #0d0a14; color: #f3eefb;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 26px; text-align: center; font-family: 'Cairo', system-ui, sans-serif;
+    overflow-y: auto;
+}
+.unsup-gate-ico {
+    width: 84px; height: 84px; border-radius: 24px;
+    background: linear-gradient(135deg, #7a4dff, #ff4fa3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 40px; margin-bottom: 14px;
+}
+.unsup-gate h3 { margin: 0 0 6px; font-size: 19px; font-weight: 900; }
+.unsup-gate p { margin: 0 0 14px; color: #cfc6e2; font-size: 13px; line-height: 1.8; max-width: 360px; }
+.unsup-gate-det {
+    width: 100%; max-width: 360px; background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 10px 12px; margin-bottom: 14px;
+}
+.unsup-gate-det-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
+.unsup-gate-bad { color: #ff8a6b; }
+.unsup-gate-good { color: #5fd39a; }
+.unsup-gate-btn {
+    width: 100%; max-width: 360px; height: 44px; border-radius: 14px; border: 0;
+    font: inherit; font-weight: 900; font-size: 14px; color: #fff;
+    background: linear-gradient(90deg, #7a4dff, #ff4fa3); margin-bottom: 8px; cursor: pointer;
+}
+.unsup-gate-btn2 {
+    width: 100%; max-width: 360px; height: 40px; border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.15); background: none; color: #f3eefb;
+    font: inherit; font-weight: 800; font-size: 13px; cursor: pointer;
+}
+.unsup-gate small { display: block; margin-top: 10px; color: #9a8fb0; font-size: 11px; max-width: 360px; }
 
 

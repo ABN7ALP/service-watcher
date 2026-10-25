@@ -551,6 +551,25 @@ const updateFanClubBadgesVisibility = async (req, res) => {
 };
 
 // =====================================================
+// ✅ room-ux-v2 (بند 4): يُستدعى مرة واحدة عند إنهاء/تخطّي الجولة التعريفية الأولى لغرفة صوتية
+// (أو إعادة ضبطها لاحقاً من "إعادة الجولة" بالإعدادات — لا ضرر من إعادة تعيينه لنفس القيمة
+// الحالية تقريباً) — idempotent صراحة: لا يفشل ولا يُبدِّل شيئاً لو استُدعي أكثر من مرة
+// =====================================================
+const markRoomTourSeen = async (req, res) => {
+    try {
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            { 'onboarding.roomTourSeenAt': new Date() },
+            { new: true }
+        ).select('onboarding');
+        res.status(200).json({ status: 'success', data: { onboarding: user.onboarding } });
+    } catch (error) {
+        console.error('[ERROR] in markRoomTourSeen:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
+// =====================================================
 // ✅ إخفاء/إظهار المعلومات الشخصية (راجع personalInfoVisible بـUser.js وPERSONAL_INFO_FIELDS
 // أعلى في هذا الملف) — صلاحية تُفتح فقط لمن بلغ مستوى 7 بـ"الثروة" (سابقاً مستوى الدعم)،
 // والفحص هنا بالخادم نفسه (لا بالعميل فقط) يمنع أي تحايل بطلب API مباشر من مستخدم لم يبلغ 7 بعد
@@ -858,6 +877,7 @@ module.exports = {
     updateAdminBadgeVisibility,
     updateFanClubBadgesVisibility,
     updatePersonalInfoVisibility,
+    markRoomTourSeen,
     followUser,
     unfollowUser,
     getMyProfileVisits,

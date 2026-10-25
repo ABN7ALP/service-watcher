@@ -232,13 +232,48 @@ function hostCrownTopAttr(frameClass) {
 // (متحركة+ثابتة، راجع فقرة جولة 3 أعلى الملف)؛ أي صنف آخر (إطارات CSS القديمة المتقاعدة
 // كـprofile-frame-silver-elegant) يبقى على avatar__photo نفسها فتُطبَّق حدودها/توهّجها
 // المرسومة بـCSS مباشرة كما كانت دوماً — لا تغيير
-function avatarHTML({ src, frameClass, sizeClass = '', extraPhotoClass = '', photoAttrs = '', wrapAttrs = '', wrapStyle = '' }) {
+// ✅ طلب صريح (توحيد مكوّن الأفاتار — مراجعة room-ux-v2): لوحة ألوان ثابتة + تجزئة بسيطة
+// (نفس أسلوب docs/design/room-ux-prototype.html بالحرف) تُحدِّد لوناً ثابتاً لكل مستخدم —
+// الحرف الأول من اسمه فوقه هو احتياط "لا صورة مكسورة أبداً" الجديد. التجزئة على userId (لا
+// الاسم) عمداً — هوية اللون تبقى ثابتة حتى لو غيّر اسمه، بخلاف النموذج الأولي الذي يُجزِّئ
+// بالاسم لعدم توفّر آيدي حقيقي فيه (بيانات وهمية فقط)
+const AVATAR_INITIAL_PALETTE = ['#7a4dff', '#ff4fa3', '#ff9f1c', '#2bb7a8', '#3d8bff', '#e0457b', '#8c5cf6', '#16a34a', '#d97706', '#0ea5e9'];
+function avatarInitialColor(seed) {
+    let h = 0;
+    for (const c of String(seed || '')) h = (h * 31 + c.codePointAt(0)) | 0;
+    return AVATAR_INITIAL_PALETTE[Math.abs(h) % AVATAR_INITIAL_PALETTE.length];
+}
+function avatarInitialChar(name) {
+    const trimmed = (name || '').trim();
+    return [...trimmed][0] || '؟';
+}
+
+// ✅ name (بند 1 بمراجعة PR): يُفعِّل احتياط "الحرف الأول على لون ثابت" بدل DEFAULT_AVATAR_URL
+// القديم — بلا تمرير name يبقى السلوك القديم تماماً (توافق خلفي لبقية مواقع الاستدعاء غير
+// المشمولة بهذي المراجعة). userId اختياري أيضاً (يحدِّد اللون تحديداً؛ بلا تمريره يُستخدَم
+// الاسم نفسه كبديل للتجزئة). --size يجب أن تصل صريحة عبر wrapStyle مع name (حجم الحرف النسبي
+// calc(var(--size)*.42) بالـCSS يعتمد عليها) — كل مواقع الاستدعاء الست المُحدَّثة تمرّرها.
+// fetchSize (بند 1 أيضاً): حجم العرض التقريبي بالبكسل لهذا السياق تحديداً — يُمرَّر لـgiftImg
+// (الدالة العامة لتحويلات Cloudinary، رغم اسمها — لا تكرار منطق) فتطلب w=فتحSize×2 فعلياً
+// بدل الصورة الأصلية كاملة الحجم؛ بلا تمريره (بقية المواقع القديمة) السلوك كما كان دوماً
+function avatarHTML({ src, name, userId, fetchSize, frameClass, sizeClass = '', extraPhotoClass = '', photoAttrs = '', wrapAttrs = '', wrapStyle = '' }) {
     const frameUrl = frameClass ? FRAME_ASSET_URLS[frameClass] : null;
     const photoClass = `avatar__photo${frameUrl ? '' : (frameClass ? ' ' + frameClass : '')}${extraPhotoClass ? ' ' + extraPhotoClass : ''}`;
     const frameImgs = frameUrl
         ? `<img class="avatar__frame avatar__frame--animated" src="${frameUrl}" alt="" aria-hidden="true">`
         + `<img class="avatar__frame avatar__frame--static" src="${staticFrameUrl(frameClass, frameUrl)}" alt="" aria-hidden="true">`
         : '';
+    if (name !== undefined) {
+        const bg = avatarInitialColor(userId != null ? userId : name);
+        const styleParts = [wrapStyle, frameDisplayStyle(frameClass), `--avi-bg:${bg}`].filter(Boolean);
+        const styleAttr = ` style="${styleParts.join(';')}"`;
+        const initialSpan = `<span class="avatar__initial" aria-hidden="true">${escapeHtml(avatarInitialChar(name))}</span>`;
+        const resizedSrc = (src && fetchSize) ? giftImg(src, fetchSize) : src;
+        // 🛡️ avatar__photo--fallbackable: يُزال العنصر بالكامل عند فشل تحميله (راجع مستمع
+        // onerror العام أسفله) فيظهر الحرف الملوَّن تحته — لا استبدال src بصورة احتياطية بديلة
+        const imgTag = resizedSrc ? `<img class="${photoClass} avatar__photo--fallbackable" src="${resizedSrc}"${photoAttrs}>` : '';
+        return `<span class="avatar ava-init ${sizeClass}"${styleAttr}${wrapAttrs}>${initialSpan}${imgTag}${frameImgs}</span>`;
+    }
     const styleParts = [wrapStyle, frameDisplayStyle(frameClass)].filter(Boolean);
     const styleAttr = styleParts.length ? ` style="${styleParts.join(';')}"` : '';
     // 🛡️ طلب صريح بمراجعة PR (جولة 4): src فارغة (لا profileImage إطلاقاً) كانت تُنتج
@@ -248,19 +283,18 @@ function avatarHTML({ src, frameClass, sizeClass = '', extraPhotoClass = '', pho
     return `<span class="avatar ${sizeClass}"${styleAttr}${wrapAttrs}><img class="${photoClass}" src="${src || DEFAULT_AVATAR_URL}"${photoAttrs}>${frameImgs}</span>`;
 }
 
-// 🛡️ طلب صريح بمراجعة PR (جولة 4): مستمع onerror عام وحيد (لا onerror مكرَّر على كل <img>
-// يدوياً) — يلتقط فشل تحميل أي صورة أفاتار حقيقية (رابط ميت/404، لا فقط src فارغة أصلاً —
-// تلك تُعالَج بالاحتياطي أعلى avatarHTML نفسها) ويستبدلها بـDEFAULT_AVATAR_URL **مرة واحدة
-// بلا حلقة**. أحداث 'error' لعناصر <img> لا تصعد (bubble) بمعيار DOM، فقط تنزل بمرحلة
-// الالتقاط (capture) — capture:true هنا إلزامي، لا اختياري، وإلا لن يصل الحدث لهذا المستمع
-// المُسجَّل على document إطلاقاً. النطاق: أي <img> يحمل صنف avatar__photo (كل صور avatarHTML
-// بأي مكان بالتطبيق) أو سمة data-avatar-fallback="1" (صور أفاتار خام خارج avatarHTML — فرق/
-// مباريات PK، لوحة المتصدرين...، راجع كل موضع أُضيفت له الصفة). لا يشمل <img class="avatar__frame">
-// (زخرفة لا صورة مستخدم — alt="" aria-hidden="true" أصلاً فلا نص يفيض لو فشل تحميلها، وفشلها
-// نادر جداً لأنها أصل محلي بالتطبيق نفسه /assets/frames/ لا رابط خارجي قد يموت)
+// 🛡️ طلب صريح بمراجعة PR (جولة 4؛ مُوسَّع بمراجعة room-ux-v2 — بند 1): مستمع onerror عام
+// وحيد (لا onerror مكرَّر على كل <img> يدوياً، ولا سمة onerror= مضمَّنة إطلاقاً — تحظرها
+// CSP script-src الحالية أصلاً بلا 'unsafe-inline') يلتقط فشل تحميل أي صورة أفاتار حقيقية
+// (رابط ميت/404). فرعان: avatar__photo--fallbackable (الأفاتار الموحَّد الجديد) تُزال نهائياً
+// فيظهر الحرف الملوَّن تحتها مباشرة؛ avatar__photo/data-avatar-fallback القديمتان (مواقع
+// استدعاء avatarHTML بلا name، + صور أفاتار خام خارج avatarHTML كأغلفة الغرف ومباريات PK)
+// تستبدلان src بـDEFAULT_AVATAR_URL كما كان تماماً. أحداث 'error' لعناصر <img> لا تصعد
+// (bubble) بمعيار DOM، فقط تنزل بمرحلة الالتقاط (capture) — capture:true هنا إلزامي
 document.addEventListener('error', (event) => {
     const img = event.target;
     if (!(img instanceof HTMLImageElement)) return;
+    if (img.classList.contains('avatar__photo--fallbackable')) { img.remove(); return; }
     if (!(img.classList.contains('avatar__photo') || img.hasAttribute('data-avatar-fallback'))) return;
     // ✅ حارس منع الحلقة: لو كانت src الحالية تساوي الاحتياطي الافتراضي فعلاً (إمّا كانت كذلك
     // أصلاً أو استُبدلت هنا سابقاً) لا نعيد التعيين مجدداً — يقطع أي حلقة نظرياً حتى لو فشل
@@ -855,7 +889,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                     <span class="voice-seat-wave"></span>
                     <span class="voice-seat-wave"></span>
                     ${isHostSeat ? `<i class="fas fa-crown voice-seat-host-badge"${hostCrownTopAttr(seatData.user.activeFrameClass)}></i>` : ''}
-                    ${avatarHTML({ src: seatData.user.profileImage, frameClass: seatData.user.activeFrameClass, sizeClass: 'voice-seat-avatar', photoAttrs: ` alt="${safeName}" loading="lazy" decoding="async"` })}
+                    ${avatarHTML({ src: seatData.user.profileImage, name: seatData.user.username, userId: seatData.user.id, fetchSize: 84, frameClass: seatData.user.activeFrameClass, sizeClass: 'voice-seat-avatar', photoAttrs: ` alt="${safeName}" loading="lazy" decoding="async"` })}
                     <span class="voice-seat-mic-badge ${seatData.isMuted ? 'muted' : ''}"><i class="fas ${seatData.isMuted ? 'fa-microphone-slash' : 'fa-microphone'}"></i></span>
                     ${isHostSeat ? '' : `<span class="voice-seat-no">${seatNo}</span>`}
                 </div>
@@ -869,13 +903,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             // (بما فيها مقعد الإدارة المحجوز) يحمل .empty-seat كي تظهر حدوده المتقطعة بوضوح
             seatEl.classList.add('empty-seat');
             // ✅ بغرف المستخدمين (وليس الرسمية) المقعد الفاضي يعرض "+" بالدائرة، والنص تحتها
-            // "دعوة" للمضيف (يدعو أحد الحاضرين لهذا المقعد تحديداً) أو "انضمام" لبقية
-            // المستخدمين (يرسل طلب صعود) — إلا لمقعد الإدارة بالغرفة الرسمية فقط
+            // "دعوة" للمضيف (يدعو أحد الحاضرين لهذا المقعد تحديداً) أو "اضغط للصعود" لبقية
+            // المستخدمين (يرسل طلب صعود) — إلا لمقعد الإدارة بالغرفة الرسمية فقط. طلب صريح
+            // (room-ux-v2 — بند 4): "اضغط للصعود" بدل "انضمام" القديمة (أوضح للمستخدم الجديد تحديداً)
             if (isAdminSeat) {
                 seatEl.innerHTML = '<div class="voice-seat-av-wrap"><i class="fas fa-crown"></i></div>';
                 seatEl.title = 'مقعد محجوز للإدارة';
             } else if (currentVoiceRoomId !== 'main') {
-                const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'انضمام';
+                const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'اضغط للصعود';
                 seatEl.innerHTML = `<div class="voice-seat-av-wrap"><i class="fas fa-plus voice-seat-plus"></i></div><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
             } else {
                 seatEl.innerHTML = `<div class="voice-seat-av-wrap">${seatNo}</div>`;
@@ -3028,6 +3063,179 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // جلوس حي يُطلق شبكة الصوت — نتأكد هنا صراحة من الاتصال بكل من هو جالس فعلياً، سواء
         // كنت أنا جالساً (اتصال ثنائي) أو مجرّد مشاهد فتح شاشة الغرفة توّاً (استماع فقط)
         if (currentVoiceRoomId === room.id) connectVoiceMeshToCurrentlySeated();
+        maybeStartRoomTour();
+    }
+
+    // =====================================================
+    // ✅ الجولة التعريفية الأولى لغرفة صوتية (room-ux-v2 — بند 4، تطابق
+    // docs/design/room-ux-prototype.html::tourHTML/placeStep/finishTour): بطاقة ترحيب ثم 5
+    // خطوات إضاءة (المضيف، مقعد فاضٍ، الهدية، الدردشة، المشاهدون)، بتخطٍّ ونقاط تقدّم. تظهر
+    // مرة واحدة فقط لكل حساب — User.onboarding.roomTourSeenAt بالخادم هو المرجع الموثوق عبر
+    // الأجهزة؛ كاش localStorage محلي سريع يمنع حتى الحاجة لفحص ذاك الحقل بكل دخول غرفة لاحق
+    // =====================================================
+    function roomTourCacheKey() {
+        const uid = (JSON.parse(localStorage.getItem('user') || 'null') || {})._id || 'anon';
+        return `roomTourSeen:${uid}`;
+    }
+    function hasSeenRoomTour() {
+        if (localStorage.getItem(roomTourCacheKey()) === '1') return true;
+        const u = JSON.parse(localStorage.getItem('user') || 'null');
+        if (u && u.onboarding && u.onboarding.roomTourSeenAt) {
+            localStorage.setItem(roomTourCacheKey(), '1'); // ✅ يزامن الكاش المحلي فوراً فلا نعيد هذا الفحص لاحقاً
+            return true;
+        }
+        return false;
+    }
+    function markRoomTourSeenNow() {
+        localStorage.setItem(roomTourCacheKey(), '1');
+        const u = JSON.parse(localStorage.getItem('user') || 'null');
+        if (u) {
+            u.onboarding = { ...(u.onboarding || {}), roomTourSeenAt: new Date().toISOString() };
+            localStorage.setItem('user', JSON.stringify(u));
+        }
+        fetch('/api/users/me/room-tour-seen', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {});
+    }
+
+    const ROOM_TOUR_STEPS = [
+        // 🐛 إصلاح (مراجعة PR #116): نقيس .voice-seat-av-wrap (الصورة الدائرية نفسها) لا .voice-seat
+        // الحاوي الواسع — الفتحة كانت تُظلِّل كل خلية المقعد (الصورة+الاسم+عداد الدعم) بدل دائرة
+        // ضيقة حول الصورة فقط كما بالنموذج. الحاوية (.host-seat/.empty-seat) تبقى شرط "هل موجود
+        // أصلاً" الصحيح (مقعد مضيف/مقعد فاضٍ فعلاً) — الصندوق الدائري بداخلها موجود دوماً معها
+        { sel: '.voice-seat.host-seat .voice-seat-av-wrap', title: 'هذا المضيف', text: 'صاحب الغرفة ومن يديرها. اضغط على أي صورة لترى ملفه وتتابعه.' },
+        { sel: '.voice-seat.empty-seat .voice-seat-av-wrap', title: 'اصعد على المايك', text: 'المقاعد الفارغة عليها +. اضغط واحداً لتطلب الصعود والتحدث مع الجميع.' },
+        { sel: '#room-gift-icon-btn', title: 'أرسل هدية', text: 'اختر هدية واضغطها بسرعة لتصنع كومبو. الهدايا ترفع مستوى ثروتك وتدعم من تحب.' },
+        { sel: '.room-chat-input-pill', title: 'اكتب في الدردشة', text: 'سلّم على الغرفة، الجميع يرى رسالتك فوراً.' },
+        { sel: '#room-viewer-count-btn', title: 'من في الغرفة؟', text: 'هنا ترى الحاضرين وأكبر المساهمين اليوم.' }
+    ];
+    let roomTourStepIndex = 0;
+
+    function maybeStartRoomTour() {
+        if (hasSeenRoomTour()) return;
+        // ✅ تأخير بسيط يضمن استقرار شبكة المقاعد/الشريط السفلي بصرياً أولاً (لقطة الحالة
+        // تصل وتُرسَم فوراً تقريباً، لكن لا داعي للمجازفة بقياس مواضع عناصر لم تُرسَم بعد)
+        setTimeout(() => {
+            if (!document.body.classList.contains('in-voice-room')) return; // ✅ غادر الغرفة بسرعة قبل أن يحين الوقت
+            showRoomTourWelcome();
+        }, 700);
+    }
+
+    function showRoomTourWelcome() {
+        document.getElementById('room-tour-welcome')?.remove();
+        const el = document.createElement('div');
+        el.id = 'room-tour-welcome';
+        el.className = 'rtour-welcome';
+        el.innerHTML = `
+            <div class="rtour-wbox">
+                <div class="rtour-wbig">👋</div>
+                <h3>أهلاً بك بالغرفة الصوتية</h3>
+                <p>غرفة صوتية مباشرة: تسمع، تتحدث، وترسل هدايا. خذ جولة سريعة من 5 خطوات.</p>
+                <div class="rtour-three">
+                    <div><span>🎧</span>استمع</div>
+                    <div><span>🎙️</span>تحدّث</div>
+                    <div><span>🎁</span>أهدِ</div>
+                </div>
+                <button type="button" id="rtour-start-btn" class="rtour-go">ابدأ الجولة</button>
+                <button type="button" id="rtour-later-btn" class="rtour-later">لاحقاً</button>
+            </div>
+        `;
+        document.body.appendChild(el);
+        document.getElementById('rtour-start-btn').addEventListener('click', () => {
+            el.remove();
+            roomTourStepIndex = 0;
+            placeRoomTourStep();
+        });
+        document.getElementById('rtour-later-btn').addEventListener('click', () => {
+            el.remove();
+            markRoomTourSeenNow(); // ✅ "لاحقاً" = لن تظهر تلقائياً مجدداً — "إعادة الجولة" بالإعدادات تبقى متاحة دوماً
+            flushBottomToastQueue(); // ✅ الجولة انتهت فعلياً هنا (لا خطوات تالية) — أي توست طابَر أثناءها يظهر الآن
+        });
+    }
+
+    // ✅ يتخطّى تلقائياً أي خطوة هدفها غير موجود حالياً بالـDOM (لا مقعد مضيف بالغرفة الرسمية
+    // مثلاً، أو غرفة ممتلئة بلا مقعد فاضٍ) بدل تعليق الجولة أو تسليط الضوء على فراغ
+    function placeRoomTourStep() {
+        while (roomTourStepIndex < ROOM_TOUR_STEPS.length && !document.querySelector(ROOM_TOUR_STEPS[roomTourStepIndex].sel)) {
+            roomTourStepIndex++;
+        }
+        if (roomTourStepIndex >= ROOM_TOUR_STEPS.length) { finishRoomTour(); return; }
+
+        const step = ROOM_TOUR_STEPS[roomTourStepIndex];
+        const target = document.querySelector(step.sel);
+        let overlay = document.getElementById('room-tour-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'room-tour-overlay';
+            overlay.className = 'rtour';
+            overlay.innerHTML = '<div class="rtour-hole"></div><div class="rtour-tip"></div>';
+            document.body.appendChild(overlay);
+        }
+        const r = target.getBoundingClientRect();
+        const pad = 8;
+        const hole = overlay.querySelector('.rtour-hole');
+        Object.assign(hole.style, {
+            left: (r.left - pad) + 'px', top: (r.top - pad) + 'px',
+            width: (r.width + pad * 2) + 'px', height: (r.height + pad * 2) + 'px',
+            borderRadius: (step.sel === '.room-chat-input-pill' || step.sel === '#room-viewer-count-btn') ? '999px' : '50%'
+        });
+        const tip = overlay.querySelector('.rtour-tip');
+        const below = r.top < window.innerHeight * 0.5;
+        tip.style.top = below ? (r.bottom + 16) + 'px' : 'auto';
+        tip.style.bottom = below ? 'auto' : (window.innerHeight - r.top + 16) + 'px';
+        const isLast = roomTourStepIndex === ROOM_TOUR_STEPS.length - 1;
+        tip.innerHTML = `
+            <div class="rtour-st">الخطوة ${roomTourStepIndex + 1} من ${ROOM_TOUR_STEPS.length}</div>
+            <h4>${escapeHtml(step.title)}</h4>
+            <p>${escapeHtml(step.text)}</p>
+            <div class="rtour-row2">
+                <div class="rtour-dots">${ROOM_TOUR_STEPS.map((_, i) => `<i class="${i === roomTourStepIndex ? 'on' : ''}"></i>`).join('')}</div>
+                <div class="rtour-btns">
+                    <button type="button" class="rtour-skip" id="rtour-skip-btn">تخطَّ</button>
+                    <button type="button" class="rtour-next" id="rtour-next-btn">${isLast ? 'فهمت، لنبدأ' : 'التالي'}</button>
+                </div>
+            </div>
+        `;
+        document.getElementById('rtour-next-btn').addEventListener('click', () => {
+            roomTourStepIndex++;
+            placeRoomTourStep();
+        });
+        document.getElementById('rtour-skip-btn').addEventListener('click', finishRoomTour);
+    }
+
+    function finishRoomTour() {
+        document.getElementById('room-tour-overlay')?.remove();
+        document.getElementById('room-tour-welcome')?.remove();
+        markRoomTourSeenNow();
+        showBottomBarLabelsTemporarily();
+        flushBottomToastQueue(); // ✅ أي توست طابَر أثناء الجولة (تخطٍّ أو إكمال) يظهر الآن
+    }
+
+    // ✅ تُستدعى أيضاً من "إعادة الجولة" بالإعدادات — بلا الحاجة لإنهائها فعلياً أولاً، فقط
+    // تُظهر تسميات الشريط السفلي 4 ثوانٍ عند انتهاء الجولة تحديداً (ليست استجابة لحدث آخر)
+    function showBottomBarLabelsTemporarily(durationMs = 4000) {
+        const dock = document.querySelector('.room-chat-dock');
+        if (!dock) return;
+        dock.querySelectorAll('.room-chat-dock-icon:not(.hidden)').forEach(btn => {
+            if (btn.querySelector('.room-dock-label')) return;
+            const label = document.createElement('span');
+            label.className = 'room-dock-label';
+            label.textContent = btn.title || '';
+            btn.appendChild(label);
+        });
+        dock.classList.add('show-dock-labels');
+        setTimeout(() => {
+            dock.classList.remove('show-dock-labels');
+            setTimeout(() => dock.querySelectorAll('.room-dock-label').forEach(l => l.remove()), 250);
+        }, durationMs);
+    }
+
+    // ✅ "إعادة الجولة" بالإعدادات (showProfileHubSettingsSheet) — تُشغَّل فقط وأنا داخل غرفة
+    // فعلياً (الخطوات تُضيء عناصر غرفة حقيقية، لا معنى لها خارج سياق الغرفة)
+    function replayRoomTourFromSettings() {
+        if (!document.body.classList.contains('in-voice-room')) return;
+        document.getElementById('room-tour-overlay')?.remove();
+        document.getElementById('room-tour-welcome')?.remove();
+        roomTourStepIndex = 0;
+        showRoomTourWelcome();
     }
 
     // ✅ سحب لأسفل من رأس الغرفة يخرج منها — بديل زر الرجوع المحذوف (أسلوب تطبيقات البث
@@ -3133,47 +3341,252 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         });
     }
 
-    // ✅ قائمة المشاهدين المسندلة — تُطلب حيّة من السيرفر عند الفتح (مصدرها عضوية قناة السوكيت).
-    // ✅ أُعيدت هيكلتها بالكامل: تظهر من الأسفل (كانت كذلك أصلاً)، ورأسها الآن يخصّص صفاً
-    // لكوينز الجلسة الحالية (دعم مُرسَل) وترتيب الغرفة (رقم مرتبتها ضمن أقوى الغرف)، ثم
-    // عدد المشاهدين أسفلهما مباشرة — بدل عنوان "المشاهدون" المجرّد فقط
+    // =====================================================
+    // ✅ نافذة "المشاهدون والمساهمون" (room-ux-v2 — تطابق docs/design/room-ux-prototype.html):
+    // تبويبان — المساهمون (منصّة لأول 3 + فترة يوم/أسبوع/شهر + ترتيبي مثبّت أسفل القائمة دوماً)
+    // والحاضرون (على المقاعد أولاً ثم المستمعون + بحث)، كلاهما عبر REST الجديد (contributors/
+    // viewers) لا socket.emit('get-room-viewers') القديمة — تلك تبقى فعّالة لشريط صور المشاهدين
+    // أعلى الغرفة وصف "دعوة لمقعد" فقط (راجع socket.on('room-viewers-list') أسفل الملف)
+    // =====================================================
+    let rvRoomId = null, rvTab = 'contributors', rvPeriod = 'day', rvQuery = '', rvCursor = 0, rvLoading = false, rvFetchToken = 0;
+    let rvAccViewers = [], rvAccSeatedCount = 0, rvAccTotal = 0;
+    const RV_SKELETON_HTML = [1, 2, 3, 4].map(() => `
+        <div class="flex items-center gap-2.5 p-2">
+            <div class="skeleton-shimmer w-10 h-10 rounded-full flex-shrink-0"></div>
+            <div class="skeleton-shimmer h-3.5 rounded-full flex-1"></div>
+        </div>
+    `).join('');
+
     function showRoomViewersSheet(roomId) {
         document.getElementById('room-viewers-sheet')?.remove();
+        rvRoomId = roomId; rvTab = 'contributors'; rvPeriod = 'day'; rvQuery = ''; rvCursor = 0;
+        rvAccViewers = []; rvAccSeatedCount = 0; rvAccTotal = 0;
         const modal = document.createElement('div');
         modal.id = 'room-viewers-sheet';
         modal.className = 'fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-3';
         modal.innerHTML = `
-            <div class="room-viewers-sheet-card w-full md:max-w-sm text-white max-h-[70vh] flex flex-col">
+            <div class="room-viewers-sheet-card w-full md:max-w-sm text-white max-h-[78vh] flex flex-col">
                 <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-3 md:hidden flex-shrink-0"></div>
-                <div class="grid grid-cols-2 gap-2 px-4 pb-3 flex-shrink-0">
-                    <div class="room-info-stat-box">
-                        <p class="room-info-stat-num text-amber-400">${coinIconHTML(13)} <span id="room-viewers-sheet-coins">0</span></p>
-                        <p class="room-info-stat-label">كوينز مُرسَلة بالجلسة</p>
-                    </div>
-                    <div class="room-info-stat-box">
-                        <p class="room-info-stat-num text-purple-300"><span id="room-viewers-sheet-rank">—</span></p>
-                        <p class="room-info-stat-label">ترتيب الغرفة</p>
-                    </div>
-                </div>
-                <h3 class="text-sm font-bold px-4 pb-2.5 flex items-center gap-2 flex-shrink-0 border-t border-white/5 pt-2.5">
-                    <i class="fas fa-eye text-purple-400"></i> المشاهدون
+                <!-- 🐛 إصلاح (مراجعة PR #116): بطاقتا "كوينز الجلسة"/"ترتيب الغرفة" أُزيلتا — غير
+                     موجودتين بالنموذج الأصلي (docs/design/room-ux-prototype.html) وكانتا تدفع
+                     القائمة لأسفل بلا داعٍ؛ صف "أنا" المثبّت أسفل تبويب المساهمين يغطي ترتيبي
+                     أصلاً. النافذة تبدأ بمقبض السحب ثم الرأس "في الغرفة N" مباشرة كما بالنموذج -->
+                <h3 class="text-sm font-bold px-4 pb-2 flex items-center gap-2 flex-shrink-0">
+                    <i class="fas fa-eye text-purple-400"></i> في الغرفة
                     <span id="room-viewers-sheet-count" class="text-[11px] font-normal text-gray-400"></span>
                 </h3>
-                <div id="room-viewers-list" class="space-y-1.5 px-3 pb-3 overflow-y-auto">
-                    ${[1,2,3,4].map(() => `
-                        <div class="flex items-center gap-2.5 p-2">
-                            <div class="skeleton-shimmer w-10 h-10 rounded-full flex-shrink-0"></div>
-                            <div class="skeleton-shimmer h-3.5 rounded-full flex-1"></div>
-                        </div>
-                    `).join('')}
+                <div class="rv-tabs flex-shrink-0">
+                    <button type="button" class="rv-tab" data-rv-tab="contributors" aria-pressed="true"><i class="fas fa-trophy"></i> المساهمون</button>
+                    <button type="button" class="rv-tab" data-rv-tab="attendees" aria-pressed="false"><i class="fas fa-users"></i> الحاضرون</button>
                 </div>
+                <div id="rv-subbar" class="flex-shrink-0"></div>
+                <div id="rv-list" class="rv-list flex-1 overflow-y-auto px-2 pb-1">${RV_SKELETON_HTML}</div>
+                <div id="rv-mine" class="flex-shrink-0 px-3 pb-3"></div>
             </div>
         `;
         document.body.appendChild(modal);
-        const coinsEl = document.getElementById('room-viewers-sheet-coins');
-        if (coinsEl) coinsEl.textContent = currentRoomSessionSupportPoints.toLocaleString('en-US');
         modal.addEventListener('click', (e) => { if (e.target.id === 'room-viewers-sheet') modal.remove(); });
+
+        modal.querySelectorAll('.rv-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (rvTab === btn.dataset.rvTab) return;
+                rvTab = btn.dataset.rvTab;
+                rvQuery = ''; rvCursor = 0; rvAccViewers = []; rvAccSeatedCount = 0; rvAccTotal = 0;
+                modal.querySelectorAll('.rv-tab').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+                renderRvSubbar();
+                loadRvList(false);
+            });
+        });
+        // ✅ يُربط مرة واحدة فقط هنا — عنصر #rv-list نفسه يبقى بالـDOM طوال عمر النافذة (فقط
+        // innerHTML يتغيّر بكل عرض)، فربط مستمع تمرير إضافي بكل renderAttendeesTab كان يكرِّره
+        document.getElementById('rv-list').addEventListener('scroll', (e) => {
+            if (rvTab !== 'attendees' || rvLoading || rvCursor == null) return;
+            const el = e.target;
+            if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) loadRvList(true);
+        });
+
+        renderRvSubbar();
+        loadRvList(false);
+        // ✅ يبقي شريط صور المشاهدين وعدّاده أعلى الغرفة وترتيبها حيّين كالسابق تماماً — لا علاقة
+        // له بمحتوى القائمة الجديد أعلاه (ذاك عبر REST الآن، لا socket)
         socket.emit('get-room-viewers', { roomId });
+
+        function renderRvSubbar() {
+            const bar = document.getElementById('rv-subbar');
+            if (!bar) return;
+            if (rvTab === 'contributors') {
+                bar.innerHTML = `<div class="rv-period">${[['day', 'اليوم'], ['week', 'الأسبوع'], ['month', 'الشهر']].map(([k, l]) => `<button type="button" class="rv-period-btn" data-period="${k}" aria-pressed="${rvPeriod === k}">${l}</button>`).join('')}</div>`;
+                bar.querySelectorAll('.rv-period-btn').forEach(b => b.addEventListener('click', () => {
+                    if (rvPeriod === b.dataset.period) return;
+                    rvPeriod = b.dataset.period;
+                    bar.querySelectorAll('.rv-period-btn').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+                    loadRvList(false);
+                }));
+            } else {
+                bar.innerHTML = `<div class="rv-search"><i class="fas fa-magnifying-glass"></i><input id="rv-search-input" type="search" placeholder="ابحث عن اسم" value="${escapeHtml(rvQuery)}" autocomplete="off"></div>`;
+                const input = bar.querySelector('#rv-search-input');
+                let debounceTimer = null;
+                input.addEventListener('input', () => {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => {
+                        rvQuery = input.value.trim();
+                        rvCursor = 0; rvAccViewers = []; rvAccSeatedCount = 0; rvAccTotal = 0;
+                        loadRvList(false);
+                    }, 250);
+                });
+            }
+        }
+    }
+
+    // ✅ append=false (تبويب/فترة/بحث جديد): يستبدل القائمة بالكامل. append=true (تمرير لأسفل
+    // بتبويب الحاضرين فقط): يُضيف صفحة تالية (cursor الحالي) للمتراكم ثم يُعاد رسم كل القسمين
+    // من جديد (أرخص بكثير من محاولة إلحاق DOM دقيق عند حدود الأقسام — راجع renderAttendeesTab).
+    // rvFetchToken يمنع سباق النتائج: تبديل سريع بين تبويبين/فترتين يُسقِط استجابة أبطأ سابقة
+    async function loadRvList(append) {
+        const myFetchId = ++rvFetchToken;
+        const listEl = document.getElementById('rv-list');
+        const mineEl = document.getElementById('rv-mine');
+        if (!listEl) return;
+        if (!append) {
+            listEl.innerHTML = RV_SKELETON_HTML;
+            if (mineEl) mineEl.innerHTML = '';
+        }
+        rvLoading = true;
+        try {
+            if (rvTab === 'contributors') {
+                const res = await fetch(`/api/voice-room/rooms/${rvRoomId}/contributors?period=${rvPeriod}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const body = await res.json();
+                rvLoading = false;
+                if (myFetchId !== rvFetchToken) return;
+                if (!res.ok || body.status !== 'success') { listEl.innerHTML = '<p class="rv-empty">تعذّر تحميل المساهمين</p>'; return; }
+                renderContributorsTab(body.data);
+            } else {
+                const cursorParam = append ? (rvCursor || 0) : 0;
+                const qParam = rvQuery ? `&q=${encodeURIComponent(rvQuery)}` : '';
+                const res = await fetch(`/api/voice-room/rooms/${rvRoomId}/viewers?cursor=${cursorParam}${qParam}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const body = await res.json();
+                rvLoading = false;
+                if (myFetchId !== rvFetchToken) return;
+                if (!res.ok || body.status !== 'success') { listEl.innerHTML = '<p class="rv-empty">تعذّر تحميل الحاضرين</p>'; return; }
+                if (!append) { rvAccViewers = []; }
+                rvAccViewers = rvAccViewers.concat(body.data.viewers || []);
+                rvAccSeatedCount = body.data.seatedCount || 0;
+                rvAccTotal = body.data.total || 0;
+                rvCursor = body.data.nextCursor;
+                renderAttendeesTab();
+            }
+        } catch (err) {
+            rvLoading = false;
+            if (myFetchId !== rvFetchToken) return;
+            listEl.innerHTML = '<p class="rv-empty">تعذّر الاتصال بالسيرفر</p>';
+        }
+    }
+
+    function renderContributorsTab(data) {
+        const listEl = document.getElementById('rv-list');
+        const mineEl = document.getElementById('rv-mine');
+        if (!listEl) return;
+        const list = data.list || [];
+        if (list.length === 0) {
+            listEl.innerHTML = '<p class="rv-empty">لا يوجد مساهمون بهذي الفترة بعد</p>';
+        } else {
+            const [a, b, c, ...rest] = list;
+            const podiumHtml = `<div class="rv-podium">
+                ${b ? rvPodiumSlotHTML(b, 2) : '<span></span>'}
+                ${rvPodiumSlotHTML(a, 1)}
+                ${c ? rvPodiumSlotHTML(c, 3) : '<span></span>'}
+            </div>`;
+            listEl.innerHTML = podiumHtml + rest.map(e => rvRowHTML(e, { showVal: true, showRank: true })).join('');
+            wireRvRowClicks(listEl);
+        }
+        if (mineEl) {
+            mineEl.innerHTML = data.me ? `<div class="rv-mine">${rvRowHTML(data.me, { showVal: true, showRank: true, mine: true })}</div>` : '';
+            wireRvRowClicks(mineEl);
+        }
+    }
+
+    function rvPodiumSlotHTML(entry, rank) {
+        const size = rank === 1 ? 62 : 52;
+        return `<div class="rv-pod rv-pod-${rank}" data-user-id="${entry.userId}" data-username="${escapeHtml(entry.username || '')}">
+            <span class="rv-pod-rk">${rank}</span>
+            <span class="rv-pod-ring rv-ring-${rank}">${avatarHTML({ src: entry.profileImage, name: entry.username, userId: entry.userId, fetchSize: size, frameClass: entry.activeFrameClass, wrapStyle: `--size:${size}px` })}</span>
+            <span class="rv-pod-nm">${escapeHtml(entry.username || '')}</span>
+            <span class="rv-pod-val">${coinIconHTML(10)}${formatCompactPoints(entry.total || 0)}</span>
+        </div>`;
+    }
+
+    // ✅ صف واحد مشترك بين تبويبَي المساهمين والحاضرين (وصف "أنا" المثبّت) — matching
+    // docs/design/room-ux-prototype.html::row() بالضبط: الصورة، الاسم، الوسوم (المستوى/نادي
+    // المعجبين/الحالة)، ثم القيمة (مساهمون) أو زر الإجراء (حاضرون)
+    function rvRowHTML(entry, opts) {
+        opts = opts || {};
+        const name = opts.mine ? 'أنت' : escapeHtml(entry.username || '');
+        const tagsHtml = `<span class="rv-tags">
+            <span class="rv-tag rv-tag-lv">Lv.${entry.level || 1}</span>
+            ${entry.isFanClubMember ? '<span class="rv-tag rv-tag-fc">♥ نادي المعجبين</span>' : ''}
+            ${entry.status === 'host' ? '<span class="rv-tag rv-tag-host">المضيف</span>' : entry.status === 'seat' ? '<span class="rv-tag rv-tag-seat">على المقعد</span>' : ''}
+        </span>`;
+        const rightHtml = opts.showVal
+            ? `<span class="rv-val">${coinIconHTML(10)}${formatCompactPoints(entry.total || 0)}</span>`
+            : rvAttendeeActionHTML(entry);
+        return `<div class="rv-item${opts.mine ? ' rv-item-mine' : ''}" data-user-id="${entry.userId}" data-username="${escapeHtml(entry.username || '')}">
+            ${opts.showRank ? `<span class="rv-n">${entry.rank != null ? entry.rank : '—'}</span>` : ''}
+            ${avatarHTML({ src: entry.profileImage, name: entry.username, userId: entry.userId, fetchSize: 40, frameClass: entry.activeFrameClass, wrapStyle: '--size:40px' })}
+            <span class="rv-info"><b>${name}</b>${tagsHtml}</span>
+            ${rightHtml}
+        </div>`;
+    }
+
+    // ✅ مقعود/مضيف بالفعل: النقر على الصف نفسه يفتح ملفه مباشرة فلا نكرّر زراً هنا. غير مقعود:
+    // زر "دعوة للمقعد" يظهر فقط للمضيف/المسؤول (نفس شرط canManage بـshowUserProfileSheet)
+    function rvAttendeeActionHTML(entry) {
+        if (entry.status) return '';
+        if (!(currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator')) return '';
+        return `<button type="button" class="rv-act" data-rv-invite="${entry.userId}" data-rv-invite-name="${escapeHtml(entry.username || '')}">دعوة</button>`;
+    }
+
+    // ✅ تُعاد الكتابة بالكامل من rvAccViewers المتراكمة كل مرة (بدل إلحاق DOM دقيق) — يحافظ
+    // على تجميع صحيح "على المقاعد ثم المستمعون" حتى لو وقعت حدود الصفحات (30 بكل طلب) في
+    // منتصف أحد القسمين؛ تكلفة إعادة رسم بضع مئات صف لا تُذكر أداءً
+    function renderAttendeesTab() {
+        const listEl = document.getElementById('rv-list');
+        if (!listEl) return;
+        if (rvAccViewers.length === 0) {
+            listEl.innerHTML = `<p class="rv-empty">${rvQuery ? 'لا أحد بهذا الاسم في الغرفة' : 'لا يوجد حاضرون حالياً'}</p>`;
+            return;
+        }
+        const seated = rvAccViewers.filter(v => v.status);
+        const listeners = rvAccViewers.filter(v => !v.status);
+        let html = '';
+        if (seated.length) html += `<div class="rv-sec">على المقاعد · ${rvAccSeatedCount}</div>` + seated.map(v => rvRowHTML(v, {})).join('');
+        if (listeners.length) html += `<div class="rv-sec">المستمعون · ${Math.max(0, rvAccTotal - rvAccSeatedCount)}</div>` + listeners.map(v => rvRowHTML(v, {})).join('');
+        listEl.innerHTML = html;
+        wireRvRowClicks(listEl);
+    }
+
+    // ✅ النقر على الصف (إلا على زر الدعوة بالذات) يفتح الملف المصغّر — كما يطلب النموذج الأولي
+    // بالحرف ("الضغط على الصف يفتح الملف المصغّر")؛ زر "دعوة" مستقل بمنطقه الخاص (لا يفتح ملفاً)
+    function wireRvRowClicks(container) {
+        container.querySelectorAll('.rv-item, .rv-pod').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('[data-rv-invite]')) return;
+                const userId = row.dataset.userId;
+                if (!userId) return;
+                document.getElementById('room-viewers-sheet')?.remove();
+                showUserProfileSheet(rvRoomId, null, userId, row.dataset.username);
+            });
+        });
+        container.querySelectorAll('[data-rv-invite]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const freeSeat = findFirstFreeSeatNumber();
+                if (freeSeat === null) { showNotification('لا يوجد مقعد فاضٍ حالياً بالغرفة', 'info'); return; }
+                socket.emit('host-invite-to-seat', { roomId: rvRoomId, targetUserId: btn.dataset.rvInvite, seatNumber: freeSeat });
+                showNotification(`تم إرسال الدعوة لـ ${btn.dataset.rvInviteName}`, 'success');
+                btn.disabled = true;
+                btn.textContent = 'أُرسِلت ✓';
+            });
+        });
     }
 
     // ✅ يحدّث شارة العدد + شريط الصور المتراكبة أعلى زاوية الغرفة. النقر على أي صورة هنا لا
@@ -3468,9 +3881,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 seat.title = canSitHere ? 'مقعد إدارة' : 'مقعد محجوز للإدارة';
             } else if (isCustomRoom) {
                 // ✅ بغرف المستخدمين: مقعد فاضٍ = "+" بالدائرة، والنص تحتها يختلف حسب من يشاهد —
-                // "دعوة" للمضيف (يفتح قائمة الحاضرين ليدعو أحدهم لهذا المقعد تحديداً)، و"انضمام"
-                // لبقية المستخدمين (يرسل طلب صعود ينتظر موافقة المضيف)
-                const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'انضمام';
+                // "دعوة" للمضيف (يفتح قائمة الحاضرين ليدعو أحدهم لهذا المقعد تحديداً)، و"اضغط
+                // للصعود" لبقية المستخدمين (يرسل طلب صعود ينتظر موافقة المضيف — طلب صريح room-ux-v2 بند 4)
+                const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'اضغط للصعود';
                 seat.innerHTML = `<div class="voice-seat-av-wrap"><i class="fas fa-plus voice-seat-plus"></i></div><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
             } else {
                 seat.innerHTML = `<div class="voice-seat-av-wrap">${i}</div>`;
@@ -3554,7 +3967,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 ${!isMe ? `<button type="button" id="room-profile-report-btn" class="room-profile-report-btn" title="إبلاغ"><i class="fas fa-flag"></i></button>` : ''}
                 <div class="room-profile-header">
                     <div class="room-profile-avatar-wrap">
-                        ${avatarHTML({ src: p.profileImage, frameClass: p.activeFrameClass, sizeClass: 'room-profile-avatar', photoAttrs: ` id="room-profile-avatar-img" title="${allowFullProfileNav ? 'عرض الملف الكامل' : ''}"` })}
+                        ${avatarHTML({ src: p.profileImage, name: p.username, userId: userId, fetchSize: 84, frameClass: p.activeFrameClass, sizeClass: 'room-profile-avatar', photoAttrs: ` id="room-profile-avatar-img" title="${allowFullProfileNav ? 'عرض الملف الكامل' : ''}" loading="lazy" decoding="async"`, wrapStyle: '--size:84px' })}
                     </div>
                     <div class="room-profile-name-id-row">
                         <p class="room-profile-name">${escapeHtml(p.username)} ${getAgentBadgeHTML(p.isAgent)}</p>
@@ -8951,7 +9364,14 @@ document.getElementById('user-id-container').addEventListener('click', () => {
         if (voicePeerConnections.has(fromUserId)) {
             teardownVoicePeer(fromUserId);
         }
-        await ensureLocalMicStream();
+        // 🐛 إصلاح (مراجعة PR #116): كانت تُستدعى بلا شرط هنا — أي مستمع (غير جالس) يصله عرض
+        // WebRTC تلقائياً من أي شخص جالس فور دخوله الغرفة (اتصال الشبكة الصوتية يشمل المستمعين
+        // أيضاً، استقبالاً فقط) كان يُطلَب منه إذن المايكروفون فوراً، فيظهر توست "تعذّر الوصول
+        // للمايكروفون" لمجرد الدخول لو رفض/تجاهل طلب الإذن — بلا أي نية فعلية لاستخدام المايك.
+        // نفس شرط initiateVoiceCallTo أعلاه بالضبط: المايك يُطلَب فقط ممن يجلس فعلياً على مقعد؛
+        // getOrCreateVoicePeer أدناه يتعامل مسبقاً وبأمان مع localMicStream الفارغة (transceiver
+        // recvonly صريح) فلا حاجة لطلب المايك هنا إطلاقاً لمن هو مستمع بحت
+        if (myVoiceSeatNumber) await ensureLocalMicStream();
         const pc = await getOrCreateVoicePeer(fromUserId);
         try {
             await pc.setRemoteDescription(new RTCSessionDescription(payload));
@@ -9617,36 +10037,18 @@ function showXpGainAnimation(amount) {
         updateRoomViewerWidget(count, preview || null);
     });
 
-    socket.on('room-viewers-list', ({ roomId, viewers, roomRank }) => {
-        if (roomId === currentVoiceRoomId) updateRoomViewerWidget(viewers.length, viewers);
+    socket.on('room-viewers-list', ({ roomId, viewers }) => {
+        if (roomId !== currentVoiceRoomId) return;
+        updateRoomViewerWidget(viewers.length, viewers);
         // ✅ تغذية ذاكرة هوية "أفضل داعمي العقد" بأسماء/صور المشاهدين الحاليين — بلا أي استعلام إضافي
-        if (roomId === currentVoiceRoomId) viewers.forEach(v => pkCacheUserDisplay(v.id, v.username, v.profileImage, v.activeFrameClass));
+        viewers.forEach(v => pkCacheUserDisplay(v.id, v.username, v.profileImage, v.activeFrameClass));
 
+        // 🛡️ room-ux-v2: محتوى القائمة نفسه (#rv-list) يأتي الآن من REST (contributors/viewers،
+        // راجع loadRvList بـshowRoomViewersSheet) لا من هذا الحدث — يبقى مفيداً فقط لتحديث
+        // العدّاد الحيّ برأس النافذة (#room-viewers-sheet-count). roomRank أُسقِط من هذا الحدث
+        // (مراجعة PR #116) — كان يغذّي بطاقة "ترتيب الغرفة" التي أُزيلت من النافذة بالكامل
         const countLabel = document.getElementById('room-viewers-sheet-count');
-        if (countLabel) countLabel.textContent = `(${viewers.length})`;
-        const rankEl = document.getElementById('room-viewers-sheet-rank');
-        if (rankEl) rankEl.textContent = roomRank ? `#${roomRank}` : 'غير مصنّفة';
-
-        const listEl = document.getElementById('room-viewers-list');
-        if (!listEl) return;
-        if (viewers.length === 0) {
-            listEl.innerHTML = '<p class="text-center text-xs text-gray-500 py-8">لا يوجد مشاهدون حالياً</p>';
-            return;
-        }
-        listEl.innerHTML = viewers.map(v => `
-            <button data-user-id="${v.id}" data-username="${escapeHtml(v.username)}" class="room-viewer-row w-full flex items-center gap-4 rounded-xl p-2 text-right">
-                ${avatarHTML({ src: v.profileImage, frameClass: v.activeFrameClass, sizeClass: 'w-10 h-10 flex-shrink-0', extraPhotoClass: 'ring-1 ring-white/10' })}
-                <span class="text-sm font-medium truncate flex-1">${escapeHtml(v.username)}</span>
-                ${v.supportTotal > 0 ? `<span class="room-viewer-support" data-support-total><i class="fas fa-bolt"></i>${v.supportTotal > 9999 ? '9999+' : v.supportTotal}</span>` : ''}
-                <i class="fas fa-chevron-left text-[10px] text-gray-500"></i>
-            </button>
-        `).join('');
-        listEl.querySelectorAll('.room-viewer-row').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.getElementById('room-viewers-sheet')?.remove();
-                showUserProfileSheet(currentVoiceRoomId, null, btn.dataset.userId, btn.dataset.username);
-            });
-        });
+        if (countLabel) countLabel.textContent = viewers.length.toLocaleString('en-US');
     });
 
     // 🐛 إصلاح: ورقة "دعوة لمقعد" كانت تعلَق على التحميل دائماً — كانت مبنية كفرع إضافي
@@ -10199,25 +10601,10 @@ function showXpGainAnimation(amount) {
                 }
                 row.textContent = formatCompactPoints(value);
             }
-            // ✅ نفس الرقم يتحدّث بنافذة المشاهدين (لو كانت مفتوحة) لهذا المستخدم بعينه، بصرف
-            // النظر هل هو جالس على مقعد أصلاً أم مجرد مشاهد — لا يُشترَط seatEl إطلاقاً
-            const viewerRow = document.querySelector(`#room-viewers-list .room-viewer-row[data-user-id="${userId}"]`);
-            if (viewerRow) {
-                let supportBadge = viewerRow.querySelector('[data-support-total]');
-                if (value > 0) {
-                    if (!supportBadge) {
-                        supportBadge = document.createElement('span');
-                        supportBadge.className = 'room-viewer-support';
-                        supportBadge.dataset.supportTotal = '';
-                        supportBadge.innerHTML = '<i class="fas fa-bolt"></i><span class="room-viewer-support-num"></span>'; // ✅ هيكل ثابت يُبنى مرة واحدة فقط
-                        viewerRow.querySelector('i.fa-chevron-left')?.insertAdjacentElement('beforebegin', supportBadge);
-                    }
-                    const numEl = supportBadge.querySelector('.room-viewer-support-num');
-                    if (numEl) numEl.textContent = value > 9999 ? '9999+' : value;
-                } else {
-                    supportBadge?.remove();
-                }
-            }
+            // 🗑️ تحديث حيّ لصف "نافذة المشاهدين" القديمة (#room-viewers-list .room-viewer-row)
+            // أُزيل — تلك البنية استُبدلت بالكامل (room-ux-v2: تبويبا المساهمون/الحاضرون عبر
+            // REST، راجع showRoomViewersSheet) ولا تحمل قيمة دعم متحركة لحظياً بعد الآن أصلاً؛
+            // تركه كان سيبقى بلا أثر صامتاً (querySelector لا يطابق شيئاً إطلاقاً بعد الآن)
         });
         pendingSeatSupportUpdates.clear();
     }
@@ -10737,11 +11124,58 @@ function showConfirmationModal(message, onConfirm) {
 // دون تهريب). يُكدَّس فوق بعضه لو وصل أكثر من إشعار بنفس اللحظة بدل أن يتراكب ويُخفي بعضه بعضاً
 // ✅ iconColor اختياري (يستخدمه showNotification لتمييز نجاح/خطأ/تنبيه بلون الأيقونة فقط)؛
 // نداءات هذا الملف المباشرة (صدى محتمل/رفض دعوة/نكزة...) تبقى بلونها الأحمر الافتراضي كما كانت
+// 🛡️ مراجعة PR #116: لا توست يغطي نافذة سفلية مفتوحة أو الجولة التعريفية. الجولة (غطاء ملء
+// الشاشة، لا حافة علوية منطقية يُتموضَع فوقها) تُطابَر توستاتها بدل عرضها فوراً — تُعرَض كلها
+// فور إغلاقها فعلياً (flushBottomToastQueue، تُستدعى من مساري إغلاق الجولة الوحيدين: "لاحقاً"
+// وfinishRoomTour). أي نافذة سفلية/مركزية أخرى مفتوحة (نفس نمط اكتشاف "هل نافذة مفتوحة"
+// المُستخدَم أصلاً بمستمع Escape أعلى الملف) لا تُطابَر توستها، بل يُعاد تموضعه فوق حافتها
+// العلوية مباشرة بدل bottom الثابت الافتراضي الذي كان يقع خلفها (أسفل غطائها بصرياً)
+let bottomToastQueue = [];
+function isRoomTourActive() {
+    return !!(document.getElementById('room-tour-welcome') || document.getElementById('room-tour-overlay'));
+}
+function flushBottomToastQueue() {
+    if (!bottomToastQueue.length) return;
+    const queued = bottomToastQueue;
+    bottomToastQueue = [];
+    queued.forEach(([message, icon, iconColor]) => renderBottomToast(message, icon, iconColor));
+}
+function topMostOpenSheetEl() {
+    // ✅ نفس نمط اكتشاف "هل توجد نافذة مفتوحة" المُستخدَم بمستمع Escape — [id$="-modal"]/
+    // [id$="-sheet"] يغطي كل النوافذ/الشيتات بالتطبيق بلا حاجة لتعداد كل معرّف يدوياً؛
+    // room-tour-welcome تُستثنى صراحة (تُعالَج بالطابور أعلاه، لا بإعادة التموضع)
+    // 🐛 إصلاح (مراجعة PR #116): offsetParent يُرجع null دائماً لعنصر position:fixed (حال كل
+    // هذي النوافذ بالضبط — fixed inset-0 بالتصميم) بصرف النظر عن ظهورها الفعلي، فكان الفلتر
+    // يستبعد كل نافذة مفتوحة فعلياً دوماً — getClientRects().length يعمل بشكل صحيح بلا هذا القيد
+    // (يبقى 0 فقط لعنصر display:none فعلياً أو غير موجود بتخطيط الصفحة أصلاً)
+    const candidates = Array.from(document.querySelectorAll('[id$="-modal"], [id$="-sheet"]'))
+        .filter(el => el.id !== 'room-tour-welcome' && el.getClientRects().length > 0);
+    if (!candidates.length) return null;
+    let top = null, topZ = -1;
+    candidates.forEach(el => {
+        const z = parseInt(getComputedStyle(el).zIndex, 10) || 0;
+        if (z >= topZ) { topZ = z; top = el; }
+    });
+    return top;
+}
 function showBottomToast(message, icon = 'fa-info-circle', iconColor = '#f87171') {
+    if (isRoomTourActive()) {
+        bottomToastQueue.push([message, icon, iconColor]);
+        return;
+    }
+    renderBottomToast(message, icon, iconColor);
+}
+function renderBottomToast(message, icon, iconColor) {
     const stacked = document.querySelectorAll('.bottom-toast').length;
     const el = document.createElement('div');
     el.className = 'bottom-toast';
     el.style.setProperty('--toast-offset', `${stacked * 52}px`);
+    const openSheet = topMostOpenSheetEl();
+    if (openSheet) {
+        const r = openSheet.getBoundingClientRect();
+        const clearance = Math.max(16, window.innerHeight - r.top + 10);
+        el.style.bottom = `calc(${clearance}px + var(--toast-offset, 0px))`;
+    }
     el.innerHTML = `<i class="fas ${icon}" style="color:${iconColor}"></i><span>${escapeHtml(message)}</span>`;
     document.body.appendChild(el);
     setTimeout(() => {
@@ -11050,6 +11484,9 @@ function showProfileHubSettingsSheet() {
                     <button class="profile-hub-settings-row" id="profile-hub-full-settings-btn"><i class="fas fa-user-cog"></i><span>الحساب والخصوصية والمزيد</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
                     <button class="profile-hub-settings-row" id="profile-hub-badges-btn"><i class="fas fa-certificate text-yellow-400"></i><span>الشارات</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
                     <button class="profile-hub-settings-row" id="profile-hub-frame-shop-btn"><i class="fas fa-crown" style="color:#fbbf24"></i><span>متجر الإطارات</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
+                    ${document.body.classList.contains('in-voice-room') ? `
+                    <button class="profile-hub-settings-row" id="profile-hub-replay-tour-btn"><i class="fas fa-compass text-cyan-400"></i><span>إعادة الجولة</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
+                    ` : ''}
                     ${['عام', 'التنبيهات', 'اللغة', 'ذاكرة نظيفة', 'جودة الفيديو', 'مفضّلة'].map(label => `
                         <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
                     `).join('')}
@@ -11082,6 +11519,10 @@ function showProfileHubSettingsSheet() {
     document.getElementById('profile-hub-frame-shop-btn')?.addEventListener('click', () => {
         modal.remove();
         showFrameShopModal();
+    });
+    document.getElementById('profile-hub-replay-tour-btn')?.addEventListener('click', () => {
+        modal.remove();
+        replayRoomTourFromSettings();
     });
     modal.querySelectorAll('.profile-hub-settings-soon').forEach(btn => {
         btn.addEventListener('click', () => showNotification(`قسم "${btn.dataset.label}" قيد إعادة الهيكلة، قريباً جداً`, 'info'));
@@ -11926,7 +12367,7 @@ async function showMiniProfileModal(userId) {
                 <div class="bg-gradient-to-b from-gray-800 to-gray-900 rounded-t-2xl shadow-2xl w-full max-w-md text-white border-t border-x border-purple-500/25 overflow-hidden animate-[slideUp_0.25s_ease-out]" style="max-height:80vh; overflow-y:auto;">
 
                     <div class="relative bg-gradient-to-r from-purple-700/30 to-pink-700/25 pt-5 pb-3 px-4 text-center">
-                        ${avatarHTML({ src: profileUser.profileImage, frameClass: profileUser.activeFrameClass, sizeClass: 'w-16 h-16 mx-auto mini-profile-modal-avatar', extraPhotoClass: 'border-4 border-gray-900 shadow-lg cursor-pointer hover:opacity-90 transition', photoAttrs: ` id="mini-profile-avatar-img" data-user-id="${profileUser._id}" title="عرض الملف الكامل"` })}
+                        ${avatarHTML({ src: profileUser.profileImage, name: profileUser.username, userId: profileUser._id, fetchSize: 64, frameClass: profileUser.activeFrameClass, sizeClass: 'w-16 h-16 mx-auto mini-profile-modal-avatar', extraPhotoClass: 'border-4 border-gray-900 shadow-lg cursor-pointer hover:opacity-90 transition', photoAttrs: ` id="mini-profile-avatar-img" data-user-id="${profileUser._id}" title="عرض الملف الكامل" loading="lazy" decoding="async"`, wrapStyle: '--size:64px' })}
                         <h2 class="text-sm font-bold mt-4 flex items-center justify-center gap-1">${escapeHtml(profileUser.username)} ${getAgentBadgeHTML(profileUser.isAgent)} ${renderAdminBadgeHTML(profileUser)}</h2>
                         <div class="text-[10px] text-gray-300 mt-1 cursor-pointer inline-flex items-center gap-1.5 copy-id-btn bg-black/25 px-2 py-0.5 rounded-full">
                            <i class="fas fa-id-card"></i>
@@ -14738,7 +15179,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 <div class="gsheet-to">
                     <span class="gsheet-to-label">إلى</span>
                     <div class="gsheet-recips" id="gsheet-recips"></div>
-                    <button type="button" class="gsheet-allbtn" id="gsheet-allbtn">كل المقاعد</button>
+                    <button type="button" class="gsheet-allbtn" id="gsheet-allbtn">الكل</button>
                 </div>
                 <div class="gsheet-wealth" id="gsheet-wealth">
                     <div class="gsheet-wtop">
@@ -14816,17 +15257,21 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             // ✅ هيكل تحميل مؤقت لصف المستلمين فقط حتى تصل مقاعد الغرفة (لا علاقة له بكاش
             // الكتالوج أعلاه) — يمنع ظهور رسالة "لا يوجد أحد قاعد" خاطئة قبل أن نعرف فعلياً
             if (!recipientsLoaded) {
-                box.innerHTML = Array.from({ length: 4 }).map(() => '<span class="skeleton-shimmer" style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:inline-block;"></span>').join('');
+                box.innerHTML = Array.from({ length: 4 }).map(() => '<span class="skeleton-shimmer" style="width:38px;height:38px;border-radius:50%;flex-shrink:0;display:inline-block;"></span>').join('');
                 return;
             }
-            // 🐛 إصلاح (مراجعة المرحلة 2): <img src=""> مباشرة تُنتج أيقونة صورة مكسورة — نفس
-            // مكوّن avatarHTML الموحَّد المُستخدَم بالمقاعد نفسها (DEFAULT_AVATAR_URL احتياطي +
-            // إطار المستخدم الفعلي إن وُجد)، بحجم 32px عبر --size بدل أي سمة حجم جاهزة
+            // ✅ بند 3 (room-ux-v2 — تطابق docs/design/room-ux-prototype.html::recipsHTML بالحرف):
+            // 38px ثابتة للجميع (بدل 32px)، شارة رقم المقعد أو 👑 للمضيف فوق الصورة، والاسم تحتها
+            // مقصوصاً بـ"..." — نفس مكوّن avatarHTML الموحَّد (DEFAULT fallback + إطار المستخدم)
             box.innerHTML = seatedUsers.length === 0
                 ? '<span class="text-[11px] text-gray-500">لا يوجد أحد قاعد على مقعد حالياً</span>'
                 : seatedUsers.map(u => `
                     <button type="button" class="gsheet-rc" data-user-id="${u.id}" title="${escapeHtml(u.username)}" aria-pressed="${selectedUserIds.has(u.id)}">
-                        ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, wrapStyle: '--size:32px', photoAttrs: ' alt=""' })}
+                        <span class="gsheet-rc-wrap">
+                            ${avatarHTML({ src: u.profileImage, name: u.username, userId: u.id, fetchSize: 38, frameClass: u.activeFrameClass, wrapStyle: '--size:38px', photoAttrs: ' alt="" loading="lazy" decoding="async"' })}
+                            ${u.id === hostId ? '<span class="gsheet-rc-sn gsheet-rc-crown">👑</span>' : (u.seatNumber ? `<span class="gsheet-rc-sn">${u.seatNumber}</span>` : '')}
+                        </span>
+                        <span class="gsheet-rc-name">${escapeHtml(u.username || '')}</span>
                     </button>
                 `).join('');
             box.querySelectorAll('.gsheet-rc').forEach(btn => {
@@ -15125,7 +15570,9 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         preloadGiftThumbnails(shopData);
 
         const roomRes = await roomPromise;
-        seatedUsers = (roomRes.seats || []).filter(s => s.user && s.user.id !== myIdStr).map(s => s.user);
+        // ✅ بند 3 بمراجعة room-ux-v2: seatNumber يبقى ملتصقاً بكل مستخدم هنا (بدل ...map(s=>s.user)
+        // التي كانت تُسقطه) — صف المستلمين الجديد يعرضه كشارة فوق كل صورة (أو 👑 للمضيف)
+        seatedUsers = (roomRes.seats || []).filter(s => s.user && s.user.id !== myIdStr).map(s => ({ ...s.user, seatNumber: s.seatNumber }));
         const hostId = roomRes.host ? (roomRes.host._id || roomRes.host).toString() : null;
         // ✅ presetTarget قد يكون مستمعاً لم يجلس على مقعد بعد (أُهدي من ملفه الشخصي) — يُضاف
         // لصف المستلمين هنا حتى لو لم يكن بقائمة الجالسين، كي يبقى ظاهراً/قابلاً للتبديل
@@ -15571,7 +16018,7 @@ function startGiftComboSession(ctx) {
     bannerEl.className = 'gfx-banner';
     bannerEl.id = 'gfx-banner';
     bannerEl.innerHTML = `
-        <span class="gfx-banner-av">${avatarHTML({ src: myUser.profileImage, wrapStyle: '--size:32px' })}</span>
+        <span class="gfx-banner-av">${avatarHTML({ src: myUser.profileImage, name: myUser.username, userId: myUser._id, fetchSize: 32, wrapStyle: '--size:32px', photoAttrs: ' loading="lazy" decoding="async"' })}</span>
         <span class="gfx-banner-txt"><b>أنت</b>إلى ${toLabel}</span>
         <span class="gfx-banner-gift">${giftEmojiOrImgHTML(gift, 28, 64)}</span>
         <span class="gfx-banner-x" id="gfx-banner-x">×0</span>
@@ -16782,13 +17229,32 @@ function appendRoomGiftChatMessage({ fromUsername, toUsername, giftName, giftIco
     el.className = 'room-chat-message room-chat-gift-bubble';
     const qtyNum = quantity || 0;
     const qtyText = qtyNum > 1 ? `×${qtyNum.toLocaleString('en-US')} ` : '';
-    const iconHtml = giftImage ? `<img src="${giftImage}" class="room-chat-gift-inline-img" alt="">` : `<span>${giftIcon || '🎁'}</span>`;
+    // 🛡️ أمان (توحيد المسار الآمن — راجع wireGiftImgFallback): giftImage/giftIcon هنا قد تصلان
+    // من صدى بثّ عام (مستخدم آخر، قد تكون هدية مخصّصة صمّمها هو) — غير موثوقتين. العنصر يُبنى
+    // بسلك DOM مباشر (src كخاصية، لا كنص HTML) بدل تضمينها خام داخل innerHTML كما كان سابقاً —
+    // لا سياق HTML يُكسَر مهما كانت القيمة، ونفس احتياط giftImg بخطوتين (أصل كامل ثم إيموجي)
     el.innerHTML = `
         <i class="fas fa-gift room-chat-gift-bubble-icon"></i>
         <p class="room-chat-msg-line">
-            <b>${escapeHtml(fromUsername)}</b> أرسل <span class="room-chat-gift-qty">${qtyText}</span>${escapeHtml(giftName)} ${iconHtml} إلى <b class="room-chat-gift-to">${escapeHtml(toUsername)}</b>
+            <b>${escapeHtml(fromUsername)}</b> أرسل <span class="room-chat-gift-qty">${qtyText}</span>${escapeHtml(giftName)} <span class="room-chat-gift-icon-slot"></span> إلى <b class="room-chat-gift-to">${escapeHtml(toUsername)}</b>
         </p>
     `;
+    const iconSlot = el.querySelector('.room-chat-gift-icon-slot');
+    const safeGiftImage = isHttpsImageUrl(giftImage) ? giftImage : null;
+    if (safeGiftImage) {
+        const img = document.createElement('img');
+        img.className = 'room-chat-gift-inline-img';
+        img.src = giftImg(safeGiftImage, 16);
+        img.alt = '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        wireGiftImgFallback(img, safeGiftImage, giftIcon || '🎁');
+        iconSlot.appendChild(img);
+    } else {
+        const span = document.createElement('span');
+        span.textContent = giftIcon || '🎁';
+        iconSlot.appendChild(span);
+    }
     box.appendChild(el);
     box.scrollTop = box.scrollHeight;
     while (box.children.length > 60) box.firstElementChild.remove(); // ✅ نفس سقف 60 رسالة بالـDOM لدردشة الغرفة
@@ -16937,7 +17403,9 @@ function gfxUpdateSideBanner(data) {
         setTimeout(() => oldest.el.remove(), 420);
     }
 
-    const avatarUrl = isHttpsImageUrl(data.fromProfileImage) ? data.fromProfileImage : DEFAULT_AVATAR_URL;
+    // ✅ بند 1: لا احتياط DEFAULT_AVATAR_URL هنا بعد اليوم — بلا صورة صالحة يبقى الحرف الملوَّن
+    // (أسفله) ظاهراً مباشرة بلا أي <img> فوقه إطلاقاً، كما تفعل avatarHTML({name,...}) تماماً
+    const avatarUrl = isHttpsImageUrl(data.fromProfileImage) ? data.fromProfileImage : null;
     const giftImgUrl = isHttpsImageUrl(data.giftImage) ? data.giftImage : null;
     const el = document.createElement('div');
     el.className = 'gfx-banner';
@@ -16947,14 +17415,30 @@ function gfxUpdateSideBanner(data) {
         <span class="gfx-banner-gift">${giftImgUrl ? '' : escapeHtml(data.giftIcon || '🎁')}</span>
         <span class="gfx-banner-x">×${(data.quantity || 1).toLocaleString('en-US')}</span>
     `;
-    const avImg = document.createElement('img');
-    avImg.src = avatarUrl;
-    // 🛡️ طلب صريح (مراجعة PR — صورة المُرسِل بالشريط مكسورة): data-avatar-fallback="1" يُدخلها
-    // ضمن نطاق مستمع onerror العام الموحَّد (راجع تعليقه أعلى الملف — "صور أفاتار خام خارج
-    // avatarHTML" بالحرف هو هذا المسار بالضبط) — رابط حيّ (https://) لكن ميت (404/تعذّر وصول)
-    // يُستبدَل تلقائياً بـDEFAULT_AVATAR_URL مرة واحدة بلا حلقة، بلا أي مستمع إضافي هنا
-    avImg.setAttribute('data-avatar-fallback', '1');
-    el.querySelector('.gfx-banner-av').appendChild(avImg);
+    // 🛡️ بند 1 (توحيد الأفاتار — room-ux-v2): نفس احتياط "الحرف الأول على لون ثابت" الذي
+    // تولِّده avatarHTML({name,...}) بالضبط، لكن ببناء DOM مباشر (لا innerHTML) — avatarUrl هنا
+    // من بيانات بثّ مستخدم آخر (غير موثوقة)، فتمريرها كسلسلة نصّية داخل قالب HTML (كما تفعل
+    // avatarHTML) يفتح XSS لو احتوت على حرف اقتباس يكسر السمة؛ التعيين بخاصية .src مباشرة هنا
+    // آمن بنيوياً (المتصفح لا يُفسِّرها كـHTML إطلاقاً) — نفس نمط isHttpsImageUrl المستخدم فعلاً
+    // لصور الهدايا من بثّ الآخرين بهذا الملف
+    const avWrap = el.querySelector('.gfx-banner-av');
+    const avatarSpan = document.createElement('span');
+    avatarSpan.className = 'avatar ava-init';
+    avatarSpan.style.cssText = `--size:32px;--avi-bg:${avatarInitialColor(data.fromUserId != null ? data.fromUserId : data.fromUsername)}`;
+    const initialSpan = document.createElement('span');
+    initialSpan.className = 'avatar__initial';
+    initialSpan.setAttribute('aria-hidden', 'true');
+    initialSpan.textContent = avatarInitialChar(data.fromUsername);
+    avatarSpan.appendChild(initialSpan);
+    if (avatarUrl) {
+        const avImg = document.createElement('img');
+        avImg.className = 'avatar__photo avatar__photo--fallbackable';
+        avImg.src = giftImg(avatarUrl, 32); // ✅ بند 1: w=2×حجم العرض (32px) من Cloudinary، لا الأصل كامل الحجم
+        avImg.loading = 'lazy';
+        avImg.decoding = 'async';
+        avatarSpan.appendChild(avImg);
+    }
+    avWrap.appendChild(avatarSpan);
     if (giftImgUrl) {
         // 🛡️ بند 2ج: اسم محلي مختلف عمداً (giftImgEl) — giftImg أصبحت دالة التحويل العامة أعلى
         // الملف، واستخدام الاسم نفسه هنا كان يُظلِّلها (shadowing) داخل نطاق هذي الدالة
@@ -21505,7 +21989,7 @@ function displayMessage(message) {
     }
 
                 messageElement.innerHTML = `
-        ${avatarHTML({ src: message.sender.profileImage, frameClass: message.sender.activeFrameClass, sizeClass: 'w-7 h-7 flex-shrink-0', extraPhotoClass: 'cursor-pointer hover:ring-2 hover:ring-purple-400', photoAttrs: ` alt="${escapeHtml(message.sender.username)}" data-user-id="${message.sender._id}"` })}
+        ${avatarHTML({ src: message.sender.profileImage, name: message.sender.username, userId: message.sender._id, fetchSize: 28, frameClass: message.sender.activeFrameClass, sizeClass: 'w-7 h-7 flex-shrink-0', extraPhotoClass: 'cursor-pointer hover:ring-2 hover:ring-purple-400', photoAttrs: ` alt="${escapeHtml(message.sender.username)}" data-user-id="${message.sender._id}" loading="lazy" decoding="async"`, wrapStyle: '--size:28px' })}
         <div class="min-w-0 flex-1">
             ${replyHTML}
             <p class="font-bold text-[11px] leading-tight ${isMyMessage ? 'text-yellow-300' : 'text-purple-300'}">${escapeHtml(message.sender.username)}</p>

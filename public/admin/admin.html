@@ -36,6 +36,7 @@
                                 <li class="menu-item" data-page="support"><i class="fas fa-life-ring"></i><span>تذاكر الدعم</span></li>
                 <li class="menu-item" data-page="logs"><i class="fas fa-history"></i><span>سجلات النظام</span></li>
                 <li class="menu-item" data-page="client-errors"><i class="fas fa-bug"></i><span>أخطاء المستخدمين</span></li>
+                <li class="menu-item" data-page="client-compat"><i class="fas fa-globe"></i><span>توافق المتصفحات</span></li>
                 <li class="menu-item" data-page="settings"><i class="fas fa-cog"></i><span>الإعدادات</span></li>
             </ul>
 
@@ -300,6 +301,31 @@
                 </div>
                 <div id="clientErrorsListContainer" class="table-responsive p-3"></div>
                 <div class="pagination-container"><ul class="pagination" id="clientErrorsPagination"></ul></div>
+            </div>
+
+            <!-- Client Browser Compat (room-ux-v2 بند 5) -->
+            <div id="client-compat-page" class="page">
+                <div class="page-header">
+                    <h1><i class="fas fa-globe"></i> توافق المتصفحات</h1>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card primary">
+                        <div class="stat-icon"><i class="fas fa-triangle-exclamation"></i></div>
+                        <div class="stat-info"><h3 id="compatTotalCount">0</h3><p>زيارات بمتصفح غير مدعوم (آخر 90 يوماً)</p></div>
+                    </div>
+                </div>
+                <h2 class="h6 mt-3 mb-2 px-3"><i class="fas fa-layer-group"></i> حسب الفئة</h2>
+                <div id="compatByCategoryContainer" class="table-responsive p-3"></div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h2 class="h6 mt-3 mb-2 px-3"><i class="fas fa-browser"></i> حسب المتصفح والإصدار</h2>
+                        <div id="compatByBrowserContainer" class="table-responsive p-3"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <h2 class="h6 mt-3 mb-2 px-3"><i class="fas fa-puzzle-piece"></i> حسب الميزة الناقصة</h2>
+                        <div id="compatByFeatureContainer" class="table-responsive p-3"></div>
+                    </div>
+                </div>
             </div>
 
             <!-- Settings -->
