@@ -153,7 +153,11 @@
     <!-- ✅ Cropper.js — خفيف (~15kb)، بلا اعتماديات؛ اختياري تماماً (الكود بـapp.js يتحقق
          من وجود window.Cropper قبل استخدامه ويرفع الملف الأصلي دون اقتصاص لو تعذّر تحميلها) -->
     <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js" defer></script>
-    <script src="/js/app.js"></script>
+    <!-- 🛡️ room-ux-v2 (بند 5): بوابة فحص الميزات الحرجة — ملف خارجي عادي (لا inline، يحترم CSP
+         الحالية script-src 'self' بلا أي تعديل عليها) يُحمَّل ويُنفَّذ أولاً؛ هو من يحمّل app.js
+         ديناميكياً فقط عند اجتياز الفحص، بدل وسم <script src="/js/app.js"> ثابت هنا كما كان —
+         متصفح يفشل فحصاً حرجاً واحداً لا يُحمَّل له app.js إطلاقاً، فقط شاشة التحديث -->
+    <script src="/js/browser-gate.js"></script>
     <div id="game-container"></div>
     <script src="/js/register-sw.js"></script>
 </body>

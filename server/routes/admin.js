@@ -61,6 +61,7 @@ router.post('/suggestions/:suggestionId/resolve', adminController.resolveSuggest
 
 router.get('/logs', adminController.getLogs);
 router.get('/client-errors', adminController.getClientErrors);
+router.get('/client-compat', adminController.getClientCompatStats);
 
 router.get('/settings', adminController.getSystemSettings);
 router.post('/settings', adminController.updateSystemSettings);

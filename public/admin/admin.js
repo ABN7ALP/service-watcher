@@ -234,6 +234,7 @@ class AdminDashboard {
             support: () => this.loadSupportTickets(),
             logs: () => this.loadLogs(1),
             'client-errors': () => this.loadClientErrors(1),
+            'client-compat': () => this.loadClientCompat(),
             settings: () => this.loadSettings()
         };
         map[page]?.();
@@ -1514,6 +1515,45 @@ class AdminDashboard {
             }));
 
             this.renderPagination('clientErrorsPagination', data.totalPages, data.currentPage, (p) => this.loadClientErrors(p, q));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    async loadClientCompat() {
+        try {
+            const data = await this.api('GET', '/client-compat');
+            document.getElementById('compatTotalCount').textContent = data.total || 0;
+
+            const FEATURE_LABELS = {
+                containerQueries: 'استعلامات الحاوية (container queries)',
+                hasSelector: 'محدّد :has()',
+                aspectRatio: 'aspect-ratio',
+                webSocket: 'WebSocket',
+                webRTC: 'WebRTC',
+                optionalChaining: 'الربط الاختياري (?.)'
+            };
+
+            const bc = document.getElementById('compatByBrowserContainer');
+            bc.innerHTML = !data.byBrowser || !data.byBrowser.length
+                ? '<div class="empty-state"><i class="fas fa-check-circle fa-2x"></i><p>لا زيارات بمتصفح غير مدعوم مسجَّلة</p></div>'
+                : `<table class="table table-hover"><thead><tr><th>المتصفح</th><th>الإصدار</th><th>العدد</th><th>آخر ظهور</th></tr></thead><tbody>
+                    ${data.byBrowser.map(b => `
+                        <tr>
+                            <td>${escapeHtml(b.uaFamily || 'غير معروف')}</td>
+                            <td>${escapeHtml(b.uaVersion || '-')}</td>
+                            <td>${b.count}</td>
+                            <td>${formatDate(b.lastSeen)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody></table>`;
+
+            const fc = document.getElementById('compatByFeatureContainer');
+            fc.innerHTML = !data.byFeature || !data.byFeature.length
+                ? '<div class="empty-state"><i class="fas fa-check-circle fa-2x"></i><p>لا ميزات ناقصة مسجَّلة</p></div>'
+                : `<table class="table table-hover"><thead><tr><th>الميزة</th><th>العدد</th></tr></thead><tbody>
+                    ${data.byFeature.map(f => `
+                        <tr><td>${escapeHtml(FEATURE_LABELS[f.feature] || f.feature)}</td><td>${f.count}</td></tr>
+                    `).join('')}
+                </tbody></table>`;
         } catch (error) { this.showToast(error.message, 'error'); }
     }
 

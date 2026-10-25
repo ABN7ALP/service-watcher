@@ -64,6 +64,7 @@ async function main() {
         const Gift = require(path.join(ROOT, 'server/models/Gift'));
         const GiftLog = require(path.join(ROOT, 'server/models/GiftLog'));
         const FanClubMembership = require(path.join(ROOT, 'server/models/FanClubMembership'));
+        const ClientCompatLog = require(path.join(ROOT, 'server/models/ClientCompatLog'));
 
         let gift = null;
         for (let i = 0; i < 100 && !gift; i++) {
@@ -103,6 +104,26 @@ async function main() {
         console.log('🌐 إقلاع Chromium حقيقي...');
         const { chromium } = require('playwright');
         browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+
+        console.log('🚫 بوابة "متصفح غير مدعوم" (بند 5) — محاكاة فشل الفحص (CSS.supports مُزيَّفة + RTCPeerConnection محذوفة) قبل أي سكربت...');
+        const gatePage = await browser.newPage({ viewport: { width: 375, height: 812 } });
+        const gateReqUrls = [];
+        gatePage.on('request', (req) => gateReqUrls.push(req.url()));
+        await gatePage.addInitScript(() => {
+            window.CSS.supports = function () { return false; };
+            delete window.RTCPeerConnection;
+        });
+        await gatePage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
+        await gatePage.waitForTimeout(300);
+        const unsupGateVisible = await gatePage.locator('.unsup-gate').isVisible().catch(() => false);
+        const appJsRequested = gateReqUrls.some(u => u.endsWith('/js/app.js'));
+        const compatReported = await ClientCompatLog.countDocuments();
+        console.log(`   شاشة "متصفح غير مدعوم" ظهرت: ${unsupGateVisible ? '✅' : '❌'} | app.js لم يُطلَب إطلاقاً: ${appJsRequested ? '❌ (طُلِب رغم الفشل!)' : '✅'} | عدّاد /api/client-compat سُجِّل: ${compatReported > 0 ? '✅' : '❌'}`);
+        await require('fs').promises.mkdir(OUT_DIR, { recursive: true });
+        await gatePage.screenshot({ path: path.join(OUT_DIR, '5-unsupported-browser-gate.png') });
+        console.log(`📸 حُفِظت: ${path.join(OUT_DIR, '5-unsupported-browser-gate.png')}`);
+        await gatePage.close();
+
         const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
         page.on('pageerror', (err) => { consoleErrors.push(`[pageerror] ${err.message}`); });
         page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(`[console:error] ${msg.text()}`); });
@@ -190,12 +211,25 @@ async function main() {
         await page.screenshot({ path: path.join(OUT_DIR, '3-gift-sheet-recipients-row.png') });
         console.log(`📸 حُفِظت: ${path.join(OUT_DIR, '3-gift-sheet-recipients-row.png')}`);
 
+        console.log('🛠️ لوحة التحكم — إجماليات توافق المتصفحات (بند 5)...');
+        const adminUser = await User.create({
+            customId: `SM${suffix}A`, username: `smoke_admin_${suffix}`, email: `smoke_admin_${suffix}@smoketest.local`,
+            password: 'SmokeTest123!', gender: 'male', birthDate: new Date('1990-01-01'), coins: 0, isAdmin: true
+        });
+        const adminToken = jwt.sign({ id: adminUser._id.toString() }, JWT_SECRET);
+        const compatStatsRes = await fetch(`http://127.0.0.1:${PORT}/api/admin/client-compat`, { headers: { 'Authorization': `Bearer ${adminToken}` } });
+        const compatStatsBody = await compatStatsRes.json();
+        const adminStatsOk = compatStatsRes.ok && compatStatsBody.success && compatStatsBody.total > 0
+            && Array.isArray(compatStatsBody.byBrowser) && compatStatsBody.byBrowser.length > 0
+            && Array.isArray(compatStatsBody.byFeature) && compatStatsBody.byFeature.length > 0;
+        console.log(`   GET /api/admin/client-compat: total=${compatStatsBody.total}, byBrowser[0]=${JSON.stringify(compatStatsBody.byBrowser && compatStatsBody.byBrowser[0])} — ${adminStatsOk ? '✅' : '❌'}`);
+
         clearTimeout(watchdog);
         if (consoleErrors.length) {
             console.error('\n💥 أخطاء console/pageerror ظهرت خلال الفحص:');
             consoleErrors.forEach(e => console.error('   ' + e));
             process.exitCode = 1;
-        } else if (!podiumVisible || !mineRowVisible || !seatedSectionVisible || !hostTagVisible || !filteredVisible || !recipSeatBadgeVisible || !recipNameVisible || !tourStepVisible || !dockLabelsVisible) {
+        } else if (!podiumVisible || !mineRowVisible || !seatedSectionVisible || !hostTagVisible || !filteredVisible || !recipSeatBadgeVisible || !recipNameVisible || !tourStepVisible || !dockLabelsVisible || !unsupGateVisible || appJsRequested || !compatReported || !adminStatsOk) {
             console.error('\n💥 فحص بصري فشل (عنصر متوقَّع غير ظاهر) — راجع السطور أعلاه');
             process.exitCode = 1;
         } else {
@@ -203,6 +237,10 @@ async function main() {
         }
     } catch (err) {
         console.error('💥 فشل الفحص:', err);
+        if (consoleErrors.length) {
+            console.error('--- consoleErrors جُمعت قبل الفشل ---');
+            consoleErrors.forEach(e => console.error('   ' + e));
+        }
         process.exitCode = 1;
     } finally {
         clearTimeout(watchdog);
