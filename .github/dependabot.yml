@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    # ✅ طلب صريح: لا تُدمَج تحديثات minor/patch تلقائياً (لا auto-merge هنا إطلاقاً — هذا الملف
+    # فقط يفتح PRs، الدمج يبقى قراراً بشرياً دوماً كي لا يُسقط ترقية كاسرة الموقع بلا مراجعة)،
+    # فقط تُجمَّع ببعضها بطلب سحب واحد بدل PR منفصل لكل حزمة — يقلّل الضوضاء على المراجع
+    groups:
+      minor-and-patch:
+        applies-to: "version-updates"
+        update-types:
+          - "minor"
+          - "patch"
+    # ✅ تحديثات الإصدار الرئيسي (major) تبقى خارج التجميع أعلاه عمداً — PR منفصل لكل واحدة
+    # صراحة (قد تكسر التوافق، تستحق مراجعة مستقلة لا أن تضيع ضمن مجموعة)
