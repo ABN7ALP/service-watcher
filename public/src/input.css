@@ -7074,4 +7074,22 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
     .gfx-shaking { animation: none !important; }
 }
 
+/* 🛡️ طلب صريح (مراجعة الأداء — بند 3): وضع أداء الأجهزة الضعيفة (deviceMemory≤3GB أو
+   hardwareConcurrency≤4 نواة أو تقليل الحركة — راجع isWeakDevice بـapp.js، يُضاف صنفه هنا
+   على body عند دخول الغرفة). backdrop-filter مكلف فعلياً (يُعاد حسابه بكل إعادة رسم لكل بكسل
+   خلفه) — يُزال كلياً من كل عناصر الغرفة/شيت الهدايا على هذي الأجهزة، ويستبدل شريط إعلان
+   الهدية حركة دخول أبسط (تلاشي فقط، لا قوس مرن) بدل الحركة الكاملة */
+body.gfx-weak-device .room-chat-bubble-default,
+body.gfx-weak-device .room-chat-input-pill,
+body.gfx-weak-device .room-chat-input-pill button.room-chat-send-active,
+body.gfx-weak-device .gfx-banner,
+body.gfx-weak-device .gfx-legend-t,
+body.gfx-weak-device .gfx-top-toast,
+body.gfx-weak-device.in-voice-room .pk__computing {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+body.gfx-weak-device .gfx-banner { animation: gfxBannerInSimple 0.15s ease-out both; }
+@keyframes gfxBannerInSimple { from { opacity: 0; } }
+
 

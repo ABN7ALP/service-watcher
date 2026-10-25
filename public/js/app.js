@@ -2538,6 +2538,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     // ✅ وضع "الغرفة ملء الشاشة" — يخفي هيدر المنصة والتنقّل بالكامل، بالضبط زي التطبيقات المشهورة
     function enterFullscreenRoomMode() {
         document.body.classList.add('in-voice-room');
+        document.body.classList.toggle('gfx-weak-device', isWeakDevice());
         setupVoiceRoomKeyboardInset();
     }
 
@@ -2599,6 +2600,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
     function exitFullscreenRoomMode() {
         document.body.classList.remove('in-voice-room');
+        document.body.classList.remove('gfx-weak-device');
         document.getElementById('dm-floating-bubble')?.remove();
         clearRoomBackground();
         teardownVoiceRoomKeyboardInset();
@@ -9775,6 +9777,9 @@ function showXpGainAnimation(amount) {
 
         appendRoomGiftChatMessage(data);
         gfxUpdateSideBanner(data);
+        // 🛡️ طلب صريح (رؤية الهدايا للآخرين — بند 2ب): بقية الحاضرين يرون الآن الهدية "تطير"
+        // لمقعد المستلم أيضاً، بنفس حركة قوس المُرسِل بالضبط — راجع gfxFlyRemoteGiftToSeat
+        gfxFlyRemoteGiftToSeat(data);
 
         // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري د): تحفيز الأسطورية هنا — داخل دفعة
         // room-gift-announcement المُجمَّعة (نافذة 250ms) — حُذف نهائياً. حدث gift:legendary
@@ -14510,9 +14515,17 @@ function preloadGiftThumbnails(data) {
     urls.forEach(url => {
         if (giftThumbnailsPreloaded.has(url)) return;
         giftThumbnailsPreloaded.add(url);
-        const img = new Image();
-        img.src = url;
-        img.decode?.().catch(() => {});
+        // 🛡️ طلب صريح (مراجعة الأداء — بند 2ج): يُحمَّل مسبقاً بحجمي "الشريط" (64) و"الطيران"
+        // (80) المصغَّرين فقط عبر giftImg — هذان فعلياً ما يظهر فوراً بلا إنذار عند أي حدث
+        // هدية حقيقي (شريط/أيقونة طائرة)، لا الأصل الكامل (مئات الكيلوبايتات لصورة ستُعرض
+        // بأقل من 70px). الأصل الكامل يُحمَّل مسبقاً فقط للأسطورية بملء الشاشة — راجع
+        // preloadLegendaryGiftAssets؛ شبكة شيت الهدايا نفسها كسولة الآن (loading=lazy) ولا
+        // تحتاج تحميلاً مسبقاً هنا إطلاقاً
+        [64, 80].forEach(size => {
+            const img = new Image();
+            img.src = giftImg(url, size);
+            img.decode?.().catch(() => {});
+        });
     });
 }
 
@@ -14687,13 +14700,38 @@ const GSHEET_QTY_LABELS = { 1: '', 10: 'عشرة', 66: 'سلامة', 99: 'دوا
 // اختياري ({id, username, profileImage}) — المستلم الافتراضي عند الفتح من ملف شخص محدَّد
 // (المقعد المنقور)؛ يُدمَج بصف المستلمين نفسه (لا يُقفَل على مستلم واحد كالتصميم القديم)،
 // فيبقى بإمكان المستخدم توسيع التحديد لمقاعد أخرى من نفس الشيت
-async function showRoomGiftModal(roomId, presetTarget = null) {
-    const existing = document.getElementById('room-gift-modal');
-    if (existing) existing.remove();
+// 🛡️ طلب صريح (مراجعة الأداء — بند 3): كان الشيت يُفكَّك (remove) ويُعاد بناؤه بالكامل (الهيكل
+// الثابت + هياكل التحميل المؤقتة + كل مستمعاته الثابتة) بكل فتح — عبء DOM/تخطيط حقيقي يتكرر
+// بلا داعٍ (المحتوى الثابت نفسه حرفياً كل مرة)، يتضاعف أثره على الأجهزة الضعيفة. يُبنى الهيكل
+// الثابت مرة واحدة فقط الآن ويُعاد تدويره (hide/show)؛ فقط المحتوى المتغيّر (المستلمون/الشبكة/
+// الكمية/شريط الثروة) يُعاد رسمه بكل فتح كالسابق تماماً. المستمعات الثابتة (الكل/تبديل الكمية/
+// إرسال) تُربَط مرة واحدة فقط وتستدعي أحدث نسخة من المعالجات الحقيقية عبر هذي الوسيطة (تُعاد
+// كتابتها بكل فتح) بدل تكرار addEventListener على نفس الزر في كل مرة
+let roomGiftModalHandlers = { onAllBtn: null, onQtyToggle: null, onSend: null };
+function hideRoomGiftModal() {
+    document.getElementById('room-gift-modal')?.classList.add('hidden');
+}
 
+async function showRoomGiftModal(roomId, presetTarget = null) {
     const currentUser = JSON.parse(localStorage.getItem('user')) || {};
 
-    const shellHTML = `
+    let modal = document.getElementById('room-gift-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        document.getElementById('gsheet-qmenu')?.setAttribute('hidden', '');
+        // ✅ إعادة تشغيل حركة الفتح (transform فقط — translateY، راجع @keyframes slideUp) على
+        // عنصر موجود أصلاً بالـDOM: إزالة الصنف ثم إعادة إضافته بعد إعادة تدفق قسرية (void
+        // offsetWidth) — نفس حيلة إعادة تشغيل الحركات المستخدمة بالملف (راجع .bump)
+        const sheetEl = modal.querySelector('.gsheet');
+        if (sheetEl) {
+            sheetEl.classList.remove('animate-[slideUp_0.25s_ease-out]');
+            void sheetEl.offsetWidth;
+            sheetEl.classList.add('animate-[slideUp_0.25s_ease-out]');
+        }
+    }
+
+    if (!modal) {
+        const shellHTML = `
         <div id="room-gift-modal" class="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-[320] p-0 md:p-2">
             <div class="gsheet flex flex-col animate-[slideUp_0.25s_ease-out]">
                 <div class="gsheet-grab"></div>
@@ -14729,12 +14767,18 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 </div>
             </div>
         </div>
-    `;
+        `;
 
-    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
-    const modal = document.getElementById('room-gift-modal');
-    modal.addEventListener('click', (e) => { if (e.target.id === 'room-gift-modal') modal.remove(); });
-    document.getElementById('gsheet-bal-coin').innerHTML = coinIconHTML(14);
+        document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+        modal = document.getElementById('room-gift-modal');
+        modal.addEventListener('click', (e) => { if (e.target.id === 'room-gift-modal') hideRoomGiftModal(); });
+        document.getElementById('gsheet-bal-coin').innerHTML = coinIconHTML(14);
+        // ✅ مستمعات ثابتة مرة واحدة فقط — تستدعي أحدث نسخة من المعالجات الحقيقية (تُكتب
+        // أدناه بكل فتح) عبر roomGiftModalHandlers، لا تُربَط مجدداً في أي فتح لاحق
+        document.getElementById('gsheet-allbtn').addEventListener('click', () => roomGiftModalHandlers.onAllBtn?.());
+        document.getElementById('gsheet-qbtn').addEventListener('click', () => roomGiftModalHandlers.onQtyToggle?.());
+        document.getElementById('gsheet-send').addEventListener('click', () => roomGiftModalHandlers.onSend?.());
+    }
 
     try {
         const url = roomId === 'main' ? '/api/voice-room' : `/api/voice-room/rooms/${roomId}`;
@@ -14798,14 +14842,14 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             const allBtn = document.getElementById('gsheet-allbtn');
             if (allBtn) allBtn.setAttribute('aria-pressed', seatedUsers.length > 0 && selectedUserIds.size === seatedUsers.length);
         }
-        document.getElementById('gsheet-allbtn').addEventListener('click', () => {
+        roomGiftModalHandlers.onAllBtn = () => {
             if (seatedUsers.length === 0) return;
             selectedUserIds = selectedUserIds.size === seatedUsers.length
                 ? new Set(defaultRecipientIds.length ? defaultRecipientIds : [seatedUsers[0].id])
                 : new Set(seatedUsers.map(u => u.id));
             renderRecips();
             renderWealth();
-        });
+        };
 
         // ✅ طلب صريح (هدايا v2 — المرحلة 4): هدايا المستخدم المخصّصة مُطبَّعة لنفس شكل كروت
         // الكتالوج العادية (id/name/icon/imageUrl/price/discountedPrice/category) كي يعمل
@@ -14845,7 +14889,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         function gsheetCellInner(g, cat) {
             const fallbackIcon = escapeHtml(g.icon || '🎁');
             const img = g.imageUrl
-                ? `<img src="${g.imageUrl}" alt="" data-fallback-icon="${fallbackIcon}" style="width:1.3em;height:1.3em;object-fit:contain">`
+                ? `<img src="${giftImg(g.imageUrl, 96)}" data-gift-original-src="${g.imageUrl}" data-gift-fallback-icon="${fallbackIcon}" alt="" loading="lazy" decoding="async" style="width:1.3em;height:1.3em;object-fit:contain">`
                 : `<span>${fallbackIcon}</span>`;
             return `
                 ${cat.k === 'legendary' ? '<span class="gsheet-tag">أسطوري</span>' : ''}
@@ -14853,14 +14897,6 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 <span class="gsheet-gn">${escapeHtml(g.name)}</span>
                 <span class="gsheet-gp">${coinIconHTML(11)}${(g.discountedPrice || g.price).toLocaleString('en-US')}</span>
             `;
-        }
-        function wireGsheetImgFallback(container) {
-            container.querySelectorAll('.gsheet-gi img[data-fallback-icon]').forEach(img => {
-                img.addEventListener('error', function () {
-                    const span = this.closest('.gsheet-gi');
-                    if (span) span.innerHTML = `<span>${this.dataset.fallbackIcon}</span>`;
-                }, { once: true });
-            });
         }
         function renderGrid() {
             const cat = GSHEET_CATS.find(c => c.k === tab);
@@ -14910,7 +14946,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 });
                 pagesEl.appendChild(pg);
             }
-            wireGsheetImgFallback(pagesEl);
+            wireGiftImgFallbacks(pagesEl); // 🛡️ احتياط بخطوتين (أصل كامل ثم أيقونة) لصور شبكة المتجر
             const dotsEl = document.getElementById('gsheet-dots');
             if (dotsEl) {
                 dotsEl.innerHTML = n > 1 ? Array.from({ length: n }, (_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('') : '';
@@ -14938,10 +14974,10 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 });
             });
         }
-        document.getElementById('gsheet-qbtn').addEventListener('click', () => {
+        roomGiftModalHandlers.onQtyToggle = () => {
             const menu = document.getElementById('gsheet-qmenu');
             if (menu) menu.hidden = !menu.hidden;
-        });
+        };
 
         // ✅ طلب صريح: معاينة شريط الثروة تُحسَب فقط من rules القادمة من السيرفر
         // (senderXpDivisor/requiredXpPerLevel) — لا أي رقم مكتوب يدوياً بالواجهة
@@ -15050,7 +15086,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 openGiftLowBalanceSheet(firstTapCost - (localUser.coins || 0));
                 return;
             }
-            modal.remove();
+            hideRoomGiftModal();
             startGiftComboSession({
                 comboSender,
                 setFxDelegate: (delegate) => { comboFxDelegate = delegate; },
@@ -15063,7 +15099,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 rules
             });
         }
-        document.getElementById('gsheet-send').addEventListener('click', handleSend);
+        roomGiftModalHandlers.onSend = handleSend;
 
         // ✅ عرض فوري: التبويبات/الشبكة/الكمية لا تعتمد على مقاعد الغرفة إطلاقاً — تُرسَم
         // بمجرّد توفّر shopData (من الكاش أعلاه عادةً، بلا أي انتظار شبكة). صف المستلمين/شريط
@@ -15105,7 +15141,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
 
     } catch (error) {
         console.error('[ROOM GIFT] Error:', error);
-        modal.remove();
+        hideRoomGiftModal();
         showNotification('فشل تحميل بيانات الهدايا', 'error');
     }
 }
@@ -15334,9 +15370,64 @@ function teardownGiftComboFx() {
     document.getElementById('gfx-top-toast')?.remove();
 }
 
-function giftEmojiOrImgHTML(gift, px) {
-    if (gift && gift.imageUrl) return `<img src="${gift.imageUrl}" alt="" style="width:${px}px;height:${px}px;object-fit:contain;display:block">`;
+// 🛡️ طلب صريح (مراجعة الأداء — بند 2ج): صورة الهدية الأصلية (شائعة تتجاوز 300-800KB — راجع
+// جدول القياس بوصف الـPR) كانت تُستخدَم خامّة بكل مكان: شبكة المتجر، الشريط الجانبي، الأيقونات
+// الطائرة — عشرات الطلبات الكاملة الحجم لصورة ستُعرض بـ<100px فعلياً. يُحوَّل كل رابط Cloudinary
+// حقيقي (يحوي /upload/) بتحويل f_auto (أفضل صيغة يدعمها المتصفح — WebP/AVIF بدل PNG الأصلي)
+// + q_auto (جودة تلقائية) + w_{size*2} (×2 ثابتة تغطي شاشات retina بوضوح كامل بالحجم المعروض
+// فعلياً، بلا احتياج لارتفاع صريح — هدايا المتجر مربعة/محتواة تقريباً دوماً). أي رابط غير
+// Cloudinary (نادر، احتياطي فقط) يُترَك كما هو بلا أي تحويل — لا خطر تعطّل
+function giftImg(url, size) {
+    if (typeof url !== 'string' || !url) return url;
+    const marker = '/upload/';
+    const idx = url.indexOf(marker);
+    if (idx === -1) return url;
+    const px = Math.max(1, Math.round((size || 0) * 2));
+    return url.slice(0, idx + marker.length) + `f_auto,q_auto,w_${px}/` + url.slice(idx + marker.length);
+}
+
+// ✅ طلب صريح: كل صورة هدية تُعرَض عبر giftImg أعلاه — fetchSize اختياري (96 للشبكة/64
+// للشريط/80 للطيران، راجع مواقع الاستدعاء)؛ بلا تمرير fetchSize تُستخدَم px نفسها (أيقونة
+// صغيرة واحدة لكل جلسة كومبو — زر الكومبو العائم، لا حاجة لسِعة ثابتة خاصة بها). data-gift-*
+// تحمل الأصل الكامل/الأيقونة الاحتياطية لـwireGiftImgFallbacks أدناه (الاحتياط الفعلي بخطوتين)
+function giftEmojiOrImgHTML(gift, px, fetchSize) {
+    if (gift && gift.imageUrl) {
+        const src = giftImg(gift.imageUrl, fetchSize || px);
+        const icon = escapeHtml(gift.icon || '🎁');
+        return `<img src="${src}" data-gift-original-src="${gift.imageUrl}" data-gift-fallback-icon="${icon}" alt="" loading="lazy" decoding="async" style="width:${px}px;height:${px}px;object-fit:contain;display:block">`;
+    }
     return `<span>${escapeHtml((gift && gift.icon) || '🎁')}</span>`;
+}
+
+// 🛡️ طلب صريح (مراجعة PR — صور هدايا مكسورة): احتياط بخطوتين لكل <img> مبنية عبر giftImg() —
+// فشل تحميل النسخة المُحوَّلة (رابط Cloudinary تحويل مرفوض/غير مدعوم لأي سبب — راجع البند
+// الأول بمراجعة PR: مُتحقَّق فعلياً أن الحساب لا يرفضها، لكن هذا احتياط لظروف شبكة/حساب
+// مستقبلية لا نتحكم بها) يُجرِّب الرابط الأصلي الكامل بلا أي تحويل أولاً، فلو فشل الأصل أيضاً
+// تُستبدَل الصورة بأيقونة الهدية النصية (إيموجي) — لا تبقى أيقونة صورة مكسورة أبداً مهما حدث.
+// once:true بكل خطوة يمنع أي حلقة؛ originalSrc/fallbackIcon اختياريان (افتراضياً من data-*
+// للصور المبنية كنص HTML عبر giftEmojiOrImgHTML، أو يُمرَّران مباشرة للصور المبنية بـDOM مباشرة)
+function wireGiftImgFallback(img, originalSrc, fallbackIcon) {
+    if (originalSrc === undefined) originalSrc = img.dataset.giftOriginalSrc;
+    if (fallbackIcon === undefined) fallbackIcon = img.dataset.giftFallbackIcon || '🎁';
+    img.addEventListener('error', function onFirstError() {
+        if (originalSrc) {
+            img.src = originalSrc;
+            img.addEventListener('error', function onSecondError() {
+                const span = document.createElement('span');
+                span.textContent = fallbackIcon;
+                img.replaceWith(span);
+            }, { once: true });
+        } else {
+            const span = document.createElement('span');
+            span.textContent = fallbackIcon;
+            img.replaceWith(span);
+        }
+    }, { once: true });
+}
+// ✅ يمسح كل <img data-gift-original-src> داخل حاوية (بعد إدراجها بالـDOM فعلياً عبر innerHTML)
+// ويربط الاحتياط أعلاه لكل واحدة — يُستدعى بعد أي إدراج يستخدم giftEmojiOrImgHTML
+function wireGiftImgFallbacks(root) {
+    root.querySelectorAll('img[data-gift-original-src]').forEach((img) => wireGiftImgFallback(img));
 }
 
 // ✅ طلب صريح (بند 6 بالمواصفة): يحترم تفضيل تقليل الحركة — نفس اسم/منطق pkPrefersReducedMotion
@@ -15344,6 +15435,39 @@ function giftEmojiOrImgHTML(gift, px) {
 function gfxPrefersReducedMotion() {
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; }
 }
+
+// 🛡️ طلب صريح (مراجعة الأداء — بند 3): كشف جهاز ضعيف تلقائي — أي من: ذاكرة الجهاز ≤3GB، نواة
+// معالج فعّالة ≤4، أو تفضيل تقليل الحركة. يُحسَب مرة واحدة فقط (القيم ثابتة طوال الجلسة) ويُستخدم
+// لتخفيف عناصر الأداء الثقيلة (شرر النار/dpr الكنفاس/عدد الأيقونات الطائرة المتزامن/backdrop-filter/
+// حركة الشريط) — بخلاف gfxPrefersReducedMotion التي تُلغي حركات الكومبو بالكامل، هذي فقط تُخفِّف
+// الحمل بلا إلغاء الميزة نفسها
+const isWeakDevice = (() => {
+    let cached = null;
+    return function isWeakDevice() {
+        if (cached !== null) return cached;
+        try {
+            cached = !!(
+                (navigator.deviceMemory && navigator.deviceMemory <= 3) ||
+                (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
+                gfxPrefersReducedMotion()
+            );
+        } catch (_) { cached = false; }
+        return cached;
+    };
+})();
+
+// 🛡️ طلب صريح (بند 3): حدّ أقصى لعدد أيقونات "الهدية الطائرة" المتزامنة فعلياً على الشاشة
+// (لا فقط تواتر إطلاقها) على الأجهزة الضعيفة — عدّاد مشترك بين طيران المُرسِل المحلي
+// (flyToRecipients) وطيران صدى الغرفة للآخرين (gfxFlyRemoteGiftToSeat)، فلا يتجاوز
+// إجمالي ما يطير معاً على الشاشة 2 بأي لحظة. غير محدود عملياً على الأجهزة العادية
+let gfxActiveFlyCount = 0;
+function gfxFlyGateAcquire() {
+    const limit = isWeakDevice() ? 2 : Infinity;
+    if (gfxActiveFlyCount >= limit) return false;
+    gfxActiveFlyCount++;
+    return true;
+}
+function gfxFlyGateRelease() { gfxActiveFlyCount = Math.max(0, gfxActiveFlyCount - 1); }
 
 // ✅ طلب صريح (مراجعة PR #108 — بند 4): أثناء كومبو حيّ، تُكبَت فقاعة "+XP" العائمة وبطاقة
 // ارتقاء "مستوى الثروة" الكاملة (كانت تتكرر بكل ack/كل مستلم وتُغطي منتصف الغرفة)، ويُجمَّع
@@ -15430,6 +15554,7 @@ function startGiftComboSession(ctx) {
         </div>
     `;
     document.body.appendChild(layer);
+    wireGiftImgFallbacks(layer); // 🛡️ احتياط بخطوتين لأيقونة الهدية بزر الكومبو — راجع wireGiftImgFallback
     const canvas = layer.querySelector('#gfx-canvas');
     const xctx = canvas.getContext('2d');
     const comboEl = layer.querySelector('#gfx-combo');
@@ -15448,10 +15573,11 @@ function startGiftComboSession(ctx) {
     bannerEl.innerHTML = `
         <span class="gfx-banner-av">${avatarHTML({ src: myUser.profileImage, wrapStyle: '--size:32px' })}</span>
         <span class="gfx-banner-txt"><b>أنت</b>إلى ${toLabel}</span>
-        <span class="gfx-banner-gift">${giftEmojiOrImgHTML(gift, 28)}</span>
+        <span class="gfx-banner-gift">${giftEmojiOrImgHTML(gift, 28, 64)}</span>
         <span class="gfx-banner-x" id="gfx-banner-x">×0</span>
     `;
     (document.getElementById('room-gift-lane') || document.body).prepend(bannerEl);
+    wireGiftImgFallbacks(bannerEl); // 🛡️ احتياط بخطوتين لصورة الهدية بشريطي المحلي — راجع wireGiftImgFallback
 
     // ✅ طلب صريح (بند 2 بمراجعة PR #108): سطر دردشة واحد لجلستي الحيّة بأكملها (محلي بالتفاؤل،
     // بلا انتظار صدى السيرفر — الصدى يُتجاهَل بالكامل للمُرسِل نفسه، راجع room-gift-announcement
@@ -15466,7 +15592,7 @@ function startGiftComboSession(ctx) {
     let dpr = 1, VW = 0, VH = 0;
     function sizeCanvas() {
         const r = document.documentElement.getBoundingClientRect();
-        dpr = Math.min(2, window.devicePixelRatio || 1);
+        dpr = isWeakDevice() ? 1 : Math.min(2, window.devicePixelRatio || 1); // 🛡️ بند 3: dpr=1 ثابت على الأجهزة الضعيفة
         VW = r.width; VH = r.height;
         canvas.width = Math.round(VW * dpr);
         canvas.height = Math.round(VH * dpr);
@@ -15477,7 +15603,7 @@ function startGiftComboSession(ctx) {
 
     // ---------- نظام النار/الشرر/الدخان (منسوخ منطقياً عن النموذج الأولي) ----------
     let parts = [], bursts = [], smokes = [];
-    const MAX_PARTS = 900;
+    const MAX_PARTS = isWeakDevice() ? 250 : 900; // 🛡️ بند 3: سقف جزيئات أقل على الأجهزة الضعيفة
     function heatRGB(h) {
         const stops = [[255, 170, 60], [255, 105, 25], [240, 50, 15], [255, 214, 120]];
         h = Math.max(0, Math.min(0.999, h || 0));
@@ -15544,11 +15670,13 @@ function startGiftComboSession(ctx) {
                 const sr = seatWrap.getBoundingClientRect();
                 x1 = sr.left + sr.width / 2 - 13; y1 = sr.top + sr.height / 2 - 13;
             }
+            if (!gfxFlyGateAcquire()) return; // 🛡️ بند 3: الحد الأقصى للطيران المتزامن على الأجهزة الضعيفة
             const f = document.createElement('div');
             f.className = 'gfx-fly';
-            f.innerHTML = giftEmojiOrImgHTML(gift, 26);
+            f.innerHTML = giftEmojiOrImgHTML(gift, 26, 80);
             f.style.left = x0 + 'px'; f.style.top = y0 + 'px';
             document.body.appendChild(f);
+            wireGiftImgFallbacks(f); // 🛡️ احتياط بخطوتين لأيقونة طيراني الخاصة — راجع wireGiftImgFallback
             const midX = (x1 - x0) / 2 + (Math.random() * 60 - 30), midY = Math.min(0, (y1 - y0) / 2) - 60;
             f.animate([
                 { transform: 'translate(0,0) scale(.6)', opacity: 1 },
@@ -15556,6 +15684,7 @@ function startGiftComboSession(ctx) {
                 { transform: `translate(${x1 - x0}px,${y1 - y0}px) scale(.7)`, opacity: 0.9 }
             ], { duration: 620 + k * 40, easing: 'cubic-bezier(.3,.7,.4,1)' }).onfinish = () => {
                 f.remove();
+                gfxFlyGateRelease();
                 if (seatWrap) { seatWrap.classList.remove('gfx-seat-hit'); void seatWrap.offsetWidth; seatWrap.classList.add('gfx-seat-hit'); }
             };
         });
@@ -16682,6 +16811,86 @@ function gfxSetChatLineQuantity(comboId, qty) {
     scheduleChatLineIdleFinalize(comboId);
 }
 
+// 🛡️ طلب صريح (رؤية الهدايا للآخرين — بند 2ب): بقية الحاضرين (غير المُرسِل) لم يكونوا يرون
+// الهدية "تطير" لمقعد المستلم إطلاقاً — فقط المُرسِل يرى هذا محلياً (flyToRecipients أعلى
+// الملف، جزء من جلسة كومبو هديته الخاصة هو). نفس حركة القوس بالضبط (تكبير بالمنتصف ثم استقرار
+// عند المقعد، راجع flyToRecipients) تُستنسَخ هنا لصدى room-gift-announcement الذي يصل لكل
+// الحاضرين الآخرين — بما في ذلك الهدايا المخصّصة (صورتها من Cloudinary نفسها، تمر بـgiftImg
+// كبقية صور الهدايا). المصدر: مقعد المُرسِل إن كان جالساً، وإلا أسفل منتصف شبكة المقاعد
+// احتياطياً (لا "زر كومبو" مرئي للمُرسِل من منظور الآخرين كالتصميم الأصلي). الوجهة: مقعد
+// المستلم، أو نفس الاحتياطي لو غادر مقعده للتو. fromProfileImage/giftImage غير موثوقتين
+// (صدى بثّ عام) — نفس فحص isHttpsImageUrl المستخدَم بالشريط الجانبي بالأسفل بالضبط
+const GFX_REMOTE_FLY_MAX_PER_SEC = 6; // ✅ طلب صريح: حدّ تواتر لكل غرفة — سيل هدايا يُسقِط الزائد بصمت
+let gfxRemoteFlyWindowStart = 0;
+let gfxRemoteFlyCountInWindow = 0;
+function gfxRemoteFlyRateAllowed() {
+    const now = Date.now();
+    if (now - gfxRemoteFlyWindowStart >= 1000) { gfxRemoteFlyWindowStart = now; gfxRemoteFlyCountInWindow = 0; }
+    if (gfxRemoteFlyCountInWindow >= GFX_REMOTE_FLY_MAX_PER_SEC) return false;
+    gfxRemoteFlyCountInWindow++;
+    return true;
+}
+function gfxSeatFlyPoint(userId) {
+    const wrap = document.querySelector(`#voice-chat-grid [data-user-id="${userId}"] .voice-seat-av-wrap`);
+    if (!wrap) return null;
+    const r = wrap.getBoundingClientRect();
+    return { x: r.left + r.width / 2 - 13, y: r.top + r.height / 2 - 13, seatEl: wrap };
+}
+function gfxFlyFallbackPoint() {
+    const grid = document.getElementById('voice-chat-grid');
+    if (grid) {
+        const r = grid.getBoundingClientRect();
+        return { x: r.left + r.width / 2 - 13, y: r.bottom - 13, seatEl: null };
+    }
+    return { x: window.innerWidth / 2 - 13, y: window.innerHeight - 80, seatEl: null };
+}
+function gfxFlyRemoteGiftToSeat(data) {
+    if (gfxPrefersReducedMotion()) return;
+    if (data.roomId !== currentVoiceRoomId) return;
+    if (!gfxRemoteFlyRateAllowed()) return;
+    if (!gfxFlyGateAcquire()) return; // 🛡️ بند 3: حدّ الطيران المتزامن على الأجهزة الضعيفة
+
+    const fallback = gfxFlyFallbackPoint();
+    const from = gfxSeatFlyPoint(data.fromUserId) || fallback;
+    const to = gfxSeatFlyPoint(data.toUserId) || fallback;
+    const giftImgUrl = isHttpsImageUrl(data.giftImage) ? data.giftImage : null;
+
+    const f = document.createElement('div');
+    f.className = 'gfx-fly';
+    // 🛡️ أمان (بند XSS بمراجعة PR): giftImage/giftIcon هنا قيم غير موثوقة (صدى بثّ عام —
+    // قد تصل من هدية مخصّصة صمّمها مستخدم آخر). isHttpsImageUrl يتحقق فقط من بداية الرابط
+    // (https://)، لا يمنع حرف اقتباس يكسر سياق الخاصية لو بُني كنص HTML (كما تفعل
+    // giftEmojiOrImgHTML — آمنة فقط لكائن gift الموثوق بالمتجر). بناء DOM مباشر هنا بدل
+    // innerHTML (نفس نمط gfxUpdateSideBanner الآمن لنفس الحقل غير الموثوق بالضبط) — src
+    // كخاصية DOM لا كنص مُفسَّر، وtextContent للأيقونة الاحتياطية، فلا يوجد أي سياق HTML
+    // يُكسَر مهما كانت القيمة
+    if (giftImgUrl) {
+        const img = document.createElement('img');
+        img.src = giftImg(giftImgUrl, 80);
+        img.alt = '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        wireGiftImgFallback(img, giftImgUrl, data.giftIcon || '🎁'); // 🛡️ احتياط بخطوتين — راجع wireGiftImgFallback
+        f.appendChild(img);
+    } else {
+        const span = document.createElement('span');
+        span.textContent = data.giftIcon || '🎁';
+        f.appendChild(span);
+    }
+    f.style.left = from.x + 'px'; f.style.top = from.y + 'px';
+    document.body.appendChild(f);
+    const midX = (to.x - from.x) / 2 + (Math.random() * 60 - 30), midY = Math.min(0, (to.y - from.y) / 2) - 60;
+    f.animate([
+        { transform: 'translate(0,0) scale(.6)', opacity: 1 },
+        { transform: `translate(${midX}px,${midY}px) scale(1.25)`, opacity: 1, offset: 0.45 },
+        { transform: `translate(${to.x - from.x}px,${to.y - from.y}px) scale(.7)`, opacity: 0.9 }
+    ], { duration: 620, easing: 'cubic-bezier(.3,.7,.4,1)' }).onfinish = () => {
+        f.remove();
+        gfxFlyGateRelease();
+        if (to.seatEl) { to.seatEl.classList.remove('gfx-seat-hit'); void to.seatEl.offsetWidth; to.seatEl.classList.add('gfx-seat-hit'); }
+    };
+}
+
 // ✅ طلب صريح (بند 1 بمراجعة PR #108): شريط إعلان هدايا الآخرين — نفس تصميم .gfx-banner
 // الذي يستخدمه شريطي الخاص بالضبط (لا نظام ثانٍ مختلف بصرياً)، مُجمَّع ومُحدَّث مكانه بـ×N
 // حسب comboId (دقيق من السيرفر)، بحدّ GFX_BANNER_MAX وينزلق الأقدم خارجاً عند تجاوزه.
@@ -16740,11 +16949,21 @@ function gfxUpdateSideBanner(data) {
     `;
     const avImg = document.createElement('img');
     avImg.src = avatarUrl;
+    // 🛡️ طلب صريح (مراجعة PR — صورة المُرسِل بالشريط مكسورة): data-avatar-fallback="1" يُدخلها
+    // ضمن نطاق مستمع onerror العام الموحَّد (راجع تعليقه أعلى الملف — "صور أفاتار خام خارج
+    // avatarHTML" بالحرف هو هذا المسار بالضبط) — رابط حيّ (https://) لكن ميت (404/تعذّر وصول)
+    // يُستبدَل تلقائياً بـDEFAULT_AVATAR_URL مرة واحدة بلا حلقة، بلا أي مستمع إضافي هنا
+    avImg.setAttribute('data-avatar-fallback', '1');
     el.querySelector('.gfx-banner-av').appendChild(avImg);
     if (giftImgUrl) {
-        const giftImg = document.createElement('img');
-        giftImg.src = giftImgUrl;
-        el.querySelector('.gfx-banner-gift').appendChild(giftImg);
+        // 🛡️ بند 2ج: اسم محلي مختلف عمداً (giftImgEl) — giftImg أصبحت دالة التحويل العامة أعلى
+        // الملف، واستخدام الاسم نفسه هنا كان يُظلِّلها (shadowing) داخل نطاق هذي الدالة
+        const giftImgEl = document.createElement('img');
+        giftImgEl.src = giftImg(giftImgUrl, 64);
+        giftImgEl.loading = 'lazy';
+        giftImgEl.decoding = 'async';
+        wireGiftImgFallback(giftImgEl, giftImgUrl, data.giftIcon || '🎁'); // 🛡️ احتياط بخطوتين — راجع wireGiftImgFallback
+        el.querySelector('.gfx-banner-gift').appendChild(giftImgEl);
     }
     (document.getElementById('room-gift-lane') || document.body).prepend(el);
     const newEntry = { comboId: comboKey, el, count: data.quantity || 1, recipients: new Set([data.toUserId]) };
