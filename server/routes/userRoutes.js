@@ -24,6 +24,9 @@ router.patch('/me/admin-badge', userController.updateAdminBadgeVisibility);
 router.patch('/me/personal-info-visibility', userController.updatePersonalInfoVisibility);
 // ✅ إخفاء/إظهار شارات "نجم نادي المعجبين الأسبوعي" عن زوّار الملف الشخصي
 router.patch('/me/fanclub-badges-visibility', userController.updateFanClubBadgesVisibility);
+// ✅ room-ux-v2 (بند 4): يُعلِّم الجولة التعريفية الأولى لغرفة صوتية كمشاهَدة — لا يُسمَّى PATCH
+// (لا يمثّل حالة ثنائية قابلة للعكس من هنا كبقية الأسطر أعلاه، بل حدث "تم" واحد الاتجاه)
+router.post('/me/room-tour-seen', userController.markRoomTourSeen);
 // مسارات جلب بيانات المستخدمين
 router.get('/me/details', userController.getMeDetails);
 // ✅ متابعة/إلغاء متابعة شخص — قبل :id كي لا يُبتلع الجزء الثابت داخل باراميتر :id (غير

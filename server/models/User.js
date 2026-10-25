@@ -153,6 +153,14 @@ const userSchema = new mongoose.Schema({
     }],
     // --- نهاية الحقول الجديدة --
 
+    // ✅ room-ux-v2 (بند 4): علم خادم واحد "هل شاهد هذا الحساب الجولة التعريفية لغرفة صوتية
+    // من قبل؟" — getMeDetails تُرجع المستند كاملاً بلا select() فيصل هذا الحقل للعميل تلقائياً
+    // بلا أي تعديل إضافي هناك؛ العميل يخزّنه أيضاً بـlocalStorage (كاش سريع لا يحتاج شبكة
+    // بكل دخول غرفة) لكن المرجع الموثوق عبر الأجهزة يبقى هذا الحقل
+    onboarding: {
+        roomTourSeenAt: { type: Date, default: null }
+    }
+
 }, { timestamps: true });
 
 userSchema.pre('validate', async function(next) {

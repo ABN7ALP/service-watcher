@@ -130,6 +130,22 @@ async function main() {
         await page.waitForTimeout(800);
         console.log('✅ المضيف دخل غرفته فعلياً');
 
+        console.log('👋 الجولة التعريفية الأولى (بند 4) — يجب أن تظهر تلقائياً (حساب جديد بلا onboarding.roomTourSeenAt)...');
+        await page.locator('#room-tour-welcome').waitFor({ state: 'visible', timeout: 5000 });
+        await page.locator('#rtour-start-btn').click({ timeout: 5000 });
+        await page.locator('#room-tour-overlay .rtour-tip').waitFor({ state: 'visible', timeout: 5000 });
+        const tourStepVisible = await page.locator('.rtour-hole').isVisible().catch(() => false);
+        console.log(`   بطاقة الترحيب ظهرت تلقائياً ثم الخطوة الأولى: ${tourStepVisible ? '✅' : '❌'}`);
+        await require('fs').promises.mkdir(OUT_DIR, { recursive: true });
+        await page.screenshot({ path: path.join(OUT_DIR, '4-room-tour-step.png') });
+        console.log(`📸 حُفِظت: ${path.join(OUT_DIR, '4-room-tour-step.png')}`);
+        // ✅ يُنهي الجولة بتخطّيها (لا حاجة لاستعراض كل الخطوات الخمس هنا) — يُثبِّتها كمشاهَدة
+        // محلياً وبالسيرفر معاً، فلا تتداخل مع فحوص الشيتات التالية (z-index 400 فوق أي نافذة أخرى)
+        await page.locator('#rtour-skip-btn').click({ timeout: 5000 });
+        await page.locator('#room-tour-overlay').waitFor({ state: 'detached', timeout: 5000 });
+        const dockLabelsVisible = await page.locator('.room-dock-label').first().isVisible().catch(() => false);
+        console.log(`   تسميات الشريط السفلي بعد انتهاء الجولة: ${dockLabelsVisible ? '✅ ظاهرة' : '❌ غير ظاهرة'}`);
+
         console.log('🔍 فتح نافذة المشاهدين (الضغط على شريط العدّاد أعلى الغرفة)...');
         await page.locator('#room-viewer-count-btn').click({ timeout: 20000 });
         await page.locator('#room-viewers-sheet').waitFor({ state: 'visible', timeout: 10000 });
@@ -179,7 +195,7 @@ async function main() {
             console.error('\n💥 أخطاء console/pageerror ظهرت خلال الفحص:');
             consoleErrors.forEach(e => console.error('   ' + e));
             process.exitCode = 1;
-        } else if (!podiumVisible || !mineRowVisible || !seatedSectionVisible || !hostTagVisible || !filteredVisible || !recipSeatBadgeVisible || !recipNameVisible) {
+        } else if (!podiumVisible || !mineRowVisible || !seatedSectionVisible || !hostTagVisible || !filteredVisible || !recipSeatBadgeVisible || !recipNameVisible || !tourStepVisible || !dockLabelsVisible) {
             console.error('\n💥 فحص بصري فشل (عنصر متوقَّع غير ظاهر) — راجع السطور أعلاه');
             process.exitCode = 1;
         } else {

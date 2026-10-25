@@ -903,13 +903,14 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             // (بما فيها مقعد الإدارة المحجوز) يحمل .empty-seat كي تظهر حدوده المتقطعة بوضوح
             seatEl.classList.add('empty-seat');
             // ✅ بغرف المستخدمين (وليس الرسمية) المقعد الفاضي يعرض "+" بالدائرة، والنص تحتها
-            // "دعوة" للمضيف (يدعو أحد الحاضرين لهذا المقعد تحديداً) أو "انضمام" لبقية
-            // المستخدمين (يرسل طلب صعود) — إلا لمقعد الإدارة بالغرفة الرسمية فقط
+            // "دعوة" للمضيف (يدعو أحد الحاضرين لهذا المقعد تحديداً) أو "اضغط للصعود" لبقية
+            // المستخدمين (يرسل طلب صعود) — إلا لمقعد الإدارة بالغرفة الرسمية فقط. طلب صريح
+            // (room-ux-v2 — بند 4): "اضغط للصعود" بدل "انضمام" القديمة (أوضح للمستخدم الجديد تحديداً)
             if (isAdminSeat) {
                 seatEl.innerHTML = '<div class="voice-seat-av-wrap"><i class="fas fa-crown"></i></div>';
                 seatEl.title = 'مقعد محجوز للإدارة';
             } else if (currentVoiceRoomId !== 'main') {
-                const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'انضمام';
+                const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'اضغط للصعود';
                 seatEl.innerHTML = `<div class="voice-seat-av-wrap"><i class="fas fa-plus voice-seat-plus"></i></div><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
             } else {
                 seatEl.innerHTML = `<div class="voice-seat-av-wrap">${seatNo}</div>`;
@@ -3062,6 +3063,173 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         // جلوس حي يُطلق شبكة الصوت — نتأكد هنا صراحة من الاتصال بكل من هو جالس فعلياً، سواء
         // كنت أنا جالساً (اتصال ثنائي) أو مجرّد مشاهد فتح شاشة الغرفة توّاً (استماع فقط)
         if (currentVoiceRoomId === room.id) connectVoiceMeshToCurrentlySeated();
+        maybeStartRoomTour();
+    }
+
+    // =====================================================
+    // ✅ الجولة التعريفية الأولى لغرفة صوتية (room-ux-v2 — بند 4، تطابق
+    // docs/design/room-ux-prototype.html::tourHTML/placeStep/finishTour): بطاقة ترحيب ثم 5
+    // خطوات إضاءة (المضيف، مقعد فاضٍ، الهدية، الدردشة، المشاهدون)، بتخطٍّ ونقاط تقدّم. تظهر
+    // مرة واحدة فقط لكل حساب — User.onboarding.roomTourSeenAt بالخادم هو المرجع الموثوق عبر
+    // الأجهزة؛ كاش localStorage محلي سريع يمنع حتى الحاجة لفحص ذاك الحقل بكل دخول غرفة لاحق
+    // =====================================================
+    function roomTourCacheKey() {
+        const uid = (JSON.parse(localStorage.getItem('user') || 'null') || {})._id || 'anon';
+        return `roomTourSeen:${uid}`;
+    }
+    function hasSeenRoomTour() {
+        if (localStorage.getItem(roomTourCacheKey()) === '1') return true;
+        const u = JSON.parse(localStorage.getItem('user') || 'null');
+        if (u && u.onboarding && u.onboarding.roomTourSeenAt) {
+            localStorage.setItem(roomTourCacheKey(), '1'); // ✅ يزامن الكاش المحلي فوراً فلا نعيد هذا الفحص لاحقاً
+            return true;
+        }
+        return false;
+    }
+    function markRoomTourSeenNow() {
+        localStorage.setItem(roomTourCacheKey(), '1');
+        const u = JSON.parse(localStorage.getItem('user') || 'null');
+        if (u) {
+            u.onboarding = { ...(u.onboarding || {}), roomTourSeenAt: new Date().toISOString() };
+            localStorage.setItem('user', JSON.stringify(u));
+        }
+        fetch('/api/users/me/room-tour-seen', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {});
+    }
+
+    const ROOM_TOUR_STEPS = [
+        { sel: '.voice-seat.host-seat', title: 'هذا المضيف', text: 'صاحب الغرفة ومن يديرها. اضغط على أي صورة لترى ملفه وتتابعه.' },
+        { sel: '.voice-seat.empty-seat', title: 'اصعد على المايك', text: 'المقاعد الفارغة عليها +. اضغط واحداً لتطلب الصعود والتحدث مع الجميع.' },
+        { sel: '#room-gift-icon-btn', title: 'أرسل هدية', text: 'اختر هدية واضغطها بسرعة لتصنع كومبو. الهدايا ترفع مستوى ثروتك وتدعم من تحب.' },
+        { sel: '.room-chat-input-pill', title: 'اكتب في الدردشة', text: 'سلّم على الغرفة، الجميع يرى رسالتك فوراً.' },
+        { sel: '#room-viewer-count-btn', title: 'من في الغرفة؟', text: 'هنا ترى الحاضرين وأكبر المساهمين اليوم.' }
+    ];
+    let roomTourStepIndex = 0;
+
+    function maybeStartRoomTour() {
+        if (hasSeenRoomTour()) return;
+        // ✅ تأخير بسيط يضمن استقرار شبكة المقاعد/الشريط السفلي بصرياً أولاً (لقطة الحالة
+        // تصل وتُرسَم فوراً تقريباً، لكن لا داعي للمجازفة بقياس مواضع عناصر لم تُرسَم بعد)
+        setTimeout(() => {
+            if (!document.body.classList.contains('in-voice-room')) return; // ✅ غادر الغرفة بسرعة قبل أن يحين الوقت
+            showRoomTourWelcome();
+        }, 700);
+    }
+
+    function showRoomTourWelcome() {
+        document.getElementById('room-tour-welcome')?.remove();
+        const el = document.createElement('div');
+        el.id = 'room-tour-welcome';
+        el.className = 'rtour-welcome';
+        el.innerHTML = `
+            <div class="rtour-wbox">
+                <div class="rtour-wbig">👋</div>
+                <h3>أهلاً بك بالغرفة الصوتية</h3>
+                <p>غرفة صوتية مباشرة: تسمع، تتحدث، وترسل هدايا. خذ جولة سريعة من 5 خطوات.</p>
+                <div class="rtour-three">
+                    <div><span>🎧</span>استمع</div>
+                    <div><span>🎙️</span>تحدّث</div>
+                    <div><span>🎁</span>أهدِ</div>
+                </div>
+                <button type="button" id="rtour-start-btn" class="rtour-go">ابدأ الجولة</button>
+                <button type="button" id="rtour-later-btn" class="rtour-later">لاحقاً</button>
+            </div>
+        `;
+        document.body.appendChild(el);
+        document.getElementById('rtour-start-btn').addEventListener('click', () => {
+            el.remove();
+            roomTourStepIndex = 0;
+            placeRoomTourStep();
+        });
+        document.getElementById('rtour-later-btn').addEventListener('click', () => {
+            el.remove();
+            markRoomTourSeenNow(); // ✅ "لاحقاً" = لن تظهر تلقائياً مجدداً — "إعادة الجولة" بالإعدادات تبقى متاحة دوماً
+        });
+    }
+
+    // ✅ يتخطّى تلقائياً أي خطوة هدفها غير موجود حالياً بالـDOM (لا مقعد مضيف بالغرفة الرسمية
+    // مثلاً، أو غرفة ممتلئة بلا مقعد فاضٍ) بدل تعليق الجولة أو تسليط الضوء على فراغ
+    function placeRoomTourStep() {
+        while (roomTourStepIndex < ROOM_TOUR_STEPS.length && !document.querySelector(ROOM_TOUR_STEPS[roomTourStepIndex].sel)) {
+            roomTourStepIndex++;
+        }
+        if (roomTourStepIndex >= ROOM_TOUR_STEPS.length) { finishRoomTour(); return; }
+
+        const step = ROOM_TOUR_STEPS[roomTourStepIndex];
+        const target = document.querySelector(step.sel);
+        let overlay = document.getElementById('room-tour-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'room-tour-overlay';
+            overlay.className = 'rtour';
+            overlay.innerHTML = '<div class="rtour-hole"></div><div class="rtour-tip"></div>';
+            document.body.appendChild(overlay);
+        }
+        const r = target.getBoundingClientRect();
+        const pad = 8;
+        const hole = overlay.querySelector('.rtour-hole');
+        Object.assign(hole.style, {
+            left: (r.left - pad) + 'px', top: (r.top - pad) + 'px',
+            width: (r.width + pad * 2) + 'px', height: (r.height + pad * 2) + 'px',
+            borderRadius: (step.sel === '.room-chat-input-pill' || step.sel === '#room-viewer-count-btn') ? '999px' : '50%'
+        });
+        const tip = overlay.querySelector('.rtour-tip');
+        const below = r.top < window.innerHeight * 0.5;
+        tip.style.top = below ? (r.bottom + 16) + 'px' : 'auto';
+        tip.style.bottom = below ? 'auto' : (window.innerHeight - r.top + 16) + 'px';
+        const isLast = roomTourStepIndex === ROOM_TOUR_STEPS.length - 1;
+        tip.innerHTML = `
+            <div class="rtour-st">الخطوة ${roomTourStepIndex + 1} من ${ROOM_TOUR_STEPS.length}</div>
+            <h4>${escapeHtml(step.title)}</h4>
+            <p>${escapeHtml(step.text)}</p>
+            <div class="rtour-row2">
+                <div class="rtour-dots">${ROOM_TOUR_STEPS.map((_, i) => `<i class="${i === roomTourStepIndex ? 'on' : ''}"></i>`).join('')}</div>
+                <div class="rtour-btns">
+                    <button type="button" class="rtour-skip" id="rtour-skip-btn">تخطَّ</button>
+                    <button type="button" class="rtour-next" id="rtour-next-btn">${isLast ? 'فهمت، لنبدأ' : 'التالي'}</button>
+                </div>
+            </div>
+        `;
+        document.getElementById('rtour-next-btn').addEventListener('click', () => {
+            roomTourStepIndex++;
+            placeRoomTourStep();
+        });
+        document.getElementById('rtour-skip-btn').addEventListener('click', finishRoomTour);
+    }
+
+    function finishRoomTour() {
+        document.getElementById('room-tour-overlay')?.remove();
+        document.getElementById('room-tour-welcome')?.remove();
+        markRoomTourSeenNow();
+        showBottomBarLabelsTemporarily();
+    }
+
+    // ✅ تُستدعى أيضاً من "إعادة الجولة" بالإعدادات — بلا الحاجة لإنهائها فعلياً أولاً، فقط
+    // تُظهر تسميات الشريط السفلي 4 ثوانٍ عند انتهاء الجولة تحديداً (ليست استجابة لحدث آخر)
+    function showBottomBarLabelsTemporarily(durationMs = 4000) {
+        const dock = document.querySelector('.room-chat-dock');
+        if (!dock) return;
+        dock.querySelectorAll('.room-chat-dock-icon:not(.hidden)').forEach(btn => {
+            if (btn.querySelector('.room-dock-label')) return;
+            const label = document.createElement('span');
+            label.className = 'room-dock-label';
+            label.textContent = btn.title || '';
+            btn.appendChild(label);
+        });
+        dock.classList.add('show-dock-labels');
+        setTimeout(() => {
+            dock.classList.remove('show-dock-labels');
+            setTimeout(() => dock.querySelectorAll('.room-dock-label').forEach(l => l.remove()), 250);
+        }, durationMs);
+    }
+
+    // ✅ "إعادة الجولة" بالإعدادات (showProfileHubSettingsSheet) — تُشغَّل فقط وأنا داخل غرفة
+    // فعلياً (الخطوات تُضيء عناصر غرفة حقيقية، لا معنى لها خارج سياق الغرفة)
+    function replayRoomTourFromSettings() {
+        if (!document.body.classList.contains('in-voice-room')) return;
+        document.getElementById('room-tour-overlay')?.remove();
+        document.getElementById('room-tour-welcome')?.remove();
+        roomTourStepIndex = 0;
+        showRoomTourWelcome();
     }
 
     // ✅ سحب لأسفل من رأس الغرفة يخرج منها — بديل زر الرجوع المحذوف (أسلوب تطبيقات البث
@@ -3715,9 +3883,9 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
                 seat.title = canSitHere ? 'مقعد إدارة' : 'مقعد محجوز للإدارة';
             } else if (isCustomRoom) {
                 // ✅ بغرف المستخدمين: مقعد فاضٍ = "+" بالدائرة، والنص تحتها يختلف حسب من يشاهد —
-                // "دعوة" للمضيف (يفتح قائمة الحاضرين ليدعو أحدهم لهذا المقعد تحديداً)، و"انضمام"
-                // لبقية المستخدمين (يرسل طلب صعود ينتظر موافقة المضيف)
-                const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'انضمام';
+                // "دعوة" للمضيف (يفتح قائمة الحاضرين ليدعو أحدهم لهذا المقعد تحديداً)، و"اضغط
+                // للصعود" لبقية المستخدمين (يرسل طلب صعود ينتظر موافقة المضيف — طلب صريح room-ux-v2 بند 4)
+                const emptyLabel = currentRoomMyRole === 'host' ? 'دعوة' : 'اضغط للصعود';
                 seat.innerHTML = `<div class="voice-seat-av-wrap"><i class="fas fa-plus voice-seat-plus"></i></div><span class="voice-seat-name voice-seat-join-label">${emptyLabel}</span>`;
             } else {
                 seat.innerHTML = `<div class="voice-seat-av-wrap">${i}</div>`;
@@ -11265,6 +11433,9 @@ function showProfileHubSettingsSheet() {
                     <button class="profile-hub-settings-row" id="profile-hub-full-settings-btn"><i class="fas fa-user-cog"></i><span>الحساب والخصوصية والمزيد</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
                     <button class="profile-hub-settings-row" id="profile-hub-badges-btn"><i class="fas fa-certificate text-yellow-400"></i><span>الشارات</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
                     <button class="profile-hub-settings-row" id="profile-hub-frame-shop-btn"><i class="fas fa-crown" style="color:#fbbf24"></i><span>متجر الإطارات</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
+                    ${document.body.classList.contains('in-voice-room') ? `
+                    <button class="profile-hub-settings-row" id="profile-hub-replay-tour-btn"><i class="fas fa-compass text-cyan-400"></i><span>إعادة الجولة</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
+                    ` : ''}
                     ${['عام', 'التنبيهات', 'اللغة', 'ذاكرة نظيفة', 'جودة الفيديو', 'مفضّلة'].map(label => `
                         <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="${label}"><i class="fas fa-circle-notch"></i><span>${label}</span><span class="profile-hub-soon-tag">قريباً</span></button>
                     `).join('')}
@@ -11297,6 +11468,10 @@ function showProfileHubSettingsSheet() {
     document.getElementById('profile-hub-frame-shop-btn')?.addEventListener('click', () => {
         modal.remove();
         showFrameShopModal();
+    });
+    document.getElementById('profile-hub-replay-tour-btn')?.addEventListener('click', () => {
+        modal.remove();
+        replayRoomTourFromSettings();
     });
     modal.querySelectorAll('.profile-hub-settings-soon').forEach(btn => {
         btn.addEventListener('click', () => showNotification(`قسم "${btn.dataset.label}" قيد إعادة الهيكلة، قريباً جداً`, 'info'));
