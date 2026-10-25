@@ -173,6 +173,7 @@ class AdminDashboard {
         document.getElementById('addMusicTrackBtn')?.addEventListener('click', () => this.showMusicTrackFormModal());
         document.getElementById('suggestionsStatusFilter')?.addEventListener('change', () => this.loadSuggestions());
         document.getElementById('suggestionsTypeFilter')?.addEventListener('change', () => this.loadSuggestions());
+        document.getElementById('systemHealthCheckNowBtn')?.addEventListener('click', () => this.runSystemHealthCheckNow());
 
         const musicSearch = document.getElementById('musicSearch');
         if (musicSearch) {
@@ -235,6 +236,7 @@ class AdminDashboard {
             logs: () => this.loadLogs(1),
             'client-errors': () => this.loadClientErrors(1),
             'client-compat': () => this.loadClientCompat(),
+            'system-health': () => this.loadSystemHealth(),
             settings: () => this.loadSettings()
         };
         map[page]?.();
@@ -1565,6 +1567,75 @@ class AdminDashboard {
                     `).join('')}
                 </tbody></table>`;
         } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    // ================= System Health (chore/dependency-health) =================
+    async loadSystemHealth() {
+        try {
+            const data = await this.api('GET', '/system-health');
+
+            document.getElementById('systemHealthLastCheck').textContent =
+                `آخر فحص: ${data.lastCheckAt ? formatDate(data.lastCheckAt) : 'لم يُفحص بعد'}`;
+
+            const sc = data.severityCounts || {};
+            document.getElementById('shCriticalCount').textContent = sc.critical || 0;
+            document.getElementById('shHighCount').textContent = sc.high || 0;
+            document.getElementById('shModerateCount').textContent = sc.moderate || 0;
+            document.getElementById('shLowCount').textContent = (sc.low || 0) + (sc.info || 0);
+
+            document.getElementById('shLegacyCount').textContent = data.clientCompat?.legacy || 0;
+            document.getElementById('shInAppCount').textContent = data.clientCompat?.inApp || 0;
+
+            const SEVERITY_LABELS = { critical: 'حرجة', high: 'عالية', moderate: 'متوسطة', low: 'منخفضة', info: 'معلوماتية' };
+            const vc = document.getElementById('systemHealthVulnsContainer');
+            vc.innerHTML = !data.vulnerabilities || !data.vulnerabilities.length
+                ? '<div class="empty-state"><i class="fas fa-shield-halved fa-2x"></i><p>لا ثغرات مرصودة</p></div>'
+                : `<table class="table table-hover"><thead><tr><th>الحزمة</th><th>الخطورة</th><th>الوصف</th></tr></thead><tbody>
+                    ${data.vulnerabilities.map(v => `
+                        <tr${v.severity === 'critical' || v.severity === 'high' ? ' class="text-danger fw-bold"' : ''}>
+                            <td style="direction:ltr;text-align:left;">${escapeHtml(v.package)}</td>
+                            <td>${escapeHtml(SEVERITY_LABELS[v.severity] || v.severity || '-')}</td>
+                            <td>${/^https:\/\//i.test(v.advisoryUrl || '')
+                                ? `<a href="${escapeHtml(v.advisoryUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(v.advisoryTitle || v.advisoryUrl)}</a>`
+                                : escapeHtml(v.advisoryTitle || '-')}</td>
+                        </tr>
+                    `).join('')}
+                </tbody></table>`;
+
+            const oc = document.getElementById('systemHealthOutdatedContainer');
+            oc.innerHTML = !data.outdated || !data.outdated.length
+                ? '<div class="empty-state"><i class="fas fa-check-circle fa-2x"></i><p>كل الحزم محدَّثة</p></div>'
+                : `<table class="table table-hover"><thead><tr><th>الحزمة</th><th>الحالية</th><th>المطلوبة</th><th>الأحدث</th><th></th></tr></thead><tbody>
+                    ${data.outdated.map(o => `
+                        <tr>
+                            <td style="direction:ltr;text-align:left;">${escapeHtml(o.package)}</td>
+                            <td style="direction:ltr;text-align:left;">${escapeHtml(o.current)}</td>
+                            <td style="direction:ltr;text-align:left;">${escapeHtml(o.wanted)}</td>
+                            <td style="direction:ltr;text-align:left;">${escapeHtml(o.latest)}</td>
+                            <td>${o.isMajorUpdate ? '<span class="badge bg-warning text-dark">يحتاج مراجعة</span>' : ''}</td>
+                        </tr>
+                    `).join('')}
+                </tbody></table>`;
+
+            const ec = document.getElementById('systemHealthErrorsContainer');
+            ec.innerHTML = !data.errors || !data.errors.length ? '' : data.errors.map(e => `
+                <div class="alert alert-danger"><i class="fas fa-triangle-exclamation"></i> فشل فحص ${escapeHtml(e.source || '')}: ${escapeHtml(e.message || '')}</div>
+            `).join('');
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    async runSystemHealthCheckNow() {
+        const btn = document.getElementById('systemHealthCheckNowBtn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جارٍ الفحص...'; }
+        try {
+            await this.api('POST', '/system-health/check-now');
+            this.showToast('تم تنفيذ الفحص بنجاح', 'success');
+            await this.loadSystemHealth();
+        } catch (error) {
+            this.showToast(error.message, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate"></i> فحص الآن'; }
+        }
     }
 
     showClientErrorDetailsModal(err) {

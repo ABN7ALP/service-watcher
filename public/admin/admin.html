@@ -37,6 +37,7 @@
                 <li class="menu-item" data-page="logs"><i class="fas fa-history"></i><span>سجلات النظام</span></li>
                 <li class="menu-item" data-page="client-errors"><i class="fas fa-bug"></i><span>أخطاء المستخدمين</span></li>
                 <li class="menu-item" data-page="client-compat"><i class="fas fa-globe"></i><span>توافق المتصفحات</span></li>
+                <li class="menu-item" data-page="system-health"><i class="fas fa-heart-pulse"></i><span>صحة النظام</span></li>
                 <li class="menu-item" data-page="settings"><i class="fas fa-cog"></i><span>الإعدادات</span></li>
             </ul>
 
@@ -326,6 +327,34 @@
                         <div id="compatByFeatureContainer" class="table-responsive p-3"></div>
                     </div>
                 </div>
+            </div>
+
+            <!-- System Health (chore/dependency-health) -->
+            <div id="system-health-page" class="page">
+                <div class="page-header">
+                    <h1><i class="fas fa-heart-pulse"></i> صحة النظام</h1>
+                    <button id="systemHealthCheckNowBtn" class="btn btn-primary"><i class="fas fa-rotate"></i> فحص الآن</button>
+                </div>
+                <p class="text-muted px-3" id="systemHealthLastCheck">آخر فحص: --</p>
+
+                <h2 class="h6 mt-3 mb-2 px-3"><i class="fas fa-shield-halved"></i> الثغرات الأمنية (npm audit)</h2>
+                <div class="stats-grid">
+                    <div class="stat-card danger"><div class="stat-icon"><i class="fas fa-skull-crossbones"></i></div><div class="stat-info"><h3 id="shCriticalCount">0</h3><p>حرجة (Critical)</p></div></div>
+                    <div class="stat-card danger"><div class="stat-icon"><i class="fas fa-triangle-exclamation"></i></div><div class="stat-info"><h3 id="shHighCount">0</h3><p>عالية (High)</p></div></div>
+                    <div class="stat-card warning"><div class="stat-icon"><i class="fas fa-circle-exclamation"></i></div><div class="stat-info"><h3 id="shModerateCount">0</h3><p>متوسطة (Moderate)</p></div></div>
+                    <div class="stat-card primary"><div class="stat-icon"><i class="fas fa-circle-info"></i></div><div class="stat-info"><h3 id="shLowCount">0</h3><p>منخفضة / معلوماتية</p></div></div>
+                </div>
+                <div id="systemHealthVulnsContainer" class="table-responsive p-3"></div>
+
+                <h2 class="h6 mt-3 mb-2 px-3"><i class="fas fa-box-open"></i> الحزم القديمة (npm outdated)</h2>
+                <div id="systemHealthOutdatedContainer" class="table-responsive p-3"></div>
+
+                <h2 class="h6 mt-3 mb-2 px-3"><i class="fas fa-globe"></i> توافق المتصفحات</h2>
+                <div class="stats-grid">
+                    <div class="stat-card primary"><div class="stat-icon"><i class="fas fa-clock-rotate-left"></i></div><div class="stat-info"><h3 id="shLegacyCount">0</h3><p>متصفح قديم</p></div></div>
+                    <div class="stat-card primary"><div class="stat-icon"><i class="fas fa-mobile-screen-button"></i></div><div class="stat-info"><h3 id="shInAppCount">0</h3><p>متصفح داخل تطبيق</p></div></div>
+                </div>
+                <div id="systemHealthErrorsContainer" class="px-3"></div>
             </div>
 
             <!-- Settings -->
