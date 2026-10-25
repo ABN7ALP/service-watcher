@@ -264,6 +264,10 @@ function queueRoomGiftAnnouncement(io, payload) {
     const existing = roomMap.get(mergeKey);
     if (existing) {
         existing.payload.quantity += payload.quantity; // ✅ نفس المرسل+الهدية+المستلم خلال النافذة — دمج الكمية فقط
+        // 🐛 إصلاح: comboId كان يبقى من أول دفعة بالنافذة (الأقدم) — بثّ الدمج النهائي بـcomboId
+        // قديم يُفشل دمج بانر/سطر دردشة العميل بمفتاح الجلسة الحقيقي الأحدث (gfxOtherBanners/
+        // gfxChatLineByCombo، كلاهما مفتاحه comboId). نُحدِّثه لأحدث قيمة وصلت بهذي النافذة
+        if (payload.comboId) existing.payload.comboId = payload.comboId;
         return;
     }
     const entry = { payload: { ...payload } };

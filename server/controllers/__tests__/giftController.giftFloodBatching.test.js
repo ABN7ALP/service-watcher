@@ -55,6 +55,23 @@ describe('queueRoomGiftAnnouncement — دمج نافذة 250ms بمفتاح (م
         expect(io.emitted.map(e => e.room).sort()).toEqual(['room-chat-room_A', 'room-chat-room_B']);
     });
 
+    test('3 دفعات (comboId مختلف لكل دفعة) خلال 250ms → حدث واحد فقط بالكمية الكلية وأحدث comboId', async () => {
+        const io = makeIo();
+        queueRoomGiftAnnouncement(io, { roomId: 'room_combo', fromUserId: 'u1', giftId: 'g1', toUserId: 'u2', quantity: 2, comboId: 'combo_1' });
+        queueRoomGiftAnnouncement(io, { roomId: 'room_combo', fromUserId: 'u1', giftId: 'g1', toUserId: 'u2', quantity: 3, comboId: 'combo_2' });
+        queueRoomGiftAnnouncement(io, { roomId: 'room_combo', fromUserId: 'u1', giftId: 'g1', toUserId: 'u2', quantity: 5, comboId: 'combo_3' });
+
+        expect(io.emitted).toHaveLength(0); // ✅ لا بثّ فوري بعد — بانتظار انتهاء نافذة الدمج (لا مؤقّت جديد لكل دفعة)
+        await jest.advanceTimersByTimeAsync(250);
+
+        expect(io.emitted).toHaveLength(1);
+        expect(io.emitted[0]).toMatchObject({
+            room: 'room-chat-room_combo',
+            event: 'room-gift-announcement',
+            payload: { quantity: 10, comboId: 'combo_3' } // ✅ الكمية الكلية 2+3+5، وcomboId الأحدث لا الأقدم
+        });
+    });
+
     test('سيل كبير (50 هدية نفس التركيبة) خلال النافذة → حدث واحد فقط بالكمية الكلية (50)', async () => {
         const io = makeIo();
         for (let i = 0; i < 50; i++) {
