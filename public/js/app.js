@@ -3097,8 +3097,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
     }
 
     const ROOM_TOUR_STEPS = [
-        { sel: '.voice-seat.host-seat', title: 'هذا المضيف', text: 'صاحب الغرفة ومن يديرها. اضغط على أي صورة لترى ملفه وتتابعه.' },
-        { sel: '.voice-seat.empty-seat', title: 'اصعد على المايك', text: 'المقاعد الفارغة عليها +. اضغط واحداً لتطلب الصعود والتحدث مع الجميع.' },
+        // 🐛 إصلاح (مراجعة PR #116): نقيس .voice-seat-av-wrap (الصورة الدائرية نفسها) لا .voice-seat
+        // الحاوي الواسع — الفتحة كانت تُظلِّل كل خلية المقعد (الصورة+الاسم+عداد الدعم) بدل دائرة
+        // ضيقة حول الصورة فقط كما بالنموذج. الحاوية (.host-seat/.empty-seat) تبقى شرط "هل موجود
+        // أصلاً" الصحيح (مقعد مضيف/مقعد فاضٍ فعلاً) — الصندوق الدائري بداخلها موجود دوماً معها
+        { sel: '.voice-seat.host-seat .voice-seat-av-wrap', title: 'هذا المضيف', text: 'صاحب الغرفة ومن يديرها. اضغط على أي صورة لترى ملفه وتتابعه.' },
+        { sel: '.voice-seat.empty-seat .voice-seat-av-wrap', title: 'اصعد على المايك', text: 'المقاعد الفارغة عليها +. اضغط واحداً لتطلب الصعود والتحدث مع الجميع.' },
         { sel: '#room-gift-icon-btn', title: 'أرسل هدية', text: 'اختر هدية واضغطها بسرعة لتصنع كومبو. الهدايا ترفع مستوى ثروتك وتدعم من تحب.' },
         { sel: '.room-chat-input-pill', title: 'اكتب في الدردشة', text: 'سلّم على الغرفة، الجميع يرى رسالتك فوراً.' },
         { sel: '#room-viewer-count-btn', title: 'من في الغرفة؟', text: 'هنا ترى الحاضرين وأكبر المساهمين اليوم.' }
@@ -3143,6 +3147,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         document.getElementById('rtour-later-btn').addEventListener('click', () => {
             el.remove();
             markRoomTourSeenNow(); // ✅ "لاحقاً" = لن تظهر تلقائياً مجدداً — "إعادة الجولة" بالإعدادات تبقى متاحة دوماً
+            flushBottomToastQueue(); // ✅ الجولة انتهت فعلياً هنا (لا خطوات تالية) — أي توست طابَر أثناءها يظهر الآن
         });
     }
 
@@ -3201,6 +3206,7 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         document.getElementById('room-tour-welcome')?.remove();
         markRoomTourSeenNow();
         showBottomBarLabelsTemporarily();
+        flushBottomToastQueue(); // ✅ أي توست طابَر أثناء الجولة (تخطٍّ أو إكمال) يظهر الآن
     }
 
     // ✅ تُستدعى أيضاً من "إعادة الجولة" بالإعدادات — بلا الحاجة لإنهائها فعلياً أولاً، فقط
@@ -3361,17 +3367,11 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
         modal.innerHTML = `
             <div class="room-viewers-sheet-card w-full md:max-w-sm text-white max-h-[78vh] flex flex-col">
                 <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mt-2 mb-3 md:hidden flex-shrink-0"></div>
-                <div class="grid grid-cols-2 gap-2 px-4 pb-3 flex-shrink-0">
-                    <div class="room-info-stat-box">
-                        <p class="room-info-stat-num text-amber-400">${coinIconHTML(13)} <span id="room-viewers-sheet-coins">0</span></p>
-                        <p class="room-info-stat-label">كوينز مُرسَلة بالجلسة</p>
-                    </div>
-                    <div class="room-info-stat-box">
-                        <p class="room-info-stat-num text-purple-300"><span id="room-viewers-sheet-rank">—</span></p>
-                        <p class="room-info-stat-label">ترتيب الغرفة</p>
-                    </div>
-                </div>
-                <h3 class="text-sm font-bold px-4 pb-2 flex items-center gap-2 flex-shrink-0 border-t border-white/5 pt-2.5">
+                <!-- 🐛 إصلاح (مراجعة PR #116): بطاقتا "كوينز الجلسة"/"ترتيب الغرفة" أُزيلتا — غير
+                     موجودتين بالنموذج الأصلي (docs/design/room-ux-prototype.html) وكانتا تدفع
+                     القائمة لأسفل بلا داعٍ؛ صف "أنا" المثبّت أسفل تبويب المساهمين يغطي ترتيبي
+                     أصلاً. النافذة تبدأ بمقبض السحب ثم الرأس "في الغرفة N" مباشرة كما بالنموذج -->
+                <h3 class="text-sm font-bold px-4 pb-2 flex items-center gap-2 flex-shrink-0">
                     <i class="fas fa-eye text-purple-400"></i> في الغرفة
                     <span id="room-viewers-sheet-count" class="text-[11px] font-normal text-gray-400"></span>
                 </h3>
@@ -3385,8 +3385,6 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             </div>
         `;
         document.body.appendChild(modal);
-        const coinsEl = document.getElementById('room-viewers-sheet-coins');
-        if (coinsEl) coinsEl.textContent = currentRoomSessionSupportPoints.toLocaleString('en-US');
         modal.addEventListener('click', (e) => { if (e.target.id === 'room-viewers-sheet') modal.remove(); });
 
         modal.querySelectorAll('.rv-tab').forEach(btn => {
@@ -9366,7 +9364,14 @@ document.getElementById('user-id-container').addEventListener('click', () => {
         if (voicePeerConnections.has(fromUserId)) {
             teardownVoicePeer(fromUserId);
         }
-        await ensureLocalMicStream();
+        // 🐛 إصلاح (مراجعة PR #116): كانت تُستدعى بلا شرط هنا — أي مستمع (غير جالس) يصله عرض
+        // WebRTC تلقائياً من أي شخص جالس فور دخوله الغرفة (اتصال الشبكة الصوتية يشمل المستمعين
+        // أيضاً، استقبالاً فقط) كان يُطلَب منه إذن المايكروفون فوراً، فيظهر توست "تعذّر الوصول
+        // للمايكروفون" لمجرد الدخول لو رفض/تجاهل طلب الإذن — بلا أي نية فعلية لاستخدام المايك.
+        // نفس شرط initiateVoiceCallTo أعلاه بالضبط: المايك يُطلَب فقط ممن يجلس فعلياً على مقعد؛
+        // getOrCreateVoicePeer أدناه يتعامل مسبقاً وبأمان مع localMicStream الفارغة (transceiver
+        // recvonly صريح) فلا حاجة لطلب المايك هنا إطلاقاً لمن هو مستمع بحت
+        if (myVoiceSeatNumber) await ensureLocalMicStream();
         const pc = await getOrCreateVoicePeer(fromUserId);
         try {
             await pc.setRemoteDescription(new RTCSessionDescription(payload));
@@ -10032,7 +10037,7 @@ function showXpGainAnimation(amount) {
         updateRoomViewerWidget(count, preview || null);
     });
 
-    socket.on('room-viewers-list', ({ roomId, viewers, roomRank }) => {
+    socket.on('room-viewers-list', ({ roomId, viewers }) => {
         if (roomId !== currentVoiceRoomId) return;
         updateRoomViewerWidget(viewers.length, viewers);
         // ✅ تغذية ذاكرة هوية "أفضل داعمي العقد" بأسماء/صور المشاهدين الحاليين — بلا أي استعلام إضافي
@@ -10040,11 +10045,10 @@ function showXpGainAnimation(amount) {
 
         // 🛡️ room-ux-v2: محتوى القائمة نفسه (#rv-list) يأتي الآن من REST (contributors/viewers،
         // راجع loadRvList بـshowRoomViewersSheet) لا من هذا الحدث — يبقى مفيداً فقط لتحديث
-        // العدّاد الحيّ برأس النافذة (#room-viewers-sheet-count) وترتيب الغرفة لحظياً أثناء فتحها
+        // العدّاد الحيّ برأس النافذة (#room-viewers-sheet-count). roomRank أُسقِط من هذا الحدث
+        // (مراجعة PR #116) — كان يغذّي بطاقة "ترتيب الغرفة" التي أُزيلت من النافذة بالكامل
         const countLabel = document.getElementById('room-viewers-sheet-count');
         if (countLabel) countLabel.textContent = viewers.length.toLocaleString('en-US');
-        const rankEl = document.getElementById('room-viewers-sheet-rank');
-        if (rankEl) rankEl.textContent = roomRank ? `#${roomRank}` : 'غير مصنّفة';
     });
 
     // 🐛 إصلاح: ورقة "دعوة لمقعد" كانت تعلَق على التحميل دائماً — كانت مبنية كفرع إضافي
@@ -11120,11 +11124,58 @@ function showConfirmationModal(message, onConfirm) {
 // دون تهريب). يُكدَّس فوق بعضه لو وصل أكثر من إشعار بنفس اللحظة بدل أن يتراكب ويُخفي بعضه بعضاً
 // ✅ iconColor اختياري (يستخدمه showNotification لتمييز نجاح/خطأ/تنبيه بلون الأيقونة فقط)؛
 // نداءات هذا الملف المباشرة (صدى محتمل/رفض دعوة/نكزة...) تبقى بلونها الأحمر الافتراضي كما كانت
+// 🛡️ مراجعة PR #116: لا توست يغطي نافذة سفلية مفتوحة أو الجولة التعريفية. الجولة (غطاء ملء
+// الشاشة، لا حافة علوية منطقية يُتموضَع فوقها) تُطابَر توستاتها بدل عرضها فوراً — تُعرَض كلها
+// فور إغلاقها فعلياً (flushBottomToastQueue، تُستدعى من مساري إغلاق الجولة الوحيدين: "لاحقاً"
+// وfinishRoomTour). أي نافذة سفلية/مركزية أخرى مفتوحة (نفس نمط اكتشاف "هل نافذة مفتوحة"
+// المُستخدَم أصلاً بمستمع Escape أعلى الملف) لا تُطابَر توستها، بل يُعاد تموضعه فوق حافتها
+// العلوية مباشرة بدل bottom الثابت الافتراضي الذي كان يقع خلفها (أسفل غطائها بصرياً)
+let bottomToastQueue = [];
+function isRoomTourActive() {
+    return !!(document.getElementById('room-tour-welcome') || document.getElementById('room-tour-overlay'));
+}
+function flushBottomToastQueue() {
+    if (!bottomToastQueue.length) return;
+    const queued = bottomToastQueue;
+    bottomToastQueue = [];
+    queued.forEach(([message, icon, iconColor]) => renderBottomToast(message, icon, iconColor));
+}
+function topMostOpenSheetEl() {
+    // ✅ نفس نمط اكتشاف "هل توجد نافذة مفتوحة" المُستخدَم بمستمع Escape — [id$="-modal"]/
+    // [id$="-sheet"] يغطي كل النوافذ/الشيتات بالتطبيق بلا حاجة لتعداد كل معرّف يدوياً؛
+    // room-tour-welcome تُستثنى صراحة (تُعالَج بالطابور أعلاه، لا بإعادة التموضع)
+    // 🐛 إصلاح (مراجعة PR #116): offsetParent يُرجع null دائماً لعنصر position:fixed (حال كل
+    // هذي النوافذ بالضبط — fixed inset-0 بالتصميم) بصرف النظر عن ظهورها الفعلي، فكان الفلتر
+    // يستبعد كل نافذة مفتوحة فعلياً دوماً — getClientRects().length يعمل بشكل صحيح بلا هذا القيد
+    // (يبقى 0 فقط لعنصر display:none فعلياً أو غير موجود بتخطيط الصفحة أصلاً)
+    const candidates = Array.from(document.querySelectorAll('[id$="-modal"], [id$="-sheet"]'))
+        .filter(el => el.id !== 'room-tour-welcome' && el.getClientRects().length > 0);
+    if (!candidates.length) return null;
+    let top = null, topZ = -1;
+    candidates.forEach(el => {
+        const z = parseInt(getComputedStyle(el).zIndex, 10) || 0;
+        if (z >= topZ) { topZ = z; top = el; }
+    });
+    return top;
+}
 function showBottomToast(message, icon = 'fa-info-circle', iconColor = '#f87171') {
+    if (isRoomTourActive()) {
+        bottomToastQueue.push([message, icon, iconColor]);
+        return;
+    }
+    renderBottomToast(message, icon, iconColor);
+}
+function renderBottomToast(message, icon, iconColor) {
     const stacked = document.querySelectorAll('.bottom-toast').length;
     const el = document.createElement('div');
     el.className = 'bottom-toast';
     el.style.setProperty('--toast-offset', `${stacked * 52}px`);
+    const openSheet = topMostOpenSheetEl();
+    if (openSheet) {
+        const r = openSheet.getBoundingClientRect();
+        const clearance = Math.max(16, window.innerHeight - r.top + 10);
+        el.style.bottom = `calc(${clearance}px + var(--toast-offset, 0px))`;
+    }
     el.innerHTML = `<i class="fas ${icon}" style="color:${iconColor}"></i><span>${escapeHtml(message)}</span>`;
     document.body.appendChild(el);
     setTimeout(() => {

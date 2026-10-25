@@ -83,8 +83,31 @@
     }
 
     // ❌ ميزة حرجة واحدة فأكثر ناقصة — شاشة التحديث بدل تحميل app.js إطلاقاً
-    reportCompatIssue(missing);
-    renderUnsupportedScreen(missing);
+    // 🛡️ مراجعة PR #116: 'in-app' (متصفح تطبيق مدمج — إنستغرام/واتساب/سناب شات/لاين...، أو
+    // Facebook عبر FBAN/FBAV) أو WebRTC وحدها الناقصة (نفس العرض الفعلي لمتصفح تطبيق مدمج
+    // غالباً حتى لو لم تُكتشَف هويته من UA — هذي المتصفحات عادة محرّك Chromium حديث كامل لكنها
+    // تحجب WebRTC/getUserMedia تحديداً لأسباب أمنية خاصة بها) يحصل على شاشة مختلفة تماماً:
+    // لا "حدّث متصفحك" (غير صحيح هنا — المتصفح حديث، فقط الحاوية تحجب الميزة) بل "افتحه بمتصفح
+    // حقيقي" — رابط intent:// لأندرويد يفتح Chrome مباشرة، وعلى iOS زر نسخ الرابط فقط (لا توجد
+    // آلية موازية لفتح متصفح محدد قسراً من رابط عادي على iOS)
+    var inAppUA = isInAppBrowserUA(navigator.userAgent || '');
+    var webRTCOnly = (missing.length === 1 && missing[0] === 'webRTC');
+    var category = (inAppUA || webRTCOnly) ? 'in-app' : 'legacy';
+    reportCompatIssue(missing, category);
+    renderUnsupportedScreen(missing, category);
+
+    function isInAppBrowserUA(ua) {
+        return /FBAN|FBAV|Instagram|WhatsApp|Line\/|Snapchat/.test(ua);
+    }
+
+    // ✅ يفتح الرابط الحالي داخل تطبيق Chrome مباشرة على أندرويد — صيغة intent:// موثَّقة رسمياً
+    // من Google/Chromium لتجاوز متصفح التطبيق المدمج (لا بديل مكافئ على iOS، Safari/WebKit
+    // هناك لا يسمح لرابط عادي بفرض فتح تطبيق متصفح محدد بالاسم)
+    function androidChromeIntentUrl() {
+        var withoutScheme = window.location.href.replace(/^https?:\/\//i, '');
+        var scheme = (window.location.protocol || 'https:').replace(':', '');
+        return 'intent://' + withoutScheme + '#Intent;scheme=' + scheme + ';package=com.android.chrome;end';
+    }
 
     // ✅ تعرّف تقريبي لعرض "المتصفح: Chrome 96" فقط — لا يُستخدم أبداً لاتخاذ قرار الدعم نفسه
     // (ذاك بالميزات أعلاه حصراً)؛ تحليل بسيط كافٍ، لا حاجة لمكتبة كاملة لهذا الغرض التشخيصي
@@ -116,7 +139,7 @@
         return 'https://www.google.com/chrome/';
     }
 
-    function reportCompatIssue(missingFeatures) {
+    function reportCompatIssue(missingFeatures, category) {
         try {
             var b = detectBrowser();
             // ✅ XMLHttpRequest لا fetch — بعض المتصفحات القديمة جداً التي نفحص دعمها هنا بالذات
@@ -124,7 +147,7 @@
             var xhr = new XMLHttpRequest();
             xhr.open('POST', '/api/client-compat', true);
             xhr.setRequestHeader('Content-Type', 'application/json');
-            xhr.send(JSON.stringify({ uaFamily: b.family, uaVersion: b.version, missingFeatures: missingFeatures }));
+            xhr.send(JSON.stringify({ uaFamily: b.family, uaVersion: b.version, missingFeatures: missingFeatures, category: category }));
         } catch (e) { /* فشل التقرير لا يجب أن يمنع عرض شاشة التحديث نفسها */ }
     }
 
@@ -135,39 +158,7 @@
         return e;
     }
 
-    function renderUnsupportedScreen(missingFeatures) {
-        var loading = document.getElementById('loading-screen');
-        if (loading) loading.style.display = 'none';
-        var appContainer = document.getElementById('app-container');
-        if (appContainer) appContainer.style.display = 'none';
-
-        var b = detectBrowser();
-        var required = requiredVersionFor(b.family);
-
-        var wrap = el('div', 'unsup-gate');
-        var ico = el('div', 'unsup-gate-ico', '🌐');
-        var h3 = el('h3', null, 'متصفحك يحتاج تحديثاً');
-        var p = el('p', null, 'الموقع يستخدم ميزات حديثة لا يدعمها هذا المتصفح، لذلك قد تظهر الصفحة مكدّسة أو ناقصة. التحديث مجاني ويأخذ دقيقة.');
-
-        var det = el('div', 'unsup-gate-det');
-        det.appendChild(detRow('المتصفح', (b.family === 'unknown' ? 'غير معروف' : b.family) + (b.version ? ' ' + b.version : ''), null));
-        det.appendChild(detRow('المطلوب', required ? (b.family + ' ' + required + '+') : 'Chrome/Edge 105+, Safari 16+, Firefox 121+, Samsung Internet 20+', null));
-        var FEATURE_LABELS = {
-            containerQueries: 'تخطيط المقاعد (container queries)',
-            hasSelector: 'المحددات الحديثة (:has)',
-            aspectRatio: 'نِسَب الصناديق (aspect-ratio)',
-            webSocket: 'الاتصال الحي (WebSocket)',
-            webRTC: 'الصوت المباشر (WebRTC)',
-            optionalChaining: 'صياغة الربط الاختياري (?.)'
-        };
-        for (var i = 0; i < missingFeatures.length; i++) {
-            det.appendChild(detRow(FEATURE_LABELS[missingFeatures[i]] || missingFeatures[i], 'غير مدعوم', 'bad'));
-        }
-
-        var btn = el('button', 'unsup-gate-btn', 'تحديث ' + (b.family === 'unknown' ? 'المتصفح' : b.family) + ' من المتجر');
-        btn.type = 'button';
-        btn.addEventListener('click', function () { window.location.href = storeLink(); });
-
+    function makeCopyLinkBtn() {
         var btn2 = el('button', 'unsup-gate-btn2', 'انسخ الرابط وافتحه في متصفح آخر');
         btn2.type = 'button';
         btn2.addEventListener('click', function () {
@@ -184,23 +175,80 @@
                 window.prompt('انسخ هذا الرابط:', url);
             }
         });
+        return btn2;
+    }
 
-        var small = el('small', null, 'بعد التحديث افتح الموقع مجدداً. لن تحتاج تسجيل الدخول من جديد.');
+    function detRow(label, value, cls) {
+        var row = el('div', 'unsup-gate-det-row');
+        row.appendChild(el('span', null, label));
+        row.appendChild(el('b', cls === 'bad' ? 'unsup-gate-bad' : 'unsup-gate-good', value));
+        return row;
+    }
+
+    function renderUnsupportedScreen(missingFeatures, category) {
+        var loading = document.getElementById('loading-screen');
+        if (loading) loading.style.display = 'none';
+        var appContainer = document.getElementById('app-container');
+        if (appContainer) appContainer.style.display = 'none';
+
+        var isInApp = category === 'in-app';
+        var b = detectBrowser();
+        var required = requiredVersionFor(b.family);
+
+        var wrap = el('div', 'unsup-gate');
+        var ico = el('div', 'unsup-gate-ico', isInApp ? '🔗' : '🌐');
+        var h3 = el('h3', null, isInApp ? 'افتح الرابط في متصفح حقيقي' : 'متصفحك يحتاج تحديثاً');
+        var p = el('p', null, isInApp
+            ? 'افتح الرابط في Chrome أو Safari لتعمل كل الميزات — متصفح التطبيق المدمج (مثل إنستغرام أو واتساب) لا يدعم الصوت المباشر وميزات أخرى.'
+            : 'الموقع يستخدم ميزات حديثة لا يدعمها هذا المتصفح، لذلك قد تظهر الصفحة مكدّسة أو ناقصة. التحديث مجاني ويأخذ دقيقة.');
+
+        var det = el('div', 'unsup-gate-det');
+        det.appendChild(detRow('المتصفح', (b.family === 'unknown' ? 'غير معروف' : b.family) + (b.version ? ' ' + b.version : ''), null));
+        // ✅ "المطلوب" (حد أدنى إصدار) لا معنى له بحالة in-app — المتصفح غالباً حديث فعلاً،
+        // المشكلة حجب الحاوية لميزة بعينها لا قِدَم المحرّك نفسه
+        if (!isInApp) {
+            det.appendChild(detRow('المطلوب', required ? (b.family + ' ' + required + '+') : 'Chrome/Edge 105+, Safari 16+, Firefox 121+, Samsung Internet 20+', null));
+        }
+        var FEATURE_LABELS = {
+            containerQueries: 'تخطيط المقاعد (container queries)',
+            hasSelector: 'المحددات الحديثة (:has)',
+            aspectRatio: 'نِسَب الصناديق (aspect-ratio)',
+            webSocket: 'الاتصال الحي (WebSocket)',
+            webRTC: 'الصوت المباشر (WebRTC)',
+            optionalChaining: 'صياغة الربط الاختياري (?.)'
+        };
+        for (var i = 0; i < missingFeatures.length; i++) {
+            det.appendChild(detRow(FEATURE_LABELS[missingFeatures[i]] || missingFeatures[i], 'غير مدعوم', 'bad'));
+        }
 
         wrap.appendChild(ico);
         wrap.appendChild(h3);
         wrap.appendChild(p);
         wrap.appendChild(det);
-        wrap.appendChild(btn);
-        wrap.appendChild(btn2);
+
+        if (isInApp) {
+            var isAndroid = /Android/i.test(navigator.userAgent || '');
+            if (isAndroid) {
+                var openBtn = el('button', 'unsup-gate-btn', 'فتح في المتصفح');
+                openBtn.type = 'button';
+                openBtn.addEventListener('click', function () { window.location.href = androidChromeIntentUrl(); });
+                wrap.appendChild(openBtn);
+            }
+            // ✅ iOS: لا آلية فتح متصفح محدد قسراً من رابط عادي — زر نسخ الرابط فقط (طلب صريح
+            // بمراجعة PR #116)، يبقى متاحاً أيضاً كاحتياط ثانٍ على أندرويد لو تعذّر intent://
+            wrap.appendChild(makeCopyLinkBtn());
+        } else {
+            var btn = el('button', 'unsup-gate-btn', 'تحديث ' + (b.family === 'unknown' ? 'المتصفح' : b.family) + ' من المتجر');
+            btn.type = 'button';
+            btn.addEventListener('click', function () { window.location.href = storeLink(); });
+            wrap.appendChild(btn);
+            wrap.appendChild(makeCopyLinkBtn());
+        }
+
+        var small = el('small', null, isInApp
+            ? 'بعد الفتح بمتصفح حقيقي لن تحتاج تسجيل الدخول من جديد.'
+            : 'بعد التحديث افتح الموقع مجدداً. لن تحتاج تسجيل الدخول من جديد.');
         wrap.appendChild(small);
         document.body.appendChild(wrap);
-
-        function detRow(label, value, cls) {
-            var row = el('div', 'unsup-gate-det-row');
-            row.appendChild(el('span', null, label));
-            row.appendChild(el('b', cls === 'bad' ? 'unsup-gate-bad' : 'unsup-gate-good', value));
-            return row;
-        }
     }
 })();

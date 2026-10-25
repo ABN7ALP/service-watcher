@@ -1532,6 +1532,16 @@ class AdminDashboard {
                 optionalChaining: 'الربط الاختياري (?.)'
             };
 
+            const CATEGORY_LABELS = { 'in-app': 'متصفح تطبيق مدمج / WebRTC فقط ناقصة', legacy: 'متصفح قديم فعلياً' };
+            const cc = document.getElementById('compatByCategoryContainer');
+            cc.innerHTML = !data.byCategory || !data.byCategory.length
+                ? '<div class="empty-state"><i class="fas fa-check-circle fa-2x"></i><p>لا بيانات مسجَّلة</p></div>'
+                : `<table class="table table-hover"><thead><tr><th>الفئة</th><th>العدد</th></tr></thead><tbody>
+                    ${data.byCategory.map(c => `
+                        <tr><td>${escapeHtml(CATEGORY_LABELS[c.category] || c.category)}</td><td>${c.count}</td></tr>
+                    `).join('')}
+                </tbody></table>`;
+
             const bc = document.getElementById('compatByBrowserContainer');
             bc.innerHTML = !data.byBrowser || !data.byBrowser.length
                 ? '<div class="empty-state"><i class="fas fa-check-circle fa-2x"></i><p>لا زيارات بمتصفح غير مدعوم مسجَّلة</p></div>'

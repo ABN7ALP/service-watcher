@@ -124,6 +124,45 @@ async function main() {
         console.log(`📸 حُفِظت: ${path.join(OUT_DIR, '5-unsupported-browser-gate.png')}`);
         await gatePage.close();
 
+        console.log('🚫 بوابة "متصفح غير مدعوم" — مراجعة PR #116: UA متصفح تطبيق مدمج (إنستغرام أندرويد)...');
+        const inAppAndroidPage = await browser.newPage({
+            viewport: { width: 375, height: 812 },
+            userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 Instagram 302.0.0.23.114 Android'
+        });
+        await inAppAndroidPage.addInitScript(() => { delete window.RTCPeerConnection; });
+        await inAppAndroidPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
+        await inAppAndroidPage.waitForTimeout(300);
+        const inAppGateVisible = await inAppAndroidPage.locator('.unsup-gate').isVisible().catch(() => false);
+        const inAppOpenBtnVisible = await inAppAndroidPage.locator('.unsup-gate-btn').filter({ hasText: 'فتح في المتصفح' }).isVisible().catch(() => false);
+        const inAppNoUpdateWording = !(await inAppAndroidPage.locator('.unsup-gate-btn').filter({ hasText: 'تحديث' }).count());
+        console.log(`   شاشة بديلة ظهرت: ${inAppGateVisible ? '✅' : '❌'} | زر "فتح في المتصفح" (أندرويد): ${inAppOpenBtnVisible ? '✅' : '❌'} | لا نص "تحديث": ${inAppNoUpdateWording ? '✅' : '❌'}`);
+        await inAppAndroidPage.close();
+
+        console.log('🚫 بوابة "متصفح غير مدعوم" — مراجعة PR #116: WebRTC وحدها الناقصة (لا UA تطبيق مدمج)...');
+        const webrtcOnlyPage = await browser.newPage({ viewport: { width: 375, height: 812 } });
+        await webrtcOnlyPage.addInitScript(() => { delete window.RTCPeerConnection; });
+        await webrtcOnlyPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
+        await webrtcOnlyPage.waitForTimeout(300);
+        const webrtcOnlyAltScreen = !(await webrtcOnlyPage.locator('.unsup-gate-btn').filter({ hasText: 'تحديث' }).count());
+        console.log(`   WebRTC فقط ناقصة ⇒ نفس الشاشة البديلة (لا "تحديث"): ${webrtcOnlyAltScreen ? '✅' : '❌'}`);
+        await webrtcOnlyPage.close();
+
+        console.log('🚫 بوابة "متصفح غير مدعوم" — مراجعة PR #116: UA متصفح تطبيق مدمج على iOS (زر نسخ الرابط فقط)...');
+        const inAppIosPage = await browser.newPage({
+            viewport: { width: 375, height: 812 },
+            userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Instagram 302.0.0.23.114 (iPhone14,5; iOS 17_0; en_US; en-US; scale=3.00; 1170x2532; 471727663)'
+        });
+        await inAppIosPage.addInitScript(() => { delete window.RTCPeerConnection; });
+        await inAppIosPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
+        await inAppIosPage.waitForTimeout(300);
+        const iosNoOpenBtn = !(await inAppIosPage.locator('.unsup-gate-btn').filter({ hasText: 'فتح في المتصفح' }).count());
+        const iosHasCopyBtn = await inAppIosPage.locator('.unsup-gate-btn2').isVisible().catch(() => false);
+        console.log(`   iOS: لا زر "فتح في المتصفح": ${iosNoOpenBtn ? '✅' : '❌'} | زر نسخ الرابط ظاهر: ${iosHasCopyBtn ? '✅' : '❌'}`);
+        await inAppIosPage.close();
+
+        const compatCategoryCount = await ClientCompatLog.countDocuments({ category: 'in-app' });
+        console.log(`   سجلّات ClientCompatLog بفئة "in-app": ${compatCategoryCount} — ${compatCategoryCount >= 3 ? '✅' : '❌'}`);
+
         const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
         page.on('pageerror', (err) => { consoleErrors.push(`[pageerror] ${err.message}`); });
         page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(`[console:error] ${msg.text()}`); });
@@ -145,6 +184,20 @@ async function main() {
             localStorage.setItem('token', tok);
             localStorage.setItem('user', JSON.stringify(u));
         }, [tokenHost, { _id: host._id.toString(), username: host.username, coins: 1000, balance: 0, level: 5, experience: 0, isAgent: false, activeFrameClass: null, status: '', friends: [], friendRequestsReceived: [] }]);
+        // 🛡️ مراجعة PR #116 (بند 3) — getUserMedia مُزيَّفة لا تُحسَم تلقائياً أبداً (وعد مُعلَّق
+        // يُضاف resolver الرفض الخاص به لمصفوفة window.__micRejectResolvers)؛ الاختبار يستدعي
+        // الرفض يدوياً باللحظة المطلوبة تحديداً (أثناء الجولة لاختبار الطابور، ثم أثناء نافذة
+        // مفتوحة لاختبار إعادة التموضع) — تحكّم كامل بالتوقيت بدل مهلة مؤقَّتة هشّة
+        await page.addInitScript(() => {
+            window.__micRejectResolvers = [];
+            if (navigator.mediaDevices) {
+                navigator.mediaDevices.getUserMedia = function () {
+                    return new Promise(function (resolve, reject) {
+                        window.__micRejectResolvers.push(reject);
+                    });
+                };
+            }
+        });
 
         await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'domcontentloaded' });
         await page.locator('#still-live-return-btn').click({ timeout: 20000 });
@@ -157,6 +210,23 @@ async function main() {
         await page.locator('#room-tour-overlay .rtour-tip').waitFor({ state: 'visible', timeout: 5000 });
         const tourStepVisible = await page.locator('.rtour-hole').isVisible().catch(() => false);
         console.log(`   بطاقة الترحيب ظهرت تلقائياً ثم الخطوة الأولى: ${tourStepVisible ? '✅' : '❌'}`);
+
+        // ✅ مراجعة PR #116 (بند 2): الفتحة يجب أن تطابق .voice-seat-av-wrap (الصورة الدائرية
+        // فقط) بالضبط لا .voice-seat الحاوي الواسع (يشمل الاسم/عداد الدعم أسفلها أيضاً)
+        const holeBox = await page.locator('.rtour-hole').boundingBox();
+        const avatarBox = await page.locator('.voice-seat.host-seat .voice-seat-av-wrap').boundingBox();
+        const seatBox = await page.locator('.voice-seat.host-seat').boundingBox();
+        const holeMatchesAvatarNotSeat = holeBox && avatarBox && seatBox
+            && Math.abs(holeBox.width - avatarBox.width) <= 20
+            && (holeBox.width < seatBox.width - 10);
+        console.log(`   فتحة الجولة = صورة المضيف (${holeBox ? Math.round(holeBox.width) : '?'}px) لا خلية المقعد كاملة (${seatBox ? Math.round(seatBox.width) : '?'}px): ${holeMatchesAvatarNotSeat ? '✅' : '❌'}`);
+
+        // ✅ مراجعة PR #116 (بند 3): توست المايكروفون يُطابَر أثناء الجولة — لا يظهر فوقها إطلاقاً
+        await page.evaluate(() => { const r = window.__micRejectResolvers.pop(); if (r) r(new DOMException('Permission denied', 'NotAllowedError')); });
+        await page.waitForTimeout(300);
+        const toastHiddenDuringTour = (await page.locator('.bottom-toast').count()) === 0;
+        console.log(`   توست "تعذّر الوصول للمايكروفون" مُطابَر أثناء الجولة (لا يظهر فوقها): ${toastHiddenDuringTour ? '✅' : '❌'}`);
+
         await require('fs').promises.mkdir(OUT_DIR, { recursive: true });
         await page.screenshot({ path: path.join(OUT_DIR, '4-room-tour-step.png') });
         console.log(`📸 حُفِظت: ${path.join(OUT_DIR, '4-room-tour-step.png')}`);
@@ -167,6 +237,11 @@ async function main() {
         const dockLabelsVisible = await page.locator('.room-dock-label').first().isVisible().catch(() => false);
         console.log(`   تسميات الشريط السفلي بعد انتهاء الجولة: ${dockLabelsVisible ? '✅ ظاهرة' : '❌ غير ظاهرة'}`);
 
+        // ✅ الآن يُفترض أن يظهر فوراً (الطابور فُرِّغ عند إغلاق الجولة)
+        const toastShownAfterTour = await page.locator('.bottom-toast').first().isVisible().catch(() => false);
+        console.log(`   توست المايكروفون ظهر فوراً بعد إغلاق الجولة (الطابور فُرِّغ): ${toastShownAfterTour ? '✅' : '❌'}`);
+        await page.waitForTimeout(4200); // ✅ انتظار اختفاء التوست تلقائياً (3.6s + حركة الإخفاء) قبل المتابعة
+
         console.log('🔍 فتح نافذة المشاهدين (الضغط على شريط العدّاد أعلى الغرفة)...');
         await page.locator('#room-viewer-count-btn').click({ timeout: 20000 });
         await page.locator('#room-viewers-sheet').waitFor({ state: 'visible', timeout: 10000 });
@@ -175,6 +250,18 @@ async function main() {
         const podiumVisible = await page.locator('.rv-podium').isVisible().catch(() => false);
         const mineRowVisible = await page.locator('.rv-mine .rv-item').isVisible().catch(() => false);
         console.log(`   منصّة أول 3: ${podiumVisible ? '✅ ظاهرة' : '❌ غير ظاهرة'} | صف "أنا" المثبّت: ${mineRowVisible ? '✅ ظاهر' : '❌ غير ظاهر'}`);
+
+        // ✅ مراجعة PR #116 (بند 1): لا بطاقتَي "كوينز الجلسة"/"ترتيب الغرفة" داخل النافذة الجديدة
+        const statCardsGone = (await page.locator('#room-viewers-sheet .room-info-stat-box').count()) === 0;
+        console.log(`   بطاقتا الإحصاء القديمتان أُزيلتا من نافذة المشاهدين: ${statCardsGone ? '✅' : '❌'}`);
+
+        // ✅ مراجعة PR #116 (بند 3): إثبات أن منطق كشف "نافذة مفتوحة" (topMostOpenSheetEl —
+        // نفس نمط اكتشاف Escape) يطابق فعلياً #room-viewers-sheet الحقيقية بالـDOM الآن
+        const sheetDetectedAsOpen = await page.evaluate(() => {
+            const els = Array.from(document.querySelectorAll('[id$="-modal"], [id$="-sheet"]'));
+            return els.some((el) => el.id === 'room-viewers-sheet' && el.getClientRects().length > 0);
+        });
+        console.log(`   نافذة المشاهدين تُكتشَف كـ"نافذة مفتوحة" (أساس إعادة تموضع التوست): ${sheetDetectedAsOpen ? '✅' : '❌'}`);
 
         await require('fs').promises.mkdir(OUT_DIR, { recursive: true });
         await page.screenshot({ path: path.join(OUT_DIR, '1-viewers-sheet-contributors.png') });
@@ -229,7 +316,9 @@ async function main() {
             console.error('\n💥 أخطاء console/pageerror ظهرت خلال الفحص:');
             consoleErrors.forEach(e => console.error('   ' + e));
             process.exitCode = 1;
-        } else if (!podiumVisible || !mineRowVisible || !seatedSectionVisible || !hostTagVisible || !filteredVisible || !recipSeatBadgeVisible || !recipNameVisible || !tourStepVisible || !dockLabelsVisible || !unsupGateVisible || appJsRequested || !compatReported || !adminStatsOk) {
+        } else if (!podiumVisible || !mineRowVisible || !seatedSectionVisible || !hostTagVisible || !filteredVisible || !recipSeatBadgeVisible || !recipNameVisible || !tourStepVisible || !dockLabelsVisible || !unsupGateVisible || appJsRequested || !compatReported || !adminStatsOk
+            || !holeMatchesAvatarNotSeat || !toastHiddenDuringTour || !toastShownAfterTour || !statCardsGone || !sheetDetectedAsOpen
+            || !inAppGateVisible || !inAppOpenBtnVisible || !inAppNoUpdateWording || !webrtcOnlyAltScreen || !iosNoOpenBtn || !iosHasCopyBtn || compatCategoryCount < 3) {
             console.error('\n💥 فحص بصري فشل (عنصر متوقَّع غير ظاهر) — راجع السطور أعلاه');
             process.exitCode = 1;
         } else {
