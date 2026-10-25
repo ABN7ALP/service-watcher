@@ -6,6 +6,7 @@ const Gift = require('../models/Gift');
 const AdminLog = require('../models/AdminLog');
 const ClientErrorLog = require('../models/ClientErrorLog');
 const ClientCompatLog = require('../models/ClientCompatLog');
+const SystemHealth = require('../models/SystemHealth');
 
 // Admin Dashboard Stats
 exports.getDashboardStats = async (req, res) => {
@@ -669,6 +670,83 @@ exports.getClientCompatStats = async (req, res) => {
       byCategory: byCategory.map(c => ({ category: c._id || 'legacy', count: c.count }))
     });
   } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// ✅ chore/dependency-health — "صحة النظام": نتائج آخر فحص npm outdated/audit (dependencyHealthJob)
+// + عدّادات توافق المتصفحات (PR #116) مجمَّعة لعرض موحّد بلوحة التحكم
+// =====================================================
+exports.getSystemHealth = async (req, res) => {
+  try {
+    // ✅ نقرأ بـcheckRunId الأحدث فقط لا كل المجموعة: لو تداخل تشغيلان (تلقائي + يدوي بالتزامن
+    // النادر) تبقى القراءة متّسقة بنتائج تشغيل واحد فعلي بدل مزيج من دفعتين مختلفتين
+    const [latestRun, clientCompatByCategory] = await Promise.all([
+      SystemHealth.findOne().sort({ createdAt: -1 }),
+      ClientCompatLog.aggregate([
+        { $group: { _id: '$category', count: { $sum: 1 } } }
+      ])
+    ]);
+    const findings = latestRun ? await SystemHealth.find({ checkRunId: latestRun.checkRunId }) : [];
+
+    const vulnerabilities = findings.filter(f => f.type === 'vulnerability');
+    const outdated = findings.filter(f => f.type === 'outdated');
+    const errors = findings.filter(f => f.type === 'error');
+
+    const severityCounts = { critical: 0, high: 0, moderate: 0, low: 0, info: 0 };
+    for (const v of vulnerabilities) {
+      if (severityCounts[v.severity] !== undefined) severityCounts[v.severity]++;
+    }
+
+    const clientCompat = { legacy: 0, inApp: 0 };
+    for (const c of clientCompatByCategory) {
+      if (c._id === 'in-app') clientCompat.inApp = c.count;
+      else clientCompat.legacy += c.count; // أي قيمة غير 'in-app' (أو null قديمة) تُحسب legacy
+    }
+
+    const lastCheckAt = latestRun ? latestRun.createdAt : null;
+
+    res.json({
+      success: true,
+      lastCheckAt,
+      severityCounts,
+      vulnerabilities: vulnerabilities.map(v => ({
+        package: v.package, severity: v.severity, advisoryTitle: v.advisoryTitle, advisoryUrl: v.advisoryUrl
+      })),
+      outdated: outdated.map(o => ({
+        package: o.package, current: o.current, wanted: o.wanted, latest: o.latest, isMajorUpdate: o.isMajorUpdate
+      })),
+      errors: errors.map(e => ({ source: e.source, message: e.errorMessage })),
+      clientCompat
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ زر "فحص الآن" — يشغّل الفحص مباشرة (محدَّد المعدل بمسار الراوتر: مرة واحدة كل 5 دقائق
+// إجمالاً لكل الأدمنز معاً، لا لكل أدمن منفرد — الفحص مُكلف نسبياً (execFile لـnpm) ولا داعي
+// لتشغيله بالتوازي من أكثر من مشرف بنفس اللحظة)
+exports.runSystemHealthCheckNow = async (req, res) => {
+  try {
+    const { admin } = req;
+    const { runDependencyHealthCheck } = require('../utils/dependencyHealthJob');
+    const result = await runDependencyHealthCheck();
+
+    await AdminLog.logAction({
+      admin: admin._id,
+      action: 'system_maintenance',
+      targetEntity: 'system',
+      details: { action: 'manual_dependency_health_check', ...result },
+      isAutomated: false,
+      ipAddress: req.ip
+    });
+    console.log(`🩺 [SYSTEM HEALTH] فحص يدوي بواسطة ${admin.username || admin._id}: ${result.vulnerabilityCount} ثغرة، ${result.outdatedCount} حزمة قديمة`);
+
+    res.json({ success: true, message: 'تم تنفيذ الفحص بنجاح', result });
+  } catch (error) {
+    console.error('[SYSTEM HEALTH] فشل الفحص اليدوي:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

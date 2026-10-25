@@ -2,10 +2,22 @@ const withdrawalController = require('../controllers/withdrawalController');
 const customGiftController = require('../controllers/customGiftController');
 const frameController = require('../controllers/frameController');
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const adminAuth = require('../middleware/adminAuth');
 const adminController = require('../controllers/adminController');
 const { frameAssetUpload } = require('../utils/cloudinary');
+
+// 🛡️ "فحص الآن" (صحة النظام): مفتاح ثابت وليس هوية الأدمن — الحد مرة كل 5 دقائق إجمالاً
+// عبر كل الأدمنز معاً، لا لكل أدمن منفرد، لأن الفحص يشغّل npm outdated/audit (مُكلف نسبياً)
+const systemHealthCheckLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000,
+    max: 1,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: () => 'system-health-manual-check',
+    message: { success: false, message: 'تم تنفيذ فحص مؤخراً. يرجى الانتظار قبل إعادة المحاولة.' }
+});
 
 router.use(adminAuth);
 
@@ -62,6 +74,8 @@ router.post('/suggestions/:suggestionId/resolve', adminController.resolveSuggest
 router.get('/logs', adminController.getLogs);
 router.get('/client-errors', adminController.getClientErrors);
 router.get('/client-compat', adminController.getClientCompatStats);
+router.get('/system-health', adminController.getSystemHealth);
+router.post('/system-health/check-now', systemHealthCheckLimiter, adminController.runSystemHealthCheckNow);
 
 router.get('/settings', adminController.getSystemSettings);
 router.post('/settings', adminController.updateSystemSettings);
