@@ -51,9 +51,29 @@ async function setupPage(browser, token, userObj, label, roomMongoId, isHost) {
     const page = await browser.newPage({ viewport: { width: 420, height: 860 } });
     page.on('pageerror', (err) => console.log(`[${label}:error] ${err.message}`));
     page.on('console', (msg) => { if (msg.type() === 'error') console.log(`[${label}:console:error] ${msg.text()}`); });
+    // 🛡️ طلب صريح بمراجعة PR (صور الهدايا مكسورة باللقطات): Chromium لا يقرأ HTTPS_PROXY من
+    // بيئة العملية تلقائياً (بخلاف fetch/curl بـNode — راجع /root/.ccr/README.md)، وخيار
+    // launch({proxy}) الخاص به اصطدم بعلّة حقيقية هنا: bypass لـ127.0.0.1 لم يُحتَرم إطلاقاً
+    // (كل صيغة جُرِّبت)، فطلبات الخادم المحلي نفسه كانت تمرّ بالوكيل أيضاً وتفشل بـ405 (الوكيل
+    // يخدم فقط أنفاق CONNECT لمضيفين خارجيين حقيقيين). الحل: Chromium بلا أي proxy إطلاقاً
+    // (اتصالاته بخادمنا المحلي تبقى مباشرة كالسابق)، وaccess res.cloudinary.com فقط (صور
+    // الهدايا الفعلية — بيت الموضوع هنا) يُعاد توجيهه يدوياً هنا عبر fetch بـNode (يحترم
+    // HTTPS_PROXY تلقائياً وصحيح — مُتحقَّق مباشرة: 200 OK لكل الروابط المُحوَّلة). i.ibb.co
+    // (صورة أفاتار افتراضية لمستخدم اختبار بلا صورة فعلية) محجوبة بسياسة الوكيل نفسها (403
+    // مؤكَّد) ولا تُعاد توجيهها عمداً — هذا بالضبط الاختبار الحقيقي لاحتياط data-avatar-fallback
+    // المُضاف بهذي المراجعة (رابط حيّ لكن ميت ⇐ DEFAULT_AVATAR_URL المحلي تلقائياً)
     const socketIoClientPath = path.join(ROOT, 'node_modules/socket.io/client-dist/socket.io.min.js');
     await page.route('https://cdn.socket.io/**', (route) => route.fulfill({ path: socketIoClientPath, contentType: 'application/javascript' }));
-    await page.route(/^https:\/\/(res\.cloudinary\.com|fonts\.googleapis\.com|fonts\.gstatic\.com|cdnjs\.cloudflare\.com)\//, (route) => route.abort());
+    await page.route(/^https:\/\/(cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com)\//, (route) => route.abort());
+    await page.route(/^https:\/\/res\.cloudinary\.com\//, async (route) => {
+        try {
+            const resp = await fetch(route.request().url());
+            const buf = Buffer.from(await resp.arrayBuffer());
+            await route.fulfill({ status: resp.status, contentType: resp.headers.get('content-type') || 'image/png', body: buf });
+        } catch (_) {
+            await route.abort();
+        }
+    });
     await page.addInitScript(([tok, u]) => {
         localStorage.setItem('token', tok);
         localStorage.setItem('user', JSON.stringify(u));
@@ -134,6 +154,13 @@ async function main() {
 
         console.log('🌐 إقلاع Chromium حقيقي بجلستي عميلين مستقلّتين (مُرسِل + مستلِم مضيف الغرفة)...');
         const { chromium } = require('playwright');
+        // 🐛 بلا proxy هنا عمداً — Chromium launch({proxy}) جُرِّب أولاً (مع bypass لـ127.0.0.1
+        // بكل صيغة ممكنة: فاصلة/فاصلة منقوطة/<local>) لكنه لم يُحترَم إطلاقاً هنا، فطلبات
+        // خادم الاختبار المحلي نفسه كانت تُوجَّه للوكيل أيضاً وتفشل بـ405 (الوكيل يخدم فقط أنفاق
+        // CONNECT لمضيفين خارجيين حقيقيين، لا طلبات HTTP عادية لعنوان محلي). الحل الفعلي: بلا
+        // أي proxy على Chromium نفسه (اتصاله بخادمنا المحلي يبقى مباشراً كما كان)، والوصول إلى
+        // res.cloudinary.com حقيقياً عبر إعادة توجيه يدوية بـpage.route+fetch بـNode أدناه
+        // (fetch بـNode يحترم HTTPS_PROXY صحيحاً — مُتحقَّق مباشرة)
         browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 
         const pageRecipient = await setupPage(browser, tokenRecipient, userLocalStorage(recipient._id.toString(), recipient.username, 0), 'recipient', roomMongoId, true);

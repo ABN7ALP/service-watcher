@@ -14889,7 +14889,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         function gsheetCellInner(g, cat) {
             const fallbackIcon = escapeHtml(g.icon || '🎁');
             const img = g.imageUrl
-                ? `<img src="${giftImg(g.imageUrl, 96)}" alt="" loading="lazy" decoding="async" data-fallback-icon="${fallbackIcon}" style="width:1.3em;height:1.3em;object-fit:contain">`
+                ? `<img src="${giftImg(g.imageUrl, 96)}" data-gift-original-src="${g.imageUrl}" data-gift-fallback-icon="${fallbackIcon}" alt="" loading="lazy" decoding="async" style="width:1.3em;height:1.3em;object-fit:contain">`
                 : `<span>${fallbackIcon}</span>`;
             return `
                 ${cat.k === 'legendary' ? '<span class="gsheet-tag">أسطوري</span>' : ''}
@@ -14897,14 +14897,6 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 <span class="gsheet-gn">${escapeHtml(g.name)}</span>
                 <span class="gsheet-gp">${coinIconHTML(11)}${(g.discountedPrice || g.price).toLocaleString('en-US')}</span>
             `;
-        }
-        function wireGsheetImgFallback(container) {
-            container.querySelectorAll('.gsheet-gi img[data-fallback-icon]').forEach(img => {
-                img.addEventListener('error', function () {
-                    const span = this.closest('.gsheet-gi');
-                    if (span) span.innerHTML = `<span>${this.dataset.fallbackIcon}</span>`;
-                }, { once: true });
-            });
         }
         function renderGrid() {
             const cat = GSHEET_CATS.find(c => c.k === tab);
@@ -14954,7 +14946,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 });
                 pagesEl.appendChild(pg);
             }
-            wireGsheetImgFallback(pagesEl);
+            wireGiftImgFallbacks(pagesEl); // 🛡️ احتياط بخطوتين (أصل كامل ثم أيقونة) لصور شبكة المتجر
             const dotsEl = document.getElementById('gsheet-dots');
             if (dotsEl) {
                 dotsEl.innerHTML = n > 1 ? Array.from({ length: n }, (_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('') : '';
@@ -15396,13 +15388,46 @@ function giftImg(url, size) {
 
 // ✅ طلب صريح: كل صورة هدية تُعرَض عبر giftImg أعلاه — fetchSize اختياري (96 للشبكة/64
 // للشريط/80 للطيران، راجع مواقع الاستدعاء)؛ بلا تمرير fetchSize تُستخدَم px نفسها (أيقونة
-// صغيرة واحدة لكل جلسة كومبو — زر الكومبو العائم، لا حاجة لسِعة ثابتة خاصة بها)
+// صغيرة واحدة لكل جلسة كومبو — زر الكومبو العائم، لا حاجة لسِعة ثابتة خاصة بها). data-gift-*
+// تحمل الأصل الكامل/الأيقونة الاحتياطية لـwireGiftImgFallbacks أدناه (الاحتياط الفعلي بخطوتين)
 function giftEmojiOrImgHTML(gift, px, fetchSize) {
     if (gift && gift.imageUrl) {
         const src = giftImg(gift.imageUrl, fetchSize || px);
-        return `<img src="${src}" alt="" loading="lazy" decoding="async" style="width:${px}px;height:${px}px;object-fit:contain;display:block">`;
+        const icon = escapeHtml(gift.icon || '🎁');
+        return `<img src="${src}" data-gift-original-src="${gift.imageUrl}" data-gift-fallback-icon="${icon}" alt="" loading="lazy" decoding="async" style="width:${px}px;height:${px}px;object-fit:contain;display:block">`;
     }
     return `<span>${escapeHtml((gift && gift.icon) || '🎁')}</span>`;
+}
+
+// 🛡️ طلب صريح (مراجعة PR — صور هدايا مكسورة): احتياط بخطوتين لكل <img> مبنية عبر giftImg() —
+// فشل تحميل النسخة المُحوَّلة (رابط Cloudinary تحويل مرفوض/غير مدعوم لأي سبب — راجع البند
+// الأول بمراجعة PR: مُتحقَّق فعلياً أن الحساب لا يرفضها، لكن هذا احتياط لظروف شبكة/حساب
+// مستقبلية لا نتحكم بها) يُجرِّب الرابط الأصلي الكامل بلا أي تحويل أولاً، فلو فشل الأصل أيضاً
+// تُستبدَل الصورة بأيقونة الهدية النصية (إيموجي) — لا تبقى أيقونة صورة مكسورة أبداً مهما حدث.
+// once:true بكل خطوة يمنع أي حلقة؛ originalSrc/fallbackIcon اختياريان (افتراضياً من data-*
+// للصور المبنية كنص HTML عبر giftEmojiOrImgHTML، أو يُمرَّران مباشرة للصور المبنية بـDOM مباشرة)
+function wireGiftImgFallback(img, originalSrc, fallbackIcon) {
+    if (originalSrc === undefined) originalSrc = img.dataset.giftOriginalSrc;
+    if (fallbackIcon === undefined) fallbackIcon = img.dataset.giftFallbackIcon || '🎁';
+    img.addEventListener('error', function onFirstError() {
+        if (originalSrc) {
+            img.src = originalSrc;
+            img.addEventListener('error', function onSecondError() {
+                const span = document.createElement('span');
+                span.textContent = fallbackIcon;
+                img.replaceWith(span);
+            }, { once: true });
+        } else {
+            const span = document.createElement('span');
+            span.textContent = fallbackIcon;
+            img.replaceWith(span);
+        }
+    }, { once: true });
+}
+// ✅ يمسح كل <img data-gift-original-src> داخل حاوية (بعد إدراجها بالـDOM فعلياً عبر innerHTML)
+// ويربط الاحتياط أعلاه لكل واحدة — يُستدعى بعد أي إدراج يستخدم giftEmojiOrImgHTML
+function wireGiftImgFallbacks(root) {
+    root.querySelectorAll('img[data-gift-original-src]').forEach((img) => wireGiftImgFallback(img));
 }
 
 // ✅ طلب صريح (بند 6 بالمواصفة): يحترم تفضيل تقليل الحركة — نفس اسم/منطق pkPrefersReducedMotion
@@ -15529,6 +15554,7 @@ function startGiftComboSession(ctx) {
         </div>
     `;
     document.body.appendChild(layer);
+    wireGiftImgFallbacks(layer); // 🛡️ احتياط بخطوتين لأيقونة الهدية بزر الكومبو — راجع wireGiftImgFallback
     const canvas = layer.querySelector('#gfx-canvas');
     const xctx = canvas.getContext('2d');
     const comboEl = layer.querySelector('#gfx-combo');
@@ -15551,6 +15577,7 @@ function startGiftComboSession(ctx) {
         <span class="gfx-banner-x" id="gfx-banner-x">×0</span>
     `;
     (document.getElementById('room-gift-lane') || document.body).prepend(bannerEl);
+    wireGiftImgFallbacks(bannerEl); // 🛡️ احتياط بخطوتين لصورة الهدية بشريطي المحلي — راجع wireGiftImgFallback
 
     // ✅ طلب صريح (بند 2 بمراجعة PR #108): سطر دردشة واحد لجلستي الحيّة بأكملها (محلي بالتفاؤل،
     // بلا انتظار صدى السيرفر — الصدى يُتجاهَل بالكامل للمُرسِل نفسه، راجع room-gift-announcement
@@ -15649,6 +15676,7 @@ function startGiftComboSession(ctx) {
             f.innerHTML = giftEmojiOrImgHTML(gift, 26, 80);
             f.style.left = x0 + 'px'; f.style.top = y0 + 'px';
             document.body.appendChild(f);
+            wireGiftImgFallbacks(f); // 🛡️ احتياط بخطوتين لأيقونة طيراني الخاصة — راجع wireGiftImgFallback
             const midX = (x1 - x0) / 2 + (Math.random() * 60 - 30), midY = Math.min(0, (y1 - y0) / 2) - 60;
             f.animate([
                 { transform: 'translate(0,0) scale(.6)', opacity: 1 },
@@ -16842,6 +16870,7 @@ function gfxFlyRemoteGiftToSeat(data) {
         img.alt = '';
         img.loading = 'lazy';
         img.decoding = 'async';
+        wireGiftImgFallback(img, giftImgUrl, data.giftIcon || '🎁'); // 🛡️ احتياط بخطوتين — راجع wireGiftImgFallback
         f.appendChild(img);
     } else {
         const span = document.createElement('span');
@@ -16920,6 +16949,11 @@ function gfxUpdateSideBanner(data) {
     `;
     const avImg = document.createElement('img');
     avImg.src = avatarUrl;
+    // 🛡️ طلب صريح (مراجعة PR — صورة المُرسِل بالشريط مكسورة): data-avatar-fallback="1" يُدخلها
+    // ضمن نطاق مستمع onerror العام الموحَّد (راجع تعليقه أعلى الملف — "صور أفاتار خام خارج
+    // avatarHTML" بالحرف هو هذا المسار بالضبط) — رابط حيّ (https://) لكن ميت (404/تعذّر وصول)
+    // يُستبدَل تلقائياً بـDEFAULT_AVATAR_URL مرة واحدة بلا حلقة، بلا أي مستمع إضافي هنا
+    avImg.setAttribute('data-avatar-fallback', '1');
     el.querySelector('.gfx-banner-av').appendChild(avImg);
     if (giftImgUrl) {
         // 🛡️ بند 2ج: اسم محلي مختلف عمداً (giftImgEl) — giftImg أصبحت دالة التحويل العامة أعلى
@@ -16928,6 +16962,7 @@ function gfxUpdateSideBanner(data) {
         giftImgEl.src = giftImg(giftImgUrl, 64);
         giftImgEl.loading = 'lazy';
         giftImgEl.decoding = 'async';
+        wireGiftImgFallback(giftImgEl, giftImgUrl, data.giftIcon || '🎁'); // 🛡️ احتياط بخطوتين — راجع wireGiftImgFallback
         el.querySelector('.gfx-banner-gift').appendChild(giftImgEl);
     }
     (document.getElementById('room-gift-lane') || document.body).prepend(el);
