@@ -2,40 +2,53 @@
 //
 // ✅ مهمة دورية تمنح "إطار المساهم" (إطار حصري غير مباع بالمتجر) تلقائياً لمن حلّ بالمركز
 // الأول بمساهمات نادي معجبين خلال أسبوع كامل — بمجرد اكتمال ذلك الأسبوع فعلياً. نفس أسلوب
-// باقي المهام الدورية البسيطة بالمشروع (frameExpiryJob.js): setInterval داخل العملية، حالة
-// "آخر أسبوع تمت معالجته" محفوظة بمتغيّر بالذاكرة فقط — إعادة تشغيل السيرفر قد تُعيد معالجة
-// نفس الأسبوع مرة إضافية، وهذا آمن تماماً (العملية idempotent بالكامل: لا تُكرَّر ملكية
-// الإطار، وأسوأ أثر جانبي محتمل هو إعادة تفعيله كإطار نشط لو كان المستخدم بدّله)
+// باقي المهام الدورية البسيطة بالمشروع (frameExpiryJob.js): setInterval داخل العملية.
 //
-// 🐛 إصلاح: كان الإطار يُمنح "دائماً" (100 سنة) — طلب صريح الآن: هدية مؤقتة صالحة أسبوع واحد
-// فقط من تاريخ الفوز. الفوز بنادٍ آخر بينما الإطار الحالي لا يزال صالحاً (حتى لو باقٍ له يوم
-// واحد فقط) لا يُراكم المدة — يُصفَّر العدّاد ويُمنح أسبوع كامل جديد من لحظة هذا الفوز بالضبط
-// (expiresAt يُعاد حسابه بالكامل من الصفر بكل منح، بدل أي محاولة جمع/تمديد للمدة القديمة)
+// 🐛 إصلاح جذري (مراجعة PR): كانت حالة "آخر أسبوع تمت معالجته" محفوظة بمتغيّر JS محلي
+// (lastProcessedWeekStartMs) فقط — أي نشر أو إعادة تشغيل للسيرفر يُصفّره، فتُعاد معالجة
+// الأسبوع الذي عولج قبل قليل بالضبط من جديد. "idempotent بالكامل" كان افتراضاً خاطئاً: المنح
+// نفسه كان يُعيد ضبط صلاحية الإطار المملوك لأسبوع كامل جديد مجاناً، والأخطر: كان يفرض إعادة
+// تفعيل الإطار (user.activeFrame = frame._id) دون شرط، حتى لو بدّله المستخدم فعلياً لإطار آخر
+// بين لحظة الفوز الأصلية وإعادة التشغيل — إطار المساهم كان "يُعيد تجهيز نفسه" تلقائياً.
+// الحل: حجز ذرّي حقيقي بقاعدة البيانات (JobRun، فهرس unique على job+weekStart) — النسخة
+// الوحيدة التي ينجح إدراجها هي التي تعالج هذا الأسبوع؛ أي محاولة لاحقة (نفس العملية بعد
+// إعادة تشغيل، أو فحص دوري آخر خلال نفس الأسبوع) تصطدم بتضارب المفتاح فوراً وتخرج بأمان بلا
+// أي أثر جانبي. + لا فرض تفعيل بعد الآن: يُضاف/يُمدَّد الإطار بـownedFrames دوماً (يضمن الفوز
+// الفعلي)، ويُفعَّل فقط لو لا يملك المستخدم أي إطار نشط حالياً، أو لو هذا الإطار نفسه هو
+// النشط حالياً فعلاً (تحديث تاريخ انتهائه المعروض ليطابق التمديد الجديد لا أكثر) — تبديل
+// المستخدم اليدوي لإطار آخر يبقى محترماً تماماً، بلا أي استثناء زمني
 const FanClubMembership = require('../models/FanClubMembership');
 const GiftLog = require('../models/GiftLog');
 const User = require('../models/User');
 const ProfileFrame = require('../models/ProfileFrame');
+const JobRun = require('../models/JobRun');
 
 const CONTRIBUTOR_FRAME_NAME = 'إطار المساهم';
 const CONTRIBUTOR_FRAME_DURATION_DAYS = 7;
-
-let lastProcessedWeekStartMs = null;
+const JOB_NAME = 'fanclub-contributor';
 
 async function grantWeeklyContributorFrames(io) {
     try {
         const { currentWeekStartUTC, getLastWeekRange } = require('../controllers/fanClubController');
-        const weekStartMs = currentWeekStartUTC().getTime();
-        if (lastProcessedWeekStartMs === weekStartMs) return; // ✅ عُولج هذا الأسبوع بالفعل — لا شيء جديد لمعالجته
+        const weekStart = currentWeekStartUTC();
+
+        // 🛡️ حجز ذرّي لهذا الأسبوع — يفشل بصمت (E11000) لو عولج هذا الأسبوع بالفعل من قبل
+        // (نفس العملية بعد إعادة تشغيل، أو فحص دوري آخر خلال الأسبوع الحالي نفسه)
+        try {
+            await JobRun.create({ job: JOB_NAME, weekStart });
+        } catch (claimError) {
+            if (claimError && claimError.code === 11000) return; // ✅ عُولج هذا الأسبوع بالفعل — لا شيء جديد لمعالجته
+            throw claimError;
+        }
 
         const frame = await ProfileFrame.findOne({ name: CONTRIBUTOR_FRAME_NAME });
         if (!frame) {
             console.warn('[FAN CLUB FRAME] لم يُعثر على إطار المساهم بعد — تأكد من تشغيل autoSeed أولاً');
-            lastProcessedWeekStartMs = weekStartMs;
             return;
         }
 
         const ownerIds = await FanClubMembership.distinct('owner');
-        if (ownerIds.length === 0) { lastProcessedWeekStartMs = weekStartMs; return; }
+        if (ownerIds.length === 0) return;
 
         const { start, end } = getLastWeekRange();
         // ✅ لكل مالك نادٍ: أعلى مساهم بالأسبوع الماضي فقط (نفس منطق getWeeklyWins، لكن دفعة
@@ -47,14 +60,14 @@ async function grantWeeklyContributorFrames(io) {
             { $group: { _id: '$_id.owner', topSender: { $first: '$_id.sender' } } }
         ]);
         const winnerIds = [...new Set(rows.map(r => r.topSender.toString()))];
-        if (winnerIds.length === 0) { lastProcessedWeekStartMs = weekStartMs; return; }
+        if (winnerIds.length === 0) return;
 
         let grantedCount = 0;
         for (const winnerId of winnerIds) {
             // ✅ لحظة فوز هذا المستخدم بالضبط — أسبوع كامل جديد من الآن، بصرف النظر عمّا تبقّى
             // سابقاً (لو امتلكه أصلاً وانتهت صلاحيته جزئياً أو كلياً) أو حتى لو انتهى بالفعل
             const expiresAt = new Date(Date.now() + CONTRIBUTOR_FRAME_DURATION_DAYS * 24 * 60 * 60 * 1000);
-            const user = await User.findById(winnerId).select('ownedFrames socketId');
+            const user = await User.findById(winnerId).select('ownedFrames activeFrame activeFrameClass activeFrameExpiresAt socketId');
             if (!user) continue;
             const existingOwned = user.ownedFrames.find(o => o.frame.toString() === frame._id.toString());
             if (existingOwned) {
@@ -73,9 +86,19 @@ async function grantWeeklyContributorFrames(io) {
                     expiresAt
                 });
             }
-            user.activeFrame = frame._id;
-            user.activeFrameClass = frame.cssClass;
-            user.activeFrameExpiresAt = expiresAt;
+
+            // 🛡️ لا فرض تفعيل أبداً: فقط لو لا يملك المستخدم أي إطار نشط حالياً (equip حقيقي)،
+            // أو لو هذا الإطار نفسه هو النشط فعلاً حالياً (تحديث تاريخ الانتهاء المعروض ليطابق
+            // التمديد أعلاه فقط — ليس "إعادة تفعيل"، هو مُفعَّل أصلاً). أي إطار آخر يرتديه
+            // المستخدم حالياً بالاختيار يبقى كما هو بلا أي استثناء — يشمل من بدّله يدوياً بين
+            // الفوز السابق وهذا الفوز، أو من ألغى تفعيل أي إطار أصلاً (activeFrame:null)
+            const alreadyEquipped = user.activeFrame && user.activeFrame.toString() === frame._id.toString();
+            if (!user.activeFrame || alreadyEquipped) {
+                user.activeFrame = frame._id;
+                user.activeFrameClass = frame.cssClass;
+                user.activeFrameExpiresAt = expiresAt;
+            }
+
             await user.save();
             grantedCount++;
             if (io && user.socketId) {
@@ -88,7 +111,6 @@ async function grantWeeklyContributorFrames(io) {
             }
         }
         console.log(`[FAN CLUB FRAME] مُنح إطار المساهم لـ${grantedCount} فائز(ين) بالأسبوع الماضي`);
-        lastProcessedWeekStartMs = weekStartMs;
     } catch (error) {
         // لا نُسقط السيرفر بسبب فشل مهمة دورية
         console.error('[FAN CLUB FRAME ERROR]:', error);
