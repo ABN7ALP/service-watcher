@@ -74,6 +74,11 @@ const userSchema = new mongoose.Schema({
     isBanned: { type: Boolean, default: false },
     banReason: { type: String, default: null },
     banExpires: { type: Date, default: null },
+    // ✅ room-ux-v2: علم إخفاء منفصل عن الحظر — مستخدم فعّال وحسابه يعمل بشكل طبيعي، لكنه لا
+    // يظهر إطلاقاً بقوائم عامة مُجمَّعة (المساهمون/الحاضرون بغرف الصوت وما شابه). افتراضي false
+    // لكل الحسابات (لا تغيير بالسلوك الحالي) — جاهز ليُستخدم من أي أداة إدارة لاحقاً بلا حاجة
+    // لتعديل مخطط قاعدة البيانات مجدداً
+    isHidden: { type: Boolean, default: false },
     adminPermissions: [{ type: String }],
     // ✅ حقول نظام الوكلاء
     isAgent: { type: Boolean, default: false },

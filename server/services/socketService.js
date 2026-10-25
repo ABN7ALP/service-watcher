@@ -3035,3 +3035,6 @@ module.exports.retryOneLeagueSettlement = retryOneLeagueSettlement;
 module.exports.markHostDisconnected = markHostDisconnected;
 module.exports.clearHostDisconnected = clearHostDisconnected;
 module.exports.sweepDisconnectedHostBroadcasts = sweepDisconnectedHostBroadcasts;
+// ✅ room-ux-v2: تُستخدَم من واجهة REST الجديدة (voiceRoomController.getRoomViewers) لبناء
+// نافذة "الحاضرون" بنافذة المشاهدين — نفس مصدر عدّاد المشاهدين اللحظي بالضبط، لا قائمة منفصلة
+module.exports.getRoomViewers = getRoomViewers;
