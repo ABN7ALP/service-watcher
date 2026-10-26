@@ -7,6 +7,7 @@ const AdminLog = require('../models/AdminLog');
 const ClientErrorLog = require('../models/ClientErrorLog');
 const ClientCompatLog = require('../models/ClientCompatLog');
 const SystemHealth = require('../models/SystemHealth');
+const WalletReconciliation = require('../models/WalletReconciliation');
 const walletService = require('../utils/walletService');
 
 // Admin Dashboard Stats
@@ -752,6 +753,61 @@ exports.runSystemHealthCheckNow = async (req, res) => {
     res.json({ success: true, message: 'تم تنفيذ الفحص بنجاح', result });
   } catch (error) {
     console.error('[SYSTEM HEALTH] فشل الفحص اليدوي:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// ✅ "صحة المحفظة" (feat/wallet-ledger-v1): نتائج آخر فحص تصالح walletReconciliationJob —
+// نفس نمط getSystemHealth بالضبط (آخر checkRunId فقط، لا كل المجموعة)
+// =====================================================
+exports.getWalletHealth = async (req, res) => {
+  try {
+    const latestSummary = await WalletReconciliation.findOne({ type: 'summary' }).sort({ createdAt: -1 });
+    if (!latestSummary) {
+      return res.json({ success: true, lastCheckAt: null, usersChecked: 0, mismatchCount: 0, liabilityUsd: 0, cashReceivedUsd: 0, mismatches: [] });
+    }
+    const mismatches = await WalletReconciliation.find({ checkRunId: latestSummary.checkRunId, type: 'mismatch' })
+      .populate('user', 'username customId')
+      .limit(20);
+
+    res.json({
+      success: true,
+      lastCheckAt: latestSummary.createdAt,
+      usersChecked: latestSummary.usersChecked,
+      mismatchCount: latestSummary.mismatchCount,
+      liabilityUsd: latestSummary.liabilityUsd,
+      cashReceivedUsd: latestSummary.cashReceivedUsd,
+      mismatches: mismatches.map(m => ({
+        user: m.user ? { id: m.user._id, username: m.user.username, customId: m.user.customId } : null,
+        wallet: m.wallet, ledgerSum: m.ledgerSum, cachedBalance: m.cachedBalance, diff: m.diff
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ زر "فحص الآن" — نفس منطق runSystemHealthCheckNow (التحديد بمعدَّل مُطبَّق بمسار الراوتر)
+exports.runWalletHealthCheckNow = async (req, res) => {
+  try {
+    const { admin } = req;
+    const { runWalletReconciliation } = require('../utils/walletReconciliationJob');
+    const result = await runWalletReconciliation();
+
+    await AdminLog.logAction({
+      admin: admin._id,
+      action: 'system_maintenance',
+      targetEntity: 'system',
+      details: { action: 'manual_wallet_reconciliation_check', ...result },
+      isAutomated: false,
+      ipAddress: req.ip
+    });
+    console.log(`💰 [WALLET HEALTH] فحص يدوي بواسطة ${admin.username || admin._id}: ${result.mismatchCount} تعارض`);
+
+    res.json({ success: true, message: 'تم تنفيذ الفحص بنجاح', result });
+  } catch (error) {
+    console.error('[WALLET HEALTH] فشل الفحص اليدوي:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

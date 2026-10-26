@@ -107,6 +107,7 @@ mongoose.connect(process.env.MONGODB_URI)
         require('./utils/fanClubWeeklyFrameJob').startFanClubWeeklyFrameJob(io); // ✅ منح إطار المساهم لفائزي الأسبوع تلقائياً
         require('./utils/pkSeasonCloseJob').startPkSeasonCloseJob(io); // ✅ إغلاق موسم دوري PK الأسبوعي + منح مكافآت المراكز تلقائياً
         require('./utils/dependencyHealthJob').startDependencyHealthJob(); // ✅ فحص صحة الاعتماديات (outdated/audit) — مؤجَّل دقيقتين عند الإقلاع ثم يومياً
+        require('./utils/walletReconciliationJob').startWalletReconciliationJob(); // ✅ تحقّق يومي: مجموع دفتر الأستاذ = الرصيد المخزَّن لكل محفظة — مؤجَّل 3 دقائق عند الإقلاع ثم يومياً
         // ✅ استوديو الإطارات: تهيئة idempotent — تملأ assetUrl/staticUrl/display الناقصة فقط
         // (الإطارات الـ11 الأصلية من frame-display.json)، بلا لمس أي إطار عدَّله الأدمن مسبقاً
         await require('./models/ProfileFrame').seedDisplayDefaults();
