@@ -835,6 +835,9 @@ const verifySocketToken = async (socket, next) => {
             }
         }
         socket.user = currentUser;
+        require('../utils/linkageService').recordDeviceSession(currentUser._id, {
+            deviceId: socket.handshake.auth?.deviceId, ip: socket.handshake.address
+        });
         next();
     } catch (err) {
         return next(new Error('Authentication error'));

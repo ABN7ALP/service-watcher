@@ -43,6 +43,28 @@ const systemSettingsSchema = new mongoose.Schema({
     customGiftDesignFeeCoins: { type: Number, default: 500 },
     customGiftSendPriceCoins: { type: Number, default: 100 },
 
+    // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): سعر الصرف الجديد بعد إعادة التسمية ×10 (=
+    // coinExchangeRate القديم × 10) — يُستخدَم بترحيل إعادة التسمية ومطابقة الالتزامات، منفصل
+    // عمداً عن coinExchangeRate القديم (لا يزال buyWithBalance يعتمده) تفادياً لأي تغيير سلوك
+    // خارج نطاق هذه المهمة
+    coinsPerUsd: { type: Number, default: 1000 },
+    // وكلاء الشحن — ثلاث شرائح أسعار (كوينز لكل دولار)، تُضبَط من لوحة الإدارة لاحقاً
+    agentTier1Rate: { type: Number, default: 1050 },
+    agentTier2Rate: { type: Number, default: 1080 },
+    agentTier3Rate: { type: Number, default: 1100 },
+    // نسبة صرف الفول (beans_w) إلى دولار: فترة الإطلاق أسخى (جذب مبكر)، ثم القاعدة، أو الأعلى
+    // للمضيفين بمستوى highHostLevel فأعلى بصرف النظر عن الفترة
+    payoutLaunchPct: { type: Number, default: 70 },
+    payoutLaunchEndsAt: { type: Date, default: () => { const d = new Date(); d.setMonth(d.getMonth() + 3); return d; } },
+    payoutBasePct: { type: Number, default: 65 },
+    payoutHighPct: { type: Number, default: 70 },
+    highHostLevel: { type: Number, default: 30 },
+    // فول أقل عمراً من هذا (ساعات) لا يمكن صرفه نقداً (beans_w فقط، beans_p لا تصل USD أبداً)
+    beanHoldHours: { type: Number, default: 72 },
+    // ميزانية دعم مضيف جديد (دولار) حتى نهاية فترة الإطلاق، وهامش أمان النسبة المئوية عليها
+    hostBudgetSeedUsd: { type: Number, default: 50 },
+    hostBudgetMarginPct: { type: Number, default: 30 },
+
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 
