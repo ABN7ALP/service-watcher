@@ -404,4 +404,44 @@ async function runMigration({ dryRun = true } = {}) {
     };
 }
 
-module.exports = { runMigration, JOB_NAME, SENTINEL_WEEK_START, SCALE, REPORT_FIELDS, COLLECTION_SCALERS };
+// ✅ قراءة فقط (لا ادّعاء) — تُستخدَم بـresolveMigrationStartup للتحقّق أولاً من حالة الترحيل
+// الحقيقية بصرف النظر عن WALLET_MIGRATION، كي "تُتجاهَل القيمة إن كان الترحيل مكتملاً فعلاً"
+async function isMigrationCompleted() {
+    const existing = await JobRun.findOne({ job: JOB_NAME, weekStart: SENTINEL_WEEK_START });
+    return !!(existing && existing.status === 'completed');
+}
+
+const WALLET_MIGRATION_OFF_MESSAGE = 'Wallet migration pending. Set WALLET_MIGRATION=dry to preview or =apply to run.';
+
+// 🛡️ تحكّم المُشغِّل الصريح (مراجعة ما قبل الدمج — تعليق لاحق): الترحيل لم يعد يُشغَّل تلقائياً
+// عند كل إقلاع — فقط حين يطلب المُشغِّل ذلك عبر WALLET_MIGRATION=apply. تُستدعى هذي الدالة
+// من server.js بدل استدعاء runMigration مباشرة؛ تُعيد {ready} التي يعتمد عليها server.js
+// لتقرير ما إذا كانت بقية سلسلة الإقلاع (المهام الأخرى + migrationGate.markReady) تُكمِل أو
+// يبقى الموقع بوضع الصيانة (503). القيمة تُتجاهَل تماماً إن كان الترحيل مكتملاً فعلاً —
+// الفحص هنا أولاً وقبل أي قراءة لمتغيّر البيئة
+async function resolveMigrationStartup({ env = process.env } = {}) {
+    if (await isMigrationCompleted()) {
+        return { ready: true, mode: 'already_completed' };
+    }
+
+    const mode = String(env.WALLET_MIGRATION || '').trim().toLowerCase();
+
+    if (mode === 'apply') {
+        await runMigration({ dryRun: false });
+        return { ready: true, mode: 'apply' };
+    }
+
+    if (mode === 'dry') {
+        const result = await runMigration({ dryRun: true });
+        console.log(`[WALLET REDENOMINATION] معاينة فقط (dry) — usersProcessed=${result.usersProcessed}, allOk=${result.allOk}. الموقع يبقى بوضع الصيانة حتى WALLET_MIGRATION=apply`);
+        return { ready: false, mode: 'dry' };
+    }
+
+    console.log(`[WALLET REDENOMINATION] ${WALLET_MIGRATION_OFF_MESSAGE}`);
+    return { ready: false, mode: 'off' };
+}
+
+module.exports = {
+    runMigration, resolveMigrationStartup, isMigrationCompleted, WALLET_MIGRATION_OFF_MESSAGE,
+    JOB_NAME, SENTINEL_WEEK_START, SCALE, REPORT_FIELDS, COLLECTION_SCALERS
+};

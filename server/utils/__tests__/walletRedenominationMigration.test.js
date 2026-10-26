@@ -29,7 +29,7 @@ const PkStanding = require('../../models/PkStanding');
 const SystemSettings = require('../../models/SystemSettings');
 const JobRun = require('../../models/JobRun');
 const LedgerEntry = require('../../models/LedgerEntry');
-const { runMigration } = require('../walletRedenominationMigration');
+const { runMigration, resolveMigrationStartup, WALLET_MIGRATION_OFF_MESSAGE } = require('../walletRedenominationMigration');
 
 function getPath(obj, path) {
     return path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
@@ -481,5 +481,78 @@ describe('walletRedenominationMigration — تعطّل واستئناف (مرا�
         expect(db.users[0].walletCoinsPaid).toBe(100);
         expect(db.users[1].walletCoinsPaid).toBe(200);
         expect(db.ledgerByKey.size).toBe(3);
+    });
+});
+
+describe('resolveMigrationStartup — تحكّم المُشغِّل الصريح عبر WALLET_MIGRATION', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('unset/"off": لا يُشغِّل الترحيل إطلاقاً، يبقى غير جاهز، ويطبع الرسالة المطلوبة بالضبط', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: 'u1', coins: 100, balance: 0 });
+        wireMocks(db);
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+        const resultUnset = await resolveMigrationStartup({ env: {} });
+        expect(resultUnset).toEqual({ ready: false, mode: 'off' });
+
+        const resultOff = await resolveMigrationStartup({ env: { WALLET_MIGRATION: 'off' } });
+        expect(resultOff).toEqual({ ready: false, mode: 'off' });
+
+        expect(db.users[0].walletCoinsPaid).toBe(0); // ✅ لا كتابة إطلاقاً
+        expect(db.jobRuns.size).toBe(0); // ✅ لا ادّعاء JobRun حتى
+        expect(logSpy.mock.calls.some(call => call[0].includes(WALLET_MIGRATION_OFF_MESSAGE))).toBe(true);
+    });
+
+    test('"dry": يُعاين فقط (بلا كتابة)، يطبع الجدول والعدّادات، ويبقى غير جاهز', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: 'u1', coins: 100, balance: 0 });
+        db.gifts.push({ _id: 'g1', price: 50, discountedPrice: null });
+        wireMocks(db);
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+        const result = await resolveMigrationStartup({ env: { WALLET_MIGRATION: 'dry' } });
+
+        expect(result).toEqual({ ready: false, mode: 'dry' });
+        expect(db.users[0].walletCoinsPaid).toBe(0); // ✅ لا كتابة إطلاقاً
+        expect(db.gifts[0].price).toBe(50);
+        expect(db.jobRuns.size).toBe(0); // ✅ dry لا يدّعي JobRun حتى
+        // ✅ الجدول (printReportTable) + سطر "usersProcessed" مطبوعان معاً بالسجلات
+        expect(logSpy.mock.calls.some(call => typeof call[0] === 'string' && call[0].includes('| القيمة | قبل | بعد'))).toBe(true);
+        expect(logSpy.mock.calls.some(call => typeof call[0] === 'string' && call[0].includes('usersProcessed=1'))).toBe(true);
+    });
+
+    test('"apply": يُنفِّذ الترحيل فعلياً (قابل للاستئناف كما هو) ثم يُصبح جاهزاً', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: 'u1', coins: 100, balance: 0 });
+        wireMocks(db);
+
+        const result = await resolveMigrationStartup({ env: { WALLET_MIGRATION: 'apply' } });
+
+        expect(result).toEqual({ ready: true, mode: 'apply' });
+        expect(db.users[0].walletCoinsPaid).toBe(1000); // ✅ كتابة فعلية حدثت
+        expect(db.users[0].walletRedenominatedV1).toBe(true);
+        const jr = db.jobRuns.get(`${require('../walletRedenominationMigration').JOB_NAME}:${require('../walletRedenominationMigration').SENTINEL_WEEK_START.getTime()}`);
+        expect(jr.status).toBe('completed');
+    });
+
+    test('الترحيل مكتمل فعلاً مسبقاً: القيمة (حتى "off") تُتجاهَل تماماً، الموقع يعمل بشكل طبيعي', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: 'u1', coins: 100, balance: 0 });
+        wireMocks(db);
+
+        db.jobRuns.set(`${require('../walletRedenominationMigration').JOB_NAME}:${require('../walletRedenominationMigration').SENTINEL_WEEK_START.getTime()}`, {
+            job: require('../walletRedenominationMigration').JOB_NAME,
+            weekStart: require('../walletRedenominationMigration').SENTINEL_WEEK_START,
+            status: 'completed'
+        });
+
+        const resultOff = await resolveMigrationStartup({ env: {} }); // ✅ حتى بلا WALLET_MIGRATION إطلاقاً
+        expect(resultOff).toEqual({ ready: true, mode: 'already_completed' });
+
+        const resultApply = await resolveMigrationStartup({ env: { WALLET_MIGRATION: 'apply' } }); // ✅ حتى لو apply صريحة
+        expect(resultApply).toEqual({ ready: true, mode: 'already_completed' });
+
+        expect(db.users[0].walletCoinsPaid).toBe(0); // ✅ لا أي كتابة إضافية — لم يُعَد تشغيل الترحيل إطلاقاً
     });
 });

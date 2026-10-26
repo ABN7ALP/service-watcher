@@ -109,31 +109,35 @@ mongoose.connect(process.env.MONGODB_URI)
         .then(async () => {
         console.log('✅ MongoDB connected successfully.');
         await require('./utils/autoSeed')();
-        // 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1): إعادة تسمية العملة ×10 — مرّة واحدة للأبد
-        // (JobRun قابلة للاستئناف — راجع walletRedenominationMigration.js)، قبل أي مهمة أخرى
-        // تمنح/تخصم كوينز (موسم PK، إطار نادي المعجبين الأسبوعي) كي تعمل كل المهام اللاحقة
-        // على المقياس الجديد مباشرة.
-        //
-        // 🛡️ مراجعة ما قبل الدمج (عائق #1): يُنتظَر (await) هنا قبل server.listen() أدناه
-        // بالكامل — لا ترافيك حقيقي يصل لأي شيء حيّ (middleware/Socket.IO الصيانة أعلاه ترفض
-        // كل شيء) طالما هذا السطر لم ينتهِ بعد، فيستحيل أن يتداول مستخدم بأرصدة مُضخَّمة بينما
-        // أسعار الهدايا لم تُضخَّم بعد (كانا يعملان بالتوازي سابقاً، وهذا هو الإصلاح الجذري)
-        await require('./utils/walletRedenominationMigration').runMigration({ dryRun: false });
-        migrationGate.markReady();
-        require('./utils/mediaCleanupJob').startMediaCleanupJob(); // ✅ حذف تلقائي كل 24 ساعة (رسائل + وسائط Cloudinary)
-        require('./utils/fanClubWeeklyFrameJob').startFanClubWeeklyFrameJob(io); // ✅ منح إطار المساهم لفائزي الأسبوع تلقائياً
-        require('./utils/pkSeasonCloseJob').startPkSeasonCloseJob(io); // ✅ إغلاق موسم دوري PK الأسبوعي + منح مكافآت المراكز تلقائياً
-        require('./utils/dependencyHealthJob').startDependencyHealthJob(); // ✅ فحص صحة الاعتماديات (outdated/audit) — مؤجَّل دقيقتين عند الإقلاع ثم يومياً
-        require('./utils/walletReconciliationJob').startWalletReconciliationJob(); // ✅ تحقّق يومي: مجموع دفتر الأستاذ = الرصيد المخزَّن لكل محفظة — مؤجَّل 3 دقائق عند الإقلاع ثم يومياً
-        // ✅ استوديو الإطارات: تهيئة idempotent — تملأ assetUrl/staticUrl/display الناقصة فقط
-        // (الإطارات الـ11 الأصلية من frame-display.json)، بلا لمس أي إطار عدَّله الأدمن مسبقاً
-        await require('./models/ProfileFrame').seedDisplayDefaults();
-        // ✅ إصلاح فهرس slug القديم قبل أي شيء (يمنع خطأ E11000 عند إنشاء غرف جديدة)
-        await require('./models/VoiceRoom').fixSlugIndex();
-        // ✅ تنظيف أي مقاعد صوتية مكررة تراكمت قبل إصلاح القفل التسلسلي (مرة واحدة عند كل إقلاع، آمنة تماماً)
-        await require('./models/VoiceRoom').deduplicateSeats();
 
-        // --- تشغيل الخادم --- ✅ بعد اكتمال سلسلة الإقلاع بالكامل (الترحيل فما بعده) لا قبلها
+        // 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1): إعادة تسمية العملة ×10 — تحكّم مُشغِّل صريح
+        // عبر WALLET_MIGRATION بدل تشغيل تلقائي عند كل إقلاع (مراجعة ما قبل الدمج، تعليق
+        // لاحق): unset/'off' لا يُشغِّل الترحيل إطلاقاً ويبقى الموقع بوضع الصيانة (503)؛ 'dry'
+        // يُعاين فقط (بلا كتابة) ويبقى بوضع الصيانة أيضاً؛ 'apply' يُنفِّذ فعلياً (قابل
+        // للاستئناف) ثم يفتح الموقع. القيمة تُتجاهَل تماماً إن كان الترحيل مكتملاً فعلاً —
+        // راجع resolveMigrationStartup. مهام منح الكوينز/المكافآت الدورية (نادي المعجبين/PK)
+        // لا تبدأ إلا بعد ready:true كي لا تعمل على مقياس قديم بينما الترحيل معلَّق
+        const migrationStartup = await require('./utils/walletRedenominationMigration').resolveMigrationStartup();
+        if (migrationStartup.ready) {
+            migrationGate.markReady();
+            require('./utils/mediaCleanupJob').startMediaCleanupJob(); // ✅ حذف تلقائي كل 24 ساعة (رسائل + وسائط Cloudinary)
+            require('./utils/fanClubWeeklyFrameJob').startFanClubWeeklyFrameJob(io); // ✅ منح إطار المساهم لفائزي الأسبوع تلقائياً
+            require('./utils/pkSeasonCloseJob').startPkSeasonCloseJob(io); // ✅ إغلاق موسم دوري PK الأسبوعي + منح مكافآت المراكز تلقائياً
+            require('./utils/dependencyHealthJob').startDependencyHealthJob(); // ✅ فحص صحة الاعتماديات (outdated/audit) — مؤجَّل دقيقتين عند الإقلاع ثم يومياً
+            require('./utils/walletReconciliationJob').startWalletReconciliationJob(); // ✅ تحقّق يومي: مجموع دفتر الأستاذ = الرصيد المخزَّن لكل محفظة — مؤجَّل 3 دقائق عند الإقلاع ثم يومياً
+            // ✅ استوديو الإطارات: تهيئة idempotent — تملأ assetUrl/staticUrl/display الناقصة فقط
+            // (الإطارات الـ11 الأصلية من frame-display.json)، بلا لمس أي إطار عدَّله الأدمن مسبقاً
+            await require('./models/ProfileFrame').seedDisplayDefaults();
+            // ✅ إصلاح فهرس slug القديم قبل أي شيء (يمنع خطأ E11000 عند إنشاء غرف جديدة)
+            await require('./models/VoiceRoom').fixSlugIndex();
+            // ✅ تنظيف أي مقاعد صوتية مكررة تراكمت قبل إصلاح القفل التسلسلي (مرة واحدة عند كل إقلاع، آمنة تماماً)
+            await require('./models/VoiceRoom').deduplicateSeats();
+        } else {
+            console.log(`🛑 الموقع بوضع الصيانة (503) — الترحيل لم يكتمل بعد (WALLET_MIGRATION=${migrationStartup.mode})`);
+        }
+
+        // --- تشغيل الخادم --- ✅ دوماً (بصرف النظر عن ready) كي يستطيع الموقع الاستجابة فعلياً
+        // بـ503 صيانة حين لا يكون جاهزاً، بدل تعطّل الاتصال بالكامل
         server.listen(PORT, () => {
             console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
         });
