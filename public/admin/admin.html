@@ -24,7 +24,7 @@
                 <li class="menu-item active" data-page="dashboard"><i class="fas fa-tachometer-alt"></i><span>لوحة التحكم</span></li>
                 <li class="menu-item" data-page="users"><i class="fas fa-users"></i><span>المستخدمين</span></li>
                 <li class="menu-item" data-page="deposits"><i class="fas fa-file-invoice-dollar"></i><span>طلبات الشحن</span></li>
-                <li class="menu-item" data-page="coinpurchases"><i class="fas fa-coins"></i><span>شراء الكوينزات</span></li>
+                <li class="menu-item" data-page="depositintents"><i class="fas fa-coins"></i><span>طلبات الشحن</span></li>
                 <li class="menu-item" data-page="withdrawals"><i class="fas fa-money-bill-wave"></i><span>طلبات السحب</span></li>
                 <li class="menu-item" data-page="transactions"><i class="fas fa-exchange-alt"></i><span>المعاملات المالية</span></li>
                 <li class="menu-item" data-page="gifts"><i class="fas fa-gifts"></i><span>إدارة الهدايا</span></li>
@@ -119,19 +119,21 @@
                 <div class="pagination-container"><ul class="pagination" id="depositsPagination"></ul></div>
             </div>
 
-            <!-- Coin Purchases -->
-            <div id="coinpurchases-page" class="page">
+            <!-- Deposit Intents (شحن الكوينزات عبر شام كاش) -->
+            <div id="depositintents-page" class="page">
                 <div class="page-header">
-                    <h1><i class="fas fa-coins"></i> طلبات شراء الكوينزات</h1>
-                    <select id="coinPurchasesStatusFilter" class="form-control" style="width:auto">
-                        <option value="pending_review">قيد المراجعة</option>
+                    <h1><i class="fas fa-coins"></i> طلبات الشحن (شام كاش)</h1>
+                    <select id="depositIntentsStatusFilter" class="form-control" style="width:auto">
+                        <option value="submitted">قيد المراجعة</option>
+                        <option value="awaiting_payment">بانتظار الدفع</option>
                         <option value="approved">مقبولة</option>
                         <option value="rejected">مرفوضة</option>
+                        <option value="expired">منتهية</option>
                         <option value="all">الكل</option>
                     </select>
                 </div>
-                <div id="coinPurchasesListContainer" class="table-responsive p-3"></div>
-                <div class="pagination-container"><ul class="pagination" id="coinPurchasesPagination"></ul></div>
+                <div id="depositIntentsListContainer" class="table-responsive p-3"></div>
+                <div class="pagination-container"><ul class="pagination" id="depositIntentsPagination"></ul></div>
             </div>
 
             <!-- Withdrawals -->

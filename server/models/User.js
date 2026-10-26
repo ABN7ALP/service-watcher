@@ -37,6 +37,11 @@ const userSchema = new mongoose.Schema({
     walletUsdCents: { type: Number, default: 0 },
     // ✅ علم استئناف تضخيم ×10 لكل مستخدم — يُضبَط بنفس معاملة قيود الافتتاح، يمنع إعادة فتح محفظة مُفتَّحة فعلاً
     walletRedenominatedV1: { type: Boolean, default: false },
+    // ✅ شحن الكوينزات (feat/wallet-recharge-v1): مرساة عدّاد عرض "أول شحنة" — تُضبَط مرة واحدة
+    // فقط عند أول GET لـ/api/wallet/summary (لا عند التسجيل)، ثم تبقى ثابتة. firstRechargeBonusConsumedAt
+    // يُضبَط ذرّياً فقط عند الموافقة الفعلية على أول Intent يحمل بونص "أول شحنة" — لا عند الإنشاء
+    walletFirstViewedAt: { type: Date, default: null },
+    firstRechargeBonusConsumedAt: { type: Date, default: null },
     level: { type: Number, default: 1 },
     experience: { type: Number, default: 0 },
          isAdmin: { type: Boolean, default: false },

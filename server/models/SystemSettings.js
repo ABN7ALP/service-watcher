@@ -78,6 +78,32 @@ const systemSettingsSchema = new mongoose.Schema({
     hostBudgetSeedUsd: { type: Number, default: 50 },
     hostBudgetMarginPct: { type: Number, default: 30 },
 
+    // ✅ شحن الكوينزات عبر شام كاش (feat/wallet-recharge-v1) — كل الأرقام هنا قابلة للتعديل من
+    // لوحة الإدارة، لا يوجد رقم ثابت بالكود (راجع depositIntentController.js)
+    maxDepositUsd: { type: Number, default: 1000 },
+    maxOpenDepositIntentsPerUser: { type: Number, default: 3 },
+    dailyDepositCapUsd: { type: Number, default: 500 },
+    depositIntentExpiryMinutes: { type: Number, default: 30 },
+    depositPackages: {
+        type: [{
+            usd: { type: Number, required: true },
+            bonusPct: { type: Number, default: 0 },
+            hot: { type: Boolean, default: false }
+        }],
+        default: [
+            { usd: 1, bonusPct: 0, hot: false },
+            { usd: 5, bonusPct: 0, hot: false },
+            { usd: 10, bonusPct: 10, hot: true },
+            { usd: 25, bonusPct: 12, hot: false },
+            { usd: 50, bonusPct: 15, hot: false },
+            { usd: 100, bonusPct: 20, hot: false }
+        ]
+    },
+    shamCashBonusPct: { type: Number, default: 5 },
+    firstRechargeEnabled: { type: Boolean, default: true },
+    firstRechargeMultiplierUpToUsd: { type: Number, default: 5 },
+    firstRechargeOfferHours: { type: Number, default: 24 },
+
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 
