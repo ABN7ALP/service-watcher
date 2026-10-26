@@ -17,6 +17,8 @@ const walletService = require('../utils/walletService');
 // الأستاذ نفسه — خصم سابق (استبدال أو غيره) يستهلك الأقدم أولاً، تماماً كمحاسبة نقدية حقيقية.
 // المتبقي بالطابور بعد هذا الاستهلاك هو ما يُعرَّف عمره الحقيقي؛ الجزء الأقدم من beanHoldHours
 // منه فقط هو المؤهَّل للتحويل لدولار — راجع التعليق أعلى الملف لسبب عدم وجود عدّاد/مؤشر مبسَّط
+// TODO(scale): تُحمَّل كل قيود beans_w لهذا المستخدم من البداية بكل استدعاء — عند نمو حجم
+// القاعدة ضع لقطات (snapshots) دورية للطابور المُستهلَك بدل إعادة بنائه من الصفر كل مرة
 async function getEligibleBeansWForUsd(userId, holdHours, session) {
     const entries = await LedgerEntry.find({ user: userId, wallet: 'beans_w' })
         .sort({ createdAt: 1, _id: 1 })

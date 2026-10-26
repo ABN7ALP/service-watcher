@@ -6,10 +6,17 @@ const mongoose = require('mongoose');
 const setupMiddleware = require('./middleware/globalMiddleware');
 const setupErrorHandlers = require('./middleware/errorHandlers');
 const initializeSocket = require('./services/socketService');
- 
+const migrationGate = require('./utils/migrationGate');
+
 // --- تهيئة التطبيق والخادم ---
 const app = express();
 const server = http.createServer(app);
+
+// 🛡️ مراجعة ما قبل الدمج (6 عوائق — PR #131، عائق #1): أول middleware على الإطلاق — ترافيك
+// HTTP يُرفَض بـ503 طالما ترحيل إعادة التسمية ×10 لم يكتمل بعد (راجع migrationGate.js). لا
+// قيمة لهذي الحراسة إلا لو server.listen() أيضاً لا يُستدعى إلا بعد اكتمال الترحيل — راجع
+// أسفل الملف (نُقل من استدعاء فوري متوازٍ مع الاتصال بقاعدة البيانات إلى داخل سلسلة الإقلاع)
+app.use(migrationGate.maintenanceMiddleware);
 
 // --- إعدادات أساسية ---
 // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #4): كانت 1 ثابتة دوماً — تجعل
@@ -41,6 +48,9 @@ setupMiddleware(app);
 
 // --- تهيئة وتشغيل Socket.IO ---
 const io = initializeSocket(server);
+// 🛡️ نفس حراسة الصيانة أعلاه لكن لاتصالات Socket.IO — ترفض الاتصال فوراً طالما الترحيل
+// لم يكتمل بعد (بديل middleware الطلب العادي، فلا تواصل حيّ غير محمي بهذي الفترة القصيرة)
+io.use(migrationGate.socketGate);
 // ✅ مهمة دورية لإنهاء الإطارات المنتهية تلقائياً
 const { startFrameExpiryJob } = require('./utils/frameExpiryJob');
 startFrameExpiryJob(io);
@@ -94,15 +104,22 @@ app.get('*', (req, res) => {
 setupErrorHandlers(app);
 
 // --- الاتصال بقاعدة البيانات ---
+const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGODB_URI)
         .then(async () => {
         console.log('✅ MongoDB connected successfully.');
         await require('./utils/autoSeed')();
         // 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1): إعادة تسمية العملة ×10 — مرّة واحدة للأبد
-        // (ادّعاء JobRun ذرّي يحميها من التكرار حتى مع تعدّد نسخ الخادم)، قبل أي مهمة أخرى
+        // (JobRun قابلة للاستئناف — راجع walletRedenominationMigration.js)، قبل أي مهمة أخرى
         // تمنح/تخصم كوينز (موسم PK، إطار نادي المعجبين الأسبوعي) كي تعمل كل المهام اللاحقة
-        // على المقياس الجديد مباشرة
+        // على المقياس الجديد مباشرة.
+        //
+        // 🛡️ مراجعة ما قبل الدمج (عائق #1): يُنتظَر (await) هنا قبل server.listen() أدناه
+        // بالكامل — لا ترافيك حقيقي يصل لأي شيء حيّ (middleware/Socket.IO الصيانة أعلاه ترفض
+        // كل شيء) طالما هذا السطر لم ينتهِ بعد، فيستحيل أن يتداول مستخدم بأرصدة مُضخَّمة بينما
+        // أسعار الهدايا لم تُضخَّم بعد (كانا يعملان بالتوازي سابقاً، وهذا هو الإصلاح الجذري)
         await require('./utils/walletRedenominationMigration').runMigration({ dryRun: false });
+        migrationGate.markReady();
         require('./utils/mediaCleanupJob').startMediaCleanupJob(); // ✅ حذف تلقائي كل 24 ساعة (رسائل + وسائط Cloudinary)
         require('./utils/fanClubWeeklyFrameJob').startFanClubWeeklyFrameJob(io); // ✅ منح إطار المساهم لفائزي الأسبوع تلقائياً
         require('./utils/pkSeasonCloseJob').startPkSeasonCloseJob(io); // ✅ إغلاق موسم دوري PK الأسبوعي + منح مكافآت المراكز تلقائياً
@@ -115,14 +132,13 @@ mongoose.connect(process.env.MONGODB_URI)
         await require('./models/VoiceRoom').fixSlugIndex();
         // ✅ تنظيف أي مقاعد صوتية مكررة تراكمت قبل إصلاح القفل التسلسلي (مرة واحدة عند كل إقلاع، آمنة تماماً)
         await require('./models/VoiceRoom').deduplicateSeats();
+
+        // --- تشغيل الخادم --- ✅ بعد اكتمال سلسلة الإقلاع بالكامل (الترحيل فما بعده) لا قبلها
+        server.listen(PORT, () => {
+            console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+        });
     })
     .catch(err => console.error('❌ MongoDB connection error:', err));
-
-// --- تشغيل الخادم ---
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-    console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-});
 
 // --- معالجة الأخطاء غير المتوقعة ---
 // 🐛 إصلاح جوهري لعلّة "الموقع يتوقف بالكامل 30-60 ثانية أحياناً": كان أي وعد (Promise)

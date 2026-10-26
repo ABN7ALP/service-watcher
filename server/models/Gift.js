@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 
 const giftSchema = new mongoose.Schema({
+  // ✅ علم استئناف تضخيم ×10 لهذا المستند — يمنع تضخيم أي سعر مرتين عند إعادة تشغيل الترحيل
+  redenominatedV1: { type: Boolean, default: false },
   name: {
     type: String,
     required: true

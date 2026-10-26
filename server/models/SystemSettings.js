@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 
 const systemSettingsSchema = new mongoose.Schema({
     singletonKey: { type: String, default: 'main', unique: true },
+    // ✅ علم استئناف تضخيم ×10 لهذا المستند (singleton — لكن نفس الآلية الموحّدة لبقية المجموعات)
+    redenominatedV1: { type: Boolean, default: false },
 
     coinExchangeRate: { type: Number, default: 100 },
     minPurchaseUSD: { type: Number, default: 1 },

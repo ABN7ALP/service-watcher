@@ -35,6 +35,8 @@ const userSchema = new mongoose.Schema({
     walletBeansW: { type: Number, default: 0 },
     walletBeansP: { type: Number, default: 0 },
     walletUsdCents: { type: Number, default: 0 },
+    // ✅ علم استئناف تضخيم ×10 لكل مستخدم — يُضبَط بنفس معاملة قيود الافتتاح، يمنع إعادة فتح محفظة مُفتَّحة فعلاً
+    walletRedenominatedV1: { type: Boolean, default: false },
     level: { type: Number, default: 1 },
     experience: { type: Number, default: 0 },
          isAdmin: { type: Boolean, default: false },

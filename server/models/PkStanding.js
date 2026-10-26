@@ -6,6 +6,8 @@ const mongoose = require('mongoose');
 // lastLpAt يُستخدم ككسر تعادل أخير: من وصل لنفس النقاط أولاً يتصدّر (طلب صريح)
 // =====================================================
 const pkStandingSchema = new mongoose.Schema({
+    // ✅ علم استئناف تضخيم ×10 لهذا المستند
+    redenominatedV1: { type: Boolean, default: false },
     season: { type: mongoose.Schema.Types.ObjectId, ref: 'PkSeason', required: true, index: true },
     weekKey: { type: String, required: true, index: true }, // مُكرَّر عمداً من الموسم لاستعلامات مباشرة بلا populate
     room: { type: mongoose.Schema.Types.ObjectId, ref: 'VoiceRoom', required: true, index: true },

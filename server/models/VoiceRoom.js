@@ -22,6 +22,8 @@ const seatSchema = new mongoose.Schema({
 }, { _id: false });
 
 const voiceRoomSchema = new mongoose.Schema({
+    // ✅ علم استئناف تضخيم ×10 لهذا المستند
+    redenominatedV1: { type: Boolean, default: false },
     // فقط الغرفة الرسمية (main) تستخدم هذا الحقل — بقية الغرف بدونه (sparse يسمح بتكرار "بدون قيمة")
     slug: { type: String, unique: true, sparse: true },
     // ✅ آيدي قصير مميّز لكل غرفة مستخدم (6 أرقام) — يُنشأ تلقائياً عند إنشاء الغرفة، ويبقى
