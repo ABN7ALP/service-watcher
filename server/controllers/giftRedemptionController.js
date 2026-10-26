@@ -52,9 +52,16 @@ async function getEligibleBeansWForUsd(userId, holdHours, session) {
     return eligible;
 }
 
+// ✅ مراجعة ما قبل الدمج v2 (البند 3): عرض الإطلاق (payoutLaunchPct) يُطبَّق فقط بين
+// payoutLaunchStartsAt وpayoutLaunchEndsAt معاً — قبل بدء العرض (أو إن لم يبدأ أصلاً،
+// payoutLaunchStartsAt=null بالافتراضي) تُطبَّق basePct/highPct العادية، بصرف النظر عن أن
+// endsAt قد تكون بالمستقبل. سابقاً كانت endsAt وحدها كافية فتُفعِّل العرض تلقائياً حتى قبل
+// أي قرار إداري صريح ببدئه
 function currentPayoutRatePercent(settings, hostLevel) {
     const now = new Date();
-    if (settings.payoutLaunchEndsAt && now < settings.payoutLaunchEndsAt) {
+    const launchStarted = settings.payoutLaunchStartsAt && now >= settings.payoutLaunchStartsAt;
+    const launchStillOpen = settings.payoutLaunchEndsAt && now < settings.payoutLaunchEndsAt;
+    if (launchStarted && launchStillOpen) {
         return settings.payoutLaunchPct;
     }
     return (hostLevel || 0) >= settings.highHostLevel ? settings.payoutHighPct : settings.payoutBasePct;

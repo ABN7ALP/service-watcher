@@ -7,6 +7,7 @@ const router = express.Router();
 const adminAuth = require('../middleware/adminAuth');
 const adminController = require('../controllers/adminController');
 const { frameAssetUpload } = require('../utils/cloudinary');
+const { financialLimiter } = require('../middleware/globalMiddleware');
 
 // 🛡️ "فحص الآن" (صحة النظام): مفتاح ثابت وليس هوية الأدمن — الحد مرة كل 5 دقائق إجمالاً
 // عبر كل الأدمنز معاً، لا لكل أدمن منفرد، لأن الفحص يشغّل npm outdated/audit (مُكلف نسبياً)
@@ -40,6 +41,9 @@ router.post('/users/:userId/ban', adminController.banUser);
 router.post('/users/:userId/unban', adminController.unbanUser);
 router.post('/users/:userId/set-agent', adminController.setAgentStatus);
 router.post('/users/:userId/adjust-funds', adminController.adjustUserFunds);
+// 🛡️ مراجعة ما قبل الدمج v2 (البند 2): مُحدَّد معدَّل مالي عادي (نفس financialLimiter
+// بالمسارات المالية الأخرى) — يمنع قصف هذا المسار الحسّاس بسرعة من حساب أدمن مخترَق
+router.post('/users/:userId/transfer-beans-to-withdrawable', financialLimiter, adminController.transferBeansToWithdrawable);
 
 router.get('/deposits', adminController.getDeposits);
 router.post('/deposits/:transactionId/approve', adminController.approveDeposit);

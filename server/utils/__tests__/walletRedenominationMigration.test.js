@@ -1,16 +1,21 @@
 // ملف: walletRedenominationMigration.test.js
 // 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1): يختبر إعادة التسمية ×10 — كل قيمة مقوَّمة بالكوينز
 // (أسعار الكتالوج، السجلّات التاريخية، تراكمات الغرف/الدوري، إعدادات النظام) تُضاعَف ×10
-// بالضبط، أرصدة المستخدمين تُفتَح بدفتر الأستاذ (coins_paid/usd_cents/beans_w) بالقيمة
-// الصحيحة، الهدايا غير المستبدَلة تُعلَّم مستبدَلة بعد تحويل قيمتها لـbeans_w، وتشغيل المهمة
-// مرتين متتاليتين لا يُغيِّر شيئاً (JobRun + idempotencyKey معاً). نفس استراتيجية هذا المشروع
+// بالضبط، أرصدة المستخدمين تُفتَح بدفتر الأستاذ (coins_bonus/beans_p — بداية نظيفة) بالقيمة
+// الصحيحة، الهدايا غير المستبدَلة تُعلَّم مستبدَلة بعد تحويل قيمتها، وتشغيل المهمة مرتين
+// متتاليتين لا يُغيِّر شيئاً (JobRun + idempotencyKey معاً). نفس استراتيجية هذا المشروع
 // الثابتة — jest.spyOn على نماذج Mongoose الحقيقية بمحاكاة حالة بذاكرة JS بسيطة
 //
-// 🛡️ مراجعة ما قبل الدمج (6 عوائق) — عائق #2: JobRun 'running'->'completed' قابلة للاستئناف،
-// وكل مستند/مستخدم يحمل علم redenominatedV1/walletRedenominatedV1 خاصاً به — يمنع إعادة
-// تضخيم مستند مرتين حتى لو تعطّلت العملية بمنتصفها بالضبط. اختبارات هذا الملف تحاكي تعطّلاً
-// حقيقياً (استثناء يُرمى بمنتصف مرحلة المجموعات، وآخر بمنتصف مرحلة المستخدمين)، إعادة تشغيل،
-// ثم تشغيلاً ثالثاً، وتتحقق أن كل قيمة انتهت ×10 مرة واحدة بالضبط بصرف النظر عن أين تعطّلت
+// 🛡️ مراجعة إنتاج ثانية (بعد دمج+تراجع PR #131 — "6 blockers v2"):
+//   - عائق #2 (موروث): JobRun 'running'->'completed' قابلة للاستئناف؛ علم redenominatedV1
+//     يمنع إعادة تضخيم مستند مرتين حتى لو تعطّلت العملية بمنتصفها بالضبط.
+//   - البند 1 (جديد): SystemSettings — مستند إعدادات بشكل إنتاج حقيقي (production-shape:
+//     مفتقِد حقولاً أُضيفت للمخطط لاحقاً) يُضخَّم effective-value صحيحة، لا صفراً زائفاً؛
+//     assertScaledSettingsPositive تُفجِّر خطأً لو انتهت قيمة ما ≤0؛ resolveMigrationStartup
+//     يرفض فتح الموقع لو قاسم مالي حقيقي ≤0 بصرف النظر عن اكتمال الترحيل.
+//   - البند 2 (جديد): بداية نظيفة — coins_bonus/beans_p لا coins_paid/beans_w، لا usd_cents
+//     افتتاحي إطلاقاً، oldBalanceUsd محفوظ بـmeta قيود الافتتاح.
+//   - البند 3 (جديد، تقرير): أعلى 10 مستخدمين بالكوينز/الرصيد القديمين + إجماليات المحافظ بعد العملية.
 
 jest.useFakeTimers();
 
@@ -29,7 +34,10 @@ const PkStanding = require('../../models/PkStanding');
 const SystemSettings = require('../../models/SystemSettings');
 const JobRun = require('../../models/JobRun');
 const LedgerEntry = require('../../models/LedgerEntry');
-const { runMigration, resolveMigrationStartup, WALLET_MIGRATION_OFF_MESSAGE } = require('../walletRedenominationMigration');
+const {
+    runMigration, resolveMigrationStartup, WALLET_MIGRATION_OFF_MESSAGE,
+    JOB_NAME, SENTINEL_WEEK_START
+} = require('../walletRedenominationMigration');
 
 function getPath(obj, path) {
     return path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
@@ -111,11 +119,18 @@ function wireSimpleCollection(Model, docs) {
     });
 }
 
+// ✅ محاكاة بشكل إنتاج حقيقي (production-shape): بلا الحقول الخمسة المُضخَّمة إطلاقاً (لا حتى
+// undefined — تماماً كمستند Mongo حقيقي أُنشئ قبل إضافة هذي الحقول للمخطط). singletonKey
+// فقط موجود، كما تماماً المستند الحقيقي الذي فجّر العلّة بترحيل إنتاجي سابق
+function makeProductionShapeSettings() {
+    return { singletonKey: 'main' };
+}
+
 function makeDb() {
     return {
         users: [], gifts: [], frames: [], skins: [], customGifts: [], giftLogs: [],
         purchases: [], redemptions: [], fanMemberships: [], rooms: [], standings: [],
-        settings: { singletonKey: 'main', coinExchangeRate: 100, pkSupportLpDivisor: 100, pkMinSupportCoins: 50, customGiftDesignFeeCoins: 500, customGiftSendPriceCoins: 100 },
+        settings: { singletonKey: 'main', coinExchangeRate: 100, pkSupportLpDivisor: 100, pkMinSupportCoins: 50, customGiftDesignFeeCoins: 500, customGiftSendPriceCoins: 100, coinsPerUsd: 1000 },
         jobRuns: new Map(),
         ledgerByKey: new Map()
     };
@@ -123,7 +138,7 @@ function makeDb() {
 
 function seedUser(db, overrides) {
     const user = {
-        _id: 'u_default', coins: 0, balance: 0,
+        _id: 'u_default', username: overrides.username || overrides._id || 'u_default', coins: 0, balance: 0,
         walletCoinsPaid: 0, walletCoinsBonus: 0, walletBeansW: 0, walletBeansP: 0, walletUsdCents: 0,
         supportMissions: { bonusXP: 0 }, walletRedenominatedV1: false,
         ...overrides
@@ -136,6 +151,20 @@ function jobRunKey(filter) {
     return `${filter.job}:${filter.weekStart.getTime()}`;
 }
 
+// ✅ يُحاكي hydration الحقيقي لـMongoose (SystemSettings.getSettings الفعلية): حقل مفتقِد
+// بالمستند المخزَّن (undefined حرفياً) يُستبدَل بالافتراضي الحيّ بالمخطط؛ حقل مخزَّن فعلياً
+// (حتى لو صفراً) يبقى كما هو بلا أي استبدال — هذا بالضبط ما يُفرِّق "effective" الصحيحة
+function hydrateSettingsLikeMongoose(raw) {
+    const result = { ...raw };
+    SystemSettings.schema.eachPath((pathName, schemaType) => {
+        if (result[pathName] === undefined) {
+            const def = schemaType.getDefault();
+            if (def !== undefined) result[pathName] = def;
+        }
+    });
+    return result;
+}
+
 function wireMocks(db) {
     wireSimpleCollection(Gift, db.gifts);
     wireSimpleCollection(ProfileFrame, db.frames);
@@ -146,26 +175,40 @@ function wireMocks(db) {
     wireSimpleCollection(FanClubMembership, db.fanMemberships);
     wireSimpleCollection(VoiceRoom, db.rooms);
     wireSimpleCollection(PkStanding, db.standings);
-    // ✅ User.aggregate فقط (بند REPORT_FIELDS الخاص بـsupportMissions.bonusXP، للعرض فقط) —
-    // بلا updateMany هنا، فتضخيم bonusXP الفعلي يحدث عبر User.updateOne بمعاملة كل مستخدم
-    jest.spyOn(User, 'aggregate').mockImplementation(([{ $match: filter }, { $group }]) => {
-        const field = $group.total.$sum.slice(1);
+    // ✅ User.aggregate: بند REPORT_FIELDS الخاص بـsupportMissions.bonusXP (للعرض فقط) + تجميع
+    // إجماليات المحافظ الحيّة (sumCurrentWalletTotals بـrunMigration) بتوقيع $group مختلف —
+    // نُفرِّق بوجود مفتاح coins_paid بالـ$group (توقيع الإجماليات) من عدمه (توقيع REPORT_FIELDS)
+    jest.spyOn(User, 'aggregate').mockImplementation((pipeline) => {
+        const groupStage = pipeline.find(s => s.$group).$group;
+        if ('coins_paid' in groupStage) {
+            // ✅ sumCurrentWalletTotals — مرحلة واحدة فقط (بلا $match)، توقيعها الخماسي مختلف عن REPORT_FIELDS
+            const totals = { coins_paid: 0, coins_bonus: 0, beans_w: 0, beans_p: 0, usd_cents: 0 };
+            const fieldByWallet = { coins_paid: 'walletCoinsPaid', coins_bonus: 'walletCoinsBonus', beans_w: 'walletBeansW', beans_p: 'walletBeansP', usd_cents: 'walletUsdCents' };
+            for (const u of db.users) for (const w of Object.keys(totals)) totals[w] += (u[fieldByWallet[w]] || 0);
+            return Promise.resolve([{ _id: null, ...totals }]);
+        }
+        const matchStage = pipeline.find(s => s.$match);
+        const filter = matchStage ? matchStage.$match : {};
+        const field = groupStage.total.$sum.slice(1);
         const matching = db.users.filter(u => matchFilter(u, filter));
         const total = matching.reduce((sum, u) => sum + (getPath(u, field) || 0), 0);
         return Promise.resolve([{ _id: null, total }]);
     });
-    jest.spyOn(SystemSettings, 'aggregate').mockImplementation(([{ $match: filter }, { $group }]) => {
-        const field = $group.total.$sum.slice(1);
-        const total = matchFilter(db.settings, filter) ? (getPath(db.settings, field) || 0) : 0;
-        return Promise.resolve([{ _id: null, total }]);
-    });
+
+    // 🛡️ مراجعة إنتاج v2 (البند 1): SystemSettings.findOne (lean) — مسار القراءة الخام
+    // الجديد (readEffectiveOldSettingsValue + COLLECTION_SCALERS.SystemSettings.apply)، لا
+    // hydration إطلاقاً هنا (يُخفي فجوة الحقل المفتقَد تماماً كما بالعلّة الحقيقية)
+    jest.spyOn(SystemSettings, 'findOne').mockImplementation((filter) => chainable(matchFilter(db.settings, filter) ? { ...db.settings } : null));
+    // ✅ getSettings الحقيقية تُطبِّق hydration (الافتراضي الحيّ بالمخطط لحقل مفتقَد فقط) —
+    // تُستخدَم بـassertScaledSettingsPositive/assertMoneyDivisorsSane فقط، لا بمسار الكتابة
+    jest.spyOn(SystemSettings, 'getSettings').mockImplementation(() => Promise.resolve(hydrateSettingsLikeMongoose(db.settings)));
     jest.spyOn(SystemSettings, 'updateMany').mockImplementation((filter, update) => {
         if (matchFilter(db.settings, filter)) applyUpdateToDoc(db.settings, update);
         return Promise.resolve({ modifiedCount: 1 });
     });
 
     // ✅ GiftLog خاصة: aggregate تدعم كلا الاستخدامين (مجموع عام بفلتر {} لـunitPrice/totalPrice
-    // بمرحلة المجموعات، ومجموع غير مستبدَل خاص بمستخدم لحساب beans_w الافتتاحية)، وupdateMany
+    // بمرحلة المجموعات، ومجموع غير مستبدَل خاص بمستخدم لحساب beans_p الافتتاحية)، وupdateMany
     // تدعم كلا الاستخدامين (تضخيم جماعي $mul بمرحلة المجموعات، وتعليم {redeemed:true} الخاص
     // بمستخدم بمرحلة المستخدمين) — بنفس matchFilter/applyUpdateToDoc العامتين لا شيء خاص
     jest.spyOn(GiftLog, 'aggregate').mockImplementation(([{ $match: filter }, { $group }]) => {
@@ -258,7 +301,7 @@ describe('walletRedenominationMigration — dry-run (لا يكتب شيئاً)',
         const result2 = await runMigration({ dryRun: true });
         expect(result2.rows).toEqual(result1.rows);
         expect(db.gifts[0].price).toBe(50); // ✅ لم يتغيّر إطلاقاً
-        expect(db.users[0].walletCoinsPaid).toBe(0); // ✅ لم تُفتَح أي محفظة فعلياً
+        expect(db.users[0].walletCoinsBonus).toBe(0); // ✅ لم تُفتَح أي محفظة فعلياً
     });
 });
 
@@ -311,9 +354,10 @@ describe('walletRedenominationMigration — apply (يكتب فعلياً)', () =
         expect(db.settings.pkMinSupportCoins).toBe(500);
         expect(db.settings.customGiftDesignFeeCoins).toBe(5000);
         expect(db.settings.customGiftSendPriceCoins).toBe(1000);
+        expect(db.settings.redenominatedV1).toBe(true);
     });
 
-    test('أرصدة المستخدمين: coins_paid وusd_cents يُفتَحان بدفتر الأستاذ بالقيمة الصحيحة، وbonusXP يُضخَّم بنفس معاملة الفتح', async () => {
+    test('بداية نظيفة: coins القديمة ×10 -> coins_bonus (لا coins_paid)، oldBalanceUsd محفوظ بـmeta القيد، لا usd_cents افتتاحي إطلاقاً، وbonusXP يُضخَّم بنفس معاملة الفتح', async () => {
         const db = makeDb();
         seedUser(db, { _id: 'u1', coins: 100, balance: 5.5, supportMissions: { bonusXP: 7 } });
         wireMocks(db);
@@ -321,15 +365,23 @@ describe('walletRedenominationMigration — apply (يكتب فعلياً)', () =
         await runMigration({ dryRun: false });
 
         const user = db.users[0];
-        expect(user.walletCoinsPaid).toBe(1000); // 100 × 10
-        expect(user.walletUsdCents).toBe(550); // 5.5$ -> 550 سنت، بلا أي تضخيم
-        expect(user.coins).toBe(1000); // ✅ المرآة القديمة تزامنت تلقائياً عبر walletService
-        expect(user.balance).toBe(5.5); // ✅ بلا تغيير — دولار حقيقي
+        expect(user.walletCoinsBonus).toBe(1000); // 100 × 10 -> bonus لا paid
+        expect(user.walletCoinsPaid).toBe(0); // ✅ لم يُلمَس إطلاقاً
+        expect(user.walletUsdCents).toBe(0); // ✅ بداية نظيفة — لا افتتاح usd_cents إطلاقاً
+        // ✅ مرآة balance القديمة تُعاد مزامنتها تلقائياً من walletUsdCents (=0) بمجرّد أي قيد
+        // دفتر أستاذ لهذا المستخدم (walletService.post) — تُصفَّر، لا تبقى على قيمتها القديمة
+        // المُخزَّنة المُنفصِلة عن دفتر الأستاذ، تماماً كما يقتضيه "لا أموال حقيقية استُلمت فعلاً"
+        expect(user.balance).toBe(0);
         expect(user.supportMissions.bonusXP).toBe(70); // ✅ نفس معاملة فتح المحفظة بالضبط
         expect(user.walletRedenominatedV1).toBe(true);
+
+        const entry = db.ledgerByKey.get(`${JOB_NAME}:u1:coins_bonus`);
+        expect(entry).toBeTruthy();
+        expect(entry.meta.oldBalanceUsd).toBe(5.5); // ✅ الرصيد الدولاري القديم محفوظ مرجعاً بالقيد
+        expect(db.ledgerByKey.has(`${JOB_NAME}:u1:usd_cents`)).toBe(false); // ✅ لا قيد usd_cents إطلاقاً
     });
 
-    test('هدايا غير مستبدَلة تُفتَح كـbeans_w بالقيمة الصحيحة (لا تضخيم مضاعَف بعد الترتيب الجديد) وتُعلَّم مستبدَلة', async () => {
+    test('هدايا غير مستبدَلة تُفتَح كـbeans_p (لا beans_w) بالقيمة الصحيحة (لا تضخيم مضاعَف) وتُعلَّم مستبدَلة', async () => {
         const db = makeDb();
         seedUser(db, { _id: 'u1', coins: 0, balance: 0 });
         db.giftLogs.push({ _id: 'gl1', receiver: 'u1', redeemed: false, unitPrice: 50, totalPrice: 150 });
@@ -342,7 +394,8 @@ describe('walletRedenominationMigration — apply (يكتب فعلياً)', () =
         const user = db.users[0];
         // ✅ المجموعات (GiftLog.totalPrice) ضُخِّمت أولاً ×10 فعلاً، فمحفظة المستخدم تقرأ القيمة
         // المُضخَّمة بالفعل وتفتح بها مباشرة بلا ضرب إضافي: (150+60)×10 = 2100 بالضبط، لا 21000
-        expect(user.walletBeansW).toBe(2100);
+        expect(user.walletBeansP).toBe(2100);
+        expect(user.walletBeansW).toBe(0); // ✅ لم يُلمَس إطلاقاً — بداية نظيفة
         expect(db.giftLogs[0].redeemed).toBe(true);
         expect(db.giftLogs[1].redeemed).toBe(true);
         expect(db.giftLogs[2].redeemed).toBe(false); // ✅ مستخدم آخر لم يُلمَس
@@ -357,13 +410,13 @@ describe('walletRedenominationMigration — apply (يكتب فعلياً)', () =
         wireMocks(db);
 
         await runMigration({ dryRun: false });
-        const afterFirst = { price: db.gifts[0].price, coinsPaid: db.users[0].walletCoinsPaid };
-        expect(db.jobRuns.get(jobRunKey({ job: require('../walletRedenominationMigration').JOB_NAME, weekStart: require('../walletRedenominationMigration').SENTINEL_WEEK_START })).status).toBe('completed');
+        const afterFirst = { price: db.gifts[0].price, coinsBonus: db.users[0].walletCoinsBonus };
+        expect(db.jobRuns.get(jobRunKey({ job: JOB_NAME, weekStart: SENTINEL_WEEK_START })).status).toBe('completed');
 
         const result2 = await runMigration({ dryRun: false });
         expect(result2.skipped).toBe(true);
         expect(db.gifts[0].price).toBe(afterFirst.price); // ✅ ليس ×100 — لم يُلمَس ثانية إطلاقاً
-        expect(db.users[0].walletCoinsPaid).toBe(afterFirst.coinsPaid);
+        expect(db.users[0].walletCoinsBonus).toBe(afterFirst.coinsBonus);
     });
 
     test('مستخدم بلا أي رصيد (coins=0, balance=0, بلا هدايا): لا قيود دفتر أستاذ تُكتَب له، لكن علمه يُضبَط فلا يُعاد فحصه', async () => {
@@ -374,8 +427,161 @@ describe('walletRedenominationMigration — apply (يكتب فعلياً)', () =
         await runMigration({ dryRun: false });
 
         expect(db.ledgerByKey.size).toBe(0);
-        expect(db.users[0].walletCoinsPaid).toBe(0);
+        expect(db.users[0].walletCoinsBonus).toBe(0);
         expect(db.users[0].walletRedenominatedV1).toBe(true);
+    });
+});
+
+describe('walletRedenominationMigration — SystemSettings effective-value (مراجعة إنتاج v2، البند 1)', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('مستند إعدادات بشكل إنتاج حقيقي (مفتقِد الحقول الخمسة كلياً): effective = الافتراضي القديم×10، لا صفراً زائفاً', async () => {
+        const db = makeDb();
+        db.settings = makeProductionShapeSettings(); // ✅ لا pkMinSupportCoins/customGiftDesignFeeCoins/... إطلاقاً
+        wireMocks(db);
+
+        const result = await runMigration({ dryRun: false });
+        expect(result.skipped).toBe(false);
+
+        // ✅ effective = SETTINGS_OLD_DEFAULTS (100/100/50/500/100) — ليس صفراً كما كان $mul
+        // على حقل مفتقَد يفعل سابقاً — ×10 بالضبط
+        expect(db.settings.coinExchangeRate).toBe(1000);
+        expect(db.settings.pkSupportLpDivisor).toBe(1000);
+        expect(db.settings.pkMinSupportCoins).toBe(500);
+        expect(db.settings.customGiftDesignFeeCoins).toBe(5000);
+        expect(db.settings.customGiftSendPriceCoins).toBe(1000);
+        expect(db.settings.redenominatedV1).toBe(true);
+
+        // ✅ التقرير نفسه (قبل/بعد) يعكس effective الصحيحة لا صفراً — بند "التقرير يعرض effective"
+        const row = result.rows.find(r => r.label === 'SystemSettings.customGiftDesignFeeCoins');
+        expect(row.before).toBe(500);
+        expect(row.after).toBe(5000);
+        expect(row.ok).toBe(true);
+    });
+
+    test('مستند إعدادات مفتقِد لحقل واحد فقط (pkSupportLpDivisor) وسط حقول أخرى مخزَّنة فعلياً: effective تُفرِّق بدقّة بين "مفتقَد" و"مخزَّن 0"', async () => {
+        const db = makeDb();
+        db.settings = {
+            singletonKey: 'main',
+            coinExchangeRate: 200, // ✅ مخزَّن فعلياً (ليس الافتراضي) — effective يجب أن يحترمه
+            pkMinSupportCoins: 0, // ✅ مخزَّن فعلياً كصفر حقيقي — effective=0 (ليس الافتراضي 50)
+            customGiftDesignFeeCoins: 500,
+            customGiftSendPriceCoins: 100
+            // pkSupportLpDivisor مفتقِد كلياً هنا عمداً
+        };
+        wireMocks(db);
+
+        await expect(runMigration({ dryRun: false })).rejects.toMatchObject({ code: 'SETTINGS_SANITY_FAILED' });
+        // ✅ coinExchangeRate المخزَّن فعلياً (200) ×10 احتُرِم بدقّة
+        expect(db.settings.coinExchangeRate).toBe(2000);
+        // ✅ pkSupportLpDivisor المفتقِد كلياً -> الافتراضي القديم (100) ×10
+        expect(db.settings.pkSupportLpDivisor).toBe(1000);
+        // ✅ pkMinSupportCoins المخزَّن فعلياً كصفر -> effective=0 -> ×10=0 (هذا بالضبط ما يُفجِّر assertScaledSettingsPositive لاحقاً)
+        expect(db.settings.pkMinSupportCoins).toBe(0);
+    });
+
+    test('assertScaledSettingsPositive: حقل مُضخَّم انتهى ≤0 يُفجِّر خطأً ويُبقي JobRun "running" (قابلة للاستئناف، لا فتح الموقع بقاسم صفري)', async () => {
+        const db = makeDb();
+        db.settings.pkSupportLpDivisor = 0; // ✅ مخزَّن فعلياً كصفر — effective=0 -> ×10=0 -> يفشل التحقّق
+        wireMocks(db);
+
+        await expect(runMigration({ dryRun: false })).rejects.toMatchObject({ code: 'SETTINGS_SANITY_FAILED' });
+        expect(db.jobRuns.get(jobRunKey({ job: JOB_NAME, weekStart: SENTINEL_WEEK_START })).status).toBe('running'); // ✅ ليست 'completed'
+        // ✅ المجموعة ذاتها (SystemSettings) علَّمت نفسها مُضخَّمة فعلاً (نتيجتها فقط كانت ≤0) —
+        // الاستئناف لا يُعيد تضخيمها ثانية (علمها true فعلاً)؛ تصحيح القيمة يدوياً للقيمة
+        // الصحيحة بعد التضخيم (كما سيفعل المُشغِّل فعلياً من لوحة الإدارة) هو المسار الصحيح
+        expect(db.settings.redenominatedV1).toBe(true);
+        expect(db.settings.pkSupportLpDivisor).toBe(0);
+
+        db.settings.pkSupportLpDivisor = 1000; // ✅ تصحيح يدوي للقيمة الصحيحة بعد التضخيم
+        const result2 = await runMigration({ dryRun: false });
+        expect(result2.skipped).toBe(false);
+        expect(db.settings.pkSupportLpDivisor).toBe(1000); // ✅ لم تُضخَّم ثانية (المجموعة مُعلَّمة فعلاً)
+        expect(db.jobRuns.get(jobRunKey({ job: JOB_NAME, weekStart: SENTINEL_WEEK_START })).status).toBe('completed');
+    });
+});
+
+describe('resolveMigrationStartup — حارس القواسم المالية الدائم (مراجعة إنتاج v2، البند 1)', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('قاسم مالي حقيقي ≤0 (coinsPerUsd) حتى بعد اكتمال الترحيل فعلاً: يرفض فتح الموقع', async () => {
+        const db = makeDb();
+        db.settings.coinsPerUsd = 0; // ✅ تعديل يدوي خاطئ لاحق من لوحة الإدارة، لا علاقة بالترحيل نفسه
+        wireMocks(db);
+        db.jobRuns.set(jobRunKey({ job: JOB_NAME, weekStart: SENTINEL_WEEK_START }), { job: JOB_NAME, weekStart: SENTINEL_WEEK_START, status: 'completed' });
+
+        const result = await resolveMigrationStartup({ env: {} });
+        expect(result.ready).toBe(false);
+        expect(result.divisorCheckFailed).toBe(true);
+        expect(result.bad).toContain('coinsPerUsd');
+    });
+
+    test('كل القواسم المالية > 0: الموقع يُفتَح بشكل طبيعي', async () => {
+        const db = makeDb();
+        wireMocks(db);
+        db.jobRuns.set(jobRunKey({ job: JOB_NAME, weekStart: SENTINEL_WEEK_START }), { job: JOB_NAME, weekStart: SENTINEL_WEEK_START, status: 'completed' });
+
+        const result = await resolveMigrationStartup({ env: {} });
+        expect(result).toEqual({ ready: true, mode: 'already_completed' });
+    });
+});
+
+describe('walletRedenominationMigration — تقرير أعلى 10 مستخدمين + إجماليات المحافظ (مراجعة إنتاج v2، البند 3)', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('أعلى 10 بالكوينز القديمة وأعلى 10 بالرصيد الدولاري القديم مُرتَّبان تنازلياً بالاسم/المعرّف/القيمة الصحيحة', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: 'u1', username: 'Ahmad', coins: 500, balance: 10 });
+        seedUser(db, { _id: 'u2', username: 'Sara', coins: 50, balance: 100 });
+        seedUser(db, { _id: 'u3', username: 'Omar', coins: 300, balance: 5 });
+        wireMocks(db);
+
+        const result = await runMigration({ dryRun: false });
+
+        expect(result.topByOldCoins.map(u => u.id)).toEqual(['u1', 'u3', 'u2']);
+        expect(result.topByOldCoins[0]).toMatchObject({ id: 'u1', username: 'Ahmad', oldCoins: 500 });
+        expect(result.topByOldBalanceUsd.map(u => u.id)).toEqual(['u2', 'u1', 'u3']);
+        expect(result.topByOldBalanceUsd[0]).toMatchObject({ id: 'u2', username: 'Sara', oldBalanceUsd: 100 });
+    });
+
+    test('أكثر من 10 مستخدمين: القائمة تُحصَر بأعلى 10 بالضبط', async () => {
+        const db = makeDb();
+        for (let i = 1; i <= 12; i++) {
+            seedUser(db, { _id: `u${i}`, username: `user${i}`, coins: i * 10, balance: 0 });
+        }
+        wireMocks(db);
+
+        const result = await runMigration({ dryRun: false });
+
+        expect(result.topByOldCoins).toHaveLength(10);
+        expect(result.topByOldCoins[0]).toMatchObject({ id: 'u12', oldCoins: 120 }); // الأعلى أولاً
+        expect(result.topByOldCoins[9]).toMatchObject({ id: 'u3', oldCoins: 30 }); // العاشر
+    });
+
+    test('إجماليات المحافظ بعد التطبيق الفعلي تعكس الحالة الحقيقية (coins_bonus/beans_p من هذي العملية، coins_paid/beans_w/usd_cents صفر — بداية نظيفة)', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: 'u1', coins: 100, balance: 0 });
+        db.giftLogs.push({ _id: 'gl1', receiver: 'u1', redeemed: false, unitPrice: 10, totalPrice: 50 });
+        wireMocks(db);
+
+        const result = await runMigration({ dryRun: false });
+
+        expect(result.walletTotalsAfter).toEqual({
+            coins_paid: 0, coins_bonus: 1000, beans_w: 0, beans_p: 500, usd_cents: 0
+        });
+    });
+
+    test('إجماليات المحافظ بمعاينة (dryRun): تُحسَب بالإضافة (الحالي + المُتوقَّع)، لا بإعادة قراءة فعلية (لا كتابة حدثت)', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: 'u1', coins: 100, balance: 0, walletCoinsPaid: 50 }); // ✅ محفظة سابقة موجودة فعلاً (غير متعلّقة بهذي العملية)
+        wireMocks(db);
+
+        const result = await runMigration({ dryRun: true });
+
+        expect(result.walletTotalsAfter).toEqual({
+            coins_paid: 50, coins_bonus: 1000, beans_w: 0, beans_p: 0, usd_cents: 0
+        });
+        expect(db.users[0].walletCoinsBonus).toBe(0); // ✅ لا كتابة فعلية حدثت فعلاً
     });
 });
 
@@ -388,15 +594,13 @@ describe('walletRedenominationMigration — تعطّل واستئناف (مرا�
         wireMocks(db);
 
         // ✅ محاكاة JobRun ادّعاها إقلاع سابق للسيرفر ثم تعطّل قبل أن يكتمل (لا status:'completed' أبداً)
-        db.jobRuns.set(jobRunKey({ job: require('../walletRedenominationMigration').JOB_NAME, weekStart: require('../walletRedenominationMigration').SENTINEL_WEEK_START }), {
-            job: require('../walletRedenominationMigration').JOB_NAME,
-            weekStart: require('../walletRedenominationMigration').SENTINEL_WEEK_START,
-            status: 'running'
+        db.jobRuns.set(jobRunKey({ job: JOB_NAME, weekStart: SENTINEL_WEEK_START }), {
+            job: JOB_NAME, weekStart: SENTINEL_WEEK_START, status: 'running'
         });
 
         const result = await runMigration({ dryRun: false });
         expect(result.skipped).toBe(false); // ✅ لم تُتخطَّ — استؤنفت فعلياً
-        expect(db.users[0].walletCoinsPaid).toBe(1000); // ✅ المحفظة فُتحت فعلياً بهذي العملية "المستأنَفة"
+        expect(db.users[0].walletCoinsBonus).toBe(1000); // ✅ المحفظة فُتحت فعلياً بهذي العملية "المستأنَفة"
     });
 
     test('تعطّل بمنتصف مرحلة المجموعات ثم بمنتصف مرحلة المستخدمين، إعادة تشغيل بعد كل تعطّل، ثم تشغيل ثالث: كل قيمة ×10 مرة واحدة بالضبط، كل مستخدم يملك علماً واحداً وقيد افتتاح واحد لكل محفظة', async () => {
@@ -450,7 +654,7 @@ describe('walletRedenominationMigration — تعطّل واستئناف (مرا�
         expect(db.giftLogs[0].redenominatedV1).toBe(true); // ✅ مرحلة المجموعات اكتملت هذي المرة بالكامل
         expect(db.giftLogs[0].totalPrice).toBe(1000); // ✅ ×10 مرة واحدة بالضبط (ليس ×100)
         expect(db.users[0].walletRedenominatedV1).toBe(true); // ✅ u1 اكتمل قبل تعطّل u2
-        expect(db.users[0].walletCoinsPaid).toBe(100);
+        expect(db.users[0].walletCoinsBonus).toBe(100);
         expect(db.users[1].walletRedenominatedV1).toBeFalsy(); // ✅ u2 لم يكتمل بعد
 
         // ✅ إزالة محاكاة التعطّل الثانية — محاولة ثالثة تُكمِل فقط ما تبقّى (u2)، ولا تُعيد لمس
@@ -459,27 +663,27 @@ describe('walletRedenominationMigration — تعطّل واستئناف (مرا�
         const result3 = await runMigration({ dryRun: false });
         expect(result3.skipped).toBe(false);
         expect(db.users[1].walletRedenominatedV1).toBe(true);
-        expect(db.users[1].walletCoinsPaid).toBe(200); // 20 × 10 — مرة واحدة بالضبط
+        expect(db.users[1].walletCoinsBonus).toBe(200); // 20 × 10 — مرة واحدة بالضبط
 
         // ✅ كل قيمة انتهت ×10 مرة واحدة بالضبط عبر الثلاث محاولات مجتمعة
         expect(db.gifts[0].price).toBe(500);
         expect(db.gifts[0].discountedPrice).toBe(200);
         expect(db.giftLogs[0].totalPrice).toBe(1000);
-        expect(db.users[0].walletCoinsPaid).toBe(100);
-        expect(db.users[1].walletCoinsPaid).toBe(200);
+        expect(db.users[0].walletCoinsBonus).toBe(100);
+        expect(db.users[1].walletCoinsBonus).toBe(200);
         // ✅ قيد افتتاح واحد بالضبط لكل (مستخدم، محفظة) — لا تكرار عبر محاولات الاستئناف المتعددة
-        expect(db.ledgerByKey.has(`${require('../walletRedenominationMigration').JOB_NAME}:u1:coins_paid`)).toBe(true);
-        expect(db.ledgerByKey.has(`${require('../walletRedenominationMigration').JOB_NAME}:u1:beans_w`)).toBe(true);
-        expect(db.ledgerByKey.has(`${require('../walletRedenominationMigration').JOB_NAME}:u2:coins_paid`)).toBe(true);
-        // ✅ u1:coins_paid + u1:beans_w (من gl1) + u2:coins_paid فقط — لا أي قيد مكرَّر عبر محاولات الاستئناف المتعددة
+        expect(db.ledgerByKey.has(`${JOB_NAME}:u1:coins_bonus`)).toBe(true);
+        expect(db.ledgerByKey.has(`${JOB_NAME}:u1:beans_p`)).toBe(true);
+        expect(db.ledgerByKey.has(`${JOB_NAME}:u2:coins_bonus`)).toBe(true);
+        // ✅ u1:coins_bonus + u1:beans_p (من gl1) + u2:coins_bonus فقط — لا أي قيد مكرَّر عبر محاولات الاستئناف المتعددة
         expect(db.ledgerByKey.size).toBe(3);
 
         // ✅ تشغيل رابع (بعد الاكتمال الكامل): يتخطّى فوراً، لا يُغيّر شيئاً إطلاقاً
         const result4 = await runMigration({ dryRun: false });
         expect(result4.skipped).toBe(true);
         expect(db.gifts[0].price).toBe(500);
-        expect(db.users[0].walletCoinsPaid).toBe(100);
-        expect(db.users[1].walletCoinsPaid).toBe(200);
+        expect(db.users[0].walletCoinsBonus).toBe(100);
+        expect(db.users[1].walletCoinsBonus).toBe(200);
         expect(db.ledgerByKey.size).toBe(3);
     });
 });
@@ -499,7 +703,7 @@ describe('resolveMigrationStartup — تحكّم المُشغِّل الصريح
         const resultOff = await resolveMigrationStartup({ env: { WALLET_MIGRATION: 'off' } });
         expect(resultOff).toEqual({ ready: false, mode: 'off' });
 
-        expect(db.users[0].walletCoinsPaid).toBe(0); // ✅ لا كتابة إطلاقاً
+        expect(db.users[0].walletCoinsBonus).toBe(0); // ✅ لا كتابة إطلاقاً
         expect(db.jobRuns.size).toBe(0); // ✅ لا ادّعاء JobRun حتى
         expect(logSpy.mock.calls.some(call => call[0].includes(WALLET_MIGRATION_OFF_MESSAGE))).toBe(true);
     });
@@ -514,7 +718,7 @@ describe('resolveMigrationStartup — تحكّم المُشغِّل الصريح
         const result = await resolveMigrationStartup({ env: { WALLET_MIGRATION: 'dry' } });
 
         expect(result).toEqual({ ready: false, mode: 'dry' });
-        expect(db.users[0].walletCoinsPaid).toBe(0); // ✅ لا كتابة إطلاقاً
+        expect(db.users[0].walletCoinsBonus).toBe(0); // ✅ لا كتابة إطلاقاً
         expect(db.gifts[0].price).toBe(50);
         expect(db.jobRuns.size).toBe(0); // ✅ dry لا يدّعي JobRun حتى
         // ✅ الجدول (printReportTable) + سطر "usersProcessed" مطبوعان معاً بالسجلات
@@ -530,9 +734,9 @@ describe('resolveMigrationStartup — تحكّم المُشغِّل الصريح
         const result = await resolveMigrationStartup({ env: { WALLET_MIGRATION: 'apply' } });
 
         expect(result).toEqual({ ready: true, mode: 'apply' });
-        expect(db.users[0].walletCoinsPaid).toBe(1000); // ✅ كتابة فعلية حدثت
+        expect(db.users[0].walletCoinsBonus).toBe(1000); // ✅ كتابة فعلية حدثت
         expect(db.users[0].walletRedenominatedV1).toBe(true);
-        const jr = db.jobRuns.get(`${require('../walletRedenominationMigration').JOB_NAME}:${require('../walletRedenominationMigration').SENTINEL_WEEK_START.getTime()}`);
+        const jr = db.jobRuns.get(jobRunKey({ job: JOB_NAME, weekStart: SENTINEL_WEEK_START }));
         expect(jr.status).toBe('completed');
     });
 
@@ -541,10 +745,8 @@ describe('resolveMigrationStartup — تحكّم المُشغِّل الصريح
         seedUser(db, { _id: 'u1', coins: 100, balance: 0 });
         wireMocks(db);
 
-        db.jobRuns.set(`${require('../walletRedenominationMigration').JOB_NAME}:${require('../walletRedenominationMigration').SENTINEL_WEEK_START.getTime()}`, {
-            job: require('../walletRedenominationMigration').JOB_NAME,
-            weekStart: require('../walletRedenominationMigration').SENTINEL_WEEK_START,
-            status: 'completed'
+        db.jobRuns.set(jobRunKey({ job: JOB_NAME, weekStart: SENTINEL_WEEK_START }), {
+            job: JOB_NAME, weekStart: SENTINEL_WEEK_START, status: 'completed'
         });
 
         const resultOff = await resolveMigrationStartup({ env: {} }); // ✅ حتى بلا WALLET_MIGRATION إطلاقاً
@@ -553,6 +755,6 @@ describe('resolveMigrationStartup — تحكّم المُشغِّل الصريح
         const resultApply = await resolveMigrationStartup({ env: { WALLET_MIGRATION: 'apply' } }); // ✅ حتى لو apply صريحة
         expect(resultApply).toEqual({ ready: true, mode: 'already_completed' });
 
-        expect(db.users[0].walletCoinsPaid).toBe(0); // ✅ لا أي كتابة إضافية — لم يُعَد تشغيل الترحيل إطلاقاً
+        expect(db.users[0].walletCoinsBonus).toBe(0); // ✅ لا أي كتابة إضافية — لم يُعَد تشغيل الترحيل إطلاقاً
     });
 });

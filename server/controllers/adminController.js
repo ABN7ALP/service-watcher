@@ -870,11 +870,21 @@ exports.updateSystemSettings = async (req, res) => {
       'coinsToUsdRedemptionRate', 'giftRedemptionHaircutPercent', 'maxDailyWithdrawalUSD',
       'pkWinLp', 'pkLossLp', 'pkDrawLp', 'pkSupportLpDivisor', 'pkLpCapPerBattle',
       'pkMinDurationSeconds', 'pkMinSupportCoins', 'pkMaxDailyMatchesPerPair',
-      'customGiftDesignFeeCoins', 'customGiftSendPriceCoins'
+      'customGiftDesignFeeCoins', 'customGiftSendPriceCoins',
+      // 🛡️ مراجعة ما قبل الدمج v2 (البند 3): توقيت عرض الإطلاق — يُضبَط يدوياً من هنا فقط،
+      // لا تلقائياً عند الإقلاع (راجع currentPayoutRatePercent)
+      'payoutLaunchPct', 'payoutLaunchStartsAt', 'payoutLaunchEndsAt', 'payoutBasePct', 'payoutHighPct', 'highHostLevel'
     ];
     const updates = {};
     for (const field of allowedFields) {
-      if (req.body[field] !== undefined) updates[field] = req.body[field];
+      if (req.body[field] !== undefined) {
+        // ✅ تواريخ الإطلاق تصل كنصّ ISO من الواجهة — null صريح يعني "لا تاريخ" (العرض لم يبدأ/لا نهاية محدَّدة)
+        if ((field === 'payoutLaunchStartsAt' || field === 'payoutLaunchEndsAt') && req.body[field] !== null) {
+          updates[field] = new Date(req.body[field]);
+        } else {
+          updates[field] = req.body[field];
+        }
+      }
     }
     updates.updatedBy = admin._id;
 
@@ -1008,6 +1018,71 @@ exports.adjustUserFunds = async (req, res) => {
       message: 'تم تعديل رصيد المستخدم بنجاح',
       user: { balance: user.balance, coins: user.coins }
     });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// 🛡️ مراجعة ما قبل الدمج v2 (البند 2): ترحيل ×10 يفتح كل الهدايا القديمة غير المستبدَلة
+// كـbeans_p (ألماس ترويجي — لا يصل للدولار أبداً، "بداية نظيفة" بقرار المالك). هذي الدالة
+// هي المسار اليدوي الوحيد لتحويل جزء منها إلى beans_w (قابل للسحب نقداً) لحالات مستقبلية
+// فردية موثَّقة (تسوية نزاع، تعويض مستخدم استلم هدايا حقيقية قبل الترحيل...) — إدارة فقط،
+// بسبب مكتوب، وقيدا دفتر أستاذ 'adjustment' حقيقيان (لا تعديل صامت على الحقل مباشرة)
+// =====================================================
+exports.transferBeansToWithdrawable = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { amount, reason } = req.body;
+    const { admin } = req;
+
+    const transferAmount = parseInt(amount, 10);
+    if (!Number.isInteger(transferAmount) || transferAmount <= 0) {
+      return res.status(400).json({ success: false, message: 'المبلغ يجب أن يكون عدداً صحيحاً موجباً' });
+    }
+    if (!reason || reason.trim().length < 3) {
+      return res.status(400).json({ success: false, message: 'يجب كتابة سبب التحويل (3 أحرف على الأقل) لأغراض التوثيق' });
+    }
+
+    // ✅ نفس نمط adjustUserFunds أعلاه بالضبط: حجز ذرّي عبر walletService.post (شرط $gte
+    // داخل المعاملة نفسها) — لا قراءة-ثم-كتابة منفصلتين يمكن أن تتجاوزا الرصيد مع تزامن
+    const idemBase = new mongoose.Types.ObjectId();
+    const session = await mongoose.startSession();
+    let user = null;
+    try {
+      await session.withTransaction(async () => {
+        const entries = [
+          { user: userId, wallet: 'beans_p', delta: -transferAmount, type: 'adjustment', refType: 'AdminAdjustment', refId: idemBase, idempotencyKey: `${idemBase}:debit-p`, meta: { reason: reason.trim(), admin: admin._id } },
+          { user: userId, wallet: 'beans_w', delta: transferAmount, type: 'adjustment', refType: 'AdminAdjustment', refId: idemBase, idempotencyKey: `${idemBase}:credit-w`, meta: { reason: reason.trim(), admin: admin._id } }
+        ];
+        await walletService.post(entries, session);
+        user = await User.findById(userId).select('socketId').session(session);
+        if (!user) {
+          throw Object.assign(new Error('تعذّر تنفيذ التحويل'), { code: 'CLAIM_FAILED' });
+        }
+      });
+    } catch (txError) {
+      if (txError.code === 'INSUFFICIENT_FUNDS') {
+        return res.status(400).json({ success: false, message: 'رصيد الألماس الترويجي (beans_p) الحالي لا يكفي لهذا التحويل' });
+      }
+      if (txError.code === 'CLAIM_FAILED') {
+        return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+      }
+      throw txError;
+    } finally {
+      await session.endSession();
+    }
+
+    await AdminLog.logAction({
+      admin: admin._id, action: 'transfer_beans_to_withdrawable', targetUser: user._id,
+      details: { amount: transferAmount, reason: reason.trim() }, severity: 'warning', ipAddress: req.ip
+    });
+
+    const io = req.app.get('socketio');
+    const { sendBotMessage } = require('../utils/botMessenger');
+    await sendBotMessage(io, user._id, `تم تحويل ${transferAmount} من ألماسك الترويجي إلى ألماس قابل للسحب من قِبل الإدارة.\nالسبب: ${reason.trim()}`);
+
+    res.json({ success: true, message: 'تم التحويل بنجاح' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

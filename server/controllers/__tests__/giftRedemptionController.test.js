@@ -95,6 +95,10 @@ function defaultSettings(overrides = {}) {
     return {
         coinsPerUsd: 1000,
         payoutLaunchPct: 70,
+        // ✅ مراجعة ما قبل الدمج v2 (البند 3): العرض "بدأ" افتراضياً بهذي الاختبارات (الماضي)
+        // لكن endsAt الافتراضية بالماضي أيضاً، فالنتيجة الصافية الافتراضية تبقى "بعد الإطلاق"
+        // تماماً كالسابق — التغيير الفعلي يظهر فقط باختبار "لم يبدأ بعد" الجديد أدناه
+        payoutLaunchStartsAt: new Date(Date.now() - 1000),
         payoutLaunchEndsAt: new Date(Date.now() - 1000), // ✅ انتهت فترة الإطلاق افتراضياً بهذي الاختبارات
         payoutBasePct: 65,
         payoutHighPct: 70,
@@ -125,6 +129,20 @@ describe('currentPayoutRatePercent', () => {
         const settings = defaultSettings();
         expect(currentPayoutRatePercent(settings, 30)).toBe(70);
         expect(currentPayoutRatePercent(settings, 50)).toBe(70);
+    });
+    test('لم يبدأ العرض بعد (payoutLaunchStartsAt مستقبلية رغم أن endsAt لم تنتهِ): نسبة أساسية لا نسبة الإطلاق', () => {
+        const settings = defaultSettings({
+            payoutLaunchStartsAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
+            payoutLaunchEndsAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7)
+        });
+        expect(currentPayoutRatePercent(settings, 1)).toBe(65); // basePct — ليس 70
+    });
+    test('payoutLaunchStartsAt=null (لم يُفعَّل العرض إطلاقاً، الافتراضي الحقيقي بالمخطط): نسبة أساسية حتى مع endsAt مستقبلية', () => {
+        const settings = defaultSettings({
+            payoutLaunchStartsAt: null,
+            payoutLaunchEndsAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7)
+        });
+        expect(currentPayoutRatePercent(settings, 1)).toBe(65);
     });
 });
 

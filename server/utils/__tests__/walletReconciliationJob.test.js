@@ -45,6 +45,9 @@ function defaultSettings(overrides = {}) {
     return {
         coinsPerUsd: 1000,
         payoutLaunchPct: 70,
+        // ✅ مراجعة ما قبل الدمج v2 (البند 3): "بدأ" بالماضي افتراضياً — endsAt الافتراضية
+        // بالماضي أيضاً فالنتيجة الصافية تبقى "بعد الإطلاق" كالسابق بلا أي تغيير بالاختبارات القائمة
+        payoutLaunchStartsAt: new Date(Date.now() - 1000),
         payoutLaunchEndsAt: new Date(Date.now() - 1000), // ✅ بعد فترة الإطلاق افتراضياً
         payoutBasePct: 65,
         ...overrides
@@ -126,6 +129,24 @@ describe('runWalletReconciliation', () => {
         const result = await runWalletReconciliation();
 
         expect(result.liabilityUsd).toBeCloseTo(0.70, 2); // 1000 × 70% ÷ 1000
+    });
+
+    test('مراجعة ما قبل الدمج v2 (البند 3): لم يبدأ العرض بعد (payoutLaunchStartsAt مستقبلية) رغم أن endsAt لم تنتهِ — نسبة أساسية لا نسبة الإطلاق', async () => {
+        const users = [{ _id: 'u1', walletCoinsPaid: 0, walletCoinsBonus: 0, walletBeansW: 1000, walletBeansP: 0, walletUsdCents: 0 }];
+        const grouped = [{ _id: { user: 'u1', wallet: 'beans_w' }, total: 1000 }];
+        const wrDb = [];
+        wireMocks({
+            users, ledgerSums: { grouped, rawEntries: [] },
+            settings: defaultSettings({
+                payoutLaunchStartsAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
+                payoutLaunchEndsAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7)
+            }),
+            wrDb
+        });
+
+        const result = await runWalletReconciliation();
+
+        expect(result.liabilityUsd).toBeCloseTo(0.65, 2); // 1000 × 65% (basePct) ÷ 1000 — ليس 70%
     });
 
     test('النقد المُستلَم فعلياً: مجموع قيود usd_cents من نوع deposit فقط', async () => {

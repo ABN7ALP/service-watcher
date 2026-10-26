@@ -53,11 +53,15 @@ async function runWalletReconciliation() {
         }
     }
 
-    // ✅ نسبة الدفع الحالية (نفس منطق giftRedemptionController.currentPayoutRatePercent، لكن
-    // عامة على كل المنصّة لا لكل مستخدم — مستوى الاستضافة الفردي غير مهم هنا، نحسب أقصى التزام
-    // محتمل بافتراض النسبة الأساسية الأدنى لا الأعلى، كي لا يُقلِّل الالتزام عن حقيقته)
+    // ✅ نسبة الدفع الحالية (نفس منطق giftRedemptionController.currentPayoutRatePercent بالضبط
+    // — راجع مراجعة ما قبل الدمج v2، البند 3 — لكن عامة على كل المنصّة لا لكل مستخدم — مستوى
+    // الاستضافة الفردي غير مهم هنا، نحسب أقصى التزام محتمل بافتراض النسبة الأساسية الأدنى لا
+    // الأعلى، كي لا يُقلِّل الالتزام عن حقيقته). عرض الإطلاق يُطبَّق فقط بين payoutLaunchStartsAt
+    // وpayoutLaunchEndsAt معاً — endsAt وحدها بالمستقبل لا تكفي قبل بدء العرض فعلياً
     const now = new Date();
-    const ratePercent = (settings.payoutLaunchEndsAt && now < settings.payoutLaunchEndsAt)
+    const launchStarted = settings.payoutLaunchStartsAt && now >= settings.payoutLaunchStartsAt;
+    const launchStillOpen = settings.payoutLaunchEndsAt && now < settings.payoutLaunchEndsAt;
+    const ratePercent = (launchStarted && launchStillOpen)
         ? settings.payoutLaunchPct
         : settings.payoutBasePct;
     const liabilityUsd = (totalBeansW * ratePercent) / 100 / settings.coinsPerUsd;
