@@ -10,7 +10,6 @@ const RoomBattle = require('../models/RoomBattle');
 const SeatChallenge = require('../models/SeatChallenge');
 const GiftLog = require('../models/GiftLog');
 const FanClubMembership = require('../models/FanClubMembership');
-const walletService = require('../utils/walletService');
 
 // =====================================================
 // ✅ GET /api/voice-room/ice-servers — إعدادات خوادم ICE (STUN/TURN) لاتصالات الصوت الحي
@@ -143,15 +142,13 @@ async function getKickedUsersSnapshot(room) {
 // ✅ كتالوج خلفيات الغرفة — خلفية مجانية دائمة + خلفيات مدفوعة (10 كوينز / 5 أيام)
 // =====================================================
 const FREE_DEFAULT_BACKGROUND = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790798203/voice_room_background.png';
-// 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1 — إعادة تسمية ×10): كل سعر ×10 بالضبط بالتزامن مع
-// تضخيم كل أسعار الكوينز ×10 — نفس القيمة الحقيقية بالدولار بالضبط
 const PREMIUM_BACKGROUNDS = [
-    { id: 'bg_galaxy', url: 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=800&q=60', price: 100 },
-    { id: 'bg_neon', url: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?w=800&q=60', price: 100 },
-    { id: 'bg_gold', url: 'https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=800&q=60', price: 100 },
-    { id: 'bg_ocean', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=60', price: 100 },
-    { id: 'bg_desert', url: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?w=800&q=60', price: 100 },
-    { id: 'bg_forest', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=60', price: 100 }
+    { id: 'bg_galaxy', url: 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=800&q=60', price: 10 },
+    { id: 'bg_neon', url: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?w=800&q=60', price: 10 },
+    { id: 'bg_gold', url: 'https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=800&q=60', price: 10 },
+    { id: 'bg_ocean', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=60', price: 10 },
+    { id: 'bg_desert', url: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?w=800&q=60', price: 10 },
+    { id: 'bg_forest', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=60', price: 10 }
 ];
 const BACKGROUND_DAYS = 5;
 
@@ -777,52 +774,24 @@ exports.purchaseBackground = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'خلفية غير موجودة بالمتجر' });
         }
 
-        // 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1): خصم ذرّي عبر walletService (بونص أولاً) ضمن
-        // معاملة Mongo تشمل أيضاً تفعيل الخلفية بالغرفة — فشل أي خطوة يُسقِط الأخرى تلقائياً
-        const session = await mongoose.startSession();
-        let finalCoins = null;
-        let expiresAt = null;
-        let txError = null;
-        try {
-            await session.withTransaction(async () => {
-                try {
-                    const { fromBonus, fromPaid } = await walletService.computeCoinSpendSplit(req.user.id, chosen.price, session);
-                    const idemBase = new mongoose.Types.ObjectId();
-                    const entries = [];
-                    if (fromBonus > 0) entries.push({ user: req.user.id, wallet: 'coins_bonus', delta: -fromBonus, type: 'purchase', refType: 'VoiceRoom', refId: room._id, idempotencyKey: `${idemBase}:bonus` });
-                    if (fromPaid > 0) entries.push({ user: req.user.id, wallet: 'coins_paid', delta: -fromPaid, type: 'purchase', refType: 'VoiceRoom', refId: room._id, idempotencyKey: `${idemBase}:paid` });
-                    await walletService.post(entries, session);
-                } catch (err) {
-                    if (err.code === 'INSUFFICIENT_FUNDS') {
-                        throw Object.assign(new Error('رصيد الكوينز غير كافٍ'), { code: 'INSUFFICIENT' });
-                    }
-                    throw err;
-                }
-
-                const freshUser = await User.findById(req.user.id).select('coins').session(session);
-                finalCoins = freshUser.coins;
-
-                expiresAt = new Date(Date.now() + BACKGROUND_DAYS * 24 * 60 * 60 * 1000);
-                room.backgroundImage = chosen.url;
-                room.backgroundExpiresAt = expiresAt;
-                await room.save({ session });
-            });
-        } catch (e) {
-            txError = e;
-        } finally {
-            await session.endSession();
+        const user = await User.findById(req.user.id);
+        if (!user || user.coins < chosen.price) {
+            return res.status(400).json({ status: 'fail', message: 'رصيد الكوينز غير كافٍ' });
         }
 
-        if (txError) {
-            if (txError.code === 'INSUFFICIENT') return res.status(400).json({ status: 'fail', message: txError.message });
-            throw txError;
-        }
+        user.coins -= chosen.price;
+        await user.save();
+
+        const expiresAt = new Date(Date.now() + BACKGROUND_DAYS * 24 * 60 * 60 * 1000);
+        room.backgroundImage = chosen.url;
+        room.backgroundExpiresAt = expiresAt;
+        await room.save();
 
         res.json({
             status: 'success',
             backgroundImage: room.backgroundImage,
             backgroundExpiresAt: room.backgroundExpiresAt,
-            newBalance: finalCoins
+            newBalance: user.coins
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });

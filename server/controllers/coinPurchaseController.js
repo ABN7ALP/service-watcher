@@ -4,7 +4,6 @@ const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const paymentConfig = require('../config/paymentConfig');
 const { uploadReceiptImage } = require('../utils/cloudinary');
-const walletService = require('../utils/walletService');
 
 // جلب بيانات طرق الدفع (تُعرض بالواجهة)
 exports.getPaymentInfo = async (req, res) => {
@@ -154,11 +153,9 @@ exports.approvePurchase = async (req, res) => {
                 if (!purchase) {
                     throw Object.assign(new Error('الطلب ليس قيد المراجعة أو تمت معالجته مسبقاً'), { code: 'NOT_PENDING' });
                 }
-                await walletService.post([{
-                    user: purchase.user, wallet: 'coins_paid', delta: purchase.coinsAmount, type: 'coin_purchase',
-                    refType: 'CoinPurchase', refId: purchase._id, idempotencyKey: `${purchase._id}:approve`
-                }], session);
-                user = await User.findById(purchase.user).select('coins socketId').session(session);
+                user = await User.findByIdAndUpdate(
+                    purchase.user, { $inc: { coins: purchase.coinsAmount } }, { new: true, session }
+                );
             });
         } catch (txError) {
             if (txError.code === 'NOT_PENDING') {
@@ -225,41 +222,27 @@ exports.buyWithBalance = async (req, res) => {
         }
 
         const coinsAmount = Math.round(amount * settings.coinExchangeRate);
-        const amountCents = Math.round(amount * 100);
-        const idemBase = new mongoose.Types.ObjectId();
 
-        // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): خصم usd_cents وإيداع coins_paid معاً بمعاملة
-        // Mongo واحدة — تحويل داخلي بين محفظتي نفس المستخدم، لا مصدر خارجي
-        const session = await mongoose.startSession();
-        let updatedUser = null;
-        let purchase = null;
-        try {
-            await session.withTransaction(async () => {
-                await walletService.post([
-                    { user: userId, wallet: 'usd_cents', delta: -amountCents, type: 'coin_purchase', refType: 'CoinPurchase', refId: idemBase, idempotencyKey: `${idemBase}:debit` },
-                    { user: userId, wallet: 'coins_paid', delta: coinsAmount, type: 'coin_purchase', refType: 'CoinPurchase', refId: idemBase, idempotencyKey: `${idemBase}:credit` }
-                ], session);
-                updatedUser = await User.findById(userId).select('coins balance socketId').session(session);
+        // ✅ خصم وإيداع ذريّان بعملية واحدة — يمنع أي فرصة رصيد سالب حتى مع طلبات متزامنة
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: userId, balance: { $gte: amount } },
+            { $inc: { balance: -amount, coins: coinsAmount } },
+            { new: true }
+        );
 
-                const docs = await CoinPurchase.create([{
-                    _id: idemBase, user: userId, method: 'balance', amountUSD: amount, coinsAmount,
-                    status: 'approved', processedAt: new Date()
-                }], { session });
-                purchase = docs[0];
-
-                await Transaction.create([{
-                    user: userId, type: 'withdrawal', amount, currency: 'USD', status: 'completed',
-                    description: `شراء ${coinsAmount} كوينز من الرصيد`
-                }], { session });
-            });
-        } catch (txError) {
-            if (txError.code === 'INSUFFICIENT_FUNDS') {
-                return res.status(400).json({ status: 'fail', message: 'رصيدك الدولاري غير كافٍ لإتمام العملية' });
-            }
-            throw txError;
-        } finally {
-            await session.endSession();
+        if (!updatedUser) {
+            return res.status(400).json({ status: 'fail', message: 'رصيدك الدولاري غير كافٍ لإتمام العملية' });
         }
+
+        const purchase = await CoinPurchase.create({
+            user: userId, method: 'balance', amountUSD: amount, coinsAmount,
+            status: 'approved', processedAt: new Date()
+        });
+
+        await Transaction.create({
+            user: userId, type: 'withdrawal', amount, currency: 'USD', status: 'completed',
+            description: `شراء ${coinsAmount} كوينز من الرصيد`
+        });
 
         const io = req.app.get('socketio');
         if (io && updatedUser.socketId) {

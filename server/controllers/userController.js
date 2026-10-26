@@ -12,10 +12,8 @@ const { computeSupportLevelInfo } = require('../utils/supportLevels');
 // فقط تكفي لـLv.2) لتكون حافز عادة حقيقياً بالأيام الأولى، وتصبح تلقائياً هامشية بالمستويات
 // العليا (ملايين الكوينز) — تماماً كيف تصمَّم مكافآت الحضور اليومي بتطبيقات البث المشهورة:
 // تجذب مستخدماً جديداً لفتح التطبيق يومياً، دون أن تصبح مساراً بديلاً حقيقياً عن السخاء الفعلي
-// 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1 — إعادة تسمية ×10): القيمتان ×10 بالضبط بالتزامن مع
-// تضخيم كل أسعار الكوينز ×10 — نفس الأثر النسبي على مستوى الثروة بالضبط
-const SUPPORT_DAILY_CHECKIN_BONUS = 3000;
-const SUPPORT_DAILY_CHAT_BONUS = 2000;
+const SUPPORT_DAILY_CHECKIN_BONUS = 300;
+const SUPPORT_DAILY_CHAT_BONUS = 200;
 
 function startOfTodayUTC() {
     const d = new Date();

@@ -68,8 +68,6 @@ exports.register = async (req, res, next) => {
             console.error('[WELCOME FRAME ERROR]', frameError);
         }
         
-        require('../utils/linkageService').recordDeviceSession(newUser._id, { deviceId: req.headers['x-device-id'], ip: req.ip });
-
         createSendToken(newUser, 201, res);
 
     } catch (error) {
@@ -133,9 +131,6 @@ exports.login = async (req, res, next) => {
                 });
             }
         }
-
-        // ✅ كشف الحسابات المرتبطة (feat/wallet-ledger-v1) — لا يُفشل الدخول أبداً عند أي خطأ
-        require('../utils/linkageService').recordDeviceSession(user._id, { deviceId: req.headers['x-device-id'], ip: req.ip });
 
         // 4) إذا كان كل شيء صحيحاً، أرسل التوكن
         createSendToken(user, 200, res);

@@ -6,8 +6,6 @@ const mongoose = require('mongoose');
 // بالضبط (لا تُقرآن مجدداً عند كل إرسال لاحق) — فتغيير الإدارة لاحقاً للسعر الافتراضي لا
 // يُغيّر بأثر رجعي سعر هدية صُمِّمت بالفعل، ولا يُغيّر رسم التصميم الذي دُفع بالفعل
 const customGiftSchema = new mongoose.Schema({
-    // ✅ علم استئناف تضخيم ×10 لهذا المستند
-    redenominatedV1: { type: Boolean, default: false },
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     name: { type: String, required: true, trim: true, maxlength: 12 },
     imageUrl: { type: String, required: true },

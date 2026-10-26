@@ -1,8 +1,6 @@
 const mongoose = require('mongoose');
 
 const giftRedemptionSchema = new mongoose.Schema({
-    // ✅ علم استئناف تضخيم ×10 لهذا المستند
-    redenominatedV1: { type: Boolean, default: false },
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     sourceGiftLogIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'GiftLog', required: true }],
     originalCoinsValue: { type: Number, required: true },

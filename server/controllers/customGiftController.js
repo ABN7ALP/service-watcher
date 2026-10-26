@@ -4,10 +4,8 @@ const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const SystemSettings = require('../models/SystemSettings');
 const AdminLog = require('../models/AdminLog');
-const LedgerEntry = require('../models/LedgerEntry');
 const { cloudinary, assertRealType, deleteFromCloudinary, getPublicIdFromUrl } = require('../utils/cloudinary');
 const { sendBotMessage } = require('../utils/botMessenger');
-const walletService = require('../utils/walletService');
 
 const MAX_PENDING_PER_USER = 3;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -79,29 +77,21 @@ exports.createCustomGift = async (req, res) => {
                     throw Object.assign(new Error(`لديك بالفعل ${MAX_PENDING_PER_USER} هدايا قيد المراجعة — انتظر مراجعتها أولاً`), { code: 'PENDING_LIMIT' });
                 }
 
-                // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): بونص أولاً ثم مدفوع — رسم التصميم
-                // مصروف خدمة (لا يذهب لمحفظة أي مستخدم آخر)، فلا قيد استلام مقابل
-                const idemBase = new mongoose.Types.ObjectId();
-                let fromBonus, fromPaid;
-                try {
-                    ({ fromBonus, fromPaid } = await walletService.computeCoinSpendSplit(userId, createCost, session));
-                } catch (err) {
-                    if (err.code === 'INSUFFICIENT_FUNDS') {
-                        throw Object.assign(new Error(`رصيد الكوينز غير كافٍ (تحتاج ${createCost} كوينز لتصميم هدية)`), {
-                            code: 'INSUFFICIENT', balance: err.balance, needed: err.needed
-                        });
-                    }
-                    throw err;
+                const updatedUser = await User.findOneAndUpdate(
+                    { _id: userId, coins: { $gte: createCost } },
+                    { $inc: { coins: -createCost } },
+                    { new: true, session }
+                );
+                if (!updatedUser) {
+                    const sender = await User.findById(userId).select('coins').session(session);
+                    throw Object.assign(new Error(`رصيد الكوينز غير كافٍ (تحتاج ${createCost} كوينز لتصميم هدية)`), {
+                        code: 'INSUFFICIENT', balance: sender ? sender.coins : 0, needed: createCost
+                    });
                 }
-                const entries = [];
-                if (fromBonus > 0) entries.push({ user: userId, wallet: 'coins_bonus', delta: -fromBonus, type: 'custom_gift_fee', refType: 'CustomGift', refId: idemBase, idempotencyKey: `${idemBase}:fee-bonus` });
-                if (fromPaid > 0) entries.push({ user: userId, wallet: 'coins_paid', delta: -fromPaid, type: 'custom_gift_fee', refType: 'CustomGift', refId: idemBase, idempotencyKey: `${idemBase}:fee-paid` });
-                await walletService.post(entries, session);
-                const updatedUser = await User.findById(userId).select('coins').session(session);
                 newCoins = updatedUser.coins;
 
                 const docs = await CustomGift.create([{
-                    _id: idemBase, owner: userId, name, imageUrl: uploadResult.secure_url,
+                    owner: userId, name, imageUrl: uploadResult.secure_url,
                     createCost, sendPrice, status: 'pending'
                 }], { session });
                 created = docs[0];
@@ -193,19 +183,10 @@ exports.adminReviewCustomGift = async (req, res) => {
                 }
 
                 if (action === 'reject') {
-                    // ✅ دفتر الأستاذ: استرداد كل محفظة بعكس قيود 'custom_gift_fee' الأصلية
-                    // بالضبط (بونص يرجع بونص، مدفوع يرجع مدفوع) — لا تخمين لتقسيم الرسم
-                    const feeEntries = await LedgerEntry.find({ refId: claim._id, type: 'custom_gift_fee' }).session(session);
-                    const refundEntries = feeEntries.length > 0
-                        ? feeEntries.map(e => ({
-                            user: claim.owner, wallet: e.wallet, delta: -e.delta, type: 'custom_gift_refund',
-                            refType: 'CustomGift', refId: claim._id, idempotencyKey: `${claim._id}:refund-${e.wallet}`
-                        }))
-                        // ✅ هدية أُنشئت قبل هذا الإصدار (بلا قيود دفتر أستاذ أصلية) — استرداد
-                        // كامل القيمة كـcoins_bonus بدل تخمين تقسيم بونص/مدفوع غير موجود
-                        : [{ user: claim.owner, wallet: 'coins_bonus', delta: claim.createCost, type: 'custom_gift_refund', refType: 'CustomGift', refId: claim._id, idempotencyKey: `${claim._id}:refund-legacy` }];
-                    await walletService.post(refundEntries, session);
-                    updatedOwner = await User.findById(claim.owner).select('coins socketId').session(session);
+                    // ✅ استرداد رسم التصميم ذرّياً بنفس المعاملة — نفس نمط reviewWithdrawal
+                    updatedOwner = await User.findByIdAndUpdate(
+                        claim.owner, { $inc: { coins: claim.createCost } }, { new: true, session }
+                    );
                     await Transaction.create([{
                         user: claim.owner, type: 'custom_gift_refund', amount: claim.createCost, currency: 'coins',
                         status: 'completed', description: `استرداد رسم تصميم هدية مرفوضة: ${claim.name}`,

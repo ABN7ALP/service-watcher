@@ -7,8 +7,6 @@ const AdminLog = require('../models/AdminLog');
 const ClientErrorLog = require('../models/ClientErrorLog');
 const ClientCompatLog = require('../models/ClientCompatLog');
 const SystemHealth = require('../models/SystemHealth');
-const WalletReconciliation = require('../models/WalletReconciliation');
-const walletService = require('../utils/walletService');
 
 // Admin Dashboard Stats
 exports.getDashboardStats = async (req, res) => {
@@ -354,11 +352,9 @@ exports.approveDeposit = async (req, res) => {
         if (!transaction) {
           throw Object.assign(new Error('المعاملة غير موجودة أو تمت معالجتها مسبقاً'), { code: 'ALREADY_PROCESSED' });
         }
-        await walletService.post([{
-          user: transaction.user, wallet: 'usd_cents', delta: Math.round(transaction.amount * 100), type: 'deposit',
-          refType: 'Transaction', refId: transaction._id, idempotencyKey: `${transaction._id}:deposit`
-        }], session);
-        user = await User.findById(transaction.user).select('balance socketId').session(session);
+        user = await User.findByIdAndUpdate(
+          transaction.user, { $inc: { balance: transaction.amount } }, { new: true, session }
+        );
       });
     } catch (txError) {
       if (txError.code === 'ALREADY_PROCESSED') {
@@ -496,11 +492,9 @@ exports.rejectTransaction = async (req, res) => {
         // If deposit was rejected, no need to adjust balance
         // If withdrawal was rejected, return reserved balance
         if (transaction.type === 'withdrawal') {
-          await walletService.post([{
-            user: transaction.user, wallet: 'usd_cents', delta: Math.round(Math.abs(transaction.amount) * 100), type: 'refund',
-            refType: 'Transaction', refId: transaction._id, idempotencyKey: `${transaction._id}:refund`
-          }], session);
-          refundedUser = await User.findById(transaction.user).select('balance socketId').session(session);
+          refundedUser = await User.findByIdAndUpdate(
+            transaction.user, { $inc: { balance: Math.abs(transaction.amount) } }, { new: true, session }
+          );
         }
       });
     } catch (txError) {
@@ -757,61 +751,6 @@ exports.runSystemHealthCheckNow = async (req, res) => {
   }
 };
 
-// =====================================================
-// ✅ "صحة المحفظة" (feat/wallet-ledger-v1): نتائج آخر فحص تصالح walletReconciliationJob —
-// نفس نمط getSystemHealth بالضبط (آخر checkRunId فقط، لا كل المجموعة)
-// =====================================================
-exports.getWalletHealth = async (req, res) => {
-  try {
-    const latestSummary = await WalletReconciliation.findOne({ type: 'summary' }).sort({ createdAt: -1 });
-    if (!latestSummary) {
-      return res.json({ success: true, lastCheckAt: null, usersChecked: 0, mismatchCount: 0, liabilityUsd: 0, cashReceivedUsd: 0, mismatches: [] });
-    }
-    const mismatches = await WalletReconciliation.find({ checkRunId: latestSummary.checkRunId, type: 'mismatch' })
-      .populate('user', 'username customId')
-      .limit(20);
-
-    res.json({
-      success: true,
-      lastCheckAt: latestSummary.createdAt,
-      usersChecked: latestSummary.usersChecked,
-      mismatchCount: latestSummary.mismatchCount,
-      liabilityUsd: latestSummary.liabilityUsd,
-      cashReceivedUsd: latestSummary.cashReceivedUsd,
-      mismatches: mismatches.map(m => ({
-        user: m.user ? { id: m.user._id, username: m.user.username, customId: m.user.customId } : null,
-        wallet: m.wallet, ledgerSum: m.ledgerSum, cachedBalance: m.cachedBalance, diff: m.diff
-      }))
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// ✅ زر "فحص الآن" — نفس منطق runSystemHealthCheckNow (التحديد بمعدَّل مُطبَّق بمسار الراوتر)
-exports.runWalletHealthCheckNow = async (req, res) => {
-  try {
-    const { admin } = req;
-    const { runWalletReconciliation } = require('../utils/walletReconciliationJob');
-    const result = await runWalletReconciliation();
-
-    await AdminLog.logAction({
-      admin: admin._id,
-      action: 'system_maintenance',
-      targetEntity: 'system',
-      details: { action: 'manual_wallet_reconciliation_check', ...result },
-      isAutomated: false,
-      ipAddress: req.ip
-    });
-    console.log(`💰 [WALLET HEALTH] فحص يدوي بواسطة ${admin.username || admin._id}: ${result.mismatchCount} تعارض`);
-
-    res.json({ success: true, message: 'تم تنفيذ الفحص بنجاح', result });
-  } catch (error) {
-    console.error('[WALLET HEALTH] فشل الفحص اليدوي:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
 // تعيين/إلغاء صلاحية الوكيل لمستخدم
 exports.setAgentStatus = async (req, res) => {
   try {
@@ -924,38 +863,19 @@ exports.adjustUserFunds = async (req, res) => {
     // بهذا المشروع) — يستحيل تجاوز الشرط لطلبين متزامنين لأن القاعدة تُنفّذهما بالتتابع
     // الذري، + Transaction.create بنفس المعاملة (session) حتى لا يُسجَّل تعديل فعلي بلا سجل
     // محاسبي مطابق لو تعطّل أي شيء بالمنتصف
+    const matchQuery = { _id: userId };
+    if (balChange < 0) matchQuery.balance = { $gte: -balChange };
+    if (coinChange < 0) matchQuery.coins = { $gte: -coinChange };
+
     const session = await mongoose.startSession();
     let user = null;
     try {
       await session.withTransaction(async () => {
-        // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): تعديل يدوي = قيود 'adjustment' (إدارية فقط،
-        // بسبب موثَّق) — الكوينز السالبة تُخصَم بونص أولاً ثم مدفوع (نفس ترتيب الإنفاق المعتاد)،
-        // الموجبة تُضاف كـcoins_paid (الافتراض المحايد لمنحة إدارية لا مصدر حقيقي محدَّد لها)
-        const idemBase = new mongoose.Types.ObjectId();
-        const entries = [];
-        if (balChange !== 0) {
-          entries.push({
-            user: userId, wallet: 'usd_cents', delta: Math.round(balChange * 100), type: 'adjustment',
-            refType: 'AdminAdjustment', refId: idemBase, idempotencyKey: `${idemBase}:balance`,
-            meta: { reason: reason.trim(), admin: admin._id }
-          });
-        }
-        try {
-          if (coinChange < 0) {
-            const { fromBonus, fromPaid } = await walletService.computeCoinSpendSplit(userId, -coinChange, session);
-            if (fromBonus > 0) entries.push({ user: userId, wallet: 'coins_bonus', delta: -fromBonus, type: 'adjustment', refType: 'AdminAdjustment', refId: idemBase, idempotencyKey: `${idemBase}:coins-bonus`, meta: { reason: reason.trim(), admin: admin._id } });
-            if (fromPaid > 0) entries.push({ user: userId, wallet: 'coins_paid', delta: -fromPaid, type: 'adjustment', refType: 'AdminAdjustment', refId: idemBase, idempotencyKey: `${idemBase}:coins-paid`, meta: { reason: reason.trim(), admin: admin._id } });
-          } else if (coinChange > 0) {
-            entries.push({ user: userId, wallet: 'coins_paid', delta: coinChange, type: 'adjustment', refType: 'AdminAdjustment', refId: idemBase, idempotencyKey: `${idemBase}:coins-paid`, meta: { reason: reason.trim(), admin: admin._id } });
-          }
-          if (entries.length > 0) await walletService.post(entries, session);
-        } catch (err) {
-          if (err.code === 'INSUFFICIENT_FUNDS') {
-            throw Object.assign(new Error('تعذّر تنفيذ التعديل'), { code: 'CLAIM_FAILED' });
-          }
-          throw err;
-        }
-        user = await User.findById(userId).select('coins balance socketId').session(session);
+        user = await User.findOneAndUpdate(
+          matchQuery,
+          { $inc: { balance: balChange, coins: coinChange } },
+          { new: true, session }
+        );
         if (!user) {
           throw Object.assign(new Error('تعذّر تنفيذ التعديل'), { code: 'CLAIM_FAILED' });
         }
@@ -1080,11 +1000,9 @@ exports.approveCoinPurchase = async (req, res) => {
         if (!purchase) {
           throw Object.assign(new Error('هذا الطلب ليس قيد المراجعة حالياً'), { code: 'NOT_PENDING' });
         }
-        await walletService.post([{
-          user: purchase.user, wallet: 'coins_paid', delta: purchase.coinsAmount, type: 'coin_purchase',
-          refType: 'CoinPurchase', refId: purchase._id, idempotencyKey: `${purchase._id}:approve`
-        }], session);
-        user = await User.findById(purchase.user).select('coins socketId').session(session);
+        user = await User.findByIdAndUpdate(
+          purchase.user, { $inc: { coins: purchase.coinsAmount } }, { new: true, session }
+        );
       });
     } catch (txError) {
       if (txError.code === 'NOT_PENDING') {

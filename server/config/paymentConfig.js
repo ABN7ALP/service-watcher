@@ -1,8 +1,6 @@
 module.exports = {
     // ✅ سعر الصرف: 1 دولار = كم كوينز
-    // 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1 — إعادة تسمية ×10): 100 → 1000 (= coinsPerUsd
-    // الجديدة بـSystemSettings)
-    COIN_EXCHANGE_RATE: 1000,
+    COIN_EXCHANGE_RATE: 100,
 
     MIN_PURCHASE_USD: 1,
     MAX_PURCHASE_USD: 1000,

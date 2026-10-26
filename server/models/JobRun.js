@@ -8,10 +8,7 @@ const mongoose = require('mongoose');
 const jobRunSchema = new mongoose.Schema({
     job: { type: String, required: true },
     weekStart: { type: Date, required: true },
-    claimedAt: { type: Date, default: Date.now },
-    // ✅ 'running'->'completed' (مهام قابلة للاستئناف كالتضخيم ×10) — مهام أخرى (كـ
-    // fanClubWeeklyFrameJob) لا تضع هذا الحقل إطلاقاً، فيبقى undefined لها كما كان دوماً
-    status: { type: String, enum: ['running', 'completed'] }
+    claimedAt: { type: Date, default: Date.now }
 });
 
 jobRunSchema.index({ job: 1, weekStart: 1 }, { unique: true });

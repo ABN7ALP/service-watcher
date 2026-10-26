@@ -11,108 +11,57 @@
 //
 // بخلاف باقي اختبارات هذا المشروع (jest.spyOn مباشر على findOneAndUpdate بشرط $gte)، هذا
 // المسار يعتمد فعلياً على آلية إعادة المحاولة التلقائية لـwithTransaction عند تضارب كتابة بين
-// جلستين — فمحاكاة هذا الاختبار تُحاكي تلك الآلية بالذات: قفل حقيقي لكل مستند (أي لمسة ثانية
-// من معاملة أخرى لا تزال "حيّة" على نفس المستند تُسقِط بتضارب كتابة فوري، بصرف النظر عن نوع
-// العملية — findOneAndUpdate أو save() معاً، تماماً كما يكتشف محرّك Mongo الحقيقي أي تضارب على
-// مستوى المستند) + إعادة محاولة withTransaction تلقائياً عند هذا التضارب تحديداً (نفس نمط
-// walletService.test.js المرجعي)، لا مجرد شرط $gte بسيط — كي يُثبِت أن الحل الحقيقي (الاعتماد
-// على اكتشاف Mongo الذاتي للتضارب، لا قفلاً تطبيقياً) يعمل فعلياً عبر الخصم الذرّي (walletService)
-// وتعديل ownedFrames (save()) معاً، لا أن الكود "يبدو" صحيحاً فقط
+// جلستين — فمحاكاة هذا الاختبار تُحاكي تلك الآلية بالذات (إصدار مستند بسيط __v + رفض save()
+// عند عدم تطابق الإصدار المقروء مع الحالي + إعادة محاولة withTransaction تلقائياً)، لا مجرد
+// شرط $gte بسيط، كي يُثبِت أن الحل الحقيقي (الاعتماد على اكتشاف Mongo الذاتي للتضارب) يعمل لا
+// فقط أن الكود "يبدو" صحيحاً
 jest.useFakeTimers();
 
-const { AsyncLocalStorage } = require('async_hooks');
 const mongoose = require('mongoose');
 const User = require('../../models/User');
 const ProfileFrame = require('../../models/ProfileFrame');
-const LedgerEntry = require('../../models/LedgerEntry');
 const frameController = require('../frameController');
 
-function chainable(value) {
-    const p = Promise.resolve(value);
-    p.select = () => p;
-    p.session = () => p;
-    return p;
-}
-
 function makeDb() {
-    return { users: new Map(), ledgerByKey: new Map() };
+    return { users: new Map() };
 }
 function seedUser(db, overrides) {
-    const { coins = 0, ...rest } = overrides;
-    const user = {
-        _id: 'u1', coins, ownedFrames: [],
-        // ✅ دفتر الأستاذ: walletCoinsPaid هو ما يقرأه/يخصمه walletService فعلياً — coins مرآة فقط
-        walletCoinsPaid: coins, walletCoinsBonus: 0, walletUsdCents: 0, walletBeansW: 0, walletBeansP: 0,
-        ...rest
-    };
+    const user = { _id: 'u1', coins: 0, ownedFrames: [], __v: 0, ...overrides };
     db.users.set(user._id, user);
     return user;
 }
 
-const txContext = new AsyncLocalStorage();
-function recordUndo(db, key, beforeValue) {
-    const ctx = txContext.getStore();
-    if (ctx) ctx.undo.push({ db, key, before: beforeValue });
-}
-function acquireLock(db, docId) {
-    const ctx = txContext.getStore();
-    if (!ctx) return;
-    const holder = db._locks.get(docId);
-    if (holder && holder !== ctx) throw Object.assign(new Error('Write conflict'), { code: 112 });
-    if (!holder) { db._locks.set(docId, ctx); ctx.locks.push({ db, docId }); }
-}
-
+// ✅ كل قراءة findById تأخذ "مسودة" (draft) بنسخة مستقلة تماماً من ownedFrames عند لحظة
+// القراءة بالضبط (تماماً كمستند Mongoose حقيقي بذاكرة معاملته الخاصة) — لا مرجعاً مشتركاً؛
+// save() ترفض (تضارب كتابة) فقط لو تغيّر __v بالقاعدة منذ هذي القراءة بالذات
 function wireMocks(db) {
-    db._locks = new Map();
-
     jest.spyOn(User, 'findById').mockImplementation((id) => {
-        const row = db.users.get(String(id));
-        if (!row) return chainable(null);
-        const draft = {
-            _id: row._id,
-            coins: row.coins,
-            walletCoinsPaid: row.walletCoinsPaid,
-            walletCoinsBonus: row.walletCoinsBonus,
-            ownedFrames: row.ownedFrames.map(o => ({ ...o })),
-            save: async () => {
-                acquireLock(db, row._id);
-                recordUndo(db, row._id, { ...row });
-                row.coins = draft.coins;
-                row.ownedFrames = draft.ownedFrames;
+        const chain = {
+            session: () => chain,
+            then: (resolve, reject) => {
+                try {
+                    const row = db.users.get(String(id));
+                    if (!row) return resolve(null);
+                    const readVersion = row.__v;
+                    const draft = {
+                        _id: row._id,
+                        coins: row.coins,
+                        ownedFrames: row.ownedFrames.map(o => ({ ...o })),
+                        save: async () => {
+                            const current = db.users.get(String(id));
+                            if (current.__v !== readVersion) {
+                                throw Object.assign(new Error('Write conflict'), { code: 112 });
+                            }
+                            current.coins = draft.coins;
+                            current.ownedFrames = draft.ownedFrames;
+                            current.__v = readVersion + 1;
+                        }
+                    };
+                    resolve(draft);
+                } catch (e) { reject(e); }
             }
         };
-        return chainable(draft);
-    });
-    jest.spyOn(User, 'findOneAndUpdate').mockImplementation((filter, update) => {
-        const row = db.users.get(String(filter._id));
-        if (!row) return chainable(null);
-        acquireLock(db, row._id);
-        for (const [field, cond] of Object.entries(filter)) {
-            if (field === '_id') continue;
-            if (cond && typeof cond.$gte === 'number' && (row[field] || 0) < cond.$gte) return chainable(null);
-        }
-        recordUndo(db, row._id, { ...row });
-        if (update.$inc) for (const k of Object.keys(update.$inc)) row[k] = (row[k] || 0) + update.$inc[k];
-        if (update.$set) Object.assign(row, update.$set);
-        return chainable({ ...row });
-    });
-    jest.spyOn(User, 'updateOne').mockImplementation((filter, update) => {
-        const row = db.users.get(String(filter._id));
-        if (!row) return chainable({ matchedCount: 0 });
-        acquireLock(db, row._id);
-        recordUndo(db, row._id, { ...row });
-        if (update.$set) Object.assign(row, update.$set);
-        return chainable({ matchedCount: 1 });
-    });
-    jest.spyOn(LedgerEntry, 'findOne').mockImplementation((filter) => {
-        const row = db.ledgerByKey.get(filter.idempotencyKey);
-        return chainable(row ? { ...row } : null);
-    });
-    jest.spyOn(LedgerEntry, 'create').mockImplementation((docs) => {
-        const arr = Array.isArray(docs) ? docs : [docs];
-        const created = arr.map((d, i) => ({ ...d, _id: `ledger_${i}_${Date.now()}_${Math.random()}` }));
-        created.forEach(c => db.ledgerByKey.set(c.idempotencyKey, c));
-        return Promise.resolve(created);
+        return chain;
     });
 
     jest.spyOn(mongoose, 'startSession').mockImplementation(async () => ({
@@ -120,19 +69,10 @@ function wireMocks(db) {
         // بالكامل تلقائياً (قراءة جديدة في كل مرة)؛ أي خطأ آخر (مثل INSUFFICIENT) يُرمى فوراً بلا إعادة محاولة
         withTransaction: async (fn) => {
             for (let attempt = 0; attempt < 20; attempt++) {
-                const ctx = { undo: [], locks: [] };
-                try {
-                    const result = await txContext.run(ctx, fn);
-                    ctx.locks.forEach(({ db: d, docId }) => d._locks.delete(docId));
-                    return result;
-                } catch (error) {
-                    for (let i = ctx.undo.length - 1; i >= 0; i--) {
-                        const { db: d, key, before } = ctx.undo[i];
-                        Object.assign(d.users.get(key), before);
-                    }
-                    ctx.locks.forEach(({ db: d, docId }) => d._locks.delete(docId));
-                    if (error.code === 112) continue;
-                    throw error;
+                try { return await fn(); }
+                catch (err) {
+                    if (err.code === 112) continue;
+                    throw err;
                 }
             }
             throw new Error('too many retries');

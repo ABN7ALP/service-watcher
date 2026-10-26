@@ -9339,16 +9339,9 @@ document.getElementById('user-id-container').addEventListener('click', () => {
         logoutBtn.addEventListener('click', performLogout);
     }
     // --- 6. تهيئة Socket.IO ---
-    // ✅ معرّف جهاز ثابت (كشف الحسابات المرتبطة — feat/wallet-ledger-v1)، لا بيانات شخصية
-    let deviceId = null;
-    try {
-        deviceId = localStorage.getItem('deviceId');
-        if (!deviceId) { deviceId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`; localStorage.setItem('deviceId', deviceId); }
-    } catch (_) { /* localStorage غير متاح — الاتصال يستمر بلا معرّف جهاز */ }
     const socket = io({
         auth: {
-            token: token,
-            deviceId: deviceId
+            token: token
         }
     });
 
