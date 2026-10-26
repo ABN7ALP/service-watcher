@@ -8,3 +8,6 @@
 logs
 *.log
 npm-debug.log
+
+# Built by `npm run css:build` (also runs at `npm start`) — not source
+/public/dist/style.css
