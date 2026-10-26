@@ -10,6 +10,8 @@
 const mongoose = require('mongoose');
 
 const fanClubMembershipSchema = new mongoose.Schema({
+    // ✅ علم استئناف تضخيم ×10 لهذا المستند
+    redenominatedV1: { type: Boolean, default: false },
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     member: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     points: { type: Number, default: 0, min: 0 },

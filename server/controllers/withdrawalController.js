@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Withdrawal = require('../models/Withdrawal');
 const User = require('../models/User');
+const walletService = require('../utils/walletService');
 
 // ✅ القيمة الافتراضية fallback فقط — القيمة الفعلية تُقرأ من SystemSettings عند كل طلب
 const DEFAULT_MIN_WITHDRAW_USD = 5;
@@ -64,37 +65,42 @@ exports.createWithdrawal = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'طريقة سحب غير صالحة' });
         }
 
-        // ✅ خصم ذرّي (atomic) محمي من الطلبات المتزامنة:
-        // الشرط (balance >= numAmount) والخصم ($inc) ينفَّذان كعملية واحدة داخل قاعدة البيانات،
-        // فيستحيل مرور طلبين متزامنين بنفس الرصيد، ويستحيل الوصول لرصيد سالب.
-        const user = await User.findOneAndUpdate(
-            { _id: userId, balance: { $gte: numAmount } },
-            { $inc: { balance: -numAmount } },
-            { new: true }
-        );
-
-        if (!user) {
-            return res.status(400).json({ status: 'fail', message: 'رصيدك غير كافٍ لإتمام عملية السحب' });
-        }
-
-        // ✅ إنشاء الطلب بعد الحجز — وإن فشل لأي سبب، نُعيد المبلغ فوراً (تعويض) حتى لا يُخصم بلا طلب
-        let withdrawal;
+        // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): الحجز الذرّي (usd_cents) وإنشاء الطلب معاً
+        // بمعاملة Mongo واحدة — فشل الإنشاء يُسقِط الحجز تلقائياً (لا حاجة لاسترداد تعويضي
+        // يدوي قد يفشل هو نفسه ويترك المبلغ عالقاً، كما كان بالنمط السابق)
+        const idemBase = new mongoose.Types.ObjectId();
+        const session = await mongoose.startSession();
+        let user = null;
+        let withdrawal = null;
         try {
-            withdrawal = await Withdrawal.create({
-                user: userId,
-                method,
-                amount: numAmount,
-                netAmount: numAmount, // يمكن خصم عمولة لاحقاً إذا رغبت
-                fullName: fullName.trim(),
-                walletNumber: method === 'sham_cash' ? walletNumber.trim() : undefined,
-                officeInfo: method === 'office' ? officeInfo : undefined,
-                status: 'pending'
+            await session.withTransaction(async () => {
+                await walletService.post([{
+                    user: userId, wallet: 'usd_cents', delta: -Math.round(numAmount * 100), type: 'withdraw',
+                    refType: 'Withdrawal', refId: idemBase, idempotencyKey: `${idemBase}:reserve`
+                }], session);
+                user = await User.findById(userId).select('balance socketId').session(session);
+
+                const docs = await Withdrawal.create([{
+                    _id: idemBase,
+                    user: userId,
+                    method,
+                    amount: numAmount,
+                    netAmount: numAmount, // يمكن خصم عمولة لاحقاً إذا رغبت
+                    fullName: fullName.trim(),
+                    walletNumber: method === 'sham_cash' ? walletNumber.trim() : undefined,
+                    officeInfo: method === 'office' ? officeInfo : undefined,
+                    status: 'pending'
+                }], { session });
+                withdrawal = docs[0];
             });
-        } catch (createErr) {
-            // إعادة المبلغ المحجوز لأن الطلب لم يُنشأ فعلياً
-            await User.findByIdAndUpdate(userId, { $inc: { balance: numAmount } });
-            console.error('[ERROR] withdrawal create failed, refunded user:', createErr);
-            return res.status(500).json({ status: 'fail', message: 'تعذّر إنشاء طلب السحب، وأُعيد المبلغ إلى رصيدك' });
+        } catch (txError) {
+            if (txError.code === 'INSUFFICIENT_FUNDS') {
+                return res.status(400).json({ status: 'fail', message: 'رصيدك غير كافٍ لإتمام عملية السحب' });
+            }
+            console.error('[ERROR] createWithdrawal transaction failed:', txError);
+            return res.status(500).json({ status: 'fail', message: 'تعذّر إنشاء طلب السحب' });
+        } finally {
+            await session.endSession();
         }
 
         const io = req.app.get('socketio');
@@ -173,9 +179,11 @@ exports.reviewWithdrawal = async (req, res) => {
 
                 if (action === 'reject') {
                     // ✅ استرداد المبلغ المحجوز ذرّياً بنفس المعاملة — لا فرصة لاسترداد مزدوج
-                    user = await User.findByIdAndUpdate(
-                        withdrawal.user, { $inc: { balance: withdrawal.amount } }, { new: true, session }
-                    );
+                    await walletService.post([{
+                        user: withdrawal.user, wallet: 'usd_cents', delta: Math.round(withdrawal.amount * 100), type: 'refund',
+                        refType: 'Withdrawal', refId: withdrawal._id, idempotencyKey: `${withdrawal._id}:refund`
+                    }], session);
+                    user = await User.findById(withdrawal.user).select('balance socketId').session(session);
                 } else {
                     user = await User.findById(withdrawal.user).session(session);
                 }

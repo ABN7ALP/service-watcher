@@ -174,6 +174,7 @@ class AdminDashboard {
         document.getElementById('suggestionsStatusFilter')?.addEventListener('change', () => this.loadSuggestions());
         document.getElementById('suggestionsTypeFilter')?.addEventListener('change', () => this.loadSuggestions());
         document.getElementById('systemHealthCheckNowBtn')?.addEventListener('click', () => this.runSystemHealthCheckNow());
+        document.getElementById('walletHealthCheckNowBtn')?.addEventListener('click', () => this.runWalletHealthCheckNow());
 
         const musicSearch = document.getElementById('musicSearch');
         if (musicSearch) {
@@ -1571,6 +1572,7 @@ class AdminDashboard {
 
     // ================= System Health (chore/dependency-health) =================
     async loadSystemHealth() {
+        this.loadWalletHealth();
         try {
             const data = await this.api('GET', '/system-health');
 
@@ -1631,6 +1633,48 @@ class AdminDashboard {
             await this.api('POST', '/system-health/check-now');
             this.showToast('تم تنفيذ الفحص بنجاح', 'success');
             await this.loadSystemHealth();
+        } catch (error) {
+            this.showToast(error.message, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate"></i> فحص الآن'; }
+        }
+    }
+
+    async loadWalletHealth() {
+        try {
+            const data = await this.api('GET', '/wallet-health');
+
+            document.getElementById('walletHealthLastCheck').textContent =
+                `آخر فحص: ${data.lastCheckAt ? formatDate(data.lastCheckAt) : 'لم يُفحص بعد'}`;
+            document.getElementById('whUsersChecked').textContent = data.usersChecked || 0;
+            document.getElementById('whMismatchCount').textContent = data.mismatchCount || 0;
+            document.getElementById('whLiability').textContent = `$${(data.liabilityUsd || 0).toFixed(2)}`;
+            document.getElementById('whCashReceived').textContent = `$${(data.cashReceivedUsd || 0).toFixed(2)}`;
+
+            const mc = document.getElementById('walletHealthMismatchesContainer');
+            mc.innerHTML = !data.mismatches || !data.mismatches.length
+                ? '<div class="empty-state"><i class="fas fa-circle-check fa-2x"></i><p>لا تعارضات — كل الأرصدة تطابق دفتر الأستاذ</p></div>'
+                : `<table class="table table-hover"><thead><tr><th>المستخدم</th><th>المحفظة</th><th>دفتر الأستاذ</th><th>الرصيد المخزَّن</th><th>الفرق</th></tr></thead><tbody>
+                    ${data.mismatches.map(m => `
+                        <tr class="text-danger fw-bold">
+                            <td>${escapeHtml(m.user ? (m.user.username || m.user.id) : 'غير معروف')}</td>
+                            <td style="direction:ltr;text-align:left;">${escapeHtml(m.wallet)}</td>
+                            <td>${m.ledgerSum}</td>
+                            <td>${m.cachedBalance}</td>
+                            <td>${m.diff > 0 ? '+' : ''}${m.diff}</td>
+                        </tr>
+                    `).join('')}
+                </tbody></table>`;
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    async runWalletHealthCheckNow() {
+        const btn = document.getElementById('walletHealthCheckNowBtn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جارٍ الفحص...'; }
+        try {
+            await this.api('POST', '/wallet-health/check-now');
+            this.showToast('تم تنفيذ الفحص بنجاح', 'success');
+            await this.loadWalletHealth();
         } catch (error) {
             this.showToast(error.message, 'error');
         } finally {
