@@ -6,6 +6,8 @@
 jest.useFakeTimers();
 jest.mock('../../utils/botMessenger', () => ({ sendBotMessage: jest.fn().mockResolvedValue(undefined) }));
 jest.mock('../fanClubController', () => ({ awardFanPoints: jest.fn() }));
+// ✅ دفتر الأستاذ (feat/wallet-ledger-v1): الربط بين الحسابات ليس موضوع هذا الاختبار
+jest.mock('../../utils/linkageService', () => ({ areLinked: jest.fn().mockResolvedValue(false) }));
 jest.mock('../../utils/cloudinary', () => ({
     cloudinary: { uploader: { upload_stream: jest.fn() } },
     assertRealType: jest.fn(() => 'image/png'),
@@ -20,6 +22,7 @@ const CustomGift = require('../../models/CustomGift');
 const Transaction = require('../../models/Transaction');
 const SystemSettings = require('../../models/SystemSettings');
 const AdminLog = require('../../models/AdminLog');
+const LedgerEntry = require('../../models/LedgerEntry');
 const { cloudinary, deleteFromCloudinary } = require('../../utils/cloudinary');
 const { reserveGiftCombo } = require('../giftController');
 const customGiftController = require('../customGiftController');
@@ -50,16 +53,34 @@ describe('reserveGiftCombo — هدية مخصّصة (CustomGift fallback)', () 
     afterEach(() => jest.restoreAllMocks());
 
     test('هدية مخصّصة معتمدة (approved) يملكها المُرسِل: تُرسَل بسعر sendPrice المُجمَّد بالوثيقة', async () => {
-        const sender = { _id: 's1', coins: 1000000, blockedUsers: [], isBot: false, username: 'S', profileImage: '', socketId: null };
+        const sender = {
+            _id: 's1', coins: 1000000, blockedUsers: [], isBot: false, username: 'S', profileImage: '', socketId: null,
+            // ✅ دفتر الأستاذ: walletCoinsPaid هو ما يقرأه computeCoinSpendSplit فعلياً، لا coins
+            walletCoinsPaid: 1000000, walletCoinsBonus: 0
+        };
         const receiver = { _id: 'r1', username: 'R', profileImage: '', socketId: null, blockedUsers: [], isBot: false };
         const customGift = { _id: 'cg1', owner: 's1', name: 'تصميمي', imageUrl: 'https://x/cg1.webp', status: 'approved', sendPrice: 250 };
 
         jest.spyOn(User, 'findById').mockImplementation((id) => chainable(id === 's1' ? sender : null));
         jest.spyOn(User, 'find').mockImplementation(() => chainable([receiver]));
         jest.spyOn(User, 'findOneAndUpdate').mockImplementation((filter, update) => {
-            if (filter.coins.$gte > sender.coins) return Promise.resolve(null);
-            sender.coins += update.$inc.coins;
+            // ✅ معمَّم على أي حقل محفظة (walletCoinsPaid/...) لا coins فقط
+            for (const [field, cond] of Object.entries(filter)) {
+                if (field === '_id') continue;
+                if (cond && typeof cond.$gte === 'number' && (sender[field] || 0) < cond.$gte) return Promise.resolve(null);
+            }
+            if (update.$inc) for (const k of Object.keys(update.$inc)) sender[k] = (sender[k] || 0) + update.$inc[k];
+            if (update.$set) Object.assign(sender, update.$set);
             return Promise.resolve({ ...sender });
+        });
+        jest.spyOn(User, 'updateOne').mockImplementation((filter, update) => {
+            if (update.$set) Object.assign(sender, update.$set);
+            return Promise.resolve({ matchedCount: 1 });
+        });
+        jest.spyOn(LedgerEntry, 'findOne').mockImplementation(() => chainable(null));
+        jest.spyOn(LedgerEntry, 'create').mockImplementation((docs) => {
+            const arr = Array.isArray(docs) ? docs : [docs];
+            return Promise.resolve(arr.map((d, i) => ({ ...d, _id: `ledger_${i}_${Date.now()}_${Math.random()}` })));
         });
         jest.spyOn(Gift, 'findById').mockImplementation(() => chainable(null)); // ✅ ليست هدية كتالوج عادية
         jest.spyOn(CustomGift, 'findById').mockImplementation((id) => chainable(id === 'cg1' ? customGift : null));

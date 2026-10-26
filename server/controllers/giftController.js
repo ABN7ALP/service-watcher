@@ -14,6 +14,59 @@ const { awardFanPoints } = require('./fanClubController');
 // داخل مسار الهدية الفعلي بعد الخصم الذري — بدل حدث socket منفصل يثق بقيمة من العميل
 // (راجع applyGiftToRoomSupport أدناه وتعليق الحذف بـsocketService.js)
 const { addRoomSupportTotal } = require('../utils/roomSupportTally');
+const walletService = require('../utils/walletService');
+const linkageService = require('../utils/linkageService');
+
+// توزيع مبلغ صحيح على n حصة بالتساوي تقريباً بلا أي تسرّب تقريب — المجموع يساوي total تماماً دوماً
+function distributeExact(total, n) {
+    const shares = [];
+    let prevCum = 0;
+    for (let i = 1; i <= n; i++) {
+        const cum = Math.floor((total * i) / n);
+        shares.push(cum - prevCum);
+        prevCum = cum;
+    }
+    return shares;
+}
+
+// ✅ دفتر الأستاذ (feat/wallet-ledger-v1): يبني قيود المحفظة لهدية واحدة أو دفعة لعدة مستلمين
+// بنفس القيمة لكل واحد — خصم كوينز المرسل (بونص أولاً ثم مدفوع، عبر computeCoinSpendSplit)،
+// وإيداع فول كل مستلم مقسَّماً تماماً حسب مصدر التمويل (مدفوع→beans_w قابلة للسحب، بونص→
+// beans_p ترويجية)، أو الكل beans_p لحساب مرتبط بالمرسل (آخر فحص linkageService.areLinked)
+// بصرف النظر عن المصدر. idemBase فريد لكل عملية إهداء فعلية (معرّف GiftLog) يمنع أي تكرار
+// عند إعادة محاولة — لا يكتب شيئاً بنفسه، المتصل يمرّر الناتج لـwalletService.post بنفس المعاملة
+async function buildGiftWalletEntries({ senderId, receiverIds, totalCost, session, idemBase, linkedFlags }) {
+    let fromBonus, fromPaid;
+    try {
+        ({ fromBonus, fromPaid } = await walletService.computeCoinSpendSplit(senderId, totalCost, session));
+    } catch (err) {
+        // ✅ walletService يرمي INSUFFICIENT_FUNDS — يُترجَم هنا مرة واحدة لكل مسارات الإهداء
+        // لعقد 'INSUFFICIENT' {balance,needed} القديم الذي يعتمده socketService.js/app.js فعلياً
+        if (err.code === 'INSUFFICIENT_FUNDS') {
+            throw Object.assign(new Error(`رصيد الكوينز غير كافٍ (تحتاج ${totalCost} كوينز)`), {
+                code: 'INSUFFICIENT', balance: err.balance, needed: err.needed
+            });
+        }
+        throw err;
+    }
+    const entries = [];
+    if (fromBonus > 0) entries.push({ user: senderId, wallet: 'coins_bonus', delta: -fromBonus, type: 'gift_send', refType: 'GiftLog', refId: idemBase, idempotencyKey: `${idemBase}:send-bonus` });
+    if (fromPaid > 0) entries.push({ user: senderId, wallet: 'coins_paid', delta: -fromPaid, type: 'gift_send', refType: 'GiftLog', refId: idemBase, idempotencyKey: `${idemBase}:send-paid` });
+
+    const bonusShares = distributeExact(fromBonus, receiverIds.length);
+    const paidShares = distributeExact(fromPaid, receiverIds.length);
+    receiverIds.forEach((receiverId, i) => {
+        const bShare = bonusShares[i], pShare = paidShares[i];
+        if (linkedFlags[i]) {
+            const amount = bShare + pShare;
+            if (amount > 0) entries.push({ user: receiverId, wallet: 'beans_p', delta: amount, type: 'gift_receive', refType: 'GiftLog', refId: idemBase, idempotencyKey: `${idemBase}:recv-linked-${i}`, meta: { linked: true } });
+        } else {
+            if (pShare > 0) entries.push({ user: receiverId, wallet: 'beans_w', delta: pShare, type: 'gift_receive', refType: 'GiftLog', refId: idemBase, idempotencyKey: `${idemBase}:recv-w-${i}` });
+            if (bShare > 0) entries.push({ user: receiverId, wallet: 'beans_p', delta: bShare, type: 'gift_receive', refType: 'GiftLog', refId: idemBase, idempotencyKey: `${idemBase}:recv-p-${i}` });
+        }
+    });
+    return entries;
+}
 
 // ✅ يُضيف قيمة هدية كنقاط لصف الغرفة التي أُرسلت منها لو كانت طرفاً بمعركة PK نشطة الآن —
 // تحديث ذرّي واحد (findOneAndUpdate + $inc/$set) يمنع فقدان نقاط عند إرسال هدايا متزامنة بسرعة.
@@ -636,26 +689,19 @@ exports.sendGift = async (req, res) => {
         const totalPrice = unitPrice * qty;
 
         // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند المعروف #1): الخصم وGiftLog
-        // (سجلّ قيمة المُستلِم الحقيقية القابلة للاستبدال نقداً عبر giftRedemptionController)
         // كانا عمليتين منفصلتين تماماً بلا معاملة تجمعهما — انهيار/إعادة تشغيل السيرفر بين
         // الخصم ونجاح GiftLog.create كان يُخصِم المُرسِل فعلياً بلا أي سجلّ مقابل للمستلِم، بلا
         // تعافٍ ممكن (نفس فئة الثغرة المُصلَحة بمسار gift:combo — راجع buildGiftLogEntries).
-        // نفس العلاج هنا: معاملة Mongo واحدة تحوي الخصم الذرّي + إنشاء GiftLog معاً فقط —
-        // بقية الآثار (PK/دعم/تحدي/دردشة/خبرة/نادي معجبين) تبقى بعدها best-effort كما كانت
+        // نفس العلاج هنا: معاملة Mongo واحدة تحوي الخصم الذرّي (عبر walletService — بونص أولاً
+        // ثم مدفوع) + إيداع فول المستلم الفوري (دفتر الأستاذ — feat/wallet-ledger-v1) + إنشاء
+        // GiftLog معاً فقط — بقية الآثار (PK/دعم/تحدي/دردشة/خبرة/نادي معجبين) تبقى بعدها
+        // best-effort كما كانت
         const cleanRoomId = (roomId && mongoose.Types.ObjectId.isValid(roomId)) ? roomId : null;
+        const linked = await linkageService.areLinked(senderId, receiverId);
         const session = await mongoose.startSession();
-        let updatedSender;
         let giftLog;
         try {
             await session.withTransaction(async () => {
-                updatedSender = await User.findOneAndUpdate(
-                    { _id: senderId, coins: { $gte: totalPrice } },
-                    { $inc: { coins: -totalPrice } },
-                    { new: true, session }
-                );
-                if (!updatedSender) {
-                    throw Object.assign(new Error('رصيد الكوينز غير كافٍ لإرسال هذه الهدية'), { code: 'INSUFFICIENT' });
-                }
                 const created = await GiftLog.create([{
                     sender: senderId,
                     receiver: receiverId,
@@ -669,6 +715,12 @@ exports.sendGift = async (req, res) => {
                     room: cleanRoomId
                 }], { session });
                 giftLog = created[0];
+
+                const entries = await buildGiftWalletEntries({
+                    senderId, receiverIds: [receiverId], totalCost: totalPrice, session,
+                    idemBase: giftLog._id, linkedFlags: [linked]
+                });
+                await walletService.post(entries, session);
             });
         } catch (txError) {
             if (txError.code === 'INSUFFICIENT') {
@@ -678,7 +730,9 @@ exports.sendGift = async (req, res) => {
         } finally {
             await session.endSession();
         }
-        sender.coins = updatedSender.coins;
+        const freshSender = await User.findById(senderId).select('coins balance');
+        sender.coins = freshSender.coins;
+        sender.balance = freshSender.balance;
 
         // ✅ لو الهدية أُرسلت من داخل غرفة بها معركة PK نشطة الآن، تُضاف قيمتها لنقاط صفّها فوراً
         if (cleanRoomId) {
@@ -892,7 +946,7 @@ function getConnectedRoomUserIds(io, roomId) {
 // تتضاربان على القراءة قبل الكتابة فتتسبّبان بإعادة محاولات Mongo (write conflict retries)
 // تتجاوز أحياناً مهلة الـ6 ثوانٍ بالعميل. الآن: كل هذا التحضير (prepareGiftComboSend) قراءات
 // بحتة بلا أي معاملة إطلاقاً — تُنفَّذ قبل بدء أي معاملة، ونتيجتها (التكلفة الإجمالية فقط)
-// تُمرَّر لاحقاً لعملية الخصم الذرّية الوحيدة الحرجة مالياً (applyGiftComboDeduct). سجلّ الهدايا
+// تُمرَّر لاحقاً لعملية الخصم الذرّية الوحيدة الحرجة مالياً (buildGiftWalletEntries). سجلّ الهدايا
 // (GiftLog) لم يعد جزءاً من أي معاملة أيضاً — انتقل لـrunGiftComboSideEffects كأثر جانبي
 // best-effort (راجع تعليقها) — فمعاملة مسار gift:combo الآن لا تحمل إطلاقاً أي شيء عدا حجز
 // GiftComboTx + الخصم الذرّي نفسه (راجع settleGiftComboClaim بـsocketService.js الجديد)
@@ -1027,28 +1081,8 @@ async function prepareGiftComboSend({ senderId, giftId, quantity, taps = 1, reci
 }
 exports.prepareGiftComboSend = prepareGiftComboSend;
 
-// ✅ العملية الذرّية الوحيدة الحرجة مالياً — خصم شرطي واحد بكامل التكلفة الحقيقية المُحضَّرة
-// مسبقاً (prepareGiftComboSend)، بمعاملة Mongo الممرَّرة. رصيد غير كافٍ يُسقِط كل كتابة سبقته
-// بهذي المعاملة تلقائياً (لا خصم جزئي أبداً) — {code,balance,needed} تُترجَم مباشرة لصيغة
-// ack({ok:false,...}) المطلوبة بمعالج Socket.IO
-async function applyGiftComboDeduct({ session, senderId, totalCost, preReadCoins }) {
-    const updatedSender = await User.findOneAndUpdate(
-        { _id: senderId, coins: { $gte: totalCost } },
-        { $inc: { coins: -totalCost } },
-        { new: true, session }
-    );
-    if (!updatedSender) {
-        throw Object.assign(new Error(`رصيد الكوينز غير كافٍ (تحتاج ${totalCost} كوينز لهذا العدد)`), {
-            code: 'INSUFFICIENT', balance: preReadCoins, needed: totalCost
-        });
-    }
-    return updatedSender;
-}
-exports.applyGiftComboDeduct = applyGiftComboDeduct;
-
 // 🛡️ إصلاح جذري (مراجعة أمنية — سجلّ الهدايا هو سجل القيمة المالية الحقيقي للمُستلِم، لا
-// مجرّد أثر عرض): GiftLog هو ما يقرأه giftRedemptionController لحساب المبلغ القابل للاستبدال
-// فعلياً (راجع GiftLog.find({receiver, redeemed:false}) هناك) — أي عملية إهداء ناجحة (خصم
+// مجرّد أثر عرض): أي عملية إهداء ناجحة (خصم
 // المُرسِل التزم بالفعل) يجب أن تُنتج سجلّ GiftLog مطابقاً لها ذرّياً بنفس المعاملة، لا كأثر
 // جانبي best-effort بعد الـack كبقية الآثار (دردشة/PK/دعم/خبرة/نادي معجبين — تلك عروض/تنافس
 // قابلة لإعادة الحساب، بلا مسار استبدال نقدي مباشر، فيبقى تأجيلها آمناً تماماً). لو انهار
@@ -1064,17 +1098,29 @@ function buildGiftLogEntries({ senderId, gift, validReceivers, effectiveQty, uni
 
 // ✅ غلاف رقيق يحافظ على نفس السلوك الخارجي القديم بالضبط (تحضير + خصم + سجلّ الهدايا، كله
 // بنفس المعاملة المُمرَّرة) — تستخدمه processGiftCombo (مسار REST/sendGiftBatch) فقط الآن؛
-// مسار gift:combo الحيّ (settleGiftComboClaim) يستدعي prepareGiftComboSend وapplyGiftComboDeduct
+// مسار gift:combo الحيّ (settleGiftComboClaim) يستدعي prepareGiftComboSend وbuildGiftWalletEntries
 // منفصلتين (التحضير خارج أي معاملة، الخصم + سجلّ الهدايا معاً داخلها) — راجع التعليق أعلى
 // prepareGiftComboSend
 async function reserveGiftCombo({ session, senderId, giftId, quantity, taps = 1, recipientIds, roomId, audience, io }) {
     const prepared = await prepareGiftComboSend({ senderId, giftId, quantity, taps, recipientIds, roomId, audience, io });
-    const updatedSender = await applyGiftComboDeduct({ session, senderId, totalCost: prepared.totalCost, preReadCoins: prepared.sender.coins });
-    prepared.sender.coins = updatedSender.coins;
+    const linkedFlags = await Promise.all(prepared.validReceivers.map(r => linkageService.areLinked(senderId, r._id)));
+
+    // ✅ الخصم الذرّي أولاً (كالتصميم الأصلي) — رصيد غير كافٍ يجب ألا يترك أي GiftLog "شبحي"
+    // خلفه، حتى لو استُدعيت هذي الدالة مباشرة بلا معاملة محيطة تتراجع عنه بنفسها
+    const idemBase = new mongoose.Types.ObjectId();
+    const entries = await buildGiftWalletEntries({
+        senderId, receiverIds: prepared.validReceivers.map(r => r._id), totalCost: prepared.totalCost, session,
+        idemBase, linkedFlags
+    });
+    await walletService.post(entries, session);
+
     await GiftLog.insertMany(buildGiftLogEntries({
         senderId, gift: prepared.gift, validReceivers: prepared.validReceivers, effectiveQty: prepared.effectiveQty,
         unitPrice: prepared.unitPrice, totalPrice: prepared.totalPrice, cleanRoomId: prepared.cleanRoomId
     }), { session });
+
+    const updatedSender = await User.findById(senderId).select('coins').session(session);
+    prepared.sender.coins = updatedSender.coins;
     return prepared;
 }
 exports.reserveGiftCombo = reserveGiftCombo;
@@ -1304,6 +1350,8 @@ async function settleGiftComboClaimInner({ key, senderId, comboId, seq, giftId, 
     // 🛡️ إصلاح جذري: التحضير (فحص الغرفة/المستلمين/الهدية، حساب التكلفة) قراءات بحتة الآن —
     // تُنفَّذ قبل بدء أي معاملة إطلاقاً (راجع تعليق prepareGiftComboSend الكامل)
     const prepared = await prepareGiftComboSend({ senderId, giftId, quantity, taps, recipientIds, roomId, audience, io });
+    // ✅ قراءة بحتة أيضاً — قبل أي معاملة، بنفس منطق prepareGiftComboSend أعلاه
+    const linkedFlags = await Promise.all(prepared.validReceivers.map(r => linkageService.areLinked(senderId, r._id)));
 
     const session = await mongoose.startSession();
     let updatedSender = null;
@@ -1330,13 +1378,21 @@ async function settleGiftComboClaimInner({ key, senderId, comboId, seq, giftId, 
             // لسبب عودته لداخل المعاملة) — لا قراءات غرفة/مستلمين/هدية هنا (سبقتها خارج
             // المعاملة بـprepareGiftComboSend). إدراج واحد فقط (insertMany) فلا يُثقِل زمن
             // الالتزام محسوساً؛ بقية الآثار (دردشة/PK/دعم/خبرة/نادي معجبين) تبقى بعد الـack
-            updatedSender = await applyGiftComboDeduct({ session, senderId, totalCost: prepared.totalCost, preReadCoins: prepared.sender.coins });
-            claim.balanceAfter = updatedSender.coins;
-            await claim.save({ session });
             await GiftLog.insertMany(buildGiftLogEntries({
                 senderId, gift: prepared.gift, validReceivers: prepared.validReceivers, effectiveQty: prepared.effectiveQty,
                 unitPrice: prepared.unitPrice, totalPrice: prepared.totalPrice, cleanRoomId: prepared.cleanRoomId
             }), { session });
+
+            const entries = await buildGiftWalletEntries({
+                senderId, receiverIds: prepared.validReceivers.map(r => r._id), totalCost: prepared.totalCost, session,
+                idemBase: claim._id, linkedFlags
+            });
+            await walletService.post(entries, session);
+
+            const freshSender = await User.findById(senderId).select('coins').session(session);
+            updatedSender = freshSender;
+            claim.balanceAfter = updatedSender.coins;
+            await claim.save({ session });
         });
     } catch (e) {
         txError = e;
@@ -1353,6 +1409,8 @@ async function settleGiftComboClaimInner({ key, senderId, comboId, seq, giftId, 
             const existing = await GiftComboTx.findOne({ key }).select('balanceAfter').lean();
             return { duplicate: true, balanceAfter: existing ? existing.balanceAfter : 0 };
         }
+        // ✅ buildGiftWalletEntries يُترجِم INSUFFICIENT_FUNDS بالفعل إلى عقد socketService.js/
+        // العميل القديم (code:'INSUFFICIENT', balance, needed) — يصل هنا جاهزاً، فقط يُعاد رميه
         throw txError;
     }
     prepared.sender.coins = updatedSender.coins;
@@ -1571,32 +1629,33 @@ exports.sendPublicGift = async (req, res) => {
         const totalCost = unitPrice * finalRecipientIds.length;
 
         const receivers = await User.find({ _id: { $in: finalRecipientIds } }).select('username socketId');
+        const linkedFlags = await Promise.all(finalRecipientIds.map(rid => linkageService.areLinked(senderId, rid)));
 
         // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند المعروف #1): نفس علّة sendGift
         // بالضبط — الخصم وGiftLog كانا عمليتين منفصلتين بلا معاملة تجمعهما. معاملة واحدة الآن
-        // تحوي الخصم الذرّي + إدراج كل سجلّات GiftLog معاً فقط (راجع تعليق sendGift الكامل أعلاه)
+        // تحوي الخصم الذرّي (walletService) + إيداع فول كل مستلم + إدراج كل سجلّات GiftLog معاً
         const session = await mongoose.startSession();
         let updatedSenderPublic;
         try {
             await session.withTransaction(async () => {
-                updatedSenderPublic = await User.findOneAndUpdate(
-                    { _id: senderId, coins: { $gte: totalCost } },
-                    { $inc: { coins: -totalCost } },
-                    { new: true, session }
-                );
-                if (!updatedSenderPublic) {
-                    throw Object.assign(new Error(`رصيدك غير كافٍ (تحتاج ${totalCost} كوينز لهذا العدد)`), { code: 'INSUFFICIENT' });
-                }
                 const logs = finalRecipientIds.map(rid => ({
                     sender: senderId, receiver: rid, gift: gift._id,
                     giftName: gift.name, giftImage: gift.imageUrl,
                     quantity: 1, unitPrice, totalPrice: unitPrice, context: 'public_chat'
                 }));
-                await GiftLog.insertMany(logs, { session });
+                const logDocs = await GiftLog.insertMany(logs, { session });
+
+                const entries = await buildGiftWalletEntries({
+                    senderId, receiverIds: finalRecipientIds, totalCost, session,
+                    idemBase: logDocs[0]._id, linkedFlags
+                });
+                await walletService.post(entries, session);
+
+                updatedSenderPublic = await User.findById(senderId).select('coins').session(session);
             });
         } catch (txError) {
             if (txError.code === 'INSUFFICIENT') {
-                return res.status(400).json({ status: 'fail', message: txError.message });
+                return res.status(400).json({ status: 'fail', code: 'INSUFFICIENT', message: txError.message });
             }
             throw txError;
         } finally {

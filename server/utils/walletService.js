@@ -76,8 +76,9 @@ async function computeCoinSpendSplit(userId, amount, session) {
     if (!Number.isInteger(amount) || amount <= 0) throw new Error('computeCoinSpendSplit: amount يجب أن يكون عدداً صحيحاً موجباً');
     const user = await User.findById(userId).select('walletCoinsBonus walletCoinsPaid').session(session);
     if (!user) throw Object.assign(new Error('المستخدم غير موجود'), { code: 'USER_NOT_FOUND' });
-    if (user.walletCoinsBonus + user.walletCoinsPaid < amount) {
-        throw Object.assign(new Error('رصيد غير كافٍ لإتمام العملية'), { code: 'INSUFFICIENT_FUNDS' });
+    const balance = user.walletCoinsBonus + user.walletCoinsPaid;
+    if (balance < amount) {
+        throw Object.assign(new Error('رصيد غير كافٍ لإتمام العملية'), { code: 'INSUFFICIENT_FUNDS', balance, needed: amount });
     }
     const fromBonus = Math.min(user.walletCoinsBonus, amount);
     const fromPaid = amount - fromBonus;
