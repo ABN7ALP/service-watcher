@@ -9,6 +9,15 @@ const escapeHtml = (str) => {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 };
 const formatDate = (d) => new Date(d).toLocaleString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+// ✅ لحقول <input type="datetime-local"> فقط — null/تاريخ غير صالح يعني "فارغ" (لا تاريخ محدَّد)،
+// وإلا "YYYY-MM-DDTHH:mm" بالتوقيت المحلي للمتصفح (toISOString تستخدم UTC فتُزيح الوقت المعروض خطأً)
+const toLocalInputValue = (d) => {
+    if (!d) return '';
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 
 // ✅ طلب صريح — بطاقات الإطارات بالقائمة: staticUrl أولاً، ثم assetUrl، ثم احتياطي محايد. معالج
 // 'error' عام وحيد (مثل app.js تماماً — أحداث error على <img> لا تصعد بالمعيار، capture:true
@@ -174,6 +183,7 @@ class AdminDashboard {
         document.getElementById('suggestionsStatusFilter')?.addEventListener('change', () => this.loadSuggestions());
         document.getElementById('suggestionsTypeFilter')?.addEventListener('change', () => this.loadSuggestions());
         document.getElementById('systemHealthCheckNowBtn')?.addEventListener('click', () => this.runSystemHealthCheckNow());
+        document.getElementById('walletHealthCheckNowBtn')?.addEventListener('click', () => this.runWalletHealthCheckNow());
 
         const musicSearch = document.getElementById('musicSearch');
         if (musicSearch) {
@@ -421,6 +431,7 @@ class AdminDashboard {
                         <div class="modal-footer">
                             <button class="btn btn-secondary" data-dismiss>إغلاق</button>
                             <button class="btn btn-success" id="fundsBtn"><i class="fas fa-coins"></i> تعديل الرصيد</button>
+                            <button class="btn btn-info text-white" id="transferBeansBtn"><i class="fas fa-exchange-alt"></i> تحويل ألماس إلى قابل للسحب</button>
                             <button class="btn ${user.isAgent ? 'btn-secondary' : 'btn-info text-white'}" id="agentBtn">${user.isAgent ? 'إلغاء صلاحية الوكيل' : 'تعيين كوكيل شحن'}</button>
                             ${!user.isBanned
                                 ? `<button class="btn btn-danger" id="banBtn"><i class="fas fa-ban"></i> حظر</button>`
@@ -431,6 +442,7 @@ class AdminDashboard {
             `);
 
             modal.querySelector('#fundsBtn').addEventListener('click', () => { modal.remove(); this.showAdjustFundsModal(userId); });
+            modal.querySelector('#transferBeansBtn').addEventListener('click', () => { modal.remove(); this.showTransferBeansModal(userId); });
             modal.querySelector('#agentBtn').addEventListener('click', () => this.toggleAgentStatus(userId, !user.isAgent, modal));
             modal.querySelector('#banBtn')?.addEventListener('click', () => { modal.remove(); this.showBanModal(userId, user.username); });
             modal.querySelector('#unbanBtn')?.addEventListener('click', () => this.confirmAction(`إلغاء حظر ${user.username}؟`, async () => { await this.unbanUser(userId); modal.remove(); }, false));
@@ -523,6 +535,37 @@ class AdminDashboard {
                 this.showToast(result.message, 'success');
                 modal.remove();
                 this.loadUsers(this.state.users.page || 1, this.state.users.search || '');
+            } catch (error) { this.showToast(error.message, 'error'); }
+        });
+    }
+
+    // 🛡️ مراجعة ما قبل الدمج v2 (البند 2): beans_p (ترويجي، لا يصل للدولار) -> beans_w (قابل
+    // للسحب) — تحويل يدوي موثَّق لحالات فردية (تسوية نزاع، تعويض مستخدم استلم هدايا حقيقية
+    // قبل الترحيل...). نفس نمط showAdjustFundsModal أعلاه بالضبط
+    showTransferBeansModal(userId) {
+        const modal = this.openModal(`
+            <div class="modal-overlay active">
+                <div class="modal-content" style="max-width:450px;">
+                    <div class="modal-header"><h3><i class="fas fa-exchange-alt"></i> تحويل ألماس إلى قابل للسحب</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                    <div class="modal-body">
+                        <p class="text-muted small">يحوّل من الألماس الترويجي (beans_p) إلى الألماس القابل للسحب نقداً (beans_w) لهذا المستخدم فقط.</p>
+                        <div class="form-group"><label>الكمية</label><input type="number" min="1" step="1" class="form-control" id="transferAmountInput" value="0"></div>
+                        <div class="form-group"><label>السبب * (سيُسجَّل في سجل التدقيق)</label><textarea class="form-control" id="transferReasonInput" rows="2" required></textarea></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" data-dismiss>إلغاء</button>
+                        <button class="btn btn-info text-white" id="confirmTransferBtn"><i class="fas fa-check"></i> تأكيد التحويل</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        modal.querySelector('#confirmTransferBtn').addEventListener('click', async () => {
+            const amount = parseInt(modal.querySelector('#transferAmountInput').value, 10) || 0;
+            const reason = modal.querySelector('#transferReasonInput').value.trim();
+            try {
+                const result = await this.api('POST', `/users/${userId}/transfer-beans-to-withdrawable`, { amount, reason });
+                this.showToast(result.message, 'success');
+                modal.remove();
             } catch (error) { this.showToast(error.message, 'error'); }
         });
     }
@@ -1571,6 +1614,7 @@ class AdminDashboard {
 
     // ================= System Health (chore/dependency-health) =================
     async loadSystemHealth() {
+        this.loadWalletHealth();
         try {
             const data = await this.api('GET', '/system-health');
 
@@ -1631,6 +1675,48 @@ class AdminDashboard {
             await this.api('POST', '/system-health/check-now');
             this.showToast('تم تنفيذ الفحص بنجاح', 'success');
             await this.loadSystemHealth();
+        } catch (error) {
+            this.showToast(error.message, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate"></i> فحص الآن'; }
+        }
+    }
+
+    async loadWalletHealth() {
+        try {
+            const data = await this.api('GET', '/wallet-health');
+
+            document.getElementById('walletHealthLastCheck').textContent =
+                `آخر فحص: ${data.lastCheckAt ? formatDate(data.lastCheckAt) : 'لم يُفحص بعد'}`;
+            document.getElementById('whUsersChecked').textContent = data.usersChecked || 0;
+            document.getElementById('whMismatchCount').textContent = data.mismatchCount || 0;
+            document.getElementById('whLiability').textContent = `$${(data.liabilityUsd || 0).toFixed(2)}`;
+            document.getElementById('whCashReceived').textContent = `$${(data.cashReceivedUsd || 0).toFixed(2)}`;
+
+            const mc = document.getElementById('walletHealthMismatchesContainer');
+            mc.innerHTML = !data.mismatches || !data.mismatches.length
+                ? '<div class="empty-state"><i class="fas fa-circle-check fa-2x"></i><p>لا تعارضات — كل الأرصدة تطابق دفتر الأستاذ</p></div>'
+                : `<table class="table table-hover"><thead><tr><th>المستخدم</th><th>المحفظة</th><th>دفتر الأستاذ</th><th>الرصيد المخزَّن</th><th>الفرق</th></tr></thead><tbody>
+                    ${data.mismatches.map(m => `
+                        <tr class="text-danger fw-bold">
+                            <td>${escapeHtml(m.user ? (m.user.username || m.user.id) : 'غير معروف')}</td>
+                            <td style="direction:ltr;text-align:left;">${escapeHtml(m.wallet)}</td>
+                            <td>${m.ledgerSum}</td>
+                            <td>${m.cachedBalance}</td>
+                            <td>${m.diff > 0 ? '+' : ''}${m.diff}</td>
+                        </tr>
+                    `).join('')}
+                </tbody></table>`;
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    async runWalletHealthCheckNow() {
+        const btn = document.getElementById('walletHealthCheckNowBtn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جارٍ الفحص...'; }
+        try {
+            await this.api('POST', '/wallet-health/check-now');
+            this.showToast('تم تنفيذ الفحص بنجاح', 'success');
+            await this.loadWalletHealth();
         } catch (error) {
             this.showToast(error.message, 'error');
         } finally {
@@ -1717,6 +1803,25 @@ class AdminDashboard {
                     </div>
                 </div>
                 <hr>
+                <h6 class="mb-3"><i class="fas fa-bullhorn" style="color:#ff9f43"></i> عرض إطلاق صرف البينز</h6>
+                <p class="text-muted small">النسبة الأسخى (${s.payoutLaunchPct}%) تُطبَّق فقط بين وقت البدء ووقت الانتهاء معاً. اتركهما فارغين/الحالة الافتراضية لعدم بدء العرض (تُطبَّق النسبة الأساسية).</p>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group"><label>نسبة الإطلاق %</label><input type="number" class="form-control" id="s-launchPct" value="${s.payoutLaunchPct}"></div>
+                        <div class="form-group"><label>وقت البدء</label><input type="datetime-local" class="form-control" id="s-launchStarts" value="${toLocalInputValue(s.payoutLaunchStartsAt)}">
+                            <small class="text-muted">فارغ = العرض لم يبدأ بعد (الافتراضي).</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group"><label>النسبة الأساسية % (بعد الانتهاء/قبل البدء)</label><input type="number" class="form-control" id="s-basePct" value="${s.payoutBasePct}"></div>
+                        <div class="form-group"><label>وقت الانتهاء</label><input type="datetime-local" class="form-control" id="s-launchEnds" value="${toLocalInputValue(s.payoutLaunchEndsAt)}"></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group"><label>نسبة المضيفين عالي المستوى %</label><input type="number" class="form-control" id="s-highPct" value="${s.payoutHighPct}"></div>
+                        <div class="form-group"><label>الحدّ الأدنى لمستوى "عالي" (بصرف النظر عن الفترة)</label><input type="number" class="form-control" id="s-highHostLevel" value="${s.highHostLevel}"></div>
+                    </div>
+                </div>
+                <hr>
                 <div class="row">
                     <div class="col-md-6">
                         <h6 class="mb-3"><i class="fas fa-wallet text-info"></i> محفظة شام كاش</h6>
@@ -1751,6 +1856,12 @@ class AdminDashboard {
                     giftRedemptionHaircutPercent: parseFloat(document.getElementById('s-redeemHaircut').value),
                     customGiftDesignFeeCoins: parseFloat(document.getElementById('s-customGiftFee').value),
                     customGiftSendPriceCoins: parseFloat(document.getElementById('s-customGiftSendPrice').value),
+                    payoutLaunchPct: parseFloat(document.getElementById('s-launchPct').value),
+                    payoutBasePct: parseFloat(document.getElementById('s-basePct').value),
+                    payoutHighPct: parseFloat(document.getElementById('s-highPct').value),
+                    highHostLevel: parseInt(document.getElementById('s-highHostLevel').value),
+                    payoutLaunchStartsAt: document.getElementById('s-launchStarts').value || null,
+                    payoutLaunchEndsAt: document.getElementById('s-launchEnds').value || null,
                     shamCashWallet: document.getElementById('s-shamWallet').value.trim(),
                     shamCashHolderName: document.getElementById('s-shamHolder').value.trim(),
                     shamCashQrUrl: document.getElementById('s-shamQr').value.trim(),

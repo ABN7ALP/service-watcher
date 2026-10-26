@@ -7,6 +7,7 @@ const router = express.Router();
 const adminAuth = require('../middleware/adminAuth');
 const adminController = require('../controllers/adminController');
 const { frameAssetUpload } = require('../utils/cloudinary');
+const { financialLimiter } = require('../middleware/globalMiddleware');
 
 // 🛡️ "فحص الآن" (صحة النظام): مفتاح ثابت وليس هوية الأدمن — الحد مرة كل 5 دقائق إجمالاً
 // عبر كل الأدمنز معاً، لا لكل أدمن منفرد، لأن الفحص يشغّل npm outdated/audit (مُكلف نسبياً)
@@ -16,6 +17,17 @@ const systemHealthCheckLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: () => 'system-health-manual-check',
+    message: { success: false, message: 'تم تنفيذ فحص مؤخراً. يرجى الانتظار قبل إعادة المحاولة.' }
+});
+
+// 🛡️ "فحص الآن" (صحة المحفظة): نفس منطق systemHealthCheckLimiter بالضبط — الفحص يمرّ على كل
+// مستخدم بالقاعدة فيُكلِّف نسبياً، لا داعٍ لتشغيله بالتوازي من أكثر من مشرف بنفس اللحظة
+const walletHealthCheckLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000,
+    max: 1,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: () => 'wallet-health-manual-check',
     message: { success: false, message: 'تم تنفيذ فحص مؤخراً. يرجى الانتظار قبل إعادة المحاولة.' }
 });
 
@@ -29,6 +41,9 @@ router.post('/users/:userId/ban', adminController.banUser);
 router.post('/users/:userId/unban', adminController.unbanUser);
 router.post('/users/:userId/set-agent', adminController.setAgentStatus);
 router.post('/users/:userId/adjust-funds', adminController.adjustUserFunds);
+// 🛡️ مراجعة ما قبل الدمج v2 (البند 2): مُحدَّد معدَّل مالي عادي (نفس financialLimiter
+// بالمسارات المالية الأخرى) — يمنع قصف هذا المسار الحسّاس بسرعة من حساب أدمن مخترَق
+router.post('/users/:userId/transfer-beans-to-withdrawable', financialLimiter, adminController.transferBeansToWithdrawable);
 
 router.get('/deposits', adminController.getDeposits);
 router.post('/deposits/:transactionId/approve', adminController.approveDeposit);
@@ -76,6 +91,8 @@ router.get('/client-errors', adminController.getClientErrors);
 router.get('/client-compat', adminController.getClientCompatStats);
 router.get('/system-health', adminController.getSystemHealth);
 router.post('/system-health/check-now', systemHealthCheckLimiter, adminController.runSystemHealthCheckNow);
+router.get('/wallet-health', adminController.getWalletHealth);
+router.post('/wallet-health/check-now', walletHealthCheckLimiter, adminController.runWalletHealthCheckNow);
 
 router.get('/settings', adminController.getSystemSettings);
 router.post('/settings', adminController.updateSystemSettings);

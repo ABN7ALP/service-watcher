@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 
 const coinPurchaseSchema = new mongoose.Schema({
+    // ✅ علم استئناف تضخيم ×10 لهذا المستند
+    redenominatedV1: { type: Boolean, default: false },
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
         method: { type: String, enum: ['sham_cash', 'visa', 'agent', 'balance'], required: true },
     amountUSD: { type: Number, required: true, min: 1 },

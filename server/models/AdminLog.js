@@ -40,7 +40,8 @@ const adminLogSchema = new mongoose.Schema({
       'system_maintenance',
       'manual_transaction',
       'ip_ban',
-      'mass_notification'
+      'mass_notification',
+      'transfer_beans_to_withdrawable'
     ]
   },
   targetUser: {
@@ -177,7 +178,8 @@ adminLogSchema.methods.getActionName = function() {
     'system_maintenance': 'صيانة النظام',
     'manual_transaction': 'معاملة يدوية',
     'ip_ban': 'حظر IP',
-    'mass_notification': 'إشعار جماعي'
+    'mass_notification': 'إشعار جماعي',
+    'transfer_beans_to_withdrawable': 'تحويل ألماس إلى قابل للسحب'
   };
   
   return actionNames[this.action] || this.action;

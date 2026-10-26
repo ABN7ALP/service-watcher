@@ -7,6 +7,8 @@ const AdminLog = require('../models/AdminLog');
 const ClientErrorLog = require('../models/ClientErrorLog');
 const ClientCompatLog = require('../models/ClientCompatLog');
 const SystemHealth = require('../models/SystemHealth');
+const WalletReconciliation = require('../models/WalletReconciliation');
+const walletService = require('../utils/walletService');
 
 // Admin Dashboard Stats
 exports.getDashboardStats = async (req, res) => {
@@ -352,9 +354,11 @@ exports.approveDeposit = async (req, res) => {
         if (!transaction) {
           throw Object.assign(new Error('المعاملة غير موجودة أو تمت معالجتها مسبقاً'), { code: 'ALREADY_PROCESSED' });
         }
-        user = await User.findByIdAndUpdate(
-          transaction.user, { $inc: { balance: transaction.amount } }, { new: true, session }
-        );
+        await walletService.post([{
+          user: transaction.user, wallet: 'usd_cents', delta: Math.round(transaction.amount * 100), type: 'deposit',
+          refType: 'Transaction', refId: transaction._id, idempotencyKey: `${transaction._id}:deposit`
+        }], session);
+        user = await User.findById(transaction.user).select('balance socketId').session(session);
       });
     } catch (txError) {
       if (txError.code === 'ALREADY_PROCESSED') {
@@ -492,9 +496,11 @@ exports.rejectTransaction = async (req, res) => {
         // If deposit was rejected, no need to adjust balance
         // If withdrawal was rejected, return reserved balance
         if (transaction.type === 'withdrawal') {
-          refundedUser = await User.findByIdAndUpdate(
-            transaction.user, { $inc: { balance: Math.abs(transaction.amount) } }, { new: true, session }
-          );
+          await walletService.post([{
+            user: transaction.user, wallet: 'usd_cents', delta: Math.round(Math.abs(transaction.amount) * 100), type: 'refund',
+            refType: 'Transaction', refId: transaction._id, idempotencyKey: `${transaction._id}:refund`
+          }], session);
+          refundedUser = await User.findById(transaction.user).select('balance socketId').session(session);
         }
       });
     } catch (txError) {
@@ -751,6 +757,61 @@ exports.runSystemHealthCheckNow = async (req, res) => {
   }
 };
 
+// =====================================================
+// ✅ "صحة المحفظة" (feat/wallet-ledger-v1): نتائج آخر فحص تصالح walletReconciliationJob —
+// نفس نمط getSystemHealth بالضبط (آخر checkRunId فقط، لا كل المجموعة)
+// =====================================================
+exports.getWalletHealth = async (req, res) => {
+  try {
+    const latestSummary = await WalletReconciliation.findOne({ type: 'summary' }).sort({ createdAt: -1 });
+    if (!latestSummary) {
+      return res.json({ success: true, lastCheckAt: null, usersChecked: 0, mismatchCount: 0, liabilityUsd: 0, cashReceivedUsd: 0, mismatches: [] });
+    }
+    const mismatches = await WalletReconciliation.find({ checkRunId: latestSummary.checkRunId, type: 'mismatch' })
+      .populate('user', 'username customId')
+      .limit(20);
+
+    res.json({
+      success: true,
+      lastCheckAt: latestSummary.createdAt,
+      usersChecked: latestSummary.usersChecked,
+      mismatchCount: latestSummary.mismatchCount,
+      liabilityUsd: latestSummary.liabilityUsd,
+      cashReceivedUsd: latestSummary.cashReceivedUsd,
+      mismatches: mismatches.map(m => ({
+        user: m.user ? { id: m.user._id, username: m.user.username, customId: m.user.customId } : null,
+        wallet: m.wallet, ledgerSum: m.ledgerSum, cachedBalance: m.cachedBalance, diff: m.diff
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ زر "فحص الآن" — نفس منطق runSystemHealthCheckNow (التحديد بمعدَّل مُطبَّق بمسار الراوتر)
+exports.runWalletHealthCheckNow = async (req, res) => {
+  try {
+    const { admin } = req;
+    const { runWalletReconciliation } = require('../utils/walletReconciliationJob');
+    const result = await runWalletReconciliation();
+
+    await AdminLog.logAction({
+      admin: admin._id,
+      action: 'system_maintenance',
+      targetEntity: 'system',
+      details: { action: 'manual_wallet_reconciliation_check', ...result },
+      isAutomated: false,
+      ipAddress: req.ip
+    });
+    console.log(`💰 [WALLET HEALTH] فحص يدوي بواسطة ${admin.username || admin._id}: ${result.mismatchCount} تعارض`);
+
+    res.json({ success: true, message: 'تم تنفيذ الفحص بنجاح', result });
+  } catch (error) {
+    console.error('[WALLET HEALTH] فشل الفحص اليدوي:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // تعيين/إلغاء صلاحية الوكيل لمستخدم
 exports.setAgentStatus = async (req, res) => {
   try {
@@ -809,11 +870,21 @@ exports.updateSystemSettings = async (req, res) => {
       'coinsToUsdRedemptionRate', 'giftRedemptionHaircutPercent', 'maxDailyWithdrawalUSD',
       'pkWinLp', 'pkLossLp', 'pkDrawLp', 'pkSupportLpDivisor', 'pkLpCapPerBattle',
       'pkMinDurationSeconds', 'pkMinSupportCoins', 'pkMaxDailyMatchesPerPair',
-      'customGiftDesignFeeCoins', 'customGiftSendPriceCoins'
+      'customGiftDesignFeeCoins', 'customGiftSendPriceCoins',
+      // 🛡️ مراجعة ما قبل الدمج v2 (البند 3): توقيت عرض الإطلاق — يُضبَط يدوياً من هنا فقط،
+      // لا تلقائياً عند الإقلاع (راجع currentPayoutRatePercent)
+      'payoutLaunchPct', 'payoutLaunchStartsAt', 'payoutLaunchEndsAt', 'payoutBasePct', 'payoutHighPct', 'highHostLevel'
     ];
     const updates = {};
     for (const field of allowedFields) {
-      if (req.body[field] !== undefined) updates[field] = req.body[field];
+      if (req.body[field] !== undefined) {
+        // ✅ تواريخ الإطلاق تصل كنصّ ISO من الواجهة — null صريح يعني "لا تاريخ" (العرض لم يبدأ/لا نهاية محدَّدة)
+        if ((field === 'payoutLaunchStartsAt' || field === 'payoutLaunchEndsAt') && req.body[field] !== null) {
+          updates[field] = new Date(req.body[field]);
+        } else {
+          updates[field] = req.body[field];
+        }
+      }
     }
     updates.updatedBy = admin._id;
 
@@ -863,19 +934,38 @@ exports.adjustUserFunds = async (req, res) => {
     // بهذا المشروع) — يستحيل تجاوز الشرط لطلبين متزامنين لأن القاعدة تُنفّذهما بالتتابع
     // الذري، + Transaction.create بنفس المعاملة (session) حتى لا يُسجَّل تعديل فعلي بلا سجل
     // محاسبي مطابق لو تعطّل أي شيء بالمنتصف
-    const matchQuery = { _id: userId };
-    if (balChange < 0) matchQuery.balance = { $gte: -balChange };
-    if (coinChange < 0) matchQuery.coins = { $gte: -coinChange };
-
     const session = await mongoose.startSession();
     let user = null;
     try {
       await session.withTransaction(async () => {
-        user = await User.findOneAndUpdate(
-          matchQuery,
-          { $inc: { balance: balChange, coins: coinChange } },
-          { new: true, session }
-        );
+        // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): تعديل يدوي = قيود 'adjustment' (إدارية فقط،
+        // بسبب موثَّق) — الكوينز السالبة تُخصَم بونص أولاً ثم مدفوع (نفس ترتيب الإنفاق المعتاد)،
+        // الموجبة تُضاف كـcoins_paid (الافتراض المحايد لمنحة إدارية لا مصدر حقيقي محدَّد لها)
+        const idemBase = new mongoose.Types.ObjectId();
+        const entries = [];
+        if (balChange !== 0) {
+          entries.push({
+            user: userId, wallet: 'usd_cents', delta: Math.round(balChange * 100), type: 'adjustment',
+            refType: 'AdminAdjustment', refId: idemBase, idempotencyKey: `${idemBase}:balance`,
+            meta: { reason: reason.trim(), admin: admin._id }
+          });
+        }
+        try {
+          if (coinChange < 0) {
+            const { fromBonus, fromPaid } = await walletService.computeCoinSpendSplit(userId, -coinChange, session);
+            if (fromBonus > 0) entries.push({ user: userId, wallet: 'coins_bonus', delta: -fromBonus, type: 'adjustment', refType: 'AdminAdjustment', refId: idemBase, idempotencyKey: `${idemBase}:coins-bonus`, meta: { reason: reason.trim(), admin: admin._id } });
+            if (fromPaid > 0) entries.push({ user: userId, wallet: 'coins_paid', delta: -fromPaid, type: 'adjustment', refType: 'AdminAdjustment', refId: idemBase, idempotencyKey: `${idemBase}:coins-paid`, meta: { reason: reason.trim(), admin: admin._id } });
+          } else if (coinChange > 0) {
+            entries.push({ user: userId, wallet: 'coins_paid', delta: coinChange, type: 'adjustment', refType: 'AdminAdjustment', refId: idemBase, idempotencyKey: `${idemBase}:coins-paid`, meta: { reason: reason.trim(), admin: admin._id } });
+          }
+          if (entries.length > 0) await walletService.post(entries, session);
+        } catch (err) {
+          if (err.code === 'INSUFFICIENT_FUNDS') {
+            throw Object.assign(new Error('تعذّر تنفيذ التعديل'), { code: 'CLAIM_FAILED' });
+          }
+          throw err;
+        }
+        user = await User.findById(userId).select('coins balance socketId').session(session);
         if (!user) {
           throw Object.assign(new Error('تعذّر تنفيذ التعديل'), { code: 'CLAIM_FAILED' });
         }
@@ -928,6 +1018,71 @@ exports.adjustUserFunds = async (req, res) => {
       message: 'تم تعديل رصيد المستخدم بنجاح',
       user: { balance: user.balance, coins: user.coins }
     });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// 🛡️ مراجعة ما قبل الدمج v2 (البند 2): ترحيل ×10 يفتح كل الهدايا القديمة غير المستبدَلة
+// كـbeans_p (ألماس ترويجي — لا يصل للدولار أبداً، "بداية نظيفة" بقرار المالك). هذي الدالة
+// هي المسار اليدوي الوحيد لتحويل جزء منها إلى beans_w (قابل للسحب نقداً) لحالات مستقبلية
+// فردية موثَّقة (تسوية نزاع، تعويض مستخدم استلم هدايا حقيقية قبل الترحيل...) — إدارة فقط،
+// بسبب مكتوب، وقيدا دفتر أستاذ 'adjustment' حقيقيان (لا تعديل صامت على الحقل مباشرة)
+// =====================================================
+exports.transferBeansToWithdrawable = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { amount, reason } = req.body;
+    const { admin } = req;
+
+    const transferAmount = parseInt(amount, 10);
+    if (!Number.isInteger(transferAmount) || transferAmount <= 0) {
+      return res.status(400).json({ success: false, message: 'المبلغ يجب أن يكون عدداً صحيحاً موجباً' });
+    }
+    if (!reason || reason.trim().length < 3) {
+      return res.status(400).json({ success: false, message: 'يجب كتابة سبب التحويل (3 أحرف على الأقل) لأغراض التوثيق' });
+    }
+
+    // ✅ نفس نمط adjustUserFunds أعلاه بالضبط: حجز ذرّي عبر walletService.post (شرط $gte
+    // داخل المعاملة نفسها) — لا قراءة-ثم-كتابة منفصلتين يمكن أن تتجاوزا الرصيد مع تزامن
+    const idemBase = new mongoose.Types.ObjectId();
+    const session = await mongoose.startSession();
+    let user = null;
+    try {
+      await session.withTransaction(async () => {
+        const entries = [
+          { user: userId, wallet: 'beans_p', delta: -transferAmount, type: 'adjustment', refType: 'AdminAdjustment', refId: idemBase, idempotencyKey: `${idemBase}:debit-p`, meta: { reason: reason.trim(), admin: admin._id } },
+          { user: userId, wallet: 'beans_w', delta: transferAmount, type: 'adjustment', refType: 'AdminAdjustment', refId: idemBase, idempotencyKey: `${idemBase}:credit-w`, meta: { reason: reason.trim(), admin: admin._id } }
+        ];
+        await walletService.post(entries, session);
+        user = await User.findById(userId).select('socketId').session(session);
+        if (!user) {
+          throw Object.assign(new Error('تعذّر تنفيذ التحويل'), { code: 'CLAIM_FAILED' });
+        }
+      });
+    } catch (txError) {
+      if (txError.code === 'INSUFFICIENT_FUNDS') {
+        return res.status(400).json({ success: false, message: 'رصيد الألماس الترويجي (beans_p) الحالي لا يكفي لهذا التحويل' });
+      }
+      if (txError.code === 'CLAIM_FAILED') {
+        return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+      }
+      throw txError;
+    } finally {
+      await session.endSession();
+    }
+
+    await AdminLog.logAction({
+      admin: admin._id, action: 'transfer_beans_to_withdrawable', targetUser: user._id,
+      details: { amount: transferAmount, reason: reason.trim() }, severity: 'warning', ipAddress: req.ip
+    });
+
+    const io = req.app.get('socketio');
+    const { sendBotMessage } = require('../utils/botMessenger');
+    await sendBotMessage(io, user._id, `تم تحويل ${transferAmount} من ألماسك الترويجي إلى ألماس قابل للسحب من قِبل الإدارة.\nالسبب: ${reason.trim()}`);
+
+    res.json({ success: true, message: 'تم التحويل بنجاح' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -1000,9 +1155,11 @@ exports.approveCoinPurchase = async (req, res) => {
         if (!purchase) {
           throw Object.assign(new Error('هذا الطلب ليس قيد المراجعة حالياً'), { code: 'NOT_PENDING' });
         }
-        user = await User.findByIdAndUpdate(
-          purchase.user, { $inc: { coins: purchase.coinsAmount } }, { new: true, session }
-        );
+        await walletService.post([{
+          user: purchase.user, wallet: 'coins_paid', delta: purchase.coinsAmount, type: 'coin_purchase',
+          refType: 'CoinPurchase', refId: purchase._id, idempotencyKey: `${purchase._id}:approve`
+        }], session);
+        user = await User.findById(purchase.user).select('coins socketId').session(session);
       });
     } catch (txError) {
       if (txError.code === 'NOT_PENDING') {
