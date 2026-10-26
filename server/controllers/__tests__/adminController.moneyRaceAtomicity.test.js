@@ -26,6 +26,7 @@ const User = require('../../models/User');
 const Transaction = require('../../models/Transaction');
 const CoinPurchase = require('../../models/CoinPurchase');
 const AdminLog = require('../../models/AdminLog');
+const LedgerEntry = require('../../models/LedgerEntry');
 const adminController = require('../adminController');
 
 function chainable(value) {
@@ -39,7 +40,14 @@ function makeDb() {
     return { users: new Map(), transactions: new Map(), purchases: new Map() };
 }
 function seedUser(db, overrides) {
-    const user = { _id: 'u_default', balance: 0, coins: 0, socketId: null, ...overrides };
+    const { balance = 0, coins = 0, ...rest } = overrides;
+    const user = {
+        _id: 'u_default', balance, coins,
+        // ✅ دفتر الأستاذ: walletUsdCents/walletCoinsPaid هما ما يقرأهما/يكتبهما walletService
+        // فعلياً — balance/coins تبقيان مرآة متزامنة فقط (نفس اتفاقية اختبارات giftController)
+        walletUsdCents: Math.round(balance * 100), walletCoinsPaid: coins, walletCoinsBonus: 0,
+        walletBeansW: 0, walletBeansP: 0, socketId: null, ...rest
+    };
     db.users.set(user._id, user);
     return user;
 }
@@ -82,19 +90,34 @@ function wireMocks(db) {
     jest.spyOn(User, 'findOneAndUpdate').mockImplementation((filter, update) => {
         const row = db.users.get(String(filter._id));
         if (!row) return chainable(null);
-        if (filter.balance && typeof filter.balance.$gte === 'number' && row.balance < filter.balance.$gte) {
-            return chainable(null);
-        }
-        if (filter.coins && typeof filter.coins.$gte === 'number' && row.coins < filter.coins.$gte) {
-            return chainable(null);
+        // ✅ معمَّم على أي حقل محفظة (walletUsdCents/walletCoinsPaid/...) لا balance/coins فقط —
+        // walletService.post يشترط $gte على الحقل الفعلي (wallet field) لا المرآة القديمة
+        for (const [field, cond] of Object.entries(filter)) {
+            if (field === '_id') continue;
+            if (cond && typeof cond.$gte === 'number' && (row[field] || 0) < cond.$gte) return chainable(null);
         }
         recordUndo(db.users, row._id, { ...row });
         if (update.$inc) {
             for (const k of Object.keys(update.$inc)) row[k] = (row[k] || 0) + update.$inc[k];
         }
+        if (update.$set) Object.assign(row, update.$set);
         return chainable({ ...row });
     });
+    jest.spyOn(User, 'updateOne').mockImplementation((filter, update) => {
+        const row = db.users.get(String(filter._id));
+        if (!row) return Promise.resolve({ matchedCount: 0 });
+        recordUndo(db.users, row._id, { ...row });
+        if (update.$set) Object.assign(row, update.$set);
+        return Promise.resolve({ matchedCount: 1 });
+    });
+    jest.spyOn(User, 'findById').mockImplementation((id) => chainable(db.users.get(String(id)) || null));
     jest.spyOn(User, 'exists').mockImplementation((filter) => Promise.resolve(!!db.users.get(String(filter._id))));
+
+    jest.spyOn(LedgerEntry, 'findOne').mockImplementation(() => chainable(null));
+    jest.spyOn(LedgerEntry, 'create').mockImplementation((docs) => {
+        const arr = Array.isArray(docs) ? docs : [docs];
+        return Promise.resolve(arr.map((d, i) => ({ ...d, _id: `ledger_${i}_${Date.now()}_${Math.random()}` })));
+    });
 
     jest.spyOn(Transaction, 'findOneAndUpdate').mockImplementation((filter, update) => {
         const row = db.transactions.get(String(filter._id));
