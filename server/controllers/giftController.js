@@ -1720,6 +1720,9 @@ module.exports.applyGiftToActiveSeatChallenge = applyGiftToActiveSeatChallenge;
 // ✅ تُستدعى مباشرة من pk-item-throw (ضباب) لإعادة بثّ لقطة النقاط فوراً فتُعتِّم رقم الخصم
 // بلا انتظار الدفعة التالية — نفس المسار الحقيقي بالضبط (pk:score)، لا بثّ موازٍ منفصل
 module.exports.schedulePkScoreEmit = schedulePkScoreEmit;
+// ✅ تُستدعى مباشرة من pk-item-throw (قفاز) — نفس آلية "دفتر الأستاذ" للهدية الحقيقية
+// (بونص أولاً، تقسيم beans_w/beans_p، فحص الربط) بلا تكرار منطقها هنا
+module.exports.buildGiftWalletEntries = buildGiftWalletEntries;
 // ✅ تُصدَّران فقط لاختبارات مراجعة PR (سيل الهدايا، البند 1-3) — راجع
 // __tests__/giftController.giftFloodBatching.test.js؛ لا مستهلك إنتاجي خارج هذا الملف نفسه
 module.exports.queueRoomGiftAnnouncement = queueRoomGiftAnnouncement;
