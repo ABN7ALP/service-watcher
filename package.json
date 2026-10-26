@@ -11,7 +11,7 @@
     "wallet:migrate:dry": "node scripts/walletMigrateDry.js"
   },
   "dependencies": {
-    "@fortawesome/fontawesome-free": "^6.4.0",
+    "@fortawesome/fontawesome-free": "^6.7.2",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.11.0",
     "compression": "^1.7.4",
@@ -22,7 +22,7 @@
     "express-rate-limit": "^6.10.0",
     "helmet": "^7.0.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^7.5.0",
+    "mongoose": "^7.8.13",
     "multer": "^2.5.0",
     "redis": "^4.6.7",
     "resend": "^2.0.0",
