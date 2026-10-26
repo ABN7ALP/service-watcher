@@ -5,6 +5,7 @@ const User = require('../models/User');
 const OneTimeMessageLog = require('../models/OneTimeMessageLog');
 const ChatReport = require('../models/ChatReport');
 const { deleteChatMedia } = require('../utils/cloudinary');
+const walletService = require('../utils/walletService');
 
 // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #3): sendMediaMessage كانت تثق
 // بـmediaUrl/thumbnail من req.body حرفياً بلا أي تحقّق — راجع التعليق الكامل أسفل الدالة.
@@ -807,20 +808,34 @@ exports.sendOneTimeMessage = async (req, res) => {
                 });
             }
 
-            senderDoc = await User.findById(senderId);
-            if (!senderDoc) {
-                return res.status(404).json({ status: 'fail', message: 'حسابك غير موجود' });
-            }
-            if (senderDoc.coins < EXTRA_MESSAGE_COST) {
-                return res.status(400).json({
-                    status: 'fail',
-                    code: 'INSUFFICIENT_COINS',
-                    message: `رصيدك من الكوينز غير كافٍ (تحتاج ${EXTRA_MESSAGE_COST} كوينز)`
+            // 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1): خصم ذرّي عبر walletService (بونص أولاً)
+            // بدل coins -=/save() غير ذرّية — رسالتان متزامنتان لا تستطيعان خصم رصيد واحد مرتين
+            const session = await mongoose.startSession();
+            try {
+                await session.withTransaction(async () => {
+                    const { fromBonus, fromPaid } = await walletService.computeCoinSpendSplit(senderId, EXTRA_MESSAGE_COST, session);
+                    const idemBase = new mongoose.Types.ObjectId();
+                    const entries = [];
+                    if (fromBonus > 0) entries.push({ user: senderId, wallet: 'coins_bonus', delta: -fromBonus, type: 'purchase', refType: 'PrivateChat', refId: idemBase, idempotencyKey: `${idemBase}:bonus` });
+                    if (fromPaid > 0) entries.push({ user: senderId, wallet: 'coins_paid', delta: -fromPaid, type: 'purchase', refType: 'PrivateChat', refId: idemBase, idempotencyKey: `${idemBase}:paid` });
+                    await walletService.post(entries, session);
+                    senderDoc = await User.findById(senderId).select('coins').session(session);
                 });
+            } catch (err) {
+                await session.endSession();
+                if (err.code === 'USER_NOT_FOUND') {
+                    return res.status(404).json({ status: 'fail', message: 'حسابك غير موجود' });
+                }
+                if (err.code === 'INSUFFICIENT_FUNDS') {
+                    return res.status(400).json({
+                        status: 'fail',
+                        code: 'INSUFFICIENT_COINS',
+                        message: `رصيدك من الكوينز غير كافٍ (تحتاج ${EXTRA_MESSAGE_COST} كوينز)`
+                    });
+                }
+                throw err;
             }
-
-            senderDoc.coins -= EXTRA_MESSAGE_COST;
-            await senderDoc.save();
+            await session.endSession();
             wasPaid = true;
         }
 

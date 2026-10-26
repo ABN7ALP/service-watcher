@@ -13,6 +13,8 @@ const Gift = require('../models/Gift');
 const GiftLog = require('../models/GiftLog');
 const FanClubMembership = require('../models/FanClubMembership');
 const { computeFanLevelInfo } = require('../utils/fanClubLevels');
+const walletService = require('../utils/walletService');
+const linkageService = require('../utils/linkageService');
 
 const JOIN_PRICE = 1; // ✅ سعر ثابت للانضمام الصريح — منفصل تماماً عن سعر الوردة الحقيقي بمتجر الهدايا العام
 
@@ -297,29 +299,49 @@ exports.joinFanClub = async (req, res) => {
         if (!owner) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
         if (owner.isBot) return res.status(403).json({ status: 'fail', message: 'لا يمكن الانضمام لهذا الحساب' });
 
-        // ✅ خصم ذري — يستحيل خصم كوينز من رصيد غير كافٍ حتى مع طلبات متزامنة بنفس اللحظة
-        const updatedMember = await User.findOneAndUpdate(
-            { _id: memberId, coins: { $gte: JOIN_PRICE } },
-            { $inc: { coins: -JOIN_PRICE } },
-            { new: true }
-        );
-        if (!updatedMember) {
-            return res.status(400).json({ status: 'fail', message: 'رصيد الكوينز غير كافٍ للانضمام' });
+        // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): الانضمام "مثل الهدية حرفياً" (راجع تعليق أعلى
+        // الملف — هدية وردة رمزية) — نفس buildGiftWalletEntries الحقيقي (بونص أولاً، تقسيم
+        // beans_w/beans_p، فحص الربط) بدل خصم مجرَّد بلا أي قيد استلام للمالك. الادّعاء الفريد
+        // (owner+member) والخصم يتمّان معاً بمعاملة واحدة الآن — سباق نقرتين متزامنتين يُسقِط
+        // المعاملة بأكملها تلقائياً (لا حاجة لاسترداد تعويضي يدوي قد يفشل هو نفسه)
+        const { buildGiftWalletEntries } = require('./giftController');
+        const linked = await linkageService.areLinked(memberId, ownerId);
+        const session = await mongoose.startSession();
+        let updatedMember = null;
+        let txError = null;
+        try {
+            await session.withTransaction(async () => {
+                const idemBase = new mongoose.Types.ObjectId();
+                const entries = await buildGiftWalletEntries({
+                    senderId: memberId, receiverIds: [ownerId], totalCost: JOIN_PRICE, session, idemBase, linkedFlags: [linked]
+                });
+                await walletService.post(entries, session);
+
+                try {
+                    await FanClubMembership.create([{ owner: ownerId, member: memberId, points: JOIN_PRICE }], { session });
+                } catch (dupError) {
+                    if (dupError.code === 11000) {
+                        throw Object.assign(new Error('عضو بالفعل'), { code: 'ALREADY_MEMBER' });
+                    }
+                    throw dupError;
+                }
+                updatedMember = await User.findById(memberId).select('username profileImage coins balance').session(session);
+            });
+        } catch (e) {
+            txError = e;
+        } finally {
+            await session.endSession();
         }
 
-        // 🛡️ الفهرس الفريد (owner+member) هو خط الدفاع الحقيقي ضد سباق نقرتين متزامنتين —
-        // لو نجحت محاولتان بالتوازي رغم الفحص أعلاه، ثانيتهما تفشل هنا بخطأ E11000 ونُرجع
-        // الكوينز المخصومة فوراً (لا يُعاقَب المستخدم على خطأ توقيت لا ذنب له فيه). نقاط الانضمام
-        // تبدأ بقيمة سعر الانضمام نفسه (يطابق سجل GiftLog الرمزي أدناه)
-        try {
-            await FanClubMembership.create({ owner: ownerId, member: memberId, points: JOIN_PRICE });
-        } catch (dupError) {
-            if (dupError.code === 11000) {
-                await User.updateOne({ _id: memberId }, { $inc: { coins: JOIN_PRICE } });
+        if (txError) {
+            if (txError.code === 'INSUFFICIENT') {
+                return res.status(400).json({ status: 'fail', message: 'رصيد الكوينز غير كافٍ للانضمام' });
+            }
+            if (txError.code === 'ALREADY_MEMBER') {
                 const memberCount = await FanClubMembership.countDocuments({ owner: ownerId });
                 return res.status(200).json({ status: 'success', data: { alreadyMember: true, memberCount } });
             }
-            throw dupError;
+            throw txError;
         }
 
         if (rose) {

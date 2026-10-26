@@ -10,6 +10,7 @@ const RoomBattle = require('../models/RoomBattle');
 const SeatChallenge = require('../models/SeatChallenge');
 const GiftLog = require('../models/GiftLog');
 const FanClubMembership = require('../models/FanClubMembership');
+const walletService = require('../utils/walletService');
 
 // =====================================================
 // ✅ GET /api/voice-room/ice-servers — إعدادات خوادم ICE (STUN/TURN) لاتصالات الصوت الحي
@@ -774,24 +775,52 @@ exports.purchaseBackground = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'خلفية غير موجودة بالمتجر' });
         }
 
-        const user = await User.findById(req.user.id);
-        if (!user || user.coins < chosen.price) {
-            return res.status(400).json({ status: 'fail', message: 'رصيد الكوينز غير كافٍ' });
+        // 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1): خصم ذرّي عبر walletService (بونص أولاً) ضمن
+        // معاملة Mongo تشمل أيضاً تفعيل الخلفية بالغرفة — فشل أي خطوة يُسقِط الأخرى تلقائياً
+        const session = await mongoose.startSession();
+        let finalCoins = null;
+        let expiresAt = null;
+        let txError = null;
+        try {
+            await session.withTransaction(async () => {
+                try {
+                    const { fromBonus, fromPaid } = await walletService.computeCoinSpendSplit(req.user.id, chosen.price, session);
+                    const idemBase = new mongoose.Types.ObjectId();
+                    const entries = [];
+                    if (fromBonus > 0) entries.push({ user: req.user.id, wallet: 'coins_bonus', delta: -fromBonus, type: 'purchase', refType: 'VoiceRoom', refId: room._id, idempotencyKey: `${idemBase}:bonus` });
+                    if (fromPaid > 0) entries.push({ user: req.user.id, wallet: 'coins_paid', delta: -fromPaid, type: 'purchase', refType: 'VoiceRoom', refId: room._id, idempotencyKey: `${idemBase}:paid` });
+                    await walletService.post(entries, session);
+                } catch (err) {
+                    if (err.code === 'INSUFFICIENT_FUNDS') {
+                        throw Object.assign(new Error('رصيد الكوينز غير كافٍ'), { code: 'INSUFFICIENT' });
+                    }
+                    throw err;
+                }
+
+                const freshUser = await User.findById(req.user.id).select('coins').session(session);
+                finalCoins = freshUser.coins;
+
+                expiresAt = new Date(Date.now() + BACKGROUND_DAYS * 24 * 60 * 60 * 1000);
+                room.backgroundImage = chosen.url;
+                room.backgroundExpiresAt = expiresAt;
+                await room.save({ session });
+            });
+        } catch (e) {
+            txError = e;
+        } finally {
+            await session.endSession();
         }
 
-        user.coins -= chosen.price;
-        await user.save();
-
-        const expiresAt = new Date(Date.now() + BACKGROUND_DAYS * 24 * 60 * 60 * 1000);
-        room.backgroundImage = chosen.url;
-        room.backgroundExpiresAt = expiresAt;
-        await room.save();
+        if (txError) {
+            if (txError.code === 'INSUFFICIENT') return res.status(400).json({ status: 'fail', message: txError.message });
+            throw txError;
+        }
 
         res.json({
             status: 'success',
             backgroundImage: room.backgroundImage,
             backgroundExpiresAt: room.backgroundExpiresAt,
-            newBalance: user.coins
+            newBalance: finalCoins
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
