@@ -98,6 +98,11 @@ mongoose.connect(process.env.MONGODB_URI)
         .then(async () => {
         console.log('✅ MongoDB connected successfully.');
         await require('./utils/autoSeed')();
+        // 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1): إعادة تسمية العملة ×10 — مرّة واحدة للأبد
+        // (ادّعاء JobRun ذرّي يحميها من التكرار حتى مع تعدّد نسخ الخادم)، قبل أي مهمة أخرى
+        // تمنح/تخصم كوينز (موسم PK، إطار نادي المعجبين الأسبوعي) كي تعمل كل المهام اللاحقة
+        // على المقياس الجديد مباشرة
+        await require('./utils/walletRedenominationMigration').runMigration({ dryRun: false });
         require('./utils/mediaCleanupJob').startMediaCleanupJob(); // ✅ حذف تلقائي كل 24 ساعة (رسائل + وسائط Cloudinary)
         require('./utils/fanClubWeeklyFrameJob').startFanClubWeeklyFrameJob(io); // ✅ منح إطار المساهم لفائزي الأسبوع تلقائياً
         require('./utils/pkSeasonCloseJob').startPkSeasonCloseJob(io); // ✅ إغلاق موسم دوري PK الأسبوعي + منح مكافآت المراكز تلقائياً
