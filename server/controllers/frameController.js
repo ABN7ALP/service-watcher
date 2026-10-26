@@ -10,7 +10,6 @@ const { broadcastUserFrameChange } = require('../services/socketService');
 const { uploadFrameAsset, assertRealType } = require('../utils/cloudinary');
 const { normalizeOne } = require('../../scripts/normalize-frames');
 const { checkFrameFile } = require('../../scripts/check-frames');
-const walletService = require('../utils/walletService');
 
 // ✅ طلب صريح: مدد شراء قصيرة فقط (1/3/7 أيام) بدل المدد الطويلة السابقة (7/30/365 يوماً)
 const DURATION_DAYS_MAP = { '1': 'day1', '3': 'day3', '7': 'day7' };
@@ -118,27 +117,12 @@ exports.purchaseFrame = async (req, res) => {
         let hadExisting = false;
         try {
             await session.withTransaction(async () => {
-                // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): الخصم الذرّي (بونص أولاً ثم مدفوع) أولاً
-                // — رصيد غير كافٍ يجب ألا يصل لتعديل ownedFrames إطلاقاً. كلا الخطأين المحتملين
-                // (من القراءة أو من post() نفسها لو تغيّر الرصيد بين القراءة والتنفيذ تحت تضارب
-                // كتابة حقيقي) يُترجَمان معاً — راجع buildGiftWalletEntries بـgiftController.js
-                try {
-                    const { fromBonus, fromPaid } = await walletService.computeCoinSpendSplit(userId, price, session);
-                    const idemBase = new mongoose.Types.ObjectId();
-                    const entries = [];
-                    if (fromBonus > 0) entries.push({ user: userId, wallet: 'coins_bonus', delta: -fromBonus, type: 'frame_purchase', refType: 'ProfileFrame', refId: frame._id, idempotencyKey: `${idemBase}:bonus` });
-                    if (fromPaid > 0) entries.push({ user: userId, wallet: 'coins_paid', delta: -fromPaid, type: 'frame_purchase', refType: 'ProfileFrame', refId: frame._id, idempotencyKey: `${idemBase}:paid` });
-                    await walletService.post(entries, session);
-                } catch (err) {
-                    if (err.code === 'INSUFFICIENT_FUNDS') {
-                        throw Object.assign(new Error('رصيد الكوينز غير كافٍ'), { code: 'INSUFFICIENT' });
-                    }
-                    throw err;
-                }
-
                 const user = await User.findById(userId).session(session);
                 if (!user) {
                     throw Object.assign(new Error('يرجى تسجيل الدخول من جديد'), { code: 'USER_NOT_FOUND' });
+                }
+                if (user.coins < price) {
+                    throw Object.assign(new Error('رصيد الكوينز غير كافٍ'), { code: 'INSUFFICIENT' });
                 }
 
                 // ✅ طلب صريح: الإطار يبقى متاحاً للشراء دائماً حتى لو كان مملوكاً فعلاً — الشراء
@@ -146,6 +130,7 @@ exports.purchaseFrame = async (req, res) => {
                 // (تكديس/تمديد) بدل رفضه بخطأ "تمتلكه بالفعل"
                 const existing = user.ownedFrames.find(o => o.frame.toString() === frameId.toString());
                 hadExisting = !!existing;
+                user.coins -= price;
                 if (!existing) {
                     // ✅ الشراء وحده لا يبدأ عد الصلاحية — activatedAt وexpiresAt يبقيان null لحين التفعيل الفعلي
                     user.ownedFrames.push({
@@ -336,76 +321,43 @@ async function checkAndExpireActiveFrame(user, io = null) {
     }
 
     const expiredEntries = user.ownedFrames.filter(o => o.activatedAt && o.expiresAt && o.expiresAt < now);
-    const removeFrameIds = [];
-    const renewalCandidates = [];
     if (expiredEntries.length) {
         const frames = await ProfileFrame.find({ _id: { $in: expiredEntries.map(o => o.frame) } }).select('prices');
         const frameById = new Map(frames.map(f => [f._id.toString(), f]));
+        const removeFrameIds = [];
         for (const entry of expiredEntries) {
             const frame = frameById.get(entry.frame.toString());
             const durationKey = DURATION_KEY_BY_DAYS[entry.durationDays];
             const price = frame && durationKey ? frame.prices[durationKey] : null;
             const isActive = user.activeFrame && user.activeFrame.toString() === entry.frame.toString();
-            if (entry.autoRenew && price != null) {
-                renewalCandidates.push({ entry, price, isActive });
+            if (entry.autoRenew && price != null && user.coins >= price) {
+                user.coins -= price;
+                entry.expiresAt = new Date(entry.expiresAt.getTime() + entry.durationDays * 24 * 60 * 60 * 1000);
+                entry.seenInBox = false; // ✅ تجديد = "جديد" بالصندوق مجدداً، نفس إشارة الشراء
+                changed = true;
+                if (isActive) {
+                    user.activeFrameExpiresAt = entry.expiresAt;
+                    activeFrameRenewed = true;
+                }
             } else {
                 removeFrameIds.push(entry.frame.toString());
                 changed = true;
                 if (isActive) activeFrameRemoved = true;
             }
         }
-    }
-
-    // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): التجديد التلقائي خصم فعلي — يتطلب معاملة Mongo
-    // عبر walletService (لا user.coins -= مباشرة). رصيد غير كافٍ لحظة التنفيذ الفعلي (لا القراءة
-    // المخزَّنة بـuser فقط) يُعامَل كفاشل فيُحذف الإطار، تماماً كالسلوك الأصلي
-    const applyRenewals = async (session) => {
-        for (const { entry, price, isActive } of renewalCandidates) {
-            try {
-                const { fromBonus, fromPaid } = await walletService.computeCoinSpendSplit(user._id, price, session);
-                const idemBase = new mongoose.Types.ObjectId();
-                const walletEntries = [];
-                if (fromBonus > 0) walletEntries.push({ user: user._id, wallet: 'coins_bonus', delta: -fromBonus, type: 'frame_purchase', refType: 'ProfileFrame', refId: entry.frame, idempotencyKey: `${idemBase}:bonus` });
-                if (fromPaid > 0) walletEntries.push({ user: user._id, wallet: 'coins_paid', delta: -fromPaid, type: 'frame_purchase', refType: 'ProfileFrame', refId: entry.frame, idempotencyKey: `${idemBase}:paid` });
-                await walletService.post(walletEntries, session);
-            } catch (err) {
-                if (err.code !== 'INSUFFICIENT_FUNDS') throw err;
-                removeFrameIds.push(entry.frame.toString());
-                changed = true;
-                if (isActive) activeFrameRemoved = true;
-                continue;
-            }
-            entry.expiresAt = new Date(entry.expiresAt.getTime() + entry.durationDays * 24 * 60 * 60 * 1000);
-            entry.seenInBox = false; // ✅ تجديد = "جديد" بالصندوق مجدداً، نفس إشارة الشراء
-            changed = true;
-            if (isActive) {
-                user.activeFrameExpiresAt = entry.expiresAt;
-                activeFrameRenewed = true;
-            }
-        }
         if (removeFrameIds.length) {
             user.ownedFrames = user.ownedFrames.filter(o => !removeFrameIds.includes(o.frame.toString()));
         }
-        if (activeFrameRemoved) {
-            user.activeFrame = null;
-            user.activeFrameClass = null;
-            user.activeFrameExpiresAt = null;
-        }
-        if (changed) await user.save(session ? { session } : undefined);
-    };
+    }
 
-    if (renewalCandidates.length) {
-        const session = await mongoose.startSession();
-        try {
-            await session.withTransaction(() => applyRenewals(session));
-        } finally {
-            await session.endSession();
-        }
-    } else {
-        await applyRenewals(null);
+    if (activeFrameRemoved) {
+        user.activeFrame = null;
+        user.activeFrameClass = null;
+        user.activeFrameExpiresAt = null;
     }
 
     if (changed) {
+        await user.save();
         console.log(`[FRAME EXPIRE] Processed expired frame(s) for user ${user._id}`);
         if (io) {
             if (activeFrameRemoved) broadcastUserFrameChange(io, user._id, null);

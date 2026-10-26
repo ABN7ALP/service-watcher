@@ -14,11 +14,9 @@
 //     من مُنح فعلاً ولا تُكرِّر كوينزه، وتُكمل فقط من تبقّى.
 // =====================================================
 
-const mongoose = require('mongoose');
 const PkSeason = require('../models/PkSeason');
 const PkStanding = require('../models/PkStanding');
 const User = require('../models/User');
-const walletService = require('../utils/walletService');
 
 // ✅ مكافآت نهاية الموسم — كوينز حقيقية تُمنح وتعمل بالكامل فوراً (قرار مصمَّم: لا صورة إطار/
 // شارة جاهزة بعد خصيصاً لمراكز هذا الدوري، ومنح مرجع "قادم قريباً" ممنوع صراحة بـCLAUDE.md؛
@@ -54,36 +52,20 @@ async function grantSeasonRewards(season, io) {
         const tier = rank ? tierForRank(rank) : null;
         if (!tier || !standing.room || !standing.room.host) continue;
 
-        // 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1): الادّعاء الذرّي للصفّ + الإيداع عبر
-        // walletService معاً بمعاملة Mongo واحدة — يمنع أيضاً ثغرة كانت موجودة: تعطّل العملية
-        // بين الادّعاء (rewardGranted:true) والإيداع كان يُفقِد المكافأة نهائياً (الادّعاء نفسه
-        // يمنع إعادة محاولة الإيداع لاحقاً رغم عدم تنفيذه فعلياً)
-        const session = await mongoose.startSession();
-        let claimed = null;
-        let updatedHost = null;
-        try {
-            await session.withTransaction(async () => {
-                claimed = await PkStanding.findOneAndUpdate(
-                    { _id: standing._id, rewardGranted: false },
-                    { $set: { rewardGranted: true } },
-                    { session }
-                );
-                if (!claimed) return; // ✅ مُنح بالفعل بمحاولة سابقة أو من نسخة خادم أخرى بالتوازي
-                try {
-                    await walletService.post([{
-                        user: standing.room.host, wallet: 'coins_paid', delta: tier.coins, type: 'pk_reward',
-                        refType: 'PkStanding', refId: standing._id, idempotencyKey: `${standing._id}:pk_reward`
-                    }], session);
-                } catch (err) {
-                    if (err.code === 'INSUFFICIENT_FUNDS') return; // ✅ المضيف لم يعد موجوداً — تخطٍّ آمن
-                    throw err;
-                }
-                updatedHost = await User.findById(standing.room.host).select('socketId').session(session);
-            });
-        } finally {
-            await session.endSession();
-        }
-        if (!claimed || !updatedHost) continue;
+        // 🛡️ ادّعاء ذرّي لهذا الصفّ بعينه قبل أي منح كوينز — يمنع الاحتساب المضاعف لو أُعيد
+        // استدعاء هذه الدالة بعد فشل سابق (راجع التعليق أعلى الملف)
+        const claimed = await PkStanding.findOneAndUpdate(
+            { _id: standing._id, rewardGranted: false },
+            { $set: { rewardGranted: true } }
+        );
+        if (!claimed) continue; // ✅ مُنح بالفعل بمحاولة سابقة أو من نسخة خادم أخرى بالتوازي
+
+        const updatedHost = await User.findByIdAndUpdate(
+            standing.room.host,
+            { $inc: { coins: tier.coins } },
+            { new: true }
+        ).select('socketId');
+        if (!updatedHost) continue;
         grantedCount++;
 
         if (io && updatedHost.socketId) {

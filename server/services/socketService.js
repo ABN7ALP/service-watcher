@@ -15,10 +15,8 @@ const SystemSettings = require('../models/SystemSettings');
 // ✅ متجر أدوات معركة PK (قفاز/ضباب) يُعامِل القفاز "مثل الهدية حرفياً" (طلب صريح) — يستدعي
 // نفس خطّافات الهدية الحقيقية بدل تكرار منطق خصم/بث موازٍ؛ لا استدعاء عكسي من giftController
 // لهذا الملف فلا تسابق دائري بالتحميل (require)
-const { applyGiftToActiveBattle, applyGiftToRoomSupport, schedulePkScoreEmit, clearPkScoreThrottle, clearSeatDuelScoreThrottle, buildGiftWalletEntries } = require('../controllers/giftController');
+const { applyGiftToActiveBattle, applyGiftToRoomSupport, schedulePkScoreEmit, clearPkScoreThrottle, clearSeatDuelScoreThrottle } = require('../controllers/giftController');
 const { addExperience } = require('../utils/experienceManager'); // ✅✅✅ أضف هذا السطر هنا
-const walletService = require('../utils/walletService');
-const linkageService = require('../utils/linkageService');
 
 // =================================================
 // ✅ نظام CACHE محسّن مع TTL أقصر وتنظيف تلقائي
@@ -837,9 +835,6 @@ const verifySocketToken = async (socket, next) => {
             }
         }
         socket.user = currentUser;
-        require('../utils/linkageService').recordDeviceSession(currentUser._id, {
-            deviceId: socket.handshake.auth?.deviceId, ip: socket.handshake.address
-        });
         next();
     } catch (err) {
         return next(new Error('Authentication error'));
@@ -2314,83 +2309,43 @@ socket.on('refreshBlockData', async () => {
                 const now = new Date();
                 const expiresAt = new Date(now.getTime() + config.durationSeconds * 1000);
 
-                // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): حجز الرمية (ذرّي، شرط منع إعادة الرمي)
-                // + الخصم/الإيداع عبر walletService معاً بمعاملة Mongo واحدة — لا حاجة بعد الآن
-                // لتراجع تعويضي يدوي ($pull) لو فشل الخصم، المعاملة بأكملها تتراجع تلقائياً
-                const linked = item === 'glove' ? await linkageService.areLinked(socket.user._id, targetUserId) : false;
-                const session = await mongoose.startSession();
-                let updatedBattle = null;
-                let buyer = null;
-                let target = null;
-                let txError = null;
-                try {
-                    await session.withTransaction(async () => {
-                        updatedBattle = await RoomBattle.findOneAndUpdate(
-                            {
-                                _id: battleId,
-                                status: 'active',
-                                effects: { $not: { $elemMatch: { user: socket.user._id, expiresAt: { $gt: now } } } }
-                            },
-                            {
-                                $push: {
-                                    effects: { type: item, side, user: socket.user._id, username: socket.user.username, startedAt: now, expiresAt }
-                                }
-                            },
-                            { new: true, session }
-                        );
-                        if (!updatedBattle) {
-                            throw Object.assign(new Error('انتظر حتى تنتهي مهلة آخر أداة رميتها'), { code: 'THROTTLED' });
+                // ✅ تحديث ذرّي واحد: يتحقق من نشاط المعركة + عدم وجود رمية فعّالة لهذا المستخدم
+                // بعينه، ويُسجّل الرمية الجديدة — كل ذلك بعملية واحدة لا تتجزّأ (شرط منع إعادة الرمي)
+                const updatedBattle = await RoomBattle.findOneAndUpdate(
+                    {
+                        _id: battleId,
+                        status: 'active',
+                        effects: { $not: { $elemMatch: { user: socket.user._id, expiresAt: { $gt: now } } } }
+                    },
+                    {
+                        $push: {
+                            effects: { type: item, side, user: socket.user._id, username: socket.user.username, startedAt: now, expiresAt }
                         }
-
-                        const idemBase = new mongoose.Types.ObjectId();
-                        try {
-                            if (item === 'glove') {
-                                // ✅ "مثل الهدية حرفياً" (طلب صريح): بونص أولاً، تقسيم beans_w/beans_p
-                                // حسب مصدر التمويل، beans_p كاملة لو الحسابان مرتبطان — نفس منطق الهدية تماماً
-                                const entries = await buildGiftWalletEntries({
-                                    senderId: socket.user._id, receiverIds: [targetUserId], totalCost: config.price,
-                                    session, idemBase, linkedFlags: [linked]
-                                });
-                                await walletService.post(entries, session);
-                            } else {
-                                const { fromBonus, fromPaid } = await walletService.computeCoinSpendSplit(socket.user._id, config.price, session);
-                                const entries = [];
-                                if (fromBonus > 0) entries.push({ user: socket.user._id, wallet: 'coins_bonus', delta: -fromBonus, type: 'purchase', refType: 'RoomBattle', refId: idemBase, idempotencyKey: `${idemBase}:bonus` });
-                                if (fromPaid > 0) entries.push({ user: socket.user._id, wallet: 'coins_paid', delta: -fromPaid, type: 'purchase', refType: 'RoomBattle', refId: idemBase, idempotencyKey: `${idemBase}:paid` });
-                                await walletService.post(entries, session);
-                            }
-                        } catch (err) {
-                            if (err.code === 'INSUFFICIENT_FUNDS' || err.code === 'INSUFFICIENT') {
-                                throw Object.assign(new Error('رصيد الكوينز غير كافٍ'), { code: 'INSUFFICIENT' });
-                            }
-                            throw err;
-                        }
-
-                        buyer = await User.findById(socket.user._id).select('coins balance socketId').session(session);
-                        if (item === 'glove') {
-                            target = await User.findById(targetUserId).select('username profileImage socketId coins balance').session(session);
-                        }
-                    });
-                } catch (e) {
-                    txError = e;
-                } finally {
-                    await session.endSession();
+                    },
+                    { new: true }
+                );
+                if (!updatedBattle) {
+                    return socket.emit('pk-item-error', { message: 'انتظر حتى تنتهي مهلة آخر أداة رميتها' });
                 }
 
-                if (txError) {
-                    if (txError.code === 'THROTTLED' || txError.code === 'INSUFFICIENT') {
-                        return socket.emit('pk-item-error', { message: txError.message });
-                    }
-                    console.error('[PK BATTLE] Item throw error:', txError);
-                    return socket.emit('pk-item-error', { message: 'حدث خطأ، حاول مجدداً' });
+                // 🛡️ خصم ذرّي حقيقي من الكوينز — لو فشل (رصيد غير كافٍ)، نتراجع عن الرمية المُسجَّلة
+                // أعلاه فوراً كي لا يبقى تأثير نشط بلا سعر حقيقي دُفع
+                const buyer = await User.findOneAndUpdate(
+                    { _id: socket.user._id, coins: { $gte: config.price } },
+                    { $inc: { coins: -config.price } },
+                    { new: true }
+                );
+                if (!buyer) {
+                    await RoomBattle.updateOne({ _id: updatedBattle._id }, { $pull: { effects: { user: socket.user._id, startedAt: now } } });
+                    return socket.emit('pk-item-error', { message: 'رصيد الكوينز غير كافٍ' });
                 }
-
                 if (buyer.socketId) io.to(buyer.socketId).emit('balanceUpdate', { newBalance: buyer.balance, newCoins: buyer.coins });
 
                 if (item === 'glove') {
                     // ✅ "مثل الهدية حرفياً" (طلب صريح) — يستلم المستلم قيمتها الحقيقية كاملة (كوينز
                     // + نقاط دعم الغرفة)، وتُضاف لـ"الشريط" عبر نفس خطّاف الهدية الحقيقي الذي يُطبّق
                     // المضاعفة تلقائياً بما أن تأثير القفاز الآن فعّال لصفّه (سُجِّل أعلاه قبل هذا الاستدعاء تحديداً)
+                    const target = await User.findByIdAndUpdate(targetUserId, { $inc: { coins: config.price } }, { new: true }).select('username profileImage socketId');
                     if (target?.socketId) io.to(target.socketId).emit('balanceUpdate', { newBalance: target.balance, newCoins: target.coins });
                     try { await applyGiftToRoomSupport(io, roomId, config.price, buyer); } catch (e) { console.error('[PK ITEM] support error:', e); }
                     try { await applyGiftToActiveBattle(io, roomId, config.price, buyer); } catch (e) { console.error('[PK ITEM] battle score error:', e); }

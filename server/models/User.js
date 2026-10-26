@@ -25,18 +25,6 @@ const userSchema = new mongoose.Schema({
     profileImage: { type: String, default: 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg' },
     balance: { type: Number, default: 0 },
     coins: { type: Number, default: 0 },
-    // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): أرصدة مخزَّنة مؤقتاً (cache) يُحدِّثها walletService
-    // فقط، ذرّياً، مع كل قيد. المرجع الموثوق هو LedgerEntry نفسه (راجع مهمة المطابقة الليلية)؛
-    // هذي الحقول مجرد نسخة سريعة القراءة. coins/balance أعلاه تبقيان متزامنتين تلقائياً (coins =
-    // walletCoinsPaid+walletCoinsBonus، balance = walletUsdCents/100) كي تستمر كل واجهة العرض
-    // الحالية بالعمل بلا أي تعديل — لا واجهة محفظة جديدة بهذي المرحلة
-    walletCoinsPaid: { type: Number, default: 0 },
-    walletCoinsBonus: { type: Number, default: 0 },
-    walletBeansW: { type: Number, default: 0 },
-    walletBeansP: { type: Number, default: 0 },
-    walletUsdCents: { type: Number, default: 0 },
-    // ✅ علم استئناف تضخيم ×10 لكل مستخدم — يُضبَط بنفس معاملة قيود الافتتاح، يمنع إعادة فتح محفظة مُفتَّحة فعلاً
-    walletRedenominatedV1: { type: Boolean, default: false },
     level: { type: Number, default: 1 },
     experience: { type: Number, default: 0 },
          isAdmin: { type: Boolean, default: false },
@@ -229,11 +217,6 @@ userSchema.pre('save', function(next) {
     if (this.isModified('coins')) {
         // الكوينز أعداد صحيحة — نمنع أي كسور نهائياً
         this.coins = Math.max(0, Math.floor(Number(this.coins) || 0));
-    }
-    for (const field of ['walletCoinsPaid', 'walletCoinsBonus', 'walletBeansW', 'walletBeansP', 'walletUsdCents']) {
-        if (this.isModified(field)) {
-            this[field] = Math.max(0, Math.floor(Number(this[field]) || 0));
-        }
     }
     next();
 });

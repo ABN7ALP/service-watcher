@@ -1,8 +1,6 @@
 const mongoose = require('mongoose');
 
 const giftLogSchema = new mongoose.Schema({
-    // ✅ علم استئناف تضخيم ×10 لهذا المستند
-    redenominatedV1: { type: Boolean, default: false },
     sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     receiver: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     gift: { type: mongoose.Schema.Types.ObjectId, ref: 'Gift', required: true },

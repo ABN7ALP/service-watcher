@@ -25,15 +25,11 @@ jest.mock('../../utils/experienceManager', () => ({
     REQUIRED_XP_PER_LEVEL: 1500,
     GIFT_XP_SENDER_DIVISOR: 3
 }));
-// ✅ دفتر الأستاذ (feat/wallet-ledger-v1): الربط بين الحسابات (جهاز/IP/شام كاش) غير موضوع هذا
-// الاختبار إطلاقاً — يُموَّه دوماً false كي لا تلمس هذي الاختبارات DeviceSession/Withdrawal
-jest.mock('../../utils/linkageService', () => ({ areLinked: jest.fn().mockResolvedValue(false) }));
 
 const mongoose = require('mongoose');
 const User = require('../../models/User');
 const Gift = require('../../models/Gift');
 const GiftLog = require('../../models/GiftLog');
-const LedgerEntry = require('../../models/LedgerEntry');
 const { addGiftExperience } = require('../../utils/experienceManager');
 const giftController = require('../giftController');
 
@@ -48,17 +44,11 @@ function makeDb() {
     return { users: new Map(), gifts: new Map(), giftLogs: [] };
 }
 function seedUser(db, overrides) {
-    const { coins, ...rest } = overrides;
     const user = {
         _id: 'u_default', coins: 0, balance: 0, blockedUsers: [], blockedBy: [], isBot: false,
         username: 'User', profileImage: '', socketId: null, level: 1, experience: 0,
-        // ✅ دفتر الأستاذ: coins المُمرَّرة بالاختبارات القديمة تُعامَل كرصيد مدفوع بالكامل —
-        // كافٍ تماماً لاختبارات لا تهتم بتفريق بونص/مدفوع (موضوع walletService.test.js وحده)
-        walletCoinsPaid: coins !== undefined ? coins : 0, walletCoinsBonus: 0,
-        walletBeansW: 0, walletBeansP: 0, walletUsdCents: 0,
-        ...rest
+        ...overrides
     };
-    user.coins = user.walletCoinsPaid + user.walletCoinsBonus;
     db.users.set(user._id, user);
     return user;
 }
@@ -84,26 +74,11 @@ function wireMocks(db) {
     jest.spyOn(User, 'findOneAndUpdate').mockImplementation((filter, update) => {
         const row = db.users.get(String(filter._id));
         if (!row) return Promise.resolve(null);
-        // ✅ معمَّم على أي حقل محفظة (walletCoinsPaid/walletCoinsBonus/...) لا coins فقط —
-        // walletService.post يستهدف حقول المحفظة الجديدة مباشرة
-        for (const [field, cond] of Object.entries(filter)) {
-            if (field === '_id') continue;
-            if (cond && typeof cond.$gte === 'number' && (row[field] || 0) < cond.$gte) return Promise.resolve(null);
+        if (filter.coins && typeof filter.coins.$gte === 'number' && row.coins < filter.coins.$gte) {
+            return Promise.resolve(null); // ✅ الشرط فشل — لا أي كتابة إطلاقاً
         }
-        if (update.$inc) for (const k of Object.keys(update.$inc)) row[k] = (row[k] || 0) + update.$inc[k];
-        if (update.$set) Object.assign(row, update.$set);
+        if (update.$inc && typeof update.$inc.coins === 'number') row.coins += update.$inc.coins;
         return Promise.resolve({ ...row });
-    });
-    jest.spyOn(User, 'updateOne').mockImplementation((filter, update) => {
-        const row = db.users.get(String(filter._id));
-        if (!row) return Promise.resolve({ matchedCount: 0 });
-        if (update.$set) Object.assign(row, update.$set);
-        return Promise.resolve({ matchedCount: 1 });
-    });
-    jest.spyOn(LedgerEntry, 'findOne').mockImplementation(() => chainable(null));
-    jest.spyOn(LedgerEntry, 'create').mockImplementation((docs) => {
-        const arr = Array.isArray(docs) ? docs : [docs];
-        return Promise.resolve(arr.map((d, i) => ({ ...d, _id: `ledger_${i}_${Date.now()}_${Math.random()}` })));
     });
     jest.spyOn(Gift, 'findById').mockImplementation((id) => chainable(db.gifts.get(String(id)) || null));
     jest.spyOn(GiftLog, 'create').mockImplementation((docs) => {

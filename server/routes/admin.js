@@ -19,17 +19,6 @@ const systemHealthCheckLimiter = rateLimit({
     message: { success: false, message: 'تم تنفيذ فحص مؤخراً. يرجى الانتظار قبل إعادة المحاولة.' }
 });
 
-// 🛡️ "فحص الآن" (صحة المحفظة): نفس منطق systemHealthCheckLimiter بالضبط — الفحص يمرّ على كل
-// مستخدم بالقاعدة فيُكلِّف نسبياً، لا داعٍ لتشغيله بالتوازي من أكثر من مشرف بنفس اللحظة
-const walletHealthCheckLimiter = rateLimit({
-    windowMs: 5 * 60 * 1000,
-    max: 1,
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: () => 'wallet-health-manual-check',
-    message: { success: false, message: 'تم تنفيذ فحص مؤخراً. يرجى الانتظار قبل إعادة المحاولة.' }
-});
-
 router.use(adminAuth);
 
 router.get('/dashboard', adminController.getDashboardStats);
@@ -87,8 +76,6 @@ router.get('/client-errors', adminController.getClientErrors);
 router.get('/client-compat', adminController.getClientCompatStats);
 router.get('/system-health', adminController.getSystemHealth);
 router.post('/system-health/check-now', systemHealthCheckLimiter, adminController.runSystemHealthCheckNow);
-router.get('/wallet-health', adminController.getWalletHealth);
-router.post('/wallet-health/check-now', walletHealthCheckLimiter, adminController.runWalletHealthCheckNow);
 
 router.get('/settings', adminController.getSystemSettings);
 router.post('/settings', adminController.updateSystemSettings);

@@ -1,12 +1,3 @@
-// ✅ معرّف جهاز ثابت (كشف الحسابات المرتبطة — feat/wallet-ledger-v1)، لا بيانات شخصية
-function getOrCreateDeviceId() {
-    try {
-        let id = localStorage.getItem('deviceId');
-        if (!id) { id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`; localStorage.setItem('deviceId', id); }
-        return id;
-    } catch (_) { return null; }
-}
-
 document.addEventListener('DOMContentLoaded', () => {
     const registerForm = document.getElementById('registerForm');
     const registerBtn = document.getElementById('registerBtn');
@@ -23,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const response = await fetch('/api/auth/register', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Device-Id': getOrCreateDeviceId() || '' },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data),
             });
 

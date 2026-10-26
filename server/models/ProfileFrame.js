@@ -3,8 +3,6 @@ const fs = require('fs');
 const path = require('path');
 
 const profileFrameSchema = new mongoose.Schema({
-    // ✅ علم استئناف تضخيم ×10 لهذا المستند
-    redenominatedV1: { type: Boolean, default: false },
     name: { type: String, required: true, unique: true },
     cssClass: { type: String, required: true }, // كلاس CSS ثابت معرف بملف الأنماط
     previewImage: String,

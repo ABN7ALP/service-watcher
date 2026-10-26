@@ -1,8 +1,7 @@
 // ملف: experienceManager.giftXp.test.js
-// 🛡️ طلب صريح (هدايا v2): "Sender XP = floor(totalCoins / 30)" — بلا سقف أقصى (كان
+// 🛡️ طلب صريح (هدايا v2): "Sender XP = floor(totalCoins / 3)" — بلا سقف أقصى (كان
 // GIFT_XP_MAX_PER_TRANSACTION=500 يُطبَّق على المُرسِل أيضاً سابقاً، بالإضافة لـMath.round
-// بدل floor). قاعدة المستقبِل (القسمة على 60 + السقف 500) تبقى كما كانت تماماً — لم تتغيّر.
-// (القاسمان 3→30 و6→60: إعادة تسمية ×10 — feat/wallet-ledger-v1 — راجع experienceManager.js)
+// بدل floor). قاعدة المستقبِل (القسمة على 6 + السقف 500) تبقى كما كانت تماماً — لم تتغيّر.
 //
 // نفس استراتيجية هذا المشروع الثابتة: jest.spyOn على نموذج User الحقيقي بدل قاعدة بيانات
 // حقيقية أو محاكاتها بـmongodb-memory-server (راجع jest.config.js — تنزيل ثنائي mongod قد
@@ -40,10 +39,10 @@ describe('addGiftExperience — خبرة المُرسِل بلا سقف أقصى
         const user = makeUserDoc();
         jest.spyOn(User, 'findById').mockResolvedValue(user);
 
-        const coinsSpent = 1314000; // هدية "التنين" الأسطورية × كمية كبيرة (×10 بعد إعادة التسمية)
+        const coinsSpent = 131400; // هدية "التنين" الأسطورية × كمية كبيرة (مثال واقعي من النموذج)
         await addGiftExperience(makeIo(), 'u1', coinsSpent, 'sender');
 
-        const expectedRawXp = Math.floor(coinsSpent / 30); // 43800 — أكبر بكثير من السقف القديم 500
+        const expectedRawXp = Math.floor(coinsSpent / 3); // 43800 — أكبر بكثير من السقف القديم 500
         // ✅ قد يرتفع المستوى عدة مرات أثناء المنح (requiredXp=level*1500) — نعيد حساب experience/level
         // المتوقعين يدوياً هنا بنفس حلقة grantGiftXp بالضبط، كي يبقى التحقق حقيقياً لا تقديرياً
         let level = 1, xp = expectedRawXp;
@@ -53,22 +52,22 @@ describe('addGiftExperience — خبرة المُرسِل بلا سقف أقصى
         expect(expectedRawXp).toBeGreaterThan(500); // ✅ يثبت فعلياً أن هذا المبلغ كان سيُحَدّ سابقاً
     });
 
-    test('floor لا round: مبلغ يقع تماماً بين درجتَي تقريب (coinsSpent=110 ⇒ 110/30=3.666)', async () => {
+    test('floor لا round: مبلغ يقع تماماً بين درجتَي تقريب (coinsSpent=11 ⇒ 11/3=3.666)', async () => {
         const user = makeUserDoc();
         jest.spyOn(User, 'findById').mockResolvedValue(user);
 
-        await addGiftExperience(makeIo(), 'u1', 110, 'sender');
+        await addGiftExperience(makeIo(), 'u1', 11, 'sender');
 
         expect(user.experience).toBe(3); // floor(3.666)=3 — لو كانت round لكانت 4
     });
 
-    test('قاعدة المستقبِل لم تتغيّر: القسمة على 60 + Math.round + سقف 500 كما كانت تماماً', async () => {
+    test('قاعدة المستقبِل لم تتغيّر: القسمة على 6 + Math.round + سقف 500 كما كانت تماماً', async () => {
         const user = makeUserDoc();
         jest.spyOn(User, 'findById').mockResolvedValue(user);
 
-        await addGiftExperience(makeIo(), 'u1', 1314000, 'receiver');
+        await addGiftExperience(makeIo(), 'u1', 131400, 'receiver');
 
-        // round(1314000/60)=21900، لكن السقف 500 يبقى سارياً للمستقبِل (لم يُحذف إلا للمُرسِل)
+        // round(131400/6)=21900، لكن السقف 500 يبقى سارياً للمستقبِل (لم يُحذف إلا للمُرسِل)
         let level = 1, xp = 500;
         while (xp >= level * 1500) { xp -= level * 1500; level++; }
         expect(user.level).toBe(level);
