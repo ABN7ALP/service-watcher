@@ -361,12 +361,15 @@ voiceRoomSchema.methods.checkBackgroundExpiry = async function () {
 // خيار توسيع المقاعد تدريجياً. عدّل الأرقام هنا فقط لإعادة موازنة الاقتصاد لاحقاً بلا أي
 // تغيير بأي مكان آخر بالكود — كل شيء يقرأ من هذا الجدول وحده
 // =====================================================
+// 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1 — إعادة تسمية ×10): minPoints ×10 بالضبط بالتزامن
+// مع تضخيم كل أسعار الكوينز ×10 (supportPoints المُخزَّنة تُضخَّم بنفس المعامل بالترحيل) — لا
+// طفرة مستوى غرفة لأي غرفة حالية
 voiceRoomSchema.statics.LEVEL_THRESHOLDS = [
     { level: 1, minPoints: 0 },
-    { level: 2, minPoints: 1000 },
-    { level: 3, minPoints: 5000 },   // 🔓 يفتح خيار 13 مقعداً
-    { level: 4, minPoints: 15000 },
-    { level: 5, minPoints: 40000 },  // 🔓 يفتح خيار 19 مقعداً
+    { level: 2, minPoints: 10000 },
+    { level: 3, minPoints: 50000 },   // 🔓 يفتح خيار 13 مقعداً
+    { level: 4, minPoints: 150000 },
+    { level: 5, minPoints: 400000 },  // 🔓 يفتح خيار 19 مقعداً
 ];
 
 voiceRoomSchema.statics.computeLevelForPoints = function (points) {

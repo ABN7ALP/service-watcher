@@ -771,7 +771,9 @@ exports.sendOneTimeMessage = async (req, res) => {
     try {
         const senderId = req.user.id;
         const { receiverId, content, payExtra } = req.body;
-        const EXTRA_MESSAGE_COST = 50;
+        // 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1 — إعادة تسمية ×10): ×10 بالضبط بالتزامن مع
+        // تضخيم كل أسعار الكوينز ×10 — نفس القيمة الحقيقية بالدولار بالضبط
+        const EXTRA_MESSAGE_COST = 500;
 
         if (!receiverId || !content) {
             return res.status(400).json({ status: 'fail', message: 'بيانات ناقصة' });

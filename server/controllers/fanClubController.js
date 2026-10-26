@@ -16,7 +16,9 @@ const { computeFanLevelInfo } = require('../utils/fanClubLevels');
 const walletService = require('../utils/walletService');
 const linkageService = require('../utils/linkageService');
 
-const JOIN_PRICE = 1; // ✅ سعر ثابت للانضمام الصريح — منفصل تماماً عن سعر الوردة الحقيقي بمتجر الهدايا العام
+// 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1 — إعادة تسمية ×10): ×10 بالضبط بالتزامن مع تضخيم
+// كل أسعار الكوينز ×10 — نفس القيمة الحقيقية بالدولار بالضبط
+const JOIN_PRICE = 10; // ✅ سعر ثابت للانضمام الصريح — منفصل تماماً عن سعر الوردة الحقيقي بمتجر الهدايا العام
 
 // ✅ قائمة الألوان المغلقة المشتركة بين شعار النادي وهدية الانضمام — نفس القيم المسموحة
 // بـUser.fanClub.emblemColorId/giftColorId (enum). الوردة/الشعار نفسهما دوماً؛ اللون فقط

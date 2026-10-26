@@ -143,13 +143,15 @@ async function getKickedUsersSnapshot(room) {
 // ✅ كتالوج خلفيات الغرفة — خلفية مجانية دائمة + خلفيات مدفوعة (10 كوينز / 5 أيام)
 // =====================================================
 const FREE_DEFAULT_BACKGROUND = 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790798203/voice_room_background.png';
+// 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1 — إعادة تسمية ×10): كل سعر ×10 بالضبط بالتزامن مع
+// تضخيم كل أسعار الكوينز ×10 — نفس القيمة الحقيقية بالدولار بالضبط
 const PREMIUM_BACKGROUNDS = [
-    { id: 'bg_galaxy', url: 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=800&q=60', price: 10 },
-    { id: 'bg_neon', url: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?w=800&q=60', price: 10 },
-    { id: 'bg_gold', url: 'https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=800&q=60', price: 10 },
-    { id: 'bg_ocean', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=60', price: 10 },
-    { id: 'bg_desert', url: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?w=800&q=60', price: 10 },
-    { id: 'bg_forest', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=60', price: 10 }
+    { id: 'bg_galaxy', url: 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=800&q=60', price: 100 },
+    { id: 'bg_neon', url: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?w=800&q=60', price: 100 },
+    { id: 'bg_gold', url: 'https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=800&q=60', price: 100 },
+    { id: 'bg_ocean', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=60', price: 100 },
+    { id: 'bg_desert', url: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?w=800&q=60', price: 100 },
+    { id: 'bg_forest', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=60', price: 100 }
 ];
 const BACKGROUND_DAYS = 5;
 
