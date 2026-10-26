@@ -75,3 +75,14 @@ Use Context7 (say "use context7") only when a change depends on a library's vers
 - **Every money-moving path must be atomic.** Any write that changes coins, balance, points, likes, or any other value with real or in-game worth — and any write that claims a pending request (approve/reject a deposit, withdrawal, purchase, gift, etc.) — must use either a single atomic conditional update (`findOneAndUpdate` with a condition on the current state, e.g. `{status:'pending'}` or `{coins:{$gte:price}}`) or a Mongo transaction (`session.withTransaction`) when more than one document moves together. A plain read-check-then-separately-write (`doc.field += x; await doc.save()` after an earlier `if (doc.status !== ...)`) is not acceptable for a money-moving path, full stop.
 - **Every money-moving path needs a regression test that proves the race is closed** — not just a happy-path test. Fire two (or more) concurrent requests at the same resource and assert exactly one succeeds and the value ends up correct, the same way `server/controllers/__tests__/adminController.moneyRaceAtomicity.test.js` does. If real MongoDB transaction semantics (write-conflict + automatic retry) matter to the proof — not just a `$gte` condition — simulate that specifically (see `frameController.race.test.js`), not just the query mock.
 - Follow the standing testing convention for this repo: `jest.spyOn()` on real Mongoose model statics backed by an in-memory simulation, not `mongodb-memory-server` inside Jest — it hangs indefinitely in this environment when combined with any module that has a live `setInterval` (e.g. `socketService.js`). A standalone Node script that spawns the real server as a child process (see `scripts/load-gift-combo.js`) is the fallback when a mock genuinely can't prove the fix.
+
+---
+
+## ✂️ Lean changes
+
+Standing, permanent — applies to every future PR against this repo.
+
+- **Make the smallest change that fully solves the task.** Do not refactor, rename, or restyle code you were not asked to touch.
+- **Comments:** at most one short line, and only when the WHY is not obvious from the code. Never write review history, PR rounds, or "طلب صريح" stories in code; that belongs in the PR description.
+- **No new files unless necessary.** One-off verification scripts and screenshots stay out of the repo unless the reviewer asks.
+- **Every PR description starts with a size line:** `Code: +X/-Y lines in N files · Tests: +Z · Docs/assets: +W`. If code is over 150 lines, explain why it could not be smaller.
