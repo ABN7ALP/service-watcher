@@ -19,7 +19,7 @@ const walletService = require('../utils/walletService');
 // منه فقط هو المؤهَّل للتحويل لدولار — راجع التعليق أعلى الملف لسبب عدم وجود عدّاد/مؤشر مبسَّط
 // TODO(scale): تُحمَّل كل قيود beans_w لهذا المستخدم من البداية بكل استدعاء — عند نمو حجم
 // القاعدة ضع لقطات (snapshots) دورية للطابور المُستهلَك بدل إعادة بنائه من الصفر كل مرة
-async function getEligibleBeansWForUsd(userId, holdHours, session) {
+async function buildBeansWQueue(userId, session) {
     const entries = await LedgerEntry.find({ user: userId, wallet: 'beans_w' })
         .sort({ createdAt: 1, _id: 1 })
         .session(session)
@@ -43,13 +43,35 @@ async function getEligibleBeansWForUsd(userId, holdHours, session) {
             }
         }
     }
+    return queue;
+}
 
+async function getEligibleBeansWForUsd(userId, holdHours, session) {
+    const queue = await buildBeansWQueue(userId, session);
     const cutoff = Date.now() - holdHours * 60 * 60 * 1000;
     let eligible = 0;
     for (const entry of queue) {
         if (entry.createdAt.getTime() <= cutoff) eligible += entry.amount;
     }
     return eligible;
+}
+
+// ✅ مراجعة UX الشحن/الاستبدال v2 (بند 2): تفصيل لعرض الواجهة فقط — المؤهَّل الآن للسحب
+// النقدي، والمتبقي قيد فترة الأمان (مع أقرب موعد تحرّر)، من نفس طابور buildBeansWQueue
+async function getBeansWBreakdown(userId, holdHours, session) {
+    const queue = await buildBeansWQueue(userId, session);
+    const cutoff = Date.now() - holdHours * 60 * 60 * 1000;
+    let eligible = 0, pending = 0, nextEligibleAt = null;
+    for (const entry of queue) {
+        if (entry.createdAt.getTime() <= cutoff) {
+            eligible += entry.amount;
+        } else {
+            pending += entry.amount;
+            const releaseAt = new Date(entry.createdAt.getTime() + holdHours * 60 * 60 * 1000);
+            if (!nextEligibleAt || releaseAt < nextEligibleAt) nextEligibleAt = releaseAt;
+        }
+    }
+    return { eligible, pending, nextEligibleAt };
 }
 
 // ✅ مراجعة ما قبل الدمج v2 (البند 3): عرض الإطلاق (payoutLaunchPct) يُطبَّق فقط بين
@@ -75,7 +97,7 @@ exports.getRedeemableGifts = async (req, res) => {
         const user = await User.findById(userId).select('walletBeansW walletBeansP level');
         const coinsIfRedeemed = user.walletBeansW + user.walletBeansP;
 
-        const eligibleForUsd = await getEligibleBeansWForUsd(userId, settings.beanHoldHours, null);
+        const { eligible: eligibleForUsd, pending: pendingForUsd, nextEligibleAt } = await getBeansWBreakdown(userId, settings.beanHoldHours, null);
         const ratePercent = currentPayoutRatePercent(settings, user.level);
         const usdIfRedeemed = (eligibleForUsd * ratePercent) / 100 / settings.coinsPerUsd;
 
@@ -92,6 +114,13 @@ exports.getRedeemableGifts = async (req, res) => {
                 usdIfRedeemed: parseFloat(usdIfRedeemed.toFixed(2)),
                 coinsIfRedeemed,
                 redemptionRatePercent: ratePercent,
+                // ✅ مراجعة UX v2 (بند 2): تفصيل البينز للواجهة — قابل للتحويل الآن / قيد فترة
+                // الأمان (+ أقرب موعد تحرّر) / للاستخدام داخل التطبيق فقط (beans_p)
+                beanHoldHours: settings.beanHoldHours,
+                beansWEligible: eligibleForUsd,
+                beansWPending: pendingForUsd,
+                beansWNextEligibleAt: nextEligibleAt,
+                beansP: user.walletBeansP,
                 history
             }
         });
@@ -190,4 +219,5 @@ exports.redeemGifts = async (req, res) => {
 
 // ✅ مُصدَّرة للاختبار المباشر (منطق صِرف — راجع server/utils/__tests__)
 exports.getEligibleBeansWForUsd = getEligibleBeansWForUsd;
+exports.getBeansWBreakdown = getBeansWBreakdown;
 exports.currentPayoutRatePercent = currentPayoutRatePercent;

@@ -6921,34 +6921,36 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 @media (min-width: 768px) { .gsheet { border-radius: 22px; } }
 .gsheet-grab { width: 36px; height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.16); margin: 0 auto 8px; }
 
-/* 1) صف المستلمين — room-ux-v2 (تطابق docs/design/room-ux-prototype.html::.rrow/.rc بالحرف):
-   38px ثابتة، شارة رقم المقعد/👑 أعلى الصورة، الاسم تحتها، "الكل" كرقاقة ثابتة بنهاية الصف */
-.gsheet-to { display: flex; align-items: center; gap: 8px; height: 58px; }
+/* 1) صف المستلمين — مراجعة UX v2 (بند 4-ب): أصغر من room-ux-v2 الأصلية (38px) — 30px ثابتة،
+   شارة رقم المقعد/👑 أصغر أعلى الصورة، الاسم تحتها، "الكل" رقاقة أصغر بنهاية الصف. بلا أي
+   إطار بروفايل (plain avatar فقط — avatarHTML تُستدعى هنا بلا frameClass عمداً)، والارتفاع
+   المُحرَّر (58px→44px) يذهب لشبكة الهدايا (راجع .gsheet-cell aspect-ratio أدناه) */
+.gsheet-to { display: flex; align-items: center; gap: 8px; height: 44px; }
 .gsheet-to-label { font-size: 12px; color: var(--g-muted); flex: none; }
-.gsheet-recips { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; flex: 1; align-items: center; padding: 4px 2px; }
+.gsheet-recips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; flex: 1; align-items: center; padding: 4px 2px; }
 .gsheet-recips::-webkit-scrollbar { display: none; }
 .gsheet-rc {
-    flex: none; width: 44px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    flex: none; width: 36px; display: flex; flex-direction: column; align-items: center; gap: 2px;
     background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0;
 }
-.gsheet-rc-wrap { position: relative; width: 38px; height: 38px; flex: none; }
+.gsheet-rc-wrap { position: relative; width: 30px; height: 30px; flex: none; }
 .gsheet-rc-wrap .avatar { box-shadow: 0 0 0 2px rgba(255,255,255,0.12); border-radius: 50%; }
 .gsheet-rc[aria-pressed="true"] .gsheet-rc-wrap .avatar { box-shadow: 0 0 0 2.5px var(--g-gold); }
 .gsheet-rc[aria-pressed="true"] .gsheet-rc-wrap::after {
-    content: "✓"; position: absolute; bottom: -2px; inset-inline-end: -2px; width: 15px; height: 15px;
-    border-radius: 50%; background: var(--g-gold); color: #3a2300; font-size: 9px; font-weight: 900;
-    display: flex; align-items: center; justify-content: center; border: 2px solid #1d1629;
+    content: "✓"; position: absolute; bottom: -2px; inset-inline-end: -2px; width: 12px; height: 12px;
+    border-radius: 50%; background: var(--g-gold); color: #3a2300; font-size: 7.5px; font-weight: 900;
+    display: flex; align-items: center; justify-content: center; border: 1.5px solid #1d1629;
 }
 .gsheet-rc-sn {
-    position: absolute; top: -3px; inset-inline-start: -3px; min-width: 15px; height: 15px; border-radius: 8px;
-    background: rgba(0,0,0,0.85); color: #fff; font-size: 9px; font-weight: 800; display: flex;
-    align-items: center; justify-content: center; padding: 0 3px; border: 1px solid rgba(255,255,255,0.2); z-index: 3;
+    position: absolute; top: -2px; inset-inline-start: -2px; min-width: 12px; height: 12px; border-radius: 7px;
+    background: rgba(0,0,0,0.85); color: #fff; font-size: 7.5px; font-weight: 800; display: flex;
+    align-items: center; justify-content: center; padding: 0 2px; border: 1px solid rgba(255,255,255,0.2); z-index: 3;
 }
-.gsheet-rc-crown { background: transparent; border: 0; font-size: 13px; top: -8px; }
-.gsheet-rc-name { font-size: 9.5px; max-width: 44px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #d8d0e8; }
+.gsheet-rc-crown { background: transparent; border: 0; font-size: 11px; top: -6px; }
+.gsheet-rc-name { font-size: 9px; max-width: 36px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #d8d0e8; }
 .gsheet-allbtn {
-    flex: none; height: 30px; border-radius: 999px; border: 1px solid var(--g-line); background: rgba(255, 255, 255, 0.05);
-    color: var(--g-fg); font-size: 11.5px; font-weight: 800; padding: 0 12px; cursor: pointer;
+    flex: none; height: 24px; border-radius: 999px; border: 1px solid var(--g-line); background: rgba(255, 255, 255, 0.05);
+    color: var(--g-fg); font-size: 10.5px; font-weight: 800; padding: 0 10px; cursor: pointer;
 }
 .gsheet-allbtn[aria-pressed="true"] { background: var(--g-gold); color: #3a2300; border-color: var(--g-gold); }
 
@@ -6980,7 +6982,10 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 .gsheet-pages::-webkit-scrollbar { display: none; }
 .gsheet-pg { flex: 0 0 100%; scroll-snap-align: start; display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, auto); gap: 6px; padding: 0 12px; }
 .gsheet-cell {
-    aspect-ratio: 1 / 1.16; border-radius: 14px; border: 1.5px solid transparent; background: none; color: inherit;
+    /* ✅ مراجعة UX v2 (بند 4-ب): نسبة أطول قليلاً (1.16→1.27) — تستهلك الارتفاع المُحرَّر من
+       تصغير صف المستلمين والشريط السفلي أدناه، فتكبر بلاطات الهدايا دون تغيير الارتفاع
+       الإجمالي الثابت للشيت (لا تمرير عمودي، كما بتعليق .gsheet أعلى الملف) */
+    aspect-ratio: 1 / 1.27; border-radius: 14px; border: 1.5px solid transparent; background: none; color: inherit;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; cursor: pointer;
     position: relative; padding: 4px; font: inherit;
 }
@@ -7003,16 +7008,23 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 .gsheet-dots i { width: 5px; height: 5px; border-radius: 50%; background: rgba(255, 255, 255, 0.16); display: inline-block; }
 .gsheet-dots i.on { background: var(--g-fg); width: 12px; border-radius: 3px; }
 
-/* 5) الشريط السفلي — 48px */
-.gsheet-bar { display: flex; align-items: center; gap: 8px; height: 48px; margin-top: 4px; }
+/* 5) الشريط السفلي — مراجعة UX v2 (بند 4-ج): أخفّ وأنحف — 44px (كان 48px)، الكمية/الإرسال
+   34px (كان 38px) */
+.gsheet-bar { display: flex; align-items: center; gap: 8px; height: 44px; margin-top: 4px; }
 .gsheet-bal { display: flex; align-items: center; gap: 4px; font-family: var(--f-num); font-weight: 800; font-size: 14px; flex: 1; min-width: 0; }
-.gsheet-recharge { font-size: 11.5px; font-weight: 800; color: var(--g-gold); background: rgba(255, 207, 90, 0.1); border: 0; border-radius: 999px; padding: 3px 9px; cursor: pointer; margin-inline-start: 4px; }
+/* ✅ مراجعة UX v2 (بند 4-أ): زر "+" دائري صغير يستبدل "شحن ›" النصّي (كان بلا أي مستمع نقر
+   إطلاقاً — راجع #gsheet-recharge-btn بـshowRoomGiftModal) */
+.gsheet-recharge-fab {
+    width: 22px; height: 22px; flex: none; border-radius: 50%; border: 0; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; margin-inline-start: 4px;
+    background: var(--g-gold); color: #3a2300; font-size: 11px;
+}
 .gsheet-qty { position: relative; }
-.gsheet-qbtn { height: 38px; min-width: 64px; border-radius: 0 999px 999px 0; border: 1px solid rgba(255, 79, 163, 0.4); border-inline-start: 0; background: rgba(255, 79, 163, 0.1); color: var(--g-fg); font-family: var(--f-num); font-weight: 800; font-size: 14px; cursor: pointer; padding: 0 10px; direction: ltr; }
-.gsheet-send { height: 38px; min-width: 84px; border-radius: 999px 0 0 999px; border: 0; background: linear-gradient(90deg, #ff4fa3, #ff7a59); color: #fff; font-weight: 900; font-size: 14px; cursor: pointer; box-shadow: 0 4px 16px rgba(255, 79, 163, 0.33); }
+.gsheet-qbtn { height: 34px; min-width: 58px; border-radius: 0 999px 999px 0; border: 1px solid rgba(255, 79, 163, 0.4); border-inline-start: 0; background: rgba(255, 79, 163, 0.1); color: var(--g-fg); font-family: var(--f-num); font-weight: 800; font-size: 13px; cursor: pointer; padding: 0 8px; direction: ltr; }
+.gsheet-send { height: 34px; min-width: 76px; border-radius: 999px 0 0 999px; border: 0; background: linear-gradient(90deg, #ff4fa3, #ff7a59); color: #fff; font-weight: 900; font-size: 13px; cursor: pointer; box-shadow: 0 4px 16px rgba(255, 79, 163, 0.33); }
 .gsheet-send:disabled { opacity: 0.45; cursor: not-allowed; }
 .gsheet-qmenu {
-    position: absolute; bottom: 46px; inset-inline-end: 0; background: #221a31; border: 1px solid var(--g-line);
+    position: absolute; bottom: 40px; inset-inline-end: 0; background: #221a31; border: 1px solid var(--g-line);
     border-radius: 14px; padding: 6px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; width: 170px;
     z-index: 3; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
 }

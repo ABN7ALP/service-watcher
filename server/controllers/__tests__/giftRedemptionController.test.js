@@ -13,7 +13,7 @@ const LedgerEntry = require('../../models/LedgerEntry');
 const GiftRedemption = require('../../models/GiftRedemption');
 const SystemSettings = require('../../models/SystemSettings');
 const {
-    redeemGifts, getRedeemableGifts, getEligibleBeansWForUsd, currentPayoutRatePercent
+    redeemGifts, getRedeemableGifts, getEligibleBeansWForUsd, getBeansWBreakdown, currentPayoutRatePercent
 } = require('../giftRedemptionController');
 
 function chainable(value) {
@@ -181,6 +181,88 @@ describe('getEligibleBeansWForUsd — طابور FIFO محاسبي', () => {
         seedLedger(db, { wallet: 'beans_w', delta: 200, ageHours: 10 }); // غير مؤهَّلة
         wireMocks(db);
         expect(await getEligibleBeansWForUsd('u1', 72, null)).toBe(400);
+    });
+});
+
+describe('getBeansWBreakdown — تفصيل الواجهة (مؤهَّل/قيد الانتظار/أقرب تحرّر)', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('مزيج قديم/حديث: eligible من القديم، pending من الحديث، nextEligibleAt = وقت استلام الحديث + holdHours', async () => {
+        const db = makeDb();
+        seedLedger(db, { wallet: 'beans_w', delta: 400, ageHours: 100 });
+        const pendingEntryAgeHours = 10;
+        seedLedger(db, { wallet: 'beans_w', delta: 200, ageHours: pendingEntryAgeHours });
+        wireMocks(db);
+
+        const { eligible, pending, nextEligibleAt } = await getBeansWBreakdown('u1', 72, null);
+        expect(eligible).toBe(400);
+        expect(pending).toBe(200);
+        const expectedReleaseInHours = 72 - pendingEntryAgeHours;
+        const actualReleaseInHours = (nextEligibleAt.getTime() - Date.now()) / (60 * 60 * 1000);
+        expect(actualReleaseInHours).toBeCloseTo(expectedReleaseInHours, 1);
+    });
+
+    test('كل الرصيد مؤهَّل بالفعل: pending=0 وnextEligibleAt=null', async () => {
+        const db = makeDb();
+        seedLedger(db, { wallet: 'beans_w', delta: 500, ageHours: 100 });
+        wireMocks(db);
+
+        const { eligible, pending, nextEligibleAt } = await getBeansWBreakdown('u1', 72, null);
+        expect(eligible).toBe(500);
+        expect(pending).toBe(0);
+        expect(nextEligibleAt).toBeNull();
+    });
+
+    test('بلا أي رصيد beans_w إطلاقاً: الكل أصفار', async () => {
+        const db = makeDb();
+        wireMocks(db);
+        const { eligible, pending, nextEligibleAt } = await getBeansWBreakdown('u1', 72, null);
+        expect(eligible).toBe(0);
+        expect(pending).toBe(0);
+        expect(nextEligibleAt).toBeNull();
+    });
+});
+
+describe('getRedeemableGifts — تفصيل البينز بالملخّص (مراجعة UX v2 — بند 2)', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('يُرجع beansWEligible/beansWPending/beansP منفصلة — سيناريو "بعد ترحيل تصفير الحساب" (الكل beans_p)', async () => {
+        const db = makeDb();
+        // ✅ يحاكي بالضبط الحالة التي أبلغ عنها المالك: بعد ترحيل البداية النظيفة، كل الرصيد
+        // بات beans_p (لا beans_w إطلاقاً) — زر الدولار يجب أن يكون معطَّلاً بسبب واضح، لا معلّقاً بصمت
+        seedUser(db, { walletBeansW: 0, walletBeansP: 2000, level: 1 });
+        wireMocks(db);
+        jest.spyOn(SystemSettings, 'getSettings').mockResolvedValue(defaultSettings());
+
+        const req = mockReq();
+        const res = mockRes();
+        await getRedeemableGifts(req, res);
+
+        const data = res.json.mock.calls[0][0].data;
+        expect(data.beansWEligible).toBe(0);
+        expect(data.beansWPending).toBe(0);
+        expect(data.beansP).toBe(2000);
+        expect(data.usdIfRedeemed).toBe(0);
+        expect(data.coinsIfRedeemed).toBe(2000); // ✅ تحويل الكوينز يبقى متاحاً رغم عدم وجود دولار مؤهَّل
+    });
+
+    test('مزيج مؤهَّل + قيد انتظار: كلاهما منفصل بالاستجابة مع beanHoldHours', async () => {
+        const db = makeDb();
+        seedUser(db, { walletBeansW: 700, walletBeansP: 100, level: 1 });
+        seedLedger(db, { wallet: 'beans_w', delta: 500, ageHours: 100 });
+        seedLedger(db, { wallet: 'beans_w', delta: 200, ageHours: 5 });
+        wireMocks(db);
+        jest.spyOn(SystemSettings, 'getSettings').mockResolvedValue(defaultSettings({ beanHoldHours: 72 }));
+
+        const req = mockReq();
+        const res = mockRes();
+        await getRedeemableGifts(req, res);
+
+        const data = res.json.mock.calls[0][0].data;
+        expect(data.beansWEligible).toBe(500);
+        expect(data.beansWPending).toBe(200);
+        expect(data.beanHoldHours).toBe(72);
+        expect(data.beansWNextEligibleAt).not.toBeNull();
     });
 });
 
