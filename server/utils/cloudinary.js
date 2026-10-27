@@ -387,6 +387,21 @@ const uploadReceiptImage = (fileBuffer) => {
     });
 };
 
+// ✅ صور شرح "أين أجد رقم العملية؟" (لوحة الإدارة — شحن الكوينزات) — نفس middleware الإيصال
+// (receiptUpload) بالضبط، مجلّد Cloudinary مختلف فقط
+const uploadShamCashHelpImage = (fileBuffer) => {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            { folder: 'sham_cash_help', resource_type: 'image' },
+            (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+            }
+        );
+        uploadStream.end(fileBuffer);
+    });
+};
+
 // 12.5. دالة لرفع أغاني مكتبة الغرفة الصوتية (بدون سقف الـ15 ثانية الخاص برسائل الدردشة الصوتية)
 const uploadRoomMusic = (fileBuffer) => {
     return new Promise((resolve, reject) => {
@@ -435,6 +450,7 @@ module.exports = {
     deleteChatMedia,          // دالة حذف وسائط الدردشة
     uploadReceiptImage,        // دالة رفع صورة إشعار التحويل
     receiptUpload,             // لإيصال تحويل الشحن (middleware — صور فقط، 5MB)
+    uploadShamCashHelpImage,   // دالة رفع صور شرح "أين أجد رقم العملية؟"
     deleteFromCloudinary,     // دالة حذف عامة
         getPublicIdFromUrl,   // دالة استخراج publicId
     detectRealFileType,       //  كشف النوع الحقيقي من البايتات

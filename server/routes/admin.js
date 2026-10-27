@@ -7,7 +7,7 @@ const router = express.Router();
 const adminAuth = require('../middleware/adminAuth');
 const adminController = require('../controllers/adminController');
 const depositIntentController = require('../controllers/depositIntentController');
-const { frameAssetUpload } = require('../utils/cloudinary');
+const { frameAssetUpload, receiptUpload } = require('../utils/cloudinary');
 const { financialLimiter } = require('../middleware/globalMiddleware');
 
 // 🛡️ "فحص الآن" (صحة النظام): مفتاح ثابت وليس هوية الأدمن — الحد مرة كل 5 دقائق إجمالاً
@@ -98,5 +98,6 @@ router.post('/wallet-health/check-now', walletHealthCheckLimiter, adminControlle
 
 router.get('/settings', adminController.getSystemSettings);
 router.post('/settings', adminController.updateSystemSettings);
+router.post('/settings/sham-cash-help-image/:slot', receiptUpload, adminController.uploadShamCashHelpImage);
 
 module.exports = router;

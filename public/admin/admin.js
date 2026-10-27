@@ -669,8 +669,11 @@ class AdminDashboard {
                                 <div class="d-flex align-items-center gap-1 justify-content-end">المرجع: <b>${escapeHtml(it.refCode)}</b>
                                     <button type="button" class="btn btn-sm btn-link p-0 copy-chip" data-copy="${escapeHtml(it.refCode)}" title="نسخ"><i class="fas fa-copy"></i></button>
                                 </div>
-                                ${it.txnNo ? `<div class="d-flex align-items-center gap-1 justify-content-end">رقم العملية: <b>${escapeHtml(it.txnNo)}</b>
+                                ${it.txnNo ? `<div class="d-flex align-items-center gap-1 justify-content-end">رقم العملية: <b style="font-size:1.05rem">${escapeHtml(it.txnNo)}</b>
                                     <button type="button" class="btn btn-sm btn-link p-0 copy-chip" data-copy="${escapeHtml(it.txnNo)}" title="نسخ"><i class="fas fa-copy"></i></button>
+                                </div>` : ''}
+                                ${it.senderName ? `<div class="d-flex align-items-center gap-1 justify-content-end">المرسل في شام كاش: <b>${escapeHtml(it.senderName)}</b>
+                                    <button type="button" class="btn btn-sm btn-link p-0 copy-chip" data-copy="${escapeHtml(it.senderName)}" title="نسخ"><i class="fas fa-copy"></i></button>
                                 </div>` : ''}
                             </div>
                         </div>
@@ -689,6 +692,7 @@ class AdminDashboard {
                         ${(it.riskFlags || []).length ? `<div class="d-flex flex-wrap gap-1 mb-2">${it.riskFlags.map(riskChip).join('')}</div>` : ''}
 
                         ${it.status === 'submitted' ? `
+                            <div class="text-warning mb-2" style="font-size:0.76rem"><i class="fas fa-triangle-exclamation"></i> طابِق رقم العملية والمبلغ واسم المرسل في تطبيق شام كاش قبل القبول</div>
                             <div class="d-flex gap-2">
                                 <button type="button" class="btn btn-success flex-fill" data-approve="${it._id}"><i class="fas fa-check"></i> قبول</button>
                                 <button type="button" class="btn btn-danger flex-fill" data-reject="${it._id}"><i class="fas fa-times"></i> رفض</button>
@@ -1910,11 +1914,35 @@ class AdminDashboard {
                         <div class="form-group"><label>رقم المحفظة</label><input type="text" class="form-control" id="s-shamWallet" value="${escapeHtml(s.shamCashWallet)}"></div>
                         <div class="form-group"><label>اسم صاحب الحساب</label><input type="text" class="form-control" id="s-shamHolder" value="${escapeHtml(s.shamCashHolderName)}"></div>
                         <div class="form-group"><label>رابط صورة QR</label><input type="text" class="form-control" id="s-shamQr" value="${escapeHtml(s.shamCashQrUrl)}"></div>
+                        <div class="form-group">
+                            <label><input type="checkbox" id="s-depositCentsEnabled" ${s.depositUniqueCentsEnabled !== false ? 'checked' : ''}> السنتات الفريدة هي آلية المطابقة الرئيسية (الافتراضي)</label>
+                            <small class="text-muted d-block">عند التعطيل: المبلغ الدقيق = مبلغ الباقة بالضبط (أرقام صحيحة فقط)، والمطابقة تعتمد على رقم العملية (+ اسم المرسل الاختياري) بدل السنتات.</small>
+                        </div>
                     </div>
                     <div class="col-md-6">
                         <h6 class="mb-3"><i class="fas fa-credit-card text-primary"></i> بطاقة فيزا</h6>
                         <div class="form-group"><label>رقم البطاقة</label><input type="text" class="form-control" id="s-visaNumber" value="${escapeHtml(s.visaCardNumber)}"></div>
                         <div class="form-group"><label>اسم صاحب البطاقة</label><input type="text" class="form-control" id="s-visaHolder" value="${escapeHtml(s.visaHolderName)}"></div>
+                    </div>
+                </div>
+                <hr>
+                <h6 class="mb-3"><i class="fas fa-circle-question text-info"></i> صور مساعدة "أين أجد رقم العملية؟"</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>صورة 1 — قائمة التحويلات</label>
+                            ${s.shamCashHelpImage1 ? `<img src="${escapeHtml(s.shamCashHelpImage1)}" class="d-block mb-2" style="max-width:160px;border-radius:8px;border:1px solid var(--admin-border)">` : ''}
+                            <input type="file" class="form-control" id="s-shamHelpImg1File" accept="image/*">
+                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="s-shamHelpImg1Btn"><i class="fas fa-upload"></i> رفع</button>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>صورة 2 — إشعار التحويل</label>
+                            ${s.shamCashHelpImage2 ? `<img src="${escapeHtml(s.shamCashHelpImage2)}" class="d-block mb-2" style="max-width:160px;border-radius:8px;border:1px solid var(--admin-border)">` : ''}
+                            <input type="file" class="form-control" id="s-shamHelpImg2File" accept="image/*">
+                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="s-shamHelpImg2Btn"><i class="fas fa-upload"></i> رفع</button>
+                        </div>
                     </div>
                 </div>
                 <hr>
@@ -1947,6 +1975,7 @@ class AdminDashboard {
                     shamCashWallet: document.getElementById('s-shamWallet').value.trim(),
                     shamCashHolderName: document.getElementById('s-shamHolder').value.trim(),
                     shamCashQrUrl: document.getElementById('s-shamQr').value.trim(),
+                    depositUniqueCentsEnabled: document.getElementById('s-depositCentsEnabled').checked,
                     visaCardNumber: document.getElementById('s-visaNumber').value.trim(),
                     visaHolderName: document.getElementById('s-visaHolder').value.trim(),
                     maintenanceMode: document.getElementById('s-maintenance').checked,
@@ -1975,6 +2004,23 @@ class AdminDashboard {
                     await this.api('POST', '/settings', payload);
                     this.showToast('تم حفظ الإعدادات بنجاح', 'success');
                 } catch (error) { this.showToast(error.message, 'error'); }
+            });
+
+            // ✅ صور مساعدة "أين أجد رقم العملية؟" — رفع صورة فقط (middleware بايتات حقيقية
+            // مطابق لرفع الإيصالات)، منفصل عن حفظ باقي الإعدادات JSON
+            [1, 2].forEach(slot => {
+                document.getElementById(`s-shamHelpImg${slot}Btn`)?.addEventListener('click', async () => {
+                    const fileInput = document.getElementById(`s-shamHelpImg${slot}File`);
+                    const file = fileInput.files[0];
+                    if (!file) { this.showToast('اختر صورة أولاً', 'error'); return; }
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    try {
+                        await this.apiUpload('POST', `/settings/sham-cash-help-image/${slot}`, formData);
+                        this.showToast('تم رفع الصورة بنجاح', 'success');
+                        this.loadSettings();
+                    } catch (error) { this.showToast(error.message, 'error'); }
+                });
             });
         } catch (error) { this.showToast(error.message, 'error'); }
     }

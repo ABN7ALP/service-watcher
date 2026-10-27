@@ -103,6 +103,15 @@ const systemSettingsSchema = new mongoose.Schema({
     firstRechargeEnabled: { type: Boolean, default: true },
     firstRechargeMultiplierUpToUsd: { type: Number, default: 5 },
     firstRechargeOfferHours: { type: Number, default: 24 },
+    // 🛡️ مراجعة PR (لقطات شام كاش حقيقية — البند A، صُحِّح لاحقاً: شام كاش يقبل الكسور فعلياً) —
+    // السنتات الفريدة تبقى آلية المطابقة الأساسية (افتراضي true)؛ إيقافها متاح للإدارة فقط لو
+    // لزم لاحقاً. "اسم المرسل" (senderName) اختياري دوماً بصرف النظر عن هذا الإعداد — يساعد
+    // المطابقة اليدوية بلوحة الإدارة، لا يُستبدَل به
+    depositUniqueCentsEnabled: { type: Boolean, default: true },
+    // ✅ صورتا شرح "أين أجد رقم العملية؟" (قائمة التحويلات + الإشعار) — رفع فعلي من لوحة الإدارة
+    // (راجع server/routes/admin.js: /settings/sham-cash-help-image/:slot)، لا رابط نصّي يُكتَب يدوياً
+    shamCashHelpImage1: { type: String, default: '' },
+    shamCashHelpImage2: { type: String, default: '' },
 
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
