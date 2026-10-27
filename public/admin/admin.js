@@ -163,7 +163,7 @@ class AdminDashboard {
         }
 
         document.getElementById('depositsStatusFilter')?.addEventListener('change', () => this.loadDeposits(1));
-        document.getElementById('coinPurchasesStatusFilter')?.addEventListener('change', () => this.loadCoinPurchases(1));
+        document.getElementById('depositIntentsStatusFilter')?.addEventListener('change', () => this.loadDepositIntents(1));
         document.getElementById('withdrawalStatusFilter')?.addEventListener('change', () => this.loadWithdrawals());
         document.getElementById('customGiftsStatusFilter')?.addEventListener('change', () => this.loadCustomGifts());
         document.getElementById('reportsStatusFilter')?.addEventListener('change', () => this.loadReports());
@@ -233,7 +233,7 @@ class AdminDashboard {
             dashboard: () => this.loadDashboard(),
             users: () => this.loadUsers(),
             deposits: () => this.loadDeposits(1),
-            coinpurchases: () => this.loadCoinPurchases(1),
+            depositintents: () => this.loadDepositIntents(1),
             withdrawals: () => this.loadWithdrawals(),
             transactions: () => this.loadTransactions(1),
             gifts: () => this.loadGifts(),
@@ -299,7 +299,7 @@ class AdminDashboard {
         if (!el) return;
         const items = [
             { count: stats.pendingDeposits, label: 'طلب شحن رصيد بانتظار المراجعة', icon: 'fa-file-invoice-dollar', page: 'deposits' },
-            { count: stats.pendingCoinPurchases, label: 'طلب شراء كوينز بانتظار المراجعة', icon: 'fa-coins', page: 'coinpurchases' },
+            { count: stats.pendingDepositIntents, label: 'طلب شحن كوينز بانتظار المراجعة', icon: 'fa-coins', page: 'depositintents' },
             { count: stats.pendingWithdrawals, label: 'طلب سحب بانتظار المراجعة', icon: 'fa-money-bill-wave', page: 'withdrawals' },
             { count: stats.pendingReports, label: 'بلاغ بانتظار المراجعة', icon: 'fa-flag', page: 'reports' }
         ].filter(i => i.count > 0);
@@ -614,47 +614,108 @@ class AdminDashboard {
         } catch (error) { this.showToast(error.message, 'error'); }
     }
 
-    // ================= Coin Purchases =================
-    async loadCoinPurchases(page = 1) {
-        const status = document.getElementById('coinPurchasesStatusFilter')?.value || 'pending_review';
+    // ================= Deposit Intents (شحن الكوينزات عبر شام كاش) =================
+    async loadDepositIntents(page = 1) {
+        const status = document.getElementById('depositIntentsStatusFilter')?.value || 'submitted';
+        // ✅ مراجعة PR (بند 1): same_ip إشارة رمادية محايدة فقط (CGNAT) — لا تحمل نفس وزن
+        // linked_accounts/duplicate_receipt_hash (ربط فعلي حقيقي)
+        const RISK_META = {
+            account_under_7_days: { label: 'حساب أصغر من 7 أيام', cls: 'bg-warning text-dark' },
+            linked_accounts: { label: 'حسابات مرتبطة (جهاز/محفظة)', cls: 'bg-danger' },
+            duplicate_receipt_hash: { label: 'إيصال مكرَّر', cls: 'bg-danger' }
+        };
+        const riskChip = (flag) => {
+            if (RISK_META[flag]) return `<span class="badge ${RISK_META[flag].cls}">${RISK_META[flag].label}</span>`;
+            if (flag.startsWith('previous_rejections:')) return `<span class="badge bg-warning text-dark">رفض سابق ×${flag.split(':')[1]}</span>`;
+            if (flag.startsWith('same_ip:')) return `<span class="badge bg-secondary">نفس IP مع ${flag.split(':')[1]} حساب</span>`;
+            return `<span class="badge bg-secondary">${escapeHtml(flag)}</span>`;
+        };
+        const DEFAULT_AVATAR = 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+        // ✅ لا صور معطوبة إطلاقاً: onerror يبدّل لصورة افتراضية مرة واحدة فقط (onerror=null يمنع حلقة)
+        const avatarHTML = (url, size = 42) => `<img src="${escapeHtml(url || DEFAULT_AVATAR)}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex:none" onerror="this.onerror=null;this.src='${DEFAULT_AVATAR}'">`;
+        const BONUS_LABELS = { package: 'بونص الباقة', method: 'بونص شام كاش', first_recharge: 'مضاعفة أول شحنة' };
+        const fmtCoins = (n) => (n || 0).toLocaleString('en-US');
+
         try {
-            const data = await this.api('GET', `/coin-purchases?status=${status}&page=${page}`);
-            const c = document.getElementById('coinPurchasesListContainer');
-            if (!data.purchases.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-inbox fa-2x"></i><p>لا توجد طلبات</p></div>'; this.renderPagination('coinPurchasesPagination', 0, 1, () => {}); return; }
+            const data = await this.api('GET', `/deposit-intents?status=${status}&page=${page}`);
+            const c = document.getElementById('depositIntentsListContainer');
+            if (!data.intents.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-inbox fa-2x"></i><p>لا توجد طلبات</p></div>'; this.renderPagination('depositIntentsPagination', 0, 1, () => {}); return; }
 
-            c.innerHTML = data.purchases.map(p => `
-                <div class="top-user-item" style="align-items:flex-start;">
-                    <img src="${p.user?.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="top-user-avatar">
-                    <div class="top-user-info" style="flex:2">
-                        <div class="username">${escapeHtml(p.user?.username || 'مستخدم محذوف')}</div>
-                        <div style="font-size:0.85rem;color:#7f8c8d;">${p.amountUSD}$ → ${p.coinsAmount} كوينز | ${p.method === 'sham_cash' ? 'شام كاش' : 'فيزا'} | ${formatDate(p.createdAt)}
-                        ${p.receiptImage ? `<br><a href="${p.receiptImage}" target="_blank">عرض الإيصال <i class="fas fa-external-link-alt"></i></a>` : ''}
+            const statusLabel = { awaiting_payment: 'بانتظار الدفع', submitted: 'قيد المراجعة', approved: 'مقبول', rejected: 'مرفوض', expired: 'منتهي' };
+            const statusClass = { approved: 'status-completed', rejected: 'status-banned', expired: 'status-banned', awaiting_payment: 'status-pending' };
+
+            c.innerHTML = data.intents.map(it => {
+                const exact = ((it.exactAmountCents || 0) / 100).toFixed(2);
+                const finalTotal = it.status === 'approved' && it.creditedCoins != null ? it.creditedCoins : it.totalCoinsSnapshot;
+                const creditedDiffers = it.status === 'approved' && it.creditedCoins != null && it.creditedCoins !== it.totalCoinsSnapshot;
+                return `
+                <div class="card mb-3">
+                    <div class="card-body p-3">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            ${avatarHTML(it.user?.profileImage)}
+                            <div class="flex-grow-1" style="min-width:0">
+                                <div class="fw-bold text-truncate">${escapeHtml(it.user?.username || 'مستخدم محذوف')}</div>
+                                <div class="text-muted" style="font-size:0.78rem">${formatDate(it.createdAt)}</div>
+                            </div>
+                            ${it.status !== 'submitted' ? `<span class="status-badge ${statusClass[it.status] || ''}">${statusLabel[it.status] || it.status}</span>` : ''}
                         </div>
+
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                            <div>
+                                <div class="fw-bold" style="font-size:1.4rem;color:var(--admin-primary)">$${exact}</div>
+                                <div class="text-muted" style="font-size:0.78rem">أصل الطلب: $${it.amountUsd}</div>
+                            </div>
+                            <div style="font-size:0.82rem">
+                                <div class="d-flex align-items-center gap-1 justify-content-end">المرجع: <b>${escapeHtml(it.refCode)}</b>
+                                    <button type="button" class="btn btn-sm btn-link p-0 copy-chip" data-copy="${escapeHtml(it.refCode)}" title="نسخ"><i class="fas fa-copy"></i></button>
+                                </div>
+                                ${it.txnNo ? `<div class="d-flex align-items-center gap-1 justify-content-end">رقم العملية: <b>${escapeHtml(it.txnNo)}</b>
+                                    <button type="button" class="btn btn-sm btn-link p-0 copy-chip" data-copy="${escapeHtml(it.txnNo)}" title="نسخ"><i class="fas fa-copy"></i></button>
+                                </div>` : ''}
+                            </div>
+                        </div>
+
+                        <div class="bg-light rounded p-2 mb-2" style="font-size:0.82rem">
+                            <div class="d-flex justify-content-between"><span>الأساس</span><b>${fmtCoins(it.baseCoins)} 🪙</b></div>
+                            ${(it.bonusLines || []).map(b => `<div class="d-flex justify-content-between text-success"><span>${BONUS_LABELS[b.type] || b.type}</span><b>+${fmtCoins(b.coins)}</b></div>`).join('')}
+                            <div class="d-flex justify-content-between border-top pt-1 mt-1 fw-bold"><span>${it.status === 'approved' ? 'أُودِع فعلياً' : 'الإجمالي'}</span><span>${fmtCoins(finalTotal)} 🪙</span></div>
+                            ${creditedDiffers ? `<div class="text-warning" style="font-size:0.74rem">* يقل عن اللقطة الأصلية (${fmtCoins(it.totalCoinsSnapshot)}) — بند أول شحنة أُسقِط وقت الموافقة</div>` : ''}
+                        </div>
+
+                        ${it.receiptImage
+                            ? `<a href="${it.receiptImage}" target="_blank" class="d-inline-block mb-2"><img src="${it.receiptImage}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--admin-border)" alt="الإيصال"></a>`
+                            : `<div class="text-muted mb-2" style="font-size:0.78rem"><i class="far fa-image"></i> لا يوجد إيصال مرفق</div>`}
+
+                        ${(it.riskFlags || []).length ? `<div class="d-flex flex-wrap gap-1 mb-2">${it.riskFlags.map(riskChip).join('')}</div>` : ''}
+
+                        ${it.status === 'submitted' ? `
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-success flex-fill" data-approve="${it._id}"><i class="fas fa-check"></i> قبول</button>
+                                <button type="button" class="btn btn-danger flex-fill" data-reject="${it._id}"><i class="fas fa-times"></i> رفض</button>
+                            </div>
+                        ` : ''}
                     </div>
-                    ${p.status === 'pending_review' ? `
-                        <div style="display:flex; gap:6px;">
-                            <button class="btn-action btn-view" data-approve="${p._id}" title="قبول"><i class="fas fa-check"></i></button>
-                            <button class="btn-action btn-delete" data-reject="${p._id}" title="رفض"><i class="fas fa-times"></i></button>
-                        </div>
-                    ` : `<span class="status-badge ${p.status === 'approved' ? 'status-completed' : 'status-banned'}">${p.status === 'approved' ? 'مقبول' : p.status === 'rejected' ? 'مرفوض' : 'بانتظار الدفع'}</span>`}
                 </div>
-            `).join('');
+            `; }).join('');
 
+            c.querySelectorAll('.copy-chip').forEach(btn => btn.addEventListener('click', () =>
+                navigator.clipboard.writeText(btn.dataset.copy).then(() => this.showToast('تم النسخ', 'success'))
+            ));
             c.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', () =>
                 this.confirmAction('تأكيد الموافقة وإيداع الكوينز؟', async () => {
-                    await this.api('POST', `/coin-purchases/${btn.dataset.approve}/approve`);
-                    this.showToast('تمت الموافقة', 'success'); this.loadCoinPurchases(page);
+                    await this.api('POST', `/deposit-intents/${btn.dataset.approve}/approve`);
+                    this.showToast('تمت الموافقة', 'success'); this.loadDepositIntents(page);
                 }, false)
             ));
             c.querySelectorAll('[data-reject]').forEach(btn => btn.addEventListener('click', () => {
-                this.promptModal('رفض طلب الشراء', 'سبب الرفض...', (reason) => {
-                    this.api('POST', `/coin-purchases/${btn.dataset.reject}/reject`, { reason })
-                        .then(() => { this.showToast('تم الرفض', 'success'); this.loadCoinPurchases(page); })
+                this.promptModal('رفض طلب الشحن', 'سبب الرفض...', (reason) => {
+                    this.api('POST', `/deposit-intents/${btn.dataset.reject}/reject`, { reason })
+                        .then(() => { this.showToast('تم الرفض', 'success'); this.loadDepositIntents(page); })
                         .catch(e => this.showToast(e.message, 'error'));
                 }, { confirmText: 'رفض', danger: true });
             }));
 
-            this.renderPagination('coinPurchasesPagination', data.totalPages, data.currentPage, (p) => this.loadCoinPurchases(p));
+            this.renderPagination('depositIntentsPagination', data.totalPages, data.currentPage, (p) => this.loadDepositIntents(p));
         } catch (error) { this.showToast(error.message, 'error'); }
     }
 
@@ -1779,6 +1840,27 @@ class AdminDashboard {
                     </div>
                 </div>
                 <hr>
+                <h6 class="mb-3"><i class="fas fa-wallet" style="color:#ffcf5a"></i> شحن الكوينزات عبر شام كاش (العروض)</h6>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group"><label>الحد الأقصى لكل طلب شحن ($)</label><input type="number" class="form-control" id="s-maxDeposit" value="${s.maxDepositUsd}"></div>
+                        <div class="form-group"><label>الحد الأقصى للطلبات المفتوحة لكل مستخدم</label><input type="number" class="form-control" id="s-maxOpenIntents" value="${s.maxOpenDepositIntentsPerUser}"></div>
+                        <div class="form-group"><label>الحد اليومي للشحن لكل مستخدم ($)</label><input type="number" class="form-control" id="s-dailyDepositCap" value="${s.dailyDepositCapUsd}"></div>
+                        <div class="form-group"><label>صلاحية طلب الشحن (دقائق)</label><input type="number" class="form-control" id="s-depositExpiry" value="${s.depositIntentExpiryMinutes}"></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group"><label>بونص شام كاش %</label><input type="number" class="form-control" id="s-shamBonusPct" value="${s.shamCashBonusPct}"></div>
+                        <div class="form-group"><label><input type="checkbox" id="s-firstRechargeEnabled" ${s.firstRechargeEnabled ? 'checked' : ''}> تفعيل عرض أول شحنة</label></div>
+                        <div class="form-group"><label>مضاعفة أول شحنة حتى ($)</label><input type="number" class="form-control" id="s-firstRechargeMax" value="${s.firstRechargeMultiplierUpToUsd}"></div>
+                        <div class="form-group"><label>مدة عرض أول شحنة (ساعات من أول زيارة)</label><input type="number" class="form-control" id="s-firstRechargeHours" value="${s.firstRechargeOfferHours}"></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group"><label>باقات الشحن (JSON: [{"usd":10,"bonusPct":10,"hot":true}])</label>
+                            <textarea class="form-control" id="s-depositPackages" rows="6">${escapeHtml(JSON.stringify((s.depositPackages || []).map(p => ({ usd: p.usd, bonusPct: p.bonusPct, hot: !!p.hot })), null, 2))}</textarea>
+                        </div>
+                    </div>
+                </div>
+                <hr>
                 <h6 class="mb-3"><i class="fas fa-exchange-alt text-pink-400"></i> استبدال هدايا المستقبِل</h6>
                 <div class="row">
                     <div class="col-md-6">
@@ -1868,8 +1950,27 @@ class AdminDashboard {
                     visaCardNumber: document.getElementById('s-visaNumber').value.trim(),
                     visaHolderName: document.getElementById('s-visaHolder').value.trim(),
                     maintenanceMode: document.getElementById('s-maintenance').checked,
-                    maintenanceMessage: document.getElementById('s-maintenanceMsg').value.trim()
+                    maintenanceMessage: document.getElementById('s-maintenanceMsg').value.trim(),
+                    maxDepositUsd: parseFloat(document.getElementById('s-maxDeposit').value),
+                    maxOpenDepositIntentsPerUser: parseInt(document.getElementById('s-maxOpenIntents').value),
+                    dailyDepositCapUsd: parseFloat(document.getElementById('s-dailyDepositCap').value),
+                    depositIntentExpiryMinutes: parseInt(document.getElementById('s-depositExpiry').value),
+                    shamCashBonusPct: parseFloat(document.getElementById('s-shamBonusPct').value),
+                    firstRechargeEnabled: document.getElementById('s-firstRechargeEnabled').checked,
+                    firstRechargeMultiplierUpToUsd: parseFloat(document.getElementById('s-firstRechargeMax').value),
+                    firstRechargeOfferHours: parseFloat(document.getElementById('s-firstRechargeHours').value)
                 };
+                try {
+                    const depositPackagesRaw = document.getElementById('s-depositPackages').value.trim();
+                    if (depositPackagesRaw) {
+                        const parsed = JSON.parse(depositPackagesRaw);
+                        if (!Array.isArray(parsed)) throw new Error('باقات الشحن يجب أن تكون مصفوفة JSON');
+                        payload.depositPackages = parsed;
+                    }
+                } catch (e) {
+                    this.showToast('صيغة باقات الشحن غير صالحة (JSON): ' + e.message, 'error');
+                    return;
+                }
                 try {
                     await this.api('POST', '/settings', payload);
                     this.showToast('تم حفظ الإعدادات بنجاح', 'success');

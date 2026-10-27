@@ -14,7 +14,7 @@ const walletService = require('../utils/walletService');
 exports.getDashboardStats = async (req, res) => {
   try {
     const GiftLog = require('../models/GiftLog');
-    const CoinPurchase = require('../models/CoinPurchase');
+    const DepositIntent = require('../models/DepositIntent');
     const ChatReport = require('../models/ChatReport');
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -49,7 +49,7 @@ exports.getDashboardStats = async (req, res) => {
         { $unwind: '$u' },
         { $project: { _id: '$u._id', username: '$u.username', profileImage: '$u.profileImage', totalGifted: '$total' } }
       ]),
-      CoinPurchase.countDocuments({ status: 'pending_review' }),                  // 8
+      DepositIntent.countDocuments({ status: 'submitted' }),                      // 8
       ChatReport.countDocuments({ status: 'pending' }),                           // 9
       User.countDocuments({ isBanned: true })                                     // 10
     ]);
@@ -69,7 +69,7 @@ exports.getDashboardStats = async (req, res) => {
         pendingDeposits: val(3, 0),
         pendingWithdrawals: val(4, 0),
         todayTransactions: val(5, 0),
-        pendingCoinPurchases: val(8, 0),
+        pendingDepositIntents: val(8, 0),
         pendingReports: val(9, 0),
         bannedUsers: val(10, 0)
       },
@@ -873,7 +873,10 @@ exports.updateSystemSettings = async (req, res) => {
       'customGiftDesignFeeCoins', 'customGiftSendPriceCoins',
       // 🛡️ مراجعة ما قبل الدمج v2 (البند 3): توقيت عرض الإطلاق — يُضبَط يدوياً من هنا فقط،
       // لا تلقائياً عند الإقلاع (راجع currentPayoutRatePercent)
-      'payoutLaunchPct', 'payoutLaunchStartsAt', 'payoutLaunchEndsAt', 'payoutBasePct', 'payoutHighPct', 'highHostLevel'
+      'payoutLaunchPct', 'payoutLaunchStartsAt', 'payoutLaunchEndsAt', 'payoutBasePct', 'payoutHighPct', 'highHostLevel',
+      // ✅ شحن الكوينزات عبر شام كاش (feat/wallet-recharge-v1) — راجع depositIntentController.js
+      'maxDepositUsd', 'maxOpenDepositIntentsPerUser', 'dailyDepositCapUsd', 'depositIntentExpiryMinutes',
+      'depositPackages', 'shamCashBonusPct', 'firstRechargeEnabled', 'firstRechargeMultiplierUpToUsd', 'firstRechargeOfferHours'
     ];
     const updates = {};
     for (const field of allowedFields) {
@@ -1105,126 +1108,6 @@ exports.getDeposits = async (req, res) => {
 
     const total = await Transaction.countDocuments(query);
     res.json({ success: true, deposits, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// =====================================================
-// ✅ طلبات شراء الكوينزات (CoinPurchase)
-// =====================================================
-exports.getCoinPurchases = async (req, res) => {
-  try {
-    const CoinPurchase = require('../models/CoinPurchase');
-    const { status = 'pending_review', page = 1, limit = 50 } = req.query;
-    const query = {};
-    if (status !== 'all') query.status = status;
-
-    const purchases = await CoinPurchase.find(query)
-      .populate('user', 'username profileImage customId')
-      .sort('-createdAt')
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
-
-    const total = await CoinPurchase.countDocuments(query);
-    res.json({ success: true, purchases, totalPages: Math.ceil(total / limit), currentPage: parseInt(page) });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-exports.approveCoinPurchase = async (req, res) => {
-  try {
-    const CoinPurchase = require('../models/CoinPurchase');
-    const { purchaseId } = req.params;
-    const { admin } = req;
-
-    // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #6 — نفس العلّة بالضبط): حجز ذرّي
-    // واحد (findOneAndUpdate بشرط status:'pending_review') + إيداع الكوينز بنفس المعاملة —
-    // لا فرصة لإيداع مزدوج من موافقتين متزامنتين على نفس الطلب
-    const session = await mongoose.startSession();
-    let purchase = null;
-    let user = null;
-    try {
-      await session.withTransaction(async () => {
-        purchase = await CoinPurchase.findOneAndUpdate(
-          { _id: purchaseId, status: 'pending_review' },
-          { $set: { status: 'approved', processedBy: admin._id, processedAt: new Date() } },
-          { new: true, session }
-        );
-        if (!purchase) {
-          throw Object.assign(new Error('هذا الطلب ليس قيد المراجعة حالياً'), { code: 'NOT_PENDING' });
-        }
-        await walletService.post([{
-          user: purchase.user, wallet: 'coins_paid', delta: purchase.coinsAmount, type: 'coin_purchase',
-          refType: 'CoinPurchase', refId: purchase._id, idempotencyKey: `${purchase._id}:approve`
-        }], session);
-        user = await User.findById(purchase.user).select('coins socketId').session(session);
-      });
-    } catch (txError) {
-      if (txError.code === 'NOT_PENDING') {
-        return res.status(400).json({ success: false, message: txError.message });
-      }
-      throw txError;
-    } finally {
-      await session.endSession();
-    }
-
-    if (user) {
-      const io = req.app.get('socketio');
-      if (io && user.socketId) {
-        io.to(user.socketId).emit('coinsUpdated', { newCoins: user.coins, purchaseId: purchase._id });
-      }
-      const { sendBotMessage } = require('../utils/botMessenger');
-      await sendBotMessage(io, user._id, `تم إيداع ${purchase.coinsAmount} كوينز في حسابك بنجاح 🪙\nرصيدك الحالي: ${user.coins} كوينز`);
-    }
-
-    await AdminLog.logAction({
-      admin: admin._id, action: 'approve_deposit', targetUser: purchase.user,
-      targetEntity: 'transaction', entityId: purchase._id,
-      details: { type: 'coin_purchase', coinsAmount: purchase.coinsAmount }, ipAddress: req.ip
-    });
-
-    res.json({ success: true, message: 'تمت الموافقة وإيداع الكوينز بنجاح', purchase });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-exports.rejectCoinPurchase = async (req, res) => {
-  try {
-    const CoinPurchase = require('../models/CoinPurchase');
-    const { purchaseId } = req.params;
-    const { reason } = req.body;
-    const { admin } = req;
-
-    // 🛡️ إصلاح جذري (مراجعة أمنية — redteam-audit-1، البند #6 — للاتساق): نفس نمط الحجز
-    // الذري المستخدم بباقي مسارات المراجعة بهذا الملف — يمنع معالجة الطلب مرتين من مراجعتين
-    // متزامنتين (رفض مزدوج: سجلّ إداري مكرر + رسالة بوت مكررة للمستخدم)، وإن لم يكن هناك
-    // استرداد مالي هنا أصلاً (لا يُضاف للرصيد إلا عند الموافقة)
-    const purchase = await CoinPurchase.findOneAndUpdate(
-      { _id: purchaseId, status: { $in: ['pending_payment', 'pending_review'] } },
-      { $set: { status: 'rejected', adminNotes: (reason || '').trim(), processedBy: admin._id, processedAt: new Date() } },
-      { new: true }
-    );
-    if (!purchase) {
-      const exists = await CoinPurchase.exists({ _id: purchaseId });
-      if (!exists) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
-      return res.status(400).json({ success: false, message: 'لا يمكن رفض طلب تمت معالجته مسبقاً' });
-    }
-
-    await AdminLog.logAction({
-      admin: admin._id, action: 'reject_deposit', targetUser: purchase.user,
-      targetEntity: 'transaction', entityId: purchase._id,
-      details: { type: 'coin_purchase', reason }, ipAddress: req.ip
-    });
-
-    // ✅ إشعار المستخدم عبر بوت المنصة برفض طلب شراء الكوينز
-    const io = req.app.get('socketio');
-    const { sendBotMessage } = require('../utils/botMessenger');
-    await sendBotMessage(io, purchase.user, `❌ تم رفض طلب شراء الكوينز الخاص بك (${purchase.amountUSD}$).${purchase.adminNotes ? '\nالسبب: ' + purchase.adminNotes : ''}`);
-
-    res.json({ success: true, message: 'تم رفض الطلب', purchase });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

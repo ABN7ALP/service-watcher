@@ -83,7 +83,8 @@ app.use('/api/fanclub', require('./routes/fanClubRoutes')); // ✅ نظام نا
 app.use('/api/withdrawals', require('./routes/withdrawalRoutes'));
 app.use('/api/voice-room', require('./routes/voiceRoomRoutes')); // ✅ حالة مقاعد الغرفة الصوتية
 app.use('/api/pk-league', require('./routes/pkLeagueRoutes')); // ✅ دوري PK الأسبوعي (ترتيب/غرفتي/مواجهات)
-app.use('/api/coin-purchase', require('./routes/coinPurchaseRoutes')); // ✅ نظام شراء الكوينزات
+app.use('/api/coin-purchase', require('./routes/coinPurchaseRoutes')); // ✅ تحويل داخلي رصيد↔كوينز فقط (الشحن الخارجي انتقل لـ/api/wallet)
+app.use('/api/wallet', require('./routes/walletRoutes')); // ✅ شحن الكوينزات عبر شام كاش بالعروض (feat/wallet-recharge-v1)
 app.use('/api/bubble-skins', require('./routes/bubbleSkinRoutes'));
 app.use('/api/gift-redemption', require('./routes/giftRedemptionRoutes'));
 app.use('/api/deposits', require('./routes/depositRoutes')); // ✅ نظام شحن الرصيد الدولاري (منفصل عن الكوينز)
@@ -125,6 +126,7 @@ mongoose.connect(process.env.MONGODB_URI)
             require('./utils/pkSeasonCloseJob').startPkSeasonCloseJob(io); // ✅ إغلاق موسم دوري PK الأسبوعي + منح مكافآت المراكز تلقائياً
             require('./utils/dependencyHealthJob').startDependencyHealthJob(); // ✅ فحص صحة الاعتماديات (outdated/audit) — مؤجَّل دقيقتين عند الإقلاع ثم يومياً
             require('./utils/walletReconciliationJob').startWalletReconciliationJob(); // ✅ تحقّق يومي: مجموع دفتر الأستاذ = الرصيد المخزَّن لكل محفظة — مؤجَّل 3 دقائق عند الإقلاع ثم يومياً
+            require('./utils/depositIntentExpiryJob').startDepositIntentExpiryJob(); // ✅ شحن الكوينزات: تعطيل طلبات awaiting_payment منتهية الصلاحية (30 دقيقة) تلقائياً
             // ✅ استوديو الإطارات: تهيئة idempotent — تملأ assetUrl/staticUrl/display الناقصة فقط
             // (الإطارات الـ11 الأصلية من frame-display.json)، بلا لمس أي إطار عدَّله الأدمن مسبقاً
             await require('./models/ProfileFrame').seedDisplayDefaults();

@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const adminAuth = require('../middleware/adminAuth');
 const adminController = require('../controllers/adminController');
+const depositIntentController = require('../controllers/depositIntentController');
 const { frameAssetUpload } = require('../utils/cloudinary');
 const { financialLimiter } = require('../middleware/globalMiddleware');
 
@@ -49,9 +50,10 @@ router.get('/deposits', adminController.getDeposits);
 router.post('/deposits/:transactionId/approve', adminController.approveDeposit);
 router.post('/deposits/:transactionId/reject', adminController.rejectTransaction);
 
-router.get('/coin-purchases', adminController.getCoinPurchases);
-router.post('/coin-purchases/:purchaseId/approve', adminController.approveCoinPurchase);
-router.post('/coin-purchases/:purchaseId/reject', adminController.rejectCoinPurchase);
+// ✅ طلبات شحن الكوينزات عبر شام كاش (feat/wallet-recharge-v1) — يستبدل نظام CoinPurchase القديم
+router.get('/deposit-intents', depositIntentController.adminListIntents);
+router.post('/deposit-intents/:id/approve', depositIntentController.adminApproveIntent);
+router.post('/deposit-intents/:id/reject', depositIntentController.adminRejectIntent);
 
 router.get('/withdrawals', withdrawalController.getAllWithdrawals);
 router.post('/withdrawals/:withdrawalId/review', withdrawalController.reviewWithdrawal);

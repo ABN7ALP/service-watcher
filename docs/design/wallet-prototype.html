@@ -1,0 +1,421 @@
+<title>المحفظة والشحن</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;800;900&family=Baloo+Bhaijaan+2:wght@700;800&display=swap">
+<style>
+/* Layout: phone stage (wallet) + architecture rail. Single dark look matching the app. */
+:root{
+  --bg:#07050c; --s1:#15101f; --s2:#1d1629; --s3:#251c35; --line:#2c2340;
+  --fg:#f3eefb; --muted:#9a8fb0; --gold:#ffcf5a; --gold2:#ff9f1c; --pink:#ff4fa3; --violet:#8b5cff; --mint:#3be0b0; --cyan:#43d9ff; --red:#ff6b6b;
+  --f-ui:"Cairo",system-ui,sans-serif; --f-num:"Baloo Bhaijaan 2","Cairo",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);margin:0}
+.page{max-width:1120px;margin:0 auto;padding-block:18px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:22px;margin:0 0 4px;font-weight:900}
+.lead{color:var(--muted);font-size:13px;margin:0 0 12px;line-height:1.7;max-width:76ch}
+.modebar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.modebar span{font-size:12px;color:var(--muted)}
+.modebar button{font:inherit;font-size:12.5px;font-weight:800;color:var(--muted);background:#ffffff08;border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer}
+.modebar button[aria-pressed="true"]{background:var(--gold);color:#3a2300;border-color:var(--gold)}
+.wrap{display:flex;gap:24px;align-items:flex-start}
+@media (max-width:880px){.wrap{flex-direction:column;align-items:center}}
+
+/* phone */
+.phone{position:relative;width:min(390px,100%);height:min(820px,88vh);min-height:640px;border-radius:32px;overflow:hidden;background:var(--s1);box-shadow:0 0 0 8px #1a1424,0 30px 80px #000a;flex:none;display:flex;flex-direction:column}
+.scroll{flex:1;overflow-y:auto;scrollbar-width:none;padding:0 14px 90px}
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:16px 14px 8px;flex:none}
+.hdr h2{margin:0;font-size:17px;font-weight:900}
+.hdr .hist{font:inherit;font-size:12px;font-weight:800;color:var(--muted);background:#ffffff0c;border:0;border-radius:999px;padding:5px 12px}
+.bals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 14px 10px;flex:none}
+.bal{border-radius:16px;padding:10px 8px;background:linear-gradient(160deg,#2a1f3d,#1a1426);border:1px solid #ffffff10}
+.bal small{display:block;font-size:10.5px;color:var(--muted);font-weight:800}
+.bal b{font-family:var(--f-num);font-size:17px;display:flex;align-items:center;gap:4px;direction:ltr;unicode-bidi:isolate;justify-content:flex-end}
+.bal.c b{color:var(--gold)} .bal.d b{color:var(--cyan)} .bal.u b{color:var(--mint)}
+.ic{width:14px;height:14px;border-radius:50%;display:inline-block;flex:none}
+.ic.coin{background:radial-gradient(circle at 35% 30%,#fff3b0,#ffcf5a 45%,#d48a12)}
+.ic.gem{background:linear-gradient(135deg,#bff4ff,#43d9ff 50%,#1f7fd0);transform:rotate(45deg);border-radius:3px;width:11px;height:11px}
+.tabs{display:flex;margin:0 14px 10px;background:#0000003a;border-radius:14px;padding:3px;flex:none}
+.tabs button{flex:1;font:inherit;font-size:13px;font-weight:800;color:var(--muted);background:none;border:0;border-radius:11px;padding:8px 4px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--s3);color:var(--fg)}
+
+/* first recharge hero */
+.hero{position:relative;border-radius:18px;padding:12px 14px;margin-bottom:10px;background:linear-gradient(120deg,#ff4fa3,#8b5cff 60%,#3d2a8a);overflow:hidden}
+.hero::after{content:"";position:absolute;inset:-40% -20% auto auto;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,#ffffff40,transparent 60%)}
+.hero .t{font-size:11px;font-weight:900;letter-spacing:.02em;background:#00000033;border-radius:999px;padding:2px 9px;display:inline-block}
+.hero h3{margin:6px 0 2px;font-size:19px;font-weight:900}
+.hero p{margin:0;font-size:12px;opacity:.92}
+.hero .top{display:flex;justify-content:space-between;align-items:center;position:relative;z-index:1}
+.hero .cd{font-family:var(--f-num);font-size:13px;font-weight:800;background:#00000040;border-radius:10px;padding:1px 8px;direction:ltr;unicode-bidi:isolate}
+
+/* milestone */
+.mile{border-radius:16px;background:var(--s2);border:1px solid var(--line);padding:10px 12px;margin-bottom:12px}
+.mile .row{display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px}
+.mile .row b{color:var(--gold)}
+.mtrack{position:relative;height:8px;border-radius:8px;background:#ffffff12;margin:0 30px}
+.mfill{position:absolute;inset-block:0;inset-inline-start:0;border-radius:8px;background:linear-gradient(90deg,var(--gold2),var(--gold))}
+.nodes{position:relative;height:46px;margin:0 30px}
+.node{position:absolute;top:-14px;transform:translateX(50%);display:flex;flex-direction:column;align-items:center;font-size:9.5px;color:var(--muted);font-weight:800;text-align:center;line-height:1.3;width:64px}
+.node i{width:20px;height:20px;border-radius:50%;background:var(--s3);border:2px solid #ffffff22;display:grid;place-items:center;font-style:normal;font-size:11px;margin-bottom:2px}
+.node.done i{background:var(--gold);border-color:var(--gold)}
+.node.done{color:var(--gold)}
+
+/* methods */
+.sec{font-size:12px;font-weight:900;color:var(--muted);margin:4px 2px 8px;display:flex;justify-content:space-between}
+.methods{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.mth{position:relative;text-align:start;border-radius:14px;border:1.5px solid var(--line);background:var(--s2);color:var(--fg);font:inherit;padding:10px;cursor:pointer;display:flex;gap:8px;align-items:center}
+.mth[aria-pressed="true"]{border-color:var(--mint);background:radial-gradient(90% 90% at 80% 0%,#3be0b022,transparent),var(--s2)}
+.mth .logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:17px;flex:none}
+.mth b{display:block;font-size:13px}
+.mth small{display:block;font-size:10.5px;color:var(--muted)}
+.mth .tag{position:absolute;top:-8px;inset-inline-start:8px;font-size:9.5px;font-weight:900;background:var(--mint);color:#062a22;border-radius:6px;padding:0 6px}
+
+/* packages */
+.packs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.pk{position:relative;border-radius:14px;border:1.5px solid var(--line);background:var(--s2);color:var(--fg);font:inherit;padding:12px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+.pk[aria-pressed="true"]{border-color:var(--gold);background:radial-gradient(90% 80% at 50% 0%,#ffcf5a26,transparent),var(--s2)}
+.pk .amt{font-family:var(--f-num);font-size:16px;font-weight:800;display:flex;align-items:center;gap:3px}
+.pk .bon{font-size:10px;font-weight:900;color:var(--mint);min-height:15px}
+.pk .usd{margin-top:3px;font-family:var(--f-num);font-size:13px;font-weight:800;background:#ffffff12;border-radius:999px;padding:1px 10px;direction:ltr;unicode-bidi:isolate}
+.pk .rib{position:absolute;top:-8px;inset-inline-start:6px;font-size:9px;font-weight:900;border-radius:6px;padding:0 5px;background:var(--gold);color:#3a2300}
+.pk .x2{position:absolute;top:-8px;inset-inline-end:6px;font-size:9px;font-weight:900;border-radius:6px;padding:0 5px;background:var(--pink);color:#fff}
+.summary{border-radius:14px;background:#0000002e;border:1px dashed #ffffff22;padding:10px 12px;font-size:12px;margin-bottom:10px}
+.summary .l{display:flex;justify-content:space-between;padding:2px 0}
+.summary .l b{font-family:var(--f-num);direction:ltr;unicode-bidi:isolate}
+.summary .tot{border-top:1px solid #ffffff14;margin-top:5px;padding-top:6px;font-size:13.5px}
+.summary .tot b{color:var(--gold)}
+.cta{position:absolute;inset-inline:14px;bottom:14px;height:50px;border-radius:16px;border:0;font:inherit;font-weight:900;font-size:15px;color:#fff;background:linear-gradient(90deg,#ff4fa3,#ff7a59);box-shadow:0 8px 24px #ff4fa355;cursor:pointer;z-index:3}
+.cta.mint{background:linear-gradient(90deg,#14b98d,#3be0b0);color:#062a22;box-shadow:0 8px 24px #3be0b044}
+.cta:disabled{opacity:.45;box-shadow:none;cursor:not-allowed}
+.trust{display:flex;gap:10px;justify-content:center;font-size:10.5px;color:var(--muted);margin:4px 0 8px}
+
+/* agents */
+.agent{display:flex;gap:10px;align-items:center;border-radius:14px;background:var(--s2);border:1px solid var(--line);padding:10px;margin-bottom:8px}
+.agent .av{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:900;font-size:18px;flex:none;position:relative}
+.agent .av::after{content:"";position:absolute;bottom:1px;inset-inline-end:1px;width:10px;height:10px;border-radius:50%;background:#22c55e;border:2px solid var(--s2)}
+.agent .av.off::after{background:#6b6280}
+.agent .inf{flex:1;min-width:0}
+.agent .inf b{display:flex;gap:4px;align-items:center;font-size:13px}
+.vb{font-size:9.5px;background:#43d9ff26;color:#9eeaff;border-radius:6px;padding:0 5px;font-weight:900}
+.agent .inf small{display:block;font-size:10.5px;color:var(--muted)}
+.agent .rate{font-family:var(--f-num);font-size:12px;color:var(--gold);font-weight:800}
+.agent button{font:inherit;font-size:11.5px;font-weight:900;border:0;border-radius:10px;padding:7px 10px;background:var(--mint);color:#062a22;cursor:pointer;flex:none}
+.warn{border-radius:12px;background:#ff6b6b14;border:1px solid #ff6b6b44;padding:8px 10px;font-size:11.5px;line-height:1.7;margin:8px 0 12px;color:#ffd4d4}
+
+/* redeem / withdraw */
+.card{border-radius:16px;background:var(--s2);border:1px solid var(--line);padding:12px;margin-bottom:10px}
+.card h4{margin:0 0 8px;font-size:13.5px}
+.inp{display:flex;align-items:center;gap:8px;background:#0005;border:1px solid var(--line);border-radius:12px;padding:0 12px;height:46px}
+.inp input{flex:1;min-width:0;background:none;border:0;color:var(--fg);font-family:var(--f-num);font-size:20px;font-weight:800;outline:none;direction:ltr;unicode-bidi:isolate;text-align:left}
+.inp .max{font:inherit;font-size:11px;font-weight:900;color:var(--gold);background:#ffcf5a1a;border:0;border-radius:8px;padding:3px 8px;cursor:pointer}
+.chips{display:flex;gap:6px;margin-top:8px}
+.chips button{flex:1;font-family:var(--f-num);font-weight:800;font-size:12.5px;border:1px solid var(--line);background:#ffffff08;color:var(--fg);border-radius:10px;padding:5px 0;cursor:pointer}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opt{border-radius:14px;border:1.5px solid var(--line);background:var(--s2);color:var(--fg);font:inherit;padding:10px;cursor:pointer;text-align:start;position:relative}
+.opt[aria-pressed="true"]{border-color:var(--gold)}
+.opt small{display:block;font-size:10.5px;color:var(--muted)}
+.opt b{display:flex;align-items:center;gap:4px;font-family:var(--f-num);font-size:18px;margin-top:2px;direction:ltr;unicode-bidi:isolate;justify-content:flex-end}
+.opt .tag{position:absolute;top:-8px;inset-inline-start:8px;font-size:9.5px;font-weight:900;background:var(--gold);color:#3a2300;border-radius:6px;padding:0 6px}
+.saved{display:flex;align-items:center;gap:10px}
+.saved .logo{width:38px;height:38px;border-radius:10px;background:#e4002b;display:grid;place-items:center;font-weight:900;font-size:12px;flex:none}
+.saved .inf{flex:1}
+.saved .inf b{display:block;font-family:var(--f-num);font-size:15px;direction:ltr;unicode-bidi:isolate;text-align:end}
+.saved .inf small{color:var(--mint);font-size:10.5px;font-weight:800}
+.saved button{font:inherit;font-size:11px;font-weight:800;color:var(--muted);background:#ffffff0c;border:0;border-radius:8px;padding:4px 8px}
+.timeline{list-style:none;margin:0;padding:0}
+.timeline li{display:flex;gap:10px;align-items:flex-start;padding:6px 0;font-size:12px}
+.timeline li i{width:18px;height:18px;border-radius:50%;flex:none;display:grid;place-items:center;font-style:normal;font-size:10px;margin-top:1px;background:var(--s3);border:2px solid #ffffff22}
+.timeline li.ok i{background:var(--mint);border-color:var(--mint);color:#062a22}
+.timeline li.now i{background:var(--gold);border-color:var(--gold);color:#3a2300;animation:pulse 1.4s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 6px #ffcf5a22}}
+.timeline li small{display:block;color:var(--muted);font-size:10.5px}
+.wd{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #ffffff0c;font-size:12px}
+.wd:last-child{border:0}
+.st{font-size:10.5px;font-weight:900;border-radius:6px;padding:1px 7px}
+.st.ok{background:#3be0b022;color:var(--mint)} .st.wait{background:#ffcf5a22;color:var(--gold)} .st.hold{background:#8b5cff26;color:#c9b4ff}
+
+/* modal */
+.modal{position:absolute;inset:0;background:#000b;z-index:10;display:flex;align-items:flex-end}
+.mbox{width:100%;max-height:92%;overflow-y:auto;background:var(--s2);border-radius:22px 22px 0 0;padding:14px 14px 18px;border-top:1px solid #ffffff18}
+.mhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.mhead h3{margin:0;font-size:16px}
+.mhead button{width:30px;height:30px;border-radius:50%;border:0;background:#ffffff10;color:var(--fg);cursor:pointer}
+.steps{display:flex;gap:6px;margin-bottom:12px}
+.steps i{flex:1;height:4px;border-radius:4px;background:#ffffff18}
+.steps i.on{background:var(--mint)}
+.kv{display:flex;justify-content:space-between;align-items:center;background:#0000003a;border-radius:12px;padding:9px 12px;margin-bottom:6px;font-size:12.5px}
+.kv b{font-family:var(--f-num);font-size:15px;direction:ltr;unicode-bidi:isolate}
+.kv .cp{font:inherit;font-size:10.5px;font-weight:900;color:var(--mint);background:#3be0b01a;border:0;border-radius:8px;padding:3px 8px;margin-inline-start:6px;cursor:pointer}
+.ref{font-family:var(--f-num);font-size:22px;letter-spacing:.08em;color:var(--gold)}
+.qr{width:120px;height:120px;margin:4px auto 10px;border-radius:12px;background:#fff;display:grid;place-items:center}
+.note{font-size:11.5px;color:var(--muted);line-height:1.7;margin:6px 0 12px}
+.mbtn{width:100%;height:46px;border-radius:14px;border:0;font:inherit;font-weight:900;font-size:14px;cursor:pointer;background:linear-gradient(90deg,#14b98d,#3be0b0);color:#062a22}
+.mbtn.sec2{background:#ffffff10;color:var(--fg);margin-top:8px}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:12px;font-weight:800;margin-bottom:5px}
+.field input{width:100%;height:44px;border-radius:12px;background:#0005;border:1px solid var(--line);color:var(--fg);font-family:var(--f-num);font-size:16px;padding:0 12px;direction:ltr;unicode-bidi:isolate;text-align:left}
+.upload{border:1.5px dashed #ffffff30;border-radius:12px;padding:12px;text-align:center;font-size:12px;color:var(--muted)}
+.pin{display:flex;gap:10px;justify-content:center;margin:8px 0 12px}
+.pin span{width:44px;height:50px;border-radius:12px;background:#0005;border:1.5px solid var(--line);display:grid;place-items:center;font-size:22px}
+.pin span.f{border-color:var(--gold)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.pad button{height:44px;border-radius:12px;border:0;background:#ffffff0c;color:var(--fg);font-family:var(--f-num);font-size:18px;font-weight:800;cursor:pointer}
+
+/* play mode */
+.play-note{border-radius:14px;background:#43d9ff12;border:1px solid #43d9ff40;padding:12px;font-size:12px;line-height:1.8;color:#cdf6ff;margin-bottom:10px}
+
+/* toast */
+.toast{position:absolute;top:60px;left:50%;transform:translateX(-50%);z-index:30;background:#000d;border:1px solid #ffffff22;padding:7px 14px;border-radius:999px;font-size:12.5px;font-weight:800;white-space:nowrap}
+
+/* rail */
+.rail{flex:1;min-width:0;font-size:13px;line-height:1.85;color:#d8d0e8;max-width:470px}
+.rail h2{font-size:15px;color:var(--gold);margin:14px 0 4px}
+.rail h2:first-child{margin-top:0}
+.rail ul{margin:0;padding-inline-start:18px}
+.rail code{font-family:ui-monospace,monospace;font-size:11.5px;background:#ffffff10;padding:1px 5px;border-radius:5px;direction:ltr;unicode-bidi:isolate;unicode-bidi:isolate}
+.flow{font-family:ui-monospace,monospace;font-size:11px;background:#0b0811;border:1px solid var(--line);border-radius:10px;padding:10px;direction:ltr;unicode-bidi:isolate;white-space:pre;overflow-x:auto;color:#b9f5d4;line-height:1.6}
+button:focus-visible,input:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="page" dir="rtl">
+  <h1>المحفظة والشحن</h1>
+  <p class="lead">نموذج تفاعلي كامل: الشحن بالعروض، شام كاش بخطوات واضحة، الوكلاء المعتمدون، الاستبدال، والسحب. بدّل بين "الموقع" و"تطبيق Google Play" لترى ما يُخفى في نسخة المتجر.</p>
+  <div class="modebar"><span>النسخة:</span>
+    <button type="button" data-mode="web" aria-pressed="true">الموقع</button>
+    <button type="button" data-mode="play" aria-pressed="false">تطبيق Google Play</button>
+    <span style="margin-inline-start:12px">المستخدم:</span>
+    <button type="button" data-first="1" aria-pressed="true">لم يشحن بعد</button>
+    <button type="button" data-first="0" aria-pressed="false">شحن سابقاً</button>
+  </div>
+  <div class="wrap">
+    <div class="phone" id="phone"></div>
+    <div class="rail" id="rail"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const fmt = n => Math.round(n).toLocaleString('en-US');
+const RATE = 1000;                       // coins per $ (server setting)
+const PACKS = [
+  {usd:1, bonus:0}, {usd:5, bonus:0}, {usd:10, bonus:.10, hot:true},
+  {usd:25, bonus:.12}, {usd:50, bonus:.15}, {usd:100, bonus:.20, tag:'+ بوكس ذهبي'}
+];
+const SHAM_EXTRA = .05;                 // recommended method bonus
+const FIRST_MAX_USD = 5;                // first recharge doubles up to $5
+const AGENTS = [
+  ['أبو كرم للشحن','#ff9f1c',4.9,1240,'يرد خلال دقيقتين',1100,true],
+  ['نور ستور','#8b5cff',4.8,860,'يرد خلال 5 دقائق',1080,true],
+  ['مكتب الشام','#2bb7a8',4.7,2110,'غير متصل الآن',1050,false],
+];
+let S = { mode:'web', first:true, tab:'recharge', method:'sham', pack:2, custom:'',
+  coins:12500, beans:486000, usd:42.5, monthUSD:12, redeemTo:'coins', redeemAmt:200000, wdAmt:20 };
+
+/* ---------- helpers ---------- */
+function calc(){
+  const p = S.custom ? {usd:Math.max(1,Math.min(1000,+S.custom||0)), bonus:0} : PACKS[S.pack];
+  const base = p.usd*RATE;
+  const pkBonus = base*p.bonus;
+  const methodBonus = S.method==='sham' ? base*SHAM_EXTRA : 0;
+  const firstBonus = S.first ? Math.min(p.usd, FIRST_MAX_USD)*RATE : 0;
+  return {p, base, pkBonus, methodBonus, firstBonus, total: base+pkBonus+methodBonus+firstBonus};
+}
+function toast(t){ const d = document.createElement('div'); d.className='toast'; d.textContent=t; $('phone').appendChild(d); setTimeout(()=>d.remove(),1800); }
+let cdEnd = Date.now() + (23*3600+59*60+12)*1000;
+function cdText(){ const s = Math.max(0, Math.floor((cdEnd-Date.now())/1000)); const h=String(Math.floor(s/3600)).padStart(2,'0'), m=String(Math.floor(s%3600/60)).padStart(2,'0'), x=String(s%60).padStart(2,'0'); return `${h}:${m}:${x}`; }
+
+/* ---------- screens ---------- */
+function rechargeHTML(){
+  if (S.mode==='play') return `<div class="play-note"><b>نسخة Google Play:</b> لا تظهر هنا أي طريقة شحن، ولا أي نص أو رابط يوجّه المستخدم للشحن خارج التطبيق. هذا شرط سياسة Google للعملات الافتراضية. المستخدم يستطيع استخدام كوينزه، والاستبدال، والسحب فقط.</div>
+    <div class="card"><h4>كوينزك</h4><div style="font-family:var(--f-num);font-size:26px;color:var(--gold);direction:ltr;unicode-bidi:isolate;text-align:end">${fmt(S.coins)}</div></div>`;
+  const c = calc();
+  const goal = 50, pct = Math.min(100, S.monthUSD/goal*100);
+  return `
+  ${S.first ? `<div class="hero"><div class="top"><span class="t">🎉 عرض أول شحنة</span><span class="cd" id="cd">⏳ ${cdText()}</span></div><h3>كوينز مضاعفة ×2</h3><p>أول شحنة لك تتضاعف حتى $${FIRST_MAX_USD}. مرة واحدة فقط لكل حساب.</p></div>` : ''}
+  <div class="mile"><div class="row"><span>شحنت هذا الشهر <b>$${S.monthUSD}</b></span><span>باقي <b>$${Math.max(0,goal-S.monthUSD)}</b> للجائزة الكبرى</span></div>
+    <div class="mtrack"><div class="mfill" style="width:${pct}%"></div></div>
+    <div class="nodes">${[[10,'إطار 3 أيام','🖼'],[25,'دخول فاخر','✨'],[50,'هدية حصرية','🎁']].map(([v,l,e])=>`<span class="node ${S.monthUSD>=v?'done':''}" style="inset-inline-start:${v/goal*100}%"><i>${S.monthUSD>=v?'✓':e}</i><span>$${v}<br>${l}</span></span>`).join('')}</div></div>
+  <div class="sec"><span>طريقة الشحن</span></div>
+  <div class="methods">
+    <button type="button" class="mth" data-m="sham" aria-pressed="${S.method==='sham'}"><span class="tag">موصى به · +5%</span><span class="logo" style="background:#e4002b">ش</span><span><b>شام كاش</b><small>تحويل مباشر · ≈ 10 دقائق</small></span></button>
+    <button type="button" class="mth" data-m="agent" aria-pressed="${S.method==='agent'}"><span class="logo" style="background:#2bb7a8">🤝</span><span><b>وكيل معتمد</b><small>نقداً · فوري من رصيد الوكيل</small></span></button>
+  </div>
+  ${S.method==='agent' ? agentsHTML() : `
+  <div class="sec"><span>اختر الباقة</span><span style="color:var(--mint)">+5% بونص شام كاش على كل باقة</span></div>
+  <div class="packs">${PACKS.map((p,i)=>`<button type="button" class="pk" data-p="${i}" aria-pressed="${!S.custom && S.pack===i}">${p.hot?'<span class="rib">الأكثر شراءً</span>':''}${S.first && p.usd<=FIRST_MAX_USD?'<span class="x2">×2</span>':''}<span class="amt"><i class="ic coin"></i>${fmt(p.usd*RATE*(1+p.bonus))}</span><span class="bon">${p.bonus?`+${Math.round(p.bonus*100)}% بونص`:''}${p.tag?` ${p.tag}`:''}</span><span class="usd">$${p.usd}</span></button>`).join('')}</div>
+  <div class="inp" style="margin-bottom:10px"><span style="font-size:12px;color:var(--muted);font-weight:800;white-space:nowrap">مبلغ آخر $</span><input id="custom" inputmode="decimal" placeholder="1 – 1000" value="${S.custom}"></div>
+  <div class="summary">
+    <div class="l"><span>الكوينز الأساسية</span><b>${fmt(c.base)}</b></div>
+    ${c.pkBonus?`<div class="l"><span>بونص الباقة</span><b>+${fmt(c.pkBonus)}</b></div>`:''}
+    <div class="l"><span>بونص شام كاش 5%</span><b>+${fmt(c.methodBonus)}</b></div>
+    ${c.firstBonus?`<div class="l" style="color:#ff9ccc"><span>مضاعفة أول شحنة</span><b>+${fmt(c.firstBonus)}</b></div>`:''}
+    <div class="l tot"><span>ستحصل على</span><b>${fmt(c.total)} كوينز</b></div>
+  </div>
+  <div class="trust"><span>🔒 مبلغ دقيق ورمز فريد لكل عملية</span><span>⏱ متوسط الإضافة 10 دقائق</span></div>`}`;
+}
+function agentsHTML(){
+  return `<div class="sec"><span>وكلاء معتمدون</span><span>مرتبون حسب التقييم</span></div>
+  ${AGENTS.map(a=>`<div class="agent"><span class="av ${a[6]?'':'off'}" style="background:${a[1]}">${[...a[0]][0]}</span><span class="inf"><b>${a[0]} <span class="vb">✓ معتمد</span></b><small>★ ${a[2]} · ${fmt(a[3])} عملية · ${a[4]}</small><span class="rate">$1 = ${a[5]} كوينز</span></span><button type="button" data-agent="${a[0]}" ${a[6]?'':'disabled style="opacity:.4"'}>تواصل</button></div>`).join('')}
+  <div class="warn">⚠️ تعامل فقط مع الوكلاء في هذه القائمة، وتواصل معهم من داخل التطبيق. الكوينز تصلك من رصيد الوكيل مباشرة فور اتفاقكما، وأي وكيل يطلب منك كلمة السر أو رمز التحقق محتال.</div>`;
+}
+function redeemHTML(){
+  const usdVal = S.redeemAmt/RATE*0.70, coinVal = S.redeemAmt;
+  return `<div class="card"><h4>ألماسك من الهدايا التي استلمتها</h4>
+    <div class="inp"><i class="ic gem"></i><input id="ramt" inputmode="numeric" value="${S.redeemAmt}"><button class="max" type="button" id="rmax">الكل</button></div>
+    <div class="chips">${[100000,200000,400000].map(v=>`<button type="button" data-r="${v}">${fmt(v)}</button>`).join('')}</div></div>
+  <div class="sec"><span>استبدله إلى</span></div>
+  <div class="opts">
+    <button type="button" class="opt" data-to="coins" aria-pressed="${S.redeemTo==='coins'}"><span class="tag">فوري 1:1</span><small>كوينز هدية</small><b><i class="ic coin"></i>${fmt(coinVal)}</b></button>
+    <button type="button" class="opt" data-to="usd" aria-pressed="${S.redeemTo==='usd'}"><small>دولار قابل للسحب (70% عرض الإطلاق)</small><b>$${usdVal.toFixed(2)}</b></button>
+  </div>
+  <div class="note">الألماس يأتي من قيمة الهدايا التي تصلك. الكوينز الناتجة تُحسب "كوينز هدية". أما الدولار فيأتي فقط من الألماس الناتج عن كوينز مدفوعة، ويدخل رصيدك القابل للسحب بعد فترة أمان 72 ساعة من استلام الهدية، لحماية الجميع من الاحتيال.</div>`;
+}
+function withdrawHTML(){
+  const fee = Math.max(0.5, S.wdAmt*0.03), net = Math.max(0, S.wdAmt - fee);
+  return `<div class="card"><h4>إلى محفظة شام كاش المحفوظة</h4><div class="saved"><span class="logo">ش</span><span class="inf"><b>09•• ••• 482</b><small>✓ موثّقة · محمد أ.</small></span><button type="button">تغيير</button></div>
+    <div class="note" style="margin:8px 0 0">تغيير المحفظة يوقف السحب 48 ساعة، حتى لو سُرق حسابك لا يستطيع أحد سحب رصيدك لمحفظته.</div></div>
+  <div class="card"><h4>المبلغ</h4><div class="inp"><span style="font-family:var(--f-num);font-size:20px">$</span><input id="wamt" inputmode="decimal" value="${S.wdAmt}"><button class="max" type="button" id="wmax">الكل</button></div>
+    <div class="summary" style="margin:10px 0 0"><div class="l"><span>رسوم 3% (حد أدنى $0.50)</span><b>-$${fee.toFixed(2)}</b></div><div class="l tot"><span>يصلك</span><b>$${net.toFixed(2)}</b></div></div>
+    <div class="note" style="margin:8px 0 0">الحد الأدنى $5 · الحد اليومي $300 · التنفيذ عادة خلال 24 ساعة.</div></div>
+  <div class="card"><h4>آخر السحوبات</h4>
+    <div class="wd"><span>$35.00 · 12 أكتوبر</span><span class="st ok">وصلت</span></div>
+    <div class="wd"><span>$20.00 · اليوم</span><span class="st wait">قيد التنفيذ</span></div>
+    <div class="wd"><span>$8.40 · ألماس حديث</span><span class="st hold">فترة أمان 41 ساعة</span></div></div>`;
+}
+function render(){
+  const ph = $('phone');
+  const tabs = S.mode==='play' ? [['recharge','كوينزي'],['redeem','استبدال'],['withdraw','سحب']] : [['recharge','شحن'],['redeem','استبدال'],['withdraw','سحب']];
+  let body = S.tab==='recharge' ? rechargeHTML() : S.tab==='redeem' ? redeemHTML() : withdrawHTML();
+  let cta = '';
+  if (S.tab==='recharge' && S.mode==='web' && S.method==='sham'){ const c = calc(); cta = `<button class="cta" id="cta" type="button">ادفع $${c.p.usd} عبر شام كاش ← ${fmt(c.total)} كوينز</button>`; }
+  if (S.tab==='redeem') cta = `<button class="cta mint" id="cta" type="button">استبدل ${fmt(S.redeemAmt)} ألماسة</button>`;
+  if (S.tab==='withdraw') cta = `<button class="cta mint" id="cta" type="button" ${S.wdAmt<5||S.wdAmt>S.usd?'disabled':''}>اسحب $${(+S.wdAmt||0).toFixed(2)}</button>`;
+  ph.innerHTML = `<div class="hdr"><h2>المحفظة</h2><button class="hist" type="button">السجل</button></div>
+    <div class="bals"><div class="bal c"><small>كوينز</small><b><i class="ic coin"></i>${fmt(S.coins)}</b></div><div class="bal d"><small>ألماس</small><b><i class="ic gem"></i>${fmt(S.beans)}</b></div><div class="bal u"><small>رصيد قابل للسحب</small><b>$${S.usd.toFixed(2)}</b></div></div>
+    <div class="tabs" role="tablist">${tabs.map(([k,l])=>`<button type="button" role="tab" data-tab="${k}" aria-selected="${S.tab===k}">${l}</button>`).join('')}</div>
+    <div class="scroll">${body}</div>${cta}`;
+  bind(); rail();
+}
+function bind(){
+  const ph = $('phone');
+  ph.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{S.tab=b.dataset.tab;render();});
+  ph.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{S.method=b.dataset.m;render();});
+  ph.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{S.pack=+b.dataset.p;S.custom='';render();});
+  ph.querySelectorAll('[data-to]').forEach(b=>b.onclick=()=>{S.redeemTo=b.dataset.to;render();});
+  ph.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{S.redeemAmt=+b.dataset.r;render();});
+  ph.querySelectorAll('[data-agent]').forEach(b=>b.onclick=()=>agentModal(b.dataset.agent));
+  const cu=$('custom'); if(cu){cu.onchange=()=>{S.custom=cu.value.replace(/[^\d.]/g,'');render();};}
+  const ra=$('ramt'); if(ra){ra.onchange=()=>{S.redeemAmt=Math.min(S.beans,Math.max(0,parseInt(ra.value)||0));render();};}
+  const rm=$('rmax'); if(rm) rm.onclick=()=>{S.redeemAmt=S.beans;render();};
+  const wa=$('wamt'); if(wa){wa.onchange=()=>{S.wdAmt=Math.max(0,parseFloat(wa.value)||0);render();};}
+  const wm=$('wmax'); if(wm) wm.onclick=()=>{S.wdAmt=Math.min(300,S.usd);render();};
+  const cta=$('cta'); if(cta) cta.onclick = S.tab==='recharge'?shamModal : S.tab==='redeem'?doRedeem : pinModal;
+}
+
+/* ---------- flows ---------- */
+function modal(html){ const m=document.createElement('div'); m.className='modal'; m.innerHTML=`<div class="mbox">${html}</div>`; $('phone').appendChild(m); m.onclick=e=>{if(e.target===m)m.remove();}; m.querySelector('[data-close]')?.addEventListener('click',()=>m.remove()); return m; }
+function shamModal(){
+  const c = calc(); const ref = 'SW-' + Math.random().toString(36).slice(2,6).toUpperCase(); const cents = (Math.floor(Math.random()*9)+1)/100;
+  const amt = (c.p.usd + cents).toFixed(2);
+  let step = 1;
+  const m = modal('');
+  const draw = () => {
+    const box = m.querySelector('.mbox');
+    if (step===1) box.innerHTML = `<div class="mhead"><h3>حوّل عبر شام كاش</h3><button data-close type="button">✕</button></div><div class="steps"><i class="on"></i><i></i><i></i></div>
+      <div class="qr"><svg viewBox="0 0 29 29" width="100" height="100">${Array.from({length:29*29},(_,i)=>((i*7919)%5<2||(i%29<7&&Math.floor(i/29)<7))?`<rect x="${i%29}" y="${Math.floor(i/29)}" width="1" height="1" fill="#111"/>`:'').join('')}</svg></div>
+      <div class="kv"><span>رقم المحفظة</span><span><b>0944 812 377</b><button class="cp" type="button">نسخ</button></span></div>
+      <div class="kv"><span>المبلغ بالضبط</span><span><b>$${amt}</b><button class="cp" type="button">نسخ</button></span></div>
+      <div class="kv"><span>اكتب في الملاحظة</span><span><b class="ref">${ref}</b><button class="cp" type="button">نسخ</button></span></div>
+      <div class="note">المبلغ فيه سنتات فريدة لك (${cents.toFixed(2)}) والرمز خاص بهذه العملية، فنتعرّف على تحويلك فوراً. الطلب صالح 30 دقيقة.</div>
+      <button class="mbtn" type="button" id="n1">حوّلت المبلغ</button><button class="mbtn sec2" type="button" data-close>لاحقاً</button>`;
+    if (step===2) box.innerHTML = `<div class="mhead"><h3>تأكيد التحويل</h3><button data-close type="button">✕</button></div><div class="steps"><i class="on"></i><i class="on"></i><i></i></div>
+      <div class="field"><label>رقم العملية في شام كاش</label><input id="txn" inputmode="numeric" placeholder="مثال: 7781203345"></div>
+      <div class="upload">📎 صورة الإيصال (اختياري، يسرّع التحقق)</div>
+      <div class="note">كل رقم عملية يُقبل مرة واحدة فقط في الموقع كله، فلا يمكن استخدام نفس الإيصال مرتين أو من حساب آخر.</div>
+      <button class="mbtn" type="button" id="n2">أرسل للتحقق</button>`;
+    if (step===3) box.innerHTML = `<div class="mhead"><h3>طلبك قيد التحقق</h3><button data-close type="button">✕</button></div><div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i></div>
+      <ul class="timeline"><li class="ok"><i>✓</i><span>استلمنا طلبك<small>${ref} · $${amt}</small></span></li><li class="now"><i>•</i><span>نطابق التحويل مع حسابنا<small>عادة أقل من 10 دقائق</small></span></li><li><i></i><span>تُضاف ${fmt(c.total)} كوينز لحسابك<small>تصلك رسالة فوراً</small></span></li></ul>
+      <div class="note">يمكنك إغلاق هذه النافذة ومتابعة الغرفة. ستجد الطلب في "السجل".</div>
+      <button class="mbtn" type="button" id="n3">محاكاة الموافقة</button>`;
+    m.querySelector('[data-close]')?.addEventListener('click',()=>m.remove());
+    box.querySelectorAll('.cp').forEach(b=>b.onclick=()=>{b.textContent='✓';});
+    const n1=$('n1'); if(n1) n1.onclick=()=>{step=2;draw();};
+    const n2=$('n2'); if(n2) n2.onclick=()=>{ if(!($('txn').value||'').trim()) { $('txn').focus(); return; } step=3;draw();};
+    const n3=$('n3'); if(n3) n3.onclick=()=>{ S.coins+=c.total; S.monthUSD+=c.p.usd; S.first=false; m.remove(); toast(`✅ أُضيفت ${fmt(c.total)} كوينز`); render(); };
+  };
+  draw();
+}
+function agentModal(name){
+  const m = modal(`<div class="mhead"><h3>${name}</h3><button data-close type="button">✕</button></div>
+    <ul class="timeline"><li class="ok"><i>1</i><span>تفتح محادثة مع الوكيل داخل التطبيق<small>كل الرسائل محفوظة للرجوع إليها عند أي خلاف</small></span></li><li class="ok"><i>2</i><span>تتفقان على المبلغ وطريقة الدفع<small>نقداً، حوالة محلية، أو كما يناسبكما</small></span></li><li class="ok"><i>3</i><span>الوكيل يرسل الكوينز من رصيده<small>تصلك فوراً مع إشعار، ويظهر اسم الوكيل في السجل</small></span></li></ul>
+    <div class="warn">لن يطلب منك الوكيل أبداً كلمة السر أو رمزاً يصلك. وإذا لم تصلك الكوينز بعد الدفع، اضغط "إبلاغ" داخل المحادثة خلال 24 ساعة.</div>
+    <button class="mbtn" type="button" data-close>ابدأ المحادثة</button>`);
+}
+function doRedeem(){
+  if (S.redeemAmt<=0 || S.redeemAmt>S.beans) return toast('أدخل كمية صحيحة');
+  S.beans -= S.redeemAmt;
+  if (S.redeemTo==='coins'){ S.coins += S.redeemAmt; toast(`✅ +${fmt(S.redeemAmt)} كوينز هدية`); }
+  else { toast(`⏳ $${(S.redeemAmt/RATE*.7).toFixed(2)} في فترة الأمان 72 ساعة`); }
+  render();
+}
+function pinModal(){
+  let pin='';
+  const m = modal('');
+  const draw = () => { m.querySelector('.mbox').innerHTML = `<div class="mhead"><h3>رمز المحفظة</h3><button data-close type="button">✕</button></div>
+    <div class="note" style="text-align:center;margin-top:0">أدخل رمزك المكوّن من 4 أرقام لتأكيد سحب $${(+S.wdAmt).toFixed(2)}</div>
+    <div class="pin">${[0,1,2,3].map(i=>`<span class="${i<pin.length?'f':''}">${i<pin.length?'•':''}</span>`).join('')}</div>
+    <div class="pad">${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k=>`<button type="button" data-k="${k}" ${k===''?'disabled style="visibility:hidden"':''}>${k}</button>`).join('')}</div>`;
+    m.querySelector('[data-close]').onclick=()=>m.remove();
+    m.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{ const k=b.dataset.k; if(k==='⌫') pin=pin.slice(0,-1); else if(pin.length<4) pin+=k; draw(); if(pin.length===4){ setTimeout(()=>{ S.usd-=+S.wdAmt; m.remove(); toast('✅ طلب السحب قيد التنفيذ'); render(); },250);} });
+  };
+  draw();
+}
+
+/* ---------- rail ---------- */
+function rail(){
+  $('rail').innerHTML = `
+  <h2>1. ثلاث محافظ منفصلة</h2><ul>
+   <li><b>الكوينز:</b> $1 = 1,000 كوينز. تُصرف على الهدايا والإطارات، ولا تُسحب أبداً.</li>
+   <li><b>الكوينز نوعان:</b> مدفوعة (من الشحن) وهدية (كل البونصات والعروض والاستبدال). تُصرف الهدية أولاً.</li><li><b>الألماس نوعان:</b> قابل للسحب (من هدايا مدفوعة) وللاستخدام فقط (من كوينز هدية أو بين حسابات مرتبطة). السحب بنسبة 70% في الإطلاق، ثم 65% / 70% للمستوى العالي. والاستبدال إلى كوينز 1:1 بلا زيادة.</li>
+   <li><b>الرصيد القابل للسحب:</b> دولار فقط، يأتي من الاستبدال، ويُسحب لمحفظة شام كاش موثّقة.</li></ul>
+  <h2>2. دفتر حسابات لا يُعدَّل (Ledger)</h2><ul>
+   <li>كل حركة مالية سطر دائم بمفتاح منع تكرار: شحن، هدية، استبدال، سحب، استرداد، بونص. الرصيد = مجموع السطور، ولا يُكتب الرصيد يدوياً أبداً.</li>
+   <li>مهمة ليلية تطابق مجموع الدفتر مع الأرصدة، وأي فرق يظهر فوراً في لوحة الأدمن.</li></ul>
+  <h2>3. شحن شام كاش بدون احتيال</h2>
+  <div class="flow">intent  = {user, usd:10.07, ref:"SW-7K3Q",
+           expires:+30m, status:"awaiting"}
+user    → sends exact amount + ref in note
+user    → submits txnNo  (UNIQUE index, global)
+admin/   match txnNo + amount + ref
+auto    → credit ledger (idempotent on intentId)
+         → bonuses as separate ledger lines</div>
+  <ul><li>السنتات الفريدة + الرمز يجعلان المطابقة سهلة، ورقم العملية لا يُقبل مرتين في الموقع كله. هذا يغلق أشهر احتيال: نفس الإيصال من عدة حسابات.</li>
+   <li>لاحقاً: مطابقة تلقائية إذا توفر كشف حساب شام كاش، فتصبح الإضافة خلال ثوانٍ.</li></ul>
+  <h2>4. الوكلاء بنظام المخزون (مثل Bigo)</h2><ul>
+   <li>الوكيل يشتري بالجملة مسبقاً (برونزي $1 = 1,050، فضي 1,080، ذهبي 1,100 كحد أقصى)، ثم يحوّلها للمستخدمين من رصيده. المنصة لا تضيف كوينز بدون دفع أبداً، وأي خطأ للوكيل محصور في مخزونه.</li>
+   <li>تقييم، وعدد عمليات، وحالة اتصال، ومحادثة داخل التطبيق، وزر إبلاغ خلال 24 ساعة. والوكيل المخالف يُجمَّد مخزونه.</li></ul>
+  <h2>5. السحب الآمن</h2><ul>
+   <li>رمز محفظة من 4 أرقام لكل سحب، ومحفظة شام كاش موثّقة، وتغييرها يوقف السحب 48 ساعة.</li>
+   <li>فترة أمان 72 ساعة على الدولار القادم من هدايا حديثة. هذا يمنع غسل المال: شحن بإيصال مسروق ثم إهداء حساب آخر ثم سحب فوري.</li>
+   <li>حد يومي، ومراجعة يدوية للمبالغ الكبيرة، وسجل كامل لكل خطوة.</li></ul>
+  <h2>6. العروض الذكية</h2><ul>
+   <li>أول شحنة ×2 حتى $5، مرة واحدة لكل حساب ولكل رقم شام كاش ولكل جهاز.</li>
+   <li>بونص الباقات الكبيرة، و+5% لشام كاش لتوجيه المستخدمين للطريقة الأرخص لك.</li>
+   <li>مكافآت الشهر: $10 ثم $25 ثم $50، مع شريط تقدم يقول بالضبط كم بقي.</li>
+   <li>البوكسات تُعطى مع الشحن فقط ولا تُباع منفصلة، ومحتواها ونسبه معلنة. هذا يبعدها عن تصنيف القمار.</li>
+   <li>كل الأرقام تُعدَّل من لوحة الأدمن بدون كود.</li></ul>
+  <h2>7. نسخة Google Play</h2><ul>
+   <li>Google تشترط أن تُباع العملات الافتراضية داخل التطبيق عبر نظام فوترة Google، وتمنع توجيه المستخدم لطريقة دفع أخرى من داخل التطبيق.</li>
+   <li>سوريا ليست حالياً ضمن الدول التي يمكن فيها فتح حساب تاجر في Google Play. لذلك نسخة المتجر لا تعرض أي شحن، والشحن يبقى في الموقع والوكلاء.</li></ul>`;
+}
+
+document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{ S.mode=b.dataset.mode; document.querySelectorAll('[data-mode]').forEach(x=>x.setAttribute('aria-pressed',x===b)); render(); });
+document.querySelectorAll('[data-first]').forEach(b=>b.onclick=()=>{ S.first=b.dataset.first==='1'; document.querySelectorAll('[data-first]').forEach(x=>x.setAttribute('aria-pressed',x===b)); render(); });
+setInterval(()=>{ const c=$('cd'); if(c) c.textContent=cdText(); },1000);
+render();
+})();
+</script>

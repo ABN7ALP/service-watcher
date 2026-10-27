@@ -1,7 +1,9 @@
 // ملف: linkageService.test.js
-// 🛡️ كشف الحسابات المرتبطة (feat/wallet-ledger-v1): نفس معرّف جهاز، أو نفس IP خلال 24 ساعة
-// من بعضهما، أو نفس محفظة شام كاش بسحب سابق — أي إشارة منها تكفي. jest.spyOn على النماذج
-// الحقيقية بمحاكاة بذاكرة JS (نفس الاتفاقية الثابتة بهذا المشروع).
+// 🛡️ كشف الحسابات المرتبطة: نفس معرّف جهاز، أو نفس محفظة شام كاش بسحب سابق — أي إشارة منها
+// تكفي. jest.spyOn على النماذج الحقيقية بمحاكاة بذاكرة JS (نفس الاتفاقية الثابتة بهذا المشروع).
+//
+// 🛡️ مراجعة PR (بند 1): إشارة "نفس IP" أُزيلت تماماً من areLinked (شبكات CGNAT بسوريا تشارك
+// IP واحداً بين آلاف حسابات حقيقية مختلفة) — راجع نفس IP لا يعني مرتبطَين أدناه
 
 const DeviceSession = require('../../models/DeviceSession');
 const Withdrawal = require('../../models/Withdrawal');
@@ -25,23 +27,12 @@ describe('linkageService.areLinked', () => {
         expect(await areLinked('a', 'b')).toBe(true);
     });
 
-    test('نفس IP خلال 24 ساعة من بعضهما → مرتبطان', async () => {
+    test('نفس IP لكن أجهزة مختلفة تماماً → غير مرتبطين (CGNAT — راجع بند 1)', async () => {
         const now = Date.now();
         jest.spyOn(DeviceSession, 'find').mockImplementation(({ user }) => lean(
             user === 'a'
-                ? [{ deviceId: null, ip: '1.2.3.4', createdAt: new Date(now) }]
-                : [{ deviceId: null, ip: '1.2.3.4', createdAt: new Date(now + 10 * 60 * 60 * 1000) }] // +10h
-        ));
-        jest.spyOn(Withdrawal, 'find').mockImplementation(() => lean([]));
-        expect(await areLinked('a', 'b')).toBe(true);
-    });
-
-    test('نفس IP لكن متباعد أكثر من 24 ساعة → غير مرتبطين (بهذه الإشارة)', async () => {
-        const now = Date.now();
-        jest.spyOn(DeviceSession, 'find').mockImplementation(({ user }) => lean(
-            user === 'a'
-                ? [{ deviceId: null, ip: '1.2.3.4', createdAt: new Date(now) }]
-                : [{ deviceId: null, ip: '1.2.3.4', createdAt: new Date(now + 25 * 60 * 60 * 1000) }] // +25h
+                ? [{ deviceId: 'devA', ip: '1.2.3.4', createdAt: new Date(now) }]
+                : [{ deviceId: 'devB', ip: '1.2.3.4', createdAt: new Date(now) }]
         ));
         jest.spyOn(Withdrawal, 'find').mockImplementation(() => lean([]));
         expect(await areLinked('a', 'b')).toBe(false);
