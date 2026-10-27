@@ -9323,11 +9323,11 @@ document.getElementById('user-id-container').addEventListener('click', () => {
         if (isPlayBuild()) buyCoinsBtn.remove();
         else {
             buyCoinsBtn.classList.add('wallet-entry-badge-host');
-            buyCoinsBtn.addEventListener('click', () => openRechargePage());
+            buyCoinsBtn.addEventListener('click', () => openRechargePage('recharge'));
         }
     }
           const withdrawBtn = document.getElementById('withdraw-balance-btn');
-    if (withdrawBtn) withdrawBtn.addEventListener('click', () => openWalletPage('withdraw'));
+    if (withdrawBtn) withdrawBtn.addEventListener('click', () => openRechargePage('withdraw'));
 
     const depositBalanceBtn = document.getElementById('deposit-balance-btn');
     if (depositBalanceBtn) depositBalanceBtn.addEventListener('click', showDepositModal);
@@ -10906,9 +10906,9 @@ socket.on('levelUp', ({ newLevel }) => {
     socket.on('depositIntentApproved', (payload) => {
         document.querySelectorAll('.sham-cash-overlay').forEach(o => o.remove());
         refreshWalletSummaryInBackground().then(() => {
-            if (document.getElementById('recharge-page')) renderRechargePageBody();
-            const woh = document.getElementById('wallet-open-requests-host');
-            if (woh) renderWalletOpenRequestsInto(woh, () => document.querySelector('#wallet-modal > div'));
+            renderWalletBalances();
+            const reqHost = document.getElementById('recharge-open-requests');
+            if (reqHost) renderWalletOpenRequestsInto(reqHost, document.getElementById('recharge-page'));
         });
         showDepositApprovedSheet(payload);
     });
@@ -10916,9 +10916,8 @@ socket.on('levelUp', ({ newLevel }) => {
     socket.on('depositIntentRejected', (payload) => {
         document.querySelectorAll('.sham-cash-overlay').forEach(o => o.remove());
         refreshWalletSummaryInBackground().then(() => {
-            if (document.getElementById('recharge-page')) renderRechargePageBody();
-            const woh = document.getElementById('wallet-open-requests-host');
-            if (woh) renderWalletOpenRequestsInto(woh, () => document.querySelector('#wallet-modal > div'));
+            const reqHost = document.getElementById('recharge-open-requests');
+            if (reqHost) renderWalletOpenRequestsInto(reqHost, document.getElementById('recharge-page'));
         });
         showDepositRejectedSheet(payload);
     });
@@ -11508,7 +11507,7 @@ function renderProfileHubBody(u) {
 
     document.getElementById('profile-hub-followers-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'followers'));
     document.getElementById('profile-hub-following-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'following'));
-    document.getElementById('profile-hub-wallet-btn')?.addEventListener('click', () => openWalletPage());
+    document.getElementById('profile-hub-wallet-btn')?.addEventListener('click', () => openRechargePage());
     document.getElementById('profile-hub-vip-btn')?.addEventListener('click', () => showNotification('خاصية VIP قريباً ✨', 'info'));
     document.getElementById('profile-hub-creator-btn').addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
     document.getElementById('profile-hub-games-btn').addEventListener('click', () => showNotification('مركز الألعاب قريباً 🎮', 'info'));
@@ -11768,7 +11767,7 @@ function showProfileHubMoreMenu() {
             }
         } catch (e) { /* المستخدم ألغى المشاركة — لا حاجة لأي رد فعل */ }
     });
-    document.getElementById('hub-more-wallet').addEventListener('click', () => { modal.remove(); openWalletPage(); });
+    document.getElementById('hub-more-wallet').addEventListener('click', () => { modal.remove(); openRechargePage(); });
     document.getElementById('hub-more-creator').addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
     document.getElementById('hub-more-qr').addEventListener('click', () => { modal.remove(); showProfileQrModal(localUser); });
     document.getElementById('hub-more-settings').addEventListener('click', () => { modal.remove(); showProfileHubSettingsSheet(); });
@@ -15199,7 +15198,7 @@ const GSHEET_QTY_LABELS = { 1: '', 10: 'عشرة', 66: 'سلامة', 99: 'دوا
 // الكمية/شريط الثروة) يُعاد رسمه بكل فتح كالسابق تماماً. المستمعات الثابتة (الكل/تبديل الكمية/
 // إرسال) تُربَط مرة واحدة فقط وتستدعي أحدث نسخة من المعالجات الحقيقية عبر هذي الوسيطة (تُعاد
 // كتابتها بكل فتح) بدل تكرار addEventListener على نفس الزر في كل مرة
-let roomGiftModalHandlers = { onAllBtn: null, onQtyToggle: null, onSend: null };
+let roomGiftModalHandlers = { onAllBtn: null, onQtyToggle: null, onSend: null, onRecharge: null };
 function hideRoomGiftModal() {
     document.getElementById('room-gift-modal')?.classList.add('hidden');
 }
@@ -15253,7 +15252,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 </div>
                 <div class="gsheet-dots" id="gsheet-dots"></div>
                 <div class="gsheet-bar">
-                    <div class="gsheet-bal"><span id="gsheet-bal-coin"></span><span id="gsheet-bal">0</span><button type="button" class="gsheet-recharge" id="gsheet-recharge-btn">شحن ›</button></div>
+                    <div class="gsheet-bal"><span id="gsheet-bal-coin"></span><span id="gsheet-bal">0</span><button type="button" class="gsheet-recharge-fab" id="gsheet-recharge-btn" title="شحن" aria-label="شحن"><i class="fas fa-plus"></i></button></div>
                     <div class="gsheet-qty"><button type="button" class="gsheet-qbtn" id="gsheet-qbtn">×1 ▾</button><div class="gsheet-qmenu" id="gsheet-qmenu" hidden></div></div>
                     <button type="button" class="gsheet-send" id="gsheet-send">إرسال</button>
                 </div>
@@ -15265,11 +15264,15 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         modal = document.getElementById('room-gift-modal');
         modal.addEventListener('click', (e) => { if (e.target.id === 'room-gift-modal') hideRoomGiftModal(); });
         document.getElementById('gsheet-bal-coin').innerHTML = coinIconHTML(14);
+        // ✅ مراجعة UX v2 (بند 4-أ): مخفي بنسخة Play كبقية مداخل الشحن — يُضبَط مرة واحدة فقط
+        // هنا (الهيكل الثابت يُبنى مرة واحدة ويُعاد تدويره، راجع تعليق الدالة أعلاه)
+        if (isPlayBuild()) document.getElementById('gsheet-recharge-btn').style.display = 'none';
         // ✅ مستمعات ثابتة مرة واحدة فقط — تستدعي أحدث نسخة من المعالجات الحقيقية (تُكتب
         // أدناه بكل فتح) عبر roomGiftModalHandlers، لا تُربَط مجدداً في أي فتح لاحق
         document.getElementById('gsheet-allbtn').addEventListener('click', () => roomGiftModalHandlers.onAllBtn?.());
         document.getElementById('gsheet-qbtn').addEventListener('click', () => roomGiftModalHandlers.onQtyToggle?.());
         document.getElementById('gsheet-send').addEventListener('click', () => roomGiftModalHandlers.onSend?.());
+        document.getElementById('gsheet-recharge-btn').addEventListener('click', () => roomGiftModalHandlers.onRecharge?.());
     }
 
     try {
@@ -15308,7 +15311,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             // ✅ هيكل تحميل مؤقت لصف المستلمين فقط حتى تصل مقاعد الغرفة (لا علاقة له بكاش
             // الكتالوج أعلاه) — يمنع ظهور رسالة "لا يوجد أحد قاعد" خاطئة قبل أن نعرف فعلياً
             if (!recipientsLoaded) {
-                box.innerHTML = Array.from({ length: 4 }).map(() => '<span class="skeleton-shimmer" style="width:38px;height:38px;border-radius:50%;flex-shrink:0;display:inline-block;"></span>').join('');
+                box.innerHTML = Array.from({ length: 4 }).map(() => '<span class="skeleton-shimmer" style="width:30px;height:30px;border-radius:50%;flex-shrink:0;display:inline-block;"></span>').join('');
                 return;
             }
             // ✅ بند 3 (room-ux-v2 — تطابق docs/design/room-ux-prototype.html::recipsHTML بالحرف):
@@ -15319,7 +15322,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                 : seatedUsers.map(u => `
                     <button type="button" class="gsheet-rc" data-user-id="${u.id}" title="${escapeHtml(u.username)}" aria-pressed="${selectedUserIds.has(u.id)}">
                         <span class="gsheet-rc-wrap">
-                            ${avatarHTML({ src: u.profileImage, name: u.username, userId: u.id, fetchSize: 38, frameClass: u.activeFrameClass, wrapStyle: '--size:38px', photoAttrs: ' alt="" loading="lazy" decoding="async"' })}
+                            ${avatarHTML({ src: u.profileImage, name: u.username, userId: u.id, fetchSize: 30, wrapStyle: '--size:30px', photoAttrs: ' alt="" loading="lazy" decoding="async"' })}
                             ${u.id === hostId ? '<span class="gsheet-rc-sn gsheet-rc-crown">👑</span>' : (u.seatNumber ? `<span class="gsheet-rc-sn">${u.seatNumber}</span>` : '')}
                         </span>
                         <span class="gsheet-rc-name">${escapeHtml(u.username || '')}</span>
@@ -15596,6 +15599,14 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             });
         }
         roomGiftModalHandlers.onSend = handleSend;
+        // ✅ مراجعة UX v2 (بند 4-أ): زر "+" يفتح الشيت السريع — داخل الغرفة فعلاً دوماً هنا (هذا
+        // الشيت خاص بغرف الصوت حصراً)، بنفس حساب المبلغ الناقص المستخدَم بـhandleSend تماماً
+        roomGiftModalHandlers.onRecharge = () => {
+            const localUser = JSON.parse(localStorage.getItem('user')) || {};
+            const unitPrice = sel ? (sel.discountedPrice || sel.price) : 0;
+            const cost = unitPrice * qty * getRecipients().length;
+            openGiftLowBalanceSheet(Math.max(0, cost - (localUser.coins || 0)));
+        };
 
         // ✅ عرض فوري: التبويبات/الشبكة/الكمية لا تعتمد على مقاعد الغرفة إطلاقاً — تُرسَم
         // بمجرّد توفّر shopData (من الكاش أعلاه عادةً، بلا أي انتظار شبكة). صف المستلمين/شريط
@@ -15773,7 +15784,7 @@ async function openGiftLowBalanceSheet(missingAmount, onClose = null) {
                 <div class="text-center text-gray-400 py-6" style="grid-column:1/-1"><i class="fas fa-spinner fa-spin"></i></div>
             </div>
             <div class="gsheet-lbmore">
-                <button type="button" class="gsheet-lb-dismiss" id="gift-lb-dismiss">لاحقاً</button>
+                <button type="button" class="gsheet-lb-dismiss" id="gift-lb-dismiss">إلغاء</button>
                 <button type="button" id="gift-lb-all">كل العروض والبوكسات ›</button>
             </div>
         </div>
@@ -15783,11 +15794,28 @@ async function openGiftLowBalanceSheet(missingAmount, onClose = null) {
     // startGiftComboSession) تمرره كي تستأنف عدّادها التنازلي فور إغلاق هذي النافذة بأي طريقة
     // (تجاهل/الخلفية/بعد اختيار باقة) — بلا كسر أي مستدعٍ حالي لا يمرره إطلاقاً
     let closed = false;
+    let createdIntentId = null;
+    let createdIntentSubmitted = false;
     const closeOverlay = () => { if (closed) return; closed = true; overlay.remove(); onClose?.(); };
+    // 🐛 مراجعة UX v2 (بند 3-أ): "إلغاء" كان لا يُلغي شيئاً فعلياً — فقط يُخفي الشيت بينما يبقى
+    // طلب الإيداع (لو أُنشئ بهذه الجلسة فعلاً) عالقاً awaiting_payment بالخادم. الآن: يُلغيه
+    // ذرّياً عبر POST /deposits/:id/cancel قبل الإغلاق — فقط لو أُنشئ بهذه الجلسة تحديداً ولم
+    // يصل بعد لخطوة "submitted" (رقم عملية أُرسِل فعلاً)؛ لا طلب بعد = إغلاق بسيط بلا استدعاء
+    const cancelAndClose = () => {
+        if (closed) return;
+        const idToCancel = (createdIntentId && !createdIntentSubmitted) ? createdIntentId : null;
+        closeOverlay();
+        if (idToCancel) {
+            fetch(`/api/wallet/deposits/${idToCancel}/cancel`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
+                .then((res) => { if (res.ok) showNotification('تم إلغاء طلب الشحن', 'info'); })
+                .catch(() => {})
+                .finally(() => refreshWalletSummaryInBackground());
+        }
+    };
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeOverlay(); });
-    document.getElementById('gift-lb-dismiss').addEventListener('click', closeOverlay);
+    document.getElementById('gift-lb-dismiss').addEventListener('click', cancelAndClose);
     // ✅ بند 1-أ: "كل العروض والبوكسات" هو الخروج الصريح الوحيد من الغرفة إلى صفحة /recharge
-    document.getElementById('gift-lb-all').addEventListener('click', () => { closeOverlay(); openRechargePage(); });
+    document.getElementById('gift-lb-all').addEventListener('click', () => { closeOverlay(); openRechargePage('recharge'); });
 
     // 🛡️ امتثال Google Play: لا يُعرض أي سعر أو رابط شحن داخل نسخة المتجر — حتى بشيت "رصيدك لا يكفي"
     if (isPlayBuild()) {
@@ -15844,8 +15872,9 @@ async function openGiftLowBalanceSheet(missingAmount, onClose = null) {
                 const usd = parseFloat(btn.dataset.usd);
                 createDepositAndMountShamCash(overlay, usd, {
                     buttonEl: btn,
+                    onCreated: (intent) => { createdIntentId = intent._id; },
                     onClose: () => closeOverlay(),
-                    onSubmitted: () => {}
+                    onSubmitted: () => { createdIntentSubmitted = true; }
                 });
             });
         });
@@ -17652,7 +17681,7 @@ let walletSummaryCache = null;
 let walletSummaryFetchPromise = null;
 let walletSelectedPackageIdx = null;
 let walletCustomUsd = '';
-let walletCurrentTab = 'redeem'; // ✅ تجربة الشحن v2 (بند 1): الشحن صار صفحة/شيت مستقلَّين، لا تبويباً هنا
+let walletCurrentTab = 'recharge'; // ✅ مراجعة UX v2 (بند 1): شحن/استبدال/سحب تبويبات بصفحة /recharge واحدة — هذا آخر تبويب استُخدِم فعلياً
 
 // 🛡️ امتثال Google Play: نسخة TWA مُثبَّتة من المتجر لا تُظهر أي شحن (راجع server/controllers/
 // depositIntentController.js — نفس الفحص مكرَّر على الخادم عبر رأس X-Client:play). العلم يُحفَظ
@@ -18072,7 +18101,7 @@ function mountShamCashFlow(hostEl, intent, opts = {}) {
 }
 
 // ✅ ينشئ طلب الإيداع ثم يعلّق تدفّق شام كاش مباشرةً داخل hostEl — لا تنقّل بين نوافذ
-async function createDepositAndMountShamCash(hostEl, usd, { onSubmitted, onClose, buttonEl } = {}) {
+async function createDepositAndMountShamCash(hostEl, usd, { onSubmitted, onClose, onCreated, buttonEl } = {}) {
     if (!usd || usd <= 0 || !hostEl) return null;
     let originalText;
     if (buttonEl) {
@@ -18089,6 +18118,7 @@ async function createDepositAndMountShamCash(hostEl, usd, { onSubmitted, onClose
             apiError(response, result);
             return null;
         }
+        onCreated?.(result.data.intent);
         const overlay = mountShamCashFlow(hostEl, result.data.intent, { onSubmitted, onClose });
         return overlay;
     } catch (error) {
@@ -18145,7 +18175,7 @@ function showDepositRejectedSheet(payload) {
     `;
     document.getElementById('game-container').appendChild(el);
     el.querySelector('#deposit-rejected-close').addEventListener('click', () => el.remove());
-    el.querySelector('#deposit-rejected-retry').addEventListener('click', () => { el.remove(); openRechargePage(); });
+    el.querySelector('#deposit-rejected-retry').addEventListener('click', () => { el.remove(); openRechargePage('recharge'); });
 }
 
 // =================================================
@@ -18153,13 +18183,23 @@ function showDepositRejectedSheet(payload) {
 // server.js يخدم index.html لكل المسارات فعلاً، فلا حاجة لأي راوتر). الدخول/الخروج أدناه
 // (openRechargePage/closeRechargePage) والاستماع لـpopstate قريباً بعد تهيئة socket.io
 // =================================================
-async function openRechargePage() {
-    if (isPlayBuild()) { showNotification('الشحن غير متاح داخل نسخة Google Play', 'error'); return; }
-    if (document.getElementById('recharge-page')) return;
+// =================================================
+// ✅ مراجعة UX v2 (بند 1): صفحة واحدة فقط — شحن/استبدال/سحب تبويبات بصفحة /recharge
+// المستقلة (مساحة كاملة، مسارها الخاص عبر history.pushState). المحفظة المنفصلة أُزيلت —
+// "المحفظة" بقائمة الملف الشخصي ⋯ تفتح هذه الصفحة على آخر تبويب استُخدِم (initialTab غير
+// مُمرَّرة = يبقى walletCurrentTab كما هو)؛ مداخل أخرى (زر الشحن بالهيدر، "شحن كوينزات"...)
+// تفرض تبويباً محدَّداً صراحةً
+// =================================================
+async function openRechargePage(initialTab) {
+    if (isPlayBuild() && initialTab === 'recharge') initialTab = 'redeem';
+    if (document.getElementById('recharge-page')) {
+        if (initialTab) { walletCurrentTab = initialTab; renderWalletTabs(); renderWalletActiveTab(); }
+        return;
+    }
     try {
         if (window.location.pathname !== '/recharge') history.pushState({ waWalletView: 'recharge' }, '', '/recharge');
     } catch (e) { /* history API محجوبة — نكمل برسم الصفحة فقط بلا تغيير الرابط */ }
-    await renderRechargePage();
+    await renderRechargePage(initialTab);
 }
 
 function closeRechargePage() {
@@ -18169,19 +18209,23 @@ function closeRechargePage() {
     }
 }
 
-async function renderRechargePage() {
+async function renderRechargePage(initialTab) {
     document.getElementById('recharge-page')?.remove();
     walletSelectedPackageIdx = null;
     walletCustomUsd = '';
+    if (initialTab) walletCurrentTab = (isPlayBuild() && initialTab === 'recharge') ? 'redeem' : initialTab;
     const shell = document.createElement('div');
     shell.id = 'recharge-page';
     shell.className = 'fixed inset-0 bg-gray-900 z-[340] flex flex-col text-white';
     shell.innerHTML = `
         <div class="flex items-center justify-between p-4 border-b border-gray-800 flex-none">
             <button id="recharge-back" class="report-issue-icon-btn"><i class="fas fa-arrow-right"></i></button>
-            <h2 class="font-bold text-base flex items-center gap-2">${coinIconHTML(18)} شحن الكوينزات</h2>
+            <h2 class="font-bold text-base flex items-center gap-2">${coinIconHTML(18)} المحفظة</h2>
             <button id="recharge-history-btn" class="report-issue-icon-btn" title="السجل"><i class="fas fa-history"></i></button>
         </div>
+        <div class="px-4 pt-3 flex-none" id="wallet-balances"></div>
+        <div class="px-4 pt-2 flex-none" id="recharge-open-requests"></div>
+        <div class="px-4 pt-2 flex-none" id="wallet-tabs"></div>
         <div id="recharge-body" class="flex-1 overflow-y-auto p-4">
             <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
         </div>
@@ -18192,7 +18236,11 @@ async function renderRechargePage() {
 
     try {
         await ensureWalletSummary();
-        renderRechargePageBody();
+        renderWalletBalances();
+        renderWalletOpenRequestsInto(document.getElementById('recharge-open-requests'), shell);
+        renderWalletTabs();
+        renderWalletActiveTab();
+        refreshWalletEntryBadges();
     } catch (error) {
         console.error('[RECHARGE] Error:', error);
         const body = document.getElementById('recharge-body');
@@ -18200,13 +18248,13 @@ async function renderRechargePage() {
     }
 }
 
-function renderRechargePageBody() {
-    const body = document.getElementById('recharge-body');
-    if (!body || !walletSummaryCache) return;
+// ✅ محتوى تبويب "شحن" فقط الآن (بلا شريط الطلبات المفتوحة — صار دائماً أعلى الصفحة، خارج
+// التبويبات، عبر renderWalletOpenRequestsInto أعلاه)
+function renderRechargeTabBody(body) {
+    if (!walletSummaryCache) return;
     const s = walletSummaryCache;
     const first = s.firstRecharge;
     body.innerHTML = `
-        <div id="recharge-open-requests">${walletOpenRequestsHTML(s.openIntents)}</div>
         ${first.active ? `
         <div class="rounded-2xl p-3 mb-3 text-white" style="background:linear-gradient(120deg,#ff4fa3,#8b5cff 60%,#3d2a8a)">
             <div class="flex items-center justify-between">
@@ -18260,10 +18308,6 @@ function renderRechargePageBody() {
         <button id="wallet-pay-btn" type="button" class="w-full bg-gradient-to-l from-pink-500 to-orange-400 text-white font-bold py-3 rounded-xl disabled:opacity-40" disabled>ادفع عبر شام كاش</button>
     `;
 
-    attachWalletOpenRequestHandlers(document.getElementById('recharge-open-requests'), {
-        onChanged: () => refreshWalletSummaryInBackground().then(renderRechargePageBody),
-        shamCashHost: () => document.getElementById('recharge-page')
-    });
     renderWalletSummaryBox();
     if (first.active) startWalletCountdown(first.endsAt);
 
@@ -18271,7 +18315,7 @@ function renderRechargePageBody() {
         btn.addEventListener('click', () => {
             walletSelectedPackageIdx = parseInt(btn.dataset.pkg, 10);
             walletCustomUsd = '';
-            renderRechargePageBody();
+            renderRechargeTabBody(body);
         });
     });
     const customInput = document.getElementById('wallet-custom-usd');
@@ -18285,8 +18329,8 @@ function renderRechargePageBody() {
         const c = walletCalc();
         createDepositAndMountShamCash(document.getElementById('recharge-page'), c.usd, {
             buttonEl: e.currentTarget,
-            onClose: renderRechargePageBody,
-            onSubmitted: renderRechargePageBody
+            onClose: () => renderRechargeTabBody(body),
+            onSubmitted: () => renderRechargeTabBody(body)
         });
     });
 }
@@ -18316,11 +18360,15 @@ function renderWalletBalances() {
 // ✅ تجربة الشحن v2 (بند 1): الشحن لم يعد تبويباً هنا — صفحة /recharge مستقلة (زر "شحن" برأس
 // صفحة المحفظة يفتحها). التبديل بين "استبدال"/"سحب" يقرأ من walletSummaryCache المخزَّنة
 // فقط — بلا أي fetch، فالتبديل فوري (بند 2 — الأداء)
+// ✅ مراجعة UX v2 (بند 1): ثلاث تبويبات بصفحة واحدة الآن — شحن/استبدال/سحب. تبويب الشحن يُخفى
+// بنسخة Play فقط (امتثال Google Play الحالي)؛ التبديل يقرأ من walletSummaryCache المخزَّنة
+// فقط — بلا أي fetch، فالتبديل فوري (بند 2 — الأداء، كما بالمراجعة السابقة)
 function renderWalletTabs() {
     const el = document.getElementById('wallet-tabs');
     if (!el) return;
-    const tabs = [['redeem', 'استبدال'], ['withdraw', 'سحب']];
-    if (!tabs.some(([key]) => key === walletCurrentTab)) walletCurrentTab = 'redeem';
+    const play = isPlayBuild();
+    const tabs = [!play ? ['recharge', 'شحن'] : null, ['redeem', 'استبدال'], ['withdraw', 'سحب']].filter(Boolean);
+    if (!tabs.some(([key]) => key === walletCurrentTab)) walletCurrentTab = play ? 'redeem' : 'recharge';
     el.innerHTML = `
         <div class="flex bg-black/30 rounded-xl p-1 mb-3">
             ${tabs.map(([key, label]) => `
@@ -18338,9 +18386,11 @@ function renderWalletTabs() {
 }
 
 function renderWalletActiveTab() {
-    const body = document.getElementById('wallet-body');
+    const body = document.getElementById('recharge-body');
     if (!body || !walletSummaryCache) return;
-    if (walletCurrentTab === 'redeem') {
+    if (walletCurrentTab === 'recharge' && !isPlayBuild()) {
+        renderRechargeTabBody(body);
+    } else if (walletCurrentTab === 'redeem') {
         renderWalletRedeemTab(body);
     } else {
         body.innerHTML = `<div id="withdraw-body"></div>`;
@@ -18396,55 +18446,7 @@ function renderWalletSummaryBox() {
     if (payBtn) { payBtn.disabled = false; payBtn.textContent = `ادفع $${c.usd} عبر شام كاش ← ${fmtNum(c.total)} كوينز`; }
 }
 
-// =================================================
-// ✅ بند 1-ج: صفحة المحفظة (أرصدة/استبدال/سحب/سجل) — تُفتَح من قائمة الملف الشخصي ⋯ → "المحفظة".
-// لا تبويب شحن هنا بعد الآن؛ زر "شحن" برأسها يفتح صفحة /recharge المستقلة
-// =================================================
-async function openWalletPage(initialTab = 'redeem') {
-    document.getElementById('wallet-modal')?.remove();
-    walletCurrentTab = (initialTab === 'recharge') ? 'redeem' : initialTab;
-    const play = isPlayBuild();
-    const shellHTML = `
-        <div id="wallet-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
-            <div class="relative bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[92vh] flex flex-col overflow-hidden">
-                <div class="flex items-center justify-between p-4 border-b border-gray-700">
-                    <h3 class="text-lg font-bold flex items-center gap-2">${coinIconHTML(18)} المحفظة</h3>
-                    <div class="flex items-center gap-1">
-                        ${!play ? `<button id="wallet-recharge-btn" class="wallet-entry-badge-host text-xs font-bold bg-gradient-to-l from-pink-500 to-orange-400 text-white rounded-lg px-3 py-1.5 flex-none">شحن</button>` : ''}
-                        <button id="wallet-history-btn" class="report-issue-icon-btn" title="السجل"><i class="fas fa-history"></i></button>
-                        <button id="close-wallet" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
-                    </div>
-                </div>
-                <div class="px-4 pt-3" id="wallet-balances"></div>
-                <div class="px-4 pt-2" id="wallet-open-requests-host"></div>
-                <div class="px-4 pt-2" id="wallet-tabs"></div>
-                <div id="wallet-body" class="px-4 pb-4 overflow-y-auto flex-1">
-                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
-                </div>
-            </div>
-        </div>
-    `;
-    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
-    const modal = document.getElementById('wallet-modal');
-    attachCloseConfirmation(modal, '#close-wallet');
-    document.getElementById('wallet-history-btn').addEventListener('click', () => openWalletHistoryPanel(document.querySelector('#wallet-modal > div')));
-    document.getElementById('wallet-recharge-btn')?.addEventListener('click', openRechargePage);
-
-    try {
-        await ensureWalletSummary();
-        renderWalletBalances();
-        renderWalletOpenRequestsInto(document.getElementById('wallet-open-requests-host'), () => document.querySelector('#wallet-modal > div'));
-        renderWalletTabs();
-        renderWalletActiveTab();
-        refreshWalletEntryBadges();
-    } catch (error) {
-        console.error('[WALLET] Error:', error);
-        const b = document.getElementById('wallet-body');
-        if (b) b.innerHTML = `<div class="text-center text-red-400 py-10"><i class="fas fa-exclamation-circle text-2xl mb-2"></i><p class="text-sm">فشل تحميل بيانات المحفظة</p></div>`;
-    }
-}
-
-// ✅ بند 1 (آخر فقرة): نفس بناء صفحة/شيت الشحن يستدعي هذه الدالة بدل showWalletModal القديمة
+// ✅ مراجعة UX v2 (بند 1): يُستدعى من زر السجل برأس صفحة /recharge (لا نافذة محفظة منفصلة بعد الآن)
 async function openWalletHistoryPanel(hostEl) {
     const existing = document.getElementById('wallet-history-panel');
     if (existing) { existing.remove(); return; }
@@ -18485,6 +18487,16 @@ async function openWalletHistoryPanel(hostEl) {
     }
 }
 
+// ✅ مراجعة UX v2 (بند 2): "خلال X ساعة/ساعتين/ساعات" بصيغة عربية مبسَّطة لمتبقي فترة الأمان
+function redeemHoursLabel(nextEligibleAtIso) {
+    if (!nextEligibleAtIso) return '';
+    const h = Math.max(1, Math.ceil((new Date(nextEligibleAtIso).getTime() - Date.now()) / 3600000));
+    if (h === 1) return 'ساعة واحدة';
+    if (h === 2) return 'ساعتين';
+    if (h <= 10) return `${h} ساعات`;
+    return `${h} ساعة`;
+}
+
 async function renderWalletRedeemTab(body) {
     body.innerHTML = `<div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>`;
     try {
@@ -18493,12 +18505,35 @@ async function renderWalletRedeemTab(body) {
         if (result.status !== 'success') throw new Error('فشل تحميل بيانات الاستبدال');
         const d = result.data;
         let redeemTo = 'coins';
+        // 🐛 السبب الجذري (مراجعة UX v2 — بند 2): بعد الترحيل الأول كل الرصيد غالباً beans_p
+        // (لا beans_w إطلاقاً) — خيار الدولار كان يبقى مُفعَّلاً فيُرفَض 400 من السيرفر بصمت
+        // بصريّاً (الدوّارة لا تتوقف أبداً، راجع الإصلاح بالـfinally أدناه). الآن: خيار الدولار
+        // معطَّل صراحةً مع سبب واضح متى ما كان beansWEligible صفراً
+        const usdDisabled = !(d.beansWEligible > 0);
+        const usdDisabledReason = d.beansWPending > 0
+            ? `متاح خلال ${redeemHoursLabel(d.beansWNextEligibleAt)}`
+            : 'لا يوجد رصيد مؤهَّل للتحويل بعد';
 
         const draw = () => {
             body.innerHTML = `
                 <div class="rounded-xl bg-gray-900/50 p-4 mb-3 text-center">
                     <p class="text-xs text-gray-400 mb-1">ألماسك القابل للاستبدال</p>
                     <p class="text-2xl font-bold text-cyan-400">${fmtNum(d.coinsIfRedeemed)}</p>
+                </div>
+                <div class="space-y-1.5 mb-3">
+                    <div class="flex items-center justify-between bg-gray-900/40 rounded-lg px-3 py-2 text-xs">
+                        <span class="text-gray-400">قابل للتحويل إلى دولار الآن</span>
+                        <b class="text-green-400" dir="ltr">${fmtNum(d.beansWEligible)}</b>
+                    </div>
+                    ${d.beansWPending > 0 ? `
+                    <div class="flex items-center justify-between bg-gray-900/40 rounded-lg px-3 py-2 text-xs">
+                        <span class="text-gray-400">قيد فترة الأمان</span>
+                        <span><b class="text-yellow-400" dir="ltr">${fmtNum(d.beansWPending)}</b> <span class="text-gray-500">— متاح خلال ${redeemHoursLabel(d.beansWNextEligibleAt)}</span></span>
+                    </div>` : ''}
+                    <div class="flex items-center justify-between bg-gray-900/40 rounded-lg px-3 py-2 text-xs">
+                        <span class="text-gray-400 flex items-center gap-1.5">للاستخدام داخل التطبيق فقط <button type="button" id="redeem-beansp-help" class="text-gray-500 hover:text-gray-300"><i class="fas fa-circle-question"></i></button></span>
+                        <b class="text-gray-300" dir="ltr">${fmtNum(d.beansP)}</b>
+                    </div>
                 </div>
                 <p class="text-xs text-gray-400 mb-2">استبدله إلى</p>
                 <div class="grid grid-cols-2 gap-2 mb-3">
@@ -18507,21 +18542,26 @@ async function renderWalletRedeemTab(body) {
                         <p class="text-[10px] text-gray-400 mb-1">كوينز هدية</p>
                         <p class="font-bold flex items-center gap-1 justify-end" dir="ltr">${coinIconHTML(14)}${fmtNum(d.coinsIfRedeemed)}</p>
                     </button>
-                    <button type="button" data-to="balance" class="rounded-xl border-2 ${redeemTo === 'balance' ? 'border-yellow-400 bg-yellow-400/10' : 'border-gray-700'} p-3 text-right">
+                    <button type="button" data-to="balance" ${usdDisabled ? 'disabled' : ''} class="rounded-xl border-2 ${redeemTo === 'balance' ? 'border-yellow-400 bg-yellow-400/10' : 'border-gray-700'} p-3 text-right disabled:opacity-40 disabled:cursor-not-allowed">
                         <p class="text-[10px] text-gray-400 mb-1">دولار قابل للسحب (${d.redemptionRatePercent}%)</p>
                         <p class="font-bold" dir="ltr">$${d.usdIfRedeemed}</p>
+                        ${usdDisabled ? `<p class="text-[9px] text-red-400 mt-1">${usdDisabledReason}</p>` : ''}
                     </button>
                 </div>
-                <p class="text-xs text-gray-400 leading-6 mb-3">الدولار يأتي فقط من ألماس ناتج عن كوينز مدفوعة، ويدخل رصيدك القابل للسحب بعد فترة أمان 72 ساعة من استلام الهدية.</p>
+                <p class="text-xs text-gray-400 leading-6 mb-3">الدولار يأتي فقط من ألماس ناتج عن كوينز مدفوعة، ويدخل رصيدك القابل للسحب بعد فترة أمان ${d.beanHoldHours} ساعة من استلام الهدية.</p>
                 <button id="wallet-redeem-btn" type="button" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl disabled:opacity-40" ${d.coinsIfRedeemed <= 0 ? 'disabled' : ''}>استبدل ${fmtNum(d.coinsIfRedeemed)} ألماسة</button>
                 ${(d.history || []).length ? `
                     <p class="text-xs text-gray-400 mt-4 mb-2">آخر الاستبدالات</p>
                     ${d.history.slice(0, 5).map(h => `<div class="flex justify-between text-xs py-1.5 border-b border-gray-800"><span>${new Date(h.createdAt).toLocaleDateString('ar-EG')}</span><span>${h.redeemedTo === 'balance' ? '$' + h.finalAmount : fmtNum(h.finalAmount) + ' كوينز'}</span></div>`).join('')}
                 ` : ''}
             `;
-            body.querySelectorAll('[data-to]').forEach(b => b.addEventListener('click', () => { redeemTo = b.dataset.to; draw(); }));
+            body.querySelectorAll('[data-to]:not(:disabled)').forEach(b => b.addEventListener('click', () => { redeemTo = b.dataset.to; draw(); }));
+            document.getElementById('redeem-beansp-help')?.addEventListener('click', () => {
+                showNotification('يأتي من هدايا مدفوعة بكوينز هدية أو عروض، ويُستبدل بكوينز فقط', 'info');
+            });
             document.getElementById('wallet-redeem-btn')?.addEventListener('click', async () => {
                 const btn = document.getElementById('wallet-redeem-btn');
+                const originalHTML = btn.innerHTML;
                 btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
                 try {
                     const r = await fetch('/api/gift-redemption/redeem', {
@@ -18529,15 +18569,18 @@ async function renderWalletRedeemTab(body) {
                         body: JSON.stringify({ redeemTo })
                     });
                     const res2 = await r.json();
-                    if (!r.ok) { showNotification(res2.message || 'فشل الاستبدال', 'error'); btn.disabled = false; return; }
+                    if (!r.ok) { apiError(r, res2); return; }
                     showNotification(res2.message, 'success');
                     await refreshUserData();
                     await refreshWalletSummaryInBackground();
                     renderWalletBalances();
                     renderWalletActiveTab();
                 } catch (error) {
-                    showNotification('خطأ في الاتصال بالخادم', 'error');
-                    btn.disabled = false;
+                    apiError(null, { message: 'خطأ في الاتصال بالخادم' });
+                } finally {
+                    // 🛡️ مراجعة UX v2 (بند 2): يوقف الدوّارة دوماً — نجاحاً أو فشلاً — لا "تدور للأبد"
+                    // بعد الآن. الفحص يتجنّب لمس زر استُبدِل فعلاً بإعادة رسم كاملة بعد نجاح
+                    if (document.body.contains(btn)) { btn.disabled = false; btn.innerHTML = originalHTML; }
                 }
             });
         };
@@ -22156,7 +22199,7 @@ function showInsufficientCoinsModal(message) {
     document.getElementById('ic-cancel-btn').addEventListener('click', () => modal.remove());
     document.getElementById('ic-topup-btn')?.addEventListener('click', () => {
         modal.remove();
-        openRechargePage();
+        openRechargePage('recharge');
     });
 }
 
