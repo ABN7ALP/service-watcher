@@ -17804,6 +17804,7 @@ function renderWalletRechargeTab(body) {
             ${s.packages.map((p, i) => `
                 <button type="button" data-pkg="${i}" class="wallet-pkg-btn relative rounded-xl border-2 ${walletSelectedPackageIdx === i && !walletCustomUsd ? 'border-yellow-400 bg-yellow-400/10' : 'border-gray-700'} p-2 flex flex-col items-center gap-0.5">
                     ${p.hot ? '<span class="absolute -top-2 right-1 text-[9px] font-bold bg-yellow-400 text-black rounded px-1">الأكثر شراءً</span>' : ''}
+                    ${first.active && p.usd <= first.multiplierUpToUsd ? '<span class="absolute -top-2 left-1 text-[9px] font-black bg-pink-500 text-white rounded px-1">×2</span>' : ''}
                     <span class="font-bold text-sm flex items-center gap-1">${coinIconHTML(13)}${fmtNum(p.coins)}</span>
                     <span class="text-[10px] text-green-400 min-h-[12px]">${p.bonusPct ? `+${p.bonusPct}% بونص` : ''}</span>
                     <span class="text-xs font-bold bg-white/10 rounded-full px-2" dir="ltr">$${p.usd}</span>
@@ -17897,11 +17898,18 @@ function openShamCashModal(intent) {
     overlay.className = 'absolute inset-0 bg-black/85 flex items-end justify-center z-20';
     document.querySelector('#wallet-modal > div').appendChild(overlay);
 
+    const stepsBarHTML = () => `
+        <div class="flex gap-1.5 mb-4">
+            ${[1, 2, 3].map(n => `<i class="flex-1 h-1 rounded-full ${n <= step ? 'bg-teal-400' : 'bg-white/15'}"></i>`).join('')}
+        </div>
+    `;
+
     const draw = () => {
         let html = '';
         if (step === 1) {
             html = `
                 <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">حوّل عبر شام كاش</h3><button id="sc-close" class="text-gray-400 hover:text-white p-1"><i class="fas fa-times"></i></button></div>
+                ${stepsBarHTML()}
                 ${info.qrImageUrl ? `<div class="text-center mb-3"><img src="${info.qrImageUrl}" class="w-32 h-32 mx-auto rounded-xl bg-white p-2 object-contain" onerror="this.style.display='none'"></div>` : ''}
                 <div class="bg-black/30 rounded-xl px-3 py-2.5 mb-2 flex justify-between items-center text-sm"><span class="text-gray-400">رقم المحفظة</span><span class="flex items-center gap-2"><b dir="ltr">${escapeHtml(info.walletNumber || '—')}</b><button data-copy="${escapeHtml(info.walletNumber || '')}" class="sc-copy text-green-400 text-xs font-bold">نسخ</button></span></div>
                 <div class="bg-black/30 rounded-xl px-3 py-2.5 mb-2 flex justify-between items-center text-sm"><span class="text-gray-400">المبلغ بالضبط</span><span class="flex items-center gap-2"><b dir="ltr">$${amountExact}</b><button data-copy="${amountExact}" class="sc-copy text-green-400 text-xs font-bold">نسخ</button></span></div>
@@ -17913,6 +17921,7 @@ function openShamCashModal(intent) {
         } else if (step === 2) {
             html = `
                 <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">تأكيد التحويل</h3><button id="sc-close" class="text-gray-400 hover:text-white p-1"><i class="fas fa-times"></i></button></div>
+                ${stepsBarHTML()}
                 <div class="mb-3"><label class="text-xs font-bold block mb-1">رقم العملية في شام كاش</label><input id="sc-txn" inputmode="numeric" placeholder="مثال: 7781203345" class="w-full bg-black/30 border border-gray-700 rounded-xl p-3 text-sm" dir="ltr"></div>
                 <div id="sc-upload" class="border-2 border-dashed border-gray-600 rounded-xl p-3 text-center text-xs text-gray-400 mb-3 cursor-pointer">📎 صورة الإيصال (اختياري، يسرّع التحقق)<input type="file" id="sc-file" accept="image/*" class="hidden"></div>
                 <p class="text-xs text-gray-400 mb-4 leading-6">كل رقم عملية يُقبل مرة واحدة فقط بالموقع كله، فلا يمكن استخدام نفس الإيصال مرتين أو من حساب آخر.</p>
@@ -17921,6 +17930,7 @@ function openShamCashModal(intent) {
         } else {
             html = `
                 <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">طلبك قيد التحقق</h3><button id="sc-close" class="text-gray-400 hover:text-white p-1"><i class="fas fa-times"></i></button></div>
+                ${stepsBarHTML()}
                 <ul class="space-y-3 mb-3 text-sm">
                     <li class="flex gap-2"><i class="fas fa-check-circle text-green-400 mt-0.5"></i><div>استلمنا طلبك<div class="text-xs text-gray-400">${escapeHtml(intent.refCode)} · $${amountExact}</div></div></li>
                     <li class="flex gap-2"><i class="fas fa-circle-notch fa-spin text-yellow-400 mt-0.5"></i><div>نطابق التحويل مع حسابنا<div class="text-xs text-gray-400">عادة أقل من 10 دقائق</div></div></li>

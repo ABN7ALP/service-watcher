@@ -617,43 +617,90 @@ class AdminDashboard {
     // ================= Deposit Intents (شحن الكوينزات عبر شام كاش) =================
     async loadDepositIntents(page = 1) {
         const status = document.getElementById('depositIntentsStatusFilter')?.value || 'submitted';
-        const RISK_LABELS = {
-            account_under_7_days: '⚠️ حساب أصغر من 7 أيام',
-            linked_accounts: '⚠️ حسابات مرتبطة',
-            duplicate_receipt_hash: '⚠️ إيصال مكرَّر'
+        // ✅ مراجعة PR (بند 1): same_ip إشارة رمادية محايدة فقط (CGNAT) — لا تحمل نفس وزن
+        // linked_accounts/duplicate_receipt_hash (ربط فعلي حقيقي)
+        const RISK_META = {
+            account_under_7_days: { label: 'حساب أصغر من 7 أيام', cls: 'bg-warning text-dark' },
+            linked_accounts: { label: 'حسابات مرتبطة (جهاز/محفظة)', cls: 'bg-danger' },
+            duplicate_receipt_hash: { label: 'إيصال مكرَّر', cls: 'bg-danger' }
         };
-        const riskLabel = (flag) => RISK_LABELS[flag] || (flag.startsWith('previous_rejections:') ? `⚠️ رفض سابق ×${flag.split(':')[1]}` : flag);
+        const riskChip = (flag) => {
+            if (RISK_META[flag]) return `<span class="badge ${RISK_META[flag].cls}">${RISK_META[flag].label}</span>`;
+            if (flag.startsWith('previous_rejections:')) return `<span class="badge bg-warning text-dark">رفض سابق ×${flag.split(':')[1]}</span>`;
+            if (flag.startsWith('same_ip:')) return `<span class="badge bg-secondary">نفس IP مع ${flag.split(':')[1]} حساب</span>`;
+            return `<span class="badge bg-secondary">${escapeHtml(flag)}</span>`;
+        };
+        const DEFAULT_AVATAR = 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg';
+        // ✅ لا صور معطوبة إطلاقاً: onerror يبدّل لصورة افتراضية مرة واحدة فقط (onerror=null يمنع حلقة)
+        const avatarHTML = (url, size = 42) => `<img src="${escapeHtml(url || DEFAULT_AVATAR)}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex:none" onerror="this.onerror=null;this.src='${DEFAULT_AVATAR}'">`;
+        const BONUS_LABELS = { package: 'بونص الباقة', method: 'بونص شام كاش', first_recharge: 'مضاعفة أول شحنة' };
+        const fmtCoins = (n) => (n || 0).toLocaleString('en-US');
+
         try {
             const data = await this.api('GET', `/deposit-intents?status=${status}&page=${page}`);
             const c = document.getElementById('depositIntentsListContainer');
             if (!data.intents.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-inbox fa-2x"></i><p>لا توجد طلبات</p></div>'; this.renderPagination('depositIntentsPagination', 0, 1, () => {}); return; }
 
             const statusLabel = { awaiting_payment: 'بانتظار الدفع', submitted: 'قيد المراجعة', approved: 'مقبول', rejected: 'مرفوض', expired: 'منتهي' };
-            const statusClass = { approved: 'status-completed', rejected: 'status-banned', expired: 'status-banned' };
+            const statusClass = { approved: 'status-completed', rejected: 'status-banned', expired: 'status-banned', awaiting_payment: 'status-pending' };
 
-            c.innerHTML = data.intents.map(it => `
-                <div class="top-user-item" style="align-items:flex-start;">
-                    <img src="${it.user?.profileImage || 'https://i.ibb.co/601T5nRV/7d580cf284dbd895ae2db4b598ec8bb2.jpg'}" class="top-user-avatar">
-                    <div class="top-user-info" style="flex:2">
-                        <div class="username">${escapeHtml(it.user?.username || 'مستخدم محذوف')}</div>
-                        <div style="font-size:0.85rem;color:#7f8c8d;">
-                            ${it.amountUsd}$ (${((it.exactAmountCents || 0) / 100).toFixed(2)}$ بالضبط) → ${it.totalCoinsSnapshot} كوينز
-                            | المرجع: <b>${escapeHtml(it.refCode)}</b>
-                            ${it.txnNo ? ` | رقم العملية: <b>${escapeHtml(it.txnNo)}</b>` : ''}
-                            | ${formatDate(it.createdAt)}
-                            ${it.receiptImage ? `<br><a href="${it.receiptImage}" target="_blank">عرض الإيصال <i class="fas fa-external-link-alt"></i></a>` : ''}
-                            ${(it.riskFlags || []).length ? `<br><span style="color:#e74c3c">${it.riskFlags.map(riskLabel).join(' · ')}</span>` : ''}
+            c.innerHTML = data.intents.map(it => {
+                const exact = ((it.exactAmountCents || 0) / 100).toFixed(2);
+                const finalTotal = it.status === 'approved' && it.creditedCoins != null ? it.creditedCoins : it.totalCoinsSnapshot;
+                const creditedDiffers = it.status === 'approved' && it.creditedCoins != null && it.creditedCoins !== it.totalCoinsSnapshot;
+                return `
+                <div class="card mb-3">
+                    <div class="card-body p-3">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            ${avatarHTML(it.user?.profileImage)}
+                            <div class="flex-grow-1" style="min-width:0">
+                                <div class="fw-bold text-truncate">${escapeHtml(it.user?.username || 'مستخدم محذوف')}</div>
+                                <div class="text-muted" style="font-size:0.78rem">${formatDate(it.createdAt)}</div>
+                            </div>
+                            ${it.status !== 'submitted' ? `<span class="status-badge ${statusClass[it.status] || ''}">${statusLabel[it.status] || it.status}</span>` : ''}
                         </div>
+
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                            <div>
+                                <div class="fw-bold" style="font-size:1.4rem;color:var(--admin-primary)">$${exact}</div>
+                                <div class="text-muted" style="font-size:0.78rem">أصل الطلب: $${it.amountUsd}</div>
+                            </div>
+                            <div style="font-size:0.82rem">
+                                <div class="d-flex align-items-center gap-1 justify-content-end">المرجع: <b>${escapeHtml(it.refCode)}</b>
+                                    <button type="button" class="btn btn-sm btn-link p-0 copy-chip" data-copy="${escapeHtml(it.refCode)}" title="نسخ"><i class="fas fa-copy"></i></button>
+                                </div>
+                                ${it.txnNo ? `<div class="d-flex align-items-center gap-1 justify-content-end">رقم العملية: <b>${escapeHtml(it.txnNo)}</b>
+                                    <button type="button" class="btn btn-sm btn-link p-0 copy-chip" data-copy="${escapeHtml(it.txnNo)}" title="نسخ"><i class="fas fa-copy"></i></button>
+                                </div>` : ''}
+                            </div>
+                        </div>
+
+                        <div class="bg-light rounded p-2 mb-2" style="font-size:0.82rem">
+                            <div class="d-flex justify-content-between"><span>الأساس</span><b>${fmtCoins(it.baseCoins)} 🪙</b></div>
+                            ${(it.bonusLines || []).map(b => `<div class="d-flex justify-content-between text-success"><span>${BONUS_LABELS[b.type] || b.type}</span><b>+${fmtCoins(b.coins)}</b></div>`).join('')}
+                            <div class="d-flex justify-content-between border-top pt-1 mt-1 fw-bold"><span>${it.status === 'approved' ? 'أُودِع فعلياً' : 'الإجمالي'}</span><span>${fmtCoins(finalTotal)} 🪙</span></div>
+                            ${creditedDiffers ? `<div class="text-warning" style="font-size:0.74rem">* يقل عن اللقطة الأصلية (${fmtCoins(it.totalCoinsSnapshot)}) — بند أول شحنة أُسقِط وقت الموافقة</div>` : ''}
+                        </div>
+
+                        ${it.receiptImage
+                            ? `<a href="${it.receiptImage}" target="_blank" class="d-inline-block mb-2"><img src="${it.receiptImage}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--admin-border)" alt="الإيصال"></a>`
+                            : `<div class="text-muted mb-2" style="font-size:0.78rem"><i class="far fa-image"></i> لا يوجد إيصال مرفق</div>`}
+
+                        ${(it.riskFlags || []).length ? `<div class="d-flex flex-wrap gap-1 mb-2">${it.riskFlags.map(riskChip).join('')}</div>` : ''}
+
+                        ${it.status === 'submitted' ? `
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-success flex-fill" data-approve="${it._id}"><i class="fas fa-check"></i> قبول</button>
+                                <button type="button" class="btn btn-danger flex-fill" data-reject="${it._id}"><i class="fas fa-times"></i> رفض</button>
+                            </div>
+                        ` : ''}
                     </div>
-                    ${it.status === 'submitted' ? `
-                        <div style="display:flex; gap:6px;">
-                            <button class="btn-action btn-view" data-approve="${it._id}" title="قبول"><i class="fas fa-check"></i></button>
-                            <button class="btn-action btn-delete" data-reject="${it._id}" title="رفض"><i class="fas fa-times"></i></button>
-                        </div>
-                    ` : `<span class="status-badge ${statusClass[it.status] || ''}">${statusLabel[it.status] || it.status}</span>`}
                 </div>
-            `).join('');
+            `; }).join('');
 
+            c.querySelectorAll('.copy-chip').forEach(btn => btn.addEventListener('click', () =>
+                navigator.clipboard.writeText(btn.dataset.copy).then(() => this.showToast('تم النسخ', 'success'))
+            ));
             c.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', () =>
                 this.confirmAction('تأكيد الموافقة وإيداع الكوينز؟', async () => {
                     await this.api('POST', `/deposit-intents/${btn.dataset.approve}/approve`);

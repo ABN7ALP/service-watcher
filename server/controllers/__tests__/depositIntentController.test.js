@@ -14,7 +14,8 @@ jest.mock('../../utils/walletService', () => ({ post: jest.fn().mockResolvedValu
 jest.mock('../../utils/linkageService', () => ({ areLinked: jest.fn().mockResolvedValue(false) }));
 jest.mock('../../utils/cloudinary', () => ({
     uploadReceiptImage: jest.fn().mockResolvedValue({ secure_url: 'https://example.test/receipt.jpg' }),
-    chatUpload: { single: () => (req, res, next) => next() }
+    // ✅ افتراضياً "يمر" (لا يرمي) — الاختبار الذي يحتاج رفض نوع الملف يُقحم mockImplementationOnce
+    assertRealType: jest.fn()
 }));
 
 const mongoose = require('mongoose');
@@ -26,6 +27,7 @@ const Withdrawal = require('../../models/Withdrawal');
 const AdminLog = require('../../models/AdminLog');
 const walletService = require('../../utils/walletService');
 const { areLinked } = require('../../utils/linkageService');
+const { assertRealType, uploadReceiptImage } = require('../../utils/cloudinary');
 const depositIntentController = require('../depositIntentController');
 
 function chainable(value) {
@@ -34,6 +36,9 @@ function chainable(value) {
     p.session = () => p;
     p.sort = () => p;
     p.lean = () => p;
+    p.populate = () => p;
+    p.limit = () => p;
+    p.skip = () => p;
     return p;
 }
 
@@ -57,12 +62,18 @@ function defaultSettings(overrides = {}) {
 }
 
 const USER_ID = '507f1f77bcf86cd799439011';
+// ✅ مراجعة PR (بند 2): submitDeposit يتحقق الآن من شكل المعرّف (ObjectId.isValid) قبل أي شيء —
+// معرّفات الاختبارات التي تمر عبره يجب أن "تبدو" صالحة الشكل، لا معرّفات نصّية حرة كـ'i1'
+const INTENT_ID = '507f1f77bcf86cd799439055';
 
 function makeDb() {
     return { intents: new Map(), users: new Map(), exactCents: new Set(), txnNos: new Set(), refCodes: new Set() };
 }
 function seedUser(db, overrides) {
-    const user = { _id: USER_ID, coins: 0, socketId: null, firstRechargeBonusConsumedAt: null, createdAt: new Date(), ...overrides };
+    const user = {
+        _id: USER_ID, coins: 0, socketId: null, firstRechargeBonusConsumedAt: null,
+        walletFirstViewedAt: null, createdAt: new Date(), ...overrides
+    };
     db.users.set(String(user._id), user);
     return user;
 }
@@ -155,6 +166,12 @@ function wireMocks(db, settings) {
         if (newTxnNo) db.txnNos.add(newTxnNo);
         return chainable({ ...row });
     });
+    jest.spyOn(DepositIntent, 'updateOne').mockImplementation((filter, update) => {
+        const row = db.intents.get(String(filter._id));
+        if (!row) return Promise.resolve({ matchedCount: 0 });
+        if (update.$set) Object.assign(row, update.$set);
+        return Promise.resolve({ matchedCount: 1 });
+    });
 
     jest.spyOn(mongoose, 'startSession').mockResolvedValue({
         withTransaction: async (fn) => fn(),
@@ -178,6 +195,8 @@ afterEach(() => {
     // تصفير يدوي صريح يمنع تسرّب عدد/نتيجة استدعاءات اختبار إلى الاختبار التالي
     walletService.post.mockClear();
     areLinked.mockReset().mockResolvedValue(false);
+    assertRealType.mockReset();
+    uploadReceiptImage.mockClear();
     require('../../utils/botMessenger').sendBotMessage.mockClear();
 });
 
@@ -253,48 +272,186 @@ describe('createDeposit — سنتات فريدة + امتثال Google Play + �
     });
 });
 
+describe('createDeposit — نافذة عرض "أول شحنة" الزمنية (مراجعة PR — بند 3)', () => {
+    test('النافذة نشطة (walletFirstViewedAt حديث): بونص أول شحنة يُضاف للّقطة', async () => {
+        const db = makeDb();
+        seedUser(db, { walletFirstViewedAt: new Date(Date.now() - 60000) }); // قبل دقيقة فقط
+        wireMocks(db, defaultSettings({ depositPackages: [{ usd: 1, bonusPct: 0 }], shamCashBonusPct: 0 }));
+
+        const req = mockReq({ body: { usd: 1 } });
+        const res = mockRes();
+        await depositIntentController.createDeposit(req, res);
+        const created = res.json.mock.calls[0][0].data.intent;
+
+        expect(created.bonusLines.some(b => b.type === 'first_recharge')).toBe(true);
+        expect(created.totalCoinsSnapshot).toBe(2000); // 1000 أساس + 1000 أول شحنة
+    });
+
+    test('النافذة لم تبدأ بعد (walletFirstViewedAt فارغ): لا بونص أول شحنة رغم الاستحقاق المنطقي', async () => {
+        const db = makeDb();
+        seedUser(db, { walletFirstViewedAt: null });
+        wireMocks(db, defaultSettings({ depositPackages: [{ usd: 1, bonusPct: 0 }], shamCashBonusPct: 0 }));
+
+        const req = mockReq({ body: { usd: 1 } });
+        const res = mockRes();
+        await depositIntentController.createDeposit(req, res);
+        const created = res.json.mock.calls[0][0].data.intent;
+
+        expect(created.bonusLines.some(b => b.type === 'first_recharge')).toBe(false);
+        expect(created.totalCoinsSnapshot).toBe(1000);
+    });
+
+    test('النافذة انتهت (تجاوزت firstRechargeOfferHours): لا بونص أول شحنة', async () => {
+        const db = makeDb();
+        seedUser(db, { walletFirstViewedAt: new Date(Date.now() - 25 * 3600 * 1000) }); // قبل 25 ساعة
+        wireMocks(db, defaultSettings({ depositPackages: [{ usd: 1, bonusPct: 0 }], shamCashBonusPct: 0, firstRechargeOfferHours: 24 }));
+
+        const req = mockReq({ body: { usd: 1 } });
+        const res = mockRes();
+        await depositIntentController.createDeposit(req, res);
+        const created = res.json.mock.calls[0][0].data.intent;
+
+        expect(created.bonusLines.some(b => b.type === 'first_recharge')).toBe(false);
+        expect(created.totalCoinsSnapshot).toBe(1000);
+    });
+});
+
+describe('createDeposit — مصفوفة لقطة دقيقة لكل باقة (مراجعة PR — بند 5)', () => {
+    // coinsPerUsd=1000, shamCashBonusPct=5, firstRechargeMultiplierUpToUsd=5 (الإعدادات الافتراضية)
+    // base=usd*1000, pkgBonus=base*bonusPct/100, methodBonus=base*5/100, firstBonus=min(usd,5)*1000
+    const PACKAGES = [
+        { usd: 1, bonusPct: 0 }, { usd: 5, bonusPct: 0 }, { usd: 10, bonusPct: 10 },
+        { usd: 25, bonusPct: 12 }, { usd: 50, bonusPct: 15 }, { usd: 100, bonusPct: 20 }
+    ];
+    const packagesSetting = PACKAGES.map(p => ({ usd: p.usd, bonusPct: p.bonusPct, hot: false }));
+    test.each(PACKAGES.map(p => {
+        const base = p.usd * 1000;
+        const pkgBonus = Math.round(base * p.bonusPct / 100);
+        const methodBonus = Math.round(base * 0.05);
+        const noFirst = base + pkgBonus + methodBonus;
+        const firstBonus = Math.min(p.usd, 5) * 1000;
+        return [p.usd, p.bonusPct, noFirst, noFirst + firstBonus];
+    }))('باقة %i$ (بونص %i%%): بلا أول شحنة=%i، مع أول شحنة=%i', async (usd, bonusPct, expectedNoFirst, expectedWithFirst) => {
+        // بلا عرض أول شحنة (النافذة لم تبدأ)
+        {
+            const db = makeDb();
+            seedUser(db, { walletFirstViewedAt: null });
+            wireMocks(db, defaultSettings({ depositPackages: packagesSetting }));
+            const res = mockRes();
+            await depositIntentController.createDeposit(mockReq({ body: { usd } }), res);
+            expect(res.json.mock.calls[0][0].data.intent.totalCoinsSnapshot).toBe(expectedNoFirst);
+        }
+        // مع عرض أول شحنة نشط
+        {
+            const db = makeDb();
+            seedUser(db, { walletFirstViewedAt: new Date() });
+            wireMocks(db, defaultSettings({ depositPackages: packagesSetting }));
+            const res = mockRes();
+            await depositIntentController.createDeposit(mockReq({ body: { usd } }), res);
+            expect(res.json.mock.calls[0][0].data.intent.totalCoinsSnapshot).toBe(expectedWithFirst);
+        }
+    });
+});
+
 describe('submitDeposit — رقم العملية فريد عالمياً عبر كل الحسابات', () => {
     test('رقم عملية مُستخدَم من قبل (أي حساب آخر) يُرفض بـ409 ولا يُغيّر حالة الطلب', async () => {
         const db = makeDb();
         seedUser(db, { _id: USER_ID });
-        seedIntent(db, { _id: 'i1', user: USER_ID, status: 'awaiting_payment', expiresAt: new Date(Date.now() + 60000), txnNo: undefined });
+        seedIntent(db, { _id: INTENT_ID, user: USER_ID, status: 'awaiting_payment', expiresAt: new Date(Date.now() + 60000), txnNo: undefined });
         db.txnNos.add('7781203345'); // ✅ مُستخدَم مسبقاً بحساب آخر فعلاً
         wireMocks(db, defaultSettings());
 
-        const req = mockReq({ params: { id: 'i1' }, body: { txnNo: '7781203345' } });
+        const req = mockReq({ params: { id: INTENT_ID }, body: { txnNo: '7781203345' } });
         const res = mockRes();
         await depositIntentController.submitDeposit(req, res);
 
         expect(res.status).toHaveBeenCalledWith(409);
-        expect(db.intents.get('i1').status).toBe('awaiting_payment');
+        expect(db.intents.get(INTENT_ID).status).toBe('awaiting_payment');
     });
 
     test('رقم عملية فريد: الطلب يصبح submitted والأرقام غير الرقمية تُنظَّف', async () => {
         const db = makeDb();
         seedUser(db, { _id: USER_ID });
-        seedIntent(db, { _id: 'i1', user: USER_ID, status: 'awaiting_payment', expiresAt: new Date(Date.now() + 60000) });
+        seedIntent(db, { _id: INTENT_ID, user: USER_ID, status: 'awaiting_payment', expiresAt: new Date(Date.now() + 60000) });
         wireMocks(db, defaultSettings());
 
-        const req = mockReq({ params: { id: 'i1' }, body: { txnNo: ' 778-120-3345 ' } });
+        const req = mockReq({ params: { id: INTENT_ID }, body: { txnNo: ' 778-120-3345 ' } });
         const res = mockRes();
         await depositIntentController.submitDeposit(req, res);
 
         expect(res.status).toHaveBeenCalledWith(200);
-        expect(db.intents.get('i1').status).toBe('submitted');
-        expect(db.intents.get('i1').txnNo).toBe('7781203345');
+        expect(db.intents.get(INTENT_ID).status).toBe('submitted');
+        expect(db.intents.get(INTENT_ID).txnNo).toBe('7781203345');
     });
 
     test('طلب منتهي الصلاحية (awaiting_payment تجاوز expiresAt) لا يُقبَل إرسال الإشعار له', async () => {
         const db = makeDb();
         seedUser(db, { _id: USER_ID });
-        seedIntent(db, { _id: 'i1', user: USER_ID, status: 'awaiting_payment', expiresAt: new Date(Date.now() - 1000) });
+        seedIntent(db, { _id: INTENT_ID, user: USER_ID, status: 'awaiting_payment', expiresAt: new Date(Date.now() - 1000) });
         wireMocks(db, defaultSettings());
 
-        const req = mockReq({ params: { id: 'i1' }, body: { txnNo: '123456' } });
+        const req = mockReq({ params: { id: INTENT_ID }, body: { txnNo: '123456' } });
         const res = mockRes();
         await depositIntentController.submitDeposit(req, res);
 
         expect(res.status).toHaveBeenCalledWith(400);
+    });
+});
+
+describe('submitDeposit — الملكية/الحالة/الصلاحية تُتحقَّق قبل لمس أي ملف (مراجعة PR — بند 2)', () => {
+    test('معرّف غير صالح الشكل → 404 فوراً بلا أي استعلام أو رفع', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        wireMocks(db, defaultSettings());
+
+        const req = mockReq({ params: { id: 'not-an-object-id' }, body: { txnNo: '123456' } });
+        const res = mockRes();
+        await depositIntentController.submitDeposit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(404);
+        expect(uploadReceiptImage).not.toHaveBeenCalled();
+    });
+
+    test('معرّف طلب يخصّ حساباً آخر → 404 ولا أي رفع للملف', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        const otherUserIntentId = '507f1f77bcf86cd799439099';
+        seedIntent(db, {
+            _id: otherUserIntentId, user: '507f1f77bcf86cd799439022', status: 'awaiting_payment',
+            expiresAt: new Date(Date.now() + 60000)
+        });
+        wireMocks(db, defaultSettings());
+
+        const req = mockReq({
+            params: { id: otherUserIntentId }, body: { txnNo: '123456' },
+            file: { buffer: Buffer.from('fake-image-bytes') }
+        });
+        const res = mockRes();
+        await depositIntentController.submitDeposit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(404);
+        expect(uploadReceiptImage).not.toHaveBeenCalled();
+        expect(assertRealType).not.toHaveBeenCalled();
+    });
+
+    test('ملف ليس صورة فعلياً (توقيع بايتات مرفوض) → 400 ولا يُرفَع ولا يُحفَظ كإيصال', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        seedIntent(db, { _id: INTENT_ID, user: USER_ID, status: 'awaiting_payment', expiresAt: new Date(Date.now() + 60000) });
+        wireMocks(db, defaultSettings());
+        assertRealType.mockImplementationOnce(() => { throw new Error('محتوى الملف لا يطابق نوعاً مسموحاً به.'); });
+
+        const req = mockReq({
+            params: { id: INTENT_ID }, body: { txnNo: '123456' },
+            file: { buffer: Buffer.from('not-really-an-image') }
+        });
+        const res = mockRes();
+        await depositIntentController.submitDeposit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(uploadReceiptImage).not.toHaveBeenCalled();
+        expect(db.intents.get(INTENT_ID).status).toBe('awaiting_payment');
+        expect(db.intents.get(INTENT_ID).receiptImage).toBeUndefined();
     });
 });
 
@@ -400,6 +557,104 @@ describe('adminApproveIntent — حجز ذرّي يمنع إيداعاً مزد�
 
         expect(res.status).toHaveBeenCalledWith(409);
         expect(walletService.post).not.toHaveBeenCalled();
+    });
+
+    test('creditedCoins يُحفَظ ويُعاد بالاستجابة عند اكتمال كل البونصات (مراجعة PR — بند 4)', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        seedIntent(db, {
+            _id: 'i1', user: USER_ID, status: 'submitted', baseCoins: 1000,
+            bonusLines: [{ type: 'package', coins: 100, reason: 'test' }, { type: 'method', coins: 50, reason: 'test' }],
+            totalCoinsSnapshot: 1150
+        });
+        wireMocks(db, defaultSettings());
+
+        const req = mockReq({ params: { id: 'i1' } });
+        const res = mockRes();
+        await depositIntentController.adminApproveIntent(req, res);
+
+        expect(res.json.mock.calls[0][0].intent.creditedCoins).toBe(1150);
+        expect(db.intents.get('i1').creditedCoins).toBe(1150);
+    });
+
+    test('creditedCoins أقل من totalCoinsSnapshot لو أُسقِط بونص أول شحنة (حساب مرتبط استهلكه)', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID, firstRechargeBonusConsumedAt: null });
+        seedIntent(db, {
+            _id: 'i1', user: USER_ID, status: 'submitted', baseCoins: 1000,
+            bonusLines: [{ type: 'method', coins: 50, reason: 'method' }, { type: 'first_recharge', coins: 5000, reason: 'أول شحنة' }],
+            totalCoinsSnapshot: 6050
+        });
+        wireMocks(db, defaultSettings());
+        DeviceSession.find.mockImplementation((filter) => {
+            if (filter.deviceId) return chainable([{ user: 'u_linked' }]);
+            return chainable([{ deviceId: 'shared-device' }]);
+        });
+        User.find.mockReturnValue(chainable([{ _id: 'u_linked' }]));
+        areLinked.mockResolvedValue(true);
+
+        const req = mockReq({ params: { id: 'i1' } });
+        const res = mockRes();
+        await depositIntentController.adminApproveIntent(req, res);
+
+        // 1050 = الأساس 1000 + method 50 فقط — بونص أول شحنة (5000) أُسقِط
+        expect(res.json.mock.calls[0][0].intent.creditedCoins).toBe(1050);
+        expect(res.json.mock.calls[0][0].intent.totalCoinsSnapshot).toBe(6050); // اللقطة الأصلية تبقى كما هي للسجل
+    });
+
+    test('مشاركة IP فقط (أجهزة مختلفة) لا تحظر بونص أول شحنة إطلاقاً (مراجعة PR — بند 1)', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID, firstRechargeBonusConsumedAt: null });
+        seedIntent(db, {
+            _id: 'i1', user: USER_ID, status: 'submitted', baseCoins: 1000,
+            bonusLines: [{ type: 'first_recharge', coins: 5000, reason: 'أول شحنة' }], totalCoinsSnapshot: 6000
+        });
+        wireMocks(db, defaultSettings());
+        // ✅ findLinkedCandidateUserIds لا يستعلم بـip أبداً بعد الآن — DeviceSession.find بفلتر
+        // deviceId لا يُستدعى بمرشّحين إطلاقاً لأن لا deviceIds مشتركة هنا، فالدالة تُعيد [] فوراً
+        DeviceSession.find.mockReturnValue(chainable([{ deviceId: null, ip: '1.2.3.4' }]));
+        Withdrawal.find.mockReturnValue(chainable([]));
+        areLinked.mockResolvedValue(false); // areLinked نفسها لم تعد تفحص IP إطلاقاً
+
+        const req = mockReq({ params: { id: 'i1' } });
+        const res = mockRes();
+        await depositIntentController.adminApproveIntent(req, res);
+
+        const entries = walletService.post.mock.calls[0][0];
+        expect(entries.find(e => e.meta?.reason === 'أول شحنة')).toBeDefined();
+        expect(res.json.mock.calls[0][0].intent.creditedCoins).toBe(6000);
+    });
+});
+
+describe('adminListIntents — إشارة "نفس IP" خطر عرض فقط (مراجعة PR — بند 1)', () => {
+    test('same_ip:N يظهر بعلامات الخطر، لا linked_accounts، لو الحسابان يشتركان بـIP فقط', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        const userDoc = { _id: USER_ID, username: 'u1', profileImage: '', createdAt: new Date(Date.now() - 100 * 86400000) };
+        const intentDoc = {
+            _id: 'i1', user: userDoc, status: 'submitted', riskFlags: [], bonusLines: [],
+            toObject() { return { ...this, user: userDoc }; }
+        };
+        wireMocks(db, defaultSettings());
+        jest.spyOn(DepositIntent, 'find').mockReturnValue(chainable([intentDoc]));
+        jest.spyOn(DepositIntent, 'countDocuments').mockImplementation((filter = {}) => {
+            if (filter.status === 'rejected') return Promise.resolve(0);
+            return Promise.resolve(1);
+        });
+        DeviceSession.find.mockImplementation((filter) => {
+            if (filter.deviceId) return chainable([]); // لا تطابق جهاز — غير مرتبطَين فعلياً
+            if (filter.ip) return chainable([{ user: 'other1' }, { user: 'other2' }]);
+            return chainable([{ deviceId: null, ip: '9.9.9.9' }]);
+        });
+        Withdrawal.find.mockReturnValue(chainable([]));
+
+        const req = mockReq({ query: {} });
+        const res = mockRes();
+        await depositIntentController.adminListIntents(req, res);
+
+        const flags = res.json.mock.calls[0][0].intents[0].riskFlags;
+        expect(flags).toContain('same_ip:2');
+        expect(flags).not.toContain('linked_accounts');
     });
 });
 

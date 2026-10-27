@@ -8,7 +8,7 @@ const Withdrawal = require('../models/Withdrawal');
 const AdminLog = require('../models/AdminLog');
 const LedgerEntry = require('../models/LedgerEntry');
 const walletService = require('../utils/walletService');
-const { uploadReceiptImage } = require('../utils/cloudinary');
+const { uploadReceiptImage, assertRealType } = require('../utils/cloudinary');
 const { parseMoneyInput } = require('../utils/money');
 const { areLinked } = require('../utils/linkageService');
 const { sendBotMessage } = require('../utils/botMessenger');
@@ -27,24 +27,33 @@ function computePackageMatch(settings, usd) {
     return (settings.depositPackages || []).find(p => Math.abs(p.usd - usd) < 1e-9) || null;
 }
 
-// ✅ حسابات قد تشترك بجهاز/IP (ضمن نافذة 24 ساعة)/محفظة سحب شام كاش مع هذا الحساب — مرشّحون
-// فقط (قبل التحقق الدقيق بـareLinked زوجياً)، يُستخدمون لمنع ازدواج عرض أول شحنة ولعلم الخطر
-// الإداري "linked_accounts"
+// ✅ حسابات مرتبطة فعلياً بهذا الحساب — جهاز مشترك أو محفظة سحب شام كاش مشتركة فقط (لا IP،
+// راجع areLinked بـlinkageService.js لسبب استبعاد IP نهائياً — CGNAT بسوريا). يُستخدمون لمنع
+// ازدواج عرض أول شحنة ولعلم الخطر الإداري "linked_accounts"
 async function findLinkedCandidateUserIds(userId) {
-    const sessions = await DeviceSession.find({ user: userId }).select('deviceId ip').lean();
+    const sessions = await DeviceSession.find({ user: userId }).select('deviceId').lean();
     const deviceIds = [...new Set(sessions.filter(s => s.deviceId).map(s => s.deviceId))];
-    const ips = [...new Set(sessions.filter(s => s.ip).map(s => s.ip))];
     const withdrawals = await Withdrawal.find({ user: userId, method: 'sham_cash' }).select('walletNumber').lean();
     const wallets = [...new Set(withdrawals.map(w => w.walletNumber).filter(Boolean))];
 
     const candidates = new Set();
-    const [byDevice, byIp, byWallet] = await Promise.all([
+    const [byDevice, byWallet] = await Promise.all([
         deviceIds.length ? DeviceSession.find({ deviceId: { $in: deviceIds }, user: { $ne: userId } }).select('user').lean() : [],
-        ips.length ? DeviceSession.find({ ip: { $in: ips }, user: { $ne: userId } }).select('user').lean() : [],
         wallets.length ? Withdrawal.find({ walletNumber: { $in: wallets }, method: 'sham_cash', user: { $ne: userId } }).select('user').lean() : []
     ]);
-    [...byDevice, ...byIp, ...byWallet].forEach(r => candidates.add(String(r.user)));
+    [...byDevice, ...byWallet].forEach(r => candidates.add(String(r.user)));
     return [...candidates];
+}
+
+// 🛡️ مراجعة PR (بند 1): عدد الحسابات الأخرى المشتركة بنفس IP — إشارة خطر إدارية بحتة لعرضها
+// بطابور المراجعة فقط ("نفس IP مع N حسابات")، لا تُستخدَم أبداً لتغيير beans_w→beans_p ولا
+// لحظر بونص أول شحنة (شبكات الجوال بسوريا تشترك بـIP واحد بين آلاف المستخدمين الحقيقيين)
+async function findSameIpAccountCount(userId) {
+    const sessions = await DeviceSession.find({ user: userId }).select('ip').lean();
+    const ips = [...new Set(sessions.filter(s => s.ip).map(s => s.ip))];
+    if (!ips.length) return 0;
+    const rows = await DeviceSession.find({ ip: { $in: ips }, user: { $ne: userId } }).select('user').lean();
+    return new Set(rows.map(r => String(r.user))).size;
 }
 
 async function hasLinkedAccountConsumedFirstRecharge(userId) {
@@ -63,6 +72,16 @@ async function isFirstRechargeEligible(userId, user) {
     return !(await hasLinkedAccountConsumedFirstRecharge(userId));
 }
 
+// 🛡️ مراجعة PR (بند 3): نافذة عرض "أول شحنة" الزمنية — تبدأ فقط من أول مشاهدة فعلية لصفحة
+// المحفظة (walletFirstViewedAt، تُضبَط بـgetSummary). لا نافذة بعد (null) = لم تبدأ = غير نشطة
+function computeFirstRechargeWindow(user, settings) {
+    const endsAt = user?.walletFirstViewedAt
+        ? new Date(user.walletFirstViewedAt.getTime() + settings.firstRechargeOfferHours * 3600000)
+        : null;
+    const active = !!endsAt && endsAt.getTime() > Date.now();
+    return { endsAt, active };
+}
+
 // =====================================================
 // 📄 GET /api/wallet/summary
 // =====================================================
@@ -79,10 +98,8 @@ exports.getSummary = async (req, res) => {
             .select('walletCoinsPaid walletCoinsBonus walletBeansW walletBeansP walletUsdCents walletFirstViewedAt firstRechargeBonusConsumedAt');
 
         const eligibleFirst = !!settings.firstRechargeEnabled && (await isFirstRechargeEligible(userId, user));
-        const firstEndsAt = user.walletFirstViewedAt
-            ? new Date(user.walletFirstViewedAt.getTime() + settings.firstRechargeOfferHours * 3600000)
-            : null;
-        const firstActive = eligibleFirst && firstEndsAt && firstEndsAt.getTime() > Date.now();
+        const { endsAt: firstEndsAt, active: windowActive } = computeFirstRechargeWindow(user, settings);
+        const firstActive = eligibleFirst && windowActive;
 
         const packages = (settings.depositPackages || []).map(p => ({
             usd: p.usd,
@@ -161,7 +178,10 @@ exports.createDeposit = async (req, res) => {
         }
 
         const userId = req.user.id;
-        const settings = await SystemSettings.getSettings();
+        const [settings, user] = await Promise.all([
+            SystemSettings.getSettings(),
+            User.findById(userId).select('firstRechargeBonusConsumedAt walletFirstViewedAt')
+        ]);
 
         const usd = parseMoneyInput(req.body.usd, { min: 1, max: settings.maxDepositUsd });
         if (usd === null) {
@@ -216,7 +236,12 @@ exports.createDeposit = async (req, res) => {
                 reason: `بونص شام كاش (+${settings.shamCashBonusPct}%)`
             });
         }
-        if (settings.firstRechargeEnabled && await isFirstRechargeEligible(userId)) {
+        // 🛡️ مراجعة PR (بند 3): اللقطة تتضمّن بونص "أول شحنة" فقط إن كانت النافذة الزمنية نشطة
+        // فعلياً وقت الإنشاء (walletFirstViewedAt + firstRechargeOfferHours لم تنتهِ بعد) — لا
+        // يكفي الاستحقاق المنطقي وحده (عدم الاستهلاك + عدم الارتباط)
+        if (settings.firstRechargeEnabled
+            && computeFirstRechargeWindow(user, settings).active
+            && await isFirstRechargeEligible(userId, user)) {
             const firstUsd = Math.min(usd, settings.firstRechargeMultiplierUpToUsd);
             const firstCoins = Math.round(firstUsd * settings.coinsPerUsd);
             if (firstCoins > 0) {
@@ -272,15 +297,40 @@ exports.submitDeposit = async (req, res) => {
     try {
         const userId = req.user.id;
         const { id } = req.params;
+
+        // 🛡️ مراجعة PR (بند 2): شكل المعرّف أولاً — منع CastError وأي استعلام بمعرّف فاسد
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(404).json({ status: 'fail', message: 'الطلب غير موجود' });
+        }
+
         const digitsOnly = String(req.body.txnNo || '').replace(/\D/g, '');
         if (digitsOnly.length < 4 || digitsOnly.length > 30) {
             return res.status(400).json({ status: 'fail', message: 'رقم العملية غير صالح' });
+        }
+
+        // ✅ الملكية/الحالة/الصلاحية تُتحقَّق قبل لمس أي ملف مرفوع إطلاقاً — لا رفع لـCloudinary
+        // لطلب ليس ملك هذا المستخدم أو تجاوز حالته awaiting_payment (التحديث الذرّي أدناه يبقى
+        // الحارس الفعلي ضد أي سباق بين هذا الفحص والتحديث؛ هذا فحص مبكر فقط يوفّر رفعاً عديم الجدوى)
+        const precheck = await DepositIntent.findOne({ _id: id, user: userId }).select('status expiresAt');
+        if (!precheck) return res.status(404).json({ status: 'fail', message: 'الطلب غير موجود' });
+        if (precheck.status !== 'awaiting_payment') {
+            return res.status(400).json({ status: 'fail', message: 'لا يمكن تعديل هذا الطلب بعد الآن' });
+        }
+        if (precheck.expiresAt <= new Date()) {
+            return res.status(400).json({ status: 'fail', message: 'انتهت صلاحية هذا الطلب (30 دقيقة) — أنشئ طلباً جديداً' });
         }
 
         let receiptImage = null;
         let receiptHash = null;
         let duplicateHash = false;
         if (req.file) {
+            // 🛡️ مراجعة PR (بند 2): الفحص الحاسم على البايتات الفعلية (لا mimetype المُرسَل من
+            // العميل وحده — receiptUpload middleware يفلتره أولياً فقط) — jpeg/png/webp حصراً
+            try {
+                assertRealType(req.file.buffer, ['image/jpeg', 'image/png', 'image/webp']);
+            } catch (typeError) {
+                return res.status(400).json({ status: 'fail', message: typeError.message });
+            }
             receiptHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
             duplicateHash = await DepositIntent.exists({ receiptHash, _id: { $ne: id } });
             const uploadResult = await uploadReceiptImage(req.file.buffer);
@@ -351,6 +401,9 @@ exports.adminListIntents = async (req, res) => {
             if (intent.user) {
                 const candidates = await findLinkedCandidateUserIds(intent.user._id);
                 if (candidates.length > 0) riskFlags.add('linked_accounts');
+                // ✅ مراجعة PR (بند 1): إشارة خطر عرض فقط — لا تدخل أبداً بمنطق الحظر/beans_p
+                const sameIpCount = await findSameIpAccountCount(intent.user._id);
+                if (sameIpCount > 0) riskFlags.add(`same_ip:${sameIpCount}`);
                 const priorRejections = await DepositIntent.countDocuments({ user: intent.user._id, status: 'rejected' });
                 if (priorRejections > 0) riskFlags.add(`previous_rejections:${priorRejections}`);
             }
@@ -409,6 +462,12 @@ exports.adminApproveIntent = async (req, res) => {
                     });
                 }
 
+                // 🛡️ مراجعة PR (بند 4): المُودَع فعلياً — قد يقل عن totalCoinsSnapshot لو أُسقِط
+                // بند "أول شحنة" أعلاه (حساب مرتبط استهلك العرض بين الإنشاء والموافقة)
+                const creditedCoins = entries.reduce((sum, e) => sum + e.delta, 0);
+                await DepositIntent.updateOne({ _id: intent._id }, { $set: { creditedCoins } }, { session });
+                intent.creditedCoins = creditedCoins;
+
                 await walletService.post(entries, session);
                 user = await User.findById(intent.user).select('coins socketId').session(session);
             });
@@ -426,15 +485,15 @@ exports.adminApproveIntent = async (req, res) => {
         const io = req.app.get('socketio');
         if (user) {
             if (io && user.socketId) {
-                io.to(user.socketId).emit('coinsUpdated', { newCoins: user.coins, intentId: intent._id });
+                io.to(user.socketId).emit('coinsUpdated', { newCoins: user.coins, intentId: intent._id, creditedCoins: intent.creditedCoins });
             }
-            await sendBotMessage(io, intent.user, `تم إيداع ${intent.totalCoinsSnapshot} كوينز في حسابك بنجاح 🪙 (${intent.refCode})\nرصيدك الحالي: ${user.coins} كوينز`);
+            await sendBotMessage(io, intent.user, `تم إيداع ${intent.creditedCoins} كوينز في حسابك بنجاح 🪙 (${intent.refCode})\nرصيدك الحالي: ${user.coins} كوينز`);
         }
 
         await AdminLog.logAction({
             admin: req.admin._id, action: 'approve_deposit', targetUser: intent.user,
             targetEntity: 'transaction', entityId: intent._id,
-            details: { type: 'deposit_intent', refCode: intent.refCode, totalCoins: intent.totalCoinsSnapshot },
+            details: { type: 'deposit_intent', refCode: intent.refCode, totalCoinsSnapshot: intent.totalCoinsSnapshot, creditedCoins: intent.creditedCoins },
             ipAddress: req.ip
         });
 
@@ -488,3 +547,5 @@ exports.adminRejectIntent = async (req, res) => {
 // ✅ مُصدَّرة للاختبار المباشر
 exports.isFirstRechargeEligible = isFirstRechargeEligible;
 exports.findLinkedCandidateUserIds = findLinkedCandidateUserIds;
+exports.findSameIpAccountCount = findSameIpAccountCount;
+exports.computeFirstRechargeWindow = computeFirstRechargeWindow;

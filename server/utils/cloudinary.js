@@ -345,6 +345,33 @@ const deleteChatMedia = async (publicId, resourceType = 'image') => {
     }
 };
 
+// 12.4 Multer لإيصال تحويل شحن الكوينزات (شام كاش) — صور فقط، سقف 5MB صريح بالطلب. الفحص
+// الحاسم (assertRealType على البايتات الفعلية) يبقى بالكنترولر بعد الرفع للذاكرة، قبل
+// Cloudinary، كبقية مسارات الرفع بهذا الملف — fileFilter هنا مجرّد فلتر أولي رخيص (mimetype
+// يُزوَّر بسهولة من العميل، لا يُعتمَد عليه وحده)
+const receiptImageFilter = (req, file, cb) => {
+    const allowed = { 'image/jpeg': true, 'image/png': true, 'image/webp': true };
+    if (allowed[file.mimetype]) return cb(null, true);
+    cb(new Error('الرفع مسموح لصور jpeg/png/webp فقط'));
+};
+const receiptUploadRaw = multer({
+    storage: storage,
+    fileFilter: receiptImageFilter,
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+}).single('file');
+
+// 🐛 نفس نمط customGiftUpload أعلاه بالضبط: يلتقط أخطاء multer (تجاوز 5MB، نوع مرفوض) صراحةً
+// ويُترجمها لرسالة عربية 400 واضحة
+function receiptUpload(req, res, next) {
+    receiptUploadRaw(req, res, (err) => {
+        if (!err) return next();
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ status: 'fail', message: 'حجم صورة الإيصال يجب ألا يتجاوز 5 ميجابايت' });
+        }
+        return res.status(400).json({ status: 'fail', message: err.message || 'تعذّر رفع صورة الإيصال' });
+    });
+}
+
 // 12.5 دالة رفع صورة إشعار تحويل الكوينزات
 const uploadReceiptImage = (fileBuffer) => {
     return new Promise((resolve, reject) => {
@@ -407,6 +434,7 @@ module.exports = {
     uploadFrameAsset,         // دالة رفع أصل إطار (من ملف على القرص)
     deleteChatMedia,          // دالة حذف وسائط الدردشة
     uploadReceiptImage,        // دالة رفع صورة إشعار التحويل
+    receiptUpload,             // لإيصال تحويل الشحن (middleware — صور فقط، 5MB)
     deleteFromCloudinary,     // دالة حذف عامة
         getPublicIdFromUrl,   // دالة استخراج publicId
     detectRealFileType,       //  كشف النوع الحقيقي من البايتات

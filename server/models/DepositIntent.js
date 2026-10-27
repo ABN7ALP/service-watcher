@@ -20,6 +20,9 @@ const depositIntentSchema = new mongoose.Schema({
     baseCoins: { type: Number, required: true },
     bonusLines: { type: [bonusLineSchema], default: [] },
     totalCoinsSnapshot: { type: Number, required: true },
+    // ✅ مراجعة PR (بند 4): ما أُودِع فعلياً عند الموافقة — قد يقل عن totalCoinsSnapshot لو
+    // أُسقِط بند "أول شحنة" وقتها (حساب مرتبط استهلك العرض بين الإنشاء والموافقة). null حتى الموافقة
+    creditedCoins: { type: Number, default: null },
     status: {
         type: String,
         enum: ['awaiting_payment', 'submitted', 'approved', 'rejected', 'expired'],
