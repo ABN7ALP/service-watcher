@@ -133,12 +133,16 @@ function wireMocks(db, settings) {
     });
     jest.spyOn(DepositIntent, 'exists').mockImplementation((filter) => Promise.resolve(!!db.intents.get(String(filter._id))));
     jest.spyOn(DepositIntent, 'create').mockImplementation((doc) => {
-        if (db.exactCents.has(doc.exactAmountCents) || db.refCodes.has(doc.refCode)) {
+        // ✅ يحاكي الفهرس الجزئي الحقيقي بالضبط: التعارض على exactAmountCents يُفحَص فقط حين
+        // centsUnique:true (الافتراضي) — طلبات centsUnique:false (وضع بلا سنتات فريدة) لا تتعارض
+        // أبداً بنفس exactAmountCents، مهما تكرّر، تماماً كما يسمح الفهرس الجزئي الحقيقي
+        const checksCents = doc.centsUnique !== false;
+        if ((checksCents && db.exactCents.has(doc.exactAmountCents)) || db.refCodes.has(doc.refCode)) {
             return Promise.reject(Object.assign(new Error('E11000 duplicate key'), { code: 11000 }));
         }
         const created = { _id: `intent_${db.intents.size + 1}`, status: 'awaiting_payment', ...doc };
         db.intents.set(String(created._id), created);
-        db.exactCents.add(created.exactAmountCents);
+        if (checksCents) db.exactCents.add(created.exactAmountCents);
         db.refCodes.add(created.refCode);
         return Promise.resolve(created);
     });
@@ -353,6 +357,60 @@ describe('createDeposit — مصفوفة لقطة دقيقة لكل باقة (م
     });
 });
 
+describe('createDeposit — وضع بلا سنتات فريدة (الإعداد depositUniqueCentsEnabled=false)', () => {
+    test('المبلغ الدقيق = المبلغ الصحيح بالضبط وcentsUnique=false بالطلب المُنشأ', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        wireMocks(db, defaultSettings({ depositUniqueCentsEnabled: false, depositPackages: [{ usd: 10, bonusPct: 0 }] }));
+
+        const req = mockReq({ body: { usd: 10 } });
+        const res = mockRes();
+        await depositIntentController.createDeposit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(201);
+        const created = res.json.mock.calls[0][0].data.intent;
+        expect(created.exactAmountCents).toBe(1000);
+        expect(created.centsUnique).toBe(false);
+    });
+
+    test('مبلغ مخصَّص بكسور عشرية يُرفض بـ400 حين تكون السنتات الفريدة معطَّلة', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        wireMocks(db, defaultSettings({ depositUniqueCentsEnabled: false }));
+
+        const req = mockReq({ body: { usd: 10.5 } });
+        const res = mockRes();
+        await depositIntentController.createDeposit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(db.intents.size).toBe(0);
+    });
+
+    test('طلبان متزامنان بنفس المبلغ الصحيح لا يتصادمان أبداً (لا فحص-ثم-كتابة)', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        wireMocks(db, defaultSettings({ depositUniqueCentsEnabled: false, maxOpenDepositIntentsPerUser: 5 }));
+
+        const req1 = mockReq({ body: { usd: 7 } });
+        const res1 = mockRes();
+        const req2 = mockReq({ body: { usd: 7 } });
+        const res2 = mockRes();
+
+        await Promise.all([
+            depositIntentController.createDeposit(req1, res1),
+            depositIntentController.createDeposit(req2, res2)
+        ]);
+
+        expect(res1.status).toHaveBeenCalledWith(201);
+        expect(res2.status).toHaveBeenCalledWith(201);
+        const created1 = res1.json.mock.calls[0][0].data.intent;
+        const created2 = res2.json.mock.calls[0][0].data.intent;
+        expect(created1.exactAmountCents).toBe(700);
+        expect(created2.exactAmountCents).toBe(700);
+        expect(created1._id).not.toBe(created2._id);
+    });
+});
+
 describe('submitDeposit — رقم العملية فريد عالمياً عبر كل الحسابات', () => {
     test('رقم عملية مُستخدَم من قبل (أي حساب آخر) يُرفض بـ409 ولا يُغيّر حالة الطلب', async () => {
         const db = makeDb();
@@ -452,6 +510,63 @@ describe('submitDeposit — الملكية/الحالة/الصلاحية تُت�
         expect(uploadReceiptImage).not.toHaveBeenCalled();
         expect(db.intents.get(INTENT_ID).status).toBe('awaiting_payment');
         expect(db.intents.get(INTENT_ID).receiptImage).toBeUndefined();
+    });
+});
+
+describe('submitDeposit — اسم المرسل في شام كاش اختياري دوماً (senderName)', () => {
+    test('senderName محذوف بالكامل: الطلب ينجح بلا أي حقل senderName', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        seedIntent(db, { _id: INTENT_ID, user: USER_ID, status: 'awaiting_payment', expiresAt: new Date(Date.now() + 60000) });
+        wireMocks(db, defaultSettings());
+
+        const req = mockReq({ params: { id: INTENT_ID }, body: { txnNo: '123456' } });
+        const res = mockRes();
+        await depositIntentController.submitDeposit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(db.intents.get(INTENT_ID).senderName).toBeUndefined();
+    });
+
+    test('senderName صالح (2-60 حرفاً): يُحفَظ بعد trim بالطلب', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        seedIntent(db, { _id: INTENT_ID, user: USER_ID, status: 'awaiting_payment', expiresAt: new Date(Date.now() + 60000) });
+        wireMocks(db, defaultSettings());
+
+        const req = mockReq({ params: { id: INTENT_ID }, body: { txnNo: '123456', senderName: '  أحمد علي  ' } });
+        const res = mockRes();
+        await depositIntentController.submitDeposit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(db.intents.get(INTENT_ID).senderName).toBe('أحمد علي');
+    });
+
+    test('senderName قصير جداً (حرف واحد) يُرفض بـ400 ولا يُغيّر حالة الطلب', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        seedIntent(db, { _id: INTENT_ID, user: USER_ID, status: 'awaiting_payment', expiresAt: new Date(Date.now() + 60000) });
+        wireMocks(db, defaultSettings());
+
+        const req = mockReq({ params: { id: INTENT_ID }, body: { txnNo: '123456', senderName: 'ا' } });
+        const res = mockRes();
+        await depositIntentController.submitDeposit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(db.intents.get(INTENT_ID).status).toBe('awaiting_payment');
+    });
+
+    test('senderName طويل جداً (أكثر من 60 حرفاً) يُرفض بـ400', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        seedIntent(db, { _id: INTENT_ID, user: USER_ID, status: 'awaiting_payment', expiresAt: new Date(Date.now() + 60000) });
+        wireMocks(db, defaultSettings());
+
+        const req = mockReq({ params: { id: INTENT_ID }, body: { txnNo: '123456', senderName: 'س'.repeat(61) } });
+        const res = mockRes();
+        await depositIntentController.submitDeposit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
     });
 });
 
@@ -693,5 +808,84 @@ describe('adminRejectIntent — يتطلّب سبباً ويُشعر المست�
         expect(bodies.filter(b => b.success === true)).toHaveLength(1);
         expect(bodies.filter(b => b.success === false)).toHaveLength(1);
         expect(db.intents.get('i1').status).toBe('rejected');
+    });
+});
+
+describe('cancelDeposit — المستخدم يُلغي طلبه الخاص (awaiting_payment فقط)', () => {
+    test('إلغاء طلب awaiting_payment ينجح وتتحوّل حالته إلى cancelled', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        seedIntent(db, { _id: INTENT_ID, user: USER_ID, status: 'awaiting_payment', expiresAt: new Date(Date.now() + 60000) });
+        wireMocks(db, defaultSettings());
+
+        const req = mockReq({ params: { id: INTENT_ID } });
+        const res = mockRes();
+        await depositIntentController.cancelDeposit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(db.intents.get(INTENT_ID).status).toBe('cancelled');
+    });
+
+    test('طلب حساب آخر → 404 ولا يُغيّر حالته', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        const otherId = '507f1f77bcf86cd799439099';
+        seedIntent(db, { _id: otherId, user: '507f1f77bcf86cd799439022', status: 'awaiting_payment' });
+        wireMocks(db, defaultSettings());
+
+        const req = mockReq({ params: { id: otherId } });
+        const res = mockRes();
+        await depositIntentController.cancelDeposit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(404);
+        expect(db.intents.get(otherId).status).toBe('awaiting_payment');
+    });
+
+    test('طلب تجاوز حالته awaiting_payment (مثل submitted) → 400 ولا يُغيّر حالته', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        seedIntent(db, { _id: INTENT_ID, user: USER_ID, status: 'submitted' });
+        wireMocks(db, defaultSettings());
+
+        const req = mockReq({ params: { id: INTENT_ID } });
+        const res = mockRes();
+        await depositIntentController.cancelDeposit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(db.intents.get(INTENT_ID).status).toBe('submitted');
+    });
+
+    test('معرّف غير صالح الشكل → 404 فوراً بلا استعلام', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        wireMocks(db, defaultSettings());
+
+        const req = mockReq({ params: { id: 'not-an-object-id' } });
+        const res = mockRes();
+        await depositIntentController.cancelDeposit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    test('إلغاءان متزامنان لنفس الطلب: واحد فقط ينجح (حجز ذرّي)', async () => {
+        const db = makeDb();
+        seedUser(db, { _id: USER_ID });
+        seedIntent(db, { _id: INTENT_ID, user: USER_ID, status: 'awaiting_payment', expiresAt: new Date(Date.now() + 60000) });
+        wireMocks(db, defaultSettings());
+
+        const req1 = mockReq({ params: { id: INTENT_ID } });
+        const res1 = mockRes();
+        const req2 = mockReq({ params: { id: INTENT_ID } });
+        const res2 = mockRes();
+
+        await Promise.all([
+            depositIntentController.cancelDeposit(req1, res1),
+            depositIntentController.cancelDeposit(req2, res2)
+        ]);
+
+        const bodies = [res1.json.mock.calls[0][0], res2.json.mock.calls[0][0]];
+        expect(bodies.filter(b => b.status === 'success')).toHaveLength(1);
+        expect(bodies.filter(b => b.status === 'fail')).toHaveLength(1);
+        expect(db.intents.get(INTENT_ID).status).toBe('cancelled');
     });
 });

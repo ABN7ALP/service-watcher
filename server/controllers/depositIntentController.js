@@ -132,10 +132,13 @@ exports.getSummary = async (req, res) => {
                 coinsPerUsd: settings.coinsPerUsd,
                 maxDepositUsd: settings.maxDepositUsd,
                 shamCashBonusPct: settings.shamCashBonusPct,
+                depositUniqueCentsEnabled: !!settings.depositUniqueCentsEnabled,
                 shamCash: {
                     walletNumber: settings.shamCashWallet,
                     accountHolderName: settings.shamCashHolderName,
-                    qrImageUrl: settings.shamCashQrUrl
+                    qrImageUrl: settings.shamCashQrUrl,
+                    helpImage1: settings.shamCashHelpImage1 || '',
+                    helpImage2: settings.shamCashHelpImage2 || ''
                 },
                 packages,
                 firstRecharge: {
@@ -186,6 +189,11 @@ exports.createDeposit = async (req, res) => {
         const usd = parseMoneyInput(req.body.usd, { min: 1, max: settings.maxDepositUsd });
         if (usd === null) {
             return res.status(400).json({ status: 'fail', message: `المبلغ يجب أن يكون بين 1$ و ${settings.maxDepositUsd}$` });
+        }
+        // ✅ وضع بلا سنتات فريدة (إدارياً فقط — الافتراضي سنتات فريدة مفعَّلة): لا مبلغ دقيق
+        // مميَّز هنا، فقط مبالغ صحيحة بالدولار (الباقات نفسها صحيحة دوماً، هذا يخص المبلغ المخصَّص)
+        if (!settings.depositUniqueCentsEnabled && !Number.isInteger(usd)) {
+            return res.status(400).json({ status: 'fail', message: 'المبلغ يجب أن يكون رقماً صحيحاً بالدولار بلا كسور' });
         }
 
         const openCount = await DepositIntent.countDocuments({
@@ -256,31 +264,48 @@ exports.createDeposit = async (req, res) => {
         const expiresAt = new Date(Date.now() + settings.depositIntentExpiryMinutes * 60000);
         const baseCents = Math.round(usd * 100);
 
-        // ✅ سنتات فريدة (01-99) بين الطلبات "المفتوحة" بنفس المبلغ الأساسي — الفهرس الجزئي
-        // الفريد بـDepositIntent هو الضامن الذري الحقيقي؛ هذه الحلقة مجرد إعادة محاولة عند تعارض
         let created = null;
         let lastError = null;
-        for (let attempt = 0; attempt < 20 && !created; attempt++) {
-            const cents = Math.floor(Math.random() * 99) + 1;
-            try {
-                created = await DepositIntent.create({
-                    user: userId,
-                    refCode: genRefCode(),
-                    amountUsd: usd,
-                    exactAmountCents: baseCents + cents,
-                    baseCoins,
-                    bonusLines,
-                    totalCoinsSnapshot,
-                    expiresAt
-                });
-            } catch (e) {
-                if (e.code === 11000) { lastError = e; continue; }
-                throw e;
+        if (settings.depositUniqueCentsEnabled) {
+            // ✅ سنتات فريدة (01-99) بين الطلبات "المفتوحة" بنفس المبلغ الأساسي — الفهرس الجزئي
+            // الفريد بـDepositIntent (centsUnique:true) هو الضامن الذري؛ هذه الحلقة مجرد إعادة
+            // محاولة عند تعارض، لا فحص-ثم-كتابة
+            for (let attempt = 0; attempt < 20 && !created; attempt++) {
+                const cents = Math.floor(Math.random() * 99) + 1;
+                try {
+                    created = await DepositIntent.create({
+                        user: userId, refCode: genRefCode(), amountUsd: usd,
+                        exactAmountCents: baseCents + cents, centsUnique: true,
+                        baseCoins, bonusLines, totalCoinsSnapshot, expiresAt
+                    });
+                } catch (e) {
+                    if (e.code === 11000) { lastError = e; continue; }
+                    throw e;
+                }
             }
-        }
-        if (!created) {
-            console.error('[DEPOSIT] تعذّر تخصيص سنتات/رمز فريد بعد عدة محاولات:', lastError);
-            return res.status(503).json({ status: 'fail', message: 'الخادم مزدحم حالياً، حاول مجدداً بعد لحظات' });
+            if (!created) {
+                console.error('[DEPOSIT] تعذّر تخصيص سنتات/رمز فريد بعد عدة محاولات:', lastError);
+                return res.status(503).json({ status: 'fail', message: 'الخادم مزدحم حالياً، حاول مجدداً بعد لحظات' });
+            }
+        } else {
+            // ✅ بلا سنتات فريدة: المبلغ الدقيق = المبلغ الصحيح بالضبط، وcentsUnique:false يُخرج
+            // هذا الطلب من فهرس التفرّد تماماً — طلبان مختلفان بنفس المبلغ الصحيح لا يتصادمان أبداً
+            for (let attempt = 0; attempt < 5 && !created; attempt++) {
+                try {
+                    created = await DepositIntent.create({
+                        user: userId, refCode: genRefCode(), amountUsd: usd,
+                        exactAmountCents: baseCents, centsUnique: false,
+                        baseCoins, bonusLines, totalCoinsSnapshot, expiresAt
+                    });
+                } catch (e) {
+                    if (e.code === 11000) { lastError = e; continue; } // تعارض refCode نادر جداً — أعد المحاولة برمز جديد
+                    throw e;
+                }
+            }
+            if (!created) {
+                console.error('[DEPOSIT] تعذّر إنشاء رمز مرجعي فريد بعد عدة محاولات:', lastError);
+                return res.status(503).json({ status: 'fail', message: 'الخادم مزدحم حالياً، حاول مجدداً بعد لحظات' });
+            }
         }
 
         res.status(201).json({ status: 'success', data: { intent: created } });
@@ -306,6 +331,13 @@ exports.submitDeposit = async (req, res) => {
         const digitsOnly = String(req.body.txnNo || '').replace(/\D/g, '');
         if (digitsOnly.length < 4 || digitsOnly.length > 30) {
             return res.status(400).json({ status: 'fail', message: 'رقم العملية غير صالح' });
+        }
+
+        // ✅ "اسم المرسل في شام كاش" — اختياري دوماً (يساعد مطابقة الأدمن اليدوية)؛ إن أُرسِل
+        // يجب أن يكون بطول معقول — رفض صريح بدل قبول قيمة فارغة بعد trim أو مفرطة الطول بصمت
+        const senderNameRaw = typeof req.body.senderName === 'string' ? req.body.senderName.trim() : '';
+        if (senderNameRaw && (senderNameRaw.length < 2 || senderNameRaw.length > 60)) {
+            return res.status(400).json({ status: 'fail', message: 'اسم المرسل يجب أن يكون بين 2 و60 حرفاً' });
         }
 
         // ✅ الملكية/الحالة/الصلاحية تُتحقَّق قبل لمس أي ملف مرفوع إطلاقاً — لا رفع لـCloudinary
@@ -338,6 +370,7 @@ exports.submitDeposit = async (req, res) => {
         }
 
         const setFields = { status: 'submitted', submittedAt: new Date(), txnNo: digitsOnly };
+        if (senderNameRaw) setFields.senderName = senderNameRaw;
         if (receiptImage) setFields.receiptImage = receiptImage;
         if (receiptHash) setFields.receiptHash = receiptHash;
         const update = { $set: setFields };
@@ -374,6 +407,37 @@ exports.submitDeposit = async (req, res) => {
     } catch (error) {
         console.error('[ERROR] in submitDeposit:', error);
         res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم أثناء إرسال الطلب' });
+    }
+};
+
+// =====================================================
+// 📄 POST /api/wallet/deposits/:id/cancel — المستخدم يُلغي طلبه الخاص (awaiting_payment فقط)
+// =====================================================
+exports.cancelDeposit = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(404).json({ status: 'fail', message: 'الطلب غير موجود' });
+        }
+
+        // ✅ حجز ذرّي واحد (status:'awaiting_payment' شرطاً) — يمنع إلغاء طلب أُرسِل له إشعار
+        // تحويل فعلاً (submitted) أو عولِج مسبقاً، ويمنع إلغاءين متزامنين من التعارض
+        const intent = await DepositIntent.findOneAndUpdate(
+            { _id: id, user: userId, status: 'awaiting_payment' },
+            { $set: { status: 'cancelled', processedAt: new Date() } },
+            { new: true }
+        );
+        if (!intent) {
+            const existing = await DepositIntent.findOne({ _id: id, user: userId }).select('status');
+            if (!existing) return res.status(404).json({ status: 'fail', message: 'الطلب غير موجود' });
+            return res.status(400).json({ status: 'fail', message: 'لا يمكن إلغاء هذا الطلب بعد الآن' });
+        }
+
+        res.status(200).json({ status: 'success', message: 'تم إلغاء الطلب', data: { intent } });
+    } catch (error) {
+        console.error('[ERROR] in cancelDeposit:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
     }
 };
 
@@ -486,6 +550,12 @@ exports.adminApproveIntent = async (req, res) => {
         if (user) {
             if (io && user.socketId) {
                 io.to(user.socketId).emit('coinsUpdated', { newCoins: user.coins, intentId: intent._id, creditedCoins: intent.creditedCoins });
+                // ✅ مراجعة PR (تجربة الشحن v2 — بند 11): حدث مخصَّص لورقة النجاح الحيّة (التفصيل
+                // الكامل لكل بند بونص) — منفصل عن coinsUpdated العام الذي تعتمده شاشات أخرى بالتطبيق
+                io.to(user.socketId).emit('depositIntentApproved', {
+                    intentId: intent._id, refCode: intent.refCode, baseCoins: intent.baseCoins,
+                    bonusLines: intent.bonusLines, creditedCoins: intent.creditedCoins, newCoins: user.coins
+                });
             }
             await sendBotMessage(io, intent.user, `تم إيداع ${intent.creditedCoins} كوينز في حسابك بنجاح 🪙 (${intent.refCode})\nرصيدك الحالي: ${user.coins} كوينز`);
         }

@@ -876,7 +876,8 @@ exports.updateSystemSettings = async (req, res) => {
       'payoutLaunchPct', 'payoutLaunchStartsAt', 'payoutLaunchEndsAt', 'payoutBasePct', 'payoutHighPct', 'highHostLevel',
       // ✅ شحن الكوينزات عبر شام كاش (feat/wallet-recharge-v1) — راجع depositIntentController.js
       'maxDepositUsd', 'maxOpenDepositIntentsPerUser', 'dailyDepositCapUsd', 'depositIntentExpiryMinutes',
-      'depositPackages', 'shamCashBonusPct', 'firstRechargeEnabled', 'firstRechargeMultiplierUpToUsd', 'firstRechargeOfferHours'
+      'depositPackages', 'shamCashBonusPct', 'firstRechargeEnabled', 'firstRechargeMultiplierUpToUsd', 'firstRechargeOfferHours',
+      'depositUniqueCentsEnabled'
     ];
     const updates = {};
     for (const field of allowedFields) {
@@ -900,6 +901,44 @@ exports.updateSystemSettings = async (req, res) => {
     });
 
     res.json({ success: true, message: 'تم تحديث الإعدادات بنجاح', settings });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ صورتا شرح "أين أجد رقم العملية؟" بنافذة شام كاش — رفع فعلي (لا رابط نصّي)، نفس middleware
+// الإيصال (receiptUpload — صور فقط 5MB) + assertRealType الحاسم على البايتات الفعلية هنا أيضاً
+exports.uploadShamCashHelpImage = async (req, res) => {
+  try {
+    const { slot } = req.params;
+    if (!['1', '2'].includes(slot)) {
+      return res.status(400).json({ success: false, message: 'رقم الصورة غير صالح (1 أو 2 فقط)' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'الرجاء اختيار صورة' });
+    }
+    const { assertRealType, uploadShamCashHelpImage: uploadFn } = require('../utils/cloudinary');
+    try {
+      assertRealType(req.file.buffer, ['image/jpeg', 'image/png', 'image/webp']);
+    } catch (typeError) {
+      return res.status(400).json({ success: false, message: typeError.message });
+    }
+
+    const uploadResult = await uploadFn(req.file.buffer);
+    const SystemSettings = require('../models/SystemSettings');
+    const field = `shamCashHelpImage${slot}`;
+    const settings = await SystemSettings.findOneAndUpdate(
+      { singletonKey: 'main' },
+      { $set: { [field]: uploadResult.secure_url, updatedBy: req.admin._id } },
+      { new: true, upsert: true, runValidators: true }
+    );
+
+    await AdminLog.logAction({
+      admin: req.admin._id, action: 'update_settings', details: { [field]: uploadResult.secure_url },
+      severity: 'info', ipAddress: req.ip
+    });
+
+    res.json({ success: true, message: 'تم رفع الصورة بنجاح', settings });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

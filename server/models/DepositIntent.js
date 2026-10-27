@@ -17,6 +17,14 @@ const depositIntentSchema = new mongoose.Schema({
     refCode: { type: String, required: true, unique: true },
     amountUsd: { type: Number, required: true, min: 0.01 },
     exactAmountCents: { type: Number, required: true },
+    // ✅ السنتات الفريدة هي آلية المطابقة الأساسية (SystemSettings.depositUniqueCentsEnabled،
+    // افتراضي true). لو عُطِّلت إدارياً مستقبلاً: exactAmountCents = amountUsd×100 بالضبط بلا
+    // عشوائية، وcentsUnique=false يُحرِّر هذا الطلب من فهرس التفرّد أدناه تماماً — يمنع تصادم
+    // E11000 كاذباً بين طلبين مختلفين بنفس المبلغ الصحيح بالضبط
+    centsUnique: { type: Boolean, default: true },
+    // ✅ "اسم المرسل في شام كاش" — اختياري دوماً، يساعد مطابقة الأدمن اليدوية (txnNo + المبلغ +
+    // هذا الاسم) ولا يستبدل أي آلية مطابقة أخرى
+    senderName: { type: String, default: null },
     baseCoins: { type: Number, required: true },
     bonusLines: { type: [bonusLineSchema], default: [] },
     totalCoinsSnapshot: { type: Number, required: true },
@@ -25,7 +33,7 @@ const depositIntentSchema = new mongoose.Schema({
     creditedCoins: { type: Number, default: null },
     status: {
         type: String,
-        enum: ['awaiting_payment', 'submitted', 'approved', 'rejected', 'expired'],
+        enum: ['awaiting_payment', 'submitted', 'approved', 'rejected', 'expired', 'cancelled'],
         default: 'awaiting_payment',
         index: true
     },
@@ -41,10 +49,11 @@ const depositIntentSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 depositIntentSchema.index({ user: 1, status: 1, createdAt: -1 });
-// ✅ منع تكرار السنتات الفريدة بين أي طلبين "مفتوحين" فقط — طلب منتهٍ/مرفوض/مُعتمَد يُحرِّر رقمه
+// ✅ منع تكرار السنتات الفريدة بين أي طلبين "مفتوحين" بوضع centsUnique فقط — طلب منتهٍ/مرفوض/
+// مُعتمَد/مُلغًى يُحرِّر رقمه، وطلبات الوضع بلا سنتات (centsUnique:false) خارج هذا الفهرس كلياً
 depositIntentSchema.index(
     { exactAmountCents: 1 },
-    { unique: true, partialFilterExpression: { status: { $in: ['awaiting_payment', 'submitted'] } } }
+    { unique: true, partialFilterExpression: { status: { $in: ['awaiting_payment', 'submitted'] }, centsUnique: true } }
 );
 // ✅ فريد عالمياً عبر كل الحسابات — sparse لأن الطلبات بوضع awaiting_payment ليس لها txnNo بعد
 depositIntentSchema.index({ txnNo: 1 }, { unique: true, sparse: true });

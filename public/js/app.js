@@ -9321,13 +9321,33 @@ document.getElementById('user-id-container').addEventListener('click', () => {
     const buyCoinsBtn = document.getElementById('buy-coins-btn');
     if (buyCoinsBtn) {
         if (isPlayBuild()) buyCoinsBtn.remove();
-        else buyCoinsBtn.addEventListener('click', () => showWalletModal('recharge'));
+        else {
+            buyCoinsBtn.classList.add('wallet-entry-badge-host');
+            buyCoinsBtn.addEventListener('click', () => openRechargePage());
+        }
     }
           const withdrawBtn = document.getElementById('withdraw-balance-btn');
-    if (withdrawBtn) withdrawBtn.addEventListener('click', () => showWalletModal('withdraw'));
+    if (withdrawBtn) withdrawBtn.addEventListener('click', () => openWalletPage('withdraw'));
 
     const depositBalanceBtn = document.getElementById('deposit-balance-btn');
     if (depositBalanceBtn) depositBalanceBtn.addEventListener('click', showDepositModal);
+
+    // ✅ تجربة الشحن v2 (بند 2 + 10): نُحمِّل ملخص المحفظة مرة واحدة بالخلفية فور الدخول —
+    // يُسخِّن الذاكرة المؤقتة (فتح أول للصفحة/الشيت/المحفظة لاحقاً بلا أي سكيلتون) ويُظهر شارة
+    // "طلب مفتوح" على مداخل الشحن فوراً دون انتظار فتحها
+    if (!isPlayBuild()) {
+        ensureWalletSummary().then(refreshWalletEntryBadges).catch(() => {});
+    }
+
+    // ✅ بند 1-أ: فتح تلقائي لصفحة /recharge لو كان هذا رابط الدخول المباشر (بعد اكتمال تهيئة
+    // التطبيق والمستخدم). replaceState يمنع تكرار إدخال نفس الرابط بسجل التصفّح
+    if (window.location.pathname === '/recharge' && !isPlayBuild()) {
+        try { history.replaceState(history.state, '', '/recharge'); } catch (e) {}
+        openRechargePage();
+    }
+    window.addEventListener('popstate', () => {
+        if (window.location.pathname !== '/recharge') document.getElementById('recharge-page')?.remove();
+    });
 
         // --- 5. ربط زر تسجيل الخروج (مع حماية كاملة من انعدام العنصر لمنع توقف كل الكود بعده) ---
     const logoutBtn = document.getElementById('logoutBtn');
@@ -10880,6 +10900,29 @@ socket.on('levelUp', ({ newLevel }) => {
     // ✅ تمت إزالة إشعار "تم إيداع رصيدك بنجاح" — تحديث الرقم بالهيدر كافٍ
 });
 
+    // ✅ تجربة الشحن v2 (بند 11 — النتيجة الحيّة): الرصيد يتحدّث بالفعل عبر coinsUpdated أعلاه
+    // (مصدر وحيد)؛ هذا الحدث المخصَّص يضيف فقط ورقة النجاح بتفصيل البونصات + يُغلق أي تدفّق
+    // شام كاش معلَّق حالياً (قد يكون المستخدم بصفحة/شيت/محفظة مختلفة عن التي أنشأت الطلب)
+    socket.on('depositIntentApproved', (payload) => {
+        document.querySelectorAll('.sham-cash-overlay').forEach(o => o.remove());
+        refreshWalletSummaryInBackground().then(() => {
+            if (document.getElementById('recharge-page')) renderRechargePageBody();
+            const woh = document.getElementById('wallet-open-requests-host');
+            if (woh) renderWalletOpenRequestsInto(woh, () => document.querySelector('#wallet-modal > div'));
+        });
+        showDepositApprovedSheet(payload);
+    });
+
+    socket.on('depositIntentRejected', (payload) => {
+        document.querySelectorAll('.sham-cash-overlay').forEach(o => o.remove());
+        refreshWalletSummaryInBackground().then(() => {
+            if (document.getElementById('recharge-page')) renderRechargePageBody();
+            const woh = document.getElementById('wallet-open-requests-host');
+            if (woh) renderWalletOpenRequestsInto(woh, () => document.querySelector('#wallet-modal > div'));
+        });
+        showDepositRejectedSheet(payload);
+    });
+
     socket.on('giftReceived', (data) => {
     // ✅ التفاصيل النصية تصل الآن عبر البوت (رسالة دائمة)، والأنيميشن العائمة فقط للحظة اللحظية أثناء المشاهدة
     const chatModal = document.getElementById('private-chat-modal');
@@ -11326,7 +11369,7 @@ function renderProfileHubBody(u) {
 
         <div class="profile-hub-quick-row">
             ${u.showWallet !== false ? `
-            <button class="profile-hub-quick-tile" id="profile-hub-wallet-btn" title="محفظتي — ${(u.coins || 0).toLocaleString('en-US')} كوينز">
+            <button class="profile-hub-quick-tile wallet-entry-badge-host" id="profile-hub-wallet-btn" title="محفظتي — ${(u.coins || 0).toLocaleString('en-US')} كوينز">
                 <span class="profile-hub-quick-icon" style="background:rgba(251,191,36,0.15); color:#fbbf24;"><i class="fas fa-wallet"></i></span>
                 <span class="profile-hub-quick-label">محفظتي</span>
             </button>` : ''}
@@ -11465,7 +11508,7 @@ function renderProfileHubBody(u) {
 
     document.getElementById('profile-hub-followers-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'followers'));
     document.getElementById('profile-hub-following-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'following'));
-    document.getElementById('profile-hub-wallet-btn')?.addEventListener('click', () => showWalletModal('recharge'));
+    document.getElementById('profile-hub-wallet-btn')?.addEventListener('click', () => openWalletPage());
     document.getElementById('profile-hub-vip-btn')?.addEventListener('click', () => showNotification('خاصية VIP قريباً ✨', 'info'));
     document.getElementById('profile-hub-creator-btn').addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
     document.getElementById('profile-hub-games-btn').addEventListener('click', () => showNotification('مركز الألعاب قريباً 🎮', 'info'));
@@ -11705,7 +11748,7 @@ function showProfileHubMoreMenu() {
         <div class="bg-gray-800 w-full md:max-w-sm rounded-t-2xl p-3 pb-5 animate-[slideUp_0.2s_ease-out]">
             <div class="w-10 h-1.5 bg-gray-600 rounded-full mx-auto mb-3"></div>
             <button id="hub-more-share" class="profile-hub-settings-row"><i class="fas fa-share-nodes text-purple-400"></i><span>مشاركة الملف الشخصي</span></button>
-            <button id="hub-more-wallet" class="profile-hub-settings-row"><i class="fas fa-wallet text-yellow-400"></i><span>المحفظة</span></button>
+            <button id="hub-more-wallet" class="profile-hub-settings-row wallet-entry-badge-host" data-badge-style="pill"><i class="fas fa-wallet text-yellow-400"></i><span>المحفظة</span></button>
             <button id="hub-more-creator" class="profile-hub-settings-row"><i class="fas fa-star text-purple-400"></i><span>مركز صنّاع المحتوى</span><span class="profile-hub-soon-tag">قريباً</span></button>
             <button id="hub-more-qr" class="profile-hub-settings-row"><i class="fas fa-qrcode text-emerald-400"></i><span>رمز QR</span></button>
             <button id="hub-more-settings" class="profile-hub-settings-row"><i class="fas fa-cog text-gray-300"></i><span>الإعدادات</span></button>
@@ -11725,7 +11768,7 @@ function showProfileHubMoreMenu() {
             }
         } catch (e) { /* المستخدم ألغى المشاركة — لا حاجة لأي رد فعل */ }
     });
-    document.getElementById('hub-more-wallet').addEventListener('click', () => { modal.remove(); showWalletModal('recharge'); });
+    document.getElementById('hub-more-wallet').addEventListener('click', () => { modal.remove(); openWalletPage(); });
     document.getElementById('hub-more-creator').addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
     document.getElementById('hub-more-qr').addEventListener('click', () => { modal.remove(); showProfileQrModal(localUser); });
     document.getElementById('hub-more-settings').addEventListener('click', () => { modal.remove(); showProfileHubSettingsSheet(); });
@@ -15721,6 +15764,7 @@ async function openGiftLowBalanceSheet(missingAmount, onClose = null) {
     overlay.className = 'fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-[325] p-0 md:p-2';
     overlay.innerHTML = `
         <div class="gsheet-lbbox animate-[slideUp_0.25s_ease-out]">
+            <div id="gift-lb-open-requests"></div>
             <div class="gsheet-lbhead">
                 <span class="gsheet-lb-big">🪙</span>
                 <div><h3>رصيدك لا يكفي</h3><p>تحتاج <b>${Math.max(0, Math.round(missingAmount)).toLocaleString('en-US')}</b> كوينز إضافية لإكمال الإرسال</p></div>
@@ -15742,7 +15786,8 @@ async function openGiftLowBalanceSheet(missingAmount, onClose = null) {
     const closeOverlay = () => { if (closed) return; closed = true; overlay.remove(); onClose?.(); };
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeOverlay(); });
     document.getElementById('gift-lb-dismiss').addEventListener('click', closeOverlay);
-    document.getElementById('gift-lb-all').addEventListener('click', () => { closeOverlay(); showWalletModal('recharge'); });
+    // ✅ بند 1-أ: "كل العروض والبوكسات" هو الخروج الصريح الوحيد من الغرفة إلى صفحة /recharge
+    document.getElementById('gift-lb-all').addEventListener('click', () => { closeOverlay(); openRechargePage(); });
 
     // 🛡️ امتثال Google Play: لا يُعرض أي سعر أو رابط شحن داخل نسخة المتجر — حتى بشيت "رصيدك لا يكفي"
     if (isPlayBuild()) {
@@ -15753,9 +15798,9 @@ async function openGiftLowBalanceSheet(missingAmount, onClose = null) {
     }
 
     try {
-        const infoRes = await fetch('/api/wallet/summary', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
-        if (infoRes.status !== 'success') throw new Error('فشل تحميل بيانات الشحن');
-        const coinRate = infoRes.data.coinsPerUsd, minUSD = 1, maxUSD = infoRes.data.maxDepositUsd;
+        const s = await ensureWalletSummary();
+        renderWalletOpenRequestsInto(document.getElementById('gift-lb-open-requests'), overlay);
+        const coinRate = s.coinsPerUsd, minUSD = 1, maxUSD = s.maxDepositUsd;
         const clamp = (v) => Math.min(maxUSD, Math.max(minUSD, v));
         const box = document.getElementById('gift-lb-packages');
         if (!box) return;
@@ -15792,11 +15837,16 @@ async function openGiftLowBalanceSheet(missingAmount, onClose = null) {
         `).join('');
 
         box.innerHTML = exactCardHTML + fixedCardsHTML;
+        // ✅ بند 1-ب: اختيار باقة يفتح تدفّق شام كاش inline داخل هذا الشيت نفسه — المستخدم لا
+        // يغادر الغرفة إطلاقاً (overlay — لا wallet page/recharge page)
         box.querySelectorAll('.gsheet-pkb').forEach(btn => {
             btn.addEventListener('click', () => {
                 const usd = parseFloat(btn.dataset.usd);
-                overlay.remove();
-                showWalletModal('recharge', { presetUSD: usd });
+                createDepositAndMountShamCash(overlay, usd, {
+                    buttonEl: btn,
+                    onClose: () => closeOverlay(),
+                    onSubmitted: () => {}
+                });
             });
         });
     } catch (error) {
@@ -17599,9 +17649,10 @@ function dismissRoomGiftSideBanner(el, key) {
 // =================================================
 
 let walletSummaryCache = null;
+let walletSummaryFetchPromise = null;
 let walletSelectedPackageIdx = null;
 let walletCustomUsd = '';
-let walletCurrentTab = 'recharge';
+let walletCurrentTab = 'redeem'; // ✅ تجربة الشحن v2 (بند 1): الشحن صار صفحة/شيت مستقلَّين، لا تبويباً هنا
 
 // 🛡️ امتثال Google Play: نسخة TWA مُثبَّتة من المتجر لا تُظهر أي شحن (راجع server/controllers/
 // depositIntentController.js — نفس الفحص مكرَّر على الخادم عبر رأس X-Client:play). العلم يُحفَظ
@@ -17628,145 +17679,534 @@ function isPlayBuild() {
 
 function fmtNum(n) { return Math.round(n || 0).toLocaleString('en-US'); }
 
-async function showWalletModal(initialTab = 'recharge', opts = {}) {
-    if (isPlayBuild() && initialTab === 'recharge') initialTab = 'redeem';
-    const existing = document.getElementById('wallet-modal');
-    if (existing) existing.remove();
-    walletCurrentTab = initialTab;
-    walletSelectedPackageIdx = null;
-    walletCustomUsd = opts.presetUSD ? String(opts.presetUSD) : '';
-
-    const shellHTML = `
-        <div id="wallet-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
-            <div class="relative bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[92vh] flex flex-col overflow-hidden">
-                <div class="flex items-center justify-between p-4 border-b border-gray-700">
-                    <h3 class="text-lg font-bold flex items-center gap-2">${coinIconHTML(18)} المحفظة</h3>
-                    <div class="flex items-center gap-1">
-                        <button id="wallet-history-btn" class="report-issue-icon-btn" title="السجل"><i class="fas fa-history"></i></button>
-                        <button id="close-wallet" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
-                    </div>
-                </div>
-                <div class="px-4 pt-3" id="wallet-balances"></div>
-                <div class="px-4 pt-2" id="wallet-tabs"></div>
-                <div id="wallet-body" class="px-4 pb-4 overflow-y-auto flex-1">
-                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
-                </div>
-            </div>
-        </div>
-    `;
-    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
-    const modal = document.getElementById('wallet-modal');
-    attachCloseConfirmation(modal, '#close-wallet');
-    document.getElementById('wallet-history-btn').addEventListener('click', openWalletHistoryPanel);
-
-    await refreshWalletSummary(true);
-}
-
-async function refreshWalletSummary(firstLoad = false) {
-    try {
+// =================================================
+// ✅ تجربة الشحن v2 (بند 2 — الأداء): مصدر وحيد لجلب /api/wallet/summary. تُجلب مرة واحدة
+// وتُخزَّن بالذاكرة، وكل الواجهات (الصفحة/الشيت/المحفظة) تقرأ منها فوراً بلا أي fetch إضافي
+// عند تبديل التبويبات — فقط refreshWalletSummaryInBackground (بعد فعل أو حدث سوكيت) تُعيد
+// الجلب فعلياً. ensureWalletSummary تُشارك نفس الوعد الجاري لو استُدعيت مرتين بالتزامن
+// =================================================
+async function ensureWalletSummary({ force = false } = {}) {
+    if (!force && walletSummaryCache) return walletSummaryCache;
+    if (walletSummaryFetchPromise) return walletSummaryFetchPromise;
+    walletSummaryFetchPromise = (async () => {
         const res = await fetch('/api/wallet/summary', { headers: { 'Authorization': `Bearer ${token}` } });
         const result = await res.json();
-        if (result.status !== 'success') throw new Error('فشل تحميل بيانات المحفظة');
+        if (result.status !== 'success') throw new Error(result.message || 'فشل تحميل بيانات المحفظة');
         walletSummaryCache = result.data;
-        renderWalletBalances();
-        if (firstLoad) renderWalletTabs();
-        renderWalletActiveTab();
-    } catch (error) {
-        console.error('[WALLET] Error:', error);
-        const body = document.getElementById('wallet-body');
-        if (body) body.innerHTML = `<div class="text-center text-red-400 py-10"><i class="fas fa-exclamation-circle text-2xl mb-2"></i><p class="text-sm">فشل تحميل بيانات المحفظة</p></div>`;
+        return walletSummaryCache;
+    })();
+    try {
+        return await walletSummaryFetchPromise;
+    } finally {
+        walletSummaryFetchPromise = null;
     }
 }
 
-function renderWalletBalances() {
-    const el = document.getElementById('wallet-balances');
-    if (!el || !walletSummaryCache) return;
-    const b = walletSummaryCache.balances;
-    el.innerHTML = `
-        <div class="grid grid-cols-3 gap-2 mb-1">
-            <div class="bg-gray-900/50 rounded-xl p-2 text-center">
-                <p class="text-[10px] text-gray-400 mb-0.5">كوينز</p>
-                <p class="font-bold text-yellow-400 text-sm">${fmtNum(b.coins)}</p>
-            </div>
-            <div class="bg-gray-900/50 rounded-xl p-2 text-center">
-                <p class="text-[10px] text-gray-400 mb-0.5">ألماس</p>
-                <p class="font-bold text-cyan-400 text-sm">${fmtNum(b.beansWithdrawable + b.beansInApp)}</p>
-            </div>
-            <div class="bg-gray-900/50 rounded-xl p-2 text-center">
-                <p class="text-[10px] text-gray-400 mb-0.5">رصيد قابل للسحب</p>
-                <p class="font-bold text-green-400 text-sm">$${b.usd.toFixed(2)}</p>
-            </div>
-        </div>
-    `;
+async function refreshWalletSummaryInBackground() {
+    try {
+        const data = await ensureWalletSummary({ force: true });
+        refreshWalletEntryBadges();
+        return data;
+    } catch (error) {
+        console.error('[WALLET] background refresh failed:', error);
+        return null;
+    }
 }
 
-function renderWalletTabs() {
-    const el = document.getElementById('wallet-tabs');
-    if (!el) return;
-    const play = isPlayBuild();
-    if (play && walletCurrentTab === 'recharge') walletCurrentTab = 'redeem';
-    const tabs = [!play ? ['recharge', 'شحن'] : null, ['redeem', 'استبدال'], ['withdraw', 'سحب']].filter(Boolean);
-    el.innerHTML = `
-        <div class="flex bg-black/30 rounded-xl p-1 mb-3">
-            ${tabs.map(([key, label]) => `
-                <button type="button" data-wallet-tab="${key}" class="flex-1 text-sm font-bold py-2 rounded-lg transition ${walletCurrentTab === key ? 'bg-gray-700 text-white' : 'text-gray-400'}">${label}</button>
-            `).join('')}
+function walletHasOpenRequest() {
+    return !!(walletSummaryCache && walletSummaryCache.openIntents && walletSummaryCache.openIntents.length);
+}
+
+// ✅ بند 10 (آخر فقرة): شارة صغيرة "طلب مفتوح" على أي مدخل شحن/محفظة — أضف class
+// "wallet-entry-badge-host" للعنصر (و data-badge-style="pill" لو صفاً نصّياً له مساحة)
+function refreshWalletEntryBadges() {
+    const has = walletHasOpenRequest();
+    document.querySelectorAll('.wallet-entry-badge-host').forEach(host => {
+        let badge = host.querySelector(':scope > .wallet-entry-badge');
+        if (!has) { badge?.remove(); return; }
+        if (!badge) {
+            badge = document.createElement('span');
+            const isPill = host.dataset.badgeStyle === 'pill';
+            badge.className = 'wallet-entry-badge' + (isPill ? ' wallet-entry-badge-pill' : '');
+            if (isPill) badge.textContent = 'طلب مفتوح';
+            host.appendChild(badge);
+        }
+    });
+}
+
+// 🛡️ مراجعة UX الشحن v2 (بند 7): معبر وحيد لكل أخطاء واجهة المحفظة — رسالة الخادم العربية
+// تظهر toast دوماً، وinline تحت الحقل المناسب لو مُرِّر fieldEl، فلا يفشل أي فعل بصمت أبداً
+function apiError(res, result, fieldEl) {
+    const msg = (result && result.message) || (res && res.status === 429
+        ? 'طلبات كثيرة جداً، انتظر قليلاً ثم أعد المحاولة'
+        : 'حدث خطأ، حاول مجدداً');
+    showNotification(msg, 'error');
+    if (fieldEl) {
+        let errEl = fieldEl.parentElement.querySelector('.wallet-field-error');
+        if (!errEl) {
+            errEl = document.createElement('p');
+            errEl.className = 'wallet-field-error text-[11px] text-red-400 mt-1';
+            fieldEl.parentElement.appendChild(errEl);
+        }
+        errEl.textContent = msg;
+        fieldEl.classList.add('border-red-500');
+    }
+    return msg;
+}
+
+function clearWalletFieldError(fieldEl) {
+    if (!fieldEl) return;
+    fieldEl.classList.remove('border-red-500');
+    fieldEl.parentElement.querySelector('.wallet-field-error')?.remove();
+}
+
+// ✅ بند 5/6: عارض صورة ملء الشاشة (QR وصور مساعدة الأدمن) — صديق للتصغير/التكبير اللمسي،
+// بزر "حفظ الصورة" (download، مع navigator.share احتياطياً على الجوال لو توفّر)
+function openImageViewer(url, { saveLabel = 'حفظ الصورة' } = {}) {
+    if (!url) return;
+    const v = document.createElement('div');
+    v.className = 'fixed inset-0 bg-black/95 z-[500] flex flex-col';
+    v.innerHTML = `
+        <div class="flex items-center justify-end p-3"><button id="iv-close" class="text-white p-2"><i class="fas fa-times text-xl"></i></button></div>
+        <div class="flex-1 overflow-auto flex items-center justify-center p-2" style="touch-action:pinch-zoom"><img src="${url}" class="max-w-full max-h-full object-contain"></div>
+        <div class="p-3"><a href="${url}" download target="_blank" rel="noopener" id="iv-save" class="block text-center bg-white/10 text-white font-bold py-3 rounded-xl">${saveLabel}</a></div>
+    `;
+    document.body.appendChild(v);
+    v.querySelector('#iv-close').addEventListener('click', () => v.remove());
+    v.addEventListener('click', (e) => { if (e.target === v) v.remove(); });
+    if (navigator.share) {
+        v.querySelector('#iv-save').addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                const resp = await fetch(url);
+                const blob = await resp.blob();
+                const file = new File([blob], 'image.jpg', { type: blob.type || 'image/jpeg' });
+                await navigator.share({ files: [file] });
+            } catch (err) {
+                window.open(url, '_blank');
+            }
+        });
+    }
+}
+
+// ✅ بند 6 + الإضافة (ج): سهم "أين أجد رقم العملية؟" — خطوات نصّية ثابتة + حتى صورتين
+// مساعدتين يرفعهما الأدمن (shamCashHelpImage1/2)؛ لو لا صور، تُعرَض الخطوات فقط
+function openShamCashHelpSheet(info) {
+    const sheet = document.createElement('div');
+    sheet.className = 'fixed inset-0 bg-black/80 z-[400] flex items-end justify-center';
+    const images = [info.helpImage1, info.helpImage2].filter(Boolean);
+    sheet.innerHTML = `
+        <div class="w-full max-w-md bg-gray-800 rounded-t-2xl p-4 max-h-[85%] overflow-y-auto">
+            <div class="flex items-center justify-between mb-3"><h3 class="font-bold">أين أجد رقم العملية؟</h3><button id="sc-help-close" class="text-gray-400 p-1"><i class="fas fa-times"></i></button></div>
+            <ol class="text-sm space-y-2 leading-6 list-decimal pr-4 mb-3">
+                <li>افتح شام كاش ← قسم التحويلات.</li>
+                <li>رقم العملية يظهر بجانب علامة # أعلى التحويل الذي أرسلته (مثال: <bdi dir="ltr">#550067746</bdi>).</li>
+                <li>أو اضغط على التحويل لفتح الإشعار، وانسخ «رقم العملية». اكتب الأرقام فقط بدون علامة #.</li>
+            </ol>
+            ${images.length ? `<div class="grid ${images.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-2">
+                ${images.map((src, i) => `<img src="${src}" data-help-img="${i}" class="w-full rounded-xl border border-gray-700 cursor-zoom-in">`).join('')}
+            </div>` : ''}
         </div>
     `;
-    el.querySelectorAll('[data-wallet-tab]').forEach(btn => {
+    document.body.appendChild(sheet);
+    sheet.querySelector('#sc-help-close').addEventListener('click', () => sheet.remove());
+    sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.remove(); });
+    sheet.querySelectorAll('[data-help-img]').forEach(img => img.addEventListener('click', () => openImageViewer(img.src)));
+}
+
+// =================================================
+// ✅ بند 10: شريط "الطلبات المفتوحة" — يُعرَض أعلى الصفحة/الشيت/المحفظة فور فتحها. يُعاد
+// استخدامه بالثلاث مداخل، فقط الحاوية (host) والمكان المناسب لتعليق تدفّق شام كاش (resume
+// الذري عبر mountShamCashFlow) يختلفان
+// =================================================
+function walletOpenRequestCardHTML(intent) {
+    const amountExact = (intent.exactAmountCents / 100).toFixed(2);
+    if (intent.status === 'awaiting_payment') {
+        return `
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 flex items-center justify-between gap-2 mb-2" data-open-intent="${intent._id}">
+            <div class="min-w-0">
+                <p class="text-xs font-bold text-amber-300">طلب شحن مفتوح — <bdi dir="ltr">$${amountExact}</bdi></p>
+                <p class="text-[11px] text-gray-400">ينتهي بعد <bdi dir="ltr" class="wallet-oi-countdown" data-expires="${intent.expiresAt}">--:--</bdi></p>
+            </div>
+            <div class="flex items-center gap-1.5 flex-none">
+                <button type="button" class="wallet-oi-resume text-xs font-bold bg-teal-500 text-black rounded-lg px-2.5 py-1.5">إكمال</button>
+                <button type="button" class="wallet-oi-cancel text-xs font-bold bg-white/10 text-gray-300 rounded-lg px-2.5 py-1.5">إلغاء</button>
+            </div>
+        </div>`;
+    }
+    return `
+    <div class="rounded-xl bg-blue-500/10 border border-blue-500/30 p-3 mb-2" data-open-intent="${intent._id}">
+        <div class="flex items-center justify-between gap-2">
+            <p class="text-xs font-bold text-blue-300">قيد المراجعة — <bdi dir="ltr">$${amountExact}</bdi></p>
+            <span class="text-[10px] text-gray-400">${new Date(intent.submittedAt || intent.createdAt).toLocaleTimeString('ar-EG')}</span>
+        </div>
+        <div class="flex gap-1 mt-2" dir="rtl">
+            ${[1, 2, 3].map(n => `<i class="flex-1 h-1 rounded-full ${n <= 2 ? 'bg-blue-400' : 'bg-white/15'}"></i>`).join('')}
+        </div>
+    </div>`;
+}
+
+function walletOpenRequestsHTML(openIntents) {
+    if (!openIntents || !openIntents.length) return '';
+    return `<div class="space-y-0">${openIntents.map(walletOpenRequestCardHTML).join('')}</div>`;
+}
+
+function startWalletOpenIntentCountdown(el) {
+    const expiresAt = el.dataset.expires;
+    const tick = () => {
+        if (!document.body.contains(el)) return;
+        const s = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+        const m = String(Math.floor(s / 60)).padStart(2, '0'), x = String(s % 60).padStart(2, '0');
+        el.textContent = `${m}:${x}`;
+        if (s > 0) setTimeout(tick, 1000);
+    };
+    tick();
+}
+
+// onChanged: دالة إعادة رسم نقيّة (بلا fetch) تُستدعى بعد تحديث walletSummaryCache فعلياً.
+// shamCashHost: العنصر (أو دالة تُعيده) المناسب لتعليق overlay شام كاش عند "إكمال"
+function attachWalletOpenRequestHandlers(container, { onChanged, shamCashHost } = {}) {
+    container.querySelectorAll('[data-expires]').forEach(el => startWalletOpenIntentCountdown(el));
+    container.querySelectorAll('.wallet-oi-resume').forEach(btn => {
         btn.addEventListener('click', () => {
-            walletCurrentTab = btn.dataset.walletTab;
-            renderWalletTabs();
-            renderWalletActiveTab();
+            const id = btn.closest('[data-open-intent]').dataset.openIntent;
+            const intent = (walletSummaryCache?.openIntents || []).find(i => String(i._id) === id);
+            const host = typeof shamCashHost === 'function' ? shamCashHost() : shamCashHost;
+            if (intent && host) mountShamCashFlow(host, intent, { startStep: 2, onClose: onChanged, onSubmitted: onChanged });
+        });
+    });
+    container.querySelectorAll('.wallet-oi-cancel').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.closest('[data-open-intent]').dataset.openIntent;
+            showConfirmationModal('هل تريد إلغاء طلب الشحن هذا؟', async () => {
+                try {
+                    const res = await fetch(`/api/wallet/deposits/${id}/cancel`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                    const result = await res.json();
+                    if (!res.ok) { apiError(res, result); return; }
+                    showNotification('تم إلغاء الطلب', 'success');
+                    await refreshWalletSummaryInBackground();
+                    onChanged?.();
+                } catch (error) {
+                    apiError(null, { message: 'خطأ في الاتصال بالخادم' });
+                }
+            });
         });
     });
 }
 
-function renderWalletActiveTab() {
-    const body = document.getElementById('wallet-body');
-    if (!body || !walletSummaryCache) return;
-    if (walletCurrentTab === 'recharge' && !isPlayBuild()) {
-        renderWalletRechargeTab(body);
-    } else if (walletCurrentTab === 'redeem') {
-        renderWalletRedeemTab(body);
-    } else {
-        body.innerHTML = `<div id="withdraw-body"></div>`;
-        renderWithdrawHome();
+// ✅ حاوية ثابتة (لا تُمحى عند تبديل تبويب) تُعيد رسم نفسها بعد كل تغيير — تُستخدم بصفحة
+// المحفظة والشيت السريع (صفحة الشحن تُدرجها inline ضمن إعادة رسمها الكاملة بنفسها)
+function renderWalletOpenRequestsInto(hostEl, shamCashHost) {
+    if (!hostEl) return;
+    const render = () => {
+        if (!document.body.contains(hostEl)) return;
+        hostEl.innerHTML = walletOpenRequestsHTML(walletSummaryCache?.openIntents);
+        attachWalletOpenRequestHandlers(hostEl, { onChanged: render, shamCashHost });
+    };
+    render();
+}
+
+// =================================================
+// ✅ تدفّق شام كاش — مُعاد استخدامه بالثلاث مداخل (الصفحة/الشيت/المحفظة). hostEl يجب أن
+// يكون عنصراً غير static-positioned (fixed/absolute/relative) يغطّي المساحة المطلوبة بالكامل
+// =================================================
+function shamCashInfo() { return (walletSummaryCache && walletSummaryCache.shamCash) || {}; }
+
+function mountShamCashFlow(hostEl, intent, opts = {}) {
+    if (!hostEl) return null;
+    hostEl.querySelector(':scope > .sham-cash-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'sham-cash-overlay absolute inset-0 bg-black/90 flex items-end justify-center z-20';
+    hostEl.appendChild(overlay);
+
+    const info = shamCashInfo();
+    const amountExact = (intent.exactAmountCents / 100).toFixed(2);
+    let step = opts.startStep || 1;
+    let selectedFile = null;
+
+    // 🛡️ مراجعة UX الشحن v2 (بند 9): dir="rtl" صريح يضمن تعبئة الشريط من اليمين دوماً،
+    // بصرف النظر عن اتجاه الصفحة المحيطة
+    const stepsBarHTML = () => `
+        <div class="flex gap-1.5 mb-4" dir="rtl">
+            ${[1, 2, 3].map(n => `<i class="flex-1 h-1 rounded-full transition-all ${n <= step ? 'bg-teal-400' : 'bg-white/15'}"></i>`).join('')}
+        </div>
+    `;
+
+    // ✅ بند 4: كل رقم/مبلغ ضمن <bdi dir="ltr"> بصف flex (min-width:0 + truncate على القيمة
+    // + زر نسخ ثابت العرض) — يبقى بسطر واحد بلا overflow ولا كسر لاتجاه RTL المحيط
+    const copyRowHTML = (label, value, copyVal, extraClass = '') => `
+        <div class="bg-black/30 rounded-xl px-3 py-2.5 mb-2 flex items-center justify-between gap-2">
+            <span class="text-gray-400 text-sm flex-none">${label}</span>
+            <span class="flex items-center gap-2 min-w-0">
+                <bdi dir="ltr" class="font-bold truncate ${extraClass}">${escapeHtml(value)}</bdi>
+                <button type="button" data-copy="${escapeHtml(copyVal)}" class="sc-copy text-green-400 text-xs font-bold flex-none whitespace-nowrap">نسخ</button>
+            </span>
+        </div>
+    `;
+
+    const draw = () => {
+        let html = '';
+        if (step === 1) {
+            html = `
+                <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">حوّل عبر شام كاش</h3><button id="sc-close" class="text-gray-400 hover:text-white p-1"><i class="fas fa-times"></i></button></div>
+                ${stepsBarHTML()}
+                ${info.qrImageUrl ? `<div class="text-center mb-3"><img src="${info.qrImageUrl}" id="sc-qr-img" class="w-32 h-32 mx-auto rounded-xl bg-white p-2 object-contain cursor-zoom-in" onerror="this.closest('div').style.display='none'"></div>` : ''}
+                ${copyRowHTML('رقم المحفظة', info.walletNumber || '—', info.walletNumber || '')}
+                ${copyRowHTML('المبلغ بالضبط', `$${amountExact}`, amountExact, 'text-yellow-300')}
+                <p class="text-xs text-gray-400 mb-1 leading-6">رقم طلبك: <bdi dir="ltr" class="font-bold text-gray-300">${escapeHtml(intent.refCode)}</bdi></p>
+                <p class="text-[11px] text-gray-500 mb-4 leading-6">إن أمكن، اكتب رمز الطلب في خانة الملاحظة في شام كاش (اختياري) — وللتواصل مع الدعم. المبلغ وحده كافٍ للتعرّف على تحويلك، والطلب صالح 30 دقيقة.</p>
+                <button id="sc-next1" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">حوّلت المبلغ</button>
+                <button id="sc-later" class="w-full bg-white/10 text-white font-bold py-2.5 rounded-xl mt-2">لاحقاً</button>
+            `;
+        } else if (step === 2) {
+            html = `
+                <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">تأكيد التحويل</h3><button id="sc-close" class="text-gray-400 hover:text-white p-1"><i class="fas fa-times"></i></button></div>
+                ${stepsBarHTML()}
+                <div class="mb-3">
+                    <label class="text-xs font-bold flex items-center gap-1.5 mb-1">رقم العملية في شام كاش <button type="button" id="sc-help-btn" class="text-teal-400"><i class="fas fa-question-circle"></i></button></label>
+                    <input id="sc-txn" inputmode="numeric" placeholder="مثال: 7781203345" class="w-full bg-black/30 border border-gray-700 rounded-xl p-3 text-sm" dir="ltr">
+                </div>
+                <div class="mb-3">
+                    <label class="text-xs font-bold block mb-1">اسم المرسل في شام كاش <span class="text-gray-500">(اختياري)</span></label>
+                    <input id="sc-sender-name" maxlength="60" placeholder="مثال: أحمد علي" class="w-full bg-black/30 border border-gray-700 rounded-xl p-3 text-sm">
+                    <p class="text-[10px] text-gray-500 mt-1">يساعدنا على تأكيد تحويلك أسرع</p>
+                </div>
+                <div id="sc-upload" class="border-2 border-dashed border-gray-600 rounded-xl p-3 text-center text-xs text-gray-400 mb-3 cursor-pointer">📎 صورة الإيصال (اختياري، يسرّع التحقق)<input type="file" id="sc-file" accept="image/*" class="hidden"></div>
+                <button id="sc-next2" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">أرسل للتحقق</button>
+            `;
+        } else {
+            html = `
+                <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">طلبك قيد التحقق</h3><button id="sc-close" class="text-gray-400 hover:text-white p-1"><i class="fas fa-times"></i></button></div>
+                ${stepsBarHTML()}
+                <ul class="space-y-3 mb-3 text-sm">
+                    <li class="flex gap-2"><i class="fas fa-check-circle text-green-400 mt-0.5"></i><div>استلمنا طلبك<div class="text-xs text-gray-400"><bdi dir="ltr">${escapeHtml(intent.refCode)}</bdi> · <bdi dir="ltr">$${amountExact}</bdi></div></div></li>
+                    <li class="flex gap-2">
+                        <span class="relative mt-1.5 flex-none w-2.5 h-2.5"><span class="absolute inset-0 rounded-full bg-yellow-400 wallet-pulse-dot"></span></span>
+                        <div>نطابق التحويل مع حسابنا<div class="text-xs text-gray-400">عادة أقل من 10 دقائق</div></div>
+                    </li>
+                    <li class="flex gap-2 opacity-60"><i class="far fa-circle mt-0.5"></i><div>تُضاف الكوينز لحسابك<div class="text-xs text-gray-400">تصلك رسالة فوراً</div></div></li>
+                </ul>
+                <p class="text-xs text-gray-400 mb-4">يمكنك إغلاق هذه النافذة. ستجد الطلب أعلى المحفظة.</p>
+                <button id="sc-done" class="w-full bg-gray-700 text-white font-bold py-3 rounded-xl">تم</button>
+            `;
+        }
+        overlay.innerHTML = `<div class="w-full bg-gray-800 rounded-t-2xl p-4 max-h-[90%] overflow-y-auto">${html}</div>`;
+
+        const closeFlow = async () => {
+            overlay.remove();
+            await refreshWalletSummaryInBackground();
+            opts.onClose?.();
+        };
+        overlay.querySelector('#sc-close').addEventListener('click', closeFlow);
+        // ✅ بند 4: "تم النسخ ✓" لثانية ونصف بدل تبديل نصّي صامت
+        overlay.querySelectorAll('.sc-copy').forEach(b => b.addEventListener('click', () => {
+            navigator.clipboard.writeText(b.dataset.copy || '').then(() => {
+                const old = b.textContent;
+                b.textContent = 'تم النسخ ✓';
+                b.disabled = true;
+                setTimeout(() => { b.textContent = old; b.disabled = false; }, 1500);
+            }).catch(() => showNotification('تعذّر النسخ', 'error'));
+        }));
+        document.getElementById('sc-later')?.addEventListener('click', closeFlow);
+        document.getElementById('sc-qr-img')?.addEventListener('click', () => openImageViewer(info.qrImageUrl));
+
+        if (step === 1) {
+            document.getElementById('sc-next1').addEventListener('click', () => { step = 2; draw(); });
+        } else if (step === 2) {
+            document.getElementById('sc-help-btn').addEventListener('click', () => openShamCashHelpSheet(info));
+            const txnInput = document.getElementById('sc-txn');
+            // ✅ بند D (الإضافة): لصق رقم العملية يُنظّف # والمسافات تلقائياً
+            txnInput.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const text = (e.clipboardData || window.clipboardData).getData('text');
+                txnInput.value = text.replace(/[#\s]/g, '');
+            });
+            txnInput.addEventListener('input', () => clearWalletFieldError(txnInput));
+            const uploadBox = document.getElementById('sc-upload');
+            const fileInput = document.getElementById('sc-file');
+            uploadBox.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', () => {
+                selectedFile = fileInput.files[0] || null;
+                if (selectedFile) uploadBox.innerHTML = `✅ ${escapeHtml(selectedFile.name)}`;
+            });
+            document.getElementById('sc-next2').addEventListener('click', async () => {
+                const txnNo = txnInput.value.replace(/[#\s]/g, '').trim();
+                const digitsOnly = txnNo.replace(/\D/g, '');
+                clearWalletFieldError(txnInput);
+                // ✅ بند 7: تحقّق محلي أولاً (أرقام فقط، 4-30 خانة) — رسالة واضحة inline + toast
+                if (digitsOnly.length < 4 || digitsOnly.length > 30) {
+                    apiError(null, { message: 'رقم العملية غير صالح — أرقام فقط بين 4 و30 خانة' }, txnInput);
+                    return;
+                }
+                const senderName = document.getElementById('sc-sender-name').value.trim();
+                const btn = document.getElementById('sc-next2');
+                btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                try {
+                    const formData = new FormData();
+                    formData.append('txnNo', digitsOnly);
+                    if (senderName) formData.append('senderName', senderName);
+                    if (selectedFile) formData.append('file', selectedFile);
+                    const response = await fetch(`/api/wallet/deposits/${intent._id}/submit`, {
+                        method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData
+                    });
+                    const result = await response.json();
+                    if (!response.ok) {
+                        apiError(response, result, txnInput);
+                        btn.disabled = false; btn.textContent = 'أرسل للتحقق';
+                        return;
+                    }
+                    step = 3; draw();
+                    await refreshWalletSummaryInBackground();
+                    opts.onSubmitted?.(result.data.intent);
+                } catch (error) {
+                    apiError(null, { message: 'خطأ في الاتصال بالخادم' }, txnInput);
+                    btn.disabled = false; btn.textContent = 'أرسل للتحقق';
+                }
+            });
+        } else {
+            document.getElementById('sc-done').addEventListener('click', closeFlow);
+        }
+    };
+    draw();
+    return overlay;
+}
+
+// ✅ ينشئ طلب الإيداع ثم يعلّق تدفّق شام كاش مباشرةً داخل hostEl — لا تنقّل بين نوافذ
+async function createDepositAndMountShamCash(hostEl, usd, { onSubmitted, onClose, buttonEl } = {}) {
+    if (!usd || usd <= 0 || !hostEl) return null;
+    let originalText;
+    if (buttonEl) {
+        originalText = buttonEl.textContent;
+        buttonEl.disabled = true;
+        buttonEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+    try {
+        const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+        if (isPlayBuild()) headers['X-Client'] = 'play';
+        const response = await fetch('/api/wallet/deposits', { method: 'POST', headers, body: JSON.stringify({ usd }) });
+        const result = await response.json();
+        if (!response.ok) {
+            apiError(response, result);
+            return null;
+        }
+        const overlay = mountShamCashFlow(hostEl, result.data.intent, { onSubmitted, onClose });
+        return overlay;
+    } catch (error) {
+        apiError(null, { message: 'خطأ في الاتصال بالخادم' });
+        return null;
+    } finally {
+        if (buttonEl) { buttonEl.disabled = false; buttonEl.textContent = originalText; }
     }
 }
 
-function walletCalc() {
-    const s = walletSummaryCache;
-    const pkg = walletSelectedPackageIdx != null ? s.packages[walletSelectedPackageIdx] : null;
-    const usd = pkg ? pkg.usd : Math.max(0, Math.min(s.maxDepositUsd, parseFloat(walletCustomUsd) || 0));
-    const base = Math.round(usd * s.coinsPerUsd);
-    const pkgBonus = pkg ? Math.round(base * (pkg.bonusPct || 0) / 100) : 0;
-    const methodBonus = Math.round(base * (s.shamCashBonusPct || 0) / 100);
-    const firstBonus = s.firstRecharge.active ? Math.round(Math.min(usd, s.firstRecharge.multiplierUpToUsd) * s.coinsPerUsd) : 0;
-    return { usd, base, pkgBonus, methodBonus, firstBonus, total: base + pkgBonus + methodBonus + firstBonus };
+// =================================================
+// ✅ بند 11 — النتيجة الحيّة: ورقتا النجاح/الرفض العامتان، مستقلتان تماماً عن أي صفحة/شيت/محفظة
+// مفتوحة حالياً (أو غير مفتوحة أصلاً) — تُستدعيان من صدى سوكيت depositIntentApproved/Rejected
+// =================================================
+function showDepositApprovedSheet(payload) {
+    document.getElementById('deposit-approved-sheet')?.remove();
+    const lines = (payload.bonusLines || []).map(b => `
+        <div class="flex justify-between text-sm py-1"><span>${escapeHtml(b.reason)}</span><b class="text-green-400" dir="ltr">+${fmtNum(b.coins)}</b></div>
+    `).join('');
+    const el = document.createElement('div');
+    el.id = 'deposit-approved-sheet';
+    el.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[500] p-4';
+    el.innerHTML = `
+        <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white p-6 text-center border border-green-500/30">
+            <div class="text-5xl mb-3">🎉</div>
+            <h3 class="font-bold text-lg mb-1">تم إيداع الكوينز بنجاح</h3>
+            <p class="text-2xl font-black text-yellow-400 flex items-center justify-center gap-1 mb-4"><bdi dir="ltr">${fmtNum(payload.creditedCoins)}</bdi> ${coinIconHTML(20)}</p>
+            <div class="bg-black/20 rounded-xl p-3 text-right mb-4">
+                <div class="flex justify-between text-sm py-1"><span>الكوينز الأساسية</span><b dir="ltr">${fmtNum(payload.baseCoins)}</b></div>
+                ${lines}
+            </div>
+            <button id="deposit-approved-close" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">تمام 🎊</button>
+        </div>
+    `;
+    document.getElementById('game-container').appendChild(el);
+    el.querySelector('#deposit-approved-close').addEventListener('click', () => el.remove());
 }
 
-function walletCountdownText(endsAtIso) {
-    const s = Math.max(0, Math.floor((new Date(endsAtIso).getTime() - Date.now()) / 1000));
-    const h = String(Math.floor(s / 3600)).padStart(2, '0'), m = String(Math.floor(s % 3600 / 60)).padStart(2, '0'), x = String(s % 60).padStart(2, '0');
-    return `${h}:${m}:${x}`;
-}
-let walletCountdownTimer = null;
-function startWalletCountdown(endsAtIso) {
-    if (walletCountdownTimer) clearInterval(walletCountdownTimer);
-    const tick = () => {
-        const el = document.getElementById('wallet-first-cd');
-        if (!el) { clearInterval(walletCountdownTimer); return; }
-        el.textContent = `⏳ ${walletCountdownText(endsAtIso)}`;
-    };
-    tick();
-    walletCountdownTimer = setInterval(tick, 1000);
+function showDepositRejectedSheet(payload) {
+    document.getElementById('deposit-rejected-sheet')?.remove();
+    const el = document.createElement('div');
+    el.id = 'deposit-rejected-sheet';
+    el.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[500] p-4';
+    el.innerHTML = `
+        <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-sm text-white p-6 text-center border border-red-500/30">
+            <div class="text-5xl mb-3">😕</div>
+            <h3 class="font-bold text-lg mb-1">تم رفض طلب الشحن</h3>
+            <p class="text-sm text-gray-300 mb-5">${escapeHtml(payload.reason || '')}</p>
+            <div class="flex gap-2">
+                <button id="deposit-rejected-close" class="flex-1 bg-white/10 text-white font-bold py-2.5 rounded-xl">إغلاق</button>
+                <button id="deposit-rejected-retry" class="flex-1 bg-gradient-to-l from-pink-500 to-orange-400 text-white font-bold py-2.5 rounded-xl">إنشاء طلب جديد</button>
+            </div>
+        </div>
+    `;
+    document.getElementById('game-container').appendChild(el);
+    el.querySelector('#deposit-rejected-close').addEventListener('click', () => el.remove());
+    el.querySelector('#deposit-rejected-retry').addEventListener('click', () => { el.remove(); openRechargePage(); });
 }
 
-function renderWalletRechargeTab(body) {
+// =================================================
+// ✅ بند 1-أ: صفحة الشحن المستقلة — ملء الشاشة، مساراها الخاص /recharge (history.pushState؛
+// server.js يخدم index.html لكل المسارات فعلاً، فلا حاجة لأي راوتر). الدخول/الخروج أدناه
+// (openRechargePage/closeRechargePage) والاستماع لـpopstate قريباً بعد تهيئة socket.io
+// =================================================
+async function openRechargePage() {
+    if (isPlayBuild()) { showNotification('الشحن غير متاح داخل نسخة Google Play', 'error'); return; }
+    if (document.getElementById('recharge-page')) return;
+    try {
+        if (window.location.pathname !== '/recharge') history.pushState({ waWalletView: 'recharge' }, '', '/recharge');
+    } catch (e) { /* history API محجوبة — نكمل برسم الصفحة فقط بلا تغيير الرابط */ }
+    await renderRechargePage();
+}
+
+function closeRechargePage() {
+    document.getElementById('recharge-page')?.remove();
+    if (window.location.pathname === '/recharge') {
+        try { history.back(); } catch (e) { try { history.replaceState(null, '', '/'); } catch (_) {} }
+    }
+}
+
+async function renderRechargePage() {
+    document.getElementById('recharge-page')?.remove();
+    walletSelectedPackageIdx = null;
+    walletCustomUsd = '';
+    const shell = document.createElement('div');
+    shell.id = 'recharge-page';
+    shell.className = 'fixed inset-0 bg-gray-900 z-[340] flex flex-col text-white';
+    shell.innerHTML = `
+        <div class="flex items-center justify-between p-4 border-b border-gray-800 flex-none">
+            <button id="recharge-back" class="report-issue-icon-btn"><i class="fas fa-arrow-right"></i></button>
+            <h2 class="font-bold text-base flex items-center gap-2">${coinIconHTML(18)} شحن الكوينزات</h2>
+            <button id="recharge-history-btn" class="report-issue-icon-btn" title="السجل"><i class="fas fa-history"></i></button>
+        </div>
+        <div id="recharge-body" class="flex-1 overflow-y-auto p-4">
+            <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
+        </div>
+    `;
+    document.getElementById('game-container').appendChild(shell);
+    document.getElementById('recharge-back').addEventListener('click', closeRechargePage);
+    document.getElementById('recharge-history-btn').addEventListener('click', () => openWalletHistoryPanel(shell));
+
+    try {
+        await ensureWalletSummary();
+        renderRechargePageBody();
+    } catch (error) {
+        console.error('[RECHARGE] Error:', error);
+        const body = document.getElementById('recharge-body');
+        if (body) body.innerHTML = `<div class="text-center text-red-400 py-10"><i class="fas fa-exclamation-circle text-2xl mb-2"></i><p class="text-sm">فشل تحميل بيانات الشحن</p></div>`;
+    }
+}
+
+function renderRechargePageBody() {
+    const body = document.getElementById('recharge-body');
+    if (!body || !walletSummaryCache) return;
     const s = walletSummaryCache;
     const first = s.firstRecharge;
     body.innerHTML = `
+        <div id="recharge-open-requests">${walletOpenRequestsHTML(s.openIntents)}</div>
         ${first.active ? `
         <div class="rounded-2xl p-3 mb-3 text-white" style="background:linear-gradient(120deg,#ff4fa3,#8b5cff 60%,#3d2a8a)">
             <div class="flex items-center justify-between">
@@ -17816,10 +18256,14 @@ function renderWalletRechargeTab(body) {
             <input id="wallet-custom-usd" type="number" min="1" max="${s.maxDepositUsd}" value="${escapeHtml(walletCustomUsd)}" placeholder="1 – ${s.maxDepositUsd}" class="flex-1 bg-transparent outline-none text-right" dir="ltr">
         </div>
         <div class="rounded-xl bg-black/20 border border-dashed border-gray-600 p-3 text-xs mb-3" id="wallet-summary"></div>
-        <p class="text-center text-[10px] text-gray-400 mb-3">🔒 مبلغ دقيق ورمز فريد لكل عملية</p>
+        <p class="text-center text-[10px] text-gray-400 mb-3">🔒 مبلغ دقيق لكل عملية</p>
         <button id="wallet-pay-btn" type="button" class="w-full bg-gradient-to-l from-pink-500 to-orange-400 text-white font-bold py-3 rounded-xl disabled:opacity-40" disabled>ادفع عبر شام كاش</button>
     `;
 
+    attachWalletOpenRequestHandlers(document.getElementById('recharge-open-requests'), {
+        onChanged: () => refreshWalletSummaryInBackground().then(renderRechargePageBody),
+        shamCashHost: () => document.getElementById('recharge-page')
+    });
     renderWalletSummaryBox();
     if (first.active) startWalletCountdown(first.endsAt);
 
@@ -17827,7 +18271,7 @@ function renderWalletRechargeTab(body) {
         btn.addEventListener('click', () => {
             walletSelectedPackageIdx = parseInt(btn.dataset.pkg, 10);
             walletCustomUsd = '';
-            renderWalletRechargeTab(body);
+            renderRechargePageBody();
         });
     });
     const customInput = document.getElementById('wallet-custom-usd');
@@ -17837,7 +18281,99 @@ function renderWalletRechargeTab(body) {
         body.querySelectorAll('.wallet-pkg-btn').forEach(b => b.classList.remove('border-yellow-400', 'bg-yellow-400/10'));
         renderWalletSummaryBox();
     });
-    document.getElementById('wallet-pay-btn').addEventListener('click', createDepositAndOpenShamCashModal);
+    document.getElementById('wallet-pay-btn').addEventListener('click', (e) => {
+        const c = walletCalc();
+        createDepositAndMountShamCash(document.getElementById('recharge-page'), c.usd, {
+            buttonEl: e.currentTarget,
+            onClose: renderRechargePageBody,
+            onSubmitted: renderRechargePageBody
+        });
+    });
+}
+
+function renderWalletBalances() {
+    const el = document.getElementById('wallet-balances');
+    if (!el || !walletSummaryCache) return;
+    const b = walletSummaryCache.balances;
+    el.innerHTML = `
+        <div class="grid grid-cols-3 gap-2 mb-1">
+            <div class="bg-gray-900/50 rounded-xl p-2 text-center">
+                <p class="text-[10px] text-gray-400 mb-0.5">كوينز</p>
+                <p class="font-bold text-yellow-400 text-sm">${fmtNum(b.coins)}</p>
+            </div>
+            <div class="bg-gray-900/50 rounded-xl p-2 text-center">
+                <p class="text-[10px] text-gray-400 mb-0.5">ألماس</p>
+                <p class="font-bold text-cyan-400 text-sm">${fmtNum(b.beansWithdrawable + b.beansInApp)}</p>
+            </div>
+            <div class="bg-gray-900/50 rounded-xl p-2 text-center">
+                <p class="text-[10px] text-gray-400 mb-0.5">رصيد قابل للسحب</p>
+                <p class="font-bold text-green-400 text-sm">$${b.usd.toFixed(2)}</p>
+            </div>
+        </div>
+    `;
+}
+
+// ✅ تجربة الشحن v2 (بند 1): الشحن لم يعد تبويباً هنا — صفحة /recharge مستقلة (زر "شحن" برأس
+// صفحة المحفظة يفتحها). التبديل بين "استبدال"/"سحب" يقرأ من walletSummaryCache المخزَّنة
+// فقط — بلا أي fetch، فالتبديل فوري (بند 2 — الأداء)
+function renderWalletTabs() {
+    const el = document.getElementById('wallet-tabs');
+    if (!el) return;
+    const tabs = [['redeem', 'استبدال'], ['withdraw', 'سحب']];
+    if (!tabs.some(([key]) => key === walletCurrentTab)) walletCurrentTab = 'redeem';
+    el.innerHTML = `
+        <div class="flex bg-black/30 rounded-xl p-1 mb-3">
+            ${tabs.map(([key, label]) => `
+                <button type="button" data-wallet-tab="${key}" class="flex-1 text-sm font-bold py-2 rounded-lg transition ${walletCurrentTab === key ? 'bg-gray-700 text-white' : 'text-gray-400'}">${label}</button>
+            `).join('')}
+        </div>
+    `;
+    el.querySelectorAll('[data-wallet-tab]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            walletCurrentTab = btn.dataset.walletTab;
+            renderWalletTabs();
+            renderWalletActiveTab();
+        });
+    });
+}
+
+function renderWalletActiveTab() {
+    const body = document.getElementById('wallet-body');
+    if (!body || !walletSummaryCache) return;
+    if (walletCurrentTab === 'redeem') {
+        renderWalletRedeemTab(body);
+    } else {
+        body.innerHTML = `<div id="withdraw-body"></div>`;
+        renderWithdrawHome();
+    }
+}
+
+function walletCalc() {
+    const s = walletSummaryCache;
+    const pkg = walletSelectedPackageIdx != null ? s.packages[walletSelectedPackageIdx] : null;
+    const usd = pkg ? pkg.usd : Math.max(0, Math.min(s.maxDepositUsd, parseFloat(walletCustomUsd) || 0));
+    const base = Math.round(usd * s.coinsPerUsd);
+    const pkgBonus = pkg ? Math.round(base * (pkg.bonusPct || 0) / 100) : 0;
+    const methodBonus = Math.round(base * (s.shamCashBonusPct || 0) / 100);
+    const firstBonus = s.firstRecharge.active ? Math.round(Math.min(usd, s.firstRecharge.multiplierUpToUsd) * s.coinsPerUsd) : 0;
+    return { usd, base, pkgBonus, methodBonus, firstBonus, total: base + pkgBonus + methodBonus + firstBonus };
+}
+
+function walletCountdownText(endsAtIso) {
+    const s = Math.max(0, Math.floor((new Date(endsAtIso).getTime() - Date.now()) / 1000));
+    const h = String(Math.floor(s / 3600)).padStart(2, '0'), m = String(Math.floor(s % 3600 / 60)).padStart(2, '0'), x = String(s % 60).padStart(2, '0');
+    return `${h}:${m}:${x}`;
+}
+let walletCountdownTimer = null;
+function startWalletCountdown(endsAtIso) {
+    if (walletCountdownTimer) clearInterval(walletCountdownTimer);
+    const tick = () => {
+        const el = document.getElementById('wallet-first-cd');
+        if (!el) { clearInterval(walletCountdownTimer); return; }
+        el.textContent = `⏳ ${walletCountdownText(endsAtIso)}`;
+    };
+    tick();
+    walletCountdownTimer = setInterval(tick, 1000);
 }
 
 function renderWalletSummaryBox() {
@@ -17860,142 +18396,63 @@ function renderWalletSummaryBox() {
     if (payBtn) { payBtn.disabled = false; payBtn.textContent = `ادفع $${c.usd} عبر شام كاش ← ${fmtNum(c.total)} كوينز`; }
 }
 
-async function createDepositAndOpenShamCashModal() {
-    const c = walletCalc();
-    if (!c.usd || c.usd <= 0) return;
-    const btn = document.getElementById('wallet-pay-btn');
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+// =================================================
+// ✅ بند 1-ج: صفحة المحفظة (أرصدة/استبدال/سحب/سجل) — تُفتَح من قائمة الملف الشخصي ⋯ → "المحفظة".
+// لا تبويب شحن هنا بعد الآن؛ زر "شحن" برأسها يفتح صفحة /recharge المستقلة
+// =================================================
+async function openWalletPage(initialTab = 'redeem') {
+    document.getElementById('wallet-modal')?.remove();
+    walletCurrentTab = (initialTab === 'recharge') ? 'redeem' : initialTab;
+    const play = isPlayBuild();
+    const shellHTML = `
+        <div id="wallet-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[320] p-4">
+            <div class="relative bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700 max-h-[92vh] flex flex-col overflow-hidden">
+                <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                    <h3 class="text-lg font-bold flex items-center gap-2">${coinIconHTML(18)} المحفظة</h3>
+                    <div class="flex items-center gap-1">
+                        ${!play ? `<button id="wallet-recharge-btn" class="wallet-entry-badge-host text-xs font-bold bg-gradient-to-l from-pink-500 to-orange-400 text-white rounded-lg px-3 py-1.5 flex-none">شحن</button>` : ''}
+                        <button id="wallet-history-btn" class="report-issue-icon-btn" title="السجل"><i class="fas fa-history"></i></button>
+                        <button id="close-wallet" class="text-gray-400 hover:text-white p-2"><i class="fas fa-times"></i></button>
+                    </div>
+                </div>
+                <div class="px-4 pt-3" id="wallet-balances"></div>
+                <div class="px-4 pt-2" id="wallet-open-requests-host"></div>
+                <div class="px-4 pt-2" id="wallet-tabs"></div>
+                <div id="wallet-body" class="px-4 pb-4 overflow-y-auto flex-1">
+                    <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
+                </div>
+            </div>
+        </div>
+    `;
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+    const modal = document.getElementById('wallet-modal');
+    attachCloseConfirmation(modal, '#close-wallet');
+    document.getElementById('wallet-history-btn').addEventListener('click', () => openWalletHistoryPanel(document.querySelector('#wallet-modal > div')));
+    document.getElementById('wallet-recharge-btn')?.addEventListener('click', openRechargePage);
 
     try {
-        const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
-        if (isPlayBuild()) headers['X-Client'] = 'play';
-        const response = await fetch('/api/wallet/deposits', { method: 'POST', headers, body: JSON.stringify({ usd: c.usd }) });
-        const result = await response.json();
-        if (!response.ok) {
-            showNotification(result.message || 'تعذّر إنشاء طلب الشحن', 'error');
-            btn.disabled = false; btn.textContent = originalText;
-            return;
-        }
-        openShamCashModal(result.data.intent);
-        renderWalletSummaryBox();
+        await ensureWalletSummary();
+        renderWalletBalances();
+        renderWalletOpenRequestsInto(document.getElementById('wallet-open-requests-host'), () => document.querySelector('#wallet-modal > div'));
+        renderWalletTabs();
+        renderWalletActiveTab();
+        refreshWalletEntryBadges();
     } catch (error) {
-        console.error('[WALLET DEPOSIT] Error:', error);
-        showNotification('خطأ في الاتصال بالخادم', 'error');
-        btn.disabled = false; btn.textContent = originalText;
+        console.error('[WALLET] Error:', error);
+        const b = document.getElementById('wallet-body');
+        if (b) b.innerHTML = `<div class="text-center text-red-400 py-10"><i class="fas fa-exclamation-circle text-2xl mb-2"></i><p class="text-sm">فشل تحميل بيانات المحفظة</p></div>`;
     }
 }
 
-function openShamCashModal(intent) {
-    const info = walletSummaryCache.shamCash || {};
-    const amountExact = (intent.exactAmountCents / 100).toFixed(2);
-    let step = 1;
-    let selectedFile = null;
-
-    const overlay = document.createElement('div');
-    overlay.id = 'sham-cash-modal';
-    overlay.className = 'absolute inset-0 bg-black/85 flex items-end justify-center z-20';
-    document.querySelector('#wallet-modal > div').appendChild(overlay);
-
-    const stepsBarHTML = () => `
-        <div class="flex gap-1.5 mb-4">
-            ${[1, 2, 3].map(n => `<i class="flex-1 h-1 rounded-full ${n <= step ? 'bg-teal-400' : 'bg-white/15'}"></i>`).join('')}
-        </div>
-    `;
-
-    const draw = () => {
-        let html = '';
-        if (step === 1) {
-            html = `
-                <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">حوّل عبر شام كاش</h3><button id="sc-close" class="text-gray-400 hover:text-white p-1"><i class="fas fa-times"></i></button></div>
-                ${stepsBarHTML()}
-                ${info.qrImageUrl ? `<div class="text-center mb-3"><img src="${info.qrImageUrl}" class="w-32 h-32 mx-auto rounded-xl bg-white p-2 object-contain" onerror="this.style.display='none'"></div>` : ''}
-                <div class="bg-black/30 rounded-xl px-3 py-2.5 mb-2 flex justify-between items-center text-sm"><span class="text-gray-400">رقم المحفظة</span><span class="flex items-center gap-2"><b dir="ltr">${escapeHtml(info.walletNumber || '—')}</b><button data-copy="${escapeHtml(info.walletNumber || '')}" class="sc-copy text-green-400 text-xs font-bold">نسخ</button></span></div>
-                <div class="bg-black/30 rounded-xl px-3 py-2.5 mb-2 flex justify-between items-center text-sm"><span class="text-gray-400">المبلغ بالضبط</span><span class="flex items-center gap-2"><b dir="ltr">$${amountExact}</b><button data-copy="${amountExact}" class="sc-copy text-green-400 text-xs font-bold">نسخ</button></span></div>
-                <div class="bg-black/30 rounded-xl px-3 py-2.5 mb-3 flex justify-between items-center text-sm"><span class="text-gray-400">اكتب في الملاحظة</span><span class="flex items-center gap-2"><b class="text-yellow-400 tracking-wider" dir="ltr">${escapeHtml(intent.refCode)}</b><button data-copy="${escapeHtml(intent.refCode)}" class="sc-copy text-green-400 text-xs font-bold">نسخ</button></span></div>
-                <p class="text-xs text-gray-400 mb-4 leading-6">المبلغ فيه سنتات فريدة لك والرمز خاص بهذه العملية، فنتعرّف على تحويلك فوراً. الطلب صالح 30 دقيقة.</p>
-                <button id="sc-next1" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">حوّلت المبلغ</button>
-                <button id="sc-later" class="w-full bg-white/10 text-white font-bold py-2.5 rounded-xl mt-2">لاحقاً</button>
-            `;
-        } else if (step === 2) {
-            html = `
-                <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">تأكيد التحويل</h3><button id="sc-close" class="text-gray-400 hover:text-white p-1"><i class="fas fa-times"></i></button></div>
-                ${stepsBarHTML()}
-                <div class="mb-3"><label class="text-xs font-bold block mb-1">رقم العملية في شام كاش</label><input id="sc-txn" inputmode="numeric" placeholder="مثال: 7781203345" class="w-full bg-black/30 border border-gray-700 rounded-xl p-3 text-sm" dir="ltr"></div>
-                <div id="sc-upload" class="border-2 border-dashed border-gray-600 rounded-xl p-3 text-center text-xs text-gray-400 mb-3 cursor-pointer">📎 صورة الإيصال (اختياري، يسرّع التحقق)<input type="file" id="sc-file" accept="image/*" class="hidden"></div>
-                <p class="text-xs text-gray-400 mb-4 leading-6">كل رقم عملية يُقبل مرة واحدة فقط بالموقع كله، فلا يمكن استخدام نفس الإيصال مرتين أو من حساب آخر.</p>
-                <button id="sc-next2" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">أرسل للتحقق</button>
-            `;
-        } else {
-            html = `
-                <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">طلبك قيد التحقق</h3><button id="sc-close" class="text-gray-400 hover:text-white p-1"><i class="fas fa-times"></i></button></div>
-                ${stepsBarHTML()}
-                <ul class="space-y-3 mb-3 text-sm">
-                    <li class="flex gap-2"><i class="fas fa-check-circle text-green-400 mt-0.5"></i><div>استلمنا طلبك<div class="text-xs text-gray-400">${escapeHtml(intent.refCode)} · $${amountExact}</div></div></li>
-                    <li class="flex gap-2"><i class="fas fa-circle-notch fa-spin text-yellow-400 mt-0.5"></i><div>نطابق التحويل مع حسابنا<div class="text-xs text-gray-400">عادة أقل من 10 دقائق</div></div></li>
-                    <li class="flex gap-2 opacity-60"><i class="far fa-circle mt-0.5"></i><div>تُضاف الكوينز لحسابك<div class="text-xs text-gray-400">تصلك رسالة فوراً</div></div></li>
-                </ul>
-                <p class="text-xs text-gray-400 mb-4">يمكنك إغلاق هذه النافذة. ستجد الطلب بسجل المحفظة.</p>
-                <button id="sc-done" class="w-full bg-gray-700 text-white font-bold py-3 rounded-xl">تم</button>
-            `;
-        }
-        overlay.innerHTML = `<div class="w-full bg-gray-800 rounded-t-2xl p-4 max-h-[90%] overflow-y-auto">${html}</div>`;
-
-        overlay.querySelector('#sc-close').addEventListener('click', () => { overlay.remove(); refreshWalletSummary(); });
-        overlay.querySelectorAll('.sc-copy').forEach(b => b.addEventListener('click', () => {
-            navigator.clipboard.writeText(b.dataset.copy).then(() => { const old = b.textContent; b.textContent = '✓'; setTimeout(() => b.textContent = old, 1500); });
-        }));
-        document.getElementById('sc-later')?.addEventListener('click', () => { overlay.remove(); refreshWalletSummary(); });
-
-        if (step === 1) {
-            document.getElementById('sc-next1').addEventListener('click', () => { step = 2; draw(); });
-        } else if (step === 2) {
-            const uploadBox = document.getElementById('sc-upload');
-            const fileInput = document.getElementById('sc-file');
-            uploadBox.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', () => {
-                selectedFile = fileInput.files[0] || null;
-                if (selectedFile) uploadBox.innerHTML = `✅ ${escapeHtml(selectedFile.name)}`;
-            });
-            document.getElementById('sc-next2').addEventListener('click', async () => {
-                const txnNo = document.getElementById('sc-txn').value.trim();
-                if (!txnNo) { showNotification('أدخل رقم العملية', 'error'); return; }
-                const btn = document.getElementById('sc-next2');
-                btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                try {
-                    const formData = new FormData();
-                    formData.append('txnNo', txnNo);
-                    if (selectedFile) formData.append('file', selectedFile);
-                    const response = await fetch(`/api/wallet/deposits/${intent._id}/submit`, {
-                        method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData
-                    });
-                    const result = await response.json();
-                    if (!response.ok) {
-                        showNotification(result.message || 'فشل إرسال الطلب', 'error');
-                        btn.disabled = false; btn.textContent = 'أرسل للتحقق';
-                        return;
-                    }
-                    step = 3; draw();
-                } catch (error) {
-                    showNotification('خطأ في الاتصال بالخادم', 'error');
-                    btn.disabled = false; btn.textContent = 'أرسل للتحقق';
-                }
-            });
-        } else {
-            document.getElementById('sc-done').addEventListener('click', () => { overlay.remove(); refreshWalletSummary(); });
-        }
-    };
-    draw();
-}
-
-async function openWalletHistoryPanel() {
+// ✅ بند 1 (آخر فقرة): نفس بناء صفحة/شيت الشحن يستدعي هذه الدالة بدل showWalletModal القديمة
+async function openWalletHistoryPanel(hostEl) {
     const existing = document.getElementById('wallet-history-panel');
     if (existing) { existing.remove(); return; }
+    if (!hostEl) return;
 
     const panel = document.createElement('div');
     panel.id = 'wallet-history-panel';
-    panel.className = 'absolute inset-0 bg-gray-900 z-20 flex flex-col';
+    panel.className = 'absolute inset-0 bg-gray-900 z-30 flex flex-col';
     panel.innerHTML = `
         <div class="flex items-center justify-between p-4 border-b border-gray-700">
             <h3 class="font-bold">سجل المحفظة</h3>
@@ -18003,7 +18460,7 @@ async function openWalletHistoryPanel() {
         </div>
         <div id="wallet-history-list" class="p-4 overflow-y-auto flex-1 text-sm"><div class="text-center text-gray-400 py-8"><i class="fas fa-spinner fa-spin"></i></div></div>
     `;
-    document.querySelector('#wallet-modal > div').appendChild(panel);
+    hostEl.appendChild(panel);
     document.getElementById('wallet-history-close').addEventListener('click', () => panel.remove());
 
     try {
@@ -18075,7 +18532,9 @@ async function renderWalletRedeemTab(body) {
                     if (!r.ok) { showNotification(res2.message || 'فشل الاستبدال', 'error'); btn.disabled = false; return; }
                     showNotification(res2.message, 'success');
                     await refreshUserData();
-                    await refreshWalletSummary();
+                    await refreshWalletSummaryInBackground();
+                    renderWalletBalances();
+                    renderWalletActiveTab();
                 } catch (error) {
                     showNotification('خطأ في الاتصال بالخادم', 'error');
                     btn.disabled = false;
@@ -21697,7 +22156,7 @@ function showInsufficientCoinsModal(message) {
     document.getElementById('ic-cancel-btn').addEventListener('click', () => modal.remove());
     document.getElementById('ic-topup-btn')?.addEventListener('click', () => {
         modal.remove();
-        showWalletModal('recharge');
+        openRechargePage();
     });
 }
 
