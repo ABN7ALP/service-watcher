@@ -41,7 +41,8 @@ const adminLogSchema = new mongoose.Schema({
       'manual_transaction',
       'ip_ban',
       'mass_notification',
-      'transfer_beans_to_withdrawable'
+      'transfer_beans_to_withdrawable',
+      'reset_withdrawal_pin'
     ]
   },
   targetUser: {

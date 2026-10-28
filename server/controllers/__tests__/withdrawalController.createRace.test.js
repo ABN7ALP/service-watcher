@@ -9,11 +9,17 @@
 
 const { AsyncLocalStorage } = require('async_hooks');
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 const User = require('../../models/User');
 const Withdrawal = require('../../models/Withdrawal');
 const LedgerEntry = require('../../models/LedgerEntry');
 const SystemSettings = require('../../models/SystemSettings');
 const withdrawalController = require('../withdrawalController');
+
+// 🛡️ مراجعة الأمان v2 (البند 2): كل طلب سحب يتطلّب رمز السحب الآن، والمحفظة تُقرأ من
+// payoutShamCashWallet المحفوظة لا من حقل حرّ بالطلب — هذا الهاش يُستخدم بكل مستخدمي الاختبار
+const TEST_PIN = '1234';
+const TEST_PIN_HASH = bcrypt.hashSync(TEST_PIN, 4);
 
 function chainable(value) {
     const p = Promise.resolve(value);
@@ -31,7 +37,10 @@ function seedUser(db, overrides) {
     const user = {
         _id: '507f191e810c19729de860ea', balance, walletUsdCents: Math.round(balance * 100),
         walletCoinsPaid: 0, walletCoinsBonus: 0, walletBeansW: 0, walletBeansP: 0,
-        socketId: null, ...rest
+        socketId: null,
+        withdrawalPin: TEST_PIN_HASH, withdrawalPinFailedAttempts: 0, withdrawalPinLockedUntil: null,
+        payoutShamCashWallet: 'wallet123', withdrawalBlockedUntil: null, payoutWalletChangedAt: null,
+        ...rest
     };
     db.users.set(user._id, user);
     return user;
@@ -129,7 +138,7 @@ describe('createWithdrawal — تضارب الكتابة الحقيقي يمنع
         const user = seedUser(db, { _id: '507f191e810c19729de860ea', balance: 10 });
         wireMocks(db);
 
-        const body = { method: 'sham_cash', amount: '10', fullName: 'محمد علي', walletNumber: 'wallet123' };
+        const body = { method: 'sham_cash', amount: '10', fullName: 'محمد علي', pin: TEST_PIN };
         const req1 = mockReq({ body });
         const res1 = mockRes();
         const req2 = mockReq({ body });
@@ -156,7 +165,7 @@ describe('createWithdrawal — تضارب الكتابة الحقيقي يمنع
         const user = seedUser(db, { _id: '507f191e810c19729de860ea', balance: 50 });
         wireMocks(db);
 
-        const req = mockReq({ body: { method: 'sham_cash', amount: '20', fullName: 'محمد علي', walletNumber: 'wallet123' } });
+        const req = mockReq({ body: { method: 'sham_cash', amount: '20', fullName: 'محمد علي', pin: TEST_PIN } });
         const res = mockRes();
         await withdrawalController.createWithdrawal(req, res);
 

@@ -83,6 +83,17 @@ const passwordLimiter = rateLimit({
 });
 
 
+// 🛡️ مراجعة الأمان v2 (البند 2) — محدد طلب رمز "نسيت رمز السحب": يمنع قصف البريد بأكواد
+// (ويمنع أيضاً استنزاف محاولات التحقق بطلب أكواد جديدة متكررة)
+const pinResetLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: safeKeyGenerator,
+    message: { status: 'fail', message: 'طلبات كثيرة لإعادة تعيين رمز السحب. حاول بعد قليل.' },
+});
+
 // 🛡️ حارس إدخال بديل: يزيل فقط الأنماط الخطرة فعلياً دون تشويه نص المستخدم العادي.
 // نهجنا: لا نحاول "تنظيف" HTML (نهج هشّ)، بل نمنع الحمولات التنفيذية الواضحة
 // ونترك الترميز الآمن للمخرجات في الواجهة.
@@ -199,4 +210,5 @@ module.exports.loginLimiter = loginLimiter;
 module.exports.registerLimiter = registerLimiter;
 module.exports.passwordLimiter = passwordLimiter;
 module.exports.financialLimiter = financialLimiter;
+module.exports.pinResetLimiter = pinResetLimiter;
 module.exports.safeKeyGenerator = safeKeyGenerator;

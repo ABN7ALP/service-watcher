@@ -382,7 +382,7 @@ class AdminDashboard {
     async showUserDetails(userId) {
         try {
             const data = await this.api('GET', `/users/${userId}`);
-            const { user, transactions } = data;
+            const { user, transactions, hasWithdrawalPin } = data;
 
             const modal = this.openModal(`
                 <div class="modal-overlay active">
@@ -433,6 +433,7 @@ class AdminDashboard {
                             <button class="btn btn-success" id="fundsBtn"><i class="fas fa-coins"></i> تعديل الرصيد</button>
                             <button class="btn btn-info text-white" id="transferBeansBtn"><i class="fas fa-exchange-alt"></i> تحويل ألماس إلى قابل للسحب</button>
                             <button class="btn ${user.isAgent ? 'btn-secondary' : 'btn-info text-white'}" id="agentBtn">${user.isAgent ? 'إلغاء صلاحية الوكيل' : 'تعيين كوكيل شحن'}</button>
+                            ${hasWithdrawalPin ? `<button class="btn btn-warning" id="resetPinBtn"><i class="fas fa-key"></i> إعادة تعيين رمز السحب</button>` : ''}
                             ${!user.isBanned
                                 ? `<button class="btn btn-danger" id="banBtn"><i class="fas fa-ban"></i> حظر</button>`
                                 : `<button class="btn btn-success" id="unbanBtn"><i class="fas fa-check"></i> إلغاء الحظر</button>`}
@@ -444,6 +445,13 @@ class AdminDashboard {
             modal.querySelector('#fundsBtn').addEventListener('click', () => { modal.remove(); this.showAdjustFundsModal(userId); });
             modal.querySelector('#transferBeansBtn').addEventListener('click', () => { modal.remove(); this.showTransferBeansModal(userId); });
             modal.querySelector('#agentBtn').addEventListener('click', () => this.toggleAgentStatus(userId, !user.isAgent, modal));
+            modal.querySelector('#resetPinBtn')?.addEventListener('click', () => this.confirmAction(`إعادة تعيين رمز السحب لـ${user.username}؟ سيُطلب منه إنشاء رمز جديد، والسحب سيُحظَر 24 ساعة`, async () => {
+                try {
+                    await this.api('POST', `/users/${userId}/reset-withdrawal-pin`);
+                    this.showToast('تم تصفير رمز السحب', 'success');
+                    modal.remove();
+                } catch (error) { this.showToast(error.message, 'error'); }
+            }, true));
             modal.querySelector('#banBtn')?.addEventListener('click', () => { modal.remove(); this.showBanModal(userId, user.username); });
             modal.querySelector('#unbanBtn')?.addEventListener('click', () => this.confirmAction(`إلغاء حظر ${user.username}؟`, async () => { await this.unbanUser(userId); modal.remove(); }, false));
         } catch (error) { this.showToast(error.message, 'error'); }
@@ -1841,6 +1849,8 @@ class AdminDashboard {
                         <div class="form-group"><label>الحد الأدنى للسحب ($)</label><input type="number" class="form-control" id="s-minWithdraw" value="${s.minWithdrawUSD}"></div>
                         <div class="form-group"><label>رسوم السحب (لكل 10$)</label><input type="number" step="0.01" class="form-control" id="s-withdrawFee" value="${s.withdrawalFeePer10USD}"></div>
                         <div class="form-group"><label>الحد الأقصى للسحب اليومي ($)</label><input type="number" class="form-control" id="s-maxDailyWithdraw" value="${s.maxDailyWithdrawalUSD}"></div>
+                        <div class="form-group"><label>فترة أمان الألماس قبل صرفه نقداً (ساعات)</label><input type="number" class="form-control" id="s-beanHoldHours" value="${s.beanHoldHours}"></div>
+                        <div class="form-group"><label>حظر السحب بعد إعادة تعيين/تغيير رمز السحب (ساعات)</label><input type="number" class="form-control" id="s-pinPostResetBlockHours" value="${s.withdrawalPinPostResetBlockHours}"></div>
                     </div>
                 </div>
                 <hr>
@@ -1960,6 +1970,8 @@ class AdminDashboard {
                     minPurchaseUSD: parseFloat(document.getElementById('s-minPurchase').value),
                     maxPurchaseUSD: parseFloat(document.getElementById('s-maxPurchase').value),
                     minWithdrawUSD: parseFloat(document.getElementById('s-minWithdraw').value),
+                    beanHoldHours: parseFloat(document.getElementById('s-beanHoldHours').value),
+                    withdrawalPinPostResetBlockHours: parseFloat(document.getElementById('s-pinPostResetBlockHours').value),
                     withdrawalFeePer10USD: parseFloat(document.getElementById('s-withdrawFee').value),
                     maxDailyWithdrawalUSD: parseFloat(document.getElementById('s-maxDailyWithdraw').value),
                     coinsToUsdRedemptionRate: parseFloat(document.getElementById('s-redeemCoinRate').value),
