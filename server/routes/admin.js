@@ -1,4 +1,5 @@
 const withdrawalController = require('../controllers/withdrawalController');
+const withdrawalPinController = require('../controllers/withdrawalPinController');
 const customGiftController = require('../controllers/customGiftController');
 const frameController = require('../controllers/frameController');
 const express = require('express');
@@ -57,6 +58,8 @@ router.post('/deposit-intents/:id/reject', depositIntentController.adminRejectIn
 
 router.get('/withdrawals', withdrawalController.getAllWithdrawals);
 router.post('/withdrawals/:withdrawalId/review', withdrawalController.reviewWithdrawal);
+// 🛡️ مراجعة الأمان v2 (البند 2) — لمستخدم بلا بريد مفعّل، لا يملك مسار "نسيت الرمز" الذاتي
+router.post('/users/:userId/reset-withdrawal-pin', withdrawalPinController.adminResetPin);
 
 router.get('/custom-gifts', customGiftController.adminListCustomGifts);
 router.post('/custom-gifts/:id/review', customGiftController.adminReviewCustomGift);

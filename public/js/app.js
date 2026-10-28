@@ -17982,8 +17982,8 @@ function mountShamCashFlow(hostEl, intent, opts = {}) {
                 ${info.qrImageUrl ? `<div class="text-center mb-3"><img src="${info.qrImageUrl}" id="sc-qr-img" class="w-32 h-32 mx-auto rounded-xl bg-white p-2 object-contain cursor-zoom-in" onerror="this.closest('div').style.display='none'"></div>` : ''}
                 ${copyRowHTML('رقم المحفظة', info.walletNumber || '—', info.walletNumber || '')}
                 ${copyRowHTML('المبلغ بالضبط', `$${amountExact}`, amountExact, 'text-yellow-300')}
-                <p class="text-xs text-gray-400 mb-1 leading-6">رقم طلبك: <bdi dir="ltr" class="font-bold text-gray-300">${escapeHtml(intent.refCode)}</bdi></p>
-                <p class="text-[11px] text-gray-500 mb-4 leading-6">إن أمكن، اكتب رمز الطلب في خانة الملاحظة في شام كاش (اختياري) — وللتواصل مع الدعم. المبلغ وحده كافٍ للتعرّف على تحويلك، والطلب صالح 30 دقيقة.</p>
+                ${copyRowHTML('رقم طلبك', intent.refCode, intent.refCode, 'text-teal-300')}
+                <p class="text-[11px] text-gray-500 mb-4 leading-6">يُفضَّل كتابة رقم طلبك في خانة «الملاحظة» في شام كاش عند التحويل، مع إرسال المبلغ بالضبط $${amountExact} — غير إلزامي، فالمبلغ وحده كافٍ للتعرّف على تحويلك. الطلب صالح 30 دقيقة.</p>
                 <button id="sc-next1" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">حوّلت المبلغ</button>
                 <button id="sc-later" class="w-full bg-white/10 text-white font-bold py-2.5 rounded-xl mt-2">لاحقاً</button>
             `;
@@ -18612,12 +18612,257 @@ function attachCloseConfirmation(modalEl, closeButtonSelector) {
         
 
 // =================================================
+// 🛡️ مراجعة الأمان v2 (البند 2) — رمز السحب: لوحة أرقام عامة قابلة لإعادة الاستخدام (إدخال
+// رمز موجود، أو اختيار رمز جديد بخطوتين "جديد" ثم "تأكيد")، + تدفّق "نسيت الرمز؟"
+// =================================================
+
+// لوحة أرقام عامة — طول متغيّر 4-6 (زر "تأكيد" يُفعَّل بين 4 و6 أرقام، لا إرسال تلقائي عند
+// رقم ثابت لأن طول الرمز هنا اختيار المستخدم لا قيمة معروفة مسبقاً للعميل
+function pinPadModal({ title, subtitle, confirmLabel = 'تأكيد', showForgot = false, onForgot, onSubmit }) {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/80 z-[420] flex items-end justify-center';
+    modal.innerHTML = `
+        <div class="w-full max-w-md bg-gray-800 rounded-t-2xl p-4">
+            <div class="flex items-center justify-between mb-1">
+                <h3 class="font-bold text-base">${escapeHtml(title)}</h3>
+                <button id="pin-pad-close" class="text-gray-400 hover:text-white p-1"><i class="fas fa-times"></i></button>
+            </div>
+            ${subtitle ? `<p class="text-xs text-gray-400 mb-3">${escapeHtml(subtitle)}</p>` : ''}
+            <div id="pin-pad-dots" class="flex items-center justify-center gap-2.5 my-4"></div>
+            <p id="pin-pad-error" class="text-center text-xs text-red-400 h-4 mb-1"></p>
+            <div class="grid grid-cols-3 gap-2 mb-3">
+                ${[1,2,3,4,5,6,7,8,9].map(n => `<button type="button" data-k="${n}" class="pin-pad-key h-12 rounded-xl bg-white/10 text-white font-bold text-lg">${n}</button>`).join('')}
+                <span></span>
+                <button type="button" data-k="0" class="pin-pad-key h-12 rounded-xl bg-white/10 text-white font-bold text-lg">0</button>
+                <button type="button" data-k="back" class="pin-pad-key h-12 rounded-xl bg-white/10 text-white"><i class="fas fa-backspace"></i></button>
+            </div>
+            ${showForgot ? `<button id="pin-pad-forgot" class="w-full text-center text-xs text-teal-400 font-bold mb-2">نسيت الرمز؟</button>` : ''}
+            <button id="pin-pad-confirm" disabled class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl disabled:opacity-40">${escapeHtml(confirmLabel)}</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    let value = '';
+    const dotsEl = modal.querySelector('#pin-pad-dots');
+    const errEl = modal.querySelector('#pin-pad-error');
+    const confirmBtn = modal.querySelector('#pin-pad-confirm');
+    const drawDots = () => {
+        dotsEl.innerHTML = Array.from({ length: Math.max(value.length, 4) }).map((_, i) => `
+            <span class="w-3 h-3 rounded-full border-2 ${i < value.length ? 'bg-teal-400 border-teal-400' : 'border-gray-600'}"></span>
+        `).join('');
+        confirmBtn.disabled = value.length < 4 || value.length > 6;
+    };
+    drawDots();
+
+    const close = () => modal.remove();
+    modal.querySelector('#pin-pad-close').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+    modal.querySelectorAll('.pin-pad-key').forEach(btn => {
+        btn.addEventListener('click', () => {
+            errEl.textContent = '';
+            const k = btn.dataset.k;
+            if (k === 'back') value = value.slice(0, -1);
+            else if (value.length < 6) value += k;
+            drawDots();
+        });
+    });
+
+    if (showForgot) {
+        modal.querySelector('#pin-pad-forgot').addEventListener('click', () => { close(); onForgot?.(); });
+    }
+
+    confirmBtn.addEventListener('click', async () => {
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        try {
+            await onSubmit(value, {
+                close,
+                setError: (msg) => {
+                    errEl.textContent = msg;
+                    value = '';
+                    drawDots();
+                    confirmBtn.innerHTML = confirmLabel;
+                }
+            });
+        } finally {
+            confirmBtn.disabled = value.length < 4 || value.length > 6;
+            if (confirmBtn.innerHTML.includes('spinner')) confirmBtn.innerHTML = confirmLabel;
+        }
+    });
+
+    return { close };
+}
+
+// رسائل أخطاء رمز السحب الموحَّدة (حالة قفل/رمز خاطئ/غير مُنشأ) — تُستخدم بكل نقاط إدخال الرمز
+function withdrawalPinErrorMessage(result) {
+    if (result.code === 'LOCKED' || result.code === 'LOCKED_NOW') {
+        const mins = result.lockedUntil ? Math.max(1, Math.ceil((new Date(result.lockedUntil) - Date.now()) / 60000)) : 30;
+        return `تم قفل رمز السحب لكثرة المحاولات الخاطئة. حاول بعد ${mins} دقيقة`;
+    }
+    if (result.code === 'NOT_SET') return 'يرجى إنشاء رمز سحب أولاً';
+    if (typeof result.remainingAttempts === 'number') return `رمز غير صحيح — ${result.remainingAttempts} محاولات متبقية`;
+    return result.message || 'رمز غير صحيح';
+}
+
+// إنشاء الرمز أول مرة (لا رمز حالي) — خطوتان: رمز جديد ثم تأكيده
+function startWithdrawalPinSetup(onDone) {
+    pinPadModal({
+        title: 'إنشاء رمز السحب',
+        subtitle: 'اختر رمزاً من 4 إلى 6 أرقام لحماية عمليات السحب',
+        confirmLabel: 'التالي',
+        onSubmit: async (firstPin, { close }) => {
+            close();
+            pinPadModal({
+                title: 'تأكيد رمز السحب',
+                subtitle: 'أعد كتابة الرمز نفسه للتأكيد',
+                confirmLabel: 'إنشاء الرمز',
+                onSubmit: async (secondPin, { close: close2, setError }) => {
+                    if (secondPin !== firstPin) { setError('الرمزان غير متطابقين، حاول من جديد'); return; }
+                    try {
+                        const res = await fetch('/api/withdrawals/pin/setup', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ pin: firstPin, confirmPin: secondPin })
+                        });
+                        const result = await res.json();
+                        if (!res.ok) { setError(result.message || 'تعذّر إنشاء الرمز'); return; }
+                        close2();
+                        showNotification('تم إنشاء رمز السحب', 'success');
+                        onDone?.();
+                    } catch (e) { setError('خطأ في الاتصال بالخادم'); }
+                }
+            });
+        }
+    });
+}
+
+// تدفّق "نسيت الرمز؟": كلمة السر → كود البريد (أو "تواصل مع الدعم" لو البريد غير مُفعَّل) → رمز جديد
+function startForgotWithdrawalPinFlow(onDone) {
+    const passModal = document.createElement('div');
+    passModal.className = 'fixed inset-0 bg-black/80 z-[420] flex items-end justify-center';
+    passModal.innerHTML = `
+        <div class="w-full max-w-md bg-gray-800 rounded-t-2xl p-4">
+            <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">تأكيد الهوية</h3><button id="fp-close" class="text-gray-400 p-1"><i class="fas fa-times"></i></button></div>
+            <p class="text-xs text-gray-400 mb-3">أدخل كلمة السر لإرسال رمز إعادة تعيين رمز السحب إلى بريدك</p>
+            <input type="password" id="fp-password" class="w-full bg-black/30 border border-gray-700 rounded-xl p-3 text-sm mb-2" placeholder="كلمة السر">
+            <p id="fp-error" class="text-xs text-red-400 mb-2 min-h-[1rem]"></p>
+            <button id="fp-submit" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">إرسال الرمز</button>
+        </div>
+    `;
+    document.body.appendChild(passModal);
+    const closeP = () => passModal.remove();
+    passModal.querySelector('#fp-close').addEventListener('click', closeP);
+    passModal.addEventListener('click', (e) => { if (e.target === passModal) closeP(); });
+
+    passModal.querySelector('#fp-submit').addEventListener('click', async () => {
+        const password = passModal.querySelector('#fp-password').value;
+        const errEl = passModal.querySelector('#fp-error');
+        errEl.textContent = '';
+        if (!password) { errEl.textContent = 'أدخل كلمة السر'; return; }
+        try {
+            const res = await fetch('/api/withdrawals/pin/forgot/request-code', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ password })
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                errEl.textContent = result.code === 'EMAIL_NOT_VERIFIED'
+                    ? 'بريدك غير مفعَّل — تواصل مع الدعم لإعادة تعيين رمز السحب'
+                    : (result.message || 'تعذّر إرسال الرمز');
+                return;
+            }
+            closeP();
+            showNotification('تم إرسال رمز التحقق إلى بريدك', 'success');
+            startResetCodeEntry(password, onDone);
+        } catch (e) { errEl.textContent = 'خطأ في الاتصال بالخادم'; }
+    });
+}
+
+function startResetCodeEntry(password, onDone) {
+    const codeModal = document.createElement('div');
+    codeModal.className = 'fixed inset-0 bg-black/80 z-[420] flex items-end justify-center';
+    codeModal.innerHTML = `
+        <div class="w-full max-w-md bg-gray-800 rounded-t-2xl p-4">
+            <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">رمز التحقق</h3><button id="rc-close" class="text-gray-400 p-1"><i class="fas fa-times"></i></button></div>
+            <p class="text-xs text-gray-400 mb-3">أدخل الرمز المرسَل إلى بريدك (صالح 10 دقائق)</p>
+            <input type="text" inputmode="numeric" maxlength="6" id="rc-code" dir="ltr" class="w-full bg-black/30 border border-gray-700 rounded-xl p-3 text-sm mb-2 text-center tracking-widest font-bold" placeholder="------">
+            <p id="rc-error" class="text-xs text-red-400 mb-2 min-h-[1rem]"></p>
+            <button id="rc-submit" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">التالي</button>
+        </div>
+    `;
+    document.body.appendChild(codeModal);
+    const closeC = () => codeModal.remove();
+    codeModal.querySelector('#rc-close').addEventListener('click', closeC);
+    codeModal.addEventListener('click', (e) => { if (e.target === codeModal) closeC(); });
+
+    codeModal.querySelector('#rc-submit').addEventListener('click', () => {
+        const code = codeModal.querySelector('#rc-code').value.trim();
+        const errEl = codeModal.querySelector('#rc-error');
+        if (!/^\d{6}$/.test(code)) { errEl.textContent = 'أدخل الرمز المكوَّن من 6 أرقام'; return; }
+        closeC();
+        pinPadModal({
+            title: 'رمز سحب جديد',
+            subtitle: 'اختر رمزاً جديداً من 4 إلى 6 أرقام',
+            confirmLabel: 'التالي',
+            onSubmit: async (firstPin, { close }) => {
+                close();
+                pinPadModal({
+                    title: 'تأكيد الرمز الجديد',
+                    confirmLabel: 'تعيين الرمز',
+                    onSubmit: async (secondPin, { close: close2, setError }) => {
+                        if (secondPin !== firstPin) { setError('الرمزان غير متطابقين'); return; }
+                        try {
+                            const res = await fetch('/api/withdrawals/pin/forgot/verify-code', {
+                                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify({ password, code, newPin: firstPin, confirmPin: secondPin })
+                            });
+                            const result = await res.json();
+                            if (!res.ok) { setError(withdrawalPinErrorMessage(result)); return; }
+                            close2();
+                            showNotification('تم إعادة تعيين رمز السحب', 'success');
+                            onDone?.();
+                        } catch (e) { setError('خطأ في الاتصال بالخادم'); }
+                    }
+                });
+            }
+        });
+    });
+}
+
+// تُستدعى عند أول دخول لتبويب السحب — تُنشئ الرمز لو لم يكن موجوداً، ثم تُنفّذ afterReady
+async function ensureWithdrawalPinSetup(afterReady) {
+    try {
+        const res = await fetch('/api/withdrawals/pin/status', { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await res.json();
+        if (!res.ok) return;
+        if (!result.data.hasPin) {
+            startWithdrawalPinSetup(afterReady);
+        } else {
+            afterReady?.(result.data);
+        }
+    } catch (e) { console.error('[WITHDRAWAL PIN] status check failed:', e); }
+}
+
+// إدخال الرمز لتنفيذ فعل حسّاس (سحب / تغيير محفظة) — onVerified(pin) تُستدعى بعد إدخال صحيح
+// شكلياً (الطول بين 4-6)؛ التحقق الفعلي يتم بالخادم عند تنفيذ الفعل نفسه فلا نستهلك محاولة هنا
+function promptWithdrawalPinEntry({ title = 'أدخل رمز السحب', subtitle, onConfirm }) {
+    pinPadModal({
+        title, subtitle, confirmLabel: 'تأكيد', showForgot: true,
+        onForgot: () => startForgotWithdrawalPinFlow(),
+        onSubmit: async (pin, helpers) => { await onConfirm(pin, helpers); }
+    });
+}
+
+// =================================================
 // ============ نظام سحب الرصيد (يُعرَض داخل تبويب "سحب" بالمحفظة) ======================
 // =================================================
 
 async function renderWithdrawHome() {
     const body = document.getElementById('withdraw-body');
     const user = JSON.parse(localStorage.getItem('user'));
+
+    // 🛡️ مراجعة الأمان v2 (البند 2): أول دخول لتبويب السحب يطلب إنشاء رمز سحب لو لم يكن موجوداً
+    ensureWithdrawalPinSetup();
 
     let myWithdrawals = [];
     try {
@@ -18664,14 +18909,29 @@ async function renderWithdrawHome() {
     });
 }
 
-function renderWithdrawForm(method) {
+async function renderWithdrawForm(method) {
     const body = document.getElementById('withdraw-body');
     const user = JSON.parse(localStorage.getItem('user'));
 
+    // 🛡️ مراجعة الأمان v2 (البند 2): لشام كاش، نقرأ المحفظة المحفوظة بدل حقل حرّ — تغييرها
+    // فعل منفصل يتطلّب الرمز (راجع mountPayoutWalletChangeFlow)
+    let pinStatus = null;
+    if (method === 'sham_cash') {
+        try {
+            const res = await fetch('/api/withdrawals/pin/status', { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await res.json();
+            if (res.ok) pinStatus = result.data;
+        } catch (e) { console.error(e); }
+    }
+
     const fieldsHTML = method === 'sham_cash' ? `
         <div class="mb-3">
-            <label class="text-xs text-gray-400 mb-1 block">رابط محفظة شام كاش</label>
-            <input type="text" id="w-wallet" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-sm" placeholder="رابط المحفظة">
+            <label class="text-xs text-gray-400 mb-1 block">محفظة شام كاش المحفوظة</label>
+            <div id="w-saved-wallet" class="bg-black/30 rounded-xl px-3 py-2.5 flex items-center justify-between gap-2">
+                <bdi dir="ltr" class="font-bold truncate">${escapeHtml(pinStatus?.payoutShamCashWallet || 'لم تُحفظ محفظة بعد')}</bdi>
+                <button type="button" id="w-change-wallet-btn" class="text-teal-400 text-xs font-bold flex-none whitespace-nowrap">${pinStatus?.payoutShamCashWallet ? 'تغيير' : 'حفظ'}</button>
+            </div>
+            <p class="text-[11px] text-gray-500 mt-1">تغيير المحفظة يوقف السحب 48 ساعة لحمايتك</p>
         </div>
     ` : `
         <div class="grid grid-cols-2 gap-2 mb-3">
@@ -18696,6 +18956,10 @@ function renderWithdrawForm(method) {
 
     document.getElementById('back-to-withdraw-home').addEventListener('click', renderWithdrawHome);
 
+    document.getElementById('w-change-wallet-btn')?.addEventListener('click', () => {
+        mountPayoutWalletChangeFlow(() => renderWithdrawForm(method));
+    });
+
     document.getElementById('submit-withdraw-btn').addEventListener('click', async () => {
         const fullName = document.getElementById('w-fullname').value.trim();
         const amount = parseFloat(document.getElementById('w-amount').value);
@@ -18706,9 +18970,7 @@ function renderWithdrawForm(method) {
 
         const payload = { method, amount, fullName };
         if (method === 'sham_cash') {
-            const wallet = document.getElementById('w-wallet').value.trim();
-            if (!wallet) { showNotification('يرجى إدخال رابط المحفظة', 'error'); return; }
-            payload.walletNumber = wallet;
+            if (!pinStatus?.payoutShamCashWallet) { showNotification('يرجى حفظ محفظة شام كاش أولاً', 'error'); return; }
         } else {
             const country = document.getElementById('w-country').value.trim();
             const governorate = document.getElementById('w-governorate').value.trim();
@@ -18718,34 +18980,71 @@ function renderWithdrawForm(method) {
             payload.officeInfo = { country, governorate, area, phone };
         }
 
-        const btn = document.getElementById('submit-withdraw-btn');
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-
-        try {
-            const response = await fetch('/api/withdrawals/create', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify(payload)
-            });
-            const result = await response.json();
-
-                 if (response.ok) {
-                // ✅ الإصلاح: تحديث فوري وحقيقي من الخادم بدل تعديل يدوي محلي فقط
-                await refreshUserData();
-                // ✅ feat/wallet-recharge-v1: هذا التبويب يُعرَض الآن داخل محفظة واحدة موحّدة
-                // (لا نافذة سحب مستقلة بعد الآن) — نعيد عرض الصفحة الرئيسية للسحب بدل إغلاق أي نافذة
-                renderWithdrawHome();
-            } else {
-                showNotification(result.message || 'فشل إرسال الطلب', 'error');
-                btn.disabled = false;
-                btn.textContent = 'إرسال طلب السحب';
+        // 🛡️ مراجعة الأمان v2 (البند 2): الرمز إلزامي لكل طلب سحب
+        promptWithdrawalPinEntry({
+            title: 'أدخل رمز السحب لتأكيد الطلب',
+            onConfirm: async (pin, { close, setError }) => {
+                try {
+                    const response = await fetch('/api/withdrawals/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ ...payload, pin })
+                    });
+                    const result = await response.json();
+                    if (!response.ok) { setError(withdrawalPinErrorMessage(result)); return; }
+                    close();
+                    await refreshUserData();
+                    showNotification(result.message || 'تم استلام طلب السحب بنجاح', 'success');
+                    // ✅ feat/wallet-recharge-v1: هذا التبويب يُعرَض الآن داخل محفظة واحدة موحّدة
+                    renderWithdrawHome();
+                } catch (error) {
+                    setError('خطأ في الاتصال بالخادم');
+                }
             }
-        } catch (error) {
-            showNotification('خطأ في الاتصال بالخادم', 'error');
-            btn.disabled = false;
-            btn.textContent = 'إرسال طلب السحب';
-        }
+        });
+    });
+}
+
+// تغيير/حفظ محفظة الصرف — يتطلّب الرمز (ينشئه المستخدم أولاً لو لم يملك رمزاً بعد)
+function mountPayoutWalletChangeFlow(onDone) {
+    ensureWithdrawalPinSetup(() => {
+        promptWithdrawalPinEntry({
+            title: 'أدخل رمز السحب',
+            subtitle: 'تأكيد الهوية قبل حفظ/تغيير المحفظة',
+            onConfirm: (pin, { close }) => {
+                close();
+                const walletModal = document.createElement('div');
+                walletModal.className = 'fixed inset-0 bg-black/80 z-[420] flex items-end justify-center';
+                walletModal.innerHTML = `
+                    <div class="w-full max-w-md bg-gray-800 rounded-t-2xl p-4">
+                        <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">محفظة شام كاش</h3><button id="wm-close" class="text-gray-400 p-1"><i class="fas fa-times"></i></button></div>
+                        <input type="text" id="wm-wallet" class="w-full bg-black/30 border border-gray-700 rounded-xl p-3 text-sm mb-2" placeholder="رابط/رقم محفظة شام كاش">
+                        <p id="wm-error" class="text-xs text-red-400 mb-2 min-h-[1rem]"></p>
+                        <button id="wm-submit" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">حفظ</button>
+                    </div>
+                `;
+                document.body.appendChild(walletModal);
+                const closeW = () => walletModal.remove();
+                walletModal.querySelector('#wm-close').addEventListener('click', closeW);
+                walletModal.addEventListener('click', (e) => { if (e.target === walletModal) closeW(); });
+                walletModal.querySelector('#wm-submit').addEventListener('click', async () => {
+                    const walletNumber = walletModal.querySelector('#wm-wallet').value.trim();
+                    const errEl = walletModal.querySelector('#wm-error');
+                    if (!walletNumber || walletNumber.length < 3) { errEl.textContent = 'أدخل رقم محفظة صالح'; return; }
+                    try {
+                        const res = await fetch('/api/withdrawals/payout-wallet', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ pin, walletNumber })
+                        });
+                        const result = await res.json();
+                        if (!res.ok) { errEl.textContent = withdrawalPinErrorMessage(result); return; }
+                        closeW();
+                        showNotification(result.message || 'تم حفظ المحفظة', 'success');
+                        onDone?.();
+                    } catch (e) { errEl.textContent = 'خطأ في الاتصال بالخادم'; }
+                });
+            }
+        });
     });
 }
 

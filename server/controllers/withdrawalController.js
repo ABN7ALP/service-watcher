@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Withdrawal = require('../models/Withdrawal');
 const User = require('../models/User');
 const walletService = require('../utils/walletService');
+const pinService = require('../utils/withdrawalPinService');
 
 // ✅ القيمة الافتراضية fallback فقط — القيمة الفعلية تُقرأ من SystemSettings عند كل طلب
 const DEFAULT_MIN_WITHDRAW_USD = 5;
@@ -20,7 +21,7 @@ exports.getMyWithdrawals = async (req, res) => {
 exports.createWithdrawal = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { method, amount, fullName, walletNumber, officeInfo } = req.body;
+        const { method, amount, fullName, officeInfo, pin } = req.body;
 
                 const SystemSettings = require('../models/SystemSettings');
         const settings = await SystemSettings.getSettings();
@@ -52,17 +53,47 @@ exports.createWithdrawal = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'يرجى إدخال الاسم الكامل' });
         }
 
-                // نتحقق من صحة بيانات طريقة السحب قبل أي خصم للرصيد
+                const pinUser = await User.findById(userId).select('payoutShamCashWallet withdrawalBlockedUntil payoutWalletChangedAt');
+        if (!pinUser) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
+
+        // 🛡️ مراجعة الأمان v2 (البند 2) — الرمز إلزامي لكل طلب سحب، ومحفظة شام كاش تُقرأ من
+        // المحفظة المحفوظة (payoutShamCashWallet) لا من حقل حرّ بالطلب — تغييرها فعل منفصل
+        // يتطلّب الرمز بنفسه (راجع /payout-wallet)، فلا يمكن تجاوز حظر 48 ساعة بإرسال رقم جديد هنا
+        let walletNumber;
         if (method === 'sham_cash') {
-            if (!walletNumber || walletNumber.trim().length < 3) {
-                return res.status(400).json({ status: 'fail', message: 'يرجى إدخال رابط محفظة شام كاش' });
+            if (!pinUser.payoutShamCashWallet) {
+                return res.status(400).json({ status: 'fail', message: 'يرجى حفظ محفظة شام كاش أولاً من صفحة السحب' });
             }
+            walletNumber = pinUser.payoutShamCashWallet;
         } else if (method === 'office') {
             if (!officeInfo || !officeInfo.country || !officeInfo.governorate || !officeInfo.area || !officeInfo.phone) {
                 return res.status(400).json({ status: 'fail', message: 'يرجى إدخال كل بيانات المكتب المطلوبة' });
             }
         } else {
             return res.status(400).json({ status: 'fail', message: 'طريقة سحب غير صالحة' });
+        }
+
+        const block = pinService.isWithdrawalBlocked(pinUser);
+        if (block.blocked) {
+            return res.status(423).json({
+                status: 'fail',
+                message: block.reason === 'WALLET_CHANGE_HOLD'
+                    ? 'السحب موقوف 48 ساعة بعد تغيير محفظة الصرف'
+                    : 'السحب موقوف مؤقتاً بعد تغيير رمز السحب',
+                withdrawalBlockedUntil: block.until
+            });
+        }
+
+        const pinResult = await pinService.verifyWithdrawalPin(userId, pin);
+        if (!pinResult.ok) {
+            const httpStatus = (pinResult.code === 'LOCKED' || pinResult.code === 'LOCKED_NOW') ? 423 : 400;
+            return res.status(httpStatus).json({
+                status: 'fail',
+                code: pinResult.code,
+                message: pinResult.code === 'NOT_SET' ? 'يرجى إنشاء رمز سحب أولاً' : 'رمز السحب غير صحيح',
+                lockedUntil: pinResult.lockedUntil || null,
+                remainingAttempts: pinResult.remainingAttempts
+            });
         }
 
         // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): الحجز الذرّي (usd_cents) وإنشاء الطلب معاً

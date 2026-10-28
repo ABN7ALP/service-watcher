@@ -142,10 +142,16 @@ exports.getUserDetails = async (req, res) => {
       .sort('-createdAt')
       .limit(100);
 
+    // 🛡️ مراجعة الأمان v2 (البند 2): withdrawalPin نفسه select:false دائماً (لا يُرسَل أبداً) —
+    // فقط علم منطقي هنا لإظهار/إخفاء زر "إعادة تعيين رمز السحب" بلوحة الإدارة
+    const pinUser = await User.findById(userId).select('withdrawalPin');
+    const hasWithdrawalPin = !!pinUser?.withdrawalPin;
+
     res.json({
       success: true,
       user,
-      transactions
+      transactions,
+      hasWithdrawalPin
     });
 
   } catch (error) {
@@ -877,7 +883,9 @@ exports.updateSystemSettings = async (req, res) => {
       // ✅ شحن الكوينزات عبر شام كاش (feat/wallet-recharge-v1) — راجع depositIntentController.js
       'maxDepositUsd', 'maxOpenDepositIntentsPerUser', 'dailyDepositCapUsd', 'depositIntentExpiryMinutes',
       'depositPackages', 'shamCashBonusPct', 'firstRechargeEnabled', 'firstRechargeMultiplierUpToUsd', 'firstRechargeOfferHours',
-      'depositUniqueCentsEnabled'
+      'depositUniqueCentsEnabled',
+      // 🛡️ مراجعة الأمان v2 (البند 1 + 2)
+      'beanHoldHours', 'withdrawalPinPostResetBlockHours'
     ];
     const updates = {};
     for (const field of allowedFields) {
