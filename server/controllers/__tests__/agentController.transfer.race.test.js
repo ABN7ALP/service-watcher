@@ -10,6 +10,7 @@ const AgentDailyCounter = require('../../models/AgentDailyCounter');
 const LedgerEntry = require('../../models/LedgerEntry');
 const SystemSettings = require('../../models/SystemSettings');
 const linkageService = require('../../utils/linkageService');
+const pinService = require('../../utils/withdrawalPinService');
 const agentController = require('../agentController');
 
 jest.mock('../../utils/botMessenger', () => ({ sendBotMessage: jest.fn().mockResolvedValue(null) }));
@@ -368,6 +369,81 @@ describe('agentController.transfer — تضارب الكتابة الحقيقي 
         await agentController.transfer(req, res);
 
         expect(res.status).toHaveBeenCalledWith(400);
+    });
+});
+
+// ✅ feat/agents-v1 (مراجعة ما بعد الدمج): رمز السحب مفعَّل افتراضياً لتحويل الوكيل — يختبر
+// الربط الفعلي بـwithdrawalPinService (منطق القفل/إعادة المحاولات نفسه مُغطّى بالكامل في
+// withdrawalPinService.test.js، هنا فقط نتحقق أن agentController.transfer يستدعيه صحيحاً
+// ويترجم كل كود فشل لحالة HTTP الصحيحة)
+describe('agentController.transfer — رمز السحب (PIN gate)', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    function wireMocksWithPinOn(db) {
+        wireMocks(db);
+        SystemSettings.getSettings.mockResolvedValue({
+            agentTransferMinCoins: 1000, agentTransferMaxCoins: 500000, agentDailyCapCoins: 2000000,
+            agentTransferRequirePin: true
+        });
+    }
+
+    test('رمز صحيح: التحويل ينجح ويُستدعى pinService بمعرّف الوكيل والرمز', async () => {
+        const db = makeDb();
+        seedStandard(db, { inventory: 5000 });
+        wireMocksWithPinOn(db);
+        const verifySpy = jest.spyOn(pinService, 'verifyWithdrawalPin').mockResolvedValue({ ok: true });
+
+        const req = mockReq({ body: { toCustomId: 'R1', coins: 2000, clientRequestId: 'req-pin-ok', pin: '1234' } });
+        const res = mockRes();
+        await agentController.transfer(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(201);
+        expect(verifySpy).toHaveBeenCalledWith(AGENT_USER_ID, '1234', null);
+    });
+
+    test('رمز خاطئ (WRONG): يُرفض بـ400 ولا يُنشأ تحويل', async () => {
+        const db = makeDb();
+        seedStandard(db, { inventory: 5000 });
+        wireMocksWithPinOn(db);
+        jest.spyOn(pinService, 'verifyWithdrawalPin').mockResolvedValue({ ok: false, code: 'WRONG', remainingAttempts: 3 });
+
+        const req = mockReq({ body: { toCustomId: 'R1', coins: 2000, clientRequestId: 'req-pin-wrong', pin: '0000' } });
+        const res = mockRes();
+        await agentController.transfer(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json.mock.calls[0][0].code).toBe('WRONG');
+        expect(db.transfers.size).toBe(0);
+    });
+
+    test('بلا رمز سحب مُهيَّأ (NOT_SET): يُرفض برسالة واضحة', async () => {
+        const db = makeDb();
+        seedStandard(db, { inventory: 5000 });
+        wireMocksWithPinOn(db);
+        jest.spyOn(pinService, 'verifyWithdrawalPin').mockResolvedValue({ ok: false, code: 'NOT_SET' });
+
+        const req = mockReq({ body: { toCustomId: 'R1', coins: 2000, clientRequestId: 'req-pin-notset', pin: '1234' } });
+        const res = mockRes();
+        await agentController.transfer(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json.mock.calls[0][0].message).toBe('يرجى إنشاء رمز سحب أولاً');
+    });
+
+    test.each(['LOCKED_NOW', 'HARD_LOCKED'])('%s: يُرفض بـ423 (مؤقت)', async (code) => {
+        const db = makeDb();
+        seedStandard(db, { inventory: 5000 });
+        wireMocksWithPinOn(db);
+        const lockedUntil = new Date(Date.now() + 1800000);
+        jest.spyOn(pinService, 'verifyWithdrawalPin').mockResolvedValue({ ok: false, code, lockedUntil });
+
+        const req = mockReq({ body: { toCustomId: 'R1', coins: 2000, clientRequestId: `req-pin-${code}`, pin: '1234' } });
+        const res = mockRes();
+        await agentController.transfer(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(423);
+        expect(res.json.mock.calls[0][0].code).toBe(code);
+        expect(db.transfers.size).toBe(0);
     });
 });
 

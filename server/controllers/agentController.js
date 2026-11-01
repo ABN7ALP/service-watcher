@@ -9,6 +9,7 @@ const AgentDailyCounter = require('../models/AgentDailyCounter');
 const SystemSettings = require('../models/SystemSettings');
 const walletService = require('../utils/walletService');
 const linkageService = require('../utils/linkageService');
+const pinService = require('../utils/withdrawalPinService');
 const { computeAgentTier, rateForTier } = require('../utils/agentTierService');
 const { sendBotMessage } = require('../utils/botMessenger');
 
@@ -151,19 +152,18 @@ exports.transfer = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: `يتجاوز هذا المبلغ الحد اليومي للتحويلات (${settings.agentDailyCapCoins} كوينز)` });
         }
 
-        // 🛡️ TODO(fix/wallet-pin-and-polish): رمز السحب جزء من PR منفصل — يُفعَّل تلقائياً بمجرد
-        // دمجه (الإعداد يبقى false حتى الدمج)؛ لو فُعِّل الإعداد قبل دمج الخدمة فعلياً نرفض بوضوح
-        // بدل السماح بتجاوز صامت لحماية كان يُفترَض أن تكون مفعَّلة
+        // ✅ رمز السحب (withdrawalPinService، fix/wallet-pin-and-polish) — مفعَّل افتراضياً
+        // (agentTransferRequirePin)، قابل للتعطيل من لوحة الإدارة عند الحاجة فقط
         if (settings.agentTransferRequirePin) {
-            let pinService;
-            try { pinService = require('../utils/withdrawalPinService'); } catch (e) { pinService = null; }
-            if (!pinService) {
-                return res.status(503).json({ status: 'fail', message: 'نظام رمز السحب غير متاح حالياً — تواصل مع الدعم' });
-            }
-            const pinResult = await pinService.verifyWithdrawalPin(agentUserId, pin);
+            const pinResult = await pinService.verifyWithdrawalPin(agentUserId, pin, req.app.get('socketio'));
             if (!pinResult.ok) {
-                const httpStatus = (pinResult.code === 'LOCKED' || pinResult.code === 'LOCKED_NOW') ? 423 : 400;
-                return res.status(httpStatus).json({ status: 'fail', code: pinResult.code, message: 'رمز السحب غير صحيح' });
+                const isLockStatus = pinResult.code === 'LOCKED' || pinResult.code === 'LOCKED_NOW' || pinResult.code === 'HARD_LOCKED';
+                return res.status(isLockStatus ? 423 : 400).json({
+                    status: 'fail', code: pinResult.code,
+                    message: pinResult.code === 'NOT_SET' ? 'يرجى إنشاء رمز سحب أولاً' : 'رمز السحب غير صحيح',
+                    lockedUntil: pinResult.lockedUntil || null,
+                    remainingAttempts: pinResult.remainingAttempts
+                });
             }
         }
 

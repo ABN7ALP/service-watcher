@@ -65,10 +65,9 @@ const systemSettingsSchema = new mongoose.Schema({
     agentTransferMinCoins: { type: Number, default: 1000 },
     agentTransferMaxCoins: { type: Number, default: 500000 },
     agentDailyCapCoins: { type: Number, default: 2000000 },
-    // 🛡️ TODO(fix/wallet-pin-and-polish): رمز السحب (withdrawalPinService) جزء من PR منفصل لم
-    // يُدمَج بعد — يبقى تحويل الوكيل بلا رمز حتى يُدمَج، ثم يُفعَّل هذا الإعداد من لوحة الإدارة
-    // (الكود بـagentController.transfer يتحقق من وجود الخدمة فعلياً ويرفض بوضوح لو فُعِّل الإعداد قبل الدمج)
-    agentTransferRequirePin: { type: Boolean, default: false },
+    // ✅ fix/wallet-pin-and-polish دُمِجت — withdrawalPinService متاحة فعلياً الآن، فرمز السحب
+    // مفعَّل افتراضياً لكل تحويل وكيل → مستخدم (قابل للتعطيل من لوحة الإدارة عند الحاجة فقط)
+    agentTransferRequirePin: { type: Boolean, default: true },
     // نسبة صرف الفول (beans_w) إلى دولار: فترة الإطلاق أسخى (جذب مبكر)، ثم القاعدة، أو الأعلى
     // للمضيفين بمستوى highHostLevel فأعلى بصرف النظر عن الفترة. العرض يُطبَّق فقط بين
     // payoutLaunchStartsAt وpayoutLaunchEndsAt معاً (كلا الطرفين) — قبل البدء تُطبَّق basePct

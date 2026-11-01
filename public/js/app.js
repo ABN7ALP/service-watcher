@@ -11871,10 +11871,10 @@ async function renderAgentPanelHome() {
     document.getElementById('agent-panel-transfer-btn').addEventListener('click', () => startAgentTransferFlow(profile));
 }
 
-// تدفّق التحويل: معرّف المستخدم → بطاقة تأكيد → مبلغ (شرائح سريعة) → إرسال
-// 🛡️ TODO(fix/wallet-pin-and-polish): رمز السحب جزء من PR منفصل لم يُدمَج بعد — بمجرد دمجه
-// وتفعيل الإعداد agentTransferRequirePin من لوحة الإدارة، يُضاف هنا خطوة إدخال الرمز قبل
-// الإرسال (نفس pinPadModal من ذاك الـPR) — السيرفر يرفض الطلب أصلاً لو فُعِّل الإعداد والرمز ناقص
+// تدفّق التحويل: معرّف المستخدم → بطاقة تأكيد → مبلغ (شرائح سريعة) → رمز السحب → إرسال
+// ✅ fix/wallet-pin-and-polish دُمِجت — رمز السحب مفعَّل افتراضياً لتحويل الوكيل
+// (agentTransferRequirePin)، فيُطلَب هنا دوماً قبل الإرسال (نفس pinPadModal/ensureWithdrawalPinSetup
+// من تدفّق السحب) — السيرفر يرفض الطلب أصلاً لو الرمز ناقص أو خاطئ بصرف النظر عن الواجهة
 function startAgentTransferFlow(profile) {
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black/80 z-[420] flex items-end justify-center';
@@ -11928,24 +11928,28 @@ function startAgentTransferFlow(profile) {
                     errEl.textContent = `أدخل عدداً بين ${fmtNum(profile.limits.min)} و${fmtNum(profile.limits.max)}`;
                     return;
                 }
-                const submitBtn = document.getElementById('at-submit');
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                try {
-                    const clientRequestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-                    const res2 = await fetch('/api/agents/transfer', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                        body: JSON.stringify({ toCustomId: foundUser.customId, coins: amount, clientRequestId })
+                const clientRequestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                ensureWithdrawalPinSetup(() => {
+                    promptWithdrawalPinEntry({
+                        title: 'أدخل رمز السحب لتأكيد التحويل',
+                        onConfirm: async (pin, { close: closePinPad, setError }) => {
+                            try {
+                                const res2 = await fetch('/api/agents/transfer', {
+                                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                    body: JSON.stringify({ toCustomId: foundUser.customId, coins: amount, clientRequestId, pin })
+                                });
+                                const result2 = await res2.json();
+                                if (!res2.ok) { setError(withdrawalPinErrorMessage(result2)); return; }
+                                closePinPad();
+                                close();
+                                showNotification('تم التحويل بنجاح', 'success');
+                                renderAgentPanelHome();
+                            } catch (e) {
+                                setError('خطأ في الاتصال بالخادم');
+                            }
+                        }
                     });
-                    const result2 = await res2.json();
-                    if (!res2.ok) { errEl.textContent = result2.message || 'تعذّر التحويل'; submitBtn.disabled = false; submitBtn.textContent = 'تحويل'; return; }
-                    close();
-                    showNotification('تم التحويل بنجاح', 'success');
-                    renderAgentPanelHome();
-                } catch (e) {
-                    errEl.textContent = 'خطأ في الاتصال بالخادم';
-                    submitBtn.disabled = false; submitBtn.textContent = 'تحويل';
-                }
+                });
             });
         } catch (e) { errEl.textContent = 'خطأ في الاتصال بالخادم'; }
     });
@@ -19016,6 +19020,7 @@ function pinPadModal({ title, subtitle, confirmLabel = 'تأكيد', showForgot 
 
 // رسائل أخطاء رمز السحب الموحَّدة (حالة قفل/رمز خاطئ/غير مُنشأ) — تُستخدم بكل نقاط إدخال الرمز
 function withdrawalPinErrorMessage(result) {
+    if (result.code === 'HARD_LOCKED') return 'تم قفل رمز السحب نهائياً لكثرة محاولات القفل — تواصل مع الدعم لإعادة تعيينه';
     if (result.code === 'LOCKED' || result.code === 'LOCKED_NOW') {
         const mins = result.lockedUntil ? Math.max(1, Math.ceil((new Date(result.lockedUntil) - Date.now()) / 60000)) : 30;
         return `تم قفل رمز السحب لكثرة المحاولات الخاطئة. حاول بعد ${mins} دقيقة`;
