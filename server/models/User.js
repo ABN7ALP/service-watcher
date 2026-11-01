@@ -35,6 +35,10 @@ const userSchema = new mongoose.Schema({
     walletBeansW: { type: Number, default: 0 },
     walletBeansP: { type: Number, default: 0 },
     walletUsdCents: { type: Number, default: 0 },
+    // ✅ feat/agents-v1: مخزون الوكيل المدفوع مسبقاً (coins) — محفظة دفتر أستاذ مستقلة تماماً
+    // عن coins_paid/coins_bonus، لا تُفتَح إلا عبر AgentPurchase (شحن إداري) ولا تُنقَص إلا عبر
+    // تحويل الوكيل لمستخدم (AgentTransfer) — راجع walletService.WALLET_TO_USER_FIELD
+    walletAgentInventory: { type: Number, default: 0 },
     // ✅ علم استئناف تضخيم ×10 لكل مستخدم — يُضبَط بنفس معاملة قيود الافتتاح، يمنع إعادة فتح محفظة مُفتَّحة فعلاً
     walletRedenominatedV1: { type: Boolean, default: false },
     // ✅ شحن الكوينزات (feat/wallet-recharge-v1): مرساة عدّاد عرض "أول شحنة" — تُضبَط مرة واحدة
@@ -259,7 +263,7 @@ userSchema.pre('save', function(next) {
         // الكوينز أعداد صحيحة — نمنع أي كسور نهائياً
         this.coins = Math.max(0, Math.floor(Number(this.coins) || 0));
     }
-    for (const field of ['walletCoinsPaid', 'walletCoinsBonus', 'walletBeansW', 'walletBeansP', 'walletUsdCents']) {
+    for (const field of ['walletCoinsPaid', 'walletCoinsBonus', 'walletBeansW', 'walletBeansP', 'walletUsdCents', 'walletAgentInventory']) {
         if (this.isModified(field)) {
             this[field] = Math.max(0, Math.floor(Number(this[field]) || 0));
         }

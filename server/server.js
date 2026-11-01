@@ -89,6 +89,7 @@ app.use('/api/bubble-skins', require('./routes/bubbleSkinRoutes'));
 app.use('/api/gift-redemption', require('./routes/giftRedemptionRoutes'));
 app.use('/api/deposits', require('./routes/depositRoutes')); // ✅ نظام شحن الرصيد الدولاري (منفصل عن الكوينز)
 app.use('/api/reports', require('./routes/reportRoutes')); // ✅ نظام البلاغات
+app.use('/api/agents', require('./routes/agentRoutes')); // ✅ وكلاء الشحن المعتمدون (feat/agents-v1)
 app.use('/api/support', require('./routes/supportRoutes')); // ✅ نظام الدعم الفني والاستئناف
 app.use('/api/music', require('./routes/musicRoutes')); // ✅ مكتبة أغاني مشتركة للغرف الصوتية
 app.use('/api/suggestions', require('./routes/suggestionRoutes')); // ✅ صندوق اقتراحات/ملاحظات عام

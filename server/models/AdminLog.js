@@ -42,7 +42,13 @@ const adminLogSchema = new mongoose.Schema({
       'ip_ban',
       'mass_notification',
       'transfer_beans_to_withdrawable',
-      'reset_withdrawal_pin'
+      'reset_withdrawal_pin',
+      'create_agent',
+      'suspend_agent',
+      'activate_agent',
+      'set_agent_tier_override',
+      'agent_inventory_topup',
+      'resolve_agent_report'
     ]
   },
   targetUser: {
