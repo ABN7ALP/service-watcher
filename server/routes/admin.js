@@ -8,6 +8,7 @@ const router = express.Router();
 const adminAuth = require('../middleware/adminAuth');
 const adminController = require('../controllers/adminController');
 const depositIntentController = require('../controllers/depositIntentController');
+const agentController = require('../controllers/agentController');
 const { frameAssetUpload, receiptUpload } = require('../utils/cloudinary');
 const { financialLimiter } = require('../middleware/globalMiddleware');
 
@@ -63,6 +64,18 @@ router.post('/users/:userId/reset-withdrawal-pin', withdrawalPinController.admin
 
 router.get('/custom-gifts', customGiftController.adminListCustomGifts);
 router.post('/custom-gifts/:id/review', customGiftController.adminReviewCustomGift);
+
+// ✅ وكلاء الشحن المعتمدون (feat/agents-v1)
+router.get('/agents', agentController.adminListAgents);
+router.post('/agents', agentController.adminCreateAgent);
+router.post('/agents/:agentId/status', agentController.adminSetAgentStatus);
+router.post('/agents/:agentId/tier-override', agentController.adminSetTierOverride);
+router.post('/agents/:agentId/topup', financialLimiter, agentController.adminTopupInventory);
+router.get('/agents/:agentId/purchases', agentController.adminListPurchases);
+router.get('/agents/:agentId/summary', agentController.adminGetAgentSummary);
+router.get('/agent-transfers', agentController.adminListTransfers);
+router.get('/agent-reports', agentController.adminListReports);
+router.post('/agent-reports/:transferId/resolve', agentController.adminResolveReport);
 
 router.get('/transactions', adminController.getAllTransactions);
 

@@ -52,6 +52,7 @@ class AdminDashboard {
         this.currentPage = 'dashboard';
         this.socket = null;
         this.state = { users: {} };
+        this.agentsSubTab = 'list';
         this.init();
     }
 
@@ -236,6 +237,7 @@ class AdminDashboard {
             depositintents: () => this.loadDepositIntents(1),
             withdrawals: () => this.loadWithdrawals(),
             transactions: () => this.loadTransactions(1),
+            agents: () => this.loadAgents(),
             gifts: () => this.loadGifts(),
             frames: () => this.loadFrames(),
             customgifts: () => this.loadCustomGifts(),
@@ -846,6 +848,216 @@ class AdminDashboard {
             </tbody></table>`;
 
             this.renderPagination('transactionsPagination', data.totalPages, data.currentPage, (p) => this.loadTransactions(p, search));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    // ================= Agents (feat/agents-v1) =================
+    async loadAgents() {
+        const c = document.getElementById('agentsPageContainer');
+        c.innerHTML = `
+            <div class="d-flex gap-2 mb-3">
+                <button class="btn btn-sm ${this.agentsSubTab === 'list' ? 'btn-primary' : 'btn-outline-primary'}" id="ag-tab-list">الوكلاء</button>
+                <button class="btn btn-sm ${this.agentsSubTab === 'transfers' ? 'btn-primary' : 'btn-outline-primary'}" id="ag-tab-transfers">التحويلات</button>
+                <button class="btn btn-sm ${this.agentsSubTab === 'reports' ? 'btn-primary' : 'btn-outline-primary'}" id="ag-tab-reports">البلاغات</button>
+                <button class="btn btn-sm btn-success ms-auto" id="ag-create-btn"><i class="fas fa-plus"></i> إضافة وكيل</button>
+            </div>
+            <div id="agentsSubContainer"></div>
+        `;
+        document.getElementById('ag-tab-list').addEventListener('click', () => { this.agentsSubTab = 'list'; this.loadAgents(); });
+        document.getElementById('ag-tab-transfers').addEventListener('click', () => { this.agentsSubTab = 'transfers'; this.loadAgents(); });
+        document.getElementById('ag-tab-reports').addEventListener('click', () => { this.agentsSubTab = 'reports'; this.loadAgents(); });
+        document.getElementById('ag-create-btn').addEventListener('click', () => this.showCreateAgentModal());
+
+        if (this.agentsSubTab === 'list') await this.loadAgentsList();
+        else if (this.agentsSubTab === 'transfers') await this.loadAgentTransfersLog();
+        else await this.loadAgentReports();
+    }
+
+    async loadAgentsList() {
+        const TIER_LABEL = { bronze: 'برونزي', silver: 'فضي', gold: 'ذهبي' };
+        try {
+            const result = await this.api('GET', '/agents');
+            const data = result.data;
+            const c = document.getElementById('agentsSubContainer');
+            if (!data.agents.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-handshake fa-2x"></i><p>لا يوجد وكلاء بعد</p></div>'; return; }
+            c.innerHTML = `<div class="table-responsive"><table class="table table-hover"><thead><tr>
+                <th>الوكيل</th><th>الحالة</th><th>الفئة</th><th>المخزون</th><th>التقييم</th><th>التحويلات</th><th></th>
+            </tr></thead><tbody>
+                ${data.agents.map(a => `
+                    <tr>
+                        <td>${escapeHtml(a.user?.username || '-')} <small class="text-muted">#${escapeHtml(a.user?.customId || '')}</small></td>
+                        <td><span class="status-badge ${a.status === 'active' ? 'status-completed' : 'status-banned'}">${a.status === 'active' ? 'نشط' : 'موقوف'}</span></td>
+                        <td>
+                            <select class="form-control form-control-sm ag-tier-select" data-agent="${a._id}" style="width:auto">
+                                <option value="" ${!a.tierOverride ? 'selected' : ''}>تلقائي (${TIER_LABEL[a.tier]})</option>
+                                <option value="bronze" ${a.tierOverride === 'bronze' ? 'selected' : ''}>برونزي</option>
+                                <option value="silver" ${a.tierOverride === 'silver' ? 'selected' : ''}>فضي</option>
+                                <option value="gold" ${a.tierOverride === 'gold' ? 'selected' : ''}>ذهبي</option>
+                            </select>
+                        </td>
+                        <td>${(a.user?.walletAgentInventory || 0).toLocaleString('en-US')}</td>
+                        <td>★ ${a.ratingCount > 0 ? (a.ratingSum / a.ratingCount).toFixed(1) : '-'} (${a.ratingCount})</td>
+                        <td>${a.totalTransfers}</td>
+                        <td class="d-flex gap-1">
+                            <button class="btn btn-sm btn-outline-success ag-topup-btn" data-agent="${a._id}" data-name="${escapeHtml(a.user?.username || '')}">شحن</button>
+                            <button class="btn btn-sm ${a.status === 'active' ? 'btn-outline-danger' : 'btn-outline-success'} ag-status-btn" data-agent="${a._id}" data-status="${a.status === 'active' ? 'suspended' : 'active'}">${a.status === 'active' ? 'تعليق' : 'تفعيل'}</button>
+                            <button class="btn btn-sm btn-outline-secondary ag-summary-btn" data-agent="${a._id}">تفاصيل</button>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody></table></div>`;
+
+            c.querySelectorAll('.ag-tier-select').forEach(sel => {
+                sel.addEventListener('change', async () => {
+                    try {
+                        await this.api('POST', `/agents/${sel.dataset.agent}/tier-override`, { tier: sel.value || null });
+                        this.showToast('تم تحديث الفئة', 'success');
+                        this.loadAgentsList();
+                    } catch (error) { this.showToast(error.message, 'error'); }
+                });
+            });
+            c.querySelectorAll('.ag-status-btn').forEach(btn => {
+                btn.addEventListener('click', () => this.confirmAction(`تغيير حالة الوكيل إلى "${btn.dataset.status === 'active' ? 'نشط' : 'موقوف'}"؟`, async () => {
+                    try {
+                        await this.api('POST', `/agents/${btn.dataset.agent}/status`, { status: btn.dataset.status });
+                        this.showToast('تم التحديث', 'success');
+                        this.loadAgentsList();
+                    } catch (error) { this.showToast(error.message, 'error'); }
+                }, btn.dataset.status === 'suspended'));
+            });
+            c.querySelectorAll('.ag-topup-btn').forEach(btn => btn.addEventListener('click', () => this.showAgentTopupModal(btn.dataset.agent, btn.dataset.name)));
+            c.querySelectorAll('.ag-summary-btn').forEach(btn => btn.addEventListener('click', () => this.showAgentSummaryModal(btn.dataset.agent)));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    showCreateAgentModal() {
+        const modal = this.openModal(`
+            <div class="modal-overlay active"><div class="modal-content" style="max-width:420px;">
+                <div class="modal-header"><h3><i class="fas fa-handshake"></i> إضافة وكيل</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                <div class="modal-body">
+                    <div class="form-group"><label>معرّف المستخدم (ID) *</label><input type="text" class="form-control" id="ag-new-customid"></div>
+                    <div class="form-group"><label>اسم العرض (اختياري)</label><input type="text" class="form-control" id="ag-new-displayname"></div>
+                </div>
+                <div class="modal-footer"><button class="btn btn-secondary" data-dismiss>إلغاء</button><button class="btn btn-success" id="ag-new-submit">إضافة</button></div>
+            </div></div>
+        `);
+        modal.querySelector('#ag-new-submit').addEventListener('click', async () => {
+            const customId = modal.querySelector('#ag-new-customid').value.trim();
+            const displayName = modal.querySelector('#ag-new-displayname').value.trim();
+            if (!customId) { this.showToast('أدخل معرّف المستخدم', 'error'); return; }
+            try {
+                await this.api('POST', '/agents', { customId, displayName: displayName || undefined });
+                this.showToast('تم تعيين الوكيل', 'success');
+                modal.remove();
+                this.loadAgentsList();
+            } catch (error) { this.showToast(error.message, 'error'); }
+        });
+    }
+
+    showAgentTopupModal(agentId, agentName) {
+        const modal = this.openModal(`
+            <div class="modal-overlay active"><div class="modal-content" style="max-width:420px;">
+                <div class="modal-header"><h3><i class="fas fa-coins"></i> شحن مخزون ${escapeHtml(agentName)}</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                <div class="modal-body">
+                    <div class="form-group"><label>المبلغ ($) *</label><input type="number" min="0.01" step="0.01" class="form-control" id="ag-topup-usd"></div>
+                    <div class="form-group"><label>رقم عملية الدفع (مرجع فريد) *</label><input type="text" class="form-control" id="ag-topup-txn"></div>
+                    <div class="form-group"><label>ملاحظة</label><textarea class="form-control" id="ag-topup-note" rows="2"></textarea></div>
+                </div>
+                <div class="modal-footer"><button class="btn btn-secondary" data-dismiss>إلغاء</button><button class="btn btn-success" id="ag-topup-submit">شحن</button></div>
+            </div></div>
+        `);
+        modal.querySelector('#ag-topup-submit').addEventListener('click', async () => {
+            const usd = parseFloat(modal.querySelector('#ag-topup-usd').value);
+            const txnNo = modal.querySelector('#ag-topup-txn').value.trim();
+            const note = modal.querySelector('#ag-topup-note').value.trim();
+            if (!usd || usd <= 0) { this.showToast('أدخل مبلغاً صالحاً', 'error'); return; }
+            if (!txnNo) { this.showToast('أدخل رقم عملية الدفع', 'error'); return; }
+            try {
+                const result = await this.api('POST', `/agents/${agentId}/topup`, { usd, txnNo, note });
+                this.showToast(`تم شحن ${result.data.purchase.coins.toLocaleString('en-US')} كوينز`, 'success');
+                modal.remove();
+                this.loadAgentsList();
+            } catch (error) { this.showToast(error.message, 'error'); }
+        });
+    }
+
+    async showAgentSummaryModal(agentId) {
+        try {
+            const result = await this.api('GET', `/agents/${agentId}/summary`);
+            const data = result.data;
+            const TIER_LABEL = { bronze: 'برونزي', silver: 'فضي', gold: 'ذهبي' };
+            this.openModal(`
+                <div class="modal-overlay active"><div class="modal-content" style="max-width:650px;">
+                    <div class="modal-header"><h3><i class="fas fa-handshake"></i> ${escapeHtml(data.agent.user?.username || '')}</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                    <div class="modal-body">
+                        <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:15px;">
+                            <div class="stat-card success" style="padding:12px;"><div class="stat-info"><h3 style="font-size:1.2rem;">${(data.inventoryCoins || 0).toLocaleString('en-US')}</h3><p>المخزون</p></div></div>
+                            <div class="stat-card warning" style="padding:12px;"><div class="stat-info"><h3 style="font-size:1.2rem;">${TIER_LABEL[data.tier]}</h3><p>الفئة</p></div></div>
+                            <div class="stat-card primary" style="padding:12px;"><div class="stat-info"><h3 style="font-size:1.2rem;">${data.openReports}</h3><p>بلاغات مفتوحة</p></div></div>
+                        </div>
+                        <h6>آخر شحنات المخزون</h6>
+                        <div class="table-responsive mb-3" style="max-height:180px;overflow-y:auto;"><table class="table table-sm"><tbody>
+                            ${data.purchases.map(p => `<tr><td>${formatDate(p.createdAt)}</td><td>$${p.usd}</td><td>${p.coins.toLocaleString('en-US')} كوينز</td><td>${escapeHtml(p.txnNo)}</td></tr>`).join('') || '<tr><td class="text-muted">لا توجد شحنات بعد</td></tr>'}
+                        </tbody></table></div>
+                        <h6>آخر التحويلات</h6>
+                        <div class="table-responsive" style="max-height:180px;overflow-y:auto;"><table class="table table-sm"><tbody>
+                            ${data.transfers.map(t => `<tr><td>${formatDate(t.createdAt)}</td><td>${escapeHtml(t.toUser?.username || '-')}</td><td>${t.coins.toLocaleString('en-US')} كوينز</td></tr>`).join('') || '<tr><td class="text-muted">لا توجد تحويلات بعد</td></tr>'}
+                        </tbody></table></div>
+                    </div>
+                    <div class="modal-footer"><button class="btn btn-secondary" data-dismiss>إغلاق</button></div>
+                </div></div>
+            `);
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    async loadAgentTransfersLog() {
+        try {
+            const result = await this.api('GET', '/agent-transfers');
+            const data = result.data;
+            const c = document.getElementById('agentsSubContainer');
+            if (!data.transfers.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-exchange-alt fa-2x"></i><p>لا توجد تحويلات بعد</p></div>'; return; }
+            c.innerHTML = `<div class="table-responsive"><table class="table table-hover"><thead><tr>
+                <th>الوكيل</th><th>المستلم</th><th>الكوينز</th><th>التاريخ</th><th>بلاغ</th>
+            </tr></thead><tbody>
+                ${data.transfers.map(t => `
+                    <tr>
+                        <td>${escapeHtml(t.agentUser?.username || '-')}</td>
+                        <td>${escapeHtml(t.toUser?.username || '-')}</td>
+                        <td>${t.coins.toLocaleString('en-US')}</td>
+                        <td>${formatDate(t.createdAt)}</td>
+                        <td>${t.report?.status === 'open' ? '<span class="status-badge status-banned">مفتوح</span>' : (t.report?.status === 'resolved' ? '<span class="status-badge status-completed">محلول</span>' : '-')}</td>
+                    </tr>
+                `).join('')}
+            </tbody></table></div>`;
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    async loadAgentReports() {
+        try {
+            const result = await this.api('GET', '/agent-reports?status=open');
+            const data = result.data;
+            const c = document.getElementById('agentsSubContainer');
+            if (!data.reports.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle fa-2x"></i><p>لا توجد بلاغات مفتوحة</p></div>'; return; }
+            c.innerHTML = data.reports.map(r => `
+                <div class="card mb-2" style="padding:12px;">
+                    <p class="mb-1"><b>${escapeHtml(r.toUser?.username || '-')}</b> أبلغ عن تحويل من <b>${escapeHtml(r.agentUser?.username || '-')}</b> (${r.coins.toLocaleString('en-US')} كوينز)</p>
+                    <p class="text-muted mb-2" style="font-size:0.85rem;">${escapeHtml(r.report?.reason || '')} — ${formatDate(r.report?.reportedAt)}</p>
+                    <div class="d-flex gap-2">
+                        <input type="text" class="form-control form-control-sm ag-resolve-note" data-transfer="${r._id}" placeholder="ملاحظة الحل (اختياري)">
+                        <button class="btn btn-sm btn-success ag-resolve-btn" data-transfer="${r._id}">حل البلاغ</button>
+                    </div>
+                </div>
+            `).join('');
+            c.querySelectorAll('.ag-resolve-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const note = c.querySelector(`.ag-resolve-note[data-transfer="${btn.dataset.transfer}"]`).value.trim();
+                    try {
+                        await this.api('POST', `/agent-reports/${btn.dataset.transfer}/resolve`, { note });
+                        this.showToast('تم حل البلاغ', 'success');
+                        this.loadAgentReports();
+                    } catch (error) { this.showToast(error.message, 'error'); }
+                });
+            });
         } catch (error) { this.showToast(error.message, 'error'); }
     }
 

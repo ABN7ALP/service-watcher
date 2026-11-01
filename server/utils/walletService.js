@@ -8,7 +8,8 @@ const WALLET_TO_USER_FIELD = {
     coins_bonus: 'walletCoinsBonus',
     beans_w: 'walletBeansW',
     beans_p: 'walletBeansP',
-    usd_cents: 'walletUsdCents'
+    usd_cents: 'walletUsdCents',
+    agent_inventory: 'walletAgentInventory'
 };
 
 /**

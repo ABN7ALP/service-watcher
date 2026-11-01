@@ -3,11 +3,11 @@ const mongoose = require('mongoose');
 // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): append-only بشكل صارم — المصدر الوحيد الموثوق لكل
 // رصيد بالتطبيق. لا يُكتَب إليه إلا عبر server/utils/walletService.js (الدالة الوحيدة المخوَّلة
 // بتغيير أي رصيد). التصحيحات تكون قيد 'adjustment' جديداً من الإدارة فقط، لا تعديلاً على قيد قائم
-const LEDGER_WALLETS = ['coins_paid', 'coins_bonus', 'beans_w', 'beans_p', 'usd_cents'];
+const LEDGER_WALLETS = ['coins_paid', 'coins_bonus', 'beans_w', 'beans_p', 'usd_cents', 'agent_inventory'];
 const LEDGER_TYPES = [
     'deposit', 'withdraw', 'refund', 'gift_send', 'gift_receive', 'redeem', 'bonus',
     'opening_balance', 'adjustment', 'agent_transfer', 'custom_gift_fee', 'custom_gift_refund',
-    'coin_purchase', 'frame_purchase', 'pk_reward', 'fan_club_join', 'purchase'
+    'coin_purchase', 'frame_purchase', 'pk_reward', 'fan_club_join', 'purchase', 'agent_inventory_topup'
 ];
 
 const ledgerEntrySchema = new mongoose.Schema({

@@ -11748,6 +11748,7 @@ function showProfileHubMoreMenu() {
             <div class="w-10 h-1.5 bg-gray-600 rounded-full mx-auto mb-3"></div>
             <button id="hub-more-share" class="profile-hub-settings-row"><i class="fas fa-share-nodes text-purple-400"></i><span>مشاركة الملف الشخصي</span></button>
             <button id="hub-more-wallet" class="profile-hub-settings-row wallet-entry-badge-host" data-badge-style="pill"><i class="fas fa-wallet text-yellow-400"></i><span>المحفظة</span></button>
+            ${localUser.isAgent ? `<button id="hub-more-agent-panel" class="profile-hub-settings-row"><i class="fas fa-handshake text-teal-400"></i><span>لوحة الوكيل</span></button>` : ''}
             <button id="hub-more-creator" class="profile-hub-settings-row"><i class="fas fa-star text-purple-400"></i><span>مركز صنّاع المحتوى</span><span class="profile-hub-soon-tag">قريباً</span></button>
             <button id="hub-more-qr" class="profile-hub-settings-row"><i class="fas fa-qrcode text-emerald-400"></i><span>رمز QR</span></button>
             <button id="hub-more-settings" class="profile-hub-settings-row"><i class="fas fa-cog text-gray-300"></i><span>الإعدادات</span></button>
@@ -11768,9 +11769,330 @@ function showProfileHubMoreMenu() {
         } catch (e) { /* المستخدم ألغى المشاركة — لا حاجة لأي رد فعل */ }
     });
     document.getElementById('hub-more-wallet').addEventListener('click', () => { modal.remove(); openRechargePage(); });
+    document.getElementById('hub-more-agent-panel')?.addEventListener('click', () => { modal.remove(); openAgentPanel(); });
     document.getElementById('hub-more-creator').addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
     document.getElementById('hub-more-qr').addEventListener('click', () => { modal.remove(); showProfileQrModal(localUser); });
     document.getElementById('hub-more-settings').addEventListener('click', () => { modal.remove(); showProfileHubSettingsSheet(); });
+}
+
+// =================================================
+// ✅ feat/agents-v1: لوحة الوكيل — مخزون + فئة + تحويل (معرّف ← تأكيد ← مبلغ ← [رمز لاحقاً]) +
+// تحويلات اليوم/السجل. تُفتَح فقط من قائمة "المزيد" لحسابات isAgent:true (hub-more-agent-panel)
+// =================================================
+async function openAgentPanel() {
+    document.getElementById('agent-panel')?.remove();
+    const shell = document.createElement('div');
+    shell.id = 'agent-panel';
+    shell.className = 'fixed inset-0 bg-gray-900 z-[340] flex flex-col text-white';
+    shell.innerHTML = `
+        <div class="flex items-center justify-between p-4 border-b border-gray-800 flex-none">
+            <button id="agent-panel-back" class="report-issue-icon-btn"><i class="fas fa-arrow-right"></i></button>
+            <h2 class="font-bold text-base">لوحة الوكيل</h2>
+            <span class="w-8"></span>
+        </div>
+        <div id="agent-panel-body" class="flex-1 overflow-y-auto p-4">
+            <div class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
+        </div>
+    `;
+    document.body.appendChild(shell);
+    document.getElementById('agent-panel-back').addEventListener('click', () => shell.remove());
+
+    await renderAgentPanelHome();
+}
+
+async function renderAgentPanelHome() {
+    const body = document.getElementById('agent-panel-body');
+    if (!body) return;
+    let profile, todayTransfers = [], history = [];
+    try {
+        const [profRes, trRes] = await Promise.all([
+            fetch('/api/agents/me', { headers: { 'Authorization': `Bearer ${token}` } }),
+            fetch('/api/agents/me/transfers', { headers: { 'Authorization': `Bearer ${token}` } })
+        ]);
+        const profResult = await profRes.json();
+        if (!profRes.ok) { body.innerHTML = `<p class="text-center text-red-400 py-10">${profResult.message || 'تعذّر تحميل بياناتك'}</p>`; return; }
+        profile = profResult.data;
+        const trResult = await trRes.json();
+        if (trRes.ok) { todayTransfers = trResult.data.today; history = trResult.data.history; }
+    } catch (e) {
+        body.innerHTML = '<p class="text-center text-red-400 py-10">خطأ في الاتصال بالخادم</p>';
+        return;
+    }
+
+    const TIER_LABEL = { bronze: 'برونزي', silver: 'فضي', gold: 'ذهبي' };
+    const STATUS_LABEL = { active: ['نشط', 'text-green-400'], suspended: ['موقوف', 'text-red-400'] };
+
+    body.innerHTML = `
+        <div class="bg-gradient-to-br from-teal-900/40 to-gray-900 border border-teal-800/40 rounded-2xl p-4 mb-4">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs text-gray-400">مخزونك الحالي</span>
+                <span class="text-xs font-bold ${STATUS_LABEL[profile.status][1]}">${STATUS_LABEL[profile.status][0]}</span>
+            </div>
+            <p class="text-2xl font-black flex items-center gap-2">${fmtNum(profile.inventoryCoins)} <span class="text-sm text-gray-400 font-normal">كوينز</span></p>
+            <div class="flex items-center gap-2 mt-2 text-xs text-gray-400">
+                <span class="bg-teal-500/20 text-teal-300 font-bold rounded-full px-2 py-0.5">${TIER_LABEL[profile.tier]}</span>
+                <span>$1 = ${profile.ratePerUsd} كوينز</span>
+                <span>★ ${profile.rating} (${profile.ratingCount})</span>
+            </div>
+        </div>
+        <button id="agent-panel-transfer-btn" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl mb-4" ${profile.status !== 'active' ? 'disabled' : ''}>تحويل كوينز لمستخدم</button>
+        <div class="flex bg-black/30 rounded-xl p-1 mb-3">
+            <button type="button" data-tab="today" class="agent-tab flex-1 text-sm font-bold py-2 rounded-lg bg-gray-700 text-white">اليوم (${todayTransfers.length})</button>
+            <button type="button" data-tab="history" class="agent-tab flex-1 text-sm font-bold py-2 rounded-lg text-gray-400">السجل</button>
+        </div>
+        <div id="agent-panel-list"></div>
+    `;
+
+    const renderList = (items) => {
+        const listEl = document.getElementById('agent-panel-list');
+        if (!items.length) { listEl.innerHTML = '<p class="text-center text-gray-500 text-sm py-6">لا توجد تحويلات</p>'; return; }
+        listEl.innerHTML = items.map(t => `
+            <div class="bg-gray-800/60 rounded-xl p-3 mb-2 flex items-center justify-between">
+                <div>
+                    <p class="font-bold text-sm">${escapeHtml(t.toUser?.username || 'مستخدم')} <span class="text-gray-500 text-xs">#${escapeHtml(t.toUser?.customId || '')}</span></p>
+                    <p class="text-xs text-gray-400">${new Date(t.createdAt).toLocaleString('ar-EG')}</p>
+                </div>
+                <span class="font-bold text-teal-300">${fmtNum(t.coins)}</span>
+            </div>
+        `).join('');
+    };
+    renderList(todayTransfers);
+
+    body.querySelectorAll('.agent-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            body.querySelectorAll('.agent-tab').forEach(b => b.classList.remove('bg-gray-700', 'text-white'));
+            body.querySelectorAll('.agent-tab').forEach(b => b.classList.add('text-gray-400'));
+            btn.classList.add('bg-gray-700', 'text-white');
+            btn.classList.remove('text-gray-400');
+            renderList(btn.dataset.tab === 'today' ? todayTransfers : history);
+        });
+    });
+
+    document.getElementById('agent-panel-transfer-btn').addEventListener('click', () => startAgentTransferFlow(profile));
+}
+
+// تدفّق التحويل: معرّف المستخدم → بطاقة تأكيد → مبلغ (شرائح سريعة) → رمز السحب → إرسال
+// ✅ fix/wallet-pin-and-polish دُمِجت — رمز السحب مفعَّل افتراضياً لتحويل الوكيل
+// (agentTransferRequirePin)، فيُطلَب هنا دوماً قبل الإرسال (نفس pinPadModal/ensureWithdrawalPinSetup
+// من تدفّق السحب) — السيرفر يرفض الطلب أصلاً لو الرمز ناقص أو خاطئ بصرف النظر عن الواجهة
+function startAgentTransferFlow(profile) {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/80 z-[420] flex items-end justify-center';
+    modal.innerHTML = `
+        <div class="w-full max-w-md bg-gray-800 rounded-t-2xl p-4">
+            <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">تحويل كوينز</h3><button id="at-close" class="text-gray-400 p-1"><i class="fas fa-times"></i></button></div>
+            <label class="text-xs text-gray-400 mb-1 block">معرّف المستخدم (ID)</label>
+            <div class="flex gap-2 mb-2">
+                <input id="at-customid" type="text" dir="ltr" class="flex-1 bg-black/30 border border-gray-700 rounded-xl p-3 text-sm" placeholder="مثال: 123456789">
+                <button id="at-find-btn" class="bg-teal-500 text-black font-bold px-4 rounded-xl">بحث</button>
+            </div>
+            <p id="at-error" class="text-xs text-red-400 mb-2 min-h-[1rem]"></p>
+            <div id="at-confirm-card"></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    const close = () => modal.remove();
+    document.getElementById('at-close').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+    let foundUser = null;
+    document.getElementById('at-find-btn').addEventListener('click', async () => {
+        const customId = document.getElementById('at-customid').value.trim();
+        const errEl = document.getElementById('at-error');
+        errEl.textContent = '';
+        if (!customId) { errEl.textContent = 'أدخل معرّف المستخدم'; return; }
+        try {
+            const res = await fetch(`/api/agents/lookup-user?customId=${encodeURIComponent(customId)}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const result = await res.json();
+            if (!res.ok) { errEl.textContent = result.message || 'المستخدم غير موجود'; document.getElementById('at-confirm-card').innerHTML = ''; return; }
+            foundUser = result.data.user;
+            document.getElementById('at-confirm-card').innerHTML = `
+                <div class="bg-black/30 rounded-xl p-3 flex items-center gap-3 mb-3">
+                    <img src="${foundUser.profileImage}" class="w-12 h-12 rounded-full object-cover">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold truncate">${escapeHtml(foundUser.username)}</p>
+                        <p class="text-xs text-gray-400">ID: ${escapeHtml(foundUser.customId)}</p>
+                    </div>
+                </div>
+                <label class="text-xs text-gray-400 mb-1 block">عدد الكوينز</label>
+                <input id="at-amount" type="number" min="${profile.limits.min}" max="${profile.limits.max}" class="w-full bg-black/30 border border-gray-700 rounded-xl p-3 text-sm mb-2" placeholder="الحد الأدنى ${fmtNum(profile.limits.min)}">
+                <div class="flex gap-2 mb-3" id="at-chips">
+                    ${[profile.limits.min, profile.limits.min * 5, profile.limits.min * 10].map(v => `<button type="button" data-v="${v}" class="at-chip flex-1 bg-white/10 rounded-lg py-1.5 text-xs font-bold">${fmtNum(v)}</button>`).join('')}
+                </div>
+                <button id="at-submit" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">تحويل</button>
+            `;
+            modal.querySelectorAll('.at-chip').forEach(chip => chip.addEventListener('click', () => { document.getElementById('at-amount').value = chip.dataset.v; }));
+            document.getElementById('at-submit').addEventListener('click', async () => {
+                const amount = parseInt(document.getElementById('at-amount').value, 10);
+                if (!Number.isInteger(amount) || amount < profile.limits.min || amount > profile.limits.max) {
+                    errEl.textContent = `أدخل عدداً بين ${fmtNum(profile.limits.min)} و${fmtNum(profile.limits.max)}`;
+                    return;
+                }
+                const clientRequestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                ensureWithdrawalPinSetup(() => {
+                    promptWithdrawalPinEntry({
+                        title: 'أدخل رمز السحب لتأكيد التحويل',
+                        onConfirm: async (pin, { close: closePinPad, setError }) => {
+                            try {
+                                const res2 = await fetch('/api/agents/transfer', {
+                                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                    body: JSON.stringify({ toCustomId: foundUser.customId, coins: amount, clientRequestId, pin })
+                                });
+                                const result2 = await res2.json();
+                                if (!res2.ok) { setError(withdrawalPinErrorMessage(result2)); return; }
+                                closePinPad();
+                                close();
+                                showNotification('تم التحويل بنجاح', 'success');
+                                renderAgentPanelHome();
+                            } catch (e) {
+                                setError('خطأ في الاتصال بالخادم');
+                            }
+                        }
+                    });
+                });
+            });
+        } catch (e) { errEl.textContent = 'خطأ في الاتصال بالخادم'; }
+    });
+}
+
+// ✅ feat/agents-v1 — قائمة الوكلاء المعتمدين (من تبويب الشحن): اكتشاف + تواصل داخل التطبيق
+// فقط. التحويل الفعلي يبدأه الوكيل من لوحته هو (راجع startAgentTransferFlow) — هذي الشاشة
+// للمستخدم العادي فقط: استعراض/تواصل، وتقييم/إبلاغ عن تحويلات استلمها سابقاً
+async function openAgentListSheet() {
+    document.getElementById('agent-list-sheet')?.remove();
+    const sheet = document.createElement('div');
+    sheet.id = 'agent-list-sheet';
+    sheet.className = 'fixed inset-0 bg-black/80 z-[400] flex items-end justify-center';
+    sheet.innerHTML = `
+        <div class="w-full max-w-md bg-gray-800 rounded-t-2xl p-4 max-h-[88%] overflow-y-auto">
+            <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">وكلاء الشحن المعتمدون</h3><button id="al-close" class="text-gray-400 p-1"><i class="fas fa-times"></i></button></div>
+            <p class="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 mb-3 leading-6">⚠️ تعامل فقط مع الوكلاء في هذه القائمة، وتواصل معهم من داخل التطبيق. الكوينز تصلك من رصيد الوكيل مباشرة فور اتفاقكما، وأي وكيل يطلب منك كلمة السر أو رمز التحقق محتال.</p>
+            <div id="al-list" class="mb-4"><div class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin"></i></div></div>
+            <div id="al-pending-ratings"></div>
+        </div>
+    `;
+    document.body.appendChild(sheet);
+    const close = () => sheet.remove();
+    document.getElementById('al-close').addEventListener('click', close);
+    sheet.addEventListener('click', (e) => { if (e.target === sheet) close(); });
+
+    try {
+        const [agentsRes, receivedRes] = await Promise.all([
+            fetch('/api/agents/active', { headers: { 'Authorization': `Bearer ${token}` } }),
+            fetch('/api/agents/received', { headers: { 'Authorization': `Bearer ${token}` } })
+        ]);
+        const agentsResult = await agentsRes.json();
+        const listEl = document.getElementById('al-list');
+        if (!agentsRes.ok || !agentsResult.data.agents.length) {
+            listEl.innerHTML = '<p class="text-center text-gray-500 text-sm py-6">لا يوجد وكلاء متاحون حالياً</p>';
+        } else {
+            const TIER_LABEL = { bronze: 'برونزي', silver: 'فضي', gold: 'ذهبي' };
+            listEl.innerHTML = agentsResult.data.agents.map(a => `
+                <div class="agent-card flex items-center gap-2.5 bg-gray-900/60 border border-gray-700 rounded-xl p-2.5 mb-2">
+                    <span class="relative flex-none w-11 h-11">
+                        <img src="${a.user?.profileImage}" class="w-11 h-11 rounded-full object-cover">
+                        <span class="absolute bottom-0 left-0 w-2.5 h-2.5 rounded-full border-2 border-gray-900 ${a.online ? 'bg-green-500' : 'bg-gray-500'}"></span>
+                    </span>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold text-sm truncate flex items-center gap-1">${escapeHtml(a.displayName)} <span class="text-[9px] font-black bg-cyan-500/20 text-cyan-300 rounded px-1">✓ معتمد</span></p>
+                        <p class="text-[11px] text-gray-400">★ ${a.rating} · ${a.totalTransfers} عملية · ${TIER_LABEL[a.tier]} · ${a.online ? 'متصل الآن' : 'غير متصل'}</p>
+                        <p class="text-[11px] text-yellow-400 font-bold" dir="ltr">$1 = ${fmtNum(a.ratePerUsd)} كوينز</p>
+                    </div>
+                    <button type="button" data-uid="${a.user?._id}" data-uname="${escapeHtml(a.user?.username || '')}" class="al-contact-btn bg-teal-400 text-black font-bold text-xs rounded-lg px-3 py-2 flex-none" ${a.online ? '' : 'disabled'}>تواصل</button>
+                </div>
+            `).join('');
+            listEl.querySelectorAll('.al-contact-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    close();
+                    openPrivateChat(btn.dataset.uid, btn.dataset.uname);
+                });
+            });
+        }
+
+        const receivedResult = await receivedRes.json();
+        if (receivedRes.ok) {
+            const unrated = receivedResult.data.transfers.filter(t => !t.rating);
+            if (unrated.length) renderAgentPendingRatings(unrated);
+        }
+    } catch (e) {
+        document.getElementById('al-list').innerHTML = '<p class="text-center text-red-400 text-sm py-6">خطأ في الاتصال بالخادم</p>';
+    }
+}
+
+function renderAgentPendingRatings(unrated) {
+    const host = document.getElementById('al-pending-ratings');
+    if (!host) return;
+    host.innerHTML = `
+        <p class="text-xs text-gray-400 mb-2">قيّم آخر تحويلاتك</p>
+        ${unrated.slice(0, 3).map(t => {
+            const reportable = (Date.now() - new Date(t.createdAt).getTime()) < 24 * 3600000 && t.report?.status === 'none';
+            return `
+            <div class="bg-gray-900/60 rounded-xl p-2.5 mb-2" data-transfer="${t._id}">
+                <p class="text-xs mb-1.5">استلمت <b class="text-teal-300">${fmtNum(t.coins)}</b> كوينز من <b>${escapeHtml(t.agentUser?.username || '')}</b></p>
+                <div class="flex items-center justify-between">
+                    <div class="flex gap-1 al-stars">
+                        ${[1, 2, 3, 4, 5].map(n => `<button type="button" data-n="${n}" class="al-star text-gray-600 text-lg"><i class="fas fa-star"></i></button>`).join('')}
+                    </div>
+                    ${reportable ? `<button type="button" class="al-report-btn text-[11px] text-red-400 font-bold">إبلاغ</button>` : ''}
+                </div>
+            </div>`;
+        }).join('')}
+    `;
+    host.querySelectorAll('[data-transfer]').forEach(card => {
+        const transferId = card.dataset.transfer;
+        card.querySelectorAll('.al-star').forEach(starBtn => {
+            starBtn.addEventListener('click', async () => {
+                const n = parseInt(starBtn.dataset.n, 10);
+                card.querySelectorAll('.al-star').forEach((s, i) => s.classList.toggle('text-yellow-400', i < n));
+                try {
+                    const res = await fetch(`/api/agents/transfers/${transferId}/rate`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ rating: n })
+                    });
+                    const result = await res.json();
+                    if (!res.ok) { showNotification(result.message || 'تعذّر إرسال التقييم', 'error'); return; }
+                    showNotification('شكراً لتقييمك', 'success');
+                    card.querySelector('.al-report-btn')?.remove();
+                } catch (e) { showNotification('خطأ في الاتصال بالخادم', 'error'); }
+            });
+        });
+        card.querySelector('.al-report-btn')?.addEventListener('click', () => openAgentReportModal(transferId, card));
+    });
+}
+
+function openAgentReportModal(transferId, cardEl) {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/80 z-[430] flex items-end justify-center';
+    modal.innerHTML = `
+        <div class="w-full max-w-md bg-gray-800 rounded-t-2xl p-4">
+            <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">إبلاغ عن تحويل</h3><button id="arm-close" class="text-gray-400 p-1"><i class="fas fa-times"></i></button></div>
+            <p class="text-xs text-gray-400 mb-3">اشرح ما حدث بإيجاز (3-300 حرف)</p>
+            <textarea id="arm-reason" rows="3" class="w-full bg-black/30 border border-gray-700 rounded-xl p-3 text-sm mb-2" placeholder="سبب الإبلاغ..."></textarea>
+            <p id="arm-error" class="text-xs text-red-400 mb-2 min-h-[1rem]"></p>
+            <button id="arm-submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl">إرسال البلاغ</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    const close = () => modal.remove();
+    document.getElementById('arm-close').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+    document.getElementById('arm-submit').addEventListener('click', async () => {
+        const reason = document.getElementById('arm-reason').value.trim();
+        const errEl = document.getElementById('arm-error');
+        if (reason.length < 3) { errEl.textContent = 'اكتب سبباً أوضح'; return; }
+        try {
+            const res = await fetch(`/api/agents/transfers/${transferId}/report`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ reason })
+            });
+            const result = await res.json();
+            if (!res.ok) { errEl.textContent = result.message || 'تعذّر الإبلاغ'; return; }
+            close();
+            showNotification('تم استلام بلاغك، سيراجعه فريق الدعم', 'success');
+            cardEl?.querySelector('.al-report-btn')?.remove();
+        } catch (e) { errEl.textContent = 'خطأ في الاتصال بالخادم'; }
+    });
 }
 
 // ✅ رمز QR لمشاركة الملف الشخصي — عبر مكتبة qrcodejs الخفيفة (CDN، يتحقق من توفّرها فعلياً
@@ -18282,10 +18604,11 @@ function renderRechargeTabBody(body) {
                 <div class="w-9 h-9 rounded-lg bg-red-600 flex items-center justify-center font-bold flex-none">ش</div>
                 <div><p class="font-bold text-sm">شام كاش</p><p class="text-[10px] text-gray-400">تحويل مباشر</p></div>
             </div>
-            <div class="relative rounded-xl border-2 border-gray-700 p-3 flex items-center gap-2 opacity-50">
+            ${isPlayBuild() ? '' : `
+            <button type="button" id="wallet-agent-method-btn" class="relative rounded-xl border-2 border-gray-700 p-3 flex items-center gap-2 text-right">
                 <div class="w-9 h-9 rounded-lg bg-teal-700 flex items-center justify-center flex-none">🤝</div>
-                <div><p class="font-bold text-sm">وكيل معتمد</p><p class="text-[10px] text-gray-400">قريباً</p></div>
-            </div>
+                <div><p class="font-bold text-sm">وكيل معتمد</p><p class="text-[10px] text-gray-400">تواصل مباشر</p></div>
+            </button>`}
         </div>
         <p class="text-xs text-gray-400 mb-2">اختر الباقة <span class="text-green-400">+${s.shamCashBonusPct}% بونص شام كاش على كل باقة</span></p>
         <div class="grid grid-cols-3 gap-2 mb-3" id="wallet-packages">
@@ -18310,6 +18633,7 @@ function renderRechargeTabBody(body) {
 
     renderWalletSummaryBox();
     if (first.active) startWalletCountdown(first.endsAt);
+    document.getElementById('wallet-agent-method-btn')?.addEventListener('click', openAgentListSheet);
 
     body.querySelectorAll('[data-pkg]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -18696,6 +19020,7 @@ function pinPadModal({ title, subtitle, confirmLabel = 'تأكيد', showForgot 
 
 // رسائل أخطاء رمز السحب الموحَّدة (حالة قفل/رمز خاطئ/غير مُنشأ) — تُستخدم بكل نقاط إدخال الرمز
 function withdrawalPinErrorMessage(result) {
+    if (result.code === 'HARD_LOCKED') return 'تم قفل رمز السحب نهائياً لكثرة محاولات القفل — تواصل مع الدعم لإعادة تعيينه';
     if (result.code === 'LOCKED' || result.code === 'LOCKED_NOW') {
         const mins = result.lockedUntil ? Math.max(1, Math.ceil((new Date(result.lockedUntil) - Date.now()) / 60000)) : 30;
         return `تم قفل رمز السحب لكثرة المحاولات الخاطئة. حاول بعد ${mins} دقيقة`;
