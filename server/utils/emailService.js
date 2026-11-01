@@ -178,6 +178,35 @@ exports.sendAdminNotification = async (subject, message) => {
   }
 };
 
+// 🛡️ مراجعة الأمان v2 (البند 2) — رمز إعادة تعيين رمز السحب (6 أرقام، صلاحية 10 دقائق)
+exports.sendPinResetCodeEmail = async (email, code) => {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: 'Battle Platform <noreply@yourdomain.com>',
+      to: email,
+      subject: '🔐 رمز إعادة تعيين رمز السحب',
+      html: `
+        <div style="font-family: 'Cairo', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f5f7fa; padding: 20px;">
+          <div style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+            <div style="background: linear-gradient(45deg, #6a11cb, #2575fc); color: white; padding: 30px; text-align: center;">
+              <h1 style="margin: 0;">🔐 إعادة تعيين رمز السحب</h1>
+            </div>
+            <div style="padding: 40px; color: #333; text-align: center;">
+              <p>طلبت إعادة تعيين رمز السحب لحسابك. استخدم الرمز أدناه خلال 10 دقائق:</p>
+              <div style="font-size: 32px; font-weight: 900; letter-spacing: 8px; background: #f8f9fa; border-radius: 10px; padding: 15px; margin: 20px 0;">${code}</div>
+              <p>إن لم تطلب هذا، تواصل مع الدعم فوراً — حسابك قد يكون مهدَّداً.</p>
+            </div>
+          </div>
+        </div>
+      `
+    });
+    return !error;
+  } catch (error) {
+    console.error('Pin reset code email error:', error);
+    return false;
+  }
+};
+
 // Fallback email service for development
 exports.sendFallbackEmail = async (email, subject, html) => {
   try {

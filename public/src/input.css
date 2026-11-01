@@ -7014,10 +7014,15 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 .gsheet-bal { display: flex; align-items: center; gap: 4px; font-family: var(--f-num); font-weight: 800; font-size: 14px; flex: 1; min-width: 0; }
 /* ✅ مراجعة UX v2 (بند 4-أ): زر "+" دائري صغير يستبدل "شحن ›" النصّي (كان بلا أي مستمع نقر
    إطلاقاً — راجع #gsheet-recharge-btn بـshowRoomGiftModal) */
+/* 🐛 مراجعة الأمان v2 (بند 3): كان بيضاوياً لا دائرياً — width/height الصريحان يُطبَّقان على
+   صندوق المحتوى فقط (box-sizing الافتراضي content-box)، وتبطين <button> الافتراضي من المتصفح
+   (غير صفري وغير متماثل أفقياً/رأسياً) كان يُضاف فوقهما فيُخرِج الصندوق عن 22×22 الحقيقي.
+   aspect-ratio:1 ضمان إضافي يمنع أي تمدد مستقبلي بصرف النظر عن المحتوى */
 .gsheet-recharge-fab {
-    width: 22px; height: 22px; flex: none; border-radius: 50%; border: 0; cursor: pointer;
+    width: 22px; height: 22px; aspect-ratio: 1; padding: 0; box-sizing: border-box;
+    flex: none; border-radius: 50%; border: 0; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; margin-inline-start: 4px;
-    background: var(--g-gold); color: #3a2300; font-size: 11px;
+    background: var(--g-gold); color: #3a2300; font-size: 11px; line-height: 1;
 }
 .gsheet-qty { position: relative; }
 .gsheet-qbtn { height: 34px; min-width: 58px; border-radius: 0 999px 999px 0; border: 1px solid rgba(255, 79, 163, 0.4); border-inline-start: 0; background: rgba(255, 79, 163, 0.1); color: var(--g-fg); font-family: var(--f-num); font-weight: 800; font-size: 13px; cursor: pointer; padding: 0 8px; direction: ltr; }

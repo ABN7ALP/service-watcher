@@ -42,6 +42,30 @@ const userSchema = new mongoose.Schema({
     // يُضبَط ذرّياً فقط عند الموافقة الفعلية على أول Intent يحمل بونص "أول شحنة" — لا عند الإنشاء
     walletFirstViewedAt: { type: Date, default: null },
     firstRechargeBonusConsumedAt: { type: Date, default: null },
+    // 🛡️ مراجعة الأمان v2 (البند 2) — رمز السحب: select:false على الحقول الحساسة يمنع تسرّبها
+    // بأي استجابة API لا تطلبها صريحاً (كمصادقة كلمة المرور). القفل الذري (withdrawalPinFailedAttempts
+    // + withdrawalPinLockedUntil) يُحدَّث عبر findOneAndUpdate بـ$inc فقط — لا قراءة ثم حفظ لاحقاً،
+    // تفادياً لعدّ خاطئ عند محاولات متزامنة (راجع withdrawalPinService.js)
+    withdrawalPin: { type: String, select: false, default: null },
+    withdrawalPinSetAt: { type: Date, default: null },
+    withdrawalPinFailedAttempts: { type: Number, default: 0 },
+    withdrawalPinLockedUntil: { type: Date, default: null },
+    // 🛡️ مراجعة أمنية (تدقيق ما بعد الفتح): 3 أحداث قفل (30 دقيقة) خلال 24 ساعة ⇐ قفل نهائي لا
+    // يرفعه الوقت أبداً — فقط adminResetPin الصريح. withdrawalPinLockoutHistory طوابع آخر 10
+    // أحداث قفل فقط (raja withdrawalPinService.lockOutUser) — كافية لإثبات أي نافذة 24 ساعة
+    withdrawalPinHardLocked: { type: Boolean, default: false },
+    withdrawalPinLockoutHistory: [{ type: Date }],
+    // بعد أي إعادة تعيين/تغيير فعلي للرمز، تُحظَر طلبات السحب لمدة withdrawalPinPostResetBlockHours
+    withdrawalBlockedUntil: { type: Date, default: null },
+    // المحفظة المحفوظة لصرف السحب (شام كاش) — تغييرها يتطلّب الرمز ويُبقي حظر 48 ساعة على السحب
+    payoutShamCashWallet: { type: String, default: null },
+    payoutWalletChangedAt: { type: Date, default: null },
+    // لا يوجد تدفّق تفعيل بريد فعلي بعد — العلم هنا فقط يمنع مسار "نسيت الرمز" من افتراض تفعيل
+    // غير موجود؛ القيمة false لكل الحسابات (قديمها وجديدها) حتى يُبنى تدفّق تفعيل حقيقي لاحقاً
+    isEmailVerified: { type: Boolean, default: false },
+    pinResetCodeHash: { type: String, select: false, default: null },
+    pinResetCodeExpiresAt: { type: Date, default: null },
+    pinResetAttempts: { type: Number, default: 0 },
     level: { type: Number, default: 1 },
     experience: { type: Number, default: 0 },
          isAdmin: { type: Boolean, default: false },

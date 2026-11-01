@@ -73,7 +73,8 @@ const systemSettingsSchema = new mongoose.Schema({
     payoutHighPct: { type: Number, default: 70 },
     highHostLevel: { type: Number, default: 30 },
     // فول أقل عمراً من هذا (ساعات) لا يمكن صرفه نقداً (beans_w فقط، beans_p لا تصل USD أبداً)
-    beanHoldHours: { type: Number, default: 72 },
+    // 🛡️ مراجعة الأمان v2 (البند 1): 72→24 افتراضياً — قابل للتعديل من لوحة الإدارة
+    beanHoldHours: { type: Number, default: 24 },
     // ميزانية دعم مضيف جديد (دولار) حتى نهاية فترة الإطلاق، وهامش أمان النسبة المئوية عليها
     hostBudgetSeedUsd: { type: Number, default: 50 },
     hostBudgetMarginPct: { type: Number, default: 30 },
@@ -112,6 +113,11 @@ const systemSettingsSchema = new mongoose.Schema({
     // (راجع server/routes/admin.js: /settings/sham-cash-help-image/:slot)، لا رابط نصّي يُكتَب يدوياً
     shamCashHelpImage1: { type: String, default: '' },
     shamCashHelpImage2: { type: String, default: '' },
+
+    // 🛡️ مراجعة الأمان v2 (البند 2) — رمز السحب: بعد أي إعادة تعيين/تغيير للرمز، تُحظَر طلبات
+    // السحب لهذه المدة (ساعات) — حماية إضافية لو حدث التغيير فعلياً من مخترِق استولى على الحساب
+    // (كلمة المرور + البريد)، يمنحان صاحب الحساب الحقيقي وقتاً لملاحظة إشعار البوت والتدخّل
+    withdrawalPinPostResetBlockHours: { type: Number, default: 24 },
 
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
