@@ -50,6 +50,11 @@ const userSchema = new mongoose.Schema({
     withdrawalPinSetAt: { type: Date, default: null },
     withdrawalPinFailedAttempts: { type: Number, default: 0 },
     withdrawalPinLockedUntil: { type: Date, default: null },
+    // 🛡️ مراجعة أمنية (تدقيق ما بعد الفتح): 3 أحداث قفل (30 دقيقة) خلال 24 ساعة ⇐ قفل نهائي لا
+    // يرفعه الوقت أبداً — فقط adminResetPin الصريح. withdrawalPinLockoutHistory طوابع آخر 10
+    // أحداث قفل فقط (raja withdrawalPinService.lockOutUser) — كافية لإثبات أي نافذة 24 ساعة
+    withdrawalPinHardLocked: { type: Boolean, default: false },
+    withdrawalPinLockoutHistory: [{ type: Date }],
     // بعد أي إعادة تعيين/تغيير فعلي للرمز، تُحظَر طلبات السحب لمدة withdrawalPinPostResetBlockHours
     withdrawalBlockedUntil: { type: Date, default: null },
     // المحفظة المحفوظة لصرف السحب (شام كاش) — تغييرها يتطلّب الرمز ويُبقي حظر 48 ساعة على السحب

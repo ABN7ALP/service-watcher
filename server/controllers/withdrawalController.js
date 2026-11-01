@@ -84,10 +84,10 @@ exports.createWithdrawal = async (req, res) => {
             });
         }
 
-        const pinResult = await pinService.verifyWithdrawalPin(userId, pin);
+        const pinResult = await pinService.verifyWithdrawalPin(userId, pin, req.app.get('socketio'));
         if (!pinResult.ok) {
-            const httpStatus = (pinResult.code === 'LOCKED' || pinResult.code === 'LOCKED_NOW') ? 423 : 400;
-            return res.status(httpStatus).json({
+            const isLockStatus = pinResult.code === 'LOCKED' || pinResult.code === 'LOCKED_NOW' || pinResult.code === 'HARD_LOCKED';
+            return res.status(isLockStatus ? 423 : 400).json({
                 status: 'fail',
                 code: pinResult.code,
                 message: pinResult.code === 'NOT_SET' ? 'يرجى إنشاء رمز سحب أولاً' : 'رمز السحب غير صحيح',

@@ -20,6 +20,7 @@ const PIN_ERROR_MESSAGES = {
     WRONG: 'رمز غير صحيح',
     LOCKED: 'تم قفل رمز السحب مؤقتاً لكثرة المحاولات الخاطئة',
     LOCKED_NOW: 'تم قفل رمز السحب 30 دقيقة لكثرة المحاولات الخاطئة',
+    HARD_LOCKED: 'تم قفل رمز السحب نهائياً لكثرة محاولات القفل — تواصل مع الدعم لإعادة تعيينه',
     EMAIL_NOT_VERIFIED: 'بريدك غير مفعّل. تواصل مع الدعم',
     NO_PENDING_RESET: 'لا يوجد طلب إعادة تعيين قيد الانتظار',
     CODE_EXPIRED: 'انتهت صلاحية الرمز، اطلب رمزاً جديداً',
@@ -30,7 +31,8 @@ const PIN_ERROR_MESSAGES = {
 };
 
 function failFromCode(res, result, httpStatus = 400) {
-    return res.status(result.code === 'LOCKED' || result.code === 'LOCKED_NOW' ? 423 : httpStatus).json({
+    const isLockStatus = result.code === 'LOCKED' || result.code === 'LOCKED_NOW' || result.code === 'HARD_LOCKED';
+    return res.status(isLockStatus ? 423 : httpStatus).json({
         status: 'fail',
         code: result.code,
         message: PIN_ERROR_MESSAGES[result.code] || 'تعذّر إتمام العملية',
@@ -42,7 +44,7 @@ function failFromCode(res, result, httpStatus = 400) {
 exports.getStatus = async (req, res) => {
     try {
         const user = await User.findById(req.user.id)
-            .select('withdrawalPin withdrawalPinLockedUntil withdrawalBlockedUntil payoutShamCashWallet payoutWalletChangedAt isEmailVerified');
+            .select('withdrawalPin withdrawalPinLockedUntil withdrawalPinHardLocked withdrawalBlockedUntil payoutShamCashWallet payoutWalletChangedAt isEmailVerified');
         if (!user) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
 
         const block = pinService.isWithdrawalBlocked(user);
@@ -51,6 +53,7 @@ exports.getStatus = async (req, res) => {
             data: {
                 hasPin: !!user.withdrawalPin,
                 pinLockedUntil: (user.withdrawalPinLockedUntil && user.withdrawalPinLockedUntil > new Date()) ? user.withdrawalPinLockedUntil : null,
+                pinHardLocked: !!user.withdrawalPinHardLocked,
                 withdrawalBlocked: block.blocked,
                 withdrawalBlockedUntil: block.blocked ? block.until : null,
                 payoutShamCashWallet: user.payoutShamCashWallet || null,
@@ -86,7 +89,7 @@ exports.change = async (req, res) => {
         if (!newPin || newPin !== confirmPin) {
             return res.status(400).json({ status: 'fail', message: 'الرمزان غير متطابقين' });
         }
-        const result = await pinService.changeWithdrawalPin(req.user.id, currentPin, newPin);
+        const result = await pinService.changeWithdrawalPin(req.user.id, currentPin, newPin, req.app.get('socketio'));
         if (!result.ok) return failFromCode(res, result);
 
         res.status(200).json({ status: 'success', message: 'تم تغيير رمز السحب' });
@@ -143,7 +146,7 @@ exports.verifyResetCode = async (req, res) => {
 exports.setPayoutWallet = async (req, res) => {
     try {
         const { pin, walletNumber } = req.body;
-        const result = await pinService.changePayoutWallet(req.user.id, pin, walletNumber);
+        const result = await pinService.changePayoutWallet(req.user.id, pin, walletNumber, req.app.get('socketio'));
         if (!result.ok) return failFromCode(res, result);
 
         res.status(200).json({ status: 'success', message: 'تم حفظ محفظة الصرف. السحب موقوف 48 ساعة لحمايتك' });
@@ -164,6 +167,8 @@ exports.adminResetPin = async (req, res) => {
         const user = await User.findByIdAndUpdate(userId, {
             $set: {
                 withdrawalPin: null, withdrawalPinFailedAttempts: 0, withdrawalPinLockedUntil: null,
+                // ✅ القفل النهائي (3 أحداث قفل خلال 24 ساعة) لا يرتفع إلا هنا — صراحة عبر الدعم/الإدارة
+                withdrawalPinHardLocked: false, withdrawalPinLockoutHistory: [],
                 withdrawalBlockedUntil: new Date(Date.now() + blockHours * 3600000)
             }
         }, { new: true });

@@ -21,41 +21,100 @@ const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex'
 // 6 أرقام، لا يبدأ بصفر تفادياً لعرض مضلّل ببعض الأجهزة (القيمة نفسها صالحة رقمياً بأي حال)
 const generateResetCode = () => String(crypto.randomInt(100000, 1000000));
 
-// 🛡️ القفل الذري: بإعادة محاولة ناجحة يُصفّر العدّاد؛ بفشل، $inc ذرّي ثم فحص الناتج — لو بلغ
-// الحد يُقفَل فوراً بتحديث ثانٍ منفصل (لا يمكن دمجه بأول $inc لأن قيمة القفل تعتمد على الناتج
-// بعد الزيادة، لكن النافذة بينهما لا تفتح ثغرة: أي عدد محاولات متزامنة إضافية يراها $inc اللاحق
-// أصلاً فوق الحد فتُقفَل هي أيضاً بأول فحص لها قبل إعادة المحاولة)
-async function verifyWithdrawalPin(userId, pin) {
-    const user = await User.findById(userId)
-        .select('withdrawalPin withdrawalPinFailedAttempts withdrawalPinLockedUntil');
-    if (!user) return { ok: false, code: 'NOT_FOUND' };
-    if (!user.withdrawalPin) return { ok: false, code: 'NOT_SET' };
+// 🛡️ مراجعة أمنية (تدقيق ما بعد الفتح): كان الفحص (مقفل؟) وbcrypt (~250ms) وزيادة العدّاد ثلاث
+// عمليات منفصلة — N طلب متزامن تعبر فحص القفل معاً (لا شيء مقفلاً بعد) فتُنفِّذ N مقارنة bcrypt
+// بالتوازي، فيتجاوز العدد الفعلي للتخمينات حد الـ5 تماماً (رمز 4 أرقام = 10,000 احتمال فقط).
+// الإصلاح: "الحجز" (زيادة العدّاد ذرّياً) يسبق أي bcrypt دوماً — لا مقارنة إطلاقاً قبل معرفة أن
+// العدّاد بعد الزيادة ما زال دون الحد. خطوتان ذرّيتان منفصلتان لا تفتحان ثغرة: الأولى (تصفير
+// قفل منتهي) مطلقة لا نسبية (idempotent بصرف النظر عن تكرارها بالتزامن)، والثانية ($inc حقيقي)
+// هي الضامن الوحيد لتفرّد رقم كل محاولة متزامنة — المقارنة الباهظة (bcrypt) لا تُنفَّذ إلا بعد
+// أن يرى الطلب رقمه الفريد دون الحد. 3 عمليات قفل خلال 24 ساعة تنتقل لقفل نهائي (hardLocked)
+// لا يرتفع تلقائياً، يتطلّب تدخّل الدعم/الإدارة (adminResetPin) صراحة + تنبيه بوت فوري للمستخدم
+async function verifyWithdrawalPin(userId, pin, io = null) {
+    const now = new Date();
 
-    if (user.withdrawalPinLockedUntil && user.withdrawalPinLockedUntil > new Date()) {
-        return { ok: false, code: 'LOCKED', lockedUntil: user.withdrawalPinLockedUntil };
+    // ✅ خطوة تطبيع مطلقة (لا $inc) — لو القفل منتهياً فعلاً، صفّر العدّاد والقفل معاً. تكرارها
+    // بالتزامن بلا أي ضرر (كل استدعاء يكتب نفس القيمتين الثابتتين 0/null بصرف النظر عن الترتيب)
+    // — $ne:null صريح إلزامي: بدونه ستُطابِق $lte حقول null أيضاً (ترتيب BSON) فيُصفَّر عدّاد
+    // مستخدم غير مقفل أصلاً بكل محاولة، فيُلغي العدّ بالكامل
+    await User.updateOne(
+        { _id: userId, withdrawalPinHardLocked: { $ne: true }, withdrawalPinLockedUntil: { $ne: null, $lte: now } },
+        { $set: { withdrawalPinLockedUntil: null, withdrawalPinFailedAttempts: 0 } }
+    );
+
+    const reserved = await User.findOneAndUpdate(
+        {
+            _id: userId,
+            withdrawalPin: { $ne: null },
+            withdrawalPinHardLocked: { $ne: true },
+            $or: [{ withdrawalPinLockedUntil: null }, { withdrawalPinLockedUntil: { $lte: now } }]
+        },
+        { $inc: { withdrawalPinFailedAttempts: 1 } },
+        { new: true }
+    ).select('withdrawalPin withdrawalPinFailedAttempts');
+
+    if (!reserved) {
+        // ✅ لا قرار أمني هنا — الحجز أعلاه هو الحارس الحقيقي. هذي القراءة فقط لصياغة سبب الرفض
+        const user = await User.findById(userId).select('withdrawalPin withdrawalPinHardLocked withdrawalPinLockedUntil');
+        if (!user) return { ok: false, code: 'NOT_FOUND' };
+        if (user.withdrawalPinHardLocked) return { ok: false, code: 'HARD_LOCKED' };
+        if (!user.withdrawalPin) return { ok: false, code: 'NOT_SET' };
+        if (user.withdrawalPinLockedUntil && user.withdrawalPinLockedUntil > now) {
+            return { ok: false, code: 'LOCKED', lockedUntil: user.withdrawalPinLockedUntil };
+        }
+        return { ok: false, code: 'WRONG' }; // سباق نادر جداً بين القراءتين — إعادة المحاولة تكفي
     }
 
-    const match = await bcrypt.compare(String(pin || ''), user.withdrawalPin);
+    // ✅ العدّاد بلغ الحد بهذا الحجز نفسه — نقفل فوراً دون أي مقارنة bcrypt إطلاقاً، حتى لو كان
+    // هذا الرمز المُدخَل صحيحاً فعلياً (مقايضة متعمَّدة: محاولة واحدة أقل مقابل إغلاق الثغرة كلياً).
+    // === (لا >=) عمداً: $inc ذرّي يضمن انتقالاً وحيداً فريداً بالضبط للقيمة 5 مهما بلغ عدد
+    // المحاولات المتزامنة المنفجرة معاً — فقط ذاك الطلب الوحيد يُنفِّذ منطق القفل (سجلّ الأحداث/
+    // تنبيه البوت/القفل النهائي)، فلا تُحتسَب "انفجارة" تزامن واحدة كعدة أحداث قفل منفصلة خطأً
+    if (reserved.withdrawalPinFailedAttempts === PIN_LOCKOUT_MAX_ATTEMPTS) {
+        return lockOutUser(userId, io);
+    }
+    if (reserved.withdrawalPinFailedAttempts > PIN_LOCKOUT_MAX_ATTEMPTS) {
+        const user = await User.findById(userId).select('withdrawalPinLockedUntil withdrawalPinHardLocked');
+        if (user?.withdrawalPinHardLocked) return { ok: false, code: 'HARD_LOCKED' };
+        return { ok: false, code: 'LOCKED_NOW', lockedUntil: user?.withdrawalPinLockedUntil || new Date(Date.now() + PIN_LOCKOUT_MINUTES * 60000) };
+    }
+
+    const match = await bcrypt.compare(String(pin || ''), reserved.withdrawalPin);
     if (match) {
-        if (user.withdrawalPinFailedAttempts > 0) {
-            await User.updateOne({ _id: userId }, { $set: { withdrawalPinFailedAttempts: 0, withdrawalPinLockedUntil: null } });
-        }
+        await User.updateOne({ _id: userId }, { $set: { withdrawalPinFailedAttempts: 0, withdrawalPinLockedUntil: null } });
         return { ok: true };
     }
 
+    return { ok: false, code: 'WRONG', remainingAttempts: PIN_LOCKOUT_MAX_ATTEMPTS - reserved.withdrawalPinFailedAttempts };
+}
+
+// ✅ يُسجِّل حدث قفل (30 دقيقة) ويفحص: 3 أحداث قفل خلال آخر 24 ساعة ⇐ قفل نهائي (hardLocked)
+// لا يرفعه الوقت أبداً — فقط adminResetPin الصريح. $slice:-10 يمنع نمو المصفوفة بلا حدود
+// (10 أحداث قفل كافية جداً لإثبات أي نافذة 24 ساعة ممكنة، أقدم منها غير ذي صلة أصلاً)
+async function lockOutUser(userId, io) {
+    const now = new Date();
+    const lockedUntil = new Date(now.getTime() + PIN_LOCKOUT_MINUTES * 60000);
     const updated = await User.findOneAndUpdate(
         { _id: userId },
-        { $inc: { withdrawalPinFailedAttempts: 1 } },
+        {
+            $set: { withdrawalPinLockedUntil: lockedUntil },
+            $push: { withdrawalPinLockoutHistory: { $each: [now], $slice: -10 } }
+        },
         { new: true }
-    ).select('withdrawalPinFailedAttempts');
+    ).select('withdrawalPinLockoutHistory');
 
-    if (updated.withdrawalPinFailedAttempts >= PIN_LOCKOUT_MAX_ATTEMPTS) {
-        const lockedUntil = new Date(Date.now() + PIN_LOCKOUT_MINUTES * 60000);
-        await User.updateOne({ _id: userId }, { $set: { withdrawalPinLockedUntil: lockedUntil } });
-        return { ok: false, code: 'LOCKED_NOW', lockedUntil };
+    const recentLockouts = (updated?.withdrawalPinLockoutHistory || [])
+        .filter(t => now.getTime() - new Date(t).getTime() < 24 * 3600000);
+
+    if (recentLockouts.length >= 3) {
+        await User.updateOne({ _id: userId }, { $set: { withdrawalPinHardLocked: true } });
+        if (io) {
+            const { sendBotMessage } = require('./botMessenger');
+            await sendBotMessage(io, userId, '🔒 تم قفل رمز السحب نهائياً لكثرة محاولات القفل خلال 24 ساعة. إن لم تكن أنت، تواصل مع الدعم فوراً — الإعادة تتطلّب تدخّلاً من فريق الدعم.');
+        }
+        return { ok: false, code: 'HARD_LOCKED', lockedUntil };
     }
-
-    return { ok: false, code: 'WRONG', remainingAttempts: PIN_LOCKOUT_MAX_ATTEMPTS - updated.withdrawalPinFailedAttempts };
+    return { ok: false, code: 'LOCKED_NOW', lockedUntil };
 }
 
 // الإنشاء الأول — ذرّي بشرط withdrawalPin:null يمنع إعادة إنشاء (استخدم changePin للتغيير)
@@ -78,9 +137,9 @@ async function getPostResetBlockHours() {
 }
 
 // تغيير الرمز (يعرفه المستخدم فعلاً) — يتحقق من الرمز الحالي بآلية القفل نفسها
-async function changeWithdrawalPin(userId, currentPin, newPin) {
+async function changeWithdrawalPin(userId, currentPin, newPin, io = null) {
     if (!isValidPinFormat(newPin)) return { ok: false, code: 'BAD_FORMAT' };
-    const verify = await verifyWithdrawalPin(userId, currentPin);
+    const verify = await verifyWithdrawalPin(userId, currentPin, io);
     if (!verify.ok) return verify;
 
     const hash = await hashPin(newPin);
@@ -157,9 +216,9 @@ async function verifyPinResetCode(userId, code, newPin) {
 }
 
 // تغيير محفظة الصرف المحفوظة — يتطلّب الرمز، ويُبقي حظر سحب 48 ساعة
-async function changePayoutWallet(userId, pin, walletNumber) {
+async function changePayoutWallet(userId, pin, walletNumber, io = null) {
     if (!walletNumber || String(walletNumber).trim().length < 3) return { ok: false, code: 'BAD_WALLET' };
-    const verify = await verifyWithdrawalPin(userId, pin);
+    const verify = await verifyWithdrawalPin(userId, pin, io);
     if (!verify.ok) return verify;
 
     await User.updateOne({ _id: userId }, {

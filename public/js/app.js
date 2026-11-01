@@ -18630,7 +18630,7 @@ function pinPadModal({ title, subtitle, confirmLabel = 'تأكيد', showForgot 
             ${subtitle ? `<p class="text-xs text-gray-400 mb-3">${escapeHtml(subtitle)}</p>` : ''}
             <div id="pin-pad-dots" class="flex items-center justify-center gap-2.5 my-4"></div>
             <p id="pin-pad-error" class="text-center text-xs text-red-400 h-4 mb-1"></p>
-            <div class="grid grid-cols-3 gap-2 mb-3">
+            <div class="grid grid-cols-3 gap-2 mb-3" dir="ltr">
                 ${[1,2,3,4,5,6,7,8,9].map(n => `<button type="button" data-k="${n}" class="pin-pad-key h-12 rounded-xl bg-white/10 text-white font-bold text-lg">${n}</button>`).join('')}
                 <span></span>
                 <button type="button" data-k="0" class="pin-pad-key h-12 rounded-xl bg-white/10 text-white font-bold text-lg">0</button>
@@ -18737,7 +18737,23 @@ function startWithdrawalPinSetup(onDone) {
 }
 
 // تدفّق "نسيت الرمز؟": كلمة السر → كود البريد (أو "تواصل مع الدعم" لو البريد غير مُفعَّل) → رمز جديد
-function startForgotWithdrawalPinFlow(onDone) {
+// 🛡️ مراجعة أمنية (تدقيق ما بعد الفتح): كان يُعرَض حقل كلمة السر دوماً أولاً، والفحص الفعلي
+// (بريد مفعَّل؟) يحصل فقط بعد الإرسال — لمستخدم بلا بريد مفعَّل (الجميع حالياً) هذا يُظهر خطوة
+// بلا جدوى إطلاقاً قبل "تواصل مع الدعم". الآن: نتحقق من canUseEmailReset أولاً (من /pin/status
+// نفسها)، ولا نعرض حقل كلمة السر مطلقاً إلا لمن يملك بريداً مفعَّلاً فعلاً
+async function startForgotWithdrawalPinFlow(onDone) {
+    let canUseEmailReset = false;
+    try {
+        const res = await fetch('/api/withdrawals/pin/status', { headers: { 'Authorization': `Bearer ${token}` } });
+        const result = await res.json();
+        if (res.ok) canUseEmailReset = !!result.data.canUseEmailReset;
+    } catch (e) { /* فشل الفحص — نتعامل معه كبريد غير مفعَّل (الأكثر أماناً) أدناه */ }
+
+    if (!canUseEmailReset) {
+        showContactSupportForPinReset();
+        return;
+    }
+
     const passModal = document.createElement('div');
     passModal.className = 'fixed inset-0 bg-black/80 z-[420] flex items-end justify-center';
     passModal.innerHTML = `
@@ -18766,9 +18782,9 @@ function startForgotWithdrawalPinFlow(onDone) {
             });
             const result = await res.json();
             if (!res.ok) {
-                errEl.textContent = result.code === 'EMAIL_NOT_VERIFIED'
-                    ? 'بريدك غير مفعَّل — تواصل مع الدعم لإعادة تعيين رمز السحب'
-                    : (result.message || 'تعذّر إرسال الرمز');
+                // ✅ احتياط: لو تغيّرت حالة التفعيل فعلياً بين الفحص والإرسال (نادر جداً)
+                if (result.code === 'EMAIL_NOT_VERIFIED') { closeP(); showContactSupportForPinReset(); return; }
+                errEl.textContent = result.message || 'تعذّر إرسال الرمز';
                 return;
             }
             closeP();
@@ -18776,6 +18792,26 @@ function startForgotWithdrawalPinFlow(onDone) {
             startResetCodeEntry(password, onDone);
         } catch (e) { errEl.textContent = 'خطأ في الاتصال بالخادم'; }
     });
+}
+
+// بريد غير مفعَّل (الحالة الافتراضية لكل الحسابات حالياً — لا تدفّق تفعيل بريد حقيقي بعد) — "تواصل
+// مع الدعم" فقط، بلا أي حقل كلمة سر أو بريد يُعرَض إطلاقاً
+function showContactSupportForPinReset() {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/80 z-[420] flex items-end justify-center';
+    modal.innerHTML = `
+        <div class="w-full max-w-md bg-gray-800 rounded-t-2xl p-4 text-center">
+            <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">تواصل مع الدعم</h3><button id="cs-close" class="text-gray-400 p-1"><i class="fas fa-times"></i></button></div>
+            <i class="fas fa-headset text-3xl text-teal-400 mb-3"></i>
+            <p class="text-sm text-gray-300 leading-7 mb-4">بريدك غير مفعَّل، فلا يمكن إرسال رمز إعادة تعيين عبره حالياً.<br>تواصل مع فريق الدعم لإعادة تعيين رمز السحب لحسابك.</p>
+            <button id="cs-ok" class="w-full bg-gray-700 text-white font-bold py-3 rounded-xl">حسناً</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    const close = () => modal.remove();
+    modal.querySelector('#cs-close').addEventListener('click', close);
+    modal.querySelector('#cs-ok').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
 }
 
 function startResetCodeEntry(password, onDone) {
