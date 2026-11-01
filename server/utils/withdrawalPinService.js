@@ -172,35 +172,46 @@ async function requestPinResetCode(userId) {
 }
 
 // تأكيد "نسيت الرمز" بالكود المُرسَل بريدياً — نفس فلسفة القفل الذري (عدّاد محاولات مستقل عن رمز السحب)
+// 🛡️ مراجعة أمنية (نفس ثغرة verifyWithdrawalPin سابقاً): الفحص (عدّاد < الحد؟) ثم sha256 ثم
+// الزيادة كانت ثلاث عمليات منفصلة — N طلب متزامن يعبر الفحص معاً فيتجاوز العدد الفعلي للتخمينات
+// حد RESET_CODE_MAX_ATTEMPTS (الرمز 6 أرقام = 1,000,000 احتمال، الحد مصمَّم ليقيّد التخمين لا
+// ليُتجاوَز بالتزامن). الإصلاح: نفس نمط "الحجز قبل المقارنة" — $inc ذرّي بشرط العدّاد أولاً، ثم
+// المقارنة فقط على النتيجة المحجوزة
 async function verifyPinResetCode(userId, code, newPin) {
     if (!isValidPinFormat(newPin)) return { ok: false, code: 'BAD_FORMAT' };
-    const user = await User.findById(userId).select('pinResetCodeHash pinResetCodeExpiresAt pinResetAttempts');
-    if (!user || !user.pinResetCodeHash) return { ok: false, code: 'NO_PENDING_RESET' };
-    if (!user.pinResetCodeExpiresAt || user.pinResetCodeExpiresAt < new Date()) {
-        return { ok: false, code: 'CODE_EXPIRED' };
-    }
-    if (user.pinResetAttempts >= RESET_CODE_MAX_ATTEMPTS) {
+    const now = new Date();
+
+    const reserved = await User.findOneAndUpdate(
+        {
+            _id: userId,
+            pinResetCodeHash: { $ne: null },
+            pinResetCodeExpiresAt: { $gt: now },
+            pinResetAttempts: { $lt: RESET_CODE_MAX_ATTEMPTS }
+        },
+        { $inc: { pinResetAttempts: 1 } },
+        { new: true }
+    ).select('pinResetCodeHash pinResetAttempts');
+
+    if (!reserved) {
+        const user = await User.findById(userId).select('pinResetCodeHash pinResetCodeExpiresAt pinResetAttempts');
+        if (!user || !user.pinResetCodeHash) return { ok: false, code: 'NO_PENDING_RESET' };
+        if (!user.pinResetCodeExpiresAt || user.pinResetCodeExpiresAt <= now) return { ok: false, code: 'CODE_EXPIRED' };
         return { ok: false, code: 'TOO_MANY_ATTEMPTS' };
     }
 
-    const match = user.pinResetCodeHash === sha256(String(code || ''));
+    const match = reserved.pinResetCodeHash === sha256(String(code || ''));
     if (!match) {
-        const updated = await User.findOneAndUpdate(
-            { _id: userId },
-            { $inc: { pinResetAttempts: 1 } },
-            { new: true }
-        ).select('pinResetAttempts');
-        if (updated.pinResetAttempts >= RESET_CODE_MAX_ATTEMPTS) {
+        if (reserved.pinResetAttempts >= RESET_CODE_MAX_ATTEMPTS) {
             return { ok: false, code: 'TOO_MANY_ATTEMPTS' };
         }
-        return { ok: false, code: 'WRONG_CODE', remainingAttempts: RESET_CODE_MAX_ATTEMPTS - updated.pinResetAttempts };
+        return { ok: false, code: 'WRONG_CODE', remainingAttempts: RESET_CODE_MAX_ATTEMPTS - reserved.pinResetAttempts };
     }
 
     const hash = await hashPin(newPin);
     const blockHours = await getPostResetBlockHours();
     // ✅ شرط pinResetCodeHash الحالي بالتحديث يمنع استخدام نفس الكود مرتين لو تزامن طلبان ناجحان
     const updated = await User.findOneAndUpdate(
-        { _id: userId, pinResetCodeHash: user.pinResetCodeHash },
+        { _id: userId, pinResetCodeHash: reserved.pinResetCodeHash },
         {
             $set: {
                 withdrawalPin: hash, withdrawalPinSetAt: new Date(),

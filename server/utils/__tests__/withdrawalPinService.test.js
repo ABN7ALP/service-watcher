@@ -28,8 +28,8 @@ function seedUser(db, overrides) {
     return user;
 }
 
-// ✅ مطابقة فلتر عامة تدعم $ne/$lte (قد تجتمعان بنفس الحقل) و$or متداخل — تحاكي فقط ما يستخدمه
-// withdrawalPinService.js فعلياً، لا محرّك استعلام Mongo كامل
+// ✅ مطابقة فلتر عامة تدعم $ne/$lte/$lt/$gt (قد تجتمعان بنفس الحقل) و$or متداخل — تحاكي فقط ما
+// يستخدمه withdrawalPinService.js فعلياً، لا محرّك استعلام Mongo كامل
 function matchesFilter(row, filter) {
     for (const [field, cond] of Object.entries(filter)) {
         if (field === '_id') continue;
@@ -42,6 +42,14 @@ function matchesFilter(row, filter) {
             if ('$lte' in cond) {
                 if (row[field] === null || row[field] === undefined) return false;
                 if (!(row[field] <= cond.$lte)) return false;
+            }
+            if ('$lt' in cond) {
+                if (row[field] === null || row[field] === undefined) return false;
+                if (!(row[field] < cond.$lt)) return false;
+            }
+            if ('$gt' in cond) {
+                if (row[field] === null || row[field] === undefined) return false;
+                if (!(row[field] > cond.$gt)) return false;
             }
         } else if (row[field] !== cond) {
             return false;
@@ -298,6 +306,22 @@ describe('requestPinResetCode / verifyPinResetCode — "نسيت الرمز"', (
         const second = await pinService.verifyPinResetCode('u1', req.code, '2222');
         expect(second.ok).toBe(false);
         expect(second.code).toBe('NO_PENDING_RESET');
+    });
+
+    // 🛡️ مراجعة أمنية (نفس ثغرة verifyWithdrawalPin): بدون الحجز الذرّي، 20 طلباً متزامناً بكود
+    // خاطئ كانت ستعبر فحص "العدّاد < الحد" معاً فتتجاوز RESET_CODE_MAX_ATTEMPTS تماماً من المحاولات
+    // الفعلية المسموحة (كود 6 أرقام = 1,000,000 احتمال). الآن: العدّاد لا يتجاوز الحد أبداً
+    test('20 محاولة خاطئة متزامنة حقيقية لإعادة التعيين: العدّاد لا يتجاوز الحد رغم الانفجار', async () => {
+        const db = makeDb();
+        const user = seedUser(db, { isEmailVerified: true });
+        wireMocks(db);
+        await pinService.requestPinResetCode('u1');
+
+        const results = await Promise.all(Array.from({ length: 20 }, () => pinService.verifyPinResetCode('u1', '000000', '1111')));
+
+        expect(user.pinResetAttempts).toBeLessThanOrEqual(5);
+        expect(results.every(r => r.ok === false)).toBe(true);
+        expect(results.filter(r => r.code === 'TOO_MANY_ATTEMPTS').length).toBeGreaterThanOrEqual(15);
     });
 });
 
