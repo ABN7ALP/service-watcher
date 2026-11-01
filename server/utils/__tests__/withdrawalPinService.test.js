@@ -104,7 +104,7 @@ describe('setInitialWithdrawalPin', () => {
         const user = seedUser(db, {});
         wireMocks(db);
 
-        const result = await pinService.setInitialWithdrawalPin('u1', '1234');
+        const result = await pinService.setInitialWithdrawalPin('u1', '2846');
         expect(result.ok).toBe(true);
         expect(user.withdrawalPin).toBeTruthy();
     });
@@ -114,10 +114,25 @@ describe('setInitialWithdrawalPin', () => {
         seedUser(db, { withdrawalPin: await bcrypt.hash('9999', 4) });
         wireMocks(db);
 
-        const result = await pinService.setInitialWithdrawalPin('u1', '1234');
+        const result = await pinService.setInitialWithdrawalPin('u1', '2846');
         expect(result.ok).toBe(false);
         expect(result.code).toBe('ALREADY_SET');
     });
+
+    // 🛡️ fix/agent-contact-and-wallet-pin: أرقام متكررة بالكامل أو تسلسلية (تصاعدياً/تنازلياً)
+    // تُرفَض عند الإنشاء/التغيير/إعادة التعيين — لا عند التحقق من رمز قديم (مستخدمون حاليون
+    // برمز ضعيف مسبقاً لا يُطلَب منهم تغييره الآن)
+    test.each(['0000', '1111', '9999', '1234', '2345', '6789', '0123', '4321', '9876', '3210'])(
+        'يرفض الرمز الضعيف %s عند الإنشاء', async (weakPin) => {
+            const db = makeDb();
+            seedUser(db, {});
+            wireMocks(db);
+
+            const result = await pinService.setInitialWithdrawalPin('u1', weakPin);
+            expect(result.ok).toBe(false);
+            expect(result.code).toBe('WEAK_PIN');
+        }
+    );
 });
 
 describe('verifyWithdrawalPin — الحجز الذرّي قبل bcrypt، والقفل بعد 5 محاولات خاطئة', () => {
@@ -234,16 +249,26 @@ describe('changeWithdrawalPin', () => {
         const user = seedUser(db, { withdrawalPin: await bcrypt.hash('1234', 4) });
         wireMocks(db);
 
-        const wrong = await pinService.changeWithdrawalPin('u1', '0000', '5678');
+        const wrong = await pinService.changeWithdrawalPin('u1', '0000', '7392');
         expect(wrong.ok).toBe(false);
 
-        const ok = await pinService.changeWithdrawalPin('u1', '1234', '5678');
+        const ok = await pinService.changeWithdrawalPin('u1', '1234', '7392');
         expect(ok.ok).toBe(true);
         expect(user.withdrawalBlockedUntil).toBeTruthy();
         expect(new Date(user.withdrawalBlockedUntil).getTime()).toBeGreaterThan(Date.now() + 23 * 3600000);
 
-        const verifyNew = await pinService.verifyWithdrawalPin('u1', '5678');
+        const verifyNew = await pinService.verifyWithdrawalPin('u1', '7392');
         expect(verifyNew.ok).toBe(true);
+    });
+
+    test('يرفض رمزاً جديداً ضعيفاً (متتالياً) حتى لو الرمز الحالي صحيح', async () => {
+        const db = makeDb();
+        seedUser(db, { withdrawalPin: await bcrypt.hash('1234', 4) });
+        wireMocks(db);
+
+        const result = await pinService.changeWithdrawalPin('u1', '1234', '4567');
+        expect(result.ok).toBe(false);
+        expect(result.code).toBe('WEAK_PIN');
     });
 });
 
@@ -258,6 +283,18 @@ describe('requestPinResetCode / verifyPinResetCode — "نسيت الرمز"', (
         expect(result.code).toBe('EMAIL_NOT_VERIFIED');
     });
 
+    test('رمز جديد ضعيف (متكرر) عبر إعادة التعيين: يُرفض حتى مع كود صحيح', async () => {
+        const db = makeDb();
+        const user = seedUser(db, { isEmailVerified: true, email: 'a@b.com' });
+        wireMocks(db);
+        const req = await pinService.requestPinResetCode('u1');
+
+        const result = await pinService.verifyPinResetCode('u1', req.code, '0000');
+        expect(result.ok).toBe(false);
+        expect(result.code).toBe('WEAK_PIN');
+        expect(user.pinResetCodeHash).toBeTruthy(); // ✅ لم يُستهلَك الكود لرفض شكلي
+    });
+
     test('بريد مفعَّل: كود صحيح ضمن 10 دقائق يُعيد تعيين الرمز ويُطبّق حظر السحب', async () => {
         const db = makeDb();
         const user = seedUser(db, { isEmailVerified: true, email: 'a@b.com' });
@@ -267,12 +304,12 @@ describe('requestPinResetCode / verifyPinResetCode — "نسيت الرمز"', (
         expect(req.ok).toBe(true);
         expect(user.pinResetCodeHash).toBeTruthy();
 
-        const result = await pinService.verifyPinResetCode('u1', req.code, '4321');
+        const result = await pinService.verifyPinResetCode('u1', req.code, '7534');
         expect(result.ok).toBe(true);
         expect(user.pinResetCodeHash).toBeNull();
         expect(user.withdrawalBlockedUntil).toBeTruthy();
 
-        const verifyNew = await pinService.verifyWithdrawalPin('u1', '4321');
+        const verifyNew = await pinService.verifyWithdrawalPin('u1', '7534');
         expect(verifyNew.ok).toBe(true);
     });
 
@@ -284,13 +321,13 @@ describe('requestPinResetCode / verifyPinResetCode — "نسيت الرمز"', (
 
         let last;
         for (let i = 0; i < 5; i++) {
-            last = await pinService.verifyPinResetCode('u1', '000000', '1111');
+            last = await pinService.verifyPinResetCode('u1', '000000', '7534');
         }
         expect(last.code).toBe('TOO_MANY_ATTEMPTS');
 
         user.pinResetAttempts = 0;
         user.pinResetCodeExpiresAt = new Date(Date.now() - 1000); // منتهي الصلاحية
-        const expired = await pinService.verifyPinResetCode('u1', '123456', '1111');
+        const expired = await pinService.verifyPinResetCode('u1', '123456', '7534');
         expect(expired.code).toBe('CODE_EXPIRED');
     });
 
@@ -300,10 +337,10 @@ describe('requestPinResetCode / verifyPinResetCode — "نسيت الرمز"', (
         wireMocks(db);
         const req = await pinService.requestPinResetCode('u1');
 
-        const first = await pinService.verifyPinResetCode('u1', req.code, '1111');
+        const first = await pinService.verifyPinResetCode('u1', req.code, '7534');
         expect(first.ok).toBe(true);
 
-        const second = await pinService.verifyPinResetCode('u1', req.code, '2222');
+        const second = await pinService.verifyPinResetCode('u1', req.code, '8642');
         expect(second.ok).toBe(false);
         expect(second.code).toBe('NO_PENDING_RESET');
     });
@@ -317,7 +354,7 @@ describe('requestPinResetCode / verifyPinResetCode — "نسيت الرمز"', (
         wireMocks(db);
         await pinService.requestPinResetCode('u1');
 
-        const results = await Promise.all(Array.from({ length: 20 }, () => pinService.verifyPinResetCode('u1', '000000', '1111')));
+        const results = await Promise.all(Array.from({ length: 20 }, () => pinService.verifyPinResetCode('u1', '000000', '7534')));
 
         expect(user.pinResetAttempts).toBeLessThanOrEqual(5);
         expect(results.every(r => r.ok === false)).toBe(true);

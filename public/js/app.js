@@ -15089,9 +15089,13 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
 
     // ✅ وضع مصغّر: نافذة عائمة صغيرة بزاوية الشاشة (تبقي الغرفة ظاهرة خلفها) بدل تغطية الشاشة كاملة —
     // يُستخدم عند فتح الدردشة من فقاعة رسالة واردة وأنت داخل غرفة صوتية
+    // 🛡️ fix/agent-contact-and-wallet-pin: كانت z-[300] أقل من صفحات ملء الشاشة (الشحن/لوحة الوكيل
+    // z-[340]) وحتى الشاشات المفتوحة منها (مثل قائمة الوكلاء z-[400])، فتُفتَح الدردشة خلفها فعلياً
+    // ولا يظهر شيء. z-[440] يضعها فوق كل صفحات ملء الشاشة والقوائم المفتوحة منها، تحت فقط النوافذ
+    // الحرجة (التأكيد/الإبلاغ 500+) التي يجب أن تبقى فوق أي شيء آخر دوماً
     const wrapperClass = miniMode
-        ? 'fixed bottom-20 md:bottom-6 left-2 md:left-6 z-[300] w-[88vw] max-w-[320px]'
-        : 'fixed inset-0 bg-black/80 flex items-center justify-center z-[300] p-2 md:p-4';
+        ? 'fixed bottom-20 md:bottom-6 left-2 md:left-6 z-[440] w-[88vw] max-w-[320px]'
+        : 'fixed inset-0 bg-black/80 flex items-center justify-center z-[440] p-2 md:p-4';
     const cardClass = miniMode
         ? 'bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full h-[65vh] max-h-[420px] flex flex-col overflow-hidden border-2 border-purple-500/40'
         : 'bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl h-[85vh] md:h-[80vh] flex flex-col overflow-hidden border-2 border-purple-500/30';
@@ -19367,44 +19371,51 @@ async function renderWithdrawForm(method) {
 }
 
 // تغيير/حفظ محفظة الصرف — يتطلّب الرمز (ينشئه المستخدم أولاً لو لم يملك رمزاً بعد)
+// 🛡️ fix/agent-contact-and-wallet-pin: كان الرمز يُؤخَذ أولاً (بشكل شكلي فقط — 4 إلى 6 أرقام،
+// بلا أي فحص خادم) ثم يُغلَق فوراً ويُفتَح حقل المحفظة بعده، فأي رمز "ينجح" ظاهرياً حتى لحظة
+// الحفظ الفعلية. الترتيب الصحيح (كبقية التطبيقات الكبرى): المحفظة أولاً، والرمز هو خطوة التأكيد
+// الأخيرة قبل الحفظ مباشرة — ولوحة الرمز نفسها تبقى مفتوحة عند رمز خاطئ (تُظهر remainingAttempts
+// ورسائل القفل/القفل النهائي) بدل إغلاقها قبل أي تحقق فعلي
 function mountPayoutWalletChangeFlow(onDone) {
     ensureWithdrawalPinSetup(() => {
-        promptWithdrawalPinEntry({
-            title: 'أدخل رمز السحب',
-            subtitle: 'تأكيد الهوية قبل حفظ/تغيير المحفظة',
-            onConfirm: (pin, { close }) => {
-                close();
-                const walletModal = document.createElement('div');
-                walletModal.className = 'fixed inset-0 bg-black/80 z-[420] flex items-end justify-center';
-                walletModal.innerHTML = `
-                    <div class="w-full max-w-md bg-gray-800 rounded-t-2xl p-4">
-                        <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">محفظة شام كاش</h3><button id="wm-close" class="text-gray-400 p-1"><i class="fas fa-times"></i></button></div>
-                        <input type="text" id="wm-wallet" class="w-full bg-black/30 border border-gray-700 rounded-xl p-3 text-sm mb-2" placeholder="رابط/رقم محفظة شام كاش">
-                        <p id="wm-error" class="text-xs text-red-400 mb-2 min-h-[1rem]"></p>
-                        <button id="wm-submit" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">حفظ</button>
-                    </div>
-                `;
-                document.body.appendChild(walletModal);
-                const closeW = () => walletModal.remove();
-                walletModal.querySelector('#wm-close').addEventListener('click', closeW);
-                walletModal.addEventListener('click', (e) => { if (e.target === walletModal) closeW(); });
-                walletModal.querySelector('#wm-submit').addEventListener('click', async () => {
-                    const walletNumber = walletModal.querySelector('#wm-wallet').value.trim();
-                    const errEl = walletModal.querySelector('#wm-error');
-                    if (!walletNumber || walletNumber.length < 3) { errEl.textContent = 'أدخل رقم محفظة صالح'; return; }
+        const walletModal = document.createElement('div');
+        walletModal.className = 'fixed inset-0 bg-black/80 z-[420] flex items-end justify-center';
+        walletModal.innerHTML = `
+            <div class="w-full max-w-md bg-gray-800 rounded-t-2xl p-4">
+                <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">محفظة شام كاش</h3><button id="wm-close" class="text-gray-400 p-1"><i class="fas fa-times"></i></button></div>
+                <input type="text" id="wm-wallet" class="w-full bg-black/30 border border-gray-700 rounded-xl p-3 text-sm mb-2" placeholder="رابط/رقم محفظة شام كاش">
+                <p id="wm-error" class="text-xs text-red-400 mb-2 min-h-[1rem]"></p>
+                <button id="wm-submit" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">حفظ</button>
+            </div>
+        `;
+        document.body.appendChild(walletModal);
+        const closeW = () => walletModal.remove();
+        walletModal.querySelector('#wm-close').addEventListener('click', closeW);
+        walletModal.addEventListener('click', (e) => { if (e.target === walletModal) closeW(); });
+        walletModal.querySelector('#wm-submit').addEventListener('click', () => {
+            const walletNumber = walletModal.querySelector('#wm-wallet').value.trim();
+            const errEl = walletModal.querySelector('#wm-error');
+            errEl.textContent = '';
+            if (!walletNumber || walletNumber.length < 3) { errEl.textContent = 'أدخل رقم محفظة صالح'; return; }
+
+            promptWithdrawalPinEntry({
+                title: 'أدخل رمز السحب',
+                subtitle: 'تأكيد الهوية قبل حفظ المحفظة',
+                onConfirm: async (pin, { close: closePinPad, setError }) => {
                     try {
                         const res = await fetch('/api/withdrawals/payout-wallet', {
                             method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                             body: JSON.stringify({ pin, walletNumber })
                         });
                         const result = await res.json();
-                        if (!res.ok) { errEl.textContent = withdrawalPinErrorMessage(result); return; }
+                        if (!res.ok) { setError(withdrawalPinErrorMessage(result)); return; }
+                        closePinPad();
                         closeW();
                         showNotification(result.message || 'تم حفظ المحفظة', 'success');
                         onDone?.();
-                    } catch (e) { errEl.textContent = 'خطأ في الاتصال بالخادم'; }
-                });
-            }
+                    } catch (e) { setError('خطأ في الاتصال بالخادم'); }
+                }
+            });
         });
     });
 }
@@ -20750,7 +20761,7 @@ function toggleChatActionsMenu(anchorBtn, targetUserId) {
     const rect = anchorBtn.getBoundingClientRect();
 
     const menuHTML = `
-        <div id="chat-actions-dropdown" class="fixed bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-48 z-[310] overflow-hidden"
+        <div id="chat-actions-dropdown" class="fixed bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-48 z-[450] overflow-hidden"
              style="top: ${rect.bottom + 8}px; left: ${Math.max(rect.left - 140, 8)}px;">
             <button id="chat-menu-view-profile" class="w-full text-right px-4 py-3 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2">
                 <i class="fas fa-user text-purple-400"></i> عرض الملف الشخصي
@@ -21083,7 +21094,7 @@ function showImageUploadModal(targetUserId) {
     if (optionsBar) optionsBar.classList.add('hidden');
 
     const modalHTML = `
-        <div id="image-upload-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[350] p-4">
+        <div id="image-upload-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[460] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700">
 
                 <div class="flex items-center justify-between p-4 border-b border-gray-700">
@@ -21378,7 +21389,7 @@ function showVideoUploadModal(targetUserId) {
     if (optionsBar) optionsBar.classList.add('hidden');
 
     const modalHTML = `
-        <div id="video-upload-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[350] p-4">
+        <div id="video-upload-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[460] p-4">
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl w-full max-w-md text-white border border-gray-700">
 
                 <div class="flex items-center justify-between p-4 border-b border-gray-700">
@@ -22428,7 +22439,7 @@ function attachMessageOptionsMenu(messageElement, message, isMyMessage) {
 
         const rect = btn.getBoundingClientRect();
         const menuHTML = `
-            <div id="msg-options-dropdown" class="fixed bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-44 z-[310] overflow-hidden text-sm"
+            <div id="msg-options-dropdown" class="fixed bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-44 z-[450] overflow-hidden text-sm"
                  style="top: ${rect.bottom + 6}px; left: ${Math.max(rect.left - 130, 8)}px;">
                 ${canEdit ? `<button class="w-full text-right px-4 py-2.5 text-gray-200 hover:bg-gray-700 flex items-center gap-2 msg-menu-edit"><i class="fas fa-pen text-blue-400"></i> تعديل</button>` : ''}
                 ${canDelete5Min ? `<button class="w-full text-right px-4 py-2.5 text-red-400 hover:bg-gray-700 flex items-center gap-2 msg-menu-delete-everyone border-t border-gray-700"><i class="fas fa-trash"></i> حذف لدى الجميع</button>` : ''}
@@ -22526,7 +22537,7 @@ function showFullImage(imageUrl, message) {
     if (existing) existing.remove();
 
     const viewerHTML = `
-        <div id="full-image-viewer" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[400] p-4">
+        <div id="full-image-viewer" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[470] p-4">
             <button id="close-full-image" class="absolute top-4 right-4 text-white text-2xl w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center">
                 <i class="fas fa-times"></i>
             </button>
@@ -22553,7 +22564,7 @@ function openViewOnceImage(messageId, imageUrl, messageElement) {
     let remaining = VIEW_SECONDS;
 
     const viewerHTML = `
-        <div id="view-once-viewer" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[400] p-6">
+        <div id="view-once-viewer" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[470] p-6">
             <div class="relative w-full max-w-xs">
                 <div class="flex items-center justify-between mb-2 text-white text-xs">
                     <span class="flex items-center gap-1 text-yellow-400">
@@ -22622,7 +22633,7 @@ function openViewOnceVideo(messageId, videoUrl, messageElement) {
     let remaining = VIEW_SECONDS;
 
     const viewerHTML = `
-        <div id="view-once-viewer" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[400] p-6">
+        <div id="view-once-viewer" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[470] p-6">
             <div class="relative w-full max-w-sm">
                 <div class="flex items-center justify-between mb-2 text-white text-xs">
                     <span class="flex items-center gap-1 text-yellow-400">
@@ -23407,7 +23418,7 @@ function showVideoPlayer(videoUrl, message) {
         : '';
 
     const viewerHTML = `
-        <div id="video-player-modal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[400] p-4">
+        <div id="video-player-modal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[470] p-4">
             <div class="relative w-full max-w-lg">
                 <button id="close-video-player" class="absolute -top-10 right-0 text-white text-2xl w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center">
                     <i class="fas fa-times"></i>

@@ -14,6 +14,18 @@ const RESET_CODE_MAX_ATTEMPTS = 5;
 
 const isValidPinFormat = (pin) => typeof pin === 'string' && /^\d{4,6}$/.test(pin);
 
+// 🛡️ fix/agent-contact-and-wallet-pin: يرفض أرقاماً متكررة بالكامل (0000, 1111…) أو متتالية
+// تصاعدياً/تنازلياً برقم واحد (1234, 4321, 0123, 9876…) — أول ما يُجرَّب بأي هجوم تخمين حتى
+// بلا أي معرفة مسبقة بالضحية. لا يُطبَّق عند التحقق (verifyWithdrawalPin) — مستخدمون حاليون
+// برمز ضعيف مسبقاً ليسوا مُلزَمين بتغييره الآن، فقط رمز جديد/مُعاد تعيينه لا يمكن أن يكون ضعيفاً
+const isWeakPin = (pin) => {
+    if (/^(\d)\1+$/.test(pin)) return true;
+    const digits = pin.split('').map(Number);
+    const ascending = digits.every((d, i) => i === 0 || d === digits[i - 1] + 1);
+    const descending = digits.every((d, i) => i === 0 || d === digits[i - 1] - 1);
+    return ascending || descending;
+};
+
 const hashPin = (pin) => bcrypt.hash(pin, 12);
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
@@ -120,6 +132,7 @@ async function lockOutUser(userId, io) {
 // الإنشاء الأول — ذرّي بشرط withdrawalPin:null يمنع إعادة إنشاء (استخدم changePin للتغيير)
 async function setInitialWithdrawalPin(userId, pin) {
     if (!isValidPinFormat(pin)) return { ok: false, code: 'BAD_FORMAT' };
+    if (isWeakPin(pin)) return { ok: false, code: 'WEAK_PIN' };
     const hash = await hashPin(pin);
     const updated = await User.findOneAndUpdate(
         { _id: userId, withdrawalPin: null },
@@ -139,6 +152,7 @@ async function getPostResetBlockHours() {
 // تغيير الرمز (يعرفه المستخدم فعلاً) — يتحقق من الرمز الحالي بآلية القفل نفسها
 async function changeWithdrawalPin(userId, currentPin, newPin, io = null) {
     if (!isValidPinFormat(newPin)) return { ok: false, code: 'BAD_FORMAT' };
+    if (isWeakPin(newPin)) return { ok: false, code: 'WEAK_PIN' };
     const verify = await verifyWithdrawalPin(userId, currentPin, io);
     if (!verify.ok) return verify;
 
@@ -179,6 +193,7 @@ async function requestPinResetCode(userId) {
 // المقارنة فقط على النتيجة المحجوزة
 async function verifyPinResetCode(userId, code, newPin) {
     if (!isValidPinFormat(newPin)) return { ok: false, code: 'BAD_FORMAT' };
+    if (isWeakPin(newPin)) return { ok: false, code: 'WEAK_PIN' };
     const now = new Date();
 
     const reserved = await User.findOneAndUpdate(
@@ -256,7 +271,7 @@ function isWithdrawalBlocked(user) {
 module.exports = {
     PIN_LOCKOUT_MAX_ATTEMPTS, PIN_LOCKOUT_MINUTES, WALLET_CHANGE_HOLD_HOURS,
     RESET_CODE_EXPIRY_MINUTES, RESET_CODE_MAX_ATTEMPTS,
-    isValidPinFormat, hashPin,
+    isValidPinFormat, isWeakPin, hashPin,
     verifyWithdrawalPin, setInitialWithdrawalPin, changeWithdrawalPin,
     requestPinResetCode, verifyPinResetCode, changePayoutWallet,
     isWithdrawalBlocked
