@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Agent = require('../models/Agent');
 const AgentPurchase = require('../models/AgentPurchase');
 const AgentTransfer = require('../models/AgentTransfer');
+const AgentDailyCounter = require('../models/AgentDailyCounter');
 const SystemSettings = require('../models/SystemSettings');
 const walletService = require('../utils/walletService');
 const linkageService = require('../utils/linkageService');
@@ -144,6 +145,11 @@ exports.transfer = async (req, res) => {
         if (coinsInt > settings.agentTransferMaxCoins) {
             return res.status(400).json({ status: 'fail', message: `الحد الأقصى للتحويل الواحد ${settings.agentTransferMaxCoins} كوينز` });
         }
+        // ✅ فحص مبكر رخيص فقط (تحويل واحد يتجاوز السقف اليومي كاملاً وحده) — ليس الحارس الأمني
+        // الحقيقي؛ ذاك هو الزيادة الذرّية بشرط داخل المعاملة أدناه (AgentDailyCounter)
+        if (coinsInt > settings.agentDailyCapCoins) {
+            return res.status(400).json({ status: 'fail', message: `يتجاوز هذا المبلغ الحد اليومي للتحويلات (${settings.agentDailyCapCoins} كوينز)` });
+        }
 
         // 🛡️ TODO(fix/wallet-pin-and-polish): رمز السحب جزء من PR منفصل — يُفعَّل تلقائياً بمجرد
         // دمجه (الإعداد يبقى false حتى الدمج)؛ لو فُعِّل الإعداد قبل دمج الخدمة فعلياً نرفض بوضوح
@@ -177,24 +183,35 @@ exports.transfer = async (req, res) => {
             return res.status(200).json({ status: 'success', message: 'تم التحويل مسبقاً', data: { transfer: existing } });
         }
 
-        const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-        const todayAgg = await AgentTransfer.aggregate([
-            { $match: { agent: agent._id, createdAt: { $gte: startOfToday } } },
-            { $group: { _id: null, total: { $sum: '$coins' } } }
-        ]);
-        const todayTotal = todayAgg[0]?.total || 0;
-        if (todayTotal + coinsInt > settings.agentDailyCapCoins) {
-            return res.status(400).json({
-                status: 'fail',
-                message: `تجاوزت الحد اليومي للتحويلات (${settings.agentDailyCapCoins} كوينز). المتبقي اليوم: ${Math.max(settings.agentDailyCapCoins - todayTotal, 0)}`
-            });
-        }
-
+        // 🛡️ مراجعة أمنية (تدقيق ما بعد الفتح): الفحص السابق كان تجميعاً (aggregate) خارج معاملة
+        // التحويل — عدّة تحويلات متزامنة تقرأ نفس "إجمالي اليوم" القديم معاً فتتجاوز السقف جماعياً.
+        // الآن: AgentDailyCounter بفهرس فريد {agent, day} + زيادة ذرّية بشرط ضمن نفس معاملة
+        // التحويل (أدناه) — تجاوز السقف يُسقِط المعاملة كاملة (DAILY_CAP_EXCEEDED)
+        const dayKey = new Date().toISOString().slice(0, 10);
         const idemBase = new mongoose.Types.ObjectId();
         const session = await mongoose.startSession();
         let transferDoc = null;
         try {
             await session.withTransaction(async () => {
+                // ✅ خطوتان: الأولى تضمن وجود مستند العدّاد (upsert صِرف بلا شرط نطاق — تكراره
+                // بالتزامن آمن تماماً، أي تعارض حقيقي على نفس {agent,day} يُسقِط المعاملة فتُعاد
+                // محاولتها تلقائياً عبر session.withTransaction، لا E11000 يتسرّب إطلاقاً). الثانية
+                // هي الزيادة الذرّية الحقيقية بشرط السقف — بلا upsert هنا، ففشل الشرط يُعيد null
+                // بأمان (لا محاولة إدراج تصطدم بالفهرس الفريد لمستند موجود أصلاً فشل شرطه فقط)
+                await AgentDailyCounter.updateOne(
+                    { agent: agent._id, day: dayKey },
+                    { $setOnInsert: { agent: agent._id, day: dayKey, totalCoins: 0 } },
+                    { upsert: true, session }
+                );
+                const counter = await AgentDailyCounter.findOneAndUpdate(
+                    { agent: agent._id, day: dayKey, totalCoins: { $lte: settings.agentDailyCapCoins - coinsInt } },
+                    { $inc: { totalCoins: coinsInt } },
+                    { new: true, session }
+                );
+                if (!counter) {
+                    throw Object.assign(new Error('تجاوزت الحد اليومي للتحويلات'), { code: 'DAILY_CAP_EXCEEDED' });
+                }
+
                 await walletService.post([
                     {
                         user: agentUserId, wallet: 'agent_inventory', delta: -coinsInt, type: 'agent_transfer',
@@ -219,6 +236,9 @@ exports.transfer = async (req, res) => {
                 );
             });
         } catch (txError) {
+            if (txError.code === 'DAILY_CAP_EXCEEDED') {
+                return res.status(400).json({ status: 'fail', code: 'DAILY_CAP_EXCEEDED', message: `تجاوزت الحد اليومي للتحويلات (${settings.agentDailyCapCoins} كوينز)` });
+            }
             if (txError.code === 11000) {
                 // ✅ سباق حقيقي على نفس clientRequestId (طلبان متزامنان) — الفائز أنشأ السجل،
                 // نعيد نتيجته للخاسر بدل خطأ غير مفيد له

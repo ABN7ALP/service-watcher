@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const User = require('../../models/User');
 const Agent = require('../../models/Agent');
 const AgentTransfer = require('../../models/AgentTransfer');
+const AgentDailyCounter = require('../../models/AgentDailyCounter');
 const LedgerEntry = require('../../models/LedgerEntry');
 const SystemSettings = require('../../models/SystemSettings');
 const linkageService = require('../../utils/linkageService');
@@ -23,7 +24,7 @@ function chainable(value) {
 }
 
 function makeDb() {
-    return { users: new Map(), agents: new Map(), transfers: new Map(), ledgerByKey: new Map(), _locks: new Map() };
+    return { users: new Map(), agents: new Map(), transfers: new Map(), dailyCounters: new Map(), ledgerByKey: new Map(), _locks: new Map() };
 }
 
 const AGENT_USER_ID = '507f191e810c19729de860ea';
@@ -74,12 +75,33 @@ function wireMocks(db) {
         const match = Array.from(db.transfers.values()).find(t => String(t.agent) === String(filter.agent) && t.clientRequestId === filter.clientRequestId);
         return chainable(match || null);
     });
-    jest.spyOn(AgentTransfer, 'aggregate').mockResolvedValue([]);
     jest.spyOn(AgentTransfer, 'create').mockImplementation((docs) => {
         acquireLock(db, docs[0]._id ? String(docs[0]._id) : 'new-transfer-placeholder');
         const created = docs.map(d => ({ ...d }));
         created.forEach(d => db.transfers.set(String(d._id), d));
         return Promise.resolve(created);
+    });
+
+    // 🛡️ مراجعة أمنية (تدقيق ما بعد الفتح): العدّاد اليومي الذرّي — خطوة "ضمان الوجود" (idempotent،
+    // بلا محاكاة تضارب، تماماً كالخادم الحقيقي upsert بلا شرط نطاق)، ثم الزيادة الذرّية الحقيقية
+    // بشرط السقف تشارك نفس قفل/تراجع المعاملة (acquireLock/recordUndo) كبقية عمليات المعاملة
+    jest.spyOn(AgentDailyCounter, 'updateOne').mockImplementation((filter, update) => {
+        const key = `${filter.agent}:${filter.day}`;
+        if (!db.dailyCounters.has(key)) {
+            db.dailyCounters.set(key, { agent: filter.agent, day: filter.day, totalCoins: 0, ...(update.$setOnInsert || {}) });
+        }
+        return chainable({ acknowledged: true });
+    });
+    jest.spyOn(AgentDailyCounter, 'findOneAndUpdate').mockImplementation((filter, update) => {
+        const key = `${filter.agent}:${filter.day}`;
+        const row = db.dailyCounters.get(key);
+        if (!row) return chainable(null);
+        acquireLock(db, key);
+        const cap = filter.totalCoins && typeof filter.totalCoins.$lte === 'number' ? filter.totalCoins.$lte : null;
+        if (cap !== null && row.totalCoins > cap) return chainable(null);
+        recordUndo(db, db.dailyCounters, key, { ...row });
+        if (update.$inc) for (const k of Object.keys(update.$inc)) row[k] = (row[k] || 0) + update.$inc[k];
+        return chainable({ ...row });
     });
 
     jest.spyOn(User, 'findById').mockImplementation((id) => chainable(db.users.get(String(id)) || null));
@@ -262,7 +284,7 @@ describe('agentController.transfer — تضارب الكتابة الحقيقي 
         expect(db.transfers.size).toBe(0);
     });
 
-    test('تجاوز الحد اليومي: يُرفض التحويل الذي يتجاوز agentDailyCapCoins', async () => {
+    test('تجاوز الحد اليومي: يُرفض التحويل الذي يتجاوز agentDailyCapCoins (عدّاد موجود مسبقاً)', async () => {
         const db = makeDb();
         seedStandard(db, { inventory: 100000 });
         wireMocks(db);
@@ -270,7 +292,9 @@ describe('agentController.transfer — تضارب الكتابة الحقيقي 
             agentTransferMinCoins: 1000, agentTransferMaxCoins: 500000, agentDailyCapCoins: 5000,
             agentTransferRequirePin: false
         });
-        AgentTransfer.aggregate.mockResolvedValue([{ _id: null, total: 4000 }]);
+        // ✅ 4000 كوينز مُحوَّلة اليوم فعلاً (عدّاد ذرّي موجود مسبقاً) — 2000 إضافية تتجاوز الـ5000
+        const dayKey = new Date().toISOString().slice(0, 10);
+        db.dailyCounters.set(`${AGENT_DOC_ID}:${dayKey}`, { agent: AGENT_DOC_ID, day: dayKey, totalCoins: 4000 });
 
         const req = mockReq({ body: { toCustomId: 'R1', coins: 2000, clientRequestId: 'req-cap' } });
         const res = mockRes();
@@ -279,6 +303,59 @@ describe('agentController.transfer — تضارب الكتابة الحقيقي 
         expect(res.status).toHaveBeenCalledWith(400);
         const body = res.json.mock.calls[0][0];
         expect(body.message).toContain('اليومي');
+        // ✅ المعاملة سقطت كاملة — لا خصم فعلي من المخزون رغم محاولة الخصم قبل فشل العدّاد لاحقاً
+        expect(db.users.get(AGENT_USER_ID).walletAgentInventory).toBe(100000);
+        expect(db.dailyCounters.get(`${AGENT_DOC_ID}:${dayKey}`).totalCoins).toBe(4000); // لم يتغيّر
+    });
+
+    test('تحويل واحد يتجاوز السقف اليومي كاملاً وحده: يُرفض فوراً (فحص مبكر)', async () => {
+        const db = makeDb();
+        seedStandard(db, { inventory: 100000 });
+        wireMocks(db);
+        SystemSettings.getSettings.mockResolvedValue({
+            agentTransferMinCoins: 1000, agentTransferMaxCoins: 500000, agentDailyCapCoins: 5000,
+            agentTransferRequirePin: false
+        });
+
+        const req = mockReq({ body: { toCustomId: 'R1', coins: 6000, clientRequestId: 'req-huge' } });
+        const res = mockRes();
+        await agentController.transfer(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(db.transfers.size).toBe(0);
+    });
+
+    test('🛡️ تجاوز الحد اليومي بتزامن حقيقي: تحويلان متزامنان مجموعهما يتجاوز السقف — واحد فقط ينجح', async () => {
+        const db = makeDb();
+        seedStandard(db, { inventory: 100000 });
+        wireMocks(db);
+        SystemSettings.getSettings.mockResolvedValue({
+            agentTransferMinCoins: 1000, agentTransferMaxCoins: 500000, agentDailyCapCoins: 5000,
+            agentTransferRequirePin: false
+        });
+
+        // 🛡️ هذا بالضبط الثغرة المُصلَحة: كان الفحص القديم تجميعاً (aggregate) خارج المعاملة —
+        // كلا الطلبين كانا يقرآن "0 اليوم" معاً فيمرّان كلاهما رغم أن مجموعهما (3000+3000=6000)
+        // يتجاوز السقف (5000). الآن AgentDailyCounter الذرّي ضمن نفس معاملة كل تحويل يمنع هذا
+        const body1 = { toCustomId: 'R1', coins: 3000, clientRequestId: 'req-concurrent-A' };
+        const body2 = { toCustomId: 'R1', coins: 3000, clientRequestId: 'req-concurrent-B' };
+        const req1 = mockReq({ body: body1 });
+        const res1 = mockRes();
+        const req2 = mockReq({ body: body2 });
+        const res2 = mockRes();
+
+        await Promise.all([agentController.transfer(req1, res1), agentController.transfer(req2, res2)]);
+
+        const bodies = [res1.json.mock.calls[0][0], res2.json.mock.calls[0][0]];
+        const successCount = bodies.filter(b => b.status === 'success').length;
+        const failCount = bodies.filter(b => b.status === 'fail').length;
+
+        expect(successCount).toBe(1); // ✅ جوهر الإصلاح: ليس 2
+        expect(failCount).toBe(1);
+        const dayKey = new Date().toISOString().slice(0, 10);
+        expect(db.dailyCounters.get(`${AGENT_DOC_ID}:${dayKey}`).totalCoins).toBe(3000); // لا 6000
+        expect(db.users.get(AGENT_USER_ID).walletAgentInventory).toBe(97000); // 100000 - 3000 مرة واحدة فقط
+        expect(db.transfers.size).toBe(1);
     });
 
     test('أقل من الحد الأدنى: يُرفض', async () => {
