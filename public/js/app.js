@@ -11128,6 +11128,28 @@ socket.on('customGiftStatusUpdated', ({ customGiftId, status, reason }) => {
     }
 });
 
+// 🛡️ fix/round-buttons-gift-live-upload: تبث لوحة التحكم هذا الحدث لكل العملاء المتصلين فور
+// تعطيل/تفعيل/تعديل/حذف أي هدية (راجع adminController.saveGift/deleteGift) — كان كتالوج
+// الهدايا (giftShopDataCache) يبقى مؤقَّتاً حتى 5 دقائق أو إعادة تحميل كاملة للصفحة بصرف النظر
+// عن تعطيل هدية فعلياً، فتبقى ظاهرة وقابلة للإرسال بشيت أي عميل فتحه قبل التعديل. إبطال الكاش
+// (بالذاكرة + localStorage) فوراً هنا يضمن أن أي فتح لاحق للشيت يجلب القائمة الصحيحة؛ نفس فلسفة
+// customGiftStatusUpdated أعلاه لكن عالمياً لا لمستخدم واحد.
+// 🛡️ مراجعة PR #144: الشيت المفتوح فعلياً حالياً (لا فقط الفتحات اللاحقة) يُحدَّث في مكانه
+// مباشرة أيضاً — هذا بالضبط ما اشتكى منه المستخدم أصلاً (هدية مُعطَّلة تبقى ظاهرة بشيت مفتوح
+// حتى إعادة التحميل). roomGiftModalHandlers.onGiftsChanged (مُعرَّفة بكل فتح لـshowRoomGiftModal)
+// تُعيد الجلب وترسم الشبكة بنفس التبويب المختار، وتُلغي تحديد الهدية لو لم تعد متاحة
+socket.on('gifts:changed', () => {
+    giftShopDataCache = null;
+    giftShopDataFetchedAt = 0;
+    giftShopDataEtag = null;
+    try { localStorage.removeItem(GIFT_SHOP_LS_KEY); } catch (e) { /* تجاهل صامت — راجع نفس منطق saveGiftShopCacheToLocalStorage */ }
+
+    const sheet = document.getElementById('room-gift-modal');
+    if (sheet && !sheet.classList.contains('hidden')) {
+        roomGiftModalHandlers.onGiftsChanged?.();
+    }
+});
+
 
    // --- ✅ دالة جديدة لنافذة التأكيد ---
 function showConfirmationModal(message, onConfirm) {
@@ -15569,7 +15591,7 @@ const GSHEET_QTY_LABELS = { 1: '', 10: 'عشرة', 66: 'سلامة', 99: 'دوا
 // الكمية/شريط الثروة) يُعاد رسمه بكل فتح كالسابق تماماً. المستمعات الثابتة (الكل/تبديل الكمية/
 // إرسال) تُربَط مرة واحدة فقط وتستدعي أحدث نسخة من المعالجات الحقيقية عبر هذي الوسيطة (تُعاد
 // كتابتها بكل فتح) بدل تكرار addEventListener على نفس الزر في كل مرة
-let roomGiftModalHandlers = { onAllBtn: null, onQtyToggle: null, onSend: null, onRecharge: null };
+let roomGiftModalHandlers = { onAllBtn: null, onQtyToggle: null, onSend: null, onRecharge: null, onGiftsChanged: null };
 function hideRoomGiftModal() {
     document.getElementById('room-gift-modal')?.classList.add('hidden');
 }
@@ -15979,6 +16001,27 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             openGiftLowBalanceSheet(Math.max(0, cost - (localUser.coins || 0)));
         };
 
+        // 🛡️ fix/round-buttons-gift-live-upload: الشيت كان يبطل كاش الكتالوج فقط عند وصول
+        // gifts:changed (يحتاج إعادة فتح الشيت ليظهر الأثر) — لو كان هذا الشيت نفسه مفتوحاً
+        // فعلياً حين يصل الحدث، نعيد الجلب (الكاش مُبطَل أصلاً فهذا نداء شبكة حقيقي) ونعيد رسم
+        // الشبكة في مكانها مباشرة: نفس التبويب المختار كما هو، والهدية المحدَّدة تُلغى صراحة لو
+        // لم تعد ضمن الكتالوج الحالي (عُطِّلت/حُذفت) بدل تحديد هدية أخرى تلقائياً مكانها
+        roomGiftModalHandlers.onGiftsChanged = async () => {
+            try {
+                shopData = await getGiftShopData();
+                if (sel) {
+                    const stillAvailable = tab === 'custom'
+                        ? getMyCustomTiles().some(g => g.id === sel.id && !g.pending)
+                        : (shopData.gifts[tab] || []).some(g => g.id === sel.id);
+                    if (!stillAvailable) sel = null;
+                }
+                renderGrid();
+                renderWealth();
+            } catch (e) {
+                console.error('[GIFT SHEET] live refresh after gifts:changed failed:', e);
+            }
+        };
+
         // ✅ عرض فوري: التبويبات/الشبكة/الكمية لا تعتمد على مقاعد الغرفة إطلاقاً — تُرسَم
         // بمجرّد توفّر shopData (من الكاش أعلاه عادةً، بلا أي انتظار شبكة). صف المستلمين/شريط
         // الثروة يُعرضان بحالة تحميل مؤقتة (recipientsLoaded=false) حتى تصل المقاعد أدناه
@@ -16026,6 +16069,64 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
     }
 }
 
+// 🛡️ fix/round-buttons-gift-live-upload: يضغط صورة هدية مخصّصة بالعميل قبل الرفع (قماش →
+// WebP بحد أقصى 512px لأطول ضلع) — يقلّل زمن الرفع الفعلي على اتصال بطيء، منفصل تماماً عن
+// تحويل Cloudinary الخادمي (256×256 webp) الذي يبقى كما هو لتثبيت الحجم المخزَّن نهائياً.
+// JPEG/PNG فقط عمداً — GIF متحركة تُسطَّح لإطار واحد ثابت بإعادة الرسم على قماش، وWebP قد تكون
+// متحركة هي الأخرى (animated WebP) فتُسطَّح لنفس السبب بالضبط رغم كونها صيغة الإخراج نفسها هنا
+// (لا طريقة بسيطة لفحص "متحركة أم لا" قبل المحاولة فعلياً، فالأسلم استثناء الصيغة كاملة).
+// أي فشل (متصفح لا يدعم canvas.toBlob بنوع webp، أو أي استثناء آخر) يعيد الملف الأصلي كما هو
+// بصمت — ميزة تسريع اختيارية لا يجوز أن تُسقِط الرفع نفسه
+async function compressImageForUpload(file, maxSide = 512, quality = 0.85) {
+    if (file.type !== 'image/jpeg' && file.type !== 'image/png') return file;
+    try {
+        const bitmap = await createImageBitmap(file);
+        const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+        const outW = Math.max(1, Math.round(bitmap.width * scale));
+        const outH = Math.max(1, Math.round(bitmap.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = outW;
+        canvas.height = outH;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0, outW, outH);
+        bitmap.close?.();
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
+        // ✅ لا فائدة من نسخة "مضغوطة" أكبر من الأصل (صور صغيرة جداً أصلاً قد تكبر بتحويل الصيغة)
+        if (!blob || blob.size >= file.size) return file;
+        const newName = file.name.replace(/\.[^.]+$/, '') + '.webp';
+        return new File([blob], newName, { type: 'image/webp' });
+    } catch (e) {
+        console.error('[CUSTOM GIFT] compression failed, uploading original file:', e);
+        return file;
+    }
+}
+
+// ✅ XMLHttpRequest لا fetch عمداً — fetch لا يملك أي حدث تقدّم رفع (upload progress) أصلاً؛
+// xhr.upload.onprogress هو السبيل الوحيد لشريط تقدّم حقيقي بنسبة مئوية فعلية أثناء الرفع.
+// 🛡️ onUploadSent (اختياري) يُستدعى عند xhr.upload 'load' — كل البايتات وصلت السيرفر فعلاً،
+// لكن الرد (معالجة Cloudinary + الخصم الذرّي) لم يصل بعد؛ بدونه يبقى الشريط عالقاً على 100%
+// طوال معالجة السيرفر فيبدو مجمَّداً (راجع استخدامه بـshowCustomGiftDesignModal لحالة "جارٍ
+// معالجة الصورة" غير المحدَّدة المدة)
+function uploadFormDataWithProgress(url, formData, onProgress, onUploadSent) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', url);
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+        });
+        xhr.upload.addEventListener('load', () => onUploadSent?.());
+        xhr.addEventListener('load', () => {
+            let result = null;
+            try { result = JSON.parse(xhr.responseText); } catch (e) { /* رد غير JSON — result تبقى null */ }
+            resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, result });
+        });
+        xhr.addEventListener('error', () => reject(new Error('network error')));
+        xhr.addEventListener('abort', () => reject(new Error('aborted')));
+        xhr.send(formData);
+    });
+}
+
 // ✅ هدايا v2 — المرحلة 4: مودال "صمّم هديتك" — مطابق قدر الإمكان لـ
 // docs/design/gift-system-prototype.html (معاينة رفع، اسم ≤12 حرفاً، كبسولتا سعر من السيرفر،
 // "ادفع X وأرسل للمراجعة"). نافذة منفصلة فوق شيت الهدايا (لا داخل .gsheet — راجع تعليق CSS
@@ -16058,6 +16159,10 @@ function showCustomGiftDesignModal(rules, onCreated) {
             <div class="gsheet-custom-pricerow">
                 <div class="gsheet-custom-pbox"><small>تكلفة التصميم (مرة واحدة)</small><b>${coinIconHTML(12)}${designFee.toLocaleString('en-US')}</b></div>
                 <div class="gsheet-custom-pbox"><small>سعر كل إرسال</small><b>${coinIconHTML(12)}${sendPrice.toLocaleString('en-US')}</b></div>
+            </div>
+            <div class="gsheet-custom-progress" id="cg-progress">
+                <div class="gsheet-custom-progress-track"><div class="gsheet-custom-progress-fill" id="cg-progress-fill"></div></div>
+                <p class="gsheet-custom-progress-pct" id="cg-progress-pct">0%</p>
             </div>
             <div class="gsheet-custom-row">
                 <button type="button" id="cg-cancel">إلغاء</button>
@@ -16095,27 +16200,57 @@ function showCustomGiftDesignModal(rules, onCreated) {
     });
     nameInput.addEventListener('input', checkReady);
 
+    const progressWrap = document.getElementById('cg-progress');
+    const progressFill = document.getElementById('cg-progress-fill');
+    const progressPct = document.getElementById('cg-progress-pct');
+    const setProgress = (pct) => {
+        progressWrap.classList.remove('indeterminate');
+        progressFill.style.width = `${pct}%`;
+        progressPct.textContent = `${pct}%`;
+    };
+    // 🛡️ fix/round-buttons-gift-live-upload: كل البايتات وصلت السيرفر (xhr.upload 'load') لكن
+    // الرد (معالجة Cloudinary + الخصم الذرّي) لم يصل بعد — بدون هذا يبقى الشريط ثابتاً على 100%
+    // طوال معالجة السيرفر فيبدو مجمَّداً. "indeterminate" (حركة متدرّجة بلا نسبة محدَّدة، راجع
+    // CSS) + نص واضح بدل رقم وهمي لا نعرف قيمته الحقيقية
+    const setProcessing = () => {
+        progressFill.style.width = '100%';
+        progressWrap.classList.add('indeterminate');
+        progressPct.textContent = 'جارٍ معالجة الصورة…';
+    };
+    const resetBusyUI = () => {
+        goBtn.disabled = false;
+        goBtn.textContent = goLabel(false);
+        progressWrap.classList.remove('active');
+        setProgress(0);
+    };
+
     goBtn.addEventListener('click', async () => {
         if (!selectedFile || !nameInput.value.trim()) return;
         goBtn.disabled = true;
         goBtn.textContent = goLabel(true);
         try {
+            // ✅ ضغط بالعميل قبل الرفع (راجع compressImageForUpload) — يقلّل حجم الرفع الفعلي
+            // على اتصال بطيء؛ يعيد الملف الأصلي بصمت لو فشل أو لم يُفِد (مثلاً GIF متحركة)
+            const uploadFile = await compressImageForUpload(selectedFile);
+
             const formData = new FormData();
-            formData.append('giftImage', selectedFile);
+            formData.append('giftImage', uploadFile);
             formData.append('name', nameInput.value.trim());
-            const response = await fetch('/api/gifts/custom', {
-                method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData
-            });
-            const result = await response.json();
-            if (!response.ok || result.status !== 'success') {
-                if (result.code === 'INSUFFICIENT') {
+
+            progressWrap.classList.add('active');
+            setProgress(0);
+            const { ok, result } = await uploadFormDataWithProgress('/api/gifts/custom', formData, setProgress, setProcessing);
+
+            if (!ok || !result || result.status !== 'success') {
+                if (result?.code === 'INSUFFICIENT') {
                     overlay.remove();
                     openGiftLowBalanceSheet(Math.max(0, (result.needed || designFee) - (result.balance || 0)));
                     return;
                 }
-                showNotification(result.message || 'تعذّر إنشاء الهدية', 'error');
-                goBtn.disabled = false;
-                goBtn.textContent = goLabel(false);
+                // ✅ "خطأ واضح + إعادة محاولة": رسالة فورية عبر showNotification، والزر يعود قابلاً
+                // للضغط فوراً بنفس الملف/الاسم المختارين — لا حاجة لإعادة اختيار الصورة من جديد
+                showNotification(result?.message || 'تعذّر رفع الصورة — تحقّق من الاتصال وحاول مجدداً', 'error');
+                resetBusyUI();
                 return;
             }
             if (typeof result.data.newCoins === 'number') {
@@ -16128,9 +16263,8 @@ function showCustomGiftDesignModal(rules, onCreated) {
             onCreated?.(result.data.customGift);
         } catch (error) {
             console.error('[CUSTOM GIFT] create error:', error);
-            showNotification('تعذّر الاتصال بالخادم', 'error');
-            goBtn.disabled = false;
-            goBtn.textContent = goLabel(false);
+            showNotification('تعذّر الاتصال بالخادم — تحقّق من الاتصال وحاول مجدداً', 'error');
+            resetBusyUI();
         }
     });
 }
