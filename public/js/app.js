@@ -11132,14 +11132,22 @@ socket.on('customGiftStatusUpdated', ({ customGiftId, status, reason }) => {
 // تعطيل/تفعيل/تعديل/حذف أي هدية (راجع adminController.saveGift/deleteGift) — كان كتالوج
 // الهدايا (giftShopDataCache) يبقى مؤقَّتاً حتى 5 دقائق أو إعادة تحميل كاملة للصفحة بصرف النظر
 // عن تعطيل هدية فعلياً، فتبقى ظاهرة وقابلة للإرسال بشيت أي عميل فتحه قبل التعديل. إبطال الكاش
-// (بالذاكرة + localStorage) فوراً هنا يكفي: لا حاجة لإعادة رسم شيت مفتوح حالياً (قد يكون
-// المستخدم بمنتصف اختيار مبلغ/مستلم) — فقط يضمن أن أي فتح لاحق للشيت (حتى بلا إعادة تحميل) يجلب
-// القائمة الصحيحة؛ نفس فلسفة customGiftStatusUpdated أعلاه لكن عالمياً لا لمستخدم واحد
+// (بالذاكرة + localStorage) فوراً هنا يضمن أن أي فتح لاحق للشيت يجلب القائمة الصحيحة؛ نفس فلسفة
+// customGiftStatusUpdated أعلاه لكن عالمياً لا لمستخدم واحد.
+// 🛡️ مراجعة PR #144: الشيت المفتوح فعلياً حالياً (لا فقط الفتحات اللاحقة) يُحدَّث في مكانه
+// مباشرة أيضاً — هذا بالضبط ما اشتكى منه المستخدم أصلاً (هدية مُعطَّلة تبقى ظاهرة بشيت مفتوح
+// حتى إعادة التحميل). roomGiftModalHandlers.onGiftsChanged (مُعرَّفة بكل فتح لـshowRoomGiftModal)
+// تُعيد الجلب وترسم الشبكة بنفس التبويب المختار، وتُلغي تحديد الهدية لو لم تعد متاحة
 socket.on('gifts:changed', () => {
     giftShopDataCache = null;
     giftShopDataFetchedAt = 0;
     giftShopDataEtag = null;
     try { localStorage.removeItem(GIFT_SHOP_LS_KEY); } catch (e) { /* تجاهل صامت — راجع نفس منطق saveGiftShopCacheToLocalStorage */ }
+
+    const sheet = document.getElementById('room-gift-modal');
+    if (sheet && !sheet.classList.contains('hidden')) {
+        roomGiftModalHandlers.onGiftsChanged?.();
+    }
 });
 
 
@@ -15583,7 +15591,7 @@ const GSHEET_QTY_LABELS = { 1: '', 10: 'عشرة', 66: 'سلامة', 99: 'دوا
 // الكمية/شريط الثروة) يُعاد رسمه بكل فتح كالسابق تماماً. المستمعات الثابتة (الكل/تبديل الكمية/
 // إرسال) تُربَط مرة واحدة فقط وتستدعي أحدث نسخة من المعالجات الحقيقية عبر هذي الوسيطة (تُعاد
 // كتابتها بكل فتح) بدل تكرار addEventListener على نفس الزر في كل مرة
-let roomGiftModalHandlers = { onAllBtn: null, onQtyToggle: null, onSend: null, onRecharge: null };
+let roomGiftModalHandlers = { onAllBtn: null, onQtyToggle: null, onSend: null, onRecharge: null, onGiftsChanged: null };
 function hideRoomGiftModal() {
     document.getElementById('room-gift-modal')?.classList.add('hidden');
 }
@@ -15993,6 +16001,27 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             openGiftLowBalanceSheet(Math.max(0, cost - (localUser.coins || 0)));
         };
 
+        // 🛡️ fix/round-buttons-gift-live-upload: الشيت كان يبطل كاش الكتالوج فقط عند وصول
+        // gifts:changed (يحتاج إعادة فتح الشيت ليظهر الأثر) — لو كان هذا الشيت نفسه مفتوحاً
+        // فعلياً حين يصل الحدث، نعيد الجلب (الكاش مُبطَل أصلاً فهذا نداء شبكة حقيقي) ونعيد رسم
+        // الشبكة في مكانها مباشرة: نفس التبويب المختار كما هو، والهدية المحدَّدة تُلغى صراحة لو
+        // لم تعد ضمن الكتالوج الحالي (عُطِّلت/حُذفت) بدل تحديد هدية أخرى تلقائياً مكانها
+        roomGiftModalHandlers.onGiftsChanged = async () => {
+            try {
+                shopData = await getGiftShopData();
+                if (sel) {
+                    const stillAvailable = tab === 'custom'
+                        ? getMyCustomTiles().some(g => g.id === sel.id && !g.pending)
+                        : (shopData.gifts[tab] || []).some(g => g.id === sel.id);
+                    if (!stillAvailable) sel = null;
+                }
+                renderGrid();
+                renderWealth();
+            } catch (e) {
+                console.error('[GIFT SHEET] live refresh after gifts:changed failed:', e);
+            }
+        };
+
         // ✅ عرض فوري: التبويبات/الشبكة/الكمية لا تعتمد على مقاعد الغرفة إطلاقاً — تُرسَم
         // بمجرّد توفّر shopData (من الكاش أعلاه عادةً، بلا أي انتظار شبكة). صف المستلمين/شريط
         // الثروة يُعرضان بحالة تحميل مؤقتة (recipientsLoaded=false) حتى تصل المقاعد أدناه
@@ -16043,11 +16072,13 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
 // 🛡️ fix/round-buttons-gift-live-upload: يضغط صورة هدية مخصّصة بالعميل قبل الرفع (قماش →
 // WebP بحد أقصى 512px لأطول ضلع) — يقلّل زمن الرفع الفعلي على اتصال بطيء، منفصل تماماً عن
 // تحويل Cloudinary الخادمي (256×256 webp) الذي يبقى كما هو لتثبيت الحجم المخزَّن نهائياً.
-// GIF (المتحركة) تُستثنى عمداً — إعادة الرسم على قماش تُسطِّح الحركة لإطار واحد ثابت فقط.
+// JPEG/PNG فقط عمداً — GIF متحركة تُسطَّح لإطار واحد ثابت بإعادة الرسم على قماش، وWebP قد تكون
+// متحركة هي الأخرى (animated WebP) فتُسطَّح لنفس السبب بالضبط رغم كونها صيغة الإخراج نفسها هنا
+// (لا طريقة بسيطة لفحص "متحركة أم لا" قبل المحاولة فعلياً، فالأسلم استثناء الصيغة كاملة).
 // أي فشل (متصفح لا يدعم canvas.toBlob بنوع webp، أو أي استثناء آخر) يعيد الملف الأصلي كما هو
 // بصمت — ميزة تسريع اختيارية لا يجوز أن تُسقِط الرفع نفسه
 async function compressImageForUpload(file, maxSide = 512, quality = 0.85) {
-    if (file.type === 'image/gif') return file;
+    if (file.type !== 'image/jpeg' && file.type !== 'image/png') return file;
     try {
         const bitmap = await createImageBitmap(file);
         const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
@@ -16071,8 +16102,12 @@ async function compressImageForUpload(file, maxSide = 512, quality = 0.85) {
 }
 
 // ✅ XMLHttpRequest لا fetch عمداً — fetch لا يملك أي حدث تقدّم رفع (upload progress) أصلاً؛
-// xhr.upload.onprogress هو السبيل الوحيد لشريط تقدّم حقيقي بنسبة مئوية فعلية أثناء الرفع
-function uploadFormDataWithProgress(url, formData, onProgress) {
+// xhr.upload.onprogress هو السبيل الوحيد لشريط تقدّم حقيقي بنسبة مئوية فعلية أثناء الرفع.
+// 🛡️ onUploadSent (اختياري) يُستدعى عند xhr.upload 'load' — كل البايتات وصلت السيرفر فعلاً،
+// لكن الرد (معالجة Cloudinary + الخصم الذرّي) لم يصل بعد؛ بدونه يبقى الشريط عالقاً على 100%
+// طوال معالجة السيرفر فيبدو مجمَّداً (راجع استخدامه بـshowCustomGiftDesignModal لحالة "جارٍ
+// معالجة الصورة" غير المحدَّدة المدة)
+function uploadFormDataWithProgress(url, formData, onProgress, onUploadSent) {
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', url);
@@ -16080,6 +16115,7 @@ function uploadFormDataWithProgress(url, formData, onProgress) {
         xhr.upload.addEventListener('progress', (e) => {
             if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
         });
+        xhr.upload.addEventListener('load', () => onUploadSent?.());
         xhr.addEventListener('load', () => {
             let result = null;
             try { result = JSON.parse(xhr.responseText); } catch (e) { /* رد غير JSON — result تبقى null */ }
@@ -16167,7 +16203,20 @@ function showCustomGiftDesignModal(rules, onCreated) {
     const progressWrap = document.getElementById('cg-progress');
     const progressFill = document.getElementById('cg-progress-fill');
     const progressPct = document.getElementById('cg-progress-pct');
-    const setProgress = (pct) => { progressFill.style.width = `${pct}%`; progressPct.textContent = `${pct}%`; };
+    const setProgress = (pct) => {
+        progressWrap.classList.remove('indeterminate');
+        progressFill.style.width = `${pct}%`;
+        progressPct.textContent = `${pct}%`;
+    };
+    // 🛡️ fix/round-buttons-gift-live-upload: كل البايتات وصلت السيرفر (xhr.upload 'load') لكن
+    // الرد (معالجة Cloudinary + الخصم الذرّي) لم يصل بعد — بدون هذا يبقى الشريط ثابتاً على 100%
+    // طوال معالجة السيرفر فيبدو مجمَّداً. "indeterminate" (حركة متدرّجة بلا نسبة محدَّدة، راجع
+    // CSS) + نص واضح بدل رقم وهمي لا نعرف قيمته الحقيقية
+    const setProcessing = () => {
+        progressFill.style.width = '100%';
+        progressWrap.classList.add('indeterminate');
+        progressPct.textContent = 'جارٍ معالجة الصورة…';
+    };
     const resetBusyUI = () => {
         goBtn.disabled = false;
         goBtn.textContent = goLabel(false);
@@ -16190,7 +16239,7 @@ function showCustomGiftDesignModal(rules, onCreated) {
 
             progressWrap.classList.add('active');
             setProgress(0);
-            const { ok, result } = await uploadFormDataWithProgress('/api/gifts/custom', formData, setProgress);
+            const { ok, result } = await uploadFormDataWithProgress('/api/gifts/custom', formData, setProgress, setProcessing);
 
             if (!ok || !result || result.status !== 'success') {
                 if (result?.code === 'INSUFFICIENT') {
