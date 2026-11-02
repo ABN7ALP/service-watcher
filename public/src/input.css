@@ -8,6 +8,12 @@
 @tailwind utilities;
 
 /* أنماط مخصصة يمكنك إضافتها هنا لاحقاً */
+/* 🐛 fix/profile-settings-mobile (مراجعة جهاز حقيقي — أندرويد): "حجم الخط" بإعدادات تسهيل
+   الاستخدام بالمتصفح يُكبّر محتوى النص (بما فيه حروف أيقونات Font Awesome) آلياً، فتصبح
+   الأزرار الدائرية بيضاوية (الارتفاع الفعلي يتجاوز العرض الثابت). هذا يعطّل التكبير الآلي
+   لكل النص من جذره بالمتصفحات الداعمة — أول سطر دفاع، يليه .profile-hub-icon-btn/-flat أدناه
+   كخط دفاع ثانٍ صريح لا يعتمد على دعم هذي الخاصية بكل متصفح/نظام */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   font-family: 'cairo', 'sans-serif';
 }
@@ -5825,29 +5831,40 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 .profile-hub-topbar {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 10px;
     padding: 10px 12px;
     flex-shrink: 0;
     position: sticky;
     top: 0;
     z-index: 3;
+    background: #111827;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
 }
+.profile-hub-topbar h2 { margin: 0; font-size: 15px; font-weight: 800; color: #fff; flex: 1; }
+/* 🐛 fix/profile-settings-mobile: خط الدفاع الثاني (راجع html{text-size-adjust} أعلى الملف) —
+   flex:none (لا flex-shrink:0 فقط) + width/height/max-width/max-height متساوية صريحة +
+   line-height:1 + padding:0 يمنعان تمدّد الصندوق بيضاوياً حتى لو تضخّم محتوى الأيقونة
+   (تكبير نص/خط بديل أبطأ تحميلاً) بصرف النظر عن دعم المتصفح لـtext-size-adjust */
+.profile-hub-icon-btn, .profile-hub-icon-btn-flat {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: none;
+    width: 32px; height: 32px; max-width: 32px; max-height: 32px;
+    padding: 0; margin: 0; border: 0;
+    line-height: 1;
+    box-sizing: border-box;
+}
+.profile-hub-icon-btn i, .profile-hub-icon-btn-flat i { line-height: 1; }
+.profile-hub-icon-btn i { font-size: 13px; }
 .profile-hub-icon-btn {
-    width: 32px; height: 32px;
     border-radius: 50%;
     background: rgba(255,255,255,0.08);
     color: #e5e7eb;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 13px;
-    flex-shrink: 0;
 }
 .profile-hub-icon-btn:active { background: rgba(255,255,255,0.16); }
 /* ✅ أيقونات مسطّحة بلا خلفية دائرية (عين/ساعة/مزيد) — تطفو مباشرة فوق صورة الغلاف */
 .profile-hub-icon-btn-flat {
-    width: 32px; height: 32px;
     background: transparent;
     color: #f1f5f9;
-    display: flex; align-items: center; justify-content: center;
     font-size: 15px;
     flex-shrink: 0;
     text-shadow: 0 1px 5px rgba(0,0,0,0.7);
@@ -5856,12 +5873,9 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 .profile-hub-body { flex: 1; overflow-y: auto; padding-bottom: 30px; }
 
 .profile-hub-cover {
-    height: 120px;
-    margin-top: -48px; /* ✅ يمتد خلف الشريط العلوي الشفاف قليلاً لإحساس أكثر انسيابية */
     background: linear-gradient(135deg, rgba(126,34,206,0.5), rgba(219,39,119,0.3));
     background-size: cover;
     background-position: center;
-    position: relative;
 }
 /* ✅ صورتي بموضع جانبي هندسي فوق الغلاف — مربّع دائري الزوايا بإطار متدرّج مائل خلفه بدل
    الدائرة المتوسِّطة التقليدية */
@@ -5941,18 +5955,17 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 .profile-hub-stat-num { font-size: 15px; font-weight: 800; color: #fff; }
 .profile-hub-stat-label { font-size: 10px; color: #9ca3af; }
 
-/* ✅ صف مدمج واحد وصغير (محفظة/VIP/صنّاع محتوى/ألعاب/مركز المضيف) — بلا "مكعبات" كبيرة،
-   يوفّر مساحة الملف الشخصي؛ كل عنصر أيقونة دائرية صغيرة + تسمية مصغّرة أسفلها */
+/* 🐛 fix/profile-settings-mobile: كانت صفّاً مرناً واحداً (flex) يوزّع كل الأربطة بعرض متساوٍ
+   بلا التواء — مع وكيل/مزايا قادمة تصل البطاقات إلى 7 بشاشة 360px فيُسحق كل عنوان (truncate
+   بثلاث نقاط). شبكة 4 بالصفّ تلتف لصفّين بدلاً من سحق المحتوى، والتسمية تلتف لسطرين بدل القطع */
 .profile-hub-quick-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 4px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px 4px;
     margin: 14px 16px 0;
 }
 .profile-hub-quick-tile {
     position: relative;
-    flex: 1;
-    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -5971,9 +5984,8 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
     font-weight: 700;
     color: #cbd5e1;
     text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    line-height: 1.25;
     max-width: 100%;
 }
 .profile-hub-quick-dot {
@@ -6082,27 +6094,10 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 .profile-hub-settings-row:disabled, .profile-hub-settings-row.is-disabled { cursor: default; }
 .profile-hub-settings-row:disabled i:first-child, .profile-hub-settings-row.is-disabled i:first-child { color: #6b7280; }
 
-/* 🐛 fix (مراجعة PR #145): .profile-hub-settings-row/-list/-section-title/... صُمِّمت أصلاً
-   لصفحات/أوراق داكنة دوماً (فوق خلفية ثابتة #0b0f19 أو #1a1f2e بصرف النظر عن وضع الموقع — كما
-   تبقى كل الأوراق الفرعية: الشارات/متجر الإطارات/مركز المضيف/هذا الملف نفسه). صفحة الإعدادات
-   الرئيسية (.settings-page-root) مختلفة: تُعرَض داخل mainContent العادي الذي يتبع وضع الموقع
-   الفعلي (فاتح/داكن) — فنص فاتح جداً فوق خلفية شبه شفافة تكشف عن خلفية الصفحة الفاتحة = غير
-   مقروء بالوضع الفاتح. يُعاد تعريف الألوان هنا فقط ضمن .settings-page-root (بلا أي لمس للنسخ
-   الداكنة الثابتة الأخرى) — افتراضي فاتح، ويُستثنى بـhtml.dark لإعادة القيم الداكنة الأصلية */
-.settings-page-root .profile-hub-settings-list { background: rgba(17,24,39,0.05); }
-.settings-page-root .profile-hub-settings-row { color: #374151; border-bottom-color: rgba(17,24,39,0.07); }
-.settings-page-root .profile-hub-section-title,
-.settings-page-root .profile-hub-version,
-.settings-page-root .profile-hub-settings-row-sub,
-.settings-page-root .profile-hub-settings-row-val { color: #6b7280; }
-.settings-page-root .profile-hub-soon-tag { background: rgba(17,24,39,0.08); color: #6b7280; }
-html.dark .settings-page-root .profile-hub-settings-list { background: rgba(255,255,255,0.03); }
-html.dark .settings-page-root .profile-hub-settings-row { color: #e5e7eb; border-bottom-color: rgba(255,255,255,0.05); }
-html.dark .settings-page-root .profile-hub-section-title,
-html.dark .settings-page-root .profile-hub-version,
-html.dark .settings-page-root .profile-hub-settings-row-sub,
-html.dark .settings-page-root .profile-hub-settings-row-val { color: #9ca3af; }
-html.dark .settings-page-root .profile-hub-soon-tag { background: rgba(255,255,255,0.08); color: #9ca3af; }
+/* 🐛 fix/profile-settings-mobile: الإعدادات أصبحت صفحة ملء-شاشة داكنة دوماً (profile-hub-sheet
+   نفسها، راجع showSettingsView) بدل عرضها داخل mainContent العادي التابع لوضع الموقع — فلا
+   حاجة بعد الآن لمزدوجة ألوان فاتح/داكن هنا (كانت ضرورية فقط بالنسخة السابقة التي عرضتها
+   داخل mainContent)؛ القيم الداكنة الأصلية أعلاه تبقى صحيحة دوماً لكل الصفوف */
 
 /* ✅ وضع "الأجهزة الضعيفة" (صفحة الأداء بالإعدادات) — مفتاح عام يوقف المؤثرات الثقيلة فوراً،
    نفس فلسفة prefers-reduced-motion لكن باختيار المستخدم اليدوي؛ قاعدة شاملة بسيطة بدل تتبّع كل
@@ -6142,32 +6137,51 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
    بقاؤها بلا إلغاء هنا كان يرفع الغلاف وأدوات العين/الإعدادات بداخله 38px فوق حدود الشاشة
    تماماً (مؤكَّد عبر getBoundingClientRect بفتح حقيقي)، فيصبح زرّا العين/الإعدادات غير
    قابلين للنقر إطلاقاً — لا طريق خروج آخر من الصفحة سواهما */
-.profile-hub-cover { height: 230px; margin-top: 0; padding-top: 0; overflow: hidden; }
-.profile-hub-cover::after {
-    content: ''; position: absolute; inset: auto 0 0; height: 62%;
-    background: linear-gradient(transparent, rgba(17,24,39,0.92) 70%, #111827);
-    pointer-events: none;
+/* 🐛 fix/profile-settings-mobile (مراجعة جهاز حقيقي): الهيكل السابق كان hero طبقة مطلقة
+   bottom:0 داخل غلاف ثابت الارتفاع — موضع الصورة الفعلي كان "ارتفاع الغلاف ناقص ارتفاع محتوى
+   الهوية"، فيعتمد كلياً على طول الاسم/عدد الشارات/وجود نبذة؛ اسم طويل أو إطار أفاتار أكبر من
+   الصورة (frameScale حتى 1.71 — راجع frame-display.json) كان يدفع الصورة/الإطار للأعلى حتى
+   يُقصّان بـoverflow:hidden على الغلاف، أو يتداخلان مع صفّ الأزرار العلوي. الحل الجذري: hero
+   الآن عنصر منفصل بترتيب طبيعي بعد الغلاف (لا مُطلَق بداخله)، يتراكب فوق أسفل الغلاف بـ
+   margin-top سالب ثابت — فموضع الصورة أعلى hero صار مسافة ثابتة دوماً عن حافة الغلاف،
+   مستقلة تماماً عن طول أي محتوى تحتها (اسم/شارات/نبذة) */
+.profile-hub-cover {
+    height: 170px;
+    padding-top: env(safe-area-inset-top, 0px);
+    overflow: hidden;
+    position: relative;
 }
-.profile-hub-cover-tools { position: absolute; top: 10px; inset-inline: 10px; z-index: 3; display: flex; justify-content: space-between; align-items: center; }
+.profile-hub-cover-tools { position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); inset-inline: 10px; z-index: 3; display: flex; justify-content: space-between; align-items: center; }
 .profile-hub-cover-tools-right { display: flex; gap: 6px; }
-.profile-hub-hero { position: absolute; bottom: 0; inset-inline: 0; z-index: 2; padding: 0 16px 12px; }
+.profile-hub-hero {
+    position: relative;
+    z-index: 2;
+    margin-top: -58px;
+    padding: 48px 16px 12px;
+    background: linear-gradient(to bottom, transparent, rgba(17,24,39,0.88) 42%, #111827 66%);
+}
 .profile-hub-hero .profile-hub-avatar-wrap { position: static; width: 80px; height: 80px; margin-bottom: 8px; }
 .profile-hub-hero .profile-hub-identity { text-align: start; padding: 0; }
-.profile-hub-hero .profile-hub-name { justify-content: flex-start; }
-.profile-hub-hero .profile-hub-badge-row { justify-content: flex-start; }
+.profile-hub-hero .profile-hub-name { justify-content: flex-start; text-shadow: 0 1px 4px rgba(0,0,0,0.6); }
+.profile-hub-hero .profile-hub-badge-row { justify-content: flex-start; align-items: center; }
 .profile-hub-hero .profile-hub-id-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
 .profile-hub-id-copy-btn { display: inline-flex; align-items: center; gap: 4px; color: #9ca3af; font-size: 11px; font-weight: 700; }
 .profile-hub-id-copy-btn i { font-size: 10px; }
 .profile-hub-level-badge {
-    display: inline-flex; align-items: center; gap: 3px; height: 21px; padding: 0 8px 0 3px;
+    display: inline-flex; align-items: center; gap: 3px; height: 22px; padding: 0 8px 0 3px;
     border-radius: 999px; font-size: 11.5px; font-weight: 800; direction: ltr; color: #fff;
+    flex: none; line-height: 1;
 }
 .profile-hub-level-badge i {
     width: 15px; height: 15px; border-radius: 50%; background: rgba(0,0,0,0.2);
     display: inline-flex; align-items: center; justify-content: center; font-size: 9px;
+    flex: none; line-height: 1;
 }
 .profile-hub-level-badge.wealth { background: linear-gradient(90deg,#ffb020,#ff7a1a); }
 .profile-hub-level-badge.agent { background: linear-gradient(90deg,#16b89a,#2fd4b4); padding-inline-end: 3px; }
+/* ✅ شارة الأدمن (صورة) داخل صفّ شارات ملفي الشخصي تحديداً — نفس ارتفاع شارتَي الثروة/الوكيل
+   (22px) بالضبط فتصطف الثلاثة على خط أساس واحد، بصرف النظر عن أبعاد صورة الشارة الأصلية */
+.profile-hub-badge-row .admin-special-badge { width: 22px; height: 22px; flex: none; }
 
 /* ✅ بطاقة رصيد الكوينز/الألماس — تماثل تماماً .bal بالنموذج الموافَق عليه */
 .profile-hub-balance-row { display: flex; gap: 8px; margin: 14px 16px 0; }
@@ -6773,9 +6787,10 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
 .follow-suggestion-wrap { display: flex; align-items: center; gap: 6px; }
 .follow-suggestion-wrap .follow-connection-row { flex: 1; }
 .follow-suggestion-dismiss {
-    flex-shrink: 0;
-    width: 26px; height: 26px;
-    display: flex; align-items: center; justify-content: center;
+    flex: none;
+    width: 26px; height: 26px; max-width: 26px; max-height: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; line-height: 1; box-sizing: border-box;
     color: #6b7280;
     font-size: 13px;
     background: transparent;
