@@ -6082,6 +6082,28 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
 .profile-hub-settings-row:disabled, .profile-hub-settings-row.is-disabled { cursor: default; }
 .profile-hub-settings-row:disabled i:first-child, .profile-hub-settings-row.is-disabled i:first-child { color: #6b7280; }
 
+/* 🐛 fix (مراجعة PR #145): .profile-hub-settings-row/-list/-section-title/... صُمِّمت أصلاً
+   لصفحات/أوراق داكنة دوماً (فوق خلفية ثابتة #0b0f19 أو #1a1f2e بصرف النظر عن وضع الموقع — كما
+   تبقى كل الأوراق الفرعية: الشارات/متجر الإطارات/مركز المضيف/هذا الملف نفسه). صفحة الإعدادات
+   الرئيسية (.settings-page-root) مختلفة: تُعرَض داخل mainContent العادي الذي يتبع وضع الموقع
+   الفعلي (فاتح/داكن) — فنص فاتح جداً فوق خلفية شبه شفافة تكشف عن خلفية الصفحة الفاتحة = غير
+   مقروء بالوضع الفاتح. يُعاد تعريف الألوان هنا فقط ضمن .settings-page-root (بلا أي لمس للنسخ
+   الداكنة الثابتة الأخرى) — افتراضي فاتح، ويُستثنى بـhtml.dark لإعادة القيم الداكنة الأصلية */
+.settings-page-root .profile-hub-settings-list { background: rgba(17,24,39,0.05); }
+.settings-page-root .profile-hub-settings-row { color: #374151; border-bottom-color: rgba(17,24,39,0.07); }
+.settings-page-root .profile-hub-section-title,
+.settings-page-root .profile-hub-version,
+.settings-page-root .profile-hub-settings-row-sub,
+.settings-page-root .profile-hub-settings-row-val { color: #6b7280; }
+.settings-page-root .profile-hub-soon-tag { background: rgba(17,24,39,0.08); color: #6b7280; }
+html.dark .settings-page-root .profile-hub-settings-list { background: rgba(255,255,255,0.03); }
+html.dark .settings-page-root .profile-hub-settings-row { color: #e5e7eb; border-bottom-color: rgba(255,255,255,0.05); }
+html.dark .settings-page-root .profile-hub-section-title,
+html.dark .settings-page-root .profile-hub-version,
+html.dark .settings-page-root .profile-hub-settings-row-sub,
+html.dark .settings-page-root .profile-hub-settings-row-val { color: #9ca3af; }
+html.dark .settings-page-root .profile-hub-soon-tag { background: rgba(255,255,255,0.08); color: #9ca3af; }
+
 /* ✅ وضع "الأجهزة الضعيفة" (صفحة الأداء بالإعدادات) — مفتاح عام يوقف المؤثرات الثقيلة فوراً،
    نفس فلسفة prefers-reduced-motion لكن باختيار المستخدم اليدوي؛ قاعدة شاملة بسيطة بدل تتبّع كل
    موقع مؤثرات منفرد بالتطبيق — نفس الحيلة الموثَّقة لدعم prefers-reduced-motion أدناه */
@@ -6163,20 +6185,13 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
     border-radius: 12px; padding: 8px 12px; font-size: 11.5px; color: #e9d5ff; text-align: center; font-weight: 700;
 }
 
-/* ✅ بطاقة "أمان حسابك" بالإعدادات — حلقة تقدّم SVG + عنوان/وصف، نفس روح .score بالنموذج */
-.profile-hub-score-card { margin: 10px 14px 0; background: linear-gradient(135deg, rgba(43,33,64,0.9), rgba(27,21,40,0.9)); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 14px; display: flex; align-items: center; gap: 12px; text-align: start; width: calc(100% - 28px); }
-.profile-hub-score-ring { flex-shrink: 0; position: relative; width: 56px; height: 56px; }
-.profile-hub-score-ring svg { width: 56px; height: 56px; transform: rotate(-90deg); }
-.profile-hub-score-ring span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff; }
-.profile-hub-score-card h4 { margin: 0; font-size: 14px; font-weight: 800; color: #fff; }
+/* ✅ بطاقة "أمان حسابك" بالإعدادات — قابلة للنقر بالكامل (تفتح "الحساب والأمان")، كسر عدد
+   "X من 3" بدل حلقة/نسبة بالطلب الصريح بمراجعة PR #145 */
+.profile-hub-score-card { margin: 10px 14px 0; background: linear-gradient(135deg, rgba(43,33,64,0.9), rgba(27,21,40,0.9)); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 14px; display: flex; align-items: center; gap: 12px; text-align: start; width: calc(100% - 28px); cursor: pointer; }
+.settings-score-icon { flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 16px; color: #2fd4b4; }
+.settings-score-fraction { font-size: 12.5px; font-weight: 800; color: #2fd4b4; }
+.profile-hub-score-card h4 { margin: 0; font-size: 14px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 6px; }
 .profile-hub-score-card p { margin: 3px 0 0; font-size: 11.5px; color: #9ca3af; line-height: 1.6; }
-
-/* ✅ قائمة فحوصات الأمان (البريد/الرمز/كلمة السر/المحفظة) بصفحة الحساب والأمان */
-.profile-hub-checks { display: flex; flex-direction: column; gap: 6px; margin: 10px 14px 0; }
-.profile-hub-check-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; background: rgba(255,255,255,0.03); border-radius: 10px; padding: 9px 11px; color: #e5e7eb; }
-.profile-hub-check-row .ok { color: #2fd4b4; }
-.profile-hub-check-row .no { color: #fbbf24; }
-.profile-hub-check-cta { margin-inline-start: auto; font-size: 11px; font-weight: 800; color: #a78bfa; }
 
 /* ✅ بطاقات فرعية موحَّدة (مركز المضيف، QR) فوق مركز الملف الشخصي */
 .profile-hub-subsheet-card {

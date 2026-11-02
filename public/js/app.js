@@ -7802,34 +7802,19 @@ async function refreshMessagesNavBadge(cachedChats = null) {
 // والأمان/الخصوصية/التنبيهات/الأداء/المساعدة) + صفوف المظهر والمحتوى (إطارات الدردشة/
 // الشارات/متجر الإطارات/إعادة الجولة) + خروج. "الحساب والأمان" يفتح ورقة فرعية تجمع كل ما
 // كان مبعثراً سابقاً (كلمة المرور/رمز السحب/محفظة الصرف/المحظورين) — بلا تكرار مسارات.
-function profileHubScoreRingHTML(pct) {
-    const r = 24, c = 2 * Math.PI * r;
-    const offset = c * (1 - Math.min(100, Math.max(0, pct)) / 100);
-    const color = pct >= 100 ? '#2fd4b4' : (pct >= 50 ? '#fbbf24' : '#f87171');
-    return `
-        <div class="profile-hub-score-ring">
-            <svg viewBox="0 0 56 56">
-                <circle cx="28" cy="28" r="${r}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="5"></circle>
-                <circle cx="28" cy="28" r="${r}" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"></circle>
-            </svg>
-            <span>${pct}%</span>
-        </div>
-    `;
-}
-
 async function showSettingsView() {
     const inRoom = document.body.classList.contains('in-voice-room');
     mainContent.innerHTML = `
-        <div class="p-4 pb-24">
+        <div class="p-4 pb-24 settings-page-root">
             <h2 class="text-xl font-bold mb-4"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
 
-            <div class="profile-hub-score-card" id="settings-score-card">
-                <div class="skeleton-shimmer" style="width:56px;height:56px;border-radius:50%;flex-shrink:0;"></div>
+            <button type="button" class="profile-hub-score-card" id="settings-score-card">
+                <div class="skeleton-shimmer" style="width:40px;height:40px;border-radius:50%;flex-shrink:0;"></div>
                 <div style="flex:1;">
                     <div class="skeleton-shimmer" style="width:70%;height:13px;border-radius:6px;margin-bottom:6px;"></div>
                     <div class="skeleton-shimmer" style="width:90%;height:11px;border-radius:6px;"></div>
                 </div>
-            </div>
+            </button>
 
             <div class="profile-hub-settings-list" style="margin-top:14px;">
                 <button class="profile-hub-settings-row" id="settings-account-btn"><i class="fas fa-shield-halved text-teal-400"></i><span>الحساب والأمان</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
@@ -7888,8 +7873,9 @@ async function loadSettingsScoreCard() {
         if (!res.ok) throw new Error();
         renderSettingsScoreCard(result.data);
     } catch (e) {
-        card.innerHTML = `<p class="text-xs text-red-400">تعذّر تحميل درجة الأمان — <button id="settings-score-retry" class="text-teal-400 font-bold">إعادة المحاولة</button></p>`;
-        document.getElementById('settings-score-retry')?.addEventListener('click', loadSettingsScoreCard);
+        card.onclick = null;
+        card.innerHTML = `<p class="text-xs text-red-400" style="margin:0;">تعذّر تحميل درجة الأمان — <span id="settings-score-retry" class="text-teal-400 font-bold">إعادة المحاولة</span></p>`;
+        document.getElementById('settings-score-retry')?.addEventListener('click', (e) => { e.stopPropagation(); loadSettingsScoreCard(); });
     }
 }
 
@@ -7901,14 +7887,16 @@ function renderSettingsScoreCard(pinStatus) {
     const card = document.getElementById('settings-score-card');
     if (!card) return;
     const checks = settingsSecurityChecks(pinStatus);
-    const pct = Math.round((checks.filter(Boolean).length / checks.length) * 100);
+    const passed = checks.filter(Boolean).length;
     card.innerHTML = `
-        ${profileHubScoreRingHTML(pct)}
-        <div>
-            <h4>أمان حسابك ${pct}%</h4>
-            <p>${pct === 100 ? 'حسابك محمي بالكامل' : 'أكمل الخطوات المتبقية بـ"الحساب والأمان" لحماية أموالك'}</p>
+        <div class="settings-score-icon"><i class="fas fa-shield-halved"></i></div>
+        <div style="flex:1;">
+            <h4>أمان حسابك <span class="settings-score-fraction">${passed} من 3</span></h4>
+            <p>${passed === 3 ? 'حسابك محمي بالكامل' : 'اضغط لإكمال خطوات الحماية المتبقية'}</p>
         </div>
+        <i class="fas fa-chevron-left profile-hub-chevron"></i>
     `;
+    card.onclick = showSettingsAccountScreen;
 }
 
 // ✅ "الحساب والأمان" — يجمع كل ما كان مبعثراً بالإعدادات القديمة/ورقة النقاط الثلاث سابقاً
@@ -7947,19 +7935,15 @@ async function refreshSettingsAccountScreen() {
     if (pinResult.status === 'fulfilled' && pinResult.value) pinStatus = pinResult.value.data;
     if (!pinStatus) { body.innerHTML = '<p class="text-center text-red-400 text-sm py-6">تعذّر تحميل البيانات</p>'; return; }
 
-    const checks = settingsSecurityChecks(pinStatus);
+    const walletVal = pinStatus.payoutShamCashWallet
+        ? `•••${String(pinStatus.payoutShamCashWallet).slice(-4)}`
+        : 'غير محفوظة';
     body.innerHTML = `
-        <div class="profile-hub-checks">
-            <div class="profile-hub-check-row"><i class="fas fa-envelope"></i><span>تفعيل البريد الإلكتروني</span>${checks[0] ? '<i class="fas fa-check-circle ok"></i>' : '<span class="profile-hub-check-cta no">غير مُفعَّل</span>'}</div>
-            <div class="profile-hub-check-row"><i class="fas fa-key"></i><span>رمز السحب</span>${checks[1] ? '<i class="fas fa-check-circle ok"></i>' : '<button class="profile-hub-check-cta no" id="check-cta-pin">إنشاء</button>'}</div>
-            <div class="profile-hub-check-row"><i class="fas fa-wallet"></i><span>محفظة الصرف</span>${checks[2] ? '<i class="fas fa-check-circle ok"></i>' : '<button class="profile-hub-check-cta no" id="check-cta-wallet">إضافة</button>'}</div>
-        </div>
-
-        <div class="profile-hub-settings-list" style="margin-top:12px;">
+        <div class="profile-hub-settings-list">
             <button class="profile-hub-settings-row" id="settings-password-btn"><i class="fas fa-lock text-purple-400"></i><span>كلمة المرور</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
             <button class="profile-hub-settings-row" id="settings-pin-btn"><i class="fas fa-key text-teal-400"></i><span>رمز السحب</span><span class="profile-hub-settings-row-val ${pinStatus.hasPin ? 'ok' : 'warn'}">${pinStatus.hasPin ? 'مُفعَّل' : 'غير مُفعَّل'}</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
-            <button class="profile-hub-settings-row" id="settings-wallet-btn"><i class="fas fa-wallet text-emerald-400"></i><span>محفظة الصرف</span><span class="profile-hub-settings-row-val ${pinStatus.payoutShamCashWallet ? 'ok' : 'warn'}">${pinStatus.payoutShamCashWallet ? 'محفوظة' : 'غير محفوظة'}</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
-            <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="تفعيل البريد الإلكتروني"><i class="fas fa-envelope text-gray-400"></i><span>تفعيل البريد الإلكتروني</span><span class="profile-hub-soon-tag">قريباً</span></button>
+            <button class="profile-hub-settings-row" id="settings-wallet-btn"><i class="fas fa-wallet text-emerald-400"></i><span>محفظة الصرف</span><span class="profile-hub-settings-row-val ${pinStatus.payoutShamCashWallet ? 'ok' : 'warn'}" dir="ltr">${walletVal}</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
+            <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="تفعيل البريد الإلكتروني"><i class="fas fa-envelope text-gray-400"></i><span>تفعيل البريد الإلكتروني</span><span class="profile-hub-settings-row-val warn">غير مُفعَّل</span><span class="profile-hub-soon-tag">قريباً</span></button>
             <button class="profile-hub-settings-row" id="settings-blocked-btn"><i class="fas fa-ban text-red-400"></i><span>المستخدمون المحظورون</span><span class="profile-hub-settings-row-val">${blockedCount}</span><i class="fas fa-chevron-left profile-hub-chevron"></i></button>
             <button class="profile-hub-settings-row profile-hub-settings-soon" data-label="الأجهزة"><i class="fas fa-mobile-screen text-gray-400"></i><span>الأجهزة</span><span class="profile-hub-soon-tag">قريباً</span></button>
         </div>
@@ -7974,11 +7958,9 @@ async function refreshSettingsAccountScreen() {
         if (pinStatus.hasPin) startChangeWithdrawalPinFlow(() => { refreshSettingsAccountScreen(); loadSettingsScoreCard(); });
         else startWithdrawalPinSetup(() => { refreshSettingsAccountScreen(); loadSettingsScoreCard(); });
     });
-    document.getElementById('check-cta-pin')?.addEventListener('click', () => startWithdrawalPinSetup(() => { refreshSettingsAccountScreen(); loadSettingsScoreCard(); }));
     document.getElementById('settings-wallet-btn').addEventListener('click', () => {
         mountPayoutWalletChangeFlow(() => { refreshSettingsAccountScreen(); loadSettingsScoreCard(); });
     });
-    document.getElementById('check-cta-wallet')?.addEventListener('click', () => mountPayoutWalletChangeFlow(() => { refreshSettingsAccountScreen(); loadSettingsScoreCard(); }));
     document.getElementById('settings-blocked-btn').addEventListener('click', showSettingsBlockedUsersSheet);
     body.querySelectorAll('.profile-hub-settings-soon').forEach(btn => {
         btn.addEventListener('click', () => showNotification(`قسم "${btn.dataset.label}" قيد الإنشاء، قريباً جداً`, 'info'));
