@@ -1536,11 +1536,22 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 /* 🐛 مراجعة بصرية (طلب صريح — مطابقة النموذج §.follow): كان الزر مطفياً بلا تدرّج (قرار
    سابق صريح) — الطلب الحالي صريح أيضاً وأحدث: تدرّج وردي حيّ مطابق لـ.follow بالنموذج
    (linear-gradient(#ff6fa6,#e0306f))، يعلو جدول المطابقة ببند 1 */
+/* 🛡️ fix/round-buttons-gift-live-upload: flex-shrink:0 وaspect-ratio وحدهما لا يمنعان تمدّداً
+   أفقياً فعلياً — flex item بلا min-width صريح يحمل افتراضياً min-width:auto (لا 0)، فمحتواه
+   (حرف "+" بخط Font Awesome) يفرض حداً أدنى لعرضه الفعلي قد يتجاوز width المحدَّد هنا، فيتمدّد
+   الصندوق أفقياً بصرف النظر عن aspect-ratio (الارتفاع لا يتأثر بنفس القيد بسياق flex صف) —
+   يظهر بيضاوياً عند بطء/فشل تحميل خط الأيقونة (fallback أعرض مؤقتاً) أو بعرض شاشة صغير جداً.
+   flex:none (لا flex-shrink:0 فقط) + min/max-width/height صريحة مساوية لـwidth/height الهدف
+   يغلقان الثغرة كاملاً بصرف النظر عن محتوى الأيقونة أو عرض الشاشة */
 .room-header-follow-circle {
-    flex-shrink: 0;
+    flex: none;
     box-sizing: content-box;
     width: calc(var(--u, 10px) * 2.6);
     height: calc(var(--u, 10px) * 2.6);
+    min-width: calc(var(--u, 10px) * 2.6);
+    min-height: calc(var(--u, 10px) * 2.6);
+    max-width: calc(var(--u, 10px) * 2.6);
+    max-height: calc(var(--u, 10px) * 2.6);
     aspect-ratio: 1 / 1;
     border-radius: 50%;
     display: inline-flex;
@@ -7018,8 +7029,13 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
    صندوق المحتوى فقط (box-sizing الافتراضي content-box)، وتبطين <button> الافتراضي من المتصفح
    (غير صفري وغير متماثل أفقياً/رأسياً) كان يُضاف فوقهما فيُخرِج الصندوق عن 22×22 الحقيقي.
    aspect-ratio:1 ضمان إضافي يمنع أي تمدد مستقبلي بصرف النظر عن المحتوى */
+/* 🛡️ fix/round-buttons-gift-live-upload: flex:none وحده لا يمنع تمدّداً أفقياً — flex item بلا
+   min-width صريح يحمل افتراضياً min-width:auto (لا 0)، فمحتواه (حرف "+" بخط Font Awesome) يفرض
+   حداً أدنى لعرضه الفعلي قد يتجاوز 22px عند بطء/فشل تحميل خط الأيقونة (fallback أعرض مؤقتاً) —
+   min/max-width/height صريحة تغلق الثغرة كاملاً بصرف النظر عن محتوى الأيقونة */
 .gsheet-recharge-fab {
-    width: 22px; height: 22px; aspect-ratio: 1; padding: 0; box-sizing: border-box;
+    width: 22px; height: 22px; min-width: 22px; min-height: 22px; max-width: 22px; max-height: 22px;
+    aspect-ratio: 1; padding: 0; box-sizing: border-box;
     flex: none; border-radius: 50%; border: 0; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; margin-inline-start: 4px;
     background: var(--g-gold); color: #3a2300; font-size: 11px; line-height: 1;
@@ -7114,6 +7130,13 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
    (راجع goLabel بـshowCustomGiftDesignModal) + white-space:nowrap وحجم خط متجاوب كضمان مزدوج
    بأضيق العروض (مثال: أرقام رسم تصميم كبيرة جداً بمنصّة بأسعار مختلفة) */
 .gsheet-custom-go { white-space: nowrap; font-size: clamp(11.5px, 3.6vw, 13.5px); padding: 0 4px; }
+
+/* ✅ شريط تقدّم رفع صورة الهدية المخصّصة — مخفي افتراضياً، يظهر فقط أثناء رفع XHR فعلي */
+.gsheet-custom-progress { display: none; margin-bottom: 10px; }
+.gsheet-custom-progress.active { display: block; }
+.gsheet-custom-progress-track { height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.gsheet-custom-progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, #3be0b0, #43d9ff); transition: width 0.15s linear; }
+.gsheet-custom-progress-pct { margin-top: 4px; font-size: 10.5px; color: var(--g-muted, #9a8fb0); text-align: center; font-family: var(--f-num, 'Baloo Bhaijaan 2', 'Cairo', sans-serif); }
 
 /* =====================================================================
    🔥 هدايا v2 — المرحلة 3: زر الكومبو العائم + النار + الانفجارات + الشريط

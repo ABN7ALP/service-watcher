@@ -593,6 +593,13 @@ exports.saveGift = async (req, res) => {
       ipAddress: req.ip
     });
 
+    // 🛡️ fix/round-buttons-gift-live-upload: كان كتالوج الهدايا يبقى مؤقَّتاً بذاكرة العميل
+    // (giftShopDataCache، حتى 5 دقائق أو حتى إعادة تحميل الصفحة) بصرف النظر عن تعطيل/تفعيل
+    // هدية فعلياً من لوحة التحكم — هدية مُعطَّلة تبقى ظاهرة وقابلة للإرسال بصريًا بشيت أي مستخدم
+    // فتحه قبل التعديل. بث خفيف لكل العملاء المتصلين: يُبطِل الكاش فوراً فلا يحتاج أي عميل مفتوح
+    // أكثر من إعادة فتح شيت الهدايا (لا إعادة تحميل كاملة) ليرى القائمة الصحيحة
+    req.app.get('socketio')?.emit('gifts:changed', { version: Date.now() });
+
     res.json({
       success: true,
       message: giftId ? 'تم تحديث الهدية' : 'تم إنشاء الهدية',
@@ -1214,6 +1221,10 @@ exports.deleteGift = async (req, res) => {
     await AdminLog.logAction({
       admin: admin._id, action: 'delete_gift', details: { giftName: gift.name }, ipAddress: req.ip
     });
+
+    // 🛡️ fix/round-buttons-gift-live-upload: نفس بثّ إبطال الكاش بـsaveGift أعلاه — حذف هدية
+    // يُزيلها من الكتالوج تماماً كالتعطيل، تحتاج نفس التحديث الفوري للعملاء المفتوحين
+    req.app.get('socketio')?.emit('gifts:changed', { version: Date.now() });
 
     res.json({ success: true, message: 'تم حذف الهدية بنجاح' });
   } catch (error) {
