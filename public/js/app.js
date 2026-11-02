@@ -11281,20 +11281,23 @@ function guessLocationFromTimezone() {
 // غلاف + صورة متراكبة، اسم/آيدي/جنس/عمر/موقع، متابعون/متابَعون/دعم مُستلَم، محفظة حقيقية،
 // خصائص "قريباً" (VIP/مركز صنّاع المحتوى/مركز الألعاب)، مركز مضيف بإحصائيات حقيقية حالية،
 // تعديل + اكتشاف أشخاص، وقسم إعدادات مضغوط (يبقى الإعدادات الكاملة الحالية بمكانها المستقل)
+// ✅ feat/profile-settings-v1: إعادة تصميم ملفي الشخصي كالنموذج الموافَق عليه
+// (docs/design/profile-settings-prototype.html) — غلاف طويل والهوية فوقه مباشرة (لا تحته)،
+// شارتا مستوى (الثروة/وكيل)، نسخ المعرّف، بطاقة كوينز/ألماس، 3 تبويبات (الشرف/الهدايا/معلومات)،
+// وزر "كما يراه الزائر" يُبدِّل نفس الشاشة بدل فتح صفحة منفصلة. صورة الغلاف الفعلية دفعة لاحقة.
+// 🛡️ لا شارة "جاذبية/تلقّي" هنا عمداً — تلك الآلية أُزيلت صراحة من هذا المشروع سابقاً (راجع
+// تعليق computeSupportLevels بـuserController.js)؛ عرضها الآن يحتاج إحياءها كميزة خلفية جديدة
+// كاملة أولاً، خارج نطاق "بنية فقط" لهذه الدفعة
+let profileHubVisitorMode = false;
+
 async function showMyProfileHub() {
     document.getElementById('my-profile-modal')?.remove(); // ✅ تنظيف أي نسخة قديمة من الاسم السابق للدالة لو بقيت بالذاكرة من كاش قديم
     document.getElementById('profile-hub-page')?.remove();
+    profileHubVisitorMode = false;
 
     const shellHTML = `
         <div id="profile-hub-page" class="profile-hub-backdrop">
             <div id="profile-hub-sheet" class="profile-hub-sheet">
-                <div class="profile-hub-topbar">
-                    <button id="close-profile-hub" class="profile-hub-icon-btn" title="إغلاق"><i class="fas fa-times"></i></button>
-                    <div class="flex-1"></div>
-                    <button id="profile-hub-clock-btn" class="profile-hub-icon-btn-flat" title="قريباً"><i class="fas fa-clock"></i></button>
-                    <button id="profile-hub-visitors-btn" class="profile-hub-icon-btn-flat" title="سجل الزوار"><i class="fas fa-eye"></i></button>
-                    <button id="profile-hub-more-btn" class="profile-hub-icon-btn-flat" title="المزيد"><i class="fas fa-ellipsis-h"></i></button>
-                </div>
                 <div id="profile-hub-body" class="profile-hub-body">
                     <div class="text-center text-gray-400 py-20"><i class="fas fa-spinner fa-spin text-2xl"></i></div>
                 </div>
@@ -11303,10 +11306,12 @@ async function showMyProfileHub() {
     `;
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const page = document.getElementById('profile-hub-page');
-    document.getElementById('close-profile-hub').addEventListener('click', () => page.remove());
-    document.getElementById('profile-hub-clock-btn').addEventListener('click', () => showNotification('هذه الخاصية قريباً 🕐', 'info'));
-    document.getElementById('profile-hub-visitors-btn').addEventListener('click', () => showProfileVisitorsSheet());
-    document.getElementById('profile-hub-more-btn').addEventListener('click', () => showProfileHubMoreMenu());
+    page.addEventListener('click', (e) => { if (e.target.id === 'profile-hub-page') page.remove(); });
+
+    // ✅ تحميل تدريجي (قاعدة دائمة بـCLAUDE.md): الهيكل + ما بالذاكرة فوراً بلا انتظار الشبكة،
+    // ثم استبداله ببيانات حقيقية فور وصولها
+    const cachedLocal = JSON.parse(localStorage.getItem('user') || 'null');
+    if (cachedLocal) renderProfileHubBody(cachedLocal);
 
     try {
         const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -11331,17 +11336,18 @@ async function showMyProfileHub() {
         renderProfileHubBody(u);
     } catch (error) {
         console.error('[PROFILE HUB] Error:', error);
-        const body = document.getElementById('profile-hub-body');
-        if (body) body.innerHTML = '<div class="text-center text-red-400 py-16">تعذر تحميل ملفك الشخصي</div>';
+        if (!cachedLocal) {
+            const body = document.getElementById('profile-hub-body');
+            if (body) body.innerHTML = `<div class="text-center text-red-400 py-16">تعذر تحميل ملفك الشخصي<br><button id="profile-hub-retry-btn" class="profile-hub-action-btn profile-hub-action-edit mt-3" style="display:inline-flex; padding:0 20px;">إعادة المحاولة</button></div>`;
+            document.getElementById('profile-hub-retry-btn')?.addEventListener('click', () => showMyProfileHub());
+        }
     }
-
-    page.addEventListener('click', (e) => { if (e.target.id === 'profile-hub-page') page.remove(); });
 }
 
 function renderProfileHubBody(u) {
     const body = document.getElementById('profile-hub-body');
     if (!body) return;
-    const genderInfo = u.gender === 'male' ? { text: 'ذكر', icon: 'fa-mars', color: 'text-blue-400' } : { text: 'أنثى', icon: 'fa-venus', color: 'text-pink-400' };
+    const v = profileHubVisitorMode;
     const age = (() => {
         if (!u.birthDate) return null;
         const today = new Date(); const bd = new Date(u.birthDate);
@@ -11350,6 +11356,7 @@ function renderProfileHubBody(u) {
         if (m < 0 || (m === 0 && today.getDate() < bd.getDate())) a--;
         return a;
     })();
+    const wealthLevel = (u.supportGiving && u.supportGiving.level) || 1;
 
     // ✅ نسبة اكتمال الملف الشخصي — تُحتسب من حقول التحرير الفعلية (لا وهمية)
     const completionChecks = [
@@ -11366,70 +11373,77 @@ function renderProfileHubBody(u) {
 
     body.innerHTML = `
         <div class="profile-hub-cover" style="${u.coverImage ? `background-image:url('${u.coverImage}')` : ''}">
-            <div class="profile-hub-avatar-wrap">
-                ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'profile-hub-avatar' })}
+            <div class="profile-hub-cover-tools">
+                ${v
+                    ? `<button id="profile-hub-visitor-back-btn" class="profile-hub-icon-btn" title="رجوع"><i class="fas fa-arrow-right"></i></button>`
+                    : `<button id="profile-hub-settings-btn" class="profile-hub-icon-btn" title="الإعدادات"><i class="fas fa-cog"></i></button>`}
+                <div class="profile-hub-cover-tools-right">
+                    ${v ? '' : `<button id="profile-hub-visitor-eye-btn" class="profile-hub-icon-btn" title="عرض كزائر"><i class="fas fa-eye"></i></button>`}
+                    <button id="profile-hub-share-btn" class="profile-hub-icon-btn" title="مشاركة"><i class="fas fa-share-nodes"></i></button>
+                </div>
+            </div>
+            <div class="profile-hub-hero">
+                <div class="profile-hub-avatar-wrap">
+                    ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'profile-hub-avatar' })}
+                </div>
+                <div class="profile-hub-identity">
+                    <h2 class="profile-hub-name">${escapeHtml(u.username || '')}${age !== null ? ` <span class="profile-hub-mini-badge">${u.gender === 'female' ? '♀' : '♂'} ${age}</span>` : ''}</h2>
+                    <div class="profile-hub-badge-row">
+                        <span class="profile-hub-level-badge wealth" title="مستوى الثروة"><i class="fas fa-gem"></i>${wealthLevel}</span>
+                        ${u.isAgent ? `<span class="profile-hub-level-badge agent" title="وكيل شحن معتمد"><i class="fas fa-shield-halved"></i></span>` : ''}
+                        ${renderAdminBadgeHTML(u)}
+                    </div>
+                    <div class="profile-hub-id-row">
+                        <button type="button" id="profile-hub-copy-id-btn" class="profile-hub-id-copy-btn"><span class="num">ID: ${escapeHtml(String(u.customId || ''))}</span> <i class="fas fa-copy"></i></button>
+                    </div>
+                    ${u.status ? `<p class="profile-hub-bio-text">${escapeHtml(u.status)}</p>` : ''}
+                </div>
             </div>
         </div>
-        <div class="profile-hub-identity">
-            <h2 class="profile-hub-name">${escapeHtml(u.username || '')} ${getAgentBadgeHTML(u.isAgent)}</h2>
-            <p class="profile-hub-id">ID: ${escapeHtml(String(u.customId || ''))}</p>
-            <div class="profile-hub-badge-row">
-                ${renderAdminBadgeHTML(u)}
-                <span class="profile-hub-mini-badge"><i class="fas ${genderInfo.icon} ${genderInfo.color}"></i> ${genderInfo.text}</span>
-                ${age !== null ? `<span class="profile-hub-mini-badge"><i class="fas fa-birthday-cake text-pink-400"></i> ${age} سنة</span>` : ''}
-                ${u.location ? `<span class="profile-hub-mini-badge"><i class="fas fa-location-dot text-emerald-400"></i> ${escapeHtml(u.location)}</span>` : ''}
-            </div>
-            <p class="profile-hub-bio-text">${escapeHtml(u.status || '🚀 جاهز للتحديات!')}</p>
-        </div>
+
+        ${v ? `<div class="profile-hub-visitor-banner"><i class="fas fa-eye mr-1"></i> هكذا يرى زوّار ملفك صفحتك</div>` : ''}
 
         <div class="profile-hub-stats-row">
             <button type="button" class="profile-hub-stat" id="profile-hub-followers-stat"><span class="profile-hub-stat-num">${(u.followers || []).length}</span><span class="profile-hub-stat-label">متابِعون</span></button>
             <button type="button" class="profile-hub-stat" id="profile-hub-following-stat"><span class="profile-hub-stat-num">${(u.following || []).length}</span><span class="profile-hub-stat-label">متابَعون</span></button>
-            <div class="profile-hub-stat" id="profile-hub-coins-received-stat"><span class="profile-hub-stat-num">…</span><span class="profile-hub-stat-label">كوينز مُستلَمة</span></div>
+            <button type="button" class="profile-hub-stat" id="profile-hub-friends-stat"><span class="profile-hub-stat-num">${(u.friends || []).length}</span><span class="profile-hub-stat-label">أصدقاء</span></button>
+            <div class="profile-hub-stat" id="profile-hub-visitors-stat"><span class="profile-hub-stat-num">${v ? '—' : '…'}</span><span class="profile-hub-stat-label">زوّار اليوم</span></div>
         </div>
 
+        ${v ? '' : `
+        <div class="profile-hub-balance-row">
+            <button type="button" id="profile-hub-coins-card-btn" class="profile-hub-balance-card"><span><small>كوينز</small><b class="text-yellow-400">…</b></span><i class="fas fa-plus text-yellow-400"></i></button>
+            <button type="button" id="profile-hub-beans-card-btn" class="profile-hub-balance-card"><span><small>ألماس</small><b class="text-cyan-400">…</b></span><i class="fas fa-chevron-left text-cyan-400"></i></button>
+        </div>
         <div class="profile-hub-quick-row">
-            ${u.showWallet !== false ? `
-            <button class="profile-hub-quick-tile wallet-entry-badge-host" id="profile-hub-wallet-btn" title="محفظتي — ${(u.coins || 0).toLocaleString('en-US')} كوينز">
-                <span class="profile-hub-quick-icon" style="background:rgba(251,191,36,0.15); color:#fbbf24;"><i class="fas fa-wallet"></i></span>
-                <span class="profile-hub-quick-label">محفظتي</span>
-            </button>` : ''}
-            ${u.showVipBadge !== false ? `
-            <button class="profile-hub-quick-tile" id="profile-hub-vip-btn">
-                <span class="profile-hub-quick-icon" style="background:rgba(251,191,36,0.15); color:#fbbf24;"><i class="fas fa-crown"></i></span>
-                <span class="profile-hub-quick-label">VIP</span>
-                <span class="profile-hub-quick-dot"></span>
-            </button>` : ''}
-            <button class="profile-hub-quick-tile" id="profile-hub-creator-btn">
-                <span class="profile-hub-quick-icon" style="background:rgba(192,132,252,0.15); color:#c084fc;"><i class="fas fa-star"></i></span>
-                <span class="profile-hub-quick-label">صنّاع المحتوى</span>
-                <span class="profile-hub-quick-dot"></span>
-            </button>
-            <button class="profile-hub-quick-tile" id="profile-hub-games-btn">
-                <span class="profile-hub-quick-icon" style="background:rgba(96,165,250,0.15); color:#60a5fa;"><i class="fas fa-gamepad"></i></span>
-                <span class="profile-hub-quick-label">الألعاب</span>
-                <span class="profile-hub-quick-dot"></span>
-            </button>
-            <button class="profile-hub-quick-tile" id="profile-hub-host-center-btn">
-                <span class="profile-hub-quick-icon" style="background:rgba(244,114,182,0.15); color:#f472b6;"><i class="fas fa-microphone-lines"></i></span>
-                <span class="profile-hub-quick-label">مركز المضيف</span>
-            </button>
+            ${[
+                ['wallet', 'محفظتي', 'rgba(251,191,36,0.15)', '#fbbf24', 'profile-hub-wallet-btn', null],
+                ['microphone-lines', 'مركز المضيف', 'rgba(244,114,182,0.15)', '#f472b6', 'profile-hub-host-center-btn', null],
+                ...(u.isAgent ? [['handshake', 'لوحة الوكيل', 'rgba(47,212,180,0.15)', '#2fd4b4', 'profile-hub-agent-btn', null]] : []),
+                ['qrcode', 'رمز QR', 'rgba(52,211,153,0.15)', '#34d399', 'profile-hub-qr-btn', null],
+                ['crown', 'VIP', 'rgba(251,191,36,0.15)', '#fbbf24', 'profile-hub-vip-btn', 'soon'],
+                ['star', 'صنّاع المحتوى', 'rgba(192,132,252,0.15)', '#c084fc', 'profile-hub-creator-btn', 'soon'],
+                ['gamepad', 'الألعاب', 'rgba(96,165,250,0.15)', '#60a5fa', 'profile-hub-games-btn', 'soon']
+            ].map(([icon, label, bg, c, id, soon]) => `
+                <button class="profile-hub-quick-tile" id="${id}">
+                    <span class="profile-hub-quick-icon" style="background:${bg}; color:${c};"><i class="fas fa-${icon}"></i></span>
+                    <span class="profile-hub-quick-label">${label}</span>
+                    ${soon ? '<span class="profile-hub-quick-dot"></span>' : ''}
+                </button>
+            `).join('')}
         </div>
-
         <div class="profile-hub-actions-row">
             <button id="profile-hub-edit-btn" class="profile-hub-action-btn profile-hub-action-edit">
                 <i class="fas fa-pen"></i> تحرير الملف الشخصي
                 <span class="profile-hub-completion-badge">${completionPct}%</span>
             </button>
             <button id="profile-hub-discover-btn" class="profile-hub-discover-circle" title="اقتراحات"><i class="fas fa-user-plus"></i></button>
-        </div>
+        </div>`}
 
-        <!-- ✅ تبويبا "لوحة الشرف"/"فيديو" — نفس التصميم المستخدَم بالملف الكامل بالضبط: صفوف
-             ملوّنة لمستوى التلقي/الدعم/الإنجازات/الحماة+نادي المعجبين/الهدايا المستلمة؛ الفيديو
-             لا يزال "قريباً" فقط حسب الطلب -->
         <div class="full-profile-tabs">
-            <span class="full-profile-tab active" data-tab="honor">لوحة الشرف</span>
-            <span class="full-profile-tab" data-tab="video">فيديو</span>
+            <span class="full-profile-tab active" data-tab="honor">الشرف</span>
+            <span class="full-profile-tab" data-tab="gifts">الهدايا</span>
+            <span class="full-profile-tab" data-tab="about">معلومات</span>
         </div>
 
         <div id="profile-hub-tab-honor" class="honor-board">
@@ -11475,25 +11489,34 @@ function renderProfileHubBody(u) {
             </div>
         </div>
 
-        <div id="profile-hub-tab-video" class="full-profile-video-soon" style="display:none">
-            <i class="fas fa-clapperboard"></i>
-            <p>لا توجد فيديوهات بعد — قريباً سنعمل على هذي الميزة 🎬</p>
+        <div id="profile-hub-tab-gifts" class="profile-hub-gifts-grid" style="display:none">
+            <div class="text-center text-gray-400 py-10" style="grid-column:1/-1"><i class="fas fa-spinner fa-spin"></i></div>
+        </div>
+
+        <div id="profile-hub-tab-about" class="profile-hub-info-list" style="display:none">
+            <div class="profile-hub-info-row"><span>الجنس والعمر</span><b>${u.gender === 'female' ? 'أنثى' : 'ذكر'}${age !== null ? ` · ${age}` : ''}</b></div>
+            ${u.hometown ? `<div class="profile-hub-info-row"><span>مسقط الرأس</span><b>${escapeHtml(u.hometown)}</b></div>` : ''}
+            ${u.createdAt ? `<div class="profile-hub-info-row"><span>تاريخ الانضمام</span><b class="num">${new Date(u.createdAt).toISOString().slice(0, 10)}</b></div>` : ''}
+            ${u.socialLinks?.instagram ? `<div class="profile-hub-info-row"><span>إنستجرام</span><b dir="ltr">@${escapeHtml(u.socialLinks.instagram)}</b></div>` : ''}
+            ${u.socialLinks?.youtube ? `<div class="profile-hub-info-row"><span>يوتيوب</span><b dir="ltr">${escapeHtml(u.socialLinks.youtube)}</b></div>` : ''}
+            ${u.socialLinks?.tiktok ? `<div class="profile-hub-info-row"><span>تيك توك</span><b dir="ltr">@${escapeHtml(u.socialLinks.tiktok)}</b></div>` : ''}
         </div>
     `;
 
-    // ✅ كوينز مُستلَمة + عدد الهدايا المستلمة (لوحة الشرف) — نداء واحد لنفس ملخص الهدايا الموجود أصلاً
+    // ✅ تحميل تدريجي (قاعدة CLAUDE.md): الهيكل رُسم فوراً أعلاه، الإحصاءات/الرصيد تُجلَب الآن
+    // بالخلفية بالتوازي — لا تحجب أول رسم إطلاقاً. نتيجة ملخّص الهدايا تُخزَّن لتُعاد كما هي
+    // عند أول فتح فعلي لتبويب "الهدايا" (لا نداء شبكة إضافي لنفس البيانات)
+    let giftsSummaryCache = null;
     fetch(`/api/gifts/user/${u._id}/summary`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(r => r.json())
         .then(res => {
             if (res.status !== 'success') return;
-            const coinsEl = document.querySelector('#profile-hub-coins-received-stat .profile-hub-stat-num');
-            if (coinsEl) coinsEl.textContent = (res.data.totalCoinsValue || 0).toLocaleString('en-US');
+            giftsSummaryCache = res.data;
             const giftsEl = document.getElementById('profile-hub-gifts-received-num');
             if (giftsEl) giftsEl.textContent = (res.data.totalGiftsCount || 0).toLocaleString('en-US');
+            renderGiftsTabIfOpen();
         })
         .catch(() => {});
-    // ✅ عدد أعضاء نادي معجبيني الحقيقي + اسم النادي الحقيقي (لوحة الشرف) — الاسم يعكس آخر
-    // تسمية اعتمدها المستخدم بدل تسمية ثابتة عامة، مطابقاً لعنوان ورقة النادي نفسها
     fetch(`/api/fanclub/${u._id}/summary`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(r => r.json())
         .then(res => {
@@ -11504,14 +11527,47 @@ function renderProfileHubBody(u) {
             if (titleEl && res.data.clubName) titleEl.textContent = res.data.clubName;
         })
         .catch(() => {});
+    if (!v) {
+        fetch('/api/users/me/profile-visits', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(res => {
+                if (res.status !== 'success') return;
+                const el = document.querySelector('#profile-hub-visitors-stat .profile-hub-stat-num');
+                if (el) el.textContent = (res.data.todayVisitors || 0).toLocaleString('en-US');
+            })
+            .catch(() => {});
+        ensureWalletSummary().then((s) => {
+            const coinsEl = document.querySelector('#profile-hub-coins-card-btn b');
+            const beansEl = document.querySelector('#profile-hub-beans-card-btn b');
+            if (coinsEl) coinsEl.textContent = (s.balances.coins || 0).toLocaleString('en-US');
+            if (beansEl) beansEl.textContent = ((s.balances.beansWithdrawable || 0) + (s.balances.beansInApp || 0)).toLocaleString('en-US');
+        }).catch(() => {});
+    }
+
+    function renderGiftsTabIfOpen() {
+        const pane = document.getElementById('profile-hub-tab-gifts');
+        if (!pane || pane.style.display === 'none' || !giftsSummaryCache) return;
+        const gifts = giftsSummaryCache.gifts || [];
+        pane.innerHTML = gifts.length === 0
+            ? `<p class="text-center text-gray-500 text-xs py-10" style="grid-column:1/-1">لا توجد هدايا مستلمة بعد</p>`
+            : gifts.map(g => `
+                <div class="profile-hub-gift-cell">
+                    ${g.image ? `<img src="${giftImg(g.image, 64)}" alt="" loading="lazy" decoding="async">` : '<span style="font-size:22px">🎁</span>'}
+                    ${escapeHtml(g.name || '')}
+                    <b>×${(g.count || 0).toLocaleString('en-US')}</b>
+                </div>
+            `).join('');
+    }
 
     body.querySelectorAll('.full-profile-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             body.querySelectorAll('.full-profile-tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
-            const isHonor = tab.dataset.tab === 'honor';
-            document.getElementById('profile-hub-tab-honor').style.display = isHonor ? '' : 'none';
-            document.getElementById('profile-hub-tab-video').style.display = isHonor ? 'none' : '';
+            const target = tab.dataset.tab;
+            document.getElementById('profile-hub-tab-honor').style.display = target === 'honor' ? '' : 'none';
+            document.getElementById('profile-hub-tab-gifts').style.display = target === 'gifts' ? '' : 'none';
+            document.getElementById('profile-hub-tab-about').style.display = target === 'about' ? '' : 'none';
+            if (target === 'gifts') renderGiftsTabIfOpen(); // ✅ تحميل عند أول فتح فعلي فقط (قاعدة CLAUDE.md)
         });
     });
     document.getElementById('profile-hub-honor-giving')?.addEventListener('click', () => {
@@ -11529,13 +11585,30 @@ function renderProfileHubBody(u) {
 
     document.getElementById('profile-hub-followers-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'followers'));
     document.getElementById('profile-hub-following-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'following'));
+    document.getElementById('profile-hub-copy-id-btn')?.addEventListener('click', () => {
+        navigator.clipboard?.writeText(String(u.customId || '')).then(() => showNotification('تم نسخ المعرّف', 'success')).catch(() => {});
+    });
+    document.getElementById('profile-hub-share-btn')?.addEventListener('click', async () => {
+        const shareText = `تابعني على منصة التحديات! معرّفي: ${u.customId || ''}`;
+        try {
+            if (navigator.share) await navigator.share({ text: shareText });
+            else { await navigator.clipboard.writeText(shareText); showNotification('تم نسخ رابط المشاركة ✅', 'success'); }
+        } catch (e) { /* المستخدم ألغى المشاركة — لا حاجة لأي رد فعل */ }
+    });
+    document.getElementById('profile-hub-settings-btn')?.addEventListener('click', () => { document.getElementById('profile-hub-page')?.remove(); switchToView('settings'); });
+    document.getElementById('profile-hub-visitor-eye-btn')?.addEventListener('click', () => { profileHubVisitorMode = true; renderProfileHubBody(u); });
+    document.getElementById('profile-hub-visitor-back-btn')?.addEventListener('click', () => { profileHubVisitorMode = false; renderProfileHubBody(u); });
     document.getElementById('profile-hub-wallet-btn')?.addEventListener('click', () => openRechargePage());
+    document.getElementById('profile-hub-coins-card-btn')?.addEventListener('click', () => openRechargePage());
+    document.getElementById('profile-hub-beans-card-btn')?.addEventListener('click', () => openRechargePage('withdraw'));
+    document.getElementById('profile-hub-agent-btn')?.addEventListener('click', () => openAgentPanel());
+    document.getElementById('profile-hub-qr-btn')?.addEventListener('click', () => showProfileQrModal(u));
     document.getElementById('profile-hub-vip-btn')?.addEventListener('click', () => showNotification('خاصية VIP قريباً ✨', 'info'));
-    document.getElementById('profile-hub-creator-btn').addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
-    document.getElementById('profile-hub-games-btn').addEventListener('click', () => showNotification('مركز الألعاب قريباً 🎮', 'info'));
-    document.getElementById('profile-hub-host-center-btn').addEventListener('click', () => showHostCenterSheet());
-    document.getElementById('profile-hub-edit-btn').addEventListener('click', () => showProfileEditSheet(u));
-    document.getElementById('profile-hub-discover-btn').addEventListener('click', () => showDiscoverPeopleSheet());
+    document.getElementById('profile-hub-creator-btn')?.addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
+    document.getElementById('profile-hub-games-btn')?.addEventListener('click', () => showNotification('مركز الألعاب قريباً 🎮', 'info'));
+    document.getElementById('profile-hub-host-center-btn')?.addEventListener('click', () => showHostCenterSheet());
+    document.getElementById('profile-hub-edit-btn')?.addEventListener('click', () => showProfileEditSheet(u));
+    document.getElementById('profile-hub-discover-btn')?.addEventListener('click', () => showDiscoverPeopleSheet());
 }
 
 // ✅ ورقة "الإعدادات" — مُنقولة بالكامل هنا خارج جسم مركز الملف الشخصي، تُفتح فقط من قائمة
