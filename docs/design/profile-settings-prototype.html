@@ -1,0 +1,450 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>الملف الشخصي والإعدادات</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;600;700;800;900&family=Baloo+Bhaijaan+2:wght@700;800&display=swap">
+<style>
+/* Layout: page header (title + build-status toggle + jump chips) above one phone frame that runs a small screen stack. Single dark look, same as the app. */
+:root{
+  --bg:#0a0812;--phone:#100c19;--s1:#181324;--s2:#211a30;--line:#2d2440;
+  --fg:#f2eefa;--muted:#968aac;--dim:#6c6180;
+  --accent:#a46bff;--teal:#2fd4b4;--gold:#ffcc4d;--pink:#ff5fa8;--red:#ff6b6b;--amber:#ffb547;
+  --f-ui:"Cairo",system-ui,sans-serif;--f-num:"Baloo Bhaijaan 2","Cairo",system-ui,sans-serif;
+  color-scheme:dark
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);margin:0;font-size:14px}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:980px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:21px;font-weight:900;margin:0 0 4px;text-wrap:balance}
+.lead{color:var(--muted);font-size:13px;line-height:1.8;margin:0 0 12px;max-width:68ch}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.toggle{display:flex;align-items:center;gap:8px;background:var(--s1);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:800}
+.sw{width:34px;height:20px;border-radius:99px;background:var(--line);position:relative;transition:background .2s;flex:none}
+.sw::after{content:"";position:absolute;top:2px;inset-inline-start:2px;width:16px;height:16px;border-radius:50%;background:var(--fg);transition:inset-inline-start .2s}
+[aria-pressed="true"] .sw,.sw.on{background:var(--teal)}
+[aria-pressed="true"] .sw::after,.sw.on::after{inset-inline-start:16px}
+.legend{display:flex;flex-wrap:wrap;gap:6px;font-size:11.5px}
+.jump{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.jump button{background:var(--s1);border:1px solid var(--line);border-radius:10px;padding:5px 10px;font-size:12px;font-weight:700;color:var(--muted)}
+.jump button.cur{color:var(--fg);border-color:var(--accent)}
+
+/* status tags */
+.st{display:none;font-size:10px;font-weight:800;border-radius:6px;padding:1px 6px;line-height:1.6;flex:none}
+.show-st .st{display:inline-block}
+.legend .st{display:inline-block}
+.st.have{background:#2fd4b422;color:var(--teal)}
+.st.move{background:#a46bff26;color:#c8a6ff}
+.st.new{background:#ffcc4d22;color:var(--gold)}
+.st.later{background:#ffffff12;color:var(--muted)}
+
+/* phone */
+.phone{max-width:390px;margin:0 auto;background:var(--phone);border:1px solid var(--line);border-radius:28px;height:760px;max-height:calc(100vh - 40px);min-height:560px;position:relative;overflow:hidden;display:flex;flex-direction:column}
+.scr{flex:1;overflow-y:auto;overflow-x:hidden;position:relative}
+.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--phone);border-bottom:1px solid var(--line)}
+.top h2{font-size:15px;font-weight:900;margin:0;flex:1}
+.ib{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;color:var(--fg);flex:none}
+.ib:hover{background:var(--s2)}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.num{font-family:var(--f-num);direction:ltr;unicode-bidi:isolate}
+
+/* profile hero */
+.cover{height:330px;background:
+  radial-gradient(120px 90px at 80% 30%,#ff5fa855,transparent 70%),
+  radial-gradient(160px 120px at 20% 60%,#a46bff66,transparent 70%),
+  linear-gradient(160deg,#2a1d48,#151022);position:relative}
+.cover::after{content:"";position:absolute;inset:auto 0 0;height:62%;background:linear-gradient(transparent,#100c19ee 70%,var(--phone));pointer-events:none}
+.cover .tools{z-index:2}
+.bdg{display:inline-flex;align-items:center;gap:3px;height:22px;padding:0 8px 0 3px;border-radius:99px;font-family:var(--f-num);font-size:12.5px;font-weight:800;direction:ltr}
+.bdg i{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;color:#fff}
+.bdg i svg{width:11px;height:11px;stroke-width:2.4}
+.bdg.w{background:linear-gradient(90deg,#ffb020,#ff7a1a);color:#fff}.bdg.w i{background:#0003}
+.bdg.c{background:linear-gradient(90deg,#ff5fa8,#c04dff);color:#fff}.bdg.c i{background:#0003}
+.bdg.a{background:linear-gradient(90deg,#16b89a,#2fd4b4);color:#fff;padding:0 3px}.bdg.a i{background:#0003}
+.cover .tools{position:absolute;top:10px;inset-inline:10px;display:flex;justify-content:space-between}
+.cover .tools .ib{background:#0006;backdrop-filter:blur(4px)}
+.cover-edit{position:absolute;top:56px;inset-inline-end:10px;z-index:2;font-size:11px;font-weight:800;background:#0007;border-radius:8px;padding:3px 8px;display:flex;gap:4px;align-items:center}
+.hero{position:absolute;bottom:0;inset-inline:0;z-index:2;padding:0 16px 12px}
+.ava{width:88px;height:88px;border-radius:50%;position:relative;display:grid;place-items:center}
+.ava::before{content:"";position:absolute;inset:-5px;border-radius:50%;background:conic-gradient(from 0deg,var(--gold),var(--pink),var(--accent),var(--gold));}
+.ava span{position:relative;width:82px;height:82px;border-radius:50%;background:linear-gradient(135deg,#3b2a63,#6a3fb8);display:grid;place-items:center;font-size:32px;font-weight:900;border:3px solid var(--phone)}
+.name{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
+.name b{font-size:19px;font-weight:900}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;border-radius:99px;padding:2px 8px;background:var(--s2)}
+.chip.g{background:#4da3ff22;color:#7fbcff}
+.chip.lv1{background:linear-gradient(90deg,#ffcc4d33,#ff9f1a22);color:var(--gold)}
+.chip.lv2{background:linear-gradient(90deg,#ff5fa833,#a46bff22);color:#ff9fd0}
+.idrow{display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--muted);font-size:12px;flex-wrap:wrap}
+.copy{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-size:12px;font-weight:700}
+.copy svg{width:14px;height:14px}
+.bio{margin:8px 0 0;font-size:13px;line-height:1.7;color:#d9d1e8}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);margin:12px 16px 0;background:var(--s1);border-radius:16px;padding:10px 0}
+.stats button{display:flex;flex-direction:column;align-items:center;gap:0}
+.stats b{font-family:var(--f-num);font-size:18px}
+.stats small{font-size:11px;color:var(--muted);font-weight:700;display:flex;gap:3px;align-items:center}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--pink);display:inline-block}
+.bal{margin:10px 16px 0;display:flex;gap:8px}
+.bal button{flex:1;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#2b2140,#1d1730);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.bal small{display:block;font-size:11px;color:var(--muted);font-weight:700;text-align:start}
+.bal b{font-family:var(--f-num);font-size:17px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:12px 10px 0}
+.tile{display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 2px;border-radius:14px;font-size:11.5px;font-weight:700;position:relative}
+.tile:hover{background:var(--s1)}
+.tile .ti{width:44px;height:44px;border-radius:14px;display:grid;place-items:center}
+.tile .st{position:absolute;top:0;inset-inline-end:2px}
+.tabs{display:flex;gap:18px;padding:0 16px;margin-top:14px;border-bottom:1px solid var(--line)}
+.tabs button{padding:8px 0;font-weight:800;color:var(--muted);border-bottom:2px solid transparent;font-size:13.5px}
+.tabs button.on{color:var(--fg);border-color:var(--accent)}
+.pane{padding:12px 16px 90px}
+.honor{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.hcard{background:var(--s1);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:2px}
+.hcard small{color:var(--muted);font-size:11px;font-weight:700}
+.hcard b{font-size:14px}
+.gifts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.gift{background:var(--s1);border-radius:12px;padding:8px 4px;text-align:center;font-size:11px;color:var(--muted)}
+.gift i{display:block;width:34px;height:34px;margin:0 auto 4px;border-radius:10px}
+.gift b{display:block;color:var(--fg);font-family:var(--f-num);font-size:13px}
+.info{display:flex;flex-direction:column;gap:0;background:var(--s1);border-radius:14px}
+.info div{display:flex;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #ffffff0a;font-size:13px}
+.info div:last-child{border:0}
+.info span{color:var(--muted)}
+.fab{position:absolute;bottom:0;inset-inline:0;display:flex;gap:8px;padding:10px 14px 14px;background:linear-gradient(transparent,var(--phone) 35%)}
+.fab button{flex:1;border-radius:14px;padding:11px 0;font-weight:900;display:flex;gap:6px;justify-content:center;align-items:center}
+.btn-p{background:linear-gradient(90deg,var(--accent),var(--pink));color:#fff}
+.btn-s{background:var(--s2)}
+.btn-t{background:linear-gradient(90deg,#2fd4b4,#3be08a);color:#06221c}
+
+/* settings lists */
+.sec{padding:8px 14px 0}
+.sec h3{font-size:12px;color:var(--muted);font-weight:800;margin:10px 4px 6px;letter-spacing:.2px}
+.list{background:var(--s1);border-radius:16px;overflow:hidden}
+.row{width:100%;display:flex;align-items:center;gap:10px;padding:12px;border-bottom:1px solid #ffffff0a;text-align:start}
+.row:last-child{border-bottom:0}
+.row:hover{background:var(--s2)}
+.row .ri{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;flex:none}
+.row .ri svg{width:18px;height:18px}
+.row .t{flex:1;min-width:0;display:flex;flex-direction:column}
+.row .t b{font-size:13.5px;font-weight:700;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.row .t small{font-size:11.5px;color:var(--muted);line-height:1.5}
+.row .v{font-size:12px;color:var(--muted);flex:none}
+.row .v.warn{color:var(--amber);font-weight:800}
+.row .v.ok{color:var(--teal);font-weight:800}
+.row .chev{color:var(--dim);width:16px;height:16px}
+.row.danger b{color:var(--red)}
+.score{margin:10px 14px 0;background:linear-gradient(135deg,#2b2140,#1b1528);border:1px solid var(--line);border-radius:18px;padding:14px}
+.score .h{display:flex;align-items:center;gap:10px}
+.ring{width:54px;height:54px;flex:none}
+.score h4{margin:0;font-size:14.5px;font-weight:900}
+.score p{margin:2px 0 0;font-size:12px;color:var(--muted);line-height:1.6}
+.checks{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.checks button{display:flex;align-items:center;gap:8px;font-size:12.5px;background:#ffffff08;border-radius:10px;padding:8px 10px;text-align:start}
+.checks .ok{color:var(--teal)}
+.checks .no{color:var(--amber)}
+.checks em{font-style:normal;margin-inline-start:auto;font-size:11.5px;color:var(--accent);font-weight:800}
+.seg{display:flex;background:var(--s2);border-radius:10px;padding:3px;gap:2px;flex:none}
+.seg button{font-size:11.5px;font-weight:800;padding:4px 8px;border-radius:8px;color:var(--muted)}
+.seg button.on{background:var(--accent);color:#fff}
+.note{margin:10px 18px;font-size:11.5px;color:var(--muted);line-height:1.8}
+.foot{text-align:center;color:var(--dim);font-size:11px;padding:16px 0 28px}
+.form{padding:12px 16px 30px;display:flex;flex-direction:column;gap:12px}
+.form label{font-size:12px;color:var(--muted);font-weight:800;display:flex;justify-content:space-between}
+.form input,.form textarea,.form select{width:100%;background:var(--s1);border:1px solid var(--line);border-radius:12px;padding:10px 12px;color:var(--fg);font:inherit;font-size:13.5px}
+.form textarea{resize:none;height:70px}
+.form .hint{font-size:11px;color:var(--dim);margin-top:3px;line-height:1.6}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.devs .row .t b{font-size:13px}
+.pill{font-size:10.5px;font-weight:800;border-radius:6px;padding:1px 6px;background:#2fd4b422;color:var(--teal)}
+.toast{position:absolute;bottom:18px;inset-inline:40px;background:#000c;border-radius:12px;padding:9px 12px;text-align:center;font-size:12.5px;font-weight:700;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
+.toast.on{opacity:1}
+.sheet{position:absolute;inset:0;background:#000a;display:flex;align-items:flex-end;z-index:15}
+.sheet>div{background:var(--s1);border-radius:20px 20px 0 0;padding:16px;width:100%}
+.sheet h4{margin:0 0 6px;font-size:15px}
+.sheet p{margin:0 0 12px;font-size:12.5px;color:var(--muted);line-height:1.8}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (max-width:440px){.phone{border-radius:20px;height:720px}}
+</style>
+
+<div class="wrap" dir="rtl">
+  <h1>الملف الشخصي والإعدادات</h1>
+  <p class="lead">نموذج تفاعلي للملف الشخصي الكامل وصفحة الإعدادات الجديدة. اضغط على أي سطر للتنقل. فعّل «حالة التنفيذ» لترى ما هو موجود في التطبيق وما يُنقل وما هو جديد.</p>
+  <div class="bar">
+    <button class="toggle" id="stToggle" aria-pressed="false"><span class="sw"></span>حالة التنفيذ</button>
+    <div class="legend"><span class="st have">موجود</span><span class="st move">يُنقل</span><span class="st new">جديد</span><span class="st later">لاحقاً</span></div>
+  </div>
+  <div class="jump" id="jump"></div>
+  <div class="phone" id="phone"><div class="scr" id="scr"></div><div class="toast" id="toast"></div></div>
+</div>
+
+<script>
+(() => {
+const P = {
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  share:'<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v13"/>',
+  back:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+  chev:'<path d="M15 18l-6-6 6-6"/>',
+  copy:'<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  wallet:'<path d="M20 7H5a2 2 0 0 1 0-4h13v4"/><path d="M3 5v14a2 2 0 0 0 2 2h15V7"/><circle cx="16" cy="14" r="1.2"/>',
+  mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10a7 7 0 0 1-14 0M12 17v5"/>',
+  users:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  bag:'<path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/>',
+  crown:'<path d="M3 18h18L19 7l-4.5 4L12 5l-2.5 6L5 7z"/>',
+  medal:'<circle cx="12" cy="15" r="6"/><path d="M8.5 10.5L6 2h4l2 4 2-4h4l-2.5 8.5"/>',
+  gift:'<path d="M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>',
+  shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  key:'<circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M16 7l3 3"/>',
+  mail:'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 6l-10 7L2 6"/>',
+  phone:'<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
+  bell:'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/>',
+  eye:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>',
+  globe:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
+  zap:'<path d="M13 2L3 14h9l-1 8 10-12h-9z"/>',
+  vol:'<path d="M11 5L6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/>',
+  trash:'<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>',
+  help:'<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/>',
+  info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  out:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  ban:'<circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/>',
+  msg:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  gem:'<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20"/>',
+  heart:'<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/>',
+  pen:'<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  hand:'<path d="M20 12l-3-3-4 4-2-2-3 3M3 12l4-4 3 3"/><path d="M7 15l3 3 4-4 3 3"/>',
+  star:'<path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/>',
+  frame:'<rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="12" cy="12" r="4"/>',
+  compass:'<circle cx="12" cy="12" r="10"/><path d="M16.2 7.8l-2.1 6.3-6.3 2.1 2.1-6.3z"/>',
+  doc:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
+  check:'<path d="M20 6L9 17l-5-5"/>',
+  alert:'<path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>',
+  cam:'<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'
+};
+const ic = (n, s='') => `<svg class="i" viewBox="0 0 24 24" ${s}>${P[n]}</svg>`;
+const st = (k) => k ? `<span class="st ${k}">${{have:'موجود',move:'يُنقل',new:'جديد',later:'لاحقاً'}[k]}</span>` : '';
+const $ = (id) => document.getElementById(id);
+
+// ---- example data (fictional test account) ----
+const me = { name:'بشّار', initial:'ب', id:'653071', age:27, gender:'♂', flag:'🇸🇾', city:'دمشق', bio:'أحب الطرب والسهرات الهادئة. البث كل خميس 9 مساءً.', wealth:12, charm:8,
+  followers:1284, following:312, friends:46, visitors:91, newVisitors:7, coins:48250, beans:3120, isAgent:true,
+  emailVerified:false, hasPin:true, strongPw:true, payout:true };
+let state = { tab:'honor', visitor:false };
+const stack = ['profile'];
+
+const row = (o) => `<button class="row ${o.cls||''}" ${o.go?`data-go="${o.go}"`:''} ${o.toast?`data-toast="${o.toast}"`:''} ${o.sheet?`data-sheet="${o.sheet}"`:''}>
+  <span class="ri" style="background:${o.bg||'#ffffff0d'};color:${o.c||'var(--fg)'}">${ic(o.i)}</span>
+  <span class="t"><b>${o.t}${st(o.st)}</b>${o.s?`<small>${o.s}</small>`:''}</span>
+  ${o.v?`<span class="v ${o.vc||''}">${o.v}</span>`:''}${o.right||`<svg class="i chev" viewBox="0 0 24 24">${P.chev}</svg>`}</button>`;
+const top = (title, extra='') => `<div class="top"><button class="ib" data-back aria-label="رجوع">${ic('back')}</button><h2>${title}</h2>${extra}</div>`;
+const swBtn = (on, key) => `<span class="sw ${on?'on':''}" data-sw="${key}" role="switch" aria-checked="${on}"></span>`;
+const prefs = { dmFrom:'all', lastSeen:true, location:false, followList:true, roomInvite:true,
+  nDM:true, nFollow:true, nLive:true, nGift:true, nSys:true, lite:false, sounds:true, vibrate:true, autoAnim:true };
+const seg = (key, opts) => `<span class="seg">${opts.map(([v,l])=>`<button data-seg="${key}" data-v="${v}" class="${prefs[key]===v?'on':''}">${l}</button>`).join('')}</span>`;
+
+const screens = {
+  profile: { label:'ملفي', render(){
+    const v = state.visitor;
+    return `
+    <div class="cover">
+      <div class="tools">
+        ${v?`<button class="ib" data-back-visitor aria-label="رجوع">${ic('back')}</button>`:`<button class="ib" data-go="settings" aria-label="الإعدادات">${ic('gear')}</button>`}
+        <span style="display:flex;gap:6px">
+          ${v?'':`<button class="ib" data-visitor aria-label="عرض كزائر">${ic('eye')}</button>`}
+          <button class="ib" data-toast="تم نسخ رابط ملفك" aria-label="مشاركة">${ic('share')}</button>
+        </span>
+      </div>
+      ${v?'':`<span class="cover-edit">${ic('cam','style="width:13px;height:13px"')} الغلاف${st('new')}</span>`}
+    <div class="hero">
+      <div class="ava"><span>${me.initial}</span></div>
+      <div class="name"><b>${me.name}</b><span class="chip g">${me.gender} ${me.age}</span><span>${me.flag}</span></div>
+      <div class="idrow" style="margin-top:6px">
+        <button class="bdg w" data-toast="مستوى الثروة ${me.wealth}" aria-label="مستوى الثروة"><i>${ic('gem')}</i>${me.wealth}</button>
+        <button class="bdg c" data-toast="مستوى الجاذبية ${me.charm}" aria-label="مستوى الجاذبية"><i>${ic('heart')}</i>${me.charm}</button>
+        ${me.isAgent?`<button class="bdg a" data-toast="وكيل شحن معتمد" aria-label="وكيل معتمد"><i>${ic('shield')}</i></button>`:''}${st('have')}
+      </div>
+      <div class="idrow"><button class="copy" data-toast="تم نسخ المعرّف"><span class="num">ID: ${me.id}</span> ${ic('copy')}</button></div>
+      <p class="bio">${me.bio}</p>
+      ${v?'':`<button class="chip" data-go="edit" style="margin-top:8px;padding:5px 12px;background:#ffffff1a">${ic('pen','style="width:13px;height:13px"')} تعديل الملف</button>`}
+    </div>
+    </div>
+    <div class="stats">
+      <button data-toast="قائمة المتابِعين"><b>${me.followers.toLocaleString('en-US')}</b><small>متابِعون</small></button>
+      <button data-toast="قائمة المتابَعين"><b>${me.following}</b><small>متابَعون</small></button>
+      <button data-toast="قائمة الأصدقاء"><b>${me.friends}</b><small>أصدقاء ${st('new')}</small></button>
+      <button data-toast="${v?'لا يظهر للزائر':'زوّار ملفك آخر 30 يوماً'}"><b>${v?'—':me.visitors}</b><small>${!v&&me.newVisitors?'<i class="dot"></i>':''}زوّار ${st('new')}</small></button>
+    </div>
+    ${v?'':`
+    <div class="bal">
+      <button data-toast="يفتح صفحة الشحن"><span><small>كوينز</small><b class="num">${me.coins.toLocaleString('en-US')}</b></span><span style="color:var(--gold)">${ic('plus')}</span></button>
+      <button data-toast="يفتح السحب والاستبدال"><span><small>ألماس</small><b class="num">${me.beans.toLocaleString('en-US')}</b></span><span style="color:var(--teal)">${ic('chev')}</span></button>
+    </div>
+    <div class="grid4">
+      ${[['wallet','محفظتي','#ffcc4d22','var(--gold)','have'],['mic','مركز المضيف','#ff5fa822','var(--pink)','have'],
+         ...(me.isAgent?[['hand','لوحة الوكيل','#2fd4b422','var(--teal)','move']]:[]),
+         ['bag','حقيبتي','#a46bff22','#c8a6ff','new'],['frame','متجر الإطارات','#ffcc4d22','var(--gold)','move'],['medal','الشارات','#4da3ff22','#7fbcff','move'],
+         ['crown','VIP','#ffcc4d22','var(--gold)','later'],['users','ادعُ أصدقاءك','#ffffff10','var(--fg)','later']]
+        .map(([i,l,bg,c,s])=>`<button class="tile" data-toast="${l}">${st(s)}<span class="ti" style="background:${bg};color:${c}">${ic(i)}</span>${l}</button>`).join('')}
+    </div>`}
+    <div class="tabs">${[['honor','الشرف'],['gifts','الهدايا'],['about','معلومات']].map(([k,l])=>`<button data-tab="${k}" class="${state.tab===k?'on':''}">${l}</button>`).join('')}</div>
+    <div class="pane">${this.pane()}</div>
+    ${v?`<div class="fab"><button class="btn-s" data-toast="تمت المتابعة">${ic('plus')} متابعة</button><button class="btn-s" data-toast="يفتح المحادثة">${ic('msg')} رسالة</button><button class="btn-p" data-toast="يفتح ورقة الهدايا">${ic('gift')} هدية</button></div>`:''}`;
+  }, pane(){
+    if (state.tab==='honor') return `<div class="honor">
+      <div class="hcard"><small>مستوى الثروة ${st('have')}</small><b>Lv.${me.wealth} · <span class="num">186,400</span></b></div>
+      <div class="hcard"><small>مستوى الجاذبية ${st('have')}</small><b>Lv.${me.charm} · <span class="num">74,900</span></b></div>
+      <div class="hcard"><small>نادي المعجبين ${st('have')}</small><b>عشّاق الطرب · <span class="num">38</span></b></div>
+      <div class="hcard"><small>الحماة ${st('later')}</small><b style="color:var(--muted)">قريباً</b></div></div>
+      <p class="note" style="margin:10px 2px">الشارات المختارة تظهر هنا أيضاً (حتى 3)، ويختارها المستخدم من «الشارات».</p>`;
+    if (state.tab==='gifts') return `<div class="gifts">${[['وردة','#ff5fa8',412],['قلب','#ff6b6b',138],['تاج','#ffcc4d',21],['صاروخ','#4da3ff',6],['قهوة','#c08457',90],['نجمة','#a46bff',55],['سيارة','#2fd4b4',3],['قصر','#ffb547',1]]
+      .map(([n,c,q])=>`<div class="gift"><i style="background:linear-gradient(135deg,${c},#ffffff22)"></i><b>×${q}</b>${n}</div>`).join('')}</div>
+      <p class="note" style="margin:10px 2px">جدار الهدايا المستلمة مرتّب حسب القيمة ${st('new')}</p>`;
+    return `<div class="info">
+      <div><span>الجنس والعمر</span><b>ذكر · 27</b></div><div><span>مسقط الرأس</span><b>${me.city}</b></div>
+      <div><span>تاريخ الانضمام</span><b class="num">2026-06-14</b></div><div><span>إنستجرام</span><b dir="ltr">@bashar.sy</b></div></div>`;
+  }},
+  edit: { label:'تعديل الملف', render(){ return top('تعديل الملف الشخصي', `<button class="chip" style="padding:5px 12px;background:var(--accent);color:#fff" data-toast-back="تم الحفظ">حفظ</button>`) + `
+    <div class="form">
+      <div style="display:flex;gap:14px;align-items:center"><div class="ava" style="width:72px;height:72px"><span style="width:66px;height:66px;font-size:26px">${me.initial}</span></div>
+        <div style="display:flex;flex-direction:column;gap:6px"><button class="chip" data-toast="اختيار صورة">${ic('cam','style="width:13px;height:13px"')} تغيير الصورة ${st('move')}</button><button class="chip" data-toast="اختيار غلاف">صورة الغلاف ${st('new')}</button></div></div>
+      <div><label for="f-name">الاسم ${st('move')}<span class="num">6/20</span></label><input id="f-name" value="${me.name}"><div class="hint">يمكن تغيير الاسم مرة كل 7 أيام.</div></div>
+      <div><label for="f-bio">نبذة ${st('have')}<span class="num">38/120</span></label><textarea id="f-bio">${me.bio}</textarea></div>
+      <div class="two"><div><label for="f-g">الجنس ${st('have')}</label><select id="f-g"><option>ذكر</option><option>أنثى</option></select></div>
+        <div><label for="f-b">تاريخ الميلاد ${st('have')}</label><input id="f-b" type="date" value="1999-03-02"></div></div>
+      <div class="hint" style="margin-top:-6px">الجنس لا يُغيَّر بعد الحفظ إلا عبر الدعم. العمر وحده يظهر للناس، وليس تاريخ الميلاد.</div>
+      <div><label for="f-c">مسقط الرأس ${st('have')}</label><input id="f-c" value="${me.city}"></div>
+      <div class="two"><div><label for="f-ig">إنستجرام ${st('have')}</label><input id="f-ig" dir="ltr" value="bashar.sy"></div><div><label for="f-yt">يوتيوب ${st('have')}</label><input id="f-yt" dir="ltr" placeholder="اختياري"></div></div>
+    </div>`; }},
+  settings: { label:'الإعدادات', render(){
+    const done = [me.emailVerified, me.hasPin, me.strongPw, me.payout].filter(Boolean).length;
+    return top('الإعدادات') + `
+    <button class="score" data-go="account" style="display:block;width:calc(100% - 28px);text-align:start">
+      <div class="h">${ring(done,4)}<div><h4>أمان حسابك ${done} من 4 ${st('new')}</h4><p>${done<4?'خطوة واحدة متبقية: فعّل بريدك حتى تستطيع استعادة الحساب ورمز السحب بنفسك.':'حسابك محمي بالكامل.'}</p></div></div>
+    </button>
+    <div class="sec"><h3>الحساب</h3><div class="list">
+      ${row({i:'shield',t:'الحساب والأمان',s:'البريد، كلمة السر، رمز السحب، الأجهزة',go:'account',bg:'#2fd4b422',c:'var(--teal)',st:'move',v:me.emailVerified?'':'1',vc:'warn'})}
+      ${row({i:'eye',t:'الخصوصية',s:'من يراسلني، آخر ظهور، المحظورون',go:'privacy',bg:'#a46bff22',c:'#c8a6ff',st:'new'})}
+      ${row({i:'bell',t:'التنبيهات',go:'notifs',bg:'#ff5fa822',c:'var(--pink)',st:'new'})}
+    </div></div>
+    <div class="sec"><h3>التطبيق</h3><div class="list">
+      ${row({i:'zap',t:'الأداء والبيانات',s:'وضع الأجهزة الضعيفة، التحميل التلقائي',go:'general',bg:'#ffcc4d22',c:'var(--gold)',st:'new'})}
+      ${row({i:'globe',t:'اللغة',v:'العربية',toast:'اللغة: العربية فقط حالياً',st:'later'})}
+      ${row({i:'msg',t:'إطارات رسائل الشات',toast:'يفتح اختيار الإطار',st:'move'})}
+      ${row({i:'compass',t:'إعادة الجولة التعريفية',toast:'تبدأ الجولة من جديد',st:'move'})}
+    </div></div>
+    <div class="sec"><h3>المساعدة</h3><div class="list">
+      ${row({i:'help',t:'الدعم والمساعدة',s:'تواصل مع الدعم، طلباتي السابقة',go:'help',st:'new'})}
+      ${row({i:'doc',t:'الشروط وسياسة الخصوصية',toast:'صفحة السياسات',st:'later'})}
+      ${row({i:'info',t:'حول التطبيق',v:'1.0.0',toast:'الإصدار 1.0.0',st:'move'})}
+    </div></div>
+    <div class="sec"><div class="list">${row({i:'out',t:'تسجيل الخروج',cls:'danger',sheet:'logout',bg:'#ff6b6b22',c:'var(--red)',right:' ',st:'move'})}</div></div>
+    <div class="foot">مدعوم من abn.7alp</div>`; }},
+  account: { label:'الحساب والأمان', render(){ return top('الحساب والأمان') + `
+    <div class="score"><div class="checks" style="margin:0">
+      ${chk(me.emailVerified,'تفعيل البريد الإلكتروني','فعّل الآن')}${chk(me.hasPin,'رمز السحب')}${chk(me.strongPw,'كلمة سر قوية')}${chk(me.payout,'محفظة صرف محفوظة')}
+    </div></div>
+    <div class="sec"><h3>تسجيل الدخول</h3><div class="list">
+      ${row({i:'mail',t:'البريد الإلكتروني',s:'ba***@gmail.com',v:me.emailVerified?'مفعّل':'غير مفعّل',vc:me.emailVerified?'ok':'warn',sheet:'email',st:'new'})}
+      ${row({i:'lock',t:'كلمة السر',s:'آخر تغيير قبل 3 أشهر',sheet:'pw',st:'move'})}
+      ${row({i:'phone',t:'الأجهزة النشطة',s:'جهازان مسجّلان الآن',go:'devices',st:'new'})}
+    </div></div>
+    <div class="sec"><h3>المال</h3><div class="list">
+      ${row({i:'key',t:'رمز السحب',s:'مطلوب للسحب وتحويلات الوكيل',v:'مُفعّل',vc:'ok',toast:'تغيير الرمز أو نسيته',st:'move'})}
+      ${row({i:'wallet',t:'محفظة الصرف (شام كاش)',s:'تغييرها يوقف السحب 48 ساعة',v:'•••• 4417',toast:'يفتح تغيير المحفظة',st:'move'})}
+    </div></div>
+    <div class="sec"><h3>منطقة الخطر</h3><div class="list">
+      ${row({i:'trash',t:'حذف الحساب',s:'مهلة 15 يوماً للتراجع، والرصيد غير المسحوب يُفقد',cls:'danger',sheet:'delete',bg:'#ff6b6b22',c:'var(--red)',st:'later'})}
+    </div></div>
+    <p class="note">تُنقل هنا كل الأقسام المتفرقة حالياً: كلمة السر، ورمز السحب، ومحفظة الصرف. وصفحة الإعدادات القديمة تُحذف.</p>`; }},
+  devices: { label:'الأجهزة', render(){ return top('الأجهزة النشطة') + `
+    <div class="sec devs"><div class="list">
+      ${row({i:'phone',t:'هذا الجهاز <span class="pill">الحالي</span>',s:'Chrome · Android · دمشق · الآن',right:' '})}
+      ${row({i:'phone',t:'Safari · iPhone',s:'حلب · قبل يومين',right:`<button class="chip" style="color:var(--red)" data-toast="تم تسجيل خروج الجهاز">إخراج</button>`})}
+    </div></div>
+    <div class="sec"><div class="list">${row({i:'out',t:'تسجيل الخروج من كل الأجهزة الأخرى',cls:'danger',toast:'تم إخراج كل الأجهزة الأخرى',right:' '})}</div></div>
+    <p class="note">المدينة تقريبية من الشبكة. إذا رأيت جهازاً لا تعرفه: أخرجه، ثم غيّر كلمة السر.</p>`; }},
+  privacy: { label:'الخصوصية', render(){ return top('الخصوصية') + `
+    <div class="sec"><h3>التواصل</h3><div class="list">
+      ${row({i:'msg',t:'من يستطيع مراسلتي',right:seg('dmFrom',[['all','الجميع'],['follow','من أتابعهم'],['friends','الأصدقاء']])})}
+      ${row({i:'users',t:'دعوتي إلى الغرف',s:'إشعار دعوة من الآخرين',right:swBtn(prefs.roomInvite,'roomInvite')})}
+    </div></div>
+    <div class="sec"><h3>ما يراه الآخرون</h3><div class="list">
+      ${row({i:'eye',t:'إظهار آخر ظهور',s:'إذا أخفيته لن ترى آخر ظهور الآخرين',right:swBtn(prefs.lastSeen,'lastSeen')})}
+      ${row({i:'globe',t:'إظهار مدينتي',right:swBtn(prefs.location,'location')})}
+      ${row({i:'users',t:'إظهار قائمة متابَعيّ',right:swBtn(prefs.followList,'followList')})}
+    </div></div>
+    <div class="sec"><div class="list">${row({i:'ban',t:'المحظورون',v:'3',go:'blocked',st:'move'})}</div></div>`; }},
+  blocked: { label:'المحظورون', render(){ return top('المحظورون') + `<div class="sec"><div class="list">
+    ${['سامر_77','Night.Wolf','ريم'].map(n=>row({i:'ban',t:n,s:'حُظر قبل أسبوع',right:`<button class="chip" data-toast="تم رفع الحظر عن ${n}">رفع الحظر</button>`})).join('')}
+    </div></div><p class="note">المحظور لا يراسلك، ولا يدخل غرفتك، ولا يرى بثّك المباشر.</p>`; }},
+  notifs: { label:'التنبيهات', render(){ return top('التنبيهات') + `<div class="sec"><div class="list">
+    ${row({i:'msg',t:'الرسائل الخاصة',right:swBtn(prefs.nDM,'nDM')})}
+    ${row({i:'users',t:'متابع جديد',right:swBtn(prefs.nFollow,'nFollow')})}
+    ${row({i:'mic',t:'بدء بث لمن أتابعهم',right:swBtn(prefs.nLive,'nLive')})}
+    ${row({i:'gift',t:'هدايا وصلتني',right:swBtn(prefs.nGift,'nGift')})}
+    ${row({i:'shield',t:'تنبيهات الأمان والمال',s:'دخول جديد، سحب، تحويل — لا يمكن إيقافها',right:`<span class="sw on" style="opacity:.5"></span>`})}
+    </div></div>`; }},
+  general: { label:'الأداء', render(){ return top('الأداء والبيانات') + `<div class="sec"><div class="list">
+    ${row({i:'zap',t:'وضع الأجهزة الضعيفة',s:'يوقف المؤثرات المتحركة الثقيلة، والإطارات المتحركة، وتشغيل الهدايا الكبيرة كاملة',right:swBtn(prefs.lite,'lite')})}
+    ${row({i:'gift',t:'تشغيل مؤثرات الهدايا تلقائياً',right:swBtn(prefs.autoAnim,'autoAnim')})}
+    ${row({i:'vol',t:'أصوات التطبيق',right:swBtn(prefs.sounds,'sounds')})}
+    ${row({i:'phone',t:'الاهتزاز',right:swBtn(prefs.vibrate,'vibrate')})}
+    ${row({i:'trash',t:'مسح الذاكرة المؤقتة',v:'38 MB',toast:'تم مسح 38 MB'})}
+    </div></div><p class="note">يُفعَّل وضع الأجهزة الضعيفة تلقائياً عند اكتشاف جهاز بذاكرة قليلة، ويمكن إيقافه من هنا.</p>`; }},
+  help: { label:'المساعدة', render(){ return top('الدعم والمساعدة') + `<div class="sec"><div class="list">
+    ${row({i:'msg',t:'تواصل مع الدعم',s:'محادثة مباشرة داخل التطبيق',toast:'يفتح محادثة الدعم'})}
+    ${row({i:'alert',t:'الإبلاغ عن مشكلة',s:'مع لقطة شاشة',toast:'يفتح نموذج الإبلاغ',st:'have'})}
+    ${row({i:'doc',t:'طلباتي السابقة',v:'2',toast:'طلب مفتوح وطلب مغلق'})}
+    ${row({i:'help',t:'أسئلة شائعة',s:'الشحن، السحب، الوكلاء، رمز السحب',toast:'الأسئلة الشائعة',st:'later'})}
+    </div></div>`; }}
+};
+function ring(a,b){ const r=22,c=2*Math.PI*r, f=c*a/b; const col=a===b?'var(--teal)':'var(--amber)';
+  return `<svg class="ring" viewBox="0 0 54 54"><circle cx="27" cy="27" r="${r}" fill="none" stroke="#ffffff14" stroke-width="6"/><circle cx="27" cy="27" r="${r}" fill="none" stroke="${col}" stroke-width="6" stroke-linecap="round" stroke-dasharray="${f} ${c}" transform="rotate(-90 27 27)"/><text x="27" y="32" text-anchor="middle" fill="var(--fg)" font-family="Baloo Bhaijaan 2,Cairo" font-size="15" font-weight="800">${a}/${b}</text></svg>`; }
+function chk(ok,label,cta){ return `<button ${ok?'':'data-sheet="email"'}><span class="${ok?'ok':'no'}">${ic(ok?'check':'alert','style="width:16px;height:16px"')}</span>${label}${!ok&&cta?`<em>${cta}</em>`:''}</button>`; }
+
+const sheets = {
+  logout:['تسجيل الخروج؟','ستحتاج كلمة السر للدخول مرة أخرى على هذا الجهاز.','تسجيل الخروج','btn-p'],
+  email:['تفعيل البريد','نرسل رمزاً من 6 أرقام إلى ba***@gmail.com. بعد التفعيل تستطيع استعادة كلمة السر ورمز السحب بنفسك دون الدعم.','أرسل الرمز','btn-t'],
+  pw:['تغيير كلمة السر','تحتاج كلمة السر الحالية. بعد التغيير يخرج كل جهاز آخر تلقائياً.','متابعة','btn-t'],
+  delete:['حذف الحساب','يُجمَّد الحساب 15 يوماً، وإذا دخلت خلالها يُلغى الحذف. بعدها تُحذف بياناتك ويُفقد أي رصيد غير مسحوب. اسحب رصيدك أولاً.','فهمت، متابعة','btn-s']
+};
+
+const scr = $('scr');
+function render(){
+  const k = stack[stack.length-1];
+  scr.innerHTML = screens[k].render();
+  scr.scrollTop = 0;
+  $('jump').querySelectorAll('button').forEach(b=>b.classList.toggle('cur', b.dataset.j===k));
+}
+function toast(t){ const el=$('toast'); el.textContent=t; el.classList.add('on'); clearTimeout(toast.t); toast.t=setTimeout(()=>el.classList.remove('on'),1600); }
+function sheet(key){ const [h,p,b,cls]=sheets[key]; const d=document.createElement('div'); d.className='sheet';
+  d.innerHTML=`<div><h4>${h}</h4><p>${p}</p><div style="display:flex;gap:8px"><button class="btn-s" style="flex:1;border-radius:12px;padding:10px 0;font-weight:800" data-x>إلغاء</button><button class="${cls}" style="flex:1;border-radius:12px;padding:10px 0;font-weight:900" data-x data-ok="${h}">${b}</button></div></div>`;
+  d.addEventListener('click',e=>{ if(e.target===d||e.target.closest('[data-x]')){ const ok=e.target.closest('[data-ok]'); d.remove(); if(ok) toast('في التطبيق الحقيقي تتم العملية هنا'); }});
+  $('phone').appendChild(d); }
+
+scr.addEventListener('click', e => {
+  const t = e.target.closest('button,[data-sw]'); if(!t) return;
+  if (t.dataset.sw){ prefs[t.dataset.sw]=!prefs[t.dataset.sw]; render(); return; }
+  if (t.dataset.seg){ prefs[t.dataset.seg]=t.dataset.v; render(); return; }
+  if (t.hasAttribute('data-back')){ if(stack.length>1) stack.pop(); render(); return; }
+  if (t.hasAttribute('data-visitor')){ state.visitor=true; render(); toast('هكذا يرى الآخرون ملفك'); return; }
+  if (t.hasAttribute('data-back-visitor')){ state.visitor=false; render(); return; }
+  if (t.dataset.tab){ state.tab=t.dataset.tab; render(); return; }
+  if (t.dataset.go){ stack.push(t.dataset.go); render(); return; }
+  if (t.dataset.sheet){ sheet(t.dataset.sheet); return; }
+  if (t.dataset.toastBack){ stack.pop(); render(); toast(t.dataset.toastBack); return; }
+  if (t.dataset.toast) toast(t.dataset.toast);
+});
+
+const path = { profile:['profile'], edit:['profile','edit'], settings:['profile','settings'], account:['profile','settings','account'], devices:['profile','settings','account','devices'],
+  privacy:['profile','settings','privacy'], blocked:['profile','settings','privacy','blocked'], notifs:['profile','settings','notifs'], general:['profile','settings','general'], help:['profile','settings','help'] };
+$('jump').innerHTML = Object.keys(path).map(k=>`<button data-j="${k}">${screens[k].label}</button>`).join('') + `<button data-j="visitor">كما يراه الزائر</button>`;
+$('jump').addEventListener('click', e => { const b=e.target.closest('button'); if(!b) return;
+  if (b.dataset.j==='visitor'){ stack.splice(0,stack.length,'profile'); state.visitor=true; }
+  else { state.visitor=false; stack.splice(0,stack.length,...path[b.dataset.j]); }
+  render(); });
+$('stToggle').addEventListener('click', e => { const b=e.currentTarget; const on=b.getAttribute('aria-pressed')!=='true'; b.setAttribute('aria-pressed',on); $('phone').classList.toggle('show-st',on); });
+render();
+})();
+</script>
+
+</body></html>
