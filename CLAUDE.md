@@ -86,6 +86,7 @@ Standing, permanent — applies to every future PR against this repo.
 - **Comments:** at most one short line, and only when the WHY is not obvious from the code. Never write review history, PR rounds, or "طلب صريح" stories in code; that belongs in the PR description.
 - **No new files unless necessary.** One-off verification scripts and screenshots stay out of the repo unless the reviewer asks.
 - **Every PR description starts with a size line:** `Code: +X/-Y lines in N files · Tests: +Z · Docs/assets: +W`. If code is over 150 lines, explain why it could not be smaller.
+- **No background agents or forks for verification.** Verify inline, in the main conversation, with one real-browser pass (not multiple parallel/background re-runs) and capture exactly the screenshots requested — no more.
 
 ---
 
