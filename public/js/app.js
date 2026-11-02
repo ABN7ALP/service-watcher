@@ -11875,17 +11875,24 @@ async function renderAgentPanelHome() {
 // ✅ fix/wallet-pin-and-polish دُمِجت — رمز السحب مفعَّل افتراضياً لتحويل الوكيل
 // (agentTransferRequirePin)، فيُطلَب هنا دوماً قبل الإرسال (نفس pinPadModal/ensureWithdrawalPinSetup
 // من تدفّق السحب) — السيرفر يرفض الطلب أصلاً لو الرمز ناقص أو خاطئ بصرف النظر عن الواجهة
-function startAgentTransferFlow(profile) {
+// ✅ feat/agent-transfer-from-chat: prefillUser (اختياري) {customId, username, profileImage} —
+// يتخطّى خطوة كتابة المعرّف فقط (عند الفتح من زر الدردشة) ويعرض بطاقة التأكيد مباشرة؛ بقية
+// الخطوات (التأكيد بالصورة/الاسم/المعرّف، المبلغ، الرمز) ومسار /api/agents/transfer نفسه بلا تغيير
+function startAgentTransferFlow(profile, prefillUser = null) {
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/80 z-[420] flex items-end justify-center';
+    // 🛡️ feat/agent-transfer-from-chat: z-[480] (لا z-[420] السابقة) — هذا التدفّق يُفتَح الآن
+    // أيضاً من داخل الدردشة (z-[440]-[470])، فيجب أن يعلوها دوماً؛ pinPadModal المُستدعاة منه
+    // صُعِّدت أيضاً (z-[490]) لتبقى فوق هذه النافذة بصرف النظر عن مصدر الفتح
+    modal.className = 'fixed inset-0 bg-black/80 z-[480] flex items-end justify-center';
     modal.innerHTML = `
         <div class="w-full max-w-md bg-gray-800 rounded-t-2xl p-4">
             <div class="flex items-center justify-between mb-3"><h3 class="font-bold text-base">تحويل كوينز</h3><button id="at-close" class="text-gray-400 p-1"><i class="fas fa-times"></i></button></div>
+            ${prefillUser ? '' : `
             <label class="text-xs text-gray-400 mb-1 block">معرّف المستخدم (ID)</label>
             <div class="flex gap-2 mb-2">
                 <input id="at-customid" type="text" dir="ltr" class="flex-1 bg-black/30 border border-gray-700 rounded-xl p-3 text-sm" placeholder="مثال: 123456789">
                 <button id="at-find-btn" class="bg-teal-500 text-black font-bold px-4 rounded-xl">بحث</button>
-            </div>
+            </div>`}
             <p id="at-error" class="text-xs text-red-400 mb-2 min-h-[1rem]"></p>
             <div id="at-confirm-card"></div>
         </div>
@@ -11896,63 +11903,94 @@ function startAgentTransferFlow(profile) {
     modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
 
     let foundUser = null;
+    const errEl = document.getElementById('at-error');
+
+    const renderConfirmCard = (user) => {
+        foundUser = user;
+        document.getElementById('at-confirm-card').innerHTML = `
+            <div class="bg-black/30 rounded-xl p-3 flex items-center gap-3 mb-3">
+                <img src="${user.profileImage}" class="w-12 h-12 rounded-full object-cover">
+                <div class="flex-1 min-w-0">
+                    <p class="font-bold truncate">${escapeHtml(user.username)}</p>
+                    <p class="text-xs text-gray-400">ID: ${escapeHtml(user.customId)}</p>
+                </div>
+            </div>
+            <label class="text-xs text-gray-400 mb-1 block">عدد الكوينز</label>
+            <input id="at-amount" type="number" min="${profile.limits.min}" max="${profile.limits.max}" class="w-full bg-black/30 border border-gray-700 rounded-xl p-3 text-sm mb-2" placeholder="الحد الأدنى ${fmtNum(profile.limits.min)}">
+            <div class="flex gap-2 mb-3" id="at-chips">
+                ${[profile.limits.min, profile.limits.min * 5, profile.limits.min * 10].map(v => `<button type="button" data-v="${v}" class="at-chip flex-1 bg-white/10 rounded-lg py-1.5 text-xs font-bold">${fmtNum(v)}</button>`).join('')}
+            </div>
+            <button id="at-submit" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">تحويل</button>
+        `;
+        modal.querySelectorAll('.at-chip').forEach(chip => chip.addEventListener('click', () => { document.getElementById('at-amount').value = chip.dataset.v; }));
+        document.getElementById('at-submit').addEventListener('click', async () => {
+            const amount = parseInt(document.getElementById('at-amount').value, 10);
+            if (!Number.isInteger(amount) || amount < profile.limits.min || amount > profile.limits.max) {
+                errEl.textContent = `أدخل عدداً بين ${fmtNum(profile.limits.min)} و${fmtNum(profile.limits.max)}`;
+                return;
+            }
+            const clientRequestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            ensureWithdrawalPinSetup(() => {
+                promptWithdrawalPinEntry({
+                    title: 'أدخل رمز السحب لتأكيد التحويل',
+                    onConfirm: async (pin, { close: closePinPad, setError }) => {
+                        try {
+                            const res2 = await fetch('/api/agents/transfer', {
+                                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify({ toCustomId: foundUser.customId, coins: amount, clientRequestId, pin })
+                            });
+                            const result2 = await res2.json();
+                            if (!res2.ok) { setError(withdrawalPinErrorMessage(result2)); return; }
+                            closePinPad();
+                            close();
+                            showNotification('تم التحويل بنجاح', 'success');
+                            renderAgentPanelHome();
+                        } catch (e) {
+                            setError('خطأ في الاتصال بالخادم');
+                        }
+                    }
+                });
+            });
+        });
+    };
+
+    if (prefillUser) { renderConfirmCard(prefillUser); return; }
+
     document.getElementById('at-find-btn').addEventListener('click', async () => {
         const customId = document.getElementById('at-customid').value.trim();
-        const errEl = document.getElementById('at-error');
         errEl.textContent = '';
         if (!customId) { errEl.textContent = 'أدخل معرّف المستخدم'; return; }
         try {
             const res = await fetch(`/api/agents/lookup-user?customId=${encodeURIComponent(customId)}`, { headers: { 'Authorization': `Bearer ${token}` } });
             const result = await res.json();
             if (!res.ok) { errEl.textContent = result.message || 'المستخدم غير موجود'; document.getElementById('at-confirm-card').innerHTML = ''; return; }
-            foundUser = result.data.user;
-            document.getElementById('at-confirm-card').innerHTML = `
-                <div class="bg-black/30 rounded-xl p-3 flex items-center gap-3 mb-3">
-                    <img src="${foundUser.profileImage}" class="w-12 h-12 rounded-full object-cover">
-                    <div class="flex-1 min-w-0">
-                        <p class="font-bold truncate">${escapeHtml(foundUser.username)}</p>
-                        <p class="text-xs text-gray-400">ID: ${escapeHtml(foundUser.customId)}</p>
-                    </div>
-                </div>
-                <label class="text-xs text-gray-400 mb-1 block">عدد الكوينز</label>
-                <input id="at-amount" type="number" min="${profile.limits.min}" max="${profile.limits.max}" class="w-full bg-black/30 border border-gray-700 rounded-xl p-3 text-sm mb-2" placeholder="الحد الأدنى ${fmtNum(profile.limits.min)}">
-                <div class="flex gap-2 mb-3" id="at-chips">
-                    ${[profile.limits.min, profile.limits.min * 5, profile.limits.min * 10].map(v => `<button type="button" data-v="${v}" class="at-chip flex-1 bg-white/10 rounded-lg py-1.5 text-xs font-bold">${fmtNum(v)}</button>`).join('')}
-                </div>
-                <button id="at-submit" class="w-full bg-gradient-to-l from-teal-400 to-green-500 text-black font-bold py-3 rounded-xl">تحويل</button>
-            `;
-            modal.querySelectorAll('.at-chip').forEach(chip => chip.addEventListener('click', () => { document.getElementById('at-amount').value = chip.dataset.v; }));
-            document.getElementById('at-submit').addEventListener('click', async () => {
-                const amount = parseInt(document.getElementById('at-amount').value, 10);
-                if (!Number.isInteger(amount) || amount < profile.limits.min || amount > profile.limits.max) {
-                    errEl.textContent = `أدخل عدداً بين ${fmtNum(profile.limits.min)} و${fmtNum(profile.limits.max)}`;
-                    return;
-                }
-                const clientRequestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-                ensureWithdrawalPinSetup(() => {
-                    promptWithdrawalPinEntry({
-                        title: 'أدخل رمز السحب لتأكيد التحويل',
-                        onConfirm: async (pin, { close: closePinPad, setError }) => {
-                            try {
-                                const res2 = await fetch('/api/agents/transfer', {
-                                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                                    body: JSON.stringify({ toCustomId: foundUser.customId, coins: amount, clientRequestId, pin })
-                                });
-                                const result2 = await res2.json();
-                                if (!res2.ok) { setError(withdrawalPinErrorMessage(result2)); return; }
-                                closePinPad();
-                                close();
-                                showNotification('تم التحويل بنجاح', 'success');
-                                renderAgentPanelHome();
-                            } catch (e) {
-                                setError('خطأ في الاتصال بالخادم');
-                            }
-                        }
-                    });
-                });
-            });
+            renderConfirmCard(result.data.user);
         } catch (e) { errEl.textContent = 'خطأ في الاتصال بالخادم'; }
     });
+}
+
+// ✅ feat/agent-transfer-from-chat: نفس تدفّق الوكيل أعلاه، لكن الطرف الآخر مُحدَّد مسبقاً من
+// الدردشة المفتوحة حالياً — لا مسار/نقطة نهاية جديدة، فقط يجلب بيانات العرض (الصورة/الاسم/المعرّف)
+// بما هو مُستخدَم فعلاً أصلاً (نفس GET /api/users/:id/mini-profile التي تُحمِّل ترويسة الدردشة)
+async function openAgentTransferFromChat(targetUserId) {
+    try {
+        const [profRes, userRes] = await Promise.all([
+            fetch('/api/agents/me', { headers: { 'Authorization': `Bearer ${token}` } }),
+            fetch(`/api/users/${targetUserId}/mini-profile`, { headers: { 'Authorization': `Bearer ${token}` } })
+        ]);
+        const profResult = await profRes.json();
+        if (!profRes.ok) { showNotification(profResult.message || 'تعذّر تحميل بيانات الوكيل', 'error'); return; }
+        const profile = profResult.data;
+        if (profile.status !== 'active') { showNotification('حساب الوكيل موقوف حالياً', 'error'); return; }
+
+        const userResult = await userRes.json();
+        if (!userRes.ok) { showNotification(userResult.message || 'تعذّر تحميل بيانات المستخدم', 'error'); return; }
+        const targetUser = userResult.data;
+
+        startAgentTransferFlow(profile, { customId: targetUser.customId, username: targetUser.username, profileImage: targetUser.profileImage });
+    } catch (e) {
+        showNotification('خطأ في الاتصال بالخادم', 'error');
+    }
 }
 
 // ✅ feat/agents-v1 — قائمة الوكلاء المعتمدين (من تبويب الشحن): اكتشاف + تواصل داخل التطبيق
@@ -15079,7 +15117,10 @@ function restoreChatInputArea(targetUserId) {
 // --- 📨 دالة فتح الدردشة الخاصة ---
 async function openPrivateChat(targetUserId, targetUsername = 'المستخدم', miniMode = false) {
     console.log(`[CHAT] Opening private chat with: ${targetUserId} (${targetUsername})`);
-    
+    // ✅ feat/agent-transfer-from-chat: زر "تحويل كوينز" بالترويسة يظهر فقط لو الحساب الحالي
+    // وكيل (isAgent) — جانب الوكيل فقط، المستخدم العادي لا يراه أبداً بغضّ النظر عن الطرف الآخر
+    const localUser = JSON.parse(localStorage.getItem('user')) || {};
+
     const profileModal = document.getElementById('mini-profile-modal');
     if (profileModal) profileModal.remove();
 
@@ -15121,6 +15162,10 @@ async function openPrivateChat(targetUserId, targetUsername = 'المستخدم'
                     </div>
                     
                     <div class="flex items-center gap-2">
+                        ${localUser.isAgent ? `
+                        <button id="chat-agent-transfer-btn" class="chat-action-btn" title="تحويل كوينز">
+                            <i class="fas fa-coins text-yellow-400"></i>
+                        </button>` : ''}
                         <button id="chat-actions-btn" class="chat-action-btn" title="إجراءات">
                             <i class="fas fa-ellipsis-v text-gray-400 hover:text-white"></i>
                         </button>
@@ -18948,7 +18993,10 @@ function attachCloseConfirmation(modalEl, closeButtonSelector) {
 // رقم ثابت لأن طول الرمز هنا اختيار المستخدم لا قيمة معروفة مسبقاً للعميل
 function pinPadModal({ title, subtitle, confirmLabel = 'تأكيد', showForgot = false, onForgot, onSubmit }) {
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/80 z-[420] flex items-end justify-center';
+    // 🛡️ feat/agent-transfer-from-chat: z-[490] (لا z-[420] السابقة) — يجب أن تعلو دوماً النافذة
+    // التي استدعتها (أعلى حالة حالياً: تحويل الوكيل من الدردشة z-[480]) بصرف النظر عن مصدر الفتح؛
+    // لا يغيّر شيئاً للمستدعين الآخرين (شاشات/صفحات أدنى بكثير) — فقط يرفع الهامش الآمن
+    modal.className = 'fixed inset-0 bg-black/80 z-[490] flex items-end justify-center';
     modal.innerHTML = `
         <div class="w-full max-w-md bg-gray-800 rounded-t-2xl p-4">
             <div class="flex items-center justify-between mb-1">
@@ -20698,6 +20746,15 @@ if (messageInput) {
             optionsBar.classList.toggle('hidden');
             toggleBtn.querySelector('i').classList.toggle('fa-plus');
             toggleBtn.querySelector('i').classList.toggle('fa-times');
+        });
+    }
+
+    // ✅ feat/agent-transfer-from-chat: زر تحويل الكوينز (ظاهر فقط لو الحساب الحالي وكيل — مُقرَّر
+    // بالترويسة نفسها عند بناء الـHTML، لا حاجة لفحص إضافي هنا)
+    const agentTransferBtn = document.getElementById('chat-agent-transfer-btn');
+    if (agentTransferBtn) {
+        agentTransferBtn.addEventListener('click', () => {
+            openAgentTransferFromChat(targetUserId);
         });
     }
 
