@@ -6090,6 +6090,14 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
 }
+/* ✅ نفس القاعدة تلقائياً لمن يفضّل تقليل الحركة على مستوى النظام — بلا حاجة لتفعيل يدوي */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
+}
 
 /* ✅ تبويب "الهدايا" (ملفي الشخصي) — شبكة هدايا مستلمة، وتبويب "معلومات" — قائمة بيانات ثابتة */
 .profile-hub-gifts-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 0 16px 20px; }
@@ -6152,7 +6160,9 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
 
 /* ✅ بطاقة "أمان حسابك" بالإعدادات — حلقة تقدّم SVG + عنوان/وصف، نفس روح .score بالنموذج */
 .profile-hub-score-card { margin: 10px 14px 0; background: linear-gradient(135deg, rgba(43,33,64,0.9), rgba(27,21,40,0.9)); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 14px; display: flex; align-items: center; gap: 12px; text-align: start; width: calc(100% - 28px); }
-.profile-hub-score-ring { flex-shrink: 0; }
+.profile-hub-score-ring { flex-shrink: 0; position: relative; width: 56px; height: 56px; }
+.profile-hub-score-ring svg { width: 56px; height: 56px; transform: rotate(-90deg); }
+.profile-hub-score-ring span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff; }
 .profile-hub-score-card h4 { margin: 0; font-size: 14px; font-weight: 800; color: #fff; }
 .profile-hub-score-card p { margin: 3px 0 0; font-size: 11.5px; color: #9ca3af; line-height: 1.6; }
 
