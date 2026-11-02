@@ -86,3 +86,15 @@ Standing, permanent — applies to every future PR against this repo.
 - **Comments:** at most one short line, and only when the WHY is not obvious from the code. Never write review history, PR rounds, or "طلب صريح" stories in code; that belongs in the PR description.
 - **No new files unless necessary.** One-off verification scripts and screenshots stay out of the repo unless the reviewer asks.
 - **Every PR description starts with a size line:** `Code: +X/-Y lines in N files · Tests: +Z · Docs/assets: +W`. If code is over 150 lines, explain why it could not be smaller.
+- **No background agents or forks for verification.** Verify inline, in the main conversation, with one real-browser pass (not multiple parallel/background re-runs) and capture exactly the screenshots requested — no more.
+
+---
+
+## ⚡ Loading rules for all future UI work
+
+Standing, permanent — applies to every future screen/page/sheet against this repo, not just profile/settings.
+
+- **Progressive loading.** Render the shell + whatever's already in memory instantly, then fetch sections in priority order (header → stats/balance → the active tab only). Other tabs load on first open, not up front. Never `Promise.all` everything a screen needs just because it's opening.
+- **Skeletons sized like the real content** — no layout jump when data arrives. Every section that can fail loads independently with its own retry, never a blank screen for the whole page over one failed fetch.
+- **Bandwidth.** Images `loading="lazy" decoding="async"`. Cloudinary URLs always transformed to the display size actually used (e.g. `w_160` for an avatar, never the original), plus `f_auto,q_auto`. Static images/gift assets get long-`max-age` + versioned-URL HTTP caching so a re-login doesn't re-download them. Cache profile-ish data in memory per session with a short TTL; refetch only what changed, not the whole page.
+- **Weak devices.** No heavy animations on open; respect `prefers-reduced-motion`.
