@@ -5947,6 +5947,7 @@ body.in-voice-room .voice-seat.duel-lose { opacity: .45; filter: grayscale(.85) 
     font-style: italic;
     margin-top: 8px;
     line-height: 1.5;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.6);
 }
 
 .profile-hub-stats-row {
@@ -6143,35 +6144,56 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
    بقاؤها بلا إلغاء هنا كان يرفع الغلاف وأدوات العين/الإعدادات بداخله 38px فوق حدود الشاشة
    تماماً (مؤكَّد عبر getBoundingClientRect بفتح حقيقي)، فيصبح زرّا العين/الإعدادات غير
    قابلين للنقر إطلاقاً — لا طريق خروج آخر من الصفحة سواهما */
-/* 🐛 fix/profile-settings-mobile (مراجعة جهاز حقيقي): الهيكل السابق كان hero طبقة مطلقة
-   bottom:0 داخل غلاف ثابت الارتفاع — موضع الصورة الفعلي كان "ارتفاع الغلاف ناقص ارتفاع محتوى
-   الهوية"، فيعتمد كلياً على طول الاسم/عدد الشارات/وجود نبذة؛ اسم طويل أو إطار أفاتار أكبر من
-   الصورة (frameScale حتى 1.71 — راجع frame-display.json) كان يدفع الصورة/الإطار للأعلى حتى
-   يُقصّان بـoverflow:hidden على الغلاف، أو يتداخلان مع صفّ الأزرار العلوي. الحل الجذري: hero
-   الآن عنصر منفصل بترتيب طبيعي بعد الغلاف (لا مُطلَق بداخله)، يتراكب فوق أسفل الغلاف بـ
-   margin-top سالب ثابت — فموضع الصورة أعلى hero صار مسافة ثابتة دوماً عن حافة الغلاف،
-   مستقلة تماماً عن طول أي محتوى تحتها (اسم/شارات/نبذة) */
+/* 🐛 fix/profile-settings-mobile (مراجعة جهاز حقيقي، جولة 3): الهيكل السابق (hero عنصر شقيق
+   يتراكب فوق آخر 58px فقط من غلاف ثابت الارتفاع 170px) ترك الغلاف يملأ كامل ارتفاعه الثابت
+   بالصورة بلا أي تدرّج حتى آخر 58px، فيظهر الانتقال كحافة حادة بدل تلاشٍ تدريجي — ولا يمتد خلف
+   الاسم/الشارات/النبذة إطلاقاً (تلك تقع خارج صندوق الغلاف كلياً). الحل: hero يعود بداخل الغلاف
+   كسابقاً، لكن الغلاف الآن تلقائي الارتفاع (لا height ثابت ولا overflow:hidden) فيكبر دوماً
+   ليحوي محتوى hero كاملاً مهما طال (اسم طويل/شارات تلتف/نبذة سطرين) — فالصورة (background)
+   تمتد فعلياً خلف الهوية كاملة، وتدرّج ::after يغطي كامل ارتفاع الغلاف فيتلاشى تدريجياً حتى لون
+   الصفحة الصلب. الإطار لا يُقصّ أبداً الآن لعدم وجود overflow:hidden مطلقاً بهذي السلسلة —
+   الضمان الوحيد المتبقي هو ألا تتداخل الصورة مع صفّ الأزرار العلوي، يكفله padding-top ثابت
+   بـhero (مستقل عن طول المحتوى أسفله، كما بالإصلاح السابق تماماً) */
 .profile-hub-cover {
-    height: 170px;
-    padding-top: env(safe-area-inset-top, 0px);
-    overflow: hidden;
     position: relative;
+    padding-top: env(safe-area-inset-top, 0px);
+}
+.profile-hub-cover::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(to bottom, transparent 0%, transparent 28%, rgba(17,24,39,0.5) 50%, rgba(17,24,39,0.92) 72%, #111827 90%);
 }
 .profile-hub-cover-tools { position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); inset-inline: 10px; z-index: 3; display: flex; justify-content: space-between; align-items: center; }
 .profile-hub-cover-tools-right { display: flex; gap: 6px; }
+/* 🐛 fix/profile-settings-mobile (مراجعة جهاز حقيقي، جولة 3): خلفية .profile-hub-icon-btn
+   الافتراضية (8% أبيض شبه شفاف) مصمَّمة لورقات داكنة صلبة (الإعدادات/الحساب والأمان...) حيث
+   تكفي للتباين؛ فوق صورة غلاف فعلية فاتحة/صاخبة تختفي عملياً. نطاق محصور هنا بأدوات الغلاف
+   فقط (بلا لمس كل الاستخدامات الأخرى المشتركة لنفس الصنف) — خلفية داكنة شبه معتمة + ضبابية
+   خلفية حيثما تُدعَم تضمن ظهور الزر بوضوح فوق أي صورة، وأيقونة بيضاء كاملة لأقصى تباين */
+.profile-hub-cover-tools .profile-hub-icon-btn {
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: #fff;
+}
+.profile-hub-cover-tools .profile-hub-icon-btn:active { background: rgba(0,0,0,0.7); }
+/* 🐛 padding-top: 84px — ليس رقماً تجميلياً. أزرار الأدوات العلوية تنتهي عند ~42px (top:10px +
+   ارتفاع 32px)؛ أكبر إطار معروف (frameScale 1.71، راجع frame-display.json) يفيض حتى 28px فوق
+   حافة الصورة نفسها. 84px يترك فوق حافة الصورة هامشاً (84-28=56px) أعلى من نهاية صفّ الأدوات
+   (42px) بفارق أمان كافٍ — فلا يتقاطع الإطار مع صفّ الأزرار العلوي مهما كان الإطار كبيراً */
 .profile-hub-hero {
     position: relative;
     z-index: 2;
-    margin-top: -58px;
-    padding: 48px 16px 12px;
-    background: linear-gradient(to bottom, transparent, rgba(17,24,39,0.88) 42%, #111827 66%);
+    padding: 84px 16px 12px;
 }
 .profile-hub-hero .profile-hub-avatar-wrap { position: static; width: 80px; height: 80px; margin-bottom: 8px; }
 .profile-hub-hero .profile-hub-identity { text-align: start; padding: 0; }
 .profile-hub-hero .profile-hub-name { justify-content: flex-start; text-shadow: 0 1px 4px rgba(0,0,0,0.6); }
 .profile-hub-hero .profile-hub-badge-row { justify-content: flex-start; align-items: center; }
 .profile-hub-hero .profile-hub-id-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-.profile-hub-id-copy-btn { display: inline-flex; align-items: center; gap: 4px; color: #9ca3af; font-size: 11px; font-weight: 700; }
+.profile-hub-id-copy-btn { display: inline-flex; align-items: center; gap: 4px; color: #9ca3af; font-size: 11px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
 .profile-hub-id-copy-btn i { font-size: 10px; }
 .profile-hub-level-badge {
     display: inline-flex; align-items: center; gap: 3px; height: 22px; padding: 0 8px 0 3px;

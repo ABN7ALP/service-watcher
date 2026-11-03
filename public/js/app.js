@@ -11271,22 +11271,22 @@ function renderProfileHubBody(u) {
                     <button id="profile-hub-share-btn" class="profile-hub-icon-btn" title="مشاركة"><i class="fas fa-share-nodes"></i></button>
                 </div>
             </div>
-        </div>
-        <div class="profile-hub-hero">
-            <div class="profile-hub-avatar-wrap">
-                ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'profile-hub-avatar' })}
-            </div>
-            <div class="profile-hub-identity">
-                <h2 class="profile-hub-name"><span class="profile-hub-name-text">${escapeHtml(u.username || '')}</span>${age !== null ? `<span class="profile-hub-mini-badge">${u.gender === 'female' ? '♀' : '♂'} ${age}</span>` : ''}</h2>
-                <div class="profile-hub-badge-row">
-                    <span class="profile-hub-level-badge wealth" title="مستوى الثروة"><i class="fas fa-gem"></i>${wealthLevel}</span>
-                    ${u.isAgent ? `<span class="profile-hub-level-badge agent" title="وكيل شحن معتمد"><i class="fas fa-shield-halved"></i></span>` : ''}
-                    ${renderAdminBadgeHTML(u)}
+            <div class="profile-hub-hero">
+                <div class="profile-hub-avatar-wrap">
+                    ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'profile-hub-avatar' })}
                 </div>
-                <div class="profile-hub-id-row">
-                    <button type="button" id="profile-hub-copy-id-btn" class="profile-hub-id-copy-btn"><span class="num">ID: ${escapeHtml(String(u.customId || ''))}</span> <i class="fas fa-copy"></i></button>
+                <div class="profile-hub-identity">
+                    <h2 class="profile-hub-name"><span class="profile-hub-name-text">${escapeHtml(u.username || '')}</span>${age !== null ? `<span class="profile-hub-mini-badge">${u.gender === 'female' ? '♀' : '♂'} ${age}</span>` : ''}</h2>
+                    <div class="profile-hub-badge-row">
+                        <span class="profile-hub-level-badge wealth" title="مستوى الثروة"><i class="fas fa-gem"></i>${wealthLevel}</span>
+                        ${u.isAgent ? `<span class="profile-hub-level-badge agent" title="وكيل شحن معتمد"><i class="fas fa-shield-halved"></i></span>` : ''}
+                        ${renderAdminBadgeHTML(u)}
+                    </div>
+                    <div class="profile-hub-id-row">
+                        <button type="button" id="profile-hub-copy-id-btn" class="profile-hub-id-copy-btn"><span class="num">ID: ${escapeHtml(String(u.customId || ''))}</span> <i class="fas fa-copy"></i></button>
+                    </div>
+                    ${u.status ? `<p class="profile-hub-bio-text">${escapeHtml(u.status)}</p>` : ''}
                 </div>
-                ${u.status ? `<p class="profile-hub-bio-text">${escapeHtml(u.status)}</p>` : ''}
             </div>
         </div>
 
