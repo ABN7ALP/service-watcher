@@ -297,6 +297,12 @@ function avatarHTML({ src, name, userId, fetchSize, frameClass, sizeClass = '', 
 document.addEventListener('error', (event) => {
     const img = event.target;
     if (!(img instanceof HTMLImageElement)) return;
+    // 🐛 fix/profile-settings-mobile (مراجعة PR #146): شارات/إطار رأس الملف الشخصي — فشل تحميل
+    // أي منها كان يُظهر أيقونة الصورة المكسورة الافتراضية بالمتصفح بدل اختفائها بأناقة. لا صورة
+    // مكسورة أبداً: الشارة (الأدمن) تُخفى بالكامل (زر بلا محتوى لا قيمة له)، والإطار يُزال وحده
+    // (صورة المستخدم تبقى ظاهرة بلا إطار، أفضل من اختفاء الاثنين معاً)
+    if (img.classList.contains('avatar__frame')) { img.remove(); return; }
+    if (img.closest('.admin-special-badge')) { img.closest('.admin-special-badge').remove(); return; }
     if (img.classList.contains('avatar__photo--fallbackable')) { img.remove(); return; }
     if (!(img.classList.contains('avatar__photo') || img.hasAttribute('data-avatar-fallback'))) return;
     // ✅ حارس منع الحلقة: لو كانت src الحالية تساوي الاحتياطي الافتراضي فعلاً (إمّا كانت كذلك
@@ -7803,10 +7809,16 @@ async function refreshMessagesNavBadge(cachedChats = null) {
 // الشارات/متجر الإطارات/إعادة الجولة) + خروج. "الحساب والأمان" يفتح ورقة فرعية تجمع كل ما
 // كان مبعثراً سابقاً (كلمة المرور/رمز السحب/محفظة الصرف/المحظورين) — بلا تكرار مسارات.
 async function showSettingsView() {
+    document.getElementById('settings-page')?.remove();
     const inRoom = document.body.classList.contains('in-voice-room');
-    mainContent.innerHTML = `
-        <div class="p-4 pb-24 settings-page-root">
-            <h2 class="text-xl font-bold mb-4"><i class="fas fa-cog mr-2"></i>الإعدادات</h2>
+    const shellHTML = `
+        <div id="settings-page" class="profile-hub-backdrop">
+            <div class="profile-hub-sheet">
+                <div class="profile-hub-topbar">
+                    <button type="button" id="settings-back-btn" class="profile-hub-icon-btn" title="رجوع"><i class="fas fa-arrow-right"></i></button>
+                    <h2>الإعدادات</h2>
+                </div>
+                <div class="profile-hub-body" style="padding:14px 0 24px;">
 
             <button type="button" class="profile-hub-score-card" id="settings-score-card">
                 <div class="skeleton-shimmer" style="width:40px;height:40px;border-radius:50%;flex-shrink:0;"></div>
@@ -7836,8 +7848,14 @@ async function showSettingsView() {
                 <button id="settings-logout-btn" class="profile-hub-settings-row profile-hub-logout-row"><i class="fas fa-sign-out-alt"></i><span>تسجيل الخروج</span></button>
             </div>
             <p class="profile-hub-version">الإصدار 1.0.0 — مدعوم من abn.7alp</p>
+                </div>
+            </div>
         </div>
     `;
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+    const page = document.getElementById('settings-page');
+    page.addEventListener('click', (e) => { if (e.target.id === 'settings-page') page.remove(); });
+    document.getElementById('settings-back-btn').addEventListener('click', () => page.remove());
 
     document.getElementById('settings-account-btn').addEventListener('click', showSettingsAccountScreen);
     document.getElementById('settings-performance-btn').addEventListener('click', showSettingsPerformanceSheet);
@@ -11249,7 +11267,7 @@ function renderProfileHubBody(u) {
                     ? `<button id="profile-hub-visitor-back-btn" class="profile-hub-icon-btn" title="رجوع"><i class="fas fa-arrow-right"></i></button>`
                     : `<button id="profile-hub-settings-btn" class="profile-hub-icon-btn" title="الإعدادات"><i class="fas fa-cog"></i></button>`}
                 <div class="profile-hub-cover-tools-right">
-                    ${v ? '' : `<button id="profile-hub-visitor-eye-btn" class="profile-hub-icon-btn" title="عرض كزائر"><i class="fas fa-eye"></i></button>`}
+                    ${v ? '' : `<button id="profile-hub-visitor-eye-btn" class="profile-hub-icon-btn" title="زوّار ملفي"><i class="fas fa-eye"></i></button>`}
                     <button id="profile-hub-share-btn" class="profile-hub-icon-btn" title="مشاركة"><i class="fas fa-share-nodes"></i></button>
                 </div>
             </div>
@@ -11258,7 +11276,7 @@ function renderProfileHubBody(u) {
                     ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'profile-hub-avatar' })}
                 </div>
                 <div class="profile-hub-identity">
-                    <h2 class="profile-hub-name">${escapeHtml(u.username || '')}${age !== null ? ` <span class="profile-hub-mini-badge">${u.gender === 'female' ? '♀' : '♂'} ${age}</span>` : ''}</h2>
+                    <h2 class="profile-hub-name"><span class="profile-hub-name-text">${escapeHtml(u.username || '')}</span>${age !== null ? `<span class="profile-hub-mini-badge">${u.gender === 'female' ? '♀' : '♂'} ${age}</span>` : ''}</h2>
                     <div class="profile-hub-badge-row">
                         <span class="profile-hub-level-badge wealth" title="مستوى الثروة"><i class="fas fa-gem"></i>${wealthLevel}</span>
                         ${u.isAgent ? `<span class="profile-hub-level-badge agent" title="وكيل شحن معتمد"><i class="fas fa-shield-halved"></i></span>` : ''}
@@ -11278,7 +11296,7 @@ function renderProfileHubBody(u) {
             <button type="button" class="profile-hub-stat" id="profile-hub-followers-stat"><span class="profile-hub-stat-num">${(u.followers || []).length}</span><span class="profile-hub-stat-label">متابِعون</span></button>
             <button type="button" class="profile-hub-stat" id="profile-hub-following-stat"><span class="profile-hub-stat-num">${(u.following || []).length}</span><span class="profile-hub-stat-label">متابَعون</span></button>
             <button type="button" class="profile-hub-stat" id="profile-hub-friends-stat"><span class="profile-hub-stat-num">${(u.friends || []).length}</span><span class="profile-hub-stat-label">أصدقاء</span></button>
-            <div class="profile-hub-stat" id="profile-hub-visitors-stat"><span class="profile-hub-stat-num">${v ? '—' : '…'}</span><span class="profile-hub-stat-label">زوّار اليوم</span></div>
+            <button type="button" class="profile-hub-stat" id="profile-hub-visitors-stat"><span class="profile-hub-stat-num">${v ? '—' : '…'}</span><span class="profile-hub-stat-label">زوّار اليوم</span></button>
         </div>
 
         ${v ? '' : `
@@ -11467,7 +11485,8 @@ function renderProfileHubBody(u) {
         } catch (e) { /* المستخدم ألغى المشاركة — لا حاجة لأي رد فعل */ }
     });
     document.getElementById('profile-hub-settings-btn')?.addEventListener('click', () => { document.getElementById('profile-hub-page')?.remove(); switchToView('settings'); });
-    document.getElementById('profile-hub-visitor-eye-btn')?.addEventListener('click', () => { profileHubVisitorMode = true; renderProfileHubBody(u); });
+    document.getElementById('profile-hub-visitor-eye-btn')?.addEventListener('click', () => showProfileVisitorsSheet());
+    document.getElementById('profile-hub-visitors-stat')?.addEventListener('click', () => showProfileVisitorsSheet());
     document.getElementById('profile-hub-visitor-back-btn')?.addEventListener('click', () => { profileHubVisitorMode = false; renderProfileHubBody(u); });
     document.getElementById('profile-hub-wallet-btn')?.addEventListener('click', () => openRechargePage());
     document.getElementById('profile-hub-coins-card-btn')?.addEventListener('click', () => openRechargePage());
@@ -12300,6 +12319,11 @@ function showProfileEditSheet(u) {
                 <input type="file" id="profile-edit-cover-file" accept="image/*" class="hidden">
                 <input type="file" id="profile-edit-avatar-file" accept="image/*" class="hidden">
 
+                <button type="button" id="profile-edit-preview-btn" class="profile-edit-toggle-row w-full text-right">
+                    <span><i class="fas fa-eye text-sky-400"></i> معاينة ملفي</span>
+                    <i class="fas fa-chevron-left profile-hub-chevron"></i>
+                </button>
+
                 <div>
                     <label class="profile-edit-label">الاسم</label>
                     <input type="text" id="edit-username" maxlength="30" value="${escapeHtml(u.username || '')}" class="profile-edit-input" placeholder="أدخل اسم المستخدم">
@@ -12384,6 +12408,11 @@ function showProfileEditSheet(u) {
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => { if (e.target.id === 'profile-edit-sheet') modal.remove(); });
     document.getElementById('close-profile-edit').addEventListener('click', () => modal.remove());
+    document.getElementById('profile-edit-preview-btn').addEventListener('click', () => {
+        modal.remove();
+        profileHubVisitorMode = true;
+        renderProfileHubBody(u);
+    });
 
     function renderEducationEntries() {
         const list = document.getElementById('education-entries-list');
