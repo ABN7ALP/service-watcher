@@ -297,6 +297,12 @@ function avatarHTML({ src, name, userId, fetchSize, frameClass, sizeClass = '', 
 document.addEventListener('error', (event) => {
     const img = event.target;
     if (!(img instanceof HTMLImageElement)) return;
+    // 🐛 fix/profile-settings-mobile (مراجعة PR #146): شارات/إطار رأس الملف الشخصي — فشل تحميل
+    // أي منها كان يُظهر أيقونة الصورة المكسورة الافتراضية بالمتصفح بدل اختفائها بأناقة. لا صورة
+    // مكسورة أبداً: الشارة (الأدمن) تُخفى بالكامل (زر بلا محتوى لا قيمة له)، والإطار يُزال وحده
+    // (صورة المستخدم تبقى ظاهرة بلا إطار، أفضل من اختفاء الاثنين معاً)
+    if (img.classList.contains('avatar__frame')) { img.remove(); return; }
+    if (img.closest('.admin-special-badge')) { img.closest('.admin-special-badge').remove(); return; }
     if (img.classList.contains('avatar__photo--fallbackable')) { img.remove(); return; }
     if (!(img.classList.contains('avatar__photo') || img.hasAttribute('data-avatar-fallback'))) return;
     // ✅ حارس منع الحلقة: لو كانت src الحالية تساوي الاحتياطي الافتراضي فعلاً (إمّا كانت كذلك
@@ -11271,7 +11277,7 @@ function renderProfileHubBody(u) {
                 ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'profile-hub-avatar' })}
             </div>
             <div class="profile-hub-identity">
-                <h2 class="profile-hub-name">${escapeHtml(u.username || '')}${age !== null ? ` <span class="profile-hub-mini-badge">${u.gender === 'female' ? '♀' : '♂'} ${age}</span>` : ''}</h2>
+                <h2 class="profile-hub-name"><span class="profile-hub-name-text">${escapeHtml(u.username || '')}</span>${age !== null ? `<span class="profile-hub-mini-badge">${u.gender === 'female' ? '♀' : '♂'} ${age}</span>` : ''}</h2>
                 <div class="profile-hub-badge-row">
                     <span class="profile-hub-level-badge wealth" title="مستوى الثروة"><i class="fas fa-gem"></i>${wealthLevel}</span>
                     ${u.isAgent ? `<span class="profile-hub-level-badge agent" title="وكيل شحن معتمد"><i class="fas fa-shield-halved"></i></span>` : ''}
