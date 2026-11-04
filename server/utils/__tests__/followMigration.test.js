@@ -17,8 +17,16 @@ function makeCursor(docs) {
     return { next: async () => (i < docs.length ? docs[i++] : null) };
 }
 
+// 🛡️ مراجعة #147: User.find تُستدعى بشكلين مختلفين الآن — (1) مسح المستخدمين الرئيسي
+// (.select().cursor())، و(2) فحص وجود المعرّفات المرجعيّة دفعة واحدة بـfilterExistingIds
+// (.select().lean()، فلتر {_id:{$in:[...]}}) — المحاكاة تُميّز بينهما بوجود $in
 function wireUserFind(users) {
     jest.spyOn(User, 'find').mockImplementation((filter) => {
+        if (filter && filter._id && filter._id.$in) {
+            const idSet = new Set(filter._id.$in.map(String));
+            const matched = users.filter(u => idSet.has(String(u._id)));
+            return { select: () => ({ lean: () => Promise.resolve(matched.map(u => ({ _id: u._id }))) }) };
+        }
         const matched = !filter || Object.keys(filter).length === 0
             ? users
             : users.filter(u => !(filter.followMigratedV1 && filter.followMigratedV1.$ne === true && u.followMigratedV1 === true));
@@ -73,6 +81,7 @@ describe('followMigration — dry run', () => {
         const users = [
             { _id: oid(1), following: [oid(2), oid(3)], followers: [], friends: [] },
             { _id: oid(2), following: [], followers: [oid(1)], friends: [oid(5)] },
+            { _id: oid(3), following: [], followers: [], friends: [] },
             { _id: oid(5), following: [], followers: [], friends: [oid(2)] }
         ];
         wireUserFind(users);
@@ -83,7 +92,7 @@ describe('followMigration — dry run', () => {
 
         expect(result.skipped).toBe(false);
         expect(result.dryRun).toBe(true);
-        expect(result.usersProcessed).toBe(3);
+        expect(result.usersProcessed).toBe(4);
         // الحافات الفريدة المتوقَّعة: u1->u2 (following+followers لنفس الزوج=مرة واحدة)، u1->u3،
         // وصداقة u2<->u5 (حافتان متبادلتان) = 4 بالضبط
         expect(result.edgesCreated).toBe(4);
@@ -100,6 +109,7 @@ describe('followMigration — apply', () => {
         const users = [
             { _id: oid(1), following: [oid(2), oid(3)], followers: [], friends: [] },
             { _id: oid(2), following: [], followers: [oid(1)], friends: [oid(5)] },
+            { _id: oid(3), following: [], followers: [], friends: [] },
             { _id: oid(5), following: [], followers: [], friends: [oid(2)] }
         ];
         wireUserFind(users);
@@ -109,15 +119,25 @@ describe('followMigration — apply', () => {
         wireUserUpdateOne(migratedFlags);
         wireJobRunFresh();
 
-        const followerAgg = [{ _id: oid(2), count: 1 }, { _id: oid(3), count: 1 }, { _id: oid(5), count: 1 }, { _id: oid(2), count: 1 }];
-        // ✅ recomputeAllCounters تستدعي Follow.aggregate مرتين (followee ثم follower) — نحسبها
-        // فعلياً من followStore (مصدر الحقيقة بعد الكتابة) بدل قيم ثابتة، لضمان دقّة الاختبار
+        // ✅ recomputeAllCounters تستدعي Follow.aggregate 3 مرّات الآن (followee ثم follower
+        // ثم friendsAgg المتبادَل عبر $lookup — راجع #147) — نحسبها فعلياً من followStore
+        // (مصدر الحقيقة بعد الكتابة) بدل قيم ثابتة، لضمان دقّة الاختبار بكل الحالات الثلاث
         jest.spyOn(Follow, 'aggregate').mockImplementation((pipeline) => {
-            const groupField = pipeline[0].$group._id === '$followee' ? 'followee' : 'follower';
             const counts = new Map();
-            for (const edge of followStore.values()) {
-                const key = String(edge[groupField]);
-                counts.set(key, (counts.get(key) || 0) + 1);
+            if (pipeline[0].$lookup) {
+                // friendsAgg: لكل حافة follower->followee، احسبها فقط لو حافة معاكسة موجودة أيضاً
+                for (const edge of followStore.values()) {
+                    const reverseKey = `${edge.followee}:${edge.follower}`;
+                    if (!followStore.has(reverseKey)) continue;
+                    const key = String(edge.follower);
+                    counts.set(key, (counts.get(key) || 0) + 1);
+                }
+            } else {
+                const groupField = pipeline[0].$group._id === '$followee' ? 'followee' : 'follower';
+                for (const edge of followStore.values()) {
+                    const key = String(edge[groupField]);
+                    counts.set(key, (counts.get(key) || 0) + 1);
+                }
             }
             return Promise.resolve(Array.from(counts.entries()).map(([_id, count]) => ({ _id, count })));
         });
@@ -135,6 +155,7 @@ describe('followMigration — apply', () => {
         // ✅ كل المستخدمين الثلاثة عُلِّموا مُرحَّلين
         expect(migratedFlags.has(oid(1))).toBe(true);
         expect(migratedFlags.has(oid(2))).toBe(true);
+        expect(migratedFlags.has(oid(3))).toBe(true);
         expect(migratedFlags.has(oid(5))).toBe(true);
         // ✅ العدّادان أُعيد حسابهما من الحافات الفعلية (bulkWrite استُدعيت بقيم صحيحة) — متابِعا
         // u2 اثنان فعلاً: u1 (عبر following) وu5 (عبر الصداقة المتبادلة u5<->u2)
@@ -143,7 +164,10 @@ describe('followMigration — apply', () => {
     });
 
     test('resumability: تشغيل apply مرتين لا يُعيد معالجة شيء (JobRun مكتملة -> تخطٍّ فوري)', async () => {
-        const users = [{ _id: oid(1), following: [oid(2)], followers: [], friends: [] }];
+        const users = [
+            { _id: oid(1), following: [oid(2)], followers: [], friends: [] },
+            { _id: oid(2), following: [], followers: [], friends: [] }
+        ];
         wireUserFind(users);
         const followStore = new Map();
         wireFollowStore(followStore);
@@ -159,5 +183,31 @@ describe('followMigration — apply', () => {
         expect(second.skipped).toBe(true);
         expect(second.reason).toBe('already_applied');
         expect(followStore.size).toBe(1); // ✅ لم يُعَد إنشاء نفس الحافة مرة أخرى
+    });
+});
+
+describe('followMigration — تخطّي الحافات الفاسدة (مراجعة #147)', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('يتخطّى الحافات الذاتية ومرجعيات مستخدمين محذوفين، ويُبلِغ عن عددها بدقّة (dry-run)', async () => {
+        // u1: following تحتوي u1 نفسه (حافة ذاتية فاسدة) + u2 (حقيقي) + u404/u405 (محذوفان —
+        // لا مستند User لهما بالقائمة أدناه). u2.friends تحتوي u406 (محذوف أيضاً، عبر الصداقة)
+        const users = [
+            { _id: oid(1), following: [oid(1), oid(2), oid(404), oid(405)], followers: [], friends: [] },
+            { _id: oid(2), following: [], followers: [], friends: [oid(406)] }
+        ];
+        wireUserFind(users);
+
+        const result = await runMigration({ dryRun: true });
+
+        expect(result.skipped).toBe(false);
+        // ✅ الحافة الحقيقية الوحيدة: u1->u2
+        expect(result.edgesCreated).toBe(1);
+        // ✅ حافة ذاتية واحدة (u1->u1)
+        expect(result.skippedSelf).toBe(1);
+        // ✅ 3 مرجعيات لمستخدمين محذوفين: u404 وu405 (following لدى u1)، وu406 (friends لدى
+        // u2 — existsOrSkip يستبعدها مرّة واحدة قبل محاولتَي upsertFollowEdge بكلا الاتجاهين،
+        // فلا تُحصَيان مرتين لنفس friendId الواحد)
+        expect(result.skippedMissingUser).toBe(3);
     });
 });

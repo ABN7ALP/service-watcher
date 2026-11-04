@@ -28,8 +28,11 @@ function pairKey(a, b) {
 // الفريد، لا إدراج مباشر: استئناف العملية بعد تعطّل، أو تداخلها مع إنشاء حافة مطابقة عبر مسار
 // المتابعة الحيّ بالتوازي، لا يمكن أن يُفجِّر خطأً غير متوقَّع — كل الحالات (جديدة/موجودة) تُعالَج
 // بنفس الاستدعاء الذرّي. `seen` يمنع عدّ الحافة مرتين لنفس المستخدم بوضع المعاينة (dry) فقط
-async function upsertFollowEdge(follower, followee, dryRun, seen) {
-    if (String(follower) === String(followee)) return false; // 🛡️ تجاهل أي حافة ذاتية فاسدة بالبيانات القديمة
+//
+// 🛡️ مراجعة #147: حافة ذاتية (follower===followee، بيانات قديمة فاسدة) تُحصى بـstats.skippedSelf
+// وتُستبعد دوماً (كانت تُتجاهَل صامتة بلا أي عدّ — dry-run لا يُفصِح عن مدى فساد البيانات)
+async function upsertFollowEdge(follower, followee, dryRun, seen, stats) {
+    if (String(follower) === String(followee)) { stats.skippedSelf++; return false; }
     const key = pairKey(follower, followee);
     if (seen.has(key)) return false;
     seen.add(key);
@@ -42,19 +45,43 @@ async function upsertFollowEdge(follower, followee, dryRun, seen) {
     return !!result.upsertedCount;
 }
 
-async function migrateOneUser(user, { dryRun, seen }) {
+// 🛡️ مراجعة #147: مصفوفات followers/following/friends القديمة قد تحمل معرّفات مستخدمين
+// حُذفوا فعلاً منذ ذلك الحين (لا تنظيف عكسي كان موجوداً عند حذف حساب) — إنشاء حافة Follow
+// تشير لمستند User غير موجود يُنتج صفوفاً يتيمة تفشل عند أي hydrate لاحق (hydrateUsers تتجاهلها
+// صامتة، لكن العدّادات تبقى منتفخة بلا داعٍ). فحص وجود دفعة واحدة لكل مستخدم (لا استعلام لكل
+// معرّف) قبل أي محاولة إنشاء حافة؛ المفقودون يُحصَون بـstats.skippedMissingUser
+async function filterExistingIds(ids) {
+    if (ids.length === 0) return new Set();
+    const found = await User.find({ _id: { $in: ids } }).select('_id').lean();
+    return new Set(found.map(u => String(u._id)));
+}
+
+async function migrateOneUser(user, { dryRun, seen, stats }) {
     let created = 0;
+    const allOtherIds = [
+        ...(user.following || []), ...(user.followers || []), ...(user.friends || [])
+    ].map(String);
+    const existingIds = await filterExistingIds([...new Set(allOtherIds)]);
+    function existsOrSkip(id) {
+        if (existingIds.has(String(id))) return true;
+        stats.skippedMissingUser++;
+        return false;
+    }
+
     for (const targetId of (user.following || [])) {
-        if (await upsertFollowEdge(user._id, targetId, dryRun, seen)) created++;
+        if (!existsOrSkip(targetId)) continue;
+        if (await upsertFollowEdge(user._id, targetId, dryRun, seen, stats)) created++;
     }
     for (const followerId of (user.followers || [])) {
-        if (await upsertFollowEdge(followerId, user._id, dryRun, seen)) created++;
+        if (!existsOrSkip(followerId)) continue;
+        if (await upsertFollowEdge(followerId, user._id, dryRun, seen, stats)) created++;
     }
     // ✅ "كل صداقة قديمة -> متابعة متبادلة" (مطلوب صريحاً) — حافتان، بصرف النظر عمّا كانت
     // مصفوفتا followers/following تحتويانه فعلاً لهذا الزوج (قد تكون ناقصة ببيانات قديمة فاسدة)
     for (const friendId of (user.friends || [])) {
-        if (await upsertFollowEdge(user._id, friendId, dryRun, seen)) created++;
-        if (await upsertFollowEdge(friendId, user._id, dryRun, seen)) created++;
+        if (!existsOrSkip(friendId)) continue;
+        if (await upsertFollowEdge(user._id, friendId, dryRun, seen, stats)) created++;
+        if (await upsertFollowEdge(friendId, user._id, dryRun, seen, stats)) created++;
     }
     if (!dryRun) {
         await User.updateOne({ _id: user._id }, { $set: { followMigratedV1: true } });
@@ -73,28 +100,45 @@ async function migrateAllUsers({ dryRun }) {
     const filter = dryRun ? {} : { followMigratedV1: { $ne: true } };
     const cursor = User.find(filter).select('_id following followers friends').cursor();
     const seen = new Set();
+    const stats = { skippedSelf: 0, skippedMissingUser: 0 };
     let usersProcessed = 0;
     let edgesCreated = 0;
     for (let user = await cursor.next(); user != null; user = await cursor.next()) {
-        edgesCreated += await migrateOneUser(user, { dryRun, seen });
+        edgesCreated += await migrateOneUser(user, { dryRun, seen, stats });
         usersProcessed++;
     }
-    return { usersProcessed, edgesCreated };
+    return { usersProcessed, edgesCreated, ...stats };
 }
 
-// ✅ يُعاد حسابهما من مجموعة Follow الحقيقية فقط (مصدر الحقيقة) — عملية صحيحة ومستقرّة (idempotent)
-// بصرف النظر عن وقت استدعائها، فيصحّ تكرارها بأمان حتى بعد اكتمال الترحيل (لا تعتمد على أي علم)
+// ✅ يُعاد حسابها من مجموعة Follow الحقيقية فقط (مصدر الحقيقة) — عملية صحيحة ومستقرّة (idempotent)
+// بصرف النظر عن وقت استدعائها، فيصحّ تكرارها بأمان حتى بعد اكتمال الترحيل (لا تعتمد على أي علم).
+// 🛡️ مراجعة #147: friendsCount أُضيف للمعادلة — عدد حافات follower لكل مستخدم التي لها حافة
+// معاكسة (متابعة متبادلة فعلية)، بنفس منطق getRelationStates/قائمة friends تماماً
 async function recomputeAllCounters() {
-    const [followerAgg, followingAgg] = await Promise.all([
+    const [followerAgg, followingAgg, friendsAgg] = await Promise.all([
         Follow.aggregate([{ $group: { _id: '$followee', count: { $sum: 1 } } }]),
-        Follow.aggregate([{ $group: { _id: '$follower', count: { $sum: 1 } } }])
+        Follow.aggregate([{ $group: { _id: '$follower', count: { $sum: 1 } } }]),
+        Follow.aggregate([
+            { $lookup: {
+                from: 'follows',
+                let: { f: '$follower', fe: '$followee' },
+                pipeline: [{ $match: { $expr: { $and: [
+                    { $eq: ['$follower', '$$fe'] },
+                    { $eq: ['$followee', '$$f'] }
+                ] } } }],
+                as: 'reverse'
+            } },
+            { $match: { reverse: { $ne: [] } } },
+            { $group: { _id: '$follower', count: { $sum: 1 } } }
+        ])
     ]);
     const bulk = [
         ...followerAgg.map(row => ({ updateOne: { filter: { _id: row._id }, update: { $set: { followersCount: row.count } } } })),
-        ...followingAgg.map(row => ({ updateOne: { filter: { _id: row._id }, update: { $set: { followingCount: row.count } } } }))
+        ...followingAgg.map(row => ({ updateOne: { filter: { _id: row._id }, update: { $set: { followingCount: row.count } } } })),
+        ...friendsAgg.map(row => ({ updateOne: { filter: { _id: row._id }, update: { $set: { friendsCount: row.count } } } }))
     ];
     if (bulk.length > 0) await User.bulkWrite(bulk);
-    return { followersRows: followerAgg.length, followingRows: followingAgg.length };
+    return { followersRows: followerAgg.length, followingRows: followingAgg.length, friendsRows: friendsAgg.length };
 }
 
 // ✅ نفس نمط claimOrResumeJobRun بـwalletRedenominationMigration.js بالضبط — الادّعاء الأولي
@@ -128,7 +172,7 @@ async function runMigration({ dryRun = true } = {}) {
         }
     }
 
-    const { usersProcessed, edgesCreated } = await migrateAllUsers({ dryRun });
+    const { usersProcessed, edgesCreated, skippedSelf, skippedMissingUser } = await migrateAllUsers({ dryRun });
 
     let counters = null;
     if (!dryRun) {
@@ -136,8 +180,8 @@ async function runMigration({ dryRun = true } = {}) {
         await JobRun.updateOne({ job: JOB_NAME, weekStart: SENTINEL_WEEK_START }, { $set: { status: 'completed' } });
     }
 
-    console.log(`[FOLLOW MIGRATION] dryRun=${dryRun} usersProcessed=${usersProcessed} edges${dryRun ? 'Projected' : 'Created'}=${edgesCreated}`);
-    return { skipped: false, dryRun, usersProcessed, edgesCreated, counters };
+    console.log(`[FOLLOW MIGRATION] dryRun=${dryRun} usersProcessed=${usersProcessed} edges${dryRun ? 'Projected' : 'Created'}=${edgesCreated} skippedSelf=${skippedSelf} skippedMissingUser=${skippedMissingUser}`);
+    return { skipped: false, dryRun, usersProcessed, edgesCreated, skippedSelf, skippedMissingUser, counters };
 }
 
 const FOLLOW_MIGRATION_OFF_MESSAGE = 'Follow migration pending. Set FOLLOW_MIGRATION=dry to preview or =apply to run.';
@@ -154,7 +198,7 @@ async function resolveMigrationStartup({ env = process.env } = {}) {
     }
     if (requested === 'dry') {
         const result = await runMigration({ dryRun: true });
-        console.log(`[FOLLOW MIGRATION] معاينة فقط (dry) — usersProcessed=${result.usersProcessed}, edgesProjected=${result.edgesCreated}`);
+        console.log(`[FOLLOW MIGRATION] معاينة فقط (dry) — usersProcessed=${result.usersProcessed}, edgesProjected=${result.edgesCreated}, skippedSelf=${result.skippedSelf}, skippedMissingUser=${result.skippedMissingUser}`);
         return { ready: false, mode: 'dry' };
     }
     console.log(`[FOLLOW MIGRATION] ${FOLLOW_MIGRATION_OFF_MESSAGE}`);

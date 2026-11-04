@@ -180,6 +180,10 @@ const userSchema = new mongoose.Schema({
     // إنشاء/حذف مستند Follow، راجع followController.js) ومُعاد حسابهما بترحيل followMigration
     followersCount: { type: Number, default: 0, min: 0 },
     followingCount: { type: Number, default: 0, min: 0 },
+    // 🛡️ مراجعة #147: كان محسوباً بـaggregate (self-join على Follow) بكل عرض ملف شخصي — مخزَّن
+    // الآن ومُحدَّث ذرّياً بنفس معاملة follow/unfollow التي تُنشئ/تحذف الحافة المقابلة (يزداد لدى
+    // الطرفين معاً فقط حين تكتمل/تنكسر متابعة متبادلة فعلياً)، ومُعاد حسابه بترحيل followMigration
+    friendsCount: { type: Number, default: 0, min: 0 },
     // ✅ علم استئناف خاص بكل مستخدم لـfollowMigration.js (نفس فكرة walletRedenominatedV1) —
     // يُضبَط بعد نسخ مصفوفاته القديمة لمجموعة Follow، فاستئناف عملية تعطّلت بمنتصفها لا يُعالِج
     // نفس المستخدم مرتين

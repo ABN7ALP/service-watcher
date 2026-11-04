@@ -8,6 +8,13 @@
 //      النهائي = عدد الحافات الفعلي بالضبط (لا تحديث مفقود رغم تضارب الكتابة على مستند واحد).
 //   3) unfollow concurrency: عدّة طلبات إلغاء متابعة متزامنة لنفس الحافة -> حذف واحد فقط،
 //      العدّادان يُخفَّضان مرة واحدة فقط بالضبط (لا سالب).
+//   4) مراجعة #147 — friendsCount: A يتابع B وB يتابع A بنفس اللحظة تقريباً -> friendsCount لدى
+//      الطرفين = 1 بالضبط (لا 0: الفحص قد "يفوت" حافة الطرف الآخر إن حدث قبل تأمين التسلسل
+//      الحقيقي معه؛ ولا 2: لا يحتسبها كلا الطرفين معاً). كشف هذا الاختبار فعلياً عقبتين حقيقيتين
+//      أثناء التطوير (لا افتراضيتين): (أ) تقفّل دوراني (deadlock) من ترتيب كتابة معاكس بين
+//      follow(A,B) وfollow(B,A) — أُصلِح بترتيب كتابة ثابت (معرّف أصغر أولاً) بصرف النظر عن
+//      الدور؛ (ب) فحص وجود الحافة المعاكسة كان يسبق تأمين قفلَي مستندَي الطرفين، فتفوته حافة
+//      تلتزم تماماً بين الفحص والكتابة — أُصلِح بنقل الفحص لما بعد تأمين القفلين (راجع followController.js)
 //
 // 🛡️ نفس استراتيجية الاختبار الثابتة بهذا المشروع (راجع frameController.race.test.js
 // المجاور): يُحاكي قفلاً حقيقياً لكل مستند (أي لمسة ثانية من معاملة أخرى "حيّة" على نفس
@@ -45,7 +52,7 @@ function makeDb() {
     return { users: new Map(), follows: new Map(), _locks: new Map() };
 }
 function seedUser(db, overrides) {
-    const user = { _id: 'u_default', followersCount: 0, followingCount: 0, blockedUsers: [], ...overrides };
+    const user = { _id: 'u_default', followersCount: 0, followingCount: 0, friendsCount: 0, blockedUsers: [], ...overrides };
     db.users.set(user._id, user);
     return user;
 }
@@ -76,6 +83,23 @@ function wireMocks(db) {
         const created = { follower: doc.follower, followee: doc.followee, createdAt: new Date() };
         db.follows.set(key, created);
         return Promise.resolve([created]);
+    });
+
+    // ✅ مراجعة #147: followUser/unfollowUser تستدعيان Follow.exists داخل المعاملة نفسها للتحقّق
+    // من وجود الحافة المعاكسة (هل تكتمل/تنكسر صداقة متبادلة بهذي العملية؟). عزل قراءة حقيقي
+    // (snapshot isolation) مطلوب هنا تحديداً: حافة أنشأتها معاملة أخرى لا تزال "قيد الالتزام"
+    // (قفلها لا يزال محجوزاً لها، لم يُحرَّر بعد) يجب ألا تظهر لقراءة معاملة مختلفة — وإلا
+    // يرى الطرفان المتزامنان بعضهما "موجوداً" معاً فتُحتسَب الصداقة مرتين. القفل نفسه (الذي
+    // يُحرَّر فقط عند الالتزام الناجح أو يُزال مع التراجع عند الفشل — راجع Follow.create
+    // وwithTransaction أدناه) هو إشارة الالتزام الوحيدة المتاحة هنا، فنعتمد عليه مباشرة بدل
+    // تتبّع حالة التزام منفصلة: قفل محجوز لمعاملة أخرى = غير مُلتزَم بعد = غير مرئي لي
+    jest.spyOn(Follow, 'exists').mockImplementation((filter) => {
+        const key = followKey(String(filter.follower), String(filter.followee));
+        if (!db.follows.has(key)) return chainable(false);
+        const lockHolder = db._locks.get(`follow:${key}`);
+        const ctx = txContext.getStore();
+        if (lockHolder && lockHolder !== ctx) return chainable(false);
+        return chainable(true);
     });
 
     jest.spyOn(Follow, 'findOneAndDelete').mockImplementation((filter) => {
@@ -193,6 +217,35 @@ describe('followUser — تضارب كتابة حقيقي على نفس مستن
         expect(db.follows.size).toBe(10); // ✅ 10 حافات مختلفة فعلاً (لا تكرار لنفس الزوج هنا)
         expect(target.followersCount).toBe(10); // ✅ جوهر الإصلاح: لا تحديث $inc مفقود رغم 10 كتابات متزامنة لنفس المستند
         followerIds.forEach(id => expect(db.users.get(id).followingCount).toBe(1));
+    });
+});
+
+describe('followUser — صداقة متبادلة مكتمَلة بالتزامن من الطرفين معاً (مراجعة #147)', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('A يتابع B وB يتابع A بنفس اللحظة تقريباً: friendsCount = 1 بالضبط لدى الطرفين (لا 0 ولا 2)', async () => {
+        const db = makeDb();
+        const userA = seedUser(db, { _id: oid(1) });
+        const userB = seedUser(db, { _id: oid(2) });
+        wireMocks(db);
+
+        const reqAtoB = mockReq({ user: { id: oid(1) }, params: { id: oid(2) } }); // A يتابع B
+        const reqBtoA = mockReq({ user: { id: oid(2) }, params: { id: oid(1) } }); // B يتابع A
+        const resAtoB = mockRes();
+        const resBtoA = mockRes();
+
+        await Promise.all([
+            followController.followUser(reqAtoB, resAtoB),
+            followController.followUser(reqBtoA, resBtoA)
+        ]);
+
+        expect(db.follows.size).toBe(2); // ✅ الحافتان كلتاهما أُنشئتا (follow(A,B) وfollow(B,A))
+        expect(userA.friendsCount).toBe(1); // ✅ جوهر الإصلاح: ليس 0 (تضارب الكتابة المشترك على وثيقتَي A/B يضمن إعادة قراءة الحافة المعاكسة)
+        expect(userB.friendsCount).toBe(1); // ✅ وليس 2 (لا احتساب مضاعف)
+        expect(userA.followersCount).toBe(1);
+        expect(userA.followingCount).toBe(1);
+        expect(userB.followersCount).toBe(1);
+        expect(userB.followingCount).toBe(1);
     });
 });
 

@@ -226,7 +226,7 @@ const updateProfilePicture = async (req, res) => {
 // المستند كاملاً بلا أي تصفية (عدا كلمة المرور المستثناة أصلاً بـselect:false على مستوى
 // السكيما) — ثغرة تسريب بيانات حقيقية أُصلحت هنا؛ بيانات المستخدم الكاملة لنفسه تبقى متاحة
 // فقط عبر getMeDetails (مُقيَّدة بـreq.user.id أصلاً)
-const PUBLIC_PROFILE_FIELDS = 'username customId profileImage coverImage gender birthDate hometown location socialLinks education job level experience status socialStatus educationStatus activeFrameClass isAgent isBot followersCount followingCount showVipBadge showWallet createdAt isAdmin adminBadgeVisible personalInfoVisible';
+const PUBLIC_PROFILE_FIELDS = 'username customId profileImage coverImage gender birthDate hometown location socialLinks education job level experience status socialStatus educationStatus activeFrameClass isAgent isBot followersCount followingCount friendsCount showVipBadge showWallet createdAt isAdmin adminBadgeVisible personalInfoVisible';
 
 // ✅ الحقول "الشخصية" التي يملك صاحبها حق إخفائها عن الزوّار (راجع personalInfoVisible أعلى
 // وupdatePersonalInfoVisibility أدناه) — لا تشمل الاسم/الصورة/الحالة النصية/المستوى/الشارات
@@ -236,12 +236,11 @@ const PERSONAL_INFO_FIELDS = ['gender', 'birthDate', 'socialStatus', 'educationS
 const getUserById = async (req, res) => {
     try {
         const requesterId = req.user?.id;
-        const { getRelationStates, getFriendsCount } = require('./followController');
-        const [user, supportLevels, relationMap, friendsCount] = await Promise.all([
+        const { getRelationStates } = require('./followController');
+        const [user, supportLevels, relationMap] = await Promise.all([
             User.findById(req.params.id).select(PUBLIC_PROFILE_FIELDS),
             computeSupportLevels(req.params.id),
-            getRelationStates(requesterId, [req.params.id]),
-            getFriendsCount(req.params.id)
+            getRelationStates(requesterId, [req.params.id])
         ]);
         if (!user) {
             return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على المستخدم.' });
@@ -261,7 +260,6 @@ const getUserById = async (req, res) => {
             data: {
                 user: {
                     ...obj,
-                    friendsCount,
                     isFollowing: relation.amIFollowing,
                     followsMe: relation.followsMe,
                     isFriend: relation.isFriend,
@@ -282,12 +280,13 @@ const getMeDetails = async (req, res) => {
         const rawUser = await User.findById(req.user.id);
         await checkAndExpireActiveFrame(rawUser, req.io);
 
-        const { getFriendsCount } = require('./followController');
-        const [user, supportLevels, friendsCount] = await Promise.all([
+        const [user, supportLevels] = await Promise.all([
             User.findById(req.user.id),
-            computeSupportLevels(req.user.id),
-            getFriendsCount(req.user.id)
+            computeSupportLevels(req.user.id)
         ]);
+        // ✅ feat/follow-v2 (مراجعة #147): friendsCount مخزَّن الآن على User نفسه، مُحدَّث ذرّياً
+        // بنفس معاملة follow/unfollow — لا aggregate منفصل بكل عرض ملف بعد اليوم
+        const friendsCount = user.friendsCount || 0;
 
         res.status(200).json({
             status: 'success',
@@ -297,9 +296,7 @@ const getMeDetails = async (req, res) => {
                     supportGiving: supportLevels.giving,
                     // ✅ feat/follow-v2: "صديق" مُشتق من متابعة متبادلة (مجموعة Follow) — لا نظام
                     // طلب/قبول صداقة بعد الآن (pendingRequests/sentRequests أُزيلا من الواجهة).
-                    // friendsCount مسطَّح (نفس اسم الحقل بـgetUserById/القوائم) + friendsStats
-                    // (صيغة عرض جاهزة) معاً — واجهات مختلفة تقرأ أحد الاسمين
-                    friendsCount,
+                    // friendsStats صيغة عرض جاهزة فوق friendsCount المسطَّح (موجود أصلاً بـ...user.toObject())
                     friendsStats: {
                         totalFriends: friendsCount,
                         displayText: friendsCount === 0
@@ -329,13 +326,12 @@ const getUserMiniProfile = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'معرّف مستخدم غير صالح' });
         }
 
-        const { getRelationStates, getFriendsCount } = require('./followController');
-        const [user, supportLevels, relationMap, friendsCount] = await Promise.all([
+        const { getRelationStates } = require('./followController');
+        const [user, supportLevels, relationMap] = await Promise.all([
             User.findById(targetUserId)
-                .select('username profileImage customId level isAgent activeFrameClass isBot gender birthDate socialStatus fanClub isAdmin adminBadgeVisible'),
+                .select('username profileImage customId level isAgent activeFrameClass isBot gender birthDate socialStatus fanClub isAdmin adminBadgeVisible friendsCount'),
             computeSupportLevels(targetUserId),
-            getRelationStates(currentUserId, [targetUserId]),
-            getFriendsCount(targetUserId)
+            getRelationStates(currentUserId, [targetUserId])
         ]);
 
         if (!user) {
@@ -353,7 +349,7 @@ const getUserMiniProfile = async (req, res) => {
                 profileImage: user.profileImage,
                 customId: user.customId,
                 level: user.level,
-                friendsCount,
+                friendsCount: user.friendsCount || 0,
                 areFriends: relation.isFriend,
                 isFollowedByMe: relation.amIFollowing,
                 isAgent: user.isAgent,

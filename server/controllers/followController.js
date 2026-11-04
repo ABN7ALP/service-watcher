@@ -39,10 +39,16 @@ function cursorMatch(cursor) {
     ] };
 }
 
+// 🛡️ مراجعة #147: كانت io.emit('follow-changed', ...) تبثّ لكل متصل بالمنصة — أي زائر يعرف من
+// يتابع من لحظياً (تسريب خصوصية حقيقي). الحدث يخصّ طرفي العلاقة فقط، فيُرسَل حصراً لغرفتي
+// Socket.IO الشخصيتين (`user:<id>`، ينضمّ لها كل اتصال تلقائياً — راجع socketService.js) بدل
+// البث العام؛ كل طرف يستقبل تحديث عدّاده الخاص فقط، لا عدّاد الطرف الآخر معه
 function broadcastFollowChanged(req, { targetId, targetFollowersCount, followerId, followerFollowingCount, isFollowing }) {
     const io = req.app.get('socketio');
     if (!io) return;
-    io.emit('follow-changed', { targetUserId: targetId, targetFollowersCount, followerId, followerFollowingCount, isFollowing });
+    const payload = { targetUserId: targetId, targetFollowersCount, followerId, followerFollowingCount, isFollowing };
+    io.to(`user:${targetId}`).emit('follow-changed', payload);
+    io.to(`user:${followerId}`).emit('follow-changed', payload);
 }
 
 // ✅ متابعة — ذرّية بالكامل: إنشاء مستند Follow + زيادة followersCount لدى المتابَع +
@@ -79,8 +85,27 @@ const followUser = async (req, res) => {
         try {
             await session.withTransaction(async () => {
                 await Follow.create([{ follower: myId, followee: targetId }], { session });
-                await User.updateOne({ _id: targetId }, { $inc: { followersCount: 1 } }, { session });
-                await User.updateOne({ _id: myId }, { $inc: { followingCount: 1 } }, { session });
+                // 🛡️ ترتيب كتابة ثابت (معرّف أصغر نصّياً أولاً) بصرف النظر عن الدور (متابِع/متابَع) —
+                // بدونه، A يتابع B وB يتابع A بنفس اللحظة يقفلان مستندَي بعضهما بترتيب معاكس
+                // تماماً (هذا يتابَع-ثم-أنا مقابل ذاك يتابَع-ثم-أنا) فيُنتج تقفّلاً دورانياً (deadlock)
+                // حقيقياً يُفشِل كلا الطلبين بدل أن ينجح أحدهما ببساطة بعد إعادة محاولة واحدة.
+                // 🛡️ مراجعة #147 (تصحيح لاحق): هاتان الكتابتان تُنفَّذان *قبل* فحص reverseExists —
+                // لا بعده كما كانت أول محاولة — لأنهما ما يُثبِت التسلسل الحقيقي مع المعاملة
+                // المعاكسة (حجز قفلَي مستندَي الطرفين فعلياً). فحص الحافة المعاكسة بعد تأمين
+                // القفلين يضمن عدم وجود أي نافذة تفوت فيها حافة الطرف الآخر التي تلتزم بالضبط
+                // بين الفحص وكتابة العدّادات — أثبتَت أول محاولة (فحص قبل التأمين) فعلياً أنها
+                // تسمح لمعاملة ثانية بالالتزام "خلسة" بين فحص الأولى وكتاباتها، فلا يُكتشَف
+                // التبادل أبداً (راجع سجلّ الاختبار قبل هذا التصحيح)
+                const sortedIds = [targetId, myId].sort((a, b) => String(a).localeCompare(String(b)));
+                for (const id of sortedIds) {
+                    const inc = id === targetId ? { followersCount: 1 } : { followingCount: 1 };
+                    await User.updateOne({ _id: id }, { $inc: inc }, { session });
+                }
+                const reverseExists = await Follow.exists({ follower: targetId, followee: myId }).session(session);
+                if (reverseExists) {
+                    await User.updateOne({ _id: targetId }, { $inc: { friendsCount: 1 } }, { session });
+                    await User.updateOne({ _id: myId }, { $inc: { friendsCount: 1 } }, { session });
+                }
                 created = true;
             });
         } catch (err) {
@@ -135,8 +160,23 @@ const unfollowUser = async (req, res) => {
             await session.withTransaction(async () => {
                 const deleted = await Follow.findOneAndDelete({ follower: myId, followee: targetId }, { session });
                 if (!deleted) return;
-                await User.updateOne({ _id: targetId, followersCount: { $gt: 0 } }, { $inc: { followersCount: -1 } }, { session });
-                await User.updateOne({ _id: myId, followingCount: { $gt: 0 } }, { $inc: { followingCount: -1 } }, { session });
+                // 🛡️ نفس ترتيب الكتابة الثابت بـfollowUser (راجع الشرح هناك) — يمنع تقفّلاً دورانياً
+                // عند إلغاء متابعتين متبادلتين بنفس اللحظة تقريباً، ويؤمّن قفلَي المستندَين *قبل*
+                // فحص reverseExists أدناه (لا بعده) لنفس سبب followUser بالضبط
+                const writes = [[targetId, { followersCount: -1 }, 'followersCount'], [myId, { followingCount: -1 }, 'followingCount']]
+                    .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+                for (const [id, dec, guardField] of writes) {
+                    await User.updateOne({ _id: id, [guardField]: { $gt: 0 } }, { $inc: dec }, { session });
+                }
+                // 🛡️ مراجعة #147: هل هذي الحافة المحذوفة كانت نصف صداقة متبادلة؟ — بعد تأمين
+                // القفلين أعلاه فقط (لا قبله). friendsCount لا يمكن أن يسبق followersCount أو
+                // followingCount (لا يُزاد إلا حين يُزادان معاً) فشرط $gt:0 عليهما أعلاه يحمي
+                // friendsCount أيضاً من أي قيمة سالبة بلا حاجة لشرط منفصل على كتابته هنا
+                const reverseExists = await Follow.exists({ follower: targetId, followee: myId }).session(session);
+                if (reverseExists) {
+                    await User.updateOne({ _id: targetId }, { $inc: { friendsCount: -1 } }, { session });
+                    await User.updateOne({ _id: myId }, { $inc: { friendsCount: -1 } }, { session });
+                }
             });
         } finally {
             await session.endSession();
@@ -223,27 +263,6 @@ async function getLiveNowAmongFollowing(viewerId, limit = 10) {
     return rows;
 }
 
-// ✅ عدد "الأصدقاء" (متابعة متبادلة) لمستخدم — يُستخدَم بعرض الملف الشخصي (العدّاد فقط، لا
-// القائمة الكاملة)؛ نفس استعلام reverse-lookup لقائمة friends أعلاه لكن بـ$count بدل $limit
-async function getFriendsCount(userId) {
-    const userObjId = new mongoose.Types.ObjectId(userId);
-    const [row] = await Follow.aggregate([
-        { $match: { follower: userObjId } },
-        { $lookup: {
-            from: 'follows',
-            let: { otherId: '$followee' },
-            pipeline: [{ $match: { $expr: { $and: [
-                { $eq: ['$follower', '$$otherId'] },
-                { $eq: ['$followee', userObjId] }
-            ] } } }],
-            as: 'reverse'
-        } },
-        { $match: { reverse: { $ne: [] } } },
-        { $count: 'count' }
-    ]);
-    return row ? row.count : 0;
-}
-
 // ✅ معالج موحَّد للثلاث قوائم (followers/following/friends) — يحمل كل منطق الترقيم بالمؤشّر
 // المشترك؛ friends تضيف فحص الاتجاه المعاكس (reverse lookup) فوق نفس الأساس لأنها مُشتقَّة
 // (متابعة متبادلة)، لا مجموعة مخزَّنة مستقلة
@@ -317,5 +336,5 @@ const getFriendsList = (req, res) => buildPaginatedList({ req, res, type: 'frien
 
 module.exports = {
     followUser, unfollowUser, getFollowersList, getFollowingList, getFriendsList,
-    getRelationStates, getFriendsCount, PAGE_SIZE
+    getRelationStates, PAGE_SIZE
 };
