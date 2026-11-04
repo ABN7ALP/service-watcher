@@ -239,8 +239,10 @@ const getUserById = async (req, res) => {
         // ✅ feat/app-router: /u/:customId قابل للمشاركة — المعرّف الوارد هنا قد يكون customId
         // الرقمي (9 أرقام، مُولَّد بـUser.js) بدل معرّف Mongo الحقيقي. لا تداخل ممكن بين الصيغتين
         // (customId أرقام فقط بطول مختلف تماماً عن الصيغة السداسية العشرية لمعرّف Mongo)
+        // 🛡️ مراجعة #151: mongoose.Types.ObjectId.isValid تقبل أي نص بطول 12 حرفاً (تُفسَّره
+        // ثنائياً خاماً) — لا regex صريحة على الصيغة السداسية العشرية الـ24 حرفاً الحقيقية
         let targetId = req.params.id;
-        if (!mongoose.Types.ObjectId.isValid(targetId)) {
+        if (!/^[a-f0-9]{24}$/i.test(targetId)) {
             const byCustomId = await User.findOne({ customId: targetId }).select('_id');
             if (!byCustomId) {
                 return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على المستخدم.' });

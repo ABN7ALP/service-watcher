@@ -970,7 +970,9 @@ async function endRoomBroadcastForHost(io, hostUser) {
         });
         // ✅ تختفي فوراً من قائمة تصفح الغرف عند كل من فتحها حالياً — نفس آلية الظهور الفوري
         io.emit('room-went-offline', { roomId: room._id.toString() });
-        await notifyFollowersOfLiveChange(io, hostUser, false, null);
+        // 🛡️ مراجعة #151: لا تُنتظَر — إشعار المتابعين ثانوي (أخطاؤه مُلتقَطة بذاته داخلياً
+        // بالفعل)، لا يجب أن يؤخّر إنهاء البث نفسه (Follow.find تكبر مع عدد متابعي المضيف)
+        notifyFollowersOfLiveChange(io, hostUser, false, null);
     } catch (error) {
         console.error('[BROADCAST] End error:', error);
     }
