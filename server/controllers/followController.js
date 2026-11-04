@@ -43,10 +43,10 @@ function cursorMatch(cursor) {
 // يتابع من لحظياً (تسريب خصوصية حقيقي). الحدث يخصّ طرفي العلاقة فقط، فيُرسَل حصراً لغرفتي
 // Socket.IO الشخصيتين (`user:<id>`، ينضمّ لها كل اتصال تلقائياً — راجع socketService.js) بدل
 // البث العام؛ كل طرف يستقبل تحديث عدّاده الخاص فقط، لا عدّاد الطرف الآخر معه
-function broadcastFollowChanged(req, { targetId, targetFollowersCount, followerId, followerFollowingCount, isFollowing }) {
+function broadcastFollowChanged(req, { targetId, targetFollowersCount, targetFriendsCount, followerId, followerFollowingCount, followerFriendsCount, isFollowing }) {
     const io = req.app.get('socketio');
     if (!io) return;
-    const payload = { targetUserId: targetId, targetFollowersCount, followerId, followerFollowingCount, isFollowing };
+    const payload = { targetUserId: targetId, targetFollowersCount, targetFriendsCount, followerId, followerFollowingCount, followerFriendsCount, isFollowing };
     io.to(`user:${targetId}`).emit('follow-changed', payload);
     io.to(`user:${followerId}`).emit('follow-changed', payload);
 }
@@ -116,13 +116,13 @@ const followUser = async (req, res) => {
         }
 
         const [targetFresh, meFresh] = await Promise.all([
-            User.findById(targetId).select('followersCount'),
-            User.findById(myId).select('followingCount')
+            User.findById(targetId).select('followersCount friendsCount'),
+            User.findById(myId).select('followingCount friendsCount')
         ]);
 
         broadcastFollowChanged(req, {
-            targetId, targetFollowersCount: targetFresh.followersCount,
-            followerId: myId, followerFollowingCount: meFresh.followingCount, isFollowing: true
+            targetId, targetFollowersCount: targetFresh.followersCount, targetFriendsCount: targetFresh.friendsCount,
+            followerId: myId, followerFollowingCount: meFresh.followingCount, followerFriendsCount: meFresh.friendsCount, isFollowing: true
         });
 
         if (created) {
@@ -183,13 +183,13 @@ const unfollowUser = async (req, res) => {
         }
 
         const [targetFresh, meFresh] = await Promise.all([
-            User.findById(targetId).select('followersCount'),
-            User.findById(myId).select('followingCount')
+            User.findById(targetId).select('followersCount friendsCount'),
+            User.findById(myId).select('followingCount friendsCount')
         ]);
 
         broadcastFollowChanged(req, {
-            targetId, targetFollowersCount: targetFresh.followersCount,
-            followerId: myId, followerFollowingCount: meFresh.followingCount, isFollowing: false
+            targetId, targetFollowersCount: targetFresh.followersCount, targetFriendsCount: targetFresh.friendsCount,
+            followerId: myId, followerFollowingCount: meFresh.followingCount, followerFriendsCount: meFresh.friendsCount, isFollowing: false
         });
 
         res.status(200).json({ status: 'success', data: { followersCount: targetFresh.followersCount, isFollowing: false } });
