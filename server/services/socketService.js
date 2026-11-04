@@ -1872,7 +1872,9 @@ socket.on('refreshBlockData', async () => {
                     createdAt: room.createdAt
                 };
                 io.emit('room-went-live', { room: roomPayload });
-                await notifyFollowersOfLiveChange(io, socket.user, true, roomPayload);
+                // ✅ لا تُنتظَر — إشعار المتابعين ثانوي، لا يجب أن يؤخّر لحظة "بدء البث" نفسها
+                // (أخطاؤها مُلتقَطة بذاتها داخل الدالة نفسها بالفعل)
+                notifyFollowersOfLiveChange(io, socket.user, true, roomPayload);
             } catch (error) {
                 console.error('[BROADCAST] Start error:', error);
             }
