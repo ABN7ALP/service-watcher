@@ -122,7 +122,9 @@ async function notifyIfLeveledUp(io, ownerId, memberId, pointsAfter, delta) {
 async function awardFanPoints(io, ownerId, memberId, pointsDelta) {
     if (!ownerId || !memberId || String(ownerId) === String(memberId) || pointsDelta <= 0) return null;
     try {
-        const membership = await FanClubMembership.findOneAndUpdate(
+        // 🐛 fix (feat/follow-v2 review): كانت const — إعادة تعيينها أدناه عند تطبيق مكافأة
+        // "هدية اليوم" تُفجِّر TypeError يُبتلَع بالـcatch، فتُفقَد إشعار الارتقاء بالمستوى صمتاً
+        let membership = await FanClubMembership.findOneAndUpdate(
             { owner: ownerId, member: memberId },
             { $inc: { points: pointsDelta } },
             { new: true }

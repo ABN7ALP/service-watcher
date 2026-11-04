@@ -226,7 +226,7 @@ const updateProfilePicture = async (req, res) => {
 // المستند كاملاً بلا أي تصفية (عدا كلمة المرور المستثناة أصلاً بـselect:false على مستوى
 // السكيما) — ثغرة تسريب بيانات حقيقية أُصلحت هنا؛ بيانات المستخدم الكاملة لنفسه تبقى متاحة
 // فقط عبر getMeDetails (مُقيَّدة بـreq.user.id أصلاً)
-const PUBLIC_PROFILE_FIELDS = 'username customId profileImage coverImage gender birthDate hometown location socialLinks education job level experience status socialStatus educationStatus activeFrameClass isAgent isBot friends followers following showVipBadge showWallet createdAt isAdmin adminBadgeVisible personalInfoVisible';
+const PUBLIC_PROFILE_FIELDS = 'username customId profileImage coverImage gender birthDate hometown location socialLinks education job level experience status socialStatus educationStatus activeFrameClass isAgent isBot followersCount followingCount showVipBadge showWallet createdAt isAdmin adminBadgeVisible personalInfoVisible';
 
 // ✅ الحقول "الشخصية" التي يملك صاحبها حق إخفائها عن الزوّار (راجع personalInfoVisible أعلى
 // وupdatePersonalInfoVisibility أدناه) — لا تشمل الاسم/الصورة/الحالة النصية/المستوى/الشارات
@@ -235,16 +235,19 @@ const PERSONAL_INFO_FIELDS = ['gender', 'birthDate', 'socialStatus', 'educationS
 
 const getUserById = async (req, res) => {
     try {
-        const [user, supportLevels] = await Promise.all([
+        const requesterId = req.user?.id;
+        const { getRelationStates, getFriendsCount } = require('./followController');
+        const [user, supportLevels, relationMap, friendsCount] = await Promise.all([
             User.findById(req.params.id).select(PUBLIC_PROFILE_FIELDS),
-            computeSupportLevels(req.params.id)
+            computeSupportLevels(req.params.id),
+            getRelationStates(requesterId, [req.params.id]),
+            getFriendsCount(req.params.id)
         ]);
         if (!user) {
             return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على المستخدم.' });
         }
-        const requesterId = req.user?.id;
         const obj = user.toObject();
-        const isFollowing = !!(requesterId && user.followers.some(f => f.toString() === requesterId));
+        const relation = relationMap.get(String(req.params.id)) || { amIFollowing: false, followsMe: false, isFriend: false };
         await recordProfileVisit(requesterId, req.params.id); // ✅ يسجّل الزيارة قبل الرد (تهدئة 5 دقائق داخلية، ولا يفشل الطلب أبداً)
         // 🛡️ إخفاء المعلومات الشخصية عن أي زائر غير صاحب الملف نفسه لو اختار صاحبه ذلك — لا تُخفى
         // أبداً عنه هو (personalInfoVisible تعني "مخفية عن الآخرين"، لا عن نفسه)
@@ -258,12 +261,11 @@ const getUserById = async (req, res) => {
             data: {
                 user: {
                     ...obj,
-                    friendsCount: obj.friends.length,
-                    followersCount: obj.followers.length,
-                    followingCount: obj.following.length,
-                    isFollowing,
-                    supportGiving: supportLevels.giving,
-                    friends: undefined, followers: undefined, following: undefined // ✅ الأعداد فقط تُرسَل، لا قوائم معرّفات المستخدمين الآخرين بالكامل
+                    friendsCount,
+                    isFollowing: relation.amIFollowing,
+                    followsMe: relation.followsMe,
+                    isFriend: relation.isFriend,
+                    supportGiving: supportLevels.giving
                 }
             }
         });
@@ -280,12 +282,11 @@ const getMeDetails = async (req, res) => {
         const rawUser = await User.findById(req.user.id);
         await checkAndExpireActiveFrame(rawUser, req.io);
 
-        const [user, supportLevels] = await Promise.all([
-            User.findById(req.user. id)
-                .populate('friends', 'username profileImage customId level')
-                .populate('friendRequestsReceived', 'username profileImage customId')
-                .populate('friendRequestsSent', 'username profileImage customId'),
-            computeSupportLevels(req.user.id)
+        const { getFriendsCount } = require('./followController');
+        const [user, supportLevels, friendsCount] = await Promise.all([
+            User.findById(req.user.id),
+            computeSupportLevels(req.user.id),
+            getFriendsCount(req.user.id)
         ]);
 
         res.status(200).json({
@@ -294,20 +295,21 @@ const getMeDetails = async (req, res) => {
                 user: {
                     ... user. toObject(),
                     supportGiving: supportLevels.giving,
-                    // ✅ إضافة عدد الأصدقاء بصيغة محسنة
+                    // ✅ feat/follow-v2: "صديق" مُشتق من متابعة متبادلة (مجموعة Follow) — لا نظام
+                    // طلب/قبول صداقة بعد الآن (pendingRequests/sentRequests أُزيلا من الواجهة).
+                    // friendsCount مسطَّح (نفس اسم الحقل بـgetUserById/القوائم) + friendsStats
+                    // (صيغة عرض جاهزة) معاً — واجهات مختلفة تقرأ أحد الاسمين
+                    friendsCount,
                     friendsStats: {
-                        totalFriends:  user.friends.length,
-                        // ✅ صيغ مختلفة لعرض العدد
-                        displayText: user.friends.length === 0 
-                            ? 'لا توجد أصدقاء' 
-                            : user.friends.length === 1 
+                        totalFriends: friendsCount,
+                        displayText: friendsCount === 0
+                            ? 'لا توجد أصدقاء'
+                            : friendsCount === 1
                             ? '1 صديق'
-                            : user.friends.length <= 10
-                            ? `${user.friends.length} أصدقاء`
-                            : user.friends.length
-                    },
-                    pendingRequests: user.friendRequestsReceived.length,
-                    sentRequests: user.friendRequestsSent.length
+                            : friendsCount <= 10
+                            ? `${friendsCount} أصدقاء`
+                            : friendsCount
+                    }
                 }
             }
         });
@@ -327,22 +329,21 @@ const getUserMiniProfile = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'معرّف مستخدم غير صالح' });
         }
 
-        const [user, supportLevels] = await Promise.all([
+        const { getRelationStates, getFriendsCount } = require('./followController');
+        const [user, supportLevels, relationMap, friendsCount] = await Promise.all([
             User.findById(targetUserId)
-                .select('username profileImage customId level friends followers isAgent activeFrameClass isBot gender birthDate socialStatus fanClub isAdmin adminBadgeVisible')
-                .populate('friends', '_id'),
-            computeSupportLevels(targetUserId)
+                .select('username profileImage customId level isAgent activeFrameClass isBot gender birthDate socialStatus fanClub isAdmin adminBadgeVisible'),
+            computeSupportLevels(targetUserId),
+            getRelationStates(currentUserId, [targetUserId]),
+            getFriendsCount(targetUserId)
         ]);
 
         if (!user) {
             return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على المستخدم.' });
         }
 
-        // التحقق من حالة الصداقة
-        const areFriends = currentUserId && user.friends.some(f => f._id.toString() === currentUserId);
-        // ✅ حالة المتابعة (نظام منفصل عن الصداقة) — تلزم لعرض زر متابعة صحيح الحالة بأي مكان
-        // يُعرَض فيه هذا الملف المصغّر (نافذة ملف الغرفة تحديداً)
-        const isFollowedByMe = !!(currentUserId && user.followers.some(f => f.toString() === currentUserId));
+        // ✅ feat/follow-v2: "صديق" = متابعة متبادلة (مجموعة Follow)، لا مصفوفة friends القديمة
+        const relation = relationMap.get(String(targetUserId)) || { amIFollowing: false, followsMe: false, isFriend: false };
 
                 res.status(200).json({
             status: 'success',
@@ -352,9 +353,9 @@ const getUserMiniProfile = async (req, res) => {
                 profileImage: user.profileImage,
                 customId: user.customId,
                 level: user.level,
-                friendsCount: user.friends.length,
-                areFriends: areFriends || false,
-                isFollowedByMe,
+                friendsCount,
+                areFriends: relation.isFriend,
+                isFollowedByMe: relation.amIFollowing,
                 isAgent: user.isAgent,
                 activeFrameClass: user.activeFrameClass,
                 isBot: user.isBot || false,
@@ -593,121 +594,6 @@ const updatePersonalInfoVisibility = async (req, res) => {
 };
 
 // =====================================================
-// ✅ متابعة/إلغاء متابعة شخص — أحادية الاتجاه (منفصلة تماماً عن نظام الصداقة friends،
-// ومنفصلة عن متابعة الغرف بـVoiceRoom.followers). يُحدّث الطرفين معاً (followers/following)
-// =====================================================
-// ✅ يبثّ تغيّر حالة المتابعة لحظياً لأي واجهة مفتوحة حالياً (مركز ملفي، الملف الكامل لأي طرف،
-// أي جلسة/جهاز آخر لنفس المستخدمين) — بث عام خفيف الحمل (حدث نادر نسبياً) بدل نظام اشتراك
-// معقّد لكل ملف شخصي يُعرض؛ كل عميل يتجاهله لو لا شيء بواجهته يخص المستخدمَين المعنيَّين
-function broadcastFollowChanged(req, { targetId, targetFollowersCount, followerId, followerFollowingCount, isFollowing }) {
-    const io = req.app.get('socketio');
-    if (!io) return;
-    io.emit('follow-changed', { targetUserId: targetId, targetFollowersCount, followerId, followerFollowingCount, isFollowing });
-}
-
-const followUser = async (req, res) => {
-    try {
-        const targetId = req.params.id;
-        if (!mongoose.Types.ObjectId.isValid(targetId)) {
-            return res.status(400).json({ status: 'fail', message: 'معرّف مستخدم غير صالح' });
-        }
-        if (targetId === req.user.id) {
-            return res.status(400).json({ status: 'fail', message: 'لا يمكنك متابعة نفسك' });
-        }
-        const target = await User.findByIdAndUpdate(targetId, { $addToSet: { followers: req.user.id } }, { new: true }).select('followers');
-        if (!target) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
-        const follower = await User.findByIdAndUpdate(req.user.id, { $addToSet: { following: targetId } }, { new: true }).select('following');
-        broadcastFollowChanged(req, {
-            targetId, targetFollowersCount: target.followers.length,
-            followerId: req.user.id, followerFollowingCount: follower.following.length, isFollowing: true
-        });
-        // ✅ مكافأة متابعة نادي المعجبين — لا تُنتظَر، تُمنح فقط لو req.user عضو بالفعل بنادي
-        // targetId (تُحسم ذرّياً داخل الدالة نفسها لمرة واحدة فقط لكل علاقة)
-        const io = req.app.get('socketio');
-        const { creditFollowBonus } = require('./fanClubController');
-        creditFollowBonus(io, targetId, req.user.id);
-        res.status(200).json({ status: 'success', data: { followersCount: target.followers.length, isFollowing: true } });
-    } catch (error) {
-        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
-    }
-};
-
-const unfollowUser = async (req, res) => {
-    try {
-        const targetId = req.params.id;
-        if (!mongoose.Types.ObjectId.isValid(targetId)) {
-            return res.status(400).json({ status: 'fail', message: 'معرّف مستخدم غير صالح' });
-        }
-        const target = await User.findByIdAndUpdate(targetId, { $pull: { followers: req.user.id } }, { new: true }).select('followers');
-        if (!target) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
-        const follower = await User.findByIdAndUpdate(req.user.id, { $pull: { following: targetId } }, { new: true }).select('following');
-        broadcastFollowChanged(req, {
-            targetId, targetFollowersCount: target.followers.length,
-            followerId: req.user.id, followerFollowingCount: follower.following.length, isFollowing: false
-        });
-        res.status(200).json({ status: 'success', data: { followersCount: target.followers.length, isFollowing: false } });
-    } catch (error) {
-        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
-    }
-};
-
-// ✅ حقول بطاقة شخص واحد بقائمة متابعين/متابَعين — نفس الحقول المختصرة المستخدَمة بقائمة الاكتشاف
-const FOLLOW_LIST_USER_FIELDS = 'username profileImage customId level activeFrameClass';
-
-// =====================================================
-// ✅ قائمة متابِعي شخص (من يتابعه) — كل صف يحمل isFollowedByMe (هل أنا أتابعه هو أيضاً؟)
-// لعرض زر "متابعة رد" لمن لا أتابعهم بعد، بدل زر متابعة موحَّد لا يعكس الحالة الحقيقية
-// =====================================================
-const getFollowersList = async (req, res) => {
-    try {
-        const targetId = req.params.id;
-        if (!mongoose.Types.ObjectId.isValid(targetId)) {
-            return res.status(400).json({ status: 'fail', message: 'معرّف مستخدم غير صالح' });
-        }
-        const [target, me] = await Promise.all([
-            User.findById(targetId).select('followers').populate('followers', FOLLOW_LIST_USER_FIELDS),
-            User.findById(req.user.id).select('following')
-        ]);
-        if (!target) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
-        const myFollowingSet = new Set((me?.following || []).map(String));
-        const users = target.followers.map(u => ({
-            _id: u._id, username: u.username, profileImage: u.profileImage, customId: u.customId,
-            level: u.level, activeFrameClass: u.activeFrameClass,
-            isFollowedByMe: myFollowingSet.has(u._id.toString())
-        }));
-        res.status(200).json({ status: 'success', data: { users } });
-    } catch (error) {
-        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
-    }
-};
-
-// =====================================================
-// ✅ قائمة من يتابعهم شخص معيّن
-// =====================================================
-const getFollowingList = async (req, res) => {
-    try {
-        const targetId = req.params.id;
-        if (!mongoose.Types.ObjectId.isValid(targetId)) {
-            return res.status(400).json({ status: 'fail', message: 'معرّف مستخدم غير صالح' });
-        }
-        const [target, me] = await Promise.all([
-            User.findById(targetId).select('following').populate('following', FOLLOW_LIST_USER_FIELDS),
-            User.findById(req.user.id).select('following')
-        ]);
-        if (!target) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
-        const myFollowingSet = new Set((me?.following || []).map(String));
-        const users = target.following.map(u => ({
-            _id: u._id, username: u.username, profileImage: u.profileImage, customId: u.customId,
-            level: u.level, activeFrameClass: u.activeFrameClass,
-            isFollowedByMe: myFollowingSet.has(u._id.toString())
-        }));
-        res.status(200).json({ status: 'success', data: { users } });
-    } catch (error) {
-        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
-    }
-};
-
-// =====================================================
 // ✅ سجل زوّار ملفي الشخصي — إجمالي المشاهدات/الزوّار المميَّزين + نفس الشيء لليوم + توزيع
 // يومي (عدد الزوّار المميَّزين لكل يوم، آخر 30 يوماً) — لقسم "الزوّار" بمركز الملف الشخصي
 // =====================================================
@@ -821,13 +707,19 @@ const pokeUser = async (req, res) => {
 // =====================================================
 const discoverPeople = async (req, res) => {
     try {
-        const me = await User.findById(req.user.id).select('friends blockedUsers blockedBy following');
+        const Follow = require('../models/Follow');
+        const [me, myFollowing] = await Promise.all([
+            User.findById(req.user.id).select('blockedUsers blockedBy'),
+            // ✅ feat/follow-v2: استبعاد من أتابعه فعلاً من مجموعة Follow الحقيقية — لا مصفوفة
+            // following القديمة (تجمّدت منذ هذا الترحيل). استبعاد "الأصدقاء" سابقاً أصبح زائداً:
+            // كل صديق (متابعة متبادلة) هو بالضرورة شخص أتابعه، فمُستبعَد بهذا الاستعلام وحده
+            Follow.find({ follower: req.user.id }).select('followee').lean()
+        ]);
         const excludeIds = [
             req.user.id,
-            ...me.friends.map(String),
             ...me.blockedUsers.map(String),
             ...me.blockedBy.map(String),
-            ...me.following.map(String)
+            ...myFollowing.map(f => String(f.followee))
         ].map(id => new mongoose.Types.ObjectId(id));
 
         const suggestions = await User.aggregate([
@@ -836,7 +728,13 @@ const discoverPeople = async (req, res) => {
             { $project: { username: 1, profileImage: 1, customId: 1, level: 1, gender: 1, activeFrameClass: 1 } }
         ]);
 
-        res.status(200).json({ status: 'success', data: { users: suggestions } });
+        // ✅ أستبعد من أتابعهم فعلاً أعلاه، لكن قد يتابعني أحد المقترحين بدوني — relation تسمح
+        // لصف الاقتراح بعرض "ردّ المتابعة" الصحيحة بدل "متابعة" دوماً (نفس زر قوائم المتابعة)
+        const { getRelationStates } = require('./followController');
+        const relationMap = await getRelationStates(req.user.id, suggestions.map(u => u._id));
+        const users = suggestions.map(u => ({ ...u, relation: relationMap.get(String(u._id)) || { amIFollowing: false, followsMe: false, isFriend: false } }));
+
+        res.status(200).json({ status: 'success', data: { users } });
     } catch (error) {
         res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
     }
@@ -880,13 +778,9 @@ module.exports = {
     updateFanClubBadgesVisibility,
     updatePersonalInfoVisibility,
     markRoomTourSeen,
-    followUser,
-    unfollowUser,
     getMyProfileVisits,
     pokeUser,
     discoverPeople,
-    getFollowersList,
-    getFollowingList,
     computeSupportLevels,
     getSupportMissions,
     claimSupportCheckIn,

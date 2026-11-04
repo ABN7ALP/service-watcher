@@ -169,12 +169,23 @@ const userSchema = new mongoose.Schema({
     // ✅ تحكّم المستخدم بإظهار/إخفاء خصائص معيّنة أمام زوّار ملفه الشخصي
     showVipBadge: { type: Boolean, default: true },
     showWallet: { type: Boolean, default: true },
-    // ✅ متابعة أحادية الاتجاه بين الأشخاص (منفصلة تماماً عن نظام الصداقة friends أعلاه،
-    // ومنفصلة عن متابعة الغرف بـVoiceRoom.followers) — يُبنى عليها عدّاد "متابعين/متابَعين"
+    // 🛡️ feat/follow-v2: هذي المصفوفات (وfriends/friendRequestsSent/friendRequestsReceived
+    // أدناه) أصبحت للقراءة فقط (قديمة) — المصدر الحقيقي الآن مجموعة Follow المنفصلة (راجع
+    // models/Follow.js) + عدّادي followersCount/followingCount أدناه. لا كتابة جديدة على هذي
+    // المصفوفات بعد الآن (نظام طلب الصداقة أُزيل كلياً من الواجهة — "صديق" أصبح مفهوماً مُشتقاً:
+    // متابعة متبادلة). تبقى محفوظة فقط ليقرأها PR مستقبلي يحذفها بعد التأكد من اكتمال الترحيل.
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    // ✅ عدّادا المتابعين/المتابَعين الحقيقيان — يُحدَّثان ذرّياً مع كل متابعة/إلغاء (نفس معاملة
+    // إنشاء/حذف مستند Follow، راجع followController.js) ومُعاد حسابهما بترحيل followMigration
+    followersCount: { type: Number, default: 0, min: 0 },
+    followingCount: { type: Number, default: 0, min: 0 },
+    // ✅ علم استئناف خاص بكل مستخدم لـfollowMigration.js (نفس فكرة walletRedenominatedV1) —
+    // يُضبَط بعد نسخ مصفوفاته القديمة لمجموعة Follow، فاستئناف عملية تعطّلت بمنتصفها لا يُعالِج
+    // نفس المستخدم مرتين
+    followMigratedV1: { type: Boolean, default: false },
 
-    // --- ✅ الحقول الجديدة لنظام الصداقة ---
+    // --- الحقول القديمة لنظام الصداقة (للقراءة فقط بعد feat/follow-v2 — راجع الملاحظة أعلاه) ---
     friends: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'

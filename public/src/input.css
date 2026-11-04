@@ -6741,6 +6741,20 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
     color: #9ca3af;
 }
 .follow-tab-btn.active { background: rgba(212,197,147,0.14); color: #d4c593; }
+.follow-tab-count { font-size: 10px; opacity: 0.75; margin-right: 2px; }
+
+/* ✅ feat/follow-v2: صف "يبثّون الآن" — فقط أعلى تبويب "متابَعة" بملفي، شريط أفاتارات أفقي
+   قابل للسحب بحلقة حمراء نابضة حول كل من يبثّ مباشرة فعلاً الآن */
+.follow-live-now-row { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 14px; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.follow-live-now-item { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 58px; }
+.follow-live-now-avatar-wrap { position: relative; width: 52px; height: 52px; border-radius: 50%; animation: followLivePulse 1.8s ease-in-out infinite; }
+.follow-live-now-avatar-wrap img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid #ef4444; }
+@keyframes followLivePulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.45); } 50% { box-shadow: 0 0 0 4px rgba(239,68,68,0.15); } }
+.follow-live-now-badge { position: absolute; bottom: -3px; left: 50%; transform: translateX(-50%); background: #ef4444; color: #fff; font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 999px; white-space: nowrap; }
+.follow-live-now-name { font-size: 10px; color: #d1d5db; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 56px; }
+
+.follow-load-more-btn { display: block; width: 100%; text-align: center; padding: 10px; margin-top: 10px; border-radius: 10px; background: rgba(255,255,255,0.06); color: #d4c593; font-size: 12px; font-weight: 700; }
+.follow-load-more-btn:disabled { opacity: 0.6; }
 
 .follow-connections-list { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; }
 .follow-connection-row {

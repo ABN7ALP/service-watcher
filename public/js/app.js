@@ -592,111 +592,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
 // ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐
 // 📍 أضف هذه الدالة هنا (دالة عامة)
-// ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐
-
-async function performMiniProfileAction(modalElement, action, userId, miniProfileActionBtn = null) {
-    let url = '';
-    let method = 'POST';
-    let successMessage = '';
-    let icon = 'fa-check-circle';
-    let type = 'success';
-
-    // إذا كان هناك زر، حفظ حالته الأصلية
-    let originalButtonHTML = '';
-    if (miniProfileActionBtn) {
-        originalButtonHTML = miniProfileActionBtn.innerHTML;
-        miniProfileActionBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
-        miniProfileActionBtn.disabled = true;
-    }
-
-    switch (action) {
-        case 'send-request':
-            url = `/api/friends/send-request/${userId}`;
-            successMessage = 'تم إرسال الطلب';
-            break;
-        case 'accept-request':
-            url = `/api/friends/accept-request/${userId}`;
-            successMessage = 'أصبحتما أصدقاء الآن';
-            break;
-        case 'cancel-request':
-        case 'reject-request':
-            url = `/api/friends/reject-request/${userId}`;
-            successMessage = 'تم إلغاء الطلب';
-            icon = 'fa-info-circle';
-            type = 'info';
-            break;
-        case 'remove-friend':
-            // ⭐⭐ الحل الجديد ⭐⭐
-            optimisticallyRemoveFriend(userId);
-            
-            if (socket && socket.connected) {
-                socket.emit('removeFriendRequest', {
-                    friendId: userId,
-                    timestamp: new Date().toISOString()
-                });
-            }
-            
-            showNotification('تم حذف الصديق', 'error', 'fa-trash');
-            
-            setTimeout(() => {
-                if (modalElement) {
-                    modalElement.remove();
-                }
-            }, 500);
-            
-            setTimeout(async () => {
-                await refreshUserData();
-            }, 1000);
-            
-            // إعادة تعيين الزر (إذا كان موجوداً)
-            if (miniProfileActionBtn) {
-                miniProfileActionBtn.innerHTML = originalButtonHTML;
-                miniProfileActionBtn.disabled = false;
-            }
-            
-            return; // خروج مبكر
-            
-        default:
-            // إعادة تعيين الزر (إذا كان موجوداً)
-            if (miniProfileActionBtn) {
-                miniProfileActionBtn.innerHTML = originalButtonHTML;
-                miniProfileActionBtn.disabled = false;
-            }
-            return;
-    }
-
-    // ⭐ هذا الجزء للـ actions الأخرى
-    try {
-        const response = await fetch(url, { 
-            method, 
-            headers: { 'Authorization': `Bearer ${token}` } 
-        });
-        
-        if (!response.ok) {
-            const result = await response.json();
-            throw new Error(result.message || 'Action failed');
-        }
-        
-        showNotification(successMessage, type, icon);
-        const refreshSuccess = await refreshUserData();
-        
-        if (refreshSuccess) {
-            // إعادة فتح نافذة البروفايل بعد تأخير
-            setTimeout(() => {
-                showMiniProfileModal(userId);
-            }, 300);
-        }
-        
-    } catch (error) {
-        showNotification(error.message || 'حدث خطأ ما', 'error');
-    } finally {
-        // إعادة تعيين الزر (إذا كان موجوداً)
-        if (miniProfileActionBtn) {
-            miniProfileActionBtn.innerHTML = originalButtonHTML;
-            miniProfileActionBtn.disabled = false;
-        }
-    }
-}
+// ✅ feat/follow-v2: performMiniProfileAction (نظام طلب/قبول/رفض الصداقة) أُزيل بالكامل —
+// استُبدل بزر المتابعة الموحَّد (profile-follow-btn، راجع معالج النقر العام أدناه)
 
     // --- استبدل قسم "منطق الوضع الداكن/الفاتح" بالكامل بهذا ---
 
@@ -741,7 +638,12 @@ async function performMiniProfileAction(modalElement, action, userId, miniProfil
             settings: showSettingsView,
             messages: showMessagesView,
             leaderboard: showLeaderboardView,
-            'friend-requests': showFriendRequestsModal
+            // ✅ feat/follow-v2: "طلبات الصداقة" سابقاً — يفتح الآن نافذة المتابعة الموحَّدة
+            // (تبويب "متابَعين") بدل نظام طلب/قبول الصداقة المحذوف
+            follow: () => {
+                const me = JSON.parse(localStorage.getItem('user')) || {};
+                showFollowConnectionsSheet(myUserId, me.username || 'أنت', 'following');
+            }
         };
         (viewRenderers[viewId] || showRoomBrowserView)();
     }
@@ -8815,36 +8717,12 @@ function updateUIWithUserData(userData) {
 
     document.getElementById('user-status-text').textContent = userData.status || '🚀 جاهز للتحديات!';
 
-    const friendsCount = userData.friends ? userData.friends.length : 0;
-    document.getElementById('friends-count').textContent = friendsCount;
-    
-    updateFriendsAvatars(userData.friends);
-    
-    const requestsCount = userData.friendRequestsReceived ? userData.friendRequestsReceived.length : 0;
-    updateFriendRequestsBadge(requestsCount);
+    // ✅ feat/follow-v2: "صديق" مُشتق من متابعة متبادلة — العدّاد من friendsStats (محسوب
+    // بالخادم من مجموعة Follow)، لا مصفوفة friends القديمة
+    const friendsCountEl = document.getElementById('friends-count');
+    if (friendsCountEl) friendsCountEl.textContent = userData.friendsStats?.totalFriends ?? 0;
 }
 
-// ✅ شارة طلبات الصداقة (سطح المكتب + الهاتف + قسم "المزيد") — بدون أي إشعار جانبي
-function updateFriendRequestsBadge(count) {
-    const sidebarBadge = document.getElementById('friend-requests-badge');
-    if (sidebarBadge) {
-        if (count > 0) { sidebarBadge.textContent = count > 9 ? '9+' : count; sidebarBadge.classList.remove('hidden'); }
-        else sidebarBadge.classList.add('hidden');
-    }
-    const mobileBadge = document.getElementById('mobile-friend-req-badge');
-    if (mobileBadge) {
-        if (count > 0) { mobileBadge.textContent = count > 9 ? '9+' : count; mobileBadge.classList.remove('hidden'); }
-        else mobileBadge.classList.add('hidden');
-    }
-    // ✅ نقطة تنبيه على أيقونة "المزيد" بالشريط السفلي — تظهر فقط والقائمة مغلقة
-    const moreBadge = document.getElementById('mobile-more-badge');
-    if (moreBadge) {
-        const sheetOpen = !document.getElementById('mobile-more-sheet')?.classList.contains('hidden');
-        if (count > 0 && !sheetOpen) moreBadge.classList.remove('hidden');
-        else moreBadge.classList.add('hidden');
-    }
-}
-        
 
 // --- ✅ الدالة الجديدة: تحديث بيانات المستخدم من الخادم ---
 async function refreshUserData() {
@@ -8874,14 +8752,7 @@ async function refreshUserData() {
     updateUIWithUserData(result.data.user);
     
     console.log('[DEBUG] User data refreshed successfully');
-    
-    // ✅ هذا السطر يجب أن يكون هنا
-    console.log('[DEBUG] Updated user data:', {
-        friends: result.data.user.friends ? result.data.user.friends.length : 0,
-        sentRequests: result.data.user.friendRequestsSent ? result.data.user.friendRequestsSent.length : 0,
-        receivedRequests: result.data.user.friendRequestsReceived ? result.data.user.friendRequestsReceived.length : 0
-    });
-    
+
     return true;
 }
         
@@ -8891,37 +8762,6 @@ async function refreshUserData() {
     }
 }
 
-// 📍 أضف هذه الدالة بعد async function refreshUserData() {
-
-function optimisticallyRemoveFriend(friendId) {
-    console.log(`[OPTIMISTIC] Removing friend ${friendId} from UI immediately`);
-    
-    // 1. تحديث localStorage
-    const user = JSON.parse(localStorage.getItem('user'));
-    if (user && user.friends) {
-        // تحويل كل الأصدقاء إلى string للمقارنة
-        user.friends = user.friends.filter(friend => {
-            const friendIdStr = typeof friend === 'object' ? friend._id.toString() : friend.toString();
-            return friendIdStr !== friendId.toString();
-        });
-        localStorage.setItem('user', JSON.stringify(user));
-    }
-    
-    // 2. تحديث العدد في الشريط الجانبي
-    const friendsCountElement = document.getElementById('friends-count');
-    if (friendsCountElement && user && user.friends !== undefined) {
-        friendsCountElement.textContent = user.friends.length;
-    }
-    
-    // 3. تحديث صور الأصدقاء المصغرة
-    if (typeof updateFriendsAvatars === 'function' && user && user.friends) {
-        updateFriendsAvatars(user.friends);
-    }
-    
-    return user;
-}
-
-        
    // --- ✅ دالة حظر مستخدم ---
 async function blockUser(userId, modalElement) {
     try {
@@ -8948,14 +8788,6 @@ async function blockUser(userId, modalElement) {
                     forceAll: true
                 });
                 socket.emit('refreshBlockData');
-            }
-            
-            const user = JSON.parse(localStorage.getItem('user'));
-            if (user && user.friends !== undefined) {
-                document.getElementById('friends-count').textContent = user.friends.length;
-                if (typeof updateFriendsAvatars === 'function') {
-                    updateFriendsAvatars(user.friends);
-                }
             }
             
             if (modalElement) {
@@ -9017,14 +8849,6 @@ async function unblockUser(userId, modalElement) {
                 socket.emit('refreshBlockData');
             }
             
-            const user = JSON.parse(localStorage.getItem('user'));
-            if (user && user.friends !== undefined) {
-                document.getElementById('friends-count').textContent = user.friends.length;
-                if (typeof updateFriendsAvatars === 'function') {
-                    updateFriendsAvatars(user.friends);
-                }
-            }
-            
             if (modalElement) {
                 modalElement.remove();
             }
@@ -9053,71 +8877,16 @@ async function unblockUser(userId, modalElement) {
 }
 
 
-   // --- ✅ دالة معالجة إجراءات الصداقة ---
-async function handleFriendAction(action, userId, modalElement) {
-    let url = '';
-    let method = 'POST';
-    let successMessage = '';
-    
-    switch (action) {
-        case 'send-request':
-            url = `/api/friends/send-request/${userId}`;
-            successMessage = 'تم إرسال طلب الصداقة';
-            break;
-        case 'cancel-request':
-        case 'reject-request':
-            url = `/api/friends/reject-request/${userId}`;
-            successMessage = 'تم إلغاء الطلب';
-            break;
-        case 'accept-request':
-            url = `/api/friends/accept-request/${userId}`;
-            successMessage = 'أصبحتما أصدقاء';
-            break;
-        case 'remove-friend':
-            url = `/api/friends/remove-friend/${userId}`;
-            method = 'DELETE';
-            successMessage = 'تم حذف الصديق';
-            break;
-        case 'unblock-friend':
-            // هذا سيتعامل معه unblockUser مباشرة
-            await unblockUser(userId, modalElement);
-            return;
-        default:
-            return;
-    }
-    
-    try {
-        const response = await fetch(url, { 
-            method, 
-            headers: { 'Authorization': `Bearer ${token}` } 
-        });
-        
-        if (response.ok) {
-            // تحديث البيانات
-            await refreshUserData();
-            
-            // إعادة فتح النافذة
-            setTimeout(() => {
-                if (modalElement) modalElement.remove();
-                showMiniProfileModal(userId);
-            }, 300);
-        }
-    } catch (error) {
-        console.error('Error handling friend action:', error);
-    }
-}     
-        
 // استدعاء الدالة عند تحميل الصفحة
 updateUIWithUserData(user);
 switchToView('arena');
 
         // ✅ جلب أحدث بيانات المستخدم من الخادم فور فتح الموقع
-// هذا يضمن ظهور طلبات الصداقة/الإشعارات التي وصلت أثناء إغلاق الموقع
+// هذا يضمن ظهور أي تحديث/إشعار وصل أثناء إغلاق الموقع
 (async () => {
     const refreshed = await refreshUserData();
     if (refreshed) {
         const freshUser = JSON.parse(localStorage.getItem('user'));
-        updateFriendRequestsBadge(freshUser.friendRequestsReceived ? freshUser.friendRequestsReceived.length : 0);
         // ✅ أول جلسة دخول بعد منح isAdmin:true مباشرة بقاعدة البيانات — نافذة احتفال مرّة واحدة فقط
         maybeShowAdminBadgeCelebration(freshUser);
     }
@@ -9320,66 +9089,6 @@ document.getElementById('user-id-container').addEventListener('click', () => {
         }
     });
 
-      // --- ✅ أضف هذا المستمع الجديد لأزرار إدارة الأصدقاء ---
-mainContent.addEventListener('click', async (e) => {
-    const button = e.target.closest('.friend-action-btn');
-    if (!button) return;
-
-    const action = button.dataset.action;
-    const userId = button.dataset.userId;
-    const card = button.closest('.flex.items-center.justify-between');
-
-    const performAction = async () => {
-        let url = '';
-        let method = 'POST';
-
-        switch (action) {
-            case 'accept-request':
-                url = `/api/friends/accept-request/${userId}`;
-                break;
-            case 'reject-request':
-                url = `/api/friends/reject-request/${userId}`;
-                break;
-            case 'remove-friend':
-                url = `/api/friends/remove-friend/${userId}`;
-                method = 'DELETE';
-                break;
-            default:
-                return;
-        }
-
-        // التحديث المتفائل
-        card.style.opacity = '0.5';
-
-        try {
-            const response = await fetch(url, {
-                method: method,
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!response.ok) throw new Error('Action failed');
-
-            // إعادة تحميل قسم الإعدادات بالكامل لعرض البيانات المحدثة
-            showSettingsView();
-            showNotification('تم تنفيذ الإجراء بنجاح', 'success');
-
-        } catch (error) {
-            card.style.opacity = '1';
-            showNotification('فشل تنفيذ الإجراء', 'error');
-        }
-    };
-
-    if (action === 'remove-friend' || action === 'reject-request') {
-        const message = action === 'remove-friend' ? 'هل أنت متأكد من حذف هذا الصديق؟' : 'هل أنت متأكد من رفض هذا الطلب؟';
-        showConfirmationModal(message, performAction);
-    } else {
-        performAction();
-    }
-});
-
-// --- ✅ أضف هذا المستمع لفتح الملف الشخصي المصغر من قسم الإعدادات ---
-
-
-// --- ✅ استبدل مستمع mainContent بالكامل بهذا ---
 // --- ✅✅✅ استبدل كلا المستمعين القديمين بهذا الكود المدمج والنهائي ---
 // --- ✅✅✅ استبدل المستمع المدمج بالكامل بهذه النسخة النهائية ---
 document.body.addEventListener('click', async (e) => {
@@ -9398,90 +9107,45 @@ document.body.addEventListener('click', async (e) => {
         return;
     }
 
-    // --- الجزء الثاني: التعامل مع أزرار الملف الشخصي المصغر --
-const miniProfileActionBtn = e.target.closest('.action-btn');
-if (miniProfileActionBtn && miniProfileActionBtn.dataset.action) {
-    const action = miniProfileActionBtn.dataset.action;
-    const userId = miniProfileActionBtn.dataset.userId;
+    // --- الجزء الثاني: زر المتابعة الموحَّد بالملف الشخصي المصغّر (feat/follow-v2) ---
+const profileFollowBtn = e.target.closest('.profile-follow-btn');
+if (profileFollowBtn && profileFollowBtn.dataset.action) {
+    const action = profileFollowBtn.dataset.action; // 'follow' | 'unfollow'
+    const userId = profileFollowBtn.dataset.userId;
     const modalElement = document.getElementById('mini-profile-modal');
-    
-    if (action === 'remove-friend' || action === 'cancel-request') {
-        const message = action === 'remove-friend' 
-            ? 'هل أنت متأكد من حذف هذا الصديق؟' 
-            : 'هل أنت متأكد من إلغاء طلب الصداقة؟';
-        
-        showConfirmationModal(message, () => {
-            // ⭐ استدعاء الدالة العامة
-            performMiniProfileAction(modalElement, action, userId, miniProfileActionBtn);
-        });
+
+    const performFollowAction = async () => {
+        const originalHTML = profileFollowBtn.innerHTML;
+        profileFollowBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        profileFollowBtn.disabled = true;
+        try {
+            const response = await fetch(`/api/users/${userId}/follow`, {
+                method: action === 'follow' ? 'POST' : 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) {
+                const result = await response.json().catch(() => ({}));
+                throw new Error(result.message || 'تعذّر تنفيذ الإجراء');
+            }
+            if (modalElement) modalElement.remove();
+            showMiniProfileModal(userId);
+        } catch (error) {
+            showNotification(error.message || 'حدث خطأ ما', 'error');
+            profileFollowBtn.innerHTML = originalHTML;
+            profileFollowBtn.disabled = false;
+        }
+    };
+
+    // ✅ إلغاء المتابعة (حالتا "أصدقاء"/"تتابعه") يطلب تأكيداً دوماً — المتابعة نفسها فورية بلا تأكيد
+    if (action === 'unfollow') {
+        showConfirmationModal('هل تريد إلغاء متابعة هذا المستخدم؟', performFollowAction);
     } else {
-        // ⭐ استدعاء الدالة العامة
-        performMiniProfileAction(modalElement, action, userId, miniProfileActionBtn);
+        performFollowAction();
     }
     return;
 }
 
-    // --- الجزء الثالث: التعامل مع أزرار نوافذ الأصدقاء ---
-    const friendListActionBtn = e.target.closest('.friend-action-btn');
-if (friendListActionBtn) {
-    const action = friendListActionBtn.dataset.action;
-    const userId = friendListActionBtn.dataset.userId;
-    const card = friendListActionBtn.closest('.flex.items-center.justify-between');
-    
-    const performListAction = async () => {
-        let url = '';
-        let method = 'POST';
-        
-        switch (action) {
-            case 'accept-request': 
-                url = `/api/friends/accept-request/${userId}`; 
-                break;
-            case 'reject-request': 
-                url = `/api/friends/reject-request/${userId}`; 
-                break;
-            case 'remove-friend': 
-                url = `/api/friends/remove-friend/${userId}`; 
-                method = 'DELETE';
-                break;
-            default: 
-                return;
-        }
-        
-        // ⭐ التحديث المتفائل: إخفاء العنصر فوراً
-        if (card) card.style.display = 'none';
-        
-        try {
-            const response = await fetch(url, { 
-                method, 
-                headers: { 'Authorization': `Bearer ${token}` } 
-            });
-            
-            if (!response.ok) throw new Error('Action failed');
-            
-            showNotification('تم تنفيذ الإجراء بنجاح', 'success');
-            await refreshUserData();  // تحديث البيانات
-            
-        } catch (error) {
-            // ⭐ إذا فشل، أعد عرض العنصر
-            if (card) card.style.display = 'flex';
-            showNotification('فشل تنفيذ الإجراء', 'error');
-        }
-    };
-    
-    // ⭐ إضافة تأكيد للحذف أو الرفض
-    if (action === 'remove-friend' || action === 'reject-request') {
-        const message = action === 'remove-friend' 
-            ? 'هل أنت متأكد من حذف هذا الصديق؟' 
-            : 'هل أنت متأكد من رفض هذا الطلب؟';
-        
-        showConfirmationModal(message, performListAction);
-    } else {
-        performListAction();
-    }
-    
-    return;
-   }
-});     
+});
 
 // --- ✅ دالة جديدة لأنيميشن اكتساب الخبرة ---
 function showXpGainAnimation(amount) {
@@ -10863,48 +10527,17 @@ socket.on('friendshipUpdate', async (data) => {
         }
     }
     
-    // ⭐ الحالة 3: إذا كان الحدث متعلقاً بالصداقة
-    else if (data.action && (data.action.includes('friend') || data.action.includes('request'))) {
-        // تحديث البيانات للصداقة
-        await refreshUserData();
-        
-        // إشعار عام
-        if (data.message) {
-            showNotification(data.message, 'info');
-        }
-    }
 });
 
 // 2️⃣ حدث خاص لتحديث البيانات القسري
 socket.on('forceRefreshUserData', async (data) => {
     console.log('[SOCKET] Force refreshing user data:', data);
     
-    // تأخير بسيط لضمان تحديث الخادم أولاً
+    // تأخير بسيط لضمان تحديث الخادم أولاً — refreshUserData() يحدِّث الواجهة بالكامل داخلياً
+    // (بما فيها friends-count، راجع updateUIWithUserData) فلا حاجة لأي تحديث إضافي هنا
     setTimeout(async () => {
         try {
-            // تحديث البيانات من الخادم
-            const success = await refreshUserData();
-            
-            if (success) {
-                console.log('[SOCKET] User data refreshed after block');
-                
-                // جلب البيانات المحدثة مباشرة
-                const user = JSON.parse(localStorage.getItem('user'));
-                if (user && user.friends !== undefined) {
-                    
-                    // تحديث عدد الأصدقاء في الشريط الجانبي
-                    const friendsCountElement = document.getElementById('friends-count');
-                    if (friendsCountElement) {
-                        friendsCountElement.textContent = user.friends.length;
-                        console.log(`[SOCKET] Updated friends count to: ${user.friends.length}`);
-                    }
-                    
-                    // تحديث صور الأصدقاء المصغرة
-                    if (typeof updateFriendsAvatars === 'function') {
-                        updateFriendsAvatars(user.friends);
-                    }
-                }
-            }
+            await refreshUserData();
         } catch (error) {
             console.error('[SOCKET] Error in forceRefreshUserData:', error);
         }
@@ -11293,9 +10926,9 @@ function renderProfileHubBody(u) {
         ${v ? `<div class="profile-hub-visitor-banner"><i class="fas fa-eye mr-1"></i> هكذا يرى زوّار ملفك صفحتك</div>` : ''}
 
         <div class="profile-hub-stats-row">
-            <button type="button" class="profile-hub-stat" id="profile-hub-followers-stat"><span class="profile-hub-stat-num">${(u.followers || []).length}</span><span class="profile-hub-stat-label">متابِعون</span></button>
-            <button type="button" class="profile-hub-stat" id="profile-hub-following-stat"><span class="profile-hub-stat-num">${(u.following || []).length}</span><span class="profile-hub-stat-label">متابَعون</span></button>
-            <button type="button" class="profile-hub-stat" id="profile-hub-friends-stat"><span class="profile-hub-stat-num">${(u.friends || []).length}</span><span class="profile-hub-stat-label">أصدقاء</span></button>
+            <button type="button" class="profile-hub-stat" id="profile-hub-followers-stat"><span class="profile-hub-stat-num">${u.followersCount ?? 0}</span><span class="profile-hub-stat-label">متابِعون</span></button>
+            <button type="button" class="profile-hub-stat" id="profile-hub-following-stat"><span class="profile-hub-stat-num">${u.followingCount ?? 0}</span><span class="profile-hub-stat-label">متابَعون</span></button>
+            <button type="button" class="profile-hub-stat" id="profile-hub-friends-stat"><span class="profile-hub-stat-num">${u.friendsCount ?? 0}</span><span class="profile-hub-stat-label">أصدقاء</span></button>
             <button type="button" class="profile-hub-stat" id="profile-hub-visitors-stat"><span class="profile-hub-stat-num">${v ? '—' : '…'}</span><span class="profile-hub-stat-label">زوّار اليوم</span></button>
         </div>
 
@@ -11474,6 +11107,7 @@ function renderProfileHubBody(u) {
 
     document.getElementById('profile-hub-followers-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'followers'));
     document.getElementById('profile-hub-following-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'following'));
+    document.getElementById('profile-hub-friends-stat').addEventListener('click', () => showFollowConnectionsSheet(u._id, u.username, 'friends'));
     document.getElementById('profile-hub-copy-id-btn')?.addEventListener('click', () => {
         navigator.clipboard?.writeText(String(u.customId || '')).then(() => showNotification('تم نسخ المعرّف', 'success')).catch(() => {});
     });
@@ -12090,39 +11724,81 @@ async function showProfileVisitorsSheet() {
 
 // ✅ يربط زر متابعة/إلغاء متابعة موحَّد — يُستخدم بقائمتي المتابِعين/المتابَعين وباقتراحات "لك"
 // معاً بدل تكرار نفس منطق الطلب في كل مكان
+// ✅ feat/follow-v2: 4 حالات محتملة لزر المتابعة بأي صف شخص — "صديق"/"يتابعك"/غريب عنك، حسب
+// الاتجاهَين معاً (amIFollowing/followsMe). إلغاء المتابعة (حالتا "أصدقاء"/"تتابعه") فقط يطلب
+// تأكيداً؛ المتابعة ذاتها ("متابعة"/"ردّ المتابعة") فورية بلا تأكيد
+function followButtonState(relation) {
+    const amIFollowing = !!relation?.amIFollowing;
+    const followsMe = !!relation?.followsMe;
+    if (amIFollowing && followsMe) return { label: 'أصدقاء', action: 'unfollow' };
+    if (amIFollowing) return { label: 'تتابعه', action: 'unfollow' };
+    if (followsMe) return { label: 'ردّ المتابعة', action: 'follow' };
+    return { label: 'متابعة', action: 'follow' };
+}
+
 function wireFollowConnectionButton(btn) {
     btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const targetUserId = btn.dataset.userId;
-        const nowFollowing = !btn.classList.contains('following');
-        btn.disabled = true;
-        try {
-            const response = await fetch(`/api/users/${targetUserId}/follow`, { method: nowFollowing ? 'POST' : 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-            if (response.ok) {
-                btn.classList.toggle('following', nowFollowing);
-                btn.textContent = nowFollowing ? 'متابَع' : 'متابعة';
-            } else {
-                const r = await response.json();
-                showNotification(r.message || 'تعذر تنفيذ الطلب', 'error');
+        const action = btn.dataset.action; // 'follow' | 'unfollow'
+
+        const perform = async () => {
+            btn.disabled = true;
+            try {
+                const response = await fetch(`/api/users/${targetUserId}/follow`, { method: action === 'follow' ? 'POST' : 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+                if (!response.ok) {
+                    const r = await response.json().catch(() => ({}));
+                    throw new Error(r.message || 'تعذر تنفيذ الطلب');
+                }
+                const followsMe = btn.dataset.followsMe === '1';
+                const newState = followButtonState({ amIFollowing: action === 'follow', followsMe });
+                btn.dataset.action = newState.action;
+                btn.classList.toggle('following', newState.action === 'unfollow');
+                btn.textContent = newState.label;
+            } catch (error) {
+                showNotification(error.message || 'حدث خطأ، حاول مجدداً', 'error');
+            } finally {
+                btn.disabled = false;
             }
-        } catch (error) {
-            showNotification('حدث خطأ، حاول مجدداً', 'error');
-        } finally {
-            btn.disabled = false;
+        };
+
+        if (action === 'unfollow') {
+            showConfirmationModal('هل تريد إلغاء متابعة هذا المستخدم؟', perform);
+        } else {
+            perform();
         }
     });
 }
 
-// ✅ صف شخص موحَّد (قوائم المتابِعين/المتابَعين + اقتراحات) — صورة/اسم/مستوى + زر متابعة،
-// النقر على الصف (لا الزر) يفتح ملفه الشخصي الكامل
+// ✅ صف شخص موحَّد (قوائم المتابِعين/المتابَعين/الأصدقاء + اقتراحات) — صورة/اسم + زر متابعة
+// بحالته الصحيحة (relation من الخادم)، النقر على الصف (لا الزر) يفتح ملفه الشخصي الكامل
 function renderFollowPersonRowHTML(u, extraClass = '') {
+    const state = followButtonState(u.relation);
     return `
         <div class="follow-connection-row ${extraClass}" data-user-id="${u._id}">
             ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'follow-connection-avatar' })}
             <div class="min-w-0 flex-1">
                 <p class="follow-connection-name">${escapeHtml(u.username)}</p>
             </div>
-            <button type="button" class="follow-connection-btn ${u.isFollowedByMe ? 'following' : ''}" data-user-id="${u._id}">${u.isFollowedByMe ? 'متابَع' : 'متابعة'}</button>
+            <button type="button" class="follow-connection-btn ${state.action === 'unfollow' ? 'following' : ''}" data-user-id="${u._id}" data-action="${state.action}" data-follows-me="${u.relation?.followsMe ? '1' : '0'}">${state.label}</button>
+        </div>
+    `;
+}
+
+// ✅ صف "يبثّون الآن" (feat/follow-v2) — شريط أفقي فوق تبويب "متابَعة" فقط (ملفي الشخصي)
+function renderLiveNowRowHTML(liveNow) {
+    if (!liveNow || liveNow.length === 0) return '';
+    return `
+        <div class="follow-live-now-row">
+            ${liveNow.map(u => `
+                <div class="follow-live-now-item" data-room-id="${u.roomId}" data-room-name="${escapeHtml(u.roomName || '')}" data-cover="${escapeHtml(u.roomCoverImage || '')}" data-private="${u.roomIsPrivate ? '1' : '0'}">
+                    <div class="follow-live-now-avatar-wrap">
+                        <img src="${u.profileImage}" alt="${escapeHtml(u.username)}" loading="lazy" decoding="async">
+                        <span class="follow-live-now-badge">مباشر</span>
+                    </div>
+                    <span class="follow-live-now-name">${escapeHtml(u.username)}</span>
+                </div>
+            `).join('')}
         </div>
     `;
 }
@@ -12144,6 +11820,11 @@ function renderFollowSkeletonRows(count = 5) {
 
 // ✅ ورقة متابِعين/متابَعين — تبويبان، وأسفل كل قائمة قسم "اقتراحات لك" (صفوف مكدَّسة تحت
 // بعضها لا شبكة)، كل اقتراح بزر × بسيط بلا خلفية يزيله من القائمة فوراً (محلياً فقط، بلا حفظ)
+const FOLLOW_TAB_LABELS = { followers: 'متابعون', following: 'متابَعة', friends: 'أصدقاء' };
+const FOLLOW_TAB_EMPTY_TEXT = { followers: 'لا يوجد متابعون بعد', following: 'لا تتابع أحداً بعد', friends: 'لا يوجد أصدقاء بعد' };
+
+// ✅ ورقة متابِعين/متابَعين/أصدقاء — 3 تبويبات بعدد كل منها، ترقيم بالمؤشّر (20/صفحة، زر
+// "تحميل المزيد")، صف "يبثّون الآن" أعلى تبويب "متابَعة"، وأسفل كل قائمة قسم "اقتراحات لك"
 async function showFollowConnectionsSheet(userId, username, initialTab = 'followers') {
     document.getElementById('follow-connections-sheet')?.remove();
     const modal = document.createElement('div');
@@ -12156,8 +11837,9 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
                 <button id="close-follow-connections" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
             </div>
             <div class="follow-tabs-row flex-shrink-0">
-                <button id="fc-tab-followers" class="follow-tab-btn">متابعون</button>
-                <button id="fc-tab-following" class="follow-tab-btn">متابَعة</button>
+                <button id="fc-tab-followers" class="follow-tab-btn" data-tab="followers">${FOLLOW_TAB_LABELS.followers}</button>
+                <button id="fc-tab-following" class="follow-tab-btn" data-tab="following">${FOLLOW_TAB_LABELS.following}</button>
+                <button id="fc-tab-friends" class="follow-tab-btn" data-tab="friends">${FOLLOW_TAB_LABELS.friends}</button>
             </div>
             <div id="fc-list" class="flex-1 overflow-y-auto px-3 pb-3">
                 ${renderFollowSkeletonRows(5)}
@@ -12168,33 +11850,81 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
     modal.addEventListener('click', (e) => { if (e.target.id === 'follow-connections-sheet') modal.remove(); });
     document.getElementById('close-follow-connections').addEventListener('click', () => modal.remove());
 
-    async function loadTab(tab) {
-        document.getElementById('fc-tab-followers').classList.toggle('active', tab === 'followers');
-        document.getElementById('fc-tab-following').classList.toggle('active', tab === 'following');
+    // ✅ عدّادات التبويبات الثلاثة — طلب واحد خفيف بالتوازي مع تحميل أول تبويب، لا يحجب عرضه
+    fetch(`/api/users/${userId}`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(result => {
+            if (result.status !== 'success') return;
+            const u = result.data.user;
+            document.getElementById('fc-tab-followers').innerHTML = `${FOLLOW_TAB_LABELS.followers} <span class="follow-tab-count">${u.followersCount ?? 0}</span>`;
+            document.getElementById('fc-tab-following').innerHTML = `${FOLLOW_TAB_LABELS.following} <span class="follow-tab-count">${u.followingCount ?? 0}</span>`;
+            document.getElementById('fc-tab-friends').innerHTML = `${FOLLOW_TAB_LABELS.friends} <span class="follow-tab-count">${u.friendsCount ?? 0}</span>`;
+        })
+        .catch(() => {});
+
+    function wireRowsAndButtons(container) {
+        container.querySelectorAll('.follow-connection-row').forEach(row => {
+            row.addEventListener('click', () => { modal.remove(); showFullProfilePage(row.dataset.userId); });
+        });
+        container.querySelectorAll('.follow-connection-btn').forEach(wireFollowConnectionButton);
+    }
+
+    // ✅ نافذة إغلاق آمنة على التبويب النشط — تمنع كتابة صفحة قديمة فوق صفحة أحدث لو تبدّل
+    // التبويب بسرعة قبل اكتمال طلب شبكة سابق
+    let activeTab = null;
+    let nextCursor = null;
+
+    async function loadPage(tab, cursor) {
+        if (tab !== activeTab) return;
         const listEl = document.getElementById('fc-list');
-        listEl.innerHTML = renderFollowSkeletonRows(5);
+        const loadMoreBtn = document.getElementById('fc-load-more');
+        if (loadMoreBtn) { loadMoreBtn.disabled = true; loadMoreBtn.textContent = 'جارٍ التحميل...'; }
         try {
-            const response = await fetch(`/api/users/${userId}/${tab}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const url = `/api/users/${userId}/${tab}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`;
+            const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
             const result = await response.json();
+            if (tab !== activeTab) return; // ✅ تبدّل التبويب أثناء الانتظار — تجاهل هذي النتيجة
             if (!response.ok || result.status !== 'success') throw new Error();
-            const users = result.data.users;
-            listEl.innerHTML = `
-                <div class="follow-connections-list fade-in-content">
-                    ${users.length === 0
-                        ? `<p class="text-xs text-gray-500 text-center py-6">${tab === 'followers' ? 'لا يوجد متابعون بعد' : 'لا تتابع أحداً بعد'}</p>`
-                        : users.map(u => renderFollowPersonRowHTML(u)).join('')
-                    }
-                </div>
-                <div id="fc-suggestions-slot"></div>
-            `;
-            listEl.querySelectorAll('.follow-connection-row').forEach(row => {
-                row.addEventListener('click', () => { modal.remove(); showFullProfilePage(row.dataset.userId); });
-            });
-            listEl.querySelectorAll('.follow-connection-btn').forEach(wireFollowConnectionButton);
-            loadSuggestionsForConnectionsSheet();
+            const { users, nextCursor: newCursor, liveNow } = result.data;
+            nextCursor = newCursor;
+
+            const rowsHTML = users.map(u => renderFollowPersonRowHTML(u)).join('');
+            if (!cursor) {
+                // ✅ الصفحة الأولى — استبدال كامل (يشمل صف "يبثّون الآن" + قسم الاقتراحات)
+                listEl.innerHTML = `
+                    ${renderLiveNowRowHTML(liveNow)}
+                    <div id="fc-rows" class="follow-connections-list fade-in-content">
+                        ${users.length === 0 ? `<p class="text-xs text-gray-500 text-center py-6">${FOLLOW_TAB_EMPTY_TEXT[tab]}</p>` : rowsHTML}
+                    </div>
+                    ${nextCursor ? `<button type="button" id="fc-load-more" class="follow-load-more-btn">تحميل المزيد</button>` : ''}
+                    <div id="fc-suggestions-slot"></div>
+                `;
+                wireRowsAndButtons(listEl);
+                loadSuggestionsForConnectionsSheet();
+            } else {
+                // ✅ صفحات لاحقة — إلحاق فقط، مع نقل زر "تحميل المزيد" (أو حذفه لو انتهت القائمة)
+                const rowsEl = document.getElementById('fc-rows');
+                rowsEl.insertAdjacentHTML('beforeend', rowsHTML);
+                wireRowsAndButtons(rowsEl);
+                document.getElementById('fc-load-more')?.remove();
+                if (nextCursor) {
+                    rowsEl.insertAdjacentHTML('afterend', `<button type="button" id="fc-load-more" class="follow-load-more-btn">تحميل المزيد</button>`);
+                }
+            }
+            document.getElementById('fc-load-more')?.addEventListener('click', () => loadPage(tab, nextCursor));
         } catch (error) {
-            listEl.innerHTML = '<p class="text-xs text-red-400 text-center py-6">تعذر تحميل القائمة</p>';
+            if (tab !== activeTab) return;
+            if (!cursor) listEl.innerHTML = '<p class="text-xs text-red-400 text-center py-6">تعذر تحميل القائمة</p>';
+            else showNotification('تعذر تحميل المزيد', 'error');
         }
+    }
+
+    function loadTab(tab) {
+        activeTab = tab;
+        nextCursor = null;
+        document.querySelectorAll('.follow-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+        document.getElementById('fc-list').innerHTML = renderFollowSkeletonRows(5);
+        loadPage(tab, null);
     }
 
     async function loadSuggestionsForConnectionsSheet() {
@@ -12215,10 +11945,7 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
                     `).join('')}
                 </div>
             `;
-            slot.querySelectorAll('.follow-connection-row').forEach(row => {
-                row.addEventListener('click', () => { modal.remove(); showFullProfilePage(row.dataset.userId); });
-            });
-            slot.querySelectorAll('.follow-connection-btn').forEach(wireFollowConnectionButton);
+            wireRowsAndButtons(slot);
             slot.querySelectorAll('.follow-suggestion-dismiss').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -12228,9 +11955,22 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
         } catch (error) { /* اقتراحات ثانوية — فشلها الصامت لا يعطّل القائمة الأساسية */ }
     }
 
-    document.getElementById('fc-tab-followers').addEventListener('click', () => loadTab('followers'));
-    document.getElementById('fc-tab-following').addEventListener('click', () => loadTab('following'));
-    loadTab(initialTab === 'following' ? 'following' : 'followers');
+    document.querySelectorAll('.follow-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => loadTab(btn.dataset.tab));
+    });
+    // ✅ صف "يبثّون الآن" قابل للنقر — ينتقل إلى الغرفة المباشرة فعلياً (نفس مسار دخول بطاقة
+    // غرفة من قائمة الاستكشاف)
+    document.getElementById('fc-list').addEventListener('click', (e) => {
+        const item = e.target.closest('.follow-live-now-item');
+        if (!item) return;
+        modal.remove();
+        enterVoiceRoom({
+            id: item.dataset.roomId, name: item.dataset.roomName,
+            coverImage: item.dataset.cover || null, isOfficial: false,
+            isPrivate: item.dataset.private === '1'
+        });
+    });
+    loadTab(['following', 'friends'].includes(initialTab) ? initialTab : 'followers');
 }
 
 // ✅ هيكل تحميل نابض لشبكة بطاقات "اكتشاف أشخاص" (3 أعمدة) — نفس فكرة renderFollowSkeletonRows
@@ -12673,7 +12413,7 @@ async function showMiniProfileModal(userId) {
             : null;
         const hasAge = typeof profileUser.age === 'number' && !isNaN(profileUser.age);
 
-        const friendButtonHTML = getFriendButtonHTML(profileUser, selfUserData);
+        const followActionButtonHTML = getFollowActionButtonHTML(profileUser);
 
         const blockedUsersIds = (selfUserData.blockedUsers || []).map(item => 
             item._id ? item._id.toString() : item.toString()
@@ -12748,7 +12488,7 @@ async function showMiniProfileModal(userId) {
                     </div>
 
                     <div id="profile-action-buttons" class="grid grid-cols-6 gap-1 border-t border-gray-700/50 p-2 bg-black/10">
-                        ${friendButtonHTML}
+                        ${followActionButtonHTML}
                         <button class="action-btn message-btn" data-user-id="${profileUser._id}">
                               <i class="fas fa-comment-dots"></i>
                            <span class="text-[9px] mt-0.5">رسالة</span>
@@ -14652,24 +14392,31 @@ async function showFullProfilePage(userId) {
         });
 
         if (userId !== myUserId) {
-            document.getElementById('full-profile-follow-btn').addEventListener('click', async () => {
+            document.getElementById('full-profile-follow-btn').addEventListener('click', () => {
                 const btn = document.getElementById('full-profile-follow-btn');
                 const nowFollowing = !btn.classList.contains('following');
-                btn.disabled = true;
-                try {
-                    const response = await fetch(`/api/users/${userId}/follow`, { method: nowFollowing ? 'POST' : 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-                    const result = await response.json();
-                    if (response.ok) {
-                        btn.classList.toggle('following', nowFollowing);
-                        btn.innerHTML = nowFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة';
-                    } else {
-                        showNotification(result.message || 'تعذر تنفيذ الطلب', 'error');
+
+                const doToggle = async () => {
+                    btn.disabled = true;
+                    try {
+                        const response = await fetch(`/api/users/${userId}/follow`, { method: nowFollowing ? 'POST' : 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+                        const result = await response.json();
+                        if (response.ok) {
+                            btn.classList.toggle('following', nowFollowing);
+                            btn.innerHTML = nowFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة';
+                        } else {
+                            showNotification(result.message || 'تعذر تنفيذ الطلب', 'error');
+                        }
+                    } catch (error) {
+                        showNotification('حدث خطأ، حاول مجدداً', 'error');
+                    } finally {
+                        btn.disabled = false;
                     }
-                } catch (error) {
-                    showNotification('حدث خطأ، حاول مجدداً', 'error');
-                } finally {
-                    btn.disabled = false;
-                }
+                };
+
+                // ✅ إلغاء المتابعة فقط يطلب تأكيداً — المتابعة نفسها فورية بلا تأكيد
+                if (!nowFollowing) showConfirmationModal('هل تريد إلغاء متابعة هذا المستخدم؟', doToggle);
+                else doToggle();
             });
             document.getElementById('full-profile-message-btn').addEventListener('click', () => {
                 closeFullProfilePage();
@@ -23068,48 +22815,13 @@ function showOneMessageModal(targetUserId, targetUsername) {
     });
 }
         
-// --- ✅ دالة جديدة لتوليد HTML زر الصداقة الملون ---
-function getFriendButtonHTML(profileUser, selfUser) {
-    // ✅ تحويل كل الـ IDs إلى String للمقارنة الصحيحة
-    const profileUserIdStr = profileUser._id.toString();
-    
-    // ✅ استخراج IDs من مصفوفات المستخدم الحالي
-    const friendsIds = (selfUser.friends || []).map(item => 
-        item._id ? item._id.toString() : item.toString()
-    );
-    
-    const sentRequestsIds = (selfUser.friendRequestsSent || []).map(user => 
-        user._id ? user._id.toString() : user.toString()
-    );
-    
-    const receivedRequestsIds = (selfUser.friendRequestsReceived || []).map(user => 
-        user._id ? user._id.toString() : user.toString()
-    );
-    
-    // ✅ استخراج IDs من المحظورين
-    const blockedUsersIds = (selfUser.blockedUsers || []).map(item => 
-        item._id ? item._id.toString() : item.toString()
-    );
-
-    let friendButtonHTML = '';
-
-    // ✅ منطق أزرار الصداقة + الحظر
-    if (friendsIds.includes(profileUserIdStr)) {
-        friendButtonHTML = `<button class="action-btn friend-btn" data-action="remove-friend" data-user-id="${profileUser._id}"><i class="fas fa-user-check"></i><span>صديق</span></button>`;
-    } else if (sentRequestsIds.includes(profileUserIdStr)) {
-        friendButtonHTML = `<button class="action-btn sent-btn" data-action="cancel-request" data-user-id="${profileUser._id}"><i class="fas fa-user-clock"></i><span>مُرسَل</span></button>`;
-    } else if (receivedRequestsIds.includes(profileUserIdStr)) {
-        friendButtonHTML = `<button class="action-btn received-btn" data-action="accept-request" data-user-id="${profileUser._id}"><i class="fas fa-user-check"></i><span>قبول</span></button>`;
-    } else if (blockedUsersIds.includes(profileUserIdStr)) {
-        // ✅ إذا كان محظوراً - زر فك الحظر
-        friendButtonHTML = `<button class="action-btn unblock-btn" data-action="unblock" data-user-id="${profileUser._id}"><i class="fas fa-user-lock"></i><span>محظور</span></button>`;
-    } else {
-        // ✅ إذا لم يكن شيئاً - زر إضافة
-        friendButtonHTML = `<button class="action-btn add-btn" data-action="send-request" data-user-id="${profileUser._id}"><i class="fas fa-user-plus"></i><span>إضافة</span></button>`;
-    }
-    
-    console.log('[FIXED] Generated button:', friendButtonHTML);
-    return friendButtonHTML;
+// ✅ feat/follow-v2: زر المتابعة الموحَّد (4 حالات، راجع followButtonState) — يستبدل زر
+// الصداقة القديم (طلب/قبول/رفض) بالكامل. isFollowing/followsMe جاهزان من الخادم (getUserById،
+// لمنظور الزائر الحالي تحديداً)
+function getFollowActionButtonHTML(profileUser) {
+    const state = followButtonState({ amIFollowing: profileUser.isFollowing, followsMe: profileUser.followsMe });
+    const icon = state.action === 'unfollow' ? 'fa-user-check' : 'fa-user-plus';
+    return `<button class="action-btn profile-follow-btn" data-action="${state.action}" data-user-id="${profileUser._id}"><i class="fas ${icon}"></i><span>${state.label}</span></button>`;
 }
 
 
@@ -23600,181 +23312,12 @@ socket.on('messageStatusUpdated', (data) => {
 
         
 
-// --- ✅ أضف هذا المستمع الجديد ---
-// --- ✅ استبدل مستمع friendshipUpdate بهذا ---
-socket.on('friendshipUpdate', async () => {
-    console.log('[SOCKET] Received friendship update. Refetching self user data.');
-    try {
-        const selfUserResponse = await fetch(`/api/users/me/details`, { headers: { 'Authorization': `Bearer ${token}` } });
-        const selfUserResult = await selfUserResponse.json();
-        if (selfUserResponse.ok) {
-            const updatedUser = selfUserResult.data.user;
-            localStorage.setItem('user', JSON.stringify(updatedUser));
-            updateUIWithUserData(updatedUser); // ✅ تحديث الواجهة بالكامل
-            
-            // (اختياري) إذا كانت نافذة الملف الشخصي مفتوحة، أعد رسمها
-            const modal = document.getElementById('mini-profile-modal');
-            const userIdInModal = modal?.dataset.userId;
-            if (modal && userIdInModal) {
-                showMiniProfileModal(userIdInModal);
-            }
-        }
-    } catch (error) {
-        console.error('Failed to refetch user data after friendship update:', error);
-    }
+// ✅ feat/follow-v2: بطاقة "الأصدقاء" الجانبية وعنصر تنقّل "طلبات الصداقة" يفتحان الآن نافذة
+// المتابعة الموحَّدة (showFollowConnectionsSheet) على ملفي الشخصي — لا نظام طلب/قبول صداقة بعد الآن
+document.getElementById('friends-card').addEventListener('click', () => {
+    const me = JSON.parse(localStorage.getItem('user')) || {};
+    showFollowConnectionsSheet(myUserId, me.username || 'أنت', 'friends');
 });
-
-// --- ✅ أضف هذا الكود لربط الأيقونات الجديدة ---
-// --- ✅ ربط بطاقة الأصدقاء ---
-document.getElementById('friends-card').addEventListener('click', (e) => {
-    // منع الفتح عند النقر على العناصر الداخلية
-    if (!e.target.closest('#friends-avatars')) {
-        showFriendsListModal();
-    }
-});
-document.getElementById('friend-requests-nav-item').addEventListener('click', (e) => {
-    e.preventDefault(); // منع السلوك الافتراضي للرابط
-    showFriendRequestsModal();
-});
-
-
-// دالة لعرض نافذة طلبات الصداقة
-async function showFriendRequestsModal() {
-    const modalId = 'friend-requests-modal';
-    const localUser = JSON.parse(localStorage.getItem('user')) || {};
-
-    const renderList = (list) => {
-        if (!list || list.length === 0) return '<p class="text-gray-400">لا توجد طلبات حاليًا.</p>';
-        return list.map(sender => `
-            <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
-                <div class="flex items-center gap-3">
-                    <img src="${sender.profileImage}" data-user-id="${sender._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
-                    <span>${escapeHtml(sender.username)}</span>
-                </div>
-                <div class="flex gap-2">
-                    <button class="friend-action-btn bg-blue-600 hover:bg-blue-700 text-white text-xs py-1 px-3 rounded-full" data-action="accept-request" data-user-id="${sender._id}">قبول</button>
-                    <button class="friend-action-btn bg-gray-600 hover:bg-gray-700 text-white text-xs py-1 px-3 rounded-full" data-action="reject-request" data-user-id="${sender._id}">رفض</button>
-                </div>
-            </div>
-        `).join('');
-    };
-
-    // ✅ عرض فوري من البيانات المحفوظة محلياً — استجابة لحظية بدون أي انتظار
-    const html = `
-        <div id="${modalId}" class="modal-backdrop fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4">
-            <div class="modal-content bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md text-white p-6">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold">طلبات الصداقة</h3>
-                    <button class="text-gray-400 hover:text-white p-1" onclick="document.getElementById('${modalId}')?.remove()"><i class="fas fa-times"></i></button>
-                </div>
-                <div class="space-y-2 max-h-80 overflow-y-auto pr-2">${renderList(localUser.friendRequestsReceived)}</div>
-            </div>
-        </div>
-    `;
-    document.getElementById('game-container').insertAdjacentHTML('beforeend', html);
-
-    // ✅ تحديث صامت بالخلفية (لا يُظهر أي مؤشر تحميل، فقط يستبدل القائمة إن تغيّرت)
-    try {
-        const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
-        const result = await response.json();
-        if (response.ok) {
-            const modalElement = document.getElementById(modalId);
-            if (modalElement) modalElement.querySelector('.space-y-2').innerHTML = renderList(result.data.user.friendRequestsReceived);
-        }
-    } catch (error) { /* العرض المحلي كافٍ عند فشل الشبكة */ }
-}
-
-
-// --- ✅ استبدل دالة showFriendsListModal بهذه النسخة النظيفة ---
-async function showFriendsListModal() {
-    const modalId = 'friends-list-modal';
-    // --- ❌ تم حذف onclick من هنا ---
-    const loadingHTML = `
-        <div id="${modalId}" class="modal-backdrop fixed inset-0 bg-black/70 flex items-center justify-center z-[250] p-4">
-            <div class="modal-content bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md text-white p-6">
-                <h3 class="text-lg font-bold mb-4">قائمة الأصدقاء</h3>
-                <div class="text-center p-6"><i class="fas fa-spinner fa-spin text-3xl"></i></div>
-            </div>
-        </div>
-    `;
-    // ... (باقي الكود يبقى كما هو)
-        document.getElementById('game-container').insertAdjacentHTML('beforeend', loadingHTML);
-
-    try {
-        const response = await fetch('/api/users/me/details', { headers: { 'Authorization': `Bearer ${token}` } });
-        const result = await response.json();
-        if (!response.ok) throw new Error('Failed to load friends');
-
-        const friends = result.data.user.friends;
-        let contentHTML = '<p class="text-gray-400">ليس لديك أصدقاء بعد.</p>';
-
-        if (friends && friends.length > 0) {
-            contentHTML = friends.map(friend => `
-                <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-700/50">
-                    <div class="flex items-center gap-3">
-                        <img src="${friend.profileImage}" data-user-id="${friend._id}" class="w-10 h-10 rounded-full cursor-pointer user-image">
-                        <span>${escapeHtml(friend.username)}</span>
-                    </div>
-                    <button class="friend-action-btn bg-red-600 hover:bg-red-700 text-white text-xs py-1 px-3 rounded-full" data-action="remove-friend" data-user-id="${friend._id}">حذف</button>
-                </div>
-            `).join('');
-        }
-
-        const modalElement = document.getElementById(modalId);
-        if (modalElement) {
-            modalElement.querySelector('.modal-content').innerHTML = `
-                <h3 class="text-lg font-bold mb-4">قائمة الأصدقاء</h3>
-                <div class="space-y-2 max-h-80 overflow-y-auto pr-2">${contentHTML}</div>
-            `;
-        }
-
-    } catch (error) {
-        const modalElement = document.getElementById(modalId);
-        if (modalElement) modalElement.querySelector('.modal-content').innerHTML = '<p class="text-red-400">فشل تحميل الأصدقاء.</p>';
-    }
-}
-
-// --- ✅ دالة تحديث صور الأصدقاء المصغرة ---
-async function updateFriendsAvatars(friendsList) {
-    const friendsAvatars = document.getElementById('friends-avatars');
-    if (!friendsAvatars) return;
-    
-    friendsAvatars.innerHTML = '';
-    
-    if (!friendsList || friendsList.length === 0) {
-        friendsAvatars.innerHTML = '<p class="text-xs text-gray-500">لا توجد أصدقاء بعد</p>';
-        return;
-    }
-    
-    // عرض أول 5 أصدقاء فقط
-    const displayFriends = friendsList.slice(0, 5);
-    
-    displayFriends.forEach(friend => {
-        const avatar = document.createElement('div');
-        avatar.className = 'relative';
-        avatar.title = friend.username;
-        
-        avatar.innerHTML = `
-            <img src="${friend.profileImage}" 
-                 alt="${escapeHtml(friend.username)}"
-                 class="w-10 h-10 rounded-full border-2 border-gray-600 hover:border-purple-500 cursor-pointer transition-all"
-                 data-user-id="${friend._id}">
-        `;
-        
-        friendsAvatars.appendChild(avatar);
-    });
-    
-    // إذا كان هناك أكثر من 5 أصدقاء
-    if (friendsList.length > 5) {
-        const moreCount = document.createElement('div');
-        moreCount.className = 'w-10 h-10 rounded-full bg-gray-700 border-2 border-gray-600 flex items-center justify-center text-xs font-bold';
-        moreCount.textContent = `+${friendsList.length - 5}`;
-        moreCount.title = `${friendsList.length - 5} صديق إضافي`;
-        
-        friendsAvatars.appendChild(moreCount);
-    }
-}
-
     // 🗑️ أُزيلت لعبة "التحدي" (الرهان الفردي بالدولار + إنشاء/الانضمام/عدّاد التنازل/نتيجة
     // اللعبة) بالكامل من هنا بطلب صريح — ثغرة أمنية حقيقية (نقر آلي يفوز بمال حقيقي) وتصنيف
     // قماري محتمل. لا علاقة بمعارك PK بين الغرف (pk-battle-*) أو تحدي المقاعد، تلك بقيت كما هي
