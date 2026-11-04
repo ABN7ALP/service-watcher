@@ -236,21 +236,32 @@ const PERSONAL_INFO_FIELDS = ['gender', 'birthDate', 'socialStatus', 'educationS
 const getUserById = async (req, res) => {
     try {
         const requesterId = req.user?.id;
+        // ✅ feat/app-router: /u/:customId قابل للمشاركة — المعرّف الوارد هنا قد يكون customId
+        // الرقمي (9 أرقام، مُولَّد بـUser.js) بدل معرّف Mongo الحقيقي. لا تداخل ممكن بين الصيغتين
+        // (customId أرقام فقط بطول مختلف تماماً عن الصيغة السداسية العشرية لمعرّف Mongo)
+        let targetId = req.params.id;
+        if (!mongoose.Types.ObjectId.isValid(targetId)) {
+            const byCustomId = await User.findOne({ customId: targetId }).select('_id');
+            if (!byCustomId) {
+                return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على المستخدم.' });
+            }
+            targetId = byCustomId._id.toString();
+        }
         const { getRelationStates } = require('./followController');
         const [user, supportLevels, relationMap] = await Promise.all([
-            User.findById(req.params.id).select(PUBLIC_PROFILE_FIELDS),
-            computeSupportLevels(req.params.id),
-            getRelationStates(requesterId, [req.params.id])
+            User.findById(targetId).select(PUBLIC_PROFILE_FIELDS),
+            computeSupportLevels(targetId),
+            getRelationStates(requesterId, [targetId])
         ]);
         if (!user) {
             return res.status(404).json({ status: 'fail', message: 'لم يتم العثور على المستخدم.' });
         }
         const obj = user.toObject();
-        const relation = relationMap.get(String(req.params.id)) || { amIFollowing: false, followsMe: false, isFriend: false };
-        await recordProfileVisit(requesterId, req.params.id); // ✅ يسجّل الزيارة قبل الرد (تهدئة 5 دقائق داخلية، ولا يفشل الطلب أبداً)
+        const relation = relationMap.get(String(targetId)) || { amIFollowing: false, followsMe: false, isFriend: false };
+        await recordProfileVisit(requesterId, targetId); // ✅ يسجّل الزيارة قبل الرد (تهدئة 5 دقائق داخلية، ولا يفشل الطلب أبداً)
         // 🛡️ إخفاء المعلومات الشخصية عن أي زائر غير صاحب الملف نفسه لو اختار صاحبه ذلك — لا تُخفى
         // أبداً عنه هو (personalInfoVisible تعني "مخفية عن الآخرين"، لا عن نفسه)
-        const isOwner = requesterId && requesterId === req.params.id;
+        const isOwner = requesterId && requesterId === targetId;
         if (!obj.personalInfoVisible && !isOwner) {
             PERSONAL_INFO_FIELDS.forEach(f => { obj[f] = undefined; });
             obj.age = undefined; // ✅ virtual محسوبة من birthDate — تُحذف أيضاً هنا صراحة

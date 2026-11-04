@@ -1,3 +1,13 @@
+// ✅ feat/app-router: رابط عميق (غرفة/ملف شخصي) زاره مستخدم غير مسجَّل دخول — app.js يحفظه هنا
+// قبل التحويل لصفحة الدخول؛ يُستهلَك مرّة واحدة فقط (يُحذَف فور قراءته) بدل العودة دوماً لـ/
+function consumePostLoginRedirect() {
+    try {
+        const path = localStorage.getItem('postLoginRedirect');
+        if (path) localStorage.removeItem('postLoginRedirect');
+        return path || '/';
+    } catch (e) { return '/'; }
+}
+
 // ✅ معرّف جهاز ثابت (كشف الحسابات المرتبطة — feat/wallet-ledger-v1)، لا بيانات شخصية
 function getOrCreateDeviceId() {
     try {
@@ -14,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // التحقق إذا كان المستخدم مسجل دخوله بالفعل
     if (localStorage.getItem('token')) {
-        window.location.href = '/index.html';
+        window.location.href = consumePostLoginRedirect();
         return;
     }
 
@@ -45,8 +55,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 showNotification('تم تسجيل الدخول بنجاح!', 'success');
                 localStorage.setItem('token', result.token);
                 localStorage.setItem('user', JSON.stringify(result.data.user));
+                const redirectTo = consumePostLoginRedirect();
                 setTimeout(() => {
-                    window.location.href = '/index.html';
+                    window.location.href = redirectTo;
                 }, 1500);
                 } else if (result.code === 'ACCOUNT_BANNED') {
                 showBannedModal(result.banReason, result.banExpires, result.isPermanent, result.userId);
