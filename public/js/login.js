@@ -1,3 +1,47 @@
+// 🛡️ مراجعة #151 (إعادة توجيه مفتوحة): خزّن app.js المسار كنصّ خام بلا أي تحقق — خادمنا
+// يخدم index.html لأي مسار (app.get('*'))، فقيمة خبيثة كـ"//evil.com/x" كانت تُصبح
+// window.location.href حرفياً بعد الدخول (تصيّد: "انتهت الجلسة، أدخل كلمة المرور" على نطاق
+// آخر). التحقق هنا — نقطة الاستخدام الوحيدة فعلياً، لا حاجة لتكراره بموضع الحفظ بـapp.js —
+// صارم بثلاث طبقات: رفض أي شرطة مائلة عكسية أولاً (بعض محلِّلات الروابط تُطبِّعها لشرطتين
+// أماميتين = رابط بروتوكول نسبي)، رفض أي بداية بـ"//" أو مسار غير مطلق، ثم new URL() الحقيقية
+// (تحسم أي حيلة ترميز/بروتوكول أخرى) يجب أن تُنتج نفس أصل الموقع بالضبط، وأخيراً المسار الناتج
+// يجب أن يطابق أحد المسارات الحقيقية السبعة بالضبط (ROUTES بـapp.js) لا أي مسار عشوائي آخر
+const ALLOWED_REDIRECT_PATH_PATTERNS = [
+    /^\/$/,
+    /^\/room\/[a-f0-9]{24}$/i,
+    /^\/u\/\d{9}$/,
+    /^\/settings$/,
+    /^\/recharge$/,
+    /^\/messages$/,
+    /^\/rankings$/
+];
+
+function isSafeRedirectPath(path) {
+    if (typeof path !== 'string' || !path) return false;
+    if (path.includes('\\')) return false;
+    if (!path.startsWith('/') || path.startsWith('//')) return false;
+    try {
+        const resolved = new URL(path, window.location.origin);
+        if (resolved.origin !== window.location.origin) return false;
+        return ALLOWED_REDIRECT_PATH_PATTERNS.some(re => re.test(resolved.pathname));
+    } catch (e) { return false; }
+}
+
+// ✅ تصدير اختباري فقط — module غير معرَّفة إطلاقاً بالمتصفح فلا يُنفَّذ هذا السطر هناك
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { isSafeRedirectPath, ALLOWED_REDIRECT_PATH_PATTERNS };
+}
+
+// ✅ feat/app-router: رابط عميق (غرفة/ملف شخصي) زاره مستخدم غير مسجَّل دخول — app.js يحفظه هنا
+// قبل التحويل لصفحة الدخول؛ يُستهلَك مرّة واحدة فقط (يُحذَف فور قراءته) بدل العودة دوماً لـ/
+function consumePostLoginRedirect() {
+    try {
+        const path = localStorage.getItem('postLoginRedirect');
+        if (path) localStorage.removeItem('postLoginRedirect');
+        return isSafeRedirectPath(path) ? path : '/';
+    } catch (e) { return '/'; }
+}
+
 // ✅ معرّف جهاز ثابت (كشف الحسابات المرتبطة — feat/wallet-ledger-v1)، لا بيانات شخصية
 function getOrCreateDeviceId() {
     try {
@@ -14,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // التحقق إذا كان المستخدم مسجل دخوله بالفعل
     if (localStorage.getItem('token')) {
-        window.location.href = '/index.html';
+        window.location.href = consumePostLoginRedirect();
         return;
     }
 
@@ -45,8 +89,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 showNotification('تم تسجيل الدخول بنجاح!', 'success');
                 localStorage.setItem('token', result.token);
                 localStorage.setItem('user', JSON.stringify(result.data.user));
+                const redirectTo = consumePostLoginRedirect();
                 setTimeout(() => {
-                    window.location.href = '/index.html';
+                    window.location.href = redirectTo;
                 }, 1500);
                 } else if (result.code === 'ACCOUNT_BANNED') {
                 showBannedModal(result.banReason, result.banExpires, result.isPermanent, result.userId);

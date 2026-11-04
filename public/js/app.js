@@ -43,43 +43,8 @@ function escapeHtml(unsafe) {
         .replace(/'/g, '&#039;');
 }
 
-// =================================================
-// ✅ زر الرجوع بالهاتف يُغلق آخر نافذة مفتوحة بدل مغادرة الصفحة
-// =================================================
-(function setupBackButtonModalStack() {
-    let modalDepth = 0;
-
-    function isModalNode(node) {
-        if (!(node instanceof HTMLElement)) return false;
-        return /-modal$/.test(node.id) || node.classList.contains('modal-backdrop') || node.classList.contains('modal-overlay');
-    }
-
-    function pushHistoryState() {
-        modalDepth++;
-        history.pushState({ modalDepth }, '');
-    }
-
-    const observer = new MutationObserver((mutations) => {
-        for (const m of mutations) {
-            m.addedNodes.forEach(node => { if (isModalNode(node)) pushHistoryState(); });
-        }
-    });
-
-    document.addEventListener('DOMContentLoaded', () => {
-        observer.observe(document.body, { childList: true });
-        const gc = document.getElementById('game-container');
-        if (gc) observer.observe(gc, { childList: true });
-    });
-
-    window.addEventListener('popstate', () => {
-        if (modalDepth > 0) {
-            modalDepth--;
-            const openModals = document.querySelectorAll('[id$="-modal"], .modal-overlay.active');
-            const last = openModals[openModals.length - 1];
-            if (last) last.remove();
-        }
-    });
-})();
+// ✅ feat/app-router: نظام التنقّل الحقيقي (روابط فعلية + مكدّس نوافذ موحَّد) حلّ محلّ هذا
+// المراقب العام التقريبي — راجع navigate()/registerOverlay() داخل DOMContentLoaded أدناه
 
 
 // --- دوال مساعدة لنظام اللفلات ---
@@ -614,9 +579,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const navItems = document.querySelectorAll('.nav-item');
     const mainContent = document.querySelector('main');
 
-    function activateHomeButton() { switchToView('arena'); }
+    function activateHomeButton() { navigate('/'); }
 
-    function switchToView(viewId) {
+    // 🛡️ feat/app-router: الجسم الفعلي لعرض أحد الأقسام الأربعة ذات الرابط الحقيقي (الرئيسية/
+    // الإعدادات/الرسائل/المتصدّرين) — لا تُستدعى مباشرة من أي مكان آخر بالملف؛ navigate() هي
+    // نقطة الدخول الوحيدة (تُحدِّث الرابط ثم تستدعي هذي). switchToView(viewId) أدناه غلاف
+    // متوافق قديم يحوّل viewId لمسار حقيقي ويمرّ عبر navigate() أيضاً، فلا حاجة لتعديل عشرات
+    // نقاط الاستدعاء القديمة (أزرار الشريط السفلي/الجانبي/قائمة "المزيد") — تستمر بالعمل كما هي
+    function switchToViewInternal(viewId) {
         if (viewId !== 'arena') {
             leaveRoomChatUI(); // ✅ دردشة الغرفة خاصة بمشاهدتها فقط، تختفي بمغادرة القسم
             exitFullscreenRoomMode();
@@ -637,16 +607,112 @@ document.addEventListener('DOMContentLoaded', () => {
             arena: showRoomBrowserView,
             settings: showSettingsView,
             messages: showMessagesView,
-            leaderboard: showLeaderboardView,
-            // ✅ feat/follow-v2: "طلبات الصداقة" سابقاً — يفتح الآن نافذة المتابعة الموحَّدة
-            // (تبويب "متابَعين") بدل نظام طلب/قبول الصداقة المحذوف
-            follow: () => {
-                const me = JSON.parse(localStorage.getItem('user')) || {};
-                showFollowConnectionsSheet(myUserId, me.username || 'أنت', 'following');
-            }
+            leaderboard: showLeaderboardView
         };
         (viewRenderers[viewId] || showRoomBrowserView)();
     }
+
+    // ✅ الوحيدة من بين الأقسام الأربعة التي لا تملك رابطاً حقيقياً — تفتح نافذة متابَعة فوق
+    // أياً كان المعروض حالياً (ليست "مكاناً" منفصلاً بمعنى الراوتر)، فتبقى خارج navigate() عمداً
+    function openFollowShortcut() {
+        const me = JSON.parse(localStorage.getItem('user')) || {};
+        showFollowConnectionsSheet(myUserId, me.username || 'أنت', 'following');
+    }
+
+    const VIEW_ID_TO_PATH = { arena: '/', settings: '/settings', messages: '/messages', leaderboard: '/rankings' };
+
+    // 🛡️ غلاف متوافق قديم — كل نقاط النداء الحالية (أزرار التنقّل) تستمر بالعمل بلا أي تعديل،
+    // وتمرّ تلقائياً عبر navigate() فتكتسب الرابط الحقيقي + إغلاق النوافذ المفتوحة فوقها مجاناً
+    function switchToView(viewId) {
+        if (viewId === 'follow') { openFollowShortcut(); return; }
+        navigate(VIEW_ID_TO_PATH[viewId] || '/');
+    }
+
+    // =====================================================
+    // ✅ feat/app-router: نظام التنقّل الحقيقي — روابط فعلية (history API) لكل الأماكن الرئيسية
+    // + مكدّس نوافذ عام يدفع إدخالة سجلّ واحدة لكل نافذة/ورقة مفتوحة، فزرّ الرجوع (هاتف/متصفح)
+    // يُغلق أعلى نافذة أولاً ثم يرجع للمكان السابق، ولا يخرج من التطبيق فجأة أبداً. navigate()
+    // هي الدالة الوحيدة المستخدمة بكل مكان للانتقال بين "الأماكن" الرئيسية (الرئيسية/غرفة/ملف
+    // شخصي/الإعدادات/الشحن/الرسائل/المتصدّرين) — كل مكان آخر يفتح "نافذة" (registerOverlay) لا
+    // "مكاناً" جديداً، فيبقى فوق المكان الحالي بدل استبداله.
+    // =====================================================
+
+    // ✅ مكدّس النوافذ العام: كل نافذة تُسجَّل هنا تدفع إدخالة سجلّ (نفس الرابط، فقط state.overlay
+    // تُميّزها) عند فتحها. إغلاقها من زرّها الخاص (X/الخلفية) يستهلك تلك الإدخالة بـhistory.back()؛
+    // إغلاقها قسراً (closeAllOverlays عند تغيير المكان) يتركها دون استهلاك عمداً — المستمع أدناه
+    // يتجاوز أي إدخالة "يتيمة" كهذي بصمت (history.back() إضافية) فتبقى تجربة الرجوع سليمة دوماً
+    const overlayStack = [];
+    function registerOverlay(removeFn) {
+        let closed = false;
+        function close({ fromPopState = false } = {}) {
+            if (closed) return;
+            closed = true;
+            try { removeFn(); } catch (e) {}
+            if (!fromPopState) {
+                const idx = overlayStack.lastIndexOf(close);
+                if (idx !== -1) overlayStack.splice(idx, 1);
+                if (idx === overlayStack.length) { try { history.back(); } catch (e) {} } // كانت الأعلى فعلاً — تستهلك إدخالتها
+            }
+        }
+        try { history.pushState({ overlay: true }, '', location.href); } catch (e) {}
+        overlayStack.push(close);
+        return close;
+    }
+    // ✅ تُستدعى قبل أي تغيير "مكان" حقيقي (navigate/renderRoute) — تُغلق كل نافذة عامة مسجَّلة
+    // + أي "مكان" آخر ذو واجهة ملء الشاشة لا يستخدم المكدّس العام (ملف شخصي كامل/إعدادات/شحن)
+    // كي لا يبقى أي منها خلف المكان الجديد
+    function closeAllOverlays() {
+        while (overlayStack.length) { overlayStack.pop()({ fromPopState: true }); }
+        document.getElementById('full-profile-page')?.remove();
+        document.getElementById('settings-page')?.remove();
+        document.getElementById('recharge-page')?.remove();
+    }
+
+    function matchRoute(path) {
+        const clean = (path || '/').split('?')[0].split('#')[0];
+        if (clean === '' || clean === '/' || clean === '/index.html') return { run: () => switchToViewInternal('arena') };
+        if (clean === '/settings') return { run: () => switchToViewInternal('settings') };
+        if (clean === '/messages') return { run: () => switchToViewInternal('messages') };
+        if (clean === '/rankings') return { run: () => switchToViewInternal('leaderboard') };
+        if (clean === '/recharge') return { run: () => openRechargePage() };
+        let m = clean.match(/^\/room\/([a-fA-F0-9]{24})$/);
+        if (m) return { run: () => enterVoiceRoom({ id: m[1], isOfficial: false }) };
+        m = clean.match(/^\/u\/(\d{9})$/);
+        if (m) return { run: () => showFullProfilePage(m[1]) };
+        return null;
+    }
+
+    // ✅ تُستدعى من navigate() بعد تحديث الرابط، ومن مستمع popstate مباشرة (المتصفح غيّر الرابط
+    // فعلاً، لا حاجة لتغييره مجدداً) — لا تلمس history إطلاقاً، فقط تُغلق ما يجب إغلاقه وترسم
+    function renderRoute(path) {
+        closeAllOverlays();
+        const match = matchRoute(path);
+        (match || matchRoute('/')).run();
+    }
+
+    // ✅ مشتركة بين navigate() وكل "مكان" يُدير رابطه بنفسه (enterVoiceRoom/showFullProfilePage/
+    // openRechargePage) — تُغلق كل نافذة عامة مفتوحة فوق المكان الحالي، وتقرّر push (مكان جديد
+    // فوق مكان حقيقي سابق) أو replace (كانت نافذة عامة مفتوحة — تستبدل إدخالتها بدل أن تبقى
+    // يتيمة خلف المكان الجديد). يجب قياس hadOverlays *قبل* closeAllOverlays (تُفرِغ المكدّس)
+    function enterRoutePath(path) {
+        const hadOverlays = overlayStack.length > 0;
+        closeAllOverlays();
+        if (hadOverlays) { try { history.replaceState(null, '', path); } catch (e) {} }
+        else if (location.pathname !== path) { try { history.pushState(null, '', path); } catch (e) {} }
+    }
+
+    // ✅ نقطة الدخول الوحيدة للانتقال بين الأماكن الرئيسية من أي مكان بالكود
+    function navigate(path, { replace = false } = {}) {
+        const target = matchRoute(path) ? path : '/';
+        if (replace) { closeAllOverlays(); try { history.replaceState(null, '', target); } catch (e) {} }
+        else enterRoutePath(target);
+        renderRoute(target);
+    }
+
+    window.addEventListener('popstate', () => {
+        if (overlayStack.length > 0) { overlayStack.pop()({ fromPopState: true }); return; }
+        renderRoute(location.pathname);
+    });
 
     navItems.forEach(item => {
         item.addEventListener('click', (e) => {
@@ -2819,14 +2885,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 if (response.status === 403 && result.kicked) {
                     showNotification(result.message || 'تم طردك من هذي الغرفة', 'error');
+                    navigate('/');
                     return;
                 }
                 if (response.status === 404 && result.broadcastEnded) {
                     showNotification('انتهى البث المباشر بهذي الغرفة', 'info');
+                    navigate('/');
                     return;
                 }
                 if (!response.ok || result.status !== 'success') {
                     showNotification(result.message || 'تعذّر فتح الغرفة', 'error');
+                    navigate('/');
                     return;
                 }
                 room = {
@@ -2844,6 +2913,10 @@ document.addEventListener('DOMContentLoaded', () => {
             promptRoomPassword((pwd) => enterVoiceRoom(room, pwd));
             return;
         }
+        // ✅ feat/app-router: رابط حقيقي /room/:id — تُدار هنا ذاتياً (لا عبر navigate()، كي لا
+        // تستدعي نفسها بدورة مزدوجة بما أنها هي نفسها المُسجَّلة بـmatchRoute لهذا الرابط)؛
+        // enterRoutePath تتخطّى الدفع لو الرابط مطابقاً أصلاً (نداء navigate() القادم منها)
+        enterRoutePath(`/room/${room.id}`);
         showCustomRoomView(room, password || null);
     }
 
@@ -3896,7 +3969,8 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         document.body.appendChild(modal);
-        modal.addEventListener('click', (e) => { if (e.target.id === 'user-profile-sheet') modal.remove(); });
+        const closeUserProfileSheet = registerOverlay(() => modal.remove());
+        modal.addEventListener('click', (e) => { if (e.target.id === 'user-profile-sheet') closeUserProfileSheet(); });
 
         try {
             const response = await fetch(`/api/users/${userId}/mini-profile`, { headers: { 'Authorization': `Bearer ${token}` } });
@@ -7798,7 +7872,12 @@ async function showSettingsView() {
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const page = document.getElementById('settings-page');
     page.addEventListener('click', (e) => { if (e.target.id === 'settings-page') page.remove(); });
-    document.getElementById('settings-back-btn').addEventListener('click', () => page.remove());
+    // ✅ feat/app-router: navigate('/settings') دفعت إدخالة سجلّ عند الدخول — الرجوع هنا يستهلكها
+    // (history.back) بدل حذف العنصر مباشرة، فلا تبقى إدخالة يتيمة تحتاج ضغطة رجوع إضافية لاحقاً
+    document.getElementById('settings-back-btn').addEventListener('click', () => {
+        if (window.location.pathname === '/settings') { try { history.back(); return; } catch (e) {} }
+        page.remove();
+    });
 
     document.getElementById('settings-account-btn').addEventListener('click', showSettingsAccountScreen);
     document.getElementById('settings-performance-btn').addEventListener('click', showSettingsPerformanceSheet);
@@ -8731,6 +8810,14 @@ function showImageCropperModal(file, aspectRatio, onCropped) {
     
     // --- 1. التحقق من المصادقة ---
     if (!token || !user) {
+        // ✅ feat/app-router: رابط عميق (غرفة/ملف شخصي عبر مشاركة) زاره شخص غير مسجَّل دخول —
+        // يُحفَظ هنا فقط (لا بأزرار تسجيل الخروج الصريحة الثلاثة بالملف — تلك نية مغادرة واضحة
+        // لا يجب أن ترجعه لنفس المكان بعد دخوله مجدداً) ليُكمَل إليه بعد نجاح تسجيل الدخول
+        // (login.js يقرأه بدل الرجوع لـ/index.html ثابتة دوماً كما كانت)
+        const currentPath = window.location.pathname + window.location.search;
+        if (currentPath && currentPath !== '/' && currentPath !== '/login.html' && currentPath !== '/index.html') {
+            try { localStorage.setItem('postLoginRedirect', currentPath); } catch (e) {}
+        }
         window.location.href = '/login.html';
         return;
     }
@@ -8920,7 +9007,20 @@ async function unblockUser(userId, modalElement) {
 
 // استدعاء الدالة عند تحميل الصفحة
 updateUIWithUserData(user);
-switchToView('arena');
+// ✅ feat/app-router: استعادة "المكان" نفسه بعد إعادة التحميل — رابط الدخول المباشر (أو رابط
+// أُعيد تحميل الصفحة عليه) يُحسَم بنفس matchRoute التي تحسم أي تنقّل لاحق، replace لا push (لا
+// نضيف إدخالة لرابط نحن أصلاً عليه). /recharge وحدها مُستثناة ببناء Play المقيَّد.
+// 🐛 setTimeout(0) إلزامي هنا — بعض المعالجات (openRechargePage/showLeaderboardView) تصل متغيرات
+// let/const مُعرَّفة بنصّ لاحق بالملف (walletSelectedPackageIdx، leaderboardInitialTabOverride)؛
+// نداء مباشر هنا (أثناء المرور التسلسلي الأول على الملف الذي لا يزال يصل لهاتين الإدخالتين
+// الاعتياديتين عبر الأزرار لاحقاً، لا عند الإقلاع) يضربهما قبل تنفيذ سطر إعلانهما فعلياً
+// (Temporal Dead Zone) — تأجيل تِك واحد يضمن اكتمال المرور التسلسلي كاملاً أولاً
+setTimeout(() => {
+    if (window.location.pathname === '/recharge' && isPlayBuild()) {
+        try { history.replaceState(null, '', '/'); } catch (e) {}
+    }
+    navigate(window.location.pathname, { replace: true });
+}, 0);
 
         // ✅ جلب أحدث بيانات المستخدم من الخادم فور فتح الموقع
 // هذا يضمن ظهور أي تحديث/إشعار وصل أثناء إغلاق الموقع
@@ -9037,16 +9137,6 @@ document.getElementById('user-id-container').addEventListener('click', () => {
     if (!isPlayBuild()) {
         ensureWalletSummary().then(refreshWalletEntryBadges).catch(() => {});
     }
-
-    // ✅ بند 1-أ: فتح تلقائي لصفحة /recharge لو كان هذا رابط الدخول المباشر (بعد اكتمال تهيئة
-    // التطبيق والمستخدم). replaceState يمنع تكرار إدخال نفس الرابط بسجل التصفّح
-    if (window.location.pathname === '/recharge' && !isPlayBuild()) {
-        try { history.replaceState(history.state, '', '/recharge'); } catch (e) {}
-        openRechargePage();
-    }
-    window.addEventListener('popstate', () => {
-        if (window.location.pathname !== '/recharge') document.getElementById('recharge-page')?.remove();
-    });
 
         // --- 5. ربط زر تسجيل الخروج (مع حماية كاملة من انعدام العنصر لمنع توقف كل الكود بعده) ---
     const logoutBtn = document.getElementById('logoutBtn');
@@ -10898,7 +10988,8 @@ async function showMyProfileHub() {
     `;
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const page = document.getElementById('profile-hub-page');
-    page.addEventListener('click', (e) => { if (e.target.id === 'profile-hub-page') page.remove(); });
+    const closeHub = registerOverlay(() => page.remove());
+    page.addEventListener('click', (e) => { if (e.target.id === 'profile-hub-page') closeHub(); });
 
     // ✅ تحميل تدريجي (قاعدة دائمة بـCLAUDE.md): الهيكل + ما بالذاكرة فوراً بلا انتظار الشبكة،
     // ثم استبداله ببيانات حقيقية فور وصولها
@@ -11182,9 +11273,12 @@ function renderProfileHubBody(u) {
         navigator.clipboard?.writeText(String(u.customId || '')).then(() => showNotification('تم نسخ المعرّف', 'success')).catch(() => {});
     });
     document.getElementById('profile-hub-share-btn')?.addEventListener('click', async () => {
-        const shareText = `تابعني على منصة التحديات! معرّفي: ${u.customId || ''}`;
+        // ✅ feat/app-router: رابط حقيقي قابل للفتح مباشرة (/u/:customId) بدل مجرّد رقم معرّف
+        // بلا أي رابط فعلي يفتحه المستلم
+        const profileUrl = `${location.origin}/u/${u.customId || ''}`;
+        const shareText = `تابعني على منصة التحديات! ${profileUrl}`;
         try {
-            if (navigator.share) await navigator.share({ text: shareText });
+            if (navigator.share) await navigator.share({ text: shareText, url: profileUrl });
             else { await navigator.clipboard.writeText(shareText); showNotification('تم نسخ رابط المشاركة ✅', 'success'); }
         } catch (e) { /* المستخدم ألغى المشاركة — لا حاجة لأي رد فعل */ }
     });
@@ -12024,8 +12118,9 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
         </div>
     `;
     document.body.appendChild(modal);
-    modal.addEventListener('click', (e) => { if (e.target.id === 'follow-connections-sheet') modal.remove(); });
-    document.getElementById('close-follow-connections').addEventListener('click', () => modal.remove());
+    const closeFollowSheet = registerOverlay(() => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target.id === 'follow-connections-sheet') closeFollowSheet(); });
+    document.getElementById('close-follow-connections').addEventListener('click', () => closeFollowSheet());
 
     // ✅ عدّادات التبويبات الثلاثة — طلب واحد خفيف بالتوازي مع تحميل أول تبويب، لا يحجب عرضه
     fetch(`/api/users/${userId}`, { headers: { 'Authorization': `Bearer ${token}` } })
@@ -12700,12 +12795,13 @@ async function showMiniProfileModal(userId) {
          document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
         const modal = document.getElementById('mini-profile-modal');
         modal.dataset.userId = profileUser._id;
-        
+        const closeMini = registerOverlay(() => modal.remove());
+
         // ✅ الإصلاح 3 (الوميض): تم حذف معالج زر الصداقة المكرر من هنا نهائياً.
         // المعالج العام في document.body يتكفل به وحده الآن، فلا يوجد استدعاء مزدوج بعد اليوم
         modal.addEventListener('click', (e) => {
             if (e.target.id === 'mini-profile-modal') {
-                modal.remove();
+                closeMini();
                 return;
             }
 
@@ -12813,13 +12909,12 @@ async function showMiniProfileModal(userId) {
 // --- ✅ صفحة الملف الشخصي الكامل — نافذة سفلية كبيرة بكل التفاصيل (المستوى، الهدايا، الإحصائيات) ---
 // ✅ إغلاق بمؤثر انزلاق للأسفل (بدل اختفاء فوري) — يطابق مؤثر الدخول (slideUp) باتجاه معاكس،
 // وينتظر انتهاء الأنيميشن فعلياً قبل حذف العنصر من الـDOM
-// ✅ fix/follow-ux-realtime: ضغطة رجوع المتصفح/الجهاز الحقيقية (لا زر X فقط) كانت لا تُغلِق هذي
-// الصفحة إطلاقاً — تنتقل للخلف بتاريخ المتصفح كاملاً (قد يُخرِج من التطبيق نفسه، فلا طريقة
-// للرجوع إلا بإعادة التحميل). history.pushState عند الفتح + مستمع popstate يُغلِقها بدل ذلك؛
-// الإغلاق العادي (X/الخلفية) يستهلك هذي الحالة بـhistory.back() كي لا تبقى حالة تاريخ معلّقة
-let fullProfileHistoryPushed = false;
-function handleFullProfilePopState() { closeFullProfilePage({ fromPopState: true }); }
-function closeFullProfilePage({ fromPopState = false } = {}) {
+// ✅ feat/app-router: /u/:customId رابط حقيقي الآن (راجع navigate()/matchRoute أعلى الملف) —
+// الإغلاق العادي (X/الخلفية) يرجع فعلياً بتاريخ المتصفح لو كنا لا نزال على رابط هذا الملف
+// بالضبط (قد لا نكون كذلك لو فُتح الملف من فوق مكان آخر لم يدفع رابطاً له أصلاً)؛ ضغطة
+// الرجوع الحقيقية تُغلِقه عبر مستمع popstate المركزي (renderRoute -> closeAllOverlays) لا
+// هذي الدالة إطلاقاً
+function closeFullProfilePage() {
     const page = document.getElementById('full-profile-page');
     const sheet = document.getElementById('full-profile-sheet');
     if (page && sheet) {
@@ -12829,11 +12924,7 @@ function closeFullProfilePage({ fromPopState = false } = {}) {
     } else {
         page?.remove();
     }
-    if (fullProfileHistoryPushed) {
-        fullProfileHistoryPushed = false;
-        window.removeEventListener('popstate', handleFullProfilePopState);
-        if (!fromPopState) history.back();
-    }
+    if (/^\/u\/\d{9}$/.test(location.pathname)) { try { history.back(); } catch (e) {} }
 }
 
 // ✅ يبني رابطاً كاملاً قابلاً للفتح من معرّف/رابط التواصل الاجتماعي المُدخَل بحرية بحقل التحرير
@@ -14345,13 +14436,14 @@ function showFollowPromptModal(userId, username, profileImage) {
 
 async function showFullProfilePage(userId) {
     const existing = document.getElementById('full-profile-page');
-    if (existing) {
-        existing.remove();
-    } else {
-        history.pushState({ fullProfilePage: true }, '', location.href);
-        fullProfileHistoryPushed = true;
-        window.addEventListener('popstate', handleFullProfilePopState);
-    }
+    // ✅ feat/app-router: رابط حقيقي قابل للمشاركة /u/:customId — لا نعرف customId المضيف
+    // (9 أرقام) إلا بعد وصول بيانات المستخدم أدناه؛ نُدخِل مؤقتاً بأي صيغة مُمرَّرة (كلتاهما
+    // صالحة الآن بفضل حلّ الخادم لها، راجع getUserById) ثم نُصحِّحها بـreplaceState فور معرفة
+    // customId الحقيقي — بلا إدخالة سجلّ جديدة (نفس العمق، فقط الشكل النهائي للرابط يتغيّر).
+    // فتح ملف آخر فوق ملف مفتوح أصلاً (تصفّح متداخل) يستبدل مكانه هو أيضاً بنفس العمق — لا
+    // تكديس لا نهائي لكل ملف يُفتَح من داخل ملف آخر
+    if (existing) { existing.remove(); try { history.replaceState(null, '', `/u/${userId}`); } catch (e) {} }
+    else { enterRoutePath(`/u/${userId}`); }
 
     const shellHTML = `
         <div id="full-profile-page" class="full-profile-page-backdrop">
@@ -14371,15 +14463,33 @@ async function showFullProfilePage(userId) {
 
     try {
         const authHeaders = { headers: { 'Authorization': `Bearer ${token}` } };
-        const [userRes, giftSummaryRes, fanClubSummaryRes, weeklyWinsRes] = await Promise.all([
-            fetch(`/api/users/${userId}`, authHeaders).then(r => r.json()),
-            fetch(`/api/gifts/user/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null),
-            fetch(`/api/fanclub/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null),
-            fetch(`/api/fanclub/${userId}/weekly-wins`, authHeaders).then(r => r.json()).catch(() => null)
-        ]);
+        // ✅ feat/app-router: userId القادم من رابط /u/:customId ليس معرّف Mongo حقيقياً — بقية
+        // نداءات الملف (الهدايا/نادي المعجبين) تحتاجه حقيقياً، فنحسمه أولاً (تسلسلياً، نفس نداء
+        // جلب الملف — لا نداء إضافي) قبل إطلاق الثلاثة الباقية معاً؛ الحالة الشائعة (معرّف حقيقي
+        // مُمرَّر مباشرة من قائمة داخل التطبيق) تبقى موازية تماماً بلا أي تأخير إضافي
+        const isRealMongoId = /^[0-9a-fA-F]{24}$/.test(userId);
+        let userRes, giftSummaryRes, fanClubSummaryRes, weeklyWinsRes;
+        if (isRealMongoId) {
+            [userRes, giftSummaryRes, fanClubSummaryRes, weeklyWinsRes] = await Promise.all([
+                fetch(`/api/users/${userId}`, authHeaders).then(r => r.json()),
+                fetch(`/api/gifts/user/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null),
+                fetch(`/api/fanclub/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null),
+                fetch(`/api/fanclub/${userId}/weekly-wins`, authHeaders).then(r => r.json()).catch(() => null)
+            ]);
+        } else {
+            userRes = await fetch(`/api/users/${userId}`, authHeaders).then(r => r.json());
+            if (userRes.status === 'success') userId = userRes.data.user._id;
+            [giftSummaryRes, fanClubSummaryRes, weeklyWinsRes] = await Promise.all([
+                fetch(`/api/gifts/user/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null),
+                fetch(`/api/fanclub/${userId}/summary`, authHeaders).then(r => r.json()).catch(() => null),
+                fetch(`/api/fanclub/${userId}/weekly-wins`, authHeaders).then(r => r.json()).catch(() => null)
+            ]);
+        }
 
         if (userRes.status !== 'success') throw new Error();
         const u = userRes.data.user;
+        page.dataset.userId = userId; // ✅ قد تغيّر من customId لمعرّف Mongo الحقيقي أعلاه
+        if (u.customId) { try { history.replaceState(null, '', `/u/${u.customId}`); } catch (e) {} }
         const giftsReceivedCount = (giftSummaryRes && giftSummaryRes.status === 'success') ? giftSummaryRes.data.totalGiftsCount : 0;
         // ✅ تفصيل الهدايا المستلمة حسب النوع (صورة/اسم/عدد) — لعرضه كشريط فيلم قابل للسحب
         // بلوحة الشرف (طلب صريح) بدل رقم إجمالي وحيد بلا تفاصيل
@@ -18557,9 +18667,7 @@ async function openRechargePage(initialTab) {
         if (initialTab) { walletCurrentTab = initialTab; renderWalletTabs(); renderWalletActiveTab(); }
         return;
     }
-    try {
-        if (window.location.pathname !== '/recharge') history.pushState({ waWalletView: 'recharge' }, '', '/recharge');
-    } catch (e) { /* history API محجوبة — نكمل برسم الصفحة فقط بلا تغيير الرابط */ }
+    enterRoutePath('/recharge'); // ✅ feat/app-router: يُغلق أي نافذة عامة مفتوحة فوق المكان الحالي أولاً
     await renderRechargePage(initialTab);
 }
 
