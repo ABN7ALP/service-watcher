@@ -6718,6 +6718,10 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
     border: 1px solid rgba(255,255,255,0.08);
     width: 100%;
     max-width: 480px;
+    /* ✅ fix/follow-ux-realtime: ارتفاع ثابت لا max-height فقط — بدونه كانت الورقة تكبر
+       فعلياً (تتحرك للأعلى) عند استبدال الهيكل النابض بالمحتوى الحقيقي الأطول، وهو القفزة
+       التي رُصدت على جهاز حقيقي؛ ارتفاع ثابت من أول رسم (أثناء الهيكل نفسه) يمنعها */
+    height: 80vh;
     max-height: 80vh;
     border-radius: 20px 20px 0 0;
     display: flex;

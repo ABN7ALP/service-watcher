@@ -9109,29 +9109,34 @@ document.body.addEventListener('click', async (e) => {
 
     // --- الجزء الثاني: زر المتابعة الموحَّد بالملف الشخصي المصغّر (feat/follow-v2) ---
 const profileFollowBtn = e.target.closest('.profile-follow-btn');
-if (profileFollowBtn && profileFollowBtn.dataset.action) {
+if (profileFollowBtn && profileFollowBtn.dataset.action && profileFollowBtn.dataset.pending !== '1') {
     const action = profileFollowBtn.dataset.action; // 'follow' | 'unfollow'
     const userId = profileFollowBtn.dataset.userId;
-    const modalElement = document.getElementById('mini-profile-modal');
 
     const performFollowAction = async () => {
-        const originalHTML = profileFollowBtn.innerHTML;
-        profileFollowBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        // ✅ fix/follow-ux-realtime: تفاؤلي — الزر يتحدَّث فوراً (لا سبينر يحجب كل الزر، ولا
+        // إعادة تحميل الملف المصغّر بالكامل كما كان)، تراجع + تنبيه فقط عند فشل الخادم فعلاً
+        const prevAction = profileFollowBtn.dataset.action;
+        const prevHTML = profileFollowBtn.innerHTML;
+        const followsMe = profileFollowBtn.dataset.followsMe === '1';
+        const wasMutual = action === 'follow' ? followsMe : (prevAction === 'unfollow' && followsMe);
+        const newState = followButtonState({ amIFollowing: action === 'follow', followsMe });
+        const newIcon = newState.action === 'unfollow' ? 'fa-user-check' : 'fa-user-plus';
+        profileFollowBtn.dataset.action = newState.action;
+        profileFollowBtn.innerHTML = `<i class="fas ${newIcon}"></i><span>${newState.label}</span>`;
+        adjustFollowCountsOptimistically(userId, action === 'follow' ? 1 : -1, wasMutual);
+
+        profileFollowBtn.dataset.pending = '1';
         profileFollowBtn.disabled = true;
         try {
-            const response = await fetch(`/api/users/${userId}/follow`, {
-                method: action === 'follow' ? 'POST' : 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!response.ok) {
-                const result = await response.json().catch(() => ({}));
-                throw new Error(result.message || 'تعذّر تنفيذ الإجراء');
-            }
-            if (modalElement) modalElement.remove();
-            showMiniProfileModal(userId);
+            await requestFollowChange(userId, action);
         } catch (error) {
+            profileFollowBtn.dataset.action = prevAction;
+            profileFollowBtn.innerHTML = prevHTML;
+            adjustFollowCountsOptimistically(userId, action === 'follow' ? -1 : 1, wasMutual);
             showNotification(error.message || 'حدث خطأ ما', 'error');
-            profileFollowBtn.innerHTML = originalHTML;
+        } finally {
+            profileFollowBtn.dataset.pending = '0';
             profileFollowBtn.disabled = false;
         }
     };
@@ -9412,7 +9417,7 @@ function showXpGainAnimation(amount) {
     // ✅ تحديث فوري لعدّادات المتابَعين/المتابِعين أينما ظهرت حالياً — مركز ملفي (إن كنت أنا
     // طرفاً بالحدث)، أو صفحة الملف الكامل المفتوحة حالياً (إن كانت لأحد طرفي الحدث)، وزر
     // المتابعة نفسه لو كان الطرف الآخر من غيّر حالة المتابعة من جهاز/جلسة أخرى لي
-    socket.on('follow-changed', ({ targetUserId, targetFollowersCount, followerId, followerFollowingCount, isFollowing }) => {
+    socket.on('follow-changed', ({ targetUserId, targetFollowersCount, targetFriendsCount, followerId, followerFollowingCount, followerFriendsCount, isFollowing }) => {
         if (targetUserId === myUserId) {
             const el = document.querySelector('#profile-hub-followers-stat .profile-hub-stat-num');
             if (el) el.textContent = targetFollowersCount;
@@ -9420,6 +9425,23 @@ function showXpGainAnimation(amount) {
         if (followerId === myUserId) {
             const el = document.querySelector('#profile-hub-following-stat .profile-hub-stat-num');
             if (el) el.textContent = followerFollowingCount;
+        }
+        // ✅ نافذة متابِعين/متابَعين/أصدقاء مفتوحة حالياً لأحد طرفي الحدث — تُحدَّث عدّادات
+        // تبويباتها الثلاثة بالقيم الفعلية من الخادم، بلا إعادة فتح النافذة
+        const fcModal = document.getElementById('follow-connections-sheet');
+        if (fcModal) {
+            if (fcModal.dataset.userId === targetUserId) {
+                const el = document.querySelector('#fc-tab-followers .follow-tab-count');
+                if (el) el.textContent = targetFollowersCount;
+                const friendsEl = document.querySelector('#fc-tab-friends .follow-tab-count');
+                if (friendsEl) friendsEl.textContent = targetFriendsCount;
+            }
+            if (fcModal.dataset.userId === followerId) {
+                const el = document.querySelector('#fc-tab-following .follow-tab-count');
+                if (el) el.textContent = followerFollowingCount;
+                const friendsEl = document.querySelector('#fc-tab-friends .follow-tab-count');
+                if (friendsEl) friendsEl.textContent = followerFriendsCount;
+            }
         }
         const fpPage = document.getElementById('full-profile-page');
         const openProfileUserId = fpPage?.dataset.userId;
@@ -9453,6 +9475,13 @@ function showXpGainAnimation(amount) {
                 btn.textContent = isFollowing ? 'متابَع' : 'متابعة';
             });
         }
+    });
+
+    // ✅ fix/follow-ux-realtime: شخص أتابعه بدأ/أنهى بثاً مباشراً — يُحدَّث شريط "يبثّون الآن"
+    // بنافذة متابَعتي المفتوحة حالياً مكانه (لا بإعادة فتحها)، عبر غرفتي الشخصية user:<id> فقط
+    // (الخادم يرسلها حصراً لمتابِعي هذا المضيف — راجع notifyFollowersOfLiveChange بسيرفر السوكت)
+    socket.on('followed-user-live-changed', ({ hostId, isLive, room }) => {
+        updateLiveNowStrip(hostId, isLive, room);
     });
 
     // ✅ شارة الثروة تحدّثت (هدية أُرسلت) — تحديث حي لأي واجهة مفتوحة حالياً تعرض شارات هذا
@@ -11736,28 +11765,91 @@ function followButtonState(relation) {
     return { label: 'متابعة', action: 'follow' };
 }
 
+// ✅ fix/follow-ux-realtime: طلب المتابعة/الإلغاء الفعلي عبر الشبكة — دالة واحدة مشتركة يستخدمها
+// كل أزرار المتابعة الثلاثة بالتطبيق (صفوف نافذة المتابعين، الملف المصغّر، الملف الكامل)،
+// فالتحديث التفاؤلي والتراجع يبقيان مسؤولية كل زر بذاته (شكله مختلف قليلاً بكل مكان)
+async function requestFollowChange(targetUserId, action) {
+    const response = await fetch(`/api/users/${targetUserId}/follow`, { method: action === 'follow' ? 'POST' : 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+    if (!response.ok) {
+        const r = await response.json().catch(() => ({}));
+        throw new Error(r.message || 'تعذر تنفيذ الطلب');
+    }
+}
+
+function bumpCountEl(el, delta) {
+    if (!el) return;
+    const n = parseInt(el.textContent, 10);
+    if (!Number.isNaN(n)) el.textContent = Math.max(0, n + delta);
+}
+
+// ✅ يُحدِّث فوراً (تفاؤلياً، قبل ردّ الخادم) كل عدّادات "متابعون/متابَعة/أصدقاء" الظاهرة حالياً
+// والمتأثّرة بمتابعة/إلغاء targetUserId مني أنا (myUserId) — نافذة المتابعين المفتوحة (سواء كانت
+// لي أو لـtargetUserId)، مركز ملفي، أو صفحة الملف الكامل المفتوحة. wasMutualBefore تُحدِّد إن
+// كانت هذي العملية تُكمِل/تكسر صداقة متبادلة فعلاً (نعرفها مسبقاً من data-follows-me بالزر نفسه)
+function adjustFollowCountsOptimistically(targetUserId, delta, wasMutualBefore) {
+    const friendsDelta = ((delta > 0 && wasMutualBefore) || (delta < 0 && wasMutualBefore)) ? delta : 0;
+
+    const fcModal = document.getElementById('follow-connections-sheet');
+    if (fcModal) {
+        if (fcModal.dataset.userId === targetUserId) {
+            bumpCountEl(document.querySelector('#fc-tab-followers .follow-tab-count'), delta);
+            if (friendsDelta) bumpCountEl(document.querySelector('#fc-tab-friends .follow-tab-count'), friendsDelta);
+        }
+        if (fcModal.dataset.userId === myUserId && targetUserId !== myUserId) {
+            bumpCountEl(document.querySelector('#fc-tab-following .follow-tab-count'), delta);
+            if (friendsDelta) bumpCountEl(document.querySelector('#fc-tab-friends .follow-tab-count'), friendsDelta);
+        }
+    }
+
+    const fpPage = document.getElementById('full-profile-page');
+    if (fpPage && fpPage.dataset.userId === targetUserId) {
+        bumpCountEl(document.querySelector('#full-profile-followers-stat .full-profile-stat-num'), delta);
+    }
+    if (targetUserId !== myUserId) {
+        bumpCountEl(document.querySelector('#profile-hub-following-stat .profile-hub-stat-num'), delta);
+        if (friendsDelta) bumpCountEl(document.querySelector('#profile-hub-friends-stat .profile-hub-stat-num'), friendsDelta);
+        if (fpPage && fpPage.dataset.userId === myUserId) {
+            bumpCountEl(document.querySelector('#full-profile-following-stat .full-profile-stat-num'), delta);
+        }
+    }
+}
+
 function wireFollowConnectionButton(btn) {
     btn.addEventListener('click', async (e) => {
         e.stopPropagation();
+        if (btn.dataset.pending === '1') return; // ✅ يمنع نقراً مزدوجاً أثناء انتظار رد الخادم
         const targetUserId = btn.dataset.userId;
         const action = btn.dataset.action; // 'follow' | 'unfollow'
 
         const perform = async () => {
+            // ✅ تفاؤلي: الزر والعدّادات تتحدَّث فوراً عند النقر، لا بعد ردّ الخادم — تراجع كامل +
+            // تنبيه عند الفشل فقط (راجع catch أدناه)
+            const prevAction = btn.dataset.action;
+            const prevFollowsMe = btn.dataset.followsMe;
+            const prevLabel = btn.textContent;
+            const prevFollowing = btn.classList.contains('following');
+            const followsMe = btn.dataset.followsMe === '1';
+            const wasMutual = action === 'follow' ? followsMe : (prevAction === 'unfollow' && followsMe);
+
+            const newState = followButtonState({ amIFollowing: action === 'follow', followsMe });
+            btn.dataset.action = newState.action;
+            btn.classList.toggle('following', newState.action === 'unfollow');
+            btn.textContent = newState.label;
+            adjustFollowCountsOptimistically(targetUserId, action === 'follow' ? 1 : -1, wasMutual);
+
+            btn.dataset.pending = '1';
             btn.disabled = true;
             try {
-                const response = await fetch(`/api/users/${targetUserId}/follow`, { method: action === 'follow' ? 'POST' : 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-                if (!response.ok) {
-                    const r = await response.json().catch(() => ({}));
-                    throw new Error(r.message || 'تعذر تنفيذ الطلب');
-                }
-                const followsMe = btn.dataset.followsMe === '1';
-                const newState = followButtonState({ amIFollowing: action === 'follow', followsMe });
-                btn.dataset.action = newState.action;
-                btn.classList.toggle('following', newState.action === 'unfollow');
-                btn.textContent = newState.label;
+                await requestFollowChange(targetUserId, action);
             } catch (error) {
+                btn.dataset.action = prevAction;
+                btn.dataset.followsMe = prevFollowsMe;
+                btn.classList.toggle('following', prevFollowing);
+                btn.textContent = prevLabel;
+                adjustFollowCountsOptimistically(targetUserId, action === 'follow' ? -1 : 1, wasMutual);
                 showNotification(error.message || 'حدث خطأ، حاول مجدداً', 'error');
             } finally {
+                btn.dataset.pending = '0';
                 btn.disabled = false;
             }
         };
@@ -11776,7 +11868,7 @@ function renderFollowPersonRowHTML(u, extraClass = '') {
     const state = followButtonState(u.relation);
     return `
         <div class="follow-connection-row ${extraClass}" data-user-id="${u._id}">
-            ${avatarHTML({ src: u.profileImage, frameClass: u.activeFrameClass, sizeClass: 'follow-connection-avatar' })}
+            ${avatarHTML({ src: u.profileImage, name: u.username, userId: u._id, fetchSize: 40, frameClass: u.activeFrameClass, sizeClass: 'follow-connection-avatar' })}
             <div class="min-w-0 flex-1">
                 <p class="follow-connection-name">${escapeHtml(u.username)}</p>
             </div>
@@ -11791,9 +11883,9 @@ function renderLiveNowRowHTML(liveNow) {
     return `
         <div class="follow-live-now-row">
             ${liveNow.map(u => `
-                <div class="follow-live-now-item" data-room-id="${u.roomId}" data-room-name="${escapeHtml(u.roomName || '')}" data-cover="${escapeHtml(u.roomCoverImage || '')}" data-private="${u.roomIsPrivate ? '1' : '0'}">
+                <div class="follow-live-now-item" data-host-id="${u._id}" data-room-id="${u.roomId}" data-room-name="${escapeHtml(u.roomName || '')}" data-cover="${escapeHtml(u.roomCoverImage || '')}" data-private="${u.roomIsPrivate ? '1' : '0'}">
                     <div class="follow-live-now-avatar-wrap">
-                        <img src="${u.profileImage}" alt="${escapeHtml(u.username)}" loading="lazy" decoding="async">
+                        <img src="${giftImg(u.profileImage, 52)}" alt="${escapeHtml(u.username)}" loading="lazy" decoding="async">
                         <span class="follow-live-now-badge">مباشر</span>
                     </div>
                     <span class="follow-live-now-name">${escapeHtml(u.username)}</span>
@@ -11801,6 +11893,39 @@ function renderLiveNowRowHTML(liveNow) {
             `).join('')}
         </div>
     `;
+}
+
+// ✅ fix/follow-ux-realtime: تحديث شريط "يبثّون الآن" بنافذة المتابَعين المفتوحة حالياً مكانه
+// دون إعادة فتح النافذة أو إعادة تحميل التبويب — يُستدعى من مستمع followed-user-live-changed
+function updateLiveNowStrip(hostId, isLive, room) {
+    const fcModal = document.getElementById('follow-connections-sheet');
+    if (!fcModal || fcModal.dataset.userId !== myUserId) return;
+    if (fcModal.querySelector('.follow-tab-btn.active')?.dataset.tab !== 'following') return;
+    const listEl = document.getElementById('fc-list');
+    if (!listEl) return;
+    let liveRow = listEl.querySelector('.follow-live-now-row');
+    const existingItem = liveRow?.querySelector(`.follow-live-now-item[data-host-id="${hostId}"]`);
+
+    if (!isLive) {
+        existingItem?.remove();
+        if (liveRow && !liveRow.querySelector('.follow-live-now-item')) liveRow.remove();
+        return;
+    }
+    if (existingItem || !room) return;
+    if (!liveRow) {
+        liveRow = document.createElement('div');
+        liveRow.className = 'follow-live-now-row';
+        listEl.insertBefore(liveRow, document.getElementById('fc-rows') || listEl.firstChild);
+    }
+    liveRow.insertAdjacentHTML('beforeend', `
+        <div class="follow-live-now-item" data-host-id="${hostId}" data-room-id="${room.id}" data-room-name="${escapeHtml(room.name || '')}" data-cover="${escapeHtml(room.coverImage || '')}" data-private="${room.isPrivate ? '1' : '0'}">
+            <div class="follow-live-now-avatar-wrap">
+                <img src="${giftImg(room.host.profileImage, 52)}" alt="${escapeHtml(room.host.username)}" loading="lazy" decoding="async">
+                <span class="follow-live-now-badge">مباشر</span>
+            </div>
+            <span class="follow-live-now-name">${escapeHtml(room.host.username)}</span>
+        </div>
+    `);
 }
 
 // ✅ هيكل تحميل نابض (skeleton) بدل مؤشر دوّار وحيد — يحاكي شكل صفوف الأشخاص الحقيقية،
@@ -11829,6 +11954,7 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
     document.getElementById('follow-connections-sheet')?.remove();
     const modal = document.createElement('div');
     modal.id = 'follow-connections-sheet';
+    modal.dataset.userId = userId; // ✅ يسمح لـadjustFollowCountsOptimistically بمعرفة صاحب الورقة المفتوحة حالياً
     modal.className = 'fixed inset-0 bg-black/70 z-[335] flex items-end md:items-center justify-center';
     modal.innerHTML = `
         <div class="follow-connections-card">
@@ -11897,7 +12023,10 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
                         ${users.length === 0 ? `<p class="text-xs text-gray-500 text-center py-6">${FOLLOW_TAB_EMPTY_TEXT[tab]}</p>` : rowsHTML}
                     </div>
                     ${nextCursor ? `<button type="button" id="fc-load-more" class="follow-load-more-btn">تحميل المزيد</button>` : ''}
-                    <div id="fc-suggestions-slot"></div>
+                    <div id="fc-suggestions-slot">
+                        <p class="follow-suggestions-title">اقتراحات لك</p>
+                        ${renderFollowSkeletonRows(3)}
+                    </div>
                 `;
                 wireRowsAndButtons(listEl);
                 loadSuggestionsForConnectionsSheet();
@@ -11933,7 +12062,7 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
         try {
             const response = await fetch('/api/users/discover/people', { headers: { 'Authorization': `Bearer ${token}` } });
             const result = await response.json();
-            if (!response.ok || result.status !== 'success' || result.data.users.length === 0) return;
+            if (!response.ok || result.status !== 'success' || result.data.users.length === 0) { slot.innerHTML = ''; return; }
             slot.innerHTML = `
                 <p class="follow-suggestions-title fade-in-content">اقتراحات لك</p>
                 <div class="follow-connections-list fade-in-content">
@@ -11952,7 +12081,7 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
                     btn.closest('.follow-suggestion-wrap')?.remove();
                 });
             });
-        } catch (error) { /* اقتراحات ثانوية — فشلها الصامت لا يعطّل القائمة الأساسية */ }
+        } catch (error) { slot.innerHTML = ''; /* اقتراحات ثانوية — فشلها الصامت لا يعطّل القائمة الأساسية */ }
     }
 
     document.querySelectorAll('.follow-tab-btn').forEach(btn => {
@@ -11963,7 +12092,13 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
     document.getElementById('fc-list').addEventListener('click', (e) => {
         const item = e.target.closest('.follow-live-now-item');
         if (!item) return;
+        // ✅ fix/follow-ux-realtime: يغلق كل الطبقات المفتوحة فوق هذي النافذة (ملف مصغّر/كامل/مركز
+        // الملف) قبل الدخول — بدونه كانت الغرفة تُفتح خلف هذي الطبقات لو كانت مفتوحة أسفلها
         modal.remove();
+        document.getElementById('mini-profile-modal')?.remove();
+        document.getElementById('user-profile-sheet')?.remove();
+        closeFullProfilePage();
+        document.getElementById('profile-hub-page')?.remove();
         enterVoiceRoom({
             id: item.dataset.roomId, name: item.dataset.roomName,
             coverImage: item.dataset.cover || null, isOfficial: false,
@@ -12627,13 +12762,27 @@ async function showMiniProfileModal(userId) {
 // --- ✅ صفحة الملف الشخصي الكامل — نافذة سفلية كبيرة بكل التفاصيل (المستوى، الهدايا، الإحصائيات) ---
 // ✅ إغلاق بمؤثر انزلاق للأسفل (بدل اختفاء فوري) — يطابق مؤثر الدخول (slideUp) باتجاه معاكس،
 // وينتظر انتهاء الأنيميشن فعلياً قبل حذف العنصر من الـDOM
-function closeFullProfilePage() {
+// ✅ fix/follow-ux-realtime: ضغطة رجوع المتصفح/الجهاز الحقيقية (لا زر X فقط) كانت لا تُغلِق هذي
+// الصفحة إطلاقاً — تنتقل للخلف بتاريخ المتصفح كاملاً (قد يُخرِج من التطبيق نفسه، فلا طريقة
+// للرجوع إلا بإعادة التحميل). history.pushState عند الفتح + مستمع popstate يُغلِقها بدل ذلك؛
+// الإغلاق العادي (X/الخلفية) يستهلك هذي الحالة بـhistory.back() كي لا تبقى حالة تاريخ معلّقة
+let fullProfileHistoryPushed = false;
+function handleFullProfilePopState() { closeFullProfilePage({ fromPopState: true }); }
+function closeFullProfilePage({ fromPopState = false } = {}) {
     const page = document.getElementById('full-profile-page');
     const sheet = document.getElementById('full-profile-sheet');
-    if (!page || !sheet) { page?.remove(); return; }
-    page.classList.add('full-profile-backdrop-exit');
-    sheet.classList.add('full-profile-exit');
-    setTimeout(() => page.remove(), 280);
+    if (page && sheet) {
+        page.classList.add('full-profile-backdrop-exit');
+        sheet.classList.add('full-profile-exit');
+        setTimeout(() => page.remove(), 280);
+    } else {
+        page?.remove();
+    }
+    if (fullProfileHistoryPushed) {
+        fullProfileHistoryPushed = false;
+        window.removeEventListener('popstate', handleFullProfilePopState);
+        if (!fromPopState) history.back();
+    }
 }
 
 // ✅ يبني رابطاً كاملاً قابلاً للفتح من معرّف/رابط التواصل الاجتماعي المُدخَل بحرية بحقل التحرير
@@ -14145,7 +14294,13 @@ function showFollowPromptModal(userId, username, profileImage) {
 
 async function showFullProfilePage(userId) {
     const existing = document.getElementById('full-profile-page');
-    if (existing) existing.remove();
+    if (existing) {
+        existing.remove();
+    } else {
+        history.pushState({ fullProfilePage: true }, '', location.href);
+        fullProfileHistoryPushed = true;
+        window.addEventListener('popstate', handleFullProfilePopState);
+    }
 
     const shellHTML = `
         <div id="full-profile-page" class="full-profile-page-backdrop">
@@ -14319,7 +14474,7 @@ async function showFullProfilePage(userId) {
 
             ${userId !== myUserId ? `
             <div class="px-4 pb-5 flex items-center gap-2">
-                <button id="full-profile-follow-btn" class="full-profile-action-btn full-profile-action-follow ${u.isFollowing ? 'following' : ''}">
+                <button id="full-profile-follow-btn" class="full-profile-action-btn full-profile-action-follow ${u.isFollowing ? 'following' : ''}" data-follows-me="${u.followsMe ? '1' : '0'}">
                     <i class="fas ${u.isFollowing ? 'fa-check' : 'fa-plus'}"></i> ${u.isFollowing ? 'متابَع' : 'متابعة'}
                 </button>
                 <button id="full-profile-message-btn" class="full-profile-action-btn full-profile-action-icon" title="رسالة"><i class="fas fa-comment-dots"></i></button>
@@ -14394,22 +14549,28 @@ async function showFullProfilePage(userId) {
         if (userId !== myUserId) {
             document.getElementById('full-profile-follow-btn').addEventListener('click', () => {
                 const btn = document.getElementById('full-profile-follow-btn');
+                if (btn.dataset.pending === '1') return;
                 const nowFollowing = !btn.classList.contains('following');
+                const followsMe = btn.dataset.followsMe === '1';
+                const wasMutual = nowFollowing ? followsMe : (btn.classList.contains('following') && followsMe);
 
                 const doToggle = async () => {
+                    // ✅ fix/follow-ux-realtime: تفاؤلي — تراجع + تنبيه فقط عند فشل الخادم فعلاً
+                    btn.classList.toggle('following', nowFollowing);
+                    btn.innerHTML = nowFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة';
+                    adjustFollowCountsOptimistically(userId, nowFollowing ? 1 : -1, wasMutual);
+
+                    btn.dataset.pending = '1';
                     btn.disabled = true;
                     try {
-                        const response = await fetch(`/api/users/${userId}/follow`, { method: nowFollowing ? 'POST' : 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-                        const result = await response.json();
-                        if (response.ok) {
-                            btn.classList.toggle('following', nowFollowing);
-                            btn.innerHTML = nowFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة';
-                        } else {
-                            showNotification(result.message || 'تعذر تنفيذ الطلب', 'error');
-                        }
+                        await requestFollowChange(userId, nowFollowing ? 'follow' : 'unfollow');
                     } catch (error) {
-                        showNotification('حدث خطأ، حاول مجدداً', 'error');
+                        btn.classList.toggle('following', !nowFollowing);
+                        btn.innerHTML = !nowFollowing ? '<i class="fas fa-check"></i> متابَع' : '<i class="fas fa-plus"></i> متابعة';
+                        adjustFollowCountsOptimistically(userId, nowFollowing ? -1 : 1, wasMutual);
+                        showNotification(error.message || 'حدث خطأ، حاول مجدداً', 'error');
                     } finally {
+                        btn.dataset.pending = '0';
                         btn.disabled = false;
                     }
                 };
@@ -22821,7 +22982,7 @@ function showOneMessageModal(targetUserId, targetUsername) {
 function getFollowActionButtonHTML(profileUser) {
     const state = followButtonState({ amIFollowing: profileUser.isFollowing, followsMe: profileUser.followsMe });
     const icon = state.action === 'unfollow' ? 'fa-user-check' : 'fa-user-plus';
-    return `<button class="action-btn profile-follow-btn" data-action="${state.action}" data-user-id="${profileUser._id}"><i class="fas ${icon}"></i><span>${state.label}</span></button>`;
+    return `<button class="action-btn profile-follow-btn" data-action="${state.action}" data-user-id="${profileUser._id}" data-follows-me="${profileUser.followsMe ? '1' : '0'}"><i class="fas ${icon}"></i><span>${state.label}</span></button>`;
 }
 
 
