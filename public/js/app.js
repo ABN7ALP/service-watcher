@@ -869,7 +869,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`/api/voice-room/rooms/${myVoiceRoomId}`, { headers: { 'Authorization': `Bearer ${token}` } });
             const result = await response.json();
             if (response.ok && result.status === 'success') {
-                showCustomRoomView({ id: result.id, name: result.name, seatCount: result.seatCount, isPrivate: result.isPrivate, isOfficial: false }, currentRoomPassword);
+                enterVoiceRoom({ id: result.id, name: result.name, seatCount: result.seatCount, isPrivate: result.isPrivate, isOfficial: false }, currentRoomPassword);
             } else {
                 showNotification('تعذر الرجوع للغرفة', 'error');
             }
@@ -1007,7 +1007,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (room.isOfficial) {
             showVoiceRoomsView();
         } else {
-            showCustomRoomView({ id: room.id, name: room.name, coverImage: room.coverImage, isOfficial: false, seatCount: room.seatCount, isPrivate: room.isPrivate }, currentRoomPassword);
+            enterVoiceRoom({ id: room.id, name: room.name, coverImage: room.coverImage, isOfficial: false, seatCount: room.seatCount, isPrivate: room.isPrivate }, currentRoomPassword);
         }
     }
 
@@ -2793,10 +2793,51 @@ document.addEventListener('DOMContentLoaded', () => {
         bgEl.style.removeProperty('--room-bg-custom-url');
     }
 
-    function enterVoiceRoom(room, password) {
+    // 🐛 fix/live-entry-and-self-row: نقطة الدخول الوحيدة لأي غرفة مستخدم من أي مكان بالتطبيق
+    // (قائمة الرئيسية، شريط "يبثّون الآن"، منصّة الصدارة، روابط/استئناف لاحقة) — أي مستدعٍ
+    // كان يمرّر كائناً جزئياً بلا seatCount (شريط يبثّون الآن/صفوف منصّة الصدارة) كان يُنتج
+    // غرفة فارغة تماماً بلا أي مقعد ظاهر: renderVoiceRoomSeats(room.id, undefined, ...) حلقتها
+    // for(i=1;i<=seatCount;i++) لا تُنفَّذ أبداً بـseatCount غير رقمي فلا يُنشأ أي عنصر مقعد
+    // بالـDOM، فلا تجد fetchAndRenderVoiceSnapshot اللاحقة (بـshowCustomRoomView) أي عنصر
+    // لتحديثه بالحاضرين رغم نجاحها. الحل: دالة الدخول نفسها تضمن بيانات كاملة — تجلبها
+    // بالمعرّف أولاً (/api/voice-room/rooms/:id، نفس مصدر fetchAndRenderVoiceSnapshot ونفس
+    // مسار returnToMyRoom الصحيح أصلاً) كلما كان المُمرَّر ناقصاً، بدل افتراض كل مستدعٍ أنه
+    // يملك كل الحقول — فلا يبقى مجال لتكرار هذي العلّة بمدخل حالي أو مستقبلي آخر
+    async function enterVoiceRoom(room, password) {
         if (room.isOfficial) {
             showVoiceRoomsView();
             return;
+        }
+        if (typeof room.seatCount !== 'number') {
+            try {
+                const url = `/api/voice-room/rooms/${room.id}${password ? `?password=${encodeURIComponent(password)}` : ''}`;
+                const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await response.json();
+                if (response.status === 403 && result.requiresPassword) {
+                    promptRoomPassword((pwd) => enterVoiceRoom({ id: room.id, isOfficial: false }, pwd));
+                    return;
+                }
+                if (response.status === 403 && result.kicked) {
+                    showNotification(result.message || 'تم طردك من هذي الغرفة', 'error');
+                    return;
+                }
+                if (response.status === 404 && result.broadcastEnded) {
+                    showNotification('انتهى البث المباشر بهذي الغرفة', 'info');
+                    return;
+                }
+                if (!response.ok || result.status !== 'success') {
+                    showNotification(result.message || 'تعذّر فتح الغرفة', 'error');
+                    return;
+                }
+                room = {
+                    id: room.id, name: result.name, coverImage: result.coverImage,
+                    isOfficial: false, isPrivate: result.isPrivate, seatCount: result.seatCount,
+                    roomCode: result.roomCode, host: result.host
+                };
+            } catch (error) {
+                showNotification('تعذّر فتح الغرفة', 'error');
+                return;
+            }
         }
         const isOwner = room.host && (room.host._id === myUserId || room.host === myUserId);
         if (room.isPrivate && !isOwner && !password) {
@@ -3736,7 +3777,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (cancelled) return;
                 screen.remove();
                 if (nextRoom) {
-                    showCustomRoomView({ id: nextRoom.id, name: nextRoom.name, seatCount: nextRoom.seatCount, isPrivate: nextRoom.isPrivate, isOfficial: false }, null);
+                    enterVoiceRoom({ id: nextRoom.id, name: nextRoom.name, seatCount: nextRoom.seatCount, isPrivate: nextRoom.isPrivate, isOfficial: false }, null);
                 } else {
                     showRoomBrowserView();
                 }
@@ -11864,15 +11905,25 @@ function wireFollowConnectionButton(btn) {
 
 // ✅ صف شخص موحَّد (قوائم المتابِعين/المتابَعين/الأصدقاء + اقتراحات) — صورة/اسم + زر متابعة
 // بحالته الصحيحة (relation من الخادم)، النقر على الصف (لا الزر) يفتح ملفه الشخصي الكامل
+// 🐛 fix/live-entry-and-self-row: صفّي أنا نفسي قد يظهر بقائمة متابِعي/متابَعي شخص آخر (لو
+// كنت أتابعه أو يتابعني فعلاً) — relation محسوبة بالنسبة لي (الزائر) تجاه نفسي كمرشّح تكون
+// دوماً {amIFollowing:false, followsMe:false} (لا حافة متابعة ذاتية ممكنة أصلاً)، فيظهر زر
+// "متابعة" عادي يرفضه الخادم فوراً (self-follow) بعد قلبه تفاؤلياً ثم تراجعه — لا زر إطلاقاً هنا الآن
 function renderFollowPersonRowHTML(u, extraClass = '') {
-    const state = followButtonState(u.relation);
+    const isMe = String(u._id) === myUserId;
+    const actionHTML = isMe
+        ? `<span class="follow-connection-self-tag">أنت</span>`
+        : (() => {
+            const state = followButtonState(u.relation);
+            return `<button type="button" class="follow-connection-btn ${state.action === 'unfollow' ? 'following' : ''}" data-user-id="${u._id}" data-action="${state.action}" data-follows-me="${u.relation?.followsMe ? '1' : '0'}">${state.label}</button>`;
+        })();
     return `
         <div class="follow-connection-row ${extraClass}" data-user-id="${u._id}">
             ${avatarHTML({ src: u.profileImage, name: u.username, userId: u._id, fetchSize: 40, frameClass: u.activeFrameClass, sizeClass: 'follow-connection-avatar' })}
             <div class="min-w-0 flex-1">
                 <p class="follow-connection-name">${escapeHtml(u.username)}</p>
             </div>
-            <button type="button" class="follow-connection-btn ${state.action === 'unfollow' ? 'following' : ''}" data-user-id="${u._id}" data-action="${state.action}" data-follows-me="${u.relation?.followsMe ? '1' : '0'}">${state.label}</button>
+            ${actionHTML}
         </div>
     `;
 }
@@ -22979,7 +23030,12 @@ function showOneMessageModal(targetUserId, targetUsername) {
 // ✅ feat/follow-v2: زر المتابعة الموحَّد (4 حالات، راجع followButtonState) — يستبدل زر
 // الصداقة القديم (طلب/قبول/رفض) بالكامل. isFollowing/followsMe جاهزان من الخادم (getUserById،
 // لمنظور الزائر الحالي تحديداً)
+// 🐛 fix/live-entry-and-self-row: فتح ملفي المصغّر عن نفسي (الضغط على صورتي بالدردشة مثلاً)
+// كان يعرض زر "متابعة" عادياً — يرفضه الخادم (self-follow) بعد قلبه تفاؤلياً ثم تراجعه
 function getFollowActionButtonHTML(profileUser) {
+    if (String(profileUser._id) === myUserId) {
+        return `<span class="action-btn profile-self-tag"><i class="fas fa-user"></i><span>أنت</span></span>`;
+    }
     const state = followButtonState({ amIFollowing: profileUser.isFollowing, followsMe: profileUser.followsMe });
     const icon = state.action === 'unfollow' ? 'fa-user-check' : 'fa-user-plus';
     return `<button class="action-btn profile-follow-btn" data-action="${state.action}" data-user-id="${profileUser._id}" data-follows-me="${profileUser.followsMe ? '1' : '0'}"><i class="fas ${icon}"></i><span>${state.label}</span></button>`;

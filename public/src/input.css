@@ -6784,6 +6784,16 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
     border-radius: 999px;
 }
 .follow-connection-btn.following { background: rgba(255,255,255,0.08); border-color: transparent; color: #d1d5db; }
+/* 🐛 fix/live-entry-and-self-row: بديل غير تفاعلي بديل زر المتابعة بصفّي أنا نفسي */
+.follow-connection-self-tag {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: #6b7280;
+    padding: 7px 14px;
+}
+.profile-self-tag { cursor: default; }
+.profile-self-tag:hover { background: transparent !important; color: inherit !important; }
 
 /* ✅ هيكل تحميل نابض (skeleton) — بديل أكثر سلاسة لمؤشر دوّار وحيد أثناء تحميل قوائم
    المتابِعين/المتابَعين/الاقتراحات؛ كتل رمادية نابضة بنفس شكل الصفوف الحقيقية تقريباً */
