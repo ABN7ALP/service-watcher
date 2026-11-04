@@ -1,10 +1,24 @@
 // server/routes/userRoutes.js
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const userController = require('../controllers/userController');
+const followController = require('../controllers/followController');
 const authMiddleware = require('../middleware/authMiddleware');
 const { upload, roomCoverUpload } = require('../utils/cloudinary');
+const { safeKeyGenerator } = require('../middleware/globalMiddleware');
 
 const router = express.Router();
+
+// 🛡️ مراجعة #147: يمنع قصف متابعة/إلغاء متابعة آلي (نقرات سكربت بدل مستخدم حقيقي) — نفس نمط
+// roomCreationLimiter (voiceRoomRoutes.js)، مفتاح بالمستخدم الموثَّق (JWT) لا IP فقط
+const followLimiter = rateLimit({
+    windowMs: 60 * 1000, // دقيقة واحدة
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: safeKeyGenerator,
+    message: { status: 'fail', message: 'عمليات متابعة كثيرة جداً خلال وقت قصير. حاول بعد قليل.' },
+});
 
 // حماية جميع المسارات التالية
 router.use(authMiddleware);
@@ -31,11 +45,12 @@ router.post('/me/room-tour-seen', userController.markRoomTourSeen);
 router.get('/me/details', userController.getMeDetails);
 // ✅ متابعة/إلغاء متابعة شخص — قبل :id كي لا يُبتلع الجزء الثابت داخل باراميتر :id (غير
 // وارد هنا لأنه مسار فرعي مختلف الشكل، لكن يبقى الترتيب الأوضح والأسلم دائماً)
-router.post('/:id/follow', userController.followUser);
-router.delete('/:id/follow', userController.unfollowUser);
+router.post('/:id/follow', followLimiter, followController.followUser);
+router.delete('/:id/follow', followLimiter, followController.unfollowUser);
 router.post('/:id/poke', userController.pokeUser);
-router.get('/:id/followers', userController.getFollowersList);
-router.get('/:id/following', userController.getFollowingList);
+router.get('/:id/followers', followController.getFollowersList);
+router.get('/:id/following', followController.getFollowingList);
+router.get('/:id/friends', followController.getFriendsList);
 router.get('/me/profile-visits', userController.getMyProfileVisits);
 // ✅ مهام "مستوى الدعم" اليومية — قبل الأنماط الديناميكية (:id) كي لا يُبتلع "support" كمعرّف
 router.get('/support/missions', userController.getSupportMissions);

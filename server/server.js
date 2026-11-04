@@ -112,6 +112,12 @@ mongoose.connect(process.env.MONGODB_URI)
         console.log('✅ MongoDB connected successfully.');
         await require('./utils/autoSeed')();
 
+        // 🛡️ feat/follow-v2: ترحيل مصفوفات المتابعة/الصداقة القديمة لمجموعة Follow — تحكّم
+        // مُشغِّل صريح عبر FOLLOW_MIGRATION (off|dry|apply)، لكن لا يحجب server.listen() أو
+        // migrationGate إطلاقاً (راجع الشرح أعلى followMigration.js — إضافي بطبيعته، آمن
+        // للتزامن مع مسار المتابعة الجديد العامل بالتوازي بصرف النظر عن اكتمال هذا الترحيل)
+        await require('./utils/followMigration').resolveMigrationStartup();
+
         // 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1): إعادة تسمية العملة ×10 — تحكّم مُشغِّل صريح
         // عبر WALLET_MIGRATION بدل تشغيل تلقائي عند كل إقلاع (مراجعة ما قبل الدمج، تعليق
         // لاحق): unset/'off' لا يُشغِّل الترحيل إطلاقاً ويبقى الموقع بوضع الصيانة (503)؛ 'dry'
