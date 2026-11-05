@@ -1843,10 +1843,13 @@ socket.on('refreshBlockData', async () => {
         // =====================================================
         // ✅ بدء/إنهاء البث — المضيف فقط (وليس المسؤولون المساعدون؛ هذا قرار مصيري للغرفة)
         // =====================================================
-        socket.on('host-start-broadcast', async ({ roomId }) => {
+        // 🛡️ fix/back-everywhere-ended-room: ack اختياري (startMyBroadcastAndEnter بالعميل
+        // يستخدم socket.timeout().emit مع callback) — العميل لا يحاول دخول الغرفة بعد بدء
+        // البث إلا بعد تأكيد نجاحه هنا فعلياً، لا بافتراض متفائل قد يسبق اكتمال VoiceRoom.startBroadcast
+        socket.on('host-start-broadcast', async ({ roomId }, ack) => {
             try {
                 const room = await VoiceRoom.startBroadcast(roomId, socket.user._id);
-                if (!room) return; // ✅ ليس مضيف هذي الغرفة، أو الغرفة الرسمية — تجاهل صامت وآمن
+                if (!room) { if (typeof ack === 'function') ack({ ok: false }); return; } // ✅ ليس مضيف هذي الغرفة، أو الغرفة الرسمية — تجاهل صامت وآمن
                 io.to(`room-chat-${room._id}`).emit('user-joined-seat', {
                     roomId: room._id.toString(),
                     seatNumber: 1,
@@ -1877,8 +1880,10 @@ socket.on('refreshBlockData', async () => {
                 // ✅ لا تُنتظَر — إشعار المتابعين ثانوي، لا يجب أن يؤخّر لحظة "بدء البث" نفسها
                 // (أخطاؤها مُلتقَطة بذاتها داخل الدالة نفسها بالفعل)
                 notifyFollowersOfLiveChange(io, socket.user, true, roomPayload);
+                if (typeof ack === 'function') ack({ ok: true });
             } catch (error) {
                 console.error('[BROADCAST] Start error:', error);
+                if (typeof ack === 'function') ack({ ok: false });
             }
         });
 
