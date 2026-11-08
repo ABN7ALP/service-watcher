@@ -601,7 +601,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.mobile-nav-item').forEach(i => i.classList.remove('active'));
         document.querySelector(`.mobile-nav-item[data-target="${viewId}"]`)?.classList.add('active');
 
-        document.getElementById('mobile-more-sheet')?.classList.add('hidden');
+        closeMobileMoreSheet();
 
         const viewRenderers = {
             arena: showRoomBrowserView,
@@ -653,7 +653,11 @@ document.addEventListener('DOMContentLoaded', () => {
         'full-profile-page', 'settings-page', 'recharge-page' // "أماكن" راوتر حقيقية تُدير سجلّها بنفسها (enterRoutePath/navigate) — تسجيلها هنا يُضاعف الإدخالة
     ]);
     const overlayStack = [];
-    let suppressNextRemovalPop = false;
+    // 🛡️ مراجعة #152: إدخالات سجلّ "يتيمة" — نافذة أُزيلت وهي مدفونة لا الأعلى (إغلاق دفاعي من
+    // كود آخر، حالة نادرة لكن ممكنة) فلا تُستهلك إدخالتها فوراً (استهلاكها كـtop كان سيُغلق
+    // الخطأ). تتراكم هنا وتُسدَّد عند أقرب إغلاق/فتح حقيقي يحسم صافي الحركة — فلا يبقى سجلّ
+    // المتصفح وoverlayStack منحرفين عن بعضهما أبداً (ضغطة رجوع "لا تفعل شيئاً" ظاهرياً)
+    let orphanedCloseDebt = 0;
     function isAutoOverlayNode(node) {
         // 🐛 إصلاح جوهري: ~15 نافذة فعلية (منها pinPadModal وورقة مساعدة شام كاش — تماماً "لوحة
         // PIN" و"صورة المساعدة" المطلوب التحقق منهما) تُنشَأ بلا .id إطلاقاً (تُغلَق بمرجع متغيّر
@@ -662,17 +666,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // الاستثناء بالمعرّف فقط لو كان .id موجوداً فعلاً، لا شرطاً لرصدها من الأساس
         if (!(node instanceof HTMLElement)) return false;
         if (node.id && AUTO_OVERLAY_EXCLUDED_IDS.has(node.id)) return false;
+        // 🛡️ مراجعة #152 (بند 2): تأثيرات بصرية تلقائية الظهور (كونفيتي كومبو الهدايا gfx-layer/
+        // gfx-canvas، شارة معلم gfx-legend، توهّج هدف الجولة التعريفية .rtour) تطابق توقيع
+        // fixed+inset:0 بالمصادفة فقط — بلا أي تفاعل مستخدم، وتُزال تلقائياً بمؤقّت داخلي لا بفعل
+        // المستخدم. pointer-events:none هو العلامة الموجودة فعلاً على كل تأثير من هذي (لا تستقبل
+        // أي ضغطة أصلاً — هذا سبب استخدامها لها بالأساس) — استثناؤها يمنع "رجوع" من إغلاق تأثير
+        // عابر بدل نافذة المستخدم الحقيقية تحته، ويمنع إدخالة سجلّ يتيمة حين تُزال التأثيرات هذي
+        // تلقائياً بينما نافذة أخرى مفتوحة فوقها. data-no-back مَخرَج صريح إضافي لأي نافذة تلقائية
+        // الظهور أخرى مستقبلاً لا تستخدم pointer-events:none لسبب ما
+        if (node.hasAttribute('data-no-back')) return false;
         const cs = getComputedStyle(node);
+        if (cs.pointerEvents === 'none') return false;
         return cs.position === 'fixed' && cs.top === '0px' && cs.right === '0px' && cs.bottom === '0px' && cs.left === '0px';
-    }
-    // 🐛 ثغرة أخرى: نافذة واحدة فعلياً (mobile-more-sheet، "المزيد" بالشريط السفلي) موجودة
-    // بـDOM دوماً منذ تحميل الصفحة — تُظهَر/تُخفى فقط بتبديل صنف hidden، لا بإنشاء/إزالة
-    // إطلاقاً، فلا تُطابق addedNodes/removedNodes أعلاه مهما كانت مفتوحة بصرياً الآن. نتتبّع
-    // ظهورها الفعلي (visibility map) عبر مراقبة صنف العنصر أيضاً، لا الإضافة/الإزالة فقط
-    const overlayVisibility = new WeakMap();
-    function isOverlayNodeVisible(node) {
-        const cs = getComputedStyle(node);
-        return cs.display !== 'none' && cs.visibility !== 'hidden';
     }
     // ✅ mobile-more-sheet (الوحيدة من نوعها حالياً) تبقى بـDOM دوماً وتُغلَق بإضافة hidden —
     // remove() الفعلي يحذفها نهائياً فلا تُفتَح ثانية أبداً (getElementById يُعيد null لاحقاً)
@@ -680,62 +685,117 @@ document.addEventListener('DOMContentLoaded', () => {
         if (node.id === 'mobile-more-sheet') { node.classList.add('hidden'); node.classList.remove('flex'); return; }
         node.remove();
     }
-    // 🐛 سباق خطير: history.back() غير متزامنة فعلياً (popstate الناتج يصل بمهمة لاحقة، لا فوراً) —
-    // فلو أُغلقت نافذة وفُتحت أخرى بنفس اللحظة المتزامنة (زرّ بورقة يُغلقها هو نفسه يفتح نافذة
-    // تأكيد، مثال "خروج" بـroom-exit-options-sheet يفتح end-broadcast-confirm-modal فوراً)، كان
-    // history.back() المجدولة تصل بعد history.pushState() للنافذة الجديدة فتُغلقها هي خطأً بدل
-    // النافذة الأصلية. الحل: تجميع صافي الفتح/الإغلاق بكل دفعة مراقب واحدة (كل ما حدث بنفس اللحظة
-    // المتزامنة فعلياً) وتطبيق عملية history واحدة صافية بالنهاية — إغلاق+فتح بنفس اللحظة (الصافي
-    // صفر) لا يلمس history إطلاقاً (الإدخالة الحالية تبقى تمثّل "نافذة ما مفتوحة" بصرف النظر عن
-    // أيّها بالضبط، وزرّ الرجوع يتعامل مع قمّة المكدّس الفعلية دوماً لا مع رابط/حالة محدَّدة)
-    function processRemoval(node, closedTop) {
+    // 🛡️ مراجعة #152 (بند 1، سباق): الخطّاف اليدوي لـmobile-more-sheet (أدناه) يُغيّر DOM خارج
+    // ما يرصده المراقب (صنف لا childList)، فلا يمكن الاعتماد على دفعة المراقب وحدها لتجميع
+    // "إغلاق سيُغلَق هو بخطّاف يدوي + فتح حقيقي بنفس اللحظة المتزامنة" بصفقة واحدة. الحل: كل
+    // فتح/إغلاق (من المراقب أو من خطّاف يدوي) يراكم بمصفوفتين مشتركتين ويطلب "دفعة تسوية" واحدة
+    // مؤجَّلة لمايكروتاسك — طلبات متعددة بنفس اللحظة المتزامنة تتشارك دفعة واحدة فقط (علَم single-
+    // flight). عند تنفيذ الدفعة، نسحب أولاً overlayObserver.takeRecords() (أي سجلّات DOM حقيقية
+    // وصلت فعلياً لكن لم يُسلِّمها callback المراقب الطبيعي بعد لأن دفعتنا المؤجَّلة سبقته بالترتيب)
+    // فتُضَم لنفس الدفعة قبل حساب الصافي النهائي — يحسم هذا كل تتابع ممكن (إغلاق يدوي ثم فتح حقيقي،
+    // أو العكس) دون تطبيق history.back()/pushState منفصلين متسابقين لحدثين وقعا بنفس اللحظة الفعلية
+    const pendingOpened = [];
+    const pendingClosedTop = [];
+    let reconcileScheduled = false;
+    let inReconcilePass = false;
+    function processRemoval(node) {
         const idx = overlayStack.indexOf(node);
         if (idx === -1) return;
         const wasTop = idx === overlayStack.length - 1;
         overlayStack.splice(idx, 1);
-        if (wasTop) closedTop.push(node);
+        if (wasTop) pendingClosedTop.push(node);
+        else orphanedCloseDebt++; // 🛡️ أُزيلت وهي مدفونة لا الأعلى (حالة نادرة — إغلاق دفاعي من كود آخر) — راجع reconcileHistory
+        scheduleReconcile();
     }
-    function processAddition(node, opened) {
+    function processAddition(node) {
         if (isAutoOverlayNode(node) && !overlayStack.includes(node)) {
             overlayStack.push(node);
-            overlayVisibility.set(node, true);
-            opened.push(node);
+            pendingOpened.push(node);
+            scheduleReconcile();
         }
     }
-    const overlayObserver = new MutationObserver((mutations) => {
-        const opened = [], closedTop = [];
-        for (const m of mutations) {
-            if (m.type === 'childList') {
-                m.addedNodes.forEach(node => processAddition(node, opened));
-                m.removedNodes.forEach(node => processRemoval(node, closedTop));
-            } else if (m.type === 'attributes' && isAutoOverlayNode(m.target)) {
-                const node = m.target;
-                const nowVisible = isOverlayNodeVisible(node);
-                const wasVisible = overlayVisibility.get(node) || false;
-                if (nowVisible === wasVisible) continue;
-                overlayVisibility.set(node, nowVisible);
-                if (nowVisible) processAddition(node, opened); else processRemoval(node, closedTop);
-            }
+    function scheduleReconcile() {
+        if (inReconcilePass || reconcileScheduled) return; // دفعة واحدة تكفي لكل ما تراكم بنفس اللحظة المتزامنة؛ لا نُعيد الجدولة من داخل الدفعة نفسها (راجع runReconcile)
+        reconcileScheduled = true;
+        queueMicrotask(runReconcile);
+    }
+    // 🐛 سباق خطير: history.back() غير متزامنة فعلياً (popstate الناتج يصل بمهمة لاحقة، لا فوراً) —
+    // فلو أُغلقت نافذة وفُتحت أخرى بنفس اللحظة المتزامنة (زرّ بورقة يُغلقها هو نفسه يفتح نافذة
+    // تأكيد، مثال "خروج" بـroom-exit-options-sheet يفتح end-broadcast-confirm-modal فوراً)، كان
+    // history.back() المجدولة تصل بعد history.pushState() للنافذة الجديدة فتُغلقها هي خطأً بدل
+    // النافذة الأصلية. تجميع صافي الفتح/الإغلاق بدفعة واحدة وتطبيق عملية history واحدة صافية
+    // بالنهاية يحسم السباق — إغلاق+فتح بنفس اللحظة (الصافي صفر) لا يلمس history إطلاقاً (الإدخالة
+    // الحالية تبقى تمثّل "نافذة ما مفتوحة" بصرف النظر عن أيّها بالضبط). orphanedCloseDebt (أعلاه)
+    // يُسدَّد بنفس هذي التسوية — مطروحاً من صافي إغلاق حقيقي قادم، أو فوراً لو لم يبقَ أي شيء
+    // مفتوح أصلاً بعد هذي الدفعة (لا يوجد "إغلاق أعلى" مستقبلي ليُسدَّد معه)
+    function runReconcile() {
+        reconcileScheduled = false;
+        inReconcilePass = true;
+        const extraRecords = overlayObserver.takeRecords();
+        for (const m of extraRecords) {
+            m.addedNodes.forEach(processAddition);
+            m.removedNodes.forEach(processRemoval);
         }
-        if (suppressNextRemovalPop) return; // إغلاق قسري جماعي (closeAllOverlays) — يُفرِغ overlayStack بنفسه مباشرة، فلا يصل أي عنصر هنا أصلاً (idx===-1 بالأعلى)؛ هذا فقط حارس أمان إضافي
-        const net = opened.length - closedTop.length;
+        inReconcilePass = false;
+        const openedCount = pendingOpened.length, closedTopCount = pendingClosedTop.length;
+        pendingOpened.length = 0; pendingClosedTop.length = 0;
+        let net = openedCount - closedTopCount;
+        if (net < 0) { net -= orphanedCloseDebt; orphanedCloseDebt = 0; }
+        else if (net > 0) { orphanedCloseDebt = 0; }
+        else if (overlayStack.length === 0 && orphanedCloseDebt > 0) { net -= orphanedCloseDebt; orphanedCloseDebt = 0; }
         if (net > 0) { for (let i = 0; i < net; i++) { try { history.pushState({ overlay: true }, '', location.href); } catch (e) {} } }
         else if (net < 0) { for (let i = 0; i < -net; i++) { try { history.back(); } catch (e) {} } }
+    }
+    // ✅ mobile-more-sheet خطّافها الخاص الصريح (لا مراقبة صنف عامة على الشجرة كلها — راجع مراجعة
+    // #152 بند 1) — تعيد استخدام نفس processAddition/processRemoval المشتركة مع المراقب أدناه
+    function openMobileMoreSheet() {
+        const sheet = document.getElementById('mobile-more-sheet');
+        if (!sheet || !sheet.classList.contains('hidden')) return;
+        sheet.classList.remove('hidden');
+        sheet.classList.add('flex');
+        processAddition(sheet);
+    }
+    function closeMobileMoreSheet() {
+        const sheet = document.getElementById('mobile-more-sheet');
+        if (!sheet || sheet.classList.contains('hidden')) return;
+        sheet.classList.add('hidden');
+        sheet.classList.remove('flex');
+        processRemoval(sheet);
+    }
+    // 🛡️ مراجعة #152 (بند 1، أداء): كانت subtree:true + attributes على document.body كلّه —
+    // كل رسالة دردشة/تحديث مقعد/نبضة "يتحدّث الآن" بغرفة مزدحمة تُطلِق استدعاء المراقب (recalc
+    // أنماط فعلي لكل عنصر) آلاف المرّات بالدقيقة على أجهزة ضعيفة، رغم أن كل هذا لا علاقة له
+    // بالنوافذ إطلاقاً. كل نافذة بالتطبيق بلا استثناء تُضاف مباشرة كابن مباشر لـdocument.body
+    // أو لـ#game-container (لا أعمق من ذلك أبداً) — childList فقط على هذين الهدفين (بلا subtree
+    // وبلا attributes) يرصدها جميعاً بدقّة ودون أي حساسية لما يحدث أعمق بالشجرة (الدردشة/المقاعد/
+    // الأنيميشن كلها أعمق بكثير من ابن مباشر، فلا تُولِّد أي استدعاء للمراقب هنا على الإطلاق)
+    const overlayObserver = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            m.addedNodes.forEach(processAddition);
+            m.removedNodes.forEach(processRemoval);
+        }
     });
-    overlayObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    overlayObserver.observe(document.body, { childList: true });
+    const overlayObserverGameContainer = document.getElementById('game-container');
+    if (overlayObserverGameContainer) overlayObserver.observe(overlayObserverGameContainer, { childList: true });
     // ✅ تُستدعى قبل أي تغيير "مكان" حقيقي (navigate/renderRoute) — تُغلق كل نافذة مرصودة
     // + أي "مكان" آخر ذو واجهة ملء الشاشة لا يُستثنى أعلاه (ملف شخصي كامل/إعدادات/شحن) كي لا
-    // يبقى أي منها خلف المكان الجديد. suppressNextRemovalPop يمنع كل إزالة هنا من استهلاك
-    // إدخالتها فردياً — إغلاق قسري جماعي كهذا يترك إدخالاتها "يتيمة" عمداً، يتجاوزها مستمع
-    // popstate بصمت بنفس المسار (renderRoute على نفس المسار لا يغيّر شيئاً) فتبقى التجربة سليمة
+    // يبقى أي منها خلف المكان الجديد. تُزيل مباشرة من overlayStack نفسه (لا عبر processRemoval) —
+    // فحين تصل سجلّات الإزالة المقابلة لاحقاً (مباشرة عبر المراقب، أو عبر takeRecords()
+    // بـrunReconcile)، idx=-1 لكل عنصر منها (أُزيل من المصفوفة فعلاً) فلا تُسجَّل أي إدخالة سجلّ
+    // "يتيمة" جديدة ولا history.back() لها؛ إدخالاتها الفعلية بالسجلّ تبقى يتيمة عمداً هنا (بصرف
+    // النظر عن المكدّس)، يتجاوزها مستمع popstate بصمت بنفس المسار (renderRoute على نفس المسار لا
+    // يغيّر شيئاً) فتبقى التجربة سليمة. لو كان أحدها فُتح بنفس دفعة التسوية المعلّقة الحالية ولم
+    // تُطبَّق لها history.pushState بعد (pendingOpened)، نُلغيه من هناك أيضاً — فُتح وأُغلق قسراً
+    // بنفس اللحظة الفعلية فلا صافي تاريخ له إطلاقاً (بلا هذا كان سيُحسَب +1 خطأً بالتسوية القادمة)
     function closeAllOverlays() {
-        // 🐛 MutationObserver.disconnect/callback يُنفَّذ كمايكروتاسك بعد اكتمال هذا الكود
-        // المتزامن بالكامل — إعادة suppressNextRemovalPop لـfalse بشكل متزامن هنا كانت تُلغي
-        // الكبت قبل أن يُنفَّذ استدعاء المراقب الفعلي أصلاً (فيُنفَّذ history.back() مضاعفاً لكل
-        // إزالة). queueMicrotask يضمن إعادتها بعد معالجة المراقب لكل سجلات هذي الإزالات دفعة واحدة
-        suppressNextRemovalPop = true;
-        while (overlayStack.length) { closeOverlayNode(overlayStack.pop()); }
-        queueMicrotask(() => { suppressNextRemovalPop = false; });
+        while (overlayStack.length) {
+            const node = overlayStack.pop();
+            const pendingIdx = pendingOpened.indexOf(node);
+            if (pendingIdx !== -1) pendingOpened.splice(pendingIdx, 1);
+            closeOverlayNode(node);
+        }
+        orphanedCloseDebt = 0; // ✅ أي دين معلّق من قبل يتلاشى هنا أيضاً — إعادة ضبط كاملة للمكان الجديد، لا تسوية جزئية لاحقة تستهلك خطوة رجوع إضافية خطأً لحدث لا علاقة له بهذا الانتقال
         document.getElementById('full-profile-page')?.remove();
         document.getElementById('settings-page')?.remove();
         document.getElementById('recharge-page')?.remove();
@@ -782,18 +842,14 @@ document.addEventListener('DOMContentLoaded', () => {
         renderRoute(target);
     }
 
-    // 🛡️ fix/back-everywhere-ended-room: 1) نافذة مرصودة مفتوحة؟ تُغلَق (المراقب يستهلك إدخالتها
-    // بنفسه، فهنا نكبته فقط لتجنّب استهلاك مضاعف). 2) لا نافذة، لكننا داخل غرفة مستخدم (لا
-    // الرسمية)؟ "رجوع" يُصغّرها لفقاعتها العائمة بدل مغادرة المقعد/البث صمتاً. 3) غير ذلك:
-    // تنقّل راوتر عادي
+    // 🛡️ fix/back-everywhere-ended-room: 1) نافذة مرصودة مفتوحة؟ تُغلَق (ضغطة الرجوع الحقيقية
+    // استهلكت إدخالتها بنفسها فعلاً — نُغلقها بصرياً فقط مباشرة من overlayStack، بلا المرور على
+    // processRemoval/reconcileHistory اللذين يُطلِقان history.back() إضافية خطأً فوق ما حدث
+    // فعلاً بهذي الضغطة). 2) لا نافذة، لكننا داخل غرفة مستخدم (لا الرسمية)؟ "رجوع" يُصغّرها
+    // لفقاعتها العائمة بدل مغادرة المقعد/البث صمتاً. 3) غير ذلك: تنقّل راوتر عادي
     window.addEventListener('popstate', () => {
         if (overlayStack.length > 0) {
-            // 🐛 نفس مشكلة closeAllOverlays أعلاه — إعادة الكبت فوراً هنا متزامنة، قبل أن يُنفَّذ
-            // استدعاء المراقب أصلاً (مايكروتاسك)؛ popstate الحالي استهلك إدخالة السجلّ هذي فعلاً
-            // (ضغطة الرجوع نفسها)، فـhistory.back() إضافية من المراقب هنا تستهلك إدخالة أخرى خطأً
-            suppressNextRemovalPop = true;
             closeOverlayNode(overlayStack.pop());
-            queueMicrotask(() => { suppressNextRemovalPop = false; });
             return;
         }
         if (document.body.classList.contains('in-voice-room') && currentVoiceRoomId && currentVoiceRoomId !== 'main') {
@@ -819,16 +875,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // زر "المزيد" بالهاتف
         document.getElementById('mobile-more-btn')?.addEventListener('click', () => {
-        document.getElementById('mobile-more-sheet')?.classList.remove('hidden');
-        document.getElementById('mobile-more-sheet')?.classList.add('flex');
+        openMobileMoreSheet();
         document.getElementById('mobile-more-badge')?.classList.add('hidden');
     });
             // ✅ إغلاق قائمة "المزيد" بالنقر خارجها — تم إصلاحه لأن onclick المضمّن بـ HTML كانت تمنعه سياسة CSP
     document.getElementById('mobile-more-sheet')?.addEventListener('click', (e) => {
-        if (e.target.id === 'mobile-more-sheet') {
-            e.currentTarget.classList.add('hidden');
-            e.currentTarget.classList.remove('flex');
-        }
+        if (e.target.id === 'mobile-more-sheet') closeMobileMoreSheet();
     });
     document.querySelectorAll('.mobile-sheet-item').forEach(item => {
         item.addEventListener('click', () => switchToView(item.dataset.target));
@@ -840,8 +892,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ✅ زر "ملفي الشخصي" داخل قائمة المزيد
     document.getElementById('mobile-sheet-my-profile-btn')?.addEventListener('click', () => {
-        document.getElementById('mobile-more-sheet')?.classList.add('hidden');
-        document.getElementById('mobile-more-sheet')?.classList.remove('flex');
+        closeMobileMoreSheet();
         showMyProfileHub();
     });
     // ✅ سطح المكتب: الصورة الشخصية بالشريط الجانبي كانت غير قابلة للنقر إطلاقاً — تفتح الآن
@@ -12355,7 +12406,7 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
         // تُغلق كل طبقة مفتوحة فوقه بنفسها الآن تلقائياً (مكدّس النوافذ العام يرصد أي نافذة
         // ملء شاشة بصرف النظر عن اسمها) — لا حاجة لإغلاقها يدوياً هنا واحدة تلو الأخرى؛ إزالات
         // متتالية يدوية هنا كانت تُطلِق history.back() متعددة متسابقة (كل نافذة مرصودة تُستهلَك
-        // عند إزالتها) بدل استهلاك واحد نظيف عبر closeAllOverlays المكبوت (suppressNextRemovalPop)
+        // عند إزالتها) بدل استهلاك واحد نظيف عبر closeAllOverlays (تُزيل مباشرة من overlayStack)
         enterVoiceRoom({
             id: item.dataset.roomId, name: item.dataset.roomName,
             coverImage: item.dataset.cover || null, isOfficial: false,
