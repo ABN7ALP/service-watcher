@@ -664,10 +664,56 @@ document.addEventListener('DOMContentLoaded', () => {
     // بنفسها متزامنة بالفعل *قبل* استدعاء history.back()، فلا شيء يحتاج تنفيذه لاحقاً عند وصول
     // الـpopstate المقابل أصلاً؛ هو فقط يستهلك إدخالة السجلّ الصحيحة بصمت
     let expectedSelfPops = 0;
-    function selfInitiatedBack(onFail) {
-        expectedSelfPops++;
-        try { history.back(); } catch (e) { expectedSelfPops--; if (onFail) onFail(e); }
+    let expectedSelfPopsSafetyTimer = null;
+    // 🛡️ مراجعة #153: العمق يُقرَأ من history.state نفسه (لا متغيّر JS منفصل) — فيُحسَم بشكل
+    // صحيح تلقائياً عند إعادة التحميل (المتصفح يُبقي state الإدخالة الحالية كما هي) أو استعادة
+    // تبويب، بعكس عدّاد عادي كان سينحرف فور أي تنقّل حقيقي بزرّي رجوع/تقدّم المتصفح. إدخالة
+    // الهبوط (أول state نكتبه بالتبويب) تُقرأ بعمق 0 تلقائياً لأن state يبدأ null دوماً قبلها
+    function currentHistoryDepth() {
+        return (history.state && typeof history.state.depth === 'number') ? history.state.depth : 0;
     }
+    function pushAppState(path) {
+        try { history.pushState({ app: true, depth: currentHistoryDepth() + 1 }, '', path); } catch (e) {}
+    }
+    // depth مُمرَّرة تُثبّت عمقاً جديداً (تُستخدَم فقط بإدخالة الهبوط)؛ بغيابها يُحفَظ العمق الحالي
+    // كما هو — replaceState يُبدِّل نص رابط الإدخالة الحالية نفسها فقط، لا موضعها بسجلّ المتصفح
+    function replaceAppState(path, depth) {
+        try { history.replaceState({ app: true, depth: typeof depth === 'number' ? depth : currentHistoryDepth() }, '', path); } catch (e) {}
+    }
+    // ⏱ ضمانة أخيرة: لو لم يصل popstate المقابل لـhistory.back()/go(-n) إطلاقاً (حالة نادرة لا
+    // يفسّرها عمق>0 المحسوب هنا، لكن ممكنة تقنياً) كان العدّاد سيبقى عالقاً للأبد ويُبطِل أول
+    // ضغطة رجوع حقيقية لاحقة بصمت — مهلة سخية (أطول بكثير من أي popstate حقيقي بأي جهاز) تُصفِّره
+    function armExpectedSelfPopsSafetyNet() {
+        if (expectedSelfPopsSafetyTimer) clearTimeout(expectedSelfPopsSafetyTimer);
+        expectedSelfPopsSafetyTimer = setTimeout(() => { expectedSelfPops = 0; expectedSelfPopsSafetyTimer = null; }, 700);
+    }
+    function consumeExpectedSelfPop() {
+        expectedSelfPops--;
+        if (expectedSelfPops <= 0 && expectedSelfPopsSafetyTimer) { clearTimeout(expectedSelfPopsSafetyTimer); expectedSelfPopsSafetyTimer = null; }
+    }
+    // 🛡️ مراجعة #153: selfInitiatedBack() القديمة افترضت وجود إدخالة سجلّ حقيقية بالتطبيق للرجوع
+    // إليها دوماً. رابط عميق (ملف شخصي/إعدادات) فُتح مباشرة بتبويب جديد (مشاركة واتساب مثلاً)،
+    // أو بعد إعادة تحميل الصفحة وهي عليه، لا يملك أي إدخالة سجلّ حقيقية سابقة بنفس التبويب —
+    // history.back() هنا كان سيُخرِج من الموقع كاملاً (رجوع للمُحيل الخارجي) أو لا يفعل شيئاً (لا
+    // سجلّ سابق إطلاقاً بتبويب جديد)، وبالحالة الثانية خاصة لا popstate يصل أبداً فيبقى
+    // expectedSelfPops عالقاً. عمق الإدخالة الحالية (currentHistoryDepth) يحسم هذا مسبقاً: عمق<=٠
+    // يعني لا يوجد خلفنا شيء حقيقي بالتطبيق — نُصحِّح الرابط والمحتوى المعروض لمكان حقيقي (الرئيسية)
+    // مباشرة بدل استدعاء history.back() إطلاقاً؛ الكود المستدعي نظّف عنصره بالفعل متزامناً قبل هنا
+    function selfInitiatedBackSteps(n, onFail) {
+        if (n <= 0) return;
+        const depth = currentHistoryDepth();
+        if (depth <= 0) {
+            replaceAppState('/', 0);
+            renderRoute('/');
+            return;
+        }
+        const steps = Math.min(n, depth); // لا نرجع أعمق من إدخالات التطبيق الفعلية المتوفرة فعلاً
+        expectedSelfPops += steps;
+        try { if (steps === 1) history.back(); else history.go(-steps); }
+        catch (e) { expectedSelfPops -= steps; if (onFail) onFail(e); return; }
+        armExpectedSelfPopsSafetyNet();
+    }
+    function selfInitiatedBack(onFail) { selfInitiatedBackSteps(1, onFail); }
     // 🛡️ fix/router-regressions: نقطة إغلاق واحدة مشتركة لصفحة /settings — تُستخدم من زرّ
     // رجوعها الخاص، ومن النقر خارجها، ومن مستمع popstate (بند 5، أدناه) حين تكون مُكدَّسة فوق
     // نافذة أخرى مفتوحة وتصلنا ضغطة رجوع حقيقية من المستخدم لا عبر زرّها هي
@@ -765,8 +811,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (net < 0) { net -= orphanedCloseDebt; orphanedCloseDebt = 0; }
         else if (net > 0) { orphanedCloseDebt = 0; }
         else if (overlayStack.length === 0 && orphanedCloseDebt > 0) { net -= orphanedCloseDebt; orphanedCloseDebt = 0; }
-        if (net > 0) { for (let i = 0; i < net; i++) { try { history.pushState({ overlay: true }, '', location.href); } catch (e) {} } }
-        else if (net < 0) { for (let i = 0; i < -net; i++) { selfInitiatedBack(); } }
+        if (net > 0) { for (let i = 0; i < net; i++) { pushAppState(location.href); } }
+        else if (net < 0) { selfInitiatedBackSteps(-net); }
     }
     // ✅ mobile-more-sheet خطّافها الخاص الصريح (لا مراقبة صنف عامة على الشجرة كلها — راجع مراجعة
     // #152 بند 1) — تعيد استخدام نفس processAddition/processRemoval المشتركة مع المراقب أدناه
@@ -856,18 +902,23 @@ document.addEventListener('DOMContentLoaded', () => {
     // يتيمة خلف المكان الجديد). يجب قياس hadOverlays *قبل* closeAllOverlays (تُفرِغ المكدّس)
     function enterRoutePath(path, { stack = false } = {}) {
         // ✅ fix/router-regressions (بند 5): صفحة تفاصيل ثانوية تُكدَّس فوق أي نافذة مفتوحة —
-        // إدخالة جديدة مستقلة دوماً، بلا لمس overlayStack أو closeAllOverlays إطلاقاً
-        if (stack) { try { history.pushState(null, '', path); } catch (e) {} return; }
+        // إدخالة جديدة مستقلة، بلا لمس overlayStack أو closeAllOverlays إطلاقاً. 🛡️ مراجعة #153:
+        // لولا فحص المسار هنا (كما بفرع عدم التكديس أدناه) كان استعادة الإقلاع لرابط عميق مباشر
+        // (/u/:id، /recharge — navigate(..., {replace:true}) سبق وصحّح الرابط لنفس المسار تماماً)
+        // يدفع إدخالة إضافية زائفة بنفس الرابط النصّي فوق إدخالة الهبوط، فيحتاج المستخدم ضغطتي
+        // رجوع (أولاها صامتة لا تظهر شيئاً) ليخرج فعلاً بدل واحدة، وبينهما الرابط يبقى معلّقاً
+        // بنفس مسار الملف الشخصي رغم إغلاقه فعلياً بصرياً أول ضغطة
+        if (stack) { if (location.pathname !== path) pushAppState(path); return; }
         const hadOverlays = overlayStack.length > 0;
         closeAllOverlays();
-        if (hadOverlays) { try { history.replaceState(null, '', path); } catch (e) {} }
-        else if (location.pathname !== path) { try { history.pushState(null, '', path); } catch (e) {} }
+        if (hadOverlays) { replaceAppState(path); }
+        else if (location.pathname !== path) { pushAppState(path); }
     }
 
     // ✅ نقطة الدخول الوحيدة للانتقال بين الأماكن الرئيسية من أي مكان بالكود
     function navigate(path, { replace = false } = {}) {
         const target = matchRoute(path) ? path : '/';
-        if (replace) { closeAllOverlays(); try { history.replaceState(null, '', target); } catch (e) {} }
+        if (replace) { closeAllOverlays(); replaceAppState(target); }
         else enterRoutePath(target, { stack: !!matchRoute(target)?.stack });
         renderRoute(target);
     }
@@ -881,7 +932,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // نفسه، لا المستخدم؛ العدّاد>٠ يعني هذا الـpopstate متوقَّع تماماً ونظّف كل حالته بنفسه قبل
     // استدعاء history.back() أصلاً (راجع تعليق selfInitiatedBack) — استهلاكه بصمت والعودة فوراً
     window.addEventListener('popstate', () => {
-        if (expectedSelfPops > 0) { expectedSelfPops--; return; }
+        if (expectedSelfPops > 0) { consumeExpectedSelfPop(); return; }
         // 🛡️ fix/router-regressions (بند 5): صفحات الراوتر المكدَّسة (إعدادات/شحن/ملف كامل)
         // مستثناة عمداً من overlayStack (تُدير سجلّها بنفسها) — قد تكون مفتوحة فوق نافذة متتبَّعة
         // فعلاً (مركز الملف الشخصي مثلاً)، فلو وصلت ضغطة رجوع حقيقية (لا selfInitiatedBack، سبق
@@ -14663,7 +14714,7 @@ async function showFullProfilePage(userId) {
     // customId الحقيقي — بلا إدخالة سجلّ جديدة (نفس العمق، فقط الشكل النهائي للرابط يتغيّر).
     // فتح ملف آخر فوق ملف مفتوح أصلاً (تصفّح متداخل) يستبدل مكانه هو أيضاً بنفس العمق — لا
     // تكديس لا نهائي لكل ملف يُفتَح من داخل ملف آخر
-    if (existing) { existing.remove(); try { history.replaceState(null, '', `/u/${userId}`); } catch (e) {} }
+    if (existing) { existing.remove(); replaceAppState(`/u/${userId}`); }
     else { enterRoutePath(`/u/${userId}`, { stack: true }); }
 
     const shellHTML = `
@@ -14710,7 +14761,7 @@ async function showFullProfilePage(userId) {
         if (userRes.status !== 'success') throw new Error();
         const u = userRes.data.user;
         page.dataset.userId = userId; // ✅ قد تغيّر من customId لمعرّف Mongo الحقيقي أعلاه
-        if (u.customId) { try { history.replaceState(null, '', `/u/${u.customId}`); } catch (e) {} }
+        if (u.customId) { replaceAppState(`/u/${u.customId}`); }
         const giftsReceivedCount = (giftSummaryRes && giftSummaryRes.status === 'success') ? giftSummaryRes.data.totalGiftsCount : 0;
         // ✅ تفصيل الهدايا المستلمة حسب النوع (صورة/اسم/عدد) — لعرضه كشريط فيلم قابل للسحب
         // بلوحة الشرف (طلب صريح) بدل رقم إجمالي وحيد بلا تفاصيل
@@ -18897,7 +18948,7 @@ async function openRechargePage(initialTab) {
 function closeRechargePage() {
     document.getElementById('recharge-page')?.remove();
     if (window.location.pathname === '/recharge') {
-        selfInitiatedBack(() => { try { history.replaceState(null, '', '/'); } catch (_) {} });
+        selfInitiatedBack(() => { replaceAppState('/'); });
     }
 }
 
