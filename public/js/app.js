@@ -44,7 +44,7 @@ function escapeHtml(unsafe) {
 }
 
 // ✅ feat/app-router: نظام التنقّل الحقيقي (روابط فعلية + مكدّس نوافذ موحَّد) حلّ محلّ هذا
-// المراقب العام التقريبي — راجع navigate()/registerOverlay() داخل DOMContentLoaded أدناه
+// المراقب العام التقريبي — راجع navigate() والمراقب التلقائي داخل DOMContentLoaded أدناه
 
 
 // --- دوال مساعدة لنظام اللفلات ---
@@ -601,7 +601,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.mobile-nav-item').forEach(i => i.classList.remove('active'));
         document.querySelector(`.mobile-nav-item[data-target="${viewId}"]`)?.classList.add('active');
 
-        document.getElementById('mobile-more-sheet')?.classList.add('hidden');
+        closeMobileMoreSheet();
 
         const viewRenderers = {
             arena: showRoomBrowserView,
@@ -633,36 +633,169 @@ document.addEventListener('DOMContentLoaded', () => {
     // + مكدّس نوافذ عام يدفع إدخالة سجلّ واحدة لكل نافذة/ورقة مفتوحة، فزرّ الرجوع (هاتف/متصفح)
     // يُغلق أعلى نافذة أولاً ثم يرجع للمكان السابق، ولا يخرج من التطبيق فجأة أبداً. navigate()
     // هي الدالة الوحيدة المستخدمة بكل مكان للانتقال بين "الأماكن" الرئيسية (الرئيسية/غرفة/ملف
-    // شخصي/الإعدادات/الشحن/الرسائل/المتصدّرين) — كل مكان آخر يفتح "نافذة" (registerOverlay) لا
-    // "مكاناً" جديداً، فيبقى فوق المكان الحالي بدل استبداله.
+    // شخصي/الإعدادات/الشحن/الرسائل/المتصدّرين) — كل مكان آخر يفتح "نافذة" (تُرصَد تلقائياً، راجع
+    // overlayObserver أدناه) لا "مكاناً" جديداً، فيبقى فوق المكان الحالي بدل استبداله.
     // =====================================================
 
-    // ✅ مكدّس النوافذ العام: كل نافذة تُسجَّل هنا تدفع إدخالة سجلّ (نفس الرابط، فقط state.overlay
-    // تُميّزها) عند فتحها. إغلاقها من زرّها الخاص (X/الخلفية) يستهلك تلك الإدخالة بـhistory.back()؛
-    // إغلاقها قسراً (closeAllOverlays عند تغيير المكان) يتركها دون استهلاك عمداً — المستمع أدناه
-    // يتجاوز أي إدخالة "يتيمة" كهذي بصمت (history.back() إضافية) فتبقى تجربة الرجوع سليمة دوماً
+    // 🛡️ fix/back-everywhere-ended-room: المكدّس اليدوي القديم (registerOverlay) كان يتطلّب
+    // تسجيل كل نافذة بنفسها عند إنشائها — فقط 4 من ~90 نافذة فعلياً كانت مسجَّلة، فزرّ الرجوع
+    // لا يعمل إلا معها. بدلاً من تسجيل كل نقطة إنشاء يدوياً، مراقب DOM واحد يرصد أي عنصر مُضاف
+    // بكل شجرة الصفحة (subtree — النوافذ تُضاف لـdocument.body مباشرة أو لـ#game-container
+    // الذي بداخله) تكون خصائصه المحسوبة position:fixed + inset:0 بالضبط — توقيع ثابت تستخدمه
+    // كل نافذة/ورقة/مودال بالتطبيق (سواء بصنف Tailwind "fixed inset-0" أو CSS صريح كـ
+    // .profile-hub-backdrop)، ولا يطابقه أي شريط/فقاعة/توست عائم (لا يغطّي الشاشة كلّها). فتح
+    // أي نافذة كهذي يدفع إدخالة سجلّ تلقائياً، وإغلاقها (بأي طريقة — زرّها الخاص غالباً) يستهلكها
+    // عبر history.back() لو كانت الأعلى فعلاً — صفر تعديل مطلوب على أي من نقاط الإغلاق الحالية
+    const AUTO_OVERLAY_EXCLUDED_IDS = new Set([
+        'app-banned-modal', // غير قابلة للإغلاق بتصميمها (استئناف/خروج فقط) — لا إدخالة سجلّ لها
+        'offline-modal', // مُدارة تلقائياً بأحداث socket.io (disconnect/reconnect)، لا تفاعل مستخدم لإغلاقها
+        'loading-screen', // شاشة إقلاع لحظية تُغلَق مرة واحدة فقط آلياً، لا تفاعل مستخدم لإغلاقها أبداً
+        'full-profile-page', 'settings-page', 'recharge-page' // "أماكن" راوتر حقيقية تُدير سجلّها بنفسها (enterRoutePath/navigate) — تسجيلها هنا يُضاعف الإدخالة
+    ]);
     const overlayStack = [];
-    function registerOverlay(removeFn) {
-        let closed = false;
-        function close({ fromPopState = false } = {}) {
-            if (closed) return;
-            closed = true;
-            try { removeFn(); } catch (e) {}
-            if (!fromPopState) {
-                const idx = overlayStack.lastIndexOf(close);
-                if (idx !== -1) overlayStack.splice(idx, 1);
-                if (idx === overlayStack.length) { try { history.back(); } catch (e) {} } // كانت الأعلى فعلاً — تستهلك إدخالتها
-            }
-        }
-        try { history.pushState({ overlay: true }, '', location.href); } catch (e) {}
-        overlayStack.push(close);
-        return close;
+    // 🛡️ مراجعة #152: إدخالات سجلّ "يتيمة" — نافذة أُزيلت وهي مدفونة لا الأعلى (إغلاق دفاعي من
+    // كود آخر، حالة نادرة لكن ممكنة) فلا تُستهلك إدخالتها فوراً (استهلاكها كـtop كان سيُغلق
+    // الخطأ). تتراكم هنا وتُسدَّد عند أقرب إغلاق/فتح حقيقي يحسم صافي الحركة — فلا يبقى سجلّ
+    // المتصفح وoverlayStack منحرفين عن بعضهما أبداً (ضغطة رجوع "لا تفعل شيئاً" ظاهرياً)
+    let orphanedCloseDebt = 0;
+    function isAutoOverlayNode(node) {
+        // 🐛 إصلاح جوهري: ~15 نافذة فعلية (منها pinPadModal وورقة مساعدة شام كاش — تماماً "لوحة
+        // PIN" و"صورة المساعدة" المطلوب التحقق منهما) تُنشَأ بلا .id إطلاقاً (تُغلَق بمرجع متغيّر
+        // محلي لا بمعرّف DOM). اشتراط .id هنا كان يتجاوزها بصمت فلا تُرصَد مطلقاً. المقارنة
+        // بمرجع العنصر نفسه بالمكدّس (overlayStack.includes/indexOf) لا تحتاج .id أصلاً —
+        // الاستثناء بالمعرّف فقط لو كان .id موجوداً فعلاً، لا شرطاً لرصدها من الأساس
+        if (!(node instanceof HTMLElement)) return false;
+        if (node.id && AUTO_OVERLAY_EXCLUDED_IDS.has(node.id)) return false;
+        // 🛡️ مراجعة #152 (بند 2): تأثيرات بصرية تلقائية الظهور (كونفيتي كومبو الهدايا gfx-layer/
+        // gfx-canvas، شارة معلم gfx-legend، توهّج هدف الجولة التعريفية .rtour) تطابق توقيع
+        // fixed+inset:0 بالمصادفة فقط — بلا أي تفاعل مستخدم، وتُزال تلقائياً بمؤقّت داخلي لا بفعل
+        // المستخدم. pointer-events:none هو العلامة الموجودة فعلاً على كل تأثير من هذي (لا تستقبل
+        // أي ضغطة أصلاً — هذا سبب استخدامها لها بالأساس) — استثناؤها يمنع "رجوع" من إغلاق تأثير
+        // عابر بدل نافذة المستخدم الحقيقية تحته، ويمنع إدخالة سجلّ يتيمة حين تُزال التأثيرات هذي
+        // تلقائياً بينما نافذة أخرى مفتوحة فوقها. data-no-back مَخرَج صريح إضافي لأي نافذة تلقائية
+        // الظهور أخرى مستقبلاً لا تستخدم pointer-events:none لسبب ما
+        if (node.hasAttribute('data-no-back')) return false;
+        const cs = getComputedStyle(node);
+        if (cs.pointerEvents === 'none') return false;
+        return cs.position === 'fixed' && cs.top === '0px' && cs.right === '0px' && cs.bottom === '0px' && cs.left === '0px';
     }
-    // ✅ تُستدعى قبل أي تغيير "مكان" حقيقي (navigate/renderRoute) — تُغلق كل نافذة عامة مسجَّلة
-    // + أي "مكان" آخر ذو واجهة ملء الشاشة لا يستخدم المكدّس العام (ملف شخصي كامل/إعدادات/شحن)
-    // كي لا يبقى أي منها خلف المكان الجديد
+    // ✅ mobile-more-sheet (الوحيدة من نوعها حالياً) تبقى بـDOM دوماً وتُغلَق بإضافة hidden —
+    // remove() الفعلي يحذفها نهائياً فلا تُفتَح ثانية أبداً (getElementById يُعيد null لاحقاً)
+    function closeOverlayNode(node) {
+        if (node.id === 'mobile-more-sheet') { node.classList.add('hidden'); node.classList.remove('flex'); return; }
+        node.remove();
+    }
+    // 🛡️ مراجعة #152 (بند 1، سباق): الخطّاف اليدوي لـmobile-more-sheet (أدناه) يُغيّر DOM خارج
+    // ما يرصده المراقب (صنف لا childList)، فلا يمكن الاعتماد على دفعة المراقب وحدها لتجميع
+    // "إغلاق سيُغلَق هو بخطّاف يدوي + فتح حقيقي بنفس اللحظة المتزامنة" بصفقة واحدة. الحل: كل
+    // فتح/إغلاق (من المراقب أو من خطّاف يدوي) يراكم بمصفوفتين مشتركتين ويطلب "دفعة تسوية" واحدة
+    // مؤجَّلة لمايكروتاسك — طلبات متعددة بنفس اللحظة المتزامنة تتشارك دفعة واحدة فقط (علَم single-
+    // flight). عند تنفيذ الدفعة، نسحب أولاً overlayObserver.takeRecords() (أي سجلّات DOM حقيقية
+    // وصلت فعلياً لكن لم يُسلِّمها callback المراقب الطبيعي بعد لأن دفعتنا المؤجَّلة سبقته بالترتيب)
+    // فتُضَم لنفس الدفعة قبل حساب الصافي النهائي — يحسم هذا كل تتابع ممكن (إغلاق يدوي ثم فتح حقيقي،
+    // أو العكس) دون تطبيق history.back()/pushState منفصلين متسابقين لحدثين وقعا بنفس اللحظة الفعلية
+    const pendingOpened = [];
+    const pendingClosedTop = [];
+    let reconcileScheduled = false;
+    let inReconcilePass = false;
+    function processRemoval(node) {
+        const idx = overlayStack.indexOf(node);
+        if (idx === -1) return;
+        const wasTop = idx === overlayStack.length - 1;
+        overlayStack.splice(idx, 1);
+        if (wasTop) pendingClosedTop.push(node);
+        else orphanedCloseDebt++; // 🛡️ أُزيلت وهي مدفونة لا الأعلى (حالة نادرة — إغلاق دفاعي من كود آخر) — راجع reconcileHistory
+        scheduleReconcile();
+    }
+    function processAddition(node) {
+        if (isAutoOverlayNode(node) && !overlayStack.includes(node)) {
+            overlayStack.push(node);
+            pendingOpened.push(node);
+            scheduleReconcile();
+        }
+    }
+    function scheduleReconcile() {
+        if (inReconcilePass || reconcileScheduled) return; // دفعة واحدة تكفي لكل ما تراكم بنفس اللحظة المتزامنة؛ لا نُعيد الجدولة من داخل الدفعة نفسها (راجع runReconcile)
+        reconcileScheduled = true;
+        queueMicrotask(runReconcile);
+    }
+    // 🐛 سباق خطير: history.back() غير متزامنة فعلياً (popstate الناتج يصل بمهمة لاحقة، لا فوراً) —
+    // فلو أُغلقت نافذة وفُتحت أخرى بنفس اللحظة المتزامنة (زرّ بورقة يُغلقها هو نفسه يفتح نافذة
+    // تأكيد، مثال "خروج" بـroom-exit-options-sheet يفتح end-broadcast-confirm-modal فوراً)، كان
+    // history.back() المجدولة تصل بعد history.pushState() للنافذة الجديدة فتُغلقها هي خطأً بدل
+    // النافذة الأصلية. تجميع صافي الفتح/الإغلاق بدفعة واحدة وتطبيق عملية history واحدة صافية
+    // بالنهاية يحسم السباق — إغلاق+فتح بنفس اللحظة (الصافي صفر) لا يلمس history إطلاقاً (الإدخالة
+    // الحالية تبقى تمثّل "نافذة ما مفتوحة" بصرف النظر عن أيّها بالضبط). orphanedCloseDebt (أعلاه)
+    // يُسدَّد بنفس هذي التسوية — مطروحاً من صافي إغلاق حقيقي قادم، أو فوراً لو لم يبقَ أي شيء
+    // مفتوح أصلاً بعد هذي الدفعة (لا يوجد "إغلاق أعلى" مستقبلي ليُسدَّد معه)
+    function runReconcile() {
+        reconcileScheduled = false;
+        inReconcilePass = true;
+        const extraRecords = overlayObserver.takeRecords();
+        for (const m of extraRecords) {
+            m.addedNodes.forEach(processAddition);
+            m.removedNodes.forEach(processRemoval);
+        }
+        inReconcilePass = false;
+        const openedCount = pendingOpened.length, closedTopCount = pendingClosedTop.length;
+        pendingOpened.length = 0; pendingClosedTop.length = 0;
+        let net = openedCount - closedTopCount;
+        if (net < 0) { net -= orphanedCloseDebt; orphanedCloseDebt = 0; }
+        else if (net > 0) { orphanedCloseDebt = 0; }
+        else if (overlayStack.length === 0 && orphanedCloseDebt > 0) { net -= orphanedCloseDebt; orphanedCloseDebt = 0; }
+        if (net > 0) { for (let i = 0; i < net; i++) { try { history.pushState({ overlay: true }, '', location.href); } catch (e) {} } }
+        else if (net < 0) { for (let i = 0; i < -net; i++) { try { history.back(); } catch (e) {} } }
+    }
+    // ✅ mobile-more-sheet خطّافها الخاص الصريح (لا مراقبة صنف عامة على الشجرة كلها — راجع مراجعة
+    // #152 بند 1) — تعيد استخدام نفس processAddition/processRemoval المشتركة مع المراقب أدناه
+    function openMobileMoreSheet() {
+        const sheet = document.getElementById('mobile-more-sheet');
+        if (!sheet || !sheet.classList.contains('hidden')) return;
+        sheet.classList.remove('hidden');
+        sheet.classList.add('flex');
+        processAddition(sheet);
+    }
+    function closeMobileMoreSheet() {
+        const sheet = document.getElementById('mobile-more-sheet');
+        if (!sheet || sheet.classList.contains('hidden')) return;
+        sheet.classList.add('hidden');
+        sheet.classList.remove('flex');
+        processRemoval(sheet);
+    }
+    // 🛡️ مراجعة #152 (بند 1، أداء): كانت subtree:true + attributes على document.body كلّه —
+    // كل رسالة دردشة/تحديث مقعد/نبضة "يتحدّث الآن" بغرفة مزدحمة تُطلِق استدعاء المراقب (recalc
+    // أنماط فعلي لكل عنصر) آلاف المرّات بالدقيقة على أجهزة ضعيفة، رغم أن كل هذا لا علاقة له
+    // بالنوافذ إطلاقاً. كل نافذة بالتطبيق بلا استثناء تُضاف مباشرة كابن مباشر لـdocument.body
+    // أو لـ#game-container (لا أعمق من ذلك أبداً) — childList فقط على هذين الهدفين (بلا subtree
+    // وبلا attributes) يرصدها جميعاً بدقّة ودون أي حساسية لما يحدث أعمق بالشجرة (الدردشة/المقاعد/
+    // الأنيميشن كلها أعمق بكثير من ابن مباشر، فلا تُولِّد أي استدعاء للمراقب هنا على الإطلاق)
+    const overlayObserver = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            m.addedNodes.forEach(processAddition);
+            m.removedNodes.forEach(processRemoval);
+        }
+    });
+    overlayObserver.observe(document.body, { childList: true });
+    const overlayObserverGameContainer = document.getElementById('game-container');
+    if (overlayObserverGameContainer) overlayObserver.observe(overlayObserverGameContainer, { childList: true });
+    // ✅ تُستدعى قبل أي تغيير "مكان" حقيقي (navigate/renderRoute) — تُغلق كل نافذة مرصودة
+    // + أي "مكان" آخر ذو واجهة ملء الشاشة لا يُستثنى أعلاه (ملف شخصي كامل/إعدادات/شحن) كي لا
+    // يبقى أي منها خلف المكان الجديد. تُزيل مباشرة من overlayStack نفسه (لا عبر processRemoval) —
+    // فحين تصل سجلّات الإزالة المقابلة لاحقاً (مباشرة عبر المراقب، أو عبر takeRecords()
+    // بـrunReconcile)، idx=-1 لكل عنصر منها (أُزيل من المصفوفة فعلاً) فلا تُسجَّل أي إدخالة سجلّ
+    // "يتيمة" جديدة ولا history.back() لها؛ إدخالاتها الفعلية بالسجلّ تبقى يتيمة عمداً هنا (بصرف
+    // النظر عن المكدّس)، يتجاوزها مستمع popstate بصمت بنفس المسار (renderRoute على نفس المسار لا
+    // يغيّر شيئاً) فتبقى التجربة سليمة. لو كان أحدها فُتح بنفس دفعة التسوية المعلّقة الحالية ولم
+    // تُطبَّق لها history.pushState بعد (pendingOpened)، نُلغيه من هناك أيضاً — فُتح وأُغلق قسراً
+    // بنفس اللحظة الفعلية فلا صافي تاريخ له إطلاقاً (بلا هذا كان سيُحسَب +1 خطأً بالتسوية القادمة)
     function closeAllOverlays() {
-        while (overlayStack.length) { overlayStack.pop()({ fromPopState: true }); }
+        while (overlayStack.length) {
+            const node = overlayStack.pop();
+            const pendingIdx = pendingOpened.indexOf(node);
+            if (pendingIdx !== -1) pendingOpened.splice(pendingIdx, 1);
+            closeOverlayNode(node);
+        }
+        orphanedCloseDebt = 0; // ✅ أي دين معلّق من قبل يتلاشى هنا أيضاً — إعادة ضبط كاملة للمكان الجديد، لا تسوية جزئية لاحقة تستهلك خطوة رجوع إضافية خطأً لحدث لا علاقة له بهذا الانتقال
         document.getElementById('full-profile-page')?.remove();
         document.getElementById('settings-page')?.remove();
         document.getElementById('recharge-page')?.remove();
@@ -709,8 +842,20 @@ document.addEventListener('DOMContentLoaded', () => {
         renderRoute(target);
     }
 
+    // 🛡️ fix/back-everywhere-ended-room: 1) نافذة مرصودة مفتوحة؟ تُغلَق (ضغطة الرجوع الحقيقية
+    // استهلكت إدخالتها بنفسها فعلاً — نُغلقها بصرياً فقط مباشرة من overlayStack، بلا المرور على
+    // processRemoval/reconcileHistory اللذين يُطلِقان history.back() إضافية خطأً فوق ما حدث
+    // فعلاً بهذي الضغطة). 2) لا نافذة، لكننا داخل غرفة مستخدم (لا الرسمية)؟ "رجوع" يُصغّرها
+    // لفقاعتها العائمة بدل مغادرة المقعد/البث صمتاً. 3) غير ذلك: تنقّل راوتر عادي
     window.addEventListener('popstate', () => {
-        if (overlayStack.length > 0) { overlayStack.pop()({ fromPopState: true }); return; }
+        if (overlayStack.length > 0) {
+            closeOverlayNode(overlayStack.pop());
+            return;
+        }
+        if (document.body.classList.contains('in-voice-room') && currentVoiceRoomId && currentVoiceRoomId !== 'main') {
+            minimizeVoiceRoomView(currentRoomFullObject || { id: currentVoiceRoomId });
+            return;
+        }
         renderRoute(location.pathname);
     });
 
@@ -730,16 +875,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // زر "المزيد" بالهاتف
         document.getElementById('mobile-more-btn')?.addEventListener('click', () => {
-        document.getElementById('mobile-more-sheet')?.classList.remove('hidden');
-        document.getElementById('mobile-more-sheet')?.classList.add('flex');
+        openMobileMoreSheet();
         document.getElementById('mobile-more-badge')?.classList.add('hidden');
     });
             // ✅ إغلاق قائمة "المزيد" بالنقر خارجها — تم إصلاحه لأن onclick المضمّن بـ HTML كانت تمنعه سياسة CSP
     document.getElementById('mobile-more-sheet')?.addEventListener('click', (e) => {
-        if (e.target.id === 'mobile-more-sheet') {
-            e.currentTarget.classList.add('hidden');
-            e.currentTarget.classList.remove('flex');
-        }
+        if (e.target.id === 'mobile-more-sheet') closeMobileMoreSheet();
     });
     document.querySelectorAll('.mobile-sheet-item').forEach(item => {
         item.addEventListener('click', () => switchToView(item.dataset.target));
@@ -751,8 +892,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ✅ زر "ملفي الشخصي" داخل قائمة المزيد
     document.getElementById('mobile-sheet-my-profile-btn')?.addEventListener('click', () => {
-        document.getElementById('mobile-more-sheet')?.classList.add('hidden');
-        document.getElementById('mobile-more-sheet')?.classList.remove('flex');
+        closeMobileMoreSheet();
         showMyProfileHub();
     });
     // ✅ سطح المكتب: الصورة الشخصية بالشريط الجانبي كانت غير قابلة للنقر إطلاقاً — تفتح الآن
@@ -2785,13 +2925,15 @@ document.addEventListener('DOMContentLoaded', () => {
             goToRoomRankingsLeaderboard();
         });
 
-        // ✅ أيقونة الإنشاء: عنده غرفة بالفعل → تدخله لها مباشرة (غرفة واحدة فقط لكل مستخدم)
+        // ✅ أيقونة الإنشاء: عنده غرفة بالفعل → تدخله لها مباشرة لو مباشرة فعلاً، أو تعرض عليه
+        // بدء بث جديد لو انتهى بثّها السابق (fix/back-everywhere-ended-room — غرفة واحدة فقط لكل مستخدم)
         document.getElementById('create-room-fab').addEventListener('click', async () => {
             try {
                 const response = await fetch('/api/voice-room/my-room', { headers: { 'Authorization': `Bearer ${token}` } });
                 const result = await response.json();
                 if (result.status === 'success' && result.room) {
-                    enterVoiceRoom(result.room);
+                    if (result.room.isLive) enterVoiceRoom(result.room);
+                    else startMyBroadcastAndEnter(result.room);
                 } else {
                     showCreateRoomModal();
                 }
@@ -2804,6 +2946,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     let currentRoomPassword = null; // ✅ كلمة المرور المُتحقق منها للغرفة المعروضة حالياً (لإعادة المزامنة عند إعادة الاتصال)
+    let currentRoomFullObject = null; // 🛡️ fix/back-everywhere-ended-room: نسخة كاملة من كائن الغرفة المعروضة حالياً — زرّ الرجوع يستخدمها لتصغيرها بدل مغادرتها
     let currentRoomMyRole = 'guest'; // ✅ دوري بالغرفة المعروضة حالياً: host / moderator / guest
     let currentRoomModerators = []; // ✅ قائمة مسؤولي الغرفة المعروضة حالياً (لعرضهم بنافذة الإعدادات)
     let currentRoomHostId = null; // ✅ معرّف مضيف الغرفة المعروضة حالياً (لعرض تاج المضيف بجانب اسمه بالدردشة)
@@ -2920,6 +3063,20 @@ document.addEventListener('DOMContentLoaded', () => {
         showCustomRoomView(room, password || null);
     }
 
+    // 🛡️ fix/back-everywhere-ended-room: الفعل الصريح الوحيد الآن لبدء بث جديد بغرفة انتهى
+    // بثّها — لا بدء تلقائي عند مجرّد دخولها/إعادة تحميل رابطها (راجع fetchAndRenderVoiceSnapshot).
+    // تنتظر تأكيد الخادم الفعلي (ack حقيقي عبر socket.timeout) قبل محاولة الدخول — enterVoiceRoom
+    // سيُحضِر بيانات الغرفة من جديد عبر getRoomById التي ترفض أي غرفة غير مباشرة الآن بلا استثناء،
+    // فمحاولة الدخول قبل اكتمال البدء فعلياً بالخادم كانت ستفشل بـ404 رغم نجاح البدء خلال أجزاء ثانية
+    function startMyBroadcastAndEnter(room) {
+        showConfirmationModal('هل تريد بدء بث مباشر جديد بغرفتك؟', () => {
+            socket.timeout(6000).emit('host-start-broadcast', { roomId: room.id }, (err, ack) => {
+                if (err || !ack || !ack.ok) { showNotification('تعذّر بدء البث، حاول مجدداً', 'error'); return; }
+                enterVoiceRoom(room);
+            });
+        });
+    }
+
     // ✅ نافذة كلمة مرور أنيقة للغرف الخاصة — بنفس أسلوب نوافذ التطبيق الأخرى (بدل prompt المتصفح الافتراضي)
     function promptRoomPassword(onConfirm) {
         const modal = document.createElement('div');
@@ -2959,6 +3116,7 @@ document.addEventListener('DOMContentLoaded', () => {
             leaveVoiceSeat();
         }
         currentVoiceRoomId = room.id;
+        currentRoomFullObject = room; // ✅ back-button minimize (popstate أدناه) يحتاج بيانات الغرفة الكاملة
         currentRoomPassword = password || null;
         currentRoomMyRole = 'guest';
         currentRoomHostId = null;
@@ -3969,7 +4127,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         document.body.appendChild(modal);
-        const closeUserProfileSheet = registerOverlay(() => modal.remove());
+        const closeUserProfileSheet = () => modal.remove(); // 🛡️ المراقب العام يرصد إزالتها بنفسه الآن (fixed inset-0)
         modal.addEventListener('click', (e) => { if (e.target.id === 'user-profile-sheet') closeUserProfileSheet(); });
 
         try {
@@ -4287,30 +4445,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (response.status === 403 && result.kicked) {
                 showNotification(result.message || 'تم طردك من هذي الغرفة', 'error');
-                showRoomBrowserView();
+                navigate('/');
                 return false;
             }
             if (response.status === 403 && result.requiresPassword) {
                 showNotification('كلمة مرور الغرفة غير صحيحة', 'error');
-                showRoomBrowserView();
+                navigate('/');
                 return false;
             }
             if (response.status === 404 && result.broadcastEnded) {
                 showNotification('انتهى البث المباشر بهذي الغرفة', 'info');
-                showRoomBrowserView();
+                navigate('/');
                 return false;
             }
             if (!response.ok || result.status !== 'success') return false;
 
+            // 🛡️ fix/back-everywhere-ended-room: المضيف لم يعد مستثنى من فحص "غير مباشر" أعلاه
+            // (getRoomById) — وصولنا لهذي النقطة يعني الغرفة مباشرة فعلاً دوماً، مضيفاً كان أو
+            // ضيفاً، فلا حاجة لأي بدء بث تلقائي هنا بعد الآن (كان هو جذر علّة "إعادة التحميل
+            // تُعيد فتح البث المُنهى" — يبدأ المضيف بثاً جديداً بفعل صريح فقط، راجع
+            // startMyBroadcastAndEnter)
             if (result.myRole) {
                 currentRoomMyRole = result.myRole;
                 // ✅ زر المتابعة لا معنى له للمضيف بغرفته نفسها ولا بالغرفة الرسمية (بلا مالك) — يظهر للضيوف فقط
                 const headerFollowBtn = document.getElementById('room-header-follow-btn');
                 if (headerFollowBtn) headerFollowBtn.classList.toggle('hidden', currentRoomMyRole === 'host' || result.isOfficial);
-                // ✅ المضيف فتح غرفته وهي غير مباشرة حالياً — يبدأ جلسة بث جديدة تلقائياً وفورياً
-                if (currentRoomMyRole === 'host' && result.isLive === false) {
-                    socket.emit('host-start-broadcast', { roomId });
-                }
             }
             currentRoomHostId = result.host?.id || result.host?._id || null;
             currentRoomHostUsername = result.host?.username || currentRoomHostUsername;
@@ -9859,6 +10018,11 @@ function showXpGainAnimation(amount) {
             applyMusicState(null);
         }
         if (payload.roomId !== currentVoiceRoomId) return;
+        // 🛡️ fix/back-everywhere-ended-room: الرابط يُصحَّح لـ/ فوراً هنا — لا ننتظر ضغطة "رجوع
+        // لقائمة الغرف" بشاشة الملخّص. بدونه، إعادة تحميل الصفحة أثناء مشاهدة شاشة "انتهى بثّك"
+        // (قبل الضغط على الزر) كانت تُبقي الرابط على /room/:id — فحتى مع إصلاح عدم إعادة بدء
+        // البث تلقائياً، تبقى تجربة غريبة (رسالة "انتهى البث" بدل العودة لنفس شاشة الملخّص)
+        navigate('/', { replace: true });
         // ✅ المضيف نفسه يشوف ملخّصاً بسيطاً (مدة بثّه فقط) — لا صورته ولا زر متابعة لنفسه،
         // ولا انتقال عشوائي لغرفة أخرى، فقط رجوع مباشر لقائمة التصفح
         if (currentRoomMyRole === 'host') {
@@ -10988,7 +11152,7 @@ async function showMyProfileHub() {
     `;
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const page = document.getElementById('profile-hub-page');
-    const closeHub = registerOverlay(() => page.remove());
+    const closeHub = () => page.remove(); // 🛡️ المراقب العام يرصد إزالتها بنفسه الآن (profile-hub-backdrop = fixed inset-0)
     page.addEventListener('click', (e) => { if (e.target.id === 'profile-hub-page') closeHub(); });
 
     // ✅ تحميل تدريجي (قاعدة دائمة بـCLAUDE.md): الهيكل + ما بالذاكرة فوراً بلا انتظار الشبكة،
@@ -12118,7 +12282,7 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
         </div>
     `;
     document.body.appendChild(modal);
-    const closeFollowSheet = registerOverlay(() => modal.remove());
+    const closeFollowSheet = () => modal.remove(); // 🛡️ المراقب العام يرصد إزالتها بنفسه الآن (fixed inset-0)
     modal.addEventListener('click', (e) => { if (e.target.id === 'follow-connections-sheet') closeFollowSheet(); });
     document.getElementById('close-follow-connections').addEventListener('click', () => closeFollowSheet());
 
@@ -12238,13 +12402,11 @@ async function showFollowConnectionsSheet(userId, username, initialTab = 'follow
     document.getElementById('fc-list').addEventListener('click', (e) => {
         const item = e.target.closest('.follow-live-now-item');
         if (!item) return;
-        // ✅ fix/follow-ux-realtime: يغلق كل الطبقات المفتوحة فوق هذي النافذة (ملف مصغّر/كامل/مركز
-        // الملف) قبل الدخول — بدونه كانت الغرفة تُفتح خلف هذي الطبقات لو كانت مفتوحة أسفلها
-        modal.remove();
-        document.getElementById('mini-profile-modal')?.remove();
-        document.getElementById('user-profile-sheet')?.remove();
-        closeFullProfilePage();
-        document.getElementById('profile-hub-page')?.remove();
+        // 🛡️ fix/back-everywhere-ended-room: enterVoiceRoom (عبر enterRoutePath/closeAllOverlays)
+        // تُغلق كل طبقة مفتوحة فوقه بنفسها الآن تلقائياً (مكدّس النوافذ العام يرصد أي نافذة
+        // ملء شاشة بصرف النظر عن اسمها) — لا حاجة لإغلاقها يدوياً هنا واحدة تلو الأخرى؛ إزالات
+        // متتالية يدوية هنا كانت تُطلِق history.back() متعددة متسابقة (كل نافذة مرصودة تُستهلَك
+        // عند إزالتها) بدل استهلاك واحد نظيف عبر closeAllOverlays (تُزيل مباشرة من overlayStack)
         enterVoiceRoom({
             id: item.dataset.roomId, name: item.dataset.roomName,
             coverImage: item.dataset.cover || null, isOfficial: false,
@@ -12795,7 +12957,7 @@ async function showMiniProfileModal(userId) {
          document.getElementById('game-container').insertAdjacentHTML('beforeend', modalHTML);
         const modal = document.getElementById('mini-profile-modal');
         modal.dataset.userId = profileUser._id;
-        const closeMini = registerOverlay(() => modal.remove());
+        const closeMini = () => modal.remove(); // 🛡️ المراقب العام يرصد إزالتها بنفسه الآن (fixed inset-0)
 
         // ✅ الإصلاح 3 (الوميض): تم حذف معالج زر الصداقة المكرر من هنا نهائياً.
         // المعالج العام في document.body يتكفل به وحده الآن، فلا يوجد استدعاء مزدوج بعد اليوم
