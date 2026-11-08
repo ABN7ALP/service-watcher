@@ -653,6 +653,74 @@ document.addEventListener('DOMContentLoaded', () => {
         'full-profile-page', 'settings-page', 'recharge-page' // "أماكن" راوتر حقيقية تُدير سجلّها بنفسها (enterRoutePath/navigate) — تسجيلها هنا يُضاعف الإدخالة
     ]);
     const overlayStack = [];
+    // 🛡️ fix/router-regressions: popstate لا يملك طريقة مدمجة ليُفرِّق history.back() استدعاها
+    // الكود نفسه (مثال: runReconcile عند إغلاق نافذة بالنقر خارجها) عن ضغطة رجوع حقيقية من
+    // المستخدم — كلاهما يصل كـpopstate واحد لا فرق. بدونه: تصغير مودال ملف مصغّر بالنقر خارجه
+    // داخل غرفة كان يُطلِق history.back() (استهلاك إدخالة النافذة المغلقة) فيرى مستمع popstate
+    // اللاحق overlayStack فاضياً وهو لا يزال داخل الغرفة فيُصغِّرها خطأً (المستخدم لم يضغط رجوع
+    // إطلاقاً). كل history.back() برمجي بالملف (هنا وبإغلاق صفحات الإعدادات/الملف الكامل/الشحن)
+    // يمرّ من selfInitiatedBack() فيزيد العدّاد؛ أول popstate يصله بعدها يستهلك عدّاداً واحداً
+    // ويعود فوراً بلا أي أثر جانبي آخر — كل تلك الاستدعاءات تُنظِّف حالتها (DOM/overlayStack)
+    // بنفسها متزامنة بالفعل *قبل* استدعاء history.back()، فلا شيء يحتاج تنفيذه لاحقاً عند وصول
+    // الـpopstate المقابل أصلاً؛ هو فقط يستهلك إدخالة السجلّ الصحيحة بصمت
+    let expectedSelfPops = 0;
+    let expectedSelfPopsSafetyTimer = null;
+    // 🛡️ مراجعة #153: العمق يُقرَأ من history.state نفسه (لا متغيّر JS منفصل) — فيُحسَم بشكل
+    // صحيح تلقائياً عند إعادة التحميل (المتصفح يُبقي state الإدخالة الحالية كما هي) أو استعادة
+    // تبويب، بعكس عدّاد عادي كان سينحرف فور أي تنقّل حقيقي بزرّي رجوع/تقدّم المتصفح. إدخالة
+    // الهبوط (أول state نكتبه بالتبويب) تُقرأ بعمق 0 تلقائياً لأن state يبدأ null دوماً قبلها
+    function currentHistoryDepth() {
+        return (history.state && typeof history.state.depth === 'number') ? history.state.depth : 0;
+    }
+    function pushAppState(path) {
+        try { history.pushState({ app: true, depth: currentHistoryDepth() + 1 }, '', path); } catch (e) {}
+    }
+    // depth مُمرَّرة تُثبّت عمقاً جديداً (تُستخدَم فقط بإدخالة الهبوط)؛ بغيابها يُحفَظ العمق الحالي
+    // كما هو — replaceState يُبدِّل نص رابط الإدخالة الحالية نفسها فقط، لا موضعها بسجلّ المتصفح
+    function replaceAppState(path, depth) {
+        try { history.replaceState({ app: true, depth: typeof depth === 'number' ? depth : currentHistoryDepth() }, '', path); } catch (e) {}
+    }
+    // ⏱ ضمانة أخيرة: لو لم يصل popstate المقابل لـhistory.back()/go(-n) إطلاقاً (حالة نادرة لا
+    // يفسّرها عمق>0 المحسوب هنا، لكن ممكنة تقنياً) كان العدّاد سيبقى عالقاً للأبد ويُبطِل أول
+    // ضغطة رجوع حقيقية لاحقة بصمت — مهلة سخية (أطول بكثير من أي popstate حقيقي بأي جهاز) تُصفِّره
+    function armExpectedSelfPopsSafetyNet() {
+        if (expectedSelfPopsSafetyTimer) clearTimeout(expectedSelfPopsSafetyTimer);
+        expectedSelfPopsSafetyTimer = setTimeout(() => { expectedSelfPops = 0; expectedSelfPopsSafetyTimer = null; }, 700);
+    }
+    function consumeExpectedSelfPop() {
+        expectedSelfPops--;
+        if (expectedSelfPops <= 0 && expectedSelfPopsSafetyTimer) { clearTimeout(expectedSelfPopsSafetyTimer); expectedSelfPopsSafetyTimer = null; }
+    }
+    // 🛡️ مراجعة #153: selfInitiatedBack() القديمة افترضت وجود إدخالة سجلّ حقيقية بالتطبيق للرجوع
+    // إليها دوماً. رابط عميق (ملف شخصي/إعدادات) فُتح مباشرة بتبويب جديد (مشاركة واتساب مثلاً)،
+    // أو بعد إعادة تحميل الصفحة وهي عليه، لا يملك أي إدخالة سجلّ حقيقية سابقة بنفس التبويب —
+    // history.back() هنا كان سيُخرِج من الموقع كاملاً (رجوع للمُحيل الخارجي) أو لا يفعل شيئاً (لا
+    // سجلّ سابق إطلاقاً بتبويب جديد)، وبالحالة الثانية خاصة لا popstate يصل أبداً فيبقى
+    // expectedSelfPops عالقاً. عمق الإدخالة الحالية (currentHistoryDepth) يحسم هذا مسبقاً: عمق<=٠
+    // يعني لا يوجد خلفنا شيء حقيقي بالتطبيق — نُصحِّح الرابط والمحتوى المعروض لمكان حقيقي (الرئيسية)
+    // مباشرة بدل استدعاء history.back() إطلاقاً؛ الكود المستدعي نظّف عنصره بالفعل متزامناً قبل هنا
+    function selfInitiatedBackSteps(n, onFail) {
+        if (n <= 0) return;
+        const depth = currentHistoryDepth();
+        if (depth <= 0) {
+            replaceAppState('/', 0);
+            renderRoute('/');
+            return;
+        }
+        const steps = Math.min(n, depth); // لا نرجع أعمق من إدخالات التطبيق الفعلية المتوفرة فعلاً
+        expectedSelfPops += steps;
+        try { if (steps === 1) history.back(); else history.go(-steps); }
+        catch (e) { expectedSelfPops -= steps; if (onFail) onFail(e); return; }
+        armExpectedSelfPopsSafetyNet();
+    }
+    function selfInitiatedBack(onFail) { selfInitiatedBackSteps(1, onFail); }
+    // 🛡️ fix/router-regressions: نقطة إغلاق واحدة مشتركة لصفحة /settings — تُستخدم من زرّ
+    // رجوعها الخاص، ومن النقر خارجها، ومن مستمع popstate (بند 5، أدناه) حين تكون مُكدَّسة فوق
+    // نافذة أخرى مفتوحة وتصلنا ضغطة رجوع حقيقية من المستخدم لا عبر زرّها هي
+    function closeSettingsPage() {
+        document.getElementById('settings-page')?.remove();
+        if (window.location.pathname === '/settings') selfInitiatedBack();
+    }
     // 🛡️ مراجعة #152: إدخالات سجلّ "يتيمة" — نافذة أُزيلت وهي مدفونة لا الأعلى (إغلاق دفاعي من
     // كود آخر، حالة نادرة لكن ممكنة) فلا تُستهلك إدخالتها فوراً (استهلاكها كـtop كان سيُغلق
     // الخطأ). تتراكم هنا وتُسدَّد عند أقرب إغلاق/فتح حقيقي يحسم صافي الحركة — فلا يبقى سجلّ
@@ -743,8 +811,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (net < 0) { net -= orphanedCloseDebt; orphanedCloseDebt = 0; }
         else if (net > 0) { orphanedCloseDebt = 0; }
         else if (overlayStack.length === 0 && orphanedCloseDebt > 0) { net -= orphanedCloseDebt; orphanedCloseDebt = 0; }
-        if (net > 0) { for (let i = 0; i < net; i++) { try { history.pushState({ overlay: true }, '', location.href); } catch (e) {} } }
-        else if (net < 0) { for (let i = 0; i < -net; i++) { try { history.back(); } catch (e) {} } }
+        if (net > 0) { for (let i = 0; i < net; i++) { pushAppState(location.href); } }
+        else if (net < 0) { selfInitiatedBackSteps(-net); }
     }
     // ✅ mobile-more-sheet خطّافها الخاص الصريح (لا مراقبة صنف عامة على الشجرة كلها — راجع مراجعة
     // #152 بند 1) — تعيد استخدام نفس processAddition/processRemoval المشتركة مع المراقب أدناه
@@ -801,25 +869,30 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('recharge-page')?.remove();
     }
 
+    // 🛡️ fix/router-regressions (بند 5): settings/recharge/full-profile كل واحدة منها "تفاصيل
+    // ثانوية" تُفتَح غالباً من فوق نافذة أخرى مفتوحة أصلاً (مركز الملف الشخصي مثلاً) — stack:true
+    // تعني "لا تُغلَق أي نافذة أسفلها عند فتحها" (تُكدَّس فوقها بدل استبدالها)، بعكس أماكن التنقّل
+    // الرئيسية (الرئيسية/الرسائل/المتصدّرين + دخول غرفة) التي تبقى تُغلق كل شيء دوماً كالسابق —
+    // "الدخول لغرفة أو تبديل تبويب سفلي فقط" يُغلق النوافذ، لا غيرهما
     function matchRoute(path) {
         const clean = (path || '/').split('?')[0].split('#')[0];
         if (clean === '' || clean === '/' || clean === '/index.html') return { run: () => switchToViewInternal('arena') };
-        if (clean === '/settings') return { run: () => switchToViewInternal('settings') };
+        if (clean === '/settings') return { run: () => switchToViewInternal('settings'), stack: true };
         if (clean === '/messages') return { run: () => switchToViewInternal('messages') };
         if (clean === '/rankings') return { run: () => switchToViewInternal('leaderboard') };
-        if (clean === '/recharge') return { run: () => openRechargePage() };
+        if (clean === '/recharge') return { run: () => openRechargePage(), stack: true };
         let m = clean.match(/^\/room\/([a-fA-F0-9]{24})$/);
         if (m) return { run: () => enterVoiceRoom({ id: m[1], isOfficial: false }) };
         m = clean.match(/^\/u\/(\d{9})$/);
-        if (m) return { run: () => showFullProfilePage(m[1]) };
+        if (m) return { run: () => showFullProfilePage(m[1]), stack: true };
         return null;
     }
 
     // ✅ تُستدعى من navigate() بعد تحديث الرابط، ومن مستمع popstate مباشرة (المتصفح غيّر الرابط
     // فعلاً، لا حاجة لتغييره مجدداً) — لا تلمس history إطلاقاً، فقط تُغلق ما يجب إغلاقه وترسم
     function renderRoute(path) {
-        closeAllOverlays();
         const match = matchRoute(path);
+        if (!match || !match.stack) closeAllOverlays();
         (match || matchRoute('/')).run();
     }
 
@@ -827,18 +900,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // openRechargePage) — تُغلق كل نافذة عامة مفتوحة فوق المكان الحالي، وتقرّر push (مكان جديد
     // فوق مكان حقيقي سابق) أو replace (كانت نافذة عامة مفتوحة — تستبدل إدخالتها بدل أن تبقى
     // يتيمة خلف المكان الجديد). يجب قياس hadOverlays *قبل* closeAllOverlays (تُفرِغ المكدّس)
-    function enterRoutePath(path) {
+    function enterRoutePath(path, { stack = false } = {}) {
+        // ✅ fix/router-regressions (بند 5): صفحة تفاصيل ثانوية تُكدَّس فوق أي نافذة مفتوحة —
+        // إدخالة جديدة مستقلة، بلا لمس overlayStack أو closeAllOverlays إطلاقاً. 🛡️ مراجعة #153:
+        // لولا فحص المسار هنا (كما بفرع عدم التكديس أدناه) كان استعادة الإقلاع لرابط عميق مباشر
+        // (/u/:id، /recharge — navigate(..., {replace:true}) سبق وصحّح الرابط لنفس المسار تماماً)
+        // يدفع إدخالة إضافية زائفة بنفس الرابط النصّي فوق إدخالة الهبوط، فيحتاج المستخدم ضغطتي
+        // رجوع (أولاها صامتة لا تظهر شيئاً) ليخرج فعلاً بدل واحدة، وبينهما الرابط يبقى معلّقاً
+        // بنفس مسار الملف الشخصي رغم إغلاقه فعلياً بصرياً أول ضغطة
+        if (stack) { if (location.pathname !== path) pushAppState(path); return; }
         const hadOverlays = overlayStack.length > 0;
         closeAllOverlays();
-        if (hadOverlays) { try { history.replaceState(null, '', path); } catch (e) {} }
-        else if (location.pathname !== path) { try { history.pushState(null, '', path); } catch (e) {} }
+        if (hadOverlays) { replaceAppState(path); }
+        else if (location.pathname !== path) { pushAppState(path); }
     }
 
     // ✅ نقطة الدخول الوحيدة للانتقال بين الأماكن الرئيسية من أي مكان بالكود
     function navigate(path, { replace = false } = {}) {
         const target = matchRoute(path) ? path : '/';
-        if (replace) { closeAllOverlays(); try { history.replaceState(null, '', target); } catch (e) {} }
-        else enterRoutePath(target);
+        if (replace) { closeAllOverlays(); replaceAppState(target); }
+        else enterRoutePath(target, { stack: !!matchRoute(target)?.stack });
         renderRoute(target);
     }
 
@@ -847,7 +928,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // processRemoval/reconcileHistory اللذين يُطلِقان history.back() إضافية خطأً فوق ما حدث
     // فعلاً بهذي الضغطة). 2) لا نافذة، لكننا داخل غرفة مستخدم (لا الرسمية)؟ "رجوع" يُصغّرها
     // لفقاعتها العائمة بدل مغادرة المقعد/البث صمتاً. 3) غير ذلك: تنقّل راوتر عادي
+    // 🛡️ fix/router-regressions: أولاً دوماً — selfInitiatedBack() سبق واستدعاها كود بالملف
+    // نفسه، لا المستخدم؛ العدّاد>٠ يعني هذا الـpopstate متوقَّع تماماً ونظّف كل حالته بنفسه قبل
+    // استدعاء history.back() أصلاً (راجع تعليق selfInitiatedBack) — استهلاكه بصمت والعودة فوراً
     window.addEventListener('popstate', () => {
+        if (expectedSelfPops > 0) { consumeExpectedSelfPop(); return; }
+        // 🛡️ fix/router-regressions (بند 5): صفحات الراوتر المكدَّسة (إعدادات/شحن/ملف كامل)
+        // مستثناة عمداً من overlayStack (تُدير سجلّها بنفسها) — قد تكون مفتوحة فوق نافذة متتبَّعة
+        // فعلاً (مركز الملف الشخصي مثلاً)، فلو وصلت ضغطة رجوع حقيقية (لا selfInitiatedBack، سبق
+        // واستُهلكت أعلاه) يجب إغلاق الصفحة المكدَّسة الظاهرة فعلياً أولاً — لا النافذة المدفونة
+        // تحتها خطأً عبر فحص overlayStack التالي. location.pathname تغيّر فعلاً الآن (الرجوع
+        // الحقيقي حدث قبل وصولنا هنا)، فدوال الإغلاق هذي لن تستدعي selfInitiatedBack إضافية
+        // (فحصها الداخلي لنفس المسار القديم لن يتحقق بعد الآن) — تُزيل العنصر بصرياً فقط هنا
+        if (document.getElementById('settings-page')) { closeSettingsPage(); return; }
+        if (document.getElementById('recharge-page')) { closeRechargePage(); return; }
+        if (document.getElementById('full-profile-page')) { closeFullProfilePage(); return; }
         if (overlayStack.length > 0) {
             closeOverlayNode(overlayStack.pop());
             return;
@@ -1075,7 +1170,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`/api/voice-room/rooms/${myVoiceRoomId}`, { headers: { 'Authorization': `Bearer ${token}` } });
             const result = await response.json();
             if (response.ok && result.status === 'success') {
-                enterVoiceRoom({ id: result.id, name: result.name, seatCount: result.seatCount, isPrivate: result.isPrivate, isOfficial: false }, currentRoomPassword);
+                enterVoiceRoom(normalizeFullRoomObject(result, myVoiceRoomId), currentRoomPassword);
             } else {
                 showNotification('تعذر الرجوع للغرفة', 'error');
             }
@@ -1185,17 +1280,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function minimizeVoiceRoomView(room) {
-        // 🐛 كان ناقصاً seatCount/isPrivate هنا — عند الرجوع كانت renderVoiceRoomSeats تُستدعى
-        // بـ seatCount = undefined فتفشل حلقة إنشاء المقاعد بصمت (0 <= undefined دائماً خطأ)،
-        // فلا تُرسَم أي مقاعد ولا يظهر أي أحد رغم نجاح الرجوع نفسه فعلياً
-        minimizedRoomInfo = {
-            id: room.id,
-            name: room.name,
-            coverImage: currentRoomCoverImage || room.coverImage || null,
-            isOfficial: !!room.isOfficial,
-            seatCount: room.seatCount,
-            isPrivate: room.isPrivate
-        };
+        // 🛡️ fix/router-regressions: كانت تنتقي فقط id/name/coverImage/isOfficial/seatCount/
+        // isPrivate — فتُفقَد بقية حقول الرد الكامل (الإعلان/الخلفية/المتابعين...) لو أُعيد
+        // استخدام minimizedRoomInfo هذا مباشرة لاحقاً (استئناف ثم تصغير مجدداً مثلاً) بدل إعادة
+        // جلبها من الخادم كل مرة. normalizeFullRoomObject يحتفظ بكل حقل موجود بـroom فعلاً —
+        // coverImage يبقى بالأولوية للقيمة الحيّة الحالية (قد تتغيّر بعد تحديث صورة الغلاف)
+        minimizedRoomInfo = normalizeFullRoomObject(room, room.id);
+        minimizedRoomInfo.coverImage = currentRoomCoverImage || room.coverImage || null;
         exitFullscreenRoomMode();
         showRoomMinimizedBubble();
         // 🐛 إصلاح: showRoomBrowserView() كانت تُغادر قناة دردشة الغرفة فعلياً وتوقف الموسيقى
@@ -1213,7 +1304,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (room.isOfficial) {
             showVoiceRoomsView();
         } else {
-            enterVoiceRoom({ id: room.id, name: room.name, coverImage: room.coverImage, isOfficial: false, seatCount: room.seatCount, isPrivate: room.isPrivate }, currentRoomPassword);
+            // 🛡️ fix/router-regressions: تُمرَّر room (minimizedRoomInfo) كاملةً كما هي الآن — لا
+            // إعادة بناء بحقول معدودة. لو كانت أصلاً كاملة (مرّت بـnormalizeFullRoomObject عند
+            // التصغير) فـenterVoiceRoom تتخطّى fetch-ها الداخلي (followersCount موجود فعلاً)
+            // وتدخل مباشرة؛ لو كانت جزئية (تصغير من مصدر محدود كـcurrentRoomFullObject البديل
+            // بـpopstate) تُكمِل enterVoiceRoom الجلب الكامل بنفسها كالمعتاد
+            enterVoiceRoom(room, currentRoomPassword);
         }
     }
 
@@ -3012,12 +3108,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // بالمعرّف أولاً (/api/voice-room/rooms/:id، نفس مصدر fetchAndRenderVoiceSnapshot ونفس
     // مسار returnToMyRoom الصحيح أصلاً) كلما كان المُمرَّر ناقصاً، بدل افتراض كل مستدعٍ أنه
     // يملك كل الحقول — فلا يبقى مجال لتكرار هذي العلّة بمدخل حالي أو مستقبلي آخر
+    // 🛡️ fix/router-regressions: دالة التوحيد الوحيدة التي تبني كائن الغرفة من رد الخادم الكامل
+    // (GET /api/voice-room/rooms/:id) — تحتفظ بكل حقل يُرجعه الخادم (الإعلان/الخلفية/المتابعين/
+    // المسؤولين/المستوى...) بدل انتقاء حقول معدودة يدوياً كما كان يحدث بكل نقطة دخول على حدة.
+    // كل مكان بالملف يبني/يُعيد بناء كائن غرفة من رد خادم كامل يجب أن يمرّ من هنا، لا يختار حقوله بنفسه
+    function normalizeFullRoomObject(result, fallbackId) {
+        return { ...result, id: result.id || result._id || fallbackId, isOfficial: !!result.isOfficial };
+    }
     async function enterVoiceRoom(room, password) {
         if (room.isOfficial) {
             showVoiceRoomsView();
             return;
         }
-        if (typeof room.seatCount !== 'number') {
+        // 🛡️ fix/router-regressions: seatCount وحده لا يكفي علامة "كائن كامل فعلاً" — كائنات
+        // مُصغَّرة (فقاعة التصغير) أو جزئية (بطاقة قائمة التصفح) تحمله أيضاً بلا بقية حقول الرد
+        // الكامل (الإعلان/الخلفية/المتابعين...)، فتتخطّى هذا الفحص وتصل لـshowCustomRoomView
+        // ناقصة. followersCount حقل يُرسَل فقط من GET /rooms/:id الكامل (حتى لو 0) — لا من أي
+        // بناء جزئي بالملف — علامة أدقّ لـ"هذا رد خادم كامل فعلاً لا كائن جزئي أُعيد تدويره"
+        if (typeof room.followersCount !== 'number') {
             try {
                 const url = `/api/voice-room/rooms/${room.id}${password ? `?password=${encodeURIComponent(password)}` : ''}`;
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
@@ -3041,11 +3149,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     navigate('/');
                     return;
                 }
-                room = {
-                    id: room.id, name: result.name, coverImage: result.coverImage,
-                    isOfficial: false, isPrivate: result.isPrivate, seatCount: result.seatCount,
-                    roomCode: result.roomCode, host: result.host
-                };
+                room = normalizeFullRoomObject(result, room.id);
             } catch (error) {
                 showNotification('تعذّر فتح الغرفة', 'error');
                 return;
@@ -3936,7 +4040,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     exitFullscreenRoomMode();
                     teardownAllVoicePeers();
                 }
-                enterVoiceRoom({ id: room.id, name: room.name, coverImage: room.coverImage, isOfficial: false, isPrivate: room.isPrivate });
+                enterVoiceRoom(room);
             });
         });
     }
@@ -4008,7 +4112,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (cancelled) return;
                 screen.remove();
                 if (nextRoom) {
-                    enterVoiceRoom({ id: nextRoom.id, name: nextRoom.name, seatCount: nextRoom.seatCount, isPrivate: nextRoom.isPrivate, isOfficial: false }, null);
+                    enterVoiceRoom(nextRoom, null);
                 } else {
                     showRoomBrowserView();
                 }
@@ -4519,14 +4623,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result.unlockedSeatCounts) currentRoomUnlockedSeatCounts = result.unlockedSeatCounts;
             if (result.kickedUsers) currentRoomKickedUsers = result.kickedUsers;
             if (result.bannedWords) currentRoomBannedWords = result.bannedWords;
+            if (result.backgroundImage !== undefined) currentRoomBackgroundImage = result.backgroundImage;
+            if (result.backgroundExpiresAt !== undefined) currentRoomBackgroundExpiresAt = result.backgroundExpiresAt;
+            if (result.description !== undefined) currentRoomDescription = result.description;
             updateRoomLevelBadgeUI();
             updateRoomSessionSupportUI();
             updateRoomNoticeUI();
             updateRoomTopSupportersUI();
             updateChatLockUI();
-            if (result.backgroundImage !== undefined) currentRoomBackgroundImage = result.backgroundImage;
-            if (result.backgroundExpiresAt !== undefined) currentRoomBackgroundExpiresAt = result.backgroundExpiresAt;
-            if (result.description !== undefined) currentRoomDescription = result.description;
             applyRoomBackground(currentRoomBackgroundImage);
 
             let foundSeat = null;
@@ -7091,7 +7195,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 modal.remove();
                 showNotification('تم إنشاء غرفتك بنجاح ✅', 'success');
                 // ✅ دخول مباشر للغرفة الجديدة (بدل الرجوع لقائمة التصفح)
-                enterVoiceRoom({ id: result.room.id, name: result.room.name, seatCount: result.room.seatCount, isPrivate: result.room.isPrivate, isOfficial: false });
+                enterVoiceRoom(result.room);
             } catch (error) {
                 showNotification('حدث خطأ، حاول مجدداً', 'error');
                 submitBtn.disabled = false;
@@ -8030,13 +8134,8 @@ async function showSettingsView() {
     `;
     document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
     const page = document.getElementById('settings-page');
-    page.addEventListener('click', (e) => { if (e.target.id === 'settings-page') page.remove(); });
-    // ✅ feat/app-router: navigate('/settings') دفعت إدخالة سجلّ عند الدخول — الرجوع هنا يستهلكها
-    // (history.back) بدل حذف العنصر مباشرة، فلا تبقى إدخالة يتيمة تحتاج ضغطة رجوع إضافية لاحقاً
-    document.getElementById('settings-back-btn').addEventListener('click', () => {
-        if (window.location.pathname === '/settings') { try { history.back(); return; } catch (e) {} }
-        page.remove();
-    });
+    page.addEventListener('click', (e) => { if (e.target.id === 'settings-page') closeSettingsPage(); });
+    document.getElementById('settings-back-btn').addEventListener('click', closeSettingsPage);
 
     document.getElementById('settings-account-btn').addEventListener('click', showSettingsAccountScreen);
     document.getElementById('settings-performance-btn').addEventListener('click', showSettingsPerformanceSheet);
@@ -9999,12 +10098,21 @@ function showXpGainAnimation(amount) {
     });
 
     socket.on('room-broadcast-ended', (payload) => {
-        // ✅ لو كانت غرفتي التي أنا قاعد فيها (حتى وأنا أتصفح مكاناً آخر وقتها) — تصفير الحالة
-        // فوراً يُخفي الفقاعة العائمة تلقائياً (لم تعد هناك غرفة أرجع لها)
         if (myVoiceRoomId === payload.roomId) {
             myVoiceSeatNumber = null;
             myVoiceRoomId = null;
             updateVoiceControlBar();
+        }
+        // 🛡️ fix/router-regressions: نقطة وصول موحَّدة لأي إنهاء بث بصرف النظر عن سببه (✕ بغرفة
+        // الاستكشاف، زرّ "إنهاء البث" بنافذة still-live-modal، أو مكنسة الخادم الدورية
+        // sweepDisconnectedHostBroadcasts عند انقطاع اتصال المضيف) — الخادم يبثّ هذا الحدث نفسه
+        // بكل الحالات الثلاث. كانت الفقاعة العائمة (minimizedRoomInfo) لا تُصفَّر هنا إطلاقاً لو
+        // كانت تخصّ هذي الغرفة، فتبقى معروضة تشير لبثّ منتهٍ فعلياً — ضغطها لاحقاً (غير زرّ ×)
+        // يستدعي enterVoiceRoom فتفشل بصمت بتنبيه "انتهى البث" (معالَجة أصلاً)، لكن ضغط × بالذات
+        // يستدعي exitCurrentVoiceRoomView التي تفتح "إنهاء البث؟" من جديد لبث منتهٍ أصلاً فعلاً
+        if (minimizedRoomInfo && minimizedRoomInfo.id === payload.roomId) {
+            removeRoomMinimizedBubble();
+            showNotification('انتهى البث المباشر بهذي الغرفة', 'info');
         }
         // 🐛 إصلاح: تُغلَق كل اتصالات الصوت أيضاً لو كنت مجرّد "مشاهد" (غير جالس) بنفس هذي
         // الغرفة المعروضة حالياً — بدون هذا كانت تبقى اتصالاتي بالجالسين (الذين اختفوا الآن)
@@ -11446,7 +11554,9 @@ function renderProfileHubBody(u) {
             else { await navigator.clipboard.writeText(shareText); showNotification('تم نسخ رابط المشاركة ✅', 'success'); }
         } catch (e) { /* المستخدم ألغى المشاركة — لا حاجة لأي رد فعل */ }
     });
-    document.getElementById('profile-hub-settings-btn')?.addEventListener('click', () => { document.getElementById('profile-hub-page')?.remove(); switchToView('settings'); });
+    // 🛡️ fix/router-regressions (بند 5): لا تُزيل مركز الملف الشخصي يدوياً هنا بعد الآن — /settings
+    // تُكدَّس فوقه الآن (matchRoute: stack:true)، فيبقى مفتوحاً تحتها ويعود إليه زرّ رجوعها
+    document.getElementById('profile-hub-settings-btn')?.addEventListener('click', () => switchToView('settings'));
     document.getElementById('profile-hub-visitor-eye-btn')?.addEventListener('click', () => showProfileVisitorsSheet());
     document.getElementById('profile-hub-visitors-stat')?.addEventListener('click', () => showProfileVisitorsSheet());
     document.getElementById('profile-hub-visitor-back-btn')?.addEventListener('click', () => { profileHubVisitorMode = false; renderProfileHubBody(u); });
@@ -13086,7 +13196,7 @@ function closeFullProfilePage() {
     } else {
         page?.remove();
     }
-    if (/^\/u\/\d{9}$/.test(location.pathname)) { try { history.back(); } catch (e) {} }
+    if (/^\/u\/\d{9}$/.test(location.pathname)) selfInitiatedBack();
 }
 
 // ✅ يبني رابطاً كاملاً قابلاً للفتح من معرّف/رابط التواصل الاجتماعي المُدخَل بحرية بحقل التحرير
@@ -14604,8 +14714,8 @@ async function showFullProfilePage(userId) {
     // customId الحقيقي — بلا إدخالة سجلّ جديدة (نفس العمق، فقط الشكل النهائي للرابط يتغيّر).
     // فتح ملف آخر فوق ملف مفتوح أصلاً (تصفّح متداخل) يستبدل مكانه هو أيضاً بنفس العمق — لا
     // تكديس لا نهائي لكل ملف يُفتَح من داخل ملف آخر
-    if (existing) { existing.remove(); try { history.replaceState(null, '', `/u/${userId}`); } catch (e) {} }
-    else { enterRoutePath(`/u/${userId}`); }
+    if (existing) { existing.remove(); replaceAppState(`/u/${userId}`); }
+    else { enterRoutePath(`/u/${userId}`, { stack: true }); }
 
     const shellHTML = `
         <div id="full-profile-page" class="full-profile-page-backdrop">
@@ -14651,7 +14761,7 @@ async function showFullProfilePage(userId) {
         if (userRes.status !== 'success') throw new Error();
         const u = userRes.data.user;
         page.dataset.userId = userId; // ✅ قد تغيّر من customId لمعرّف Mongo الحقيقي أعلاه
-        if (u.customId) { try { history.replaceState(null, '', `/u/${u.customId}`); } catch (e) {} }
+        if (u.customId) { replaceAppState(`/u/${u.customId}`); }
         const giftsReceivedCount = (giftSummaryRes && giftSummaryRes.status === 'success') ? giftSummaryRes.data.totalGiftsCount : 0;
         // ✅ تفصيل الهدايا المستلمة حسب النوع (صورة/اسم/عدد) — لعرضه كشريط فيلم قابل للسحب
         // بلوحة الشرف (طلب صريح) بدل رقم إجمالي وحيد بلا تفاصيل
@@ -18829,14 +18939,16 @@ async function openRechargePage(initialTab) {
         if (initialTab) { walletCurrentTab = initialTab; renderWalletTabs(); renderWalletActiveTab(); }
         return;
     }
-    enterRoutePath('/recharge'); // ✅ feat/app-router: يُغلق أي نافذة عامة مفتوحة فوق المكان الحالي أولاً
+    // 🛡️ fix/router-regressions (بند 5): تُكدَّس فوق أي نافذة مفتوحة أصلاً (مركز الملف الشخصي
+    // مثلاً) بدل إغلاقها — زرّ الرجوع بالمحفظة يعود لتلك النافذة نفسها، لا للرئيسية
+    enterRoutePath('/recharge', { stack: true });
     await renderRechargePage(initialTab);
 }
 
 function closeRechargePage() {
     document.getElementById('recharge-page')?.remove();
     if (window.location.pathname === '/recharge') {
-        try { history.back(); } catch (e) { try { history.replaceState(null, '', '/'); } catch (_) {} }
+        selfInitiatedBack(() => { replaceAppState('/'); });
     }
 }
 
