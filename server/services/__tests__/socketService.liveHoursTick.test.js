@@ -17,9 +17,14 @@ jest.mock('../../utils/linkageService', () => ({
     areLinked: jest.fn().mockResolvedValue(false),
     groupLinkedAccounts: jest.fn()
 }));
+// 🛡️ fanclub-v2: نقاط الاستماع تُستدعى من نفس التِك — تُموَّه هنا كي لا تلمس FanClubMembership/
+// FanClubDailyProgress الحقيقيين بلا اتصال قاعدة بيانات فعلي (لها اختبارها الخاص بمحاكاة ذاكرة
+// JS — fanClubController.join.test.js/weekly.test.js — هذا الملف يختبر فقط أن التِك يستدعيها
+// بالشروط الصحيحة، لا سلوكها الداخلي)
+jest.mock('../../controllers/fanClubController', () => ({ awardListeningMinute: jest.fn() }));
 
 let socketService;
-let VoiceRoom, LiveSession, HostDailyStat, SystemSettings, linkageService;
+let VoiceRoom, LiveSession, HostDailyStat, SystemSettings, linkageService, fanClubController;
 
 beforeAll(() => {
     jest.spyOn(global, 'setInterval').mockImplementation(() => ({ unref: () => {} }));
@@ -29,9 +34,15 @@ beforeAll(() => {
     HostDailyStat = require('../../models/HostDailyStat');
     SystemSettings = require('../../models/SystemSettings');
     linkageService = require('../../utils/linkageService');
+    fanClubController = require('../../controllers/fanClubController');
 });
 
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+    jest.restoreAllMocks();
+    // ✅ awardListeningMinute هو jest.fn() من jest.mock(factory) لا jest.spyOn — restoreAllMocks
+    // لا يُصفِّر سجل نداءاته (يُصفِّر السبايز فقط)، فيتراكم عبر كل اختبارات الملف بلا هذا السطر
+    fanClubController.awardListeningMinute.mockClear();
+});
 
 function chainable(value) {
     const p = Promise.resolve(value);
@@ -72,7 +83,7 @@ describe('countQualifyingListeners — hostPresent + استبعاد الحساب
         const io = fakeIoWithViewers('room_1', ['host_1']);
         mockGroups([]);
         const result = await socketService.countQualifyingListeners(io, 'room_1', 'host_1');
-        expect(result).toEqual({ hostPresent: true, listenerCount: 0 });
+        expect(result).toEqual({ hostPresent: true, listenerCount: 0, listenerIds: [] });
         expect(linkageService.groupLinkedAccounts).not.toHaveBeenCalled();
     });
 
@@ -88,7 +99,7 @@ describe('countQualifyingListeners — hostPresent + استبعاد الحساب
         const io = fakeIoWithViewers('room_1', ['host_1', 'v1', 'v2', 'v3']);
         mockGroups([]);
         const result = await socketService.countQualifyingListeners(io, 'room_1', 'host_1');
-        expect(result).toEqual({ hostPresent: true, listenerCount: 3 });
+        expect(result).toEqual({ hostPresent: true, listenerCount: 3, listenerIds: ['v1', 'v2', 'v3'] });
     });
 
     test('مستمع مرتبط بالمضيف (جهاز/محفظة مشتركة) → يُستبعَد تماماً، لا يُحسَب حتى كمجموعة مستقلة', async () => {
@@ -156,6 +167,37 @@ describe('runLiveHoursTick — يُضيف دقيقة فقط عند: حضور ا�
         } finally {
             jest.useRealTimers();
         }
+    });
+
+    // 🛡️ fanclub-v2: نقاط الاستماع تُمنَح لكل مستمع حقيقي حاضر، وفقط عند نفس "ادّعاء الدقيقة"
+    // الذي يُزيد HostDailyStat (updatedSession && qualifies) — لا آلية منع ازدواج منفصلة
+    test('نجاح التِك + مستمعان حقيقيان → awardListeningMinute يُستدعى مرة واحدة لكل مستمع، بنفس يوم التِك', async () => {
+        jest.spyOn(SystemSettings, 'getSettings').mockResolvedValue({ poolMinListeners: 2 });
+        wireRoom('room_1', 'host_1', 'ls_1');
+        mockGroups([]);
+        const io = fakeIoWithViewers('room_1', ['host_1', 'v1', 'v2']);
+
+        await socketService.runLiveHoursTick(io);
+
+        expect(fanClubController.awardListeningMinute).toHaveBeenCalledTimes(2);
+        expect(fanClubController.awardListeningMinute).toHaveBeenCalledWith(io, 'host_1', 'v1', expect.any(Date));
+        expect(fanClubController.awardListeningMinute).toHaveBeenCalledWith(io, 'host_1', 'v2', expect.any(Date));
+    });
+
+    // 🛡️ "لا ازدواج عبر تِكتين/نسختين" — ادّعاء applyTick المرفوض (نفس الحماية المستخدَمة فعلاً
+    // حين يتصادف تِكان على نفس الدقيقة الفعلية، كحاويتين متداخلتين أو إعادة نشر) يمنع نقاط
+    // الاستماع أيضاً، بنفس بالضبط ما يمنع ازدواج HostDailyStat — لا حاجة لحماية منفصلة بنادي المعجبين
+    test('ادّعاء الدقيقة رُفض (applyTick أعاد null — تِك مزدوج/متقارب، محاكاة نسختي خادم) → awardListeningMinute لا يُستدعى إطلاقاً', async () => {
+        jest.spyOn(SystemSettings, 'getSettings').mockResolvedValue({ poolMinListeners: 2 });
+        wireRoom('room_1', 'host_1', 'ls_1', { applyTickResult: null });
+        mockGroups([]);
+        const io = fakeIoWithViewers('room_1', ['host_1', 'v1', 'v2']);
+
+        await socketService.runLiveHoursTick(io);
+
+        expect(LiveSession.applyTick).toHaveBeenCalledWith('ls_1', expect.objectContaining({ qualifies: true }));
+        expect(HostDailyStat.addQualifiedSeconds).not.toHaveBeenCalled();
+        expect(fanClubController.awardListeningMinute).not.toHaveBeenCalled();
     });
 
     test('المضيف غائب عن قناة الغرفة فعلياً (رغم isLive:true بالمستند) → qualifies:false حتى مع مستمعين كافيين', async () => {

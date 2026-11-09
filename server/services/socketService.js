@@ -1058,21 +1058,27 @@ async function closeLiveSession(roomId) {
 // المستمعين — لا O(n²) من فحص كل زوج على حدة. 🛡️ مراجعة #154 (بند 2): يُعيد أيضاً hostPresent
 // (المضيف نفسه متصل فعلياً بقناة دردشة هذي الغرفة الآن — لا افتراضاً لمجرّد isLive:true)،
 // فالمستدعي يستطيع رفض الدقيقة كاملة لو كان المضيف غائباً حتى لو بقي مستمعون بالغرفة محادثين
+// 🛡️ fanclub-v2: تُعيد أيضاً listenerIds (كل مستمع فردي غير مرتبط بالمضيف، بلا دمج أعضاء
+// المجموعة الواحدة ببعضهم كما بـlistenerCount — هوية المستخدم الفعلية هي ما يهمّ هنا، لا عدد
+// "الأجهزة المستقلة") — يُعاد استخدامها من runLiveHoursTick لمنح نقاط استماع نادي المعجبين
+// بنفس نداء groupLinkedAccounts هذا تماماً، بلا أي استعلام ربط إضافي
 async function countQualifyingListeners(io, roomId, hostId) {
     const hostIdStr = hostId.toString();
     const allViewers = getRoomViewers(io, roomId);
     const hostPresent = allViewers.some(v => v.id === hostIdStr);
     const viewers = allViewers.filter(v => v.id !== hostIdStr);
-    if (viewers.length === 0) return { hostPresent, listenerCount: 0 };
+    if (viewers.length === 0) return { hostPresent, listenerCount: 0, listenerIds: [] };
     const groupKey = await linkageService.groupLinkedAccounts([hostIdStr, ...viewers.map(v => v.id)]);
     const hostGroup = groupKey.get(hostIdStr);
     const countedGroups = new Set();
+    const listenerIds = [];
     for (const v of viewers) {
         const g = groupKey.get(v.id);
         if (g === hostGroup) continue; // مرتبط بالمضيف نفسه — مستبعد كاملاً، لا يُحسَب حتى كمجموعة
         countedGroups.add(g);
+        listenerIds.push(v.id);
     }
-    return { hostPresent, listenerCount: countedGroups.size };
+    return { hostPresent, listenerCount: countedGroups.size, listenerIds };
 }
 
 const LIVE_HOURS_TICK_INTERVAL_MS = 60 * 1000;
@@ -1092,7 +1098,7 @@ async function runLiveHoursTick(io) {
         const day = getDayStartForDate(now);
         for (const room of liveRooms) {
             try {
-                const { hostPresent, listenerCount } = await countQualifyingListeners(io, room._id, room.host);
+                const { hostPresent, listenerCount, listenerIds } = await countQualifyingListeners(io, room._id, room.host);
                 // 🛡️ مراجعة #154 (بند 2): لا ساعات بلا مضيف حقيقياً — متصل الآن فعلياً (hostPresent)
                 // وليس بنافذة سماح انقطاعه (hostDisconnectedAt:null)، فوق الحد الأدنى للمستمعين
                 const qualifies = hostPresent && !room.hostDisconnectedAt && listenerCount >= minListeners;
@@ -1104,7 +1110,16 @@ async function runLiveHoursTick(io) {
                 // بـapplyTick (قيمة غير null) — رُفض الادّعاء (تِك متقارب جداً من آخر تِك ناجح،
                 // راجع تعليق applyTick) يعني لا ثانية تُضاف هنا أيضاً، فلا يتعارض المصدران أبداً
                 const updatedSession = await LiveSession.applyTick(session._id, { qualifies, listenerCount, now });
-                if (updatedSession && qualifies) await HostDailyStat.addQualifiedSeconds(room.host, day, 60);
+                if (updatedSession && qualifies) {
+                    await HostDailyStat.addQualifiedSeconds(room.host, day, 60);
+                    // 🛡️ fanclub-v2: نقاط استماع نادي المعجبين تُمنَح من نفس "ادّعاء الدقيقة" هذا
+                    // بالضبط (updatedSession && qualifies) — لا آلية منع ازدواج منفصلة تُبنى هنا،
+                    // هي نفس الحماية التي يعتمد عليها HostDailyStat أعلاه تماماً (راجع fanClubController.js)
+                    if (listenerIds.length > 0) {
+                        const { awardListeningMinute } = require('../controllers/fanClubController');
+                        await Promise.all(listenerIds.map(listenerId => awardListeningMinute(io, room.host, listenerId, day)));
+                    }
+                }
             } catch (roomError) {
                 console.error('[LIVE-HOURS] tick error for room', room._id, roomError);
             }
@@ -2752,6 +2767,18 @@ socket.on('refreshBlockData', async () => {
             // بالخطأ لمجرد إغلاق تبويب واحد بينما تبويب آخر له لا يزال مفتوحاً بنفس الغرفة
             const stillViewing = getRoomViewers(io, roomId).some(v => v.id === socket.user.id.toString());
             if (!stillViewing) clearRoomSupportTotal(roomId, socket.user.id.toString());
+        });
+
+        // 🛡️ fanclub-v2: أحداث نادي معجبين (fanclub-member-count-updated وغيرها) تُبَث فقط لمن
+        // فتح صفحة هذا النادي تحديداً (قناة fanclub:<ownerId>) + صاحب النادي نفسه مباشرة — لا
+        // io.emit للجميع كما كان سابقاً. نفس زوج join/leave-room-chat أعلاه بالضبط، لهدف مختلف
+        socket.on('join-fanclub-room', ({ ownerId }) => {
+            if (!ownerId) return;
+            socket.join(`fanclub:${ownerId}`);
+        });
+        socket.on('leave-fanclub-room', ({ ownerId }) => {
+            if (!ownerId) return;
+            socket.leave(`fanclub:${ownerId}`);
         });
 
         // ✅ القائمة الكاملة الحيّة لمن يشاهد الغرفة الآن (مأخوذة من عضوية قناة السوكيت نفسها،

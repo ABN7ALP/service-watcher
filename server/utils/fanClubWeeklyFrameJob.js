@@ -17,11 +17,11 @@
 // الفعلي)، ويُفعَّل فقط لو لا يملك المستخدم أي إطار نشط حالياً، أو لو هذا الإطار نفسه هو
 // النشط حالياً فعلاً (تحديث تاريخ انتهائه المعروض ليطابق التمديد الجديد لا أكثر) — تبديل
 // المستخدم اليدوي لإطار آخر يبقى محترماً تماماً، بلا أي استثناء زمني
-const FanClubMembership = require('../models/FanClubMembership');
-const GiftLog = require('../models/GiftLog');
 const User = require('../models/User');
 const ProfileFrame = require('../models/ProfileFrame');
 const JobRun = require('../models/JobRun');
+// 🛡️ fanclub-v2: تقويم واحد فقط (دمشق، الأسبوع يبدأ أحداً) — لا Monday-UTC منفصل كسابقاً
+const { getCurrentWeekBounds, getWeekBoundsForDate } = require('../utils/poolWeek');
 
 const CONTRIBUTOR_FRAME_NAME = 'إطار المساهم';
 const CONTRIBUTOR_FRAME_DURATION_DAYS = 7;
@@ -29,8 +29,8 @@ const JOB_NAME = 'fanclub-contributor';
 
 async function grantWeeklyContributorFrames(io) {
     try {
-        const { currentWeekStartUTC, getLastWeekRange } = require('../controllers/fanClubController');
-        const weekStart = currentWeekStartUTC();
+        const { weekStart: currentWeekStart } = getCurrentWeekBounds();
+        const { weekStart } = getWeekBoundsForDate(new Date(currentWeekStart.getTime() - 86400000)); // الأسبوع الماضي المكتمل
 
         // 🛡️ حجز ذرّي لهذا الأسبوع — يفشل بصمت (E11000) لو عولج هذا الأسبوع بالفعل من قبل
         // (نفس العملية بعد إعادة تشغيل، أو فحص دوري آخر خلال الأسبوع الحالي نفسه)
@@ -47,19 +47,11 @@ async function grantWeeklyContributorFrames(io) {
             return;
         }
 
-        const ownerIds = await FanClubMembership.distinct('owner');
-        if (ownerIds.length === 0) return;
-
-        const { start, end } = getLastWeekRange();
-        // ✅ لكل مالك نادٍ: أعلى مساهم بالأسبوع الماضي فقط (نفس منطق getWeeklyWins، لكن دفعة
-        // واحدة لكل النوادي معاً بدل مالك واحد كل مرة)
-        const rows = await GiftLog.aggregate([
-            { $match: { receiver: { $in: ownerIds }, createdAt: { $gte: start, $lt: end } } },
-            { $group: { _id: { owner: '$receiver', sender: '$sender' }, total: { $sum: '$totalPrice' } } },
-            { $sort: { total: -1, '_id.sender': 1 } },
-            { $group: { _id: '$_id.owner', topSender: { $first: '$_id.sender' } } }
-        ]);
-        const winnerIds = [...new Set(rows.map(r => r.topSender.toString()))];
+        // 🛡️ fanclub-v2 (بند 2): من FanClubWeekly الآن (يستثني الحسابات المرتبطة بالمالك تلقائياً
+        // عند كل منح نقاط، + استبعاد دفاعي ثانٍ هنا بالذات) — لا GiftLog خام بلا أي استبعاد كسابقاً
+        const { getWeeklyWinnersMap } = require('../controllers/fanClubController');
+        const winnersMap = await getWeeklyWinnersMap(weekStart);
+        const winnerIds = [...new Set(winnersMap.values())];
         if (winnerIds.length === 0) return;
 
         let grantedCount = 0;

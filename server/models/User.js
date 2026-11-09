@@ -103,7 +103,13 @@ const userSchema = new mongoose.Schema({
     fanClub: {
         name: { type: String, maxlength: 13, default: null }, // null = يُعرض "نادي {username}" افتراضياً
         emblemColorId: { type: String, enum: ['pink', 'yellow', 'purple', 'blue', 'orange'], default: 'pink' },
-        giftColorId: { type: String, enum: ['pink', 'yellow', 'purple', 'blue', 'orange'], default: 'pink' }
+        giftColorId: { type: String, enum: ['pink', 'yellow', 'purple', 'blue', 'orange'], default: 'pink' },
+        // 🛡️ fanclub-v2: عدّادان يُحدَّثان فقط ضمن معاملة الانضمام/المغادرة (لا بكل طلب قراءة) —
+        // قد ينحرفان تقريبياً بمرور وقت طويل بلا مغادرة (activeCount لا يُنقَص تلقائياً لمن يصمت
+        // 7 أيام بلا مغادرة فعلية)، يُصحَّحهما ترحيل FANCLUB_V2_MIGRATION دورياً من البيانات
+        // الحقيقية — راجع docs/specs/fanclub-v2.md
+        memberCount: { type: Number, default: 0, min: 0 },
+        activeCount: { type: Number, default: 0, min: 0 }
     },
     // ✅ مهام "مستوى الدعم" اليومية (للسخاء/giving فقط — التلقي/receiving مبني على أفعال
     // آخرين، لا مهام قابلة للإنجاز منه). bonusXP يُضاف حرفياً فوق كوينز الهدايا الحقيقية عند

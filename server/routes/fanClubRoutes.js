@@ -9,6 +9,8 @@ router.use(authMiddleware);
 router.get('/leaderboard', fanClubController.getLeaderboard);
 router.get('/:ownerId/summary', fanClubController.getSummary);
 router.post('/:ownerId/join', fanClubController.joinFanClub);
+// 🛡️ fanclub-v2: مغادرة النادي — جديدة (لا تأكيد مطلوب هنا، المتصل/العميل مسؤول عن ذلك)
+router.post('/:ownerId/leave', fanClubController.leaveFanClub);
 router.get('/:ownerId/members', fanClubController.getMembers);
 // ✅ تخصيص النادي (الاسم فقط) — صاحب النادي فقط، يُستخرج من req.user (توكن الجلسة)
 router.patch('/settings', fanClubController.updateSettings);
