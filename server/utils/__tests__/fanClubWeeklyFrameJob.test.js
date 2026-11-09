@@ -13,14 +13,14 @@
 // يُرفض بخطأ E11000 بالضبط كما يفعل Mongo الحقيقي.
 
 function wireMocks(db, claimed) {
-    const FanClubMembership = require('../../models/FanClubMembership');
-    const GiftLog = require('../../models/GiftLog');
     const User = require('../../models/User');
     const ProfileFrame = require('../../models/ProfileFrame');
     const JobRun = require('../../models/JobRun');
+    // 🛡️ fanclub-v2: الفائزون الآن من fanClubController.getWeeklyWinnersMap (FanClubWeekly،
+    // تستبعد الحسابات المرتبطة بالمالك) بدل GiftLog.aggregate الخام — راجع تعليق الملف أعلى fanClubWeeklyFrameJob.js
+    const fanClubController = require('../../controllers/fanClubController');
 
-    jest.spyOn(FanClubMembership, 'distinct').mockResolvedValue(['owner1']);
-    jest.spyOn(GiftLog, 'aggregate').mockResolvedValue([{ _id: 'owner1', topSender: 'winner1' }]);
+    jest.spyOn(fanClubController, 'getWeeklyWinnersMap').mockResolvedValue(new Map([['owner1', 'winner1']]));
     jest.spyOn(ProfileFrame, 'findOne').mockResolvedValue({
         _id: 'frame1', name: 'إطار المساهم', cssClass: 'profile-frame-contributor', previewImage: 'preview.png'
     });
@@ -36,7 +36,7 @@ function wireMocks(db, claimed) {
         return Promise.resolve({ job, weekStart });
     });
 
-    return { FanClubMembership, GiftLog, User, ProfileFrame, JobRun };
+    return { User, ProfileFrame, JobRun, fanClubController };
 }
 
 function seedWinner(db, overrides) {

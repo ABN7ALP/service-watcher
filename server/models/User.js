@@ -103,7 +103,14 @@ const userSchema = new mongoose.Schema({
     fanClub: {
         name: { type: String, maxlength: 13, default: null }, // null = يُعرض "نادي {username}" افتراضياً
         emblemColorId: { type: String, enum: ['pink', 'yellow', 'purple', 'blue', 'orange'], default: 'pink' },
-        giftColorId: { type: String, enum: ['pink', 'yellow', 'purple', 'blue', 'orange'], default: 'pink' }
+        giftColorId: { type: String, enum: ['pink', 'yellow', 'purple', 'blue', 'orange'], default: 'pink' },
+        // 🛡️ fanclub-v2: عدّاد يُحدَّث فقط ضمن معاملة الانضمام/المغادرة (لا بكل طلب قراءة) — قد
+        // ينحرف تقريبياً بمرور وقت طويل، يُصحَّحه ترحيل FANCLUB_V2_MIGRATION دورياً من البيانات
+        // الحقيقية — راجع docs/specs/fanclub-v2.md. 🛡️ مراجعة #156: activeCount ليس عدّاداً مخزَّناً
+        // هنا عمداً — "نشط" مفهوم زمني (آخر نقطة خلال 7 أيام) لا يصحّ كعدّاد يُلمَس فقط عند
+        // الانضمام/المغادرة (لا يُنقَص حين يصمت أحدهم، ولا يُزاد حين يعود)؛ يُحسَب حياً دوماً من
+        // FanClubMembership.lastPointAt (راجع fanClubController.js activeCutoff/computeFullLeaderboard)
+        memberCount: { type: Number, default: 0, min: 0 }
     },
     // ✅ مهام "مستوى الدعم" اليومية (للسخاء/giving فقط — التلقي/receiving مبني على أفعال
     // آخرين، لا مهام قابلة للإنجاز منه). bonusXP يُضاف حرفياً فوق كوينز الهدايا الحقيقية عند

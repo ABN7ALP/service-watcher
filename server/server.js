@@ -118,6 +118,10 @@ mongoose.connect(process.env.MONGODB_URI)
         // للتزامن مع مسار المتابعة الجديد العامل بالتوازي بصرف النظر عن اكتمال هذا الترحيل)
         await require('./utils/followMigration').resolveMigrationStartup();
 
+        // 🛡️ fanclub-v2: يُعيد حساب عدّادي User.fanClub.memberCount/activeCount تصحيحاً دورياً —
+        // إضافي بالكامل تماماً كترحيل المتابعة أعلاه (راجع fanClubV2Migration.js)
+        await require('./utils/fanClubV2Migration').resolveMigrationStartup();
+
         // 🛡️ دفتر الأستاذ (feat/wallet-ledger-v1): إعادة تسمية العملة ×10 — تحكّم مُشغِّل صريح
         // عبر WALLET_MIGRATION بدل تشغيل تلقائي عند كل إقلاع (مراجعة ما قبل الدمج، تعليق
         // لاحق): unset/'off' لا يُشغِّل الترحيل إطلاقاً ويبقى الموقع بوضع الصيانة (503)؛ 'dry'
