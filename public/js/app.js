@@ -14208,25 +14208,36 @@ function tierLevelCardHTML(levelInfo, unitLabel = 'نقطة') {
 
 // ✅ قائمة المهام اليومية — "الحضور" يدوي (زر مطالبة)، الباقي يُمنح تلقائياً لحظة إتمامه
 // من مسارات أخرى (إرسال هدية/دردشة بغرفة المالك/متابعته) فتظهر هنا "✅ تم" فور تحديثها
+// 🛡️ مراجعة #156: مهمة "الاستماع" شكلها مختلف تماماً عن بقية المهام — سعر بالدقيقة
+// (pointsPerMinute) لا نقاط ثابتة (points)، وتقدّم بالدقائق (progressMinutes/targetMinutes)
+// لا claimed/manual (لا زر مطالبة لها، تُمنَح تلقائياً كل دقيقة استماع حقيقية)
 function fanClubMissionsHTML(missions) {
     return `
         <p class="fanclub-section-divider-label">المهام اليومية</p>
         <div class="fanclub-missions-list">
-            ${missions.map(m => `
+            ${missions.map(m => {
+                const isPerMinute = m.pointsPerMinute !== undefined;
+                const pointsLabel = isPerMinute
+                    ? `+${m.pointsPerMinute} نقطة/دقيقة (حتى ${m.targetMinutes} د/يوم)`
+                    : `+${m.points} نقطة${m.oneTime ? ' (لمرة واحدة)' : ''}`;
+                const statusHTML = isPerMinute
+                    ? `<span class="fanclub-mission-pending">${m.progressMinutes || 0}/${m.targetMinutes} د</span>`
+                    : m.claimed
+                        ? '<span class="fanclub-mission-done"><i class="fas fa-check"></i></span>'
+                        : m.manual
+                            ? `<button type="button" class="fanclub-mission-claim-btn" data-mission-id="${m.id}">مطالبة</button>`
+                            : '<span class="fanclub-mission-pending">تلقائي</span>';
+                return `
                 <div class="fanclub-mission-row ${m.claimed ? 'claimed' : ''}">
                     <span class="fanclub-mission-icon"><i class="fas ${m.icon}"></i></span>
                     <span class="fanclub-mission-info">
                         <span class="fanclub-mission-title">${escapeHtml(m.title)}</span>
-                        <span class="fanclub-mission-points">+${m.points} نقطة${m.oneTime ? ' (لمرة واحدة)' : ''}</span>
+                        <span class="fanclub-mission-points">${pointsLabel}</span>
                     </span>
-                    ${m.claimed
-                        ? '<span class="fanclub-mission-done"><i class="fas fa-check"></i></span>'
-                        : m.manual
-                            ? `<button type="button" class="fanclub-mission-claim-btn" data-mission-id="${m.id}">مطالبة</button>`
-                            : '<span class="fanclub-mission-pending">تلقائي</span>'
-                    }
+                    ${statusHTML}
                 </div>
-            `).join('')}
+            `;
+            }).join('')}
         </div>
     `;
 }
@@ -14268,7 +14279,11 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
         </div>
     `;
     document.body.appendChild(modal);
-    modal.addEventListener('click', (e) => { if (e.target.id === 'fanclub-modal') modal.remove(); });
+    // 🛡️ مراجعة #156: fanclub-member-count-updated/fanclub-new-member أصبحا يُبثّان فقط لقناة
+    // fanclub:<ownerId> (لا io.emit للجميع كسابقاً) — بلا هذا الانضمام لا يصل أي تحديث حيّ بتاتاً
+    socket.emit('join-fanclub-room', { ownerId });
+    const closeFanClubModal = () => { socket.emit('leave-fanclub-room', { ownerId }); modal.remove(); };
+    modal.addEventListener('click', (e) => { if (e.target.id === 'fanclub-modal') closeFanClubModal(); });
     // 🛡️ تحديث حي لبطاقة المستوى لو ارتقى المستخدم مستوى بهذا النادي تحديداً أثناء فتح
     // الورقة — فقط لو الشاشة الحالية هي "تفاصيل النادي" (لا نقفز به بعيداً عن ترتيب/أعضاء).
     // ✅ ترقيع البطاقة مكانياً من levelInfo المُرسَل مع الحدث نفسه بدل إعادة تحميل الورقة
@@ -14283,7 +14298,6 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
     });
 
     let backTarget = 'help'; // 'help' | 'join' | 'leaderboard' | 'close'
-    let lastPeriod = 'weekly';
     let joinData = null;
     const backBtn = modal.querySelector('#fanclub-back-btn');
     const trophyBtn = modal.querySelector('#fanclub-trophy-btn');
@@ -14351,8 +14365,11 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
         let missions = null;
         if (!isOwner && !s.isMember) {
             try {
-                const shopRes = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
-                rose = (shopRes.data?.gifts || []).find(g => g.name === 'وردة') || null;
+                // 🐛 إصلاح جذري (أقدم من #156 — "هدايا v2" جمّعت data.gifts حسب الفئة منذ ذلك
+                // الحين، لم تعد مصفوفة مسطّحة): كان .find مباشرة على data.gifts يرمي خطأ صامتاً
+                // (كائن لا مصفوفة) فتبقى rose null دوماً — getGiftShopCatalog تُسطِّحها بشكل صحيح
+                const gifts = await getGiftShopCatalog();
+                rose = gifts.find(g => g.name === 'وردة') || null;
             } catch (error) { /* الصورة تجميلية — زر الانضمام يعمل بلا صورة أيضاً */ }
         } else if (!isOwner && s.isMember) {
             try {
@@ -14399,7 +14416,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                     <span class="fanclub-join-btn-text">الانضمام الى نادي المعجبين</span>
                     <span class="fanclub-join-btn-price-group">
                         ${rose ? `<img src="${rose.imageUrl}" class="fanclub-join-btn-rose" style="filter:${giftColor.filter}" onerror="this.style.display='none'">` : '<i class="fas fa-heart"></i>'}
-                        <span class="fanclub-join-btn-price"><s>${rose ? rose.price : 10}</s> 1</span>
+                        <span class="fanclub-join-btn-price">${s.joinPrice}</span>
                     </span>
                 </button>
             ` : s.myLevelInfo ? `
@@ -14467,28 +14484,26 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
         });
     }
 
-    async function renderLeaderboardView(period = 'weekly') {
-        lastPeriod = period;
+    // 🛡️ مراجعة #156: لا تبويب "اليوم/الأسبوع" بعد الآن — الخادم لديه ترتيب واحد فقط (يتجاهل
+    // period تماماً الآن)، مرتَّب بالأعضاء النشطين أولاً ثم نقاط الأسبوع، مُخزَّن مؤقتاً 10 دقائق
+    async function renderLeaderboardView() {
         setHeader('leaderboard');
         body.innerHTML = fanClubRowSkeletonHTML();
         try {
-            const res = await fetch(`/api/fanclub/leaderboard?period=${period}&limit=10`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+            const res = await fetch(`/api/fanclub/leaderboard?limit=10`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
             if (res.status !== 'success') throw new Error();
             const { leaders, myRank } = res.data;
             const myProfileImage = (JSON.parse(localStorage.getItem('user')) || {}).profileImage || '';
+            const countsHTML = (r) => `الأعضاء: <b>${fmtNum(r.memberCount)}</b><br>النشطون: <b>${fmtNum(r.activeCount)}</b><br>نقاط الأسبوع: <b>${fmtNum(r.weeklyPoints)}</b>`;
             body.innerHTML = `
-                <p class="fanclub-rank-explainer">يتم ترتيب نوادي المعجبين بناءً على إجمالي عدد الأعضاء. تُحدَّث الترتيبات أسبوعياً، وستفوز أعلى 10 نوادٍ بمكافآت كوينز أو فرص أكثر — قريباً.</p>
-                <div class="fanclub-rank-tabs">
-                    <span class="fanclub-rank-tab ${period === 'daily' ? 'active' : ''}" data-period="daily">اليوم</span>
-                    <span class="fanclub-rank-tab ${period === 'weekly' ? 'active' : ''}" data-period="weekly">الأسبوع</span>
-                </div>
+                <p class="fanclub-rank-explainer">يتم ترتيب نوادي المعجبين حسب عدد الأعضاء النشطين خلال آخر 7 أيام، ثم نقاط الأسبوع. يُحدَّث الترتيب كل 10 دقائق، وستفوز أعلى 10 نوادٍ بمكافآت كوينز أو فرص أكثر — قريباً.</p>
                 <div class="fanclub-rank-list">
                     ${leaders.length === 0 ? '<p class="fanclub-rank-empty">لا توجد نوادٍ مصنَّفة بعد</p>' : leaders.map(l => `
                         <div class="fanclub-rank-row" data-rank="${l.rank}" data-owner-id="${l.ownerId}" data-owner-username="${escapeHtml(l.username)}">
                             <span class="fanclub-rank-num">${l.rank}</span>
                             <img src="${l.profileImage}" class="fanclub-rank-avatar">
                             <span class="fanclub-rank-name">${escapeHtml(l.username)}</span>
-                            <span class="fanclub-rank-counts">اليوم: <b>${l.todayMembers}</b><br>الإجمالي: <b>${l.totalMembers}</b></span>
+                            <span class="fanclub-rank-counts">${countsHTML(l)}</span>
                         </div>
                     `).join('')}
                 </div>
@@ -14497,13 +14512,10 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                         <span class="fanclub-rank-num">${myRank.rank}</span>
                         <img src="${myProfileImage}" class="fanclub-rank-avatar">
                         <span class="fanclub-rank-name">أنا</span>
-                        <span class="fanclub-rank-counts">اليوم: <b>${myRank.todayMembers}</b><br>الإجمالي: <b>${myRank.totalMembers}</b></span>
+                        <span class="fanclub-rank-counts">${countsHTML(myRank)}</span>
                     </div>
                 ` : ''}
             `;
-            body.querySelectorAll('.fanclub-rank-tab').forEach(tab => {
-                tab.addEventListener('click', () => renderLeaderboardView(tab.dataset.period));
-            });
             body.querySelectorAll('.fanclub-rank-row').forEach(row => {
                 row.addEventListener('click', () => renderMembersView(row.dataset.ownerId, row.dataset.ownerUsername));
             });
@@ -14591,10 +14603,10 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
     backBtn.addEventListener('click', () => {
         if (backTarget === 'help') showFanClubHelpModal();
         else if (backTarget === 'join') renderJoinView();
-        else if (backTarget === 'leaderboard') renderLeaderboardView(lastPeriod);
-        else if (backTarget === 'close') modal.remove();
+        else if (backTarget === 'leaderboard') renderLeaderboardView();
+        else if (backTarget === 'close') closeFanClubModal();
     });
-    trophyBtn.addEventListener('click', () => renderLeaderboardView('weekly'));
+    trophyBtn.addEventListener('click', () => renderLeaderboardView());
 
     renderJoinView();
 }
@@ -14608,7 +14620,7 @@ function showFanClubHelpModal() {
     modal.innerHTML = `
         <div class="fanclub-help-card">
             <p class="fanclub-help-title"><i class="fas fa-circle-question"></i> ما هو نادي المعجبين؟</p>
-            <p class="fanclub-help-text">انضم لنادي معجبين أي مذيع بإرسال هدية رمزية بكوينز واحد، أو تلقائياً بأول هدية حقيقية تُرسلها له. ترتقي بمستوى معجب حقيقي (1-20) بهذا النادي تحديداً كلما دعمته — كل كوينز يُنفَق = نقطة، بالإضافة لمهام يومية تمنحك نقاطاً إضافية. النقاط تراكمية دائماً ولا تُصفَّر أبداً.</p>
+            <p class="fanclub-help-text">تابع المذيع أولاً، ثم انضم لناديه بـ100 كوينز. ترتقي بمستوى معجب حقيقي (1-20) بهذا النادي تحديداً كلما دعمته — كل كوينز يُنفَق = نقطة، بالإضافة لمهام يومية تمنحك نقاطاً إضافية. النقاط تراكمية دائماً ولا تُصفَّر أبداً.</p>
             <p class="fanclub-section-divider-label">ماذا ستحصل عليه عند الانضمام؟</p>
             <div class="fanclub-reward-preview-box fanclub-reward-preview-help">
                 <img src="${FAN_CLUB_CONTRIBUTOR_FRAME_IMG}" class="fanclub-reward-preview-img" alt="">
@@ -14625,7 +14637,7 @@ function showFanClubHelpModal() {
             </div>
             <div class="fanclub-help-benefit-row">
                 <i class="fas fa-calendar-check fanclub-help-benefit-icon"></i>
-                <span class="fanclub-help-benefit-text">مهام يومية (حضور/دردشة/هدية/متابعة) بنقاط إضافية</span>
+                <span class="fanclub-help-benefit-text">مهام يومية (حضور/دردشة/استماع للبث/متابعة) بنقاط إضافية</span>
             </div>
             <button type="button" id="fanclub-help-close-btn" class="fanclub-help-close-btn">حسناً</button>
         </div>
@@ -14790,8 +14802,9 @@ async function showFanClubGiftPicker(s, onSaved) {
     }
 
     try {
-        const shopRes = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
-        const rose = (shopRes.data?.gifts || []).find(g => g.name === 'وردة');
+        // 🐛 نفس إصلاح renderDetailsBody أعلاه بالضبط (data.gifts مُجمَّعة حسب الفئة، لا مصفوفة مسطّحة)
+        const gifts = await getGiftShopCatalog();
+        const rose = gifts.find(g => g.name === 'وردة');
         roseImg = rose ? rose.imageUrl : null;
     } catch (error) { /* المعاينة تجميلية — الحفظ يعمل بلا صورة أيضاً */ }
     updatePreview();
@@ -15330,11 +15343,11 @@ async function showQuickGiftPicker(targetUserId, targetUsername) {
     }, { passive: true });
 
     try {
-        const response = await fetch('/api/gifts/shop', { headers: { 'Authorization': `Bearer ${token}` } });
-        const result = await response.json();
+        // 🐛 نفس إصلاح renderDetailsBody/showFanClubGiftPicker أعلاه — data.gifts مُجمَّعة حسب الفئة، لا مصفوفة مسطّحة
+        const giftsFlat = await getGiftShopCatalog();
         if (!stage) return;
-        gifts = (result.status === 'success' ? result.data.gifts : []).map(g => ({
-            id: g._id, name: g.name, image: g.imageUrl || '', icon: g.icon || '🎁', price: g.discountedPrice || g.price
+        gifts = giftsFlat.map(g => ({
+            id: g.id, name: g.name, image: g.imageUrl || '', icon: g.icon || '🎁', price: g.discountedPrice || g.price
         }));
         if (gifts.length === 0) {
             stage.innerHTML = '<p class="text-xs text-gray-500 w-full text-center py-10">لا توجد هدايا متاحة حالياً</p>';
