@@ -40,12 +40,27 @@ liveSessionSchema.statics.closeForRoom = async function (roomId) {
     );
 };
 
-// ✅ ادّعاء ذرّي واحد لكل تِك — الشرط endedAt:null بالاستعلام نفسه يمنع تطبيق تِك على جلسة
-// أُغلقت للتو بنفس اللحظة تقريباً (لا قراءة-ثم-كتابة منفصلتين قد تتسابقان مع closeForRoom)
+// 🛡️ مراجعة #154 (بند 1): ادّعاء الدقيقة نفسه ذرّي الآن، لا فقط endedAt:null — lastTickAt ضمن
+// شرط الاستعلام نفسه (lastTickAt:null، أو مرّ عليه >= 55 ثانية) يمنع عدّ الدقيقة نفسها مرتين
+// حين يتصادف تِكان قريبان جداً من بعضهما زمنياً (تِك الإقلاع الفوري + مؤقّت 60 ثانية بنفس
+// العملية، أو تداخل حاوية قديمة/جديدة أثناء إعادة نشر Railway — كلتاهما تكتبان على نفس
+// المستند بقاعدة البيانات نفسها). 55 لا 60 ثانية بالضبط = هامش تسامح صغير لتذبذب التوقيت
+// الطبيعي (تأخر حلقة الحدث قليلاً) بلا فتح نافذة عدّ مزدوج حقيقية. المستدعي (runLiveHoursTick)
+// يعتمد على *نجاح* هذا الادّعاء (قيمة غير null) قبل أن يزيد HostWeeklyStat — فلو رُفض الادّعاء
+// هنا (تِك ثانٍ بنفس الدقيقة تقريباً)، لا تُضاف أي ثانية بإحصائية الأسبوع أيضاً
 liveSessionSchema.statics.applyTick = async function (sessionId, { qualifies, listenerCount, now }) {
+    const MIN_TICK_INTERVAL_MS = 55 * 1000;
     const update = { $set: { lastTickAt: now }, $max: { peakListeners: listenerCount } };
     if (qualifies) update.$inc = { qualifiedSeconds: 60 };
-    return this.findOneAndUpdate({ _id: sessionId, endedAt: null }, update, { new: true });
+    return this.findOneAndUpdate(
+        {
+            _id: sessionId,
+            endedAt: null,
+            $or: [{ lastTickAt: null }, { lastTickAt: { $lte: new Date(now.getTime() - MIN_TICK_INTERVAL_MS) } }]
+        },
+        update,
+        { new: true }
+    );
 };
 
 // 🛡️ تعافٍ من انهيار الخادم: جلسة بقيت مفتوحة (endedAt:null) من عملية سابقة انهارت/أُعيد

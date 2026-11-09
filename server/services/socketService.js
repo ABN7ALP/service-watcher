@@ -1055,11 +1055,15 @@ async function closeLiveSession(roomId) {
 // شام كاش) بمجموعات الحسابات المرتبطة ببعضها (راجع linkageService.groupLinkedAccounts) —
 // مجموعة واحدة = مستمع واحد بغض النظر عن عدد الحسابات بداخلها (جهاز واحد فعلياً بتبويبات/
 // حسابات متعددة لا يُحسَب إلا مرة). نداءان فقط لقاعدة البيانات إجمالاً بصرف النظر عن عدد
-// المستمعين — لا O(n²) من فحص كل زوج على حدة
+// المستمعين — لا O(n²) من فحص كل زوج على حدة. 🛡️ مراجعة #154 (بند 2): يُعيد أيضاً hostPresent
+// (المضيف نفسه متصل فعلياً بقناة دردشة هذي الغرفة الآن — لا افتراضاً لمجرّد isLive:true)،
+// فالمستدعي يستطيع رفض الدقيقة كاملة لو كان المضيف غائباً حتى لو بقي مستمعون بالغرفة محادثين
 async function countQualifyingListeners(io, roomId, hostId) {
     const hostIdStr = hostId.toString();
-    const viewers = getRoomViewers(io, roomId).filter(v => v.id !== hostIdStr);
-    if (viewers.length === 0) return 0;
+    const allViewers = getRoomViewers(io, roomId);
+    const hostPresent = allViewers.some(v => v.id === hostIdStr);
+    const viewers = allViewers.filter(v => v.id !== hostIdStr);
+    if (viewers.length === 0) return { hostPresent, listenerCount: 0 };
     const groupKey = await linkageService.groupLinkedAccounts([hostIdStr, ...viewers.map(v => v.id)]);
     const hostGroup = groupKey.get(hostIdStr);
     const countedGroups = new Set();
@@ -1068,7 +1072,7 @@ async function countQualifyingListeners(io, roomId, hostId) {
         if (g === hostGroup) continue; // مرتبط بالمضيف نفسه — مستبعد كاملاً، لا يُحسَب حتى كمجموعة
         countedGroups.add(g);
     }
-    return countedGroups.size;
+    return { hostPresent, listenerCount: countedGroups.size };
 }
 
 const LIVE_HOURS_TICK_INTERVAL_MS = 60 * 1000;
@@ -1078,20 +1082,27 @@ async function runLiveHoursTick(io) {
         const settings = await SystemSettings.getSettings();
         const minListeners = settings.poolMinListeners || 2;
         // ✅ الغرفة الرسمية host:null مُستثناة صراحةً — لا مضيف حقيقي لها يُحسَب له مسبح
-        const liveRooms = await VoiceRoom.find({ isLive: true, isOfficial: false, host: { $ne: null } }).select('_id host').lean();
+        // 🛡️ مراجعة #154 (بند 2): hostDisconnectedAt ضمن الاختيار — انقطاع آخر سوكيت فعّال
+        // للمضيف مُسجَّل هنا فور حدوثه (markHostDisconnected)، فيُستخدَم مباشرة بلا أي استعلام إضافي
+        const liveRooms = await VoiceRoom.find({ isLive: true, isOfficial: false, host: { $ne: null } }).select('_id host hostDisconnectedAt').lean();
         if (liveRooms.length === 0) return;
         const now = new Date();
         const { weekStart } = getCurrentWeekBounds();
         for (const room of liveRooms) {
             try {
-                const listenerCount = await countQualifyingListeners(io, room._id, room.host);
-                const qualifies = listenerCount >= minListeners;
+                const { hostPresent, listenerCount } = await countQualifyingListeners(io, room._id, room.host);
+                // 🛡️ مراجعة #154 (بند 2): لا ساعات بلا مضيف حقيقياً — متصل الآن فعلياً (hostPresent)
+                // وليس بنافذة سماح انقطاعه (hostDisconnectedAt:null)، فوق الحد الأدنى للمستمعين
+                const qualifies = hostPresent && !room.hostDisconnectedAt && listenerCount >= minListeners;
                 let session = await LiveSession.findOne({ room: room._id, endedAt: null }).select('_id');
                 // 🛡️ شبكة أمان فقط — من المفترض أن تكون الجلسة مفتوحة أصلاً منذ host-start-broadcast
                 if (!session) session = await LiveSession.openForRoom(room._id, room.host);
                 if (!session) continue;
-                await LiveSession.applyTick(session._id, { qualifies, listenerCount, now });
-                if (qualifies) await HostWeeklyStat.addQualifiedSeconds(room.host, weekStart, 60);
+                // 🛡️ مراجعة #154 (بند 1): HostWeeklyStat تُزاد فقط لو نجح ادّعاء الدقيقة فعلياً
+                // بـapplyTick (قيمة غير null) — رُفض الادّعاء (تِك متقارب جداً من آخر تِك ناجح،
+                // راجع تعليق applyTick) يعني لا ثانية تُضاف هنا أيضاً، فلا يتعارض المصدران أبداً
+                const updatedSession = await LiveSession.applyTick(session._id, { qualifies, listenerCount, now });
+                if (updatedSession && qualifies) await HostWeeklyStat.addQualifiedSeconds(room.host, weekStart, 60);
             } catch (roomError) {
                 console.error('[LIVE-HOURS] tick error for room', room._id, roomError);
             }

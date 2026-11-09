@@ -9,7 +9,10 @@ function makeDb() { return { docs: [], nextId: 1 }; }
 
 function matchesFilter(doc, filter) {
     return Object.entries(filter).every(([key, val]) => {
+        if (key === '$or') return val.some(sub => matchesFilter(doc, sub));
+        if (val === null) return doc[key] === null || doc[key] === undefined;
         if (val && typeof val === 'object' && '$ne' in val) return String(doc[key]) !== String(val.$ne);
+        if (val && typeof val === 'object' && '$lte' in val) return doc[key] != null && doc[key].getTime() <= val.$lte.getTime();
         return String(doc[key]) === String(val);
     });
 }
@@ -92,8 +95,11 @@ describe('LiveSession.applyTick — تِك ذرّي واحد', () => {
         const db = makeDb();
         wireMocks(db);
         const session = await LiveSession.openForRoom('room_1', 'host_1');
-        await LiveSession.applyTick(session._id, { qualifies: true, listenerCount: 5, now: new Date() });
-        await LiveSession.applyTick(session._id, { qualifies: true, listenerCount: 3, now: new Date() });
+        const t0 = new Date('2030-01-01T00:00:00Z');
+        // ✅ تِكان حقيقيان بفارق 60 ثانية (كالمؤقّت الفعلي) — لا بفارق مللي ثواني، وإلا يرفضهما
+        // ضمان عدم العدّ المزدوج الجديد (راجع مراجعة #154 بند 1) كتِكين متقاربين جداً
+        await LiveSession.applyTick(session._id, { qualifies: true, listenerCount: 5, now: t0 });
+        await LiveSession.applyTick(session._id, { qualifies: true, listenerCount: 3, now: new Date(t0.getTime() + 60000) });
         const final = db.docs[0];
         expect(final.qualifiedSeconds).toBe(120);
         expect(final.peakListeners).toBe(5); // ✅ $max يبقي الأعلى، لا يُستبدَل بالأحدث الأصغر
@@ -108,6 +114,31 @@ describe('LiveSession.applyTick — تِك ذرّي واحد', () => {
         expect(final.qualifiedSeconds).toBe(0);
         expect(final.peakListeners).toBe(1);
         expect(final.lastTickAt.getTime()).toBe(new Date('2030-01-01T00:00:00Z').getTime());
+    });
+
+    // 🛡️ مراجعة #154 (بند 1): عدم العدّ المزدوج — تِكان متقاربان جداً زمنياً (أقل من 55 ثانية
+    // بينهما) يحاكيان تِك إقلاع فوري + مؤقّت 60 ثانية بنفس العملية، أو حاويتَي Railway قديمة/
+    // جديدة متداخلتين أثناء إعادة نشر، كلتاهما تكتبان على المستند نفسه بقاعدة البيانات نفسها
+    test('تِكان بنفس الدقيقة تقريباً (<55 ثانية بينهما) → الثاني يُرفَض، لا عدّ مزدوج', async () => {
+        const db = makeDb();
+        wireMocks(db);
+        const session = await LiveSession.openForRoom('room_1', 'host_1');
+        const t0 = new Date('2030-01-01T00:00:00Z');
+        const first = await LiveSession.applyTick(session._id, { qualifies: true, listenerCount: 5, now: t0 });
+        expect(first).not.toBeNull();
+        expect(db.docs[0].qualifiedSeconds).toBe(60);
+
+        // ثانٍ بعد 30 ثانية فقط (أقل من الحد الأدنى 55) — تِك "آخر"/حاوية أخرى تحاول عدّ نفس الدقيقة
+        const tooSoon = new Date(t0.getTime() + 30 * 1000);
+        const second = await LiveSession.applyTick(session._id, { qualifies: true, listenerCount: 5, now: tooSoon });
+        expect(second).toBeNull();
+        expect(db.docs[0].qualifiedSeconds).toBe(60); // ✅ لم تُضَف دقيقة ثانية
+
+        // ثالث بعد 56 ثانية من أول تِك ناجح (كافٍ) → يُقبَل، دقيقة حقيقية جديدة فعلاً
+        const farEnough = new Date(t0.getTime() + 56 * 1000);
+        const third = await LiveSession.applyTick(session._id, { qualifies: true, listenerCount: 5, now: farEnough });
+        expect(third).not.toBeNull();
+        expect(db.docs[0].qualifiedSeconds).toBe(120);
     });
 
     test('جلسة مُغلَقة فعلاً (endedAt غير null) → التِك لا يُطبَّق عليها (الشرط endedAt:null بالاستعلام نفسه)', async () => {

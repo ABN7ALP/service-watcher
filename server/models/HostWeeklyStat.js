@@ -1,11 +1,17 @@
 const mongoose = require('mongoose');
 
-// ✅ feat/live-hours-host-center: صف واحد لكل (مضيف × أسبوع) — مصدر الحقيقة لتأهيل مسبح
-// المضيفين الأسبوعي. qualifiedSeconds يُزاد من تِك البث الدوري (راجع socketService.js
-// runLiveHoursTick)، beansW/beansP من مسار الهدايا بعد التزام دفتر الأستاذ مباشرة (راجع
-// giftController.js creditHostWeeklyGiftBeans) — كلاهما $inc ذرّي، لا قراءة-ثم-كتابة أبداً.
-// weekStart = الأحد 00:00 بتوقيت دمشق (راجع server/utils/poolWeek.js) — المفتاح الثابت لكل
-// أسبوع، لا رقم أسبوع منفصل يحتاج حساباً إضافياً
+// ✅ feat/live-hours-host-center: صف واحد لكل (مضيف × أسبوع). qualifiedSeconds هو مصدر
+// الحقيقة الوحيد لساعات المسبح (لا بديل له — لا "دفتر أستاذ" للوقت)، يُزاد من تِك البث الدوري
+// (راجع socketService.js runLiveHoursTick). weekStart = الأحد 00:00 بتوقيت دمشق (راجع
+// server/utils/poolWeek.js) — المفتاح الثابت لكل أسبوع، لا رقم أسبوع منفصل يحتاج حساباً إضافياً
+// 🛡️ مراجعة #154 (بند 3+4): beansW/beansP تبقيان تُزادان best-effort بعد التزام دفتر الأستاذ
+// (giftController.js creditHostWeeklyGiftBeans) — عدّاد تقريبي سريع للوحة مراجعة الأدمن فقط
+// (قبل أي PR توزيع)، لا مصدر الحقيقة. مركز المضيف نفسه (getHostPoolSummary) لا يقرأ هذين
+// الحقلين إطلاقاً للعرض — يُعيد حسابهما حياً من LedgerEntry لكل طلب (نفس القاعدة بالضبط: محصورة
+// بالمستلِم، تستثني الحسابات المرتبطة) كي يطابق "اليوم"/"الأسبوع"/"الشهر" بعضها دوماً. أي PR
+// توزيع فعلي مستقبلي يجب كذلك أن يُعيد حساب الألماس من LedgerEntry مباشرة لنفس الأسبوع، لا أن
+// يثق بـbeansW/beansP هنا — فهما يُحدَّثان بعد التزام المعاملة لا ضمنها، فقد ينحرفان عن الدفتر
+// فعلياً (نداء فشل بصمت/أعيد تشغيل الخادم بين الالتزام والتحديث) دون أن يُكتشَف ذلك إلا بمطابقة
 const hostWeeklyStatSchema = new mongoose.Schema({
     host: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     weekStart: { type: Date, required: true, index: true },

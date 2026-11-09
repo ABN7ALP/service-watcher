@@ -1514,7 +1514,11 @@ exports.resolveSuggestion = async (req, res) => {
 };
 
 // ✅ feat/live-hours-host-center: جدول بسيط للمراجعة قبل PR التوزيع — كل من له صف
-// HostWeeklyStat بالأسبوع الحالي (ساعات/ألماس/تأهّل) مرتَّباً بساعات التأهّل تنازلياً
+// HostWeeklyStat بالأسبوع الحالي (ساعات/ألماس/تأهّل) مرتَّباً بساعات التأهّل تنازلياً.
+// 🛡️ مراجعة #154 (بند 4): beansW/beansP هنا عدّاد تقريبي سريع (راجع تعليق HostWeeklyStat.js
+// الكامل) — يكفي لفحص سريع، لكن أي PR توزيع فعلي يجب أن يُعيد حساب الألماس من LedgerEntry
+// مباشرة لنفس الأسبوع (نفس استعلام aggregateReceivedBeans بـvoiceRoomController.js)، لا أن
+// يثق بهذا العدّاد — يُحدَّث بعد التزام معاملة الهدية لا ضمنها فقد ينحرف عن الدفتر الحقيقي
 exports.getHostPoolThisWeek = async (req, res) => {
   try {
     const HostWeeklyStat = require('../models/HostWeeklyStat');
