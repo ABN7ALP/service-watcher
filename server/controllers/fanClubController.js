@@ -46,6 +46,11 @@ function isInactive(lastPointAt) {
     if (!lastPointAt) return true;
     return (Date.now() - new Date(lastPointAt).getTime()) > INACTIVITY_WINDOW_MS;
 }
+// ✅ نفس حد isInactive أعلاه، كتاريخ قطع جاهز لاستعلامات lastPointAt:{$gte: activeCutoff()} —
+// "نشط" لا يُخزَّن كعدّاد أبداً (راجع مراجعة #156)، يُحسَب حياً من هذا التاريخ وحده في كل مكان
+function activeCutoff() {
+    return new Date(Date.now() - INACTIVITY_WINDOW_MS);
+}
 
 // ✅ يبثّ احتفال "ارتقاء المستوى" للعضو فقط لو تجاوزت النقاط عتبة مستوى جديدة فعلياً —
 // pointsBefore محسوبة حسابياً (pointsAfter - delta) بلا أي قراءة إضافية، فتبقى العملية ذرّية
@@ -197,15 +202,16 @@ async function computeWeeklyLeader(ownerId, weekStart) {
 // ✅ نفس منطق computeWeeklyLeader أعلاه لكن لكل النوادي النشطة بأسبوع معيّن معاً بنداء واحد —
 // تُستخدَم من fanClubWeeklyFrameJob.js لمنح إطار المساهم لكل الفائزين دفعة واحدة
 async function getWeeklyWinnersMap(weekStart) {
+    // 🛡️ مراجعة #156: $topN (بدل $push لكل عضو بكل نادٍ ثم slice(0,10) بالذاكرة) — يُبقي أعلى 10
+    // فقط لكل مالك ضمن التجميع نفسه، بصرف النظر عن عدد أعضاء النادي الحقيقي
     const rows = await FanClubWeekly.aggregate([
         { $match: { weekStart } },
-        { $sort: { points: -1, member: 1 } },
-        { $group: { _id: '$owner', candidates: { $push: '$member' } } }
+        { $group: { _id: '$owner', candidates: { $topN: { output: '$member', sortBy: { points: -1, member: 1 }, n: 10 } } } }
     ]);
     const winners = new Map();
     for (const row of rows) {
         const ownerIdStr = row._id.toString();
-        const candidateIds = row.candidates.slice(0, 10).map(String);
+        const candidateIds = row.candidates.map(String);
         const groupKey = await linkageService.groupLinkedAccounts([ownerIdStr, ...candidateIds]);
         const ownerGroup = groupKey.get(ownerIdStr);
         const winnerId = candidateIds.find(id => groupKey.get(id) !== ownerGroup);
@@ -221,9 +227,13 @@ exports.getSummary = async (req, res) => {
         if (!mongoose.Types.ObjectId.isValid(ownerId)) {
             return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
         }
-        const [owner, membership] = await Promise.all([
+        const [owner, membership, activeCount] = await Promise.all([
             User.findById(ownerId).select('username profileImage activeFrameClass fanClub'),
-            FanClubMembership.findOne({ owner: ownerId, member: req.user.id })
+            FanClubMembership.findOne({ owner: ownerId, member: req.user.id }),
+            // 🛡️ مراجعة #156: activeCount محسوب حياً من lastPointAt هنا (لا عدّاد مخزَّن — حقل زمني
+            // كـ"نشط" لا يمكن أن يصحّ كعدّاد يُلمَس فقط عند الانضمام/المغادرة: لا يُنقَص تلقائياً
+            // حين يصمت أحدهم، ولا يُزاد حين يعود) — راجع تعليق الفهرس {owner:1, lastPointAt:-1} بالنموذج
+            FanClubMembership.countDocuments({ owner: ownerId, lastPointAt: { $gte: activeCutoff() } })
         ]);
         if (!owner) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
 
@@ -241,10 +251,10 @@ exports.getSummary = async (req, res) => {
                 emblemColorId: owner.fanClub?.emblemColorId || 'pink',
                 giftColorId: owner.fanClub?.giftColorId || 'pink',
                 isOwner: ownerId === req.user.id.toString(),
-                // 🛡️ fanclub-v2: من العدّاد المُصان ضمن معاملة الانضمام/المغادرة، لا عدّ مباشر
-                // لكل طلب (راجع User.fanClub.memberCount/activeCount بتعليق النموذج)
+                // ✅ من العدّاد المُصان ضمن معاملة الانضمام/المغادرة (لا عدّ مباشر لكل طلب) — راجع
+                // User.fanClub.memberCount بتعليق النموذج. activeCount أعلاه حياً دوماً (ليس عدّاداً)
                 memberCount: owner.fanClub?.memberCount || 0,
-                activeCount: owner.fanClub?.activeCount || 0,
+                activeCount,
                 isMember: !!membership,
                 myLevelInfo: membership ? computeFanLevelInfo(membership.points) : null,
                 myInactive: membership ? isInactive(membership.lastPointAt) : null,
@@ -341,8 +351,9 @@ exports.joinFanClub = async (req, res) => {
         // (بونص أولاً، تقسيم beans_w/beans_p). linkedFlags:[false] دوماً هنا — الانضمام
         // المرتبط مرفوض فوق قبل أي محاولة دفع، فلا حاجة لإعادة فحص الربط داخل المعاملة.
         // 🛡️ fanclub-v2: سجل GiftLog الآن *داخل* هذي المعاملة نفسها (كان خارجها سابقاً — عطل
-        // بين التزام المحفظة وكتابة السجل كان يترك دفعة ناجحة بلا سجل هدية مطابق)، وعدّادا
-        // fanClub.memberCount/activeCount يُزادان هنا أيضاً معاً
+        // بين التزام المحفظة وكتابة السجل كان يترك دفعة ناجحة بلا سجل هدية مطابق)، وعدّاد
+        // fanClub.memberCount يُزاد هنا أيضاً معاً (activeCount لم يَعُد عدّاداً مخزَّناً — راجع
+        // مراجعة #156، يُحسَب حياً من lastPointAt بكل قراءة بدل هذا)
         const { buildGiftWalletEntries } = require('./giftController');
         const session = await mongoose.startSession();
         let updatedMember = null;
@@ -383,7 +394,7 @@ exports.joinFanClub = async (req, res) => {
 
                 await User.updateOne(
                     { _id: ownerId },
-                    { $inc: { 'fanClub.memberCount': 1, 'fanClub.activeCount': 1 } },
+                    { $inc: { 'fanClub.memberCount': 1 } },
                     { session }
                 );
 
@@ -440,7 +451,7 @@ exports.joinFanClub = async (req, res) => {
 };
 
 // 🛡️ fanclub-v2: مغادرة النادي — جديدة بالكامل. تحذف العضوية وكل تقدّمها اليومي/الأسبوعي، وتُنقِص
-// عدّادي المالك ضمن نفس المعاملة (activeCount فقط لو كانت العضوية نشطة فعلاً لحظة المغادرة).
+// عدّاد المالك (memberCount فقط — activeCount ليس عدّاداً مخزَّناً، راجع مراجعة #156) ضمن نفس المعاملة.
 // النقاط تُحذَف لا تُحفَظ — إعادة الانضمام تبدأ من الصفر (100 نقطة الانضمام) كعضوية جديدة تماماً.
 // تأكيد العميل ("متأكد من المغادرة؟") خارج نطاق هذا الـPR (خادم فقط) — لا خطوة تأكيد هنا، المتصل مسؤول عنها
 exports.leaveFanClub = async (req, res) => {
@@ -459,12 +470,9 @@ exports.leaveFanClub = async (req, res) => {
                 const membership = await FanClubMembership.findOneAndDelete({ owner: ownerId, member: memberId }, { session });
                 if (!membership) return; // لم يكن عضواً أصلاً — idempotent، لا خطأ
                 left = true;
-                const wasActive = !isInactive(membership.lastPointAt);
                 await FanClubDailyProgress.deleteMany({ owner: ownerId, member: memberId }, { session });
                 await FanClubWeekly.deleteMany({ owner: ownerId, member: memberId }, { session });
-                const dec = { 'fanClub.memberCount': -1 };
-                if (wasActive) dec['fanClub.activeCount'] = -1;
-                await User.updateOne({ _id: ownerId }, { $inc: dec }, { session });
+                await User.updateOne({ _id: ownerId }, { $inc: { 'fanClub.memberCount': -1 } }, { session });
             });
         } catch (e) {
             txError = e;
@@ -659,19 +667,26 @@ let leaderboardCache = null; // { rows, expiresAt }
 
 async function computeFullLeaderboard() {
     const { weekStart } = getCurrentWeekBounds();
-    const [weeklyAgg, owners] = await Promise.all([
+    // 🛡️ مراجعة #156: activeCount ليس عدّاداً مخزَّناً — يُحسَب هنا حياً لكل مالك بتجميع واحد عبر
+    // lastPointAt (الفهرس {owner:1, lastPointAt:-1} بالنموذج يخدم هذا التجميع تحديداً)
+    const [weeklyAgg, activeAgg, owners] = await Promise.all([
         FanClubWeekly.aggregate([
             { $match: { weekStart } },
             { $group: { _id: '$owner', weeklyPoints: { $sum: '$points' } } }
         ]),
-        User.find({ 'fanClub.memberCount': { $gt: 0 } }).select('username profileImage fanClub.memberCount fanClub.activeCount').lean()
+        FanClubMembership.aggregate([
+            { $match: { lastPointAt: { $gte: activeCutoff() } } },
+            { $group: { _id: '$owner', activeCount: { $sum: 1 } } }
+        ]),
+        User.find({ 'fanClub.memberCount': { $gt: 0 } }).select('username profileImage fanClub.memberCount').lean()
     ]);
     const weeklyByOwner = new Map(weeklyAgg.map(r => [r._id.toString(), r.weeklyPoints]));
+    const activeByOwner = new Map(activeAgg.map(r => [r._id.toString(), r.activeCount]));
     return owners.map(o => ({
         ownerId: o._id.toString(),
         username: o.username,
         profileImage: o.profileImage,
-        activeCount: o.fanClub?.activeCount || 0,
+        activeCount: activeByOwner.get(o._id.toString()) || 0,
         memberCount: o.fanClub?.memberCount || 0,
         weeklyPoints: weeklyByOwner.get(o._id.toString()) || 0
     })).sort((a, b) => (b.activeCount - a.activeCount) || (b.weeklyPoints - a.weeklyPoints));

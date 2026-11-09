@@ -29,5 +29,8 @@ const fanClubMembershipSchema = new mongoose.Schema({
 fanClubMembershipSchema.index({ owner: 1, member: 1 }, { unique: true });
 fanClubMembershipSchema.index({ owner: 1, createdAt: -1 });
 fanClubMembershipSchema.index({ owner: 1, points: -1 });
+// ✅ مراجعة #156: يخدم عدّ "النشطين" الحيّ لكل مالك (getSummary) — lastPointAt:{$gte:cutoff}
+// بفلتر owner=هذا المالك تحديداً، لا عدّاد مخزَّن بعد الآن
+fanClubMembershipSchema.index({ owner: 1, lastPointAt: -1 });
 
 module.exports = mongoose.model('FanClubMembership', fanClubMembershipSchema);

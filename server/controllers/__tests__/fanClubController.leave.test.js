@@ -1,7 +1,8 @@
 // ملف: fanClubController.leave.test.js
-// 🛡️ fanclub-v2: مغادرة النادي — تحذف العضوية وتقدّمها اليومي/الأسبوعي، وتُنقِص عدّادي المالك
-// ضمن معاملة واحدة. نفس استراتيجية adminController.moneyRaceAtomicity.test.js (jest.spyOn على
-// نماذج Mongoose حقيقية بمحاكاة ذاكرة JS، لا قاعدة بيانات حقيقية).
+// 🛡️ fanclub-v2: مغادرة النادي — تحذف العضوية وتقدّمها اليومي/الأسبوعي، وتُنقِص عدّاد المالك
+// (memberCount فقط — activeCount لم يَعُد عدّاداً مخزَّناً، راجع مراجعة #156) ضمن معاملة واحدة.
+// نفس استراتيجية adminController.moneyRaceAtomicity.test.js (jest.spyOn على نماذج Mongoose
+// حقيقية بمحاكاة ذاكرة JS، لا قاعدة بيانات حقيقية).
 const mongoose = require('mongoose');
 const User = require('../../models/User');
 const FanClubMembership = require('../../models/FanClubMembership');
@@ -20,7 +21,7 @@ function makeDb() {
     return { users: new Map(), memberships: [] };
 }
 function seedUser(db, overrides) {
-    const user = { _id: '111111111111111111111111', fanClub: { memberCount: 0, activeCount: 0 }, ...overrides };
+    const user = { _id: '111111111111111111111111', fanClub: { memberCount: 0 }, ...overrides };
     db.users.set(user._id, user);
     return user;
 }
@@ -62,10 +63,17 @@ const MEMBER = '222222222222222222222222';
 describe('leaveFanClub', () => {
     afterEach(() => jest.restoreAllMocks());
 
-    test('عضو نشط يغادر — العضوية تُحذَف، memberCount وactiveCount يُنقَصان معاً', async () => {
+    // 🛡️ مراجعة #156: activeCount لم يَعُد عدّاداً مخزَّناً — المغادرة لا تلمسه إطلاقاً بعد الآن
+    // (كان يُنقَص فقط لو "كانت العضوية نشطة لحظة المغادرة"، تمييز غير ذي معنى الآن بما أن النشاط
+    // يُحسَب حياً من lastPointAt بكل قراءة لا من عدّاد). سيناريوا عضو نشط/غير نشط يتصرّفان بنفس
+    // الضبط فيما يخصّ memberCount — دمجا باختبار واحد بدل تكرارهما
+    test.each([
+        ['نشط (نقطة حديثة)', new Date()],
+        ['غير نشط (آخر نقطة منذ 8 أيام)', new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)]
+    ])('عضو %s يغادر — العضوية تُحذَف، memberCount يُنقَص، activeCount غير موجود كعدّاد', async (_label, lastPointAt) => {
         const db = makeDb();
-        const owner = seedUser(db, { fanClub: { memberCount: 1, activeCount: 1 } });
-        db.memberships.push({ owner: OWNER, member: MEMBER, points: 500, lastPointAt: new Date() });
+        const owner = seedUser(db, { fanClub: { memberCount: 1 } });
+        db.memberships.push({ owner: OWNER, member: MEMBER, points: 500, lastPointAt });
         wireMocks(db);
 
         const res = mockRes();
@@ -74,27 +82,12 @@ describe('leaveFanClub', () => {
         expect(res.status).toHaveBeenCalledWith(200);
         expect(db.memberships).toHaveLength(0);
         expect(owner.fanClub.memberCount).toBe(0);
-        expect(owner.fanClub.activeCount).toBe(0);
+        expect(owner.fanClub.activeCount).toBeUndefined();
     });
 
-    test('عضو غير نشط (آخر نقطة منذ أكثر من 7 أيام) يغادر — memberCount يُنقَص، activeCount لا يتأثر', async () => {
+    test('ليس عضواً أصلاً — idempotent، لا خطأ، لا لمس للعدّاد', async () => {
         const db = makeDb();
-        const owner = seedUser(db, { fanClub: { memberCount: 1, activeCount: 0 } }); // ✅ لم يكن مُحتسَباً نشطاً أصلاً
-        const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
-        db.memberships.push({ owner: OWNER, member: MEMBER, points: 500, lastPointAt: eightDaysAgo });
-        wireMocks(db);
-
-        const res = mockRes();
-        await fanClubController.leaveFanClub(mockReq(OWNER, MEMBER), res);
-
-        expect(res.status).toHaveBeenCalledWith(200);
-        expect(owner.fanClub.memberCount).toBe(0);
-        expect(owner.fanClub.activeCount).toBe(0); // ✅ لم يُنقَص دون الصفر
-    });
-
-    test('ليس عضواً أصلاً — idempotent، لا خطأ، لا لمس للعدّادات', async () => {
-        const db = makeDb();
-        const owner = seedUser(db, { fanClub: { memberCount: 0, activeCount: 0 } });
+        const owner = seedUser(db, { fanClub: { memberCount: 0 } });
         wireMocks(db);
 
         const res = mockRes();

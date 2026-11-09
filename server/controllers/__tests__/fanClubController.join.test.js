@@ -40,7 +40,7 @@ function seedUser(db, overrides) {
         _id: 'u_default', isBot: false, socketId: null, username: 'User', profileImage: '',
         walletCoinsPaid: coins !== undefined ? coins : 0, walletCoinsBonus: 0,
         walletBeansW: 0, walletBeansP: 0, walletUsdCents: 0,
-        fanClub: { memberCount: 0, activeCount: 0 },
+        fanClub: { memberCount: 0 },
         ...rest
     };
     user.coins = user.walletCoinsPaid + user.walletCoinsBonus;
@@ -233,7 +233,7 @@ describe('joinFanClub — ذرّية الخصم + منع الانضمام الم
         expect(db.memberships).toHaveLength(0);
     });
 
-    test('مسار سعيد: عدّادا المالك (memberCount/activeCount) يُزادان معاً ضمن المعاملة نفسها', async () => {
+    test('مسار سعيد: عدّاد المالك (memberCount) يُزاد ضمن المعاملة نفسها — activeCount لم يَعُد عدّاداً مخزَّناً (مراجعة #156)', async () => {
         const db = makeDb();
         const owner = seedUser(db, { _id: '111111111111111111111111', isBot: false });
         seedUser(db, { _id: '222222222222222222222222', coins: 1000 });
@@ -246,7 +246,7 @@ describe('joinFanClub — ذرّية الخصم + منع الانضمام الم
 
         expect(res.status).toHaveBeenCalledWith(201);
         expect(owner.fanClub.memberCount).toBe(1);
-        expect(owner.fanClub.activeCount).toBe(1);
+        expect(owner.fanClub.activeCount).toBeUndefined(); // ✅ لا يُكتَب إطلاقاً — يُحسَب حياً فقط
         expect(db.giftLogs).toHaveLength(1); // ✅ GiftLog داخل المعاملة نفسها (بند 8 بالمراجعة)
     });
 });

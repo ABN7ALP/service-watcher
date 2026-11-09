@@ -67,14 +67,18 @@ describe('getLeaderboard — كاش ذاكرة 10 دقائق، لا تجميع �
     test('طلبان متتاليان ضمن 10 دقائق — تجميع واحد فقط', async () => {
         fanClubController._resetLeaderboardCacheForTests();
         jest.spyOn(FanClubWeekly, 'aggregate').mockResolvedValue([]);
+        // 🛡️ مراجعة #156: activeCount يُحسَب حياً من FanClubMembership.aggregate الآن (لا حقل
+        // User.fanClub.activeCount — أُزيل كعدّاد مخزَّن)
+        const activeAggSpy = jest.spyOn(FanClubMembership, 'aggregate').mockResolvedValue([]);
         const findSpy = jest.spyOn(User, 'find').mockImplementation(() => chainable([
-            { _id: OWNER, username: 'o1', profileImage: '', fanClub: { memberCount: 5, activeCount: 3 } }
+            { _id: OWNER, username: 'o1', profileImage: '', fanClub: { memberCount: 5 } }
         ]));
 
         await fanClubController.getLeaderboard({ query: {}, user: { id: MEMBER } }, mockRes());
         await fanClubController.getLeaderboard({ query: {}, user: { id: MEMBER } }, mockRes());
 
         expect(findSpy).toHaveBeenCalledTimes(1); // ✅ النداء الثاني من الكاش، لا تجميع جديد
+        expect(activeAggSpy).toHaveBeenCalledTimes(1);
     });
 
     test('الترتيب: الأعضاء النشطون أولاً، نقاط الأسبوع فاصلاً', async () => {
@@ -83,9 +87,13 @@ describe('getLeaderboard — كاش ذاكرة 10 دقائق، لا تجميع �
             { _id: 'ownerLowActiveHighPoints', weeklyPoints: 900 },
             { _id: 'ownerHighActiveLowPoints', weeklyPoints: 10 }
         ]);
+        jest.spyOn(FanClubMembership, 'aggregate').mockResolvedValue([
+            { _id: 'ownerLowActiveHighPoints', activeCount: 1 },
+            { _id: 'ownerHighActiveLowPoints', activeCount: 8 }
+        ]);
         jest.spyOn(User, 'find').mockImplementation(() => chainable([
-            { _id: 'ownerLowActiveHighPoints', username: 'a', profileImage: '', fanClub: { memberCount: 2, activeCount: 1 } },
-            { _id: 'ownerHighActiveLowPoints', username: 'b', profileImage: '', fanClub: { memberCount: 10, activeCount: 8 } }
+            { _id: 'ownerLowActiveHighPoints', username: 'a', profileImage: '', fanClub: { memberCount: 2 } },
+            { _id: 'ownerHighActiveLowPoints', username: 'b', profileImage: '', fanClub: { memberCount: 10 } }
         ]));
 
         const res = mockRes();
@@ -104,6 +112,8 @@ describe('علم "غير نشط" — من lastPointAt فقط، لا خصم نق�
         jest.spyOn(User, 'findById').mockImplementation(() => chainable({ username: 'o', profileImage: '', activeFrameClass: '', fanClub: {} }));
         const sixDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
         jest.spyOn(FanClubMembership, 'findOne').mockResolvedValue({ points: 500, lastPointAt: sixDaysAgo });
+        // 🛡️ مراجعة #156: activeCount بملخّص النادي أيضاً حيّ من countDocuments الآن (لا عدّاد مخزَّن)
+        const countSpy = jest.spyOn(FanClubMembership, 'countDocuments').mockResolvedValue(1);
         jest.spyOn(FanClubWeekly, 'find').mockImplementation(() => chainable([]));
 
         const res = mockRes();
@@ -111,18 +121,22 @@ describe('علم "غير نشط" — من lastPointAt فقط، لا خصم نق�
 
         expect(res.json.mock.calls[0][0].data.myInactive).toBe(false);
         expect(res.json.mock.calls[0][0].data.myLevelInfo.points).toBe(500); // ✅ لا خصم نقاط إطلاقاً
+        expect(res.json.mock.calls[0][0].data.activeCount).toBe(1);
+        expect(countSpy).toHaveBeenCalledWith({ owner: OWNER, lastPointAt: { $gte: expect.any(Date) } });
     });
 
     test('آخر نقطة منذ 8 أيام — غير نشط، لكن النقاط المخزَّنة لم تتغيّر', async () => {
         jest.spyOn(User, 'findById').mockImplementation(() => chainable({ username: 'o', profileImage: '', activeFrameClass: '', fanClub: {} }));
         const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
         jest.spyOn(FanClubMembership, 'findOne').mockResolvedValue({ points: 500, lastPointAt: eightDaysAgo });
+        jest.spyOn(FanClubMembership, 'countDocuments').mockResolvedValue(0);
         jest.spyOn(FanClubWeekly, 'find').mockImplementation(() => chainable([]));
 
         const res = mockRes();
         await fanClubController.getSummary({ params: { ownerId: OWNER }, user: { id: MEMBER } }, res);
 
         expect(res.json.mock.calls[0][0].data.myInactive).toBe(true);
+        expect(res.json.mock.calls[0][0].data.activeCount).toBe(0); // ✅ غير نشط فعلاً فور صمته 7 أيام، لا بانتظار ترحيل
         expect(res.json.mock.calls[0][0].data.myLevelInfo.points).toBe(500); // ✅ النقاط ثابتة رغم الخمول
     });
 });

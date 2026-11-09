@@ -1,45 +1,50 @@
 // ملف: server/utils/fanClubV2Migration.js
-// 🛡️ fanclub-v2: يُعيد حساب User.fanClub.memberCount/activeCount لكل مالك نادٍ له عضو واحد
-// فعلي على الأقل، من FanClubMembership الحقيقية مباشرة. لا شيء آخر يُرحَّل (لا نقاط، لا سجلات
-// GiftLog قديمة، لا FanClubWeekly/FanClubDailyProgress تاريخية) — هذان العدّادان فقط يُحدَّثان
-// الآن ضمن معاملة الانضمام/المغادرة لا بكل قراءة (راجع docs/specs/fanclub-v2.md)، فقد ينحرفان
-// تقريبياً بمرور وقت طويل بلا مغادرة فعلية (activeCount لا يُنقَص تلقائياً لمن يصمت 7 أيام بلا
-// مغادرة) — هذا الترحيل هو التصحيح الدوري لذاك الانحراف، لا أكثر.
+// 🛡️ fanclub-v2: يُعيد حساب User.fanClub.memberCount لكل مالك نادٍ له عضو واحد فعلي على الأقل،
+// من FanClubMembership الحقيقية مباشرة، ويُصحِّح lastPointAt الفارغ لعضويات قديمة سابقة لهذي
+// المراجعة (راجع backfillMissingLastPointAt أدناه). لا شيء آخر يُرحَّل (لا نقاط، لا سجلات
+// GiftLog قديمة، لا FanClubWeekly/FanClubDailyProgress تاريخية).
+// 🛡️ مراجعة #156: activeCount لم يَعُد يُخزَّن أو يُرحَّل هنا إطلاقاً — "نشط" مفهوم زمني (آخر
+// نقطة خلال 7 أيام) يُحسَب حياً دوماً من FanClubMembership.lastPointAt (راجع fanClubController.js
+// activeCutoff/computeFullLeaderboard)، لا عدّاد يُلمَس فقط عند الانضمام/المغادرة — عدّاد كهذا
+// لمفهوم زمني محض كان يصبح خاطئاً بصمت بمجرد مرور 7 أيام بلا أي انضمام/مغادرة جديدة.
 //
 // FANCLUB_V2_MIGRATION=off|dry|apply (نفس فكرة FOLLOW_MIGRATION/WALLET_MIGRATION بالضبط)،
 // idempotent بالكامل (يُعيد دوماً نفس الإجابة من حالة FanClubMembership الحالية بصرف النظر عن
 // وقت استدعائها) — هذا ما يجعله "قابلاً للاستئناف": إعادة تشغيله بعد تعطّل، أو تكراره دورياً
-// كتصحيح، كلاهما آمن دوماً. لا يحجب server.listen() أو migrationGate — إضافي بطبيعته بالكامل،
-// المسارات الجديدة تحسب كل ما يهم حياً حيث يلزم.
-const User = require('../models/User');
+// كتصحيح لانحراف memberCount، كلاهما آمن دوماً. لا يحجب server.listen() أو migrationGate —
+// إضافي بطبيعته بالكامل، المسارات الجديدة تحسب كل ما يهم حياً حيث يلزم.
 const FanClubMembership = require('../models/FanClubMembership');
+const User = require('../models/User');
 const JobRun = require('../models/JobRun');
 
 const JOB_NAME = 'fanclub_v2_migration_v1';
 // ✅ نافذة رمزية ثابتة واحدة فقط (نفس فكرة SENTINEL_WEEK_START بـfollowMigration.js) — تستخدم
 // الفهرس الفريد الموجود أصلاً على (job, weekStart) لضمان ادّعاء مرّة واحدة للأبد
 const SENTINEL_WEEK_START = new Date(0);
-const INACTIVITY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-// ✅ لكل مالك نادٍ له عضو واحد فعلي على الأقل: memberCount = عدد الأعضاء الحقيقي،
-// activeCount = عدد من نقطة آخرهم (lastPointAt) ضمن آخر 7 أيام فقط — نفس تعريف isInactive
-// بـfanClubController.js بالضبط، بلا أي تقويم بديل
-async function recomputeAllFanClubCounters() {
-    const cutoff = new Date(Date.now() - INACTIVITY_WINDOW_MS);
+// ✅ عضويات أُنشئت قبل إضافة lastPointAt (أو قبل هذي المراجعة كاملة) تحمل lastPointAt:null —
+// تظهر "غير نشطة" فوراً بعد النشر رغم نشاطها الحقيقي السابق. updatedAt (آخر تعديل فعلي على
+// المستند — قد يكون نقطة لاحقة لو مُنحت) أولى من createdAt (وقت الانضمام فقط)، createdAt احتياطي
+// فقط لو updatedAt غائب لأي سبب. تحديث بخط أنابيب تجميع (مصفوفة $set) لقراءة حقل آخر بالمستند نفسه
+async function backfillMissingLastPointAt({ dryRun }) {
+    if (dryRun) {
+        const missing = await FanClubMembership.countDocuments({ lastPointAt: null });
+        return { backfilled: missing };
+    }
+    const result = await FanClubMembership.updateMany(
+        { lastPointAt: null },
+        [{ $set: { lastPointAt: { $ifNull: ['$updatedAt', '$createdAt'] } } }]
+    );
+    return { backfilled: result.modifiedCount || 0 };
+}
+
+// ✅ لكل مالك نادٍ له عضو واحد فعلي على الأقل: memberCount = عدد الأعضاء الحقيقي
+async function recomputeMemberCounts() {
     const rows = await FanClubMembership.aggregate([
-        {
-            $group: {
-                _id: '$owner',
-                memberCount: { $sum: 1 },
-                activeCount: { $sum: { $cond: [{ $gte: ['$lastPointAt', cutoff] }, 1, 0] } }
-            }
-        }
+        { $group: { _id: '$owner', memberCount: { $sum: 1 } } }
     ]);
     const bulk = rows.map(row => ({
-        updateOne: {
-            filter: { _id: row._id },
-            update: { $set: { 'fanClub.memberCount': row.memberCount, 'fanClub.activeCount': row.activeCount } }
-        }
+        updateOne: { filter: { _id: row._id }, update: { $set: { 'fanClub.memberCount': row.memberCount } } }
     }));
     if (bulk.length > 0) await User.bulkWrite(bulk);
     return { ownersProcessed: rows.length };
@@ -76,19 +81,18 @@ async function runMigration({ dryRun = true } = {}) {
         }
     }
 
+    const { backfilled } = await backfillMissingLastPointAt({ dryRun });
+
     if (dryRun) {
-        const cutoff = new Date(Date.now() - INACTIVITY_WINDOW_MS);
-        const rows = await FanClubMembership.aggregate([
-            { $group: { _id: '$owner', memberCount: { $sum: 1 }, activeCount: { $sum: { $cond: [{ $gte: ['$lastPointAt', cutoff] }, 1, 0] } } } }
-        ]);
-        console.log(`[FANCLUB V2 MIGRATION] dryRun=true ownersProjected=${rows.length}`);
-        return { skipped: false, dryRun: true, ownersProcessed: rows.length };
+        const rows = await FanClubMembership.aggregate([{ $group: { _id: '$owner', memberCount: { $sum: 1 } } }]);
+        console.log(`[FANCLUB V2 MIGRATION] dryRun=true ownersProjected=${rows.length} lastPointAtBackfillProjected=${backfilled}`);
+        return { skipped: false, dryRun: true, ownersProcessed: rows.length, backfilled };
     }
 
-    const { ownersProcessed } = await recomputeAllFanClubCounters();
+    const { ownersProcessed } = await recomputeMemberCounts();
     await JobRun.updateOne({ job: JOB_NAME, weekStart: SENTINEL_WEEK_START }, { $set: { status: 'completed' } });
-    console.log(`[FANCLUB V2 MIGRATION] dryRun=false ownersProcessed=${ownersProcessed}`);
-    return { skipped: false, dryRun: false, ownersProcessed };
+    console.log(`[FANCLUB V2 MIGRATION] dryRun=false ownersProcessed=${ownersProcessed} lastPointAtBackfilled=${backfilled}`);
+    return { skipped: false, dryRun: false, ownersProcessed, backfilled };
 }
 
 const FANCLUB_V2_MIGRATION_OFF_MESSAGE = 'Fan club v2 counter migration pending. Set FANCLUB_V2_MIGRATION=dry to preview or =apply to run.';
@@ -105,7 +109,7 @@ async function resolveMigrationStartup({ env = process.env } = {}) {
     }
     if (requested === 'dry') {
         const result = await runMigration({ dryRun: true });
-        console.log(`[FANCLUB V2 MIGRATION] معاينة فقط (dry) — ownersProjected=${result.ownersProcessed}`);
+        console.log(`[FANCLUB V2 MIGRATION] معاينة فقط (dry) — ownersProjected=${result.ownersProcessed}, lastPointAtBackfillProjected=${result.backfilled}`);
         return { ready: false, mode: 'dry' };
     }
     console.log(`[FANCLUB V2 MIGRATION] ${FANCLUB_V2_MIGRATION_OFF_MESSAGE}`);
@@ -113,6 +117,6 @@ async function resolveMigrationStartup({ env = process.env } = {}) {
 }
 
 module.exports = {
-    runMigration, resolveMigrationStartup, isMigrationCompleted, recomputeAllFanClubCounters,
+    runMigration, resolveMigrationStartup, isMigrationCompleted, recomputeMemberCounts, backfillMissingLastPointAt,
     FANCLUB_V2_MIGRATION_OFF_MESSAGE, JOB_NAME, SENTINEL_WEEK_START
 };
