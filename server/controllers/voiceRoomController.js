@@ -475,6 +475,143 @@ exports.getRoomAnalytics = async (req, res) => {
 };
 
 // =====================================================
+// ✅ GET /api/voice-room/rooms/:id/host-pool — ملخّص مسبح المضيفين الأسبوعي (مركز المضيف،
+// المضيف فقط) — راجع feat/live-hours-host-center: تقدّم الشرطين (ساعات مؤهّلة/ألماس) هذا
+// الأسبوع، ترتيبه، أيام متبقية، إحصائيات اليوم، رسم ساعات الأسبوع، وتقسيم ألماس الشهر
+// =====================================================
+// 🛡️ مراجعة #154 (بند 3): مصدر وحيد لكل أرقام "الألماس" بمركز المضيف (اليوم/الأسبوع/الشهر) —
+// دفتر الأستاذ مباشرة (LedgerEntry، لا GiftLog محصورة بالغرفة ولا HostWeeklyStat.beansW/P
+// التقريبية)، بنفس القاعدة دوماً: محصورة بالمستلِم (بصرف النظر عن سياق الغرفة — خلاف الرسم
+// البياني القديم sessionSupportPoints/analytics المحصور بالغرفة عمداً، مقياس مختلف تماماً:
+// "نشاط هذي الغرفة" لا "أرباح هذا المضيف الحقيقية")، وتستثني هدايا الحسابات المرتبطة بالمضيف
+// دوماً (meta.linked) — نفس استثناء مسبح الأسبوع بالضبط، لا رقماً "كاملاً" بقاعدة مختلفة.
+// 🛡️ مراجعة #154 (بند 4): هذا استعلام حيّ من دفتر الأستاذ نفسه — وليس HostWeeklyStat.beansW/P
+// (عدّاد يُحدَّث بعد التزام المعاملة لا ضمنها، راجع تعليق HostWeeklyStat.js) — فهو الرقم الصحيح
+// للعرض الآن؛ أي PR توزيع مستقبلي يجب أن يُعيد نفس هذا الاستعلام لحساب المبلغ الفعلي القابل
+// للتوزيع، لا أن يثق بعدّاد HostWeeklyStat المُقرَّب
+async function aggregateReceivedBeans(hostId, since) {
+    const LedgerEntry = require('../models/LedgerEntry');
+    const rows = await LedgerEntry.aggregate([
+        { $match: { user: hostId, wallet: { $in: ['beans_w', 'beans_p'] }, type: 'gift_receive', createdAt: { $gte: since }, 'meta.linked': { $ne: true } } },
+        { $group: { _id: '$wallet', total: { $sum: '$delta' } } }
+    ]);
+    const out = { beans_w: 0, beans_p: 0 };
+    rows.forEach(r => { out[r._id] = r.total; });
+    return out;
+}
+
+// ✅ نفس قاعدة aggregateReceivedBeans أعلاه بالضبط (محصورة بالمستلِم بصرف النظر عن الغرفة،
+// الحسابات المرتبطة بالمضيف مستبعدة) — بدونها كان "أكبر الداعمين هذا الأسبوع" يعرض شخصاً
+// قد لا يظهر إطلاقاً برقم "ألماس الأسبوع" أعلاه (هدية بدردشة خاصة)، أو حساباً مرتبطاً بالمضيف
+// لا يُفترَض ظهوره كداعم إطلاقاً. مرشّحون أكثر من المطلوب (limit+10) يُجمَعون أولاً عبر GiftLog
+// (المصدر الوحيد الذي يحمل هوية المُرسِل) ثم تُستبعَد مجموعة المضيف منهم بنداء ربط واحد فقط
+async function getTopSupportersExcludingLinked(hostId, since, limit = 3) {
+    const linkageService = require('../utils/linkageService');
+    const candidates = await GiftLog.aggregate([
+        { $match: { receiver: hostId, sender: { $ne: hostId }, createdAt: { $gte: since } } },
+        { $group: { _id: '$sender', total: { $sum: '$totalPrice' } } },
+        { $sort: { total: -1 } },
+        { $limit: limit + 10 },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+        { $unwind: '$user' },
+        { $project: { userId: '$_id', username: '$user.username', profileImage: '$user.profileImage', activeFrameClass: '$user.activeFrameClass', total: 1 } }
+    ]);
+    if (candidates.length === 0) return [];
+    const hostIdStr = hostId.toString();
+    const groupKey = await linkageService.groupLinkedAccounts([hostIdStr, ...candidates.map(c => c.userId.toString())]);
+    const hostGroup = groupKey.get(hostIdStr);
+    return candidates.filter(c => groupKey.get(c.userId.toString()) !== hostGroup).slice(0, limit);
+}
+
+exports.getHostPoolSummary = async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غرفة غير صالح' });
+        }
+        const room = await VoiceRoom.findById(req.params.id).select('host');
+        if (!room) return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة' });
+        if (!room.host || room.host.toString() !== req.user.id) {
+            return res.status(403).json({ status: 'fail', message: 'هذي الإحصائيات متاحة لمالك الغرفة فقط' });
+        }
+        const hostId = room.host;
+
+        const HostWeeklyStat = require('../models/HostWeeklyStat');
+        const LiveSession = require('../models/LiveSession');
+        const Follow = require('../models/Follow');
+        const SystemSettings = require('../models/SystemSettings');
+        const { getCurrentWeekBounds, getCurrentMonthStart, getCurrentDayStart, DAMASCUS_OFFSET_MS } = require('../utils/poolWeek');
+
+        const { weekStart, weekEnd } = getCurrentWeekBounds();
+        const monthStart = getCurrentMonthStart();
+        const dayStart = getCurrentDayStart();
+        const now = new Date();
+
+        // ✅ qualifiedSeconds (ساعات) لا مصدر بديل له غير HostWeeklyStat/LiveSession — لا
+        // "دفتر أستاذ" للوقت. كل أرقام الألماس (اليوم/الأسبوع/الشهر) تأتي من aggregateReceivedBeans
+        // الموحَّدة فقط، لا من myStat.beansW/P التقريبية (راجع التعليق أعلى الدالة)
+        const [settings, myStat, newFollowersToday, weekSessions, todayBeans, weekBeans, monthBeans, weekTopSupporters] = await Promise.all([
+            SystemSettings.getSettings(),
+            HostWeeklyStat.findOne({ host: hostId, weekStart }).select('qualifiedSeconds').lean(),
+            Follow.countDocuments({ followee: hostId, createdAt: { $gte: dayStart } }),
+            LiveSession.find({ host: hostId, startedAt: { $gte: weekStart, $lte: weekEnd } }).select('startedAt qualifiedSeconds peakListeners').lean(),
+            aggregateReceivedBeans(hostId, dayStart),
+            aggregateReceivedBeans(hostId, weekStart),
+            aggregateReceivedBeans(hostId, monthStart),
+            getTopSupportersExcludingLinked(hostId, weekStart, 3)
+        ]);
+
+        const myQualifiedSeconds = myStat?.qualifiedSeconds || 0;
+        const beansThisWeek = weekBeans.beans_w + weekBeans.beans_p;
+        const rank = await HostWeeklyStat.countDocuments({ weekStart, qualifiedSeconds: { $gt: myQualifiedSeconds } }) + 1;
+        const daysLeft = Math.max(0, Math.ceil((weekEnd.getTime() - now.getTime()) / 86400000));
+
+        // ✅ توزيع ساعات الأسبوع على أيامه (الأحد=0 ... السبت=6 بتوقيت دمشق) + ساعات/أعلى عدد
+        // مستمعين اليوم تحديداً — من نفس الاستعلام الواحد أعلاه، بلا نداء إضافي للقاعدة
+        const weeklyBarsSeconds = [0, 0, 0, 0, 0, 0, 0];
+        let todayLiveSeconds = 0, todayPeakListeners = 0;
+        for (const s of weekSessions) {
+            const dayIdx = new Date(s.startedAt.getTime() + DAMASCUS_OFFSET_MS).getUTCDay();
+            weeklyBarsSeconds[dayIdx] += s.qualifiedSeconds || 0;
+            if (s.startedAt >= dayStart) {
+                todayLiveSeconds += s.qualifiedSeconds || 0;
+                todayPeakListeners = Math.max(todayPeakListeners, s.peakListeners || 0);
+            }
+        }
+
+        res.status(200).json({
+            status: 'success',
+            data: {
+                pool: {
+                    qualifiedHours: Math.round((myQualifiedSeconds / 3600) * 100) / 100,
+                    minHours: settings.poolMinHours,
+                    beansThisWeek,
+                    minBeans: settings.poolMinBeans,
+                    minListeners: settings.poolMinListeners,
+                    daysLeft,
+                    rank,
+                    qualified: myQualifiedSeconds >= settings.poolMinHours * 3600 && beansThisWeek >= settings.poolMinBeans
+                },
+                today: {
+                    liveSeconds: todayLiveSeconds,
+                    peakListeners: todayPeakListeners,
+                    beans: todayBeans.beans_w + todayBeans.beans_p,
+                    newFollowers: newFollowersToday
+                },
+                weeklyHoursChart: weeklyBarsSeconds.map(sec => Math.round((sec / 3600) * 100) / 100),
+                monthBeans: {
+                    withdrawable: monthBeans.beans_w,
+                    free: monthBeans.beans_p
+                },
+                topSupportersThisWeek: weekTopSupporters
+            }
+        });
+    } catch (error) {
+        console.error('[ERROR] in getHostPoolSummary:', error);
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
+    }
+};
+
+// =====================================================
 // ✅ PATCH /api/voice-room/rooms/:id — تعديل إعدادات الغرفة (المضيف فقط)
 // =====================================================
 exports.updateRoom = async (req, res) => {

@@ -892,7 +892,9 @@ exports.updateSystemSettings = async (req, res) => {
       'depositPackages', 'shamCashBonusPct', 'firstRechargeEnabled', 'firstRechargeMultiplierUpToUsd', 'firstRechargeOfferHours',
       'depositUniqueCentsEnabled',
       // 🛡️ مراجعة الأمان v2 (البند 1 + 2)
-      'beanHoldHours', 'withdrawalPinPostResetBlockHours'
+      'beanHoldHours', 'withdrawalPinPostResetBlockHours',
+      // ✅ feat/live-hours-host-center: شروط التأهل لمسبح المضيفين الأسبوعي
+      'poolMinHours', 'poolMinBeans', 'poolMinListeners'
     ];
     const updates = {};
     for (const field of allowedFields) {
@@ -1508,5 +1510,41 @@ exports.resolveSuggestion = async (req, res) => {
     await suggestion.save();
 
     res.json({ success: true, message: 'تم تحديث الاقتراح', suggestion });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+};
+
+// ✅ feat/live-hours-host-center: جدول بسيط للمراجعة قبل PR التوزيع — كل من له صف
+// HostWeeklyStat بالأسبوع الحالي (ساعات/ألماس/تأهّل) مرتَّباً بساعات التأهّل تنازلياً.
+// 🛡️ مراجعة #154 (بند 4): beansW/beansP هنا عدّاد تقريبي سريع (راجع تعليق HostWeeklyStat.js
+// الكامل) — يكفي لفحص سريع، لكن أي PR توزيع فعلي يجب أن يُعيد حساب الألماس من LedgerEntry
+// مباشرة لنفس الأسبوع (نفس استعلام aggregateReceivedBeans بـvoiceRoomController.js)، لا أن
+// يثق بهذا العدّاد — يُحدَّث بعد التزام معاملة الهدية لا ضمنها فقد ينحرف عن الدفتر الحقيقي
+exports.getHostPoolThisWeek = async (req, res) => {
+  try {
+    const HostWeeklyStat = require('../models/HostWeeklyStat');
+    const SystemSettings = require('../models/SystemSettings');
+    const { getCurrentWeekBounds } = require('../utils/poolWeek');
+    const { weekStart, weekEnd } = getCurrentWeekBounds();
+    const [settings, rows] = await Promise.all([
+      SystemSettings.getSettings(),
+      HostWeeklyStat.find({ weekStart }).sort('-qualifiedSeconds').populate('host', 'username customId profileImage').lean()
+    ]);
+    const data = rows.map(r => {
+      const beansTotal = (r.beansW || 0) + (r.beansP || 0);
+      return {
+        host: r.host ? { id: r.host._id, username: r.host.username, customId: r.host.customId, profileImage: r.host.profileImage } : null,
+        qualifiedHours: Math.round(((r.qualifiedSeconds || 0) / 3600) * 100) / 100,
+        beansW: r.beansW || 0,
+        beansP: r.beansP || 0,
+        beansTotal,
+        qualified: (r.qualifiedSeconds || 0) >= settings.poolMinHours * 3600 && beansTotal >= settings.poolMinBeans
+      };
+    });
+    res.json({
+      success: true,
+      weekStart, weekEnd,
+      thresholds: { poolMinHours: settings.poolMinHours, poolMinBeans: settings.poolMinBeans },
+      hosts: data
+    });
   } catch (error) { res.status(500).json({ success: false, message: error.message }); }
 };

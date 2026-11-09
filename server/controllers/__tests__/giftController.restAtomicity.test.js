@@ -28,6 +28,9 @@ jest.mock('../../utils/experienceManager', () => ({
 // ✅ دفتر الأستاذ (feat/wallet-ledger-v1): الربط بين الحسابات (جهاز/IP/شام كاش) غير موضوع هذا
 // الاختبار إطلاقاً — يُموَّه دوماً false كي لا تلمس هذي الاختبارات DeviceSession/Withdrawal
 jest.mock('../../utils/linkageService', () => ({ areLinked: jest.fn().mockResolvedValue(false) }));
+// ✅ feat/live-hours-host-center: مسبح المضيف الأسبوعي ليس موضوع هذا الاختبار — يُموَّه كي لا
+// يلمس HostWeeklyStat الحقيقي (لا اتصال قاعدة بيانات فعلي بهذي البيئة، راجع jest.config.js)
+jest.mock('../../models/HostWeeklyStat', () => ({ addBeans: jest.fn().mockResolvedValue(null) }));
 
 const mongoose = require('mongoose');
 const User = require('../../models/User');

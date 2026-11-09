@@ -126,6 +126,12 @@ const systemSettingsSchema = new mongoose.Schema({
     // (كلمة المرور + البريد)، يمنحان صاحب الحساب الحقيقي وقتاً لملاحظة إشعار البوت والتدخّل
     withdrawalPinPostResetBlockHours: { type: Number, default: 24 },
 
+    // ✅ feat/live-hours-host-center: شروط التأهل لمسبح المضيفين الأسبوعي — راجع
+    // server/services/socketService.js (runLiveHoursTick) وHostWeeklyStat
+    poolMinHours: { type: Number, default: 8 },
+    poolMinBeans: { type: Number, default: 30000 },
+    poolMinListeners: { type: Number, default: 2 },
+
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 

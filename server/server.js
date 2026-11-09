@@ -141,6 +141,11 @@ mongoose.connect(process.env.MONGODB_URI)
             await require('./models/VoiceRoom').fixSlugIndex();
             // ✅ تنظيف أي مقاعد صوتية مكررة تراكمت قبل إصلاح القفل التسلسلي (مرة واحدة عند كل إقلاع، آمنة تماماً)
             await require('./models/VoiceRoom').deduplicateSeats();
+            // ✅ feat/live-hours-host-center: تعافٍ من انهيار الخادم — جلسة بث بقيت مفتوحة من
+            // عملية سابقة (لا host-end-broadcast ولا مكنسة انقطاع وصلت لها) تُغلَق عند آخر تِك
+            // مؤكَّد فعلياً (راجع LiveSession.recoverStaleOnBoot)
+            const recoveredSessions = await require('./models/LiveSession').recoverStaleOnBoot();
+            if (recoveredSessions > 0) console.log(`🛡️ [LIVE-HOURS] أُغلقت ${recoveredSessions} جلسة بث عالقة من تشغيل سابق`);
         } else {
             console.log(`🛑 الموقع بوضع الصيانة (503) — الترحيل لم يكتمل بعد (WALLET_MIGRATION=${migrationStartup.mode})`);
         }

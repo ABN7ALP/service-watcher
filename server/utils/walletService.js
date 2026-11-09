@@ -37,7 +37,11 @@ async function post(entries, session) {
         if (!userField) throw new Error(`walletService.post: محفظة غير معروفة "${wallet}"`);
 
         const existing = await LedgerEntry.findOne({ idempotencyKey }).session(session);
-        if (existing) { results.push(existing); continue; }
+        // ✅ feat/live-hours-host-center: $locals غير مُخزَّن (ميزة Mongoose للبيانات اللحظية
+        // بالمستند لا قاعدة البيانات) — يُعلِم المستدعي أن هذا القيد كان موجوداً أصلاً (إعادة
+        // محاولة/سباق)، لا قيداً جديداً فعلياً بهذا النداء؛ يُستخدَم لمنع عدّ هدية مرتين بإحصائية
+        // مسبح المضيف الأسبوعي عند إعادة محاولة تحمل idempotencyKey نفسه (راجع giftController.js)
+        if (existing) { (existing.$locals || (existing.$locals = {})).alreadyExisted = true; results.push(existing); continue; }
 
         const condition = { _id: user };
         if (delta < 0) condition[userField] = { $gte: -delta };

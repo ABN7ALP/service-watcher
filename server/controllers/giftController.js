@@ -68,6 +68,34 @@ async function buildGiftWalletEntries({ senderId, receiverIds, totalCost, sessio
     return entries;
 }
 
+// ✅ feat/live-hours-host-center: يُحوِّل قيود دفتر الأستاذ (gift_receive على beans_w/beans_p)
+// المُطبَّقة فعلاً بهذا النداء فقط (postedEntries من walletService.post — يستثني ما كان موجوداً
+// أصلاً بعلم $locals.alreadyExisted، أي إعادة محاولة/سباق لا تُحسَب هديتها مرتين) إلى $inc ذرّي
+// بإحصائية مضيف الأسبوع الحالي. أفضل مجهود عمداً (try/catch لكل قيد على حدة) — لا يُسقِط مسار
+// الهدية نفسه أبداً لو فشل. 🛡️ هدايا الحسابات المرتبطة (meta.linked، راجع buildGiftWalletEntries)
+// مُستثناة تماماً هنا — لا تُحسَب حتى كـbeans_p بمسبح المضيف الأسبوعي (محفظة المستلم الفعلية
+// تستمر بتسجيلها كالمعتاد بلا أي تغيير؛ الاستثناء هنا فقط لغرض تأهّل المسبح بالذات)
+async function creditHostWeeklyGiftBeans(postedEntries) {
+    if (!postedEntries || postedEntries.length === 0) return;
+    const HostWeeklyStat = require('../models/HostWeeklyStat');
+    const { getCurrentWeekBounds } = require('../utils/poolWeek');
+    const { weekStart } = getCurrentWeekBounds();
+    for (const entry of postedEntries) {
+        try {
+            if (entry.$locals?.alreadyExisted) continue;
+            if (entry.type !== 'gift_receive') continue;
+            if (entry.wallet !== 'beans_w' && entry.wallet !== 'beans_p') continue;
+            if (entry.meta?.linked) continue;
+            await HostWeeklyStat.addBeans(entry.user, weekStart, {
+                beansW: entry.wallet === 'beans_w' ? entry.delta : 0,
+                beansP: entry.wallet === 'beans_p' ? entry.delta : 0
+            });
+        } catch (error) {
+            console.error('[HOST POOL] creditHostWeeklyGiftBeans entry error:', error);
+        }
+    }
+}
+
 // ✅ يُضيف قيمة هدية كنقاط لصف الغرفة التي أُرسلت منها لو كانت طرفاً بمعركة PK نشطة الآن —
 // تحديث ذرّي واحد (findOneAndUpdate + $inc/$set) يمنع فقدان نقاط عند إرسال هدايا متزامنة بسرعة.
 // 🛡️ مضاعف "القفاز" (battleMultiplier) يُطبَّق هنا فقط على ما يُضاف لـscoreA/scoreB وبطاقة
@@ -700,6 +728,7 @@ exports.sendGift = async (req, res) => {
         const linked = await linkageService.areLinked(senderId, receiverId);
         const session = await mongoose.startSession();
         let giftLog;
+        let postedEntries;
         try {
             await session.withTransaction(async () => {
                 const created = await GiftLog.create([{
@@ -720,7 +749,7 @@ exports.sendGift = async (req, res) => {
                     senderId, receiverIds: [receiverId], totalCost: totalPrice, session,
                     idemBase: giftLog._id, linkedFlags: [linked]
                 });
-                await walletService.post(entries, session);
+                postedEntries = await walletService.post(entries, session);
             });
         } catch (txError) {
             if (txError.code === 'INSUFFICIENT') {
@@ -752,6 +781,14 @@ exports.sendGift = async (req, res) => {
             } catch (challengeError) {
                 console.error('[SEAT CHALLENGE] Failed to apply gift score:', challengeError);
             }
+        }
+        // ✅ feat/live-hours-host-center: مستقلة عن سياق الغرفة عمداً (بعكس آثار PK/الدعم/
+        // التحدي أعلاه) — هدية بدردشة خاصة لمستخدم يستضيف غرفته الخاصة تُحسَب بمسبحه الأسبوعي
+        // تماماً كهدية داخل غرفته، فمحفظته الفعلية (beans_w/beans_p) هي نفسها بصرف النظر عن السياق
+        try {
+            await creditHostWeeklyGiftBeans(postedEntries);
+        } catch (poolError) {
+            console.error('[HOST POOL] Failed to credit weekly beans:', poolError);
         }
 
         const io = req.app.get('socketio');
@@ -1112,7 +1149,7 @@ async function reserveGiftCombo({ session, senderId, giftId, quantity, taps = 1,
         senderId, receiverIds: prepared.validReceivers.map(r => r._id), totalCost: prepared.totalCost, session,
         idemBase, linkedFlags
     });
-    await walletService.post(entries, session);
+    const postedEntries = await walletService.post(entries, session);
 
     await GiftLog.insertMany(buildGiftLogEntries({
         senderId, gift: prepared.gift, validReceivers: prepared.validReceivers, effectiveQty: prepared.effectiveQty,
@@ -1121,7 +1158,7 @@ async function reserveGiftCombo({ session, senderId, giftId, quantity, taps = 1,
 
     const updatedSender = await User.findById(senderId).select('coins').session(session);
     prepared.sender.coins = updatedSender.coins;
-    return prepared;
+    return { ...prepared, postedEntries };
 }
 exports.reserveGiftCombo = reserveGiftCombo;
 
@@ -1135,8 +1172,17 @@ exports.reserveGiftCombo = reserveGiftCombo;
 // Socket.IO — راجع socketService.js؛ REST/processGiftCombo بلا مفهوم جلسة كومبو أصلاً) —
 // يُضاف لحمولة room-gift-announcement كي يُجمِّع العميل كل إعلانات نفس الجلسة (حتى لو كانت
 // لعدّة مستلمين، كل واحد بحدث منفصل) بشريط/سطر دردشة واحد متحدِّث بدل عنصر جديد لكل حدث
-async function runGiftComboSideEffects({ io, sender, gift, validReceivers, unitPrice, totalCost, totalPrice, effectiveQty, cleanRoomId, safeGiftImage, comboId }) {
+async function runGiftComboSideEffects({ io, sender, gift, validReceivers, unitPrice, totalCost, totalPrice, effectiveQty, cleanRoomId, safeGiftImage, comboId, postedEntries }) {
     const senderId = sender._id;
+
+    // ✅ feat/live-hours-host-center: مستقلة عن سياق الغرفة عمداً (راجع نفس التعليق بمسار
+    // الإرسال الفردي) — محفظة كل مستلم (beans_w/beans_p) تُحسَب بمسبحه الأسبوعي بصرف النظر
+    // عن كون الهدية دُفِعت بغرفة أو دردشة خاصة
+    try {
+        await creditHostWeeklyGiftBeans(postedEntries);
+    } catch (poolError) {
+        console.error('[HOST POOL] Failed to credit weekly beans:', poolError);
+    }
 
     if (cleanRoomId) {
         try {
@@ -1356,6 +1402,7 @@ async function settleGiftComboClaimInner({ key, senderId, comboId, seq, giftId, 
     const session = await mongoose.startSession();
     let updatedSender = null;
     let txError = null;
+    let postedEntries;
     try {
         await session.withTransaction(async () => {
             // ✅ حجز "ذرّي" لمفتاح هذي الدفعة أولاً، بنفس المعاملة — فهرس unique على key يضمن
@@ -1387,7 +1434,7 @@ async function settleGiftComboClaimInner({ key, senderId, comboId, seq, giftId, 
                 senderId, receiverIds: prepared.validReceivers.map(r => r._id), totalCost: prepared.totalCost, session,
                 idemBase: claim._id, linkedFlags
             });
-            await walletService.post(entries, session);
+            postedEntries = await walletService.post(entries, session);
 
             const freshSender = await User.findById(senderId).select('coins').session(session);
             updatedSender = freshSender;
@@ -1414,7 +1461,7 @@ async function settleGiftComboClaimInner({ key, senderId, comboId, seq, giftId, 
         throw txError;
     }
     prepared.sender.coins = updatedSender.coins;
-    return { duplicate: false, reserved: prepared };
+    return { duplicate: false, reserved: { ...prepared, postedEntries } };
 }
 
 // =====================================================
@@ -1636,6 +1683,7 @@ exports.sendPublicGift = async (req, res) => {
         // تحوي الخصم الذرّي (walletService) + إيداع فول كل مستلم + إدراج كل سجلّات GiftLog معاً
         const session = await mongoose.startSession();
         let updatedSenderPublic;
+        let postedEntries;
         try {
             await session.withTransaction(async () => {
                 const logs = finalRecipientIds.map(rid => ({
@@ -1649,7 +1697,7 @@ exports.sendPublicGift = async (req, res) => {
                     senderId, receiverIds: finalRecipientIds, totalCost, session,
                     idemBase: logDocs[0]._id, linkedFlags
                 });
-                await walletService.post(entries, session);
+                postedEntries = await walletService.post(entries, session);
 
                 updatedSenderPublic = await User.findById(senderId).select('coins').session(session);
             });
@@ -1662,6 +1710,11 @@ exports.sendPublicGift = async (req, res) => {
             await session.endSession();
         }
         sender.coins = updatedSenderPublic.coins;
+        try {
+            await creditHostWeeklyGiftBeans(postedEntries);
+        } catch (poolError) {
+            console.error('[HOST POOL] Failed to credit weekly beans:', poolError);
+        }
 
                 receivers.forEach(r => {
             if (r.socketId) {
