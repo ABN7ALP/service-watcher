@@ -11587,6 +11587,19 @@ function renderProfileHubBody(u) {
     document.getElementById('profile-hub-discover-btn')?.addEventListener('click', () => showDiscoverPeopleSheet());
 }
 
+// ✅ مراجعة #155 (بند 3): جمع عربي صحيح للمعدود الصريح بمركز المضيف (يوم/ساعة) بدل "6 يوم"
+// الخاطئة نحوياً لغير الواحد. الصيغة (مفرد/مثنى/جمع/منصوب) تُحدَّد من القيمة المقرَّبة لأقرب
+// عدد صحيح حتى لو كانت القيمة المعروضة نفسها كسرية (ساعات ناقصة مثلاً)
+function arabicUnitWord(n, forms) {
+    const v = Math.round(n);
+    if (v === 1) return forms.one;
+    if (v === 2) return forms.two;
+    if (v === 0 || (v >= 3 && v <= 10)) return forms.few;
+    return forms.many;
+}
+const ARABIC_DAY_FORMS = { one: 'يوم', two: 'يومان', few: 'أيام', many: 'يوماً' };
+const ARABIC_HOUR_FORMS = { one: 'ساعة', two: 'ساعتان', few: 'ساعات', many: 'ساعة' };
+
 // ✅ feat/live-hours-host-center: بطاقة مسبح المضيفين الأسبوعي — ساعات البث المؤهّلة وألماس
 // الأسبوع مقابل الحدّين الأدنيين (settings.poolMinHours/poolMinBeans)، بلا أي تقدير بالدولار
 // (التوزيع الفعلي لم يُبنَ بعد بهذا الـPR — "يُعلن عند التوزيع" فقط)
@@ -11600,13 +11613,13 @@ function renderHostPoolCardHTML(poolData) {
         <div class="host-pool-card">
             <div class="host-pool-card-head">
                 <h4>مسبح هذا الأسبوع</h4>
-                <span class="host-pool-days-left">ينتهي بعد <b>${pool.daysLeft}</b> يوم</span>
+                <span class="host-pool-days-left">ينتهي بعد <b>${pool.daysLeft}</b> ${arabicUnitWord(pool.daysLeft, ARABIC_DAY_FORMS)}</span>
             </div>
             <p class="host-pool-sub">حقّق الشرطين لتدخل التوزيع</p>
             <div class="host-pool-meter">
                 <div class="host-pool-meter-kv"><span>ساعات البث المحتسبة</span><span>${pool.qualifiedHours} / ${pool.minHours}</span></div>
                 <div class="host-pool-bar host-pool-bar-hours"><i style="width:${hoursPct}%"></i></div>
-                <div class="host-pool-meter-note"><span>تُحسب فقط مع ${pool.minListeners} مستمعين على الأقل</span><span>${hoursMissing > 0 ? `ينقصك ${hoursMissing} ساعة` : 'مكتمل ✓'}</span></div>
+                <div class="host-pool-meter-note"><span>تُحسب فقط مع ${pool.minListeners} مستمعين على الأقل</span><span>${hoursMissing > 0 ? `ينقصك ${hoursMissing} ${arabicUnitWord(hoursMissing, ARABIC_HOUR_FORMS)}` : 'مكتمل ✓'}</span></div>
             </div>
             <div class="host-pool-meter">
                 <div class="host-pool-meter-kv"><span>ألماس الأسبوع</span><span>${fmtNum(pool.beansThisWeek)} / ${fmtNum(pool.minBeans)}</span></div>
@@ -11742,15 +11755,18 @@ async function showHostCenterPage() {
         if (!document.getElementById('host-center-page')) return;
 
         const followersCount = roomDetails.followersCount || 0;
-        const level = roomDetails.level ?? '—';
-        const supportPoints = roomDetails.supportPoints || 0;
         const poolData = hostPoolRes && hostPoolRes.status === 'success' ? hostPoolRes.data : null;
+        // 🛡️ مراجعة #155: المستوى والدعم التراكمي كلاهما من poolData نفسه (نفس نداء بطاقة
+        // المسبح) — لا من roomDetails.level/supportPoints (مستوى الغرفة، مقياس مختلف تماماً
+        // عن أرباح المضيف الحقيقية) كي لا يتعارضا مع رقم "ألماس الأسبوع" بالبطاقة تحتهما مباشرة
+        const hostLevel = poolData ? poolData.hostLevel : null;
+        const lifetimeBeans = poolData ? poolData.lifetimeBeans : 0;
 
         body.innerHTML = `
             <div class="grid grid-cols-3 gap-2 mb-3">
                 <div class="profile-hub-hc-stat"><span>${followersCount}</span><label>متابعو الغرفة</label></div>
-                <div class="profile-hub-hc-stat"><span>Lv.${level}</span><label>المستوى</label></div>
-                <div class="profile-hub-hc-stat"><span>${supportPoints.toLocaleString('en-US')}</span><label>دعم تراكمي</label></div>
+                <div class="profile-hub-hc-stat"><span>${hostLevel !== null ? 'Lv.' + hostLevel : '—'}</span><label>المستوى</label></div>
+                <div class="profile-hub-hc-stat"><span>${fmtNum(lifetimeBeans)}</span><label>دعم تراكمي</label></div>
             </div>
             ${poolData ? renderHostPoolCardHTML(poolData) : `<p class="text-[11px] text-gray-500 text-center py-3">تعذّر تحميل بيانات المسبح</p>`}
             ${poolData ? renderHostDailyTilesHTML(poolData.today) : ''}

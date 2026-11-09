@@ -1513,8 +1513,11 @@ exports.resolveSuggestion = async (req, res) => {
   } catch (error) { res.status(500).json({ success: false, message: error.message }); }
 };
 
-// ✅ feat/live-hours-host-center: جدول بسيط للمراجعة قبل PR التوزيع — كل من له صف
-// HostWeeklyStat بالأسبوع الحالي (ساعات/ألماس/تأهّل) مرتَّباً بساعات التأهّل تنازلياً.
+// ✅ feat/live-hours-host-center: جدول بسيط للمراجعة قبل PR التوزيع — كل مضيف له ساعات مؤهّلة
+// هذا الأسبوع (HostDailyStat) و/أو صف HostWeeklyStat (ألماس)، مرتَّباً بساعات التأهيل تنازلياً.
+// 🛡️ مراجعة #155: الساعات من HostDailyStat مباشرة (مصدر الحقيقة الوحيد، راجع تعليق النموذج) —
+// لم تُعد HostWeeklyStat تحمل حقل ساعات إطلاقاً. اتحاد المضيفين من كلا المصدرين معاً (ساعات
+// بلا ألماس هذا الأسبوع، أو ألماس بلا ساعات مؤهّلة) كي لا يختفي أحدهما من الجدول
 // 🛡️ مراجعة #154 (بند 4): beansW/beansP هنا عدّاد تقريبي سريع (راجع تعليق HostWeeklyStat.js
 // الكامل) — يكفي لفحص سريع، لكن أي PR توزيع فعلي يجب أن يُعيد حساب الألماس من LedgerEntry
 // مباشرة لنفس الأسبوع (نفس استعلام aggregateReceivedBeans بـvoiceRoomController.js)، لا أن
@@ -1522,24 +1525,42 @@ exports.resolveSuggestion = async (req, res) => {
 exports.getHostPoolThisWeek = async (req, res) => {
   try {
     const HostWeeklyStat = require('../models/HostWeeklyStat');
+    const HostDailyStat = require('../models/HostDailyStat');
+    const User = require('../models/User');
     const SystemSettings = require('../models/SystemSettings');
     const { getCurrentWeekBounds } = require('../utils/poolWeek');
     const { weekStart, weekEnd } = getCurrentWeekBounds();
-    const [settings, rows] = await Promise.all([
+    const [settings, hoursRows, beansRows] = await Promise.all([
       SystemSettings.getSettings(),
-      HostWeeklyStat.find({ weekStart }).sort('-qualifiedSeconds').populate('host', 'username customId profileImage').lean()
+      HostDailyStat.aggregate([
+        { $match: { day: { $gte: weekStart, $lte: weekEnd } } },
+        { $group: { _id: '$host', qualifiedSeconds: { $sum: '$qualifiedSeconds' } } }
+      ]),
+      HostWeeklyStat.find({ weekStart }).select('host beansW beansP').lean()
     ]);
-    const data = rows.map(r => {
-      const beansTotal = (r.beansW || 0) + (r.beansP || 0);
+    const hoursByHost = new Map(hoursRows.map(r => [r._id.toString(), r.qualifiedSeconds]));
+    const beansByHost = new Map(beansRows.map(r => [r.host.toString(), { beansW: r.beansW || 0, beansP: r.beansP || 0 }]));
+    const hostIds = [...new Set([...hoursByHost.keys(), ...beansByHost.keys()])];
+    const hostDocs = await User.find({ _id: { $in: hostIds } }).select('username customId profileImage').lean();
+    const hostById = new Map(hostDocs.map(h => [h._id.toString(), h]));
+
+    const data = hostIds.map(id => {
+      const qualifiedSeconds = hoursByHost.get(id) || 0;
+      const beans = beansByHost.get(id) || { beansW: 0, beansP: 0 };
+      const beansTotal = beans.beansW + beans.beansP;
+      const h = hostById.get(id);
       return {
-        host: r.host ? { id: r.host._id, username: r.host.username, customId: r.host.customId, profileImage: r.host.profileImage } : null,
-        qualifiedHours: Math.round(((r.qualifiedSeconds || 0) / 3600) * 100) / 100,
-        beansW: r.beansW || 0,
-        beansP: r.beansP || 0,
+        host: h ? { id: h._id, username: h.username, customId: h.customId, profileImage: h.profileImage } : null,
+        qualifiedHours: Math.round((qualifiedSeconds / 3600) * 100) / 100,
+        beansW: beans.beansW,
+        beansP: beans.beansP,
         beansTotal,
-        qualified: (r.qualifiedSeconds || 0) >= settings.poolMinHours * 3600 && beansTotal >= settings.poolMinBeans
+        qualified: qualifiedSeconds >= settings.poolMinHours * 3600 && beansTotal >= settings.poolMinBeans,
+        _sortSeconds: qualifiedSeconds
       };
-    });
+    }).sort((a, b) => b._sortSeconds - a._sortSeconds)
+      .map(({ _sortSeconds, ...rest }) => rest);
+
     res.json({
       success: true,
       weekStart, weekEnd,

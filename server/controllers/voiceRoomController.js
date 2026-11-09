@@ -546,52 +546,66 @@ exports.getHostPoolSummary = async (req, res) => {
         }
         const hostId = room.host;
 
-        const HostWeeklyStat = require('../models/HostWeeklyStat');
+        const HostDailyStat = require('../models/HostDailyStat');
         const LiveSession = require('../models/LiveSession');
         const Follow = require('../models/Follow');
         const SystemSettings = require('../models/SystemSettings');
-        const { getCurrentWeekBounds, getCurrentMonthStart, getCurrentDayStart, DAMASCUS_OFFSET_MS } = require('../utils/poolWeek');
+        const { getCurrentWeekBounds, getCurrentMonthStart, getCurrentDayStart } = require('../utils/poolWeek');
 
         const { weekStart, weekEnd } = getCurrentWeekBounds();
         const monthStart = getCurrentMonthStart();
         const dayStart = getCurrentDayStart();
         const now = new Date();
 
-        // ✅ qualifiedSeconds (ساعات) لا مصدر بديل له غير HostWeeklyStat/LiveSession — لا
-        // "دفتر أستاذ" للوقت. كل أرقام الألماس (اليوم/الأسبوع/الشهر) تأتي من aggregateReceivedBeans
-        // الموحَّدة فقط، لا من myStat.beansW/P التقريبية (راجع التعليق أعلى الدالة)
-        const [settings, myStat, newFollowersToday, weekSessions, todayBeans, weekBeans, monthBeans, weekTopSupporters] = await Promise.all([
+        // 🛡️ مراجعة #155: HostDailyStat هو مصدر الحقيقة الوحيد للساعات — مجموع الأسبوع ورسمه
+        // البياني كلاهما من نفس هذي السبعة أيام بالضبط، لا مصدرين مختلفين كما كان سابقاً
+        // (LiveSession مُجمَّعة بيوم *بداية* الجلسة كانت تتعارض بصمت مع HostWeeklyStat.qualifiedSeconds
+        // لأي جلسة تعبر منتصف الليل، أو حين لا توجد جلسة مطابقة أصلاً — راجع مراجعة #155).
+        // "دعم تراكمي" أعلى الصفحة (lifetimeBeans) و"المستوى" (hostLevel) من نفس قاعدة أرقام
+        // الألماس الأخرى بالضبط (aggregateReceivedBeans) و req.user.level الحقيقي — لا حقل
+        // مستوى/دعم الغرفة (room.level/room.supportPoints) المستقل تماماً عن أرباح المضيف الفعلية
+        const [settings, dailyStats, newFollowersToday, todaySessions, todayBeans, weekBeans, monthBeans, lifetimeBeans, weekTopSupporters] = await Promise.all([
             SystemSettings.getSettings(),
-            HostWeeklyStat.findOne({ host: hostId, weekStart }).select('qualifiedSeconds').lean(),
+            HostDailyStat.find({ host: hostId, day: { $gte: weekStart, $lte: weekEnd } }).select('day qualifiedSeconds').lean(),
             Follow.countDocuments({ followee: hostId, createdAt: { $gte: dayStart } }),
-            LiveSession.find({ host: hostId, startedAt: { $gte: weekStart, $lte: weekEnd } }).select('startedAt qualifiedSeconds peakListeners').lean(),
+            LiveSession.find({ host: hostId, startedAt: { $gte: dayStart } }).select('peakListeners').lean(),
             aggregateReceivedBeans(hostId, dayStart),
             aggregateReceivedBeans(hostId, weekStart),
             aggregateReceivedBeans(hostId, monthStart),
+            aggregateReceivedBeans(hostId, new Date(0)),
             getTopSupportersExcludingLinked(hostId, weekStart, 3)
         ]);
 
-        const myQualifiedSeconds = myStat?.qualifiedSeconds || 0;
-        const beansThisWeek = weekBeans.beans_w + weekBeans.beans_p;
-        const rank = await HostWeeklyStat.countDocuments({ weekStart, qualifiedSeconds: { $gt: myQualifiedSeconds } }) + 1;
-        const daysLeft = Math.max(0, Math.ceil((weekEnd.getTime() - now.getTime()) / 86400000));
-
-        // ✅ توزيع ساعات الأسبوع على أيامه (الأحد=0 ... السبت=6 بتوقيت دمشق) + ساعات/أعلى عدد
-        // مستمعين اليوم تحديداً — من نفس الاستعلام الواحد أعلاه، بلا نداء إضافي للقاعدة
+        // ✅ توزيع ساعات الأسبوع على أيامه (الأحد=0 ... السبت=6) — day كلّها لحظات منتصف ليل
+        // دمشقية UTC حقيقية (راجع getDayStartForDate)، فالفارق عن weekStart بالأيام هو الفهرس مباشرة
         const weeklyBarsSeconds = [0, 0, 0, 0, 0, 0, 0];
-        let todayLiveSeconds = 0, todayPeakListeners = 0;
-        for (const s of weekSessions) {
-            const dayIdx = new Date(s.startedAt.getTime() + DAMASCUS_OFFSET_MS).getUTCDay();
-            weeklyBarsSeconds[dayIdx] += s.qualifiedSeconds || 0;
-            if (s.startedAt >= dayStart) {
-                todayLiveSeconds += s.qualifiedSeconds || 0;
-                todayPeakListeners = Math.max(todayPeakListeners, s.peakListeners || 0);
-            }
+        let myQualifiedSeconds = 0, todayLiveSeconds = 0;
+        for (const d of dailyStats) {
+            const dayIdx = Math.round((d.day.getTime() - weekStart.getTime()) / 86400000);
+            if (dayIdx < 0 || dayIdx > 6) continue;
+            weeklyBarsSeconds[dayIdx] += d.qualifiedSeconds || 0;
+            myQualifiedSeconds += d.qualifiedSeconds || 0;
+            if (d.day.getTime() === dayStart.getTime()) todayLiveSeconds = d.qualifiedSeconds || 0;
         }
+        const todayPeakListeners = todaySessions.reduce((max, s) => Math.max(max, s.peakListeners || 0), 0);
+
+        const beansThisWeek = weekBeans.beans_w + weekBeans.beans_p;
+        // ✅ رتبتك بين كل المضيفين — نفس مصدر الساعات الوحيد (HostDailyStat)، مُجمَّعاً عبر كل
+        // المضيفين لهذا الأسبوع بدل عدّاد HostWeeklyStat.qualifiedSeconds المحذوف
+        const higherRankedCount = await HostDailyStat.aggregate([
+            { $match: { day: { $gte: weekStart, $lte: weekEnd } } },
+            { $group: { _id: '$host', total: { $sum: '$qualifiedSeconds' } } },
+            { $match: { total: { $gt: myQualifiedSeconds } } },
+            { $count: 'n' }
+        ]);
+        const rank = (higherRankedCount[0]?.n || 0) + 1;
+        const daysLeft = Math.max(0, Math.ceil((weekEnd.getTime() - now.getTime()) / 86400000));
 
         res.status(200).json({
             status: 'success',
             data: {
+                hostLevel: req.user.level || 1,
+                lifetimeBeans: lifetimeBeans.beans_w + lifetimeBeans.beans_p,
                 pool: {
                     qualifiedHours: Math.round((myQualifiedSeconds / 3600) * 100) / 100,
                     minHours: settings.poolMinHours,

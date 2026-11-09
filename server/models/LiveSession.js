@@ -2,9 +2,11 @@ const mongoose = require('mongoose');
 
 // ✅ feat/live-hours-host-center: جلسة بث واحدة لكل "دخول مباشر" حقيقي لمضيف — تُفتَح عند
 // host-start-broadcast وتُغلَق عند host-end-broadcast/مكنسة انقطاع المضيف (راجع socketService.js
-// endRoomBroadcastForHost/openLiveSession/closeLiveSession). qualifiedSeconds هو مصدر الحقيقة
-// الوحيد لساعات مسبح المضيفين الأسبوعي — لا يُحسَب شيء من العميل أبداً، فقط من تِك دوري بالخادم
-// (runLiveHoursTick) يفحص عدد المستمعين الحقيقيين كل 60 ثانية (راجع HostWeeklyStat)
+// endRoomBroadcastForHost/openLiveSession/closeLiveSession). لا يُحسَب شيء من العميل أبداً، فقط
+// من تِك دوري بالخادم (runLiveHoursTick) يفحص عدد المستمعين الحقيقيين كل 60 ثانية
+// 🛡️ مراجعة #155: qualifiedSeconds هنا يمنع العدّ المزدوج *ضمن نفس التِك* فقط (راجع applyTick
+// أدناه) ويُستخدَم لـpeakListeners — مصدر الحقيقة المعروض بمركز المضيف (الساعات يوماً بيوم) هو
+// HostDailyStat، تُزاد مباشرة من socketService.js بنفس لحظة التِك لا بيوم بداية هذي الجلسة
 const liveSessionSchema = new mongoose.Schema({
     host: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     room: { type: mongoose.Schema.Types.ObjectId, ref: 'VoiceRoom', required: true, index: true },

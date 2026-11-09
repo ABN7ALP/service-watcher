@@ -19,14 +19,14 @@ jest.mock('../../utils/linkageService', () => ({
 }));
 
 let socketService;
-let VoiceRoom, LiveSession, HostWeeklyStat, SystemSettings, linkageService;
+let VoiceRoom, LiveSession, HostDailyStat, SystemSettings, linkageService;
 
 beforeAll(() => {
     jest.spyOn(global, 'setInterval').mockImplementation(() => ({ unref: () => {} }));
     socketService = require('../socketService');
     VoiceRoom = require('../../models/VoiceRoom');
     LiveSession = require('../../models/LiveSession');
-    HostWeeklyStat = require('../../models/HostWeeklyStat');
+    HostDailyStat = require('../../models/HostDailyStat');
     SystemSettings = require('../../models/SystemSettings');
     linkageService = require('../../utils/linkageService');
 });
@@ -118,7 +118,7 @@ describe('runLiveHoursTick — يُضيف دقيقة فقط عند: حضور ا�
         jest.spyOn(VoiceRoom, 'find').mockImplementation(() => chainable([{ _id: roomId, host: hostId, hostDisconnectedAt }]));
         jest.spyOn(LiveSession, 'findOne').mockImplementation(() => chainable({ _id: sessionId }));
         jest.spyOn(LiveSession, 'applyTick').mockResolvedValue(applyTickResult);
-        jest.spyOn(HostWeeklyStat, 'addQualifiedSeconds').mockResolvedValue(null);
+        jest.spyOn(HostDailyStat, 'addQualifiedSeconds').mockResolvedValue(null);
     }
 
     test('مضيف حاضر + مستمعان (= الحد الأدنى الافتراضي 2) + ادّعاء التِك ينجح → qualifies:true + إضافة 60 ثانية', async () => {
@@ -130,7 +130,32 @@ describe('runLiveHoursTick — يُضيف دقيقة فقط عند: حضور ا�
         await socketService.runLiveHoursTick(io);
 
         expect(LiveSession.applyTick).toHaveBeenCalledWith('ls_1', expect.objectContaining({ qualifies: true, listenerCount: 2 }));
-        expect(HostWeeklyStat.addQualifiedSeconds).toHaveBeenCalledWith('host_1', expect.any(Date), 60);
+        expect(HostDailyStat.addQualifiedSeconds).toHaveBeenCalledWith('host_1', expect.any(Date), 60);
+    });
+
+    // 🛡️ مراجعة #155 (بند 1): اليوم المُرسَل لـHostDailyStat يُحسَب من لحظة *هذا التِك* (now) لا
+    // من يوم بداية الجلسة — فجلسة تعبر منتصف الليل بتوقيت دمشق تُحسَب دقيقة بدقيقة على يومها
+    // الفعلي تلقائياً، بلا أي منطق توزيع إضافي بالخادم
+    test('تِك عند 23:58 دمشق (الجلسة بدأت يوماً سابقاً) → اليوم المُرسَل هو يوم التِك نفسه، لا يوم بداية الجلسة', async () => {
+        jest.useFakeTimers();
+        // 2024-01-08T20:58:00Z = 2024-01-08T23:58:00 بتوقيت دمشق (UTC+3) — لا يزال الأحد نفسه محلياً
+        jest.setSystemTime(new Date('2024-01-08T20:58:00Z'));
+        try {
+            jest.spyOn(SystemSettings, 'getSettings').mockResolvedValue({ poolMinListeners: 2 });
+            wireRoom('room_1', 'host_1', 'ls_1'); // الجلسة الموهومة ls_1 لا تحمل startedAt هنا أصلاً — السلوك لا يعتمد عليه
+            mockGroups([]);
+            const io = fakeIoWithViewers('room_1', ['host_1', 'v1', 'v2']);
+
+            await socketService.runLiveHoursTick(io);
+
+            expect(HostDailyStat.addQualifiedSeconds).toHaveBeenCalledWith('host_1', expect.any(Date), 60);
+            const calledDay = HostDailyStat.addQualifiedSeconds.mock.calls[0][1];
+            // ✅ نفس حساب getDayStartForDate بالضبط: منتصف ليل اليوم المحلي (دمشق) كلحظة UTC حقيقية
+            const { getDayStartForDate } = require('../../utils/poolWeek');
+            expect(calledDay.getTime()).toBe(getDayStartForDate(new Date('2024-01-08T20:58:00Z')).getTime());
+        } finally {
+            jest.useRealTimers();
+        }
     });
 
     test('المضيف غائب عن قناة الغرفة فعلياً (رغم isLive:true بالمستند) → qualifies:false حتى مع مستمعين كافيين', async () => {
@@ -142,7 +167,7 @@ describe('runLiveHoursTick — يُضيف دقيقة فقط عند: حضور ا�
         await socketService.runLiveHoursTick(io);
 
         expect(LiveSession.applyTick).toHaveBeenCalledWith('ls_1', expect.objectContaining({ qualifies: false }));
-        expect(HostWeeklyStat.addQualifiedSeconds).not.toHaveBeenCalled();
+        expect(HostDailyStat.addQualifiedSeconds).not.toHaveBeenCalled();
     });
 
     test('المضيف حاضر لكن بنافذة سماح انقطاعه (hostDisconnectedAt محدَّد) → qualifies:false', async () => {
@@ -154,7 +179,7 @@ describe('runLiveHoursTick — يُضيف دقيقة فقط عند: حضور ا�
         await socketService.runLiveHoursTick(io);
 
         expect(LiveSession.applyTick).toHaveBeenCalledWith('ls_1', expect.objectContaining({ qualifies: false }));
-        expect(HostWeeklyStat.addQualifiedSeconds).not.toHaveBeenCalled();
+        expect(HostDailyStat.addQualifiedSeconds).not.toHaveBeenCalled();
     });
 
     test('مستمع واحد فقط (أقل من الحد الأدنى) → qualifies:false ولا إضافة أي ثانية', async () => {
@@ -166,7 +191,7 @@ describe('runLiveHoursTick — يُضيف دقيقة فقط عند: حضور ا�
         await socketService.runLiveHoursTick(io);
 
         expect(LiveSession.applyTick).toHaveBeenCalledWith('ls_1', expect.objectContaining({ qualifies: false, listenerCount: 1 }));
-        expect(HostWeeklyStat.addQualifiedSeconds).not.toHaveBeenCalled();
+        expect(HostDailyStat.addQualifiedSeconds).not.toHaveBeenCalled();
     });
 
     test('حد أدنى مُعدَّل إدارياً إلى 3 → مستمعان لا يكفيان الآن', async () => {
@@ -178,14 +203,14 @@ describe('runLiveHoursTick — يُضيف دقيقة فقط عند: حضور ا�
         await socketService.runLiveHoursTick(io);
 
         expect(LiveSession.applyTick).toHaveBeenCalledWith('ls_1', expect.objectContaining({ qualifies: false }));
-        expect(HostWeeklyStat.addQualifiedSeconds).not.toHaveBeenCalled();
+        expect(HostDailyStat.addQualifiedSeconds).not.toHaveBeenCalled();
     });
 
     // 🛡️ مراجعة #154 (بند 1): عدم العدّ المزدوج — ادّعاء التِك نفسه قد يُرفَض (applyTick يُعيد
     // null، راجع LiveSession.applyTick: تِك متقارب جداً زمنياً من آخر تِك ناجح — تِك إقلاع فوري +
     // مؤقّت 60 ثانية بنفس العملية، أو حاويتان متداخلتان أثناء إعادة نشر) — حتى لو تحقّق كل شرط
-    // آخر (مضيف حاضر + مستمعون كافون)، HostWeeklyStat يجب ألا يُزاد إطلاقاً لو رُفض الادّعاء
-    test('ادّعاء الدقيقة رُفض (applyTick أعاد null — تِك مزدوج/متقارب) → HostWeeklyStat لا يُزاد أبداً رغم qualifies:true', async () => {
+    // آخر (مضيف حاضر + مستمعون كافون)، HostDailyStat يجب ألا يُزاد إطلاقاً لو رُفض الادّعاء
+    test('ادّعاء الدقيقة رُفض (applyTick أعاد null — تِك مزدوج/متقارب) → HostDailyStat لا يُزاد أبداً رغم qualifies:true', async () => {
         jest.spyOn(SystemSettings, 'getSettings').mockResolvedValue({ poolMinListeners: 2 });
         wireRoom('room_1', 'host_1', 'ls_1', { applyTickResult: null });
         mockGroups([]);
@@ -194,14 +219,14 @@ describe('runLiveHoursTick — يُضيف دقيقة فقط عند: حضور ا�
         await socketService.runLiveHoursTick(io);
 
         expect(LiveSession.applyTick).toHaveBeenCalledWith('ls_1', expect.objectContaining({ qualifies: true }));
-        expect(HostWeeklyStat.addQualifiedSeconds).not.toHaveBeenCalled();
+        expect(HostDailyStat.addQualifiedSeconds).not.toHaveBeenCalled();
     });
 
     test('لا غرف مباشرة إطلاقاً → لا يلمس أي نموذج (لا تِك، لا إحصائية)', async () => {
         jest.spyOn(SystemSettings, 'getSettings').mockResolvedValue({ poolMinListeners: 2 });
         jest.spyOn(VoiceRoom, 'find').mockImplementation(() => chainable([]));
         const applyTickSpy = jest.spyOn(LiveSession, 'applyTick').mockResolvedValue(null);
-        const addSecondsSpy = jest.spyOn(HostWeeklyStat, 'addQualifiedSeconds').mockResolvedValue(null);
+        const addSecondsSpy = jest.spyOn(HostDailyStat, 'addQualifiedSeconds').mockResolvedValue(null);
 
         await socketService.runLiveHoursTick({ sockets: { adapter: { rooms: new Map() }, sockets: new Map() } });
 
@@ -220,7 +245,7 @@ describe('runLiveHoursTick — يُضيف دقيقة فقط عند: حضور ا�
             return chainable({ _id: 'ls_good' });
         });
         const applyTickSpy = jest.spyOn(LiveSession, 'applyTick').mockResolvedValue({ _id: 'ls_good' });
-        const addSecondsSpy = jest.spyOn(HostWeeklyStat, 'addQualifiedSeconds').mockResolvedValue(null);
+        const addSecondsSpy = jest.spyOn(HostDailyStat, 'addQualifiedSeconds').mockResolvedValue(null);
         mockGroups([]);
         const io = fakeIoWithViewers('room_good', ['host_good', 'v1', 'v2']);
 
