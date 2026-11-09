@@ -650,7 +650,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'app-banned-modal', // غير قابلة للإغلاق بتصميمها (استئناف/خروج فقط) — لا إدخالة سجلّ لها
         'offline-modal', // مُدارة تلقائياً بأحداث socket.io (disconnect/reconnect)، لا تفاعل مستخدم لإغلاقها
         'loading-screen', // شاشة إقلاع لحظية تُغلَق مرة واحدة فقط آلياً، لا تفاعل مستخدم لإغلاقها أبداً
-        'full-profile-page', 'settings-page', 'recharge-page' // "أماكن" راوتر حقيقية تُدير سجلّها بنفسها (enterRoutePath/navigate) — تسجيلها هنا يُضاعف الإدخالة
+        'full-profile-page', 'settings-page', 'recharge-page', 'host-center-page' // "أماكن" راوتر حقيقية تُدير سجلّها بنفسها (enterRoutePath/navigate) — تسجيلها هنا يُضاعف الإدخالة
     ]);
     const overlayStack = [];
     // 🛡️ fix/router-regressions: popstate لا يملك طريقة مدمجة ليُفرِّق history.back() استدعاها
@@ -720,6 +720,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function closeSettingsPage() {
         document.getElementById('settings-page')?.remove();
         if (window.location.pathname === '/settings') selfInitiatedBack();
+    }
+    // 🛡️ مراجعة بعد #154: مركز المضيف — من نافذة مكدَّسة (bottom sheet داخل profile-hub-page،
+    // جزؤها العلوي بطاقة المسبح يُقطَع عن الشاشة بلا طريقة للتمرير إليه) إلى "مكان" راوتر حقيقي
+    // بملء الشاشة تماماً كالإعدادات — نفس نقطة إغلاق واحدة مشتركة؛ hostCenterChartInstance
+    // (مُعرَّفة أسفل الملف قرب showHostCenterPage) تُدمَّر هنا أيضاً كي لا يبقى كائن Chart.js
+    // حياً بالذاكرة بعد إزالة الـcanvas من الـDOM
+    function closeHostCenterPage() {
+        hostCenterChartInstance?.destroy();
+        hostCenterChartInstance = null;
+        document.getElementById('host-center-page')?.remove();
+        if (window.location.pathname === '/host-center') selfInitiatedBack();
     }
     // 🛡️ مراجعة #152: إدخالات سجلّ "يتيمة" — نافذة أُزيلت وهي مدفونة لا الأعلى (إغلاق دفاعي من
     // كود آخر، حالة نادرة لكن ممكنة) فلا تُستهلك إدخالتها فوراً (استهلاكها كـtop كان سيُغلق
@@ -867,6 +878,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('full-profile-page')?.remove();
         document.getElementById('settings-page')?.remove();
         document.getElementById('recharge-page')?.remove();
+        document.getElementById('host-center-page')?.remove();
     }
 
     // 🛡️ fix/router-regressions (بند 5): settings/recharge/full-profile كل واحدة منها "تفاصيل
@@ -881,6 +893,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (clean === '/messages') return { run: () => switchToViewInternal('messages') };
         if (clean === '/rankings') return { run: () => switchToViewInternal('leaderboard') };
         if (clean === '/recharge') return { run: () => openRechargePage(), stack: true };
+        if (clean === '/host-center') return { run: () => showHostCenterPage(), stack: true };
         let m = clean.match(/^\/room\/([a-fA-F0-9]{24})$/);
         if (m) return { run: () => enterVoiceRoom({ id: m[1], isOfficial: false }) };
         m = clean.match(/^\/u\/(\d{9})$/);
@@ -943,6 +956,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.getElementById('settings-page')) { closeSettingsPage(); return; }
         if (document.getElementById('recharge-page')) { closeRechargePage(); return; }
         if (document.getElementById('full-profile-page')) { closeFullProfilePage(); return; }
+        if (document.getElementById('host-center-page')) { closeHostCenterPage(); return; }
         if (overlayStack.length > 0) {
             closeOverlayNode(overlayStack.pop());
             return;
@@ -11568,10 +11582,23 @@ function renderProfileHubBody(u) {
     document.getElementById('profile-hub-vip-btn')?.addEventListener('click', () => showNotification('خاصية VIP قريباً ✨', 'info'));
     document.getElementById('profile-hub-creator-btn')?.addEventListener('click', () => showNotification('مركز صنّاع المحتوى قريباً 🌟', 'info'));
     document.getElementById('profile-hub-games-btn')?.addEventListener('click', () => showNotification('مركز الألعاب قريباً 🎮', 'info'));
-    document.getElementById('profile-hub-host-center-btn')?.addEventListener('click', () => showHostCenterSheet());
+    document.getElementById('profile-hub-host-center-btn')?.addEventListener('click', () => navigate('/host-center'));
     document.getElementById('profile-hub-edit-btn')?.addEventListener('click', () => showProfileEditSheet(u));
     document.getElementById('profile-hub-discover-btn')?.addEventListener('click', () => showDiscoverPeopleSheet());
 }
+
+// ✅ مراجعة #155 (بند 3): جمع عربي صحيح للمعدود الصريح بمركز المضيف (يوم/ساعة) بدل "6 يوم"
+// الخاطئة نحوياً لغير الواحد. الصيغة (مفرد/مثنى/جمع/منصوب) تُحدَّد من القيمة المقرَّبة لأقرب
+// عدد صحيح حتى لو كانت القيمة المعروضة نفسها كسرية (ساعات ناقصة مثلاً)
+function arabicUnitWord(n, forms) {
+    const v = Math.round(n);
+    if (v === 1) return forms.one;
+    if (v === 2) return forms.two;
+    if (v === 0 || (v >= 3 && v <= 10)) return forms.few;
+    return forms.many;
+}
+const ARABIC_DAY_FORMS = { one: 'يوم', two: 'يومان', few: 'أيام', many: 'يوماً' };
+const ARABIC_HOUR_FORMS = { one: 'ساعة', two: 'ساعتان', few: 'ساعات', many: 'ساعة' };
 
 // ✅ feat/live-hours-host-center: بطاقة مسبح المضيفين الأسبوعي — ساعات البث المؤهّلة وألماس
 // الأسبوع مقابل الحدّين الأدنيين (settings.poolMinHours/poolMinBeans)، بلا أي تقدير بالدولار
@@ -11586,13 +11613,13 @@ function renderHostPoolCardHTML(poolData) {
         <div class="host-pool-card">
             <div class="host-pool-card-head">
                 <h4>مسبح هذا الأسبوع</h4>
-                <span class="host-pool-days-left">ينتهي بعد <b>${pool.daysLeft}</b> يوم</span>
+                <span class="host-pool-days-left">ينتهي بعد <b>${pool.daysLeft}</b> ${arabicUnitWord(pool.daysLeft, ARABIC_DAY_FORMS)}</span>
             </div>
             <p class="host-pool-sub">حقّق الشرطين لتدخل التوزيع</p>
             <div class="host-pool-meter">
                 <div class="host-pool-meter-kv"><span>ساعات البث المحتسبة</span><span>${pool.qualifiedHours} / ${pool.minHours}</span></div>
                 <div class="host-pool-bar host-pool-bar-hours"><i style="width:${hoursPct}%"></i></div>
-                <div class="host-pool-meter-note"><span>تُحسب فقط مع ${pool.minListeners} مستمعين على الأقل</span><span>${hoursMissing > 0 ? `ينقصك ${hoursMissing} ساعة` : 'مكتمل ✓'}</span></div>
+                <div class="host-pool-meter-note"><span>تُحسب فقط مع ${pool.minListeners} مستمعين على الأقل</span><span>${hoursMissing > 0 ? `ينقصك ${hoursMissing} ${arabicUnitWord(hoursMissing, ARABIC_HOUR_FORMS)}` : 'مكتمل ✓'}</span></div>
             </div>
             <div class="host-pool-meter">
                 <div class="host-pool-meter-kv"><span>ألماس الأسبوع</span><span>${fmtNum(pool.beansThisWeek)} / ${fmtNum(pool.minBeans)}</span></div>
@@ -11669,166 +11696,211 @@ function renderHostWeekSupportersHTML(supporters) {
     `;
 }
 
-// ✅ مركز المضيف — إحصائيات حقيقية حالية لغرفتي (لو عندي غرفة) بدل بيانات وهمية؛ الرسوم
-// البيانية الأسبوعية/الشهرية/السنوية تحتاج بيانات تاريخية غير مُجمَّعة بعد بالنظام، فتُعرض
-// "قريباً" بدل اختلاقها — لا نعرض أبداً رقماً غير حقيقي
-async function showHostCenterSheet() {
-    document.getElementById('host-center-sheet')?.remove();
-    const modal = document.createElement('div');
-    modal.id = 'host-center-sheet';
-    modal.className = 'fixed inset-0 bg-black/70 z-[320] flex items-end md:items-center justify-center p-3';
-    modal.innerHTML = `
-        <div class="profile-hub-subsheet-card w-full md:max-w-sm">
-            <div class="flex items-center justify-between mb-3">
-                <p class="font-bold text-sm flex items-center gap-2"><i class="fas fa-microphone-lines text-pink-400"></i> مركز المضيف</p>
-                <button id="close-host-center" class="profile-hub-icon-btn"><i class="fas fa-times"></i></button>
+// ✅ يُتلَف صراحة عند إغلاق الصفحة (closeHostCenterPage) — وإلا يبقى كائن Chart.js حياً
+// بالذاكرة بلا داعٍ بعد إزالة الـcanvas من الـDOM
+let hostCenterChartInstance = null;
+
+// ✅ مراجعة بعد #154 (بند 1): مركز المضيف "مكان" راوتر حقيقي بملء الشاشة الآن (مثل الإعدادات)
+// لا نافذة سفلية — كانت تقطع الجزء العلوي (بطاقة المسبح) خارج الشاشة بلا طريقة للتمرير إليه.
+// تحميل تدريجي صريح (راجع قواعد التحميل بـCLAUDE.md): بطاقة المسبح+البلاطات اليومية أولاً
+// (نداءان سريعان فقط)، ثم الرسوم البيانية (التحليلات القديمة + رسم الأسبوع + تقسيم الشهر +
+// أكبر الداعمين) بنداء منفصل لا يُؤخِّر ظهور ما سبقها، وفشلها لا يُفرِغ الصفحة كاملة
+async function showHostCenterPage() {
+    document.getElementById('host-center-page')?.remove();
+    const shellHTML = `
+        <div id="host-center-page" class="profile-hub-backdrop">
+            <div class="profile-hub-sheet">
+                <div class="profile-hub-topbar">
+                    <button type="button" id="host-center-back-btn" class="profile-hub-icon-btn" title="رجوع"><i class="fas fa-arrow-right"></i></button>
+                    <h2><i class="fas fa-microphone-lines text-pink-400"></i> مركز المضيف</h2>
+                </div>
+                <div class="profile-hub-body" id="host-center-body" style="padding:14px;">
+                    <div class="grid grid-cols-3 gap-2 mb-3">
+                        <div class="profile-hub-hc-stat skeleton-shimmer" style="height:50px;"></div>
+                        <div class="profile-hub-hc-stat skeleton-shimmer" style="height:50px;"></div>
+                        <div class="profile-hub-hc-stat skeleton-shimmer" style="height:50px;"></div>
+                    </div>
+                    <div class="skeleton-shimmer" style="height:190px;border-radius:18px;"></div>
+                    <div class="host-daily-tiles" style="margin-top:10px;">
+                        <div class="host-daily-tile skeleton-shimmer" style="height:60px;"></div>
+                        <div class="host-daily-tile skeleton-shimmer" style="height:60px;"></div>
+                        <div class="host-daily-tile skeleton-shimmer" style="height:60px;"></div>
+                    </div>
+                </div>
             </div>
-            <div id="host-center-body" class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin"></i></div>
         </div>
     `;
-    document.body.appendChild(modal);
-    // ✅ يُتلَف الرسم البياني صراحة عند الإغلاق — وإلا يبقى كائن Chart.js حياً بالذاكرة بلا داعٍ
-    // بعد إزالة الـcanvas من الـDOM، خصوصاً لو فتح المضيف هذي الورقة عدة مرات أثناء بثّه
-    let hostChartInstance = null;
-    const closeHostCenter = () => { hostChartInstance?.destroy(); modal.remove(); };
-    modal.addEventListener('click', (e) => { if (e.target.id === 'host-center-sheet') closeHostCenter(); });
-    document.getElementById('close-host-center').addEventListener('click', closeHostCenter);
+    document.getElementById('game-container').insertAdjacentHTML('beforeend', shellHTML);
+    const page = document.getElementById('host-center-page');
+    page.addEventListener('click', (e) => { if (e.target.id === 'host-center-page') closeHostCenterPage(); });
+    document.getElementById('host-center-back-btn').addEventListener('click', closeHostCenterPage);
 
+    const body = document.getElementById('host-center-body');
     try {
         const response = await fetch('/api/voice-room/my-room', { headers: { 'Authorization': `Bearer ${token}` } });
         const result = await response.json();
-        const roomBody = document.getElementById('host-center-body');
-        if (!roomBody) return;
+        if (!document.getElementById('host-center-page')) return; // ✅ أُغلقت الصفحة قبل وصول الرد
         if (result.status !== 'success' || !result.room) {
-            roomBody.innerHTML = '<p class="text-sm text-gray-400 py-6">لا تملك غرفة بعد — أنشئ غرفتك من الرئيسية لتظهر إحصائياتها هنا</p>';
+            body.innerHTML = '<p class="text-sm text-gray-400 py-6 text-center">لا تملك غرفة بعد — أنشئ غرفتك من الرئيسية لتظهر إحصائياتها هنا</p>';
             return;
         }
-        const [roomDetailsRes, analyticsRes, hostPoolRes] = await Promise.all([
-            fetch(`/api/voice-room/rooms/${result.room.id}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            fetch(`/api/voice-room/rooms/${result.room.id}/analytics`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            fetch(`/api/voice-room/rooms/${result.room.id}/host-pool`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()).catch(() => null)
-        ]);
-        const roomDetails = roomDetailsRes;
-        const followersCount = roomDetails.followersCount || 0;
-        const level = roomDetails.level ?? '—';
-        const supportPoints = roomDetails.supportPoints || 0;
-        const analyticsData = analyticsRes.status === 'success' ? analyticsRes.data : null;
-        const poolData = hostPoolRes && hostPoolRes.status === 'success' ? hostPoolRes.data : null;
+        const roomId = result.room.id;
 
-        roomBody.innerHTML = `
+        // المرحلة 1 (الأولوية القصوى): بطاقة المسبح + البلاطات اليومية + الشبكة الثلاثية —
+        // نداءان فقط، لا تنتظر التحليلات القديمة إطلاقاً (مرحلة 2 أدناه، منفصلة تماماً)
+        const [roomDetails, hostPoolRes] = await Promise.all([
+            fetch(`/api/voice-room/rooms/${roomId}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            fetch(`/api/voice-room/rooms/${roomId}/host-pool`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()).catch(() => null)
+        ]);
+        if (!document.getElementById('host-center-page')) return;
+
+        const followersCount = roomDetails.followersCount || 0;
+        const poolData = hostPoolRes && hostPoolRes.status === 'success' ? hostPoolRes.data : null;
+        // 🛡️ مراجعة #155: المستوى والدعم التراكمي كلاهما من poolData نفسه (نفس نداء بطاقة
+        // المسبح) — لا من roomDetails.level/supportPoints (مستوى الغرفة، مقياس مختلف تماماً
+        // عن أرباح المضيف الحقيقية) كي لا يتعارضا مع رقم "ألماس الأسبوع" بالبطاقة تحتهما مباشرة
+        const hostLevel = poolData ? poolData.hostLevel : null;
+        const lifetimeBeans = poolData ? poolData.lifetimeBeans : 0;
+
+        body.innerHTML = `
             <div class="grid grid-cols-3 gap-2 mb-3">
                 <div class="profile-hub-hc-stat"><span>${followersCount}</span><label>متابعو الغرفة</label></div>
-                <div class="profile-hub-hc-stat"><span>Lv.${level}</span><label>المستوى</label></div>
-                <div class="profile-hub-hc-stat"><span>${supportPoints.toLocaleString('en-US')}</span><label>دعم تراكمي</label></div>
+                <div class="profile-hub-hc-stat"><span>${hostLevel !== null ? 'Lv.' + hostLevel : '—'}</span><label>المستوى</label></div>
+                <div class="profile-hub-hc-stat"><span>${fmtNum(lifetimeBeans)}</span><label>دعم تراكمي</label></div>
             </div>
             ${poolData ? renderHostPoolCardHTML(poolData) : `<p class="text-[11px] text-gray-500 text-center py-3">تعذّر تحميل بيانات المسبح</p>`}
             ${poolData ? renderHostDailyTilesHTML(poolData.today) : ''}
-            ${analyticsData ? `
-            <div class="host-analytics-tabs">
-                <button type="button" class="host-analytics-tab active" data-range="weekly">أسبوعي</button>
-                <button type="button" class="host-analytics-tab" data-range="monthly">شهري</button>
-                <button type="button" class="host-analytics-tab" data-range="yearly">سنوي</button>
+            <div id="host-center-charts-section" style="margin-top:4px;">
+                <div class="skeleton-shimmer" style="height:200px;border-radius:14px;margin-top:10px;"></div>
             </div>
-            <div id="host-analytics-chart-wrap" class="host-analytics-chart-wrap"></div>
-            <div id="host-analytics-extra"></div>
-            ` : `<p class="text-[11px] text-gray-500 text-center py-3 border-t border-gray-700/50">تعذّر تحميل التحليلات التفصيلية</p>`}
-            ${poolData ? renderHostWeeklyChartHTML(poolData.weeklyHoursChart) : ''}
-            ${poolData ? renderHostBeansSplitHTML(poolData.monthBeans) : ''}
-            ${poolData && poolData.topSupportersThisWeek.length > 0 ? renderHostWeekSupportersHTML(poolData.topSupportersThisWeek) : ''}
-            ${poolData ? `
-            <div class="host-pool-rules-note">
-                <i class="fas fa-circle-info" style="color:#60a5fa;margin-top:2px;"></i>
-                <span>قواعد المسبح: ساعات البث تُحسب فقط عندما يكون معك ${poolData.pool.minListeners} مستمعين حقيقيين على الأقل، وهدايا الحسابات المرتبطة بك لا تُحسب، والتوزيع كل أحد.</span>
-            </div>` : ''}
         `;
 
-        if (!analyticsData) return;
-
-        function renderAnalyticsPanel(range) {
-            roomBody.querySelectorAll('.host-analytics-tab').forEach(t => t.classList.toggle('active', t.dataset.range === range));
-            const wrap = document.getElementById('host-analytics-chart-wrap');
-            if (!wrap) return;
-            const rows = analyticsData[range] || [];
-            if (hostChartInstance) { hostChartInstance.destroy(); hostChartInstance = null; }
-            if (rows.length === 0) {
-                wrap.innerHTML = '<p class="host-analytics-empty">لا يوجد دعم مسجَّل بهذي الفترة بعد</p>';
-                return;
-            }
-            if (typeof Chart !== 'function') {
-                wrap.innerHTML = '<p class="host-analytics-empty">تعذّر تحميل مكتبة الرسم البياني</p>';
-                return;
-            }
-            wrap.innerHTML = '<canvas id="host-analytics-chart" height="130"></canvas>';
-            const ctx = document.getElementById('host-analytics-chart').getContext('2d');
-            hostChartInstance = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: rows.map(r => r.label),
-                    datasets: [{
-                        data: rows.map(r => r.value),
-                        borderColor: '#a855f7',
-                        backgroundColor: 'rgba(168,85,247,0.15)',
-                        fill: true,
-                        tension: 0.35,
-                        pointRadius: 2.5,
-                        pointBackgroundColor: '#ec4899',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { ticks: { color: '#9ca3af', font: { size: 9 } }, grid: { display: false } },
-                        y: { ticks: { color: '#9ca3af', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.06)' }, beginAtZero: true }
-                    }
-                }
-            });
-        }
-
-        function renderAnalyticsExtra() {
-            const el = document.getElementById('host-analytics-extra');
-            if (!el) return;
-            const g = analyticsData.genderBreakdown || { male: 0, female: 0 };
-            const total = g.male + g.female;
-            const malePct = total ? Math.round((g.male / total) * 100) : 0;
-            const femalePct = total ? 100 - malePct : 0;
-            const ts = analyticsData.topSupporter;
-            el.innerHTML = `
-                ${total > 0 ? `
-                <div class="host-analytics-gender">
-                    <p class="host-analytics-label">توزيع جنس المتابعين</p>
-                    <div class="host-analytics-gender-bar">
-                        <div class="host-analytics-gender-bar-male" style="width:${malePct}%"></div>
-                        <div class="host-analytics-gender-bar-female" style="width:${femalePct}%"></div>
-                    </div>
-                    <div class="host-analytics-gender-legend">
-                        <span><i class="fas fa-mars text-blue-400"></i> ${malePct}%</span>
-                        <span><i class="fas fa-venus text-pink-400"></i> ${femalePct}%</span>
-                    </div>
-                </div>` : ''}
-                ${ts ? `
-                <div class="host-analytics-top-supporter">
-                    ${avatarHTML({ src: ts.profileImage, frameClass: ts.activeFrameClass, sizeClass: 'host-analytics-top-avatar' })}
-                    <div class="min-w-0 flex-1">
-                        <p class="host-analytics-label" style="margin:0;">أكبر داعم</p>
-                        <p class="host-analytics-top-name">${escapeHtml(ts.username)}</p>
-                    </div>
-                    <span class="host-analytics-top-value">${coinIconHTML(16)} ${ts.total.toLocaleString('en-US')}</span>
-                </div>` : ''}
-            `;
-        }
-
-        roomBody.querySelectorAll('.host-analytics-tab').forEach(tab => {
-            tab.addEventListener('click', () => renderAnalyticsPanel(tab.dataset.range));
-        });
-        renderAnalyticsPanel('weekly');
-        renderAnalyticsExtra();
+        // المرحلة 2: الرسوم البيانية — لا تُنتظَر هنا عمداً (تحميل تدريجي حقيقي: بطاقة المسبح
+        // والبلاطات أعلاه ظهرت فعلاً للمستخدم بالفعل بصرف النظر عن زمن هذي المرحلة)
+        renderHostCenterChartsSection(roomId, poolData);
     } catch (error) {
-        const roomBody = document.getElementById('host-center-body');
-        if (roomBody) roomBody.innerHTML = '<p class="text-sm text-red-400 py-6">تعذر تحميل الإحصائيات</p>';
+        if (document.getElementById('host-center-page')) body.innerHTML = '<p class="text-sm text-red-400 py-6 text-center">تعذر تحميل الإحصائيات</p>';
     }
+}
+
+// 🛡️ مراجعة بعد #154 (بند 2): الرسم البياني القديم (أسبوعي/شهري/سنوي) كان مبنياً من GiftLog
+// محصورة بالغرفة — فيعرض "لا يوجد دعم" حتى لو أظهرت بطاقة المسبح فوقه ألماساً حقيقياً لنفس
+// الفترة (هدية بدردشة خاصة مثلاً لا تحمل roomId إطلاقاً). الخادم أُصلِح (getRoomAnalytics
+// يقرأ LedgerEntry الآن، نفس قاعدة aggregateReceivedBeans بالضبط) — هذي الدالة فقط ترسم ما
+// يصل الآن متطابقاً فعلياً، لا تغيير بمنطق الرسم نفسه
+async function renderHostCenterChartsSection(roomId, poolData) {
+    const section = document.getElementById('host-center-charts-section');
+    if (!section) return;
+    let analyticsData = null;
+    try {
+        const analyticsRes = await fetch(`/api/voice-room/rooms/${roomId}/analytics`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+        analyticsData = analyticsRes.status === 'success' ? analyticsRes.data : null;
+    } catch (error) { /* يبقى null — القسم أدناه يعرض رسالة الفشل الموحَّدة لهذا الجزء فقط */ }
+    if (!document.getElementById('host-center-page')) return;
+
+    section.innerHTML = `
+        ${analyticsData ? `
+        <div class="host-analytics-tabs">
+            <button type="button" class="host-analytics-tab active" data-range="weekly">أسبوعي</button>
+            <button type="button" class="host-analytics-tab" data-range="monthly">شهري</button>
+            <button type="button" class="host-analytics-tab" data-range="yearly">سنوي</button>
+        </div>
+        <div id="host-analytics-chart-wrap" class="host-analytics-chart-wrap"></div>
+        <div id="host-analytics-extra"></div>
+        ` : `<p class="text-[11px] text-gray-500 text-center py-3 border-t border-gray-700/50">تعذّر تحميل التحليلات التفصيلية</p>`}
+        ${poolData ? renderHostWeeklyChartHTML(poolData.weeklyHoursChart) : ''}
+        ${poolData ? renderHostBeansSplitHTML(poolData.monthBeans) : ''}
+        ${poolData && poolData.topSupportersThisWeek.length > 0 ? renderHostWeekSupportersHTML(poolData.topSupportersThisWeek) : ''}
+        ${poolData ? `
+        <div class="host-pool-rules-note">
+            <i class="fas fa-circle-info" style="color:#60a5fa;margin-top:2px;"></i>
+            <span>قواعد المسبح: ساعات البث تُحسب فقط عندما يكون معك ${poolData.pool.minListeners} مستمعين حقيقيين على الأقل، وهدايا الحسابات المرتبطة بك لا تُحسب، والتوزيع كل أحد.</span>
+        </div>` : ''}
+    `;
+
+    if (!analyticsData) return;
+
+    function renderAnalyticsPanel(range) {
+        section.querySelectorAll('.host-analytics-tab').forEach(t => t.classList.toggle('active', t.dataset.range === range));
+        const wrap = document.getElementById('host-analytics-chart-wrap');
+        if (!wrap) return;
+        const rows = analyticsData[range] || [];
+        if (hostCenterChartInstance) { hostCenterChartInstance.destroy(); hostCenterChartInstance = null; }
+        if (rows.length === 0) {
+            wrap.innerHTML = '<p class="host-analytics-empty">لا يوجد دعم مسجَّل بهذي الفترة بعد</p>';
+            return;
+        }
+        if (typeof Chart !== 'function') {
+            wrap.innerHTML = '<p class="host-analytics-empty">تعذّر تحميل مكتبة الرسم البياني</p>';
+            return;
+        }
+        wrap.innerHTML = '<canvas id="host-analytics-chart" height="130"></canvas>';
+        const ctx = document.getElementById('host-analytics-chart').getContext('2d');
+        hostCenterChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: rows.map(r => r.label),
+                datasets: [{
+                    data: rows.map(r => r.value),
+                    borderColor: '#a855f7',
+                    backgroundColor: 'rgba(168,85,247,0.15)',
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 2.5,
+                    pointBackgroundColor: '#ec4899',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#9ca3af', font: { size: 9 } }, grid: { display: false } },
+                    y: { ticks: { color: '#9ca3af', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.06)' }, beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    function renderAnalyticsExtra() {
+        const el = document.getElementById('host-analytics-extra');
+        if (!el) return;
+        const g = analyticsData.genderBreakdown || { male: 0, female: 0 };
+        const total = g.male + g.female;
+        const malePct = total ? Math.round((g.male / total) * 100) : 0;
+        const femalePct = total ? 100 - malePct : 0;
+        const ts = analyticsData.topSupporter;
+        el.innerHTML = `
+            ${total > 0 ? `
+            <div class="host-analytics-gender">
+                <p class="host-analytics-label">توزيع جنس المتابعين</p>
+                <div class="host-analytics-gender-bar">
+                    <div class="host-analytics-gender-bar-male" style="width:${malePct}%"></div>
+                    <div class="host-analytics-gender-bar-female" style="width:${femalePct}%"></div>
+                </div>
+                <div class="host-analytics-gender-legend">
+                    <span><i class="fas fa-mars text-blue-400"></i> ${malePct}%</span>
+                    <span><i class="fas fa-venus text-pink-400"></i> ${femalePct}%</span>
+                </div>
+            </div>` : ''}
+            ${ts ? `
+            <div class="host-analytics-top-supporter">
+                ${avatarHTML({ src: ts.profileImage, frameClass: ts.activeFrameClass, sizeClass: 'host-analytics-top-avatar' })}
+                <div class="min-w-0 flex-1">
+                    <p class="host-analytics-label" style="margin:0;">أكبر داعم</p>
+                    <p class="host-analytics-top-name">${escapeHtml(ts.username)}</p>
+                </div>
+                <span class="host-analytics-top-value">${coinIconHTML(16)} ${ts.total.toLocaleString('en-US')}</span>
+            </div>` : ''}
+        `;
+    }
+
+    section.querySelectorAll('.host-analytics-tab').forEach(tab => {
+        tab.addEventListener('click', () => renderAnalyticsPanel(tab.dataset.range));
+    });
+    renderAnalyticsPanel('weekly');
+    renderAnalyticsExtra();
 }
 
 // =================================================

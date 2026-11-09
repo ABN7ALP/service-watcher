@@ -22,8 +22,8 @@ const walletService = require('../utils/walletService');
 const linkageService = require('../utils/linkageService');
 // ✅ feat/live-hours-host-center: تتبّع ساعات البث المؤهّلة لمسبح المضيفين الأسبوعي
 const LiveSession = require('../models/LiveSession');
-const HostWeeklyStat = require('../models/HostWeeklyStat');
-const { getCurrentWeekBounds } = require('../utils/poolWeek');
+const HostDailyStat = require('../models/HostDailyStat');
+const { getDayStartForDate } = require('../utils/poolWeek');
 
 // =================================================
 // ✅ نظام CACHE محسّن مع TTL أقصر وتنظيف تلقائي
@@ -1087,7 +1087,9 @@ async function runLiveHoursTick(io) {
         const liveRooms = await VoiceRoom.find({ isLive: true, isOfficial: false, host: { $ne: null } }).select('_id host hostDisconnectedAt').lean();
         if (liveRooms.length === 0) return;
         const now = new Date();
-        const { weekStart } = getCurrentWeekBounds();
+        // 🛡️ مراجعة #155: يوم "الآن" وقت هذا التِك بالضبط — لا يوم بداية الجلسة. هذا ما يجعل
+        // جلسة تعبر منتصف الليل تُحسَب دقيقة بدقيقة على يومها الفعلي تلقائياً بلا أي توزيع لاحق
+        const day = getDayStartForDate(now);
         for (const room of liveRooms) {
             try {
                 const { hostPresent, listenerCount } = await countQualifyingListeners(io, room._id, room.host);
@@ -1098,11 +1100,11 @@ async function runLiveHoursTick(io) {
                 // 🛡️ شبكة أمان فقط — من المفترض أن تكون الجلسة مفتوحة أصلاً منذ host-start-broadcast
                 if (!session) session = await LiveSession.openForRoom(room._id, room.host);
                 if (!session) continue;
-                // 🛡️ مراجعة #154 (بند 1): HostWeeklyStat تُزاد فقط لو نجح ادّعاء الدقيقة فعلياً
+                // 🛡️ مراجعة #154 (بند 1): HostDailyStat تُزاد فقط لو نجح ادّعاء الدقيقة فعلياً
                 // بـapplyTick (قيمة غير null) — رُفض الادّعاء (تِك متقارب جداً من آخر تِك ناجح،
                 // راجع تعليق applyTick) يعني لا ثانية تُضاف هنا أيضاً، فلا يتعارض المصدران أبداً
                 const updatedSession = await LiveSession.applyTick(session._id, { qualifies, listenerCount, now });
-                if (updatedSession && qualifies) await HostWeeklyStat.addQualifiedSeconds(room.host, weekStart, 60);
+                if (updatedSession && qualifies) await HostDailyStat.addQualifiedSeconds(room.host, day, 60);
             } catch (roomError) {
                 console.error('[LIVE-HOURS] tick error for room', room._id, roomError);
             }
