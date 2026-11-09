@@ -238,6 +238,7 @@ class AdminDashboard {
             withdrawals: () => this.loadWithdrawals(),
             transactions: () => this.loadTransactions(1),
             agents: () => this.loadAgents(),
+            hostpool: () => this.loadHostPool(),
             gifts: () => this.loadGifts(),
             frames: () => this.loadFrames(),
             customgifts: () => this.loadCustomGifts(),
@@ -1059,6 +1060,36 @@ class AdminDashboard {
                 });
             });
         } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    // ================= Host weekly pool (feat/live-hours-host-center) =================
+    async loadHostPool() {
+        const c = document.getElementById('hostPoolPageContainer');
+        c.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i></div>';
+        try {
+            const result = await this.api('GET', '/host-pool-this-week');
+            const { hosts, thresholds, weekEnd } = result;
+            c.innerHTML = `
+                <p class="text-muted mb-3">الحدّ الأدنى للتأهّل: ${thresholds.poolMinHours} ساعة مؤهّلة + ${thresholds.poolMinBeans.toLocaleString('en-US')} ألماسة هذا الأسبوع (ينتهي ${formatDate(weekEnd)}) — مراجعة فقط، لا توزيع فعلي بعد.</p>
+                ${hosts.length === 0 ? '<div class="empty-state"><i class="fas fa-microphone-lines fa-2x"></i><p>لا بيانات بعد هذا الأسبوع</p></div>' : `
+                <div class="table-responsive"><table class="table table-hover"><thead><tr>
+                    <th>المضيف</th><th>الساعات المؤهّلة</th><th>ألماس (قابل للسحب)</th><th>ألماس (مجاني)</th><th>الإجمالي</th><th>مؤهَّل؟</th>
+                </tr></thead><tbody>
+                    ${hosts.map(h => `
+                        <tr>
+                            <td>${escapeHtml(h.host?.username || '-')} <small class="text-muted">#${escapeHtml(h.host?.customId || '')}</small></td>
+                            <td>${h.qualifiedHours}</td>
+                            <td>${h.beansW.toLocaleString('en-US')}</td>
+                            <td>${h.beansP.toLocaleString('en-US')}</td>
+                            <td>${h.beansTotal.toLocaleString('en-US')}</td>
+                            <td><span class="status-badge ${h.qualified ? 'status-completed' : 'status-pending'}">${h.qualified ? 'نعم' : 'لا'}</span></td>
+                        </tr>
+                    `).join('')}
+                </tbody></table></div>`}
+            `;
+        } catch (error) {
+            c.innerHTML = `<div class="empty-state"><p class="text-danger">${escapeHtml(error.message)}</p></div>`;
+        }
     }
 
     // ================= Gifts =================
@@ -2130,6 +2161,19 @@ class AdminDashboard {
                     </div>
                 </div>
                 <hr>
+                <h6 class="mb-3"><i class="fas fa-microphone-lines" style="color:#f472b6"></i> مسبح المضيفين الأسبوعي</h6>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group"><label>الحد الأدنى لساعات البث المؤهّلة</label><input type="number" class="form-control" id="s-poolMinHours" value="${s.poolMinHours}"></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group"><label>الحد الأدنى لألماس الأسبوع</label><input type="number" class="form-control" id="s-poolMinBeans" value="${s.poolMinBeans}"></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group"><label>الحد الأدنى للمستمعين الحقيقيين لكل تِك</label><input type="number" class="form-control" id="s-poolMinListeners" value="${s.poolMinListeners}"></div>
+                    </div>
+                </div>
+                <hr>
                 <div class="row">
                     <div class="col-md-6">
                         <h6 class="mb-3"><i class="fas fa-wallet text-info"></i> محفظة شام كاش</h6>
@@ -2184,6 +2228,9 @@ class AdminDashboard {
                     minWithdrawUSD: parseFloat(document.getElementById('s-minWithdraw').value),
                     beanHoldHours: parseFloat(document.getElementById('s-beanHoldHours').value),
                     withdrawalPinPostResetBlockHours: parseFloat(document.getElementById('s-pinPostResetBlockHours').value),
+                    poolMinHours: parseFloat(document.getElementById('s-poolMinHours').value),
+                    poolMinBeans: parseFloat(document.getElementById('s-poolMinBeans').value),
+                    poolMinListeners: parseFloat(document.getElementById('s-poolMinListeners').value),
                     withdrawalFeePer10USD: parseFloat(document.getElementById('s-withdrawFee').value),
                     maxDailyWithdrawalUSD: parseFloat(document.getElementById('s-maxDailyWithdraw').value),
                     coinsToUsdRedemptionRate: parseFloat(document.getElementById('s-redeemCoinRate').value),

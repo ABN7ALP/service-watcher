@@ -11573,6 +11573,102 @@ function renderProfileHubBody(u) {
     document.getElementById('profile-hub-discover-btn')?.addEventListener('click', () => showDiscoverPeopleSheet());
 }
 
+// ✅ feat/live-hours-host-center: بطاقة مسبح المضيفين الأسبوعي — ساعات البث المؤهّلة وألماس
+// الأسبوع مقابل الحدّين الأدنيين (settings.poolMinHours/poolMinBeans)، بلا أي تقدير بالدولار
+// (التوزيع الفعلي لم يُبنَ بعد بهذا الـPR — "يُعلن عند التوزيع" فقط)
+function renderHostPoolCardHTML(poolData) {
+    const { pool } = poolData;
+    const hoursPct = Math.min(100, Math.round((pool.qualifiedHours / pool.minHours) * 100));
+    const beansPct = Math.min(100, Math.round((pool.beansThisWeek / pool.minBeans) * 100));
+    const hoursMissing = Math.max(0, Math.round((pool.minHours - pool.qualifiedHours) * 10) / 10);
+    const beansMissing = Math.max(0, pool.minBeans - pool.beansThisWeek);
+    return `
+        <div class="host-pool-card">
+            <div class="host-pool-card-head">
+                <h4>مسبح هذا الأسبوع</h4>
+                <span class="host-pool-days-left">ينتهي بعد <b>${pool.daysLeft}</b> يوم</span>
+            </div>
+            <p class="host-pool-sub">حقّق الشرطين لتدخل التوزيع</p>
+            <div class="host-pool-meter">
+                <div class="host-pool-meter-kv"><span>ساعات البث المحتسبة</span><span>${pool.qualifiedHours} / ${pool.minHours}</span></div>
+                <div class="host-pool-bar host-pool-bar-hours"><i style="width:${hoursPct}%"></i></div>
+                <div class="host-pool-meter-note"><span>تُحسب فقط مع ${pool.minListeners} مستمعين على الأقل</span><span>${hoursMissing > 0 ? `ينقصك ${hoursMissing} ساعة` : 'مكتمل ✓'}</span></div>
+            </div>
+            <div class="host-pool-meter">
+                <div class="host-pool-meter-kv"><span>ألماس الأسبوع</span><span>${fmtNum(pool.beansThisWeek)} / ${fmtNum(pool.minBeans)}</span></div>
+                <div class="host-pool-bar host-pool-bar-beans"><i style="width:${beansPct}%"></i></div>
+                <div class="host-pool-meter-note"><span>هدايا الحسابات المرتبطة لا تُحسب</span><span>${beansMissing > 0 ? `ينقصك ${fmtNum(beansMissing)}` : 'مكتمل ✓'}</span></div>
+            </div>
+            <div class="host-pool-footer ${pool.qualified ? 'qualified' : ''}">
+                <span>ترتيبك الحالي <b>#${pool.rank}</b>${pool.qualified ? ' <span style="color:#4ade80">✓ مؤهَّل</span>' : ''}</span>
+                <span>يُعلن عند التوزيع</span>
+            </div>
+        </div>
+    `;
+}
+
+function renderHostDailyTilesHTML(today) {
+    const liveH = Math.floor(today.liveSeconds / 3600);
+    const liveM = Math.floor((today.liveSeconds % 3600) / 60);
+    const liveLabel = `${liveH}:${String(liveM).padStart(2, '0')}`;
+    return `
+        <div class="host-daily-tiles">
+            <div class="host-daily-tile"><small>بث اليوم</small><b>${liveLabel}</b><em>${today.peakListeners > 0 ? `أعلى ${today.peakListeners} مستمعين` : ''}</em></div>
+            <div class="host-daily-tile"><small>ألماس اليوم</small><b>${fmtNum(today.beans)}</b></div>
+            <div class="host-daily-tile"><small>متابعون جدد</small><b>${today.newFollowers > 0 ? '+' : ''}${fmtNum(today.newFollowers)}</b></div>
+        </div>
+    `;
+}
+
+// ✅ رسم أعمدة بسيط (بلا Chart.js — لا يحتاج تدمير/إعادة بناء كائن إضافي عند كل فتح للورقة)
+// للأيام السبعة الحالية؛ "اليوم" (العمود الوردي) يُحسَب بإزاحة دمشق الثابتة نفسها المستخدَمة
+// بالخادم (poolWeek.js) — لا بتوقيت المتصفح المحلي، فيبقى مطابقاً للخادم بصرف النظر عن منطقة المشاهد
+function renderHostWeeklyChartHTML(weeklyHoursChart) {
+    const dayLabels = ['ح', 'ن', 'ث', 'ر', 'خ', 'ج', 'س']; // الأحد أولاً، مطابق لترتيب weekStart بالخادم
+    const max = Math.max(1, ...weeklyHoursChart);
+    const todayIdx = new Date(Date.now() + 3 * 3600 * 1000).getUTCDay();
+    return `
+        <div class="host-analytics-label" style="margin-top:14px;">ساعات البث هذا الأسبوع</div>
+        <div class="host-weekly-chart">
+            ${weeklyHoursChart.map((h, i) => `
+                <div class="host-weekly-chart-col">
+                    <div class="host-weekly-chart-bar${i === todayIdx ? ' today' : ''}" style="height:${Math.max(4, Math.round((h / max) * 100))}%"></div>
+                    <span>${dayLabels[i]}</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderHostBeansSplitHTML(monthBeans) {
+    const withdrawable = monthBeans.withdrawable || 0;
+    const free = monthBeans.free || 0;
+    const total = withdrawable + free;
+    const wPct = total > 0 ? Math.round((withdrawable / total) * 100) : 0;
+    const pPct = total > 0 ? 100 - wPct : 0;
+    return `
+        <div class="host-analytics-label" style="margin-top:14px;">ألماس الشهر <span style="color:#fff;">${fmtNum(total)}</span></div>
+        <div class="host-beans-split-bar"><i class="host-beans-split-w" style="width:${wPct}%"></i><i class="host-beans-split-p" style="width:${pPct}%"></i></div>
+        <div class="host-beans-split-legend">
+            <span><i class="host-beans-split-w"></i>قابل للسحب ${fmtNum(withdrawable)}</span>
+            <span><i class="host-beans-split-p"></i>من هدايا مجانية ${fmtNum(free)}</span>
+        </div>
+    `;
+}
+
+function renderHostWeekSupportersHTML(supporters) {
+    return `
+        <div class="host-analytics-label" style="margin-top:14px;">أكبر الداعمين هذا الأسبوع</div>
+        ${supporters.map(s => `
+            <div class="host-supporter-row">
+                ${avatarHTML({ src: s.profileImage, frameClass: s.activeFrameClass, sizeClass: 'host-analytics-top-avatar' })}
+                <span class="host-supporter-name">${escapeHtml(s.username)}</span>
+                <span class="host-supporter-value">${coinIconHTML(14)} ${fmtNum(s.total)}</span>
+            </div>
+        `).join('')}
+    `;
+}
+
 // ✅ مركز المضيف — إحصائيات حقيقية حالية لغرفتي (لو عندي غرفة) بدل بيانات وهمية؛ الرسوم
 // البيانية الأسبوعية/الشهرية/السنوية تحتاج بيانات تاريخية غير مُجمَّعة بعد بالنظام، فتُعرض
 // "قريباً" بدل اختلاقها — لا نعرض أبداً رقماً غير حقيقي
@@ -11607,15 +11703,17 @@ async function showHostCenterSheet() {
             roomBody.innerHTML = '<p class="text-sm text-gray-400 py-6">لا تملك غرفة بعد — أنشئ غرفتك من الرئيسية لتظهر إحصائياتها هنا</p>';
             return;
         }
-        const [roomDetailsRes, analyticsRes] = await Promise.all([
+        const [roomDetailsRes, analyticsRes, hostPoolRes] = await Promise.all([
             fetch(`/api/voice-room/rooms/${result.room.id}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            fetch(`/api/voice-room/rooms/${result.room.id}/analytics`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
+            fetch(`/api/voice-room/rooms/${result.room.id}/analytics`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            fetch(`/api/voice-room/rooms/${result.room.id}/host-pool`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()).catch(() => null)
         ]);
         const roomDetails = roomDetailsRes;
         const followersCount = roomDetails.followersCount || 0;
         const level = roomDetails.level ?? '—';
         const supportPoints = roomDetails.supportPoints || 0;
         const analyticsData = analyticsRes.status === 'success' ? analyticsRes.data : null;
+        const poolData = hostPoolRes && hostPoolRes.status === 'success' ? hostPoolRes.data : null;
 
         roomBody.innerHTML = `
             <div class="grid grid-cols-3 gap-2 mb-3">
@@ -11623,6 +11721,8 @@ async function showHostCenterSheet() {
                 <div class="profile-hub-hc-stat"><span>Lv.${level}</span><label>المستوى</label></div>
                 <div class="profile-hub-hc-stat"><span>${supportPoints.toLocaleString('en-US')}</span><label>دعم تراكمي</label></div>
             </div>
+            ${poolData ? renderHostPoolCardHTML(poolData) : `<p class="text-[11px] text-gray-500 text-center py-3">تعذّر تحميل بيانات المسبح</p>`}
+            ${poolData ? renderHostDailyTilesHTML(poolData.today) : ''}
             ${analyticsData ? `
             <div class="host-analytics-tabs">
                 <button type="button" class="host-analytics-tab active" data-range="weekly">أسبوعي</button>
@@ -11632,6 +11732,14 @@ async function showHostCenterSheet() {
             <div id="host-analytics-chart-wrap" class="host-analytics-chart-wrap"></div>
             <div id="host-analytics-extra"></div>
             ` : `<p class="text-[11px] text-gray-500 text-center py-3 border-t border-gray-700/50">تعذّر تحميل التحليلات التفصيلية</p>`}
+            ${poolData ? renderHostWeeklyChartHTML(poolData.weeklyHoursChart) : ''}
+            ${poolData ? renderHostBeansSplitHTML(poolData.monthBeans) : ''}
+            ${poolData && poolData.topSupportersThisWeek.length > 0 ? renderHostWeekSupportersHTML(poolData.topSupportersThisWeek) : ''}
+            ${poolData ? `
+            <div class="host-pool-rules-note">
+                <i class="fas fa-circle-info" style="color:#60a5fa;margin-top:2px;"></i>
+                <span>قواعد المسبح: ساعات البث تُحسب فقط عندما يكون معك ${poolData.pool.minListeners} مستمعين حقيقيين على الأقل، وهدايا الحسابات المرتبطة بك لا تُحسب، والتوزيع كل أحد.</span>
+            </div>` : ''}
         `;
 
         if (!analyticsData) return;

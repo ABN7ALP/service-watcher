@@ -112,6 +112,9 @@ router.post('/system-health/check-now', systemHealthCheckLimiter, adminControlle
 router.get('/wallet-health', adminController.getWalletHealth);
 router.post('/wallet-health/check-now', walletHealthCheckLimiter, adminController.runWalletHealthCheckNow);
 
+// ✅ feat/live-hours-host-center: جدول مراجعة بسيط لحالة مسبح المضيفين بالأسبوع الحالي
+router.get('/host-pool-this-week', adminController.getHostPoolThisWeek);
+
 router.get('/settings', adminController.getSystemSettings);
 router.post('/settings', adminController.updateSystemSettings);
 router.post('/settings/sham-cash-help-image/:slot', receiptUpload, adminController.uploadShamCashHelpImage);

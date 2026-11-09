@@ -44,4 +44,41 @@ async function areLinked(userIdA, userIdB) {
     return false;
 }
 
-module.exports = { recordDeviceSession, areLinked };
+// ✅ feat/live-hours-host-center: نسخة بالجملة من areLinked أعلاه — نفس معياري الربط تماماً
+// (معرّف جهاز مشترك، أو محفظة شام كاش سُحب منها سابقاً لكليهما)، لكن بنداءين فقط لقاعدة
+// البيانات إجمالاً بصرف النظر عن عدد المستخدمين (لا O(n²) من استدعاء areLinked لكل زوج) —
+// يُستخدَم بتِك البث الدوري لتجميع مستمعي الغرفة بمجموعات مرتبطة (راجع countQualifyingListeners
+// بـsocketService.js). يُعيد Map: userId(نص) → مفتاح تمثيلي لمجموعته (نفس المفتاح لكل مرتبطين
+// ببعضهم، عبر Union-Find بسيط بالذاكرة)
+async function groupLinkedAccounts(userIds) {
+    const ids = [...new Set(userIds.map(String))];
+    const parent = new Map(ids.map(id => [id, id]));
+    function find(x) { while (parent.get(x) !== x) x = parent.get(x); return x; }
+    function union(a, b) { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); }
+
+    const [sessions, withdrawals] = await Promise.all([
+        DeviceSession.find({ user: { $in: ids } }).select('user deviceId').lean(),
+        Withdrawal.find({ user: { $in: ids }, method: 'sham_cash' }).select('user walletNumber').lean()
+    ]);
+
+    const byDevice = new Map();
+    for (const s of sessions) {
+        if (!s.deviceId) continue;
+        const uid = s.user.toString();
+        if (byDevice.has(s.deviceId)) union(uid, byDevice.get(s.deviceId));
+        else byDevice.set(s.deviceId, uid);
+    }
+    const byWallet = new Map();
+    for (const w of withdrawals) {
+        if (!w.walletNumber) continue;
+        const uid = w.user.toString();
+        if (byWallet.has(w.walletNumber)) union(uid, byWallet.get(w.walletNumber));
+        else byWallet.set(w.walletNumber, uid);
+    }
+
+    const groupKey = new Map();
+    for (const id of ids) groupKey.set(id, find(id));
+    return groupKey;
+}
+
+module.exports = { recordDeviceSession, areLinked, groupLinkedAccounts };

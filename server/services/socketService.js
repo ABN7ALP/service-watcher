@@ -20,6 +20,10 @@ const { applyGiftToActiveBattle, applyGiftToRoomSupport, schedulePkScoreEmit, cl
 const { addExperience } = require('../utils/experienceManager'); // ✅✅✅ أضف هذا السطر هنا
 const walletService = require('../utils/walletService');
 const linkageService = require('../utils/linkageService');
+// ✅ feat/live-hours-host-center: تتبّع ساعات البث المؤهّلة لمسبح المضيفين الأسبوعي
+const LiveSession = require('../models/LiveSession');
+const HostWeeklyStat = require('../models/HostWeeklyStat');
+const { getCurrentWeekBounds } = require('../utils/poolWeek');
 
 // =================================================
 // ✅ نظام CACHE محسّن مع TTL أقصر وتنظيف تلقائي
@@ -968,6 +972,9 @@ async function endRoomBroadcastForHost(io, hostUser) {
             durationSeconds: result.durationSeconds,
             followerIds: result.room.followers.map(f => f.toString()) // ✅ يمكّن العميل من معرفة "أنا متابع؟" دون طلب REST إضافي (الغرفة عادت isLive:false فلن يقدر يجلبها)
         });
+        // ✅ feat/live-hours-host-center: نقطة الإنهاء الوحيدة لكل مسارات انتهاء البث (الثلاثة
+        // معاً — ✕ صريح، زر الإنهاء، ومكنسة الانقطاع) — إغلاق جلسة البث هنا يغطّيها كلها بلا تكرار
+        closeLiveSession(room._id).catch(error => console.error('[LIVE-HOURS] closeLiveSession error:', error));
         // ✅ تختفي فوراً من قائمة تصفح الغرف عند كل من فتحها حالياً — نفس آلية الظهور الفوري
         io.emit('room-went-offline', { roomId: room._id.toString() });
         // 🛡️ مراجعة #151: لا تُنتظَر — إشعار المتابعين ثانوي (أخطاؤه مُلتقَطة بذاته داخلياً
@@ -1027,6 +1034,70 @@ async function clearHostDisconnected(userId) {
         );
     } catch (error) {
         console.error('[BROADCAST] clearHostDisconnected error:', error);
+    }
+}
+
+// =================================================
+// ✅ feat/live-hours-host-center: تتبّع ساعات البث المؤهّلة لمسبح المضيفين الأسبوعي — جلسة
+// LiveSession واحدة لكل بث حقيقي (راجع تعليقات الاستدعاء بـhost-start-broadcast/
+// endRoomBroadcastForHost أعلاه)، وتِك دوري كل 60 ثانية يفحص عدد المستمعين الحقيقيين بكل
+// غرفة مباشرة ويُضيف ساعة كاملة فقط لو تحقّق الحد الأدنى
+// =================================================
+async function openLiveSession(roomId, hostId) {
+    await LiveSession.openForRoom(roomId, hostId);
+}
+
+async function closeLiveSession(roomId) {
+    await LiveSession.closeForRoom(roomId);
+}
+
+// ✅ يُجمِّع مستمعي الغرفة الحقيقيين (بعد استثناء المضيف نفسه وكل من يرتبط به جهازياً/محفظة
+// شام كاش) بمجموعات الحسابات المرتبطة ببعضها (راجع linkageService.groupLinkedAccounts) —
+// مجموعة واحدة = مستمع واحد بغض النظر عن عدد الحسابات بداخلها (جهاز واحد فعلياً بتبويبات/
+// حسابات متعددة لا يُحسَب إلا مرة). نداءان فقط لقاعدة البيانات إجمالاً بصرف النظر عن عدد
+// المستمعين — لا O(n²) من فحص كل زوج على حدة
+async function countQualifyingListeners(io, roomId, hostId) {
+    const hostIdStr = hostId.toString();
+    const viewers = getRoomViewers(io, roomId).filter(v => v.id !== hostIdStr);
+    if (viewers.length === 0) return 0;
+    const groupKey = await linkageService.groupLinkedAccounts([hostIdStr, ...viewers.map(v => v.id)]);
+    const hostGroup = groupKey.get(hostIdStr);
+    const countedGroups = new Set();
+    for (const v of viewers) {
+        const g = groupKey.get(v.id);
+        if (g === hostGroup) continue; // مرتبط بالمضيف نفسه — مستبعد كاملاً، لا يُحسَب حتى كمجموعة
+        countedGroups.add(g);
+    }
+    return countedGroups.size;
+}
+
+const LIVE_HOURS_TICK_INTERVAL_MS = 60 * 1000;
+
+async function runLiveHoursTick(io) {
+    try {
+        const settings = await SystemSettings.getSettings();
+        const minListeners = settings.poolMinListeners || 2;
+        // ✅ الغرفة الرسمية host:null مُستثناة صراحةً — لا مضيف حقيقي لها يُحسَب له مسبح
+        const liveRooms = await VoiceRoom.find({ isLive: true, isOfficial: false, host: { $ne: null } }).select('_id host').lean();
+        if (liveRooms.length === 0) return;
+        const now = new Date();
+        const { weekStart } = getCurrentWeekBounds();
+        for (const room of liveRooms) {
+            try {
+                const listenerCount = await countQualifyingListeners(io, room._id, room.host);
+                const qualifies = listenerCount >= minListeners;
+                let session = await LiveSession.findOne({ room: room._id, endedAt: null }).select('_id');
+                // 🛡️ شبكة أمان فقط — من المفترض أن تكون الجلسة مفتوحة أصلاً منذ host-start-broadcast
+                if (!session) session = await LiveSession.openForRoom(room._id, room.host);
+                if (!session) continue;
+                await LiveSession.applyTick(session._id, { qualifies, listenerCount, now });
+                if (qualifies) await HostWeeklyStat.addQualifiedSeconds(room.host, weekStart, 60);
+            } catch (roomError) {
+                console.error('[LIVE-HOURS] tick error for room', room._id, roomError);
+            }
+        }
+    } catch (error) {
+        console.error('[LIVE-HOURS] tick loop error:', error);
     }
 }
 
@@ -1850,6 +1921,9 @@ socket.on('refreshBlockData', async () => {
             try {
                 const room = await VoiceRoom.startBroadcast(roomId, socket.user._id);
                 if (!room) { if (typeof ack === 'function') ack({ ok: false }); return; } // ✅ ليس مضيف هذي الغرفة، أو الغرفة الرسمية — تجاهل صامت وآمن
+                // ✅ feat/live-hours-host-center: بداية جلسة بث جديدة فعلياً (استدعاء صريح فقط،
+                // لا يتكرّر عند إعادة تحميل/استعادة اتصال — راجع تعليق VoiceRoom.startBroadcast)
+                openLiveSession(room._id, socket.user._id).catch(error => console.error('[LIVE-HOURS] openLiveSession error:', error));
                 io.to(`room-chat-${room._id}`).emit('user-joined-seat', {
                     roomId: room._id.toString(),
                     seatNumber: 1,
@@ -3072,6 +3146,10 @@ socket.on('refreshBlockData', async () => {
     sweepDisconnectedHostBroadcasts(io);
     setInterval(() => sweepDisconnectedHostBroadcasts(io), HOST_DISCONNECT_SWEEP_INTERVAL_MS);
 
+    // ✅ feat/live-hours-host-center: نفس فلسفة المكانس أعلاه — تِك فوري عند الإقلاع ثم كل 60 ثانية
+    runLiveHoursTick(io);
+    setInterval(() => runLiveHoursTick(io), LIVE_HOURS_TICK_INTERVAL_MS);
+
     return io;
 };
 
@@ -3112,3 +3190,7 @@ module.exports.sweepDisconnectedHostBroadcasts = sweepDisconnectedHostBroadcasts
 // ✅ room-ux-v2: تُستخدَم من واجهة REST الجديدة (voiceRoomController.getRoomViewers) لبناء
 // نافذة "الحاضرون" بنافذة المشاهدين — نفس مصدر عدّاد المشاهدين اللحظي بالضبط، لا قائمة منفصلة
 module.exports.getRoomViewers = getRoomViewers;
+module.exports.countQualifyingListeners = countQualifyingListeners;
+module.exports.runLiveHoursTick = runLiveHoursTick;
+module.exports.openLiveSession = openLiveSession;
+module.exports.closeLiveSession = closeLiveSession;

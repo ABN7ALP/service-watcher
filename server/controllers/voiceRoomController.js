@@ -475,6 +475,113 @@ exports.getRoomAnalytics = async (req, res) => {
 };
 
 // =====================================================
+// ✅ GET /api/voice-room/rooms/:id/host-pool — ملخّص مسبح المضيفين الأسبوعي (مركز المضيف،
+// المضيف فقط) — راجع feat/live-hours-host-center: تقدّم الشرطين (ساعات مؤهّلة/ألماس) هذا
+// الأسبوع، ترتيبه، أيام متبقية، إحصائيات اليوم، رسم ساعات الأسبوع، وتقسيم ألماس الشهر
+// =====================================================
+exports.getHostPoolSummary = async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غرفة غير صالح' });
+        }
+        const room = await VoiceRoom.findById(req.params.id).select('host');
+        if (!room) return res.status(404).json({ status: 'fail', message: 'الغرفة غير موجودة' });
+        if (!room.host || room.host.toString() !== req.user.id) {
+            return res.status(403).json({ status: 'fail', message: 'هذي الإحصائيات متاحة لمالك الغرفة فقط' });
+        }
+        const hostId = room.host;
+
+        const LedgerEntry = require('../models/LedgerEntry');
+        const HostWeeklyStat = require('../models/HostWeeklyStat');
+        const LiveSession = require('../models/LiveSession');
+        const Follow = require('../models/Follow');
+        const SystemSettings = require('../models/SystemSettings');
+        const { getCurrentWeekBounds, getCurrentMonthStart, getCurrentDayStart, DAMASCUS_OFFSET_MS } = require('../utils/poolWeek');
+
+        const { weekStart, weekEnd } = getCurrentWeekBounds();
+        const monthStart = getCurrentMonthStart();
+        const dayStart = getCurrentDayStart();
+        const now = new Date();
+
+        const [settings, myStat, dayGiftAgg, newFollowersToday, weekSessions, monthLedgerAgg, weekTopSupportersAgg] = await Promise.all([
+            SystemSettings.getSettings(),
+            HostWeeklyStat.findOne({ host: hostId, weekStart }).lean(),
+            GiftLog.aggregate([
+                { $match: { room: room._id, createdAt: { $gte: dayStart } } },
+                { $group: { _id: null, total: { $sum: '$totalPrice' } } }
+            ]),
+            Follow.countDocuments({ followee: hostId, createdAt: { $gte: dayStart } }),
+            LiveSession.find({ host: hostId, startedAt: { $gte: weekStart, $lte: weekEnd } }).select('startedAt qualifiedSeconds peakListeners').lean(),
+            LedgerEntry.aggregate([
+                { $match: { user: hostId, wallet: { $in: ['beans_w', 'beans_p'] }, type: 'gift_receive', createdAt: { $gte: monthStart } } },
+                { $group: { _id: '$wallet', total: { $sum: '$delta' } } }
+            ]),
+            GiftLog.aggregate([
+                { $match: { room: room._id, createdAt: { $gte: weekStart } } },
+                { $group: { _id: '$sender', total: { $sum: '$totalPrice' } } },
+                { $sort: { total: -1 } },
+                { $limit: 3 },
+                { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+                { $unwind: '$user' },
+                { $project: { userId: '$_id', username: '$user.username', profileImage: '$user.profileImage', activeFrameClass: '$user.activeFrameClass', total: 1 } }
+            ])
+        ]);
+
+        const myQualifiedSeconds = myStat?.qualifiedSeconds || 0;
+        const myBeansTotal = (myStat?.beansW || 0) + (myStat?.beansP || 0);
+        const rank = await HostWeeklyStat.countDocuments({ weekStart, qualifiedSeconds: { $gt: myQualifiedSeconds } }) + 1;
+        const daysLeft = Math.max(0, Math.ceil((weekEnd.getTime() - now.getTime()) / 86400000));
+
+        // ✅ توزيع ساعات الأسبوع على أيامه (الأحد=0 ... السبت=6 بتوقيت دمشق) + ساعات/أعلى عدد
+        // مستمعين اليوم تحديداً — من نفس الاستعلام الواحد أعلاه، بلا نداء إضافي للقاعدة
+        const weeklyBarsSeconds = [0, 0, 0, 0, 0, 0, 0];
+        let todaySeconds = 0, todayPeakListeners = 0;
+        for (const s of weekSessions) {
+            const dayIdx = new Date(s.startedAt.getTime() + DAMASCUS_OFFSET_MS).getUTCDay();
+            weeklyBarsSeconds[dayIdx] += s.qualifiedSeconds || 0;
+            if (s.startedAt >= dayStart) {
+                todaySeconds += s.qualifiedSeconds || 0;
+                todayPeakListeners = Math.max(todayPeakListeners, s.peakListeners || 0);
+            }
+        }
+
+        const monthBeansByWallet = {};
+        monthLedgerAgg.forEach(r => { monthBeansByWallet[r._id] = r.total; });
+
+        res.status(200).json({
+            status: 'success',
+            data: {
+                pool: {
+                    qualifiedHours: Math.round((myQualifiedSeconds / 3600) * 100) / 100,
+                    minHours: settings.poolMinHours,
+                    beansThisWeek: myBeansTotal,
+                    minBeans: settings.poolMinBeans,
+                    minListeners: settings.poolMinListeners,
+                    daysLeft,
+                    rank,
+                    qualified: myQualifiedSeconds >= settings.poolMinHours * 3600 && myBeansTotal >= settings.poolMinBeans
+                },
+                today: {
+                    liveSeconds: todaySeconds,
+                    peakListeners: todayPeakListeners,
+                    beans: (dayGiftAgg[0] && dayGiftAgg[0].total) || 0,
+                    newFollowers: newFollowersToday
+                },
+                weeklyHoursChart: weeklyBarsSeconds.map(sec => Math.round((sec / 3600) * 100) / 100),
+                monthBeans: {
+                    withdrawable: monthBeansByWallet.beans_w || 0,
+                    free: monthBeansByWallet.beans_p || 0
+                },
+                topSupportersThisWeek: weekTopSupportersAgg
+            }
+        });
+    } catch (error) {
+        console.error('[ERROR] in getHostPoolSummary:', error);
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
+    }
+};
+
+// =====================================================
 // ✅ PATCH /api/voice-room/rooms/:id — تعديل إعدادات الغرفة (المضيف فقط)
 // =====================================================
 exports.updateRoom = async (req, res) => {

@@ -87,6 +87,7 @@ Standing, permanent — applies to every future PR against this repo.
 - **No new files unless necessary.** One-off verification scripts and screenshots stay out of the repo unless the reviewer asks.
 - **Every PR description starts with a size line:** `Code: +X/-Y lines in N files · Tests: +Z · Docs/assets: +W`. If code is over 150 lines, explain why it could not be smaller.
 - **No background agents or forks for verification.** Verify inline, in the main conversation, with one real-browser pass (not multiple parallel/background re-runs) and capture exactly the screenshots requested — no more.
+- **No background agents/forks/subagents for any part of this work, research included.** Read the files yourself (grep first, then read the relevant ranges) and verify inline, once.
 
 ---
 
