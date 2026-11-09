@@ -403,7 +403,12 @@ exports.getRoomById = async (req, res) => {
 // =====================================================
 // ✅ GET /api/voice-room/rooms/:id/analytics — تحليلات مركز المضيف (المضيف فقط):
 // اتجاه الدعم أسبوعياً (آخر 7 أيام)/شهرياً (آخر 12 شهراً)/سنوياً (آخر 5 سنوات)، أكبر داعم،
-// وتوزيع جنس متابعي الغرفة — كل هذا مبني من GiftLog.room (نفس مصدر supportPoints بالضبط)
+// وتوزيع جنس متابعي الغرفة. 🛡️ مراجعة بعد #154 (بند 2): weekly/monthly/yearly فقط تقرأ
+// LedgerEntry الآن (نفس مصدر/قاعدة aggregateReceivedBeans بـgetHostPoolSummary بالضبط —
+// محصورة بالمستلِم بصرف النظر عن سياق الغرفة، تستثني الحسابات المرتبطة، حدود دمشق) — كانت
+// تقرأ GiftLog.room فتعرض "لا يوجد دعم" حتى مع ألماس حقيقي مسجَّل بنفس الفترة (هدية بدردشة
+// خاصة مثلاً). topSupporter/genderBreakdown مقياسان مختلفان تماماً (نشاط هذي الغرفة/متابعوها
+// تحديداً، لا أرباح المضيف) وبقيا كما كانا عمداً — GiftLog.room بلا تغيير
 // =====================================================
 exports.getRoomAnalytics = async (req, res) => {
     try {
@@ -416,25 +421,31 @@ exports.getRoomAnalytics = async (req, res) => {
             return res.status(403).json({ status: 'fail', message: 'هذي الإحصائيات متاحة لمالك الغرفة فقط' });
         }
 
+        const LedgerEntry = require('../models/LedgerEntry');
+        const { getDayStartForDate, getMonthStartForDate } = require('../utils/poolWeek');
         const now = new Date();
-        const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); sevenDaysAgo.setHours(0, 0, 0, 0);
-        const twelveMonthsAgo = new Date(now); twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 11); twelveMonthsAgo.setDate(1); twelveMonthsAgo.setHours(0, 0, 0, 0);
-        const fiveYearsAgo = new Date(now.getFullYear() - 4, 0, 1);
+        // ✅ حدود دمشق الحقيقية لكل نافذة (لا منتصف ليل الخادم المحلي/UTC) — نفس أسلوب
+        // aggregateReceivedBeans: تاريخ "خام" داخل الفترة المطلوبة، ثم تطبيق بداية اليوم/الشهر
+        // بتوقيت دمشق عليه عبر الدوال المُصدَّرة أصلاً من poolWeek.js
+        const sevenDaysAgo = getDayStartForDate(new Date(now.getTime() - 6 * 86400000));
+        const twelveMonthsAgo = getMonthStartForDate(new Date(now.getFullYear(), now.getMonth() - 11, 15));
+        const fiveYearsAgo = getMonthStartForDate(new Date(now.getFullYear() - 4, 0, 15));
+        const ledgerMatch = (since) => ({ user: room.host, wallet: { $in: ['beans_w', 'beans_p'] }, type: 'gift_receive', createdAt: { $gte: since }, 'meta.linked': { $ne: true } });
 
         const [weeklyAgg, monthlyAgg, yearlyAgg, topSupporterAgg, genderAgg] = await Promise.all([
-            GiftLog.aggregate([
-                { $match: { room: room._id, createdAt: { $gte: sevenDaysAgo } } },
-                { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, total: { $sum: '$totalPrice' } } },
+            LedgerEntry.aggregate([
+                { $match: ledgerMatch(sevenDaysAgo) },
+                { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: '+03:00' } }, total: { $sum: '$delta' } } },
                 { $sort: { _id: 1 } }
             ]),
-            GiftLog.aggregate([
-                { $match: { room: room._id, createdAt: { $gte: twelveMonthsAgo } } },
-                { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } }, total: { $sum: '$totalPrice' } } },
+            LedgerEntry.aggregate([
+                { $match: ledgerMatch(twelveMonthsAgo) },
+                { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$createdAt', timezone: '+03:00' } }, total: { $sum: '$delta' } } },
                 { $sort: { _id: 1 } }
             ]),
-            GiftLog.aggregate([
-                { $match: { room: room._id, createdAt: { $gte: fiveYearsAgo } } },
-                { $group: { _id: { $dateToString: { format: '%Y', date: '$createdAt' } }, total: { $sum: '$totalPrice' } } },
+            LedgerEntry.aggregate([
+                { $match: ledgerMatch(fiveYearsAgo) },
+                { $group: { _id: { $dateToString: { format: '%Y', date: '$createdAt', timezone: '+03:00' } }, total: { $sum: '$delta' } } },
                 { $sort: { _id: 1 } }
             ]),
             GiftLog.aggregate([
