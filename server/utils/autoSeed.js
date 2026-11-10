@@ -42,12 +42,15 @@ async function seedGiftsIfMissing() {
 // صريح، بانتظار مراجعته قبل إرسال بقية الروابط. الإطارات الأربعة CSS السابقة (الحلقة الفضية/
 // جوهرة الزمرد/إعصار اللهب/تاج الأساطير) أُحيلت للتقاعد (راجع migrateRetireOldFrames أدناه،
 // لا تُحذف كي لا يفقدها من يملكها فعلاً) فيبقى هذا الإطار وحده خيار الشراء الوحيد مؤقتاً
+// 🛡️ مراجعة #157: أسعار prices.day1/3/7 هنا بمقياس ما بعد ترحيل ×10 مباشرة (نفس علّة أسعار
+// الهدايا أعلاه بالضبط — راجع تعليق seedGiftsIfMissing) — إطار ناقص يُدرَج autoSeed به كان
+// سيدخل 10x أرخص من بقية الإطارات الحقيقية بلا أي مسار يصحّحه لاحقاً
 async function seedFramesIfMissing() {
     const frames = [
         { name: 'إطار الترحيب', cssClass: 'profile-frame-welcome', isActive: false, sortOrder: 0, prices: { day1: 0, day3: 0, day7: 0 } },
-        { name: 'الحلقة الفضية', cssClass: 'profile-frame-silver-elegant', isActive: false, sortOrder: 1, prices: { day1: 9, day3: 22, day7: 40 } },
-        { name: 'جوهرة الزمرد', cssClass: 'profile-frame-emerald-facet', isActive: false, sortOrder: 2, prices: { day1: 26, day3: 66, day7: 120 } },
-        { name: 'إعصار اللهب', cssClass: 'profile-frame-flame-vortex', isActive: false, sortOrder: 3, prices: { day1: 55, day3: 138, day7: 250 } },
+        { name: 'الحلقة الفضية', cssClass: 'profile-frame-silver-elegant', isActive: false, sortOrder: 1, prices: { day1: 90, day3: 220, day7: 400 } },
+        { name: 'جوهرة الزمرد', cssClass: 'profile-frame-emerald-facet', isActive: false, sortOrder: 2, prices: { day1: 260, day3: 660, day7: 1200 } },
+        { name: 'إعصار اللهب', cssClass: 'profile-frame-flame-vortex', isActive: false, sortOrder: 3, prices: { day1: 550, day3: 1380, day7: 2500 } },
         // ✅ "تاج الأساطير" (profile-frame-golden-legend) أُزيل من هذي القائمة نهائياً — طلب
         // صريح بحذفه حذفاً دائماً (راجع migrateDeleteRetiredFrames أدناه)؛ إبقاؤه هنا كان
         // يُعيد خلقه عند كل إقلاع خادم فقط ليحذفه migrateDeleteRetiredFrames فوراً بعده
@@ -56,15 +59,15 @@ async function seedFramesIfMissing() {
         // الندرة الظاهرة من اسم كل صورة (ملكي/تاج أساسي → أسطوري/مخلوقات أسطورية). طلب صريح
         // لاحق: 3 مدد قصيرة فقط (1/3/7 أيام) بدل الطويلة — سعر 7 أيام = سعر "days7" القديم
         // نفسه (بلا تغيير قيمة)، و3/1 أيام نسبة تقريبية 55%/22% منه
-        { name: 'الإطار الفاخر', cssClass: 'profile-frame-luxury-01', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif', isActive: true, sortOrder: 1, prices: { day1: 88, day3: 220, day7: 400 } },
-        { name: 'الإطار الملكي', cssClass: 'profile-frame-royal-01', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790892729/royal_frame_600px.gif', isActive: true, sortOrder: 2, prices: { day1: 33, day3: 83, day7: 150 } },
-        { name: 'إطار التاج', cssClass: 'profile-frame-crown-01', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790894895/crown_frame_600px.gif', isActive: true, sortOrder: 3, prices: { day1: 33, day3: 83, day7: 150 } },
-        { name: 'التاج الأسود والذهبي', cssClass: 'profile-frame-black-gold-crown', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790895602/black_gold_crown_frame_600px.webp', isActive: true, sortOrder: 4, prices: { day1: 55, day3: 138, day7: 250 } },
-        { name: 'الإطار القوطي الملكي', cssClass: 'profile-frame-gothic-royal', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896169/gothic_royal_frame.webp', isActive: true, sortOrder: 5, prices: { day1: 55, day3: 138, day7: 250 } },
-        { name: 'إطار الجمشت الملكي', cssClass: 'profile-frame-amethyst-royal', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896497/amethyst_royal_frame.webp', isActive: true, sortOrder: 6, prices: { day1: 66, day3: 165, day7: 300 } },
-        { name: 'إطار تنانين النار', cssClass: 'profile-frame-fire-dragons', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897430/fire_dragons_frame.webp', isActive: true, sortOrder: 7, prices: { day1: 99, day3: 248, day7: 450 } },
-        { name: 'إطار الأسد والنحلة والياقوت', cssClass: 'profile-frame-lion-bee-sapphire', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897852/lion_bee_sapphire_frame.webp', isActive: true, sortOrder: 8, prices: { day1: 99, day3: 248, day7: 450 } },
-        { name: 'إطار فارس بيغاسوس', cssClass: 'profile-frame-pegasus-warrior', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790898291/pegasus_warrior_frame.webp', isActive: true, sortOrder: 9, prices: { day1: 110, day3: 275, day7: 500 } },
+        { name: 'الإطار الفاخر', cssClass: 'profile-frame-luxury-01', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790887531/luxury_frame_512px.gif', isActive: true, sortOrder: 1, prices: { day1: 880, day3: 2200, day7: 4000 } },
+        { name: 'الإطار الملكي', cssClass: 'profile-frame-royal-01', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790892729/royal_frame_600px.gif', isActive: true, sortOrder: 2, prices: { day1: 330, day3: 830, day7: 1500 } },
+        { name: 'إطار التاج', cssClass: 'profile-frame-crown-01', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790894895/crown_frame_600px.gif', isActive: true, sortOrder: 3, prices: { day1: 330, day3: 830, day7: 1500 } },
+        { name: 'التاج الأسود والذهبي', cssClass: 'profile-frame-black-gold-crown', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790895602/black_gold_crown_frame_600px.webp', isActive: true, sortOrder: 4, prices: { day1: 550, day3: 1380, day7: 2500 } },
+        { name: 'الإطار القوطي الملكي', cssClass: 'profile-frame-gothic-royal', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896169/gothic_royal_frame.webp', isActive: true, sortOrder: 5, prices: { day1: 550, day3: 1380, day7: 2500 } },
+        { name: 'إطار الجمشت الملكي', cssClass: 'profile-frame-amethyst-royal', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790896497/amethyst_royal_frame.webp', isActive: true, sortOrder: 6, prices: { day1: 660, day3: 1650, day7: 3000 } },
+        { name: 'إطار تنانين النار', cssClass: 'profile-frame-fire-dragons', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897430/fire_dragons_frame.webp', isActive: true, sortOrder: 7, prices: { day1: 990, day3: 2480, day7: 4500 } },
+        { name: 'إطار الأسد والنحلة والياقوت', cssClass: 'profile-frame-lion-bee-sapphire', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790897852/lion_bee_sapphire_frame.webp', isActive: true, sortOrder: 8, prices: { day1: 990, day3: 2480, day7: 4500 } },
+        { name: 'إطار فارس بيغاسوس', cssClass: 'profile-frame-pegasus-warrior', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790898291/pegasus_warrior_frame.webp', isActive: true, sortOrder: 9, prices: { day1: 1100, day3: 2750, day7: 5000 } },
         // ✅ إطار حصري غير مباع بالمتجر (isActive:false) — يُمنح فقط تلقائياً لمن يفوز بالمركز
         // الأول بمساهمات نادي معجبين لأسبوع كامل (راجع server/utils/fanClubWeeklyFrameJob.js)
         { name: 'إطار المساهم', cssClass: 'profile-frame-contributor', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1790702503/81162475603.png', isActive: false, sortOrder: 20, prices: { day1: 0, day3: 0, day7: 0 } },
@@ -76,10 +79,11 @@ async function seedFramesIfMissing() {
         // مباشرة بدلاً منه — راجع server/controllers/frameController.js)
         { name: 'إطار الأدمن', cssClass: 'profile-frame-admin', previewImage: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791240482/admin-frame-animated-512.webp', isActive: false, adminOnly: true, sortOrder: 22, prices: { day1: 0, day3: 0, day7: 0 } }
     ];
+    // 🛡️ تُدرِج فقط ما هو ناقص فعلاً — لا تلمس أي إطار موجود أصلاً (لا سعره ولا أي حقل آخر به)
     for (const f of frames) {
         const exists = await ProfileFrame.findOne({ name: f.name });
         if (!exists) {
-            await ProfileFrame.create(f);
+            await ProfileFrame.create({ ...f, redenominatedV1: true });
             console.log(`🖼️ [AUTO-SEED] تمت إضافة الإطار: ${f.name}`);
         }
     }
@@ -101,16 +105,19 @@ async function migrateRetireOldFrames() {
     }
 }
 
+// 🛡️ مراجعة #157: أسعار بمقياس ما بعد ترحيل ×10 مباشرة (نفس علّة seedGiftsIfMissing/
+// seedFramesIfMissing أعلاه بالضبط)
 async function seedBubbleSkinsIfMissing() {
     const skins = [
-        { name: 'فقاعة ليلية', price: 40, cssClass: 'bubble-skin-midnight', sortOrder: 1 },
-        { name: 'فقاعة غروب', price: 60, cssClass: 'bubble-skin-sunset', sortOrder: 2 },
-        { name: 'فقاعة زمردية', price: 80, cssClass: 'bubble-skin-emerald', sortOrder: 3 },
-        { name: 'فقاعة ملكية', price: 120, cssClass: 'bubble-skin-royal', sortOrder: 4 }
+        { name: 'فقاعة ليلية', price: 400, cssClass: 'bubble-skin-midnight', sortOrder: 1 },
+        { name: 'فقاعة غروب', price: 600, cssClass: 'bubble-skin-sunset', sortOrder: 2 },
+        { name: 'فقاعة زمردية', price: 800, cssClass: 'bubble-skin-emerald', sortOrder: 3 },
+        { name: 'فقاعة ملكية', price: 1200, cssClass: 'bubble-skin-royal', sortOrder: 4 }
     ];
+    // 🛡️ تُدرِج فقط ما هو ناقص فعلاً — لا تلمس أي فقاعة موجودة أصلاً
     for (const s of skins) {
         const exists = await ChatBubbleSkin.findOne({ name: s.name });
-        if (!exists) await ChatBubbleSkin.create(s);
+        if (!exists) await ChatBubbleSkin.create({ ...s, redenominatedV1: true });
     }
 }
 
@@ -292,4 +299,7 @@ module.exports = async function autoSeed() {
     }
 };
 
-module.exports.seedGiftsIfMissing = seedGiftsIfMissing; // ✅ لاختبار الوحدة (راجع __tests__/autoSeed.test.js)
+// ✅ لاختبار الوحدة (راجع __tests__/autoSeed.test.js)
+module.exports.seedGiftsIfMissing = seedGiftsIfMissing;
+module.exports.seedFramesIfMissing = seedFramesIfMissing;
+module.exports.seedBubbleSkinsIfMissing = seedBubbleSkinsIfMissing;
