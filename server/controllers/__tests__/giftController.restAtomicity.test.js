@@ -18,7 +18,11 @@
 // 🐛 jest.useFakeTimers() قبل require('../giftController') — نفس سبب الملفات المجاورة
 // (setInterval حقيقي لتنظيف محدِّد معدّل الهدايا عند الاستيراد نفسه)
 jest.useFakeTimers();
-jest.mock('../fanClubController', () => ({ awardFanPoints: jest.fn() }));
+// ✅ feat/fanclub-v2-ui: assertFanClubExclusiveGiftEligible هي الآن نقطة فحص حقيقية يستدعيها
+// sendGift/sendPublicGift مباشرة — بلا هذا المعامِل هنا تصبح undefined بالنموذج المُموَّه
+// (TypeError: ... is not a function) لأي هدية، لا فقط الحصرية؛ لا تفعل شيئاً لأي هدية عادية
+// بالكود الحقيقي فعلياً، فمحاكاتها هنا بـno-op مطابقة تماماً
+jest.mock('../fanClubController', () => ({ awardFanPoints: jest.fn(), assertFanClubExclusiveGiftEligible: jest.fn().mockResolvedValue(undefined) }));
 jest.mock('../../utils/experienceManager', () => ({
     addGiftExperience: jest.fn().mockResolvedValue(null),
     calculateRequiredXp: (level) => level * 1500,

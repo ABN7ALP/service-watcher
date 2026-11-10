@@ -20,5 +20,7 @@ router.get('/:userId/weekly-wins', fanClubController.getWeeklyWins);
 // ✅ مهام المعجب اليومية لهذا النادي (حالة العضو الحالي) + مطالبة حضور اليوم
 router.get('/:ownerId/missions', fanClubController.getMissions);
 router.post('/:ownerId/missions/checkin', fanClubController.claimCheckIn);
+// 🛡️ feat/fanclub-v2-ui: أهلية "هدية النادي" الحصرية (مستوى 13+) لهذا المستخدم بهذا النادي
+router.get('/:ownerId/exclusive-gift', fanClubController.getExclusiveGiftEligibility);
 
 module.exports = router;

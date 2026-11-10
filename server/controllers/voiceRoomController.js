@@ -9,7 +9,6 @@ const User = require('../models/User');
 const RoomBattle = require('../models/RoomBattle');
 const SeatChallenge = require('../models/SeatChallenge');
 const GiftLog = require('../models/GiftLog');
-const FanClubMembership = require('../models/FanClubMembership');
 const walletService = require('../utils/walletService');
 
 // =====================================================
@@ -331,6 +330,12 @@ exports.getRoomById = async (req, res) => {
             }
         }
 
+        // 🛡️ feat/fanclub-v2-ui: دفعة واحدة لشارات نادي المعجبين لكل الجالسين بهذي اللقطة —
+        // لا طلب منفصل لكل مقعد (راجع fanClubController.getFanClubBadgeMap)
+        const { getFanClubBadgeMap } = require('./fanClubController');
+        const seatedUserIds = room.seats.filter(s => s.user).map(s => s.user._id.toString());
+        const seatBadgeMap = room.host ? await getFanClubBadgeMap(room.host._id, seatedUserIds) : new Map();
+
         const seats = room.seats.map(s => ({
             seatNumber: s.seatNumber,
             isLocked: s.isLocked,
@@ -343,7 +348,10 @@ exports.getRoomById = async (req, res) => {
                 // ✅ طلب صريح: مجموع عداد الدعم التراكمي لهذا المستخدم بهذي الغرفة — مصدر
                 // الحقيقة بالذاكرة بـsocketService (roomSupportTally)، يُضمَّن هنا كي يظهر
                 // فوراً عند الدخول الأول للغرفة (لا ينتظر أول حدث Socket حي بعده فقط)
-                supportTotal: getRoomSupportTotal(req.params.id, s.user._id.toString())
+                supportTotal: getRoomSupportTotal(req.params.id, s.user._id.toString()),
+                // ✅ شارة نادي معجبين مضيف هذي الغرفة (null لمن ليس عضواً به) — تغذّي شارة
+                // المقعد/لون الاسم/إطار "الأسطورة" بالعميل، كلها من هذا الحقل الواحد
+                fanClub: seatBadgeMap.get(s.user._id.toString()) || null
             } : null
         }));
 
@@ -856,6 +864,21 @@ exports.getRoomMessages = async (req, res) => {
             .limit(50)
             .populate('sender', 'username profileImage activeFrameClass activeBubbleSkinClass level')
             .lean();
+
+        // 🛡️ feat/fanclub-v2-ui: دفعة واحدة لشارات نادي المعجبين لكل مرسلي سجل الدردشة —
+        // لا طلب منفصل لكل رسالة/مرسل (راجع fanClubController.getFanClubBadgeMap)
+        if (req.params.id !== 'main' && messages.length) {
+            const room = await VoiceRoom.findById(req.params.id).select('host').lean();
+            if (room?.host) {
+                const { getFanClubBadgeMap } = require('./fanClubController');
+                const senderIds = messages.filter(m => m.sender).map(m => m.sender._id.toString());
+                const badgeMap = await getFanClubBadgeMap(room.host, senderIds);
+                for (const m of messages) {
+                    if (m.sender) m.sender.fanClub = badgeMap.get(m.sender._id.toString()) || null;
+                }
+            }
+        }
+
         res.json({ status: 'success', messages: messages.reverse() });
     } catch (error) {
         res.status(500).json({ status: 'error', message: error.message });
@@ -1087,19 +1110,23 @@ exports.getSeatChallengeResult = async (req, res) => {
 // لنادي معجبين صاحب الغرفة فوق بياناتهما الأساسية — دالة مشتركة واحدة تجلب الحالة اللحظية
 // لتفادي تكرار منطق seats/host بين المسارين
 // =====================================================
+// 🛡️ feat/fanclub-v2-ui: badgeMap دفعة واحدة (fanClubController.getFanClubBadgeMap) — لا طلب
+// منفصل لكل مستخدم بالقائمة. isFanClubMember يبقى كما كان (استخدام عميل قائم — راجع app.js)،
+// fanClub الآن يحمل شارة المستوى/الفئة الكاملة (أو null لمن ليس عضواً) لعرضها بأي مكان تظهر
+// فيه هذي الصفوف بالعميل (قائمة المشاهدين/المساهمين)
 async function enrichWithRoomStatusAndFanClub(room, rows) {
     const hostId = room.host ? room.host.toString() : null;
     const seatedIds = new Set((room.seats || []).filter(s => s.user).map(s => s.user.toString()));
     const ids = rows.map(r => r.userId.toString());
-    const fanMemberIds = hostId && ids.length
-        ? new Set((await FanClubMembership.find({ owner: hostId, member: { $in: ids } }).select('member').lean()).map(m => m.member.toString()))
-        : new Set();
+    const { getFanClubBadgeMap } = require('./fanClubController');
+    const badgeMap = hostId && ids.length ? await getFanClubBadgeMap(hostId, ids) : new Map();
     return rows.map(r => {
         const idStr = r.userId.toString();
         return {
             ...r,
             status: idStr === hostId ? 'host' : (seatedIds.has(idStr) ? 'seat' : null),
-            isFanClubMember: fanMemberIds.has(idStr)
+            isFanClubMember: badgeMap.has(idStr),
+            fanClub: badgeMap.get(idStr) || null
         };
     });
 }

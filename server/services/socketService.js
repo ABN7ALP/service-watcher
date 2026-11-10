@@ -1664,6 +1664,15 @@ socket.on('refreshBlockData', async () => {
                     return;
                 }
 
+                // 🛡️ feat/fanclub-v2-ui: شارة نادي معجبين مضيف هذي الغرفة (null لمن ليس عضواً) —
+                // لقطة واحدة حين يجلس هذا المستخدم بالذات، لا طلب منفصل لكل مشاهد
+                let seatFanClub = null;
+                if (room.host) {
+                    const { getFanClubBadgeMap } = require('../controllers/fanClubController');
+                    const badgeMap = await getFanClubBadgeMap(room.host, [socket.user.id.toString()]);
+                    seatFanClub = badgeMap.get(socket.user.id.toString()) || null;
+                }
+
                 io.to(`room-chat-${targetRoomId}`).emit('hand-raise-removed', { roomId: targetRoomId, userId: socket.user.id.toString() });
                 io.to(`room-chat-${targetRoomId}`).emit('user-joined-seat', {
                     roomId: targetRoomId,
@@ -1673,7 +1682,8 @@ socket.on('refreshBlockData', async () => {
                     profileImage: socket.user.profileImage,
                     activeFrameClass: socket.user.activeFrameClass,
                     isMuted: carryMuted,
-                    supportTotal: getRoomSupportTotal(targetRoomId, socket.user.id.toString())
+                    supportTotal: getRoomSupportTotal(targetRoomId, socket.user.id.toString()),
+                    fanClub: seatFanClub
                 });
             } catch (error) {
                 console.error('[VOICE SEAT] Join seat error:', error);
@@ -2744,11 +2754,18 @@ socket.on('refreshBlockData', async () => {
                     const room = await VoiceRoom.resolveRoom(roomId);
                     // ✅ لا نُعلن دخول المضيف نفسه لغرفته — وجوده مثبَّت أصلاً بالمقعد الأول
                     if (room && room.host?.toString() !== socket.user._id.toString()) {
+                        // 🛡️ feat/fanclub-v2-ui: دخول خفيف (مستوى 9+، عضوية نشطة) — يُرفَق هنا بنفس
+                        // الحدث (لا حدث منفصل/طلب إضافي)، null لمن لا يستحقه فيبقى الإعلان العادي كما هو
+                        const { getFanClubBadgeMap, ENTRANCE_ANNOUNCE_MIN_LEVEL } = require('../controllers/fanClubController');
+                        const badgeMap = await getFanClubBadgeMap(room.host, [socket.user._id.toString()]);
+                        const badge = badgeMap.get(socket.user._id.toString());
+                        const fanClubEntrance = (badge && badge.active && badge.level >= ENTRANCE_ANNOUNCE_MIN_LEVEL) ? badge : null;
                         socket.to(`room-chat-${roomId}`).emit('user-entered-room', {
                             roomId,
                             userId: socket.user._id.toString(),
                             username: socket.user.username,
-                            profileImage: socket.user.profileImage
+                            profileImage: socket.user.profileImage,
+                            fanClubEntrance
                         });
                     }
                 } catch (error) {
@@ -2854,9 +2871,18 @@ socket.on('refreshBlockData', async () => {
                     .populate('sender', 'username profileImage activeFrameClass activeBubbleSkinClass level');
                 if (!populatedMessage) return;
 
+                const senderId = socket.user.id.toString();
+                const messageObj = populatedMessage.toObject();
+                // 🛡️ feat/fanclub-v2-ui: شارة نادي معجبين مضيف هذي الغرفة تحديداً (null لمن ليس
+                // عضواً) — مرة واحدة هنا قبل البث لكل الحاضرين، لا طلب منفصل لكل مستلم
+                if (roomCheck?.host) {
+                    const { getFanClubBadgeMap } = require('../controllers/fanClubController');
+                    const badgeMap = await getFanClubBadgeMap(roomCheck.host, [senderId]);
+                    messageObj.sender.fanClub = badgeMap.get(senderId) || null;
+                }
+
                 const roomSockets = io.sockets.adapter.rooms.get(channel);
                 if (!roomSockets) return;
-                const senderId = socket.user.id.toString();
 
                 for (const socketId of roomSockets) {
                     const receiverSocket = io.sockets.sockets.get(socketId);
@@ -2864,7 +2890,7 @@ socket.on('refreshBlockData', async () => {
                     const receiverId = receiverSocket.user.id.toString();
                     const isBlocked = await checkIfBlocked(senderId, receiverId);
                     if (!isBlocked) {
-                        receiverSocket.emit('new-room-message', { roomId, message: populatedMessage.toObject() });
+                        receiverSocket.emit('new-room-message', { roomId, message: messageObj });
                     }
                 }
 
