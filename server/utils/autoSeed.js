@@ -4,25 +4,35 @@ const ChatBubbleSkin = require('../models/ChatBubbleSkin');
 const User = require('../models/User');
 const VoiceRoom = require('../models/VoiceRoom');
 
+// 🛡️ مراجعة #157: الأسعار هنا بمقياس ما بعد ترحيل إعادة التسمية ×10 (walletRedenominationMigration.js
+// — SCALE=10) مباشرة، لا المقياس القديم قبله. بيئة الإنتاج أنجزت ذلك الترحيل فعلاً؛ لو بقيت
+// هذي القائمة بالمقياس القديم (وردة=1، لا 10) وأدخلت autoSeed هدية ناقصة لاحقاً (حُذفت
+// بالخطأ مثلاً)، تدخل بسعر 10x أرخص من بقية الهدايا الحقيقية بلا أي مسار يصحّحها — الترحيل
+// نفسه يتخطّى كاملاً فور اكتمال JobRun مرّة واحدة (claimOrResumeJobRun)، فلا يعيد فحص مستندات
+// جديدة أُدرجت بعده أبداً. redenominatedV1:true هنا توثّق أن هذا السعر مُطابِق فعلاً للمقياس
+// الحالي (لا "لم يُرحَّل بعد") تماشياً مع بقية الهدايا الحقيقية بعد الترحيل
 async function seedGiftsIfMissing() {
     const gifts = [
-        { name: 'وردة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752572/red-rose-3d-rendering-icon-illustration-png.png', price: 10, category: 'common', animation: 'float', sortOrder: 1 },
-        { name: 'قلب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752780/3d-rendering-red-heart-shape-icon-3d-render-a-sign-of-love-or-life-icon-png.webp', price: 15, category: 'common', animation: 'float', sortOrder: 2 },
-        { name: 'نجمة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753112/magnificent-modern-yellow-star-isolated-with-five-points-high-quality-png.webp', price: 12, category: 'common', animation: 'float', sortOrder: 3 },
-        { name: 'بالون', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832611/cute-pink-cartoon-balloon-with-smiling-face-and-shiny-eyes-png.png', price: 10, category: 'rare', animation: 'float', sortOrder: 4 },
-        { name: 'ثعلب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832545/cute-cartoon-little-red-fox-isolated-on-the-transparent-background-png.png', price: 15, category: 'rare', animation: 'float', sortOrder: 5 },
-        { name: 'قوس قزح', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832474/colorful-rainbow-with-playful-houses-and-trees-in-a-whimsical-landscape-png.png', price: 20, category: 'rare', animation: 'float', sortOrder: 6 },
-        { name: 'تاج', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832422/luxurious-gold-crown-with-intricate-detailing-free-png.webp', price: 35, category: 'epic', animation: 'float', sortOrder: 7 },
-        { name: 'حديقة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832349/vibrant-garden-path-surrounded-by-blooming-flowers-greenery-and-a-white-fence-creating-a-peaceful-and-inviting-outdoor-space-free-png.png', price: 80, category: 'epic', animation: 'float', sortOrder: 8 },
-        { name: 'ألماسة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832281/sparkling-cut-diamond-illustration-with-transparent-background-png.png', price: 120, category: 'epic', animation: 'float', sortOrder: 9 },
-        { name: 'يخت', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832194/luxury-yacht-anchored-in-calm-waters-during-sunset-showcasing-elegant-design-and-spacious-deck-perfect-for-relaxing-getaways-png.png', price: 250, category: 'legendary', animation: 'float', sortOrder: 10 },
-        { name: 'قلعة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753218/elegant-rustic-dragon-mythical-serpent-breathing-fire-high-resolution-png.webp', price: 400, category: 'legendary', animation: 'float', sortOrder: 11 },
-        { name: 'تنين', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753218/elegant-rustic-dragon-mythical-serpent-breathing-fire-high-resolution-png.webp', price: 700, category: 'legendary', animation: 'float', sortOrder: 12 }
+        { name: 'وردة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752572/red-rose-3d-rendering-icon-illustration-png.png', price: 100, category: 'common', animation: 'float', sortOrder: 1 },
+        { name: 'قلب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787752780/3d-rendering-red-heart-shape-icon-3d-render-a-sign-of-love-or-life-icon-png.webp', price: 150, category: 'common', animation: 'float', sortOrder: 2 },
+        { name: 'نجمة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753112/magnificent-modern-yellow-star-isolated-with-five-points-high-quality-png.webp', price: 120, category: 'common', animation: 'float', sortOrder: 3 },
+        { name: 'بالون', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832611/cute-pink-cartoon-balloon-with-smiling-face-and-shiny-eyes-png.png', price: 100, category: 'rare', animation: 'float', sortOrder: 4 },
+        { name: 'ثعلب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832545/cute-cartoon-little-red-fox-isolated-on-the-transparent-background-png.png', price: 150, category: 'rare', animation: 'float', sortOrder: 5 },
+        { name: 'قوس قزح', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832474/colorful-rainbow-with-playful-houses-and-trees-in-a-whimsical-landscape-png.png', price: 200, category: 'rare', animation: 'float', sortOrder: 6 },
+        { name: 'تاج', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832422/luxurious-gold-crown-with-intricate-detailing-free-png.webp', price: 350, category: 'epic', animation: 'float', sortOrder: 7 },
+        { name: 'حديقة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832349/vibrant-garden-path-surrounded-by-blooming-flowers-greenery-and-a-white-fence-creating-a-peaceful-and-inviting-outdoor-space-free-png.png', price: 800, category: 'epic', animation: 'float', sortOrder: 8 },
+        { name: 'ألماسة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832281/sparkling-cut-diamond-illustration-with-transparent-background-png.png', price: 1200, category: 'epic', animation: 'float', sortOrder: 9 },
+        { name: 'يخت', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832194/luxury-yacht-anchored-in-calm-waters-during-sunset-showcasing-elegant-design-and-spacious-deck-perfect-for-relaxing-getaways-png.png', price: 2500, category: 'legendary', animation: 'float', sortOrder: 10 },
+        { name: 'قلعة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753218/elegant-rustic-dragon-mythical-serpent-breathing-fire-high-resolution-png.webp', price: 4000, category: 'legendary', animation: 'float', sortOrder: 11 },
+        { name: 'تنين', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753218/elegant-rustic-dragon-mythical-serpent-breathing-fire-high-resolution-png.webp', price: 7000, category: 'legendary', animation: 'float', sortOrder: 12 }
     ];
+    // 🛡️ تُدرِج فقط ما هو ناقص فعلاً (findOne بالاسم) — لا تلمس أي هدية موجودة أصلاً (لا سعرها
+    // ولا أي حقل آخر بها) إطلاقاً؛ migrateGiftImageUrls وحدها تُحدِّث حقلاً واحداً (imageUrl) على
+    // الهدايا الموجودة، والسعر ليس من بينها عمداً
     for (const g of gifts) {
         const exists = await Gift.findOne({ name: g.name });
         if (!exists) {
-            await Gift.create({ ...g, description: `هدية ${g.name}`, isActive: true });
+            await Gift.create({ ...g, description: `هدية ${g.name}`, isActive: true, redenominatedV1: true });
             console.log(`🎁 [AUTO-SEED] تمت إضافة الهدية: ${g.name}`);
         }
     }
@@ -281,3 +291,5 @@ module.exports = async function autoSeed() {
         console.error('[AUTO-SEED] خطأ أثناء التهيئة التلقائية:', error);
     }
 };
+
+module.exports.seedGiftsIfMissing = seedGiftsIfMissing; // ✅ لاختبار الوحدة (راجع __tests__/autoSeed.test.js)

@@ -14496,7 +14496,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
             const myProfileImage = (JSON.parse(localStorage.getItem('user')) || {}).profileImage || '';
             const countsHTML = (r) => `الأعضاء: <b>${fmtNum(r.memberCount)}</b><br>النشطون: <b>${fmtNum(r.activeCount)}</b><br>نقاط الأسبوع: <b>${fmtNum(r.weeklyPoints)}</b>`;
             body.innerHTML = `
-                <p class="fanclub-rank-explainer">يتم ترتيب نوادي المعجبين حسب عدد الأعضاء النشطين خلال آخر 7 أيام، ثم نقاط الأسبوع. يُحدَّث الترتيب كل 10 دقائق، وستفوز أعلى 10 نوادٍ بمكافآت كوينز أو فرص أكثر — قريباً.</p>
+                <p class="fanclub-rank-explainer">يتم ترتيب نوادي المعجبين حسب عدد الأعضاء النشطين خلال آخر 7 أيام، ثم نقاط الأسبوع. يُحدَّث الترتيب كل 10 دقائق.</p>
                 <div class="fanclub-rank-list">
                     ${leaders.length === 0 ? '<p class="fanclub-rank-empty">لا توجد نوادٍ مصنَّفة بعد</p>' : leaders.map(l => `
                         <div class="fanclub-rank-row" data-rank="${l.rank}" data-owner-id="${l.ownerId}" data-owner-username="${escapeHtml(l.username)}">
