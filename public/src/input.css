@@ -2371,6 +2371,47 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .tier-level-progress-track { height: 8px; border-radius: 999px; background: rgba(0,0,0,0.35); overflow: hidden; }
 .tier-level-progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--tier-c1), var(--tier-c2)); transition: width 0.4s ease-out; }
 .tier-level-progress-label { font-size: 10.5px; color: #d1d5db; margin-top: 7px; text-align: center; }
+/* 🛡️ feat/fanclub-v2-ui: شارة نشط/غير نشط على بطاقة المستوى — لا خصم نقاط أبداً، إعلام بصري فقط */
+.tier-level-active-badge {
+    font-size: 9.5px; font-weight: 800; border-radius: 999px; padding: 2px 8px; flex-shrink: 0;
+    background: rgba(52,211,153,0.18); color: #34d399;
+}
+.tier-level-active-badge.inactive { background: rgba(148,163,184,0.18); color: #94a3b8; }
+
+/* ✅ صف "X نشطون هذا الأسبوع" أسفل صف اسم النادي مباشرة — نفس عدّاد لوحة الصدارة بالضبط */
+.fanclub-active-count-row { font-size: 11px; color: #9ca3af; text-align: center; margin: 2px 0 10px; }
+.fanclub-active-count-row i { color: #fbbf24; margin-inline-end: 4px; }
+
+/* 🛡️ feat/fanclub-v2-ui: سلّم مزايا المستويات داخل غرفة المالك (كوزمتيكية بحتة) */
+.fanclub-perks-ladder { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.fanclub-perk-step {
+    display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.03);
+    border-radius: 12px; padding: 8px 10px;
+}
+.fanclub-perk-step.locked { opacity: 0.55; }
+.fanclub-perk-step-lv {
+    width: 30px; height: 30px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 800; color: #fff; flex-shrink: 0;
+}
+.fanclub-perk-step-text { flex: 1; font-size: 12px; color: #e5e7eb; line-height: 1.5; }
+.fanclub-perk-step-text small { color: #9ca3af; display: block; font-size: 10.5px; }
+.fanclub-perk-step-check { color: #34d399; font-size: 14px; flex-shrink: 0; }
+.fanclub-perk-step-lock { color: #6b7280; font-size: 13px; flex-shrink: 0; }
+
+/* ✅ أكثر المساهمين هذا الأسبوع — بوديوم 3 أعمدة، مطابق لبوديوم الأعضاء (lifetime) بالشكل
+   لكن بيانات أسبوعية (FanClubWeekly) منفصلة تماماً */
+.fanclub-top-weekly-podium { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; margin-top: 10px; }
+.fanclub-top-weekly-slot { background: rgba(255,255,255,0.03); border-radius: 12px; padding: 10px 4px; }
+.fanclub-top-weekly-medal { font-size: 16px; display: block; }
+.fanclub-top-weekly-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin: 4px auto; display: block; }
+.fanclub-top-weekly-name { font-size: 11px; color: #e5e7eb; font-weight: 700; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fanclub-top-weekly-points { font-size: 10px; color: #fbbf24; display: block; }
+
+/* ✅ مغادرة النادي — نص فقط بلا خلفية بارزة (فعل نادر ومقصود، لا يستحق بروز زر الانضمام) */
+.fanclub-leave-btn {
+    width: 100%; margin-top: 14px; padding: 10px; border-radius: 12px; border: none;
+    background: transparent; color: #f87171; font-size: 12.5px; font-weight: 700;
+}
 
 /* ✅ قائمة المهام اليومية — صف لكل مهمة: أيقونة + عنوان/مكافأة + حالة (✅ تم / زر مطالبة / تلقائي) */
 .fanclub-missions-list { display: flex; flex-direction: column; gap: 8px; }
@@ -3096,6 +3137,70 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     flex-shrink: 0;
 }
 .room-chat-greet-btn:disabled { opacity: 0.5; }
+
+/* 🛡️ feat/fanclub-v2-ui: شارة نادي المعجبين المصغّرة بغرفة المالك (مقعد/دردشة/مشاهدون) —
+   رمادية (.inactive) لمن غير نشط؛ القاعدة العامة أعلاه (body.lite-mode/prefers-reduced-motion)
+   تُعطِّل أي مؤثر هنا تلقائياً، لا حاجة لاستعلامات إضافية */
+.fanclub-room-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    height: 16px;
+    padding: 0 6px 0 2px;
+    border-radius: 999px;
+    font-size: 9.5px;
+    font-weight: 800;
+    color: #fff;
+    flex-shrink: 0;
+    max-width: 90px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+.fanclub-room-badge.inactive { opacity: 0.65; }
+.fanclub-room-badge-lv {
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.25);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px;
+    flex-shrink: 0;
+}
+.fanclub-room-badge-name { overflow: hidden; text-overflow: ellipsis; }
+
+/* ✅ صف شارة النادي أسفل اسم المقعد — سطر إضافي ضيّق، لا يكسر تخطيط المقعد الثابت */
+.fanclub-room-badge-row { display: flex; justify-content: center; margin-top: 1px; }
+.fanclub-room-badge-row .fanclub-room-badge { max-width: 72px; }
+
+/* ✅ حلقة "أسطورة النادي" (Lv.17+ نشط) حول صورة المقعد — تراكب إضافي منفصل تماماً عن إطار
+   المستخدم الشخصي (activeFrameClass)، يظهر فقط بغرفة مالك هذا النادي تحديداً */
+.fanclub-legend-ring {
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid #d946ef;
+    box-shadow: 0 0 10px #d946ef99;
+    pointer-events: none;
+    animation: fanclubLegendPulse 2.2s ease-in-out infinite;
+}
+@keyframes fanclubLegendPulse {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.04); }
+}
+
+/* ✅ دخول خفيف (Lv.9+ نشط) — توهّج ذهبي خافت حول سطر "انضم" العادي، لا سطر إضافي منفصل */
+.room-chat-join-announcement.fanclub-entrance {
+    background: radial-gradient(ellipse at right, rgba(217,70,239,0.12), transparent 70%);
+    border-radius: 999px;
+    animation: fanclubEntranceGlow 1.8s ease-in-out 1;
+}
+@keyframes fanclubEntranceGlow {
+    0% { box-shadow: 0 0 0 rgba(217,70,239,0); }
+    30% { box-shadow: 0 0 12px rgba(217,70,239,0.5); }
+    100% { box-shadow: 0 0 0 rgba(217,70,239,0); }
+}
+
+/* ✅ وسم "هدية النادي" الحصرية بشبكة شيت الهدايا — نفس مكان .gsheet-tag (أسطوري) لكن بلون مميّز */
+.fanclub-gift-tag { background: linear-gradient(90deg,#d946ef,#a855f7) !important; color: #fff !important; }
 
 /* 🐛 مراجعة بصرية (طلب صريح، بند 7 — مطابقة §.msg.gift بالنموذج الإلزامي): تدرّج وردي-بنفسجي
    بدل الذهبي/البرتقالي السابق */

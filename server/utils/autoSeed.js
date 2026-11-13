@@ -38,6 +38,29 @@ async function seedGiftsIfMissing() {
     }
 }
 
+// 🛡️ feat/fanclub-v2-ui: هدية "النادي" الحصرية (مستوى معجب 13+ فقط — راجع
+// fanClubController.assertFanClubExclusiveGiftEligible) — isActive:true (تبقى قابلة للإرسال
+// فعلياً عبر مسارات الإرسال العادية) لكنها isFanClubExclusive:true فتُستبعَد من المتجر العام
+// (راجع giftController.getGiftShop). لا category حقيقية تناسبها بالتدرّج العادي — 'legendary'
+// فقط لعرض بصري ملائم لو ظهرت بأي استعلام عام يوماً، لا أثر وظيفي آخر لهذا الاختيار
+async function seedFanClubExclusiveGiftIfMissing() {
+    const exists = await Gift.findOne({ name: 'هدية النادي' });
+    if (exists) return;
+    await Gift.create({
+        name: 'هدية النادي',
+        description: 'هدية حصرية لأعضاء النادي من المستوى 13 فما فوق',
+        imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791286502/fanclub-heart-512.png',
+        price: 500,
+        category: 'legendary',
+        animation: 'float',
+        sortOrder: 100,
+        isActive: true,
+        isFanClubExclusive: true,
+        redenominatedV1: true
+    });
+    console.log('🎁 [AUTO-SEED] تمت إضافة هدية النادي الحصرية');
+}
+
 // ✅ مجموعة الإطارات الحالية للمتجر — تجربة أول إطار-صورة حقيقي خارجي ("الإطار الفاخر") بطلب
 // صريح، بانتظار مراجعته قبل إرسال بقية الروابط. الإطارات الأربعة CSS السابقة (الحلقة الفضية/
 // جوهرة الزمرد/إعصار اللهب/تاج الأساطير) أُحيلت للتقاعد (راجع migrateRetireOldFrames أدناه،
@@ -288,6 +311,7 @@ module.exports = async function autoSeed() {
         await migrateGiftImageUrls(); // ✅ جديد
         await migrateGiftFullscreenFlag(); // ✅ هدايا v2
         await seedGiftsIfMissing();
+        await seedFanClubExclusiveGiftIfMissing();
         await seedFramesIfMissing();
         await migrateRetireOldFrames(); // ✅ بعد seedFramesIfMissing كي توجد الإطارات الجديدة أولاً كبديل
         await migrateDeleteRetiredFrames(); // ✅ طلب صريح: حذف نهائي لثلاثة منها بالاسم (راجع التعليق أعلى الدالة)
@@ -301,5 +325,6 @@ module.exports = async function autoSeed() {
 
 // ✅ لاختبار الوحدة (راجع __tests__/autoSeed.test.js)
 module.exports.seedGiftsIfMissing = seedGiftsIfMissing;
+module.exports.seedFanClubExclusiveGiftIfMissing = seedFanClubExclusiveGiftIfMissing;
 module.exports.seedFramesIfMissing = seedFramesIfMissing;
 module.exports.seedBubbleSkinsIfMissing = seedBubbleSkinsIfMissing;

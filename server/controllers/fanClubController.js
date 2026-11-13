@@ -40,12 +40,21 @@ const LISTEN_POINTS_PER_MIN = 10;
 const LISTEN_DAILY_CAP_MINUTES = 30;
 const FOLLOW_BONUS = 100;
 
+// 🛡️ feat/fanclub-v2-ui: عتبات مزايا الغرفة (كوزمتيكية بحتة) — راجع docs/specs/fanclub-v2.md
+// لا تغيّر توزيع المستويات/الفئات نفسه (fanClubLevels.js)، فقط أي مستوى يفتح أي ميزة بغرفة المالك
+const BADGE_MIN_LEVEL = 1;
+const NAME_COLOR_MIN_LEVEL = 5;
+const ENTRANCE_ANNOUNCE_MIN_LEVEL = 9;
+const EXCLUSIVE_GIFT_MIN_LEVEL = 13;
+const LEGEND_FRAME_MIN_LEVEL = 17;
+
 // ✅ "غير نشط" = لا نقطة من أي نوع خلال 7 أيام — لا خصم نقاط أبداً، أي نقطة جديدة تُعيد التنشيط فوراً
 const INACTIVITY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 function isInactive(lastPointAt) {
     if (!lastPointAt) return true;
     return (Date.now() - new Date(lastPointAt).getTime()) > INACTIVITY_WINDOW_MS;
 }
+exports.isInactive = isInactive;
 // ✅ نفس حد isInactive أعلاه، كتاريخ قطع جاهز لاستعلامات lastPointAt:{$gte: activeCutoff()} —
 // "نشط" لا يُخزَّن كعدّاد أبداً (راجع مراجعة #156)، يُحسَب حياً من هذا التاريخ وحده في كل مكان
 function activeCutoff() {
@@ -62,7 +71,7 @@ async function notifyIfLeveledUp(io, ownerId, memberId, pointsAfter, delta) {
     try {
         const [owner, member] = await Promise.all([
             User.findById(ownerId).select('username'),
-            User.findById(memberId).select('socketId')
+            User.findById(memberId).select('socketId username')
         ]);
         if (member?.socketId) {
             io.to(member.socketId).emit('fanclub-level-up', {
@@ -72,6 +81,23 @@ async function notifyIfLeveledUp(io, ownerId, memberId, pointsAfter, delta) {
                 tierName: afterInfo.tierName,
                 levelInfo: afterInfo
             });
+            // 🛡️ feat/fanclub-v2-ui: احتفال إضافي يظهر للجميع داخل دردشة غرفة المالك الحيّة —
+            // فقط لو العضو حاضر فعلياً بها الآن (عضو حقيقي بقناة دردشتها، لا بصرف النظر عن
+            // وجوده الفعلي). غرفة المالك "الحيّة" الواحدة فقط (isLive:true) — لا تاريخه كاملاً
+            const VoiceRoom = require('../models/VoiceRoom');
+            const liveRoom = await VoiceRoom.findOne({ host: ownerId, isLive: true }).select('_id');
+            if (liveRoom) {
+                const channel = `room-chat-${liveRoom._id}`;
+                const memberSocket = io.sockets.sockets.get(member.socketId);
+                if (memberSocket && memberSocket.rooms.has(channel)) {
+                    io.to(channel).emit('fanclub-member-levelup-in-room', {
+                        roomId: liveRoom._id.toString(),
+                        memberUsername: member.username || '',
+                        newLevel: afterInfo.level,
+                        tierName: afterInfo.tierName
+                    });
+                }
+            }
         }
     } catch (error) {
         console.error('[FAN CLUB] notifyIfLeveledUp error:', error);
@@ -199,6 +225,28 @@ async function computeWeeklyLeader(ownerId, weekStart) {
     return { userId: top.member, username: user.username, profileImage: user.profileImage, points: top.points };
 }
 
+// 🛡️ feat/fanclub-v2-ui: نفس منطق computeWeeklyLeader أعلاه (استبعاد الحسابات المرتبطة
+// بالمالك) لكن تُعيد أعلى limit مساهم بدل واحد فقط — لبطاقة "أكثر المساهمين هذا الأسبوع"
+// بالواجهة. دالة منفصلة عمداً (لا تُعدِّل computeWeeklyLeader الأصلية المُختبَرة فعلاً)
+async function computeTopWeeklyContributors(ownerId, weekStart, limit = 3) {
+    const candidates = await FanClubWeekly.find({ owner: ownerId, weekStart })
+        .sort({ points: -1, member: 1 }).limit(10).lean();
+    if (candidates.length === 0) return [];
+    const ownerIdStr = ownerId.toString();
+    const groupKey = await linkageService.groupLinkedAccounts([ownerIdStr, ...candidates.map(c => c.member.toString())]);
+    const ownerGroup = groupKey.get(ownerIdStr);
+    const eligible = candidates.filter(c => groupKey.get(c.member.toString()) !== ownerGroup).slice(0, limit);
+    if (eligible.length === 0) return [];
+    const users = await User.find({ _id: { $in: eligible.map(c => c.member) } }).select('username profileImage');
+    const userMap = new Map(users.map(u => [u._id.toString(), u]));
+    return eligible
+        .map(c => {
+            const user = userMap.get(c.member.toString());
+            return user ? { userId: c.member, username: user.username, profileImage: user.profileImage, points: c.points } : null;
+        })
+        .filter(Boolean);
+}
+
 // ✅ نفس منطق computeWeeklyLeader أعلاه لكن لكل النوادي النشطة بأسبوع معيّن معاً بنداء واحد —
 // تُستخدَم من fanClubWeeklyFrameJob.js لمنح إطار المساهم لكل الفائزين دفعة واحدة
 async function getWeeklyWinnersMap(weekStart) {
@@ -221,24 +269,122 @@ async function getWeeklyWinnersMap(weekStart) {
 }
 exports.getWeeklyWinnersMap = getWeeklyWinnersMap;
 
+// 🛡️ feat/fanclub-v2-ui: دفعة واحدة لكل "لقطة غرفة" (مقاعد/مشاهدين/رسائل دردشة) — لا طلب
+// منفصل لكل مستخدم حاضر. يُستخدَم من voiceRoomController.js (المقاعد/المشاهدون/سجل الدردشة
+// الأولي) وsocketService.js (رسالة دردشة حيّة + دخول الغرفة) لإرفاق شارة نادي معجبين (إن
+// وُجدت) لكل مستخدم حاضر بنادي مضيف هذي الغرفة تحديداً. يُعيد Map فاضية بصمت لو لا مضيف/لا معرّفات
+async function getFanClubBadgeMap(ownerId, memberIds) {
+    const ids = [...new Set((memberIds || []).map(String))].filter(id => ownerId && id !== String(ownerId));
+    if (!ownerId || ids.length === 0) return new Map();
+    const memberships = await FanClubMembership.find({ owner: ownerId, member: { $in: ids } }).select('member points lastPointAt').lean();
+    if (memberships.length === 0) return new Map();
+    // ✅ اسم النادي يُقرَأ فقط لو يوجد عضو واحد فعلاً بهذي اللقطة — يوفّر استعلاماً كاملاً
+    // بالحالة الأشيع (أغلب الحاضرين ليسوا أعضاءً بنادي هذا المضيف تحديداً)
+    const owner = await User.findById(ownerId).select('fanClub.name').lean();
+    const clubName = owner?.fanClub?.name || null;
+    const map = new Map();
+    for (const m of memberships) {
+        const levelInfo = computeFanLevelInfo(m.points);
+        map.set(m.member.toString(), {
+            level: levelInfo.level,
+            tierName: levelInfo.tierName,
+            tierGradient: levelInfo.tierGradient,
+            tierIcon: levelInfo.tierIcon,
+            clubName,
+            active: !isInactive(m.lastPointAt)
+        });
+    }
+    return map;
+}
+exports.getFanClubBadgeMap = getFanClubBadgeMap;
+
+// 🛡️ feat/fanclub-v2-ui: نقطة الفحص الوحيدة لأهلية إرسال "هدية النادي" الحصرية — تُستدعى من
+// كل مسار إرسال هدية حقيقي (sendGift/prepareGiftComboSend/sendPublicGift بـgiftController.js)
+// قبل أي خصم. لا تفعل شيئاً لأي هدية عادية (isFanClubExclusive غير مضبوط) — فقط هذي الهدية
+// الواحدة المحدَّدة بالاسم (راجع autoSeed.js) تخضع لهذا الفحص. ترمي خطأً مُهيَّأً (code
+// FAN_CLUB_EXCLUSIVE_DENIED) بدل إرجاع قيمة — كل مسارات الإرسال الثلاثة ترجمه بالفعل لرفض 4xx
+async function assertFanClubExclusiveGiftEligible(gift, senderId, receiverId) {
+    if (!gift || !gift.isFanClubExclusive) return;
+    const deny = (msg) => { throw Object.assign(new Error(msg), { code: 'FAN_CLUB_EXCLUSIVE_DENIED' }); };
+    if (String(senderId) === String(receiverId)) deny('لا يمكنك إرسال هذي الهدية لنفسك');
+    if (await linkageService.areLinked(senderId, receiverId)) deny('هدية النادي الحصرية غير متاحة لهذا الحساب');
+    const membership = await FanClubMembership.findOne({ owner: receiverId, member: senderId }).select('points lastPointAt');
+    if (!membership) deny('هدية النادي الحصرية متاحة فقط لأعضاء النادي');
+    if (isInactive(membership.lastPointAt)) deny('هدية النادي الحصرية غير متاحة — عضويتك غير نشطة حالياً');
+    if (computeFanLevelInfo(membership.points).level < EXCLUSIVE_GIFT_MIN_LEVEL) {
+        deny(`هدية النادي الحصرية تُفتح من المستوى ${EXCLUSIVE_GIFT_MIN_LEVEL}`);
+    }
+}
+exports.assertFanClubExclusiveGiftEligible = assertFanClubExclusiveGiftEligible;
+exports.BADGE_MIN_LEVEL = BADGE_MIN_LEVEL;
+exports.NAME_COLOR_MIN_LEVEL = NAME_COLOR_MIN_LEVEL;
+exports.ENTRANCE_ANNOUNCE_MIN_LEVEL = ENTRANCE_ANNOUNCE_MIN_LEVEL;
+exports.EXCLUSIVE_GIFT_MIN_LEVEL = EXCLUSIVE_GIFT_MIN_LEVEL;
+exports.LEGEND_FRAME_MIN_LEVEL = LEGEND_FRAME_MIN_LEVEL;
+
+// ✅ أهلية "هدية النادي" الحصرية للمستخدم الحالي تحديداً بنادي ownerId — تُستهلَك من واجهة
+// اختيار الهدايا بغرفة المالك (عرض/إخفاء البطاقة قبل أي محاولة إرسال فعلية). قراءة فقط،
+// لا تُكرِّر منطق assertFanClubExclusiveGiftEligible (نفس عتبات isInactive/computeFanLevelInfo)
+exports.getExclusiveGiftEligibility = async (req, res) => {
+    try {
+        const ownerId = req.params.ownerId;
+        const memberId = req.user.id;
+        if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
+        }
+        const [gift, membership, linked, owner] = await Promise.all([
+            Gift.findOne({ isFanClubExclusive: true, isActive: true }),
+            FanClubMembership.findOne({ owner: ownerId, member: memberId }).select('points lastPointAt'),
+            linkageService.areLinked(memberId, ownerId),
+            User.findById(ownerId).select('fanClub.giftColorId')
+        ]);
+        if (!gift) return res.status(200).json({ status: 'success', data: { eligible: false, gift: null } });
+        const level = membership ? computeFanLevelInfo(membership.points).level : 0;
+        const active = membership ? !isInactive(membership.lastPointAt) : false;
+        const eligible = !linked && !!membership && active && level >= EXCLUSIVE_GIFT_MIN_LEVEL;
+        res.status(200).json({
+            status: 'success',
+            data: {
+                eligible,
+                minLevel: EXCLUSIVE_GIFT_MIN_LEVEL,
+                myLevel: level,
+                // ✅ لون هدية نادي المالك — يُستخدَم لتلوين صورة الهدية الحصرية بالعميل (نفس فلتر
+                // CSS المُستخدَم أصلاً لوردة زر الانضمام — راجع FAN_CLUB_COLORS بـapp.js)
+                giftColorId: owner?.fanClub?.giftColorId || 'pink',
+                gift: eligible ? { id: gift._id, name: gift.name, imageUrl: gift.imageUrl, price: gift.discountedPrice || gift.price } : null
+            }
+        });
+    } catch (error) {
+        console.error('[FAN CLUB] getExclusiveGiftEligibility error:', error);
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
+    }
+};
+
 exports.getSummary = async (req, res) => {
     try {
         const ownerId = req.params.ownerId;
         if (!mongoose.Types.ObjectId.isValid(ownerId)) {
             return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
         }
-        const [owner, membership, activeCount] = await Promise.all([
+        const [owner, membership, activeCount, isFollowing] = await Promise.all([
             User.findById(ownerId).select('username profileImage activeFrameClass fanClub'),
             FanClubMembership.findOne({ owner: ownerId, member: req.user.id }),
             // 🛡️ مراجعة #156: activeCount محسوب حياً من lastPointAt هنا (لا عدّاد مخزَّن — حقل زمني
             // كـ"نشط" لا يمكن أن يصحّ كعدّاد يُلمَس فقط عند الانضمام/المغادرة: لا يُنقَص تلقائياً
             // حين يصمت أحدهم، ولا يُزاد حين يعود) — راجع تعليق الفهرس {owner:1, lastPointAt:-1} بالنموذج
-            FanClubMembership.countDocuments({ owner: ownerId, lastPointAt: { $gte: activeCutoff() } })
+            FanClubMembership.countDocuments({ owner: ownerId, lastPointAt: { $gte: activeCutoff() } }),
+            // 🛡️ feat/fanclub-v2-ui: تمكِّن العميل من إظهار زر "تابع أولاً" بدل زر الانضمام مباشرة
+            // لمن لا يتابع بعد — الانضمام الحقيقي سيُرفَض بالخادم أصلاً بلا متابعة سابقة (بند 7 من
+            // docs/specs/fanclub-v2.md)، هذا فقط يمنع محاولة مرفوضة مسبقاً بالواجهة
+            Follow.exists({ follower: req.user.id, followee: ownerId })
         ]);
         if (!owner) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
 
         const { weekStart } = getCurrentWeekBounds();
-        const currentLeader = await computeWeeklyLeader(ownerId, weekStart);
+        const [currentLeader, topWeeklyContributors] = await Promise.all([
+            computeWeeklyLeader(ownerId, weekStart),
+            computeTopWeeklyContributors(ownerId, weekStart, 3)
+        ]);
 
         res.status(200).json({
             status: 'success',
@@ -256,10 +402,12 @@ exports.getSummary = async (req, res) => {
                 memberCount: owner.fanClub?.memberCount || 0,
                 activeCount,
                 isMember: !!membership,
+                isFollowing: !!isFollowing,
                 myLevelInfo: membership ? computeFanLevelInfo(membership.points) : null,
                 myInactive: membership ? isInactive(membership.lastPointAt) : null,
                 joinPrice: JOIN_PRICE,
-                currentLeader
+                currentLeader,
+                topWeeklyContributors
             }
         });
     } catch (error) {

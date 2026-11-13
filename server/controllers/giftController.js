@@ -590,7 +590,9 @@ exports.getGiftShop = async (req, res) => {
         const crypto = require('crypto');
 
         const [gifts, settings] = await Promise.all([
-            Gift.find({ isActive: true }).sort('sortOrder price'),
+            // 🛡️ feat/fanclub-v2-ui: هدية النادي الحصرية isActive:true (يجب أن تبقى قابلة
+            // للإرسال فعلياً عبر مسارات الإرسال العادية) لكنها مستبعدة من المتجر العام هنا تحديداً
+            Gift.find({ isActive: true, isFanClubExclusive: { $ne: true } }).sort('sortOrder price'),
             SystemSettings.getSettings()
         ]);
 
@@ -711,6 +713,17 @@ exports.sendGift = async (req, res) => {
         const receiverBlocked = (receiver.blockedUsers || []).map(id => id.toString());
         if (senderBlocked.includes(receiverId) || receiverBlocked.includes(senderId)) {
             return res.status(403).json({ status: 'fail', message: 'لا يمكنك إرسال هدية لهذا المستخدم' });
+        }
+
+        // 🛡️ feat/fanclub-v2-ui: "هدية النادي" الحصرية — لا أثر على أي هدية عادية إطلاقاً
+        try {
+            const { assertFanClubExclusiveGiftEligible } = require('./fanClubController');
+            await assertFanClubExclusiveGiftEligible(gift, senderId, receiverId);
+        } catch (eligError) {
+            if (eligError.code === 'FAN_CLUB_EXCLUSIVE_DENIED') {
+                return res.status(403).json({ status: 'fail', message: eligError.message });
+            }
+            throw eligError;
         }
 
         const unitPrice = gift.discountedPrice || gift.price;
@@ -1108,6 +1121,16 @@ async function prepareGiftComboSend({ senderId, giftId, quantity, taps = 1, reci
         throw Object.assign(new Error('لا يوجد مستلمون متاحون للإرسال'), { code: 'NO_VALID_RECIPIENTS' });
     }
 
+    // 🛡️ feat/fanclub-v2-ui: "هدية النادي" الحصرية — تُفحَص لكل مستلم على حدة (كل مستلِم هو
+    // "مالك نادٍ" محتمل مستقل)؛ رفض الدفعة كاملة لو فشل فحص أي مستلم (رفض ذرّي، لا إرسال جزئي
+    // لمستلمين صالحين ومستبعَد صامت للباقي). لا أثر على أي هدية عادية إطلاقاً
+    if (gift.isFanClubExclusive) {
+        const { assertFanClubExclusiveGiftEligible } = require('./fanClubController');
+        for (const r of validReceivers) {
+            await assertFanClubExclusiveGiftEligible(gift, senderId, r._id);
+        }
+    }
+
     const unitPrice = gift.discountedPrice || gift.price;
     const effectiveQty = qty * tapCount;
     const totalPrice = unitPrice * effectiveQty; // لكل مستلم (تشمل كل الضغطات المُجمَّعة بهذي الدفعة)
@@ -1491,7 +1514,7 @@ exports.sendGiftBatch = async (req, res) => {
         if (error && error.code) {
             const statusMap = {
                 BAD_QTY: 400, NO_RECIPIENTS: 400, NO_SENDER: 401, NO_GIFT: 404,
-                NO_VALID_RECIPIENTS: 400, INSUFFICIENT: 400, NO_ROOM: 404
+                NO_VALID_RECIPIENTS: 400, INSUFFICIENT: 400, NO_ROOM: 404, FAN_CLUB_EXCLUSIVE_DENIED: 403
             };
             return res.status(statusMap[error.code] || 400).json({ status: 'fail', message: error.message });
         }
@@ -1670,6 +1693,22 @@ exports.sendPublicGift = async (req, res) => {
 
         if (finalRecipientIds.length === 0) {
             return res.status(400).json({ status: 'fail', message: 'لا يوجد مستلمون متاحون حالياً' });
+        }
+
+        // 🛡️ feat/fanclub-v2-ui: "هدية النادي" الحصرية — تُفحَص لكل مستلم (رفض الدفعة كاملة لو
+        // فشل فحص أي مستلم). لا أثر على أي هدية عادية إطلاقاً
+        if (gift.isFanClubExclusive) {
+            try {
+                const { assertFanClubExclusiveGiftEligible } = require('./fanClubController');
+                for (const rid of finalRecipientIds) {
+                    await assertFanClubExclusiveGiftEligible(gift, senderId, rid);
+                }
+            } catch (eligError) {
+                if (eligError.code === 'FAN_CLUB_EXCLUSIVE_DENIED') {
+                    return res.status(403).json({ status: 'fail', message: eligError.message });
+                }
+                throw eligError;
+            }
         }
 
         const unitPrice = gift.discountedPrice || gift.price;

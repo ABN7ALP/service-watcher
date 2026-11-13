@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const FanClubMembership = require('../../models/FanClubMembership');
 const FanClubWeekly = require('../../models/FanClubWeekly');
 const User = require('../../models/User');
+const Follow = require('../../models/Follow');
 const linkageService = require('../../utils/linkageService');
 const { getCurrentWeekBounds, getWeekBoundsForDate } = require('../../utils/poolWeek');
 const fanClubController = require('../fanClubController');
@@ -115,6 +116,8 @@ describe('علم "غير نشط" — من lastPointAt فقط، لا خصم نق�
         // 🛡️ مراجعة #156: activeCount بملخّص النادي أيضاً حيّ من countDocuments الآن (لا عدّاد مخزَّن)
         const countSpy = jest.spyOn(FanClubMembership, 'countDocuments').mockResolvedValue(1);
         jest.spyOn(FanClubWeekly, 'find').mockImplementation(() => chainable([]));
+        // 🛡️ feat/fanclub-v2-ui: isFollowing بالملخّص الجديد يستعلم Follow.exists — غير موضوع هذا الاختبار
+        jest.spyOn(Follow, 'exists').mockResolvedValue(false);
 
         const res = mockRes();
         await fanClubController.getSummary({ params: { ownerId: OWNER }, user: { id: MEMBER } }, res);
@@ -131,6 +134,7 @@ describe('علم "غير نشط" — من lastPointAt فقط، لا خصم نق�
         jest.spyOn(FanClubMembership, 'findOne').mockResolvedValue({ points: 500, lastPointAt: eightDaysAgo });
         jest.spyOn(FanClubMembership, 'countDocuments').mockResolvedValue(0);
         jest.spyOn(FanClubWeekly, 'find').mockImplementation(() => chainable([]));
+        jest.spyOn(Follow, 'exists').mockResolvedValue(false);
 
         const res = mockRes();
         await fanClubController.getSummary({ params: { ownerId: OWNER }, user: { id: MEMBER } }, res);

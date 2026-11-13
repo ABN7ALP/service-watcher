@@ -52,6 +52,13 @@ const giftSchema = new mongoose.Schema({
   sortOrder: {
     type: Number,
     default: 0
+  },
+  // 🛡️ feat/fanclub-v2-ui: هدية "النادي" الحصرية (مستوى معجب 13+) — لا تظهر بمتجر الهدايا
+  // العام (isActive:false لها هناك) ولا تُرسَل إلا عبر فحص fanClubController.
+  // assertFanClubExclusiveGiftEligible على كل مسار إرسال (راجع التعليق هناك)
+  isFanClubExclusive: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true
