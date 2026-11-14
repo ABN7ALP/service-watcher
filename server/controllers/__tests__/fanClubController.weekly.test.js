@@ -110,14 +110,20 @@ describe('علم "غير نشط" — من lastPointAt فقط، لا خصم نق�
     afterEach(() => jest.restoreAllMocks());
 
     test('آخر نقطة منذ 6 أيام — نشط (لم تتجاوز 7 أيام)', async () => {
+        fanClubController._resetLeaderboardCacheForTests();
         jest.spyOn(User, 'findById').mockImplementation(() => chainable({ username: 'o', profileImage: '', activeFrameClass: '', fanClub: {} }));
         const sixDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
         jest.spyOn(FanClubMembership, 'findOne').mockResolvedValue({ points: 500, lastPointAt: sixDaysAgo });
         // 🛡️ مراجعة #156: activeCount بملخّص النادي أيضاً حيّ من countDocuments الآن (لا عدّاد مخزَّن)
         const countSpy = jest.spyOn(FanClubMembership, 'countDocuments').mockResolvedValue(1);
+        jest.spyOn(FanClubMembership, 'aggregate').mockResolvedValue([]); // ✅ كاش لوحة الصدارة لحساب clubRank برأس الصفحة
         jest.spyOn(FanClubWeekly, 'find').mockImplementation(() => chainable([]));
+        jest.spyOn(FanClubWeekly, 'aggregate').mockResolvedValue([]);
+        jest.spyOn(User, 'find').mockImplementation(() => chainable([]));
         // 🛡️ feat/fanclub-v2-ui: isFollowing بالملخّص الجديد يستعلم Follow.exists — غير موضوع هذا الاختبار
         jest.spyOn(Follow, 'exists').mockResolvedValue(false);
+        // 🛡️ feat/fanclub-final: متابعو المالك برأس الصفحة — غير موضوع هذا الاختبار
+        jest.spyOn(Follow, 'countDocuments').mockResolvedValue(0);
 
         const res = mockRes();
         await fanClubController.getSummary({ params: { ownerId: OWNER }, user: { id: MEMBER } }, res);
@@ -129,12 +135,17 @@ describe('علم "غير نشط" — من lastPointAt فقط، لا خصم نق�
     });
 
     test('آخر نقطة منذ 8 أيام — غير نشط، لكن النقاط المخزَّنة لم تتغيّر', async () => {
+        fanClubController._resetLeaderboardCacheForTests();
         jest.spyOn(User, 'findById').mockImplementation(() => chainable({ username: 'o', profileImage: '', activeFrameClass: '', fanClub: {} }));
         const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
         jest.spyOn(FanClubMembership, 'findOne').mockResolvedValue({ points: 500, lastPointAt: eightDaysAgo });
         jest.spyOn(FanClubMembership, 'countDocuments').mockResolvedValue(0);
+        jest.spyOn(FanClubMembership, 'aggregate').mockResolvedValue([]);
         jest.spyOn(FanClubWeekly, 'find').mockImplementation(() => chainable([]));
+        jest.spyOn(FanClubWeekly, 'aggregate').mockResolvedValue([]);
+        jest.spyOn(User, 'find').mockImplementation(() => chainable([]));
         jest.spyOn(Follow, 'exists').mockResolvedValue(false);
+        jest.spyOn(Follow, 'countDocuments').mockResolvedValue(0);
 
         const res = mockRes();
         await fanClubController.getSummary({ params: { ownerId: OWNER }, user: { id: MEMBER } }, res);

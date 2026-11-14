@@ -15,8 +15,9 @@ const GiftLog = require('../models/GiftLog');
 const Follow = require('../models/Follow');
 const FanClubMembership = require('../models/FanClubMembership');
 const FanClubWeekly = require('../models/FanClubWeekly');
+const FanClubWeeklyResult = require('../models/FanClubWeeklyResult');
 const FanClubDailyProgress = require('../models/FanClubDailyProgress');
-const { computeFanLevelInfo } = require('../utils/fanClubLevels');
+const { computeFanLevelInfo, FAN_LEVEL_THRESHOLDS, FAN_TIERS } = require('../utils/fanClubLevels');
 const walletService = require('../utils/walletService');
 const linkageService = require('../utils/linkageService');
 const { containsProfanity } = require('../utils/profanityFilter');
@@ -55,6 +56,35 @@ function isInactive(lastPointAt) {
     return (Date.now() - new Date(lastPointAt).getTime()) > INACTIVITY_WINDOW_MS;
 }
 exports.isInactive = isInactive;
+
+// 🛡️ feat/fanclub-final: نقطة الحقيقة الوحيدة لكل رقم يظهر بصفحة الشرح ("!") — لا رقم ثابت
+// بالعميل إطلاقاً (السعر/النقاط/السقف اليومي/عتبات المستويات). لو عدّل الأدمن أي قيمة هنا
+// مستقبلاً، يتغيّر الشرح تلقائياً معها فلا يكذب الشرح أبداً. السقف اليومي المجاني محسوب
+// حسابياً (حضور+دردشة+أقصى استماع)، لا رقماً مكتوباً بالخطأ قد ينحرف عن القيم الفعلية فوقه
+exports.getConfig = (req, res) => {
+    const dailyFreeCap = DAILY_CHECKIN_BONUS + CHAT_BONUS + (LISTEN_POINTS_PER_MIN * LISTEN_DAILY_CAP_MINUTES);
+    res.status(200).json({
+        status: 'success',
+        data: {
+            joinPrice: JOIN_PRICE,
+            followBonus: FOLLOW_BONUS,
+            checkinPoints: DAILY_CHECKIN_BONUS,
+            chatBonusPoints: CHAT_BONUS,
+            chatMsgsRequired: CHAT_MSGS_REQUIRED,
+            listenPointsPerMinute: LISTEN_POINTS_PER_MIN,
+            listenCapMinutes: LISTEN_DAILY_CAP_MINUTES,
+            giftPointsPerCoin: 1,
+            dailyFreeCap,
+            inactivityDays: INACTIVITY_WINDOW_MS / (24 * 60 * 60 * 1000),
+            levelThresholds: FAN_LEVEL_THRESHOLDS,
+            tiers: FAN_TIERS.map(t => ({ name: t.name, from: t.from, to: t.to, gradient: t.gradient, icon: t.icon })),
+            perkLevels: {
+                badge: BADGE_MIN_LEVEL, nameColor: NAME_COLOR_MIN_LEVEL, entrance: ENTRANCE_ANNOUNCE_MIN_LEVEL,
+                exclusiveGift: EXCLUSIVE_GIFT_MIN_LEVEL, legendFrame: LEGEND_FRAME_MIN_LEVEL
+            }
+        }
+    });
+};
 // ✅ نفس حد isInactive أعلاه، كتاريخ قطع جاهز لاستعلامات lastPointAt:{$gte: activeCutoff()} —
 // "نشط" لا يُخزَّن كعدّاد أبداً (راجع مراجعة #156)، يُحسَب حياً من هذا التاريخ وحده في كل مكان
 function activeCutoff() {
@@ -123,6 +153,7 @@ async function awardFanClubPoints(io, ownerId, memberId, pointsDelta, source) {
         const { weekStart } = getCurrentWeekBounds();
         await FanClubWeekly.addPoints(ownerId, memberId, weekStart, pointsDelta);
         notifyIfLeveledUp(io, ownerId, memberId, membership.points, pointsDelta);
+        maybeBroadcastLeaderChange(io, ownerId, weekStart); // عمداً بلا await — لا يُبطّئ منح النقطة
         return membership;
     } catch (error) {
         console.error(`[FAN CLUB] awardFanClubPoints(${source}) error:`, error);
@@ -208,6 +239,27 @@ async function awardListeningMinute(io, ownerId, memberId, day) {
 }
 exports.awardListeningMinute = awardListeningMinute;
 
+// 🛡️ feat/fanclub-final: "مقعد المعجب الأول" برأس كل شاشة نادٍ (مثل Likee) — يتحدّث حياً عبر
+// fanclub:<ownerId> فقط عند تغيّر *هوية* المعجب الأول فعلاً، لا عند كل نقطة (مصدر الاستماع يمنح
+// نقطة كل دقيقة لكل مستمع — بث عند كل نقطة يُغرق الغرفة). الذاكرة بالعملية فقط (لا Redis، نفس
+// تعليل leaderboardCache أعلاه) — خسارتها عند إعادة تشغيل الخادم تعني بثاً واحداً زائداً أقصى
+// حين يُعاد بناؤها، لا تكراراً فعلياً خطيراً
+const lastKnownLeaderByOwner = new Map(); // ownerId → { weekStartMs, leaderId }
+async function maybeBroadcastLeaderChange(io, ownerId, weekStart) {
+    if (!io) return;
+    try {
+        const leader = await computeWeeklyLeader(ownerId, weekStart);
+        const ownerIdStr = ownerId.toString();
+        const leaderId = leader ? leader.userId.toString() : null;
+        const prev = lastKnownLeaderByOwner.get(ownerIdStr);
+        if (prev && prev.weekStartMs === weekStart.getTime() && prev.leaderId === leaderId) return;
+        lastKnownLeaderByOwner.set(ownerIdStr, { weekStartMs: weekStart.getTime(), leaderId });
+        io.to(`fanclub:${ownerIdStr}`).emit('fanclub-top-fan-updated', { ownerId: ownerIdStr, leader });
+    } catch (error) {
+        console.error('[FAN CLUB] maybeBroadcastLeaderChange error:', error);
+    }
+}
+
 // ✅ "نجم الأسبوع" لنادٍ واحد — أعلى نقاط FanClubWeekly بهذا الأسبوع، باستبعاد أي مرشَّح مرتبط
 // بالمالك نفسه (دفاع إضافي فوق الاستبعاد الأصلي وقت منح النقاط بـawardFanClubPoints — يحمي من
 // حالة أصبح العضو مرتبطاً بالمالك *بعد* كسب نقاط حقيقية سابقاً بنفس الأسبوع)
@@ -223,28 +275,6 @@ async function computeWeeklyLeader(ownerId, weekStart) {
     const user = await User.findById(top.member).select('username profileImage');
     if (!user) return null;
     return { userId: top.member, username: user.username, profileImage: user.profileImage, points: top.points };
-}
-
-// 🛡️ feat/fanclub-v2-ui: نفس منطق computeWeeklyLeader أعلاه (استبعاد الحسابات المرتبطة
-// بالمالك) لكن تُعيد أعلى limit مساهم بدل واحد فقط — لبطاقة "أكثر المساهمين هذا الأسبوع"
-// بالواجهة. دالة منفصلة عمداً (لا تُعدِّل computeWeeklyLeader الأصلية المُختبَرة فعلاً)
-async function computeTopWeeklyContributors(ownerId, weekStart, limit = 3) {
-    const candidates = await FanClubWeekly.find({ owner: ownerId, weekStart })
-        .sort({ points: -1, member: 1 }).limit(10).lean();
-    if (candidates.length === 0) return [];
-    const ownerIdStr = ownerId.toString();
-    const groupKey = await linkageService.groupLinkedAccounts([ownerIdStr, ...candidates.map(c => c.member.toString())]);
-    const ownerGroup = groupKey.get(ownerIdStr);
-    const eligible = candidates.filter(c => groupKey.get(c.member.toString()) !== ownerGroup).slice(0, limit);
-    if (eligible.length === 0) return [];
-    const users = await User.find({ _id: { $in: eligible.map(c => c.member) } }).select('username profileImage');
-    const userMap = new Map(users.map(u => [u._id.toString(), u]));
-    return eligible
-        .map(c => {
-            const user = userMap.get(c.member.toString());
-            return user ? { userId: c.member, username: user.username, profileImage: user.profileImage, points: c.points } : null;
-        })
-        .filter(Boolean);
 }
 
 // ✅ نفس منطق computeWeeklyLeader أعلاه لكن لكل النوادي النشطة بأسبوع معيّن معاً بنداء واحد —
@@ -366,7 +396,7 @@ exports.getSummary = async (req, res) => {
         if (!mongoose.Types.ObjectId.isValid(ownerId)) {
             return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
         }
-        const [owner, membership, activeCount, isFollowing] = await Promise.all([
+        const [owner, membership, activeCount, isFollowing, ownerFollowerCount] = await Promise.all([
             User.findById(ownerId).select('username profileImage activeFrameClass fanClub'),
             FanClubMembership.findOne({ owner: ownerId, member: req.user.id }),
             // 🛡️ مراجعة #156: activeCount محسوب حياً من lastPointAt هنا (لا عدّاد مخزَّن — حقل زمني
@@ -376,15 +406,36 @@ exports.getSummary = async (req, res) => {
             // 🛡️ feat/fanclub-v2-ui: تمكِّن العميل من إظهار زر "تابع أولاً" بدل زر الانضمام مباشرة
             // لمن لا يتابع بعد — الانضمام الحقيقي سيُرفَض بالخادم أصلاً بلا متابعة سابقة (بند 7 من
             // docs/specs/fanclub-v2.md)، هذا فقط يمنع محاولة مرفوضة مسبقاً بالواجهة
-            Follow.exists({ follower: req.user.id, followee: ownerId })
+            Follow.exists({ follower: req.user.id, followee: ownerId }),
+            // 🛡️ feat/fanclub-final: رأس الصفحة يعرض متابعي المالك (مثل Likee) — لا متابعي العضو
+            Follow.countDocuments({ followee: ownerId })
         ]);
         if (!owner) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
 
         const { weekStart } = getCurrentWeekBounds();
-        const [currentLeader, topWeeklyContributors] = await Promise.all([
+        const [currentLeader, leaderboardRows] = await Promise.all([
             computeWeeklyLeader(ownerId, weekStart),
-            computeTopWeeklyContributors(ownerId, weekStart, 3)
+            // 🛡️ feat/fanclub-final: "ترتيب النادي #4" برأس الصفحة — من كاش لوحة الصدارة نفسه
+            // (10 دقائق)، لا تجميع إضافي مخصّص لهذي الشاشة فقط
+            getCachedLeaderboardRows()
         ]);
+        const clubRankIndex = leaderboardRows.findIndex(r => r.ownerId === ownerId);
+        const clubRank = clubRankIndex === -1 ? null : clubRankIndex + 1;
+
+        // 🛡️ feat/fanclub-final: إحصائيات "هذا الأسبوع" لشاشة صاحب النادي فقط (أعضاء جدد + نقاط
+        // النادي) — استعلامان إضافيان فقط لصاحب النادي نفسه، لا لكل من يفتح ملخّص أي نادٍ
+        const isOwner = ownerId === req.user.id.toString();
+        let ownerWeeklyStats = null;
+        if (isOwner) {
+            const [newMembersThisWeek, clubWeeklyAgg] = await Promise.all([
+                FanClubMembership.countDocuments({ owner: ownerId, createdAt: { $gte: weekStart } }),
+                FanClubWeekly.aggregate([
+                    { $match: { owner: new mongoose.Types.ObjectId(ownerId), weekStart } },
+                    { $group: { _id: null, total: { $sum: '$points' } } }
+                ])
+            ]);
+            ownerWeeklyStats = { newMembers: newMembersThisWeek, clubWeeklyPoints: clubWeeklyAgg[0]?.total || 0, activeCount };
+        }
 
         res.status(200).json({
             status: 'success',
@@ -396,18 +447,20 @@ exports.getSummary = async (req, res) => {
                 clubName: owner.fanClub?.name || null,
                 emblemColorId: owner.fanClub?.emblemColorId || 'pink',
                 giftColorId: owner.fanClub?.giftColorId || 'pink',
-                isOwner: ownerId === req.user.id.toString(),
+                isOwner,
+                ownerWeeklyStats,
                 // ✅ من العدّاد المُصان ضمن معاملة الانضمام/المغادرة (لا عدّ مباشر لكل طلب) — راجع
                 // User.fanClub.memberCount بتعليق النموذج. activeCount أعلاه حياً دوماً (ليس عدّاداً)
                 memberCount: owner.fanClub?.memberCount || 0,
                 activeCount,
+                ownerFollowerCount,
+                clubRank,
                 isMember: !!membership,
                 isFollowing: !!isFollowing,
                 myLevelInfo: membership ? computeFanLevelInfo(membership.points) : null,
                 myInactive: membership ? isInactive(membership.lastPointAt) : null,
                 joinPrice: JOIN_PRICE,
-                currentLeader,
-                topWeeklyContributors
+                currentLeader
             }
         });
     } catch (error) {
@@ -493,7 +546,9 @@ exports.joinFanClub = async (req, res) => {
         if (!owner) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
         if (owner.isBot) return res.status(403).json({ status: 'fail', message: 'لا يمكن الانضمام لهذا الحساب' });
         if (!isFollowing) return res.status(403).json({ status: 'fail', message: 'يجب متابعة صاحب النادي أولاً' });
-        if (linked) return res.status(403).json({ status: 'fail', message: 'لا يمكن الانضمام لهذا النادي' });
+        // 🛡️ feat/fanclub-final: رسالة واضحة تُعرض فوق نافذة التأكيد بالعميل (بدل رسالة عامة
+        // كانت تضيع خلف النافذة) — تفسّر السبب الفعلي الأشيع لفشل الانضمام (نفس الجهاز)
+        if (linked) return res.status(403).json({ status: 'fail', message: 'هذا الحساب مرتبط بحسابك (نفس الجهاز)، فلا يمكنك الانضمام لناديه' });
 
         // ✅ دفتر الأستاذ: الانضمام "مثل الهدية حرفياً" — نفس buildGiftWalletEntries الحقيقي
         // (بونص أولاً، تقسيم beans_w/beans_p). linkedFlags:[false] دوماً هنا — الانضمام
@@ -567,15 +622,16 @@ exports.joinFanClub = async (req, res) => {
 
         // ✅ نقاط الانضمام الأسبوعية (أفضل مجهود، خارج المعاملة — نفس تعليل FanClubWeekly
         // بالمواصفة: ليست مالاً، انحراف نادر هنا لا يحتاج معاملة متعددة المستندات)
+        const io = req.app.get('socketio');
         try {
             const { weekStart } = getCurrentWeekBounds();
             await FanClubWeekly.addPoints(ownerId, memberId, weekStart, JOIN_PRICE + FOLLOW_BONUS);
+            maybeBroadcastLeaderChange(io, ownerId, weekStart); // عمداً بلا await — عضو جديد قد يكون أول معجب فوراً
         } catch (error) {
             console.error('[FAN CLUB] join weekly points error:', error);
         }
 
         const memberCount = (owner.fanClub?.memberCount || 0) + 1;
-        const io = req.app.get('socketio');
         if (io) {
             io.to(`fanclub:${ownerId}`).emit('fanclub-member-count-updated', { ownerId, memberCount });
             const { broadcastSupportLevelUpdate } = require('./giftController');
@@ -687,6 +743,78 @@ exports.getMembers = async (req, res) => {
     }
 };
 
+// 🛡️ feat/fanclub-final: "أعلى المعجبين" العامة (شاشة fans بالمخطّط) — week (نقاط هذا الأسبوع
+// من FanClubWeekly) أو all (النقاط الدائمة = المستوى)، مُقسَّمة صفحات، مع صفّك المثبَّت وما ينقصك
+// للمركز الأعلى. تُحمَّل كل مرشَّحي هذا النادي مرة واحدة بالذاكرة (نفس أسلوب computeFullLeaderboard
+// أعلاه — حجم نادٍ واحد محدود عملياً، لا Redis) ثم يُستبعَد المرتبطون بالمالك *قبل* الترتيب
+// والتقسيم — استبعادهم بعد skip/limit خام كان يُخرِج ترتيباً وعدّاً خاطئَين لو وقع أحدهم ضمن الصفحة
+exports.getTopFans = async (req, res) => {
+    try {
+        const ownerId = req.params.ownerId;
+        if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+            return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
+        }
+        const range = req.query.range === 'all' ? 'all' : 'week';
+        const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+        const skip = Math.max(parseInt(req.query.skip) || 0, 0);
+        const myId = req.user.id;
+
+        let candidates;
+        if (range === 'all') {
+            const memberships = await FanClubMembership.find({ owner: ownerId }).select('member points').lean();
+            candidates = memberships.map(m => ({ userId: m.member, points: m.points }));
+        } else {
+            const { weekStart } = getCurrentWeekBounds();
+            const rows = await FanClubWeekly.find({ owner: ownerId, weekStart }).select('member points').lean();
+            candidates = rows.map(r => ({ userId: r.member, points: r.points }));
+        }
+        if (candidates.length === 0) {
+            return res.status(200).json({ status: 'success', data: { range, fans: [], myRank: null, hasMore: false, total: 0 } });
+        }
+
+        const ownerIdStr = ownerId.toString();
+        const groupKey = await linkageService.groupLinkedAccounts([ownerIdStr, ...candidates.map(c => c.userId.toString())]);
+        const ownerGroup = groupKey.get(ownerIdStr);
+        const eligible = candidates
+            .filter(c => groupKey.get(c.userId.toString()) !== ownerGroup)
+            .sort((a, b) => (b.points - a.points) || String(a.userId).localeCompare(String(b.userId)));
+
+        const myIndex = eligible.findIndex(c => c.userId.toString() === myId.toString());
+        const page = eligible.slice(skip, skip + limit);
+        const users = await User.find({ _id: { $in: page.map(c => c.userId) } }).select('username profileImage').lean();
+        const userMap = new Map(users.map(u => [u._id.toString(), u]));
+        const fans = page.map((c, i) => {
+            const user = userMap.get(c.userId.toString());
+            if (!user) return null;
+            return {
+                rank: skip + i + 1, userId: c.userId, username: user.username, profileImage: user.profileImage,
+                points: c.points, levelInfo: computeFanLevelInfo(c.points)
+            };
+        }).filter(Boolean);
+
+        let myRank = null;
+        if (myIndex !== -1) {
+            const myPoints = eligible[myIndex].points;
+            const aheadPoints = myIndex > 0 ? eligible[myIndex - 1].points : null;
+            const myUser = await User.findById(myId).select('username profileImage').lean();
+            myRank = {
+                rank: myIndex + 1, userId: myId, username: myUser?.username || '', profileImage: myUser?.profileImage || '',
+                points: myPoints, levelInfo: computeFanLevelInfo(myPoints),
+                gapToNext: aheadPoints === null ? 0 : Math.max(0, aheadPoints - myPoints),
+                inPage: myIndex >= skip && myIndex < skip + limit
+            };
+        }
+
+        res.status(200).json({
+            status: 'success',
+            data: { range, fans, myRank, hasMore: skip + limit < eligible.length, total: eligible.length }
+        });
+    } catch (error) {
+        console.error('[FAN CLUB] getTopFans error:', error);
+        res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });
+    }
+};
+
 // ✅ مهام المعجب — حالة العضو الحالي فقط بهذا النادي. "تسجيل الحضور" يدوي (زر مطالبة صريح)،
 // "الدردشة"/"الاستماع" تلقائيتان من مسارات أخرى (هذا المسار للعرض فقط)
 exports.getMissions = async (req, res) => {
@@ -703,12 +831,21 @@ exports.getMissions = async (req, res) => {
         const day = getCurrentDayStart();
         const progress = await FanClubDailyProgress.findOne({ owner: ownerId, member: memberId, day });
 
+        // 🛡️ feat/fanclub-final: حلقة "نقاط اليوم المجانية X/400" برأس شاشة العضو — حضور+دردشة+
+        // استماع فقط (الهدايا بلا حد، لا تُحسَب هنا). dailyFreeCap من getConfig نفسها (مصدر وحيد)
+        const dailyFreeCap = DAILY_CHECKIN_BONUS + CHAT_BONUS + (LISTEN_POINTS_PER_MIN * LISTEN_DAILY_CAP_MINUTES);
+        const dailyFreeProgress = (progress?.checkinAwarded ? DAILY_CHECKIN_BONUS : 0)
+            + (progress?.chatBonusAwarded ? CHAT_BONUS : 0)
+            + ((progress?.listenMinutes || 0) * LISTEN_POINTS_PER_MIN);
+
         res.status(200).json({
             status: 'success',
             data: {
                 isMember: true,
                 levelInfo: computeFanLevelInfo(membership.points),
                 inactive: isInactive(membership.lastPointAt),
+                dailyFreeCap,
+                dailyFreeProgress,
                 missions: [
                     { id: 'checkin', title: 'تسجيل الحضور اليومي', icon: 'fa-calendar-check', points: DAILY_CHECKIN_BONUS, claimed: !!progress?.checkinAwarded, manual: true, oneTime: false },
                     { id: 'chat', title: `الدردشة في غرفة صاحب النادي (${CHAT_MSGS_REQUIRED} رسائل)`, icon: 'fa-comments', points: CHAT_BONUS, claimed: !!progress?.chatBonusAwarded, progress: progress?.chatMsgCount || 0, target: CHAT_MSGS_REQUIRED, manual: false, oneTime: false },
@@ -826,7 +963,7 @@ async function computeFullLeaderboard() {
             { $match: { lastPointAt: { $gte: activeCutoff() } } },
             { $group: { _id: '$owner', activeCount: { $sum: 1 } } }
         ]),
-        User.find({ 'fanClub.memberCount': { $gt: 0 } }).select('username profileImage fanClub.memberCount').lean()
+        User.find({ 'fanClub.memberCount': { $gt: 0 } }).select('username profileImage fanClub.memberCount fanClub.emblemColorId').lean()
     ]);
     const weeklyByOwner = new Map(weeklyAgg.map(r => [r._id.toString(), r.weeklyPoints]));
     const activeByOwner = new Map(activeAgg.map(r => [r._id.toString(), r.activeCount]));
@@ -834,6 +971,7 @@ async function computeFullLeaderboard() {
         ownerId: o._id.toString(),
         username: o.username,
         profileImage: o.profileImage,
+        emblemColorId: o.fanClub?.emblemColorId || 'pink',
         activeCount: activeByOwner.get(o._id.toString()) || 0,
         memberCount: o.fanClub?.memberCount || 0,
         weeklyPoints: weeklyByOwner.get(o._id.toString()) || 0
@@ -849,15 +987,39 @@ async function getCachedLeaderboardRows() {
 // ✅ تصدير للاختبارات فقط — إعادة ضبط الكاش بين حالات اختبار مستقلة
 exports._resetLeaderboardCacheForTests = () => { leaderboardCache = null; };
 
+// ✅ الفارق بالأعضاء النشطين بينك وبين المركز الأعلى مباشرة (نفس معيار الترتيب الأساسي) — 0
+// للمركز الأول دوماً، ولا يُحسَب سالباً أبداً (تعادل محتمل بنقاط الأسبوع كفاصل بينهما)
+function computeClubGap(rows, index) {
+    if (index <= 0) return 0;
+    return Math.max(0, rows[index - 1].activeCount - rows[index].activeCount);
+}
+
+// 🛡️ feat/fanclub-final: week=this (حيّة، كاش 10 دقائق كالسابق) أو week=last (من
+// FanClubWeeklyResult المُجمَّدة مرة واحدة كل أحد — لا إعادة حساب أبداً لأسبوع مكتمل)
 exports.getLeaderboard = async (req, res) => {
     try {
+        const week = req.query.week === 'last' ? 'last' : 'this';
         const limit = Math.min(parseInt(req.query.limit) || 10, 50);
         const myId = req.user.id;
-        const rows = await getCachedLeaderboardRows();
-        const leaders = rows.slice(0, limit).map((r, i) => ({ rank: i + 1, ...r }));
+
+        let rows;
+        if (week === 'last') {
+            const { weekStart: currentWeekStart } = getCurrentWeekBounds();
+            const { weekStart: lastWeekStart } = getWeekBoundsForDate(new Date(currentWeekStart.getTime() - 86400000));
+            const results = await FanClubWeeklyResult.find({ weekStart: lastWeekStart }).sort({ rank: 1 }).lean();
+            rows = results.map(r => ({
+                ownerId: r.owner.toString(), username: r.username, profileImage: r.profileImage,
+                emblemColorId: r.emblemColorId || 'pink',
+                memberCount: r.memberCount, activeCount: r.activeCount, weeklyPoints: r.weeklyPoints
+            }));
+        } else {
+            rows = await getCachedLeaderboardRows();
+        }
+
+        const leaders = rows.slice(0, limit).map((r, i) => ({ rank: i + 1, ...r, gapToNext: computeClubGap(rows, i) }));
         const myIndex = rows.findIndex(r => r.ownerId === myId);
-        const myRank = myIndex === -1 ? null : { rank: myIndex + 1, ...rows[myIndex], inTop: myIndex < limit };
-        res.status(200).json({ status: 'success', data: { leaders, myRank } });
+        const myRank = myIndex === -1 ? null : { rank: myIndex + 1, ...rows[myIndex], inTop: myIndex < limit, gapToNext: computeClubGap(rows, myIndex) };
+        res.status(200).json({ status: 'success', data: { week, leaders, myRank } });
     } catch (error) {
         console.error('[FAN CLUB] getLeaderboard error:', error);
         res.status(500).json({ status: 'error', message: 'خطأ في الخادم' });

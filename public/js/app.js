@@ -1119,12 +1119,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="voice-seat-wave"></span>
                     ${isHostSeat ? `<i class="fas fa-crown voice-seat-host-badge"${hostCrownTopAttr(seatData.user.activeFrameClass)}></i>` : ''}
                     ${avatarHTML({ src: seatData.user.profileImage, name: seatData.user.username, userId: seatData.user.id, fetchSize: 84, frameClass: seatData.user.activeFrameClass, sizeClass: 'voice-seat-avatar', photoAttrs: ` alt="${safeName}" loading="lazy" decoding="async"` })}
-                    ${fanClubLegendFrameHTML(seatFanClub)}
+                    ${fanClubRingHTML(seatFanClub)}
                     <span class="voice-seat-mic-badge ${seatData.isMuted ? 'muted' : ''}"><i class="fas ${seatData.isMuted ? 'fa-microphone-slash' : 'fa-microphone'}"></i></span>
                     ${isHostSeat ? '' : `<span class="voice-seat-no">${seatNo}</span>`}
                 </div>
                 <span class="voice-seat-name" dir="auto"${fanClubNameColorStyle(seatFanClub)}>${safeName}</span>
-                ${seatFanClub ? `<span class="fanclub-room-badge-row">${fanClubRoomBadgeHTML(seatFanClub)}</span>` : ''}
                 <span class="seat-support-row">${formatCompactPoints(supportTotal)}</span>
             `;
         } else {
@@ -2569,7 +2568,10 @@ document.addEventListener('DOMContentLoaded', () => {
         el.dataset.msgId = msg._id;
         const senderId = msg.sender?._id || '';
         const isHostMsg = !!currentRoomHostId && senderId === currentRoomHostId;
-        const bubbleClass = msg.sender?.activeBubbleSkinClass || 'room-chat-bubble-default';
+        // 🛡️ feat/fanclub-final: فقاعة نادي المعجبين (5/9/13/17+) تحل محل الفقاعة المشتراة
+        // داخل غرفة هذا المالك فقط — فارغة لمن لا يستحقها فيبقى bubbleClass المشترى كما هو
+        const fanClubBubble = fanClubBubbleClass(msg.sender?.fanClub || null);
+        const bubbleClass = fanClubBubble || msg.sender?.activeBubbleSkinClass || 'room-chat-bubble-default';
         el.className = `room-chat-message ${bubbleClass}`;
         const safeName = escapeHtml(msg.sender?.username || '');
         const safeContent = escapeHtml(msg.content || '');
@@ -2589,7 +2591,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // إطلاقاً (كانت <img class="room-chat-msg-avatar"> هنا) — فقاعة مدمجة بعرض محتواها فقط
         el.innerHTML = `
             <p class="room-chat-msg-line">
-                ${levelBadge}${isHostMsg ? '<i class="fas fa-crown room-chat-host-badge" title="المضيف"></i>' : ''}<span class="room-chat-msg-name ${isTopSupporterSender ? 'vip' : ''}"${nameStyle}>${safeName}</span>${fanClubRoomBadgeHTML(fanClub)}<span class="room-chat-msg-text">${safeContent}</span>
+                ${levelBadge}${isHostMsg ? '<i class="fas fa-crown room-chat-host-badge" title="المضيف"></i>' : ''}<span class="room-chat-msg-name ${isTopSupporterSender ? 'vip' : ''}"${nameStyle}>${safeName}</span><span class="room-chat-msg-text">${safeContent}</span>
             </p>
         `;
         if (senderId) {
@@ -2647,13 +2649,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const isManager = currentRoomMyRole === 'host' || currentRoomMyRole === 'moderator';
         const safeName = escapeHtml(username || '');
         const el = document.createElement('div');
-        // 🛡️ feat/fanclub-v2-ui: دخول خفيف (Lv.9+ نشط بنادي مضيف هذي الغرفة) — نفس السطر، صنف
-        // توهّج إضافي فقط (CSS فقط — prefers-reduced-motion/.lite-mode تعطّلانه تلقائياً بالستايل)
-        el.className = `room-chat-join-announcement${fanClubEntrance ? ' fanclub-entrance' : ''}`;
+        // 🛡️ feat/fanclub-final: دخول خفيف (Lv.9+ نشط بنادي مضيف هذي الغرفة) — ثلاث درجات
+        // (ذهبي/بلاتيني/أسطوري متحرك)، صنف توهّج CSS فقط (prefers-reduced-motion/.lite-mode
+        // تعطّلانه تلقائياً بالستايل). علامة "✦"/"✦✦ أسطورة النادي" بدل شارة اسم النادي الصغيرة
+        const entranceClass = fanClubEntrance ? fanClubEntranceClass(fanClubEntrance) : '';
+        const isLegendEntrance = entranceClass === 'fanclub-entrance-legend';
+        el.className = `room-chat-join-announcement${entranceClass ? ` fanclub-entrance ${entranceClass}` : ''}`;
         el.innerHTML = `
             <img src="${profileImage}" class="room-chat-join-avatar">
-            <span class="room-chat-join-text"><b>${safeName}</b> انضم إلى الغرفة</span>
-            ${fanClubEntrance ? fanClubRoomBadgeHTML(fanClubEntrance) : ''}
+            <span class="room-chat-join-text">${isLegendEntrance ? '<b class="fanclub-entrance-mark">✦✦ أسطورة النادي</b> ' : entranceClass ? '<b class="fanclub-entrance-mark">✦</b> ' : ''}<b>${safeName}</b> انضم إلى الغرفة</span>
             ${isManager ? `<button class="room-chat-greet-btn" data-username="${safeName}" title="رحّب فيه"><i class="fas fa-hand-sparkles"></i></button>` : ''}
         `;
         el.querySelector('.room-chat-greet-btn')?.addEventListener('click', (e) => {
@@ -14098,8 +14102,9 @@ const FAN_CLUB_COLORS = {
 // الوارد مُجمَّعاً مع لقطة المقعد/رسالة الدردشة/المشاهد نفسها (null لمن ليس عضواً بنادي المضيف)
 const FANCLUB_PERK_LEVEL = { badge: 1, nameColor: 5, entrance: 9, exclusiveGift: 13, legendFrame: 17 };
 
-// ✅ شارة نادي المعجبين المصغّرة (مقعد/دردشة/مشاهدون) — رمادية لو العضوية غير نشطة (توقف ضمني
-// لكل مزايا المستوى 5+ أيضاً، لأن fanClubNameColorStyle/fanClubLegendFrameHTML تتحققان من .active هي الأخرى)
+// 🛡️ feat/fanclub-final: شارة نادي المعجبين المصغّرة — تظهر الآن فقط بقائمة المشاهدين وبطاقة
+// الملف المصغّر (قرار المالك)، لا بالمقاعد ولا بالدردشة بعد الآن. رمادية لو العضوية غير نشطة
+// (توقف ضمني لكل مزايا المستوى 5+ أيضاً، لأن fanClubNameColorStyle/fanClubRingHTML تتحققان من .active هي الأخرى)
 function fanClubRoomBadgeHTML(fanClub) {
     if (!fanClub) return '';
     const [c1, c2] = fanClub.tierGradient || ['#9ca3af', '#6b7280'];
@@ -14116,11 +14121,34 @@ function fanClubNameColorStyle(fanClub) {
     return c1 ? ` style="color:${c1}"` : '';
 }
 
-// ✅ تراكب "أسطورة النادي" (Lv.17+ ونشط فقط) — حلقة متوهّجة حول الصورة بغرفة المالك فقط (لا
-// تلمس activeFrameClass الشخصي — تراكب إضافي منفصل تماماً، يختفي بمجرد الخروج من هذي الغرفة)
-function fanClubLegendFrameHTML(fanClub) {
-    if (!fanClub || !fanClub.active || fanClub.level < FANCLUB_PERK_LEVEL.legendFrame) return '';
-    return '<span class="fanclub-legend-ring"></span>';
+// 🛡️ feat/fanclub-final: تراكب إطار الصورة — بلاتيني (Lv.13+) أو أسطوري متحرك (Lv.17+)، ونشط
+// فقط — بغرفة المالك فقط (لا يلمس activeFrameClass الشخصي، ولا يستبدل أي إطار مُشترى بمكان آخر)
+function fanClubRingHTML(fanClub) {
+    if (!fanClub || !fanClub.active) return '';
+    if (fanClub.level >= FANCLUB_PERK_LEVEL.legendFrame) return '<span class="fanclub-legend-ring"></span>';
+    if (fanClub.level >= FANCLUB_PERK_LEVEL.exclusiveGift) return '<span class="fanclub-platinum-ring"></span>';
+    return '';
+}
+
+// 🛡️ feat/fanclub-final: فقاعة دردشة حسب فئة نادي المعجبين (فضية5+/ذهبية9+/بلاتينية13+/
+// أسطورية17+) تحل محل الفقاعة المشتراة *فقط* داخل غرفة هذا المالك تحديداً — نص فاضٍ لمن لا
+// يستحقها فيبقى bubbleClass المشترى كما هو (راجع استدعاء appendRoomChatMessage)
+function fanClubBubbleClass(fanClub) {
+    if (!fanClub || !fanClub.active) return '';
+    if (fanClub.level >= FANCLUB_PERK_LEVEL.legendFrame) return 'fanclub-bubble-legend';
+    if (fanClub.level >= FANCLUB_PERK_LEVEL.exclusiveGift) return 'fanclub-bubble-platinum';
+    if (fanClub.level >= FANCLUB_PERK_LEVEL.entrance) return 'fanclub-bubble-gold';
+    if (fanClub.level >= FANCLUB_PERK_LEVEL.nameColor) return 'fanclub-bubble-silver';
+    return '';
+}
+
+// 🛡️ feat/fanclub-final: وزن إعلان الدخول — ذهبي (9+)، بلاتيني (13+)، أسطوري متحرك (17+).
+// fanClubEntrance الوارد هنا مُستبعَد مسبقاً تحت Lv.9 بالخادم، فهذا فقط يُفرِّق الثلاثة فوقها
+function fanClubEntranceClass(fanClub) {
+    if (!fanClub) return '';
+    if (fanClub.level >= FANCLUB_PERK_LEVEL.legendFrame) return 'fanclub-entrance-legend';
+    if (fanClub.level >= FANCLUB_PERK_LEVEL.exclusiveGift) return 'fanclub-entrance-platinum';
+    return 'fanclub-entrance-gold';
 }
 // ✅ صورة "إطار المساهم" — نفس الإطار الحصري الحقيقي الذي يُمنح دائماً لمن يفوز بالمركز الأول
 // بنادٍ لأسبوع كامل (server/utils/fanClubWeeklyFrameJob.js)؛ نفس الرابط بالضبط المضروب
@@ -14274,27 +14302,32 @@ function fanClubTierForLevel(level) {
     return FANCLUB_TIER_TABLE.find(t => level >= t.from && level <= t.to) || FANCLUB_TIER_TABLE[FANCLUB_TIER_TABLE.length - 1];
 }
 
-// 🛡️ feat/fanclub-v2-ui: سلّم مزايا نادي المعجبين داخل غرفة المالك فقط (كوزمتيكية بحتة) —
-// myLevel=null لغير الأعضاء (كل الدرجات مقفلة). نفس عتبات FANCLUB_PERK_LEVEL بالضبط
-function fanClubPerksLadderHTML(myLevel) {
-    const steps = [
-        [FANCLUB_PERK_LEVEL.badge, 'شارة النادي باسم النادي بجانب اسمك في غرفة المذيع'],
-        [FANCLUB_PERK_LEVEL.nameColor, 'لون اسم مميز في دردشة الغرفة'],
-        [FANCLUB_PERK_LEVEL.entrance, 'إعلان دخولك إلى الغرفة'],
-        [FANCLUB_PERK_LEVEL.exclusiveGift, 'هدية النادي الحصرية تُفتح لك'],
-        [FANCLUB_PERK_LEVEL.legendFrame, 'إطار "أسطورة النادي" طوال بقائك نشطاً']
+// 🛡️ feat/fanclub-final: معرض مزايا حقيقي (الصورة الفعلية لا كلام فقط) — شارة/فقاعة/إعلان
+// دخول/إطار صورة لكل فئة، بنفس عتبات FANCLUB_PERK_LEVEL وألوان FANCLUB_TIER_TABLE بالضبط.
+// myLevel=null لغير الأعضاء (كل الدرجات مقفلة)
+function fanClubTiersGalleryHTML(myLevel) {
+    const rows = [
+        { lvl: FANCLUB_PERK_LEVEL.badge, title: 'شارة النادي + فرصة مقعد المعجب الأول', preview: () => fanClubRoomBadgeHTML({ level: FANCLUB_PERK_LEVEL.badge, tierGradient: fanClubTierForLevel(FANCLUB_PERK_LEVEL.badge).gradient, clubName: 'ناديك', active: true }) },
+        { lvl: FANCLUB_PERK_LEVEL.nameColor, title: 'لون اسم مميز + فقاعة دردشة فضية', preview: () => `<span class="fanclub-preview-bubble"><b>أنت</b> مساء الخير</span>` },
+        { lvl: FANCLUB_PERK_LEVEL.entrance, title: 'إعلان دخول ذهبي + فقاعة ذهبية', preview: () => `<span class="fanclub-preview-entrance">✦ دخلت الغرفة</span>` },
+        { lvl: FANCLUB_PERK_LEVEL.exclusiveGift, title: 'الهدية الحصرية + إطار بلاتيني', preview: () => `<span class="fanclub-preview-ring-wrap"><span class="fanclub-preview-avatar-dot"></span><span class="fanclub-preview-ring fanclub-preview-ring-platinum"></span></span>` },
+        { lvl: FANCLUB_PERK_LEVEL.legendFrame, title: 'أسطورة النادي: إطار متحرك + إعلان أسطوري', preview: () => `<span class="fanclub-preview-ring-wrap"><span class="fanclub-preview-avatar-dot"></span><span class="fanclub-preview-ring fanclub-preview-ring-legend"></span></span>` }
     ];
     return `
-        <p class="fanclub-section-divider-label">مزايا المستويات</p>
-        <div class="fanclub-perks-ladder">
-            ${steps.map(([lvl, text]) => {
-                const unlocked = myLevel !== null && myLevel >= lvl;
-                const tier = fanClubTierForLevel(lvl);
+        <p class="fanclub-section-divider-label">ماذا تحصل في كل مستوى <small>كلها داخل غرفة المذيع</small></p>
+        <div class="fanclub-tiers-gallery">
+            ${rows.map(r => {
+                const tier = fanClubTierForLevel(r.lvl);
+                const unlocked = myLevel !== null && myLevel >= r.lvl;
                 return `
-                <div class="fanclub-perk-step ${unlocked ? '' : 'locked'}">
-                    <span class="fanclub-perk-step-lv" style="background:linear-gradient(135deg,${tier.gradient[0]},${tier.gradient[1]})">${lvl}+</span>
-                    <span class="fanclub-perk-step-text">${text}<small>${escapeHtml(tier.name)}</small></span>
-                    ${unlocked ? '<i class="fas fa-check fanclub-perk-step-check"></i>' : '<i class="fas fa-lock fanclub-perk-step-lock"></i>'}
+                <div class="fanclub-tier-card ${unlocked ? 'unlocked' : 'locked'}" style="--tier-c1:${tier.gradient[0]};--tier-c2:${tier.gradient[1]}">
+                    <div class="fanclub-tier-card-head">
+                        <span class="fanclub-tier-chip"><bdi dir="ltr">${r.lvl}+</bdi></span>
+                        <b>${r.title}</b>
+                        <small>${escapeHtml(tier.name)}</small>
+                        ${unlocked ? '<i class="fas fa-check fanclub-tier-check"></i>' : '<i class="fas fa-lock fanclub-tier-lock"></i>'}
+                    </div>
+                    <div class="fanclub-tier-card-preview">${r.preview()}</div>
                 </div>
             `;
             }).join('')}
@@ -14302,23 +14335,54 @@ function fanClubPerksLadderHTML(myLevel) {
     `;
 }
 
-// ✅ أكثر المساهمين هذا الأسبوع (FanClubWeekly — لا النقاط التراكمية الدائمة) — بطاقة ظاهرة
-// بكل الأحوال (عضو/غير عضو/مالك)، فاضية بأدب لو لا مساهمين هذا الأسبوع بعد
-function fanClubTopWeeklyHTML(list) {
+// ✅ حلقة SVG "نقاط اليوم المجانية X/400" — نفس أسلوب حلقة التقدّم الموجودة بعناصر أخرى
+// بالتطبيق (دائرة مسار + دائرة تقدّم stroke-dasharray)، برقم النسبة بالمنتصف
+function fanClubDailyRingSVG(progress, cap) {
+    const r = 24, c = 2 * Math.PI * r;
+    const pct = cap > 0 ? Math.min(1, progress / cap) : 0;
     return `
-        <p class="fanclub-section-divider-label">أكثر المساهمين هذا الأسبوع</p>
-        ${!list || list.length === 0 ? '<p class="fanclub-members-explainer">لا يوجد مساهمون هذا الأسبوع بعد</p>' : `
-        <div class="fanclub-top-weekly-podium">
-            ${list.map((c, i) => `
-                <div class="fanclub-top-weekly-slot" data-user-id="${c.userId}">
-                    <span class="fanclub-top-weekly-medal">${['🥇', '🥈', '🥉'][i] || ''}</span>
-                    <img src="${c.profileImage}" class="fanclub-top-weekly-avatar">
-                    <span class="fanclub-top-weekly-name">${escapeHtml(c.username)}</span>
-                    <span class="fanclub-top-weekly-points">${fmtNum(c.points)}</span>
-                </div>
-            `).join('')}
+        <svg class="fanclub-daily-ring" viewBox="0 0 58 58" width="52" height="52">
+            <circle cx="29" cy="29" r="${r}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="6"/>
+            <circle cx="29" cy="29" r="${r}" fill="none" stroke="#2dd4bf" stroke-width="6" stroke-linecap="round"
+                stroke-dasharray="${(c * pct).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 29 29)"/>
+            <text x="29" y="33" text-anchor="middle" fill="#fff" font-size="12" font-weight="800">${Math.round(pct * 100)}%</text>
+        </svg>
+    `;
+}
+
+// 🛡️ feat/fanclub-final: رأس كل شاشة نادٍ (مثل Likee) — صورة المالك + "مقعد المعجب الأول"
+// (تاج ذهبي، فارغ="+")، اسم النادي، متابعو المالك، وصف أعضاء/نشطين/ترتيب النادي. مشترك بين
+// شاشات غير عضو/عضو/صاحب النادي الثلاث (hero بالمخطّط) — لا نسخة منفصلة لكل شاشة
+function fanClubHeroHTML(s, ownerProfileImage, extraHTML = '') {
+    const seatHTML = s.currentLeader ? `
+        <button type="button" id="fanclub-topfan-seat-btn" class="fanclub-topfan-seat" title="المعجب الأول: ${escapeHtml(s.currentLeader.username)}">
+            <span class="fanclub-topfan-crown">👑</span>
+            <img src="${s.currentLeader.profileImage}" class="fanclub-topfan-avatar profile-frame-contributor">
+        </button>
+    ` : `
+        <button type="button" id="fanclub-topfan-seat-btn" class="fanclub-topfan-seat fanclub-topfan-seat-empty" title="مقعد المعجب الأول فارغ">
+            <i class="fas fa-plus"></i>
+        </button>
+    `;
+    return `
+        <div class="fanclub-hero">
+            <div class="fanclub-hero-pair">
+                <span class="fanclub-owner-frame">
+                    <img src="${ownerProfileImage}" class="fanclub-owner-avatar ${s.ownerActiveFrameClass || ''}">
+                </span>
+                ${seatHTML}
+            </div>
+            <div class="fanclub-owner-name-row">
+                <span class="fanclub-owner-name">💕 ${s.clubName ? escapeHtml(s.clubName) : 'نادي ' + escapeHtml(s.ownerUsername || '')}</span>
+            </div>
+            <p class="fanclub-owner-followers-row">${fmtNum(s.ownerFollowerCount || 0)} متابعاً</p>
+            <div class="fanclub-hero-stats3">
+                <div><b id="fanclub-member-count-num">${fmtNum(s.memberCount)}</b><small>عضواً</small></div>
+                <div><b>${fmtNum(s.activeCount)}</b><small>نشطون هذا الأسبوع</small></div>
+                <div><b>${s.clubRank ? '#' + s.clubRank : '—'}</b><small>ترتيب النادي</small></div>
+            </div>
+            ${extraHTML}
         </div>
-        `}
     `;
 }
 
@@ -14343,12 +14407,18 @@ function fanClubMissionsHTML(missions) {
                         : m.manual
                             ? `<button type="button" class="fanclub-mission-claim-btn" data-mission-id="${m.id}">مطالبة</button>`
                             : '<span class="fanclub-mission-pending">تلقائي</span>';
+                // ✅ شريط تقدّم صغير لكل مهمة تقدّمية (الدردشة 3/3، الاستماع 13/30) — لا للمهام
+                // الثنائية (حضور/متابعة لمرة واحدة) التي لا "تقدّم" جزئياً لها أصلاً
+                const miniBar = isPerMinute
+                    ? `<div class="fanclub-mission-mini-bar"><i style="width:${Math.min(100, Math.round((m.progressMinutes || 0) / m.targetMinutes * 100))}%"></i></div>`
+                    : (m.target ? `<div class="fanclub-mission-mini-bar"><i style="width:${Math.min(100, Math.round((m.progress || 0) / m.target * 100))}%"></i></div>` : '');
                 return `
                 <div class="fanclub-mission-row ${m.claimed ? 'claimed' : ''}">
                     <span class="fanclub-mission-icon"><i class="fas ${m.icon}"></i></span>
                     <span class="fanclub-mission-info">
                         <span class="fanclub-mission-title">${escapeHtml(m.title)}</span>
                         <span class="fanclub-mission-points">${pointsLabel}</span>
+                        ${miniBar}
                     </span>
                     ${statusHTML}
                 </div>
@@ -14438,6 +14508,12 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
             backBtn.style.visibility = 'visible';
             trophyBtn.style.visibility = 'hidden';
             backTarget = 'close';
+            titlewrap.innerHTML = `<span class="fanclub-header-title">كل الأعضاء</span>`;
+        } else if (mode === 'fans') {
+            backBtn.innerHTML = '<i class="fas fa-arrow-right"></i>';
+            backBtn.style.visibility = 'visible';
+            trophyBtn.style.visibility = 'hidden';
+            backTarget = 'join';
             titlewrap.innerHTML = `<span class="fanclub-header-title">أعلى المعجبين</span>`;
         }
     }
@@ -14474,7 +14550,6 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
 
     async function renderDetailsBody(s) {
         const isOwner = !!s.isOwner;
-        const displayName = s.clubName ? escapeHtml(s.clubName) : `نادي ${escapeHtml(ownerUsername)}`;
         // ✅ الوردة الرمزية الحقيقية بمتجر الهدايا — لعرض صورتها/سعرها الصحيحين بزر الانضمام فقط
         // (غير عضو). المهام تُجلب فقط للعضو الفعلي — كل حالة تُحمِّل ما تحتاجه هي فقط
         let rose = null;
@@ -14490,30 +14565,26 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
         } else if (!isOwner && s.isMember) {
             try {
                 const missionsRes = await fetch(`/api/fanclub/${ownerId}/missions`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
-                if (missionsRes?.status === 'success') missions = missionsRes.data.missions;
+                if (missionsRes?.status === 'success') missions = missionsRes.data;
             } catch (error) { /* missions تبقى null — الواجهة تعرض رسالة "تعذر التحميل" بدل كسر بقية النافذة */ }
         }
         const giftColor = FAN_CLUB_COLORS[s.giftColorId] || FAN_CLUB_COLORS.pink;
+        s.ownerUsername = ownerUsername; // ✅ يغذّي fanClubHeroHTML (الاسم الافتراضي لو لا اسم نادٍ مخصَّص)
         body.innerHTML = `
-            <div class="fanclub-portrait-row">
-                <span class="fanclub-owner-frame">
-                    <img src="${ownerProfileImage}" class="fanclub-owner-avatar ${s.ownerActiveFrameClass || ''}">
-                    ${s.currentLeader ? `
-                        <button type="button" id="fanclub-weekly-leader-btn" class="fanclub-weekly-leader-slot" title="نجم الأسبوع الحالي: ${escapeHtml(s.currentLeader.username)}">
-                            <img src="${s.currentLeader.profileImage}" class="fanclub-weekly-leader-avatar profile-frame-contributor">
-                        </button>
-                    ` : ''}
-                </span>
-            </div>
-            <div class="fanclub-owner-name-row">
-                <span class="fanclub-owner-name">💕 ${displayName}</span>
-                ${isOwner ? `<button type="button" id="fanclub-rename-btn" class="fanclub-inline-edit-btn" title="تعديل الاسم"><i class="fas fa-pen"></i></button>` : ''}
-                <span class="fanclub-owner-name-dot">•</span>
-                <button type="button" id="fanclub-members-link" class="fanclub-members-link"><i class="fas fa-chevron-left"></i> <span id="fanclub-member-count-num">${s.memberCount}</span> من الأعضاء</button>
-            </div>
-            <p class="fanclub-active-count-row"><i class="fas fa-bolt"></i> ${fmtNum(s.activeCount)} نشطون هذا الأسبوع</p>
+            ${fanClubHeroHTML(s, ownerProfileImage, !isOwner ? `<button type="button" id="fanclub-members-link" class="fanclub-members-link"><i class="fas fa-chevron-left"></i> كل الأعضاء</button>` : '')}
             ${isOwner ? `
-                <p class="fanclub-section-divider-label">تخصيص مذيع نادي المعجبين</p>
+                <button type="button" id="fanclub-rename-btn" class="fanclub-pill fanclub-pill-rename" style="margin-top:8px">
+                    <i class="fas fa-chevron-left fanclub-pill-chevron"></i>
+                    <span class="fanclub-pill-label">تعديل اسم النادي</span>
+                    <span class="fanclub-pill-icon"><i class="fas fa-pen"></i></span>
+                </button>
+                <p class="fanclub-section-divider-label">هذا الأسبوع</p>
+                <div class="fanclub-owner-stats3">
+                    <div><b><bdi dir="ltr">+${fmtNum(s.ownerWeeklyStats?.newMembers || 0)}</bdi></b><small>أعضاء جدد</small></div>
+                    <div><b class="fanclub-stat-num">${fmtNum(s.ownerWeeklyStats?.clubWeeklyPoints || 0)}</b><small>نقاط النادي</small></div>
+                    <div><b>${fmtNum(s.ownerWeeklyStats?.activeCount || 0)}</b><small>نشطون</small></div>
+                </div>
+                <p class="fanclub-section-divider-label">الهوية</p>
                 <button type="button" id="fanclub-emblem-pill" class="fanclub-pill fanclub-pill-emblem">
                     <i class="fas fa-chevron-left fanclub-pill-chevron"></i>
                     <span class="fanclub-pill-label">تخصيص شعار المجموعة</span>
@@ -14524,12 +14595,9 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                     <span class="fanclub-pill-label">تخصيص هدية المجموعة</span>
                     <span class="fanclub-pill-icon"><i class="fas fa-gift"></i></span>
                 </button>
-                ${fanClubTopWeeklyHTML(s.topWeeklyContributors)}
+                <button type="button" id="fanclub-fans-link" class="fanclub-join-btn fanclub-join-btn-raised" style="margin-top:12px"><i class="fas fa-trophy"></i> أعلى معجبيّ</button>
+                <button type="button" id="fanclub-members-link" class="fanclub-join-btn fanclub-join-btn-raised fanclub-members-full-btn"><i class="fas fa-users"></i> كل الأعضاء (${fmtNum(s.memberCount)})</button>
             ` : !s.isMember ? `
-                <p class="fanclub-section-divider-label">ستحصل على إطار المساهم</p>
-                <div class="fanclub-reward-preview-box fanclub-reward-preview-compact fanclub-reward-preview-frame-only">
-                    <img src="${FAN_CLUB_CONTRIBUTOR_FRAME_IMG}" class="fanclub-reward-preview-img" alt="">
-                </div>
                 ${s.isFollowing ? `
                 <button type="button" id="fanclub-join-btn" class="fanclub-join-btn fanclub-join-btn-raised">
                     <span class="fanclub-join-btn-text">الانضمام الى نادي المعجبين</span>
@@ -14538,29 +14606,40 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                         <span class="fanclub-join-btn-price">${s.joinPrice}</span>
                     </span>
                 </button>
+                <p class="fanclub-members-explainer">تتابع ${escapeHtml(ownerUsername)} ✓ · المتابعة شرط للانضمام</p>
                 ` : `
-                <p class="fanclub-members-explainer">يجب متابعة ${escapeHtml(ownerUsername)} أولاً قبل الانضمام لناديه</p>
                 <button type="button" id="fanclub-follow-first-btn" class="fanclub-join-btn fanclub-join-btn-raised">
                     <span class="fanclub-join-btn-text"><i class="fas fa-plus"></i> تابع أولاً</span>
                 </button>
                 `}
-                ${fanClubPerksLadderHTML(null)}
+                ${fanClubTiersGalleryHTML(null)}
+                <button type="button" id="fanclub-fans-link" class="fanclub-join-btn fanclub-join-btn-raised" style="margin-top:10px"><i class="fas fa-trophy"></i> أعلى المعجبين هذا الأسبوع</button>
             ` : s.myLevelInfo ? `
                 ${tierLevelCardHTML(s.myLevelInfo, 'نقطة', s.myInactive)}
-                ${missions ? fanClubMissionsHTML(missions) : '<p class="fanclub-members-explainer">تعذر تحميل المهام اليومية حالياً</p>'}
-                ${fanClubPerksLadderHTML(s.myLevelInfo.level)}
-                ${fanClubTopWeeklyHTML(s.topWeeklyContributors)}
+                ${missions ? `
+                    <div class="fanclub-daily-card">
+                        ${fanClubDailyRingSVG(missions.dailyFreeProgress, missions.dailyFreeCap)}
+                        <div class="fanclub-daily-card-info">
+                            <b>نقاط اليوم المجانية <bdi dir="ltr" class="fanclub-stat-num">${fmtNum(missions.dailyFreeProgress)} / ${fmtNum(missions.dailyFreeCap)}</bdi></b>
+                            <p class="fanclub-members-explainer">تتجدد منتصف الليل بتوقيت دمشق. الهدايا بلا حد: كل كوين = نقطة.</p>
+                        </div>
+                    </div>
+                    ${fanClubMissionsHTML(missions.missions)}
+                ` : '<p class="fanclub-members-explainer">تعذر تحميل المهام اليومية حالياً</p>'}
+                ${fanClubTiersGalleryHTML(s.myLevelInfo.level)}
+                <button type="button" id="fanclub-fans-link" class="fanclub-join-btn fanclub-join-btn-raised" style="margin-top:10px"><i class="fas fa-trophy"></i> أعلى المعجبين</button>
                 <button type="button" id="fanclub-leave-btn" class="fanclub-leave-btn"><i class="fas fa-door-open"></i> مغادرة النادي</button>
             ` : ''}
         `;
         modal.querySelector('#fanclub-members-link')?.addEventListener('click', () => renderMembersView(ownerId, ownerUsername));
-        modal.querySelector('#fanclub-weekly-leader-btn')?.addEventListener('click', () => showFullProfilePage(s.currentLeader.userId));
+        modal.querySelector('#fanclub-fans-link')?.addEventListener('click', () => renderFansView(ownerId, ownerUsername, 'week'));
+        modal.querySelector('#fanclub-topfan-seat-btn')?.addEventListener('click', () => {
+            if (isOwner || s.isMember) renderFansView(ownerId, ownerUsername, 'week');
+            else showNotification('انضم لتنافس على المقعد', 'info');
+        });
         modal.querySelector('#fanclub-rename-btn')?.addEventListener('click', () => showFanClubRenameModal(s, ownerUsername, () => { renderJoinView(); }));
         modal.querySelector('#fanclub-emblem-pill')?.addEventListener('click', () => showFanClubEmblemPicker(s, () => { renderJoinView(); }));
         modal.querySelector('#fanclub-gift-pill')?.addEventListener('click', () => showFanClubGiftPicker(s, () => { renderJoinView(); }));
-        modal.querySelectorAll('.fanclub-top-weekly-slot').forEach(el => {
-            el.addEventListener('click', () => showFullProfilePage(el.dataset.userId));
-        });
         modal.querySelector('#fanclub-follow-first-btn')?.addEventListener('click', async (e) => {
             const btn = e.currentTarget;
             btn.disabled = true;
@@ -14579,34 +14658,15 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                 btn.disabled = false;
             }
         });
-        modal.querySelector('#fanclub-join-btn')?.addEventListener('click', async (e) => {
-            const btn = e.currentTarget;
-            btn.disabled = true;
-            try {
-                const joinRes = await fetch(`/api/fanclub/${ownerId}/join`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
-                const joinResult = await joinRes.json();
-                if (!joinRes.ok) {
-                    showNotification(joinResult.message || 'تعذر الانضمام', 'error');
-                    btn.disabled = false;
-                    return;
-                }
-                if (joinResult.data.newCoins !== undefined) {
-                    const localUser = JSON.parse(localStorage.getItem('user'));
-                    if (localUser) {
-                        localUser.coins = joinResult.data.newCoins;
-                        localStorage.setItem('user', JSON.stringify(localUser));
-                        setHeaderCoinsSilent(localUser.coins);
-                    }
-                }
-                showNotification(`انضممت لنادي ${ownerUsername} 🌹`, 'success');
-                renderJoinView();
-            } catch (error) {
-                showNotification('تعذر الانضمام', 'error');
-                btn.disabled = false;
-            }
+        // 🛡️ feat/fanclub-final: زر الانضمام يفتح نافذة تأكيد (سعر + رصيد بعد الخصم)، لا نداء
+        // مباشر — ورسالة رفض الخادم (مثل الحساب المرتبط) تظهر بوضوح فوق نافذة التأكيد نفسها
+        modal.querySelector('#fanclub-join-btn')?.addEventListener('click', () => {
+            showFanClubJoinConfirmModal(ownerId, ownerUsername, s.joinPrice, () => renderJoinView());
         });
         modal.querySelector('#fanclub-leave-btn')?.addEventListener('click', () => {
-            showConfirmationModal(`هل تريد مغادرة نادي ${escapeHtml(ownerUsername)}؟ ستخسر كل نقاطك ومستواك بهذا النادي نهائياً، ولا يمكن استرجاعها حتى لو أعدت الانضمام لاحقاً.`, async () => {
+            const lvl = s.myLevelInfo?.level || 1;
+            const pts = s.myLevelInfo?.points || 0;
+            showConfirmationModal(`هل تريد مغادرة نادي ${escapeHtml(ownerUsername)}؟ ستخسر مستواك الحالي (Lv.${lvl}) وكل نقاطك (${fmtNum(pts)}) بهذا النادي نهائياً، ولا يمكن استرجاعها حتى لو أعدت الانضمام لاحقاً.`, async () => {
                 try {
                     const res = await fetch(`/api/fanclub/${ownerId}/leave`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
                     const result = await res.json();
@@ -14650,24 +14710,52 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
         });
     }
 
-    // 🛡️ مراجعة #156: لا تبويب "اليوم/الأسبوع" بعد الآن — الخادم لديه ترتيب واحد فقط (يتجاهل
-    // period تماماً الآن)، مرتَّب بالأعضاء النشطين أولاً ثم نقاط الأسبوع، مُخزَّن مؤقتاً 10 دقائق
-    async function renderLeaderboardView() {
+    // 🛡️ feat/fanclub-final: تبويبا "هذا الأسبوع" (حيّ، كاش 10 دقائق) و"الأسبوع الماضي" (نتيجة
+    // نهائية من FanClubWeeklyResult — لا إعادة حساب أبداً). منصّة لأول 3 بشعار النادي، وسطر
+    // "ناديك" مثبّت بالأسفل مع الفارق بالأعضاء النشطين عن المركز الأعلى مباشرة
+    async function renderLeaderboardView(week = 'this') {
         setHeader('leaderboard');
-        body.innerHTML = fanClubRowSkeletonHTML();
+        const tabsHTML = `
+            <div class="fanclub-seg-tabs">
+                <button type="button" class="fanclub-seg-tab ${week === 'this' ? 'active' : ''}" data-week="this">هذا الأسبوع</button>
+                <button type="button" class="fanclub-seg-tab ${week === 'last' ? 'active' : ''}" data-week="last">الأسبوع الماضي</button>
+            </div>
+        `;
+        body.innerHTML = tabsHTML + fanClubRowSkeletonHTML();
         try {
-            const res = await fetch(`/api/fanclub/leaderboard?limit=10`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+            const res = await fetch(`/api/fanclub/leaderboard?week=${week}&limit=10`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
             if (res.status !== 'success') throw new Error();
             const { leaders, myRank } = res.data;
             const myProfileImage = (JSON.parse(localStorage.getItem('user')) || {}).profileImage || '';
             const countsHTML = (r) => `الأعضاء: <b>${fmtNum(r.memberCount)}</b><br>النشطون: <b>${fmtNum(r.activeCount)}</b><br>نقاط الأسبوع: <b>${fmtNum(r.weeklyPoints)}</b>`;
+            const top3 = leaders.slice(0, 3);
+            const rest = leaders.slice(3);
+            const podiumSlot = (rank) => {
+                const l = top3[rank - 1];
+                if (!l) return `<div class="fanclub-club-podium-slot fanclub-club-podium-empty"><div class="fanclub-club-podium-frame"><span>ـ ـ ـ</span></div><p class="fanclub-club-podium-name">بانتظارك</p></div>`;
+                return `
+                    <div class="fanclub-club-podium-slot" data-rank="${l.rank}" data-owner-id="${l.ownerId}" data-owner-username="${escapeHtml(l.username)}">
+                        <span class="fanclub-vip-podium-crown fanclub-vip-podium-crown-${rank}"><i class="fas fa-crown"></i></span>
+                        <div class="fanclub-club-podium-frame fanclub-club-podium-frame-${rank}">
+                            ${fanClubEmblemHTML(l.emblemColorId, 'fanclub-emblem-sm')}
+                        </div>
+                        <p class="fanclub-club-podium-name">${escapeHtml(l.username)}</p>
+                        <p class="fanclub-club-podium-val">${fmtNum(l.activeCount)} نشط</p>
+                    </div>
+                `;
+            };
             body.innerHTML = `
-                <p class="fanclub-rank-explainer">يتم ترتيب نوادي المعجبين حسب عدد الأعضاء النشطين خلال آخر 7 أيام، ثم نقاط الأسبوع. يُحدَّث الترتيب كل 10 دقائق.</p>
+                ${tabsHTML}
+                <p class="fanclub-rank-explainer">الترتيب حسب الأعضاء النشطين خلال آخر 7 أيام، ثم نقاط الأسبوع. ${week === 'this' ? 'يُحدَّث كل 10 دقائق.' : 'نتيجة نهائية محفوظة — لا تتغيّر.'}</p>
+                ${top3.length ? `
+                <div class="fanclub-club-podium">
+                    ${podiumSlot(2)}${podiumSlot(1)}${podiumSlot(3)}
+                </div>` : ''}
                 <div class="fanclub-rank-list">
-                    ${leaders.length === 0 ? '<p class="fanclub-rank-empty">لا توجد نوادٍ مصنَّفة بعد</p>' : leaders.map(l => `
+                    ${rest.length === 0 && top3.length === 0 ? '<p class="fanclub-rank-empty">لا توجد نوادٍ مصنَّفة بعد</p>' : rest.map(l => `
                         <div class="fanclub-rank-row" data-rank="${l.rank}" data-owner-id="${l.ownerId}" data-owner-username="${escapeHtml(l.username)}">
                             <span class="fanclub-rank-num">${l.rank}</span>
-                            <img src="${l.profileImage}" class="fanclub-rank-avatar">
+                            ${fanClubEmblemHTML(l.emblemColorId, 'fanclub-emblem-sm')}
                             <span class="fanclub-rank-name">${escapeHtml(l.username)}</span>
                             <span class="fanclub-rank-counts">${countsHTML(l)}</span>
                         </div>
@@ -14676,17 +14764,20 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                 ${myRank && !myRank.inTop ? `
                     <div class="fanclub-my-rank-pin">
                         <span class="fanclub-rank-num">${myRank.rank}</span>
-                        <img src="${myProfileImage}" class="fanclub-rank-avatar">
-                        <span class="fanclub-rank-name">أنا</span>
+                        ${fanClubEmblemHTML(myRank.emblemColorId, 'fanclub-emblem-sm')}
+                        <span class="fanclub-rank-name">ناديك${myRank.gapToNext > 0 ? `<small>ينقصك ${fmtNum(myRank.gapToNext)} عضواً نشطاً للمركز ${myRank.rank - 1}</small>` : ''}</span>
                         <span class="fanclub-rank-counts">${countsHTML(myRank)}</span>
                     </div>
                 ` : ''}
             `;
-            body.querySelectorAll('.fanclub-rank-row').forEach(row => {
-                row.addEventListener('click', () => renderMembersView(row.dataset.ownerId, row.dataset.ownerUsername));
+            body.querySelectorAll('[data-owner-id]').forEach(el => {
+                el.addEventListener('click', () => renderMembersView(el.dataset.ownerId, el.dataset.ownerUsername));
+            });
+            body.querySelectorAll('.fanclub-seg-tab').forEach(tab => {
+                tab.addEventListener('click', () => renderLeaderboardView(tab.dataset.week));
             });
         } catch (error) {
-            body.innerHTML = `<p class="text-center text-gray-400 py-6">تعذر تحميل الترتيب</p>`;
+            body.innerHTML = tabsHTML + `<p class="text-center text-gray-400 py-6">تعذر تحميل الترتيب</p>`;
         }
     }
 
@@ -14766,6 +14857,115 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
         }
     }
 
+    // 🛡️ feat/fanclub-final: "أعلى المعجبين" العامة — تبويبا هذا الأسبوع (نقاط الأسبوع) وكل
+    // الوقت (النقاط الدائمة = المستوى)، منصّة لأول 3، قائمة مُقسَّمة صفحات، وسطر "أنت" مثبّت مع
+    // الفارق عن المركز الأعلى. هذا هو مقعد "المعجب الأول" برأس كل شاشة (يفتحها لو عضو/مالك)
+    async function renderFansView(targetOwnerId, targetOwnerUsername, range = 'week') {
+        setHeader('fans');
+        let skip = 0;
+        const limit = 20;
+        const tabsHTML = `
+            <div class="fanclub-seg-tabs">
+                <button type="button" class="fanclub-seg-tab ${range === 'week' ? 'active' : ''}" data-range="week">هذا الأسبوع</button>
+                <button type="button" class="fanclub-seg-tab ${range === 'all' ? 'active' : ''}" data-range="all">كل الوقت</button>
+            </div>
+        `;
+        body.innerHTML = tabsHTML + fanClubRowSkeletonHTML();
+        try {
+            const res = await fetch(`/api/fanclub/${targetOwnerId}/top-fans?range=${range}&skip=${skip}&limit=${limit}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+            if (res.status !== 'success') throw new Error();
+            const { fans, myRank, hasMore } = res.data;
+            const top3 = fans.slice(0, 3);
+            const rest = fans.slice(3);
+            const podiumSlot = (rank) => {
+                const f = top3[rank - 1];
+                if (!f) return `<div class="fanclub-vip-podium-slot fanclub-vip-podium-empty"><div class="fanclub-vip-podium-frame fanclub-vip-podium-frame-${rank}"><span class="fanclub-vip-podium-dash">ـ ـ ـ</span></div><p class="fanclub-vip-podium-name">بانتظارك</p></div>`;
+                const [c1, c2] = f.levelInfo.tierGradient;
+                return `
+                    <div class="fanclub-vip-podium-slot" data-user-id="${f.userId}">
+                        <span class="fanclub-vip-podium-crown fanclub-vip-podium-crown-${rank}"><i class="fas fa-crown"></i></span>
+                        <div class="fanclub-vip-podium-frame fanclub-vip-podium-frame-${rank}" style="background:linear-gradient(145deg,${c1},${c2})">
+                            ${avatarHTML({ src: f.profileImage, sizeClass: 'fanclub-vip-podium-avatar' })}
+                            <span class="fanclub-vip-podium-rankbadge fanclub-vip-podium-rankbadge-${rank}">${rank}</span>
+                        </div>
+                        <p class="fanclub-vip-podium-name">${escapeHtml(f.username)}</p>
+                        <p class="fanclub-vip-podium-points">${fmtNum(f.points)}</p>
+                    </div>
+                `;
+            };
+            body.innerHTML = `
+                ${tabsHTML}
+                ${range === 'week' ? `
+                <div class="fanclub-fans-explainer-card">
+                    <img src="${FAN_CLUB_CONTRIBUTOR_FRAME_IMG}" class="fanclub-fans-explainer-frame" alt="">
+                    <p class="fanclub-members-explainer"><b style="color:var(--fanclub-gold,#fbbf24)">الأول هذا الأسبوع</b> يجلس في <b>مقعد المعجب الأول</b> بجانب المذيع طوال الأسبوع، ويحصل على «إطار المساهم» 7 أيام يوم الأحد. الحسابات المرتبطة بالمضيف لا تُحسب.</p>
+                </div>` : ''}
+                ${top3.length ? `
+                <div class="fanclub-vip-podium">
+                    <span class="fanclub-vip-wing fanclub-vip-wing-left"><i class="fas fa-feather-alt"></i></span>
+                    ${podiumSlot(2)}${podiumSlot(1)}${podiumSlot(3)}
+                    <span class="fanclub-vip-wing fanclub-vip-wing-right"><i class="fas fa-feather-alt"></i></span>
+                </div>` : '<p class="fanclub-rank-empty">لا يوجد معجبون مصنَّفون بعد</p>'}
+                <div class="fanclub-members-list">
+                    ${rest.map(f => `
+                        <div class="fanclub-member-row" data-user-id="${f.userId}">
+                            <span class="fanclub-member-row-rank">${f.rank}</span>
+                            <span class="fanclub-member-row-identity">
+                                ${avatarHTML({ src: f.profileImage, sizeClass: 'fanclub-member-row-avatar' })}
+                                <span class="fanclub-member-row-name">${escapeHtml(f.username)}</span>
+                            </span>
+                            <span class="fanclub-member-row-level">${fmtNum(f.points)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+                ${hasMore ? `<button type="button" id="fanclub-fans-more-btn" class="fanclub-join-btn fanclub-join-btn-raised" style="margin-top:8px">عرض المزيد</button>` : ''}
+                ${myRank && !myRank.inPage ? `
+                    <div class="fanclub-my-rank-pin">
+                        <span class="fanclub-rank-num">${myRank.rank}</span>
+                        ${avatarHTML({ src: myRank.profileImage, sizeClass: 'fanclub-member-row-avatar' })}
+                        <span class="fanclub-rank-name">أنت${myRank.gapToNext > 0 ? `<small>ينقصك ${fmtNum(myRank.gapToNext)} نقطة للمركز ${myRank.rank - 1}</small>` : ''}</span>
+                        <span class="fanclub-rank-counts">${fmtNum(myRank.points)} نقطة</span>
+                    </div>
+                ` : ''}
+            `;
+            body.querySelectorAll('[data-user-id]').forEach(el => {
+                el.addEventListener('click', () => showFullProfilePage(el.dataset.userId));
+            });
+            body.querySelectorAll('.fanclub-seg-tab').forEach(tab => {
+                tab.addEventListener('click', () => renderFansView(targetOwnerId, targetOwnerUsername, tab.dataset.range));
+            });
+            let loadedCount = fans.length; // ✅ عدّاد تراكمي صحيح عبر أي عدد من ضغطات "عرض المزيد"
+            modal.querySelector('#fanclub-fans-more-btn')?.addEventListener('click', async (e) => {
+                const btn = e.currentTarget;
+                btn.disabled = true;
+                try {
+                    const moreRes = await fetch(`/api/fanclub/${targetOwnerId}/top-fans?range=${range}&skip=${loadedCount}&limit=${limit}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+                    if (moreRes.status !== 'success') throw new Error();
+                    const list = body.querySelector('.fanclub-members-list');
+                    list.insertAdjacentHTML('beforeend', moreRes.data.fans.map(f => `
+                        <div class="fanclub-member-row" data-user-id="${f.userId}">
+                            <span class="fanclub-member-row-rank">${f.rank}</span>
+                            <span class="fanclub-member-row-identity">
+                                ${avatarHTML({ src: f.profileImage, sizeClass: 'fanclub-member-row-avatar' })}
+                                <span class="fanclub-member-row-name">${escapeHtml(f.username)}</span>
+                            </span>
+                            <span class="fanclub-member-row-level">${fmtNum(f.points)}</span>
+                        </div>
+                    `).join(''));
+                    list.querySelectorAll('[data-user-id]').forEach(el => {
+                        el.onclick = () => showFullProfilePage(el.dataset.userId);
+                    });
+                    loadedCount += moreRes.data.fans.length;
+                    if (!moreRes.data.hasMore) btn.remove(); else btn.disabled = false;
+                } catch (error) {
+                    btn.disabled = false;
+                }
+            });
+        } catch (error) {
+            body.innerHTML = tabsHTML + `<p class="text-center text-gray-400 py-6">تعذر تحميل أعلى المعجبين</p>`;
+        }
+    }
+
     backBtn.addEventListener('click', () => {
         if (backTarget === 'help') showFanClubHelpModal();
         else if (backTarget === 'join') renderJoinView();
@@ -14778,7 +14978,9 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
 }
 
 // ✅ نافذة شرح مختصرة عن نظام نادي المعجبين (أيقونة "؟" برأس نافذة النادي)
-function showFanClubHelpModal() {
+// 🛡️ feat/fanclub-final: كل رقم بهذي الصفحة (السعر/النقاط/الحد اليومي/عتبات المستويات) من
+// /api/fanclub/config الحقيقي — لا رقم ثابت بالعميل، فلا يكذب الشرح لو عدّل الأدمن أي قيمة لاحقاً
+async function showFanClubHelpModal() {
     document.getElementById('fanclub-help-modal')?.remove();
     const modal = document.createElement('div');
     modal.id = 'fanclub-help-modal';
@@ -14786,31 +14988,95 @@ function showFanClubHelpModal() {
     modal.innerHTML = `
         <div class="fanclub-help-card">
             <p class="fanclub-help-title"><i class="fas fa-circle-question"></i> ما هو نادي المعجبين؟</p>
-            <p class="fanclub-help-text">تابع المذيع أولاً، ثم انضم لناديه بـ100 كوينز. ترتقي بمستوى معجب حقيقي (1-20) بهذا النادي تحديداً كلما دعمته — كل كوينز يُنفَق = نقطة، بالإضافة لمهام يومية تمنحك نقاطاً إضافية. النقاط تراكمية دائماً ولا تُصفَّر أبداً.</p>
-            <p class="fanclub-section-divider-label">ماذا ستحصل عليه عند الانضمام؟</p>
-            <div class="fanclub-reward-preview-box fanclub-reward-preview-help">
-                <img src="${FAN_CLUB_CONTRIBUTOR_FRAME_IMG}" class="fanclub-reward-preview-img" alt="">
-                <p class="fanclub-reward-preview-label">إطار المساهم</p>
-                <p class="fanclub-reward-preview-desc">يُمنح دائماً لمن يحتل المركز الأول أسبوعاً كاملاً — يظهر على صورتك بكل مكان</p>
-            </div>
-            <div class="fanclub-help-benefit-row">
-                <i class="fas fa-id-badge fanclub-help-benefit-icon"></i>
-                <span class="fanclub-help-benefit-text">شارة عضوية بلون النادي تظهر بملفك الشخصي</span>
-            </div>
-            <div class="fanclub-help-benefit-row">
-                <i class="fas fa-chart-line fanclub-help-benefit-icon"></i>
-                <span class="fanclub-help-benefit-text">مستوى معجب حقيقي (1-20) بمزايا تتوسّع مع دعمك</span>
-            </div>
-            <div class="fanclub-help-benefit-row">
-                <i class="fas fa-calendar-check fanclub-help-benefit-icon"></i>
-                <span class="fanclub-help-benefit-text">مهام يومية (حضور/دردشة/استماع للبث/متابعة) بنقاط إضافية</span>
-            </div>
+            <div id="fanclub-help-body"><div class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin"></i></div></div>
             <button type="button" id="fanclub-help-close-btn" class="fanclub-help-close-btn">حسناً</button>
         </div>
     `;
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => { if (e.target.id === 'fanclub-help-modal') modal.remove(); });
     modal.querySelector('#fanclub-help-close-btn').addEventListener('click', () => modal.remove());
+
+    try {
+        const res = await fetch('/api/fanclub/config', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+        if (res.status !== 'success') throw new Error();
+        const c = res.data;
+        modal.querySelector('#fanclub-help-body').innerHTML = `
+            <p class="fanclub-help-text">تابع المذيع أولاً، ثم انضم لناديه بـ${fmtNum(c.joinPrice)} كوينز. ترتقي بمستوى معجب حقيقي (1-${c.levelThresholds.length}) بهذا النادي تحديداً كلما دعمته — كل كوين يُنفَق = ${c.giftPointsPerCoin} نقطة معجب، بالإضافة لمهام يومية تمنحك نقاطاً إضافية. النقاط تراكمية دائماً ولا تُصفَّر أبداً.</p>
+            <p class="fanclub-section-divider-label">كيف تكسب النقاط</p>
+            <table class="fanclub-help-table">
+                <tr><td>تسجيل الحضور اليومي</td><td><bdi dir="ltr">+${c.checkinPoints}</bdi></td></tr>
+                <tr><td>${c.chatMsgsRequired} رسائل بغرفة المذيع</td><td><bdi dir="ltr">+${c.chatBonusPoints}</bdi></td></tr>
+                <tr><td>الاستماع أثناء بثه (حتى ${c.listenCapMinutes} دقيقة)</td><td><bdi dir="ltr">+${c.listenPointsPerMinute}</bdi> لكل دقيقة</td></tr>
+                <tr><td>الهدايا للمذيع</td><td><bdi dir="ltr">${c.giftPointsPerCoin}</bdi> لكل كوين</td></tr>
+                <tr><td>متابعة المذيع (مرة واحدة)</td><td><bdi dir="ltr">+${c.followBonus}</bdi></td></tr>
+            </table>
+            <p class="fanclub-members-explainer">الحد المجاني اليومي <span class="fanclub-stat-num">${fmtNum(c.dailyFreeCap)}</span> نقطة (حضور+دردشة+استماع). الهدايا بلا حد.</p>
+            <p class="fanclub-section-divider-label">المستويات</p>
+            <div class="fanclub-help-tiers-row">
+                ${c.tiers.map(t => `<div style="background:linear-gradient(135deg,${t.gradient[0]},${t.gradient[1]})"><b><bdi dir="ltr">${t.from}–${t.to}</bdi></b><span>${escapeHtml(t.name)}</span></div>`).join('')}
+            </div>
+            <p class="fanclub-members-explainer">${c.levelThresholds.length} مستوى ضمن ${c.tiers.length} فئات. المستوى ${c.perkLevels.exclusiveGift} يحتاج <span class="fanclub-stat-num">${fmtNum(c.levelThresholds[c.perkLevels.exclusiveGift - 1])}</span> نقطة، والمستوى الأخير <span class="fanclub-stat-num">${fmtNum(c.levelThresholds[c.levelThresholds.length - 1])}</span>.</p>
+            <p class="fanclub-section-divider-label">النشاط</p>
+            <p class="fanclub-members-explainer">إذا لم تكسب أي نقطة ${c.inactivityDays} أيام تصبح «غير نشط»: شارتك رمادية ومزاياك متوقفة، <b>لكنك لا تخسر نقاطك</b>. أي نقطة جديدة تعيدك فوراً.</p>
+            <p class="fanclub-section-divider-label">مهم</p>
+            <p class="fanclub-members-explainer">المزايا شكلية داخل غرفة المذيع. النقاط لا تتحول إلى مال أو كوينز. والحسابات المرتبطة بالمذيع (نفس الجهاز) لا تستطيع الانضمام لناديه. المغادرة تحذف نقاطك نهائياً.</p>
+        `;
+    } catch (error) {
+        modal.querySelector('#fanclub-help-body').innerHTML = `<p class="text-center text-gray-400 py-6">تعذر تحميل الشرح</p>`;
+    }
+}
+
+// 🛡️ feat/fanclub-final: نافذة تأكيد الانضمام — السعر والرصيد بعد الخصم، ورسالة رفض الخادم
+// (مثل الحساب المرتبط) تظهر بوضوح فوق محتوى النافذة نفسها — لا toast يختفي خلفها أو لا يُلاحَظ
+function showFanClubJoinConfirmModal(ownerId, ownerUsername, price, onJoined) {
+    document.getElementById('fanclub-join-confirm-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'fanclub-join-confirm-modal';
+    modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[340] p-4';
+    const myCoins = (JSON.parse(localStorage.getItem('user')) || {}).coins || 0;
+    const after = Math.max(0, myCoins - price);
+    modal.innerHTML = `
+        <div class="fanclub-join-confirm-card">
+            <div id="fanclub-join-confirm-error"></div>
+            <p class="fanclub-join-confirm-title">الانضمام إلى نادي ${escapeHtml(ownerUsername)}</p>
+            <div class="fanclub-join-confirm-row"><span>سعر الانضمام</span><b>${coinIconHTML(14)} ${fmtNum(price)}</b></div>
+            <div class="fanclub-join-confirm-row"><span>رصيدك بعد الخصم</span><b>${coinIconHTML(14)} ${fmtNum(after)}</b></div>
+            <button type="button" id="fanclub-join-confirm-btn" class="fanclub-join-btn fanclub-join-btn-raised">تأكيد الانضمام</button>
+            <button type="button" id="fanclub-join-confirm-cancel" class="fanclub-join-confirm-cancel">إلغاء</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target.id === 'fanclub-join-confirm-modal') modal.remove(); });
+    modal.querySelector('#fanclub-join-confirm-cancel').addEventListener('click', () => modal.remove());
+    modal.querySelector('#fanclub-join-confirm-btn').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        const errorBox = modal.querySelector('#fanclub-join-confirm-error');
+        errorBox.innerHTML = '';
+        try {
+            const joinRes = await fetch(`/api/fanclub/${ownerId}/join`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+            const joinResult = await joinRes.json();
+            if (!joinRes.ok) {
+                errorBox.innerHTML = `<p class="fanclub-join-confirm-error-text"><i class="fas fa-circle-exclamation"></i> ${escapeHtml(joinResult.message || 'تعذر الانضمام')}</p>`;
+                btn.disabled = false;
+                return;
+            }
+            if (joinResult.data.newCoins !== undefined) {
+                const localUser = JSON.parse(localStorage.getItem('user'));
+                if (localUser) {
+                    localUser.coins = joinResult.data.newCoins;
+                    localStorage.setItem('user', JSON.stringify(localUser));
+                    setHeaderCoinsSilent(localUser.coins);
+                }
+            }
+            modal.remove();
+            showNotification(`انضممت لنادي ${ownerUsername} 🌹`, 'success');
+            if (onJoined) onJoined();
+        } catch (error) {
+            errorBox.innerHTML = `<p class="fanclub-join-confirm-error-text"><i class="fas fa-circle-exclamation"></i> تعذر الانضمام</p>`;
+            btn.disabled = false;
+        }
+    });
 }
 
 // ✅ نافذة "تعديل اسم المجموعة" — صاحب النادي فقط، حد أقصى 13 حرفاً
