@@ -86,6 +86,26 @@ setInterval(() => {
     }
 }, 30 * 1000);
 
+// 🛡️ feat/fanclub-final: نافذة عدم تكرار "إعلان الدخول المميّز" لنادي المعجبين — مرة واحدة فقط
+// لكل دخول حقيقي، لا تتكرر عند إعادة الاتصال (انقطاع شبكة قصير/تحديث الصفحة) خلال دقيقتين من
+// آخر إعلان بنفس الغرفة. لا يؤثر على إعلان "فلان دخل" العادي — فقط على تأثير النادي المرفَق به
+const fanClubEntranceAnnounceCache = new Map(); // `${roomId}:${userId}` → lastAnnouncedAt(ms)
+const FANCLUB_ENTRANCE_DEDUP_MS = 2 * 60 * 1000;
+function shouldAnnounceFanClubEntrance(roomId, userId) {
+    const key = `${roomId}:${userId}`;
+    const now = Date.now();
+    const last = fanClubEntranceAnnounceCache.get(key);
+    if (last && now - last < FANCLUB_ENTRANCE_DEDUP_MS) return false;
+    fanClubEntranceAnnounceCache.set(key, now);
+    return true;
+}
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, last] of fanClubEntranceAnnounceCache.entries()) {
+        if (now - last >= FANCLUB_ENTRANCE_DEDUP_MS) fanClubEntranceAnnounceCache.delete(key);
+    }
+}, 60 * 1000);
+
 // ✅ حالة تشغيل الموسيقى الحيّة لكل غرفة (بالذاكرة — تكفي، لا تحتاج قاعدة بيانات)
 // roomId → { url, title, startedAt(ms), isPlaying, pausedAt(seconds) }
 const roomMusicState = new Map();
@@ -2759,7 +2779,8 @@ socket.on('refreshBlockData', async () => {
                         const { getFanClubBadgeMap, ENTRANCE_ANNOUNCE_MIN_LEVEL } = require('../controllers/fanClubController');
                         const badgeMap = await getFanClubBadgeMap(room.host, [socket.user._id.toString()]);
                         const badge = badgeMap.get(socket.user._id.toString());
-                        const fanClubEntrance = (badge && badge.active && badge.level >= ENTRANCE_ANNOUNCE_MIN_LEVEL) ? badge : null;
+                        const fanClubEntrance = (badge && badge.active && badge.level >= ENTRANCE_ANNOUNCE_MIN_LEVEL
+                            && shouldAnnounceFanClubEntrance(roomId, socket.user._id.toString())) ? badge : null;
                         socket.to(`room-chat-${roomId}`).emit('user-entered-room', {
                             roomId,
                             userId: socket.user._id.toString(),
@@ -3229,6 +3250,7 @@ module.exports.forceDisconnectUserSocket = forceDisconnectUserSocket;
 // __tests__/socketAuth.security.test.js؛ لا مستهلك إنتاجي خارج io.use(verifySocketToken) هنا
 module.exports.verifySocketToken = verifySocketToken;
 module.exports.isRoomEventRateLimited = isRoomEventRateLimited; // ✅ تُصدَّر فقط لاختبارات redteam-audit-1 البند #7
+module.exports.shouldAnnounceFanClubEntrance = shouldAnnounceFanClubEntrance; // ✅ تُصدَّر فقط لاختبارات نافذة عدم تكرار إعلان الدخول
 module.exports.broadcastUserFrameChange = broadcastUserFrameChange;
 // ✅ تُستخدَم من واجهات REST (voiceRoomController) لتضمين المجموع التراكمي الحالي لكل
 // مستخدم جالس ضمن لقطة حالة الغرفة الأولى (قبل أي حدث Socket حي) — راجع roomSupportTally أعلاه
