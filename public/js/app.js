@@ -2656,7 +2656,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const isLegendEntrance = entranceClass === 'fanclub-entrance-legend';
         el.className = `room-chat-join-announcement${entranceClass ? ` fanclub-entrance ${entranceClass}` : ''}`;
         el.innerHTML = `
-            <img src="${profileImage}" class="room-chat-join-avatar">
+            <img src="${profileImage}" class="room-chat-join-avatar" data-avatar-fallback>
             <span class="room-chat-join-text">${isLegendEntrance ? '<b class="fanclub-entrance-mark">✦✦ أسطورة النادي</b> ' : entranceClass ? '<b class="fanclub-entrance-mark">✦</b> ' : ''}<b>${safeName}</b> انضم إلى الغرفة</span>
             ${isManager ? `<button class="room-chat-greet-btn" data-username="${safeName}" title="رحّب فيه"><i class="fas fa-hand-sparkles"></i></button>` : ''}
         `;
@@ -14357,7 +14357,7 @@ function fanClubHeroHTML(s, ownerProfileImage, extraHTML = '') {
     const seatHTML = s.currentLeader ? `
         <button type="button" id="fanclub-topfan-seat-btn" class="fanclub-topfan-seat" title="المعجب الأول: ${escapeHtml(s.currentLeader.username)}">
             <span class="fanclub-topfan-crown">👑</span>
-            <img src="${s.currentLeader.profileImage}" class="fanclub-topfan-avatar profile-frame-contributor">
+            <img src="${s.currentLeader.profileImage}" class="fanclub-topfan-avatar profile-frame-contributor" data-avatar-fallback>
         </button>
     ` : `
         <button type="button" id="fanclub-topfan-seat-btn" class="fanclub-topfan-seat fanclub-topfan-seat-empty" title="مقعد المعجب الأول فارغ">
@@ -14368,7 +14368,7 @@ function fanClubHeroHTML(s, ownerProfileImage, extraHTML = '') {
         <div class="fanclub-hero">
             <div class="fanclub-hero-pair">
                 <span class="fanclub-owner-frame">
-                    <img src="${ownerProfileImage}" class="fanclub-owner-avatar ${s.ownerActiveFrameClass || ''}">
+                    <img src="${ownerProfileImage}" class="fanclub-owner-avatar ${s.ownerActiveFrameClass || ''}" data-avatar-fallback>
                 </span>
                 ${seatHTML}
             </div>
@@ -14398,10 +14398,10 @@ function fanClubMissionsHTML(missions) {
             ${missions.map(m => {
                 const isPerMinute = m.pointsPerMinute !== undefined;
                 const pointsLabel = isPerMinute
-                    ? `+${m.pointsPerMinute} نقطة/دقيقة (حتى ${m.targetMinutes} د/يوم)`
-                    : `+${m.points} نقطة${m.oneTime ? ' (لمرة واحدة)' : ''}`;
+                    ? `<bdi dir="ltr">+${m.pointsPerMinute}</bdi> نقطة/دقيقة (حتى ${m.targetMinutes} د/يوم)`
+                    : `<bdi dir="ltr">+${m.points}</bdi> نقطة${m.oneTime ? ' (لمرة واحدة)' : ''}`;
                 const statusHTML = isPerMinute
-                    ? `<span class="fanclub-mission-pending">${m.progressMinutes || 0}/${m.targetMinutes} د</span>`
+                    ? `<span class="fanclub-mission-pending"><bdi dir="ltr">${m.progressMinutes || 0}/${m.targetMinutes}</bdi> د</span>`
                     : m.claimed
                         ? '<span class="fanclub-mission-done"><i class="fas fa-check"></i></span>'
                         : m.manual
@@ -14585,18 +14585,30 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                     <div><b>${fmtNum(s.ownerWeeklyStats?.activeCount || 0)}</b><small>نشطون</small></div>
                 </div>
                 <p class="fanclub-section-divider-label">الهوية</p>
-                <button type="button" id="fanclub-emblem-pill" class="fanclub-pill fanclub-pill-emblem">
-                    <i class="fas fa-chevron-left fanclub-pill-chevron"></i>
-                    <span class="fanclub-pill-label">تخصيص شعار المجموعة</span>
-                    <span class="fanclub-pill-icon"><i class="fas fa-award"></i></span>
-                </button>
-                <button type="button" id="fanclub-gift-pill" class="fanclub-pill fanclub-pill-gift">
-                    <i class="fas fa-chevron-left fanclub-pill-chevron"></i>
-                    <span class="fanclub-pill-label">تخصيص هدية المجموعة</span>
-                    <span class="fanclub-pill-icon"><i class="fas fa-gift"></i></span>
-                </button>
-                <button type="button" id="fanclub-fans-link" class="fanclub-join-btn fanclub-join-btn-raised" style="margin-top:12px"><i class="fas fa-trophy"></i> أعلى معجبيّ</button>
-                <button type="button" id="fanclub-members-link" class="fanclub-join-btn fanclub-join-btn-raised fanclub-members-full-btn"><i class="fas fa-users"></i> كل الأعضاء (${fmtNum(s.memberCount)})</button>
+                <div class="fanclub-quiet-row-group">
+                    <button type="button" id="fanclub-emblem-pill" class="fanclub-quiet-row">
+                        <span class="fanclub-quiet-row-icon" style="background:linear-gradient(135deg,#ec4899,#a855f7)"><i class="fas fa-award"></i></span>
+                        <span class="fanclub-quiet-row-label">تخصيص شعار المجموعة</span>
+                        <span class="fanclub-quiet-row-action">تغيير</span>
+                    </button>
+                    <button type="button" id="fanclub-gift-pill" class="fanclub-quiet-row">
+                        <span class="fanclub-quiet-row-icon" style="background:linear-gradient(135deg,#a855f7,#d8b4fe)"><i class="fas fa-gift"></i></span>
+                        <span class="fanclub-quiet-row-label">تخصيص هدية المجموعة</span>
+                        <span class="fanclub-quiet-row-action">تغيير</span>
+                    </button>
+                </div>
+                <div class="fanclub-quiet-row-group" style="margin-top:12px">
+                    <button type="button" id="fanclub-fans-link" class="fanclub-quiet-row">
+                        <span class="fanclub-quiet-row-icon"><i class="fas fa-trophy"></i></span>
+                        <span class="fanclub-quiet-row-label">أعلى معجبيّ</span>
+                        <i class="fas fa-chevron-left fanclub-quiet-row-chevron"></i>
+                    </button>
+                    <button type="button" id="fanclub-members-link" class="fanclub-quiet-row">
+                        <span class="fanclub-quiet-row-icon"><i class="fas fa-users"></i></span>
+                        <span class="fanclub-quiet-row-label">كل الأعضاء (${fmtNum(s.memberCount)})</span>
+                        <i class="fas fa-chevron-left fanclub-quiet-row-chevron"></i>
+                    </button>
+                </div>
             ` : !s.isMember ? `
                 ${s.isFollowing ? `
                 <button type="button" id="fanclub-join-btn" class="fanclub-join-btn fanclub-join-btn-raised">
@@ -14889,6 +14901,7 @@ async function showFanClubSheet(ownerId, ownerUsername, ownerProfileImage) {
                             <span class="fanclub-vip-podium-rankbadge fanclub-vip-podium-rankbadge-${rank}">${rank}</span>
                         </div>
                         <p class="fanclub-vip-podium-name">${escapeHtml(f.username)}</p>
+                        <p class="fanclub-vip-podium-tier"><i class="fas ${f.levelInfo.tierIcon}"></i> Lv.${f.levelInfo.level}</p>
                         <p class="fanclub-vip-podium-points">${fmtNum(f.points)}</p>
                     </div>
                 `;
@@ -15001,7 +15014,7 @@ async function showFanClubHelpModal() {
         if (res.status !== 'success') throw new Error();
         const c = res.data;
         modal.querySelector('#fanclub-help-body').innerHTML = `
-            <p class="fanclub-help-text">تابع المذيع أولاً، ثم انضم لناديه بـ${fmtNum(c.joinPrice)} كوينز. ترتقي بمستوى معجب حقيقي (1-${c.levelThresholds.length}) بهذا النادي تحديداً كلما دعمته — كل كوين يُنفَق = ${c.giftPointsPerCoin} نقطة معجب، بالإضافة لمهام يومية تمنحك نقاطاً إضافية. النقاط تراكمية دائماً ولا تُصفَّر أبداً.</p>
+            <p class="fanclub-help-text">تابع المذيع أولاً، ثم انضم لناديه بـ${fmtNum(c.joinPrice)} كوينز. ترتقي بمستوى معجب حقيقي (<bdi dir="ltr">1-${c.levelThresholds.length}</bdi>) بهذا النادي تحديداً كلما دعمته — كل كوين يُنفَق = ${c.giftPointsPerCoin} نقطة معجب، بالإضافة لمهام يومية تمنحك نقاطاً إضافية. النقاط تراكمية دائماً ولا تُصفَّر أبداً.</p>
             <p class="fanclub-section-divider-label">كيف تكسب النقاط</p>
             <table class="fanclub-help-table">
                 <tr><td>تسجيل الحضور اليومي</td><td><bdi dir="ltr">+${c.checkinPoints}</bdi></td></tr>
@@ -15041,8 +15054,10 @@ function showFanClubJoinConfirmModal(ownerId, ownerUsername, price, onJoined) {
             <p class="fanclub-join-confirm-title">الانضمام إلى نادي ${escapeHtml(ownerUsername)}</p>
             <div class="fanclub-join-confirm-row"><span>سعر الانضمام</span><b>${coinIconHTML(14)} ${fmtNum(price)}</b></div>
             <div class="fanclub-join-confirm-row"><span>رصيدك بعد الخصم</span><b>${coinIconHTML(14)} ${fmtNum(after)}</b></div>
-            <button type="button" id="fanclub-join-confirm-btn" class="fanclub-join-btn fanclub-join-btn-raised">تأكيد الانضمام</button>
-            <button type="button" id="fanclub-join-confirm-cancel" class="fanclub-join-confirm-cancel">إلغاء</button>
+            <div id="fanclub-join-confirm-footer">
+                <button type="button" id="fanclub-join-confirm-btn" class="fanclub-join-btn fanclub-join-btn-raised">تأكيد الانضمام</button>
+                <button type="button" id="fanclub-join-confirm-cancel" class="fanclub-join-confirm-cancel">إلغاء</button>
+            </div>
         </div>
     `;
     document.body.appendChild(modal);
@@ -15058,6 +15073,14 @@ function showFanClubJoinConfirmModal(ownerId, ownerUsername, price, onJoined) {
             const joinResult = await joinRes.json();
             if (!joinRes.ok) {
                 errorBox.innerHTML = `<p class="fanclub-join-confirm-error-text"><i class="fas fa-circle-exclamation"></i> ${escapeHtml(joinResult.message || 'تعذر الانضمام')}</p>`;
+                // 🛡️ feat/fanclub-final review: رفض نهائي (مرتبط/بوت/حساب ذاتي/غير متابِع) —
+                // لا تنفع إعادة المحاولة إطلاقاً، فنستبدل "تأكيد/إلغاء" بـ"حسناً" وحيد يُغلق فقط
+                if (joinResult.code === 'DEFINITIVE') {
+                    modal.querySelector('#fanclub-join-confirm-footer').innerHTML =
+                        `<button type="button" id="fanclub-join-confirm-ok" class="fanclub-join-btn fanclub-join-btn-raised">حسناً</button>`;
+                    modal.querySelector('#fanclub-join-confirm-ok').addEventListener('click', () => modal.remove());
+                    return;
+                }
                 btn.disabled = false;
                 return;
             }

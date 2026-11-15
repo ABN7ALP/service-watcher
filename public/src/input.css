@@ -2330,6 +2330,27 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-pill-gift { background: linear-gradient(90deg, #a855f7, #d8b4fe); }
 .fanclub-pill-rename { background: linear-gradient(90deg, #64748b, #334155); }
 
+/* ✅ مراجعة #159: صفوف هادئة لأزرار صاحب النادي (شعار/هدية/أعلى معجبيّ/كل الأعضاء) —
+   بديل الكبسولات المتدرّجة الصاخبة، مطابقة لنمط ".task" بالنموذج المرجعي */
+.fanclub-quiet-row-group { background: rgba(255,255,255,0.03); border-radius: 14px; padding: 2px 12px; }
+.fanclub-quiet-row {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: transparent; border: none; color: #fff; text-align: right;
+}
+.fanclub-quiet-row:last-child { border-bottom: none; }
+.fanclub-quiet-row-icon {
+    width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.06); font-size: 14px; color: #fff;
+}
+.fanclub-quiet-row-label { flex: 1; text-align: right; font-size: 13px; font-weight: 700; }
+.fanclub-quiet-row-action {
+    flex-shrink: 0; background: rgba(255,255,255,0.1); color: #e5e7eb;
+    font-size: 11px; font-weight: 800; padding: 5px 14px; border-radius: 999px;
+}
+.fanclub-quiet-row-chevron { flex-shrink: 0; font-size: 11px; opacity: 0.55; }
+
 /* ✅ منتقيا "شعار المجموعة"/"هدية المجموعة" — بطاقة مشتركة: إغلاق X + عنوان، بطاقة معاينة
    داكنة، شبكة ألوان (3 أعمدة)، وزر حفظ عريض بالأسفل */
 .fanclub-color-picker-card { background: #100d12; border-radius: 20px; width: 100%; max-width: 380px; padding: 18px; animation: slideUp 0.2s ease-out; }
@@ -2497,7 +2518,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     position: relative;
     overflow: hidden;
     width: 100%;
-    height: 56px;
+    min-height: 56px;
     border-radius: 14px;
     background: linear-gradient(135deg, #ec4899, #a855f7);
     color: #fff;
@@ -2632,6 +2653,8 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .fanclub-vip-podium-name { font-size: 11px; font-weight: 700; color: #e5e7eb; margin-top: 20px; max-width: 84px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fanclub-vip-podium-points { font-size: 9.5px; color: #fbbf24; margin-top: 1px; }
 .fanclub-vip-podium-points i { font-size: 8px; margin-inline-end: 2px; }
+.fanclub-vip-podium-tier { font-size: 9px; color: #9ca3af; margin-top: 2px; }
+.fanclub-vip-podium-tier i { font-size: 8px; margin-inline-end: 2px; }
 .fanclub-vip-podium-slot[data-user-id] { cursor: pointer; }
 .fanclub-vip-podium-empty .fanclub-vip-podium-frame { background: rgba(255,255,255,0.06); border: 1.5px dashed rgba(255,255,255,0.18); }
 .fanclub-vip-podium-dash { color: #4b5563; font-size: 13px; font-weight: 900; }

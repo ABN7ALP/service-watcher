@@ -68,6 +68,7 @@ describe('getTopFans — استبعاد المرتبطين، الفارق للم
             { _id: member2, username: 'm2', profileImage: 'p2.png' }
         ]));
         jest.spyOn(User, 'findById').mockImplementation(() => chainable({ username: 'm1', profileImage: 'p1.png' }));
+        jest.spyOn(FanClubMembership, 'find').mockImplementation(() => chainable([]));
 
         const res = mockRes();
         await fanClubController.getTopFans({ params: { ownerId: OWNER }, query: { range: 'week' }, user: { id: member1 } }, res);
@@ -112,6 +113,7 @@ describe('getTopFans — استبعاد المرتبطين، الفارق للم
         jest.spyOn(User, 'find').mockImplementation((query) => chainable(
             query._id.$in.map(id => ({ _id: id, username: `u${id}`, profileImage: '' }))
         ));
+        jest.spyOn(FanClubMembership, 'find').mockImplementation(() => chainable([]));
 
         const res = mockRes();
         await fanClubController.getTopFans({ params: { ownerId: OWNER }, query: { range: 'week', skip: '2', limit: '2' }, user: { id: oid(999) } }, res);
@@ -121,6 +123,30 @@ describe('getTopFans — استبعاد المرتبطين، الفارق للم
         expect(data.fans[0].rank).toBe(3); // ✅ skip=2 يبدأ من المركز الثالث
         expect(data.hasMore).toBe(true); // ✅ 5 مؤهَّلون إجمالاً، عُرض 2 بعد تجاوز أول 2
         expect(data.total).toBe(5);
+    });
+
+    // 🛡️ مراجعة #159: مراجعة النادي كشفت أن تبويب "هذا الأسبوع" كان يُحسِب شارة المستوى من
+    // نقاط الأسبوع فقط (دائماً أقل من إجمالي النقاط التراكمي) فتظهر شارة أدنى بكثير من مستوى
+    // المعجب الحقيقي — المستوى يجب أن يعكس إجمالي نقاطه بالنادي دائماً، بصرف النظر عن التبويب
+    test('range=week: شارة المستوى من إجمالي نقاط العضوية التراكمي، لا نقاط الأسبوع المعروضة بالترتيب', async () => {
+        const member1 = oid(2);
+        jest.spyOn(FanClubWeekly, 'find').mockImplementation(() => chainable([
+            { member: member1, points: 8000 } // نقاط الأسبوع فقط — تقابل Lv.6 لو استُخدمت للمستوى خطأً
+        ]));
+        mockGroups([]);
+        jest.spyOn(User, 'find').mockImplementation(() => chainable([{ _id: member1, username: 'm1', profileImage: 'p1.png' }]));
+        jest.spyOn(User, 'findById').mockImplementation(() => chainable({ username: 'm1', profileImage: 'p1.png' }));
+        jest.spyOn(FanClubMembership, 'find').mockImplementation(() => chainable([
+            { member: member1, points: 200000 } // إجمالي تراكمي حقيقي — يقابل Lv.14
+        ]));
+
+        const res = mockRes();
+        await fanClubController.getTopFans({ params: { ownerId: OWNER }, query: { range: 'week' }, user: { id: member1 } }, res);
+
+        const data = res.json.mock.calls[0][0].data;
+        expect(data.fans[0].points).toBe(8000); // ✅ الرقم المعروض بالترتيب يبقى نقاط الأسبوع
+        expect(data.fans[0].levelInfo.level).toBe(14); // ✅ لكن شارة المستوى من الإجمالي التراكمي
+        expect(data.myRank.levelInfo.level).toBe(14);
     });
 });
 

@@ -528,7 +528,9 @@ exports.joinFanClub = async (req, res) => {
             return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
         }
         if (ownerId === memberId) {
-            return res.status(400).json({ status: 'fail', message: 'لا يمكنك الانضمام لناديك الخاص' });
+            // 🛡️ feat/fanclub-final: code:'DEFINITIVE' — العميل يستبدل زر "تأكيد" بزر "حسناً"
+            // وحيد لأي رفض لا تنفع إعادة المحاولة معه أبداً (بخلاف رصيد غير كافٍ القابل للتعويض)
+            return res.status(400).json({ status: 'fail', code: 'DEFINITIVE', message: 'لا يمكنك الانضمام لناديك الخاص' });
         }
 
         const alreadyMember = await FanClubMembership.exists({ owner: ownerId, member: memberId });
@@ -544,11 +546,12 @@ exports.joinFanClub = async (req, res) => {
             linkageService.areLinked(memberId, ownerId)
         ]);
         if (!owner) return res.status(404).json({ status: 'fail', message: 'المستخدم غير موجود' });
-        if (owner.isBot) return res.status(403).json({ status: 'fail', message: 'لا يمكن الانضمام لهذا الحساب' });
-        if (!isFollowing) return res.status(403).json({ status: 'fail', message: 'يجب متابعة صاحب النادي أولاً' });
+        if (owner.isBot) return res.status(403).json({ status: 'fail', code: 'DEFINITIVE', message: 'لا يمكن الانضمام لهذا الحساب' });
+        if (!isFollowing) return res.status(403).json({ status: 'fail', code: 'DEFINITIVE', message: 'يجب متابعة صاحب النادي أولاً' });
         // 🛡️ feat/fanclub-final: رسالة واضحة تُعرض فوق نافذة التأكيد بالعميل (بدل رسالة عامة
-        // كانت تضيع خلف النافذة) — تفسّر السبب الفعلي الأشيع لفشل الانضمام (نفس الجهاز)
-        if (linked) return res.status(403).json({ status: 'fail', message: 'هذا الحساب مرتبط بحسابك (نفس الجهاز)، فلا يمكنك الانضمام لناديه' });
+        // كانت تضيع خلف النافذة) — تفسّر السبب الفعلي الأشيع لفشل الانضمام (نفس الجهاز).
+        // code:'DEFINITIVE' — لا تنفع إعادة المحاولة إطلاقاً، العميل يستبدل "تأكيد" بـ"حسناً"
+        if (linked) return res.status(403).json({ status: 'fail', code: 'DEFINITIVE', message: 'هذا الحساب مرتبط بحسابك (نفس الجهاز)، فلا يمكنك الانضمام لناديه' });
 
         // ✅ دفتر الأستاذ: الانضمام "مثل الهدية حرفياً" — نفس buildGiftWalletEntries الحقيقي
         // (بونص أولاً، تقسيم beans_w/beans_p). linkedFlags:[false] دوماً هنا — الانضمام
@@ -783,23 +786,36 @@ exports.getTopFans = async (req, res) => {
         const page = eligible.slice(skip, skip + limit);
         const users = await User.find({ _id: { $in: page.map(c => c.userId) } }).select('username profileImage').lean();
         const userMap = new Map(users.map(u => [u._id.toString(), u]));
+
+        // 🛡️ مراجعة #159: شارة المستوى يجب أن تعكس مستوى المعجب الحقيقي التراكمي بالنادي
+        // دائماً، لا نقاط هذا الأسبوع فقط — وإلا تظهر شارة أدنى بكثير من مستواه الفعلي بتبويب
+        // "هذا الأسبوع" (نقاطه الأسبوعية أقل بالضرورة من إجماليه التراكمي)
+        let totalPointsMap = null;
+        if (range !== 'all') {
+            const idsNeeded = [...new Set([...page.map(c => c.userId.toString()), ...(myIndex !== -1 ? [myId.toString()] : [])])];
+            const memberships = await FanClubMembership.find({ owner: ownerId, member: { $in: idsNeeded } }).select('member points').lean();
+            totalPointsMap = new Map(memberships.map(m => [m.member.toString(), m.points]));
+        }
+        const levelPointsFor = (c) => (totalPointsMap ? (totalPointsMap.get(c.userId.toString()) ?? c.points) : c.points);
+
         const fans = page.map((c, i) => {
             const user = userMap.get(c.userId.toString());
             if (!user) return null;
             return {
                 rank: skip + i + 1, userId: c.userId, username: user.username, profileImage: user.profileImage,
-                points: c.points, levelInfo: computeFanLevelInfo(c.points)
+                points: c.points, levelInfo: computeFanLevelInfo(levelPointsFor(c))
             };
         }).filter(Boolean);
 
         let myRank = null;
         if (myIndex !== -1) {
-            const myPoints = eligible[myIndex].points;
+            const myCandidate = eligible[myIndex];
+            const myPoints = myCandidate.points;
             const aheadPoints = myIndex > 0 ? eligible[myIndex - 1].points : null;
             const myUser = await User.findById(myId).select('username profileImage').lean();
             myRank = {
                 rank: myIndex + 1, userId: myId, username: myUser?.username || '', profileImage: myUser?.profileImage || '',
-                points: myPoints, levelInfo: computeFanLevelInfo(myPoints),
+                points: myPoints, levelInfo: computeFanLevelInfo(levelPointsFor(myCandidate)),
                 gapToNext: aheadPoints === null ? 0 : Math.max(0, aheadPoints - myPoints),
                 inPage: myIndex >= skip && myIndex < skip + limit
             };
