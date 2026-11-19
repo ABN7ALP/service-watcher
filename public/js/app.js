@@ -16654,24 +16654,34 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         let sel = (shopData.gifts[tab] || [])[0] || null;
         let qty = rules.quantities[0] || 1;
 
-        // 🛡️ feat/fanclub-v2-ui: "هدية النادي" الحصرية (Lv.13+ نشط) — محلية لهذي الجلسة فقط،
-        // لا تُدمَج مطلقاً بـshopData.gifts المُخزَّن مؤقتاً (مشترك مع كل شبكات الهدايا الأخرى —
-        // دمجها هناك كان سيُظهرها بالمتجر العام لكل مستخدم). تُضاف فقط لمصفوفة items المحلية
-        // بـrenderGrid أدناه عند تبويب "أسطورية"، وفقط بعد تأكيد الأهلية من الخادم
-        let exclusiveGiftTile = null;
+        // 🛡️ feat/gift-fx-and-cosmetics-base: تبويب "النادي" المستقل — يظهر فقط داخل غرفة مضيف
+        // أنت عضو مؤهَّل بناديه (13+ نشط)، وفيه كل الهدايا الحصرية معاً (هدية النادي + فراشة
+        // النادي الآن، وأي هدية حصرية مستقبلية بلا أي تعديل هنا — الخادم يُرجعها جميعاً). محلية
+        // لهذي الجلسة فقط، لا تُدمَج مطلقاً بـshopData.gifts المُخزَّن مؤقتاً (مشترك مع كل شبكات
+        // الهدايا الأخرى — دمجها هناك كان سيُظهرها بالمتجر العام لكل مستخدم)
+        const FANCLUB_CAT = { k: 'fanclub', name: 'النادي', v: '--g-legend' };
+        let fanClubCatVisible = false;
+        let exclusiveGiftTiles = [];
+        const activeCats = () => fanClubCatVisible ? [...GSHEET_CATS, FANCLUB_CAT] : GSHEET_CATS;
         if (roomId !== 'main') {
             roomPromise.then(async (roomResult) => {
                 const hostId = roomResult?.host?._id || roomResult?.host;
                 if (!hostId || !document.getElementById('room-gift-modal') || document.getElementById('room-gift-modal').classList.contains('hidden')) return;
                 try {
                     const eligRes = await fetch(`/api/fanclub/${hostId}/exclusive-gift`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
-                    if (eligRes.status === 'success' && eligRes.data.eligible && eligRes.data.gift) {
-                        const g = eligRes.data.gift;
-                        exclusiveGiftTile = {
+                    if (eligRes.status === 'success' && eligRes.data.eligible && eligRes.data.gifts?.length) {
+                        // 🛡️ category:'legendary' مقصودة هنا رغم أن الخلايا تُعرَض بتبويب "النادي"
+                        // (cat.k بالشبكة)، لا "أسطورية" — gift.category هي ما تُقرَّر عليها احتفال
+                        // ملء الشاشة محلياً (startGiftComboSession) وبثّ gift:legendary بالخادم
+                        // (نفس الحقل المخزَّن فعلياً بمستند Gift لكلتا الهديتين — راجع autoSeed.js)
+                        exclusiveGiftTiles = eligRes.data.gifts.map(g => ({
                             id: g.id, name: g.name, imageUrl: g.imageUrl, price: g.price, discountedPrice: g.price,
-                            category: 'legendary', _fanClubTint: FAN_CLUB_COLORS[eligRes.data.giftColorId]?.filter || 'none'
-                        };
-                        if (tab === 'legendary') renderGrid();
+                            videoUrl: g.videoUrl || null, category: 'legendary',
+                            _fanClubTint: FAN_CLUB_COLORS[eligRes.data.giftColorId]?.filter || 'none'
+                        }));
+                        fanClubCatVisible = true;
+                        renderTabs();
+                        if (tab === 'fanclub') renderGrid();
                     }
                 } catch (error) { /* تجميلية بحتة — لا تؤثر على شبكة الهدايا العادية أبداً */ }
             });
@@ -16739,7 +16749,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
         function renderTabs() {
             const t = document.getElementById('gsheet-tabs');
             if (!t) return;
-            t.innerHTML = GSHEET_CATS.map(c => `
+            t.innerHTML = activeCats().map(c => `
                 <button type="button" class="gsheet-tab" role="tab" data-cat="${c.k}" style="--tc:var(${c.v})" aria-selected="${c.k === tab}">${c.name}</button>
             `).join('');
             t.querySelectorAll('.gsheet-tab').forEach(btn => {
@@ -16750,7 +16760,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                     const list = shopData.gifts[tab] || [];
                     sel = tab === 'custom' ? (getMyCustomTiles().find(g => !g.pending) || null) : (list[0] || null);
                     // ✅ طلب صريح: التبديل لتبويب ملحمية/أسطورية يُعيد الكمية لـ×1
-                    if (tab === 'epic' || tab === 'legendary') qty = rules.quantities[0] || 1;
+                    if (tab === 'epic' || tab === 'legendary' || tab === 'fanclub') qty = rules.quantities[0] || 1;
                     renderTabs();
                     renderGrid();
                     renderQty();
@@ -16775,7 +16785,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             `;
         }
         function renderGrid() {
-            const cat = GSHEET_CATS.find(c => c.k === tab);
+            const cat = activeCats().find(c => c.k === tab);
             const pagesEl = document.getElementById('gsheet-pages');
             if (!pagesEl) return;
             pagesEl.style.setProperty('--tc', `var(${cat.v})`);
@@ -16785,10 +16795,11 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
             // 🐛 إصلاح (مراجعة PR #109 — بند 4): بلاطة "صمّم هديتك" يجب أن تكون أول خلية (أعلى
             // اليمين بالـRTL، مطابقةً للنموذج الأولي) — .gsheet-pages بـdirection:rtl تملأ
             // الشبكة من اليمين لليسار بترتيب DOM نفسه، فأول عنصر بالمصفوفة = أول خلية مرئية
-            const items = tab === 'custom' ? [{ addTile: true }, ...getMyCustomTiles()] : (shopData.gifts[tab] || []).slice();
-            // 🛡️ feat/fanclub-v2-ui: هدية النادي الحصرية — خلية محلية إضافية بتبويب "أسطورية"
-            // فقط، فقط بعد تأكيد أهلية الخادم (راجع exclusiveGiftTile أعلاه)، لا تلمس shopData
-            if (tab === 'legendary' && exclusiveGiftTile) items.push(exclusiveGiftTile);
+            // 🛡️ feat/gift-fx-and-cosmetics-base: تبويب "النادي" مصدره exclusiveGiftTiles المحلي
+            // فقط (لا shopData.gifts إطلاقاً — لا يصل المتجر العام لأي مستخدم آخر)
+            const items = tab === 'custom' ? [{ addTile: true }, ...getMyCustomTiles()]
+                : tab === 'fanclub' ? exclusiveGiftTiles.slice()
+                : (shopData.gifts[tab] || []).slice();
             const n = Math.max(1, Math.ceil(items.length / 8));
             for (let p = 0; p < n; p++) {
                 const pg = document.createElement('div');

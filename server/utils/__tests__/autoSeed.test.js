@@ -6,7 +6,9 @@
 const Gift = require('../../models/Gift');
 const ProfileFrame = require('../../models/ProfileFrame');
 const ChatBubbleSkin = require('../../models/ChatBubbleSkin');
-const { seedGiftsIfMissing, seedFramesIfMissing, seedBubbleSkinsIfMissing } = require('../autoSeed');
+const CosmeticItem = require('../../models/CosmeticItem');
+const User = require('../../models/User');
+const { seedGiftsIfMissing, seedFramesIfMissing, seedCosmeticItemsIfMissing, migrateDeleteAllChatBubbleSkins } = require('../autoSeed');
 
 describe('seedGiftsIfMissing', () => {
     afterEach(() => jest.restoreAllMocks());
@@ -89,31 +91,60 @@ describe('seedFramesIfMissing', () => {
     });
 });
 
-describe('seedBubbleSkinsIfMissing', () => {
+describe('seedCosmeticItemsIfMissing', () => {
     afterEach(() => jest.restoreAllMocks());
 
-    test('تُدرج الفقاعات الناقصة بأسعار مقياس ×10 الحالي، معلَّمة redenominatedV1:true', async () => {
-        jest.spyOn(ChatBubbleSkin, 'findOne').mockResolvedValue(null);
-        const createSpy = jest.spyOn(ChatBubbleSkin, 'create').mockResolvedValue({});
+    test('تُدرج كل العناصر الناقصة (8 متجر + 2 ترحيب + 4 فقاعات نادي + 3 إعلانات نادي + 2 ثنائي = 19)', async () => {
+        jest.spyOn(CosmeticItem, 'findOne').mockResolvedValue(null);
+        const createSpy = jest.spyOn(CosmeticItem, 'create').mockResolvedValue({});
 
-        await seedBubbleSkinsIfMissing();
+        await seedCosmeticItemsIfMissing();
 
-        expect(createSpy).toHaveBeenCalledTimes(4);
-        const byName = Object.fromEntries(createSpy.mock.calls.map(([s]) => [s.name, s]));
-        // ✅ فقاعة ليلية=400 (لا 40 القديمة)، فقاعة ملكية=1200 (لا 120 القديمة)
-        expect(byName['فقاعة ليلية'].price).toBe(400);
-        expect(byName['فقاعة ملكية'].price).toBe(1200);
-        for (const s of createSpy.mock.calls.map(([s]) => s)) {
-            expect(s.redenominatedV1).toBe(true);
-        }
+        expect(createSpy).toHaveBeenCalledTimes(19);
+        const byName = Object.fromEntries(createSpy.mock.calls.map(([it]) => [`${it.type}:${it.name}`, it]));
+        // ✅ المتجر: مدتان بسعرين مستقلّين لكل فقاعة
+        expect(byName['bubble:الذهب الملكي'].durations).toEqual([{ days: 7, price: 4200 }, { days: 30, price: 12000 }]);
+        // ✅ النادي: بلا durations، مستوى حقيقي (لا يُشترى أبداً)
+        expect(byName['bubble:أسطورة النادي'].fanClubTierLevel).toBe(17);
+        expect(byName['bubble:أسطورة النادي'].durations).toEqual([]);
+        // ✅ الثنائي: معرَّف لكن معطَّل (بانتظار نظام الحماة)
+        expect(byName['bubble:الثنائي'].isActive).toBe(false);
+        expect(byName['entrance:الثنائي'].isActive).toBe(false);
     });
 
-    test('لا تلمس أي فقاعة موجودة أصلاً — لا ChatBubbleSkin.create', async () => {
-        jest.spyOn(ChatBubbleSkin, 'findOne').mockResolvedValue({ _id: 'existing', price: 999 });
-        const createSpy = jest.spyOn(ChatBubbleSkin, 'create').mockResolvedValue({});
+    test('لا تلمس أي عنصر موجود أصلاً — لا CosmeticItem.create', async () => {
+        jest.spyOn(CosmeticItem, 'findOne').mockResolvedValue({ _id: 'existing' });
+        const createSpy = jest.spyOn(CosmeticItem, 'create').mockResolvedValue({});
 
-        await seedBubbleSkinsIfMissing();
+        await seedCosmeticItemsIfMissing();
 
         expect(createSpy).not.toHaveBeenCalled();
+    });
+});
+
+describe('migrateDeleteAllChatBubbleSkins', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    test('تحذف كل ChatBubbleSkin وتُنظِّف ownedBubbleSkins/activeBubbleSkinClass عبر collection الخام', async () => {
+        jest.spyOn(ChatBubbleSkin, 'countDocuments').mockResolvedValue(4);
+        const updateManySpy = jest.spyOn(User.collection, 'updateMany').mockResolvedValue({ modifiedCount: 7 });
+        const deleteManySpy = jest.spyOn(ChatBubbleSkin, 'deleteMany').mockResolvedValue({});
+
+        await migrateDeleteAllChatBubbleSkins();
+
+        expect(updateManySpy).toHaveBeenCalledWith(
+            expect.anything(),
+            { $unset: { ownedBubbleSkins: '', activeBubbleSkinClass: '' } }
+        );
+        expect(deleteManySpy).toHaveBeenCalledWith({});
+    });
+
+    test('لا شيء للحذف — لا تلمس أي شيء (لا User.collection.updateMany)', async () => {
+        jest.spyOn(ChatBubbleSkin, 'countDocuments').mockResolvedValue(0);
+        const updateManySpy = jest.spyOn(User.collection, 'updateMany').mockResolvedValue({});
+
+        await migrateDeleteAllChatBubbleSkins();
+
+        expect(updateManySpy).not.toHaveBeenCalled();
     });
 });

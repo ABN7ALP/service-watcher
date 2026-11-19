@@ -120,6 +120,47 @@ function frameAssetUpload(req, res, next) {
     });
 }
 
+// 5هـ. Multer لفيديو مؤثر الهدية (لوحة التحكم — طلب صريح: "تحديث الطريق، لا شحن أسرار Cloudinary
+// لهذا الحاوية" — الرفع يمر دوماً بمسار الخادم الحالي نفسه كاستوديو الإطارات، لا أي مصدر آخر).
+// mp4 فقط (نفس توقيع ftyp بـdetectRealFileType أسفل)، سقف 2MB صريح بالطلب — الفيديوهات
+// الحقيقية مضغوطة أصلاً لحوالي 0.45-0.75MB لكل هدية (راجع docs/design/fx-studio-prototype.html)
+const giftVideoFilter = (req, file, cb) => {
+    if (file.mimetype === 'video/mp4') return cb(null, true);
+    cb(new Error('نوع الملف غير مدعوم. المسموح: mp4 فقط'));
+};
+const giftVideoUploadRaw = multer({
+    storage: storage,
+    fileFilter: giftVideoFilter,
+    limits: { fileSize: 2 * 1024 * 1024 } // 2MB
+}).single('giftVideo');
+
+// 🐛 نفس نمط frameAssetUpload أعلاه بالضبط
+function giftVideoUpload(req, res, next) {
+    giftVideoUploadRaw(req, res, (err) => {
+        if (!err) return next();
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ status: 'fail', message: 'حجم فيديو الهدية يجب ألا يتجاوز 2 ميجابايت' });
+        }
+        return res.status(400).json({ status: 'fail', message: err.message || 'تعذّر رفع فيديو الهدية' });
+    });
+}
+
+// ✅ رفع فيديو مؤثر الهدية الفعلي — بعد اجتياز assertRealType (توقيع بايتات حقيقي، لا امتداد/
+// mimetype مزوَّران من العميل) بالكنترولر. Cloudinary يضع Cache-Control طويل الأمد + رابطاً
+// مُرقَّماً (versioned) تلقائياً لكل أصل مرفوع — نفس التخزين المؤقت الدائم المطلوب بلا أي إعداد إضافي
+const uploadGiftVideo = (fileBuffer) => {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            { folder: 'gift_fx_videos', resource_type: 'video' },
+            (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+            }
+        );
+        uploadStream.end(fileBuffer);
+    });
+};
+
 // 6. Multer للدردشات
 const chatUpload = multer({
     storage: storage,
@@ -441,6 +482,8 @@ module.exports = {
     roomCoverUpload,          // لصورة غلاف الغرفة (middleware)
     customGiftUpload,         // لصورة الهدية المخصّصة (middleware)
     frameAssetUpload,         // لأصل إطار بروفايل (middleware — استوديو الإطارات)
+    giftVideoUpload,          // لفيديو مؤثر الهدية (middleware — لوحة التحكم)
+    uploadGiftVideo,          // دالة رفع فيديو مؤثر الهدية
     chatUpload,               // للدردشات (middleware)
     uploadChatImage,          // دالة رفع صور الدردشة
     uploadChatVoice,          // دالة رفع صوت الدردشة

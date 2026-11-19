@@ -1,6 +1,7 @@
 const Gift = require('../models/Gift');
 const ProfileFrame = require('../models/ProfileFrame');
 const ChatBubbleSkin = require('../models/ChatBubbleSkin');
+const CosmeticItem = require('../models/CosmeticItem');
 const User = require('../models/User');
 const VoiceRoom = require('../models/VoiceRoom');
 
@@ -59,6 +60,52 @@ async function seedFanClubExclusiveGiftIfMissing() {
         redenominatedV1: true
     });
     console.log('🎁 [AUTO-SEED] تمت إضافة هدية النادي الحصرية');
+}
+
+// 🛡️ feat/gift-fx-and-cosmetics-base: هديتا استوديو المؤثرات الجديدتان (راجع docs/design/
+// fx-studio-prototype.html) — videoUrl تُترك فارغة عمداً هنا: لا أسرار Cloudinary تُسرَّب لأي
+// حاوية تطوير أبداً (نفس قاعدة رابط قاعدة البيانات)، الأدمن يرفع الفيديو بنفسه لاحقاً من
+// استوديو الهدايا بلوحة التحكم (راجع adminController.saveGift + giftVideoUpload بـcloudinary.js)
+// — تنين/يخت/حديقة الموجودة أصلاً تبقى videoUrl فارغة لديها أيضاً حتى يرفعها الأدمن بنفس الطريقة
+// ✅ imageUrl أدناه لكلتا الهديتين مؤقتة (تُعيد استخدام صور موجودة فعلاً بالمتجر كبديل مرئي
+// ريثما يرفع الأدمن أيقونتين حقيقيتين خاصتين بهما — لا صلاحية رفع صور جديدة هنا لنفس سبب
+// الفيديو تماماً)؛ السعر/الفئة/الحصرية هي الجوهر الوظيفي المطلوب، لا الصورة
+async function seedGiftFxGiftsIfMissing() {
+    const sword = await Gift.findOne({ name: 'سيف البرق' });
+    if (!sword) {
+        await Gift.create({
+            name: 'سيف البرق',
+            description: 'هدية أسطورية جديدة — برق أزرق فوق الغرفة',
+            imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787753218/elegant-rustic-dragon-mythical-serpent-breathing-fire-high-resolution-png.webp',
+            price: 5000,
+            category: 'legendary',
+            animation: 'float',
+            sortOrder: 13,
+            isActive: true,
+            redenominatedV1: true
+        });
+        console.log('🎁 [AUTO-SEED] تمت إضافة هدية سيف البرق');
+    }
+    // ✅ نفس نمط "هدية النادي" بالضبط (isFanClubExclusive:true يُستبعِدها من المتجر العام —
+    // راجع giftController.getGiftShop)، لكن مستوى 13+ أيضاً (EXCLUSIVE_GIFT_MIN_LEVEL نفسه،
+    // لا عتبة منفصلة — fanClubController.assertFanClubExclusiveGiftEligible عام لكل هدية
+    // isFanClubExclusive:true بصرف النظر عن اسمها)
+    const butterfly = await Gift.findOne({ name: 'فراشة النادي' });
+    if (!butterfly) {
+        await Gift.create({
+            name: 'فراشة النادي',
+            description: 'هدية حصرية ثانية لأعضاء النادي من المستوى 13 فما فوق',
+            imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1791286502/fanclub-heart-512.png',
+            price: 3000,
+            category: 'legendary',
+            animation: 'float',
+            sortOrder: 101,
+            isActive: true,
+            isFanClubExclusive: true,
+            redenominatedV1: true
+        });
+        console.log('🎁 [AUTO-SEED] تمت إضافة هدية فراشة النادي');
+    }
 }
 
 // ✅ مجموعة الإطارات الحالية للمتجر — تجربة أول إطار-صورة حقيقي خارجي ("الإطار الفاخر") بطلب
@@ -128,20 +175,66 @@ async function migrateRetireOldFrames() {
     }
 }
 
-// 🛡️ مراجعة #157: أسعار بمقياس ما بعد ترحيل ×10 مباشرة (نفس علّة seedGiftsIfMissing/
-// seedFramesIfMissing أعلاه بالضبط)
-async function seedBubbleSkinsIfMissing() {
-    const skins = [
-        { name: 'فقاعة ليلية', price: 400, cssClass: 'bubble-skin-midnight', sortOrder: 1 },
-        { name: 'فقاعة غروب', price: 600, cssClass: 'bubble-skin-sunset', sortOrder: 2 },
-        { name: 'فقاعة زمردية', price: 800, cssClass: 'bubble-skin-emerald', sortOrder: 3 },
-        { name: 'فقاعة ملكية', price: 1200, cssClass: 'bubble-skin-royal', sortOrder: 4 }
+// 🛡️ feat/gift-fx-and-cosmetics-base: ChatBubbleSkin (4 فقاعات قديمة) حُذفت نهائياً — راجع
+// migrateDeleteAllChatBubbleSkins أسفل. CosmeticItem يحل محلها بنموذج عام واحد يخدم الفقاعات
+// وإعلانات الدخول معاً. "تصاميم مبدئية (الأساس لا النهائي)" بالطلب الصريح — منسوخة حرفياً من
+// docs/design/fx-studio-prototype.html (راجع الأصناف المقابلة بـinput.css لكل اسم هنا)
+// مصادر غير المتجر (welcome/fanclub/couple) بلا durations — لا تُشترى أبداً، تُمنَح/تُحسَب تلقائياً
+async function seedCosmeticItemsIfMissing() {
+    const items = [
+        // ✅ المتجر — 8 فقاعات، مدتان لكل واحدة (7/30 يوماً)
+        { type: 'bubble', name: 'الذهب الملكي', cssClass: 'bubble-gold', source: 'shop', sortOrder: 1, durations: [{ days: 7, price: 4200 }, { days: 30, price: 12000 }] },
+        { type: 'bubble', name: 'حديقة الورد', cssClass: 'bubble-rose', source: 'shop', sortOrder: 2, durations: [{ days: 7, price: 2800 }, { days: 30, price: 8000 }] },
+        { type: 'bubble', name: 'موج البحر', cssClass: 'bubble-ocean', source: 'shop', sortOrder: 3, durations: [{ days: 7, price: 2800 }, { days: 30, price: 8000 }] },
+        { type: 'bubble', name: 'نيون الليل', cssClass: 'bubble-neon', source: 'shop', sortOrder: 4, durations: [{ days: 7, price: 2800 }, { days: 30, price: 8000 }] },
+        { type: 'bubble', name: 'الشفق', cssClass: 'bubble-aurora', source: 'shop', sortOrder: 5, durations: [{ days: 7, price: 3500 }, { days: 30, price: 10000 }] },
+        { type: 'bubble', name: 'الجمر', cssClass: 'bubble-ember', source: 'shop', sortOrder: 6, durations: [{ days: 7, price: 3500 }, { days: 30, price: 10000 }] },
+        { type: 'bubble', name: 'الكريستال', cssClass: 'bubble-crystal', source: 'shop', sortOrder: 7, durations: [{ days: 7, price: 3500 }, { days: 30, price: 10000 }] },
+        { type: 'bubble', name: 'المجرّة', cssClass: 'bubble-galaxy', source: 'shop', sortOrder: 8, durations: [{ days: 7, price: 4200 }, { days: 30, price: 12000 }] },
+        // ✅ الترحيب — فقاعة + إعلان، تُمنحان تلقائياً 3 أيام عند التسجيل (راجع authController.register)
+        { type: 'bubble', name: 'ترحيب', cssClass: 'cosmetic-bubble-welcome', source: 'welcome', sortOrder: 1, durations: [] },
+        { type: 'entrance', name: 'ترحيب بالجديد', cssClass: 'cosmetic-entrance-welcome', source: 'welcome', sortOrder: 1, durations: [] },
+        // ✅ نادي المعجبين — كتالوج فقط للوحة التحكم (راجع التعليق أعلى fanClubBubbleClass/
+        // fanClubEntranceClass بـapp.js — المسار الحي يبقى مخصَّصاً، لا يستهلك هذي المستندات)
+        { type: 'bubble', name: 'النادي الفضي', cssClass: 'fanclub-bubble-silver', source: 'fanclub', fanClubTierLevel: 5, sortOrder: 1, durations: [] },
+        { type: 'bubble', name: 'النادي الذهبي', cssClass: 'fanclub-bubble-gold', source: 'fanclub', fanClubTierLevel: 9, sortOrder: 2, durations: [] },
+        { type: 'bubble', name: 'النادي البلاتيني', cssClass: 'fanclub-bubble-platinum', source: 'fanclub', fanClubTierLevel: 13, sortOrder: 3, durations: [] },
+        { type: 'bubble', name: 'أسطورة النادي', cssClass: 'fanclub-bubble-legend', source: 'fanclub', fanClubTierLevel: 17, sortOrder: 4, durations: [] },
+        { type: 'entrance', name: 'نادي المعجبين · ذهبي', cssClass: 'fanclub-entrance-gold', source: 'fanclub', fanClubTierLevel: 9, sortOrder: 1, durations: [] },
+        { type: 'entrance', name: 'نادي المعجبين · بلاتيني', cssClass: 'fanclub-entrance-platinum', source: 'fanclub', fanClubTierLevel: 13, sortOrder: 2, durations: [] },
+        { type: 'entrance', name: 'أسطوري', cssClass: 'fanclub-entrance-legend', source: 'fanclub', fanClubTierLevel: 17, sortOrder: 3, durations: [] },
+        // ✅ الثنائي — معرَّف الآن، isActive:false (بانتظار نظام الحماة — راجع coupleBubbleClass/
+        // coupleEntranceClass بـapp.js، كلتاهما تُعيدان '' دائماً حتى يُفعَّل هذا المصدر)
+        { type: 'bubble', name: 'الثنائي', cssClass: 'cosmetic-bubble-couple', source: 'couple', sortOrder: 1, durations: [], isActive: false },
+        { type: 'entrance', name: 'الثنائي', cssClass: 'cosmetic-entrance-couple', source: 'couple', sortOrder: 1, durations: [], isActive: false }
     ];
-    // 🛡️ تُدرِج فقط ما هو ناقص فعلاً — لا تلمس أي فقاعة موجودة أصلاً
-    for (const s of skins) {
-        const exists = await ChatBubbleSkin.findOne({ name: s.name });
-        if (!exists) await ChatBubbleSkin.create({ ...s, redenominatedV1: true });
+    // 🛡️ تُدرِج فقط ما هو ناقص فعلاً (findOne بالاسم+النوع معاً — "الثنائي" اسم مشترك بين
+    // bubble/entrance) — لا تلمس أي عنصر موجود أصلاً
+    for (const it of items) {
+        const exists = await CosmeticItem.findOne({ name: it.name, type: it.type });
+        if (!exists) await CosmeticItem.create({ isActive: true, ...it });
     }
+}
+
+// 🛡️ feat/gift-fx-and-cosmetics-base: حذف نهائي لنظام ChatBubbleSkin القديم بالكامل — من
+// المتجر ومن ملكية كل المستخدمين معاً (طلب صريح: "كل الحسابات تجريبية الآن"، لا مستخدمين
+// حقيقيين يخسرون شيئاً فعلياً). نفس نمط migrateDeleteRetiredFrames بالضبط: تنظيف المراجع أولاً
+// (هنا: مصفوفة كاملة + صنف نشط محتمل) ثم حذف المستندات نفسها نهائياً. غير مشروطة بأي متغيّر
+// بيئة (بخلاف FANCLUB_V2_MIGRATION مثلاً) لأنها — كبقية ترحيلات autoSeed — إضافية/تنظيفية بحتة،
+// لا تُعيد حساب أي رقم مالي، ومُحصَّنة بـif(!skins.length) return فتُنفَّذ مرة واحدة فعلياً فقط
+async function migrateDeleteAllChatBubbleSkins() {
+    const skinCount = await ChatBubbleSkin.countDocuments();
+    if (!skinCount) return;
+    // 🛡️ ownedBubbleSkins/activeBubbleSkinClass لم تعودا بالـschema (User.js) — تعديل عبر مستند
+    // Mongoose عادي (user.x = ...; user.save()) يتجاهلهما بصمت بوضع strict الافتراضي (لا يصلان
+    // قاعدة البيانات فعلياً). User.collection.updateMany يعمل مباشرة على القيادة الأصلية لـ
+    // MongoDB بصرف النظر عن الـschema الحالي، فيحذفهما فعلياً من أي مستند قديم ما زال يحملهما
+    const result = await User.collection.updateMany(
+        { $or: [{ ownedBubbleSkins: { $exists: true } }, { activeBubbleSkinClass: { $exists: true } }] },
+        { $unset: { ownedBubbleSkins: '', activeBubbleSkinClass: '' } }
+    );
+    await ChatBubbleSkin.deleteMany({});
+    console.log(`🗑️ [MIGRATION] تم حذف ${skinCount} فقاعة قديمة نهائياً (${result.modifiedCount} مستخدماً سُلخ منهم)`);
 }
 
 // ✅ الإصلاح الجذري: إصلاح بيانات المستخدمين القدامى الذين ownedFrames عندهم بصيغة قديمة
@@ -312,11 +405,13 @@ module.exports = async function autoSeed() {
         await migrateGiftFullscreenFlag(); // ✅ هدايا v2
         await seedGiftsIfMissing();
         await seedFanClubExclusiveGiftIfMissing();
+        await seedGiftFxGiftsIfMissing(); // ✅ feat/gift-fx-and-cosmetics-base
         await seedFramesIfMissing();
         await migrateRetireOldFrames(); // ✅ بعد seedFramesIfMissing كي توجد الإطارات الجديدة أولاً كبديل
         await migrateDeleteRetiredFrames(); // ✅ طلب صريح: حذف نهائي لثلاثة منها بالاسم (راجع التعليق أعلى الدالة)
         await migrateRoomSeatTiers(); // ✅ طلب صريح: تحويل غرف 15/24 مقعداً القديمة لـ13/19
-        await seedBubbleSkinsIfMissing();
+        await seedCosmeticItemsIfMissing(); // ✅ feat/gift-fx-and-cosmetics-base (يحل محل seedBubbleSkinsIfMissing)
+        await migrateDeleteAllChatBubbleSkins(); // ✅ بعد seedCosmeticItemsIfMissing — النظام الجديد موجود أولاً كبديل
         await require('../models/OneTimeMessageLog').syncIndexes(); // ✅ سبب مشكلة رقم 6 أدناه
     } catch (error) {
         console.error('[AUTO-SEED] خطأ أثناء التهيئة التلقائية:', error);
@@ -326,5 +421,7 @@ module.exports = async function autoSeed() {
 // ✅ لاختبار الوحدة (راجع __tests__/autoSeed.test.js)
 module.exports.seedGiftsIfMissing = seedGiftsIfMissing;
 module.exports.seedFanClubExclusiveGiftIfMissing = seedFanClubExclusiveGiftIfMissing;
+module.exports.seedGiftFxGiftsIfMissing = seedGiftFxGiftsIfMissing;
 module.exports.seedFramesIfMissing = seedFramesIfMissing;
-module.exports.seedBubbleSkinsIfMissing = seedBubbleSkinsIfMissing;
+module.exports.seedCosmeticItemsIfMissing = seedCosmeticItemsIfMissing;
+module.exports.migrateDeleteAllChatBubbleSkins = migrateDeleteAllChatBubbleSkins;
