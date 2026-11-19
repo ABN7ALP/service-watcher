@@ -3318,9 +3318,14 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-gift-lane > * { margin-top: calc(var(--u, 9px) * .8); margin-inline-end: calc(var(--u, 9px) * .9); }
 
-/* ✅ شريط إعلان الهدية — أسلوب TikTok Live، ينزلق من الجانب أعلى مساره ويختفي تلقائياً؛
-   عند تكرار نفس الهدية من نفس المُرسل بفارق قصير يُزاد عداد ×N بدل إنشاء شريط جديد فوق القديم */
+/* 🛡️ feat/gift-fx-and-cosmetics-base (إصلاح الخطأ أ — إشعارات الهدايا/الدخول خلف المقاعد):
+   الجذر الحقيقي هنا — z-index:60 بلا أي position مضبوط، وz-index بلا position لا أثر له إطلاقاً
+   بمواصفة CSS، فيُرسَم هذا الشريط بترتيب DOM العادي (ساكن) بدل القفز فوق المقاعد كما صُمِّم
+   ("ينزلق من الجانب أعلى مساره" بالتعليق أسفله) — absolute هنا يُفعِّل z-index:60 فعلياً */
 .room-gift-side-banner {
+    position: absolute;
+    top: 0;
+    inset-inline-end: 0;
     z-index: 60;
     display: flex;
     align-items: center;
@@ -3373,6 +3378,137 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-gift-banner-text b { font-size: 11px; color: #fde68a; }
 .room-gift-banner-text span { font-size: 10.5px; color: #e5e7eb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
+
+/* 🛡️ feat/gift-fx-and-cosmetics-base (إصلاح الخطأ أ — طبقات ثابتة الترتيب فوق المقاعد):
+   .voice-chat-stage يحتضن شبكة المقاعد + ثلاث طبقات تراكب فوقها بترتيب صريح واحد لا يتغيّر:
+   الدخول (30) ثم فيديو الهدية (39) ثم أيقونة الطيران (40) — مطابق لـdocs/design/
+   fx-studio-prototype.html (.layer-entr/.layer-vid/.layer-fx) حرفياً. z-index على .voice-chat-stage
+   نفسه (لا فقط على الطبقات) يُنشئ سياق تكديس معزولاً، فيرسم الصندوق كاملاً فوق .room-gift-lane
+   (z-index:20) ككتلة واحدة بصرف النظر عن ترتيب DOM بينهما — لا اعتماد على تكديس ضمني هش */
+.voice-chat-stage { position: relative; z-index: 25; }
+.room-entrance-layer { position: absolute; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
+/* ✅ mix-blend-mode:screen على طبقة الفيديو نفسها (لا فيديو معزول بعنصر منفصل داخلها) —
+   هكذا تُزال الخلفية السوداء للفيديو حقاً (راجع ملاحظة "التقنية" بالنموذج الأولي) */
+.room-giftfx-video-layer { position: absolute; inset: 0; z-index: 39; pointer-events: none; overflow: hidden; mix-blend-mode: screen; }
+.room-giftfx-fly-layer { position: absolute; inset: 0; z-index: 40; pointer-events: none; overflow: visible; }
+
+/* ===== إعلان الدخول المنزلق (يحل محل التصميم المضمَّن القديم بسطر الدردشة لنادي المعجبين فقط —
+   الآن عام لكل مصدر: ترحيب/نادي معجبين/ثنائي لاحقاً) ===== */
+.room-entrance-toast {
+    position: absolute; top: 14px; inset-inline-end: -110%; width: 90%; max-width: 320px;
+    height: 44px; border-radius: 999px 10px 10px 999px; display: flex; align-items: center;
+    gap: 8px; padding: 0 6px 0 12px; font-size: 12px; font-weight: 800; white-space: nowrap;
+    overflow: hidden; color: #fff;
+    animation: roomEntranceToast 3.2s cubic-bezier(.2,.8,.2,1) forwards;
+}
+@keyframes roomEntranceToast {
+    0% { inset-inline-end: -110%; }
+    12% { inset-inline-end: 4%; }
+    80% { inset-inline-end: 4%; opacity: 1; }
+    100% { inset-inline-end: 4%; opacity: 0; }
+}
+.room-entrance-toast-av { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; color: #fff; flex: none; overflow: hidden; }
+.room-entrance-toast-av img { width: 100%; height: 100%; object-fit: cover; }
+.room-entrance-toast small { font-weight: 700; opacity: .85; font-size: 10.5px; display: block; }
+.room-entrance-toast.cosmetic-entrance-welcome { background: linear-gradient(90deg,#2fd4b4,#0e7490 60%,#0e749000); color: #03201d; }
+.room-entrance-toast.cosmetic-entrance-gold { background: linear-gradient(90deg,#ffd45e,#c27a0e 60%,#ffd45e00); color: #2b1b00; box-shadow: 0 0 18px rgba(255,212,94,.35); }
+.room-entrance-toast.cosmetic-entrance-platinum { background: linear-gradient(90deg,#5eead4,#0e7490 60%,#0e749000); color: #032a2a; box-shadow: 0 0 18px rgba(94,234,212,.35); }
+.room-entrance-toast.cosmetic-entrance-legend { height: 52px; background: linear-gradient(90deg,#f0abfc,#7e22ce 55%,#7e22ce00); color: #fff; box-shadow: 0 0 22px rgba(240,171,252,.45); }
+.room-entrance-toast.cosmetic-entrance-legend::before {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(110deg,transparent 30%,#fff7 50%,transparent 70%);
+    background-size: 250% 100%; animation: cosmeticSheen 1.6s linear infinite;
+}
+.room-entrance-toast-mark { font-weight: 900; }
+@media (prefers-reduced-motion: reduce) {
+    .room-entrance-toast { animation: roomEntranceToastReduced 3.2s linear forwards; }
+}
+@keyframes roomEntranceToastReduced { 0% { inset-inline-end: 4%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ===== مؤثر فيديو الهدية ===== */
+.room-giftfx-video { position: absolute; left: 50%; top: 44%; transform: translate(-50%,-50%); width: 150%; max-width: none; }
+.room-giftfx-static { position: absolute; left: 50%; top: 44%; transform: translate(-50%,-50%); width: 90px; height: 90px; display: flex; align-items: center; justify-content: center; font-size: 56px; filter: drop-shadow(0 0 14px rgba(255,212,94,.5)); }
+.room-giftfx-flyer { position: absolute; width: 56px; height: 56px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px; transition: left .9s cubic-bezier(.5,0,.3,1), top .9s cubic-bezier(.5,0,.3,1), transform .9s cubic-bezier(.5,0,.3,1); filter: drop-shadow(0 0 10px rgba(255,212,94,.6)); }
+.room-giftfx-flyer img { width: 100%; height: 100%; object-fit: contain; }
+@media (prefers-reduced-motion: reduce) {
+    .room-giftfx-flyer { transition: none; }
+}
+
+/* ===== فقاعات متجر الدردشة الجديدة (8 تصاميم) — منسوخة من docs/design/fx-studio-prototype.html
+   كتصاميم مبدئية (راجع بند 3 بالمواصفة: "ليست التصاميم النهائية، بل الأساس") =====
+   bb = صنف أساسي مشترك (الحشو/الزوايا)، تُستخدم فوق صفوف رسائل الغرفة room-chat-message
+   وبطاقات المتجر معاً — نفس الأصناف الفرعية (bubble-gold/rose/...) بالضبط بالمكانين */
+@keyframes cosmeticSheen { from { background-position: 150% 0; } to { background-position: -100% 0; } }
+@keyframes cosmeticTwinkle { 50% { opacity: .2; transform: scale(.6); } }
+@keyframes cosmeticWave { to { transform: translateX(24px); } }
+@keyframes cosmeticAurora { 50% { background-position: 100% 50%; } }
+@keyframes cosmeticSpark { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-22px); opacity: 0; } }
+@keyframes cosmeticBeat { 50% { transform: scale(1.25); } }
+
+.bb { position: relative; isolation: isolate; }
+.bb .nm { font-weight: 900; margin-inline-end: 4px; }
+.bb::before, .bb::after { content: ""; position: absolute; pointer-events: none; }
+
+.bubble-gold { background: linear-gradient(135deg,#3a2606,#1f1404 60%,#3a2606); box-shadow: inset 0 0 0 1.5px #ffd45e, 0 0 14px rgba(255,176,32,.2); }
+.bubble-gold .nm { background: linear-gradient(90deg,#fff1b8,#ffcc4d,#c88a12); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.bubble-gold::before { inset: 0; border-radius: inherit; background: linear-gradient(110deg,transparent 35%,#fff3 50%,transparent 65%); background-size: 250% 100%; animation: cosmeticSheen 3s linear infinite; z-index: -1; }
+.bubble-gold::after { content: "👑"; top: -12px; inset-inline-end: -6px; font-size: 15px; filter: drop-shadow(0 0 4px #ffcc4d); }
+
+.bubble-rose { background: linear-gradient(135deg,#4a0f2b,#2a0a1b); box-shadow: inset 0 0 0 1.5px #ff7ab6; }
+.bubble-rose .nm { color: #ff9cc9; }
+.bubble-rose::before { content: "🌹"; top: -10px; inset-inline-start: -8px; font-size: 15px; transform: rotate(-20deg); }
+.bubble-rose::after { content: "❀ ❀"; bottom: -9px; inset-inline-end: 8px; font-size: 10px; color: #ff9cc9; letter-spacing: 2px; }
+
+.bubble-ocean { background: linear-gradient(180deg,#06394a,#04202b); box-shadow: inset 0 0 0 1.5px rgba(67,217,255,.53); overflow: hidden; }
+.bubble-ocean .nm { color: #7fe6ff; }
+.bubble-ocean::before { left: -20%; right: -20%; bottom: -6px; height: 16px; background: radial-gradient(12px 8px at 12px 0,transparent 60%,rgba(67,217,255,.27) 62%) repeat-x; background-size: 24px 16px; animation: cosmeticWave 2.4s linear infinite; z-index: -1; }
+
+.bubble-neon { background: #120a1f; box-shadow: inset 0 0 0 1.5px #ff4fd8, 0 0 12px rgba(255,79,216,.4), inset 0 0 10px rgba(255,79,216,.2); }
+.bubble-neon .nm { color: #ff8be8; text-shadow: 0 0 6px #ff4fd8; }
+
+.bubble-aurora { background: linear-gradient(120deg,#0d2b3a,#2a1150,#0d3a2b,#2a1150); background-size: 300% 300%; animation: cosmeticAurora 6s ease infinite; box-shadow: inset 0 0 0 1px rgba(255,255,255,.2); }
+.bubble-aurora .nm { color: #b9ffe6; }
+
+.bubble-ember { background: linear-gradient(180deg,#1d0c06,#3a1405); box-shadow: inset 0 -2px 0 #ff7a1a, inset 0 0 0 1px rgba(255,122,26,.4), 0 4px 14px rgba(255,90,0,.27); overflow: visible; }
+.bubble-ember .nm { color: #ffb070; }
+.bubble-ember::before { width: 3px; height: 3px; border-radius: 50%; background: #ffb070; bottom: 2px; left: 20%; box-shadow: 20px 0 #ff7a1a, 45px 0 #ffd45e, 70px 0 #ff7a1a; animation: cosmeticSpark 1.8s ease-out infinite; }
+
+.bubble-crystal { background: linear-gradient(135deg,rgba(255,255,255,.13),rgba(159,216,255,.08)); backdrop-filter: blur(6px); box-shadow: inset 0 0 0 1px rgba(214,240,255,.6), 0 0 10px rgba(159,216,255,.2); }
+.bubble-crystal .nm { color: #d6f0ff; }
+.bubble-crystal::after { content: "✦"; top: -8px; inset-inline-end: 6px; color: #d6f0ff; font-size: 12px; animation: cosmeticTwinkle 1.6s ease-in-out infinite; }
+
+.bubble-galaxy {
+    background: radial-gradient(1px 1px at 20% 30%,#fff,transparent), radial-gradient(1px 1px at 70% 60%,#fff,transparent),
+        radial-gradient(1.5px 1.5px at 85% 20%,#fff,transparent), radial-gradient(1px 1px at 40% 80%,#fff,transparent),
+        linear-gradient(135deg,#1a0f3a,#0a0620);
+    box-shadow: inset 0 0 0 1px rgba(139,92,255,.53);
+}
+.bubble-galaxy .nm { color: #c8b4ff; }
+
+/* ✅ الترحيب — مصدر واحد لكل من الفقاعة والإعلان (نفس اسم الصنف الأساسي cosmetic-bubble-welcome
+   هنا للفقاعة، وcosmetic-entrance-welcome أعلاه للإعلان — عنصران مستقلان بـCosmeticItem لكن تصميم متناسق) */
+.cosmetic-bubble-welcome { background: linear-gradient(135deg,#123a33,#0d2622); box-shadow: inset 0 0 0 1.5px rgba(94,234,212,.67); }
+.cosmetic-bubble-welcome .nm { color: #7ff5de; }
+.cosmetic-bubble-welcome::after { content: "👋 جديد"; top: -9px; inset-inline-start: 10px; font-size: 9px; font-weight: 900; background: #2fd4b4; color: #06221c; border-radius: 6px; padding: 0 6px; line-height: 16px; position: absolute; }
+
+/* ✅ فئات نادي المعجبين الأربع بالفقاعة/الإعلان تبقى بتصميمها الحالي المُختبَر فعلياً
+   (fanclub-bubble-silver/gold/platinum/legend، fanclub-entrance-gold/platinum/legend —
+   راجع fanClubBubbleClass/fanClubEntranceClass أعلى الملف) بلا أي تغيير — عناصر CosmeticItem
+   بمصدر 'fanclub' بالبذر تشير لنفس هذي الأصناف فقط لتظهر بلوحة تحكم الأدمن ضمن كتالوج موحَّد،
+   لا لأنها تُستهلَك حياً من المسار العام (المسار المخصَّص أسرع ومُختبَر، فلا داعي لتغييره الآن) */
+
+/* ✅ الثنائي — معرَّف الآن (بانتظار تفعيله مع نظام الحماة)، غير مُستخدَم فعلياً حتى ذلك الحين */
+.cosmetic-bubble-couple { background: linear-gradient(135deg,#4a0f2b,#2a1150); box-shadow: inset 0 0 0 1.5px #ff7ab6, 0 0 12px rgba(255,95,168,.27); }
+.cosmetic-bubble-couple .nm { color: #ffc2dd; }
+.cosmetic-bubble-couple::after { content: "💞"; top: -11px; inset-inline-end: -6px; font-size: 15px; animation: cosmeticBeat 1.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+    .bb::before, .bb::after, .bb, .cosmetic-bubble-welcome, .cosmetic-bubble-fc-silver, .cosmetic-bubble-fc-gold,
+    .cosmetic-bubble-fc-platinum, .cosmetic-bubble-fc-legend, .cosmetic-bubble-couple { animation: none !important; }
+}
+body.lite-mode .bb::before, body.lite-mode .bb::after, body.lite-mode .bb,
+body.lite-mode .cosmetic-bubble-welcome, body.lite-mode .cosmetic-bubble-fc-silver, body.lite-mode .cosmetic-bubble-fc-gold,
+body.lite-mode .cosmetic-bubble-fc-platinum, body.lite-mode .cosmetic-bubble-fc-legend, body.lite-mode .cosmetic-bubble-couple { animation: none !important; }
 .room-gift-banner-icon { width: 26px; height: 26px; object-fit: contain; flex-shrink: 0; }
 .room-gift-banner-icon-emoji { font-size: 20px; flex-shrink: 0; }
 

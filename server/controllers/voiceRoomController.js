@@ -862,7 +862,7 @@ exports.getRoomMessages = async (req, res) => {
         const messages = await Message.find({ room: channel })
             .sort({ createdAt: -1 })
             .limit(50)
-            .populate('sender', 'username profileImage activeFrameClass activeBubbleSkinClass level')
+            .populate('sender', 'username profileImage activeFrameClass activeBubbleCosmeticClass level')
             .lean();
 
         // 🛡️ feat/fanclub-v2-ui: دفعة واحدة لشارات نادي المعجبين لكل مرسلي سجل الدردشة —

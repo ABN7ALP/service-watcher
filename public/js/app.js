@@ -2570,8 +2570,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const isHostMsg = !!currentRoomHostId && senderId === currentRoomHostId;
         // 🛡️ feat/fanclub-final: فقاعة نادي المعجبين (5/9/13/17+) تحل محل الفقاعة المشتراة
         // داخل غرفة هذا المالك فقط — فارغة لمن لا يستحقها فيبقى bubbleClass المشترى كما هو
+        // 🛡️ feat/gift-fx-and-cosmetics-base: ترتيب الأولوية الكامل (راجع docs/design/
+        // fx-studio-prototype.html): النادي ← الثنائي ← المتجر المختارة ← الترحيب. الثنائي
+        // معطَّل حالياً (بانتظار نظام الحماة) فـcoupleBubbleClass تُعيد '' دائماً مؤقتاً —
+        // موضعها هنا جاهز فلا حاجة لإعادة ترتيب أي شيء عند تفعيلها لاحقاً. المتجر والترحيب
+        // كلاهما بحقل واحد (activeBubbleCosmeticClass) لأن التفعيل التلقائي للترحيب عند
+        // التسجيل + انتهاء صلاحيته بمهمة الخلفية يجعلانه يتصرّف كاحتياط طبيعي حين لا يوجد شراء
         const fanClubBubble = fanClubBubbleClass(msg.sender?.fanClub || null);
-        const bubbleClass = fanClubBubble || msg.sender?.activeBubbleSkinClass || 'room-chat-bubble-default';
+        const coupleBubble = coupleBubbleClass(msg.sender);
+        const bubbleClass = fanClubBubble || coupleBubble || msg.sender?.activeBubbleCosmeticClass || 'room-chat-bubble-default';
         el.className = `room-chat-message ${bubbleClass}`;
         const safeName = escapeHtml(msg.sender?.username || '');
         const safeContent = escapeHtml(msg.content || '');
@@ -2669,6 +2676,39 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         box.appendChild(el);
         box.scrollTop = box.scrollHeight;
+    }
+
+    // 🛡️ feat/gift-fx-and-cosmetics-base: الإعلان المنزلق الجديد فوق المقاعد (.room-entrance-layer
+    // — إصلاح الخطأ أ) — طابور أقصاه 3 (الزائد يُتجاهَل بصمت)، كل واحد 3 ثوانٍ تقريباً، لا يمنع
+    // الضغط على أي شيء تحته (pointer-events:none على الطبقة كلها). منفصل تماماً عن سطر "فلان
+    // انضم" الدائم بالدردشة أعلاه — هذا فقط للتأثير البصري المميَّز (نادٍ/ترحيب/ثنائي لاحقاً)
+    const ROOM_ENTRANCE_TOAST_MAX_QUEUE = 3;
+    let roomEntranceToastQueue = [];
+    let roomEntranceToastShowing = false;
+    function fanClubTierToToastClass(level) {
+        if (level >= FANCLUB_PERK_LEVEL.legendFrame) return 'cosmetic-entrance-legend';
+        if (level >= FANCLUB_PERK_LEVEL.exclusiveGift) return 'cosmetic-entrance-platinum';
+        return 'cosmetic-entrance-gold';
+    }
+    function queueRoomEntranceToast(payload) {
+        if (roomEntranceToastQueue.length >= ROOM_ENTRANCE_TOAST_MAX_QUEUE) return;
+        roomEntranceToastQueue.push(payload);
+        if (!roomEntranceToastShowing) playNextRoomEntranceToast();
+    }
+    function playNextRoomEntranceToast() {
+        const payload = roomEntranceToastQueue.shift();
+        if (!payload) { roomEntranceToastShowing = false; return; }
+        roomEntranceToastShowing = true;
+        const layer = document.getElementById('room-entrance-layer');
+        if (!layer) { roomEntranceToastShowing = false; return; }
+        const el = document.createElement('div');
+        el.className = `room-entrance-toast ${payload.cssClass}`;
+        el.innerHTML = `
+            <span class="room-entrance-toast-av"><img src="${payload.profileImage}" alt="" data-avatar-fallback></span>
+            <span>${payload.markText ? `<b class="room-entrance-toast-mark">${escapeHtml(payload.markText)}</b> ` : ''}<b>${escapeHtml(payload.username)}</b><small>دخل الغرفة</small></span>
+        `;
+        layer.appendChild(el);
+        setTimeout(() => { el.remove(); playNextRoomEntranceToast(); }, 3600);
     }
 
     // =====================================================
@@ -3324,7 +3364,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 </span>
                 <div id="room-notice" class="room-notice"><span id="room-notice-text"></span></div>
             </div>
-            <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
+            <div id="voice-chat-stage" class="voice-chat-stage">
+                <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
+                <div id="room-entrance-layer" class="room-entrance-layer"></div>
+                <div id="room-giftfx-video-layer" class="room-giftfx-video-layer"></div>
+                <div id="room-giftfx-fly-layer" class="room-giftfx-fly-layer"></div>
+            </div>
             <div id="room-gift-lane" class="room-gift-lane"></div>
             ${renderRoomChatMarkup()}
             <div id="room-kb-spacer" class="room-kb-spacer"></div>
@@ -7273,7 +7318,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <span class="text-xs text-gray-400">80 مقعد</span>
             </div>
-            <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
+            <div id="voice-chat-stage" class="voice-chat-stage">
+                <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
+                <div id="room-entrance-layer" class="room-entrance-layer"></div>
+                <div id="room-giftfx-video-layer" class="room-giftfx-video-layer"></div>
+                <div id="room-giftfx-fly-layer" class="room-giftfx-fly-layer"></div>
+            </div>
             <div id="room-gift-lane" class="room-gift-lane"></div>
             ${renderRoomChatMarkup()}
             <div id="room-kb-spacer" class="room-kb-spacer"></div>
@@ -8933,38 +8983,40 @@ async function showFrameShopModal() {
     await reload();
 }
 
+// 🛡️ feat/gift-fx-and-cosmetics-base: يحل محل متجر ChatBubbleSkin القديم (سعر ثابت واحد) —
+// كل فقاعة الآن مدتان (7/30 يوماً) بسعرين مستقلّين، نفس أسلوب كبسولات مدة الإطارات
+// (frame-shop-duration-pill) بالضبط، لا تصميم جديد مختلف يحتاج تعلّماً من المستخدم
 async function reloadBubbleShopSection() {
     try {
-        const bubbleResponse = await fetch('/api/bubble-skins/shop', { headers: { 'Authorization': `Bearer ${token}` } });
-        const bubbleResult = await bubbleResponse.json();
-        if (!bubbleResponse.ok) throw new Error();
-        const bubbleShopData = bubbleResult.data;
+        const shopResponse = await fetch('/api/cosmetics/shop', { headers: { 'Authorization': `Bearer ${token}` } });
+        const shopResult = await shopResponse.json();
+        if (!shopResponse.ok) throw new Error();
+        const shopData = shopResult.data;
 
         const section = document.getElementById('bubble-shop-section');
         if (!section) return;
 
-                section.innerHTML = `
+        section.innerHTML = `
             <div class="flex items-center justify-between mb-3 bg-gray-900/50 rounded-xl p-2.5">
                 <span class="text-xs text-gray-400">رصيدك الحالي</span>
-                <span class="font-bold text-yellow-400 text-sm">${coinIconHTML(14)} ${bubbleShopData.coins}</span>
+                <span class="font-bold text-yellow-400 text-sm">${coinIconHTML(14)} ${shopData.coins}</span>
             </div>
-            <div class="grid grid-cols-3 gap-2">
-                ${bubbleShopData.skins.map(s => {
-                    const isActive = bubbleShopData.activeClass === s.cssClass;
+            <div class="grid grid-cols-2 gap-2">
+                ${shopData.items.map(it => {
+                    const isActive = shopData.activeItemId === it._id;
+                    const isOwned = !!it.owned;
                     return `
-                    <div class="rounded-xl p-2 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'} ${s.cssClass}">
-                        <p class="text-[11px] font-bold mb-1 truncate">${s.name}</p>
-                        <p class="text-[10px] text-yellow-300 mb-1.5">${coinIconHTML(12)} ${s.price}</p>
-                        ${s.owned ? `
+                    <div class="rounded-xl p-2.5 text-center border ${isActive ? 'border-yellow-400' : 'border-gray-700'} bb ${it.cssClass}">
+                        <p class="text-[11px] font-bold mb-1.5 truncate nm">${escapeHtml(it.name)}</p>
+                        <div class="flex gap-1.5 mb-1.5">
+                            ${it.durations.map(d => `<button type="button" class="bubble-shop-duration-pill flex-1 text-[10px] py-1 rounded-full bg-black/30" data-days="${d.days}" data-item-id="${it._id}">${d.days === 7 ? '7 أيام' : d.days + ' يوماً'}<br>${coinIconHTML(10)} ${fmtNum(d.price)}</button>`).join('')}
+                        </div>
+                        ${isOwned ? `
                             <button class="equip-bubble-btn w-full text-[10px] py-1.5 rounded-full ${isActive ? 'bg-gray-600 text-gray-300' : 'bg-purple-600 hover:bg-purple-700 text-white'}"
-                                    data-skin-id="${s._id}" ${isActive ? 'disabled' : ''}>
-                                ${isActive ? 'مُفعّل' : 'تفعيل'}
+                                    data-item-id="${it._id}" ${isActive ? 'disabled' : ''}>
+                                ${isActive ? 'مُفعّلة' : 'تفعيل'}
                             </button>
-                        ` : `
-                            <button class="purchase-bubble-btn w-full text-[10px] py-1.5 rounded-full bg-green-600 hover:bg-green-700 text-white" data-skin-id="${s._id}">
-                                شراء
-                            </button>
-                        `}
+                        ` : ''}
                     </div>
                 `}).join('')}
             </div>
@@ -8976,15 +9028,16 @@ async function reloadBubbleShopSection() {
 }
 
 function bindBubbleShopButtons() {
-    document.querySelectorAll('.purchase-bubble-btn').forEach(btn => {
+    document.querySelectorAll('.bubble-shop-duration-pill').forEach(btn => {
         btn.addEventListener('click', async function() {
-            const skinId = this.dataset.skinId;
+            const itemId = this.dataset.itemId;
+            const days = this.dataset.days;
             this.disabled = true;
             try {
-                const response = await fetch('/api/bubble-skins/purchase', {
+                const response = await fetch('/api/cosmetics/purchase', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ skinId })
+                    body: JSON.stringify({ itemId, days })
                 });
                 const result = await response.json();
                 if (response.ok) {
@@ -9004,13 +9057,13 @@ function bindBubbleShopButtons() {
 
     document.querySelectorAll('.equip-bubble-btn').forEach(btn => {
         btn.addEventListener('click', async function() {
-            const skinId = this.dataset.skinId;
+            const itemId = this.dataset.itemId;
             this.disabled = true;
             try {
-                const response = await fetch('/api/bubble-skins/equip', {
+                const response = await fetch('/api/cosmetics/equip', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ skinId })
+                    body: JSON.stringify({ itemId })
                 });
                 const result = await response.json();
                 if (response.ok) {
@@ -10245,7 +10298,8 @@ function showXpGainAnimation(amount) {
         pkCacheUserDisplay(data.fromUserId, data.fromUsername, null);
         gfxQueueLegendary({
             giftImage: data.giftImage, giftIcon: data.giftIcon, giftName: data.giftName,
-            fromUsername: data.fromUsername, toLabel: escapeHtml(data.toLabel || ''), isSelf: false
+            fromUsername: data.fromUsername, toLabel: escapeHtml(data.toLabel || ''), isSelf: false,
+            giftVideoUrl: data.giftVideoUrl || null, toUserId: data.toUserId || null
         });
     });
 
@@ -10468,12 +10522,24 @@ function showXpGainAnimation(amount) {
     });
 
     // ✅ إعلان انضمام فوري لدخول الغرفة (مشاهداً) — قبل أي طلب صعود، بالضبط زي التطبيقات المشهورة
-    socket.on('user-entered-room', ({ roomId, userId, username, profileImage, fanClubEntrance }) => {
+    socket.on('user-entered-room', ({ roomId, userId, username, profileImage, fanClubEntrance, entranceCosmeticClass }) => {
         if (roomId !== roomChatCurrentRoomId) return;
         appendJoinAnnouncement(userId, username, profileImage, fanClubEntrance);
         // ✅ طلب صريح (بند 8 — مطابقة §.join بالنموذج): سطر منزلق إضافي أعلى الدردشة، منفصل
         // تماماً عن سجل "انضم" الدائم أعلاه (الذي يحتفظ بزر الترحيب السريع للمضيف)
         showRoomJoinNotice(userId, username);
+        // 🛡️ feat/gift-fx-and-cosmetics-base: الإعلان المنزلق فوق المقاعد — نادي المعجبين أولاً
+        // (نفس عتبات fanClubEntranceClass)، وإلا أي إعلان ترحيب/ثنائي نشط من الخادم
+        if (fanClubEntrance) {
+            const isLegend = fanClubEntrance.level >= FANCLUB_PERK_LEVEL.legendFrame;
+            queueRoomEntranceToast({
+                username, profileImage,
+                cssClass: fanClubTierToToastClass(fanClubEntrance.level),
+                markText: isLegend ? '✦✦ أسطورة النادي' : '✦'
+            });
+        } else if (entranceCosmeticClass) {
+            queueRoomEntranceToast({ username, profileImage, cssClass: entranceCosmeticClass, markText: null });
+        }
     });
 
     // 🛡️ feat/fanclub-v2-ui: احتفال ارتقاء مستوى معجب — يظهر لكل من بالغرفة (لا فقط العضو نفسه،
@@ -14142,6 +14208,12 @@ function fanClubBubbleClass(fanClub) {
     return '';
 }
 
+// 🛡️ feat/gift-fx-and-cosmetics-base: فقاعة/إعلان الثنائي — معرَّفان بـCosmeticItem (source:
+// couple) لكن غير مُفعَّلين بعد (isActive:false بالبذر) بانتظار نظام الحماة؛ تُعيدان '' دائماً
+// حالياً فلا يظهر أي شيء، لكن ترتيب الأولوية (نادٍ ← ثنائي ← متجر/ترحيب) جاهز بلا أي إعادة ترتيب لاحقاً
+function coupleBubbleClass(sender) { return ''; }
+function coupleEntranceClass(sender) { return ''; }
+
 // 🛡️ feat/fanclub-final: وزن إعلان الدخول — ذهبي (9+)، بلاتيني (13+)، أسطوري متحرك (17+).
 // fanClubEntrance الوارد هنا مُستبعَد مسبقاً تحت Lv.9 بالخادم، فهذا فقط يُفرِّق الثلاثة فوقها
 function fanClubEntranceClass(fanClub) {
@@ -17330,6 +17402,14 @@ function teardownGiftComboFx() {
     gfxLegendaryQueue = [];
     gfxLegendaryPlaying = false;
     document.getElementById('gfx-top-toast')?.remove();
+    // 🐛 إصلاح جذري (الخطأ ب — الهدايا توقّفت عن الطيران للمقعد): gfxActiveFlyCount (بند 3،
+    // حدّ الطيران المتزامن على الأجهزة الضعيفة) لم تكن تُصفَّر هنا أبداً — أي رسوم طيران لم
+    // يكتمل حدث onfinish الخاص بها فعلياً قبل مغادرة الغرفة (عنصرها أُزيل من DOM قسراً ضمن
+    // هذا التطهير نفسه، لا بانتهاء حركتها طبيعياً) تُسرِّب عدّاً لا يعود أبداً. بعد غرفتين/ثلاث
+    // على جهاز isWeakDevice() (الحد الأقصى 2 فقط — ويتحقق هذا الشرط على أغلب الهواتف متوسطة
+    // الفئة أصلاً عبر hardwareConcurrency<=4) يعلق العداد دائماً عند الحد فيُسقَط كل طيران لاحق
+    // بصمت بأي غرفة قادمة أيضاً — لا خطأ ظاهر، فقط "لم تعد الهدايا تطير" كما وُصِف تماماً
+    gfxActiveFlyCount = 0;
 }
 
 // 🛡️ طلب صريح (مراجعة الأداء — بند 2ج): صورة الهدية الأصلية (شائعة تتجاوز 300-800KB — راجع
@@ -17890,11 +17970,17 @@ function startGiftComboSession(ctx) {
     });
 
     // ---------- أسطورية بملء الشاشة — فورية للمُرسِل نفسه (لا تنتظر صدى السيرفر) ----------
-    if (gift.category === 'legendary' && !legendaryTriggered) {
+    // 🛡️ feat/gift-fx-and-cosmetics-base: نفس الشرط الفوري يشمل الآن أي هدية تملك videoUrl
+    // بصرف النظر عن category (فراشة النادي حصرية لا أسطورية) — راجع gfxRenderLegendary أسفل
+    if ((gift.category === 'legendary' || gift.videoUrl) && !legendaryTriggered) {
         legendaryTriggered = true;
         // ✅ بند 3 بمراجعة PR #108: طابور تشغيل تسلسلي — لو جلستي تتزامن مع صدى أسطورية
         // أخرى من مستخدم آخر، كلاهما يُعرَض بدوره لا متراكبَين
-        gfxQueueLegendary({ giftImage: gift.imageUrl, giftIcon: gift.icon, giftName: gift.name, fromUsername: 'أنت', toLabel, isSelf: true });
+        gfxQueueLegendary({
+            giftImage: gift.imageUrl, giftIcon: gift.icon, giftName: gift.name, fromUsername: 'أنت', toLabel, isSelf: true,
+            giftVideoUrl: gift.videoUrl || null,
+            toUserId: recipientUsers.length === 1 ? recipientUsers[0]._id : null
+        });
     }
 
     // ---------- بدء الجلسة بالضغطة الأولى (الكمية الكاملة المختارة بالشيت) ----------
@@ -17937,7 +18023,17 @@ function startGiftComboSession(ctx) {
 // ✅ طلب صريح (بند 3 بمراجعة PR #108): طابور تشغيل تسلسلي — أسطوريتان (حتى لو واحدة محلية
 // متفائلة للمُرسِل والأخرى صدى سيرفر لمُرسِل آخر) لا تتراكبان بصرياً أبداً بعد الآن، كل واحدة
 // تنتظر دورها وتُشغَّل كاملة (3.2 ثانية) قبل التالية
+// 🛡️ feat/gift-fx-and-cosmetics-base: "فيديو واحد فقط بنفس الوقت، طابور أقصاه 2، وأي هدية
+// فيديو زائدة تظهر كأيقونة تطير فقط" — عداد منفصل لعناصر الفيديو تحديداً (لا الطابور كله،
+// فبطاقات الهدايا الأسطورية بلا فيديو تبقى تنتظر دورها عادياً بلا حدّ أقصى كما كانت)
+let gfxVideoQueueDepth = 0;
+const GFX_VIDEO_QUEUE_MAX = 2;
 function gfxQueueLegendary(entry) {
+    if (entry.giftVideoUrl && gfxVideoQueueDepth >= GFX_VIDEO_QUEUE_MAX) {
+        gfxFlyGiftIconOnly(entry);
+        return;
+    }
+    if (entry.giftVideoUrl) gfxVideoQueueDepth++;
     gfxLegendaryQueue.push(entry);
     if (!gfxLegendaryPlaying) gfxPlayNextLegendary();
 }
@@ -17956,6 +18052,13 @@ function gfxPlayNextLegendary() {
 // بعكس data.fromUsername/data.giftName اللتين تُهرَّبان هنا دوماً (قد تكونان خامتين من صدى السيرفر)
 // onDone: طلب صريح — إشارة انتهاء حقيقية (لا setTimeout معزول بلا تتبّع) كي يبدأ الطابور التالي
 function gfxRenderLegendary(data, onDone) {
+    // 🛡️ feat/gift-fx-and-cosmetics-base: هدية بفيديو مؤثر — مسار مختلف كلياً (فيديو فوق
+    // الغرفة ثم طيران للمقعد)، لا بطاقة gfx-legend الثابتة. العداد هنا (لا بـgfxQueueLegendary)
+    // كي يُحرَّر فقط بعد اكتمال العرض فعلاً مهما كان مصير التشغيل (نجح/أُلغي/جهاز ضعيف)
+    if (data.giftVideoUrl) {
+        gfxRenderGiftVideo(data, () => { gfxVideoQueueDepth = Math.max(0, gfxVideoQueueDepth - 1); onDone?.(); });
+        return;
+    }
     if (gfxPrefersReducedMotion()) { onDone?.(); return; }
     document.getElementById('gfx-legend')?.remove();
     // ✅ بند 3: أثناء العرض، الشريط الجانبي (مكاني أو لغيري) يختفي بصرياً — لا ازدحام فوق
@@ -17991,6 +18094,129 @@ function gfxRenderLegendary(data, onDone) {
         hiddenCards.forEach(c => c.classList.remove('gfx-hidden-for-legend'));
         onDone?.();
     }, 3200);
+}
+
+// 🛡️ feat/gift-fx-and-cosmetics-base: نقطة مقعد داخل .voice-chat-stage نفسها (لا body) —
+// إحداثيات نسبية لصندوق المرحلة الموضعي (position:relative)، مطابقة لنمط gfxSeatFlyPoint/
+// gfxFlyFallbackPoint الموجودين أعلى الملف تماماً لكن لمرجع مختلف يلائم .room-giftfx-fly-layer
+function gfxStageSeatPoint(userId) {
+    const stage = document.getElementById('voice-chat-stage');
+    const wrap = userId && document.querySelector(`#voice-chat-grid [data-user-id="${userId}"] .voice-seat-av-wrap`);
+    if (!stage || !wrap) return null;
+    const sr = stage.getBoundingClientRect();
+    const r = wrap.getBoundingClientRect();
+    return { x: r.left - sr.left + r.width / 2 - 28, y: r.top - sr.top + r.height / 2 - 28 };
+}
+function gfxStageFallbackPoint() {
+    const stage = document.getElementById('voice-chat-stage');
+    if (!stage) return { x: 0, y: 0 };
+    return { x: stage.clientWidth / 2 - 28, y: Math.max(0, stage.clientHeight - 56) };
+}
+
+// ✅ طيران أيقونة الهدية فقط (بلا فيديو ولا بطاقة ملء شاشة) — يُستخدَم حين يمتلئ طابور الفيديو
+// (بند الخفة: "أي هدية فيديو زائدة تظهر كأيقونة تطير فقط")، وأيضاً كخطوة أخيرة دوماً بعد أي
+// فيديو/صورة ثابتة لنفس الهدية (gfxRenderGiftVideo أسفل)
+function gfxFlyGiftIconOnly(data) {
+    const layer = document.getElementById('room-giftfx-fly-layer');
+    if (!layer || gfxPrefersReducedMotion()) return;
+    const giftImgUrl = isHttpsImageUrl(data.giftImage) ? data.giftImage : null;
+    const from = gfxStageFallbackPoint();
+    const to = data.toUserId ? (gfxStageSeatPoint(data.toUserId) || from) : from;
+    const f = document.createElement('div');
+    f.className = 'room-giftfx-flyer';
+    if (giftImgUrl) {
+        const img = document.createElement('img');
+        img.src = giftImgUrl;
+        img.alt = '';
+        wireGiftImgFallback(img, giftImgUrl, data.giftIcon || '🎁');
+        f.appendChild(img);
+    } else {
+        const span = document.createElement('span');
+        span.textContent = data.giftIcon || '🎁';
+        f.appendChild(span);
+    }
+    f.style.left = from.x + 'px';
+    f.style.top = from.y + 'px';
+    layer.appendChild(f);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        f.style.left = to.x + 'px';
+        f.style.top = to.y + 'px';
+        f.style.transform = 'scale(.6)';
+    }));
+    setTimeout(() => f.remove(), 950);
+}
+
+// ✅ وضع الأجهزة الضعيفة التلقائي الخاص بفيديو الهدايا تحديداً — ذاكرة جهاز ≤2GB أو "توفير
+// البيانات" بالمتصفح (أو تفعيل المستخدم اليدوي لوضع الأجهزة الضعيفة العام) — صفر طلب فيديو
+// إطلاقاً بهذي الحالة (صورة ثابتة فقط)، لا فقط تخفيف حركة كبقية استخدامات isWeakDevice
+function gfxShouldUseLiteGiftVideo() {
+    try {
+        if (document.body.classList.contains('lite-mode')) return true;
+        if (navigator.deviceMemory && navigator.deviceMemory <= 2) return true;
+        if (navigator.connection && navigator.connection.saveData) return true;
+    } catch (_) { /* تجاهل أي متصفح لا يدعم هذي الـAPIs */ }
+    return false;
+}
+
+// 🛡️ feat/gift-fx-and-cosmetics-base: مشغّل فيديو مؤثر الهدية — فوق الغرفة بـmix-blend-mode:
+// screen (على طبقة .room-giftfx-video-layer نفسها لا الفيديو المعزول، وإلا يظهر الأسود)، ثم
+// طيران الهدية لمقعد المستلم. كل قواعد الخفة هنا:
+// • لا تحميل مسبق أبداً — preload:none + .src يُضبط هنا فقط لحظة الإرسال الفعلي، أول ظهور
+// • وضع الأجهزة الضعيفة/توفير البيانات: صورة ثابتة ثانية واحدة، صفر طلب فيديو
+// • لا تشغيل والصفحة مخفية (التطبيق بالخلفية)
+// • تأخّر أكثر من 1.5 ثانية (إنترنت ضعيف) = إلغاء وطيران فوري
+// • عنصر الفيديو يُحذف ويُفرَّغ مصدره دوماً بعد الانتهاء (نجاحاً أو إلغاءً) — لا بقايا بالذاكرة
+function gfxRenderGiftVideo(data, onDone) {
+    const videoLayer = document.getElementById('room-giftfx-video-layer');
+    const finishAfterFly = () => { gfxFlyGiftIconOnly(data); setTimeout(() => onDone?.(), 950); };
+
+    if (!videoLayer || document.hidden || gfxPrefersReducedMotion()) {
+        finishAfterFly();
+        return;
+    }
+
+    if (gfxShouldUseLiteGiftVideo()) {
+        const s = document.createElement('div');
+        s.className = 'room-giftfx-static';
+        const giftImgUrl = isHttpsImageUrl(data.giftImage) ? data.giftImage : null;
+        if (giftImgUrl) {
+            const img = document.createElement('img');
+            img.src = giftImgUrl;
+            img.alt = '';
+            img.style.cssText = 'width:100%;height:100%;object-fit:contain';
+            wireGiftImgFallback(img, giftImgUrl, data.giftIcon || '🎁');
+            s.appendChild(img);
+        } else {
+            s.textContent = data.giftIcon || '🎁';
+        }
+        videoLayer.appendChild(s);
+        setTimeout(() => { s.remove(); finishAfterFly(); }, 1000);
+        return;
+    }
+
+    const v = document.createElement('video');
+    v.className = 'room-giftfx-video';
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = 'none';
+    let settled = false;
+    const cleanupAndFly = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(startTimer);
+        try { v.pause(); } catch (_) {}
+        v.removeAttribute('src');
+        try { v.load(); } catch (_) {}
+        v.remove();
+        finishAfterFly();
+    };
+    const startTimer = setTimeout(cleanupAndFly, 1500);
+    v.addEventListener('playing', () => clearTimeout(startTimer), { once: true });
+    v.addEventListener('ended', cleanupAndFly, { once: true });
+    v.addEventListener('error', cleanupAndFly, { once: true });
+    v.src = data.giftVideoUrl;
+    videoLayer.appendChild(v);
+    v.play().catch(cleanupAndFly);
 }
 
 // ✅ دالة موحّدة لبناء كارد الهدية (تُستخدم بالخاصة والعامة)
@@ -24185,7 +24411,7 @@ function displayMessage(message) {
     const isMyMessage = message.sender._id === user._id;
     const messageElement = document.createElement('div');
     messageElement.dataset.messageId = message._id;
-    const senderBubbleClass = message.sender.activeBubbleSkinClass || '';
+    const senderBubbleClass = message.sender.activeBubbleCosmeticClass || '';
     // ✅ حجم موحّد أنيق ومضغوط على كل الشاشات (كمبيوتر وهاتف) — لا فرق بينهما بعد الآن
     messageElement.className = 'message-container px-2.5 py-2 rounded-xl mb-2 flex items-start gap-2 relative group max-w-full ' + (senderBubbleClass || (isMyMessage ? 'bg-purple-800/80' : 'bg-gray-700/70'));
 

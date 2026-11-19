@@ -1,5 +1,5 @@
 const express = require('express');
-const controller = require('../controllers/bubbleSkinController');
+const controller = require('../controllers/cosmeticController');
 const authMiddleware = require('../middleware/authMiddleware');
 const router = express.Router();
 router.use(authMiddleware);

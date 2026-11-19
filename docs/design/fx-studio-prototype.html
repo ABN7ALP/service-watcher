@@ -1,0 +1,298 @@
+<title>استوديو الفقاعات والمؤثرات</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;600;700;800;900&family=Baloo+Bhaijaan+2:wght@700;800&display=swap">
+<style>
+/* Layout: section switcher; a phone showing a live room on one side, a catalog/controls panel on the other. Single dark look like the app. */
+:root{
+  --bg:#0a0812;--phone:#100c19;--s1:#181324;--s2:#211a30;--line:#2d2440;
+  --fg:#f2eefa;--muted:#968aac;--dim:#6c6180;--accent:#a46bff;--teal:#2fd4b4;--gold:#ffcc4d;--pink:#ff5fa8;
+  --f-ui:"Cairo",system-ui,sans-serif;--f-num:"Baloo Bhaijaan 2","Cairo",system-ui,sans-serif;color-scheme:dark
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);margin:0;font-size:14px}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1100px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:21px;font-weight:900;margin:0 0 4px}
+.lead{color:var(--muted);font-size:13px;line-height:1.8;margin:0 0 14px;max-width:74ch}
+.layout{display:grid;grid-template-columns:380px 1fr;gap:20px;align-items:start}
+@media (max-width:880px){.layout{grid-template-columns:1fr}}
+.num{font-family:var(--f-num);direction:ltr;unicode-bidi:isolate}
+
+/* ===== phone + room ===== */
+.phone{width:100%;max-width:380px;margin:0 auto;border:1px solid var(--line);border-radius:28px;height:740px;max-height:calc(100vh - 40px);min-height:560px;position:relative;overflow:hidden;background:radial-gradient(260px 180px at 50% 0%,#a46bff33,transparent 70%),linear-gradient(180deg,#1c1230,#0e0a17);display:flex;flex-direction:column;isolation:isolate}
+.rtop{display:flex;align-items:center;gap:8px;padding:12px 14px;font-size:13px;font-weight:900}
+.seats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 6px;padding:8px 12px;position:relative;z-index:1}
+.seat{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;min-width:0}
+.ava{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:900;color:#fff;font-size:16px;position:relative}
+.seat.host .ava{width:56px;height:56px;box-shadow:0 0 0 2.5px var(--gold)}
+.seat.empty .ava{background:transparent;border:1.5px dashed #ffffff26}
+.chat{margin-top:auto;padding:8px 12px 14px;display:flex;flex-direction:column;gap:8px;position:relative;z-index:1;max-height:52%;overflow:hidden}
+.msg{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;line-height:1.6;animation:msgIn .35s ease-out}
+@keyframes msgIn{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+.msg .sa{width:24px;height:24px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:10px;font-weight:900;color:#fff}
+.msg .plain .nm{color:#c9bde0;font-weight:900}
+
+/* layers: entrance and gift overlays ABOVE seats (the reported bug) */
+.layer-entr{position:absolute;inset:0;pointer-events:none;z-index:30;overflow:hidden}
+.layer-vid{position:absolute;inset:0;pointer-events:none;z-index:39;overflow:hidden;mix-blend-mode:screen}
+.layer-fx{position:absolute;inset:0;pointer-events:none;z-index:40;overflow:hidden}
+
+/* ===== BUBBLES ===== */
+.bb{position:relative;border-radius:16px 16px 16px 4px;padding:7px 12px;max-width:250px;color:#fff;isolation:isolate}
+.bb .nm{font-weight:900;margin-inline-end:4px}
+.bb::before,.bb::after{content:"";position:absolute;pointer-events:none}
+/* welcome (free 3 days) */
+.bb.welcome{background:linear-gradient(135deg,#123a33,#0d2622);box-shadow:inset 0 0 0 1.5px #5eead4aa}
+.bb.welcome .nm{color:#7ff5de}
+.bb.welcome::after{content:"👋 جديد";top:-9px;inset-inline-start:10px;font-size:9px;font-weight:900;background:#2fd4b4;color:#06221c;border-radius:6px;padding:0 6px;line-height:16px}
+/* royal gold */
+.bb.gold{background:linear-gradient(135deg,#3a2606,#1f1404 60%,#3a2606);box-shadow:inset 0 0 0 1.5px #ffd45e,0 0 14px #ffb02033}
+.bb.gold .nm{background:linear-gradient(90deg,#fff1b8,#ffcc4d,#c88a12);-webkit-background-clip:text;background-clip:text;color:transparent}
+.bb.gold::before{inset:0;border-radius:inherit;background:linear-gradient(110deg,transparent 35%,#fff3 50%,transparent 65%);background-size:250% 100%;animation:sheen 3s linear infinite;z-index:-1}
+.bb.gold::after{content:"👑";top:-12px;inset-inline-end:-6px;font-size:15px;filter:drop-shadow(0 0 4px #ffcc4d)}
+@keyframes sheen{from{background-position:150% 0}to{background-position:-100% 0}}
+/* rose */
+.bb.rose{background:linear-gradient(135deg,#4a0f2b,#2a0a1b);box-shadow:inset 0 0 0 1.5px #ff7ab6}
+.bb.rose .nm{color:#ff9cc9}
+.bb.rose::before{content:"🌹";top:-10px;inset-inline-start:-8px;font-size:15px;transform:rotate(-20deg)}
+.bb.rose::after{content:"❀ ❀";bottom:-9px;inset-inline-end:8px;font-size:10px;color:#ff9cc9;letter-spacing:2px}
+/* ocean */
+.bb.ocean{background:linear-gradient(180deg,#06394a,#04202b);box-shadow:inset 0 0 0 1.5px #43d9ff88;overflow:hidden}
+.bb.ocean .nm{color:#7fe6ff}
+.bb.ocean::before{left:-20%;right:-20%;bottom:-6px;height:16px;background:radial-gradient(12px 8px at 12px 0,transparent 60%,#43d9ff44 62%) repeat-x;background-size:24px 16px;animation:wave 2.4s linear infinite;z-index:-1}
+@keyframes wave{to{transform:translateX(24px)}}
+/* neon */
+.bb.neon{background:#120a1f;box-shadow:inset 0 0 0 1.5px #ff4fd8,0 0 12px #ff4fd866,inset 0 0 10px #ff4fd833;animation:neon 2s ease-in-out infinite}
+.bb.neon .nm{color:#ff8be8;text-shadow:0 0 6px #ff4fd8}
+@keyframes neon{50%{box-shadow:inset 0 0 0 1.5px #8b5cff,0 0 16px #8b5cff88,inset 0 0 12px #8b5cff33}}
+/* aurora */
+.bb.aurora{background:linear-gradient(120deg,#0d2b3a,#2a1150,#0d3a2b,#2a1150);background-size:300% 300%;animation:aur 6s ease infinite;box-shadow:inset 0 0 0 1px #ffffff33}
+.bb.aurora .nm{color:#b9ffe6}
+@keyframes aur{50%{background-position:100% 50%}}
+/* ember */
+.bb.ember{background:linear-gradient(180deg,#1d0c06,#3a1405);box-shadow:inset 0 -2px 0 #ff7a1a,inset 0 0 0 1px #ff7a1a66,0 4px 14px #ff5a0044;overflow:visible}
+.bb.ember .nm{color:#ffb070}
+.bb.ember::before{width:3px;height:3px;border-radius:50%;background:#ffb070;bottom:2px;left:20%;box-shadow:20px 0 #ff7a1a,45px 0 #ffd45e,70px 0 #ff7a1a;animation:spark 1.8s ease-out infinite}
+@keyframes spark{from{transform:translateY(0);opacity:1}to{transform:translateY(-22px);opacity:0}}
+/* crystal */
+.bb.crystal{background:linear-gradient(135deg,#ffffff22,#9fd8ff14);backdrop-filter:blur(6px);box-shadow:inset 0 0 0 1px #d6f0ff99,0 0 10px #9fd8ff33}
+.bb.crystal .nm{color:#d6f0ff}
+.bb.crystal::after{content:"✦";top:-8px;inset-inline-end:6px;color:#d6f0ff;font-size:12px;animation:tw 1.6s ease-in-out infinite}
+@keyframes tw{50%{opacity:.2;transform:scale(.6)}}
+/* galaxy */
+.bb.galaxy{background:radial-gradient(1px 1px at 20% 30%,#fff,transparent),radial-gradient(1px 1px at 70% 60%,#fff,transparent),radial-gradient(1.5px 1.5px at 85% 20%,#fff,transparent),radial-gradient(1px 1px at 40% 80%,#fff,transparent),linear-gradient(135deg,#1a0f3a,#0a0620);box-shadow:inset 0 0 0 1px #8b5cff88}
+.bb.galaxy .nm{color:#c8b4ff}
+.bb.galaxy::before{inset:0;border-radius:inherit;background:radial-gradient(1px 1px at 55% 35%,#fff,transparent),radial-gradient(1px 1px at 30% 65%,#fff,transparent);animation:tw 2.2s ease-in-out infinite}
+/* couple (الثنائي) */
+.bb.couple{background:linear-gradient(135deg,#4a0f2b,#2a1150);box-shadow:inset 0 0 0 1.5px #ff7ab6,0 0 12px #ff5fa844}
+.bb.couple .nm{color:#ffc2dd}
+.bb.couple::after{content:"💞";top:-11px;inset-inline-end:-6px;font-size:15px;animation:beat 1.2s ease-in-out infinite}
+@keyframes beat{50%{transform:scale(1.25)}}
+/* fan club tiers (redesigned richer) */
+.bb.fc2{background:linear-gradient(135deg,#2b3446,#161b26);box-shadow:inset 0 0 0 1.5px #dbe6f3,0 0 8px #dbe6f322}
+.bb.fc2 .nm{color:#e8f0fa}
+.bb.fc2::after{content:"♡";top:-9px;inset-inline-end:4px;color:#dbe6f3;font-size:12px}
+.bb.fc3{background:linear-gradient(135deg,#3b2a0b,#1d1405);box-shadow:inset 0 0 0 1.5px #ffd45e,0 0 12px #ffd45e33}
+.bb.fc3 .nm{color:#ffd45e}
+.bb.fc3::before{inset:0;border-radius:inherit;background:linear-gradient(110deg,transparent 40%,#fff2 50%,transparent 60%);background-size:250% 100%;animation:sheen 3.5s linear infinite;z-index:-1}
+.bb.fc3::after{content:"💛";top:-10px;inset-inline-end:-4px;font-size:12px}
+.bb.fc4{background:linear-gradient(135deg,#0c3138,#081a1f);box-shadow:inset 0 0 0 1.5px #5eead4,0 0 14px #5eead433}
+.bb.fc4 .nm{color:#5eead4}
+.bb.fc4::after{content:"💠";top:-10px;inset-inline-end:-4px;font-size:13px;animation:tw 2s infinite}
+.bb.fc5{background:linear-gradient(120deg,#341048,#1d0a2b,#0c2b3a,#341048);background-size:300% 300%;animation:aur 5s ease infinite;box-shadow:inset 0 0 0 1.5px #f0abfc,0 0 16px #f0abfc55}
+.bb.fc5 .nm{background:linear-gradient(90deg,#f0abfc,#a78bfa,#5eead4);-webkit-background-clip:text;background-clip:text;color:transparent}
+.bb.fc5::after{content:"👑💗";top:-12px;inset-inline-end:-8px;font-size:13px;filter:drop-shadow(0 0 4px #f0abfc)}
+
+/* ===== ENTRANCES (slide over seats, above everything) ===== */
+.entr{position:absolute;top:96px;right:-110%;width:92%;height:46px;border-radius:99px 12px 12px 99px;display:flex;align-items:center;gap:8px;padding:0 6px 0 14px;font-size:12.5px;font-weight:900;white-space:nowrap;animation:entr 3.6s cubic-bezier(.2,.8,.2,1) forwards;overflow:hidden}
+.entr .ea{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:900;flex:none}
+.entr small{font-weight:700;opacity:.85;font-size:11px}
+@keyframes entr{0%{right:-110%}12%{right:4%}80%{right:4%;opacity:1}100%{right:4%;opacity:0}}
+.entr.e-gold{background:linear-gradient(90deg,#ffd45e,#c27a0e 60%,#ffd45e00);color:#2b1b00;box-shadow:0 0 18px #ffd45e55}
+.entr.e-plat{background:linear-gradient(90deg,#5eead4,#0e7490 60%,#0e749000);color:#032a2a;box-shadow:0 0 18px #5eead455}
+.entr.e-legend{height:54px;background:linear-gradient(90deg,#f0abfc,#7e22ce 55%,#7e22ce00);color:#fff;box-shadow:0 0 24px #f0abfc77}
+.entr.e-legend::before{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,#fff7 50%,transparent 70%);background-size:250% 100%;animation:sheen 1.6s linear infinite}
+.entr.e-legend::after{content:"✦ ✦ ✦";position:absolute;inset-inline-start:40%;color:#fff;font-size:11px;letter-spacing:6px;animation:tw 1s infinite}
+.entr.e-couple{background:linear-gradient(90deg,#ff7ab6,#7e22ce 60%,#7e22ce00);color:#fff;box-shadow:0 0 20px #ff5fa866}
+.entr.e-welcome{background:linear-gradient(90deg,#2fd4b4,#0e7490 60%,#0e749000);color:#03201d}
+.entr .pair{display:flex}.entr .pair .ea:last-child{margin-inline-start:-10px;box-shadow:0 0 0 2px #fff8}
+
+/* ===== GIFT FX ===== */
+.fxvid{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:150%;max-width:none;pointer-events:none}
+.flyer{position:absolute;width:56px;height:56px;border-radius:16px;display:grid;place-items:center;font-size:34px;transition:all .9s cubic-bezier(.5,0,.3,1);z-index:41;filter:drop-shadow(0 0 10px #ffd45e)}
+.burst{position:absolute;width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 0 #ffd45e;animation:burst .7s ease-out forwards;z-index:42}
+@keyframes burst{to{box-shadow:0 0 0 30px #ffd45e00}}
+
+/* ===== panel ===== */
+.panel{background:var(--s1);border:1px solid var(--line);border-radius:18px;padding:16px;min-width:0}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{background:var(--s2);border:1px solid var(--line);border-radius:12px;padding:7px 12px;font-weight:800;font-size:12.5px;color:var(--muted)}
+.tabs button.on{color:var(--fg);border-color:var(--accent);background:#a46bff1c}
+.grp{font-size:12.5px;font-weight:900;color:var(--muted);margin:14px 2px 8px;display:flex;justify-content:space-between;gap:8px}
+.grp small{font-weight:700}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.card{background:var(--phone);border:1px solid var(--line);border-radius:16px;padding:14px 12px 10px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card .pv{min-height:56px;display:flex;align-items:center;padding-top:6px}
+.card .meta{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px}
+.card .meta b{font-size:13px}
+.tag{font-size:10.5px;font-weight:900;border-radius:6px;padding:1px 7px;white-space:nowrap}
+.tag.shop{background:#ffcc4d22;color:var(--gold)}.tag.free{background:#2fd4b422;color:var(--teal)}.tag.cp{background:#ff5fa822;color:var(--pink)}.tag.fc{background:#a46bff26;color:#c8a6ff}.tag.new{background:#5aa8ff22;color:#8cc4ff}
+.try{background:var(--s2);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:800;align-self:flex-start}
+.try:hover{background:#2c2340}
+.note{font-size:12px;color:var(--muted);line-height:1.8;margin:6px 0 0}
+.spec{background:#00000030;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:14px}
+.spec h3{margin:0 0 6px;font-size:13.5px}
+.spec ul{margin:0;padding-inline-start:18px;font-size:12.5px;line-height:1.8;display:flex;flex-direction:column;gap:3px}
+.warn{background:#ff6b6b14;border:1px solid #ff6b6b44;border-radius:12px;padding:9px 12px;font-size:12.5px;line-height:1.8;margin-top:10px}
+.lite{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;margin-bottom:10px}
+.sw{width:34px;height:20px;border-radius:99px;background:var(--line);position:relative;flex:none}
+.sw::after{content:"";position:absolute;top:2px;inset-inline-start:2px;width:16px;height:16px;border-radius:50%;background:var(--fg);transition:inset-inline-start .2s}
+.sw.on{background:var(--teal)}.sw.on::after{inset-inline-start:16px}
+.is-lite .bb::before,.is-lite .bb::after,.is-lite .bb,.is-lite .entr::before,.is-lite .entr::after{animation:none!important}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01s!important;animation-iteration-count:1!important}}
+</style>
+
+<div class="wrap" dir="rtl">
+  <h1>استوديو الفقاعات والمؤثرات</h1>
+  <p class="lead">فقاعات الدردشة الجديدة، وإعلانات الدخول، ومؤثرات الهدايا بفيديوهاتك. كل شيء يعمل داخل الهاتف: اضغط «جرّب» لترى الفقاعة في الدردشة، أو شغّل الإعلان والهدية. الفقاعات والإعلانات مرسومة بالـCSS، والهدايا الكبيرة فيديو.</p>
+  <div class="layout">
+    <div>
+      <div class="phone" id="phone">
+        <div class="rtop"><span class="ava" style="width:30px;height:30px;font-size:12px;background:#6a3fb8">ل</span>ليالي الطرب<span style="flex:1"></span><span class="num" style="font-size:11px;color:var(--muted)">👤 48</span></div>
+        <div class="seats" id="seats"></div>
+        <div class="chat" id="chat"></div>
+        <div class="layer-entr" id="layerEntr"></div>
+        <div class="layer-vid" id="layerVid"></div>
+        <div class="layer-fx" id="layerFx"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="lite"><button class="sw" id="liteSw" aria-label="وضع الأجهزة الضعيفة"></button>وضع الأجهزة الضعيفة (يوقف الحركة، ويستبدل فيديو الهدية بصورة)</div>
+      <div class="tabs" id="tabs"></div>
+      <div id="panel"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+const $=id=>document.getElementById(id);
+const colors=['#6a3fb8','#2f7d6d','#a8466f','#3d5fa8','#8a5a1f','#5b3f8f','#2f6f8f','#7d2f5a'];
+const SEATS=[['ليان',0,'host'],['ريم',6],['سامر',3],['هبة',4],['نور',2],['',0,'empty'],['',0,'empty'],['',0,'empty']];
+$('seats').innerHTML=SEATS.map(([n,i,k],idx)=>`<div class="seat ${k||''}" data-seat="${idx}"><span class="ava" style="${k==='empty'?'':'background:'+colors[i]}">${n?n[0]:''}</span><span>${n||'فارغ'}</span></div>`).join('');
+
+const BUBBLES=[
+  // id, name, tag, price label, sample text
+  ['gold','الذهب الملكي','shop','30 يوم · 12,000','مساء الذهب على الجميع'],
+  ['rose','حديقة الورد','shop','30 يوم · 8,000','وردة لكل الحاضرين 🌹'],
+  ['ocean','موج البحر','shop','30 يوم · 8,000','الجو حلو الليلة'],
+  ['neon','نيون الليل','shop','30 يوم · 8,000','مين سهران؟'],
+  ['aurora','الشفق','shop','30 يوم · 10,000','صوتك يجنن'],
+  ['ember','الجمر','shop','30 يوم · 10,000','الغرفة نار 🔥'],
+  ['crystal','الكريستال','shop','30 يوم · 10,000','ليلة صافية'],
+  ['galaxy','المجرّة','shop','30 يوم · 12,000','أنتم نجوم الليلة ✨'],
+  ['welcome','الترحيب','free','مجاني · أول 3 أيام','أهلاً، أنا جديد هون'],
+  ['couple','الثنائي','cp','للثنائي فقط','أنا مع حبيبي 💞'],
+  ['fc2','النادي الفضي','fc','نادي المعجبين 5+','أهلاً ليان'],
+  ['fc3','النادي الذهبي','fc','نادي المعجبين 9+','صوتك حلو اليوم'],
+  ['fc4','النادي البلاتيني','fc','نادي المعجبين 13+','أرسلت هدية النادي'],
+  ['fc5','أسطورة النادي','fc','نادي المعجبين 17+','أنا هون 👑']
+];
+const TAGLBL={shop:'متجر',free:'هدية ترحيب',cp:'الثنائي',fc:'نادي المعجبين'};
+
+function addMsg(html){const c=$('chat');const d=document.createElement('div');d.className='msg';d.innerHTML=html;c.appendChild(d);while(c.children.length>6)c.firstChild.remove();}
+const plainMsg=(n,i,t)=>`<span class="sa" style="background:${colors[i]}">${n[0]}</span><span class="plain"><b class="nm">${n}</b> ${t}</span>`;
+const bubbleMsg=(cls,n,i,t)=>`<span class="sa" style="background:${colors[i]}">${n[0]}</span><span class="bb ${cls}"><b class="nm">${n}</b>${t}</span>`;
+addMsg(plainMsg('أبو كرم',1,'مساء الورد'));
+addMsg(bubbleMsg('gold','ريم',6,'مساء الذهب على الجميع'));
+addMsg(bubbleMsg('fc5','سامر',3,'أنا هون 👑'));
+
+const ENTR=[
+  ['e-welcome','ترحيب بالجديد','free','عضو جديد',(n)=>`<span class="ea" style="background:${colors[4]}">${n[0]}</span><span>${n} <small>انضم للتطبيق اليوم 👋</small></span>`,'نور'],
+  ['e-gold','نادي المعجبين · ذهبي','fc','9+',(n)=>`<span class="ea" style="background:${colors[6]}">${n[0]}</span><span>✦ ${n} <small>عشّاق الطرب Lv.10 دخلت</small></span>`,'هبة'],
+  ['e-plat','نادي المعجبين · بلاتيني','fc','13+',(n)=>`<span class="ea" style="background:${colors[3]}">${n[0]}</span><span>✦ ${n} <small>عشّاق الطرب Lv.14 دخل</small></span>`,'سامر'],
+  ['e-legend','أسطوري','fc','17+ أو VIP لاحقاً',(n)=>`<span class="ea" style="background:${colors[6]};width:42px;height:42px;box-shadow:0 0 0 2px #fff">${n[0]}</span><span>✦✦ أسطورة النادي ${n} <small>دخلت الغرفة</small></span>`,'ريم'],
+  ['e-couple','الثنائي','cp','عند دخول أحدهما',()=>`<span class="pair"><span class="ea" style="background:${colors[3]}">س</span><span class="ea" style="background:${colors[6]}">ر</span></span><span>💞 سامر حامي ريم <small>دخل الغرفة</small></span>`,'']
+];
+function playEntrance(k){const e=ENTR.find(x=>x[0]===k);const el=document.createElement('div');el.className='entr '+e[0];el.innerHTML=e[4](e[5]);$('layerEntr').appendChild(el);setTimeout(()=>el.remove(),3700);}
+
+const GIFTS=[
+  ['dragon','تنين','🐉','legendary','موجود · 7,000','dragon.mp4',2],
+  ['yacht','يخت','🛥️','legendary','موجود · 2,500','yacht.mp4',3],
+  ['butterfly','فراشة النادي','🦋','fc','حصرية للنادي 13+ · 3,000','butterfly.mp4',1],
+  ['garden','حديقة','🌹','legendary','موجود · 800','garden.mp4',4],
+  ['sword','سيف البرق','⚔️','legendary','جديد · 5,000','sword.mp4',2],
+];
+let lite=false;
+function playGift(k){
+  const g=GIFTS.find(x=>x[0]===k);const fx=$('layerFx');fx.innerHTML='';$('layerVid').innerHTML='';
+  const target=document.querySelector(`[data-seat="${g[6]}"] .ava`);const ph=$('phone').getBoundingClientRect();const tr=target.getBoundingClientRect();
+  const fly=()=>{const f=document.createElement('div');f.className='flyer';f.textContent=g[2];f.style.left=(ph.width/2-28)+'px';f.style.top=(ph.height*0.42-28)+'px';fx.appendChild(f);
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{f.style.left=(tr.left-ph.left+tr.width/2-28)+'px';f.style.top=(tr.top-ph.top+tr.height/2-28)+'px';f.style.transform='scale(.45)';}));
+    setTimeout(()=>{const b=document.createElement('div');b.className='burst';b.style.left=(tr.left-ph.left+tr.width/2-5)+'px';b.style.top=(tr.top-ph.top+tr.height/2-5)+'px';fx.appendChild(b);f.remove();setTimeout(()=>b.remove(),750);},950);
+    addMsg(`<span class="sys" style="font-size:11.5px;color:#ffe9a8;background:#ffd45e14;border-radius:10px;padding:4px 10px">🎁 أبو كرم أرسل ${g[1]} إلى ${SEATS[g[6]][0]}</span>`);};
+  if(lite){const s=document.createElement('div');s.className='flyer';s.style.cssText=`left:${ph.width/2-40}px;top:${ph.height*0.42-40}px;width:80px;height:80px;font-size:60px;transition:none`;s.textContent=g[2];fx.appendChild(s);setTimeout(()=>{s.remove();fly();},1200);return;}
+  const v=document.createElement('video');v.className='fxvid';v.src=g[5];v.muted=true;v.playsInline=true;v.autoplay=true;$('layerVid').appendChild(v);
+  v.play().catch(()=>{});
+  const done=()=>{v.remove();fly();};v.addEventListener('ended',done,{once:true});setTimeout(()=>{if(v.isConnected)done();},6500);
+}
+
+const TABS={
+  bubbles:{label:'فقاعات الدردشة',render(){
+    const groups=[['shop','المتجر (تُشترى بالكوينز)','8 تصاميم'],['free','هدية الترحيب','مجانية تلقائياً'],['cp','الثنائي','للحماة فقط'],['fc','نادي المعجبين','داخل غرفة المضيف']];
+    return groups.map(([t,title,sub])=>`<div class="grp">${title}<small>${sub}</small></div><div class="cards">${BUBBLES.filter(b=>b[2]===t).map(b=>`<div class="card"><div class="pv"><span class="bb ${b[0]}"><b class="nm">ريم</b>${b[4]}</span></div><div class="meta"><b>${b[1]}</b><span class="tag ${b[2]}">${b[3]}</span></div><button class="try" data-bubble="${b[0]}">جرّب في الدردشة</button></div>`).join('')}</div>`).join('')+
+    `<div class="spec"><h3>مواصفات التنفيذ</h3><ul>
+      <li><b>حذف كل الفقاعات القديمة</b> من المتجر ومن ملكية المستخدمين (كل الحسابات تجريبية الآن). لاحقاً، عند وجود مستخدمين حقيقيين، يُستبدل أي حذف بتعويض.</li>
+      <li><b>المتجر:</b> 8 فقاعات، لكل واحدة مدة 7 أيام و30 يوماً. الأسعار المعروضة أمثلة، والأدمن يعدّلها. والشراء يمر بدفتر الحسابات كشراء الإطارات.</li>
+      <li><b>الترحيب:</b> تُعطى تلقائياً لكل حساب جديد 3 أيام، مجاناً، مرة واحدة لكل حساب، ولا تُعطى للحسابات المرتبطة بحساب قديم.</li>
+      <li><b>الثنائي:</b> تفعّل تلقائياً للطرفين عند قبول علاقة الحماة، وتسقط بانتهائها. تُبنى مع نظام الحماة.</li>
+      <li><b>النادي:</b> الفئات الأربع، داخل غرفة المضيف فقط، وتحل محل فقاعة المتجر هناك.</li>
+      <li><b>الأولوية إذا كان عند الشخص أكثر من فقاعة:</b> النادي (داخل غرفة المضيف) ← الثنائي ← المتجر المختارة ← الترحيب.</li>
+      <li>كلها CSS: صفر صور، صفر إنترنت إضافي. الحركة تتوقف في وضع الأجهزة الضعيفة.</li></ul></div>`;}},
+  entr:{label:'إعلانات الدخول',render(){
+    return `<div class="cards">${ENTR.map(e=>`<div class="card"><div class="meta"><b>${e[1]}</b><span class="tag ${e[2]}">${e[3]}</span></div><button class="try" data-entr="${e[0]}">شغّل الإعلان</button></div>`).join('')}</div>
+    <div class="spec"><h3>مواصفات التنفيذ</h3><ul>
+      <li><b>إصلاح الخطأ الذي لاحظته:</b> الإعلان وإشعار الهدايا يظهران خلف المقاعد. الحل: طبقة واحدة للإعلانات فوق المقاعد، وطبقة الهدايا فوقها، بترتيب ثابت.</li>
+      <li>الإعلان ينزلق من جانب الشاشة فوق المقاعد، يبقى 3 ثوانٍ ثم يختفي. لا يمنع الضغط على ما تحته.</li>
+      <li><b>طابور:</b> إذا دخل عدة أشخاص معاً تظهر الإعلانات واحداً بعد الآخر، وأقصاها 3 في الطابور، والباقي يُتجاهل.</li>
+      <li>المستخدم العادي بلا إعلان. الترحيب أول 3 أيام. والنادي حسب الفئة. والثنائي عند دخول أحدهما.</li>
+      <li>لا يتكرر عند إعادة الاتصال خلال دقيقتين.</li></ul></div>`;}},
+  gifts:{label:'مؤثرات الهدايا',render(){
+    return `<div class="cards">${GIFTS.map(g=>`<div class="card"><div class="meta"><b>${g[2]} ${g[1]}</b><span class="tag ${g[3]==='fc'?'fc':'shop'}">${g[4]}</span></div><button class="try" data-gift="${g[0]}">أرسل الهدية</button></div>`).join('')}</div>
+    <p class="note">الفيديو يُعرض فوق الغرفة، ثم تطير الهدية إلى مقعد المستلم. شغّل «وضع الأجهزة الضعيفة» لترى البديل الخفيف.</p>
+    <div class="spec"><h3>رأيي في فيديوهاتك</h3><ul>
+      <li><b>التنين ممتاز:</b> النار والشرر على خلفية سوداء تعمل بشكل مثالي فوق الغرفة. يناسب هدية «تنين» الموجودة.</li>
+      <li><b>الفراشة ممتازة:</b> خطوطها الذهبية والفيروزية تشبه ألوان نادي المعجبين. أقترحها <b>هدية النادي الحصرية الثانية</b> «فراشة النادي».</li>
+      <li><b>الحديقة رائعة:</b> النافورة والورد والبتلات تبني نفسها تدريجياً. تناسب هدية «حديقة» الموجودة، لكن سعرها 800 فقط، فأقترح رفعه لأن المؤثر فخم.</li>
+      <li><b>سيف البرق ممتاز:</b> البرق الأزرق قوي جداً فوق الغرفة. أقترحه هدية أسطورية جديدة، وتناسب جولات PK.</li>
+      <li><b>اليخت جيد:</b> الماء والخطوط الذهبية رائعة، لكن جسم اليخت الأبيض يصبح شفافاً قليلاً فوق الغرفة. مقبول، ويناسب هدية «يخت» الموجودة.</li>
+      <li><b>التقنية:</b> الخلفية السوداء تُزال بخاصية <code>mix-blend-mode: screen</code> على طبقة الفيديو نفسها (وليس على الفيديو داخل طبقة معزولة، وإلا يظهر الأسود)، فلا نحتاج فيديو بشفافية. قصصت كل فيديو إلى 6 ثوانٍ وضغطته: من حوالي 6.5MB إلى حوالي 0.5MB.</li></ul></div>
+    <div class="spec"><h3>مواصفات التنفيذ</h3><ul>
+      <li><b>الخطأ الثاني الذي لاحظته:</b> الهدية لم تعد تطير إلى المقعد. الكود موجود (gfxFlyRemoteGiftToSeat)، فإما أن «وضع الأجهزة الضعيفة» تفعّل تلقائياً على جهازك، أو أن الطيران مكسور. يحتاج تحقيقاً.</li>
+      <li><b>الخفة (أولوية المالك):</b>
+        <ul>
+        <li>H.264 بدقة 720 و24 إطاراً: تفكّه كل الهواتف بالعتاد مباشرة، فهو أخف على الأجهزة الضعيفة من WebM. الحجم 0.45 إلى 0.75MB لكل هدية، و6.5 إلى 7 ثوانٍ مع تلاشٍ في النهاية.</li>
+        <li><b>لا تحميل مسبق أبداً.</b> الفيديو يُطلب فقط عند أول ظهور للهدية، ثم يبقى في الكاش (Cloudinary + Cache-Control immutable). من لم يرَ الهدية لا يدفع ميغابايت واحد.</li>
+        <li><b>فيديو واحد فقط في نفس الوقت.</b> طابور أقصاه 2، وأي هدية فيديو زائدة تظهر كأيقونة تطير فقط.</li>
+        <li>بعد الانتهاء يُحذف عنصر الفيديو ويُفرَّغ مصدره، فتتحرر ذاكرة المعالج.</li>
+        <li>إذا كانت الصفحة مخفية (التطبيق في الخلفية): لا تشغيل.</li>
+        <li><b>وضع الأجهزة الضعيفة تلقائي</b> عند ذاكرة الجهاز 2GB أو أقل، أو عند «توفير البيانات» في المتصفح: صورة ثابتة ثانية ثم الطيران فقط.</li>
+        <li>إذا تأخر الفيديو أكثر من 1.5 ثانية (إنترنت ضعيف): يُلغى ويظهر الطيران فقط، فلا تنتظر الغرفة.</li>
+        </ul></li>
+      <li><b>هدايا النادي الحصرية في نافذة الهدايا:</b> تبويب «النادي» يظهر فقط داخل غرفة مضيف أنت عضو في ناديه، وفيه «هدية النادي» (13+) و«فراشة النادي» (13+). والخادم يفحص الأهلية كما هو الآن.</li>
+      <li>في وضع الأجهزة الضعيفة: صورة ثابتة لثانية، ثم الطيران فقط.</li></ul></div>`;}},
+};
+let tab='bubbles';
+function render(){ $('tabs').innerHTML=Object.entries(TABS).map(([k,v])=>`<button data-tab="${k}" class="${tab===k?'on':''}">${v.label}</button>`).join(''); $('panel').innerHTML=TABS[tab].render(); }
+document.addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;
+  if(t.dataset.tab){tab=t.dataset.tab;render();return;}
+  if(t.dataset.bubble){const b=BUBBLES.find(x=>x[0]===t.dataset.bubble);addMsg(bubbleMsg(b[0],'ريم',6,b[4]));return;}
+  if(t.dataset.entr){playEntrance(t.dataset.entr);return;}
+  if(t.dataset.gift){playGift(t.dataset.gift);return;}
+  if(t.id==='liteSw'){lite=!lite;t.classList.toggle('on',lite);$('phone').classList.toggle('is-lite',lite);return;}
+});
+render();
+})();
+</script>
