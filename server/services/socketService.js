@@ -1399,7 +1399,7 @@ socket.on('sendMessage', async (messageData) => {
 
         // 2️⃣ جلب الرسالة مع populate
              const populatedMessage = await Message.findById(newMessage._id)
-            .populate('sender', 'username profileImage activeBubbleSkinClass activeFrameClass')
+            .populate('sender', 'username profileImage activeBubbleCosmeticClass activeFrameClass')
             .populate({
                 path: 'replyTo',
                 populate: {
@@ -2777,16 +2777,30 @@ socket.on('refreshBlockData', async () => {
                         // 🛡️ feat/fanclub-v2-ui: دخول خفيف (مستوى 9+، عضوية نشطة) — يُرفَق هنا بنفس
                         // الحدث (لا حدث منفصل/طلب إضافي)، null لمن لا يستحقه فيبقى الإعلان العادي كما هو
                         const { getFanClubBadgeMap, ENTRANCE_ANNOUNCE_MIN_LEVEL } = require('../controllers/fanClubController');
-                        const badgeMap = await getFanClubBadgeMap(room.host, [socket.user._id.toString()]);
+                        const { isCosmeticActive } = require('../controllers/cosmeticController');
+                        const [badgeMap, cosmeticUser] = await Promise.all([
+                            getFanClubBadgeMap(room.host, [socket.user._id.toString()]),
+                            User.findById(socket.user._id).select('activeEntranceCosmeticClass activeEntranceCosmeticExpiresAt').lean()
+                        ]);
                         const badge = badgeMap.get(socket.user._id.toString());
-                        const fanClubEntrance = (badge && badge.active && badge.level >= ENTRANCE_ANNOUNCE_MIN_LEVEL
-                            && shouldAnnounceFanClubEntrance(roomId, socket.user._id.toString())) ? badge : null;
+                        const canAnnounce = shouldAnnounceFanClubEntrance(roomId, socket.user._id.toString());
+                        // 🛡️ feat/gift-fx-and-cosmetics-base: أولوية إعلان الدخول — نادي المعجبين (داخل
+                        // غرفة المضيف فقط) ← الثنائي (معطَّل حالياً، لا مصدر بعد) ← ترحيب/متجر (أي عنصر
+                        // إعلان نشط لدى المستخدم، بصرف النظر عن الغرفة). كلاهما يمرّان بنفس نافذة عدم
+                        // التكرار (دقيقتان لكل غرفة+مستخدم) كي لا يُزعج دخول متكرر سريع بإعادة الاتصال
+                        const fanClubEntrance = (badge && badge.active && badge.level >= ENTRANCE_ANNOUNCE_MIN_LEVEL && canAnnounce) ? badge : null;
+                        let entranceCosmeticClass = null;
+                        if (!fanClubEntrance && canAnnounce && cosmeticUser?.activeEntranceCosmeticClass
+                            && isCosmeticActive(cosmeticUser.activeEntranceCosmeticExpiresAt)) {
+                            entranceCosmeticClass = cosmeticUser.activeEntranceCosmeticClass;
+                        }
                         socket.to(`room-chat-${roomId}`).emit('user-entered-room', {
                             roomId,
                             userId: socket.user._id.toString(),
                             username: socket.user.username,
                             profileImage: socket.user.profileImage,
-                            fanClubEntrance
+                            fanClubEntrance,
+                            entranceCosmeticClass
                         });
                     }
                 } catch (error) {
@@ -2889,7 +2903,7 @@ socket.on('refreshBlockData', async () => {
                     room: channel
                 });
                 const populatedMessage = await Message.findById(newMessage._id)
-                    .populate('sender', 'username profileImage activeFrameClass activeBubbleSkinClass level');
+                    .populate('sender', 'username profileImage activeFrameClass activeBubbleCosmeticClass level');
                 if (!populatedMessage) return;
 
                 const senderId = socket.user.id.toString();

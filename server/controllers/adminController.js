@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const Withdrawal = require('../models/Withdrawal');
 const Gift = require('../models/Gift');
+const CosmeticItem = require('../models/CosmeticItem');
 const AdminLog = require('../models/AdminLog');
 const ClientErrorLog = require('../models/ClientErrorLog');
 const ClientCompatLog = require('../models/ClientCompatLog');
@@ -572,11 +573,27 @@ exports.getGifts = async (req, res) => {
 };
 
 // Create/Update Gift
+// 🛡️ feat/gift-fx-and-cosmetics-base: رفع فيديو مؤثر الهدية اختياري هنا (نفس نمط استوديو
+// الإطارات — الملف ومعه بقية حقول النموذج بطلب واحد). لا أسرار Cloudinary تُسرَّب لأي حاوية
+// تطوير أبداً — الرفع يمر دوماً عبر مسار الخادم الحالي هذا فقط (الذي يملك المتغيرات البيئية
+// الحقيقية بالإنتاج). giftVideoUpload (multer) يتحقق من mimetype/الحجم أولاً كفلتر أولي رخيص؛
+// assertRealType هنا يبقى الفحص الحاسم على البايتات الفعلية قبل أي إرسال لـCloudinary
 exports.saveGift = async (req, res) => {
   try {
     const giftData = req.body;
     const { giftId } = req.params;
     const { admin } = req;
+
+    if (req.file) {
+      try {
+        const { assertRealType, uploadGiftVideo } = require('../utils/cloudinary');
+        assertRealType(req.file.buffer, ['video/mp4']);
+        const uploaded = await uploadGiftVideo(req.file.buffer);
+        giftData.videoUrl = uploaded.secure_url;
+      } catch (typeErr) {
+        return res.status(400).json({ success: false, message: typeErr.message || 'تعذّر معالجة فيديو الهدية' });
+      }
+    }
 
     let gift;
     if (giftId) {
@@ -1229,6 +1246,65 @@ exports.deleteGift = async (req, res) => {
     req.app.get('socketio')?.emit('gifts:changed', { version: Date.now() });
 
     res.json({ success: true, message: 'تم حذف الهدية بنجاح' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// 🛡️ feat/gift-fx-and-cosmetics-base: إدارة عناصر الفقاعات/إعلانات الدخول (CosmeticItem) —
+// نفس نمط إدارة الهدايا أعلاه بالضبط (get/save/delete عامة). لا رفع ملفات هنا (التصاميم CSS
+// بحتة حالياً عبر cssClass — راجع التعليق أعلى CosmeticItem.js)
+// =====================================================
+exports.getCosmetics = async (req, res) => {
+  try {
+    const items = await CosmeticItem.find().sort('type sortOrder');
+    res.json({ success: true, items });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.saveCosmetic = async (req, res) => {
+  try {
+    const itemData = req.body;
+    const { itemId } = req.params;
+    const { admin } = req;
+
+    let item;
+    if (itemId) {
+      item = await CosmeticItem.findByIdAndUpdate(itemId, itemData, { new: true, runValidators: true });
+    } else {
+      item = new CosmeticItem(itemData);
+      await item.save();
+    }
+
+    await AdminLog.create({
+      admin: admin._id,
+      action: itemId ? 'update_cosmetic' : 'create_cosmetic',
+      details: itemData,
+      ipAddress: req.ip
+    });
+
+    res.json({ success: true, message: itemId ? 'تم تحديث العنصر' : 'تم إنشاء العنصر', item });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteCosmetic = async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { admin } = req;
+
+    const item = await CosmeticItem.findByIdAndDelete(itemId);
+    if (!item) return res.status(404).json({ success: false, message: 'العنصر غير موجود' });
+
+    await AdminLog.logAction({
+      admin: admin._id, action: 'delete_cosmetic', details: { itemName: item.name, type: item.type }, ipAddress: req.ip
+    });
+
+    res.json({ success: true, message: 'تم حذف العنصر بنجاح' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

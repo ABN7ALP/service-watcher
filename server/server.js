@@ -85,7 +85,7 @@ app.use('/api/voice-room', require('./routes/voiceRoomRoutes')); // ✅ حالة
 app.use('/api/pk-league', require('./routes/pkLeagueRoutes')); // ✅ دوري PK الأسبوعي (ترتيب/غرفتي/مواجهات)
 app.use('/api/coin-purchase', require('./routes/coinPurchaseRoutes')); // ✅ تحويل داخلي رصيد↔كوينز فقط (الشحن الخارجي انتقل لـ/api/wallet)
 app.use('/api/wallet', require('./routes/walletRoutes')); // ✅ شحن الكوينزات عبر شام كاش بالعروض (feat/wallet-recharge-v1)
-app.use('/api/bubble-skins', require('./routes/bubbleSkinRoutes'));
+app.use('/api/cosmetics', require('./routes/cosmeticRoutes')); // ✅ فقاعات الدردشة/إعلانات الدخول (يحل محل bubble-skins)
 app.use('/api/gift-redemption', require('./routes/giftRedemptionRoutes'));
 app.use('/api/deposits', require('./routes/depositRoutes')); // ✅ نظام شحن الرصيد الدولاري (منفصل عن الكوينز)
 app.use('/api/reports', require('./routes/reportRoutes')); // ✅ نظام البلاغات

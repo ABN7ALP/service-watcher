@@ -9,7 +9,7 @@ const adminAuth = require('../middleware/adminAuth');
 const adminController = require('../controllers/adminController');
 const depositIntentController = require('../controllers/depositIntentController');
 const agentController = require('../controllers/agentController');
-const { frameAssetUpload, receiptUpload } = require('../utils/cloudinary');
+const { frameAssetUpload, receiptUpload, giftVideoUpload } = require('../utils/cloudinary');
 const { financialLimiter } = require('../middleware/globalMiddleware');
 
 // 🛡️ "فحص الآن" (صحة النظام): مفتاح ثابت وليس هوية الأدمن — الحد مرة كل 5 دقائق إجمالاً
@@ -80,9 +80,13 @@ router.post('/agent-reports/:transferId/resolve', agentController.adminResolveRe
 router.get('/transactions', adminController.getAllTransactions);
 
 router.get('/gifts', adminController.getGifts);
-router.post('/gifts', adminController.saveGift);
-router.put('/gifts/:giftId', adminController.saveGift);
+router.post('/gifts', giftVideoUpload, adminController.saveGift);
+router.put('/gifts/:giftId', giftVideoUpload, adminController.saveGift);
 router.delete('/gifts/:giftId', adminController.deleteGift);
+router.get('/cosmetics', adminController.getCosmetics);
+router.post('/cosmetics', adminController.saveCosmetic);
+router.put('/cosmetics/:itemId', adminController.saveCosmetic);
+router.delete('/cosmetics/:itemId', adminController.deleteCosmetic);
 
 // ✅ استوديو الإطارات — frameAssetUpload (multer) فقط على create/update (الوحيدان اللذان قد
 // يحملان ملفاً مرفوعاً)؛ delete حذف ناعم بلا ملف، list بلا ملف

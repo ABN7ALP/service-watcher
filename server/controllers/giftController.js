@@ -1224,10 +1224,15 @@ async function runGiftComboSideEffects({ io, sender, gift, validReceivers, unitP
         // تجميع — مرة واحدة للغرفة كلها (لا لكل مستلم)، لا علاقة له بـroom-gift-announcement
         // (الذي يبقى كما هو للشريط الجانبي/سطر الدردشة فقط). راجع gfxUpdateSideBanner/
         // المستمع الجديد socket.on('gift:legendary') بالعميل
-        if (io && gift.category === 'legendary') {
+        // 🛡️ feat/gift-fx-and-cosmetics-base: نفس المسار الفوري (لا تجميع 250ms) يحمل الآن أيضاً
+        // فيديو مؤثر الهدية لو كانت هذي الهدية تملك واحداً (gift.videoUrl) — بصرف النظر عن
+        // category، فـ"فراشة النادي" حصرية النادي لا الأسطورية لكنها تحتاج نفس البث الفوري
+        if (io && (gift.category === 'legendary' || gift.videoUrl)) {
             io.to(`room-chat-${cleanRoomId}`).emit('gift:legendary', {
                 roomId: cleanRoomId, comboId, fromUserId: senderId, fromUsername: sender.username,
                 giftImage: safeGiftImage, giftIcon: gift.icon || '🎁', giftName: gift.name,
+                giftVideoUrl: gift.videoUrl || null,
+                toUserId: validReceivers.length === 1 ? validReceivers[0]?._id?.toString() : null,
                 toLabel: validReceivers.length > 1 ? `${validReceivers.length} مقاعد` : (validReceivers[0]?.username || '')
             });
         }

@@ -140,8 +140,24 @@ const userSchema = new mongoose.Schema({
     lastActive: { type: Date, default: Date.now },
     socketId: { type: String, default: null },
     status: { type: String, default: '🚀 جاهز للتحديات!', maxlength: 100 }, 
-    ownedBubbleSkins: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ChatBubbleSkin' }],
-    activeBubbleSkinClass: { type: String, default: null },
+    // 🛡️ feat/gift-fx-and-cosmetics-base: ChatBubbleSkin القديم (ownedBubbleSkins/
+    // activeBubbleSkinClass) حُذف نهائياً — راجع migrateDeleteAllChatBubbleSkins بـautoSeed.js.
+    // النظام الجديد عام لفقاعات الدردشة وإعلانات الدخول معاً (CosmeticItem)، بتاريخ شراء/تفعيل/
+    // انتهاء صلاحية لكل عنصر — نفس بنية ownedFrames أعلاه بالضبط لتوحيد النمط
+    ownedCosmetics: [{
+        item: { type: mongoose.Schema.Types.ObjectId, ref: 'CosmeticItem' },
+        purchasedAt: { type: Date, default: Date.now },
+        durationDays: { type: Number, required: true },
+        activatedAt: { type: Date, default: Date.now }, // ✅ تُفعَّل فوراً عند الشراء (لا صندوق انتظار كالإطارات)
+        expiresAt: { type: Date, required: true }
+    }],
+    activeBubbleCosmetic: { type: mongoose.Schema.Types.ObjectId, ref: 'CosmeticItem', default: null },
+    activeBubbleCosmeticClass: { type: String, default: null },
+    activeBubbleCosmeticExpiresAt: { type: Date, default: null },
+    activeEntranceCosmetic: { type: mongoose.Schema.Types.ObjectId, ref: 'CosmeticItem', default: null },
+    activeEntranceCosmeticClass: { type: String, default: null },
+    activeEntranceCosmeticExpiresAt: { type: Date, default: null },
+    hasReceivedWelcomeCosmetic: { type: Boolean, default: false }, // منع تكرار هدية الترحيب (الفقاعة)
 
     // =====================================================
     // ✅ حقول مركز الملف الشخصي (Profile Hub) — غلاف + بيانات إضافية قابلة للتعديل

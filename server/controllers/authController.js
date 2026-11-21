@@ -67,7 +67,47 @@ exports.register = async (req, res, next) => {
         } catch (frameError) {
             console.error('[WELCOME FRAME ERROR]', frameError);
         }
-        
+
+        // 🛡️ feat/gift-fx-and-cosmetics-base: فقاعة دردشة + إعلان دخول ترحيب تلقائيان، 3 أيام،
+        // مرة واحدة لكل حساب — لكن بخلاف إطار الترحيب أعلاه (الذي يُمنح بلا أي فحص)، طلب صريح
+        // هنا: لا تُمنَح لحساب مرتبط بجهاز حساب أقدم (نفس deviceId). الفحص قبل recordDeviceSession
+        // أدناه عمداً — لا يعتمد على ترتيبها فعلياً ($ne: newUser._id يستبعد جلسة هذا الحساب نفسه
+        // بأي ترتيب)، لكن الأوضح منطقياً: "هل كان هذا الجهاز مستخدَماً من قبل؟" قبل تسجيله الآن
+        try {
+            const deviceId = req.headers['x-device-id'];
+            let linkedToOlderAccount = false;
+            if (deviceId) {
+                const DeviceSession = require('../models/DeviceSession');
+                linkedToOlderAccount = !!(await DeviceSession.exists({ deviceId, user: { $ne: newUser._id } }));
+            }
+            if (!linkedToOlderAccount) {
+                const CosmeticItem = require('../models/CosmeticItem');
+                const [welcomeBubble, welcomeEntrance] = await Promise.all([
+                    CosmeticItem.findOne({ type: 'bubble', source: 'welcome' }),
+                    CosmeticItem.findOne({ type: 'entrance', source: 'welcome' })
+                ]);
+                if (welcomeBubble || welcomeEntrance) {
+                    const cosmeticExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+                    if (welcomeBubble) {
+                        newUser.ownedCosmetics.push({ item: welcomeBubble._id, purchasedAt: new Date(), durationDays: 3, activatedAt: new Date(), expiresAt: cosmeticExpiresAt });
+                        newUser.activeBubbleCosmetic = welcomeBubble._id;
+                        newUser.activeBubbleCosmeticClass = welcomeBubble.cssClass;
+                        newUser.activeBubbleCosmeticExpiresAt = cosmeticExpiresAt;
+                    }
+                    if (welcomeEntrance) {
+                        newUser.ownedCosmetics.push({ item: welcomeEntrance._id, purchasedAt: new Date(), durationDays: 3, activatedAt: new Date(), expiresAt: cosmeticExpiresAt });
+                        newUser.activeEntranceCosmetic = welcomeEntrance._id;
+                        newUser.activeEntranceCosmeticClass = welcomeEntrance.cssClass;
+                        newUser.activeEntranceCosmeticExpiresAt = cosmeticExpiresAt;
+                    }
+                    newUser.hasReceivedWelcomeCosmetic = true;
+                    await newUser.save();
+                }
+            }
+        } catch (cosmeticError) {
+            console.error('[WELCOME COSMETIC ERROR]', cosmeticError);
+        }
+
         require('../utils/linkageService').recordDeviceSession(newUser._id, { deviceId: req.headers['x-device-id'], ip: req.ip });
 
         createSendToken(newUser, 201, res);

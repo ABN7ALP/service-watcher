@@ -30,6 +30,14 @@ const giftSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // ✅ feat/gift-fx: فيديو مؤثر الهدية (يُعرض فوق الغرفة بـmix-blend-mode:screen ثم تطير
+  // الهدية للمستلم) — منفصل عمداً عن animationUrl أعلاه (ذاك يُحمَّل مسبقاً لكل الهدايا
+  // الأسطورية حالياً فور دخول الغرفة؛ videoUrl هنا يُطلَب فقط عند أول إرسال فعلي للهدية —
+  // راجع "لا تحميل مسبق أبداً" بمواصفات استوديو المؤثرات docs/design/fx-studio-prototype.html)
+  videoUrl: {
+    type: String,
+    default: null
+  },
   // ✅ طلب صريح: افتراضياً true للهدايا الأسطورية فقط (تأثير ملء الشاشة)، false لبقية
   // الفئات — دالة افتراضية (لا قيمة ثابتة) كي تعتمد على category وقت الإنشاء نفسه
   isFullscreen: {

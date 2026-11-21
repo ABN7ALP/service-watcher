@@ -362,16 +362,20 @@ exports.getExclusiveGiftEligibility = async (req, res) => {
         if (!mongoose.Types.ObjectId.isValid(ownerId)) {
             return res.status(400).json({ status: 'fail', message: 'معرّف غير صالح' });
         }
-        const [gift, membership, linked, owner] = await Promise.all([
-            Gift.findOne({ isFanClubExclusive: true, isActive: true }),
+        // 🛡️ feat/gift-fx-and-cosmetics-base: find (لا findOne) — صارت هديتان حصريتان الآن
+        // ("هدية النادي" و"فراشة النادي")، كلتاهما بنفس عتبة EXCLUSIVE_GIFT_MIN_LEVEL نفسها
+        // (لا حقل مستوى منفصل لكل هدية — isFanClubExclusive:true وحدها تكفي لتفعيل نفس الفحص)
+        const [gifts, membership, linked, owner] = await Promise.all([
+            Gift.find({ isFanClubExclusive: true, isActive: true }),
             FanClubMembership.findOne({ owner: ownerId, member: memberId }).select('points lastPointAt'),
             linkageService.areLinked(memberId, ownerId),
             User.findById(ownerId).select('fanClub.giftColorId')
         ]);
-        if (!gift) return res.status(200).json({ status: 'success', data: { eligible: false, gift: null } });
+        if (!gifts.length) return res.status(200).json({ status: 'success', data: { eligible: false, gift: null, gifts: [] } });
         const level = membership ? computeFanLevelInfo(membership.points).level : 0;
         const active = membership ? !isInactive(membership.lastPointAt) : false;
         const eligible = !linked && !!membership && active && level >= EXCLUSIVE_GIFT_MIN_LEVEL;
+        const eligibleGifts = eligible ? gifts.map(gift => ({ id: gift._id, name: gift.name, imageUrl: gift.imageUrl, price: gift.discountedPrice || gift.price, videoUrl: gift.videoUrl || null })) : [];
         res.status(200).json({
             status: 'success',
             data: {
@@ -381,7 +385,10 @@ exports.getExclusiveGiftEligibility = async (req, res) => {
                 // ✅ لون هدية نادي المالك — يُستخدَم لتلوين صورة الهدية الحصرية بالعميل (نفس فلتر
                 // CSS المُستخدَم أصلاً لوردة زر الانضمام — راجع FAN_CLUB_COLORS بـapp.js)
                 giftColorId: owner?.fanClub?.giftColorId || 'pink',
-                gift: eligible ? { id: gift._id, name: gift.name, imageUrl: gift.imageUrl, price: gift.discountedPrice || gift.price } : null
+                // ✅ gift (مفرد) يبقى للتوافق الخلفي (أول هدية فقط، كما كانت قبل التعدد) —
+                // gifts (جمع) الحقل الجديد الذي يستهلكه تبويب "النادي" بالعميل
+                gift: eligibleGifts[0] || null,
+                gifts: eligibleGifts
             }
         });
     } catch (error) {

@@ -179,6 +179,7 @@ class AdminDashboard {
         });
         document.getElementById('transactionsTypeFilter')?.addEventListener('change', () => this.loadTransactions(1));
         document.getElementById('addGiftBtn')?.addEventListener('click', () => this.showGiftFormModal());
+        document.getElementById('addCosmeticBtn')?.addEventListener('click', () => this.showCosmeticFormModal());
         document.getElementById('addFrameBtn')?.addEventListener('click', () => this.showFrameStudioModal());
         document.getElementById('addMusicTrackBtn')?.addEventListener('click', () => this.showMusicTrackFormModal());
         document.getElementById('suggestionsStatusFilter')?.addEventListener('change', () => this.loadSuggestions());
@@ -240,6 +241,7 @@ class AdminDashboard {
             agents: () => this.loadAgents(),
             hostpool: () => this.loadHostPool(),
             gifts: () => this.loadGifts(),
+            cosmetics: () => this.loadCosmetics(),
             frames: () => this.loadFrames(),
             customgifts: () => this.loadCustomGifts(),
             music: () => this.loadMusicTracks(1),
@@ -1147,6 +1149,12 @@ class AdminDashboard {
                         <div class="form-group"><label>نسبة الخصم %</label><input type="number" class="form-control" id="giftDiscount" value="${gift?.discount || 0}" min="0" max="100"></div>
                         <div class="form-group"><label>ترتيب العرض</label><input type="number" class="form-control" id="giftSortOrder" value="${gift?.sortOrder || 0}"></div>
                         <div class="form-group"><label><input type="checkbox" id="giftIsActive" ${gift?.isActive !== false ? 'checked' : ''}> نشطة (تظهر بالمتجر)</label></div>
+                        <div class="form-group"><label><input type="checkbox" id="giftIsFanClubExclusive" ${gift?.isFanClubExclusive ? 'checked' : ''}> حصرية نادي المعجبين (تظهر فقط بتبويب "النادي" داخل غرفة المضيف)</label></div>
+                        <div class="form-group">
+                            <label>فيديو مؤثر الهدية (mp4، حتى 2MB، اختياري)</label>
+                            ${gift?.videoUrl ? `<p class="text-muted small">فيديو حالي موجود — اختر ملفاً جديداً لاستبداله، أو اتركه فارغاً لإبقائه كما هو.</p>` : ''}
+                            <input type="file" class="form-control" id="giftVideoFile" accept="video/mp4">
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button class="btn btn-secondary" data-dismiss>إلغاء</button>
@@ -1156,23 +1164,158 @@ class AdminDashboard {
             </div>
         `);
         modal.querySelector('#saveGiftBtn').addEventListener('click', async () => {
-            const payload = {
-                name: modal.querySelector('#giftName').value.trim(),
-                description: modal.querySelector('#giftDesc').value.trim(),
-                imageUrl: modal.querySelector('#giftImage').value.trim(),
-                price: parseFloat(modal.querySelector('#giftPrice').value),
-                category: modal.querySelector('#giftCategory').value,
-                discount: parseFloat(modal.querySelector('#giftDiscount').value) || 0,
-                sortOrder: parseInt(modal.querySelector('#giftSortOrder').value) || 0,
-                isActive: modal.querySelector('#giftIsActive').checked
-            };
-            if (!payload.name || !payload.imageUrl || !payload.price) { this.showToast('يرجى تعبئة الحقول الإلزامية', 'error'); return; }
+            const name = modal.querySelector('#giftName').value.trim();
+            const imageUrl = modal.querySelector('#giftImage').value.trim();
+            const price = parseFloat(modal.querySelector('#giftPrice').value);
+            if (!name || !imageUrl || !price) { this.showToast('يرجى تعبئة الحقول الإلزامية', 'error'); return; }
+            const videoFile = modal.querySelector('#giftVideoFile').files[0];
+            // 🛡️ feat/gift-fx-and-cosmetics-base: multipart فقط عند اختيار فيديو فعلياً (طلب صريح:
+            // "تحديث الطريق، لا شحن أسرار Cloudinary لأي حاوية") — الرفع يمر دوماً عبر مسار الخادم
+            // نفسه (apiUpload -> giftVideoUpload middleware -> assertRealType -> Cloudinary)، نفس
+            // نمط استوديو الإطارات بالضبط. بلا فيديو مُختار: JSON عادي كما كان (أبسط وأسرع)
             try {
-                if (isEdit) await this.api('PUT', `/gifts/${gift._id}`, payload);
-                else await this.api('POST', '/gifts', payload);
+                if (videoFile) {
+                    const formData = new FormData();
+                    formData.append('giftVideo', videoFile);
+                    formData.append('name', name);
+                    formData.append('description', modal.querySelector('#giftDesc').value.trim());
+                    formData.append('imageUrl', imageUrl);
+                    formData.append('price', String(price));
+                    formData.append('category', modal.querySelector('#giftCategory').value);
+                    formData.append('discount', String(parseFloat(modal.querySelector('#giftDiscount').value) || 0));
+                    formData.append('sortOrder', String(parseInt(modal.querySelector('#giftSortOrder').value) || 0));
+                    formData.append('isActive', modal.querySelector('#giftIsActive').checked ? 'true' : 'false');
+                    formData.append('isFanClubExclusive', modal.querySelector('#giftIsFanClubExclusive').checked ? 'true' : 'false');
+                    if (isEdit) await this.apiUpload('PUT', `/gifts/${gift._id}`, formData);
+                    else await this.apiUpload('POST', '/gifts', formData);
+                } else {
+                    const payload = {
+                        name, imageUrl, price,
+                        description: modal.querySelector('#giftDesc').value.trim(),
+                        category: modal.querySelector('#giftCategory').value,
+                        discount: parseFloat(modal.querySelector('#giftDiscount').value) || 0,
+                        sortOrder: parseInt(modal.querySelector('#giftSortOrder').value) || 0,
+                        isActive: modal.querySelector('#giftIsActive').checked,
+                        isFanClubExclusive: modal.querySelector('#giftIsFanClubExclusive').checked
+                    };
+                    if (isEdit) await this.api('PUT', `/gifts/${gift._id}`, payload);
+                    else await this.api('POST', '/gifts', payload);
+                }
                 this.showToast('تم الحفظ بنجاح', 'success');
                 modal.remove();
                 this.loadGifts();
+            } catch (error) { this.showToast(error.message, 'error'); }
+        });
+    }
+
+    // ================= الفقاعات وإعلانات الدخول (CosmeticItem) =================
+    // 🛡️ feat/gift-fx-and-cosmetics-base: نفس نمط إدارة الهدايا أعلاه بالضبط. source تحدد
+    // المدد الظاهرة بالنموذج: shop فقط تملك حقلي سعر 7/30 يوماً (تُشترى فعلياً)؛ welcome/
+    // fanclub/couple لا تُشترى أبداً (يُمنحن تلقائياً أو يُحسَبن حياً من مستوى النادي)
+    async loadCosmetics() {
+        try {
+            const data = await this.api('GET', '/cosmetics');
+            const c = document.getElementById('cosmeticsGridContainer');
+            if (!data.items || !data.items.length) { c.innerHTML = '<div class="empty-state"><i class="fas fa-comment-dots fa-2x"></i><p>لا توجد عناصر بعد</p></div>'; return; }
+
+            const sourceLabel = { shop: 'المتجر', welcome: 'ترحيب', fanclub: 'نادي المعجبين', couple: 'الثنائي' };
+            const typeLabel = { bubble: 'فقاعة دردشة', entrance: 'إعلان دخول' };
+            c.innerHTML = data.items.map(it => `
+                <div class="stat-card ${it.isActive ? 'success' : 'danger'}" style="flex-direction:column;align-items:flex-start;">
+                    <div style="width:100%;">
+                        <span class="${escapeHtml(it.cssClass)}" style="display:inline-block;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:900;">${escapeHtml(it.name)}</span>
+                        <div class="text-muted small" style="margin-top:6px;">${typeLabel[it.type] || it.type} — ${sourceLabel[it.source] || it.source}${it.fanClubTierLevel ? ` (مستوى ${it.fanClubTierLevel}+)` : ''}</div>
+                        ${it.durations && it.durations.length ? `<div class="text-muted small">${it.durations.map(d => `${d.days} يوم: ${d.price} كوينز`).join(' · ')}</div>` : ''}
+                    </div>
+                    <div style="display:flex;gap:6px;margin-top:12px;">
+                        <button class="btn-action btn-edit" data-edit="${it._id}"><i class="fas fa-edit"></i></button>
+                        <button class="btn-action btn-delete" data-delete="${it._id}" data-name="${escapeHtml(it.name)}"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            `).join('');
+
+            c.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => {
+                const item = data.items.find(it => it._id === btn.dataset.edit);
+                this.showCosmeticFormModal(item);
+            }));
+            c.querySelectorAll('[data-delete]').forEach(btn => btn.addEventListener('click', () =>
+                this.confirmAction(`حذف عنصر "${btn.dataset.name}" نهائياً؟`, async () => {
+                    await this.api('DELETE', `/cosmetics/${btn.dataset.delete}`);
+                    this.showToast('تم الحذف', 'success'); this.loadCosmetics();
+                })
+            ));
+        } catch (error) { this.showToast(error.message, 'error'); }
+    }
+
+    showCosmeticFormModal(item = null) {
+        const isEdit = !!item;
+        const d7 = item?.durations?.find(d => d.days === 7)?.price ?? '';
+        const d30 = item?.durations?.find(d => d.days === 30)?.price ?? '';
+        const modal = this.openModal(`
+            <div class="modal-overlay active">
+                <div class="modal-content" style="max-width:500px;">
+                    <div class="modal-header"><h3>${isEdit ? 'تعديل عنصر' : 'عنصر جديد'}</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
+                    <div class="modal-body">
+                        <div class="form-group"><label>النوع *</label>
+                            <select class="form-control" id="csType">
+                                <option value="bubble" ${item?.type === 'bubble' ? 'selected' : ''}>فقاعة دردشة</option>
+                                <option value="entrance" ${item?.type === 'entrance' ? 'selected' : ''}>إعلان دخول</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label>الاسم *</label><input type="text" class="form-control" id="csName" value="${escapeHtml(item?.name || '')}"></div>
+                        <div class="form-group"><label>صنف CSS *</label><input type="text" class="form-control" id="csCssClass" value="${escapeHtml(item?.cssClass || '')}" placeholder="مثال: bubble-gold"></div>
+                        <div class="form-group"><label>المصدر *</label>
+                            <select class="form-control" id="csSource">
+                                <option value="shop" ${item?.source === 'shop' ? 'selected' : ''}>المتجر (يُشترى)</option>
+                                <option value="welcome" ${item?.source === 'welcome' ? 'selected' : ''}>ترحيب (تلقائي)</option>
+                                <option value="fanclub" ${item?.source === 'fanclub' ? 'selected' : ''}>نادي المعجبين (حسب المستوى)</option>
+                                <option value="couple" ${item?.source === 'couple' ? 'selected' : ''}>الثنائي (معطَّل حالياً)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="csFanClubLevelGroup"><label>مستوى نادي المعجبين الأدنى</label><input type="number" class="form-control" id="csFanClubTierLevel" value="${item?.fanClubTierLevel || ''}" min="1" max="20"></div>
+                        <div class="form-group" id="csDurationsGroup">
+                            <label>أسعار المتجر (كوينز)</label>
+                            <div style="display:flex;gap:8px;">
+                                <input type="number" class="form-control" id="csPrice7" placeholder="7 أيام" value="${d7}">
+                                <input type="number" class="form-control" id="csPrice30" placeholder="30 يوماً" value="${d30}">
+                            </div>
+                        </div>
+                        <div class="form-group"><label>ترتيب العرض</label><input type="number" class="form-control" id="csSortOrder" value="${item?.sortOrder || 0}"></div>
+                        <div class="form-group"><label><input type="checkbox" id="csIsActive" ${item?.isActive !== false ? 'checked' : ''}> نشط</label></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" data-dismiss>إلغاء</button>
+                        <button class="btn btn-primary" id="saveCosmeticBtn">${isEdit ? 'حفظ التعديلات' : 'إضافة'}</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        modal.querySelector('#saveCosmeticBtn').addEventListener('click', async () => {
+            const name = modal.querySelector('#csName').value.trim();
+            const cssClass = modal.querySelector('#csCssClass').value.trim();
+            if (!name || !cssClass) { this.showToast('يرجى تعبئة الحقول الإلزامية', 'error'); return; }
+            const source = modal.querySelector('#csSource').value;
+            const durations = [];
+            const p7 = parseFloat(modal.querySelector('#csPrice7').value);
+            const p30 = parseFloat(modal.querySelector('#csPrice30').value);
+            if (source === 'shop') {
+                if (p7 > 0) durations.push({ days: 7, price: p7 });
+                if (p30 > 0) durations.push({ days: 30, price: p30 });
+            }
+            const payload = {
+                type: modal.querySelector('#csType').value,
+                name, cssClass, source,
+                durations,
+                fanClubTierLevel: source === 'fanclub' ? (parseInt(modal.querySelector('#csFanClubTierLevel').value) || null) : null,
+                sortOrder: parseInt(modal.querySelector('#csSortOrder').value) || 0,
+                isActive: modal.querySelector('#csIsActive').checked
+            };
+            try {
+                if (isEdit) await this.api('PUT', `/cosmetics/${item._id}`, payload);
+                else await this.api('POST', '/cosmetics', payload);
+                this.showToast('تم الحفظ بنجاح', 'success');
+                modal.remove();
+                this.loadCosmetics();
             } catch (error) { this.showToast(error.message, 'error'); }
         });
     }
