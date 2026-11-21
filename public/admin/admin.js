@@ -1223,7 +1223,7 @@ class AdminDashboard {
             c.innerHTML = data.items.map(it => `
                 <div class="stat-card ${it.isActive ? 'success' : 'danger'}" style="flex-direction:column;align-items:flex-start;">
                     <div style="width:100%;">
-                        <span class="${it.cssClass}" style="display:inline-block;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:900;">${escapeHtml(it.name)}</span>
+                        <span class="${escapeHtml(it.cssClass)}" style="display:inline-block;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:900;">${escapeHtml(it.name)}</span>
                         <div class="text-muted small" style="margin-top:6px;">${typeLabel[it.type] || it.type} — ${sourceLabel[it.source] || it.source}${it.fanClubTierLevel ? ` (مستوى ${it.fanClubTierLevel}+)` : ''}</div>
                         ${it.durations && it.durations.length ? `<div class="text-muted small">${it.durations.map(d => `${d.days} يوم: ${d.price} كوينز`).join(' · ')}</div>` : ''}
                     </div>
