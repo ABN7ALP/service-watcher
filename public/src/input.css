@@ -3380,15 +3380,21 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .room-gift-banner-text span { font-size: 10.5px; color: #e5e7eb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
 
 /* 🛡️ feat/gift-fx-and-cosmetics-base (إصلاح الخطأ أ — طبقات ثابتة الترتيب فوق المقاعد):
-   .voice-chat-stage يحتضن شبكة المقاعد + ثلاث طبقات تراكب فوقها بترتيب صريح واحد لا يتغيّر:
-   الدخول (30) ثم فيديو الهدية (39) ثم أيقونة الطيران (40) — مطابق لـdocs/design/
-   fx-studio-prototype.html (.layer-entr/.layer-vid/.layer-fx) حرفياً. z-index على .voice-chat-stage
-   نفسه (لا فقط على الطبقات) يُنشئ سياق تكديس معزولاً، فيرسم الصندوق كاملاً فوق .room-gift-lane
-   (z-index:20) ككتلة واحدة بصرف النظر عن ترتيب DOM بينهما — لا اعتماد على تكديس ضمني هش */
+   .voice-chat-stage يحتضن شبكة المقاعد + طبقة الدخول (30) فوقها — مطابق لـdocs/design/
+   fx-studio-prototype.html (.layer-entr) حرفياً. z-index على .voice-chat-stage نفسه (لا فقط
+   على الطبقة) يُنشئ سياق تكديس معزولاً، فيرسم الصندوق كاملاً فوق .room-gift-lane (z-index:20)
+   ككتلة واحدة بصرف النظر عن ترتيب DOM بينهما — لا اعتماد على تكديس ضمني هش */
 .voice-chat-stage { position: relative; z-index: 25; }
 .room-entrance-layer { position: absolute; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
-/* ✅ mix-blend-mode:screen على طبقة الفيديو نفسها (لا فيديو معزول بعنصر منفصل داخلها) —
-   هكذا تُزال الخلفية السوداء للفيديو حقاً (راجع ملاحظة "التقنية" بالنموذج الأولي) */
+/* 🐛 إصلاح جذري (مراجعة PR #160 — الفيديو أسود ومحصور بصندوق المقاعد): طبقتا الفيديو/الطيران
+   كانتا متداخلتين داخل .voice-chat-stage (سياق تكديس مستقل بذاته) — mix-blend-mode:screen لا
+   يمزج إلا مع ما يُرسَم ضمن نفس سياق التكديس المباشر، و.room-bg (خلفية الغرفة الأرجوانية
+   الحقيقية) تعيش بسياق #main-content الأب، خارج سياق .voice-chat-stage تماماً، فكان المزج يحدث
+   مع عدم شيء (أسود). كذلك inset:0 كان يُحجِّم الطبقة على صندوق المقاعد فقط لا الغرفة كاملة.
+   الطبقتان الآن طفلان مباشران لـ#main-content (أخوان لـ.room-bg و.voice-chat-stage نفسها، لا
+   ابنان لها) — بلا أي سلف بينهما وبين #main-content يملك z-index/opacity/transform/filter/
+   isolation خاصاً به (كان سيُنشئ سياق تكديس جديداً يُعيد المشكلة ذاتها)، فيصبح المزج ضد خلفية
+   الغرفة الحقيقية فعلاً، وinset:0 يغطي الغرفة كاملة (100vh) فوق المقاعد تماماً كما يجب */
 .room-giftfx-video-layer { position: absolute; inset: 0; z-index: 39; pointer-events: none; overflow: hidden; mix-blend-mode: screen; }
 .room-giftfx-fly-layer { position: absolute; inset: 0; z-index: 40; pointer-events: none; overflow: visible; }
 

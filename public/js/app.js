@@ -3367,9 +3367,9 @@ document.addEventListener('DOMContentLoaded', () => {
             <div id="voice-chat-stage" class="voice-chat-stage">
                 <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
                 <div id="room-entrance-layer" class="room-entrance-layer"></div>
-                <div id="room-giftfx-video-layer" class="room-giftfx-video-layer"></div>
-                <div id="room-giftfx-fly-layer" class="room-giftfx-fly-layer"></div>
             </div>
+            <div id="room-giftfx-video-layer" class="room-giftfx-video-layer"></div>
+            <div id="room-giftfx-fly-layer" class="room-giftfx-fly-layer"></div>
             <div id="room-gift-lane" class="room-gift-lane"></div>
             ${renderRoomChatMarkup()}
             <div id="room-kb-spacer" class="room-kb-spacer"></div>
@@ -7321,9 +7321,9 @@ document.addEventListener('DOMContentLoaded', () => {
             <div id="voice-chat-stage" class="voice-chat-stage">
                 <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
                 <div id="room-entrance-layer" class="room-entrance-layer"></div>
-                <div id="room-giftfx-video-layer" class="room-giftfx-video-layer"></div>
-                <div id="room-giftfx-fly-layer" class="room-giftfx-fly-layer"></div>
             </div>
+            <div id="room-giftfx-video-layer" class="room-giftfx-video-layer"></div>
+            <div id="room-giftfx-fly-layer" class="room-giftfx-fly-layer"></div>
             <div id="room-gift-lane" class="room-gift-lane"></div>
             ${renderRoomChatMarkup()}
             <div id="room-kb-spacer" class="room-kb-spacer"></div>
@@ -18107,21 +18107,23 @@ function gfxRenderLegendary(data, onDone) {
     }, 3200);
 }
 
-// 🛡️ feat/gift-fx-and-cosmetics-base: نقطة مقعد داخل .voice-chat-stage نفسها (لا body) —
-// إحداثيات نسبية لصندوق المرحلة الموضعي (position:relative)، مطابقة لنمط gfxSeatFlyPoint/
+// 🛡️ feat/gift-fx-and-cosmetics-base (مراجعة PR #160): .room-giftfx-fly-layer صار طفلاً مباشراً
+// لـ#main-content (لا .voice-chat-stage — راجع تعليق input.css عن سبب إصلاح الفيديو الأسود)،
+// فمرجع الإحداثيات هنا صار #main-content نفسه، لا صندوق المقاعد؛ مطابق لنمط gfxSeatFlyPoint/
 // gfxFlyFallbackPoint الموجودين أعلى الملف تماماً لكن لمرجع مختلف يلائم .room-giftfx-fly-layer
 function gfxStageSeatPoint(userId) {
-    const stage = document.getElementById('voice-chat-stage');
     const wrap = userId && document.querySelector(`#voice-chat-grid [data-user-id="${userId}"] .voice-seat-av-wrap`);
-    if (!stage || !wrap) return null;
-    const sr = stage.getBoundingClientRect();
+    if (!mainContent || !wrap) return null;
+    const sr = mainContent.getBoundingClientRect();
     const r = wrap.getBoundingClientRect();
     return { x: r.left - sr.left + r.width / 2 - 28, y: r.top - sr.top + r.height / 2 - 28 };
 }
 function gfxStageFallbackPoint() {
     const stage = document.getElementById('voice-chat-stage');
-    if (!stage) return { x: 0, y: 0 };
-    return { x: stage.clientWidth / 2 - 28, y: Math.max(0, stage.clientHeight - 56) };
+    if (!mainContent || !stage) return { x: 0, y: 0 };
+    const mr = mainContent.getBoundingClientRect();
+    const sr = stage.getBoundingClientRect();
+    return { x: sr.left - mr.left + stage.clientWidth / 2 - 28, y: sr.top - mr.top + stage.clientHeight - 56 };
 }
 
 // ✅ طيران أيقونة الهدية فقط (بلا فيديو ولا بطاقة ملء شاشة) — يُستخدَم حين يمتلئ طابور الفيديو
