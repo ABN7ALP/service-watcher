@@ -1042,7 +1042,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ✅ طلب صريح: "التطبيق مخفي بالخلفية → يتوقّف طابور الفيديو؛ عند العودة تُسقَط العناصر
     // الأقدم من 30ث" — GiftStage.setHidden تنفّذ هذا بالكامل، هنا فقط ربطها بحدث المتصفّح الحقيقي
     document.addEventListener('visibilitychange', () => roomGiftStage.setHidden(document.hidden));
-    let gfxComboAggregate = null; // {xpGained, pendingSupportLevelUp} — راجع gfxResetComboAggregate/gfxFlushComboAggregate
+    let gfxComboAggregate = null; // {xpGained} — راجع gfxResetComboAggregate/gfxFlushComboAggregate
     let myIsMuted = false;         // ✅ حالة كتمي الحقيقية (زر الكتم انتقل لقائمة "المزيد")
     let roomAudioMuted = false;    // ✅ كتم شخصي محلي بحت لكل صوت الغرفة (موسيقى + متحدثون) — لا يؤثر على أحد غيري
     // 🐛 إصلاح جوهري: الكتم (سواء الذاتي أو كتم المضيف لأحد) كان يعتمد بالكامل على أن جهاز
@@ -4830,75 +4830,28 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { /* لا شيء — تأثير بصري اختياري فقط */ }
     }
 
+    // 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2): كانت بطاقة ضخمة بمنتصف الشاشة (z-index:620)
+    // تتصادم بصرياً مع موكب/شريط هدية مُشغَّل بنفس اللحظة — توست علوي صغير بمنطقته الثابتة
+    // الخاصة بدلها الآن (لا بطاقة مركزية إطلاقاً، لا أثناء هدايا ولا بأي وقت)، والكونفيتي يبقى
+    // (انفجار عابر لا يحجز منطقة ثابتة، لا يتعارض مع شيء)
     function celebrateRoomLevelUp(newLevel) {
-        document.getElementById('room-levelup-celebration')?.remove();
         fireConfettiBurst(['#fbbf24', '#f59e0b', '#a855f7']);
-        const el = document.createElement('div');
-        el.id = 'room-levelup-celebration';
-        el.className = 'room-levelup-celebration';
-        const particles = Array.from({ length: 14 }, (_, i) => {
-            const angle = Math.round((360 / 14) * i);
-            const delay = (Math.random() * 0.15).toFixed(2);
-            return `<span class="room-levelup-particle" style="--angle:${angle}deg; --delay:${delay}s"></span>`;
-        }).join('');
-        el.innerHTML = `
-            <div class="room-levelup-card room-level-badge-${newLevel}">
-                ${particles}
-                <i class="fas fa-star room-levelup-icon"></i>
-                <p class="room-levelup-title">ارتقت الغرفة!</p>
-                <p class="room-levelup-level">Lv.${newLevel}</p>
-            </div>
-        `;
-        document.body.appendChild(el);
-        setTimeout(() => {
-            el.classList.add('room-levelup-fade-out');
-            setTimeout(() => el.remove(), 400);
-        }, 2600);
+        gfxShowTopToast(`<i class="fas fa-star"></i><span>ارتقت الغرفة! Lv.${Number(newLevel) || 0}</span>`);
     }
 
-    // ✅ احتفال ارتقاء "مستوى المعجب" بنادٍ ما — نفس أسلوب احتفال ارتقاء الغرفة (كونفيتي +
-    // بطاقة عائمة تختفي تلقائياً)، بلونين مشتقّين من نظام المستويات (ذهبي/وردي)
+    // ✅ احتفال ارتقاء "مستوى المعجب" بنادٍ ما — نفس أسلوب توست ارتقاء الغرفة
     function celebrateFanClubLevelUp(ownerUsername, newLevel, tierName) {
-        document.getElementById('fanclub-levelup-celebration')?.remove();
         fireConfettiBurst(['#fbbf24', '#ec4899', '#a855f7']);
-        const el = document.createElement('div');
-        el.id = 'fanclub-levelup-celebration';
-        el.className = 'room-levelup-celebration';
-        el.innerHTML = `
-            <div class="room-levelup-card fanclub-levelup-card">
-                <i class="fas fa-crown room-levelup-icon"></i>
-                <p class="room-levelup-title">ارتقيت بنادي ${escapeHtml(ownerUsername || '')}!</p>
-                <p class="room-levelup-level">Lv.${newLevel} · ${escapeHtml(tierName || '')}</p>
-            </div>
-        `;
-        document.body.appendChild(el);
-        setTimeout(() => {
-            el.classList.add('room-levelup-fade-out');
-            setTimeout(() => el.remove(), 400);
-        }, 2600);
+        gfxShowTopToast(`<i class="fas fa-crown"></i><span>ارتقيت بنادي ${escapeHtml(ownerUsername || '')}! Lv.${newLevel} · ${escapeHtml(tierName || '')}</span>`);
     }
 
-    // ✅ احتفال ارتقاء "مستوى الدعم/التلقي" العام — نفس أسلوب احتفال نادي المعجبين، بلون
-    // تدرّج الفئة الجديدة نفسها (--tier-c1/--tier-c2) بدل لون ثابت، فيعكس الفئة الفعلية المُرتقاة إليها
+    // ✅ احتفال ارتقاء "مستوى الدعم/التلقي" العام — نفس أسلوب توست نادي المعجبين، بلون
+    // تدرّج الفئة الجديدة نفسها فوق الأيقونة فقط (couldn't carry a CSS var in a one-off toast
+    // بسيط، فنُطبِّق اللون مباشرة كـstyle على الأيقونة بدل متغيّر CSS مخصَّص لعنصر كان بطاقة كاملة)
     function celebrateSupportLevelUp(kind, newLevel, tierName, tierIcon, tierGradient) {
-        document.getElementById('support-levelup-celebration')?.remove();
         const [c1, c2] = tierGradient;
         fireConfettiBurst(['#ffffff', c1, c2]);
-        const el = document.createElement('div');
-        el.id = 'support-levelup-celebration';
-        el.className = 'room-levelup-celebration';
-        el.innerHTML = `
-            <div class="room-levelup-card support-levelup-card" style="--tier-c1:${c1};--tier-c2:${c2}">
-                <i class="fas ${tierIcon} room-levelup-icon"></i>
-                <p class="room-levelup-title">ارتقيت بمستوى الثروة!</p>
-                <p class="room-levelup-level">Lv.${newLevel} · ${escapeHtml(tierName || '')}</p>
-            </div>
-        `;
-        document.body.appendChild(el);
-        setTimeout(() => {
-            el.classList.add('room-levelup-fade-out');
-            setTimeout(() => el.remove(), 400);
-        }, 2600);
+        gfxShowTopToast(`<i class="fas ${tierIcon}" style="color:${c1}"></i><span>ارتقيت بمستوى الثروة! Lv.${newLevel} · ${escapeHtml(tierName || '')}</span>`);
     }
 
     // ✅ نافذة إعدادات الغرفة — تظهر فقط للمضيف (يتحقق منها السيرفر أيضاً عند الحفظ). أُعيد
@@ -9993,15 +9946,10 @@ function showXpGainAnimation(amount) {
 
     // ✅ احتفال ارتقاء مستوى دعم/تلقي حقيقي — يصل فقط لصاحب الحدث شخصياً (io.to(socketId) من
     // الخادم)، أياً كان مصدر الارتقاء (هدية أُرسلت/استُلمت، مكافأة حضور، أو مكافأة دردشة يومية)
+    // 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2): celebrateSupportLevelUp نفسها توست صغير غير
+    // مُحجِّب الآن (لا بطاقة مركزية بعد اليوم) — لا داعٍ لكبتها/تأجيلها أثناء كومبو حيّ إطلاقاً،
+    // فتُستدعى مباشرة دوماً (أزال أيضاً تكرار توست مزدوج كان سيظهر: واحد فوري + آخر مؤجَّل)
     socket.on('support-level-up', ({ kind, newLevel, tierName, tierIcon, tierGradient }) => {
-        // ✅ طلب صريح (بند 4 بمراجعة PR #108): أثناء كومبو حيّ، بطاقة الاحتفال الكاملة ("الـmodal")
-        // تُكبَت وتُستبدَل بتوست علوي صغير غير مُحجِّب فوراً؛ البطاقة الكاملة تُؤجَّل وتُعرَض
-        // مرة واحدة فقط (1 ثانية) بعد انتهاء الجلسة — راجع gfxFlushComboAggregate
-        if (gfxIsComboActive() && gfxComboAggregate) {
-            gfxComboAggregate.pendingSupportLevelUp = { kind, newLevel, tierName, tierIcon, tierGradient };
-            gfxShowTopLevelToast(newLevel);
-            return;
-        }
         celebrateSupportLevelUp(kind, newLevel, tierName, tierIcon, tierGradient);
     });
 
@@ -17488,47 +17436,48 @@ function gfxFlyGateAcquire() {
 }
 function gfxFlyGateRelease() { gfxActiveFlyCount = Math.max(0, gfxActiveFlyCount - 1); }
 
-// ✅ طلب صريح (مراجعة PR #108 — بند 4): أثناء كومبو حيّ، تُكبَت فقاعة "+XP" العائمة وبطاقة
-// ارتقاء "مستوى الثروة" الكاملة (كانت تتكرر بكل ack/كل مستلم وتُغطي منتصف الغرفة)، ويُجمَّع
-// أثرهما بدل ذلك ليُعرض مرة واحدة فقط بعد انتهاء الجلسة
+// ✅ طلب صريح (مراجعة PR #108 — بند 4): أثناء كومبو حيّ، تُكبَت فقاعة "+XP" العائمة (تتكرر
+// بكل ack/كل مستلم) ويُجمَّع أثرها لتُعرض دفعة واحدة بعد انتهاء الجلسة
+// 🐛 إصلاح (مراجعة #163 بند 2): ارتقاء مستوى الثروة لم يعد له بطاقة كاملة تُكبَت/تُؤجَّل أصلاً
+// (celebrateSupportLevelUp توست صغير غير مُحجِّب الآن، آمن أثناء أي كومبو) — pendingSupportLevelUp
+// أُزيل بالكامل، التجميع هنا خاص بـxpGained وحدها
 function gfxIsComboActive() { return !!activeGiftComboSession; }
-function gfxResetComboAggregate() { gfxComboAggregate = { xpGained: 0, pendingSupportLevelUp: null }; }
+function gfxResetComboAggregate() { gfxComboAggregate = { xpGained: 0 }; }
 function gfxFlushComboAggregate() {
     const agg = gfxComboAggregate;
     gfxComboAggregate = null;
     if (!agg) return;
     if (agg.xpGained > 0) showXpGainAnimation(agg.xpGained);
-    if (agg.pendingSupportLevelUp) {
-        const p = agg.pendingSupportLevelUp;
-        setTimeout(() => {
-            // 🐛 إصلاح (مُكتشَف بلقطة التحقق الفعلية): إرسال سريع متتالٍ قد يبدأ جلسة كومبو
-            // جديدة (مثلاً أسطورية) خلال ثانية الانتظار هذي بالضبط — عرض البطاقة الكاملة
-            // حينها يُقحمها فوق الجلسة الجديدة (نفس ازدحام الإعلانات الذي طُلب إزالته أساساً).
-            // لو جلسة جديدة فعلاً نشطة الآن: نُعيد تأجيل البطاقة لتُعرَض بعد انتهائها هي، لا نُسقطها
-            if (gfxIsComboActive() && gfxComboAggregate) {
-                gfxComboAggregate.pendingSupportLevelUp = p;
-                return;
-            }
-            celebrateSupportLevelUp(p.kind, p.newLevel, p.tierName, p.tierIcon, p.tierGradient);
-        }, 1000);
-    }
 }
-// ✅ توست علوي صغير غير مُحجِّب — يظهر فوراً بدل بطاقة الاحتفال الكاملة أثناء الكومبو
-function gfxShowTopLevelToast(newLevel) {
-    document.getElementById('gfx-top-toast')?.remove();
-    const el = document.createElement('div');
-    el.id = 'gfx-top-toast';
-    el.className = 'gfx-top-toast';
-    el.innerHTML = `<i class="fas fa-arrow-up"></i><span>مستوى الثروة Lv.${Number(newLevel) || 0}</span>`;
+// ✅ توست علوي صغير غير مُحجِّب — بدل بطاقة الاحتفال الكاملة المتوسِّطة الشاشة
+// 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2): كانت كل من ارتقاء الغرفة/النادي/الثروة بطاقة
+// ضخمة بمنتصف الشاشة (.room-levelup-celebration، z-index:620) تتصادم مع الموكب/الشريط
+// الجانبي حين تتزامن مع هدية تُلعَب (كما أظهرت لقطة التحقق) — الآن توست صغير دوماً (لا فقط
+// أثناء الكومبو)، بمنطقته الثابتة الخاصة (تحت الشارة العلوية مباشرة، لا تتقاطعان)، بطابور
+// حقيقي (حاوية تدفّق عادي لا معرّف وحيد) فلا يُلغي احتفال آخر احتفالاً سابقاً لم يختفِ بعد
+function getGfxTopToastStack() {
+    let stack = document.getElementById('gfx-top-toast-stack');
+    if (stack) return stack;
+    stack = document.createElement('div');
+    stack.id = 'gfx-top-toast-stack';
+    stack.className = 'gfx-top-toast-stack';
+    document.body.appendChild(stack);
+    return stack;
+}
+function gfxShowTopToast(innerHtml) {
+    const stack = getGfxTopToastStack();
     // 🐛 إصلاح (مراجعة المرحلة 3): كان يتموضع بـsafe-area ثابت فقط فيُغطّي عنوان الغرفة —
     // الآن أسفل شريط الرأس الحقيقي #room-header-bar مباشرة (+8px)، لا فوقه أبداً
     const header = document.getElementById('room-header-bar');
-    if (header) el.style.top = `${header.getBoundingClientRect().bottom + 8}px`;
-    document.body.appendChild(el);
+    if (header) stack.style.top = `${header.getBoundingClientRect().bottom + 8}px`;
+    const el = document.createElement('div');
+    el.className = 'gfx-top-toast';
+    el.innerHTML = innerHtml;
+    stack.appendChild(el);
     setTimeout(() => {
         el.classList.add('out');
         setTimeout(() => el.remove(), 300);
-    }, 1800);
+    }, 2200);
 }
 
 // ✅ جلسة كومبو هدايا حيّة واحدة — تُنشئ كل عناصرها (زر/كنفاس/شريط) وتُفكِّكها بالكامل عند
@@ -18143,14 +18092,22 @@ function gfxStageFallbackPoint() {
     const sr = stage.getBoundingClientRect();
     return { x: sr.left + stage.clientWidth / 2 - 28, y: sr.top + stage.clientHeight - 56 };
 }
-// ✅ طلب صريح (مراجعة): مركز مؤثر الفيديو/پop يكون أسفل مركز شبكة المقاعد نفسها قليلاً — مركز
-// #voice-chat-grid الفعلي (لا صندوق المرحلة كاملاً، الذي قد يحوي شريط PK/تحدٍ يُطيله) + إزاحة
-// ثابتة للأسفل. null لو تعذّر إيجاد الشبكة (الـCSS الافتراضي top:40% يبقى احتياطاً وقتها)
+// 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2): كان المركز = منتصف شبكة المقاعد نفسها، فيتراكب
+// الموكب فوق المقاعد وبطاقة ارتقاء الغرفة معاً (كما أظهرت لقطة التحقق). المنطقة الآن شريط
+// مستقل أسفل آخر صف مقاعد مباشرة ("بين آخر صف مقاعد والدردشة" حرفياً) — تُقاس حياً من صندوقي
+// #voice-chat-grid الحقيقي و#room-chat-messages الحقيقي (لا قيمة ثابتة) فتصح تلقائياً بغرفة
+// عادية/PK/تحدي مهما اختلف ارتفاع الشبكة. الحد الأقصى لأسفل محجوز عمداً كي لا يتجاوز الشريط
+// الجانبي (gift-stage-lane، راجع bottom:96px بالـCSS) أبداً — منطقتان منفصلتان لا تتقاطعان
 function gfxStagePopCenterPoint() {
     const grid = document.getElementById('voice-chat-grid');
     if (!grid) return null;
     const gr = grid.getBoundingClientRect();
-    return { x: gr.left + gr.width / 2, y: gr.top + gr.height / 2 + 48 };
+    const chat = document.getElementById('room-chat-messages');
+    const bandTop = gr.bottom + 10;
+    const laneZoneReserve = 110; // ✅ يطابق .gift-stage-lane bottom:96px + ارتفاع عنصر تقريبي
+    const maxBandBottom = chat ? Math.max(bandTop + 56, chat.getBoundingClientRect().bottom - laneZoneReserve) : bandTop + 110;
+    const bandHeight = Math.max(56, Math.min(120, maxBandBottom - bandTop));
+    return { x: gr.left + gr.width / 2, y: bandTop + bandHeight / 2 };
 }
 
 // ---------------- الطيران البسيط (بعد انتهاء فيديو الهدية فقط، لكل مستلم على حدة) ----------------
@@ -18334,7 +18291,26 @@ function giftStageOnProcExtend(proc) {
     if (cntEl) cntEl.textContent = '×' + proc.realQty.toLocaleString('en-US');
 }
 
-// ---------------- تأثير المقعد (د): كرت هوية فوق صورة المستلم لهدية مُعلَّمة من الأدمن (~10 ثوانٍ) ----------------
+// ---------------- تأثير المقعد (د): تاج SVG حقيقي فوق صورة المستلم لهدية مُعلَّمة من الأدمن (~10 ثوانٍ) ----------------
+// 🛡️ مراجعة #163 (بند 4): 👑 خام كان صغيراً رخيص المظهر — تاج SVG بتدرّج ذهبي + بريق بدلاً منه.
+// gid فريد لكل ظهور (لا تضارب معرّفات <linearGradient> لو ظهر أكثر من تأثير مقعد بنفس اللحظة
+// بمقاعد مختلفة — معرّفات SVG عامة بالمستند لا محصورة بعنصرها). لا بيانات مستخدم هنا إطلاقاً —
+// ترميز SVG ثابت بالكامل، لا حاجة لأي تعقيم
+let _gfxSeatCrownSeq = 0;
+function gfxSeatCrownSvg() {
+    const gid = `gift-crown-grad-${++_gfxSeatCrownSeq}`;
+    return `<svg viewBox="0 0 64 48" aria-hidden="true" focusable="false">
+        <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#fff6d8"/><stop offset="0.45" stop-color="#ffd75a"/><stop offset="1" stop-color="#b9820a"/>
+        </linearGradient></defs>
+        <path d="M4 44 L4 19 L15 29 L32 6 L49 29 L60 19 L60 44 Z" fill="url(#${gid})" stroke="#7a4e00" stroke-width="1.6" stroke-linejoin="round"/>
+        <circle cx="4" cy="19" r="4.2" fill="url(#${gid})" stroke="#7a4e00" stroke-width="1.1"/>
+        <circle cx="32" cy="6" r="4.8" fill="url(#${gid})" stroke="#7a4e00" stroke-width="1.1"/>
+        <circle cx="60" cy="19" r="4.2" fill="url(#${gid})" stroke="#7a4e00" stroke-width="1.1"/>
+        <rect x="4" y="39.5" width="56" height="7.5" rx="2.4" fill="url(#${gid})" stroke="#7a4e00" stroke-width="1.1"/>
+        <path d="M10 40 L22 16 L30 24 L18 42 Z" fill="rgba(255,255,255,.55)"/>
+    </svg>`;
+}
 function giftStageOnSeatEffect(evt, recipient) {
     if (!recipient) return;
     const wrap = document.querySelector(`#voice-chat-grid [data-user-id="${recipient.id}"] .voice-seat-av-wrap`);
@@ -18342,9 +18318,16 @@ function giftStageOnSeatEffect(evt, recipient) {
     wrap.querySelector('.gift-seat-effect')?.remove();
     const el = document.createElement('span');
     el.className = 'gift-seat-effect';
-    el.textContent = evt.gift.seatEffect;
+    if (evt.gift.seatEffect === '👑') {
+        el.innerHTML = gfxSeatCrownSvg();
+    } else {
+        el.textContent = evt.gift.seatEffect;
+    }
     wrap.appendChild(el);
-    setTimeout(() => el.remove(), 10000);
+    setTimeout(() => {
+        el.classList.add('out');
+        setTimeout(() => el.remove(), 300);
+    }, 10000);
 }
 
 // ✅ دالة موحّدة لبناء كارد الهدية (تُستخدم بالخاصة والعامة)
@@ -19164,8 +19147,20 @@ function scheduleLaneExpire(item) {
 // أقصى 2، صورة+اسم+"أرسل X"+أيقونة الهدية+عدّاد ضخم مائل عريض أبيض بحدّ أسود يقفز بكل زيادة.
 // راعي الهدية (بند 2-ج): أكبر مُرسِل لهذي الهدية بالجلسة — شريط بنفسجي مميَّز بوسم (item.isTopSender
 // من giftEngine.js). كل شيء يُلحَق بالمرحلة الثابتة الموحَّدة (#gift-stage-lane) لا DOM الغرفة
+// 🐛 إصلاح تداخل مناطق (مراجعة #163 bند 2): "فوق الدردشة مباشرة" يُقاس حياً من حافة #room-chat-
+// messages السفلية الحقيقية (= حافة شريط الكتابة العلوية فعلياً، التخطيط عمود flex) بدل top:46%
+// الثابتة سابقاً التي كانت تضع الشريط بمنتصف الشاشة فوق المقاعد والموكب معاً. bottom:96px
+// بالـCSS يبقى احتياطاً فقط لو تعذّر إيجاد عنصر الدردشة لأي سبب
+function gfxPositionLaneZone() {
+    const lane = document.getElementById('gift-stage-lane');
+    const chat = document.getElementById('room-chat-messages');
+    if (!lane || !chat) return;
+    const r = chat.getBoundingClientRect();
+    lane.style.bottom = `${Math.max(8, Math.round(window.innerHeight - r.bottom) + 10)}px`;
+}
 function giftStageOnLaneShow(item) {
     getGiftStageOverlay();
+    gfxPositionLaneZone();
     const avatarUrl = isHttpsImageUrl(item.sender?.profileImage) ? item.sender.profileImage : null;
     const giftImgUrl = isHttpsImageUrl(item.gift?.image) ? item.gift.image : null;
     const el = document.createElement('div');

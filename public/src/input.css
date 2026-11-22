@@ -2005,15 +2005,6 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .support-mission-claim-btn:disabled { opacity: 0.6; }
 
-/* ✅ بطاقة احتفال ارتقاء مستوى الثروة — نفس بطاقة ارتقاء الغرفة/النادي، بتدرّج الفئة
-   الجديدة الفعلي (--tier-c1/--tier-c2) بدل لون ثابت */
-.support-levelup-card {
-    background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--tier-c1) 35%, transparent), rgba(17,24,39,0.96));
-    border-color: color-mix(in srgb, var(--tier-c1) 45%, transparent);
-    box-shadow: 0 0 45px color-mix(in srgb, var(--tier-c1) 35%, transparent);
-}
-.support-levelup-card .room-levelup-icon { color: var(--tier-c1); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--tier-c1) 60%, transparent)); }
-
 /* ✅ جدول مرجعي عام (كل الفئات الأربع معاً 1-80) — لا يتبع تدرّج فئة واحدة كالبطاقة الأم،
    فلونه محايد بارد ثابت بدل الذهبي القديم، ليتماشى مع الهوية الكحلية الجديدة بلا إيحاء
    بانتمائه لفئة معيّنة */
@@ -2949,71 +2940,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .seat-tier-btn-locked .seat-tier-btn-label { color: #fbbf24; }
 .seat-tier-btn[disabled] { cursor: not-allowed; }
 
-/* ✅ احتفال ارتقاء مستوى الغرفة — بطاقة متوهجة بمنتصف الشاشة + شرر نجوم متطاير للخارج،
-   تختفي تلقائياً خلال ثوانٍ بلا أي حاجة لتفاعل من المستخدم. تصل للجميع بالغرفة بنفس اللحظة */
-.room-levelup-celebration {
-    position: fixed;
-    inset: 0;
-    z-index: 620;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-    animation: roomLevelupFadeIn 0.3s ease-out;
-}
-.room-levelup-fade-out { animation: roomLevelupFadeOut 0.4s ease-in forwards; }
-.room-levelup-card {
-    position: relative;
-    padding: 22px 34px;
-    border-radius: 20px;
-    text-align: center;
-    background: radial-gradient(circle at 50% 0%, rgba(168,85,247,0.35), rgba(17,24,39,0.96));
-    border: 1px solid rgba(168,85,247,0.4);
-    box-shadow: 0 0 40px rgba(168,85,247,0.35);
-    animation: roomLevelupPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.room-levelup-card.room-level-badge-5 {
-    background: radial-gradient(circle at 50% 0%, rgba(251,191,36,0.35), rgba(17,24,39,0.96));
-    border-color: rgba(251,191,36,0.45);
-    box-shadow: 0 0 45px rgba(251,191,36,0.4);
-}
-/* ✅ احتفال ارتقاء مستوى المعجب — نفس بطاقة ارتقاء الغرفة بتدرّج ذهبي/وردي مميَّز */
-.fanclub-levelup-card {
-    background: radial-gradient(circle at 50% 0%, rgba(251,191,36,0.32), rgba(236,72,153,0.18), rgba(17,24,39,0.96));
-    border-color: rgba(251,191,36,0.45);
-    box-shadow: 0 0 45px rgba(251,191,36,0.35);
-}
-.room-levelup-icon {
-    font-size: 34px;
-    color: #fbbf24;
-    filter: drop-shadow(0 0 8px rgba(251,191,36,0.6));
-    animation: roomLevelupIconSpin 0.7s ease-out;
-}
-.room-levelup-title { font-size: 13px; color: #d1d5db; margin-top: 6px; font-weight: 700; }
-.room-levelup-level { font-size: 26px; font-weight: 900; color: #fff; margin-top: 2px; }
-.room-levelup-particle {
-    position: absolute;
-    top: 50%; left: 50%;
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: #fbbf24;
-    animation: roomLevelupParticle 0.9s ease-out var(--delay, 0s) forwards;
-}
-@keyframes roomLevelupFadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes roomLevelupFadeOut { from { opacity: 1; } to { opacity: 0; } }
-@keyframes roomLevelupPop {
-    0% { transform: scale(0.6); opacity: 0; }
-    60% { transform: scale(1.05); opacity: 1; }
-    100% { transform: scale(1); }
-}
-@keyframes roomLevelupIconSpin {
-    from { transform: rotate(-180deg) scale(0.3); opacity: 0; }
-    to { transform: rotate(0) scale(1); opacity: 1; }
-}
-@keyframes roomLevelupParticle {
-    from { transform: translate(-50%, -50%) rotate(var(--angle)) translateX(0); opacity: 1; }
-    to { transform: translate(-50%, -50%) rotate(var(--angle)) translateX(90px); opacity: 0; }
-}
+/* 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2): بطاقة احتفال ارتقاء الغرفة/النادي/الثروة (كانت
+   تُغطي منتصف الشاشة، z-index:620) حُذِفت — استُبدلت بتوست علوي صغير (راجع .gfx-top-toast-stack
+   أدناه عند .gfx-top-toast) لا يحجز منطقة ثابتة تتصادم مع الموكب/الشريط الجانبي */
 
 /* 2) منطقة الرسائل — تعلو الشريط، تنمو للأعلى نحو المقاعد، وقابلة للتمرير لعرض السجل بالكامل */
 .room-chat-messages {
@@ -3122,6 +3051,20 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     background: linear-gradient(90deg, rgba(255,79,139,.25), rgba(122,43,216,.19));
     border: 1px solid rgba(255,138,184,.33);
     max-width: 86%;
+}
+/* 🐛 إصلاح تباين (مراجعة #163 بند 3): نص سطر الهدية (.room-chat-msg-line هنا) لا يحمل أي لون
+   صريح — يسقط إلى لون <body> الافتراضي الفاتح (text-gray-800، مُعَدّ لوضع نهاري) فوق خلفية
+   الغرفة الداكنة، فيبدو باهتاً شبه غير مقروء. بقية أنواع الرسائل تُفلِت من هذا عبر لون صريح
+   على .room-chat-msg-text (التي لا تُستخدَم هنا)؛ هنا نفس العلاج مباشرة + text-shadow كالذي
+   تستخدمه .room-chat-join-text أصلاً لنفس سبب التباين فوق خلفيات متفاوتة */
+.room-chat-gift-bubble .room-chat-msg-line,
+.room-chat-message.room-chat-bubble-gift .room-chat-msg-line {
+    color: #fff5fb;
+    text-shadow: 0 1px 3px rgba(0,0,0,.65);
+}
+.room-chat-gift-bubble .room-chat-msg-line b,
+.room-chat-message.room-chat-bubble-gift .room-chat-msg-line b {
+    color: #ffe3f3;
 }
 /* ⚠️ اسم فريد (لا .room-chat-gift-icon) كي لا يتصادم مع زر الهدايا الدائري بالشريط السفلي
    الذي يحمل الاسم نفسه بالفعل (راجع .room-chat-dock-icon.room-chat-gift-icon أعلى الملف) */
@@ -3424,14 +3367,19 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    والدردشة والشرائط معاً) وتحت شيت الهدايا والمودالات (z-index أقل من 320/400 بالتصميم)
    ===================================================== */
 .gift-stage-overlay { position: fixed; inset: 0; z-index: 605; pointer-events: none; overflow: hidden; }
-.gift-stage-video-layer { position: absolute; inset: 0; overflow: hidden; mix-blend-mode: screen; }
-.gift-stage-fly-layer { position: absolute; inset: 0; overflow: visible; }
-.gift-stage-lane { position: absolute; left: 10px; top: 46%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 8px; max-width: 72vw; }
+/* 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2): كل نظام الآن منطقته الثابتة الخاصة التي لا تتقاطع
+   مع أي نظام آخر — ترتيب z صريح (لا يعتمد على ترتيب DOM وحده) بين أبناء الطبقة: الموكب/الطيران
+   أسفل، الشريط الجانبي فوقه، الفيديو ملء الشاشة فوق كليهما ("المسموح الوحيد بتغطية غيره" —
+   يُخفي أي بقايا موكب/شريط متزامنة صدفة)، والشارة العلوية الأعلى دوماً (يجب أن تبقى مقروءة
+   طوال تشغيل الفيديو نفسه — هذي وحدها جزء من ميزة الفيديو، لا شيء "يُغطّى" به) */
+.gift-stage-fly-layer { position: absolute; inset: 0; overflow: visible; z-index: 1; }
+.gift-stage-lane { position: absolute; left: 10px; bottom: 96px; display: flex; flex-direction: column-reverse; gap: 8px; max-width: 72vw; z-index: 2; }
+.gift-stage-video-layer { position: absolute; inset: 0; overflow: hidden; mix-blend-mode: screen; z-index: 3; }
 
 /* ✅ شارة علوية طوال مدة تشغيل فيديو الهدية كاملة (طلب صريح — بند 2أ) */
 .gift-stage-banner-top {
     position: absolute; top: calc(env(safe-area-inset-top, 0px) + 54px); left: 50%;
-    opacity: 0; transform: translate(-50%, -14px); pointer-events: none;
+    opacity: 0; transform: translate(-50%, -14px); pointer-events: none; z-index: 4;
     background: rgba(18, 8, 28, .78); backdrop-filter: blur(6px); color: #fff;
     font-size: 12.5px; font-weight: 700; padding: 6px 16px; border-radius: 999px;
     box-shadow: 0 4px 18px rgba(0, 0, 0, .4); max-width: 86vw; white-space: nowrap;
@@ -3485,16 +3433,36 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .lite-mode .gift-proc-item { transition-duration: .3s; }
 
 /* =====================================================
-   🛡️ fix/gift-stage-top-layer (بند 2-د) — تأثير المقعد: تراكب (إيموجي الهدية) فوق صورة
-   المستلم لهدية مُعلَّمة من الأدمن (seatEffect — "تاج" مثلاً)، يبقى ~10 ثوانٍ (JS)
+   🛡️ fix/gift-stage-top-layer (بند 2-د) — تأثير المقعد: تراكب فوق صورة المستلم لهدية مُعلَّمة
+   من الأدمن (seatEffect — "تاج" مثلاً)، يبقى ~10 ثوانٍ (JS)
+   🐛 مراجعة #163 (بند 4): كانت إيموجي 👑 خام صغيرة رخيصة المظهر — الآن تاج SVG حقيقي (تدرّج
+   ذهبي + بريق)، 60% من عرض صورة المستلم (نسبة مئوية من .voice-seat-av-wrap نفسه، فتصح تلقائياً
+   لمقعد المضيف الأكبر --hostAv بلا أي صيغة إضافية)، يرتكز أعلى الصورة مع تدلٍّ خفيف فوقها
+   (نفس فكرة .voice-seat-host-badge لكن بنسبة مئوية بسيطة بدل صيغة crownTop المعقَّدة، لأن هذا
+   تأثير مؤقّت وليس شارة دائمة محسوبة من بيانات إطار)، بقفزة دخول + توهّج نابض مستمر طوال ظهوره
    ===================================================== */
 .gift-seat-effect {
-    position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
-    font-size: 20px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.5)); pointer-events: none;
-    z-index: 2; animation: giftSeatEffectIn .3s ease-out;
+    position: absolute; top: 0; left: 50%; width: 60%; height: 60%;
+    transform: translate(-50%, -58%) rotate(-6deg);
+    pointer-events: none; z-index: 7; /* فوق .voice-seat-host-badge (6) لو تصادفا معاً */
+    filter: drop-shadow(0 0 6px rgba(255,212,90,.8)) drop-shadow(0 2px 3px rgba(0,0,0,.5));
+    animation: giftSeatEffectIn .5s cubic-bezier(.3,1.6,.4,1) both,
+               giftSeatEffectGlow 1.6s ease-in-out .5s infinite alternate;
 }
-@keyframes giftSeatEffectIn { from { transform: translateX(-50%) scale(.5); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .gift-seat-effect { animation: none; } }
+.gift-seat-effect svg { width: 100%; height: 100%; display: block; }
+.gift-seat-effect.out { animation: giftSeatEffectOut .3s ease-in forwards; }
+@keyframes giftSeatEffectIn {
+    0% { opacity: 0; transform: translate(-50%, -20%) rotate(-6deg) scale(.3); }
+    60% { opacity: 1; transform: translate(-50%, -64%) rotate(-6deg) scale(1.12); }
+    100% { opacity: 1; transform: translate(-50%, -58%) rotate(-6deg) scale(1); }
+}
+@keyframes giftSeatEffectGlow {
+    from { filter: drop-shadow(0 0 5px rgba(255,212,90,.65)) drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+    to   { filter: drop-shadow(0 0 12px rgba(255,212,90,1)) drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+}
+@keyframes giftSeatEffectOut { to { opacity: 0; transform: translate(-50%, -70%) rotate(-6deg) scale(.7); } }
+body.gfx-weak-device .gift-seat-effect { animation: giftSeatEffectIn .3s both; }
+@media (prefers-reduced-motion: reduce) { .gift-seat-effect { animation: none; } .gift-seat-effect.out { animation: none; opacity: 0; } }
 
 /* =====================================================
    🛡️ fix/gift-stage-top-layer (بند 2-ب/ج) — الشريط الجانبي بأسلوب TikTok: يسار-وسط، أقصى 2،
@@ -7460,8 +7428,7 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
 }
 
 /* =====================================================
-   ✅ نافذة احتفال منح شارة الأدمن الأولى — بطاقة ذهبية مركزية (نفس هوية room-levelup-card)
-   مع كونفيتي متساقط وخيارَي إظهار/إخفاء
+   ✅ نافذة احتفال منح شارة الأدمن الأولى — بطاقة ذهبية مركزية مع كونفيتي متساقط وخيارَي إظهار/إخفاء
    ===================================================== */
 .admin-celebration-card {
     position: relative;
@@ -7861,21 +7828,23 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
    تختفي بصرياً طوال عرض الأسطورية بملء الشاشة فلا تزدحم فوقها — عامة لا تقتصر على العنصر الواحد */
 .gfx-hidden-for-legend { opacity: 0; transition: opacity 0.2s; }
 
-/* ✅ طلب صريح (بند 4): توست علوي صغير غير مُحجِّب — "⬆ مستوى الثروة Lv.N" أثناء كومبو حيّ،
-   بدل بطاقة الاحتفال الكاملة المُحجِّبة لمنتصف الغرفة */
-/* 🐛 إصلاح (مراجعة المرحلة 3): top الثابت (safe-area فقط) كان يُغطّي عنوان الغرفة بشريط
-   الرأس الحقيقي (الذي يشمل شارة المستوى/التاج/زر المتابعة أيضاً لا السطر الأول فقط) — top
-   الآن يُحسَب ديناميكياً بالـJS من أسفل #room-header-bar الفعلي + 8px (راجع gfxShowTopLevelToast)،
-   وهذا هنا احتياطي فقط لو تعذَّر إيجاد شريط الرأس لأي سبب */
-.gfx-top-toast {
+/* ✅ توست علوي صغير غير مُحجِّب — بدل بطاقة احتفال كاملة مُحجِّبة لمنتصف الغرفة (ارتقاء غرفة/
+   نادي/ثروة معاً، راجع celebrateRoomLevelUp وأخواتها بـapp.js). حاوية طابور حقيقية (تدفّق عادي
+   عمودي، لا معرّف وحيد لكل توست) فلا يُلغي احتفال لاحق احتفالاً سابقاً لم يختفِ بعد.
+   top الثابت (safe-area فقط) هنا احتياطي لو تعذَّر إيجاد شريط الرأس — الحاوية نفسها تُحسَب
+   ديناميكياً بالـJS من أسفل #room-header-bar الفعلي + 8px (راجع gfxShowTopToast) */
+.gfx-top-toast-stack {
     position: fixed; top: calc(env(safe-area-inset-top, 0px) + 54px); left: 50%; transform: translateX(-50%);
-    z-index: 616; display: flex; align-items: center; gap: 6px; padding: 6px 16px; border-radius: 999px;
+    z-index: 616; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
+}
+.gfx-top-toast {
+    display: flex; align-items: center; gap: 6px; padding: 6px 16px; border-radius: 999px;
     background: rgba(18, 8, 28, 0.78); backdrop-filter: blur(6px); color: #ffcf5a; font-size: 12.5px; font-weight: 800;
-    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4); pointer-events: none; animation: gfxTopToastIn 0.25s ease-out both;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4); animation: gfxTopToastIn 0.25s ease-out both;
 }
 .gfx-top-toast.out { animation: gfxTopToastOut 0.3s forwards; }
-@keyframes gfxTopToastIn { from { opacity: 0; transform: translate(-50%, -14px); } to { opacity: 1; transform: translate(-50%, 0); } }
-@keyframes gfxTopToastOut { to { opacity: 0; transform: translate(-50%, -14px); } }
+@keyframes gfxTopToastIn { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes gfxTopToastOut { to { opacity: 0; transform: translateY(-14px); } }
 
 @media (prefers-reduced-motion: reduce) {
     .gfx-layer, .gfx-layer *, .gfx-mile b, .gfx-legend, .gfx-legend *, .gfx-fly, .gfx-top-toast, .gfx-top-toast.out {
