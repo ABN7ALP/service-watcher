@@ -63,9 +63,17 @@ app.use((req, res, next) => {
 
 
 // --- خدمة الملفات الثابتة للواجهة الأمامية ---
-// يخدم ملفات مثل style.css, app.js من مجلد dist و public
-app.use(express.static(path.join(__dirname, '../public')));
-app.use('/dist', express.static(path.join(__dirname, '../public/dist')));
+// 🛡️ feat/gift-display-engine (بند 5): /js و/dist تُخدَّمان بتخزين مؤقت عام لعام كامل (immutable)
+// — كل رابط هنا يحمل ?v=<commit> (راجع appVersion.js + index.html أدناه)، فنشرة جديدة تعني رابطاً
+// جديداً كلياً لا نسخة قديمة مخبّأة بالهاتف، بينما إعادة فتح الصفحة بنفس النشرة لا تُعيد التنزيل
+// إطلاقاً. يجب أن تسبق express.static(public) العام أدناه (الأسبقية بترتيب التسجيل بـExpress)
+const STATIC_CACHE_OPTIONS = { maxAge: 31536000000, immutable: true }; // ✅ 31536000 ثانية بالضبط (1y تقريبية بـms تساوي 365.25 يوماً، لا 365)
+app.use('/js', express.static(path.join(__dirname, '../public/js'), STATIC_CACHE_OPTIONS));
+app.use('/dist', express.static(path.join(__dirname, '../public/dist'), STATIC_CACHE_OPTIONS));
+// يخدم باقي الملفات الثابتة (صور، vendor، إلخ) بتخزين مؤقت افتراضي عادي (لا immutable)
+// 🛡️ index:false ضروري — وإلا express.static يخدم public/index.html تلقائياً لطلب "/" قبل أن
+// يصل مسار "التقاط الكل" أسفل الملف إطلاقاً، فتظهر النسخة الأصلية بلا ?v= المحقونة دوماً
+app.use(express.static(path.join(__dirname, '../public'), { index: false }));
 
 
 // --- مسارات API ---
@@ -98,8 +106,20 @@ app.use('/api/client-compat', require('./routes/clientCompatRoutes')); // ✅ ro
 
 
 // --- مسار "التقاط الكل" لخدمة الواجهة الأمامية --
+// 🛡️ feat/gift-display-engine (بند 5): نُحقِن ?v=<commit> بمصدري style.css وbrowser-gate.js هنا
+// مرة واحدة فقط عند الإقلاع (لا بكل طلب — index.html لا يتغيّر بنفس عملية التشغيل) — browser-gate.js
+// يُمرِّر نفس المعرّف بدوره لـgiftEngine.js/app.js (راجع تعليقه). بلا هذا الحقن تبقى هذي الروابط
+// الثلاثة تحت rendering عام 1y/immutable أعلاه فتُخدَّم نسخة قديمة مخبّأة بالهاتف للأبد بعد كل نشرة
+const fs = require('fs');
+const { resolveAppVersion } = require('./utils/appVersion');
+const appVersion = resolveAppVersion(process.env);
+console.log(`📦 appVersion (تخزين مؤقت الأصول الثابتة) = ${appVersion}`);
+const indexHtmlTemplate = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+const indexHtmlVersioned = indexHtmlTemplate
+    .replace('href="/dist/style.css"', `href="/dist/style.css?v=${appVersion}"`)
+    .replace('src="/js/browser-gate.js"', `src="/js/browser-gate.js?v=${appVersion}"`);
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/index.html')); 
+    res.type('html').send(indexHtmlVersioned);
 });
 
 // --- معالجة الأخطاء (يجب أن يكون آخر middleware) ---

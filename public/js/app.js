@@ -1019,15 +1019,23 @@ document.addEventListener('DOMContentLoaded', () => {
     // يصل التنفيذ التسلسلي للسكربت لسطر إعلانه القديم أسفل الملف أصلاً — ReferenceError
     // "Cannot access before initialization" (منطقة ميتة زمنية لـlet) كانت تحدث فوراً عند كل تحميل صفحة
     let activeGiftComboSession = null;
-    // 🐛 إصلاح (مراجعة PR #108): نفس سبب TDZ أعلاه بالضبط — teardownGiftComboFx تقرأ أيضاً
-    // gfxOtherBanners/gfxLegendaryQueue/gfxLegendaryPlaying، فيجب إعلانها هنا مبكراً معاً لا
-    // عند تعريف باقي نظام الكومبو/الأسطورية أسفل الملف
-    let gfxLegendarySeenCombos = new Set();
-    let gfxLegendaryDedup = { key: null, at: 0 }; // ✅ احتياط زمني فقط لمسار REST القديم (sendGiftBatch) بلا comboId
-    let gfxOtherBanners = []; // [{comboId, el, count, recipients:Set}] — الأحدث أولاً (unshift)
-    const GFX_BANNER_MAX = 3;
-    let gfxLegendaryQueue = [];
-    let gfxLegendaryPlaying = false;
+    // 🐛 إصلاح (مراجعة PR #108، واستمرت بـfeat/gift-display-engine): نفس سبب TDZ أعلاه بالضبط —
+    // teardownGiftComboFx تستدعي roomGiftStage.leaveRoom()، فيجب إنشاء المحرّك هنا مبكراً لا
+    // عند تعريف باقي نظام العرض أسفل الملف. GiftStage مُحمَّلة من public/js/giftEngine.js
+    // (سكربت منفصل قبل هذا الملف — راجع index.html) — منطق خالص بلا DOM، كل الخطّافات أدناه
+    // (معرَّفة كدوال باسم أسفل الملف، hoisted فتتوفر هنا رغم الترتيب) هي كل الاتصال بالـDOM الفعلي
+    const roomGiftStage = new GiftStage({
+        onLaneShow: (item) => giftStageOnLaneShow(item),
+        onLaneMerge: (item) => giftStageOnLaneMerge(item),
+        onLaneHide: (item) => giftStageOnLaneHide(item),
+        onPop: (evt, done) => giftStageOnPop(evt, done),
+        onVideoPlay: (item, done) => giftStageOnVideoPlay(item, done),
+        onVideoPreload: (item) => giftStageOnVideoPreload(item),
+        onFly: (evt, recipient) => giftStageOnFly(evt, recipient)
+    });
+    // ✅ طلب صريح: "التطبيق مخفي بالخلفية → يتوقّف طابور الفيديو؛ عند العودة تُسقَط العناصر
+    // الأقدم من 30ث" — GiftStage.setHidden تنفّذ هذا بالكامل، هنا فقط ربطها بحدث المتصفّح الحقيقي
+    document.addEventListener('visibilitychange', () => roomGiftStage.setHidden(document.hidden));
     let gfxComboAggregate = null; // {xpGained, pendingSupportLevelUp} — راجع gfxResetComboAggregate/gfxFlushComboAggregate
     let myIsMuted = false;         // ✅ حالة كتمي الحقيقية (زر الكتم انتقل لقائمة "المزيد")
     let roomAudioMuted = false;    // ✅ كتم شخصي محلي بحت لكل صوت الغرفة (موسيقى + متحدثون) — لا يؤثر على أحد غيري
@@ -2738,7 +2746,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // هدية فعلياً — الاثنان معاً يستهلكان مساحة كافية لدفع حقل الكتابة خارج الشاشة على
         // 320×568 مع 19 مقعداً+PK (أضيق حالة ممكنة). بانتظار اختفاء الشريط بدل إسقاط الإشعار
         // من الطابور، يبقى سطر الدخول يظهر دوماً — فقط مؤجَّلاً قليلاً — بلا ازدحام المسار المشترك
-        if (typeof roomGiftBannerShowing !== 'undefined' && roomGiftBannerShowing) {
+        if (roomGiftStage.laneActive) {
             setTimeout(processRoomJoinNoticeQueue, 500);
             return;
         }
@@ -3312,12 +3320,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // ✅ لا يبقى شريط هدية (أو طابوره) من الغرفة السابقة عالقاً فوق غرفة جديدة دخلتها للتو
         // 🐛 مراجعة: clearTimeout + زيادة الجيل قبل التصفير — يُبطل أي مؤقّت فادي/تنظيف معلّق
         // (render أو dismiss) من الغرفة السابقة كان سيُنفَّذ لاحقاً على حالة غرفة لم تعد قائمة
-        clearTimeout(roomGiftBannerState?.timer);
-        roomGiftBannerGen++;
-        document.getElementById('room-gift-side-banner')?.remove();
-        roomGiftBannerQueue = [];
-        roomGiftBannerShowing = false;
-        roomGiftBannerState = null;
+        // ✅ لا يبقى شريط هدية (أو طابوره/عدّاد طيرانه) من الغرفة السابقة عالقاً فوق غرفة جديدة
+        // دخلتها للتو — احتياط إضافي فوق roomGiftStage.leaveRoom() بـteardownGiftComboFx
+        roomGiftStage.leaveRoom();
         // ✅ نفس منطق تصفير شريط الهدية أعلاه، لسطر "دخل الغرفة" المنزلق — لا يبقى طابور/مؤقّت
         // من الغرفة السابقة عالقاً فوق غرفة جديدة
         roomJoinNoticeQueue = [];
@@ -7295,12 +7300,9 @@ document.addEventListener('DOMContentLoaded', () => {
         myHandRaised = false;
         roomHandQueue = [];
         currentPkBattle = null;
-        clearTimeout(roomGiftBannerState?.timer);
-        roomGiftBannerGen++;
-        document.getElementById('room-gift-side-banner')?.remove();
-        roomGiftBannerQueue = [];
-        roomGiftBannerShowing = false;
-        roomGiftBannerState = null;
+        // ✅ لا يبقى شريط هدية (أو طابوره/عدّاد طيرانه) من الغرفة السابقة عالقاً فوق غرفة جديدة
+        // دخلتها للتو — احتياط إضافي فوق roomGiftStage.leaveRoom() بـteardownGiftComboFx
+        roomGiftStage.leaveRoom();
         // ✅ نفس منطق تصفير شريط الهدية أعلاه، لسطر "دخل الغرفة" المنزلق — لا يبقى طابور/مؤقّت
         // من الغرفة السابقة عالقاً فوق غرفة جديدة
         roomJoinNoticeQueue = [];
@@ -10240,67 +10242,24 @@ function showXpGainAnimation(amount) {
         if (countEl && typeof followersCount === 'number') countEl.textContent = followersCount;
     });
 
-    // 🔥 طلب صريح (مراجعة المرحلة 3 — إزالة ازدحام الإعلانات المتكررة): نظام إعلان واحد فقط
-    // لهدايا الغرفة. "الأسطورية" بملء الشاشة تُجمَّع عبر comboId (دقيق تماماً الآن — السيرفر
-    // يُرفقه بكل إعلان، راجع runGiftComboSideEffects/queueRoomGiftAnnouncement)؛ احتياط زمني
-    // (600ms) يبقى فقط لمسار REST القديم (sendGiftBatch) الذي لا مفهوم جلسة/comboId له إطلاقاً
-    function gfxShouldTriggerLegendary(data) {
-        if (data.comboId) {
-            if (gfxLegendarySeenCombos.has(data.comboId)) return false;
-            gfxLegendarySeenCombos.add(data.comboId);
-            if (gfxLegendarySeenCombos.size > 50) gfxLegendarySeenCombos.delete(gfxLegendarySeenCombos.values().next().value);
-            return true;
+    // 🛡️ feat/gift-display-engine (إعادة تصميم جذرية — مصدر الحقيقة الوحيد): حدث واحد يصل لكل
+    // من بالغرفة بمن فيهم المُرسِل نفسه (راجع توثيق Tencent RTC الرسمي للهدايا: كل عضو يستقبل
+    // نفس الحدث، والمؤثرات تُشغَّل منه فقط لا من نتيجة نداء الإرسال) — يحل محل room-gift-
+    // announcement وgift:legendary معاً. سطر الدردشة فقط يبقى محلياً متفائلاً للمُرسِل (خارج
+    // نطاق هذي الإعادة — راجع تعليق localChatComboId بـstartGiftComboSession)؛ كل المؤثرات
+    // المرئية (الشريط الجانبي/پop&fly/الفيديو) تمرّ عبر roomGiftStage لكل من بالغرفة بلا استثناء
+    socket.on('gift:sent', (data) => {
+        if (!data || data.roomId !== currentVoiceRoomId) return;
+        pkCacheUserDisplay(data.sender?.id, data.sender?.username, data.sender?.profileImage);
+        (data.receivers || []).forEach(r => pkCacheUserDisplay(r.id, r.username, null));
+
+        if (data.sender?.id !== myUserId) {
+            appendRoomGiftChatMessage({
+                fromUsername: data.sender?.username, toUsername: data.receivers?.length > 1 ? `${data.receivers.length} مقاعد` : (data.receivers?.[0]?.username || ''),
+                giftName: data.gift?.name, giftIcon: null, giftImage: data.gift?.image, quantity: data.qty, comboId: data.comboKey
+            });
         }
-        const key = `${data.fromUserId}:${data.giftId}`;
-        const now = Date.now();
-        if (gfxLegendaryDedup.key === key && now - gfxLegendaryDedup.at < 600) return false;
-        gfxLegendaryDedup = { key, at: now };
-        return true;
-    }
-
-    // ✅ طلب صريح: إعلان هدية بالغرفة — نظام واحد فقط للجميع (الشريط الجانبي gfx الجديد + سطر
-    // دردشة واحد لكل جلسة). الأنظمة القديمة المتزاحمة (البطاقة الوسطى العائمة
-    // showGiftFloatingAnimation/queueRoomGiftFloatAnimation، وكبسولة showRoomGiftSideBanner)
-    // لم تعد تُستدعى هنا إطلاقاً — بلا مستدعٍ آخر لهما بالملف فتبقيان معطَّلتين فعلياً لهدايا
-    // الغرفة (لم تُحذفا لتقليل مساحة هذا التغيير — غير مُستخدَمتين بأي مكان آخر الآن)
-    socket.on('room-gift-announcement', (data) => {
-        if (data.roomId !== currentVoiceRoomId) return;
-        pkCacheUserDisplay(data.fromUserId, data.fromUsername, data.fromProfileImage);
-        pkCacheUserDisplay(data.toUserId, data.toUsername, data.toProfileImage);
-
-        // ✅ أنا المُرسِل: رأيت شريطي وسطر دردشتي محلياً بالفعل أثناء جلستي الحيّة (راجع
-        // startGiftComboSession) — صدى السيرفر لهديتي أنا نفسها يُتجاهَل بالكامل هنا (لا
-        // ازدواج بصري)، بما في ذلك الأسطورية (رآها فوراً بتفاؤل بالفعل)
-        if (data.fromUserId === myUserId) return;
-
-        appendRoomGiftChatMessage(data);
-        gfxUpdateSideBanner(data);
-        // 🛡️ طلب صريح (رؤية الهدايا للآخرين — بند 2ب): بقية الحاضرين يرون الآن الهدية "تطير"
-        // لمقعد المستلم أيضاً، بنفس حركة قوس المُرسِل بالضبط — راجع gfxFlyRemoteGiftToSeat
-        gfxFlyRemoteGiftToSeat(data);
-
-        // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري د): تحفيز الأسطورية هنا — داخل دفعة
-        // room-gift-announcement المُجمَّعة (نافذة 250ms) — حُذف نهائياً. حدث gift:legendary
-        // المخصَّص (راجع مستمعه أسفل) يصل فوراً فور التزام الخصم مباشرة بالسيرفر بلا أي انتظار
-        // تجميع دفعي إطلاقاً — تفعيلها هنا أيضاً كان يُسبِّب ظهورها مرتين لكل هدية أسطورية واحدة
-    });
-
-    // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري د): حدث فوري مخصَّص (يصل مباشرة بعد
-    // runGiftComboSideEffects لا بانتظار دفعة room-gift-announcement البطيئة نسبياً) — راجع
-    // الشرح الكامل وgfxShouldTriggerLegendary (يمنع الازدواج بمفتاح comboId، بما في ذلك أي
-    // تطابق محتمل لاحقاً مع مسارات أخرى) أعلى الملف
-    socket.on('gift:legendary', (data) => {
-        if (data.roomId !== currentVoiceRoomId) return;
-        // ✅ أنا المُرسِل: رأيت أسطوريتي محلياً بتفاؤل بالفعل (راجع startGiftComboSession) — صدى
-        // السيرفر لهديتي نفسها يُتجاهَل هنا بالكامل، بما فيها الأسطورية، كبقية أحداث الهدية
-        if (data.fromUserId === myUserId) return;
-        if (!gfxShouldTriggerLegendary(data)) return;
-        pkCacheUserDisplay(data.fromUserId, data.fromUsername, null);
-        gfxQueueLegendary({
-            giftImage: data.giftImage, giftIcon: data.giftIcon, giftName: data.giftName,
-            fromUsername: data.fromUsername, toLabel: escapeHtml(data.toLabel || ''), isSelf: false,
-            giftVideoUrl: data.giftVideoUrl || null, toUserId: data.toUserId || null
-        });
+        roomGiftStage.handleGiftSent(data);
     });
 
     // =====================================================
@@ -16371,12 +16330,13 @@ function preloadGiftThumbnails(data) {
     });
 }
 
-// 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري د، النصف الثاني): صورة الأسطورية
-// (gfx-legend) كانت تُجلَب لحظة ظهورها فعلياً فقط (<img src> مُدرَجة بالـDOM للمرة الأولى عند
-// الحدث) — فمن لم تُحمَّل صورتها مسبقاً بذاكرة المتصفح يرى وميض/تأخير تحميل شبكة حقيقي بالضبط
-// لحظة اللقطة الأهم بصرياً. تُحمَّل الآن مسبقاً (imageUrl + animationUrl الاحتياطي) لكل
-// هدايا فئة legendary فور دخول أي غرفة (راجع enterRoomChat) — new Image()+decode() الحقيقي
-// (لا مجرّد تعيين src) يضمن أن المتصفح أنهى فعلياً فك تشفير البكسلات قبل أي استخدام لاحق
+// 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري د، النصف الثاني): صورة الأسطورية (المعروضة
+// اليوم بـ.room-giftfx-pop/.room-giftfx-flyer — راجع giftStageOnPop/giftStageOnFly) كانت تُجلَب
+// لحظة ظهورها فعلياً فقط (<img src> مُدرَجة بالـDOM للمرة الأولى عند الحدث) — فمن لم تُحمَّل
+// صورتها مسبقاً بذاكرة المتصفح يرى وميض/تأخير تحميل شبكة حقيقي بالضبط لحظة اللقطة الأهم بصرياً.
+// تُحمَّل الآن مسبقاً (imageUrl + animationUrl الاحتياطي) لكل هدايا فئة legendary فور دخول أي
+// غرفة (راجع enterRoomChat) — new Image()+decode() الحقيقي (لا مجرّد تعيين src) يضمن أن
+// المتصفح أنهى فعلياً فك تشفير البكسلات قبل أي استخدام لاحق
 let legendaryAssetsPreloaded = false;
 function preloadLegendaryGiftAssets(data) {
     if (legendaryAssetsPreloaded) return; // ✅ كتالوج شبه ثابت — تكفي مرة واحدة لكل تحميل صفحة
@@ -17395,23 +17355,20 @@ async function openGiftLowBalanceSheet(missingAmount, onClose = null) {
 // (راجع handleSend بـshowRoomGiftModal) وتستمر حتى 3 ثوانٍ بعد آخر ضغطة.
 // =====================================================
 const GFX_MILES = [10, 66, 99, 188, 520, 1314];
-// activeGiftComboSession وكل حالة نظام الإعلان الموحَّد الجديد (gfxLegendarySeenCombos/
-// gfxOtherBanners/gfxLegendaryQueue/...) مُعلَنة مبكراً أعلى الملف (راجع تعليقها هناك،
-// نفس سبب تفادي TDZ بالضبط) — لا تُعاد هنا
+// activeGiftComboSession وroomGiftStage (محرّك عرض الهدايا الجديد) مُعلَنان مبكراً أعلى الملف
+// (راجع تعليقهما هناك، نفس سبب تفادي TDZ بالضبط) — لا يُعادان هنا
 
 // ✅ طلب صريح: تُستدعى عند مغادرة الغرفة فعلياً (showRoomBrowserView) كي لا تبقى حلقة rAF/كنفاس
 // بملء الشاشة تعمل بالخلفية بلا داعٍ بعد خروج المستخدم من الغرفة تماماً
 function teardownGiftComboFx() {
     activeGiftComboSession?.forceEnd();
     activeGiftComboSession = null;
-    document.getElementById('gfx-legend')?.remove();
-    document.getElementById('room-gift-lane')?.classList.remove('gfx-hidden-for-legend');
-    // 🧹 مراجعة PR #108: مغادرة الغرفة فعلياً يجب أن تُطهِّر كل حالة النظام الموحَّد الجديد أيضاً
-    // (شريط إعلانات الآخرين + طابور الأسطورية + التوست العلوي) — لا بقايا من غرفة سابقة
-    gfxOtherBanners.forEach(b => { clearTimeout(b.timer); b.el.remove(); });
-    gfxOtherBanners = [];
-    gfxLegendaryQueue = [];
-    gfxLegendaryPlaying = false;
+    // 🧹 feat/gift-display-engine: مغادرة الغرفة فعلياً يجب أن تُطهِّر محرّك عرض الهدايا بالكامل
+    // (الشريط الجانبي + طابور الفيديو + عدّاد الطيران) — لا بقايا من غرفة سابقة تُشغَّل بالخطأ
+    // بغرفة جديدة لاحقاً (راجع GiftStage.leaveRoom)
+    document.querySelectorAll('.gfx-banner[data-gift-lane-item]').forEach(el => el.remove());
+    document.getElementById('room-giftfx-video-layer')?.replaceChildren();
+    roomGiftStage.leaveRoom();
     document.getElementById('gfx-top-toast')?.remove();
     // 🐛 إصلاح جذري (الخطأ ب — الهدايا توقّفت عن الطيران للمقعد): gfxActiveFlyCount (بند 3،
     // حدّ الطيران المتزامن على الأجهزة الضعيفة) لم تكن تُصفَّر هنا أبداً — أي رسوم طيران لم
@@ -17510,9 +17467,10 @@ const isWeakDevice = (() => {
 })();
 
 // 🛡️ طلب صريح (بند 3): حدّ أقصى لعدد أيقونات "الهدية الطائرة" المتزامنة فعلياً على الشاشة
-// (لا فقط تواتر إطلاقها) على الأجهزة الضعيفة — عدّاد مشترك بين طيران المُرسِل المحلي
-// (flyToRecipients) وطيران صدى الغرفة للآخرين (gfxFlyRemoteGiftToSeat)، فلا يتجاوز
-// إجمالي ما يطير معاً على الشاشة 2 بأي لحظة. غير محدود عملياً على الأجهزة العادية
+// (لا فقط تواتر إطلاقها) على الأجهزة الضعيفة — خاص بتغذية الكومبو الراجعة المحلية
+// (flyToRecipients، أثناء الضغط المتكرر على الزر) فقط. طيران محرّك عرض الهدايا الموحَّد
+// (giftStageOnFly بـgiftEngine.js) له سقفه الخاص (3، راجع GiftStage.FLY_MAX_CONCURRENT)،
+// منفصل تماماً عن هذا العدّاد
 let gfxActiveFlyCount = 0;
 function gfxFlyGateAcquire() {
     const limit = isWeakDevice() ? 2 : Infinity;
@@ -17585,7 +17543,6 @@ function startGiftComboSession(ctx) {
     let holding = false;
     let holdTimer = null;
     let ended = false;
-    let legendaryTriggered = false;
 
     // ---------- DOM ----------
     const layer = document.createElement('div');
@@ -17616,25 +17573,13 @@ function startGiftComboSession(ctx) {
     const ringFg = layer.querySelector('#gfx-ring-fg');
     const RING_C = 2 * Math.PI * 46;
 
-    const toLabel = recipientUsers.length > 1 ? `${recipientUsers.length} مقاعد` : escapeHtml((recipientUsers[0] && recipientUsers[0].username) || '');
-    // ✅ نص خام (غير مُهرَّب مسبقاً) لسطر دردشة هدايتي — appendRoomGiftChatMessage تُهرِّبه هي
-    // نفسها مرة واحدة فقط؛ toLabel أعلاه مُهرَّب مسبقاً للاستخدام المباشر بـinnerHTML بالشريط
+    // ✅ نص خام (غير مُهرَّب مسبقاً) لسطر دردشة هدايتي — appendRoomGiftChatMessage تُهرِّبه هي نفسها مرة واحدة فقط
     const toRawLabel = recipientUsers.length > 1 ? `${recipientUsers.length} مقاعد` : ((recipientUsers[0] && recipientUsers[0].username) || '');
-    const bannerEl = document.createElement('div');
-    bannerEl.className = 'gfx-banner';
-    bannerEl.id = 'gfx-banner';
-    bannerEl.innerHTML = `
-        <span class="gfx-banner-av">${avatarHTML({ src: myUser.profileImage, name: myUser.username, userId: myUser._id, fetchSize: 32, wrapStyle: '--size:32px', photoAttrs: ' loading="lazy" decoding="async"' })}</span>
-        <span class="gfx-banner-txt"><b>أنت</b>إلى ${toLabel}</span>
-        <span class="gfx-banner-gift">${giftEmojiOrImgHTML(gift, 28, 64)}</span>
-        <span class="gfx-banner-x" id="gfx-banner-x">×0</span>
-    `;
-    (document.getElementById('room-gift-lane') || document.body).prepend(bannerEl);
-    wireGiftImgFallbacks(bannerEl); // 🛡️ احتياط بخطوتين لصورة الهدية بشريطي المحلي — راجع wireGiftImgFallback
 
-    // ✅ طلب صريح (بند 2 بمراجعة PR #108): سطر دردشة واحد لجلستي الحيّة بأكملها (محلي بالتفاؤل،
-    // بلا انتظار صدى السيرفر — الصدى يُتجاهَل بالكامل للمُرسِل نفسه، راجع room-gift-announcement
-    // أسفل الملف) — مفتاح دمج محلي بحت (local:) لا يصطدم أبداً بـcomboId الحقيقي القادم من السيرفر
+    // ✅ طلب صريح (بند 2 بمراجعة PR #108): سطر دردشة واحد لجلستي الحيّة بأكملها (محلي بالتفاؤل —
+    // سجلّ الدردشة فقط، خارج نطاق إعادة تصميم محرّك العرض؛ راجع socket.on('gift:sent') أسفل
+    // الملف لمنطق تجاهل صدى المُرسِل لسطر الدردشة تحديداً) — مفتاح دمج محلي بحت (local:) لا
+    // يصطدم أبداً بـeventId/comboKey الحقيقيين القادمين من السيرفر
     const localChatComboId = `local:${Date.now()}:${Math.random().toString(36).slice(2)}`;
     appendRoomGiftChatMessage({
         fromUsername: 'أنت', toUsername: toRawLabel, giftName: gift.name, giftIcon: gift.icon,
@@ -17698,11 +17643,6 @@ function startGiftComboSession(ctx) {
 
     function updateComboDisplay() {
         if (cnEl) cnEl.textContent = '×' + count.toLocaleString('en-US');
-        const xEl = document.getElementById('gfx-banner-x');
-        if (xEl) {
-            xEl.textContent = '×' + count.toLocaleString('en-US');
-            xEl.classList.remove('bump'); void xEl.offsetWidth; xEl.classList.add('bump');
-        }
         // ✅ بند 2: سطر دردشتي الوحيد لهذي الجلسة يُحدَّث بنفس العدّاد الإجمالي الحقيقي (count) —
         // لا تراكم إضافي هنا، فـcount نفسه يُصحَّح تلقائياً عند أي تراجع (onFail) أيضاً
         gfxSetChatLineQuantity(localChatComboId, count);
@@ -17980,19 +17920,11 @@ function startGiftComboSession(ctx) {
         }
     });
 
-    // ---------- أسطورية بملء الشاشة — فورية للمُرسِل نفسه (لا تنتظر صدى السيرفر) ----------
-    // 🛡️ feat/gift-fx-and-cosmetics-base: نفس الشرط الفوري يشمل الآن أي هدية تملك videoUrl
-    // بصرف النظر عن category (فراشة النادي حصرية لا أسطورية) — راجع gfxRenderLegendary أسفل
-    if ((gift.category === 'legendary' || gift.videoUrl) && !legendaryTriggered) {
-        legendaryTriggered = true;
-        // ✅ بند 3 بمراجعة PR #108: طابور تشغيل تسلسلي — لو جلستي تتزامن مع صدى أسطورية
-        // أخرى من مستخدم آخر، كلاهما يُعرَض بدوره لا متراكبَين
-        gfxQueueLegendary({
-            giftImage: gift.imageUrl, giftIcon: gift.icon, giftName: gift.name, fromUsername: 'أنت', toLabel, isSelf: true,
-            giftVideoUrl: gift.videoUrl || null,
-            toUserId: recipientUsers.length === 1 ? recipientUsers[0]._id : null
-        });
-    }
+    // 🛡️ feat/gift-display-engine (إعادة تصميم جذرية): لا تشغيل متفائل محلي للمؤثر الكبير بعد
+    // اليوم — المُرسِل يستقبل صدى gift:sent الخاص بإرساله نفسه تماماً كبقية الحاضرين (راجع
+    // socket.on('gift:sent') أسفل الملف)، فتُشغَّل له نفس المؤثر (فيديو/پop&fly) من نفس المكان
+    // الوحيد بلا أي ازدواج محتمل ولا فارق توقيت/تخطيط بين ما يراه هو وما يراه البقية — هذا بالضبط
+    // ما تسبَّب سابقاً بظهور فيديو الهدية خلف المقاعد على جهاز المُرسِل تحديداً (مراجعة PR #160)
 
     // ---------- بدء الجلسة بالضغطة الأولى (الكمية الكاملة المختارة بالشيت) ----------
     fireTap(initialUnits);
@@ -18007,8 +17939,6 @@ function startGiftComboSession(ctx) {
         cancelAnimationFrame(rafId);
         resizeObserver.disconnect();
         layer.remove();
-        bannerEl.classList.add('out');
-        setTimeout(() => bannerEl.remove(), 420);
         if (activeGiftComboSession === session) activeGiftComboSession = null;
         gfxFlushComboAggregate(); // ✅ بند 4: الجلسة انتهت — عرض "+N XP" المُجمَّعة الآن (وبطاقة الارتقاء المؤجَّلة لو وُجدت)
     }
@@ -18022,7 +17952,6 @@ function startGiftComboSession(ctx) {
         cancelAnimationFrame(rafId);
         resizeObserver.disconnect();
         layer.remove();
-        bannerEl.remove();
         gfxFlushComboAggregate(); // ✅ بند 4: حتى الإنهاء القسري لا يُفقِد أي أثر خبرة/ارتقاء مُجمَّع بصمت
     }
 
@@ -18037,80 +17966,133 @@ function startGiftComboSession(ctx) {
 // 🛡️ feat/gift-fx-and-cosmetics-base: "فيديو واحد فقط بنفس الوقت، طابور أقصاه 2، وأي هدية
 // فيديو زائدة تظهر كأيقونة تطير فقط" — عداد منفصل لعناصر الفيديو تحديداً (لا الطابور كله،
 // فبطاقات الهدايا الأسطورية بلا فيديو تبقى تنتظر دورها عادياً بلا حدّ أقصى كما كانت)
-let gfxVideoQueueDepth = 0;
-const GFX_VIDEO_QUEUE_MAX = 2;
-function gfxQueueLegendary(entry) {
-    if (entry.giftVideoUrl && gfxVideoQueueDepth >= GFX_VIDEO_QUEUE_MAX) {
-        gfxFlyGiftIconOnly(entry);
-        return;
-    }
-    if (entry.giftVideoUrl) gfxVideoQueueDepth++;
-    gfxLegendaryQueue.push(entry);
-    if (!gfxLegendaryPlaying) gfxPlayNextLegendary();
-}
-function gfxPlayNextLegendary() {
-    const entry = gfxLegendaryQueue.shift();
-    if (!entry) { gfxLegendaryPlaying = false; return; }
-    gfxLegendaryPlaying = true;
-    gfxRenderLegendary(entry, gfxPlayNextLegendary);
-}
+// 🛡️ feat/gift-display-engine (إعادة تصميم جذرية — لا ترقيع): خطّافات GiftStage — پop&fly (ب)
+// للهدايا بلا فيديو، طابور الفيديو بملء الشاشة (ج)، وطيران موحَّد لكلتا الطبقتين معاً. يحل محل
+// gfxQueueLegendary/gfxRenderLegendary/gfxFlyGiftIconOnly/gfxRenderGiftVideo القديمة بالكامل —
+// كل منطق الطابور/السقوف/التكرار انتقل لـGiftStage الخالصة بـgiftEngine.js؛ هذي الدوال فقط
+// "كيف يُرسَم" كل حدث يُقرِّره المحرّك، لا "متى"
 
-// ✅ هدية أسطورية بملء الشاشة — طلب صريح: تظهر "للجميع بالغرفة" (المُرسِل + المستلمون +
-// المشاهدون). data.isSelf=true فقط لاستدعاء المُرسِل الفوري المتفائل لنفسه (راجع
-// startGiftComboSession)؛ بقية الحاضرين يستقبلونها عبر صدى السيرفر room-gift-announcement
-// (راجع معالجه أسفل الملف). تُستدعى فقط عبر gfxQueueLegendary أعلاه — لا نداء مباشر آخر لها
-// data.toLabel يُفترَض مُهرَّباً مسبقاً من المستدعي (نفس اتفاقية toLabel بـstartGiftComboSession)
-// بعكس data.fromUsername/data.giftName اللتين تُهرَّبان هنا دوماً (قد تكونان خامتين من صدى السيرفر)
-// onDone: طلب صريح — إشارة انتهاء حقيقية (لا setTimeout معزول بلا تتبّع) كي يبدأ الطابور التالي
-function gfxRenderLegendary(data, onDone) {
-    // 🛡️ feat/gift-fx-and-cosmetics-base: هدية بفيديو مؤثر — مسار مختلف كلياً (فيديو فوق
-    // الغرفة ثم طيران للمقعد)، لا بطاقة gfx-legend الثابتة. العداد هنا (لا بـgfxQueueLegendary)
-    // كي يُحرَّر فقط بعد اكتمال العرض فعلاً مهما كان مصير التشغيل (نجح/أُلغي/جهاز ضعيف)
-    if (data.giftVideoUrl) {
-        gfxRenderGiftVideo(data, () => { gfxVideoQueueDepth = Math.max(0, gfxVideoQueueDepth - 1); onDone?.(); });
-        return;
-    }
-    if (gfxPrefersReducedMotion()) { onDone?.(); return; }
-    document.getElementById('gfx-legend')?.remove();
-    // ✅ بند 3: أثناء العرض، الشريط الجانبي (مكاني أو لغيري) يختفي بصرياً — لا ازدحام فوق
-    // مؤثرات الأسطورية؛ يعود بمجرّد الانتهاء (راجع .gfx-hidden-for-legend بـinput.css)
-    const lane = document.getElementById('room-gift-lane');
-    lane?.classList.add('gfx-hidden-for-legend');
-    // 🐛 إصلاح (مُكتشَف بلقطة التحقق الفعلية): بطاقة ارتقاء "مستوى الثروة" المؤجَّلة (أو أي
-    // "كارد" احتفال آخر) قد تكون ظاهرة فعلياً لحظة بدء الأسطورية (توقيت عشوائي، لا علاقة له
-    // بجلسة كومبو نشطة) — "أي كارت هدايا آخر" بالطلب الصريح تشملها، فتُخفى بصرياً طوال العرض
-    const hiddenCards = Array.from(document.querySelectorAll('.room-levelup-celebration'));
-    hiddenCards.forEach(c => c.classList.add('gfx-hidden-for-legend'));
-    const d = document.createElement('div');
-    d.id = 'gfx-legend';
-    d.className = 'gfx-legend';
-    const giftImgUrl = isHttpsImageUrl(data.giftImage) ? data.giftImage : null;
-    const subtitle = data.isSelf
-        ? `أنت أرسلت ${escapeHtml(data.giftName)} إلى ${data.toLabel}`
-        : `${escapeHtml(data.fromUsername)} أرسل ${escapeHtml(data.giftName)} إلى ${data.toLabel}`;
-    d.innerHTML = `
-        <div class="gfx-legend-rays"></div>
-        <div class="gfx-legend-g">${giftImgUrl ? '' : `<span>${escapeHtml(data.giftIcon || '🎁')}</span>`}</div>
-        <div class="gfx-legend-t"><b>${escapeHtml(data.giftName)}</b><span>${subtitle}</span></div>
-    `;
+// ---------------- پop & fly (ب): صورة مركزية + توهّج 0.8ث، ثم طيران (giftStageOnFly) ----------------
+function giftStageOnPop(evt, done) {
+    if (gfxPrefersReducedMotion()) { done(); return; }
+    const layer = document.getElementById('room-giftfx-video-layer');
+    if (!layer) { done(); return; }
+    const giftImgUrl = isHttpsImageUrl(evt.gift?.image) ? evt.gift.image : null;
+    const el = document.createElement('div');
+    el.className = 'room-giftfx-pop';
     if (giftImgUrl) {
         const img = document.createElement('img');
-        img.src = giftImgUrl;
-        d.querySelector('.gfx-legend-g').appendChild(img);
+        img.src = giftImg(giftImgUrl, 140);
+        img.alt = '';
+        wireGiftImgFallback(img, giftImgUrl, '🎁');
+        el.appendChild(img);
+    } else {
+        el.textContent = '🎁';
     }
-    document.body.appendChild(d);
-    setTimeout(() => {
-        d.remove();
-        lane?.classList.remove('gfx-hidden-for-legend');
-        hiddenCards.forEach(c => c.classList.remove('gfx-hidden-for-legend'));
-        onDone?.();
-    }, 3200);
+    const center = gfxStagePopCenterPoint();
+    if (center) { el.style.left = center.x + 'px'; el.style.top = center.y + 'px'; }
+    layer.appendChild(el);
+    setTimeout(() => { el.remove(); done(); }, 800);
 }
 
-// 🛡️ feat/gift-fx-and-cosmetics-base (مراجعة PR #160): .room-giftfx-fly-layer صار طفلاً مباشراً
-// لـ#main-content (لا .voice-chat-stage — راجع تعليق input.css عن سبب إصلاح الفيديو الأسود)،
-// فمرجع الإحداثيات هنا صار #main-content نفسه، لا صندوق المقاعد؛ مطابق لنمط gfxSeatFlyPoint/
-// gfxFlyFallbackPoint الموجودين أعلى الملف تماماً لكن لمرجع مختلف يلائم .room-giftfx-fly-layer
+// ---------------- طابور الفيديو بملء الشاشة (ج) ----------------
+// ✅ وضع الأجهزة الضعيفة التلقائي الخاص بفيديو الهدايا تحديداً — ذاكرة جهاز ≤2GB أو "توفير
+// البيانات" بالمتصفح — صفر طلب فيديو إطلاقاً بهذي الحالة (پop&fly بصورة ثابتة بدلاً منه)
+function gfxShouldUseLiteGiftVideo() {
+    try {
+        if (document.body.classList.contains('lite-mode')) return true;
+        if (navigator.deviceMemory && navigator.deviceMemory <= 2) return true;
+        if (navigator.connection && navigator.connection.saveData) return true;
+    } catch (_) { /* تجاهل أي متصفح لا يدعم هذي الـAPIs */ }
+    return false;
+}
+
+// ✅ طلب صريح: تحميل مسبق للعنصر "التالي بالطابور" فقط أثناء تشغيل الحالي — لا الطابور كله ولا
+// أي عنصر لم يصل دوره بعد. عنصر <video> منفصل غير مُلحَق بالـDOM المرئي؛ preload=auto يبدأ
+// تنزيل بايتاته الآن فيُستخدَم العنصر نفسه مباشرة (بلا إعادة تنزيل) لحظة دوره الفعلي
+function giftStageOnVideoPreload(item) {
+    if (item._preloadEl || gfxShouldUseLiteGiftVideo() || gfxPrefersReducedMotion()) return;
+    const v = document.createElement('video');
+    v.preload = 'auto';
+    v.muted = true;
+    v.src = item.evt.gift.videoUrl;
+    try { v.load(); } catch (_) {}
+    item._preloadEl = v;
+}
+
+// ✅ مشغّل فيديو مؤثر الهدية — فوق الغرفة بـmix-blend-mode:screen (على طبقة
+// .room-giftfx-video-layer نفسها لا الفيديو المعزول، وإلا يظهر الأسود). يستدعي done() فقط —
+// المحرّك (giftEngine.js) هو من يُشغِّل الطيران بعدها عبر giftStageOnFly، لا هذي الدالة. قواعد الخفة:
+// • لا تحميل مسبق لأي عنصر عدا "التالي بالطابور" (giftStageOnVideoPreload أعلاه)
+// • وضع الأجهزة الضعيفة/توفير البيانات: صورة ثابتة ثانية واحدة، صفر طلب فيديو
+// • لا تشغيل والصفحة مخفية (المحرّك أصلاً لا يُشغِّل طابوراً مخفياً — راجع roomGiftStage.setHidden
+//   أدناه — هذا فحص احتياطي إضافي لعنصر قد يكون قيد التشغيل فعلاً لحظة التبديل للخلفية)
+// • تأخّر أكثر من 1.5 ثانية (إنترنت ضعيف) = إلغاء وطيران فوري
+// • عنصر الفيديو يُحذف ويُفرَّغ مصدره دوماً بعد الانتهاء (نجاحاً أو إلغاءً) — لا بقايا بالذاكرة
+function giftStageOnVideoPlay(item, done) {
+    const layer = document.getElementById('room-giftfx-video-layer');
+    const evt = item.evt;
+    if (!layer || document.hidden || gfxPrefersReducedMotion()) { done(); return; }
+
+    if (gfxShouldUseLiteGiftVideo()) {
+        const s = document.createElement('div');
+        s.className = 'room-giftfx-static';
+        const giftImgUrl = isHttpsImageUrl(evt.gift?.image) ? evt.gift.image : null;
+        if (giftImgUrl) {
+            const img = document.createElement('img');
+            img.src = giftImg(giftImgUrl, 90);
+            img.alt = '';
+            img.style.cssText = 'width:100%;height:100%;object-fit:contain';
+            wireGiftImgFallback(img, giftImgUrl, '🎁');
+            s.appendChild(img);
+        } else {
+            s.textContent = '🎁';
+        }
+        const liteCenter = gfxStagePopCenterPoint();
+        if (liteCenter) { s.style.left = liteCenter.x + 'px'; s.style.top = liteCenter.y + 'px'; }
+        layer.appendChild(s);
+        setTimeout(() => { s.remove(); done(); }, 1000);
+        return;
+    }
+
+    const v = item._preloadEl || document.createElement('video');
+    v.className = 'room-giftfx-video';
+    v.muted = true;
+    v.playsInline = true;
+    if (!v.preload) v.preload = 'none'; // ✅ لا تحميل مسبق أبداً لعنصر لم يُحمَّل مسبقاً فعلياً
+    const videoCenter = gfxStagePopCenterPoint();
+    if (videoCenter) { v.style.left = videoCenter.x + 'px'; v.style.top = videoCenter.y + 'px'; }
+    let settled = false;
+    let badge = null;
+    const cleanupAndFly = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(startTimer);
+        badge?.remove();
+        try { v.pause(); } catch (_) {}
+        v.removeAttribute('src');
+        try { v.load(); } catch (_) {}
+        v.remove();
+        done();
+    };
+    const startTimer = setTimeout(cleanupAndFly, 1500);
+    v.addEventListener('playing', () => clearTimeout(startTimer), { once: true });
+    v.addEventListener('ended', cleanupAndFly, { once: true });
+    v.addEventListener('error', cleanupAndFly, { once: true });
+    if (!v.src) v.src = evt.gift.videoUrl;
+    layer.appendChild(v);
+    // ✅ "×N" على آخر تشغيل فقط لكمية كبيرة من نفس الهدية (حتى 3 تشغيلات — راجع giftEngine.js)
+    if (item.badgeQty) {
+        badge = document.createElement('span');
+        badge.className = 'room-giftfx-video-badge';
+        badge.textContent = '×' + item.badgeQty.toLocaleString('en-US');
+        layer.appendChild(badge);
+    }
+    v.play().catch(cleanupAndFly);
+}
+
+// 🛡️ (مراجعة PR #160): .room-giftfx-fly-layer طفل مباشر لـ#main-content (لا .voice-chat-stage
+// — راجع تعليق input.css عن سبب إصلاح الفيديو الأسود)، فمرجع الإحداثيات هنا #main-content نفسه
 function gfxStageSeatPoint(userId) {
     const wrap = userId && document.querySelector(`#voice-chat-grid [data-user-id="${userId}"] .voice-seat-av-wrap`);
     if (!mainContent || !wrap) return null;
@@ -18125,27 +18107,36 @@ function gfxStageFallbackPoint() {
     const sr = stage.getBoundingClientRect();
     return { x: sr.left - mr.left + stage.clientWidth / 2 - 28, y: sr.top - mr.top + stage.clientHeight - 56 };
 }
+// ✅ طلب صريح (مراجعة): مركز مؤثر الفيديو/پop يكون أسفل مركز شبكة المقاعد نفسها قليلاً — مركز
+// #voice-chat-grid الفعلي (لا صندوق المرحلة كاملاً، الذي قد يحوي شريط PK/تحدٍ يُطيله) + إزاحة
+// ثابتة للأسفل. null لو تعذّر إيجاد الشبكة (الـCSS الافتراضي top:40% يبقى احتياطاً وقتها)
+function gfxStagePopCenterPoint() {
+    const grid = document.getElementById('voice-chat-grid');
+    if (!mainContent || !grid) return null;
+    const mr = mainContent.getBoundingClientRect();
+    const gr = grid.getBoundingClientRect();
+    return { x: gr.left - mr.left + gr.width / 2, y: gr.top - mr.top + gr.height / 2 + 48 };
+}
 
-// ✅ طيران أيقونة الهدية فقط (بلا فيديو ولا بطاقة ملء شاشة) — يُستخدَم حين يمتلئ طابور الفيديو
-// (بند الخفة: "أي هدية فيديو زائدة تظهر كأيقونة تطير فقط")، وأيضاً كخطوة أخيرة دوماً بعد أي
-// فيديو/صورة ثابتة لنفس الهدية (gfxRenderGiftVideo أسفل)
-function gfxFlyGiftIconOnly(data) {
+// ---------------- الطيران الموحَّد (بعد پop أو بعد الفيديو، لكل مستلم على حدة) ----------------
+function giftStageOnFly(evt, recipient) {
+    if (gfxPrefersReducedMotion()) return;
     const layer = document.getElementById('room-giftfx-fly-layer');
-    if (!layer || gfxPrefersReducedMotion()) return;
-    const giftImgUrl = isHttpsImageUrl(data.giftImage) ? data.giftImage : null;
+    if (!layer) return;
+    const giftImgUrl = isHttpsImageUrl(evt.gift?.image) ? evt.gift.image : null;
     const from = gfxStageFallbackPoint();
-    const to = data.toUserId ? (gfxStageSeatPoint(data.toUserId) || from) : from;
+    const to = recipient ? (gfxStageSeatPoint(recipient.id) || from) : from;
     const f = document.createElement('div');
     f.className = 'room-giftfx-flyer';
     if (giftImgUrl) {
         const img = document.createElement('img');
         img.src = giftImgUrl;
         img.alt = '';
-        wireGiftImgFallback(img, giftImgUrl, data.giftIcon || '🎁');
+        wireGiftImgFallback(img, giftImgUrl, '🎁');
         f.appendChild(img);
     } else {
         const span = document.createElement('span');
-        span.textContent = data.giftIcon || '🎁';
+        span.textContent = '🎁';
         f.appendChild(span);
     }
     f.style.left = from.x + 'px';
@@ -18157,79 +18148,6 @@ function gfxFlyGiftIconOnly(data) {
         f.style.transform = 'scale(.6)';
     }));
     setTimeout(() => f.remove(), 950);
-}
-
-// ✅ وضع الأجهزة الضعيفة التلقائي الخاص بفيديو الهدايا تحديداً — ذاكرة جهاز ≤2GB أو "توفير
-// البيانات" بالمتصفح (أو تفعيل المستخدم اليدوي لوضع الأجهزة الضعيفة العام) — صفر طلب فيديو
-// إطلاقاً بهذي الحالة (صورة ثابتة فقط)، لا فقط تخفيف حركة كبقية استخدامات isWeakDevice
-function gfxShouldUseLiteGiftVideo() {
-    try {
-        if (document.body.classList.contains('lite-mode')) return true;
-        if (navigator.deviceMemory && navigator.deviceMemory <= 2) return true;
-        if (navigator.connection && navigator.connection.saveData) return true;
-    } catch (_) { /* تجاهل أي متصفح لا يدعم هذي الـAPIs */ }
-    return false;
-}
-
-// 🛡️ feat/gift-fx-and-cosmetics-base: مشغّل فيديو مؤثر الهدية — فوق الغرفة بـmix-blend-mode:
-// screen (على طبقة .room-giftfx-video-layer نفسها لا الفيديو المعزول، وإلا يظهر الأسود)، ثم
-// طيران الهدية لمقعد المستلم. كل قواعد الخفة هنا:
-// • لا تحميل مسبق أبداً — preload:none + .src يُضبط هنا فقط لحظة الإرسال الفعلي، أول ظهور
-// • وضع الأجهزة الضعيفة/توفير البيانات: صورة ثابتة ثانية واحدة، صفر طلب فيديو
-// • لا تشغيل والصفحة مخفية (التطبيق بالخلفية)
-// • تأخّر أكثر من 1.5 ثانية (إنترنت ضعيف) = إلغاء وطيران فوري
-// • عنصر الفيديو يُحذف ويُفرَّغ مصدره دوماً بعد الانتهاء (نجاحاً أو إلغاءً) — لا بقايا بالذاكرة
-function gfxRenderGiftVideo(data, onDone) {
-    const videoLayer = document.getElementById('room-giftfx-video-layer');
-    const finishAfterFly = () => { gfxFlyGiftIconOnly(data); setTimeout(() => onDone?.(), 950); };
-
-    if (!videoLayer || document.hidden || gfxPrefersReducedMotion()) {
-        finishAfterFly();
-        return;
-    }
-
-    if (gfxShouldUseLiteGiftVideo()) {
-        const s = document.createElement('div');
-        s.className = 'room-giftfx-static';
-        const giftImgUrl = isHttpsImageUrl(data.giftImage) ? data.giftImage : null;
-        if (giftImgUrl) {
-            const img = document.createElement('img');
-            img.src = giftImgUrl;
-            img.alt = '';
-            img.style.cssText = 'width:100%;height:100%;object-fit:contain';
-            wireGiftImgFallback(img, giftImgUrl, data.giftIcon || '🎁');
-            s.appendChild(img);
-        } else {
-            s.textContent = data.giftIcon || '🎁';
-        }
-        videoLayer.appendChild(s);
-        setTimeout(() => { s.remove(); finishAfterFly(); }, 1000);
-        return;
-    }
-
-    const v = document.createElement('video');
-    v.className = 'room-giftfx-video';
-    v.muted = true;
-    v.playsInline = true;
-    v.preload = 'none';
-    let settled = false;
-    const cleanupAndFly = () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(startTimer);
-        try { v.pause(); } catch (_) {}
-        v.removeAttribute('src');
-        try { v.load(); } catch (_) {}
-        v.remove();
-        finishAfterFly();
-    };
-    const startTimer = setTimeout(cleanupAndFly, 1500);
-    v.addEventListener('playing', () => clearTimeout(startTimer), { once: true });
-    v.addEventListener('ended', cleanupAndFly, { once: true });
-    v.addEventListener('error', cleanupAndFly, { once: true });
-    v.src = data.giftVideoUrl;
-    videoLayer.appendChild(v);
-    v.play().catch(cleanupAndFly);
 }
 
 // ✅ دالة موحّدة لبناء كارد الهدية (تُستخدم بالخاصة والعامة)
@@ -19031,302 +18949,83 @@ function gfxSetChatLineQuantity(comboId, qty) {
     scheduleChatLineIdleFinalize(comboId);
 }
 
-// 🛡️ طلب صريح (رؤية الهدايا للآخرين — بند 2ب): بقية الحاضرين (غير المُرسِل) لم يكونوا يرون
-// الهدية "تطير" لمقعد المستلم إطلاقاً — فقط المُرسِل يرى هذا محلياً (flyToRecipients أعلى
-// الملف، جزء من جلسة كومبو هديته الخاصة هو). نفس حركة القوس بالضبط (تكبير بالمنتصف ثم استقرار
-// عند المقعد، راجع flyToRecipients) تُستنسَخ هنا لصدى room-gift-announcement الذي يصل لكل
-// الحاضرين الآخرين — بما في ذلك الهدايا المخصّصة (صورتها من Cloudinary نفسها، تمر بـgiftImg
-// كبقية صور الهدايا). المصدر: مقعد المُرسِل إن كان جالساً، وإلا أسفل منتصف شبكة المقاعد
-// احتياطياً (لا "زر كومبو" مرئي للمُرسِل من منظور الآخرين كالتصميم الأصلي). الوجهة: مقعد
-// المستلم، أو نفس الاحتياطي لو غادر مقعده للتو. fromProfileImage/giftImage غير موثوقتين
-// (صدى بثّ عام) — نفس فحص isHttpsImageUrl المستخدَم بالشريط الجانبي بالأسفل بالضبط
-const GFX_REMOTE_FLY_MAX_PER_SEC = 6; // ✅ طلب صريح: حدّ تواتر لكل غرفة — سيل هدايا يُسقِط الزائد بصمت
-let gfxRemoteFlyWindowStart = 0;
-let gfxRemoteFlyCountInWindow = 0;
-function gfxRemoteFlyRateAllowed() {
-    const now = Date.now();
-    if (now - gfxRemoteFlyWindowStart >= 1000) { gfxRemoteFlyWindowStart = now; gfxRemoteFlyCountInWindow = 0; }
-    if (gfxRemoteFlyCountInWindow >= GFX_REMOTE_FLY_MAX_PER_SEC) return false;
-    gfxRemoteFlyCountInWindow++;
-    return true;
-}
-function gfxSeatFlyPoint(userId) {
-    const wrap = document.querySelector(`#voice-chat-grid [data-user-id="${userId}"] .voice-seat-av-wrap`);
-    if (!wrap) return null;
-    const r = wrap.getBoundingClientRect();
-    return { x: r.left + r.width / 2 - 13, y: r.top + r.height / 2 - 13, seatEl: wrap };
-}
-function gfxFlyFallbackPoint() {
-    const grid = document.getElementById('voice-chat-grid');
-    if (grid) {
-        const r = grid.getBoundingClientRect();
-        return { x: r.left + r.width / 2 - 13, y: r.bottom - 13, seatEl: null };
-    }
-    return { x: window.innerWidth / 2 - 13, y: window.innerHeight - 80, seatEl: null };
-}
-function gfxFlyRemoteGiftToSeat(data) {
-    if (gfxPrefersReducedMotion()) return;
-    if (data.roomId !== currentVoiceRoomId) return;
-    if (!gfxRemoteFlyRateAllowed()) return;
-    if (!gfxFlyGateAcquire()) return; // 🛡️ بند 3: حدّ الطيران المتزامن على الأجهزة الضعيفة
-
-    const fallback = gfxFlyFallbackPoint();
-    const from = gfxSeatFlyPoint(data.fromUserId) || fallback;
-    const to = gfxSeatFlyPoint(data.toUserId) || fallback;
-    const giftImgUrl = isHttpsImageUrl(data.giftImage) ? data.giftImage : null;
-
-    const f = document.createElement('div');
-    f.className = 'gfx-fly';
-    // 🛡️ أمان (بند XSS بمراجعة PR): giftImage/giftIcon هنا قيم غير موثوقة (صدى بثّ عام —
-    // قد تصل من هدية مخصّصة صمّمها مستخدم آخر). isHttpsImageUrl يتحقق فقط من بداية الرابط
-    // (https://)، لا يمنع حرف اقتباس يكسر سياق الخاصية لو بُني كنص HTML (كما تفعل
-    // giftEmojiOrImgHTML — آمنة فقط لكائن gift الموثوق بالمتجر). بناء DOM مباشر هنا بدل
-    // innerHTML (نفس نمط gfxUpdateSideBanner الآمن لنفس الحقل غير الموثوق بالضبط) — src
-    // كخاصية DOM لا كنص مُفسَّر، وtextContent للأيقونة الاحتياطية، فلا يوجد أي سياق HTML
-    // يُكسَر مهما كانت القيمة
-    if (giftImgUrl) {
-        const img = document.createElement('img');
-        img.src = giftImg(giftImgUrl, 80);
-        img.alt = '';
-        img.loading = 'lazy';
-        img.decoding = 'async';
-        wireGiftImgFallback(img, giftImgUrl, data.giftIcon || '🎁'); // 🛡️ احتياط بخطوتين — راجع wireGiftImgFallback
-        f.appendChild(img);
-    } else {
-        const span = document.createElement('span');
-        span.textContent = data.giftIcon || '🎁';
-        f.appendChild(span);
-    }
-    f.style.left = from.x + 'px'; f.style.top = from.y + 'px';
-    document.body.appendChild(f);
-    const midX = (to.x - from.x) / 2 + (Math.random() * 60 - 30), midY = Math.min(0, (to.y - from.y) / 2) - 60;
-    f.animate([
-        { transform: 'translate(0,0) scale(.6)', opacity: 1 },
-        { transform: `translate(${midX}px,${midY}px) scale(1.25)`, opacity: 1, offset: 0.45 },
-        { transform: `translate(${to.x - from.x}px,${to.y - from.y}px) scale(.7)`, opacity: 0.9 }
-    ], { duration: 620, easing: 'cubic-bezier(.3,.7,.4,1)' }).onfinish = () => {
-        f.remove();
-        gfxFlyGateRelease();
-        if (to.seatEl) { to.seatEl.classList.remove('gfx-seat-hit'); void to.seatEl.offsetWidth; to.seatEl.classList.add('gfx-seat-hit'); }
-    };
+// 🛡️ feat/gift-display-engine: خطّافات الشريط الجانبي (أ) — أقصى عنصرين ظاهرين معاً، دمج
+// نفس المُرسِل+الهدية خلال 3ث بعدّاد ×N، وطابور لما يتجاوز ذلك — كل هذا القرار (الدمج/السقف/
+// الطابور) بـGiftStage الخالصة (giftEngine.js)؛ هذي الدوال فقط "كيف تُرسَم" الحالة التي يقرّرها.
+// fromProfileImage/giftImage قيم غير موثوقة قادمة من صدى بثّ عام (مستخدم آخر) — تُفحَص دوماً
+// بـisHttpsImageUrl وتُبنى كصورة DOM بخاصية src (لا تضمين نصي بـinnerHTML) أبداً
+function isHttpsImageUrl(url) {
+    return typeof url === 'string' && url.startsWith('https://');
 }
 
-// ✅ طلب صريح (بند 1 بمراجعة PR #108): شريط إعلان هدايا الآخرين — نفس تصميم .gfx-banner
-// الذي يستخدمه شريطي الخاص بالضبط (لا نظام ثانٍ مختلف بصرياً)، مُجمَّع ومُحدَّث مكانه بـ×N
-// حسب comboId (دقيق من السيرفر)، بحدّ GFX_BANNER_MAX وينزلق الأقدم خارجاً عند تجاوزه.
-// fromProfileImage/giftImage قيم غير موثوقة قادمة من صدى بثّ عام (مستخدم آخر) — تُفحَص بـ
-// isHttpsImageUrl وتُبنى كصورة DOM بخاصية src (لا تضمين نصي بـinnerHTML) تماماً كـ
-// renderRoomGiftSideBanner القديمة أعلى الملف (نفس التصلّب الأمني الموثَّق هناك)
-// 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري ج): الشريط لم يكن له أي صلاحية زمنية —
-// فقط يُزاح عند تجاوز GFX_BANNER_MAX (3) بشرائط أحدث. بغرفة هادئة نسبياً (أقل من 3 هدايا
-// لاحقة)، شريط هدية واحدة قديمة يبقى معلَّقاً للأبد فعلياً إن لم يصل أي "إشعار نهاية" (الذي
-// لا وجود له أصلاً بهذا المسار — صدى بثّ للآخرين فقط). 3 ثوانٍ من الخمول (آخر تحديث) تكفي
-// لإخفائه تلقائياً بنفس أنيميشن الخروج المستخدَم أصلاً عند الإزاحة بالتجاوز
-const GFX_BANNER_IDLE_MS = 3000;
-function scheduleBannerIdleRemoval(entry) {
-    clearTimeout(entry.timer);
-    entry.timer = setTimeout(() => {
-        const idx = gfxOtherBanners.indexOf(entry);
-        if (idx === -1) return;
-        gfxOtherBanners.splice(idx, 1);
-        entry.el.classList.add('out');
-        setTimeout(() => entry.el.remove(), 420);
-    }, GFX_BANNER_IDLE_MS);
+const GFX_LANE_IDLE_MS = 3000;
+function scheduleLaneExpire(item) {
+    clearTimeout(item._expireTimer);
+    item._expireTimer = setTimeout(() => roomGiftStage.laneExpire(item), GFX_LANE_IDLE_MS);
 }
-function gfxUpdateSideBanner(data) {
-    const comboKey = data.comboId || `solo:${data.fromUserId}:${data.giftId}:${data.toUserId}:${Date.now()}`;
-    const existing = gfxOtherBanners.find(b => b.comboId === comboKey);
-    if (existing) {
-        existing.count += (data.quantity || 1);
-        existing.recipients.add(data.toUserId);
-        const xEl = existing.el.querySelector('.gfx-banner-x');
-        if (xEl) {
-            xEl.textContent = '×' + existing.count.toLocaleString('en-US');
-            xEl.classList.remove('bump'); void xEl.offsetWidth; xEl.classList.add('bump');
-        }
-        const toEl = existing.el.querySelector('.gfx-banner-to');
-        if (toEl && existing.recipients.size > 1) toEl.textContent = `إلى ${existing.recipients.size} مستلمين`;
-        scheduleBannerIdleRemoval(existing);
-        return;
-    }
-
-    if (gfxOtherBanners.length >= GFX_BANNER_MAX) {
-        const oldest = gfxOtherBanners.pop();
-        clearTimeout(oldest.timer);
-        oldest.el.classList.add('out');
-        setTimeout(() => oldest.el.remove(), 420);
-    }
-
-    // ✅ بند 1: لا احتياط DEFAULT_AVATAR_URL هنا بعد اليوم — بلا صورة صالحة يبقى الحرف الملوَّن
-    // (أسفله) ظاهراً مباشرة بلا أي <img> فوقه إطلاقاً، كما تفعل avatarHTML({name,...}) تماماً
-    const avatarUrl = isHttpsImageUrl(data.fromProfileImage) ? data.fromProfileImage : null;
-    const giftImgUrl = isHttpsImageUrl(data.giftImage) ? data.giftImage : null;
+function giftStageOnLaneShow(item) {
+    const avatarUrl = isHttpsImageUrl(item.sender?.profileImage) ? item.sender.profileImage : null;
+    const giftImgUrl = isHttpsImageUrl(item.gift?.image) ? item.gift.image : null;
     const el = document.createElement('div');
     el.className = 'gfx-banner';
+    el.setAttribute('data-gift-lane-item', '1');
     el.innerHTML = `
         <span class="gfx-banner-av"></span>
-        <span class="gfx-banner-txt"><b>${escapeHtml(data.fromUsername)}</b><span class="gfx-banner-to">إلى ${escapeHtml(data.toUsername)}</span></span>
-        <span class="gfx-banner-gift">${giftImgUrl ? '' : escapeHtml(data.giftIcon || '🎁')}</span>
-        <span class="gfx-banner-x">×${(data.quantity || 1).toLocaleString('en-US')}</span>
+        <span class="gfx-banner-txt"><b></b><span class="gfx-banner-to"></span></span>
+        <span class="gfx-banner-gift">${giftImgUrl ? '' : '🎁'}</span>
+        <span class="gfx-banner-x">×${item.count.toLocaleString('en-US')}</span>
     `;
-    // 🛡️ بند 1 (توحيد الأفاتار — room-ux-v2): نفس احتياط "الحرف الأول على لون ثابت" الذي
-    // تولِّده avatarHTML({name,...}) بالضبط، لكن ببناء DOM مباشر (لا innerHTML) — avatarUrl هنا
-    // من بيانات بثّ مستخدم آخر (غير موثوقة)، فتمريرها كسلسلة نصّية داخل قالب HTML (كما تفعل
-    // avatarHTML) يفتح XSS لو احتوت على حرف اقتباس يكسر السمة؛ التعيين بخاصية .src مباشرة هنا
-    // آمن بنيوياً (المتصفح لا يُفسِّرها كـHTML إطلاقاً) — نفس نمط isHttpsImageUrl المستخدم فعلاً
-    // لصور الهدايا من بثّ الآخرين بهذا الملف
+    el.querySelector('.gfx-banner-txt b').textContent = item.sender?.username || '';
+    // 🛡️ نفس احتياط "الحرف الأول على لون ثابت" الذي تولِّده avatarHTML({name,...}) بالضبط، لكن
+    // ببناء DOM مباشر (لا innerHTML) — avatarUrl من بيانات بثّ مستخدم آخر (غير موثوقة)، فتمريرها
+    // كسلسلة نصّية داخل قالب HTML يفتح XSS لو احتوت حرف اقتباس يكسر السمة؛ التعيين بخاصية .src
+    // مباشرة آمن بنيوياً (المتصفح لا يُفسِّرها كـHTML إطلاقاً)
     const avWrap = el.querySelector('.gfx-banner-av');
     const avatarSpan = document.createElement('span');
     avatarSpan.className = 'avatar ava-init';
-    avatarSpan.style.cssText = `--size:32px;--avi-bg:${avatarInitialColor(data.fromUserId != null ? data.fromUserId : data.fromUsername)}`;
+    avatarSpan.style.cssText = `--size:32px;--avi-bg:${avatarInitialColor(item.sender?.id != null ? item.sender.id : item.sender?.username)}`;
     const initialSpan = document.createElement('span');
     initialSpan.className = 'avatar__initial';
     initialSpan.setAttribute('aria-hidden', 'true');
-    initialSpan.textContent = avatarInitialChar(data.fromUsername);
+    initialSpan.textContent = avatarInitialChar(item.sender?.username);
     avatarSpan.appendChild(initialSpan);
     if (avatarUrl) {
         const avImg = document.createElement('img');
         avImg.className = 'avatar__photo avatar__photo--fallbackable';
-        avImg.src = giftImg(avatarUrl, 32); // ✅ بند 1: w=2×حجم العرض (32px) من Cloudinary، لا الأصل كامل الحجم
+        avImg.src = giftImg(avatarUrl, 32);
         avImg.loading = 'lazy';
         avImg.decoding = 'async';
         avatarSpan.appendChild(avImg);
     }
     avWrap.appendChild(avatarSpan);
     if (giftImgUrl) {
-        // 🛡️ بند 2ج: اسم محلي مختلف عمداً (giftImgEl) — giftImg أصبحت دالة التحويل العامة أعلى
-        // الملف، واستخدام الاسم نفسه هنا كان يُظلِّلها (shadowing) داخل نطاق هذي الدالة
         const giftImgEl = document.createElement('img');
         giftImgEl.src = giftImg(giftImgUrl, 64);
         giftImgEl.loading = 'lazy';
         giftImgEl.decoding = 'async';
-        wireGiftImgFallback(giftImgEl, giftImgUrl, data.giftIcon || '🎁'); // 🛡️ احتياط بخطوتين — راجع wireGiftImgFallback
+        wireGiftImgFallback(giftImgEl, giftImgUrl, '🎁');
         el.querySelector('.gfx-banner-gift').appendChild(giftImgEl);
     }
     (document.getElementById('room-gift-lane') || document.body).prepend(el);
-    const newEntry = { comboId: comboKey, el, count: data.quantity || 1, recipients: new Set([data.toUserId]) };
-    gfxOtherBanners.unshift(newEntry);
-    scheduleBannerIdleRemoval(newEntry);
+    item.el = el;
+    scheduleLaneExpire(item);
 }
-
-// ✅ حالة الشريط الحالي — يسمح بجمع الإرسالات المتكررة (نفس المُرسل/نفس الهدية) بعدّاد
-// ×N واحد بدل إعادة إنشاء الشريط من الصفر في كل مرة (كانت تبدو كومضات متلاحقة مزعجة)
-let roomGiftBannerState = null; // { key, count, timer, leaving }
-// ✅ طابور حقيقي (طلب صريح: "بطابور حتى لا تتراكب الإعلانات") — هدية من مُرسل/نوع مختلف
-// بينما شريط آخر معروض لا تُدمَّره فوراً بعد الآن، بل تنتظر دورها؛ هدية مطابقة لآخر عنصر
-// بالطابور (لا للمعروض حالياً) تُدمَج بعدّاده بدل فتح عنصر طابور جديد لكل هدية متكررة.
-// سقف صغير يمنع تراكماً بلا حدود بغرفة نشطة جداً — الأحدث يبقى أهم من استعراض كل حدث قديم
-let roomGiftBannerQueue = [];
-let roomGiftBannerShowing = false;
-// 🐛 مراجعة PR #99: مؤقّت التنظيف الداخلي بـdismissRoomGiftSideBanner (400ms بعد بدء الاختفاء)
-// لا تملك mergeIntoShowingGiftBanner مرجعاً له لتُلغيه (معرّف محلياً هناك فقط) — فهدية
-// بنفس المُرسل/الهدية تصل أثناء نافذة الاختفاء تلك كانت "تُحيي" الشريط (تُلغي صنف الاختفاء
-// وتُجدول مؤقّت 3 ثوانٍ جديداً) بينما المؤقّت الداخلي القديم يبقى شغّالاً ويُزيل الشريط ويُصفّر
-// الحالة/الطابور تحت أقدام الشريط "المُحيا" حديثاً. عدّاد جيل بسيط يُبطل أي مؤقّت معلّق من قبل
-// آخر render/تصفير تلقائياً — يزيد عند كل عرض جديد وعند كل تصفير (دخول غرفة)؛ كل setTimeout
-// يلتقط قيمته وقت الجدولة ويتحقق أنها لم تتغيّر قبل تنفيذ أي شيء
-let roomGiftBannerGen = 0;
-const ROOM_GIFT_BANNER_QUEUE_CAP = 6;
-
-function isHttpsImageUrl(url) {
-    return typeof url === 'string' && url.startsWith('https://');
-}
-
-function showRoomGiftSideBanner(payload) {
-    const key = `${payload.fromUsername}::${payload.giftName}`;
-    // 🐛 مراجعة: شريط "بصدد الاختفاء" (leaving) لا يُدمَج فيه أبداً حتى لو كان بنفس المفتاح —
-    // الهدية تذهب للطابور لتُعرض بشريط جديد نظيف بدل محاولة إحياء شريط يُزال فعلياً
-    const isSameAsShowing = roomGiftBannerShowing && roomGiftBannerState && roomGiftBannerState.key === key && !roomGiftBannerState.leaving;
-    if (isSameAsShowing) {
-        mergeIntoShowingGiftBanner(payload);
-        return;
+function giftStageOnLaneMerge(item) {
+    if (!item.el) return;
+    const xEl = item.el.querySelector('.gfx-banner-x');
+    if (xEl) {
+        xEl.textContent = '×' + item.count.toLocaleString('en-US');
+        xEl.classList.remove('bump'); void xEl.offsetWidth; xEl.classList.add('bump');
     }
-    if (roomGiftBannerShowing) {
-        const lastQueued = roomGiftBannerQueue[roomGiftBannerQueue.length - 1];
-        if (lastQueued && `${lastQueued.fromUsername}::${lastQueued.giftName}` === key) {
-            lastQueued.quantity = (lastQueued.quantity || 1) + (payload.quantity || 1);
-        } else if (roomGiftBannerQueue.length < ROOM_GIFT_BANNER_QUEUE_CAP) {
-            roomGiftBannerQueue.push(payload);
-        }
-        return;
-    }
-    renderRoomGiftSideBanner(payload);
+    const toEl = item.el.querySelector('.gfx-banner-to');
+    if (toEl && item.receiverIds.size > 1) toEl.textContent = `إلى ${item.receiverIds.size} مستلمين`;
+    scheduleLaneExpire(item);
 }
-
-function mergeIntoShowingGiftBanner({ quantity }) {
-    const el = document.getElementById('room-gift-side-banner');
-    if (!el || !roomGiftBannerState) return;
-    roomGiftBannerState.count += (quantity || 1);
-    const countEl = el.querySelector('.room-gift-banner-count');
-    if (countEl) countEl.textContent = `×${roomGiftBannerState.count}`;
-    // ✅ نبضة صغيرة تلفت الانتباه للعدّاد المتزايد
-    countEl?.classList.remove('room-gift-banner-count'); void countEl?.offsetWidth; countEl?.classList.add('room-gift-banner-count');
-    el.classList.remove('room-gift-banner-out');
-    clearTimeout(roomGiftBannerState.timer);
-    const key = roomGiftBannerState.key;
-    const gen = roomGiftBannerGen;
-    roomGiftBannerState.timer = setTimeout(() => {
-        if (gen !== roomGiftBannerGen) return;
-        dismissRoomGiftSideBanner(el, key);
-    }, 3000);
-}
-
-function renderRoomGiftSideBanner({ fromUsername, fromProfileImage, toUsername, giftName, giftImage, giftIcon, quantity }) {
-    const key = `${fromUsername}::${giftName}`;
-    document.getElementById('room-gift-side-banner')?.remove();
-    const el = document.createElement('div');
-    el.id = 'room-gift-side-banner';
-    el.className = 'room-gift-side-banner';
-    // 🐛 مراجعة: fromProfileImage/giftImage لم تكونا تُفحَصان قبل الحقن بـsrc عبر innerHTML —
-    // أي قيمة تحمل علامة اقتباس تخرج من سياق الخاصية وتحقن HTML/سمات عشوائية (مثال:
-    // fromProfileImage = '" onerror="...'). الآن: تُقبل فقط لو بدأت بـhttps:// فعلياً، وإلا
-    // صورة افتراضية (أو أيقونة الإيموجي الاحتياطية للهدية كما كانت أصلاً)؛ والصور تُبنى
-    // بـcreateElement+src (خاصية DOM، لا تحليل HTML) لا بتضمينها نصاً داخل innerHTML إطلاقاً
-    const avatarUrl = isHttpsImageUrl(fromProfileImage) ? fromProfileImage : DEFAULT_AVATAR_URL;
-    const giftImgUrl = isHttpsImageUrl(giftImage) ? giftImage : null;
-    el.innerHTML = `
-        <div class="room-gift-banner-text">
-            <b>${escapeHtml(fromUsername)}</b>
-            <span>أرسل ${escapeHtml(giftName)} إلى ${escapeHtml(toUsername)}</span>
-        </div>
-        ${giftImgUrl ? '' : `<span class="room-gift-banner-icon-emoji">${giftIcon || '🎁'}</span>`}
-        <span class="room-gift-banner-count">×${quantity || 1}</span>
-    `;
-    const avatarImg = document.createElement('img');
-    avatarImg.className = 'room-gift-banner-avatar';
-    avatarImg.src = avatarUrl;
-    el.insertBefore(avatarImg, el.firstChild);
-    if (giftImgUrl) {
-        const giftImg = document.createElement('img');
-        giftImg.className = 'room-gift-banner-icon';
-        giftImg.src = giftImgUrl;
-        el.querySelector('.room-gift-banner-count').insertAdjacentElement('beforebegin', giftImg);
-    }
-    // ✅ يُضاف داخل .room-gift-lane (height:0 ثابت — لا يُحرّك الدردشة أبداً، راجع تعليق
-    // .room-gift-lane بـinput.css)، فموضعه مضمون بلا تغطية أي مقعد ولا دفع الدردشة لأسفل
-    (document.getElementById('room-gift-lane') || document.body).appendChild(el);
-    roomGiftBannerShowing = true;
-    roomGiftBannerGen++; // ✅ جيل جديد لكل عرض — يُبطل تلقائياً أي مؤقّت معلّق من عرض سابق
-    const gen = roomGiftBannerGen;
-    roomGiftBannerState = { key, count: quantity || 1, timer: null, leaving: false };
-    roomGiftBannerState.timer = setTimeout(() => {
-        if (gen !== roomGiftBannerGen) return;
-        dismissRoomGiftSideBanner(el, key);
-    }, 3000);
-}
-
-function dismissRoomGiftSideBanner(el, key) {
-    if (roomGiftBannerState?.key === key) roomGiftBannerState.leaving = true;
-    el.classList.add('room-gift-banner-out');
-    const gen = roomGiftBannerGen;
-    setTimeout(() => {
-        if (gen !== roomGiftBannerGen) return; // ✅ جيل جديد بدأ أثناء الاختفاء (مثلاً أُحيي أو صُفِّر) — تجاهل هذا التنظيف القديم
-        el.remove();
-        if (roomGiftBannerState?.key === key) roomGiftBannerState = null;
-        roomGiftBannerShowing = false;
-        const next = roomGiftBannerQueue.shift();
-        if (next) renderRoomGiftSideBanner(next); // ✅ يعرض العنصر التالي بالطابور فور انتهاء الحالي
-    }, 400);
+function giftStageOnLaneHide(item) {
+    clearTimeout(item._expireTimer);
+    if (!item.el) return;
+    item.el.classList.add('out');
+    setTimeout(() => item.el.remove(), 420);
 }
 
 

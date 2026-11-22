@@ -324,39 +324,62 @@ function emitRoomSupportUpdated(io, roomId, userId, value) {
     }, ROOM_SUPPORT_UPDATED_THROTTLE_MS - elapsed);
 }
 
-// ✅ طلب صريح بمراجعة PR (بند 1): "اجمع إعلانات الهدايا لكل غرفة في نافذة 250ms: نفس
-// المرسل+الهدية+المستلم تُدمج في حدث واحد بالكمية الكلية" — سيل هدايا (300/10 ثوانٍ من عدة
-// مرسلين) كان يُشغِّل appendRoomGiftChatMessage/showRoomGiftSideBanner/showGiftFloatingAnimation
-// بالعميل لكل هدية بلا تجميع، فيتجمّد المضيف. المفتاح (مرسل+هدية+مستلم) يُحدَّد لكل غرفة على
-// حدة؛ تركيبات مختلفة بنفس الغرفة بنفس النافذة تُبثّ كل واحدة بحدثها المستقل (لا دمج عشوائي
-// بين مرسلين/هدايا مختلفة) — فقط التكرار الفعلي لنفس (مرسل، هدية، مستلم) يُجمَع بعدّاد الكمية
-const pendingGiftAnnouncements = new Map(); // roomId → Map(mergeKey → { payload, timer })
-const GIFT_ANNOUNCE_BATCH_MS = 250;
+// 🛡️ feat/gift-display-engine (إعادة تصميم جذرية — لا ترقيع): مصدر الحقيقة الوحيد لعرض أي
+// هدية بالغرفة. يحل محل كلٍّ من room-gift-announcement وgift:legendary معاً — حدث واحد (بما
+// فيه المُرسِل نفسه؛ راجع توثيق Tencent RTC الرسمي: كل عضو يستقبل نفس الحدث، والمؤثرات تُشغَّل
+// منه فقط لا من نتيجة نداء الإرسال) فلا يعود هناك مسار "تفاؤلي محلي" منفصل للمُرسِل يُحتمَل أن
+// ينحرف سلوكه عمّا يراه البقية (هذا بالضبط ما تسبَّب بظهور فيديو الهدية خلف المقاعد على جهاز
+// المُرسِل تحديداً بمراجعة PR #160 — الطبقة قيست محلياً بتوقيت متزامن مختلف عن صدى الخادم).
+//
+// 🛡️ مراجعة PR #161 (البند 1): أُعيدت حماية سيل الهدايا التي أُزيلت خطأً مع الملف القديم —
+// نافذة دمج 250ms لكل غرفة بمفتاح (مرسل+هدية+نفس مجموعة المستلمين بالضبط): نفس التركيبة
+// مرتين خلال النافذة تُدمَج بعدّاد كمية واحد (qty تتراكم) بدل حدثين منفصلين — المحرّك بالعميل
+// يتعامل مع qty الكلية أصلاً (حتى 3 تشغيلات + شارة ×N)، فلا حاجة لأي تغيير هناك. الدمج بعد
+// نجاح الخصم الذرّي دوماً (يُستدعى من مواقع استدعاء داخل/بعد المعاملة فقط، كالسابق تماماً) —
+// فقط تأخير البثّ ذاته 250ms كحد أقصى، لا تأخير أي عملية مالية. مفتاح مختلف (مستلمون مختلفون
+// مثلاً) بنفس الغرفة بنفس النافذة يُبثّ بحدثه المستقل فوراً بعد النافذة — لا دمج عشوائي بين
+// تركيبات مختلفة. eventId فريد لكل حدث مُبَثّ فعلياً (بعد الدمج، لا قبله) للتكرار (dedupe)
+// بجهة العميل؛ comboKey يبقى آخر قيمة وصلت بالنافذة (كالسلوك القديم بالضبط)
+const pendingGiftSentEmissions = new Map(); // roomId → Map(mergeKey → entry)
+const GIFT_SENT_BATCH_MS = 250;
 
-function queueRoomGiftAnnouncement(io, payload) {
-    if (!io || !payload.roomId) return;
-    const roomKey = payload.roomId.toString();
-    const mergeKey = `${payload.fromUserId}:${payload.giftId}:${payload.toUserId}`;
-    let roomMap = pendingGiftAnnouncements.get(roomKey);
+function emitGiftSent(io, { roomId, sender, receivers, gift, qty, comboKey }) {
+    if (!io || !roomId) return;
+    const roomKey = roomId.toString();
+    const receiverKey = receivers.map(r => r._id.toString()).sort().join(',');
+    const mergeKey = `${sender._id.toString()}:${gift._id.toString()}:${receiverKey}`;
+
+    let roomMap = pendingGiftSentEmissions.get(roomKey);
     if (!roomMap) {
         roomMap = new Map();
-        pendingGiftAnnouncements.set(roomKey, roomMap);
+        pendingGiftSentEmissions.set(roomKey, roomMap);
     }
+
     const existing = roomMap.get(mergeKey);
     if (existing) {
-        existing.payload.quantity += payload.quantity; // ✅ نفس المرسل+الهدية+المستلم خلال النافذة — دمج الكمية فقط
-        // 🐛 إصلاح: comboId كان يبقى من أول دفعة بالنافذة (الأقدم) — بثّ الدمج النهائي بـcomboId
-        // قديم يُفشل دمج بانر/سطر دردشة العميل بمفتاح الجلسة الحقيقي الأحدث (gfxOtherBanners/
-        // gfxChatLineByCombo، كلاهما مفتاحه comboId). نُحدِّثه لأحدث قيمة وصلت بهذي النافذة
-        if (payload.comboId) existing.payload.comboId = payload.comboId;
+        existing.qty += (qty || 1);
+        if (comboKey) existing.comboKey = comboKey; // ✅ أحدث comboKey لا الأقدم (نفس إصلاح قديم مطابق)
         return;
     }
-    const entry = { payload: { ...payload } };
+
+    const entry = { sender, receivers, gift, qty: qty || 1, comboKey: comboKey || null };
     entry.timer = setTimeout(() => {
         roomMap.delete(mergeKey);
-        if (roomMap.size === 0) pendingGiftAnnouncements.delete(roomKey);
-        io.to(`room-chat-${roomKey}`).emit('room-gift-announcement', entry.payload);
-    }, GIFT_ANNOUNCE_BATCH_MS);
+        if (roomMap.size === 0) pendingGiftSentEmissions.delete(roomKey);
+        io.to(`room-chat-${roomKey}`).emit('gift:sent', {
+            eventId: new mongoose.Types.ObjectId().toString(),
+            roomId: roomKey,
+            sender: { id: entry.sender._id.toString(), username: entry.sender.username, profileImage: entry.sender.profileImage || null },
+            receivers: entry.receivers.map(r => ({ id: r._id.toString(), username: r.username })),
+            gift: {
+                id: entry.gift._id.toString(), name: entry.gift.name, image: entry.gift.imageUrl || '',
+                videoUrl: entry.gift.videoUrl || null, tier: entry.gift.category || 'common'
+            },
+            qty: entry.qty,
+            comboKey: entry.comboKey,
+            sentAt: Date.now()
+        });
+    }, GIFT_SENT_BATCH_MS);
     roomMap.set(mergeKey, entry);
 }
 
@@ -625,7 +648,6 @@ exports.getGiftShop = async (req, res) => {
             requiredXpPerLevel: REQUIRED_XP_PER_LEVEL,
             quantities: [...COMBO_QUANTITIES],
             comboWindowMs: COMBO_WINDOW_MS,
-            flushMs: GIFT_ANNOUNCE_BATCH_MS,
             // ✅ طلب صريح: "values from the server" لمودال "صمّم هديتك" — لا رقم ثابت بالعميل
             customGiftDesignFee: settings.customGiftDesignFeeCoins,
             customGiftSendPrice: settings.customGiftSendPriceCoins
@@ -890,22 +912,11 @@ exports.sendGift = async (req, res) => {
             }
         }
 
-        // ✅ إعلان الهدية داخل دردشة الغرفة نفسها (فقاعة ذهبية) — بديل الرسالة الخاصة/الإشعار
-        // العائم السابقين، بنفس أسلوب "فلان أرسل هدية لفلان" بالتطبيقات المشهورة
+        // ✅ مصدر الحقيقة الوحيد لعرض الهدية بالغرفة (راجع تعليق emitGiftSent) — حدث واحد فوري
+        // يصل للجميع بمن فيهم المُرسِل نفسه، فيُشغَّل محرّك العرض الجديد (GiftStage) من نفس
+        // المكان تماماً لكل من بالغرفة بلا استثناء
         if (cleanRoomId && io) {
-            queueRoomGiftAnnouncement(io, {
-                roomId: cleanRoomId,
-                fromUserId: senderId,
-                fromUsername: sender.username,
-                fromProfileImage: sender.profileImage,
-                toUserId: receiverId,
-                toUsername: receiver.username,
-                giftId: gift._id.toString(),
-                giftName: gift.name,
-                giftImage: safeGiftImage,
-                giftIcon: gift.icon || '🎁',
-                quantity: qty
-            });
+            emitGiftSent(io, { roomId: cleanRoomId, sender, receivers: [receiver], gift, qty });
         }
 
         if (sender.socketId && io) {
@@ -967,9 +978,7 @@ const ALLOWED_COMBO_QTY = new Set([...COMBO_QUANTITIES, 6, 166, 999]);
 exports.ALLOWED_COMBO_QTY = ALLOWED_COMBO_QTY;
 
 // ✅ طلب صريح (هدايا v2): مهلة انتهاء جلسة الكومبو بعد آخر ضغطة — رقم إعلاني فقط بواجهة
-// rules.comboWindowMs (العميل هو من يُطبِّقها فعلياً بعدّاد دائرة الكومبو)، لا إنفاذ خادمي
-// مباشر لها حالياً — راجع أيضاً GIFT_ANNOUNCE_BATCH_MS أعلى الملف (rules.flushMs: نفس
-// القيمة 250ms بالتصميم، يُعاد استخدام الثابت نفسه بدل تكرار الرقم بمكانين قد ينحرفان)
+// rules.comboWindowMs (العميل هو من يُطبِّقها فعلياً بعدّاد دائرة الكومبو)، لا إنفاذ خادمي مباشر لها حالياً
 const COMBO_WINDOW_MS = 3000;
 
 // 🛡️ طلب صريح بمراجعة PR #106: مستلمو الهدية داخل غرفة لا يقتصرون على الجالسين على مقعد —
@@ -1191,10 +1200,9 @@ exports.reserveGiftCombo = reserveGiftCombo;
 // ولا ضمن نفس المعاملة (لا حاجة لضمانها ذرّياً مع الخصم نفسه — fire-and-forget/best-effort
 // كما كانت دوماً بهذا المشروع؛ كلها قابلة لإعادة الحساب وبلا مسار استبدال نقدي مباشر، بعكس
 // سجلّ الهدايا GiftLog الذي التزم بالفعل داخل المعاملة نفسها — راجع buildGiftLogEntries)
-// 🛡️ طلب صريح بمراجعة واجهات الكومبو: comboId اختياري (موجود فقط لمسار gift:combo عبر
-// Socket.IO — راجع socketService.js؛ REST/processGiftCombo بلا مفهوم جلسة كومبو أصلاً) —
-// يُضاف لحمولة room-gift-announcement كي يُجمِّع العميل كل إعلانات نفس الجلسة (حتى لو كانت
-// لعدّة مستلمين، كل واحد بحدث منفصل) بشريط/سطر دردشة واحد متحدِّث بدل عنصر جديد لكل حدث
+// 🛡️ comboId اختياري (موجود فقط لمسار gift:combo عبر Socket.IO — راجع socketService.js؛
+// REST/sendGiftBatch بلا مفهوم جلسة كومبو أصلاً) — يُمرَّر لـemitGiftSent كـcomboKey، حقل
+// معلوماتي بحت بحمولة gift:sent (منفصل تماماً عن eventId الفريد الحقيقي لكل حدث)
 async function runGiftComboSideEffects({ io, sender, gift, validReceivers, unitPrice, totalCost, totalPrice, effectiveQty, cleanRoomId, safeGiftImage, comboId, postedEntries }) {
     const senderId = sender._id;
 
@@ -1218,23 +1226,10 @@ async function runGiftComboSideEffects({ io, sender, gift, validReceivers, unitP
         } catch (supportError) {
             console.error('[ROOM LEVEL] Failed to apply support points:', supportError);
         }
-        // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري د): الأسطورية كانت تصل للآخرين فقط
-        // عبر room-gift-announcement المُجمَّع (نافذة 250ms) — تأخير حقيقي قبل أن يرى أي
-        // مشاهد آخر مؤثر ملء الشاشة. حدث مخصَّص الآن (gift:legendary)، يصل فوراً بلا انتظار أي
-        // تجميع — مرة واحدة للغرفة كلها (لا لكل مستلم)، لا علاقة له بـroom-gift-announcement
-        // (الذي يبقى كما هو للشريط الجانبي/سطر الدردشة فقط). راجع gfxUpdateSideBanner/
-        // المستمع الجديد socket.on('gift:legendary') بالعميل
-        // 🛡️ feat/gift-fx-and-cosmetics-base: نفس المسار الفوري (لا تجميع 250ms) يحمل الآن أيضاً
-        // فيديو مؤثر الهدية لو كانت هذي الهدية تملك واحداً (gift.videoUrl) — بصرف النظر عن
-        // category، فـ"فراشة النادي" حصرية النادي لا الأسطورية لكنها تحتاج نفس البث الفوري
-        if (io && (gift.category === 'legendary' || gift.videoUrl)) {
-            io.to(`room-chat-${cleanRoomId}`).emit('gift:legendary', {
-                roomId: cleanRoomId, comboId, fromUserId: senderId, fromUsername: sender.username,
-                giftImage: safeGiftImage, giftIcon: gift.icon || '🎁', giftName: gift.name,
-                giftVideoUrl: gift.videoUrl || null,
-                toUserId: validReceivers.length === 1 ? validReceivers[0]?._id?.toString() : null,
-                toLabel: validReceivers.length > 1 ? `${validReceivers.length} مقاعد` : (validReceivers[0]?.username || '')
-            });
+        // ✅ مصدر الحقيقة الوحيد لعرض الهدية بالغرفة (راجع تعليق emitGiftSent) — مرة واحدة فقط
+        // للغرفة كلها بصرف النظر عن عدد المستلمين، يصل للجميع بمن فيهم المُرسِل نفسه
+        if (io) {
+            emitGiftSent(io, { roomId: cleanRoomId, sender, receivers: validReceivers, gift, qty: effectiveQty, comboKey: comboId });
         }
     }
 
@@ -1265,13 +1260,6 @@ async function runGiftComboSideEffects({ io, sender, gift, validReceivers, unitP
             if (io) {
                 const total = addRoomSupportTotal(cleanRoomId.toString(), receiverId, totalPrice);
                 emitRoomSupportUpdated(io, cleanRoomId, receiverId, total);
-            }
-            if (io) {
-                queueRoomGiftAnnouncement(io, {
-                    roomId: cleanRoomId, fromUserId: senderId, fromUsername: sender.username, fromProfileImage: sender.profileImage,
-                    toUserId: receiverId, toUsername: receiver.username, giftId: gift._id.toString(), giftName: gift.name,
-                    giftImage: safeGiftImage, giftIcon: gift.icon || '🎁', quantity: effectiveQty, comboId
-                });
             }
         } else {
             const participants = [senderId.toString(), receiverId].sort();
@@ -1822,6 +1810,6 @@ module.exports.schedulePkScoreEmit = schedulePkScoreEmit;
 module.exports.buildGiftWalletEntries = buildGiftWalletEntries;
 // ✅ تُصدَّران فقط لاختبارات مراجعة PR (سيل الهدايا، البند 1-3) — راجع
 // __tests__/giftController.giftFloodBatching.test.js؛ لا مستهلك إنتاجي خارج هذا الملف نفسه
-module.exports.queueRoomGiftAnnouncement = queueRoomGiftAnnouncement;
+module.exports.emitGiftSent = emitGiftSent;
 module.exports.emitRoomSupportPointsUpdated = emitRoomSupportPointsUpdated;
 module.exports.emitRoomSupportUpdated = emitRoomSupportUpdated;

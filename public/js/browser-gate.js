@@ -78,7 +78,20 @@
         // هذا الملف) أثناء التحليل الأولي للمستند يُدرِج وسم <script> حقيقياً بنفس نقطة الاستدعاء
         // تماماً — يوقف التحليل حتى يكتمل تحميل/تنفيذ app.js، يطابق سلوك <script src="/js/app.js">
         // الثابت القديم بالحرف، فيبقى تسجيل مستمع DOMContentLoaded بداخله في وقته الصحيح دائماً
-        document.write('<script src="/js/app.js"></script>');
+        // 🛡️ feat/gift-display-engine: giftEngine.js (GiftStage — منطق خالص بلا DOM) يجب أن
+        // يُحمَّل وينفَّذ قبل app.js، الذي يُنشئ new GiftStage(...) فور تنفيذه (أعلى الملف مباشرة،
+        // قبل DOMContentLoaded). نفس أسلوب document.write المتزامن أعلاه بالضبط يضمن هذا الترتيب
+        // 🛡️ feat/gift-display-engine (بند 5 — تخزين مؤقت طويل الأمد): يأخذ ?v=<commit> من رابط
+        // تحميل هذا الملف نفسه (document.currentScript.src، مُحقَّن بـindex.html من الخادم) ويمرّره
+        // لـgiftEngine.js/app.js كي تُخدَّم جميعها Cache-Control: immutable لعام كامل بأمان — أي
+        // نشر جديد يغيّر <commit> فيصبح رابطاً جديداً كلياً، لا نسخة قديمة مخبّأة بالهاتف إطلاقاً
+        var selfScript = document.currentScript;
+        var versionQuery = '';
+        if (selfScript && selfScript.src) {
+            var qIdx = selfScript.src.indexOf('?');
+            if (qIdx !== -1) versionQuery = selfScript.src.slice(qIdx);
+        }
+        document.write('<script src="/js/giftEngine.js' + versionQuery + '"></script><script src="/js/app.js' + versionQuery + '"></script>');
         return;
     }
 

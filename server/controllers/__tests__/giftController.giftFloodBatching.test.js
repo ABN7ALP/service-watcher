@@ -1,13 +1,19 @@
 // ملف: giftController.giftFloodBatching.test.js
-// 🛡️ طلب صريح بمراجعة PR (البند 1-3، سيل الهدايا): يختبر دمج إعلانات الهدايا بنافذة 250ms
-// (نفس مرسل+هدية+مستلم بنفس الغرفة يُدمَجان بعدّاد كمية واحد لا حدثين) وتحديد
-// room-support-points-updated بمرة واحدة كحد أقصى كل 500ms لكل غرفة (حافة أمامية+خلفية).
+// 🛡️ طلب صريح (مراجعة PR #110، أُعيد بمراجعة PR #161 البند 1 بعد حذفه خطأً مع الملف القديم
+// بإعادة تصميم محرك عرض الهدايا): يختبر دمج gift:sent بنافذة 250ms (نفس مرسل+هدية+نفس مجموعة
+// المستلمين بالضبط بنفس الغرفة يُدمَجان بعدّاد كمية واحد لا حدثين) — بلا هذا الدمج، كل ضغطة
+// سريعة بسيل هدايا (300 هدية/10 ثوانٍ من عدة مرسلين) كانت تُفجِّر حدثاً منفصلاً لكل مشاهد
+// بالغرفة فيتجمّد المضيف؛ محرّك العرض بالعميل (giftEngine.js) يتعامل مع qty الكلية المُجمَّعة
+// أصلاً (حتى 3 تشغيلات فيديو + شارة ×N)، فلا حاجة لأي تغيير هناك — الدمج هنا فقط يؤخِّر البثّ
+// ذاته 250ms كحد أقصى، لا أي عملية مالية (تُستدعى دوماً بعد نجاح الخصم الذرّي فعلياً).
+// وتختبر أيضاً تحديد room-support-points-updated/room-support-updated (مرة واحدة كحد أقصى كل
+// 500ms لكل غرفة/مقعد — غير مرتبطتين بإعادة تصميم محرّك الهدايا، بقيتا كما هما تماماً).
 //
 // 🐛 jest.useFakeTimers() قبل require('../giftController') لنفس سبب ملف pkScore.test.js
 // المجاور (الملف يحمّل setInterval حقيقي غير مرتبط بهذا الاختبار عند الاستيراد)
 jest.useFakeTimers();
 
-const { queueRoomGiftAnnouncement, emitRoomSupportPointsUpdated, emitRoomSupportUpdated } = require('../giftController');
+const { emitGiftSent, emitRoomSupportPointsUpdated, emitRoomSupportUpdated } = require('../giftController');
 
 function makeIo() {
     const emitted = [];
@@ -19,35 +25,54 @@ function makeIo() {
     };
 }
 
-describe('queueRoomGiftAnnouncement — دمج نافذة 250ms بمفتاح (مرسل، هدية، مستلم)', () => {
-    test('نفس المرسل+الهدية+المستلم مرتين خلال النافذة → حدث واحد فقط بالكمية الكلية', async () => {
+function fakeUser(id, username) {
+    return { _id: id, username, profileImage: null };
+}
+
+function fakeGift(id, name, videoUrl) {
+    return { _id: id, name, imageUrl: '', videoUrl: videoUrl || null, category: 'common' };
+}
+
+describe('emitGiftSent — دمج نافذة 250ms بمفتاح (مرسل، هدية، نفس مجموعة المستلمين)', () => {
+    test('نفس المرسل+الهدية+المستلم مرتين خلال النافذة → حدث gift:sent واحد فقط بالكمية الكلية', async () => {
         const io = makeIo();
-        queueRoomGiftAnnouncement(io, { roomId: 'room_1', fromUserId: 'u1', giftId: 'g1', toUserId: 'u2', quantity: 1 });
-        queueRoomGiftAnnouncement(io, { roomId: 'room_1', fromUserId: 'u1', giftId: 'g1', toUserId: 'u2', quantity: 2 });
+        const sender = fakeUser('u1', 's1');
+        const gift = fakeGift('g1', 'وردة');
+        const receivers = [fakeUser('u2', 'r1')];
+
+        emitGiftSent(io, { roomId: 'room_1', sender, receivers, gift, qty: 1 });
+        emitGiftSent(io, { roomId: 'room_1', sender, receivers, gift, qty: 2 });
 
         expect(io.emitted).toHaveLength(0); // ✅ لا بثّ فوري — بانتظار انتهاء نافذة الدمج
         await jest.advanceTimersByTimeAsync(250);
 
         expect(io.emitted).toHaveLength(1);
-        expect(io.emitted[0]).toMatchObject({ room: 'room-chat-room_1', event: 'room-gift-announcement', payload: { quantity: 3 } });
+        expect(io.emitted[0]).toMatchObject({ room: 'room-chat-room_1', event: 'gift:sent', payload: { qty: 3 } });
     });
 
-    test('مستلمان مختلفان بنفس الغرفة/المرسل/الهدية خلال نفس النافذة → حدثان مستقلان (لا دمج خاطئ)', async () => {
+    test('مجموعتا مستلمين مختلفتان بنفس الغرفة/المرسل/الهدية خلال نفس النافذة → حدثان مستقلان (لا دمج خاطئ)', async () => {
         const io = makeIo();
-        queueRoomGiftAnnouncement(io, { roomId: 'room_2', fromUserId: 'u1', giftId: 'g1', toUserId: 'receiverA', quantity: 1 });
-        queueRoomGiftAnnouncement(io, { roomId: 'room_2', fromUserId: 'u1', giftId: 'g1', toUserId: 'receiverB', quantity: 5 });
+        const sender = fakeUser('u1', 's1');
+        const gift = fakeGift('g1', 'وردة');
+
+        emitGiftSent(io, { roomId: 'room_2', sender, receivers: [fakeUser('rA', 'receiverA')], gift, qty: 1 });
+        emitGiftSent(io, { roomId: 'room_2', sender, receivers: [fakeUser('rB', 'receiverB')], gift, qty: 5 });
 
         await jest.advanceTimersByTimeAsync(250);
 
         expect(io.emitted).toHaveLength(2);
-        const byReceiver = Object.fromEntries(io.emitted.map(e => [e.payload.toUserId, e.payload.quantity]));
-        expect(byReceiver).toEqual({ receiverA: 1, receiverB: 5 });
+        const byReceiver = Object.fromEntries(io.emitted.map(e => [e.payload.receivers[0].id, e.payload.qty]));
+        expect(byReceiver).toEqual({ rA: 1, rB: 5 });
     });
 
     test('غرفتان مختلفتان لا تتدخّلان ببعضهما', async () => {
         const io = makeIo();
-        queueRoomGiftAnnouncement(io, { roomId: 'room_A', fromUserId: 'u1', giftId: 'g1', toUserId: 'u2', quantity: 1 });
-        queueRoomGiftAnnouncement(io, { roomId: 'room_B', fromUserId: 'u1', giftId: 'g1', toUserId: 'u2', quantity: 1 });
+        const sender = fakeUser('u1', 's1');
+        const gift = fakeGift('g1', 'وردة');
+        const receivers = [fakeUser('u2', 'r1')];
+
+        emitGiftSent(io, { roomId: 'room_A', sender, receivers, gift, qty: 1 });
+        emitGiftSent(io, { roomId: 'room_B', sender, receivers, gift, qty: 1 });
 
         await jest.advanceTimersByTimeAsync(250);
 
@@ -55,11 +80,15 @@ describe('queueRoomGiftAnnouncement — دمج نافذة 250ms بمفتاح (م
         expect(io.emitted.map(e => e.room).sort()).toEqual(['room-chat-room_A', 'room-chat-room_B']);
     });
 
-    test('3 دفعات (comboId مختلف لكل دفعة) خلال 250ms → حدث واحد فقط بالكمية الكلية وأحدث comboId', async () => {
+    test('3 دفعات (comboKey مختلف لكل دفعة) خلال 250ms → حدث واحد فقط بالكمية الكلية وأحدث comboKey', async () => {
         const io = makeIo();
-        queueRoomGiftAnnouncement(io, { roomId: 'room_combo', fromUserId: 'u1', giftId: 'g1', toUserId: 'u2', quantity: 2, comboId: 'combo_1' });
-        queueRoomGiftAnnouncement(io, { roomId: 'room_combo', fromUserId: 'u1', giftId: 'g1', toUserId: 'u2', quantity: 3, comboId: 'combo_2' });
-        queueRoomGiftAnnouncement(io, { roomId: 'room_combo', fromUserId: 'u1', giftId: 'g1', toUserId: 'u2', quantity: 5, comboId: 'combo_3' });
+        const sender = fakeUser('u1', 's1');
+        const gift = fakeGift('g1', 'وردة');
+        const receivers = [fakeUser('u2', 'r1')];
+
+        emitGiftSent(io, { roomId: 'room_combo', sender, receivers, gift, qty: 2, comboKey: 'combo_1' });
+        emitGiftSent(io, { roomId: 'room_combo', sender, receivers, gift, qty: 3, comboKey: 'combo_2' });
+        emitGiftSent(io, { roomId: 'room_combo', sender, receivers, gift, qty: 5, comboKey: 'combo_3' });
 
         expect(io.emitted).toHaveLength(0); // ✅ لا بثّ فوري بعد — بانتظار انتهاء نافذة الدمج (لا مؤقّت جديد لكل دفعة)
         await jest.advanceTimersByTimeAsync(250);
@@ -67,20 +96,39 @@ describe('queueRoomGiftAnnouncement — دمج نافذة 250ms بمفتاح (م
         expect(io.emitted).toHaveLength(1);
         expect(io.emitted[0]).toMatchObject({
             room: 'room-chat-room_combo',
-            event: 'room-gift-announcement',
-            payload: { quantity: 10, comboId: 'combo_3' } // ✅ الكمية الكلية 2+3+5، وcomboId الأحدث لا الأقدم
+            event: 'gift:sent',
+            payload: { qty: 10, comboKey: 'combo_3' } // ✅ الكمية الكلية 2+3+5، وcomboKey الأحدث لا الأقدم
         });
     });
 
-    test('سيل كبير (50 هدية نفس التركيبة) خلال النافذة → حدث واحد فقط بالكمية الكلية (50)', async () => {
+    test('سيل كبير (50 هدية نفس التركيبة) خلال النافذة → حدث gift:sent واحد فقط بالكمية الكلية (50)', async () => {
         const io = makeIo();
+        const sender = fakeUser('u1', 's1');
+        const gift = fakeGift('g1', 'وردة');
+        const receivers = [fakeUser('u2', 'r1')];
+
         for (let i = 0; i < 50; i++) {
-            queueRoomGiftAnnouncement(io, { roomId: 'room_flood', fromUserId: 'u1', giftId: 'g1', toUserId: 'u2', quantity: 1 });
+            emitGiftSent(io, { roomId: 'room_flood', sender, receivers, gift, qty: 1 });
         }
         await jest.advanceTimersByTimeAsync(250);
 
         expect(io.emitted).toHaveLength(1);
-        expect(io.emitted[0].payload.quantity).toBe(50);
+        expect(io.emitted[0].payload.qty).toBe(50);
+    });
+
+    test('كل عنصر مُدمَج يصل بحدث gift:sent واحد يحمل eventId حقيقياً للتكرار (dedupe) بجهة العميل', async () => {
+        const io = makeIo();
+        const sender = fakeUser('u1', 's1');
+        const gift = fakeGift('g1', 'تنين', '/videos/dragon.mp4');
+        const receivers = [fakeUser('u2', 'r1')];
+
+        emitGiftSent(io, { roomId: 'room_evt', sender, receivers, gift, qty: 10 });
+        await jest.advanceTimersByTimeAsync(250);
+
+        expect(io.emitted).toHaveLength(1);
+        expect(typeof io.emitted[0].payload.eventId).toBe('string');
+        expect(io.emitted[0].payload.eventId.length).toBeGreaterThan(0);
+        expect(io.emitted[0].payload.gift).toMatchObject({ videoUrl: '/videos/dragon.mp4' });
     });
 });
 
