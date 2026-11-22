@@ -325,31 +325,62 @@ function emitRoomSupportUpdated(io, roomId, userId, value) {
 }
 
 // 🛡️ feat/gift-display-engine (إعادة تصميم جذرية — لا ترقيع): مصدر الحقيقة الوحيد لعرض أي
-// هدية بالغرفة. يحل محل كلٍّ من room-gift-announcement المُجمَّع (250ms — كان يُسبِّب تأخيراً
-// حقيقياً ومُركَّب فوقه لاحقاً حل مؤقّت بحدث gift:legendary منفصل للأسطورية فقط) وgift:legendary
-// نفسه معاً. حدث واحد فوري (بلا أي تجميع/دفعات) لكل عملية إهداء ناجحة فعلياً، يصل لكل من بالغرفة
-// — بما فيهم المُرسِل نفسه (راجع توثيق Tencent RTC الرسمي للهدايا: كل عضو يستقبل نفس الحدث،
-// والمؤثرات تُشغَّل منه فقط لا من نتيجة نداء الإرسال) — فلا يعود هناك مسار "تفاؤلي محلي" منفصل
-// للمُرسِل يُحتمَل أن ينحرف سلوكه عمّا يراه البقية (هذا بالضبط ما تسبَّب بظهور فيديو الهدية خلف
-// المقاعد على جهاز المُرسِل تحديداً بمراجعة PR #160 — الطبقة قيست محلياً بتوقيت متزامن مختلف
-// عن صدى الخادم). تُستدعى مرة واحدة فقط لكل عملية إرسال (لا لكل مستلم) — eventId فريد حقيقي
-// (لا comboId، المشترك بين عدة ضغطات كومبو منفصلة فعلياً) للتكرار (dedupe) بجهة العميل،
-// وcomboKey منفصل (قد يتكرر عبر عدة أحداث بنفس جلسة الكومبو) لأي تجميع بصري مستقبلي يحتاجه العميل
+// هدية بالغرفة. يحل محل كلٍّ من room-gift-announcement وgift:legendary معاً — حدث واحد (بما
+// فيه المُرسِل نفسه؛ راجع توثيق Tencent RTC الرسمي: كل عضو يستقبل نفس الحدث، والمؤثرات تُشغَّل
+// منه فقط لا من نتيجة نداء الإرسال) فلا يعود هناك مسار "تفاؤلي محلي" منفصل للمُرسِل يُحتمَل أن
+// ينحرف سلوكه عمّا يراه البقية (هذا بالضبط ما تسبَّب بظهور فيديو الهدية خلف المقاعد على جهاز
+// المُرسِل تحديداً بمراجعة PR #160 — الطبقة قيست محلياً بتوقيت متزامن مختلف عن صدى الخادم).
+//
+// 🛡️ مراجعة PR #161 (البند 1): أُعيدت حماية سيل الهدايا التي أُزيلت خطأً مع الملف القديم —
+// نافذة دمج 250ms لكل غرفة بمفتاح (مرسل+هدية+نفس مجموعة المستلمين بالضبط): نفس التركيبة
+// مرتين خلال النافذة تُدمَج بعدّاد كمية واحد (qty تتراكم) بدل حدثين منفصلين — المحرّك بالعميل
+// يتعامل مع qty الكلية أصلاً (حتى 3 تشغيلات + شارة ×N)، فلا حاجة لأي تغيير هناك. الدمج بعد
+// نجاح الخصم الذرّي دوماً (يُستدعى من مواقع استدعاء داخل/بعد المعاملة فقط، كالسابق تماماً) —
+// فقط تأخير البثّ ذاته 250ms كحد أقصى، لا تأخير أي عملية مالية. مفتاح مختلف (مستلمون مختلفون
+// مثلاً) بنفس الغرفة بنفس النافذة يُبثّ بحدثه المستقل فوراً بعد النافذة — لا دمج عشوائي بين
+// تركيبات مختلفة. eventId فريد لكل حدث مُبَثّ فعلياً (بعد الدمج، لا قبله) للتكرار (dedupe)
+// بجهة العميل؛ comboKey يبقى آخر قيمة وصلت بالنافذة (كالسلوك القديم بالضبط)
+const pendingGiftSentEmissions = new Map(); // roomId → Map(mergeKey → entry)
+const GIFT_SENT_BATCH_MS = 250;
+
 function emitGiftSent(io, { roomId, sender, receivers, gift, qty, comboKey }) {
     if (!io || !roomId) return;
-    io.to(`room-chat-${roomId.toString()}`).emit('gift:sent', {
-        eventId: new mongoose.Types.ObjectId().toString(),
-        roomId: roomId.toString(),
-        sender: { id: sender._id.toString(), username: sender.username, profileImage: sender.profileImage || null },
-        receivers: receivers.map(r => ({ id: r._id.toString(), username: r.username })),
-        gift: {
-            id: gift._id.toString(), name: gift.name, image: gift.imageUrl || '',
-            videoUrl: gift.videoUrl || null, tier: gift.category || 'common'
-        },
-        qty: qty || 1,
-        comboKey: comboKey || null,
-        sentAt: Date.now()
-    });
+    const roomKey = roomId.toString();
+    const receiverKey = receivers.map(r => r._id.toString()).sort().join(',');
+    const mergeKey = `${sender._id.toString()}:${gift._id.toString()}:${receiverKey}`;
+
+    let roomMap = pendingGiftSentEmissions.get(roomKey);
+    if (!roomMap) {
+        roomMap = new Map();
+        pendingGiftSentEmissions.set(roomKey, roomMap);
+    }
+
+    const existing = roomMap.get(mergeKey);
+    if (existing) {
+        existing.qty += (qty || 1);
+        if (comboKey) existing.comboKey = comboKey; // ✅ أحدث comboKey لا الأقدم (نفس إصلاح قديم مطابق)
+        return;
+    }
+
+    const entry = { sender, receivers, gift, qty: qty || 1, comboKey: comboKey || null };
+    entry.timer = setTimeout(() => {
+        roomMap.delete(mergeKey);
+        if (roomMap.size === 0) pendingGiftSentEmissions.delete(roomKey);
+        io.to(`room-chat-${roomKey}`).emit('gift:sent', {
+            eventId: new mongoose.Types.ObjectId().toString(),
+            roomId: roomKey,
+            sender: { id: entry.sender._id.toString(), username: entry.sender.username, profileImage: entry.sender.profileImage || null },
+            receivers: entry.receivers.map(r => ({ id: r._id.toString(), username: r.username })),
+            gift: {
+                id: entry.gift._id.toString(), name: entry.gift.name, image: entry.gift.imageUrl || '',
+                videoUrl: entry.gift.videoUrl || null, tier: entry.gift.category || 'common'
+            },
+            qty: entry.qty,
+            comboKey: entry.comboKey,
+            sentAt: Date.now()
+        });
+    }, GIFT_SENT_BATCH_MS);
+    roomMap.set(mergeKey, entry);
 }
 
 // ✅ يضيف قيمة أي هدية أُرسلت داخل غرفة (بغض النظر عن وجود معركة PK نشطة أم لا) كـ"نقاط دعم"
