@@ -373,7 +373,8 @@ function emitGiftSent(io, { roomId, sender, receivers, gift, qty, comboKey }) {
             receivers: entry.receivers.map(r => ({ id: r._id.toString(), username: r.username })),
             gift: {
                 id: entry.gift._id.toString(), name: entry.gift.name, image: entry.gift.imageUrl || '',
-                videoUrl: entry.gift.videoUrl || null, tier: entry.gift.category || 'common'
+                videoUrl: entry.gift.videoUrl || null, tier: entry.gift.category || 'common',
+                seatEffect: entry.gift.seatEffect || null
             },
             qty: entry.qty,
             comboKey: entry.comboKey,

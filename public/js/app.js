@@ -1028,10 +1028,16 @@ document.addEventListener('DOMContentLoaded', () => {
         onLaneShow: (item) => giftStageOnLaneShow(item),
         onLaneMerge: (item) => giftStageOnLaneMerge(item),
         onLaneHide: (item) => giftStageOnLaneHide(item),
-        onPop: (evt, done) => giftStageOnPop(evt, done),
         onVideoPlay: (item, done) => giftStageOnVideoPlay(item, done),
         onVideoPreload: (item) => giftStageOnVideoPreload(item),
-        onFly: (evt, recipient) => giftStageOnFly(evt, recipient)
+        onFly: (evt, recipient) => giftStageOnFly(evt, recipient),
+        onProcPop: (proc, done) => giftStageOnProcPop(proc, done),
+        onProcCelebrate: (proc) => giftStageOnProcCelebrate(proc),
+        onProcLaunch: (proc, unitIndex, recipient) => giftStageOnProcLaunch(proc, unitIndex, recipient),
+        onProcDone: (proc, done) => giftStageOnProcDone(proc, done),
+        onProcExtend: (proc) => giftStageOnProcExtend(proc),
+        onSeatEffect: (evt, recipient) => giftStageOnSeatEffect(evt, recipient),
+        isLite: () => gfxIsLiteGiftMode()
     });
     // ✅ طلب صريح: "التطبيق مخفي بالخلفية → يتوقّف طابور الفيديو؛ عند العودة تُسقَط العناصر
     // الأقدم من 30ث" — GiftStage.setHidden تنفّذ هذا بالكامل، هنا فقط ربطها بحدث المتصفّح الحقيقي
@@ -2758,10 +2764,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderRoomJoinNotice({ username }) {
-        // ✅ إصلاح "الصفحة تنزل مع إشعار الهدية" (طلب صريح): سطر الدخول طفل عمود flex عادي
-        // بداخل .room-gift-lane (height:0 ثابت بلا أي JS يغيّره — راجع تعليق .room-gift-lane
-        // بـinput.css)، فظهوره/اختفاؤه لا يُحرّك الدردشة بكسل واحد أبداً
-        const lane = document.getElementById('room-gift-lane');
+        // ✅ إصلاح "الصفحة تنزل مع إشعار الهدية" (طلب صريح): سطر الدخول طفل عمود flex عادي بداخل
+        // شريط الهدايا — انتقل مع المرحلة بالكامل لعنصر ثابت (fixed) بمستوى body (راجع
+        // getGiftStageOverlay)، فلا علاقة له بتدفّق الدردشة المحلي إطلاقاً بعد الآن
+        getGiftStageOverlay();
+        const lane = document.getElementById('gift-stage-lane');
         if (!lane) { roomJoinNoticeShowing = false; return; }
         let el = document.getElementById('room-join-notice');
         if (!el) {
@@ -3373,12 +3380,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
                 <div id="room-entrance-layer" class="room-entrance-layer"></div>
             </div>
-            <div id="room-giftfx-video-layer" class="room-giftfx-video-layer"></div>
-            <div id="room-giftfx-fly-layer" class="room-giftfx-fly-layer"></div>
-            <div id="room-gift-lane" class="room-gift-lane"></div>
             ${renderRoomChatMarkup()}
             <div id="room-kb-spacer" class="room-kb-spacer"></div>
         `;
+        // 🛡️ fix/gift-stage-top-layer: مرحلة الهدايا (فيديو/طيران/موكب/شريط/شارة) لم تعد أبناء
+        // محليين هنا — عنصر ثابت (fixed) وحيد بمستوى body (راجع getGiftStageOverlay)، يُنشَأ
+        // كسولاً عند أول استخدام فعلي، لا هنا عند كل دخول غرفة
         // ✅ إعادة تعيين أي فقاعة "غرفة مُصغَّرة" سابقة — الدخول لواجهة الغرفة (نفسها أو غرفة
         // أخرى) يعني أننا لم نعد بوضع التصغير بعد الآن
         removeRoomMinimizedBubble();
@@ -7324,9 +7331,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
                 <div id="room-entrance-layer" class="room-entrance-layer"></div>
             </div>
-            <div id="room-giftfx-video-layer" class="room-giftfx-video-layer"></div>
-            <div id="room-giftfx-fly-layer" class="room-giftfx-fly-layer"></div>
-            <div id="room-gift-lane" class="room-gift-lane"></div>
             ${renderRoomChatMarkup()}
             <div id="room-kb-spacer" class="room-kb-spacer"></div>
         `;
@@ -16331,7 +16335,7 @@ function preloadGiftThumbnails(data) {
 }
 
 // 🛡️ إصلاح جذري (الموثوقية والسرعة — السبب الجذري د، النصف الثاني): صورة الأسطورية (المعروضة
-// اليوم بـ.room-giftfx-pop/.room-giftfx-flyer — راجع giftStageOnPop/giftStageOnFly) كانت تُجلَب
+// اليوم بموكب مدينة الملاهي — راجع giftStageOnProcPop/giftStageOnProcLaunch) كانت تُجلَب
 // لحظة ظهورها فعلياً فقط (<img src> مُدرَجة بالـDOM للمرة الأولى عند الحدث) — فمن لم تُحمَّل
 // صورتها مسبقاً بذاكرة المتصفح يرى وميض/تأخير تحميل شبكة حقيقي بالضبط لحظة اللقطة الأهم بصرياً.
 // تُحمَّل الآن مسبقاً (imageUrl + animationUrl الاحتياطي) لكل هدايا فئة legendary فور دخول أي
@@ -17366,8 +17370,13 @@ function teardownGiftComboFx() {
     // 🧹 feat/gift-display-engine: مغادرة الغرفة فعلياً يجب أن تُطهِّر محرّك عرض الهدايا بالكامل
     // (الشريط الجانبي + طابور الفيديو + عدّاد الطيران) — لا بقايا من غرفة سابقة تُشغَّل بالخطأ
     // بغرفة جديدة لاحقاً (راجع GiftStage.leaveRoom)
-    document.querySelectorAll('.gfx-banner[data-gift-lane-item]').forEach(el => el.remove());
-    document.getElementById('room-giftfx-video-layer')?.replaceChildren();
+    document.querySelectorAll('.gift-lane-item[data-gift-lane-item]').forEach(el => el.remove());
+    // 🛡️ fix/gift-stage-top-layer: المرحلة الموحَّدة (فيديو/طيران/موكب/شريط/شارة علوية) عنصر
+    // ثابت وحيد خارج DOM الغرفة تماماً الآن — تطهيرها الكامل هنا، لا انتظار إعادة إنشاء الغرفة
+    document.getElementById('gift-stage-video-layer')?.replaceChildren();
+    document.getElementById('gift-stage-fly-layer')?.replaceChildren();
+    document.getElementById('gift-stage-lane')?.replaceChildren();
+    gfxHideGiftTopBanner();
     roomGiftStage.leaveRoom();
     document.getElementById('gfx-top-toast')?.remove();
     // 🐛 إصلاح جذري (الخطأ ب — الهدايا توقّفت عن الطيران للمقعد): gfxActiveFlyCount (بند 3،
@@ -17468,9 +17477,8 @@ const isWeakDevice = (() => {
 
 // 🛡️ طلب صريح (بند 3): حدّ أقصى لعدد أيقونات "الهدية الطائرة" المتزامنة فعلياً على الشاشة
 // (لا فقط تواتر إطلاقها) على الأجهزة الضعيفة — خاص بتغذية الكومبو الراجعة المحلية
-// (flyToRecipients، أثناء الضغط المتكرر على الزر) فقط. طيران محرّك عرض الهدايا الموحَّد
-// (giftStageOnFly بـgiftEngine.js) له سقفه الخاص (3، راجع GiftStage.FLY_MAX_CONCURRENT)،
-// منفصل تماماً عن هذا العدّاد
+// (flyToRecipients، أثناء الضغط المتكرر على الزر) فقط. موكب/طيران محرّك عرض الهدايا الموحَّد
+// (giftEngine.js — موكب واحد بأي لحظة، راجع _procession) منفصل تماماً عن هذا العدّاد
 let gfxActiveFlyCount = 0;
 function gfxFlyGateAcquire() {
     const limit = isWeakDevice() ? 2 : Infinity;
@@ -17972,33 +17980,59 @@ function startGiftComboSession(ctx) {
 // كل منطق الطابور/السقوف/التكرار انتقل لـGiftStage الخالصة بـgiftEngine.js؛ هذي الدوال فقط
 // "كيف يُرسَم" كل حدث يُقرِّره المحرّك، لا "متى"
 
-// ---------------- پop & fly (ب): صورة مركزية + توهّج 0.8ث، ثم طيران (giftStageOnFly) ----------------
-function giftStageOnPop(evt, done) {
-    if (gfxPrefersReducedMotion()) { done(); return; }
-    const layer = document.getElementById('room-giftfx-video-layer');
-    if (!layer) { done(); return; }
-    const giftImgUrl = isHttpsImageUrl(evt.gift?.image) ? evt.gift.image : null;
-    const el = document.createElement('div');
-    el.className = 'room-giftfx-pop';
-    if (giftImgUrl) {
-        const img = document.createElement('img');
-        img.src = giftImg(giftImgUrl, 140);
-        img.alt = '';
-        wireGiftImgFallback(img, giftImgUrl, '🎁');
-        el.appendChild(img);
-    } else {
-        el.textContent = '🎁';
-    }
-    const center = gfxStagePopCenterPoint();
-    if (center) { el.style.left = center.x + 'px'; el.style.top = center.y + 'px'; }
-    layer.appendChild(el);
-    setTimeout(() => { el.remove(); done(); }, 800);
+// ---------------- المرحلة الموحَّدة (fix/gift-stage-top-layer — إصلاح جذري) ----------------
+// 🛡️ طلب صريح: الفيديو/الطيران/الموكب/الشريط الجانبي/الشارة العلوية كلها الآن أبناء مباشرون
+// لعنصر WAHID ثابت (position:fixed) مُلحَق بـdocument.body مباشرة — لا بـ#main-content ولا أي
+// سلف آخر بالغرفة إطلاقاً. هذا يتخطّى كلياً أي سياق تكديس (stacking context) محلي قد ينشئه أي
+// سلف بالغرفة (مثلاً .voice-chat-stage نفسها position:relative+z-index) بصرف النظر عن قيمة
+// z-index هنا — بلا هذا التجاوز، z-index محلي مهما عَلَت قيمته يبقى محصوراً داخل سياق تكديس
+// سلفه، فتظهر الهدية خلف عناصر أخرى (الدردشة تحديداً) ببعض الأجهزة الحقيقية رغم عمله على
+// المتصفح المحلي وقت التطوير (تقرير حقيقي: التنين/السيف/اليخت خلف الدردشة، الحديقة فقط ظهرت
+// صحيحة — ليست مصادفة؛ فرق توقيت القياس/حجم المحتوى البصري فقط، لا اختلاف جذري بين الهدايا)
+// — نفس فلسفة .gfx-layer الموجودة أصلاً (fixed+body، تعمل فوق كل شيء دوماً بلا استثناء).
+function getGiftStageOverlay() {
+    let el = document.getElementById('gift-stage-overlay');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'gift-stage-overlay';
+    el.className = 'gift-stage-overlay';
+    el.innerHTML = `
+        <div id="gift-stage-banner-top" class="gift-stage-banner-top"></div>
+        <div id="gift-stage-video-layer" class="gift-stage-video-layer"></div>
+        <div id="gift-stage-fly-layer" class="gift-stage-fly-layer"></div>
+        <div id="gift-stage-lane" class="gift-stage-lane"></div>
+    `;
+    document.body.appendChild(el);
+    return el;
+}
+
+// ✅ شارة علوية واحدة طوال مدة تشغيل فيديو الهدية كاملة (طلب صريح — بند 2أ): "فلان أرسل الهدية
+// إلى فلان". فتحة واحدة فقط (فيديو واحد يُشغَّل بأي لحظة أصلاً، راجع طابور GiftStage) — لا طابور
+// منفصل لها، تُستبدَل فوراً لو وصل عرض جديد (لن يحدث عملياً لأن طابور الفيديو نفسه متسلسل)
+function gfxShowGiftTopBanner(evt) {
+    getGiftStageOverlay();
+    const el = document.getElementById('gift-stage-banner-top');
+    if (!el) return;
+    const toLabel = (evt.receivers && evt.receivers.length > 1) ? `${evt.receivers.length} مستلمين` : (evt.receivers?.[0]?.username || '');
+    el.innerHTML = '';
+    const line = document.createElement('span');
+    const b1 = document.createElement('b'); b1.textContent = evt.sender?.username || '';
+    const mid = document.createTextNode(' أرسل ');
+    const giftName = document.createTextNode(evt.gift?.name || 'هدية');
+    const toText = document.createTextNode(toLabel ? ` إلى ` : '');
+    const b2 = document.createElement('b'); b2.textContent = toLabel;
+    line.appendChild(b1); line.appendChild(mid); line.appendChild(giftName); line.appendChild(toText); line.appendChild(b2);
+    el.appendChild(line);
+    el.classList.add('show');
+}
+function gfxHideGiftTopBanner() {
+    document.getElementById('gift-stage-banner-top')?.classList.remove('show');
 }
 
 // ---------------- طابور الفيديو بملء الشاشة (ج) ----------------
 // ✅ وضع الأجهزة الضعيفة التلقائي الخاص بفيديو الهدايا تحديداً — ذاكرة جهاز ≤2GB أو "توفير
 // البيانات" بالمتصفح — صفر طلب فيديو إطلاقاً بهذي الحالة (پop&fly بصورة ثابتة بدلاً منه)
-function gfxShouldUseLiteGiftVideo() {
+function gfxIsLiteGiftMode() {
     try {
         if (document.body.classList.contains('lite-mode')) return true;
         if (navigator.deviceMemory && navigator.deviceMemory <= 2) return true;
@@ -18011,7 +18045,7 @@ function gfxShouldUseLiteGiftVideo() {
 // أي عنصر لم يصل دوره بعد. عنصر <video> منفصل غير مُلحَق بالـDOM المرئي؛ preload=auto يبدأ
 // تنزيل بايتاته الآن فيُستخدَم العنصر نفسه مباشرة (بلا إعادة تنزيل) لحظة دوره الفعلي
 function giftStageOnVideoPreload(item) {
-    if (item._preloadEl || gfxShouldUseLiteGiftVideo() || gfxPrefersReducedMotion()) return;
+    if (item._preloadEl || gfxIsLiteGiftMode() || gfxPrefersReducedMotion()) return;
     const v = document.createElement('video');
     v.preload = 'auto';
     v.muted = true;
@@ -18021,7 +18055,7 @@ function giftStageOnVideoPreload(item) {
 }
 
 // ✅ مشغّل فيديو مؤثر الهدية — فوق الغرفة بـmix-blend-mode:screen (على طبقة
-// .room-giftfx-video-layer نفسها لا الفيديو المعزول، وإلا يظهر الأسود). يستدعي done() فقط —
+// #gift-stage-video-layer نفسها لا الفيديو المعزول، وإلا يظهر الأسود). يستدعي done() فقط —
 // المحرّك (giftEngine.js) هو من يُشغِّل الطيران بعدها عبر giftStageOnFly، لا هذي الدالة. قواعد الخفة:
 // • لا تحميل مسبق لأي عنصر عدا "التالي بالطابور" (giftStageOnVideoPreload أعلاه)
 // • وضع الأجهزة الضعيفة/توفير البيانات: صورة ثابتة ثانية واحدة، صفر طلب فيديو
@@ -18030,11 +18064,14 @@ function giftStageOnVideoPreload(item) {
 // • تأخّر أكثر من 1.5 ثانية (إنترنت ضعيف) = إلغاء وطيران فوري
 // • عنصر الفيديو يُحذف ويُفرَّغ مصدره دوماً بعد الانتهاء (نجاحاً أو إلغاءً) — لا بقايا بالذاكرة
 function giftStageOnVideoPlay(item, done) {
-    const layer = document.getElementById('room-giftfx-video-layer');
+    getGiftStageOverlay();
+    const layer = document.getElementById('gift-stage-video-layer');
     const evt = item.evt;
     if (!layer || document.hidden || gfxPrefersReducedMotion()) { done(); return; }
+    gfxShowGiftTopBanner(evt);
+    const finish = () => { gfxHideGiftTopBanner(); done(); };
 
-    if (gfxShouldUseLiteGiftVideo()) {
+    if (gfxIsLiteGiftMode()) {
         const s = document.createElement('div');
         s.className = 'room-giftfx-static';
         const giftImgUrl = isHttpsImageUrl(evt.gift?.image) ? evt.gift.image : null;
@@ -18051,7 +18088,7 @@ function giftStageOnVideoPlay(item, done) {
         const liteCenter = gfxStagePopCenterPoint();
         if (liteCenter) { s.style.left = liteCenter.x + 'px'; s.style.top = liteCenter.y + 'px'; }
         layer.appendChild(s);
-        setTimeout(() => { s.remove(); done(); }, 1000);
+        setTimeout(() => { s.remove(); finish(); }, 1000);
         return;
     }
 
@@ -18073,7 +18110,7 @@ function giftStageOnVideoPlay(item, done) {
         v.removeAttribute('src');
         try { v.load(); } catch (_) {}
         v.remove();
-        done();
+        finish();
     };
     const startTimer = setTimeout(cleanupAndFly, 1500);
     v.addEventListener('playing', () => clearTimeout(startTimer), { once: true });
@@ -18091,37 +18128,36 @@ function giftStageOnVideoPlay(item, done) {
     v.play().catch(cleanupAndFly);
 }
 
-// 🛡️ (مراجعة PR #160): .room-giftfx-fly-layer طفل مباشر لـ#main-content (لا .voice-chat-stage
-// — راجع تعليق input.css عن سبب إصلاح الفيديو الأسود)، فمرجع الإحداثيات هنا #main-content نفسه
+// 🛡️ fix/gift-stage-top-layer (إصلاح جذري): إحداثيات نافذة العرض (viewport) مباشرة بلا أي
+// طرح لإزاحة #main-content — المرحلة كلها position:fixed الآن (راجع getGiftStageOverlay)،
+// فطبقاتها الداخلية (position:absolute;inset:0) أصلها (0,0) هو زاوية النافذة نفسها بالضبط
 function gfxStageSeatPoint(userId) {
     const wrap = userId && document.querySelector(`#voice-chat-grid [data-user-id="${userId}"] .voice-seat-av-wrap`);
-    if (!mainContent || !wrap) return null;
-    const sr = mainContent.getBoundingClientRect();
+    if (!wrap) return null;
     const r = wrap.getBoundingClientRect();
-    return { x: r.left - sr.left + r.width / 2 - 28, y: r.top - sr.top + r.height / 2 - 28 };
+    return { x: r.left + r.width / 2 - 28, y: r.top + r.height / 2 - 28 };
 }
 function gfxStageFallbackPoint() {
     const stage = document.getElementById('voice-chat-stage');
-    if (!mainContent || !stage) return { x: 0, y: 0 };
-    const mr = mainContent.getBoundingClientRect();
+    if (!stage) return { x: window.innerWidth / 2 - 28, y: window.innerHeight / 2 - 28 };
     const sr = stage.getBoundingClientRect();
-    return { x: sr.left - mr.left + stage.clientWidth / 2 - 28, y: sr.top - mr.top + stage.clientHeight - 56 };
+    return { x: sr.left + stage.clientWidth / 2 - 28, y: sr.top + stage.clientHeight - 56 };
 }
 // ✅ طلب صريح (مراجعة): مركز مؤثر الفيديو/پop يكون أسفل مركز شبكة المقاعد نفسها قليلاً — مركز
 // #voice-chat-grid الفعلي (لا صندوق المرحلة كاملاً، الذي قد يحوي شريط PK/تحدٍ يُطيله) + إزاحة
 // ثابتة للأسفل. null لو تعذّر إيجاد الشبكة (الـCSS الافتراضي top:40% يبقى احتياطاً وقتها)
 function gfxStagePopCenterPoint() {
     const grid = document.getElementById('voice-chat-grid');
-    if (!mainContent || !grid) return null;
-    const mr = mainContent.getBoundingClientRect();
+    if (!grid) return null;
     const gr = grid.getBoundingClientRect();
-    return { x: gr.left - mr.left + gr.width / 2, y: gr.top - mr.top + gr.height / 2 + 48 };
+    return { x: gr.left + gr.width / 2, y: gr.top + gr.height / 2 + 48 };
 }
 
-// ---------------- الطيران الموحَّد (بعد پop أو بعد الفيديو، لكل مستلم على حدة) ----------------
+// ---------------- الطيران البسيط (بعد انتهاء فيديو الهدية فقط، لكل مستلم على حدة) ----------------
 function giftStageOnFly(evt, recipient) {
     if (gfxPrefersReducedMotion()) return;
-    const layer = document.getElementById('room-giftfx-fly-layer');
+    getGiftStageOverlay();
+    const layer = document.getElementById('gift-stage-fly-layer');
     if (!layer) return;
     const giftImgUrl = isHttpsImageUrl(evt.gift?.image) ? evt.gift.image : null;
     const from = gfxStageFallbackPoint();
@@ -18148,6 +18184,167 @@ function giftStageOnFly(evt, recipient) {
         f.style.transform = 'scale(.6)';
     }));
     setTimeout(() => f.remove(), 950);
+}
+
+// ---------------- موكب مدينة الملاهي (ب): هدايا بلا فيديو — صفّ وسط ثم إطلاق بالتناوب ----------------
+// 🛡️ طلب صريح (بند 3): وحدات تظهر واحدة تلو الأخرى بصف وسط الشاشة (پop+شرر، أقصى 10 ظاهرة
+// والعدّاد يُكمل للرقم الحقيقي)، ثم تنطلق واحدة بعد الأخرى بذيل لامع بالتناوب على المستلمين،
+// والمقعد ينبض ويطلق شرراً عند كل إصابة. موكب واحد بأي لحظة (المحرّك يضمن هذا، راجع giftEngine.js)
+function gfxProcSparkAt(x, y, n) {
+    if (!n) return;
+    const layer = document.getElementById('gift-stage-fly-layer');
+    if (!layer) return;
+    for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2, r = 18 + Math.random() * 22;
+        const sp = document.createElement('i');
+        sp.className = 'gift-proc-spark';
+        sp.style.left = x + 'px'; sp.style.top = y + 'px';
+        sp.style.setProperty('--dx', Math.cos(a) * r + 'px');
+        sp.style.setProperty('--dy', Math.sin(a) * r + 'px');
+        layer.appendChild(sp);
+        setTimeout(() => sp.remove(), 650);
+    }
+}
+function gfxProcMakeUnitEl(gift) {
+    const el = document.createElement('div');
+    el.className = 'gift-proc-item';
+    const giftImgUrl = isHttpsImageUrl(gift?.image) ? gift.image : null;
+    if (giftImgUrl) {
+        const img = document.createElement('img');
+        img.src = giftImg(giftImgUrl, 46);
+        img.alt = '';
+        wireGiftImgFallback(img, giftImgUrl, '🎁');
+        el.appendChild(img);
+    } else {
+        el.textContent = '🎁';
+    }
+    return el;
+}
+function giftStageOnProcPop(proc, done) {
+    if (gfxPrefersReducedMotion()) { done(); return; }
+    getGiftStageOverlay();
+    const layer = document.getElementById('gift-stage-fly-layer');
+    if (!layer) { done(); return; }
+    const center = gfxStagePopCenterPoint() || gfxStageFallbackPoint();
+    const toLabel = (proc.targets.length > 1) ? proc.targets.map(t => t?.username).filter(Boolean).join('، ') : (proc.targets[0]?.username || '');
+    const head = document.createElement('div');
+    head.className = 'gift-proc-head';
+    head.style.left = center.x + 'px';
+    head.style.top = (center.y - 70) + 'px';
+    head.innerHTML = '<span class="gift-proc-who"></span><span class="gift-proc-cnt" dir="ltr">×1</span>';
+    head.querySelector('.gift-proc-who').textContent = `${proc.sender?.username || ''} ← ${toLabel}`;
+    layer.appendChild(head);
+    proc._headEl = head;
+    const cntEl = head.querySelector('.gift-proc-cnt');
+
+    const shown = Math.min(proc.realQty, proc.visibleCap);
+    const gap = Math.min(40, 280 / Math.max(1, shown));
+    const items = [];
+    let i = 0;
+    const step = proc.isLite ? 60 : 140;
+    const tick = setInterval(() => {
+        if (i >= shown) {
+            clearInterval(tick);
+            let c = shown;
+            const up = setInterval(() => {
+                if (c >= proc.realQty) { clearInterval(up); done(); return; }
+                c = Math.min(proc.realQty, c + Math.ceil(proc.realQty / 20));
+                cntEl.textContent = '×' + c.toLocaleString('en-US');
+            }, 40);
+            return;
+        }
+        const el = gfxProcMakeUnitEl(proc.gift);
+        const x = center.x + (i - (shown - 1) / 2) * gap - 23;
+        const y = center.y - 23 + (i % 2 ? 10 : -10);
+        el.style.left = x + 'px'; el.style.top = y + 'px';
+        el.classList.add('in');
+        layer.appendChild(el);
+        items.push(el);
+        if (!proc.isLite) gfxProcSparkAt(x + 23, y + 23, 6);
+        i++;
+        cntEl.textContent = '×' + i.toLocaleString('en-US');
+        cntEl.classList.remove('bump'); void cntEl.offsetWidth; cntEl.classList.add('bump');
+    }, step);
+    proc._items = items;
+}
+function giftStageOnProcCelebrate(proc) {
+    if (gfxPrefersReducedMotion()) return;
+    getGiftStageOverlay();
+    const layer = document.getElementById('gift-stage-fly-layer');
+    if (!layer) return;
+    const m = document.createElement('div');
+    m.className = 'gift-proc-celebrate';
+    m.dir = 'ltr';
+    m.textContent = '×' + proc.realQty.toLocaleString('en-US');
+    layer.appendChild(m);
+    setTimeout(() => m.remove(), 950);
+}
+function giftStageOnProcLaunch(proc, unitIndex, recipient) {
+    const el = proc._items && proc._items[unitIndex];
+    const stagger = proc.isLite ? 60 : 110;
+    setTimeout(() => {
+        const from = el ? { x: parseFloat(el.style.left) + 23, y: parseFloat(el.style.top) + 23 } : gfxStageFallbackPoint();
+        const to = recipient ? (gfxStageSeatPoint(recipient.id) || from) : from;
+        const target = el || gfxProcMakeUnitEl(proc.gift);
+        if (!el) {
+            target.style.left = from.x - 23 + 'px'; target.style.top = from.y - 23 + 'px';
+            document.getElementById('gift-stage-fly-layer')?.appendChild(target);
+        }
+        target.classList.remove('in');
+        target.style.left = (to.x - 23) + 'px';
+        target.style.top = (to.y - 23) + 'px';
+        target.style.transform = 'scale(.45)';
+        if (!proc.isLite) {
+            const trailTimer = setInterval(() => {
+                const r = target.getBoundingClientRect();
+                const d = document.createElement('i');
+                d.className = 'gift-proc-trail';
+                d.style.left = (r.left + r.width / 2 - 4) + 'px';
+                d.style.top = (r.top + r.height / 2 - 4) + 'px';
+                document.getElementById('gift-stage-fly-layer')?.appendChild(d);
+                setTimeout(() => d.remove(), 520);
+            }, 45);
+            setTimeout(() => clearInterval(trailTimer), 700);
+        }
+        setTimeout(() => {
+            target.remove();
+            gfxProcSparkAt(to.x, to.y, proc.isLite ? 0 : 10);
+            if (recipient) {
+                const av = document.querySelector(`#voice-chat-grid [data-user-id="${recipient.id}"] .voice-seat-av-wrap`);
+                if (av) { av.classList.remove('gfx-seat-hit'); void av.offsetWidth; av.classList.add('gfx-seat-hit'); }
+            }
+        }, 720);
+    }, unitIndex * stagger);
+}
+function giftStageOnProcDone(proc, done) {
+    const shown = Math.min(proc.realQty, proc.visibleCap);
+    const stagger = proc.isLite ? 60 : 110;
+    const total = shown * stagger + 900;
+    setTimeout(() => {
+        proc._headEl?.remove();
+        done();
+    }, total);
+}
+function giftStageOnProcExtend(proc) {
+    if (!proc._headEl) return;
+    const toLabel = (proc.targets.length > 1) ? proc.targets.map(t => t?.username).filter(Boolean).join('، ') : (proc.targets[0]?.username || '');
+    const whoEl = proc._headEl.querySelector('.gift-proc-who');
+    if (whoEl) whoEl.textContent = `${proc.sender?.username || ''} ← ${toLabel}`;
+    const cntEl = proc._headEl.querySelector('.gift-proc-cnt');
+    if (cntEl) cntEl.textContent = '×' + proc.realQty.toLocaleString('en-US');
+}
+
+// ---------------- تأثير المقعد (د): كرت هوية فوق صورة المستلم لهدية مُعلَّمة من الأدمن (~10 ثوانٍ) ----------------
+function giftStageOnSeatEffect(evt, recipient) {
+    if (!recipient) return;
+    const wrap = document.querySelector(`#voice-chat-grid [data-user-id="${recipient.id}"] .voice-seat-av-wrap`);
+    if (!wrap) return;
+    wrap.querySelector('.gift-seat-effect')?.remove();
+    const el = document.createElement('span');
+    el.className = 'gift-seat-effect';
+    el.textContent = evt.gift.seatEffect;
+    wrap.appendChild(el);
+    setTimeout(() => el.remove(), 10000);
 }
 
 // ✅ دالة موحّدة لبناء كارد الهدية (تُستخدم بالخاصة والعامة)
@@ -18963,27 +19160,33 @@ function scheduleLaneExpire(item) {
     clearTimeout(item._expireTimer);
     item._expireTimer = setTimeout(() => roomGiftStage.laneExpire(item), GFX_LANE_IDLE_MS);
 }
+// 🛡️ fix/gift-stage-top-layer (بند 2-ب): إعادة تصميم الشريط الجانبي بأسلوب TikTok — يسار-وسط،
+// أقصى 2، صورة+اسم+"أرسل X"+أيقونة الهدية+عدّاد ضخم مائل عريض أبيض بحدّ أسود يقفز بكل زيادة.
+// راعي الهدية (بند 2-ج): أكبر مُرسِل لهذي الهدية بالجلسة — شريط بنفسجي مميَّز بوسم (item.isTopSender
+// من giftEngine.js). كل شيء يُلحَق بالمرحلة الثابتة الموحَّدة (#gift-stage-lane) لا DOM الغرفة
 function giftStageOnLaneShow(item) {
+    getGiftStageOverlay();
     const avatarUrl = isHttpsImageUrl(item.sender?.profileImage) ? item.sender.profileImage : null;
     const giftImgUrl = isHttpsImageUrl(item.gift?.image) ? item.gift.image : null;
     const el = document.createElement('div');
-    el.className = 'gfx-banner';
+    el.className = 'gift-lane-item' + (item.isTopSender ? ' gift-lane-item--top' : '');
     el.setAttribute('data-gift-lane-item', '1');
     el.innerHTML = `
-        <span class="gfx-banner-av"></span>
-        <span class="gfx-banner-txt"><b></b><span class="gfx-banner-to"></span></span>
-        <span class="gfx-banner-gift">${giftImgUrl ? '' : '🎁'}</span>
-        <span class="gfx-banner-x">×${item.count.toLocaleString('en-US')}</span>
+        ${item.isTopSender ? '<span class="gift-lane-top-tag">راعي الهدية</span>' : ''}
+        <span class="gift-lane-av"></span>
+        <span class="gift-lane-txt"><b></b><span class="gift-lane-sub">أرسل ${escapeHtml(item.gift?.name || 'هدية')}</span></span>
+        <span class="gift-lane-gift">${giftImgUrl ? '' : '🎁'}</span>
+        <span class="gift-lane-x" dir="ltr">×${item.count.toLocaleString('en-US')}</span>
     `;
-    el.querySelector('.gfx-banner-txt b').textContent = item.sender?.username || '';
+    el.querySelector('.gift-lane-txt b').textContent = item.sender?.username || '';
     // 🛡️ نفس احتياط "الحرف الأول على لون ثابت" الذي تولِّده avatarHTML({name,...}) بالضبط، لكن
     // ببناء DOM مباشر (لا innerHTML) — avatarUrl من بيانات بثّ مستخدم آخر (غير موثوقة)، فتمريرها
     // كسلسلة نصّية داخل قالب HTML يفتح XSS لو احتوت حرف اقتباس يكسر السمة؛ التعيين بخاصية .src
     // مباشرة آمن بنيوياً (المتصفح لا يُفسِّرها كـHTML إطلاقاً)
-    const avWrap = el.querySelector('.gfx-banner-av');
+    const avWrap = el.querySelector('.gift-lane-av');
     const avatarSpan = document.createElement('span');
     avatarSpan.className = 'avatar ava-init';
-    avatarSpan.style.cssText = `--size:32px;--avi-bg:${avatarInitialColor(item.sender?.id != null ? item.sender.id : item.sender?.username)}`;
+    avatarSpan.style.cssText = `--size:36px;--avi-bg:${avatarInitialColor(item.sender?.id != null ? item.sender.id : item.sender?.username)}`;
     const initialSpan = document.createElement('span');
     initialSpan.className = 'avatar__initial';
     initialSpan.setAttribute('aria-hidden', 'true');
@@ -18992,7 +19195,7 @@ function giftStageOnLaneShow(item) {
     if (avatarUrl) {
         const avImg = document.createElement('img');
         avImg.className = 'avatar__photo avatar__photo--fallbackable';
-        avImg.src = giftImg(avatarUrl, 32);
+        avImg.src = giftImg(avatarUrl, 36);
         avImg.loading = 'lazy';
         avImg.decoding = 'async';
         avatarSpan.appendChild(avImg);
@@ -19000,25 +19203,33 @@ function giftStageOnLaneShow(item) {
     avWrap.appendChild(avatarSpan);
     if (giftImgUrl) {
         const giftImgEl = document.createElement('img');
-        giftImgEl.src = giftImg(giftImgUrl, 64);
+        giftImgEl.src = giftImg(giftImgUrl, 40);
         giftImgEl.loading = 'lazy';
         giftImgEl.decoding = 'async';
         wireGiftImgFallback(giftImgEl, giftImgUrl, '🎁');
-        el.querySelector('.gfx-banner-gift').appendChild(giftImgEl);
+        el.querySelector('.gift-lane-gift').appendChild(giftImgEl);
     }
-    (document.getElementById('room-gift-lane') || document.body).prepend(el);
+    (document.getElementById('gift-stage-lane') || document.body).prepend(el);
     item.el = el;
     scheduleLaneExpire(item);
 }
 function giftStageOnLaneMerge(item) {
     if (!item.el) return;
-    const xEl = item.el.querySelector('.gfx-banner-x');
+    item.el.classList.toggle('gift-lane-item--top', !!item.isTopSender);
+    const existingTag = item.el.querySelector('.gift-lane-top-tag');
+    if (item.isTopSender && !existingTag) {
+        const tag = document.createElement('span');
+        tag.className = 'gift-lane-top-tag';
+        tag.textContent = 'راعي الهدية';
+        item.el.prepend(tag);
+    } else if (!item.isTopSender && existingTag) {
+        existingTag.remove();
+    }
+    const xEl = item.el.querySelector('.gift-lane-x');
     if (xEl) {
         xEl.textContent = '×' + item.count.toLocaleString('en-US');
         xEl.classList.remove('bump'); void xEl.offsetWidth; xEl.classList.add('bump');
     }
-    const toEl = item.el.querySelector('.gfx-banner-to');
-    if (toEl && item.receiverIds.size > 1) toEl.textContent = `إلى ${item.receiverIds.size} مستلمين`;
     scheduleLaneExpire(item);
 }
 function giftStageOnLaneHide(item) {

@@ -3300,23 +3300,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 .room-join-notice.on { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) { .room-join-notice { transition: opacity .2s; transform: none; } }
-
-.room-gift-lane {
-    position: relative;
-    flex: none;
-    height: 0;
-    overflow: visible;
-    z-index: 20;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start; /* ✅ dir=rtl بالصفحة (html) — flex-start يطابق فعلياً الحافة اليمنى بصرياً، نفس right: السابقة */
-    gap: 4px;
-    pointer-events: none; /* ✅ لا يحجب الضغط على أول رسالة دردشة تحته لحظة التراكب العابر */
-    /* 🐛 إصلاح دقيق: padding (بعكس margin) تُحسَب ضمن صندوق العنصر نفسه فتُضيف ارتفاعاً
-       فعلياً فوق height:0 الصريح (~7px كانت تُقاس بالاختبار الآلي) — margin على الأطفال
-       بالأسفل بدلاً منها يحقق نفس الإزاحة البصرية بلا إضافة أي ارتفاع لصندوق المسار نفسه */
-}
-.room-gift-lane > * { margin-top: calc(var(--u, 9px) * .8); margin-inline-end: calc(var(--u, 9px) * .9); }
+/* 🛡️ fix/gift-stage-top-layer: #room-join-notice ينتقل الآن لـ#gift-stage-lane (عنصر ثابت
+   بمستوى body — راجع .gift-stage-lane أسفله)، لا .room-gift-lane المحلية القديمة بالغرفة
+   (حُذفت بالكامل مع انتقال الشريط الجانبي كله لنفس المرحلة الموحَّدة الثابتة) */
 
 /* 🛡️ feat/gift-fx-and-cosmetics-base (إصلاح الخطأ أ — إشعارات الهدايا/الدخول خلف المقاعد):
    الجذر الحقيقي هنا — z-index:60 بلا أي position مضبوط، وz-index بلا position لا أثر له إطلاقاً
@@ -3382,21 +3368,21 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 /* 🛡️ feat/gift-fx-and-cosmetics-base (إصلاح الخطأ أ — طبقات ثابتة الترتيب فوق المقاعد):
    .voice-chat-stage يحتضن شبكة المقاعد + طبقة الدخول (30) فوقها — مطابق لـdocs/design/
    fx-studio-prototype.html (.layer-entr) حرفياً. z-index على .voice-chat-stage نفسه (لا فقط
-   على الطبقة) يُنشئ سياق تكديس معزولاً، فيرسم الصندوق كاملاً فوق .room-gift-lane (z-index:20)
-   ككتلة واحدة بصرف النظر عن ترتيب DOM بينهما — لا اعتماد على تكديس ضمني هش */
+   على الطبقة) يُنشئ سياق تكديس معزولاً يضمن ترتيب شبكة المقاعد + طبقة الدخول داخلياً ككتلة
+   واحدة متماسكة — بصرف النظر عن ترتيب DOM بينهما، لا اعتماد على تكديس ضمني هش (راجع التعليق
+   التالي مباشرة لسبب أن z-index:25 هذا بالذات صار لاحقاً جزءاً من مشكلة تكديس أكبر) */
 .voice-chat-stage { position: relative; z-index: 25; }
 .room-entrance-layer { position: absolute; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
-/* 🐛 إصلاح جذري (مراجعة PR #160 — الفيديو أسود ومحصور بصندوق المقاعد): طبقتا الفيديو/الطيران
-   كانتا متداخلتين داخل .voice-chat-stage (سياق تكديس مستقل بذاته) — mix-blend-mode:screen لا
-   يمزج إلا مع ما يُرسَم ضمن نفس سياق التكديس المباشر، و.room-bg (خلفية الغرفة الأرجوانية
-   الحقيقية) تعيش بسياق #main-content الأب، خارج سياق .voice-chat-stage تماماً، فكان المزج يحدث
-   مع عدم شيء (أسود). كذلك inset:0 كان يُحجِّم الطبقة على صندوق المقاعد فقط لا الغرفة كاملة.
-   الطبقتان الآن طفلان مباشران لـ#main-content (أخوان لـ.room-bg و.voice-chat-stage نفسها، لا
-   ابنان لها) — بلا أي سلف بينهما وبين #main-content يملك z-index/opacity/transform/filter/
-   isolation خاصاً به (كان سيُنشئ سياق تكديس جديداً يُعيد المشكلة ذاتها)، فيصبح المزج ضد خلفية
-   الغرفة الحقيقية فعلاً، وinset:0 يغطي الغرفة كاملة (100vh) فوق المقاعد تماماً كما يجب */
-.room-giftfx-video-layer { position: absolute; inset: 0; z-index: 39; pointer-events: none; overflow: hidden; mix-blend-mode: screen; }
-.room-giftfx-fly-layer { position: absolute; inset: 0; z-index: 40; pointer-events: none; overflow: visible; }
+/* 🐛 إصلاح جذري ثانٍ (مراجعة fix/gift-stage-top-layer — تقرير جهاز حقيقي: التنين/السيف/اليخت
+   خلف الدردشة، الحديقة فقط ظهرت صحيحة): الإصلاح الأول (PR #160 — الطبقتان طفلان مباشران
+   لـ#main-content بدل .voice-chat-stage) أزال سبباً واحداً لمشكلة التكديس لكن ليس كل الأسباب
+   المحتملة — .voice-chat-stage نفسها position:relative+z-index:25 (أعلاه مباشرة) تُنشئ سياق
+   تكديس محلياً ضمن #main-content، وأي سلف آخر مستقبلي قد يفعل المثل. z-index محلي مهما عَلَت
+   قيمته يبقى محصوراً داخل سياق تكديس سلفه فقط — لا يتجاوزه أبداً مهما كانت القيمة الرقمية.
+   الحل الجذري الفعلي: طبقتا الفيديو/الطيران (ومعهما الموكب/الشريط/الشارة العلوية) انتقلت
+   بالكامل لعنصر وحيد position:fixed مُلحَق بـdocument.body مباشرة (راجع .gift-stage-overlay
+   أسفله وgetGiftStageOverlay بـapp.js) — تماماً كفلسفة .gfx-layer الموجودة أصلاً (fixed+body)
+   التي "تعمل فوق كل شيء دوماً بلا استثناء"، فيتخطّى أي سياق تكديس محلي بالغرفة كلياً بلا استثناء */
 
 /* ===== إعلان الدخول المنزلق (يحل محل التصميم المضمَّن القديم بسطر الدردشة لنادي المعجبين فقط —
    الآن عام لكل مصدر: ترحيب/نادي معجبين/ثنائي لاحقاً) ===== */
@@ -3431,39 +3417,126 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 @keyframes roomEntranceToastReduced { 0% { inset-inline-end: 4%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { opacity: 0; } }
 
+/* =====================================================
+   🛡️ fix/gift-stage-top-layer — المرحلة الموحَّدة (gift-stage-overlay)
+   عنصر وحيد position:fixed مُلحَق بـdocument.body (راجع getGiftStageOverlay بـapp.js)، يحوي:
+   الفيديو/الموكب+الطيران/الشريط الجانبي/الشارة العلوية معاً — فوق كل عناصر الغرفة (المقاعد
+   والدردشة والشرائط معاً) وتحت شيت الهدايا والمودالات (z-index أقل من 320/400 بالتصميم)
+   ===================================================== */
+.gift-stage-overlay { position: fixed; inset: 0; z-index: 605; pointer-events: none; overflow: hidden; }
+.gift-stage-video-layer { position: absolute; inset: 0; overflow: hidden; mix-blend-mode: screen; }
+.gift-stage-fly-layer { position: absolute; inset: 0; overflow: visible; }
+.gift-stage-lane { position: absolute; left: 10px; top: 46%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 8px; max-width: 72vw; }
+
+/* ✅ شارة علوية طوال مدة تشغيل فيديو الهدية كاملة (طلب صريح — بند 2أ) */
+.gift-stage-banner-top {
+    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 54px); left: 50%;
+    opacity: 0; transform: translate(-50%, -14px); pointer-events: none;
+    background: rgba(18, 8, 28, .78); backdrop-filter: blur(6px); color: #fff;
+    font-size: 12.5px; font-weight: 700; padding: 6px 16px; border-radius: 999px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, .4); max-width: 86vw; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; transition: opacity .25s, transform .25s;
+}
+.gift-stage-banner-top.show { opacity: 1; transform: translate(-50%, 0); }
+.gift-stage-banner-top b { color: #ffcf5a; }
+@media (prefers-reduced-motion: reduce) { .gift-stage-banner-top { transition: opacity .15s; transform: translate(-50%, 0); } }
+
 /* ===== مؤثر فيديو الهدية ===== */
 /* 🛡️ feat/gift-display-engine (مراجعة: "مركز المؤثر أسفل مركز شبكة المقاعد قليلاً"): top يُضبَط
-   حياً بـJS (giftStageOnPop/giftStageOnVideoPlay، عبر gfxStagePopCenterPoint) بإحداثيات بكسل
-   حقيقية نسبة لصندوق المقاعد الفعلي (يتكيّف تلقائياً مع وجود شريط PK/تحدي يُطوِّل الصندوق) —
-   40% هنا احتياط فقط لو تعذّر إيجاد الصندوق لأي سبب */
+   حياً بـJS (giftStageOnVideoPlay، عبر gfxStagePopCenterPoint) بإحداثيات بكسل حقيقية نسبة
+   لصندوق المقاعد الفعلي (يتكيّف تلقائياً مع وجود شريط PK/تحدي يُطوِّل الصندوق) — 40% هنا
+   احتياط فقط لو تعذّر إيجاد الصندوق لأي سبب */
 .room-giftfx-video { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%); width: 150%; max-width: none; }
 .room-giftfx-static { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%); width: 90px; height: 90px; display: flex; align-items: center; justify-content: center; font-size: 56px; filter: drop-shadow(0 0 14px rgba(255,212,94,.5)); }
-/* ✅ پop & fly (ب): صورة مركزية + توهّج 0.8ث للهدايا بلا فيديو (راجع giftStageOnPop) */
-.room-giftfx-pop {
-    position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%);
-    width: 120px; height: 120px; display: flex; align-items: center; justify-content: center;
-    font-size: 72px; animation: giftfxPopGlow .8s ease-out forwards;
-}
-.room-giftfx-pop img { width: 100%; height: 100%; object-fit: contain; }
-@keyframes giftfxPopGlow {
-    0% { transform: translate(-50%,-50%) scale(.4); opacity: 0; filter: drop-shadow(0 0 0 rgba(255,212,94,0)); }
-    35% { transform: translate(-50%,-50%) scale(1.15); opacity: 1; filter: drop-shadow(0 0 26px rgba(255,212,94,.85)); }
-    70% { transform: translate(-50%,-50%) scale(1); filter: drop-shadow(0 0 18px rgba(255,212,94,.6)); }
-    100% { transform: translate(-50%,-50%) scale(1); opacity: 0; filter: drop-shadow(0 0 10px rgba(255,212,94,.3)); }
-}
 /* ✅ شارة "×N" على آخر تشغيل فيديو فقط لكمية كبيرة من نفس الهدية (راجع giftStageOnVideoPlay) */
 .room-giftfx-video-badge {
     position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%);
     background: #000a; color: #ffd45e; font-weight: 900; font-size: 20px;
     padding: 4px 16px; border-radius: 999px; border: 1px solid #ffd45e66;
 }
-@media (prefers-reduced-motion: reduce) { .room-giftfx-pop { animation: none; opacity: 1; } }
-.lite-mode .room-giftfx-pop { animation: none; }
 .room-giftfx-flyer { position: absolute; width: 56px; height: 56px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px; transition: left .9s cubic-bezier(.5,0,.3,1), top .9s cubic-bezier(.5,0,.3,1), transform .9s cubic-bezier(.5,0,.3,1); filter: drop-shadow(0 0 10px rgba(255,212,94,.6)); }
 .room-giftfx-flyer img { width: 100%; height: 100%; object-fit: contain; }
 @media (prefers-reduced-motion: reduce) {
     .room-giftfx-flyer { transition: none; }
 }
+
+/* =====================================================
+   🛡️ fix/gift-stage-top-layer (بند 3) — موكب "مدينة الملاهي" للهدايا بلا فيديو: وحدات تظهر
+   واحدة تلو الأخرى بصف وسط الشاشة (پop+شرر)، ثم تنطلق بالتناوب على المستلمين بذيل لامع
+   ===================================================== */
+.gift-proc-head { position: absolute; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; animation: giftProcHeadIn .35s cubic-bezier(.2,1.4,.4,1); }
+@keyframes giftProcHeadIn { from { transform: translateX(-50%) scale(.4); opacity: 0; } }
+.gift-proc-who { background: linear-gradient(90deg,#ff5fa8cc,#a46bffcc); border-radius: 999px; padding: 3px 12px; font-size: 11.5px; font-weight: 900; white-space: nowrap; box-shadow: 0 4px 18px rgba(255,95,168,.35); color: #fff; }
+.gift-proc-cnt { font-family: 'Baloo Bhaijaan 2','Cairo',sans-serif; font-size: 36px; font-weight: 800; line-height: 1; background: linear-gradient(180deg,#fff7d6,#ffcc4d 55%,#ff8a00); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 0 #7a3a00) drop-shadow(0 0 12px rgba(255,176,32,.55)); transition: transform .12s; direction: ltr; }
+.gift-proc-cnt.bump { transform: scale(1.3); }
+.gift-proc-item { position: absolute; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; font-size: 32px; filter: drop-shadow(0 0 8px rgba(255,95,168,.65)); transition: left .7s cubic-bezier(.5,0,.3,1), top .7s cubic-bezier(.5,0,.3,1), transform .7s, opacity .25s; }
+.gift-proc-item img { width: 100%; height: 100%; object-fit: contain; }
+.gift-proc-item.in { animation: giftProcPop .4s cubic-bezier(.2,1.6,.4,1); }
+@keyframes giftProcPop { from { transform: scale(0) rotate(-30deg); opacity: 0; } }
+.gift-proc-spark { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: #ffd45e; animation: giftProcSpark .6s ease-out forwards; }
+@keyframes giftProcSpark { to { transform: translate(var(--dx), var(--dy)) scale(.2); opacity: 0; } }
+.gift-proc-trail { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: radial-gradient(circle,#fff,#ff5fa8 60%,transparent 70%); animation: giftProcTrail .5s linear forwards; }
+@keyframes giftProcTrail { to { opacity: 0; transform: scale(.3); } }
+.gift-proc-celebrate { position: absolute; inset: 0; display: grid; place-items: center; font-family: 'Baloo Bhaijaan 2','Cairo',sans-serif; font-size: min(16vw,64px); font-weight: 800; color: #fff; text-shadow: 0 0 20px #ff5fa8, 0 0 40px #a46bff; animation: giftProcCelebrate .9s ease-out forwards; direction: ltr; }
+@keyframes giftProcCelebrate { from { transform: scale(.3); opacity: 0; } 30% { transform: scale(1.15); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+    .gift-proc-head, .gift-proc-item, .gift-proc-item.in, .gift-proc-spark, .gift-proc-trail, .gift-proc-celebrate { animation: none !important; transition: none !important; }
+}
+.lite-mode .gift-proc-item { transition-duration: .3s; }
+
+/* =====================================================
+   🛡️ fix/gift-stage-top-layer (بند 2-د) — تأثير المقعد: تراكب (إيموجي الهدية) فوق صورة
+   المستلم لهدية مُعلَّمة من الأدمن (seatEffect — "تاج" مثلاً)، يبقى ~10 ثوانٍ (JS)
+   ===================================================== */
+.gift-seat-effect {
+    position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
+    font-size: 20px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.5)); pointer-events: none;
+    z-index: 2; animation: giftSeatEffectIn .3s ease-out;
+}
+@keyframes giftSeatEffectIn { from { transform: translateX(-50%) scale(.5); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .gift-seat-effect { animation: none; } }
+
+/* =====================================================
+   🛡️ fix/gift-stage-top-layer (بند 2-ب/ج) — الشريط الجانبي بأسلوب TikTok: يسار-وسط، أقصى 2،
+   عدّاد ضخم مائل عريض أبيض بحدّ أسود. راعي الهدية (بند 2-ج): شريط بنفسجي مميَّز + وسم
+   ===================================================== */
+.gift-lane-item {
+    position: relative; display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px 6px 6px; border-radius: 0 999px 999px 0;
+    background: linear-gradient(90deg, rgba(255,79,163,.4) 25%, rgba(155,107,255,.47));
+    backdrop-filter: blur(4px); animation: giftLaneIn .35s cubic-bezier(.2,1.4,.4,1) both;
+}
+.gift-lane-item.out { animation: giftLaneOut .4s forwards; }
+@keyframes giftLaneIn { from { transform: translateX(-60%); opacity: 0; } }
+@keyframes giftLaneOut { to { transform: translateX(-70%); opacity: 0; } }
+.gift-lane-item--top {
+    background: linear-gradient(90deg, rgba(168,85,247,.5) 25%, rgba(126,34,206,.6));
+    box-shadow: 0 0 16px rgba(168,85,247,.5);
+}
+.gift-lane-top-tag {
+    position: absolute; top: -9px; inset-inline-start: 10px; font-size: 9px; font-weight: 900;
+    background: #a855f7; color: #fff; border-radius: 999px; padding: 0 8px; line-height: 16px;
+    white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.35);
+}
+.gift-lane-av { width: 36px; height: 36px; border-radius: 50%; overflow: hidden; flex: none; background: #2a2040; }
+.gift-lane-av img { width: 100%; height: 100%; object-fit: cover; }
+.gift-lane-txt { font-size: 11px; line-height: 1.25; color: #fff; min-width: 0; }
+.gift-lane-txt b { display: block; font-size: 12.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32vw; }
+.gift-lane-sub { display: block; font-size: 10.5px; color: #e4d9ff; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32vw; }
+.gift-lane-gift { font-size: 22px; filter: drop-shadow(0 2px 6px rgba(0,0,0,.5)); flex: none; }
+.gift-lane-gift img { width: 26px; height: 26px; border-radius: 8px; object-fit: cover; }
+.gift-lane-x {
+    font-family: 'Baloo Bhaijaan 2','Cairo',sans-serif; font-weight: 900; font-style: italic;
+    font-size: 26px; color: #fff; -webkit-text-stroke: 2px #000; paint-order: stroke fill;
+    text-shadow: 0 2px 0 #000, 0 0 10px rgba(0,0,0,.6); min-width: 40px; direction: ltr; flex: none;
+}
+.gift-lane-x.bump { animation: giftLaneBump .22s; }
+@keyframes giftLaneBump { 40% { transform: scale(1.4) rotate(-4deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .gift-lane-item, .gift-lane-item.out, .gift-lane-x.bump { animation: none !important; transition: none !important; }
+}
+body.gfx-weak-device .gift-lane-item { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; animation: giftLaneInSimple .15s ease-out both; }
+@keyframes giftLaneInSimple { from { opacity: 0; } }
 
 /* ===== فقاعات متجر الدردشة الجديدة (8 تصاميم) — منسوخة من docs/design/fx-studio-prototype.html
    كتصاميم مبدئية (راجع بند 3 بالمواصفة: "ليست التصاميم النهائية، بل الأساس") =====
@@ -7764,21 +7837,9 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
 .voice-seat-av-wrap.gfx-seat-hit { animation: gfxSeatHit 0.5s; }
 @keyframes gfxSeatHit { 30% { transform: scale(1.14); } 60% { transform: scale(0.96); } 100% { transform: scale(1); } }
 
-/* شريط إعلان الكومبو الخاص بي — بدل .room-gift-side-banner (تلك مخصَّصة لإعلانات غيري القادمة
-   من room-gift-announcement كل 250ms، هذا مرتبط بجلسة كومبوي الحيّة الخاصة ويتحدّث بكل ضغطة) */
-.gfx-banner { display: flex; align-items: center; gap: 8px; padding: 4px 14px 4px 4px; border-radius: 0 999px 999px 0; background: linear-gradient(270deg, rgba(0, 0, 0, 0), rgba(255, 79, 163, 0.4) 25%, rgba(155, 107, 255, 0.47)); backdrop-filter: blur(4px); animation: gfxBannerIn 0.35s cubic-bezier(.2, 1.4, .4, 1) both; }
-.gfx-banner.out { animation: gfxBannerOut 0.4s forwards; }
-@keyframes gfxBannerIn { from { transform: translateX(60%); opacity: 0; } }
-@keyframes gfxBannerOut { to { transform: translateX(70%); opacity: 0; } }
-.gfx-banner-av { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; flex: none; background: #2a2040; }
-.gfx-banner-av img { width: 100%; height: 100%; object-fit: cover; }
-.gfx-banner-txt { font-size: 11px; line-height: 1.3; color: #fff; }
-.gfx-banner-txt b { display: block; font-size: 12px; }
-.gfx-banner-gift { font-size: 26px; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5)); }
-.gfx-banner-gift img { width: 28px; height: 28px; border-radius: 8px; object-fit: cover; }
-.gfx-banner-x { font-family: 'Baloo Bhaijaan 2', 'Cairo', sans-serif; font-weight: 800; font-size: 24px; color: #ffcf5a; text-shadow: 0 2px 0 #b5560a, 0 0 14px rgba(255, 182, 72, 0.5); min-width: 46px; direction: ltr; }
-.gfx-banner-x.bump { animation: gfxBump 0.22s; }
-@keyframes gfxBump { 40% { transform: scale(1.45) rotate(-6deg); } }
+/* 🛡️ fix/gift-stage-top-layer: شريط إعلان الكومبو انتقل بالكامل لـ.gift-lane-item (راجع
+   giftStageOnLaneShow بـapp.js — نفس GiftStage.leaveRoom أعلاه، شريط واحد موحَّد الآن لي
+   ولغيري معاً، لا نظامين منفصلين) — .gfx-banner* القديمة حُذفت، لا تُستخدَم بعد الآن */
 
 /* هدية أسطورية بملء الشاشة — تظهر للكل بالغرفة (المُرسِل والمستلمون والمشاهدون) */
 .gfx-legend { position: fixed; inset: 0; z-index: 615; display: grid; place-items: center; pointer-events: none; background: radial-gradient(circle, rgba(0, 0, 0, 0) 20%, rgba(0, 0, 0, 0.8) 80%); animation: gfxLegendBg 3.2s forwards; }
@@ -7817,7 +7878,7 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
 @keyframes gfxTopToastOut { to { opacity: 0; transform: translate(-50%, -14px); } }
 
 @media (prefers-reduced-motion: reduce) {
-    .gfx-layer, .gfx-layer *, .gfx-mile b, .gfx-legend, .gfx-legend *, .gfx-banner, .gfx-banner.out, .gfx-fly, .gfx-top-toast, .gfx-top-toast.out {
+    .gfx-layer, .gfx-layer *, .gfx-mile b, .gfx-legend, .gfx-legend *, .gfx-fly, .gfx-top-toast, .gfx-top-toast.out {
         animation: none !important; transition: none !important;
     }
     .gfx-shaking { animation: none !important; }
@@ -7826,20 +7887,17 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
 /* 🛡️ طلب صريح (مراجعة الأداء — بند 3): وضع أداء الأجهزة الضعيفة (deviceMemory≤3GB أو
    hardwareConcurrency≤4 نواة أو تقليل الحركة — راجع isWeakDevice بـapp.js، يُضاف صنفه هنا
    على body عند دخول الغرفة). backdrop-filter مكلف فعلياً (يُعاد حسابه بكل إعادة رسم لكل بكسل
-   خلفه) — يُزال كلياً من كل عناصر الغرفة/شيت الهدايا على هذي الأجهزة، ويستبدل شريط إعلان
-   الهدية حركة دخول أبسط (تلاشي فقط، لا قوس مرن) بدل الحركة الكاملة */
+   خلفه) — يُزال كلياً من كل عناصر الغرفة/شيت الهدايا على هذي الأجهزة (.gift-lane-item لها
+   قاعدتها الخاصة أعلى الملف، راجع .gift-stage-overlay) */
 body.gfx-weak-device .room-chat-bubble-default,
 body.gfx-weak-device .room-chat-input-pill,
 body.gfx-weak-device .room-chat-input-pill button.room-chat-send-active,
-body.gfx-weak-device .gfx-banner,
 body.gfx-weak-device .gfx-legend-t,
 body.gfx-weak-device .gfx-top-toast,
 body.gfx-weak-device.in-voice-room .pk__computing {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
 }
-body.gfx-weak-device .gfx-banner { animation: gfxBannerInSimple 0.15s ease-out both; }
-@keyframes gfxBannerInSimple { from { opacity: 0; } }
 
 /* =====================================================
    ✅ room-ux-v2 (بند 4) — الجولة التعريفية الأولى لغرفة صوتية، تطابق
