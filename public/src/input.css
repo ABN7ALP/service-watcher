@@ -3432,8 +3432,33 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 @keyframes roomEntranceToastReduced { 0% { inset-inline-end: 4%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { opacity: 0; } }
 
 /* ===== مؤثر فيديو الهدية ===== */
-.room-giftfx-video { position: absolute; left: 50%; top: 44%; transform: translate(-50%,-50%); width: 150%; max-width: none; }
-.room-giftfx-static { position: absolute; left: 50%; top: 44%; transform: translate(-50%,-50%); width: 90px; height: 90px; display: flex; align-items: center; justify-content: center; font-size: 56px; filter: drop-shadow(0 0 14px rgba(255,212,94,.5)); }
+/* 🛡️ feat/gift-display-engine (مراجعة: "مركز المؤثر أسفل مركز شبكة المقاعد قليلاً"): top يُضبَط
+   حياً بـJS (giftStageOnPop/giftStageOnVideoPlay، عبر gfxStagePopCenterPoint) بإحداثيات بكسل
+   حقيقية نسبة لصندوق المقاعد الفعلي (يتكيّف تلقائياً مع وجود شريط PK/تحدي يُطوِّل الصندوق) —
+   40% هنا احتياط فقط لو تعذّر إيجاد الصندوق لأي سبب */
+.room-giftfx-video { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%); width: 150%; max-width: none; }
+.room-giftfx-static { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%); width: 90px; height: 90px; display: flex; align-items: center; justify-content: center; font-size: 56px; filter: drop-shadow(0 0 14px rgba(255,212,94,.5)); }
+/* ✅ پop & fly (ب): صورة مركزية + توهّج 0.8ث للهدايا بلا فيديو (راجع giftStageOnPop) */
+.room-giftfx-pop {
+    position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%);
+    width: 120px; height: 120px; display: flex; align-items: center; justify-content: center;
+    font-size: 72px; animation: giftfxPopGlow .8s ease-out forwards;
+}
+.room-giftfx-pop img { width: 100%; height: 100%; object-fit: contain; }
+@keyframes giftfxPopGlow {
+    0% { transform: translate(-50%,-50%) scale(.4); opacity: 0; filter: drop-shadow(0 0 0 rgba(255,212,94,0)); }
+    35% { transform: translate(-50%,-50%) scale(1.15); opacity: 1; filter: drop-shadow(0 0 26px rgba(255,212,94,.85)); }
+    70% { transform: translate(-50%,-50%) scale(1); filter: drop-shadow(0 0 18px rgba(255,212,94,.6)); }
+    100% { transform: translate(-50%,-50%) scale(1); opacity: 0; filter: drop-shadow(0 0 10px rgba(255,212,94,.3)); }
+}
+/* ✅ شارة "×N" على آخر تشغيل فيديو فقط لكمية كبيرة من نفس الهدية (راجع giftStageOnVideoPlay) */
+.room-giftfx-video-badge {
+    position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%);
+    background: #000a; color: #ffd45e; font-weight: 900; font-size: 20px;
+    padding: 4px 16px; border-radius: 999px; border: 1px solid #ffd45e66;
+}
+@media (prefers-reduced-motion: reduce) { .room-giftfx-pop { animation: none; opacity: 1; } }
+.lite-mode .room-giftfx-pop { animation: none; }
 .room-giftfx-flyer { position: absolute; width: 56px; height: 56px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px; transition: left .9s cubic-bezier(.5,0,.3,1), top .9s cubic-bezier(.5,0,.3,1), transform .9s cubic-bezier(.5,0,.3,1); filter: drop-shadow(0 0 10px rgba(255,212,94,.6)); }
 .room-giftfx-flyer img { width: 100%; height: 100%; object-fit: contain; }
 @media (prefers-reduced-motion: reduce) {
