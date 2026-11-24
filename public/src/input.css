@@ -3390,7 +3390,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 /* ترتيب z صريح بين أبناء #gift-fx-ui وحدها (الفيديو/الشريط خارجها كلياً الآن) — الموكب/الطيران
    أسفل، الشارة العلوية الأعلى دوماً (تبقى مقروءة طوال أي تشغيل) */
 .gift-stage-fly-layer { position: absolute; inset: 0; overflow: visible; z-index: 1; }
-.gift-stage-lane { position: absolute; left: 10px; bottom: 96px; display: flex; flex-direction: column-reverse; gap: 8px; max-width: 72vw; z-index: 2; }
+.gift-stage-lane { position: absolute; left: 8px; bottom: 96px; display: flex; flex-direction: column-reverse; gap: 8px; max-width: 72vw; z-index: 2; }
 
 /* ✅ شارة علوية طوال مدة تشغيل فيديو الهدية كاملة (طلب صريح — بند 2أ) */
 .gift-stage-banner-top {
@@ -3494,9 +3494,11 @@ body.gfx-weak-device .gift-seat-effect { animation: giftSeatEffectIn .3s both; }
    🛡️ fix/gift-stage-top-layer (بند 2-ب/ج) — الشريط الجانبي بأسلوب TikTok: يسار-وسط، أقصى 2،
    عدّاد ضخم مائل عريض أبيض بحدّ أسود. راعي الهدية (بند 2-ج): شريط بنفسجي مميَّز + وسم
    ===================================================== */
+/* 🐛 مراجعة #163 (الجولة 7 — "حافة حادة عند طرف الشاشة"): كان border-radius نصفياً (0 يمين الحافة
+   الملاصقة لحافة الشاشة) — يبدو مقصوصاً حرفياً هناك. الآن مُدوَّر بالكامل من كل الجهات */
 .gift-lane-item {
     position: relative; display: flex; align-items: center; gap: 8px;
-    padding: 6px 14px 6px 6px; border-radius: 0 999px 999px 0;
+    padding: 6px 14px 6px 6px; border-radius: 999px;
     background: linear-gradient(90deg, rgba(255,79,163,.4) 25%, rgba(155,107,255,.47));
     backdrop-filter: blur(4px); animation: giftLaneIn .35s cubic-bezier(.2,1.4,.4,1) both;
 }

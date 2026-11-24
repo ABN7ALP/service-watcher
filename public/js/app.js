@@ -17529,6 +17529,14 @@ function startGiftComboSession(ctx) {
     const comboEl = layer.querySelector('#gfx-combo');
     const cbtn = layer.querySelector('#gfx-cbtn');
     const cnEl = layer.querySelector('#gfx-cn');
+    // 🐛 مراجعة #163 (الجولة 7 — "صف إشعار المُرسِل تحت زر الكومبو البرتقالي"): #gfx-combo (z611)
+    // يتقاطع أفقياً مع منطقة #gift-stage-lane (z604) على شاشات قصيرة — gfxPositionLaneZone (الدالة
+    // الوحيدة التي تكتب bottom، راجع تعليقها) تقرأ #gfx-combo لو كان ظاهراً فتُعيد حساب الرفع حياً
+    // (نفس أسلوب مرساة الفيديو: resize/orientation/visualViewport) طوال هذي الجلسة تحديداً
+    gfxPositionLaneZone();
+    window.addEventListener('resize', gfxPositionLaneZone);
+    window.addEventListener('orientationchange', gfxPositionLaneZone);
+    window.visualViewport?.addEventListener('resize', gfxPositionLaneZone);
     const ringFg = layer.querySelector('#gfx-ring-fg');
     const RING_C = 2 * Math.PI * 46;
 
@@ -17889,6 +17897,14 @@ function startGiftComboSession(ctx) {
     fireTap(initialUnits);
     setQuantityOverride(1); // ✅ كل الضغطات اللاحقة بهذي الجلسة ×1 فقط — لا تكرار الكمية المختارة
 
+    // 🐛 مراجعة #163 (الجولة 7): إزالة مستمعي الرفع، ثم حذف #gfx-combo فعلياً (layer.remove قبل
+    // إعادة الحساب — وإلا لا تزال gfxPositionLaneZone ترى زراً "ظاهراً" فتُبقي الرفع خطأً)، ثم
+    // استدعاء gfxPositionLaneZone مرة أخيرة لإعادة الشريط لموضعه المعتاد فوق الدردشة فقط
+    function teardownLaneReposition() {
+        window.removeEventListener('resize', gfxPositionLaneZone);
+        window.removeEventListener('orientationchange', gfxPositionLaneZone);
+        window.visualViewport?.removeEventListener('resize', gfxPositionLaneZone);
+    }
     // ---------- الإنهاء ----------
     function endSession() {
         if (ended) return;
@@ -17897,7 +17913,9 @@ function startGiftComboSession(ctx) {
         setFxDelegate(null);
         cancelAnimationFrame(rafId);
         resizeObserver.disconnect();
+        teardownLaneReposition();
         layer.remove();
+        gfxPositionLaneZone();
         if (activeGiftComboSession === session) activeGiftComboSession = null;
         gfxFlushComboAggregate(); // ✅ بند 4: الجلسة انتهت — عرض "+N XP" المُجمَّعة الآن (وبطاقة الارتقاء المؤجَّلة لو وُجدت)
     }
@@ -17910,7 +17928,9 @@ function startGiftComboSession(ctx) {
         setFxDelegate(null);
         cancelAnimationFrame(rafId);
         resizeObserver.disconnect();
+        teardownLaneReposition();
         layer.remove();
+        gfxPositionLaneZone();
         gfxFlushComboAggregate(); // ✅ بند 4: حتى الإنهاء القسري لا يُفقِد أي أثر خبرة/ارتقاء مُجمَّع بصمت
     }
 
@@ -17978,6 +17998,15 @@ function getGiftStageOverlay() {
     return ui;
 }
 
+// 🐛 مراجعة #163 (الجولة 7 — "اسم المستلم يُقَصّ من بدايته"): كان القصّ بـCSS على السطر كاملاً
+// (text-overflow:ellipsis بصندوق واحد) — يقصّ من نهاية الصندوق بصرف النظر عن اتجاه كل اسم على
+// حدة، فيظهر قص داخل اسم المستلم نفسه ("…o77n") حين يختلط لاتيني (الأسماء) بعربي (الجملة) ويطول
+// المجموع. الآن كل اسم يُقصّ بذاته (≤12 حرفاً) قبل التركيب، معزولاً بـ<bdi> كي لا يُفسِد اتجاهه
+// اتجاه الجملة المحيطة — فتبقى "X أرسل GIFT إلى Y" مقروءة دوماً مهما طال الاسمان
+function gfxTruncateStageName(name, max) {
+    if (!name) return '';
+    return name.length > max ? name.slice(0, max) + '…' : name;
+}
 // ✅ شارة علوية واحدة طوال مدة تشغيل فيديو الهدية كاملة (طلب صريح — بند 2أ): "فلان أرسل الهدية
 // إلى فلان". فتحة واحدة فقط (فيديو واحد يُشغَّل بأي لحظة أصلاً، راجع طابور GiftStage) — لا طابور
 // منفصل لها، تُستبدَل فوراً لو وصل عرض جديد (لن يحدث عملياً لأن طابور الفيديو نفسه متسلسل)
@@ -17985,14 +18014,16 @@ function gfxShowGiftTopBanner(evt) {
     getGiftStageOverlay();
     const el = document.getElementById('gift-stage-banner-top');
     if (!el) return;
-    const toLabel = (evt.receivers && evt.receivers.length > 1) ? `${evt.receivers.length} مستلمين` : (evt.receivers?.[0]?.username || '');
+    const toLabel = (evt.receivers && evt.receivers.length > 1) ? `${evt.receivers.length} مستلمين` : gfxTruncateStageName(evt.receivers?.[0]?.username || '', 12);
     el.innerHTML = '';
     const line = document.createElement('span');
-    const b1 = document.createElement('b'); b1.textContent = evt.sender?.username || '';
+    const b1 = document.createElement('b');
+    const bdi1 = document.createElement('bdi'); bdi1.textContent = gfxTruncateStageName(evt.sender?.username || '', 12); b1.appendChild(bdi1);
     const mid = document.createTextNode(' أرسل ');
     const giftName = document.createTextNode(evt.gift?.name || 'هدية');
     const toText = document.createTextNode(toLabel ? ` إلى ` : '');
-    const b2 = document.createElement('b'); b2.textContent = toLabel;
+    const b2 = document.createElement('b');
+    const bdi2 = document.createElement('bdi'); bdi2.textContent = toLabel; b2.appendChild(bdi2);
     line.appendChild(b1); line.appendChild(mid); line.appendChild(giftName); line.appendChild(toText); line.appendChild(b2);
     el.appendChild(line);
     el.classList.add('show');
@@ -19305,12 +19336,23 @@ function scheduleLaneExpire(item) {
 // messages السفلية الحقيقية (= حافة شريط الكتابة العلوية فعلياً، التخطيط عمود flex) بدل top:46%
 // الثابتة سابقاً التي كانت تضع الشريط بمنتصف الشاشة فوق المقاعد والموكب معاً. bottom:96px
 // بالـCSS يبقى احتياطاً فقط لو تعذّر إيجاد عنصر الدردشة لأي سبب
+// 🐛 مراجعة #163 (الجولة 7 — "صف إشعار المُرسِل تحت زر الكومبو البرتقالي"): كانت
+// startGiftComboSession تكتب bottom مباشرة بدالة محلية منفصلة — تُكتَب فوقها فوراً هنا (تُستدعى
+// من giftStageOnLaneShow عند كل صف جديد، بما فيها صف الكومبو نفسه) فيضيع رفعها كلياً. الآن دالة
+// واحدة فقط تكتب bottom — تأخذ أكبر قيمة بين موضعها المعتاد (فوق الدردشة) وموضع يكفي لتخطّي
+// #gfx-combo (زر الكومبو الذاتي، z611) حين يكون ظاهراً، لا تضارب بين كاتبين منفصلين
 function gfxPositionLaneZone() {
     const lane = document.getElementById('gift-stage-lane');
     const chat = document.getElementById('room-chat-messages');
     if (!lane || !chat) return;
     const r = chat.getBoundingClientRect();
-    lane.style.bottom = `${Math.max(8, Math.round(window.innerHeight - r.bottom) + 10)}px`;
+    let bottom = Math.max(8, Math.round(window.innerHeight - r.bottom) + 10);
+    const combo = document.getElementById('gfx-combo');
+    if (combo) {
+        const comboTop = combo.getBoundingClientRect().top;
+        bottom = Math.max(bottom, Math.round(window.innerHeight - comboTop) + 8);
+    }
+    lane.style.bottom = `${bottom}px`;
 }
 function giftStageOnLaneShow(item) {
     getGiftStageOverlay();
