@@ -3441,8 +3441,10 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .gift-proc-head { position: absolute; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; animation: giftProcHeadIn .35s cubic-bezier(.2,1.4,.4,1); }
 @keyframes giftProcHeadIn { from { transform: translateX(-50%) scale(.4); opacity: 0; } }
 .gift-proc-who { background: linear-gradient(90deg,#ff5fa8cc,#a46bffcc); border-radius: 999px; padding: 3px 12px; font-size: 11.5px; font-weight: 900; white-space: nowrap; box-shadow: 0 4px 18px rgba(255,95,168,.35); color: #fff; }
-.gift-proc-cnt { font-family: 'Baloo Bhaijaan 2','Cairo',sans-serif; font-size: 36px; font-weight: 800; line-height: 1; background: linear-gradient(180deg,#fff7d6,#ffcc4d 55%,#ff8a00); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 0 #7a3a00) drop-shadow(0 0 12px rgba(255,176,32,.55)); transition: transform .12s; direction: ltr; }
-.gift-proc-cnt.bump { transform: scale(1.3); }
+/* 🐛 مراجعة #163 (الجولة 8 — طلب صريح: العدّاد يظهر فقط بصف الشريط الجانبي وزر الكومبو): هذا
+   العنصر يبقى بالـDOM (منطق توقيته بـgiftStageOnProcPop/Extend بـapp.js لا يزال يُحدِّث نصّه
+   ويعتمد على مؤقّته الحقيقي) لكن مخفي بصرياً — لا رقم مكرَّر فوق المقاعد */
+.gift-proc-cnt { display: none; }
 .gift-proc-item { position: absolute; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; font-size: 32px; filter: drop-shadow(0 0 8px rgba(255,95,168,.65)); transition: left .7s cubic-bezier(.5,0,.3,1), top .7s cubic-bezier(.5,0,.3,1), transform .7s, opacity .25s; }
 .gift-proc-item img { width: 100%; height: 100%; object-fit: contain; }
 .gift-proc-item.in { animation: giftProcPop .4s cubic-bezier(.2,1.6,.4,1); }
@@ -3451,10 +3453,10 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 @keyframes giftProcSpark { to { transform: translate(var(--dx), var(--dy)) scale(.2); opacity: 0; } }
 .gift-proc-trail { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: radial-gradient(circle,#fff,#ff5fa8 60%,transparent 70%); animation: giftProcTrail .5s linear forwards; }
 @keyframes giftProcTrail { to { opacity: 0; transform: scale(.3); } }
-.gift-proc-celebrate { position: absolute; inset: 0; display: grid; place-items: center; font-family: 'Baloo Bhaijaan 2','Cairo',sans-serif; font-size: min(16vw,64px); font-weight: 800; color: #fff; text-shadow: 0 0 20px #ff5fa8, 0 0 40px #a46bff; animation: giftProcCelebrate .9s ease-out forwards; direction: ltr; }
-@keyframes giftProcCelebrate { from { transform: scale(.3); opacity: 0; } 30% { transform: scale(1.15); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+/* 🐛 مراجعة #163 (الجولة 8): .gift-proc-celebrate (رقم ×N آخر عند اكتمال الموكب) أُزيل من
+   app.js — نص فقط يكرِّر عدّاد صف الشريط الجانبي بلا أي قيمة بصرية إضافية */
 @media (prefers-reduced-motion: reduce) {
-    .gift-proc-head, .gift-proc-item, .gift-proc-item.in, .gift-proc-spark, .gift-proc-trail, .gift-proc-celebrate { animation: none !important; transition: none !important; }
+    .gift-proc-head, .gift-proc-item, .gift-proc-item.in, .gift-proc-spark, .gift-proc-trail { animation: none !important; transition: none !important; }
 }
 .lite-mode .gift-proc-item { transition-duration: .3s; }
 
@@ -7818,10 +7820,8 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
 @keyframes gfxJitter { 25% { transform: translate(1px, -1px); } 50% { transform: translate(-1px, 1px); } 75% { transform: translate(1px, 1px); } }
 .gfx-press { transform: scale(0.92); }
 
-/* شارة الرقم الكبير عند الأهداف (×10/66/99/188/520/1314) */
-.gfx-mile { position: fixed; inset: 0; z-index: 613; display: grid; place-items: center; pointer-events: none; }
-.gfx-mile b { font-family: 'Baloo Bhaijaan 2', 'Cairo', sans-serif; font-weight: 800; font-size: min(22vw, 120px); color: #fff; -webkit-text-stroke: 3px #ff6a00; text-shadow: 0 0 30px #ffb648, 0 0 60px #ff4f1a; animation: gfxMile 1s cubic-bezier(.2, 1.6, .4, 1) forwards; direction: ltr; }
-@keyframes gfxMile { 0% { transform: scale(0.2); opacity: 0; } 25% { transform: scale(1.15); opacity: 1; } 70% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.4); opacity: 0; } }
+/* 🐛 مراجعة #163 (الجولة 8): .gfx-mile (الرقم الضخم وسط الشاشة عند الأهداف) أُزيل من app.js —
+   كان يكرِّر عدّاد #gfx-combo نفسه؛ الانفجار/الاهتزاز وحدهما يبقيان كردّ الفعل الاحتفالي */
 @keyframes gfxShake { 0% { transform: translate(0, 0); } 25% { transform: translate(-4px, 3px); } 50% { transform: translate(4px, -3px); } 75% { transform: translate(-3px, 2px); } 100% { transform: translate(0, 0); } }
 .gfx-shaking { animation: gfxShake 0.22s linear 2; }
 
@@ -7875,7 +7875,7 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
 @keyframes gfxTopToastOut { to { opacity: 0; transform: translateY(-14px); } }
 
 @media (prefers-reduced-motion: reduce) {
-    .gfx-layer, .gfx-layer *, .gfx-mile b, .gfx-legend, .gfx-legend *, .gfx-fly, .gfx-top-toast, .gfx-top-toast.out {
+    .gfx-layer, .gfx-layer *, .gfx-legend, .gfx-legend *, .gfx-fly, .gfx-top-toast, .gfx-top-toast.out {
         animation: none !important; transition: none !important;
     }
     .gfx-shaking { animation: none !important; }

@@ -2499,7 +2499,11 @@ document.addEventListener('DOMContentLoaded', () => {
         bubble.className = 'dm-floating-bubble';
         bubble.style.top = '110px';
         bubble.style.right = '10px';
-        bubble.innerHTML = `<img src="${profileImage}" class="w-full h-full rounded-full object-cover" alt="${escapeHtml(senderName)}">`;
+        // 🐛 مراجعة #163 (الجولة 8 — "أيقونة صورة مكسورة قرب صف المقاعد الأول"): <img> خام بلا أي
+        // احتياط فشل تحميل (ولا حتى ضمن avatar__photo/data-avatar-fallback التي يلتقطها مستمع
+        // onerror العام أسفل الملف) — avatarHTML تعطي نفس احتياط الحرف الملوَّن المُستخدَم بكل
+        // أفاتار آخر بالتطبيق، بدل أيقونة المتصفح المكسورة الافتراضية
+        bubble.innerHTML = avatarHTML({ src: profileImage, name: senderName, userId: senderId, wrapStyle: '--size:56px' });
         document.body.appendChild(bubble);
 
         let dragging = false, moved = false, startX = 0, startY = 0, origX = 0, origY = 0;
@@ -2779,7 +2783,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         roomJoinNoticeLastShownAt = Date.now();
         el.classList.remove('on');
-        el.innerHTML = `🚪 <b>${escapeHtml(username || '')}</b> دخلت الغرفة`;
+        // 🐛 مراجعة #163 (الجولة 8 — طلب صريح): هذا الإشعار يُلحَق بنفس حاوية #gift-stage-lane
+        // (راجع getGiftStageOverlay) فيدخل فعلياً ضمن نطاق "أي اسم داخل #gift-fx-*" رغم أنه
+        // ليس إشعار هدية — نفس دالة القصّ المُستخدَمة بكل مكان آخر تُطبَّق هنا أيضاً
+        el.innerHTML = `🚪 <b>${escapeHtml(gfxTruncateStageName(username || '', 12))}</b> دخلت الغرفة`;
         requestAnimationFrame(() => { el.classList.add('on'); });
         setTimeout(() => {
             el.classList.remove('on');
@@ -17662,8 +17669,9 @@ function startGiftComboSession(ctx) {
             return { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 2, r: 2 + Math.random() * 3, rgb };
         });
         bursts.push({ x, y, R: VW * (big ? 0.5 : 0.32), t: 0, T: big ? 75 : 55, sp });
-        const d = document.createElement('div'); d.className = 'gfx-mile'; d.innerHTML = `<b>×${m.toLocaleString('en-US')}</b>`;
-        layer.appendChild(d); setTimeout(() => d.remove(), 1000);
+        // 🐛 مراجعة #163 (الجولة 8 — طلب صريح: العدّاد يظهر فقط بصف الشريط الجانبي وزر الكومبو):
+        // رقم ×N الضخم وسط الشاشة هنا كان يكرِّر عدّاد #gfx-combo نفسه — أُزيل، يبقى الانفجار/
+        // الاهتزاز فقط (ردّ الفعل الاحتفالي الحقيقي، لا رقم مكرَّر)
         document.body.classList.remove('gfx-shaking'); void document.body.offsetWidth; document.body.classList.add('gfx-shaking');
         setTimeout(() => document.body.classList.remove('gfx-shaking'), big ? 700 : 300);
     }
@@ -18374,7 +18382,11 @@ function giftStageOnProcPop(proc, done) {
     head.style.left = center.x + 'px';
     head.style.top = (center.y - 70) + 'px';
     head.innerHTML = '<span class="gift-proc-who"></span><span class="gift-proc-cnt" dir="ltr">×1</span>';
-    head.querySelector('.gift-proc-who').textContent = `${proc.sender?.username || ''} ← ${toLabel}`;
+    // 🐛 مراجعة #163 (الجولة 8): الاسمان خام بلا قصّ — حبّة مستديرة (.gift-proc-who أصلاً
+    // border-radius:999px) بلا عرض أقصى تتمدَّد بعرض النص كاملاً فتتجاوز حافتي الشاشة، فتبدو
+    // كشريط حاد الحواف (الزوايا المستديرة تخرج فعلياً خارج الشاشة، لا قصّ CSS حقيقي) — نفس
+    // دالة القصّ المُستخدَمة بالشارة العلوية والشريط الجانبي الآن تُحجِّم كلا الاسمين هنا أيضاً
+    head.querySelector('.gift-proc-who').textContent = `${gfxTruncateStageName(proc.sender?.username || '', 12)} ← ${gfxTruncateStageName(toLabel, 12)}`;
     layer.appendChild(head);
     proc._headEl = head;
     const cntEl = head.querySelector('.gift-proc-cnt');
@@ -18409,18 +18421,11 @@ function giftStageOnProcPop(proc, done) {
     }, step);
     proc._items = items;
 }
-function giftStageOnProcCelebrate(proc) {
-    if (gfxPrefersReducedMotion()) return;
-    getGiftStageOverlay();
-    const layer = document.getElementById('gift-stage-fly-layer');
-    if (!layer) return;
-    const m = document.createElement('div');
-    m.className = 'gift-proc-celebrate';
-    m.dir = 'ltr';
-    m.textContent = '×' + proc.realQty.toLocaleString('en-US');
-    layer.appendChild(m);
-    setTimeout(() => m.remove(), 950);
-}
+// 🐛 مراجعة #163 (الجولة 8 — طلب صريح: العدّاد يظهر فقط بصف الشريط الجانبي وزر الكومبو): كانت
+// تضيف رقم ×N ضخماً آخر وسط الشاشة عند اكتمال الموكب — يكرِّر عدّاد صف الشريط الجانبي نفسه بلا
+// أي قيمة بصرية إضافية (لا جسيمات ولا تأثير آخر، نص فقط) — أُفرِغت، تبقى الدالة للتوافق مع
+// استدعاء GiftStage (onProcCelebrate) فلا تُكسَر الواجهة بين المحرّك والعرض
+function giftStageOnProcCelebrate(proc) {}
 function giftStageOnProcLaunch(proc, unitIndex, recipient) {
     const el = proc._items && proc._items[unitIndex];
     const stagger = proc.isLite ? 60 : 110;
@@ -18471,7 +18476,7 @@ function giftStageOnProcExtend(proc) {
     if (!proc._headEl) return;
     const toLabel = (proc.targets.length > 1) ? proc.targets.map(t => t?.username).filter(Boolean).join('، ') : (proc.targets[0]?.username || '');
     const whoEl = proc._headEl.querySelector('.gift-proc-who');
-    if (whoEl) whoEl.textContent = `${proc.sender?.username || ''} ← ${toLabel}`;
+    if (whoEl) whoEl.textContent = `${gfxTruncateStageName(proc.sender?.username || '', 12)} ← ${gfxTruncateStageName(toLabel, 12)}`;
     const cntEl = proc._headEl.querySelector('.gift-proc-cnt');
     if (cntEl) cntEl.textContent = '×' + proc.realQty.toLocaleString('en-US');
 }
@@ -19347,10 +19352,16 @@ function gfxPositionLaneZone() {
     if (!lane || !chat) return;
     const r = chat.getBoundingClientRect();
     let bottom = Math.max(8, Math.round(window.innerHeight - r.bottom) + 10);
-    const combo = document.getElementById('gfx-combo');
-    if (combo) {
-        const comboTop = combo.getBoundingClientRect().top;
-        bottom = Math.max(bottom, Math.round(window.innerHeight - comboTop) + 8);
+    // 🐛 مراجعة #163 (الجولة 8): .gfx-ring (الحلقة حول الزر) أكبر من #gfx-combo نفسه بسالب 7px
+    // بكل جهة (inset:-7px بالـCSS) — قياس الزر وحده كان يُبقي الحلقة البصرية متداخلة فعلياً رغم
+    // نجاح الفحص الرقمي. القياس الآن من الحلقة نفسها (الحدود البصرية الفعلية الكاملة) + فسحة 12px
+    const comboRing = document.querySelector('#gfx-combo .gfx-ring');
+    if (comboRing) {
+        const ringTop = comboRing.getBoundingClientRect().top;
+        // 🐛 مراجعة #163 (الجولة 8): ceil لا round — round قد يُنقِص الفسحة المطلوبة (12px) جزءاً
+        // من بكسل حقيقياً لو كانت القيمة كسرية (قياس حيّ لا رقم صحيح)، فيسقط الفحص الآلي أحياناً
+        // رغم أن الفرق بكسر بكسل واحد فقط — ceil يضمن 12px فأكثر دوماً، لا أقل أبداً
+        bottom = Math.max(bottom, Math.ceil(window.innerHeight - ringTop) + 12);
     }
     lane.style.bottom = `${bottom}px`;
 }
@@ -19369,7 +19380,10 @@ function giftStageOnLaneShow(item) {
         <span class="gift-lane-gift">${giftImgUrl ? '' : '🎁'}</span>
         <span class="gift-lane-x" dir="ltr">×${item.count.toLocaleString('en-US')}</span>
     `;
-    el.querySelector('.gift-lane-txt b').textContent = item.sender?.username || '';
+    // 🐛 مراجعة #163 (الجولة 8 — "اسم الصف يُقصّ من بدايته"): كان القصّ بـCSS فقط (text-overflow:
+    // ellipsis) بلا تحكّم باتجاه القصّ — نفس اسم الدالة المُستخدَمة بالشارة العلوية الآن تُقصّ
+    // النص قبل وضعه (نهاية الاسم دوماً لا بدايته)، راجع gfxTruncateStageName
+    el.querySelector('.gift-lane-txt b').textContent = gfxTruncateStageName(item.sender?.username || '', 12);
     // 🛡️ نفس احتياط "الحرف الأول على لون ثابت" الذي تولِّده avatarHTML({name,...}) بالضبط، لكن
     // ببناء DOM مباشر (لا innerHTML) — avatarUrl من بيانات بثّ مستخدم آخر (غير موثوقة)، فتمريرها
     // كسلسلة نصّية داخل قالب HTML يفتح XSS لو احتوت حرف اقتباس يكسر السمة؛ التعيين بخاصية .src
