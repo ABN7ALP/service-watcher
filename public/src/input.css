@@ -3323,8 +3323,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    تكديس محلياً ضمن #main-content، وأي سلف آخر مستقبلي قد يفعل المثل. z-index محلي مهما عَلَت
    قيمته يبقى محصوراً داخل سياق تكديس سلفه فقط — لا يتجاوزه أبداً مهما كانت القيمة الرقمية.
    الحل الجذري الفعلي: طبقتا الفيديو/الطيران (ومعهما الموكب/الشريط/الشارة العلوية) انتقلت
-   بالكامل لعنصر وحيد position:fixed مُلحَق بـdocument.body مباشرة (راجع .gift-stage-overlay
-   أسفله وgetGiftStageOverlay بـapp.js) — تماماً كفلسفة .gfx-layer الموجودة أصلاً (fixed+body)
+   بالكامل لعنصرين شقيقين position:fixed مُلحَقين بـdocument.body مباشرة (راجع #gift-fx-video/
+   #gift-fx-ui أسفله وgetGiftStageOverlay بـapp.js — عنصران لا عنصر واحد لاحقاً، لسبب مزج آخر
+   غير علاقة بالتكديس، راجع تعليقهما) — تماماً كفلسفة .gfx-layer الموجودة أصلاً (fixed+body)
    التي "تعمل فوق كل شيء دوماً بلا استثناء"، فيتخطّى أي سياق تكديس محلي بالغرفة كلياً بلا استثناء */
 
 /* ===== إعلان الدخول المنزلق (يحل محل التصميم المضمَّن القديم بسطر الدردشة لنادي المعجبين فقط —
@@ -3361,25 +3362,31 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 @keyframes roomEntranceToastReduced { 0% { inset-inline-end: 4%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { opacity: 0; } }
 
 /* =====================================================
-   🛡️ fix/gift-stage-top-layer — المرحلة الموحَّدة (gift-stage-overlay)
-   عنصر وحيد position:fixed مُلحَق بـdocument.body (راجع getGiftStageOverlay بـapp.js)، يحوي:
-   الفيديو/الموكب+الطيران/الشريط الجانبي/الشارة العلوية معاً — فوق كل عناصر الغرفة (المقاعد
-   والدردشة والشرائط معاً) وتحت شيت الهدايا والمودالات (z-index أقل من 320/400 بالتصميم)
+   🛡️ fix/gift-stage-top-layer — المرحلة الموحَّدة، الآن عنصران شقيقان مستقلان (راجع
+   getGiftStageOverlay بـapp.js)
+   🐛 إصلاح جذري (مراجعة #163 — أسود صلب خلف الفيديو): كانت mix-blend-mode:screen على طبقة
+   متداخلة داخل غلاف واحد (gift-stage-overlay، نفسه position:fixed). المتصفح يُركِّب نتيجة
+   المزج مع خلفية سياق التكديس الذي تنتمي إليه الطبقة — وبما أن الغلاف الأب شفاف شبه فارغ
+   (لا يحوي شيئاً سوى الفيديو نفسه)، لا "محتوى صفحة حقيقي" يُمزَج معه، فتظهر أجزاء الفيديو
+   الداكنة أسوداً صلباً بدل الشفافية الحقيقية حول الفيديو — ثابت بلقطات تحقّق حقيقية للفيديوهات
+   الخمسة معاً. الحل: #gift-fx-video عنصر شقيق مستقل تحت body مباشرة بلا أي غلاف أب آخر على
+   الإطلاق (لا شيء بينه وبين body يُنشئ سياق تكديس) يحمل mix-blend-mode على نفسه مباشرة ولا
+   يحوي شيئاً غير الفيديو الخام نفسه (لا شارة ×N ولا صورة الوضع الخفيف — هذي عناصر داكنة
+   الخلفية أيضاً، لو دخلت طبقة المزج لَخفَتت لنفس السبب تماماً). #gift-fx-ui شقيق آخر فوقه
+   (z أعلى، مزج طبيعي) يحمل الشارة العلوية/الموكب+الطيران/الشريط الجانبي/شارة ×N/صورة الوضع
+   الخفيف — فوق كل عناصر الغرفة (المقاعد والدردشة والشرائط معاً) وتحت شيت الهدايا والمودالات
    ===================================================== */
-.gift-stage-overlay { position: fixed; inset: 0; z-index: 605; pointer-events: none; overflow: hidden; }
-/* 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2): كل نظام الآن منطقته الثابتة الخاصة التي لا تتقاطع
-   مع أي نظام آخر — ترتيب z صريح (لا يعتمد على ترتيب DOM وحده) بين أبناء الطبقة: الموكب/الطيران
-   أسفل، الشريط الجانبي فوقه، الفيديو ملء الشاشة فوق كليهما ("المسموح الوحيد بتغطية غيره" —
-   يُخفي أي بقايا موكب/شريط متزامنة صدفة)، والشارة العلوية الأعلى دوماً (يجب أن تبقى مقروءة
-   طوال تشغيل الفيديو نفسه — هذي وحدها جزء من ميزة الفيديو، لا شيء "يُغطّى" به) */
+#gift-fx-video { position: fixed; inset: 0; z-index: 605; pointer-events: none; overflow: hidden; mix-blend-mode: screen; }
+#gift-fx-ui { position: fixed; inset: 0; z-index: 606; pointer-events: none; overflow: hidden; }
+/* ترتيب z صريح بين أبناء #gift-fx-ui وحدها (الفيديو خارجها كلياً الآن، راجع أعلاه) — الموكب/
+   الطيران أسفل، الشريط الجانبي فوقه، الشارة العلوية الأعلى دوماً (تبقى مقروءة طوال أي تشغيل) */
 .gift-stage-fly-layer { position: absolute; inset: 0; overflow: visible; z-index: 1; }
 .gift-stage-lane { position: absolute; left: 10px; bottom: 96px; display: flex; flex-direction: column-reverse; gap: 8px; max-width: 72vw; z-index: 2; }
-.gift-stage-video-layer { position: absolute; inset: 0; overflow: hidden; mix-blend-mode: screen; z-index: 3; }
 
 /* ✅ شارة علوية طوال مدة تشغيل فيديو الهدية كاملة (طلب صريح — بند 2أ) */
 .gift-stage-banner-top {
     position: absolute; top: calc(env(safe-area-inset-top, 0px) + 54px); left: 50%;
-    opacity: 0; transform: translate(-50%, -14px); pointer-events: none; z-index: 4;
+    opacity: 0; transform: translate(-50%, -14px); pointer-events: none; z-index: 3;
     background: rgba(18, 8, 28, .78); backdrop-filter: blur(6px); color: #fff;
     font-size: 12.5px; font-weight: 700; padding: 6px 16px; border-radius: 999px;
     box-shadow: 0 4px 18px rgba(0, 0, 0, .4); max-width: 86vw; white-space: nowrap;
@@ -7857,7 +7864,7 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
    hardwareConcurrency≤4 نواة أو تقليل الحركة — راجع isWeakDevice بـapp.js، يُضاف صنفه هنا
    على body عند دخول الغرفة). backdrop-filter مكلف فعلياً (يُعاد حسابه بكل إعادة رسم لكل بكسل
    خلفه) — يُزال كلياً من كل عناصر الغرفة/شيت الهدايا على هذي الأجهزة (.gift-lane-item لها
-   قاعدتها الخاصة أعلى الملف، راجع .gift-stage-overlay) */
+   قاعدتها الخاصة أعلى الملف، راجع #gift-fx-ui) */
 body.gfx-weak-device .room-chat-bubble-default,
 body.gfx-weak-device .room-chat-input-pill,
 body.gfx-weak-device .room-chat-input-pill button.room-chat-send-active,

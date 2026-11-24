@@ -17321,12 +17321,14 @@ function teardownGiftComboFx() {
     document.querySelectorAll('.gift-lane-item[data-gift-lane-item]').forEach(el => el.remove());
     // 🛡️ fix/gift-stage-top-layer: المرحلة الموحَّدة (فيديو/طيران/موكب/شريط/شارة علوية) عنصر
     // ثابت وحيد خارج DOM الغرفة تماماً الآن — تطهيرها الكامل هنا، لا انتظار إعادة إنشاء الغرفة
-    document.getElementById('gift-stage-video-layer')?.replaceChildren();
+    document.getElementById('gift-fx-video')?.replaceChildren();
     document.getElementById('gift-stage-fly-layer')?.replaceChildren();
     document.getElementById('gift-stage-lane')?.replaceChildren();
     gfxHideGiftTopBanner();
     roomGiftStage.leaveRoom();
-    document.getElementById('gfx-top-toast')?.remove();
+    // 🐛 إصلاح مرجع عالق (مراجعة #163): كان #gfx-top-toast معرّفاً وحيداً قديماً — التوست الآن
+    // طابور حقيقي (gfx-top-toast-stack، راجع gfxShowTopToast) بلا معرّف فردي لكل عنصر
+    document.getElementById('gfx-top-toast-stack')?.replaceChildren();
     // 🐛 إصلاح جذري (الخطأ ب — الهدايا توقّفت عن الطيران للمقعد): gfxActiveFlyCount (بند 3،
     // حدّ الطيران المتزامن على الأجهزة الضعيفة) لم تكن تُصفَّر هنا أبداً — أي رسوم طيران لم
     // يكتمل حدث onfinish الخاص بها فعلياً قبل مغادرة الغرفة (عنصرها أُزيل من DOM قسراً ضمن
@@ -17939,20 +17941,33 @@ function startGiftComboSession(ctx) {
 // المتصفح المحلي وقت التطوير (تقرير حقيقي: التنين/السيف/اليخت خلف الدردشة، الحديقة فقط ظهرت
 // صحيحة — ليست مصادفة؛ فرق توقيت القياس/حجم المحتوى البصري فقط، لا اختلاف جذري بين الهدايا)
 // — نفس فلسفة .gfx-layer الموجودة أصلاً (fixed+body، تعمل فوق كل شيء دوماً بلا استثناء).
+// 🐛 إصلاح جذري آخر (مراجعة #163 — الأسود الصلب خلف الفيديو): mix-blend-mode:screen كان على
+// #gift-stage-video-layer، لكنها عنصر متداخل داخل #gift-stage-overlay (fixed نفسه) — المزج
+// يُركَّب مع خلفية سياق تكديس ذاك الغلاف المعزول (شبه فارغة شفافة) لا مع محتوى الصفحة الحقيقي
+// خلفه، فيظهر أسود صلب مكان الشفافية الحقيقية حول الفيديو (مؤكَّد بلقطات تحقّق حقيقية للفيديوهات
+// الخمسة معاً). الحل: عنصران شقيقان مستقلان مباشرة تحت body (لا غلاف أب مشترك بينهما إطلاقاً) —
+// #gift-fx-video يحمل mix-blend-mode على نفسه مباشرة (الفيديو الخام فقط بداخله، لا شارة ×N ولا
+// صورة الوضع الخفيف الثابتة — هذي تذهب لـ#gift-fx-ui كي لا تُمزَج هي الأخرى فتخفت)، و#gift-fx-ui
+// فوقه (z أعلى) بمزج طبيعي يحمل الشارة العلوية/الموكب+الطيران/الشريط الجانبي
 function getGiftStageOverlay() {
-    let el = document.getElementById('gift-stage-overlay');
-    if (el) return el;
-    el = document.createElement('div');
-    el.id = 'gift-stage-overlay';
-    el.className = 'gift-stage-overlay';
-    el.innerHTML = `
-        <div id="gift-stage-banner-top" class="gift-stage-banner-top"></div>
-        <div id="gift-stage-video-layer" class="gift-stage-video-layer"></div>
-        <div id="gift-stage-fly-layer" class="gift-stage-fly-layer"></div>
-        <div id="gift-stage-lane" class="gift-stage-lane"></div>
-    `;
-    document.body.appendChild(el);
-    return el;
+    let video = document.getElementById('gift-fx-video');
+    if (!video) {
+        video = document.createElement('div');
+        video.id = 'gift-fx-video';
+        document.body.appendChild(video);
+    }
+    let ui = document.getElementById('gift-fx-ui');
+    if (!ui) {
+        ui = document.createElement('div');
+        ui.id = 'gift-fx-ui';
+        ui.innerHTML = `
+            <div id="gift-stage-banner-top" class="gift-stage-banner-top"></div>
+            <div id="gift-stage-fly-layer" class="gift-stage-fly-layer"></div>
+            <div id="gift-stage-lane" class="gift-stage-lane"></div>
+        `;
+        document.body.appendChild(ui);
+    }
+    return ui;
 }
 
 // ✅ شارة علوية واحدة طوال مدة تشغيل فيديو الهدية كاملة (طلب صريح — بند 2أ): "فلان أرسل الهدية
@@ -18003,8 +18018,9 @@ function giftStageOnVideoPreload(item) {
     item._preloadEl = v;
 }
 
-// ✅ مشغّل فيديو مؤثر الهدية — فوق الغرفة بـmix-blend-mode:screen (على طبقة
-// #gift-stage-video-layer نفسها لا الفيديو المعزول، وإلا يظهر الأسود). يستدعي done() فقط —
+// ✅ مشغّل فيديو مؤثر الهدية — فوق الغرفة بـmix-blend-mode:screen على #gift-fx-video نفسها
+// (عنصر شقيق مستقل مباشرة تحت body لا متداخل بأي غلاف آخر — راجع تعليق getGiftStageOverlay
+// لسبب فشل الأسود حين كانت متداخلة). يستدعي done() فقط —
 // المحرّك (giftEngine.js) هو من يُشغِّل الطيران بعدها عبر giftStageOnFly، لا هذي الدالة. قواعد الخفة:
 // • لا تحميل مسبق لأي عنصر عدا "التالي بالطابور" (giftStageOnVideoPreload أعلاه)
 // • وضع الأجهزة الضعيفة/توفير البيانات: صورة ثابتة ثانية واحدة، صفر طلب فيديو
@@ -18013,10 +18029,10 @@ function giftStageOnVideoPreload(item) {
 // • تأخّر أكثر من 1.5 ثانية (إنترنت ضعيف) = إلغاء وطيران فوري
 // • عنصر الفيديو يُحذف ويُفرَّغ مصدره دوماً بعد الانتهاء (نجاحاً أو إلغاءً) — لا بقايا بالذاكرة
 function giftStageOnVideoPlay(item, done) {
-    getGiftStageOverlay();
-    const layer = document.getElementById('gift-stage-video-layer');
+    const uiLayer = getGiftStageOverlay();
+    const videoLayer = document.getElementById('gift-fx-video');
     const evt = item.evt;
-    if (!layer || document.hidden || gfxPrefersReducedMotion()) { done(); return; }
+    if (!videoLayer || !uiLayer || document.hidden || gfxPrefersReducedMotion()) { done(); return; }
     gfxShowGiftTopBanner(evt);
     const finish = () => { gfxHideGiftTopBanner(); done(); };
 
@@ -18036,7 +18052,8 @@ function giftStageOnVideoPlay(item, done) {
         }
         const liteCenter = gfxStagePopCenterPoint();
         if (liteCenter) { s.style.left = liteCenter.x + 'px'; s.style.top = liteCenter.y + 'px'; }
-        layer.appendChild(s);
+        // ✅ ليست فيديو letterboxed — تذهب لطبقة الواجهة الطبيعية (لا مزج screen) كي تبقى واضحة
+        uiLayer.appendChild(s);
         setTimeout(() => { s.remove(); finish(); }, 1000);
         return;
     }
@@ -18066,13 +18083,16 @@ function giftStageOnVideoPlay(item, done) {
     v.addEventListener('ended', cleanupAndFly, { once: true });
     v.addEventListener('error', cleanupAndFly, { once: true });
     if (!v.src) v.src = evt.gift.videoUrl;
-    layer.appendChild(v);
-    // ✅ "×N" على آخر تشغيل فقط لكمية كبيرة من نفس الهدية (حتى 3 تشغيلات — راجع giftEngine.js)
+    // ✅ الفيديو الخام فقط هنا — طبقة المزج المعزولة، لا شيء آخر بداخلها إطلاقاً
+    videoLayer.appendChild(v);
+    // ✅ "×N" على آخر تشغيل فقط لكمية كبيرة من نفس الهدية (حتى 3 تشغيلات — راجع giftEngine.js):
+    // بطاقة داكنة (خلفية شبه سوداء) — لو دخلت طبقة المزج screen معها لَخفَتت لنفس سبب الأسود
+    // الصلب تماماً (نص/خلفية داكنة تُمزَج فتكاد تختفي)، فتذهب لطبقة الواجهة الطبيعية بدلاً
     if (item.badgeQty) {
         badge = document.createElement('span');
         badge.className = 'room-giftfx-video-badge';
         badge.textContent = '×' + item.badgeQty.toLocaleString('en-US');
-        layer.appendChild(badge);
+        uiLayer.appendChild(badge);
     }
     v.play().catch(cleanupAndFly);
 }
