@@ -3379,10 +3379,16 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    بداخلها، فتُغطّي أجزاء الهدية الصلبة ما تحتها فعلياً كالتطبيقات الكبرى (Tencent VAP وغيره).
    mix-blend-mode:screen تبقى فقط على .room-giftfx-video (الفيديو الخام نفسه) كاحتياط تلقائي
    حين يتعذّر WebGL (راجع أسفل) — نفس السلوك القديم، لا جديد، فقط نطاقه عنصر الفيديو لا الحاوية */
+/* 🐛 مراجعة #163 (الجولة 6 — "الدردشة" الظاهرة فوق الهدية فعلياً شريط إشعار الهدايا لا الدردشة):
+   صفوف "فلان أرسل..." الوردية وشريط راعي الهدية هي .gift-stage-lane (كانت ضمن #gift-fx-ui
+   z606، أعلى الكانفاس z605 بالخطأ) — عنصر ثالث مستقل تحت الكانفاس (z604) خاص بها فقط، فيُغطّيها
+   الكانفاس المعتم فعلياً كأي عنصر واجهة عادي بالغرفة (راجع قاعدة المالك: الهدية الكبيرة تُغطّي
+   كل شيء عدا زر الكومبو/الشيتات/#gift-fx-ui) */
+#gift-fx-lanes { position: fixed; inset: 0; z-index: 604; pointer-events: none; overflow: hidden; }
 #gift-fx-video { position: fixed; inset: 0; z-index: 605; pointer-events: none; overflow: hidden; }
 #gift-fx-ui { position: fixed; inset: 0; z-index: 606; pointer-events: none; overflow: hidden; }
-/* ترتيب z صريح بين أبناء #gift-fx-ui وحدها (الفيديو خارجها كلياً الآن، راجع أعلاه) — الموكب/
-   الطيران أسفل، الشريط الجانبي فوقه، الشارة العلوية الأعلى دوماً (تبقى مقروءة طوال أي تشغيل) */
+/* ترتيب z صريح بين أبناء #gift-fx-ui وحدها (الفيديو/الشريط خارجها كلياً الآن) — الموكب/الطيران
+   أسفل، الشارة العلوية الأعلى دوماً (تبقى مقروءة طوال أي تشغيل) */
 .gift-stage-fly-layer { position: absolute; inset: 0; overflow: visible; z-index: 1; }
 .gift-stage-lane { position: absolute; left: 10px; bottom: 96px; display: flex; flex-direction: column-reverse; gap: 8px; max-width: 72vw; z-index: 2; }
 
@@ -3400,17 +3406,21 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 @media (prefers-reduced-motion: reduce) { .gift-stage-banner-top { transition: opacity .15s; transform: translate(-50%, 0); } }
 
 /* ===== مؤثر فيديو الهدية ===== */
-/* 🛡️ feat/gift-display-engine (مراجعة: "مركز المؤثر أسفل مركز شبكة المقاعد قليلاً"): top يُضبَط
-   حياً بـJS (giftStageOnVideoPlay، عبر gfxStagePopCenterPoint) بإحداثيات بكسل حقيقية نسبة
-   لصندوق المقاعد الفعلي (يتكيّف تلقائياً مع وجود شريط PK/تحدي يُطوِّل الصندوق) — 40% هنا
-   احتياط فقط لو تعذّر إيجاد الصندوق لأي سبب */
+/* 🐛 مراجعة #163 (الجولة 6 — "صندوق بخط قص بمنتصف الشاشة"): كان المرساة نقطة مركز (translate
+   -50%,-50%) بمنطقة حسابية بين المقاعد والدردشة — ارتفاع الصندوق الفعلي (150% عرض، نسبة أبعاد
+   كل فيديو غير معروفة مسبقاً) قد يجعل حافته العلوية/السفلية تقع فعلياً وسط الشاشة فتظهر كخط قص
+   مستطيل واضح. الآن ارتكاز سفلي (translate -50%,-100%؛ top يُضبَط حياً = أعلى شريط الكتابة
+   الحقيقي .room-chat-dock، راجع gfxStageBottomAnchorPoint بـapp.js) — الحافة السفلى تلتصق
+   بأعلى الشريط دوماً بصرف النظر عن ارتفاع الفيديو، فيرتفع المؤثر من أسفل الشاشة كتطبيقات
+   البث المباشر الحقيقية، لا حافة تقع وسط الشاشة أبداً. يعمل بالوضع العادي/PK/التحدي لأن الشريط
+   عنصر تدفّق واحد مشترك بينها جميعاً. top=40% هنا احتياط فقط لو تعذّر إيجاد الشريط */
 /* ✅ احتياط تلقائي فقط حين يتعذّر إنشاء سياق WebGL (راجع gfxMakeLumaKeyRenderer) — فيديو خام
    بالأسلوب القديم (mix-blend-mode:screen إضافية، لا قص ألفا حقيقي) */
-.room-giftfx-video { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%); width: 150%; max-width: none; mix-blend-mode: screen; }
+.room-giftfx-video { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-100%); width: 150%; max-width: none; mix-blend-mode: screen; }
 /* ✅ القناة الأساسية الآن — نفس تموضع .room-giftfx-video بالضبط (JS يضبط left/top حياً بنفس
    القيم)، لكن معتمة بقص ألفا حقيقي عبر WebGL (راجع gfxMakeLumaKeyRenderer) لا مزج إضافي، فتُغطّي
    أجزاء الهدية الصلبة ما تحتها من مقاعد/دردشة فعلياً */
-.gift-fx-canvas { position: absolute; transform: translate(-50%,-50%); width: 150%; max-width: none; }
+.gift-fx-canvas { position: absolute; transform: translate(-50%,-100%); width: 150%; max-width: none; }
 .room-giftfx-static { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%); width: 90px; height: 90px; display: flex; align-items: center; justify-content: center; font-size: 56px; filter: drop-shadow(0 0 14px rgba(255,212,94,.5)); }
 /* ✅ شارة "×N" على آخر تشغيل فيديو فقط لكمية كبيرة من نفس الهدية (راجع giftStageOnVideoPlay) */
 .room-giftfx-video-badge {

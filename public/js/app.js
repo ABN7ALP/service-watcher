@@ -17948,8 +17948,17 @@ function startGiftComboSession(ctx) {
 // الخمسة معاً). الحل: عنصران شقيقان مستقلان مباشرة تحت body (لا غلاف أب مشترك بينهما إطلاقاً) —
 // #gift-fx-video يحمل mix-blend-mode على نفسه مباشرة (الفيديو الخام فقط بداخله، لا شارة ×N ولا
 // صورة الوضع الخفيف الثابتة — هذي تذهب لـ#gift-fx-ui كي لا تُمزَج هي الأخرى فتخفت)، و#gift-fx-ui
-// فوقه (z أعلى) بمزج طبيعي يحمل الشارة العلوية/الموكب+الطيران/الشريط الجانبي
+// فوقه (z أعلى) بمزج طبيعي يحمل الشارة العلوية/الموكب+الطيران. #gift-fx-lanes تحت الكانفاس (z604
+// — راجع #163 الجولة 6): شريط إشعار الهدايا (gift-stage-lane) لم يكن دردشة حقيقية كما ظُنّ أصلاً
+// بل صفوف "فلان أرسل..." نفسها — تنتقل تحت الكانفاس كي تُغطّيها الهدية الكبيرة كأي عنصر واجهة
 function getGiftStageOverlay() {
+    let lanes = document.getElementById('gift-fx-lanes');
+    if (!lanes) {
+        lanes = document.createElement('div');
+        lanes.id = 'gift-fx-lanes';
+        lanes.innerHTML = `<div id="gift-stage-lane" class="gift-stage-lane"></div>`;
+        document.body.appendChild(lanes);
+    }
     let video = document.getElementById('gift-fx-video');
     if (!video) {
         video = document.createElement('div');
@@ -17963,7 +17972,6 @@ function getGiftStageOverlay() {
         ui.innerHTML = `
             <div id="gift-stage-banner-top" class="gift-stage-banner-top"></div>
             <div id="gift-stage-fly-layer" class="gift-stage-fly-layer"></div>
-            <div id="gift-stage-lane" class="gift-stage-lane"></div>
         `;
         document.body.appendChild(ui);
     }
@@ -18035,11 +18043,15 @@ function giftStageOnVideoPreload(item) {
 // 166 نقطة معتمة عبر 5 هدايا أثبت لا خلل تكديس — لا نقطة واحدة أعلاها عنصر دردشة؛ الاستثناء
 // الوحيد هو شارة الكومبو #gfx-combo المُصرَّح بها أصلاً (z611 > z605 بالتصميم). preserveDrawingBuffer:true
 // لازمة فقط لقراءة ألفا الكانفاس بعد تقديمه للتحقّق الآلي، لا جزء من أي إصلاح تكديس
+// 🐛 مراجعة #163 (الجولة 6 — "صندوق بخط قص بمنتصف الشاشة"): حافة إطار الفيديو المستطيل نفسها
+// (uv 0..1) قد تكون ساطعة بما يكفي لتُقصّ معتمة (step/smoothstep أعلاه لا يعرفان حدود الإطار،
+// فقط سطوع البكسل) فتظهر كخط مستقيم حاد حيث ينتهي الفيديو فعلياً — ريشة e تُصفِّر الألفا تدريجياً
+// قرب الحواف الأربع (مضروبة بنفس عامل اللون المسبق الضرب) بصرف النظر عن سطوع محتوى تلك البكسلات
 function gfxMakeLumaKeyRenderer(video, canvas, onError) {
     const gl = canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: false, preserveDrawingBuffer: true });
     if (!gl) return null;
     const vs = 'attribute vec2 p;varying vec2 uv;void main(){uv=vec2((p.x+1.)/2.,1.-(p.y+1.)/2.);gl_Position=vec4(p,0.,1.);}';
-    const fs = 'precision mediump float;varying vec2 uv;uniform sampler2D t;void main(){vec3 c=texture2D(t,uv).rgb;float m=max(c.r,max(c.g,c.b));float a=smoothstep(0.035,0.22,m);gl_FragColor=vec4(c*step(0.035,m),a);}';
+    const fs = 'precision mediump float;varying vec2 uv;uniform sampler2D t;void main(){vec3 c=texture2D(t,uv).rgb;float m=max(c.r,max(c.g,c.b));float a=smoothstep(0.035,0.22,m);float e=smoothstep(0.0,0.08,uv.y)*smoothstep(0.0,0.08,1.0-uv.y)*smoothstep(0.0,0.04,uv.x)*smoothstep(0.0,0.04,1.0-uv.x);a*=e;gl_FragColor=vec4(c*step(0.035,m)*e,a);}';
     const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); return o; };
     const pr = gl.createProgram();
     gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs));
@@ -18135,15 +18147,27 @@ function giftStageOnVideoPlay(item, done) {
     v.playsInline = true;
     v.crossOrigin = 'anonymous'; // ✅ لازم كي يصح رسمه كنسيج WebGL (نفس مصدر Cloudinary الموحَّد، لا قيد CORS حقيقي)
     if (!v.preload) v.preload = 'none'; // ✅ لا تحميل مسبق أبداً لعنصر لم يُحمَّل مسبقاً فعلياً
-    const videoCenter = gfxStagePopCenterPoint();
     let settled = false;
     let badge = null;
     let glRenderer = null;
     let canvasEl = null;
+    // 🐛 مراجعة #163 (الجولة 6): الحافة السفلى تتبع شريط الكتابة حياً طوال التشغيل (لا مرة واحدة
+    // عند الإنشاء فقط) — الشريط قد يتحرك فعلياً (فتح لوحة المفاتيح، تدوير الجهاز) فتتحرك المرساة معه
+    const repositionStage = () => {
+        const p = gfxStageBottomAnchorPoint();
+        if (canvasEl) { canvasEl.style.left = p.x + 'px'; canvasEl.style.top = p.y + 'px'; }
+        if (v.isConnected) { v.style.left = p.x + 'px'; v.style.top = p.y + 'px'; }
+    };
+    window.addEventListener('resize', repositionStage);
+    window.addEventListener('orientationchange', repositionStage);
+    window.visualViewport?.addEventListener('resize', repositionStage);
     const cleanupAndFly = () => {
         if (settled) return;
         settled = true;
         clearTimeout(startTimer);
+        window.removeEventListener('resize', repositionStage);
+        window.removeEventListener('orientationchange', repositionStage);
+        window.visualViewport?.removeEventListener('resize', repositionStage);
         badge?.remove();
         glRenderer?.stop();
         canvasEl?.remove();
@@ -18169,12 +18193,14 @@ function giftStageOnVideoPlay(item, done) {
         canvasEl?.remove();
         canvasEl = null;
         v.className = 'room-giftfx-video';
-        if (videoCenter) { v.style.left = videoCenter.x + 'px'; v.style.top = videoCenter.y + 'px'; }
+        const p0 = gfxStageBottomAnchorPoint();
+        v.style.left = p0.x + 'px'; v.style.top = p0.y + 'px';
         if (!v.isConnected) videoLayer.appendChild(v);
     };
     canvasEl = document.createElement('canvas');
     canvasEl.className = 'gift-fx-canvas';
-    if (videoCenter) { canvasEl.style.left = videoCenter.x + 'px'; canvasEl.style.top = videoCenter.y + 'px'; }
+    const p0 = gfxStageBottomAnchorPoint();
+    canvasEl.style.left = p0.x + 'px'; canvasEl.style.top = p0.y + 'px';
     glRenderer = gfxMakeLumaKeyRenderer(v, canvasEl, fallbackToPlainVideo);
     if (glRenderer) {
         videoLayer.appendChild(canvasEl);
@@ -18224,6 +18250,18 @@ function gfxStagePopCenterPoint() {
     const maxBandBottom = chat ? Math.max(bandTop + 56, chat.getBoundingClientRect().bottom - laneZoneReserve) : bandTop + 110;
     const bandHeight = Math.max(56, Math.min(120, maxBandBottom - bandTop));
     return { x: gr.left + gr.width / 2, y: bandTop + bandHeight / 2 };
+}
+// 🐛 مراجعة #163 (الجولة 6 — "صندوق بخط قص بمنتصف الشاشة"): مرساة الفيديو الحقيقي/كانفاس WebGL
+// فقط (لا الموكب ولا صورة الوضع الخفيف الثابتة — تلك تبقى على gfxStagePopCenterPoint كالسابق،
+// صندوق صغير لا حافة مستطيلة بارزة تسبب المشكلة). الحافة السفلى = أعلى شريط الكتابة الحقيقي
+// .room-chat-dock (عنصر تدفّق واحد مشترك بالوضع العادي/PK/التحدي جميعاً، راجع renderRoomChatMarkup)
+// — المؤثر يرتفع من أسفل الشاشة دوماً بصرف النظر عن ارتفاعه الفعلي (نسبة أبعاد كل فيديو تختلف)
+function gfxStageBottomAnchorPoint() {
+    const grid = document.getElementById('voice-chat-grid');
+    const x = grid ? (grid.getBoundingClientRect().left + grid.getBoundingClientRect().width / 2) : window.innerWidth / 2;
+    const dock = document.querySelector('.room-chat-dock');
+    const y = dock ? dock.getBoundingClientRect().top : window.innerHeight;
+    return { x, y };
 }
 
 // ---------------- الطيران البسيط (بعد انتهاء فيديو الهدية فقط، لكل مستلم على حدة) ----------------
