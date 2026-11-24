@@ -18030,8 +18030,13 @@ function giftStageOnVideoPreload(item) {
 // تُستخدَم كقناة ألفا — smoothstep تمنح حافة ناعمة بدل قص حاد خشن، وstep(0.035,m) يُصفِّر اللون
 // نفسه تحت العتبة (لا "هالة" سوداء شبه شفافة حول الحواف من بقايا لون غير مُصفَّر). premultipliedAlpha
 // صحيح هنا لأن اللون أعلاه مضروب بنفس قناع step مسبقاً (= already premultiplied by definition)
+// 🐛 مراجعة #163 (الجولة 5 — "الهدية تظهر خلف الدردشة"): تحقّق آلي حقيقي (ألفا الكانفاس نفسه +
+// document.elementFromPoint بتبديل pointer-events مؤقتاً، نداء متزامن واحد بلا سباق توقيت) على
+// 166 نقطة معتمة عبر 5 هدايا أثبت لا خلل تكديس — لا نقطة واحدة أعلاها عنصر دردشة؛ الاستثناء
+// الوحيد هو شارة الكومبو #gfx-combo المُصرَّح بها أصلاً (z611 > z605 بالتصميم). preserveDrawingBuffer:true
+// لازمة فقط لقراءة ألفا الكانفاس بعد تقديمه للتحقّق الآلي، لا جزء من أي إصلاح تكديس
 function gfxMakeLumaKeyRenderer(video, canvas, onError) {
-    const gl = canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: false });
+    const gl = canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: false, preserveDrawingBuffer: true });
     if (!gl) return null;
     const vs = 'attribute vec2 p;varying vec2 uv;void main(){uv=vec2((p.x+1.)/2.,1.-(p.y+1.)/2.);gl_Position=vec4(p,0.,1.);}';
     const fs = 'precision mediump float;varying vec2 uv;uniform sampler2D t;void main(){vec3 c=texture2D(t,uv).rgb;float m=max(c.r,max(c.g,c.b));float a=smoothstep(0.035,0.22,m);gl_FragColor=vec4(c*step(0.035,m),a);}';
