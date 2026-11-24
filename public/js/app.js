@@ -18013,14 +18013,81 @@ function giftStageOnVideoPreload(item) {
     const v = document.createElement('video');
     v.preload = 'auto';
     v.muted = true;
+    // 🛡️ مراجعة #163 (الجولة 4): يجب ضبطها قبل .src/.load() لا بعدهما — المتصفح لا يُطبِّق
+    // crossOrigin بأثر رجعي على طلب بدأ فعلاً بلا وضع CORS، فيبقى النسيج "ملوَّثاً" (texImage2D
+    // يرفض القراءة) حتى لو ضُبطت لاحقاً بـgiftStageOnVideoPlay. هذا العنصر بالذات هو ما يُعاد
+    // استخدامه هناك حرفياً (item._preloadEl) فلا بد أن يصح من هنا تحديداً
+    v.crossOrigin = 'anonymous';
     v.src = item.evt.gift.videoUrl;
     try { v.load(); } catch (_) {}
     item._preloadEl = v;
 }
 
-// ✅ مشغّل فيديو مؤثر الهدية — فوق الغرفة بـmix-blend-mode:screen على #gift-fx-video نفسها
-// (عنصر شقيق مستقل مباشرة تحت body لا متداخل بأي غلاف آخر — راجع تعليق getGiftStageOverlay
-// لسبب فشل الأسود حين كانت متداخلة). يستدعي done() فقط —
+// 🛡️ مراجعة #163 (الجولة 4): "مفتاح اللوما" الحقيقي بـWebGL — قص ألفا فعلي (أسود=شفاف صفر،
+// ساطع=معتم كامل) بدل mix-blend-mode:screen الإضافية التي كانت "تُظهر" أي عنصر واجهة ساطع تحت
+// الفيديو من خلاله (شبحي) بدل أن يُغطّيه — نفس أسلوب التطبيقات الكبرى (Tencent VAP وغيره: فيديو
+// alpha يُرسَم عبر WebGL). الفكرة: قناة سطوع الفيديو نفسها (الخلفية سوداء في كل أصول هدايانا)
+// تُستخدَم كقناة ألفا — smoothstep تمنح حافة ناعمة بدل قص حاد خشن، وstep(0.035,m) يُصفِّر اللون
+// نفسه تحت العتبة (لا "هالة" سوداء شبه شفافة حول الحواف من بقايا لون غير مُصفَّر). premultipliedAlpha
+// صحيح هنا لأن اللون أعلاه مضروب بنفس قناع step مسبقاً (= already premultiplied by definition)
+function gfxMakeLumaKeyRenderer(video, canvas, onError) {
+    const gl = canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: false });
+    if (!gl) return null;
+    const vs = 'attribute vec2 p;varying vec2 uv;void main(){uv=vec2((p.x+1.)/2.,1.-(p.y+1.)/2.);gl_Position=vec4(p,0.,1.);}';
+    const fs = 'precision mediump float;varying vec2 uv;uniform sampler2D t;void main(){vec3 c=texture2D(t,uv).rgb;float m=max(c.r,max(c.g,c.b));float a=smoothstep(0.035,0.22,m);gl_FragColor=vec4(c*step(0.035,m),a);}';
+    const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); return o; };
+    const pr = gl.createProgram();
+    gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs));
+    gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(pr);
+    gl.useProgram(pr);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(pr, 'p');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(k => gl.texParameteri(gl.TEXTURE_2D, k, gl.CLAMP_TO_EDGE));
+    [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER].forEach(k => gl.texParameteri(gl.TEXTURE_2D, k, gl.LINEAR));
+    let alive = true;
+    const draw = () => {
+        if (!alive) return;
+        if (video.readyState >= 2) {
+            try {
+                if (canvas.width !== video.videoWidth) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; gl.viewport(0, 0, canvas.width, canvas.height); }
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
+                gl.clearColor(0, 0, 0, 0);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            } catch (e) {
+                // 🛡️ احتياط أمان: لو رفض CORS رفع الإطار كنسيج (canvas tainted) لأي سبب — نوقف
+                // الحلقة فوراً وننبّه المستدعي للعودة للفيديو الخام (screen-blend)، لا كسر صامت
+                alive = false;
+                onError && onError(e);
+                return;
+            }
+        }
+        // ✅ يُزامن مع إطار الفيديو الفعلي نفسه (لا كل rAF بصرف النظر عن وصول إطار جديد فعلاً) —
+        // أدق توقيتاً وأخف على المعالج من rAF وحده؛ احتياط rAF فقط للمتصفحات بلا هذي الـAPI
+        if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(draw); else requestAnimationFrame(draw);
+    };
+    draw();
+    return {
+        stop() {
+            alive = false;
+            // ✅ تحرير GPU/وحدة فك التشفير فوراً — لا انتظار garbage collection؛ سياق WebGL واحد
+            // فقط بأي لحظة (فيديو هدية واحد يُشغَّل بأي وقت أصلاً، راجع طابور GiftStage)
+            const ext = gl.getExtension('WEBGL_lose_context');
+            if (ext) ext.loseContext();
+        }
+    };
+}
+
+// ✅ مشغّل فيديو مؤثر الهدية — فوق الغرفة عبر #gift-fx-video (عنصر شقيق مستقل مباشرة تحت body
+// لا متداخل بأي غلاف آخر — راجع تعليق getGiftStageOverlay لسبب فشل الأسود حين كانت متداخلة).
+// يستدعي done() فقط —
 // المحرّك (giftEngine.js) هو من يُشغِّل الطيران بعدها عبر giftStageOnFly، لا هذي الدالة. قواعد الخفة:
 // • لا تحميل مسبق لأي عنصر عدا "التالي بالطابور" (giftStageOnVideoPreload أعلاه)
 // • وضع الأجهزة الضعيفة/توفير البيانات: صورة ثابتة ثانية واحدة، صفر طلب فيديو
@@ -18059,23 +18126,26 @@ function giftStageOnVideoPlay(item, done) {
     }
 
     const v = item._preloadEl || document.createElement('video');
-    v.className = 'room-giftfx-video';
     v.muted = true;
     v.playsInline = true;
+    v.crossOrigin = 'anonymous'; // ✅ لازم كي يصح رسمه كنسيج WebGL (نفس مصدر Cloudinary الموحَّد، لا قيد CORS حقيقي)
     if (!v.preload) v.preload = 'none'; // ✅ لا تحميل مسبق أبداً لعنصر لم يُحمَّل مسبقاً فعلياً
     const videoCenter = gfxStagePopCenterPoint();
-    if (videoCenter) { v.style.left = videoCenter.x + 'px'; v.style.top = videoCenter.y + 'px'; }
     let settled = false;
     let badge = null;
+    let glRenderer = null;
+    let canvasEl = null;
     const cleanupAndFly = () => {
         if (settled) return;
         settled = true;
         clearTimeout(startTimer);
         badge?.remove();
+        glRenderer?.stop();
+        canvasEl?.remove();
         try { v.pause(); } catch (_) {}
         v.removeAttribute('src');
         try { v.load(); } catch (_) {}
-        v.remove();
+        v.remove(); // ✅ آمن حتى لو لم يُلحَق بالـDOM إطلاقاً (مسار WebGL — راجع أدناه)
         finish();
     };
     const startTimer = setTimeout(cleanupAndFly, 1500);
@@ -18083,11 +18153,32 @@ function giftStageOnVideoPlay(item, done) {
     v.addEventListener('ended', cleanupAndFly, { once: true });
     v.addEventListener('error', cleanupAndFly, { once: true });
     if (!v.src) v.src = evt.gift.videoUrl;
-    // ✅ الفيديو الخام فقط هنا — طبقة المزج المعزولة، لا شيء آخر بداخلها إطلاقاً
-    videoLayer.appendChild(v);
+    // 🛡️ مراجعة #163 (الجولة 4): القناة الأساسية — لا يُلحَق عنصر الفيديو نفسه بالـDOM إطلاقاً
+    // (تشغيل/فك ترميز الفيديو لا يتطلب وجوده بالمستند، تماماً كـitem._preloadEl أعلاه الذي
+    // يُحمَّل مسبقاً بلا إلحاق أصلاً)؛ الكانفاس وحده المرئي (قصّ ألفا حقيقي، يُغطّي ما تحته فعلياً).
+    // الفيديو الخام لا يُلحَق إلا باحتياط تعذّر WebGL أدناه
+    // ✅ احتياط تلقائي موحَّد: يُستدعى حين يتعذّر WebGL ابتداءً، أو حين يفشل رفع إطار فعلي لاحقاً
+    // (CORS رفض تاج النسيج مثلاً) — يعود دوماً للفيديو الخام (mix-blend-mode:screen على العنصر
+    // نفسه)، لا كسر صامت لعرض الهدية بأي حال
+    const fallbackToPlainVideo = () => {
+        canvasEl?.remove();
+        canvasEl = null;
+        v.className = 'room-giftfx-video';
+        if (videoCenter) { v.style.left = videoCenter.x + 'px'; v.style.top = videoCenter.y + 'px'; }
+        if (!v.isConnected) videoLayer.appendChild(v);
+    };
+    canvasEl = document.createElement('canvas');
+    canvasEl.className = 'gift-fx-canvas';
+    if (videoCenter) { canvasEl.style.left = videoCenter.x + 'px'; canvasEl.style.top = videoCenter.y + 'px'; }
+    glRenderer = gfxMakeLumaKeyRenderer(v, canvasEl, fallbackToPlainVideo);
+    if (glRenderer) {
+        videoLayer.appendChild(canvasEl);
+    } else {
+        fallbackToPlainVideo();
+    }
     // ✅ "×N" على آخر تشغيل فقط لكمية كبيرة من نفس الهدية (حتى 3 تشغيلات — راجع giftEngine.js):
-    // بطاقة داكنة (خلفية شبه سوداء) — لو دخلت طبقة المزج screen معها لَخفَتت لنفس سبب الأسود
-    // الصلب تماماً (نص/خلفية داكنة تُمزَج فتكاد تختفي)، فتذهب لطبقة الواجهة الطبيعية بدلاً
+    // بطاقة داكنة (خلفية شبه سوداء) — تذهب لطبقة الواجهة الطبيعية (لا طبقة الفيديو) كي تبقى
+    // نصّها/خلفيتها حادّين بصرف النظر عن مسار الرسم (كانفاس أو فيديو خام)
     if (item.badgeQty) {
         badge = document.createElement('span');
         badge.className = 'room-giftfx-video-badge';

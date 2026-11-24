@@ -3362,21 +3362,24 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 @keyframes roomEntranceToastReduced { 0% { inset-inline-end: 4%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { opacity: 0; } }
 
 /* =====================================================
-   🛡️ fix/gift-stage-top-layer — المرحلة الموحَّدة، الآن عنصران شقيقان مستقلان (راجع
+   🛡️ fix/gift-stage-top-layer — المرحلة الموحَّدة، عنصران شقيقان مستقلان (راجع
    getGiftStageOverlay بـapp.js)
-   🐛 إصلاح جذري (مراجعة #163 — أسود صلب خلف الفيديو): كانت mix-blend-mode:screen على طبقة
-   متداخلة داخل غلاف واحد (gift-stage-overlay، نفسه position:fixed). المتصفح يُركِّب نتيجة
-   المزج مع خلفية سياق التكديس الذي تنتمي إليه الطبقة — وبما أن الغلاف الأب شفاف شبه فارغ
-   (لا يحوي شيئاً سوى الفيديو نفسه)، لا "محتوى صفحة حقيقي" يُمزَج معه، فتظهر أجزاء الفيديو
-   الداكنة أسوداً صلباً بدل الشفافية الحقيقية حول الفيديو — ثابت بلقطات تحقّق حقيقية للفيديوهات
-   الخمسة معاً. الحل: #gift-fx-video عنصر شقيق مستقل تحت body مباشرة بلا أي غلاف أب آخر على
-   الإطلاق (لا شيء بينه وبين body يُنشئ سياق تكديس) يحمل mix-blend-mode على نفسه مباشرة ولا
-   يحوي شيئاً غير الفيديو الخام نفسه (لا شارة ×N ولا صورة الوضع الخفيف — هذي عناصر داكنة
-   الخلفية أيضاً، لو دخلت طبقة المزج لَخفَتت لنفس السبب تماماً). #gift-fx-ui شقيق آخر فوقه
-   (z أعلى، مزج طبيعي) يحمل الشارة العلوية/الموكب+الطيران/الشريط الجانبي/شارة ×N/صورة الوضع
-   الخفيف — فوق كل عناصر الغرفة (المقاعد والدردشة والشرائط معاً) وتحت شيت الهدايا والمودالات
-   ===================================================== */
-#gift-fx-video { position: fixed; inset: 0; z-index: 605; pointer-events: none; overflow: hidden; mix-blend-mode: screen; }
+   🐛 إصلاح جذري أول (مراجعة #163 الجولة 2 — أسود صلب خلف الفيديو): كانت mix-blend-mode:screen
+   على طبقة متداخلة داخل غلاف واحد (gift-stage-overlay، نفسه position:fixed)، فيُركَّب المزج مع
+   خلفية سياق تكديس الغلاف المعزول (شبه فارغ) لا مع محتوى الصفحة الحقيقي خلفه. الحل حينها:
+   #gift-fx-video عنصر شقيق مستقل تحت body مباشرة بلا أي غلاف أب (لا شيء بينه وبين body يُنشئ
+   سياق تكديس)، و#gift-fx-ui شقيق آخر فوقه (z أعلى، مزج طبيعي) يحمل الشارة العلوية/الموكب+
+   الطيران/الشريط الجانبي/شارة ×N/صورة الوضع الخفيف — فوق كل عناصر الغرفة وتحت شيت الهدايا
+   🐛 إصلاح جذري ثانٍ (مراجعة #163 الجولة 4 — المؤثر "شبحي" لا يُغطّي شيئاً): mix-blend-mode:
+   screen نفسها إضافية (additive) بطبيعتها لا قص ألفا حقيقي — أي عنصر واجهة ساطع تحت الفيديو
+   (حلقة مقعد، صف هدية وردي، اسم) يبقى مرئياً من خلاله بدل أن يُغطَّى، فيبدو المؤثر شفافاً
+   كالشبح حتى بعد إصلاح الأسود. #gift-fx-video نفسها لم تعد تحمل mix-blend-mode إطلاقاً (مزج
+   طبيعي) — القص الحقيقي صار بـWebGL (luma-key حقيقي: أسود=شفاف صفر، ساطع=معتم كامل عبر
+   premultipliedAlpha، راجع gfxMakeLumaKeyRenderer بـapp.js) مرسوماً على .gift-fx-canvas
+   بداخلها، فتُغطّي أجزاء الهدية الصلبة ما تحتها فعلياً كالتطبيقات الكبرى (Tencent VAP وغيره).
+   mix-blend-mode:screen تبقى فقط على .room-giftfx-video (الفيديو الخام نفسه) كاحتياط تلقائي
+   حين يتعذّر WebGL (راجع أسفل) — نفس السلوك القديم، لا جديد، فقط نطاقه عنصر الفيديو لا الحاوية */
+#gift-fx-video { position: fixed; inset: 0; z-index: 605; pointer-events: none; overflow: hidden; }
 #gift-fx-ui { position: fixed; inset: 0; z-index: 606; pointer-events: none; overflow: hidden; }
 /* ترتيب z صريح بين أبناء #gift-fx-ui وحدها (الفيديو خارجها كلياً الآن، راجع أعلاه) — الموكب/
    الطيران أسفل، الشريط الجانبي فوقه، الشارة العلوية الأعلى دوماً (تبقى مقروءة طوال أي تشغيل) */
@@ -3401,7 +3404,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    حياً بـJS (giftStageOnVideoPlay، عبر gfxStagePopCenterPoint) بإحداثيات بكسل حقيقية نسبة
    لصندوق المقاعد الفعلي (يتكيّف تلقائياً مع وجود شريط PK/تحدي يُطوِّل الصندوق) — 40% هنا
    احتياط فقط لو تعذّر إيجاد الصندوق لأي سبب */
-.room-giftfx-video { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%); width: 150%; max-width: none; }
+/* ✅ احتياط تلقائي فقط حين يتعذّر إنشاء سياق WebGL (راجع gfxMakeLumaKeyRenderer) — فيديو خام
+   بالأسلوب القديم (mix-blend-mode:screen إضافية، لا قص ألفا حقيقي) */
+.room-giftfx-video { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%); width: 150%; max-width: none; mix-blend-mode: screen; }
+/* ✅ القناة الأساسية الآن — نفس تموضع .room-giftfx-video بالضبط (JS يضبط left/top حياً بنفس
+   القيم)، لكن معتمة بقص ألفا حقيقي عبر WebGL (راجع gfxMakeLumaKeyRenderer) لا مزج إضافي، فتُغطّي
+   أجزاء الهدية الصلبة ما تحتها من مقاعد/دردشة فعلياً */
+.gift-fx-canvas { position: absolute; transform: translate(-50%,-50%); width: 150%; max-width: none; }
 .room-giftfx-static { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%); width: 90px; height: 90px; display: flex; align-items: center; justify-content: center; font-size: 56px; filter: drop-shadow(0 0 14px rgba(255,212,94,.5)); }
 /* ✅ شارة "×N" على آخر تشغيل فيديو فقط لكمية كبيرة من نفس الهدية (راجع giftStageOnVideoPlay) */
 .room-giftfx-video-badge {

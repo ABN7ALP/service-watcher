@@ -38,6 +38,11 @@ h1{font-size:21px;font-weight:900;margin:0 0 4px}
 .layer-entr{position:absolute;inset:0;pointer-events:none;z-index:30;overflow:hidden}
 .layer-vid{position:absolute;inset:0;pointer-events:none;z-index:39;overflow:hidden;mix-blend-mode:screen}
 .layer-fx{position:absolute;inset:0;pointer-events:none;z-index:40;overflow:hidden}
+.layer-gl{position:absolute;inset:0;pointer-events:none;z-index:39;overflow:hidden}
+.layer-gl canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:150%;max-width:none}
+.mode{display:flex;gap:6px;align-items:center;font-size:12.5px;font-weight:800;margin-bottom:10px;flex-wrap:wrap}
+.mode button{background:var(--s2);border:1px solid var(--line);border-radius:10px;padding:5px 10px;font-size:12px;color:var(--muted)}
+.mode button.on{color:var(--fg);border-color:var(--teal);background:#2fd4b41c}
 
 /* ===== BUBBLES ===== */
 .bb{position:relative;border-radius:16px 16px 16px 4px;padding:7px 12px;max-width:250px;color:#fff;isolation:isolate}
@@ -184,11 +189,13 @@ h1{font-size:21px;font-weight:900;margin:0 0 4px}
         <div class="chat" id="chat"></div>
         <div class="layer-entr" id="layerEntr"></div>
         <div class="layer-vid" id="layerVid"></div>
+        <div class="layer-gl" id="layerGl"></div>
         <div class="layer-fx" id="layerFx"></div>
       </div>
     </div>
     <div class="panel">
       <div class="lite"><button class="sw" id="liteSw" aria-label="وضع الأجهزة الضعيفة"></button>وضع الأجهزة الضعيفة (يوقف الحركة، ويستبدل فيديو الهدية بصورة)</div>
+      <div class="mode">طريقة إظهار فيديو الهدية: <button id="mGl" class="on">WebGL (صلب فوق كل شيء)</button><button id="mScr">screen (شفاف، القديم)</button></div>
       <div class="tabs" id="tabs"></div>
       <div id="panel"></div>
     </div>
@@ -244,6 +251,31 @@ const GIFTS=[
   ['garden','حديقة','🌹','legendary','موجود · 800','garden.mp4',4],
   ['sword','سيف البرق','⚔️','legendary','جديد · 5,000','sword.mp4',2],
 ];
+
+// ===== WebGL luma-key: black -> transparent, bright parts fully opaque (solid over seats & chat) =====
+let fxMode='gl';
+function makeLumaKeyRenderer(video,canvas){
+  const gl=canvas.getContext('webgl',{premultipliedAlpha:true,alpha:true,antialias:false});
+  if(!gl) return null;
+  const vs=`attribute vec2 p;varying vec2 uv;void main(){uv=vec2((p.x+1.)/2.,1.-(p.y+1.)/2.);gl_Position=vec4(p,0.,1.);}`;
+  // alpha from the brightest channel, boosted so mid-dark object parts become opaque; color is already premultiplied (black bg)
+  const fs=`precision mediump float;varying vec2 uv;uniform sampler2D t;void main(){vec3 c=texture2D(t,uv).rgb;float m=max(c.r,max(c.g,c.b));float a=smoothstep(0.035,0.22,m);gl_FragColor=vec4(c*step(0.035,m),a);}`;
+  const sh=(type,src)=>{const o=gl.createShader(type);gl.shaderSource(o,src);gl.compileShader(o);return o;};
+  const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);gl.useProgram(pr);
+  const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(pr,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);
+  [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T].forEach(k=>gl.texParameteri(gl.TEXTURE_2D,k,gl.CLAMP_TO_EDGE));
+  [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER].forEach(k=>gl.texParameteri(gl.TEXTURE_2D,k,gl.LINEAR));
+  let alive=true;
+  const draw=()=>{if(!alive)return;
+    if(video.readyState>=2){if(canvas.width!==video.videoWidth){canvas.width=video.videoWidth;canvas.height=video.videoHeight;gl.viewport(0,0,canvas.width,canvas.height);}
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,video);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);}
+    if(video.requestVideoFrameCallback)video.requestVideoFrameCallback(draw);else requestAnimationFrame(draw);};
+  draw();
+  return {stop(){alive=false;const ext=gl.getExtension('WEBGL_lose_context');ext&&ext.loseContext();}};
+}
+
 let lite=false;
 function playGift(k){
   const g=GIFTS.find(x=>x[0]===k);const fx=$('layerFx');fx.innerHTML='';$('layerVid').innerHTML='';
@@ -253,9 +285,13 @@ function playGift(k){
     setTimeout(()=>{const b=document.createElement('div');b.className='burst';b.style.left=(tr.left-ph.left+tr.width/2-5)+'px';b.style.top=(tr.top-ph.top+tr.height/2-5)+'px';fx.appendChild(b);f.remove();setTimeout(()=>b.remove(),750);},950);
     addMsg(`<span class="sys" style="font-size:11.5px;color:#ffe9a8;background:#ffd45e14;border-radius:10px;padding:4px 10px">🎁 أبو كرم أرسل ${g[1]} إلى ${SEATS[g[6]][0]}</span>`);};
   if(lite){const s=document.createElement('div');s.className='flyer';s.style.cssText=`left:${ph.width/2-40}px;top:${ph.height*0.42-40}px;width:80px;height:80px;font-size:60px;transition:none`;s.textContent=g[2];fx.appendChild(s);setTimeout(()=>{s.remove();fly();},1200);return;}
-  const v=document.createElement('video');v.className='fxvid';v.src=g[5];v.muted=true;v.playsInline=true;v.autoplay=true;$('layerVid').appendChild(v);
+  const v=document.createElement('video');v.src=g[5];v.muted=true;v.playsInline=true;v.autoplay=true;v.crossOrigin='anonymous';
+  let r=null;
+  if(fxMode==='gl'){const c=document.createElement('canvas');$('layerGl').innerHTML='';$('layerGl').appendChild(c);r=makeLumaKeyRenderer(v,c);}
+  if(!r){v.className='fxvid';$('layerVid').appendChild(v);} // fallback: no WebGL
   v.play().catch(()=>{});
-  const done=()=>{v.remove();fly();};v.addEventListener('ended',done,{once:true});setTimeout(()=>{if(v.isConnected)done();},6500);
+  const done=()=>{if(r){r.stop();$('layerGl').innerHTML='';}v.remove();v.removeAttribute('src');v.load();fly();};
+  let fin=false;const once=()=>{if(fin)return;fin=true;done();};v.addEventListener('ended',once,{once:true});setTimeout(once,7500);
 }
 
 
@@ -361,6 +397,7 @@ document.addEventListener('click',e=>{const t=e.target.closest('button');if(!t)r
   if(t.dataset.entr){playEntrance(t.dataset.entr);return;}
   if(t.dataset.gift){playGift(t.dataset.gift);return;}
   if(t.dataset.proc){const [e,q,tg]=t.dataset.proc.split('|');playProcession(e,+q,tg.split(',').map(Number));return;}
+  if(t.id==='mGl'||t.id==='mScr'){fxMode=t.id==='mGl'?'gl':'scr';$('mGl').classList.toggle('on',fxMode==='gl');$('mScr').classList.toggle('on',fxMode!=='gl');return;}
   if(t.id==='liteSw'){lite=!lite;t.classList.toggle('on',lite);$('phone').classList.toggle('is-lite',lite);return;}
 });
 render();
