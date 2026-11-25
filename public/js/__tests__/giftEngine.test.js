@@ -1,7 +1,7 @@
 // ملف: giftEngine.test.js
-// 🛡️ feat/gift-display-engine: اختبارات GiftStage الخالصة (بلا DOM/متصفّح إطلاقاً) — كل سلوك
-// مذكور صراحة بطلب إعادة تصميم محرّك عرض الهدايا: التكرار (المُرسِل يرى مؤثراً واحداً فقط)،
-// ترتيب الطابور، الكمية->شارة، السقف 20، تنظيف المغادرة، إسقاط القديم بعد إخفاء التبويب.
+// 🛡️ feat/gift-display-engine + fix/gift-stage-top-layer: اختبارات GiftStage الخالصة (بلا
+// DOM/متصفّح إطلاقاً) — التكرار، ترتيب طابور الفيديو، الكمية->شارة، السقف 20، تنظيف المغادرة،
+// إسقاط القديم بعد إخفاء التبويب، موكب مدينة الملاهي (الهدايا بلا فيديو)، راعي الهدية، تأثير المقعد.
 const GiftStage = require('../giftEngine.js');
 
 function makeEvt(overrides = {}) {
@@ -18,16 +18,25 @@ function makeEvt(overrides = {}) {
     };
 }
 
+function makeProcHooks(overrides = {}) {
+    return {
+        onProcPop: jest.fn((proc, done) => done()),
+        onProcLaunch: jest.fn(),
+        onProcDone: jest.fn((proc, done) => done()),
+        onFly: jest.fn(),
+        ...overrides
+    };
+}
+
 describe('GiftStage — التكرار (dedupe)', () => {
     test('نفس eventId مرتين: تأثير واحد فقط (المُرسِل لا يرى الهدية مرتين)', () => {
-        const onPop = jest.fn((evt, done) => done());
-        const onFly = jest.fn();
-        const stage = new GiftStage({ onPop, onFly });
+        const hooks = makeProcHooks();
+        const stage = new GiftStage(hooks);
         const evt = makeEvt({ eventId: 'dup-1' });
         stage.handleGiftSent(evt);
         stage.handleGiftSent(evt); // ✅ نفس الحدث بالضبط يصل مرة ثانية (محاكاة إعادة تسليم)
-        expect(onPop).toHaveBeenCalledTimes(1);
-        expect(onFly).toHaveBeenCalledTimes(1);
+        expect(hooks.onProcPop).toHaveBeenCalledTimes(1);
+        expect(hooks.onProcLaunch).toHaveBeenCalledTimes(1);
     });
 });
 
@@ -78,11 +87,10 @@ describe('GiftStage — الكمية الكبيرة: حتى 3 تشغيلات + �
 });
 
 describe('GiftStage — سقف طابور الفيديو (20)', () => {
-    test('دفعة 25 هدية فيديو متزامنة بلا أي اكتمال: أول 20 تدخل الأنبوب، الباقي 5 تطير فقط', () => {
+    test('دفعة 25 هدية فيديو متزامنة بلا أي اكتمال: أول 20 تدخل الأنبوب، الباقي 5 موكب فقط', () => {
         const onVideoPlay = jest.fn(); // ✅ لا نستدعي done — نحاكي ضغطاً حقيقياً بلا أي تصريف إطلاقاً
-        const onPop = jest.fn((evt, done) => done());
-        const onFly = jest.fn();
-        const stage = new GiftStage({ onVideoPlay, onPop, onFly });
+        const hooks = makeProcHooks({ onVideoPlay });
+        const stage = new GiftStage(hooks);
         const dragon = { id: 'dragon', videoUrl: 'https://x/dragon.mp4' };
         for (let i = 0; i < 25; i++) {
             stage.handleGiftSent(makeEvt({ eventId: `cap-${i}`, gift: dragon }));
@@ -91,16 +99,18 @@ describe('GiftStage — سقف طابور الفيديو (20)', () => {
         // من أصل الـ20 المقبولين بالأنبوب ينتظرون بالطابور الداخلي بصمت حتى يحين دورهم
         expect(onVideoPlay).toHaveBeenCalledTimes(1);
         expect(stage._videoQueue).toHaveLength(19);
-        expect(onPop).toHaveBeenCalledTimes(5); // ✅ الخمسة الزائدة (تجاوزت سقف 20 بالأنبوب): شريط جانبي + طيران فقط
-        expect(onFly).toHaveBeenCalledTimes(5);
+        // ✅ الخمسة الزائدة (تجاوزت سقف 20) تذهب لمسار الموكب (_procHandle) بدل الفيديو — سواء
+        // اندمجت بموكب واحد أو تتابعت (يعتمد على توقيت onProcPop بالاختبار)، المحصّلة النهائية
+        // واحدة دوماً: 5 وحدات أُطلِقت فعلياً بالمجموع، لا أقل ولا أكثر
+        expect(hooks.onProcPop.mock.calls.length).toBeGreaterThanOrEqual(1);
+        expect(hooks.onProcLaunch).toHaveBeenCalledTimes(5);
     });
 });
 
 describe('GiftStage — مغادرة الغرفة تُطهِّر كل شيء', () => {
-    test('leaveRoom(): لا طيران/فيديو متبقٍ، والحالة تبدأ نظيفة لغرفة جديدة', () => {
+    test('leaveRoom(): لا طيران/فيديو/موكب/راعي هدية متبقٍ، والحالة تبدأ نظيفة لغرفة جديدة', () => {
         const onVideoPlay = jest.fn();
-        const onPop = jest.fn();
-        const stage = new GiftStage({ onVideoPlay, onPop, onFly: jest.fn() });
+        const stage = new GiftStage({ onVideoPlay, onFly: jest.fn(), ...makeProcHooks() });
         const dragon = { id: 'dragon', videoUrl: 'https://x/dragon.mp4' };
         for (let i = 0; i < 5; i++) stage.handleGiftSent(makeEvt({ eventId: `lv-${i}`, gift: dragon }));
         expect(stage._videoQueue.length + (stage._videoPlaying ? 1 : 0)).toBeGreaterThan(0);
@@ -108,8 +118,9 @@ describe('GiftStage — مغادرة الغرفة تُطهِّر كل شيء', (
         stage.leaveRoom();
         expect(stage._videoQueue).toHaveLength(0);
         expect(stage._videoPlaying).toBe(false);
-        expect(stage._flyActive).toBe(0);
         expect(stage._laneVisible).toHaveLength(0);
+        expect(stage._topSenderByGift.size).toBe(0);
+        expect(stage._procession).toBeNull();
 
         // ✅ غرفة جديدة تعمل بشكل طبيعي تماماً بعد التطهير — لا بقايا تمنع هدية جديدة
         onVideoPlay.mockClear();
@@ -156,5 +167,124 @@ describe('GiftStage — إخفاء التبويب يوقف الطابور ويُ
 
         firstDone(); // v1 تنتهي الآن
         expect(onVideoPlay).toHaveBeenCalledTimes(2); // ✅ v2 بدأت فعلياً، لم تُسقَط
+    });
+});
+
+describe('GiftStage — موكب مدينة الملاهي (الهدايا بلا فيديو)', () => {
+    test('وردة ×1 لـ3 مستلمين: 3 وحدات بالضبط (لا تُفقَد مستلمين لأن qty=1)', () => {
+        const hooks = makeProcHooks();
+        const stage = new GiftStage(hooks);
+        stage.handleGiftSent(makeEvt({
+            eventId: 'rose-3', qty: 1,
+            receivers: [{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }]
+        }));
+        expect(hooks.onProcPop).toHaveBeenCalledTimes(1);
+        expect(hooks.onProcLaunch).toHaveBeenCalledTimes(3);
+        const recipients = hooks.onProcLaunch.mock.calls.map(c => c[2].id);
+        expect(recipients).toEqual(['r1', 'r2', 'r3']); // ✅ بالتناوب بالضبط على كل المستلمين
+    });
+
+    test('qty < 10: بلا احتفال رقم كبير', () => {
+        const hooks = makeProcHooks({ onProcCelebrate: jest.fn() });
+        const stage = new GiftStage(hooks);
+        stage.handleGiftSent(makeEvt({ eventId: 'small-qty', qty: 7 }));
+        expect(hooks.onProcCelebrate).not.toHaveBeenCalled();
+        expect(hooks.onProcLaunch).toHaveBeenCalledTimes(7);
+    });
+
+    test('qty ≥ 10: احتفال رقم كبير + أقصى 10 وحدات ظاهرة (العدّاد يحمل الرقم الحقيقي)', () => {
+        const hooks = makeProcHooks({ onProcCelebrate: jest.fn() });
+        const stage = new GiftStage(hooks);
+        stage.handleGiftSent(makeEvt({ eventId: 'big-qty', qty: 99 }));
+        expect(hooks.onProcCelebrate).toHaveBeenCalledTimes(1);
+        expect(hooks.onProcCelebrate.mock.calls[0][0].realQty).toBe(99);
+        expect(hooks.onProcLaunch).toHaveBeenCalledTimes(10); // ✅ سقف 10 وحدات ظاهرة بالضبط
+    });
+
+    test('كومبو من نفس المُرسِل+الهدية أثناء الـpop: يُمدِّد نفس الموكب (لا موكب جديد)', () => {
+        let popDone = null;
+        const hooks = makeProcHooks({ onProcPop: jest.fn((proc, done) => { popDone = done; }), onProcExtend: jest.fn() });
+        const stage = new GiftStage(hooks);
+        stage.handleGiftSent(makeEvt({ eventId: 'combo-1', sender: { id: 'S' }, qty: 5 }));
+        stage.handleGiftSent(makeEvt({ eventId: 'combo-2', sender: { id: 'S' }, qty: 3 })); // ✅ أثناء نفس نافذة الـpop
+        expect(hooks.onProcPop).toHaveBeenCalledTimes(1); // ✅ لا موكب ثانٍ بدأ — امتداد فقط
+        expect(hooks.onProcExtend).toHaveBeenCalledTimes(1);
+        popDone();
+        expect(hooks.onProcLaunch).toHaveBeenCalledTimes(8); // 5+3 مُدمَجة بموكب واحد
+    });
+
+    test('موكب واحد بأي وقت — مُرسِل/هدية مختلفان أثناء موكب جارٍ يُطابَران بالطابور', () => {
+        let popDoneA = null;
+        const onProcPop = jest.fn((proc, done) => { if (!popDoneA) popDoneA = done; else done(); });
+        const hooks = makeProcHooks({ onProcPop });
+        const stage = new GiftStage(hooks);
+        stage.handleGiftSent(makeEvt({ eventId: 'A', sender: { id: 'S1' }, gift: { id: 'rose' } }));
+        stage.handleGiftSent(makeEvt({ eventId: 'B', sender: { id: 'S2' }, gift: { id: 'heart' } })); // مُرسِل مختلف تماماً
+        expect(onProcPop).toHaveBeenCalledTimes(1); // ✅ B ينتظر بالطابور، لا موكب ثانٍ متزامن
+        popDoneA();
+        expect(onProcPop).toHaveBeenCalledTimes(2); // الآن يبدأ موكب B
+    });
+
+    test('وضع الأجهزة الضعيفة: سقف 3 وحدات ظاهرة بدل 10', () => {
+        const hooks = makeProcHooks({ isLite: () => true });
+        const stage = new GiftStage(hooks);
+        stage.handleGiftSent(makeEvt({ eventId: 'lite-big', qty: 99 }));
+        expect(hooks.onProcLaunch).toHaveBeenCalledTimes(3);
+    });
+});
+
+describe('GiftStage — راعي الهدية (أكبر مُرسِل لكل هدية بهذي الجلسة)', () => {
+    test('مُرسِلان لنفس الهدية — الأكبر مجموعاً (عند ظهور شريطه) يُعلَّم isTopSender=true، والآخر false', () => {
+        // ✅ S2 يُرسِل الكمية الأكبر أولاً (يصبح الصدارة) ثم S1 يصل لاحقاً بكمية أصغر — شريط S1
+        // يُبنى وقتها وقد صار S2 الصدارة فعلياً، فيظهر isTopSender=false له بشكل لا لبس فيه
+        const onLaneShow = jest.fn();
+        const onLaneMerge = jest.fn();
+        const stage = new GiftStage({ onLaneShow, onLaneMerge, ...makeProcHooks() });
+        stage.handleGiftSent(makeEvt({ eventId: 'e1', sender: { id: 'S2' }, gift: { id: 'rose' }, qty: 20, receivers: [{ id: 'other' }] }));
+        stage.handleGiftSent(makeEvt({ eventId: 'e2', sender: { id: 'S1' }, gift: { id: 'rose' }, qty: 5 }));
+
+        const items = onLaneShow.mock.calls.map(c => c[0]);
+        const s1Item = items.find(it => it.sender.id === 'S1');
+        const s2Item = items.find(it => it.sender.id === 'S2');
+        expect(s2Item.isTopSender).toBe(true); // 20 وحدة — الأكبر والوحيد وقتها
+        expect(s1Item.isTopSender).toBe(false); // 5 وحدات فقط، وS2 صاحب الصدارة فعلاً عند ظهور شريطه
+    });
+
+    test('مُرسِل يسبق بشريطه ثم يتخطّاه آخر — الوسم يُنقَل فوراً (بثّ حيّ، لا تجميد لحظة الظهور)', () => {
+        // ✅ وُجد هذا تحديداً بفحص حيّ على المتصفح الحقيقي: S1 يُرسِل أولاً فيصبح الصدارة (شريطه
+        // يُعلَّم isTopSender=true)، ثم S2 يصل بكمية أكبر — إن بقي شريط S1 القديم معلَّماً لأنه
+        // لم يُعَد فحصه، يظهر وسم "راعي الهدية" على شريطين معاً، وهذا خطأ: يجب أن يُنزَع من S1
+        // فور تخطّي S2 له (onLaneMerge تُستدعى على شريط S1 القديم لتحديث DOM فعلياً لا فقط الحالة)
+        const onLaneShow = jest.fn();
+        const onLaneMerge = jest.fn();
+        const stage = new GiftStage({ onLaneShow, onLaneMerge, ...makeProcHooks() });
+        stage.handleGiftSent(makeEvt({ eventId: 'e1', sender: { id: 'S1' }, gift: { id: 'rose' }, qty: 10 }));
+        const s1Item = onLaneShow.mock.calls[0][0];
+        expect(s1Item.isTopSender).toBe(true);
+
+        stage.handleGiftSent(makeEvt({ eventId: 'e2', sender: { id: 'S2' }, gift: { id: 'rose' }, qty: 50, receivers: [{ id: 'other' }] }));
+        const s2Item = onLaneShow.mock.calls[1][0];
+        expect(s2Item.isTopSender).toBe(true);
+        expect(s1Item.isTopSender).toBe(false); // نُزِع منه فوراً عند تخطّي S2
+        expect(onLaneMerge).toHaveBeenCalledWith(s1Item); // أُعيد رسم شريط S1 القديم فعلياً
+    });
+});
+
+describe('GiftStage — تأثير المقعد (هدية مُعلَّمة من الأدمن مثل "تاج")', () => {
+    test('gift.seatEffect موجودة: onSeatEffect تُستدعى مرة لكل مستلم', () => {
+        const onSeatEffect = jest.fn();
+        const stage = new GiftStage({ onSeatEffect, ...makeProcHooks() });
+        stage.handleGiftSent(makeEvt({
+            eventId: 'crown-1', gift: { id: 'crown', seatEffect: '👑' },
+            receivers: [{ id: 'r1' }, { id: 'r2' }]
+        }));
+        expect(onSeatEffect).toHaveBeenCalledTimes(2);
+    });
+
+    test('gift.seatEffect غير موجودة: onSeatEffect لا تُستدعى إطلاقاً', () => {
+        const onSeatEffect = jest.fn();
+        const stage = new GiftStage({ onSeatEffect, ...makeProcHooks() });
+        stage.handleGiftSent(makeEvt({ eventId: 'no-crown', gift: { id: 'rose' } }));
+        expect(onSeatEffect).not.toHaveBeenCalled();
     });
 });

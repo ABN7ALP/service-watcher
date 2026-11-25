@@ -38,6 +38,11 @@ h1{font-size:21px;font-weight:900;margin:0 0 4px}
 .layer-entr{position:absolute;inset:0;pointer-events:none;z-index:30;overflow:hidden}
 .layer-vid{position:absolute;inset:0;pointer-events:none;z-index:39;overflow:hidden;mix-blend-mode:screen}
 .layer-fx{position:absolute;inset:0;pointer-events:none;z-index:40;overflow:hidden}
+.layer-gl{position:absolute;inset:0;pointer-events:none;z-index:39;overflow:hidden}
+.layer-gl canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:150%;max-width:none}
+.mode{display:flex;gap:6px;align-items:center;font-size:12.5px;font-weight:800;margin-bottom:10px;flex-wrap:wrap}
+.mode button{background:var(--s2);border:1px solid var(--line);border-radius:10px;padding:5px 10px;font-size:12px;color:var(--muted)}
+.mode button.on{color:var(--fg);border-color:var(--teal);background:#2fd4b41c}
 
 /* ===== BUBBLES ===== */
 .bb{position:relative;border-radius:16px 16px 16px 4px;padding:7px 12px;max-width:250px;color:#fff;isolation:isolate}
@@ -125,6 +130,25 @@ h1{font-size:21px;font-weight:900;margin:0 0 4px}
 .burst{position:absolute;width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 0 #ffd45e;animation:burst .7s ease-out forwards;z-index:42}
 @keyframes burst{to{box-shadow:0 0 0 30px #ffd45e00}}
 
+
+/* ===== small-gift procession (amusement park) ===== */
+.proc-head{position:absolute;left:50%;top:30%;transform:translateX(-50%);z-index:43;display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;animation:headIn .35s cubic-bezier(.2,1.4,.4,1)}
+@keyframes headIn{from{transform:translateX(-50%) scale(.4);opacity:0}}
+.proc-head .who{background:linear-gradient(90deg,#ff5fa8cc,#a46bffcc);border-radius:99px;padding:3px 12px;font-size:11.5px;font-weight:900;white-space:nowrap;box-shadow:0 4px 18px #ff5fa855}
+.proc-head .cnt{font-family:var(--f-num);font-size:40px;font-weight:800;line-height:1;background:linear-gradient(180deg,#fff7d6,#ffcc4d 55%,#ff8a00);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 2px 0 #7a3a00) drop-shadow(0 0 12px #ffb02088);transition:transform .12s}
+.proc-head .cnt.bump{transform:scale(1.35)}
+.pitem{position:absolute;width:46px;height:46px;display:grid;place-items:center;font-size:34px;z-index:42;pointer-events:none;filter:drop-shadow(0 0 8px #ff5fa8aa);transition:left .7s cubic-bezier(.5,0,.3,1),top .7s cubic-bezier(.5,0,.3,1),transform .7s,opacity .25s}
+.pitem.in{animation:pop .4s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pop{from{transform:scale(0) rotate(-30deg);opacity:0}}
+.spark{position:absolute;width:6px;height:6px;border-radius:50%;background:#ffd45e;z-index:41;pointer-events:none;animation:sp .6s ease-out forwards}
+@keyframes sp{to{transform:translate(var(--dx),var(--dy)) scale(.2);opacity:0}}
+.trail{position:absolute;width:8px;height:8px;border-radius:50%;background:radial-gradient(circle,#fff,#ff5fa8 60%,transparent 70%);z-index:41;pointer-events:none;animation:tr .5s linear forwards}
+@keyframes tr{to{opacity:0;transform:scale(.3)}}
+.seat .ava.hit{animation:hit .45s ease}
+@keyframes hit{40%{transform:scale(1.18);box-shadow:0 0 0 4px #ffd45e,0 0 22px #ffd45e}}
+.mile{position:absolute;inset:0;display:grid;place-items:center;z-index:44;pointer-events:none;font-family:var(--f-num);font-size:64px;font-weight:800;color:#fff;text-shadow:0 0 20px #ff5fa8,0 0 40px #a46bff;animation:mile .9s ease-out forwards}
+@keyframes mile{from{transform:scale(.3);opacity:0}30%{transform:scale(1.15);opacity:1}to{transform:scale(1.6);opacity:0}}
+
 /* ===== panel ===== */
 .panel{background:var(--s1);border:1px solid var(--line);border-radius:18px;padding:16px;min-width:0}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
@@ -165,11 +189,13 @@ h1{font-size:21px;font-weight:900;margin:0 0 4px}
         <div class="chat" id="chat"></div>
         <div class="layer-entr" id="layerEntr"></div>
         <div class="layer-vid" id="layerVid"></div>
+        <div class="layer-gl" id="layerGl"></div>
         <div class="layer-fx" id="layerFx"></div>
       </div>
     </div>
     <div class="panel">
       <div class="lite"><button class="sw" id="liteSw" aria-label="وضع الأجهزة الضعيفة"></button>وضع الأجهزة الضعيفة (يوقف الحركة، ويستبدل فيديو الهدية بصورة)</div>
+      <div class="mode">طريقة إظهار فيديو الهدية: <button id="mGl" class="on">WebGL (صلب فوق كل شيء)</button><button id="mScr">screen (شفاف، القديم)</button></div>
       <div class="tabs" id="tabs"></div>
       <div id="panel"></div>
     </div>
@@ -225,6 +251,31 @@ const GIFTS=[
   ['garden','حديقة','🌹','legendary','موجود · 800','garden.mp4',4],
   ['sword','سيف البرق','⚔️','legendary','جديد · 5,000','sword.mp4',2],
 ];
+
+// ===== WebGL luma-key: black -> transparent, bright parts fully opaque (solid over seats & chat) =====
+let fxMode='gl';
+function makeLumaKeyRenderer(video,canvas){
+  const gl=canvas.getContext('webgl',{premultipliedAlpha:true,alpha:true,antialias:false});
+  if(!gl) return null;
+  const vs=`attribute vec2 p;varying vec2 uv;void main(){uv=vec2((p.x+1.)/2.,1.-(p.y+1.)/2.);gl_Position=vec4(p,0.,1.);}`;
+  // alpha from the brightest channel, boosted so mid-dark object parts become opaque; color is already premultiplied (black bg)
+  const fs=`precision mediump float;varying vec2 uv;uniform sampler2D t;void main(){vec3 c=texture2D(t,uv).rgb;float m=max(c.r,max(c.g,c.b));float a=smoothstep(0.035,0.22,m);gl_FragColor=vec4(c*step(0.035,m),a);}`;
+  const sh=(type,src)=>{const o=gl.createShader(type);gl.shaderSource(o,src);gl.compileShader(o);return o;};
+  const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);gl.useProgram(pr);
+  const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(pr,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);
+  [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T].forEach(k=>gl.texParameteri(gl.TEXTURE_2D,k,gl.CLAMP_TO_EDGE));
+  [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER].forEach(k=>gl.texParameteri(gl.TEXTURE_2D,k,gl.LINEAR));
+  let alive=true;
+  const draw=()=>{if(!alive)return;
+    if(video.readyState>=2){if(canvas.width!==video.videoWidth){canvas.width=video.videoWidth;canvas.height=video.videoHeight;gl.viewport(0,0,canvas.width,canvas.height);}
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,video);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);}
+    if(video.requestVideoFrameCallback)video.requestVideoFrameCallback(draw);else requestAnimationFrame(draw);};
+  draw();
+  return {stop(){alive=false;const ext=gl.getExtension('WEBGL_lose_context');ext&&ext.loseContext();}};
+}
+
 let lite=false;
 function playGift(k){
   const g=GIFTS.find(x=>x[0]===k);const fx=$('layerFx');fx.innerHTML='';$('layerVid').innerHTML='';
@@ -234,9 +285,56 @@ function playGift(k){
     setTimeout(()=>{const b=document.createElement('div');b.className='burst';b.style.left=(tr.left-ph.left+tr.width/2-5)+'px';b.style.top=(tr.top-ph.top+tr.height/2-5)+'px';fx.appendChild(b);f.remove();setTimeout(()=>b.remove(),750);},950);
     addMsg(`<span class="sys" style="font-size:11.5px;color:#ffe9a8;background:#ffd45e14;border-radius:10px;padding:4px 10px">🎁 أبو كرم أرسل ${g[1]} إلى ${SEATS[g[6]][0]}</span>`);};
   if(lite){const s=document.createElement('div');s.className='flyer';s.style.cssText=`left:${ph.width/2-40}px;top:${ph.height*0.42-40}px;width:80px;height:80px;font-size:60px;transition:none`;s.textContent=g[2];fx.appendChild(s);setTimeout(()=>{s.remove();fly();},1200);return;}
-  const v=document.createElement('video');v.className='fxvid';v.src=g[5];v.muted=true;v.playsInline=true;v.autoplay=true;$('layerVid').appendChild(v);
+  const v=document.createElement('video');v.src=g[5];v.muted=true;v.playsInline=true;v.autoplay=true;v.crossOrigin='anonymous';
+  let r=null;
+  if(fxMode==='gl'){const c=document.createElement('canvas');$('layerGl').innerHTML='';$('layerGl').appendChild(c);r=makeLumaKeyRenderer(v,c);}
+  if(!r){v.className='fxvid';$('layerVid').appendChild(v);} // fallback: no WebGL
   v.play().catch(()=>{});
-  const done=()=>{v.remove();fly();};v.addEventListener('ended',done,{once:true});setTimeout(()=>{if(v.isConnected)done();},6500);
+  const done=()=>{if(r){r.stop();$('layerGl').innerHTML='';}v.remove();v.removeAttribute('src');v.load();fly();};
+  let fin=false;const once=()=>{if(fin)return;fin=true;done();};v.addEventListener('ended',once,{once:true});setTimeout(once,7500);
+}
+
+
+// ===== small gifts: procession in the center, then each flies to its seat =====
+let procBusy=false;
+function sparkAt(x,y,n=8){const L=$('layerFx');for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,r=18+Math.random()*22;const sp=document.createElement('i');sp.className='spark';sp.style.left=x+'px';sp.style.top=y+'px';sp.style.setProperty('--dx',Math.cos(a)*r+'px');sp.style.setProperty('--dy',Math.sin(a)*r+'px');L.appendChild(sp);setTimeout(()=>sp.remove(),650);}}
+function seatCenter(idx){const ph=$('phone').getBoundingClientRect();const r=document.querySelector(`[data-seat="${idx}"] .ava`).getBoundingClientRect();return [r.left-ph.left+r.width/2,r.top-ph.top+r.height/2];}
+function playProcession(emoji,qty,targets){
+  if(procBusy)return; procBusy=true;
+  const L=$('layerFx');const ph=$('phone').getBoundingClientRect();const W=ph.width,H=ph.height;
+  const head=document.createElement('div');head.className='proc-head';head.innerHTML=`<span class="who">أبو كرم ← ${targets.map(t=>SEATS[t][0]).join('، ')}</span><span class="cnt" dir="ltr">×1</span>`;L.appendChild(head);
+  const cnt=head.querySelector('.cnt');
+  const shown=Math.min(qty,lite?3:10); // visible items capped, counter shows real qty
+  const cy=H*0.46, gap=Math.min(40,(W-60)/Math.max(1,shown));
+  const items=[];
+  let i=0;
+  const step=lite?60:140;
+  const tick=setInterval(()=>{
+    if(i>=shown){clearInterval(tick);
+      // count up to the real qty fast
+      let c=shown;const up=setInterval(()=>{if(c>=qty){clearInterval(up);launch();return;}c=Math.min(qty,c+Math.ceil(qty/20));cnt.textContent='×'+c;},40);
+      if(qty>=10&&!lite){const m=document.createElement('div');m.className='mile';m.dir='ltr';m.textContent='×'+qty;L.appendChild(m);setTimeout(()=>m.remove(),950);}
+      return;}
+    const it=document.createElement('div');it.className='pitem in';it.textContent=emoji;
+    const x=W/2+(i-(shown-1)/2)*gap-23,y=cy-23+(i%2?10:-10);
+    it.style.left=x+'px';it.style.top=y+'px';L.appendChild(it);items.push(it);
+    if(!lite)sparkAt(x+23,y+23,6);
+    i++;cnt.textContent='×'+i;cnt.classList.add('bump');setTimeout(()=>cnt.classList.remove('bump'),110);
+  },step);
+  function launch(){
+    // items leave one by one, round-robin over targets, with a trail
+    items.forEach((it,k)=>{
+      setTimeout(()=>{
+        const t=targets[k%targets.length];const [tx,ty]=seatCenter(t);
+        it.classList.remove('in');it.style.left=(tx-23)+'px';it.style.top=(ty-23)+'px';it.style.transform='scale(.45)';
+        if(!lite){const tr=setInterval(()=>{const r=it.getBoundingClientRect();const d=document.createElement('i');d.className='trail';d.style.left=(r.left-ph.left+r.width/2-4)+'px';d.style.top=(r.top-ph.top+r.height/2-4)+'px';L.appendChild(d);setTimeout(()=>d.remove(),520);},45);setTimeout(()=>clearInterval(tr),700);}
+        setTimeout(()=>{it.remove();sparkAt(tx,ty,lite?0:10);const av=document.querySelector(`[data-seat="${t}"] .ava`);av.classList.remove('hit');void av.offsetWidth;av.classList.add('hit');},720);
+      },k*(lite?60:110));
+    });
+    const total=items.length*(lite?60:110)+900;
+    setTimeout(()=>{head.remove();procBusy=false;},total);
+    addMsg(`<span style="font-size:11.5px;color:#ffe9a8;background:#ffd45e14;border-radius:10px;padding:4px 10px">🎁 أبو كرم أرسل ${emoji} ×${qty} إلى ${targets.map(t=>SEATS[t][0]).join('، ')}</span>`);
+  }
 }
 
 const TABS={
@@ -260,7 +358,7 @@ const TABS={
       <li>المستخدم العادي بلا إعلان. الترحيب أول 3 أيام. والنادي حسب الفئة. والثنائي عند دخول أحدهما.</li>
       <li>لا يتكرر عند إعادة الاتصال خلال دقيقتين.</li></ul></div>`;}},
   gifts:{label:'مؤثرات الهدايا',render(){
-    return `<div class="cards">${GIFTS.map(g=>`<div class="card"><div class="meta"><b>${g[2]} ${g[1]}</b><span class="tag ${g[3]==='fc'?'fc':'shop'}">${g[4]}</span></div><button class="try" data-gift="${g[0]}">أرسل الهدية</button></div>`).join('')}</div>
+    return `<div class="grp">هدايا بلا فيديو: موكب في المنتصف ثم طيران<small>للجميع، لا للمرسل والمستلم فقط</small></div><div class="cards"><div class="card"><div class="meta"><b>🌹 وردة ×1</b><span class="tag shop">100</span></div><button class="try" data-proc="🌹|1|1">أرسل</button></div><div class="card"><div class="meta"><b>🌹 وردة ×7</b><span class="tag shop">700</span></div><button class="try" data-proc="🌹|7|1">أرسل</button></div><div class="card"><div class="meta"><b>💖 قلب ×30 لـ3 أشخاص</b><span class="tag shop">كومبو</span></div><button class="try" data-proc="💖|30|1,2,3">أرسل</button></div><div class="card"><div class="meta"><b>⭐ نجمة ×99</b><span class="tag shop">احتفال ×99</span></div><button class="try" data-proc="⭐|99|4">أرسل</button></div></div><div class="grp">هدايا الفيديو<small>طابور: واحدة بعد الأخرى</small></div><div class="cards">${GIFTS.map(g=>`<div class="card"><div class="meta"><b>${g[2]} ${g[1]}</b><span class="tag ${g[3]==='fc'?'fc':'shop'}">${g[4]}</span></div><button class="try" data-gift="${g[0]}">أرسل الهدية</button></div>`).join('')}</div>
     <p class="note">الفيديو يُعرض فوق الغرفة، ثم تطير الهدية إلى مقعد المستلم. شغّل «وضع الأجهزة الضعيفة» لترى البديل الخفيف.</p>
     <div class="spec"><h3>رأيي في فيديوهاتك</h3><ul>
       <li><b>التنين ممتاز:</b> النار والشرر على خلفية سوداء تعمل بشكل مثالي فوق الغرفة. يناسب هدية «تنين» الموجودة.</li>
@@ -269,6 +367,13 @@ const TABS={
       <li><b>سيف البرق ممتاز:</b> البرق الأزرق قوي جداً فوق الغرفة. أقترحه هدية أسطورية جديدة، وتناسب جولات PK.</li>
       <li><b>اليخت جيد:</b> الماء والخطوط الذهبية رائعة، لكن جسم اليخت الأبيض يصبح شفافاً قليلاً فوق الغرفة. مقبول، ويناسب هدية «يخت» الموجودة.</li>
       <li><b>التقنية:</b> الخلفية السوداء تُزال بخاصية <code>mix-blend-mode: screen</code> على طبقة الفيديو نفسها (وليس على الفيديو داخل طبقة معزولة، وإلا يظهر الأسود)، فلا نحتاج فيديو بشفافية. قصصت كل فيديو إلى 6 ثوانٍ وضغطته: من حوالي 6.5MB إلى حوالي 0.5MB.</li></ul></div>
+    <div class="spec"><h3>الهدايا بلا فيديو: «مدينة ملاهي» للجميع</h3><ul>
+      <li>في الأعلى شريط «المرسل ← المستلم» وعدّاد ذهبي كبير يقفز مع كل وحدة.</li>
+      <li>الوحدات تظهر <b>متتالية</b> في صف في منتصف الشاشة، كل واحدة بقفزة وشرر (حتى 10 ظاهرة، والعدّاد يُكمل للرقم الحقيقي).</li>
+      <li>ثم تنطلق <b>واحدة بعد الأخرى</b> بذيل لامع نحو المقعد، وتتوزع بالتناوب على المستلمين، والمقعد ينبض ويطلق شرراً عند كل إصابة.</li>
+      <li>من ×10 فما فوق: احتفال رقم كبير في وسط الشاشة.</li>
+      <li>موكب واحد في كل مرة، والباقي في طابور قصير. والكومبو المتواصل من نفس الشخص يُضاف لنفس الموكب بدل موكب جديد.</li>
+      <li>الأجهزة الضعيفة: 3 وحدات فقط، بلا شرر ولا ذيل.</li></ul></div>
     <div class="spec"><h3>مواصفات التنفيذ</h3><ul>
       <li><b>الخطأ الثاني الذي لاحظته:</b> الهدية لم تعد تطير إلى المقعد. الكود موجود (gfxFlyRemoteGiftToSeat)، فإما أن «وضع الأجهزة الضعيفة» تفعّل تلقائياً على جهازك، أو أن الطيران مكسور. يحتاج تحقيقاً.</li>
       <li><b>الخفة (أولوية المالك):</b>
@@ -291,6 +396,8 @@ document.addEventListener('click',e=>{const t=e.target.closest('button');if(!t)r
   if(t.dataset.bubble){const b=BUBBLES.find(x=>x[0]===t.dataset.bubble);addMsg(bubbleMsg(b[0],'ريم',6,b[4]));return;}
   if(t.dataset.entr){playEntrance(t.dataset.entr);return;}
   if(t.dataset.gift){playGift(t.dataset.gift);return;}
+  if(t.dataset.proc){const [e,q,tg]=t.dataset.proc.split('|');playProcession(e,+q,tg.split(',').map(Number));return;}
+  if(t.id==='mGl'||t.id==='mScr'){fxMode=t.id==='mGl'?'gl':'scr';$('mGl').classList.toggle('on',fxMode==='gl');$('mScr').classList.toggle('on',fxMode!=='gl');return;}
   if(t.id==='liteSw'){lite=!lite;t.classList.toggle('on',lite);$('phone').classList.toggle('is-lite',lite);return;}
 });
 render();

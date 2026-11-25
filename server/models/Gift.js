@@ -67,6 +67,13 @@ const giftSchema = new mongoose.Schema({
   isFanClubExclusive: {
     type: Boolean,
     default: false
+  },
+  // 🛡️ fix/gift-stage-top-layer (بند 2-د): "تأثير المقعد" — علم أدمن لكل هدية (ابدأ بـ"تاج")
+  // يضع تراكباً بصرياً (إيموجي الطبقة نفسها) على صورة مقعد المستلم لمدة ثابتة (~10 ثوانٍ، راجع
+  // الراسم بـapp.js) — معادل الصوت لتأثيرات وجه TikTok، null يعني بلا تأثير مقعد لهذي الهدية
+  seatEffect: {
+    type: String,
+    default: null
   }
 }, {
   timestamps: true

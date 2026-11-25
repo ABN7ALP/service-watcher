@@ -20,7 +20,7 @@ async function seedGiftsIfMissing() {
         { name: 'بالون', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832611/cute-pink-cartoon-balloon-with-smiling-face-and-shiny-eyes-png.png', price: 100, category: 'rare', animation: 'float', sortOrder: 4 },
         { name: 'ثعلب', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832545/cute-cartoon-little-red-fox-isolated-on-the-transparent-background-png.png', price: 150, category: 'rare', animation: 'float', sortOrder: 5 },
         { name: 'قوس قزح', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832474/colorful-rainbow-with-playful-houses-and-trees-in-a-whimsical-landscape-png.png', price: 200, category: 'rare', animation: 'float', sortOrder: 6 },
-        { name: 'تاج', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832422/luxurious-gold-crown-with-intricate-detailing-free-png.webp', price: 350, category: 'epic', animation: 'float', sortOrder: 7 },
+        { name: 'تاج', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832422/luxurious-gold-crown-with-intricate-detailing-free-png.webp', price: 350, category: 'epic', animation: 'float', sortOrder: 7, seatEffect: '👑' },
         { name: 'حديقة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832349/vibrant-garden-path-surrounded-by-blooming-flowers-greenery-and-a-white-fence-creating-a-peaceful-and-inviting-outdoor-space-free-png.png', price: 800, category: 'epic', animation: 'float', sortOrder: 8 },
         { name: 'ألماسة', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832281/sparkling-cut-diamond-illustration-with-transparent-background-png.png', price: 1200, category: 'epic', animation: 'float', sortOrder: 9 },
         { name: 'يخت', imageUrl: 'https://res.cloudinary.com/dntlt5xry/image/upload/v1787832194/luxury-yacht-anchored-in-calm-waters-during-sunset-showcasing-elegant-design-and-spacious-deck-perfect-for-relaxing-getaways-png.png', price: 2500, category: 'legendary', animation: 'float', sortOrder: 10 },
@@ -299,6 +299,13 @@ async function migrateGiftImageUrls() {
     console.log('🔧 [MIGRATION] تم تحديث روابط صور الهدايا للتطابق مع الكود الحالي');
 }
 
+// 🛡️ fix/gift-stage-top-layer (بند 2-د): يمنح "تاج" تأثير المقعد الافتراضي (👑) مرة واحدة
+// فقط — seatEffect:{$exists:false} يعني مستند لم يُلمَس إطلاقاً بعد إضافة الحقل (لا قيمة
+// null صريحة)، فتعديل الأدمن اللاحق (حتى لو أطفأه بـnull صراحة) لا يُستبدَل أبداً بعدها
+async function migrateGiftSeatEffects() {
+    await Gift.updateOne({ name: 'تاج', seatEffect: { $exists: false } }, { $set: { seatEffect: '👑' } });
+}
+
 // ✅ طلب صريح (هدايا v2): category enum تضمّن "custom" الآن — لا ترحيل بيانات لازم لأي قيمة
 // حالية (common/rare/epic/legendary تبقى كما هي حرفياً، لم تتغيّر أسماؤها). الحقل الوحيد
 // المحتاج ترحيلاً فعلياً isFullscreen: الافتراضي بالـschema (دالة تعتمد على category) يُطبَّق
@@ -404,6 +411,12 @@ module.exports = async function autoSeed() {
         await migrateGiftImageUrls(); // ✅ جديد
         await migrateGiftFullscreenFlag(); // ✅ هدايا v2
         await seedGiftsIfMissing();
+        // 🐛 إصلاح ترتيب: يجب أن تأتي بعد seedGiftsIfMissing لا قبلها — قاعدة بيانات جديدة
+        // كلياً ليس بها "تاج" بعد إطلاقاً وقت هذا الاستدعاء لو سبقته، فلا تجد الاستعلام أي
+        // مستند لتحديثه (يبقى seatEffect:null الناتج عن القيمة الافتراضية بالمخطط وحدها —
+        // seedGiftsIfMissing أعلاه يضبطها صراحة الآن لأي "تاج" جديد؛ هذي الدالة فقط لترحيل
+        // قاعدة بيانات إنتاج قديمة فيها "تاج" من قبل هذا التعديل بالذات)
+        await migrateGiftSeatEffects(); // ✅ fix/gift-stage-top-layer
         await seedFanClubExclusiveGiftIfMissing();
         await seedGiftFxGiftsIfMissing(); // ✅ feat/gift-fx-and-cosmetics-base
         await seedFramesIfMissing();

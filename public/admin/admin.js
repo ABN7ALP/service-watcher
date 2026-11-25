@@ -1150,6 +1150,12 @@ class AdminDashboard {
                         <div class="form-group"><label>ترتيب العرض</label><input type="number" class="form-control" id="giftSortOrder" value="${gift?.sortOrder || 0}"></div>
                         <div class="form-group"><label><input type="checkbox" id="giftIsActive" ${gift?.isActive !== false ? 'checked' : ''}> نشطة (تظهر بالمتجر)</label></div>
                         <div class="form-group"><label><input type="checkbox" id="giftIsFanClubExclusive" ${gift?.isFanClubExclusive ? 'checked' : ''}> حصرية نادي المعجبين (تظهر فقط بتبويب "النادي" داخل غرفة المضيف)</label></div>
+                        <div class="form-group"><label>تأثير المقعد (اختياري — تراكب على صورة المستلم ~10 ثوانٍ)</label>
+                            <select class="form-control" id="giftSeatEffect">
+                                <option value="" ${!gift?.seatEffect ? 'selected' : ''}>بلا تأثير</option>
+                                <option value="👑" ${gift?.seatEffect === '👑' ? 'selected' : ''}>👑 تاج</option>
+                            </select>
+                        </div>
                         <div class="form-group">
                             <label>فيديو مؤثر الهدية (mp4، حتى 2MB، اختياري)</label>
                             ${gift?.videoUrl ? `<p class="text-muted small">فيديو حالي موجود — اختر ملفاً جديداً لاستبداله، أو اتركه فارغاً لإبقائه كما هو.</p>` : ''}
@@ -1186,6 +1192,7 @@ class AdminDashboard {
                     formData.append('sortOrder', String(parseInt(modal.querySelector('#giftSortOrder').value) || 0));
                     formData.append('isActive', modal.querySelector('#giftIsActive').checked ? 'true' : 'false');
                     formData.append('isFanClubExclusive', modal.querySelector('#giftIsFanClubExclusive').checked ? 'true' : 'false');
+                    formData.append('seatEffect', modal.querySelector('#giftSeatEffect').value || '');
                     if (isEdit) await this.apiUpload('PUT', `/gifts/${gift._id}`, formData);
                     else await this.apiUpload('POST', '/gifts', formData);
                 } else {
@@ -1196,7 +1203,8 @@ class AdminDashboard {
                         discount: parseFloat(modal.querySelector('#giftDiscount').value) || 0,
                         sortOrder: parseInt(modal.querySelector('#giftSortOrder').value) || 0,
                         isActive: modal.querySelector('#giftIsActive').checked,
-                        isFanClubExclusive: modal.querySelector('#giftIsFanClubExclusive').checked
+                        isFanClubExclusive: modal.querySelector('#giftIsFanClubExclusive').checked,
+                        seatEffect: modal.querySelector('#giftSeatEffect').value || null
                     };
                     if (isEdit) await this.api('PUT', `/gifts/${gift._id}`, payload);
                     else await this.api('POST', '/gifts', payload);
