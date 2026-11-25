@@ -38,6 +38,15 @@ const giftSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // ✅ feat/gift-alpha-video: شكل قناة الشفافية بفيديو الهدية — 'luma' (الافتراضي، كل الهدايا
+  // الحالية: خلفية سوداء = شفاف، سطوع اللون نفسه = الألفا) أو 'stacked' (معيار الصناعة، كـVAP:
+  // الإطار نصفان رأسياً — العلوي لون حقيقي، السفلي قناع ألفا رمادي صريح — يدعم أجزاءً داكنة
+  // حقيقية بجسم الهدية لا تُحسَب شفافة خطأً كما يحدث بـluma). راجع gfxMakeLumaKeyRenderer بـapp.js
+  videoAlpha: {
+    type: String,
+    enum: ['luma', 'stacked'],
+    default: 'luma'
+  },
   // ✅ طلب صريح: افتراضياً true للهدايا الأسطورية فقط (تأثير ملء الشاشة)، false لبقية
   // الفئات — دالة افتراضية (لا قيمة ثابتة) كي تعتمد على category وقت الإنشاء نفسه
   isFullscreen: {

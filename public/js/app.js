@@ -16595,7 +16595,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                         // (نفس الحقل المخزَّن فعلياً بمستند Gift لكلتا الهديتين — راجع autoSeed.js)
                         exclusiveGiftTiles = eligRes.data.gifts.map(g => ({
                             id: g.id, name: g.name, imageUrl: g.imageUrl, price: g.price, discountedPrice: g.price,
-                            videoUrl: g.videoUrl || null, category: 'legendary',
+                            videoUrl: g.videoUrl || null, videoAlpha: g.videoAlpha || 'luma', category: 'legendary',
                             _fanClubTint: FAN_CLUB_COLORS[eligRes.data.giftColorId]?.filter || 'none'
                         }));
                         fanClubCatVisible = true;
@@ -18086,11 +18086,26 @@ function giftStageOnVideoPreload(item) {
 // (uv 0..1) قد تكون ساطعة بما يكفي لتُقصّ معتمة (step/smoothstep أعلاه لا يعرفان حدود الإطار،
 // فقط سطوع البكسل) فتظهر كخط مستقيم حاد حيث ينتهي الفيديو فعلياً — ريشة e تُصفِّر الألفا تدريجياً
 // قرب الحواف الأربع (مضروبة بنفس عامل اللون المسبق الضرب) بصرف النظر عن سطوع محتوى تلك البكسلات
-function gfxMakeLumaKeyRenderer(video, canvas, onError) {
+// ✅ feat/gift-alpha-video: ريشة الحواف الأربع مشتركة بين كلا وضعي الشيدر (luma/stacked) — نفس
+// الصيغة بالضبط، تُضرَب بالألفا النهائية أياً كان مصدرها (سطوع اللون أو قناة ألفا صريحة)
+const GFX_EDGE_FEATHER_GLSL = 'float e=smoothstep(0.0,0.08,uv.y)*smoothstep(0.0,0.08,1.0-uv.y)*smoothstep(0.0,0.04,uv.x)*smoothstep(0.0,0.04,1.0-uv.x);';
+// 🐛 feat/gift-alpha-video ("أجزاء داكنة بجسم الهدية تصير ثقوباً"): luma-key يحسب أي بكسل غامق
+// (أجنحة/ظلال التنين ~27% من الجسم) شفافاً خطأً — لا فرق بين "خلفية سوداء" و"تفصيل داكن حقيقي
+// بالتصميم". الحل الصناعي القياسي (نفس أسلوب Tencent VAP): فيديو بقناة ألفا مُكدَّسة رأسياً —
+// النصف العلوي لون حقيقي كاملاً (حتى الأجزاء الداكنة تُرسَم كما هي)، السفلي قناع رمادي صريح
+// (أبيض=معتم، أسود=شفاف) لا علاقة له بسطوع اللون إطلاقاً. راجع videoAlpha بـGift.js/gift:sent
+function gfxLumaKeyFragmentShader() {
+    return 'precision mediump float;varying vec2 uv;uniform sampler2D t;void main(){vec3 c=texture2D(t,uv).rgb;float m=max(c.r,max(c.g,c.b));float a=smoothstep(0.035,0.22,m);' + GFX_EDGE_FEATHER_GLSL + 'a*=e;gl_FragColor=vec4(c*step(0.035,m)*e,a);}';
+}
+function gfxStackedAlphaFragmentShader() {
+    return 'precision mediump float;varying vec2 uv;uniform sampler2D t;void main(){vec3 c=texture2D(t,vec2(uv.x,uv.y*0.5)).rgb;float a=texture2D(t,vec2(uv.x,0.5+uv.y*0.5)).r;' + GFX_EDGE_FEATHER_GLSL + 'a*=e;gl_FragColor=vec4(c*a,a);}';
+}
+function gfxMakeLumaKeyRenderer(video, canvas, onError, mode) {
     const gl = canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: false, preserveDrawingBuffer: true });
     if (!gl) return null;
+    const stacked = mode === 'stacked';
     const vs = 'attribute vec2 p;varying vec2 uv;void main(){uv=vec2((p.x+1.)/2.,1.-(p.y+1.)/2.);gl_Position=vec4(p,0.,1.);}';
-    const fs = 'precision mediump float;varying vec2 uv;uniform sampler2D t;void main(){vec3 c=texture2D(t,uv).rgb;float m=max(c.r,max(c.g,c.b));float a=smoothstep(0.035,0.22,m);float e=smoothstep(0.0,0.08,uv.y)*smoothstep(0.0,0.08,1.0-uv.y)*smoothstep(0.0,0.04,uv.x)*smoothstep(0.0,0.04,1.0-uv.x);a*=e;gl_FragColor=vec4(c*step(0.035,m)*e,a);}';
+    const fs = stacked ? gfxStackedAlphaFragmentShader() : gfxLumaKeyFragmentShader();
     const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); return o; };
     const pr = gl.createProgram();
     gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs));
@@ -18112,7 +18127,12 @@ function gfxMakeLumaKeyRenderer(video, canvas, onError) {
         if (!alive) return;
         if (video.readyState >= 2) {
             try {
-                if (canvas.width !== video.videoWidth) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; gl.viewport(0, 0, canvas.width, canvas.height); }
+                // ✅ feat/gift-alpha-video: بوضع stacked المصدر إطار مكدَّس (لون فوق، ألفا تحت) —
+                // أبعاد الكانفاس الحقيقية (= نسبة أبعاده الظاهرة بالصفحة، عنصر replaced عادي)
+                // نصف ارتفاع الفيديو المصدر فقط، لا الإطار الكامل المكدَّس، وإلا ظهر العنصر بضعف
+                // طوله الحقيقي مع مساحة فارغة (الشيدر يرسم نصفه العلوي فقط بالفعل)
+                const srcH = stacked ? Math.round(video.videoHeight / 2) : video.videoHeight;
+                if (canvas.width !== video.videoWidth || canvas.height !== srcH) { canvas.width = video.videoWidth; canvas.height = srcH; gl.viewport(0, 0, canvas.width, canvas.height); }
                 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
                 gl.clearColor(0, 0, 0, 0);
                 gl.clear(gl.COLOR_BUFFER_BIT);
@@ -18151,6 +18171,29 @@ function gfxMakeLumaKeyRenderer(video, canvas, onError) {
 //   أدناه — هذا فحص احتياطي إضافي لعنصر قد يكون قيد التشغيل فعلاً لحظة التبديل للخلفية)
 // • تأخّر أكثر من 1.5 ثانية (إنترنت ضعيف) = إلغاء وطيران فوري
 // • عنصر الفيديو يُحذف ويُفرَّغ مصدره دوماً بعد الانتهاء (نجاحاً أو إلغاءً) — لا بقايا بالذاكرة
+// ✅ feat/gift-alpha-video: فُرِّغ من داخل الفرع الخفيف أدناه كي يُعاد استخدامه أيضاً باحتياط
+// تعذّر WebGL لفيديو stacked تحديداً (راجع تعليق fallbackToStaticPop) — لا الفيديو الخام أبداً
+// لتلك الحالة (القناع الرمادي سيظهر مكشوفاً بصرياً لو عُرض الفيديو كما هو)
+function gfxShowStaticGiftPop(evt, uiLayer, onDone) {
+    const s = document.createElement('div');
+    s.className = 'room-giftfx-static';
+    const giftImgUrl = isHttpsImageUrl(evt.gift?.image) ? evt.gift.image : null;
+    if (giftImgUrl) {
+        const img = document.createElement('img');
+        img.src = giftImg(giftImgUrl, 90);
+        img.alt = '';
+        img.style.cssText = 'width:100%;height:100%;object-fit:contain';
+        wireGiftImgFallback(img, giftImgUrl, '🎁');
+        s.appendChild(img);
+    } else {
+        s.textContent = '🎁';
+    }
+    const liteCenter = gfxStagePopCenterPoint();
+    if (liteCenter) { s.style.left = liteCenter.x + 'px'; s.style.top = liteCenter.y + 'px'; }
+    // ✅ ليست فيديو letterboxed — تذهب لطبقة الواجهة الطبيعية (لا مزج screen) كي تبقى واضحة
+    uiLayer.appendChild(s);
+    setTimeout(() => { s.remove(); onDone(); }, 1000);
+}
 function giftStageOnVideoPlay(item, done) {
     const uiLayer = getGiftStageOverlay();
     const videoLayer = document.getElementById('gift-fx-video');
@@ -18160,27 +18203,11 @@ function giftStageOnVideoPlay(item, done) {
     const finish = () => { gfxHideGiftTopBanner(); done(); };
 
     if (gfxIsLiteGiftMode()) {
-        const s = document.createElement('div');
-        s.className = 'room-giftfx-static';
-        const giftImgUrl = isHttpsImageUrl(evt.gift?.image) ? evt.gift.image : null;
-        if (giftImgUrl) {
-            const img = document.createElement('img');
-            img.src = giftImg(giftImgUrl, 90);
-            img.alt = '';
-            img.style.cssText = 'width:100%;height:100%;object-fit:contain';
-            wireGiftImgFallback(img, giftImgUrl, '🎁');
-            s.appendChild(img);
-        } else {
-            s.textContent = '🎁';
-        }
-        const liteCenter = gfxStagePopCenterPoint();
-        if (liteCenter) { s.style.left = liteCenter.x + 'px'; s.style.top = liteCenter.y + 'px'; }
-        // ✅ ليست فيديو letterboxed — تذهب لطبقة الواجهة الطبيعية (لا مزج screen) كي تبقى واضحة
-        uiLayer.appendChild(s);
-        setTimeout(() => { s.remove(); finish(); }, 1000);
+        gfxShowStaticGiftPop(evt, uiLayer, finish);
         return;
     }
 
+    const mode = evt.gift?.videoAlpha === 'stacked' ? 'stacked' : 'luma';
     const v = item._preloadEl || document.createElement('video');
     v.muted = true;
     v.playsInline = true;
@@ -18200,9 +18227,10 @@ function giftStageOnVideoPlay(item, done) {
     window.addEventListener('resize', repositionStage);
     window.addEventListener('orientationchange', repositionStage);
     window.visualViewport?.addEventListener('resize', repositionStage);
-    const cleanupAndFly = () => {
-        if (settled) return;
-        settled = true;
+    // ✅ feat/gift-alpha-video: فُصِلت تهيئة الوسائط (مؤقّت/مستمعات/عناصر) عن "إنهاء التشغيل"
+    // (finish) — fallbackToStaticPop تحتاج الأولى فقط (تُطهِّر الفيديو/الكانفاس) ثم تعرض البديل
+    // الساكن بنفسها بدل المتابعة مباشرة لـfinish كما تفعل cleanupAndFly
+    const teardownMedia = () => {
         clearTimeout(startTimer);
         window.removeEventListener('resize', repositionStage);
         window.removeEventListener('orientationchange', repositionStage);
@@ -18210,10 +18238,16 @@ function giftStageOnVideoPlay(item, done) {
         badge?.remove();
         glRenderer?.stop();
         canvasEl?.remove();
+        canvasEl = null;
         try { v.pause(); } catch (_) {}
         v.removeAttribute('src');
         try { v.load(); } catch (_) {}
         v.remove(); // ✅ آمن حتى لو لم يُلحَق بالـDOM إطلاقاً (مسار WebGL — راجع أدناه)
+    };
+    const cleanupAndFly = () => {
+        if (settled) return;
+        settled = true;
+        teardownMedia();
         finish();
     };
     const startTimer = setTimeout(cleanupAndFly, 1500);
@@ -18225,9 +18259,9 @@ function giftStageOnVideoPlay(item, done) {
     // (تشغيل/فك ترميز الفيديو لا يتطلب وجوده بالمستند، تماماً كـitem._preloadEl أعلاه الذي
     // يُحمَّل مسبقاً بلا إلحاق أصلاً)؛ الكانفاس وحده المرئي (قصّ ألفا حقيقي، يُغطّي ما تحته فعلياً).
     // الفيديو الخام لا يُلحَق إلا باحتياط تعذّر WebGL أدناه
-    // ✅ احتياط تلقائي موحَّد: يُستدعى حين يتعذّر WebGL ابتداءً، أو حين يفشل رفع إطار فعلي لاحقاً
-    // (CORS رفض تاج النسيج مثلاً) — يعود دوماً للفيديو الخام (mix-blend-mode:screen على العنصر
-    // نفسه)، لا كسر صامت لعرض الهدية بأي حال
+    // ✅ احتياط تلقائي: يُستدعى حين يتعذّر WebGL ابتداءً، أو حين يفشل رفع إطار فعلي لاحقاً (CORS
+    // رفض تاج النسيج مثلاً) — لفيديو luma يعود دوماً للفيديو الخام (mix-blend-mode:screen)، لا
+    // كسر صامت لعرض الهدية بأي حال
     const fallbackToPlainVideo = () => {
         canvasEl?.remove();
         canvasEl = null;
@@ -18236,26 +18270,41 @@ function giftStageOnVideoPlay(item, done) {
         v.style.left = p0.x + 'px'; v.style.top = p0.y + 'px';
         if (!v.isConnected) videoLayer.appendChild(v);
     };
+    // 🛡️ feat/gift-alpha-video (طلب صريح): لفيديو stacked تحديداً — أبداً لا الفيديو الخام (القناع
+    // الرمادي نصف السفلي سيظهر مكشوفاً بصرياً، لا تأثيراً شفافاً) — البديل الوحيد المقبول هو عرض
+    // الصورة الساكنة (نفس بديل الوضع الخفيف) ثم إنهاء التشغيل مباشرة
+    const fallbackToStaticPop = () => {
+        if (settled) return;
+        settled = true;
+        teardownMedia();
+        gfxShowStaticGiftPop(evt, uiLayer, finish);
+    };
+    const onGlUnavailable = mode === 'stacked' ? fallbackToStaticPop : fallbackToPlainVideo;
     canvasEl = document.createElement('canvas');
     canvasEl.className = 'gift-fx-canvas';
     const p0 = gfxStageBottomAnchorPoint();
     canvasEl.style.left = p0.x + 'px'; canvasEl.style.top = p0.y + 'px';
-    glRenderer = gfxMakeLumaKeyRenderer(v, canvasEl, fallbackToPlainVideo);
+    glRenderer = gfxMakeLumaKeyRenderer(v, canvasEl, onGlUnavailable, mode);
     if (glRenderer) {
         videoLayer.appendChild(canvasEl);
     } else {
-        fallbackToPlainVideo();
+        onGlUnavailable();
     }
-    // ✅ "×N" على آخر تشغيل فقط لكمية كبيرة من نفس الهدية (حتى 3 تشغيلات — راجع giftEngine.js):
-    // بطاقة داكنة (خلفية شبه سوداء) — تذهب لطبقة الواجهة الطبيعية (لا طبقة الفيديو) كي تبقى
-    // نصّها/خلفيتها حادّين بصرف النظر عن مسار الرسم (كانفاس أو فيديو خام)
-    if (item.badgeQty) {
-        badge = document.createElement('span');
-        badge.className = 'room-giftfx-video-badge';
-        badge.textContent = '×' + item.badgeQty.toLocaleString('en-US');
-        uiLayer.appendChild(badge);
+    // 🐛 feat/gift-alpha-video: fallbackToStaticPop (بلا WebGL، stacked) تُنهي الجلسة فوراً
+    // وبشكل متزامن أعلاه (settled=true قبل وصول التنفيذ هنا) — بطاقة ×N أو تشغيل فيديو بعدها
+    // سيُنشئان عنصراً/تشغيلاً يتيماً لا يُنظَّفه أي مستمع لاحق (الجلسة انتهت فعلياً بالفعل)
+    if (!settled) {
+        // ✅ "×N" على آخر تشغيل فقط لكمية كبيرة من نفس الهدية (حتى 3 تشغيلات — راجع giftEngine.js):
+        // بطاقة داكنة (خلفية شبه سوداء) — تذهب لطبقة الواجهة الطبيعية (لا طبقة الفيديو) كي تبقى
+        // نصّها/خلفيتها حادّين بصرف النظر عن مسار الرسم (كانفاس أو فيديو خام)
+        if (item.badgeQty) {
+            badge = document.createElement('span');
+            badge.className = 'room-giftfx-video-badge';
+            badge.textContent = '×' + item.badgeQty.toLocaleString('en-US');
+            uiLayer.appendChild(badge);
+        }
+        v.play().catch(cleanupAndFly);
     }
-    v.play().catch(cleanupAndFly);
 }
 
 // 🛡️ fix/gift-stage-top-layer (إصلاح جذري): إحداثيات نافذة العرض (viewport) مباشرة بلا أي
