@@ -4843,13 +4843,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // (انفجار عابر لا يحجز منطقة ثابتة، لا يتعارض مع شيء)
     function celebrateRoomLevelUp(newLevel) {
         fireConfettiBurst(['#fbbf24', '#f59e0b', '#a855f7']);
-        gfxShowTopToast(`<i class="fas fa-star"></i><span>ارتقت الغرفة! Lv.${Number(newLevel) || 0}</span>`);
+        gfxShowTopToast(`<i class="fas fa-star"></i><span>ارتقت الغرفة! Lv.${Number(newLevel) || 0}</span>`, { jump: true });
     }
 
     // ✅ احتفال ارتقاء "مستوى المعجب" بنادٍ ما — نفس أسلوب توست ارتقاء الغرفة
     function celebrateFanClubLevelUp(ownerUsername, newLevel, tierName) {
         fireConfettiBurst(['#fbbf24', '#ec4899', '#a855f7']);
-        gfxShowTopToast(`<i class="fas fa-crown"></i><span>ارتقيت بنادي ${escapeHtml(ownerUsername || '')}! Lv.${newLevel} · ${escapeHtml(tierName || '')}</span>`);
+        gfxShowTopToast(`<i class="fas fa-crown"></i><span>ارتقيت بنادي ${escapeHtml(ownerUsername || '')}! Lv.${newLevel} · ${escapeHtml(tierName || '')}</span>`, { jump: true });
     }
 
     // ✅ احتفال ارتقاء "مستوى الدعم/التلقي" العام — نفس أسلوب توست نادي المعجبين، بلون
@@ -4858,7 +4858,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function celebrateSupportLevelUp(kind, newLevel, tierName, tierIcon, tierGradient) {
         const [c1, c2] = tierGradient;
         fireConfettiBurst(['#ffffff', c1, c2]);
-        gfxShowTopToast(`<i class="fas ${tierIcon}" style="color:${c1}"></i><span>ارتقيت بمستوى الثروة! Lv.${newLevel} · ${escapeHtml(tierName || '')}</span>`);
+        gfxShowTopToast(`<i class="fas ${tierIcon}" style="color:${c1}"></i><span>ارتقيت بمستوى الثروة! Lv.${newLevel} · ${escapeHtml(tierName || '')}</span>`, { jump: true });
     }
 
     // ✅ نافذة إعدادات الغرفة — تظهر فقط للمضيف (يتحقق منها السيرفر أيضاً عند الحفظ). أُعيد
@@ -17335,6 +17335,12 @@ function teardownGiftComboFx() {
     roomGiftStage.leaveRoom();
     // 🐛 إصلاح مرجع عالق (مراجعة #163): كان #gfx-top-toast معرّفاً وحيداً قديماً — التوست الآن
     // طابور حقيقي (gfx-top-toast-stack، راجع gfxShowTopToast) بلا معرّف فردي لكل عنصر
+    // 🛡️ fix/top-banner-queue: تصفير الطابور الموحَّد نفسه أيضاً (لا فقط DOM) — بدون هذا يبقى
+    // مؤقّت توست سابق معلَّقاً فيُعيد رسم عنصر توست من غرفة سابقة بمنتصف الغرفة الجديدة
+    if (gfxTopNoticeState.activeToastTimer) clearTimeout(gfxTopNoticeState.activeToastTimer);
+    gfxTopNoticeState.activeToastTimer = null;
+    gfxTopNoticeState.showingToast = false;
+    gfxTopNoticeState.toastQueue = [];
     document.getElementById('gfx-top-toast-stack')?.replaceChildren();
     // 🐛 إصلاح جذري (الخطأ ب — الهدايا توقّفت عن الطيران للمقعد): gfxActiveFlyCount (بند 3،
     // حدّ الطيران المتزامن على الأجهزة الضعيفة) لم تكن تُصفَّر هنا أبداً — أي رسوم طيران لم
@@ -17458,35 +17464,59 @@ function gfxFlushComboAggregate() {
     if (!agg) return;
     if (agg.xpGained > 0) showXpGainAnimation(agg.xpGained);
 }
-// ✅ توست علوي صغير غير مُحجِّب — بدل بطاقة الاحتفال الكاملة المتوسِّطة الشاشة
-// 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2): كانت كل من ارتقاء الغرفة/النادي/الثروة بطاقة
-// ضخمة بمنتصف الشاشة (.room-levelup-celebration، z-index:620) تتصادم مع الموكب/الشريط
-// الجانبي حين تتزامن مع هدية تُلعَب (كما أظهرت لقطة التحقق) — الآن توست صغير دوماً (لا فقط
-// أثناء الكومبو)، بمنطقته الثابتة الخاصة (تحت الشارة العلوية مباشرة، لا تتقاطعان)، بطابور
-// حقيقي (حاوية تدفّق عادي لا معرّف وحيد) فلا يُلغي احتفال آخر احتفالاً سابقاً لم يختفِ بعد
-function getGfxTopToastStack() {
-    let stack = document.getElementById('gfx-top-toast-stack');
-    if (stack) return stack;
-    stack = document.createElement('div');
-    stack.id = 'gfx-top-toast-stack';
-    stack.className = 'gfx-top-toast-stack';
-    document.body.appendChild(stack);
-    return stack;
+// ✅ طابور إشعارات علوية واحد موحَّد (fix/top-banner-queue): كانت شارة الهدية العلوية
+// (gift-stage-banner-top) وتوست الارتقاء (gfx-top-toast-stack) عنصرين مستقلّين يتموضعان بنفس
+// النقطة تقريباً فيتراكبان بصرياً (كلاهما يصبح غير مقروء) حين يتزامنان. الآن فتحة واحدة فعلياً:
+// توست ارتقاء يقفز الطابور ويستبدل ما يُعرَض حالياً فوراً (لا يتراكب أبداً معه)، وأي عنصر آخر
+// (شارة هدية أو توست عادي لاحق) ينتظر دوره حتى تُفرَغ الفتحة
+const gfxTopNoticeState = { toastQueue: [], activeToastTimer: null, showingToast: false, giftBannerEl: null };
+function getGfxTopNoticeSlot() {
+    let slot = document.getElementById('gfx-top-toast-stack');
+    if (slot) return slot;
+    slot = document.createElement('div');
+    slot.id = 'gfx-top-toast-stack';
+    slot.className = 'gfx-top-toast-stack';
+    document.body.appendChild(slot);
+    return slot;
 }
-function gfxShowTopToast(innerHtml) {
-    const stack = getGfxTopToastStack();
+function gfxTopNoticeAdvance() {
+    if (gfxTopNoticeState.showingToast) return;
+    const slot = getGfxTopNoticeSlot();
     // 🐛 إصلاح (مراجعة المرحلة 3): كان يتموضع بـsafe-area ثابت فقط فيُغطّي عنوان الغرفة —
     // الآن أسفل شريط الرأس الحقيقي #room-header-bar مباشرة (+8px)، لا فوقه أبداً
     const header = document.getElementById('room-header-bar');
-    if (header) stack.style.top = `${header.getBoundingClientRect().bottom + 8}px`;
-    const el = document.createElement('div');
-    el.className = 'gfx-top-toast';
-    el.innerHTML = innerHtml;
-    stack.appendChild(el);
-    setTimeout(() => {
-        el.classList.add('out');
-        setTimeout(() => el.remove(), 300);
-    }, 2200);
+    if (header) slot.style.top = `${header.getBoundingClientRect().bottom + 8}px`;
+    if (gfxTopNoticeState.toastQueue.length) {
+        const { html } = gfxTopNoticeState.toastQueue.shift();
+        gfxTopNoticeState.showingToast = true;
+        const el = document.createElement('div');
+        el.className = 'gfx-top-toast';
+        el.innerHTML = html;
+        slot.replaceChildren(el);
+        gfxTopNoticeState.activeToastTimer = setTimeout(() => {
+            el.classList.add('out');
+            setTimeout(() => {
+                gfxTopNoticeState.showingToast = false;
+                gfxTopNoticeState.activeToastTimer = null;
+                if (el.parentNode === slot) slot.removeChild(el);
+                gfxTopNoticeAdvance();
+            }, 300);
+        }, 2200);
+        return;
+    }
+    slot.replaceChildren(...(gfxTopNoticeState.giftBannerEl ? [gfxTopNoticeState.giftBannerEl] : []));
+}
+// opts.jump: توست ارتقاء (غرفة/نادي/ثروة) — يقطع أي شيء معروض حالياً فوراً (بدل انتظار دوره
+// بآخر الطابور) ثم يُستبدَل بما كان معروضاً (شارة هدية مثلاً) تلقائياً بعد زواله
+function gfxShowTopToast(innerHtml, opts) {
+    if (opts && opts.jump) {
+        if (gfxTopNoticeState.activeToastTimer) clearTimeout(gfxTopNoticeState.activeToastTimer);
+        gfxTopNoticeState.showingToast = false;
+        gfxTopNoticeState.toastQueue.unshift({ html: innerHtml });
+    } else {
+        gfxTopNoticeState.toastQueue.push({ html: innerHtml });
+    }
+    gfxTopNoticeAdvance();
 }
 
 // ✅ جلسة كومبو هدايا حيّة واحدة — تُنشئ كل عناصرها (زر/كنفاس/شريط) وتُفكِّكها بالكامل عند
@@ -17998,7 +18028,6 @@ function getGiftStageOverlay() {
         ui = document.createElement('div');
         ui.id = 'gift-fx-ui';
         ui.innerHTML = `
-            <div id="gift-stage-banner-top" class="gift-stage-banner-top"></div>
             <div id="gift-stage-fly-layer" class="gift-stage-fly-layer"></div>
         `;
         document.body.appendChild(ui);
@@ -18018,26 +18047,30 @@ function gfxTruncateStageName(name, max) {
 // ✅ شارة علوية واحدة طوال مدة تشغيل فيديو الهدية كاملة (طلب صريح — بند 2أ): "فلان أرسل الهدية
 // إلى فلان". فتحة واحدة فقط (فيديو واحد يُشغَّل بأي لحظة أصلاً، راجع طابور GiftStage) — لا طابور
 // منفصل لها، تُستبدَل فوراً لو وصل عرض جديد (لن يحدث عملياً لأن طابور الفيديو نفسه متسلسل)
+// 🐛 fix/top-banner-queue: تمر الآن بفتحة الإشعار العلوي الموحَّدة (gfxTopNoticeState) بدل
+// صندوقها الثابت الخاص — فلا تتراكب مع توست ارتقاء يصل بنفس اللحظة. واسم الهدية نفسه يُقصّ
+// الآن أيضاً (≤14 حرفاً، بوسامة قصّ الأسماء) كي تبقى "إلى فلان" مقروءة دوماً مهما طال اسم الهدية
 function gfxShowGiftTopBanner(evt) {
     getGiftStageOverlay();
-    const el = document.getElementById('gift-stage-banner-top');
-    if (!el) return;
     const toLabel = (evt.receivers && evt.receivers.length > 1) ? `${evt.receivers.length} مستلمين` : gfxTruncateStageName(evt.receivers?.[0]?.username || '', 12);
-    el.innerHTML = '';
+    const el = document.createElement('div');
+    el.className = 'gfx-top-toast gift-stage-banner-top'; // ملاحظة: الصنف الثاني مُعرِّف منطقي فقط (لا تنسيق CSS خاص به بعد الآن)
     const line = document.createElement('span');
     const b1 = document.createElement('b');
     const bdi1 = document.createElement('bdi'); bdi1.textContent = gfxTruncateStageName(evt.sender?.username || '', 12); b1.appendChild(bdi1);
     const mid = document.createTextNode(' أرسل ');
-    const giftName = document.createTextNode(evt.gift?.name || 'هدية');
+    const giftName = document.createTextNode(gfxTruncateStageName(evt.gift?.name || 'هدية', 14));
     const toText = document.createTextNode(toLabel ? ` إلى ` : '');
     const b2 = document.createElement('b');
     const bdi2 = document.createElement('bdi'); bdi2.textContent = toLabel; b2.appendChild(bdi2);
     line.appendChild(b1); line.appendChild(mid); line.appendChild(giftName); line.appendChild(toText); line.appendChild(b2);
     el.appendChild(line);
-    el.classList.add('show');
+    gfxTopNoticeState.giftBannerEl = el;
+    gfxTopNoticeAdvance();
 }
 function gfxHideGiftTopBanner() {
-    document.getElementById('gift-stage-banner-top')?.classList.remove('show');
+    gfxTopNoticeState.giftBannerEl = null;
+    if (!gfxTopNoticeState.showingToast) gfxTopNoticeAdvance();
 }
 
 // ---------------- طابور الفيديو بملء الشاشة (ج) ----------------

@@ -3392,18 +3392,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .gift-stage-fly-layer { position: absolute; inset: 0; overflow: visible; z-index: 1; }
 .gift-stage-lane { position: absolute; left: 8px; bottom: 96px; display: flex; flex-direction: column-reverse; gap: 8px; max-width: 72vw; z-index: 2; }
 
-/* ✅ شارة علوية طوال مدة تشغيل فيديو الهدية كاملة (طلب صريح — بند 2أ) */
-.gift-stage-banner-top {
-    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 54px); left: 50%;
-    opacity: 0; transform: translate(-50%, -14px); pointer-events: none; z-index: 3;
-    background: rgba(18, 8, 28, .78); backdrop-filter: blur(6px); color: #fff;
-    font-size: 12.5px; font-weight: 700; padding: 6px 16px; border-radius: 999px;
-    box-shadow: 0 4px 18px rgba(0, 0, 0, .4); max-width: 86vw; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis; transition: opacity .25s, transform .25s;
-}
-.gift-stage-banner-top.show { opacity: 1; transform: translate(-50%, 0); }
-.gift-stage-banner-top b { color: #ffcf5a; }
-@media (prefers-reduced-motion: reduce) { .gift-stage-banner-top { transition: opacity .15s; transform: translate(-50%, 0); } }
+/* 🐛 fix/top-banner-queue: شارة إرسال الهدية تمر الآن بفتحة الإشعار العلوي الموحَّدة
+   (.gfx-top-toast-stack/.gfx-top-toast أدناه) بدل صندوقها الثابت الخاص — راجع
+   gfxShowGiftTopBanner/gfxTopNoticeAdvance بـapp.js */
 
 /* ===== مؤثر فيديو الهدية ===== */
 /* 🐛 مراجعة #163 (الجولة 6 — "صندوق بخط قص بمنتصف الشاشة"): كان المرساة نقطة مركز (translate
@@ -7860,11 +7851,12 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
    تختفي بصرياً طوال عرض الأسطورية بملء الشاشة فلا تزدحم فوقها — عامة لا تقتصر على العنصر الواحد */
 .gfx-hidden-for-legend { opacity: 0; transition: opacity 0.2s; }
 
-/* ✅ توست علوي صغير غير مُحجِّب — بدل بطاقة احتفال كاملة مُحجِّبة لمنتصف الغرفة (ارتقاء غرفة/
-   نادي/ثروة معاً، راجع celebrateRoomLevelUp وأخواتها بـapp.js). حاوية طابور حقيقية (تدفّق عادي
-   عمودي، لا معرّف وحيد لكل توست) فلا يُلغي احتفال لاحق احتفالاً سابقاً لم يختفِ بعد.
+/* ✅ فتحة إشعار علوي واحدة موحَّدة (fix/top-banner-queue) — شارة إرسال الهدية وتوست الارتقاء
+   (ارتقاء غرفة/نادي/ثروة، راجع celebrateRoomLevelUp وأخواتها بـapp.js) يتشاركان هذا الصندوق
+   الوحيد عبر طابور حقيقي (gfxTopNoticeState بـapp.js): واحد يُعرَض بأي لحظة، توست ارتقاء يقطع
+   ويستبدل الحالي فوراً بدل التراكب معه، وأي عنصر آخر ينتظر دوره حتى تُفرَغ الفتحة.
    top الثابت (safe-area فقط) هنا احتياطي لو تعذَّر إيجاد شريط الرأس — الحاوية نفسها تُحسَب
-   ديناميكياً بالـJS من أسفل #room-header-bar الفعلي + 8px (راجع gfxShowTopToast) */
+   ديناميكياً بالـJS من أسفل #room-header-bar الفعلي + 8px (راجع gfxTopNoticeAdvance) */
 .gfx-top-toast-stack {
     position: fixed; top: calc(env(safe-area-inset-top, 0px) + 54px); left: 50%; transform: translateX(-50%);
     z-index: 616; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
@@ -7873,6 +7865,7 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
     display: flex; align-items: center; gap: 6px; padding: 6px 16px; border-radius: 999px;
     background: rgba(18, 8, 28, 0.78); backdrop-filter: blur(6px); color: #ffcf5a; font-size: 12.5px; font-weight: 800;
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4); animation: gfxTopToastIn 0.25s ease-out both;
+    max-width: 86vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .gfx-top-toast.out { animation: gfxTopToastOut 0.3s forwards; }
 @keyframes gfxTopToastIn { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: translateY(0); } }
