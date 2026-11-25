@@ -3414,13 +3414,17 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    بأعلى الشريط دوماً بصرف النظر عن ارتفاع الفيديو، فيرتفع المؤثر من أسفل الشاشة كتطبيقات
    البث المباشر الحقيقية، لا حافة تقع وسط الشاشة أبداً. يعمل بالوضع العادي/PK/التحدي لأن الشريط
    عنصر تدفّق واحد مشترك بينها جميعاً. top=40% هنا احتياط فقط لو تعذّر إيجاد الشريط */
+/* 🐛 feat/gift-alpha-video ("جناح التنين مقصوص بحافة الشاشة"): 150% يُخرِج العرض فعلياً خارج
+   حدود النافذة دوماً (عمداً سابقاً لتغطية مساحة أكبر) — 100% فقط: يملأ عرض الشاشة بالضبط
+   (عرض الكانفاس/الفيديو = عرض النافذة، الارتفاع يتكيّف تلقائياً بنفس نسبة أبعاد العنصر — لا
+   تمدّد خارج أي حافة أبداً)، بلا تغيير بالارتكاز السفلي أعلاه */
 /* ✅ احتياط تلقائي فقط حين يتعذّر إنشاء سياق WebGL (راجع gfxMakeLumaKeyRenderer) — فيديو خام
    بالأسلوب القديم (mix-blend-mode:screen إضافية، لا قص ألفا حقيقي) */
-.room-giftfx-video { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-100%); width: 150%; max-width: none; mix-blend-mode: screen; }
+.room-giftfx-video { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-100%); width: 100%; max-width: none; mix-blend-mode: screen; }
 /* ✅ القناة الأساسية الآن — نفس تموضع .room-giftfx-video بالضبط (JS يضبط left/top حياً بنفس
    القيم)، لكن معتمة بقص ألفا حقيقي عبر WebGL (راجع gfxMakeLumaKeyRenderer) لا مزج إضافي، فتُغطّي
    أجزاء الهدية الصلبة ما تحتها من مقاعد/دردشة فعلياً */
-.gift-fx-canvas { position: absolute; transform: translate(-50%,-100%); width: 150%; max-width: none; }
+.gift-fx-canvas { position: absolute; transform: translate(-50%,-100%); width: 100%; max-width: none; }
 .room-giftfx-static { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%); width: 90px; height: 90px; display: flex; align-items: center; justify-content: center; font-size: 56px; filter: drop-shadow(0 0 14px rgba(255,212,94,.5)); }
 /* ✅ شارة "×N" على آخر تشغيل فيديو فقط لكمية كبيرة من نفس الهدية (راجع giftStageOnVideoPlay) */
 .room-giftfx-video-badge {

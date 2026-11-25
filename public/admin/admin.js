@@ -1160,6 +1160,7 @@ class AdminDashboard {
                             <label>فيديو مؤثر الهدية (mp4، حتى 2MB، اختياري)</label>
                             ${gift?.videoUrl ? `<p class="text-muted small">فيديو حالي موجود — اختر ملفاً جديداً لاستبداله، أو اتركه فارغاً لإبقائه كما هو.</p>` : ''}
                             <input type="file" class="form-control" id="giftVideoFile" accept="video/mp4">
+                            <label style="margin-top:6px;"><input type="checkbox" id="giftVideoAlpha" ${gift?.videoAlpha === 'stacked' ? 'checked' : ''}> فيديو بقناة شفافية (مكدّس)</label>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -1193,6 +1194,7 @@ class AdminDashboard {
                     formData.append('isActive', modal.querySelector('#giftIsActive').checked ? 'true' : 'false');
                     formData.append('isFanClubExclusive', modal.querySelector('#giftIsFanClubExclusive').checked ? 'true' : 'false');
                     formData.append('seatEffect', modal.querySelector('#giftSeatEffect').value || '');
+                    formData.append('videoAlpha', modal.querySelector('#giftVideoAlpha').checked ? 'stacked' : 'luma');
                     if (isEdit) await this.apiUpload('PUT', `/gifts/${gift._id}`, formData);
                     else await this.apiUpload('POST', '/gifts', formData);
                 } else {
@@ -1204,7 +1206,8 @@ class AdminDashboard {
                         sortOrder: parseInt(modal.querySelector('#giftSortOrder').value) || 0,
                         isActive: modal.querySelector('#giftIsActive').checked,
                         isFanClubExclusive: modal.querySelector('#giftIsFanClubExclusive').checked,
-                        seatEffect: modal.querySelector('#giftSeatEffect').value || null
+                        seatEffect: modal.querySelector('#giftSeatEffect').value || null,
+                        videoAlpha: modal.querySelector('#giftVideoAlpha').checked ? 'stacked' : 'luma'
                     };
                     if (isEdit) await this.api('PUT', `/gifts/${gift._id}`, payload);
                     else await this.api('POST', '/gifts', payload);
