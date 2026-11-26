@@ -3035,6 +3035,14 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     margin-inline-end: 3px;
     vertical-align: 1px;
 }
+/* ✅ feat/bubble-frames: زخرفة زاوية فقاعة مؤطَّرة واحدة — حجم/موضع ديناميكي بالكامل (inline
+   style من applyRoomChatBubbleFrame بـapp.js حسب ornament المحفوظ بعنصر الفقاعة)، هذا فقط
+   يضبط الهيكل الثابت (موضعها المطلق + تجاهل أي تفاعل مؤشر، لا تحجب النقر على الفقاعة خلفها) */
+.room-chat-bubble-ornament {
+    position: absolute;
+    pointer-events: none;
+    object-fit: contain;
+}
 /* ✅ شارة مستوى المرسل (.lvb بالنموذج) — أزرق-بنفسجي للمستويات العادية، ذهبي-وردي
    للمستويات العالية (hi، طلب صريح) */
 .room-chat-msg-lvb {

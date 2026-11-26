@@ -145,6 +145,41 @@ function giftVideoUpload(req, res, next) {
     });
 }
 
+// 5و. Multer لأصول فقاعة الدردشة المؤطَّرة (feat/bubble-frames) — حتى صورتين اختياريتين
+// (frameFile للإطار border-image، ornamentFile للزخرفة الزاوية) بنفس طلب حفظ عنصر الفقاعة
+// الواحد. نفس فلتر webp/gif/png أعلاه (شفافية لازمة لكليهما)؛ سقف أصغر (4MB) — صور تقطيع
+// ثابتة صغيرة، لا أصل إطار بروفايل متحرك عالي الجودة يحتاج سقف 8MB الأعلى
+const cosmeticAssetUploadRaw = multer({
+    storage: storage,
+    fileFilter: frameAssetFilter,
+    limits: { fileSize: 4 * 1024 * 1024 } // 4MB لكل ملف
+}).fields([{ name: 'frameFile', maxCount: 1 }, { name: 'ornamentFile', maxCount: 1 }]);
+
+// 🐛 نفس نمط frameAssetUpload أعلاه بالضبط
+function cosmeticAssetUpload(req, res, next) {
+    cosmeticAssetUploadRaw(req, res, (err) => {
+        if (!err) return next();
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ status: 'fail', message: 'حجم صورة الفقاعة يجب ألا يتجاوز 4 ميجابايت' });
+        }
+        return res.status(400).json({ status: 'fail', message: err.message || 'تعذّر رفع صورة الفقاعة' });
+    });
+}
+
+// ✅ رفع صورة إطار/زخرفة فقاعة — نفس نمط uploadGiftVideo أعلاه (buffer بالذاكرة، لا ملف قرص)
+const uploadCosmeticAsset = (fileBuffer) => {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            { folder: 'cosmetic_bubble_assets', resource_type: 'image' },
+            (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+            }
+        );
+        uploadStream.end(fileBuffer);
+    });
+};
+
 // ✅ رفع فيديو مؤثر الهدية الفعلي — بعد اجتياز assertRealType (توقيع بايتات حقيقي، لا امتداد/
 // mimetype مزوَّران من العميل) بالكنترولر. Cloudinary يضع Cache-Control طويل الأمد + رابطاً
 // مُرقَّماً (versioned) تلقائياً لكل أصل مرفوع — نفس التخزين المؤقت الدائم المطلوب بلا أي إعداد إضافي
@@ -484,6 +519,8 @@ module.exports = {
     frameAssetUpload,         // لأصل إطار بروفايل (middleware — استوديو الإطارات)
     giftVideoUpload,          // لفيديو مؤثر الهدية (middleware — لوحة التحكم)
     uploadGiftVideo,          // دالة رفع فيديو مؤثر الهدية
+    cosmeticAssetUpload,      // لصورتَي إطار/زخرفة فقاعة الدردشة (middleware — لوحة التحكم)
+    uploadCosmeticAsset,      // دالة رفع صورة إطار/زخرفة فقاعة
     chatUpload,               // للدردشات (middleware)
     uploadChatImage,          // دالة رفع صور الدردشة
     uploadChatVoice,          // دالة رفع صوت الدردشة

@@ -1266,14 +1266,28 @@ class AdminDashboard {
         const isEdit = !!item;
         const d7 = item?.durations?.find(d => d.days === 7)?.price ?? '';
         const d30 = item?.durations?.find(d => d.days === 30)?.price ?? '';
+        // 🛡️ feat/bubble-frames: نفس القيم المطلوبة صراحة لأول أصل فقاعة مؤطَّرة — تُستخدَم
+        // كافتراضي معقول لعنصر جديد كلياً، أو كقيم العنصر المحفوظة فعلاً عند التعديل
+        const fr = item?.frame || {};
+        const fs = fr.slice || {};
+        const orn = item?.ornament || {};
+        const frameDefaults = {
+            sliceTop: fs.top ?? 50, sliceRight: fs.right ?? 50, sliceBottom: fs.bottom ?? 50, sliceLeft: fs.left ?? 50,
+            borderWidth: fr.borderWidth ?? 18, padY: fr.padY ?? 9, padX: fr.padX ?? 16, textColor: fr.textColor || '#fde68a'
+        };
+        const ornamentDefaults = {
+            anchor: orn.anchor || 'top-start', width: orn.width ?? 38, height: orn.height ?? 26,
+            offsetX: orn.offsetX ?? -2, offsetY: orn.offsetY ?? -17
+        };
+        const reserveTopDefault = item?.reserveTop ?? 12;
         const modal = this.openModal(`
             <div class="modal-overlay active">
-                <div class="modal-content" style="max-width:500px;">
+                <div class="modal-content" style="max-width:560px;">
                     <div class="modal-header"><h3>${isEdit ? 'تعديل عنصر' : 'عنصر جديد'}</h3><button class="modal-close"><i class="fas fa-times"></i></button></div>
                     <div class="modal-body">
                         <div class="form-group"><label>النوع *</label>
                             <select class="form-control" id="csType">
-                                <option value="bubble" ${item?.type === 'bubble' ? 'selected' : ''}>فقاعة دردشة</option>
+                                <option value="bubble" ${!item || item?.type === 'bubble' ? 'selected' : ''}>فقاعة دردشة</option>
                                 <option value="entrance" ${item?.type === 'entrance' ? 'selected' : ''}>إعلان دخول</option>
                             </select>
                         </div>
@@ -1281,7 +1295,7 @@ class AdminDashboard {
                         <div class="form-group"><label>صنف CSS *</label><input type="text" class="form-control" id="csCssClass" value="${escapeHtml(item?.cssClass || '')}" placeholder="مثال: bubble-gold"></div>
                         <div class="form-group"><label>المصدر *</label>
                             <select class="form-control" id="csSource">
-                                <option value="shop" ${item?.source === 'shop' ? 'selected' : ''}>المتجر (يُشترى)</option>
+                                <option value="shop" ${!item || item?.source === 'shop' ? 'selected' : ''}>المتجر (يُشترى)</option>
                                 <option value="welcome" ${item?.source === 'welcome' ? 'selected' : ''}>ترحيب (تلقائي)</option>
                                 <option value="fanclub" ${item?.source === 'fanclub' ? 'selected' : ''}>نادي المعجبين (حسب المستوى)</option>
                                 <option value="couple" ${item?.source === 'couple' ? 'selected' : ''}>الثنائي (معطَّل حالياً)</option>
@@ -1297,6 +1311,50 @@ class AdminDashboard {
                         </div>
                         <div class="form-group"><label>ترتيب العرض</label><input type="number" class="form-control" id="csSortOrder" value="${item?.sortOrder || 0}"></div>
                         <div class="form-group"><label><input type="checkbox" id="csIsActive" ${item?.isActive !== false ? 'checked' : ''}> نشط</label></div>
+
+                        <div id="csBubbleFrameSection">
+                            <hr style="border-color:#2a2f45;">
+                            <h4 style="margin:0 0 8px;font-size:13px;color:#9ca3af;">إطار صورة للفقاعة (اختياري — فوق العنصر أعلاه)</h4>
+                            <iframe src="/admin/bubble-frame-preview.html" id="csBubblePreviewFrame" style="width:100%;height:220px;border:0;border-radius:10px;background:#0e0918;margin-bottom:10px;" title="معاينة حيّة لفقاعة مؤطَّرة"></iframe>
+
+                            <div class="form-group"><label>صورة الإطار (png/gif/webp، حتى 4MB)</label>
+                                ${fr.url ? `<p class="text-muted small">صورة إطار حالية موجودة — اختر ملفاً جديداً لاستبدالها، أو اتركه فارغاً لإبقائها كما هي.</p>` : ''}
+                                <input type="file" class="form-control" id="csFrameFile" accept="image/png,image/gif,image/webp">
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                <div class="form-group" style="flex:1;"><label>تقطيع أعلى</label><input type="number" class="form-control" id="csFrameSliceTop" value="${frameDefaults.sliceTop}" min="0" max="200"></div>
+                                <div class="form-group" style="flex:1;"><label>تقطيع يمين</label><input type="number" class="form-control" id="csFrameSliceRight" value="${frameDefaults.sliceRight}" min="0" max="200"></div>
+                                <div class="form-group" style="flex:1;"><label>تقطيع أسفل</label><input type="number" class="form-control" id="csFrameSliceBottom" value="${frameDefaults.sliceBottom}" min="0" max="200"></div>
+                                <div class="form-group" style="flex:1;"><label>تقطيع يسار</label><input type="number" class="form-control" id="csFrameSliceLeft" value="${frameDefaults.sliceLeft}" min="0" max="200"></div>
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                <div class="form-group" style="flex:1;"><label>عرض الحد (px)</label><input type="number" class="form-control" id="csFrameBorderWidth" value="${frameDefaults.borderWidth}" min="0" max="60"></div>
+                                <div class="form-group" style="flex:1;"><label>حشو رأسي (px)</label><input type="number" class="form-control" id="csFramePadY" value="${frameDefaults.padY}" min="0" max="40"></div>
+                                <div class="form-group" style="flex:1;"><label>حشو أفقي (px)</label><input type="number" class="form-control" id="csFramePadX" value="${frameDefaults.padX}" min="0" max="60"></div>
+                                <div class="form-group" style="flex:1;"><label>لون النص</label><input type="color" class="form-control" id="csFrameTextColor" value="${frameDefaults.textColor}" style="height:38px;padding:2px;"></div>
+                            </div>
+
+                            <h4 style="margin:14px 0 8px;font-size:13px;color:#9ca3af;">زخرفة زاوية (اختياري)</h4>
+                            <div class="form-group"><label>صورة الزخرفة (png/gif/webp، حتى 4MB)</label>
+                                ${orn.url ? `<p class="text-muted small">صورة زخرفة حالية موجودة — اختر ملفاً جديداً لاستبدالها، أو اتركه فارغاً لإبقائها كما هي.</p>` : ''}
+                                <input type="file" class="form-control" id="csOrnamentFile" accept="image/png,image/gif,image/webp">
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                <div class="form-group" style="flex:1;"><label>الجهة</label>
+                                    <select class="form-control" id="csOrnamentAnchor">
+                                        <option value="top-start" ${ornamentDefaults.anchor === 'top-start' ? 'selected' : ''}>بداية (يمين بـRTL)</option>
+                                        <option value="top-end" ${ornamentDefaults.anchor === 'top-end' ? 'selected' : ''}>نهاية (يسار بـRTL)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex:1;"><label>العرض (px)</label><input type="number" class="form-control" id="csOrnamentWidth" value="${ornamentDefaults.width}" min="0" max="200"></div>
+                                <div class="form-group" style="flex:1;"><label>الارتفاع (px)</label><input type="number" class="form-control" id="csOrnamentHeight" value="${ornamentDefaults.height}" min="0" max="200"></div>
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                <div class="form-group" style="flex:1;"><label>إزاحة X (px)</label><input type="number" class="form-control" id="csOrnamentOffsetX" value="${ornamentDefaults.offsetX}" min="-100" max="100"></div>
+                                <div class="form-group" style="flex:1;"><label>إزاحة Y (px)</label><input type="number" class="form-control" id="csOrnamentOffsetY" value="${ornamentDefaults.offsetY}" min="-100" max="100"></div>
+                                <div class="form-group" style="flex:1;"><label>حجز علوي (reserveTop، px)</label><input type="number" class="form-control" id="csReserveTop" value="${reserveTopDefault}" min="0" max="60"></div>
+                            </div>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button class="btn btn-secondary" data-dismiss>إلغاء</button>
@@ -1305,10 +1363,68 @@ class AdminDashboard {
                 </div>
             </div>
         `);
+
+        // ✅ قسم الإطار يظهر فقط لعنصر فقاعة دردشة — لا معنى له لإعلان دخول (CSS فقط دوماً)
+        const bubbleSection = modal.querySelector('#csBubbleFrameSection');
+        const typeSelect = modal.querySelector('#csType');
+        const toggleBubbleSection = () => { bubbleSection.style.display = typeSelect.value === 'bubble' ? '' : 'none'; };
+        toggleBubbleSection();
+        typeSelect.addEventListener('change', toggleBubbleSection);
+
+        // ✅ نفس نمط pushLiveToRealRoom باستوديو الإطارات بالضبط — iframe من نفس الأصل، نداء
+        // window.bfApplyLive مباشرة بلا postMessage، في كل تغيير حقل/ملف
+        let liveFrameObjectUrl = null, liveOrnamentObjectUrl = null;
+        const previewFrame = modal.querySelector('#csBubblePreviewFrame');
+        let previewReady = false;
+        const pushLivePreview = () => {
+            if (!previewReady || !previewFrame.contentWindow?.bfApplyLive) return;
+            const frameUrl = liveFrameObjectUrl || fr.url || '';
+            if (!frameUrl) { previewFrame.contentWindow.bfApplyLive({}); return; }
+            previewFrame.contentWindow.bfApplyLive({
+                frame: {
+                    url: frameUrl,
+                    slice: {
+                        top: parseFloat(modal.querySelector('#csFrameSliceTop').value) || 0,
+                        right: parseFloat(modal.querySelector('#csFrameSliceRight').value) || 0,
+                        bottom: parseFloat(modal.querySelector('#csFrameSliceBottom').value) || 0,
+                        left: parseFloat(modal.querySelector('#csFrameSliceLeft').value) || 0
+                    },
+                    borderWidth: parseFloat(modal.querySelector('#csFrameBorderWidth').value) || 0,
+                    padY: parseFloat(modal.querySelector('#csFramePadY').value) || 0,
+                    padX: parseFloat(modal.querySelector('#csFramePadX').value) || 0,
+                    textColor: modal.querySelector('#csFrameTextColor').value || null
+                },
+                ornament: (liveOrnamentObjectUrl || orn.url) ? {
+                    url: liveOrnamentObjectUrl || orn.url,
+                    anchor: modal.querySelector('#csOrnamentAnchor').value,
+                    width: parseFloat(modal.querySelector('#csOrnamentWidth').value) || 0,
+                    height: parseFloat(modal.querySelector('#csOrnamentHeight').value) || 0,
+                    offsetX: parseFloat(modal.querySelector('#csOrnamentOffsetX').value) || 0,
+                    offsetY: parseFloat(modal.querySelector('#csOrnamentOffsetY').value) || 0
+                } : null,
+                reserveTop: parseFloat(modal.querySelector('#csReserveTop').value) || 0
+            });
+        };
+        previewFrame.addEventListener('load', () => { previewReady = true; pushLivePreview(); });
+        bubbleSection.querySelectorAll('input:not([type=file]), select').forEach(inp => inp.addEventListener('input', pushLivePreview));
+
+        let frameFile = null, ornamentFile = null;
+        modal.querySelector('#csFrameFile').addEventListener('change', (e) => {
+            frameFile = e.target.files[0] || null;
+            liveFrameObjectUrl = frameFile ? URL.createObjectURL(frameFile) : null;
+            pushLivePreview();
+        });
+        modal.querySelector('#csOrnamentFile').addEventListener('change', (e) => {
+            ornamentFile = e.target.files[0] || null;
+            liveOrnamentObjectUrl = ornamentFile ? URL.createObjectURL(ornamentFile) : null;
+            pushLivePreview();
+        });
+
         modal.querySelector('#saveCosmeticBtn').addEventListener('click', async () => {
             const name = modal.querySelector('#csName').value.trim();
             const cssClass = modal.querySelector('#csCssClass').value.trim();
             if (!name || !cssClass) { this.showToast('يرجى تعبئة الحقول الإلزامية', 'error'); return; }
+            const type = modal.querySelector('#csType').value;
             const source = modal.querySelector('#csSource').value;
             const durations = [];
             const p7 = parseFloat(modal.querySelector('#csPrice7').value);
@@ -1317,17 +1433,59 @@ class AdminDashboard {
                 if (p7 > 0) durations.push({ days: 7, price: p7 });
                 if (p30 > 0) durations.push({ days: 30, price: p30 });
             }
-            const payload = {
-                type: modal.querySelector('#csType').value,
-                name, cssClass, source,
-                durations,
+            const basePayload = {
+                type, name, cssClass, source, durations,
                 fanClubTierLevel: source === 'fanclub' ? (parseInt(modal.querySelector('#csFanClubTierLevel').value) || null) : null,
                 sortOrder: parseInt(modal.querySelector('#csSortOrder').value) || 0,
                 isActive: modal.querySelector('#csIsActive').checked
             };
+            // ✅ frame/ornament تُرسَلان فقط لعنصر فقاعة — url الحالي (لو وُجد ولا ملف جديد
+            // مُختار) يُعاد كما هو كي لا يضيع عند تعديل حقول أخرى فقط؛ الخادم يستبدله بالرابط
+            // الجديد تلقائياً لو frameFile/ornamentFile مرفوعان فعلياً (راجع adminController.saveCosmetic)
+            if (type === 'bubble') {
+                basePayload.frame = JSON.stringify({
+                    url: fr.url || null,
+                    slice: {
+                        top: parseInt(modal.querySelector('#csFrameSliceTop').value) || 0,
+                        right: parseInt(modal.querySelector('#csFrameSliceRight').value) || 0,
+                        bottom: parseInt(modal.querySelector('#csFrameSliceBottom').value) || 0,
+                        left: parseInt(modal.querySelector('#csFrameSliceLeft').value) || 0
+                    },
+                    borderWidth: parseInt(modal.querySelector('#csFrameBorderWidth').value) || 0,
+                    padY: parseInt(modal.querySelector('#csFramePadY').value) || 0,
+                    padX: parseInt(modal.querySelector('#csFramePadX').value) || 0,
+                    textColor: modal.querySelector('#csFrameTextColor').value || null
+                });
+                basePayload.ornament = JSON.stringify({
+                    url: orn.url || null,
+                    anchor: modal.querySelector('#csOrnamentAnchor').value,
+                    width: parseInt(modal.querySelector('#csOrnamentWidth').value) || 0,
+                    height: parseInt(modal.querySelector('#csOrnamentHeight').value) || 0,
+                    offsetX: parseInt(modal.querySelector('#csOrnamentOffsetX').value) || 0,
+                    offsetY: parseInt(modal.querySelector('#csOrnamentOffsetY').value) || 0
+                });
+                basePayload.reserveTop = parseInt(modal.querySelector('#csReserveTop').value) || 0;
+            }
+
             try {
-                if (isEdit) await this.api('PUT', `/cosmetics/${item._id}`, payload);
-                else await this.api('POST', '/cosmetics', payload);
+                if (frameFile || ornamentFile) {
+                    const formData = new FormData();
+                    if (frameFile) formData.append('frameFile', frameFile);
+                    if (ornamentFile) formData.append('ornamentFile', ornamentFile);
+                    Object.entries(basePayload).forEach(([k, v]) => {
+                        if (v === null || v === undefined) return; // ✅ يُترَك غائباً بدل "" (قد يُسبِّب CastError على حقل رقمي nullable كـfanClubTierLevel)
+                        if (k === 'durations') formData.append(k, JSON.stringify(v));
+                        else formData.append(k, typeof v === 'boolean' ? String(v) : v);
+                    });
+                    if (isEdit) await this.apiUpload('PUT', `/cosmetics/${item._id}`, formData);
+                    else await this.apiUpload('POST', '/cosmetics', formData);
+                } else {
+                    const payload = { ...basePayload };
+                    if (payload.frame) payload.frame = JSON.parse(payload.frame);
+                    if (payload.ornament) payload.ornament = JSON.parse(payload.ornament);
+                    if (isEdit) await this.api('PUT', `/cosmetics/${item._id}`, payload);
+                    else await this.api('POST', '/cosmetics', payload);
+                }
                 this.showToast('تم الحفظ بنجاح', 'success');
                 modal.remove();
                 this.loadCosmetics();

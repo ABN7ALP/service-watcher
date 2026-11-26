@@ -45,6 +45,28 @@ exports.getShop = async (req, res) => {
     }
 };
 
+// 🛡️ feat/bubble-frames: خريطة إطار/زخرفة الفقاعات المؤطَّرة — cssClass هو مفتاح الربط الوحيد
+// مع bubbleClass المحلول بالعميل (fanClubBubbleClass/coupleBubbleClass/activeBubbleCosmeticClass
+// — راجع appendRoomChatMessage بـapp.js)، فيعمل بلا أي تمييز إضافي لمصدر العنصر (نادٍ/متجر/
+// ترحيب). عناصر بلا frame.url فعلي (الغالبية — لا تزال CSS فقط) تُستبعَد هنا تماماً؛ العميل لا
+// يرى حتى شكل الحقل لأي صنف لم يُؤطَّر فعلاً، فيستمر بمساره الحالي بلا أي تغيير
+exports.getBubbleFrames = async (req, res) => {
+    try {
+        const items = await CosmeticItem.find({
+            type: 'bubble',
+            isActive: true,
+            'frame.url': { $exists: true, $ne: null }
+        }).select('cssClass frame ornament reserveTop');
+        const frames = {};
+        items.forEach(it => {
+            frames[it.cssClass] = { frame: it.frame, ornament: it.ornament || null, reserveTop: it.reserveTop || 0 };
+        });
+        res.status(200).json({ status: 'success', data: { frames } });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في الخادم' });
+    }
+};
+
 // 🛡️ دفتر الأستاذ: خصم ذرّي (بونص أولاً ثم مدفوع) داخل معاملة واحدة مع إضافة الملكية وتفعيلها
 // فوراً — نفس نمط purchaseFrame بالضبط (راجع التعليق هناك)، لكن أبسط: لا "صندوق" ولا تفعيل
 // لاحق منفصل، الفقاعة تُفعَّل تلقائياً فور الشراء (تحل محل أي فقاعة نشطة سابقة من نفس النوع)

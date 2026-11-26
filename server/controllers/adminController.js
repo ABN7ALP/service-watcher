@@ -1253,8 +1253,9 @@ exports.deleteGift = async (req, res) => {
 
 // =====================================================
 // 🛡️ feat/gift-fx-and-cosmetics-base: إدارة عناصر الفقاعات/إعلانات الدخول (CosmeticItem) —
-// نفس نمط إدارة الهدايا أعلاه بالضبط (get/save/delete عامة). لا رفع ملفات هنا (التصاميم CSS
-// بحتة حالياً عبر cssClass — راجع التعليق أعلى CosmeticItem.js)
+// نفس نمط إدارة الهدايا أعلاه بالضبط (get/save/delete عامة).
+// 🛡️ feat/bubble-frames: frameFile/ornamentFile (رفع ملفات اختياري الآن — راجع CosmeticItem.js
+// لحقلي frame/ornament الجديدين وisAllowedCosmeticAssetUrl/isValidHexColor للتحقّق الحاسم)
 // =====================================================
 exports.getCosmetics = async (req, res) => {
   try {
@@ -1265,11 +1266,48 @@ exports.getCosmetics = async (req, res) => {
   }
 };
 
+// 🛡️ feat/bubble-frames: frame/ornament تصلان كحقلين JSON مُسلسَلين عبر multipart (نفس نمط
+// بقية حقول الفقاعة النصّية)، لا كائنين مباشرين — express.urlencoded/json لا يُفكّكان JSON
+// مضمَّناً بحقل نصّي من FormData. assertRealType هنا يبقى الفحص الحاسم على بايتات أي ملف
+// مرفوع فعلاً قبل أي إرسال لـCloudinary؛ isAllowedCosmeticAssetUrl/isValidHexColor (مخطط
+// Mongoose) يبقيان الحارس الحاسم على القيم النهائية المحفوظة بصرف النظر عن مصدرها (رفع ملف
+// جديد، أو رابط موجود أُعيد إرساله كما هو عند تعديل لم يستبدل الصورة)
 exports.saveCosmetic = async (req, res) => {
   try {
     const itemData = req.body;
     const { itemId } = req.params;
     const { admin } = req;
+
+    if (typeof itemData.frame === 'string') {
+      try { itemData.frame = JSON.parse(itemData.frame); } catch { itemData.frame = undefined; }
+    }
+    if (typeof itemData.ornament === 'string') {
+      try { itemData.ornament = JSON.parse(itemData.ornament); } catch { itemData.ornament = undefined; }
+    }
+
+    const frameFile = req.files?.frameFile?.[0];
+    const ornamentFile = req.files?.ornamentFile?.[0];
+    if (frameFile || ornamentFile) {
+      try {
+        const { assertRealType, uploadCosmeticAsset } = require('../utils/cloudinary');
+        if (frameFile) {
+          assertRealType(frameFile.buffer, ['image/png', 'image/gif', 'image/webp']);
+          const uploaded = await uploadCosmeticAsset(frameFile.buffer);
+          itemData.frame = { ...(itemData.frame || {}), url: uploaded.secure_url };
+        }
+        if (ornamentFile) {
+          assertRealType(ornamentFile.buffer, ['image/png', 'image/gif', 'image/webp']);
+          const uploaded = await uploadCosmeticAsset(ornamentFile.buffer);
+          itemData.ornament = { ...(itemData.ornament || {}), url: uploaded.secure_url };
+        }
+      } catch (typeErr) {
+        return res.status(400).json({ success: false, message: typeErr.message || 'تعذّر معالجة صورة الفقاعة' });
+      }
+    }
+    // ✅ لا فائدة من كائن frame/ornament بلا رابط صورة فعلي (لا ملف جديد ولا رابط قائم أُعيد
+    // إرساله) — حذفه هنا يُبقي الفقاعة بمسارها الحالي (CSS فقط) بدل حفظ كائن إطار فارغ بلا معنى
+    if (itemData.frame && !itemData.frame.url) delete itemData.frame;
+    if (itemData.ornament && !itemData.ornament.url) delete itemData.ornament;
 
     let item;
     if (itemId) {
@@ -1285,6 +1323,10 @@ exports.saveCosmetic = async (req, res) => {
       details: itemData,
       ipAddress: req.ip
     });
+
+    // 🛡️ feat/bubble-frames: نفس نمط gifts:changed أعلاه — عميل الدردشة (roomChatBubbleFrameConfigs
+    // بـapp.js) يحمل خريطة frame/ornament بالذاكرة؛ تعديل/حذف أي عنصر فقاعة يحتاج إبطالها فوراً
+    req.app.get('socketio')?.emit('cosmetics:changed', { version: Date.now() });
 
     res.json({ success: true, message: itemId ? 'تم تحديث العنصر' : 'تم إنشاء العنصر', item });
   } catch (error) {
@@ -1303,6 +1345,8 @@ exports.deleteCosmetic = async (req, res) => {
     await AdminLog.logAction({
       admin: admin._id, action: 'delete_cosmetic', details: { itemName: item.name, type: item.type }, ipAddress: req.ip
     });
+
+    req.app.get('socketio')?.emit('cosmetics:changed', { version: Date.now() });
 
     res.json({ success: true, message: 'تم حذف العنصر بنجاح' });
   } catch (error) {

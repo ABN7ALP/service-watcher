@@ -2628,6 +2628,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${levelBadge}${isHostMsg ? '<i class="fas fa-crown room-chat-host-badge" title="المضيف"></i>' : ''}<span class="room-chat-msg-name ${isTopSupporterSender ? 'vip' : ''}"${nameStyle}>${safeName}</span><span class="room-chat-msg-text">${safeContent}</span>
             </p>
         `;
+        // 🛡️ feat/bubble-frames: بعد innerHTML أعلاه تحديداً، لا قبله — applyRoomChatBubbleFrame
+        // تُلحِق عنصر <img> الزخرفة كابن أخير بـel، وinnerHTML= يُفرِّغ كل أبناء العنصر عند
+        // تنفيذه؛ استدعاؤها قبل هذا السطر كان يمحو الزخرفة فوراً بلا أي أثر ظاهر (bug اكتُشف
+        // بالتحقّق اليدوي — راجع التقرير). bubbleClass المحلول أعلاه بالضبط هو مفتاح البحث —
+        // فقاعة بلا frame مُسجَّل بالخريطة (الغالبية) أو لم يَثبت تحميل صورتها بعد تستمر بمسارها
+        // الحالي (CSS فقط عبر الصنف أعلاه) بلا أي تغيير
+        const bubbleFrameCfg = roomChatBubbleFrameConfigs.get(bubbleClass);
+        if (bubbleFrameCfg && roomChatBubbleFrameReady.get(bubbleClass) === true) {
+            applyRoomChatBubbleFrame(el, bubbleFrameCfg);
+        }
         if (senderId) {
             // ✅ الضغط على الاسم يفتح الملف الشخصي الآن (بدل الضغط على الصورة المحذوفة) — نفس
             // نافذة الملف الشخصي المستخدَمة للمقاعد والمشاهدين لتجربة موحّدة. stopPropagation
@@ -9777,6 +9787,10 @@ function showXpGainAnimation(amount) {
     // انتهت مهلتها — الحالتان الوحيدتان اللتان تحتاجان مزامنة يدوية فعلياً لأن Socket.IO لم
     // تستطع استعادة أي شيء تلقائياً بهما)
     socket.on('connect', () => {
+        // 🛡️ feat/bubble-frames: دوماً (قبل فحص recovered — جلب خفيف مستقل تماماً عن استعادة
+        // السوكيت) كي تُحمَّل خريطة إطارات الفقاعات فعلياً أول اتصال، وتُعاد قبل أول رسالة
+        // دردشة محتملة بعد أي إعادة اتصال أيضاً
+        loadRoomChatBubbleFrames();
         if (socket.recovered) return; // ✅ استعادة ناجحة فعلياً — Socket.IO أعادت كل شيء بنفسها
         if (currentVoiceRoomId) {
             // آمنة تماماً حتى لو القسم غير مفتوح حالياً
@@ -11095,6 +11109,14 @@ socket.on('gifts:changed', () => {
     if (sheet && !sheet.classList.contains('hidden')) {
         roomGiftModalHandlers.onGiftsChanged?.();
     }
+});
+
+// 🛡️ feat/bubble-frames: نفس فلسفة gifts:changed أعلاه بالضبط — تعديل/حذف عنصر فقاعة من لوحة
+// التحكم (adminController.saveCosmetic/deleteCosmetic) يُبطِل خريطة إطارات الفقاعات المحلية
+// فوراً، لا حتى إعادة تحميل الصفحة. رسائل مرسومة مسبقاً تبقى كما رُسمت (لا إعادة رسم رجعية —
+// غير مطلوب، تطابق "لا شيء يُعاد رسمه رجعياً" مثل كل الحالات الأخرى المشابهة بهذا المشروع)
+socket.on('cosmetics:changed', () => {
+    loadRoomChatBubbleFrames();
 });
 
 
@@ -14103,6 +14125,84 @@ function fanClubBubbleClass(fanClub) {
 // حالياً فلا يظهر أي شيء، لكن ترتيب الأولوية (نادٍ ← ثنائي ← متجر/ترحيب) جاهز بلا أي إعادة ترتيب لاحقاً
 function coupleBubbleClass(sender) { return ''; }
 function coupleEntranceClass(sender) { return ''; }
+
+// =====================================================
+// 🛡️ feat/bubble-frames: إطار صورة (border-image حقيقي 9-slice) + زخرفة زاوية واحدة فوق أي
+// فقاعة cssClass — بلا تمييز مصدرها (نادٍ/متجر/ترحيب تُحسَم أعلاه، cssClass الناتج هو مفتاح
+// الربط الموحَّد الوحيد). roomChatBubbleFrameConfigs تأتي من GET /cosmetics/bubble-frames —
+// فقاعات بلا frame فعلي بالخادم لا تظهر بهذه الخريطة إطلاقاً، فتستمر بمسارها الحالي (CSS فقط)
+// بلا أي تغيير. roomChatBubbleFrameReady يضمن "فشل تحميل الصورة = رجوع للفقاعة الافتراضية" —
+// فحص مُسبَق (probe) واحد فقط لكل صنف فور وصول الخريطة، لا طلب شبكة إضافي لكل رسالة (الرابط
+// نفسه بالضبط لكل رسائل هذا الصنف، وCloudinary يضع Cache-Control طويل الأمد + رابطاً مُرقَّماً
+// تلقائياً — المتصفح يخدم من كاشه HTTP العادي بعد أول تحميل فعلي بلا أي عمل إضافي هنا)
+let roomChatBubbleFrameConfigs = new Map();
+let roomChatBubbleFrameReady = new Map();
+
+function probeRoomChatBubbleFrameAssets(cssClass, cfg) {
+    const urls = [cfg.frame?.url, cfg.ornament?.url].filter(Boolean);
+    if (!urls.length) { roomChatBubbleFrameReady.set(cssClass, false); return; }
+    let remaining = urls.length;
+    let failed = false;
+    urls.forEach(u => {
+        const img = new Image();
+        img.onload = () => {
+            remaining--;
+            if (!remaining && !failed) roomChatBubbleFrameReady.set(cssClass, true);
+        };
+        img.onerror = () => { failed = true; roomChatBubbleFrameReady.set(cssClass, false); };
+        img.src = u;
+    });
+}
+
+async function loadRoomChatBubbleFrames() {
+    try {
+        const response = await fetch('/api/cosmetics/bubble-frames', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!response.ok) return;
+        const result = await response.json();
+        const frames = result?.data?.frames || {};
+        roomChatBubbleFrameConfigs = new Map(Object.entries(frames));
+        roomChatBubbleFrameConfigs.forEach((cfg, cssClass) => probeRoomChatBubbleFrameAssets(cssClass, cfg));
+    } catch (_) { /* فشل الجلب غير قاتل — كل الفقاعات تستمر بمسارها الحالي (CSS فقط) ببساطة */ }
+}
+
+// ✅ يُطبَّق فوق bubbleClass العادي (classList يبقى كما هو، لا يُستبدَل) — يتجاوز فقط الخصائص
+// التي يحتاجها الإطار فعلياً عبر inline style (أعلى أولوية من أي صنف CSS بلا !important، فلا
+// تعارض حتى لو كان لنفس الصنف قاعدة background/border جاهزة مسبقاً كـ.fanclub-bubble-gold)
+function applyRoomChatBubbleFrame(el, cfg) {
+    const f = cfg.frame;
+    if (!f || !f.url) return;
+    el.style.position = 'relative';
+    el.style.background = 'transparent';
+    el.style.borderStyle = 'solid';
+    el.style.borderWidth = '0';
+    el.style.borderImageSource = `url(${f.url})`;
+    const s = f.slice || {};
+    el.style.borderImageSlice = `${s.top ?? 50} ${s.right ?? 50} ${s.bottom ?? 50} ${s.left ?? 50} fill`;
+    el.style.borderImageWidth = `${f.borderWidth ?? 18}px`;
+    el.style.borderImageOutset = '0';
+    el.style.borderImageRepeat = 'stretch';
+    el.style.padding = `${f.padY ?? 9}px ${f.padX ?? 16}px`;
+    if (f.textColor) el.style.color = f.textColor;
+    if (cfg.reserveTop) el.style.marginTop = `${cfg.reserveTop}px`;
+
+    const o = cfg.ornament;
+    if (o && o.url) {
+        const img = document.createElement('img');
+        img.className = 'room-chat-bubble-ornament';
+        img.src = o.url;
+        img.alt = '';
+        img.setAttribute('aria-hidden', 'true');
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        img.style.width = `${o.width ?? 38}px`;
+        img.style.height = `${o.height ?? 26}px`;
+        img.style.top = '0px';
+        if (o.anchor === 'top-end') img.style.insetInlineEnd = '0px';
+        else img.style.insetInlineStart = '0px';
+        img.style.transform = `translate(${o.offsetX ?? 0}px, ${o.offsetY ?? 0}px)`;
+        el.appendChild(img);
+    }
+}
 
 // 🛡️ feat/fanclub-final: وزن إعلان الدخول — ذهبي (9+)، بلاتيني (13+)، أسطوري متحرك (17+).
 // fanClubEntrance الوارد هنا مُستبعَد مسبقاً تحت Lv.9 بالخادم، فهذا فقط يُفرِّق الثلاثة فوقها

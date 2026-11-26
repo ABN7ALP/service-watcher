@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<!--
+  Bubble Frame preview — loaded in an <iframe> (public/admin/admin.js, showCosmeticFormModal)
+  instead of being embedded in admin.html directly, same reasoning as frame-studio-preview.html:
+  this page loads the REAL compiled site stylesheet (dist/style.css) so .room-chat-message/
+  .room-chat-msg-line render with the exact production classes, no hand-approximated CSS here.
+  window.bfApplyLive(cfg) below is called directly by the parent (same-origin, no postMessage
+  needed) whenever the admin changes a field or picks a new file.
+-->
+<link rel="stylesheet" href="/dist/style.css">
+<style>
+    html, body { margin: 0; padding: 0; background: #0e0918; }
+    .bf-room-sim {
+        --u: 11px;
+        padding: 14px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+        min-height: 100%;
+        box-sizing: border-box;
+    }
+</style>
+</head>
+<body class="in-voice-room">
+    <div class="bf-room-sim" id="bfRoomSim">
+        <div class="room-chat-message room-chat-bubble-default" id="bfMsgShort">
+            <p class="room-chat-msg-line">
+                <span class="room-chat-msg-name" style="color:#9fd0ff">هلا</span><span class="room-chat-msg-text">هلا</span>
+            </p>
+        </div>
+        <div class="room-chat-message room-chat-bubble-default" id="bfMsgMulti">
+            <p class="room-chat-msg-line">
+                <span class="room-chat-msg-name" style="color:#9fd0ff">سلطان</span><span class="room-chat-msg-text">السلام عليكم جميعاً، كيف حالكم اليوم؟ تم بحمد الله 🌙 نورتوا الغرفة يا أحلى ناس وبانتظار دخولكم للتحدي الليلة</span>
+            </p>
+        </div>
+        <div class="room-chat-message room-chat-bubble-default" id="bfMsgEn">
+            <p class="room-chat-msg-line">
+                <span class="room-chat-msg-name" style="color:#9fd0ff">John</span><span class="room-chat-msg-text">Hello everyone, welcome to the room!</span>
+            </p>
+        </div>
+    </div>
+<!-- ✅ خارجي عمداً — CSP الحقيقية (script-src بلا 'unsafe-inline') تمنع أي <script> مضمَّن هنا -->
+<script src="bubble-frame-preview.js"></script>
+</body>
+</html>

@@ -9,7 +9,7 @@ const adminAuth = require('../middleware/adminAuth');
 const adminController = require('../controllers/adminController');
 const depositIntentController = require('../controllers/depositIntentController');
 const agentController = require('../controllers/agentController');
-const { frameAssetUpload, receiptUpload, giftVideoUpload } = require('../utils/cloudinary');
+const { frameAssetUpload, receiptUpload, giftVideoUpload, cosmeticAssetUpload } = require('../utils/cloudinary');
 const { financialLimiter } = require('../middleware/globalMiddleware');
 
 // 🛡️ "فحص الآن" (صحة النظام): مفتاح ثابت وليس هوية الأدمن — الحد مرة كل 5 دقائق إجمالاً
@@ -84,8 +84,11 @@ router.post('/gifts', giftVideoUpload, adminController.saveGift);
 router.put('/gifts/:giftId', giftVideoUpload, adminController.saveGift);
 router.delete('/gifts/:giftId', adminController.deleteGift);
 router.get('/cosmetics', adminController.getCosmetics);
-router.post('/cosmetics', adminController.saveCosmetic);
-router.put('/cosmetics/:itemId', adminController.saveCosmetic);
+// ✅ feat/bubble-frames: cosmeticAssetUpload (multer) فقط على create/update — frameFile/
+// ornamentFile اختياريان كلاهما؛ تبقى آمنة تماماً مع الحفظ النصي العادي (بلا ملفات) كما كان،
+// نفس نمط giftVideoUpload أعلاه بالضبط (multer يتجاوز صامتاً حين لا يوجد multipart/form-data)
+router.post('/cosmetics', cosmeticAssetUpload, adminController.saveCosmetic);
+router.put('/cosmetics/:itemId', cosmeticAssetUpload, adminController.saveCosmetic);
 router.delete('/cosmetics/:itemId', adminController.deleteCosmetic);
 
 // ✅ استوديو الإطارات — frameAssetUpload (multer) فقط على create/update (الوحيدان اللذان قد

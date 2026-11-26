@@ -5,6 +5,7 @@ const { financialLimiter } = require('../middleware/globalMiddleware');
 const router = express.Router();
 router.use(authMiddleware);
 router.get('/shop', controller.getShop);
+router.get('/bubble-frames', controller.getBubbleFrames);
 router.post('/purchase', financialLimiter, controller.purchase);
 router.post('/equip', controller.equip);
 module.exports = router;
