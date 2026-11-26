@@ -1234,10 +1234,12 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     flex-direction: row-reverse; /* ✅ أول صورة بالمصفوفة تظهر فوق الباقي */
     padding-inline-end: 1px;
 }
+/* 🐛 مراجعة fix/top-banner-queue (بند 4): كان .room-viewer-avatar يُطبَّق على <img> خام مباشرة
+   (بلا احتياط) — الآن يُطبَّق على غلاف avatarHTML() (span.avatar)، فالحجم --size والدائرية
+   يصلان لمحتواه (.avatar__photo/.avatar__initial) تلقائياً؛ الإطار/التراكب/الظل تبقى هنا */
 .room-viewer-avatar {
-    width: 21px; height: 21px;
+    --size: 21px;
     border-radius: 50%;
-    object-fit: cover;
     border: 1.5px solid #1f2937;
     margin-inline-start: -8px;
     cursor: pointer;
@@ -1272,10 +1274,11 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     cursor: pointer;
 }
 .room-top-supporter-slot:first-child { margin-inline-start: 0; }
+/* 🐛 مراجعة fix/top-banner-queue (بند 3): يُطبَّق الآن على غلاف avatarHTML() (span.avatar) بدل
+   <img> خام مباشرة — الحجم --size والدائرية يصلان لمحتواه (.avatar__photo/.avatar__initial) تلقائياً */
 .room-top-supporter-avatar {
-    width: 21px; height: 21px;
+    --size: 21px;
     border-radius: 50%;
-    object-fit: cover;
     border: 1.5px solid #cfd8e6; /* فضي (المركز الثاني) — افتراضي، يُستبدَل بالتعديلين أدناه */
     background: #222;
     box-shadow: 0 1px 3px rgba(0,0,0,0.5);
@@ -1529,6 +1532,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 @keyframes roomNoticeMarquee { to { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .room-notice span { animation: none; padding-inline-start: calc(var(--u, 10px) * .9); } }
+/* 🐛 مراجعة fix/top-banner-queue (بند 2): شريط الإعلان هذا يقع بنفس الشريحة الأفقية تقريباً
+   التي تتموضع بها فتحة الإشعار العلوية الموحَّدة (#gfx-top-toast-stack، أسفل #room-header-bar
+   مباشرة) فيظهر خلف شارة الهدية/توست الارتقاء ويختلط نصّه معهما عبر الخلفية شبه الشفافة. الآن
+   يُخفى تماماً (ومُؤقَّت الحركة المتحرّكة كي لا تُستهلَك دورة المعالج بلا داعٍ) طوال انشغال تلك
+   الفتحة — "أدنى أولوية، محتوى راحة" كما طُلِب — ويعود فوراً حين تُفرَغ (gfxSetRoomNoticePaused بـapp.js) */
+.room-notice--paused { opacity: 0; }
+.room-notice--paused span { animation-play-state: paused; }
 /* ✅ زر متابعة الرأس — حالتان مختلفتان تماماً بالتصميم (طلب صريح): قبل المتابعة دائرة أيقونة
    صغيرة بتدرّج "+" القياسي (.room-header-follow-circle)، وبعدها — بما أن الضغط يفتح نادي
    معجبي المضيف مباشرة لا "متابعة" بعد الآن — تختفي الدائرة الثقيلة كلياً وتظهر بدلاً منها
@@ -3392,18 +3402,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 .gift-stage-fly-layer { position: absolute; inset: 0; overflow: visible; z-index: 1; }
 .gift-stage-lane { position: absolute; left: 8px; bottom: 96px; display: flex; flex-direction: column-reverse; gap: 8px; max-width: 72vw; z-index: 2; }
 
-/* ✅ شارة علوية طوال مدة تشغيل فيديو الهدية كاملة (طلب صريح — بند 2أ) */
-.gift-stage-banner-top {
-    position: absolute; top: calc(env(safe-area-inset-top, 0px) + 54px); left: 50%;
-    opacity: 0; transform: translate(-50%, -14px); pointer-events: none; z-index: 3;
-    background: rgba(18, 8, 28, .78); backdrop-filter: blur(6px); color: #fff;
-    font-size: 12.5px; font-weight: 700; padding: 6px 16px; border-radius: 999px;
-    box-shadow: 0 4px 18px rgba(0, 0, 0, .4); max-width: 86vw; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis; transition: opacity .25s, transform .25s;
-}
-.gift-stage-banner-top.show { opacity: 1; transform: translate(-50%, 0); }
-.gift-stage-banner-top b { color: #ffcf5a; }
-@media (prefers-reduced-motion: reduce) { .gift-stage-banner-top { transition: opacity .15s; transform: translate(-50%, 0); } }
+/* 🐛 fix/top-banner-queue: شارة إرسال الهدية تمر الآن بفتحة الإشعار العلوي الموحَّدة
+   (.gfx-top-toast-stack/.gfx-top-toast أدناه) بدل صندوقها الثابت الخاص — راجع
+   gfxShowGiftTopBanner/gfxTopNoticeAdvance بـapp.js */
 
 /* ===== مؤثر فيديو الهدية ===== */
 /* 🐛 مراجعة #163 (الجولة 6 — "صندوق بخط قص بمنتصف الشاشة"): كان المرساة نقطة مركز (translate
@@ -7860,11 +7861,12 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
    تختفي بصرياً طوال عرض الأسطورية بملء الشاشة فلا تزدحم فوقها — عامة لا تقتصر على العنصر الواحد */
 .gfx-hidden-for-legend { opacity: 0; transition: opacity 0.2s; }
 
-/* ✅ توست علوي صغير غير مُحجِّب — بدل بطاقة احتفال كاملة مُحجِّبة لمنتصف الغرفة (ارتقاء غرفة/
-   نادي/ثروة معاً، راجع celebrateRoomLevelUp وأخواتها بـapp.js). حاوية طابور حقيقية (تدفّق عادي
-   عمودي، لا معرّف وحيد لكل توست) فلا يُلغي احتفال لاحق احتفالاً سابقاً لم يختفِ بعد.
+/* ✅ فتحة إشعار علوي واحدة موحَّدة (fix/top-banner-queue) — شارة إرسال الهدية وتوست الارتقاء
+   (ارتقاء غرفة/نادي/ثروة، راجع celebrateRoomLevelUp وأخواتها بـapp.js) يتشاركان هذا الصندوق
+   الوحيد عبر طابور حقيقي (gfxTopNoticeState بـapp.js): واحد يُعرَض بأي لحظة، توست ارتقاء يقطع
+   ويستبدل الحالي فوراً بدل التراكب معه، وأي عنصر آخر ينتظر دوره حتى تُفرَغ الفتحة.
    top الثابت (safe-area فقط) هنا احتياطي لو تعذَّر إيجاد شريط الرأس — الحاوية نفسها تُحسَب
-   ديناميكياً بالـJS من أسفل #room-header-bar الفعلي + 8px (راجع gfxShowTopToast) */
+   ديناميكياً بالـJS من أسفل #room-header-bar الفعلي + 8px (راجع gfxTopNoticeAdvance) */
 .gfx-top-toast-stack {
     position: fixed; top: calc(env(safe-area-inset-top, 0px) + 54px); left: 50%; transform: translateX(-50%);
     z-index: 616; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
@@ -7873,16 +7875,28 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
     display: flex; align-items: center; gap: 6px; padding: 6px 16px; border-radius: 999px;
     background: rgba(18, 8, 28, 0.78); backdrop-filter: blur(6px); color: #ffcf5a; font-size: 12.5px; font-weight: 800;
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4); animation: gfxTopToastIn 0.25s ease-out both;
+    max-width: 86vw; white-space: nowrap; overflow: hidden;
 }
 .gfx-top-toast.out { animation: gfxTopToastOut 0.3s forwards; }
 @keyframes gfxTopToastIn { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes gfxTopToastOut { to { opacity: 0; transform: translateY(-14px); } }
+/* 🐛 مراجعة fix/top-banner-queue (بند 1): لا قصّ ثابت بـtext-overflow:ellipsis بعد الآن — لو
+   تجاوز المحتوى (gfxApplyMarqueeIfOverflowing بـapp.js) عرض الصندوق الفعلي، حركة تمرير واحدة
+   (0%-15% ثبات بالموضع الطبيعي، تمرير حتى 55%، ثبات ≥1ث حتى 100%) تنتهي على نهاية الجملة
+   المهمة ("إلى <مستلم>") بدل قصّها بصمت — both تُبقي الموضع النهائي بعد انتهاء الحركة */
+.gfx-top-toast-inner { display: inline-block; }
+.gfx-top-toast-inner--marquee { animation: gfxTopToastMarquee 2.6s cubic-bezier(.4, 0, .2, 1) both; }
+@keyframes gfxTopToastMarquee {
+    0%, 15% { transform: translateX(0); }
+    55%, 100% { transform: translateX(var(--gfx-marquee-shift, 0)); }
+}
 
 @media (prefers-reduced-motion: reduce) {
     .gfx-layer, .gfx-layer *, .gfx-legend, .gfx-legend *, .gfx-fly, .gfx-top-toast, .gfx-top-toast.out {
         animation: none !important; transition: none !important;
     }
     .gfx-shaking { animation: none !important; }
+    .gfx-top-toast-inner--marquee { animation: none !important; transform: translateX(var(--gfx-marquee-shift, 0)); }
 }
 
 /* 🛡️ طلب صريح (مراجعة الأداء — بند 3): وضع أداء الأجهزة الضعيفة (deviceMemory≤3GB أو
