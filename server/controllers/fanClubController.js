@@ -375,7 +375,7 @@ exports.getExclusiveGiftEligibility = async (req, res) => {
         const level = membership ? computeFanLevelInfo(membership.points).level : 0;
         const active = membership ? !isInactive(membership.lastPointAt) : false;
         const eligible = !linked && !!membership && active && level >= EXCLUSIVE_GIFT_MIN_LEVEL;
-        const eligibleGifts = eligible ? gifts.map(gift => ({ id: gift._id, name: gift.name, imageUrl: gift.imageUrl, price: gift.discountedPrice || gift.price, videoUrl: gift.videoUrl || null, videoAlpha: gift.videoAlpha || 'luma' })) : [];
+        const eligibleGifts = eligible ? gifts.map(gift => ({ id: gift._id, name: gift.name, imageUrl: gift.imageUrl, price: gift.discountedPrice || gift.price, videoUrl: gift.videoUrl || null, videoAlpha: gift.videoAlpha || 'luma', videoScale: gift.videoScale || 150 })) : [];
         res.status(200).json({
             status: 'success',
             data: {

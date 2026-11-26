@@ -1161,6 +1161,8 @@ class AdminDashboard {
                             ${gift?.videoUrl ? `<p class="text-muted small">فيديو حالي موجود — اختر ملفاً جديداً لاستبداله، أو اتركه فارغاً لإبقائه كما هو.</p>` : ''}
                             <input type="file" class="form-control" id="giftVideoFile" accept="video/mp4">
                             <label style="margin-top:6px;"><input type="checkbox" id="giftVideoAlpha" ${gift?.videoAlpha === 'stacked' ? 'checked' : ''}> فيديو بقناة شفافية (مكدّس)</label>
+                            <label style="margin-top:6px;display:block;">حجم العرض % (80-200، افتراضي 150)</label>
+                            <input type="number" class="form-control" id="giftVideoScale" value="${gift?.videoScale || 150}" min="80" max="200">
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -1195,6 +1197,7 @@ class AdminDashboard {
                     formData.append('isFanClubExclusive', modal.querySelector('#giftIsFanClubExclusive').checked ? 'true' : 'false');
                     formData.append('seatEffect', modal.querySelector('#giftSeatEffect').value || '');
                     formData.append('videoAlpha', modal.querySelector('#giftVideoAlpha').checked ? 'stacked' : 'luma');
+                    formData.append('videoScale', String(parseInt(modal.querySelector('#giftVideoScale').value) || 150));
                     if (isEdit) await this.apiUpload('PUT', `/gifts/${gift._id}`, formData);
                     else await this.apiUpload('POST', '/gifts', formData);
                 } else {
@@ -1207,7 +1210,8 @@ class AdminDashboard {
                         isActive: modal.querySelector('#giftIsActive').checked,
                         isFanClubExclusive: modal.querySelector('#giftIsFanClubExclusive').checked,
                         seatEffect: modal.querySelector('#giftSeatEffect').value || null,
-                        videoAlpha: modal.querySelector('#giftVideoAlpha').checked ? 'stacked' : 'luma'
+                        videoAlpha: modal.querySelector('#giftVideoAlpha').checked ? 'stacked' : 'luma',
+                        videoScale: parseInt(modal.querySelector('#giftVideoScale').value) || 150
                     };
                     if (isEdit) await this.api('PUT', `/gifts/${gift._id}`, payload);
                     else await this.api('POST', '/gifts', payload);

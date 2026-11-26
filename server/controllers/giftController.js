@@ -374,7 +374,8 @@ function emitGiftSent(io, { roomId, sender, receivers, gift, qty, comboKey }) {
             gift: {
                 id: entry.gift._id.toString(), name: entry.gift.name, image: entry.gift.imageUrl || '',
                 videoUrl: entry.gift.videoUrl || null, tier: entry.gift.category || 'common',
-                seatEffect: entry.gift.seatEffect || null, videoAlpha: entry.gift.videoAlpha || 'luma'
+                seatEffect: entry.gift.seatEffect || null, videoAlpha: entry.gift.videoAlpha || 'luma',
+                videoScale: entry.gift.videoScale || 150
             },
             qty: entry.qty,
             comboKey: entry.comboKey,
@@ -640,7 +641,8 @@ exports.getGiftShop = async (req, res) => {
                 animationUrl: g.animationUrl || null,
                 isFullscreen: typeof g.isFullscreen === 'boolean' ? g.isFullscreen : (g.category === 'legendary'),
                 sortOrder: g.sortOrder,
-                videoAlpha: g.videoAlpha || 'luma'
+                videoAlpha: g.videoAlpha || 'luma',
+                videoScale: g.videoScale || 150
             });
         }
         // ✅ طلب صريح بالحرف: "The client must compute the wealth-bar preview ONLY from
