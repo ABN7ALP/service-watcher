@@ -3323,10 +3323,16 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    الاسم/السطر الثاني، غير مقروء. الآن حبّة بحجم محتواها (width تلقائي، max-width:78vw وحدها)
    بتدرّج صلب معتم بالكامل عبر عرضها (لا توقّف ثالث شفاف)، ونصّ الاسم يُقَصّ CSS أيضاً كاحتياط
    إضافي فوق قصّ gfxTruncateStageName بـapp.js (12 حرفاً) لو طال رغم ذلك */
-.gift-stage-join-slot { position: absolute; right: 8px; top: 200px; max-width: 78vw; z-index: 2; }
+/* 🐛 مراجعة (بند 2): الطرف الأيمن الفعلي للحبّة كان شبه مسطَّح (border-radius غير متماثل:
+   999px بزاويتين يسارَيتين فقط، 10px باليمنى — تصميم قديم لِـbar كامل العرض ملاصق لحافة واحدة
+   بذيل متلاشٍ) بينما هو بالضبط الطرف الملاصق لحافة الشاشة (right:8px) الآن — يبدو مقصوصاً.
+   الآن دائري بالكامل من الجهات الأربع كشرائط الهدايا بالضبط. display:flex+justify-content:
+   flex-end على الفتحة نفسها يضمن محاذاة الحبّة لحافتها اليمنى (= 8px من حافة الشاشة) بثبات
+   تام سواء بالسكون أو بنهاية حركة الدخول (translateX(0)) — لا اعتماد ضمني على اتجاه الصفحة */
+.gift-stage-join-slot { position: absolute; right: 8px; top: 200px; max-width: 78vw; z-index: 2; display: flex; justify-content: flex-end; }
 .room-entrance-toast {
     position: relative; height: 40px; width: fit-content; max-width: 78vw;
-    border-radius: 999px 10px 10px 999px; display: flex; align-items: center;
+    border-radius: 999px; display: flex; align-items: center;
     gap: 8px; padding: 0 14px 0 12px; font-size: 14px; font-weight: 800; white-space: nowrap;
     overflow: hidden; color: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.4);
     animation: roomEntranceToastSlide 3.2s cubic-bezier(.2,.8,.2,1) forwards;

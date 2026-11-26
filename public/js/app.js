@@ -18375,18 +18375,23 @@ function gfxStageFallbackPoint() {
     const sr = stage.getBoundingClientRect();
     return { x: sr.left + stage.clientWidth / 2 - 28, y: sr.top + stage.clientHeight - 56 };
 }
-// 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2، ثم feat/room-notice-lanes-v2 مراجعة): كان المركز
+// 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2، ثم feat/room-notice-lanes-v2 مراجعتان): كان المركز
 // منتصف شبكة المقاعد نفسها، فنُقِل لشريط أسفل آخر صف مقاعد مباشرة كي لا يتراكب مع بطاقة ارتقاء
 // الغرفة الكبيرة التي كانت موجودة وقتها (حُذِفت لاحقاً، صارت توست صغير — راجع fix/top-banner-queue)
 // — لكن ذاك "أسفل الشبكة" صار يتصادم مع منطقة شرائط الهدايا الجديدة (gift-stage-lane) التي
-// انتقلت ليمين الشاشة أسفل الشبكة أيضاً (راجع gfxPositionLaneZone). بما أن سبب النقل الأصلي
-// لم يعد قائماً، الموكب يعود الآن لمركز شبكة المقاعد حرفياً (طلب صريح: "الوحدات تطير للمقاعد
-// أصلاً") — لا تصادم مع الشريط (يمين الشاشة، خارج حدود الشبكة أفقياً) ولا مع أي بطاقة لم تعد موجودة
+// انتقلت ليمين الشاشة أسفل الشبكة أيضاً (راجع gfxPositionLaneZone)، فعاد الموكب لمركز الشبكة.
+// 🐛 مراجعة ثانية (تقرير جهاز حقيقي): "مركز الشبكة" يشمل صفّ المضيف (.voice-seat.host-seat —
+// عنصر وحيد بعرض الشبكة الكامل grid-column:1/-1، راجع input.css) فيُغطِّي اسمه/رصيده غالباً —
+// الآن المركز الرأسي محصور بصفوف الضيوف فقط (أسفل حافة صفّ المضيف السفلية حتى حافة الشبكة
+// السفلية)، لا صفّ المضيف نفسه أبداً. غرفة بلا مضيف مخصَّص (الرسمية roomId='main') لا تملك
+// host-seat أصلاً — يبقى السلوك القديم (مركز الشبكة كاملة) سليماً لها دون أي فرق
 function gfxStagePopCenterPoint() {
     const grid = document.getElementById('voice-chat-grid');
     if (!grid) return null;
     const gr = grid.getBoundingClientRect();
-    return { x: gr.left + gr.width / 2, y: gr.top + gr.height / 2 };
+    const hostSeat = grid.querySelector('.voice-seat.host-seat');
+    const guestTop = hostSeat ? hostSeat.getBoundingClientRect().bottom : gr.top;
+    return { x: gr.left + gr.width / 2, y: guestTop + (gr.bottom - guestTop) / 2 };
 }
 // 🐛 مراجعة #163 (الجولة 6 — "صندوق بخط قص بمنتصف الشاشة"): مرساة الفيديو الحقيقي/كانفاس WebGL
 // فقط (لا الموكب ولا صورة الوضع الخفيف الثابتة — تلك تبقى على gfxStagePopCenterPoint كالسابق،
@@ -18479,11 +18484,13 @@ function giftStageOnProcPop(proc, done) {
     head.className = 'gift-proc-head';
     head.style.left = center.x + 'px';
     // 🛡️ feat/room-notice-lanes-v2: حبّة التعليق فوق مركز الموكب بـ70px — قد يخرج هذا فوق حافة
-    // شبكة المقاعد العلوية فعلياً بغرفة قصيرة (صف واحد فقط، 9 مقاعد مثلاً) فيتقاطع مع رأس
-    // الغرفة. يُحجَز ضمن حدود الشبكة نفسها دوماً (8px هامش من حافتها العلوية كحدّ أدنى)
+    // صفوف الضيوف العلوية فعلياً بغرفة قصيرة (صف ضيوف واحد فقط، 9 مقاعد مثلاً) فيتقاطع مع صفّ
+    // المضيف نفسه (اسمه/رصيده) فوقها. يُحجَز ضمن حدود صفوف الضيوف وحدها دوماً (8px هامش من
+    // حافتها العلوية كحدّ أدنى — أسفل صفّ المضيف تماماً، لا داخله أبداً مهما قصُرت صفوف الضيوف)
     const grid = document.getElementById('voice-chat-grid');
-    const gridTop = grid ? grid.getBoundingClientRect().top : 0;
-    head.style.top = Math.max(gridTop + 8, center.y - 70) + 'px';
+    const hostSeatEl = grid ? grid.querySelector('.voice-seat.host-seat') : null;
+    const guestBandTop = hostSeatEl ? hostSeatEl.getBoundingClientRect().bottom : (grid ? grid.getBoundingClientRect().top : 0);
+    head.style.top = Math.max(guestBandTop + 8, center.y - 70) + 'px';
     head.innerHTML = '<span class="gift-proc-who"></span><span class="gift-proc-cnt" dir="ltr">×1</span>';
     // 🐛 مراجعة #163 (الجولة 8): الاسمان خام بلا قصّ — حبّة مستديرة (.gift-proc-who أصلاً
     // border-radius:999px) بلا عرض أقصى تتمدَّد بعرض النص كاملاً فتتجاوز حافتي الشاشة، فتبدو
