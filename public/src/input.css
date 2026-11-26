@@ -1274,10 +1274,11 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     cursor: pointer;
 }
 .room-top-supporter-slot:first-child { margin-inline-start: 0; }
+/* 🐛 مراجعة fix/top-banner-queue (بند 3): يُطبَّق الآن على غلاف avatarHTML() (span.avatar) بدل
+   <img> خام مباشرة — الحجم --size والدائرية يصلان لمحتواه (.avatar__photo/.avatar__initial) تلقائياً */
 .room-top-supporter-avatar {
-    width: 21px; height: 21px;
+    --size: 21px;
     border-radius: 50%;
-    object-fit: cover;
     border: 1.5px solid #cfd8e6; /* فضي (المركز الثاني) — افتراضي، يُستبدَل بالتعديلين أدناه */
     background: #222;
     box-shadow: 0 1px 3px rgba(0,0,0,0.5);

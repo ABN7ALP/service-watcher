@@ -2226,12 +2226,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         wrap.classList.remove('hidden');
         const top3 = currentRoomTopSupporters.slice(0, 3);
-        // 🐛 طلب صريح: إطار الملف الشخصي المفعَّل لا يُعرَض على صور هذا الودجت تحديداً (مساحته
-        // الضيقة 19-23px لا تحتمل زخرفة إطار إضافية بلا ازدحام بصري) — <img> خام هنا عمداً
-        // بلا المرور عبر avatarHTML()، بعكس كل مكان آخر بالتطبيق
+        // 🐛 مراجعة fix/top-banner-queue (بند 3): <img src> خام بلا احتياط — صورة مفقودة/معطوبة
+        // تترك أيقونة الصورة المكسورة الافتراضية بالمتصفح بارزة بحلقة ذهبية حولها (يظهر تحديداً
+        // أثناء تحديث الودجت الحي عند كل هدية). avatarHTML() هنا بلا frameClass (الفضاء الضيّق
+        // 19-23px يبقى بلا زخرفة إطار كما كان مقصوداً أصلاً) لكن مع احتياط الحرف الأول التلقائي
         wrap.innerHTML = top3.map((s, i) => `
             <button type="button" class="room-top-supporter-slot room-top-supporter-rank-${i + 1}" data-user-id="${s.userId}" title="${escapeHtml(s.username)} • ${s.points.toLocaleString('en-US')}">
-                <img src="${s.profileImage}" class="room-top-supporter-avatar">
+                ${avatarHTML({ src: s.profileImage, name: s.username, userId: s.userId, fetchSize: 21, sizeClass: 'room-top-supporter-avatar' })}
             </button>
         `).join('');
         wrap.querySelectorAll('.room-top-supporter-slot[data-user-id]').forEach((btn, idx) => {
@@ -17488,17 +17489,28 @@ function getGfxTopNoticeSlot() {
 // ثابت (overflow:hidden وحده بـCSS)؛ لو تجاوز المحتوى الصندوق فعلياً بعد الإدراج، حركة تمرير
 // واحدة (gfx-top-toast-inner--marquee) تنتقل من الموضع الطبيعي (الطرف المرئي ابتداءً) إلى
 // نهاية الجملة وتثبت هناك — لا فقدان لأي جزء من النص، فقط تأخّر رؤيته إن لم يتّسع الصندوق له
+// 🐛 مراجعة (بند 2): كانت مسافة التمرير = الفائض بالضبط فتنتهي الحركة بآخر حرف (أو علامة "…")
+// ملاصقاً لحافة الصندوق تماماً بلا هامش. GFX_MARQUEE_END_PADDING يضيف ≥8px هامشاً داخلياً.
+// والقياس نفسه يُؤجَّل حتى document.fonts.ready (لا فور الإدراج) كي لا يُحسَب على عرض خط
+// احتياطي مؤقت قبل اكتمال تحميل الخط الحقيقي فيُخطئ تقدير الفائض الفعلي
+const GFX_MARQUEE_END_PADDING = 8;
 function gfxApplyMarqueeIfOverflowing(el) {
     const inner = el.querySelector('.gfx-top-toast-inner');
     if (!inner) return;
-    inner.classList.remove('gfx-top-toast-inner--marquee');
-    inner.style.removeProperty('--gfx-marquee-shift');
-    const overflow = inner.scrollWidth - el.clientWidth;
-    if (overflow <= 1) return;
-    const rtl = getComputedStyle(el).direction === 'rtl';
-    inner.style.setProperty('--gfx-marquee-shift', `${rtl ? overflow : -overflow}px`);
-    void inner.offsetWidth; // ✅ يفرض reflow كي تُعاد الحركة من الصفر لو أُعيد عرض نفس العنصر (شارة استؤنفت بعد توست)
-    inner.classList.add('gfx-top-toast-inner--marquee');
+    const apply = () => {
+        if (!inner.isConnected) return; // ✅ استُبدِل/أُزيل قبل اكتمال تحميل الخطوط — لا تطبيق على عنصر ميت
+        inner.classList.remove('gfx-top-toast-inner--marquee');
+        inner.style.removeProperty('--gfx-marquee-shift');
+        const overflow = inner.scrollWidth - el.clientWidth;
+        if (overflow <= 1) return;
+        const rtl = getComputedStyle(el).direction === 'rtl';
+        const shift = overflow + GFX_MARQUEE_END_PADDING;
+        inner.style.setProperty('--gfx-marquee-shift', `${rtl ? shift : -shift}px`);
+        void inner.offsetWidth; // ✅ يفرض reflow كي تُعاد الحركة من الصفر لو أُعيد عرض نفس العنصر (شارة استؤنفت بعد توست)
+        inner.classList.add('gfx-top-toast-inner--marquee');
+    };
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(apply);
+    else apply();
 }
 // 🐛 مراجعة fix/top-banner-queue (بند 2): شريط إعلان الغرفة المتحرّك (#room-notice) عنصر دائم
 // بالتخطيط العادي برأس الغرفة — يقع بنفس الشريحة الأفقية تقريباً التي تتموضع بها فتحة الإشعار
