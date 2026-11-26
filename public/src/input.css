@@ -1234,10 +1234,12 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     flex-direction: row-reverse; /* ✅ أول صورة بالمصفوفة تظهر فوق الباقي */
     padding-inline-end: 1px;
 }
+/* 🐛 مراجعة fix/top-banner-queue (بند 4): كان .room-viewer-avatar يُطبَّق على <img> خام مباشرة
+   (بلا احتياط) — الآن يُطبَّق على غلاف avatarHTML() (span.avatar)، فالحجم --size والدائرية
+   يصلان لمحتواه (.avatar__photo/.avatar__initial) تلقائياً؛ الإطار/التراكب/الظل تبقى هنا */
 .room-viewer-avatar {
-    width: 21px; height: 21px;
+    --size: 21px;
     border-radius: 50%;
-    object-fit: cover;
     border: 1.5px solid #1f2937;
     margin-inline-start: -8px;
     cursor: pointer;
@@ -1529,6 +1531,13 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 }
 @keyframes roomNoticeMarquee { to { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .room-notice span { animation: none; padding-inline-start: calc(var(--u, 10px) * .9); } }
+/* 🐛 مراجعة fix/top-banner-queue (بند 2): شريط الإعلان هذا يقع بنفس الشريحة الأفقية تقريباً
+   التي تتموضع بها فتحة الإشعار العلوية الموحَّدة (#gfx-top-toast-stack، أسفل #room-header-bar
+   مباشرة) فيظهر خلف شارة الهدية/توست الارتقاء ويختلط نصّه معهما عبر الخلفية شبه الشفافة. الآن
+   يُخفى تماماً (ومُؤقَّت الحركة المتحرّكة كي لا تُستهلَك دورة المعالج بلا داعٍ) طوال انشغال تلك
+   الفتحة — "أدنى أولوية، محتوى راحة" كما طُلِب — ويعود فوراً حين تُفرَغ (gfxSetRoomNoticePaused بـapp.js) */
+.room-notice--paused { opacity: 0; }
+.room-notice--paused span { animation-play-state: paused; }
 /* ✅ زر متابعة الرأس — حالتان مختلفتان تماماً بالتصميم (طلب صريح): قبل المتابعة دائرة أيقونة
    صغيرة بتدرّج "+" القياسي (.room-header-follow-circle)، وبعدها — بما أن الضغط يفتح نادي
    معجبي المضيف مباشرة لا "متابعة" بعد الآن — تختفي الدائرة الثقيلة كلياً وتظهر بدلاً منها
@@ -7865,17 +7874,28 @@ body.lite-mode *, body.lite-mode *::before, body.lite-mode *::after {
     display: flex; align-items: center; gap: 6px; padding: 6px 16px; border-radius: 999px;
     background: rgba(18, 8, 28, 0.78); backdrop-filter: blur(6px); color: #ffcf5a; font-size: 12.5px; font-weight: 800;
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4); animation: gfxTopToastIn 0.25s ease-out both;
-    max-width: 86vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 86vw; white-space: nowrap; overflow: hidden;
 }
 .gfx-top-toast.out { animation: gfxTopToastOut 0.3s forwards; }
 @keyframes gfxTopToastIn { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes gfxTopToastOut { to { opacity: 0; transform: translateY(-14px); } }
+/* 🐛 مراجعة fix/top-banner-queue (بند 1): لا قصّ ثابت بـtext-overflow:ellipsis بعد الآن — لو
+   تجاوز المحتوى (gfxApplyMarqueeIfOverflowing بـapp.js) عرض الصندوق الفعلي، حركة تمرير واحدة
+   (0%-15% ثبات بالموضع الطبيعي، تمرير حتى 55%، ثبات ≥1ث حتى 100%) تنتهي على نهاية الجملة
+   المهمة ("إلى <مستلم>") بدل قصّها بصمت — both تُبقي الموضع النهائي بعد انتهاء الحركة */
+.gfx-top-toast-inner { display: inline-block; }
+.gfx-top-toast-inner--marquee { animation: gfxTopToastMarquee 2.6s cubic-bezier(.4, 0, .2, 1) both; }
+@keyframes gfxTopToastMarquee {
+    0%, 15% { transform: translateX(0); }
+    55%, 100% { transform: translateX(var(--gfx-marquee-shift, 0)); }
+}
 
 @media (prefers-reduced-motion: reduce) {
     .gfx-layer, .gfx-layer *, .gfx-legend, .gfx-legend *, .gfx-fly, .gfx-top-toast, .gfx-top-toast.out {
         animation: none !important; transition: none !important;
     }
     .gfx-shaking { animation: none !important; }
+    .gfx-top-toast-inner--marquee { animation: none !important; transform: translateX(var(--gfx-marquee-shift, 0)); }
 }
 
 /* 🛡️ طلب صريح (مراجعة الأداء — بند 3): وضع أداء الأجهزة الضعيفة (deviceMemory≤3GB أو

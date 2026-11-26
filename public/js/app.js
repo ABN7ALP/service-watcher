@@ -3979,9 +3979,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (numEl) numEl.textContent = count > 999 ? '999+' : String(count);
         const avatarsEl = document.getElementById('room-viewer-avatars');
         if (avatarsEl && viewers) {
-            avatarsEl.innerHTML = viewers.slice(0, 3).map(v => `
-                <img src="${v.profileImage}" data-user-id="${v.id}" class="room-viewer-avatar" title="${escapeHtml(v.username)}">
-            `).join('');
+            // 🐛 مراجعة fix/top-banner-queue (بند 4): <img src> خام بلا احتياط — صورة مفقودة/معطوبة
+            // تترك حلقة ذهبية فارغة بلا صورة ولا حرف. avatarHTML() يوفّر احتياط الحرف الأول تلقائياً
+            avatarsEl.innerHTML = viewers.slice(0, 3).map(v => avatarHTML({
+                src: v.profileImage, name: v.username, userId: v.id, fetchSize: 21,
+                sizeClass: 'room-viewer-avatar', wrapAttrs: ` data-user-id="${v.id}" title="${escapeHtml(v.username)}"`
+            })).join('');
         }
     }
 
@@ -17342,6 +17345,7 @@ function teardownGiftComboFx() {
     gfxTopNoticeState.showingToast = false;
     gfxTopNoticeState.toastQueue = [];
     document.getElementById('gfx-top-toast-stack')?.replaceChildren();
+    gfxSetRoomNoticePaused(false); // ✅ لا يبقى شريط الإعلان مخفياً بغرفة جديدة بسبب حالة معلّقة من غرفة سابقة
     // 🐛 إصلاح جذري (الخطأ ب — الهدايا توقّفت عن الطيران للمقعد): gfxActiveFlyCount (بند 3،
     // حدّ الطيران المتزامن على الأجهزة الضعيفة) لم تكن تُصفَّر هنا أبداً — أي رسوم طيران لم
     // يكتمل حدث onfinish الخاص بها فعلياً قبل مغادرة الغرفة (عنصرها أُزيل من DOM قسراً ضمن
@@ -17479,6 +17483,31 @@ function getGfxTopNoticeSlot() {
     document.body.appendChild(slot);
     return slot;
 }
+// 🐛 مراجعة fix/top-banner-queue (بند 1): كان .gfx-top-toast يقصّ الفائض بـtext-overflow:
+// ellipsis ثابتاً — يقطع "إلى <مستلم>" بصمت لو طال السطر رغم قصّ كل جزء بذاته. الآن: لا قصّ
+// ثابت (overflow:hidden وحده بـCSS)؛ لو تجاوز المحتوى الصندوق فعلياً بعد الإدراج، حركة تمرير
+// واحدة (gfx-top-toast-inner--marquee) تنتقل من الموضع الطبيعي (الطرف المرئي ابتداءً) إلى
+// نهاية الجملة وتثبت هناك — لا فقدان لأي جزء من النص، فقط تأخّر رؤيته إن لم يتّسع الصندوق له
+function gfxApplyMarqueeIfOverflowing(el) {
+    const inner = el.querySelector('.gfx-top-toast-inner');
+    if (!inner) return;
+    inner.classList.remove('gfx-top-toast-inner--marquee');
+    inner.style.removeProperty('--gfx-marquee-shift');
+    const overflow = inner.scrollWidth - el.clientWidth;
+    if (overflow <= 1) return;
+    const rtl = getComputedStyle(el).direction === 'rtl';
+    inner.style.setProperty('--gfx-marquee-shift', `${rtl ? overflow : -overflow}px`);
+    void inner.offsetWidth; // ✅ يفرض reflow كي تُعاد الحركة من الصفر لو أُعيد عرض نفس العنصر (شارة استؤنفت بعد توست)
+    inner.classList.add('gfx-top-toast-inner--marquee');
+}
+// 🐛 مراجعة fix/top-banner-queue (بند 2): شريط إعلان الغرفة المتحرّك (#room-notice) عنصر دائم
+// بالتخطيط العادي برأس الغرفة — يقع بنفس الشريحة الأفقية تقريباً التي تتموضع بها فتحة الإشعار
+// العلوية (المحسوبة ديناميكياً أسفل #room-header-bar)، فيظهر خلف شارة الهدية/توست الارتقاء
+// ويختلط نصّه معهما عبر الخلفية شبه الشفافة (backdrop-blur). الآن يُخفى تماماً طوال انشغال
+// الفتحة (شارة أو توست) ويعود فوراً حين تُفرَغ — "أدنى أولوية، محتوى راحة" كما طُلِب صراحة
+function gfxSetRoomNoticePaused(paused) {
+    document.getElementById('room-notice')?.classList.toggle('room-notice--paused', paused);
+}
 function gfxTopNoticeAdvance() {
     if (gfxTopNoticeState.showingToast) return;
     const slot = getGfxTopNoticeSlot();
@@ -17489,10 +17518,12 @@ function gfxTopNoticeAdvance() {
     if (gfxTopNoticeState.toastQueue.length) {
         const { html } = gfxTopNoticeState.toastQueue.shift();
         gfxTopNoticeState.showingToast = true;
+        gfxSetRoomNoticePaused(true);
         const el = document.createElement('div');
         el.className = 'gfx-top-toast';
-        el.innerHTML = html;
+        el.innerHTML = `<span class="gfx-top-toast-inner">${html}</span>`;
         slot.replaceChildren(el);
+        gfxApplyMarqueeIfOverflowing(el);
         gfxTopNoticeState.activeToastTimer = setTimeout(() => {
             el.classList.add('out');
             setTimeout(() => {
@@ -17504,7 +17535,14 @@ function gfxTopNoticeAdvance() {
         }, 2200);
         return;
     }
-    slot.replaceChildren(...(gfxTopNoticeState.giftBannerEl ? [gfxTopNoticeState.giftBannerEl] : []));
+    if (gfxTopNoticeState.giftBannerEl) {
+        gfxSetRoomNoticePaused(true);
+        slot.replaceChildren(gfxTopNoticeState.giftBannerEl);
+        gfxApplyMarqueeIfOverflowing(gfxTopNoticeState.giftBannerEl);
+        return;
+    }
+    slot.replaceChildren();
+    gfxSetRoomNoticePaused(false);
 }
 // opts.jump: توست ارتقاء (غرفة/نادي/ثروة) — يقطع أي شيء معروض حالياً فوراً (بدل انتظار دوره
 // بآخر الطابور) ثم يُستبدَل بما كان معروضاً (شارة هدية مثلاً) تلقائياً بعد زواله
@@ -18049,17 +18087,23 @@ function gfxTruncateStageName(name, max) {
 // منفصل لها، تُستبدَل فوراً لو وصل عرض جديد (لن يحدث عملياً لأن طابور الفيديو نفسه متسلسل)
 // 🐛 fix/top-banner-queue: تمر الآن بفتحة الإشعار العلوي الموحَّدة (gfxTopNoticeState) بدل
 // صندوقها الثابت الخاص — فلا تتراكب مع توست ارتقاء يصل بنفس اللحظة. واسم الهدية نفسه يُقصّ
-// الآن أيضاً (≤14 حرفاً، بوسامة قصّ الأسماء) كي تبقى "إلى فلان" مقروءة دوماً مهما طال اسم الهدية
+// الآن أيضاً (≤12 حرفاً) كي تبقى "إلى فلان" مقروءة دوماً مهما طال اسم الهدية
+// 🐛 مراجعة fix/top-banner-queue (بند 1): حدود القصّ خُفِّضت (مُرسِل 10، هدية 12، مستلم 10 —
+// كانت 12/14/12) ليبقى هامش أوسع، لكن القصّ وحده لا يكفي دوماً على 360px فـ"إلى <مستلم>" كان
+// لا يزال يُقطَع بخط overflow:hidden ثابت. gfxApplyMarqueeIfOverflowing (أسفل) تتولّى الباقي:
+// لو تجاوز السطر عرض الصندوق فعلاً رغم القصّ، تُشغَّل حركة تمرير واحدة (الاتجاه من الطرف
+// المرئي ابتداءً نحو نهاية الجملة) تنتهي بثبات على "إلى <مستلم>" بدل قصّه بصمت
 function gfxShowGiftTopBanner(evt) {
     getGiftStageOverlay();
-    const toLabel = (evt.receivers && evt.receivers.length > 1) ? `${evt.receivers.length} مستلمين` : gfxTruncateStageName(evt.receivers?.[0]?.username || '', 12);
+    const toLabel = (evt.receivers && evt.receivers.length > 1) ? `${evt.receivers.length} مستلمين` : gfxTruncateStageName(evt.receivers?.[0]?.username || '', 10);
     const el = document.createElement('div');
     el.className = 'gfx-top-toast gift-stage-banner-top'; // ملاحظة: الصنف الثاني مُعرِّف منطقي فقط (لا تنسيق CSS خاص به بعد الآن)
     const line = document.createElement('span');
+    line.className = 'gfx-top-toast-inner';
     const b1 = document.createElement('b');
-    const bdi1 = document.createElement('bdi'); bdi1.textContent = gfxTruncateStageName(evt.sender?.username || '', 12); b1.appendChild(bdi1);
+    const bdi1 = document.createElement('bdi'); bdi1.textContent = gfxTruncateStageName(evt.sender?.username || '', 10); b1.appendChild(bdi1);
     const mid = document.createTextNode(' أرسل ');
-    const giftName = document.createTextNode(gfxTruncateStageName(evt.gift?.name || 'هدية', 14));
+    const giftName = document.createTextNode(gfxTruncateStageName(evt.gift?.name || 'هدية', 12));
     const toText = document.createTextNode(toLabel ? ` إلى ` : '');
     const b2 = document.createElement('b');
     const bdi2 = document.createElement('bdi'); bdi2.textContent = toLabel; b2.appendChild(bdi2);
