@@ -46,6 +46,7 @@
          * @param {(proc)=>void} [hooks.onProcExtend] - كومبو من نفس المُرسِل+الهدية مدَّد موكباً قائماً (لا موكب جديد)
          * @param {(evt, recipient)=>void} [hooks.onSeatEffect] - تأثير مقعد (كرت هوية) لهدية مُعلَّمة من الأدمن
          * @param {()=>boolean} [hooks.isLite] - وضع الأجهزة الضعيفة الحالي (يُستعلَم حياً عند كل موكب جديد)
+         * @param {()=>number} [hooks.laneCapacity] - أقصى عدد شرائط ظاهرة معاً (يُستعلَم حياً عند كل حدث)، افتراضي LANE_MAX_VISIBLE
          * @param {()=>number} [hooks.now] - للاختبار: ساعة مُحاكاة بدل Date.now الحقيقية
          */
         constructor(hooks) {
@@ -123,8 +124,15 @@
             });
         }
 
-        // ---------------- الشريط الجانبي (أ): أقصى 2 ظاهرَين، دمج بنفس المُرسِل+الهدية خلال 3ث ----------------
+        // ---------------- الشريط الجانبي (أ): أقصى 2-3 ظاهرَين (حسب ارتفاع الشاشة)، دمج بنفس
+        // المُرسِل+الهدية خلال 3ث — بما فيها دمج بعنصر لا يزال بالطابور (لم يُعرَض بعد إطلاقاً) ----------------
         _laneKeyFor(evt) { return `${evt.sender && evt.sender.id}::${evt.gift && evt.gift.id}`; }
+
+        // ✅ feat/room-notice-lanes-v2: السقف يُستعلَم حياً من الراسم (hooks.laneCapacity) بدل
+        // ثابت واحد للجميع — شاشات أطول (≥760px ارتفاعاً بتصميم الراسم الحالي) تتّسع لـ3 شرائط
+        _laneCapacity() {
+            return (this.hooks.laneCapacity && this.hooks.laneCapacity()) || LANE_MAX_VISIBLE;
+        }
 
         _laneHandle(evt) {
             const key = this._laneKeyFor(evt);
@@ -139,11 +147,23 @@
                 this.hooks.onLaneMerge && this.hooks.onLaneMerge(visible);
                 return;
             }
+            // ✅ طلب صريح: نفس comboKey (مُرسِل+هدية) ينتظر دوره بالطابور فعلاً — يُحدَّث عدّاده
+            // صامتاً (لا عنصر DOM ظاهر بعد لتحديثه)، فيظهر حين يأتي دوره بالعدّاد المُجمَّع الصحيح
+            // لا عدّاد أول دخول فقط. لا نافذة زمنية هنا (بعكس الظاهر أعلاه) — عنصر بالطابور لم
+            // تبدأ مهلة عرضه أصلاً فلا معنى لانتهاء صلاحية دمجه بعد
+            const queued = this._laneQueue.find(v => v.key === key);
+            if (queued) {
+                queued.count += (evt.qty || 1);
+                queued.lastAt = now;
+                queued.isTopSender = isTopSender;
+                (evt.receivers || []).forEach(r => queued.receiverIds.add(r.id));
+                return;
+            }
             const item = {
                 key, sender: evt.sender, gift: evt.gift, count: evt.qty || 1, lastAt: now, isTopSender,
                 receiverIds: new Set((evt.receivers || []).map(r => r.id))
             };
-            if (this._laneVisible.length >= LANE_MAX_VISIBLE) {
+            if (this._laneVisible.length >= this._laneCapacity()) {
                 this._laneQueue.push(item);
                 return;
             }

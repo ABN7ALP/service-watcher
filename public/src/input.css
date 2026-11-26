@@ -3225,37 +3225,9 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
     vertical-align: -3px;
 }
 
-/* 🐛 إصلاح "الصفحة تنزل مع إشعار الهدية" (طلب صريح، أولوية معيار قبول): الجولة السابقة كانت
-   تُغيّر ارتفاع .room-gift-lane ديناميكياً (JS) ليتّسع لشريط الهدية + سطر الدخول معاً، فيدفع
-   ذلك الدردشة فعلياً لأسفل بكل إشعار — هذا هو عطل "الصفحة تنزل". الحل الصحيح (مطابق
-   لـ.overlay بالنموذج الإلزامي docs/design/seat-duel-prototype.html): .room-gift-lane
-   يبقى height:0 **دائماً وبلا أي استثناء** (لا JS يلمس ارتفاعه بعد الآن — بُنية التدفّق لا
-   تتأثر إطلاقاً بأي عدد من العناصر بداخله). طفلاه (الشريط + سطر الدخول) عمود flex عادي
-   (لا position:absolute فردي لكل منهما بعد الآن) فيتراصّان تلقائياً بلا تداخل بينهما — لكن
-   لأن طول العمود صفر (height:0) مع overflow:visible (الافتراضي)، يفيضان بصرياً فوق أعلى
-   الدردشة بالضبط (الحدّ الأدنى اللازم لمنع تغطية أول رسالة: منطقة تلاشي الدردشة العلوية
-   -webkit-mask أصلاً تُلطّف هذا التراكب البصري) بلا احتساب أي ارتفاع لهما بتدفّق الصفحة
-   إطلاقاً — صندوق بارتفاع محدَّد صريح (0) لا يتأثر بفيضان محتواه مهما كبر، هذا أساس اللعبة.
-   pointer-events:none يضمن عدم حجب الضغط على أول رسالة دردشة تحتهما لحظة التراكب العابر */
-.room-join-notice {
-    max-width: 70cqw;
-    padding: 2px calc(var(--u, 9px) * .8);
-    border-radius: 999px;
-    font-size: calc(var(--u, 9px) * .85);
-    background: linear-gradient(90deg, rgba(61,123,255,.33), transparent);
-    color: #d6e6ff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    opacity: 0;
-    transform: translateX(30px);
-    transition: .4s;
-}
-.room-join-notice.on { opacity: 1; transform: none; }
-@media (prefers-reduced-motion: reduce) { .room-join-notice { transition: opacity .2s; transform: none; } }
-/* 🛡️ fix/gift-stage-top-layer: #room-join-notice ينتقل الآن لـ#gift-stage-lane (عنصر ثابت
-   بمستوى body — راجع .gift-stage-lane أسفله)، لا .room-gift-lane المحلية القديمة بالغرفة
-   (حُذفت بالكامل مع انتقال الشريط الجانبي كله لنفس المرحلة الموحَّدة الثابتة) */
+/* 🗑️ feat/room-notice-lanes-v2: #room-join-notice (سطر "دخلت الغرفة" النصّي البسيط، بلا صورة)
+   حُذِف بالكامل — كل انضمام يمر الآن بنظام واحد موحَّد (.room-entrance-toast بفتحته
+   #gift-stage-join-slot، راجع الكتلة أعلى الملف عند .voice-chat-stage) */
 
 /* 🛡️ feat/gift-fx-and-cosmetics-base (إصلاح الخطأ أ — إشعارات الهدايا/الدخول خلف المقاعد):
    الجذر الحقيقي هنا — z-index:60 بلا أي position مضبوط، وz-index بلا position لا أثر له إطلاقاً
@@ -3325,7 +3297,6 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    واحدة متماسكة — بصرف النظر عن ترتيب DOM بينهما، لا اعتماد على تكديس ضمني هش (راجع التعليق
    التالي مباشرة لسبب أن z-index:25 هذا بالذات صار لاحقاً جزءاً من مشكلة تكديس أكبر) */
 .voice-chat-stage { position: relative; z-index: 25; }
-.room-entrance-layer { position: absolute; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
 /* 🐛 إصلاح جذري ثانٍ (مراجعة fix/gift-stage-top-layer — تقرير جهاز حقيقي: التنين/السيف/اليخت
    خلف الدردشة، الحديقة فقط ظهرت صحيحة): الإصلاح الأول (PR #160 — الطبقتان طفلان مباشران
    لـ#main-content بدل .voice-chat-stage) أزال سبباً واحداً لمشكلة التكديس لكن ليس كل الأسباب
@@ -3334,32 +3305,53 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    قيمته يبقى محصوراً داخل سياق تكديس سلفه فقط — لا يتجاوزه أبداً مهما كانت القيمة الرقمية.
    الحل الجذري الفعلي: طبقتا الفيديو/الطيران (ومعهما الموكب/الشريط/الشارة العلوية) انتقلت
    بالكامل لعنصرين شقيقين position:fixed مُلحَقين بـdocument.body مباشرة (راجع #gift-fx-video/
-   #gift-fx-ui أسفله وgetGiftStageOverlay بـapp.js — عنصران لا عنصر واحد لاحقاً، لسبب مزج آخر
-   غير علاقة بالتكديس، راجع تعليقهما) — تماماً كفلسفة .gfx-layer الموجودة أصلاً (fixed+body)
-   التي "تعمل فوق كل شيء دوماً بلا استثناء"، فيتخطّى أي سياق تكديس محلي بالغرفة كلياً بلا استثناء */
+   #gift-fx-ui أسفله وgetGiftStageOverlay بـapp.js) — تماماً كفلسفة .gfx-layer الموجودة أصلاً
+   (fixed+body) التي "تعمل فوق كل شيء دوماً بلا استثناء". feat/room-notice-lanes-v2: إعلان
+   الدخول (.room-entrance-toast، كان ضمن .room-entrance-layer المحلية هنا بالضبط — نفس سبب
+   مشكلة التكديس أعلاه) انتقل بدوره لنفس الفلسفة، فتحة #gift-stage-join-slot ضمن #gift-fx-lanes
+   الثابتة (راجع أسفل) — .room-entrance-layer المحلية حُذِفت بالكامل، لا عنصر فارغ باقٍ بالغرفة */
 
-/* ===== إعلان الدخول المنزلق (يحل محل التصميم المضمَّن القديم بسطر الدردشة لنادي المعجبين فقط —
-   الآن عام لكل مصدر: ترحيب/نادي معجبين/ثنائي لاحقاً) ===== */
+/* ===== إعلان الدخول المنزلق (نظام موحَّد واحد لكل انضمام — عادي أو نادي معجبين/كوزمتك مُميَّز،
+   راجع socket.on('user-entered-room') بـapp.js؛ renderRoomJoinNotice/#room-join-notice القديمان
+   المنفصلان للانضمام العادي حُذِفا بالكامل — توست واحد فقط لكل انضمام، لا ازدواج أبداً) =====
+   feat/room-notice-lanes-v2 (بند 3): يمين الشاشة الآن (كان أعلى شبكة المقاعد)، ينزلق من اليمين
+   ويخرج لليمين، بفتحته الخاصة أسفل منطقة شرائط الهدايا مباشرة (لا تتقاطعان أبداً — راجع
+   gfxPositionLaneZone بـapp.js لحساب الموضعين معاً)، وأكبر: 40px ارتفاعاً، صورة 30px، نص 14px —
+   لون/تدرّج كل فئة (عادي/ذهبي/بلاتيني/أسطوري) يبقى كما هو تماماً، فقط الحجم والموضع والاتجاه تغيّروا
+   🐛 مراجعة (بند 1+2): كان bar عريضاً (width:90vw) يمتدّ كامل الشاشة تقريباً، والتدرّج يتلاشى
+   لشفافية كاملة عند ⅗ عرضه (0e749000 — alpha=00) فتظهر رسائل الدردشة خلفه تماماً حيث يقع
+   الاسم/السطر الثاني، غير مقروء. الآن حبّة بحجم محتواها (width تلقائي، max-width:78vw وحدها)
+   بتدرّج صلب معتم بالكامل عبر عرضها (لا توقّف ثالث شفاف)، ونصّ الاسم يُقَصّ CSS أيضاً كاحتياط
+   إضافي فوق قصّ gfxTruncateStageName بـapp.js (12 حرفاً) لو طال رغم ذلك */
+/* 🐛 مراجعة (بند 2): الطرف الأيمن الفعلي للحبّة كان شبه مسطَّح (border-radius غير متماثل:
+   999px بزاويتين يسارَيتين فقط، 10px باليمنى — تصميم قديم لِـbar كامل العرض ملاصق لحافة واحدة
+   بذيل متلاشٍ) بينما هو بالضبط الطرف الملاصق لحافة الشاشة (right:8px) الآن — يبدو مقصوصاً.
+   الآن دائري بالكامل من الجهات الأربع كشرائط الهدايا بالضبط. display:flex+justify-content:
+   flex-end على الفتحة نفسها يضمن محاذاة الحبّة لحافتها اليمنى (= 8px من حافة الشاشة) بثبات
+   تام سواء بالسكون أو بنهاية حركة الدخول (translateX(0)) — لا اعتماد ضمني على اتجاه الصفحة */
+.gift-stage-join-slot { position: absolute; right: 8px; top: 200px; max-width: 78vw; z-index: 2; display: flex; justify-content: flex-end; }
 .room-entrance-toast {
-    position: absolute; top: 14px; inset-inline-end: -110%; width: 90%; max-width: 320px;
-    height: 44px; border-radius: 999px 10px 10px 999px; display: flex; align-items: center;
-    gap: 8px; padding: 0 6px 0 12px; font-size: 12px; font-weight: 800; white-space: nowrap;
-    overflow: hidden; color: #fff;
-    animation: roomEntranceToast 3.2s cubic-bezier(.2,.8,.2,1) forwards;
+    position: relative; height: 40px; width: fit-content; max-width: 78vw;
+    border-radius: 999px; display: flex; align-items: center;
+    gap: 8px; padding: 0 14px 0 12px; font-size: 14px; font-weight: 800; white-space: nowrap;
+    overflow: hidden; color: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.4);
+    animation: roomEntranceToastSlide 3.2s cubic-bezier(.2,.8,.2,1) forwards;
 }
-@keyframes roomEntranceToast {
-    0% { inset-inline-end: -110%; }
-    12% { inset-inline-end: 4%; }
-    80% { inset-inline-end: 4%; opacity: 1; }
-    100% { inset-inline-end: 4%; opacity: 0; }
+@keyframes roomEntranceToastSlide {
+    0% { transform: translateX(60%); opacity: 0; }
+    12% { transform: translateX(0); opacity: 1; }
+    80% { transform: translateX(0); opacity: 1; }
+    100% { transform: translateX(60%); opacity: 0; }
 }
-.room-entrance-toast-av { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; color: #fff; flex: none; overflow: hidden; }
+.room-entrance-toast-av { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; color: #fff; flex: none; overflow: hidden; }
 .room-entrance-toast-av img { width: 100%; height: 100%; object-fit: cover; }
-.room-entrance-toast small { font-weight: 700; opacity: .85; font-size: 10.5px; display: block; }
-.room-entrance-toast.cosmetic-entrance-welcome { background: linear-gradient(90deg,#2fd4b4,#0e7490 60%,#0e749000); color: #03201d; }
-.room-entrance-toast.cosmetic-entrance-gold { background: linear-gradient(90deg,#ffd45e,#c27a0e 60%,#ffd45e00); color: #2b1b00; box-shadow: 0 0 18px rgba(255,212,94,.35); }
-.room-entrance-toast.cosmetic-entrance-platinum { background: linear-gradient(90deg,#5eead4,#0e7490 60%,#0e749000); color: #032a2a; box-shadow: 0 0 18px rgba(94,234,212,.35); }
-.room-entrance-toast.cosmetic-entrance-legend { height: 52px; background: linear-gradient(90deg,#f0abfc,#7e22ce 55%,#7e22ce00); color: #fff; box-shadow: 0 0 22px rgba(240,171,252,.45); }
+.room-entrance-toast-text { min-width: 0; max-width: 46vw; }
+.room-entrance-toast-text b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; display: inline-block; vertical-align: bottom; }
+.room-entrance-toast small { font-weight: 700; opacity: .85; font-size: 12px; display: block; }
+.room-entrance-toast.cosmetic-entrance-welcome { background: linear-gradient(90deg,#2fd4b4,#0e7490); color: #03201d; }
+.room-entrance-toast.cosmetic-entrance-gold { background: linear-gradient(90deg,#ffd45e,#c27a0e); color: #2b1b00; box-shadow: 0 4px 14px rgba(0,0,0,.4), 0 0 18px rgba(255,212,94,.35); }
+.room-entrance-toast.cosmetic-entrance-platinum { background: linear-gradient(90deg,#5eead4,#0e7490); color: #032a2a; box-shadow: 0 4px 14px rgba(0,0,0,.4), 0 0 18px rgba(94,234,212,.35); }
+.room-entrance-toast.cosmetic-entrance-legend { background: linear-gradient(90deg,#f0abfc,#7e22ce); color: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.4), 0 0 22px rgba(240,171,252,.45); }
 .room-entrance-toast.cosmetic-entrance-legend::before {
     content: ""; position: absolute; inset: 0;
     background: linear-gradient(110deg,transparent 30%,#fff7 50%,transparent 70%);
@@ -3369,7 +3361,7 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 @media (prefers-reduced-motion: reduce) {
     .room-entrance-toast { animation: roomEntranceToastReduced 3.2s linear forwards; }
 }
-@keyframes roomEntranceToastReduced { 0% { inset-inline-end: 4%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes roomEntranceToastReduced { 0% { transform: translateX(0); opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { opacity: 0; } }
 
 /* =====================================================
    🛡️ fix/gift-stage-top-layer — المرحلة الموحَّدة، عنصران شقيقان مستقلان (راجع
@@ -3400,7 +3392,12 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
 /* ترتيب z صريح بين أبناء #gift-fx-ui وحدها (الفيديو/الشريط خارجها كلياً الآن) — الموكب/الطيران
    أسفل، الشارة العلوية الأعلى دوماً (تبقى مقروءة طوال أي تشغيل) */
 .gift-stage-fly-layer { position: absolute; inset: 0; overflow: visible; z-index: 1; }
-.gift-stage-lane { position: absolute; left: 8px; bottom: 96px; display: flex; flex-direction: column-reverse; gap: 8px; max-width: 72vw; z-index: 2; }
+/* 🐛 feat/room-notice-lanes-v2 (بند 2): كانت bottom (فوق الدردشة) تُرفَع يدوياً حين يظهر
+   #gfx-combo — قفزة بصرية لحظة اختفائه (تقرير جهاز حقيقي). الآن top فقط (أسفل شبكة المقاعد
+   + 12px، تُحسَب بـgfxPositionLaneZone بـapp.js — top=92px هنا احتياط فقط قبل أول حساب حقيقي)،
+   تنمو الفتحة نحو الأسفل، ويمين الشاشة بدل يسارها (كان left:8px)، عمود عادي لا column-reverse
+   (أول عنصر بالـDOM — الأحدث دوماً عبر prepend — يظهر الآن أعلى القائمة الأقرب للمرساة) */
+.gift-stage-lane { position: absolute; right: 8px; top: 92px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; max-width: 72vw; z-index: 2; }
 
 /* 🐛 fix/top-banner-queue: شارة إرسال الهدية تمر الآن بفتحة الإشعار العلوي الموحَّدة
    (.gfx-top-toast-stack/.gfx-top-toast أدناه) بدل صندوقها الثابت الخاص — راجع
@@ -3415,10 +3412,12 @@ button, input, select, textarea { font-family: 'Cairo', sans-serif !important; }
    بأعلى الشريط دوماً بصرف النظر عن ارتفاع الفيديو، فيرتفع المؤثر من أسفل الشاشة كتطبيقات
    البث المباشر الحقيقية، لا حافة تقع وسط الشاشة أبداً. يعمل بالوضع العادي/PK/التحدي لأن الشريط
    عنصر تدفّق واحد مشترك بينها جميعاً. top=40% هنا احتياط فقط لو تعذّر إيجاد الشريط */
-/* 🐛 feat/gift-alpha-video ("جناح التنين مقصوص بحافة الشاشة"): 150% يُخرِج العرض فعلياً خارج
-   حدود النافذة دوماً (عمداً سابقاً لتغطية مساحة أكبر) — 100% فقط: يملأ عرض الشاشة بالضبط
-   (عرض الكانفاس/الفيديو = عرض النافذة، الارتفاع يتكيّف تلقائياً بنفس نسبة أبعاد العنصر — لا
-   تمدّد خارج أي حافة أبداً)، بلا تغيير بالارتكاز السفلي أعلاه */
+/* 🐛 feat/gift-alpha-video ("جناح التنين مقصوص بحافة الشاشة"): 150% ثابتاً للجميع كان يُخرِج
+   العرض فعلياً خارج حدود النافذة دوماً — 100% ثابتاً للجميع (لاحقاً) أصلح القصّ لكن أصغر كل
+   الهدايا عن حجمها المعتاد. feat/room-notice-lanes-v2 (بند 1): العرض الآن قيمة لكل هدية على
+   حدة (Gift.videoScale، 80-200%، تُحقَن هنا inline بـJS — راجع gfxResolveVideoScale
+   وgiftStageOnVideoPlay)؛ 100% بالـCSS هنا احتياط فقط قبل حقن JS (أو لو تعذّر لأي سبب) —
+   الريشة الجانبية الأربعة (GFX_EDGE_FEATHER_GLSL) تُخفي أي فائض عن حدود الشاشة بأي نسبة */
 /* ✅ احتياط تلقائي فقط حين يتعذّر إنشاء سياق WebGL (راجع gfxMakeLumaKeyRenderer) — فيديو خام
    بالأسلوب القديم (mix-blend-mode:screen إضافية، لا قص ألفا حقيقي) */
 .room-giftfx-video { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-100%); width: 100%; max-width: none; mix-blend-mode: screen; }
@@ -3498,47 +3497,56 @@ body.gfx-weak-device .gift-seat-effect { animation: giftSeatEffectIn .3s both; }
 @media (prefers-reduced-motion: reduce) { .gift-seat-effect { animation: none; } .gift-seat-effect.out { animation: none; opacity: 0; } }
 
 /* =====================================================
-   🛡️ fix/gift-stage-top-layer (بند 2-ب/ج) — الشريط الجانبي بأسلوب TikTok: يسار-وسط، أقصى 2،
-   عدّاد ضخم مائل عريض أبيض بحدّ أسود. راعي الهدية (بند 2-ج): شريط بنفسجي مميَّز + وسم
+   🛡️ fix/gift-stage-top-layer (بند 2-ب/ج) → feat/room-notice-lanes-v2 (بند 2): الشريط الجانبي
+   انتقل ليمين الشاشة (كان يسار-وسط)، أصغر (پيل 40px ارتفاعاً، صورة 30px، اسم 12px، ×N 18px عريض)،
+   أقصى 2-3 حسب ارتفاع الشاشة (gfxLaneCapacity بـapp.js). راعي الهدية: شريط بنفسجي مميَّز + وسم
    ===================================================== */
 /* 🐛 مراجعة #163 (الجولة 7 — "حافة حادة عند طرف الشاشة"): كان border-radius نصفياً (0 يمين الحافة
    الملاصقة لحافة الشاشة) — يبدو مقصوصاً حرفياً هناك. الآن مُدوَّر بالكامل من كل الجهات */
+/* 🐛 مراجعة (بند 1): كانت خلفية الپيل شبه شفافة (alpha .4/.47) فتظهر رسائل الدردشة خلفها
+   مباشرة وتتداخل بصرياً مع اسم المُرسِل — alpha ≥.92 الآن (معتمة فعلياً) + ظل خفيف يفصلها عن
+   الخلفية بصرياً بدل backdrop-filter (بلا قيمة حين الخلفية معتمة أصلاً — أُزيل) */
 .gift-lane-item {
     position: relative; display: flex; align-items: center; gap: 8px;
-    padding: 6px 14px 6px 6px; border-radius: 999px;
-    background: linear-gradient(90deg, rgba(255,79,163,.4) 25%, rgba(155,107,255,.47));
-    backdrop-filter: blur(4px); animation: giftLaneIn .35s cubic-bezier(.2,1.4,.4,1) both;
+    height: 40px; padding: 0 14px 0 8px; border-radius: 999px;
+    background: linear-gradient(90deg, rgba(255,79,163,.94) 25%, rgba(155,107,255,.96));
+    box-shadow: 0 4px 14px rgba(0,0,0,.4);
+    animation: giftLaneIn .35s cubic-bezier(.2,1.4,.4,1) both;
 }
 .gift-lane-item.out { animation: giftLaneOut .4s forwards; }
-@keyframes giftLaneIn { from { transform: translateX(-60%); opacity: 0; } }
-@keyframes giftLaneOut { to { transform: translateX(-70%); opacity: 0; } }
+/* ✅ feat/room-notice-lanes-v2: دخول/خروج من/إلى اليمين (كانا لليسار — الشريط كان يسار-وسط) */
+@keyframes giftLaneIn { from { transform: translateX(60%); opacity: 0; } }
+@keyframes giftLaneOut { to { transform: translateX(70%); opacity: 0; } }
 .gift-lane-item--top {
-    background: linear-gradient(90deg, rgba(168,85,247,.5) 25%, rgba(126,34,206,.6));
-    box-shadow: 0 0 16px rgba(168,85,247,.5);
+    background: linear-gradient(90deg, rgba(168,85,247,.94) 25%, rgba(126,34,206,.96));
+    box-shadow: 0 4px 14px rgba(0,0,0,.4), 0 0 16px rgba(168,85,247,.5);
 }
+/* 🐛 مراجعة (بند 4): كان top:-9px يُخرِج الوسم فوق حافة الپيل نفسها بفجوة 8px فقط بين الشرائط —
+   يتداخل تقريباً كلياً مع الشريط الأعلى. الآن داخل حدود الپيل نفسها (الزاوية العلوية اليمنى)
+   فلا يحتاج أي فجوة إضافية محجوزة إطلاقاً، ولا يتقاطع مع الشريط الذي فوقه مهما صغرت الفجوة */
 .gift-lane-top-tag {
-    position: absolute; top: -9px; inset-inline-start: 10px; font-size: 9px; font-weight: 900;
-    background: #a855f7; color: #fff; border-radius: 999px; padding: 0 8px; line-height: 16px;
+    position: absolute; top: -2px; inset-inline-end: 6px; inset-inline-start: auto; font-size: 8px; font-weight: 900;
+    background: #a855f7; color: #fff; border-radius: 999px; padding: 0 7px; line-height: 14px;
     white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.35);
 }
-.gift-lane-av { width: 36px; height: 36px; border-radius: 50%; overflow: hidden; flex: none; background: #2a2040; }
+.gift-lane-av { width: 30px; height: 30px; border-radius: 50%; overflow: hidden; flex: none; background: #2a2040; }
 .gift-lane-av img { width: 100%; height: 100%; object-fit: cover; }
-.gift-lane-txt { font-size: 11px; line-height: 1.25; color: #fff; min-width: 0; }
-.gift-lane-txt b { display: block; font-size: 12.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32vw; }
-.gift-lane-sub { display: block; font-size: 10.5px; color: #e4d9ff; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32vw; }
-.gift-lane-gift { font-size: 22px; filter: drop-shadow(0 2px 6px rgba(0,0,0,.5)); flex: none; }
+.gift-lane-txt { font-size: 10px; line-height: 1.2; color: #fff; min-width: 0; }
+.gift-lane-txt b { display: block; font-size: 12px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30vw; }
+.gift-lane-sub { display: block; font-size: 9.5px; color: #e4d9ff; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30vw; }
+.gift-lane-gift { font-size: 20px; filter: drop-shadow(0 2px 6px rgba(0,0,0,.5)); flex: none; }
 .gift-lane-gift img { width: 26px; height: 26px; border-radius: 8px; object-fit: cover; }
 .gift-lane-x {
     font-family: 'Baloo Bhaijaan 2','Cairo',sans-serif; font-weight: 900; font-style: italic;
-    font-size: 26px; color: #fff; -webkit-text-stroke: 2px #000; paint-order: stroke fill;
-    text-shadow: 0 2px 0 #000, 0 0 10px rgba(0,0,0,.6); min-width: 40px; direction: ltr; flex: none;
+    font-size: 18px; color: #fff; -webkit-text-stroke: 1.5px #000; paint-order: stroke fill;
+    text-shadow: 0 2px 0 #000, 0 0 10px rgba(0,0,0,.6); min-width: 28px; direction: ltr; flex: none;
 }
 .gift-lane-x.bump { animation: giftLaneBump .22s; }
 @keyframes giftLaneBump { 40% { transform: scale(1.4) rotate(-4deg); } }
 @media (prefers-reduced-motion: reduce) {
     .gift-lane-item, .gift-lane-item.out, .gift-lane-x.bump { animation: none !important; transition: none !important; }
 }
-body.gfx-weak-device .gift-lane-item { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; animation: giftLaneInSimple .15s ease-out both; }
+body.gfx-weak-device .gift-lane-item { animation: giftLaneInSimple .15s ease-out both; }
 @keyframes giftLaneInSimple { from { opacity: 0; } }
 
 /* ===== فقاعات متجر الدردشة الجديدة (8 تصاميم) — منسوخة من docs/design/fx-studio-prototype.html

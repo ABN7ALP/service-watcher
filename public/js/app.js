@@ -1037,8 +1037,16 @@ document.addEventListener('DOMContentLoaded', () => {
         onProcDone: (proc, done) => giftStageOnProcDone(proc, done),
         onProcExtend: (proc) => giftStageOnProcExtend(proc),
         onSeatEffect: (evt, recipient) => giftStageOnSeatEffect(evt, recipient),
-        isLite: () => gfxIsLiteGiftMode()
+        isLite: () => gfxIsLiteGiftMode(),
+        laneCapacity: () => gfxLaneCapacity()
     });
+    // ✅ feat/room-notice-lanes-v2 (بند 2): مرّة واحدة لعمر الصفحة كلها — منطقة الشريط الجانبي/
+    // سطر الدخول تُقاس فقط عند تغيّر حجم النافذة/الدوران الحقيقيين (+ عند تغيّر عدد المقاعد،
+    // راجع نهاية renderVoiceRoomSeats). لا علاقة إطلاقاً بظهور/اختفاء #gfx-combo بعد اليوم —
+    // ذاك كان سبب "الشريط ينزل فجأة" المُبلَّغ عنه (راجع تعليق gfxPositionLaneZone)
+    window.addEventListener('resize', gfxPositionLaneZone);
+    window.addEventListener('orientationchange', gfxPositionLaneZone);
+    window.visualViewport?.addEventListener('resize', gfxPositionLaneZone);
     // ✅ طلب صريح: "التطبيق مخفي بالخلفية → يتوقّف طابور الفيديو؛ عند العودة تُسقَط العناصر
     // الأقدم من 30ث" — GiftStage.setHidden تنفّذ هذا بالكامل، هنا فقط ربطها بحدث المتصفّح الحقيقي
     document.addEventListener('visibilitychange', () => roomGiftStage.setHidden(document.hidden));
@@ -2697,20 +2705,37 @@ document.addEventListener('DOMContentLoaded', () => {
         box.scrollTop = box.scrollHeight;
     }
 
-    // 🛡️ feat/gift-fx-and-cosmetics-base: الإعلان المنزلق الجديد فوق المقاعد (.room-entrance-layer
-    // — إصلاح الخطأ أ) — طابور أقصاه 3 (الزائد يُتجاهَل بصمت)، كل واحد 3 ثوانٍ تقريباً، لا يمنع
-    // الضغط على أي شيء تحته (pointer-events:none على الطبقة كلها). منفصل تماماً عن سطر "فلان
-    // انضم" الدائم بالدردشة أعلاه — هذا فقط للتأثير البصري المميَّز (نادٍ/ترحيب/ثنائي لاحقاً)
+    // =====================================================
+    // ✅ feat/room-notice-lanes-v2: نظام إشعار دخول واحد موحَّد لكل انضمام — عادي (صنف افتراضي
+    // محايد) أو مُميَّز (نادي معجبين/كوزمتك دخول مُعادن، أولوية الفئة: نادي → ثنائي → متجر →
+    // ترحيب، مُحسومة سلفاً بالخادم عبر fanClubEntrance/entranceCosmeticClass — راجع
+    // socket.on('user-entered-room') أسفل الملف). فتحة واحدة (#gift-stage-join-slot، أسفل منطقة
+    // شرائط الهدايا مباشرة ولا تتقاطعان أبداً — راجع gfxPositionLaneZone)، طابور حقيقي أقصاه 3
+    // (الزائد العادي يُسقَط بصمت؛ انضمام مميَّز جديد والطابور ممتلئ يُسقِط أقدم عادي منتظر ليفسح
+    // له مكاناً أولاً). renderRoomJoinNotice/#room-join-notice القديمان (سطر نصّي بسيط بلا صورة،
+    // نظام منفصل تماماً) حُذِفا بالكامل — توست واحد فقط لكل انضمام من الآن، لا ازدواج إطلاقاً.
+    // منفصل عن appendJoinAnnouncement (سجل دائم بالدردشة + زر ترحيب سريع للمضيف) — ذاك سطر
+    // دردشة، هذا تأثير بصري عابر (3.6 ثوانٍ) لا علاقة له بسجل الدردشة
+    // =====================================================
     const ROOM_ENTRANCE_TOAST_MAX_QUEUE = 3;
     let roomEntranceToastQueue = [];
     let roomEntranceToastShowing = false;
+    const roomEntranceRecentUsers = new Map(); // userId -> آخر وقت ظهور له — لا تكرار بإعادة اتصال سريعة
     function fanClubTierToToastClass(level) {
         if (level >= FANCLUB_PERK_LEVEL.legendFrame) return 'cosmetic-entrance-legend';
         if (level >= FANCLUB_PERK_LEVEL.exclusiveGift) return 'cosmetic-entrance-platinum';
         return 'cosmetic-entrance-gold';
     }
+    // ✅ طلب صريح: طابور ممتلئ (3) + انضمام عادي جديد → يُسقَط بصمت (لا يُزاحم أي شيء مميَّز
+    // منتظر أبداً). طابور ممتلئ + انضمام مميَّز جديد → يُسقِط أقدم انضمام عادي منتظر (لو وُجد)
+    // ليفسح له مكاناً؛ لو الثلاثة المنتظرة جميعها مميَّزة فالجديد يُسقَط أيضاً (لا تضحية بمميَّز لمميَّز)
     function queueRoomEntranceToast(payload) {
-        if (roomEntranceToastQueue.length >= ROOM_ENTRANCE_TOAST_MAX_QUEUE) return;
+        if (roomEntranceToastQueue.length >= ROOM_ENTRANCE_TOAST_MAX_QUEUE) {
+            if (payload.isPlain) return;
+            const idx = roomEntranceToastQueue.findIndex(p => p.isPlain);
+            if (idx === -1) return;
+            roomEntranceToastQueue.splice(idx, 1);
+        }
         roomEntranceToastQueue.push(payload);
         if (!roomEntranceToastShowing) playNextRoomEntranceToast();
     }
@@ -2718,84 +2743,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const payload = roomEntranceToastQueue.shift();
         if (!payload) { roomEntranceToastShowing = false; return; }
         roomEntranceToastShowing = true;
-        const layer = document.getElementById('room-entrance-layer');
-        if (!layer) { roomEntranceToastShowing = false; return; }
+        // 🛡️ feat/room-notice-lanes-v2: كانت تُلحَق بـ.room-entrance-layer محلية ضمن DOM الغرفة
+        // (مصدر مشاكل تكديس سابقة، راجع تعليق .voice-chat-stage بالـCSS) — الآن #gift-stage-
+        // join-slot ضمن المرحلة الثابتة الموحَّدة (getGiftStageOverlay)، تماماً كشرائط الهدايا
+        getGiftStageOverlay();
+        const slot = document.getElementById('gift-stage-join-slot');
+        if (!slot) { roomEntranceToastShowing = false; return; }
         const el = document.createElement('div');
         el.className = `room-entrance-toast ${payload.cssClass}`;
         el.innerHTML = `
             <span class="room-entrance-toast-av"><img src="${payload.profileImage}" alt="" data-avatar-fallback></span>
-            <span>${payload.markText ? `<b class="room-entrance-toast-mark">${escapeHtml(payload.markText)}</b> ` : ''}<b>${escapeHtml(payload.username)}</b><small>دخل الغرفة</small></span>
+            <span class="room-entrance-toast-text">${payload.markText ? `<b class="room-entrance-toast-mark">${escapeHtml(payload.markText)}</b> ` : ''}<b>${escapeHtml(gfxTruncateStageName(payload.username || '', 12))}</b><small>دخل الغرفة</small></span>
         `;
-        layer.appendChild(el);
+        slot.appendChild(el);
         setTimeout(() => { el.remove(); playNextRoomEntranceToast(); }, 3600);
-    }
-
-    // =====================================================
-    // ✅ سطر «دخل الغرفة» المنزلق فوق الدردشة (طلب صريح — بند 8، مطابقة §.join بالنموذج
-    // الإلزامي): منفصل تماماً عن appendJoinAnnouncement أعلاه (سجل دائم بالدردشة + زر ترحيب) —
-    // هذا عنصر عائم مؤقّت (2.4 ثانية) فوق مسار .room-join-lane. طابور حقيقي + قاعدتا حماية:
-    // لا تكرار لنفس المستخدم خلال 30 ثانية، ولا عرض أسرع من مرة كل ثانيتين إجمالاً (غرف مزدحمة)
-    // =====================================================
-    let roomJoinNoticeQueue = [];
-    let roomJoinNoticeShowing = false;
-    let roomJoinNoticeLastShownAt = 0;
-    const roomJoinNoticeRecentUsers = new Map(); // userId -> آخر وقت ظهور له (تنظيف دوري أدناه)
-
-    function showRoomJoinNotice(userId, username) {
-        if (userId === myUserId) return; // ✅ لا أرى إعلان دخولي أنا نفسي
-        const now = Date.now();
-        const lastSeen = roomJoinNoticeRecentUsers.get(userId);
-        if (lastSeen && now - lastSeen < 30000) return; // ✅ لا تكرار لنفس المستخدم خلال 30 ثانية
-        roomJoinNoticeRecentUsers.set(userId, now);
-        if (roomJoinNoticeQueue.length < 20) roomJoinNoticeQueue.push({ username }); // سقف دفاعي بغرفة مزدحمة جداً
-        processRoomJoinNoticeQueue();
-    }
-
-    function processRoomJoinNoticeQueue() {
-        if (roomJoinNoticeShowing || !roomJoinNoticeQueue.length) return;
-        // 🐛 مراجعة بصرية (طلب صريح، الجولة 3 — بند 2): لا يظهر سطر الدخول أثناء ظهور شريط
-        // هدية فعلياً — الاثنان معاً يستهلكان مساحة كافية لدفع حقل الكتابة خارج الشاشة على
-        // 320×568 مع 19 مقعداً+PK (أضيق حالة ممكنة). بانتظار اختفاء الشريط بدل إسقاط الإشعار
-        // من الطابور، يبقى سطر الدخول يظهر دوماً — فقط مؤجَّلاً قليلاً — بلا ازدحام المسار المشترك
-        if (roomGiftStage.laneActive) {
-            setTimeout(processRoomJoinNoticeQueue, 500);
-            return;
-        }
-        const next = roomJoinNoticeQueue.shift();
-        const elapsed = Date.now() - roomJoinNoticeLastShownAt;
-        const delay = elapsed < 2000 ? (2000 - elapsed) : 0; // ✅ لا عرض أسرع من مرة كل ثانيتين إجمالاً
-        roomJoinNoticeShowing = true; // ✅ يُقفل فوراً (لا بعد setTimeout) كي لا تتزاحم استدعاءات متتالية سريعة على نفس الفراغ
-        setTimeout(() => renderRoomJoinNotice(next), delay);
-    }
-
-    function renderRoomJoinNotice({ username }) {
-        // ✅ إصلاح "الصفحة تنزل مع إشعار الهدية" (طلب صريح): سطر الدخول طفل عمود flex عادي بداخل
-        // شريط الهدايا — انتقل مع المرحلة بالكامل لعنصر ثابت (fixed) بمستوى body (راجع
-        // getGiftStageOverlay)، فلا علاقة له بتدفّق الدردشة المحلي إطلاقاً بعد الآن
-        getGiftStageOverlay();
-        const lane = document.getElementById('gift-stage-lane');
-        if (!lane) { roomJoinNoticeShowing = false; return; }
-        let el = document.getElementById('room-join-notice');
-        if (!el) {
-            el = document.createElement('div');
-            el.id = 'room-join-notice';
-            el.className = 'room-join-notice';
-            lane.appendChild(el);
-        }
-        roomJoinNoticeLastShownAt = Date.now();
-        el.classList.remove('on');
-        // 🐛 مراجعة #163 (الجولة 8 — طلب صريح): هذا الإشعار يُلحَق بنفس حاوية #gift-stage-lane
-        // (راجع getGiftStageOverlay) فيدخل فعلياً ضمن نطاق "أي اسم داخل #gift-fx-*" رغم أنه
-        // ليس إشعار هدية — نفس دالة القصّ المُستخدَمة بكل مكان آخر تُطبَّق هنا أيضاً
-        el.innerHTML = `🚪 <b>${escapeHtml(gfxTruncateStageName(username || '', 12))}</b> دخلت الغرفة`;
-        requestAnimationFrame(() => { el.classList.add('on'); });
-        setTimeout(() => {
-            el.classList.remove('on');
-            setTimeout(() => {
-                roomJoinNoticeShowing = false;
-                processRoomJoinNoticeQueue();
-            }, 400); // ✅ يطابق مدة انتقال الاختفاء بـCSS (.room-join-notice{transition:.4s})
-        }, 2400);
     }
 
     // ✅ يُستدعى عند فتح أي غرفة — ينضم لقناة دردشتها ويحمّل آخر رسائلها
@@ -3338,11 +3299,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // ✅ لا يبقى شريط هدية (أو طابوره/عدّاد طيرانه) من الغرفة السابقة عالقاً فوق غرفة جديدة
         // دخلتها للتو — احتياط إضافي فوق roomGiftStage.leaveRoom() بـteardownGiftComboFx
         roomGiftStage.leaveRoom();
-        // ✅ نفس منطق تصفير شريط الهدية أعلاه، لسطر "دخل الغرفة" المنزلق — لا يبقى طابور/مؤقّت
-        // من الغرفة السابقة عالقاً فوق غرفة جديدة
-        roomJoinNoticeQueue = [];
-        roomJoinNoticeShowing = false;
-        document.getElementById('room-join-notice')?.remove();
+        // ✅ نفس منطق تصفير شريط الهدية أعلاه، لتوست الدخول الموحَّد — لا يبقى طابور/مؤقّت من
+        // الغرفة السابقة عالقاً فوق غرفة جديدة
+        roomEntranceToastQueue = [];
+        roomEntranceToastShowing = false;
+        document.getElementById('gift-stage-join-slot')?.replaceChildren();
         enterFullscreenRoomMode();
         mainContent.innerHTML = `
             <div class="room-bg"></div>
@@ -3386,7 +3347,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div id="voice-chat-stage" class="voice-chat-stage">
                 <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
-                <div id="room-entrance-layer" class="room-entrance-layer"></div>
             </div>
             ${renderRoomChatMarkup()}
             <div id="room-kb-spacer" class="room-kb-spacer"></div>
@@ -4300,6 +4260,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             voiceGrid.appendChild(seat);
         }
+        // ✅ feat/room-notice-lanes-v2 (بند 2): الشبكة أُعيد بناؤها بعدد مقاعد قد يكون مختلفاً
+        // (دخول أول/تغيّر إداري لعدد المقاعد) — ارتفاعها الكلي (9/12/18 مقعداً، 1-3 صفوف) تغيّر
+        // فعلياً، فتُعاد قراءة حافتها السفلية الآن لمنطقة الشريط الجانبي/فتحة الدخول أسفله
+        gfxPositionLaneZone();
     }
 
     // ✅ نافذة الملف الشخصي المسندلة من الأسفل (سياق الغرفة) — صورة تطفو خارج حافة البطاقة
@@ -7274,11 +7238,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // ✅ لا يبقى شريط هدية (أو طابوره/عدّاد طيرانه) من الغرفة السابقة عالقاً فوق غرفة جديدة
         // دخلتها للتو — احتياط إضافي فوق roomGiftStage.leaveRoom() بـteardownGiftComboFx
         roomGiftStage.leaveRoom();
-        // ✅ نفس منطق تصفير شريط الهدية أعلاه، لسطر "دخل الغرفة" المنزلق — لا يبقى طابور/مؤقّت
-        // من الغرفة السابقة عالقاً فوق غرفة جديدة
-        roomJoinNoticeQueue = [];
-        roomJoinNoticeShowing = false;
-        document.getElementById('room-join-notice')?.remove();
+        // ✅ نفس منطق تصفير شريط الهدية أعلاه، لتوست الدخول الموحَّد — لا يبقى طابور/مؤقّت من
+        // الغرفة السابقة عالقاً فوق غرفة جديدة
+        roomEntranceToastQueue = [];
+        roomEntranceToastShowing = false;
+        document.getElementById('gift-stage-join-slot')?.replaceChildren();
         enterFullscreenRoomMode();
         mainContent.innerHTML = `
             <div class="room-bg"></div>
@@ -7293,7 +7257,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div id="voice-chat-stage" class="voice-chat-stage">
                 <div id="voice-chat-grid" class="voice-seats-flex mb-1"></div>
-                <div id="room-entrance-layer" class="room-entrance-layer"></div>
             </div>
             ${renderRoomChatMarkup()}
             <div id="room-kb-spacer" class="room-kb-spacer"></div>
@@ -10447,21 +10410,26 @@ function showXpGainAnimation(amount) {
     socket.on('user-entered-room', ({ roomId, userId, username, profileImage, fanClubEntrance, entranceCosmeticClass }) => {
         if (roomId !== roomChatCurrentRoomId) return;
         appendJoinAnnouncement(userId, username, profileImage, fanClubEntrance);
-        // ✅ طلب صريح (بند 8 — مطابقة §.join بالنموذج): سطر منزلق إضافي أعلى الدردشة، منفصل
-        // تماماً عن سجل "انضم" الدائم أعلاه (الذي يحتفظ بزر الترحيب السريع للمضيف)
-        showRoomJoinNotice(userId, username);
-        // 🛡️ feat/gift-fx-and-cosmetics-base: الإعلان المنزلق فوق المقاعد — نادي المعجبين أولاً
-        // (نفس عتبات fanClubEntranceClass)، وإلا أي إعلان ترحيب/ثنائي نشط من الخادم
+        // ✅ feat/room-notice-lanes-v2: توست دخول موحَّد واحد لكل انضمام (عادي أو مميَّز معاً) —
+        // منفصل تماماً عن appendJoinAnnouncement أعلاه (سجل دائم بالدردشة + زر ترحيب سريع للمضيف)
+        if (userId === myUserId) return; // ✅ لا أرى إعلان دخولي أنا نفسي
+        const now = Date.now();
+        const lastSeen = roomEntranceRecentUsers.get(userId);
+        if (lastSeen && now - lastSeen < 120000) return; // ✅ طلب صريح: لا تكرار بإعادة اتصال خلال دقيقتين
+        roomEntranceRecentUsers.set(userId, now);
+        // ✅ أولوية الفئة محسومة سلفاً بالخادم (نادي → ثنائي → متجر → ترحيب) — fanClubEntrance
+        // أعلى من entranceCosmeticClass دوماً لو وصلا معاً؛ لا شيء منهما = افتراضي محايد للجميع
+        let cssClass, markText = null;
         if (fanClubEntrance) {
             const isLegend = fanClubEntrance.level >= FANCLUB_PERK_LEVEL.legendFrame;
-            queueRoomEntranceToast({
-                username, profileImage,
-                cssClass: fanClubTierToToastClass(fanClubEntrance.level),
-                markText: isLegend ? '✦✦ أسطورة النادي' : '✦'
-            });
+            cssClass = fanClubTierToToastClass(fanClubEntrance.level);
+            markText = isLegend ? '✦✦ أسطورة النادي' : '✦';
         } else if (entranceCosmeticClass) {
-            queueRoomEntranceToast({ username, profileImage, cssClass: entranceCosmeticClass, markText: null });
+            cssClass = entranceCosmeticClass;
+        } else {
+            cssClass = 'cosmetic-entrance-welcome';
         }
+        queueRoomEntranceToast({ username, profileImage, cssClass, markText, isPlain: !fanClubEntrance && !entranceCosmeticClass });
     });
 
     // 🛡️ feat/fanclub-v2-ui: احتفال ارتقاء مستوى معجب — يظهر لكل من بالغرفة (لا فقط العضو نفسه،
@@ -16599,7 +16567,7 @@ async function showRoomGiftModal(roomId, presetTarget = null) {
                         // (نفس الحقل المخزَّن فعلياً بمستند Gift لكلتا الهديتين — راجع autoSeed.js)
                         exclusiveGiftTiles = eligRes.data.gifts.map(g => ({
                             id: g.id, name: g.name, imageUrl: g.imageUrl, price: g.price, discountedPrice: g.price,
-                            videoUrl: g.videoUrl || null, videoAlpha: g.videoAlpha || 'luma', category: 'legendary',
+                            videoUrl: g.videoUrl || null, videoAlpha: g.videoAlpha || 'luma', videoScale: g.videoScale || 150, category: 'legendary',
                             _fanClubTint: FAN_CLUB_COLORS[eligRes.data.giftColorId]?.filter || 'none'
                         }));
                         fanClubCatVisible = true;
@@ -17616,14 +17584,10 @@ function startGiftComboSession(ctx) {
     const comboEl = layer.querySelector('#gfx-combo');
     const cbtn = layer.querySelector('#gfx-cbtn');
     const cnEl = layer.querySelector('#gfx-cn');
-    // 🐛 مراجعة #163 (الجولة 7 — "صف إشعار المُرسِل تحت زر الكومبو البرتقالي"): #gfx-combo (z611)
-    // يتقاطع أفقياً مع منطقة #gift-stage-lane (z604) على شاشات قصيرة — gfxPositionLaneZone (الدالة
-    // الوحيدة التي تكتب bottom، راجع تعليقها) تقرأ #gfx-combo لو كان ظاهراً فتُعيد حساب الرفع حياً
-    // (نفس أسلوب مرساة الفيديو: resize/orientation/visualViewport) طوال هذي الجلسة تحديداً
-    gfxPositionLaneZone();
-    window.addEventListener('resize', gfxPositionLaneZone);
-    window.addEventListener('orientationchange', gfxPositionLaneZone);
-    window.visualViewport?.addEventListener('resize', gfxPositionLaneZone);
+    // 🐛 مراجعة feat/room-notice-lanes-v2: #gfx-combo كان يرفع منطقة الشريط الجانبي حياً طوال
+    // ظهوره (تعليق قديم هنا) — إزالة جذرية كاملة لهذا الاقتران (راجع gfxPositionLaneZone الجديدة):
+    // #gfx-combo زر مستقل تماماً الآن (bottom-left ثابت بالـCSS وحدها)، لا يُقرَأ من موضع الشريط
+    // إطلاقاً، ولا العكس — ظهوره/اختفاؤه لا يُحرِّك الشريط قيد أنملة بعد اليوم
     const ringFg = layer.querySelector('#gfx-ring-fg');
     const RING_C = 2 * Math.PI * 46;
 
@@ -17985,14 +17949,6 @@ function startGiftComboSession(ctx) {
     fireTap(initialUnits);
     setQuantityOverride(1); // ✅ كل الضغطات اللاحقة بهذي الجلسة ×1 فقط — لا تكرار الكمية المختارة
 
-    // 🐛 مراجعة #163 (الجولة 7): إزالة مستمعي الرفع، ثم حذف #gfx-combo فعلياً (layer.remove قبل
-    // إعادة الحساب — وإلا لا تزال gfxPositionLaneZone ترى زراً "ظاهراً" فتُبقي الرفع خطأً)، ثم
-    // استدعاء gfxPositionLaneZone مرة أخيرة لإعادة الشريط لموضعه المعتاد فوق الدردشة فقط
-    function teardownLaneReposition() {
-        window.removeEventListener('resize', gfxPositionLaneZone);
-        window.removeEventListener('orientationchange', gfxPositionLaneZone);
-        window.visualViewport?.removeEventListener('resize', gfxPositionLaneZone);
-    }
     // ---------- الإنهاء ----------
     function endSession() {
         if (ended) return;
@@ -18001,9 +17957,7 @@ function startGiftComboSession(ctx) {
         setFxDelegate(null);
         cancelAnimationFrame(rafId);
         resizeObserver.disconnect();
-        teardownLaneReposition();
         layer.remove();
-        gfxPositionLaneZone();
         if (activeGiftComboSession === session) activeGiftComboSession = null;
         gfxFlushComboAggregate(); // ✅ بند 4: الجلسة انتهت — عرض "+N XP" المُجمَّعة الآن (وبطاقة الارتقاء المؤجَّلة لو وُجدت)
     }
@@ -18016,9 +17970,7 @@ function startGiftComboSession(ctx) {
         setFxDelegate(null);
         cancelAnimationFrame(rafId);
         resizeObserver.disconnect();
-        teardownLaneReposition();
         layer.remove();
-        gfxPositionLaneZone();
         gfxFlushComboAggregate(); // ✅ بند 4: حتى الإنهاء القسري لا يُفقِد أي أثر خبرة/ارتقاء مُجمَّع بصمت
     }
 
@@ -18064,7 +18016,9 @@ function getGiftStageOverlay() {
     if (!lanes) {
         lanes = document.createElement('div');
         lanes.id = 'gift-fx-lanes';
-        lanes.innerHTML = `<div id="gift-stage-lane" class="gift-stage-lane"></div>`;
+        // ✅ feat/room-notice-lanes-v2 (بند 4): فتحة دخول مستقلة (#gift-stage-join-slot) إضافة
+        // جديدة — موضعها يُحسَب بنفس gfxPositionLaneZone() (أسفل شرائط الهدايا مباشرة، لا تتقاطعان أبداً)
+        lanes.innerHTML = `<div id="gift-stage-lane" class="gift-stage-lane"></div><div id="gift-stage-join-slot" class="gift-stage-join-slot"></div>`;
         document.body.appendChild(lanes);
     }
     let video = document.getElementById('gift-fx-video');
@@ -18283,6 +18237,15 @@ function gfxShowStaticGiftPop(evt, uiLayer, onDone) {
     uiLayer.appendChild(s);
     setTimeout(() => { s.remove(); onDone(); }, 1000);
 }
+// ✅ feat/room-notice-lanes-v2 (بند 1): حجم عرض فيديو الهدية — نسبة مئوية من عرض الشاشة لكل
+// هدية على حدة (Gift.videoScale، 80-200، افتراضي 150 يُعيد الحجم الموحَّد السابق لكل الهدايا).
+// يُحسَب هنا لا بثابت CSS كي يختلف فعلياً من هدية لأخرى؛ الارتكاز السفلي والريشة الجانبية
+// (GFX_EDGE_FEATHER_GLSL) يبقيان كما هما بصرف النظر عن العرض — تغيّر العرض وحده لا يُزيح المرساة
+function gfxResolveVideoScale(gift) {
+    const n = Number(gift?.videoScale);
+    if (!Number.isFinite(n)) return 150;
+    return Math.max(80, Math.min(200, n));
+}
 function giftStageOnVideoPlay(item, done) {
     const uiLayer = getGiftStageOverlay();
     const videoLayer = document.getElementById('gift-fx-video');
@@ -18297,6 +18260,7 @@ function giftStageOnVideoPlay(item, done) {
     }
 
     const mode = evt.gift?.videoAlpha === 'stacked' ? 'stacked' : 'luma';
+    const scalePct = gfxResolveVideoScale(evt.gift);
     const v = item._preloadEl || document.createElement('video');
     v.muted = true;
     v.playsInline = true;
@@ -18356,7 +18320,7 @@ function giftStageOnVideoPlay(item, done) {
         canvasEl = null;
         v.className = 'room-giftfx-video';
         const p0 = gfxStageBottomAnchorPoint();
-        v.style.left = p0.x + 'px'; v.style.top = p0.y + 'px';
+        v.style.left = p0.x + 'px'; v.style.top = p0.y + 'px'; v.style.width = scalePct + '%';
         if (!v.isConnected) videoLayer.appendChild(v);
     };
     // 🛡️ feat/gift-alpha-video (طلب صريح): لفيديو stacked تحديداً — أبداً لا الفيديو الخام (القناع
@@ -18372,7 +18336,7 @@ function giftStageOnVideoPlay(item, done) {
     canvasEl = document.createElement('canvas');
     canvasEl.className = 'gift-fx-canvas';
     const p0 = gfxStageBottomAnchorPoint();
-    canvasEl.style.left = p0.x + 'px'; canvasEl.style.top = p0.y + 'px';
+    canvasEl.style.left = p0.x + 'px'; canvasEl.style.top = p0.y + 'px'; canvasEl.style.width = scalePct + '%';
     glRenderer = gfxMakeLumaKeyRenderer(v, canvasEl, onGlUnavailable, mode);
     if (glRenderer) {
         videoLayer.appendChild(canvasEl);
@@ -18411,22 +18375,23 @@ function gfxStageFallbackPoint() {
     const sr = stage.getBoundingClientRect();
     return { x: sr.left + stage.clientWidth / 2 - 28, y: sr.top + stage.clientHeight - 56 };
 }
-// 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2): كان المركز = منتصف شبكة المقاعد نفسها، فيتراكب
-// الموكب فوق المقاعد وبطاقة ارتقاء الغرفة معاً (كما أظهرت لقطة التحقق). المنطقة الآن شريط
-// مستقل أسفل آخر صف مقاعد مباشرة ("بين آخر صف مقاعد والدردشة" حرفياً) — تُقاس حياً من صندوقي
-// #voice-chat-grid الحقيقي و#room-chat-messages الحقيقي (لا قيمة ثابتة) فتصح تلقائياً بغرفة
-// عادية/PK/تحدي مهما اختلف ارتفاع الشبكة. الحد الأقصى لأسفل محجوز عمداً كي لا يتجاوز الشريط
-// الجانبي (gift-stage-lane، راجع bottom:96px بالـCSS) أبداً — منطقتان منفصلتان لا تتقاطعان
+// 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2، ثم feat/room-notice-lanes-v2 مراجعتان): كان المركز
+// منتصف شبكة المقاعد نفسها، فنُقِل لشريط أسفل آخر صف مقاعد مباشرة كي لا يتراكب مع بطاقة ارتقاء
+// الغرفة الكبيرة التي كانت موجودة وقتها (حُذِفت لاحقاً، صارت توست صغير — راجع fix/top-banner-queue)
+// — لكن ذاك "أسفل الشبكة" صار يتصادم مع منطقة شرائط الهدايا الجديدة (gift-stage-lane) التي
+// انتقلت ليمين الشاشة أسفل الشبكة أيضاً (راجع gfxPositionLaneZone)، فعاد الموكب لمركز الشبكة.
+// 🐛 مراجعة ثانية (تقرير جهاز حقيقي): "مركز الشبكة" يشمل صفّ المضيف (.voice-seat.host-seat —
+// عنصر وحيد بعرض الشبكة الكامل grid-column:1/-1، راجع input.css) فيُغطِّي اسمه/رصيده غالباً —
+// الآن المركز الرأسي محصور بصفوف الضيوف فقط (أسفل حافة صفّ المضيف السفلية حتى حافة الشبكة
+// السفلية)، لا صفّ المضيف نفسه أبداً. غرفة بلا مضيف مخصَّص (الرسمية roomId='main') لا تملك
+// host-seat أصلاً — يبقى السلوك القديم (مركز الشبكة كاملة) سليماً لها دون أي فرق
 function gfxStagePopCenterPoint() {
     const grid = document.getElementById('voice-chat-grid');
     if (!grid) return null;
     const gr = grid.getBoundingClientRect();
-    const chat = document.getElementById('room-chat-messages');
-    const bandTop = gr.bottom + 10;
-    const laneZoneReserve = 110; // ✅ يطابق .gift-stage-lane bottom:96px + ارتفاع عنصر تقريبي
-    const maxBandBottom = chat ? Math.max(bandTop + 56, chat.getBoundingClientRect().bottom - laneZoneReserve) : bandTop + 110;
-    const bandHeight = Math.max(56, Math.min(120, maxBandBottom - bandTop));
-    return { x: gr.left + gr.width / 2, y: bandTop + bandHeight / 2 };
+    const hostSeat = grid.querySelector('.voice-seat.host-seat');
+    const guestTop = hostSeat ? hostSeat.getBoundingClientRect().bottom : gr.top;
+    return { x: gr.left + gr.width / 2, y: guestTop + (gr.bottom - guestTop) / 2 };
 }
 // 🐛 مراجعة #163 (الجولة 6 — "صندوق بخط قص بمنتصف الشاشة"): مرساة الفيديو الحقيقي/كانفاس WebGL
 // فقط (لا الموكب ولا صورة الوضع الخفيف الثابتة — تلك تبقى على gfxStagePopCenterPoint كالسابق،
@@ -18518,7 +18483,14 @@ function giftStageOnProcPop(proc, done) {
     const head = document.createElement('div');
     head.className = 'gift-proc-head';
     head.style.left = center.x + 'px';
-    head.style.top = (center.y - 70) + 'px';
+    // 🛡️ feat/room-notice-lanes-v2: حبّة التعليق فوق مركز الموكب بـ70px — قد يخرج هذا فوق حافة
+    // صفوف الضيوف العلوية فعلياً بغرفة قصيرة (صف ضيوف واحد فقط، 9 مقاعد مثلاً) فيتقاطع مع صفّ
+    // المضيف نفسه (اسمه/رصيده) فوقها. يُحجَز ضمن حدود صفوف الضيوف وحدها دوماً (8px هامش من
+    // حافتها العلوية كحدّ أدنى — أسفل صفّ المضيف تماماً، لا داخله أبداً مهما قصُرت صفوف الضيوف)
+    const grid = document.getElementById('voice-chat-grid');
+    const hostSeatEl = grid ? grid.querySelector('.voice-seat.host-seat') : null;
+    const guestBandTop = hostSeatEl ? hostSeatEl.getBoundingClientRect().bottom : (grid ? grid.getBoundingClientRect().top : 0);
+    head.style.top = Math.max(guestBandTop + 8, center.y - 70) + 'px';
     head.innerHTML = '<span class="gift-proc-who"></span><span class="gift-proc-cnt" dir="ltr">×1</span>';
     // 🐛 مراجعة #163 (الجولة 8): الاسمان خام بلا قصّ — حبّة مستديرة (.gift-proc-who أصلاً
     // border-radius:999px) بلا عرض أقصى تتمدَّد بعرض النص كاملاً فتتجاوز حافتي الشاشة، فتبدو
@@ -19471,37 +19443,39 @@ function scheduleLaneExpire(item) {
     clearTimeout(item._expireTimer);
     item._expireTimer = setTimeout(() => roomGiftStage.laneExpire(item), GFX_LANE_IDLE_MS);
 }
-// 🛡️ fix/gift-stage-top-layer (بند 2-ب): إعادة تصميم الشريط الجانبي بأسلوب TikTok — يسار-وسط،
-// أقصى 2، صورة+اسم+"أرسل X"+أيقونة الهدية+عدّاد ضخم مائل عريض أبيض بحدّ أسود يقفز بكل زيادة.
-// راعي الهدية (بند 2-ج): أكبر مُرسِل لهذي الهدية بالجلسة — شريط بنفسجي مميَّز بوسم (item.isTopSender
-// من giftEngine.js). كل شيء يُلحَق بالمرحلة الثابتة الموحَّدة (#gift-stage-lane) لا DOM الغرفة
-// 🐛 إصلاح تداخل مناطق (مراجعة #163 bند 2): "فوق الدردشة مباشرة" يُقاس حياً من حافة #room-chat-
-// messages السفلية الحقيقية (= حافة شريط الكتابة العلوية فعلياً، التخطيط عمود flex) بدل top:46%
-// الثابتة سابقاً التي كانت تضع الشريط بمنتصف الشاشة فوق المقاعد والموكب معاً. bottom:96px
-// بالـCSS يبقى احتياطاً فقط لو تعذّر إيجاد عنصر الدردشة لأي سبب
-// 🐛 مراجعة #163 (الجولة 7 — "صف إشعار المُرسِل تحت زر الكومبو البرتقالي"): كانت
-// startGiftComboSession تكتب bottom مباشرة بدالة محلية منفصلة — تُكتَب فوقها فوراً هنا (تُستدعى
-// من giftStageOnLaneShow عند كل صف جديد، بما فيها صف الكومبو نفسه) فيضيع رفعها كلياً. الآن دالة
-// واحدة فقط تكتب bottom — تأخذ أكبر قيمة بين موضعها المعتاد (فوق الدردشة) وموضع يكفي لتخطّي
-// #gfx-combo (زر الكومبو الذاتي، z611) حين يكون ظاهراً، لا تضارب بين كاتبين منفصلين
+// ✅ feat/room-notice-lanes-v2 (بند 2): سقف شرائط الهدايا الظاهرة معاً بأي لحظة — 3 على شاشات
+// طويلة بما يكفي (≥760px ارتفاعاً)، غيرها 2. يُستعلَم حياً بكل حدث هدية (hooks.laneCapacity
+// بـGiftStage)، وأيضاً هنا لحجز حيّز فتحة "دخل الغرفة" أسفل الشرائط (راجع gfxPositionLaneZone)
+function gfxLaneCapacity() { return window.innerHeight >= 760 ? 3 : 2; }
+// ✅ يطابقان القيم الحقيقية بـCSS (.gift-lane-item ارتفاعه 40px، الفجوة 8px بين الشرائط
+// #gift-stage-lane) — يُستخدمان هنا فقط لحساب حيّز كافٍ لفتحة الدخول، لا لتنسيق الشرائط نفسها
+const GFX_LANE_PILL_HEIGHT = 40;
+const GFX_LANE_GAP = 8;
+
+// 🛡️ fix/gift-stage-top-layer (بند 2-ب) → feat/room-notice-lanes-v2: إعادة تصميم كاملة ثانية —
+// يمين-الشاشة (بدل يسار-وسط)، صورة+اسم+"أرسل X"+أيقونة الهدية+عدّاد. راعي الهدية (بند 2-ج):
+// أكبر مُرسِل لهذي الهدية بالجلسة — شريط بنفسجي مميَّز بوسم (item.isTopSender من giftEngine.js).
+// كل شيء يُلحَق بالمرحلة الثابتة الموحَّدة (#gift-stage-lane) لا DOM الغرفة
+// 🐛 إصلاح جذري (تقرير جهاز حقيقي — غرفة 18 مقعداً، 3 صفوف): كانت المنطقة تُحسَب من الأسفل
+// (فوق الدردشة) وتُرفَع يدوياً حين يظهر #gfx-combo — فتقفز نزولاً فجأة لحظة اختفائه (الزر لم
+// يعد "ظاهراً" فتسقط الفسحة الإضافية بلا أي انتقال). الآن القياس من الأعلى فقط: حافة شبكة
+// المقاعد الحقيقية (#voice-chat-grid، تدعم 9/12/18 مقعداً تلقائياً بصرف النظر عن عدد الصفوف)
+// + 12px، تنمو الفتحة نحو الأسفل من هناك — لا علاقة إطلاقاً بـ#gfx-combo/لوحة المفاتيح/الدردشة
+// بعد اليوم، فلا تتحرك الفتحة إلا حين تتغيّر الشبكة نفسها فعلياً (تُستدعى من: الإنشاء الأول،
+// resize/orientation أعلى الملف، ونهاية renderVoiceRoomSeats عند أي تغيّر فعلي بعدد المقاعد)
 function gfxPositionLaneZone() {
     const lane = document.getElementById('gift-stage-lane');
-    const chat = document.getElementById('room-chat-messages');
-    if (!lane || !chat) return;
-    const r = chat.getBoundingClientRect();
-    let bottom = Math.max(8, Math.round(window.innerHeight - r.bottom) + 10);
-    // 🐛 مراجعة #163 (الجولة 8): .gfx-ring (الحلقة حول الزر) أكبر من #gfx-combo نفسه بسالب 7px
-    // بكل جهة (inset:-7px بالـCSS) — قياس الزر وحده كان يُبقي الحلقة البصرية متداخلة فعلياً رغم
-    // نجاح الفحص الرقمي. القياس الآن من الحلقة نفسها (الحدود البصرية الفعلية الكاملة) + فسحة 12px
-    const comboRing = document.querySelector('#gfx-combo .gfx-ring');
-    if (comboRing) {
-        const ringTop = comboRing.getBoundingClientRect().top;
-        // 🐛 مراجعة #163 (الجولة 8): ceil لا round — round قد يُنقِص الفسحة المطلوبة (12px) جزءاً
-        // من بكسل حقيقياً لو كانت القيمة كسرية (قياس حيّ لا رقم صحيح)، فيسقط الفحص الآلي أحياناً
-        // رغم أن الفرق بكسر بكسل واحد فقط — ceil يضمن 12px فأكثر دوماً، لا أقل أبداً
-        bottom = Math.max(bottom, Math.ceil(window.innerHeight - ringTop) + 12);
+    const joinSlot = document.getElementById('gift-stage-join-slot');
+    const grid = document.getElementById('voice-chat-grid');
+    const top = grid ? Math.round(grid.getBoundingClientRect().bottom) + 12 : 92;
+    if (lane) lane.style.top = `${top}px`;
+    if (joinSlot) {
+        // ✅ حجز حيّز يكفي أقصى عدد شرائط ممكن حالياً (لا العدد الظاهر فعلياً هذي اللحظة فقط) —
+        // فلا تتحرك فتحة الدخول صعوداً/نزولاً كل مرة يظهر/يختفي فيها شريط، تبقى ثابتة طوال الغرفة
+        const capacity = gfxLaneCapacity();
+        const reserve = capacity * GFX_LANE_PILL_HEIGHT + Math.max(0, capacity - 1) * GFX_LANE_GAP;
+        joinSlot.style.top = `${top + reserve + 12}px`;
     }
-    lane.style.bottom = `${bottom}px`;
 }
 function giftStageOnLaneShow(item) {
     getGiftStageOverlay();
@@ -19529,7 +19503,7 @@ function giftStageOnLaneShow(item) {
     const avWrap = el.querySelector('.gift-lane-av');
     const avatarSpan = document.createElement('span');
     avatarSpan.className = 'avatar ava-init';
-    avatarSpan.style.cssText = `--size:36px;--avi-bg:${avatarInitialColor(item.sender?.id != null ? item.sender.id : item.sender?.username)}`;
+    avatarSpan.style.cssText = `--size:30px;--avi-bg:${avatarInitialColor(item.sender?.id != null ? item.sender.id : item.sender?.username)}`;
     const initialSpan = document.createElement('span');
     initialSpan.className = 'avatar__initial';
     initialSpan.setAttribute('aria-hidden', 'true');
@@ -19538,7 +19512,7 @@ function giftStageOnLaneShow(item) {
     if (avatarUrl) {
         const avImg = document.createElement('img');
         avImg.className = 'avatar__photo avatar__photo--fallbackable';
-        avImg.src = giftImg(avatarUrl, 36);
+        avImg.src = giftImg(avatarUrl, 30);
         avImg.loading = 'lazy';
         avImg.decoding = 'async';
         avatarSpan.appendChild(avImg);
