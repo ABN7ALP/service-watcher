@@ -2753,7 +2753,7 @@ document.addEventListener('DOMContentLoaded', () => {
         el.className = `room-entrance-toast ${payload.cssClass}`;
         el.innerHTML = `
             <span class="room-entrance-toast-av"><img src="${payload.profileImage}" alt="" data-avatar-fallback></span>
-            <span>${payload.markText ? `<b class="room-entrance-toast-mark">${escapeHtml(payload.markText)}</b> ` : ''}<b>${escapeHtml(gfxTruncateStageName(payload.username || '', 12))}</b><small>دخل الغرفة</small></span>
+            <span class="room-entrance-toast-text">${payload.markText ? `<b class="room-entrance-toast-mark">${escapeHtml(payload.markText)}</b> ` : ''}<b>${escapeHtml(gfxTruncateStageName(payload.username || '', 12))}</b><small>دخل الغرفة</small></span>
         `;
         slot.appendChild(el);
         setTimeout(() => { el.remove(); playNextRoomEntranceToast(); }, 3600);
@@ -18375,22 +18375,18 @@ function gfxStageFallbackPoint() {
     const sr = stage.getBoundingClientRect();
     return { x: sr.left + stage.clientWidth / 2 - 28, y: sr.top + stage.clientHeight - 56 };
 }
-// 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2): كان المركز = منتصف شبكة المقاعد نفسها، فيتراكب
-// الموكب فوق المقاعد وبطاقة ارتقاء الغرفة معاً (كما أظهرت لقطة التحقق). المنطقة الآن شريط
-// مستقل أسفل آخر صف مقاعد مباشرة ("بين آخر صف مقاعد والدردشة" حرفياً) — تُقاس حياً من صندوقي
-// #voice-chat-grid الحقيقي و#room-chat-messages الحقيقي (لا قيمة ثابتة) فتصح تلقائياً بغرفة
-// عادية/PK/تحدي مهما اختلف ارتفاع الشبكة. الحد الأقصى لأسفل محجوز عمداً كي لا يتجاوز الشريط
-// الجانبي (gift-stage-lane، راجع bottom:96px بالـCSS) أبداً — منطقتان منفصلتان لا تتقاطعان
+// 🐛 إصلاح تداخل مناطق (مراجعة #163 بند 2، ثم feat/room-notice-lanes-v2 مراجعة): كان المركز
+// منتصف شبكة المقاعد نفسها، فنُقِل لشريط أسفل آخر صف مقاعد مباشرة كي لا يتراكب مع بطاقة ارتقاء
+// الغرفة الكبيرة التي كانت موجودة وقتها (حُذِفت لاحقاً، صارت توست صغير — راجع fix/top-banner-queue)
+// — لكن ذاك "أسفل الشبكة" صار يتصادم مع منطقة شرائط الهدايا الجديدة (gift-stage-lane) التي
+// انتقلت ليمين الشاشة أسفل الشبكة أيضاً (راجع gfxPositionLaneZone). بما أن سبب النقل الأصلي
+// لم يعد قائماً، الموكب يعود الآن لمركز شبكة المقاعد حرفياً (طلب صريح: "الوحدات تطير للمقاعد
+// أصلاً") — لا تصادم مع الشريط (يمين الشاشة، خارج حدود الشبكة أفقياً) ولا مع أي بطاقة لم تعد موجودة
 function gfxStagePopCenterPoint() {
     const grid = document.getElementById('voice-chat-grid');
     if (!grid) return null;
     const gr = grid.getBoundingClientRect();
-    const chat = document.getElementById('room-chat-messages');
-    const bandTop = gr.bottom + 10;
-    const laneZoneReserve = 110; // ✅ يطابق .gift-stage-lane bottom:96px + ارتفاع عنصر تقريبي
-    const maxBandBottom = chat ? Math.max(bandTop + 56, chat.getBoundingClientRect().bottom - laneZoneReserve) : bandTop + 110;
-    const bandHeight = Math.max(56, Math.min(120, maxBandBottom - bandTop));
-    return { x: gr.left + gr.width / 2, y: bandTop + bandHeight / 2 };
+    return { x: gr.left + gr.width / 2, y: gr.top + gr.height / 2 };
 }
 // 🐛 مراجعة #163 (الجولة 6 — "صندوق بخط قص بمنتصف الشاشة"): مرساة الفيديو الحقيقي/كانفاس WebGL
 // فقط (لا الموكب ولا صورة الوضع الخفيف الثابتة — تلك تبقى على gfxStagePopCenterPoint كالسابق،
@@ -18482,7 +18478,12 @@ function giftStageOnProcPop(proc, done) {
     const head = document.createElement('div');
     head.className = 'gift-proc-head';
     head.style.left = center.x + 'px';
-    head.style.top = (center.y - 70) + 'px';
+    // 🛡️ feat/room-notice-lanes-v2: حبّة التعليق فوق مركز الموكب بـ70px — قد يخرج هذا فوق حافة
+    // شبكة المقاعد العلوية فعلياً بغرفة قصيرة (صف واحد فقط، 9 مقاعد مثلاً) فيتقاطع مع رأس
+    // الغرفة. يُحجَز ضمن حدود الشبكة نفسها دوماً (8px هامش من حافتها العلوية كحدّ أدنى)
+    const grid = document.getElementById('voice-chat-grid');
+    const gridTop = grid ? grid.getBoundingClientRect().top : 0;
+    head.style.top = Math.max(gridTop + 8, center.y - 70) + 'px';
     head.innerHTML = '<span class="gift-proc-who"></span><span class="gift-proc-cnt" dir="ltr">×1</span>';
     // 🐛 مراجعة #163 (الجولة 8): الاسمان خام بلا قصّ — حبّة مستديرة (.gift-proc-who أصلاً
     // border-radius:999px) بلا عرض أقصى تتمدَّد بعرض النص كاملاً فتتجاوز حافتي الشاشة، فتبدو
